@@ -14,7 +14,7 @@ import type { DisplayCapabilities } from "./display-capabilities.js";
 // The transpiler handles calibration (raw ADC → screen pixels) and rotation.
 // ---------------------------------------------------------------------------
 
-export type TouchLibrary = "XPT2046_Touchscreen" | "Adafruit_TouchScreen" | "Adafruit_STMPE610" | "sdl";
+export type TouchLibrary = "XPT2046_Touchscreen" | "Adafruit_TouchScreen" | "Adafruit_STMPE610" | "FT6336U" | "sdl";
 
 export interface TouchProfile {
   /**
@@ -37,6 +37,11 @@ export interface TouchProfile {
   analogPins?: { xp: number; yp: number; xm: number; ym: number; rx: number };
   /** Software SPI pins (optional). */
   swSpiPins?: { mosi: number; miso: number; sck: number };
+  /** I2C address for I2C touch controllers (FT6336U default 0x38). */
+  i2cAddress?: number;
+  /** Reset pin for touch controllers requiring a hardware-reset sequence
+   *  before begin() (FT6336U on boards with a reset GPIO tied to the chip). */
+  resetPin?: number;
 
   /** Raw ADC calibration — maps touch controller raw values to display pixels. */
   calibration: { xMin: number; xMax: number; yMin: number; yMax: number };
@@ -317,6 +322,41 @@ export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
     };
   }
 
+  if (touch.library === "FT6336U") {
+    const addr = touch.i2cAddress ?? 0x38;
+    // I2C addresses are conventional in hex in Arduino code.
+    const addrHex = "0x" + addr.toString(16).toUpperCase();
+    const reset = touch.resetPin;
+    const resetLines = reset
+      ? [
+          `  pinMode(${reset}, OUTPUT);`,
+          `  digitalWrite(${reset}, LOW);`,
+          `  delay(10);`,
+          `  digitalWrite(${reset}, HIGH);`,
+          `  delay(500);`,
+        ].join("\n")
+      : ``;
+    return {
+      includes: ["#include <Wire.h>", "#include <RAK14014_FT6336U.h>"],
+      declaration: `FT6336U __tc_touch(${addrHex});`,
+      functions: [
+        `static inline void touch_init() {`,
+        resetLines,
+        `  __tc_touch.begin(Wire, ${addrHex});`,
+        `}`,
+        `static inline bool touch_isTouched() {`,
+        `  return __tc_touch.read_td_status() > 0;`,
+        `}`,
+        `static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {`,
+        `  FT6336U_TouchPointType __tp = __tc_touch.scan();`,
+        `  if (x) *x = (int16_t)__tp.tp[0].x;`,
+        `  if (y) *y = (int16_t)__tp.tp[0].y;`,
+        `  if (z) *z = (__tp.touch_count > 0) ? 255 : 0;`,
+        `}`,
+      ].join("\n"),
+    };
+  }
+
   if (touch.library === "sdl") {
     return {
       includes: ["#include <SDL2/SDL.h>"],
@@ -341,6 +381,6 @@ export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
   throw new Error(
     `Unknown touch library "${touch.library}". ` +
     `Use { adapter: './path' } for custom touch adapters, or one of: ` +
-    `XPT2046_Touchscreen, Adafruit_TouchScreen, Adafruit_STMPE610, sdl.`,
+    `XPT2046_Touchscreen, Adafruit_TouchScreen, Adafruit_STMPE610, FT6336U, sdl.`,
   );
 }
