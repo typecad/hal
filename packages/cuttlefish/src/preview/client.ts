@@ -79,6 +79,10 @@ async function start(): Promise<void> {
   if (!ctx) throw new Error("2D canvas context unavailable");
   ctx.imageSmoothingEnabled = false;
 
+  // Set the canvas CSS aspect-ratio to match the display (e.g. 128:64 for
+  // OLED, 320:240 for TFT) so the browser scales it proportionally.
+  document.documentElement.style.setProperty("--display-aspect", `${snapshot.program.width} / ${snapshot.program.height}`);
+
   const status = byId<HTMLDivElement>("status");
   status.textContent = `${snapshot.profileName ?? snapshot.program.display?.driver ?? "display"} ${snapshot.program.width}x${snapshot.program.height} ${snapshot.program.colorFormat}`;
 

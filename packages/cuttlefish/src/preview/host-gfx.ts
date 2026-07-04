@@ -32,16 +32,16 @@ export function rgb565To888(color: number): number {
 export function blendRgb565(fg: number, bg: number, opacity: number): number {
   if (opacity >= 100) return fg & 0xffff;
   if (opacity <= 0) return bg & 0xffff;
-  const fr = (fg >> 11) & 0x1f;
-  const fg6 = (fg >> 5) & 0x3f;
-  const fb = fg & 0x1f;
-  const br = (bg >> 11) & 0x1f;
-  const bg6 = (bg >> 5) & 0x3f;
-  const bb = bg & 0x1f;
-  const r = Math.trunc((fr * opacity + br * (100 - opacity)) / 100);
-  const g = Math.trunc((fg6 * opacity + bg6 * (100 - opacity)) / 100);
-  const b = Math.trunc((fb * opacity + bb * (100 - opacity)) / 100);
-  return ((r & 0x1f) << 11) | ((g & 0x3f) << 5) | (b & 0x1f);
+  // Blend in 888 internally for higher precision (parity with the device's
+  // ui_blend565): unpack 565→888, blend at 8-bit, re-quantize to 565.
+  const fr5 = (fg >> 11) & 0x1f, fg6 = (fg >> 5) & 0x3f, fb5 = fg & 0x1f;
+  const br5 = (bg >> 11) & 0x1f, bg6 = (bg >> 5) & 0x3f, bb5 = bg & 0x1f;
+  const fr8 = (fr5 << 3) | (fr5 >> 2), fg8 = (fg6 << 2) | (fg6 >> 4), fb8 = (fb5 << 3) | (fb5 >> 2);
+  const br8 = (br5 << 3) | (br5 >> 2), bg8 = (bg6 << 2) | (bg6 >> 4), bb8 = (bb5 << 3) | (bb5 >> 2);
+  const r = Math.trunc((fr8 * opacity + br8 * (100 - opacity)) / 100);
+  const g = Math.trunc((fg8 * opacity + bg8 * (100 - opacity)) / 100);
+  const b = Math.trunc((fb8 * opacity + bb8 * (100 - opacity)) / 100);
+  return (((r >> 3) & 0x1f) << 11) | (((g >> 2) & 0x3f) << 5) | ((b >> 3) & 0x1f);
 }
 
 /** Blend two RGB888 colors by opacity (0-100). Added for Phase 2 (RGB888/RGB666
@@ -554,11 +554,20 @@ export class HostAdafruitGFX {
   toRgbaBytes(): Uint8ClampedArray {
     const out = new Uint8ClampedArray(this.buffer.length * 4);
     for (let i = 0; i < this.buffer.length; i++) {
-      const { r, g, b } = rgb565ToRgb888(this.buffer[i]);
+      const c = this.buffer[i];
       const p = i * 4;
-      out[p] = r;
-      out[p + 1] = g;
-      out[p + 2] = b;
+      if (this.monoSnap) {
+        // Mono: values are already 0xffffff/0x000000 — emit directly.
+        out[p] = (c >> 16) & 0xff;
+        out[p + 1] = (c >> 8) & 0xff;
+        out[p + 2] = c & 0xff;
+      } else {
+        // 565 target: unpack to 888.
+        const { r, g, b } = rgb565ToRgb888(c);
+        out[p] = r;
+        out[p + 1] = g;
+        out[p + 2] = b;
+      }
       out[p + 3] = 255;
     }
     return out;

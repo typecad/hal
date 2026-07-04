@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import chalk from "chalk";
 import { findConfigFile, parseConfigFile } from "../config-loader.js";
 import { buildPreviewSnapshot } from "./build-program.js";
+import { generateProjectUITypeDeclarations } from "../ui/ui-registry.js";
 
 export interface PreviewServerOptions {
   configPath?: string;
@@ -21,7 +22,7 @@ const HTML = `<!doctype html>
     :root { color-scheme: dark; font-family: ui-sans-serif, system-ui, sans-serif; background: #111315; color: #e8ecef; }
     body { margin: 0; height: 100vh; overflow: hidden; display: grid; grid-template-columns: minmax(360px, 1fr) 280px; }
     main { display: grid; place-items: center; padding: 24px; background: #191d20; }
-    canvas { image-rendering: pixelated; width: min(92vw, 960px); max-height: calc(100vh - 48px); aspect-ratio: 4 / 3; background: #000; box-shadow: 0 12px 36px rgba(0,0,0,.35); }
+    canvas { image-rendering: pixelated; width: min(92vw, 960px); max-height: calc(100vh - 48px); aspect-ratio: var(--display-aspect, 4 / 3); background: #000; box-shadow: 0 12px 36px rgba(0,0,0,.35); }
     aside { border-left: 1px solid #2d3338; padding: 18px; display: flex; flex-direction: column; gap: 18px; min-height: 0; }
     aside > section:first-child, aside > section:nth-child(2) { flex-shrink: 0; }  /* Display + GPIO stay visible */
     aside > section:last-child { min-height: 0; display: flex; flex-direction: column; }
@@ -132,6 +133,7 @@ export async function runPreviewServer(options: PreviewServerOptions = {}): Prom
   const config = parseConfigFile(configPath);
   if (!config) throw new Error(`Could not parse ${configPath}`);
   const projectRoot = path.dirname(configPath);
+  generateProjectUITypeDeclarations(projectRoot);
   const distRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const clients = new Set<http.ServerResponse>();
 
@@ -143,6 +145,7 @@ export async function runPreviewServer(options: PreviewServerOptions = {}): Prom
         return;
       }
       if (url.pathname === "/snapshot.json") {
+        generateProjectUITypeDeclarations(projectRoot);
         const snapshot = await buildPreviewSnapshot({ config, projectRoot });
         writeText(res, 200, JSON.stringify(snapshot), "application/json; charset=utf-8");
         return;

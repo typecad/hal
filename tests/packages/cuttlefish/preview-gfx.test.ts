@@ -40,7 +40,7 @@ describe("HostAdafruitGFX", () => {
     gfx.drawAntialiasedText("A", 0, 0, 0xffff, 0x0000, 1);
 
     expect(gfx.buffer[0]).toBe(0x0841);
-    expect(gfx.buffer[2]).toBe(0xef9d);
+    expect(gfx.buffer[2]).toBe(0xf7be);
   });
 
   it("expands RGB565 to canvas RGBA channel values", () => {
