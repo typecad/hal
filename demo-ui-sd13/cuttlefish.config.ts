@@ -59,6 +59,7 @@ const config: CuttlefishConfig = {
   bus: 'I2C',
   address: 0x3C,    // common OLED I2C address
   reset: -1,        // -1 if no reset pin wired
+  rotation: 0,
 },
 };
 
