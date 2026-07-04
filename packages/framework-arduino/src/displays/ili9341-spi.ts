@@ -8,6 +8,7 @@
 
 import type { DisplayProfile } from "@typecad/cuttlefish/api/shared";
 import { SSD1309_I2C } from "./ssd1309-i2c.js";
+import { ST7796_SPI } from "./st7796-spi.js";
 
 export const ILI9341_SPI: DisplayProfile = {
   driver: "ili9341",
@@ -22,6 +23,7 @@ export const ILI9341_SPI: DisplayProfile = {
 /** Registry of all built-in profiles. Keyed by profile name. */
 export const BUILT_IN_PROFILES: Record<string, DisplayProfile> = {
   "ili9341-spi": ILI9341_SPI,
+  "st7796-spi": ST7796_SPI,
   "ssd1309-i2c": SSD1309_I2C,
 };
 
