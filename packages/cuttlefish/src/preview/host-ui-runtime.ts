@@ -1040,12 +1040,21 @@ export class PreviewUIRuntime {
     const displayText = node.hasTextBinding ? node.textBuffer : node.text;
     const ts = this.nodeTextSize(node);
     let textMaxW = node.box.w;
+    if (node.kind === "text" || node.kind === "button") {
+      const insets = this.textInsets(node);
+      textMaxW = Math.max(0, node.box.w - insets.left - insets.right);
+    }
     if (node.kind === "check" || node.kind === "radio") {
       textMaxW = node.box.w > 22 ? node.box.w - 22 : 0;
     }
     const metrics = this.textLayout(node, displayText, textMaxW, ts);
     let paintTextW = metrics.width;
     let paintTextH = metrics.height;
+    if (node.kind === "text") {
+      const insets = this.textInsets(node);
+      paintTextW += insets.left + insets.right;
+      paintTextH += insets.top + insets.bottom;
+    }
     if (node.kind === "check" || node.kind === "radio") {
       paintTextW += 22;
       if (paintTextH < 16) paintTextH = 16;
@@ -1160,15 +1169,21 @@ export class PreviewUIRuntime {
   private clearCurrentNodePaint(node: MutableNode): void {
     const displayText = node.hasTextBinding ? node.textBuffer : node.text;
     const ts = this.nodeTextSize(node);
-    const metrics = this.textLayout(node, displayText, node.box.w, ts);
+    let textMaxW = node.box.w;
+    if (node.kind === "text" || node.kind === "button") {
+      const insets = this.textInsets(node);
+      textMaxW = Math.max(0, node.box.w - insets.left - insets.right);
+    }
+    const metrics = this.textLayout(node, displayText, textMaxW, ts);
+    const insets = node.kind === "text" ? this.textInsets(node) : { left: 0, right: 0, top: 0, bottom: 0 };
     const rect = this.nodePaintRect(
       node,
       this.baseDrawXForNode(node.index),
       this.baseDrawYForNode(node.index),
       this.drawXForNode(node.index),
       this.drawYForNode(node.index),
-      metrics.width,
-      metrics.height,
+      metrics.width + insets.left + insets.right,
+      metrics.height + insets.top + insets.bottom,
     );
     this.clearNodePaintRect(node, rect);
   }
@@ -1803,6 +1818,16 @@ export class PreviewUIRuntime {
     return left;
   }
 
+  private textInsets(node: MutableNode): { left: number; right: number; top: number; bottom: number } {
+    const border = node.borderWidth || 0;
+    return {
+      left: border + (node.paddingLeft || 0),
+      right: border + (node.paddingRight || 0),
+      top: border + (node.paddingTop || 0),
+      bottom: border + (node.paddingBottom || 0),
+    };
+  }
+
   private drawTextLines(node: MutableNode, displayText: string | undefined, left: number, top: number, maxWidth: number, ts: number, fg: number, bg: number, align = node.textAlign): { width: number; height: number } {
     const layout = this.textLayout(node, displayText, maxWidth, ts);
     let y = top;
@@ -1839,7 +1864,7 @@ export class PreviewUIRuntime {
   // baked at transpile time. Iterate segments once, skip lines and segments
   // outside the active clip, and compute each segment's x-origin from textAlign
   // + line width. Segments of different font-sizes align on the line's baseline.
-  private drawRichNode(node: MutableNode, drawY: number, ts: number): void {
+  private drawRichNode(node: MutableNode, drawY: number, ts: number, contentX = node.box.x, contentY = drawY, contentW = node.box.w): void {
     if (!node.runLines || !node.runs) return;
     // Clear (mirrors drawTextNode's clear + translucent blend).
     const clearW = Math.max(node.box.w, node.lastTextWidth ?? 0);
@@ -1858,15 +1883,15 @@ export class PreviewUIRuntime {
       for (let si = 0; si < rl.segRun.length; si++) {
         const li = rl.segLine[si];
         if (li >= rl.lineY.length) continue;
-        const lineTop = drawY + yOffset + rl.lineY[li];
+        const lineTop = contentY + yOffset + rl.lineY[li];
         const lineBottom = lineTop + rl.lineH[li];
         if (clip && (lineBottom <= clip.y || lineTop >= clip.y + clip.h)) continue;
-        const lineX = this.lineX(node, rl.lineW[li], node.box.x + xOffset, node.box.w);
+        const lineX = this.lineX(node, rl.lineW[li], contentX + xOffset, contentW);
         const sx = lineX + rl.segX[si];
         if (clip && (sx + rl.segW[si] <= clip.x || sx >= clip.x + clip.w)) continue;
         const run = runs[rl.segRun[si]];
         if (!run) continue;
-        const baseline = drawY + yOffset + rl.lineBaseline[li];
+        const baseline = contentY + yOffset + rl.lineBaseline[li];
         const segY = baseline - (7 * run.textSize);
         const fg = fgOverride ?? run.fg;
         this.drawText(rl.segText[si], sx, segY, fg, textClear, run.textSize, node.fontAntialias, run.fontFace, run.letterSpacing);
@@ -1888,14 +1913,16 @@ export class PreviewUIRuntime {
     if (!node.runs || !node.runLines) return -1;
     const drawX = this.drawXForNode(nodeIndex);
     const drawY = this.drawYForNode(nodeIndex);
-    const nx = tx - drawX;
-    const ny = ty - drawY;
+    const insets = this.textInsets(node);
+    const nx = tx - drawX - insets.left;
+    const ny = ty - drawY - insets.top;
+    const contentW = Math.max(1, node.box.w - insets.left - insets.right);
     for (let si = 0; si < node.runLines.segRun.length; si++) {
       const run = node.runs[node.runLines.segRun[si]];
       if (run.linkTarget < 0) continue;
       const li = node.runLines.segLine[si];
       // Account for center/right alignment the same way draw does.
-      const originX = this.lineX(node, node.runLines.lineW[li], 0, node.box.w);
+      const originX = this.lineX(node, node.runLines.lineW[li], 0, contentW);
       const sx = originX + node.runLines.segX[si];
       const sy = node.runLines.lineY[li];
       const sw = node.runLines.segW[si];
@@ -1906,19 +1933,23 @@ export class PreviewUIRuntime {
   }
 
   private drawTextNode(node: MutableNode, displayText: string | undefined, drawY: number, ts: number): void {
+    const insets = this.textInsets(node);
+    const contentX = node.box.x + insets.left;
+    const contentY = drawY + insets.top;
+    const contentW = Math.max(1, node.box.w - insets.left - insets.right);
     // Rich-text (inline runs): draw from precomputed geometry instead of the
     // single-string wrapped path.
     if (node.runs && node.runLines) {
-      this.drawRichNode(node, drawY, ts);
+      this.drawRichNode(node, drawY, ts, contentX, contentY, contentW);
       return;
     }
-    const layout = this.textLayout(node, displayText, node.box.w, ts);
+    const layout = this.textLayout(node, displayText, contentW, ts);
     // overflow:hidden/scroll: cap the clear at the node's own box width so a
     // nowrap line wider than its box doesn't repaint past the edge (mirrors the
     // C++ scrollable clearW cap).
-    let clearW = Math.max(node.box.w, node.lastTextWidth, layout.width);
+    let clearW = Math.max(node.box.w, node.lastTextWidth + insets.left + insets.right, layout.width + insets.left + insets.right);
     if (node.scrollable) clearW = node.box.w;
-    const clearH = Math.max(node.box.h, node.lastTextHeight ?? 0, layout.height);
+    const clearH = Math.max(node.box.h, (node.lastTextHeight ?? 0) + insets.top + insets.bottom, layout.height + insets.top + insets.bottom);
     // Clear + glyph-cell background. When the node is translucent (inherited
     // from an opacity:<1 parent), blend toward the parent's clear color (the
     // backdrop behind the translucent element) so the text area matches the
@@ -1937,15 +1968,15 @@ export class PreviewUIRuntime {
       this.drawTextLines(
         node,
         displayText,
-        node.box.x + node.textShadowOffsetX,
-        drawY + node.textShadowOffsetY,
-        node.box.w,
+        contentX + node.textShadowOffsetX,
+        contentY + node.textShadowOffsetY,
+        contentW,
         ts,
         shadowColor,
         shadowColor,
       );
     }
-    this.drawTextLines(node, displayText, node.box.x, drawY, node.box.w, ts, node.fg, textClear);
+    this.drawTextLines(node, displayText, contentX, contentY, contentW, ts, node.fg, textClear);
   }
 
   private listStateForNode(nodeIndex: number): PreviewListState | undefined {
@@ -2102,7 +2133,18 @@ export class PreviewUIRuntime {
       if (t === "ctx.height" || t === "ctx?.height") return ch;
       const parsed = parseInt(t, 10);
       if (Number.isNaN(parsed)) {
-        const value = this.evaluateExpression(t);
+        // Substitute ctx.width/ctx.height with their numeric values so compound
+        // expressions like "ctx.height - 3" evaluate correctly. Then try
+        // evaluating as a JS expression against module scope.
+        const substituted = t
+          .replace(/ctx\??\.width/g, String(cw))
+          .replace(/ctx\??\.height/g, String(ch));
+        if (/^[\d\s+\-*/().]+$/.test(substituted)) {
+          // Pure arithmetic — eval safely (no identifiers).
+          try { return Math.trunc(Function(`"use strict"; return (${substituted});`)()) || 0; }
+          catch { /* fall through */ }
+        }
+        const value = this.evaluateExpression(substituted);
         return Math.trunc(Number(value)) || 0;
       }
       return parsed || 0;
