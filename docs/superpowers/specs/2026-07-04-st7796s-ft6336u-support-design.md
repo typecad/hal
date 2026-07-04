@@ -131,21 +131,24 @@ Replace the broken implementation with one matching `Adafruit_ST7796S`:
 - **`display_init()`:**
   ```cpp
   __tc_display.init(320, 480, 0, 0, ST7796S_RGB);
-  ${spiFreq ? `__tc_display.begin(${spiFreq});` : ""}
+  ${spiFreq ? `__tc_display.initSPI(${spiFreq});` : ""}
   __tc_display.setRotation(${rotation});
   __tc_display.fillScreen(0x0000);
   ```
   Note: `init()` (not `begin()`) is what sends the panel init sequence on this
   library — calling `begin()` alone would skip the panel init array entirely
-  and yield a blank/garbled panel. However, `init()` internally calls
+  and yield a blank/garbled panel. SPI frequency handling is non-obvious:
+  `Adafruit_ST77xx::begin(uint32_t freq)` is **protected**, so it cannot be
+  called from outside the class. Meanwhile, `init()` internally calls
   `commonInit(NULL)` → `begin()` (no-arg) → `initSPI(SPI_DEFAULT_FREQ)`,
-  which **clobbers any previously-set SPI frequency** to the 8 MHz default. To
-  honor `spiFrequency` (the demo configures 80 MHz), call `begin(${spiFreq})`
-  **after** `init()`. This re-runs `initSPI` with the user's value; subsequent
-  transactions use the requested frequency. The official Adafruit
+  which clobbers any previously-set SPI frequency to the 8 MHz default. To
+  honor `spiFrequency` (the demo configures 80 MHz), call the public
+  `Adafruit_SPITFT::initSPI(${spiFreq})` **after** `init()`. `initSPI` is what
+  `begin()` itself delegates to internally, so this is the documented way to
+  (re-)establish the SPI bus at a chosen frequency. The official Adafruit
   `ST7796S_demo.ino` sketch omits frequency management entirely (accepts the
-  default) — our explicit `begin(freq)` post-`init()` is a deliberate
-  optimization that is safe because `begin()` is idempotent on SPI setup.
+  default) — our explicit `initSPI(freq)` post-`init()` is a deliberate, safe
+  optimization. Verified by `arduino-cli compile` for `esp32:esp32:esp32`.
 - **`display_writePixels(uint16_t* pixels, uint32_t count)`**: delegate to
   `__tc_display.writePixels(pixels, count)` (565 path, byte-identical with ILI9341).
 - **565 enforcement:** if `display.colorFormat === "rgb666"`, throw a clear
@@ -429,12 +432,14 @@ Tracked as a separate piece of work after this lands:
   successfully on the same ESP32 wiring. The ST7796S panel is spec'd for the
   same range. If signal integrity issues appear on the longer traces of the
   320×480 board, the user can drop `spiFrequency` in config — no code change.
-- **`init()` vs `begin()` ordering:** the rewritten adapter calls `init()` for
-  panel setup, then `begin(${spiFreq})` to override the SPI frequency that
-  `init()`'s internal `commonInit→begin()` clobbered to the 8 MHz default. This
-  matches the working `examples/ST7796S_demo/ST7796S_demo.ino` reference sketch
-  (which omits the frequency override and accepts the default), with our
-  deliberate optimization layered on top. See C1 for the full rationale.
+- **`init()` vs `begin()`/`initSPI()` ordering:** the rewritten adapter calls
+  `init()` for panel setup, then the public `initSPI(${spiFreq})` to override
+  the SPI frequency that `init()`'s internal `commonInit→begin()` clobbered to
+  the 8 MHz default. `Adafruit_ST77xx::begin(uint32_t)` is protected, so the
+  public `Adafruit_SPITFT::initSPI` is the correct API. This matches the
+  working `examples/ST7796S_demo/ST7796S_demo.ino` reference sketch (which omits
+  the frequency override and accepts the default), with our deliberate
+  optimization layered on top. See C1 for the full rationale.
 - **FT6336U `scan()` coordinate orientation:** the panel-pixel coords from
   `scan()` may already be rotation-aware in hardware (the FT6336U's own
   firmware handles rotation). If on-device testing shows mirrored/rotated
