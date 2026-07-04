@@ -342,7 +342,11 @@ static inline uint32_t ui_snap_mono(uint32_t c) {
 }
 // Snap an RGB565 value to 1-bit mono. Mono panels run at UI_COLOR_DEPTH 565, so
 // node fields hold 565 values; reconstruct 8-bit channels then apply the threshold.
+// Pre-snapped values (0x0000/0x0001/0xffff) pass through directly — the
+// transpiler resolves #ffffff/#000000 to 0x0001/0x0000 on mono targets.
 static inline uint16_t ui_snap_mono565(uint16_t c) {
+  if (c == 0x0000u) return 0x0000u;
+  if (c == 0x0001u || c == 0xffffu) return 0xffffu;
   uint8_t r5 = (c >> 11) & 0x1f, g6 = (c >> 5) & 0x3f, b5 = c & 0x1f;
   uint8_t r = (r5 << 3) | (r5 >> 2), g = (g6 << 2) | (g6 >> 4), b = (b5 << 3) | (b5 >> 2);
   return ((uint32_t)(299 * r + 587 * g + 114 * b) >= 68850u) ? 0xffffu : 0x0000u;
