@@ -229,16 +229,19 @@ export function isUICall(call: ts.CallExpression): call is ts.CallExpression & {
 
 // ── Argument extraction ─────────────────────────────────────────────────────
 
-/** Read the display/bus/cs/dc/rst from a ui.mount options object literal. */
+/** Read display wiring overrides from an optional ui.mount options object literal. */
 function extractMountOptions(
   optsExpr: ts.Expression | undefined,
   diagnostics: Diagnostic[],
 ): Partial<MountRequest> | null {
-  if (!optsExpr || !ts.isObjectLiteralExpression(optsExpr)) {
+  if (!optsExpr) {
+    return {};
+  }
+  if (!ts.isObjectLiteralExpression(optsExpr)) {
     diagnostics.push({
       severity: "error",
       code: "ui-mount-opts",
-      message: "ui.mount expects an options object { display, bus, cs, dc, rst }",
+      message: "ui.mount expects an optional options object, e.g. ui.mount(screen) or ui.mount(screen, { display, bus, cs, dc, rst })",
     } as Diagnostic);
     return null;
   }
@@ -331,19 +334,9 @@ function resolveMountCall(
   }
 
   const opts = extractMountOptions(optsArg, diagnostics);
-  if (!opts || opts.display === undefined) {
+  if (!opts) {
     return null;
   }
-  // SPI-bus displays (ILI9341, ST7796, …) need bus/cs/dc/rst wiring. Host
-  // render targets (sdl, native-preview) have no SPI pins. I2C displays
-  // (ssd1309) need address/reset instead — not SPI pins.
-  const isI2C = opts.bus === "I2C" || opts.bus === "i2c";
-  const spiDisplay = !isI2C && opts.display !== "sdl" && opts.display !== "native-preview";
-  if (spiDisplay && (opts.bus === undefined || opts.cs === undefined ||
-      opts.dc === undefined || opts.rst === undefined)) {
-    return null;
-  }
-
   const strategy = getContext().activeStrategy;
   if (!strategy) {
     diagnostics.push({
@@ -357,6 +350,29 @@ function resolveMountCall(
   const profile = getDisplayProfile();
   const viewport = { width: profile.width, height: profile.height };
 
+  const req: MountRequest = {
+    display: opts.display !== undefined ? String(opts.display) : profile.driver,
+    bus: opts.bus !== undefined ? String(opts.bus) : profile._mountBus,
+    cs: opts.cs !== undefined ? Number(opts.cs) : profile._mountCs,
+    dc: opts.dc !== undefined ? Number(opts.dc) : profile._mountDc,
+    rst: opts.rst !== undefined ? Number(opts.rst) : profile._mountRst,
+    rotation: opts.rotation !== undefined ? Number(opts.rotation) : profile.rotation,
+    backlight: opts.backlight !== undefined ? Number(opts.backlight) : profile.backlight,
+    spiFrequency: opts.spiFrequency !== undefined ? Number(opts.spiFrequency) : profile.spiFrequency,
+    address: opts.address !== undefined ? Number(opts.address) : profile._mountAddress,
+    reset: opts.reset !== undefined ? Number(opts.reset) : profile._mountReset,
+  };
+
+  // SPI-bus displays (ILI9341, ST7796, etc.) need bus/cs/dc/rst wiring. Host
+  // render targets (sdl, native-preview) have no SPI pins. I2C displays
+  // (ssd1309) need address/reset instead of SPI pins.
+  const isI2C = req.bus === "I2C" || req.bus === "i2c";
+  const spiDisplay = !isI2C && req.display !== "sdl" && req.display !== "native-preview";
+  if (spiDisplay && (req.bus === undefined || req.cs === undefined ||
+      req.dc === undefined || req.rst === undefined)) {
+    return null;
+  }
+
   // Final layout + lower using the mount's viewport. Source the colorFormat
   // from the resolved display profile (authoritative — set from config), not
   // strategy.colorFormat() (capability-level, may default to rgb565 before the
@@ -368,16 +384,6 @@ function resolveMountCall(
     viewport,
   });
 
-  const req: MountRequest = {
-    display: String(opts.display),
-    bus: opts.bus !== undefined ? String(opts.bus) : "",
-    cs: opts.cs !== undefined ? Number(opts.cs) : 0,
-    dc: opts.dc !== undefined ? Number(opts.dc) : 0,
-    rst: opts.rst !== undefined ? Number(opts.rst) : 0,
-    rotation: profile.rotation,
-    backlight: profile.backlight,
-    spiFrequency: profile.spiFrequency,
-  };
   const displayInitOp = resolveMount(req, strategy, viewport);
 
   // Mark the entry file as having a UI → gates runtime header + table injection.

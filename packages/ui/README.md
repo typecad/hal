@@ -52,12 +52,11 @@ screen {
 import { ui } from '@typecad/ui';
 import { screen } from './app.ui.html';
 
-ui.mount(screen, {
-  display: 'ili9341',
-  bus: 'SPI',
-  cs: 5, dc: 21, rst: 22,
-});
+ui.mount(screen);
 ```
+
+Display hardware and wiring live in `cuttlefish.config.ts` under `display`, so
+the UI source stays focused on UI behavior.
 
 ### 2. Build
 
@@ -953,6 +952,7 @@ display: {
 | Name | Display | Dimensions | Color | Touch |
 |---|---|---|---|---|
 | `ili9341-spi` | ILI9341 (SPI) | 320×240 | RGB565 | Add via `touch` config |
+| `ssd1309-i2c` | SSD1309 OLED (I2C) | 128×64 | Mono | None |
 
 ### Adding a new display
 
@@ -968,42 +968,55 @@ import { registerDisplayAdapter } from '@typecad/cuttlefish/api/shared/display-a
 
 registerDisplayAdapter('ssd1306', (display) => {
   return {
-    includes: `#include <Adafruit_GFX.h>\n#include <Adafruit_SSD1306.h>`,
+    includes: `#include <Adafruit_GFX.h>\n#include <Adafruit_SSD1306.h>\n#include <Wire.h>`,
     declaration: `Adafruit_SSD1306 __tc_display(128, 64, &Wire, -1);`,
     functions: [
+      'static int16_t __addrX = 0, __addrY = 0, __addrW = 0, __addrH = 0;',
+      'static uint32_t __addrCursor = 0;',
       'static inline void display_init() {',
-      '  __tc_display.begin(SSD1306_SWITCHCAPVCC);',
+      '  __tc_display.begin(SSD1306_SWITCHCAPVCC, 0x3C);',
       '  __tc_display.clearDisplay();',
+      '  __tc_display.display();',
       '}',
       'static inline void display_fillScreen(uint16_t color) {',
       '  __tc_display.fillScreen(color ? 1 : 0);',
       '}',
       'static inline void display_startWrite() { }',
-      'static inline void display_endWrite() { __tc_display.display(); }',
-      'static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t w, int16_t h) { }',
+      'static inline void display_endWrite() { }',
+      'static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t w, int16_t h) {',
+      '  __addrX = x; __addrY = y; __addrW = w; __addrH = h; __addrCursor = 0;',
+      '}',
       'static inline void display_writePixels(uint16_t* pixels, uint32_t count) {',
-      '  // Convert RGB565 to monochrome and write',
+      '  if (__addrW <= 0 || __addrH <= 0) return;',
+      '  uint32_t total = (uint32_t)__addrW * (uint32_t)__addrH;',
       '  for (uint32_t i = 0; i < count; i++) {',
-      '    __tc_display.drawPixel(i % 128, i / 128, pixels[i] ? 1 : 0);',
+      '    if (__addrCursor >= total) break;',
+      '    uint32_t pos = __addrCursor++;',
+      '    __tc_display.drawPixel(__addrX + (pos % __addrW), __addrY + (pos / __addrW), pixels[i] ? 1 : 0);',
       '  }',
+      '}',
+      'static inline void display_partial_refresh(int16_t x, int16_t y, int16_t w, int16_t h) {',
+      '  (void)x; (void)y; (void)w; (void)h;',
+      '  __tc_display.display();',
       '}',
     ].join('\\n'),
   };
 });
 ```
 
-The adapter must provide these 6 functions:
+The runtime calls these core display functions:
 
 | Function | Purpose |
 |----------|---------|
 | `display_init()` | Initialize the display (begin, rotation, clear) |
 | `display_fillScreen(color)` | Fill the entire screen with a color |
 | `display_startWrite()` | Begin an SPI transaction (no-op for I2C) |
-| `display_endWrite()` | End an SPI transaction / trigger refresh |
+| `display_endWrite()` | End a transaction (often a no-op for page-buffered I2C) |
 | `display_setAddrWindow(x, y, w, h)` | Set the active write region |
-| `display_writePixels(pixels, count)` | Write a row of RGB565 pixels |
+| `display_writePixels(pixels, count)` | Write pixels into the active region |
+| `display_partial_refresh(x, y, w, h)` | Publish the dirty region on deferred displays |
 
-For monochrome displays, the adapter wraps each color argument with a conversion function. For e-ink, `display_endWrite()` triggers the refresh cycle.
+For monochrome displays, the adapter wraps each color argument with a conversion function. For deferred displays, the current runtime publishes from `display_partial_refresh()`.
 
 #### 2. Create a display profile
 

@@ -32,10 +32,17 @@ import { buildUIFontAssets } from "./font-assets.js";
 import type { UIFontAssetModel } from "./font-assets.js";
 import { emitImageTables, loadImageAssets } from "./image-assets.js";
 import type { Diagnostic } from "../types.js";
+import { splitUiFile } from "./ui-file-splitter.js";
 
 export interface UIModule {
   /** Absolute path of the .ui.html source. */
   htmlPath: string;
+  /** Absolute path of the generated type declaration for this UI module. */
+  typeDeclPath: string;
+  /** Source root overlaid with typeDeclRoot for .ui.html TypeScript imports. */
+  typeDeclSourceRoot: string;
+  /** Generated type declaration root used with TypeScript rootDirs. */
+  typeDeclRoot: string;
   /** Resolved-style tree (HTML + CSS merged). Layout deferred to mount. */
   styled: StyledNode;
   /** All resolved <screen> trees (for multi-screen navigation). */
@@ -62,6 +69,24 @@ export interface LowerOptions {
 const modules = new Map<string, UIModule>();
 const lowered = new Map<string, LoweredUI>();
 let entryHasUIFlag = false;
+
+export interface UITypeDeclInfo {
+  dtsPath: string;
+  sourceRoot: string;
+  typesRoot: string;
+}
+
+export interface UITypeDeclarationResult {
+  written: string[];
+  errors: Array<{ filePath: string; error: Error }>;
+}
+
+interface UITypeDeclNode {
+  tag: string;
+  id?: string;
+  ref?: string;
+  children: UITypeDeclNode[];
+}
 
 /** Reset the registry. Called at the start of each transpile run. */
 export function resetUIRegistry(): void {
@@ -121,12 +146,26 @@ export function loadUIModuleFromText(
   const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(cssPathForFonts));
 
   const rawKeyframes = parseKeyframes(fullCss);
-  const mod: UIModule = { htmlPath: abs, styled, allStyledScreens, keyboards, rules, fontFaces, fontAssets, rawKeyframes, diagnostics: moduleDiagnostics };
+  const typeInfo = uiTypeDeclInfoForHtmlPath(abs);
+  const mod: UIModule = {
+    htmlPath: abs,
+    typeDeclPath: typeInfo.dtsPath,
+    typeDeclSourceRoot: typeInfo.sourceRoot,
+    typeDeclRoot: typeInfo.typesRoot,
+    styled,
+    allStyledScreens,
+    keyboards,
+    rules,
+    fontFaces,
+    fontAssets,
+    rawKeyframes,
+    diagnostics: moduleDiagnostics,
+  };
   modules.set(abs, mod);
 
-  // Write a sibling type-decl so editors and the type-checker see the
+  // Write a generated type declaration so editors and the type-checker see the
   // imported `screen` symbol with precise per-id typing.
-  writeTypeDeclSibling(abs, allStyledScreens);
+  writeTypeDecl(abs, allStyledScreens);
 
   return mod;
 }
@@ -162,7 +201,7 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets);
 
   // Emit image tables.
-  result.imageTables = emitImageTables(imageAssets.assets);
+  result.imageTables = emitImageTables(imageAssets.assets, opts.colorFormat);
   lowered.set(abs, result);
   return result;
 }
@@ -205,6 +244,100 @@ export function clearEntryHasUI(): void {
 
 // ── Type-declaration sibling (.ui.d.html.ts) ────────────────────────────────
 
+function findCuttlefishProjectRoot(filePath: string): string {
+  let dir = path.dirname(path.resolve(filePath));
+  while (true) {
+    if (
+      fs.existsSync(path.join(dir, "cuttlefish.config.ts")) ||
+      fs.existsSync(path.join(dir, "cuttlefish.config.js")) ||
+      fs.existsSync(path.join(dir, "cuttlefish.config.mjs")) ||
+      fs.existsSync(path.join(dir, "cuttlefish.config.cjs"))
+    ) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return path.dirname(path.resolve(filePath));
+    dir = parent;
+  }
+}
+
+function isInsidePath(child: string, parent: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel === "" || (!!rel && !rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+function walkUIFiles(dir: string, out: string[]): void {
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === "node_modules" || entry.name === ".git" || entry.name === "out" || entry.name === "types") {
+      continue;
+    }
+
+    const abs = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      walkUIFiles(abs, out);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const lower = entry.name.toLowerCase();
+    if (lower.endsWith(".ui") || lower.endsWith(".ui.html")) {
+      out.push(abs);
+    }
+  }
+}
+
+export function uiTypeDeclInfoForHtmlPath(htmlPath: string): UITypeDeclInfo {
+  const abs = path.resolve(htmlPath);
+  const projectRoot = findCuttlefishProjectRoot(abs);
+  const srcRoot = path.join(projectRoot, "src");
+  const sourceRoot = isInsidePath(abs, srcRoot) ? srcRoot : projectRoot;
+  const rel = path.relative(sourceRoot, abs);
+  const safeRel = rel && !rel.startsWith("..") && !path.isAbsolute(rel)
+    ? rel
+    : path.basename(abs);
+  const dtsRel = safeRel.replace(/\.ui\.html$/i, ".ui.d.html.ts");
+  const typesRoot = path.join(projectRoot, "types");
+  return {
+    dtsPath: path.join(typesRoot, dtsRel),
+    sourceRoot,
+    typesRoot,
+  };
+}
+
+export function writeUITypeDeclarationFromHtmlText(htmlPath: string, htmlText: string): string {
+  const parsed = parseHtmlWithKeyboards(htmlText, []);
+  writeTypeDecl(htmlPath, parsed.screens);
+  return uiTypeDeclInfoForHtmlPath(htmlPath).dtsPath;
+}
+
+export function generateProjectUITypeDeclarations(projectRoot: string): UITypeDeclarationResult {
+  const root = path.resolve(projectRoot);
+  const srcRoot = path.join(root, "src");
+  const files: string[] = [];
+  walkUIFiles(srcRoot, files);
+
+  const written: string[] = [];
+  const errors: Array<{ filePath: string; error: Error }> = [];
+  for (const filePath of files) {
+    try {
+      const source = fs.readFileSync(filePath, "utf-8");
+      if (filePath.toLowerCase().endsWith(".ui")) {
+        const parts = splitUiFile(source);
+        written.push(writeUITypeDeclarationFromHtmlText(filePath + ".html", parts.html));
+      } else {
+        written.push(writeUITypeDeclarationFromHtmlText(filePath, source));
+      }
+    } catch (error) {
+      errors.push({
+        filePath,
+        error: error instanceof Error ? error : new Error(String(error)),
+      });
+    }
+  }
+
+  return { written, errors };
+}
+
 function uiElementTypeForTag(tag: string): string {
   switch (tag) {
     case "button": return "ButtonElement";
@@ -221,18 +354,18 @@ function uiElementTypeForTag(tag: string): string {
   }
 }
 
-function writeTypeDeclSibling(htmlPath: string, styled: StyledNode | StyledNode[]): void {
+function writeTypeDecl(htmlPath: string, styled: UITypeDeclNode | UITypeDeclNode[]): void {
   // Node16 module resolution with `allowArbitraryExtensions` types a non-JS
   // module `<base>.<ext>` (here `app.ui.html`) via a sibling named
   // `<base>.d.<ext>.ts` (here `app.ui.d.html.ts`). The older `.ui.html.d.ts`
   // name is rejected by Node16 regardless of host hooks — the declaration file
   // MUST follow the `<base>.d.<ext>.ts` convention.
-  const dtsPath = htmlPath.replace(/\.ui\.html$/, ".ui.d.html.ts");
+  const { dtsPath } = uiTypeDeclInfoForHtmlPath(htmlPath);
   const roots = Array.isArray(styled) ? styled : [styled];
 
   // Flat handles (backward-compatible): every element's ref ?? id at top level.
   const flatIds = new Map<string, string>();
-  const collectFlat = (n: StyledNode) => {
+  const collectFlat = (n: UITypeDeclNode) => {
     const handle = n.ref ?? n.id;
     if (handle && !flatIds.has(handle)) flatIds.set(handle, n.tag);
     n.children.forEach(collectFlat);
@@ -247,7 +380,7 @@ function writeTypeDeclSibling(htmlPath: string, styled: StyledNode | StyledNode[
     const screenId = root.id;
     if (!screenId) continue;
     const group = new Map<string, string>();
-    const collectGroup = (n: StyledNode) => {
+    const collectGroup = (n: UITypeDeclNode) => {
       // Don't include the screen root itself in its own group.
       if (n !== root) {
         const handle = n.ref ?? n.id;
@@ -291,6 +424,19 @@ function writeTypeDeclSibling(htmlPath: string, styled: StyledNode | StyledNode[
     `export const screen: ScreenTree;`,
   ].filter(Boolean).join("\n");
 
+  fs.mkdirSync(path.dirname(dtsPath), { recursive: true });
   fs.writeFileSync(dtsPath, dts, "utf-8");
+
+  const oldSiblingPath = path.resolve(htmlPath).replace(/\.ui\.html$/i, ".ui.d.html.ts");
+  if (oldSiblingPath !== dtsPath && fs.existsSync(oldSiblingPath)) {
+    try {
+      const existing = fs.readFileSync(oldSiblingPath, "utf-8");
+      if (existing.startsWith("// Auto-generated by cuttlefish")) {
+        fs.unlinkSync(oldSiblingPath);
+      }
+    } catch {
+      // Best-effort cleanup only; stale generated siblings are harmless.
+    }
+  }
 }
 

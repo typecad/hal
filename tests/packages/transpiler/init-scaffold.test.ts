@@ -66,7 +66,10 @@ describe("init-templates", () => {
       expect(parsed.compilerOptions.noEmit).toBe(true);
       expect(parsed.compilerOptions.strict).toBe(true);
       expect(parsed.compilerOptions.paths['@typecad']).toBeDefined();
+      expect(parsed.compilerOptions.allowArbitraryExtensions).toBe(true);
+      expect(parsed.compilerOptions.rootDirs).toEqual(["src", "types"]);
       expect(parsed.include).toContain('src/**/*.ts');
+      expect(parsed.include).toContain('types/**/*.ts');
     });
 
     it("omits 'dom' from lib (console typings come from cuttlefish-env.d.ts)", () => {

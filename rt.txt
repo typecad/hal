@@ -1,0 +1,32 @@
+seg runIdx=0 text='This is a' fontFace=1 ts=2 segX=27 segY=25 line=0 baseline=21 ascent=13
+seg runIdx=1 text='rich text' fontFace=12 ts=3 segX=87 segY=25 line=0 baseline=21 ascent=13
+seg runIdx=2 text='paragraph' fontFace=1 ts=2 segX=156 segY=25 line=0 baseline=21 ascent=13
+seg runIdx=2 text='with' fontFace=1 ts=2 segX=27 segY=42 line=1 baseline=38 ascent=13
+seg runIdx=3 text='italic' fontFace=13 ts=2 segX=62 segY=42 line=1 baseline=38 ascent=13
+seg runIdx=4 text=',' fontFace=1 ts=2 segX=96 segY=42 line=1 baseline=38 ascent=13
+seg runIdx=5 text='underline' fontFace=1 ts=2 segX=109 segY=42 line=1 baseline=38 ascent=13
+seg runIdx=6 text=', and a' fontFace=1 ts=2 segX=175 segY=42 line=1 baseline=38 ascent=13
+seg runIdx=7 text='link home' fontFace=1 ts=2 segX=27 segY=58 line=2 baseline=54 ascent=13
+seg runIdx=8 text='. It wraps across' fontFace=1 ts=2 segX=95 segY=58 line=2 baseline=54 ascent=13
+seg runIdx=8 text='lines with' fontFace=1 ts=2 segX=27 segY=74 line=3 baseline=70 ascent=13
+seg runIdx=9 text='colored' fontFace=1 ts=2 segX=98 segY=74 line=3 baseline=70 ascent=13
+seg runIdx=10 text='runs and a' fontFace=1 ts=2 segX=154 segY=74 line=3 baseline=70 ascent=13
+seg runIdx=11 text='bigger' fontFace=15 ts=3 segX=27 segY=92 line=4 baseline=93 ascent=18
+seg runIdx=12 text='word on the' fontFace=1 ts=2 segX=103 segY=97 line=4 baseline=93 ascent=13
+seg runIdx=12 text='same line.' fontFace=1 ts=2 segX=27 segY=114 line=5 baseline=110 ascent=13
+seg runIdx=0 text='This is a' fontFace=1 ts=2 segX=27 segY=25 line=0 baseline=21 ascent=13
+seg runIdx=1 text='rich text' fontFace=12 ts=3 segX=87 segY=25 line=0 baseline=21 ascent=13
+seg runIdx=2 text='paragraph' fontFace=1 ts=2 segX=156 segY=25 line=0 baseline=21 ascent=13
+seg runIdx=2 text='with' fontFace=1 ts=2 segX=27 segY=42 line=1 baseline=38 ascent=13
+seg runIdx=3 text='italic' fontFace=13 ts=2 segX=62 segY=42 line=1 baseline=38 ascent=13
+seg runIdx=4 text=',' fontFace=1 ts=2 segX=96 segY=42 line=1 baseline=38 ascent=13
+seg runIdx=5 text='underline' fontFace=1 ts=2 segX=109 segY=42 line=1 baseline=38 ascent=13
+seg runIdx=6 text=', and a' fontFace=1 ts=2 segX=175 segY=42 line=1 baseline=38 ascent=13
+seg runIdx=7 text='link home' fontFace=1 ts=2 segX=27 segY=58 line=2 baseline=54 ascent=13
+seg runIdx=8 text='. It wraps across' fontFace=1 ts=2 segX=95 segY=58 line=2 baseline=54 ascent=13
+seg runIdx=8 text='lines with' fontFace=1 ts=2 segX=27 segY=74 line=3 baseline=70 ascent=13
+seg runIdx=9 text='colored' fontFace=1 ts=2 segX=98 segY=74 line=3 baseline=70 ascent=13
+seg runIdx=10 text='runs and a' fontFace=1 ts=2 segX=154 segY=74 line=3 baseline=70 ascent=13
+seg runIdx=11 text='bigger' fontFace=15 ts=3 segX=27 segY=92 line=4 baseline=93 ascent=18
+seg runIdx=12 text='word on the' fontFace=1 ts=2 segX=103 segY=97 line=4 baseline=93 ascent=13
+seg runIdx=12 text='same line.' fontFace=1 ts=2 segX=27 segY=114 line=5 baseline=110 ascent=13

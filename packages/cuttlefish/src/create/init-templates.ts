@@ -110,9 +110,11 @@ export function generateProjectTsconfig(options: InitProjectOptions): string {
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
-    "resolveJsonModule": true${paths}
+    "resolveJsonModule": true,
+    "allowArbitraryExtensions": true,
+    "rootDirs": ["src", "types"]${paths}
   },
-  "include": ["src/**/*.ts", "cuttlefish.config.ts"${options.boardPackage ? ', "cuttlefish-env.d.ts"' : ''}]
+  "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish.config.ts"${options.boardPackage ? ', "cuttlefish-env.d.ts"' : ''}]
 }
 `;
 }

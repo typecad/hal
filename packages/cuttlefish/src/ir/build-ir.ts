@@ -128,6 +128,9 @@ function resolveRelativeImportPath(fromFile: string, moduleSpecifier: string): s
 function resolveUIImportPath(fromFile: string, moduleSpecifier: string): string | undefined {
   if (!moduleSpecifier.startsWith(".") && !moduleSpecifier.startsWith("..")) return undefined;
   const basePath = path.resolve(path.dirname(fromFile), moduleSpecifier);
+  if (basePath.toLowerCase().endsWith(".ui.html") && getUIModule(basePath)) {
+    return basePath;
+  }
   try {
     if (fs.statSync(basePath).isFile() && basePath.toLowerCase().endsWith(".ui.html")) {
       return basePath;

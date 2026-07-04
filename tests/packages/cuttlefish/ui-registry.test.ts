@@ -11,6 +11,8 @@ import {
   markEntryHasUI,
   entryHasUI,
   clearEntryHasUI,
+  allUIModules,
+  generateProjectUITypeDeclarations,
 } from "@typecad/cuttlefish/ui/ui-registry";
 
 const tempDirs: string[] = [];
@@ -71,18 +73,47 @@ describe("UI module registry", () => {
     expect(mod.styled.tag).toBe("screen");
   });
 
-  it("writes a .ui.d.html.ts sibling with ScreenTree fields", () => {
+  it("writes a generated .ui.d.html.ts file under types/ with ScreenTree fields", () => {
     const { dir, htmlPath } = writeProject(
       `<screen><text id="greeting">hi</text><button id="btn">x</button></screen>`,
       ``,
     );
     loadUIModule(htmlPath);
-    const dtsPath = path.join(dir, "app.ui.d.html.ts");
+    const dtsPath = path.join(dir, "types", "app.ui.d.html.ts");
     expect(fs.existsSync(dtsPath)).toBe(true);
     const dts = fs.readFileSync(dtsPath, "utf-8");
     expect(dts).toContain("ScreenTree");
     expect(dts).toContain("greeting");
     expect(dts).toContain("btn");
+  });
+
+  it("generates project UI type declarations under types/ without registering modules", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-ui-reg-"));
+    tempDirs.push(dir);
+    const srcDir = path.join(dir, "src");
+    fs.mkdirSync(srcDir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "cuttlefish.config.ts"), "export default {};\n", "utf-8");
+    fs.writeFileSync(
+      path.join(srcDir, "nav.ui.html"),
+      `<screen id="nav"><button ref="homeLink">Home</button></screen>`,
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(srcDir, "counter.ui"),
+      `<script>export const count = 0;</script><screen id="counter"><text id="countText">0</text></screen>`,
+      "utf-8",
+    );
+
+    const result = generateProjectUITypeDeclarations(dir);
+
+    expect(result.errors).toEqual([]);
+    expect(result.written.map(file => path.relative(dir, file).replace(/\\/g, "/")).sort()).toEqual([
+      "types/counter.ui.d.html.ts",
+      "types/nav.ui.d.html.ts",
+    ]);
+    expect(fs.readFileSync(path.join(dir, "types", "nav.ui.d.html.ts"), "utf-8")).toContain("homeLink");
+    expect(fs.readFileSync(path.join(dir, "types", "counter.ui.d.html.ts"), "utf-8")).toContain("countText");
+    expect(allUIModules()).toHaveLength(0);
   });
 
   it("lowerOnMount produces the lowered C++ tables using the mount viewport", () => {

@@ -1,3 +1,22 @@
+<script lang="ts">
+  // native_demo showcase — exercises RGB888 rendering + SDL mouse/touch.
+  // Minimal single-file component: a header, a gradient banner, a tap button
+  // with a live counter, and a line of text. Click the button (mouse = touch)
+  // to verify the full reactive path runs natively.
+
+  import { ui } from '@typecad/ui';
+
+  ui.mount(screen, { display: 'sdl' });
+
+  // Reactive counter — the button's on:click handler increments it and the
+  // {taps} interpolation in the template updates reactively.
+  export const taps = ui.signal(0);
+
+  export function incrementTaps() {
+    taps.set(taps() + 1);
+  }
+</script>
+
 <style>
   :root {
     --bg: #101820;

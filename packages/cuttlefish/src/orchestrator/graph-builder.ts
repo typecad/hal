@@ -120,7 +120,7 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
     // .ui single-file component: split into script/style/template. The <script>
     // becomes the TS source for graph walking; the template+style are registered
     // as a UI module at a synthetic .ui.html path (so loadUIModuleFromText caches
-    // it + writeTypeDeclSibling generates the sibling type-decl). The script's
+    // it + the UI registry generates the type declaration under types/). The script's
     // `screen` reference resolves to the in-file template.
     if (extension === ".ui") {
       const parts = splitUiFile(sourceText);

@@ -7,6 +7,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type { StyledNode } from "./style-resolver.js";
 
+type ColorFormat = "rgb565" | "rgb666" | "rgb888" | "mono";
+
 export interface UIImageAsset {
   /** C++-safe unique id used for the generated data symbol. */
   id: string;
@@ -91,18 +93,35 @@ export function loadImageAssets(roots: StyledNode | StyledNode[], htmlDir: strin
   return { assets, nodeIdToAssetIndex };
 }
 
-export function emitImageTables(assets: UIImageAsset[]): string {
+function rgb565ToRgb888(v: number): number {
+  const r5 = (v >> 11) & 0x1f;
+  const g6 = (v >> 5) & 0x3f;
+  const b5 = v & 0x1f;
+  const r = (r5 << 3) | (r5 >> 2);
+  const g = (g6 << 2) | (g6 >> 4);
+  const b = (b5 << 3) | (b5 >> 2);
+  return (r << 16) | (g << 8) | b;
+}
+
+function emitPixelValue(v: number, colorFormat: ColorFormat): string {
+  if (colorFormat === "rgb666" || colorFormat === "rgb888") {
+    return "0x" + rgb565ToRgb888(v).toString(16).padStart(6, "0");
+  }
+  return "0x" + (v & 0xffff).toString(16).padStart(4, "0");
+}
+
+export function emitImageTables(assets: UIImageAsset[], colorFormat: ColorFormat = "rgb565"): string {
   if (assets.length === 0) {
     return "const UIImage __ui_images[] = {};\nconst uint16_t __ui_image_count = 0;";
   }
 
   const lines: string[] = [];
   for (const asset of assets) {
-    lines.push(`static const uint16_t __ui_img_${asset.id}_data[] = {`);
+    lines.push(`static const UI_COLOR_T __ui_img_${asset.id}_data[] = {`);
     for (let i = 0; i < asset.data.length; i += 16) {
       const chunk = asset.data
         .slice(i, i + 16)
-        .map((v) => "0x" + (v & 0xffff).toString(16).padStart(4, "0"));
+        .map((v) => emitPixelValue(v, colorFormat));
       lines.push("  " + chunk.join(", ") + ",");
     }
     lines.push("};");

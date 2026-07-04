@@ -2,8 +2,7 @@
 // cuttlefish.config.ts — Project configuration
 //
 // Targets the ESP32 DevKit (ESP32-WROOM-32) via the Arduino ESP32 core. This
-// demo scaffold is the home for upcoming UI-graphics work on this branch; it
-// currently contains only a minimal blinky skeleton.
+// demo targets a 128x64 SSD1309-class OLED over I2C.
 // ---------------------------------------------------------------------------
 
 import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
@@ -53,14 +52,14 @@ const config: CuttlefishConfig = {
     baudRate: 9600,
   },
 
-  // Display profile — describes the ILI9341's capabilities and wiring.
+  // Display profile — describes the SSD1309 OLED capabilities and I2C wiring.
   display: {
-  profile: 'ssd1309-i2c',
-  bus: 'I2C',
-  address: 0x3C,    // common OLED I2C address
-  reset: -1,        // -1 if no reset pin wired
-  rotation: 0,
-},
+    profile: 'ssd1309-i2c',
+    bus: 'I2C',
+    address: 0x3C,    // common OLED I2C address
+    reset: -1,        // -1 if no reset pin wired
+    rotation: 0,
+  },
 };
 
 export default config;

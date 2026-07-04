@@ -10,13 +10,7 @@ import { ui } from '@typecad/ui';
 import { screen } from './showcase.ui.html';
 import { Adafruit_ILI9341 } from '../lib/Adafruit_ILI9341/Adafruit_ILI9341';
 
-ui.mount(screen, {
-  display: 'ili9341',
-  bus: 'SPI',
-  cs: 5,
-  dc: 21,
-  rst: 22,
-});
+ui.mount(screen);
 
 // ── Forms screen: button counter + dynamic label ───────────────────────────
 // The count lives in element state (screen.formBtnCount.value), the same

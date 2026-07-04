@@ -5,9 +5,7 @@
 
   import { ui } from '@typecad/ui';
 
-  ui.mount(screen, {
-    display: 'sdl',
-  });
+  ui.mount(screen);
 
   // ── Forms screen: Svelte-like reactive state ───────────────────────────────
   // The button and input callbacks are declared here, while the template owns
@@ -201,6 +199,7 @@ screen {
   background: var(--background);
   gap: 8px;
   padding: 10px;
+  font-family: "ColibriDemo";
 }
 
 /* Scrollable main column (UA gives body display:flex column flex:1). */

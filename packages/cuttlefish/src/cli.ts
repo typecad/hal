@@ -14,6 +14,7 @@ import { resolveStrategy } from "./platform/registry.js";
 import { loadFrameworkPackage } from "./framework-package.js";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js";
 import { loadCuttlefishConfig, generateVirtualTypeDeclaration } from "./config-loader.js";
+import { generateProjectUITypeDeclarations } from "./ui/ui-registry.js";
 import { runWatch, discoverWatchDirs } from "./watch.js";
 import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils.js";
 import { runPreviewServer } from "./preview/server.js";
@@ -331,6 +332,7 @@ async function main(): Promise<void> {
         // Strategy not yet loaded — env.d.ts will have generic declarations only
       }
       generateVirtualTypeDeclaration(config, platformDeclarations);
+      generateProjectUITypeDeclarations(path.dirname(config.configPath));
     }
 
     // Print branded header and build info
@@ -435,6 +437,9 @@ async function main(): Promise<void> {
           console.log();
 
           try {
+            if (config) {
+              generateProjectUITypeDeclarations(path.dirname(config.configPath));
+            }
             ui.printTranspiling();
             const rebuildResult = await transpileFile({
               inputFile: options.inputFile!,

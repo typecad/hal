@@ -6,6 +6,7 @@ import { makeDiagnostic } from "../ir/ast-node-utils.js";
 import { canonicalize, buildSemanticFacts } from "./semantic-facts.js";
 import type { BindingResolver } from "./semantic-facts.js";
 import { verifyFacts } from "./semantic-facts-verifier.js";
+import { allUIModules } from "../ui/ui-registry.js";
 
 /**
  * Result of type-checking files
@@ -73,8 +74,8 @@ export function typeCheckFiles(
       );
       if (!parsedConfig.errors.length) {
         // `allowArbitraryExtensions` lets Node16 module resolution type-check
-        // non-JS module imports such as `.ui.html` via their `<base>.d.<ext>.ts`
-        // declaration siblings (see writeTypeDeclSibling in ui-registry.ts).
+        // non-JS module imports such as `.ui.html` via generated
+        // `<base>.d.<ext>.ts` declarations.
         compilerOptions = { ...parsedConfig.options, noEmit: true, allowArbitraryExtensions: true };
         // Include cuttlefish-env.d.ts so module augmentations are visible to the type-checker
         const envDts = path.join(path.dirname(configPath), "cuttlefish-env.d.ts");
@@ -83,6 +84,20 @@ export function typeCheckFiles(
         }
       }
     }
+  }
+
+  const uiModules = allUIModules();
+  if (uiModules.length > 0) {
+    compilerOptions.allowArbitraryExtensions = true;
+    const rootDirs = new Set((compilerOptions.rootDirs ?? []).map((dir) => path.resolve(dir)));
+    for (const mod of uiModules) {
+      rootDirs.add(mod.typeDeclSourceRoot);
+      rootDirs.add(mod.typeDeclRoot);
+      if (fs.existsSync(mod.typeDeclPath) && !rootNames.includes(mod.typeDeclPath)) {
+        rootNames.push(mod.typeDeclPath);
+      }
+    }
+    compilerOptions.rootDirs = [...rootDirs];
   }
 
   // Create a TypeScript program with the transpile graph files, using compiler options from tsconfig

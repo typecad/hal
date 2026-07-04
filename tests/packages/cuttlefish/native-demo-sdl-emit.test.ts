@@ -40,6 +40,19 @@ describe.skipIf(skip)("native_demo SDL native render (C++ emit)", () => {
     expect(cpp).toContain("display_present");
   });
 
+  it("emits SDL address-window writes for buffered paint canvas pushes", () => {
+    expect(cpp).toContain("static int16_t __sdl_addr_x = 0;");
+    expect(cpp).toContain("static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t w, int16_t h)");
+    expect(cpp).toContain("__tc_display.put(dx, dy, 0xFF000000u | pixels[i]);");
+    expect(cpp).not.toContain("__tc_display.buf[i] = 0xFF000000u | pixels[i];");
+  });
+
+  it("emits the full preview-matching GFX font table for SDL text", () => {
+    expect(cpp).toContain("static const uint8_t __sdl_glcdfont[1280]");
+    expect(cpp).toContain("const uint8_t* glyph = &__sdl_glcdfont[(size_t)ch * 5];");
+    expect(cpp).not.toContain("__sdl_glcdfont[(size_t)ch - 0x20]");
+  });
+
   it("compiles at UI_COLOR_DEPTH 888 (true RGB888)", () => {
     expect(cpp).toContain("#define UI_COLOR_DEPTH 888");
     expect(cpp).toContain("#define UI_COLOR_T uint32_t");
@@ -71,7 +84,37 @@ describe.skipIf(skip)("native_demo SDL native render (C++ emit)", () => {
     expect(cpp).toContain("touch_readRaw");
   });
 
+  it("maps SDL mouse coords through ui_poll_touch without rotated resistive axis swapping", () => {
+    expect(cpp).toContain("int16_t __tx = map(__rawX, 0, 320, 0, 320);");
+    expect(cpp).toContain("int16_t __ty = map(__rawY, 0, 240, 0, 240);");
+    expect(cpp).not.toContain("int16_t __tx = map(__rawY");
+  });
+
   it("wires the button click handler", () => {
     expect(cpp).toContain("incrementTaps");
+  });
+
+  it("emits the migrated showcase screens, navigation buttons, and image nodes", () => {
+    expect(cpp).toContain('.kind=NODE_TEXT, .text="cuttlefish UI"');
+    expect(cpp).toContain('.kind=NODE_BUTTON, .text="Typography >"');
+    expect(cpp).toContain('.kind=NODE_BUTTON, .text="Forms >"');
+    expect(cpp).toContain('.kind=NODE_TEXT, .text="Forms"');
+    expect(cpp).toContain('.kind=NODE_BUTTON, .text="tap me"');
+    expect(cpp).toContain(".kind=NODE_IMG");
+  });
+
+  it("emits RGB888-compatible image tables for the moved showcase assets", () => {
+    expect(cpp).toContain("static const UI_COLOR_T __ui_img_imgContain_data[]");
+    expect(cpp).toContain("static const UI_COLOR_T __ui_img_imgLogo_data[]");
+    expect(cpp).toContain("const uint16_t __ui_image_count = 2;");
+    expect(cpp).not.toContain("static const uint16_t __ui_img_imgContain_data[]");
+  });
+
+  it("emits pressed feedback transitions for showcase buttons", () => {
+    expect(cpp).toContain("UITransition __ui_trans[] = {");
+    expect(cpp).toContain(".prop=PROP_BG, .durationMs=120");
+    expect(cpp).toContain(".prop=PROP_BG, .durationMs=100");
+    expect(cpp).toContain(".prop=PROP_FG, .durationMs=0");
+    expect(cpp).toContain("const uint16_t __ui_trans_count = 4;");
   });
 });

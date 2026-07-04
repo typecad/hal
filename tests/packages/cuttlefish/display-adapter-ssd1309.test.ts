@@ -43,9 +43,22 @@ describe("SSD1309 OLED display adapter", () => {
     expect(a.functions).toMatch(/__tc_display\.display\(\)/);
   });
 
-  it("startWrite/endWrite/setAddrWindow are no-ops (page-buffered)", () => {
+  it("tracks address windows for page-buffered rectangle pushes", () => {
     expect(a.functions).toMatch(/display_startWrite\(\)\s*\{\s*\}/);
     expect(a.functions).toMatch(/display_endWrite\(\)\s*\{\s*\}/);
+    expect(a.functions).toContain("static int16_t __ssd1309_addr_x = 0;");
+    expect(a.functions).toContain("__ssd1309_addr_cursor = 0;");
+    expect(a.functions).toContain("uint32_t pos = __ssd1309_addr_cursor++;");
+    expect(a.functions).toContain("__ssd1309_addr_x + (int16_t)(pos % (uint32_t)__ssd1309_addr_w)");
+    expect(a.functions).toContain("__ssd1309_addr_y + (int16_t)(pos / (uint32_t)__ssd1309_addr_w)");
+  });
+
+  it("converts canvas and bitmap draws to SSD1306 mono values", () => {
+    expect(a.functions).toContain("static inline uint16_t ssd_mono(uint16_t c);");
+    expect(a.functions).toContain("c->fillScreen(ssd_mono((uint16_t)color))");
+    expect(a.functions).toContain("c->fillRect(x, y, w, h, ssd_mono((uint16_t)color))");
+    expect(a.functions).toContain("t->drawPixel((int16_t)(x + xx), (int16_t)(y + yy), ssd_mono((uint16_t)b[(int32_t)yy * w + xx]))");
+    expect(a.functions).not.toContain("t->drawRGBBitmap(x, y, b, w, h)");
   });
 });
 

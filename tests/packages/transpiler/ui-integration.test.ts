@@ -45,6 +45,7 @@ describe("UI end-to-end via transpileFile", () => {
     html: string;
     css: string;
     ts: string;
+    display?: import("../../../packages/cuttlefish/src/api/shared/display-profile").DisplayConfig;
   }) {
     const dir = mkTempDir();
 
@@ -58,6 +59,7 @@ describe("UI end-to-end via transpileFile", () => {
       target: "arduino",
       frameworkPackage: "@typecad/framework-arduino",
       emitMaps: false,
+      display: opts.display,
     });
 
     const cpp = fs.readFileSync(result.sourcePath, "utf8");
@@ -150,6 +152,35 @@ describe("UI end-to-end via transpileFile", () => {
     expect(cpp).toContain("Adafruit_ILI9341");
     expect(cpp).toContain(".begin()");
     expect(cpp).toContain(".setRotation(1)");
+  });
+
+  it("uses the project display profile when ui.mount omits options", async () => {
+    const { cpp } = await transpileUIProgram({
+      html: `<screen></screen>`,
+      css: ``,
+      display: {
+        driver: "ili9341",
+        bus: "SPI",
+        cs: 10,
+        dc: 9,
+        rst: 8,
+        width: 128,
+        height: 64,
+        colorFormat: "rgb565",
+        rotation: 2,
+      },
+      ts: [
+        `import { ui } from "@typecad/ui";`,
+        `import { screen } from "./app.ui.html";`,
+        `ui.mount(screen);`,
+        `export function main(): void { while (true) {} }`,
+        ``,
+      ].join("\n"),
+    });
+
+    expect(cpp).toContain("Adafruit_ILI9341");
+    expect(cpp).toContain(".begin()");
+    expect(cpp).toContain(".setRotation(2)");
   });
 
   it("emits ui_tick in the driver function body", async () => {

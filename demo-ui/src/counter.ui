@@ -1,13 +1,7 @@
 <script>
   import { ui } from '@typecad/ui';
 
-  ui.mount(screen, {
-    display: 'ili9341',
-    bus: 'SPI',
-    cs: 5,
-    dc: 21,
-    rst: 22,
-  });
+  ui.mount(screen);
 
   let count = ui.signal(0);
 

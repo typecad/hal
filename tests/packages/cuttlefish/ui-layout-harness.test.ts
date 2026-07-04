@@ -607,6 +607,34 @@ describe("UI layout harness", () => {
     });
   });
 
+  it("emits immediate pressed color feedback without a transition declaration", () => {
+    const ui = buildUiFixture({
+      html: `<screen id="root"><button id="cta">Tap</button></screen>`,
+      css: `
+        screen { display: flex; }
+        #cta { background: #202020; color: #ffffff; padding: 4px; }
+        #cta:pressed { background: #00ff00; color: #0000ff; }
+      `,
+    });
+
+    expect(collectLayoutProblems(ui)).toEqual([]);
+
+    const cta = ui.node("cta");
+    expect(ui.program.transitions).toHaveLength(2);
+    expect(ui.program.transitions.find((transition) => transition.prop === "background")).toMatchObject({
+      node: cta.index,
+      durationMs: 0,
+      baseTarget: resolveColor("#202020", "rgb565"),
+      pressedTarget: resolveColor("#00ff00", "rgb565"),
+    });
+    expect(ui.program.transitions.find((transition) => transition.prop === "color")).toMatchObject({
+      node: cta.index,
+      durationMs: 0,
+      baseTarget: resolveColor("#ffffff", "rgb565"),
+      pressedTarget: resolveColor("#0000ff", "rgb565"),
+    });
+  });
+
   it("checks representative flex and scroll layouts for sane boxes and subtree bounds", () => {
     const flex = buildUiFixture({
       html: `

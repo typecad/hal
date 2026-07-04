@@ -1,144 +1,214 @@
 <script lang="ts">
-  // showcase.ui — SSD1309 OLED capability showcase (128×64, 1-bit mono, no touch).
-  // Single-screen layout exercising text sizes, alignment, shapes, borders,
-  // and a reactive counter that auto-increments — all visible at once.
   import { ui } from '@typecad/ui';
 
-  ui.mount(screen, {
-    display: 'ssd1309',
-    bus: 'I2C',
-    address: 0x3C,
-    reset: -1,
+  ui.mount(screen);
+
+  export const level = ui.signal(0);
+
+  setInterval(() => {
+    const nextLevel = (level() + 7) % 101;
+    level.set(nextLevel);
+  }, 250);
+
+  ui.bind(screen.load, 'value', () => level());
+
+  ui.drawCanvas(screen.scope, (ctx) => {
+    ctx.fillScreen('#000000');
+    ctx.rect(0, 0, ctx.width, ctx.height, '#ffffff');
+    ctx.text(3, 3, 'gfx', '#ffffff');
+    ctx.fillRoundRect(4, 15, 10, 7, 2, '#ffffff');
+    ctx.roundRect(17, 14, 10, 8, 2, '#ffffff');
+    ctx.line(30, ctx.height - 3, 41, 13, '#ffffff');
+    ctx.hline(3, ctx.height - 4, 24, '#ffffff');
+    ctx.vline(screen.load.value / 7 + 39, 3, ctx.height - 6, '#ffffff');
+    ctx.fillCircle(46, 7, 3, '#ffffff');
+    ctx.circle(54, 7, 3, '#ffffff');
+    ctx.drawPixel(33, 4, '#ffffff');
+    ctx.drawPixel(35, 6, '#ffffff');
+    ctx.drawPixel(37, 4, '#ffffff');
   });
-
-  export const count = ui.signal(0);
-
-  // Auto-increment the counter every second (no touch to tap a button).
-  __tc_setInterval(() => {
-    count.set(count() + 1);
-  }, 1000);
 </script>
 
 <style>
+  :root {
+    --bg: #000000;
+    --fg: #ffffff;
+    --inv-bg: #ffffff;
+    --inv-fg: #000000;
+  }
+
   screen {
-    background: #000000;
-    color: #ffffff;
+    background: var(--bg);
+    color: var(--fg);
     padding: 0;
     gap: 0;
   }
 
-  .title {
-    color: #ffffff;
-    font-size: 12px;
-    font-weight: normal;
-    text-align: center;
-    padding: 1px 0;
+  body {
+    gap: 2px;
+    align-items: center;
   }
 
-  .subtitle {
-    color: #ffffff;
-    font-size: 8px;
-    text-align: center;
-  }
-
-  .sectionLabel {
-    color: #ffffff;
-    font-size: 8px;
-    padding: 0 2px;
-  }
-
-  /* Shape rows */
-  .shapeRow {
+  #top {
+    width: 128px;
+    height: 10px;
+    background: var(--inv-bg);
+    color: var(--inv-fg);
     flex-direction: row;
     align-items: center;
-    gap: 3px;
+    justify-content: center;
+    gap: 4px;
     padding: 1px 2px;
   }
 
-  .box {
-    background: #ffffff;
-  }
-
-  .boxOutline {
-    border: 1px solid #ffffff;
-  }
-
-  .circle {
-    border: 1px solid #ffffff;
-    border-radius: 6px;
-  }
-
-  .line {
-    background: #ffffff;
-  }
-
-  /* Text samples */
-  .textLeft {
-    color: #ffffff;
+  #brand {
+    width: 76px;
+    color: var(--inv-fg);
     font-size: 8px;
-    padding: 0 2px;
+    text-align: left;
   }
 
-  .textCenter {
-    color: #ffffff;
+  #monoBadge {
+    width: 32px;
+    height: 8px;
+    color: var(--inv-fg);
+    background: var(--inv-bg);
     font-size: 8px;
     text-align: center;
-    width: 120px;
   }
 
-  .textRight {
-    color: #ffffff;
+  @media (monochrome) {
+    #monoBadge {
+      color: var(--fg);
+      background: var(--bg);
+    }
+  }
+
+  #main {
+    width: 128px;
+    height: 52px;
+    flex-direction: row;
+    gap: 2px;
+    padding: 0 1px;
+  }
+
+  .panel {
+    width: 62px;
+    height: 52px;
+    border: 1px solid var(--fg);
+    padding: 1px;
+    gap: 1px;
+  }
+
+  .panelTitle {
+    width: 58px;
+    height: 8px;
+    color: var(--fg);
     font-size: 8px;
-    text-align: right;
-    width: 120px;
-  }
-
-  /* Counter */
-  .countDisplay {
-    color: #ffffff;
-    font-size: 10px;
     text-align: center;
-    padding: 1px 0;
   }
 
-  /* Separator */
-  .separator {
-    background: #ffffff;
+  #scope {
+    width: 58px;
+    height: 40px;
+  }
+
+  #shapeRow {
+    width: 58px;
+    height: 12px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+  }
+
+  #fillBox {
+    width: 8px;
+    height: 8px;
+    background: var(--fg);
+  }
+
+  #outlineBox {
+    width: 8px;
+    height: 8px;
+    border: 1px solid var(--fg);
+  }
+
+  #roundBox {
+    width: 9px;
+    height: 9px;
+    border: 1px solid var(--fg);
+    border-radius: 4px;
+  }
+
+  #hLine {
+    width: 14px;
     height: 1px;
-    width: 124px;
+    background: var(--fg);
+  }
+
+  #load {
+    width: 56px;
+    height: 10px;
+    color: var(--fg);
+    background: var(--bg);
+  }
+
+  #alignRow {
+    width: 58px;
+    height: 8px;
+    flex-direction: row;
+    gap: 1px;
+  }
+
+  .alignCell {
+    width: 18px;
+    height: 8px;
+    color: var(--fg);
+    font-size: 8px;
+  }
+
+  #alignLeft {
+    text-align: left;
+  }
+
+  #alignCenter {
+    text-align: center;
+  }
+
+  #alignRight {
+    text-align: right;
   }
 </style>
 
 <screen id="home">
   <body>
-    <!-- Title bar -->
-    <div class="title">OLED Demo</div>
-    <div class="subtitle">128x64 SSD1309</div>
-
-    <!-- Separator line -->
-    <div class="separator" style="margin: 1px auto;"></div>
-
-    <!-- Shapes row: filled box, outlined box, circle -->
-    <div class="shapeRow" style="justify-content: center;">
-      <div class="box" style="width: 8px; height: 8px;"></div>
-      <div class="boxOutline" style="width: 8px; height: 8px;"></div>
-      <div class="circle" style="width: 10px; height: 10px;"></div>
-      <div class="line" style="width: 16px; height: 1px;"></div>
-      <div class="line" style="width: 1px; height: 8px;"></div>
+    <div id="top">
+      <span id="brand">TypeCAD OLED</span>
+      <span id="monoBadge">MONO</span>
     </div>
 
-    <!-- Separator -->
-    <div class="separator" style="margin: 1px auto;"></div>
+    <div id="main">
+      <div id="canvasPanel" class="panel">
+        <span class="panelTitle">canvas</span>
+        <canvas id="scope" width="58" height="40"></canvas>
+      </div>
 
-    <!-- Text alignment samples -->
-    <div class="textLeft">Left text</div>
-    <div class="textCenter">Center text</div>
-    <div class="textRight">Right text</div>
-
-    <!-- Separator -->
-    <div class="separator" style="margin: 1px auto;"></div>
-
-    <!-- Reactive counter (auto-incrementing) -->
-    <div class="countDisplay">count: {count}</div>
+      <div id="layoutPanel" class="panel">
+        <span class="panelTitle">layout</span>
+        <div id="shapeRow">
+          <div id="fillBox"></div>
+          <div id="outlineBox"></div>
+          <div id="roundBox"></div>
+          <div id="hLine"></div>
+        </div>
+        <progress id="load" value="0"></progress>
+        <div id="alignRow">
+          <span id="alignLeft" class="alignCell">L</span>
+          <span id="alignCenter" class="alignCell">C</span>
+          <span id="alignRight" class="alignCell">R</span>
+        </div>
+      </div>
+    </div>
   </body>
 </screen>

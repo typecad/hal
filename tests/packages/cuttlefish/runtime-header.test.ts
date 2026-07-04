@@ -185,6 +185,13 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_draw_wrapped_text\(\s*displayText/);
   });
 
+  it("draws NODE_TEXT inside its CSS padding content box", () => {
+    expect(header).toMatch(/__ui_nodes\[i\]\.kind == NODE_TEXT \|\| __ui_nodes\[i\]\.kind == NODE_BUTTON/);
+    expect(header).toMatch(/case NODE_TEXT:[\s\S]*int16_t insetL = \(int16_t\)__ui_nodes\[i\]\.borderWidth \+ \(int16_t\)__ui_nodes\[i\]\.paddingLeft/);
+    expect(header).toMatch(/case NODE_TEXT:[\s\S]*int16_t textX = __ui_nodes\[i\]\.box\.x \+ insetL/);
+    expect(header).toMatch(/case NODE_TEXT:[\s\S]*ui_draw_wrapped_text\(displayText, textX, textY, \(uint16_t\)textW/);
+  });
+
   it("supports wrapped text layout without heap allocation", () => {
     expect(header).toMatch(/uint8_t\s+lineHeight/);
     expect(header).toMatch(/uint8_t\s+whiteSpaceMode/);
@@ -796,6 +803,13 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
     expect(header).toMatch(/struct UIKeyStyle { uint32_t bg, fg, borderColor; }/);
   });
 
+  it("UITransition keeps color values wide for RGB888 targets", () => {
+    expect(header).toMatch(/struct UITransition[\s\S]*?uint32_t pressedTarget;/);
+    expect(header).toMatch(/struct UITransition[\s\S]*?uint32_t baseTarget;/);
+    expect(header).toMatch(/struct UITransition[\s\S]*?uint32_t prevValue;/);
+    expect(header).toMatch(/struct UITransition[\s\S]*?uint32_t targetValue;/);
+  });
+
   it("keeps ui_blend565 + lerp_color defined for the TFT (565) path", () => {
     // Phase 3 routes blend/lerp through ui_blend/UI_LERP_COLOR macros selected
     // by UI_COLOR_DEPTH. The 565 variants remain defined and are selected when
@@ -847,6 +861,18 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
     expect(header).not.toMatch(/uint16_t shadowCol = __ui_nodes/);
     expect(header).not.toMatch(/uint16_t c1 = __ui_nodes/);
     expect(header).not.toMatch(/uint16_t c2 = __ui_nodes/);
+    expect(header).not.toMatch(/uint16_t textBg;/);
+    expect(header).not.toMatch(/uint16_t textCol = fgCol/);
+  });
+  it("keeps text, rich text, keyboard, and scroll canvas helpers depth-aware", () => {
+    expect(header).toMatch(/ui_draw_rich_text\([^)]*UI_COLOR_T bg[\s\S]*?UI_COLOR_T fgOverride[\s\S]*?uint16_t maxWidth/);
+    expect(header).toMatch(/ui_text_fg_neighbors\([^)]*UI_COLOR_T fg/);
+    expect(header).toMatch(/ui_kb_add_key\([^)]*UI_COLOR_T bg[\s\S]*?UI_COLOR_T fg[\s\S]*?UI_COLOR_T borderColor/);
+    expect(header).toContain("sizeof(UI_COLOR_T)");
+  });
+  it("uses the text content width for rich-text alignment and padded link hit tests", () => {
+    expect(header).toMatch(/uint16_t alignWidth = maxWidth \? maxWidth : n->box\.w/);
+    expect(header).toMatch(/ui_rich_link_hit[\s\S]*localX = px - insetL[\s\S]*localY = py - insetT/);
   });
   it("defines a depth-aware dim mask (0x7F7F7F under 888, 0x7BEF under 565)", () => {
     // Under 888, dimming halves each 8-bit channel independently (0x7F7F7F).

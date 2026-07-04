@@ -1110,24 +1110,20 @@ export function lowerUIToModel(
   }
 
   const transitions: UITransitionModel[] = [];
-  for (const { index, node } of flat) {
-    if (!node.style.transition) continue;
-    const prop = node.style.transition.property === "background" ? "background" : "color";
-    const pressedStyle = (node.style as CSSProperty & { pressed?: CSSProperty }).pressed;
-    const pressedTarget = prop === "background"
-      ? pressedStyle?.background
-        ? resolveColorInternal(pressedStyle.background, colorFormat)
-        : node.style.background ? resolveColorInternal(node.style.background, colorFormat) : 0
-      : pressedStyle?.color
-        ? resolveColorInternal(pressedStyle.color, colorFormat)
-        : node.style.color ? resolveColorInternal(node.style.color, colorFormat) : 0xffff;
-    const baseTarget = prop === "background"
-      ? node.style.background ? resolveColorInternal(node.style.background, colorFormat) : 0
-      : node.style.color ? resolveColorInternal(node.style.color, colorFormat) : 0xffff;
+  const pushTransition = (
+    index: number,
+    nodeModel: UINodeModel,
+    prop: "background" | "color",
+    durationMs: number,
+    pressedStyle?: CSSProperty,
+  ) => {
+    const baseTarget = prop === "background" ? nodeModel.bg : nodeModel.fg;
+    const pressedValue = prop === "background" ? pressedStyle?.background : pressedStyle?.color;
+    const pressedTarget = pressedValue ? resolveColorInternal(pressedValue, colorFormat) : baseTarget;
     transitions.push({
       node: index,
       prop,
-      durationMs: node.style.transition.durationMs,
+      durationMs,
       pressedTarget,
       baseTarget,
       elapsed: 0,
@@ -1135,6 +1131,28 @@ export function lowerUIToModel(
       targetValue: 0,
       active: false,
     });
+  };
+
+  for (const { index, node } of flat) {
+    const nodeModel = nodes[index];
+    const pressedStyle = (node.style as CSSProperty & { pressed?: CSSProperty }).pressed;
+    const explicitProp = node.style.transition?.property === "background"
+      ? "background"
+      : node.style.transition?.property === "color" ? "color" : undefined;
+
+    if (explicitProp) {
+      pushTransition(index, nodeModel, explicitProp, node.style.transition!.durationMs, pressedStyle);
+    }
+
+    for (const prop of ["background", "color"] as const) {
+      if (prop === explicitProp) continue;
+      const pressedValue = prop === "background" ? pressedStyle?.background : pressedStyle?.color;
+      if (!pressedValue) continue;
+      const pressedTarget = resolveColorInternal(pressedValue, colorFormat);
+      const baseTarget = prop === "background" ? nodeModel.bg : nodeModel.fg;
+      if (pressedTarget === baseTarget) continue;
+      pushTransition(index, nodeModel, prop, 0, pressedStyle);
+    }
   }
 
   // Build animations from nodes that have an 'animation' CSS property.

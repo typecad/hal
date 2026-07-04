@@ -1,13 +1,7 @@
 import { ui } from '@typecad/ui';
 import { screen as navScreen } from './nav.ui.html';
 
-ui.mount(navScreen, {
-  display: 'ili9341',
-  bus: 'SPI',
-  cs: 5,
-  dc: 21,
-  rst: 22,
-});
+ui.mount(navScreen);
 
 navScreen.navCounter.value = 0;
 ui.bind(navScreen.navCounter, 'text', () => `Count: ${navScreen.navCounter.value}`);
