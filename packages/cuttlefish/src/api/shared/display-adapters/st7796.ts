@@ -9,11 +9,13 @@
 //
 // Init API: Adafruit_ST7796S requires init(w,h,rowOff,colOff,colorOrder) to
 // send the panel init sequence. begin(freq) alone would skip it (blank panel).
-// SPI frequency handling: init() internally calls commonInit()→begin() (no
-// arg), which clobbers any prior freq to SPI_DEFAULT_FREQ (8 MHz). To honor
-// spiFrequency we call begin(freq) AFTER init() — this re-runs initSPI with
-// the user's value. The official ST7796S_demo.ino skips this and accepts the
-// default; our explicit begin(freq) is a deliberate, safe optimization.
+// SPI frequency handling: Adafruit_ST77xx::begin(uint32_t) is PROTECTED, so we
+// can't call __tc_display.begin(freq) from outside the class. Instead, after
+// init() runs (which internally calls commonInit→begin→initSPI with the 8 MHz
+// default), we call initSPI(freq) directly — that's the public SPITFT method
+// begin() itself delegates to. It re-establishes the SPI bus at the requested
+// frequency. The official ST7796S_demo.ino skips this and accepts the default;
+// our explicit initSPI(freq) is a deliberate, safe optimization.
 // ---------------------------------------------------------------------------
 
 import type { DisplayAdapterGenerator } from "../display-adapter.js";
@@ -48,7 +50,7 @@ export const st7796Adapter: DisplayAdapterGenerator = (display) => {
       `// --- Display adapter: ST7796S (RGB565) ---`,
       `static inline void display_init() {`,
       `  __tc_display.init(320, 480, 0, 0, ST7796S_RGB);`,
-      spiFreq ? `  __tc_display.begin(${spiFreq});` : ``,
+      spiFreq ? `  __tc_display.initSPI(${spiFreq});` : ``,
       `  __tc_display.setRotation(${rotation});`,
       `  __tc_display.fillScreen(0x0000);`,
       `}`,

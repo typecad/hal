@@ -30,18 +30,19 @@ describe("ST7796S display adapter", () => {
     );
   });
 
-  it("display_init calls init(320,480,0,0,ST7796S_RGB), then begin(freq), then setRotation", () => {
+  it("display_init calls init(320,480,0,0,ST7796S_RGB), then initSPI(freq), then setRotation", () => {
     expect(a.functions).toContain(
       "__tc_display.init(320, 480, 0, 0, ST7796S_RGB);",
     );
-    expect(a.functions).toMatch(/__tc_display\.begin\(80000000\)/);
+    expect(a.functions).toMatch(/__tc_display\.initSPI\(80000000\)/);
     expect(a.functions).toMatch(/__tc_display\.setRotation\(1\)/);
-    // init MUST come before begin — begin after init restores the SPI freq that
-    // init's internal commonInit→begin() clobbered to the 8 MHz default.
+    // init MUST come before initSPI — Adafruit_ST77xx::begin() is protected, so
+    // we use the public SPITFT::initSPI(freq) to restore the SPI freq that
+    // init()'s internal commonInit→begin() clobbered to the 8 MHz default.
     const initIdx = a.functions.indexOf("__tc_display.init(");
-    const beginIdx = a.functions.indexOf("__tc_display.begin(");
+    const initSpiIdx = a.functions.indexOf("__tc_display.initSPI(");
     expect(initIdx).toBeGreaterThanOrEqual(0);
-    expect(beginIdx).toBeGreaterThan(initIdx);
+    expect(initSpiIdx).toBeGreaterThan(initIdx);
   });
 
   it("does NOT emit the unrunnable 18-bit SPI.writeBytes pack loop", () => {
@@ -91,12 +92,12 @@ describe("ST7796S display adapter", () => {
     ).toThrow(/Adafruit_ST7796S/i);
   });
 
-  it("omits the explicit begin(freq) call when spiFrequency is unset", () => {
+  it("omits the explicit initSPI(freq) call when spiFrequency is unset", () => {
     const noFreq = generateDisplayAdapter({
       ...base,
       spiFrequency: undefined,
     } as any);
-    expect(noFreq.functions).not.toMatch(/__tc_display\.begin\(\d+\)/);
+    expect(noFreq.functions).not.toMatch(/__tc_display\.initSPI\(\d+\)/);
     expect(noFreq.functions).toContain(
       "__tc_display.init(320, 480, 0, 0, ST7796S_RGB);",
     );
