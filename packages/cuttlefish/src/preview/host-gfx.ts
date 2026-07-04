@@ -93,6 +93,11 @@ export class HostAdafruitGFX {
 
   private snap(c: number): number {
     if (!this.monoSnap) return c;
+    // Pre-snapped mono values (0=black, 1=white from the transpiler's
+    // rgb888ToMono) pass through directly — the luminance threshold would
+    // misclassify 1 as black (r=0,g=0,b=1 → luminance=114 < 68850).
+    if (c === 0 || c === 0x0000) return 0x000000;
+    if (c === 1 || c === 0x0001 || c === 0xffff || c === 0xffffff) return 0xffffff;
     const r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
     return (299 * r + 587 * g + 114 * b >= 68850) ? 0xffffff : 0x000000;
   }
