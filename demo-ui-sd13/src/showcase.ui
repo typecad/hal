@@ -1,5 +1,7 @@
 <script lang="ts">
-  // showcase.ui — minimal "hello world" for SSD1309 OLED (128×64, 1-bit mono).
+  // showcase.ui — SSD1309 OLED capability showcase (128×64, 1-bit mono).
+  // Exercises text sizes, alignment, shapes, borders, navigation, and
+  // a reactive counter — all within a 128×64 monochrome canvas.
   import { ui } from '@typecad/ui';
 
   ui.mount(screen, {
@@ -8,6 +10,12 @@
     address: 0x3C,
     reset: -1,
   });
+
+  export const count = ui.signal(0);
+
+  export function incrementCount() {
+    count.set(count() + 1);
+  }
 </script>
 
 <style>
@@ -15,29 +23,228 @@
     background: #000000;
     color: #ffffff;
     padding: 0;
-    gap: 2px;
+    gap: 1px;
   }
 
-  h1 {
+  /* Home screen header */
+  .title {
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: normal;
+    text-align: center;
+    padding: 2px 0;
+  }
+
+  /* Screen headers (sub-screens) */
+  .header {
+    flex-direction: row;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 4px;
+  }
+
+  .headerTitle {
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: normal;
+  }
+
+  .backLink {
     color: #ffffff;
     font-size: 10px;
-    font-weight: normal;
+    text-decoration: underline;
+  }
+
+  /* Nav buttons on home */
+  .navBtn {
+    background: #000000;
+    color: #ffffff;
+    font-size: 10px;
+    border: 1px solid #ffffff;
+    border-radius: 2px;
+    padding: 2px 4px;
+    margin: 0 2px;
+  }
+
+  .navBtn:pressed {
+    background: #ffffff;
+    color: #000000;
+  }
+
+  /* Shapes screen */
+  .shapeRow {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-around;
+    gap: 4px;
+  }
+
+  .box {
+    background: #ffffff;
+  }
+
+  .boxOutline {
+    border: 1px solid #ffffff;
+  }
+
+  .circle {
+    border: 1px solid #ffffff;
+    border-radius: 8px;
+  }
+
+  .lineRow {
+    flex-direction: row;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 0;
+  }
+
+  .line {
+    background: #ffffff;
+  }
+
+  /* Text screen */
+  .textRow {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 4px;
+    padding: 1px 4px;
+  }
+
+  .label {
+    color: #ffffff;
+    font-size: 10px;
+  }
+
+  .labelRight {
+    color: #ffffff;
+    font-size: 10px;
+    text-align: right;
+  }
+
+  .caption {
+    color: #ffffff;
+    font-size: 8px;
+  }
+
+  /* Counter screen */
+  .countDisplay {
+    color: #ffffff;
+    font-size: 12px;
     text-align: center;
     padding: 4px 0;
   }
 
-  p {
-    color: #ffffff;
+  .countBtn {
+    background: #ffffff;
+    color: #000000;
     font-size: 10px;
-    text-align: center;
-    padding: 0 4px;
+    border: 1px solid #ffffff;
+    border-radius: 3px;
+    padding: 3px 8px;
+  }
+
+  .countBtn:pressed {
+    background: #000000;
+    color: #ffffff;
   }
 </style>
 
+<!-- ── Home ─────────────────────────────────────────────────────────────── -->
 <screen id="home">
   <body>
-    <h1>Hello, World!</h1>
-    <p>SSD1309 OLED</p>
-    <p>TypeCAD</p>
+    <div class="title">OLED Showcase</div>
+    <div class="navRow" style="flex-direction: row; justify-content: center; gap: 2px; padding: 2px 0;">
+      <button class="navBtn" href="#text">Text</button>
+      <button class="navBtn" href="#shapes">Shapes</button>
+      <button class="navBtn" href="#counter">Count</button>
+    </div>
+    <div style="flex-direction: row; align-items: center; justify-content: center; gap: 6px; padding: 4px 0;">
+      <div class="box" style="width: 8px; height: 8px;"></div>
+      <div class="boxOutline" style="width: 8px; height: 8px;"></div>
+      <div class="circle" style="width: 12px; height: 12px;"></div>
+    </div>
+    <div class="label" style="text-align: center; font-size: 8px; padding-top: 2px;">128x64 SSD1309</div>
+  </body>
+</screen>
+
+<!-- ── Text ─────────────────────────────────────────────────────────────── -->
+<screen id="text">
+  <body>
+    <div class="header">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <span class="headerTitle">Text</span>
+    </div>
+    <div class="textRow">
+      <span class="label">L:</span>
+      <span class="label">Left aligned</span>
+    </div>
+    <div class="textRow">
+      <span class="label" style="text-align: center; width: 120px;">Centered text</span>
+    </div>
+    <div class="textRow">
+      <span class="labelRight" style="width: 120px;">Right aligned</span>
+    </div>
+    <div class="textRow">
+      <span class="caption">Small 8px text</span>
+    </div>
+    <div class="textRow">
+      <span class="label" style="font-size: 12px;">Big 12px text</span>
+    </div>
+    <div class="line" style="width: 120px; height: 1px; margin: 2px auto;"></div>
+    <div class="textRow">
+      <span class="label">Mixed: </span>
+      <span class="label" style="font-size: 12px; font-weight: bold;">B</span>
+      <span class="label" style="font-size: 12px;">old</span>
+    </div>
+  </body>
+</screen>
+
+<!-- ── Shapes ───────────────────────────────────────────────────────────── -->
+<screen id="shapes">
+  <body>
+    <div class="header">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <span class="headerTitle">Shapes</span>
+    </div>
+    <div class="shapeRow">
+      <div class="box" style="width: 10px; height: 10px;"></div>
+      <div class="boxOutline" style="width: 10px; height: 10px;"></div>
+      <div class="circle" style="width: 12px; height: 12px;"></div>
+    </div>
+    <div class="lineRow">
+      <div class="line" style="width: 120px; height: 1px;"></div>
+    </div>
+    <div class="shapeRow">
+      <div class="box" style="width: 16px; height: 4px;"></div>
+      <div class="box" style="width: 4px; height: 16px;"></div>
+      <div class="boxOutline" style="width: 8px; height: 16px;"></div>
+    </div>
+    <div class="lineRow">
+      <div class="line" style="width: 30px; height: 1px;"></div>
+      <div class="line" style="width: 1px; height: 16px;"></div>
+      <div class="line" style="width: 30px; height: 1px;"></div>
+    </div>
+    <div class="lineRow" style="justify-content: center;">
+      <div class="box" style="width: 40px; height: 1px;"></div>
+    </div>
+    <div class="lineRow" style="justify-content: center;">
+      <div class="box" style="width: 1px; height: 8px;"></div>
+    </div>
+  </body>
+</screen>
+
+<!-- ── Counter (reactive) ──────────────────────────────────────────────── -->
+<screen id="counter">
+  <body>
+    <div class="header">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <span class="headerTitle">Counter</span>
+    </div>
+    <div class="countDisplay">taps: {count}</div>
+    <div style="flex-direction: row; justify-content: center; padding: 4px 0;">
+      <button class="countBtn" on:click="incrementCount">Tap</button>
+    </div>
+    <div class="label" style="text-align: center; font-size: 8px; padding-top: 4px;">press the button</div>
   </body>
 </screen>
