@@ -90,10 +90,10 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     ctx.sourceLines.unshift("#define SDL_MAIN_HANDLED");
   }
 
-  // Forward declaration for touch poll (used inside the runtime header's ui_tick)
-  if (profile.touch) {
-    ctx.sourceLines.push("void ui_poll_touch();");
-  }
+  // Forward declaration for touch poll (used inside the runtime header's ui_tick).
+  // Always emitted — ui_tick calls it unconditionally; the body is a no-op when
+  // no touch hardware is configured.
+  ctx.sourceLines.push("void ui_poll_touch();");
 
   // 1. Runtime header (structs + helpers, guarded so repeat emission is safe).
   //    Emit the antialiasing compile-time flag before the header so the AA
@@ -160,7 +160,12 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     const invertX = profile.rotation === 1 || profile.rotation === 2;
     const invertY = profile.rotation === 1 || profile.rotation === 2;
     let mapX, mapY;
-    if (isLandscape) {
+    if (t.library === "sdl") {
+      // SDL mouse coordinates are already window/screen coordinates. Do not
+      // apply the resistive-controller axis swap used for rotated TFT touch.
+      mapX = `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.width})`;
+      mapY = `map(__rawY, ${yMin}, ${yMax}, 0, ${profile.height})`;
+    } else if (isLandscape) {
       mapX = invertX
         ? `map(__rawX, ${xMin}, ${xMax}, ${profile.width}, 0)`
         : `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.width})`;
@@ -189,6 +194,9 @@ export function emitUIRuntime(ctx: EmitterContext): void {
       `}`,
     ];
     ctx.sourceLines.push(pollLines.join("\n"));
+  } else {
+    // No touch hardware — emit a no-op so ui_tick's unconditional call resolves.
+    ctx.sourceLines.push("void ui_poll_touch() {}");
   }
 
   // 2. Static node + transition tables for every mounted UI tree.

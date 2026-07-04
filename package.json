@@ -17,6 +17,7 @@
     "packages/simulator",
     "demo",
     "demo-ui",
+    "demo-ui-sd13",
     "native_demo"
   ],
   "scripts": {

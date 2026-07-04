@@ -1,0 +1,43 @@
+<script lang="ts">
+  // showcase.ui — minimal "hello world" for SSD1309 OLED (128×64, 1-bit mono).
+  import { ui } from '@typecad/ui';
+
+  ui.mount(screen, {
+    display: 'ssd1309',
+    bus: 'I2C',
+    address: 0x3C,
+    reset: -1,
+  });
+</script>
+
+<style>
+  screen {
+    background: #000000;
+    color: #ffffff;
+    padding: 0;
+    gap: 4px;
+  }
+
+  h1 {
+    color: #ffffff;
+    font-size: 16px;
+    font-weight: bold;
+    text-align: center;
+    padding: 4px 0;
+  }
+
+  p {
+    color: #ffffff;
+    font-size: 12px;
+    text-align: center;
+    padding: 0 8px;
+  }
+</style>
+
+<screen id="home">
+  <body>
+    <h1>Hello, World!</h1>
+    <p>SSD1309 OLED 128x64</p>
+    <p>TypeCAD + Cuttlefish</p>
+  </body>
+</screen>

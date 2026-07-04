@@ -335,8 +335,10 @@ function resolveMountCall(
     return null;
   }
   // SPI-bus displays (ILI9341, ST7796, …) need bus/cs/dc/rst wiring. Host
-  // render targets (sdl, native-preview) have no SPI pins, so don't require them.
-  const spiDisplay = opts.display !== "sdl" && opts.display !== "native-preview";
+  // render targets (sdl, native-preview) have no SPI pins. I2C displays
+  // (ssd1309) need address/reset instead — not SPI pins.
+  const isI2C = opts.bus === "I2C" || opts.bus === "i2c";
+  const spiDisplay = !isI2C && opts.display !== "sdl" && opts.display !== "native-preview";
   if (spiDisplay && (opts.bus === undefined || opts.cs === undefined ||
       opts.dc === undefined || opts.rst === undefined)) {
     return null;
