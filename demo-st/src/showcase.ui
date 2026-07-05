@@ -279,7 +279,7 @@ screen {
 }
 
 /* ── Text + number inputs ── */
-#formName, #formAge, #formKbDemo {
+#formName, #formAge {
   color: var(--foreground);
   background: #12161b;
   border: 1px solid var(--border);
@@ -287,25 +287,6 @@ screen {
   width: 100%;
   padding: 3px;
   font-size: 13px;
-}
-
-/* ── :disabled ── */
-#formDisabledBtn {
-  background: var(--muted);
-  color: var(--muted-foreground);
-  font-size: 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 4px 8px;
-  white-space: nowrap;
-}
-#formDisabledBtn:disabled { opacity: 0.5; }
-
-/* ── Hint line (keyboard card secondary text) ── */
-#formHint {
-  color: var(--muted-foreground);
-  font-size: 11px;
-  text-align: center;
 }
 
 /* ── Custom keyboard keys (keyboard template is a sibling of <screen>) ── */
@@ -400,21 +381,6 @@ a { color: var(--accent); }
       </section>
     </div>
 
-    <!-- Row 5: :disabled | keyboard -->
-    <div class="formRow">
-      <section class="formCard">
-        <h3 class="demoLabel">:disabled</h3>
-        <div class="cardRow">
-          <button id="formDisabledBtn" disabled>cannot tap</button>
-          <span class="formStatus">no effect</span>
-        </div>
-      </section>
-      <section class="formCard">
-        <h3 class="demoLabel">keyboard</h3>
-        <input id="formKbDemo" type="text" placeholder="tap to type" maxlength="16"></input>
-        <span id="formHint">opens the keyboard</span>
-      </section>
-    </div>
   </body>
 </screen>
 
