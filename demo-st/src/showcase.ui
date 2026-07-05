@@ -30,14 +30,15 @@
   }
 
   // ── Reactive bindings: each control drives a visible effect ───────────────
-  ui.bind(screen.featureStatus, 'text', () => screen.formCheck1.value ? 'feature: enabled' : 'feature: disabled');
+  // Status text is kept short — cards are narrow in the 4-column landscape grid.
+  ui.bind(screen.featureStatus, 'text', () => screen.formCheck1.value ? 'on' : 'off');
   ui.bind(screen.featureLamp, 'background', () => screen.formCheck1.value ? '#29d391' : '#4b5563');
-  ui.bind(screen.modeStatus, 'text', () => screen.formSelect1.value == 0 ? 'mode: alpha' : screen.formSelect1.value == 1 ? 'mode: beta' : 'mode: gamma');
+  ui.bind(screen.modeStatus, 'text', () => screen.formSelect1.value == 0 ? 'alpha' : screen.formSelect1.value == 1 ? 'beta' : 'gamma');
   ui.bind(screen.modeAccent, 'background', () => screen.formSelect1.value == 0 ? '#38bdf8' : screen.formSelect1.value == 1 ? '#f6c84c' : '#b985ff');
-  ui.bind(screen.radioStatus, 'text', () => screen.formRadio2.value ? 'speed: fast' : 'speed: calm');
-  ui.bind(screen.volumeStatus, 'text', () => `volume: ${screen.formRange1.value}`);
+  ui.bind(screen.radioStatus, 'text', () => screen.formRadio2.value ? 'fast' : 'calm');
+  ui.bind(screen.volumeStatus, 'text', () => `vol: ${screen.formRange1.value}`);
   ui.bind(screen.formProg, 'value', () => screen.formRange1.value * 10);
-  ui.bind(screen.formProgressCaption, 'text', () => `meter: ${screen.formRange1.value * 10}%`);
+  ui.bind(screen.formProgressCaption, 'text', () => `${screen.formRange1.value * 10}%`);
 </script>
 
 <style>
@@ -202,14 +203,6 @@ screen {
   white-space: nowrap;
 }
 
-/* Inline row inside a card: control left, indicator/count right. */
-.cardRow {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-
 /* ── Button ── */
 #formBtn {
   background: var(--primary);
@@ -298,10 +291,11 @@ screen {
 a { color: var(--accent); }
 </style>
 
-<!-- ── Single-screen forms demo (320×480, no scroll) ─────────────────────── -->
-<!-- Body is a flex column of .formRow rows; every row is a 2-column split so
-     no card is tall enough to push later rows off-screen. Sized to fill the
-     480px height (header + 4 rows, ~12px gaps, ~12px padding). -->
+<!-- ── Single-screen forms demo (480×320 landscape, no scroll) ───────────── -->
+<!-- Body is a flex column: header + 2 grid rows of 4 cards. Landscape gives
+     wide-but-short geometry (~464×304 usable), so the grid is 4 columns × 2
+     rows. Each card holds one control. Vertical budget: header + 2 rows fits
+     comfortably in 320. -->
 <screen id="forms">
   <body>
     <header id="formHeader">
@@ -309,38 +303,28 @@ a { color: var(--accent); }
       <p id="formSubtitle">every control, one screen</p>
     </header>
 
-    <!-- Row 1: button | checkbox -->
+    <!-- Row 1: button | checkbox | select | radio -->
     <div class="formRow">
       <section class="formCard">
         <h3 class="demoLabel">button</h3>
-        <div class="cardRow">
-          <button id="formBtn" on:click={incrementTaps}>tap me</button>
-          <span id="formBtnCount" class="formPill">taps: {count}</span>
-        </div>
+        <button id="formBtn" on:click={incrementTaps}>tap me</button>
+        <span id="formBtnCount" class="formPill">taps: {count}</span>
       </section>
       <section class="formCard">
         <h3 class="demoLabel">checkbox</h3>
-        <div class="cardRow">
-          <check id="formCheck1">Enable feature</check>
-          <div id="featureLamp"></div>
-        </div>
-        <span id="featureStatus" class="formStatus">feature: disabled</span>
+        <check id="formCheck1">feature</check>
+        <div id="featureLamp"></div>
+        <span id="featureStatus" class="formStatus">off</span>
       </section>
-    </div>
-
-    <!-- Row 2: select | radio -->
-    <div class="formRow">
       <section class="formCard">
         <h3 class="demoLabel">select</h3>
-        <div class="cardRow">
-          <select id="formSelect1">
-            <option value="a">Alpha</option>
-            <option value="b">Beta</option>
-            <option value="c">Gamma</option>
-          </select>
-          <div id="modeAccent"></div>
-        </div>
-        <span id="modeStatus" class="formStatus">mode: alpha</span>
+        <select id="formSelect1">
+          <option value="a">Alpha</option>
+          <option value="b">Beta</option>
+          <option value="c">Gamma</option>
+        </select>
+        <div id="modeAccent"></div>
+        <span id="modeStatus" class="formStatus">alpha</span>
       </section>
       <section class="formCard">
         <h3 class="demoLabel">radio</h3>
@@ -348,39 +332,31 @@ a { color: var(--accent); }
           <radio id="formRadio1" name="grp" value="x" checked>Calm</radio>
           <radio id="formRadio2" name="grp" value="y">Fast</radio>
         </div>
-        <span id="radioStatus" class="formStatus">speed: calm</span>
+        <span id="radioStatus" class="formStatus">calm</span>
       </section>
     </div>
 
-    <!-- Row 3: range | progress (split, not stacked — both reflect formRange1) -->
+    <!-- Row 2: range | progress | text | number -->
     <div class="formRow">
       <section class="formCard">
         <h3 class="demoLabel">range</h3>
         <range id="formRange1" min="0" max="10" value="3"></range>
-        <span id="volumeStatus" class="formStatus">volume: 3</span>
+        <span id="volumeStatus" class="formStatus">vol: 3</span>
       </section>
       <section class="formCard">
         <h3 class="demoLabel">progress</h3>
         <progress id="formProg" value="30"></progress>
-        <span id="formProgressCaption" class="formStatus">meter: 30%</span>
+        <span id="formProgressCaption" class="formStatus">30%</span>
       </section>
-    </div>
-
-    <!-- Row 4: text | number -->
-    <div class="formRow">
       <section class="formCard">
-        <div class="cardRow">
-          <h3 class="demoLabel">text</h3>
-          <span id="nameStatus" class="formPill">× {nameCommits}</span>
-        </div>
+        <h3 class="demoLabel">text</h3>
         <input id="formName" type="text" placeholder="name" maxlength="20" on:change={captureName}></input>
+        <span id="nameStatus" class="formStatus">×{nameCommits}</span>
       </section>
       <section class="formCard">
-        <div class="cardRow">
-          <h3 class="demoLabel">number</h3>
-          <span id="ageStatus" class="formPill">× {ageCommits}</span>
-        </div>
+        <h3 class="demoLabel">number</h3>
         <input id="formAge" type="number" placeholder="0" maxlength="3" on:change={captureAge}></input>
+        <span id="ageStatus" class="formStatus">×{ageCommits}</span>
       </section>
     </div>
 
