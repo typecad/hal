@@ -42,6 +42,9 @@ export interface LoweredUI {
   keyframeTables: string;
   /** Compile-time warnings for scroll viewports that exceed the canvas budget. */
   scrollMemoryDiagnostics: Diagnostic[];
+  /** Layout-time diagnostics (viewport overflow, text overflow). Populated by
+   *  lowerOnMount after the boxes are computed; empty until then. */
+  diagnostics: Diagnostic[];
 }
 
 type ColorFormat = "rgb565" | "rgb666" | "rgb888" | "mono";
@@ -108,7 +111,7 @@ export function lowerUIToCpp(
   const screenCount = model.nodes.length > 0 ? Math.max(...model.nodes.map(n => n.screenId)) + 1 : 1;
   const imageTables = "const UIImage __ui_images[] = {};\nconst uint16_t __ui_image_count = 0;";
   const keyframeTables = emitKeyframeTables(model);
-  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount, imageTables, keyframeTables, scrollMemoryDiagnostics };
+  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount, imageTables, keyframeTables, scrollMemoryDiagnostics, diagnostics: [] };
 }
 
 function sanitizedId(id: string): string {

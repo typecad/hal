@@ -209,6 +209,28 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
     mod.mountDiagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
   }
 
+  // Viewport-overflow diagnostic: warn when a laid-out node's box bottom
+  // exceeds the mount viewport. The most common cause is a flex column whose
+  // intrinsic content height is taller than the screen — content past the
+  // fold is silently clipped (no scroll on a non-scroll container). Surfacing
+  // this at transpile time turns a silent clip into an actionable warning.
+  for (let i = 0; i < allBoxes.length; i++) {
+    const b = allBoxes[i];
+    if (b.h <= 0) continue;
+    const bottom = b.y + b.h;
+    if (bottom > opts.viewport.height + 1) {  // +1px tolerance
+      const d: Diagnostic = {
+        severity: "warning",
+        code: "layout-viewport-overflow",
+        message: `node ${i} bottom at y=${bottom} exceeds the ${opts.viewport.height}px viewport by ${bottom - opts.viewport.height}px (clipped off-screen).`,
+        hint: `Reduce content height, tighten padding/gap, or add overflow:scroll to a container.`,
+        source: path.basename(mod.htmlPath),
+      };
+      result.diagnostics.push(d);
+      mod.mountDiagnostics.push(d);
+    }
+  }
+
   // Emit image tables.
   result.imageTables = emitImageTables(imageAssets.assets, opts.colorFormat);
   lowered.set(abs, result);
