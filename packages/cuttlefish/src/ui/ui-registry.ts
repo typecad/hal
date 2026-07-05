@@ -174,6 +174,13 @@ export function loadUIModuleFromText(
   return mod;
 }
 
+/** Count a styled subtree's nodes (pre-order). */
+function countNodes(node: StyledNode): number {
+  let n = 1;
+  for (const c of node.children) n += countNodes(c);
+  return n;
+}
+
 /** Produce (or return cached) the lowered C++ tables for a module, using the mount viewport. */
 export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   const abs = path.resolve(htmlPath);
@@ -182,6 +189,7 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
 
   const mod = modules.get(abs);
   if (!mod) throw new Error(`Cannot lower unregistered UI module: ${abs}`);
+  const htmlBase = path.basename(mod.htmlPath);
 
   const viewport: Box = { x: 0, y: 0, w: opts.viewport.width, h: opts.viewport.height };
 
@@ -224,11 +232,50 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
         code: "layout-viewport-overflow",
         message: `node ${i} bottom at y=${bottom} exceeds the ${opts.viewport.height}px viewport by ${bottom - opts.viewport.height}px (clipped off-screen).`,
         hint: `Reduce content height, tighten padding/gap, or add overflow:scroll to a container.`,
-        source: path.basename(mod.htmlPath),
+        source: htmlBase,
       };
       result.diagnostics.push(d);
       mod.mountDiagnostics.push(d);
     }
+  }
+
+  // Text-overflow diagnostic: warn when a text-bearing node's box extends past
+  // its parent's right edge. Catches the "taps: {count}" literal-measured-wide
+  // class of overflow (where sibling text+control sum past the container and
+  // the engine lays them out overflowing) before the author has to flash and
+  // eyeball it. Boxes are pre-order DFS, matching the styled tree walk.
+  const textOverflow: Diagnostic[] = [];
+  function walkTextOverflow(node: StyledNode, nodeBox: Box | undefined, parentBox: Box | undefined, idx: { i: number }) {
+    if (nodeBox && parentBox && (node.tag === "text" || node.tag === "button")) {
+      const nodeRight = nodeBox.x + nodeBox.w;
+      // Compare against the parent's content right edge (x + w, ignoring the
+      // child's own padding which doesn't affect its box right edge).
+      const parentContentRight = parentBox.x + parentBox.w;
+      if (nodeRight > parentContentRight + 1) {  // +1px tolerance
+        const label = node.tag === "button" ? "button" : `"${(node.text ?? "").slice(0, 20)}"`;
+        textOverflow.push({
+          severity: "warning",
+          code: "layout-text-overflow",
+          message: `${label} right edge at x=${nodeRight} extends past its parent's right edge at x=${parentContentRight} by ${Math.round(nodeRight - parentContentRight)}px.`,
+          hint: `Shorten the text, use white-space:nowrap, or widen the parent.`,
+          source: htmlBase,
+        });
+      }
+    }
+    for (const child of node.children) {
+      const childBox = allBoxes[idx.i];
+      idx.i++;
+      walkTextOverflow(child, childBox, nodeBox, idx);
+    }
+  }
+  let boxIdx = 1;  // box 0 is the screen itself
+  for (const screen of allStyled) {
+    walkTextOverflow(screen, allBoxes[boxIdx - 1], undefined, { i: boxIdx });
+    boxIdx += countNodes(screen);
+  }
+  for (const d of textOverflow) {
+    result.diagnostics.push(d);
+    mod.mountDiagnostics.push(d);
   }
 
   // Emit image tables.

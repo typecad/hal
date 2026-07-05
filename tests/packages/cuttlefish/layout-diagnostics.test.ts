@@ -37,4 +37,23 @@ describe("viewport-overflow diagnostic", () => {
     const lowered = lowerOnMount(htmlPath, { colorFormat: "rgb565", storage: "flash", viewport: { width: 240, height: 100 } });
     expect(lowered.diagnostics.some(d => d.code === "layout-viewport-overflow")).toBe(false);
   });
+
+  it("warns when a text node's measured width exceeds its parent content box", () => {
+    // 'tap me' (button) + 'taps: {count}' literal text in a narrow card
+    // → the row's content exceeds the card content box width.
+    const src = `<script>import { ui } from '@typecad/ui'; ui.mount(screen);
+      export const count = ui.signal(0);</script>
+<style>screen{flex-direction:column;padding:8px}
+.card{width:120px;padding:4px;background:#ccc}
+.row{flex-direction:row;justify-content:space-between;gap:6px}</style>
+<screen><body>
+  <div class="card"><div class="row"><button>tap me</button><text>taps: {count}</text></div></div>
+</body></screen>`;
+    const uiPath = tmpUi(src);
+    const parts = splitUiFile(fs.readFileSync(uiPath, "utf-8"));
+    const htmlPath = uiPath + ".html";
+    loadUIModuleFromText(htmlPath, parts.html, parts.style, uiPath);
+    const lowered = lowerOnMount(htmlPath, { colorFormat: "rgb565", storage: "flash", viewport: { width: 240, height: 200 } });
+    expect(lowered.diagnostics.some(d => d.code === "layout-text-overflow")).toBe(true);
+  });
 });
