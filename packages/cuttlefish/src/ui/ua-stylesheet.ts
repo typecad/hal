@@ -31,16 +31,6 @@ button {
 input {
   padding: 4px 8px;
   border: 1px solid;
-  min-height: 20px;
-}
-select {
-  min-height: 20px;
-}
-range {
-  min-height: 20px;
-}
-progress {
-  min-height: 12px;
 }
 list {
   overflow: scroll;

@@ -166,4 +166,17 @@ describe("flex order reorders children", () => {
     const rightEdges = boxes.filter(b => b.w > 0 && b.w < 100).map(b => b.x + b.w);
     expect(Math.max(...rightEdges)).toBeLessThanOrEqual(100);
   });
+
+  it("input does not impose a UA min-height of 20px", () => {
+    // With the UA min-height removed, an input with explicit height:14px
+    // should measure 14px tall, not the UA-forced 20px.
+    const styled = resolveStyles(
+      parseHtml(`<screen><input id="i"></input></screen>`),
+      parseCss(`screen{width:100px;height:50px;padding:0} input{height:14px;font-size:8px}`),
+    );
+    const engine = selectEngine(styled);
+    const boxes = engine.arrange(styled, { x: 0, y: 0, w: 100, h: 50 }, (n, aw) => measure(n, aw));
+    const input = boxes.find(b => b.h === 14);
+    expect(input).toBeDefined();
+  });
 });
