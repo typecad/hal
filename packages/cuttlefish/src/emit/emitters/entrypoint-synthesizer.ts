@@ -4,6 +4,10 @@ import { entryHasUI } from "../../ui/ui-registry.js";
 import { uiPressBindings, watchPinSpecs } from "../../ir/transformers/ui-call-resolver.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 
+function isDisplayInitStatement(statement: StatementIR): boolean {
+  return statement.kind === "hal-op" && statement.operation.operation === "display.init";
+}
+
 export function synthesizeEntrypoints(ctx: EmitterContext): void {
   const { program, strategy, isEntryFile, mappedFunctions } = ctx;
   const entrypointFunctionName = strategy.entrypointFunctionName();
@@ -21,19 +25,32 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
       sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 },
     }));
 
-    // UI press/release interrupt wiring: pinMode(INPUT_PULLUP) + attachInterrupt
-    // for each onPress/onRelease binding. Only when a UI is mounted.
-    const uiInterruptStmts: StatementIR[] = [];
+    const displayInitStmts: StatementIR[] = [];
+    const topLevelExecutableStmts = ctx.filteredTopLevelExecutables.filter((statement) => {
+      if (isDisplayInitStatement(statement)) {
+        displayInitStmts.push(statement);
+        return false;
+      }
+      return true;
+    });
+
+    // UI hardware/runtime setup. Only emitted when a UI is mounted.
+    const uiSetupStmts: StatementIR[] = [];
     if (entryHasUI()) {
-      // Initial draw: mark all UI nodes dirty so the first ui_tick renders.
-      uiInterruptStmts.push(
-        { kind: "call" as const, callee: `__RAW_STMT__ui_init();`, args: [],
-          sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
-      );
+      // Touch controller begin (if touch is configured). Hardware setup runs
+      // before ui_init() so the first frame starts from a fully initialized
+      // display/touch stack.
+      const tProfile = getDisplayProfile();
+      if (tProfile.touch) {
+        uiSetupStmts.push(
+          { kind: "call" as const, callee: `__RAW_STMT__touch_init();`, args: [],
+            sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
+        );
+      }
       // ISR-based press/release wiring (legacy)
       for (const pb of uiPressBindings()) {
         const mode = pb.edge === "press" ? "FALLING" : "RISING";
-        uiInterruptStmts.push(
+        uiSetupStmts.push(
           { kind: "call" as const, callee: `__RAW_STMT__pinMode(${pb.pin}, INPUT_PULLUP);`, args: [],
             sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
           { kind: "call" as const, callee: `__RAW_STMT__attachInterrupt(digitalPinToInterrupt(${pb.pin}), ${pb.handlerName}, ${mode});`, args: [],
@@ -42,25 +59,22 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
       }
       // Pin-watchers (from ui.watchPin): set pin mode so ui_poll_inputs can read it
       for (const wp of watchPinSpecs()) {
-        uiInterruptStmts.push(
+        uiSetupStmts.push(
           { kind: "call" as const, callee: `__RAW_STMT__pinMode(${wp.pin}, INPUT_PULLUP);`, args: [],
             sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
         );
       }
-      // Touch controller begin (if touch is configured)
-      const tProfile = getDisplayProfile();
-      if (tProfile.touch) {
-        uiInterruptStmts.push(
-          { kind: "call" as const, callee: `__RAW_STMT__touch_init();`, args: [],
-            sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
-        );
-      }
+      // Initial draw: mark all UI nodes dirty so the first ui_tick renders.
+      uiSetupStmts.push(
+        { kind: "call" as const, callee: `__RAW_STMT__ui_init();`, args: [],
+          sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
+      );
     }
 
-    const allSetupInitStmts = [...setupInitStmts, ...uiInterruptStmts];
+    const allSetupInitStmts = [...setupInitStmts, ...displayInitStmts, ...uiSetupStmts];
 
     if (existingEp) {
-      existingEp.statements = [...allSetupInitStmts, ...ctx.filteredTopLevelExecutables, ...existingEp.statements];
+      existingEp.statements = [...allSetupInitStmts, ...topLevelExecutableStmts, ...existingEp.statements];
     } else {
       const isMain = epName === "main";
       // Route through mapReturnType so platform strategies can special-case the
@@ -70,8 +84,8 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
       const mapReturnType = (fnName: string, tsType: string) => ctx.statementRenderer.mapReturnType(fnName, tsType);
       const returnType = mapReturnType(epName, isMain ? "int" : "void");
       const stmts: StatementIR[] = isMain
-        ? [...allSetupInitStmts, ...ctx.filteredTopLevelExecutables, { kind: "return" as const, sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }, value: { kind: "number" as const, value: 0 } } as StatementIR]
-        : [...allSetupInitStmts, ...ctx.filteredTopLevelExecutables];
+        ? [...allSetupInitStmts, ...topLevelExecutableStmts, { kind: "return" as const, sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 }, value: { kind: "number" as const, value: 0 } } as StatementIR]
+        : [...allSetupInitStmts, ...topLevelExecutableStmts];
       const insertFn = {
         name: epName,
         originalName: epName,

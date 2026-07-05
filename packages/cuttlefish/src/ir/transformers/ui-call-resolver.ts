@@ -21,6 +21,7 @@ import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { resolveColorInternal } from "../../ui/color.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
+import { effectiveDisplaySize } from "../../api/shared/display-profile.js";
 import { lowerCallbackBody, resetCallbackLoweringState } from "./ui-callback-lowering.js";
 import { resolveDrawCanvasCall, resetCanvasBindings } from "./canvas-lowering.js";
 import type { StyledNode } from "../../ui/style-resolver.js";
@@ -348,7 +349,7 @@ function resolveMountCall(
 
   // Viewport from the display profile (data-driven, not hardcoded).
   const profile = getDisplayProfile();
-  const viewport = { width: profile.width, height: profile.height };
+  const viewport = effectiveDisplaySize(profile);
 
   const req: MountRequest = {
     display: opts.display !== undefined ? String(opts.display) : profile.driver,

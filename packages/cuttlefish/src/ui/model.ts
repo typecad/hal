@@ -1,4 +1,5 @@
 import type { DisplayProfile } from "../api/shared/display-profile.js";
+import { effectiveDisplaySize } from "../api/shared/display-profile.js";
 import { deriveCapabilities } from "../api/shared/display-capabilities.js";
 import { resolveColorInternal } from "./color.js";
 import { parseAnimation, type CSSProperty } from "./css-parser.js";
@@ -1176,9 +1177,11 @@ export function lowerUIToModel(
     });
   }
 
+  const displaySize = display ? effectiveDisplaySize(display) : { width: 0, height: 0 };
+
   return {
-    width: display?.width ?? 0,
-    height: display?.height ?? 0,
+    width: displaySize.width,
+    height: displaySize.height,
     colorFormat,
     display,
     fontAssets,

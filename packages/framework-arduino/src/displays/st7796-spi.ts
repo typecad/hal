@@ -13,8 +13,10 @@ import type { DisplayProfile } from "@typecad/cuttlefish/api/shared";
 
 export const ST7796_SPI: DisplayProfile = {
   driver: "st7796",
-  width: 320,
-  height: 480,
+  width: 480,
+  height: 320,
+  nativeWidth: 320,
+  nativeHeight: 480,
   colorFormat: "rgb565",
   rotation: 1, // landscape → effective 480×320
   spiPins: { mosi: 23, sck: 18, miso: 19 },

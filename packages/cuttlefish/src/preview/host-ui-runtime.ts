@@ -5,6 +5,7 @@ import type { UIFontAssetModel, UIFontGlyphModel } from "../ui/font-assets.js";
 import type { UIImageAsset } from "../ui/image-assets.js";
 import type { KeyboardTemplate, UIKeyTemplate } from "../ui/html-parser.js";
 import type { AnimationModel, KeyframeSetModel, UINodeModel, UIProgram, UITransitionModel } from "../ui/model.js";
+import { resolveScrollConfig } from "../api/shared/display-profile.js";
 import { easeCurveLerpK } from "../ui/easing.js";
 import { layoutText } from "../ui/text-layout.js";
 import { blendRgb565, blendRgb888, HostAdafruitGFX } from "./host-gfx.js";
@@ -255,6 +256,7 @@ export class PreviewUIRuntime {
   private keyboardPressedKey = -1;
   private keyboardRepaintKey = -1;
   private directFrameChanged = false;
+  private readonly scrollDragScale: number;
 
   constructor(private readonly snapshot: PreviewSnapshot, options: RuntimeOptions = {}) {
     const { nodes, transitions, animations } = cloneProgram(snapshot.program);
@@ -281,6 +283,7 @@ export class PreviewUIRuntime {
     this.intervals = snapshot.intervals;
     this.initialAssignments = snapshot.initialAssignments;
     this.screenCount = Math.max(1, ...this.nodes.map((node) => (node.screenId ?? 0) + 1));
+    this.scrollDragScale = resolveScrollConfig(snapshot.program.display ?? {}).dragScale;
     this.onFrame = options.onFrame;
     this.onDiagnostics = options.onDiagnostics;
     this.gfx = new HostAdafruitGFX(snapshot.program.width, snapshot.program.height, new Uint8Array(snapshot.font));
@@ -1864,7 +1867,7 @@ export class PreviewUIRuntime {
   // baked at transpile time. Iterate segments once, skip lines and segments
   // outside the active clip, and compute each segment's x-origin from textAlign
   // + line width. Segments of different font-sizes align on the line's baseline.
-  private drawRichNode(node: MutableNode, drawY: number, ts: number, contentX = node.box.x, contentY = drawY, contentW = node.box.w): void {
+  private drawRichNode(node: MutableNode, drawY: number, ts: number, contentX = node.box.x, contentY = drawY, contentW = node.box.w, boxPainted = false): void {
     if (!node.runLines || !node.runs) return;
     // Clear (mirrors drawTextNode's clear + translucent blend).
     const clearW = Math.max(node.box.w, node.lastTextWidth ?? 0);
@@ -1874,7 +1877,7 @@ export class PreviewUIRuntime {
       const backdrop = this.parentClearColor(node);
       textClear = blendRuntime(node.hasBg ? node.bg : node.clearColor, backdrop, node.opacity);
     }
-    this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
+    if (!boxPainted) this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
 
     const drawSegs = (xOffset: number, yOffset: number, fgOverride?: number) => {
       const rl = node.runLines!;
@@ -1937,10 +1940,24 @@ export class PreviewUIRuntime {
     const contentX = node.box.x + insets.left;
     const contentY = drawY + insets.top;
     const contentW = Math.max(1, node.box.w - insets.left - insets.right);
+    let bColor = node.borderColor || node.fg;
+    if (node.opacity < 100) bColor = blendRuntime(bColor, this.parentClearColor(node), node.opacity);
+    let fillBg = node.bg;
+    if (node.opacity < 100) fillBg = blendRuntime(node.bg, this.parentClearColor(node), node.opacity);
+    const textBoxPainted = node.gradientEnabled > 0 || node.hasBg;
+    if (node.gradientEnabled > 0) {
+      this.drawGradientFill(node, drawY);
+    } else if (node.borderRadius > 0 && node.hasBg) {
+      this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, fillBg);
+    } else if (node.hasBg) {
+      this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, fillBg);
+    }
     // Rich-text (inline runs): draw from precomputed geometry instead of the
     // single-string wrapped path.
     if (node.runs && node.runLines) {
-      this.drawRichNode(node, drawY, ts, contentX, contentY, contentW);
+      this.drawNodeShadow(node, drawY, true);
+      this.drawRichNode(node, drawY, ts, contentX, contentY, contentW, textBoxPainted);
+      if (node.borderStyle) this.drawNodeBorder(node, node.box.x, drawY, bColor);
       return;
     }
     const layout = this.textLayout(node, displayText, contentW, ts);
@@ -1960,9 +1977,11 @@ export class PreviewUIRuntime {
       const backdrop = this.parentClearColor(node);
       textClear = blendRuntime(node.hasBg ? node.bg : node.clearColor, backdrop, node.opacity);
     }
-    this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
+    if (!textBoxPainted) this.gfx.fillRect(node.box.x, drawY, clearW, clearH, textClear);
     node.lastTextWidth = layout.width;
     node.lastTextHeight = layout.height;
+    this.drawNodeShadow(node, drawY, true);
+    if (node.borderStyle) this.drawNodeBorder(node, node.box.x, drawY, bColor);
     if (node.textShadowCount > 0) {
       const shadowColor = blendRuntime(node.textShadowColor, textClear, node.textShadowAlpha);
       this.drawTextLines(
@@ -2391,7 +2410,7 @@ export class PreviewUIRuntime {
   // ── Scroll engine: Input layer ────────────────────────────────────────────
   // Preview is the capacitive tier → passthrough 1:1 (no deadband).
   private smoothDragDelta(dy: number): number {
-    return dy;
+    return Math.round(dy * this.scrollDragScale);
   }
 
   private scrollMax(nodeIndex: number): number {

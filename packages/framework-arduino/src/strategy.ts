@@ -1292,7 +1292,12 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
         bus: op.bus, cs: op.cs, dc: op.dc, rst: op.rst,
         width: op.width, height: op.height,
         rotation: dop.rotation ?? 1,
-        backlight: dop.backlight ?? 17,
+        // Backlight pin: pass through unchanged. Emitting a pinMode for an
+        // unset backlight would seize an arbitrary GPIO — historically this
+        // defaulted to 17, which collided with the ST7796S DC pin on boards
+        // that wire DC to GPIO 17. Only emit the backlight sequence when the
+        // config explicitly declares a backlight pin.
+        backlight: dop.backlight,
         spiFrequency: dop.spiFrequency,
       };
     }

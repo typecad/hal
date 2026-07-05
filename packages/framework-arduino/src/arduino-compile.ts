@@ -219,7 +219,11 @@ export function flattenGeneratedModulesIntoSketch(sketchDir: string, sketchPath:
   }
 }
 
-export function compileArduinoSketch(sketchFilePath: string, buildTarget: string): ArduinoCompileResult {
+export function compileArduinoSketch(
+  sketchFilePath: string,
+  buildTarget: string,
+  options?: { extraFlags?: string[]; defines?: Record<string, string> },
+): ArduinoCompileResult {
   const resolvedSketchFilePath = path.resolve(sketchFilePath);
   let sketchDir = path.dirname(resolvedSketchFilePath);
   let sketchDirName = path.basename(sketchDir);
@@ -270,7 +274,32 @@ export function compileArduinoSketch(sketchFilePath: string, buildTarget: string
     // Best-effort flattening for generated modules.
   }
 
-  const cmd = spawnSync("arduino-cli", ["compile", "--fqbn", buildTarget, sketchDir], {
+  // Build the arduino-cli argument list. --build-property is used to inject
+  // extra compiler flags (from output.defines and output.extraFlags in
+  // cuttlefish.config.ts) without modifying the board's platform.txt. Each
+  // define becomes -DNAME=VALUE; extraFlags pass through verbatim.
+  const compileArgs: string[] = ["compile", "--fqbn", buildTarget];
+  if (options?.defines || options?.extraFlags) {
+    const flagParts: string[] = [];
+    if (options?.defines) {
+      for (const [name, value] of Object.entries(options.defines)) {
+        flagParts.push(value !== "" ? `-D${name}=${value}` : `-D${name}`);
+      }
+    }
+    if (options?.extraFlags) {
+      flagParts.push(...options.extraFlags);
+    }
+    if (flagParts.length > 0) {
+      // Use compiler.cpp.extra_flags (not build.extra_flags) so we APPEND to
+      // the C++ compiler flags rather than overwriting the board's build.extra_flags
+      // (which carries USB/CDC/core-defining flags on ESP32 — overwriting those
+      // breaks include resolution and causes library incompatibility errors).
+      compileArgs.push("--build-property", `compiler.cpp.extra_flags=${flagParts.join(" ")}`);
+    }
+  }
+  compileArgs.push(sketchDir);
+
+  const cmd = spawnSync("arduino-cli", compileArgs, {
     encoding: "utf8",
     timeout: 120000,
   });

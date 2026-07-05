@@ -67,8 +67,22 @@ describe("@media display-class features", () => {
   });
 
   it("AND-combines with width/height (e-ink AND min-width)", () => {
-    setEink(); // width 296
+    setEink(); // visible width 296
     expect(idsOf(parseCss(`@media (e-ink) and (min-width: 200px) { #ok { color: black; } }`))).toContain("ok");
     expect(idsOf(parseCss(`@media (e-ink) and (min-width: 400px) { #no { color: black; } }`))).not.toContain("no");
+  });
+
+  it("uses effective dimensions when a profile declares native rotated size", () => {
+    setDisplayProfile({
+      driver: "st7796",
+      width: 480,
+      height: 320,
+      nativeWidth: 320,
+      nativeHeight: 480,
+      colorFormat: "rgb565",
+      rotation: 1,
+    }, wiring);
+    expect(idsOf(parseCss(`@media (width: 480px) and (height: 320px) { #ok { color: red; } }`))).toContain("ok");
+    expect(idsOf(parseCss(`@media (width: 320px) and (height: 480px) { #raw { color: red; } }`))).not.toContain("raw");
   });
 });

@@ -21,7 +21,13 @@ import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandler
 import { emitBindingTable, emitListBindings, getListBindings, emitInputBindings, getInputBindings } from "../../ir/transformers/ui-reactive.js";
 import { emitCanvasBindings, canvasBindings } from "../../ir/transformers/canvas-lowering.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
-import { generateTouchAdapter, TouchAdapterCodegen, resolveScrollConfig } from "../../api/shared/display-profile.js";
+import {
+  effectiveDisplaySize,
+  generateTouchAdapter,
+  normalizeDisplayRotation,
+  TouchAdapterCodegen,
+  resolveScrollConfig,
+} from "../../api/shared/display-profile.js";
 import { deriveCapabilities } from "../../api/shared/display-capabilities.js";
 import { generateDisplayAdapter } from "../../api/shared/display-adapter.js";
 import { getRadioGroups } from "../../ir/ui-element-auto-wire.js";
@@ -43,7 +49,7 @@ export interface TouchPollInput {
   library?: string;
   minPressure: number;
   calibration: { xMin: number; xMax: number; yMin: number; yMax: number };
-  profile: { width: number; height: number; rotation: number };
+  profile: { width: number; height: number; nativeWidth?: number; nativeHeight?: number; rotation: number };
 }
 
 /** Generate the ui_poll_touch() body, or null for the no-touch path. */
@@ -52,26 +58,58 @@ export function generateTouchPollBody(input: TouchPollInput): string | null {
   if (!library) return null;
 
   const { xMin, xMax, yMin, yMax } = calibration;
-  const isLandscape = profile.rotation === 1 || profile.rotation === 3;
-  const invertX = profile.rotation === 1 || profile.rotation === 2;
-  const invertY = profile.rotation === 1 || profile.rotation === 2;
+  const rotation = normalizeDisplayRotation(profile.rotation);
+  const screen = effectiveDisplaySize(profile);
+  const hasNativeSize = profile.nativeWidth !== undefined && profile.nativeHeight !== undefined;
+  const nativeWidth = profile.nativeWidth ?? profile.width;
+  const nativeHeight = profile.nativeHeight ?? profile.height;
+  const rawMapX = `map(__rawX, ${xMin}, ${xMax}, 0, ${nativeWidth})`;
+  const rawMapY = `map(__rawY, ${yMin}, ${yMax}, 0, ${nativeHeight})`;
   let mapX: string, mapY: string;
   if (library === "sdl") {
     // SDL mouse coords are already window/screen coords — no axis swap.
     mapX = `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.width})`;
     mapY = `map(__rawY, ${yMin}, ${yMax}, 0, ${profile.height})`;
-  } else if (isLandscape) {
-    mapX = invertX
-      ? `map(__rawX, ${xMin}, ${xMax}, ${profile.width}, 0)`
-      : `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.width})`;
-    mapY = invertY
-      ? `map(__rawY, ${yMin}, ${yMax}, ${profile.height}, 0)`
-      : `map(__rawY, ${yMin}, ${yMax}, 0, ${profile.height})`;
+  } else if (!hasNativeSize) {
+    const isLandscape = rotation === 1 || rotation === 3;
+    const invertX = rotation === 1 || rotation === 2;
+    const invertY = rotation === 1 || rotation === 2;
+    if (isLandscape) {
+      mapX = invertX
+        ? `map(__rawX, ${xMin}, ${xMax}, ${profile.width}, 0)`
+        : `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.width})`;
+      mapY = invertY
+        ? `map(__rawY, ${yMin}, ${yMax}, ${profile.height}, 0)`
+        : `map(__rawY, ${yMin}, ${yMax}, 0, ${profile.height})`;
+    } else {
+      mapX = `map(__rawY, ${yMin}, ${yMax}, ${profile.width}, 0)`;
+      mapY = `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.height})`;
+    }
   } else {
-    mapX = `map(__rawY, ${yMin}, ${yMax}, ${profile.width}, 0)`;
-    mapY = `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.height})`;
+    switch (rotation) {
+      case 1:
+        mapX = rawMapY;
+        mapY = `${nativeWidth} - (${rawMapX})`;
+        break;
+      case 2:
+        mapX = `${nativeWidth} - (${rawMapX})`;
+        mapY = `${nativeHeight} - (${rawMapY})`;
+        break;
+      case 3:
+        mapX = `${nativeHeight} - (${rawMapY})`;
+        mapY = rawMapX;
+        break;
+      default:
+        mapX = rawMapX;
+        mapY = rawMapY;
+        break;
+    }
   }
 
+  const clampLines = (indent: string): string[] => [
+    `${indent}if (__tx < 0) __tx = 0; else if (__tx >= ${screen.width}) __tx = ${screen.width - 1};`,
+    `${indent}if (__ty < 0) __ty = 0; else if (__ty >= ${screen.height}) __ty = ${screen.height - 1};`,
+  ];
   const isCapacitive = CAPACITIVE_TOUCH_LIBS.has(library);
   const lines: string[] = [
     `void ui_poll_touch() {`,
@@ -83,6 +121,7 @@ export function generateTouchPollBody(input: TouchPollInput): string | null {
     lines.push(
       `    int16_t __tx = ${mapX};`,
       `    int16_t __ty = ${mapY};`,
+      ...clampLines("    "),
       `    ui_handle_touch(__tx, __ty);`,
     );
   } else {
@@ -90,6 +129,7 @@ export function generateTouchPollBody(input: TouchPollInput): string | null {
       `    if (__rawZ >= ${minPressure}) {`,
       `      int16_t __tx = ${mapX};`,
       `      int16_t __ty = ${mapY};`,
+      ...clampLines("      "),
       `      ui_handle_touch(__tx, __ty);`,
       `    } else {`,
       `      ui_handle_no_touch();`,
@@ -178,7 +218,11 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   //    Emit the antialiasing compile-time flag before the header so the AA
   //    code paths are compiled in.
   const loweredModules = allLoweredUIModules();
-  const needsAntialias = profile.antialias || loweredModules.some(({ lowered }) => lowered.nodeTable.includes(".fontAntialias=1"));
+  // AA compiles in only when the profile opts in. A node-level fontAntialias=1
+  // flag alone is not enough — that would silently re-enable a heavy code path
+  // the author explicitly disabled with `antialias: false`. (The runtime still
+  // honors fontAntialias=0 at the per-node level when AA is compiled in.)
+  const needsAntialias = profile.antialias === true;
   if (needsAntialias) {
     ctx.sourceLines.push("#define UI_AA 1");
   }
@@ -217,11 +261,13 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     `#define UI_SCROLL_MAX_OVERSCROLL ${scroll.maxOverscroll}`,
     `#define UI_SCROLL_STIFFNESS_X10 ${Math.round(scroll.stiffness * 10)}`,
     `#define UI_SCROLL_EDGE_SNAP_PX ${scroll.edgeSnapPx}`,
+    `#define UI_SCROLL_DRAG_SCALE_X10 ${Math.round(scroll.dragScale * 10)}`,
     `#define UI_SCROLL_INPUT_TIER_CAPACITIVE ${scroll.inputTier === "capacitive" ? 1 : 0}`,
     `#define UI_SCROLL_INPUT_TIER_RESISTIVE ${scroll.inputTier === "resistive" ? 1 : 0}`,
     `#define UI_SCROLL_INPUT_TIER_NONE ${scroll.inputTier === "none" ? 1 : 0}`,
     `#define UI_SCROLL_RENDER_TIER_FULL ${scroll.renderTier === "full" ? 1 : 0}`,
     `#define UI_SCROLL_RENDER_TIER_CONSTRAINED ${scroll.renderTier === "constrained" ? 1 : 0}`,
+    `#define UI_SCROLL_CANVAS_BUDGET_BYTES ${scroll.scrollCanvasBudgetBytes}`,
     ...(scroll.debug ? [`#define UI_SCROLL_DEBUG 1`] : []),
   );
   // Forward-declare __ui_kb_set_onchange before the runtime header: the
@@ -238,7 +284,13 @@ export function emitUIRuntime(ctx: EmitterContext): void {
       library: profile.touch.library,
       minPressure: profile.touch.minPressure ?? 10,
       calibration: profile.touch.calibration,
-      profile: { width: profile.width, height: profile.height, rotation: profile.rotation },
+      profile: {
+        width: profile.width,
+        height: profile.height,
+        nativeWidth: profile.nativeWidth,
+        nativeHeight: profile.nativeHeight,
+        rotation: profile.rotation,
+      },
     });
     ctx.sourceLines.push(body ?? "void ui_poll_touch() {}");
   } else {

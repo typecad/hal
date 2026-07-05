@@ -22,6 +22,10 @@ describe("host runtime rich-text parity", () => {
     expect(src).toMatch(/if\s*\(\s*node\.runs\b[\s\S]*?drawRichNode/);
   });
 
+  it("drawTextNode paints styled text-node borders", () => {
+    expect(src).toMatch(/drawTextNode[\s\S]*node\.borderStyle[\s\S]*drawNodeBorder\(node, node\.box\.x, drawY, bColor\)/);
+  });
+
   it("tints rich-text shadow passes with a foreground override", () => {
     expect(src).toMatch(/drawSegs\s*=\s*\([^)]*fgOverride\?: number/);
     expect(src).toMatch(/const fg = fgOverride \?\? run\.fg/);

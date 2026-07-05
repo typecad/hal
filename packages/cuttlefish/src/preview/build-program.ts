@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import type { DisplayProfile } from "../api/shared/display-profile.js";
-import { resolveDisplayProfile } from "../api/shared/display-profile.js";
+import { effectiveDisplaySize, resolveDisplayProfile } from "../api/shared/display-profile.js";
 import { ResolvedCuttlefishConfig } from "../config-loader.js";
 import { parseCss, parseFontFaces, parseKeyframes } from "../ui/css-parser.js";
 import { extractStyleBlocks, parseHtmlWithKeyboards } from "../ui/html-parser.js";
@@ -621,6 +621,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const registry = await loadProfileRegistry(config.framework);
   const resolved = resolveDisplayProfile(config.display ?? { profile: "ili9341-spi" }, registry);
   const profile = resolved.profile;
+  const displaySize = effectiveDisplaySize(profile);
   const parsedHtml = parseHtmlWithKeyboards(htmlText);
   const fullCss = cssText + "\n" + extractStyleBlocks(htmlText);
   const cssRules = (() => {
@@ -638,7 +639,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const allStyledScreens = parsedHtml.screens.map((screen) => resolveStyles(screen, cssRules));
   const fontRoot: StyledNode = { tag: "screen", classes: [], style: {}, children: allStyledScreens };
   const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(htmlFilePath));
-  const viewport: Box = { x: 0, y: 0, w: profile.width, h: profile.height };
+  const viewport: Box = { x: 0, y: 0, w: displaySize.width, h: displaySize.height };
   const boxes = allStyledScreens.flatMap((screen) => {
     const engine = selectEngine(screen);
     return engine.arrange(screen, viewport, measureWithFonts(fontAssets));

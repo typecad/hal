@@ -19,6 +19,8 @@ describe("FT6336U touch adapter", () => {
 
   it("declares FT6336U with the I2C address", () => {
     expect(t.declaration).toMatch(/FT6336U\s+__tc_touch\s*\(\s*0x38\s*\)/);
+    expect(t.declaration).toContain("__tc_touch_cached_x");
+    expect(t.declaration).toContain("__tc_touch_cached_valid");
   });
 
   it("emits the hardware-reset sequence in touch_init when resetPin is set", () => {
@@ -28,18 +30,22 @@ describe("FT6336U touch adapter", () => {
     expect(t.functions).toContain("digitalWrite(4, HIGH);");
     expect(t.functions).toContain("delay(500);");
     expect(t.functions).toMatch(/__tc_touch\.begin\(Wire,\s*0x38\)/);
+    expect(t.functions).toContain("Wire.setClock(400000);");
   });
 
-  it("touch_isTouched gates on read_td_status() > 0", () => {
-    expect(t.functions).toContain("__tc_touch.read_td_status() > 0");
+  it("touch_isTouched uses a cached 5-byte I2C burst read", () => {
+    expect(t.functions).toContain("__tc_ft6336u_read_block(0x02, buf, 5)");
+    expect(t.functions).toContain("uint8_t count = buf[0] & 0x0F;");
+    expect(t.functions).toContain("__tc_touch_cached_x");
+    expect(t.functions).toContain("__tc_touch_cached_y");
+    expect(t.functions).not.toContain("__tc_touch.read_td_status()");
   });
 
-  it("touch_readRaw calls scan() and reads tp[0].x / tp[0].y", () => {
-    expect(t.functions).toContain("__tc_touch.scan()");
-    expect(t.functions).toContain("__tp.tp[0].x");
-    expect(t.functions).toContain("__tp.tp[0].y");
-    // Synthesizes a z from touch_count (no real pressure on capacitive).
-    expect(t.functions).toMatch(/__tp\.touch_count > 0\)\s*\?\s*255\s*:\s*0/);
+  it("touch_readRaw returns the cached sample instead of calling scan()", () => {
+    expect(t.functions).toContain("if (x) *x = __tc_touch_cached_x;");
+    expect(t.functions).toContain("if (y) *y = __tc_touch_cached_y;");
+    expect(t.functions).toContain("if (z) *z = __tc_touch_cached_z;");
+    expect(t.functions).not.toContain("__tc_touch.scan()");
   });
 
   it("omits the reset sequence when resetPin is absent", () => {
@@ -60,5 +66,16 @@ describe("FT6336U touch adapter", () => {
     } as any);
     expect(defaulted.declaration).toMatch(/FT6336U\s+__tc_touch\s*\(\s*0x38\s*\)/);
     expect(defaulted.functions).toMatch(/__tc_touch\.begin\(Wire,\s*0x38\)/);
+  });
+
+  it("uses an explicit I2C frequency when provided", () => {
+    const fast = generateTouchAdapter({
+      library: "FT6336U",
+      i2cAddress: 0x38,
+      i2cFrequency: 1000000,
+      calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 },
+    } as any);
+
+    expect(fast.functions).toContain("Wire.setClock(1000000);");
   });
 });

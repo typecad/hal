@@ -28,6 +28,7 @@ import { selectEngine } from "./select-engine.js";
 import { measure, measureWithFonts, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering.js";
 import { getDisplayProfile } from "./display-profile-store.js";
+import { resolveScrollConfig } from "../api/shared/display-profile.js";
 import { buildUIFontAssets } from "./font-assets.js";
 import type { UIFontAssetModel } from "./font-assets.js";
 import { emitImageTables, loadImageAssets } from "./image-assets.js";
@@ -58,6 +59,8 @@ export interface UIModule {
   rawKeyframes: KeyframeSet[];
   /** Parser-level warnings (unknown CSS properties / HTML tags). */
   diagnostics: Diagnostic[];
+  /** Layout-time warnings (scroll memory budget, etc.) from ui.mount lowering. */
+  mountDiagnostics: Diagnostic[];
 }
 
 export interface LowerOptions {
@@ -160,6 +163,7 @@ export function loadUIModuleFromText(
     fontAssets,
     rawKeyframes,
     diagnostics: moduleDiagnostics,
+    mountDiagnostics: [],
   };
   modules.set(abs, mod);
 
@@ -198,7 +202,12 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
 
   const imageAssets = loadImageAssets(allStyled.length > 0 ? allStyled : [mod.styled], path.dirname(abs));
 
-  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets);
+  const scrollBudget = resolveScrollConfig(getDisplayProfile()).scrollCanvasBudgetBytes;
+  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets, scrollBudget);
+
+  for (const d of result.scrollMemoryDiagnostics) {
+    mod.mountDiagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
+  }
 
   // Emit image tables.
   result.imageTables = emitImageTables(imageAssets.assets, opts.colorFormat);

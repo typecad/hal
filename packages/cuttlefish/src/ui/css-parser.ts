@@ -12,6 +12,7 @@
 import { parse, walk, generate } from "css-tree";
 import type { Diagnostic } from "../types.js";
 import { getDisplayProfile } from "./display-profile-store.js";
+import { effectiveDisplaySize } from "../api/shared/display-profile.js";
 import { getThemeClass } from "./theme-store.js";
 
 export type CSSSelectorKind = "element" | "id" | "class" | "attribute";
@@ -168,8 +169,9 @@ function evalMediaCondition(prelude: string): boolean | null {
   // @media all / @media (no condition) -> always apply.
   if (s === "" || s === "all" || /(?<![\w-])all(?![\w-])/i.test(s)) return true;
   const profile = getDisplayProfile();
-  const w = profile.width;
-  const h = profile.height;
+  const displaySize = effectiveDisplaySize(profile);
+  const w = displaySize.width;
+  const h = displaySize.height;
   const isEink = profile.displayClass === "eink";
   const isMono = profile.colorFormat === "mono";
   // Mono level count: mono colorFormat = 2 (B&W). (4/7-level descriptor arrives in Phase 4.)

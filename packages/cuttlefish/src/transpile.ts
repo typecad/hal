@@ -551,6 +551,13 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   profiler.captureMemorySnapshot("ir:post-build");
   profiler.endTimer("ir:build-all");
 
+  // ── UI mount-time warnings (scroll memory budget, etc.) ─────────────────
+  for (const mod of allUIModules()) {
+    for (const d of mod.mountDiagnostics) {
+      diagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
+    }
+  }
+
   throwIfFatalDiagnostics(
     rawIRArray.flatMap(({ filePath, programIR }) =>
       programIR.diagnostics.map((diagnostic) => ({ filePath, diagnostic })),

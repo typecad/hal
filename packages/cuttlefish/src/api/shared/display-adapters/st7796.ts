@@ -9,13 +9,9 @@
 //
 // Init API: Adafruit_ST7796S requires init(w,h,rowOff,colOff,colorOrder) to
 // send the panel init sequence. begin(freq) alone would skip it (blank panel).
-// SPI frequency handling: Adafruit_ST77xx::begin(uint32_t) is PROTECTED, so we
-// can't call __tc_display.begin(freq) from outside the class. Instead, after
-// init() runs (which internally calls commonInit→begin→initSPI with the 8 MHz
-// default), we call initSPI(freq) directly — that's the public SPITFT method
-// begin() itself delegates to. It re-establishes the SPI bus at the requested
-// frequency. The official ST7796S_demo.ino skips this and accepts the default;
-// our explicit initSPI(freq) is a deliberate, safe optimization.
+// SPI frequency handling: init() runs the panel command sequence and initializes
+// Adafruit_SPITFT. If the profile requests a frequency, update the transaction
+// settings with setSPISpeed() after init; do not call initSPI() a second time.
 // ---------------------------------------------------------------------------
 
 import type { DisplayAdapterGenerator } from "../display-adapter.js";
@@ -26,6 +22,8 @@ export const st7796Adapter: DisplayAdapterGenerator = (display) => {
   const rst = display._mountRst;
   const rotation = display.rotation ?? 1;
   const spiFreq = display.spiFrequency;
+  const invertDisplay = display.invertDisplay;
+  const colorOrder = display.colorOrder === "bgr" ? "ST7796S_BGR" : "ST7796S_RGB";
 
   if (display.colorFormat === "rgb666" || display.colorFormat === "rgb888") {
     throw new Error(
@@ -43,14 +41,23 @@ export const st7796Adapter: DisplayAdapterGenerator = (display) => {
     "#include <Adafruit_ST7796S.h>",
   ].join("\n");
 
+  const inversionLines = invertDisplay === undefined
+    ? []
+    : [
+        `  __tc_display.startWrite();`,
+        `  __tc_display.writeCommand(${invertDisplay ? "ST77XX_INVON" : "ST77XX_INVOFF"});`,
+        `  __tc_display.endWrite();`,
+      ];
+
   return {
     includes,
     declaration: `Adafruit_ST7796S __tc_display = Adafruit_ST7796S(${cs}, ${dc}, ${rst});`,
     functions: [
       `// --- Display adapter: ST7796S (RGB565) ---`,
       `static inline void display_init() {`,
-      `  __tc_display.init(320, 480, 0, 0, ST7796S_RGB);`,
-      spiFreq ? `  __tc_display.initSPI(${spiFreq});` : ``,
+      `  __tc_display.init(320, 480, 0, 0, ${colorOrder});`,
+      spiFreq ? `  __tc_display.setSPISpeed(${spiFreq});` : ``,
+      ...inversionLines,
       `  __tc_display.setRotation(${rotation});`,
       `  __tc_display.fillScreen(0x0000);`,
       `}`,

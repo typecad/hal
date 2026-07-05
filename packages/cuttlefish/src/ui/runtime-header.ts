@@ -46,6 +46,9 @@ export function emitRuntimeHeader(): string {
 #ifndef UI_SCROLL_EDGE_SNAP_PX
 #define UI_SCROLL_EDGE_SNAP_PX 12
 #endif
+#ifndef UI_SCROLL_DRAG_SCALE_X10
+#define UI_SCROLL_DRAG_SCALE_X10 10
+#endif
 #ifndef UI_SCROLL_SETTLE_MS
 #define UI_SCROLL_SETTLE_MS 180
 #endif
@@ -76,6 +79,12 @@ export function emitRuntimeHeader(): string {
 // Telemetry: emits per-frame scrollY/overscrollPx/dy over Serial when defined.
 #ifndef UI_SCROLL_DEBUG
 #define UI_SCROLL_DEBUG 0
+#endif
+#ifndef UI_SCROLL_CANVAS_BUDGET_BYTES
+#define UI_SCROLL_CANVAS_BUDGET_BYTES 88000
+#endif
+#if defined(ESP32) || defined(ESP8266)
+#include <Esp.h>
 #endif
 
 enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT, NODE_IMG, NODE_LIST, NODE_CANVAS };
@@ -415,6 +424,14 @@ static int16_t __ui_touch_node = -1;  // int16: node index can exceed 127
 // Unified scroll gesture: one owning scroll container per gesture, one baseline.
 // overscrollPx/settling live on the node; only the settle-animation state is here.
 static int16_t __ui_scroll_node = -1;            // owning scroll container (int16: node index can exceed 127)
+// Per-node flag: 1 if the scroll-container loop successfully allocated a Mode B
+// canvas for this node on a recent frame. ui_apply_scroll_delta gates scrolling
+// on this — containers whose canvas won't fit (fragmented heap / no PSRAM) are
+// frozen-but-not-torn rather than allowed to scroll with unclipped children.
+// Sized at runtime via __ui_node_count; defaults to all-zero (lock until proven).
+static uint8_t* __ui_scroll_canvas_ok = nullptr;
+// One-shot scroll memory warnings (indexed by node).
+static uint8_t* __ui_scroll_mem_warned = nullptr;
 static uint32_t __ui_settle_start_ms = 0;        // when the active settle animation began
 static int16_t __ui_settle_from_overscroll = 0;  // settle start value (bounce-back)
 static int16_t __ui_settle_from_scrollY = 0;     // settle start value (edge snap; sign: +toward 0, -toward max)
@@ -698,16 +715,76 @@ static inline void ui_release_canvas_state() {
 // Lazily allocate/reuse a viewport-sized canvas for a scroll container. Resizes
 // when the container's box changes; returns null if allocation fails (caller
 // falls back to Mode C direct redraw). Only used on full render tiers.
+// Prefers PSRAM when available (ESP32 + BOARD_HAS_PSRAM + psramFound) so large
+// viewport canvases (e.g. 116KB+ for a full-width scroll region on a 480x320
+// panel) don't exhaust internal SRAM. Falls back to internal SRAM otherwise.
+static inline CuttlefishCanvas16* ui_create_canvas_best(int16_t w, int16_t h) {
+#if defined(ESP32) && defined(BOARD_HAS_PSRAM)
+  if (psramFound()) {
+    CuttlefishCanvas16* c = display_createCanvasPsram(w, h);
+    if (c && display_canvasBuffer(c)) return c;
+    // PSRAM allocation failed (rare — fragmented PSRAM) → fall through to SRAM.
+  }
+#endif
+  return display_createCanvas(w, h);
+}
+
 static inline CuttlefishCanvas16* ui_get_container_canvas(int16_t w, int16_t h) {
   if (w <= 0 || h <= 0) return nullptr;
   if (!__ui_container_canvas ||
       display_canvasWidth(__ui_container_canvas) != w ||
       display_canvasHeight(__ui_container_canvas) != h) {
     display_deleteCanvas(__ui_container_canvas);
-    __ui_container_canvas = display_createCanvas(w, h);
+    __ui_container_canvas = ui_create_canvas_best(w, h);
   }
   return (__ui_container_canvas && display_canvasBuffer(__ui_container_canvas))
     ? __ui_container_canvas : nullptr;
+}
+
+// Defined after the node table by UI lowering (scroll overflow nodes with ids).
+static inline const char* __ui_scroll_node_id(uint16_t idx);
+
+// Emit a one-time Serial warning when scroll rendering cannot be accurate due
+// to heap limits. reason: 0=canvas alloc failed, 1=viewport exceeds budget,
+// 2=Mode C strip fallback (reduced accuracy).
+static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
+  if (nodeIdx >= __ui_node_count) return;
+  if (!__ui_scroll_mem_warned) return;
+  if (__ui_scroll_mem_warned[nodeIdx]) return;
+  __ui_scroll_mem_warned[nodeIdx] = 1;
+
+  int16_t vw = __ui_nodes[nodeIdx].box.w;
+  int16_t vh = __ui_nodes[nodeIdx].box.h;
+  uint32_t need = (uint32_t)(vw > 0 ? vw : 0) * (uint32_t)(vh > 0 ? vh : 0) * 2u;
+  const char* id = __ui_scroll_node_id(nodeIdx);
+  const char* label = (id && id[0]) ? id : "scroll viewport";
+  const char* reasonText = "scroll canvas allocation failed";
+  if (reason == 1) reasonText = "scroll viewport exceeds compile-time canvas budget";
+  else if (reason == 2) reasonText = "using Mode C strip fallback (smooth scroll canvas unavailable)";
+
+#if defined(ESP32)
+  uint32_t freeHeap = ESP.getFreeHeap();
+  uint32_t maxAlloc = ESP.getMaxAllocHeap();
+  Serial.printf(
+    "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
+    "heap free=%lu max_alloc=%lu budget=%d. "
+    "Shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\\n",
+    label, vw, vh, (unsigned long)need, reasonText,
+    (unsigned long)freeHeap, (unsigned long)maxAlloc, UI_SCROLL_CANVAS_BUDGET_BYTES);
+#elif defined(ESP8266)
+  uint32_t freeHeap = ESP.getFreeHeap();
+  Serial.printf(
+    "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
+    "heap free=%lu budget=%d. "
+    "Shrink the scroll viewport in CSS, trim fonts/images, or reduce UI footprint.\\n",
+    label, vw, vh, (unsigned long)need, reasonText,
+    (unsigned long)freeHeap, UI_SCROLL_CANVAS_BUDGET_BYTES);
+#else
+  Serial.printf(
+    "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
+    "budget=%d. Shrink the scroll viewport in CSS or trim UI assets.\\n",
+    label, vw, vh, (unsigned long)need, reasonText, UI_SCROLL_CANVAS_BUDGET_BYTES);
+#endif
 }
 
 // Shift the canvas buffer vertically by deltaY (cheap memmove of existing
@@ -768,7 +845,7 @@ static inline CuttlefishCanvas16* ui_get_repair_canvas(int16_t w, int16_t h) {
       display_canvasWidth(__ui_repair_canvas) < w ||
       display_canvasHeight(__ui_repair_canvas) < h) {
     display_deleteCanvas(__ui_repair_canvas);
-    __ui_repair_canvas = display_createCanvas(w, h);
+    __ui_repair_canvas = ui_create_canvas_best(w, h);
   }
   return (__ui_repair_canvas && display_canvasBuffer(__ui_repair_canvas))
     ? __ui_repair_canvas : nullptr;
@@ -877,10 +954,15 @@ static inline void ui_display_print(const char* text) {
 // 'none' tier compiles drag scroll out entirely.
 static int16_t __ui_scroll_prev_dy = 0;  // last smoothed delta (low-pass state)
 
+static inline int16_t ui_scroll_scale_dy(int16_t dy) {
+  int32_t scaled = (int32_t)dy * (int32_t)UI_SCROLL_DRAG_SCALE_X10;
+  return (int16_t)(scaled >= 0 ? (scaled + 5) / 10 : (scaled - 5) / 10);
+}
+
 static inline int16_t ui_scroll_smooth_dy(int16_t dy) {
 #if UI_SCROLL_INPUT_TIER_CAPACITIVE
   __ui_scroll_prev_dy = dy;
-  return dy;
+  return ui_scroll_scale_dy(dy);
 #elif UI_SCROLL_INPUT_TIER_RESISTIVE
   int16_t db = (int16_t)UI_SCROLL_DEADBAND_PX;
   if (dy >= -db && dy <= db) {
@@ -890,7 +972,7 @@ static inline int16_t ui_scroll_smooth_dy(int16_t dy) {
     return 0;
   }
   __ui_scroll_prev_dy = dy;
-  return dy;
+  return ui_scroll_scale_dy(dy);
 #else
   (void)dy;
   return 0;
@@ -1397,6 +1479,22 @@ static inline void ui_push_buffered_scroll_canvas(CuttlefishCanvas16* bufferedSc
     vw, vh);
 }
 
+// Draw a scroll container's scrollbar directly on the display (Mode C).
+static inline void ui_draw_scrollbar_direct(int16_t si, int16_t vox, int16_t voy) {
+  if (si < 0 || si >= (int16_t)__ui_node_count) return;
+  int16_t vw = __ui_nodes[si].box.w;
+  int16_t vh = __ui_nodes[si].box.h;
+  if (__ui_nodes[si].contentHeight <= vh) return;
+  int16_t tx = vox + vw - 4;
+  uint16_t thumbH = (uint32_t)vh * vh / __ui_nodes[si].contentHeight;
+  if (thumbH < 8) thumbH = 8;
+  int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
+  uint16_t thumbY = (uint32_t)(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
+  UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
+  ui_display_fill_rect(tx, voy, 3, vh, dimFg);
+  ui_display_fill_rect(tx, (int16_t)(voy + thumbY), 3, thumbH, __ui_nodes[si].fg);
+}
+
 // Per-node dirty marker (called by press handlers and binding evaluation).
 static inline void ui_mark_dirty(uint16_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return;
@@ -1431,6 +1529,11 @@ static inline void ui_mark_dirty(uint16_t nodeIdx) {
           ui_mark_scroll_view_dirty(p);
           return;
         }
+        // Fully inside the viewport, but overflow scroll content is canvas-
+        // composited. Promote to a scroll repaint — otherwise the defer path
+        // drops the child's dirty flag without drawing (e.g. :pressed buttons).
+        ui_mark_scroll_view_dirty(p);
+        return;
       }
       p = __ui_nodes[p].parent;
     }
@@ -1450,6 +1553,53 @@ static inline void ui_mark_subtree_dirty_local(uint16_t scrollNode) {
     __ui_nodes[c].dirty = 1;
   }
   __ui_nodes[scrollNode].dirty = 1;
+}
+
+// Mode C strip-only: direct-partial scroll when no viewport canvas fits and the
+// scroll delta is small. Fills only the exposed strip on the display, then marks
+// visible descendants dirty for direct draw — never clears the whole viewport.
+static inline void ui_scroll_direct_prepare(uint16_t s, int16_t* outVX, int16_t* outVY) {
+  int16_t vw = __ui_nodes[s].box.w;
+  int16_t vh = __ui_nodes[s].box.h;
+  int16_t vox = __ui_nodes[s].box.x;
+  int16_t voy = __ui_nodes[s].box.y;
+  UI_COLOR_T scrollBg = __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor;
+  int16_t deltaY = __ui_nodes[s].scrollY - __ui_nodes[s].lastPaintedScrollY;
+  int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
+  int16_t stripY = deltaY > 0 ? (int16_t)(vh - absDelta) : 0;
+  ui_display_fill_rect(vox, (int16_t)(voy + stripY), vw, absDelta, scrollBg);
+  for (uint16_t c = s + 1; c < __ui_nodes[s].subtreeEnd; c++) {
+    if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) {
+      __ui_nodes[c].dirty = 0;
+      continue;
+    }
+    __ui_nodes[c].dirty = 1;
+    if (__ui_nodes[c].kind == NODE_PROGRESS || __ui_nodes[c].kind == NODE_RANGE) {
+      __ui_nodes[c].lastTextWidth = -1;
+    }
+    __ui_nodes[c].lastTextHeight = 0;
+  }
+  __ui_nodes[s].dirty = 0;
+  if (outVX) *outVX = vox;
+  if (outVY) *outVY = voy;
+}
+
+// Nearest overflow scroll container owning nodeIdx (or nodeIdx itself).
+static inline int16_t ui_overflow_scroll_compositor(uint16_t nodeIdx) {
+  if (nodeIdx >= __ui_node_count) return -1;
+  if (__ui_nodes[nodeIdx].scrollable && !__ui_nodes[nodeIdx].virtualized &&
+      __ui_nodes[nodeIdx].contentHeight > __ui_nodes[nodeIdx].box.h) {
+    return (int16_t)nodeIdx;
+  }
+  uint16_t p = __ui_nodes[nodeIdx].parent;
+  while (p != UI_NO_PARENT && p < __ui_node_count) {
+    if (__ui_nodes[p].scrollable && !__ui_nodes[p].virtualized &&
+        __ui_nodes[p].contentHeight > __ui_nodes[p].box.h) {
+      return (int16_t)p;
+    }
+    p = __ui_nodes[p].parent;
+  }
+  return -1;
 }
 
 static inline void ui_mark_scroll_view_overlaps_dirty(uint16_t scrollNode) {
@@ -2174,6 +2324,16 @@ static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible) {
 // Also seed each text-bound node's buffer from its flash literal so the first
 // strcmp in ui_tick has a valid baseline (no spurious redraw on frame 1).
 static inline void ui_init(void) {
+  // Allocate the per-node scroll-canvas-OK flag array (once; __ui_node_count
+  // is a compile-time constant known by this point). calloc zeroes it — all
+  // containers start locked until the scroll-container loop proves their
+  // canvas fits.
+  if (!__ui_scroll_canvas_ok && __ui_node_count > 0) {
+    __ui_scroll_canvas_ok = (uint8_t*)calloc(__ui_node_count, sizeof(uint8_t));
+  }
+  if (!__ui_scroll_mem_warned && __ui_node_count > 0) {
+    __ui_scroll_mem_warned = (uint8_t*)calloc(__ui_node_count, sizeof(uint8_t));
+  }
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
     __ui_nodes[i].lastTextHeight = 0;
@@ -3637,12 +3797,19 @@ static inline void ui_tick(uint16_t deltaMs) {
   uint8_t scrollMotionActive = ui_scroll_motion_active();
   for (uint16_t i = 0; i < __ui_anim_count; i++) {
     if (!__ui_anims[i].active) continue;
-    // Skip animations on non-visible screens — their nodes are not drawn,
-    // so advancing them would paint stray fragments ("blotches") on the
-    // active screen. The animation resumes correctly on navigation back.
+    // Skip animations on non-visible screens OR hidden subtrees — their nodes
+    // are not drawn, so advancing them would paint stray fragments ("blotches")
+    // on the active screen. The screenId check handles multi-screen nav; the
+    // effective-visibility check handles master-detail panes (all on screen 0,
+    // but only one pane is visible at a time — the rest have visible=0 set by
+    // a ui.bind(..., 'visible', ...) binding). Without this, infinite animations
+    // on a hidden pane (e.g. the transforms dots) keep ticking, marking their
+    // nodes dirty, and repainting on top of the visible pane's content.
     {
       uint16_t animNode = __ui_anims[i].node;
-      if (animNode < __ui_node_count && __ui_nodes[animNode].screenId != __ui_active_screen) continue;
+      if (animNode >= __ui_node_count) continue;
+      if (__ui_nodes[animNode].screenId != __ui_active_screen) continue;
+      if (!ui_is_effectively_visible(animNode)) continue;
     }
     if (scrollMotionActive &&
         ui_keyframe_set_has_scroll_sensitive_geometry(__ui_anims[i].keyframeSet)) {
@@ -3850,6 +4017,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   CuttlefishCanvas16* bufferedScrollRepaintCanvas = nullptr;
   int16_t bufferedScrollRepaintY = 0;
   int16_t bufferedScrollRepaintH = 0;
+  uint8_t bufferedScrollDirectStrip = 0;
   for (uint16_t s = 0; s < __ui_node_count; s++) {
     if (!__ui_nodes[s].scrollable || !ui_is_effectively_visible(s)) continue;
     if (__ui_nodes[s].virtualized) continue;  // lists render via NODE_LIST, not Mode B
@@ -3862,11 +4030,12 @@ static inline void ui_tick(uint16_t deltaMs) {
     int16_t vox = __ui_nodes[s].box.x;
     int16_t voy = __ui_nodes[s].box.y;
     UI_COLOR_T scrollBg = __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor;
-#if UI_SCROLL_RENDER_TIER_FULL
     bufferedScrollCanvas = ui_get_container_canvas(vw, vh);
-#else
-    bufferedScrollCanvas = nullptr;  // Mode C: direct partial, no canvas
-#endif
+    // Track canvas-allocation success so ui_apply_scroll_delta can lock scrolling
+    // for containers whose canvas won't fit (frozen-but-not-torn contract).
+    if (__ui_scroll_canvas_ok) {
+      __ui_scroll_canvas_ok[s] = bufferedScrollCanvas ? 1 : 0;
+    }
     if (bufferedScrollCanvas) {
       bufferedScrollNode = (int16_t)s;
       bufferedScrollVX = vox;
@@ -3925,15 +4094,22 @@ static inline void ui_tick(uint16_t deltaMs) {
       // visibly flash before the canvas is pushed.
       __ui_nodes[s].dirty = 0;
     } else {
-      // Mode C (constrained tier / allocation failure): direct partial redraw.
-      for (uint16_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
-        __ui_nodes[c].dirty = 1;
-        if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
-        else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
-        __ui_nodes[c].lastTextHeight = 0;
+      // Canvas won't fit. Mode C strip-only for small in-viewport deltas; otherwise
+      // graceful skip (keep last frame, retry next tick). Never direct-draw a full
+      // scroll subtree to the display — that clears the live viewport and flashes.
+      int16_t deltaY = __ui_nodes[s].scrollY - __ui_nodes[s].lastPaintedScrollY;
+      int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
+      uint32_t scrollNeed = (uint32_t)(vw > 0 ? vw : 0) * (uint32_t)(vh > 0 ? vh : 0) * 2u;
+      if (absDelta > 0 && absDelta < vh) {
+        bufferedScrollNode = (int16_t)s;
+        bufferedScrollDirectStrip = 1;
+        ui_warn_scroll_memory((uint16_t)s, 2);
+        ui_scroll_direct_prepare(s, &bufferedScrollVX, &bufferedScrollVY);
+        break;
       }
-      ui_display_fill_rect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
-        __ui_nodes[s].box.w, __ui_nodes[s].box.h, scrollBg);
+      ui_warn_scroll_memory((uint16_t)s, scrollNeed > (uint32_t)UI_SCROLL_CANVAS_BUDGET_BYTES ? 1 : 0);
+      if (__ui_scroll_canvas_ok) __ui_scroll_canvas_ok[s] = 0;
+      continue;
     }
     // Only one scroll container per frame (the canvas is reused for subsequent
     // ones in the next dirty frame). This matches the original design.
@@ -3970,6 +4146,29 @@ static inline void ui_tick(uint16_t deltaMs) {
     }
     if (selected < 0) break;
     int16_t i = selected;
+
+    // Defer direct display draws for overflow scroll subtrees not composited this
+    // frame (Mode B canvas or Mode C strip). Drawing them directly clears the live
+    // viewport and produces sequential flashes (AGENTS.md).
+    {
+      int16_t scrollComp = ui_overflow_scroll_compositor((uint16_t)i);
+      if (scrollComp >= 0) {
+        uint8_t compositing = scrollComp == bufferedScrollNode &&
+          (bufferedScrollCanvas || bufferedScrollDirectStrip);
+        if (!compositing) {
+          if ((uint16_t)i == (uint16_t)scrollComp) break;
+          __ui_nodes[i].dirty = 0;
+          continue;
+        }
+      }
+    }
+
+    // Mode C strip: scroll owner is not drawn directly (would fill the viewport).
+    if (bufferedScrollDirectStrip && bufferedScrollNode >= 0 &&
+        (uint16_t)i == (uint16_t)bufferedScrollNode) {
+      __ui_nodes[i].dirty = 0;
+      continue;
+    }
 
     if (bufferedScrollNode >= 0 && bufferedScrollCanvas &&
         !(i > bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd) &&
@@ -4039,6 +4238,16 @@ static inline void ui_tick(uint16_t deltaMs) {
     int16_t cullH = paintRect.h;
     if (drawingBufferedScroll) {
       // Canvas-local clip: skip nodes fully outside the viewport (0..vw, 0..vh).
+      // Use the node's face rect (box.w/h), NOT the paint rect — the paint rect
+      // includes shadow/border extents, which legitimately overflow a scroll
+      // viewport. Clipping on the paint rect falsely rejects nodes whose shadow
+      // pokes past the container edge while the face is fully inside (showed up
+      // as the home-nav buttons never painting on ST7796S, where the nav
+      // container is exactly button-width).
+      int16_t faceX = drawX;
+      int16_t faceY = drawY;
+      int16_t faceW = __ui_nodes[i].box.w;
+      int16_t faceH = __ui_nodes[i].box.h;
       CuttlefishCanvas16* scrollDrawCanvas = bufferedScrollRepaintCanvas ? bufferedScrollRepaintCanvas : bufferedScrollCanvas;
       int16_t scrollDrawW = display_canvasWidth(scrollDrawCanvas);
       int16_t scrollDrawH = display_canvasHeight(scrollDrawCanvas);
@@ -4046,14 +4255,14 @@ static inline void ui_tick(uint16_t deltaMs) {
         scrollDrawW = __ui_nodes[bufferedScrollNode].box.w;
         scrollDrawH = bufferedScrollRepaintH;
       }
-      if (cullY + cullH <= 0 || cullY >= scrollDrawH ||
-          cullX + cullW <= 0 || cullX >= scrollDrawW) {
+      if (faceY + faceH <= 0 || faceY >= scrollDrawH ||
+          faceX + faceW <= 0 || faceX >= scrollDrawW) {
         __ui_nodes[i].box.x = origBoxX;
         __ui_nodes[i].box.y = origBoxY;
         __ui_nodes[i].dirty = 0;
         continue;
       }
-    } else if (ui_is_rect_clipped_by_scroll(i, cullX, cullY, cullW, cullH)) {
+    } else if (ui_is_rect_clipped_by_scroll(i, drawX, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h)) {
       __ui_nodes[i].box.x = origBoxX;
       __ui_nodes[i].box.y = origBoxY;
       __ui_nodes[i].dirty = 0;
@@ -4141,6 +4350,19 @@ static inline void ui_tick(uint16_t deltaMs) {
           int16_t textY = drawY + insetT;
           int16_t textW = (int16_t)__ui_nodes[i].box.w - insetL - insetR;
           if (textW < 1) textW = 1;
+          uint8_t textBoxPainted = 0;
+          if (__ui_nodes[i].gradientEnabled > 0) {
+            ui_draw_gradient_fill(i, drawY);
+            textBoxPainted = 1;
+          } else if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg) {
+            ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY,
+              __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, fillBg);
+            textBoxPainted = 1;
+          } else if (__ui_nodes[i].hasBg) {
+            ui_display_fill_rect(__ui_nodes[i].box.x, drawY,
+              __ui_nodes[i].box.w, __ui_nodes[i].box.h, fillBg);
+            textBoxPainted = 1;
+          }
           {
             uint16_t clearW = __ui_nodes[i].box.w;
             int16_t paintedTextW = (int16_t)__ui_nodes[i].lastTextWidth + insetL + insetR;
@@ -4168,9 +4390,15 @@ static inline void ui_tick(uint16_t deltaMs) {
             if (__ui_nodes[i].opacity < 100) {
               clearCol = ui_blend(clearCol, ui_parent_clear_color(i), __ui_nodes[i].opacity);
             }
-            ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
+            if (!textBoxPainted) {
+              ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
+            }
             __ui_nodes[i].lastTextWidth = tw;
             __ui_nodes[i].lastTextHeight = th;
+          }
+          ui_draw_shadow(i, drawY, 1);
+          if (__ui_nodes[i].borderStyle != 0) {
+            ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
           }
           // Rich-text (inline runs): draw from precomputed geometry instead of the
           // single-string wrapped path. Geometry is baked at transpile time; the
@@ -4759,6 +4987,9 @@ static inline void ui_tick(uint16_t deltaMs) {
     ui_push_buffered_scroll_canvas(bufferedScrollCanvas, bufferedScrollRepaintCanvas,
       bufferedScrollNode, bufferedScrollVX, bufferedScrollVY,
       bufferedScrollRepaintY, bufferedScrollRepaintH, __ui_draw_target);
+  } else if (bufferedScrollNode >= 0 && bufferedScrollDirectStrip) {
+    ui_draw_scrollbar_direct(bufferedScrollNode, bufferedScrollVX, bufferedScrollVY);
+    __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;
   }
   // ── Framebuffer bulk push ────────────────────────────────────────────────
   // When a framebuffer was used this frame, flush it to the display in a single

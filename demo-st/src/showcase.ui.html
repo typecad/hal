@@ -1,0 +1,403 @@
+<link rel="stylesheet" href="showcase.neobrutalism.css">
+
+<!-- Inline <style> block: parsed and merged with the external theme CSS.
+     Demonstrates the <style> element (extractStyleBlocks). -->
+<style>
+  #typeView {
+    align-items: center;
+    width: 280px;
+    background: var(--secondary);
+    border: 1px solid var(--border);
+    padding: 8px;
+  }
+</style>
+
+<!-- ── Home ─────────────────────────────────────────────────────────────── -->
+<screen id="home">
+  <body>
+    <header id="homeHeader">
+      <h1 id="homeTitle">cuttlefish UI</h1>
+      <p id="homeSubtitle">capability showcase</p>
+    </header>
+    <main class="scrollBody">
+      <nav id="homeNav">
+        <button href="#typography">Typography &gt;</button>
+        <button href="#richtext">Rich Text &gt;</button>
+        <button href="#box">Box &amp; Sizing &gt;</button>
+        <button href="#layout">Position &amp; Layers &gt;</button>
+        <button href="#flex">Flexbox &gt;</button>
+        <button href="#transforms">Transforms &gt;</button>
+        <button href="#forms">Forms &gt;</button>
+        <button href="#media">Images &amp; Canvas &gt;</button>
+        <button href="#lists">Lists &gt;</button>
+        <button href="#keyboard">Keyboard &gt;</button>
+      </nav>
+    </main>
+    <footer id="homeFooter">
+      <p id="homeHint">tap a link to navigate</p>
+      <text id="homeNativeText">&lt;text&gt; native element</text>
+    </footer>
+  </body>
+</screen>
+
+<!-- ── Typography ───────────────────────────────────────────────────────── -->
+<screen id="typography">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Typography</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="typeHeadings">
+        <h1 class="demoH1">H1 heading</h1>
+        <h2 class="demoH2">H2 heading</h2>
+        <h3 class="demoH3">H3 heading</h3>
+        <h4 class="demoH4">H4 heading</h4>
+        <h5 class="demoH5">H5 heading</h5>
+        <h6 class="demoH6">H6 heading</h6>
+      </section>
+      <section id="typeStyle">
+        <p class="tBold">bold weight</p>
+        <p class="tItalic" style="font-style: italic">italic style</p>
+        <p class="tUnderline" style="text-decoration: underline">underline</p>
+        <p class="tUpper" style="text-transform: uppercase">lowercase source</p>
+        <p class="tCenter" style="text-align: center">centered text</p>
+        <p class="tShadow" style="text-shadow: 1px 1px 1px rgba(255,255,255,0.6)">drop shadow</p>
+        <p class="tShorthand" style="font: bold 18px 'ColibriDemo'; background-color: #3399ff; color: #000000">font shorthand</p>
+        <p class="tEllipsis" style="text-overflow: ellipsis; white-space: nowrap; width: 120px; overflow: hidden">ellipsis shows trailing dots here</p>
+        <p class="tClip" style="text-overflow: clip; white-space: nowrap; width: 120px; overflow: hidden">clip cuts the overflowed text</p>
+      </section>
+      <section id="typeSpacing">
+        <p class="tLeading" style="line-height: 22px; width: 200px">Tall leading wraps a longer sentence across two lines.</p>
+        <p class="tTracking" style="letter-spacing: 3px">wide tracking</p>
+      </section>
+      <section id="typeWrap">
+        <p class="tNowrap" style="white-space: nowrap; width: 120px; overflow: hidden">nowrap clips the overflow</p>
+        <p class="tPreLine" style="white-space: pre-line; width: 160px">hard break via &lt;br/&gt;<br/>then wraps naturally</p>
+      </section>
+      <section id="typeFont">
+        <p class="tCustom" style="font-family: 'ColibriDemo'; font-size: 22px; font-weight: bold">custom font</p>
+        <p class="tSmooth" style="font-smoothing: antialiased; font-size: 20px">antialiased</p>
+        <p class="tBitmap" style="font-smoothing: none; font-size: 20px">bitmap</p>
+      </section>
+      <article id="typeArticle">
+        <span class="tAside">&lt;article&gt; block alias</span>
+      </article>
+      <aside id="typeAside">
+        <span class="tAside">&lt;aside&gt; block alias</span>
+      </aside>
+      <view id="typeView">
+        <span class="tAside">&lt;view&gt; native container</span>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Rich Text (inline flow) ──────────────────────────────────────────── -->
+<screen id="richtext">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Rich Text</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="richMixed">
+        <!-- Mixed inline content flows on shared wrapped lines with per-run
+             style: bold, italic, underline, color, and a tappable link. -->
+        <p style="padding:8px; width:200px; font-smoothing: antialiased">This is a <b>rich text</b> paragraph with <i>italic</i>, <u>underline</u>, and a <a href="#home">link home</a>. It wraps across lines with <span style="color:#ff6666">colored</span> runs and a <span style="font-size:22px">bigger</span> word on the same line.</p>
+      </section>
+      <section id="richBreak">
+        <p style="padding:8px; width:200px; font-smoothing: antialiased">Line one.<br/>Line two after a hard break.<br/><br/>After a blank line.</p>
+      </section>
+      <section id="richNested">
+        <p style="padding:8px; width:200px; font-smoothing: antialiased">Nested <b>bold and <i>both</i></b> styles in one run sequence.</p>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Box & Sizing ─────────────────────────────────────────────────────── -->
+<screen id="box">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Box &amp; Sizing</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="boxSize">
+        <h3 class="demoLabel">width / height</h3>
+        <div id="boxFixed"></div>
+        <div id="boxMin" style="min-width: 120px; min-height: 24px"></div>
+        <div id="boxMax" style="width: 140px; height: 50px; max-width: 90px; max-height: 30px; background: #cc33cc"></div>
+        <div id="boxSizing" style="box-sizing: content-box; width: 100px; height: 24px; border: 4px solid #ff6666; background: #ffff33"><span class="boxLabel" style="white-space: nowrap">box-size</span></div>
+      </section>
+      <section id="boxPadMargin">
+        <h3 class="demoLabel">padding / margin</h3>
+        <div id="boxPadded"><span class="boxLabel">pad 12/20</span></div>
+        <div id="boxMargin"><span class="boxLabel">margin 16</span></div>
+      </section>
+      <section id="boxBorder">
+        <h3 class="demoLabel">border + radius</h3>
+        <div id="boxBordered"><span class="boxLabel">shorthand border</span></div>
+        <div id="boxRadius"><span class="boxLabel">radius 10</span></div>
+        <div id="boxPerSide"><span class="boxLabel">per-side (best-effort)</span></div>
+        <div id="boxBorderLong" style="min-height: 24px; padding: 4px; border-width: 3px; border-color: #cc33cc; border-style: solid; background: #333333"><span class="boxLabel">border longhands</span></div>
+      </section>
+      <section id="boxShadowSec">
+        <h3 class="demoLabel">box-shadow / outline</h3>
+        <div id="boxShadowed"><span class="boxLabel">offset shadow</span></div>
+        <div id="boxOutlined"><span class="boxLabel">outline</span></div>
+      </section>
+      <section id="boxAspect">
+        <h3 class="demoLabel">aspect-ratio</h3>
+        <div id="boxAspectWide"><span class="aspectLabel">16:9</span></div>
+        <div id="boxAspectSquare"><span class="aspectLabel">1:1</span></div>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Position & Layers ────────────────────────────────────────────────── -->
+<screen id="layout">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Position &amp; Layers</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="layerDemo">
+        <h3 class="demoLabel">z-index layers</h3>
+        <div id="layerStage">
+          <div id="layerBack"><span class="layerTag">back z1</span></div>
+          <div id="layerFront"><span class="layerTag">front z2</span></div>
+          <div id="layerCorner"><span class="layerTag">right</span></div>
+        </div>
+      </section>
+      <section id="visibilityDemo">
+        <h3 class="demoLabel">display:none / hidden / collapse</h3>
+        <div id="visStack">
+          <span class="visCaption">hidden attr - no space</span>
+          <div id="visBefore"><span class="visText">visible</span></div>
+          <div id="visHiddenAttr" hidden><span class="visText">hidden</span></div>
+          <div id="visAfter1"><span class="visText">visible</span></div>
+          <span class="visCaption">display:none - no space</span>
+          <div id="visBefore2"><span class="visText">visible</span></div>
+          <div id="visDisplayNone"><span class="visText">display:none</span></div>
+          <div id="visAfter2"><span class="visText">visible</span></div>
+          <span class="visCaption">visibility:collapse - reserves space</span>
+          <div id="visBefore3"><span class="visText">visible</span></div>
+          <div id="visCollapsed" style="visibility: collapse"><span class="visText">collapse</span></div>
+          <div id="visAfter3"><span class="visText">visible</span></div>
+        </div>
+      </section>
+      <section id="opacityDemo">
+        <h3 class="demoLabel">opacity</h3>
+        <div id="opacityRow">
+          <div id="opaqFull" class="opaqChip"><span>1.0</span></div>
+          <div id="opaqHalf" class="opaqChip" style="opacity: 0.5"><span>0.5</span></div>
+          <div id="opaqFaint" class="opaqChip" style="opacity: 0.25"><span>0.25</span></div>
+        </div>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Flexbox ──────────────────────────────────────────────────────────── -->
+<screen id="flex">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Flexbox</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="flexJustify">
+        <h3 class="demoLabel">justify-content</h3>
+        <div class="flexRow flexStart"><div class="chip"><span class="chipLabel">A</span></div><div class="chip"><span class="chipLabel">B</span></div></div>
+        <div class="flexRow flexCenter"><div class="chip"><span class="chipLabel">A</span></div><div class="chip"><span class="chipLabel">B</span></div></div>
+        <div class="flexRow flexBetween"><div class="chip"><span class="chipLabel">A</span></div><div class="chip"><span class="chipLabel">B</span></div></div>
+      </section>
+      <section id="flexAlign">
+        <h3 class="demoLabel">align-items / gap</h3>
+        <div class="flexRow alignRow"><div class="chipTall"><span class="chipLabel">A</span></div><div class="chipTall"><span class="chipLabel">B</span></div><div class="chipTall"><span class="chipLabel">C</span></div></div>
+      </section>
+      <section id="flexGrow">
+        <h3 class="demoLabel">grow / basis</h3>
+        <div class="flexRow growRow">
+          <div class="chip grow1"><span class="chipLabel">1</span></div>
+          <div class="chip grow2"><span class="chipLabel">2</span></div>
+          <div class="chip grow0"><span class="chipLabel">0</span></div>
+        </div>
+      </section>
+      <section id="flexOrder">
+        <h3 class="demoLabel">order + flex-wrap</h3>
+        <div class="flexRow wrapRow">
+          <div class="chip ord3"><span class="chipLabel">3-&gt;1</span></div>
+          <div class="chip ord1"><span class="chipLabel">1-&gt;2</span></div>
+          <div class="chip ord2"><span class="chipLabel">2-&gt;3</span></div>
+        </div>
+        <h3 class="demoLabel">shrink / align</h3>
+        <div class="flexRow shrinkRow">
+          <div class="chip shrink1"><span class="chipLabel">S</span></div>
+          <div class="chip shrink0"><span class="chipLabel">0</span></div>
+          <div class="chip shrink0"><span class="chipLabel">0</span></div>
+          <div class="chip shrink0"><span class="chipLabel">0</span></div>
+        </div>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Transforms & Animation ───────────────────────────────────────────── -->
+<screen id="transforms">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Transforms</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="transformDemo">
+        <h3 class="demoLabel">translate / scale / rotate</h3>
+        <span class="demoCap">translate</span>
+        <div class="track"><div id="dotTranslate"></div></div>
+        <span class="demoCap">scale (origin left top)</span>
+        <div class="track"><div id="dotScale"></div></div>
+        <span class="demoCap">origin center</span>
+        <div class="track"><div id="dotOrigin"></div></div>
+        <span class="demoCap">rotate (origin center)</span>
+        <div class="track"><div id="dotRotate"></div></div>
+        <span class="demoCap">animation longhands</span>
+        <div class="track"><div id="dotPulse"></div></div>
+      </section>
+      <section id="transitionDemo">
+        <h3 class="demoLabel">transition (press the button)</h3>
+        <button id="transitionBtn">tap to transition</button>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Forms ────────────────────────────────────────────────────────────── -->
+<screen id="forms">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Forms</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="formButton">
+        <h3 class="demoLabel">button + :pressed</h3>
+        <button id="formBtn" on:click={incrementTaps}>tap me</button>
+        <span id="formBtnCount">taps: {count}</span>
+      </section>
+      <section id="formCheck">
+        <h3 class="demoLabel">check</h3>
+        <check id="formCheck1">Enable feature</check>
+      </section>
+      <section id="formSelect">
+        <h3 class="demoLabel">select + option</h3>
+        <select id="formSelect1">
+          <option value="a">Alpha</option>
+          <option value="b">Beta</option>
+          <option value="c">Gamma</option>
+        </select>
+      </section>
+      <section id="formRadio">
+        <h3 class="demoLabel">radio (grouped name)</h3>
+        <radio id="formRadio1" name="grp" value="x" checked>One</radio>
+        <radio id="formRadio2" name="grp" value="y">Two</radio>
+      </section>
+      <section id="formProgress">
+        <h3 class="demoLabel">progress</h3>
+        <progress id="formProg" value="0"></progress>
+      </section>
+      <section id="formRange">
+        <h3 class="demoLabel">range</h3>
+        <label for="formRange1">Volume</label>
+        <range id="formRange1" min="0" max="10" value="3"></range>
+      </section>
+      <section id="formInput">
+        <h3 class="demoLabel">input (text + number)</h3>
+        <label for="formName">Name</label>
+        <input id="formName" type="text" placeholder="enter name" maxlength="20"></input>
+        <label for="formAge">Age</label>
+        <input id="formAge" type="number" placeholder="0" maxlength="3"></input>
+      </section>
+      <section id="formDisabled">
+        <h3 class="demoLabel">:disabled</h3>
+        <button id="formDisabledBtn" disabled>cannot tap</button>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Images & Canvas ──────────────────────────────────────────────────── -->
+<screen id="media">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Images &amp; Canvas</h2>
+    </header>
+    <main class="scrollBody">
+      <section id="imgFit">
+        <h3 class="demoLabel">img object-fit</h3>
+        <div class="imgRow"><span class="imgLabel">contain</span><img id="imgContain" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: contain"></img></div>
+        <div class="imgRow"><span class="imgLabel">cover</span><img id="imgCover" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: cover"></img></div>
+        <div class="imgRow"><span class="imgLabel">fill</span><img id="imgFill" src="fit-pattern.img" width="48" height="24" style="width: 60px; height: 40px; object-fit: fill"></img></div>
+      </section>
+      <section id="imgTransform">
+        <h3 class="demoLabel">img transform (rotate)</h3>
+        <img id="imgLogo" src="test-logo.img" width="32" height="32" style="transform: rotate(45deg); transform-origin: center"></img>
+      </section>
+      <section id="canvasDemo">
+        <h3 class="demoLabel">canvas (ui.drawCanvas)</h3>
+        <canvas id="demoCanvas" width="200" height="120"></canvas>
+        <span class="demoCap">rects | circles | lines | pixels | text</span>
+      </section>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Lists ────────────────────────────────────────────────────────────── -->
+<screen id="lists">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Lists</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">virtualized list (drag to scroll)</h3>
+      <list id="demoList" item-height="22"></list>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Keyboard ─────────────────────────────────────────────────────────── -->
+<screen id="keyboard">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Keyboard</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">tap the field to open the keyboard</h3>
+      <label for="kbInput">Message</label>
+      <input id="kbInput" type="text" placeholder="type here" maxlength="32"></input>
+    </main>
+  </body>
+</screen>
+
+<!-- Custom keyboard template (sibling of <screen>). -->
+<keyboard id="kbAlpha" variant="alpha" class="ui-keyboard">
+  <row>
+    <key>q</key><key>w</key><key>e</key><key>r</key><key>t</key><key>y</key><key>u</key><key>i</key><key>o</key><key>p</key>
+  </row>
+  <row>
+    <key>a</key><key>s</key><key>d</key><key>f</key><key>g</key><key>h</key><key>j</key><key>k</key><key>l</key>
+  </row>
+  <row>
+    <key special="1">⇧</key><key>z</key><key>x</key><key>c</key><key>v</key><key>b</key><key>n</key><key>m</key><key special="2">⌫</key>
+  </row>
+  <row>
+    <key special="4">123</key><key> </key><key special="3">OK</key>
+  </row>
+</keyboard>

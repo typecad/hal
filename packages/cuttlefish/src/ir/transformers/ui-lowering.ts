@@ -22,6 +22,8 @@ import { getListBindings } from "./ui-reactive.js";
 import type { CSSRule, CSSProperty } from "../../ui/css-parser.js";
 import type { DisplayProfile } from "../../api/shared/display-profile.js";
 import type { UIFontAssetModel } from "../../ui/font-assets.js";
+import { analyzeScrollMemory } from "../../ui/scroll-memory-diagnostics.js";
+import type { Diagnostic } from "../../types.js";
 
 export interface LoweredUI {
   fontTables: string;
@@ -38,6 +40,8 @@ export interface LoweredUI {
   imageTables: string;
   /** C++ keyframe data arrays + animation table. */
   keyframeTables: string;
+  /** Compile-time warnings for scroll viewports that exceed the canvas budget. */
+  scrollMemoryDiagnostics: Diagnostic[];
 }
 
 type ColorFormat = "rgb565" | "rgb666" | "rgb888" | "mono";
@@ -55,14 +59,16 @@ export function lowerUIToCpp(
   allScreens: StyledNode[] = [],
   imageAssetIds: Map<string, number> = new Map(),
   keyframeSets: KeyframeSetModel[] = [],
+  scrollCanvasBudgetBytes?: number,
 ): LoweredUI {
   void storage;
   const model = lowerUIToModel(root, boxes, colorFormat, display, fontAssets, allScreens, imageAssetIds, keyframeSets);
+  const scrollMemoryDiagnostics = analyzeScrollMemory(model.nodes, scrollCanvasBudgetBytes);
 
   // Tables are mutable RAM (ui_tick updates bg/dirty/elapsed/active each
   // frame), so no PROGMEM/flash storage keyword — those imply read-only.
   const fontTables = emitFontTables(model);
-  const nodeTable = emitNodeTable(model);
+  const nodeTable = emitNodeTable(model) + "\n" + emitScrollNodeIdLookup(model);
   const transitionTable = emitTransitionTable(model);
   const typeDecl = emitTypeDecl(root);
 
@@ -102,7 +108,7 @@ export function lowerUIToCpp(
   const screenCount = model.nodes.length > 0 ? Math.max(...model.nodes.map(n => n.screenId)) + 1 : 1;
   const imageTables = "const UIImage __ui_images[] = {};\nconst uint16_t __ui_image_count = 0;";
   const keyframeTables = emitKeyframeTables(model);
-  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount, imageTables, keyframeTables };
+  return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount, imageTables, keyframeTables, scrollMemoryDiagnostics };
 }
 
 function sanitizedId(id: string): string {
@@ -268,6 +274,24 @@ function emitFontTables(model: UIProgram): string {
    lines.push(`const uint16_t __ui_font_face_count = ${assets.length};`);
    return lines.join("\n");
  }
+
+function emitScrollNodeIdLookup(model: UIProgram): string {
+  const cases: string[] = [];
+  for (const n of model.nodes) {
+    if (!n.scrollable || n.contentHeight <= n.box.h || !n.id) continue;
+    const id = n.id.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    cases.push(`  if (idx == ${n.index}) return "${id}";`);
+  }
+  if (cases.length === 0) {
+    return "static inline const char* __ui_scroll_node_id(uint16_t idx) { (void)idx; return nullptr; }";
+  }
+  return [
+    "static inline const char* __ui_scroll_node_id(uint16_t idx) {",
+    ...cases,
+    "  return nullptr;",
+    "}",
+  ].join("\n");
+}
 
 function emitNodeTable(model: UIProgram): string {
   // Map node index → list binding so virtualized nodes carry their count/item/

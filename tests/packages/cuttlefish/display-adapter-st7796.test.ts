@@ -30,19 +30,56 @@ describe("ST7796S display adapter", () => {
     );
   });
 
-  it("display_init calls init(320,480,0,0,ST7796S_RGB), then initSPI(freq), then setRotation", () => {
+  it("display_init calls init(320,480,0,0,ST7796S_RGB), then setSPISpeed(freq), then setRotation", () => {
     expect(a.functions).toContain(
       "__tc_display.init(320, 480, 0, 0, ST7796S_RGB);",
     );
-    expect(a.functions).toMatch(/__tc_display\.initSPI\(80000000\)/);
+    expect(a.functions).toMatch(/__tc_display\.setSPISpeed\(80000000\)/);
     expect(a.functions).toMatch(/__tc_display\.setRotation\(1\)/);
-    // init MUST come before initSPI — Adafruit_ST77xx::begin() is protected, so
-    // we use the public SPITFT::initSPI(freq) to restore the SPI freq that
-    // init()'s internal commonInit→begin() clobbered to the 8 MHz default.
+
     const initIdx = a.functions.indexOf("__tc_display.init(");
-    const initSpiIdx = a.functions.indexOf("__tc_display.initSPI(");
+    const setSpiSpeedIdx = a.functions.indexOf("__tc_display.setSPISpeed(");
+    const rotationIdx = a.functions.indexOf("__tc_display.setRotation(");
     expect(initIdx).toBeGreaterThanOrEqual(0);
-    expect(initSpiIdx).toBeGreaterThan(initIdx);
+    expect(setSpiSpeedIdx).toBeGreaterThan(initIdx);
+    expect(rotationIdx).toBeGreaterThan(setSpiSpeedIdx);
+  });
+
+  it("can force ST7796 panel inversion off after init", () => {
+    const noInvert = generateDisplayAdapter({
+      ...base,
+      invertDisplay: false,
+    } as any);
+
+    expect(noInvert.functions).toContain("__tc_display.startWrite();");
+    expect(noInvert.functions).toContain("__tc_display.writeCommand(ST77XX_INVOFF);");
+    expect(noInvert.functions).toContain("__tc_display.endWrite();");
+
+    const initIdx = noInvert.functions.indexOf("__tc_display.init(");
+    const invertOffIdx = noInvert.functions.indexOf("ST77XX_INVOFF");
+    const rotationIdx = noInvert.functions.indexOf("__tc_display.setRotation(");
+    expect(invertOffIdx).toBeGreaterThan(initIdx);
+    expect(rotationIdx).toBeGreaterThan(invertOffIdx);
+  });
+
+  it("can force ST7796 panel inversion on when requested", () => {
+    const invert = generateDisplayAdapter({
+      ...base,
+      invertDisplay: true,
+    } as any);
+
+    expect(invert.functions).toContain("__tc_display.writeCommand(ST77XX_INVON);");
+  });
+
+  it("can select BGR panel color order", () => {
+    const bgr = generateDisplayAdapter({
+      ...base,
+      colorOrder: "bgr",
+    } as any);
+
+    expect(bgr.functions).toContain(
+      "__tc_display.init(320, 480, 0, 0, ST7796S_BGR);",
+    );
   });
 
   it("does NOT emit the unrunnable 18-bit SPI.writeBytes pack loop", () => {
@@ -92,12 +129,12 @@ describe("ST7796S display adapter", () => {
     ).toThrow(/Adafruit_ST7796S/i);
   });
 
-  it("omits the explicit initSPI(freq) call when spiFrequency is unset", () => {
+  it("omits the explicit setSPISpeed(freq) call when spiFrequency is unset", () => {
     const noFreq = generateDisplayAdapter({
       ...base,
       spiFrequency: undefined,
     } as any);
-    expect(noFreq.functions).not.toMatch(/__tc_display\.initSPI\(\d+\)/);
+    expect(noFreq.functions).not.toMatch(/__tc_display\.setSPISpeed\(\d+\)/);
     expect(noFreq.functions).toContain(
       "__tc_display.init(320, 480, 0, 0, ST7796S_RGB);",
     );

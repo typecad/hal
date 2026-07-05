@@ -218,10 +218,10 @@ export class YogaLayoutEngine implements LayoutEngine {
     if (s.position === "relative") yn.setPositionType(Yoga.POSITION_TYPE_RELATIVE);
     else if (s.position === "absolute") yn.setPositionType(Yoga.POSITION_TYPE_ABSOLUTE);
     else yn.setPositionType(Yoga.POSITION_TYPE_STATIC);
-    if (s.top) yn.setPosition(Yoga.EDGE_TOP, cssNum(s.top));
-    if (s.right) yn.setPosition(Yoga.EDGE_RIGHT, cssNum(s.right));
-    if (s.bottom) yn.setPosition(Yoga.EDGE_BOTTOM, cssNum(s.bottom));
-    if (s.left) yn.setPosition(Yoga.EDGE_LEFT, cssNum(s.left));
+    if (s.top !== undefined) yn.setPosition(Yoga.EDGE_TOP, cssNum(s.top));
+    if (s.right !== undefined) yn.setPosition(Yoga.EDGE_RIGHT, cssNum(s.right));
+    if (s.bottom !== undefined) yn.setPosition(Yoga.EDGE_BOTTOM, cssNum(s.bottom));
+    if (s.left !== undefined) yn.setPosition(Yoga.EDGE_LEFT, cssNum(s.left));
 
     // Width/height (explicit)
     if (s.width) yn.setWidth(cssNum(s.width));

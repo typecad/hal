@@ -189,6 +189,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/__ui_nodes\[i\]\.kind == NODE_TEXT \|\| __ui_nodes\[i\]\.kind == NODE_BUTTON/);
     expect(header).toMatch(/case NODE_TEXT:[\s\S]*int16_t insetL = \(int16_t\)__ui_nodes\[i\]\.borderWidth \+ \(int16_t\)__ui_nodes\[i\]\.paddingLeft/);
     expect(header).toMatch(/case NODE_TEXT:[\s\S]*int16_t textX = __ui_nodes\[i\]\.box\.x \+ insetL/);
+    expect(header).toMatch(/case NODE_TEXT:[\s\S]*ui_draw_node_border\(i, __ui_nodes\[i\]\.box\.x, drawY, bColor\)[\s\S]*case NODE_BUTTON:/);
     expect(header).toMatch(/case NODE_TEXT:[\s\S]*ui_draw_wrapped_text\(displayText, textX, textY, \(uint16_t\)textW/);
   });
 
@@ -266,6 +267,10 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/r\.x < clip\.x[\s\S]*r\.y \+ r\.h > clip\.y \+ clip\.h[\s\S]*ui_mark_scroll_view_dirty\(p\);\s*return;/);
   });
 
+  it("promotes fully-contained dirty descendants inside overflow scroll to a viewport repaint", () => {
+    expect(header).toMatch(/Fully inside the viewport[\s\S]*ui_mark_scroll_view_dirty\(p\);\s*return;/);
+  });
+
   it("applies visible bindings by clearing hidden branches and repainting shown subtrees", () => {
     expect(header).toContain("PROP_VISIBLE");
     expect(header).toContain("ui_is_effectively_visible");
@@ -312,11 +317,23 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("#ifndef UI_SCROLL_MAX_OVERSCROLL");
     expect(header).toContain("#ifndef UI_SCROLL_STIFFNESS_X10");
     expect(header).toContain("#ifndef UI_SCROLL_EDGE_SNAP_PX");
+    expect(header).toContain("#ifndef UI_SCROLL_DRAG_SCALE_X10");
     expect(header).toContain("#ifndef UI_SCROLL_SETTLE_MS");
+    expect(header).toContain("#ifndef UI_SCROLL_CANVAS_BUDGET_BYTES");
     expect(header).toContain("UI_SCROLL_INPUT_TIER_");
     expect(header).toContain("UI_SCROLL_RENDER_TIER_");
     expect(header).toContain("UI_SCROLL_HAS_TOUCH");
     expect(header).toContain("UI_SCROLL_ELASTIC");
+  });
+
+  it("warns once on-device when scroll canvas memory is constrained", () => {
+    expect(header).toContain("ui_warn_scroll_memory");
+    expect(header).toContain("__ui_scroll_mem_warned");
+    expect(header).toContain("__ui_scroll_node_id");
+    expect(header).toMatch(/ui_warn_scroll_memory\(\(uint16_t\)s, 2\)/);
+    expect(header).toMatch(/Serial\.printf\([\s\S]*cuttlefish.*WARNING/);
+    expect(header).toMatch(/ESP\.getFreeHeap\(\)/);
+    expect(header).toMatch(/ESP\.getMaxAllocHeap\(\)/);
   });
 
   it("UINode carries unified scroll state on the node", () => {
@@ -434,11 +451,40 @@ describe("C++ reactive runtime header", () => {
   });
 
   it("keeps the buffered scroll owner out of the direct display draw pass", () => {
-    // The scroll owner is represented by the viewport canvas during Mode B.
-    // Leaving it dirty lets the normal draw pass clear the live display first,
-    // which causes visible flashing before the shifted canvas is pushed.
-    expect(header).toMatch(/if \(bufferedScrollCanvas\) \{[\s\S]*__ui_nodes\[s\]\.dirty = 0;[\s\S]*\} else \{\s*\/\/ Mode C/);
+    // Mode B: the scroll owner is represented by the viewport canvas.
+    // Mode C strip: the scroll owner must not draw directly (would fill the viewport).
+    // Non-composited overflow scroll containers defer entirely until Mode B.
+    expect(header).toMatch(/if \(bufferedScrollCanvas\) \{[\s\S]*__ui_nodes\[s\]\.dirty = 0;[\s\S]*\} else \{/);
+    expect(header).toMatch(/bufferedScrollDirectStrip && bufferedScrollNode >= 0 &&[\s\S]*continue;/);
+    expect(header).toContain("ui_overflow_scroll_compositor");
     expect(header).toMatch(/uint8_t drawingBufferedScroll = bufferedScrollNode >= 0 && i > bufferedScrollNode/);
+  });
+
+  it("uses Mode C strip blit when viewport canvas won't allocate", () => {
+    // When Mode B canvas allocation fails (fragmented heap / no PSRAM), small
+    // scroll deltas may use Mode C strip fill. Full repaints gracefully skip —
+    // never direct-draw an entire scroll subtree to the display (AGENTS.md).
+    expect(header).toContain("ui_scroll_direct_prepare");
+    expect(header).toContain("ui_draw_scrollbar_direct");
+    expect(header).toContain("ui_overflow_scroll_compositor");
+    expect(header).toMatch(/bufferedScrollCanvas = ui_get_container_canvas\(vw, vh\)/);
+    expect(header).toMatch(/absDelta > 0 && absDelta < vh[\s\S]*bufferedScrollDirectStrip = 1[\s\S]*ui_scroll_direct_prepare/);
+    expect(header).toMatch(/if \(__ui_scroll_canvas_ok\) __ui_scroll_canvas_ok\[s\] = 0;[\s\S]*continue;/);
+    expect(header).toMatch(/} else if \(bufferedScrollNode >= 0 && bufferedScrollDirectStrip\) \{[\s\S]*ui_draw_scrollbar_direct/);
+  });
+
+  it("defers non-composited overflow scroll subtrees from the direct display pass", () => {
+    expect(header).toMatch(/ui_overflow_scroll_compositor[\s\S]*if \(!compositing\)[\s\S]*break;/);
+  });
+
+  it("constrained render tier does not full-viewport clear on scroll drag", () => {
+    expect(header).toContain("UI_SCROLL_RENDER_TIER_CONSTRAINED");
+    const directPrepare = header.match(/static inline void ui_scroll_direct_prepare[\s\S]*?^}/m);
+    expect(directPrepare).not.toBeNull();
+    const body = directPrepare![0];
+    expect(body).toMatch(/ui_display_fill_rect\(vox,[\s\S]*absDelta, scrollBg\)/);
+    expect(body).not.toMatch(/ui_mark_subtree_dirty_local/);
+    expect(body).not.toMatch(/ui_display_fill_rect\(vox, voy, vw, vh/);
   });
 
   it("pushes buffered scroll canvases before later outside layers can be repaired", () => {

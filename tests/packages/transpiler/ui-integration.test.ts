@@ -183,6 +183,68 @@ describe("UI end-to-end via transpileFile", () => {
     expect(cpp).toContain(".setRotation(2)");
   });
 
+  it("uses rotated visible dimensions for ST7796 UI layout", async () => {
+    const { cpp } = await transpileUIProgram({
+      html: `<screen></screen>`,
+      css: `screen { background: #111418; }`,
+      display: {
+        profile: "st7796-spi",
+        cs: 5,
+        dc: 17,
+        rst: 16,
+      },
+      ts: [
+        `import { ui } from "@typecad/ui";`,
+        `import { screen } from "./app.ui.html";`,
+        `ui.mount(screen);`,
+        ``,
+      ].join("\n"),
+    });
+
+    expect(cpp).toContain("__tc_display.init(320, 480, 0, 0, ST7796S_RGB);");
+    expect(cpp).toContain(".setRotation(1)");
+    expect(cpp).toContain(".box={0,0,480,320}");
+    expect(cpp).not.toContain(".box={0,0,320,480}");
+  });
+
+  it("initializes display hardware before touch and UI runtime setup", async () => {
+    const { cpp } = await transpileUIProgram({
+      html: `<screen></screen>`,
+      css: ``,
+      display: {
+        driver: "ili9341",
+        bus: "SPI",
+        cs: 10,
+        dc: 9,
+        rst: 8,
+        width: 320,
+        height: 240,
+        colorFormat: "rgb565",
+        rotation: 1,
+        touch: {
+          library: "XPT2046_Touchscreen",
+          cs: 7,
+          irq: 6,
+          calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 240 },
+        },
+      },
+      ts: [
+        `import { ui } from "@typecad/ui";`,
+        `import { screen } from "./app.ui.html";`,
+        `ui.mount(screen);`,
+        ``,
+      ].join("\n"),
+    });
+
+    const setupBody = cpp.match(/void setup\(\)\s*\{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const displayIdx = setupBody.indexOf("display_init();");
+    const touchIdx = setupBody.indexOf("touch_init();");
+    const uiIdx = setupBody.indexOf("ui_init();");
+    expect(displayIdx).toBeGreaterThanOrEqual(0);
+    expect(touchIdx).toBeGreaterThan(displayIdx);
+    expect(uiIdx).toBeGreaterThan(touchIdx);
+  });
+
   it("emits ui_tick in the driver function body", async () => {
     const { cpp } = await transpileUIProgram({
       html: `<screen></screen>`,

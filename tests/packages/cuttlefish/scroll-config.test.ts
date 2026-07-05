@@ -12,6 +12,7 @@ describe("resolveScrollConfig", () => {
     });
     expect(cfg.inputTier).toBe("resistive");
     expect(cfg.renderTier).toBe("full"); // ESP32-class assumed full by default
+    expect(cfg.dragScale).toBe(1);
     expect(cfg.maxOverscroll).toBe(40);
     expect(cfg.stiffness).toBe(0.5);
     expect(cfg.edgeSnapPx).toBe(12);
@@ -50,6 +51,7 @@ describe("resolveScrollConfig", () => {
         maxOverscroll: 60,
         stiffness: 0.9,
         edgeSnapPx: 20,
+        dragScale: 1.5,
         inputSmoothing: 0.1,
         overrideProbes: false,
       } as ScrollConfig,
@@ -57,6 +59,7 @@ describe("resolveScrollConfig", () => {
     expect(cfg.maxOverscroll).toBe(60);
     expect(cfg.stiffness).toBe(0.9);
     expect(cfg.edgeSnapPx).toBe(20);
+    expect(cfg.dragScale).toBe(1.5);
     expect(cfg.inputSmoothing).toBe(0.1);
     expect(cfg.overrideProbes).toBe(false);
   });
@@ -65,5 +68,12 @@ describe("resolveScrollConfig", () => {
     expect(
       resolveScrollConfig({ touch: { library: "Adafruit_TouchScreen" } as TouchProfile }).inputTier,
     ).toBe("resistive");
+  });
+
+  it("defaults scrollCanvasBudgetBytes to 88000 and accepts overrides", () => {
+    expect(resolveScrollConfig({}).scrollCanvasBudgetBytes).toBe(88000);
+    expect(
+      resolveScrollConfig({ scroll: { scrollCanvasBudgetBytes: 120000 } }).scrollCanvasBudgetBytes,
+    ).toBe(120000);
   });
 });
