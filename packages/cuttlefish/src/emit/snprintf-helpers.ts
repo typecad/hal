@@ -11,7 +11,7 @@
 import type { AssignmentIR, ExpressionIR, StatementIR, VariableDeclarationIR } from "../api/shared/index.js";
 import type { PlatformStrategy } from "../api/shared/index.js";
 import type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer } from "../api/shared/index.js";
-import { escapeCppStringLiteral } from "../utils/strings.js";
+import { escapeCppStringLiteral, escapeSnprintfFormatFragment } from "../utils/strings.js";
 import { formatKindOf, parseCppType, parsedElementString, parsedIsStringLike } from "../api/shared/cpp-type-ir.js";
 
 export type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer };
@@ -416,7 +416,9 @@ export function buildSnprintfRenderResult(
 
   for (const part of expr.parts) {
     if (part.kind === "string") {
-      formatString += escapeCppStringLiteral(part.value);
+      // These literal parts are concatenated into the snprintf *format* string,
+      // so any embedded `%` must be doubled or snprintf misreads it on hardware.
+      formatString += escapeSnprintfFormatFragment(part.value);
       estimatedLength += part.value.length;
       continue;
     }

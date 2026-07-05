@@ -1,67 +1,249 @@
 # @typecad/ui — HTML/CSS-Driven Graphics for Microcontrollers
 
-Write UIs in HTML and CSS. TypeHAL lowers them to a retained-mode C++ runtime that draws on ILI9341 (and future) displays over hardware SPI. No browser, no DOM, no CSS engine on the device — everything is resolved at transpile time.
+Write UIs in HTML and CSS. TypeCAD's `cuttlefish` transpiler lowers them to a retained-mode C++ runtime that draws on ILI9341 (and future) displays over hardware SPI. No browser, no DOM, no CSS engine on the device — everything is resolved at transpile time.
 
-## Quick start
+## Install
 
-### 1. Create your UI files
+`@typecad/ui` is the authoring API you import in source; `@typecad/cuttlefish` is the transpiler that lowers those imports to firmware at build time. You need both, plus a board package:
 
-**`app.ui.html`** — the screen layout:
+```bash
+npm install @typecad/ui @typecad/board-esp32-devkit
+npm install --save-dev @typecad/cuttlefish
+```
+
+`@typecad/ui` is compile-time only — none of its code is shipped to the device. The transpiler intercepts `ui.mount` / `ui.signal` / `ui.bind` / ... calls and lowers them to device variables and binding-table entries, so the package can be safely kept in `dependencies`.
+
+## Project layout
+
+A TypeCAD UI project has one **entry** — the file you point `cuttlefish.config.ts` at. The entry can be either a `.ui` single-file component or a plain `.ts` module. Both intermix freely with regular cuttlefish TypeScript (HAL pin reads, `setInterval`, `console.log`, your own `.ts` modules) — the `<script>` block of a `.ui` file and a standalone `.ts` file are lowered by the same pipeline.
+
+The transpiler accepts three entry extensions: `.ts`, `.tsx`, and `.ui`.
+
+### Pattern A — `.ui` single-file component (display + logic together)
+
+A `.ui` file is a Svelte-style single-file component with three sections — `<script>`, `<style>`, and the HTML template — in one file. The blocks may appear in any order; only one `<script>` is supported, and multiple `<style>` blocks are concatenated.
+
+The transpiler injects an implicit `import { screen } from './app.ui.html'` into the script, so the in-file template is referenceable as `screen.*` without an explicit import.
+
+**`src/app.ui`** — markup, styling, and behavior for one screen in one file:
 
 ```html
+<script>
+  import { ui } from '@typecad/ui';
+  import { A0 } from '@typecad/board-esp32-devkit';
+
+  ui.mount(screen);
+
+  // Plain TypeScript — same lowering as a standalone .ts. HAL pin reads,
+  // timers, and UI writes coexist as regular statements.
+  const sensor = A0.asInput();
+
+  setInterval(() => {
+    screen.reading.value = sensor.readAnalog();
+  }, 500);
+
+  ui.bind(screen.lamp, 'background', () =>
+    screen.reading.value > 512 ? 'limegreen' : '#333'
+  );
+</script>
+
+<style>
+  screen { background: #1a1a2e; display: flex; flex-direction: column; padding: 10px; gap: 8px; }
+  #reading { color: dodgerblue; font-size: 24px; }
+  #lamp { width: 16px; height: 16px; border-radius: 4px; }
+</style>
+
 <screen>
-  <text id="title">My Device</text>
-  <button id="action">Start</button>
+  <text id="reading">0</text>
+  <view id="lamp"></view>
 </screen>
 ```
 
-**`app.ui.css`** — styling with real CSS (flexbox, named colors, borders):
+**`cuttlefish.config.ts`** — point the entry at the `.ui` file:
 
-```css
-screen {
-  background: #1a1a2e;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-}
+```typescript
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
-#title {
-  color: dodgerblue;
-  font-size: 16px;
-}
-
-#action {
-  background: darkgreen;
-  color: white;
-  border: 2px solid limegreen;
-  border-radius: 4px;
-  padding: 8px 20px;
-  text-align: center;
-  transition: background 300ms;
-}
-
-#action:pressed {
-  background: limegreen;
-}
+const config: CuttlefishConfig = {
+  entry: './src/app.ui',
+  target: 'esp32',
+  mcu: '@typecad/mcu-esp32',
+  board: '@typecad/board-esp32-devkit',
+  framework: '@typecad/framework-arduino',
+  frameworkData: { buildTarget: 'esp32:esp32:esp32' },
+  output: { framework: 'arduino', optimize: 'size', outDir: './out' },
+  toolchain: { type: 'arduino-cli' },
+  console: { baudRate: 115200 },
+  display: { profile: 'ili9341-spi', cs: 5, dc: 21, rst: 22, backlight: 33 },
+};
+export default config;
 ```
 
-**`main.ts`** — mount and wire interactions:
+Use this layout when a screen's markup and behavior are tightly coupled and you want them in one place.
+
+### Pattern B — `main.ts` entry + `.ui.html` for display (logic factored out)
+
+When the sensor/IO logic is substantial, factor it into plain `.ts` modules and keep the UI file purely declarative. `main.ts` is the entry; it imports `screen` from a `.ui.html` file **and** the sensor functions from a sibling `.ts`, then marries them.
+
+The import graph resolves both directions: `main.ts → app.ui.html` (for `screen`) and `main.ts → sensors.ts` (for the reading). Cross-module function calls survive lowering into the emitted C++.
+
+**`src/main.ts`** — the entry, wires display and sensor logic:
 
 ```typescript
 import { ui } from '@typecad/ui';
 import { screen } from './app.ui.html';
+import { readVolts } from './sensors.js';   // .js extension required (Node16 resolution)
 
-ui.mount(screen);
+ui.mount(screen, { display: 'ili9341', bus: 'SPI', cs: 10, dc: 9, rst: 8 });
+
+setInterval(() => {
+  screen.meter.value = Math.round(readVolts() * 100);
+}, 500);
+
+export function main(): void { while (true) {} }
 ```
 
-Display hardware and wiring live in `cuttlefish.config.ts` under `display`, so
-the UI source stays focused on UI behavior.
+**`src/sensors.ts`** — plain cuttlefish TS, owns device I/O, no UI imports:
 
-### 2. Build
+```typescript
+import { A0 } from '@typecad/board-arduino-uno';
+const adc = A0.asInput();
+export function readVolts(): number {
+  return adc.readVoltage();
+}
+```
+
+**`src/app.ui.html`** — display only:
+
+```html
+<screen>
+  <range id="meter" min="0" max="330"></range>
+</screen>
+```
+
+**`cuttlefish.config.ts`** — point the entry at `main.ts`:
+
+```typescript
+const config: CuttlefishConfig = {
+  entry: './src/main.ts',     // ← .ts entry instead of .ui
+  // ...rest identical
+};
+```
+
+The transpiler lowers the `setInterval` callback to a timer that writes the node table and marks it dirty, preserving the cross-module `readVolts()` call verbatim:
+
+```c
+static void __tc_timer_cb_0() {
+  __ui_nodes[1].value = round(readVolts() * 100);   // sensor call preserved
+  ui_mark_dirty(1);                                  // screen.meter.value = ... lowered
+}
+```
+
+Use this layout when sensor or IO logic is large enough to deserve its own module, or when you want the UI file to stay purely declarative.
+
+### Choosing between the two
+
+| Layout | Entry | Use when |
+|---|---|---|
+| `.ui` single-file | `entry: './src/app.ui'` | Display and behavior are tightly coupled; one screen's markup + logic belong together |
+| `main.ts` + `.ui.html` split | `entry: './src/main.ts'` | Sensor/IO logic is substantial; UI file should stay declarative |
+
+Both patterns can import the same things (`@typecad/ui`, the board package, the HAL, your own `.ts` modules), and both lower through the same pipeline. You can also mix them within a project — a `.ui` entry can import helper functions from a sibling `.ts`, and a `main.ts` entry can import `screen` from multiple `.ui.html` files.
+
+### A note on dynamic text bindings
+
+Most bindings lower general expressions and work in either layout — color, background, border, value, visibility. The one exception is `ui.bind(node, 'text', ...)`, whose body in v1 only lowers three shapes: `String(<numeric>)`, a bare string literal, or a template literal with numeric interpolations. Anything else (including a cross-module function call) lowers to an empty body and emits a `ui-bind-text-unlowered` warning.
+
+For dynamic text that doesn't fit those shapes, write to the element from `setInterval` instead:
+
+```typescript
+// Avoid (body won't lower in v1):
+ui.bind(screen.reading, 'text', () => readVolts().toFixed(2) + 'V');
+
+// Prefer — drive from a timer:
+setInterval(() => {
+  // write to .value on numeric elements, or use String(<expr>) in the bind
+  screen.meter.value = Math.round(readVolts() * 100);
+}, 500);
+```
+
+## Quick start
+
+The fastest path is a single `.ui` file with markup, styling, and behavior together (see [Project layout](#project-layout) for the alternative `main.ts` + `.ui.html` split).
+
+### 1. Create `src/app.ui`
+
+```html
+<script>
+  import { ui } from '@typecad/ui';
+
+  ui.mount(screen);
+
+  // A signal carries the count; the binding recomputes the label each frame.
+  // Text updates via ui.bind(..., 'text', ...) — <text> elements don't expose
+  // a writable .text. String(<number>) is one of the supported bind shapes.
+  const taps = ui.signal(0);
+  ui.bind(screen.count, 'text', () => String(taps()));
+
+  screen.action.onClick(() => {
+    taps.set(taps() + 1);
+  });
+</script>
+
+<style>
+  screen {
+    background: #1a1a2e;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+  }
+  #count { color: dodgerblue; font-size: 16px; }
+  #action {
+    background: darkgreen;
+    color: white;
+    border: 2px solid limegreen;
+    border-radius: 4px;
+    padding: 8px 20px;
+    text-align: center;
+    transition: background 300ms;
+  }
+  #action:pressed { background: limegreen; }
+</style>
+
+<screen>
+  <text id="count">0</text>
+  <button id="action">Start</button>
+</screen>
+```
+
+Display hardware and wiring live in `cuttlefish.config.ts` under `display`, so the UI source stays focused on UI behavior.
+
+### 2. Point the entry at the `.ui` file
+
+```typescript
+// cuttlefish.config.ts
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
+
+const config: CuttlefishConfig = {
+  entry: './src/app.ui',
+  target: 'esp32',
+  mcu: '@typecad/mcu-esp32',
+  board: '@typecad/board-esp32-devkit',
+  framework: '@typecad/framework-arduino',
+  frameworkData: { buildTarget: 'esp32:esp32:esp32' },
+  output: { framework: 'arduino', optimize: 'size', outDir: './out' },
+  toolchain: { type: 'arduino-cli' },
+  console: { baudRate: 115200 },
+  display: { profile: 'ili9341-spi', cs: 5, dc: 21, rst: 22, backlight: 33 },
+};
+export default config;
+```
+
+### 3. Build
 
 ```bash
-npx typehal src/main.ts --compile
+npx cuttlefish build --compile
 ```
 
 ## Elements

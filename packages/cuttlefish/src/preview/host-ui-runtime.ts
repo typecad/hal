@@ -80,7 +80,51 @@ interface RuntimeOptions {
 }
 
 function clampText(text: unknown): string {
+  // Booleans must stringify as 1/0, not "true"/"false": hardware lowers bool
+  // signals in text bindings via snprintf("%d") (numericFormat → %d for bool),
+  // so the device prints the integer. JS String(true) gives "true", which would
+  // diverge from the device for any bool reaching a text buffer (binding value
+  // or {expr} interpolation). Coerce here so every text-buffer write agrees.
+  if (text === true) return "1".slice(0, UI_TEXT_BUF);
+  if (text === false) return "0".slice(0, UI_TEXT_BUF);
   return String(text ?? "").slice(0, UI_TEXT_BUF);
+}
+
+/** If `text` is a `ui.signal(<arg>)` initializer, return the source text of
+ *  `<arg>` (balanced-paren scanned, so nested calls like `ui.signal(other())`
+ *  are preserved). Returns undefined for any other initializer shape. Mirrors
+ *  the ir/transformers/variables.ts detection that lowers `const X = ui.signal(v)`
+ *  to `int X = v;`. */
+function matchSignalInitializer(text: string | undefined): string | undefined {
+  if (!text) return undefined;
+  const m = text.match(/^\s*ui\.signal\s*\(/);
+  if (!m) return undefined;
+  const argStart = m[0].length; // index just past `ui.signal(`
+  const argEnd = findMatchingCloseParen(text, argStart);
+  if (argEnd < 0) return undefined;
+  // Require the close paren to be the last non-whitespace token so `ui.signal(0) + 1`
+  // isn't misread as a plain signal decl.
+  if (text.slice(argEnd + 1).trim() !== "") return undefined;
+  return text.slice(argStart, argEnd).trim();
+}
+
+/** Given `text` and an index `openIdx` pointing at or just after an opening
+ *  paren, return the index of the matching `)`. If `text[openIdx]` is already
+ *  `(`, scanning starts there; otherwise `openIdx-1` must be `(`. Returns -1 if
+ *  no matching close paren is found. */
+function findMatchingCloseParen(text: string, openIdx: number): number {
+  const start = text[openIdx] === "(" ? openIdx : openIdx - 1;
+  if (text[start] !== "(") return -1;
+  let depth = 0;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "(") depth++;
+    else if (ch === ")") {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
 }
 
 function lerpColor(a: number, b: number, k100: number): number {
@@ -210,6 +254,12 @@ export class PreviewUIRuntime {
   /** Module-scoped `let`/`const`/`var` bindings, seeded once and shared (mutably)
    * across every callback body — mirrors the device hoisting them to globals. */
   private readonly moduleScope: Record<string, unknown> = {};
+  /** Names declared via `const X = ui.signal(...)` — lowered to plain device
+   *  variables on hardware, so the preview stores the bare value (not the `ui`
+   *  facade's getter) and rewrites `X()`/`X.set(v)` reads/writes accordingly
+   *  (see normalizeScript). Mirrors ir/transformers/variables.ts + ui-callback-
+   *  lowering.ts so template interpolations and callbacks see the same slot. */
+  private readonly signalNames: Set<string> = new Set();
   private readonly onFrame?: (rgba: Uint8ClampedArray) => void;
   private readonly onDiagnostics?: (message: string) => void;
   private readonly screenCount: number;
@@ -224,6 +274,12 @@ export class PreviewUIRuntime {
   // onTap shim in build-program.ts can read them.
   tapSeq = 0;
   tapNode = -1;
+  // Modeled GPIO levels for ui.watchPin pins. Pins default to HIGH (the device
+  // pulls them up via INPUT_PULLUP semantics); watchPin fires on HIGH→LOW. This
+  // map lets the autonomous poller AND a deterministic setPinLevel() test hook
+  // observe the same state. Public so tests can drive edges without wall-clock
+  // waits; the real ~20ms poller in start() mirrors the device's microtask pump.
+  private readonly pinLevels: Map<string, 0 | 1> = new Map();
   private touchDownTime = 0;
   private lastTouchTime = -UI_TOUCH_DEBOUNCE_MS;
   private lastReleaseTime = -UI_TOUCH_DEBOUNCE_MS;
@@ -306,6 +362,41 @@ export class PreviewUIRuntime {
         this.runBody(interval.body);
         this.tick();
       }, interval.delayMs));
+    }
+    // ui.watchPin: poll each watched pin every ~20ms for HIGH→LOW edges,
+    // mirroring the device's microtask-pump watcher (no ISRs; natural debounce
+    // from the poll interval). Pin levels default to HIGH (INPUT_PULLUP). The
+    // same edge check is exposed synchronously via setPinLevel() for tests.
+    for (const control of this.pinControls) {
+      if (control.kind !== "watch") continue;
+      this.pinLevels.set(control.pin, 1);
+      this.timers.push(setInterval(() => {
+        this.pollWatchPin(control.pin, control.body);
+      }, 20));
+    }
+  }
+
+  /** Drive a GPIO level for a watched pin and synchronously fire the watch
+   *  callback on a HIGH→LOW edge. Test hook so edge behavior is deterministic
+   *  without wall-clock waits; the real ~20ms poller in start() shares this
+   *  path. Mirrors the device's falling-edge contract. */
+  setPinLevel(pin: string, level: 0 | 1): void {
+    this.pinLevels.set(pin, level);
+    const control = this.pinControls.find((c) => c.kind === "watch" && c.pin === pin);
+    if (control) this.pollWatchPin(pin, control.body);
+  }
+
+  private pollWatchPin(pin: string, body: string | undefined): void {
+    if (!body) return;
+    // Edge detection lives in the level setter: we only fire when the previous
+    // level was HIGH and the current is LOW. Track the "previous" level in a
+    // second slot so repeated polls at LOW don't refire.
+    const prev = this.pinLevels.get(`__prev_${pin}`) ?? 1;
+    const curr = this.pinLevels.get(pin) ?? 1;
+    this.pinLevels.set(`__prev_${pin}`, curr);
+    if (prev === 1 && curr === 0) {
+      this.runBody(body);
+      this.tick();
     }
   }
 
@@ -419,9 +510,21 @@ export class PreviewUIRuntime {
   private seedModuleScope(): void {
     for (const v of this.snapshot.moduleVars ?? []) {
       if (!/^[$A-Z_a-z][$\w]*$/.test(v.name)) continue;
-      this.moduleScope[v.name] = v.initializer !== undefined
-        ? this.evaluateExpression(v.initializer)
-        : undefined;
+      // `const X = ui.signal(value)` lowers to a plain device variable on
+      // hardware (variables.ts rewrites it to `int X = value;`). Mirror that
+      // here: store the bare initial value, not the `ui` facade's getter, and
+      // record the name so normalizeScript can rewrite X()/X.set(v) reads/writes
+      // into direct variable access. Otherwise a template `${X}` stringifies the
+      // getter source ("() => value") instead of the value.
+      const signalArg = matchSignalInitializer(v.initializer);
+      if (signalArg !== undefined) {
+        this.signalNames.add(v.name);
+        this.moduleScope[v.name] = signalArg === "" ? 0 : this.evaluateExpression(signalArg);
+      } else {
+        this.moduleScope[v.name] = v.initializer !== undefined
+          ? this.evaluateExpression(v.initializer)
+          : undefined;
+      }
     }
   }
 
@@ -2191,6 +2294,34 @@ export class PreviewUIRuntime {
         g.print(args[2].replace(/^['"`]|['"`]$/g, ""));
       }
     }
+    // ctx.rgbBitmap(x, y, data, w, h) — blits an RGB565 pixel array. Handled
+    // separately because `data` may be an inline array literal (commas inside
+    // brackets) that the generic ([^)]*) regex above can't split. Mirrors the
+    // runtime's ui_display_draw_rgb_bitmap lowering (canvas-lowering.ts:94).
+    const rgbRe = /ctx\.rgbBitmap\s*\(\s*([^,]+),\s*([^,]+),\s*(\[[^\]]*\]|[$A-Z_a-z][$\w]*)\s*,\s*([^,]+),\s*([^)]+)\)/g;
+    let rm: RegExpExecArray | null;
+    while ((rm = rgbRe.exec(body)) !== null) {
+      const bx = num(0, [rm[1]]);
+      const by = num(0, [rm[2]]);
+      const dataExpr = rm[3];
+      const bw = num(0, [rm[4]]);
+      const bh = num(0, [rm[5]]);
+      // Evaluate the pixel array against module scope (handles both inline
+      // `[r,g,b,...]` literals and variable names).
+      let pixels: unknown = undefined;
+      try {
+        pixels = this.evaluateExpression(`(${dataExpr})`);
+      } catch { /* leave undefined; treated as empty below */ }
+      if (!Array.isArray(pixels)) continue;
+      const px = pixels as number[];
+      for (let dy = 0; dy < bh; dy++) {
+        for (let dx = 0; dx < bw; dx++) {
+          const i = dy * bw + dx;
+          if (i >= px.length) break;
+          g.drawPixel(ox + bx + dx, oy + by + dy, Number(px[i]) || 0);
+        }
+      }
+    }
   }
   private drawButtonNode(node: MutableNode, displayText: string | undefined, bColor: number, fillBg: number, drawY: number, ts: number): void {
     if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, fillBg);
@@ -2404,6 +2535,12 @@ export class PreviewUIRuntime {
     if (next !== node.value) {
       node.value = next;
       this.markDirty(nodeIndex);
+      // Mirror the runtime: a <range> value change fires a "rangechange" event
+      // (ui-element-auto-wire.ts records bind:value write-backs under this
+      // kind). Must dispatch synchronously here, BEFORE the next tick's
+      // evaluateBindings read-half clobbers node.value back to the stale signal
+      // value — firing it now lets the write-back update the signal first.
+      this.dispatch("rangechange", nodeIndex);
     }
   }
 
@@ -2721,14 +2858,42 @@ export class PreviewUIRuntime {
       const node = this.nodes[this.keyboardTarget];
       node.textBuffer = clampText(this.keyboardBuffer).slice(0, this.keyboardMaxLen);
       this.markDirty(this.keyboardTarget);
-      this.dispatch("change", this.keyboardTarget);
+      // Pass the committed text as a `text` local so ui.bindInput callbacks
+      // (which declare it as their param) see the same value the device passes
+      // to the lowered C++ callback.
+      this.dispatch("change", this.keyboardTarget, { text: node.textBuffer });
     }
+    // Capture the keyboard box before clearing visibility — it identifies the
+    // screen region the opaque overlay covered and that now needs restoring.
+    const kbBox = this.keyboardBox;
     this.keyboardVisible = false;
     this.keyboardDirty = 0;
     this.keyboardTarget = -1;
     this.keyboardPressedKey = -1;
     this.keyboardBackspaceHeld = false;
-    for (const node of this.nodes) node.dirty = true;
+    // The <screen> root's paint rect spans the whole display, so it always
+    // intersects kbBox. Routing it through markDirty would cascade via
+    // markOverlappingHigherLayersDirty into marking every node on the active
+    // screen dirty (its rect overlaps everything), which is the full-screen
+    // flash this function exists to avoid. Repaint just the keyboard-box
+    // slice of its background directly instead.
+    const screenRoot = this.nodes.find((n) => n.parentIndex < 0 && n.screenId === this.activeScreen);
+    if (screenRoot) {
+      const rootBg = screenRoot.hasBg ? screenRoot.bg : screenRoot.clearColor;
+      this.gfx.fillRect(kbBox.x, kbBox.y, kbBox.w, kbBox.h, rootBg);
+    }
+    // Repaint everything else the keyboard overlay actually overwrote: nodes
+    // whose paint rect intersects the keyboard box, plus the edited input
+    // itself (already marked above). markDirty handles overlap repair +
+    // scroll clipping — safe here since these nodes are bounded in size,
+    // unlike the screen root.
+    for (const node of this.nodes) {
+      if (screenRoot && node.index === screenRoot.index) continue;
+      const rect = this.currentPaintRect(node);
+      if (rect.w > 0 && rect.h > 0 && this.rectsIntersect(rect, kbBox)) {
+        this.markDirty(node.index);
+      }
+    }
   }
 
   private keyboardComputeBox(): void {
@@ -2909,10 +3074,18 @@ export class PreviewUIRuntime {
     }
   }
 
-  private dispatch(kind: "click" | "hold" | "release" | "change", nodeIndex: number): void {
+  private dispatch(kind: "click" | "hold" | "release" | "change" | "rangechange", nodeIndex: number, locals?: Record<string, unknown>): void {
     for (const callback of this.callbacks) {
       if (callback.nodeIndex === nodeIndex && callback.kind === kind) {
-        this.runBody(callback.body);
+        // A ui.bindInput callback declares a param that receives the input's
+        // committed text (mirrors the runtime renaming the arrow's first param
+        // to `text`). Bind it as a local under the author's chosen name so the
+        // body references resolve.
+        let merged = locals;
+        if (callback.param && locals?.text !== undefined) {
+          merged = { ...locals, [callback.param]: locals.text };
+        }
+        this.runBody(callback.body, merged);
       }
     }
   }
@@ -2961,6 +3134,16 @@ export class PreviewUIRuntime {
       .replace(/\(([$A-Z_a-z][$\w]*)\s+as\s+any\)/g, "$1")
       .replace(/\b([$A-Z_a-z][$\w]*)\s+as\s+any\b/g, "$1")
       .replace(/\b([$A-Z_a-z][$\w]*)\s+as\s+const\b/g, "$1");
+    // Signals lower to plain device variables on hardware, so the author-facing
+    // getter/setter syntax must be rewritten to plain reads/writes here too
+    // (mirrors ir/transformers/ui-callback-lowering.ts):
+    //   sig.set(EXPR) → (sig = EXPR)   (write — balanced-paren scan preserves
+    //                                   nested parens/calls in EXPR)
+    //   sig()        → sig             (read)
+    // Run this before the module-var rewrite below so the bare `sig` it leaves
+    // behind is then turned into `moduleScope.sig`, giving the same slot the
+    // interpolation/binding path reads.
+    out = this.rewriteSignalAccesses(out);
     // Rewrite bare references to module-scoped variables into moduleScope.NAME
     // so reads/writes hit the shared mutable binding (mirrors the device hoisting
     // them to globals). Skip property accesses (foo.bar) so `screen.gauge.value`
@@ -2970,6 +3153,44 @@ export class PreviewUIRuntime {
       const alt = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
       const re = new RegExp(`(?<![\\w.$])\\b(${alt})\\b(?!\\s*:)`, "g");
       out = out.replace(re, "moduleScope.$1");
+    }
+    return out;
+  }
+
+  /** Rewrite signal getter/setter syntax to plain variable reads/writes. See
+   *  normalizeScript for the lowering contract; this is the preview counterpart
+   *  of ui-callback-lowering.ts's rules 2 and 3. */
+  private rewriteSignalAccesses(text: string): string {
+    if (this.signalNames.size === 0) return text;
+    let out = text;
+    for (const name of this.signalNames) {
+      // sig.set(EXPR) → (sig = EXPR). Scan for `name.set(` then capture the
+      // balanced paren region so nested calls (e.g. `count.set(count() + 1)`)
+      // are preserved intact. Replace in place; loop because a body may have
+      // multiple writes to the same signal.
+      const setMarker = `${name}.set(`;
+      let searchFrom = 0;
+      for (;;) {
+        const idx = out.indexOf(setMarker, searchFrom);
+        if (idx < 0) break;
+        // Only rewrite when `name` is a standalone token (not `foo.name.set(`).
+        const prev = out[idx - 1];
+        if (prev && /[\w$]/.test(prev)) { searchFrom = idx + setMarker.length; continue; }
+        const argStart = idx + setMarker.length;
+        const argEnd = findMatchingCloseParen(out, argStart);
+        if (argEnd < 0) break;
+        const argText = out.slice(argStart, argEnd);
+        const replacement = `(${name} = ${argText})`;
+        out = out.slice(0, idx) + replacement + out.slice(argEnd + 1);
+        // Restart scanning from the replacement; indices shifted.
+        searchFrom = idx + replacement.length;
+      }
+      // sig() → sig. Match `name(` only when name is a standalone token; the
+      // empty arg list mirrors the runtime read lowering.
+      out = out.replace(
+        new RegExp(`(?<![\\w.$])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\(\\)`, "g"),
+        name,
+      );
     }
     return out;
   }

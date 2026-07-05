@@ -1,19 +1,178 @@
-// ---------------------------------------------------------------------------
-// C++ reactive runtime header — the driver code that walks the node/binding/
-// transition tables each frame.
-//
-// This is emitted once per translation unit (guarded) so the static tables
-// produced by the lowering transformer have something to drive them. It
-// implements the three-phase frame from spec §7:
-//   1. Advance transitions (lerp toward target)
-//   2. Draw traversal (dirty nodes only)
-//   3. Flush dirty rects
-//
-// Plus the press/release entry points that node.onPress(pin) lowers to.
-// ---------------------------------------------------------------------------
+#include <Wire.h>
+#define CuttlefishDisplayTarget Adafruit_GFX
+#define CuttlefishCanvas16 GFXcanvas16
+#include <Adafruit_GFX.h>
+#include <Adafruit_ST7796S.h>
+#include <Arduino.h>
+#include <stdio.h>
 
-export function emitRuntimeHeader(): string {
-  return `
+// TypeCAD Core Shims
+#ifndef CUTTLEFISH_UNDEFINED
+#define CUTTLEFISH_UNDEFINED 0
+#endif
+
+// Nullish helpers — overload set so value/struct types (which always
+// exist) return false from the generic template, while scalars compare
+// against CUTTLEFISH_UNDEFINED. The generic catch-all must NOT cast
+// (T)CUTTLEFISH_UNDEFINED — that fails to compile for non-scalar T.
+
+// TypeCAD Native Polyfills
+
+#define UI_COLOR_DEPTH 565
+#define UI_COLOR_T uint16_t
+#define UI_DIM_MASK 0x7BEFu
+Adafruit_ST7796S __tc_display = Adafruit_ST7796S(5, 17, 16);
+// --- Display adapter: ST7796S (RGB565) ---
+static inline void display_init() {
+  __tc_display.init(320, 480, 0, 0, ST7796S_BGR);
+  __tc_display.setSPISpeed(80000000);
+  __tc_display.startWrite();
+  __tc_display.writeCommand(ST77XX_INVOFF);
+  __tc_display.endWrite();
+  __tc_display.setRotation(1);
+  __tc_display.fillScreen(0x0000);
+}
+
+static inline void display_fillScreen(UI_COLOR_T color) { __tc_display.fillScreen((uint16_t)color); }
+static inline CuttlefishDisplayTarget* display_defaultTarget() { return &__tc_display; }
+static inline int16_t display_width() { return __tc_display.width(); }
+static inline int16_t display_height() { return __tc_display.height(); }
+
+static inline void display_startWrite() { __tc_display.startWrite(); }
+static inline void display_endWrite() { __tc_display.endWrite(); }
+static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t w, int16_t h) {
+  __tc_display.setAddrWindow(x, y, w, h);
+}
+static inline void display_writePixels(uint16_t* pixels, uint32_t count) {
+  __tc_display.writePixels(pixels, count);
+}
+
+static inline CuttlefishCanvas16* display_createCanvas(int16_t w, int16_t h) {
+  return new GFXcanvas16(w, h);
+}
+static inline CuttlefishCanvas16* display_createCanvasPsram(int16_t w, int16_t h) {
+#if defined(ESP32) && defined(BOARD_HAS_PSRAM)
+  return new (ps_malloc(sizeof(GFXcanvas16))) GFXcanvas16(w, h);
+#else
+  (void)w; (void)h;
+  return nullptr;
+#endif
+}
+static inline void display_deleteCanvas(CuttlefishCanvas16* canvas) { delete canvas; }
+static inline int16_t display_canvasWidth(CuttlefishCanvas16* canvas) { return canvas->width(); }
+static inline int16_t display_canvasHeight(CuttlefishCanvas16* canvas) { return canvas->height(); }
+static inline uint16_t* display_canvasBuffer(CuttlefishCanvas16* canvas) { return canvas->getBuffer(); }
+static inline uint16_t display_canvasGetPixel(CuttlefishCanvas16* canvas, int16_t x, int16_t y) { return canvas->getPixel(x, y); }
+static inline void display_canvasFillScreen(CuttlefishCanvas16* canvas, UI_COLOR_T color) { canvas->fillScreen((uint16_t)color); }
+static inline void display_canvasFillRect(CuttlefishCanvas16* canvas, int16_t x, int16_t y, int16_t w, int16_t h, UI_COLOR_T color) {
+  canvas->fillRect(x, y, w, h, (uint16_t)color);
+}
+
+static inline void display_targetDrawPixel(CuttlefishDisplayTarget* target, int16_t x, int16_t y, UI_COLOR_T color) { target->drawPixel(x, y, (uint16_t)color); }
+static inline int16_t display_targetWidth(CuttlefishDisplayTarget* target) { return target->width(); }
+static inline int16_t display_targetHeight(CuttlefishDisplayTarget* target) { return target->height(); }
+static inline void display_targetDrawRGBBitmap(CuttlefishDisplayTarget* target, int16_t x, int16_t y, const uint16_t* bitmap, int16_t w, int16_t h) {
+  target->drawRGBBitmap(x, y, bitmap, w, h);
+}
+static inline void display_targetFillRect(CuttlefishDisplayTarget* target, int16_t x, int16_t y, int16_t w, int16_t h, UI_COLOR_T color) {
+  target->fillRect(x, y, w, h, (uint16_t)color);
+}
+static inline void display_targetDrawFastHLine(CuttlefishDisplayTarget* target, int16_t x, int16_t y, int16_t w, UI_COLOR_T color) {
+  target->drawFastHLine(x, y, w, (uint16_t)color);
+}
+static inline void display_targetDrawFastVLine(CuttlefishDisplayTarget* target, int16_t x, int16_t y, int16_t h, UI_COLOR_T color) {
+  target->drawFastVLine(x, y, h, (uint16_t)color);
+}
+static inline void display_targetFillRoundRect(CuttlefishDisplayTarget* target, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, UI_COLOR_T color) {
+  target->fillRoundRect(x, y, w, h, r, (uint16_t)color);
+}
+static inline void display_targetDrawRect(CuttlefishDisplayTarget* target, int16_t x, int16_t y, int16_t w, int16_t h, UI_COLOR_T color) {
+  target->drawRect(x, y, w, h, (uint16_t)color);
+}
+static inline void display_targetDrawRoundRect(CuttlefishDisplayTarget* target, int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, UI_COLOR_T color) {
+  target->drawRoundRect(x, y, w, h, r, (uint16_t)color);
+}
+static inline void display_targetDrawLine(CuttlefishDisplayTarget* target, int16_t x0, int16_t y0, int16_t x1, int16_t y1, UI_COLOR_T color) {
+  target->drawLine(x0, y0, x1, y1, (uint16_t)color);
+}
+static inline void display_targetFillCircle(CuttlefishDisplayTarget* target, int16_t x, int16_t y, int16_t r, UI_COLOR_T color) {
+  target->fillCircle(x, y, r, (uint16_t)color);
+}
+static inline void display_targetDrawCircle(CuttlefishDisplayTarget* target, int16_t x, int16_t y, int16_t r, UI_COLOR_T color) {
+  target->drawCircle(x, y, r, (uint16_t)color);
+}
+static inline void display_targetSetCursor(CuttlefishDisplayTarget* target, int16_t x, int16_t y) { target->setCursor(x, y); }
+static inline void display_targetSetTextColor(CuttlefishDisplayTarget* target, UI_COLOR_T fg) { target->setTextColor((uint16_t)fg); }
+static inline void display_targetSetTextColorBg(CuttlefishDisplayTarget* target, UI_COLOR_T fg, UI_COLOR_T bg) { target->setTextColor((uint16_t)fg, (uint16_t)bg); }
+static inline void display_targetSetTextSize(CuttlefishDisplayTarget* target, uint8_t size) { target->setTextSize(size); }
+static inline void display_targetSetTextWrap(CuttlefishDisplayTarget* target, bool wrap) { target->setTextWrap(wrap); }
+static inline void display_targetPrint(CuttlefishDisplayTarget* target, const char* text) { target->print(text); }
+#include <RAK14014_FT6336U.h>
+FT6336U __tc_touch(0x38);
+static int16_t __tc_touch_cached_x = 0;
+static int16_t __tc_touch_cached_y = 0;
+static int16_t __tc_touch_cached_z = 0;
+static uint8_t __tc_touch_cached_valid = 0;
+static inline uint8_t __tc_ft6336u_read_block(uint8_t reg, uint8_t* buf, uint8_t len) {
+  Wire.beginTransmission(0x38);
+  Wire.write(reg);
+  if (Wire.endTransmission(false) != 0) return 0;
+  uint8_t got = Wire.requestFrom((uint8_t)0x38, len);
+  if (got < len) return 0;
+  for (uint8_t i = 0; i < len; i++) {
+    if (!Wire.available()) return 0;
+    buf[i] = Wire.read();
+  }
+  return 1;
+}
+static inline void touch_init() {
+  pinMode(4, OUTPUT);
+  digitalWrite(4, LOW);
+  delay(10);
+  digitalWrite(4, HIGH);
+  delay(500);
+  __tc_touch.begin(Wire, 0x38);
+  Wire.setClock(400000);
+}
+static inline bool touch_isTouched() {
+  uint8_t buf[5] = {0, 0, 0, 0, 0};
+  __tc_touch_cached_valid = 0;
+  __tc_touch_cached_z = 0;
+  if (!__tc_ft6336u_read_block(0x02, buf, 5)) return false;
+  uint8_t count = buf[0] & 0x0F;
+  if (count == 0) return false;
+  __tc_touch_cached_x = (int16_t)(((uint16_t)(buf[1] & 0x0F) << 8) | buf[2]);
+  __tc_touch_cached_y = (int16_t)(((uint16_t)(buf[3] & 0x0F) << 8) | buf[4]);
+  __tc_touch_cached_z = 255;
+  __tc_touch_cached_valid = 1;
+  return true;
+}
+static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {
+  if (!__tc_touch_cached_valid) {
+    (void)touch_isTouched();
+  }
+  if (x) *x = __tc_touch_cached_x;
+  if (y) *y = __tc_touch_cached_y;
+  if (z) *z = __tc_touch_cached_z;
+  __tc_touch_cached_valid = 0;
+}
+void ui_poll_touch();
+#define UI_AA 1
+#ifndef UI_COLOR_DEPTH
+#define UI_COLOR_DEPTH 565
+#endif
+#define UI_SCROLL_MAX_OVERSCROLL 40
+#define UI_SCROLL_STIFFNESS_X10 5
+#define UI_SCROLL_EDGE_SNAP_PX 12
+#define UI_SCROLL_DRAG_SCALE_X10 10
+#define UI_SCROLL_INPUT_TIER_CAPACITIVE 1
+#define UI_SCROLL_INPUT_TIER_RESISTIVE 0
+#define UI_SCROLL_INPUT_TIER_NONE 0
+#define UI_SCROLL_RENDER_TIER_FULL 1
+#define UI_SCROLL_RENDER_TIER_CONSTRAINED 0
+#define UI_SCROLL_CANVAS_BUDGET_BYTES 88000
+void __ui_kb_set_onchange();
+
 // ── TypeHAL UI runtime (emit once per TU) ──────────────────────────────────
 #ifndef __TC_UI_RUNTIME
 #define __TC_UI_RUNTIME
@@ -768,7 +927,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
   Serial.printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
     "heap free=%lu max_alloc=%lu budget=%d. "
-    "Shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\\n",
+    "Shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\n",
     label, vw, vh, (unsigned long)need, reasonText,
     (unsigned long)freeHeap, (unsigned long)maxAlloc, UI_SCROLL_CANVAS_BUDGET_BYTES);
 #elif defined(ESP8266)
@@ -776,13 +935,13 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
   Serial.printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
     "heap free=%lu budget=%d. "
-    "Shrink the scroll viewport in CSS, trim fonts/images, or reduce UI footprint.\\n",
+    "Shrink the scroll viewport in CSS, trim fonts/images, or reduce UI footprint.\n",
     label, vw, vh, (unsigned long)need, reasonText,
     (unsigned long)freeHeap, UI_SCROLL_CANVAS_BUDGET_BYTES);
 #else
   Serial.printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
-    "budget=%d. Shrink the scroll viewport in CSS or trim UI assets.\\n",
+    "budget=%d. Shrink the scroll viewport in CSS or trim UI assets.\n",
     label, vw, vh, (unsigned long)need, reasonText, UI_SCROLL_CANVAS_BUDGET_BYTES);
 #endif
 }
@@ -2346,7 +2505,7 @@ static inline void ui_init(void) {
       uint16_t n = __ui_bindings[i].node;
       __ui_nodes[n].hasTextBinding = 1;
       strncpy(__ui_nodes[n].textBuffer, __ui_nodes[n].text ? __ui_nodes[n].text : "", UI_TEXT_BUF);
-      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
+      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\0';
     }
   }
   // Seed virtualized-list runtime state. The fn pointers can't be baked into
@@ -2463,7 +2622,7 @@ static int16_t __ui_drag_start_y = 0;
 static uint8_t __ui_is_dragging = 0;     // 1 once movement exceeds threshold
 static int16_t __ui_range_node = -1;     // range slider being dragged (int16: node index can exceed 127)
 
-// ── Awaitable tap source (for \`await ui.onTap()\`) ─────────────────────────
+// ── Awaitable tap source (for `await ui.onTap()`) ─────────────────────────
 // __ui_tap_seq increments on every completed tap (after click/release dispatch);
 // async awaiters poll it for change. __ui_tap_node records the node hit by the
 // last tap (-1 = empty space / non-interactive area) for per-element awaiters.
@@ -2675,7 +2834,7 @@ static void ui_touch_up() {
       __ui_nodes[__ui_touch_node].kind == NODE_BUTTON && __ui_nodes[__ui_touch_node].value != 0) {
     ui_set_pressed((uint16_t)__ui_touch_node, 0);
   }
-  // Resume any \`await ui.onTap()\` awaiter. Runs for EVERY completed tap —
+  // Resume any `await ui.onTap()` awaiter. Runs for EVERY completed tap —
   // including holds (released above) and taps on empty space (__ui_touch_node
   // == -1), which is what makes "wake on any touch" work for display-sleep.
   // Placed AFTER the click/release dispatch so onClick always fires first.
@@ -2780,7 +2939,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
           ui_apply_scroll_delta(__ui_scroll_node, dy);
           __ui_drag_start_y = ty;
 #if UI_SCROLL_DEBUG
-          Serial.printf("scroll dy=%d sy=%d ov=%d virt=%d\\n",
+          Serial.printf("scroll dy=%d sy=%d ov=%d virt=%d\n",
             dy, __ui_nodes[__ui_scroll_node].scrollY,
             __ui_nodes[__ui_scroll_node].overscrollPx,
             (int)__ui_nodes[__ui_scroll_node].virtualized);
@@ -2934,16 +3093,16 @@ static inline uint8_t ui_text_line_height(uint8_t ts, uint8_t fontFace, uint8_t 
 }
 
 static inline uint8_t ui_is_text_space(char c) {
-  return c == ' ' || c == '\\t' || c == '\\f' || c == '\\v';
+  return c == ' ' || c == '\t' || c == '\f' || c == '\v';
 }
 
 static inline uint8_t ui_is_text_newline(char c) {
-  return c == '\\n' || c == '\\r';
+  return c == '\n' || c == '\r';
 }
 
 static inline const char* ui_after_text_newline(const char* p) {
   if (!p || !*p) return p;
-  if (*p == '\\r' && p[1] == '\\n') return p + 2;
+  if (*p == '\r' && p[1] == '\n') return p + 2;
   return p + 1;
 }
 
@@ -3705,9 +3864,9 @@ static inline void ui_tick(uint16_t deltaMs) {
       uint16_t n = __ui_bindings[i].node;
       char oldBuf[UI_TEXT_BUF + 1];
       strncpy(oldBuf, __ui_nodes[n].textBuffer, UI_TEXT_BUF);
-      oldBuf[UI_TEXT_BUF] = '\\0';
+      oldBuf[UI_TEXT_BUF] = '\0';
       __ui_bindings[i].textFn(__ui_nodes[n].textBuffer, UI_TEXT_BUF + 1);
-      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
+      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\0';
       if (strcmp(oldBuf, __ui_nodes[n].textBuffer) != 0) {
         ui_mark_dirty(n);
       }
@@ -3771,7 +3930,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     const char* cur = __ui_nodes[n].textBuffer;
     if (strcmp(cur, __ui_input_bindings[i].lastSeen) != 0) {
       strncpy(__ui_input_bindings[i].lastSeen, cur, UI_TEXT_BUF);
-      __ui_input_bindings[i].lastSeen[UI_TEXT_BUF] = '\\0';
+      __ui_input_bindings[i].lastSeen[UI_TEXT_BUF] = '\0';
       __ui_input_bindings[i].cb(cur);
     }
   }
@@ -5445,5 +5604,367 @@ static inline void ui_kb_draw() {
 }
 
 #endif
-`;
+
+void ui_poll_touch() {
+  if (touch_isTouched()) {
+    int16_t __rawX = 0, __rawY = 0, __rawZ = 0;
+    touch_readRaw(&__rawX, &__rawY, &__rawZ);
+    int16_t __tx = map(__rawY, 0, 480, 0, 480);
+    int16_t __ty = 320 - (map(__rawX, 0, 320, 0, 320));
+    if (__tx < 0) __tx = 0; else if (__tx >= 480) __tx = 479;
+    if (__ty < 0) __ty = 0; else if (__ty >= 320) __ty = 319;
+    ui_handle_touch(__tx, __ty);
+  } else {
+    ui_handle_no_touch();
+  }
+}
+// Font 1: ColibriDemo 20px 700 normal exact
+static const uint8_t __ui_font_1_alpha[] PROGMEM = {
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x68, 0x86, 0x00, 0x00, 0x1c, 0xff, 0xff, 0xa0, 0x00,
+  0x9f, 0xf8, 0x8b, 0xb0, 0x01, 0xff, 0x80, 0x00, 0x30, 0x04, 0xff, 0x40, 0x00, 0x00, 0x04, 0xff,
+  0x40, 0x00, 0x00, 0x04, 0xff, 0x50, 0x00, 0x00, 0x00, 0xff, 0xb1, 0x03, 0x80, 0x00, 0x8f, 0xfe,
+  0xcf, 0xb0, 0x00, 0x08, 0xff, 0xfe, 0x60, 0x00, 0x00, 0x14, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x58, 0x87, 0x10, 0x00, 0x00, 0x1c, 0xff,
+  0xff, 0xe3, 0x00, 0x00, 0x9f, 0xd5, 0x4b, 0xfd, 0x00, 0x00, 0xff, 0x60, 0x03, 0xff, 0x30, 0x04,
+  0xff, 0xcb, 0xbb, 0xff, 0x40, 0x04, 0xff, 0xff, 0xff, 0xfe, 0x30, 0x04, 0xff, 0x40, 0x00, 0x00,
+  0x00, 0x00, 0xef, 0xa0, 0x00, 0x02, 0x00, 0x00, 0x8f, 0xfc, 0xbb, 0xdb, 0x00, 0x00, 0x08, 0xef,
+  0xff, 0xe8, 0x00, 0x00, 0x00, 0x03, 0x43, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0xb9, 0x30, 0x00, 0x0b, 0xff, 0xf8, 0x00, 0x02, 0xff, 0x95,
+  0x40, 0x00, 0x4f, 0xf4, 0x00, 0x00, 0x59, 0xff, 0x97, 0x00, 0x0b, 0xff, 0xff, 0xf3, 0x00, 0x69,
+  0xff, 0x98, 0x00, 0x00, 0x4f, 0xf4, 0x00, 0x00, 0x04, 0xff, 0x40, 0x00, 0x00, 0x4f, 0xf4, 0x00,
+  0x00, 0x04, 0xff, 0x40, 0x00, 0x00, 0x4f, 0xf4, 0x00, 0x00, 0x04, 0xff, 0x40, 0x00, 0x00, 0x4f,
+  0xf3, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x06, 0x85, 0x00, 0x00, 0x00, 0x00, 0xbf, 0xb0, 0x00, 0x00, 0x00, 0x0b, 0xfb, 0x00, 0x00,
+  0x00, 0x00, 0xbf, 0xb0, 0x00, 0x00, 0x00, 0x0b, 0xfb, 0x17, 0x87, 0x10, 0x00, 0xbf, 0xde, 0xff,
+  0xfc, 0x00, 0x0b, 0xff, 0xe8, 0xcf, 0xf5, 0x00, 0xbf, 0xe3, 0x01, 0xff, 0x80, 0x0b, 0xfb, 0x00,
+  0x0f, 0xf8, 0x00, 0xbf, 0xb0, 0x00, 0xff, 0x80, 0x0b, 0xfb, 0x00, 0x0f, 0xf8, 0x00, 0xbf, 0xb0,
+  0x00, 0xff, 0x80, 0x0b, 0xfb, 0x00, 0x0f, 0xf8, 0x00, 0xbf, 0xa0, 0x00, 0xef, 0x80, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x24, 0x10, 0x0d, 0xfb,
+  0x00, 0xef, 0xb0, 0x02, 0x42, 0x00, 0x48, 0x40, 0x0b, 0xfb, 0x00, 0xbf, 0xb0, 0x0b, 0xfb, 0x00,
+  0xbf, 0xb0, 0x0b, 0xfb, 0x00, 0xbf, 0xb0, 0x0b, 0xfb, 0x00, 0xbf, 0xb0, 0x0b, 0xfa, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x06, 0x85, 0x00, 0xbf, 0xb0, 0x0b, 0xfb, 0x00, 0xbf, 0xb0,
+  0x0b, 0xfb, 0x00, 0xbf, 0xb0, 0x0b, 0xfb, 0x00, 0xbf, 0xb0, 0x0b, 0xfb, 0x00, 0xbf, 0xb0, 0x0b,
+  0xfb, 0x00, 0xbf, 0xb0, 0x0b, 0xfb, 0x00, 0xbf, 0xa0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x58, 0x11, 0x88, 0x60, 0x04, 0x88, 0x40, 0x00, 0x0b,
+  0xf7, 0xef, 0xff, 0xa8, 0xff, 0xff, 0x60, 0x00, 0xbf, 0xfe, 0x8d, 0xff, 0xfb, 0x8e, 0xfd, 0x00,
+  0x0b, 0xfe, 0x10, 0x3f, 0xfa, 0x00, 0x8f, 0xf0, 0x00, 0xbf, 0xb0, 0x00, 0xff, 0x80, 0x05, 0xff,
+  0x00, 0x0b, 0xfb, 0x00, 0x0f, 0xf8, 0x00, 0x4f, 0xf0, 0x00, 0xbf, 0xb0, 0x00, 0xff, 0x80, 0x04,
+  0xff, 0x00, 0x0b, 0xfb, 0x00, 0x0f, 0xf8, 0x00, 0x4f, 0xf0, 0x00, 0xbf, 0xb0, 0x00, 0xff, 0x80,
+  0x04, 0xff, 0x00, 0x0b, 0xfa, 0x00, 0x0f, 0xf7, 0x00, 0x4f, 0xf0, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x88, 0x50, 0x00, 0x00, 0x01, 0xbf, 0xff, 0xff, 0xb0, 0x00,
+  0x00, 0x9f, 0xf8, 0x5a, 0xff, 0x80, 0x00, 0x1f, 0xf8, 0x00, 0x0c, 0xfd, 0x00, 0x04, 0xff, 0x40,
+  0x00, 0x8f, 0xf0, 0x00, 0x4f, 0xf4, 0x00, 0x08, 0xff, 0x00, 0x04, 0xff, 0x50, 0x00, 0x9f, 0xe0,
+  0x00, 0x0e, 0xfb, 0x00, 0x2e, 0xf9, 0x00, 0x00, 0x8f, 0xfd, 0xbe, 0xfe, 0x20, 0x00, 0x00, 0x8e,
+  0xff, 0xfb, 0x30, 0x00, 0x00, 0x00, 0x04, 0x42, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x81, 0x48, 0x60, 0x0b, 0xf8, 0xff, 0xb0, 0x0b, 0xff, 0xfb,
+  0xa0, 0x0b, 0xff, 0x30, 0x00, 0x0b, 0xfb, 0x00, 0x00, 0x0b, 0xfb, 0x00, 0x00, 0x0b, 0xfb, 0x00,
+  0x00, 0x0b, 0xfb, 0x00, 0x00, 0x0b, 0xfb, 0x00, 0x00, 0x0b, 0xfa, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x88, 0x72, 0x00, 0x00,
+  0x9f, 0xff, 0xfb, 0x00, 0x02, 0xff, 0x74, 0x68, 0x00, 0x04, 0xff, 0x50, 0x00, 0x00, 0x00, 0xef,
+  0xfb, 0x60, 0x00, 0x00, 0x3b, 0xff, 0xfa, 0x00, 0x00, 0x00, 0x3a, 0xff, 0x40, 0x01, 0x20, 0x01,
+  0xff, 0x40, 0x04, 0xfa, 0x8c, 0xfe, 0x20, 0x02, 0xdf, 0xff, 0xd5, 0x00, 0x00, 0x02, 0x43, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xba, 0x00, 0x00, 0x00,
+  0x4f, 0xf0, 0x00, 0x00, 0x59, 0xff, 0x88, 0x10, 0x0b, 0xff, 0xff, 0xf7, 0x00, 0x69, 0xff, 0x88,
+  0x20, 0x00, 0x4f, 0xf0, 0x00, 0x00, 0x04, 0xff, 0x00, 0x00, 0x00, 0x4f, 0xf0, 0x00, 0x00, 0x04,
+  0xff, 0x00, 0x00, 0x00, 0x4f, 0xf5, 0x00, 0x00, 0x03, 0xff, 0xfe, 0x60, 0x00, 0x08, 0xff, 0xf4,
+  0x00, 0x00, 0x01, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,
+  0x83, 0x00, 0x06, 0x82, 0x00, 0xbf, 0xb0, 0x00, 0xff, 0x80, 0x0b, 0xfb, 0x00, 0x0f, 0xf8, 0x00,
+  0xbf, 0xb0, 0x00, 0xff, 0x80, 0x0b, 0xfb, 0x00, 0x0f, 0xf8, 0x00, 0xbf, 0xb0, 0x00, 0xff, 0x80,
+  0x0b, 0xfb, 0x00, 0x0f, 0xf8, 0x00, 0xbf, 0xe1, 0x19, 0xff, 0x80, 0x07, 0xff, 0xff, 0xfe, 0xf8,
+  0x00, 0x0b, 0xff, 0xe8, 0x8f, 0x80, 0x00, 0x02, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+  0x00, 0x00, 0x00, 0x00, 0x01, 0x43, 0x00, 0x0a, 0xff, 0x00, 0x0b, 0xff, 0x00, 0x05, 0xb8, 0x00,
+  0x00, 0x00, 0x00
+};
+static const UIFontGlyph __ui_font_1_glyphs[] = {
+  { 32, 0, 0, 0, 0, 5, 0 },
+  { 99, -1, -11, 10, 13, 9, 0 },
+  { 101, -1, -11, 12, 13, 11, 130 },
+  { 102, -1, -15, 9, 17, 7, 286 },
+  { 104, 0, -15, 11, 17, 11, 439 },
+  { 105, 0, -15, 5, 17, 5, 626 },
+  { 108, 0, -15, 5, 17, 5, 711 },
+  { 109, 0, -11, 17, 13, 17, 796 },
+  { 111, -1, -11, 13, 13, 11, 1017 },
+  { 114, 0, -11, 8, 13, 8, 1186 },
+  { 115, -1, -11, 10, 13, 8, 1290 },
+  { 116, -1, -13, 9, 15, 7, 1420 },
+  { 117, 0, -11, 11, 13, 11, 1555 },
+  { 183, 0, -9, 6, 6, 6, 1698 },
+};
+const UIFontFace __ui_font_faces[] = {
+  { 1, 14, 22, 16, __ui_font_1_glyphs, __ui_font_1_alpha },
+};
+const uint16_t __ui_font_face_count = 1;
+const UIImage __ui_images[] = {};
+const uint16_t __ui_image_count = 0;
+const UIKeyframeSet __ui_keyframe_sets[] = {};
+const uint16_t __ui_keyframe_set_count = 0;
+UIAnimation __ui_anims[] = {};
+const uint16_t __ui_anim_count = 0;
+UINode __ui_nodes[] = {
+  { .box={0,0,480,320}, .bg=0x10a3, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=8, .paddingRight=8, .paddingBottom=8, .paddingLeft=8, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x10a3, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=65535, .subtreeEnd=48, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={8,8,464,304}, .bg=0x0000, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x10a3, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=0, .subtreeEnd=48, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={8,8,464,35}, .bg=0x1905, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=4, .paddingRight=4, .paddingBottom=4, .paddingLeft=4, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=1, .shadowOffsetX={3,0,0,0}, .shadowOffsetY={3,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={100,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=1, .subtreeEnd=5, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={166,13,148,16}, .bg=0x0000, .fg=0xf79d, .kind=NODE_TEXT, .text="cuttlefish · forms", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=1, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=1, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf79d, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=2, .subtreeEnd=4, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={165,30,150,8}, .bg=0x0000, .fg=0xbe19, .kind=NODE_TEXT, .text="every control, one screen", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=1, .textSize=1, .lineHeight=8, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xbe19, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=2, .subtreeEnd=5, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={8,43,464,62}, .bg=0x0000, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x10a3, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=1, .subtreeEnd=17, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={8,43,228,62}, .bg=0x1905, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=2, .paddingRight=2, .paddingBottom=2, .paddingLeft=2, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=1, .shadowOffsetX={3,0,0,0}, .shadowOffsetY={3,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={100,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=5, .subtreeEnd=11, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,46,222,16}, .bg=0x0000, .fg=0xf649, .kind=NODE_TEXT, .text="button", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf649, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=6, .subtreeEnd=8, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,64,222,26}, .bg=0x0000, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=6, .subtreeEnd=11, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,64,98,26}, .bg=0xfbab, .fg=0x10a3, .kind=NODE_BUTTON, .text="tap me", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=1, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=4, .paddingRight=12, .paddingBottom=4, .paddingLeft=12, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0x10a3, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=1, .shadowOffsetX={3,0,0,0}, .shadowOffsetY={3,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={100,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=1, .whiteSpaceMode=1, .visible=1, .opacity=100, .clearColor=0xfbab, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=8, .subtreeEnd=10, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={161,66,72,22}, .bg=0x0000, .fg=0xf79d, .kind=NODE_TEXT, .text="{count}", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=1, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=3, .paddingRight=6, .paddingBottom=3, .paddingLeft=6, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf79d, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=1, .whiteSpaceMode=1, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=8, .subtreeEnd=11, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={244,43,228,62}, .bg=0x1905, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=2, .paddingRight=2, .paddingBottom=2, .paddingLeft=2, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=1, .shadowOffsetX={3,0,0,0}, .shadowOffsetY={3,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={100,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=5, .subtreeEnd=17, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,46,222,16}, .bg=0x0000, .fg=0xf649, .kind=NODE_TEXT, .text="checkbox", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf649, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=11, .subtreeEnd=13, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,64,222,20}, .bg=0x0000, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=11, .subtreeEnd=16, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,66,190,16}, .bg=0x0000, .fg=0xf79d, .kind=NODE_CHECK, .text="Enable feature", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf79d, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=13, .subtreeEnd=15, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={449,64,20,20}, .bg=0x2987, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=10, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x2987, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=13, .subtreeEnd=16, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,86,222,16}, .bg=0x0000, .fg=0xbe19, .kind=NODE_TEXT, .text="feature: disabled", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xbe19, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=11, .subtreeEnd=17, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={8,105,464,66}, .bg=0x0000, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x10a3, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=1, .subtreeEnd=30, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={8,105,228,66}, .bg=0x1905, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=2, .paddingRight=2, .paddingBottom=2, .paddingLeft=2, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=1, .shadowOffsetX={3,0,0,0}, .shadowOffsetY={3,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={100,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=17, .subtreeEnd=24, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,108,222,16}, .bg=0x0000, .fg=0xf649, .kind=NODE_TEXT, .text="select", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf649, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=18, .subtreeEnd=20, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,126,222,24}, .bg=0x0000, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=18, .subtreeEnd=23, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,126,78,24}, .bg=0x2987, .fg=0x4699, .kind=NODE_TEXT, .text="Alpha", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=3, .paddingRight=8, .paddingBottom=3, .paddingLeft=8, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0x4699, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=1, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x2987, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=20, .subtreeEnd=22, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={213,128,20,20}, .bg=0x2987, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=10, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x2987, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=20, .subtreeEnd=23, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,152,222,16}, .bg=0x0000, .fg=0xbe19, .kind=NODE_TEXT, .text="mode: alpha", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xbe19, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=18, .subtreeEnd=24, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={244,105,228,66}, .bg=0x1905, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=2, .paddingRight=2, .paddingBottom=2, .paddingLeft=2, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=1, .shadowOffsetX={3,0,0,0}, .shadowOffsetY={3,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={100,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=17, .subtreeEnd=30, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,108,222,16}, .bg=0x0000, .fg=0xf649, .kind=NODE_TEXT, .text="radio", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf649, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=24, .subtreeEnd=26, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,126,222,16}, .bg=0x0000, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=24, .subtreeEnd=29, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,126,70,16}, .bg=0x0000, .fg=0xf79d, .kind=NODE_RADIO, .text="Calm", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf79d, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=26, .subtreeEnd=28, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=1 },
+  { .box={329,126,70,16}, .bg=0x0000, .fg=0xf79d, .kind=NODE_RADIO, .text="Fast", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf79d, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=26, .subtreeEnd=29, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,144,222,16}, .bg=0x0000, .fg=0xbe19, .kind=NODE_TEXT, .text="speed: calm", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xbe19, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=24, .subtreeEnd=30, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={8,171,464,62}, .bg=0x0000, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x10a3, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=1, .subtreeEnd=39, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={8,171,228,62}, .bg=0x1905, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=2, .paddingRight=2, .paddingBottom=2, .paddingLeft=2, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=1, .shadowOffsetX={3,0,0,0}, .shadowOffsetY={3,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={100,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=30, .subtreeEnd=35, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,174,222,16}, .bg=0x0000, .fg=0xf649, .kind=NODE_TEXT, .text="range", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf649, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=31, .subtreeEnd=33, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,192,100,20}, .bg=0x0000, .fg=0xfbab, .kind=NODE_RANGE, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xfbab, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=-1, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=31, .subtreeEnd=34, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=10, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=3 },
+  { .box={11,214,222,16}, .bg=0x0000, .fg=0xbe19, .kind=NODE_TEXT, .text="volume: 3", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xbe19, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=31, .subtreeEnd=35, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={244,171,228,62}, .bg=0x1905, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=2, .paddingRight=2, .paddingBottom=2, .paddingLeft=2, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=1, .shadowOffsetX={3,0,0,0}, .shadowOffsetY={3,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={100,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=30, .subtreeEnd=39, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,174,222,16}, .bg=0x0000, .fg=0xf649, .kind=NODE_TEXT, .text="progress", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf649, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=35, .subtreeEnd=37, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,192,100,12}, .bg=0x0000, .fg=0x2e92, .kind=NODE_PROGRESS, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0x2e92, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=-1, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=35, .subtreeEnd=38, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=30 },
+  { .box={247,206,222,16}, .bg=0x0000, .fg=0xbe19, .kind=NODE_TEXT, .text="meter: 30%", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xbe19, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=35, .subtreeEnd=39, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={8,233,464,70}, .bg=0x0000, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x10a3, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=1, .subtreeEnd=48, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={8,233,228,70}, .bg=0x1905, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=2, .paddingRight=2, .paddingBottom=2, .paddingLeft=2, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=1, .shadowOffsetX={3,0,0,0}, .shadowOffsetY={3,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={100,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=39, .subtreeEnd=44, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,236,222,16}, .bg=0x0000, .fg=0xf649, .kind=NODE_TEXT, .text="text", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf649, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=40, .subtreeEnd=42, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,254,100,28}, .bg=0x10a3, .fg=0xf79d, .kind=NODE_INPUT, .text="name", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=3, .paddingRight=3, .paddingBottom=3, .paddingLeft=3, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf79d, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x10a3, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=40, .subtreeEnd=43, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=20, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={11,284,222,16}, .bg=0x0000, .fg=0xbe19, .kind=NODE_TEXT, .text="{nameCommits}", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xbe19, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=40, .subtreeEnd=44, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={244,233,228,70}, .bg=0x1905, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=2, .paddingRight=2, .paddingBottom=2, .paddingLeft=2, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=1, .shadowOffsetX={3,0,0,0}, .shadowOffsetY={3,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={100,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=39, .subtreeEnd=48, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,236,222,16}, .bg=0x0000, .fg=0xf649, .kind=NODE_TEXT, .text="number", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf649, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=44, .subtreeEnd=46, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,254,100,28}, .bg=0x10a3, .fg=0xf79d, .kind=NODE_INPUT, .text="0", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=1, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0xf649, .borderStyle=1, .borderWidth=1, .borderRadius=6, .paddingTop=3, .paddingRight=3, .paddingBottom=3, .paddingLeft=3, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xf79d, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x10a3, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=44, .subtreeEnd=47, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=3, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={247,284,222,16}, .bg=0x0000, .fg=0xbe19, .kind=NODE_TEXT, .text="{ageCommits}", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xbe19, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x1905, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=44, .subtreeEnd=48, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+};
+UIRichRun __ui_runs[1];
+UIRichSeg __ui_rich_segs[1];
+UIRichLine __ui_rich_lines[1];
+const uint16_t __ui_run_count = 0;
+const uint16_t __ui_rich_seg_count = 0;
+const uint16_t __ui_rich_line_count = 0;
+static inline const char* __ui_scroll_node_id(uint16_t idx) { (void)idx; return nullptr; }
+UITransition __ui_trans[] = {
+  { .node=9, .prop=PROP_BG, .durationMs=100, .pressedTarget=0x4699, .baseTarget=0xfbab },
+  { .node=9, .prop=PROP_FG, .durationMs=0, .pressedTarget=0x0082, .baseTarget=0x10a3 },
+};
+void __ui_kb_load_default_alpha() {
+  __ui_kb_rows = 4;
+  __ui_kb_cols = 11;
+  __ui_kb_keyCount = 0;
+  __ui_kb_bg = 0x2987;
+  ui_kb_add_key('1', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('2', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('3', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('4', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('5', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('6', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('7', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('8', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('9', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('0', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key(' ', 255, 0x4208, 0xffff, 0xffff);
+  ui_kb_add_key('q', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('w', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('e', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('r', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('t', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('y', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('u', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('i', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('o', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('p', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key(' ', 255, 0x4208, 0xffff, 0xffff);
+  ui_kb_add_key('⇧', 1, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('a', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('s', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('d', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('f', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('g', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('h', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('j', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('k', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('l', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('⌫', 2, 0x2987, 0x10a3, 0xf649);
+  ui_kb_add_key('123', 4, 0x2987, 0x0082, 0xf649);
+  ui_kb_add_key('z', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('x', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('c', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('v', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('b', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('n', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('m', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('_', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('OK', 3, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key(' ', 255, 0x4208, 0xffff, 0xffff);
+}
+
+void __ui_kb_load_default_number() {
+  __ui_kb_rows = 4;
+  __ui_kb_cols = 4;
+  __ui_kb_keyCount = 0;
+  __ui_kb_bg = 0x2987;
+  ui_kb_add_key('1', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('2', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('3', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('⌫', 2, 0x2987, 0x10a3, 0xf649);
+  ui_kb_add_key('4', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('5', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('6', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('.', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('7', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('8', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('9', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('-', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('ABC', 4, 0x2987, 0x0082, 0xf649);
+  ui_kb_add_key('0', 0, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key('OK', 3, 0x2987, 0xf79d, 0xf649);
+  ui_kb_add_key(' ', 255, 0x4208, 0xffff, 0xffff);
+}
+void (*__ui_kb_loaders[])() = { __ui_kb_load_default_alpha, __ui_kb_load_default_number };
+const uint16_t __ui_kb_loader_count = 2;
+int count = 0;
+int nameCommits = 0;
+int ageCommits = 0;
+void __ui_interp_10(char* buf, uint8_t size);
+void __ui_formSelect1_autotext(char* buf, uint8_t size);
+void __ui_interp_43(char* buf, uint8_t size);
+void __ui_interp_47(char* buf, uint8_t size);
+void __ui_bind_text_4(char* buf, uint8_t size);
+uint32_t __ui_bind_background_5();
+void __ui_bind_text_6(char* buf, uint8_t size);
+uint32_t __ui_bind_background_7();
+void __ui_bind_text_8(char* buf, uint8_t size);
+void __ui_bind_text_9(char* buf, uint8_t size);
+uint32_t __ui_bind_value_10();
+void __ui_bind_text_11(char* buf, uint8_t size);
+UIBinding __ui_bindings[] = {
+  { .node=10, .prop=PROP_TEXT, .fn=nullptr, .textFn=__ui_interp_10 },
+  { .node=21, .prop=PROP_TEXT, .fn=nullptr, .textFn=__ui_formSelect1_autotext },
+  { .node=43, .prop=PROP_TEXT, .fn=nullptr, .textFn=__ui_interp_43 },
+  { .node=47, .prop=PROP_TEXT, .fn=nullptr, .textFn=__ui_interp_47 },
+  { .node=16, .prop=PROP_TEXT, .fn=nullptr, .textFn=__ui_bind_text_4 },
+  { .node=15, .prop=PROP_BG, .fn=__ui_bind_background_5, .textFn=nullptr },
+  { .node=23, .prop=PROP_TEXT, .fn=nullptr, .textFn=__ui_bind_text_6 },
+  { .node=22, .prop=PROP_BG, .fn=__ui_bind_background_7, .textFn=nullptr },
+  { .node=29, .prop=PROP_TEXT, .fn=nullptr, .textFn=__ui_bind_text_8 },
+  { .node=34, .prop=PROP_TEXT, .fn=nullptr, .textFn=__ui_bind_text_9 },
+  { .node=37, .prop=PROP_VALUE, .fn=__ui_bind_value_10, .textFn=nullptr },
+  { .node=38, .prop=PROP_TEXT, .fn=nullptr, .textFn=__ui_bind_text_11 },
+};
+UIListBinding __ui_list_bindings[] = {};
+const uint16_t __ui_list_binding_count = 0;
+UIInputBinding __ui_input_bindings[] = {};
+const uint16_t __ui_input_binding_count = 0;
+void __ui_interp_10(char* buf, uint8_t size) { snprintf(buf, size, "%d", count); }
+void __ui_formSelect1_autotext(char* buf, uint8_t size) { if (__ui_nodes[21].value == 0) { snprintf(buf, size, "%s", "Alpha"); } else if (__ui_nodes[21].value == 1) { snprintf(buf, size, "%s", "Beta"); } else if (__ui_nodes[21].value == 2) { snprintf(buf, size, "%s", "Gamma"); } else { snprintf(buf, size, "%s", "Alpha"); } }
+void __ui_interp_43(char* buf, uint8_t size) { snprintf(buf, size, "%d", nameCommits); }
+void __ui_interp_47(char* buf, uint8_t size) { snprintf(buf, size, "%d", ageCommits); }
+void __ui_bind_text_4(char* buf, uint8_t size) { if (__ui_nodes[14].value) { snprintf(buf, size, "%s", "feature: enabled"); } else { snprintf(buf, size, "%s", "feature: disabled"); } }
+uint32_t __ui_bind_background_5(void) { return (__ui_nodes[14].value ? 0x2e92 : 0x4aac); }
+void __ui_bind_text_6(char* buf, uint8_t size) { if (__ui_nodes[21].value == 0) { snprintf(buf, size, "%s", "mode: alpha"); } else if (__ui_nodes[21].value == 1) { snprintf(buf, size, "%s", "mode: beta"); } else { snprintf(buf, size, "%s", "mode: gamma"); } }
+uint32_t __ui_bind_background_7(void) { return (__ui_nodes[21].value == 0 ? 0x3dff : (__ui_nodes[21].value == 1 ? 0xf649 : 0xbc3f)); }
+void __ui_bind_text_8(char* buf, uint8_t size) { if (__ui_nodes[28].value) { snprintf(buf, size, "%s", "speed: fast"); } else { snprintf(buf, size, "%s", "speed: calm"); } }
+void __ui_bind_text_9(char* buf, uint8_t size) { snprintf(buf, size, "volume: %d", __ui_nodes[33].value); }
+uint32_t __ui_bind_value_10(void) { return __ui_nodes[33].value * 10; }
+void __ui_bind_text_11(char* buf, uint8_t size) { snprintf(buf, size, "meter: %d%%", __ui_nodes[33].value * 10); }
+const uint16_t __ui_node_count = 48;
+const uint16_t __ui_trans_count = 2;
+const uint16_t __ui_binding_count = 12;
+const uint16_t __ui_screen_count = 1;
+UIPinWatch __ui_pin_watches[] = {};
+const uint16_t __ui_pin_watch_count = 0;
+void incrementTaps();
+void __ui_formCheck1_autoclick() { __ui_nodes[14].value = (__ui_nodes[14].value > 0 ? 0 : 1); }
+void __ui_formSelect1_autoclick() { __ui_nodes[21].value = (__ui_nodes[21].value + 1) % 3; }
+void __ui_formRadio1_autoclick() { for (uint8_t __r = 0; __r < __ui_radio_groups[0].count; __r++) { uint16_t __rn = __ui_radio_groups[0].nodeIndices[__r]; __ui_nodes[__rn].value = 0; ui_mark_dirty(__rn); } __ui_nodes[27].value = 1; ui_mark_dirty(27); }
+void __ui_formRadio2_autoclick() { for (uint8_t __r = 0; __r < __ui_radio_groups[0].count; __r++) { uint16_t __rn = __ui_radio_groups[0].nodeIndices[__r]; __ui_nodes[__rn].value = 0; ui_mark_dirty(__rn); } __ui_nodes[28].value = 1; ui_mark_dirty(28); }
+void (*__ui_click_handlers[])() = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, incrementTaps, nullptr, nullptr, nullptr, nullptr, __ui_formCheck1_autoclick, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, __ui_formSelect1_autoclick, nullptr, nullptr, nullptr, nullptr, nullptr, __ui_formRadio1_autoclick, __ui_formRadio2_autoclick };
+void (*__ui_hold_handlers[])() = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+void (*__ui_release_handlers[])() = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+const uint16_t __ui_click_handler_count = 29;
+void __ui_kb_set_onchange();
+void captureName();
+void captureAge();
+void __ui_kb_set_onchange() {
+  __ui_kb_onchange = nullptr;
+  if (__ui_kb_target == 42) __ui_kb_onchange = captureName;
+  if (__ui_kb_target == 46) __ui_kb_onchange = captureAge;
+}
+void (*__ui_rangechange_handlers[])() = {};
+const uint16_t __ui_rangechange_handler_count = 0;
+UIRadioGroup __ui_radio_groups[] = {
+  { .nodeIndices={27, 28}, .count=2 },
+};
+const uint16_t __ui_radio_group_count = 1;
+UICanvasBinding __ui_canvas_bindings[] = {};
+const uint16_t __ui_canvas_binding_count = 0;
+void incrementTaps();
+void captureName();
+void captureAge();
+
+// Auto-generated setup() for top-level statements
+void setup()
+{
+  display_init();
+  touch_init();
+  ui_init();
+  {
+  }
+  {
+  }
+  {
+  }
+  {
+  }
+  {
+  }
+  {
+  }
+  {
+  }
+  {
+  }
+}
+
+void incrementTaps()
+{
+  count = count + 1;
+}
+
+void captureName()
+{
+  nameCommits = nameCommits + 1;
+  Serial.print(F("name:")); Serial.println(__ui_nodes[42].textBuffer);
+}
+
+void captureAge()
+{
+  ageCommits = ageCommits + 1;
+  Serial.print(F("age:")); Serial.println(__ui_nodes[46].textBuffer);
+}
+
+void loop()
+{
+  uint32_t __tc_ui_now = (uint32_t)millis();
+  static uint32_t __tc_ui_last_tick = __tc_ui_now;
+  uint32_t __tc_ui_delta = __tc_ui_now - __tc_ui_last_tick;
+  __tc_ui_last_tick = __tc_ui_now;
+  if (__tc_ui_delta > 250) __tc_ui_delta = 250;
+  ui_tick((uint16_t)__tc_ui_delta);
 }

@@ -46,7 +46,15 @@ function nodeIndexById(programNodes: Array<{ id?: string }>, id: string): number
 /** Convert a `{expr}` interpolation text into a TS template-literal expression
  *  string the preview can evaluate. E.g. `taps: {count}` → `` `taps: ${count}` ``.
  *  Mirrors lowerInterpolationText's scanning but produces a JS expression rather
- *  than a snprintf format string. Returns undefined when there's no interpolation. */
+ *  than a snprintf format string. Returns undefined when there's no interpolation.
+ *
+ *  Each interpolation is wrapped in a boolean→number coercion because hardware
+ *  lowers HTML `{expr}` interpolations via snprintf("%d") (numericFormat default;
+ *  see lowerInterpolationText), so a bool prints as 1/0 on the device. JS
+ *  `${true}` would otherwise stringify as "true". The coercion is a no-op for
+ *  numbers and strings (Number("x") is NaN, but the HTML {expr} path is
+ *  documented numeric-only — string-signal interpolation belongs to the
+ *  ui.bind path, which has type information). */
 function interpolationToExpression(raw: string): string | undefined {
   const parts: string[] = [];
   let hasInterp = false;
@@ -65,7 +73,10 @@ function interpolationToExpression(raw: string): string | undefined {
       const content = raw.slice(i + 1, j);
       if (depth === 0 && content.length > 0 && !content.includes("{")) {
         hasInterp = true;
-        parts.push("${" + content.trim() + "}");
+        // Coerce via Number(): HTML {expr} interpolations lower to snprintf
+        // "%d" on hardware (numericFormat default), so bool→1/0 and the numeric
+        // value passes through unchanged. Number(5)===5, Number(true)===1.
+        parts.push("${Number(" + content.trim() + ")}");
         i = j + 1;
         continue;
       }
@@ -137,7 +148,9 @@ function collectEventCallbacks(
  *  as preview callbacks. bind:text write-back fires on the keyboard-commit
  *  "change" dispatch (keyboardClose → dispatch("change", target)); the callback
  *  body reads the committed text via screen.<id>.text and calls signal.set.
- *  bind:value write-back fires on the range/check change handler. */
+ *  bind:value write-back fires on the check "click" or range "rangechange"
+ *  event — matching the runtime kinds in ui-element-auto-wire.ts:136 so the
+ *  preview dispatches them on the same gestures the device does. */
 function collectBindBindings(
   trees: StyledNode[],
   programNodes: Array<{ id?: string }>,
@@ -157,8 +170,10 @@ function collectBindBindings(
         if (node.bind.value) {
           // Read: signal → node value.
           bindings.push({ nodeId: node.id, nodeIndex, property: "value", expression: node.bind.value });
-          // Write: range drag / check toggle → signal.set(value).
-          callbacks.push({ nodeId: node.id, nodeIndex, kind: "change", body: `${node.bind.value}.set(screen.${node.id}.value)` });
+          // Write: range drag (rangechange) / check toggle (click) → signal.set(value).
+          // Kinds must match the runtime so the preview fires on the same gesture.
+          const valueKind = node.tag === "check" ? "click" : "rangechange";
+          callbacks.push({ nodeId: node.id, nodeIndex, kind: valueKind, body: `${node.bind.value}.set(screen.${node.id}.value)` });
         }
       }
     }
@@ -475,6 +490,33 @@ function extractAuthorSpecs(
               itemParam: callbackFirstParamName(itemArg),
               tapBody: tapArg ? callbackBodyText(tapArg, source) : undefined,
               tapParam: callbackFirstParamName(tapArg),
+            });
+          }
+        }
+        continue;
+      }
+      if (objectName === "ui" && method === "bindInput") {
+        // ui.bindInput(node, cb): cb fires with the input's committed text on
+        // keyboard close. Collect as a "change" callback (the keyboard-commit
+        // dispatch kind) and record the cb's first param so the dispatch path
+        // can bind the text to it as a local. Mirrors resolveBindInputCall,
+        // which renames the arrow's param to `text` in the lowered C++.
+        const elementArg = call.arguments[0];
+        const cbArg = call.arguments[1];
+        const element = elementArg ? readTreeElement(elementArg) : undefined;
+        if (element && cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
+          const nodeIndex = resolveNode(element.treeName, element.elemId);
+          if (nodeIndex !== undefined) {
+            const param = callbackFirstParamName(cbArg);
+            callbacks.push({
+              nodeId: element.elemId,
+              nodeIndex,
+              kind: "change",
+              body: callbackBodyText(cbArg, source),
+              // The runtime renames the param to `text`; record the author's
+              // name so we can bind the committed text under whichever name the
+              // body actually references. If absent, default to `text`.
+              param: param ?? "text",
             });
           }
         }

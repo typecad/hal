@@ -12,11 +12,7 @@
     "declarationMap": true,
     "sourceMap": true,
     "rootDir": "src",
-    "outDir": "dist",
-    "types": ["node"]
+    "outDir": "dist"
   },
-  "include": ["src/**/*.ts"],
-  "references": [
-    { "path": "../cuttlefish" }
-  ]
+  "include": ["src/**/*.ts"]
 }

@@ -22,6 +22,13 @@ export interface BindingSpec {
    *  `snprintf(buf, size, "%d", count);`). Mutually exclusive with cppExpr:
    *  text bindings use cppBody, color bindings use cppExpr. */
   cppBody?: string;
+  /** The unrendered ExpressionIR for non-text (color/value/etc.) bindings.
+   *  When present, the emitter renders it through the strategy-aware
+   *  ExpressionRenderer (so division promotion, modulo→fmod, and string-concat
+   *  wrapping match top-level code) instead of inlining the prerendered
+   *  cppExpr. cppExpr is kept as a fallback. Color literals are pre-resolved
+   *  to raw hex nodes (resolveColorIR) so ExpressionRenderer emits the number. */
+  bodyIR?: import("../../api/shared/ir-core.js").ExpressionIR;
 }
 
 /** Emit a signal as a device variable declaration. */

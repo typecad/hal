@@ -72,6 +72,16 @@ export declare function bind<K extends string>(
 ): void;
 
 /**
+ * Subscribe to changes on an `<input>` element's text. The callback fires after
+ * the on-screen keyboard commits, with the new text. Use it to push keyboard
+ * input back into app state.
+ *
+ *   let ssid = '';
+ *   ui.bindInput(screen.ssid, (text) => { ssid = text; });
+ */
+export declare function bindInput(node: unknown, onText: (text: string) => void): void;
+
+/**
  * Watch a GPIO pin for falling edges (button press). The callback runs as an
  * async task in the existing microtask pump — no ISRs, natural debounce from
  * the ~20ms poll interval. Safe to write to signals inside the callback.
@@ -139,5 +149,46 @@ export declare function onTap(node?: unknown): Promise<void>;
  */
 export declare function drawCanvas(node: unknown, callback: (ctx: CanvasCtx) => void): void;
 
-export const ui = { mount, signal, bind, watchPin, bindList, onTap, drawCanvas };
+// ---------------------------------------------------------------------------
+// Runtime fallback.
+//
+// Every function above is a compile-time construct: the @typecad/cuttlefish
+// transpiler intercepts `ui.mount` / `ui.signal` / `ui.bind` / ... calls and
+// lowers them to device variables and binding-table entries, so these bodies
+// never run on the device. But the package still has to be importable from
+// plain Node (editor language servers, the test runner, tooling) without
+// crashing, and a forgotten build step should fail loudly rather than silently
+// no-op. Each fallback throws an explicit "compile-time construct" error.
+//
+// The signatures intentionally match the `export declare function` contracts
+// above so the public type surface is unchanged.
+// ---------------------------------------------------------------------------
+
+const COMPILE_TIME_ERROR = () => {
+  throw new Error(
+    "@typecad/ui: this function is a compile-time construct. It must be " +
+      "lowered by the @typecad/cuttlefish transpiler at build time, not " +
+      "called at runtime.",
+  );
+};
+
+export const ui: {
+  mount: typeof mount;
+  signal: typeof signal;
+  bind: typeof bind;
+  bindInput: typeof bindInput;
+  bindList: typeof bindList;
+  watchPin: typeof watchPin;
+  onTap: typeof onTap;
+  drawCanvas: typeof drawCanvas;
+} = {
+  mount: COMPILE_TIME_ERROR,
+  signal: COMPILE_TIME_ERROR,
+  bind: COMPILE_TIME_ERROR,
+  bindInput: COMPILE_TIME_ERROR,
+  bindList: COMPILE_TIME_ERROR,
+  watchPin: COMPILE_TIME_ERROR,
+  onTap: COMPILE_TIME_ERROR,
+  drawCanvas: COMPILE_TIME_ERROR,
+};
 export default ui;

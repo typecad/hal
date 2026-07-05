@@ -43,8 +43,11 @@ describe.skipIf(skip)("native_demo SDL native render (C++ emit)", () => {
   it("emits SDL address-window writes for buffered paint canvas pushes", () => {
     expect(cpp).toContain("static int16_t __sdl_addr_x = 0;");
     expect(cpp).toContain("static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t w, int16_t h)");
-    expect(cpp).toContain("__tc_display.put(dx, dy, 0xFF000000u | pixels[i]);");
-    expect(cpp).not.toContain("__tc_display.buf[i] = 0xFF000000u | pixels[i];");
+    // The SDL canvas stores raw RGB888 (alpha is added per-pixel in present(),
+    // not baked into writePixels) so the runtime's getPixel()==fg AA coverage
+    // checks match. See commit f12e977.
+    expect(cpp).toContain("__tc_display.put(dx, dy, pixels[i]);");
+    expect(cpp).not.toContain("0xFF000000u | pixels[i]");
   });
 
   it("emits the full preview-matching GFX font table for SDL text", () => {
@@ -112,9 +115,12 @@ describe.skipIf(skip)("native_demo SDL native render (C++ emit)", () => {
 
   it("emits pressed feedback transitions for showcase buttons", () => {
     expect(cpp).toContain("UITransition __ui_trans[] = {");
+    // The transitionBtn still has its slower 120ms background transition.
     expect(cpp).toContain(".prop=PROP_BG, .durationMs=120");
+    // Every nav/button gets the standard 100ms pressed bg + 0ms fg pair.
     expect(cpp).toContain(".prop=PROP_BG, .durationMs=100");
     expect(cpp).toContain(".prop=PROP_FG, .durationMs=0");
-    expect(cpp).toContain("const uint16_t __ui_trans_count = 4;");
+    // 12 buttons × 2 props (BG+FG) = 24 transitions.
+    expect(cpp).toContain("const uint16_t __ui_trans_count = 24;");
   });
 });

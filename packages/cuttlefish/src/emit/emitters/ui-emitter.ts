@@ -343,10 +343,6 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // returns the node's current property value — structurally valid so the
   // table compiles. Full arrow-function → C++ lowering is a follow-up.
   for (const spec of uiBindings()) {
-    const access = spec.property === "background" ? "bg"
-      : spec.property === "color" ? "fg"
-      : spec.property === "borderColor" ? "borderColor"
-      : "0";
     // If the binding has a lowered C++ expression (from the arrow body), use it;
     // otherwise fall back to returning the node's current value.
     const isTextBinding = spec.property === "text";
@@ -359,10 +355,25 @@ export function emitUIRuntime(ctx: EmitterContext): void {
       );
     } else {
       const access = spec.property === "background" ? "bg" : spec.property === "color" ? "fg" : "bg";
-      const body = spec.cppExpr || `__ui_nodes[${spec.nodeIndex}].${access}`;
-      ctx.sourceLines.push(
-        `uint32_t ${spec.fnName}(void) { return ${body}; }`,
-      );
+      // Prefer the stashed ExpressionIR: render it through the strategy-aware
+      // ExpressionRenderer so division promotion, modulo→fmod, and concat
+      // wrapping match top-level code. Fall back to the prerendered cppExpr
+      // (color-resolved via resolveColorLiterals) when no IR is available.
+      if (spec.bodyIR) {
+        const rendered = ctx.exprRenderer.render(spec.bodyIR);
+        const prelude = ctx.exprRenderer.drainPrelude();
+        // Prelude lines (e.g. __cuttlefish_str_N buffer decls for snprintf
+        // expansions) must land inside the function body before the return;
+        // promote char→static char so a returned buffer pointer doesn't dangle
+        // (mirrors statement-renderer's return+prelude handling).
+        const body = prelude.length > 0
+          ? `${prelude.map((l) => l.replace(/\bchar\s+/, "static char ")).join(" ")} return ${rendered};`
+          : `return ${rendered};`;
+        ctx.sourceLines.push(`uint32_t ${spec.fnName}(void) { ${body} }`);
+      } else {
+        const body = spec.cppExpr || `__ui_nodes[${spec.nodeIndex}].${access}`;
+        ctx.sourceLines.push(`uint32_t ${spec.fnName}(void) { return ${body}; }`);
+      }
     }
   }
 

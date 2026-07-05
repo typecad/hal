@@ -133,6 +133,16 @@ export function escapeCppStringLiteral(value: string): string {
     .replace(/\t/g, "\\t");
 }
 
+/** Escape a literal text fragment destined for a snprintf *format* string.
+ *  Same as escapeCppStringLiteral, but also doubles `%` so a trailing or
+ *  embedded percent (e.g. `meter: ${v}%`) doesn't get misread as a conversion
+ *  specifier on hardware. Use this for any fragment that becomes part of the
+ *  format argument to snprintf(...) — NOT for snprintf *arguments* or for
+ *  standalone C++ string literals, where a bare `%` is harmless. */
+export function escapeSnprintfFormatFragment(value: string): string {
+  return escapeCppStringLiteral(value).replace(/%/g, "%%");
+}
+
 export function normalizeKebabName(name: string): string {
   return name
     .toLowerCase()

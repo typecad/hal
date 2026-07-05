@@ -12,8 +12,16 @@ export interface PreviewBindingSpec {
 export interface PreviewCallbackSpec {
   nodeId: string;
   nodeIndex: number;
-  kind: "click" | "hold" | "release" | "change";
+  // "rangechange" mirrors the runtime's bind:value write-back event for
+  // <range> (ui-element-auto-wire.ts:136); the other four are the standard
+  // touch/keyboard event kinds.
+  kind: "click" | "hold" | "release" | "change" | "rangechange";
   body: string;
+  /** For ui.bindInput callbacks: the parameter name that receives the input's
+   *  committed text (the runtime renames the arrow's first param to `text`).
+   *  When set, the dispatch path binds the committed string to this name as a
+   *  local before running the body. */
+  param?: string;
 }
 
 export interface PreviewInitialAssignment {

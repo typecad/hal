@@ -110,6 +110,18 @@ export interface CanvasElement extends UIElement {
   readonly __kind: "canvas";
 }
 
+/**
+ * Loose index signature used as the *fallback* type before the transpiler
+ * emits the precise per-file `.d.ts`. The cuttlefish transpiler generates a
+ * concrete `ScreenTree` for each `.ui.html` file with named fields matching
+ * the `id` attributes in the source (e.g. `screen.counter`, `screen.btn`),
+ * which is what editor autocomplete and type-checking actually use.
+ *
+ * Do NOT tighten this to a literal union or remove the index signature —
+ * concrete generated interfaces are structurally assignable to this loose
+ * shape, and `ui.mount(tree: unknown)` accepts it. The index signature only
+ * needs to *permit* the call; the transpiler validates the real structure.
+ */
 export interface ScreenTree {
   [id: string]: TextElement | ButtonElement | ViewElement | CheckElement | SelectElement | RadioElement | ProgressElement | RangeElement | InputElement | CanvasElement;
 }

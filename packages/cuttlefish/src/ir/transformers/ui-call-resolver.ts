@@ -19,14 +19,13 @@ import { emitSignalDecl, BindingSpec, ListBindingSpec, recordListBinding, getLis
 import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
-import { resolveColorInternal } from "../../ui/color.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { effectiveDisplaySize } from "../../api/shared/display-profile.js";
-import { lowerCallbackBody, resetCallbackLoweringState } from "./ui-callback-lowering.js";
+import { lowerCallbackBody, resetCallbackLoweringState, resolveColorLiterals, resolveColorIR } from "./ui-callback-lowering.js";
 import { resolveDrawCanvasCall, resetCanvasBindings } from "./canvas-lowering.js";
 import type { StyledNode } from "../../ui/style-resolver.js";
 import { getContext } from "../build-ir-state.js";
-import { escapeCppStringLiteral } from "../../utils/strings.js";
+import { escapeCppStringLiteral, escapeSnprintfFormatFragment } from "../../utils/strings.js";
 
 // ── Pure-helper state ───────────────────────────────────────────────────────
 
@@ -437,15 +436,21 @@ export interface LoweredTextBody {
   cppBody: string;
 }
 
-/** Format specifier for a single numeric interpolation per spec §5.3.
- *  - bare int/uint/bool signal read  → "%d"
- *  - bare float/double signal read   → "%g"
- *  - anything else (arithmetic, non-signal, literal) → "%d" (default; v1) */
+/** Format specifier for a single signal interpolation per spec §5.3.
+ *  - bare int/uint/bool signal read   → "%d" (bool prints as 1/0 on hardware)
+ *  - bare float/double signal read    → "%g"
+ *  - bare const-char-pointer / String signal → "%s"
+ *  - anything else (arithmetic, non-signal, literal) → "%d" (default; v1)
+ *
+ *  Only bare signal reads (`name()`) get a type-derived specifier; compound
+ *  expressions fall through to %d because we don't infer the result type here
+ *  (the runtime's renderExprAsText path is type-unaware — see Tier 3 plan). */
 function numericFormat(expr: ts.Expression): string {
   if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) &&
       expr.arguments.length === 0 && isSignalName(expr.expression.text)) {
     const t = signalCppType(expr.expression.text);
     if (t === "float" || t === "double") return "%g";
+    if (t === "const char*" || t === "String" || t === "char*") return "%s";
   }
   return "%d";
 }
@@ -486,7 +491,9 @@ export function lowerTextBindingBody(
     return { cppBody: "buf[0] = 0;" };
   };
 
-  // Shape 1: String(<numeric expr>)
+  // Shape 1: String(<signal or numeric expr>) — the format specifier comes
+  // from the signal's recorded C++ type (%d for int/bool, %g for float/double,
+  // %s for const char*/String); anything else defaults to %d.
   if (ts.isCallExpression(body) && ts.isIdentifier(body.expression) &&
       body.expression.text === "String" && body.arguments.length === 1) {
     const arg = body.arguments[0];
@@ -501,16 +508,20 @@ export function lowerTextBindingBody(
     return { cppBody: `snprintf(buf, size, "%s", "${escaped}");` };
   }
 
-  // Shape 3: template literal with numeric interpolations.
+  // Shape 3: template literal with signal/numeric interpolations.
   // Build the format string by alternating literal fragments and %specifiers,
-  // and collect the matching argument expressions in order.
+  // and collect the matching argument expressions in order. Each interpolation's
+  // specifier comes from the signal's C++ type (%d/%g/%s); compound expressions
+  // default to %d. The literal fragments become part of the snprintf *format*
+  // string, so any embedded `%` must be doubled (escapeSnprintfFormatFragment)
+  // — otherwise a body like `meter: ${v}%` produces a malformed format string.
   if (ts.isTemplateExpression(body)) {
-    const fmtBuf: string[] = [escapeCppStringLiteral(body.head.text)];
+    const fmtBuf: string[] = [escapeSnprintfFormatFragment(body.head.text)];
     const args: string[] = [];
     for (const span of body.templateSpans) {
       fmtBuf.push(numericFormat(span.expression));
       args.push(lowerInterpolationArg(span.expression, sourceText, diagnostics));
-      fmtBuf.push(escapeCppStringLiteral(span.literal.text));
+      fmtBuf.push(escapeSnprintfFormatFragment(span.literal.text));
     }
     const fmt = fmtBuf.join("");
     const argList = args.length ? ", " + args.join(", ") : "";
@@ -653,27 +664,24 @@ function resolveBindCall(
   // bindings keep the generic expression path with color-literal resolution.
   let cppExpr = "";
   let cppBody: string | undefined;
+  let bodyIR: import("../../api/shared/ir-core.js").ExpressionIR | undefined;
   if (fnArg && (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg))) {
     const body = fnArg.body;
     if (ts.isExpression(body)) {
       if (property === "text") {
         cppBody = lowerTextBindingBody(body, fileName, sourceText, diagnostics).cppBody;
       } else {
-        let raw = renderExprAsText(expressionToIR(body, sourceText, diagnostics));
-        // Resolve color string literals to the target's INTERNAL representation
-        // (565 for TFT, 888 for rgb666 so blends keep precision). Handles hex,
-        // named colors, and rgb()/rgba(). Format comes from the resolved profile.
-        const fmt = getDisplayProfile().colorFormat;
-        raw = raw.replace(/"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g, (match: string, color: string) => {
-          try {
-            return `0x${resolveColorInternal(color, fmt).toString(16)}`;
-          } catch { return match; }
-        });
-        cppExpr = raw;
+        // Stash the color-resolved ExpressionIR so the emitter can render it
+        // through the strategy-aware ExpressionRenderer (matching top-level
+        // code: division→static_cast<double>, modulo→fmod, concat wrapping).
+        // Also keep the prerendered cppExpr as a fallback.
+        const ir = expressionToIR(body, sourceText, diagnostics);
+        bodyIR = resolveColorIR(ir);
+        cppExpr = resolveColorLiterals(renderExprAsText(ir));
       }
     }
   }
-  recordBinding({ nodeIndex, property, fnName, cppExpr, cppBody });
+  recordBinding({ nodeIndex, property, fnName, cppExpr, cppBody, bodyIR });
 
   return {
     kind: "block",

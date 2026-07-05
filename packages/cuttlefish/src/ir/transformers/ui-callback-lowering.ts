@@ -25,6 +25,66 @@ import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { getContext } from "../build-ir-state.js";
 import { getConsoleMethod } from "../../emit/utils/type-inference.js";
 import { isSignalName } from "./ui-call-resolver.js";
+import type { ExpressionIR } from "../../api/shared/ir-core.js";
+
+// ── Color-literal resolution in lowered callback/binding bodies ────────────
+//
+// Both lowerCallbackExpr (rule 4 below) and resolveBindCall's non-text branch
+// (ui-call-resolver.ts) render an author expression to a C++ string and then
+// rewrite embedded CSS color literals to the target's internal int. The regex
+// must match every format parseColor accepts: #rrggbb, #rgb, #rrggbbaa (8-hex),
+// rgb()/rgba(), hsl()/hsla(), and named colors in any case (parseColor
+// lowercases). The previous regex used [a-z]+ and missed 8-hex, hsl/hsla, and
+// uppercase/mixed-case names — those fell through as raw C string literals.
+// Single source of truth so the two call sites can't drift again.
+
+const COLOR_LITERAL_RE = /"(#[0-9a-fA-F]{8}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|(rgb|rgba|hsl|hsla)\([^)]*\)|[A-Za-z]+)"/g;
+
+/** Rewrite CSS color string literals in a rendered C++ expression to the
+ *  target's internal int representation (565 for TFT, 888 for rgb666 so blends
+ *  keep precision). Any color parseColor rejects is left untouched. Format
+ *  comes from the resolved display profile. */
+export function resolveColorLiterals(raw: string): string {
+  const fmt = getDisplayProfile().colorFormat;
+  return raw.replace(COLOR_LITERAL_RE, (match: string, color: string) => {
+    try {
+      return `0x${resolveColorInternal(color, fmt).toString(16)}`;
+    } catch {
+      return match;
+    }
+  });
+}
+
+/** Walk an ExpressionIR tree and rewrite CSS color string-literal nodes
+ *  (`{ kind: "string", value: "#ff0000" }`) into raw hex nodes that the
+ *  ExpressionRenderer emits as a bare int. This is the IR-level counterpart of
+ *  resolveColorLiterals, used when a binding body is deferred to emit time and
+ *  rendered through ctx.exprRenderer (which doesn't do color resolution).
+ *  Non-color strings are left as string nodes. */
+export function resolveColorIR(expr: ExpressionIR): ExpressionIR {
+  const fmt = getDisplayProfile().colorFormat;
+  const walk = (e: ExpressionIR): ExpressionIR => {
+    if (e.kind === "string") {
+      try {
+        const hex = resolveColorInternal(e.value, fmt);
+        return { kind: "raw", value: `0x${hex.toString(16)}` };
+      } catch {
+        return e;
+      }
+    }
+    // Recurse into every child-bearing variant so nested color literals (e.g.
+    // inside a ternary or string_concat) also resolve.
+    if (e.kind === "ternary") {
+      return { ...e, condition: walk(e.condition), whenTrue: walk(e.whenTrue), whenFalse: walk(e.whenFalse) };
+    }
+    if (e.kind === "binary") return { ...e, left: walk(e.left), right: walk(e.right) };
+    if (e.kind === "unary") return { ...e, operand: walk(e.operand) };
+    if (e.kind === "string_concat") return { ...e, parts: e.parts.map(walk) };
+    if (e.kind === "template_string") return { ...e, expression: walk(e.expression) };
+    return e;
+  };
+  return walk(expr);
+}
 
 // ── Console-in-callback tracking ──────────────────────────────────────────
 //
@@ -123,17 +183,7 @@ export function lowerCallbackExpr(
 
   // 4. Generic expression: lower via expressionToIR, then resolve color names.
   let raw = renderExprAsText(expressionToIR(expr, sourceText, diagnostics));
-  const fmt = getDisplayProfile().colorFormat;
-  raw = raw.replace(
-    /"(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}|[a-z]+|rgba?\([^)]*\))"/g,
-    (match: string, color: string) => {
-      try {
-        return `0x${resolveColorInternal(color, fmt).toString(16)}`;
-      } catch {
-        return match;
-      }
-    },
-  );
+  raw = resolveColorLiterals(raw);
   return raw;
 }
 

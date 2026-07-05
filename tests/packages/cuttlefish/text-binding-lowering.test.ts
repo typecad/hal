@@ -60,6 +60,57 @@ describe("lowerTextBindingBody", () => {
     expect(diags).toHaveLength(0);
   });
 
+  it("escapes literal % in template-literal fragments so snprintf stays well-formed", () => {
+    // Mirrors the demo's progress caption: `meter: ${value * 10}%`. Without
+    // escaping, the trailing % produces a malformed format string ("meter: %d%")
+    // that snprintf on hardware misreads. The HTML {expr} path already escapes;
+    // the TS template-literal path must agree.
+    recordSignal("pct", "int", 0);
+    const body = bodyOf("() => `meter: ${pct()}%`");
+    const out = lowerTextBindingBody(body, "x.ts", "", diags);
+    expect(out.cppBody).toContain('"meter: %d%%"');
+    expect(diags).toHaveLength(0);
+  });
+
+  it("escapes literal % in the template head, not just trailing spans", () => {
+    recordSignal("n", "int", 0);
+    const body = bodyOf("() => `${n()}% done`");
+    const out = lowerTextBindingBody(body, "x.ts", "", diags);
+    expect(out.cppBody).toContain('"%d%% done"');
+    expect(diags).toHaveLength(0);
+  });
+
+  it("lowers String(<string signal read>) to snprintf %s", () => {
+    // A const char* signal interpolated via String(...) must use %s, not %d
+    // (which would be UB on hardware — %d against a char*). Mirrors the runtime
+    // type table from variables.ts.
+    recordSignal("msg", "const char*", "");
+    const body = bodyOf("() => String(msg())");
+    const out = lowerTextBindingBody(body, "x.ts", "", diags);
+    expect(out.cppBody).toContain('snprintf(buf, size, "%s", msg)');
+    expect(diags).toHaveLength(0);
+  });
+
+  it("lowers a template literal with a string-signal interpolation to %s", () => {
+    recordSignal("name", "const char*", "");
+    const body = bodyOf("() => `hello ${name()}`");
+    const out = lowerTextBindingBody(body, "x.ts", "", diags);
+    expect(out.cppBody).toContain('"hello %s"');
+    expect(out.cppBody).toContain(", name)");
+    expect(diags).toHaveLength(0);
+  });
+
+  it("lowers String(<bool signal read>) to snprintf %d (hardware prints 1/0)", () => {
+    // Booleans lower to %d on hardware (prints 1/0); the preview must agree by
+    // stringifying true/false as "1"/"0" (covered in preview-bind-input-style
+    // tests). This asserts the runtime side emits %d for a bool signal.
+    recordSignal("on", "bool", false);
+    const body = bodyOf("() => String(on())");
+    const out = lowerTextBindingBody(body, "x.ts", "", diags);
+    expect(out.cppBody).toContain('snprintf(buf, size, "%d", on)');
+    expect(diags).toHaveLength(0);
+  });
+
   it("falls back to a safe no-op + ui-bind-text-unlowered warning for unknown shapes", () => {
     // An array literal is none of the three shapes.
     const body = bodyOf("() => [1, 2, 3]");

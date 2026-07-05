@@ -6,6 +6,15 @@ import { parseConfigFile } from "../../../packages/cuttlefish/src/config-loader"
 import { buildPreviewSnapshot } from "../../../packages/cuttlefish/src/preview/build-program";
 import { PreviewUIRuntime } from "../../../packages/cuttlefish/src/preview/host-ui-runtime";
 
+// Diagnostic helper: renders the demo's Transforms screen to PNG at the top
+// and bottom of its scroll range and dumps an ASCII-art view of the rotate
+// track region for human inspection. This is NOT an assertion test — it has
+// no expect() calls; it exists so a developer can eyeball transform + scroll
+// rendering parity between preview and device.
+//
+// Retargeted from the removed #rotateTrack/#rotateLabel nodes to the surviving
+// #transformDemo / #dotRotate transform track in the rewritten showcase.
+
 function crc32(buf: Uint8Array): number {
   let c: number;
   const table: number[] = [];
@@ -97,23 +106,18 @@ describe("diag render png", () => {
       writePng(path.join(outDir, "transforms-bottom.png"), runtime.gfx.toRgbaBytes(), snapshot.program.width, snapshot.program.height, 2);
       console.log(`maxScroll=${maxScroll}, wrote PNGs to ${outDir}`);
 
-      // Inspect rotate track region pixels. track layout: x=116..204, y=258..286
+      // Inspect the rotate track region pixels via the surviving dotRotate node,
+      // which sits inside the rotate track at the bottom of the transforms screen.
       const W = snapshot.program.width;
       const buf = runtime.gfx.buffer as Uint16Array;
-      const rotNode = nodes.find((n) => n.id === "rotateTrack")!;
-      const rotLabel = nodes.find((n) => n.id === "rotateLabel")!;
+      const rotNode = nodes.find((n) => n.id === "dotRotate")!;
       const sy = (runtime as any).nodes[scrollIdx].scrollY;
       const drawY = rotNode.box.y - sy;
-      const labelDrawY = rotLabel.box.y - sy;
-      console.log(`rotateTrack box.y=${rotNode.box.y} scrollY=${sy} drawY=${drawY} drawBottom=${drawY + rotNode.box.h}`);
-      console.log(`rotateLabel box.y=${rotLabel.box.y} drawY=${labelDrawY} drawBottom=${labelDrawY + rotLabel.box.h}`);
-      function hex565(v: number) {
-        const r = (v >> 11) & 0x1f, g = (v >> 5) & 0x3f, b = v & 0x1f;
-        return "#" + [r, g, b].map((c) => ((c << 3) | (c >> 2)).toString(16).padStart(2, "0")).join("");
-      }
-      // ASCII art of the bottom region: columns 100..210, rows labelDrawY-2 .. 239
-      const startX = 100, endX = 210;
-      const startY = Math.max(0, labelDrawY - 2), endY = 240;
+      console.log(`dotRotate box.y=${rotNode.box.y} scrollY=${sy} drawY=${drawY} drawBottom=${drawY + rotNode.box.h}`);
+      // ASCII art of the region around the rotate dot: columns around its x,
+      // rows from a bit above the dot to the bottom of the viewport.
+      const startX = Math.max(0, rotNode.box.x - 30), endX = Math.min(W, rotNode.box.x + rotNode.box.w + 30);
+      const startY = Math.max(0, drawY - 4), endY = snapshot.program.height;
       console.log(`\nASCII art rows ${startY}..${endY}, cols ${startX}..${endX} (W=white text, Y=yellow track, P=purple/red fill, .=black):`);
       for (let y = startY; y < endY; y++) {
         let row = `y=${String(y).padStart(3)} `;

@@ -23,9 +23,14 @@ describe("C++ runtime rich-text support", () => {
   });
 
   it("can tint rich-text shadow passes with a foreground override", () => {
-    expect(header).toMatch(/ui_draw_rich_text\([^)]*uint8_t useFgOverride = 0,\s*uint16_t fgOverride = 0/);
-    expect(header).toMatch(/uint16_t fg = useFgOverride \? fgOverride : run->fg/);
-    expect(header).toMatch(/textShadowCount > 0[\s\S]*ui_draw_rich_text\([^;]*,\s*1,\s*tsCol\)/);
+    // fgOverride uses the platform color type (UI_COLOR_T) so the same draw
+    // path works for both RGB565 and RGB888 displays.
+    expect(header).toMatch(/ui_draw_rich_text\([^)]*uint8_t useFgOverride = 0,\s*UI_COLOR_T fgOverride = 0/);
+    expect(header).toMatch(/UI_COLOR_T fg = useFgOverride \? fgOverride : run->fg/);
+    // The shadow pass enables the override (useFgOverride=1) and passes the
+    // blended shadow color. maxWidth follows tsCol in the call, so tsCol is
+    // matched as a leading argument rather than the trailing one.
+    expect(header).toMatch(/textShadowCount > 0[\s\S]*ui_draw_rich_text\([^;]*,\s*1,\s*tsCol\s*,/);
   });
 
   it("clips rich-text draw work to the active target before drawing segments", () => {
