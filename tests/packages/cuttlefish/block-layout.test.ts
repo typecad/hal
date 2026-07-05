@@ -150,4 +150,20 @@ describe("flex order reorders children", () => {
     const xs = boxes.slice(1, 4).map(b => b.x);
     expect(xs).toEqual([0, 40, 80]);
   });
+
+  it("flex children shrink to fit the row instead of overflowing", () => {
+    // Two text children whose intrinsic widths sum past the container should
+    // compress (default flex-shrink:1) rather than overflow the row. Use
+    // selectEngine so the Yoga flex path handles it (BlockLayoutEngine is the
+    // non-flex fallback).
+    const styled = resolveStyles(
+      parseHtml(`<screen><row><text id="a">aaaaaaaaaa</text><text id="b">bbbbbbbbbb</text></row></screen>`),
+      parseCss(`screen{width:100px;height:50px} row{flex-direction:row;width:100px} text{font-size:8px}`),
+    );
+    const engine = selectEngine(styled);
+    const boxes = engine.arrange(styled, { x: 0, y: 0, w: 100, h: 50 }, (n, aw) => measure(n, aw));
+    // The right edge of the last child must not exceed the row's right edge.
+    const rightEdges = boxes.filter(b => b.w > 0 && b.w < 100).map(b => b.x + b.w);
+    expect(Math.max(...rightEdges)).toBeLessThanOrEqual(100);
+  });
 });
