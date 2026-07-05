@@ -724,8 +724,13 @@ function parseGradient(bg: string | undefined, format: ColorFormat): GradientSpe
   };
 }
 
-/** Map font-size (px) + font-weight to a GFX text size (1-4).
- *  ≤12px→1, 13-20px→2, 21-28px→3, 29+→4. Bold adds 1 (clamped to 4). */
+/** Map font-size (px) to a GFX text size (1-4).
+ *  ≤12px→1, 13-20px→2, 21-28px→3, 29+→4.
+ *
+ *  font-weight no longer inflates the bucket: matching web behavior, bold only
+ *  affects glyph stroke weight (via the chosen @font-face), not the rendered
+ *  glyph size. Previously bold added 1 to the bucket, which made <h3> labels
+ *  render larger than their declared font-size and surprised authors. */
 function textSizeOf(style: CSSProperty): number {
   let size = 2;  // default
   if (style.fontSize) {
@@ -737,7 +742,6 @@ function textSizeOf(style: CSSProperty): number {
       else size = 4;
     }
   }
-  if (style.fontWeight === "bold" && size < 4) size++;
   return size;
 }
 

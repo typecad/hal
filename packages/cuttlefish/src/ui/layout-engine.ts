@@ -66,8 +66,9 @@ const GFX_TEXT_SIZE = 2;
 const GFX_ADVANCE_PER_CHAR = 6 * GFX_TEXT_SIZE;  // 12px at size 2
 const GFX_CHAR_HEIGHT = 8 * GFX_TEXT_SIZE;       // 16px at size 2
 
-/** Compute the GFX text size from a node's CSS font-size + font-weight.
- *  Mirrors the logic in model.ts textSizeOf(). */
+/** Compute the GFX text size from a node's CSS font-size.
+ *  Mirrors the logic in model.ts textSizeOf(). font-weight does NOT inflate
+ *  the bucket (matching web behavior); see model.ts:textSizeOf for rationale. */
 function gfxTextSizeOf(node: StyledNode): number {
   let size = GFX_TEXT_SIZE;
   if (node.style.fontSize) {
@@ -79,7 +80,6 @@ function gfxTextSizeOf(node: StyledNode): number {
       else size = 4;
     }
   }
-  if (node.style.fontWeight === "bold" && size < 4) size++;
   return size;
 }
 
