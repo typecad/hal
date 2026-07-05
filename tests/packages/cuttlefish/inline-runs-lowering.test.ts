@@ -19,10 +19,12 @@ describe("run lowering", () => {
     expect(p.runs).toBeDefined();
     expect(p.runs!.length).toBe(2);
     expect(p.runs!.find(r => r.text === "world")).toBeDefined();
-    // Bold bumps the GFX text size up by 1 vs the base (16px → size 2; bold → 3).
+    // Bold no longer inflates the GFX text-size bucket (matches web behavior —
+    // bold affects stroke weight via @font-face, not rendered size). Both runs
+    // are 16px, so both lower to the same textSize.
     const hello = p.runs!.find(r => r.text === "Hello ")!;
     const world = p.runs!.find(r => r.text === "world")!;
-    expect(world.textSize).toBeGreaterThan(hello.textSize);
+    expect(world.textSize).toBe(hello.textSize);
     expect(p.runLines).toBeDefined();
     expect(p.runLines!.segRun.length).toBeGreaterThan(0);
     expect(p.runLines!.segText.length).toBe(p.runLines!.segRun.length);

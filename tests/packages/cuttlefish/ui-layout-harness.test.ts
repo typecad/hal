@@ -589,7 +589,9 @@ describe("UI layout harness", () => {
     const cta = ui.node("cta");
     expect(cta.fg).toBe(resolveColor("#ff0000", "rgb565"));
     expect(cta.bg).toBe(resolveColor("#202020", "rgb565"));
-    expect(cta.textSize).toBe(2);
+    // 12px → GFX bucket 1. font-weight:bold no longer adds to the bucket
+    // (matches web behavior); previously it bumped 1→2.
+    expect(cta.textSize).toBe(1);
     expect(cta.transformOffsetY).toBe(1);
     expect(cta.pressedOffsetY).toBe(2);
 
