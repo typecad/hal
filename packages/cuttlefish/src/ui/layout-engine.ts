@@ -150,11 +150,16 @@ export function measure(node: StyledNode, availableWidth?: number, fontAssets: U
   const ts = gfxTextSizeOf(node);
   const advance = 6 * ts + letterSpacingOf(node);
   const charH = 8 * ts;
+  // For interpolation text (e.g. "taps: {count}"), strip the braces so layout
+  // measures "taps: count" — closer to the resolved runtime width than the
+  // literal "{count}". The braces are an authoring delimiter, not rendered.
+  const stripInterp = (value: string | undefined): string =>
+    node.hasInterpolation ? (value ?? "").replace(/[{}]/g, "") : (value ?? "");
   // Width of a string using the asset font's real advances when the node has
   // one, else the 6*ts default-font advance. This keeps the measured box width
   // in sync with what the runtime actually draws (avoids overflow/clipping).
   const widthOf = (value: string): number =>
-    assetTextWidth(value, node.style, fontAssets) ?? textWidthOf(value, advance);
+    assetTextWidth(stripInterp(value), node.style, fontAssets) ?? textWidthOf(stripInterp(value), advance);
   if (node.tag === "text" || node.tag === "button" || node.tag === "select") {
     if (node.tag === "select") {
       // Size to the longest option, not the full comma-separated text
@@ -164,7 +169,7 @@ export function measure(node: StyledNode, availableWidth?: number, fontAssets: U
       const longest = options.length > 0 ? options.reduce((a, b) => a.length >= b.length ? a : b) : "";
       return { w: widthOf(applyTextTransform(longest, node)), h: lineHeightOf(node, charH) };
     }
-    const text = applyTextTransform(node.text, node);
+    const text = applyTextTransform(stripInterp(node.text), node);
     const layout = layoutText(text, {
       maxWidth: availableWidth,
       whiteSpace: node.style.whiteSpace,
@@ -175,7 +180,7 @@ export function measure(node: StyledNode, availableWidth?: number, fontAssets: U
   }
   if (node.tag === "check" || node.tag === "radio") {
     // Checkbox/radio: 16px indicator + 6px gap + label text
-    const text = applyTextTransform(node.text, node);
+    const text = applyTextTransform(stripInterp(node.text), node);
     const labelMaxWidth = availableWidth !== undefined ? Math.max(0, availableWidth - 22) : undefined;
     const layout = layoutText(text, {
       maxWidth: labelMaxWidth,
