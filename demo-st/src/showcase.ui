@@ -369,14 +369,18 @@ a { color: var(--accent); }
     <!-- Row 4: text | number -->
     <div class="formRow">
       <section class="formCard">
-        <h3 class="demoLabel">text</h3>
+        <div class="cardRow">
+          <h3 class="demoLabel">text</h3>
+          <span id="nameStatus" class="formPill">× {nameCommits}</span>
+        </div>
         <input id="formName" type="text" placeholder="name" maxlength="20" on:change={captureName}></input>
-        <span id="nameStatus" class="formStatus">commits: {nameCommits}</span>
       </section>
       <section class="formCard">
-        <h3 class="demoLabel">number</h3>
+        <div class="cardRow">
+          <h3 class="demoLabel">number</h3>
+          <span id="ageStatus" class="formPill">× {ageCommits}</span>
+        </div>
         <input id="formAge" type="number" placeholder="0" maxlength="3" on:change={captureAge}></input>
-        <span id="ageStatus" class="formStatus">commits: {ageCommits}</span>
       </section>
     </div>
 
