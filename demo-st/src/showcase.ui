@@ -130,8 +130,8 @@
 screen {
   background: var(--background);
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: 5px;
+  padding: 8px;
 }
 
 /* Header card (full width). Title is bold but explicitly sized so the
@@ -139,10 +139,10 @@ screen {
 #formHeader {
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   border: 1px solid var(--border);
   background: var(--card);
-  padding: 10px;
+  padding: 7px;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
@@ -173,11 +173,11 @@ screen {
   flex: 1;
   flex-direction: column;
   align-items: stretch;
-  gap: 7px;
+  gap: 5px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px;
+  padding: 8px;
   box-shadow: var(--shadow);
 }
 /* Card label. font-weight: normal is mandatory: the UA makes <h3> bold and
@@ -218,7 +218,7 @@ screen {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 6px 12px;
+  padding: 4px 12px;
   transition: background 100ms;
   white-space: nowrap;
 }
@@ -248,7 +248,7 @@ screen {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   font-size: 16px;
-  padding: 5px 8px;
+  padding: 3px 8px;
   text-decoration: underline;
 }
 #modeAccent {
@@ -284,7 +284,7 @@ screen {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   width: 100%;
-  padding: 5px;
+  padding: 3px;
   font-size: 15px;
 }
 
