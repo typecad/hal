@@ -392,6 +392,23 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   const diagnostics = [] as GeneratedOutputs["diagnostics"];
   const allRemovedSymbols: string[] = [];
 
+  // themeCss is only honored on the .ui.html disk-read path (loadUIModule).
+  // For a .ui single-file entry the inline <style> is the sole CSS source; the
+  // standalone file is silently ignored. Warn so authors don't maintain a dead
+  // stylesheet.
+  if (configDisplay?.themeCss) {
+    const entryExt = path.extname(options.inputFile).toLowerCase();
+    if (entryExt === ".ui") {
+      diagnostics.push({
+        severity: "warning",
+        code: "themeCss-ui-entry-ignored",
+        message: `display.themeCss is ignored for .ui single-file entries; the inline <style> in ${path.basename(options.inputFile)} is the sole CSS source.`,
+        hint: `Move the standalone CSS into the .ui file's <style> block, or change the entry to a .ts file that imports a .ui.html module.`,
+        source: path.basename(options.inputFile),
+      });
+    }
+  }
+
   // ── Parser-level warnings (unknown CSS properties / HTML tags) ────────────
   // The graph build above already loaded all .ui.html modules; surface their
   // parser warnings (unknown CSS properties, unknown HTML tags) here so the
