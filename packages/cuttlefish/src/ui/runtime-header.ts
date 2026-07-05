@@ -5215,8 +5215,12 @@ static inline void ui_kb_open(uint16_t nodeIdx, uint8_t inputPosition) {
   ui_kb_compute_box();
   __ui_kb_visible = 1;
   __ui_kb_dirty = 1;  // redraw on the first visible frame
-  // Mark the whole tree dirty so the app fully redraws when the keyboard closes.
-  for (uint16_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1;
+  // Do NOT pre-mark the tree dirty here. While the keyboard is visible the
+  // draw pass is skipped (its opaque background covers app nodes), so any
+  // dirty flags set now are never consumed/cleared — they survive until close,
+  // and the first post-close frame then repaints every dirty node = full-screen
+  // flash on SPI TFTs. The close path scopes the repaint to nodes whose paint
+  // rect intersects __ui_kb_box, which is the only region that needs restoring.
 }
 
 // Close the keyboard: commit buffer back to the input node.

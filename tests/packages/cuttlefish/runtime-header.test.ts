@@ -699,6 +699,19 @@ describe("C++ reactive runtime header", () => {
     expect(closeBody).toMatch(/ui_rects_intersect/);
     expect(closeBody).toMatch(/ui_mark_dirty/);
   });
+
+  it("ui_kb_open does not pre-mark the whole tree dirty", () => {
+    // The draw pass is skipped while the keyboard is visible (its opaque
+    // background covers app nodes), so any dirty flags set on open are never
+    // consumed/cleared during the keyboard-up period. If open marks the whole
+    // tree dirty, those flags survive until close, and the first post-close
+    // frame repaints the ENTIRE screen -> full-screen flash on SPI TFTs.
+    // Close already does the scoped dirty (intersect with __ui_kb_box), so
+    // open must NOT pre-mark — that pre-mark is the actual flash trigger.
+    const openBody = header.match(/static inline void ui_kb_open\(uint16_t nodeIdx, uint8_t inputPosition\)\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(openBody).not.toBe("");
+    expect(openBody).not.toMatch(/for\s*\(\s*uint16_t\s+i\s*=\s*0\s*;\s*i\s*<\s*__ui_node_count[\s\S]*?\.dirty\s*=\s*1/);
+  });
 });
 
 describe("canvas runtime", () => {
