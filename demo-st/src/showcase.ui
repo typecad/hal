@@ -46,6 +46,10 @@
    This inline <style> is the sole CSS authority for a .ui single-file entry
    (the transpiler does not load themeCss for .ui entries). Holds: @font-face,
    the :root/.dark token palette, and the rules the new screen references.
+
+   Vertical budget is tight on 320x480 portrait, so titles use font-weight:
+   normal (the runtime bumps textSize for bold text, which would both enlarge
+   the <h3> labels and waste per-char advance). Cards use compact padding/gap.
    ----------------------------------------------------------------------- */
 
 @font-face {
@@ -126,107 +130,116 @@
 screen {
   background: var(--background);
   flex-direction: column;
-  gap: 6px;
-  padding: 10px;
+  gap: 4px;
+  padding: 8px;
 }
 
-/* Header card (full width). */
+/* Header card (full width). Title is bold but explicitly sized so the
+   bold-textSize bump is bounded; subtitle stays small. */
 #formHeader {
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   border: 1px solid var(--border);
   background: var(--card);
-  padding: 8px;
+  padding: 6px;
   border-radius: var(--radius);
   box-shadow: var(--shadow);
 }
 #formTitle {
   color: var(--foreground);
   font-family: "ColibriDemo";
-  font-size: 22px;
+  font-size: 18px;
   font-weight: bold;
   text-align: center;
 }
 #formSubtitle {
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 12px;
   text-align: center;
 }
 
-/* Grid row: a flex row holding 1 (full-width) or 2 (split) cards. */
+/* Grid row: a flex row holding 2 (split) cards. Every row is a 2-column
+   split so no single card towers over the others and blows the 480px budget. */
 .formRow {
   flex-direction: row;
-  gap: 6px;
+  gap: 4px;
   align-items: stretch;
 }
 
-/* Form card: one logical control + its status line. flex:1 makes two
-   siblings split the row evenly; a sole child takes the full width. */
+/* Form card: one logical control + its status line. flex:1 makes the two
+   siblings split the row evenly. Compact padding/gap to fit 5 rows + header. */
 .formCard {
   flex: 1;
   flex-direction: column;
   align-items: stretch;
-  gap: 5px;
+  gap: 3px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 8px;
+  padding: 6px;
   box-shadow: var(--shadow);
 }
+/* Card label. font-weight: normal is mandatory: the UA makes <h3> bold and
+   the runtime bumps textSize for bold text, which both enlarges the label
+   and widens per-char advance (wrapping/overflow risk in a ~140px card). */
 .demoLabel {
   color: var(--secondary);
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: normal;
 }
 .formStatus {
   color: var(--muted-foreground);
-  font-size: 13px;
+  font-size: 12px;
 }
 .formPill {
   color: var(--foreground);
   background: var(--muted);
   border: 1px solid var(--border);
   border-radius: 5px;
-  padding: 3px 7px;
-  font-size: 13px;
+  padding: 2px 5px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
-/* Inline row inside a card: control left, indicator/count right. */
+/* Inline row inside a card: control left, indicator/count right. Tight gap
+   so a button + pill fit a half-width card (~140px) without overflow. */
 .cardRow {
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
 }
 
 /* ── Button ── */
 #formBtn {
   background: var(--primary);
   color: var(--primary-foreground);
-  font-size: 16px;
+  font-size: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  padding: 5px 12px;
+  padding: 4px 8px;
   transition: background 100ms;
+  white-space: nowrap;
 }
 #formBtn:pressed { background: var(--accent); color: var(--accent-foreground); }
 #formBtnCount {
   color: var(--foreground);
-  font-size: 13px;
-  padding: 3px 5px;
+  font-size: 12px;
+  padding: 2px 4px;
   text-align: center;
   white-space: nowrap;
 }
 
 /* ── Checkbox + lamp ── */
-#formCheck1 { color: var(--foreground); font-size: 16px; }
+#formCheck1 { color: var(--foreground); font-size: 14px; }
 #featureLamp {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   background: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 8px;
 }
 
 /* ── Select + accent ── */
@@ -235,27 +248,27 @@ screen {
   background: var(--muted);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  font-size: 16px;
-  padding: 4px 8px;
+  font-size: 14px;
+  padding: 3px 6px;
   text-decoration: underline;
 }
 #modeAccent {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   background: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 8px;
 }
 
 /* ── Radio group ── */
 #radioChoices {
   flex-direction: row;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
-#formRadio1, #formRadio2 { color: var(--foreground); font-size: 16px; }
+#formRadio1, #formRadio2 { color: var(--foreground); font-size: 14px; }
 
-/* ── Range + progress ── */
+/* ── Range + progress (split into two side-by-side cards) ── */
 #formRange1 {
   color: var(--chart-1);
   width: 100%;
@@ -266,30 +279,32 @@ screen {
 }
 
 /* ── Text + number inputs ── */
-#formName, #formAge {
+#formName, #formAge, #formKbDemo {
   color: var(--foreground);
   background: #12161b;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   width: 100%;
-  padding: 4px;
+  padding: 3px;
+  font-size: 13px;
 }
 
 /* ── :disabled ── */
 #formDisabledBtn {
   background: var(--muted);
   color: var(--muted-foreground);
-  font-size: 16px;
+  font-size: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 4px 12px;
+  padding: 4px 8px;
+  white-space: nowrap;
 }
 #formDisabledBtn:disabled { opacity: 0.5; }
 
-/* ── Hint line ── */
+/* ── Hint line (keyboard card secondary text) ── */
 #formHint {
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: 11px;
   text-align: center;
 }
 
@@ -304,9 +319,9 @@ a { color: var(--accent); }
 </style>
 
 <!-- ── Single-screen forms demo (320×480, no scroll) ─────────────────────── -->
-<!-- Body is a flex column of .formRow rows; each row holds 1 (full-width) or
-     2 (split) .formCard cards. Card content is the control + its reactive
-     status line. Vertical budget ≈ 438px of 480. -->
+<!-- Body is a flex column of .formRow rows; every row is a 2-column split so
+     no card is tall enough to push later rows off-screen. Vertical budget
+     ≈ 360–400px of 480. -->
 <screen id="forms">
   <body>
     <header id="formHeader">
@@ -357,12 +372,15 @@ a { color: var(--accent); }
       </section>
     </div>
 
-    <!-- Row 3: range + progress (full width) -->
+    <!-- Row 3: range | progress (split, not stacked — both reflect formRange1) -->
     <div class="formRow">
       <section class="formCard">
-        <h3 class="demoLabel">range + progress</h3>
+        <h3 class="demoLabel">range</h3>
         <range id="formRange1" min="0" max="10" value="3"></range>
         <span id="volumeStatus" class="formStatus">volume: 3</span>
+      </section>
+      <section class="formCard">
+        <h3 class="demoLabel">progress</h3>
         <progress id="formProg" value="30"></progress>
         <span id="formProgressCaption" class="formStatus">meter: 30%</span>
       </section>
@@ -371,29 +389,30 @@ a { color: var(--accent); }
     <!-- Row 4: text | number -->
     <div class="formRow">
       <section class="formCard">
-        <h3 class="demoLabel">text input</h3>
-        <input id="formName" type="text" placeholder="enter name" maxlength="20" on:change={captureName}></input>
-        <span id="nameStatus" class="formStatus">name commits: {nameCommits}</span>
+        <h3 class="demoLabel">text</h3>
+        <input id="formName" type="text" placeholder="name" maxlength="20" on:change={captureName}></input>
+        <span id="nameStatus" class="formStatus">commits: {nameCommits}</span>
       </section>
       <section class="formCard">
-        <h3 class="demoLabel">number input</h3>
+        <h3 class="demoLabel">number</h3>
         <input id="formAge" type="number" placeholder="0" maxlength="3" on:change={captureAge}></input>
-        <span id="ageStatus" class="formStatus">age commits: {ageCommits}</span>
+        <span id="ageStatus" class="formStatus">commits: {ageCommits}</span>
       </section>
     </div>
 
-    <!-- Row 5: :disabled | hint -->
+    <!-- Row 5: :disabled | keyboard -->
     <div class="formRow">
       <section class="formCard">
         <h3 class="demoLabel">:disabled</h3>
         <div class="cardRow">
           <button id="formDisabledBtn" disabled>cannot tap</button>
-          <span class="formStatus">ignored by input</span>
+          <span class="formStatus">no effect</span>
         </div>
       </section>
       <section class="formCard">
         <h3 class="demoLabel">keyboard</h3>
-        <span id="formHint">tap a text field to type</span>
+        <input id="formKbDemo" type="text" placeholder="tap to type" maxlength="16"></input>
+        <span id="formHint">opens the keyboard</span>
       </section>
     </div>
   </body>
