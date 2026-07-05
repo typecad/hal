@@ -177,7 +177,7 @@ screen {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 3px;
+  padding: 2px;
   box-shadow: var(--shadow);
 }
 /* Card label. font-weight: normal is mandatory: the UA makes <h3> bold and
@@ -315,7 +315,7 @@ a { color: var(--accent); }
         <h3 class="demoLabel">button</h3>
         <div class="cardRow">
           <button id="formBtn" on:click={incrementTaps}>tap me</button>
-          <span id="formBtnCount" class="formPill">taps: {count}</span>
+          <span id="formBtnCount" class="formStatus">{count}</span>
         </div>
       </section>
       <section class="formCard">
@@ -369,18 +369,14 @@ a { color: var(--accent); }
     <!-- Row 4: text | number -->
     <div class="formRow">
       <section class="formCard">
-        <div class="cardRow">
-          <h3 class="demoLabel">text</h3>
-          <span id="nameStatus" class="formPill">× {nameCommits}</span>
-        </div>
+        <h3 class="demoLabel">text</h3>
         <input id="formName" type="text" placeholder="name" maxlength="20" on:change={captureName}></input>
+        <span id="nameStatus" class="formStatus">{nameCommits}</span>
       </section>
       <section class="formCard">
-        <div class="cardRow">
-          <h3 class="demoLabel">number</h3>
-          <span id="ageStatus" class="formPill">× {ageCommits}</span>
-        </div>
+        <h3 class="demoLabel">number</h3>
         <input id="formAge" type="number" placeholder="0" maxlength="3" on:change={captureAge}></input>
+        <span id="ageStatus" class="formStatus">{ageCommits}</span>
       </section>
     </div>
 
