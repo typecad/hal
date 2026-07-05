@@ -5226,12 +5226,25 @@ static inline void ui_kb_close() {
     __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
     if (__ui_kb_onchange) __ui_kb_onchange();
   }
+  // Capture the keyboard box before clearing visibility — it identifies the
+  // screen region the opaque overlay covered and that now needs restoring.
+  UIRect kbBox = __ui_kb_box;
   __ui_kb_visible = 0;
   __ui_kb_target = -1;
   __ui_kb_bs_held = 0;
-  // Mark the whole tree dirty so the app fully redraws after the keyboard
-  // overlay is removed (the draw pass was skipped while the keyboard was up).
-  for (uint16_t i = 0; i < __ui_node_count; i++) __ui_nodes[i].dirty = 1;
+  // Repaint only what the keyboard overlay actually overwrote: nodes whose
+  // paint rect intersects the keyboard box, plus the edited input itself (its
+  // text just changed). ui_mark_dirty handles overlap repair + scroll
+  // clipping. A blanket full-tree dirty here repaints the whole screen, which
+  // shows up as a flash on SPI TFTs.
+  for (uint16_t i = 0; i < __ui_node_count; i++) {
+    UIRect r;
+    ui_node_current_paint_rect(i, &r);
+    if (r.w > 0 && r.h > 0 &&
+        ui_rects_intersect(r.x, r.y, r.w, r.h, kbBox.x, kbBox.y, kbBox.w, kbBox.h)) {
+      ui_mark_dirty(i);
+    }
+  }
 }
 
 // Compute a key's rect from its index, given the grid + box.

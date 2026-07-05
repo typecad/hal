@@ -676,6 +676,29 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/case\s+3:[\s\S]*ui_kb_close/);
     expect(header).toMatch(/case\s+4:[\s\S]*load_default/);
   });
+
+  it("ui_kb_close scopes the post-keyboard dirty to the keyboard box, not the whole tree", () => {
+    // Flashing root cause: ui_kb_close() must NOT mark every node dirty. The
+    // keyboard draws an opaque background over __ui_kb_box on the live display,
+    // so only nodes whose paint rect intersects that box need repainting. A
+    // blanket full-tree dirty causes a full-screen flash on SPI TFTs.
+    // Match the DEFINITION (header line ends with `{`), not the forward
+    // declaration (which ends with `;`). Capture to the closing brace at
+    // column 0.
+    const closeBody = header.match(/static inline void ui_kb_close\(\)\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(closeBody).not.toBe("");  // sanity: function body captured
+    // The whole-tree dirty loop must be gone from ui_kb_close. (Looser match:
+    // any loop over __ui_node_count that sets .dirty = 1 inside close.)
+    expect(closeBody).not.toMatch(/for\s*\(\s*uint16_t\s+i\s*=\s*0\s*;\s*i\s*<\s*__ui_node_count[\s\S]*?\.dirty\s*=\s*1/);
+    // Instead, close must dirty only nodes whose paint rect intersects the
+    // keyboard box, via the standard ui_mark_dirty primitive (which also
+    // handles overlap repair + scroll clipping). The keyboard box is read
+    // from __ui_kb_box (captured into a local before visibility is cleared).
+    expect(closeBody).toMatch(/ui_node_current_paint_rect/);
+    expect(closeBody).toMatch(/__ui_kb_box/);
+    expect(closeBody).toMatch(/ui_rects_intersect/);
+    expect(closeBody).toMatch(/ui_mark_dirty/);
+  });
 });
 
 describe("canvas runtime", () => {
