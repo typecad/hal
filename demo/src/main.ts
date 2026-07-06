@@ -8,6 +8,8 @@
 // ---------------------------------------------------------------------------
 
 import { LED } from '@typecad/board-esp32s3';
+import { ui } from '@typecad/ui';
+import { screen } from './app.ui.html';
 
 // ── 1. Numeric const enum ──────────────────────────────────────────────────
 const enum Mode { Idle, Run, Stop, Error }
@@ -106,6 +108,10 @@ function main(): void {
   console.log('default=' + defaultCode());
   led.high();
   console.log('done');
+
+  // Minimal UI mount — exercises the @typecad/ui emitter path so the build
+  // confirms the PSRAM=opi FQBN option survives the UI codegen path.
+  ui.mount(screen);
 }
 
 main();
