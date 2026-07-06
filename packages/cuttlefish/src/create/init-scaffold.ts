@@ -57,6 +57,17 @@ const _knownTargets: KnownTarget[] = [
     buildTarget: 'esp32:esp32:esp32',
     mcu: 'ESP32-WROOM-32',
   },
+  {
+    id: 'esp32s3',
+    displayName: 'ESP32-S3',
+    isNative: false,
+    architecture: 'esp32s3',
+    boardPackage: '@typecad/board-esp32s3',
+    frameworkPackage: '@typecad/framework-arduino',
+    framework: 'arduino',
+    buildTarget: 'esp32:esp32s3:esp32s3',
+    mcu: 'ESP32-S3',
+  },
 ];
 
 export function registerKnownTarget(target: KnownTarget): void {
