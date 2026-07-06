@@ -88,8 +88,8 @@ static int32_t defaultCode();
 // Auto-generated setup() for top-level statements
 void setup()
 {
-  Serial.begin(9600);
-  pinMode(13, OUTPUT);
+  Serial.begin(115200);
+  pinMode(48, OUTPUT);
   cuttlefish_main();
 }
 
@@ -203,7 +203,7 @@ void cuttlefish_main()
   char __cuttlefish_str_10[21];
   snprintf(__cuttlefish_str_10, sizeof(__cuttlefish_str_10), "default=%d", defaultCode());
   Serial.println(__cuttlefish_str_10);
-  digitalWrite(13, HIGH);
+  digitalWrite(48, HIGH);
   Serial.println(F("done"));
 }
 

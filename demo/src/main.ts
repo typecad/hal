@@ -7,7 +7,7 @@
 // (requires interprocedural type resolution). Worked around below.
 // ---------------------------------------------------------------------------
 
-import { LED } from '@typecad/board-arduino-uno';
+import { LED } from '@typecad/board-esp32s3';
 
 // ── 1. Numeric const enum ──────────────────────────────────────────────────
 const enum Mode { Idle, Run, Stop, Error }

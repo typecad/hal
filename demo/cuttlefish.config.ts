@@ -1,9 +1,9 @@
 // ---------------------------------------------------------------------------
 // cuttlefish.config.ts — Project configuration
 //
-// Targets the Arduino Uno (ATmega328P, AVR core). This is the FIRST demo to
-// compile against the Arduino AVR toolchain (avr-gcc via `arduino-cli`); every
-// prior demo (#1–#32) compiled against the native `g++` toolchain.
+// Targets the ESP32-S3 (dual-core Xtensa LX7 @ 240 MHz, Wi-Fi 4 + BLE 5,
+// native USB-OTG). Compiles against the Arduino-ESP32 toolchain (xtensa-esp32s3
+// gcc via `arduino-cli`).
 // ---------------------------------------------------------------------------
 
 import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
@@ -13,23 +13,23 @@ const config: CuttlefishConfig = {
   // top-level statements into `setup()` and synthesizes an empty `loop()`.
   entry: './src/main.ts',
 
-  // Target architecture — AVR (8-bit ATmega, `int` is 16-bit, no STL by
-  // default, no exceptions/RTTI).
-  target: 'avr',
+  // Target architecture — ESP32-S3 (32-bit Xtensa LX7, STL available,
+  // exceptions/RTTI available, dual-core).
+  target: 'esp32s3',
 
-  // MCU package — silicon-level pin/port definitions for the ATmega328P.
-  mcu: '@typecad/mcu-atmega328p',
+  // MCU package — silicon-level pin/port definitions for the ESP32-S3.
+  mcu: '@typecad/mcu-esp32s3',
 
-  // Board package — Arduino Uno pin definitions and board constants.
-  board: '@typecad/board-arduino-uno',
+  // Board package — ESP32-S3 board pin definitions and board constants.
+  board: '@typecad/board-esp32s3',
 
   // Framework package — controls code generation strategy (setup/loop, Serial,
-  // .ino output, AVR-appropriate polyfills).
+  // .ino output, ESP32-appropriate polyfills).
   framework: '@typecad/framework-arduino',
 
   // Build target — FQBN passed straight through to `arduino-cli compile`.
   frameworkData: {
-    buildTarget: 'arduino:avr:uno',
+    buildTarget: 'esp32:esp32s3:esp32s3',
   },
 
   // Output / build options.
@@ -39,16 +39,17 @@ const config: CuttlefishConfig = {
     outDir: './out',
   },
 
-  // Toolchain — `arduino-cli` invokes avr-gcc from the installed `arduino:avr`
-  // core (no system-wide avr-gcc needed).
+  // Toolchain — `arduino-cli` invokes xtensa-esp32s3-gcc from the installed
+  // `esp32:esp32s3` core (no system-wide cross-compiler needed).
   toolchain: {
     type: 'arduino-cli',
   },
 
-  // Console polyfill configuration — `Serial.begin(9600)` is injected at the
-  // top of `setup()` so `console.log` reaches the serial monitor.
+  // Console polyfill configuration — `Serial.begin(115200)` is injected at the
+  // top of `setup()` so `console.log` reaches the serial monitor. Native
+  // USB-CDC on GPIO19/GPIO20 is the default serial path on most S3 modules.
   console: {
-    baudRate: 9600,
+    baudRate: 115200,
   },
 };
 
