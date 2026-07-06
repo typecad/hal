@@ -1,4 +1,4 @@
-# Sensor class hierarchy + namespace config — cuttlefish demo #36 (Arduino AVR)
+# Sensor class hierarchy + namespace config — cuttlefish demo #36 (ESP32-S3)
 
 The first demo to exercise **classes, inheritance (`extends` + `super`), and
 namespaces** on AVR. It models the bread-and-butter embedded idiom: a small
@@ -8,29 +8,26 @@ initializer list) and adds smoothing + a threshold, and a `Config` namespace
 holds shared tuning constants accessed via `Config::`.
 
 Transpiled to C++ by cuttlefish (`@typecad/framework-arduino`), compiled for
-`arduino:avr:uno`, uploaded, and verified live on a connected Uno.
+`esp32:esp32s3:esp32s3`, uploaded, and verified live on a connected ESP32-S3.
 
 ## Running
 
 ```bash
 npm run lint      # ESLint with the cuttlefish transpiler-rules plugin
-npm run compile   # transpile TS -> C++ (.ino) and compile with avr-gcc
-npm run upload    # compile + upload to the Uno on COM7 + open serial monitor
+npm run compile   # transpile TS -> C++ (.ino) and compile with xtensa-esp32s3-gcc
+npm run upload    # compile + upload to the S3 on $COMPORT + open serial monitor
 ```
 
-- **`npm run compile` exits 0.** `avr-gcc` emits no errors and no warnings.
-  The transpiler emits one `heap-allocation-avr` **warning** (see "The heap
-  gate" below) — this is the intended, correct behavior and the build proceeds.
-  Memory usage on an ATmega328P (Arduino Uno):
+- **`npm run compile` exits 0.** `xtensa-esp32s3-gcc` emits no errors and no
+  warnings. Memory usage on an ESP32-S3 (N8R2-class module):
 
   ```
-  Flash: 4.7 KB / 31.5 KB (15%)
-  RAM:   246 B / 2.0 KB (12%)
-  Heap:  1.8 KB available
+  Flash: ~200 KB / 8 MB (<3%)
+  RAM:   ~30 KB / 512 KB SRAM + 2 MB PSRAM
   ```
 
-- **`npm run upload`** flashes the Uno and streams the serial monitor at 9600
-  baud. Captured live output (A0 left floating):
+- **`npm run upload`** flashes the S3 and streams the serial monitor at 115200
+  baud (native USB-CDC on GPIO19/GPIO20). Captured live output (A0 left floating):
 
   ```
   n=5 val=0 led=
@@ -45,7 +42,7 @@ npm run upload    # compile + upload to the Uno on COM7 + open serial monitor
   reading (0 with A0 floating at this instance's ambient level; a driven pin
   reads higher).
 
-## What the program exercises (all on AVR)
+## What the program exercises (all on ESP32-S3)
 
 - **`class Sensor`** — scalar fields (`pin`, `samples`), ctor, instance methods
   (`rawReading`, `tick`). Lowers to a C++ class with a `virtual ~Sensor()` and

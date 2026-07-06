@@ -1,10 +1,13 @@
-# Enum stress test — findings (cuttlefish, Arduino AVR)
+# Enum stress test — findings (cuttlefish, Arduino ESP32-S3)
 
 A maximal enum showcase hammered the enum surface (SUPPORT_MATRIX §1.7) to
-find where the claims break on AVR. Source: `demo/src/main.ts`. Covers numeric
-`const enum`, string enum, enum with gaps, enum as array index, relational
-comparison, switch, string-enum comparison/concat, enum-to-non-enum-param (the
-known gap), enum↔int storage boundary, enum in arithmetic, bitwise flags.
+find where the claims break. Source: `demo/src/main.ts`. Originally developed
+against AVR; now targets the ESP32-S3 (`esp32:esp32s3:esp32s3`). The findings
+below are language-level (enum lowering) and apply across architectures.
+Covers numeric `const enum`, string enum, enum with gaps, enum as array index,
+relational comparison, switch, string-enum comparison/concat,
+enum-to-non-enum-param (the known gap), enum↔int storage boundary, enum in
+arithmetic, bitwise flags.
 
 ## Finding A — string-enum-typed variable emits namespace name as C++ type
 
