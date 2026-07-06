@@ -20,7 +20,7 @@ import {
   LED,
 } from './pins.js';
 
-import { I2C0, I2C1, SPI0, SPI1, UART0, UART1, UART2 } from './mcu.js';
+import { I2C0, I2C1, SPI0, SPI1, UART0, UART1, UART2 } from '@typecad/mcu-esp32s3';
 import { ESP32S3Board } from './index.js';
 
 export const Board = {

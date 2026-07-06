@@ -8,7 +8,7 @@ import {
   GPIO15, GPIO16, GPIO17, GPIO18, GPIO19, GPIO20, GPIO21,
   GPIO38, GPIO39, GPIO40, GPIO41, GPIO42, GPIO43, GPIO44,
   GPIO45, GPIO46, GPIO47, GPIO48,
-} from './mcu.js';
+} from '@typecad/mcu-esp32s3';
 
 // ---------------------------------------------------------------------------
 // Arduino-style digital pin aliases (D-numbers match GPIO numbers on ESP32-S3)
@@ -52,4 +52,4 @@ export const A9 = GPIO10;
 export const LED = GPIO48;
 
 // Bus aliases (default pins for I2C0 / SPI0 / UART0)
-export { I2C0, I2C1, SPI0, SPI1, UART0, UART1, UART2 } from './mcu.js';
+export { I2C0, I2C1, SPI0, SPI1, UART0, UART1, UART2 } from '@typecad/mcu-esp32s3';

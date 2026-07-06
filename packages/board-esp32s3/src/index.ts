@@ -3,7 +3,7 @@
 // ---------------------------------------------------------------------------
 
 import type { BoardDefinition } from '@typecad/cuttlefish/api/schema';
-import { ESP32S3 } from './mcu.js';
+import { ESP32S3 } from '@typecad/mcu-esp32s3';
 
 /** Arduino core API version for this board's build defines. */
 const ARDUINO_CORE_VERSION = '10819';
@@ -72,7 +72,7 @@ export default ESP32S3Board;
 // ---------------------------------------------------------------------------
 
 // Silicon-level (local MCU module)
-export * from './mcu.js';
+export * from '@typecad/mcu-esp32s3';
 
 // Generic HAL re-exports from @typecad/hal
 export {
@@ -94,7 +94,7 @@ import {
   GPIO15, GPIO16, GPIO17, GPIO18, GPIO19, GPIO20, GPIO21,
   GPIO38, GPIO39, GPIO40, GPIO41, GPIO42, GPIO43, GPIO44,
   GPIO45, GPIO46, GPIO47, GPIO48,
-} from './mcu.js';
+} from '@typecad/mcu-esp32s3';
 
 /**
  * Pin collections for runtime capability discovery.

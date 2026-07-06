@@ -19,7 +19,6 @@
   "include": ["src/**/*.ts"],
   "references": [
     { "path": "../hal" },
-    { "path": "../cuttlefish" },
-    { "path": "../mcu-esp32s3" }
+    { "path": "../cuttlefish" }
   ]
 }

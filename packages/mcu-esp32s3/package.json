@@ -1,7 +1,7 @@
 {
-  "name": "@typecad/board-esp32s3",
+  "name": "@typecad/mcu-esp32s3",
   "version": "0.1.0",
-  "description": "TypeCAD ESP32-S3 board definition with typed pins and peripherals",
+  "description": "TypeCAD MCU definition for ESP32-S3 — datasheet pins, peripheral capabilities, and HAL instances",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,11 +19,7 @@
   },
   "dependencies": {
     "@typecad/cuttlefish": "*",
-    "@typecad/hal": "*",
-    "@typecad/mcu-esp32s3": "*"
+    "@typecad/hal": "*"
   },
-  "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  }
+  "license": "MIT"
 }

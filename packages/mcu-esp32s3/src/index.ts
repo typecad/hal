@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// @typecad/board-esp32s3 — ESP32-S3 MCU definition (silicon)
+// @typecad/mcu-esp32s3 — MCU definition manifest
 //
 // ESP32-S3 is dual-core Xtensa LX7 @ 240 MHz with Wi-Fi 4 + BLE 5 and native
 // USB-OTG. It has 45 GPIO (0-21, 26-48); GPIO 22-25 and 32-37 do NOT exist on
@@ -8,19 +8,10 @@
 // ---------------------------------------------------------------------------
 
 import type { MCUDefinition } from '@typecad/cuttlefish/api/schema';
-import {
-  I2CBus,
-  SPIBus,
-  SerialPort,
-  i2cName,
-  spiName,
-  serialName,
-  createHALInstances,
-  Pin,
-} from '@typecad/hal';
+import { MCU_PERIPHERALS } from './peripherals.js';
 
 // ---------------------------------------------------------------------------
-// Default capability flags
+// Default capability flags for ESP32-S3
 // ---------------------------------------------------------------------------
 
 const NO  = false as const;
@@ -57,7 +48,7 @@ function touch(ch: number) {
 }
 
 // ---------------------------------------------------------------------------
-// ESP32-S3 MCU definition
+// MCU definition
 // ---------------------------------------------------------------------------
 
 export const ESP32S3: MCUDefinition = {
@@ -308,47 +299,7 @@ export const ESP32S3: MCUDefinition = {
   },
 
   // ----- Peripherals -------------------------------------------------------
-  peripherals: {
-    aliases: {},
-    i2c: [
-      { instance: 0, defaultPins: { sda: 'GPIO8',  scl: 'GPIO9' } },
-      { instance: 1, defaultPins: { sda: 'GPIO8',  scl: 'GPIO9' } },
-    ],
-    spi: [
-      { instance: 0, defaultPins: { mosi: 'GPIO12', miso: 'GPIO13', sck: 'GPIO11', cs: 'GPIO10' } },  // FSPI
-      { instance: 1, defaultPins: { mosi: 'GPIO12', miso: 'GPIO13', sck: 'GPIO11', cs: 'GPIO10' } },  // GPSI, remappable
-    ],
-    uart: [
-      { instance: 0, defaultPins: { tx: 'GPIO43', rx: 'GPIO44' } },
-      { instance: 1, defaultPins: { tx: 'GPIO43', rx: 'GPIO44' } },
-      { instance: 2, defaultPins: { tx: 'GPIO43', rx: 'GPIO44' } },
-    ],
-    adc: [
-      { instance: 0, channels: 10, resolution: 12, referenceVoltage: 3.3, maxValue: 4095,
-        referenceVoltages: { DEFAULT: 3.3, INTERNAL: 1.1 } },  // ADC1 — usable with Wi-Fi active
-      { instance: 1, channels: 10, resolution: 12, referenceVoltage: 3.3, maxValue: 4095,
-        referenceVoltages: { DEFAULT: 3.3, INTERNAL: 1.1 } },  // ADC2 — NOT usable with Wi-Fi active
-    ],
-    pwm: {
-      channels: 8,
-      resolution: 20,
-      maxFrequency: 40_000_000,
-    },
-    touch: {
-      channels: 14,
-      pins: ['GPIO1', 'GPIO2', 'GPIO3', 'GPIO4', 'GPIO5', 'GPIO6', 'GPIO7',
-             'GPIO8', 'GPIO9', 'GPIO10', 'GPIO11', 'GPIO12', 'GPIO13', 'GPIO14'],
-    },
-    timers: [
-      { instance: 0, type: 'general', bits: 64, features: ['interrupt'] },
-      { instance: 1, type: 'general', bits: 64, features: ['interrupt'] },
-      { instance: 2, type: 'general', bits: 64, features: ['interrupt'] },
-      { instance: 3, type: 'general', bits: 64, features: ['interrupt'] },
-    ],
-    wifi: { type: 'wifi', supportsStation: true, supportsAp: true },
-    bluetooth: { type: 'ble', version: '5.0' },
-    usb: { type: 'otg', vid: '0x303A', pid: '0x0001' },
-  },
+  peripherals: MCU_PERIPHERALS,
 
   features: {
     multicore: true,
@@ -366,61 +317,27 @@ export const ESP32S3: MCUDefinition = {
 
 export default ESP32S3;
 
-// ---------------------------------------------------------------------------
-// Named GPIO constants (Pin instances, consumed by ./pins.js for Dx/Ax/LED)
-// Mirrors packages/mcu-esp32/src/pins.ts: `new Pin(n)`.
-// ---------------------------------------------------------------------------
+// Re-exports
+export * from './pins.js';
+export * from './peripherals.js';
 
-export const GPIO0  = new Pin(0);
-export const GPIO1  = new Pin(1);
-export const GPIO2  = new Pin(2);
-export const GPIO3  = new Pin(3);
-export const GPIO4  = new Pin(4);
-export const GPIO5  = new Pin(5);
-export const GPIO6  = new Pin(6);
-export const GPIO7  = new Pin(7);
-export const GPIO8  = new Pin(8);
-export const GPIO9  = new Pin(9);
-export const GPIO10 = new Pin(10);
-export const GPIO11 = new Pin(11);
-export const GPIO12 = new Pin(12);
-export const GPIO13 = new Pin(13);
-export const GPIO14 = new Pin(14);
-export const GPIO15 = new Pin(15);
-export const GPIO16 = new Pin(16);
-export const GPIO17 = new Pin(17);
-export const GPIO18 = new Pin(18);
-export const GPIO19 = new Pin(19);
-export const GPIO20 = new Pin(20);
-export const GPIO21 = new Pin(21);
-export const GPIO26 = new Pin(26);
-export const GPIO27 = new Pin(27);
-export const GPIO28 = new Pin(28);
-export const GPIO29 = new Pin(29);
-export const GPIO30 = new Pin(30);
-export const GPIO31 = new Pin(31);
-export const GPIO32 = new Pin(32);
-export const GPIO33 = new Pin(33);
-export const GPIO34 = new Pin(34);
-export const GPIO35 = new Pin(35);
-export const GPIO36 = new Pin(36);
-export const GPIO37 = new Pin(37);
-export const GPIO38 = new Pin(38);
-export const GPIO39 = new Pin(39);
-export const GPIO40 = new Pin(40);
-export const GPIO41 = new Pin(41);
-export const GPIO42 = new Pin(42);
-export const GPIO43 = new Pin(43);
-export const GPIO44 = new Pin(44);
-export const GPIO45 = new Pin(45);
-export const GPIO46 = new Pin(46);
-export const GPIO47 = new Pin(47);
-export const GPIO48 = new Pin(48);
+/**
+ * Structured manifest consumed by the TypeCAD CLI for contract-based
+ * board generation. Provides pin names and peripheral instance names
+ * without requiring the CLI to text-scrape compiled output.
+ */
+export const TypeCADManifest = {
+  /** All MCU port-level pin names (e.g. 'GPIO0', 'GPIO1'). */
+  pinNames: [
+    'GPIO0', 'GPIO1', 'GPIO2', 'GPIO3', 'GPIO4', 'GPIO5', 'GPIO6', 'GPIO7',
+    'GPIO8', 'GPIO9', 'GPIO10', 'GPIO11', 'GPIO12', 'GPIO13', 'GPIO14',
+    'GPIO15', 'GPIO16', 'GPIO17', 'GPIO18', 'GPIO19', 'GPIO20', 'GPIO21',
+    'GPIO26', 'GPIO27', 'GPIO28', 'GPIO29', 'GPIO30', 'GPIO31', 'GPIO32',
+    'GPIO33', 'GPIO34', 'GPIO35', 'GPIO36', 'GPIO37', 'GPIO38', 'GPIO39',
+    'GPIO40', 'GPIO41', 'GPIO42', 'GPIO43', 'GPIO44', 'GPIO45', 'GPIO46',
+    'GPIO47', 'GPIO48',
+  ] as const,
 
-// ---------------------------------------------------------------------------
-// HAL object instances — convenience peripherals (mirror mcu-esp32 pattern)
-// ---------------------------------------------------------------------------
-
-export const [I2C0, I2C1] = createHALInstances(ESP32S3.peripherals.i2c, i => new I2CBus(i2cName(i)));
-export const [SPI0, SPI1] = createHALInstances(ESP32S3.peripherals.spi, i => new SPIBus(spiName(i)));
-export const [UART0, UART1, UART2] = createHALInstances(ESP32S3.peripherals.uart, i => new SerialPort(serialName(i)));
+  /** All HAL peripheral instance names exported from this package. */
+  peripheralNames: ['I2C0', 'I2C1', 'SPI0', 'SPI1', 'UART0', 'UART1', 'UART2'] as const,
+} as const;
