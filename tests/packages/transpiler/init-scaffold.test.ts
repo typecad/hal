@@ -207,6 +207,13 @@ describe("init-scaffold", () => {
       expect(uno!.architecture).toBe('avr');
       expect(uno!.buildTarget).toBe('arduino:avr:uno');
     });
+
+    it("contains esp32s3", () => {
+      const s3 = KNOWN_BOARDS.find(b => b.id === 'esp32s3');
+      expect(s3).toBeDefined();
+      expect(s3!.architecture).toBe('esp32s3');
+      expect(s3!.buildTarget).toBe('esp32:esp32s3:esp32s3');
+    });
   });
 
   describe("scaffoldProject", () => {
