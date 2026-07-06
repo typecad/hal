@@ -50,6 +50,7 @@ interface FqbnPinOverride {
 const PROFILE_VARIANTS: ArduinoProfileVariant[] = [
   { architecture: "avr", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "esp32", forcedIncludes: ["<Arduino.h>"] },
+  { architecture: "esp32s3", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "samd", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "rp2040", forcedIncludes: ["<Arduino.h>"] },
 ];
@@ -71,6 +72,12 @@ const CAPABILITY_TABLE: ArduinoCapabilities[] = [
     builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "analogReference", "delay", "millis", "micros", "setInterval", "setTimeout", "clearInterval", "clearTimeout"]),
     builtinGlobals: new Set(["A0", "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "Serial"]),
     fallbackPins: { A0: 36 },
+  },
+  {
+    architecture: "esp32s3",
+    builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "analogReference", "delay", "millis", "micros", "setInterval", "setTimeout", "clearInterval", "clearTimeout"]),
+    builtinGlobals: new Set(["A0", "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "Serial"]),
+    fallbackPins: { A0: 1 },
   },
   {
     architecture: "samd",
