@@ -152,7 +152,7 @@ describe("init-templates", () => {
       expect(content).toContain("target: 'esp32s3'");
       expect(content).toContain("mcu: '@typecad/mcu-esp32s3'");
       expect(content).toContain("board: '@typecad/board-esp32s3'");
-      expect(content).toContain("buildTarget: 'esp32:esp32s3:esp32s3'");
+      expect(content).toContain("buildTarget: 'esp32:esp32:esp32s3'");
     });
   });
 
@@ -240,7 +240,7 @@ describe("init-scaffold", () => {
       const s3 = KNOWN_BOARDS.find(b => b.id === 'esp32s3');
       expect(s3).toBeDefined();
       expect(s3!.architecture).toBe('esp32s3');
-      expect(s3!.buildTarget).toBe('esp32:esp32s3:esp32s3');
+      expect(s3!.buildTarget).toBe('esp32:esp32:esp32s3');
     });
   });
 

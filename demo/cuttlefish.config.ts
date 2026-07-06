@@ -29,7 +29,7 @@ const config: CuttlefishConfig = {
 
   // Build target — FQBN passed straight through to `arduino-cli compile`.
   frameworkData: {
-    buildTarget: 'esp32:esp32s3:esp32s3',
+    buildTarget: 'esp32:esp32:esp32s3',
   },
 
   // Output / build options.

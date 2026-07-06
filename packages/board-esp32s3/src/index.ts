@@ -20,7 +20,7 @@ export const ESP32S3Board: BoardDefinition = {
     'Generic ESP32-S3 (vendor-agnostic). Dual-core Xtensa LX7 @ 240 MHz ' +
     'with Wi-Fi 4 + BLE 5 and native USB-OTG. Flash/PSRAM are module-dependent; ' +
     'override via FQBN menu options, e.g. ' +
-    'esp32:esp32s3:esp32s3:FlashSize=16M,PSRAM=opi',
+    'esp32:esp32:esp32s3:FlashSize=16M,PSRAM=opi',
 
   mcu: ESP32S3,
   clockSpeed: 240_000_000, // 240 MHz
@@ -55,7 +55,7 @@ export const ESP32S3Board: BoardDefinition = {
   build: {
     frameworks: {
       platformio: 'esp32s3',
-      arduino: 'esp32:esp32s3:esp32s3',
+      arduino: 'esp32:esp32:esp32s3',
     },
     defines: {
       F_CPU:              '240000000UL',
