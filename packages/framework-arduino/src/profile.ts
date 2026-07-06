@@ -106,6 +106,7 @@ const FQBN_PIN_OVERRIDES: FqbnPinOverride[] = [
   { fqbnIncludes: "arduino:avr:mega", pins: { A0: 54 } },
   { fqbnIncludes: "arduino:samd:mkrzero", pins: { A0: 15 } },
   { fqbnIncludes: "esp32:esp32:", pins: { A0: 36 } },
+  { fqbnIncludes: "esp32:esp32s3:", pins: { A0: 1 } },
   { fqbnIncludes: "rp2040:rp2040:", pins: { A0: 26 } },
 ];
 
