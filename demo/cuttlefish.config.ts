@@ -28,8 +28,9 @@ const config: CuttlefishConfig = {
   framework: '@typecad/framework-arduino',
 
   // Build target — FQBN passed straight through to `arduino-cli compile`.
+  // PSRAM=opi enables the octal PSRAM on N8R2/N16R8 modules (2 MB / 8 MB).
   frameworkData: {
-    buildTarget: 'esp32:esp32:esp32s3',
+    buildTarget: 'esp32:esp32:esp32s3:PSRAM=opi',
   },
 
   // Output / build options.
