@@ -66,7 +66,7 @@ const _knownTargets: KnownTarget[] = [
     frameworkPackage: '@typecad/framework-arduino',
     framework: 'arduino',
     buildTarget: 'esp32:esp32s3:esp32s3',
-    mcu: 'ESP32-S3',
+    mcu: 'esp32s3',
   },
 ];
 
