@@ -181,6 +181,16 @@ function countNodes(node: StyledNode): number {
   return n;
 }
 
+/** Human-referenceable label for a node: #id when present, else <tag "text">
+ *  when it has text, else <tag>. Authors can grep for this in their source
+ *  (a bare node index is meaningless). */
+function nodeLabel(node: StyledNode): string {
+  if (node.id) return `#${node.id}`;
+  const text = (node.text ?? "").trim();
+  if (text) return `<${node.tag} "${text.slice(0, 20)}">`;
+  return `<${node.tag}>`;
+}
+
 /** Produce (or return cached) the lowered C++ tables for a module, using the mount viewport. */
 export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   const abs = path.resolve(htmlPath);
@@ -217,63 +227,56 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
     mod.mountDiagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
   }
 
-  // Viewport-overflow diagnostic: warn when a laid-out node's box bottom
-  // exceeds the mount viewport. The most common cause is a flex column whose
-  // intrinsic content height is taller than the screen — content past the
-  // fold is silently clipped (no scroll on a non-scroll container). Surfacing
-  // this at transpile time turns a silent clip into an actionable warning.
-  for (let i = 0; i < allBoxes.length; i++) {
-    const b = allBoxes[i];
-    if (b.h <= 0) continue;
-    const bottom = b.y + b.h;
-    if (bottom > opts.viewport.height + 1) {  // +1px tolerance
-      const d: Diagnostic = {
-        severity: "warning",
-        code: "layout-viewport-overflow",
-        message: `node ${i} bottom at y=${bottom} exceeds the ${opts.viewport.height}px viewport by ${bottom - opts.viewport.height}px (clipped off-screen).`,
-        hint: `Reduce content height, tighten padding/gap, or add overflow:scroll to a container.`,
-        source: htmlBase,
-      };
-      result.diagnostics.push(d);
-      mod.mountDiagnostics.push(d);
-    }
-  }
-
-  // Text-overflow diagnostic: warn when a text-bearing node's box extends past
-  // its parent's right edge. Catches the "taps: {count}" literal-measured-wide
-  // class of overflow (where sibling text+control sum past the container and
-  // the engine lays them out overflowing) before the author has to flash and
-  // eyeball it. Boxes are pre-order DFS, matching the styled tree walk.
-  const textOverflow: Diagnostic[] = [];
-  function walkTextOverflow(node: StyledNode, nodeBox: Box | undefined, parentBox: Box | undefined, idx: { i: number }) {
-    if (nodeBox && parentBox && (node.tag === "text" || node.tag === "button")) {
-      const nodeRight = nodeBox.x + nodeBox.w;
-      // Compare against the parent's content right edge (x + w, ignoring the
-      // child's own padding which doesn't affect its box right edge).
-      const parentContentRight = parentBox.x + parentBox.w;
-      if (nodeRight > parentContentRight + 1) {  // +1px tolerance
-        const label = node.tag === "button" ? "button" : `"${(node.text ?? "").slice(0, 20)}"`;
-        textOverflow.push({
-          severity: "warning",
-          code: "layout-text-overflow",
-          message: `${label} right edge at x=${nodeRight} extends past its parent's right edge at x=${parentContentRight} by ${Math.round(nodeRight - parentContentRight)}px.`,
-          hint: `Shorten the text, use white-space:nowrap, or widen the parent.`,
-          source: htmlBase,
-        });
+  // Layout diagnostics: viewport-overflow (node bottom past the viewport) and
+  // text-overflow (node right edge past its parent). Both reference the node by
+  // a human-label (#id / <tag "text"> / <tag>) so the author can find it in
+  // their source — a bare node index is meaningless. Boxes are pre-order DFS,
+  // matching the styled tree walk.
+  const layoutDiags: Diagnostic[] = [];
+  function walkLayoutDiags(node: StyledNode, nodeBox: Box | undefined, parentBox: Box | undefined, idx: { i: number }) {
+    if (nodeBox) {
+      // Viewport-overflow: bottom past the viewport (silently clipped — no
+      // scroll on a non-scroll container).
+      if (nodeBox.h > 0) {
+        const bottom = nodeBox.y + nodeBox.h;
+        if (bottom > opts.viewport.height + 1) {  // +1px tolerance
+          layoutDiags.push({
+            severity: "warning",
+            code: "layout-viewport-overflow",
+            message: `${nodeLabel(node)} bottom at y=${bottom} exceeds the ${opts.viewport.height}px viewport by ${bottom - opts.viewport.height}px (clipped off-screen).`,
+            hint: `Reduce content height, tighten padding/gap, or add overflow:scroll to a container.`,
+            source: htmlBase,
+          });
+        }
+      }
+      // Text-overflow: a text/button node whose right edge extends past its
+      // parent's content right edge (sibling-sum overflow).
+      if (parentBox && (node.tag === "text" || node.tag === "button")) {
+        const nodeRight = nodeBox.x + nodeBox.w;
+        const parentContentRight = parentBox.x + parentBox.w;
+        if (nodeRight > parentContentRight + 1) {  // +1px tolerance
+          layoutDiags.push({
+            severity: "warning",
+            code: "layout-text-overflow",
+            message: `${nodeLabel(node)} right edge at x=${nodeRight} extends past its parent's right edge at x=${parentContentRight} by ${Math.round(nodeRight - parentContentRight)}px.`,
+            hint: `Shorten the text, use white-space:nowrap, or widen the parent.`,
+            source: htmlBase,
+          });
+        }
       }
     }
     for (const child of node.children) {
       const childBox = allBoxes[idx.i];
       idx.i++;
-      walkTextOverflow(child, childBox, nodeBox, idx);
+      walkLayoutDiags(child, childBox, nodeBox, idx);
     }
   }
   let boxIdx = 1;  // box 0 is the screen itself
   for (const screen of allStyled) {
-    walkTextOverflow(screen, allBoxes[boxIdx - 1], undefined, { i: boxIdx });
+    walkLayoutDiags(screen, allBoxes[boxIdx - 1], undefined, { i: boxIdx });
     boxIdx += countNodes(screen);
   }
-  for (const d of textOverflow) {
+  for (const d of layoutDiags) {
     result.diagnostics.push(d);
     mod.mountDiagnostics.push(d);
   }

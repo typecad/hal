@@ -26,6 +26,25 @@ describe("viewport-overflow diagnostic", () => {
     expect(lowered.diagnostics.some(d => d.code === "layout-viewport-overflow")).toBe(true);
   });
 
+  it("message references the node by id/tag/text, not bare node index", () => {
+    // An author can't find "node 318" in their source. The message must use a
+    // human-referenceable label: #id when present, else <tag "text">, else <tag>.
+    const src = `<script>import { ui } from '@typecad/ui'; ui.mount(screen);</script>
+<style>screen{flex-direction:column;gap:4px;padding:8px} #tall{height:150px;width:200px;background:#ccc}</style>
+<screen><body><div id="tall"></div></body></screen>`;
+    const uiPath = tmpUi(src);
+    const parts = splitUiFile(fs.readFileSync(uiPath, "utf-8"));
+    const htmlPath = uiPath + ".html";
+    loadUIModuleFromText(htmlPath, parts.html, parts.style, uiPath);
+    const lowered = lowerOnMount(htmlPath, { colorFormat: "rgb565", storage: "flash", viewport: { width: 240, height: 100 } });
+    const d = lowered.diagnostics.find(d => d.code === "layout-viewport-overflow");
+    expect(d).toBeDefined();
+    // The message must include "#tall" (the id) so the author can grep for it.
+    expect(d!.message).toContain("#tall");
+    // And must NOT use the bare "node N" phrasing.
+    expect(d!.message).not.toMatch(/^node \d+ /);
+  });
+
   it("does not warn when everything fits", () => {
     const src = `<script>import { ui } from '@typecad/ui'; ui.mount(screen);</script>
 <style>screen{flex-direction:column;padding:8px} .r{height:20px;width:200px;background:#ccc}</style>
