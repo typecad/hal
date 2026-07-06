@@ -126,6 +126,34 @@ describe("init-templates", () => {
       expect(content).toContain("framework: '@typecad/framework-avr'");
       expect(content).toContain("framework: 'avr'");
     });
+
+    it("expands the esp32s3 registry mcu to @typecad/mcu-esp32s3", () => {
+      // Regression: the esp32s3 registry entry carries `mcu: 'esp32s3'`, which
+      // the template wraps as `@typecad/mcu-${mcu}`. An earlier value of
+      // 'ESP32-S3' produced the broken '@typecad/mcu-ESP32-S3'. This test pins
+      // the correct package specifier for the scaffolded config.
+      const s3Target = KNOWN_BOARDS.find(t => t.id === 'esp32s3');
+      expect(s3Target).toBeDefined();
+      const s3Options: InitProjectOptions = {
+        projectName: 'test-project',
+        boardId: s3Target!.id,
+        boardDisplayName: s3Target!.displayName,
+        architecture: s3Target!.architecture!,
+        boardPackage: s3Target!.boardPackage!,
+        frameworkPackage: s3Target!.frameworkPackage,
+        framework: s3Target!.framework,
+        buildTarget: s3Target!.buildTarget!,
+        mcu: s3Target!.mcu!,
+        baudRate: 115200,
+        includeSketch: true,
+      };
+      const content = generateProjectConfig(s3Options);
+
+      expect(content).toContain("target: 'esp32s3'");
+      expect(content).toContain("mcu: '@typecad/mcu-esp32s3'");
+      expect(content).toContain("board: '@typecad/board-esp32s3'");
+      expect(content).toContain("buildTarget: 'esp32:esp32s3:esp32s3'");
+    });
   });
 
   describe("generateProjectEnvDts", () => {
