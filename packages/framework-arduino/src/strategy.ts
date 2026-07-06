@@ -1000,7 +1000,10 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
    * need this attribute.
    */
   isrFunctionAttribute(): string {
-    return this._cachedArch === 'esp32' ? 'IRAM_ATTR ' : '';
+    const arch = this._cachedArch;
+    return (arch === 'esp32' || arch === 'esp32s2' || arch === 'esp32s3' || arch === 'esp32c3')
+      ? 'IRAM_ATTR '
+      : '';
   }
 
   // ── Type aliases ────────────────────────────────────────────────────────
