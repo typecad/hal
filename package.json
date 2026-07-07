@@ -16,6 +16,7 @@
     "packages/board-esp32-devkit",
     "packages/board-esp32s3",
     "packages/board-esp32c3",
+    "packages/board-esp32c6",
     "packages/expect",
     "packages/ui",
     "packages/simulator",
