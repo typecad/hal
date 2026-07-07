@@ -1,0 +1,558 @@
+{
+  "architecture": "esp32c6",
+  "mcuId": "esp32-c6",
+  "mcuName": "ESP32-C6",
+  "boardId": "esp32c6",
+  "boardName": "ESP32-C6",
+  "vendor": "Espressif",
+  "description": "Generic ESP32-C6 devboard (vendor-agnostic). Single-core RISC-V (RV32IMAC) @ 160 MHz with Wi-Fi 6 (802.11ax) + BLE 5.3 and native USB Serial/JTAG + USB-OTG. 30 GPIO; no PSRAM support.",
+  "clockSpeed": 160000000,
+  "fqbn": "esp32:esp32:esp32c6",
+  "platformioTarget": "esp32c6",
+  "arduinoDefine": "ARDUINO_ESP32C6_DEV",
+  "moduleFlash": 4194304,
+  "externalRam": null,
+  "gpioRange": [
+    0,
+    30
+  ],
+  "excludedGpio": [],
+  "pins": [
+    {
+      "gpio": 0,
+      "capabilities": "FULL_GPIO_ANALOG",
+      "functions": [
+        {
+          "type": "adc",
+          "instance": 1,
+          "role": "ch0"
+        }
+      ],
+      "alt": [
+        "ADC1_CH0"
+      ]
+    },
+    {
+      "gpio": 1,
+      "capabilities": "FULL_GPIO_ANALOG",
+      "functions": [
+        {
+          "type": "adc",
+          "instance": 1,
+          "role": "ch1"
+        }
+      ],
+      "alt": [
+        "ADC1_CH1"
+      ]
+    },
+    {
+      "gpio": 2,
+      "capabilities": "FULL_GPIO_ANALOG",
+      "functions": [
+        {
+          "type": "adc",
+          "instance": 1,
+          "role": "ch2"
+        }
+      ],
+      "alt": [
+        "ADC1_CH2"
+      ]
+    },
+    {
+      "gpio": 3,
+      "capabilities": "FULL_GPIO_ANALOG",
+      "functions": [
+        {
+          "type": "adc",
+          "instance": 1,
+          "role": "ch3"
+        }
+      ],
+      "alt": [
+        "ADC1_CH3"
+      ]
+    },
+    {
+      "gpio": 4,
+      "capabilities": "FULL_GPIO_ANALOG",
+      "functions": [
+        {
+          "type": "adc",
+          "instance": 1,
+          "role": "ch4"
+        }
+      ],
+      "alt": [
+        "ADC1_CH4"
+      ]
+    },
+    {
+      "gpio": 5,
+      "capabilities": "FULL_GPIO_ANALOG",
+      "functions": [
+        {
+          "type": "adc",
+          "instance": 1,
+          "role": "ch5"
+        }
+      ],
+      "alt": [
+        "ADC1_CH5"
+      ]
+    },
+    {
+      "gpio": 6,
+      "capabilities": "FULL_GPIO_ANALOG",
+      "functions": [
+        {
+          "type": "adc",
+          "instance": 1,
+          "role": "ch6"
+        }
+      ],
+      "alt": [
+        "ADC1_CH6"
+      ]
+    },
+    {
+      "gpio": 7,
+      "capabilities": "FULL_GPIO_ANALOG",
+      "functions": [
+        {
+          "type": "adc",
+          "instance": 2,
+          "role": "ch0"
+        }
+      ],
+      "alt": [
+        "ADC2_CH0"
+      ],
+      "warnings": [
+        "GPIO7 is ADC2 — ADC2 is unusable while Wi-Fi is enabled"
+      ]
+    },
+    {
+      "gpio": 8,
+      "capabilities": "FULL_GPIO",
+      "alt": []
+    },
+    {
+      "gpio": 9,
+      "capabilities": "FULL_GPIO",
+      "alt": [],
+      "unsafe": true,
+      "warnings": [
+        "GPIO9 is a strapping pin — boot mode select at boot"
+      ],
+      "notes": "Boot strapping pin"
+    },
+    {
+      "gpio": 10,
+      "capabilities": "FULL_GPIO",
+      "alt": []
+    },
+    {
+      "gpio": 11,
+      "capabilities": "FULL_GPIO",
+      "alt": []
+    },
+    {
+      "gpio": 12,
+      "capabilities": "FULL_GPIO",
+      "alt": []
+    },
+    {
+      "gpio": 13,
+      "capabilities": "FULL_GPIO",
+      "alt": [],
+      "unsafe": true,
+      "warnings": [
+        "GPIO13 is a strapping pin — controls VDD_SPI voltage at boot"
+      ],
+      "notes": "Boot strapping pin"
+    },
+    {
+      "gpio": 14,
+      "capabilities": "FULL_GPIO",
+      "alt": []
+    },
+    {
+      "gpio": 15,
+      "capabilities": "FULL_GPIO",
+      "alt": []
+    },
+    {
+      "gpio": 16,
+      "capabilities": "FULL_GPIO",
+      "functions": [
+        {
+          "type": "uart",
+          "instance": 0,
+          "role": "tx"
+        }
+      ],
+      "alt": [
+        "UART0 TX"
+      ],
+      "warnings": [
+        "Using GPIO16 as GPIO will interfere with UART0 transmit"
+      ]
+    },
+    {
+      "gpio": 17,
+      "capabilities": "FULL_GPIO",
+      "functions": [
+        {
+          "type": "uart",
+          "instance": 0,
+          "role": "rx"
+        }
+      ],
+      "alt": [
+        "UART0 RX"
+      ],
+      "warnings": [
+        "Using GPIO17 as GPIO will interfere with UART0 receive"
+      ]
+    },
+    {
+      "gpio": 18,
+      "capabilities": "FULL_GPIO",
+      "functions": [
+        {
+          "type": "spi",
+          "instance": 0,
+          "role": "cs"
+        }
+      ],
+      "alt": [
+        "SPI0 CS"
+      ]
+    },
+    {
+      "gpio": 19,
+      "capabilities": "FULL_GPIO",
+      "functions": [
+        {
+          "type": "spi",
+          "instance": 0,
+          "role": "mosi"
+        }
+      ],
+      "alt": [
+        "SPI0 MOSI"
+      ]
+    },
+    {
+      "gpio": 20,
+      "capabilities": "FULL_GPIO",
+      "functions": [
+        {
+          "type": "spi",
+          "instance": 0,
+          "role": "miso"
+        }
+      ],
+      "alt": [
+        "SPI0 MISO"
+      ]
+    },
+    {
+      "gpio": 21,
+      "capabilities": "FULL_GPIO",
+      "functions": [
+        {
+          "type": "spi",
+          "instance": 0,
+          "role": "sck"
+        }
+      ],
+      "alt": [
+        "SPI0 SCK"
+      ]
+    },
+    {
+      "gpio": 22,
+      "capabilities": "FULL_GPIO",
+      "functions": [
+        {
+          "type": "i2c",
+          "instance": 0,
+          "role": "scl"
+        }
+      ],
+      "alt": [
+        "I2C0 SCL"
+      ]
+    },
+    {
+      "gpio": 23,
+      "capabilities": "FULL_GPIO",
+      "functions": [
+        {
+          "type": "i2c",
+          "instance": 0,
+          "role": "sda"
+        }
+      ],
+      "alt": [
+        "I2C0 SDA"
+      ]
+    },
+    {
+      "gpio": 24,
+      "capabilities": "FULL_GPIO",
+      "alt": []
+    },
+    {
+      "gpio": 25,
+      "capabilities": "FULL_GPIO",
+      "alt": []
+    },
+    {
+      "gpio": 26,
+      "capabilities": "FULL_GPIO",
+      "functions": [
+        {
+          "type": "usb",
+          "instance": 0,
+          "role": "dm"
+        }
+      ],
+      "alt": [
+        "USB D-"
+      ],
+      "unsafe": true,
+      "warnings": [
+        "GPIO26 is USB D- — using it as GPIO disables native USB"
+      ],
+      "notes": "USB D- pin"
+    },
+    {
+      "gpio": 27,
+      "capabilities": "FULL_GPIO",
+      "functions": [
+        {
+          "type": "usb",
+          "instance": 0,
+          "role": "dp"
+        }
+      ],
+      "alt": [
+        "USB D+"
+      ],
+      "unsafe": true,
+      "warnings": [
+        "GPIO27 is USB D+ — using it as GPIO disables native USB"
+      ],
+      "notes": "USB D+ pin"
+    },
+    {
+      "gpio": 28,
+      "capabilities": "FULL_GPIO",
+      "alt": [
+        "SPICS0"
+      ],
+      "unsafe": true,
+      "warnings": [
+        "GPIO28 is connected to SPI flash — do not use as GPIO"
+      ],
+      "notes": "SPI flash pin"
+    },
+    {
+      "gpio": 29,
+      "capabilities": "FULL_GPIO",
+      "alt": [
+        "SPICLK"
+      ],
+      "unsafe": true,
+      "warnings": [
+        "GPIO29 is connected to SPI flash — do not use as GPIO"
+      ],
+      "notes": "SPI flash pin"
+    },
+    {
+      "gpio": 30,
+      "capabilities": "FULL_GPIO",
+      "alt": [
+        "SPIQ"
+      ],
+      "unsafe": true,
+      "warnings": [
+        "GPIO30 is connected to SPI flash — do not use as GPIO"
+      ],
+      "notes": "SPI flash pin"
+    }
+  ],
+  "unsafe": [
+    "GPIO9",
+    "GPIO13",
+    "GPIO26",
+    "GPIO27",
+    "GPIO28",
+    "GPIO29",
+    "GPIO30"
+  ],
+  "analog": [
+    "GPIO0",
+    "GPIO1",
+    "GPIO2",
+    "GPIO3",
+    "GPIO4",
+    "GPIO5",
+    "GPIO6"
+  ],
+  "i2c": {
+    "0": {
+      "sda": "GPIO23",
+      "scl": "GPIO22"
+    }
+  },
+  "spi": {
+    "0": {
+      "mosi": "GPIO19",
+      "miso": "GPIO20",
+      "sck": "GPIO21",
+      "cs": "GPIO18"
+    }
+  },
+  "uart": {
+    "0": {
+      "tx": "GPIO16",
+      "rx": "GPIO17"
+    }
+  },
+  "peripheralInstances": {
+    "i2c": [
+      {
+        "instance": 0,
+        "defaultPins": {
+          "sda": "GPIO23",
+          "scl": "GPIO22"
+        }
+      }
+    ],
+    "spi": [
+      {
+        "instance": 0,
+        "defaultPins": {
+          "mosi": "GPIO19",
+          "miso": "GPIO20",
+          "sck": "GPIO21",
+          "cs": "GPIO18"
+        }
+      }
+    ],
+    "uart": [
+      {
+        "instance": 0,
+        "defaultPins": {
+          "tx": "GPIO16",
+          "rx": "GPIO17"
+        }
+      },
+      {
+        "instance": 1,
+        "defaultPins": {
+          "tx": "GPIO16",
+          "rx": "GPIO17"
+        }
+      }
+    ]
+  },
+  "adc": [
+    {
+      "instance": 0,
+      "channels": 7,
+      "resolution": 12,
+      "referenceVoltage": 3.3,
+      "maxValue": 4095,
+      "referenceVoltages": {
+        "DEFAULT": 3.3,
+        "INTERNAL": 1.1
+      }
+    },
+    {
+      "instance": 1,
+      "channels": 1,
+      "resolution": 12,
+      "referenceVoltage": 3.3,
+      "maxValue": 4095,
+      "referenceVoltages": {
+        "DEFAULT": 3.3,
+        "INTERNAL": 1.1
+      }
+    }
+  ],
+  "pwm": {
+    "channels": 6,
+    "resolution": 14,
+    "maxFrequency": 40000000
+  },
+  "touch": null,
+  "timers": [
+    {
+      "instance": 0,
+      "type": "general",
+      "bits": 64,
+      "features": [
+        "interrupt"
+      ]
+    },
+    {
+      "instance": 1,
+      "type": "general",
+      "bits": 64,
+      "features": [
+        "interrupt"
+      ]
+    },
+    {
+      "instance": 2,
+      "type": "general",
+      "bits": 64,
+      "features": [
+        "interrupt"
+      ]
+    },
+    {
+      "instance": 3,
+      "type": "general",
+      "bits": 64,
+      "features": [
+        "interrupt"
+      ]
+    }
+  ],
+  "wifi": {
+    "type": "wifi6",
+    "supportsStation": true,
+    "supportsAp": true
+  },
+  "bluetooth": {
+    "type": "ble",
+    "version": "5.3"
+  },
+  "usb": {
+    "type": "otg",
+    "vid": "0x303A",
+    "pid": "0x0001"
+  },
+  "features": {
+    "multicore": false,
+    "coreCount": 1,
+    "deepSleep": true,
+    "watchdog": true,
+    "externalInterrupts": true,
+    "hardwareRng": true,
+    "fpu": false
+  },
+  "memory": {
+    "flash": 393216,
+    "sram": 524288,
+    "eeprom": 0,
+    "rtcMemory": 16384
+  }
+}
