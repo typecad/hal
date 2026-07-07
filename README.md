@@ -85,6 +85,7 @@ Transpile, compile, upload, and open a serial monitor in a single invocation. Or
 | Arduino Nano 33 IoT | `@typehal/board-arduino-nano33iot` | SAMD |
 | ESP32 DevKit | `@typehal/board-esp32-devkit` | ESP32 |
 | ESP32-S3 | `@typecad/board-esp32s3` | ESP32-S3 (Xtensa LX7) |
+| ESP32-C3 | `@typecad/board-esp32c3` | ESP32-C3 (RISC-V) |
 
 Additional architectures are scaffolded and ready for board definitions: ESP32-S2, ESP32-S3, ESP32-C3, RP2040, STM32, nRF52.
 
@@ -331,7 +332,7 @@ cd my-project
 npm install
 ```
 
-This creates a complete project with `typehal.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: `arduino-uno`, `esp32-devkit`, `esp32s3`.
+This creates a complete project with `typehal.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: `arduino-uno`, `esp32-devkit`, `esp32s3`, `esp32c3`.
 
 Or launch an interactive wizard:
 
