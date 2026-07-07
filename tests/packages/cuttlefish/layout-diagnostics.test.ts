@@ -75,4 +75,38 @@ describe("viewport-overflow diagnostic", () => {
     const lowered = lowerOnMount(htmlPath, { colorFormat: "rgb565", storage: "flash", viewport: { width: 240, height: 200 } });
     expect(lowered.diagnostics.some(d => d.code === "layout-text-overflow")).toBe(true);
   });
+
+  it("does NOT warn for nodes inside a scroll container (off-screen-below-fold is expected)", () => {
+    // A scroll container's children are INTENTIONALLY taller than the viewport —
+    // that's the whole point of scroll. The viewport-overflow diagnostic must
+    // suppress nodes whose ancestor chain crosses an overflow:scroll container.
+    const src = `<script>import { ui } from '@typecad/ui'; ui.mount(screen);</script>
+<style>screen{flex-direction:column;padding:8px}
+.scroll{overflow:scroll;height:100px;width:200px;background:#ccc}
+.noscroll{height:100px;width:200px;background:#ccc}
+.deep{height:80px;width:180px;background:#aaa}</style>
+<screen><body>
+  <div id="scroller" class="scroll">
+    <div id="scroll_child" class="deep"></div>
+    <div id="scroll_grandchild" class="deep"></div>
+  </div>
+  <div id="plain" class="noscroll">
+    <div id="plain_child" class="deep"></div>
+  </div>
+</body></screen>`;
+    const uiPath = tmpUi(src);
+    const parts = splitUiFile(fs.readFileSync(uiPath, "utf-8"));
+    const htmlPath = uiPath + ".html";
+    loadUIModuleFromText(htmlPath, parts.html, parts.style, uiPath);
+    const lowered = lowerOnMount(htmlPath, { colorFormat: "rgb565", storage: "flash", viewport: { width: 240, height: 100 } });
+    const msgs = lowered.diagnostics.filter(d => d.code === "layout-viewport-overflow").map(d => d.message);
+    // Scroll-container children (and the scroller itself) must NOT warn.
+    expect(msgs.some(m => m.includes("#scroll_child"))).toBe(false);
+    expect(msgs.some(m => m.includes("#scroll_grandchild"))).toBe(false);
+    expect(msgs.some(m => m.includes("#scroller"))).toBe(false);
+    // Non-scroll overflow still warns (the diagnostic's actual job).
+    // (plain_child sits inside #plain, a non-scroll 100px container in a 100px
+    // viewport; whether it overflows depends on exact layout, so we only assert
+    // the suppression — the positive case is covered by the other tests.)
+  });
 });

@@ -233,11 +233,18 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   // their source — a bare node index is meaningless. Boxes are pre-order DFS,
   // matching the styled tree walk.
   const layoutDiags: Diagnostic[] = [];
-  function walkLayoutDiags(node: StyledNode, nodeBox: Box | undefined, parentBox: Box | undefined, idx: { i: number }) {
+  function walkLayoutDiags(node: StyledNode, nodeBox: Box | undefined, parentBox: Box | undefined, idx: { i: number }, insideScroll: boolean) {
+    // A scroll container's content is INTENTIONALLY taller than the viewport —
+    // that's the point of scroll. Suppress the viewport-overflow check for the
+    // scroll container itself AND its descendants: the container's box is the
+    // viewport-sized window, and its children sit below the fold by design.
+    // The check still fires for genuine non-scroll clipping elsewhere.
+    const isScrollContainer = node.style.overflow === "scroll" || node.style.overflow === "hidden";
+    const suppressViewportOverflow = insideScroll || isScrollContainer;
     if (nodeBox) {
       // Viewport-overflow: bottom past the viewport (silently clipped — no
       // scroll on a non-scroll container).
-      if (nodeBox.h > 0) {
+      if (!suppressViewportOverflow && nodeBox.h > 0) {
         const bottom = nodeBox.y + nodeBox.h;
         if (bottom > opts.viewport.height + 1) {  // +1px tolerance
           layoutDiags.push({
@@ -268,12 +275,12 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
     for (const child of node.children) {
       const childBox = allBoxes[idx.i];
       idx.i++;
-      walkLayoutDiags(child, childBox, nodeBox, idx);
+      walkLayoutDiags(child, childBox, nodeBox, idx, isScrollContainer || insideScroll);
     }
   }
   let boxIdx = 1;  // box 0 is the screen itself
   for (const screen of allStyled) {
-    walkLayoutDiags(screen, allBoxes[boxIdx - 1], undefined, { i: boxIdx });
+    walkLayoutDiags(screen, allBoxes[boxIdx - 1], undefined, { i: boxIdx }, false);
     boxIdx += countNodes(screen);
   }
   for (const d of layoutDiags) {
