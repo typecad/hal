@@ -159,6 +159,22 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/#elif\s+defined\(UI_BATCH_SPI_WRITES\)[\s\S]*?ui_refresh_flush\(\)\s*\{\s*display_endWrite\(\);\s*\}/);
   });
 
+  it("e-ink UI_REQUIRES_BACKING_STORE branch is unchanged (rect accumulator + partial refresh)", () => {
+    // The e-ink branch must still define the rect accumulator, the add_rect
+    // recording, and the union+display_partial_refresh flush — byte-identical
+    // to before the three-branch reorganization.
+    expect(header).toMatch(/#if\s+defined\(UI_REQUIRES_BACKING_STORE\)[\s\S]*?UI_REFRESH_MAX_RECTS\s+16/);
+    expect(header).toMatch(/ui_refresh_begin_frame\(\)\s*\{\s*__ui_refresh_rect_n\s*=\s*0;\s*\}/);
+    expect(header).toMatch(/display_partial_refresh\(x0,\s*y0/);
+  });
+
+  it("default branch (no flags) keeps the no-op stubs", () => {
+    // When neither UI_REQUIRES_BACKING_STORE nor UI_BATCH_SPI_WRITES is defined,
+    // all three must be no-op macros (the SDL native host path).
+    expect(header).toMatch(/#else[\s\S]*?#define\s+ui_refresh_begin_frame\(\)\s+\(\(void\)0\)/);
+    expect(header).toMatch(/#define\s+ui_refresh_flush\(\)\s+\(\(void\)0\)/);
+  });
+
   it("framebuffer mode repaints every visible node, not only dirty ones", () => {
     // Regression: the framebuffer is re-seeded with the background color every
     // frame and pushed in full, so non-dirty nodes must ALSO redraw into it —
