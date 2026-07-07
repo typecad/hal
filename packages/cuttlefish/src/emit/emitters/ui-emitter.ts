@@ -66,10 +66,19 @@ export function generateTouchPollBody(input: TouchPollInput): string | null {
   const rawMapX = `map(__rawX, ${xMin}, ${xMax}, 0, ${nativeWidth})`;
   const rawMapY = `map(__rawY, ${yMin}, ${yMax}, 0, ${nativeHeight})`;
   let mapX: string, mapY: string;
+  let sdlClamp = false;
   if (library === "sdl") {
-    // SDL mouse coords are already window/screen coords — no axis swap.
-    mapX = `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.width})`;
-    mapY = `map(__rawY, ${yMin}, ${yMax}, 0, ${profile.height})`;
+    // SDL mouse coords are already window/screen pixel coords — no axis swap,
+    // no calibration. Pass them through 1:1 and clamp to the LIVE display
+    // dimensions (display_width()/display_height(), which return the SDL
+    // target's constructed w_/h_). This way clicks track the window size
+    // regardless of the touch.calibration config — the calibration is a
+    // hardware-controller concept (resistive raw ranges) that doesn't apply to
+    // a mouse, and baking it forced users to keep xMax/yMax in sync with
+    // width/height or clicks landed in the wrong place after resizing.
+    mapX = `__rawX`;
+    mapY = `__rawY`;
+    sdlClamp = true;
   } else if (!hasNativeSize) {
     const isLandscape = rotation === 1 || rotation === 3;
     const invertX = rotation === 1 || rotation === 2;
@@ -106,10 +115,18 @@ export function generateTouchPollBody(input: TouchPollInput): string | null {
     }
   }
 
-  const clampLines = (indent: string): string[] => [
-    `${indent}if (__tx < 0) __tx = 0; else if (__tx >= ${screen.width}) __tx = ${screen.width - 1};`,
-    `${indent}if (__ty < 0) __ty = 0; else if (__ty >= ${screen.height}) __ty = ${screen.height - 1};`,
-  ];
+  const clampLines = (indent: string): string[] => sdlClamp
+    ? [
+        // SDL: clamp to live display dimensions (display_width()/height() return
+        // the SDL target's constructed w_/h_), so clicks track the window size.
+        `${indent}int16_t __dw = display_width(), __dh = display_height();`,
+        `${indent}if (__tx < 0) __tx = 0; else if (__tx >= __dw) __tx = __dw - 1;`,
+        `${indent}if (__ty < 0) __ty = 0; else if (__ty >= __dh) __ty = __dh - 1;`,
+      ]
+    : [
+        `${indent}if (__tx < 0) __tx = 0; else if (__tx >= ${screen.width}) __tx = ${screen.width - 1};`,
+        `${indent}if (__ty < 0) __ty = 0; else if (__ty >= ${screen.height}) __ty = ${screen.height - 1};`,
+      ];
   const isCapacitive = CAPACITIVE_TOUCH_LIBS.has(library);
   const lines: string[] = [
     `void ui_poll_touch() {`,
@@ -226,6 +243,15 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   if (needsAntialias) {
     ctx.sourceLines.push("#define UI_AA 1");
   }
+  // The SDL desktop target has a real keyboard (the host event loop routes
+  // SDL_TEXTINPUT into the on-screen-keyboard editing session), so the 6×4 OSK
+  // grid is redundant clutter that covers the app. UI_HIDE_OSK suppresses the
+  // OSK *draw* only — the editing session (buffer, target, commit-on-close)
+  // still runs, so typing works. Hardware targets don't define it: their only
+  // text-entry path is the visible grid.
+  if (profile.driver === "sdl") {
+    ctx.sourceLines.push("#define UI_HIDE_OSK 1");
+  }
   // 1a. Color depth — drives blend/lerp selection in the runtime header. 565
   //     for TFT byte-identity (node fields hold 565 values); 888 for rgb666+
   //     targets (node fields hold 888 values, blend via ui_blend888). The value
@@ -256,7 +282,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   //     header so its #ifndef guards adopt them. Source of truth:
   //     resolveScrollConfig(profile.scroll). Defaults derive from the declared
   //     touch hardware, so the demo (XPT2046) gets resistive+full with no config.
-  const scroll = resolveScrollConfig(profile);
+  const scroll = resolveScrollConfig(profile, { buildTarget: (profile as any)._buildTarget });
   ctx.sourceLines.push(
     `#define UI_SCROLL_MAX_OVERSCROLL ${scroll.maxOverscroll}`,
     `#define UI_SCROLL_STIFFNESS_X10 ${Math.round(scroll.stiffness * 10)}`,

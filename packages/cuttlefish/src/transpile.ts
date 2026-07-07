@@ -309,7 +309,8 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         }
       }
       const resolved = resolveDisplayProfile(configDisplay, registry);
-      setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus, address: resolved.address, reset: resolved.reset });
+      const buildTarget = (options.platformContext?.frameworkData?.buildTarget as string | undefined);
+      setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus, address: resolved.address, reset: resolved.reset, buildTarget });
     } catch {
       // Fall back to default profile — not fatal
     }

@@ -80,6 +80,17 @@ export interface DisplayProfile {
    *  unless a node opts out with font-smoothing:none.
    *  Renders AA work to offscreen GFXcanvas16 buffers, blends edges, then draws. */
   antialias?: boolean;
+  /** SDL desktop target only: render the window borderless at the current
+   *  desktop resolution, scaling the fixed framebuffer to fill the monitor.
+   *  true (or "desktop") = `SDL_WINDOW_FULLSCREEN_DESKTOP`. Ignored by hardware
+   *  targets. Default: off (a normal titled window at width × height). */
+  fullscreen?: boolean | "desktop";
+  /** SDL desktop target only: the OS window title. Default "cuttlefish".
+   *  Overridable at runtime via ui.window.setTitle(). Ignored by hardware. */
+  title?: string;
+  /** SDL desktop target only: window/taskbar icon image file path (BMP via
+   *  core SDL2; .png/.ico require SDL_image). Ignored by hardware. */
+  icon?: string;
   /** Scroll engine capability + physics tunables. Defaults are derived from the
    *  declared touch hardware when omitted (see resolveScrollConfig). */
   scroll?: ScrollConfig;
@@ -115,6 +126,14 @@ export interface DisplayConfig {
   /** Reset pin for I2C displays (separate from SPI `rst`). */
   reset?: number;
   antialias?: boolean;
+  /** SDL desktop target only: render the window borderless at the current
+   *  desktop resolution, scaling the fixed framebuffer to fill the monitor.
+   *  Ignored by hardware targets. Default: off. */
+  fullscreen?: boolean | "desktop";
+  /** SDL desktop target only: the OS window title. Default "cuttlefish". */
+  title?: string;
+  /** SDL desktop target only: window/taskbar icon image file path (BMP). */
+  icon?: string;
   /** Override the CSS theme file. Relative paths resolve from the .ui.html
    *  directory; absolute paths are used as-is. Default: sibling .ui.css. */
   themeCss?: string;
@@ -218,16 +237,46 @@ const RESISTIVE_TOUCH_LIBS: ReadonlySet<string> = new Set([
 /** Default RGB565 scroll viewport canvas budget (~88 KB, ESP32-class SRAM). */
 export const DEFAULT_SCROLL_CANVAS_BUDGET_BYTES = 88000;
 
+/** PSRAM scroll canvas budget (~2 MB). ESP32-S3 with OPI/QSPI PSRAM exposes
+ *  ~8 MB external RAM; a full-width scroll viewport canvas (e.g. 460×266×2 ≈
+ *  239 KB) is trivial there, so the transpile-time scroll-canvas-memory
+ *  diagnostic should use a PSRAM-appropriate budget rather than the no-PSRAM
+ *  SRAM default — otherwise every PSRAM target emits stale "exceeds budget"
+ *  warnings for canvases the runtime allocates without issue. */
+export const PSRAM_SCROLL_CANVAS_BUDGET_BYTES = 2_000_000;
+
+/** Detect PSRAM from an Arduino FQBN buildTarget (e.g. "esp32:esp32:esp32s3:PSRAM=opi").
+ *  Returns true for any PSRAM=<value> option whose value indicates PSRAM is
+ *  enabled (opi, io, qspi, enabled, true). Returns false when absent or set
+ *  to a disabled-looking value (disabled, false, none). */
+export function buildTargetHasPsram(buildTarget: string | undefined): boolean {
+  if (!buildTarget) return false;
+  const opts = buildTarget.split(":");
+  for (const opt of opts) {
+    const eq = opt.indexOf("=");
+    if (eq < 0) continue;
+    const key = opt.slice(0, eq).trim().toLowerCase();
+    const val = opt.slice(eq + 1).trim().toLowerCase();
+    if (key !== "psram") continue;
+    // Any explicit PSRAM option except an explicit disabled value means PSRAM.
+    return !["disabled", "false", "none", "no", "0"].includes(val);
+  }
+  return false;
+}
+
 /**
  * Resolve scroll config from a display profile. Declared overrides win;
  * otherwise derive the input tier from the touch library (resistive chips →
  * "resistive", any other touch → "capacitive", no touch → "none") and assume a
  * full render tier (ESP32-class SRAM can fit a viewport canvas).
  */
-export function resolveScrollConfig(display: {
-  touch?: TouchProfile | false;
-  scroll?: ScrollConfig;
-}): ResolvedScrollConfig {
+export function resolveScrollConfig(
+  display: {
+    touch?: TouchProfile | false;
+    scroll?: ScrollConfig;
+  },
+  ctx?: { buildTarget?: string },
+): ResolvedScrollConfig {
   const s = display.scroll ?? {};
   const lib =
     display.touch && typeof display.touch === "object"
@@ -239,6 +288,14 @@ export function resolveScrollConfig(display: {
       : display.touch
         ? "capacitive"
         : "none";
+  // PSRAM-aware canvas budget: an explicit override always wins; otherwise use
+  // the PSRAM budget when the build target opts into PSRAM (so the scroll-canvas-
+  // memory diagnostic doesn't emit stale warnings for canvases the runtime
+  // allocates in external RAM without issue), else the no-PSRAM SRAM default.
+  const psramBudget = buildTargetHasPsram(ctx?.buildTarget);
+  const budgetDefault = psramBudget
+    ? PSRAM_SCROLL_CANVAS_BUDGET_BYTES
+    : DEFAULT_SCROLL_CANVAS_BUDGET_BYTES;
   return {
     inputTier: s.inputTier ?? derivedInput,
     renderTier: s.renderTier ?? "full",
@@ -249,7 +306,7 @@ export function resolveScrollConfig(display: {
     inputSmoothing: s.inputSmoothing ?? 0.3,
     overrideProbes: s.overrideProbes ?? true,
     debug: s.debug ?? false,
-    scrollCanvasBudgetBytes: s.scrollCanvasBudgetBytes ?? DEFAULT_SCROLL_CANVAS_BUDGET_BYTES,
+    scrollCanvasBudgetBytes: s.scrollCanvasBudgetBytes ?? budgetDefault,
   };
 }
 
@@ -274,7 +331,12 @@ export function resolveDisplayProfile(
       height: config.height ?? 240,
       nativeWidth: config.nativeWidth,
       nativeHeight: config.nativeHeight,
-      colorFormat: config.colorFormat ?? "rgb565",
+      // The SDL adapter renders to a 32-bit desktop framebuffer and is
+      // RGB888-only (uint32_t throughout). The generic default is rgb565
+      // (byte-identical to bare TFT hardware), but a desktop window has no
+      // 565 surface — default SDL to rgb888 so UI_COLOR_T matches the adapter
+      // and colors reach the window at full 24-bit precision.
+      colorFormat: config.colorFormat ?? (config.driver === "sdl" ? "rgb888" : "rgb565"),
       rotation: config.rotation ?? 1,
       backlight: config.backlight,
       spiFrequency: config.spiFrequency,
@@ -303,6 +365,9 @@ export function resolveDisplayProfile(
   if (config.touch === false) base.touch = undefined;
   else if (config.touch !== undefined) base.touch = config.touch;
   if (config.antialias !== undefined) base.antialias = config.antialias;
+  if (config.fullscreen !== undefined) base.fullscreen = config.fullscreen;
+  if (config.title !== undefined) base.title = config.title;
+  if (config.icon !== undefined) base.icon = config.icon;
   // Carry scroll config through resolution so it reaches getDisplayProfile().
   if (config.scroll !== undefined) base.scroll = config.scroll;
 
@@ -459,18 +524,34 @@ export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
   if (touch.library === "sdl") {
     return {
       includes: ["#include <SDL2/SDL.h>"],
-      declaration: `// SDL touch: no controller object — the mouse is the source`,
+      declaration: `// SDL touch: no controller object — the event-driven mouse state`,
+      // __sdl_mouse_* is declared in the SDL display adapter (sdl.ts) and written
+      // by the host event loop from SDL_MOUSEBUTTONDOWN/MOTION/BUTTONUP. Reading
+      // it here (instead of polling SDL_GetMouseState each frame) makes input
+      // event-driven, removes a per-frame SDL query, and lets the same state feed
+      // hit-testing in the wheel handler. Forward-declared here in case the touch
+      // adapter is ever emitted without the display adapter (defensive).
       functions: [
+        `extern uint8_t __sdl_mouse_down;`,
+        `extern int16_t __sdl_mouse_x;`,
+        `extern int16_t __sdl_mouse_y;`,
         `static inline void touch_init() {}`,
         `static inline bool touch_isTouched() {`,
-        `  int __mx, __my;`,
-        `  return (SDL_GetMouseState(&__mx, &__my) & SDL_BUTTON_LMASK) != 0;`,
+        `  return __sdl_mouse_down != 0;`,
         `}`,
+        // Scale window/logical mouse coords to framebuffer coords. In a normal
+        // window the two are the same size (1:1), but in fullscreen (or any
+        // HiDPI case where the window is larger than the fixed framebuffer) the
+        // raw coords cover the whole window (e.g. 0..1920) while the framebuffer
+        // is w_×h_ (e.g. 320×240). Without scaling, clicks past the framebuffer
+        // size clamp to the corner. SDL_RenderCopy stretches the texture to fill
+        // the renderer, so the inverse scale maps window→framebuffer.
         `static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {`,
-        `  int __mx, __my;`,
-        `  SDL_GetMouseState(&__mx, &__my);`,
-        `  if (x) *x = (int16_t)__mx;`,
-        `  if (y) *y = (int16_t)__my;`,
+        `  int __ww = 0, __wh = 0; SDL_GetWindowSize(__tc_display.win, &__ww, &__wh);`,
+        `  if (__ww <= 0) __ww = display_width();`,
+        `  if (__wh <= 0) __wh = display_height();`,
+        `  if (x) *x = (int16_t)((int32_t)__sdl_mouse_x * display_width() / __ww);`,
+        `  if (y) *y = (int16_t)((int32_t)__sdl_mouse_y * display_height() / __wh);`,
         `  if (z) *z = 200;   // constant > default minPressure (10)`,
         `}`,
       ].join("\n"),

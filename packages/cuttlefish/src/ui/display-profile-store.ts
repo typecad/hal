@@ -19,6 +19,9 @@ export interface ResolvedDisplay extends DisplayProfile {
   _mountBus: string;
   _mountAddress: number;
   _mountReset: number;
+  /** Arduino FQBN (e.g. "esp32:esp32:esp32s3:PSRAM=opi"), used to derive PSRAM
+   *  availability for the scroll-canvas-memory budget. Optional. */
+  _buildTarget?: string;
 }
 
 let currentProfile: ResolvedDisplay | null = null;
@@ -26,7 +29,7 @@ let currentProfile: ResolvedDisplay | null = null;
 /** Set the display profile for this transpile run. Called from transpileFile. */
 export function setDisplayProfile(
   profile: DisplayProfile,
-  wiring: { cs?: number; dc?: number; rst?: number; bus?: string; address?: number; reset?: number },
+  wiring: { cs?: number; dc?: number; rst?: number; bus?: string; address?: number; reset?: number; buildTarget?: string },
 ): void {
   currentProfile = {
     ...profile,
@@ -36,6 +39,7 @@ export function setDisplayProfile(
     _mountBus: wiring.bus ?? "SPI",
     _mountAddress: wiring.address ?? 0x3C,
     _mountReset: wiring.reset ?? -1,
+    _buildTarget: wiring.buildTarget,
   };
 }
 

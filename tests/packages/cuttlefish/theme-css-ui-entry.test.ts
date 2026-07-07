@@ -5,9 +5,10 @@ import { transpileFile } from "../../../packages/cuttlefish/src/transpile";
 
 describe("themeCss with .ui single-file entry", () => {
   it("warns that themeCss is ignored for a .ui entry (demo-st)", async () => {
-    // demo-st's config sets display.themeCss AND uses a .ui entry — exactly
-    // the silent-ignore case. The framework + board packages resolve via the
-    // workspace root (the test runs at the repo root).
+    // demo-st's entry is a .ui single-file component. Drive transpileFile with
+    // an explicit display.themeCss set (rather than reading the live demo-st
+    // config, which may have themeCss commented out as a config choice) so the
+    // test exercises the warning logic, not the current config state.
     const configDir = path.resolve("demo-st");
     const cfg = loadCuttlefishConfig(configDir);
     if (!cfg) throw new Error("demo-st config not found");
@@ -19,7 +20,8 @@ describe("themeCss with .ui single-file entry", () => {
       emitMaps: false,
       frameworkPackage: cfg.framework,
       boardPackage: cfg.board,
-      display: cfg.display,
+      // Force themeCss on for this test (the entry is .ui → warning must fire).
+      display: { ...(cfg.display ?? { profile: "st7796-spi" }), themeCss: "./theme.css" },
       skipTypeCheck: true,
     } as any);
     expect(result.diagnostics.some(d => d.code === "themeCss-ui-entry-ignored")).toBe(true);
