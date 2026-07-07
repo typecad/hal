@@ -14,6 +14,7 @@
     "packages/board-arduino-uno",
     "packages/board-esp32-devkit",
     "packages/board-esp32s3",
+    "packages/board-esp32c3",
     "packages/expect",
     "packages/ui",
     "packages/simulator",
