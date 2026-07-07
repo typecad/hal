@@ -780,7 +780,9 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
     label, vw, vh, (unsigned long)need, reasonText,
     (unsigned long)freeHeap, UI_SCROLL_CANVAS_BUDGET_BYTES);
 #else
-  Serial.printf(
+  // Non-Arduino target (e.g. SDL native): no Serial, so use standard-C printf.
+  // The native framework forces <cstdio> so printf is available here.
+  printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
     "budget=%d. Shrink the scroll viewport in CSS or trim UI assets.\\n",
     label, vw, vh, (unsigned long)need, reasonText, UI_SCROLL_CANVAS_BUDGET_BYTES);
@@ -1735,6 +1737,28 @@ static inline int16_t ui_draw_y_for_node(uint16_t nodeIdx) {
   return ui_base_draw_y_for_node(nodeIdx) + ui_pressed_offset_y_for_node(nodeIdx);
 }
 
+// Find the scrollable container (list or generic scroll view) whose box contains
+// a point, on the active screen, with content overflowing the viewport. Mirrors
+// the touch path's scroll-scan (ui_touch_down) so the wheel handler finds the
+// SAME owner a drag would — robust against the cursor resting on a non-child
+// node (text, a sibling, padding) where the hit-test + ancestor-walk approach
+// misses. Returns the topmost such node by draw order, or -1 if none.
+static inline int16_t ui_scroll_node_at(int16_t tx, int16_t ty) {
+  int16_t bestScroll = -1;
+  for (uint16_t i = 0; i < __ui_node_count; i++) {
+    if (!__ui_nodes[i].scrollable || !ui_is_effectively_visible(i)) continue;
+    if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+    if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
+    int16_t drawX = ui_draw_x_for_node((uint16_t)i);
+    int16_t drawY = ui_draw_y_for_node((uint16_t)i);
+    if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
+        ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
+      if (bestScroll < 0 || ui_node_draws_before((uint16_t)bestScroll, i)) bestScroll = (int16_t)i;
+    }
+  }
+  return bestScroll;
+}
+
 static inline UI_COLOR_T ui_parent_clear_color(uint16_t nodeIdx) {
   uint16_t p = __ui_nodes[nodeIdx].parent;
   if (p != UI_NO_PARENT && p < __ui_node_count) {
@@ -2483,6 +2507,15 @@ static UIKeyStyle __ui_kb_styles[UI_KB_MAX];
 static UI_COLOR_T __ui_kb_bg = 0x0000;  // keyboard background (resolved from CSS)
 static uint8_t __ui_kb_bs_held = 0;
 static uint8_t __ui_kb_dirty = 0;     // 0=clean, 1=full redraw, 2=text row + single key
+// Forward-declared here (defined in the keyboard subsystem block below) so the
+// UI_HIDE_OSK caret/blink paths in ui_tick and the input draw can reference it.
+static int16_t  __ui_kb_target;
+#if defined(UI_HIDE_OSK)
+// Caret blink phase for the desktop target (no OSK grid → no focus indicator).
+// Incremented each tick; the input draw path blinks a caret on the active edit
+// target every ~530ms (32 ticks ≈ 512ms at 60fps, even-power-of-2 mask).
+static uint16_t __ui_kb_blink = 0;
+#endif
 static int8_t __ui_kb_pressed_key = -1; // key index under the current touch (-1=none)
 static int8_t __ui_kb_repaint_key = -1; // key to repaint on a targeted (mode 2) redraw
 static int16_t __ui_last_touch_x = 0;
@@ -2549,7 +2582,15 @@ static void ui_dispatch(void (**table)(), uint16_t count, int16_t node) {
 }
 
 static inline void ui_open_keyboard_for_input(uint16_t nodeIdx) {
-  if (__ui_nodes[nodeIdx].kind != NODE_INPUT || __ui_kb_visible) return;
+  if (__ui_nodes[nodeIdx].kind != NODE_INPUT) return;
+#if defined(UI_HIDE_OSK)
+  // Desktop target: the OSK grid isn't shown, so inputs remain visible and
+  // tappable while another is being edited. Commit any open session before
+  // opening for the new target, so focus follows the tap instead of being
+  // locked to the first input. (ui_kb_open is a no-op if already closed.)
+  if (__ui_kb_visible) ui_kb_close();
+#endif
+  if (__ui_kb_visible) return;
   // Resolve the input's position in the loader dispatch table by scanning
   // for the Nth NODE_INPUT. (The loader table is indexed by input order.)
   // Counter is uint16_t: nodeIdx is uint16_t and inputs can live past node
@@ -2633,6 +2674,9 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
 // Touch up: called when touch is released. Determines click vs hold.
 static void ui_touch_up() {
   // Modal keyboard: route tap-up to the keyboard; swallow normal click logic.
+  // (Skipped on UI_HIDE_OSK desktop targets — touches pass through to the app,
+  // since the editing session is driven by the real keyboard, not the grid.)
+#if !defined(UI_HIDE_OSK)
   if (__ui_kb_visible) {
     ui_kb_handle_tap(__ui_last_touch_x, __ui_last_touch_y);
     __ui_kb_bs_held = 0;
@@ -2640,6 +2684,7 @@ static void ui_touch_up() {
     __ui_last_touch_time = millis();
     return;
   }
+#endif
   uint32_t elapsed = millis() - __ui_touch_down_time;
   // Release the scroll owner: arm a bounded settle (bounce-back / edge-snap).
   // No fling — motion ends with the finger (the settle animation is the only
@@ -2716,6 +2761,9 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
   __ui_last_touch_y = ty;
 
   // Modal keyboard: if visible, route touch to the keyboard only.
+  // (Skipped on UI_HIDE_OSK desktop targets — touches pass through to the app,
+  // since the editing session is driven by the real keyboard, not the grid.)
+#if !defined(UI_HIDE_OSK)
   if (__ui_kb_visible) {
     // Only process the down-edge for key actions (insert/delete-on-down).
     // Repeat is handled by ui_kb_tick; release by ui_touch_up → ui_kb_handle_tap.
@@ -2733,6 +2781,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
     __ui_last_touch_time = now;
     return;  // swallow all other touches while modal
   }
+#endif
 
   if (__ui_touch_state == 0) {
     // Idle: check debounce, then start touch
@@ -3697,6 +3746,16 @@ static inline void ui_tick(uint16_t deltaMs) {
   ui_poll_touch();
   // ⓪' Poll GPIO inputs
   ui_poll_inputs();
+#if defined(UI_HIDE_OSK)
+  // Advance the caret blink phase for the active input (desktop target).
+  __ui_kb_blink++;
+  // Re-mark the edited input dirty every ~16 ticks so the blink repainting
+  // keeps cycling even when no other state changes (otherwise the caret
+  // freezes once the typed-text dirty clears).
+  if (__ui_kb_visible && __ui_kb_target >= 0 && (__ui_kb_blink & 0x10)) {
+    ui_mark_dirty((uint16_t)__ui_kb_target);
+  }
+#endif
   // ⓪ Evaluate bindings: call each binding's fn, compare to the node's
   // current property value, mark dirty if changed.
   for (uint16_t i = 0; i < __ui_binding_count; i++) {
@@ -3990,6 +4049,13 @@ static inline void ui_tick(uint16_t deltaMs) {
   // bandwidth and causes flashing. Nodes redraw once when the keyboard closes
   // (ui_kb_close marks the edited input dirty; ui_kb_open had marked all dirty
   // on open so they're stale-but-covered while the keyboard is up).
+  //
+  // UI_HIDE_OSK (desktop SDL): the editing session still runs (buffer, target,
+  // commit-on-close) so real-keyboard typing works, but the 6×4 grid isn't drawn
+  // and the node pass ISN'T skipped — the app keeps rendering normally with the
+  // edited input's textBuffer showing the typed text. The grid is redundant when
+  // the host has a real keyboard.
+#if !defined(UI_HIDE_OSK)
   if (__ui_kb_visible) {
     // Redraw only what changed:
     //   1 = full redraw (open, shift toggle, page swap)
@@ -4006,6 +4072,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     __ui_kb_repaint_key = -1;
     return;
   }
+#endif
   // Process each dirty scroll container (Mode B shift-and-repair). A scroll
   // delta shifts existing canvas pixels by the delta and repaints only the
   // newly-exposed strip; a full invalidation (or no canvas) redraws the subtree.
@@ -4133,13 +4200,26 @@ static inline void ui_tick(uint16_t deltaMs) {
       }
     }
     display_canvasFillScreen(__ui_fb, fbBg);
+    // The framebuffer is re-seeded with the background and pushed in full every
+    // frame, so EVERY visible node on the active screen must redraw into it —
+    // skipping non-dirty nodes leaves their regions at the seed and the pushed
+    // frame goes black wherever a node didn't repaint. Mark all visible nodes
+    // dirty here so the draw loop below (which selects + clears dirty per pass)
+    // repaints the full scene. The post-draw clear (line ~4236) resets dirty,
+    // so binding/animation bookkeeping stays correct.
+    for (uint16_t f = 0; f < __ui_node_count; f++) {
+      if (__ui_nodes[f].screenId == __ui_active_screen &&
+          ui_is_effectively_visible(f)) {
+        __ui_nodes[f].dirty = 1;
+      }
+    }
   }
 
   // Draw dirty nodes in stacking order: lower z-index first, then source order.
   for (uint16_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; __ui_draw_pass++) {
     int16_t selected = -1;
     for (uint16_t candidate = 0; candidate < __ui_node_count; candidate++) {
-      if (!__ui_nodes[candidate].dirty) continue;
+      if (!__ui_nodes[candidate].dirty && !__ui_fb) continue;
       if (!ui_is_effectively_visible(candidate)) { __ui_nodes[candidate].dirty = 0; continue; }
       if (__ui_nodes[candidate].screenId != __ui_active_screen) { __ui_nodes[candidate].dirty = 0; continue; }
       if (selected < 0 || ui_node_draws_before(candidate, selected)) selected = candidate;
@@ -4717,6 +4797,16 @@ static inline void ui_tick(uint16_t deltaMs) {
           const char* disp = (__ui_nodes[i].textBuffer[0] != 0)
             ? __ui_nodes[i].textBuffer
             : (__ui_nodes[i].text ? __ui_nodes[i].text : "");
+#if defined(UI_HIDE_OSK)
+          // Desktop target: when this input is the active edit target, suppress
+          // the placeholder. The editing buffer is loaded from the (likely empty)
+          // textBuffer on focus, so without this the placeholder ("enter name")
+          // would render with the caret at its end. Hide it so the caret shows
+          // on a clean field at position 0 until the user types.
+          if (__ui_kb_visible && (int16_t)__ui_kb_target == (int16_t)i && __ui_nodes[i].textBuffer[0] == 0) {
+            disp = "";
+          }
+#endif
           if (__ui_nodes[i].textBuffer[0] == 0) {
 #if UI_COLOR_DEPTH == 888
             textCol = 0x848484;
@@ -4746,6 +4836,21 @@ static inline void ui_tick(uint16_t deltaMs) {
           clipped[len] = 0;
           ui_draw_text(clipped, bx + 4, by + (bh - ui_text_height(ts, __ui_nodes[i].fontFace)) / 2,
             textCol, bgCol, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
+#if defined(UI_HIDE_OSK)
+          // Desktop target: with no OSK grid there's no focus indicator. Draw a
+          // blinking caret at the end of the typed text on the active edit target
+          // so the user sees which field they're editing. Blink ~3×/sec via the
+          // top bits of __ui_kb_blink (mask 0x20 toggles every 32 ticks ≈ 530ms).
+          if (__ui_kb_visible && (int16_t)__ui_kb_target == (int16_t)i && (__ui_kb_blink & 0x20)) {
+            uint16_t caretW = ui_text_width(clipped, ts, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
+            int16_t caretX = bx + 4 + (int16_t)caretW;
+            int16_t caretYTop = by + (bh - ts * 8) / 2;
+            // fgCol (not textCol): the placeholder-dimming path sets textCol to
+            // gray, which would make the caret nearly invisible on a focused
+            // empty field. The caret should always be the input's foreground.
+            ui_display_fill_rect(caretX, caretYTop, (int16_t)(ts > 1 ? 2 : 1), (int16_t)(ts * 8), fgCol);
+          }
+#endif
         }
         break;
       case NODE_IMG:
@@ -5152,7 +5257,8 @@ static uint8_t __ui_kb_maxlen;
 static uint8_t __ui_kb_shift;
 // __ui_kb_visible, __ui_kb_bs_held, __ui_last_touch_x/y are forward-declared
 // earlier (near the touch state machine) because ui_touch_up references them.
-static int16_t  __ui_kb_target;       // node index of input being edited (-1 = none)
+// __ui_kb_target is also forward-declared there (the UI_HIDE_OSK caret/blink
+// paths in ui_tick and the input draw reference it before this point).
 static uint32_t __ui_kb_bs_repeat;   // last auto-repeat deletion time
 // __ui_kb_dirty is forward-declared earlier (near the touch state machine).
 static void    (*__ui_kb_onchange)();
@@ -5173,12 +5279,30 @@ static inline void ui_kb_insert(char c) {
   if (__ui_kb_len >= UI_TEXT_BUF) return;
   __ui_kb_buffer[__ui_kb_len++] = c;
   __ui_kb_buffer[__ui_kb_len] = 0;
+#if defined(UI_HIDE_OSK)
+  // Desktop target: the OSK grid isn't drawn, so the input field itself is the
+  // only place the in-progress text appears. Sync the buffer into the target
+  // node's textBuffer and mark it dirty so the field repaints on the next tick
+  // — without this, typing appears to do nothing until Enter commits at close.
+  if (__ui_kb_target >= 0) {
+    strncpy(__ui_nodes[__ui_kb_target].textBuffer, __ui_kb_buffer, UI_TEXT_BUF);
+    __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
+    ui_mark_dirty((uint16_t)__ui_kb_target);
+  }
+#endif
 }
 
 // Delete one character from the buffer.
 static inline void ui_kb_delete() {
   if (__ui_kb_len == 0) return;
   __ui_kb_buffer[--__ui_kb_len] = 0;
+#if defined(UI_HIDE_OSK)
+  if (__ui_kb_target >= 0) {
+    strncpy(__ui_nodes[__ui_kb_target].textBuffer, __ui_kb_buffer, UI_TEXT_BUF);
+    __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
+    ui_mark_dirty((uint16_t)__ui_kb_target);
+  }
+#endif
 }
 
 // Compute the keyboard box on open from display dimensions + grid shape.
@@ -5221,6 +5345,15 @@ static inline void ui_kb_open(uint16_t nodeIdx, uint8_t inputPosition) {
   // and the first post-close frame then repaints every dirty node = full-screen
   // flash on SPI TFTs. The close path scopes the repaint to nodes whose paint
   // rect intersects __ui_kb_box, which is the only region that needs restoring.
+#if defined(UI_HIDE_OSK)
+  // Desktop target: the OSK isn't drawn, so the draw pass runs normally and the
+  // input field must repaint on focus to show the caret BEFORE the first
+  // keystroke. (The full-screen-flash concern above doesn't apply — there's no
+  // opaque overlay being skipped.) Seed the blink phase so the caret is ON for
+  // the first ~530ms (bit 0x20 set → visible), so focus feels immediate.
+  if (__ui_kb_target >= 0) ui_mark_dirty((uint16_t)__ui_kb_target);
+  __ui_kb_blink = 0x20;
+#endif
 }
 
 // Close the keyboard: commit buffer back to the input node.

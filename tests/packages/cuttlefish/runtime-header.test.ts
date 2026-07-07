@@ -149,6 +149,20 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/#if\s+UI_USE_FULL_FRAMEBUFFER\s*&&\s*defined\(ESP32\)\s*&&\s*defined\(BOARD_HAS_PSRAM\)/);
   });
 
+  it("framebuffer mode repaints every visible node, not only dirty ones", () => {
+    // Regression: the framebuffer is re-seeded with the background color every
+    // frame and pushed in full, so non-dirty nodes must ALSO redraw into it —
+    // otherwise their regions stay at the black/background seed and the screen
+    // goes black after the first frame. The framebuffer block must mark every
+    // visible node on the active screen dirty before the draw loop.
+    const fbBlock = header.match(/display_canvasFillScreen\(__ui_fb, fbBg\);[\s\S]*?\/\/ Draw dirty nodes/)?.[0] ?? "";
+    expect(fbBlock).not.toBe("");
+    expect(fbBlock).toMatch(/for\s*\(\s*uint16_t\s+f\s*=\s*0[\s\S]*__ui_nodes\[f\]\.screenId\s*==\s*__ui_active_screen[\s\S]*ui_is_effectively_visible\(f\)[\s\S]*__ui_nodes\[f\]\.dirty\s*=\s*1/);
+    // And the draw loop must honor dirty regardless of framebuffer (the pre-mark
+    // makes every visible node eligible).
+    expect(header).toMatch(/if\s*\(!__ui_nodes\[candidate\]\.dirty\s*&&\s*!__ui_fb\)\s*continue/);
+  });
+
   it("snaps very short color transitions to avoid repeated hardware redraws", () => {
     expect(header).toMatch(/#ifndef\s+UI_TRANSITION_SNAP_MS[\s\S]*#define\s+UI_TRANSITION_SNAP_MS\s+100/);
     expect(header).toMatch(/durationMs > 0 && __ui_trans\[i\]\.durationMs <= UI_TRANSITION_SNAP_MS\) k = 100/);
@@ -334,6 +348,84 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/Serial\.printf\([\s\S]*cuttlefish.*WARNING/);
     expect(header).toMatch(/ESP\.getFreeHeap\(\)/);
     expect(header).toMatch(/ESP\.getMaxAllocHeap\(\)/);
+  });
+
+  it("uses printf (not Arduino-only Serial) in the non-ESP32 #else branch so the SDL native target compiles", () => {
+    // The warning's #if defined(ESP32)/#elif defined(ESP8266) branches use
+    // Serial.printf (Arduino core). The #else branch fires on the SDL native
+    // target, which has no Serial — it must use standard-C printf instead, or
+    // every native UI compile fails with "'Serial' was not declared in this scope".
+    const elseIdx = header.indexOf("#else");
+    const endifIdx = header.indexOf("#endif", elseIdx);
+    expect(elseIdx).toBeGreaterThanOrEqual(0);
+    expect(endifIdx).toBeGreaterThan(elseIdx);
+    // Find the #else that immediately follows the ESP8266 branch (the third
+    // platform block in ui_warn_scroll_memory). Search for the Serial.printf
+    // inside an #else within the warning function.
+    const warnIdx = header.indexOf("ui_warn_scroll_memory");
+    const warnBlock = header.slice(warnIdx, header.indexOf("}", header.indexOf("#endif", warnIdx)) + 1);
+    const elseMatch = warnBlock.match(/#else\s*\n[\s\S]*?#endif/);
+    expect(elseMatch).not.toBeNull();
+    expect(elseMatch![0]).not.toContain("Serial.");
+    expect(elseMatch![0]).toMatch(/printf\s*\(/);
+  });
+
+  it("hides the on-screen keyboard draw block when UI_HIDE_OSK is defined (desktop targets)", () => {
+    // The OSK editing session (buffer, target, commit-on-close) must keep
+    // running so typing works — only the *draw* of the 6×4 grid is suppressed,
+    // because a desktop window has a real keyboard. Gated on UI_HIDE_OSK so
+    // hardware targets (which don't define it) render the grid unchanged.
+    expect(header).toMatch(/#if\s+!defined\(UI_HIDE_OSK\)[\s\S]*ui_kb_draw\(\)/);
+  });
+
+  it("ui_kb_insert/delete sync the buffer to the edited input's textBuffer + mark it dirty (live update when OSK hidden)", () => {
+    // On hardware the OSK draws its own text row showing __ui_kb_buffer, so the
+    // input field only updates at close. With UI_HIDE_OSK there's no text row —
+    // the input field itself must repaint on each keystroke, or typing appears
+    // to do nothing until Enter. So ui_kb_insert/delete must propagate the
+    // buffer into the target node's textBuffer and mark that node dirty when
+    // the OSK is hidden. Match the definition body (the prototype ends with ';').
+    const insertMatch = header.match(/static inline void ui_kb_insert\(char c\) \{[\s\S]*?\n\}/);
+    expect(insertMatch).not.toBeNull();
+    expect(insertMatch![0]).toContain("UI_HIDE_OSK");
+    expect(insertMatch![0]).toContain("textBuffer");
+    expect(insertMatch![0]).toMatch(/dirty|mark_dirty/);
+    const deleteMatch = header.match(/static inline void ui_kb_delete\(\) \{[\s\S]*?\n\}/);
+    expect(deleteMatch).not.toBeNull();
+    expect(deleteMatch![0]).toContain("UI_HIDE_OSK");
+    expect(deleteMatch![0]).toContain("textBuffer");
+  });
+
+  it("draws a blinking caret on the edited input field when UI_HIDE_OSK is defined", () => {
+    // Without the OSK grid there's no visual focus indicator. A caret at the
+    // end of the typed text tells the user which input is active. Blink so a
+    // static caret doesn't look like a stuck cursor.
+    expect(header).toMatch(/#if\s+defined\(UI_HIDE_OSK\)[\s\S]*__ui_kb_target[\s\S]*caret/);
+  });
+
+  it("hides the placeholder on the input being edited when UI_HIDE_OSK is defined", () => {
+    // On focus the editing buffer is loaded from the input's (empty) textBuffer,
+    // so textBuffer stays empty until the first keystroke. The draw path falls
+    // back to the placeholder (.text) when textBuffer is empty — which would
+    // render "enter name" with the caret at its end on focus. When the OSK is
+    // hidden AND this node is the active edit target, suppress the placeholder
+    // so the caret shows on a clean field at position 0.
+    const inputDrawIdx = header.indexOf("case NODE_INPUT:");
+    const inputDrawBlock = header.slice(inputDrawIdx, inputDrawIdx + 2000);
+    expect(inputDrawBlock).toMatch(/#if\s+defined\(UI_HIDE_OSK\)[\s\S]*__ui_kb_target[\s\S]*(empty|\"\"|disp)/);
+  });
+
+  it("marks the target input dirty on ui_kb_open when UI_HIDE_OSK is defined (caret appears on focus)", () => {
+    // On hardware the OSK covers the app, so ui_kb_open deliberately does NOT
+    // mark the tree dirty (a dirty flag would survive and flash on close). With
+    // the OSK hidden the draw pass runs normally and the input field must
+    // repaint on focus so the caret shows BEFORE the first keystroke — otherwise
+    // the caret only appears once the user starts typing. Match the definition
+    // body (the prototype ends with ';', the definition opens with '{').
+    const openMatch = header.match(/static inline void ui_kb_open\([^)]*\) \{[\s\S]*?\n\}/);
+    expect(openMatch).not.toBeNull();
+    expect(openMatch![0]).toContain("UI_HIDE_OSK");
+    expect(openMatch![0]).toMatch(/ui_mark_dirty|\.dirty\s*=\s*1/);
   });
 
   it("UINode carries unified scroll state on the node", () => {
@@ -544,6 +636,22 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*if \(!drawingBufferedScroll && !__ui_fb && !canShiftList\) \{[\s\S]*ui_draw_shadow\(i,\s*by,\s*0\)/);
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*ui_push_canvas_rect\(lc,\s*bx,\s*by,\s*bw,\s*bh\)[\s\S]*ui_draw_shadow\(i,\s*by,\s*1\)[\s\S]*ui_draw_node_border\(i,\s*bx,\s*by,\s*bColor\)[\s\S]*ui_draw_node_outline\(i,\s*bx,\s*by\)/);
     expect(header).not.toMatch(/case\s+NODE_LIST:[\s\S]*ui_draw_node_border\(i,\s*0,\s*0,\s*bColor\)/);
+  });
+
+  it("exposes ui_scroll_node_at(x,y): finds the scrollable container whose box contains a point (for wheel scroll)", () => {
+    // The wheel handler needs the scroll owner for the cursor position. The
+    // fragile approach (hit-test the topmost node, then walk parents for a
+    // scrollable ancestor) misses when the cursor is over a non-child node
+    // (text, a sibling, padding) — giving "works on some screens, needs two
+    // attempts" behavior. The robust approach mirrors the touch path: scan
+    // scrollable nodes directly for one whose box contains the point.
+    expect(header).toMatch(/int16_t ui_scroll_node_at\(\s*int16_t\s+\w+\s*,\s*int16_t\s+\w+\s*\)/);
+    // The body must check scrollable + visible + active-screen + overflow.
+    const fnIdx = header.indexOf("ui_scroll_node_at(");
+    const fnBlock = header.slice(fnIdx, header.indexOf("\n}", fnIdx) + 1);
+    expect(fnBlock).toMatch(/scrollable/);
+    expect(fnBlock).toMatch(/contentHeight\s*<=\s*__ui_nodes/);
+    expect(fnBlock).toMatch(/screenId\s*!=\s*__ui_active_screen/);
   });
 
   it("invalidates buffered scroll viewports for animated geometry inside overflowing scroll containers", () => {
