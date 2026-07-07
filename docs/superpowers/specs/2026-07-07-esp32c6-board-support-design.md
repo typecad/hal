@@ -22,7 +22,8 @@ Key C6 differentiators the design respects:
   `type: 'wifi6'` (the schema supports this value). BLE 5.3.
 - **30 GPIO (0–7, 8–14, 15–30)** — pin-richer than the C3's 22.
 - **ADC1 with 7 channels (GPIO0–6)**, ADC2 with 1 channel (GPIO7,
-  Wi-Fi-conflicted, modeled with warning — consistent with C3/S3).
+  Wi-Fi-conflicted, modeled with warning — consistent with C3/S3). **No touch
+  peripheral** is modeled (the C6's touch is non-standard; see Touch below).
 - **Native USB Serial/JTAG AND USB-OTG** (the C6 has both — unlike the C3,
   which has only CDC/JTAG).
 - **No PSRAM support** — the C6 silicon has no external RAM interface.
@@ -107,6 +108,13 @@ Two units, 12-bit, 0–3.3 V:
 ### DAC
 
 None (omitted, same as C3/S3).
+
+### Touch
+
+**None.** The C6's touch peripheral is non-standard and not reliably exposed by
+the Arduino-ESP32 core (unlike the C3/S3 which have well-defined touch on
+GPIO0–5/14). Omitted from the MCU definition entirely — no `TOUCH_CAPABILITIES`,
+no touch function on any pin.
 
 ### Buses — Arduino-ESP32 core defaults (verified)
 
