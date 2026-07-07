@@ -28,6 +28,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "test:hw": "npm exec -- cuttlefish-test",
     "test:hw:basics": "npm exec -- cuttlefish-test tests/01-basics.test.ts"
   },

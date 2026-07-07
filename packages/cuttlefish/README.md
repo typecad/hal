@@ -1,58 +1,79 @@
-# 🐙 typehal
+# `@typecad/cuttlefish`
 
-TypeHAL CLI tool for transpiling TypeScript firmware to C++/Arduino, compiling with `arduino-cli`, uploading to boards, and driving test and scaffold workflows.
+TypeScript → C++ transpiler for embedded firmware. Targets native (desktop),
+Arduino, and bare-metal MCU builds from a single TypeScript codebase.
 
-## Overview
-
-The `typehal` package provides the command-line interface for the TypeHAL toolchain. It loads `typehal.config.ts`, transpiles TypeScript firmware, and can optionally chain compile, upload, and monitor steps for Arduino-compatible boards.
+`cuttlefish` is the command-line tool at the center of the [TypeCAD](https://github.com/justind000/typecode)
+toolchain: it loads `cuttlefish.config.ts`, transpiles TypeScript firmware to
+C++, and can chain compile, upload, and serial-monitor steps.
 
 ## Quick start
 
-From a project root that contains `typehal.config.ts`:
+From a project root containing `cuttlefish.config.ts`:
 
 ```bash
-npx typehal src/main.ts
-npx typehal src/main.ts --compile --upload --port COM4
-npx typehal src/main.ts --compile --upload --monitor --port COM4 --baud 115200
+npx cuttlefish build
+npx cuttlefish build --compile --upload --port COM4
+npx cuttlefish build --compile --upload --monitor --port COM4 --baud 115200
 ```
 
-Create a starter project with the built-in wizard:
+Scaffold a starter project with the built-in wizard:
 
 ```bash
-npx typehal init --board arduino:avr:uno --framework arduino
+npx cuttlefish create --board arduino:avr:uno --framework arduino
 ```
 
-## How to use
+## Commands
 
-### Common commands
+| Command | Description |
+| --- | --- |
+| `cuttlefish build` | Transpile the entry file (default). Accepts `--compile`, `--upload`, `--monitor`, `--port`, `--baud`. |
+| `cuttlefish create` | Generate a starter project and `cuttlefish.config.ts`. |
+| `cuttlefish board-add` | Add a new board package via the board-codegen scaffolder. |
+| `cuttlefish preview` | Launch the browser preview server for a UI project. |
+| `cuttlefish map-error <mapFile>` | Map a C++ compiler error back to its TypeScript source location. |
+| `cuttlefish gen-decls` | Generate type declaration stubs. |
+| `cuttlefish gen-libdefs <input.ts>` | Generate library definition stubs for third-party imports. |
 
-- `typehal <input.ts>` — transpile a TypeScript sketch
-- `typehal <input.ts> --compile` — transpile and compile using Arduino CLI
-- `typehal <input.ts> --compile --upload --port <port>` — flash firmware to the board
-- `typehal <input.ts> --compile --upload --monitor --port <port>` — open a serial monitor after upload
-- `typehal init` — create a starter project and config file
-- `typehal gen-libdefs <input.ts>` — generate library definition stubs for third-party imports
-- `typehal map-error <mapFile>` — map a C++ compiler error back to its TypeScript source location
+### Flags (for `build`)
 
-### Configuration
+- `--compile` — transpile, then compile via the active framework's toolchain (`arduino-cli` for Arduino, `g++` for native).
+- `--upload` — flash firmware to the board (implies `--compile`).
+- `--monitor` — open a serial monitor after upload.
+- `--port <port>` — serial port for upload/monitor (e.g. `COM4`, `/dev/ttyUSB0`).
+- `--baud <rate>` — serial monitor baud rate.
 
-The CLI reads `typehal.config.ts` from the current working directory and uses it as the source of truth. When no config file is available, command-line flags such as `--fqbn` and `--board` supply board and build settings.
+## Configuration
 
-### Example configuration
+The CLI reads `cuttlefish.config.ts` from the current working directory and
+treats it as the source of truth. When no config file is present, command-line
+flags such as `--fqbn` and `--board` supply board and build settings.
 
 ```ts
-import type { TypehalConfig } from '@typehal/core';
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
-const config: TypehalConfig = {
-  target: 'avr',
-  board: '@typehal/board-arduino-uno',
-  fqbn: 'arduino:avr:uno',
-  output: { framework: 'arduino', optimize: 'size', outDir: './out' },
+const config: CuttlefishConfig = {
+  entry: './src/main.ts',
+  target: 'esp32',
+  mcu: '@typecad/mcu-esp32',
+  board: '@typecad/board-esp32-devkit',
+  framework: '@typecad/framework-arduino',
 };
 
 export default config;
 ```
 
-### Integration with hardware tests
+## Ecosystem
 
-The CLI integrates with the hardware test runner package `@typehal/expect` and resolves the same board metadata and compiler inputs used by firmware code.
+`@typecad/cuttlefish` is the transpiler core. It pairs with sibling packages:
+
+- [`@typecad/hal`](https://github.com/justind000/typecode/tree/main/packages/hal) — hardware abstraction (GPIO, I2C, SPI, UART) as regular TypeScript.
+- [`@typecad/ui`](https://github.com/justind000/typecode/tree/main/packages/ui) — HTML/CSS-driven graphics for microcontroller displays.
+- [`@typecad/expect`](https://github.com/justind000/typecode/tree/main/packages/expect) — hardware test framework (vitest-style assertions over serial).
+- [`@typecad/framework-arduino`](https://github.com/justind000/typecode/tree/main/packages/framework-arduino) — Arduino framework code-gen strategy.
+- [`@typecad/framework-native`](https://github.com/justind000/typecode/tree/main/packages/framework-native) — native desktop C++ code-gen strategy.
+- `@typecad/mcu-*` and `@typecad/board-*` — silicon- and board-level pin/peripheral definitions.
+
+## License
+
+MIT

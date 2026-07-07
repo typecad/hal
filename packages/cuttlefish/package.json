@@ -126,6 +126,7 @@
   },
   "scripts": {
     "build": "tsc",
+    "prepublishOnly": "npm run build",
     "start": "node dist/cli.js"
   },
   "dependencies": {
@@ -138,7 +139,9 @@
     "@typecad/ui": "0.1.0"
   },
   "peerDependenciesMeta": {
-    "@typecad/ui": { "optional": true }
+    "@typecad/ui": {
+      "optional": true
+    }
   },
   "optionalDependencies": {
     "@typecad/framework-native": "*"
