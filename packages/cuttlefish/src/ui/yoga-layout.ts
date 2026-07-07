@@ -123,14 +123,18 @@ export class YogaLayoutEngine implements LayoutEngine {
       yn.setPadding(Yoga.EDGE_RIGHT, padH);
     }
 
-    // Margin
+    // Margin: per-side overrides win over the `margin` shorthand when set.
     const marginV = cssPadV(s.margin);
     const marginH = cssPadH(s.margin);
-    if (marginV || marginH) {
-      yn.setMargin(Yoga.EDGE_TOP, marginV);
-      yn.setMargin(Yoga.EDGE_BOTTOM, marginV);
-      yn.setMargin(Yoga.EDGE_LEFT, marginH);
-      yn.setMargin(Yoga.EDGE_RIGHT, marginH);
+    const mTop = s.marginTop !== undefined ? cssLength(s.marginTop) : marginV;
+    const mBottom = s.marginBottom !== undefined ? cssLength(s.marginBottom) : marginV;
+    const mLeft = s.marginLeft !== undefined ? cssLength(s.marginLeft) : marginH;
+    const mRight = s.marginRight !== undefined ? cssLength(s.marginRight) : marginH;
+    if (mTop || mBottom || mLeft || mRight) {
+      yn.setMargin(Yoga.EDGE_TOP, mTop);
+      yn.setMargin(Yoga.EDGE_BOTTOM, mBottom);
+      yn.setMargin(Yoga.EDGE_LEFT, mLeft);
+      yn.setMargin(Yoga.EDGE_RIGHT, mRight);
     }
 
     // Gap: row-gap / column-gap are applied per-axis. Uniform `gap`

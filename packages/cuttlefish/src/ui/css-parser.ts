@@ -72,6 +72,11 @@ export interface CSSProperty {
   // Box model
   padding?: string;
   margin?: string;
+  /** Per-side margin overrides (win over the `margin` shorthand when set). */
+  marginTop?: string;
+  marginRight?: string;
+  marginBottom?: string;
+  marginLeft?: string;
   width?: string;
   height?: string;
   minWidth?: string;
@@ -134,6 +139,19 @@ export interface CSSProperty {
   borderWidth?: string;
   borderColor?: string;
   borderStyle?: string;     // solid | dashed | dotted | none
+  /** Per-side border overrides (win over the shorthand when set). */
+  borderTopWidth?: string;
+  borderTopStyle?: string;
+  borderTopColor?: string;
+  borderRightWidth?: string;
+  borderRightStyle?: string;
+  borderRightColor?: string;
+  borderBottomWidth?: string;
+  borderBottomStyle?: string;
+  borderBottomColor?: string;
+  borderLeftWidth?: string;
+  borderLeftStyle?: string;
+  borderLeftColor?: string;
   opacity?: string;
   visibility?: string;      // visible | hidden
   outline?: string;
@@ -846,6 +864,10 @@ function assignProp(props: CSSProperty, prop: string, val: string, diagnostics?:
     // Box model
     case "padding": props.padding = val; break;
     case "margin": props.margin = val; break;
+    case "margin-top": props.marginTop = val; break;
+    case "margin-right": props.marginRight = val; break;
+    case "margin-bottom": props.marginBottom = val; break;
+    case "margin-left": props.marginLeft = val; break;
     case "width": props.width = val; break;
     case "height": props.height = val; break;
     case "min-width": props.minWidth = val; break;
@@ -913,10 +935,7 @@ function assignProp(props: CSSProperty, prop: string, val: string, diagnostics?:
     case "border-color": props.borderColor = val; break;
     case "border-style": props.borderStyle = val; break;
     case "border-left": case "border-top": case "border-right": case "border-bottom":
-      // Per-side borders are NOT supported (runtime draws uniform borders).
-      // Drop to avoid drawing 4-sided borders when only one side was intended.
-      warn(`Unsupported CSS property "${prop}" — runtime draws uniform borders only.`,
-           `Use the shorthand "border" instead (e.g. border: 1px solid #888).`);
+      parsePerSideBorder(props, prop, val);
       break;
     case "opacity": props.opacity = val; break;
     case "visibility": props.visibility = val; break;
@@ -963,5 +982,22 @@ function parseBorderShorthand(props: CSSProperty, val: string): void {
     // Color: #hex, rgb()/hsl(), a CSS named color, or a var() reference (the
     // token is substituted later by substituteVars, like other properties).
     else if (p.startsWith("#") || p.startsWith("rgb") || p.startsWith("hsl") || p.startsWith("var(") || /^[a-z]+$/i.test(p)) props.borderColor = p;
+  }
+}
+
+/** Parse a per-side border shorthand (border-left/top/right/bottom) into the
+ *  per-side width/style/color fields. Same `<width> <style> <color>` format as
+ *  the `border` shorthand. */
+function parsePerSideBorder(props: CSSProperty, prop: string, val: string): void {
+  const side = prop.slice("border-".length);  // "left" | "top" | "right" | "bottom"
+  const cap = side.charAt(0).toUpperCase() + side.slice(1);  // "Left" | "Top" | ...
+  const wKey = `border${cap}Width` as keyof CSSProperty;
+  const sKey = `border${cap}Style` as keyof CSSProperty;
+  const cKey = `border${cap}Color` as keyof CSSProperty;
+  const parts = val.trim().split(/\s+/);
+  for (const p of parts) {
+    if (/^\d+px$/.test(p)) (props[wKey] as string | undefined) = p;
+    else if (["solid", "dashed", "dotted", "double", "none"].includes(p)) (props[sKey] as string | undefined) = p;
+    else if (p.startsWith("#") || p.startsWith("rgb") || p.startsWith("hsl") || p.startsWith("var(") || /^[a-z]+$/i.test(p)) (props[cKey] as string | undefined) = p;
   }
 }

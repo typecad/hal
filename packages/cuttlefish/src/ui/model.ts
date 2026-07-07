@@ -50,6 +50,12 @@ export interface UINodeModel {
   borderColor: number;
   borderStyle: 0 | 1 | 2;
   borderWidth: number;
+  /** Per-side border widths. When all four equal borderWidth, the runtime draws
+   *  the uniform rect outline; when any differs, it draws per-side lines. */
+  borderTopWidth: number;
+  borderRightWidth: number;
+  borderBottomWidth: number;
+  borderLeftWidth: number;
   borderRadius: number;  // px, 0=square
   paddingTop?: number;
   paddingRight?: number;
@@ -300,6 +306,23 @@ function borderWidthOf(style: CSSProperty): number {
   const px = cssPx(style.borderWidth);
   if (px > 0) return Math.max(1, Math.min(8, px));
   return borderStyle(style) === 0 ? 0 : 1;
+}
+
+/** Per-side border width: the per-side field wins when set, else falls back to
+ *  the uniform borderWidth. Used for border-left/top/right/bottom support. */
+function perSideBorderWidth(style: CSSProperty, sideWidth: string | undefined, sideStyle: string | undefined): number {
+  // Per-side style "none" forces 0 for this side.
+  if (sideStyle === "none") return 0;
+  if (sideWidth !== undefined) {
+    const px = cssPx(sideWidth);
+    if (px > 0) return Math.max(1, Math.min(8, px));
+    // sideWidth set but 0px and style isn't none → default to 1 if a style was given.
+    return sideStyle !== undefined ? 1 : 0;
+  }
+  // No per-side width: fall back to the uniform border width when the per-side
+  // style is set (author wrote e.g. border-top: solid → inherit uniform width).
+  if (sideStyle !== undefined) return borderWidthOf(style);
+  return borderWidthOf(style);
 }
 
 /** Parse border-radius px value (0 if absent). */
@@ -1013,6 +1036,10 @@ export function lowerUIToModel(
       borderColor: bColor,
       borderStyle: borderStyle(node.style),
       borderWidth: borderWidthOf(node.style),
+      borderTopWidth: perSideBorderWidth(node.style, node.style.borderTopWidth, node.style.borderTopStyle),
+      borderRightWidth: perSideBorderWidth(node.style, node.style.borderRightWidth, node.style.borderRightStyle),
+      borderBottomWidth: perSideBorderWidth(node.style, node.style.borderBottomWidth, node.style.borderBottomStyle),
+      borderLeftWidth: perSideBorderWidth(node.style, node.style.borderLeftWidth, node.style.borderLeftStyle),
       borderRadius: borderRadiusOf(node.style),
       ...(() => {
         const padding = paddingOf(node.style);

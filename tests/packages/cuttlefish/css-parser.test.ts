@@ -250,13 +250,17 @@ describe("CSS subset parser", () => {
     expect(diags.some(d => d.message.includes("color"))).toBe(false);
   });
 
-  it("emits a distinct warning for per-side border properties", () => {
+  it("parses per-side border properties WITHOUT warning (now supported)", () => {
     const diags: any[] = [];
-    parseCss(`#x { border-bottom: 1px solid #888; }`, diags);
+    const rules = parseCss(`#x { border-bottom: 1px solid #888; }`, diags);
+    // Per-side borders are now supported (parsed into per-side fields), so no
+    // warning should fire.
     const border = diags.filter(d => d.message.includes("border-bottom"));
-    expect(border).toHaveLength(1);
-    expect(border[0].severity).toBe("warning");
-    expect(border[0].hint).toBeTruthy();
+    expect(border).toHaveLength(0);
+    // And the per-side fields are populated.
+    expect(rules[0].properties.borderBottomWidth).toBe("1px");
+    expect(rules[0].properties.borderBottomStyle).toBe("solid");
+    expect(rules[0].properties.borderBottomColor).toBe("#888");
   });
 
   it("emits no warnings when no diagnostics sink is passed (backward compatible)", () => {
@@ -352,5 +356,25 @@ describe("CSS subset parser", () => {
     expect(props.borderWidth).toBe("2px");
     expect(props.borderStyle).toBe("solid");
     expect(props.borderColor).toBe("#ffffff");  // var(--fg) captured + substituted
+  });
+
+  it("parses per-side margin properties (margin-top/right/bottom/left)", () => {
+    const rules = parseCss(`#x { margin-top: 8px; margin-right: 4px; margin-bottom: 16px; margin-left: 2px; }`);
+    const props = rules[0].properties;
+    expect(props.marginTop).toBe("8px");
+    expect(props.marginRight).toBe("4px");
+    expect(props.marginBottom).toBe("16px");
+    expect(props.marginLeft).toBe("2px");
+  });
+
+  it("parses per-side border shorthand (border-left/top/right/bottom)", () => {
+    const rules = parseCss(`#x { border-left: 4px solid #f00; border-top: 2px dashed #0f0; }`);
+    const props = rules[0].properties;
+    expect(props.borderLeftWidth).toBe("4px");
+    expect(props.borderLeftStyle).toBe("solid");
+    expect(props.borderLeftColor).toBe("#f00");
+    expect(props.borderTopWidth).toBe("2px");
+    expect(props.borderTopStyle).toBe("dashed");
+    expect(props.borderTopColor).toBe("#0f0");
   });
 });
