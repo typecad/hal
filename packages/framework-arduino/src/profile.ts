@@ -51,6 +51,7 @@ const PROFILE_VARIANTS: ArduinoProfileVariant[] = [
   { architecture: "avr", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "esp32", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "esp32s3", forcedIncludes: ["<Arduino.h>"] },
+  { architecture: "esp32c3", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "samd", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "rp2040", forcedIncludes: ["<Arduino.h>"] },
 ];
@@ -80,6 +81,12 @@ const CAPABILITY_TABLE: ArduinoCapabilities[] = [
     fallbackPins: { A0: 1 },
   },
   {
+    architecture: "esp32c3",
+    builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "analogReference", "delay", "millis", "micros", "setInterval", "setTimeout", "clearInterval", "clearTimeout"]),
+    builtinGlobals: new Set(["A0", "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "Serial"]),
+    fallbackPins: { A0: 0 },
+  },
+  {
     architecture: "samd",
     builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "analogReference", "delay", "millis", "micros", "setInterval", "setTimeout", "clearInterval", "clearTimeout"]),
     builtinGlobals: new Set(["A0", "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "Serial"]),
@@ -107,6 +114,7 @@ const FQBN_PIN_OVERRIDES: FqbnPinOverride[] = [
   { fqbnIncludes: "arduino:samd:mkrzero", pins: { A0: 15 } },
   { fqbnIncludes: "esp32:esp32:", pins: { A0: 36 } },
   { fqbnIncludes: "esp32:esp32s3:", pins: { A0: 1 } },
+  { fqbnIncludes: "esp32:esp32c3:", pins: { A0: 0 } },
   { fqbnIncludes: "rp2040:rp2040:", pins: { A0: 26 } },
 ];
 
