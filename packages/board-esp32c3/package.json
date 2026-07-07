@@ -26,5 +26,32 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justind000/typecode.git",
+    "directory": "packages/board-esp32c3"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/packages/board-esp32c3",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "arduino",
+    "board",
+    "cpp",
+    "cuttlefish",
+    "devkit",
+    "embedded",
+    "esp32c3",
+    "firmware",
+    "microcontroller",
+    "pins",
+    "typecad",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0"
 }

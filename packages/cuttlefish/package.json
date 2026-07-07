@@ -149,5 +149,31 @@
   "devDependencies": {
     "@types/node": "^22.10.7"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justind000/typecode.git",
+    "directory": "packages/cuttlefish"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/packages/cuttlefish",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "arduino",
+    "cli",
+    "codegen",
+    "cpp",
+    "cuttlefish",
+    "embedded",
+    "firmware",
+    "microcontroller",
+    "transpiler",
+    "typecad",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0"
 }

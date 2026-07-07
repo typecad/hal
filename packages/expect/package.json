@@ -48,5 +48,32 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justind000/typecode.git",
+    "directory": "packages/expect"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/packages/expect",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "arduino",
+    "cpp",
+    "cuttlefish",
+    "embedded",
+    "firmware",
+    "hardware-test",
+    "microcontroller",
+    "serial",
+    "test-framework",
+    "testing",
+    "typecad",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0"
 }

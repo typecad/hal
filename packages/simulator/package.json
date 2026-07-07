@@ -28,5 +28,31 @@
   "devDependencies": {
     "@types/node": "^22.10.7"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justind000/typecode.git",
+    "directory": "packages/simulator"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/packages/simulator",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "arduino",
+    "cpp",
+    "cuttlefish",
+    "desktop",
+    "embedded",
+    "emulator",
+    "firmware",
+    "microcontroller",
+    "simulator",
+    "typecad",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0"
 }

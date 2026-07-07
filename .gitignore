@@ -1,22 +1,58 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
 **/.build/
-example/
-vitest.config.js
-demo/cuttlefish.config.js
 **/*.tsbuildinfo
-*.zip
+
+# TypeScript project state
+*.tsbuildinfo
+
+# Logs & coverage
+*.log
+coverage/
+.nyc_output/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Generated/transient scratch files
 tmp-*.txt
+dbg.txt
+rt.txt
+glyphs.txt
+
+# Windows reserved-name redirect accidents
+nul
+**/nul
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Archives
+*.zip
 
 # website is a separate repo (was orphaned submodule gitlink)
 website/
-nul
 
 # brainstorming visual companion
 .superpowers/
 
-# vendor libraries (copied into demo for hardware testing)
-demo-ui/lib/
+# Generated demo config (per-project override)
+demo/cuttlefish.config.js
+vitest.config.js
 
-# editor
-.vscode/
+# Historical demo snapshots (not source of truth)
+demo/*-backup/
+
+# VS Code extension build artifacts
+*.vsix
+
+# Vendored Arduino libraries (copied into demos for hardware testing, not source)
+# Kept tracked so a fresh clone can flash to hardware without re-fetching.
+demo-ui/lib/

@@ -26,5 +26,32 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justind000/typecode.git",
+    "directory": "packages/board-arduino-uno"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/packages/board-arduino-uno",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "arduino",
+    "arduino-uno",
+    "board",
+    "cpp",
+    "cuttlefish",
+    "devkit",
+    "embedded",
+    "firmware",
+    "microcontroller",
+    "pins",
+    "typecad",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0"
 }

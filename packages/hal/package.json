@@ -21,5 +21,34 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justind000/typecode.git",
+    "directory": "packages/hal"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/packages/hal",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "arduino",
+    "cpp",
+    "cuttlefish",
+    "embedded",
+    "firmware",
+    "gpio",
+    "hal",
+    "hardware-abstraction",
+    "i2c",
+    "microcontroller",
+    "spi",
+    "typecad",
+    "typescript",
+    "uart"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0"
 }

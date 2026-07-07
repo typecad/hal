@@ -25,5 +25,33 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justind000/typecode.git",
+    "directory": "packages/mcu-atmega328p"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/packages/mcu-atmega328p",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "arduino",
+    "atmega328p",
+    "cpp",
+    "cuttlefish",
+    "embedded",
+    "firmware",
+    "mcu",
+    "microcontroller",
+    "peripherals",
+    "pins",
+    "silicon",
+    "typecad",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0"
 }

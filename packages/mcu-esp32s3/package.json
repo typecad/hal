@@ -25,5 +25,33 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/justind000/typecode.git",
+    "directory": "packages/mcu-esp32s3"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/packages/mcu-esp32s3",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "arduino",
+    "cpp",
+    "cuttlefish",
+    "embedded",
+    "esp32s3",
+    "firmware",
+    "mcu",
+    "microcontroller",
+    "peripherals",
+    "pins",
+    "silicon",
+    "typecad",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0"
 }
