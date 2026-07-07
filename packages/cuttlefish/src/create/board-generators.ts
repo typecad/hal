@@ -405,3 +405,313 @@ export function genMcuIndex(spec: BoardSpec): string {
 
   return lines.join('\n');
 }
+
+// ---------------------------------------------------------------------------
+// Board package generators
+// ---------------------------------------------------------------------------
+
+export function genBoardPackageJson(spec: BoardSpec): string {
+  const pkg = {
+    name: `@typecad/board-${spec.architecture}`,
+    version: '0.1.0',
+    description: `TypeCAD ${spec.boardName} board definition with typed pins and peripherals`,
+    type: 'module',
+    main: './dist/index.js',
+    types: './dist/index.d.ts',
+    exports: { '.': { types: './dist/index.d.ts', default: './dist/index.js' } },
+    files: ['dist'],
+    scripts: { build: 'tsc' },
+    dependencies: {
+      '@typecad/cuttlefish': '*',
+      '@typecad/hal': '*',
+      [`@typecad/mcu-${spec.architecture}`]: '*',
+    },
+    license: 'MIT',
+    publishConfig: { access: 'public' },
+  };
+  return JSON.stringify(pkg, null, 2) + '\n';
+}
+
+export function genBoardTsconfig(spec: BoardSpec): string {
+  return JSON.stringify({
+    compilerOptions: {
+      composite: true, target: 'ES2021', module: 'Node16', moduleResolution: 'Node16',
+      strict: true, esModuleInterop: true, skipLibCheck: true,
+      forceConsistentCasingInFileNames: true, declaration: true, declarationMap: true,
+      sourceMap: true, rootDir: 'src', outDir: 'dist',
+      experimentalDecorators: true, emitDecoratorMetadata: true,
+    },
+    include: ['src/**/*.ts'],
+    references: [
+      { path: '../hal' }, { path: '../cuttlefish' }, { path: `../mcu-${spec.architecture}` },
+    ],
+  }, null, 2) + '\n';
+}
+
+export function genBoardAnalog(_spec: BoardSpec): string {
+  return [
+    '// ---------------------------------------------------------------------------',
+    `// @typecad/board-${_spec.architecture} — Analog constants`,
+    '// ---------------------------------------------------------------------------',
+    '',
+    '/** Default reference (3.3V). */',
+    'export const DEFAULT = 0;',
+    '/** Internal 1.1V reference. */',
+    'export const INTERNAL = 3;',
+    '',
+  ].join('\n');
+}
+
+export function genBoardPins(spec: BoardSpec): string {
+  const arch = spec.architecture;
+  // Dx aliases: GPIO in range, excluding unsafe flash pins (those at the end
+  // whose alt names start with "SPI"). We include all non-flash GPIOs.
+  const unsafeFlashPins = new Set(
+    spec.pins.filter(p => p.unsafe && p.alt?.some(a => a.startsWith('SPI'))).map(p => p.gpio)
+  );
+  const dPins = gpioList(spec).filter(n => !unsafeFlashPins.has(n));
+
+  // Ax aliases: from spec.analog (ADC1 only)
+  const aPins = spec.analog.map(name => parseInt(name.replace('GPIO', ''), 10));
+
+  // Bus instance counts
+  const i2cCount = spec.peripheralInstances.i2c.length;
+  const spiCount = spec.peripheralInstances.spi.length;
+  const uartCount = spec.peripheralInstances.uart.length;
+  const i2cNames = Array.from({ length: i2cCount }, (_, i) => `I2C${i}`).join(', ');
+  const spiNames = Array.from({ length: spiCount }, (_, i) => `SPI${i}`).join(', ');
+  const uartNames = Array.from({ length: uartCount }, (_, i) => `UART${i}`).join(', ');
+
+  const lines: string[] = [
+    `// ---------------------------------------------------------------------------`,
+    `// @typecad/board-${arch} — Pin aliases`,
+    `// ---------------------------------------------------------------------------`,
+    '',
+  ];
+
+  // Import GPIO constants from MCU (only the ones we alias)
+  const allImportedGpio = Array.from(new Set([...dPins, ...aPins])).sort((a, b) => a - b);
+  const importList = allImportedGpio.map(n => `GPIO${n}`).join(', ');
+  lines.push(`import {`);
+  lines.push(`  ${importList},`);
+  lines.push(`} from '@typecad/mcu-${arch}';`);
+  lines.push('');
+
+  // Dx aliases
+  lines.push(`// Arduino-style digital pin aliases (D-numbers match GPIO numbers)`);
+  for (const n of dPins) {
+    lines.push(`export const D${n} = GPIO${n};`);
+  }
+  lines.push('');
+
+  // Ax aliases
+  lines.push(`// Analog input aliases (ADC1 channels — usable while Wi-Fi is active).`);
+  aPins.forEach((n, i) => {
+    lines.push(`export const A${i} = GPIO${n};`);
+  });
+  lines.push('');
+
+  // Bus re-exports
+  lines.push(`// Bus aliases (default pins for I2C0 / SPI0 / UART0)`);
+  lines.push(`export { ${i2cNames}, ${spiNames}, ${uartNames} } from '@typecad/mcu-${arch}';`);
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+export function genBoardIndex(spec: BoardSpec): string {
+  const arch = spec.architecture;
+  const archUpper = arch.toUpperCase();
+  const boardName = spec.boardName;
+  const desc = spec.description || `${spec.mcuName} generic devboard`;
+
+  // Dx pins (non-flash)
+  const unsafeFlashPins = new Set(
+    spec.pins.filter(p => p.unsafe && p.alt?.some(a => a.startsWith('SPI'))).map(p => p.gpio)
+  );
+  const dPins = gpioList(spec).filter(n => !unsafeFlashPins.has(n));
+
+  // Analog GPIOs
+  const aGpios = spec.analog.map(name => `GPIO${parseInt(name.replace('GPIO', ''), 10)}`);
+
+  const lines: string[] = [
+    `// ---------------------------------------------------------------------------`,
+    `// @typecad/board-${arch} — Board definition manifest`,
+    `// ---------------------------------------------------------------------------`,
+    '',
+    `import type { BoardDefinition } from '@typecad/cuttlefish/api/schema';`,
+    `import { ${archUpper} } from '@typecad/mcu-${arch}';`,
+    '',
+    `const ARDUINO_CORE_VERSION = '10819';`,
+    '',
+    `export const ${archUpper}Board: BoardDefinition = {`,
+    `  id: '${spec.boardId}',`,
+    `  name: '${boardName}',`,
+    `  vendor: '${spec.vendor}',`,
+    `  description: '${desc.replace(/'/g, "\\'")}',`,
+    '',
+    `  mcu: ${archUpper},`,
+    `  clockSpeed: ${spec.clockSpeed},`,
+    '',
+  ];
+
+  // Memory
+  lines.push(`  memory: {`);
+  if (spec.moduleFlash) lines.push(`    flash: ${spec.moduleFlash},`);
+  if (spec.externalRam) lines.push(`    externalRam: ${spec.externalRam},`);
+  lines.push(`  },`);
+  lines.push('');
+
+  // Pins (spread MCU, no led for generic boards)
+  lines.push(`  pins: {`);
+  lines.push(`    ...${archUpper}.pins,`);
+  lines.push(`  },`);
+  lines.push('');
+
+  // Peripherals with aliases
+  const i2cCount = spec.peripheralInstances.i2c.length;
+  const spiCount = spec.peripheralInstances.spi.length;
+  const uartCount = spec.peripheralInstances.uart.length;
+  lines.push(`  peripherals: {`);
+  lines.push(`    ...${archUpper}.peripherals,`);
+  lines.push(`    aliases: {`);
+  const aliasEntries: string[] = [];
+  for (let i = 0; i < uartCount; i++) aliasEntries.push(`UART${i}: 'Serial${i === 0 ? '' : i + 1}'`);
+  for (let i = 0; i < i2cCount; i++) aliasEntries.push(`I2C${i}: 'Wire${i === 0 ? '' : i + 1}'`);
+  for (let i = 0; i < spiCount; i++) aliasEntries.push(`SPI${i}: 'SPI${i === 0 ? '' : i + 1}'`);
+  lines.push(`      ${aliasEntries.join(', ')},`);
+  lines.push(`    },`);
+  lines.push(`  },`);
+  lines.push('');
+
+  // Build config
+  lines.push(`  build: {`);
+  lines.push(`    frameworks: {`);
+  lines.push(`      platformio: '${spec.platformioTarget}',`);
+  lines.push(`      arduino: '${spec.fqbn}',`);
+  lines.push(`    },`);
+  lines.push(`    defines: {`);
+  lines.push(`      F_CPU: '${spec.clockSpeed}UL',`);
+  lines.push(`      ARDUINO: ARDUINO_CORE_VERSION,`);
+  lines.push(`      ${spec.arduinoDefine}: '1',`);
+  lines.push(`    },`);
+  lines.push(`  },`);
+  lines.push(`};`);
+  lines.push('');
+
+  lines.push(`export default ${archUpper}Board;`);
+  lines.push('');
+  lines.push(`export * from '@typecad/mcu-${arch}';`);
+  lines.push('');
+
+  // HAL re-exports
+  lines.push(`export {`);
+  lines.push(`  HIGH, LOW, INPUT, OUTPUT, INPUT_PULLUP,`);
+  lines.push(`  delay, millis, micros, delayMicroseconds,`);
+  lines.push(`  map, constrain,`);
+  lines.push(`  abs, min, max, Num,`);
+  lines.push(`  pulseIn, pulseInLong, Pulse,`);
+  lines.push(`  shiftIn, shiftOut, Shift,`);
+  lines.push(`  randomSeed, random, Random,`);
+  lines.push(`  noInterrupts, interrupts, attachInterrupt, detachInterrupt,`);
+  lines.push(`  ADC, AsyncClass, Async`);
+  lines.push(`} from '@typecad/hal';`);
+  lines.push('');
+
+  // Discovery arrays — import GPIO constants
+  const discoveryGpio = dPins.map(n => `GPIO${n}`).join(', ');
+  const analogGpio = aGpios.join(', ');
+  lines.push(`import {`);
+  lines.push(`  ${discoveryGpio},`);
+  lines.push(`} from '@typecad/mcu-${arch}';`);
+  lines.push('');
+
+  lines.push(`export const pins = {`);
+  lines.push(`  pwm: [${discoveryGpio}] as const,`);
+  lines.push(`  analog: [${analogGpio}] as const,`);
+  lines.push(`  interrupt: [${discoveryGpio}] as const,`);
+  lines.push(`  digital: [${discoveryGpio}] as const,`);
+  lines.push(`} as const;`);
+  lines.push('');
+
+  // PeripheralPins
+  lines.push(`export const PeripheralPins = {`);
+  const i2cKey = Object.keys(spec.i2c)[0];
+  const i2cPins = spec.i2c[i2cKey];
+  lines.push(`  I2C0: { SDA: '${i2cPins.sda}', SCL: '${i2cPins.scl}' } as const,`);
+  const spiKey = Object.keys(spec.spi)[0];
+  const spiPins = spec.spi[spiKey];
+  lines.push(`  SPI0: { MOSI: '${spiPins.mosi}', MISO: '${spiPins.miso}', SCK: '${spiPins.sck}', CS: '${spiPins.cs}' } as const,`);
+  const uartKey = Object.keys(spec.uart)[0];
+  const uartPins = spec.uart[uartKey];
+  lines.push(`  UART0: { TX: '${uartPins.tx}', RX: '${uartPins.rx}' } as const,`);
+  if (uartCount > 1) {
+    lines.push(`  UART1: { TX: 'remappable', RX: 'remappable' } as const,`);
+  }
+  lines.push(`} as const;`);
+  lines.push('');
+
+  lines.push(`export * from './pins.js';`);
+  lines.push(`export * from './analog.js';`);
+  lines.push(`export { Board } from './board.js';`);
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+export function genBoardNamespace(spec: BoardSpec): string {
+  const arch = spec.architecture;
+  const archUpper = arch.toUpperCase();
+
+  // Dx pins (non-flash)
+  const unsafeFlashPins = new Set(
+    spec.pins.filter(p => p.unsafe && p.alt?.some(a => a.startsWith('SPI'))).map(p => p.gpio)
+  );
+  const dPins = gpioList(spec).filter(n => !unsafeFlashPins.has(n));
+  const aCount = spec.analog.length;
+
+  const dNames = dPins.map(n => `D${n}`);
+  const aNames = Array.from({ length: aCount }, (_, i) => `A${i}`);
+
+  const i2cCount = spec.peripheralInstances.i2c.length;
+  const spiCount = spec.peripheralInstances.spi.length;
+  const uartCount = spec.peripheralInstances.uart.length;
+  const periNames: string[] = [];
+  for (let i = 0; i < i2cCount; i++) periNames.push(`I2C${i}`);
+  for (let i = 0; i < spiCount; i++) periNames.push(`SPI${i}`);
+  for (let i = 0; i < uartCount; i++) periNames.push(`UART${i}`);
+
+  const lines: string[] = [
+    `// ---------------------------------------------------------------------------`,
+    `// @typecad/board-${arch} — Board namespace`,
+    `// ---------------------------------------------------------------------------`,
+    '',
+    `import type { BoardDefinition } from '@typecad/cuttlefish/api/schema';`,
+    '',
+    `import {`,
+    `  ${dNames.join(', ')},`,
+    `  ${aNames.join(', ')},`,
+    `} from './pins.js';`,
+    '',
+    `import { ${periNames.join(', ')} } from '@typecad/mcu-${arch}';`,
+    `import { ${archUpper}Board } from './index.js';`,
+    '',
+    `export const Board = {`,
+    `  definition: ${archUpper}Board,`,
+    '',
+    `  ${dNames.join(', ')},`,
+    `  ${aNames.join(', ')},`,
+    '',
+    `  ${periNames.join(', ')},`,
+    '',
+    `  digital: { ${dNames.join(', ')} },`,
+    `  analog:  { ${aNames.join(', ')} },`,
+    `};`,
+    '',
+    `export default Board;`,
+    '',
+  ];
+
+  return lines.join('\n');
+}
+
