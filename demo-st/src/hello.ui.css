@@ -4,14 +4,14 @@
 
 @font-face {
   font-family: "ColibriDemo";
-  src: url("CALIBRI.TTF");
+  src: url("DejaVuSans.ttf");
   font-weight: 400;
   font-style: normal;
 }
 
 @font-face {
   font-family: "ColibriDemo";
-  src: url("CALIBRIB.TTF");
+  src: url("DejaVuSans-Bold.ttf");
   font-weight: 700;
   font-style: normal;
 }

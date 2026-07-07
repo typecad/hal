@@ -15,8 +15,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
-    "publish:private": "npm publish --registry http://192.168.2.207:4873/"
+    "build": "tsc"
   },
   "dependencies": {
     "@typecad/cuttlefish": "*",

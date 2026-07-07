@@ -1,6 +1,7 @@
 {
   "name": "demo-st",
   "version": "1.0.0",
+  "private": true,
   "description": "ESP32 DevKit demo using the TypeCAD transpiler",
   "type": "module",
   "scripts": {

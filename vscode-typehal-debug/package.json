@@ -3,6 +3,7 @@
   "displayName": "TypeHAL Debug",
   "description": "Breakpoint debugging for TypeHAL embedded projects",
   "version": "0.1.0",
+  "private": true,
   "publisher": "typehal",
   "engines": {
     "vscode": "^1.85.0"

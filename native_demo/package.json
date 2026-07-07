@@ -1,6 +1,7 @@
 {
   "name": "native_demo",
   "version": "1.0.0",
+  "private": true,
   "description": "Native desktop demo using the TypeCAD transpiler with the SDL render layer",
   "type": "module",
   "scripts": {

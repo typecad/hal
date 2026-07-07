@@ -2,10 +2,10 @@
   "$schema": "https://unpkg.com/@changesets/config@3.1.4/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
-  "fixed": [["@typecad/cuttlefish", "@typecad/ui", "@typecad/hal", "@typecad/framework-arduino", "@typecad/framework-avr", "@typecad/framework-native", "@typecad/board-arduino-uno", "@typecad/board-esp32-devkit", "@typecad/mcu-atmega328p", "@typecad/mcu-esp32", "@typecad/expect", "@typecad/simulator"]],
+  "fixed": [["@typecad/cuttlefish", "@typecad/ui", "@typecad/hal", "@typecad/framework-arduino", "@typecad/framework-native", "@typecad/board-arduino-uno", "@typecad/board-esp32-devkit", "@typecad/mcu-atmega328p", "@typecad/mcu-esp32", "@typecad/expect", "@typecad/simulator"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": []
+  "ignore": ["demo-console-app", "demo-st", "demo-ui", "demo-ui-sd13", "native_demo", "@typecad/framework-avr", "vscode-typehal-debug"]
 }

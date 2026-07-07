@@ -29,8 +29,7 @@
   "scripts": {
     "build": "tsc",
     "test:hw": "npm exec -- cuttlefish-test",
-    "test:hw:basics": "npm exec -- cuttlefish-test tests/01-basics.test.ts",
-    "publish:private": "npm publish --registry http://192.168.2.207:4873/"
+    "test:hw:basics": "npm exec -- cuttlefish-test tests/01-basics.test.ts"
   },
   "dependencies": {
     "@typecad/hal": "*"

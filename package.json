@@ -39,7 +39,6 @@
     "publish:expect": "npm publish --workspace @typecad/expect --access public",
     "publish:ui": "npm publish --workspace @typecad/ui --access public",
     "publish:all": "npm run publish:cuttlefish && npm run publish:hal && npm run publish:expect && npm run publish:ui",
-    "publish:private": "npm run publish:cuttlefish -- --registry http://192.168.2.207:4873/ && npm run publish:hal -- --registry http://192.168.2.207:4873/ && npm run publish:expect -- --registry http://192.168.2.207:4873/ && npm run publish:ui -- --registry http://192.168.2.207:4873/",
     "changeset": "changeset",
     "version": "changeset version"
   },
