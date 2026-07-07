@@ -1033,8 +1033,8 @@ a {
         <h3 class="demoLabel">:disabled</h3>
         <div class="formRow">
           <button id="formDisabledBtn" disabled>cannot tap</button>
-          <span class="formStatus">ignored by input</span>
         </div>
+        <span class="formStatus">ignored by input</span>
       </section>
     </main>
   </body>
