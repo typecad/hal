@@ -274,27 +274,47 @@ export function compileArduinoSketch(
     // Best-effort flattening for generated modules.
   }
 
-  // Build the arduino-cli argument list. --build-property is used to inject
-  // extra compiler flags (from output.defines and output.extraFlags in
-  // cuttlefish.config.ts) without modifying the board's platform.txt. Each
-  // define becomes -DNAME=VALUE; extraFlags pass through verbatim.
+  // Build the arduino-cli argument list. User defines/extraFlags (from
+  // output.defines and output.extraFlags in cuttlefish.config.ts) are injected
+  // via a build_opt.h file in the sketch dir, which arduino-cli reads through
+  // the platform recipe's @"{build.opt.path}" token and feeds to the compiler
+  // WITHOUT touching any platform property.
+  //
+  // Why not --build-property? Both candidate properties are load-bearing on
+  // modern cores and `--build-property` REPLACES rather than appends:
+  //   - compiler.cpp.extra_flags carries -MMD/-c (dependency tracking); replacing
+  //     it desyncs the sketch from the precompiled core, producing dozens of
+  //     "undefined reference" errors to core symbols (pinMode, Serial, main, ...).
+  //   - build.extra_flags on the ESP32 core is a composed value that pulls in
+  //     the USB/CDC/boot-mode defines (ARDUINO_USB_CDC_ON_BOOT, ARDUINO_USB_MODE,
+  //     ...); replacing it silently breaks USB-serial sketches.
+  // build_opt.h avoids both: the platform recipe appends it verbatim, so every
+  // board/core property stays intact and the user defines are applied cleanly.
   const compileArgs: string[] = ["compile", "--fqbn", buildTarget];
-  if (options?.defines || options?.extraFlags) {
-    const flagParts: string[] = [];
-    if (options?.defines) {
-      for (const [name, value] of Object.entries(options.defines)) {
-        flagParts.push(value !== "" ? `-D${name}=${value}` : `-D${name}`);
-      }
+  const userFlagParts: string[] = [];
+  if (options?.defines) {
+    for (const [name, value] of Object.entries(options.defines)) {
+      userFlagParts.push(value !== "" ? `-D${name}=${value}` : `-D${name}`);
     }
-    if (options?.extraFlags) {
-      flagParts.push(...options.extraFlags);
-    }
-    if (flagParts.length > 0) {
-      // Use compiler.cpp.extra_flags (not build.extra_flags) so we APPEND to
-      // the C++ compiler flags rather than overwriting the board's build.extra_flags
-      // (which carries USB/CDC/core-defining flags on ESP32 — overwriting those
-      // breaks include resolution and causes library incompatibility errors).
-      compileArgs.push("--build-property", `compiler.cpp.extra_flags=${flagParts.join(" ")}`);
+  }
+  if (options?.extraFlags) {
+    userFlagParts.push(...options.extraFlags);
+  }
+  if (userFlagParts.length > 0) {
+    const buildOptPath = path.join(sketchDir, "build_opt.h");
+    try {
+      // Preserve any user-authored build_opt.h content; append our defines
+      // rather than overwriting so we don't drop flags the sketch relies on.
+      const existing = fs.existsSync(buildOptPath)
+        ? fs.readFileSync(buildOptPath, "utf8")
+        : "";
+      const generated = `${userFlagParts.join("\n")}\n`;
+      const sep = existing.length > 0 && !existing.endsWith("\n") ? "\n" : "";
+      fs.writeFileSync(buildOptPath, existing + sep + generated, "utf8");
+    } catch {
+      // Best-effort: if we can't write build_opt.h, fall back to no defines
+      // rather than failing the whole compile. The compile will still run;
+      // the user's defines just won't be applied.
     }
   }
   compileArgs.push(sketchDir);
