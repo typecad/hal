@@ -3,7 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { parseCommandLine, printHelp } from "./utils/cli.js";
 import type { GeneratedOutputs } from "./types.js";
-import type { CreateCommandOptions } from "./types.js";
+import type { CreateCommandOptions, BoardAddCommandOptions } from "./types.js";
 import { scaffoldProject, printInitNextSteps, KNOWN_TARGETS } from "./create/index.js";
 import { runInitWizard } from "./create/index.js";
 import { generateLibraryDefinitions, transpileFile } from "./transpile.js";
@@ -106,6 +106,28 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
   }
 }
 
+async function handleBoardAdd(options: BoardAddCommandOptions): Promise<void> {
+  const { scaffoldBoardPackages, parseBoardSpec, generateFrameworkChecklist } = await import("./create/index.js");
+
+  if (!fs.existsSync(options.specPath)) {
+    throw new Error(`Spec file not found: ${options.specPath}`);
+  }
+
+  console.log(`Reading spec: ${options.specPath}`);
+  const specText = fs.readFileSync(options.specPath, "utf8");
+  const spec = parseBoardSpec(specText);
+
+  console.log(`Generating board packages for ${spec.architecture} (${spec.boardName})...`);
+  const result = scaffoldBoardPackages(spec, { force: options.force });
+
+  console.log(`\nCreated ${result.createdFiles.length} files:`);
+  for (const f of result.createdFiles) {
+    console.log(`  ${path.relative(process.cwd(), f)}`);
+  }
+
+  console.log(generateFrameworkChecklist(spec));
+}
+
 async function main(): Promise<void> {
   try {
     const options = parseCommandLine(process.argv);
@@ -117,6 +139,11 @@ async function main(): Promise<void> {
 
     if (options.command === "create") {
       await handleCreate(options);
+      return;
+    }
+
+    if (options.command === "board-add") {
+      await handleBoardAdd(options);
       return;
     }
 

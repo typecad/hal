@@ -222,3 +222,9 @@ export interface CreateCommandOptions {
   noSketch?: boolean;
   outDir?: string;
 }
+
+export interface BoardAddCommandOptions {
+  command: "board-add";
+  specPath: string;
+  force?: boolean;
+}

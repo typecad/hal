@@ -41,6 +41,16 @@ export {
 } from "./create/index.js";
 export type { InitProjectOptions } from "./create/index.js";
 
+// ── Board codegen (`cuttlefish board add`) ───────────────────────────────────
+export {
+  scaffoldBoardPackages,
+  parseBoardSpec,
+  safeParseBoardSpec,
+  stripJsonc,
+} from "./create/index.js";
+export type { BoardSpec, ScaffoldBoardResult } from "./create/index.js";
+export { BoardGenerators } from "./create/index.js";
+
 // ── Tree-shaking & reachability ──────────────────────────────────────────────
 export { buildCallGraph, getReachableSymbols } from "./ir/call-graph.js";
 export { detectEntryPoints, detectExportedEntryPoints } from "./ir/entry-points.js";
