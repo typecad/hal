@@ -3,7 +3,7 @@ import ts from "typescript";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resetUIRegistry, loadUIModule, clearEntryHasUI } from "@typecad/cuttlefish/ui/ui-registry";
+import { resetUIRegistry, loadUIModule, clearEntryHasUI } from "../../../packages/cuttlefish/src/ui/ui-registry";
 import {
   tryResolveUICall,
   resetUICallState,
@@ -48,7 +48,8 @@ describe("ui.drawCanvas resolver", () => {
     expect(ir).not.toBeNull();
     expect(canvasBindings()).toHaveLength(1);
     const spec = canvasBindings()[0];
-    expect(spec.nodeIndex).toBe(0); // spark is the only child → index 0
+    expect(spec.nodeIndex).toBe(1); // spark is the only child of <screen>; the
+                                     // screen root occupies index 0, so spark = 1
     expect(spec.fnName).toMatch(/__ui_canvas_draw_/);
     expect(spec.callbackBody).toContain("ui_display_fill_rect(0, 0, 10, 10, 0xf800)");
   });

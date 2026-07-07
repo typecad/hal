@@ -239,7 +239,7 @@ describe("C++ reactive runtime header", () => {
   });
 
   it("draws NODE_TEXT inside its CSS padding content box", () => {
-    expect(header).toMatch(/__ui_nodes\[i\]\.kind == NODE_TEXT \|\| __ui_nodes\[i\]\.kind == NODE_BUTTON/);
+    expect(header).toContain("ui_node_text_max_width");
     expect(header).toMatch(/case NODE_TEXT:[\s\S]*int16_t insetL = \(int16_t\)__ui_nodes\[i\]\.borderWidth \+ \(int16_t\)__ui_nodes\[i\]\.paddingLeft/);
     expect(header).toMatch(/case NODE_TEXT:[\s\S]*int16_t textX = __ui_nodes\[i\]\.box\.x \+ insetL/);
     expect(header).toMatch(/case NODE_TEXT:[\s\S]*ui_draw_node_border\(i, __ui_nodes\[i\]\.box\.x, drawY, bColor\)[\s\S]*case NODE_BUTTON:/);
@@ -339,8 +339,38 @@ describe("C++ reactive runtime header", () => {
   });
 
   it("draws dirty nodes in z-index order", () => {
-    expect(header).toMatch(/for \(uint16_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; __ui_draw_pass\+\+\)/);
-    expect(header).toMatch(/ui_node_draws_before\(candidate,\s*selected\)/);
+    expect(header).toContain("ui_build_draw_order");
+    expect(header).toContain("__ui_draw_order");
+    expect(header).toMatch(/ui_build_draw_order\(\)/);
+    expect(header).toMatch(/i = \(int16_t\)__ui_draw_order\[__ui_draw_pass\+\+\]/);
+    expect(header).toMatch(/ui_node_draws_before\(candidate,\s*\(uint16_t\)i\)/);
+  });
+
+  it("buffers pixel-heavy images and generated-font text through the RAM paint canvas", () => {
+    expect(header).toContain("ui_pixel_heavy_node");
+    expect(header).toMatch(/ui_pixel_heavy_node\(nodeIdx\)\) return 1/);
+    expect(header).toMatch(/NODE_IMG\) return 1/);
+    expect(header).toMatch(/fontFace \|\| __ui_nodes\[nodeIdx\]\.fontAntialias\)/);
+    expect(header).toMatch(/!drawingBufferedScroll && !__ui_fb && ui_should_buffer_paint/);
+    expect(header).not.toMatch(/bufferedScrollNode < 0 && ui_should_buffer_paint/);
+  });
+
+  it("caches text layout metrics per node and invalidates on text or geometry changes", () => {
+    expect(header).toContain("ui_node_text_layout_metrics");
+    expect(header).toContain("ui_invalidate_text_layout_cache");
+    expect(header).toContain("layoutCacheKey");
+    expect(header).toMatch(/ui_invalidate_text_layout_cache\(n\)/);
+    expect(header).toMatch(/ui_node_text_layout_metrics\(nodeIdx, textMaxW/);
+  });
+
+  it("consolidates per-tick node scans via scroll-owner table and cached screen bg", () => {
+    expect(header).toContain("ui_build_scroll_owner_table");
+    expect(header).toContain("__ui_scroll_owners");
+    expect(header).toContain("__ui_active_screen_bg_node");
+    expect(header).toContain("ui_refresh_active_screen_bg_node");
+    expect(header).toMatch(/ui_scroll_motion_active\(settlingOnActiveScreen\)/);
+    expect(header).toMatch(/__ui_active_screen_bg_node < __ui_node_count/);
+    expect(header).not.toMatch(/for \(uint16_t s = 0; s < __ui_node_count; s\+\+\)[\s\S]*screenId == __ui_active_screen && __ui_nodes\[s\]\.kind == NODE_FILL/);
   });
 
   it("only clears a scroll viewport when the scroll container itself is dirty", () => {
@@ -706,7 +736,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_try_repair_geometry_fill[\s\S]*if\s*\(scrollParent >= 0\) ui_invalidate_scroll_canvas_for_node\(nodeIdx\)/);
     expect(header).toMatch(/if\s*\(bufferedScrollRepaintCanvas\)\s*\{[\s\S]*scrollDrawW\s*=\s*__ui_nodes\[bufferedScrollNode\]\.box\.w;[\s\S]*scrollDrawH\s*=\s*bufferedScrollRepaintH/);
     expect(header).toMatch(/if\s*\(geometryChanged && !repairedGeometry\)[\s\S]*ui_invalidate_scroll_canvas_for_node\(n\)/);
-    expect(header).toMatch(/__ui_nodes\[n\]\.box\.h = nextHeight;[\s\S]*if\s*\(!repairedGeometry\)\s*ui_mark_dirty\(n\);/);
+    expect(header).toMatch(/__ui_nodes\[n\]\.box\.h = nextHeight;[\s\S]*ui_invalidate_text_layout_cache\(n\);[\s\S]*if\s*\(!repairedGeometry\)\s*ui_mark_dirty\(n\);/);
     expect(header).not.toMatch(/if\s*\(geometryScrollParent\s*>=\s*0\)\s*\{[\s\S]*ui_mark_scroll_view_dirty\(\(uint16_t\)geometryScrollParent\)/);
     expect(header).not.toMatch(/if\s*\(geometryChanged\)[\s\S]*ui_mark_scroll_subtree_dirty\(\(uint8_t\)scrollParent\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
   });
@@ -715,9 +745,9 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_scroll_motion_active");
     expect(header).toContain("ui_keyframe_set_has_scroll_sensitive_geometry");
     expect(header).toMatch(/__ui_scroll_node >= 0 && __ui_is_dragging/);
-    expect(header).toMatch(/__ui_nodes\[i\]\.screenId == __ui_active_screen && __ui_nodes\[i\]\.settling/);
+    expect(header).toMatch(/settlingOnActiveScreen = 1/);
     expect(header).toMatch(/ks->stops\[s\]\.props & \(UI_KF_TRANSFORM \| UI_KF_SIZE\)/);
-    expect(header).toMatch(/uint8_t scrollMotionActive = ui_scroll_motion_active\(\);[\s\S]*if \(scrollMotionActive &&[\s\S]*ui_keyframe_set_has_scroll_sensitive_geometry\(__ui_anims\[i\]\.keyframeSet\)[\s\S]*continue;[\s\S]*__ui_anims\[i\]\.elapsed \+=/);
+    expect(header).toMatch(/uint8_t scrollMotionActive = ui_scroll_motion_active\(settlingOnActiveScreen\);[\s\S]*if \(scrollMotionActive &&[\s\S]*ui_keyframe_set_has_scroll_sensitive_geometry\(__ui_anims\[i\]\.keyframeSet\)[\s\S]*continue;[\s\S]*__ui_anims\[i\]\.elapsed \+=/);
   });
 
   it("does not repair rounded borders with square clipped corner segments", () => {

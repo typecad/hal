@@ -15,7 +15,7 @@
 //              C:\msys64\ucrt64\bin is on PATH (the toolchain probes it).
 // ---------------------------------------------------------------------------
 
-import type { CuttlefishConfig } from '@typecad/hal@typecad/cuttlefish/api
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 const config: CuttlefishConfig = {
   entry: './src/showcase.ui',
   framework: '@typecad/framework-native',
@@ -41,8 +41,8 @@ const config: CuttlefishConfig = {
   },
   display: {
     driver: 'sdl',
-    width: 320,
-    height: 240,
+    width: 640,
+    height: 480,
     colorFormat: 'rgb888',
     rotation: 0,
     // Antialiased rendering for text, circles, lines, and rounded corners.

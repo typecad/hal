@@ -134,7 +134,12 @@
     "typescript": "^5.7.3",
     "zod": "^3.24.0"
   },
-  "peerDependenciesMeta": {},
+  "peerDependencies": {
+    "@typecad/ui": "0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@typecad/ui": { "optional": true }
+  },
   "optionalDependencies": {
     "@typecad/framework-native": "*"
   },

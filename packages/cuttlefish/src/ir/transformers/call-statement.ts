@@ -5,7 +5,7 @@ import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases,
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
 import { tryResolveHALMethod } from "./hal-call-resolver.js";
-import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, resolveNodeTag, watchPinSpecs, recordWatchPin, recordClickHandler, clickHandlers } from "./ui-call-resolver.js";
+import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, resolveNodeTag, watchPinSpecs, recordWatchPin, recordClickHandler, clickHandlers, pushUnknownElementDiagnostic } from "./ui-call-resolver.js";
 import { lowerCallbackBody } from "./ui-callback-lowering.js";
 import { tryLowerArrayAndStringMethods } from "./array-methods.js";
 import { expressionToIR } from "../expression-to-ir.js";
@@ -150,6 +150,10 @@ export function callToStatement(
 
     const htmlPath = resolveUIModuleImport(treeName);
     const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+    if (nodeIndex < 0) {
+      pushUnknownElementDiagnostic(diagnostics, `screen.${elemId}.${call.expression.name.text}`, elemId, treeName);
+      return { kind: "block", sourceSpan: makeSourceSpan(call, fileName, sourceText), leadingComments: comments.leadingComments, trailingComments: comments.trailingComments, body: [] };
+    }
     const handlerName = `__ui_${elemId}_${edge}_${uiPressBindings().length}`;
     recordPressBinding({ nodeIndex, pin: pinText, edge, handlerName });
 
@@ -179,6 +183,10 @@ export function callToStatement(
 
     const htmlPath = resolveUIModuleImport(treeName);
     const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+    if (nodeIndex < 0) {
+      pushUnknownElementDiagnostic(diagnostics, `screen.${elemId}.${call.expression.name.text}`, elemId, treeName);
+      return { kind: "block", sourceSpan: makeSourceSpan(call, fileName, sourceText), leadingComments: comments.leadingComments, trailingComments: comments.trailingComments, body: [] };
+    }
 
     // Lower the user's callback body to C++ (shared with watchPin in
     // ui-call-resolver.ts). Handles console.* → platform transform, signal
@@ -220,6 +228,10 @@ export function callToStatement(
 
     const htmlPath = resolveUIModuleImport(treeName);
     const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+    if (nodeIndex < 0) {
+      pushUnknownElementDiagnostic(diagnostics, `screen.${elemId}.${call.expression.name.text}`, elemId, treeName);
+      return { kind: "block", sourceSpan: makeSourceSpan(call, fileName, sourceText), leadingComments: comments.leadingComments, trailingComments: comments.trailingComments, body: [] };
+    }
     const nodeTag = htmlPath ? resolveNodeTag(htmlPath, elemId) : "";
 
     let cbBody = "";
@@ -259,6 +271,10 @@ export function callToStatement(
 
     const htmlPath = resolveUIModuleImport(treeName);
     const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+    if (nodeIndex < 0) {
+      pushUnknownElementDiagnostic(diagnostics, `screen.${elemId}.${call.expression.name.text}`, elemId, treeName);
+      return { kind: "block", sourceSpan: makeSourceSpan(call, fileName, sourceText), leadingComments: comments.leadingComments, trailingComments: comments.trailingComments, body: [] };
+    }
 
     // Lower optional callback
     let cbBody = "";
@@ -296,6 +312,10 @@ export function callToStatement(
 
     const htmlPath = resolveUIModuleImport(treeName);
     const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId, recv.screenId) : 0;
+    if (nodeIndex < 0) {
+      pushUnknownElementDiagnostic(diagnostics, `screen.${elemId}.${call.expression.name.text}`, elemId, treeName);
+      return { kind: "block", sourceSpan: makeSourceSpan(call, fileName, sourceText), leadingComments: comments.leadingComments, trailingComments: comments.trailingComments, body: [] };
+    }
 
     // Lower callback body (reuse the shared callback lowering)
     let cbBody = "";
@@ -330,6 +350,10 @@ export function callToStatement(
 
     const htmlPath = resolveUIModuleImport(treeName);
     const nodeIndex = htmlPath ? resolveNodeIndex(htmlPath, elemId) : 0;
+    if (nodeIndex < 0) {
+      pushUnknownElementDiagnostic(diagnostics, `screen.${elemId}.${call.expression.name.text}`, elemId, treeName);
+      return { kind: "block", sourceSpan: makeSourceSpan(call, fileName, sourceText), leadingComments: comments.leadingComments, trailingComments: comments.trailingComments, body: [] };
+    }
 
     let cbBody = "";
     if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {

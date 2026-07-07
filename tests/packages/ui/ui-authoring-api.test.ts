@@ -40,6 +40,15 @@ describe("@typecad/ui authoring namespace", () => {
     }
   });
 
+  it("exposes ui.window with setTitle/setIcon (native desktop window controls)", () => {
+    expect(typeof ui.window).toBe("object");
+    expect(typeof ui.window.setTitle).toBe("function");
+    expect(typeof ui.window.setIcon).toBe("function");
+    // Falls under the same compile-time-construct contract: calling it from
+    // plain Node fails loudly, not silently.
+    expect(() => ui.window.setTitle("x")).toThrow(/compile-time|transpiler/i);
+  });
+
   it("throws a clear compile-time-construct error when mount is invoked at runtime", () => {
     // The transpiler lowers these calls; if one ever runs in plain TS/Node
     // (e.g. a forgotten build step), it must fail loudly, not silently no-op.

@@ -258,7 +258,12 @@ struct UINode {
   uint8_t fontFace;     // 0 = classic GFX bitmap font; otherwise UIFontFace id
   uint32_t borderColor; // resolved color for the border (0 = use fg)
   uint8_t borderStyle;  // 0=none, 1=solid, 2=dashed
-  uint8_t borderWidth;  // px, 0=none
+  uint8_t borderWidth;  // px, 0=none (uniform fallback)
+  uint8_t borderTopWidth;    // per-side; equals borderWidth when uniform
+  uint8_t borderRightWidth;
+  uint8_t borderBottomWidth;
+  uint8_t borderLeftWidth;
+  uint8_t hasPerSideBorder;  // 1 when any per-side width differs from borderWidth
   uint8_t borderRadius; // px, 0=square
   uint8_t paddingTop;
   uint8_t paddingRight;
@@ -298,6 +303,9 @@ struct UINode {
   uint32_t clearColor;  // ancestor's background — used to wipe transparent text before redraw
   int16_t lastTextWidth;
   int16_t lastTextHeight;
+  uint32_t layoutCacheKey;  // 0 = invalid; non-zero hashes layout inputs
+  uint16_t layoutMetricsW;  // cached ui_text_layout_metrics width
+  uint16_t layoutMetricsH;  // cached ui_text_layout_metrics height
   // scroll (unified: containers and virtualized lists share these)
   uint8_t scrollable;   // 1 = children offset by scrollY, clipped to this box
   uint8_t virtualized;  // 1 = children produced by list*Fn callbacks (<list>)
@@ -499,16 +507,18 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
 #define UI_MAYBE_SNAP_MONO565(c) (c)
 #endif
 
-// ── Deferred-refresh (e-ink) dirty-rect aggregation ──────────────────────────
-// Under UI_REQUIRES_BACKING_STORE (e-ink), each painted node reports its paint
-// rect into this accumulator; at frame end the union is refreshed as one partial
-// update via the shim's display_partial_refresh. On TFT (no backing store) the
-// symbols compile to no-op stubs so call sites are unchanged — byte-identical.
-#ifndef UI_REQUIRES_BACKING_STORE
-  #define ui_refresh_begin_frame()  ((void)0)
-  #define ui_refresh_add_rect(x, y, w, h) ((void)0)
-  #define ui_refresh_flush()        ((void)0)
-#else
+// ── Per-frame refresh dispatch ──────────────────────────────────────────────
+// Three mutually-exclusive compile-time paths, in priority order:
+//   1. UI_REQUIRES_BACKING_STORE (e-ink): dirty-rect accumulator + partial refresh.
+//   2. UI_BATCH_SPI_WRITES (TFT immediate): one startWrite/endWrite per frame.
+//   3. default (SDL native host): no-ops.
+// Exactly one branch ever compiles — the emitter's guards ensure the first two
+// are never both defined (UI_REQUIRES_BACKING_STORE ⟹ requiresBackingStore,
+// UI_BATCH_SPI_WRITES ⟹ immediate && !requiresBackingStore).
+#if defined(UI_REQUIRES_BACKING_STORE)
+  // e-ink / deferred-partial: dirty-rect accumulator. Each painted node reports
+  // its paint rect; at frame end the union is refreshed as one partial update
+  // via display_partial_refresh.
   #define UI_REFRESH_MAX_RECTS 16
   struct UIRect16 { int16_t x, y, w, h; };
   static UIRect16 __ui_refresh_rects[UI_REFRESH_MAX_RECTS];
@@ -547,6 +557,29 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
       display_partial_refresh(x0, y0, (int16_t)(x1 - x0), (int16_t)(y1 - y0));
     }
   }
+#elif defined(UI_BATCH_SPI_WRITES)
+  // TFT immediate-refresh batching (CURRENTLY UNUSED — see note below).
+  // Wraps the frame's draws in ONE SPI transaction so all per-node writes share
+  // a single CS-asserted burst. add_rect is a no-op: TFT has no partial-refresh
+  // concept; the per-node draws already target the right pixels.
+  //
+  // NOTE: this branch is left in place but the emitter does NOT define
+  // UI_BATCH_SPI_WRITES by default. The design assumed Adafruit_SPITFT's
+  // startWrite/endWrite are reference-counted (nested calls = no-op for CS),
+  // but the Adafruit_GFX version in this repo is NOT — every endWrite raises
+  // CS unconditionally. So an outer frame startWrite gets closed by the first
+  // inner draw's endWrite → black screen. Re-enable only after either (a)
+  // upgrading to a ref-counted Adafruit_GFX or (b) adding a runtime flag the
+  // inner draw primitives check to skip their own startWrite/endWrite.
+  // See docs/superpowers/specs/2026-07-06-tft-spi-write-batching-design.md.
+  static inline void ui_refresh_begin_frame() { display_startWrite(); }
+  static inline void ui_refresh_add_rect(int16_t x, int16_t y, int16_t w, int16_t h) { (void)x; (void)y; (void)w; (void)h; }
+  static inline void ui_refresh_flush() { display_endWrite(); }
+#else
+  // No batching (e.g. SDL native host render): true no-ops.
+  #define ui_refresh_begin_frame()  ((void)0)
+  #define ui_refresh_add_rect(x, y, w, h) ((void)0)
+  #define ui_refresh_flush()        ((void)0)
 #endif
 
 // ── Multi-screen navigation ─────────────────────────────────────────────────
@@ -564,6 +597,14 @@ static int16_t __ui_scroll_node = -1;            // owning scroll container (int
 static uint8_t* __ui_scroll_canvas_ok = nullptr;
 // One-shot scroll memory warnings (indexed by node).
 static uint8_t* __ui_scroll_mem_warned = nullptr;
+// Precomputed draw order (lower z-index first, then source index). Built once in
+// ui_init; zIndex is static after mount so this stays valid for the app lifetime.
+static uint16_t* __ui_draw_order = nullptr;
+// Non-virtualized scroll-container node indices (built once in ui_init).
+static uint16_t* __ui_scroll_owners = nullptr;
+static uint16_t __ui_scroll_owner_count = 0;
+// First NODE_FILL on the active screen (for framebuffer bg seed).
+static uint16_t __ui_active_screen_bg_node = 0xFFFF;
 static uint32_t __ui_settle_start_ms = 0;        // when the active settle animation began
 static int16_t __ui_settle_from_overscroll = 0;  // settle start value (bounce-back)
 static int16_t __ui_settle_from_scrollY = 0;     // settle start value (edge snap; sign: +toward 0, -toward max)
@@ -719,11 +760,13 @@ static uint16_t __ui_fade_duration = 200; // ms
 // (single TU, no Arduino auto-prototyper).
 static inline void ui_release_canvas_state();
 static inline void ui_set_pressed(uint16_t nodeIdx, uint8_t pressed);
+static inline void ui_refresh_active_screen_bg_node();
 
 // Navigate to a screen by index. Marks the new screen's nodes dirty + starts fade.
 static inline void ui_navigate(uint8_t screenIdx) {
   if (screenIdx >= __ui_screen_count || screenIdx == __ui_active_screen) return;
   __ui_active_screen = screenIdx;
+  ui_refresh_active_screen_bg_node();
   // Reset scroll/touch state so the old screen's scroll container doesn't
   // interfere with the new screen. Release any currently-pressed button FIRST:
   // navigation fires from a button's click handler during touch-down, so the
@@ -752,6 +795,7 @@ static inline void ui_navigate(uint8_t screenIdx) {
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
     __ui_nodes[i].lastTextHeight = 0;
+    __ui_nodes[i].layoutCacheKey = 0;
     if (__ui_nodes[i].kind == NODE_PROGRESS || __ui_nodes[i].kind == NODE_RANGE) __ui_nodes[i].lastTextWidth = -1;
     else __ui_nodes[i].lastTextWidth = 0;
   }
@@ -772,6 +816,9 @@ static inline uint16_t ui_text_width(const char* text, uint8_t ts, uint8_t fontF
 struct UITextLine;
 static inline uint8_t ui_text_next_line(const char** cursor, uint16_t maxWidth, uint8_t whiteSpaceMode, uint8_t ts, uint8_t fontFace, int8_t letterSpacing, UITextLine* out);
 static inline void ui_text_layout_metrics(const char* text, uint16_t maxWidth, uint8_t whiteSpaceMode, uint8_t ts, uint8_t fontFace, int8_t letterSpacing, uint8_t lineHeight, uint16_t* outW, uint16_t* outH);
+static inline void ui_invalidate_text_layout_cache(uint16_t nodeIdx);
+static inline uint16_t ui_node_text_max_width(uint16_t nodeIdx);
+static inline void ui_node_text_layout_metrics(uint16_t nodeIdx, uint16_t textMaxW, uint16_t* outW, uint16_t* outH);
 static inline uint8_t ui_rects_intersect(int16_t ax, int16_t ay, int16_t aw, int16_t ah, int16_t bx, int16_t by, int16_t bw, int16_t bh);
 static inline uint8_t ui_is_effectively_visible(uint16_t nodeIdx);
 static inline uint8_t ui_node_draws_before(uint16_t a, uint16_t b);
@@ -1816,6 +1863,57 @@ static inline uint8_t ui_node_draws_before(uint16_t a, uint16_t b) {
   return a < b;
 }
 
+// Sort node indices once at startup so the dirty draw pass is O(N) instead of
+// re-scanning all nodes for every dirty repaint (O(D·N)).
+static inline void ui_build_draw_order() {
+  if (__ui_draw_order || __ui_node_count == 0) return;
+  __ui_draw_order = (uint16_t*)malloc((size_t)__ui_node_count * sizeof(uint16_t));
+  if (!__ui_draw_order) return;
+  for (uint16_t i = 0; i < __ui_node_count; i++) __ui_draw_order[i] = i;
+  for (uint16_t a = 1; a < __ui_node_count; a++) {
+    uint16_t key = __ui_draw_order[a];
+    int16_t j = (int16_t)a - 1;
+    while (j >= 0 && ui_node_draws_before(key, __ui_draw_order[j])) {
+      __ui_draw_order[j + 1] = __ui_draw_order[j];
+      j--;
+    }
+    __ui_draw_order[j + 1] = key;
+  }
+}
+
+// Index generic (non-list) scroll containers once so scroll prep doesn't scan
+// every node each frame.
+static inline void ui_build_scroll_owner_table() {
+  if (__ui_scroll_owners || __ui_node_count == 0) return;
+  uint16_t count = 0;
+  for (uint16_t i = 0; i < __ui_node_count; i++) {
+    if (__ui_nodes[i].scrollable && !__ui_nodes[i].virtualized) count++;
+  }
+  __ui_scroll_owner_count = count;
+  if (!count) return;
+  __ui_scroll_owners = (uint16_t*)malloc((size_t)count * sizeof(uint16_t));
+  if (!__ui_scroll_owners) {
+    __ui_scroll_owner_count = 0;
+    return;
+  }
+  uint16_t w = 0;
+  for (uint16_t i = 0; i < __ui_node_count; i++) {
+    if (__ui_nodes[i].scrollable && !__ui_nodes[i].virtualized) {
+      __ui_scroll_owners[w++] = i;
+    }
+  }
+}
+
+static inline void ui_refresh_active_screen_bg_node() {
+  __ui_active_screen_bg_node = 0xFFFF;
+  for (uint16_t i = 0; i < __ui_node_count; i++) {
+    if (__ui_nodes[i].screenId == __ui_active_screen && __ui_nodes[i].kind == NODE_FILL) {
+      __ui_active_screen_bg_node = i;
+      return;
+    }
+  }
+}
+
 static inline uint8_t ui_scroll_subtree_has_dirty(uint16_t scrollNode) {
   if (scrollNode >= __ui_node_count) return 0;
   uint16_t end = __ui_nodes[scrollNode].subtreeEnd;
@@ -1966,18 +2064,10 @@ static inline void ui_node_paint_rect(uint16_t nodeIdx, int16_t baseX, int16_t b
 }
 
 static inline void ui_node_current_paint_rect(uint16_t nodeIdx, UIRect* out) {
-  const char* displayText = __ui_nodes[nodeIdx].hasTextBinding
-    ? __ui_nodes[nodeIdx].textBuffer
-    : __ui_nodes[nodeIdx].text;
-  uint8_t ts = __ui_nodes[nodeIdx].textSize ? __ui_nodes[nodeIdx].textSize : 2;
-  uint16_t textMaxW = __ui_nodes[nodeIdx].box.w;
-  if (__ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
-    textMaxW = __ui_nodes[nodeIdx].box.w > 22 ? __ui_nodes[nodeIdx].box.w - 22 : 0;
-  }
   uint16_t tw = 0;
   uint16_t th = 0;
-  ui_text_layout_metrics(displayText, textMaxW, __ui_nodes[nodeIdx].whiteSpaceMode, ts,
-    __ui_nodes[nodeIdx].fontFace, __ui_nodes[nodeIdx].letterSpacing, __ui_nodes[nodeIdx].lineHeight, &tw, &th);
+  uint16_t textMaxW = ui_node_text_max_width(nodeIdx);
+  ui_node_text_layout_metrics(nodeIdx, textMaxW, &tw, &th);
   if (__ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
     tw += 22;
     if (th < 16) th = 16;
@@ -2066,9 +2156,23 @@ static inline void ui_clear_press_offset_area(uint16_t nodeIdx, int16_t baseX, i
   ui_display_fill_rect(x0, y0, x1 - x0, y1 - y0, ui_parent_clear_color(nodeIdx));
 }
 
+// Generated-font / AA text and images draw per-pixel when sent straight to SPI.
+// Prefer the RAM paint canvas for these kinds (within the pixel budget).
+static inline uint8_t ui_pixel_heavy_node(uint16_t nodeIdx) {
+  if (nodeIdx >= __ui_node_count) return 0;
+  if (__ui_nodes[nodeIdx].kind == NODE_IMG) return 1;
+  if (__ui_nodes[nodeIdx].kind == NODE_TEXT &&
+      (__ui_nodes[nodeIdx].fontFace || __ui_nodes[nodeIdx].fontAntialias)) return 1;
+  return 0;
+}
+
 static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_t h) {
   if (w <= 0 || h <= 0) return 0;
   if (__ui_nodes[nodeIdx].kind == NODE_LIST) return 0;
+  // <canvas> elements batch via __ui_node_canvas when drawing to the display.
+  if (__ui_nodes[nodeIdx].kind == NODE_CANVAS) return 0;
+  if ((uint32_t)w * (uint32_t)h > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
+  if (ui_pixel_heavy_node(nodeIdx)) return 1;
   if (__ui_nodes[nodeIdx].kind == NODE_FILL &&
       __ui_nodes[nodeIdx].hasBg &&
       __ui_nodes[nodeIdx].gradientEnabled == 0 &&
@@ -2081,7 +2185,7 @@ static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_
       __ui_nodes[nodeIdx].borderStyle == 0 &&
       __ui_nodes[nodeIdx].outlineStyle == 0 &&
       __ui_nodes[nodeIdx].shadowCount == 0) return 0;
-  return (uint32_t)w * (uint32_t)h <= UI_MAX_BUFFERED_PAINT_PIXELS;
+  return 1;
 }
 
 static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCanvas16* canvas, int16_t canvasX, int16_t canvasY) {
@@ -2325,18 +2429,10 @@ static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* pain
 
 static inline void ui_clear_current_node_paint(uint16_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return;
-  const char* displayText = __ui_nodes[nodeIdx].hasTextBinding
-    ? __ui_nodes[nodeIdx].textBuffer
-    : __ui_nodes[nodeIdx].text;
-  uint8_t ts = __ui_nodes[nodeIdx].textSize ? __ui_nodes[nodeIdx].textSize : 2;
   uint16_t tw = 0;
   uint16_t th = 0;
-  uint16_t maxTextW = __ui_nodes[nodeIdx].box.w;
-  if (__ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
-    maxTextW = __ui_nodes[nodeIdx].box.w > 22 ? __ui_nodes[nodeIdx].box.w - 22 : 0;
-  }
-  ui_text_layout_metrics(displayText, maxTextW, __ui_nodes[nodeIdx].whiteSpaceMode, ts,
-    __ui_nodes[nodeIdx].fontFace, __ui_nodes[nodeIdx].letterSpacing, __ui_nodes[nodeIdx].lineHeight, &tw, &th);
+  uint16_t textMaxW = ui_node_text_max_width(nodeIdx);
+  ui_node_text_layout_metrics(nodeIdx, textMaxW, &tw, &th);
   if (__ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) tw += 22;
   int16_t baseDrawX = ui_base_draw_x_for_node(nodeIdx);
   int16_t baseDrawY = ui_base_draw_y_for_node(nodeIdx);
@@ -2493,6 +2589,7 @@ static inline void ui_init(void) {
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
     __ui_nodes[i].lastTextHeight = 0;
+    __ui_nodes[i].layoutCacheKey = 0;
     if (__ui_nodes[i].kind == NODE_PROGRESS || __ui_nodes[i].kind == NODE_RANGE) {
       __ui_nodes[i].lastTextWidth = -1;
     }
@@ -2529,6 +2626,9 @@ static inline void ui_init(void) {
     __ui_nodes[i].settling = 0;
     __ui_nodes[i].lastPaintedScrollY = -(__ui_nodes[i].box.h > 0 ? __ui_nodes[i].box.h : 1);
   }
+  ui_build_draw_order();
+  ui_build_scroll_owner_table();
+  ui_refresh_active_screen_bg_node();
 }
 
 // Debounce: ignore press/release events within 50ms of the last edge.
@@ -3296,6 +3396,68 @@ static inline uint8_t ui_text_next_line(const char** cursor, uint16_t maxWidth, 
   if (outH) *outH = h;
 }
 
+static inline void ui_invalidate_text_layout_cache(uint16_t nodeIdx) {
+  if (nodeIdx < __ui_node_count) __ui_nodes[nodeIdx].layoutCacheKey = 0;
+}
+
+static inline uint32_t ui_text_layout_cache_key(uint16_t nodeIdx, uint16_t textMaxW) {
+  uint32_t key = textMaxW;
+  key = key * 31u + __ui_nodes[nodeIdx].whiteSpaceMode;
+  uint8_t ts = __ui_nodes[nodeIdx].textSize ? __ui_nodes[nodeIdx].textSize : 2;
+  key = key * 31u + ts;
+  key = key * 31u + __ui_nodes[nodeIdx].fontFace;
+  key = key * 31u + (uint8_t)(__ui_nodes[nodeIdx].letterSpacing + 128);
+  key = key * 31u + __ui_nodes[nodeIdx].lineHeight;
+  if (__ui_nodes[nodeIdx].hasTextBinding) {
+    const char* t = __ui_nodes[nodeIdx].textBuffer;
+    while (t && *t) {
+      key = key * 31u + (uint8_t)*t;
+      t++;
+    }
+  }
+  return key | 1u;
+}
+
+static inline uint16_t ui_node_text_max_width(uint16_t nodeIdx) {
+  if (nodeIdx >= __ui_node_count) return 0;
+  uint16_t textMaxW = __ui_nodes[nodeIdx].box.w;
+  if (__ui_nodes[nodeIdx].kind == NODE_TEXT || __ui_nodes[nodeIdx].kind == NODE_BUTTON) {
+    uint16_t hInset = (uint16_t)__ui_nodes[nodeIdx].paddingLeft + (uint16_t)__ui_nodes[nodeIdx].paddingRight +
+      (uint16_t)__ui_nodes[nodeIdx].borderWidth * 2;
+    textMaxW = __ui_nodes[nodeIdx].box.w > hInset ? (uint16_t)(__ui_nodes[nodeIdx].box.w - hInset) : 0;
+  } else if (__ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
+    textMaxW = __ui_nodes[nodeIdx].box.w > 22 ? (uint16_t)(__ui_nodes[nodeIdx].box.w - 22) : 0;
+  }
+  return textMaxW;
+}
+
+static inline void ui_node_text_layout_metrics(uint16_t nodeIdx, uint16_t textMaxW, uint16_t* outW, uint16_t* outH) {
+  if (nodeIdx >= __ui_node_count) {
+    if (outW) *outW = 0;
+    if (outH) *outH = 0;
+    return;
+  }
+  uint32_t key = ui_text_layout_cache_key(nodeIdx, textMaxW);
+  if (__ui_nodes[nodeIdx].layoutCacheKey == key) {
+    if (outW) *outW = __ui_nodes[nodeIdx].layoutMetricsW;
+    if (outH) *outH = __ui_nodes[nodeIdx].layoutMetricsH;
+    return;
+  }
+  const char* displayText = __ui_nodes[nodeIdx].hasTextBinding
+    ? __ui_nodes[nodeIdx].textBuffer
+    : __ui_nodes[nodeIdx].text;
+  uint8_t ts = __ui_nodes[nodeIdx].textSize ? __ui_nodes[nodeIdx].textSize : 2;
+  uint16_t tw = 0;
+  uint16_t th = 0;
+  ui_text_layout_metrics(displayText, textMaxW, __ui_nodes[nodeIdx].whiteSpaceMode, ts,
+    __ui_nodes[nodeIdx].fontFace, __ui_nodes[nodeIdx].letterSpacing, __ui_nodes[nodeIdx].lineHeight, &tw, &th);
+  __ui_nodes[nodeIdx].layoutCacheKey = key;
+  __ui_nodes[nodeIdx].layoutMetricsW = tw;
+  __ui_nodes[nodeIdx].layoutMetricsH = th;
+  if (outW) *outW = tw;
+  if (outH) *outH = th;
+}
+
 static inline void ui_copy_text_span(const char* start, const char* end, char* out, uint8_t outSize) {
   if (!out || outSize == 0) return;
   uint8_t len = 0;
@@ -3838,6 +4000,33 @@ static inline void ui_draw_rect_outline(int16_t x, int16_t y, int16_t w, int16_t
 }
 
 static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, UI_COLOR_T color) {
+  // Per-side borders: when any side's width differs from the uniform width,
+  // draw each side as an independent filled rect. The uniform path (one
+  // ui_draw_rect_outline call) is the common case and stays unchanged.
+  if (__ui_nodes[i].hasPerSideBorder) {
+    int16_t w = __ui_nodes[i].box.w;
+    int16_t h = __ui_nodes[i].box.h;
+    uint8_t st = __ui_nodes[i].borderStyle;
+    // Top edge
+    if (__ui_nodes[i].borderTopWidth > 0) {
+      ui_display_fill_rect(drawX, drawY, w, __ui_nodes[i].borderTopWidth, color);
+    }
+    // Bottom edge
+    if (__ui_nodes[i].borderBottomWidth > 0) {
+      ui_display_fill_rect(drawX, drawY + h - __ui_nodes[i].borderBottomWidth, w, __ui_nodes[i].borderBottomWidth, color);
+    }
+    // Left edge (between top and bottom borders)
+    if (__ui_nodes[i].borderLeftWidth > 0) {
+      ui_display_fill_rect(drawX, drawY + __ui_nodes[i].borderTopWidth, __ui_nodes[i].borderLeftWidth,
+        h - __ui_nodes[i].borderTopWidth - __ui_nodes[i].borderBottomWidth, color);
+    }
+    // Right edge
+    if (__ui_nodes[i].borderRightWidth > 0) {
+      ui_display_fill_rect(drawX + w - __ui_nodes[i].borderRightWidth, drawY + __ui_nodes[i].borderTopWidth,
+        __ui_nodes[i].borderRightWidth, h - __ui_nodes[i].borderTopWidth - __ui_nodes[i].borderBottomWidth, color);
+    }
+    return;
+  }
   ui_draw_rect_outline(drawX, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h,
     __ui_nodes[i].borderRadius, __ui_nodes[i].borderStyle, __ui_nodes[i].borderWidth, color);
 }
@@ -3850,12 +4039,9 @@ static inline void ui_draw_node_outline(uint16_t i, int16_t drawX, int16_t drawY
     __ui_nodes[i].borderRadius + w, __ui_nodes[i].outlineStyle, w, __ui_nodes[i].outlineColor);
 }
 
-static inline uint8_t ui_scroll_motion_active() {
+static inline uint8_t ui_scroll_motion_active(uint8_t settlingOnActiveScreen) {
   if (__ui_scroll_node >= 0 && __ui_is_dragging) return 1;
-  for (uint16_t i = 0; i < __ui_node_count; i++) {
-    if (__ui_nodes[i].screenId == __ui_active_screen && __ui_nodes[i].settling) return 1;
-  }
-  return 0;
+  return settlingOnActiveScreen;
 }
 
 static inline uint8_t ui_keyframe_set_has_scroll_sensitive_geometry(uint8_t setIdx) {
@@ -3900,6 +4086,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       __ui_bindings[i].textFn(__ui_nodes[n].textBuffer, UI_TEXT_BUF + 1);
       __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\0';
       if (strcmp(oldBuf, __ui_nodes[n].textBuffer) != 0) {
+        ui_invalidate_text_layout_cache(n);
         ui_mark_dirty(n);
       }
     } else if (__ui_bindings[i].fn) {
@@ -3938,6 +4125,9 @@ static inline void ui_tick(uint16_t deltaMs) {
   }
   // ⓪b Evaluate list bindings (on-node): refresh item count, recompute content
   // height, and advance any in-flight settle animation (bounce-back / edge-snap).
+  // Also note whether any active-screen node is settling (feeds scroll-motion
+  // gating below without a second full-node scan).
+  uint8_t settlingOnActiveScreen = 0;
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     if (__ui_nodes[i].virtualized && __ui_nodes[i].listCountFn) {
       uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
@@ -3950,6 +4140,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       }
     }
     if (__ui_nodes[i].settling) {
+      if (__ui_nodes[i].screenId == __ui_active_screen) settlingOnActiveScreen = 1;
       ui_scroll_advance_settle(i, deltaMs);
     }
   }
@@ -3985,7 +4176,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   }
 
   // ①b Advance @keyframes animations.
-  uint8_t scrollMotionActive = ui_scroll_motion_active();
+  uint8_t scrollMotionActive = ui_scroll_motion_active(settlingOnActiveScreen);
   for (uint16_t i = 0; i < __ui_anim_count; i++) {
     if (!__ui_anims[i].active) continue;
     // Skip animations on non-visible screens OR hidden subtrees — their nodes
@@ -4150,6 +4341,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           __ui_nodes[n].rotateDeg = nextRotateDeg;
           __ui_nodes[n].box.w = nextWidth;
           __ui_nodes[n].box.h = nextHeight;
+          ui_invalidate_text_layout_cache(n);
         }
         uint8_t repairedGeometry = 0;
         if (geometryChanged && hasOldGeometryRect) {
@@ -4217,9 +4409,17 @@ static inline void ui_tick(uint16_t deltaMs) {
   int16_t bufferedScrollRepaintY = 0;
   int16_t bufferedScrollRepaintH = 0;
   uint8_t bufferedScrollDirectStrip = 0;
-  for (uint16_t s = 0; s < __ui_node_count; s++) {
-    if (!__ui_nodes[s].scrollable || !ui_is_effectively_visible(s)) continue;
-    if (__ui_nodes[s].virtualized) continue;  // lists render via NODE_LIST, not Mode B
+  for (uint16_t oi = 0; ; oi++) {
+    uint16_t s;
+    if (__ui_scroll_owners) {
+      if (oi >= __ui_scroll_owner_count) break;
+      s = __ui_scroll_owners[oi];
+    } else {
+      if (oi >= __ui_node_count) break;
+      s = oi;
+      if (!__ui_nodes[s].scrollable || __ui_nodes[s].virtualized) continue;
+    }
+    if (!ui_is_effectively_visible(s)) continue;
     if (__ui_nodes[s].screenId != __ui_active_screen) continue;
     if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
     if (!__ui_nodes[s].dirty) continue;
@@ -4325,26 +4525,35 @@ static inline void ui_tick(uint16_t deltaMs) {
     // Seed the framebuffer with the active screen's background so cleared/
     // transparent regions resolve correctly, then draw dirty nodes on top.
     uint16_t fbBg = 0x0000;
-    for (uint16_t s = 0; s < __ui_node_count; s++) {
-      if (__ui_nodes[s].screenId == __ui_active_screen && __ui_nodes[s].kind == NODE_FILL) {
-        fbBg = __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor;
-        break;
-      }
+    if (__ui_active_screen_bg_node < __ui_node_count) {
+      fbBg = __ui_nodes[__ui_active_screen_bg_node].hasBg
+        ? __ui_nodes[__ui_active_screen_bg_node].bg
+        : __ui_nodes[__ui_active_screen_bg_node].clearColor;
     }
     display_canvasFillScreen(__ui_fb, fbBg);
   }
 
   // Draw dirty nodes in stacking order: lower z-index first, then source order.
-  for (uint16_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; __ui_draw_pass++) {
-    int16_t selected = -1;
-    for (uint16_t candidate = 0; candidate < __ui_node_count; candidate++) {
-      if (!__ui_nodes[candidate].dirty) continue;
-      if (!ui_is_effectively_visible(candidate)) { __ui_nodes[candidate].dirty = 0; continue; }
-      if (__ui_nodes[candidate].screenId != __ui_active_screen) { __ui_nodes[candidate].dirty = 0; continue; }
-      if (selected < 0 || ui_node_draws_before(candidate, selected)) selected = candidate;
+  // __ui_draw_order is built once in ui_init so each frame is O(N).
+  for (uint16_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; ) {
+    int16_t i;
+    if (__ui_draw_order) {
+      i = (int16_t)__ui_draw_order[__ui_draw_pass++];
+      if (!__ui_nodes[i].dirty) continue;
+      if (!ui_is_effectively_visible(i)) { __ui_nodes[i].dirty = 0; continue; }
+      if (__ui_nodes[i].screenId != __ui_active_screen) { __ui_nodes[i].dirty = 0; continue; }
+    } else {
+      // malloc failed at startup: preserve correct z-order via selection sort.
+      i = -1;
+      for (uint16_t candidate = 0; candidate < __ui_node_count; candidate++) {
+        if (!__ui_nodes[candidate].dirty) continue;
+        if (!ui_is_effectively_visible(candidate)) { __ui_nodes[candidate].dirty = 0; continue; }
+        if (__ui_nodes[candidate].screenId != __ui_active_screen) { __ui_nodes[candidate].dirty = 0; continue; }
+        if (i < 0 || ui_node_draws_before(candidate, (uint16_t)i)) i = (int16_t)candidate;
+      }
+      if (i < 0) break;
+      __ui_draw_pass++;
     }
-    if (selected < 0) break;
-    int16_t i = selected;
 
     // Defer direct display draws for overflow scroll subtrees not composited this
     // frame (Mode B canvas or Mode C strip). Drawing them directly clears the live
@@ -4404,18 +4613,10 @@ static inline void ui_tick(uint16_t deltaMs) {
       ? __ui_nodes[i].textBuffer
       : __ui_nodes[i].text;
     uint8_t ts = __ui_nodes[i].textSize ? __ui_nodes[i].textSize : 2;
-    uint16_t textMaxW = __ui_nodes[i].box.w;
-    if (__ui_nodes[i].kind == NODE_TEXT || __ui_nodes[i].kind == NODE_BUTTON) {
-      uint16_t hInset = (uint16_t)__ui_nodes[i].paddingLeft + (uint16_t)__ui_nodes[i].paddingRight + (uint16_t)__ui_nodes[i].borderWidth * 2;
-      textMaxW = __ui_nodes[i].box.w > hInset ? __ui_nodes[i].box.w - hInset : 0;
-    }
-    if (__ui_nodes[i].kind == NODE_CHECK || __ui_nodes[i].kind == NODE_RADIO) {
-      textMaxW = __ui_nodes[i].box.w > 22 ? __ui_nodes[i].box.w - 22 : 0;
-    }
+    uint16_t textMaxW = ui_node_text_max_width(i);
     uint16_t tw = 0;
     uint16_t th = 0;
-    ui_text_layout_metrics(displayText, textMaxW, __ui_nodes[i].whiteSpaceMode, ts,
-      __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight, &tw, &th);
+    ui_node_text_layout_metrics(i, textMaxW, &tw, &th);
     uint16_t paintTextW = tw;
     uint16_t paintTextH = th;
     if (__ui_nodes[i].kind == NODE_TEXT) {
@@ -4474,7 +4675,9 @@ static inline void ui_tick(uint16_t deltaMs) {
     int16_t paintCanvasY = paintRect.y;
     int16_t paintCanvasW = paintRect.w;
     int16_t paintCanvasH = paintRect.h;
-    if (!drawingBufferedScroll && bufferedScrollNode < 0 && ui_should_buffer_paint(i, paintCanvasW, paintCanvasH)) {
+    // RAM-composite pixel-heavy nodes before SPI push. Skip when already drawing
+    // into a scroll canvas or a full-screen framebuffer (both are RAM targets).
+    if (!drawingBufferedScroll && !__ui_fb && ui_should_buffer_paint(i, paintCanvasW, paintCanvasH)) {
       paintCanvas = ui_get_repair_canvas(paintCanvasW, paintCanvasH);
       if (paintCanvas) {
         drawingPaintCanvas = 1;
@@ -5708,8 +5911,8 @@ const uint16_t __ui_keyframe_set_count = 0;
 UIAnimation __ui_anims[] = {};
 const uint16_t __ui_anim_count = 0;
 UINode __ui_nodes[] = {
-  { .box={0,0,320,240}, .bg=0x0000, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x0000, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=65535, .subtreeEnd=2, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
-  { .box={0,0,320,16}, .bg=0x0000, .fg=0xffff, .kind=NODE_TEXT, .text="hello", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x0000, .lastTextWidth=0, .lastTextHeight=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=0, .subtreeEnd=2, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={0,0,320,240}, .bg=0x0000, .fg=0xffff, .kind=NODE_FILL, .text=nullptr, .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderTopWidth=0, .borderRightWidth=0, .borderBottomWidth=0, .borderLeftWidth=0, .hasPerSideBorder=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x0000, .lastTextWidth=0, .lastTextHeight=0, .layoutCacheKey=0, .layoutMetricsW=0, .layoutMetricsH=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=65535, .subtreeEnd=2, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
+  { .box={0,0,320,16}, .bg=0x0000, .fg=0xffff, .kind=NODE_TEXT, .text="hello", .textBuffer={0}, .hasTextBinding=0, .font=nullptr, .hasBg=0, .textAlign=0, .textSize=2, .lineHeight=16, .letterSpacing=0, .fontAntialias=1, .fontFace=0, .borderColor=0x0000, .borderStyle=0, .borderWidth=0, .borderTopWidth=0, .borderRightWidth=0, .borderBottomWidth=0, .borderLeftWidth=0, .hasPerSideBorder=0, .borderRadius=0, .paddingTop=0, .paddingRight=0, .paddingBottom=0, .paddingLeft=0, .gradientEnabled=0, .gradientColor1=0x0000, .gradientColor2=0x0000, .outlineColor=0xffff, .outlineStyle=0, .outlineWidth=0, .zIndex=0, .transformOffsetX=0, .transformOffsetY=0, .rotateDeg=0, .pressedOffsetX=0, .pressedOffsetY=0, .shadowCount=0, .shadowOffsetX={0,0,0,0}, .shadowOffsetY={0,0,0,0}, .shadowBlur={0,0,0,0}, .shadowColor={0x0000,0x0000,0x0000,0x0000}, .shadowAlpha={0,0,0,0}, .shadowInset={0,0,0,0}, .textShadowCount=0, .textShadowOffsetX=0, .textShadowOffsetY=0, .textShadowBlur=0, .textShadowColor=0x0000, .textShadowAlpha=0, .underline=0, .textOverflow=0, .nowrap=0, .whiteSpaceMode=0, .visible=1, .opacity=100, .clearColor=0x0000, .lastTextWidth=0, .lastTextHeight=0, .layoutCacheKey=0, .layoutMetricsW=0, .layoutMetricsH=0, .scrollable=0, .virtualized=0, .scrollY=0, .contentHeight=0, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=nullptr, .listItemFn=nullptr, .listTapFn=nullptr, .parent=0, .subtreeEnd=2, .screenId=0, .imgDataId=255, .objectFit=1, .listItemHeight=0, .rangeMin=0, .rangeMax=100, .maxlen=0, .canvasW=0, .canvasH=0, .runCount=0, .richLineCount=0, .runStart=0, .richSegStart=0, .richSegCount=0, .richLineStart=0, .dirty=0, .value=0 },
 };
 UIRichRun __ui_runs[1];
 UIRichSeg __ui_rich_segs[1];

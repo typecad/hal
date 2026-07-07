@@ -954,6 +954,31 @@ const t = temperature();
 temperature.set(25);
 ```
 
+`ui.signal()` accepts `number`, `string`, or `boolean` literals — these lower to
+`int`/`double`, `const char*`, and `bool` on the device. Other initializers
+(objects, arrays, `null`, identifiers) are rejected at type-check time
+(`Signal<T extends SignalValue>`) and at build time with a `ui-signal-initializer`
+warning that defaults the signal to `0` (`int`).
+
+## Element id errors
+
+If a binding or event handler references an element id that doesn't exist in the
+screen, the build fails with a `ui-unknown-element` error rather than silently
+re-targeting the wrong node. This applies to every call that takes a screen
+element:
+
+```typescript
+ui.bind(screen.typo, 'color', ...)      // ✗ error: element "typo" not found
+ui.bindInput(screen.typo, ...)          // ✗ error
+ui.bindList(screen.typo, ...)           // ✗ error
+ui.drawCanvas(screen.typo, ...)         // ✗ error
+await ui.onTap(screen.typo)             // ✗ error (no silent fallback to any-tap)
+screen.typo.onClick(...)                // ✗ error
+screen.typo.onToggle(...)               // ✗ error
+```
+
+Fix the typo in your `.ui.html` / `.ui` file's `id` attribute and rebuild.
+
 ## Composing custom elements
 
 Don't see the element you need? Build it from `<view>` + `<text>` + bindings:

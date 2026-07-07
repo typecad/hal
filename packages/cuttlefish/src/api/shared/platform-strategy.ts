@@ -495,6 +495,16 @@ export interface PlatformHALStrategy {
    *          (for value-returning operations), or `undefined` to fall back.
    */
   resolveHALOperation?(op: HALOpIR): { code?: string; expression?: string } | undefined;
+
+  /**
+   * Whether this target models GPIO pins. Hardware targets (Arduino, AVR,
+   * ESP32) return true; host/desktop targets (SDL native) return false. Used to
+   * gate GPIO-dependent APIs (ui.watchPin, ui.press) — when false, those APIs
+   * produce a transpile-time diagnostic instead of emitting pinMode/
+   * attachInterrupt calls that would be undefined symbols or silent no-ops.
+   * Default true (preserves existing behavior for hardware strategies).
+   */
+  modelsGpio?(): boolean;
 }
 
 /**

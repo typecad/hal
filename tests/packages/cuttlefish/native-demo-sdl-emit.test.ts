@@ -61,35 +61,65 @@ describe.skipIf(skip)("native_demo SDL native render (C++ emit)", () => {
     expect(cpp).toContain("#define UI_COLOR_T uint32_t");
   });
 
+  it("defines UI_HIDE_OSK so the on-screen keyboard grid doesn't render on a desktop window", () => {
+    // A desktop SDL window has a real keyboard (Tier A routes SDL_TEXTINPUT
+    // into the editing session), so the 6×4 on-screen grid is redundant clutter.
+    // The define hides the OSK *draw* only — the editing session (buffer, target,
+    // commit-on-close) still runs so typing works. Hardware targets don't define
+    // it (their only text-entry path is the OSK).
+    expect(cpp).toContain("#define UI_HIDE_OSK 1");
+  });
+
   it("emits the SDL event loop around ui_tick in main()", () => {
     expect(cpp).toMatch(/int main\(\)[\s\S]*while \(sdl_running\)[\s\S]*ui_tick/);
     expect(cpp).toContain("SDL_PollEvent");
   });
 
-  it("calls ui_init, touch_init, display_init before the loop", () => {
+  // The emitter (entrypoint-synthesizer.ts) intentionally inits hardware before
+  // the UI runtime: display_init → touch_init → ui_init, so the first ui_tick
+  // starts from a fully initialized display/touch stack. See the comment at the
+  // uiSetupStmts push site — hardware setup runs before ui_init() by design.
+  it("calls display_init, touch_init, ui_init before the loop (hardware before runtime)", () => {
     const mainStart = cpp.indexOf("int main()");
     expect(mainStart).toBeGreaterThanOrEqual(0);
     const mainBody = cpp.slice(mainStart, mainStart + 400);
-    const uiInitIdx = mainBody.indexOf("ui_init()");
-    const touchInitIdx = mainBody.indexOf("touch_init()");
     const displayInitIdx = mainBody.indexOf("display_init()");
+    const touchInitIdx = mainBody.indexOf("touch_init()");
+    const uiInitIdx = mainBody.indexOf("ui_init()");
     const loopIdx = mainBody.indexOf("while (sdl_running)");
-    expect(uiInitIdx).toBeGreaterThanOrEqual(0);
-    expect(touchInitIdx).toBeGreaterThan(uiInitIdx);
-    expect(displayInitIdx).toBeGreaterThan(touchInitIdx);
-    expect(loopIdx).toBeGreaterThan(displayInitIdx);
+    expect(displayInitIdx).toBeGreaterThanOrEqual(0);
+    expect(touchInitIdx).toBeGreaterThan(displayInitIdx);
+    expect(uiInitIdx).toBeGreaterThan(touchInitIdx);
+    expect(loopIdx).toBeGreaterThan(uiInitIdx);
   });
 
-  it("emits the SDL mouse touch shim", () => {
-    expect(cpp).toContain("SDL_GetMouseState");
-    expect(cpp).toContain("SDL_BUTTON_LMASK");
+  it("emits the SDL mouse touch shim (event-driven via __sdl_mouse_down)", () => {
+    // Feature 3: the touch shim reads __sdl_mouse_down (written by the host
+    // event loop from SDL_MOUSEBUTTONDOWN/UP) instead of polling
+    // SDL_GetMouseState every frame. The host loop maps SDL_BUTTON_LEFT.
+    // (The wheel handler separately calls SDL_GetMouseState for the live cursor
+    // position at wheel time — that's correct, so scope the no-poll assertion
+    // to the touch_isTouched function body, not the whole cpp.)
+    expect(cpp).toContain("__sdl_mouse_down");
+    expect(cpp).toContain("SDL_BUTTON_LEFT");
     expect(cpp).toContain("touch_isTouched");
     expect(cpp).toContain("touch_readRaw");
+    const touchFn = cpp.slice(cpp.indexOf("touch_isTouched"), cpp.indexOf("}", cpp.indexOf("touch_isTouched")) + 1);
+    expect(touchFn).toContain("__sdl_mouse_down");
+    expect(touchFn).not.toContain("SDL_GetMouseState");
   });
 
-  it("maps SDL mouse coords through ui_poll_touch without rotated resistive axis swapping", () => {
-    expect(cpp).toContain("int16_t __tx = map(__rawX, 0, 320, 0, 320);");
-    expect(cpp).toContain("int16_t __ty = map(__rawY, 0, 240, 0, 240);");
+  it("maps SDL mouse coords 1:1 (no calibration) and clamps to live display dimensions", () => {
+    // SDL mouse coords are already window/screen pixel coords — no resistive
+    // calibration applies. Pass them through 1:1 and clamp to display_width()/
+    // display_height() so clicks track the window size without forcing the user
+    // to keep touch.calibration in sync with width/height.
+    expect(cpp).toContain("int16_t __tx = __rawX;");
+    expect(cpp).toContain("int16_t __ty = __rawY;");
+    expect(cpp).toContain("display_width()");
+    expect(cpp).toContain("display_height()");
+    // Must NOT bake the calibration constants (the old behavior broke resizing).
+    expect(cpp).not.toContain("map(__rawX, 0, 320");
     expect(cpp).not.toContain("int16_t __tx = map(__rawY");
   });
 

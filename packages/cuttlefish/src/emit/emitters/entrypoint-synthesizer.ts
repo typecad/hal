@@ -47,22 +47,43 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
             sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
         );
       }
-      // ISR-based press/release wiring (legacy)
-      for (const pb of uiPressBindings()) {
-        const mode = pb.edge === "press" ? "FALLING" : "RISING";
-        uiSetupStmts.push(
-          { kind: "call" as const, callee: `__RAW_STMT__pinMode(${pb.pin}, INPUT_PULLUP);`, args: [],
-            sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
-          { kind: "call" as const, callee: `__RAW_STMT__attachInterrupt(digitalPinToInterrupt(${pb.pin}), ${pb.handlerName}, ${mode});`, args: [],
-            sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
-        );
+      // ISR-based press/release wiring (legacy) + pin-watchers (ui.watchPin).
+      // These are GPIO-hardware APIs: pinMode/attachInterrupt/digitalPinToInterrupt
+      // are Arduino core symbols, and ui_poll_inputs reads pins via digitalRead.
+      // On a host target with no GPIO (SDL native: strategy.modelsGpio()===false)
+      // they have no equivalent — emitting them yields undefined symbols or a
+      // silent no-op. Gate on modelsGpio and surface a clear diagnostic instead.
+      const modelsGpio = strategy.modelsGpio?.() ?? true;
+      const pressBindings = uiPressBindings();
+      const pinWatchers = watchPinSpecs();
+      if (!modelsGpio && (pressBindings.length > 0 || pinWatchers.length > 0)) {
+        const which = pressBindings.length > 0 && pinWatchers.length > 0
+          ? "ui.press and ui.watchPin"
+          : pressBindings.length > 0 ? "ui.press" : "ui.watchPin";
+        ctx.emitDiagnostics.push({
+          severity: "error",
+          code: "gpio-unsupported-on-target",
+          message: `${which} require GPIO hardware, which this target (${ctx.options.target}) does not model. Use the browser preview to exercise pin-driven UI, or target @typecad/framework-arduino.`,
+          source: program.fileName,
+        } as never);
       }
-      // Pin-watchers (from ui.watchPin): set pin mode so ui_poll_inputs can read it
-      for (const wp of watchPinSpecs()) {
-        uiSetupStmts.push(
-          { kind: "call" as const, callee: `__RAW_STMT__pinMode(${wp.pin}, INPUT_PULLUP);`, args: [],
-            sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
-        );
+      if (modelsGpio) {
+        for (const pb of pressBindings) {
+          const mode = pb.edge === "press" ? "FALLING" : "RISING";
+          uiSetupStmts.push(
+            { kind: "call" as const, callee: `__RAW_STMT__pinMode(${pb.pin}, INPUT_PULLUP);`, args: [],
+              sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
+            { kind: "call" as const, callee: `__RAW_STMT__attachInterrupt(digitalPinToInterrupt(${pb.pin}), ${pb.handlerName}, ${mode});`, args: [],
+              sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
+          );
+        }
+        // Pin-watchers (from ui.watchPin): set pin mode so ui_poll_inputs can read it
+        for (const wp of pinWatchers) {
+          uiSetupStmts.push(
+            { kind: "call" as const, callee: `__RAW_STMT__pinMode(${wp.pin}, INPUT_PULLUP);`, args: [],
+              sourceSpan: { filePath: program.fileName, startOffset: 0, endOffset: 0, startLine: 1, startColumn: 1, endLine: 1, endColumn: 1 } },
+          );
+        }
       }
       // Initial draw: mark all UI nodes dirty so the first ui_tick renders.
       uiSetupStmts.push(

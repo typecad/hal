@@ -14,10 +14,31 @@
 // ---------------------------------------------------------------------------
 
 import type { DisplayAdapterCode, DisplayAdapterGenerator } from "../display-adapter.js";
+import { escapeCppStringLiteral } from "../../../utils/strings.js";
 
 export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode => {
+  // The SDL adapter renders to a 32-bit desktop framebuffer and is RGB888-only
+  // (uint32_t buf/fg/bg, drawChar args, present's 0xFF000000|color). UI_COLOR_T
+  // is emitted from the resolved profile's colorFormat — if a config forces
+  // rgb565/mono here, the emitter produces uint16_t while this adapter expects
+  // uint32_t (type mismatch / garbage colors). Fail loudly rather than emit
+  // broken code. The profile resolver defaults SDL to rgb888, so this only
+  // fires on explicit misconfiguration.
+  if (display.colorFormat !== "rgb888") {
+    throw new Error(
+      `SDL display adapter requires colorFormat "rgb888" (a desktop window has a ` +
+      `32-bit framebuffer), but got "${display.colorFormat}". Remove the ` +
+      `colorFormat override from your SDL display config, or set it to "rgb888".`,
+    );
+  }
   const w = display.width;
   const h = display.height;
+  // Window title: default "cuttlefish", overridable via config (display.title)
+  // and at runtime (ui.window.setTitle → ui_window_set_title).
+  const title = `"${escapeCppStringLiteral(display.title ?? "cuttlefish")}"`;
+  // Window icon: optional BMP path from config (display.icon). Core SDL2 loads
+  // BMP only; .png/.ico would need SDL_image.
+  const icon = display.icon ? `"${escapeCppStringLiteral(display.icon)}"` : "";
 
   return {
     includes: [
@@ -250,15 +271,33 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
       `static inline void display_init() {`,
       `  SDL_SetMainReady();`,
       `  SDL_Init(SDL_INIT_VIDEO);`,
-      `  __tc_display.win = SDL_CreateWindow("cuttlefish",`,
-      `    SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,`,
-      `    __tc_display.w_, __tc_display.h_, SDL_WINDOW_SHOWN);`,
+      // FULLSCREEN_DESKTOP scales the fixed w_×h_ framebuffer to fill the
+      // monitor without changing the display mode (vs SDL_WINDOW_FULLSCREEN,
+      // which requires a matching mode and can fail). Mouse coords from
+      // SDL_GetMouseState stay in window/logical space, so the touch clamp
+      // (display_width()/height()) still maps clicks correctly.
+      ...(display.fullscreen
+        ? [`  __tc_display.win = SDL_CreateWindow(${title},`,
+           `    SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,`,
+           `    __tc_display.w_, __tc_display.h_, SDL_WINDOW_SHOWN | SDL_WINDOW_FULLSCREEN_DESKTOP);`]
+        : [`  __tc_display.win = SDL_CreateWindow(${title},`,
+           `    SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,`,
+           `    __tc_display.w_, __tc_display.h_, SDL_WINDOW_SHOWN);`]),
+      ...(icon
+        ? [`  { SDL_Surface* __icon = SDL_LoadBMP(${icon});`,
+           `    if (__icon) { SDL_SetWindowIcon(__tc_display.win, __icon); SDL_FreeSurface(__icon); } }`]
+        : []),
       `  __tc_display.ren = SDL_CreateRenderer(__tc_display.win, -1,`,
       `    SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);`,
       `  __tc_display.tex = SDL_CreateTexture(__tc_display.ren,`,
       `    SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,`,
       `    __tc_display.w_, __tc_display.h_);`,
       `  __tc_display.fillScreen(0);`,
+      `}`,
+      // Runtime window-title setter (lowered from ui.window.setTitle). SDL-only;
+      // the transpiler emits no call on hardware targets.
+      `static inline void ui_window_set_title(const char* title) {`,
+      `  if (__tc_display.win && title) SDL_SetWindowTitle(__tc_display.win, title);`,
       `}`,
       `static inline void display_fillScreen(UI_COLOR_T color) { __tc_display.fillScreen(color); }`,
       `static inline CuttlefishDisplayTarget* display_defaultTarget() { return &__tc_display; }`,
@@ -269,6 +308,14 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
       `static int16_t __sdl_addr_w = 0;`,
       `static int16_t __sdl_addr_h = 0;`,
       `static uint32_t __sdl_write_pos = 0;`,
+      // Event-driven mouse state: the host event loop (NativeStrategy.
+      // hostEventLoop) writes these from SDL_MOUSEBUTTONDOWN/MOTION/BUTTONUP,
+      // and the SDL touch shim (touch_isTouched/touch_readRaw in display-
+      // profile.ts) reads them instead of polling SDL_GetMouseState every
+      // frame. Declared here so both layers see one definition.
+      `static uint8_t __sdl_mouse_down = 0;`,
+      `static int16_t __sdl_mouse_x = 0;`,
+      `static int16_t __sdl_mouse_y = 0;`,
       `static inline void display_startWrite() {}`,
       `static inline void display_endWrite() {}`,
       `static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t w, int16_t h) {`,

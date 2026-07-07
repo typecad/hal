@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateDisplayAdapter } from "../../../packages/cuttlefish/src/api/shared/display-adapter";
+import { resolveDisplayProfile } from "../../../packages/cuttlefish/src/api/shared/display-profile";
 
 describe("SDL display adapter", () => {
   const a = generateDisplayAdapter({
@@ -54,6 +55,76 @@ describe("SDL display adapter", () => {
   });
 });
 
+// The SDL adapter renders to a 32-bit desktop framebuffer and hardcodes
+// uint32_t/RGB888 throughout (buf, fg/bg, drawChar, present's 0xFF000000|color).
+// But UI_COLOR_T is emitted from the resolved profile's colorFormat, which
+// defaults to rgb565 for the generic path — so a bare `driver: 'sdl'` config
+// used to emit uint16_t while the adapter expected uint32_t (type mismatch /
+// garbage colors). SDL profiles must default to rgb888 so the common case
+// Just Works, and an explicit rgb565 on SDL should fail loudly.
+describe("SDL color depth", () => {
+  it("defaults to rgb888 when colorFormat is unset (so UI_COLOR_T matches the uint32_t adapter)", () => {
+    const { profile } = resolveDisplayProfile({ driver: "sdl", width: 320, height: 240 } as any, new Map());
+    expect(profile.colorFormat).toBe("rgb888");
+  });
+
+  it("honors an explicit colorFormat: 'rgb888'", () => {
+    const { profile } = resolveDisplayProfile({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb888" } as any, new Map());
+    expect(profile.colorFormat).toBe("rgb888");
+  });
+
+  it("rejects an explicit rgb565 on SDL (the adapter is RGB888-only)", () => {
+    expect(() =>
+      generateDisplayAdapter({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb565", rotation: 0 } as any),
+    ).toThrow(/rgb888|colorFormat|SDL/i);
+  });
+
+  it("creates a normal titled window by default (no fullscreen flag)", () => {
+    const a = generateDisplayAdapter({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb888", rotation: 0 } as never);
+    expect(a.functions).toContain("SDL_WINDOW_SHOWN");
+    expect(a.functions).not.toContain("SDL_WINDOW_FULLSCREEN_DESKTOP");
+    expect(a.functions).not.toContain("SDL_WINDOW_FULLSCREEN");
+  });
+
+  it("creates a borderless desktop-fullscreen window when fullscreen is set", () => {
+    const a = generateDisplayAdapter({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb888", rotation: 0, fullscreen: true } as never);
+    // SDL_WINDOW_FULLSCREEN_DESKTOP scales the fixed framebuffer to fill the
+    // monitor without changing the display mode (vs SDL_WINDOW_FULLSCREEN which
+    // requires a matching mode and can fail). The framebuffer stays w_×h_.
+    expect(a.functions).toContain("SDL_WINDOW_FULLSCREEN_DESKTOP");
+  });
+
+  it('defaults the window title to "cuttlefish"', () => {
+    const a = generateDisplayAdapter({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb888", rotation: 0 } as never);
+    expect(a.functions).toContain('SDL_CreateWindow("cuttlefish"');
+  });
+
+  it("uses the config title when provided", () => {
+    const a = generateDisplayAdapter({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb888", rotation: 0, title: "My App" } as never);
+    expect(a.functions).toContain('SDL_CreateWindow("My App"');
+    expect(a.functions).not.toContain('"cuttlefish"');
+  });
+
+  it("emits ui_window_set_title for runtime title changes (ui.window.setTitle)", () => {
+    const a = generateDisplayAdapter({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb888", rotation: 0 } as never);
+    expect(a.functions).toContain("ui_window_set_title");
+    expect(a.functions).toContain("SDL_SetWindowTitle");
+  });
+
+  it("emits SDL_SetWindowIcon when an icon path is configured", () => {
+    const a = generateDisplayAdapter({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb888", rotation: 0, icon: "assets/icon.bmp" } as never);
+    expect(a.functions).toContain("SDL_SetWindowIcon");
+    expect(a.functions).toContain("SDL_LoadBMP");
+    expect(a.functions).toContain('"assets/icon.bmp"');
+  });
+
+  it("omits icon loading when no icon is configured", () => {
+    const a = generateDisplayAdapter({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb888", rotation: 0 } as never);
+    expect(a.functions).not.toContain("SDL_SetWindowIcon");
+    expect(a.functions).not.toContain("SDL_LoadBMP");
+  });
+});
+
 import { generateTouchAdapter } from "../../../packages/cuttlefish/src/api/shared/display-profile";
 
 describe("SDL touch library (mouse shim)", () => {
@@ -64,12 +135,24 @@ describe("SDL touch library (mouse shim)", () => {
   it("declares an SDL include", () => {
     expect(t.includes.some((i) => i.includes("SDL"))).toBe(true);
   });
-  it("touch_isTouched reads the SDL mouse left button", () => {
-    expect(t.functions).toMatch(/SDL_GetMouseState[\s\S]*SDL_BUTTON_LMASK/);
+  it("touch_isTouched reads the event-driven __sdl_mouse_down flag (not polled SDL_GetMouseState)", () => {
+    // Feature 3: the host event loop writes __sdl_mouse_down from
+    // SDL_MOUSEBUTTONDOWN/UP; the touch shim reads that flag instead of
+    // polling SDL_GetMouseState every frame.
+    expect(t.functions).toContain("__sdl_mouse_down");
+    expect(t.functions).not.toContain("SDL_GetMouseState");
   });
-  it("touch_readRaw returns screen-space coords + constant z", () => {
-    expect(t.functions).toMatch(/\*x = \(int16_t\)__mx/);
-    expect(t.functions).toMatch(/\*y = \(int16_t\)__my/);
-    expect(t.functions).toMatch(/\*z = 200/);
+  it("touch_readRaw scales window-space mouse coords to framebuffer space (fullscreen fix)", () => {
+    // In fullscreen (or any case where the window is larger than the fixed
+    // framebuffer), SDL_GetMouseState returns window/logical pixels (e.g.
+    // 0..1920) but the framebuffer is w_×h_ (e.g. 320×240). touch_readRaw must
+    // scale by display_width()/window_width so clicks land in the right place —
+    // otherwise coords past the framebuffer size clamp to the corner.
+    expect(t.functions).toContain("SDL_GetWindowSize");
+    expect(t.functions).toContain("display_width()");
+    expect(t.functions).toContain("display_height()");
+    // The scaling math: framebuffer_coord = window_coord * (display_dim / window_dim).
+    expect(t.functions).toMatch(/__sdl_mouse_x\s*\*\s*display_width|display_width\(\)\s*\*\s*__sdl_mouse_x/);
+    expect(t.functions).toMatch(/__sdl_mouse_y\s*\*\s*display_height|display_height\(\)\s*\*\s*__sdl_mouse_y/);
   });
 });

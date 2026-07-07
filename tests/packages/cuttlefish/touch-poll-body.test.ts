@@ -49,14 +49,24 @@ describe("generateTouchPollBody", () => {
     expect(body).toContain("else if (__ty >= 320) __ty = 319;");
   });
 
-  it("SDL branch unchanged (identity map, no minPressure gate)", () => {
+  it("SDL branch passes raw mouse coords 1:1, clamped to live display dimensions", () => {
+    // SDL mouse coords are window/screen pixel coords — no resistive calibration
+    // applies. Pass through 1:1 and clamp to display_width()/display_height()
+    // so clicks track the window size without requiring the user to keep
+    // touch.calibration in sync with width/height (the old map(__rawX, 0, 320...)
+    // broke clicks whenever the display size changed).
     const body = generateTouchPollBody({
       library: "sdl",
       minPressure: 10,
       calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 240 },
       profile: { width: 320, height: 240, rotation: 0 },
     });
-    expect(body).toMatch(/map\(__rawX,\s*0,\s*320,\s*0,\s*320\)/);
+    expect(body).toContain("int16_t __tx = __rawX;");
+    expect(body).toContain("int16_t __ty = __rawY;");
+    expect(body).toContain("display_width()");
+    expect(body).toContain("display_height()");
+    // The calibration constants must NOT be baked in.
+    expect(body).not.toMatch(/map\(__rawX/);
     expect(body).not.toContain("__rawZ >= 10");
   });
 

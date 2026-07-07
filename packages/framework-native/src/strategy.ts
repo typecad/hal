@@ -37,8 +37,10 @@ export class NativeStrategy implements PlatformStrategy {
     // also appear as a struct field type, function parameter, return type,
     // or cross-module type with no literal at the use site, which would
     // leave the type undefined. Including them here is cheap (header only)
-    // and matches how <cstdint> is already justified.
-    return ['<cctype>', '<cstdint>', '<vector>', '<map>', '<set>', '<chrono>', '<algorithm>'];
+    // and matches how <cstdint> is already justified. <cstdio> for printf,
+    // used by the runtime-header's non-Arduino (#else) warning branches so the
+    // SDL native target can emit the same diagnostics without Serial.
+    return ['<cctype>', '<cstdint>', '<vector>', '<map>', '<set>', '<chrono>', '<algorithm>', '<cstdio>'];
   }
 
   symbolAliases(): Record<string, string> {
@@ -458,14 +460,28 @@ export class NativeStrategy implements PlatformStrategy {
         kind: 'polyfill',
         id: 'timer_methods',
         domain: 'standard' as const,
-        requiredIncludes: ['<thread>', '<chrono>', '<future>'],
+        // <atomic> for the cancel flag, <map>+<memory> for the handle store.
+        // <future> kept for any caller that still threads a detached policy.
+        requiredIncludes: ['<thread>', '<chrono>', '<future>', '<atomic>', '<map>', '<memory>'],
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [
-          'int __tc_setTimeout(std::function<void()> cb, long long ms) { auto f = std::async(std::launch::async, [cb, ms]() { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); cb(); }); (void)f; return 1; }',
-          'int __tc_setInterval(std::function<void()> cb, long long ms) { auto f = std::async(std::launch::async, [cb, ms]() { while (true) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); cb(); } }); (void)f; return 1; }',
-          'void __tc_clearInterval(int id) { /* not implemented in native yet */ }',
-          'void __tc_clearTimeout(int id) { /* not implemented in native yet */ }',
+          // Cancellable timer handles. The old shims launched a detached
+          // std::async (`(void)f;`) whose `while(true)` ignored clear* —
+          // cancelled timers kept firing and the futures leaked. Timers are a
+          // language feature on native (not hardware), so they must actually
+          // cancel: each handle owns an atomic cancel flag its worker thread
+          // checks each iteration; clear* sets the flag. Leaked handles at
+          // process exit are fine (the OS reclaims threads); the fix is about
+          // correctness (a cleared timer stops firing) and bounded growth.
+          'struct __tc_timer_handle { std::atomic<bool> cancelled{false}; std::thread worker; };',
+          'static std::map<int, std::shared_ptr<__tc_timer_handle>>& __tc_timers() { static std::map<int, std::shared_ptr<__tc_timer_handle>> m; return m; }',
+          'static int __tc_next_timer_id = 1;',
+          'static int __tc_start_timer(std::function<void()> cb, long long ms, bool repeat) { int id = __tc_next_timer_id++; auto h = std::make_shared<__tc_timer_handle>(); h->worker = std::thread([h, cb, ms, repeat]() { if (repeat) { while (!h->cancelled.load()) { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); if (h->cancelled.load()) break; cb(); } } else { std::this_thread::sleep_for(std::chrono::milliseconds(ms)); if (!h->cancelled.load()) cb(); } }); h->worker.detach(); __tc_timers()[id] = h; return id; }',
+          'int __tc_setTimeout(std::function<void()> cb, long long ms) { return __tc_start_timer(cb, ms, false); }',
+          'int __tc_setInterval(std::function<void()> cb, long long ms) { return __tc_start_timer(cb, ms, true); }',
+          'void __tc_clearInterval(int id) { auto it = __tc_timers().find(id); if (it != __tc_timers().end()) { it->second->cancelled.store(true); __tc_timers().erase(it); } }',
+          'void __tc_clearTimeout(int id) { __tc_clearInterval(id); }',
         ],
         shimMacros: [],
         dependencies: [],
@@ -562,21 +578,93 @@ export class NativeStrategy implements PlatformStrategy {
     return resolveTerminalPreviewOp(op);
   }
 
-  // SDL event loop: pump SDL events (quit → exit), tick the UI, present the
-  // framebuffer each frame. Only active when a UI is mounted (the emitter's
-  // entryHasUI() gate), so non-UI native programs stay single-shot.
+  // SDL event loop: pump SDL events, tick the UI, present the framebuffer each
+  // frame. Only active when a UI is mounted (the emitter's entryHasUI() gate),
+  // so non-UI native programs stay single-shot. The preIteration body is emitted
+  // into the same .cpp as the runtime header, so it can call ui_kb_* /
+  // ui_apply_scroll_delta / ui_hit_test / __ui_kb_visible directly.
   hostEventLoop() {
     return {
       flagName: "sdl_running",
       continueCondition: "sdl_running",
-      preIteration:
-        "SDL_Event __e; while (SDL_PollEvent(&__e)) { if (__e.type == SDL_QUIT) sdl_running = false; }",
+      preIteration: [
+        // Feature 3 — event-driven mouse: SDL_MOUSEBUTTONDOWN/MOTION/BUTTONUP
+        // write to file-scope __sdl_mouse_* state that the SDL touch shim reads
+        // (instead of polling SDL_GetMouseState every frame). The flags are
+        // declared alongside the other __sdl_* globals in the SDL adapter.
+        `SDL_Event __e; while (SDL_PollEvent(&__e)) {`,
+        `  if (__e.type == SDL_QUIT) { sdl_running = false; }`,
+        `  else if (__e.type == SDL_MOUSEBUTTONDOWN || __e.type == SDL_MOUSEBUTTONUP) {`,
+        `    __sdl_mouse_down = (__e.type == SDL_MOUSEBUTTONDOWN && __e.button.button == SDL_BUTTON_LEFT) ? 1 : 0;`,
+        `    __sdl_mouse_x = (int16_t)__e.button.x;`,
+        `    __sdl_mouse_y = (int16_t)__e.button.y;`,
+        `  } else if (__e.type == SDL_MOUSEMOTION) {`,
+        `    __sdl_mouse_x = (int16_t)__e.motion.x;`,
+        `    __sdl_mouse_y = (int16_t)__e.motion.y;`,
+        `  }`,
+        // Feature 1 — real keyboard text input: route keystrokes into the
+        // on-screen keyboard buffer while it's visible, so a desktop user types
+        // on their real keyboard instead of clicking the 6×4 grid. Start/stop
+        // SDL text input to track visibility (also enables IME composition).
+        `  else if (__e.type == SDL_TEXTINPUT) {`,
+        `    if (__ui_kb_visible) { for (int __i = 0; __e.text.text[__i] != 0 && __i < 4; __i++) ui_kb_insert(__e.text.text[__i]); }`,
+        `  } else if (__e.type == SDL_KEYDOWN && __ui_kb_visible) {`,
+        `    if (__e.key.keysym.sym == SDLK_BACKSPACE) ui_kb_delete();`,
+        `    else if (__e.key.keysym.sym == SDLK_RETURN || __e.key.keysym.sym == SDLK_KP_ENTER || __e.key.keysym.sym == SDLK_ESCAPE) ui_kb_close();`,
+        `  }`,
+        // Feature 2 — mouse-wheel scrolling: SDL_MOUSEWHEEL scrolls the
+        // scrollable container under the cursor. Query the live mouse position
+        // here (NOT __sdl_mouse_x/y — those only update on MOTION, so they go
+        // stale when the user stops moving the mouse and just spins the wheel).
+        // Use ui_scroll_node_at (the same scan the touch path uses) — the
+        // hit-test + ancestor-walk approach misses when the cursor is over a
+        // non-child node (text/sibling/padding), giving "works on some screens,
+        // needs two attempts" behavior. Pass event.wheel.y through UNNEGATED:
+        // ui_apply_scroll_delta does nextY = sy - dy, so wheel-down (-1) yields
+        // dy=-40 → scrollY increases → scrolls toward bottom (the desktop
+        // expectation). SDL already delivers the OS's natural-scroll direction,
+        // so this respects the system preference with no extra setting needed.
+        `  else if (__e.type == SDL_MOUSEWHEEL && !__ui_kb_visible) {`,
+        `    int __wx, __wy; SDL_GetMouseState(&__wx, &__wy);`,
+        // Scale window/logical coords to framebuffer coords (same as
+        // touch_readRaw) so the hit-test lands on the right node in fullscreen,
+        // where the window is larger than the fixed w_×h_ framebuffer.
+        `    int __ww = 0, __wh = 0; SDL_GetWindowSize(__tc_display.win, &__ww, &__wh);`,
+        `    if (__ww <= 0) __ww = display_width();`,
+        `    if (__wh <= 0) __wh = display_height();`,
+        `    int16_t __fx = (int16_t)((int32_t)__wx * display_width() / __ww);`,
+        `    int16_t __fy = (int16_t)((int32_t)__wy * display_height() / __wh);`,
+        `    int16_t __owner = ui_scroll_node_at(__fx, __fy);`,
+        `    if (__owner >= 0) ui_apply_scroll_delta(__owner, (int16_t)(__e.wheel.y * 40));`,
+        `  }`,
+        `}`,
+        // Track keyboard visibility with SDL text input so IME composition works
+        // and the OS shows an on-screen cursor while typing. Self-corrects each
+        // frame rather than hooking ui_kb_open/close (no cross-layer wiring).
+        `if (__ui_kb_visible && !SDL_IsTextInputActive()) SDL_StartTextInput();`,
+        `else if (!__ui_kb_visible && SDL_IsTextInputActive()) SDL_StopTextInput();`,
+      ].join(" "),
       postIteration: "display_present();",
     };
   }
 
   supportedDisplayDrivers(): ReadonlySet<string> {
-    return new Set(["native-preview", "sdl"]);
+    // Only `sdl` has a registered display adapter (display-adapter.ts registers
+    // st7796/ssd1680/ssd1309/sdl/ili9341). `native-preview` was a terminal-stub
+    // concept that was never wired up as a real adapter — advertising it here
+    // let mount validation pass and then crashed the transpile with
+    // "No display adapter registered for driver native-preview". Drop it so the
+    // standard "Unsupported display driver" error fires up front instead.
+    return new Set(["sdl"]);
+  }
+
+  modelsGpio(): boolean {
+    // The SDL desktop target has no GPIO pins. ui.watchPin / ui.press({pin})
+    // are GPIO-hardware APIs with no native equivalent — the shim's digitalRead
+    // returns constant LOW (so watchers never fire) and pinMode/attachInterrupt
+    // are undefined (link failure). Returning false makes the entrypoint
+    // synthesizer emit a clear transpile-time diagnostic instead of those.
+    return false;
   }
 
   colorFormat(): "rgb565" | "rgb666" | "rgb888" | "mono" {

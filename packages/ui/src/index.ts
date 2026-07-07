@@ -10,8 +10,15 @@
 export type { ScreenTree, TextElement, ButtonElement, ViewElement, PressBinding, CheckElement, SelectElement, RadioElement, ProgressElement, RangeElement, InputElement, CanvasElement, CanvasCtx } from "./types.js";
 import type { ScreenTree, CanvasCtx } from "./types.js";
 
+/** Allowed signal value types. The transpiler lowers each of these to a C++
+ *  scalar: `number` → int/double, `string` → const char*, `boolean` → bool.
+ *  Other types (objects, arrays, null) are rejected at type-check time by
+ *  Signal<T extends SignalValue> and at build time by the `ui-signal-initializer`
+ *  diagnostic. */
+export type SignalValue = number | string | boolean;
+
 /** A reactive signal whose value lives on the device. */
-export interface Signal<T> {
+export interface Signal<T extends SignalValue> {
   (): T;
   set(value: T): void;
 }
@@ -57,8 +64,16 @@ export declare function mount(tree: unknown, opts?: MountOptions): void;
 
 /**
  * Declare a reactive signal. Lowers to a plain device variable + dirty flag.
+ *
+ * Accepts `number`, `string`, or `boolean` literals. Literal values are widened
+ * to their primitive type so `ui.signal(0)` returns `Signal<number>` (and
+ * `.set(1)` works), not `Signal<0>`. Other types (objects, arrays, null) are
+ * rejected at type-check time and at build time with a `ui-signal-initializer`
+ * diagnostic.
  */
-export declare function signal<T>(initial: T): Signal<T>;
+export declare function signal(initial: number): Signal<number>;
+export declare function signal(initial: string): Signal<string>;
+export declare function signal(initial: boolean): Signal<boolean>;
 
 /**
  * Bind a node property to a computed value, re-evaluated each tick. When the
@@ -149,6 +164,24 @@ export declare function onTap(node?: unknown): Promise<void>;
  */
 export declare function drawCanvas(node: unknown, callback: (ctx: CanvasCtx) => void): void;
 
+/**
+ * Native desktop (SDL) window controls. These are no-ops on hardware targets
+ * (Arduino/AVR/ESP32 have no window); on the SDL target they map to the
+ * underlying SDL window calls. The initial title/icon come from
+ * `cuttlefish.config.ts` (`display.title` / `display.icon`); these methods
+ * change them at runtime.
+ */
+export interface WindowApi {
+  /** Set the OS window title. Native SDL only; no-op on hardware. */
+  setTitle(title: string): void;
+  /**
+   * Set the window/taskbar icon from an image file path. Native SDL only.
+   * Note: runtime icon changes require SDL_image; prefer the `display.icon`
+   * config option for the common case (loaded once at launch).
+   */
+  setIcon(path: string): void;
+}
+
 // ---------------------------------------------------------------------------
 // Runtime fallback.
 //
@@ -181,6 +214,7 @@ export const ui: {
   watchPin: typeof watchPin;
   onTap: typeof onTap;
   drawCanvas: typeof drawCanvas;
+  window: WindowApi;
 } = {
   mount: COMPILE_TIME_ERROR,
   signal: COMPILE_TIME_ERROR,
@@ -190,5 +224,9 @@ export const ui: {
   watchPin: COMPILE_TIME_ERROR,
   onTap: COMPILE_TIME_ERROR,
   drawCanvas: COMPILE_TIME_ERROR,
+  window: {
+    setTitle: COMPILE_TIME_ERROR,
+    setIcon: COMPILE_TIME_ERROR,
+  },
 };
 export default ui;

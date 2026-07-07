@@ -7,7 +7,7 @@ import {
   resetUIRegistry,
   loadUIModule,
   clearEntryHasUI,
-} from "@typecad/cuttlefish/ui/ui-registry";
+} from "../../../packages/cuttlefish/src/ui/ui-registry";
 import {
   tryResolveUICall,
   resetUICallState,
@@ -86,10 +86,11 @@ describe("ui.onTap resolver — awaitable tap notification", () => {
     const callIr = ir as Extract<typeof ir, { kind: "call" }>;
     expect(callIr.callee).toBe("__UI_TAP__");
     expect(callIr.isAwaited).toBe(true);
-    // btn is the only child of <screen>; the screen wrapper itself isn't
-    // counted (allStyledScreens stores each screen's children), so btn = 0.
+    // btn is the only child of <screen>. The walker descends from the screen
+    // root (idx 0) to its children, so btn lands at idx 1 — matching the
+    // emitted C++ node table (the screen FILL node is index 0, btn is 1).
     const nodeArg = callIr.args[0] as { kind: string; value: number };
-    expect(nodeArg).toMatchObject({ kind: "number", value: 0 });
+    expect(nodeArg).toMatchObject({ kind: "number", value: 1 });
   });
 
   it("falls back to any-tap with a warning when the node cannot be resolved", () => {

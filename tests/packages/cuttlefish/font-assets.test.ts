@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, afterEach } from "vitest";
 import { parseCss, parseFontFaces } from "@typecad/cuttlefish/ui/css-parser";
 import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
 import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
@@ -9,6 +9,7 @@ import {
   planUIFontAssets,
   selectFontAssetForStyle,
 } from "../../../packages/cuttlefish/src/ui/font-assets";
+import { setDisplayProfile, resetDisplayProfile } from "../../../packages/cuttlefish/src/ui/display-profile-store";
 
 function withFontFiles(names: string[], run: (dir: string) => void): void {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-font-assets-"));
@@ -24,6 +25,8 @@ function plan(html: string, css: string, dir: string) {
   const styled = resolveStyles(parseHtml(html), parseCss(css));
   return planUIFontAssets(styled, parseFontFaces(css), dir);
 }
+
+afterEach(() => resetDisplayProfile());
 
 describe("UI font asset planning", () => {
   it("plans exact static glyph subsets by default, including one-symbol text", () => {
@@ -58,6 +61,53 @@ describe("UI font asset planning", () => {
       expect(plans[0].chars).toContain("✓");
       expect(plans[0].chars).toContain("A");
       expect(plans[0].chars).toContain("0");
+    });
+  });
+
+  it("packs the full printable ASCII range for <input> nodes on the SDL desktop target (real keyboard typing)", () => {
+    // On hardware, only the placeholder's chars are packed (the OSK only lets
+    // users tap keys shown on its grid). On the SDL desktop target the OSK is
+    // hidden and the user types arbitrary text on a real keyboard — so the
+    // font subset for any <input> must include every printable ASCII char, or
+    // letters not present in static UI text (e.g. 'j') render blank because
+    // ui_font_glyph returns null for the missing codepoint.
+    setDisplayProfile({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb888" } as never, {});
+    withFontFiles(["sans.ttf"], (dir) => {
+      const plans = plan(
+        `<screen><input id="name" placeholder="enter name"></input></screen>`,
+        `
+          @font-face { font-family: "Sans"; src: url("sans.ttf"); }
+          #name { font-family: "Sans"; font-size: 16px; }
+        `,
+        dir,
+      );
+      expect(plans.length).toBeGreaterThanOrEqual(1);
+      const chars = plans[0].chars;
+      // Every printable ASCII char (space..tilde) must be present so any typed
+      // character has a glyph. Spot-check letters not in "enter name".
+      expect(chars).toContain("j");
+      expect(chars).toContain("q");
+      expect(chars).toContain("Z");
+      expect(chars).toContain("?");
+    });
+  });
+
+  it("packs only the placeholder chars for <input> nodes on hardware targets (OSK grid limits input)", () => {
+    // Regression guard: on hardware (non-SDL) the OSK grid is the only input
+    // path, so the font subset for inputs stays minimal (placeholder chars).
+    setDisplayProfile({ driver: "ili9341", width: 320, height: 240, colorFormat: "rgb565" } as never, {});
+    withFontFiles(["sans.ttf"], (dir) => {
+      const plans = plan(
+        `<screen><input id="name" placeholder="enter name"></input></screen>`,
+        `
+          @font-face { font-family: "Sans"; src: url("sans.ttf"); }
+          #name { font-family: "Sans"; font-size: 16px; }
+        `,
+        dir,
+      );
+      expect(plans.length).toBeGreaterThanOrEqual(1);
+      // 'j' is not in "enter name" and must NOT be packed on hardware.
+      expect(plans[0].chars).not.toContain("j");
     });
   });
 

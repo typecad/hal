@@ -3,6 +3,7 @@ import path from "node:path";
 import opentype from "opentype.js";
 import type { CSSFontFace, CSSProperty } from "./css-parser.js";
 import type { StyledNode } from "./style-resolver.js";
+import { getDisplayProfile } from "./display-profile-store.js";
 
 export interface UIFontGlyphModel {
   codepoint: number;
@@ -316,6 +317,22 @@ function addNodeText(chars: Set<string>, node: StyledNode): void {
   // formatting chars so the font subset can render the runtime output.
   if (node.text && node.text.includes("{")) {
     addText(chars, "0123456789.,-+/()%");
+  }
+  // <input> nodes on the SDL desktop target (UI_HIDE_OSK) accept arbitrary
+  // real-keyboard text — the OSK grid isn't shown, so the user can type any
+  // character, not just the keys on the on-screen grid. Pack the full printable
+  // ASCII range so every typed character has a glyph (otherwise letters absent
+  // from static UI text render blank — ui_font_glyph returns null). Hardware
+  // targets keep the minimal subset: the OSK grid is the only input path and
+  // only carries the keys it shows.
+  if (node.tag === "input") {
+    let driver: string | undefined;
+    try { driver = getDisplayProfile().driver; } catch { /* no profile bound */ }
+    if (driver === "sdl") {
+      let ascii = "";
+      for (let cp = 0x20; cp <= 0x7e; cp++) ascii += String.fromCodePoint(cp);
+      addText(chars, ascii);
+    }
   }
 }
 

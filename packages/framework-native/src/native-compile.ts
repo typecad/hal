@@ -104,6 +104,13 @@ export const NativeToolchain = {
     const staticLink = nativeConfig.staticLink ?? (process.platform === "win32");
     if (staticLink) flags.push("-static");
 
+    // Windows GUI subsystem: link as a windowed app, not a console app. Without
+    // -mwindows, MinGW produces a console-subsystem executable that spawns a
+    // cmd.exe window behind the SDL window on launch. This is the standard flag
+    // for any SDL/Win32 GUI program built with g++ on MSYS2/MinGW. No-op on
+    // Linux/macOS (no console-subsystem concept there).
+    if (process.platform === "win32") flags.push("-mwindows");
+
     // Include paths
     if (nativeConfig.includePaths) {
       for (const p of nativeConfig.includePaths) flags.push(`-I${p}`);

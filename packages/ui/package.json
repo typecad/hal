@@ -16,9 +16,6 @@
   "scripts": {
     "build": "tsc"
   },
-  "dependencies": {
-    "@typecad/hal": "*"
-  },
   "license": "MIT",
   "repository": {
     "type": "git",

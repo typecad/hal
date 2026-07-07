@@ -209,7 +209,7 @@ export function emitCanvasBindings(specs: DrawCanvasSpec[]): string {
 
 import { makeSourceSpan } from "../ast-node-utils.js";
 import type { StatementIR } from "../../api/index.js";
-import { resolveNodeIndex, resolveUIModuleImport } from "./ui-call-resolver.js";
+import { resolveNodeIndex, resolveUIModuleImport, pushUnknownElementDiagnostic } from "./ui-call-resolver.js";
 
 /**
  * Resolve a `ui.drawCanvas(node, (ctx) => {...})` call.
@@ -235,6 +235,10 @@ export function resolveDrawCanvasCall(
   if (!htmlPath) return null;
 
   const nodeIndex = resolveNodeIndex(htmlPath, id);
+  if (nodeIndex < 0) {
+    pushUnknownElementDiagnostic(diagnostics, "ui.drawCanvas", id, treeName);
+    return null;
+  }
   const callbackBody = lowerCanvasBody(cbArg, sourceText, diagnostics);
   const fnName = `__ui_canvas_draw_${getCanvasBindingsCount()}`;
   recordCanvasBinding({ nodeIndex, fnName, callbackBody });

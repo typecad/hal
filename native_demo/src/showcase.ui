@@ -18,6 +18,7 @@
 
   export function incrementTaps() {
     count.set(count() + 1);
+    ui.window.setTitle(`taps: ${count}`);
   }
 
   export function captureName() {

@@ -36,10 +36,24 @@ const uiModuleImports = new Map<string, string>();
 const elementValueMap = new Map<string, number>();
 
 /** Register an element's node index for .value access. Called during
- *  build-ir.ts's import processing (alongside registerUIModuleImport). */
+ *  build-ir.ts's import processing (alongside registerUIModuleImport).
+ *
+ *  Element ids here come from a tree walk over the SAME styled tree that
+ *  resolveNodeIndex walks, so not-found is structurally unreachable in
+ *  practice. We use resolveNodeIndexOrZero (which falls back to 0 on -1)
+ *  rather than threading diagnostics through build-ir's tree-walk path. */
 export function registerElementValue(treeName: string, elemId: string, htmlPath: string): void {
-  const nodeIndex = resolveNodeIndex(htmlPath, elemId);
+  const nodeIndex = resolveNodeIndexOrZero(htmlPath, elemId);
   elementValueMap.set(`${treeName}.${elemId}`, nodeIndex);
+}
+
+/** Internal helper: resolveNodeIndex that falls back to 0 on not-found.
+ *  Used only by registerElementValue (an unreachable-not-found site). Every
+ *  author-facing call site must use resolveNodeIndex directly and check for
+ *  the -1 sentinel, emitting a `ui-unknown-element` diagnostic. */
+function resolveNodeIndexOrZero(htmlPath: string, id: string, screenId?: string): number {
+  const idx = resolveNodeIndex(htmlPath, id, screenId);
+  return idx < 0 ? 0 : idx;
 }
 
 /** Resolve "screen.led" → node index, or undefined if not registered. */
@@ -227,6 +241,99 @@ export function isUICall(call: ts.CallExpression): call is ts.CallExpression & {
   );
 }
 
+// ── ui.window.* (native desktop window controls) ────────────────────────────
+
+/** Detect `ui.window.<method>(...)` — a two-level property access chain.
+ *  Returns the method name ("setTitle" / "setIcon") or undefined. */
+function matchUIWindowCall(call: ts.CallExpression): string | undefined {
+  // Shape: CallExpression { expression: PropertyAccessExpression {
+  //   name: <method>, expression: PropertyAccessExpression {
+  //     name: "window", expression: Identifier { text: "ui" } } } }
+  if (!ts.isPropertyAccessExpression(call.expression)) return undefined;
+  const inner = call.expression.expression;
+  if (!ts.isPropertyAccessExpression(inner)) return undefined;
+  if (!ts.isIdentifier(inner.expression) || inner.expression.text !== "ui") return undefined;
+  if (!ts.isIdentifier(inner.name) || inner.name.text !== "window") return undefined;
+  return call.expression.name.text;
+}
+
+/** Resolve ui.window.setTitle / ui.window.setIcon. Native SDL only; on hardware
+ *  these are silent no-ops (a desktop-only convenience, not an error). */
+function resolveWindowCall(
+  method: string,
+  call: ts.CallExpression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): StatementIR {
+  const fileName = call.getSourceFile()?.fileName ?? "";
+  const isSDL: boolean = (() => { try { return getDisplayProfile().driver === "sdl"; } catch { return false; } })();
+  const sourceSpan = makeSourceSpan(call, fileName, sourceText);
+
+  if (method === "setTitle") {
+    if (!isSDL) return { kind: "block", sourceSpan, body: [] };
+    const arg = call.arguments[0];
+    if (!arg) return { kind: "block", sourceSpan, body: [] };
+
+    // String literal: pass directly as a const char*.
+    if (ts.isStringLiteral(arg)) {
+      const escaped = escapeCppStringLiteral(arg.text);
+      return {
+        kind: "call",
+        callee: "__EMIT__",
+        args: [{ kind: "string", value: `ui_window_set_title("${escaped}");` }],
+        sourceSpan,
+      };
+    }
+
+    // Template literal with interpolations: build a snprintf into a local buffer
+    // (same format-building logic as lowerTextBindingBody Shape 3), then pass
+    // the buffer to ui_window_set_title. Handles `taps: ${count}` correctly.
+    if (ts.isTemplateExpression(arg)) {
+      const fmtBuf: string[] = [escapeSnprintfFormatFragment(arg.head.text)];
+      const snprintfArgs: string[] = [];
+      for (const span of arg.templateSpans) {
+        fmtBuf.push(numericFormat(span.expression));
+        snprintfArgs.push(lowerInterpolationArg(span.expression, sourceText, diagnostics));
+        fmtBuf.push(escapeSnprintfFormatFragment(span.literal.text));
+      }
+      const fmt = fmtBuf.join("");
+      const argList = snprintfArgs.length ? ", " + snprintfArgs.join(", ") : "";
+      return {
+        kind: "call",
+        callee: "__EMIT__",
+        args: [{ kind: "string", value: `{ char __title[128]; snprintf(__title, sizeof(__title), "${fmt}"${argList}); ui_window_set_title(__title); }` }],
+        sourceSpan,
+      };
+    }
+
+    // Any other expression (signal read, concatenation, etc): render it and
+    // pass as a const char* if it's string-compatible. Signal reads like
+    // count() lower to the variable name; string signals work directly.
+    const argText = renderExprAsText(expressionToIR(arg, sourceText, diagnostics));
+    return {
+      kind: "call",
+      callee: "__EMIT__",
+      args: [{ kind: "string", value: `ui_window_set_title(${argText});` }],
+      sourceSpan,
+    };
+  }
+
+  if (method === "setIcon") {
+    // Runtime icon changes need SDL_image. For v1, recommend the config option.
+    if (isSDL) {
+      diagnostics.push({
+        severity: "warning",
+        code: "ui-window-seticon-runtime",
+        message: `ui.window.setIcon at runtime requires SDL_image, which isn't bundled. Use the display.icon config option for the launch icon (loaded once via core SDL2 SDL_LoadBMP).`,
+      } as Diagnostic);
+    }
+    return { kind: "block", sourceSpan, body: [] };
+  }
+
+  // Unknown ui.window.* method — silent no-op (forward-compatible).
+  return { kind: "block", sourceSpan, body: [] };
+}
+
 // ── Argument extraction ─────────────────────────────────────────────────────
 
 /** Read display wiring overrides from an optional ui.mount options object literal. */
@@ -241,7 +348,7 @@ function extractMountOptions(
     diagnostics.push({
       severity: "error",
       code: "ui-mount-opts",
-      message: "ui.mount expects an optional options object, e.g. ui.mount(screen) or ui.mount(screen, { display, bus, cs, dc, rst })",
+      message: "ui.mount expects an optional options object, e.g. ui.mount(screen) or ui.mount(screen, { display, bus, cs, dc, rst, rotation, backlight, spiFrequency, address, reset })",
     } as Diagnostic);
     return null;
   }
@@ -269,6 +376,25 @@ export interface UICallOptions {
  * Reads the active PlatformGraphicsStrategy from the compilation context to
  * validate the driver and resolve colors/storage.
  */
+/** Push a `ui-unknown-element` error diagnostic. Used by every author-facing
+ *  binding/method call site when resolveNodeIndex returns -1, so a typo'd
+ *  element id fails the build instead of silently re-targeting node 0.
+ *  Exported so call-statement.ts and canvas-lowering.ts can share the exact
+ *  same diagnostic shape across all element-binding entry points. */
+export function pushUnknownElementDiagnostic(
+  diagnostics: Diagnostic[],
+  callLabel: string,
+  id: string,
+  treeName: string,
+): void {
+  diagnostics.push({
+    severity: "error",
+    code: "ui-unknown-element",
+    message: `${callLabel}: element "${id}" not found in screen "${treeName}"`,
+    hint: `Check the id attribute in your .ui.html file. Screen "${treeName}" does not contain an element with id "${id}".`,
+  } as Diagnostic);
+}
+
 export function tryResolveUICall(
   call: ts.CallExpression,
   fileName: string,
@@ -276,6 +402,11 @@ export function tryResolveUICall(
   diagnostics: Diagnostic[],
   options: UICallOptions = {},
 ): StatementIR | null {
+  // ui.window.<method>(...) — two-level property access (ui.window.setTitle).
+  // isUICall only matches ui.<method> (one level), so detect this shape first.
+  const windowCall = matchUIWindowCall(call);
+  if (windowCall) return resolveWindowCall(windowCall, call, sourceText, diagnostics);
+
   if (!isUICall(call)) return null;
 
   const method = call.expression.name.text;
@@ -284,7 +415,7 @@ export function tryResolveUICall(
     return resolveMountCall(call, fileName, sourceText, diagnostics);
   }
   if (method === "signal") {
-    return resolveSignalCall(call, fileName, sourceText, options);
+    return resolveSignalCall(call, fileName, sourceText, diagnostics, options);
   }
   if (method === "bind") {
     return resolveBindCall(call, fileName, sourceText, diagnostics);
@@ -396,6 +527,7 @@ function resolveSignalCall(
   call: ts.CallExpression,
   fileName: string,
   sourceText: string,
+  diagnostics: Diagnostic[],
   options: UICallOptions,
 ): StatementIR | null {
   const valueArg = call.arguments[0];
@@ -413,6 +545,18 @@ function resolveSignalCall(
   } else if (valueArg.kind === ts.SyntaxKind.TrueKeyword || valueArg.kind === ts.SyntaxKind.FalseKeyword) {
     initialValue = valueArg.kind === ts.SyntaxKind.TrueKeyword;
     cppType = "bool";
+  } else {
+    // Unsupported initializer (object, array, null, identifier, template
+    // literal, ...). The @typecad/ui package's Signal<T extends SignalValue>
+    // constraint should catch most of these at editor time; this diagnostic
+    // is the build-time defense for anything that slips past the type system.
+    // Default to int=0 and continue (signals are often transient state).
+    diagnostics.push({
+      severity: "warning",
+      code: "ui-signal-initializer",
+      message: `ui.signal: unsupported initial value "${valueArg.getText()}". Only number, string, and boolean literals are supported; defaulting to 0 (int).`,
+      hint: 'Use a literal: ui.signal(0), ui.signal("label"), or ui.signal(true).',
+    } as Diagnostic);
   }
 
   const name = options.constName ?? nextSyntheticSignalName();
@@ -648,9 +792,15 @@ function resolveBindCall(
   // UI tree. Resolve the node index from the lowered tree's id ordering.
   let nodeIndex = 0;
   if (ts.isPropertyAccessExpression(nodeArg) && ts.isIdentifier(nodeArg.expression)) {
-    const htmlPath = resolveUIModuleImport(nodeArg.expression.text);
+    const treeName = nodeArg.expression.text;
+    const htmlPath = resolveUIModuleImport(treeName);
     if (htmlPath) {
-      nodeIndex = resolveNodeIndex(htmlPath, nodeArg.name.text);
+      const resolved = resolveNodeIndex(htmlPath, nodeArg.name.text);
+      if (resolved < 0) {
+        pushUnknownElementDiagnostic(diagnostics, "ui.bind", nodeArg.name.text, treeName);
+        return null;
+      }
+      nodeIndex = resolved;
     }
   }
 
@@ -698,7 +848,7 @@ function resolveBindListCall(
   call: ts.CallExpression,
   fileName: string,
   sourceText: string,
-  _diagnostics: Diagnostic[],
+  diagnostics: Diagnostic[],
 ): StatementIR | null {
   if (call.arguments.length < 3) return null;
   const nodeArg = call.arguments[0];
@@ -708,8 +858,16 @@ function resolveBindListCall(
   // Resolve the <list> node index.
   let nodeIndex = 0;
   if (ts.isPropertyAccessExpression(nodeArg) && ts.isIdentifier(nodeArg.expression)) {
-    const htmlPath = resolveUIModuleImport(nodeArg.expression.text);
-    if (htmlPath) nodeIndex = resolveNodeIndex(htmlPath, nodeArg.name.text);
+    const treeName = nodeArg.expression.text;
+    const htmlPath = resolveUIModuleImport(treeName);
+    if (htmlPath) {
+      const resolved = resolveNodeIndex(htmlPath, nodeArg.name.text);
+      if (resolved < 0) {
+        pushUnknownElementDiagnostic(diagnostics, "ui.bindList", nodeArg.name.text, treeName);
+        return null;
+      }
+      nodeIndex = resolved;
+    }
   }
 
   // Lower the count function: () => N → "return N;"
@@ -758,7 +916,7 @@ function resolveBindListCall(
   if (call.arguments.length >= 4) {
     const tapArg = call.arguments[3];
     if (tapArg && (ts.isArrowFunction(tapArg) || ts.isFunctionExpression(tapArg))) {
-      const cbBody = lowerCallbackBody(tapArg, sourceText, _diagnostics);
+      const cbBody = lowerCallbackBody(tapArg, sourceText, diagnostics);
       // Replace the arrow's parameter name with 'idx' (the C++ arg name).
       let body = cbBody || "";
       if (ts.isArrowFunction(tapArg) && tapArg.parameters.length > 0) {
@@ -797,8 +955,16 @@ function resolveBindInputCall(
   // Resolve the <input> node index via the standard screen.<id> path.
   let nodeIndex = 0;
   if (ts.isPropertyAccessExpression(nodeArg) && ts.isIdentifier(nodeArg.expression)) {
-    const htmlPath = resolveUIModuleImport(nodeArg.expression.text);
-    if (htmlPath) nodeIndex = resolveNodeIndex(htmlPath, nodeArg.name.text);
+    const treeName = nodeArg.expression.text;
+    const htmlPath = resolveUIModuleImport(treeName);
+    if (htmlPath) {
+      const resolved = resolveNodeIndex(htmlPath, nodeArg.name.text);
+      if (resolved < 0) {
+        pushUnknownElementDiagnostic(diagnostics, "ui.bindInput", nodeArg.name.text, treeName);
+        return null;
+      }
+      nodeIndex = resolved;
+    }
   }
 
   const cbFnName = `__ui_input_cb_${getInputBindingsCount()}`;
@@ -884,6 +1050,14 @@ function resolveOnTapCall(
     const htmlPath = resolveUIModuleImport(treeName);
     if (htmlPath) {
       const nodeIndex = resolveNodeIndex(htmlPath, id);
+      if (nodeIndex < 0) {
+        // Tree resolved but the element id wasn't found in it. Hard error —
+        // silently falling back to "any tap" would hide a typo and change
+        // the program's behavior (a per-element awaiter would resume on the
+        // wrong tap).
+        pushUnknownElementDiagnostic(diagnostics, "ui.onTap", id, treeName);
+        return null;
+      }
       return {
         kind: "call",
         sourceSpan: makeSourceSpan(call, fileName, sourceText),
@@ -892,7 +1066,9 @@ function resolveOnTapCall(
         isAwaited: true,
       };
     }
-    // Unknown tree — fall through to the global form, with a warning.
+    // Unknown tree (not a recognized UI import) — fall through to the global
+    // form, with a warning. This is a different failure mode than a typo'd
+    // element id: the receiver isn't a UI tree at all.
     diagnostics.push({
       severity: "warning", code: "ui-ontap-arg",
       message: `ui.onTap(${nodeArg.getText()}) could not be resolved; awaiting any tap instead`,
@@ -909,14 +1085,19 @@ function resolveOnTapCall(
   };
 }
 
-/** Look up a node's index in its tree by element id (pre-order DFS order). */
+/** Look up a node's index in its tree by element id (pre-order DFS order).
+ *  Returns the node index, or `-1` if the id is not found (or the module
+ *  isn't loaded). Callers must check for `-1` and emit a `ui-unknown-element`
+ *  diagnostic — silently treating `-1` as a valid index would target node 0
+ *  (the screen root), which is the silent-miscompilation failure mode this
+ *  guard exists to prevent. */
 export function resolveNodeIndex(htmlPath: string, id: string, screenId?: string): number {
   // Node indices follow pre-order DFS of the styled tree. The lowered tables
   // share this order, so we walk the registry's styled tree to find the id.
   // When screenId is given (grouped handle screen.groups.<screenId>.<id>),
   // search only within that screen root.
   const mod = getUIModule(htmlPath);
-  if (!mod) return 0;
+  if (!mod) return -1;
   let idx = 0;
   let found = -1;
   const walk = (n: StyledNode): boolean => {
@@ -931,7 +1112,7 @@ export function resolveNodeIndex(htmlPath: string, id: string, screenId?: string
   for (const root of roots) {
     if (walk(root)) break;
   }
-  return found >= 0 ? found : 0;
+  return found;
 }
 
 /** Look up a node's HTML tag by element id (pre-order DFS order).
