@@ -242,6 +242,13 @@ describe("init-scaffold", () => {
       expect(s3!.architecture).toBe('esp32s3');
       expect(s3!.buildTarget).toBe('esp32:esp32:esp32s3');
     });
+
+    it("contains esp32c3", () => {
+      const c3 = KNOWN_BOARDS.find(b => b.id === 'esp32c3');
+      expect(c3).toBeDefined();
+      expect(c3!.architecture).toBe('esp32c3');
+      expect(c3!.buildTarget).toBe('esp32:esp32:esp32c3');
+    });
   });
 
   describe("scaffoldProject", () => {
