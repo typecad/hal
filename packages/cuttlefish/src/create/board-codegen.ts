@@ -101,14 +101,18 @@ export function scaffoldBoardPackages(
   writeFile(path.join(boardDir, 'src', 'analog.ts'), Gen.genBoardAnalog(spec));
   writeFile(path.join(boardDir, 'src', 'board.ts'), Gen.genBoardNamespace(spec));
 
-  // --- Idempotent edits to existing files ---
+  // --- Idempotent edits to existing files (skipped if target doesn't exist) ---
 
   // 1. Root package.json workspaces
   const rootPjPath = path.join(rootDir, 'package.json');
-  const rootPj = JSON.parse(fs.readFileSync(rootPjPath, 'utf8'));
-  if (!rootPj.workspaces.includes(`packages/mcu-${arch}`)) {
-    rootPj.workspaces.push(`packages/mcu-${arch}`, `packages/board-${arch}`);
-    fs.writeFileSync(rootPjPath, JSON.stringify(rootPj, null, 2) + '\n', 'utf8');
+  if (fs.existsSync(rootPjPath)) {
+    try {
+      const rootPj = JSON.parse(fs.readFileSync(rootPjPath, 'utf8'));
+      if (Array.isArray(rootPj.workspaces) && !rootPj.workspaces.includes(`packages/mcu-${arch}`)) {
+        rootPj.workspaces.push(`packages/mcu-${arch}`, `packages/board-${arch}`);
+        fs.writeFileSync(rootPjPath, JSON.stringify(rootPj, null, 2) + '\n', 'utf8');
+      }
+    } catch { /* best-effort: skip if package.json isn't valid */ }
   }
 
   // 2. init-scaffold.ts registry entry
