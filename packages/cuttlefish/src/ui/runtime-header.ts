@@ -367,16 +367,18 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
 #define UI_MAYBE_SNAP_MONO565(c) (c)
 #endif
 
-// ── Deferred-refresh (e-ink) dirty-rect aggregation ──────────────────────────
-// Under UI_REQUIRES_BACKING_STORE (e-ink), each painted node reports its paint
-// rect into this accumulator; at frame end the union is refreshed as one partial
-// update via the shim's display_partial_refresh. On TFT (no backing store) the
-// symbols compile to no-op stubs so call sites are unchanged — byte-identical.
-#ifndef UI_REQUIRES_BACKING_STORE
-  #define ui_refresh_begin_frame()  ((void)0)
-  #define ui_refresh_add_rect(x, y, w, h) ((void)0)
-  #define ui_refresh_flush()        ((void)0)
-#else
+// ── Per-frame refresh dispatch ──────────────────────────────────────────────
+// Three mutually-exclusive compile-time paths, in priority order:
+//   1. UI_REQUIRES_BACKING_STORE (e-ink): dirty-rect accumulator + partial refresh.
+//   2. UI_BATCH_SPI_WRITES (TFT immediate): one startWrite/endWrite per frame.
+//   3. default (SDL native host): no-ops.
+// Exactly one branch ever compiles — the emitter's guards ensure the first two
+// are never both defined (UI_REQUIRES_BACKING_STORE ⟹ requiresBackingStore,
+// UI_BATCH_SPI_WRITES ⟹ immediate && !requiresBackingStore).
+#if defined(UI_REQUIRES_BACKING_STORE)
+  // e-ink / deferred-partial: dirty-rect accumulator. Each painted node reports
+  // its paint rect; at frame end the union is refreshed as one partial update
+  // via display_partial_refresh.
   #define UI_REFRESH_MAX_RECTS 16
   struct UIRect16 { int16_t x, y, w, h; };
   static UIRect16 __ui_refresh_rects[UI_REFRESH_MAX_RECTS];
@@ -415,6 +417,22 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
       display_partial_refresh(x0, y0, (int16_t)(x1 - x0), (int16_t)(y1 - y0));
     }
   }
+#elif defined(UI_BATCH_SPI_WRITES)
+  // TFT immediate-refresh: wrap the frame's draws in ONE SPI transaction so all
+  // per-node fillRect/text/canvas-composite writes share a single CS-asserted
+  // burst. Adafruit_SPITFT's startWrite/endWrite are reference-counted, so the
+  // scroll-canvas composite (which also calls them) becomes a nested no-op for
+  // transaction lifecycle — the actual SPI close happens once at frame end.
+  // add_rect is a no-op here: TFT has no partial-refresh concept; the per-node
+  // draws already target the right pixels.
+  static inline void ui_refresh_begin_frame() { display_startWrite(); }
+  static inline void ui_refresh_add_rect(int16_t x, int16_t y, int16_t w, int16_t h) { (void)x; (void)y; (void)w; (void)h; }
+  static inline void ui_refresh_flush() { display_endWrite(); }
+#else
+  // No batching (e.g. SDL native host render): true no-ops.
+  #define ui_refresh_begin_frame()  ((void)0)
+  #define ui_refresh_add_rect(x, y, w, h) ((void)0)
+  #define ui_refresh_flush()        ((void)0)
 #endif
 
 // ── Multi-screen navigation ─────────────────────────────────────────────────
@@ -4219,7 +4237,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint16_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; __ui_draw_pass++) {
     int16_t selected = -1;
     for (uint16_t candidate = 0; candidate < __ui_node_count; candidate++) {
-      if (!__ui_nodes[candidate].dirty && !__ui_fb) continue;
+      if (!__ui_nodes[candidate].dirty) continue;
       if (!ui_is_effectively_visible(candidate)) { __ui_nodes[candidate].dirty = 0; continue; }
       if (__ui_nodes[candidate].screenId != __ui_active_screen) { __ui_nodes[candidate].dirty = 0; continue; }
       if (selected < 0 || ui_node_draws_before(candidate, selected)) selected = candidate;

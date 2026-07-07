@@ -149,18 +149,34 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/#if\s+UI_USE_FULL_FRAMEBUFFER\s*&&\s*defined\(ESP32\)\s*&&\s*defined\(BOARD_HAS_PSRAM\)/);
   });
 
+  it("emits a UI_BATCH_SPI_WRITES branch that wraps the frame in startWrite/endWrite", () => {
+    // TFT batching path: when UI_BATCH_SPI_WRITES is defined (and neither
+    // UI_REQUIRES_BACKING_STORE nor the no-op default applies), begin_frame
+    // opens the SPI transaction and flush closes it. add_rect is a no-op
+    // (TFT has no partial-refresh concept; the per-node draws already target
+    // the right pixels).
+    expect(header).toMatch(/#elif\s+defined\(UI_BATCH_SPI_WRITES\)[\s\S]*?ui_refresh_begin_frame\(\)\s*\{\s*display_startWrite\(\);\s*\}/);
+    expect(header).toMatch(/#elif\s+defined\(UI_BATCH_SPI_WRITES\)[\s\S]*?ui_refresh_flush\(\)\s*\{\s*display_endWrite\(\);\s*\}/);
+  });
+
   it("framebuffer mode repaints every visible node, not only dirty ones", () => {
     // Regression: the framebuffer is re-seeded with the background color every
     // frame and pushed in full, so non-dirty nodes must ALSO redraw into it —
     // otherwise their regions stay at the black/background seed and the screen
-    // goes black after the first frame. The framebuffer block must mark every
-    // visible node on the active screen dirty before the draw loop.
+    // goes black after the first frame.
+    //
+    // The mechanism: when the framebuffer is active, mark every visible node on
+    // the active screen dirty BEFORE the draw loop. The draw loop's dirty-based
+    // progression then repaints each node exactly once (dirty → draw → clear),
+    // and the loop terminates normally. The dirty flag stays the sole
+    // progression gate — adding a '&& !__ui_fb' escape to the skip predicate
+    // breaks progression (every node stays eligible and node 0 redraws forever).
     const fbBlock = header.match(/display_canvasFillScreen\(__ui_fb, fbBg\);[\s\S]*?\/\/ Draw dirty nodes/)?.[0] ?? "";
     expect(fbBlock).not.toBe("");
     expect(fbBlock).toMatch(/for\s*\(\s*uint16_t\s+f\s*=\s*0[\s\S]*__ui_nodes\[f\]\.screenId\s*==\s*__ui_active_screen[\s\S]*ui_is_effectively_visible\(f\)[\s\S]*__ui_nodes\[f\]\.dirty\s*=\s*1/);
-    // And the draw loop must honor dirty regardless of framebuffer (the pre-mark
-    // makes every visible node eligible).
-    expect(header).toMatch(/if\s*\(!__ui_nodes\[candidate\]\.dirty\s*&&\s*!__ui_fb\)\s*continue/);
+    // The draw loop's skip predicate must NOT have a framebuffer escape —
+    // dirty stays the sole gate so the mark-all-dirty block drives progression.
+    expect(header).toMatch(/if\s*\(!__ui_nodes\[candidate\]\.dirty\)\s*continue/);
   });
 
   it("snaps very short color transitions to avoid repeated hardware redraws", () => {
