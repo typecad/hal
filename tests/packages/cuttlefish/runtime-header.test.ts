@@ -196,24 +196,17 @@ describe("C++ reactive runtime header", () => {
     // → UI_BATCH_SPI_WRITES does NOT apply (UI_REQUIRES_BACKING_STORE wins).
   });
 
-  it("framebuffer mode repaints every visible node, not only dirty ones", () => {
-    // Regression: the framebuffer is re-seeded with the background color every
-    // frame and pushed in full, so non-dirty nodes must ALSO redraw into it —
-    // otherwise their regions stay at the black/background seed and the screen
-    // goes black after the first frame.
-    //
-    // The mechanism: when the framebuffer is active, mark every visible node on
-    // the active screen dirty BEFORE the draw loop. The draw loop's dirty-based
-    // progression then repaints each node exactly once (dirty → draw → clear),
-    // and the loop terminates normally. The dirty flag stays the sole
-    // progression gate — adding a '&& !__ui_fb' escape to the skip predicate
-    // breaks progression (every node stays eligible and node 0 redraws forever).
-    const fbBlock = header.match(/display_canvasFillScreen\(__ui_fb, fbBg\);[\s\S]*?\/\/ Draw dirty nodes/)?.[0] ?? "";
+  it("framebuffer mode seeds the canvas background (mark-all-dirty reverted)", () => {
+    // The framebuffer mark-all-dirty block was a workaround for the
+    // framebuffer's 'repaint everything' model that broke the dirty-gated
+    // scroll-canvas composite. It is reverted: the framebuffer seeds the
+    // background and draws only dirty nodes (the same model as direct-draw).
+    // The framebuffer + scroll composition is tracked as a separate effort;
+    // SPI-write batching (UI_BATCH_SPI_WRITES) is the recommended tearing fix.
+    const fbBlock = header.match(/if\s*\(__ui_fb\)\s*\{[\s\S]*?display_canvasFillScreen\(__ui_fb, fbBg\);[\s\S]*?\}/)?.[0] ?? "";
     expect(fbBlock).not.toBe("");
-    expect(fbBlock).toMatch(/for\s*\(\s*uint16_t\s+f\s*=\s*0[\s\S]*__ui_nodes\[f\]\.screenId\s*==\s*__ui_active_screen[\s\S]*ui_is_effectively_visible\(f\)[\s\S]*__ui_nodes\[f\]\.dirty\s*=\s*1/);
-    // The draw loop's skip predicate must NOT have a framebuffer escape —
-    // dirty stays the sole gate so the mark-all-dirty block drives progression.
-    expect(header).toMatch(/if\s*\(!__ui_nodes\[candidate\]\.dirty\)\s*continue/);
+    // The mark-all-dirty loop must NOT be present.
+    expect(fbBlock).not.toMatch(/for\s*\(\s*uint16_t\s+f\s*=\s*0[\s\S]*?__ui_nodes\[f\]\.dirty\s*=\s*1/);
   });
 
   it("snaps very short color transitions to avoid repeated hardware redraws", () => {

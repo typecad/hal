@@ -4218,19 +4218,6 @@ static inline void ui_tick(uint16_t deltaMs) {
       }
     }
     display_canvasFillScreen(__ui_fb, fbBg);
-    // The framebuffer is re-seeded with the background and pushed in full every
-    // frame, so EVERY visible node on the active screen must redraw into it —
-    // skipping non-dirty nodes leaves their regions at the seed and the pushed
-    // frame goes black wherever a node didn't repaint. Mark all visible nodes
-    // dirty here so the draw loop below (which selects + clears dirty per pass)
-    // repaints the full scene. The post-draw clear (line ~4236) resets dirty,
-    // so binding/animation bookkeeping stays correct.
-    for (uint16_t f = 0; f < __ui_node_count; f++) {
-      if (__ui_nodes[f].screenId == __ui_active_screen &&
-          ui_is_effectively_visible(f)) {
-        __ui_nodes[f].dirty = 1;
-      }
-    }
   }
 
   // Draw dirty nodes in stacking order: lower z-index first, then source order.
