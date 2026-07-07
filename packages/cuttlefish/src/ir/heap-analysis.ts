@@ -71,7 +71,7 @@ function getTypeSizes(architecture?: string): Record<string, number> {
   if (arch === "avr" || arch === "atmega328p" || arch === "atmega2560") {
     return AVR_TYPE_SIZES;
   }
-  if (arch === "esp32" || arch === "esp32s3" || arch === "esp32c3" || arch === "xtensa" || arch === "riscv32") {
+  if (arch === "esp32" || arch === "esp32s3" || arch === "esp32c3" || arch === "esp32c6" || arch === "xtensa" || arch === "riscv32") {
     return ESP32_TYPE_SIZES;
   }
   // Default to ESP32 sizes (more conservative for 32-bit targets)

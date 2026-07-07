@@ -231,7 +231,7 @@ export class ArduinoStrategy implements PlatformStrategy {
 
     // freeHeap() — architecture-specific, resolved at transpile time
     const arch = this._cachedArch;
-    if (arch === 'esp32' || arch === 'esp32s2' || arch === 'esp32s3' || arch === 'esp32c3') {
+    if (arch === 'esp32' || arch === 'esp32s2' || arch === 'esp32s3' || arch === 'esp32c3' || arch === 'esp32c6') {
       lines.push(
       "    unsigned long freeHeap() {",
       "        return ESP.getFreeHeap();",
@@ -1001,7 +1001,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
    */
   isrFunctionAttribute(): string {
     const arch = this._cachedArch;
-    return (arch === 'esp32' || arch === 'esp32s2' || arch === 'esp32s3' || arch === 'esp32c3')
+    return (arch === 'esp32' || arch === 'esp32s2' || arch === 'esp32s3' || arch === 'esp32c3' || arch === 'esp32c6')
       ? 'IRAM_ATTR '
       : '';
   }
