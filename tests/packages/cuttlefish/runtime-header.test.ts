@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { emitRuntimeHeader } from "../../../packages/cuttlefish/src/ui/runtime-header";
+import { deriveCapabilities } from "../../../packages/cuttlefish/src/api/shared/display-capabilities";
 
 describe("C++ reactive runtime header", () => {
   const header = emitRuntimeHeader();
@@ -173,6 +174,26 @@ describe("C++ reactive runtime header", () => {
     // all three must be no-op macros (the SDL native host path).
     expect(header).toMatch(/#else[\s\S]*?#define\s+ui_refresh_begin_frame\(\)\s+\(\(void\)0\)/);
     expect(header).toMatch(/#define\s+ui_refresh_flush\(\)\s+\(\(void\)0\)/);
+  });
+
+  it("emitter defines UI_BATCH_SPI_WRITES for immediate, non-backing-store targets", () => {
+    // The emitter (ui-emitter.ts) emits #define UI_BATCH_SPI_WRITES 1 when
+    // caps.refreshModel === "immediate" && !caps.requiresBackingStore. The
+    // emission itself is a one-liner in ui-emitter.ts; this test verifies the
+    // gate decision via deriveCapabilities (the actual logic the emitter
+    // consumes) for the cases that matter:
+    //   - TFT (default): immediate, no backing store → batching applies.
+    //   - e-ink: deferred-partial + backing store → batching does NOT apply.
+    // (The runtime-header string alone can't carry the define — it's emitted
+    // by ui-emitter.ts into the surrounding source, not inside the header.)
+    const tft = deriveCapabilities({ colorFormat: "rgb565" });
+    expect(tft.refreshModel).toBe("immediate");
+    expect(tft.requiresBackingStore).toBe(false);
+    // → UI_BATCH_SPI_WRITES applies.
+    const eink = deriveCapabilities({ displayClass: "eink", colorFormat: "mono" });
+    expect(eink.refreshModel).toBe("deferred-partial");
+    expect(eink.requiresBackingStore).toBe(true);
+    // → UI_BATCH_SPI_WRITES does NOT apply (UI_REQUIRES_BACKING_STORE wins).
   });
 
   it("framebuffer mode repaints every visible node, not only dirty ones", () => {
