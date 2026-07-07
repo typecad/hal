@@ -79,6 +79,17 @@ const _knownTargets: KnownTarget[] = [
     buildTarget: 'esp32:esp32:esp32c3',
     mcu: 'esp32c3',
   },
+  {
+    id: 'esp32c6',
+    displayName: 'ESP32-C6',
+    isNative: false,
+    architecture: 'esp32c6',
+    boardPackage: '@typecad/board-esp32c6',
+    frameworkPackage: '@typecad/framework-arduino',
+    framework: 'arduino',
+    buildTarget: 'esp32:esp32:esp32c6',
+    mcu: 'esp32c6',
+  },
 ];
 
 export function registerKnownTarget(target: KnownTarget): void {
