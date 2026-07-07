@@ -39,10 +39,10 @@
   },
   "dependencies": {
     "typescript": "^5.7.3",
-    "@typecad/cuttlefish": "*",
     "serialport": "^12.0.0"
   },
   "devDependencies": {
+    "@typecad/cuttlefish": "*",
     "@types/node": "^22.10.7"
   },
   "license": "MIT",

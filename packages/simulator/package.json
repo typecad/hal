@@ -22,10 +22,10 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "typescript": "^5.7.3",
     "@typecad/cuttlefish": "*"
   },
   "devDependencies": {
+    "typescript": "^5.7.3",
     "@types/node": "^22.10.7"
   },
   "license": "MIT",

@@ -34,11 +34,6 @@
     "test:ui-layout": "vitest run tests/packages/cuttlefish/ui-layout-harness.test.ts",
     "test:hw": "npm run test:hw --workspace @typecad/framework-arduino",
     "test:hw:basics": "npm run test:hw:basics --workspace @typecad/framework-arduino",
-    "publish:cuttlefish": "npm publish --workspace @typecad/cuttlefish --access public",
-    "publish:hal": "npm publish --workspace @typecad/hal --access public",
-    "publish:expect": "npm publish --workspace @typecad/expect --access public",
-    "publish:ui": "npm publish --workspace @typecad/ui --access public",
-    "publish:all": "npm run publish:cuttlefish && npm run publish:hal && npm run publish:expect && npm run publish:ui",
     "changeset": "changeset",
     "version": "changeset version"
   },
