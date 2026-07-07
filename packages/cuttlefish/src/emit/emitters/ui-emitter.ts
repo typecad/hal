@@ -278,15 +278,15 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   if (caps.requiresBackingStore) {
     ctx.sourceLines.push("#define UI_REQUIRES_BACKING_STORE 1");
   }
-  // TFT immediate-refresh batching: wrap the frame's draws in one SPI
-  // transaction (startWrite/endWrite) so per-node writes don't tear. Gated on
-  // immediate && !requiresBackingStore so e-ink (deferred-partial + backing
-  // store) keeps its partial-refresh path and SDL native (immediate but no SPI)
-  // stays on the no-op default. Mutually exclusive with UI_REQUIRES_BACKING_STORE
-  // by construction — the emitter never defines both.
-  if (caps.refreshModel === "immediate" && !caps.requiresBackingStore) {
-    ctx.sourceLines.push("#define UI_BATCH_SPI_WRITES 1");
-  }
+  // NOTE: per-frame SPI-write batching via UI_BATCH_SPI_WRITES was investigated
+  // and reverted — the Adafruit_GFX version in this repo does NOT reference-
+  // count startWrite/endWrite (every endWrite raises CS unconditionally), so
+  // wrapping the frame in startWrite/endWrite causes inner draw calls (e.g. the
+  // scroll-canvas composite) to close the transaction mid-frame → black screen.
+  // The three-branch dispatch in runtime-header.ts still ships (it's a clearer
+  // structure than the old #ifndef/#else), but TFT now falls through to the
+  // no-op default until a ref-counted library version or a bypass approach lands.
+  // See docs/superpowers/specs/2026-07-06-tft-spi-write-batching-design.md.
   // 1b. Scroll capability + physics overrides — emitted BEFORE the runtime
   //     header so its #ifndef guards adopt them. Source of truth:
   //     resolveScrollConfig(profile.scroll). Defaults derive from the declared

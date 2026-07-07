@@ -418,13 +418,20 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
     }
   }
 #elif defined(UI_BATCH_SPI_WRITES)
-  // TFT immediate-refresh: wrap the frame's draws in ONE SPI transaction so all
-  // per-node fillRect/text/canvas-composite writes share a single CS-asserted
-  // burst. Adafruit_SPITFT's startWrite/endWrite are reference-counted, so the
-  // scroll-canvas composite (which also calls them) becomes a nested no-op for
-  // transaction lifecycle — the actual SPI close happens once at frame end.
-  // add_rect is a no-op here: TFT has no partial-refresh concept; the per-node
-  // draws already target the right pixels.
+  // TFT immediate-refresh batching (CURRENTLY UNUSED — see note below).
+  // Wraps the frame's draws in ONE SPI transaction so all per-node writes share
+  // a single CS-asserted burst. add_rect is a no-op: TFT has no partial-refresh
+  // concept; the per-node draws already target the right pixels.
+  //
+  // NOTE: this branch is left in place but the emitter does NOT define
+  // UI_BATCH_SPI_WRITES by default. The design assumed Adafruit_SPITFT's
+  // startWrite/endWrite are reference-counted (nested calls = no-op for CS),
+  // but the Adafruit_GFX version in this repo is NOT — every endWrite raises
+  // CS unconditionally. So an outer frame startWrite gets closed by the first
+  // inner draw's endWrite → black screen. Re-enable only after either (a)
+  // upgrading to a ref-counted Adafruit_GFX or (b) adding a runtime flag the
+  // inner draw primitives check to skip their own startWrite/endWrite.
+  // See docs/superpowers/specs/2026-07-06-tft-spi-write-batching-design.md.
   static inline void ui_refresh_begin_frame() { display_startWrite(); }
   static inline void ui_refresh_add_rect(int16_t x, int16_t y, int16_t w, int16_t h) { (void)x; (void)y; (void)w; (void)h; }
   static inline void ui_refresh_flush() { display_endWrite(); }

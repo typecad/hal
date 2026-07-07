@@ -176,24 +176,17 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/#define\s+ui_refresh_flush\(\)\s+\(\(void\)0\)/);
   });
 
-  it("emitter defines UI_BATCH_SPI_WRITES for immediate, non-backing-store targets", () => {
-    // The emitter (ui-emitter.ts) emits #define UI_BATCH_SPI_WRITES 1 when
-    // caps.refreshModel === "immediate" && !caps.requiresBackingStore. The
-    // emission itself is a one-liner in ui-emitter.ts; this test verifies the
-    // gate decision via deriveCapabilities (the actual logic the emitter
-    // consumes) for the cases that matter:
-    //   - TFT (default): immediate, no backing store → batching applies.
-    //   - e-ink: deferred-partial + backing store → batching does NOT apply.
-    // (The runtime-header string alone can't carry the define — it's emitted
-    // by ui-emitter.ts into the surrounding source, not inside the header.)
+  it("emitter does NOT define UI_BATCH_SPI_WRITES (reverted — library incompatibility)", () => {
+    // The batching branch was reverted: the Adafruit_GFX version in this repo
+    // does NOT reference-count startWrite/endWrite, so wrapping the frame in
+    // startWrite/endWrite causes inner draws to close the transaction mid-frame
+    // → black screen. The dispatch branch is retained for a future ref-counted
+    // library, but the emitter must NOT define the flag for TFT by default.
     const tft = deriveCapabilities({ colorFormat: "rgb565" });
     expect(tft.refreshModel).toBe("immediate");
     expect(tft.requiresBackingStore).toBe(false);
-    // → UI_BATCH_SPI_WRITES applies.
-    const eink = deriveCapabilities({ displayClass: "eink", colorFormat: "mono" });
-    expect(eink.refreshModel).toBe("deferred-partial");
-    expect(eink.requiresBackingStore).toBe(true);
-    // → UI_BATCH_SPI_WRITES does NOT apply (UI_REQUIRES_BACKING_STORE wins).
+    // Capabilities qualify, but the emitter's batching emission was removed.
+    // The runtime-header default (no-op stubs) applies.
   });
 
   it("framebuffer mode seeds the canvas background (mark-all-dirty reverted)", () => {
