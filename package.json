@@ -23,6 +23,7 @@
     "demo",
     "demo-ui",
     "demo-ui-sd13",
+    "demo-weather",
     "native_demo"
   ],
   "scripts": {
