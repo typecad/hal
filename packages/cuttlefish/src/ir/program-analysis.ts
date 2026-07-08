@@ -11,6 +11,9 @@ import { POLYFILL_HELPER_MAP } from "../api/shared/index.js";
 import { parseCppType } from "../api/shared/cpp-type-ir.js";
 import { analyzeResources } from "./resource-analysis.js";
 import { loweredConsoleInCallback } from "./transformers/ui-callback-lowering.js";
+import { watchPinSpecs, clickHandlers } from "./transformers/ui-call-resolver.js";
+import { canvasBindings } from "./transformers/canvas-lowering.js";
+import { getInputBindings, getListBindings } from "./transformers/ui-reactive.js";
 
 export interface ProgramAnalysisResult {
   hasConsoleCalls: boolean;
@@ -620,12 +623,33 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     }
   }
 
-  // Console calls lowered inside UI callbacks (onToggle/watchPin) are baked
+  // Analyze UI callback bodies that live outside program.functions
+  // (onClick / watchPin / drawCanvas / bindInput / bindList). They now carry
+  // StatementIR[] from the main lowerStatementList pipeline, so console /
+  // helper usage is visible here the same way setInterval bodies are.
+  for (const wp of watchPinSpecs()) {
+    for (const stmt of wp.bodyStatements ?? []) analyzeStatement(stmt, result, strategy);
+  }
+  for (const ch of clickHandlers()) {
+    for (const stmt of ch.bodyStatements ?? []) analyzeStatement(stmt, result, strategy);
+  }
+  for (const spec of canvasBindings()) {
+    for (const stmt of spec.bodyStatements ?? []) analyzeStatement(stmt, result, strategy);
+  }
+  for (const spec of getInputBindings()) {
+    for (const stmt of spec.bodyStatements ?? []) analyzeStatement(stmt, result, strategy);
+  }
+  for (const spec of getListBindings()) {
+    for (const stmt of spec.countStatements ?? []) analyzeStatement(stmt, result, strategy);
+    for (const stmt of spec.itemStatements ?? []) analyzeStatement(stmt, result, strategy);
+    for (const stmt of spec.tapStatements ?? []) analyzeStatement(stmt, result, strategy);
+  }
+
+  // Console calls lowered inside leftover string-baked UI callbacks are baked
   // into callbackBody strings, not IR nodes, so the statement walk above can't
   // see them. Consult the flag recorded during lowering so hasConsoleCalls
   // reflects them — this is what gates auto-injected Serial.begin(baud) and
-  // <iostream>. Without it, a callback's Serial.println reaches an
-  // uninitialized UART and produces no output.
+  // <iostream>.
   if (loweredConsoleInCallback()) {
     result.hasConsoleCalls = true;
   }

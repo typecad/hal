@@ -109,6 +109,13 @@ export class CompilationContext {
    * buildProgramIR assigns it; callers must null-check.
    */
   diagnostics: Diagnostic[] = [];
+
+  /**
+   * Module-level free-function return types for the file currently being
+   * lowered. Populated by buildProgramIR so UI callbacks / timers can resolve
+   * helper return types. Cleared in resetBuildState.
+   */
+  activeFunctionReturnTypes = new Map<string, string>();
 }
 
 /**
@@ -222,6 +229,7 @@ export const registeredCallbacks = createArrayProxy(ctx => ctx.registeredCallbac
 
 export const discriminatedUnionVariantNames = new Map<string, string[]>();
 export const restParamFunctions = createMapProxy(ctx => ctx.restParamFunctions);
+export const activeFunctionReturnTypes = createMapProxy(ctx => ctx.activeFunctionReturnTypes);
 
 export function getActiveExtendsClass(): string | undefined { return getContext().activeExtendsClass; }
 export function setActiveExtendsClass(v: string | undefined): void { getContext().activeExtendsClass = v; }
@@ -332,6 +340,7 @@ export function resetBuildState(): void {
   registeredCallbacks.length = 0;
   discriminatedUnionVariantNames.clear();
   restParamFunctions.clear();
+  activeFunctionReturnTypes.clear();
   getContext()._currentBoardConstants = undefined;
 }
 

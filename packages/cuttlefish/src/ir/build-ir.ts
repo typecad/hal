@@ -208,6 +208,12 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   }
 
   const functionReturnTypes = buildFunctionReturnTypeMap(source);
+  // Expose return types on the compilation context so UI callbacks / timers
+  // can resolve helper types without every call site threading the map.
+  getContext().activeFunctionReturnTypes.clear();
+  for (const [name, type] of functionReturnTypes) {
+    getContext().activeFunctionReturnTypes.set(name, type);
+  }
   const topLevelVariableTypes = new Map<string, CppTypeHint>();
   let defaultExportName: string | undefined;
 

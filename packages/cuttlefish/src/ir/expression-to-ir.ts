@@ -7,6 +7,7 @@ import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
 import { renderExprAsText } from "./render-expr.js";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
 import { isSignalName, resolveElementValue } from "./transformers/ui-call-resolver.js";
+import { getCanvasAmbientCtx } from "./transformers/ui-callback-lowering.js";
 import { halInstances } from "./hal-resolver.js";
 import { escapeCppKeyword } from "../utils/strings.js";
 import { tryLowerRegisterRead } from "./transformers/register-assignment.js";
@@ -1670,6 +1671,21 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
 
   // Handle property access expressions like obj.property or this.field
   if (ts.isPropertyAccessExpression(expr)) {
+    // ── Ambient canvas dims: ctx.width / ctx.height → __ui_canvas_w / _h ──
+    {
+      const canvasCtx = getCanvasAmbientCtx();
+      if (
+        canvasCtx &&
+        ts.isIdentifier(expr.expression) &&
+        expr.expression.text === canvasCtx &&
+        (expr.name.text === "width" || expr.name.text === "height")
+      ) {
+        return {
+          kind: "identifier",
+          value: expr.name.text === "width" ? "__ui_canvas_w" : "__ui_canvas_h",
+        };
+      }
+    }
     // ── UI element .value read: screen.led.value → __ui_nodes[N].value ──
     if (expr.name.text === "value" &&
         ts.isPropertyAccessExpression(expr.expression) &&

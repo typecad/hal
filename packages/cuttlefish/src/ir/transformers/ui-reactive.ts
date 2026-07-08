@@ -75,9 +75,18 @@ export interface ListBindingSpec {
   countFnName: string;   // C++ function: uint16_t fn(void)
   itemFnName: string;    // C++ function: void fn(uint16_t idx, char* buf, uint8_t size)
   tapFnName: string | null;   // C++ function: void fn(uint16_t idx) — null if no tap callback
-  countFnBody: string;   // lowered C++ body for the count function
-  itemFnBody: string;    // lowered C++ body for the item function
-  tapFnBody: string | null;   // lowered C++ body for tap, or null
+  countFnBody: string;   // lowered C++ body for the count function (legacy compact)
+  itemFnBody: string;    // lowered C++ body for the item function (legacy compact)
+  tapFnBody: string | null;   // lowered C++ body for tap, or null (legacy compact)
+  /** Statement IR for the count function body (preferred over countFnBody). */
+  countStatements?: import("../../api/shared/ir-core.js").StatementIR[];
+  /** Statement IR for the item function body (preferred over itemFnBody). */
+  itemStatements?: import("../../api/shared/ir-core.js").StatementIR[];
+  /** Statement IR for the tap callback body (preferred over tapFnBody). */
+  tapStatements?: import("../../api/shared/ir-core.js").StatementIR[];
+  countSourceSpan?: import("../../types.js").SourceSpan;
+  itemSourceSpan?: import("../../types.js").SourceSpan;
+  tapSourceSpan?: import("../../types.js").SourceSpan;
 }
 
 const listBindings: ListBindingSpec[] = [];
@@ -101,7 +110,10 @@ export function resetListBindings(): void {
 export interface InputBindingSpec {
   nodeIndex: number;
   cbFnName: string;   // C++ function: void fn(const char* text)
-  cbFnBody: string;   // lowered C++ body for the callback
+  cbFnBody: string;   // lowered C++ body for the callback (legacy compact)
+  /** Statement IR for the callback body (preferred over cbFnBody). */
+  bodyStatements?: import("../../api/shared/ir-core.js").StatementIR[];
+  sourceSpan?: import("../../types.js").SourceSpan;
 }
 
 const inputBindings: InputBindingSpec[] = [];
@@ -118,18 +130,14 @@ export function resetInputBindings(): void {
   inputBindings.length = 0;
 }
 
-/** Emit the input-binding table + callback functions. */
-export function emitInputBindings(specs: InputBindingSpec[]): string {
+/** Emit only the input-binding table (callback functions emitted separately). */
+export function emitInputBindingTable(specs: InputBindingSpec[]): string {
   if (specs.length === 0) {
     return `UIInputBinding __ui_input_bindings[] = {};\nconst uint16_t __ui_input_binding_count = 0;`;
   }
-  const lines: string[] = [];
-  // Emit the callback functions.
-  for (const spec of specs) {
-    lines.push(`void ${spec.cbFnName}(const char* text) { ${spec.cbFnBody} }`);
-  }
-  // Emit the binding table.
-  lines.push(`UIInputBinding __ui_input_bindings[] = {`);
+  const lines: string[] = [
+    `UIInputBinding __ui_input_bindings[] = {`,
+  ];
   for (const spec of specs) {
     lines.push(`  { .node=${spec.nodeIndex}, .cb=${spec.cbFnName} },`);
   }
@@ -137,12 +145,39 @@ export function emitInputBindings(specs: InputBindingSpec[]): string {
   lines.push(`const uint16_t __ui_input_binding_count = ${specs.length};`);
   return lines.join("\n");
 }
-export function emitListBindings(specs: ListBindingSpec[]): string {
+
+/** @deprecated Prefer emit callback wrappers via emitCallbackWrapper + emitInputBindingTable. */
+export function emitInputBindings(specs: InputBindingSpec[]): string {
+  if (specs.length === 0) return emitInputBindingTable(specs);
+  const lines: string[] = [];
+  for (const spec of specs) {
+    lines.push(`void ${spec.cbFnName}(const char* text) { ${spec.cbFnBody} }`);
+  }
+  lines.push(emitInputBindingTable(specs));
+  return lines.join("\n");
+}
+
+/** Emit only the list-binding table (count/item/tap functions emitted separately). */
+export function emitListBindingTable(specs: ListBindingSpec[]): string {
   if (specs.length === 0) {
     return `UIListBinding __ui_list_bindings[] = {};\nconst uint16_t __ui_list_binding_count = 0;`;
   }
+  const lines: string[] = [
+    `UIListBinding __ui_list_bindings[] = {`,
+  ];
+  for (const spec of specs) {
+    const tap = spec.tapFnName && (spec.tapStatements || spec.tapFnBody) ? spec.tapFnName : "nullptr";
+    lines.push(`  { .node=${spec.nodeIndex}, .countFn=${spec.countFnName}, .itemFn=${spec.itemFnName}, .tapFn=${tap} },`);
+  }
+  lines.push(`};`);
+  lines.push(`const uint16_t __ui_list_binding_count = ${specs.length};`);
+  return lines.join("\n");
+}
+
+/** @deprecated Prefer emit callback wrappers via emitCallbackWrapper + emitListBindingTable. */
+export function emitListBindings(specs: ListBindingSpec[]): string {
+  if (specs.length === 0) return emitListBindingTable(specs);
   const lines: string[] = [];
-  // Emit count + item + tap functions.
   for (const spec of specs) {
     lines.push(`uint16_t ${spec.countFnName}() { ${spec.countFnBody} }`);
     lines.push(`void ${spec.itemFnName}(uint16_t idx, char* buf, uint8_t size) { ${spec.itemFnBody} }`);
@@ -150,13 +185,6 @@ export function emitListBindings(specs: ListBindingSpec[]): string {
       lines.push(`void ${spec.tapFnName}(uint16_t idx) { ${spec.tapFnBody} }`);
     }
   }
-  // Emit the binding table.
-  lines.push(`UIListBinding __ui_list_bindings[] = {`);
-  for (const spec of specs) {
-    const tap = spec.tapFnName && spec.tapFnBody ? spec.tapFnName : "nullptr";
-    lines.push(`  { .node=${spec.nodeIndex}, .countFn=${spec.countFnName}, .itemFn=${spec.itemFnName}, .tapFn=${tap} },`);
-  }
-  lines.push(`};`);
-  lines.push(`const uint16_t __ui_list_binding_count = ${specs.length};`);
+  lines.push(emitListBindingTable(specs));
   return lines.join("\n");
 }

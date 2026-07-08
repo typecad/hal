@@ -15,10 +15,14 @@
 // ---------------------------------------------------------------------------
 
 import type { EmitterContext } from "./emitter-context.js";
+import { appendSourceLine, appendRenderedStatement } from "./line-appender.js";
+import { createChildEmissionScope, createEmissionScopeState } from "../snprintf-helpers.js";
+import type { StatementIR } from "../../api/index.js";
+import type { SourceSpan } from "../../types.js";
 import { emitRuntimeHeader } from "../../ui/runtime-header.js";
 import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry.js";
 import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandlers } from "../../ir/transformers/ui-call-resolver.js";
-import { emitBindingTable, emitListBindings, getListBindings, emitInputBindings, getInputBindings } from "../../ir/transformers/ui-reactive.js";
+import { emitBindingTable, emitListBindingTable, getListBindings, emitInputBindingTable, getInputBindings } from "../../ir/transformers/ui-reactive.js";
 import { emitCanvasBindings, canvasBindings } from "../../ir/transformers/canvas-lowering.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import {
@@ -367,11 +371,21 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   }
   ctx.sourceLines.push(emitBindingTable(uiBindings()));
 
-  // 4a. List binding table + functions (from ui.bindList calls).
-  ctx.sourceLines.push(emitListBindings(getListBindings()));
+  // 4a. List binding functions + table (from ui.bindList calls).
+  for (const spec of getListBindings()) {
+    emitCallbackWrapper(ctx, spec.countFnName, spec.countFnBody, spec.countStatements, spec.countSourceSpan, "()", "uint16_t");
+    emitCallbackWrapper(ctx, spec.itemFnName, spec.itemFnBody, spec.itemStatements, spec.itemSourceSpan, "(uint16_t idx, char* buf, uint8_t size)", "void");
+    if (spec.tapFnName && (spec.tapStatements || spec.tapFnBody)) {
+      emitCallbackWrapper(ctx, spec.tapFnName, spec.tapFnBody ?? "", spec.tapStatements, spec.tapSourceSpan, "(uint16_t idx)", "void");
+    }
+  }
+  ctx.sourceLines.push(emitListBindingTable(getListBindings()));
 
-  // 4a'. Input binding table + functions (from ui.bindInput calls).
-  ctx.sourceLines.push(emitInputBindings(getInputBindings()));
+  // 4a'. Input binding functions + table (from ui.bindInput calls).
+  for (const spec of getInputBindings()) {
+    emitCallbackWrapper(ctx, spec.cbFnName, spec.cbFnBody, spec.bodyStatements, spec.sourceSpan, "(const char* text)", "void");
+  }
+  ctx.sourceLines.push(emitInputBindingTable(getInputBindings()));
 
   // 4b. Binding compute functions. Each ui.bind(node, prop, fn) records a
   // BindingSpec whose fnName is referenced by the table. v1 emits a stub that
@@ -440,7 +454,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // Each callback is a plain function; the runtime's ui_poll_inputs() calls it
   // on falling edge. No async runtime needed — runs in the main loop frame.
   for (const wp of watchPinSpecs()) {
-    ctx.sourceLines.push(`void ${wp.fnName}() { ${wp.callbackBody || ""} }`);
+    emitCallbackWrapper(ctx, wp.fnName, wp.callbackBody, wp.bodyStatements, wp.sourceSpan);
   }
   if (watchPinSpecs().length > 0) {
     ctx.sourceLines.push(`UIPinWatch __ui_pin_watches[] = {`);
@@ -476,7 +490,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // own exported function, already emitted by the general transpiler pipeline).
   for (const ch of touchHandlers) {
     if (ch.isNamedRef) continue;
-    ctx.sourceLines.push(`void ${ch.fnName}() { ${ch.callbackBody || ""} }`);
+    emitCallbackWrapper(ctx, ch.fnName, ch.callbackBody, ch.bodyStatements, ch.sourceSpan);
   }
 
   // Build lookup tables (null for nodes without handlers)
@@ -514,7 +528,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     }
     for (const h of inputChangeHandlers) {
       if (h.isNamedRef) continue;  // author's own function; no wrapper.
-      ctx.sourceLines.push(`void ${h.fnName}() { ${h.callbackBody || ""} }`);
+      emitCallbackWrapper(ctx, h.fnName, h.callbackBody, h.bodyStatements, h.sourceSpan);
     }
     ctx.sourceLines.push(`void __ui_kb_set_onchange() {`);
     ctx.sourceLines.push(`  __ui_kb_onchange = nullptr;`);
@@ -532,7 +546,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   const rcMaxIdx = rangeChangeHandlers.reduce((max, h) => Math.max(max, h.nodeIndex), -1);
   const rcTableSize = Math.max(rcMaxIdx + 1, 1);
   for (const h of rangeChangeHandlers) {
-    ctx.sourceLines.push(`void ${h.fnName}() { ${h.callbackBody || ""} }`);
+    emitCallbackWrapper(ctx, h.fnName, h.callbackBody, h.bodyStatements, h.sourceSpan);
   }
   if (profile.touch && rangeChangeHandlers.length > 0) {
     const rcEntries: string[] = [];
@@ -547,7 +561,6 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     ctx.sourceLines.push(`const uint16_t __ui_rangechange_handler_count = 0;`);
   }
 
-  // 9. Radio group table (from auto-wire).
   // 9. Radio group table (from auto-wire).
   const radioGroups = getRadioGroups();
   if (radioGroups.size > 0) {
@@ -566,7 +579,46 @@ export function emitUIRuntime(ctx: EmitterContext): void {
 
   // 10. Canvas draw bindings (ui.drawCanvas). Each spec emits a draw wrapper
   // that runs the lowered callback body against the node's offscreen canvas.
-  ctx.sourceLines.push(emitCanvasBindings(canvasBindings()));
+  emitCanvasBindings(
+    canvasBindings(),
+    (line, span) => {
+      appendSourceLine(ctx, line, span ? { tsSpan: span, nodeKind: "ui-canvas-callback" } : undefined);
+    },
+    (statements, indent) => {
+      const scope = createChildEmissionScope(createEmissionScopeState());
+      for (const stmt of statements) {
+        appendRenderedStatement(ctx, stmt, indent, scope);
+      }
+    },
+  );
+}
+
+/** Emit a synthesized callback wrapper. When bodyStatements is present, each
+ *  statement is rendered through StatementRenderer (same path setInterval /
+ *  free functions use). Falls back to pasting callbackBody for auto-wire /
+ *  legacy string-baked specs. Skipped by callers for isNamedRef handlers. */
+function emitCallbackWrapper(
+  ctx: EmitterContext,
+  fnName: string,
+  callbackBody: string,
+  bodyStatements: StatementIR[] | undefined,
+  sourceSpan: SourceSpan | undefined,
+  signature = "()",
+  returnType = "void",
+): void {
+  const mapEntry = sourceSpan
+    ? { tsSpan: sourceSpan, nodeKind: "ui-callback", symbolName: fnName }
+    : undefined;
+  if (bodyStatements && bodyStatements.length > 0) {
+    appendSourceLine(ctx, `${returnType} ${fnName}${signature} {`, mapEntry);
+    const scope = createChildEmissionScope(createEmissionScopeState());
+    for (const stmt of bodyStatements) {
+      appendRenderedStatement(ctx, stmt, "  ", scope);
+    }
+    appendSourceLine(ctx, `}`);
+    return;
+  }
+  appendSourceLine(ctx, `${returnType} ${fnName}${signature} { ${callbackBody || ""} }`, mapEntry);
 }
 
 /** Count NODE_FILL/NODE_TEXT entries in the emitted node table (one per node). */

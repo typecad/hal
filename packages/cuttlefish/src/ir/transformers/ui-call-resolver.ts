@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import ts from "typescript";
-import { Diagnostic } from "../../types.js";
+import { Diagnostic, type SourceSpan } from "../../types.js";
 import { StatementIR, HALOpIR } from "../../api/index.js";
 import { makeSourceSpan } from "../ast-node-utils.js";
 import { emitLinesToIR, halOpsToIR } from "./hal-emit-helpers.js";
@@ -21,10 +21,21 @@ import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
 import { effectiveDisplaySize } from "../../api/shared/display-profile.js";
-import { lowerCallbackBody, resetCallbackLoweringState, resolveColorLiterals, resolveColorIR } from "./ui-callback-lowering.js";
+import {
+  lowerCallbackStatements,
+  lowerNamedOrInlineCallback,
+  renameIdentifiersInStatements,
+  renderStatementsCompact,
+  resolveCallbackArg,
+  resetCallbackLoweringState,
+  resolveColorLiterals,
+  resolveColorIR,
+} from "./ui-callback-lowering.js";
 import { resolveDrawCanvasCall, resetCanvasBindings } from "./canvas-lowering.js";
 import type { StyledNode } from "../../ui/style-resolver.js";
 import { getContext } from "../build-ir-state.js";
+import { getCurrentIrTypeScope } from "../symbol-types.js";
+import { inferExprCppType, type CppTypeHint } from "../type-resolution.js";
 import { escapeCppStringLiteral, escapeSnprintfFormatFragment } from "../../utils/strings.js";
 
 // ── Pure-helper state ───────────────────────────────────────────────────────
@@ -93,8 +104,12 @@ export interface ClickHandlerSpec {
   kind: "click" | "hold" | "release" | "change" | "rangechange";
   /** Function name of the generated handler. */
   fnName: string;
-  /** C++ body of the callback. */
+  /** C++ body of the callback (legacy/auto-wire string bake). Prefer bodyStatements. */
   callbackBody: string;
+  /** Statement IR for the callback body (main pipeline). */
+  bodyStatements?: StatementIR[];
+  /** Source span of the original callback arrow/function, when known. */
+  sourceSpan?: SourceSpan;
   /** True when fnName references an existing author-declared C++ function (from
    *  an on:* attribute like on:click="saveSettings"). When true, the emitter
    *  must NOT synthesize a wrapper void fnName() {...} — the function exists. */
@@ -122,8 +137,12 @@ export interface WatchPinSpec {
   pin: string;
   /** Function name of the generated async watcher task. */
   fnName: string;
-  /** C++ body of the callback (what happens on falling edge). */
+  /** C++ body of the callback (legacy string bake). Prefer bodyStatements. */
   callbackBody: string;
+  /** Statement IR for the callback body (main pipeline). */
+  bodyStatements?: StatementIR[];
+  /** Source span of the original callback arrow/function, when known. */
+  sourceSpan?: SourceSpan;
 }
 
 const _watchPinSpecs: WatchPinSpec[] = [];
@@ -580,22 +599,36 @@ export interface LoweredTextBody {
   cppBody: string;
 }
 
-/** Format specifier for a single signal interpolation per spec §5.3.
- *  - bare int/uint/bool signal read   → "%d" (bool prints as 1/0 on hardware)
- *  - bare float/double signal read    → "%g"
- *  - bare const-char-pointer / String signal → "%s"
- *  - anything else (arithmetic, non-signal, literal) → "%d" (default; v1)
- *
- *  Only bare signal reads (`name()`) get a type-derived specifier; compound
- *  expressions fall through to %d because we don't infer the result type here
- *  (the runtime's renderExprAsText path is type-unaware — see Tier 3 plan). */
+/** Format specifier for a single signal/numeric interpolation per spec §5.3.
+ *  Prefer signal types; otherwise consult IrTypeScope globals + activeFunctionReturnTypes
+ *  via inferExprCppType for named free-function results (e.g. Math.floor → %g). */
+function bindingTypeMaps(): {
+  functionReturnTypes: Map<string, CppTypeHint>;
+  localVariableTypes: Map<string, CppTypeHint>;
+} {
+  const scope = getCurrentIrTypeScope();
+  const localVariableTypes = new Map<string, CppTypeHint>();
+  if (scope) {
+    for (const [k, v] of scope.globals) localVariableTypes.set(k, v as CppTypeHint);
+  }
+  const functionReturnTypes = new Map<string, CppTypeHint>(
+    [...(getContext().activeFunctionReturnTypes ?? new Map())] as Array<[string, CppTypeHint]>,
+  );
+  return { functionReturnTypes, localVariableTypes };
+}
+
 function numericFormat(expr: ts.Expression): string {
   if (ts.isCallExpression(expr) && ts.isIdentifier(expr.expression) &&
       expr.arguments.length === 0 && isSignalName(expr.expression.text)) {
     const t = signalCppType(expr.expression.text);
     if (t === "float" || t === "double") return "%g";
     if (t === "const char*" || t === "String" || t === "char*") return "%s";
+    return "%d";
   }
+  const { functionReturnTypes, localVariableTypes } = bindingTypeMaps();
+  const inferred = inferExprCppType(expr, functionReturnTypes, localVariableTypes, "");
+  if (inferred === "float" || inferred === "double") return "%g";
+  if (inferred === "const char*" || inferred === "char*" || inferred === "std::string" || inferred === "__tc_str_ptr") return "%s";
   return "%d";
 }
 
@@ -678,6 +711,23 @@ export function lowerTextBindingBody(
   const unwrapped = ts.isParenthesizedExpression(body) ? body.expression : body;
   if (ts.isConditionalExpression(unwrapped)) {
     return lowerTernaryTextChain(unwrapped, sourceText, diagnostics) ?? warn();
+  }
+
+  // Shape 5 fallback: snprintf a scalar/string expression via the main IR
+  // path (covers `x + "°C"`, helper calls, `.toFixed()`, bare identifiers,
+  // etc.). Reject containers/objects — those can't snprintf meaningfully.
+  if (
+    ts.isArrayLiteralExpression(unwrapped) ||
+    ts.isObjectLiteralExpression(unwrapped) ||
+    ts.isNewExpression(unwrapped) ||
+    ts.isClassExpression(unwrapped)
+  ) {
+    return warn();
+  }
+  const fmt = numericFormat(body);
+  const argText = lowerInterpolationArg(body, sourceText, diagnostics);
+  if (argText && argText !== "0 /* unsupported_expr */" && !argText.trimStart().startsWith("{")) {
+    return { cppBody: `snprintf(buf, size, "${fmt}", ${argText});` };
   }
 
   return warn();
@@ -776,6 +826,109 @@ function lowerTernaryTextChain(
   return { cppBody: lines.join(" ") };
 }
 
+/** Extract the compute expression from a bind count/bindFn argument:
+ *  arrow/fn-expr with expression body → that expr
+ *  arrow/fn-expr with block → last return's expression
+ *  identifier → top-level FunctionDeclaration last return or const-arrow body
+ *  else diagnose and return undefined. */
+function extractBindComputeExpr(
+  arg: ts.Expression,
+  diagnostics: Diagnostic[],
+  label: string,
+): ts.Expression | undefined {
+  const lastReturnExpr = (body: ts.Block): ts.Expression | undefined => {
+    for (let i = body.statements.length - 1; i >= 0; i--) {
+      const s = body.statements[i];
+      if (ts.isReturnStatement(s) && s.expression) return s.expression;
+    }
+    return undefined;
+  };
+
+  if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
+    if (ts.isBlock(arg.body)) {
+      const expr = lastReturnExpr(arg.body);
+      if (!expr) {
+        diagnostics.push({
+          severity: "error",
+          code: "ui-bind-unlowered",
+          message: `${label}: block callback must end with a return expression.`,
+        } as Diagnostic);
+      }
+      return expr;
+    }
+    return arg.body;
+  }
+
+  if (ts.isIdentifier(arg)) {
+    const name = arg.text;
+    const sf = arg.getSourceFile();
+    for (const stmt of sf.statements) {
+      if (ts.isFunctionDeclaration(stmt) && stmt.name?.text === name && stmt.body) {
+        const expr = lastReturnExpr(stmt.body);
+        if (!expr) {
+          diagnostics.push({
+            severity: "error",
+            code: "ui-bind-unlowered",
+            message: `${label}: function '${name}' must end with a return expression.`,
+          } as Diagnostic);
+        }
+        return expr;
+      }
+      if (ts.isVariableStatement(stmt)) {
+        for (const d of stmt.declarationList.declarations) {
+          if (
+            ts.isIdentifier(d.name) &&
+            d.name.text === name &&
+            d.initializer &&
+            (ts.isArrowFunction(d.initializer) || ts.isFunctionExpression(d.initializer))
+          ) {
+            const fn = d.initializer;
+            if (ts.isBlock(fn.body)) {
+              const expr = lastReturnExpr(fn.body);
+              if (!expr) {
+                diagnostics.push({
+                  severity: "error",
+                  code: "ui-bind-unlowered",
+                  message: `${label}: '${name}' must end with a return expression.`,
+                } as Diagnostic);
+              }
+              return expr;
+            }
+            return fn.body;
+          }
+        }
+      }
+    }
+    diagnostics.push({
+      severity: "error",
+      code: "ui-callback-unresolved-name",
+      message: `${label}: cannot resolve '${name}' to a top-level function or arrow.`,
+      hint: `Pass an inline arrow, or declare '${name}' at module scope.`,
+    } as Diagnostic);
+    return undefined;
+  }
+
+  diagnostics.push({
+    severity: "error",
+    code: "ui-bind-unlowered",
+    message: `${label}: expected an inline arrow/function or a top-level function name.`,
+  } as Diagnostic);
+  return undefined;
+}
+
+/** Rename a param only inside snprintf args AFTER the format string's closing `")`
+ *  so format fragments like `"%d"` are never corrupted. */
+function renameParamInSnprintfArgs(cppBody: string, from: string, to: string): string {
+  if (from === to) return cppBody;
+  const closeFmt = cppBody.indexOf('")');
+  if (closeFmt < 0) {
+    return cppBody.replace(new RegExp(`\\b${from}\\b`, "g"), to);
+  }
+  const head = cppBody.slice(0, closeFmt + 2);
+  const tail = cppBody.slice(closeFmt + 2).replace(new RegExp(`\\b${from}\\b`, "g"), to);
+  return head + tail;
+}
+
 function resolveBindCall(
   call: ts.CallExpression,
   fileName: string,
@@ -815,21 +968,17 @@ function resolveBindCall(
   let cppExpr = "";
   let cppBody: string | undefined;
   let bodyIR: import("../../api/shared/ir-core.js").ExpressionIR | undefined;
-  if (fnArg && (ts.isArrowFunction(fnArg) || ts.isFunctionExpression(fnArg))) {
-    const body = fnArg.body;
-    if (ts.isExpression(body)) {
-      if (property === "text") {
-        cppBody = lowerTextBindingBody(body, fileName, sourceText, diagnostics).cppBody;
-      } else {
-        // Stash the color-resolved ExpressionIR so the emitter can render it
-        // through the strategy-aware ExpressionRenderer (matching top-level
-        // code: division→static_cast<double>, modulo→fmod, concat wrapping).
-        // Also keep the prerendered cppExpr as a fallback.
-        const ir = expressionToIR(body, sourceText, diagnostics);
-        bodyIR = resolveColorIR(ir);
-        cppExpr = resolveColorLiterals(renderExprAsText(ir));
-      }
-    }
+
+  const body = extractBindComputeExpr(fnArg, diagnostics, "ui.bind");
+  if (!body) {
+    // diagnose already emitted; still record a stub so the table stays well-formed
+    if (property === "text") cppBody = "buf[0] = 0;";
+  } else if (property === "text") {
+    cppBody = lowerTextBindingBody(body, fileName, sourceText, diagnostics).cppBody;
+  } else {
+    const ir = expressionToIR(body, sourceText, diagnostics);
+    bodyIR = resolveColorIR(ir);
+    cppExpr = resolveColorLiterals(renderExprAsText(ir));
   }
   recordBinding({ nodeIndex, property, fnName, cppExpr, cppBody, bodyIR });
 
@@ -870,39 +1019,65 @@ function resolveBindListCall(
     }
   }
 
-  // Lower the count function: () => N → "return N;"
+  // Lower the count function via extractBindComputeExpr → return StatementIR.
   let countBody = "return 0;";
-  if (countArg && (ts.isArrowFunction(countArg) || ts.isFunctionExpression(countArg))) {
-    const body = countArg.body;
-    if (body && ts.isExpression(body)) {
-      // Handle bare numeric/identifier directly (lowerTextBindingBody doesn't cover these).
-      const exprText = (body as ts.Expression).getText();
-      if (exprText && (/^\d+$/.test(exprText) || /^\w+$/.test(exprText))) {
-        countBody = `return ${exprText};`;
-      } else {
-        // Try lowerTextBindingBody for more complex expressions.
-        const { cppBody } = lowerTextBindingBody(body, fileName, sourceText, []);
-        if (cppBody) {
-          const m = /snprintf\([^,]+,\s*[^,]+,\s*"[^"]*"(?:,\s*(.+))?\)/.exec(cppBody);
-          countBody = m?.[1] ? `return ${m[1].replace(/[;]\s*$/, "")};` : "return 0;";
-        }
-      }
+  let countStatements: StatementIR[] | undefined;
+  let countSourceSpan: SourceSpan | undefined;
+  if (countArg) {
+    countSourceSpan = makeSourceSpan(countArg, fileName, sourceText);
+    const countExpr = extractBindComputeExpr(countArg, diagnostics, "ui.bindList countFn");
+    if (countExpr) {
+      const exprIR = expressionToIR(countExpr, sourceText, diagnostics);
+      countStatements = [{
+        kind: "return",
+        sourceSpan: makeSourceSpan(countExpr, fileName, sourceText),
+        value: exprIR,
+      }];
+      countBody = `return ${renderExprAsText(exprIR)};`;
     }
   }
 
-  // Lower the item function: (i) => `text ${i}` → "snprintf(buf, size, ...);"
+  // Lower the item function.
   let itemBody = "buf[0] = 0;";
-  if (itemArg && (ts.isArrowFunction(itemArg) || ts.isFunctionExpression(itemArg))) {
-    const body = itemArg.body;
-    if (body && ts.isExpression(body)) {
-      const { cppBody } = lowerTextBindingBody(body, fileName, sourceText, []);
-      itemBody = cppBody || "buf[0] = 0;";
-      // Replace the arrow's first parameter name with 'idx' (the C++ arg name).
-      if (ts.isArrowFunction(itemArg) && itemArg.parameters.length > 0) {
-        const paramName = itemArg.parameters[0].name.getText();
+  let itemStatements: StatementIR[] | undefined;
+  let itemSourceSpan: SourceSpan | undefined;
+  if (itemArg) {
+    itemSourceSpan = makeSourceSpan(itemArg, fileName, sourceText);
+    if (ts.isArrowFunction(itemArg) || ts.isFunctionExpression(itemArg)) {
+      const paramName =
+        itemArg.parameters.length > 0 && ts.isIdentifier(itemArg.parameters[0].name)
+          ? itemArg.parameters[0].name.text
+          : "";
+      const body = itemArg.body;
+      if (ts.isExpression(body)) {
+        const { cppBody } = lowerTextBindingBody(body, fileName, sourceText, diagnostics);
+        itemBody = renameParamInSnprintfArgs(cppBody || "buf[0] = 0;", paramName, "idx");
+        itemStatements = [{
+          kind: "call",
+          sourceSpan: makeSourceSpan(body, fileName, sourceText),
+          callee: "__EMIT__",
+          args: [{ kind: "string", value: itemBody.replace(/;$/, "") }],
+        }];
+      } else {
+        let stmts = lowerCallbackStatements(itemArg, fileName, sourceText, diagnostics, "ui-event-callback");
         if (paramName && paramName !== "idx") {
-          itemBody = itemBody.replace(new RegExp(`\\b${paramName}\\b`, "g"), "idx");
+          stmts = renameIdentifiersInStatements(stmts, paramName, "idx");
         }
+        itemStatements = stmts;
+        itemBody = renderStatementsCompact(stmts) || "buf[0] = 0;";
+      }
+    } else {
+      // Named ref / other — treat as text-binding expression extractor.
+      const body = extractBindComputeExpr(itemArg, diagnostics, "ui.bindList itemFn");
+      if (body) {
+        const { cppBody } = lowerTextBindingBody(body, fileName, sourceText, diagnostics);
+        itemBody = cppBody || "buf[0] = 0;";
+        itemStatements = [{
+          kind: "call",
+          sourceSpan: makeSourceSpan(body, fileName, sourceText),
+          callee: "__EMIT__",
+          args: [{ kind: "string", value: itemBody.replace(/;$/, "") }],
+        }];
       }
     }
   }
@@ -913,23 +1088,40 @@ function resolveBindListCall(
 
   // Optional 4th arg: onTap callback (index) => { ... }
   let tapFnBody: string | null = null;
+  let tapStatements: StatementIR[] | undefined;
+  let tapSourceSpan: SourceSpan | undefined;
   if (call.arguments.length >= 4) {
     const tapArg = call.arguments[3];
-    if (tapArg && (ts.isArrowFunction(tapArg) || ts.isFunctionExpression(tapArg))) {
-      const cbBody = lowerCallbackBody(tapArg, sourceText, diagnostics);
-      // Replace the arrow's parameter name with 'idx' (the C++ arg name).
-      let body = cbBody || "";
-      if (ts.isArrowFunction(tapArg) && tapArg.parameters.length > 0) {
-        const paramName = tapArg.parameters[0].name.getText();
-        if (paramName && paramName !== "idx") {
-          body = body.replace(new RegExp(`\\b${paramName}\\b`, "g"), "idx");
-        }
+    tapSourceSpan = makeSourceSpan(tapArg, fileName, sourceText);
+    const lowered = lowerNamedOrInlineCallback(
+      tapArg, fileName, sourceText, diagnostics, "ui.bindList tap", "ui-event-callback",
+    );
+    if (lowered) {
+      let stmts = lowered.statements;
+      const paramName = lowered.paramNames[0];
+      if (paramName && paramName !== "idx") {
+        stmts = renameIdentifiersInStatements(stmts, paramName, "idx");
       }
-      tapFnBody = body || null;
+      tapStatements = stmts;
+      tapFnBody = renderStatementsCompact(stmts) || null;
     }
   }
 
-  recordListBinding({ nodeIndex, countFnName, itemFnName, tapFnName: tapFnBody ? tapFnName : null, countFnBody: countBody, itemFnBody: itemBody, tapFnBody });
+  recordListBinding({
+    nodeIndex,
+    countFnName,
+    itemFnName,
+    tapFnName: tapStatements || tapFnBody ? tapFnName : null,
+    countFnBody: countBody,
+    itemFnBody: itemBody,
+    tapFnBody,
+    countStatements,
+    itemStatements,
+    tapStatements,
+    countSourceSpan,
+    itemSourceSpan,
+    tapSourceSpan,
+  });
 
   return {
     kind: "block",
@@ -969,21 +1161,27 @@ function resolveBindInputCall(
 
   const cbFnName = `__ui_input_cb_${getInputBindingsCount()}`;
 
-  // Lower the callback body via the same mechanism as the bindList tap
-  // callback. The arrow's first param is the typed string; rename it to
-  // 'text' (the C++ arg name) so the body references resolve correctly.
+  const lowered = lowerNamedOrInlineCallback(
+    cbArg, fileName, sourceText, diagnostics, "ui.bindInput", "ui-event-callback",
+  );
+  let bodyStatements: StatementIR[] | undefined;
   let cbFnBody = "";
-  if (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg)) {
-    cbFnBody = lowerCallbackBody(cbArg, sourceText, diagnostics) || "";
-    if (ts.isArrowFunction(cbArg) && cbArg.parameters.length > 0) {
-      const paramName = cbArg.parameters[0].name.getText();
-      if (paramName && paramName !== "text") {
-        cbFnBody = cbFnBody.replace(new RegExp(`\\b${paramName}\\b`, "g"), "text");
-      }
+  if (lowered) {
+    bodyStatements = lowered.statements;
+    const paramName = lowered.paramNames[0];
+    if (paramName && paramName !== "text") {
+      bodyStatements = renameIdentifiersInStatements(bodyStatements, paramName, "text");
     }
+    cbFnBody = renderStatementsCompact(bodyStatements);
   }
 
-  recordInputBinding({ nodeIndex, cbFnName, cbFnBody });
+  recordInputBinding({
+    nodeIndex,
+    cbFnName,
+    cbFnBody,
+    bodyStatements,
+    sourceSpan: makeSourceSpan(cbArg, fileName, sourceText),
+  });
 
   return {
     kind: "block",
@@ -1008,16 +1206,27 @@ function resolveWatchPinCall(
     : ts.isNumericLiteral(pinArg) ? pinArg.text
     : pinArg.getText();
 
-  // Lower the callback body to C++ via the shared helper (same path as
-  // onToggle). Handles console.* → platform transform, signal .set()/()
-  // reads, and color-name resolution.
-  let callbackBody = "";
-  if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
-    callbackBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
+  let bodyStatements: StatementIR[] | undefined;
+  const resolved = resolveCallbackArg(cbArg, cbArg?.getSourceFile(), diagnostics, "ui.watchPin");
+  if (resolved?.kind === "inline") {
+    bodyStatements = lowerCallbackStatements(resolved.fn, fileName, sourceText, diagnostics, "ui-event-callback");
+  } else if (resolved?.kind === "named") {
+    bodyStatements = [{
+      kind: "call",
+      sourceSpan: makeSourceSpan(cbArg!, fileName, sourceText),
+      callee: resolved.name,
+      args: [],
+    }];
   }
 
   const fnName = `__ui_watchpin_${_watchPinSpecs.length}`;
-  recordWatchPin({ pin: String(pin), fnName, callbackBody });
+  recordWatchPin({
+    pin: String(pin),
+    fnName,
+    callbackBody: "",
+    bodyStatements,
+    sourceSpan: cbArg ? makeSourceSpan(cbArg, fileName, sourceText) : undefined,
+  });
 
   return {
     kind: "block",

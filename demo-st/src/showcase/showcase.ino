@@ -7700,9 +7700,15 @@ UIBinding __ui_bindings[] = {
   { .node=284, .prop=PROP_VALUE, .fn=__ui_bind_value_10, .textFn=nullptr },
   { .node=285, .prop=PROP_TEXT, .fn=nullptr, .textFn=__ui_bind_text_11 },
 };
-uint16_t __ui_list_count_0() { return 40; }
-void __ui_list_item_0(uint16_t idx, char* buf, uint8_t size) { snprintf(buf, size, "Item %d", idx + 1); }
-void __ui_list_tap_0(uint16_t idx) { Serial.print(F("tapped:")); Serial.println(idx); }
+uint16_t __ui_list_count_0() {
+  return 40;
+}
+void __ui_list_item_0(uint16_t idx, char* buf, uint8_t size) {
+  snprintf(buf, size, "Item %d", idx + 1);
+}
+void __ui_list_tap_0(uint16_t idx) {
+  Serial.print(F("tapped:")); Serial.println(idx);
+}
 UIListBinding __ui_list_bindings[] = {
   { .node=331, .countFn=__ui_list_count_0, .itemFn=__ui_list_item_0, .tapFn=__ui_list_tap_0 },
 };
@@ -7760,7 +7766,9 @@ const uint16_t __ui_click_handler_count = 336;
 void __ui_kb_set_onchange();
 void captureName();
 void captureAge();
-void __ui_kbInput_change_28() { Serial.print(F("message:")); Serial.println(__ui_nodes[340].textBuffer); }
+void __ui_kbInput_change_28() {
+  Serial.print(F("message:")); Serial.println(__ui_nodes[340].textBuffer);
+}
 void __ui_kb_set_onchange() {
   __ui_kb_onchange = nullptr;
   if (__ui_kb_target == 290) __ui_kb_onchange = captureName;
@@ -7776,7 +7784,22 @@ const uint16_t __ui_radio_group_count = 1;
 void __ui_canvas_draw_0(CuttlefishCanvas16* __c) {
   int16_t __ui_canvas_w = __c ? display_canvasWidth(__c) : __ui_canvas_fallback_w;
   int16_t __ui_canvas_h = __c ? display_canvasHeight(__c) : __ui_canvas_fallback_h;
-  ui_display_fill_rect(0, 0, __ui_canvas_w, __ui_canvas_h, 0x0); ui_display_fill_rect(8, 8, 40, 24, 0x19cb); ui_display_draw_rect(8, 8, 40, 24, 0x34df); ui_display_fill_round_rect(56, 8, 40, 24, 6, 0x1b47); ui_display_draw_round_rect(56, 8, 40, 24, 6, 0x4ef0); ui_display_fill_circle(120, 20, 14, 0x58c3); ui_display_draw_circle(120, 20, 14, 0xfaae); ui_display_draw_line(150, 6, 190, 40, 0xffe6); ui_display_draw_fast_hline(8, 48, 180, 0x2a4d); ui_display_draw_fast_vline(196, 8, 40, 0x2a4d); ui_display_draw_pixel(10, 70, 0xffff); ui_display_draw_pixel(14, 72, 0xffff); ui_display_draw_pixel(18, 70, 0xffff); ui_display_draw_pixel(22, 74, 0xffff); ui_display_draw_pixel(26, 70, 0xffff); ui_display_set_cursor(8, 100); ui_display_set_text_color_solid(0xffff); ui_display_print("canvas primitives");
+  ui_display_fill_rect(0, 0, __ui_canvas_w, __ui_canvas_h, 0x843);
+  ui_display_fill_rect(8, 8, 40, 24, 0x19cb);
+  ui_display_draw_rect(8, 8, 40, 24, 0x34df);
+  ui_display_fill_round_rect(56, 8, 40, 24, 6, 0x1b47);
+  ui_display_draw_round_rect(56, 8, 40, 24, 6, 0x4ef0);
+  ui_display_fill_circle(120, 20, 14, 0x58c3);
+  ui_display_draw_circle(120, 20, 14, 0xfaae);
+  ui_display_draw_line(150, 6, 190, 40, 0xffe6);
+  ui_display_draw_fast_hline(8, 48, 180, 0x2a4d);
+  ui_display_draw_fast_vline(196, 8, 40, 0x2a4d);
+  ui_display_draw_pixel(10, 70, 0xffff);
+  ui_display_draw_pixel(14, 72, 0xffff);
+  ui_display_draw_pixel(18, 70, 0xffff);
+  ui_display_draw_pixel(22, 74, 0xffff);
+  ui_display_draw_pixel(26, 70, 0xffff);
+  ui_display_set_cursor(8, 100); ui_display_set_text_color_solid(0xce79); ui_display_print("canvas primitives");
 }
 UICanvasBinding __ui_canvas_bindings[] = {
   { .node=322, .fn=__ui_canvas_draw_0 },

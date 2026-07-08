@@ -7,20 +7,39 @@
 // lowered body uses the SAME ui_display_* wrappers every other draw path uses.
 // Colors resolve to RGB565 via the existing resolver; ctx.width/ctx.height map
 // to __ui_canvas_w / __ui_canvas_h locals set by the emitted wrapper.
+//
+// Block-body callbacks lower through lowerCallbackStatements (main
+// statement-to-IR pipeline, same as setInterval / onClick), with an ambient
+// canvas ctx so callToStatement / expressionToIR rewrite ctx.* forms. The
+// resulting StatementIR[] is stored on DrawCanvasSpec and rendered at emit.
 // ---------------------------------------------------------------------------
 
 import ts from "typescript";
-import { Diagnostic } from "../../types.js";
+import { Diagnostic, type SourceSpan } from "../../types.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { resolveColorInternal } from "../../ui/color.js";
 import { getDisplayProfile } from "../../ui/display-profile-store.js";
+import {
+  resolveColorIR,
+  lowerCallbackStatements,
+  renderStatementsCompact,
+} from "./ui-callback-lowering.js";
+import type { StatementIR } from "../../api/shared/ir-core.js";
+import { makeSourceSpan } from "../ast-node-utils.js";
+import { resolveNodeIndex, resolveUIModuleImport, pushUnknownElementDiagnostic } from "./ui-call-resolver.js";
 
-/** One user draw callback: the node it targets + the lowered C++ body string. */
+/** One user draw callback: the node it targets + IR body (preferred) or
+ *  lowered C++ body string (fallback / tests). */
 export interface DrawCanvasSpec {
   nodeIndex: number;
   fnName: string;       // e.g. "__ui_canvas_draw_0"
-  callbackBody: string; // lowered body (statements, each terminated with ;)
+  /** @deprecated Prefer bodyStatements; kept for compact-string fallbacks. */
+  callbackBody: string;
+  /** Statement IR produced by lowerCallbackStatements (main pipeline). */
+  bodyStatements?: StatementIR[];
+  /** Source span of the original (ctx) => {...} callback, when known. */
+  sourceSpan?: SourceSpan;
 }
 
 const _canvasBindings: DrawCanvasSpec[] = [];
@@ -58,9 +77,16 @@ function tryColor(text: string): number | null {
   }
 }
 
+/** Substitute ctx.width/ctx.height references (bare or embedded in a
+ *  compound expression, e.g. `ctx.height - 4`) with the wrapper's locals. */
+function substituteCanvasDims(raw: string, ctxName: string): string {
+  return raw
+    .replace(new RegExp(`\\b${ctxName}\\.width\\b`, "g"), "__ui_canvas_w")
+    .replace(new RegExp(`\\b${ctxName}\\.height\\b`, "g"), "__ui_canvas_h");
+}
+
 /** Lower one argument expression to its C++ text. Color strings → rgb565 hex. */
 function lowerArg(arg: ts.Expression, ctxName: string, sourceText: string, diagnostics: Diagnostic[]): string {
-  // ctx.width / ctx.height → __ui_canvas_w / __ui_canvas_h (as a whole arg)
   if (
     ts.isPropertyAccessExpression(arg) &&
     ts.isIdentifier(arg.expression) &&
@@ -70,13 +96,18 @@ function lowerArg(arg: ts.Expression, ctxName: string, sourceText: string, diagn
     return arg.name.text === "width" ? "__ui_canvas_w" : "__ui_canvas_h";
   }
   let raw = renderExprAsText(expressionToIR(arg, sourceText, diagnostics));
-  // ctx.width / ctx.height embedded in a compound expression (e.g. ctx.height - 4).
-  // expressionToIR leaves these as literal text, so substitute on the rendered string.
-  raw = raw.replace(new RegExp(`\\b${ctxName}\\.width\\b`, "g"), "__ui_canvas_w");
-  raw = raw.replace(new RegExp(`\\b${ctxName}\\.height\\b`, "g"), "__ui_canvas_h");
+  raw = substituteCanvasDims(raw, ctxName);
   const color = tryColor(raw);
   if (color !== null) raw = `0x${color.toString(16)}`;
   return raw;
+}
+
+/** Lower an argument known (by its position) to be a color. Resolves color
+ *  string literals at the IR level (via resolveColorIR) BEFORE rendering, so
+ *  ternaries like `temp() > 25 ? '#a33' : '#33a'` resolve both branches. */
+function lowerColorArg(arg: ts.Expression, ctxName: string, sourceText: string, diagnostics: Diagnostic[]): string {
+  const ir = resolveColorIR(expressionToIR(arg, sourceText, diagnostics));
+  return substituteCanvasDims(renderExprAsText(ir), ctxName);
 }
 
 /** ctx method name → shim callee. */
@@ -94,12 +125,24 @@ const CANVAS_METHODS: Record<string, string> = {
   rgbBitmap: "ui_display_draw_rgb_bitmap",
 };
 
+/** Argument index (0-based) of the color parameter for each ctx method. */
+const COLOR_ARG_INDEX: Record<string, number> = {
+  drawPixel: 2,
+  fillRect: 4,
+  rect: 4,
+  fillRoundRect: 5,
+  roundRect: 5,
+  line: 4,
+  hline: 3,
+  vline: 3,
+  fillCircle: 3,
+  circle: 3,
+};
+
 /**
  * If `call` is a `<ctxName>.method(args)` call we recognize, return the lowered
  * C++ statement(s) (each terminated with `;`). Otherwise return null (and push
  * a diagnostic if it IS a ctx call with an unknown method).
- *
- * `text`, `fillScreen` are handled specially (multi-statement / target-specific).
  */
 export function rewriteCanvasCall(
   call: ts.CallExpression,
@@ -117,106 +160,112 @@ export function rewriteCanvasCall(
   const method = call.expression.name.text;
   const args = call.arguments;
 
-  // ctx.text(x, y, str [, color]) → set_cursor; set_text_color_solid; print;
   if (method === "text") {
-    if (args.length < 3) return null;
+    if (args.length < 3) {
+      diagnostics.push({
+        severity: "error", code: "ui-canvas-method",
+        message: `ctx.text() requires at least 3 arguments (x, y, text); got ${args.length}.`,
+        source: sourceText.slice(Math.max(0, call.getStart() - 20), call.getEnd()).trim(),
+      } as Diagnostic);
+      return null;
+    }
     const x = lowerArg(args[0], ctxName, sourceText, diagnostics);
     const y = lowerArg(args[1], ctxName, sourceText, diagnostics);
     const str = renderExprAsText(expressionToIR(args[2], sourceText, diagnostics));
-    const colorArg = args.length >= 4 ? tryColor(lowerArg(args[3], ctxName, sourceText, diagnostics)) : null;
-    const color = colorArg !== null ? colorArg : 0xffff;
-    return `ui_display_set_cursor(${x}, ${y}); ui_display_set_text_color_solid(0x${color!.toString(16)}); ui_display_print(${str});`;
+    const colorText = args.length >= 4 ? lowerColorArg(args[3], ctxName, sourceText, diagnostics) : "0xffff";
+    return `ui_display_set_cursor(${x}, ${y}); ui_display_set_text_color_solid(${colorText}); ui_display_print(${str});`;
   }
 
-  // ctx.fillScreen(color) → clear the whole canvas buffer
   if (method === "fillScreen") {
-    if (args.length < 1) return null;
-    const color = tryColor(lowerArg(args[0], ctxName, sourceText, diagnostics)) ?? 0x0000;
-    return `ui_display_fill_rect(0, 0, __ui_canvas_w, __ui_canvas_h, 0x${color.toString(16)});`;
+    if (args.length < 1) {
+      diagnostics.push({
+        severity: "error", code: "ui-canvas-method",
+        message: `ctx.fillScreen() requires a color argument.`,
+        source: sourceText.slice(Math.max(0, call.getStart() - 20), call.getEnd()).trim(),
+      } as Diagnostic);
+      return null;
+    }
+    const colorText = lowerColorArg(args[0], ctxName, sourceText, diagnostics);
+    return `ui_display_fill_rect(0, 0, __ui_canvas_w, __ui_canvas_h, ${colorText});`;
   }
 
   const shim = CANVAS_METHODS[method];
   if (!shim) {
     diagnostics.push({
-      severity: "warning", code: "ui-canvas-method",
+      severity: "error", code: "ui-canvas-method",
       message: `Unknown canvas method ctx.${method}() — supported: drawPixel, fillRect, rect, fillRoundRect, roundRect, line, hline, vline, fillCircle, circle, rgbBitmap, text, fillScreen`,
+      source: sourceText.slice(Math.max(0, call.getStart() - 20), call.getEnd()).trim(),
     } as Diagnostic);
     return null;
   }
-  const loweredArgs = args.map(a => lowerArg(a, ctxName, sourceText, diagnostics)).join(", ");
+  const colorIdx = COLOR_ARG_INDEX[method];
+  const loweredArgs = args
+    .map((a, i) => (i === colorIdx ? lowerColorArg(a, ctxName, sourceText, diagnostics) : lowerArg(a, ctxName, sourceText, diagnostics)))
+    .join(", ");
   return `${shim}(${loweredArgs});`;
 }
 
 /**
- * Lower an entire ui.drawCanvas callback body to a single C++ string of
- * space-joined statements. Recognizes ctx.X(...) calls.
+ * Lower an entire ui.drawCanvas callback body through the main statement-to-IR
+ * pipeline (ambient canvas ctx rewrites ctx.* during lowering). Returns a
+ * compact-rendered C++ string for unit tests / callers that still want text.
  */
 export function lowerCanvasBody(
   cbArg: ts.ArrowFunction | ts.FunctionExpression,
   sourceText: string,
   diagnostics: Diagnostic[],
+  fileName = "canvas.ts",
 ): string {
-  const ctxName = cbArg.parameters[0]?.name.getText() ?? "ctx";
-  const body = cbArg.body;
-
-  const lowerStmt = (expr: ts.Expression): string | null => {
-    if (ts.isCallExpression(expr)) {
-      return rewriteCanvasCall(expr, ctxName, diagnostics, sourceText);
-    }
-    return null;
-  };
-
-  if (ts.isExpression(body)) {
-    return lowerStmt(body) ?? "";
-  }
-  if (ts.isBlock(body)) {
-    const parts: string[] = [];
-    for (const stmt of body.statements) {
-      if (ts.isExpressionStatement(stmt) && stmt.expression) {
-        const rewritten = lowerStmt(stmt.expression);
-        if (rewritten) parts.push(rewritten);
-      }
-    }
-    return parts.join(" ");
-  }
-  return "";
+  const statements = lowerCallbackStatements(cbArg, fileName, sourceText, diagnostics, "ui-draw-canvas");
+  return renderStatementsCompact(statements);
 }
 
-/** Emit the canvas binding table + callback functions as a C++ string. */
-export function emitCanvasBindings(specs: DrawCanvasSpec[]): string {
-  if (specs.length === 0) {
-    return `UICanvasBinding __ui_canvas_bindings[] = {};\nconst uint16_t __ui_canvas_binding_count = 0;`;
-  }
+/** Emit the canvas binding table + callback functions.
+ *
+ * When `emitStatements` is provided, bodyStatements are rendered through it
+ * (StatementRenderer path). Otherwise falls back to compact string paste of
+ * callbackBody (tests / no-emitter contexts). */
+export function emitCanvasBindings(
+  specs: DrawCanvasSpec[],
+  emitLine?: (line: string, span?: SourceSpan) => void,
+  emitStatements?: (statements: StatementIR[], indent: string, span?: SourceSpan) => void,
+): string {
   const lines: string[] = [];
-  for (const spec of specs) {
-    // The wrapper sets the canvas dims as locals + runs the lowered body.
-    // __c is null only when the runtime falls back to drawing directly into the
-    // current display target because the node offscreen canvas allocation failed.
-    lines.push(`void ${spec.fnName}(CuttlefishCanvas16* __c) {`);
-    lines.push(`  int16_t __ui_canvas_w = __c ? display_canvasWidth(__c) : __ui_canvas_fallback_w;`);
-    lines.push(`  int16_t __ui_canvas_h = __c ? display_canvasHeight(__c) : __ui_canvas_fallback_h;`);
-    lines.push(`  ${spec.callbackBody || ""}`);
-    lines.push(`}`);
+  const push = (line: string, span?: SourceSpan) => {
+    lines.push(line);
+    emitLine?.(line, span);
+  };
+
+  if (specs.length === 0) {
+    push(`UICanvasBinding __ui_canvas_bindings[] = {};`);
+    push(`const uint16_t __ui_canvas_binding_count = 0;`);
+    return lines.join("\n");
   }
-  lines.push(`UICanvasBinding __ui_canvas_bindings[] = {`);
   for (const spec of specs) {
-    lines.push(`  { .node=${spec.nodeIndex}, .fn=${spec.fnName} },`);
+    push(`void ${spec.fnName}(CuttlefishCanvas16* __c) {`, spec.sourceSpan);
+    push(`  int16_t __ui_canvas_w = __c ? display_canvasWidth(__c) : __ui_canvas_fallback_w;`);
+    push(`  int16_t __ui_canvas_h = __c ? display_canvasHeight(__c) : __ui_canvas_fallback_h;`);
+    if (spec.bodyStatements && emitStatements) {
+      emitStatements(spec.bodyStatements, "  ", spec.sourceSpan);
+    } else if (spec.bodyStatements) {
+      push(`  ${renderStatementsCompact(spec.bodyStatements)}`, spec.sourceSpan);
+    } else {
+      push(`  ${spec.callbackBody || ""}`, spec.sourceSpan);
+    }
+    push(`}`);
   }
-  lines.push(`};`);
-  lines.push(`const uint16_t __ui_canvas_binding_count = ${specs.length};`);
+  push(`UICanvasBinding __ui_canvas_bindings[] = {`);
+  for (const spec of specs) {
+    push(`  { .node=${spec.nodeIndex}, .fn=${spec.fnName} },`);
+  }
+  push(`};`);
+  push(`const uint16_t __ui_canvas_binding_count = ${specs.length};`);
   return lines.join("\n");
 }
 
-import { makeSourceSpan } from "../ast-node-utils.js";
-import type { StatementIR } from "../../api/index.js";
-import { resolveNodeIndex, resolveUIModuleImport, pushUnknownElementDiagnostic } from "./ui-call-resolver.js";
-
 /**
  * Resolve a `ui.drawCanvas(node, (ctx) => {...})` call.
- *  - node: screen.<id> property access → resolve to a node index
- *  - callback: arrow whose body is lowered via lowerCanvasBody
- * Records a DrawCanvasSpec and returns an empty block IR.
- * Returns null if the call doesn't match the expected shape.
+ * Records a DrawCanvasSpec with bodyStatements from the main IR pipeline.
  */
 export function resolveDrawCanvasCall(
   call: ts.CallExpression,
@@ -229,8 +278,8 @@ export function resolveDrawCanvasCall(
   if (!nodeArg || !ts.isPropertyAccessExpression(nodeArg) || !ts.isIdentifier(nodeArg.expression)) return null;
   if (!cbArg || !(ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) return null;
 
-  const treeName = nodeArg.expression.text;       // "screen"
-  const id = nodeArg.name.text;                    // "spark"
+  const treeName = nodeArg.expression.text;
+  const id = nodeArg.name.text;
   const htmlPath = resolveUIModuleImport(treeName);
   if (!htmlPath) return null;
 
@@ -239,9 +288,16 @@ export function resolveDrawCanvasCall(
     pushUnknownElementDiagnostic(diagnostics, "ui.drawCanvas", id, treeName);
     return null;
   }
-  const callbackBody = lowerCanvasBody(cbArg, sourceText, diagnostics);
+  const bodyStatements = lowerCallbackStatements(cbArg, fileName, sourceText, diagnostics, "ui-draw-canvas");
   const fnName = `__ui_canvas_draw_${getCanvasBindingsCount()}`;
-  recordCanvasBinding({ nodeIndex, fnName, callbackBody });
+  recordCanvasBinding({
+    nodeIndex,
+    fnName,
+    // Legacy compact string for tests / emitCanvasBindings without emitStatements.
+    callbackBody: renderStatementsCompact(bodyStatements),
+    bodyStatements,
+    sourceSpan: makeSourceSpan(cbArg, fileName, sourceText),
+  });
 
   return {
     kind: "block",

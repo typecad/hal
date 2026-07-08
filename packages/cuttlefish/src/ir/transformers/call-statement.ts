@@ -1,18 +1,26 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../../types.js";
 import { StatementIR } from "../../api/index.js";
-import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeEnumNames, hoistedNestedFunctions } from "../build-ir-state.js";
+import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeEnumNames, hoistedNestedFunctions, getContext } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
+import { type CppTypeHint } from "../type-resolution.js";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
 import { tryResolveHALMethod } from "./hal-call-resolver.js";
 import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, resolveNodeTag, watchPinSpecs, recordWatchPin, recordClickHandler, clickHandlers, pushUnknownElementDiagnostic } from "./ui-call-resolver.js";
-import { lowerCallbackBody } from "./ui-callback-lowering.js";
+import {
+  lowerCallbackStatements,
+  resolveCallbackArg,
+  getCanvasAmbientCtx,
+  getCanvasAmbientDiagnostics,
+  getCanvasAmbientSourceText,
+} from "./ui-callback-lowering.js";
+import { rewriteCanvasCall } from "./canvas-lowering.js";
+import { callbackContextLabel, unsupportedStatementHint } from "./callback-context-registry.js";
 import { tryLowerArrayAndStringMethods } from "./array-methods.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { lowerStatementList } from "../statement-to-ir.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { renderExprAsText, calleeToText } from "../render-expr.js";
-import { resolveColor } from "../../ui/color.js";
 import { parseCppType, renderCppType, parsedIsPointer, parsedIsMap, parsedIsSet } from "../../api/shared/cpp-type-ir.js";
 
 /**
@@ -88,6 +96,68 @@ function castEnumKeyIfNeeded(
   return `static_cast<${keyType}>(${keyText})`;
 }
 
+/** Lower a void UI event callback (onClick/onHold/onRelease/arity-1 onChange)
+ *  to bodyStatements + optional named-ref metadata. */
+function lowerVoidEventCallback(
+  cbArg: ts.Expression | undefined,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  label: string,
+): {
+  bodyStatements?: StatementIR[];
+  isNamedRef?: boolean;
+  namedFn?: string;
+  sourceSpan?: ReturnType<typeof makeSourceSpan>;
+} {
+  const resolved = resolveCallbackArg(cbArg, cbArg?.getSourceFile(), diagnostics, label);
+  if (!resolved) return {};
+  const sourceSpan = cbArg ? makeSourceSpan(cbArg, fileName, sourceText) : undefined;
+  if (resolved.kind === "inline") {
+    return {
+      bodyStatements: lowerCallbackStatements(resolved.fn, fileName, sourceText, diagnostics, "ui-event-callback"),
+      sourceSpan,
+    };
+  }
+  return { isNamedRef: true, namedFn: resolved.name, sourceSpan };
+}
+
+/** Lower an optional callback for watchPin-style wrappers that have a prelude
+ *  (onToggle / onChange(pin,count)). Named refs become a call after prelude. */
+function lowerPreludeCallback(
+  cbArg: ts.Expression | undefined,
+  fileName: string,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  label: string,
+  prelude: StatementIR[],
+): { bodyStatements: StatementIR[]; sourceSpan?: ReturnType<typeof makeSourceSpan> } {
+  const resolved = resolveCallbackArg(cbArg, cbArg?.getSourceFile(), diagnostics, label);
+  const sourceSpan = cbArg ? makeSourceSpan(cbArg, fileName, sourceText) : undefined;
+  if (!resolved) return { bodyStatements: prelude, sourceSpan };
+  if (resolved.kind === "inline") {
+    return {
+      bodyStatements: [
+        ...prelude,
+        ...lowerCallbackStatements(resolved.fn, fileName, sourceText, diagnostics, "ui-event-callback"),
+      ],
+      sourceSpan,
+    };
+  }
+  return {
+    bodyStatements: [
+      ...prelude,
+      {
+        kind: "call",
+        sourceSpan: sourceSpan ?? makeSourceSpan(cbArg!, fileName, sourceText),
+        callee: resolved.name,
+        args: [],
+      },
+    ],
+    sourceSpan,
+  };
+}
+
 export function callToStatement(
   statementNode: ts.ExpressionStatement,
   call: ts.CallExpression,
@@ -107,6 +177,44 @@ export function callToStatement(
   if (ts.isIdentifier(call.expression) && TIMER_CALLEES.has(call.expression.text)) {
     const hoisted = hoistTimerArrowArg(call, fileName, sourceText, diagnostics, pointerVars, comments);
     if (hoisted) return hoisted;
+  }
+
+  // ── Ambient canvas ctx: rewrite ctx.method(...) while drawCanvas lowers ──
+  {
+    const canvasCtx = getCanvasAmbientCtx();
+    if (canvasCtx) {
+      const ambientDiags = getCanvasAmbientDiagnostics() ?? diagnostics;
+      const ambientSrc = getCanvasAmbientSourceText() ?? sourceText;
+      if (
+        ts.isPropertyAccessExpression(call.expression) &&
+        ts.isIdentifier(call.expression.expression) &&
+        call.expression.expression.text === canvasCtx
+      ) {
+        const rewritten = rewriteCanvasCall(call, canvasCtx, ambientDiags, ambientSrc);
+        return {
+          kind: "call",
+          sourceSpan: makeSourceSpan(call, fileName, sourceText),
+          leadingComments: comments.leadingComments,
+          trailingComments: comments.trailingComments,
+          callee: "__EMIT__",
+          args: [{ kind: "string", value: (rewritten ?? "").replace(/;$/, "") }],
+        };
+      }
+      ambientDiags.push({
+        severity: "error",
+        code: "ui-callback-unsupported-statement",
+        message: `Unsupported statement in ${callbackContextLabel("ui-draw-canvas")}: only ctx.* drawing calls are allowed here.`,
+        hint: unsupportedStatementHint("ui-draw-canvas"),
+        source: ambientSrc.slice(Math.max(0, call.getStart() - 40), call.getEnd() + 10).trim(),
+      } as Diagnostic);
+      return {
+        kind: "block",
+        sourceSpan: makeSourceSpan(call, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        body: [],
+      };
+    }
   }
 
   // ── signal.set(value) → assignment ─────────────────────────────────────
@@ -188,18 +296,22 @@ export function callToStatement(
       return { kind: "block", sourceSpan: makeSourceSpan(call, fileName, sourceText), leadingComments: comments.leadingComments, trailingComments: comments.trailingComments, body: [] };
     }
 
-    // Lower the user's callback body to C++ (shared with watchPin in
-    // ui-call-resolver.ts). Handles console.* → platform transform, signal
-    // .set()/() reads, and color-name resolution — see ui-callback-lowering.ts.
-    let cbBody = "";
-    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
-      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
-    }
-
-    // The toggle callback: flip .value, mark dirty, then run optional callback
     const fnName = `__ui_${elemId}_toggle_${watchPinSpecs().length}`;
-    const fullBody = `__ui_nodes[${nodeIndex}].value = !__ui_nodes[${nodeIndex}].value; ui_mark_dirty(${nodeIndex}); ${cbBody}`;
-    recordWatchPin({ pin: String(pin), fnName, callbackBody: fullBody });
+    const prelude: StatementIR[] = [
+      {
+        kind: "call",
+        sourceSpan: makeSourceSpan(call, fileName, sourceText),
+        callee: "__EMIT__",
+        args: [{
+          kind: "string",
+          value: `__ui_nodes[${nodeIndex}].value = !__ui_nodes[${nodeIndex}].value; ui_mark_dirty(${nodeIndex})`,
+        }],
+      },
+    ];
+    const { bodyStatements, sourceSpan } = lowerPreludeCallback(
+      cbArg, fileName, sourceText, diagnostics, `screen.${elemId}.onToggle`, prelude,
+    );
+    recordWatchPin({ pin: String(pin), fnName, callbackBody: "", bodyStatements, sourceSpan });
 
     return {
       kind: "block",
@@ -234,15 +346,22 @@ export function callToStatement(
     }
     const nodeTag = htmlPath ? resolveNodeTag(htmlPath, elemId) : "";
 
-    let cbBody = "";
-    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
-      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
-    }
-
-    // <range> sliders fire on value change during drag; <input> fires on commit.
     const kind = nodeTag === "range" ? "rangechange" : "change";
-    const fnName = `__ui_${elemId}_${kind}_${clickHandlers().length}`;
-    recordClickHandler({ nodeIndex, kind, fnName, callbackBody: cbBody });
+    const lowered = lowerVoidEventCallback(
+      cbArg, fileName, sourceText, diagnostics, `screen.${elemId}.onChange`,
+    );
+    const fnName = lowered.isNamedRef && lowered.namedFn
+      ? lowered.namedFn
+      : `__ui_${elemId}_${kind}_${clickHandlers().length}`;
+    recordClickHandler({
+      nodeIndex,
+      kind,
+      fnName,
+      callbackBody: "",
+      bodyStatements: lowered.bodyStatements,
+      isNamedRef: lowered.isNamedRef,
+      sourceSpan: lowered.sourceSpan,
+    });
 
     return {
       kind: "block",
@@ -276,16 +395,22 @@ export function callToStatement(
       return { kind: "block", sourceSpan: makeSourceSpan(call, fileName, sourceText), leadingComments: comments.leadingComments, trailingComments: comments.trailingComments, body: [] };
     }
 
-    // Lower optional callback
-    let cbBody = "";
-    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
-      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
-    }
-
-    // Cycle: value = (value + 1) % optionCount, mark dirty, optional callback
     const fnName = `__ui_${elemId}_change_${watchPinSpecs().length}`;
-    const fullBody = `__ui_nodes[${nodeIndex}].value = (__ui_nodes[${nodeIndex}].value + 1) % ${optionCount}; ui_mark_dirty(${nodeIndex}); ${cbBody}`;
-    recordWatchPin({ pin: String(pin), fnName, callbackBody: fullBody });
+    const prelude: StatementIR[] = [
+      {
+        kind: "call",
+        sourceSpan: makeSourceSpan(call, fileName, sourceText),
+        callee: "__EMIT__",
+        args: [{
+          kind: "string",
+          value: `__ui_nodes[${nodeIndex}].value = (__ui_nodes[${nodeIndex}].value + 1) % ${optionCount}; ui_mark_dirty(${nodeIndex})`,
+        }],
+      },
+    ];
+    const { bodyStatements, sourceSpan } = lowerPreludeCallback(
+      cbArg, fileName, sourceText, diagnostics, `screen.${elemId}.onChange`, prelude,
+    );
+    recordWatchPin({ pin: String(pin), fnName, callbackBody: "", bodyStatements, sourceSpan });
 
     return {
       kind: "block",
@@ -317,14 +442,21 @@ export function callToStatement(
       return { kind: "block", sourceSpan: makeSourceSpan(call, fileName, sourceText), leadingComments: comments.leadingComments, trailingComments: comments.trailingComments, body: [] };
     }
 
-    // Lower callback body (reuse the shared callback lowering)
-    let cbBody = "";
-    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
-      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
-    }
-
-    const fnName = `__ui_${elemId}_click_${clickHandlers().length}`;
-    recordClickHandler({ nodeIndex, kind: "click", fnName, callbackBody: cbBody });
+    const lowered = lowerVoidEventCallback(
+      cbArg, fileName, sourceText, diagnostics, `screen.${elemId}.onClick`,
+    );
+    const fnName = lowered.isNamedRef && lowered.namedFn
+      ? lowered.namedFn
+      : `__ui_${elemId}_click_${clickHandlers().length}`;
+    recordClickHandler({
+      nodeIndex,
+      kind: "click",
+      fnName,
+      callbackBody: "",
+      bodyStatements: lowered.bodyStatements,
+      isNamedRef: lowered.isNamedRef,
+      sourceSpan: lowered.sourceSpan,
+    });
 
     return {
       kind: "block",
@@ -355,13 +487,21 @@ export function callToStatement(
       return { kind: "block", sourceSpan: makeSourceSpan(call, fileName, sourceText), leadingComments: comments.leadingComments, trailingComments: comments.trailingComments, body: [] };
     }
 
-    let cbBody = "";
-    if (cbArg && (ts.isArrowFunction(cbArg) || ts.isFunctionExpression(cbArg))) {
-      cbBody = lowerCallbackBody(cbArg, sourceText, diagnostics);
-    }
-
-    const fnName = `__ui_${elemId}_${kind}_${clickHandlers().length}`;
-    recordClickHandler({ nodeIndex, kind, fnName, callbackBody: cbBody });
+    const lowered = lowerVoidEventCallback(
+      cbArg, fileName, sourceText, diagnostics, `screen.${elemId}.${call.expression.name.text}`,
+    );
+    const fnName = lowered.isNamedRef && lowered.namedFn
+      ? lowered.namedFn
+      : `__ui_${elemId}_${kind}_${clickHandlers().length}`;
+    recordClickHandler({
+      nodeIndex,
+      kind,
+      fnName,
+      callbackBody: "",
+      bodyStatements: lowered.bodyStatements,
+      isNamedRef: lowered.isNamedRef,
+      sourceSpan: lowered.sourceSpan,
+    });
 
     return {
       kind: "block",
@@ -672,16 +812,24 @@ function hoistTimerArrowArg(
   }
 
   const fnName = `__tc_timer_cb_${timerCallbackCounter++}`;
+  const scope = getCurrentIrTypeScope();
+  const localVariableTypes = new Map<string, CppTypeHint>();
+  if (scope) {
+    for (const [k, v] of scope.globals) localVariableTypes.set(k, v as CppTypeHint);
+  }
+  const functionReturnTypes = new Map<string, CppTypeHint>(
+    [...(getContext().activeFunctionReturnTypes ?? new Map())] as Array<[string, CppTypeHint]>,
+  );
   const bodyStatements = lowerStatementList(
     ts.isBlock(callbackArg.body) ? callbackArg.body.statements : [],
     fileName,
     sourceText,
     diagnostics,
-    new Map(),
-    new Map(),
+    functionReturnTypes,
+    localVariableTypes,
     fnName,
     undefined,
-    new Map(),
+    pointerVars,
   );
 
   if (!ts.isBlock(callbackArg.body)) {
