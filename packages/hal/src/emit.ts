@@ -170,6 +170,13 @@ export function shiftIn_(dataPin: number | string, clockPin: number | string, bi
 /** Write a value to a DAC pin. */
 export function dacWrite(pin: number | string, value: number): void {}
 
+// ---------------------------------------------------------------------------
+// Watchdog timer (WDT)
+// ---------------------------------------------------------------------------
+
+/** Enable the watchdog timer with the given timeout (string preset or number). */
+export function wdtEnable(timeout: string | number): void {}
+
 /** Resolve a board definition path to a compile-time constant. */
 export function boardResolve(path: string): any { return undefined as any; }
 

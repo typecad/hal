@@ -18,10 +18,3 @@ export const WDTO_1S: number = 0;
 export const WDTO_2S: number = 0;
 export const WDTO_4S: number = 0;
 export const WDTO_8S: number = 0;
-
-export enum HALStatus {
-  OK = 0,
-  ERROR = 1,
-  TIMEOUT = 2,
-  BUSY = 3
-}

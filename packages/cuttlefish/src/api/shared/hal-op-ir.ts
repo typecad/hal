@@ -485,6 +485,16 @@ export interface BoardResolveOp {
 }
 
 // ---------------------------------------------------------------------------
+// Watchdog timer (WDT)
+// ---------------------------------------------------------------------------
+
+export interface WdtEnableOp {
+  operation: "wdt.enable";
+  /** Timeout — a duration string ("250ms"), a WDTO_* constant name, or a number */
+  timeout: string | number;
+}
+
+// ---------------------------------------------------------------------------
 // Snprintf — formatted string output
 // ---------------------------------------------------------------------------
 
@@ -595,6 +605,8 @@ export type HALOpIR =
   | ShiftInOp
   // Board
   | BoardResolveOp
+  // Watchdog timer
+  | WdtEnableOp
   // Snprintf
   | SnprintfEmitOp
   // Raw passthrough

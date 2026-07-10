@@ -321,6 +321,13 @@ export function tryResolveSemanticCall(
       return { operation: "dac.write", port, pin, value };
     }
 
+    // ── Watchdog timer ──
+    case "wdtEnable": {
+      const timeout = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (timeout === null) return null;
+      return { operation: "wdt.enable", timeout };
+    }
+
     // ── Interrupts ──
     case "interruptAttach": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
@@ -425,9 +432,11 @@ export function tryResolveSemanticCall(
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const address = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const quantity = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      const stop = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || address === null || quantity === null || stop === null) return null;
-      return { operation: "i2c.request_from", bus, address, quantity, stop: stop !== "false" };
+      if (bus === null || address === null || quantity === null) return null;
+      // stop is optional; default to true (Arduino sends a STOP by default).
+      const stopRaw = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const stop = stopRaw === null ? true : stopRaw !== "false";
+      return { operation: "i2c.request_from", bus, address, quantity, stop };
     }
     case "i2cAvailable": {
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);

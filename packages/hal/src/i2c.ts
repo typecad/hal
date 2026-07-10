@@ -1,4 +1,4 @@
-﻿import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cWriteBuffer, i2cReadBuffer, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit.js';
+﻿import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cWriteBuffer, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit.js';
 import { include } from './include.js';
 
 export class I2CDevice {
@@ -37,7 +37,7 @@ export class I2CDevice {
     i2cWrite(this._bus, register);
     i2cEndTx(this._bus, false);
     i2cRequestFrom(this._bus, this._address, count, true);
-    rawCpp(`uint8_t __buf[${count}];`);
+    rawCpp(`static uint8_t __buf[${count}];`);
     rawCpp(`for (int __i = 0; __i < ${count}; __i++) __buf[__i] = ${this._bus}.read();`);
     rawCpp(`return __buf;`);
     return new Uint8Array(count);

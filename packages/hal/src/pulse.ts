@@ -1,4 +1,4 @@
-import { pulseIn_, pulseInLong_, rawCpp } from './emit.js';
+import { rawCpp } from './emit.js';
 import { HIGH, LOW } from './constants.js';
 import type { Pin, InputPin } from './gpio.js';
 

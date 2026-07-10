@@ -1332,8 +1332,12 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
         return { code: `dacWrite(${op.pin}, ${op.value});` };
 
       // Interrupts
-      case "interrupt.attach":
-        return { code: `attachInterrupt(digitalPinToInterrupt(${op.pin}), ${op.handler}, ${op.mode});` };
+      case "interrupt.attach": {
+        // Mode arrives as an enum/string ("FALLING", "RISING", ...); strip any
+        // surrounding quotes so it emits the unquoted Arduino macro.
+        const intMode = String(op.mode).replace(/^["']|["']$/g, "").toUpperCase();
+        return { code: `attachInterrupt(digitalPinToInterrupt(${op.pin}), ${op.handler}, ${intMode});` };
+      }
       case "interrupt.detach":
         return { code: `detachInterrupt(digitalPinToInterrupt(${op.pin}));` };
 
@@ -1412,7 +1416,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       case "spi.set_mode":
         return { code: `${op.bus}.setDataMode(${op.mode});` };
       case "spi.set_bit_order":
-        return { code: `${op.bus}.setBitOrder(${op.order === "msb" ? "MSBFIRST" : "LSBFIRST"});` };
+        return { code: `${op.bus}.setBitOrder(${normalizeBitOrder(op.order)});` };
       case "spi.cs_low":
         return { code: `digitalWrite(${op.pin}, LOW);` };
       case "spi.cs_high":
@@ -1448,13 +1452,17 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
       // Shift
       case "shift.out":
-        return { code: `shiftOut(${op.dataPin}, ${op.clockPin}, ${op.bitOrder === "msb" ? "MSBFIRST" : "LSBFIRST"}, ${op.value});` };
+        return { code: `shiftOut(${op.dataPin}, ${op.clockPin}, ${normalizeBitOrder(op.bitOrder)}, ${op.value});` };
       case "shift.in":
-        return { expression: `shiftIn(${op.dataPin}, ${op.clockPin}, ${op.bitOrder === "msb" ? "MSBFIRST" : "LSBFIRST"})` };
+        return { expression: `shiftIn(${op.dataPin}, ${op.clockPin}, ${normalizeBitOrder(op.bitOrder)})` };
 
       // Board constants
       case "board.resolve":
         return { expression: this.renderBoardDefinitionAccess(op.path.split("."), undefined) };
+
+      // Watchdog timer
+      case "wdt.enable":
+        return { code: `wdt_enable(${normalizeWdtTimeout(op.timeout)});` };
 
       // Snprintf
       case "snprintf.emit":
@@ -1849,4 +1857,46 @@ function splitStreamChain(renderedArgs: string): string[] {
 function wrapArg(part: string): string {
   if (/^"[^"]*"$/.test(part)) return `F(${part})`;
   return part;
+}
+
+/**
+ * Map a TypeCAD bit-order value to the Arduino MSBFIRST/LSBFIRST macro.
+ * Accepts `"msb"`/`"lsb"` (the HAL API), the Arduino macro names, or numeric
+ * 1/0. Defensive quote-stripping + case-insensitive match mirrors the
+ * analogReference mapping so any resolver path lands on the right constant.
+ */
+function normalizeBitOrder(order: string | number): string {
+  if (typeof order === "number") return order === 1 ? "MSBFIRST" : "LSBFIRST";
+  const key = String(order).replace(/^["']|["']$/g, "").toLowerCase();
+  if (key === "msb" || key === "msbfirst" || key === "1") return "MSBFIRST";
+  if (key === "lsb" || key === "lsbfirst" || key === "0") return "LSBFIRST";
+  return "LSBFIRST";
+}
+
+/**
+ * Map a TypeCAD WDT timeout to the AVR WDTO_* macro token. Accepts duration
+ * presets ("250ms"), WDTO_* constant names ("WDTO_250MS", "250MS"), or a bare
+ * number (passed through). Quote-stripped + case-insensitive, mirroring the
+ * analogReference mapping. This must emit the unquoted macro so avr-gcc's
+ * `wdt_enable(uint8_t)` receives the prescaler value, not a string pointer.
+ */
+function normalizeWdtTimeout(timeout: string | number): string {
+  if (typeof timeout === "number") return String(timeout);
+  const raw = String(timeout).replace(/^["']|["']$/g, "");
+  // Already a WDTO_* macro name — pass through unquoted.
+  if (/^WDTO_\d+(MS|S)$/i.test(raw)) return raw.toUpperCase();
+  const key = raw.toUpperCase();
+  const wdtMap: Record<string, string> = {
+    "15MS": "WDTO_15MS",
+    "30MS": "WDTO_30MS",
+    "60MS": "WDTO_60MS",
+    "120MS": "WDTO_120MS",
+    "250MS": "WDTO_250MS",
+    "500MS": "WDTO_500MS",
+    "1S": "WDTO_1S",
+    "2S": "WDTO_2S",
+    "4S": "WDTO_4S",
+    "8S": "WDTO_8S",
+  };
+  return wdtMap[key] ?? raw;
 }

@@ -2,16 +2,16 @@ import { describe, done } from '@typecad/expect';
 import { HIGH, LOW, INPUT, OUTPUT, INPUT_PULLUP, LED } from '@TypeCAD';
 
 describe("Digital value constants")
-  .it("HIGH is resolvable")
+  .it("HIGH and LOW are distinct, well-known values")
   .expect(
     (() => {
-      return HIGH === HIGH ? 1 : 0;
+      return HIGH !== LOW ? 1 : 0;
     })
   ).toBe(1)
-  .it("LOW is resolvable")
+  .it("HIGH equals 1 and LOW equals 0")
   .expect(
     (() => {
-      return LOW === LOW ? 1 : 0;
+      return HIGH === 1 && LOW === 0 ? 1 : 0;
     })
   ).toBe(1)
 

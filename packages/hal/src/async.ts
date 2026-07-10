@@ -54,7 +54,7 @@ export class AsyncClass {
    * Useful for debugging / logging in cooperative multitasking environments.
    */
   currentTask(): string {
-    rawCpp(`return __cuttlefish_async_current_task()`);
+    rawCpp(`return __cuttlefish_async_current_task();`);
     return "";
   }
 }
