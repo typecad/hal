@@ -2,29 +2,28 @@
 // @typecad/hal — Interrupt helpers
 // ---------------------------------------------------------------------------
 
-import type { InterruptHandler } from './core/pin.js';
-import type { InterruptMode } from './core/gpio.js';
+import type { InterruptHandler, InterruptMode } from './types.js';
 
 /**
  * Globally disable interrupts.
  */
-export declare function noInterrupts(): void;
+export function noInterrupts(): void {}
 
 /**
  * Re-enable interrupts after `noInterrupts()`.
  */
-export declare function interrupts(): void;
+export function interrupts(): void {}
 
 /**
  * Attach an interrupt handler to a pin.
  */
-export declare function attachInterrupt(
+export function attachInterrupt(
   pin: number,
   handler: InterruptHandler,
   mode: InterruptMode,
-): void;
+): void {}
 
 /**
  * Detach a previously attached interrupt.
  */
-export declare function detachInterrupt(pin: number): void;
+export function detachInterrupt(pin: number): void {}

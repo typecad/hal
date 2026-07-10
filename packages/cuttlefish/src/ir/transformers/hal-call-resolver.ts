@@ -76,6 +76,23 @@ export function tryResolveHALMethod(
 
       if (allHalOps.length > 0) return halOpsToIR(allHalOps, call, fileName, sourceText);
       if (allEmits.length > 0) return emitLinesToIR(allEmits, call, fileName, sourceText);
+      // take()/release() are compile-time ownership markers — no runtime C++ on
+      // Arduino. Keep a call IR node so peripheral-ownership validation can see
+      // the bus name; emission is suppressed in StatementRenderer.renderCall.
+      if ((method === "take" || method === "release") && ts.isPropertyAccessExpression(call.expression)) {
+        const callReceiver = call.expression.expression;
+        const busInstance = resolveHALReceiver(callReceiver);
+        const busName = busInstance?.canonicalBusName
+          ?? (ts.isIdentifier(callReceiver)
+            ? callReceiver.text
+            : renderExprAsText(expressionToIR(callReceiver, sourceText, diagnostics, pointerVars)) ?? "unknown");
+        return {
+          kind: "call",
+          callee: `${busName}.${method}`,
+          args: argIRs,
+          sourceSpan: makeSourceSpan(call, fileName, sourceText),
+        };
+      }
       if (result.returnValue === "this" && ts.isPropertyAccessExpression(call.expression)) {
         const objText = renderExprAsText(expressionToIR(call.expression.expression, sourceText, diagnostics, pointerVars));
         return {

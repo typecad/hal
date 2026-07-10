@@ -384,7 +384,7 @@ function analyzeStatement(
               if (!isPrimitiveCppType(stmt.cppType)) {
                 diagnostics.push({
                   severity: 'info',
-                  message: `Moving '${initName}' into '${stmt.name}' creates a C++ copy — ownership types do not emit std::move().`,
+                  message: `Moving '${initName}' into '${stmt.name}' creates a C++ copy.`,
                   hint: `const ${stmt.name}: Shared = ${initName};  // borrow by reference instead of copying`,
                   line: span.startLine,
                   column: span.startColumn,

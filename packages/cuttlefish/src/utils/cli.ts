@@ -260,12 +260,9 @@ function parsePipelineCommand(
   if (upload && !compile) {
     throw new Error("--upload requires --compile.");
   }
-  if (upload && !port) {
-    throw new Error("--upload requires --port <port>.");
-  }
-  if (monitor && !port) {
-    throw new Error("--monitor requires --port <port>.");
-  }
+  // Note: port validation is deferred to the build path, which checks the
+  // effective port (CLI --port flag OR config.console.port). This allows
+  // setting the port in cuttlefish.config.ts instead of on every command.
   if (watch && monitor) {
     throw new Error("--watch and --monitor cannot be used together (monitor blocks the process).");
   }

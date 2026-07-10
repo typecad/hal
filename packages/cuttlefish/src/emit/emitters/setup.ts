@@ -704,7 +704,15 @@ export function buildEmitterContext(
               pointerVarTypes,
               diagnostics: emitDiagnostics,
             });
-            return contextRenderer.render(stmt, forHeader, calleeTransformer);
+            // Use renderWithPrelude so snprintf buffer declarations (e.g.
+            // char __cuttlefish_str_N[...]; snprintf(...)) are emitted before
+            // the statement that references them. Without this, template-literal
+            // console.log inside async functions loses the buffer declaration.
+            const { prelude, statement } = contextRenderer.renderWithPrelude(stmt, forHeader, calleeTransformer);
+            if (prelude.length > 0) {
+              return prelude.join("\n") + "\n" + statement;
+            }
+            return statement;
           },
         );
         asyncTaskClasses.push({ ...task, taskVarName: `${fn.originalName}Task` });

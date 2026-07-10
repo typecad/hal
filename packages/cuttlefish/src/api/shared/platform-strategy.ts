@@ -339,6 +339,18 @@ export interface PlatformSafetyStrategy {
   reservedNames(): ReadonlySet<string>;
 
   /**
+   * Identifier names that are platform *value/function-like macros* (e.g.
+   * INPUT, OUTPUT, HIGH, LOW on Arduino) and therefore must pass through
+   * verbatim when referenced in an expression — they must NOT be escaped
+   * (suffixed with `_`) the way a conflicting declaration would be.
+   *
+   * These names typically also appear in `reservedNames()` (so user
+   * declarations with these names are still escaped), but a *reference* to
+   * such a macro should be emitted as-is.
+   */
+  passthroughMacroNames(): ReadonlySet<string>;
+
+  /**
    * Enum class names already declared as typedefs by the platform framework.
    * These get a `#if !defined(...)` guard in the emitted code.
    */

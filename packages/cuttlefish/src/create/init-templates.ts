@@ -50,7 +50,7 @@ export function generateProjectPackageJson(options: InitProjectOptions): string 
   "scripts": {
     "build": "cuttlefish build",
     "compile": "cuttlefish build --compile",
-    "lint": "eslint src/"
+    "lint": "eslint --config .cuttlefish/eslint.config.mjs src/"
   },
   "dependencies": {
 ${depsJson}
@@ -62,8 +62,6 @@ ${devDepsJson}
 `;
   }
 
-  const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
-
   return `{
   "name": "${projectName}",
   "version": "1.0.0",
@@ -71,9 +69,9 @@ ${devDepsJson}
   "scripts": {
     "build": "cuttlefish build",
     "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload --port ${portHint}",
-    "monitor": "cuttlefish build --compile --upload --monitor --port ${portHint}",
-    "lint": "eslint src/"
+    "upload": "cuttlefish build --compile --upload",
+    "monitor": "cuttlefish build --compile --upload --monitor",
+    "lint": "eslint --config .cuttlefish/eslint.config.mjs src/"
   },
   "dependencies": {
 ${depsJson}
@@ -114,7 +112,7 @@ export function generateProjectTsconfig(options: InitProjectOptions): string {
     "allowArbitraryExtensions": true,
     "rootDirs": ["src", "types"]${paths}
   },
-  "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish.config.ts"${options.boardPackage ? ', "cuttlefish-env.d.ts"' : ''}]
+  "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish.config.ts"${options.boardPackage ? ', ".cuttlefish/cuttlefish-env.d.ts"' : ''}]
 }
 `;
 }
@@ -157,7 +155,8 @@ export default config;
     ? `\n  // Board package — provides pin definitions and board constants\n  board: '${options.boardPackage}',`
     : '';
 
-  const baudLine = options.baudRate ? `\n\n  // Console polyfill configuration\n  console: {\n    baudRate: ${options.baudRate},\n  },` : '';
+  const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
+  const baudLine = options.baudRate ? `\n\n  // Console polyfill configuration\n  console: {\n    baudRate: ${options.baudRate},\n    // Serial port for upload/monitor. Override with --port on the CLI.\n    port: '${portHint}',\n  },` : '';
 
   return `// ---------------------------------------------------------------------------
 // cuttlefish.config.ts — Project configuration
@@ -169,7 +168,7 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
 const config: CuttlefishConfig = {
   // Entry point — the main TypeScript file to transpile
-  entry: './src/sketch.ts',
+  entry: './src/main.ts',
 
   // Target architecture
   target: '${options.architecture}',${mcuLine}${boardLine}
@@ -278,7 +277,10 @@ declare global {
 }
 
 declare module '@typecad' {
-  export * from './.cuttlefish/board.js';
+  export * from './board.js';
+  export type Owned<T = unknown> = T;
+  export type Shared<T = unknown> = T;
+  export type Mutable<T = unknown> = T;
 }
 
 export {};
@@ -335,6 +337,11 @@ out/
 dist/
 *.thcppmap.json
 .cuttlefish-cache.json
+
+# Generated boilerplate (regenerated on build — do not commit)
+.cuttlefish/cuttlefish-env.d.ts
+.cuttlefish/eslint.config.mjs
+.cuttlefish/eslint-transpiler-rules.mjs
 `;
 }
 
@@ -351,7 +358,7 @@ export function generateEslintConfig(_options: InitProjectOptions): string {
 
   return `import tsparser from "@typescript-eslint/parser";
 import tseslint from "@typescript-eslint/eslint-plugin";
-import transpilerPlugin from "./eslint-transpiler-rules.mjs.js";
+import transpilerPlugin from "./eslint-transpiler-rules.mjs";
 
 // Auto-generated from feature-registry.ts LINT_RULES — do not edit by hand.
 const transpilerRules = ${transpilerRulesJson};

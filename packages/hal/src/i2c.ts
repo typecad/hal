@@ -1,4 +1,4 @@
-﻿import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit.js';
+﻿import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cWriteBuffer, i2cReadBuffer, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit.js';
 import { include } from './include.js';
 
 export class I2CDevice {
@@ -26,23 +26,26 @@ export class I2CDevice {
   }
 
   writeBytes(register: number, data: number[] | Uint8Array): void {
-    rawCpp(`${this._bus}.beginTransmission(${this._address});`);
-    rawCpp(`${this._bus}.write(${register});`);
-    rawCpp(`${this._bus}.write(${data}, sizeof(${data}));`);
-    rawCpp(`${this._bus}.endTransmission();`);
+    i2cBeginTx(this._bus, this._address);
+    i2cWrite(this._bus, register);
+    i2cWriteBuffer(this._bus, data);
+    i2cEndTx(this._bus, true);
   }
 
   readBytes(register: number, count: number): Uint8Array {
-    rawCpp(`${this._bus}.beginTransmission(${this._address});`);
-    rawCpp(`${this._bus}.write(${register});`);
-    rawCpp(`${this._bus}.endTransmission(false);`);
-    rawCpp(`${this._bus}.requestFrom(${this._address}, ${count}, true);`);
-    rawCpp(`for (int __i = 0; __i < ${count}; __i++) __HAL_READ_BUF__[__i] = ${this._bus}.read();`);
+    i2cBeginTx(this._bus, this._address);
+    i2cWrite(this._bus, register);
+    i2cEndTx(this._bus, false);
+    i2cRequestFrom(this._bus, this._address, count, true);
+    rawCpp(`uint8_t __buf[${count}];`);
+    rawCpp(`for (int __i = 0; __i < ${count}; __i++) __buf[__i] = ${this._bus}.read();`);
+    rawCpp(`return __buf;`);
     return new Uint8Array(count);
   }
 }
 
 export class I2CBus {
+  static readonly __includes = ["<Wire.h>"];
   private _bus: string;
 
   constructor(bus: string) {
@@ -83,6 +86,7 @@ export class I2CBus {
   }
 
   take(): this | null {
+    include("<Wire.h>");
     return this;
   }
 

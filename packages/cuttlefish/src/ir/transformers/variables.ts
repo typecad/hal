@@ -1,6 +1,6 @@
 ﻿import ts from "typescript";
 import { Diagnostic } from "../../types.js";
-import { StatementIR, ExpressionIR, ParameterIR, CppType } from "../../api/index.js";
+import { StatementIR, ExpressionIR, ParameterIR, CppType, HALOpIR } from "../../api/index.js";
 import { extractNodeComments, makeDiagnostic, makeSourceSpan } from "../ast-node-utils.js";
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode } from "../type-resolution.js";
 import {
@@ -38,10 +38,18 @@ import {
   getCtorIncludes,
   registerFloatVariable,
   resolveHALReceiver,
-  isHALSingleton
+  isHALSingleton,
+  HALInstance,
 } from "../hal-resolver.js";
 import { resolveHALCallForVarInit } from "./hal-call-resolver.js";
 import { recordSignal } from "./ui-call-resolver.js";
+
+function replaceHalReadBufferPlaceholder(op: HALOpIR, varName: string): HALOpIR {
+  if (op.operation === "i2c.read_buffer" && op.buffer === "__HAL_READ_BUF__") {
+    return { ...op, buffer: varName };
+  }
+  return op;
+}
 
 export function assignmentOperatorToString(kind: ts.SyntaxKind): Extract<StatementIR, { kind: "assign" }>['operator'] | undefined {
   switch (kind) {
@@ -539,7 +547,7 @@ export function variableStatementToIR(
             const halStmts = sideEffectOps.map(op => ({
               kind: "hal-op" as const,
               sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
-              operation: op,
+              operation: replaceHalReadBufferPlaceholder(op, varName),
               returns_value: false,
             }));
             lowered.push(...halStmts);
@@ -559,9 +567,26 @@ export function variableStatementToIR(
           if (result.returnClassName && ts.isPropertyAccessExpression(init.expression)) {
             const receiver = init.expression.expression;
             const instance = resolveHALReceiver(receiver);
+            const fieldValues = new Map(instance?.fieldValues || []);
+            // For device() factory calls, copy the address/cs from the call arg
+            // so I2CDevice/SPIDevice methods can resolve this._address / this._cs.
+            if (result.returnClassName === "I2CDevice" || result.returnClassName === "SPIDevice") {
+              const fieldName = result.returnClassName === "SPIDevice" ? "_cs" : "_address";
+              const firstArg = init.arguments?.[0];
+              if (firstArg) {
+                if (ts.isNumericLiteral(firstArg)) fieldValues.set(fieldName, firstArg.text);
+                else if (ts.isStringLiteral(firstArg)) fieldValues.set(fieldName, firstArg.text);
+                else if (ts.isIdentifier(firstArg)) {
+                  // Resolve pin identifiers (e.g. D10 → 10) via halInstances
+                  const argInst = resolveHALReceiver(firstArg);
+                  const pinVal = argInst?.fieldValues.get('_pin') ?? argInst?.fieldValues.get('pin');
+                  fieldValues.set(fieldName, pinVal ?? firstArg.text);
+                }
+              }
+            }
             halInstances.set(varName, {
               className: result.returnClassName,
-              fieldValues: new Map(instance?.fieldValues || []),
+              fieldValues,
             });
           } else if (ts.isPropertyAccessExpression(init.expression)) {
             const receiver = init.expression.expression;
@@ -575,7 +600,22 @@ export function variableStatementToIR(
             // pin number (demo #34 Finding B). The value is captured into a
             // real var_decl below (the isHalOpReturn branch).
             if (instance && (!result.returnValue || result.returnValue === "this") && !isHalOpReturn) {
-              halInstances.set(varName, instance);
+              const aliasInst: HALInstance = {
+                className: instance.className,
+                fieldValues: new Map(instance.fieldValues),
+                ...(instance._spreadParamName ? { _spreadParamName: instance._spreadParamName } : {}),
+              };
+              if (method === "take" && ts.isIdentifier(receiver) && isHALSingleton(receiver.text)) {
+                aliasInst.canonicalBusName = receiver.text;
+                lowered.push({
+                  kind: "call" as const,
+                  sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
+                  callee: `${receiver.text}.take`,
+                  args: [],
+                });
+                commentsAssigned = true;
+              }
+              halInstances.set(varName, aliasInst);
             }
           }
           if (result.returnValue && result.returnValue !== "this") {

@@ -6,16 +6,6 @@
 #include <Arduino.h>
 #include <stdio.h>
 
-// TypeCAD Core Shims
-#ifndef CUTTLEFISH_UNDEFINED
-#define CUTTLEFISH_UNDEFINED 0
-#endif
-
-// Nullish helpers — overload set so value/struct types (which always
-// exist) return false from the generic template, while scalars compare
-// against CUTTLEFISH_UNDEFINED. The generic catch-all must NOT cast
-// (T)CUTTLEFISH_UNDEFINED — that fails to compile for non-scalar T.
-
 // TypeCAD Native Polyfills
 
 #define UI_COLOR_DEPTH 565

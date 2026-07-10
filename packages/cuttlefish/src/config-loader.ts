@@ -48,6 +48,7 @@ export interface ResolvedCuttlefishConfig {
   /** Console polyfill configuration. */
   console?: {
     baudRate?: number;
+    port?: string;
   };
   /** Extra compiler flags from `output.extraFlags`. */
   outputExtraFlags?: string[];
@@ -373,8 +374,12 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
 
   // Parse console configuration
   const consoleBaudRate = flat.get("console.baudRate");
-  if (typeof consoleBaudRate === "number") {
-    resolved.console = { baudRate: consoleBaudRate };
+  const consolePort = flat.get("console.port");
+  if (typeof consoleBaudRate === "number" || typeof consolePort === "string") {
+    resolved.console = {
+      ...(typeof consoleBaudRate === "number" ? { baudRate: consoleBaudRate } : {}),
+      ...(typeof consolePort === "string" ? { port: consolePort } : {}),
+    };
   }
 
   // Extract structured fields that the flat walker cannot handle.
@@ -440,13 +445,19 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
   }
 
   const configDir = path.dirname(config.configPath);
-  const outPath = path.join(configDir, "cuttlefish-env.d.ts");
+  const cuttlefishDir = path.join(configDir, ".cuttlefish");
+  const outPath = path.join(cuttlefishDir, "cuttlefish-env.d.ts");
+
+  // Ensure .cuttlefish/ exists (it may not on first build of a non-scaffolded project)
+  if (!fs.existsSync(cuttlefishDir)) {
+    fs.mkdirSync(cuttlefishDir, { recursive: true });
+  }
 
   // Determine what @typecad exports
   let boardExport = "";
   if (config.contract) {
-    // Contract-based: export from generated board
-    boardExport = "export * from './.cuttlefish/board.js';";
+    // Contract-based: export from generated board (same dir — .cuttlefish/)
+    boardExport = "export * from './board.js';";
   } else if (config.board) {
     // Explicit board package (legacy)
     boardExport = `export * from '${config.board}';`;
@@ -513,6 +524,9 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
     "",
     "declare module '@typecad' {",
     `  ${boardExport}`,
+    "  export type Owned<T = any> = T;",
+    "  export type Shared<T = any> = T;",
+    "  export type Mutable<T = any> = T;",
     "}",
     "",
     "export {};",

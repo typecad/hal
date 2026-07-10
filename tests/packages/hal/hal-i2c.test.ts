@@ -63,7 +63,7 @@ describe('I2C HAL - Arduino API Transpilation', () => {
         I2C0.endTransmission();
       `);
 
-      expectCppContains(result, ['Wire.beginTransmission(118)', 'Wire.write({ 1, 2, 3 })']);
+      expectCppContains(result, ['Wire.beginTransmission(118)', 'Wire.write(1)', 'Wire.write(2)', 'Wire.write(3)']);
       expect(result.cpp).toContain('Wire.endTransmission');
     });
 
@@ -177,7 +177,7 @@ describe('I2C HAL - Device Accessor Pattern', () => {
       I2C0.device(0x76).writeBytes(0xFA, [0x01, 0x02, 0x03]);
     `);
 
-    expectCppContains(result, ['Wire.beginTransmission(118)', 'Wire.write(250)', 'Wire.endTransmission()']);
+    expectCppContains(result, ['Wire.beginTransmission(118)', 'Wire.write(250)', 'Wire.endTransmission']);
   });
 
   // TODO: readBytes needs buffer allocation + read loop generation in inline evaluator
@@ -189,7 +189,6 @@ describe('I2C HAL - Device Accessor Pattern', () => {
     `);
 
     expectCppContains(result, [
-      'uint8_t buf[4]',
       'Wire.beginTransmission(118)',
       'Wire.write(250)',
       'Wire.endTransmission(false)',
@@ -254,6 +253,27 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
     expect(result.cpp).toContain('Wire.endTransmission');
     expectCppNotContains(result, ['const int i2c', 'i2c.']);
   });
+
+  it('transpiles const bus = I2C0.take() and bus.release() without invalid C++', () => {
+    const result = transpileArduino(`
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
+      const bus = I2C0.take();
+      bus.beginTransmission(0x76);
+      bus.write(0xFA);
+      bus.endTransmission();
+      bus.release();
+    `);
+
+    expectCppContains(result, [
+      'Wire.beginTransmission(118)',
+      'Wire.write(250)',
+    ]);
+    expect(result.cpp).toContain('Wire.endTransmission');
+    expect(result.cpp).not.toContain('I2C0.take');
+    expect(result.cpp).not.toContain('bus.take');
+    expect(result.cpp).not.toContain('bus.release');
+    expect(result.cpp).not.toContain('const auto bus');
+  });
   
   describe('I2C HAL - Multi-Byte Write & Uint8Array', () => {
     it('transpiles new Uint8Array([...]) as uint8_t C array', () => {
@@ -277,7 +297,7 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
       expectCppContains(result, [
         'Wire.beginTransmission(118)',
         'Wire.write(245)',
-        'Wire.endTransmission()',
+        'Wire.endTransmission',
       ]);
     });
   
@@ -377,5 +397,67 @@ describe('I2C HAL - Bus Variable Aliasing', () => {
       // Uint8Array maps to uint8_t[] C array, so .length → sizeof(buf)/sizeof(buf[0])
       expect(result.cpp).toContain('sizeof(buf) / sizeof(buf[0])');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Two-step device pattern: const dev = bus.device(addr); dev.method()
+//
+// Unlike the inline chained pattern (I2C0.device(addr).method()), this stores
+// the device in a variable and calls methods on it later. The HAL alias
+// resolver must follow the chain: sensor → bus → I2C0 → I2CBus, apply the
+// device() factory transformation (I2CBus → I2CDevice with _address), and
+// resolve this._address / this._bus inside method bodies.
+// ---------------------------------------------------------------------------
+
+describe('I2C HAL - Two-step device variable pattern', () => {
+  it('resolves sensor.writeByte via const sensor = bus.device(addr)', () => {
+    const result = transpileArduino(`
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
+      const bus = I2C0.begin();
+      const sensor = bus.device(0x76);
+      sensor.writeByte(0xF4, 0x27);
+    `);
+
+    // The address (0x76 = 118) must be resolved inside writeByte's method body
+    expectCppContains(result, [
+      'Wire.begin()',
+      'Wire.beginTransmission(118)',
+      'Wire.write(244)',
+      'Wire.write(39)',
+      'Wire.endTransmission(true)',
+    ]);
+    // this->_address must NOT leak into the method body lowering
+    expectCppNotContains(result, ['this->_address', 'this->_bus']);
+  });
+
+  it('resolves sensor.readByte via const sensor = bus.device(addr)', () => {
+    const result = transpileArduino(`
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
+      const bus = I2C0.begin();
+      const sensor = bus.device(0x76);
+      const val = sensor.readByte(0xD0);
+    `);
+
+    expectCppContains(result, [
+      'Wire.beginTransmission(118)',
+      'Wire.write(208)',
+    ]);
+    expectCppNotContains(result, ['this->_address', 'this->_bus']);
+  });
+
+  it('resolves sensor.writeBytes via const sensor = bus.device(addr)', () => {
+    const result = transpileArduino(`
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
+      const bus = I2C0.begin();
+      const sensor = bus.device(0x76);
+      sensor.writeBytes(0xFA, [0x01, 0x02, 0x03]);
+    `);
+
+    expectCppContains(result, [
+      'Wire.beginTransmission(118)',
+      'Wire.write(250)',
+    ]);
+    expectCppNotContains(result, ['this->_address']);
   });
 });

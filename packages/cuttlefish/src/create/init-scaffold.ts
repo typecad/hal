@@ -44,7 +44,7 @@ const _knownTargets: KnownTarget[] = [
     frameworkPackage: '@typecad/framework-arduino',
     framework: 'arduino',
     buildTarget: 'arduino:avr:uno',
-    mcu: 'ATmega328P',
+    mcu: 'atmega328p',
   },
   {
     id: 'esp32-devkit',
@@ -55,7 +55,7 @@ const _knownTargets: KnownTarget[] = [
     frameworkPackage: '@typecad/framework-arduino',
     framework: 'arduino',
     buildTarget: 'esp32:esp32:esp32',
-    mcu: 'ESP32-WROOM-32',
+    mcu: 'esp32',
   },
   {
     id: 'esp32s3',
@@ -146,6 +146,8 @@ export function scaffoldProject(
   const createdFiles: string[] = [];
 
   fs.mkdirSync(srcDir, { recursive: true });
+  // .cuttlefish/ holds generated boilerplate (env.d.ts, eslint config, board.ts)
+  fs.mkdirSync(cuttlefishDir, { recursive: true });
 
   function writeFile(fileName: string, content: string): string {
     const filePath = path.join(resolvedOutDir, fileName);
@@ -157,20 +159,19 @@ export function scaffoldProject(
   writeFile('package.json', generateProjectPackageJson(options));
   writeFile('tsconfig.json', generateProjectTsconfig(options));
   writeFile('cuttlefish.config.ts', generateProjectConfig(options));
-  writeFile('cuttlefish-env.d.ts', generateProjectEnvDts(options));
-  writeFile('eslint.config.mjs', generateEslintConfig(options));
-  writeFile('eslint-transpiler-rules.mjs', generateEslintRules(options));
+  writeFile('.cuttlefish/cuttlefish-env.d.ts', generateProjectEnvDts(options));
+  writeFile('.cuttlefish/eslint.config.mjs', generateEslintConfig(options));
+  writeFile('.cuttlefish/eslint-transpiler-rules.mjs', generateEslintRules(options));
   writeFile('.gitignore', generateGitignore(options));
 
   if (options.boardPackage) {
-    fs.mkdirSync(cuttlefishDir, { recursive: true });
     const boardFilePath = path.join(cuttlefishDir, 'board.ts');
     fs.writeFileSync(boardFilePath, generateBoardForwardingFile(options.boardPackage), 'utf-8');
     createdFiles.push(boardFilePath);
   }
 
   if (options.includeSketch) {
-    const entryName = options.isNative ? 'main.ts' : 'sketch.ts';
+    const entryName = 'main.ts';
     const sketchPath = path.join(srcDir, entryName);
     fs.writeFileSync(sketchPath, generateStarterSketch(options), 'utf-8');
     createdFiles.push(sketchPath);

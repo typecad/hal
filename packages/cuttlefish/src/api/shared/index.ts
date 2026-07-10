@@ -188,5 +188,7 @@ export { isStringEnum } from './ir-declarations.js';
 // Async types
 export type { AsyncRuntimeConfig } from './async-types.js';
 
-// Promise runtime generator
+// Promise runtime generator (heap-based: ESP32/ESP8266/rp2040/samd/…)
 export { generatePromiseRuntime } from './promise-runtime.js';
+// Heap-free static async runtime generator (AVR / megaavr / no-<vector> targets)
+export { generateStaticAsyncRuntime } from './async-runtime-static.js';

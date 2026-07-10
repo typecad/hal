@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "@typecad/framework-native",
   "version": "0.1.0",
   "description": "TypeCAD framework package for native C++ code generation (Windows/Linux executables)",
@@ -16,7 +16,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsc",

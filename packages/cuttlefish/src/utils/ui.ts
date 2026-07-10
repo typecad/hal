@@ -25,11 +25,15 @@ export function printHeader(): void {
  */
 export function printBuildInfo(options: {
   framework?: string;
+  mcu?: string;
   board?: string;
   buildTarget?: string;
 }): void {
   if (options.framework) {
     console.log(chalk.gray(`  ${ICON_INFO} Framework: `) + chalk.white(options.framework));
+  }
+  if (options.mcu) {
+    console.log(chalk.gray(`  ${ICON_INFO} MCU: `) + chalk.white(options.mcu));
   }
   if (options.board) {
     console.log(chalk.gray(`  ${ICON_INFO} Board: `) + chalk.white(options.board));
@@ -37,7 +41,7 @@ export function printBuildInfo(options: {
   if (options.buildTarget) {
     console.log(chalk.gray(`  • Build Target: `) + chalk.white(options.buildTarget));
   }
-  if (options.framework || options.board || options.buildTarget) {
+  if (options.framework || options.mcu || options.board || options.buildTarget) {
     console.log();
   }
 }

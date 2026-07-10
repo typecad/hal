@@ -163,6 +163,9 @@ export class GenericStrategy implements PlatformStrategy {
   reservedNames(): ReadonlySet<string> {
     return new Set<string>();
   }
+  passthroughMacroNames(): ReadonlySet<string> {
+    return new Set<string>();
+  }
   apiReservedEnumNames(): ReadonlySet<string> {
     return new Set<string>();
   }

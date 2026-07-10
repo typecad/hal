@@ -1,8 +1,7 @@
 import { rawCpp } from './emit.js';
 
-export declare function randomSeed(seed: number): void;
-export declare function random(max: number): number;
-export declare function random(min: number, max: number): number;
+export function randomSeed(seed: number): void {}
+export function random(minOrMax: number, max?: number): number { return 0; }
 
 export class Random {
   /** Seeds the PRNG with a starting value. */

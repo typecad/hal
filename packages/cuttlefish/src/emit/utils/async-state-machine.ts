@@ -284,7 +284,7 @@ export function generateAsyncTaskClass(
       }
     }
 
-    caseLines.push(`      case ${stateName}:`, ...body, `        break;`);
+    caseLines.push(`      case ${stateName}:`, `        {`, ...body, `        }`, `        break;`);
   }
 
   if (!isCyclic) caseLines.push(`      case STATE_DONE:`, `        break;`);

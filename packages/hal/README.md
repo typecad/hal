@@ -73,6 +73,48 @@ export function loop() {
 For I2C/SPI/UART, instantiate the bus class with the board's pinned instance
 (see your `@typecad/board-*` package for available bus names).
 
+## Hardware tests
+
+The [`tests/`](./tests/) directory contains a hardware test suite that
+exercises every AVR-compilable HAL subsystem against real Arduino Uno hardware,
+using [`@typecad/expect`](https://github.com/justind000/typecode/tree/main/packages/expect)
+(`describe()` / `.it()` / `.expect()` / `done()`) over serial. Each file covers
+one subsystem: GPIO, timing, math, random, pulse, shift, interrupts, UART,
+I2C, SPI, ADC, EEPROM, WDT, Preferences, async, and constants.
+
+ESP32-only subsystems (DAC, `FS`, `Power`, `HardwareTimer`) are intentionally
+omitted — they require an ESP32 target.
+
+Run on a connected Uno:
+
+```bash
+npm exec --workspace @typecad/hal -- cuttlefish-test
+```
+
+The suite is configured by [`cuttlefish.config.ts`](./cuttlefish.config.ts).
+Like the [`@typecad/framework-arduino`](https://github.com/justind000/typecode/tree/main/packages/framework-arduino/tests)
+tests, it imports through `@TypeCAD` (the board package) and ambient globals
+declared in `cuttlefish-env.d.ts`, never directly from `@typecad/hal`, so the
+transpiler resolves each call against the active MCU/board packages.
+
+### Skipped on AVR
+
+One file is skipped on AVR by a `@typecad-skip-target` directive, for a
+genuine hardware reason (not a transpiler limitation):
+
+- **`08-uart`** — the Uno has a single hardware UART, which the test runner
+  itself uses as the `[TC:...]` protocol channel. Any `UART0` call disrupts
+  that channel. Runs on multi-UART targets (ESP32).
+
+The async test (`15-async`) **runs on AVR**: on heap-less targets the
+transpiler emits a fixed-capacity, allocation-free static timer/task runtime
+(`async-runtime-static.ts`) in place of the full `Promise<T>` runtime used on
+ESP32, so `Async.sleep`/`yield`/`sleepUntil`/`currentTask` link and run on the
+ATmega328P.
+
+ESP32-only subsystems (DAC, `FS`, `Power`, `HardwareTimer`) are omitted
+entirely — they require an ESP32 target.
+
 ## Ecosystem
 
 - [`@typecad/cuttlefish`](https://github.com/justind000/typecode/tree/main/packages/cuttlefish) — the transpiler that resolves HAL calls to C++.

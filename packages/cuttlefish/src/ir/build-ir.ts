@@ -153,7 +153,14 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   // returned in ProgramIR.diagnostics, so throwIfFatalDiagnostics in
   // transpile.ts will abort the build on any error pushed here.
   getContext().diagnostics = diagnostics;
-  diagnostics.push(...prescanUnsupportedFeatures(source, normalizedSourceText));
+  // Only prescan user code — skip library sources from node_modules and
+  // internal packages (the HAL package ships src/ for transpile-time
+  // introspection, but its internal use of `any`, Promise, etc. is not
+  // user code and should not trigger TS2CPP diagnostics).
+  const normalizedFileName = fileName.replace(/\\/g, "/");
+  if (!normalizedFileName.includes("/node_modules/") && !normalizedFileName.includes("/packages/")) {
+    diagnostics.push(...prescanUnsupportedFeatures(source, normalizedSourceText));
+  }
   const imports: ImportIR[] = [];
   const reExports: ReExportIR[] = [];
   const topLevelStatements: StatementIR[] = [];
@@ -306,6 +313,20 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       break;
     }
   }
+  // If only the default board constants are loaded (4 keys from getDefaultBoardConstants),
+  // try the config's boardPackage directly. This covers the case where board()/boardResolve()
+  // is imported from @typecad/hal but no @typecad/board-* import is present in the user's code.
+  const currentBC = getCurrentBoardConstants();
+  if (currentBC && currentBC.size <= 4 && boardPackage) {
+    const boardFile = tryResolveBoardDefFile(fileName, boardPackage, boardPackage);
+    if (boardFile) {
+      try {
+        setCurrentBoardConstants(resolveBoardConstants(boardFile));
+      } catch {
+        // Non-fatal
+      }
+    }
+  }
 
   // Phase 0c-bis: register UI module imports (name → .ui.html path) so
   // ui.mount(screen, ...) can resolve `screen` back to its source tree.
@@ -356,6 +377,10 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   const HAL_ALIASING_METHODS = new Set([
     "asOutput", "asInput", "asInputPullUp", "asInputPullDown",
     "output", "inputPullUp", "inputPullDown",
+    "device",  // I2CBus.device(addr) / SPIBus.device(cs) → device instance
+    "tone",    // OutputPin.tone(freq) → ToneChain
+    "begin",   // I2CBus.begin() / SPIBus.begin() / SerialPort.begin() → same instance
+    "take",    // Bus.take() → same instance (ownership is compile-time only)
   ]);
   for (const node of source.statements) {
     if (!ts.isVariableStatement(node)) continue;
@@ -365,7 +390,15 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       if (ts.isCallExpression(init) && ts.isPropertyAccessExpression(init.expression)
           && HAL_ALIASING_METHODS.has(init.expression.name.text)
           && ts.isIdentifier(init.expression.expression)) {
-        topLevelAliasReceivers.set(decl.name.text, init.expression.expression.text);
+        // Capture call arguments for factory methods like device(0x76) that
+        // need the arg to construct the derived instance (I2CDevice._address).
+        const argTexts = init.arguments.map(a => {
+          if (ts.isNumericLiteral(a)) return a.text;
+          if (ts.isStringLiteral(a)) return a.text;
+          if (ts.isIdentifier(a)) return a.text;
+          return a.getText();
+        });
+        topLevelAliasReceivers.set(decl.name.text, { receiver: init.expression.expression.text, method: init.expression.name.text, args: argTexts });
       }
     }
   }
@@ -405,9 +438,12 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
 
       // Track HAL instances imported from board packages and framework stubs
       // so the HAL resolver can resolve them to Arduino C++ names.
-      const isHALSource = moduleSpecifier.startsWith('@typecad/board-')
-        || moduleSpecifier === '@typecad/framework-arduino/arduino'
-        || moduleSpecifier === '@typecad';
+      // Case-insensitive on the `@typecad` scope so the documented `@TypeCAD`
+      // virtual import registers pin aliases (LED, etc.) identically.
+      const lowerSpecifier = moduleSpecifier.toLowerCase();
+      const isHALSource = lowerSpecifier.startsWith('@typecad/board-')
+        || lowerSpecifier === '@typecad/framework-arduino/arduino'
+        || lowerSpecifier === '@typecad';
 
       // UI authoring namespace: `import { ui } from "@typecad/ui"`. The `ui`
       // value is a compile-time construct (its calls are intercepted by

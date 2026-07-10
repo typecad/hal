@@ -1,4 +1,4 @@
-﻿import { gpioWrite, gpioRead, gpioToggle, gpioSetMode, tonePlay, toneStop, adcRead, adcReadVoltage, adcSetReference, interruptAttach, interruptDetach, pwmWrite, rawCpp } from './emit.js';
+﻿import { gpioWrite, gpioRead, gpioToggle, gpioSetMode, tonePlay, toneStop, adcRead, adcReadVoltage, adcSetReference, interruptAttach, interruptDetach, pwmWrite, rawCpp, boardResolve } from './emit.js';
 import { board } from './board.js';
 import { callback } from './callback.js';
 import { ADC } from './adc.js';
@@ -6,7 +6,6 @@ import { HIGH } from './constants.js';
 
 export class OutputPin {
   private _pin: number;
-  private _lastFreq: number;
   readonly number: number;
   readonly gpio: number;
 
@@ -14,7 +13,6 @@ export class OutputPin {
     this._pin = pin;
     this.number = pin;
     this.gpio = pin;
-    this._lastFreq = 0;
   }
 
   high(): void {
@@ -35,14 +33,13 @@ export class OutputPin {
 
   pulse(durationMs: number): void {
     gpioWrite(this._pin, 1);
-    rawCpp(`delayMicroseconds(${durationMs} * 1000);`);
+    rawCpp(`delay(${durationMs});`);
     gpioWrite(this._pin, 0);
   }
 
   tone(frequency: number): ToneChain {
-    this._lastFreq = frequency;
     tonePlay(this._pin, frequency);
-    return new ToneChain(this._pin, this._lastFreq);
+    return new ToneChain(this._pin, frequency);
   }
 
   toneFor(frequency: number, duration: number): void {
@@ -54,15 +51,15 @@ export class OutputPin {
   }
 
   pwm(percent: number): void {
-    rawCpp(`analogWrite(${this._pin}, ${percent} * ((1 << ${board("peripherals.pwm.resolution")}) - 1) / 100);`);
+    pwmWrite(this._pin, percent);
   }
 
   getPwmFrequency(): number {
-    return Number(board("peripherals.pwm.maxFrequency"));
+    return boardResolve("peripherals.pwm.maxFrequency");
   }
 
   getPwmResolution(): number {
-    return Number(board("peripherals.pwm.resolution"));
+    return boardResolve("peripherals.pwm.resolution");
   }
 }
 
@@ -98,11 +95,11 @@ export class InputPin {
   }
 
   getAnalogResolution(): number {
-    return Number(board("peripherals.adc.0.resolution"));
+    return boardResolve("peripherals.adc.0.resolution");
   }
 
   setAnalogReference(ref: number | string): void {
-    ADC._reference = String(ref);
+    ADC._reference = ref as string;
     adcSetReference(ref);
   }
 
@@ -131,7 +128,7 @@ export class InputPin {
    *   rejects (or resolves with a false/error) after the timeout expires.
    */
   waitForRising(timeout?: number): Promise<void> {
-    rawCpp(`__cuttlefish_wait_pin_edge(${this._pin}, RISING, ${timeout ?? -1})`);
+    rawCpp(`__cuttlefish_wait_pin_edge(${this._pin}, RISING, ${timeout ?? -1});`);
     return undefined as any;
   }
 
@@ -143,7 +140,7 @@ export class InputPin {
    *   rejects (or resolves with a false/error) after the timeout expires.
    */
   waitForFalling(timeout?: number): Promise<void> {
-    rawCpp(`__cuttlefish_wait_pin_edge(${this._pin}, FALLING, ${timeout ?? -1})`);
+    rawCpp(`__cuttlefish_wait_pin_edge(${this._pin}, FALLING, ${timeout ?? -1});`);
     return undefined as any;
   }
 }
@@ -214,6 +211,7 @@ export class Pin {
     return this as any;
   }
 
+  /** Alias for asOutput() — shorter fluent form. */
   output(initial?: number | boolean): OutputPin {
     gpioSetMode(this._pin, "OUTPUT");
     if (initial !== undefined) {
@@ -244,6 +242,14 @@ export class Pin {
 
   read(): boolean {
     return gpioRead(this._pin) as unknown as boolean;
+  }
+
+  isHigh(): boolean {
+    return this.read();
+  }
+
+  isLow(): boolean {
+    return !this.read();
   }
 
   write(value: number | boolean): void {

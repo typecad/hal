@@ -512,6 +512,21 @@ export function callToStatement(
     };
   }
 
+  // ── emit() / rawCpp() — compile-time C++ injection ─────────────────────
+  // Must be BEFORE the HAL resolver — emit/rawCpp are exported from @typecad/hal
+  // but are NOT HAL class methods. The HAL resolver would create a pseudo-instance
+  // and fail to find a method body, leaving the call unresolved.
+  if (ts.isIdentifier(call.expression) && (call.expression.text === "emit" || call.expression.text === "rawCpp")) {
+    return {
+      kind: "call",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      callee: "__EMIT__",
+      args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
+    };
+  }
+
   // ---- HAL method resolver (highest priority) ---
   const halResolved = tryResolveHALMethod(call, fileName, sourceText, diagnostics, pointerVars);
   if (halResolved) return halResolved;
@@ -531,18 +546,6 @@ export function callToStatement(
       sourceSpan: makeSourceSpan(call, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
-    };
-  }
-
-  // ── emit() — compile-time C++ injection ─────────────────────────────────
-  if (ts.isIdentifier(call.expression) && call.expression.text === "emit") {
-    return {
-      kind: "call",
-      sourceSpan: makeSourceSpan(call, fileName, sourceText),
-      leadingComments: comments.leadingComments,
-      trailingComments: comments.trailingComments,
-      callee: "__EMIT__",
       args: call.arguments.map(a => expressionToIR(a, sourceText, diagnostics, pointerVars)),
     };
   }

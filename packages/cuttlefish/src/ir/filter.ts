@@ -95,5 +95,8 @@ export function filterProgramIR(
     namespaces: program.namespaces,
     peripheralUsage: program.peripheralUsage,
     requiredIncludes: program.requiredIncludes,
+    ...(program.defaultExportName ? { defaultExportName: program.defaultExportName } : {}),
+    ...(program.registeredCallbacks ? { registeredCallbacks: program.registeredCallbacks } : {}),
+    ...(program.restParamFunctions ? { restParamFunctions: program.restParamFunctions } : {}),
   };
 }

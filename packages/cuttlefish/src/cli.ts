@@ -267,7 +267,7 @@ async function main(): Promise<void> {
       if (options.expect) {
         const config = loadCuttlefishConfig(process.cwd());
         const exitCode = runExpectTests({
-          port: options.port,
+          port: options.port ?? config?.console?.port,
           buildTarget: config?.buildTarget,
           baud: config?.console?.baudRate ?? options.baud,
           expectFile: options.expectFile,
@@ -307,8 +307,17 @@ async function main(): Promise<void> {
     let effectiveOutDir = options.outDir;
     let effectiveBoardPackage = options.boardPackage;
     let effectiveFrameworkPackage = options.frameworkPackage;
+    let effectiveMcuPackage: string | undefined;
+    let effectivePort = options.port;
 
     if (config) {
+      if (config.mcu) {
+        effectiveMcuPackage = config.mcu;
+      }
+      // Config port is the default; CLI --port flag overrides it.
+      if (!effectivePort && config.console?.port) {
+        effectivePort = config.console.port;
+      }
       if (config.board || config.mcu) {
         effectiveBoardPackage = config.board || config.mcu;
       }
@@ -366,6 +375,7 @@ async function main(): Promise<void> {
     ui.printHeader();
     ui.printBuildInfo({
       framework: effectiveFrameworkPackage,
+      mcu: effectiveMcuPackage,
       board: effectiveBoardPackage,
       buildTarget: (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined),
     });
@@ -409,7 +419,7 @@ async function main(): Promise<void> {
               outputDir: path.dirname(result.sourcePath),
               sourcePath: result.sourcePath,
               buildTarget,
-              port: options.port,
+              port: effectivePort,
               baud: options.baud ?? config?.console?.baudRate,
               optimize: config?.outputOptimize,
               extraFlags: config?.outputExtraFlags,
@@ -423,8 +433,8 @@ async function main(): Promise<void> {
             if (compileResult.success) {
               if (compileResult.memoryUsage) ui.printMemoryUsage(compileResult.memoryUsage);
               
-              if (options.upload && options.port) {
-                ui.printUploading(options.port);
+              if (options.upload && effectivePort) {
+                ui.printUploading(effectivePort);
                 const uploadResult = uploadFirmware(watchOpts);
                 if (uploadResult.output) console.log(uploadResult.output);
                 if (uploadResult.success) ui.printSuccess();
@@ -499,7 +509,7 @@ async function main(): Promise<void> {
                   outputDir: path.dirname(rebuildResult.sourcePath),
                   sourcePath: rebuildResult.sourcePath,
                   buildTarget,
-                  port: options.port,
+                  port: effectivePort,
                   baud: options.baud ?? config?.console?.baudRate,
                   optimize: config?.outputOptimize,
                   extraFlags: config?.outputExtraFlags,
@@ -513,8 +523,8 @@ async function main(): Promise<void> {
                 if (compileResult.success) {
                   if (compileResult.memoryUsage) ui.printMemoryUsage(compileResult.memoryUsage);
 
-                  if (options.upload && options.port) {
-                    ui.printUploading(options.port);
+                  if (options.upload && effectivePort) {
+                    ui.printUploading(effectivePort);
                     const uploadResult = uploadFirmware(rebuildOpts);
                     if (uploadResult.output) console.log(uploadResult.output);
                     if (uploadResult.success) ui.printSuccess();
@@ -584,7 +594,7 @@ async function main(): Promise<void> {
       ui.printSuccess();
       if (options.expect) {
         const exitCode = runExpectTests({
-          port: options.port,
+          port: effectivePort,
           buildTarget: (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined),
           baud: config?.console?.baudRate ?? options.baud,
           expectFile: options.expectFile,
@@ -600,7 +610,7 @@ async function main(): Promise<void> {
       outputDir: path.dirname(result.sourcePath),
       sourcePath: result.sourcePath,
       buildTarget,
-      port: options.port,
+      port: effectivePort,
       baud: options.baud ?? config?.console?.baudRate,
       optimize: config?.outputOptimize,
       extraFlags: config?.outputExtraFlags,
@@ -639,8 +649,11 @@ async function main(): Promise<void> {
       return;
     }
 
-    // --upload
-    const port = options.port!;
+    // --upload (requires a port from --port flag or config.console.port)
+    if (!effectivePort) {
+      throw new Error("--upload requires a port. Set --port <port> on the command line or console.port in cuttlefish.config.ts.");
+    }
+    const port = effectivePort;
     ui.printUploading(port);
     const uploadResult = uploadFirmware(toolchainOpts);
 
@@ -669,7 +682,7 @@ async function main(): Promise<void> {
     if (options.expect) {
       ui.printSuccess();
       const exitCode = runExpectTests({
-        port: options.port,
+        port: effectivePort,
         buildTarget,
         baud: config?.console?.baudRate ?? options.baud,
         expectFile: options.expectFile,

@@ -2,7 +2,7 @@
 // vscode-typehal-debug — VSCode Extension
 //
 // Tracks breakpoints in TypeScript files and syncs them to
-// .typehal/breakpoints.json for the TypeHAL debug preprocessor.
+// .cuttlefish/breakpoints.json for the TypeCAD debug preprocessor.
 // Also auto-generates .d.ts declaration files from C++ sources.
 // ---------------------------------------------------------------------------
 
@@ -32,7 +32,7 @@ interface BreakpointMap {
 // Constants
 // ---------------------------------------------------------------------------
 
-const BREAKPOINTS_FILE = '.typehal/breakpoints.json';
+const BREAKPOINTS_FILE = '.cuttlefish/breakpoints.json';
 
 // ---------------------------------------------------------------------------
 // Extension Activation
@@ -230,7 +230,7 @@ class BreakpointTracker implements vscode.Disposable {
   }
 
   /**
-   * Load breakpoints from .typehal/breakpoints.json
+   * Load breakpoints from .cuttlefish/breakpoints.json
    */
   private loadFromFile(): void {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -257,7 +257,7 @@ class BreakpointTracker implements vscode.Disposable {
   }
 
   /**
-   * Save breakpoints to .typehal/breakpoints.json
+   * Save breakpoints to .cuttlefish/breakpoints.json
    */
   private saveToFile(): void {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -266,7 +266,7 @@ class BreakpointTracker implements vscode.Disposable {
       return;
     }
 
-    const dirPath = path.join(workspaceFolders[0].uri.fsPath, '.typehal');
+    const dirPath = path.join(workspaceFolders[0].uri.fsPath, '.cuttlefish');
     const filePath = path.join(dirPath, 'breakpoints.json');
 
     console.log('TypeHAL: Saving breakpoints to', filePath);
@@ -278,7 +278,7 @@ class BreakpointTracker implements vscode.Disposable {
       }
     } catch (mkdirErr) {
       console.error('TypeHAL: Failed to create directory:', mkdirErr);
-      vscode.window.showErrorMessage(`TypeHAL: Failed to create .typehal directory: ${mkdirErr}`);
+      vscode.window.showErrorMessage(`TypeHAL: Failed to create .cuttlefish directory: ${mkdirErr}`);
       return;
     }
 

@@ -29,6 +29,8 @@ describe('Bus Ownership Pattern', () => {
         'Wire.write(250)',
         'Wire.endTransmission',
       ]);
+      expect(result.cpp).not.toContain('I2C0.take');
+      expect(result.cpp).not.toContain('I2C0.release');
     });
   });
 
@@ -63,6 +65,23 @@ describe('Bus Ownership Pattern', () => {
         'Serial.begin(9600)',
         'Serial.println("hello")',
       ]);
+    });
+  });
+
+  describe('Take/release variable alias', () => {
+    it('transpiles const bus = I2C0.take() without emitting a C++ variable', () => {
+      const result = transpile(`
+        import { I2C0 } from '@typecad/board-arduino-uno';
+        const bus = I2C0.take();
+        bus.beginTransmission(0x76);
+        bus.release();
+      `, { target: 'arduino', boardPackage: '@typecad/board-arduino-uno' });
+
+      expectCppContains(result, [
+        'Wire.beginTransmission(118)',
+      ]);
+      expect(result.cpp).not.toContain('I2C0.take');
+      expect(result.cpp).not.toContain('const auto bus');
     });
   });
 

@@ -14,7 +14,7 @@ export class ADCClass {
   }
 
   setAnalogReference(ref: number): void {
-    this._reference = String(ref);
+    this._reference = ref as unknown as string;
     adcSetReference(ref);
   }
 

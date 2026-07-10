@@ -21,10 +21,10 @@ import {
 } from './pins.js';
 
 import { I2C0, SPI0, UART0 } from '@typecad/mcu-atmega328p';
-import { ArduinoUno } from './index.js';
+import * as boardIndex from './index.js';
 
 export const Board = {
-  definition: ArduinoUno,
+  get definition() { return boardIndex.ArduinoUno; },
 
   D0, D1, D2, D3, D4, D5, D6, D7,
   D8, D9, D10, D11, D12, D13,

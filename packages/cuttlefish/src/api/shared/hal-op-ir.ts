@@ -28,8 +28,8 @@ export interface GpioWriteOp {
   port?: string;
   /** Legacy framework pin number */
   pin: number;
-  /** 0 = LOW, 1 = HIGH */
-  value: 0 | 1;
+  /** 0 = LOW, 1 = HIGH, or a runtime expression string (e.g. "state", "!state") */
+  value: 0 | 1 | string;
 }
 
 export interface GpioReadOp {
@@ -60,8 +60,8 @@ export interface PwmWriteOp {
   operation: "pwm.write";
   port?: string;
   pin: number;
-  /** Duty cycle as a numeric value (framework maps to resolution) */
-  duty: number;
+  /** Duty cycle — numeric value or runtime expression string */
+  duty: number | string;
 }
 
 export interface PwmGetFrequencyOp {
@@ -116,7 +116,8 @@ export interface DacWriteOp {
   operation: "dac.write";
   port?: string;
   pin: number;
-  value: number;
+  /** Output value — numeric or runtime expression string */
+  value: number | string;
 }
 
 // ---------------------------------------------------------------------------
@@ -147,9 +148,10 @@ export interface TonePlayOp {
   operation: "tone.play";
   port?: string;
   pin: number;
-  frequency: number;
-  /** Optional duration in milliseconds */
-  duration?: number;
+  /** Frequency in Hz — numeric or runtime expression string */
+  frequency: number | string;
+  /** Optional duration in milliseconds — numeric or runtime expression string */
+  duration?: number | string;
 }
 
 export interface ToneStopOp {
@@ -215,8 +217,8 @@ export interface TimingClearTimeoutOp {
 export interface I2cBeginOp {
   operation: "i2c.begin";
   bus: string;
-  /** Slave address (only for slave mode) */
-  address?: number;
+  /** Slave address (only for slave mode) — numeric or runtime expression string */
+  address?: number | string;
 }
 
 export interface I2cEndOp {
@@ -227,13 +229,15 @@ export interface I2cEndOp {
 export interface I2cSetClockOp {
   operation: "i2c.set_clock";
   bus: string;
-  hz: number;
+  /** Clock speed in Hz — numeric or runtime expression string */
+  hz: number | string;
 }
 
 export interface I2cBeginTransmissionOp {
   operation: "i2c.begin_transmission";
   bus: string;
-  address: number;
+  /** Slave address — numeric or runtime expression string */
+  address: number | string;
 }
 
 export interface I2cWriteOp {
@@ -241,6 +245,28 @@ export interface I2cWriteOp {
   bus: string;
   /** Resolved C++ expression for the data to write */
   data: string;
+}
+
+export interface I2cWriteBytesOp {
+  operation: "i2c.write_bytes";
+  bus: string;
+  /** Individual byte values — numeric literals or runtime expressions */
+  bytes: (number | string)[];
+}
+
+export interface I2cWriteBufferOp {
+  operation: "i2c.write_buffer";
+  bus: string;
+  /** C array / buffer variable name */
+  data: string;
+}
+
+export interface I2cReadBufferOp {
+  operation: "i2c.read_buffer";
+  bus: string;
+  count: number | string;
+  /** Buffer variable name, or "__DISCARD__" to read-and-drop */
+  buffer: string;
 }
 
 export interface I2cEndTransmissionOp {
@@ -252,8 +278,10 @@ export interface I2cEndTransmissionOp {
 export interface I2cRequestFromOp {
   operation: "i2c.request_from";
   bus: string;
-  address: number;
-  quantity: number;
+  /** Slave address — numeric or runtime expression string */
+  address: number | string;
+  /** Number of bytes — numeric or runtime expression string */
+  quantity: number | string;
   stop: boolean;
 }
 
@@ -314,7 +342,8 @@ export interface SpiSetFrequencyOp {
 export interface SpiSetModeOp {
   operation: "spi.set_mode";
   bus: string;
-  mode: number;
+  /** SPI mode (0-3) — numeric or runtime expression string */
+  mode: number | string;
 }
 
 export interface SpiSetBitOrderOp {
@@ -343,7 +372,8 @@ export interface SpiCsHighOp {
 export interface UartBeginOp {
   operation: "uart.begin";
   port: string;
-  baud: number;
+  /** Baud rate — numeric or runtime expression string */
+  baud: number | string;
 }
 
 export interface UartEndOp {
@@ -527,6 +557,9 @@ export type HALOpIR =
   | I2cSetClockOp
   | I2cBeginTransmissionOp
   | I2cWriteOp
+  | I2cWriteBytesOp
+  | I2cWriteBufferOp
+  | I2cReadBufferOp
   | I2cEndTransmissionOp
   | I2cRequestFromOp
   | I2cAvailableOp

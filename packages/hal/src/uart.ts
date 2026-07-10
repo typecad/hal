@@ -1,6 +1,7 @@
 ﻿import { uartBegin, uartEnd, uartPrint, uartPrintln, uartWrite, uartRead, uartPeek, uartAvailable, uartFlush, rawCpp } from './emit.js';
 
 export class SerialPort {
+  static readonly __includes = ["<Arduino.h>"];
   private _port: string;
 
   constructor(port: string) {
@@ -25,7 +26,7 @@ export class SerialPort {
   }
 
   printf(format: string, ...args: any[]): void {
-    rawCpp(`${this._port}.printf(${format}, ${args});`);
+    rawCpp(`${this._port}.printf("${format}", ${args});`);
   }
 
   write(data: any): void {
@@ -55,7 +56,7 @@ export class SerialPort {
 
   waitForConnection(): Promise<void> {
     rawCpp(`while (!${this._port}) { delay(10); }`);
-    return Promise.resolve();
+    return undefined as any;
   }
 
   take(): this | null {

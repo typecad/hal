@@ -33,7 +33,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ui-layout": "vitest run tests/packages/cuttlefish/ui-layout-harness.test.ts",
-    "test:hw": "npm run test:hw --workspace @typecad/framework-arduino",
+    "test:hw": "npm run test:hw --workspace @typecad/hal && npm run test:hw --workspace @typecad/framework-arduino",
+    "test:hw:hal": "npm run test:hw --workspace @typecad/hal",
+    "test:hw:framework": "npm run test:hw --workspace @typecad/framework-arduino",
     "test:hw:basics": "npm run test:hw:basics --workspace @typecad/framework-arduino",
     "changeset": "changeset",
     "version": "changeset version"

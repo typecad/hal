@@ -483,8 +483,16 @@ export class StatementRenderer {
           // standalone statement.  The HAL definition includes `return` because
           // the TypeScript stub returns a value, but the C++ statement context
           // (e.g. inside void setup()) does not expect it.
-          const code = resolved.code;
-          return code.startsWith('return ') ? code.slice('return '.length) : code;
+          let code = resolved.code;
+          if (code.startsWith('return ')) code = code.slice('return '.length);
+          // A raw hal-op statement (e.g. `Async.sleep(10)` →
+          // `__cuttlefish_async_sleep(10)`) is a complete C++ statement and
+          // needs a terminating semicolon, unless it already ends with one or
+          // with `}` (a compound block).
+          if (!forHeader && !code.endsWith(';') && !code.endsWith('}')) {
+            code = code + ';';
+          }
+          return code;
         }
         if (resolved?.expression) {
           return forHeader ? resolved.expression : `${resolved.expression};`;
@@ -574,6 +582,10 @@ export class StatementRenderer {
   }
 
   private renderCall(statement: Extract<StatementIR, { kind: "call" }>, forHeader: boolean, calleeTransformer?: (callee: string) => string, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
+    // HAL bus ownership markers (take/release) — compile-time only, no C++ emission.
+    if (statement.args.length === 0 && /\.(take|release)$/.test(statement.callee)) {
+      return "";
+    }
     // Handle raw statements from setupInitCode
     if (statement.callee.startsWith('__RAW_STMT__')) {
       const rawStmt = statement.callee.slice('__RAW_STMT__'.length);
@@ -1058,7 +1070,12 @@ export class StatementRenderer {
   private renderEmitArg(arg: ExpressionIR): string {
     if (arg.kind === "string") return arg.value;
     if (arg.kind === "string_concat") return arg.parts.map(p => this.renderEmitArg(p)).join("");
-    if (arg.kind === "template_string") return this.expressionRenderer.render(arg.expression);
+    // For template_string inside emit(), the inner expression is a
+    // string_concat of literal parts and interpolated identifiers. We render
+    // each part directly as C++ text — string literals contribute their raw
+    // text, identifiers contribute their variable name — bypassing the
+    // snprintf machinery that normal string rendering would use.
+    if (arg.kind === "template_string") return this.renderEmitArg(arg.expression);
     return this.expressionRenderer.render(arg);
   }
 

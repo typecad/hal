@@ -3,7 +3,7 @@ import { Diagnostic, SourceSpan } from "../../types.js";
 import { StatementIR, ExpressionIR, CppType } from "../../api/index.js";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
 import { CppTypeHint, resolveDeclarationType, inferExprCppType } from "../type-resolution.js";
-import { PointerTracker, nestedClassAliases } from "../build-ir-state.js";
+import { PointerTracker, nestedClassAliases, topLevelAliasReceivers } from "../build-ir-state.js";
 import { type CppTypeIR, parseCppType, renderCppType, isPointer, parsedIsPointer, parsedIsVector, parsedElementString } from "../../api/shared/cpp-type-ir.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { lowerStatementList, expressionStatementToIR } from "../statement-to-ir.js";
@@ -283,12 +283,23 @@ export function lowerControlFlowStatement(
       );
     }
 
+    // Evaluate the condition. If it's a bare identifier that resolves to a
+    // HAL alias (e.g. `if (bus2)` where bus2 = I2C0.take()), the alias is a
+    // compile-time non-null reference — constant-fold to `true` so the emit
+    // layer never references the suppressed variable.
+    let condition: ExpressionIR;
+    if (ts.isIdentifier(statement.expression) && topLevelAliasReceivers.has(statement.expression.text)) {
+      condition = { kind: "boolean", value: true };
+    } else {
+      condition = expressionToIR(statement.expression, sourceText, diagnostics, pointerVars);
+    }
+
     return [{
       kind: "if",
       sourceSpan: makeSourceSpan(statement, fileName, sourceText),
       leadingComments: comments.leadingComments,
       trailingComments: comments.trailingComments,
-      condition: expressionToIR(statement.expression, sourceText, diagnostics, pointerVars),
+      condition,
       thenBranch: thenStatements,
       elseBranch,
     }];

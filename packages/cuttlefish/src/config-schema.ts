@@ -23,6 +23,7 @@ const OutputConfig = z.object({
 /** Schema for the `console` section. */
 const ConsoleConfig = z.object({
   baudRate: z.number().int().positive().optional(),
+  port: z.string().optional(),
 }).strict();
 
 /** Schema for the `test` section. */

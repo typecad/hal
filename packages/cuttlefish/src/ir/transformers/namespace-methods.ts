@@ -47,6 +47,7 @@ export function resolveNamespaceMethodCall(
   };
 
   if (ns === "Pulse") {
+    // Legacy free-function style: Pulse.in(pin, level)
     if (method === "in") {
       const pin = resolvePinArg(0);
       const level = resolveBoolArg(1);
@@ -56,6 +57,9 @@ export function resolveNamespaceMethodCall(
         : `pulseIn(${pin}, ${level})`;
       return { emitLines: [], halOps: [], returnValue: call };
     }
+    // Current fluent API: Pulse.on(pin) returns a PulseMeasurement builder.
+    // The builder methods (.high(), .low(), .timeout()) are chained, so we
+    // can't resolve them here — but the static Pulse.long() can be handled.
     if (method === "long" || method === "long_") {
       const pin = resolvePinArg(0);
       const level = resolveBoolArg(1);
@@ -64,6 +68,12 @@ export function resolveNamespaceMethodCall(
         ? `pulseInLong(${pin}, ${level}, ${timeout})`
         : `pulseInLong(${pin}, ${level})`;
       return { emitLines: [], halOps: [], returnValue: call };
+    }
+    // Pulse.long(pin, value) static method (current API)
+    if (method === "long") {
+      const pin = resolvePinArg(0);
+      const value = argText(1);
+      return { emitLines: [], halOps: [], returnValue: `pulseInLong(${pin}, ${value})` };
     }
   }
 
@@ -95,6 +105,18 @@ export function resolveNamespaceMethodCall(
         halOps: [],
         returnValue: max ? `random(${min}, ${max})` : `random(${min})`,
       };
+    }
+    // Current class API: Random.upTo(max) → random(max)
+    if (method === "upTo") {
+      return { emitLines: [], halOps: [], returnValue: `random(${argText(0)})` };
+    }
+    // Random.between(min, max) → random(min, max)
+    if (method === "between") {
+      return { emitLines: [], halOps: [], returnValue: `random(${argText(0)}, ${argText(1)})` };
+    }
+    // Random.int() → random(2147483647)
+    if (method === "int") {
+      return { emitLines: [], halOps: [], returnValue: `random(2147483647)` };
     }
   }
 

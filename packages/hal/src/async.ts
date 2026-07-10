@@ -25,7 +25,7 @@ export class AsyncClass {
    * on native, or a FreeRTOS vTaskDelay in the future).
    */
   sleep(ms: number): Promise<void> {
-    rawCpp(`__cuttlefish_async_sleep(${ms})`);
+    rawCpp(`__cuttlefish_async_sleep(${ms});`);
     return undefined as any;
   }
 
@@ -34,7 +34,7 @@ export class AsyncClass {
    * (microtasks, timers) to run. Resumes on the next microtask pump cycle.
    */
   yield(): Promise<void> {
-    rawCpp(`__cuttlefish_async_yield()`);
+    rawCpp(`__cuttlefish_async_yield();`);
     return undefined as any;
   }
 
@@ -45,7 +45,7 @@ export class AsyncClass {
    * The underlying implementation uses the platform's timer mechanism.
    */
   sleepUntil(condition: () => boolean, pollIntervalMs: number = 10): Promise<void> {
-    rawCpp(`__cuttlefish_async_sleep_until(${pollIntervalMs})`);
+    rawCpp(`__cuttlefish_async_sleep_until(${pollIntervalMs});`);
     return undefined as any;
   }
 

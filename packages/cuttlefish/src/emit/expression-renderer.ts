@@ -308,6 +308,12 @@ export class ExpressionRenderer {
     if (nullVal && (value === "null" || value === "undefined" || value === "nullptr")) {
       return nullVal;
     }
+    // Platform value/function-like macros (e.g. Arduino INPUT, OUTPUT, HIGH,
+    // LOW) must pass through verbatim — escaping them to `OUTPUT_` would emit
+    // an undefined symbol since the Arduino header defines them as macros.
+    if (this.strategy.passthroughMacroNames().has(value)) {
+      return value;
+    }
     return escapeCppKeyword(value, this.strategy.reservedNames());
   }
 

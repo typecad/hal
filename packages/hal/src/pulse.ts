@@ -2,8 +2,14 @@ import { pulseIn_, pulseInLong_, rawCpp } from './emit.js';
 import { HIGH, LOW } from './constants.js';
 import type { Pin, InputPin } from './gpio.js';
 
-export declare function pulseIn(pin: number, value: number, timeout?: number): number;
-export declare function pulseInLong(pin: number, value: number, timeout?: number): number;
+export function pulseIn(pin: number, value: number, timeout?: number): number {
+  rawCpp(`return pulseIn(${pin}, ${value}${timeout !== undefined ? `, ${timeout}` : ""});`);
+  return 0;
+}
+export function pulseInLong(pin: number, value: number, timeout?: number): number {
+  rawCpp(`return pulseInLong(${pin}, ${value}${timeout !== undefined ? `, ${timeout}` : ""});`);
+  return 0;
+}
 
 export class Pulse {
   /** 

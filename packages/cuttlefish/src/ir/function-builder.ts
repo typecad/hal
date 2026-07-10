@@ -190,15 +190,6 @@ export function functionDeclarationToIR(
   const isExported = node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false;
   if (isAsync) {
     boilerplates.add("async_stub");
-    diagnostics.push(
-      makeDiagnostic(
-        sourceText,
-        node.pos,
-        "Async function encountered. Added async compatibility boilerplate stub; semantics are approximate.",
-        "warning",
-        "TS2CPP_ASYNC_STUB",
-      ),
-    );
   }
 
   const localVariableTypes = new Map<string, CppTypeHint>();
@@ -419,15 +410,6 @@ export function variableAsFunctionToIR(
     const isGenerator = !!(fnExpression as any).asteriskToken;
     if (isAsync) {
       boilerplates.add("async_stub");
-      diagnostics.push(
-        makeDiagnostic(
-          sourceText,
-          declaration.pos,
-          "Async function encountered. Added async compatibility boilerplate stub; semantics are approximate.",
-          "warning",
-          "TS2CPP_ASYNC_STUB",
-        ),
-      );
     }
 
     const sourceSpanTarget = fnExpression.name ?? declaration;

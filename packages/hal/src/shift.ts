@@ -2,8 +2,13 @@ import { rawCpp } from './emit.js';
 import { LSBFIRST, MSBFIRST } from './constants.js';
 import type { Pin, OutputPin, InputPin } from './gpio.js';
 
-export declare function shiftIn(dataPin: number, clockPin: number, bitOrder: number): number;
-export declare function shiftOut(dataPin: number, clockPin: number, bitOrder: number, value: number): void;
+export function shiftIn(dataPin: number, clockPin: number, bitOrder: number): number {
+  rawCpp(`return shiftIn(${dataPin}, ${clockPin}, ${bitOrder});`);
+  return 0;
+}
+export function shiftOut(dataPin: number, clockPin: number, bitOrder: number, value: number): void {
+  rawCpp(`shiftOut(${dataPin}, ${clockPin}, ${bitOrder}, ${value});`);
+}
 
 export class Shift {
   /** Directly shifts a byte out to a pin. */

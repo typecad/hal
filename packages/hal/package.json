@@ -6,11 +6,14 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test:hw": "npm exec -- cuttlefish-test",
+    "test:hw:basics": "npm exec -- cuttlefish-test tests/01-gpio.test.ts"
   },
   "license": "MIT",
   "publishConfig": {
@@ -44,5 +47,10 @@
   "engines": {
     "node": ">=18"
   },
-  "author": "typecad0"
+  "author": "typecad0",
+  "devDependencies": {
+    "@typecad/expect": "*",
+    "@typecad/board-arduino-uno": "*",
+    "@typecad/mcu-atmega328p": "*"
+  }
 }

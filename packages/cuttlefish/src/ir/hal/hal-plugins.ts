@@ -3,6 +3,44 @@ import { HALOpIR } from "../../api/index.js";
 import { HALInstance } from "./hal-parser.js";
 import { getCurrentBoardConstants, halInstances } from "../build-ir-state.js";
 import { resolveExpressionText, extractAndRegisterCallbacks } from "./hal-emitter.js";
+import { renderExprAsText } from "../render-expr.js";
+import type { ExpressionIR } from "../../api/index.js";
+
+function resolveI2cBufferArg(
+  args: readonly ts.Expression[],
+  idx: number,
+  instance: HALInstance,
+  paramNames: string[],
+  callArgTexts: string[],
+  paramDefaults: Map<string, string> | undefined,
+  callArgs: ExpressionIR[] | undefined,
+): { kind: "bytes"; bytes: (number | string)[] } | { kind: "buffer"; data: string } | null {
+  const arg = args[idx];
+  if (!arg) return null;
+
+  if (ts.isArrayLiteralExpression(arg)) {
+    const bytes = arg.elements.map((element) => {
+      if (ts.isNumericLiteral(element)) return Number(element.text);
+      return resolveExpressionText(element, instance, paramNames, callArgTexts, paramDefaults) ?? "0";
+    });
+    return { kind: "bytes", bytes };
+  }
+
+  if (ts.isIdentifier(arg) && callArgs) {
+    const paramIdx = paramNames.indexOf(arg.text);
+    if (paramIdx !== -1) {
+      const paramArg = callArgs[paramIdx];
+      if (paramArg?.kind === "array") {
+        const bytes = paramArg.elements.map((element) => renderExprAsText(element) ?? "0");
+        return { kind: "bytes", bytes };
+      }
+    }
+  }
+
+  const data = resolveSemanticArg(args, idx, instance, paramNames, callArgTexts, paramDefaults);
+  if (data === null) return null;
+  return { kind: "buffer", data };
+}
 
 /** Resolve a single argument from a semantic call's AST node list. */
 export function resolveSemanticArg(
@@ -34,6 +72,25 @@ export function resolveNumericArg(
   if (text === "false") return 0;
   const n = Number(text);
   return isNaN(n) ? null : n;
+}
+
+/**
+ * Resolve an argument that may be a compile-time literal OR a runtime expression.
+ * Tries numeric resolution first (for compile-time folding); falls back to the
+ * raw expression text for runtime values (variables, computed expressions).
+ * Returns the number (if literal) or the expression string, or null if unresolvable.
+ */
+function resolveNumericOrExpression(
+  args: readonly ts.Expression[],
+  idx: number,
+  instance: HALInstance,
+  paramNames: string[],
+  callArgTexts: string[],
+  paramDefaults: Map<string, string> | undefined,
+): number | string | null {
+  const num = resolveNumericArg(args, idx, instance, paramNames, callArgTexts, paramDefaults);
+  if (num !== null) return num;
+  return resolveSemanticArg(args, idx, instance, paramNames, callArgTexts, paramDefaults);
 }
 
 /** Extract the MCU port name from the current HAL instance, if available. */
@@ -176,7 +233,7 @@ export function tryResolveSemanticCall(
   paramNames: string[],
   callArgTexts: string[],
   paramDefaults: Map<string, string> | undefined,
-  callArgs?: any[],
+  callArgs?: ExpressionIR[],
 ): HALOpIR | null {
   // Extract MCU port name from instance (set by Pin.fromPort())
   const port = portFromInstance(instance);
@@ -185,9 +242,18 @@ export function tryResolveSemanticCall(
     // ── GPIO ──
     case "gpioWrite": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || value === null) return null;
-      return { operation: "gpio.write", port, pin, value: (value ? 1 : 0) as 0 | 1 };
+      if (pin === null) return null;
+      // Try literal resolution first (compile-time 0/1/true/false)
+      const numValue = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (numValue !== null) {
+        return { operation: "gpio.write", port, pin, value: (numValue ? 1 : 0) as 0 | 1 };
+      }
+      // Fall back to runtime expression (e.g. a variable, negated expression)
+      const exprValue = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (exprValue !== null) {
+        return { operation: "gpio.write", port, pin, value: exprValue };
+      }
+      return null;
     }
     case "gpioRead": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
@@ -209,7 +275,7 @@ export function tryResolveSemanticCall(
     // ── PWM ──
     case "pwmWrite": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const duty = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const duty = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null || duty === null) return null;
       return { operation: "pwm.write", port, pin, duty };
     }
@@ -250,7 +316,7 @@ export function tryResolveSemanticCall(
     // ── DAC ──
     case "dacWrite": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null || value === null) return null;
       return { operation: "dac.write", port, pin, value };
     }
@@ -272,8 +338,8 @@ export function tryResolveSemanticCall(
     // ── Tone ──
     case "tonePlay": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const frequency = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const duration = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const frequency = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const duration = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null || frequency === null) return null;
       return { operation: "tone.play", port, pin, frequency, ...(duration !== null ? { duration } : {}) };
     }
@@ -302,7 +368,7 @@ export function tryResolveSemanticCall(
     // ── I2C ──
     case "i2cBegin": {
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (bus === null) return null;
       return { operation: "i2c.begin", bus, ...(address !== null ? { address } : {}) };
     }
@@ -313,21 +379,41 @@ export function tryResolveSemanticCall(
     }
     case "i2cSetClock": {
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const hz = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (bus === null || hz === null) return null;
       return { operation: "i2c.set_clock", bus, hz };
     }
     case "i2cBeginTx": {
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (bus === null || address === null) return null;
       return { operation: "i2c.begin_transmission", bus, address };
     }
     case "i2cWrite": {
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const data = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || data === null) return null;
-      return { operation: "i2c.write", bus, data };
+      if (bus === null) return null;
+      const resolved = resolveI2cBufferArg(args, 1, instance, paramNames, callArgTexts, paramDefaults, callArgs);
+      if (!resolved) return null;
+      if (resolved.kind === "bytes") {
+        return { operation: "i2c.write_bytes", bus, bytes: resolved.bytes };
+      }
+      return { operation: "i2c.write", bus, data: resolved.data };
+    }
+    case "i2cWriteBuffer": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null) return null;
+      const resolved = resolveI2cBufferArg(args, 1, instance, paramNames, callArgTexts, paramDefaults, callArgs);
+      if (!resolved) return null;
+      if (resolved.kind === "bytes") {
+        return { operation: "i2c.write_bytes", bus, bytes: resolved.bytes };
+      }
+      return { operation: "i2c.write_buffer", bus, data: resolved.data };
+    }
+    case "i2cReadBuffer": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const count = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || count === null) return null;
+      return { operation: "i2c.read_buffer", bus, count, buffer: "__HAL_READ_BUF__" };
     }
     case "i2cEndTx": {
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
@@ -337,8 +423,8 @@ export function tryResolveSemanticCall(
     }
     case "i2cRequestFrom": {
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const quantity = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const quantity = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       const stop = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
       if (bus === null || address === null || quantity === null || stop === null) return null;
       return { operation: "i2c.request_from", bus, address, quantity, stop: stop !== "false" };
@@ -394,7 +480,7 @@ export function tryResolveSemanticCall(
     }
     case "spiSetMode": {
       const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const mode = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const mode = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (bus === null || mode === null) return null;
       return { operation: "spi.set_mode", bus, mode };
     }
@@ -408,7 +494,7 @@ export function tryResolveSemanticCall(
     // ── UART ──
     case "uartBegin": {
       const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const baud = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const baud = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (port === null || baud === null) return null;
       return { operation: "uart.begin", port, baud };
     }

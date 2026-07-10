@@ -70,6 +70,16 @@ export function emitPreamble(ctx: EmitterContext): void {
     }
   }
 
+  // Shim lines (CUTTLEFISH_UNDEFINED, nullish helpers) must come BEFORE
+  // async task classes — the async state machine references CUTTLEFISH_UNDEFINED
+  // for default timeout values (e.g. waitForRising with no timeout arg).
+  if (shimLines.length > 0) {
+    for (const line of shimLines) {
+      appendSourceLineLocal(ctx, line);
+    }
+    appendSourceLineLocal(ctx, "");
+  }
+
   if (asyncTaskClasses.length > 0) {
     for (const { classDef, instanceDecl } of asyncTaskClasses) {
       for (const line of classDef.split("\n")) {
@@ -97,13 +107,6 @@ export function emitPreamble(ctx: EmitterContext): void {
     appendSourceLineLocal(ctx, '  os << "]";');
     appendSourceLineLocal(ctx, "  return os;");
     appendSourceLineLocal(ctx, "}");
-    appendSourceLineLocal(ctx, "");
-  }
-
-  if (shimLines.length > 0) {
-    for (const line of shimLines) {
-      appendSourceLineLocal(ctx, line);
-    }
     appendSourceLineLocal(ctx, "");
   }
 

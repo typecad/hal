@@ -32,7 +32,7 @@ const ARDUINO_UNO_OPTIONS: InitProjectOptions = {
   frameworkPackage: '@typecad/framework-arduino',
   framework: 'arduino',
   buildTarget: 'arduino:avr:uno',
-  mcu: 'ATmega328P',
+  mcu: 'atmega328p',
   baudRate: 9600,
   includeSketch: true,
 };
@@ -161,7 +161,7 @@ describe("init-templates", () => {
       const content = generateProjectEnvDts(ARDUINO_UNO_OPTIONS);
 
       expect(content).toContain("declare module '@typecad'");
-      expect(content).toContain("export * from './.cuttlefish/board.js'");
+      expect(content).toContain("export * from './board.js'");
       expect(content).toContain("type Owned<T = unknown> = T");
       expect(content).toContain("type Shared<T = unknown> = T");
       expect(content).toContain("type Mutable<T = unknown> = T");
@@ -278,12 +278,17 @@ describe("init-scaffold", () => {
       expect(fileNames).toContain('tsconfig.json');
       expect(fileNames).toContain('cuttlefish.config.ts');
       expect(fileNames).toContain('cuttlefish-env.d.ts');
+      // Boilerplate files now live in .cuttlefish/ (not the project root)
+      const dirPaths = result.createdFiles.map(f => f.replace(/\\/g, '/'));
+      expect(dirPaths.some(f => f.endsWith('.cuttlefish/cuttlefish-env.d.ts'))).toBe(true);
+      expect(dirPaths.some(f => f.endsWith('.cuttlefish/eslint.config.mjs'))).toBe(true);
+      expect(dirPaths.some(f => f.endsWith('.cuttlefish/eslint-transpiler-rules.mjs'))).toBe(true);
       expect(fileNames).toContain('.gitignore');
-      expect(fileNames).toContain('sketch.ts');
+      expect(fileNames).toContain('main.ts');
 
       // Verify src directory was created
       expect(fs.existsSync(path.join(tmpDir, 'src'))).toBe(true);
-      expect(fs.existsSync(path.join(tmpDir, 'src', 'sketch.ts'))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, 'src', 'main.ts'))).toBe(true);
     });
 
     it("creates all expected files without sketch", () => {
@@ -293,7 +298,7 @@ describe("init-scaffold", () => {
       const fileNames = result.createdFiles.map(f => path.basename(f));
       expect(fileNames).toContain('package.json');
       expect(fileNames).toContain('tsconfig.json');
-      expect(fileNames).not.toContain('sketch.ts');
+      expect(fileNames).not.toContain('main.ts');
     });
 
     it("throws if directory exists and is not empty", () => {

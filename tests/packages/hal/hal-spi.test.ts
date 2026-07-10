@@ -5,7 +5,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
-import { expectCppContains, transpileArduino } from '../../setup';
+import { expectCppContains, expectCppNotContains, transpileArduino } from '../../setup';
 
 describe('SPI HAL - Arduino API Transpilation', () => {
   describe('Initialization', () => {
@@ -121,5 +121,68 @@ describe('SPI HAL - Multiple Bus Support', () => {
     
     expectCppContains(result, ['SPI.begin()']);
     expect(result.cpp).not.toContain('SPI0.begin');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Two-step SPI device pattern: const dev = bus.device(cs); dev.method()
+//
+// Like the I2C device pattern, this stores the device in a variable and calls
+// methods on it later. The CS pin must resolve to its numeric pin number
+// (e.g. D10 → 10) so digitalWrite(10, LOW/HIGH) is emitted, not digitalWrite(D10, ...).
+// ---------------------------------------------------------------------------
+
+describe('SPI HAL - Two-step device variable pattern', () => {
+  it('resolves display.transfer via const display = bus.device(D10)', () => {
+    const result = transpileArduino(`
+      import { SPI0, D10 } from '@typecad/framework-arduino/arduino';
+      const bus = SPI0.begin();
+      const display = bus.device(D10);
+      const response = display.transfer(0x42);
+    `);
+
+    expectCppContains(result, [
+      'SPI.begin()',
+      'digitalWrite(10, LOW)',
+      'SPI.transfer(66)',
+      'digitalWrite(10, HIGH)',
+    ]);
+    // D10 must resolve to 10 — not stay as the identifier 'D10'
+    expect(result.cpp).not.toContain('digitalWrite(D10');
+    expectCppNotContains(result, ['this->_cs', 'this->_bus']);
+  });
+
+  it('resolves display.writeRegister via const display = bus.device(D10)', () => {
+    const result = transpileArduino(`
+      import { SPI0, D10 } from '@typecad/framework-arduino/arduino';
+      const bus = SPI0.begin();
+      const display = bus.device(D10);
+      display.writeRegister(0x01, 0xFF);
+    `);
+
+    expectCppContains(result, [
+      'digitalWrite(10, LOW)',
+      'SPI.transfer(1)',
+      'SPI.transfer(255)',
+      'digitalWrite(10, HIGH)',
+    ]);
+    expect(result.cpp).not.toContain('digitalWrite(D10');
+    expectCppNotContains(result, ['this->_cs', 'this->_bus']);
+  });
+
+  it('resolves display with numeric CS pin', () => {
+    const result = transpileArduino(`
+      import { SPI0 } from '@typecad/framework-arduino/arduino';
+      const bus = SPI0.begin();
+      const display = bus.device(10);
+      display.transfer(0x42);
+    `);
+
+    expectCppContains(result, [
+      'digitalWrite(10, LOW)',
+      'SPI.transfer(66)',
+      'digitalWrite(10, HIGH)',
+    ]);
+    expectCppNotContains(result, ['this->_cs']);
   });
 });

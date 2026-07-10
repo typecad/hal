@@ -215,8 +215,16 @@ function replacePlaceholderInStmt(stmt: any, placeholder: string, replacement: s
       }
     }
   }
-  if (stmt.kind === "hal-op" && stmt.operation && stmt.operation.operation === "raw" && typeof stmt.operation.code === "string") {
-    stmt.operation.code = stmt.operation.code.replace(placeholder, replacement);
+  if (stmt.kind === "hal-op" && stmt.operation) {
+    if (stmt.operation.operation === "raw" && typeof stmt.operation.code === "string") {
+      stmt.operation.code = stmt.operation.code.replaceAll(placeholder, replacement);
+    } else {
+      for (const [key, val] of Object.entries(stmt.operation)) {
+        if (typeof val === "string" && val.includes(placeholder)) {
+          stmt.operation[key] = val.replaceAll(placeholder, replacement);
+        }
+      }
+    }
   }
   for (const key of ["body", "thenBranch", "elseBranch"]) {
     if (Array.isArray(stmt[key])) {
@@ -529,11 +537,12 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
   // Process registered callbacks from HAL resolver
   for (const rc of (program.registeredCallbacks ?? [])) {
     const callbackName = `${ctx.isrPrefix}_isr_${counter.value++}`;
+    const callbackIR = rc.callbackIR as ExpressionIR & { kind: "callback"; body?: StatementIR[] };
     callbackFunctions.push({
       name: callbackName,
-      params: rc.callbackIR.params,
-      statements: rc.callbackIR.statements,
-      debounceMs: rc.callbackIR.debounceMs,
+      params: callbackIR.params,
+      statements: callbackIR.statements ?? callbackIR.body ?? [],
+      debounceMs: callbackIR.debounceMs,
     });
     replacePlaceholderInAllStatements(filteredTopLevelExecutables, rc.placeholderName, callbackName);
     for (const fn of mappedFunctions) {

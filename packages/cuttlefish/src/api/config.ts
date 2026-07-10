@@ -125,6 +125,11 @@ interface CuttlefishToolchainConfig {
 interface CuttlefishConsoleConfig {
   /** Default baud rate for console output when auto-injected. Default: 9600 */
   baudRate?: number;
+  /**
+   * Serial port for upload and monitor (e.g. 'COM4', '/dev/ttyACM0').
+   * Can be overridden by the --port CLI flag.
+   */
+  port?: string;
 }
 
 /**

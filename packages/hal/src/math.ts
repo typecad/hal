@@ -12,6 +12,7 @@ export class ConstrainChain {
 }
 
 export class NumClass {
+  static readonly __instance_name = "Num";
   abs(x: number): number { return 0; }
   min(a: number, b: number): number { return 0; }
   max(a: number, b: number): number { return 0; }

@@ -15,6 +15,3 @@ export class WDTClass {
 }
 
 export const WDT = new WDTClass();
-
-export function wdt_enable(timeout: number | string): void {}
-export function wdt_reset(): void {}

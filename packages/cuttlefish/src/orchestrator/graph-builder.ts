@@ -197,6 +197,20 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
         continue;
       }
 
+      // Skip @typecad/hal, @typecad/board-*, @typecad/mcu-*, and
+      // @typecad/framework-* — these packages ship src/ for HAL metadata
+      // introspection (hal-parser.ts, board-resolver.ts) but their source
+      // must NOT be transpiled to C++. The HAL resolver loads class/method
+      // metadata from these files separately; emitting them as C++ produces
+      // thousands of lines of stub functions (board(), gpioWrite(), etc.)
+      // and pulls in unsupported types (Promise, variant, Object.freeze).
+      if (moduleSpecifier === "@typecad/hal"
+        || moduleSpecifier.startsWith("@typecad/board-")
+        || moduleSpecifier.startsWith("@typecad/mcu-")
+        || moduleSpecifier.startsWith("@typecad/framework-")) {
+        continue;
+      }
+
       const resolved = resolveImport(filePath, moduleSpecifier, boardPackage);
       // .ui.html modules: load into the UI registry, record the path, and don't
       // push onto `pending` (they are never parsed as TypeScript).

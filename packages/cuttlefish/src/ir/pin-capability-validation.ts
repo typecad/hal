@@ -3,10 +3,12 @@
 //
 // Detects calls to capability-specific methods on pins that don't support them.
 // E.g. D12.readAnalog() — D12 is a digital-only pin, use A0-A5 instead.
+// A0.pwm() — A0 has no PWM, use D3/D5/D6/D9/D10/D11 instead.
 // Produces diagnostics with actionable hints listing the correct pins.
 // ---------------------------------------------------------------------------
 
-import type { ProgramIR, ExpressionIR, StatementIR } from '../api/index.js';
+import type { ProgramIR, ExpressionIR, StatementIR, HALOpIR } from '../api/index.js';
+import type { BoardConstants } from './board-resolver.js';
 import type { Diagnostic } from '../types.js';
 
 /** Compile-time exhaustiveness check for switch statements on IR kinds. */
@@ -14,91 +16,256 @@ function assertNever(x: never): never {
   throw new Error(`Unhandled IR kind: ${JSON.stringify(x)}`);
 }
 
-function scanExpression(expr: ExpressionIR, parentLine: number | undefined, parentCol: number | undefined, diagnostics: Diagnostic[]): void {
+// ---------------------------------------------------------------------------
+// HAL operation → capability mapping
+// ---------------------------------------------------------------------------
+
+/** Maps a HAL operation string to the board-definition capability flag it requires. */
+function operationToCapability(op: string): string | null {
+  if (op === 'pwm.write' || op === 'pwm.get_frequency' || op === 'pwm.get_resolution' || op === 'tone.play') {
+    return 'pwm';
+  }
+  if (op === 'adc.read' || op === 'adc.read_voltage' || op === 'adc.get_resolution') {
+    return 'analogInput';
+  }
+  if (op === 'dac.write') {
+    return 'analogOutput';
+  }
+  if (op === 'interrupt.attach') {
+    return 'interrupt';
+  }
+  // GPIO and timing ops are always available — no capability check needed.
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Board constant lookups
+// ---------------------------------------------------------------------------
+
+/** Find the human-readable name for a pin number (e.g. 14 → "PC0" or "A0"). */
+function getPinName(pinNumber: number, boardConstants: BoardConstants | undefined): string {
+  if (!boardConstants) return `pin ${pinNumber}`;
+  const name = boardConstants.get(`pins.all.${pinNumber}.name`);
+  return name ? String(name) : `pin ${pinNumber}`;
+}
+
+/** Find all pins on this board that support a given capability. */
+function findPinsWithCapability(capability: string, boardConstants: BoardConstants | undefined): string[] {
+  if (!boardConstants) return [];
+  const result: string[] = [];
+  const funcTypeMap: Record<string, string> = {
+    pwm: 'pwm',
+    analogInput: 'adc',
+    analogOutput: 'dac',
+    interrupt: 'interrupt',
+  };
+  const funcType = funcTypeMap[capability];
+
+  for (let i = 0; i < 100; i++) {
+    const name = boardConstants.get(`pins.all.${i}.name`);
+    if (name === undefined) continue;
+
+    // Check capabilities flag first
+    const capFlag = boardConstants.get(`pins.all.${i}.capabilities.${capability}`);
+    if (capFlag === true || capFlag === 'true') {
+      result.push(String(name));
+      continue;
+    }
+
+    // Fallback: check functions array
+    if (funcType) {
+      for (let j = 0; j < 10; j++) {
+        const type = boardConstants.get(`pins.all.${i}.functions.${j}.type`);
+        if (type === undefined) break;
+        if (String(type) === funcType) {
+          result.push(String(name));
+          break;
+        }
+      }
+    }
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Capability check for a single HAL operation
+// ---------------------------------------------------------------------------
+
+function checkCapability(
+  operation: HALOpIR,
+  sourceLine: number | undefined,
+  sourceCol: number | undefined,
+  boardConstants: BoardConstants | undefined,
+  diagnostics: Diagnostic[],
+): void {
+  // Only operations with a pin field are capability-checked.
+  const op = operation.operation;
+  if (!('pin' in operation)) return;
+
+  const capability = operationToCapability(op);
+  if (!capability) return; // GPIO/timing — always available.
+
+  const pin = (operation as any).pin as number;
+  if (typeof pin !== 'number' || pin < 0) return;
+
+  // ADC channel reads (ADC.read(channel)) use channel numbers, not pin
+  // numbers — skip capability checking for adc ops where the "pin" is
+  // actually a channel index (0-7 range, below the first analog pin).
+  if (capability === 'analogInput' && op.startsWith('adc.') && pin < 14) return;
+
+  // Check the pin's capability via the board definition.
+  // Try the capabilities flag first, then fall back to scanning the
+  // functions array (functions.N.type === capability prefix).
+  const capFlag = boardConstants?.get(`pins.all.${pin}.capabilities.${capability}`);
+  if (capFlag === true || capFlag === 'true') return; // Capability confirmed.
+
+  // Fallback: scan the functions array for a matching type.
+  // PWM capability is indicated by functions[N].type === 'pwm',
+  // ADC by 'adc', interrupts by 'interrupt' (external), DAC by 'dac'.
+  const funcTypeMap: Record<string, string> = {
+    pwm: 'pwm',
+    analogInput: 'adc',
+    analogOutput: 'dac',
+    interrupt: 'interrupt',
+  };
+  const funcType = funcTypeMap[capability];
+  if (funcType) {
+    let hasCapabilityData = false;
+    for (let i = 0; i < 10; i++) {
+      const type = boardConstants?.get(`pins.all.${pin}.functions.${i}.type`);
+      if (type === undefined) break;
+      hasCapabilityData = true;
+      if (String(type) === funcType) return; // Capability confirmed via functions.
+    }
+    // If the pin has NO functions entries at all AND the capability we're
+    // checking is interrupt (which is stored in capabilities, not functions),
+    // we can't determine support — skip to avoid false positives.
+    if (!hasCapabilityData && capability === 'interrupt') return;
+  }
+
+  // Capability NOT supported — emit a diagnostic.
+  const pinName = getPinName(pin, boardConstants);
+  const validPins = findPinsWithCapability(capability, boardConstants);
+  const capLabel = capability === 'analogInput' ? 'analog input'
+    : capability === 'analogOutput' ? 'DAC output'
+    : capability === 'interrupt' ? 'external interrupts'
+    : capability.toUpperCase();
+
+  const hint = validPins.length > 0
+    ? `Use one of: ${validPins.join(', ')}`
+    : `No pins on this board support ${capLabel}.`;
+
+  diagnostics.push({
+    severity: 'error',
+    code: 'pin-capability-mismatch',
+    message: `${pinName} does not support ${capLabel} on this board.`,
+    hint,
+    line: sourceLine,
+    column: sourceCol,
+    source: 'pin-capability-validation',
+  } as Diagnostic);
+}
+
+// ---------------------------------------------------------------------------
+// IR tree scanner
+// ---------------------------------------------------------------------------
+
+function scanExpression(
+  expr: ExpressionIR,
+  boardConstants: BoardConstants | undefined,
+  parentLine: number | undefined,
+  parentCol: number | undefined,
+  diagnostics: Diagnostic[],
+): void {
   if (!expr || typeof expr !== 'object') return;
 
   switch (expr.kind) {
     case 'binary': {
-      scanExpression(expr.left, parentLine, parentCol, diagnostics);
-      scanExpression(expr.right, parentLine, parentCol, diagnostics);
+      scanExpression(expr.left, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.right, boardConstants, parentLine, parentCol, diagnostics);
       break;
     }
     case 'ternary': {
-      scanExpression(expr.condition, parentLine, parentCol, diagnostics);
-      scanExpression(expr.whenTrue, parentLine, parentCol, diagnostics);
-      scanExpression(expr.whenFalse, parentLine, parentCol, diagnostics);
+      scanExpression(expr.condition, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.whenTrue, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.whenFalse, boardConstants, parentLine, parentCol, diagnostics);
       break;
     }
     case 'property-access': {
-      scanExpression(expr.object, parentLine, parentCol, diagnostics);
+      scanExpression(expr.object, boardConstants, parentLine, parentCol, diagnostics);
       break;
     }
     case 'unary': {
-      scanExpression(expr.operand, parentLine, parentCol, diagnostics);
+      scanExpression(expr.operand, boardConstants, parentLine, parentCol, diagnostics);
       break;
     }
     case 'paren': {
-      scanExpression(expr.inner, parentLine, parentCol, diagnostics);
+      scanExpression(expr.inner, boardConstants, parentLine, parentCol, diagnostics);
       break;
     }
     case 'array': {
       for (const el of expr.elements) {
-        scanExpression(el, parentLine, parentCol, diagnostics);
+        scanExpression(el, boardConstants, parentLine, parentCol, diagnostics);
       }
       break;
     }
     case 'object': {
       for (const field of expr.fields) {
-        scanExpression(field.value, parentLine, parentCol, diagnostics);
+        scanExpression(field.value, boardConstants, parentLine, parentCol, diagnostics);
       }
       break;
     }
     case 'callback': {
       for (const s of expr.statements) {
-        scanStatement(s, diagnostics);
+        scanStatement(s, boardConstants, diagnostics);
       }
       break;
     }
     case 'lambda': {
       for (const s of expr.body) {
-        scanStatement(s, diagnostics);
+        scanStatement(s, boardConstants, diagnostics);
       }
       break;
     }
     case 'method-call': {
       for (const arg of expr.args) {
-        scanExpression(arg, parentLine, parentCol, diagnostics);
+        scanExpression(arg, boardConstants, parentLine, parentCol, diagnostics);
       }
       break;
     }
     case 'element-access': {
-      scanExpression(expr.object, parentLine, parentCol, diagnostics);
-      scanExpression(expr.index, parentLine, parentCol, diagnostics);
+      scanExpression(expr.object, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.index, boardConstants, parentLine, parentCol, diagnostics);
       break;
     }
     case 'string_concat': {
       for (const part of expr.parts) {
-        scanExpression(part, parentLine, parentCol, diagnostics);
+        scanExpression(part, boardConstants, parentLine, parentCol, diagnostics);
       }
       break;
     }
     case 'template_string': {
-      scanExpression(expr.expression, parentLine, parentCol, diagnostics);
+      scanExpression(expr.expression, boardConstants, parentLine, parentCol, diagnostics);
       break;
     }
     case 'spread_array': {
-      scanExpression(expr.spreadExpr, parentLine, parentCol, diagnostics);
+      scanExpression(expr.spreadExpr, boardConstants, parentLine, parentCol, diagnostics);
       for (const el of expr.additionalElements) {
-        scanExpression(el, parentLine, parentCol, diagnostics);
+        scanExpression(el, boardConstants, parentLine, parentCol, diagnostics);
       }
       break;
     }
     case 'instanceof': {
-      scanExpression(expr.object, parentLine, parentCol, diagnostics);
+      scanExpression(expr.object, boardConstants, parentLine, parentCol, diagnostics);
       break;
     }
     case 'await': {
-      scanExpression(expr.value, parentLine, parentCol, diagnostics);
+      scanExpression(expr.value, boardConstants, parentLine, parentCol, diagnostics);
+      break;
+    }
+    case 'hal-expr': {
+      // Expression-form HAL operation (e.g. adc.read used as a value).
+      checkCapability(expr.operation, parentLine, parentCol, boardConstants, diagnostics);
       break;
     }
     case 'number':
@@ -106,7 +273,6 @@ function scanExpression(expr: ExpressionIR, parentLine: number | undefined, pare
     case 'boolean':
     case 'identifier':
     case 'raw':
-    case 'hal-expr':
     case 'tuple-access':
       break;
     default:
@@ -114,7 +280,11 @@ function scanExpression(expr: ExpressionIR, parentLine: number | undefined, pare
   }
 }
 
-function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
+function scanStatement(
+  stmt: StatementIR,
+  boardConstants: BoardConstants | undefined,
+  diagnostics: Diagnostic[],
+): void {
   if (!stmt || typeof stmt !== 'object') return;
 
   const line = stmt.sourceSpan?.startLine as number | undefined;
@@ -122,90 +292,95 @@ function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
 
   switch (stmt.kind) {
   case 'var_decl': {
-    if (stmt.initializer) scanExpression(stmt.initializer, line, col, diagnostics);
+    if (stmt.initializer) scanExpression(stmt.initializer, boardConstants, line, col, diagnostics);
     break;
   }
 
   case 'assign': {
-    if (stmt.value) scanExpression(stmt.value, line, col, diagnostics);
+    if (stmt.value) scanExpression(stmt.value, boardConstants, line, col, diagnostics);
     break;
   }
 
   case 'if': {
-    if (stmt.condition) scanExpression(stmt.condition, line, col, diagnostics);
-    for (const s of stmt.thenBranch) scanStatement(s, diagnostics);
-    if (stmt.elseBranch) for (const s of stmt.elseBranch) scanStatement(s, diagnostics);
+    if (stmt.condition) scanExpression(stmt.condition, boardConstants, line, col, diagnostics);
+    for (const s of stmt.thenBranch) scanStatement(s, boardConstants, diagnostics);
+    if (stmt.elseBranch) for (const s of stmt.elseBranch) scanStatement(s, boardConstants, diagnostics);
     break;
   }
 
   case 'while':
   case 'do_while': {
-    if (stmt.condition) scanExpression(stmt.condition, line, col, diagnostics);
-    for (const s of stmt.body) scanStatement(s, diagnostics);
+    if (stmt.condition) scanExpression(stmt.condition, boardConstants, line, col, diagnostics);
+    for (const s of stmt.body) scanStatement(s, boardConstants, diagnostics);
     break;
   }
 
   case 'for': {
-    if (stmt.condition) scanExpression(stmt.condition, line, col, diagnostics);
-    if (stmt.initializer) scanStatement(stmt.initializer, diagnostics);
-    if (stmt.increment) scanStatement(stmt.increment, diagnostics);
-    for (const s of stmt.body) scanStatement(s, diagnostics);
+    if (stmt.condition) scanExpression(stmt.condition, boardConstants, line, col, diagnostics);
+    if (stmt.initializer) scanStatement(stmt.initializer, boardConstants, diagnostics);
+    if (stmt.increment) scanStatement(stmt.increment, boardConstants, diagnostics);
+    for (const s of stmt.body) scanStatement(s, boardConstants, diagnostics);
     break;
   }
 
   case 'for_of':
   case 'for_in': {
-    if (stmt.variable) scanStatement(stmt.variable, diagnostics);
-    for (const s of stmt.body) scanStatement(s, diagnostics);
+    if (stmt.variable) scanStatement(stmt.variable, boardConstants, diagnostics);
+    for (const s of stmt.body) scanStatement(s, boardConstants, diagnostics);
     break;
   }
 
   case 'return': {
-    if (stmt.value) scanExpression(stmt.value, line, col, diagnostics);
+    if (stmt.value) scanExpression(stmt.value, boardConstants, line, col, diagnostics);
     break;
   }
 
   case 'call': {
     for (const arg of stmt.args) {
-      scanExpression(arg, line, col, diagnostics);
+      scanExpression(arg, boardConstants, line, col, diagnostics);
     }
     break;
   }
 
+  case 'hal-op': {
+    // Statement-form HAL operation — the primary capability check target.
+    checkCapability(stmt.operation, line, col, boardConstants, diagnostics);
+    break;
+  }
+
   case 'switch': {
-    if (stmt.expression) scanExpression(stmt.expression, line, col, diagnostics);
+    if (stmt.expression) scanExpression(stmt.expression, boardConstants, line, col, diagnostics);
     for (const c of stmt.cases) {
-      for (const s of c.body) scanStatement(s, diagnostics);
+      for (const s of c.body) scanStatement(s, boardConstants, diagnostics);
     }
     break;
   }
 
   case 'block': {
-    for (const s of stmt.body) scanStatement(s, diagnostics);
+    for (const s of stmt.body) scanStatement(s, boardConstants, diagnostics);
     break;
   }
 
   case 'labeled': {
-    for (const s of stmt.body) scanStatement(s, diagnostics);
+    for (const s of stmt.body) scanStatement(s, boardConstants, diagnostics);
     break;
   }
 
   case 'try': {
-    for (const s of stmt.tryBlock) scanStatement(s, diagnostics);
-    if (stmt.catchBlock) for (const s of stmt.catchBlock) scanStatement(s, diagnostics);
-    if (stmt.finallyBlock) for (const s of stmt.finallyBlock) scanStatement(s, diagnostics);
+    for (const s of stmt.tryBlock) scanStatement(s, boardConstants, diagnostics);
+    if (stmt.catchBlock) for (const s of stmt.catchBlock) scanStatement(s, boardConstants, diagnostics);
+    if (stmt.finallyBlock) for (const s of stmt.finallyBlock) scanStatement(s, boardConstants, diagnostics);
     break;
   }
 
   case 'throw': {
-    if (stmt.value) scanExpression(stmt.value, line, col, diagnostics);
+    if (stmt.value) scanExpression(stmt.value, boardConstants, line, col, diagnostics);
     break;
   }
 
   case 'update':
   case 'break':
   case 'continue':
-  case 'hal-op':
   case 'yield':
   case 'super_call':
     break;
@@ -215,15 +390,20 @@ function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 /**
  * Validate that capability-specific methods are only called on pins that support them.
  */
 export function validatePinCapabilities(program: ProgramIR): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
+  const boardConstants = program.boardConstants;
 
   if (program.topLevelStatements) {
     for (const stmt of program.topLevelStatements) {
-      scanStatement(stmt, diagnostics);
+      scanStatement(stmt, boardConstants, diagnostics);
     }
   }
 
@@ -231,7 +411,7 @@ export function validatePinCapabilities(program: ProgramIR): Diagnostic[] {
     for (const fn of program.functions) {
       if (fn.statements) {
         for (const stmt of fn.statements) {
-          scanStatement(stmt, diagnostics);
+          scanStatement(stmt, boardConstants, diagnostics);
         }
       }
     }
@@ -243,14 +423,14 @@ export function validatePinCapabilities(program: ProgramIR): Diagnostic[] {
         for (const method of cls.methods) {
           if (method.statements) {
             for (const stmt of method.statements) {
-              scanStatement(stmt, diagnostics);
+              scanStatement(stmt, boardConstants, diagnostics);
             }
           }
         }
       }
       if (cls.constructor?.statements) {
         for (const stmt of cls.constructor.statements) {
-          scanStatement(stmt, diagnostics);
+          scanStatement(stmt, boardConstants, diagnostics);
         }
       }
     }

@@ -3,23 +3,19 @@
 const config: CuttlefishConfig = {
   entry: './tests/01-basics.test.ts',
 
-  target: 'esp32',
+  // Target architecture
+  target: 'avr',
+  // MCU package — provides silicon-level pin definitions
+  mcu: '@typecad/mcu-atmega328p',
 
-  // MCU package — silicon-level pin/port definitions for the ESP32-WROOM-32.
-  mcu: '@typecad/mcu-esp32',
+  // Board package — provides pin definitions and board constants
+  board: '@typecad/board-arduino-uno',
 
-  // Board package — ESP32 DevKit pin definitions, aliases (D0/D13, A0–A5), and
-  // peripheral mappings (I2C/SPI/UART buses).
-  board: '@typecad/board-esp32-devkit',
-
-  // Framework package — controls code generation strategy (setup/loop, Serial,
-  // .ino output).
+  // Framework package — controls code generation strategy
   framework: '@typecad/framework-arduino',
-
-  // Build target — FQBN passed straight through to `arduino-cli compile`.
-  // Matches the board package's `build.frameworks.arduino` value.
+  // Framework data
   frameworkData: {
-    buildTarget: 'esp32:esp32:esp32',
+    buildTarget: 'arduino:avr:uno',
   },
 
   output: {
@@ -37,7 +33,7 @@ const config: CuttlefishConfig = {
   },
 
   test: {
-    port: 'COM3',
+    port: 'COM9',
     baudRate: 115200,
     timeout: 30000,
     include: [

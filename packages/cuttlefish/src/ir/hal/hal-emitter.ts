@@ -17,6 +17,41 @@ export function maybeEscapeResolvedText(text: string): string {
   return escapeCppKeyword(text);
 }
 
+/** Map a TypeScript PrefixUnaryExpression operator SyntaxKind to C++ text. */
+function prefixOperatorText(operator: ts.SyntaxKind): string {
+  switch (operator) {
+    case ts.SyntaxKind.ExclamationToken: return "!";
+    case ts.SyntaxKind.PlusToken: return "+";
+    case ts.SyntaxKind.MinusToken: return "-";
+    case ts.SyntaxKind.TildeToken: return "~";
+    case ts.SyntaxKind.PlusPlusToken: return "++";
+    case ts.SyntaxKind.MinusMinusToken: return "--";
+    default: return "";
+  }
+}
+
+/**
+ * Inline a `this.<method>()` getter call used inside a compound expression
+ * (e.g. `!this.read()` in InputPin.isLow()). The InputPin boolean-query
+ * methods all reduce to a semantic read over `this._pin`; mapping them here
+ * keeps `this` out of the emitted free function. Returns null if the method
+ * is not a recognized inlinable getter.
+ */
+function inlineThisGetterCall(methodName: string, pin: string): string | null {
+  switch (methodName) {
+    case "read":
+      return `digitalRead(${pin})`;
+    case "readAnalog":
+      return `analogRead(${pin})`;
+    case "isHigh":
+      return `digitalRead(${pin})`;
+    case "isLow":
+      return `(!digitalRead(${pin}))`;
+    default:
+      return null;
+  }
+}
+
 /** Resolve an arbitrary expression to its text form, with this/param substitution. */
 export function resolveExpressionText(
   expr: ts.Expression,
@@ -73,6 +108,11 @@ export function resolveExpressionText(
       } else if (paramDefaults?.has(expr.text)) {
         return maybeEscapeResolvedText(paramDefaults.get(expr.text)!);
       }
+      // Optional parameter that was omitted at the call site and has no
+      // default: its runtime value is `undefined`. Returning the literal name
+      // would leak a dangling identifier into the emitted C++ (e.g.
+      // `asOutput(initial?: ...)` referenced as `(initial) ? HIGH : LOW`).
+      return "undefined";
     }
     return escapeCppKeyword(expr.text);
   }
@@ -134,6 +174,25 @@ export function resolveExpressionText(
     if (callee === null) return null;
     const args = expr.arguments.map(arg => resolveExpressionText(arg, instance, paramNames, callArgTexts, paramDefaults));
     if (args.some(a => a === null)) return null;
+
+    // this.<method>() — a HAL method called on the same instance inside a
+    // compound expression (e.g. InputPin.isLow() returns `!this.read()`).
+    // Inline the known InputPin boolean-query getters over the resolved pin
+    // so `this` never leaks into the emitted free function.
+    if (ts.isPropertyAccessExpression(expr.expression)) {
+      const isThisAccess = expr.expression.expression.kind === ts.SyntaxKind.ThisKeyword
+        || (ts.isIdentifier(expr.expression.expression) && expr.expression.expression.text === "this")
+        || expr.expression.expression.getText() === "this";
+      if (isThisAccess) {
+        const methodName = expr.expression.name.text;
+        const pin = instance.fieldValues.get("_pin") ?? instance.fieldValues.get("pin");
+        if (pin !== undefined) {
+          const inlined = inlineThisGetterCall(methodName, pin);
+          if (inlined !== null) return inlined;
+        }
+      }
+    }
+
     return `${callee}(${args.join(", ")})`;
   }
 
@@ -196,6 +255,16 @@ export function resolveExpressionText(
     return expr.text;
   }
 
+  // Prefix unary expression (e.g. `!this.read()`): resolve the operand and
+  // re-apply the operator. Without this, `!this.read()` falls through to the
+  // raw getText() fallback and leaks `this` into a free function.
+  if (ts.isPrefixUnaryExpression(expr)) {
+    const operand = resolveExpressionText(expr.operand, instance, paramNames, callArgTexts, paramDefaults);
+    if (operand === null) return null;
+    const op = prefixOperatorText(expr.operator);
+    return `${op}${operand}`;
+  }
+
   return expr.getText ? expr.getText() : null;
 }
 
@@ -214,10 +283,27 @@ export function extractAndRegisterCallbacks(
         const paramIdx = paramNames.indexOf(cbArg.text);
         if (paramIdx !== -1 && paramIdx < callArgs.length) {
           const callbackIR = callArgs[paramIdx];
-          if (callbackIR.kind === "callback") {
+          if (callbackIR.kind === "callback" || callbackIR.kind === "lambda") {
             const placeholder = `__CALLBACK_${getContext().callbackPlaceholderCounter++}__`;
-            callbackIR.isInterruptHandler = true;
-            registeredCallbacks.push({ placeholderName: placeholder, callbackIR });
+            const normalized: ExpressionIR & { kind: "callback" } = callbackIR.kind === "lambda"
+              ? {
+                  kind: "callback",
+                  params: callbackIR.params.map((p) => p.name),
+                  statements: callbackIR.body,
+                  sourceSpan: callbackIR.body[0]?.sourceSpan ?? {
+                    filePath: "",
+                    startLine: 0,
+                    startColumn: 0,
+                    endLine: 0,
+                    endColumn: 0,
+                    startOffset: 0,
+                    endOffset: 0,
+                  },
+                  isInterruptHandler: true,
+                }
+              : callbackIR;
+            normalized.isInterruptHandler = true;
+            registeredCallbacks.push({ placeholderName: placeholder, callbackIR: normalized });
             callArgTexts[paramIdx] = placeholder;
           }
         }
@@ -502,6 +588,10 @@ export function processHALMethodBody(
 
   // Return null if nothing useful was resolved, allowing inline fallbacks to kick in
   if (emitLines.length === 0 && halOps.length === 0 && returnValue === undefined) {
+    // take()/release() are intentional no-ops (ownership is compile-time only).
+    if (methodName === "take" || methodName === "release") {
+      return { emitLines: [], halOps: [] };
+    }
     return null;
   }
 

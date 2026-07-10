@@ -477,7 +477,10 @@ export function statementNeedsSnprintf(statement: StatementIR, strategy: Platfor
   }
 
   if (statement.kind === "call" && statement.args.length > 0) {
-    if (statement.args.some((arg) => arg.kind === "string_concat")) {
+    // __EMIT__ calls resolve their args inline as raw C++ text — they never
+    // use snprintf, even when the arg is a string_concat from a template literal.
+    if (statement.callee === "__EMIT__") return false;
+    if (statement.args.some((arg) => arg.kind === "string_concat" || arg.kind === "template_string")) {
       return true;
     }
   }

@@ -7,7 +7,7 @@
 
 import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig, GraphicsCapacity, DisplayHALOp } from "@typecad/cuttlefish/api/shared";
 import type { StatementIR, HALOpIR } from "@typecad/cuttlefish/api/shared";
-import { generatePromiseRuntime, applyStringMethodRewrites, parsedIsVector } from "@typecad/cuttlefish/api/shared";
+import { generatePromiseRuntime, generateStaticAsyncRuntime, applyStringMethodRewrites, parsedIsVector } from "@typecad/cuttlefish/api/shared";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen.js";
 import { resolveArduinoProfile } from "./profile.js";
 import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341.js";
@@ -71,6 +71,23 @@ const ARDUINO_ENUM_MEMBER_RENAMES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Arduino framework identifiers that are value/function-like *macros* and so
+ * must be emitted verbatim when referenced in an expression (e.g.
+ * `pinMode(13, OUTPUT)`). Unlike the redeclaration hazards in
+ * ARDUINO_RESERVED_NAMES, these are meant to be *invoked* — escaping them to
+ * `OUTPUT_` would emit an undefined symbol. HIGH and LOW are included because
+ * they too are Arduino macros that must pass through (they are phantom
+ * constants from @TypeCAD that map directly to the Arduino HIGH/LOW macros).
+ */
+const ARDUINO_PASSTHROUGH_MACROS: ReadonlySet<string> = new Set([
+  "INPUT", "OUTPUT", "INPUT_PULLUP", "INPUT_PULLDOWN",
+  "OUTPUT_OPEN_DRAIN", "ANALOG",
+  "HIGH", "LOW",
+  "RISING", "FALLING", "CHANGE",
+  "DEFAULT", "INTERNAL", "EXTERNAL",
+]);
+
+/**
  * Enum class names already declared as C typedefs in the new Arduino API.
  */
 const ARDUINO_API_RESERVED_ENUMS: ReadonlySet<string> = new Set([
@@ -80,6 +97,99 @@ const ARDUINO_API_RESERVED_ENUMS: ReadonlySet<string> = new Set([
 // Shared set of large enum names (values > 16-bit signed int range)
 // populated externally via setLargeEnumNames().
 let _largeEnumNames: ReadonlySet<string> = new Set();
+
+/**
+ * Detect whether a program references the cooperative async runtime.
+ *
+ * The HAL `Async` singleton methods (sleep/yield/sleepUntil/currentTask) lower
+ * to calls on `__cuttlefish_async_*` symbols defined by the promise runtime.
+ * Unlike `async function` declarations, these calls are not flagged on the
+ * FunctionIR (fn.isAsync), so the promise runtime would not be linked and the
+ * symbols would be undefined. This walks the program's statements/expressions
+ * looking for any `raw` IR node whose text references an async-runtime symbol.
+ */
+function programUsesAsyncRuntime(program: ProgramIR): boolean {
+  const ASYNC_TOKEN = "__cuttlefish_async_";
+  // Sentinel thrown to short-circuit the walk once a reference is found.
+  const FOUND = {};
+  const seen = new Set<object>();
+  const walkExpr = (expr: ExpressionIR): void => {
+    if (!expr || typeof expr !== "object") return;
+    if (seen.has(expr)) return;
+    seen.add(expr);
+    const e = expr as Record<string, any>;
+    if (e.kind === "raw" && typeof e.value === "string" && e.value.includes(ASYNC_TOKEN)) {
+      throw FOUND;
+    }
+    // HAL method calls that lower via rawCpp() become `hal-expr` nodes whose
+    // `operation` is { operation: "raw", code: "..." }. The Async singleton's
+    // methods (sleep/yield/sleepUntil/currentTask) land here, so inspect the
+    // resolved code text for the async-runtime symbol token.
+    if (e.kind === "hal-expr" && e.operation && typeof e.operation === "object") {
+      const op = e.operation as Record<string, any>;
+      if (op.operation === "raw" && typeof op.code === "string" && op.code.includes(ASYNC_TOKEN)) {
+        throw FOUND;
+      }
+    }
+    for (const v of Object.values(e)) {
+      if (Array.isArray(v)) {
+        for (const item of v) {
+          if (item && typeof item === "object") {
+            if ("kind" in item && typeof item.kind === "string") {
+              walkExpr(item as ExpressionIR);
+            } else {
+              walkStmt(item as StatementIR);
+            }
+          }
+        }
+      } else if (v && typeof v === "object" && "kind" in v && typeof v.kind === "string") {
+        walkExpr(v as ExpressionIR);
+      }
+    }
+  };
+  const walkStmt = (stmt: StatementIR): void => {
+    if (!stmt || typeof stmt !== "object") return;
+    if (seen.has(stmt)) return;
+    seen.add(stmt);
+    const s = stmt as Record<string, any>;
+    // HAL method calls that lower via rawCpp() become `hal-op` statements whose
+    // `operation` is { operation: "raw", code: "..." }. The Async singleton's
+    // methods (sleep/yield/sleepUntil/currentTask) land here as statement-level
+    // ops, so inspect the resolved code text for the async-runtime token.
+    if (s.kind === "hal-op" && s.operation && typeof s.operation === "object") {
+      const op = s.operation as Record<string, any>;
+      if (op.operation === "raw" && typeof op.code === "string" && op.code.includes(ASYNC_TOKEN)) {
+        throw FOUND;
+      }
+    }
+    for (const v of Object.values(s)) {
+      if (Array.isArray(v)) {
+        for (const item of v) {
+          if (item && typeof item === "object") {
+            if ("body" in item || "statements" in item || "thenBranch" in item || "cases" in item) {
+              walkStmt(item as StatementIR);
+            } else if ("kind" in item && typeof item.kind === "string") {
+              walkExpr(item as ExpressionIR);
+            }
+          }
+        }
+      } else if (v && typeof v === "object" && "kind" in v && typeof v.kind === "string") {
+        walkExpr(v as ExpressionIR);
+      } else if (v && typeof v === "object") {
+        walkStmt(v as StatementIR);
+      }
+    }
+  };
+  try {
+    for (const fn of program.functions) {
+      for (const stmt of fn.statements) walkStmt(stmt);
+    }
+  } catch (e) {
+    if (e === FOUND) return true;
+    throw e;
+  }
+  return false;
+}
 
 export class ArduinoStrategy implements PlatformStrategy {
   readonly id = "arduino";
@@ -142,26 +252,34 @@ export class ArduinoStrategy implements PlatformStrategy {
   shimLines(program: ProgramIR, ctx?: PlatformContext): string[] {
     this._usesPinGroup = detectPinGroupUsage(program);
     const profileLines = this.getOrResolveProfile(program, ctx).shimLines;
-    const lines: string[] = [
-      "// TypeCAD Core Shims",
-      "#ifndef CUTTLEFISH_UNDEFINED",
-      "#define CUTTLEFISH_UNDEFINED 0",
-      "#endif",
-      "",
-      "// Nullish helpers — overload set so value/struct types (which always",
-      "// exist) return false from the generic template, while scalars compare",
-      "// against CUTTLEFISH_UNDEFINED. The generic catch-all must NOT cast",
-      "// (T)CUTTLEFISH_UNDEFINED — that fails to compile for non-scalar T.",
-      "template<typename T> inline bool cuttlefish_is_nullish(const T&) { return false; }",
-      "inline bool cuttlefish_is_nullish(int v) { return v == CUTTLEFISH_UNDEFINED; }",
-      "inline bool cuttlefish_is_nullish(long v) { return v == CUTTLEFISH_UNDEFINED; }",
-      "inline bool cuttlefish_is_nullish(double v) { return v == (double)CUTTLEFISH_UNDEFINED; }",
-      "inline bool cuttlefish_is_nullish(bool v) { return v == false; }",
-      "template<typename T> inline bool cuttlefish_is_nullish(T* v) { return v == nullptr; }",
-      "template<typename T> inline bool cuttlefish_exists(const T& v) { return !cuttlefish_is_nullish(v); }",
-      "template<typename T, typename U> inline T cuttlefish_nullish(const T& a, const U& b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }",
-      "",
-    ];
+    const lines: string[] = [];
+
+    // Only emit nullish/undefined shims if the program actually uses them.
+    // The transpiler replaces `undefined`/`null` with CUTTLEFISH_UNDEFINED and
+    // `??` with cuttlefish_nullish — if neither appears, the shims are dead code.
+    const usesNullish = programAnalysisUsesNullish(program);
+    if (usesNullish) {
+      lines.push(
+        "// TypeCAD Core Shims",
+        "#ifndef CUTTLEFISH_UNDEFINED",
+        "#define CUTTLEFISH_UNDEFINED 0",
+        "#endif",
+        "",
+        "// Nullish helpers — overload set so value/struct types (which always",
+        "// exist) return false from the generic template, while scalars compare",
+        "// against CUTTLEFISH_UNDEFINED. The generic catch-all must NOT cast",
+        "// (T)CUTTLEFISH_UNDEFINED — that fails to compile for non-scalar T.",
+        "template<typename T> inline bool cuttlefish_is_nullish(const T&) { return false; }",
+        "inline bool cuttlefish_is_nullish(int v) { return v == CUTTLEFISH_UNDEFINED; }",
+        "inline bool cuttlefish_is_nullish(long v) { return v == CUTTLEFISH_UNDEFINED; }",
+        "inline bool cuttlefish_is_nullish(double v) { return v == (double)CUTTLEFISH_UNDEFINED; }",
+        "inline bool cuttlefish_is_nullish(bool v) { return v == false; }",
+        "template<typename T> inline bool cuttlefish_is_nullish(T* v) { return v == nullptr; }",
+        "template<typename T> inline bool cuttlefish_exists(const T& v) { return !cuttlefish_is_nullish(v); }",
+        "template<typename T, typename U> inline T cuttlefish_nullish(const T& a, const U& b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }",
+        "",
+      );
+    }
 
     if (this._usesPinGroup) {
       lines.push(
@@ -522,19 +640,53 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       dependencies: [],
     });
 
-    // Add async Promise runtime if program has async functions and stdlib supports it
-    const hasAsync = program.functions.some(fn => fn.isAsync);
+    // Add an async runtime if the program declares async functions OR
+    // references the async HAL runtime (the `Async` singleton lowers to
+    // __cuttlefish_async_* symbols the runtime defines).
+    //
+    // Two implementations share the same emitted symbol contract:
+    //   - hasVector && hasString (ESP32/ESP8266/rp2040/samd): the full
+    //     heap-based Promise<T> runtime (promise-runtime.ts), capacity scaled
+    //     to the target's RAM.
+    //   - otherwise (AVR/megaavr, no <vector>/<string>): a heap-free static
+    //     timer/task-slot runtime (async-runtime-static.ts) with a small
+    //     fixed capacity sized to the target's SRAM budget.
+    // Both define cuttlefish_pump_microtasks() so the loop() injection is
+    // identical across targets.
+    const hasAsync = program.functions.some(fn => fn.isAsync) || programUsesAsyncRuntime(program);
     if (hasAsync) {
       const architecture = ctx?.architecture ?? arduinoCtx(ctx)?.buildTarget?.split(":")?.[1]?.toLowerCase();
       const stdlib = this.getStdLibSupport(architecture);
       if (stdlib.hasVector && stdlib.hasString) {
+        // Heap-based Promise runtime. Capacity was previously selected by
+        // buildTarget.split(":")[0] === "arduino", but that prefix is "arduino"
+        // for every arduino-cli FQBN (avr AND esp32), making the 256 branch
+        // dead. Select by architecture instead.
+        const queueCapacity = architecture === "avr" || architecture === "megaavr" ? 32 : 256;
         helpers.push({
           kind: "polyfill",
           id: "async_runtime",
           domain: "arduino",
           requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
           forwardDeclarations: [],
-          helperStructs: [generatePromiseRuntime(arduinoCtx(ctx)?.buildTarget?.split(":")?.[0] === "arduino" ? 32 : 256, true)],
+          helperStructs: [generatePromiseRuntime(queueCapacity, true)],
+          helperFunctions: [],
+          shimMacros: [],
+          dependencies: [],
+          hasPromiseRuntime: true,
+        } as RuntimePolyfillIR & { hasPromiseRuntime: boolean });
+      } else {
+        // Heap-free static runtime for no-<vector> targets (AVR/megaavr).
+        // Small fixed capacity: AVR has 2 KB SRAM, so 8 slots keeps the timer
+        // and task tables well under budget while covering realistic HAL
+        // Async.sleep/yield/sleepUntil usage.
+        helpers.push({
+          kind: "polyfill",
+          id: "async_runtime",
+          domain: "arduino",
+          requiredIncludes: [],
+          forwardDeclarations: [],
+          helperStructs: [generateStaticAsyncRuntime(8)],
           helperFunctions: [],
           shimMacros: [],
           dependencies: [],
@@ -660,8 +812,12 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       v = v.replace(/createPinGroup\(\{\s*(.*?)\s*\}\)/g, '__tc_createPinGroup($1)');
     }
 
-    // Prevent macro expansion for Num methods (abs, min, max, map, constrain)
-    v = v.replace(/Num\.(abs|min|max|map|constrain)\(/g, "Num._$1(");
+    // Prevent macro expansion for Num methods (abs, min, max, map, constrain).
+    // The __tc_Num shim declares these with a leading underscore (_abs, _map,
+    // …). escapeCppKeyword may have already mangled the call site to a trailing
+    // underscore (abs_, min_, max_) because abs/min/max collide with C/Arduino
+    // macros, so match both the raw and the escaped forms.
+    v = v.replace(/Num\.(abs|min|max|map|constrain)_?\(/g, "Num._$1(");
 
     return v;
   }
@@ -909,6 +1065,9 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
   reservedNames(): ReadonlySet<string> {
     return ARDUINO_RESERVED_NAMES;
   }
+  passthroughMacroNames(): ReadonlySet<string> {
+    return ARDUINO_PASSTHROUGH_MACROS;
+  }
   apiReservedEnumNames(): ReadonlySet<string> {
     return ARDUINO_API_RESERVED_ENUMS;
   }
@@ -1119,8 +1278,12 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
   resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {
     switch (op.operation) {
       // GPIO
-      case "gpio.write":
-        return { code: `digitalWrite(${op.pin}, ${op.value ? "HIGH" : "LOW"});` };
+      case "gpio.write": {
+        // Literal 0/1 → HIGH/LOW; runtime expression → ternary coercion
+        const v = op.value;
+        const rhs = typeof v === "string" ? `(${v}) ? HIGH : LOW` : (v ? "HIGH" : "LOW");
+        return { code: `digitalWrite(${op.pin}, ${rhs});` };
+      }
       case "gpio.read":
         return { expression: `digitalRead(${op.pin})` };
       case "gpio.toggle":
@@ -1141,8 +1304,21 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
         return { expression: `analogRead(${op.pin})` };
       case "adc.get_resolution":
         return { expression: `10` };
-      case "adc.set_reference":
-        return { code: `analogReference(${op.reference});` };
+      case "adc.set_reference": {
+        // Map known string references to Arduino macros; pass numeric values through.
+        const refMap: Record<string, string> = {
+          default: "DEFAULT",
+          internal: "INTERNAL",
+          internal1v1: "INTERNAL",
+          external: "EXTERNAL",
+          vdd: "DEFAULT",
+        };
+        // Strip surrounding quotes if present (HAL resolver may pass the raw
+        // string literal text including quotes).
+        const refStr = String(op.reference).replace(/^["']|["']$/g, "");
+        const arduinoRef = refMap[refStr.toLowerCase()] ?? op.reference;
+        return { code: `analogReference(${arduinoRef});` };
+      }
       case "adc.get_reference":
         return { expression: `AR_DEFAULT` };
       case "adc.read_voltage": {
@@ -1198,6 +1374,17 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
         return { code: `${op.bus}.beginTransmission(${op.address});` };
       case "i2c.write":
         return { code: `${op.bus}.write(${op.data});` };
+      case "i2c.write_bytes":
+        return { code: op.bytes.map((b) => `${op.bus}.write(${b});`).join("\n") };
+      case "i2c.write_buffer":
+        return { code: `${op.bus}.write(${op.data}, sizeof(${op.data}));` };
+      case "i2c.read_buffer": {
+        const target = op.buffer === "__HAL_READ_BUF__" ? "__DISCARD__" : op.buffer;
+        if (target === "__DISCARD__") {
+          return { code: `for (int __i = 0; __i < ${op.count}; __i++) (void)${op.bus}.read();` };
+        }
+        return { code: `for (int __i = 0; __i < ${op.count}; __i++) ${target}[__i] = ${op.bus}.read();` };
+      }
       case "i2c.end_transmission":
         return { code: `${op.bus}.endTransmission(${op.stop ? "true" : "false"});` };
       case "i2c.request_from":
@@ -1554,11 +1741,55 @@ function detectSerialBeginCall(program: ProgramIR): boolean {
 }
 
 /**
+ * Scan IR to see if the program uses nullish coalescing (??), optional
+ * chaining (?.), or undefined/null literals — all of which need the
+ * CUTTLEFISH_UNDEFINED shims at runtime.
+ */
+function programAnalysisUsesNullish(program: ProgramIR): boolean {
+  const check = (s: StatementIR): boolean => {
+    if ("condition" in s && s.condition) {
+      const cond = s.condition as any;
+      if (cond.kind === "binary" && cond.operator === "??") return true;
+    }
+    if ("initializer" in s && s.initializer) {
+      const init = s.initializer as any;
+      if (init.kind === "binary" && init.operator === "??") return true;
+      if (init.kind === "identifier" && (init.value === "undefined" || init.value === "null")) return true;
+    }
+    if ("value" in s && s.value !== undefined) {
+      const val = (s as any).value;
+      if (typeof val === "object" && val?.kind === "binary" && val.operator === "??") return true;
+      if (typeof val === "object" && val?.kind === "identifier" && (val.value === "undefined" || val.value === "null")) return true;
+    }
+    for (const key of ["body", "thenBranch", "elseBranch", "tryBlock", "catchBlock"]) {
+      if (key in s && Array.isArray((s as any)[key])) {
+        for (const child of (s as any)[key]) { if (check(child)) return true; }
+      }
+    }
+    return false;
+  };
+  for (const fn of program.functions) { for (const s of fn.statements) { if (check(s)) return true; } }
+  for (const s of program.topLevelStatements) { if (check(s)) return true; }
+  for (const cls of program.classes) {
+    for (const m of cls.methods) { for (const s of m.statements) { if (check(s)) return true; } }
+  }
+  return false;
+}
+
+/**
  * Scan IR to see if createPinGroup is called.
  */
 function detectPinGroupUsage(program: ProgramIR): boolean {
   const checkStmt = (stmt: StatementIR): boolean => {
     if (stmt.kind === "call" && stmt.callee === "createPinGroup") return true;
+    // Also detect createPinGroup inside variable declarations
+    // (e.g. const leds = createPinGroup([...]))
+    if (stmt.kind === "var_decl" && stmt.initializer) {
+      const init = stmt.initializer as any;
+      if (init.kind === "method-call" && init.callee === "createPinGroup") return true;
+      // Also check raw-call expressions (some IR paths store bare function calls differently)
+      if (typeof init.callee === "string" && init.callee.includes("createPinGroup")) return true;
+    }
     if ("body" in stmt && Array.isArray(stmt.body)) { for (const s of stmt.body) { if (checkStmt(s)) return true; } }
     if ("thenBranch" in stmt && Array.isArray(stmt.thenBranch)) { for (const s of stmt.thenBranch) { if (checkStmt(s)) return true; } }
     if ("elseBranch" in stmt && Array.isArray(stmt.elseBranch)) { for (const s of stmt.elseBranch) { if (checkStmt(s)) return true; } }

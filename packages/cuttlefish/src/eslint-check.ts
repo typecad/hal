@@ -16,11 +16,22 @@ export interface ESLintError {
 }
 
 export async function runEslintCheck(projectRoot: string): Promise<ESLintError[]> {
-  const configNames = ["eslint.config.mjs", "eslint.config.js", "eslint.config.cjs"];
-  const hasConfig = configNames.some(name =>
+  // Look for eslint config in .cuttlefish/ (new layout) or project root (legacy)
+  const cuttlefishConfig = path.join(projectRoot, ".cuttlefish", "eslint.config.mjs");
+  const rootConfigNames = ["eslint.config.mjs", "eslint.config.js", "eslint.config.cjs"];
+  const rootConfig = rootConfigNames.find(name =>
     fs.existsSync(path.join(projectRoot, name))
   );
-  if (!hasConfig) return [];
+
+  let overrideConfigFile: string | undefined;
+  if (fs.existsSync(cuttlefishConfig)) {
+    overrideConfigFile = cuttlefishConfig;
+  } else if (rootConfig) {
+    // Legacy: config at project root (existing demo projects)
+    overrideConfigFile = path.join(projectRoot, rootConfig);
+  } else {
+    return [];
+  }
 
   let ESLintCls: any;
   try {
@@ -40,7 +51,7 @@ export async function runEslintCheck(projectRoot: string): Promise<ESLintError[]
   }
   if (!ESLintCls) return [];
 
-  const eslint = new ESLintCls({ cwd: projectRoot });
+  const eslint = new ESLintCls({ cwd: projectRoot, overrideConfigFile });
   const srcDir = path.join(projectRoot, "src");
   if (!fs.existsSync(srcDir)) return [];
 

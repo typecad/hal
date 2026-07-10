@@ -28,10 +28,10 @@ export class SPIDevice {
   readRegister(register: number, count: number): Uint8Array {
     rawCpp(`digitalWrite(${this._cs}, LOW);`);
     rawCpp(`${this._bus}.transfer(${register});`);
-    rawCpp(`uint8_t result[${count}];`);
-    rawCpp(`for (int i=0; i<${count}; i++) result[i] = ${this._bus}.transfer(0x00);`);
+    rawCpp(`static uint8_t __spi_buf[${count}];`);
+    rawCpp(`for (int i=0; i<${count}; i++) __spi_buf[i] = ${this._bus}.transfer(0x00);`);
     rawCpp(`digitalWrite(${this._cs}, HIGH);`);
-    rawCpp(`return result;`);
+    rawCpp(`return __spi_buf;`);
     return new Uint8Array(count);
   }
 
@@ -44,6 +44,7 @@ export class SPIDevice {
 }
 
 export class SPIBus {
+  static readonly __includes = ["<SPI.h>"];
   private _bus: string;
 
   constructor(bus: string) {

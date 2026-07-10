@@ -82,7 +82,15 @@ export function resolveBoardConstants(defFilePath: string): BoardConstants {
       while (walkInit && ts.isAsExpression(walkInit)) walkInit = walkInit.expression;
 
       if (walkInit && ts.isObjectLiteralExpression(walkInit)) {
-        walkObjectLiteral(walkInit, "", result);
+        // Peripheral capability objects (e.g. PWM_CAPABILITIES → peripherals.pwm.*)
+        // are namespaced so HAL lookups like board("peripherals.pwm.resolution")
+        // resolve. Other object literals (board/MCU definitions) walk with no prefix.
+        if (varName.endsWith("_CAPABILITIES")) {
+          const baseName = varName.replace("_CAPABILITIES", "").toLowerCase();
+          walkObjectLiteral(walkInit, `peripherals.${baseName}`, result);
+        } else {
+          walkObjectLiteral(walkInit, "", result);
+        }
       }
 
       // Array of objects — walk for peripheral instance data
@@ -404,8 +412,9 @@ export function tryResolveBoardDefFile(
 ): string | undefined {
   // Handle bare "@typecad" virtual import — rewrite to the concrete board
   // package so the rest of the resolution logic works unchanged.
+  // Case-insensitive so the documented `@TypeCAD` import resolves identically.
   let effectiveSpecifier = moduleSpecifier;
-  if (moduleSpecifier === "@typecad" && boardPackage) {
+  if (moduleSpecifier.toLowerCase() === "@typecad" && boardPackage) {
     effectiveSpecifier = boardPackage;
   }
 

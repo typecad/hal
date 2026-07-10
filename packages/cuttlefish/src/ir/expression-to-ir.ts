@@ -2,7 +2,7 @@
 import { Diagnostic } from "../types.js";
 import { ExpressionIR, StatementIR } from "../api/index.js";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
-import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions, getContext } from "./build-ir-state.js";
+import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions, getContext, getCurrentBoardConstants } from "./build-ir-state.js";
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
 import { renderExprAsText } from "./render-expr.js";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
@@ -927,6 +927,22 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   }
 
   if (ts.isCallExpression(expr)) {
+    // ---- board() / boardResolve() — compile-time board constant lookup ----
+    if (ts.isIdentifier(expr.expression) && (expr.expression.text === "board" || expr.expression.text === "boardResolve")) {
+      const pathArg = expr.arguments[0];
+      if (pathArg && ts.isStringLiteral(pathArg)) {
+        const bc = getCurrentBoardConstants();
+        if (bc) {
+          const val = bc.get(pathArg.text);
+          if (val !== undefined) {
+            return { kind: "number", value: Number(val) };
+          }
+        }
+      }
+      // Unresolved — emit 0 so the value is at least syntactically valid
+      return { kind: "number", value: 0 };
+    }
+
     // ---- HAL inline evaluator for expression context ----
     const halResult = tryResolveHALExpression(expr, sourceText, diagnostics, pointerVars);
     if (halResult) return halResult.ir;

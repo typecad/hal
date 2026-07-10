@@ -78,7 +78,7 @@ export function typeCheckFiles(
         // `<base>.d.<ext>.ts` declarations.
         compilerOptions = { ...parsedConfig.options, noEmit: true, allowArbitraryExtensions: true };
         // Include cuttlefish-env.d.ts so module augmentations are visible to the type-checker
-        const envDts = path.join(path.dirname(configPath), "cuttlefish-env.d.ts");
+        const envDts = path.join(path.dirname(configPath), ".cuttlefish", "cuttlefish-env.d.ts");
         if (fs.existsSync(envDts) && !rootNames.includes(envDts)) {
           rootNames.push(envDts);
         }

@@ -80,7 +80,7 @@ describe("Duplicate Global Declarations", () => {
     console.log("Generated C++:\n", result.cpp);
     expect(result.diagnostics).toHaveLength(0);
     expect(result.cpp).toContain("const int sensorPin = 13");
-    expect(result.cpp).toContain("pinMode(sensorPin, OUTPUT_)");
+    expect(result.cpp).toContain("pinMode(sensorPin, OUTPUT)");
   });
 
   it("handles ISR-promoted variable that was also declared globally (potential duplicate)", () => {

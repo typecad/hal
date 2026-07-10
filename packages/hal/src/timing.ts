@@ -1,12 +1,12 @@
-import { rawCpp, getMillis, getMicros } from './emit.js';
+import { rawCpp, getMillis, getMicros, delayMs, delayMicro } from './emit.js';
 import { callback } from './callback.js';
 
 export class TimingClass {
   static readonly __instance_name = "Timing";
   millis(): number { return getMillis(); }
   micros(): number { return getMicros(); }
-  delay(ms: number): void {}
-  delayMicroseconds(us: number): void {}
+  delay(ms: number): void { delayMs(ms); }
+  delayMicroseconds(us: number): void { delayMicro(us); }
   freeHeap(): number {
     rawCpp("return ESP.getFreeHeap();");
     return 0;
@@ -34,10 +34,10 @@ export class TimingClass {
 
 export const Timing = new TimingClass();
 
-export function delay(ms: number): void {}
+export function delay(ms: number): void { delayMs(ms); }
 export function millis(): number { return getMillis(); }
 export function micros(): number { return getMicros(); }
-export function delayMicroseconds(us: number): void {}
+export function delayMicroseconds(us: number): void { delayMicro(us); }
 export function freeHeap(): number { return Timing.freeHeap(); }
 
 

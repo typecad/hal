@@ -12,10 +12,10 @@ import {
 } from './pins.js';
 
 import { I2C0, SPI0, UART0, UART1 } from '@typecad/mcu-esp32c6';
-import { ESP32C6Board } from './index.js';
+import * as boardIndex from './index.js';
 
 export const Board = {
-  definition: ESP32C6Board,
+  get definition() { return boardIndex.ESP32C6Board; },
 
   D2, D3, D4, D5, D6, D7, D8, D9, D10,
   D12, D13, D14, D15, D16, D17, D18, D19, D20, D21,

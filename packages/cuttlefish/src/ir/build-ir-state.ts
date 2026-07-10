@@ -92,7 +92,7 @@ export class CompilationContext {
    * methods (asOutput/asInput/...) are recorded here — value-bearing reads are
    * excluded so they don't alias the pin (Finding B).
    */
-  topLevelAliasReceivers = new Map<string, string>();
+  topLevelAliasReceivers = new Map<string, { receiver: string; method: string; args?: string[] }>();
   floatVariables = new Set<string>();
   snprintfCounter = 0;
   callbackPlaceholderCounter = 0;

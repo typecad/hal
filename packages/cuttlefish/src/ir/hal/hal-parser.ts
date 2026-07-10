@@ -15,6 +15,8 @@ export interface HALInstance {
   className: string;
   fieldValues: Map<string, string>;
   _spreadParamName?: string;
+  /** When a bus alias comes from `const x = I2C0.take()`, tracks the singleton name for ownership IR. */
+  canonicalBusName?: string;
   [key: string]: unknown;
 }
 
@@ -405,19 +407,54 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
     // variable is never followed here (Finding B). Follow the chain with a
     // visited-set to guard against cycles.
     if (ts.isIdentifier(receiver) && topLevelAliasReceivers.has(receiver.text)) {
+      // Collect the full alias chain (e.g. sensor → bus → I2C0), then resolve
+      // the base instance and apply ALL transformations in chain order.
+      const chain: { receiver: string; method: string; args?: string[] }[] = [];
       const visited = new Set<string>([receiver.text]);
       let cur = receiver.text;
-      while (topLevelAliasReceivers.has(cur) && !visited.has(topLevelAliasReceivers.get(cur)!)) {
-        const next = topLevelAliasReceivers.get(cur)!;
-        visited.add(next);
-        const inst = halInstances.get(next);
-        if (inst) {
-          // Cache the resolved instance under the original alias so later
-          // lookups are direct.
-          halInstances.set(receiver.text, inst);
-          return inst;
+      while (topLevelAliasReceivers.has(cur) && !visited.has(topLevelAliasReceivers.get(cur)!.receiver)) {
+        const entry = topLevelAliasReceivers.get(cur)!;
+        visited.add(entry.receiver);
+        chain.push(entry);
+        cur = entry.receiver;
+      }
+      // Resolve the base instance from the end of the chain.
+      const baseName = chain.length > 0 ? chain[chain.length - 1].receiver : receiver.text;
+      const baseInst = halInstances.get(baseName);
+      if (baseInst) {
+        let resolvedInst = baseInst;
+        // Apply each transformation in chain order (first entry = outermost call).
+        for (const entry of chain) {
+          // Pin mode-change: Pin → OutputPin/InputPin
+          if ((entry.method === "asOutput" || entry.method === "asInput" || entry.method === "asInputPullUp" || entry.method === "asInputPullDown" || entry.method === "output" || entry.method === "inputPullUp" || entry.method === "inputPullDown") && resolvedInst.className === "Pin") {
+            const returnClassName = (entry.method === "asOutput" || entry.method === "output") ? "OutputPin" : "InputPin";
+            resolvedInst = { className: returnClassName, fieldValues: new Map(resolvedInst.fieldValues) };
+          }
+          // I2C/SPI device factory: bus → device with address/cs from args
+          if (entry.method === "device" && (resolvedInst.className === "I2CBus" || resolvedInst.className === "SPIBus")) {
+            const returnClassName = resolvedInst.className === "SPIBus" ? "SPIDevice" : "I2CDevice";
+            const fieldValues = new Map(resolvedInst.fieldValues);
+            const fieldName = resolvedInst.className === "SPIBus" ? "_cs" : "_address";
+            if (entry.args && entry.args.length > 0) {
+              // Resolve identifier args (e.g. D10 → 10) via halInstances.
+              // Numeric/string args pass through unchanged.
+              const rawArg = entry.args[0];
+              const argInst = halInstances.get(rawArg);
+              const resolvedArg = argInst?.fieldValues.get("_pin") ?? argInst?.fieldValues.get("pin") ?? rawArg;
+              fieldValues.set(fieldName, resolvedArg);
+            }
+            resolvedInst = { className: returnClassName, fieldValues };
+          }
+          // Tone chain factory: OutputPin → ToneChain with frequency from args
+          if (entry.method === "tone" && resolvedInst.className === "OutputPin" && entry.args && entry.args.length > 0) {
+            const fieldValues = new Map(resolvedInst.fieldValues);
+            fieldValues.set("_lastFreq", entry.args[0]);
+            resolvedInst = { className: "ToneChain", fieldValues };
+          }
+          // begin/identity: no class change, just carry the instance forward.
         }
-        cur = next;
+        halInstances.set(receiver.text, resolvedInst);
+        return resolvedInst;
       }
     }
 

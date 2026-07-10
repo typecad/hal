@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "@typecad/framework-arduino",
   "version": "0.1.0",
   "description": "TypeCAD framework package for Arduino framework code generation",
@@ -24,7 +24,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsc",

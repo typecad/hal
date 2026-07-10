@@ -27,19 +27,41 @@ export function generatePromiseRuntime(
 ): string {
   const waitForPinEdge = includeWaitForPinEdge ? `
   // HAL-level wait for pin edge — polling-based implementation.
+  // Detects an actual transition (idle→target), not just the current level.
+  // Uses a two-phase approach: phase 1 waits for the idle level, phase 2 waits
+  // for the target level (the edge). Each phase re-enqueues on the microtask
+  // queue so other tasks can run between polls.
   inline Promise<void> __cuttlefish_wait_pin_edge(int pin, int mode, long timeout) {
     return Promise<void>([pin, mode, timeout](std::function<void(const void*)> resolve, std::function<void(const std::string&)> reject) {
       int targetState = (mode == RISING) ? HIGH : LOW;
+      int idleState = (mode == RISING) ? LOW : HIGH;
       unsigned long start = millis();
-      enqueueMicrotask([pin, mode, targetState, timeout, start, resolve]() {
-        int current = digitalRead(pin);
-        bool triggered = (mode == RISING) ? (current == HIGH) : (current == LOW);
-        if (triggered) {
+      // Phase 2 poller: waits for the pin to reach the target state (the edge).
+      auto pollTarget = [pin, targetState, timeout, start, resolve]() {
+        if (digitalRead(pin) == targetState) {
           resolve(nullptr);
         } else if (timeout >= 0 && (millis() - start >= (unsigned long)timeout)) {
-          resolve(nullptr);  // timeout — resolves anyway for now
+          resolve(nullptr);
         } else {
-          enqueueMicrotask([pin, mode, targetState, timeout, start, resolve]() { /* re-check next cycle */ });
+          enqueueMicrotask([pin, targetState, timeout, start, resolve]() {
+            if (digitalRead(pin) == targetState) {
+              resolve(nullptr);
+            } else if (timeout >= 0 && (millis() - start >= (unsigned long)timeout)) {
+              resolve(nullptr);
+            } else {
+              enqueueMicrotask([pin, targetState, timeout, start, resolve]() {});
+            }
+          });
+        }
+      };
+      // Phase 1: wait for idle state before watching for the edge.
+      enqueueMicrotask([pin, idleState, timeout, start, resolve, pollTarget]() {
+        if (digitalRead(pin) == idleState) {
+          pollTarget();
+        } else if (timeout >= 0 && (millis() - start >= (unsigned long)timeout)) {
+          resolve(nullptr);
+        } else {
+          enqueueMicrotask([pin, idleState, timeout, start, resolve, pollTarget]() {});
         }
       });
     });

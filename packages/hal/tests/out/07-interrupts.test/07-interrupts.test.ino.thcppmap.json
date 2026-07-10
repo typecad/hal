@@ -1,0 +1,1289 @@
+{
+  "version": 1,
+  "generatedFilePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\out\\07-interrupts.test\\07-interrupts.test.ino",
+  "sourceFilePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+  "entries": [
+    {
+      "generatedStartLine": 21,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 21,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 89,
+        "endOffset": 162,
+        "startLine": 4,
+        "startColumn": 1,
+        "endLine": 7,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn1"
+    },
+    {
+      "generatedStartLine": 22,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 22,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 163,
+        "endOffset": 234,
+        "startLine": 8,
+        "startColumn": 1,
+        "endLine": 11,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn2"
+    },
+    {
+      "generatedStartLine": 23,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 23,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 235,
+        "endOffset": 328,
+        "startLine": 12,
+        "startColumn": 1,
+        "endLine": 16,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn3"
+    },
+    {
+      "generatedStartLine": 24,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 24,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 851,
+        "endOffset": 949,
+        "startLine": 30,
+        "startColumn": 1,
+        "endLine": 33,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn4"
+    },
+    {
+      "generatedStartLine": 25,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 25,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 950,
+        "endOffset": 1047,
+        "startLine": 34,
+        "startColumn": 1,
+        "endLine": 37,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn5"
+    },
+    {
+      "generatedStartLine": 26,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 26,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1048,
+        "endOffset": 1145,
+        "startLine": 38,
+        "startColumn": 1,
+        "endLine": 41,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn6"
+    },
+    {
+      "generatedStartLine": 27,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 27,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1146,
+        "endOffset": 1223,
+        "startLine": 42,
+        "startColumn": 1,
+        "endLine": 45,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn7"
+    },
+    {
+      "generatedStartLine": 28,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 28,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1881,
+        "endOffset": 2081,
+        "startLine": 63,
+        "startColumn": 1,
+        "endLine": 70,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn8"
+    },
+    {
+      "generatedStartLine": 49,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 49,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "setup"
+    },
+    {
+      "generatedStartLine": 51,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 51,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 0,
+        "endOffset": 20,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 21
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 52,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 52,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 22,
+        "endOffset": 56,
+        "startLine": 2,
+        "startColumn": 1,
+        "endLine": 2,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 53,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 53,
+      "generatedEndColumn": 60,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 329,
+        "endOffset": 385,
+        "startLine": 17,
+        "startColumn": 1,
+        "endLine": 17,
+        "endColumn": 57
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 54,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 54,
+      "generatedEndColumn": 73,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 387,
+        "endOffset": 456,
+        "startLine": 18,
+        "startColumn": 1,
+        "endLine": 18,
+        "endColumn": 70
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 55,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 55,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 458,
+        "endOffset": 492,
+        "startLine": 19,
+        "startColumn": 1,
+        "endLine": 19,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 56,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 56,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 494,
+        "endOffset": 518,
+        "startLine": 20,
+        "startColumn": 1,
+        "endLine": 20,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 57,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 57,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 520,
+        "endOffset": 539,
+        "startLine": 21,
+        "startColumn": 1,
+        "endLine": 21,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 58,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 58,
+      "generatedEndColumn": 71,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 541,
+        "endOffset": 608,
+        "startLine": 22,
+        "startColumn": 1,
+        "endLine": 22,
+        "endColumn": 68
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 59,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 59,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 610,
+        "endOffset": 644,
+        "startLine": 23,
+        "startColumn": 1,
+        "endLine": 23,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 60,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 60,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 646,
+        "endOffset": 670,
+        "startLine": 24,
+        "startColumn": 1,
+        "endLine": 24,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 61,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 61,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 672,
+        "endOffset": 691,
+        "startLine": 25,
+        "startColumn": 1,
+        "endLine": 25,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 62,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 62,
+      "generatedEndColumn": 77,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 693,
+        "endOffset": 766,
+        "startLine": 26,
+        "startColumn": 1,
+        "endLine": 26,
+        "endColumn": 74
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 63,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 63,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 768,
+        "endOffset": 802,
+        "startLine": 27,
+        "startColumn": 1,
+        "endLine": 27,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 64,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 64,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 804,
+        "endOffset": 828,
+        "startLine": 28,
+        "startColumn": 1,
+        "endLine": 28,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 65,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 65,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 830,
+        "endOffset": 849,
+        "startLine": 29,
+        "startColumn": 1,
+        "endLine": 29,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 66,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 66,
+      "generatedEndColumn": 69,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1224,
+        "endOffset": 1289,
+        "startLine": 46,
+        "startColumn": 1,
+        "endLine": 46,
+        "endColumn": 66
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 67,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 67,
+      "generatedEndColumn": 67,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1291,
+        "endOffset": 1354,
+        "startLine": 47,
+        "startColumn": 1,
+        "endLine": 47,
+        "endColumn": 64
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 68,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 68,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1356,
+        "endOffset": 1390,
+        "startLine": 48,
+        "startColumn": 1,
+        "endLine": 48,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 69,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 69,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1392,
+        "endOffset": 1416,
+        "startLine": 49,
+        "startColumn": 1,
+        "endLine": 49,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 70,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 70,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1418,
+        "endOffset": 1437,
+        "startLine": 50,
+        "startColumn": 1,
+        "endLine": 50,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 71,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 71,
+      "generatedEndColumn": 67,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1439,
+        "endOffset": 1502,
+        "startLine": 51,
+        "startColumn": 1,
+        "endLine": 51,
+        "endColumn": 64
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 72,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 72,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1504,
+        "endOffset": 1538,
+        "startLine": 52,
+        "startColumn": 1,
+        "endLine": 52,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 73,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 73,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1540,
+        "endOffset": 1564,
+        "startLine": 53,
+        "startColumn": 1,
+        "endLine": 53,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 74,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 74,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1566,
+        "endOffset": 1585,
+        "startLine": 54,
+        "startColumn": 1,
+        "endLine": 54,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 75,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 75,
+      "generatedEndColumn": 67,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1587,
+        "endOffset": 1650,
+        "startLine": 55,
+        "startColumn": 1,
+        "endLine": 55,
+        "endColumn": 64
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 76,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 76,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1652,
+        "endOffset": 1686,
+        "startLine": 56,
+        "startColumn": 1,
+        "endLine": 56,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 77,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 77,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1688,
+        "endOffset": 1712,
+        "startLine": 57,
+        "startColumn": 1,
+        "endLine": 57,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 78,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 78,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1714,
+        "endOffset": 1733,
+        "startLine": 58,
+        "startColumn": 1,
+        "endLine": 58,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 79,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 79,
+      "generatedEndColumn": 65,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1735,
+        "endOffset": 1796,
+        "startLine": 59,
+        "startColumn": 1,
+        "endLine": 59,
+        "endColumn": 62
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 80,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 80,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1798,
+        "endOffset": 1832,
+        "startLine": 60,
+        "startColumn": 1,
+        "endLine": 60,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 81,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 81,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1834,
+        "endOffset": 1858,
+        "startLine": 61,
+        "startColumn": 1,
+        "endLine": 61,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 82,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 82,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1860,
+        "endOffset": 1879,
+        "startLine": 62,
+        "startColumn": 1,
+        "endLine": 62,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 83,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 83,
+      "generatedEndColumn": 57,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 2082,
+        "endOffset": 2135,
+        "startLine": 71,
+        "startColumn": 1,
+        "endLine": 71,
+        "endColumn": 54
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 84,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 84,
+      "generatedEndColumn": 77,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 2137,
+        "endOffset": 2210,
+        "startLine": 72,
+        "startColumn": 1,
+        "endLine": 72,
+        "endColumn": 74
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 85,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 85,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 2212,
+        "endOffset": 2246,
+        "startLine": 73,
+        "startColumn": 1,
+        "endLine": 73,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 86,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 86,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 2248,
+        "endOffset": 2272,
+        "startLine": 74,
+        "startColumn": 1,
+        "endLine": 74,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 87,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 87,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 2274,
+        "endOffset": 2293,
+        "startLine": 75,
+        "startColumn": 1,
+        "endLine": 75,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 88,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 88,
+      "generatedEndColumn": 36,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 2295,
+        "endOffset": 2327,
+        "startLine": 76,
+        "startColumn": 1,
+        "endLine": 76,
+        "endColumn": 33
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 89,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 89,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 2329,
+        "endOffset": 2358,
+        "startLine": 77,
+        "startColumn": 1,
+        "endLine": 77,
+        "endColumn": 30
+      },
+      "nodeKind": "while"
+    },
+    {
+      "generatedStartLine": 91,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 91,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 2344,
+        "endOffset": 2355,
+        "startLine": 77,
+        "startColumn": 16,
+        "endLine": 77,
+        "endColumn": 27
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 95,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 95,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 89,
+        "endOffset": 162,
+        "startLine": 4,
+        "startColumn": 1,
+        "endLine": 7,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn1"
+    },
+    {
+      "generatedStartLine": 97,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 97,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 125,
+        "endOffset": 139,
+        "startLine": 5,
+        "startColumn": 7,
+        "endLine": 5,
+        "endColumn": 21
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 98,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 98,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 147,
+        "endOffset": 156,
+        "startLine": 6,
+        "startColumn": 7,
+        "endLine": 6,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 101,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 101,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 163,
+        "endOffset": 234,
+        "startLine": 8,
+        "startColumn": 1,
+        "endLine": 11,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn2"
+    },
+    {
+      "generatedStartLine": 103,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 103,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 199,
+        "endOffset": 211,
+        "startLine": 9,
+        "startColumn": 7,
+        "endLine": 9,
+        "endColumn": 19
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 104,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 104,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 219,
+        "endOffset": 228,
+        "startLine": 10,
+        "startColumn": 7,
+        "endLine": 10,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 107,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 107,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 235,
+        "endOffset": 328,
+        "startLine": 12,
+        "startColumn": 1,
+        "endLine": 16,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn3"
+    },
+    {
+      "generatedStartLine": 109,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 109,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 271,
+        "endOffset": 285,
+        "startLine": 13,
+        "startColumn": 7,
+        "endLine": 13,
+        "endColumn": 21
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 110,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 110,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 293,
+        "endOffset": 305,
+        "startLine": 14,
+        "startColumn": 7,
+        "endLine": 14,
+        "endColumn": 19
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 111,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 111,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 313,
+        "endOffset": 322,
+        "startLine": 15,
+        "startColumn": 7,
+        "endLine": 15,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 114,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 114,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 851,
+        "endOffset": 949,
+        "startLine": 30,
+        "startColumn": 1,
+        "endLine": 33,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn4"
+    },
+    {
+      "generatedStartLine": 116,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 116,
+      "generatedEndColumn": 45,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 887,
+        "endOffset": 926,
+        "startLine": 31,
+        "startColumn": 7,
+        "endLine": 31,
+        "endColumn": 46
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 117,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 117,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 934,
+        "endOffset": 943,
+        "startLine": 32,
+        "startColumn": 7,
+        "endLine": 32,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 120,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 120,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 950,
+        "endOffset": 1047,
+        "startLine": 34,
+        "startColumn": 1,
+        "endLine": 37,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn5"
+    },
+    {
+      "generatedStartLine": 122,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 122,
+      "generatedEndColumn": 44,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 986,
+        "endOffset": 1024,
+        "startLine": 35,
+        "startColumn": 7,
+        "endLine": 35,
+        "endColumn": 45
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 123,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 123,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1032,
+        "endOffset": 1041,
+        "startLine": 36,
+        "startColumn": 7,
+        "endLine": 36,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 126,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 126,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1048,
+        "endOffset": 1145,
+        "startLine": 38,
+        "startColumn": 1,
+        "endLine": 41,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn6"
+    },
+    {
+      "generatedStartLine": 128,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 128,
+      "generatedEndColumn": 44,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1084,
+        "endOffset": 1122,
+        "startLine": 39,
+        "startColumn": 7,
+        "endLine": 39,
+        "endColumn": 45
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 129,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 129,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1130,
+        "endOffset": 1139,
+        "startLine": 40,
+        "startColumn": 7,
+        "endLine": 40,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 132,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 132,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1146,
+        "endOffset": 1223,
+        "startLine": 42,
+        "startColumn": 1,
+        "endLine": 45,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn7"
+    },
+    {
+      "generatedStartLine": 134,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 134,
+      "generatedEndColumn": 22,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1182,
+        "endOffset": 1200,
+        "startLine": 43,
+        "startColumn": 7,
+        "endLine": 43,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 135,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 135,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1208,
+        "endOffset": 1217,
+        "startLine": 44,
+        "startColumn": 7,
+        "endLine": 44,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 138,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 138,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1881,
+        "endOffset": 2081,
+        "startLine": 63,
+        "startColumn": 1,
+        "endLine": 70,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn8"
+    },
+    {
+      "generatedStartLine": 140,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 140,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1929,
+        "endOffset": 1947,
+        "startLine": 64,
+        "startColumn": 19,
+        "endLine": 64,
+        "endColumn": 37
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 141,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 141,
+      "generatedEndColumn": 66,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1955,
+        "endOffset": 1978,
+        "startLine": 65,
+        "startColumn": 7,
+        "endLine": 65,
+        "endColumn": 30
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 142,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 142,
+      "generatedEndColumn": 65,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 1986,
+        "endOffset": 2008,
+        "startLine": 66,
+        "startColumn": 7,
+        "endLine": 66,
+        "endColumn": 29
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 143,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 143,
+      "generatedEndColumn": 65,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 2016,
+        "endOffset": 2038,
+        "startLine": 67,
+        "startColumn": 7,
+        "endLine": 67,
+        "endColumn": 29
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 144,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 144,
+      "generatedEndColumn": 45,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 2046,
+        "endOffset": 2058,
+        "startLine": 68,
+        "startColumn": 7,
+        "endLine": 68,
+        "endColumn": 19
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 145,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 145,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 2066,
+        "endOffset": 2075,
+        "startLine": 69,
+        "startColumn": 7,
+        "endLine": 69,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 148,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 148,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\hal\\tests\\07-interrupts.test.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "loop"
+    }
+  ]
+}

@@ -18,13 +18,17 @@ import type { ResolvedNpmPackage } from "../../transpile/resolution.js";
  * @returns true if this is a typehal SDK import
  */
 export function isCuttlefishSDKImport(moduleSpecifier: string, fromFile: string): boolean {
+  // Compare case-insensitively so the documented virtual import `@TypeCAD`
+  // (mixed case) is treated the same as `@typecad`. Both resolve to the board
+  // package and are type-level only — they must not emit a C++ #include.
+  const spec = moduleSpecifier.toLowerCase();
   // Check for @typecad/* npm package imports
-  if (moduleSpecifier.startsWith("@typecad/")) {
+  if (spec.startsWith("@typecad/")) {
     return true;
   }
 
   // Check for bare "@typecad" virtual import (resolved via cuttlefish.config.ts)
-  if (moduleSpecifier === "@typecad") {
+  if (spec === "@typecad") {
     return true;
   }
   
