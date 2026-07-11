@@ -1,4 +1,4 @@
-﻿import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cWriteBuffer, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit.js';
+import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cWriteBuffer, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit.js';
 import { include } from './include.js';
 
 export class I2CDevice {
@@ -11,6 +11,7 @@ export class I2CDevice {
   }
 
   writeByte(register: number, value: number): void {
+    include("<Wire.h>");
     i2cBeginTx(this._bus, this._address);
     i2cWrite(this._bus, register);
     i2cWrite(this._bus, value);
@@ -18,6 +19,7 @@ export class I2CDevice {
   }
 
   readByte(register: number): number {
+    include("<Wire.h>");
     i2cBeginTx(this._bus, this._address);
     i2cWrite(this._bus, register);
     i2cEndTx(this._bus, false);
@@ -26,6 +28,7 @@ export class I2CDevice {
   }
 
   writeBytes(register: number, data: number[] | Uint8Array): void {
+    include("<Wire.h>");
     i2cBeginTx(this._bus, this._address);
     i2cWrite(this._bus, register);
     i2cWriteBuffer(this._bus, data);
@@ -33,6 +36,7 @@ export class I2CDevice {
   }
 
   readBytes(register: number, count: number): Uint8Array {
+    include("<Wire.h>");
     i2cBeginTx(this._bus, this._address);
     i2cWrite(this._bus, register);
     i2cEndTx(this._bus, false);

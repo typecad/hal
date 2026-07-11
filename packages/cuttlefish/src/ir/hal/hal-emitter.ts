@@ -5,7 +5,7 @@ import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { renderExprAsText } from "../render-expr.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser.js";
-import { tryResolveSemanticCall, tryResolveBoardResolveArg, tryResolveCompoundSemanticReturn } from "./hal-plugins.js";
+import { tryResolveSemanticCall, tryResolveBoardResolveArg, tryResolveCompoundSemanticReturn, resolveConcatPath } from "./hal-plugins.js";
 
 /** Escape C++ keywords in resolved text, but only when the text looks like a
  *  variable reference (not a literal like "false", "true", "42", or a string). */
@@ -154,12 +154,11 @@ export function resolveExpressionText(
           if (val !== undefined) return String(val);
         }
       }
-      // Dynamic path via string concat: board("prefix." + this._field)
-      if (pathArg && ts.isBinaryExpression(pathArg) && pathArg.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-        const left = resolveExpressionText(pathArg.left, instance, paramNames, callArgTexts);
-        const right = resolveExpressionText(pathArg.right, instance, paramNames, callArgTexts);
-        if (left !== null && right !== null) {
-          const fullPath = left + right;
+      // Dynamic path via string concat or template literal:
+      // board("prefix." + this._field) / board(`prefix.${this._field}`)
+      if (pathArg && (ts.isBinaryExpression(pathArg) || ts.isTemplateExpression(pathArg) || ts.isStringLiteral(pathArg) || ts.isNoSubstitutionTemplateLiteral(pathArg))) {
+        const fullPath = resolveConcatPath(pathArg, instance, paramNames, callArgTexts, paramDefaults);
+        if (fullPath !== null) {
           const bc = getCurrentBoardConstants();
           if (bc) {
             const val = bc.get(fullPath);

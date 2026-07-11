@@ -21,10 +21,11 @@ export class Random {
     return 0;
   }
 
-  /** Returns a random 32-bit integer. */
+  /** Returns a random non-negative 31-bit integer [0, 2147483646]. */
   static int(): number {
-    // Arduino random() returns long (32-bit on most platforms)
-    rawCpp(`return random(2147483647);`); 
+    // Arduino random(max) returns [0, max-1]; 2147483647 = INT_MAX gives a
+    // non-negative 31-bit range (sign bit always 0).
+    rawCpp(`return random(2147483647);`);
     return 0;
   }
 }

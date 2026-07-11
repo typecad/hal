@@ -1,4 +1,4 @@
-﻿import { uartBegin, uartEnd, uartPrint, uartPrintln, uartWrite, uartRead, uartPeek, uartAvailable, uartFlush, rawCpp } from './emit.js';
+import { uartBegin, uartEnd, uartPrint, uartPrintln, uartWrite, uartRead, uartPeek, uartAvailable, uartFlush, rawCpp } from './emit.js';
 
 export class SerialPort {
   static readonly __includes = ["<Arduino.h>"];
@@ -26,7 +26,7 @@ export class SerialPort {
   }
 
   printf(format: string, ...args: any[]): void {
-    rawCpp(`${this._port}.printf("${format}", ${args});`);
+    rawCpp(`${this._port}.printf(${format}.c_str(), ${args});`);
   }
 
   write(data: any): void {
@@ -54,9 +54,9 @@ export class SerialPort {
     uartFlush(this._port);
   }
 
-  waitForConnection(): Promise<void> {
+  waitForConnection(timeout?: number): Promise<void> {
     rawCpp(`while (!${this._port}) { delay(10); }`);
-    return undefined as any;
+    return Promise.resolve();
   }
 
   take(): this | null {

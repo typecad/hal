@@ -22,7 +22,7 @@ export class Pulse {
 
   /** Measure long pulses using high-precision 64-bit timers. */
   static long(pin: Pin | InputPin, value: number): number {
-    rawCpp(`return pulseInLong(${(pin as any)._pin}, ${value});`);
+    rawCpp(`return pulseInLong(${pin.number}, ${value});`);
     return 0;
   }
 }
@@ -32,7 +32,7 @@ class PulseMeasurement {
   private _timeout: number | undefined;
 
   constructor(pin: Pin | InputPin) {
-    this._pin = (pin as any)._pin;
+    this._pin = pin.number;
   }
 
   /** Set the maximum wait time for a pulse (in microseconds). */

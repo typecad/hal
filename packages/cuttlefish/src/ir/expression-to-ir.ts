@@ -935,6 +935,10 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
         if (bc) {
           const val = bc.get(pathArg.text);
           if (val !== undefined) {
+            // Preserve the value's type: string board constants (e.g.
+            // "architecture" → "avr") must render as C++ string literals, not
+            // be coerced via Number() which yields NaN.
+            if (typeof val === "string") return { kind: "string", value: val };
             return { kind: "number", value: Number(val) };
           }
         }

@@ -3,6 +3,9 @@
 export const INPUT: number = 0;
 export const OUTPUT: number = 0;
 export const INPUT_PULLUP: number = 0;
+export const INPUT_PULLDOWN: number = 0;
+export const OUTPUT_OPEN_DRAIN: number = 0;
+export const ANALOG: number = 0;
 export const HIGH: number = 0;
 export const LOW: number = 0;
 export const LED_BUILTIN: number = 0;

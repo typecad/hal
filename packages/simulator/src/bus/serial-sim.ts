@@ -2,14 +2,12 @@
 // @typecad/simulator — Serial port simulation
 // ---------------------------------------------------------------------------
 
-import {
-  UARTStatus,
-} from '@typecad/hal';
+import { UARTStatus } from '../contracts.js';
 import type {
   ISerialPort,
   UARTStatusInfo,
   ErrorPolicy,
-} from '@typecad/hal';
+} from '../contracts.js';
 
 // ---------------------------------------------------------------------------
 // SimSerialPort

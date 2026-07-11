@@ -1,4 +1,4 @@
-import { wdtEnable, rawCpp } from './emit.js';
+import { wdtEnable, wdtReset, wdtDisable } from './emit.js';
 
 export class WDTClass {
   static readonly __instance_name = "WDT";
@@ -7,10 +7,10 @@ export class WDTClass {
     wdtEnable(timeout);
   }
   reset(): void {
-    rawCpp(`wdt_reset();`);
+    wdtReset();
   }
   disable(): void {
-    rawCpp(`wdt_disable();`);
+    wdtDisable();
   }
 }
 

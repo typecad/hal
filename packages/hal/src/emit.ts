@@ -177,6 +177,12 @@ export function dacWrite(pin: number | string, value: number): void {}
 /** Enable the watchdog timer with the given timeout (string preset or number). */
 export function wdtEnable(timeout: string | number): void {}
 
+/** Reset (kick) the watchdog timer. */
+export function wdtReset(): void {}
+
+/** Disable the watchdog timer. */
+export function wdtDisable(): void {}
+
 /** Resolve a board definition path to a compile-time constant. */
 export function boardResolve(path: string): any { return undefined as any; }
 

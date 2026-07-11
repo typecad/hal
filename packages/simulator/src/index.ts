@@ -19,6 +19,30 @@ export type { SPIOperationLog } from './bus/spi-sim.js';
 // --- Board factory ---
 export { SimBoard, createSimBoard, attachSimulator } from './board/board-sim.js';
 
+// --- Runtime contract interfaces (relocated from @typecad/hal) ---
+// Pin/bus contracts implemented by the Sim* classes above.
+export type {
+  BasePin,
+  PWMPin,
+  AnalogPin,
+  InterruptPin,
+  IOutputModePin,
+  IInputModePin,
+  II2CBus,
+  II2CDeviceAccessor,
+  ISPIBus,
+  ISPIDevice,
+  IUARTBus,
+  ISerialPort,
+  PinCapabilityFlags,
+  IToneAttachment,
+  UARTStatusInfo,
+  InterruptOptions,
+  ErrorPolicy,
+} from './contracts.js';
+export { I2CStatus, SPIStatus, UARTStatus } from './contracts.js';
+export { hasPWM, hasAnalogInput, hasInterrupt, assertPWM, assertAnalog, assertInterrupt } from './contracts.js';
+
 // --- Types ---
 export { PinMode } from '@typecad/hal';
 export type {

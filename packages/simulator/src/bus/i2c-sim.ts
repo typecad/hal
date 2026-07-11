@@ -2,15 +2,13 @@
 // @typecad/simulator — I2C bus simulation
 // ---------------------------------------------------------------------------
 
-import {
-  I2CStatus,
-} from '@typecad/hal';
+import { I2CStatus } from '../contracts.js';
 import type {
   II2CBus,
   II2CDeviceAccessor,
-  I2CAddress,
   ErrorPolicy,
-} from '@typecad/hal';
+} from '../contracts.js';
+import type { I2CAddress } from '@typecad/hal';
 import type { ISimI2CDevice } from '../types.js';
 
 // ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-﻿import { gpioWrite, gpioRead, gpioToggle, gpioSetMode, tonePlay, toneStop, adcRead, adcReadVoltage, adcSetReference, interruptAttach, interruptDetach, pwmWrite, rawCpp, boardResolve } from './emit.js';
+import { gpioWrite, gpioRead, gpioToggle, gpioSetMode, tonePlay, toneStop, adcRead, adcReadVoltage, adcSetReference, interruptAttach, interruptDetach, pwmWrite, rawCpp, boardResolve } from './emit.js';
 import { callback } from './callback.js';
 import { ADC } from './adc.js';
 
@@ -96,8 +96,8 @@ export class InputPin {
     return boardResolve("peripherals.adc.0.resolution");
   }
 
-  setAnalogReference(ref: number | string): void {
-    ADC._reference = ref as string;
+  setAnalogReference(ref: string): void {
+    ADC._reference = ref;
     adcSetReference(ref);
   }
 
@@ -117,6 +117,11 @@ export class InputPin {
     interruptDetach(this._pin);
   }
 
+  /** Alias matching the BasePin.offInterrupts() interface name. */
+  offInterrupts(): void {
+    interruptDetach(this._pin);
+  }
+
   /**
    * Wait for a RISING edge on this input pin.
    * Returns a Promise<void> that resolves when the pin transitions from LOW to HIGH.
@@ -127,7 +132,7 @@ export class InputPin {
    */
   waitForRising(timeout?: number): Promise<void> {
     rawCpp(`__cuttlefish_wait_pin_edge(${this._pin}, RISING, ${timeout ?? -1});`);
-    return undefined as any;
+    return Promise.resolve();
   }
 
   /**
@@ -139,7 +144,7 @@ export class InputPin {
    */
   waitForFalling(timeout?: number): Promise<void> {
     rawCpp(`__cuttlefish_wait_pin_edge(${this._pin}, FALLING, ${timeout ?? -1});`);
-    return undefined as any;
+    return Promise.resolve();
   }
 }
 
@@ -206,7 +211,13 @@ export class Pin {
     if (initial !== undefined) {
       gpioWrite(this._pin, initial);
     }
-    return this as any;
+    // Returns `this` so the transpiler can suppress the C++ return emission
+    // (it resolves `this` to the same instance and tracks the result as an
+    // OutputPin via the method name). Returning `new OutputPin(this._pin)`
+    // would leak the literal text into generated C++. The cast is required
+    // because Pin and OutputPin are structurally distinct classes; the
+    // transpiler handles the mode transition semantically.
+    return this as unknown as OutputPin;
   }
 
   /** Alias for asOutput() — shorter fluent form. */
@@ -215,27 +226,27 @@ export class Pin {
     if (initial !== undefined) {
       gpioWrite(this._pin, initial);
     }
-    return this as any;
+    return this as unknown as OutputPin;
   }
 
   asInput(): InputPin {
     gpioSetMode(this._pin, "INPUT");
-    return this as any;
+    return this as unknown as InputPin;
   }
 
   asInputPullUp(): InputPin {
     gpioSetMode(this._pin, "INPUT_PULLUP");
-    return this as any;
+    return this as unknown as InputPin;
   }
 
   asInputPullDown(): InputPin {
     gpioSetMode(this._pin, "INPUT_PULLDOWN");
-    return this as any;
+    return this as unknown as InputPin;
   }
 
   inputPullUp(): InputPin {
     gpioSetMode(this._pin, "INPUT_PULLUP");
-    return this as any;
+    return this as unknown as InputPin;
   }
 
   read(): boolean {

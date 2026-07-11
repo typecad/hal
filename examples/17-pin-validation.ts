@@ -10,8 +10,8 @@
  */
 
 import { D2, D3, A0, LED, delay, UART0 } from '@typecad';
-import { hasPWM as isPWMPin, hasAnalogInput as isAnalogPin, hasInterrupt as isInterruptPin, assertPWM } from '@typecad/hal';
-import type { PWMPin } from '@typecad/hal';
+import { hasPWM as isPWMPin, hasAnalogInput as isAnalogPin, hasInterrupt as isInterruptPin, assertPWM } from '@typecad/simulator';
+import type { PWMPin } from '@typecad/simulator';
 
 // Initialize serial for output
 const serial = UART0.begin(9600);

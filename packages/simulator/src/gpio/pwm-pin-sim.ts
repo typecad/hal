@@ -2,9 +2,8 @@
 // @typecad/simulator — Simulated PWM pin
 // ---------------------------------------------------------------------------
 
-import type { PWMPin, IToneAttachment, AnalogValue } from '@typecad/hal';
-import { PinMode } from '@typecad/hal';
-import type { DigitalValue } from '@typecad/hal';
+import type { PWMPin } from '../contracts.js';
+import type { AnalogValue, DigitalValue } from '@typecad/hal';
 import { SimDigitalPin } from './digital-pin-sim.js';
 
 /**

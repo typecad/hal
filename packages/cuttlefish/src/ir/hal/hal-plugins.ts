@@ -117,11 +117,67 @@ export function tryResolveBoardResolveArg(
   // Static string literal: boardResolve("peripherals.adc.0.resolution")
   if (ts.isStringLiteral(arg)) return arg.text;
 
-  // Dynamic path via string concat: boardResolve("prefix." + this._field)
-  if (ts.isBinaryExpression(arg) && arg.operatorToken.kind === ts.SyntaxKind.PlusToken) {
-    const left = resolveExpressionText(arg.left, instance, paramNames, callArgTexts, paramDefaults);
-    const right = resolveExpressionText(arg.right, instance, paramNames, callArgTexts, paramDefaults);
-    if (left !== null && right !== null) return left + right;
+  // Dynamic path via string concat or template literal. Flatten the expression
+  // into a dot-path WITHOUT going through resolveExpressionText (which renders
+  // `+` as a C++ expression "a + b", corrupting the path). String literals
+  // contribute their text; this._field contributes the resolved field value;
+  // template literals contribute head + interpolated spans.
+  return resolveConcatPath(arg, instance, paramNames, callArgTexts, paramDefaults);
+}
+
+/**
+ * Recursively flatten a `+`-concatenation / template-literal expression into a
+ * board-resolve dot-path string. Returns null if any operand cannot be
+ * resolved to a concrete string fragment.
+ */
+export function resolveConcatPath(
+  expr: ts.Expression,
+  instance: HALInstance,
+  paramNames: string[],
+  callArgTexts: string[],
+  paramDefaults: Map<string, string> | undefined,
+): string | null {
+  // String literal fragment
+  if (ts.isStringLiteral(expr)) return expr.text;
+
+  // No-substitution template literal: `text`
+  if (ts.isNoSubstitutionTemplateLiteral(expr)) return expr.text;
+
+  // Template expression: `text ${expr} more`
+  if (ts.isTemplateExpression(expr)) {
+    let result = expr.head.text;
+    for (const span of expr.templateSpans) {
+      const resolved = resolveConcatPath(span.expression, instance, paramNames, callArgTexts, paramDefaults);
+      if (resolved === null) return null;
+      result += resolved + span.literal.text;
+    }
+    return result;
+  }
+
+  // Binary `+` concatenation — recurse on both sides
+  if (ts.isBinaryExpression(expr) && expr.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    const left = resolveConcatPath(expr.left, instance, paramNames, callArgTexts, paramDefaults);
+    const right = resolveConcatPath(expr.right, instance, paramNames, callArgTexts, paramDefaults);
+    if (left === null || right === null) return null;
+    return left + right;
+  }
+
+  // Parenthesized expression — unwrap
+  if (ts.isParenthesizedExpression(expr)) {
+    return resolveConcatPath(expr.expression, instance, paramNames, callArgTexts, paramDefaults);
+  }
+
+  // this._field → resolved instance field value (e.g. this._instance → "1")
+  if (ts.isPropertyAccessExpression(expr)) {
+    const isThis = expr.expression.kind === ts.SyntaxKind.ThisKeyword
+      || (ts.isIdentifier(expr.expression) && expr.expression.text === "this")
+      || expr.expression.getText() === "this";
+    if (isThis) {
+      const fieldName = expr.name.text;
+      const val = instance.fieldValues.get(fieldName)
+        ?? instance.fieldValues.get(fieldName.startsWith("_") ? fieldName.slice(1) : "_" + fieldName);
+      if (val !== undefined && val !== null) return val;
+    }
   }
 
   return null;
@@ -327,6 +383,10 @@ export function tryResolveSemanticCall(
       if (timeout === null) return null;
       return { operation: "wdt.enable", timeout };
     }
+    case "wdtReset":
+      return { operation: "wdt.reset" };
+    case "wdtDisable":
+      return { operation: "wdt.disable" };
 
     // ── Interrupts ──
     case "interruptAttach": {

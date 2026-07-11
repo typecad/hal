@@ -16,7 +16,10 @@ export class EEPROMClass {
   write(address: number, value: number): void { rawCpp(`${this._name}.write(${address}, ${value});`); }
   update(address: number, value: number): void { rawCpp(`${this._name}.update(${address}, ${value});`); }
   length(): number { return 0; }
-  get<T>(address: number, ref: T): T { return ref; }
+  get<T>(address: number, ref: T): T {
+    rawCpp(`${this._name}.get(${address}, ${ref});`);
+    return ref;
+  }
   put<T>(address: number, value: T): void { rawCpp(`${this._name}.put(${address}, ${value});`); }
 }
 

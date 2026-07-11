@@ -2,11 +2,8 @@
 // @typecad/simulator — Interrupt simulation
 // ---------------------------------------------------------------------------
 
-import type {
-  InterruptPin,
-  InterruptHandler,
-  InterruptOptions,
-} from '@typecad/hal';
+import type { InterruptPin, InterruptOptions } from '../contracts.js';
+import type { InterruptHandler } from '@typecad/hal';
 import { SimDigitalPin } from './digital-pin-sim.js';
 
 type InterruptMode = 'rising' | 'falling' | 'change';

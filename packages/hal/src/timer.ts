@@ -1,5 +1,4 @@
-import { rawCpp } from './emit.js';
-import { board } from './board.js';
+import { rawCpp, boardResolve } from './emit.js';
 import { callback } from './callback.js';
 
 /**
@@ -49,7 +48,9 @@ export class HardwareTimer {
    * Returns the bit resolution of the timer (e.g., 8, 16, 32).
    */
   getBits(): number {
-    return board(`peripherals.timers.${this._instance}.bits`);
+    // "peripherals.timer" (singular) matches the board-resolver's array-key
+    // derivation (TIMER_INSTANCES → peripherals.timer.<index>.*).
+    return boardResolve("peripherals.timer." + this._instance + ".bits");
   }
 }
 

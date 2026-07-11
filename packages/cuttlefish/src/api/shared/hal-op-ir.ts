@@ -494,6 +494,14 @@ export interface WdtEnableOp {
   timeout: string | number;
 }
 
+export interface WdtResetOp {
+  operation: "wdt.reset";
+}
+
+export interface WdtDisableOp {
+  operation: "wdt.disable";
+}
+
 // ---------------------------------------------------------------------------
 // Snprintf — formatted string output
 // ---------------------------------------------------------------------------
@@ -607,6 +615,8 @@ export type HALOpIR =
   | BoardResolveOp
   // Watchdog timer
   | WdtEnableOp
+  | WdtResetOp
+  | WdtDisableOp
   // Snprintf
   | SnprintfEmitOp
   // Raw passthrough

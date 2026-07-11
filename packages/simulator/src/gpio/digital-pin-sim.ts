@@ -6,7 +6,7 @@ import type {
   BasePin,
   IToneAttachment,
   PinCapabilityFlags,
-} from '@typecad/hal';
+} from '../contracts.js';
 import { PinMode } from '@typecad/hal';
 import type { DigitalValue } from '@typecad/hal';
 

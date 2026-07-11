@@ -1,4 +1,4 @@
-﻿import { spiBegin, spiEnd, spiTransfer, spiBeginTx, spiEndTx, spiCsLow, spiCsHigh, spiSetMode, spiSetBitOrder, rawCpp } from './emit.js';
+import { spiBegin, spiEnd, spiTransfer, spiBeginTx, spiEndTx, spiCsLow, spiCsHigh, spiSetMode, spiSetBitOrder, rawCpp } from './emit.js';
 import { include } from './include.js';
 import type { Pin } from './gpio.js';
 
@@ -12,6 +12,7 @@ export class SPIDevice {
   }
 
   transfer(data: number | Uint8Array): number {
+    include("<SPI.h>");
     rawCpp(`digitalWrite(${this._cs}, LOW);`);
     rawCpp(`auto __res = ${this._bus}.transfer(${data});`);
     rawCpp(`digitalWrite(${this._cs}, HIGH);`);
@@ -20,12 +21,14 @@ export class SPIDevice {
   }
 
   write(data: number | Uint8Array): void {
+    include("<SPI.h>");
     spiCsLow(this._cs);
     spiTransfer(this._bus, data);
     spiCsHigh(this._cs);
   }
 
   readRegister(register: number, count: number): Uint8Array {
+    include("<SPI.h>");
     rawCpp(`digitalWrite(${this._cs}, LOW);`);
     rawCpp(`${this._bus}.transfer(${register});`);
     rawCpp(`static uint8_t __spi_buf[${count}];`);
@@ -36,6 +39,7 @@ export class SPIDevice {
   }
 
   writeRegister(register: number, value: number): void {
+    include("<SPI.h>");
     spiCsLow(this._cs);
     spiTransfer(this._bus, register);
     spiTransfer(this._bus, value);

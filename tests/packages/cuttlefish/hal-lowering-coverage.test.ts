@@ -635,17 +635,20 @@ describe("HAL pulse lowering (overflow fix)", () => {
 // ===========================================================================
 
 describe("HAL Preferences lowering (key quoting)", () => {
-  it("quotes string keys in putInt/getInt", () => {
+  it("passes string keys via .c_str() without double-quoting", () => {
     const result = transpile(`
       import { Preferences } from '@typecad/board-arduino-uno';
       Preferences.putInt('count', 42);
       const val = Preferences.getInt('count', 0);
     `, { target: 'arduino' });
 
-    // Keys must be quoted in the emitted C++
-    expect(result.cpp).toContain('"count"');
-    expect(result.cpp).not.toContain('putInt(count');
-    expect(result.cpp).not.toContain('getInt(count');
+    // Keys are std::string, passed as const char* via .c_str().
+    expectCppContains(result, [
+      'Preferences.putInt("count".c_str(), 42)',
+      'Preferences.getInt("count".c_str(), 0)',
+    ]);
+    // Regression guard: the old "\"${key}\"" template produced ""count"" (broken).
+    expect(result.cpp).not.toContain('""count""');
   });
 });
 
@@ -654,16 +657,159 @@ describe("HAL Preferences lowering (key quoting)", () => {
 // ===========================================================================
 
 describe("HAL SerialPort.printf lowering (format quoting)", () => {
-  it("quotes the format string in printf", () => {
+  it("quotes the format string in printf without double-quoting", () => {
     const result = transpile(`
       import { UART0 } from '@typecad/board-arduino-uno';
       UART0.begin(9600);
       UART0.printf('%d items', 5);
     `, { target: 'arduino' });
 
-    // Format must be quoted: Serial.printf("%d items", 5)
+    // Format must appear exactly once, not double-quoted: Serial.printf("%d items".c_str(), 5)
     expectCppContains(result, ['Serial.printf(']);
-    expect(result.cpp).toContain('"%d');
+    expect(result.cpp).toContain('"%d items"');
+    // Regression guard: the format string must NOT be double-quoted (was a bug
+    // where "\"${format}\"" produced Serial.printf(""%d items"", 5)).
+    expect(result.cpp).not.toContain('""%d');
+  });
+
+  it("passes a variable format string through .c_str()", () => {
+    const result = transpile(`
+      import { UART0 } from '@typecad/board-arduino-uno';
+      UART0.begin(9600);
+      const fmt = '%d items';
+      UART0.printf(fmt, 5);
+    `, { target: 'arduino' });
+
+    // std::string format variable must be converted to const char* for printf
+    expectCppContains(result, ['Serial.printf(fmt.c_str(), 5)']);
+  });
+
+  it("expands rest params across multiple printf arguments", () => {
+    const result = transpile(`
+      import { UART0 } from '@typecad/board-arduino-uno';
+      UART0.begin(9600);
+      UART0.printf('%d %d %d', 1, 2, 3);
+    `, { target: 'arduino' });
+
+    // ...args rest param must expand to a comma-separated arg list, not emit
+    // a bare `args` token.
+    expectCppContains(result, ['Serial.printf("%d %d %d".c_str(), 1, 2, 3)']);
+    expect(result.cpp).not.toMatch(/printf\([^)]*\bargs\b/);
+  });
+});
+
+// ===========================================================================
+// EEPROM.get — must emit the C++ .get() call (regression: placeholder body
+// "return ref;" defeated auto-passthrough and emitted no call)
+// ===========================================================================
+
+describe("HAL EEPROM.get lowering", () => {
+  it("emits EEPROM.get() call into the reference", () => {
+    const result = transpile(`
+      import { EEPROM } from '@typecad/board-arduino-uno';
+      struct Config { int magic; };
+      const cfg: Config = { magic: 0 };
+      EEPROM.get(0, cfg);
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['EEPROM.get(0, cfg)']);
+  });
+});
+
+// ===========================================================================
+// FS — string path parameters must be passed via .c_str() (regression: paths
+// were interpolated unquoted, producing FS.open(config.json, "r") — invalid C++)
+// ===========================================================================
+
+describe("HAL FS string-parameter lowering", () => {
+  it("converts exists() path to const char*", () => {
+    const result = transpile(`
+      import { FS } from '@typecad/board-arduino-uno';
+      FS.exists('config.json');
+    `, { target: 'arduino' });
+
+    // Path must be converted to const char*: FS.exists("config.json".c_str()),
+    // not the bare identifier, and definitely not FS.exists(config.json, ...).
+    expectCppContains(result, ['FS.exists("config.json".c_str())']);
+    expect(result.cpp).not.toMatch(/FS\.exists\(config/);
+  });
+
+  it("converts readText() path to const char* in FS.open", () => {
+    const result = transpile(`
+      import { FS } from '@typecad/board-arduino-uno';
+      const x = FS.readText('data.txt');
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['FS.open("data.txt".c_str(), "r")']);
+  });
+
+  it("converts writeText() path and content to const char*", () => {
+    const result = transpile(`
+      import { FS } from '@typecad/board-arduino-uno';
+      FS.writeText('out.log', 'hello');
+    `, { target: 'arduino' });
+
+    // Both the path AND the content string need .c_str() (both are std::string).
+    expectCppContains(result, [
+      'FS.open("out.log".c_str(), "w")',
+      'f.print("hello".c_str())',
+    ]);
+  });
+
+  it("converts remove() path to const char*", () => {
+    const result = transpile(`
+      import { FS } from '@typecad/board-arduino-uno';
+      FS.remove('temp.bin');
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['FS.remove("temp.bin".c_str())']);
+  });
+});
+
+// ===========================================================================
+// Preferences — UInt/Float methods (regression: tests called these but the HAL
+// shim only declared Int/Bool/String variants)
+// ===========================================================================
+
+describe("HAL Preferences UInt/Float lowering", () => {
+  it("lowers putUInt/getUInt and putFloat/getFloat", () => {
+    const result = transpile(`
+      import { Preferences } from '@typecad/board-arduino-uno';
+      Preferences.putUInt('counter', 1000);
+      const u = Preferences.getUInt('counter', 0);
+      Preferences.putFloat('gain', 2.5);
+      const f = Preferences.getFloat('gain', 0);
+    `, { target: 'arduino' });
+
+    // Keys are std::string at the C++ layer, converted to const char* via .c_str().
+    // Regression guard: keys must NOT be double-quoted (was a bug where "\"${key}\""
+    // produced putInt(""count"", 42)).
+    expectCppContains(result, [
+      'Preferences.putUInt("counter".c_str(), 1000)',
+      'Preferences.getUInt("counter".c_str(), 0)',
+      'Preferences.putFloat("gain".c_str(), 2.5f)',
+      'Preferences.getFloat("gain".c_str(), 0)',
+    ]);
+    expect(result.cpp).not.toContain('""counter""');
+    expect(result.cpp).not.toContain('""gain""');
+  });
+
+  it("converts both key and value for putString/getString", () => {
+    // putString/getString are the only Preferences methods taking TWO string
+    // args (key + value) — both need .c_str(). Regression guard for the
+    // double-quoting bug on the value side.
+    const result = transpile(`
+      import { Preferences } from '@typecad/board-arduino-uno';
+      Preferences.putString('label', 'hello');
+      const v = Preferences.getString('label', '');
+    `, { target: 'arduino' });
+
+    expectCppContains(result, [
+      'Preferences.putString("label".c_str(), "hello".c_str())',
+      'Preferences.getString("label".c_str(), "".c_str())',
+    ]);
+    expect(result.cpp).not.toContain('""label""');
+    expect(result.cpp).not.toContain('""hello""');
   });
 });
 
@@ -719,6 +865,75 @@ describe("HAL board() top-level resolution", () => {
     // Must NOT contain a literal board() call
     expect(result.cpp).not.toContain('board("');
     expect(result.cpp).not.toContain('board(');
+  });
+
+  it("resolves string board constants as C++ string literals (regression: was NaN.0f)", () => {
+    const result = transpile(`
+      import { boardResolve } from '@typecad/hal';
+      import { LED } from '@typecad/board-arduino-uno';
+      const arch = boardResolve("architecture");
+      LED.asOutput();
+    `, { target: 'arduino' });
+
+    // "architecture" is the string "avr" — must render as a C++ string literal,
+    // not NaN.0f (the old Number("avr") coercion bug).
+    expectCppContains(result, ['const auto arch = "avr"']);
+  });
+
+  it("folds Power.deepSleep() arch conditional to the AVR else-branch", () => {
+    // Power.deepSleep() uses board("architecture") inside an if (arch === "esp32")
+    // conditional. The transpiler must constant-fold this so only the matching
+    // branch is emitted. On AVR, the ESP32 deep-sleep calls must NOT appear.
+    const result = transpile(`
+      import { Power } from '@typecad/board-arduino-uno';
+      Power.deepSleep(1000);
+    `, { target: 'arduino' });
+
+    expect(result.cpp).not.toContain('esp_sleep_enable_timer_wakeup');
+    expect(result.cpp).not.toContain('esp_deep_sleep_start');
+    expect(result.cpp).toContain('does not support deep sleep');
+  });
+});
+
+// ===========================================================================
+// HardwareTimer.getBits() — boardResolve() with dynamic concat path in a
+// non-singleton HAL class method-return position.
+// Regression: was "/* unhandled hal-expr: board.resolve */" due to (a) a
+// singular/plural path-key mismatch and (b) the concat path flattener
+// rendering `+` as a C++ expression ("a + b") instead of concatenating.
+// ===========================================================================
+
+describe("HAL HardwareTimer.getBits() resolution", () => {
+  it("resolves Timer1.getBits() to the board-defined bit width (16)", () => {
+    const result = transpile(`
+      import { Timer1 } from '@typecad/board-arduino-uno';
+      const bits = Timer1.getBits();
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['const auto bits = 16']);
+  });
+
+  it("resolves Timer0/Timer2 getBits() (8-bit timers)", () => {
+    const r0 = transpile(`
+      import { Timer0 } from '@typecad/board-arduino-uno';
+      const b0 = Timer0.getBits();
+    `, { target: 'arduino' });
+    const r2 = transpile(`
+      import { Timer2 } from '@typecad/board-arduino-uno';
+      const b2 = Timer2.getBits();
+    `, { target: 'arduino' });
+
+    expectCppContains(r0, ['const auto b0 = 8']);
+    expectCppContains(r2, ['const auto b2 = 8']);
+  });
+
+  it("does not emit an unhandled board.resolve hal-expr", () => {
+    const result = transpile(`
+      import { Timer1 } from '@typecad/board-arduino-uno';
+      const bits = Timer1.getBits();
+    `, { target: 'arduino' });
+
+    expect(result.cpp).not.toContain('unhandled hal-expr');
   });
 });
 

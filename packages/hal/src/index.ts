@@ -1,34 +1,29 @@
-﻿// Re-export commonly-used types so consumers can import everything from @typecad/hal
+// Re-export commonly-used types so consumers can import everything from @typecad/hal
+//
+// Runtime-contract interfaces (BasePin, II2CBus, ISPIBus, ISerialPort, the
+// status enums, capability guards, PinCapabilityFlags, IToneAttachment, ...)
+// now live in @typecad/simulator. Import them from there.
 export type { DigitalValue, AnalogValue } from './types.js';
 export { PinMode, InterruptMode } from './types.js';
 export type { IPinGroup, PinGroupMember } from './types.js';
 export { createPinGroup } from './types.js';
 
-export type { PinCapabilityFlags } from './types.js';
-
-export type { BasePin, PWMPin, AnalogPin, InterruptPin, IOutputModePin, IInputModePin, InterruptHandler, InterruptOptions, IToneAttachment } from './types.js';
+export type { InterruptHandler } from './types.js';
 
 export type { ArchitectureIdentifier } from './types.js';
 
-export type { ErrorPolicy } from './types.js';
-
-export { I2CStatus } from './types.js';
-export type { I2CAddress, II2CBus, II2CDeviceAccessor } from './types.js';
-
-export type { SPIBitOrder, SPIMode } from './types.js';
-export { SPIStatus } from './types.js';
-export type { SPISettings, ISPIBus, ISPIDevice } from './types.js';
-
-export { UARTParity, UARTStopBits, UARTFlowControl, UARTStatus } from './types.js';
-export type { UARTStatusInfo, IUARTBus, ISerialPort } from './types.js';
+// Protocol-shape types (re-exported downstream by @typecad/framework-arduino)
+export type { I2CAddress } from './types.js';
+export type { SPIBitOrder, SPIMode, SPISettings } from './types.js';
 
 export { include } from './include.js';
 export { board } from './board.js';
 export { callback } from './callback.js';
 export { emit, rawCpp } from './emit.js';
-export { HIGH, LOW, OUTPUT, INPUT, INPUT_PULLUP, LED_BUILTIN, LSBFIRST, MSBFIRST, WDTO_15MS, WDTO_30MS, WDTO_60MS, WDTO_120MS, WDTO_250MS, WDTO_500MS, WDTO_1S, WDTO_2S, WDTO_4S, WDTO_8S } from './constants.js';
+export { HIGH, LOW, OUTPUT, INPUT, INPUT_PULLUP, INPUT_PULLDOWN, OUTPUT_OPEN_DRAIN, ANALOG, LED_BUILTIN, LSBFIRST, MSBFIRST, WDTO_15MS, WDTO_30MS, WDTO_60MS, WDTO_120MS, WDTO_250MS, WDTO_500MS, WDTO_1S, WDTO_2S, WDTO_4S, WDTO_8S } from './constants.js';
 export { delay, millis, micros, delayMicroseconds, map, constrain, TimingClass, Timing } from './timing.js';
-export { abs, min, max, NumClass, Num } from './math.js';
+export { freeHeap, setInterval, setTimeout, clearInterval, clearTimeout } from './timing.js';
+export { abs, min, max, NumClass, Num, MapChain, ConstrainChain } from './math.js';
 export { Pulse, pulseIn, pulseInLong } from './pulse.js';
 export { Shift, shiftIn, shiftOut } from './shift.js';
 export { Random } from './random.js';

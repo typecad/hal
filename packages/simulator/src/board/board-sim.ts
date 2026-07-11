@@ -2,7 +2,6 @@
 // @typecad/simulator — Simulated board factory
 // ---------------------------------------------------------------------------
 
-import type { BasePin, AnalogPin, PWMPin, InterruptPin } from '@typecad/hal';
 import type { SimBoardConfig } from '../types.js';
 import { SimDigitalPin } from '../gpio/digital-pin-sim.js';
 import { SimAnalogPin } from '../gpio/analog-pin-sim.js';

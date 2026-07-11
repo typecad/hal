@@ -14,13 +14,13 @@ export class Shift {
   /** Directly shifts a byte out to a pin. */
   static out(dataPin: Pin | OutputPin, clockPin: Pin | OutputPin, order: 'lsb' | 'msb', value: number): void {
     const bitOrder = order === 'lsb' ? LSBFIRST : MSBFIRST;
-    rawCpp(`shiftOut(${(dataPin as any)._pin}, ${(clockPin as any)._pin}, ${bitOrder}, ${value});`);
+    rawCpp(`shiftOut(${dataPin.number}, ${clockPin.number}, ${bitOrder}, ${value});`);
   }
 
   /** Directly shifts a byte in from a pin. */
   static in(dataPin: Pin | InputPin, clockPin: Pin | OutputPin, order: 'lsb' | 'msb'): number {
     const bitOrder = order === 'lsb' ? LSBFIRST : MSBFIRST;
-    rawCpp(`return shiftIn(${(dataPin as any)._pin}, ${(clockPin as any)._pin}, ${bitOrder});`);
+    rawCpp(`return shiftIn(${dataPin.number}, ${clockPin.number}, ${bitOrder});`);
     return 0;
   }
 
@@ -41,12 +41,12 @@ class ShiftOutBuilder {
   private _clockPin: number | undefined;
 
   constructor(dataPin: Pin | OutputPin, value: number) {
-    this._dataPin = (dataPin as any)._pin;
+    this._dataPin = dataPin.number;
     this._value = value;
   }
 
   clock(clk: Pin | OutputPin): this {
-    this._clockPin = (clk as any)._pin;
+    this._clockPin = clk.number;
     return this;
   }
 
@@ -66,11 +66,11 @@ class ShiftInBuilder {
   private _clockPin: number | undefined;
 
   constructor(dataPin: Pin | InputPin) {
-    this._dataPin = (dataPin as any)._pin;
+    this._dataPin = dataPin.number;
   }
 
   clock(clk: Pin | OutputPin): this {
-    this._clockPin = (clk as any)._pin;
+    this._clockPin = clk.number;
     return this;
   }
 

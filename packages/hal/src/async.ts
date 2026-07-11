@@ -1,4 +1,4 @@
-﻿// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
 // Async — Top-level cooperative async / scheduling abstraction for TypeCAD
 //
 // Provides a platform-independent API for:
@@ -26,7 +26,7 @@ export class AsyncClass {
    */
   sleep(ms: number): Promise<void> {
     rawCpp(`__cuttlefish_async_sleep(${ms});`);
-    return undefined as any;
+    return Promise.resolve();
   }
 
   /**
@@ -35,7 +35,7 @@ export class AsyncClass {
    */
   yield(): Promise<void> {
     rawCpp(`__cuttlefish_async_yield();`);
-    return undefined as any;
+    return Promise.resolve();
   }
 
   /**
@@ -46,7 +46,7 @@ export class AsyncClass {
    */
   sleepUntil(condition: () => boolean, pollIntervalMs: number = 10): Promise<void> {
     rawCpp(`__cuttlefish_async_sleep_until(${pollIntervalMs});`);
-    return undefined as any;
+    return Promise.resolve();
   }
 
   /**

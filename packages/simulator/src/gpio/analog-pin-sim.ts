@@ -2,7 +2,8 @@
 // @typecad/simulator — Simulated analog input pin
 // ---------------------------------------------------------------------------
 
-import type { AnalogPin, AnalogValue } from '@typecad/hal';
+import type { AnalogPin } from '../contracts.js';
+import type { AnalogValue } from '@typecad/hal';
 import { SimDigitalPin } from './digital-pin-sim.js';
 
 /**

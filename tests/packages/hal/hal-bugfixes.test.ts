@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { transpileArduino } from "../../setup";
+import { transpileArduino, transpileESP32 } from "../../setup";
 
 /**
  * Regression tests for HAL bugs found in the post-audit review (commit 80c73e3).
@@ -125,3 +125,32 @@ describe("HAL bugfix: I2C readBytes uses static buffer (no dangling pointer)", (
 // Note: async.currentTask rawCpp missing-semicolon is a source-consistency nit,
 // not a behavioral bug (the statement renderer already terminates the call).
 // It is fixed in the cleanup phase for source consistency with sleep/yield.
+
+describe("HAL bugfix: WDT does not emit AVR-only symbols on ESP32", () => {
+  // Regression: wdt_enable/wdt_reset/wdt_disable and the WDTO_* macros are
+  // AVR-only. Previously they were emitted unconditionally, producing undefined
+  // symbols on ESP32. They should now be suppressed (no-op comment) on ESP32.
+  it("WDT.enable/reset/disable are suppressed on ESP32", () => {
+    const result = transpileESP32(`
+      import { WDT } from '@typecad/framework-arduino/arduino';
+      WDT.enable('2S');
+      WDT.reset();
+      WDT.disable();
+    `);
+    expect(result.cpp).not.toMatch(/wdt_enable\b/);
+    expect(result.cpp).not.toMatch(/wdt_reset\b/);
+    expect(result.cpp).not.toMatch(/wdt_disable\b/);
+  });
+
+  it("WDT.enable/reset/disable still emit AVR symbols on AVR targets", () => {
+    const result = transpileArduino(`
+      import { WDT } from '@typecad/framework-arduino/arduino';
+      WDT.enable('2S');
+      WDT.reset();
+      WDT.disable();
+    `);
+    expect(result.cpp).toContain("wdt_enable(WDTO_2S)");
+    expect(result.cpp).toContain("wdt_reset()");
+    expect(result.cpp).toContain("wdt_disable()");
+  });
+});

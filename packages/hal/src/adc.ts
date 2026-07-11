@@ -13,8 +13,8 @@ export class ADCClass {
     return boardResolve("peripherals.adc.0.resolution");
   }
 
-  setAnalogReference(ref: number): void {
-    this._reference = ref as unknown as string;
+  setAnalogReference(ref: string): void {
+    this._reference = ref;
     adcSetReference(ref);
   }
 

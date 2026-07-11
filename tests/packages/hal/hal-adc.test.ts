@@ -61,9 +61,6 @@ describe('InputPin - readVoltage', () => {
 });
 
 describe('InputPin - readVoltage with setAnalogReference', () => {
-  // TODO: readVoltage does not yet incorporate the analogReference setting;
-  // it always uses the default board voltage. Re-enable when the strategy
-  // tracks the active reference and substitutes it into the formula.
   it('uses INTERNAL reference voltage after ADC.setAnalogReference', () => {
     const result = transpile(`
       import { A0, ADC, INTERNAL } from '@typecad/board-arduino-uno';

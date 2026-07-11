@@ -12,7 +12,8 @@
 // ---------------------------------------------------------------------------
 
 import { D2, LED, millis } from '@typecad';
-import type { IInputModePin, InterruptHandler } from '@typecad/hal';
+import type { IInputModePin } from '@typecad/simulator';
+import type { InterruptHandler } from '@typecad/hal';
 
 // ── Domain types ──────────────────────────────────────────────────────────
 

@@ -2,18 +2,14 @@
 // @typecad/simulator — SPI bus simulation
 // ---------------------------------------------------------------------------
 
-import {
-  SPIStatus,
-} from '@typecad/hal';
+import { SPIStatus } from '../contracts.js';
 import type {
   ISPIBus,
   ISPIDevice,
-  SPIMode,
-  SPIBitOrder,
-  SPISettings,
   BasePin,
   ErrorPolicy,
-} from '@typecad/hal';
+} from '../contracts.js';
+import type { SPIMode, SPIBitOrder, SPISettings } from '@typecad/hal';
 import type { ISimSPIDevice } from '../types.js';
 
 // ---------------------------------------------------------------------------

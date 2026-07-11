@@ -1460,9 +1460,31 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       case "board.resolve":
         return { expression: this.renderBoardDefinitionAccess(op.path.split("."), undefined) };
 
-      // Watchdog timer
-      case "wdt.enable":
+      // Watchdog timer — the avr/wdt.h symbols (wdt_enable/wdt_reset/wdt_disable
+      // and the WDTO_* macros) are AVR-only. On ESP32-family architectures they
+      // are undefined and would not compile, so emit a no-op comment there.
+      // (The backing __tc_WDT struct at preamble-emit time is likewise AVR-only.)
+      case "wdt.enable": {
+        const arch = this._cachedArch;
+        if (arch === 'esp32' || arch === 'esp32s2' || arch === 'esp32s3' || arch === 'esp32c3' || arch === 'esp32c6') {
+          return { code: `// watchdog not supported on ${arch}` };
+        }
         return { code: `wdt_enable(${normalizeWdtTimeout(op.timeout)});` };
+      }
+      case "wdt.reset": {
+        const arch = this._cachedArch;
+        if (arch === 'esp32' || arch === 'esp32s2' || arch === 'esp32s3' || arch === 'esp32c3' || arch === 'esp32c6') {
+          return { code: `// watchdog not supported on ${arch}` };
+        }
+        return { code: `wdt_reset();` };
+      }
+      case "wdt.disable": {
+        const arch = this._cachedArch;
+        if (arch === 'esp32' || arch === 'esp32s2' || arch === 'esp32s3' || arch === 'esp32c3' || arch === 'esp32c6') {
+          return { code: `// watchdog not supported on ${arch}` };
+        }
+        return { code: `wdt_disable();` };
+      }
 
       // Snprintf
       case "snprintf.emit":
