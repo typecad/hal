@@ -28,7 +28,7 @@ describe("SPI0 configuration")
   .it("SPI0.beginTransaction() / endTransaction() pair")
   .expect(
     (() => {
-      SPI0.beginTransaction({});
+      SPI0.beginTransaction({ frequency: 1000000, mode: 0, bitOrder: 'msb' });
       SPI0.endTransaction();
       return 1;
     })

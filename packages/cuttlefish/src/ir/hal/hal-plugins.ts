@@ -6,6 +6,47 @@ import { resolveExpressionText, extractAndRegisterCallbacks } from "./hal-emitte
 import { renderExprAsText } from "../render-expr.js";
 import type { ExpressionIR } from "../../api/index.js";
 
+/**
+ * Split a comma-joined argument list back into individual arguments, respecting
+ * nesting (parens/brackets/braces) and string literals so a comma inside one of
+ * those does not split. Used to recover the per-arg array from the spread
+ * mechanism's comma-joined text (e.g. for printf varargs).
+ */
+function splitArgList(joined: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let current = "";
+  let inString: '"' | "'" | null = null;
+  for (let i = 0; i < joined.length; i++) {
+    const ch = joined[i];
+    if (inString) {
+      current += ch;
+      if (ch === "\\") {
+        // Keep the escaped char with its backslash.
+        current += joined[++i] ?? "";
+      } else if (ch === inString) {
+        inString = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inString = ch;
+      current += ch;
+      continue;
+    }
+    if (ch === "(" || ch === "[" || ch === "{") depth++;
+    else if (ch === ")" || ch === "]" || ch === "}") depth--;
+    if (ch === "," && depth === 0) {
+      out.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim()) out.push(current.trim());
+  return out;
+}
+
 function resolveI2cBufferArg(
   args: readonly ts.Expression[],
   idx: number,
@@ -388,6 +429,20 @@ export function tryResolveSemanticCall(
     case "wdtDisable":
       return { operation: "wdt.disable" };
 
+    // ── Power ──
+    case "powerDeepSleep": {
+      const ms = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ms === null) return null;
+      return { operation: "power.deep_sleep", ms };
+    }
+    case "powerLightSleep":
+      return { operation: "power.light_sleep" };
+    case "powerSetCpuFrequency": {
+      const mhz = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (mhz === null) return null;
+      return { operation: "power.set_cpu_frequency", mhz };
+    }
+
     // ── Interrupts ──
     case "interruptAttach": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
@@ -431,6 +486,8 @@ export function tryResolveSemanticCall(
       return { operation: "timing.millis" };
     case "getMicros":
       return { operation: "timing.micros" };
+    case "getFreeHeap":
+      return { operation: "timing.free_heap" };
 
     // ── I2C ──
     case "i2cBegin": {
@@ -609,6 +666,18 @@ export function tryResolveSemanticCall(
       const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (port === null) return null;
       return { operation: "uart.flush", port };
+    }
+    case "uartPrintf": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const format = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || format === null) return null;
+      // The HAL declares `...args: any[]`; the third semantic-call arg is the
+      // `args` rest identifier. resolveSemanticArg expands it via the spread
+      // mechanism into a comma-joined string — split it back into the per-arg
+      // list the UartPrintfOp expects.
+      const spreadText = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const varArgs = spreadText !== null && spreadText !== "" ? splitArgList(spreadText) : [];
+      return { operation: "uart.printf", port, format, args: varArgs };
     }
 
     // ── Pulse ──

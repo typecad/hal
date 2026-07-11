@@ -191,29 +191,6 @@ function reportFailure(f: FailureInfo): void {
   console.log();
 }
 
-function collectFailuresForFile(file: FileResult): FailureInfo[] {
-  const failures: FailureInfo[] = [];
-  if (file.error) {
-    return failures;
-  }
-
-  for (const desc of file.describes) {
-    for (const test of desc.tests) {
-      for (const assertion of test.assertions) {
-        if (!assertion.passed) {
-          failures.push({
-            describeName: desc.name,
-            testName: test.name,
-            assertion,
-          });
-        }
-      }
-    }
-  }
-
-  return failures;
-}
-
 // ---------------------------------------------------------------------------
 // Internal — Summary
 // ---------------------------------------------------------------------------

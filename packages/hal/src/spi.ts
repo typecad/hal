@@ -1,6 +1,7 @@
 import { spiBegin, spiEnd, spiTransfer, spiBeginTx, spiEndTx, spiCsLow, spiCsHigh, spiSetMode, spiSetBitOrder, rawCpp } from './emit.js';
 import { include } from './include.js';
 import type { Pin } from './gpio.js';
+import type { SPIMode, SPISettings } from './types.js';
 
 export class SPIDevice {
   private _bus: string;
@@ -13,9 +14,9 @@ export class SPIDevice {
 
   transfer(data: number | Uint8Array): number {
     include("<SPI.h>");
-    rawCpp(`digitalWrite(${this._cs}, LOW);`);
+    spiCsLow(this._cs);
     rawCpp(`auto __res = ${this._bus}.transfer(${data});`);
-    rawCpp(`digitalWrite(${this._cs}, HIGH);`);
+    spiCsHigh(this._cs);
     rawCpp(`return __res;`);
     return 0;
   }
@@ -86,7 +87,7 @@ export class SPIBus {
     spiBeginTx(this._bus, `SPISettings(${hz}, MSBFIRST, SPI_MODE0)`);
   }
 
-  beginTransaction(settings: any): void {
+  beginTransaction(settings: SPISettings): void {
     spiBeginTx(this._bus, settings);
   }
 
@@ -94,7 +95,7 @@ export class SPIBus {
     spiEndTx(this._bus);
   }
 
-  setMode(mode: number): void {
+  setMode(mode: SPIMode): void {
     spiSetMode(this._bus, mode);
   }
 

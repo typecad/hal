@@ -48,8 +48,8 @@ export class OutputPin {
     toneStop(this._pin);
   }
 
-  pwm(percent: number): void {
-    pwmWrite(this._pin, percent);
+  pwm(duty: number): void {
+    pwmWrite(this._pin, duty);
   }
 
   getPwmFrequency(): number {
@@ -249,6 +249,12 @@ export class Pin {
     return this as unknown as InputPin;
   }
 
+  /** Alias for asInputPullDown() — shorter fluent form. */
+  inputPullDown(): InputPin {
+    gpioSetMode(this._pin, "INPUT_PULLDOWN");
+    return this as unknown as InputPin;
+  }
+
   read(): boolean {
     return gpioRead(this._pin) as unknown as boolean;
   }
@@ -277,8 +283,8 @@ export class Pin {
     gpioToggle(this._pin);
   }
 
-  pwm(value: number): void {
-    pwmWrite(this._pin, value);
+  pwm(duty: number): void {
+    pwmWrite(this._pin, duty);
   }
 
   tone(frequency: number): ToneChain {

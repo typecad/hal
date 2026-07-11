@@ -1,9 +1,11 @@
 import { describe, done } from '@typecad/expect';
 
-// NOTE: The Shift fluent class (Shift.out/read/builders) requires a @TypeCAD
-// import, which currently triggers a spurious `#include <Typecad.h>` that
-// fails to compile (pre-existing transpiler limitation — see README). These
-// tests exercise the ambient free functions instead.
+// NOTE: The Shift fluent class (Shift.out/read/builders) lowers to a C++ class
+// method chain (Shift::write(...).clock_(...).msbFirst()) that requires a C++
+// class definition the transpiler does not currently generate, so it won't
+// compile as standalone Arduino C++. The fluent API is covered by vitest
+// codegen tests (tests/pulse-shift-random.test.ts covers the Shift class
+// patterns). These hardware tests exercise the ambient free functions instead.
 
 describe("Free shift functions")
   .it("shiftOut() with MSBFIRST is callable")

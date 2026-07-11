@@ -17,6 +17,25 @@ export function maybeEscapeResolvedText(text: string): string {
   return escapeCppKeyword(text);
 }
 
+/**
+ * Strip a leading `.c_str()` from the literal text that follows a template span
+ * when the resolved value is a C++ string literal (e.g. `"label"`).
+ *
+ * HAL authors write `${param}.c_str()` to convert a `String`/`std::string`
+ * variable to `const char*` for C APIs. That is correct when `param` is a
+ * variable (renders as `myVar` → `myVar.c_str()`). But when `param` is a string
+ * literal it renders as `"label"`, and `"label".c_str()` is invalid C++ — a
+ * string literal has no `.c_str()` member. This drops the conversion in that
+ * case so `"label".c_str()` becomes just `"label"`, while leaving the variable
+ * path untouched.
+ */
+export function stripCStrAfterStringLiteral(followingLiteralText: string, resolvedValue: string): string {
+  if (resolvedValue.startsWith('"') && followingLiteralText.startsWith(".c_str()")) {
+    return followingLiteralText.slice(".c_str()".length);
+  }
+  return followingLiteralText;
+}
+
 /** Map a TypeScript PrefixUnaryExpression operator SyntaxKind to C++ text. */
 function prefixOperatorText(operator: ts.SyntaxKind): string {
   switch (operator) {
@@ -244,7 +263,7 @@ export function resolveExpressionText(
     for (const span of expr.templateSpans) {
       const resolved = resolveExpressionText(span.expression, instance, paramNames, callArgTexts, paramDefaults);
       if (resolved === null) return null;
-      result += resolved + span.literal.text;
+      result += resolved + stripCStrAfterStringLiteral(span.literal.text, resolved);
     }
     return result;
   }

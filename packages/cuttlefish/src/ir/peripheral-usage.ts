@@ -438,7 +438,6 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
     case 'spi.transfer':
     case 'spi.begin_transaction':
     case 'spi.end_transaction':
-    case 'spi.set_frequency':
     case 'spi.set_mode':
     case 'spi.set_bit_order': {
       usage.spi = true;

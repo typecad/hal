@@ -1,4 +1,4 @@
-import { uartBegin, uartEnd, uartPrint, uartPrintln, uartWrite, uartRead, uartPeek, uartAvailable, uartFlush, rawCpp } from './emit.js';
+import { uartBegin, uartEnd, uartPrint, uartPrintln, uartPrintf, uartWrite, uartRead, uartPeek, uartAvailable, uartFlush, rawCpp } from './emit.js';
 
 export class SerialPort {
   static readonly __includes = ["<Arduino.h>"];
@@ -26,7 +26,7 @@ export class SerialPort {
   }
 
   printf(format: string, ...args: any[]): void {
-    rawCpp(`${this._port}.printf(${format}.c_str(), ${args});`);
+    uartPrintf(this._port, format, args);
   }
 
   write(data: any): void {

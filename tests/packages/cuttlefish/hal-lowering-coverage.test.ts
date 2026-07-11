@@ -16,8 +16,8 @@
 //   - The HAL source prescan doesn't flag @typecad/hal internals
 // ---------------------------------------------------------------------------
 
-import { describe, it } from "vitest";
-import { expectCppContains, expectCppNotContains, transpile } from "../../setup";
+import { describe, it, expect } from "vitest";
+import { expectCppContains, expectCppNotContains, transpile, transpileAVR, transpileESP32 } from "../../setup";
 
 // ===========================================================================
 // ADC — Analog-to-Digital Conversion
@@ -263,7 +263,9 @@ describe("HAL DAC lowering", () => {
       DAC.write(A0, 128);
     `, { target: 'arduino' });
 
-    // dacWrite lowers to the Arduino dacWrite function
+    // dacWrite lowers to the Arduino dacWrite function. A0 resolves to its
+    // framework pin number (14 on AVR), and the value passes through.
+    expectCppContains(result, ['dacWrite(14, 128)']);
     expectCppNotContains(result, ['this->', 'Number(']);
   });
 });
@@ -488,7 +490,7 @@ describe("HAL async template literal lowering", () => {
 // Pulse measurement — Pulse.on().high()/.low() fluent API
 // ===========================================================================
 
-describe("HAL Pulse lowering", () => {
+describe("HAL Pulse free-function lowering", () => {
   it("lowers free pulseIn(pin, value) to pulseIn call", () => {
     const result = transpile(`
       import { D7, HIGH } from '@typecad/board-arduino-uno';
@@ -635,20 +637,24 @@ describe("HAL pulse lowering (overflow fix)", () => {
 // ===========================================================================
 
 describe("HAL Preferences lowering (key quoting)", () => {
-  it("passes string keys via .c_str() without double-quoting", () => {
+  it("passes string-literal keys as const char* without .c_str()", () => {
     const result = transpile(`
       import { Preferences } from '@typecad/board-arduino-uno';
       Preferences.putInt('count', 42);
       const val = Preferences.getInt('count', 0);
     `, { target: 'arduino' });
 
-    // Keys are std::string, passed as const char* via .c_str().
+    // String-literal keys render as a C string literal directly — the
+    // transpiler strips the rawCpp `${key}.c_str()` because a string literal
+    // has no .c_str() member. (Variables still get .c_str().)
     expectCppContains(result, [
-      'Preferences.putInt("count".c_str(), 42)',
-      'Preferences.getInt("count".c_str(), 0)',
+      'Preferences.putInt("count", 42)',
+      'Preferences.getInt("count", 0)',
     ]);
-    // Regression guard: the old "\"${key}\"" template produced ""count"" (broken).
+    // Regression guard: the old "\"${key}\"" template produced ""count"" (broken),
+    // and the unconditional .c_str() produced "count".c_str() (also broken).
     expect(result.cpp).not.toContain('""count""');
+    expect(result.cpp).not.toContain('"count".c_str()');
   });
 });
 
@@ -664,15 +670,16 @@ describe("HAL SerialPort.printf lowering (format quoting)", () => {
       UART0.printf('%d items', 5);
     `, { target: 'arduino' });
 
-    // Format must appear exactly once, not double-quoted: Serial.printf("%d items".c_str(), 5)
-    expectCppContains(result, ['Serial.printf(']);
-    expect(result.cpp).toContain('"%d items"');
-    // Regression guard: the format string must NOT be double-quoted (was a bug
-    // where "\"${format}\"" produced Serial.printf(""%d items"", 5)).
+    // printf now routes through the uart.printf semantic op. A literal format
+    // string renders as a quoted C string literal directly (no .c_str()).
+    expectCppContains(result, ['Serial.printf("%d items", 5)']);
+    // Regression guard: the format string must NOT be double-quoted and must
+    // NOT carry a .c_str() (both were prior bugs).
     expect(result.cpp).not.toContain('""%d');
+    expect(result.cpp).not.toContain('"%d items".c_str()');
   });
 
-  it("passes a variable format string through .c_str()", () => {
+  it("passes a variable format string through", () => {
     const result = transpile(`
       import { UART0 } from '@typecad/board-arduino-uno';
       UART0.begin(9600);
@@ -680,8 +687,8 @@ describe("HAL SerialPort.printf lowering (format quoting)", () => {
       UART0.printf(fmt, 5);
     `, { target: 'arduino' });
 
-    // std::string format variable must be converted to const char* for printf
-    expectCppContains(result, ['Serial.printf(fmt.c_str(), 5)']);
+    // A variable format renders as the bare identifier.
+    expectCppContains(result, ['Serial.printf(fmt, 5)']);
   });
 
   it("expands rest params across multiple printf arguments", () => {
@@ -693,7 +700,7 @@ describe("HAL SerialPort.printf lowering (format quoting)", () => {
 
     // ...args rest param must expand to a comma-separated arg list, not emit
     // a bare `args` token.
-    expectCppContains(result, ['Serial.printf("%d %d %d".c_str(), 1, 2, 3)']);
+    expectCppContains(result, ['Serial.printf("%d %d %d", 1, 2, 3)']);
     expect(result.cpp).not.toMatch(/printf\([^)]*\bargs\b/);
   });
 });
@@ -722,47 +729,50 @@ describe("HAL EEPROM.get lowering", () => {
 // ===========================================================================
 
 describe("HAL FS string-parameter lowering", () => {
-  it("converts exists() path to const char*", () => {
+  it("passes an exists() string-literal path as a C string literal", () => {
     const result = transpile(`
       import { FS } from '@typecad/board-arduino-uno';
       FS.exists('config.json');
     `, { target: 'arduino' });
 
-    // Path must be converted to const char*: FS.exists("config.json".c_str()),
-    // not the bare identifier, and definitely not FS.exists(config.json, ...).
-    expectCppContains(result, ['FS.exists("config.json".c_str())']);
+    // A string-literal path renders as a quoted C string literal directly —
+    // the transpiler strips the rawCpp `${path}.c_str()` because a string
+    // literal has no .c_str() member. The path must NOT appear as a bare
+    // identifier (FS.exists(config.json) — invalid C++).
+    expectCppContains(result, ['FS.exists("config.json")']);
     expect(result.cpp).not.toMatch(/FS\.exists\(config/);
+    expect(result.cpp).not.toContain('"config.json".c_str()');
   });
 
-  it("converts readText() path to const char* in FS.open", () => {
+  it("passes a readText() string-literal path in FS.open", () => {
     const result = transpile(`
       import { FS } from '@typecad/board-arduino-uno';
       const x = FS.readText('data.txt');
     `, { target: 'arduino' });
 
-    expectCppContains(result, ['FS.open("data.txt".c_str(), "r")']);
+    expectCppContains(result, ['FS.open("data.txt", "r")']);
   });
 
-  it("converts writeText() path and content to const char*", () => {
+  it("passes writeText() path and content as C string literals", () => {
     const result = transpile(`
       import { FS } from '@typecad/board-arduino-uno';
       FS.writeText('out.log', 'hello');
     `, { target: 'arduino' });
 
-    // Both the path AND the content string need .c_str() (both are std::string).
+    // Both the path AND the content render as string literals (no .c_str()).
     expectCppContains(result, [
-      'FS.open("out.log".c_str(), "w")',
-      'f.print("hello".c_str())',
+      'FS.open("out.log", "w")',
+      'f.print("hello")',
     ]);
   });
 
-  it("converts remove() path to const char*", () => {
+  it("passes a remove() string-literal path", () => {
     const result = transpile(`
       import { FS } from '@typecad/board-arduino-uno';
       FS.remove('temp.bin');
     `, { target: 'arduino' });
 
-    expectCppContains(result, ['FS.remove("temp.bin".c_str())']);
+    expectCppContains(result, ['FS.remove("temp.bin")']);
   });
 });
 
@@ -781,23 +791,26 @@ describe("HAL Preferences UInt/Float lowering", () => {
       const f = Preferences.getFloat('gain', 0);
     `, { target: 'arduino' });
 
-    // Keys are std::string at the C++ layer, converted to const char* via .c_str().
-    // Regression guard: keys must NOT be double-quoted (was a bug where "\"${key}\""
-    // produced putInt(""count"", 42)).
+    // String-literal keys render as quoted C string literals directly — the
+    // transpiler strips the rawCpp `${key}.c_str()` for literals.
+    // Regression guard: keys must NOT be double-quoted (was a bug where
+    // "\"${key}\"" produced putInt(""count"", 42)) and must NOT carry .c_str().
     expectCppContains(result, [
-      'Preferences.putUInt("counter".c_str(), 1000)',
-      'Preferences.getUInt("counter".c_str(), 0)',
-      'Preferences.putFloat("gain".c_str(), 2.5f)',
-      'Preferences.getFloat("gain".c_str(), 0)',
+      'Preferences.putUInt("counter", 1000)',
+      'Preferences.getUInt("counter", 0)',
+      'Preferences.putFloat("gain", 2.5f)',
+      'Preferences.getFloat("gain", 0)',
     ]);
     expect(result.cpp).not.toContain('""counter""');
     expect(result.cpp).not.toContain('""gain""');
+    expect(result.cpp).not.toContain('"counter".c_str()');
+    expect(result.cpp).not.toContain('"gain".c_str()');
   });
 
-  it("converts both key and value for putString/getString", () => {
+  it("passes both key and value as C string literals for putString/getString", () => {
     // putString/getString are the only Preferences methods taking TWO string
-    // args (key + value) — both need .c_str(). Regression guard for the
-    // double-quoting bug on the value side.
+    // args (key + value) — both render as string literals. Regression guard
+    // for the double-quoting bug on the value side.
     const result = transpile(`
       import { Preferences } from '@typecad/board-arduino-uno';
       Preferences.putString('label', 'hello');
@@ -805,11 +818,12 @@ describe("HAL Preferences UInt/Float lowering", () => {
     `, { target: 'arduino' });
 
     expectCppContains(result, [
-      'Preferences.putString("label".c_str(), "hello".c_str())',
-      'Preferences.getString("label".c_str(), "".c_str())',
+      'Preferences.putString("label", "hello")',
+      'Preferences.getString("label", "")',
     ]);
     expect(result.cpp).not.toContain('""label""');
     expect(result.cpp).not.toContain('""hello""');
+    expect(result.cpp).not.toContain('"label".c_str()');
   });
 });
 
@@ -880,18 +894,49 @@ describe("HAL board() top-level resolution", () => {
     expectCppContains(result, ['const auto arch = "avr"']);
   });
 
-  it("folds Power.deepSleep() arch conditional to the AVR else-branch", () => {
-    // Power.deepSleep() uses board("architecture") inside an if (arch === "esp32")
-    // conditional. The transpiler must constant-fold this so only the matching
-    // branch is emitted. On AVR, the ESP32 deep-sleep calls must NOT appear.
-    const result = transpile(`
-      import { Power } from '@typecad/board-arduino-uno';
+  it("suppresses ESP32 deep-sleep symbols on AVR (not-supported comment)", () => {
+    // The arch guard now lives in the strategy (mirrors WDT) and keys off the
+    // FQBN-derived _cachedArch, so it resolves correctly even without a board
+    // package. On AVR the ESP-IDF sleep symbols must NOT appear.
+    const result = transpileAVR(`
+      import { Power } from '@typecad/framework-arduino/arduino';
       Power.deepSleep(1000);
-    `, { target: 'arduino' });
+    `);
 
     expect(result.cpp).not.toContain('esp_sleep_enable_timer_wakeup');
     expect(result.cpp).not.toContain('esp_deep_sleep_start');
-    expect(result.cpp).toContain('does not support deep sleep');
+    expect(result.cpp).toContain('deep sleep not supported on avr');
+  });
+
+  it("emits the ESP32 deep-sleep calls on ESP32 targets", () => {
+    // Regression: before the strategy-side arch guard, the HAL-source
+    // `const arch = board(...)` VariableStatement was dropped by the method-body
+    // loop and the `if` mis-folded — so ESP32 emitted the not-supported comment
+    // instead of the real sleep calls on every target.
+    const result = transpileESP32(`
+      import { Power } from '@typecad/framework-arduino/arduino';
+      Power.deepSleep(1000);
+    `);
+
+    expect(result.cpp).toContain('esp_sleep_enable_timer_wakeup(1000 * 1000)');
+    expect(result.cpp).toContain('esp_deep_sleep_start()');
+    expect(result.cpp).not.toContain('not supported');
+  });
+
+  it("emits esp_light_sleep_start() on ESP32 and a comment on AVR", () => {
+    const esp = transpileESP32(`
+      import { Power } from '@typecad/framework-arduino/arduino';
+      Power.lightSleep();
+    `);
+    const avr = transpileAVR(`
+      import { Power } from '@typecad/framework-arduino/arduino';
+      Power.lightSleep();
+    `);
+
+    expect(esp.cpp).toContain('esp_light_sleep_start()');
+    expect(esp.cpp).not.toContain('not supported');
+    expect(avr.cpp).not.toContain('esp_light_sleep_start');
+    expect(avr.cpp).toContain('light sleep not supported on avr');
   });
 });
 
@@ -1027,3 +1072,415 @@ describe("HAL pin capability validation", () => {
     expect(capErrors[0].hint).toContain('PD3');
   });
 });
+
+// ===========================================================================
+// Preferences AVR-safety — <Preferences.h> is ESP32-only, so the HAL class
+// deliberately omits __includes (the transpiler would emit them unconditionally
+// and break AVR). Regression guard for this fragile, intentional omission.
+// ===========================================================================
+
+describe("HAL Preferences AVR-safety", () => {
+  it("does NOT emit #include <Preferences.h> on AVR", () => {
+    const result = transpileAVR(`
+      import { Preferences } from '@typecad/framework-arduino/arduino';
+      Preferences.putInt('count', 42);
+    `);
+
+    // <Preferences.h> is ESP32-only; emitting it on AVR would break the build.
+    // The class omits __includes for exactly this reason.
+    expect(result.cpp).not.toContain('#include <Preferences.h>');
+  });
+
+  it("still functions on AVR via the EEPROM-backed polyfill", () => {
+    const result = transpileAVR(`
+      import { Preferences } from '@typecad/framework-arduino/arduino';
+      Preferences.putInt('count', 42);
+    `);
+
+    // The strategy provides an AVR polyfill (class __tc_Preferences) backed by
+    // EEPROM instead of the ESP32 NVS library.
+    expect(result.cpp).toContain('__tc_Preferences');
+    expect(result.cpp).toContain('#include <EEPROM.h>');
+  });
+});
+
+// ===========================================================================
+// InputPin.offInterrupts() — alias added to match BasePin.offInterrupts().
+// SerialPort.waitForConnection(timeout?) — added with optional timeout param.
+// Both public API, previously untested.
+// ===========================================================================
+
+describe("HAL InputPin interrupt aliases", () => {
+  it("lowers offInterrupts() to detachInterrupt", () => {
+    const result = transpile(`
+      import { D2 } from '@typecad/board-arduino-uno';
+      const p = D2.asInput();
+      p.offInterrupts();
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['detachInterrupt(digitalPinToInterrupt(2))']);
+  });
+
+  it("lowers offAll() to detachInterrupt", () => {
+    const result = transpile(`
+      import { D2 } from '@typecad/board-arduino-uno';
+      const p = D2.asInput();
+      p.offAll();
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['detachInterrupt(digitalPinToInterrupt(2))']);
+  });
+});
+
+describe("HAL SerialPort.waitForConnection", () => {
+  it("emits the wait-for-Serial connection loop", () => {
+    const result = transpile(`
+      import { UART0 } from '@typecad/board-arduino-uno';
+      UART0.begin(9600);
+      UART0.waitForConnection();
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['while (!Serial) { delay(10); }']);
+  });
+});
+
+// ===========================================================================
+// Pulse.on() fluent API — the actual target of the pin-number bugfix, but the
+// existing "HAL Pulse lowering" describe block only tested the free functions.
+// ===========================================================================
+
+describe("HAL Pulse.on() fluent lowering", () => {
+  it("lowers Pulse.on(pin).high() to a Pulse::on(pin).high() chain", () => {
+    const result = transpile(`
+      import { D2, Pulse } from '@typecad/board-arduino-uno';
+      const d = Pulse.on(D2).high();
+    `, { target: 'arduino' });
+
+    // The fluent class lowers to a C++ method chain. The pin number (2) must
+    // be resolved from D2 (this was the target of the pin-number bugfix —
+    // previously it leaked (pin as any)._pin instead of resolving pin.number).
+    expectCppContains(result, ['Pulse::on(2).high()']);
+  });
+
+  it("lowers Pulse.on(pin).low() to a Pulse::on(pin).low() chain", () => {
+    const result = transpile(`
+      import { D2, Pulse } from '@typecad/board-arduino-uno';
+      const d = Pulse.on(D2).low();
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['Pulse::on(2).low()']);
+  });
+
+  it("lowers Pulse.on(pin).timeout(us).high() with timeout", () => {
+    const result = transpile(`
+      import { D2, Pulse } from '@typecad/board-arduino-uno';
+      const d = Pulse.on(D2).timeout(5000).high();
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['Pulse::on(2).timeout(5000).high()']);
+  });
+});
+
+// ===========================================================================
+// Constants added in the HAL review fix pass — INPUT_PULLDOWN,
+// OUTPUT_OPEN_DRAIN, ANALOG. Must pass through as bare C++ identifiers.
+// ===========================================================================
+
+describe("HAL phantom constants pass-through", () => {
+  it("passes INPUT_PULLDOWN / OUTPUT_OPEN_DRAIN / ANALOG through as identifiers", () => {
+    const result = transpile(`
+      import { INPUT_PULLDOWN, OUTPUT_OPEN_DRAIN, ANALOG } from '@typecad/hal';
+      const a = INPUT_PULLDOWN;
+      const b = OUTPUT_OPEN_DRAIN;
+      const c = ANALOG;
+    `, { target: 'arduino' });
+
+    // These are phantom C++ constants — they must survive as bare identifiers
+    // (resolved by the Arduino headers), not be coerced to numbers.
+    expectCppContains(result, [
+      'INPUT_PULLDOWN',
+      'OUTPUT_OPEN_DRAIN',
+      'ANALOG',
+    ]);
+    expectCppNotContains(result, [
+      '= 0;',  // none of the three should render as a literal 0
+    ]);
+  });
+});
+
+// ===========================================================================
+// HardwareTimer — setFrequency/onOverflow/start/stop (getBits was already
+// tested above; these four methods had zero coverage).
+// ===========================================================================
+
+describe("HAL HardwareTimer methods", () => {
+  it("lowers setFrequency/start/stop to Timer<n> calls", () => {
+    const result = transpile(`
+      import { Timer1 } from '@typecad/board-arduino-uno';
+      Timer1.setFrequency(1000);
+      Timer1.start();
+      Timer1.stop();
+    `, { target: 'arduino' });
+
+    expectCppContains(result, [
+      'Timer1.setFrequency(1000)',
+      'Timer1.start()',
+      'Timer1.stop()',
+    ]);
+  });
+
+  it("lowers onOverflow with a callback handler", () => {
+    const result = transpile(`
+      import { Timer1 } from '@typecad/board-arduino-uno';
+      Timer1.onOverflow(() => {});
+      Timer1.start();
+    `, { target: 'arduino' });
+
+    // onOverflow attaches a callback — the handler must be registered and
+    // passed to Timer1.onOverflow.
+    expect(result.cpp).toContain('Timer1.onOverflow(');
+    expect(result.cpp).toContain('Timer1.start()');
+  });
+});
+
+// ===========================================================================
+// Async — sleep/yield/sleepUntil/currentTask. The __cuttlefish_async_*
+// runtime markers must render correctly (previously zero coverage).
+// ===========================================================================
+
+describe("HAL Async lowering", () => {
+  it("lowers sleep/yield/currentTask to runtime markers", () => {
+    const result = transpile(`
+      import { Async } from '@typecad/board-arduino-uno';
+      Async.sleep(100);
+      Async.yield();
+      Async.currentTask();
+    `, { target: 'arduino' });
+
+    expectCppContains(result, [
+      '__cuttlefish_async_sleep(100)',
+      '__cuttlefish_async_yield()',
+      '__cuttlefish_async_current_task()',
+    ]);
+  });
+
+  it("lowers sleepUntil with a poll interval", () => {
+    const result = transpile(`
+      import { Async } from '@typecad/board-arduino-uno';
+      Async.sleepUntil(() => true, 50);
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['__cuttlefish_async_sleep_until(50)']);
+  });
+});
+
+// ===========================================================================
+// I2CBus.recover() — bus-recovery rawCpp sequence (SCL toggling). Previously
+// untested.
+// ===========================================================================
+
+describe("HAL I2CBus.recover", () => {
+  it("emits the SCL-toggle bus-recovery sequence", () => {
+    const result = transpile(`
+      import { I2C0 } from '@typecad/board-arduino-uno';
+      I2C0.begin();
+      I2C0.recover();
+    `, { target: 'arduino' });
+
+    expectCppContains(result, [
+      'pinMode(SCL, OUTPUT)',
+      'digitalWrite(SCL, LOW)',
+      'digitalWrite(SCL, HIGH)',
+      'Wire.begin()',
+    ]);
+    expect(result.cpp).toContain('#include <Wire.h>');
+  });
+});
+
+// ===========================================================================
+// Power.setCpuFrequency — the one Power method not covered by the deepSleep/
+// lightSleep tests above.
+// ===========================================================================
+
+describe("HAL Power.setCpuFrequency", () => {
+  it("lowers setCpuFrequency to setCpuFrequencyMhz", () => {
+    const result = transpile(`
+      import { Power } from '@typecad/framework-arduino/arduino';
+      Power.setCpuFrequency(160);
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['setCpuFrequencyMhz(160)']);
+  });
+});
+
+// ===========================================================================
+// Pin.fromPort() — the preferred factory for creating pins from MCU port names
+// (e.g. "PB5"). The transpiler resolves the port name to a framework pin number
+// via the MCU package's pin mapping at compile time. Previously zero tests.
+// ===========================================================================
+
+describe("HAL Pin.fromPort()", () => {
+  it("resolves a port name to the framework pin number", () => {
+    // PB5 on ATmega328P = Arduino pin 13 (the built-in LED).
+    const result = transpile(`
+      import { Pin } from '@typecad/board-arduino-uno';
+      const led = Pin.fromPort('PB5').asOutput();
+    `, { target: 'arduino', boardPackage: '@typecad/board-arduino-uno' });
+
+    expectCppContains(result, ['pinMode(13, OUTPUT)']);
+  });
+
+  it("resolves a different port name correctly", () => {
+    // PD3 on ATmega328P = Arduino pin 3.
+    const result = transpile(`
+      import { Pin } from '@typecad/board-arduino-uno';
+      const p = Pin.fromPort('PD3').asOutput();
+    `, { target: 'arduino', boardPackage: '@typecad/board-arduino-uno' });
+
+    expectCppContains(result, ['pinMode(3, OUTPUT)']);
+  });
+
+  it("supports method chaining after fromPort", () => {
+    const result = transpile(`
+      import { Pin } from '@typecad/board-arduino-uno';
+      Pin.fromPort('PB5').asOutput().high();
+    `, { target: 'arduino', boardPackage: '@typecad/board-arduino-uno' });
+
+    expectCppContains(result, [
+      'pinMode(13, OUTPUT)',
+      'digitalWrite(13, HIGH)',
+    ]);
+  });
+});
+
+// ===========================================================================
+// DAC.getResolution() — boardResolve path. On AVR (no DAC hardware), the path
+// peripherals.dac.0.resolution doesn't exist, so the call falls back to the
+// unhandled-hal-expr comment. This documents that fallback behavior.
+// ===========================================================================
+
+describe("HAL DAC.getResolution()", () => {
+  it("uses boardResolve for the resolution path (documents fallback behavior)", () => {
+    // DAC.getResolution() calls boardResolve("peripherals.dac.0.resolution").
+    // On AVR (no DAC) and currently on ESP32 too (the DAC board-constant path
+    // is not yet populated by the board packages), this falls back to the
+    // unhandled-hal-expr comment. This test documents that the call doesn't
+    // crash or leak raw text — the fallback is graceful.
+    const result = transpileAVR(`
+      import { DAC } from '@typecad/framework-arduino/arduino';
+      const bits = DAC.getResolution();
+    `);
+
+    // Must not crash, must not leak the raw path string, and must produce
+    // SOME output (either a value or the fallback comment).
+    expect(result.cpp).toContain('const auto bits =');
+    expect(result.cpp).not.toContain('peripherals.dac');
+  });
+});
+
+// ===========================================================================
+// map()/constrain() — bare pass-through to Arduino core macros. The transpiler
+// lowers these to verbatim C++ calls (no semantic op); the Arduino headers
+// provide the implementations.
+// ===========================================================================
+
+describe("HAL map/constrain free-function lowering", () => {
+  it("lowers map() to a bare Arduino map() call", () => {
+    const result = transpile(`
+      import { map } from '@typecad/hal';
+      const v = map(512, 0, 1023, 0, 255);
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['map(512, 0, 1023, 0, 255)']);
+  });
+
+  it("lowers constrain() to a bare Arduino constrain() call", () => {
+    const result = transpile(`
+      import { constrain } from '@typecad/hal';
+      const v = constrain(200, 0, 100);
+    `, { target: 'arduino' });
+
+    expectCppContains(result, ['constrain(200, 0, 100)']);
+  });
+});
+
+// ===========================================================================
+// I2CDevice.readBytes(register, count) — edge case. count=0 produces a
+// zero-length static array (static uint8_t __buf[0]) which is technically
+// invalid C++. This test documents the current behavior so a future fix to
+// guard count>=1 is visible.
+// ===========================================================================
+
+describe("HAL I2CDevice.readBytes edge cases", () => {
+  it("emits a correctly-sized buffer for count=4", () => {
+    const result = transpile(`
+      import { I2C0 } from '@typecad/board-arduino-uno';
+      I2C0.begin();
+      const dev = I2C0.device(0x68);
+      const buf = dev.readBytes(0x00, 4);
+    `, { target: 'arduino' });
+
+    expect(result.cpp).toContain('static uint8_t __buf[4]');
+    expect(result.cpp).toContain('__buf[__i] = Wire.read()');
+  });
+
+  it("emits a zero-length buffer for count=0 (known limitation)", () => {
+    // count=0 produces `static uint8_t __buf[0]` — technically invalid C++
+    // (zero-length arrays are a GCC extension but not standard). This test
+    // documents the current behavior. A future fix should guard count>=1.
+    const result = transpile(`
+      import { I2C0 } from '@typecad/board-arduino-uno';
+      I2C0.begin();
+      const dev = I2C0.device(0x68);
+      const buf = dev.readBytes(0x00, 0);
+    `, { target: 'arduino' });
+
+    expect(result.cpp).toContain('static uint8_t __buf[0]');
+  });
+});
+
+// ===========================================================================
+// SPIDevice.transfer(Uint8Array) — the Uint8Array branch was previously
+// untested (only the numeric transfer was covered).
+// ===========================================================================
+
+describe("HAL SPIDevice.transfer with Uint8Array", () => {
+  it("accepts a Uint8Array argument", () => {
+    const result = transpile(`
+      import { SPI0, D10 } from '@typecad/board-arduino-uno';
+      SPI0.begin();
+      const dev = SPI0.device(D10);
+      const buf = new Uint8Array([1, 2, 3]);
+      const response = dev.transfer(buf);
+    `, { target: 'arduino' });
+
+    // The Uint8Array should be rendered as a C++ byte array, and the transfer
+    // should emit the SPI transfer call with CS toggling.
+    expect(result.cpp).toContain('uint8_t buf[]');
+    expect(result.cpp).toContain('digitalWrite(10, LOW)');
+    expect(result.cpp).toContain('SPI.transfer(');
+    expect(result.cpp).toContain('digitalWrite(10, HIGH)');
+  });
+});
+
+// ===========================================================================
+// board()/boardResolve() path-missing fallback — when a board-constant path
+// doesn't exist, the call falls back to 0 (for boardResolve in consumer code)
+// or an unhandled-hal-expr comment (for boardResolve in a HAL method body).
+// This guards that the fallback doesn't crash or leak raw text.
+// ===========================================================================
+
+describe("HAL boardResolve path-missing fallback", () => {
+  it("falls back to 0 for an unknown path in consumer code", () => {
+    const result = transpile(`
+      import { boardResolve } from '@typecad/hal';
+      const x = boardResolve("nonexistent.key");
+    `, { target: 'arduino', boardPackage: '@typecad/board-arduino-uno' });
+
+    // An unresolved path renders as 0 (the default), not as raw text or an
+    // error. The transpiler must not crash or leak the path string.
+    expect(result.cpp).toContain('const auto x = 0');
+    expect(result.cpp).not.toContain('nonexistent');
+  });
+});
+

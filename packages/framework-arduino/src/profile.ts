@@ -48,7 +48,7 @@ interface FqbnPinOverride {
 }
 
 const PROFILE_VARIANTS: ArduinoProfileVariant[] = [
-  { architecture: "avr", forcedIncludes: ["<Arduino.h>"] },
+  { architecture: "avr", forcedIncludes: ["<Arduino.h>", "<avr/wdt.h>"] },
   { architecture: "esp32", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "esp32s3", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "esp32c3", forcedIncludes: ["<Arduino.h>"] },

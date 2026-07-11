@@ -78,7 +78,16 @@ export class I2CBus {
     i2cSetClock(this._bus, hz);
   }
 
+  /** Recover a locked I2C bus by clocking SCL until the stuck slave releases SDA.
+   *
+   *  NOTE: This references the board-defined `SCL` pin macro. All current MCU
+   *  packages (atmega328p, esp32, esp32c3, esp32c6, esp32s3) export SCL, so
+   *  this works in practice. A fully portable version would resolve the SCL
+   *  pin number via a board constant (e.g. peripherals.i2c.0.sclPin), but that
+   *  requires adding resolved numeric pin fields to the board-constants
+   *  pipeline — deferred for now. */
   recover(): void {
+    include("<Wire.h>");
     rawCpp(`pinMode(SCL, OUTPUT);`);
     rawCpp(`for (int i = 0; i < 16; i++) {`);
     rawCpp(`  digitalWrite(SCL, LOW);`);

@@ -71,6 +71,9 @@ export function delayMicro(us: number): void {}
 export function getMillis(): number { return 0; }
 /** Get microseconds since boot. */
 export function getMicros(): number { return 0; }
+/** Get free heap bytes. Architecture-aware: the strategy maps this to the right
+ *  symbol per target (ESP.getFreeHeap() on ESP32, __heap_start trick on AVR). */
+export function getFreeHeap(): number { return 0; }
 
 // ---------------------------------------------------------------------------
 // I2C — inter-integrated circuit bus
@@ -88,8 +91,6 @@ export function i2cBeginTx(bus: string, address: number): void {}
 export function i2cWrite(bus: string, data: string | number | number[] | Uint8Array): void {}
 /** Write a byte buffer to I2C bus (expands array literals to per-byte writes). */
 export function i2cWriteBuffer(bus: string, data: number[] | Uint8Array): void {}
-/** Read bytes from I2C bus into a buffer (or discard when no buffer is bound). */
-export function i2cReadBuffer(bus: string, count: number): void {}
 /** End I2C transmission. Returns status. */
 export function i2cEndTx(bus: string, stop: boolean): number { return 0; }
 /** Request bytes from I2C slave. */
@@ -134,6 +135,8 @@ export function uartEnd(port: string): void {}
 export function uartPrint(port: string, value: any): void {}
 /** Print value with newline to serial. */
 export function uartPrintln(port: string, value: any): void {}
+/** printf-style formatted print to serial. */
+export function uartPrintf(port: string, format: any, args: any[]): void {}
 /** Write raw data to serial. */
 export function uartWrite(port: string, data: any): void {}
 /** Read a byte from serial. */
@@ -187,11 +190,21 @@ export function wdtDisable(): void {}
 export function boardResolve(path: string): any { return undefined as any; }
 
 // ---------------------------------------------------------------------------
+// Power — MCU power states and clock frequency
+// ---------------------------------------------------------------------------
+
+/** Enter deep sleep for the given duration (ms). Architecture-aware: the
+ *  strategy emits the right call per target (esp_deep_sleep on ESP32, a
+ *  not-supported comment elsewhere). */
+export function powerDeepSleep(ms: number): void {}
+/** Enter light sleep. Architecture-aware. */
+export function powerLightSleep(): void {}
+/** Set the CPU frequency (MHz). */
+export function powerSetCpuFrequency(mhz: number): void {}
+
+// ---------------------------------------------------------------------------
 // Raw C++ escape hatch
 // ---------------------------------------------------------------------------
 
 /** Emit raw C++ code (escape hatch for unsupported operations). */
 export function rawCpp(code: string): void {}
-
-/** Alias for rawCpp() — inject raw C++ text at the call site during transpilation. */
-export function emit(code: string): void {}

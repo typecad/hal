@@ -36,7 +36,7 @@ export interface Expectation {
    * @param n        The expected value.
    * @param precision  Number of decimal digits (default 2 → 0.01 tolerance).
    */
-  toBeCloseTo(n: number, precision: number): Suite;
+  toBeCloseTo(n: number, precision?: number): Suite;
 
   /** Range check: `actual >= min && actual <= max`. */
   toBeWithinRange(min: number, max: number): Suite;

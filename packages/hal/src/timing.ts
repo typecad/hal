@@ -1,4 +1,4 @@
-import { rawCpp, getMillis, getMicros, delayMs, delayMicro } from './emit.js';
+import { rawCpp, getMillis, getMicros, getFreeHeap, delayMs, delayMicro } from './emit.js';
 import { callback } from './callback.js';
 
 export class TimingClass {
@@ -8,8 +8,7 @@ export class TimingClass {
   delay(ms: number): void { delayMs(ms); }
   delayMicroseconds(us: number): void { delayMicro(us); }
   freeHeap(): number {
-    rawCpp("return ESP.getFreeHeap();");
-    return 0;
+    return getFreeHeap();
   }
 
 
@@ -59,5 +58,10 @@ export function clearTimeout(id: number): void {
   rawCpp(`__tc_clearTimeout(${id});`);
 }
 
+/** Re-map a number from one range to another. Passes through to the Arduino
+ *  core `map()` macro — the transpiler lowers this to a bare `map(...)` call,
+ *  so the target framework must provide the implementation (Arduino.h does). */
 export function map(value: number, fromLow: number, fromHigh: number, toLow: number, toHigh: number): number { return 0; }
+/** Constrain a number to a range. Passes through to the Arduino core
+ *  `constrain()` macro — see note on `map()` above. */
 export function constrain(value: number, low: number, high: number): number { return 0; }

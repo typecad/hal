@@ -88,7 +88,6 @@ export type {
   SpiTransferOp,
   SpibeginTransactionOp,
   SpiEndTransactionOp,
-  SpiSetFrequencyOp,
   SpiSetModeOp,
   SpiSetBitOrderOp,
   SpiCsLowOp,

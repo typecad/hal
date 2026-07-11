@@ -12,7 +12,12 @@ export class ConstrainChain {
 }
 
 export class NumClass {
-  static readonly __instance_name = "Num";
+  // No __instance_name — Num methods must NOT be intercepted by the HAL
+  // resolver. They pass through as bare C++ calls (Num.abs(-7)), which the
+  // strategy's __tc_Num polyfill struct provides. The strategy post-processes
+  // the output to rename Num.abs( → Num._abs( to match the polyfill's
+  // parenthesized method names (which avoid macro collisions with Arduino's
+  // abs/min/max macros). See strategy.ts __tc_Num struct + the rewrite regex.
   abs(x: number): number { return 0; }
   min(a: number, b: number): number { return 0; }
   max(a: number, b: number): number { return 0; }

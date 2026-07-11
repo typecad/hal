@@ -530,12 +530,6 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             activeNamespaceNames.add(name);
             continue;
           }
-
-          // HAL enum imports: BaudRate, I2CSpeed
-          if (name === 'BaudRate' || name === 'I2CSpeed') {
-            activeEnumNames.add(name);
-            continue;
-          }
         }
       }
       return;

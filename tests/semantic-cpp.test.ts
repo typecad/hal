@@ -101,19 +101,36 @@ describe("Memory & Collection Engine", () => {
     ]);
   });
 
-  // KNOWN GAP: Timing.freeHeap() resolves to a default value (0) and the
-  // Timing shim's `unsigned long freeHeap()` declaration is not emitted for
-  // AVR. Additionally `free` is escaped to `free_` (AVR reserves `free`).
-  // Tracked here as .skip.
-  it.skip("emits heap monitoring routine", () => {
+  // Timing.freeHeap() now routes through the timing.free_heap semantic op,
+  // which the strategy resolves to a call to the architecture-aware
+  // __tc_Timing.freeHeap() polyfill (ESP.getFreeHeap() on ESP32, the
+  // __heap_start/__brkval trick on AVR). `free` is escaped to `free_` because
+  // AVR reserves `free`.
+  it("resolves Timing.freeHeap() to the polyfill method call (not ESP.getFreeHeap directly)", () => {
     const result = transpileAVR(`
       import { Timing } from '@typecad/framework-arduino/arduino';
       const free = Timing.freeHeap();
     `);
 
-    expect(result.cpp).toContain("unsigned long freeHeap()");
+    // Regression: the old HAL hardcoded `rawCpp("return ESP.getFreeHeap();")`,
+    // which broke AVR (ESP is undefined there). The fix routes through the
+    // timing.free_heap semantic op, which the strategy resolves to a call to
+    // the arch-aware __tc_Timing.freeHeap() polyfill. The result var is
+    // escaped to free_ (AVR reserves `free`).
+    expect(result.cpp).not.toContain("ESP.getFreeHeap");
     matchesCpp(result.cpp, [
-      "const auto free_ = 0;"
+      "const auto free_ = Timing.freeHeap();"
     ]);
+  });
+
+  it("resolves Timing.freeHeap() identically on ESP32", () => {
+    const result = transpileESP32(`
+      import { Timing } from '@typecad/framework-arduino/arduino';
+      const free = Timing.freeHeap();
+    `);
+
+    // Same polyfill call on ESP32 — the ESP.getFreeHeap() body lives inside
+    // the polyfill (emitted by shimLines), not inlined at the call site.
+    expect(result.cpp).toContain("Timing.freeHeap()");
   });
 });

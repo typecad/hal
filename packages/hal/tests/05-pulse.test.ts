@@ -1,11 +1,13 @@
 import { describe, done } from '@typecad/expect';
 
-// NOTE: The Pulse fluent class (Pulse.on(pin).high()) requires a @TypeCAD
-// import, which currently triggers a spurious `#include <Typecad.h>` that
-// fails to compile (pre-existing transpiler limitation — see README). These
-// tests exercise the ambient free functions instead. A timeout is always
-// passed so pulseIn/pulseInLong do not block waiting for a signal that is
-// not wired up on the bare Uno.
+// NOTE: The Pulse fluent class (Pulse.on(pin).high()) lowers to a C++ class
+// method chain (Pulse::on(pin).high()) that requires a C++ class definition
+// the transpiler does not currently generate, so it won't compile as
+// standalone Arduino C++. The fluent API is covered by vitest codegen tests
+// (tests/pulse-shift-random.test.ts). These hardware tests exercise the
+// ambient free functions instead. A timeout is always passed so
+// pulseIn/pulseInLong do not block waiting for a signal that is not wired
+// up on the bare Uno.
 
 describe("Free pulse functions")
   .it("pulseIn() is callable")

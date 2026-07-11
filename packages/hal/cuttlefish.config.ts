@@ -44,6 +44,8 @@ const config: CuttlefishConfig = {
   },
 
   test: {
+    // Serial port for the hardware test board. Override locally with the
+    // CUTTLEFISH_PORT env var (e.g. `CUTTLEFISH_PORT=/dev/ttyUSB0 npm run test:hw`).
     port: 'COM9',
     baudRate: 115200,
     timeout: 30000,

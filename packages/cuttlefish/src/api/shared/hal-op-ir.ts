@@ -211,6 +211,24 @@ export interface TimingClearTimeoutOp {
 }
 
 // ---------------------------------------------------------------------------
+// Power — MCU power states and clock frequency
+// ---------------------------------------------------------------------------
+
+export interface PowerDeepSleepOp {
+  operation: "power.deep_sleep";
+  ms: number;
+}
+
+export interface PowerLightSleepOp {
+  operation: "power.light_sleep";
+}
+
+export interface PowerSetCpuFrequencyOp {
+  operation: "power.set_cpu_frequency";
+  mhz: number;
+}
+
+// ---------------------------------------------------------------------------
 // I2C — inter-integrated circuit bus
 // ---------------------------------------------------------------------------
 
@@ -333,11 +351,6 @@ export interface SpiEndTransactionOp {
   bus: string;
 }
 
-export interface SpiSetFrequencyOp {
-  operation: "spi.set_frequency";
-  bus: string;
-  hz: number;
-}
 
 export interface SpiSetModeOp {
   operation: "spi.set_mode";
@@ -569,6 +582,10 @@ export type HALOpIR =
   | TimingSetTimeoutOp
   | TimingClearIntervalOp
   | TimingClearTimeoutOp
+  // Power
+  | PowerDeepSleepOp
+  | PowerLightSleepOp
+  | PowerSetCpuFrequencyOp
   // I2C
   | I2cBeginOp
   | I2cEndOp
@@ -589,7 +606,6 @@ export type HALOpIR =
   | SpiTransferOp
   | SpibeginTransactionOp
   | SpiEndTransactionOp
-  | SpiSetFrequencyOp
   | SpiSetModeOp
   | SpiSetBitOrderOp
   | SpiCsLowOp

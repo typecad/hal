@@ -1,42 +1,72 @@
-﻿import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { transpile } from './setup';
 
 describe('Pulse utilities', () => {
-  describe('Direct functions', () => {
-    it('transpiles Pulse.in(pin, true) -> pulseIn(pin, HIGH)', async () => {
+  describe('Free functions', () => {
+    it('transpiles pulseIn(pin, HIGH) -> pulseIn(pin, HIGH)', () => {
       const result = transpile(`
-        import { D2, Pulse } from '@typecad/board-arduino-uno';
-        const d = Pulse.in(D2, true);
+        import { D2, HIGH } from '@typecad/board-arduino-uno';
+        const d = pulseIn(2, HIGH);
       `, { target: 'arduino' });
 
       expect(result.cpp).toContain('pulseIn(2, HIGH)');
     });
 
-    it('transpiles Pulse.in(pin, true, timeout)', async () => {
+    it('transpiles pulseIn(pin, HIGH, timeout) with optional timeout', () => {
       const result = transpile(`
-        import { D2, Pulse } from '@typecad/board-arduino-uno';
-        const d = Pulse.in(D2, true, 1000000);
+        import { D2, HIGH } from '@typecad/board-arduino-uno';
+        const d = pulseIn(2, HIGH, 1000000);
       `, { target: 'arduino' });
 
       expect(result.cpp).toContain('pulseIn(2, HIGH, 1000000)');
     });
 
-    it('transpiles Pulse.long(pin, false) -> pulseInLong(pin, LOW)', async () => {
+    it('transpiles pulseInLong(pin, LOW) -> pulseInLong(pin, LOW)', () => {
       const result = transpile(`
-        import { D2, Pulse } from '@typecad/board-arduino-uno';
-        const d = Pulse.long(D2, false);
+        import { D2, LOW } from '@typecad/board-arduino-uno';
+        const d = pulseInLong(2, LOW);
       `, { target: 'arduino' });
 
       expect(result.cpp).toContain('pulseInLong(2, LOW)');
     });
+  });
 
-    it('transpiles Pulse.in(pin, false) -> pulseIn(pin, LOW)', async () => {
+  describe('Pulse class', () => {
+    it('transpiles Pulse.long(pin, value) -> pulseInLong(pin, value)', () => {
+      // Pulse.long is the real static method (not Pulse.in, which does not exist).
       const result = transpile(`
         import { D2, Pulse } from '@typecad/board-arduino-uno';
-        const d = Pulse.in(D2, false);
+        const d = Pulse.long(D2, 0);
       `, { target: 'arduino' });
 
-      expect(result.cpp).toContain('pulseIn(2, LOW)');
+      expect(result.cpp).toContain('pulseInLong(2, 0)');
+    });
+
+    it('transpiles Pulse.on(pin).high() -> Pulse::on(pin).high()', () => {
+      const result = transpile(`
+        import { D2, Pulse } from '@typecad/board-arduino-uno';
+        const d = Pulse.on(D2).high();
+      `, { target: 'arduino' });
+
+      expect(result.cpp).toContain('Pulse::on(2).high()');
+    });
+
+    it('transpiles Pulse.on(pin).low() -> Pulse::on(pin).low()', () => {
+      const result = transpile(`
+        import { D2, Pulse } from '@typecad/board-arduino-uno';
+        const d = Pulse.on(D2).low();
+      `, { target: 'arduino' });
+
+      expect(result.cpp).toContain('Pulse::on(2).low()');
+    });
+
+    it('transpiles Pulse.on(pin).timeout(us).high() with timeout', () => {
+      const result = transpile(`
+        import { D2, Pulse } from '@typecad/board-arduino-uno';
+        const d = Pulse.on(D2).timeout(5000).high();
+      `, { target: 'arduino' });
+
+      expect(result.cpp).toContain('Pulse::on(2).timeout(5000).high()');
     });
   });
 });

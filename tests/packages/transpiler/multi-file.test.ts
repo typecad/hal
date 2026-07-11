@@ -403,7 +403,7 @@ describe("forward declarations", () => {
       buttonPath,
       [
         "import { D2, millis } from '@typecad';",
-        "import type { IInputModePin } from '@typecad/hal';",
+        "import type { IInputModePin } from '@typecad/simulator';",
         "",
         "export class Button {",
         "  private readonly pin: IInputModePin;",

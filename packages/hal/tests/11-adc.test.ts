@@ -28,7 +28,7 @@ describe("ADC configuration")
   .it("ADC.setAnalogReference() is callable")
   .expect(
     (() => {
-      ADC.setAnalogReference(1);
+      ADC.setAnalogReference('default');
       return 1;
     })
   ).toBe(1)
@@ -58,7 +58,7 @@ describe("InputPin analog helpers")
   .it("InputPin.setAnalogReference() is callable")
   .expect(
     (() => {
-      A0.asInput().setAnalogReference(1);
+      A0.asInput().setAnalogReference('default');
       return 1;
     })
   ).toBe(1)

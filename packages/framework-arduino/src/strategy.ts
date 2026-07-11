@@ -1360,7 +1360,10 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       case "timing.micros":
         return { expression: `micros()` };
       case "timing.free_heap":
-        return { expression: `0` };
+        // Delegate to the architecture-aware freeHeap() method on the
+        // __tc_Timing polyfill (emitted by shimLines()): ESP.getFreeHeap() on
+        // ESP32, the __heap_start/__brkval trick on AVR, 0 elsewhere.
+        return { expression: `Timing.freeHeap()` };
       case "timing.set_interval":
       case "timing.set_timeout":
       case "timing.clear_interval":
@@ -1411,8 +1414,6 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
         return { code: `${op.bus}.beginTransaction(${op.settings});` };
       case "spi.end_transaction":
         return { code: `${op.bus}.endTransaction();` };
-      case "spi.set_frequency":
-        return { code: `${op.bus}.setClockDivider(${op.hz});` };
       case "spi.set_mode":
         return { code: `${op.bus}.setDataMode(${op.mode});` };
       case "spi.set_bit_order":
@@ -1485,6 +1486,25 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
         }
         return { code: `wdt_disable();` };
       }
+
+      // Power — ESP32-family deep/light sleep. AVR and other architectures
+      // lack these ESP-IDF symbols, so emit a not-supported comment there.
+      case "power.deep_sleep": {
+        const arch = this._cachedArch;
+        if (arch === 'esp32' || arch === 'esp32s2' || arch === 'esp32s3' || arch === 'esp32c3' || arch === 'esp32c6') {
+          return { code: `esp_sleep_enable_timer_wakeup(${op.ms} * 1000); esp_deep_sleep_start();` };
+        }
+        return { code: `// deep sleep not supported on ${arch}` };
+      }
+      case "power.light_sleep": {
+        const arch = this._cachedArch;
+        if (arch === 'esp32' || arch === 'esp32s2' || arch === 'esp32s3' || arch === 'esp32c3' || arch === 'esp32c6') {
+          return { code: `esp_light_sleep_start();` };
+        }
+        return { code: `// light sleep not supported on ${arch}` };
+      }
+      case "power.set_cpu_frequency":
+        return { code: `setCpuFrequencyMhz(${op.mhz});` };
 
       // Snprintf
       case "snprintf.emit":

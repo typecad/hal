@@ -3,11 +3,19 @@ import { HIGH, LOW } from './constants.js';
 import type { Pin, InputPin } from './gpio.js';
 
 export function pulseIn(pin: number, value: number, timeout?: number): number {
-  rawCpp(`return pulseIn(${pin}, ${value}${timeout !== undefined ? `, ${timeout}` : ""});`);
+  if (timeout !== undefined) {
+    rawCpp(`return pulseIn(${pin}, ${value}, ${timeout});`);
+  } else {
+    rawCpp(`return pulseIn(${pin}, ${value});`);
+  }
   return 0;
 }
 export function pulseInLong(pin: number, value: number, timeout?: number): number {
-  rawCpp(`return pulseInLong(${pin}, ${value}${timeout !== undefined ? `, ${timeout}` : ""});`);
+  if (timeout !== undefined) {
+    rawCpp(`return pulseInLong(${pin}, ${value}, ${timeout});`);
+  } else {
+    rawCpp(`return pulseInLong(${pin}, ${value});`);
+  }
   return 0;
 }
 
