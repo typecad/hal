@@ -7,5 +7,5 @@
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": ["demo-console-app", "demo-ui", "demo-ui-sd13", "demo-weather", "native_demo", "@typecad/framework-avr"]
+  "ignore": ["@typecad/framework-avr"]
 }

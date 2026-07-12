@@ -40,6 +40,11 @@ nul
 .DS_Store
 Thumbs.db
 
+# Local debug/editor state (breakpoints, agent session plans)
+.cuttlefish/
+.typecode/
+.zcode/
+
 # Archives
 *.zip
 
