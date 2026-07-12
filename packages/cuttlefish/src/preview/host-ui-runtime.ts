@@ -713,8 +713,9 @@ export class PreviewUIRuntime {
     const scrollMotionActive = this.scrollMotionActive();
     for (const animation of this.animations) {
       if (!animation.active) continue;
-      // Mirrors the C++ engine (runtime-header.ts ~line 2842): only advance
-      // animations whose node is on the active screen. Otherwise advancing a
+      // Mirrors the C++ engine (runtime-header/tick/transitions-phase.ts,
+      // the `screenId != __ui_active_screen` guard in ui_tick's keyframe phase):
+      // only advance animations whose node is on the active screen. Otherwise advancing a
       // cross-screen node mutates its geometry and clearCurrentNodePaint/markDirty
       // repaint its parent's background into the *active* screen's framebuffer
       // (e.g. the transform-screen dots bleeding onto home).
