@@ -19,8 +19,7 @@ import { appendSourceLine, appendRenderedStatement } from "./line-appender.js";
 import { createChildEmissionScope, createEmissionScopeState } from "../snprintf-helpers.js";
 import type { StatementIR } from "../../api/index.js";
 import type { SourceSpan } from "../../types.js";
-import { emitRuntimeHeader } from "../../ui/runtime-header.js";
-import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry.js";
+import { entryHasUI, requireUIHook } from "../../ui-hook.js";
 import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandlers } from "../../ir/transformers/ui-call-resolver.js";
 import { emitBindingTable, emitListBindingTable, getListBindings, emitInputBindingTable, getInputBindings } from "../../ir/transformers/ui-reactive.js";
 import { emitCanvasBindings, canvasBindings } from "../../ir/transformers/canvas-lowering.js";
@@ -169,6 +168,11 @@ export function generateTouchPollBody(input: TouchPollInput): string | null {
 export function emitUIRuntime(ctx: EmitterContext): void {
   // Only the entry file carries the UI runtime + tables.
   if (!ctx.isEntryFile || !entryHasUI()) return;
+
+  // The hook is guaranteed set when entryHasUI() returns true.
+  const ui = requireUIHook();
+  const emitRuntimeHeader = ui.emitRuntimeHeader;
+  const allLoweredUIModules = ui.allLoweredUIModules;
 
   // 0.5. Display adapter: includes + object declaration + inline functions.
   // Generated per display driver type (ILI9341, ST7789, etc.) via the
@@ -634,7 +638,7 @@ function countNodes(nodeTable: string): number {
 /** Count armed transitions across all modules. */
 function countTransitions(): number {
   let count = 0;
-  for (const { lowered } of allLoweredUIModules()) {
+  for (const { lowered } of requireUIHook().allLoweredUIModules()) {
     const matches = lowered.transitionTable.match(/\.durationMs=/g);
     count += matches ? matches.length : 0;
   }

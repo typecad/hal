@@ -16,7 +16,7 @@ import { makeSourceSpan } from "../ast-node-utils.js";
 import { emitLinesToIR, halOpsToIR } from "./hal-emit-helpers.js";
 import { resolveMount, MountRequest } from "./ui-mount.js";
 import { emitSignalDecl, BindingSpec, ListBindingSpec, recordListBinding, getListBindingsCount, InputBindingSpec, recordInputBinding, getInputBindingsCount, resetInputBindings } from "./ui-reactive.js";
-import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry.js";
+import { requireUIHook, entryHasUI as hookEntryHasUI } from "../../ui-hook.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { getDisplayProfile } from "../../stores/display-profile-store.js";
@@ -528,7 +528,8 @@ function resolveMountCall(
   // strategy.colorFormat() (capability-level, may default to rgb565 before the
   // profile is wired into the strategy). This ensures node colors lower at the
   // target's true depth (rgb888 for SDL → full 888, no 565 quantization).
-  const lowered = lowerOnMount(htmlPath, {
+  const ui = requireUIHook();
+  const lowered = ui.lowerOnMount(htmlPath, {
     colorFormat: profile.colorFormat,
     storage: strategy.graphicsCapacity().nodeStorage,
     viewport,
@@ -537,7 +538,7 @@ function resolveMountCall(
   const displayInitOp = resolveMount(req, strategy, viewport);
 
   // Mark the entry file as having a UI → gates runtime header + table injection.
-  markEntryHasUI();
+  ui.markEntryHasUI();
 
   return halOpsToIR([displayInitOp], call, fileName, sourceText);
 }
@@ -1305,7 +1306,7 @@ export function resolveNodeIndex(htmlPath: string, id: string, screenId?: string
   // share this order, so we walk the registry's styled tree to find the id.
   // When screenId is given (grouped handle screen.groups.<screenId>.<id>),
   // search only within that screen root.
-  const mod = getUIModule(htmlPath);
+  const mod = requireUIHook().getUIModule(htmlPath);
   if (!mod) return -1;
   let idx = 0;
   let found = -1;
@@ -1328,7 +1329,7 @@ export function resolveNodeIndex(htmlPath: string, id: string, screenId?: string
  *  Used to route generic callbacks (e.g. onChange) to the right lowering path
  *  based on element kind (range vs input). Returns "" if not found. */
 export function resolveNodeTag(htmlPath: string, id: string, screenId?: string): string {
-  const mod = getUIModule(htmlPath);
+  const mod = requireUIHook().getUIModule(htmlPath);
   if (!mod) return "";
   let idx = 0;
   let foundTag = "";

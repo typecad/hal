@@ -4,7 +4,7 @@ import { createChildEmissionScope } from "../snprintf-helpers.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import type { EmitterContext } from "./emitter-context.js";
 import { parsedIsPlainStructType } from "../../api/shared/cpp-type-ir.js";
-import { entryHasUI } from "../../ui/ui-registry.js";
+import { entryHasUI } from "../../ui-hook.js";
 import { activeNamespaceNames } from "../../ir/build-ir-state.js";
 
 export function emitPostClassDeclarations(ctx: EmitterContext): void {

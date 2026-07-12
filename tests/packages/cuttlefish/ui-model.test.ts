@@ -13,6 +13,11 @@ import {
 } from "@typecad/cuttlefish/ui/model";
 import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
 import type { StyledNode } from "@typecad/cuttlefish/ui/style-resolver";
+import { resolveColor } from "@typecad/cuttlefish/ui/color";
+import { analyzeScrollMemory } from "../../../packages/cuttlefish/src/ui/scroll-memory-diagnostics";
+import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../../packages/cuttlefish/src/ui/default-keyboards";
+
+const loweringDeps = { lowerUIToModel, resolveColor, analyzeScrollMemory, DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD };
 import type { Box } from "@typecad/cuttlefish/ui/layout-engine";
 import { lowerUIToCpp } from "@typecad/cuttlefish/ir/transformers/ui-lowering";
 import { selectEngine } from "../../../packages/cuttlefish/src/ui/select-engine";
@@ -75,7 +80,7 @@ describe("UI structured model", () => {
       colorFormat: "rgb565",
       rotation: 1,
     });
-    const cpp = lowerUIToCpp(styled, boxes, "rgb565", "flash");
+    const cpp = lowerUIToCpp(styled, boxes, "rgb565", "flash", loweringDeps);
 
     expect(model.width).toBe(320);
     expect(model.height).toBe(240);

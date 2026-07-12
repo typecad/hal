@@ -14,16 +14,26 @@
 
 import { StyledNode } from "../../ui/style-resolver.js";
 import { Box } from "../../ui/layout-engine.js";
-import { lowerUIToModel, UIProgram, UINodeModel, KeyframeSetModel } from "../../ui/model.js";
-import { resolveColor } from "../../ui/color.js";
-import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../ui/default-keyboards.js";
+import type { UIProgram, UINodeModel, KeyframeSetModel } from "../../ui/model.js";
 import type { KeyboardTemplate, UIKeyTemplate } from "../../ui/html-parser.js";
 import { getListBindings } from "./ui-reactive.js";
 import type { CSSRule, CSSProperty } from "../../ui/css-parser.js";
 import type { DisplayProfile } from "../../api/shared/display-profile.js";
 import type { UIFontAssetModel } from "../../ui/font-assets.js";
-import { analyzeScrollMemory } from "../../ui/scroll-memory-diagnostics.js";
 import type { Diagnostic } from "../../types.js";
+
+/** UI-side functions injected by the caller (the ui package). These stay
+ *  module-scoped so helper functions throughout this file can access them
+ *  without threading a deps parameter through every signature. */
+interface LoweringDeps {
+  lowerUIToModel: typeof import("../../ui/model.js").lowerUIToModel;
+  resolveColor: typeof import("../../ui/color.js").resolveColor;
+  analyzeScrollMemory: typeof import("../../ui/scroll-memory-diagnostics.js").analyzeScrollMemory;
+  DEFAULT_ALPHA_KEYBOARD: KeyboardTemplate;
+  DEFAULT_NUMBER_KEYBOARD: KeyboardTemplate;
+}
+
+let loweringDeps: LoweringDeps | null = null;
 
 export interface LoweredUI {
   fontTables: string;
@@ -55,6 +65,7 @@ export function lowerUIToCpp(
   boxes: Box[],
   colorFormat: ColorFormat,
   storage: Storage,
+  deps: LoweringDeps,
   keyboards: KeyboardTemplate[] = [],
   rules: CSSRule[] = [],
   display?: DisplayProfile,
@@ -65,6 +76,8 @@ export function lowerUIToCpp(
   scrollCanvasBudgetBytes?: number,
 ): LoweredUI {
   void storage;
+  loweringDeps = deps;
+  const { lowerUIToModel, analyzeScrollMemory } = deps;
   const model = lowerUIToModel(root, boxes, colorFormat, display, fontAssets, allScreens, imageAssetIds, keyframeSets);
   const scrollMemoryDiagnostics = analyzeScrollMemory(model.nodes, scrollCanvasBudgetBytes);
 
@@ -95,7 +108,7 @@ export function lowerUIToCpp(
       const match = keyboards.find(k => k.id === spec.keyboard);
       if (match) addIfNeeded(match);
     } else {
-      addIfNeeded(spec.type === "number" ? DEFAULT_NUMBER_KEYBOARD : DEFAULT_ALPHA_KEYBOARD);
+      addIfNeeded(spec.type === "number" ? loweringDeps!.DEFAULT_NUMBER_KEYBOARD : loweringDeps!.DEFAULT_ALPHA_KEYBOARD);
     }
   }
 
@@ -170,7 +183,7 @@ function resolveKbBg(kbClasses: string[] | undefined, rules: CSSRule[], colorFor
       Object.assign(merged, rule.properties);
     }
   }
-  return merged.background ? resolveColor(merged.background, colorFormat) : DEFAULT_KB_BG;
+  return merged.background ? loweringDeps!.resolveColor(merged.background, colorFormat) : DEFAULT_KB_BG;
 }
 
 function emitKeyboardLoader(name: string, kb: KeyboardTemplate, rules: CSSRule[], colorFormat: ColorFormat): string {
@@ -201,9 +214,9 @@ function emitKeyboardLoader(name: string, kb: KeyboardTemplate, rules: CSSRule[]
 function emitKeyLine(key: UIKeyTemplate, kbClasses: string[] | undefined, rules: CSSRule[], colorFormat: ColorFormat): string {
   const chEsc = key.ch === "\\" ? "\\\\" : key.ch === "'" ? "\\'" : key.ch;
   const style = resolveKeyStyle(key.classes, kbClasses, rules);
-  const bg = style.background ? resolveColor(style.background, colorFormat) : DEFAULT_KEY_BG;
-  const fg = style.color ? resolveColor(style.color, colorFormat) : DEFAULT_KEY_FG;
-  const border = style.borderColor ? resolveColor(style.borderColor, colorFormat) : DEFAULT_KEY_BORDER;
+  const bg = style.background ? loweringDeps!.resolveColor(style.background, colorFormat) : DEFAULT_KEY_BG;
+  const fg = style.color ? loweringDeps!.resolveColor(style.color, colorFormat) : DEFAULT_KEY_FG;
+  const border = style.borderColor ? loweringDeps!.resolveColor(style.borderColor, colorFormat) : DEFAULT_KEY_BORDER;
   return `ui_kb_add_key('${chEsc}', ${key.special}, ${hex(bg)}, ${hex(fg)}, ${hex(border)});`;
 }
 

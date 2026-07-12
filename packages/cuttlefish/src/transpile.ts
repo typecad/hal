@@ -7,7 +7,10 @@ import ts from "typescript";
 import { buildProgramIR } from "./ir/build-ir.js";
 import { classDeclarationToIR } from "./ir/declaration-builders.js";
 import { clickHandlers } from "./ir/transformers/ui-call-resolver.js";
-import { splitUiFile } from "./ui/ui-file-splitter.js";
+import { setUIHook, requireUIHook } from "./ui-hook.js";
+// Importing ui-bridge.ts triggers eager hook registration (Phase 3).
+// In Phase 5 this becomes: const ui = await import("@typecad/ui/engine").catch(() => null);
+import "./ui/ui-bridge.js";
 import { setDisplayProfile, resetDisplayProfile } from "./stores/display-profile-store.js";
 import { setThemeCss, resetThemeCss, setThemeClass } from "./stores/theme-store.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
@@ -413,7 +416,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // The graph build above already loaded all .ui.html modules; surface their
   // parser warnings (unknown CSS properties, unknown HTML tags) here so the
   // author sees typos and unsupported features instead of silent drops.
-  for (const mod of allUIModules()) {
+  for (const mod of requireUIHook().allUIModules()) {
     for (const d of mod.diagnostics) {
       diagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
     }
@@ -526,7 +529,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     // injected `import { screen }` so the script can reference the in-file
     // template (registered as a UI module by the graph builder).
     if (fileExtension === ".ui") {
-      const parts = splitUiFile(sourceText);
+      const parts = requireUIHook().splitUiFile(sourceText);
       const baseName = path.basename(filePath, ".ui");
       sourceText = `import { screen } from './${baseName}.ui.html';\n` + parts.script;
     }
@@ -569,7 +572,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   profiler.endTimer("ir:build-all");
 
   // ── UI mount-time warnings (scroll memory budget, etc.) ─────────────────
-  for (const mod of allUIModules()) {
+  for (const mod of requireUIHook().allUIModules()) {
     for (const d of mod.mountDiagnostics) {
       diagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
     }

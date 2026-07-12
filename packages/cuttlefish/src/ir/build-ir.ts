@@ -14,7 +14,7 @@ import { runProgramValidations } from "./validation-orchestrator.js";
 import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
 import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
-import { getUIModule } from "../ui/ui-registry.js";
+import { requireUIHook } from "../ui-hook.js";
 import { autoWireElements, registerScreenId } from "./ui-element-auto-wire.js";
 import { loadHALModules, halInstances, resetHALResolver } from "./hal-resolver.js";
 import { prescanUnsupportedFeatures } from "./feature-prescan.js";
@@ -128,7 +128,7 @@ function resolveRelativeImportPath(fromFile: string, moduleSpecifier: string): s
 function resolveUIImportPath(fromFile: string, moduleSpecifier: string): string | undefined {
   if (!moduleSpecifier.startsWith(".") && !moduleSpecifier.startsWith("..")) return undefined;
   const basePath = path.resolve(path.dirname(fromFile), moduleSpecifier);
-  if (basePath.toLowerCase().endsWith(".ui.html") && getUIModule(basePath)) {
+  if (basePath.toLowerCase().endsWith(".ui.html") && requireUIHook().getUIModule(basePath)) {
     return basePath;
   }
   try {
@@ -339,7 +339,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     for (const name of imp.namedImports) {
       registerUIModuleImport(name, htmlPath);
       // Register each element in the tree for .value access
-      const mod = getUIModule(htmlPath);
+      const mod = requireUIHook().getUIModule(htmlPath);
       if (mod) {
         // Register screen IDs → indices for <a href="#screenId"> navigation.
         for (let si = 0; si < mod.allStyledScreens.length; si++) {

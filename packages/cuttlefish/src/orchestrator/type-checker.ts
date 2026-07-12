@@ -6,7 +6,7 @@ import { makeDiagnostic } from "../ir/ast-node-utils.js";
 import { canonicalize, buildSemanticFacts } from "./semantic-facts.js";
 import type { BindingResolver } from "./semantic-facts.js";
 import { verifyFacts } from "./semantic-facts-verifier.js";
-import { allUIModules } from "../ui/ui-registry.js";
+import { requireUIHook } from "../ui-hook.js";
 
 /**
  * Result of type-checking files
@@ -86,7 +86,7 @@ export function typeCheckFiles(
     }
   }
 
-  const uiModules = allUIModules();
+  const uiModules = requireUIHook().allUIModules();
   if (uiModules.length > 0) {
     compilerOptions.allowArbitraryExtensions = true;
     const rootDirs = new Set((compilerOptions.rootDirs ?? []).map((dir) => path.resolve(dir)));

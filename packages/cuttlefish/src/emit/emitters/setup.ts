@@ -10,7 +10,7 @@ import { emitPolyfillBoilerplate } from "../native-helpers-emitter.js";
 import { ResolvedNpmPackage } from "../../transpile/resolution.js";
 import { resolveStrategy } from "../../platform/registry.js";
 import { getLoadedFramework } from "../../framework-registry.js";
-import { entryHasUI } from "../../ui/ui-registry.js";
+import { entryHasUI } from "../../ui-hook.js";
 import {
   createEmissionScopeState,
   statementNeedsSnprintf,

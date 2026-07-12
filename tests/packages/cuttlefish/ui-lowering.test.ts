@@ -7,6 +7,9 @@ import { parseCss, parseKeyframes } from "../../../packages/cuttlefish/src/ui/cs
 import { BlockLayoutEngine } from "../../../packages/cuttlefish/src/ui/block-layout";
 import { measure } from "../../../packages/cuttlefish/src/ui/layout-engine";
 import { buildKeyframeSets } from "../../../packages/cuttlefish/src/ui/keyframes";
+import { resolveColor } from "../../../packages/cuttlefish/src/ui/color";
+import { analyzeScrollMemory } from "../../../packages/cuttlefish/src/ui/scroll-memory-diagnostics";
+import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../../packages/cuttlefish/src/ui/default-keyboards";
 import {
   KEYFRAME_PROP_BG,
   KEYFRAME_PROP_FG,
@@ -17,11 +20,14 @@ import {
   type KeyframeSetModel,
 } from "../../../packages/cuttlefish/src/ui/model";
 
+/** Build the lowering deps object that lowerUIToCpp now requires. */
+const loweringDeps = { lowerUIToModel, resolveColor, analyzeScrollMemory, DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD };
+
 function lower(html: string, css: string) {
   const styled = resolveStyles(parseHtml(html), parseCss(css));
   const engine = new BlockLayoutEngine();
   const boxes = engine.arrange(styled, { x: 0, y: 0, w: 240, h: 320 }, measure);
-  return lowerUIToCpp(styled, boxes, "rgb565", "flash");
+  return lowerUIToCpp(styled, boxes, "rgb565", "flash", loweringDeps);
 }
 
 function keyframeModels(css: string): KeyframeSetModel[] {
@@ -145,7 +151,7 @@ describe("ui lowering", () => {
       parseCss(`#title { font-family: "DeviceSans"; font-size: 16px; }`),
     );
     const boxes = new BlockLayoutEngine().arrange(styled, { x: 0, y: 0, w: 80, h: 40 }, measure);
-    const out = lowerUIToCpp(styled, boxes, "rgb565", "flash", [], [], undefined, [{
+    const out = lowerUIToCpp(styled, boxes, "rgb565", "flash", loweringDeps, [], [], undefined, [{
       id: 1,
       family: "DeviceSans",
       sourcePath: "DeviceSans.ttf",
@@ -184,7 +190,7 @@ describe("ui lowering", () => {
     expect(volume).toMatchObject({ kind: "range", rangeMin: 0, rangeMax: 10, value: 3 });
     expect(load).toMatchObject({ kind: "progress", value: 42 });
 
-    const out = lowerUIToCpp(styled, boxes, "rgb565", "flash");
+    const out = lowerUIToCpp(styled, boxes, "rgb565", "flash", loweringDeps);
     expect(out.nodeTable).toMatch(/NODE_RANGE[^\n]*\.rangeMin=0[^\n]*\.rangeMax=10[^\n]*\.value=3/);
     expect(out.nodeTable).toMatch(/NODE_PROGRESS[^\n]*\.value=42/);
   });
@@ -230,7 +236,7 @@ describe("ui lowering", () => {
       classes: ["ui-keyboard"],
       rows: [[{ ch: "a", special: 0, classes: ["accent"] }]],
     };
-    const out = lowerUIToCpp(styled, boxes, "rgb565", "flash", [kb], rules);
+    const out = lowerUIToCpp(styled, boxes, "rgb565", "flash", loweringDeps, [kb], rules);
     // red = #ff0000 → RGB565 0xF800
     expect(out.keyboardLoaders).toContain("0xf800");
   });
@@ -246,7 +252,7 @@ describe("ui lowering", () => {
     `;
     const styled = resolveStyles(parseHtml(html), parseCss(css));
     const boxes = new BlockLayoutEngine().arrange(styled, { x: 0, y: 0, w: 80, h: 40 }, measure);
-    const out = lowerUIToCpp(styled, boxes, "rgb565", "flash", [], parseCss(css), undefined, [], [], new Map(), keyframeModels(css));
+    const out = lowerUIToCpp(styled, boxes, "rgb565", "flash", loweringDeps, [], parseCss(css), undefined, [], [], new Map(), keyframeModels(css));
 
     expect(out.keyframeTables).toContain("static const UIKeyframeStop __ui_kf_pulse_stops[]");
     expect(out.keyframeTables).toContain(".percent=50");
