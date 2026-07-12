@@ -96,6 +96,21 @@ export interface DisplayProfile {
   scroll?: ScrollConfig;
 }
 
+/** Extended profile with mount wiring (cs/dc/rst/address/reset from ui.mount).
+ *  Lives here (not in the store) so api/shared has zero upward dependencies
+ *  on ui/. The store populates it; display-adapter.ts types against it. */
+export interface ResolvedDisplay extends DisplayProfile {
+  _mountCs: number;
+  _mountDc: number;
+  _mountRst: number;
+  _mountBus: string;
+  _mountAddress: number;
+  _mountReset: number;
+  /** Arduino FQBN (e.g. "esp32:esp32:esp32s3:PSRAM=opi"), used to derive PSRAM
+   *  availability for the scroll-canvas-memory budget. Optional. */
+  _buildTarget?: string;
+}
+
 export interface DisplayConfig {
   profile?: string;
   driver?: string;

@@ -10,7 +10,7 @@
 // 3. Reference it from cuttlefish.config.ts: display: { profile: "driver-name-spi" }
 // ---------------------------------------------------------------------------
 
-import type { ResolvedDisplay } from "../../ui/display-profile-store.js";
+import type { ResolvedDisplay } from "./display-profile.js";
 
 export interface DisplayAdapterCode {
   /** C++ #include lines (e.g. "#include <Adafruit_ILI9341.h>"). */

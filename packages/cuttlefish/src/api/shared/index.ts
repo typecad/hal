@@ -124,8 +124,8 @@ export { DISPLAY_OPERATION_KINDS } from './display-op-ir.js';
 export type { PlatformGraphicsStrategy, GraphicsCapacity } from './graphics-strategy.js';
 
 // Display profiles (declarative hardware description)
-export type { DisplayProfile, DisplayConfig, DisplaySize, TouchProfile, TouchLibrary } from './display-profile.js';
-export { effectiveDisplaySize, normalizeDisplayRotation, resolveDisplayProfile } from './display-profile.js';
+export type { DisplayProfile, DisplayConfig, DisplaySize, TouchProfile, TouchLibrary, ResolvedDisplay } from './display-profile.js';
+export { effectiveDisplaySize, normalizeDisplayRotation, resolveDisplayProfile, resolveScrollConfig, DEFAULT_SCROLL_CANVAS_BUDGET_BYTES } from './display-profile.js';
 
 // Display capabilities descriptor (Phase 2: display-agnostic core)
 export type {
