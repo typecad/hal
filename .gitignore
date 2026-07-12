@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Lockfile — not tracked; CI installs from package.json (npm install)
+package-lock.json
+
 # Build output
 dist/
 **/.build/
