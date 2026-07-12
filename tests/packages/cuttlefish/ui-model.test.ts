@@ -14,10 +14,7 @@ import {
 import { resolveStyles } from "@typecad/ui/ui-engine/style-resolver";
 import type { StyledNode } from "@typecad/ui/ui-engine/style-resolver";
 import { resolveColor } from "@typecad/ui/ui-engine/color";
-import { analyzeScrollMemory } from "../../../packages/ui/src/ui-engine/scroll-memory-diagnostics";
-import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../../packages/ui/src/ui-engine/default-keyboards";
 
-const loweringDeps = { lowerUIToModel, resolveColor, analyzeScrollMemory, DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD };
 import type { Box } from "@typecad/ui/ui-engine/layout-engine";
 import { lowerUIToCpp } from "@typecad/ui/ui-engine/ui-lowering";
 import { selectEngine } from "../../../packages/ui/src/ui-engine/select-engine";
@@ -80,7 +77,7 @@ describe("UI structured model", () => {
       colorFormat: "rgb565",
       rotation: 1,
     });
-    const cpp = lowerUIToCpp(styled, boxes, "rgb565", "flash", loweringDeps);
+    const cpp = lowerUIToCpp(styled, boxes, "rgb565", "flash");
 
     expect(model.width).toBe(320);
     expect(model.height).toBe(240);

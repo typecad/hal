@@ -27,10 +27,6 @@ import { buildKeyframeSets } from "./keyframes.js";
 import { selectEngine } from "./select-engine.js";
 import { measure, measureWithFonts, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "./ui-lowering.js";
-import { lowerUIToModel } from "./model.js";
-import { resolveColor } from "./color.js";
-import { analyzeScrollMemory } from "./scroll-memory-diagnostics.js";
-import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "./default-keyboards.js";
 import { getDisplayProfile } from "@typecad/cuttlefish/stores/display-profile-store";
 import { resolveScrollConfig } from "@typecad/cuttlefish/api/shared";
 import { buildUIFontAssets } from "./font-assets.js";
@@ -225,7 +221,7 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   const imageAssets = loadImageAssets(allStyled.length > 0 ? allStyled : [mod.styled], path.dirname(abs));
 
   const scrollBudget = resolveScrollConfig(getDisplayProfile(), { buildTarget: getDisplayProfile()._buildTarget }).scrollCanvasBudgetBytes;
-  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, { lowerUIToModel, resolveColor, analyzeScrollMemory, DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD }, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets, scrollBudget);
+  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets, scrollBudget);
 
   for (const d of result.scrollMemoryDiagnostics) {
     mod.mountDiagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });

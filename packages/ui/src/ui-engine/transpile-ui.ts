@@ -16,10 +16,6 @@ import { resolveStyles } from "./style-resolver.js";
 import { selectEngine } from "./select-engine.js";
 import { measure, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "./ui-lowering.js";
-import { lowerUIToModel } from "./model.js";
-import { resolveColor } from "./color.js";
-import { analyzeScrollMemory } from "./scroll-memory-diagnostics.js";
-import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "./default-keyboards.js";
 import { buildUIFontAssets } from "./font-assets.js";
 import { buildKeyframeSets } from "./keyframes.js";
 
@@ -45,5 +41,5 @@ export function transpileUI(html: string, css: string, opts: TranspileUIOptions)
 
   const keyframeSets = buildKeyframeSets(rawKeyframes, opts.colorFormat);
 
-  return lowerUIToCpp(styled, boxes, opts.colorFormat, opts.storage, { lowerUIToModel, resolveColor, analyzeScrollMemory, DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD }, [], rules, undefined, fontAssets, [], new Map(), keyframeSets);
+  return lowerUIToCpp(styled, boxes, opts.colorFormat, opts.storage, [], rules, undefined, fontAssets, [], new Map(), keyframeSets);
 }

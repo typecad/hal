@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import chalk from "chalk";
 import { findConfigFile, parseConfigFile } from "../config-loader.js";
-import { buildPreviewSnapshot } from "@typecad/ui/preview/build-program";
 import { requireUIHook } from "../ui-hook.js";
 
 export interface PreviewServerOptions {
@@ -146,6 +145,8 @@ export async function runPreviewServer(options: PreviewServerOptions = {}): Prom
       }
       if (url.pathname === "/snapshot.json") {
         requireUIHook().generateProjectUITypeDeclarations(projectRoot);
+        // @ts-ignore — optional dependency, resolved at runtime
+        const { buildPreviewSnapshot } = await import("@typecad/ui/preview/build-program");
         const snapshot = await buildPreviewSnapshot({ config, projectRoot });
         writeText(res, 200, JSON.stringify(snapshot), "application/json; charset=utf-8");
         return;

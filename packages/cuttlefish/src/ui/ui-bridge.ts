@@ -17,8 +17,12 @@ export async function loadUIEngine(): Promise<void> {
   if (loaded) return;
   loaded = true;
   try {
+    // Dynamic import — @typecad/ui is optional. The @ts-ignore suppresses
+    // the "cannot find module" error during clean builds when ui's dist
+    // doesn't exist yet (cuttlefish builds before ui).
+    // @ts-ignore — optional dependency, resolved at runtime
     const engine = await import("@typecad/ui/engine");
-    const hook = await engine.registerTranspilerUI();
+    const hook = engine.registerTranspilerUI();
     setUIHook(hook);
   } catch {
     // @typecad/ui is not installed — cuttlefish works without UI support.
