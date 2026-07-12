@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { resolveImport } from "../../../packages/cuttlefish/src/transpile/resolution";
-import { resetUIRegistry, hasUIModule } from "@typecad/cuttlefish/ui/ui-registry";
+import { resetUIRegistry, hasUIModule } from "@typecad/ui/ui-engine/ui-registry";
 
 const tempDirs: string[] = [];
 afterEach(() => {

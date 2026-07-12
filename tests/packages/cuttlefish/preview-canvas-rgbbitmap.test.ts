@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
-import { resolveColor } from "@typecad/cuttlefish/ui/color";
-import type { PreviewSnapshot } from "@typecad/cuttlefish/preview/types";
+import { PreviewUIRuntime } from "@typecad/ui/preview/host-ui-runtime";
+import { resolveColor } from "@typecad/ui/ui-engine/color";
+import type { PreviewSnapshot } from "@typecad/ui/preview/types";
 
 // ctx.rgbBitmap(x, y, data, w, h) blits an RGB565 pixel array onto the canvas.
 // The runtime lowers it to ui_display_draw_rgb_bitmap (canvas-lowering.ts:94),

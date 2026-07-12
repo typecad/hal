@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
-import type { PreviewSnapshot } from "@typecad/cuttlefish/preview/types";
+import { PreviewUIRuntime } from "@typecad/ui/preview/host-ui-runtime";
+import type { PreviewSnapshot } from "@typecad/ui/preview/types";
 
 // ui.bindInput(node, cb) subscribes to an <input>'s committed text. On hardware
 // (ui-call-resolver.ts resolveBindInputCall) the callback fires whenever the

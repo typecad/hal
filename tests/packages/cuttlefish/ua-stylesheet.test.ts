@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
-import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
+import { parseHtml } from "@typecad/ui/ui-engine/html-parser";
+import { resolveStyles } from "@typecad/ui/ui-engine/style-resolver";
 
 // The UA (User-Agent) stylesheet gives elements sensible built-in behavior
 // before any user CSS. These tests lock down UA defaults that user CSS relies

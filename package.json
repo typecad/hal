@@ -20,10 +20,20 @@
     "packages/board-esp32c6",
     "packages/expect",
     "packages/ui",
-    "packages/simulator"
+    "packages/simulator",
+    "demo",
+    "demo-st",
+    "demo-ui",
+    "demo-ui-sd13",
+    "demo-weather",
+    "native_demo"
   ],
   "scripts": {
+    "clean": "node -e \"const{readdirSync,rmSync}=require('fs');for(const p of readdirSync('packages')){rmSync('packages/'+p+'/dist',{recursive:true,force:true});rmSync('packages/'+p+'/tsconfig.tsbuildinfo',{force:true})}\"",
     "build": "npm run build --workspaces",
+    "build:clean": "npm run clean && tsc -b",
+    "build": "npm run build --workspaces",
+    "build:clean": "npm run clean && npm run build",
     "typecheck": "tsc -b",
     "ci": "npm test && npm run build --workspaces",
     "test": "vitest run",
@@ -44,7 +54,6 @@
     "css-tree": "^3.2.1",
     "eslint": "^10.4.1",
     "linkedom": "^0.18.12",
-    "puppeteer": "^25.1.0",
     "vitest": "^4.0.18",
     "yoga-layout": "^3.2.1"
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
+import { parseHtml } from "@typecad/ui/ui-engine/html-parser";
 
 // Integration tests for inline-sequence collection. These exercise
 // collectInlineSequence (Task 1) through the real parseHtml path (Task 2),

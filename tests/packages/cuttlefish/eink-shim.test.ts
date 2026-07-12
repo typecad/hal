@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { generateDisplayAdapter } from "../../../packages/cuttlefish/src/api/shared/display-adapter";
-import type { ResolvedDisplay } from "../../../packages/cuttlefish/src/ui/display-profile-store";
+import type { ResolvedDisplay } from "@typecad/cuttlefish/stores/display-profile-store";
 
 describe("eink-mono (SSD1680-class) adapter", () => {
   const profile = {

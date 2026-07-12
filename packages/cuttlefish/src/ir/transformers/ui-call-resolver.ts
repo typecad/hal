@@ -16,10 +16,10 @@ import { makeSourceSpan } from "../ast-node-utils.js";
 import { emitLinesToIR, halOpsToIR } from "./hal-emit-helpers.js";
 import { resolveMount, MountRequest } from "./ui-mount.js";
 import { emitSignalDecl, BindingSpec, ListBindingSpec, recordListBinding, getListBindingsCount, InputBindingSpec, recordInputBinding, getInputBindingsCount, resetInputBindings } from "./ui-reactive.js";
-import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry.js";
+import { requireUIHook, entryHasUI as hookEntryHasUI } from "../../ui-hook.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
-import { getDisplayProfile } from "../../ui/display-profile-store.js";
+import { getDisplayProfile } from "../../stores/display-profile-store.js";
 import { effectiveDisplaySize } from "../../api/shared/display-profile.js";
 import {
   lowerCallbackStatements,
@@ -32,8 +32,18 @@ import {
   resolveColorIR,
 } from "./ui-callback-lowering.js";
 import { resolveDrawCanvasCall, resetCanvasBindings } from "./canvas-lowering.js";
-import type { StyledNode } from "../../ui/style-resolver.js";
 import { getContext } from "../build-ir-state.js";
+
+/** Structural alias for @typecad/ui's StyledNode — only the properties
+ *  accessed by the walk functions below are declared. Defined locally to
+ *  avoid importing from @typecad/ui (circular build dependency). */
+interface StyledNode {
+  tag: string;
+  id?: string;
+  screenId: number;
+  children: StyledNode[];
+  [key: string]: unknown;
+}
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { inferExprCppType, type CppTypeHint } from "../type-resolution.js";
 import { escapeCppStringLiteral, escapeSnprintfFormatFragment } from "../../utils/strings.js";
@@ -528,7 +538,8 @@ function resolveMountCall(
   // strategy.colorFormat() (capability-level, may default to rgb565 before the
   // profile is wired into the strategy). This ensures node colors lower at the
   // target's true depth (rgb888 for SDL → full 888, no 565 quantization).
-  const lowered = lowerOnMount(htmlPath, {
+  const ui = requireUIHook();
+  const lowered = ui.lowerOnMount(htmlPath, {
     colorFormat: profile.colorFormat,
     storage: strategy.graphicsCapacity().nodeStorage,
     viewport,
@@ -537,7 +548,7 @@ function resolveMountCall(
   const displayInitOp = resolveMount(req, strategy, viewport);
 
   // Mark the entry file as having a UI → gates runtime header + table injection.
-  markEntryHasUI();
+  ui.markEntryHasUI();
 
   return halOpsToIR([displayInitOp], call, fileName, sourceText);
 }
@@ -1305,7 +1316,7 @@ export function resolveNodeIndex(htmlPath: string, id: string, screenId?: string
   // share this order, so we walk the registry's styled tree to find the id.
   // When screenId is given (grouped handle screen.groups.<screenId>.<id>),
   // search only within that screen root.
-  const mod = getUIModule(htmlPath);
+  const mod = requireUIHook().getUIModule(htmlPath);
   if (!mod) return -1;
   let idx = 0;
   let found = -1;
@@ -1316,7 +1327,7 @@ export function resolveNodeIndex(htmlPath: string, id: string, screenId?: string
     for (const c of n.children) { if (walk(c)) return true; }
     return false;
   };
-  const allRoots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  const allRoots: StyledNode[] = mod.allStyledScreens.length > 0 ? mod.allStyledScreens as StyledNode[] : [mod.styled as StyledNode];
   const roots = screenId ? allRoots.filter(r => r.id === screenId) : allRoots;
   for (const root of roots) {
     if (walk(root)) break;
@@ -1328,7 +1339,7 @@ export function resolveNodeIndex(htmlPath: string, id: string, screenId?: string
  *  Used to route generic callbacks (e.g. onChange) to the right lowering path
  *  based on element kind (range vs input). Returns "" if not found. */
 export function resolveNodeTag(htmlPath: string, id: string, screenId?: string): string {
-  const mod = getUIModule(htmlPath);
+  const mod = requireUIHook().getUIModule(htmlPath);
   if (!mod) return "";
   let idx = 0;
   let foundTag = "";
@@ -1338,7 +1349,7 @@ export function resolveNodeTag(htmlPath: string, id: string, screenId?: string):
     for (const c of n.children) { if (walk(c)) return true; }
     return false;
   };
-  const allRoots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  const allRoots: StyledNode[] = mod.allStyledScreens.length > 0 ? mod.allStyledScreens as StyledNode[] : [mod.styled as StyledNode];
   const roots = screenId ? allRoots.filter(r => r.id === screenId) : allRoots;
   for (const root of roots) {
     if (walk(root)) break;

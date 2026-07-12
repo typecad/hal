@@ -6,7 +6,7 @@ import {
   resetUIRegistry,
   loadUIModule,
   clearEntryHasUI,
-} from "@typecad/cuttlefish/ui/ui-registry";
+} from "@typecad/ui/ui-engine/ui-registry";
 import {
   registerUIModuleImport,
   resetUICallState,

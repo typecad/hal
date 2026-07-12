@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseColor, toRGB565, toMono, resolveColor, resolveColor888, rgb888To565, rgb888To666, rgb888ToMono, pack888, unpack888 } from "@typecad/cuttlefish/ui/color";
+import { parseColor, toRGB565, toMono, resolveColor, resolveColor888, rgb888To565, rgb888To666, rgb888ToMono, pack888, unpack888 } from "@typecad/ui/ui-engine/color";
 
 describe("color formats", () => {
   it("parses #rrggbb hex", () => {

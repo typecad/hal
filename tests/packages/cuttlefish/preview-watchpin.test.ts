@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
-import type { PreviewSnapshot } from "@typecad/cuttlefish/preview/types";
+import { PreviewUIRuntime } from "@typecad/ui/preview/host-ui-runtime";
+import type { PreviewSnapshot } from "@typecad/ui/preview/types";
 
 // ui.watchPin(pin, cb) registers a pin-watcher whose callback fires on a HIGH→LOW
 // (falling) edge, polled every ~20ms in the device's microtask pump — no ISRs,

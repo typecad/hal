@@ -13,7 +13,7 @@ import {
   clearEntryHasUI,
   allUIModules,
   generateProjectUITypeDeclarations,
-} from "@typecad/cuttlefish/ui/ui-registry";
+} from "@typecad/ui/ui-engine/ui-registry";
 
 const tempDirs: string[] = [];
 afterEach(() => {

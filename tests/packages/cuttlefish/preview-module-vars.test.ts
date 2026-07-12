@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
-import type { PreviewSnapshot } from "@typecad/cuttlefish/preview/types";
+import { PreviewUIRuntime } from "@typecad/ui/preview/host-ui-runtime";
+import type { PreviewSnapshot } from "@typecad/ui/preview/types";
 
 // The preview executes author callback bodies (setInterval, onClick, ui.bind,
 // etc.) in an isolated `Function`. The device transpiler hoists module-scoped

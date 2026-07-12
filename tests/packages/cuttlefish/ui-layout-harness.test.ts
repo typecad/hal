@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { resolveColor } from "@typecad/cuttlefish/ui/color";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
+import { resolveColor } from "@typecad/ui/ui-engine/color";
+import { PreviewUIRuntime } from "@typecad/ui/preview/host-ui-runtime";
 import { buildUiFixture, collectLayoutProblems } from "./ui-layout-harness";
 
 function px(buffer: Uint16Array, width: number, x: number, y: number): number {

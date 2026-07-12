@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { measure } from "../../../packages/cuttlefish/src/ui/layout-engine";
-import { resolveStyles } from "../../../packages/cuttlefish/src/ui/style-resolver";
-import { parseHtml } from "../../../packages/cuttlefish/src/ui/html-parser";
-import { parseCss } from "../../../packages/cuttlefish/src/ui/css-parser";
+import { measure } from "../../../packages/ui/src/ui-engine/layout-engine";
+import { resolveStyles } from "../../../packages/ui/src/ui-engine/style-resolver";
+import { parseHtml } from "../../../packages/ui/src/ui-engine/html-parser";
+import { parseCss } from "../../../packages/ui/src/ui-engine/css-parser";
 
 function measureText(src: string, css: string) {
   const styled = resolveStyles(parseHtml(src), parseCss(css));

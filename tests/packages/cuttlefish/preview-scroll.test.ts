@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PreviewUIRuntime } from "../../../packages/cuttlefish/src/preview/host-ui-runtime";
+import { PreviewUIRuntime } from "../../../packages/ui/src/preview/host-ui-runtime";
 
 // Behavioral tests for the unified scroll engine (preview = capacitive + full
 // tier). Mirrors the C++ engine: 1:1 in-bounds, rubber-band at edges, snap/bounce

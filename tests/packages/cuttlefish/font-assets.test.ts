@@ -2,14 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it, afterEach } from "vitest";
-import { parseCss, parseFontFaces } from "@typecad/cuttlefish/ui/css-parser";
-import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
-import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
+import { parseCss, parseFontFaces } from "@typecad/ui/ui-engine/css-parser";
+import { parseHtml } from "@typecad/ui/ui-engine/html-parser";
+import { resolveStyles } from "@typecad/ui/ui-engine/style-resolver";
 import {
   planUIFontAssets,
   selectFontAssetForStyle,
-} from "../../../packages/cuttlefish/src/ui/font-assets";
-import { setDisplayProfile, resetDisplayProfile } from "../../../packages/cuttlefish/src/ui/display-profile-store";
+} from "../../../packages/ui/src/ui-engine/font-assets";
+import { setDisplayProfile, resetDisplayProfile } from "@typecad/cuttlefish/stores/display-profile-store";
 
 function withFontFiles(names: string[], run: (dir: string) => void): void {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-font-assets-"));

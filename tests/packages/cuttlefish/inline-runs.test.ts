@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
-import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
-import { parseCss } from "@typecad/cuttlefish/ui/css-parser";
+import { resolveStyles } from "@typecad/ui/ui-engine/style-resolver";
+import { parseHtml } from "@typecad/ui/ui-engine/html-parser";
+import { parseCss } from "@typecad/ui/ui-engine/css-parser";
 
 function resolve(src: string, css: string) {
   return resolveStyles(parseHtml(src), parseCss(css));

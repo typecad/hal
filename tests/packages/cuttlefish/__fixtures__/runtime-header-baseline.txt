@@ -1,20 +1,5 @@
-// ---------------------------------------------------------------------------
-// C++ reactive runtime header — the driver code that walks the node/binding/
-// transition tables each frame.
-//
-// This is emitted once per translation unit (guarded) so the static tables
-// produced by the lowering transformer have something to drive them. It
-// implements the three-phase frame from spec §7:
-//   1. Advance transitions (lerp toward target)
-//   2. Draw traversal (dirty nodes only)
-//   3. Flush dirty rects
-//
-// Plus the press/release entry points that node.onPress(pin) lowers to.
-// ---------------------------------------------------------------------------
 
-export function emitRuntimeHeader(): string {
-  return `
-// ── TypeHAL UI runtime (emit once per TU) ──────────────────────────────────
+// ── Cuttlefish UI runtime (emit once per TU) ──────────────────────────────
 #ifndef __TC_UI_RUNTIME
 #define __TC_UI_RUNTIME
 #include <stdint.h>
@@ -815,7 +800,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
   Serial.printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
     "heap free=%lu max_alloc=%lu budget=%d. "
-    "Shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\\n",
+    "Shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\n",
     label, vw, vh, (unsigned long)need, reasonText,
     (unsigned long)freeHeap, (unsigned long)maxAlloc, UI_SCROLL_CANVAS_BUDGET_BYTES);
 #elif defined(ESP8266)
@@ -823,7 +808,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
   Serial.printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
     "heap free=%lu budget=%d. "
-    "Shrink the scroll viewport in CSS, trim fonts/images, or reduce UI footprint.\\n",
+    "Shrink the scroll viewport in CSS, trim fonts/images, or reduce UI footprint.\n",
     label, vw, vh, (unsigned long)need, reasonText,
     (unsigned long)freeHeap, UI_SCROLL_CANVAS_BUDGET_BYTES);
 #else
@@ -831,7 +816,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
   // The native framework forces <cstdio> so printf is available here.
   printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
-    "budget=%d. Shrink the scroll viewport in CSS or trim UI assets.\\n",
+    "budget=%d. Shrink the scroll viewport in CSS or trim UI assets.\n",
     label, vw, vh, (unsigned long)need, reasonText, UI_SCROLL_CANVAS_BUDGET_BYTES);
 #endif
 }
@@ -2467,7 +2452,7 @@ static inline void ui_init(void) {
       uint16_t n = __ui_bindings[i].node;
       __ui_nodes[n].hasTextBinding = 1;
       strncpy(__ui_nodes[n].textBuffer, __ui_nodes[n].text ? __ui_nodes[n].text : "", UI_TEXT_BUF);
-      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
+      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\0';
     }
   }
   // Seed virtualized-list runtime state. The fn pointers can't be baked into
@@ -2587,7 +2572,7 @@ static int16_t __ui_drag_start_y = 0;
 static uint8_t __ui_is_dragging = 0;     // 1 once movement exceeds threshold
 static int16_t __ui_range_node = -1;     // range slider being dragged (int16: node index can exceed 127)
 
-// ── Awaitable tap source (for \`await ui.onTap()\`) ─────────────────────────
+// ── Awaitable tap source (for `await ui.onTap()`) ─────────────────────────
 // __ui_tap_seq increments on every completed tap (after click/release dispatch);
 // async awaiters poll it for change. __ui_tap_node records the node hit by the
 // last tap (-1 = empty space / non-interactive area) for per-element awaiters.
@@ -2820,7 +2805,7 @@ static void ui_touch_up() {
       __ui_nodes[__ui_touch_node].kind == NODE_BUTTON && __ui_nodes[__ui_touch_node].value != 0) {
     ui_set_pressed((uint16_t)__ui_touch_node, 0);
   }
-  // Resume any \`await ui.onTap()\` awaiter. Runs for EVERY completed tap —
+  // Resume any `await ui.onTap()` awaiter. Runs for EVERY completed tap —
   // including holds (released above) and taps on empty space (__ui_touch_node
   // == -1), which is what makes "wake on any touch" work for display-sleep.
   // Placed AFTER the click/release dispatch so onClick always fires first.
@@ -2929,7 +2914,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
           ui_apply_scroll_delta(__ui_scroll_node, dy);
           __ui_drag_start_y = ty;
 #if UI_SCROLL_DEBUG
-          Serial.printf("scroll dy=%d sy=%d ov=%d virt=%d\\n",
+          Serial.printf("scroll dy=%d sy=%d ov=%d virt=%d\n",
             dy, __ui_nodes[__ui_scroll_node].scrollY,
             __ui_nodes[__ui_scroll_node].overscrollPx,
             (int)__ui_nodes[__ui_scroll_node].virtualized);
@@ -3083,16 +3068,16 @@ static inline uint8_t ui_text_line_height(uint8_t ts, uint8_t fontFace, uint8_t 
 }
 
 static inline uint8_t ui_is_text_space(char c) {
-  return c == ' ' || c == '\\t' || c == '\\f' || c == '\\v';
+  return c == ' ' || c == '\t' || c == '\f' || c == '\v';
 }
 
 static inline uint8_t ui_is_text_newline(char c) {
-  return c == '\\n' || c == '\\r';
+  return c == '\n' || c == '\r';
 }
 
 static inline const char* ui_after_text_newline(const char* p) {
   if (!p || !*p) return p;
-  if (*p == '\\r' && p[1] == '\\n') return p + 2;
+  if (*p == '\r' && p[1] == '\n') return p + 2;
   return p + 1;
 }
 
@@ -3950,9 +3935,9 @@ static inline void ui_tick(uint16_t deltaMs) {
       uint16_t n = __ui_bindings[i].node;
       char oldBuf[UI_TEXT_BUF + 1];
       strncpy(oldBuf, __ui_nodes[n].textBuffer, UI_TEXT_BUF);
-      oldBuf[UI_TEXT_BUF] = '\\0';
+      oldBuf[UI_TEXT_BUF] = '\0';
       __ui_bindings[i].textFn(__ui_nodes[n].textBuffer, UI_TEXT_BUF + 1);
-      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
+      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\0';
       if (strcmp(oldBuf, __ui_nodes[n].textBuffer) != 0) {
         ui_invalidate_text_layout_cache(n);
         ui_mark_dirty(n);
@@ -4021,7 +4006,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     const char* cur = __ui_nodes[n].textBuffer;
     if (strcmp(cur, __ui_input_bindings[i].lastSeen) != 0) {
       strncpy(__ui_input_bindings[i].lastSeen, cur, UI_TEXT_BUF);
-      __ui_input_bindings[i].lastSeen[UI_TEXT_BUF] = '\\0';
+      __ui_input_bindings[i].lastSeen[UI_TEXT_BUF] = '\0';
       __ui_input_bindings[i].cb(cur);
     }
   }
@@ -5768,5 +5753,3 @@ static inline void ui_kb_draw() {
 }
 
 #endif
-`;
-}

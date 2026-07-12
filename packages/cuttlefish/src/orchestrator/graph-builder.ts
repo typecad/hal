@@ -11,8 +11,7 @@ import {
   resolveImport,
   isCuttlefishSDKPath,
 } from "../transpile/resolution.js";
-import { loadUIModule, loadUIModuleFromText } from "../ui/ui-registry.js";
-import { splitUiFile } from "../ui/ui-file-splitter.js";
+import { requireUIHook } from "../ui-hook.js";
 
 /**
  * Sort files in dependency order using Kahn's algorithm.
@@ -123,10 +122,11 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
     // it + the UI registry generates the type declaration under types/). The script's
     // `screen` reference resolves to the in-file template.
     if (extension === ".ui") {
-      const parts = splitUiFile(sourceText);
+      const ui = requireUIHook();
+      const parts = ui.splitUiFile(sourceText);
       // Register the template as a UI module at <file>.ui.html (synthetic path).
       const uiHtmlPath = filePath + ".html";
-      loadUIModuleFromText(uiHtmlPath, parts.html, parts.style, filePath);
+      ui.loadUIModuleFromText(uiHtmlPath, parts.html, parts.style, filePath);
       uiModules.add(uiHtmlPath);
       // Use the <script> as the TS source for import-graph walking. Inject an
       // implicit `import { screen } from './<base>.ui.html'` so the script can
@@ -215,7 +215,7 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
       // .ui.html modules: load into the UI registry, record the path, and don't
       // push onto `pending` (they are never parsed as TypeScript).
       if (resolved?.uiModule) {
-        loadUIModule(resolved.sourcePath);
+        requireUIHook().loadUIModule(resolved.sourcePath);
         uiModules.add(resolved.sourcePath);
         // Track the dependency edge so topological sort orders the importer
         // after the (virtual) UI module.

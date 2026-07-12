@@ -905,7 +905,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     return { kind: "paren", inner: expressionToIR(expr.expression, sourceText, diagnostics, pointerVars) };
   }
 
-  // Recurse into prefix unary so nested typehal calls are translated correctly.
+  // Recurse into prefix unary so nested calls are translated correctly.
   if (ts.isPrefixUnaryExpression(expr)) {
     const operator = ts.tokenToString(expr.operator) ?? "";
     return {

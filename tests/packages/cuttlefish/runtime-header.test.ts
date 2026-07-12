@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { emitRuntimeHeader } from "../../../packages/cuttlefish/src/ui/runtime-header";
+import { emitRuntimeHeader } from "../../../packages/ui/src/ui-engine/runtime-header";
 import { deriveCapabilities } from "../../../packages/cuttlefish/src/api/shared/display-capabilities";
 
 describe("C++ reactive runtime header", () => {

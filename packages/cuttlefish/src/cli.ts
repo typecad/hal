@@ -14,7 +14,8 @@ import { resolveStrategy } from "./platform/registry.js";
 import { loadFrameworkPackage } from "./framework-package.js";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js";
 import { loadCuttlefishConfig, generateVirtualTypeDeclaration } from "./config-loader.js";
-import { generateProjectUITypeDeclarations } from "./ui/ui-registry.js";
+import { requireUIHook } from "./ui-hook.js";
+import { loadUIEngine } from "./ui/ui-bridge.js";
 import { runWatch, discoverWatchDirs } from "./watch.js";
 import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils.js";
 import { runPreviewServer } from "./preview/server.js";
@@ -302,6 +303,9 @@ async function main(): Promise<void> {
     const inputDir = path.dirname(path.resolve(options.inputFile));
     const config = loadCuttlefishConfig(inputDir);
 
+    // Load the UI engine (if @typecad/ui is installed) before any UI work.
+    await loadUIEngine();
+
     let effectivePlatformContext = options.platformContext;
     let effectiveTarget = options.target;
     let effectiveOutDir = options.outDir;
@@ -368,7 +372,7 @@ async function main(): Promise<void> {
         // Strategy not yet loaded — env.d.ts will have generic declarations only
       }
       generateVirtualTypeDeclaration(config, platformDeclarations);
-      generateProjectUITypeDeclarations(path.dirname(config.configPath));
+      requireUIHook().generateProjectUITypeDeclarations(path.dirname(config.configPath));
     }
 
     // Print branded header and build info
@@ -475,7 +479,7 @@ async function main(): Promise<void> {
 
           try {
             if (config) {
-              generateProjectUITypeDeclarations(path.dirname(config.configPath));
+              requireUIHook().generateProjectUITypeDeclarations(path.dirname(config.configPath));
             }
             ui.printTranspiling();
             const rebuildResult = await transpileFile({

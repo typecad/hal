@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { emitRuntimeHeader } from "@typecad/cuttlefish/ui/runtime-header";
+import { emitRuntimeHeader } from "@typecad/ui/ui-engine/runtime-header";
 
 // `await ui.onTap()` — runtime side: a tap counter + last-tapped-node that the
 // async state machine polls. See docs/superpowers/specs/2026-06-27-ui-ontap-awaitable-design.md

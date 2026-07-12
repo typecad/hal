@@ -1,7 +1,10 @@
-import { PreviewUIRuntime } from "./host-ui-runtime.js";
-import type { PreviewPinControlSpec, PreviewSnapshot } from "./types.js";
+// @ts-ignore — optional dependency (type-only, resolved via ui dist at runtime)
+import type { PreviewPinControlSpec, PreviewSnapshot } from "@typecad/ui/preview/types";
 
-let runtime: PreviewUIRuntime | undefined;
+// PreviewUIRuntime is loaded dynamically (see the import in the snapshot
+// handler). Typed as any to avoid a static dependency on @typecad/ui.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let runtime: any;
 let imageData: ImageData | undefined;
 let pendingPointerMove: { x: number; y: number } | undefined;
 let pendingPointerFrame = 0;
@@ -15,7 +18,7 @@ function byId<T extends HTMLElement>(id: string): T {
 function renderDiagnostics(snapshot: PreviewSnapshot, extra: string[] = []): void {
   const diagnostics = byId<HTMLDivElement>("diagnostics");
   const messages = [
-    ...snapshot.diagnostics.map((d) => `${d.severity}: ${d.message}`),
+    ...snapshot.diagnostics.map((d: { severity: string; message: string }) => `${d.severity}: ${d.message}`),
     ...extra,
   ];
   diagnostics.replaceChildren(...messages.map((message) => {
@@ -87,13 +90,15 @@ async function start(): Promise<void> {
   status.textContent = `${snapshot.profileName ?? snapshot.program.display?.driver ?? "display"} ${snapshot.program.width}x${snapshot.program.height} ${snapshot.program.colorFormat}`;
 
   const extraDiagnostics: string[] = [];
+  // @ts-ignore — optional dependency, resolved at runtime
+  const { PreviewUIRuntime } = await import("@typecad/ui/preview/host-ui-runtime");
   runtime = new PreviewUIRuntime(snapshot, {
-    onFrame: (rgba) => {
+    onFrame: (rgba: Uint8Array) => {
       if (!imageData) return;
       imageData.data.set(rgba);
       ctx.putImageData(imageData, 0, 0);
     },
-    onDiagnostics: (message) => {
+    onDiagnostics: (message: string) => {
       extraDiagnostics.push(message);
       renderDiagnostics(snapshot, extraDiagnostics);
     },

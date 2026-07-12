@@ -15,7 +15,7 @@ import { parseCss, parseFontFaces, parseKeyframes } from "./css-parser.js";
 import { resolveStyles } from "./style-resolver.js";
 import { selectEngine } from "./select-engine.js";
 import { measure, Box } from "./layout-engine.js";
-import { lowerUIToCpp, LoweredUI } from "../ir/transformers/ui-lowering.js";
+import { lowerUIToCpp, LoweredUI } from "./ui-lowering.js";
 import { buildUIFontAssets } from "./font-assets.js";
 import { buildKeyframeSets } from "./keyframes.js";
 

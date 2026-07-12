@@ -1,8 +1,8 @@
 ﻿import type { StatementIR } from "../../api/index.js";
 import type { EmitterContext } from "./emitter-context.js";
-import { entryHasUI } from "../../ui/ui-registry.js";
+import { entryHasUI } from "../../ui-hook.js";
 import { uiPressBindings, watchPinSpecs } from "../../ir/transformers/ui-call-resolver.js";
-import { getDisplayProfile } from "../../ui/display-profile-store.js";
+import { getDisplayProfile } from "../../stores/display-profile-store.js";
 
 function isDisplayInitStatement(statement: StatementIR): boolean {
   return statement.kind === "hal-op" && statement.operation.operation === "display.init";

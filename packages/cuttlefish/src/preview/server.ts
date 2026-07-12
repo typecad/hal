@@ -4,8 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import chalk from "chalk";
 import { findConfigFile, parseConfigFile } from "../config-loader.js";
-import { buildPreviewSnapshot } from "./build-program.js";
-import { generateProjectUITypeDeclarations } from "../ui/ui-registry.js";
+import { requireUIHook } from "../ui-hook.js";
 
 export interface PreviewServerOptions {
   configPath?: string;
@@ -133,7 +132,7 @@ export async function runPreviewServer(options: PreviewServerOptions = {}): Prom
   const config = parseConfigFile(configPath);
   if (!config) throw new Error(`Could not parse ${configPath}`);
   const projectRoot = path.dirname(configPath);
-  generateProjectUITypeDeclarations(projectRoot);
+  requireUIHook().generateProjectUITypeDeclarations(projectRoot);
   const distRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
   const clients = new Set<http.ServerResponse>();
 
@@ -145,7 +144,9 @@ export async function runPreviewServer(options: PreviewServerOptions = {}): Prom
         return;
       }
       if (url.pathname === "/snapshot.json") {
-        generateProjectUITypeDeclarations(projectRoot);
+        requireUIHook().generateProjectUITypeDeclarations(projectRoot);
+        // @ts-ignore — optional dependency, resolved at runtime
+        const { buildPreviewSnapshot } = await import("@typecad/ui/preview/build-program");
         const snapshot = await buildPreviewSnapshot({ config, projectRoot });
         writeText(res, 200, JSON.stringify(snapshot), "application/json; charset=utf-8");
         return;

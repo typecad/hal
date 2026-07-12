@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import ts from "typescript";
 import { lowerCallbackExpr } from "../../../packages/cuttlefish/src/ir/transformers/ui-callback-lowering";
 import { resetUICallState } from "../../../packages/cuttlefish/src/ir/transformers/ui-call-resolver";
-import { resetDisplayProfile, setDisplayProfile } from "../../../packages/cuttlefish/src/ui/display-profile-store";
+import { resetDisplayProfile, setDisplayProfile } from "@typecad/cuttlefish/stores/display-profile-store";
 import type { Diagnostic } from "../../../packages/cuttlefish/src/types";
 
 // lowerCallbackExpr resolves CSS color string literals in callback bodies to

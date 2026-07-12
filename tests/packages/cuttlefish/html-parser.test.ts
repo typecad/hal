@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseHtml, parseHtmlWithKeyboards, extractStyleBlocks } from "@typecad/cuttlefish/ui/html-parser";
+import { parseHtml, parseHtmlWithKeyboards, extractStyleBlocks } from "@typecad/ui/ui-engine/html-parser";
 
 describe("HTML subset parser", () => {
   it("parses a screen root with children", () => {

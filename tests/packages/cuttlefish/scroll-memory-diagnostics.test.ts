@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SCROLL_CANVAS_BUDGET_BYTES } from "../../../packages/cuttlefish/src/api/shared/display-profile.js";
-import { analyzeScrollMemory } from "../../../packages/cuttlefish/src/ui/scroll-memory-diagnostics.js";
-import type { UINodeModel } from "../../../packages/cuttlefish/src/ui/model.js";
+import { analyzeScrollMemory } from "../../../packages/ui/src/ui-engine/scroll-memory-diagnostics.js";
+import type { UINodeModel } from "../../../packages/ui/src/ui-engine/model.js";
 
 function scrollNode(overrides: Partial<UINodeModel>): UINodeModel {
   return {

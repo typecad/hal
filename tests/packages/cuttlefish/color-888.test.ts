@@ -4,7 +4,7 @@ import {
   resolveColor888,
   rgb888To666,
   rgb888To565,
-} from "../../../packages/cuttlefish/src/ui/color";
+} from "../../../packages/ui/src/ui-engine/color";
 import { deriveCapabilities } from "../../../packages/cuttlefish/src/api/shared/display-capabilities";
 
 describe("rgb888 color format", () => {

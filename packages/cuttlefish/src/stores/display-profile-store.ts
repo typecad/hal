@@ -9,20 +9,9 @@
 // display dimensions, pins, rotation, and touch config are data-driven.
 // ---------------------------------------------------------------------------
 
-import type { DisplayProfile } from "../api/shared/index.js";
+import type { DisplayProfile, ResolvedDisplay } from "../api/shared/index.js";
 
-/** Extended profile with mount wiring (cs/dc/rst/address/reset from ui.mount). */
-export interface ResolvedDisplay extends DisplayProfile {
-  _mountCs: number;
-  _mountDc: number;
-  _mountRst: number;
-  _mountBus: string;
-  _mountAddress: number;
-  _mountReset: number;
-  /** Arduino FQBN (e.g. "esp32:esp32:esp32s3:PSRAM=opi"), used to derive PSRAM
-   *  availability for the scroll-canvas-memory budget. Optional. */
-  _buildTarget?: string;
-}
+export type { ResolvedDisplay };
 
 let currentProfile: ResolvedDisplay | null = null;
 

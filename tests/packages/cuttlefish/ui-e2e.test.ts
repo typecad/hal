@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { transpileUI } from "@typecad/cuttlefish/ui/transpile-ui";
+import { transpileUI } from "@typecad/ui/ui-engine/transpile-ui";
 
 const HTML = [
   `<screen>`,

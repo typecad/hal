@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { emitImageTables, type UIImageAsset } from "../../../packages/cuttlefish/src/ui/image-assets";
+import { emitImageTables, type UIImageAsset } from "../../../packages/ui/src/ui-engine/image-assets";
 
 describe("UI image asset emission", () => {
   const asset: UIImageAsset = {

@@ -18,8 +18,8 @@ import ts from "typescript";
 import { Diagnostic, type SourceSpan } from "../../types.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
-import { resolveColorInternal } from "../../ui/color.js";
-import { getDisplayProfile } from "../../ui/display-profile-store.js";
+import { requireUIHook } from "../../ui-hook.js";
+import { getDisplayProfile } from "../../stores/display-profile-store.js";
 import {
   resolveColorIR,
   lowerCallbackStatements,
@@ -71,7 +71,7 @@ function tryColor(text: string): number | null {
   if (!isColorLiteral(text)) return null;
   const color = text.trim().replace(/^["']|["']$/g, "");
   try {
-    return resolveColorInternal(color, getDisplayProfile().colorFormat);
+    return requireUIHook().resolveColorInternal(color, getDisplayProfile().colorFormat);
   } catch {
     return null;
   }

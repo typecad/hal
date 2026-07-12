@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
-import { resolveColor } from "@typecad/cuttlefish/ui/color";
-import type { PreviewSnapshot } from "@typecad/cuttlefish/preview/types";
+import { PreviewUIRuntime } from "@typecad/ui/preview/host-ui-runtime";
+import { resolveColor } from "@typecad/ui/ui-engine/color";
+import type { PreviewSnapshot } from "@typecad/ui/preview/types";
 
 // A canvas draw body can read dynamic values: e.g.
 //   ctx.line(0, h/2, screen.needle.value, h/2, 'red')

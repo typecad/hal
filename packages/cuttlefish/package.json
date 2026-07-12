@@ -25,6 +25,22 @@
       "types": "./dist/api/shared/index.d.ts",
       "default": "./dist/api/shared/index.js"
     },
+    "./ui-hook": {
+      "types": "./dist/ui-hook.d.ts",
+      "default": "./dist/ui-hook.js"
+    },
+    "./config-loader": {
+      "types": "./dist/config-loader.d.ts",
+      "default": "./dist/config-loader.js"
+    },
+    "./stores/display-profile-store": {
+      "types": "./dist/stores/display-profile-store.d.ts",
+      "default": "./dist/stores/display-profile-store.js"
+    },
+    "./stores/theme-store": {
+      "types": "./dist/stores/theme-store.d.ts",
+      "default": "./dist/stores/theme-store.js"
+    },
     "./api/schema": {
       "types": "./dist/api/schema/index.d.ts",
       "default": "./dist/api/schema/index.js"
@@ -32,50 +48,6 @@
     "./emit/route-hal-op": {
       "types": "./dist/emit/route-hal-op.d.ts",
       "default": "./dist/emit/route-hal-op.js"
-    },
-    "./ui/color": {
-      "types": "./dist/ui/color.d.ts",
-      "default": "./dist/ui/color.js"
-    },
-    "./ui/html-parser": {
-      "types": "./dist/ui/html-parser.d.ts",
-      "default": "./dist/ui/html-parser.js"
-    },
-    "./ui/inline-parser": {
-      "types": "./dist/ui/inline-parser.d.ts",
-      "default": "./dist/ui/inline-parser.js"
-    },
-    "./ui/rich-layout": {
-      "types": "./dist/ui/rich-layout.d.ts",
-      "default": "./dist/ui/rich-layout.js"
-    },
-    "./ui/default-keyboards": {
-      "types": "./dist/ui/default-keyboards.d.ts",
-      "default": "./dist/ui/default-keyboards.js"
-    },
-    "./ui/css-parser": {
-      "types": "./dist/ui/css-parser.d.ts",
-      "default": "./dist/ui/css-parser.js"
-    },
-    "./ui/style-resolver": {
-      "types": "./dist/ui/style-resolver.d.ts",
-      "default": "./dist/ui/style-resolver.js"
-    },
-    "./ui/layout-engine": {
-      "types": "./dist/ui/layout-engine.d.ts",
-      "default": "./dist/ui/layout-engine.js"
-    },
-    "./ui/text-layout": {
-      "types": "./dist/ui/text-layout.d.ts",
-      "default": "./dist/ui/text-layout.js"
-    },
-    "./ui/keyframes": {
-      "types": "./dist/ui/keyframes.d.ts",
-      "default": "./dist/ui/keyframes.js"
-    },
-    "./ui/block-layout": {
-      "types": "./dist/ui/block-layout.d.ts",
-      "default": "./dist/ui/block-layout.js"
     },
     "./ir/transformers/ui-lowering": {
       "types": "./dist/ir/transformers/ui-lowering.d.ts",
@@ -92,30 +64,6 @@
     "./ir/transformers/ui-reactive": {
       "types": "./dist/ir/transformers/ui-reactive.d.ts",
       "default": "./dist/ir/transformers/ui-reactive.js"
-    },
-    "./ui/runtime-header": {
-      "types": "./dist/ui/runtime-header.d.ts",
-      "default": "./dist/ui/runtime-header.js"
-    },
-    "./ui/transpile-ui": {
-      "types": "./dist/ui/transpile-ui.d.ts",
-      "default": "./dist/ui/transpile-ui.js"
-    },
-    "./ui/model": {
-      "types": "./dist/ui/model.d.ts",
-      "default": "./dist/ui/model.js"
-    },
-    "./ui/ui-registry": {
-      "types": "./dist/ui/ui-registry.d.ts",
-      "default": "./dist/ui/ui-registry.js"
-    },
-    "./preview/host-gfx": {
-      "types": "./dist/preview/host-gfx.d.ts",
-      "default": "./dist/preview/host-gfx.js"
-    },
-    "./preview/host-ui-runtime": {
-      "types": "./dist/preview/host-ui-runtime.d.ts",
-      "default": "./dist/preview/host-ui-runtime.js"
     }
   },
   "files": [
@@ -131,11 +79,7 @@
   },
   "dependencies": {
     "chalk": "^4.1.2",
-    "css-tree": "^3.2.1",
-    "linkedom": "^0.18.12",
-    "opentype.js": "^2.0.0",
     "typescript": "^5.7.3",
-    "yoga-layout": "^3.2.1",
     "zod": "^3.24.0"
   },
   "peerDependencies": {

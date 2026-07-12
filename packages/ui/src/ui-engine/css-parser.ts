@@ -10,10 +10,10 @@
 // ---------------------------------------------------------------------------
 
 import { parse, walk, generate } from "css-tree";
-import type { Diagnostic } from "../types.js";
-import { getDisplayProfile } from "./display-profile-store.js";
-import { effectiveDisplaySize } from "../api/shared/display-profile.js";
-import { getThemeClass } from "./theme-store.js";
+import type { Diagnostic } from "@typecad/cuttlefish/api/shared";
+import { getDisplayProfile } from "@typecad/cuttlefish/stores/display-profile-store";
+import { effectiveDisplaySize } from "@typecad/cuttlefish/api/shared";
+import { getThemeClass } from "@typecad/cuttlefish/stores/theme-store";
 
 export type CSSSelectorKind = "element" | "id" | "class" | "attribute";
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
+import { parseHtml } from "@typecad/ui/ui-engine/html-parser";
 
 describe("ref attribute (TS handle separate from CSS id)", () => {
   it("captures ref when present", () => {
