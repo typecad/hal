@@ -25,6 +25,10 @@
       "types": "./dist/api/shared/index.d.ts",
       "default": "./dist/api/shared/index.js"
     },
+    "./ui-hook": {
+      "types": "./dist/ui-hook.d.ts",
+      "default": "./dist/ui-hook.js"
+    },
     "./api/schema": {
       "types": "./dist/api/schema/index.d.ts",
       "default": "./dist/api/schema/index.js"

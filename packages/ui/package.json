@@ -9,6 +9,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./engine": {
+      "types": "./dist/engine-index.d.ts",
+      "default": "./dist/engine-index.js"
+    },
+    "./runtime-header": {
+      "types": "./dist/ui-engine/runtime-header.d.ts",
+      "default": "./dist/ui-engine/runtime-header.js"
     }
   },
   "sideEffects": false,
@@ -16,6 +24,9 @@
     "dist",
     "src"
   ],
+  "peerDependencies": {
+    "@typecad/cuttlefish": "0.1.0-alpha.1"
+  },
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build"
