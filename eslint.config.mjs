@@ -96,7 +96,6 @@ export default [
       "packages/**",
       "tests/**",
       "native_demo/**",
-      "vscode-typehal-debug/**",
       "website/**",
     ],
   },

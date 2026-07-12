@@ -1,6 +1,6 @@
-# TypeHAL Fluent API Guide
+# Cuttlefish Fluent API Guide
 
-This document explains how to implement fluent, chainable APIs in TypeHAL that transpile to efficient C++.
+This document explains how to implement fluent, chainable APIs in Cuttlefish that transpile to efficient C++.
 
 ## 1. Simple Chaining (The `this` Pattern)
 
@@ -28,7 +28,7 @@ Board.UART0.begin(115200).println("Hello");
 For complex operations that require multiple steps to form a single C++ command (e.g., `pin.tone(440).for(500)`), use an intermediate "Chain" class.
 
 ### How it Works
-The TypeHAL transpiler automatically propagates fields from a receiver to a returned instance if they share field names (e.g., `_pin`). This allows state to carry through the chain without complex transpiler logic.
+The Cuttlefish transpiler automatically propagates fields from a receiver to a returned instance if they share field names (e.g., `_pin`). This allows state to carry through the chain without complex transpiler logic.
 
 ### Implementation Steps
 

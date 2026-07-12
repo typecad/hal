@@ -1,6 +1,6 @@
 # Adding a Display Driver
 
-How to add a new display driver (e.g. SSD1306, ST7789) to TypeHAL's graphics
+How to add a new display driver (e.g. SSD1306, ST7789) to Cuttlefish's graphics
 layer. The ILI9341 driver in `src/graphics/ili9341.ts` is the reference
 implementation — read it alongside this guide.
 

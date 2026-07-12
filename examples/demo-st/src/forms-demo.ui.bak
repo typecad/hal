@@ -1,0 +1,400 @@
+<script>
+  // showcase.ui — single-screen forms demo.
+  // Reactive state + bindings for the form controls. The template owns the
+  // event attributes and {interpolation} sites; this script owns the signals
+  // and the ui.bind() effects that drive live text, color, and meter state.
+
+  import { ui } from '@typecad/ui';
+
+  ui.mount(screen);
+
+  // ── Button: tap counter ───────────────────────────────────────────────────
+  export const count = ui.signal(0);
+
+  export function incrementTaps() {
+    count.set(count() + 1);
+  }
+
+  // ── Text + number inputs: commit counters ─────────────────────────────────
+  export const nameCommits = ui.signal(0);
+  export const ageCommits = ui.signal(0);
+
+  export function captureName() {
+    nameCommits.set(nameCommits() + 1);
+    console.log('name:', screen.formName.text);
+  }
+
+  export function captureAge() {
+    ageCommits.set(ageCommits() + 1);
+    console.log('age:', screen.formAge.text);
+  }
+
+  // ── Reactive bindings: each control drives a visible effect ───────────────
+  ui.bind(screen.featureStatus, 'text', () => screen.formCheck1.value ? 'feature: enabled' : 'feature: disabled');
+  ui.bind(screen.featureLamp, 'background', () => screen.formCheck1.value ? '#29d391' : '#4b5563');
+  ui.bind(screen.modeStatus, 'text', () => screen.formSelect1.value == 0 ? 'mode: alpha' : screen.formSelect1.value == 1 ? 'mode: beta' : 'mode: gamma');
+  ui.bind(screen.modeAccent, 'background', () => screen.formSelect1.value == 0 ? '#38bdf8' : screen.formSelect1.value == 1 ? '#f6c84c' : '#b985ff');
+  ui.bind(screen.radioStatus, 'text', () => screen.formRadio2.value ? 'speed: fast' : 'speed: calm');
+  ui.bind(screen.volumeStatus, 'text', () => `volume: ${screen.formRange1.value}`);
+  ui.bind(screen.formProg, 'value', () => screen.formRange1.value * 10);
+  ui.bind(screen.formProgressCaption, 'text', () => `meter: ${screen.formRange1.value * 10}%`);
+</script>
+
+<style>
+/* ---------------------------------------------------------------------------
+   showcase.ui — single-screen forms demo styles.
+   This inline <style> is the sole CSS authority for a .ui single-file entry
+   (the transpiler does not load themeCss for .ui entries). Holds: @font-face,
+   the :root/.dark token palette, and the rules the new screen references.
+
+   Vertical budget is tight on 320x480 portrait, so titles use font-weight:
+   normal (the runtime bumps textSize for bold text, which would both enlarge
+   the <h3> labels and waste per-char advance). Cards use compact padding/gap.
+   ----------------------------------------------------------------------- */
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("DejaVuSans.ttf");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("DejaVuSans-Bold.ttf");
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* ── Light theme (default :root) ── */
+:root {
+  --background: #f7f3e8;
+  --foreground: #15171a;
+  --card: #fffaf0;
+  --card-foreground: #15171a;
+  --popover: #fffaf0;
+  --popover-foreground: #15171a;
+  --primary: #ef5b3f;
+  --primary-foreground: #ffffff;
+  --secondary: #f6c84c;
+  --secondary-foreground: #15171a;
+  --muted: #e8e0d0;
+  --muted-foreground: #596168;
+  --accent: #1f9f9a;
+  --accent-foreground: #071012;
+  --destructive: #15171a;
+  --destructive-foreground: #ffffff;
+  --border: #15171a;
+  --input: #15171a;
+  --ring: #ef5b3f;
+  --chart-1: #ef5b3f;
+  --chart-2: #f6c84c;
+  --chart-3: #38bdf8;
+  --chart-4: #29d391;
+  --chart-5: #9f7aea;
+  --radius: 6px;
+  --shadow: 3px 3px 0px 0px hsl(210 10% 8% / 1.00);
+}
+
+/* ── Dark theme (.dark) — select via themeClass: 'dark' ── */
+.dark {
+  --background: #111418;
+  --foreground: #f7f3e8;
+  --card: #1c2228;
+  --card-foreground: #f7f3e8;
+  --popover: #1c2228;
+  --popover-foreground: #f7f3e8;
+  --primary: #ff765c;
+  --primary-foreground: #111418;
+  --secondary: #f6c84c;
+  --secondary-foreground: #111418;
+  --muted: #29313a;
+  --muted-foreground: #b9c3c8;
+  --accent: #43d2c8;
+  --accent-foreground: #071012;
+  --destructive: #f7f3e8;
+  --destructive-foreground: #111418;
+  --border: #f6c84c;
+  --input: #f6c84c;
+  --ring: #ff765c;
+  --chart-1: #ff765c;
+  --chart-2: #f6c84c;
+  --chart-3: #38bdf8;
+  --chart-4: #29d391;
+  --chart-5: #b985ff;
+  --radius: 6px;
+  --shadow: 3px 3px 0px 0px hsl(0 0% 0% / 1.00);
+}
+
+/* ── Screen scaffolding: single non-scrolling column of rows ── */
+screen {
+  background: var(--background);
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+}
+
+/* Header card (full width). Compact: title + subtitle on minimal padding so
+   the 4 control rows below can fill the landscape viewport. */
+#formHeader {
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 4px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+#formTitle {
+  color: var(--foreground);
+  font-family: "ColibriDemo";
+  font-size: 20px;
+  font-weight: bold;
+  text-align: center;
+}
+#formSubtitle {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Grid row: a flex row holding 2 (split) cards. Every row is a 2-column
+   split so no single card towers over the others and blows the 480px budget. */
+.formRow {
+  flex-direction: row;
+  gap: 8px;
+  align-items: stretch;
+}
+
+/* Form card: one logical control + its status line. flex:1 makes the two
+   siblings split the row evenly. */
+.formCard {
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 2px;
+  box-shadow: var(--shadow);
+}
+/* Card label. font-weight: normal is mandatory: the UA makes <h3> bold and
+   the runtime bumps textSize for bold text, which both enlarges the label
+   and widens per-char advance (wrapping/overflow risk in a half-width card). */
+.demoLabel {
+  color: var(--secondary);
+  font-size: 14px;
+  font-weight: normal;
+}
+.formStatus {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+.formPill {
+  color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 7px;
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* Inline row inside a card: control left, indicator/count right. */
+.cardRow {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+/* ── Button ── */
+#formBtn {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-size: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 4px 12px;
+  transition: background 100ms;
+  white-space: nowrap;
+}
+#formBtn:pressed { background: var(--accent); color: var(--accent-foreground); }
+#formBtnCount {
+  color: var(--foreground);
+  font-size: 14px;
+  padding: 3px 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ── Checkbox + lamp ── */
+#formCheck1 { color: var(--foreground); font-size: 16px; }
+#featureLamp {
+  width: 20px;
+  height: 20px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+/* ── Select + accent ── */
+#formSelect1 {
+  color: var(--accent);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 16px;
+  padding: 3px 8px;
+  text-decoration: underline;
+}
+#modeAccent {
+  width: 20px;
+  height: 20px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+/* ── Radio group ── */
+#radioChoices {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+#formRadio1, #formRadio2 { color: var(--foreground); font-size: 16px; }
+
+/* ── Range + progress (split into two side-by-side cards) ── */
+#formRange1 {
+  color: var(--chart-1);
+  width: 100%;
+}
+#formProg {
+  color: var(--chart-4);
+  width: 100%;
+}
+
+/* ── Text + number inputs ── */
+#formName, #formAge {
+  color: var(--foreground);
+  background: #12161b;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 100%;
+  padding: 3px;
+  font-size: 15px;
+}
+
+/* ── Custom keyboard keys (keyboard template is a sibling of <screen>) ── */
+.ui-key { background: var(--card); color: var(--foreground); border: 1px solid var(--border); }
+.ui-key-ok { background: var(--chart-4); color: var(--foreground); }
+.ui-key-del { background: var(--destructive); color: var(--destructive-foreground); }
+.ui-key-page { background: var(--accent); color: var(--accent-foreground); }
+.ui-keyboard { background: var(--muted); }
+
+a { color: var(--accent); }
+</style>
+
+<!-- ── Single-screen forms demo (320×480, no scroll) ─────────────────────── -->
+<!-- Body is a flex column of .formRow rows; every row is a 2-column split so
+     no card is tall enough to push later rows off-screen. Sized to fill the
+     480px height (header + 4 rows, ~12px gaps, ~12px padding). -->
+<screen id="forms">
+  <body>
+    <header id="formHeader">
+      <h1 id="formTitle">cuttlefish · forms</h1>
+      <p id="formSubtitle">every control, one screen</p>
+    </header>
+
+    <!-- Row 1: button | checkbox -->
+    <div class="formRow">
+      <section class="formCard">
+        <h3 class="demoLabel">button</h3>
+        <div class="cardRow">
+          <button id="formBtn" on:click={incrementTaps}>tap me</button>
+          <span id="formBtnCount" class="formStatus">{count}</span>
+        </div>
+      </section>
+      <section class="formCard">
+        <h3 class="demoLabel">checkbox</h3>
+        <div class="cardRow">
+          <check id="formCheck1">Enable feature</check>
+          <div id="featureLamp"></div>
+        </div>
+        <span id="featureStatus" class="formStatus">feature: disabled</span>
+      </section>
+    </div>
+
+    <!-- Row 2: select | radio -->
+    <div class="formRow">
+      <section class="formCard">
+        <h3 class="demoLabel">select</h3>
+        <div class="cardRow">
+          <select id="formSelect1">
+            <option value="a">Alpha</option>
+            <option value="b">Beta</option>
+            <option value="c">Gamma</option>
+          </select>
+          <div id="modeAccent"></div>
+        </div>
+        <span id="modeStatus" class="formStatus">mode: alpha</span>
+      </section>
+      <section class="formCard">
+        <h3 class="demoLabel">radio</h3>
+        <div id="radioChoices">
+          <radio id="formRadio1" name="grp" value="x" checked>Calm</radio>
+          <radio id="formRadio2" name="grp" value="y">Fast</radio>
+        </div>
+        <span id="radioStatus" class="formStatus">speed: calm</span>
+      </section>
+    </div>
+
+    <!-- Row 3: range | progress (split, not stacked — both reflect formRange1) -->
+    <div class="formRow">
+      <section class="formCard">
+        <h3 class="demoLabel">range</h3>
+        <range id="formRange1" min="0" max="10" value="3"></range>
+        <span id="volumeStatus" class="formStatus">volume: 3</span>
+      </section>
+      <section class="formCard">
+        <h3 class="demoLabel">progress</h3>
+        <progress id="formProg" value="30"></progress>
+        <span id="formProgressCaption" class="formStatus">meter: 30%</span>
+      </section>
+    </div>
+
+    <!-- Row 4: text | number -->
+    <div class="formRow">
+      <section class="formCard">
+        <h3 class="demoLabel">text</h3>
+        <input id="formName" type="text" placeholder="name" maxlength="20" on:change={captureName}></input>
+        <span id="nameStatus" class="formStatus">{nameCommits}</span>
+      </section>
+      <section class="formCard">
+        <h3 class="demoLabel">number</h3>
+        <input id="formAge" type="number" placeholder="0" maxlength="3" on:change={captureAge}></input>
+        <span id="ageStatus" class="formStatus">{ageCommits}</span>
+      </section>
+    </div>
+
+  </body>
+</screen>
+
+<!-- Custom keyboard template (sibling of <screen>). -->
+<keyboard id="kbAlpha" variant="alpha" class="ui-keyboard">
+  <row>
+    <key>q</key><key>w</key><key>e</key><key>r</key><key>t</key><key>y</key><key>u</key><key>i</key><key>o</key><key>p</key>
+  </row>
+  <row>
+    <key>a</key><key>s</key><key>d</key><key>f</key><key>g</key><key>h</key><key>j</key><key>k</key><key>l</key>
+  </row>
+  <row>
+    <key special="1">⇧</key><key>z</key><key>x</key><key>c</key><key>v</key><key>b</key><key>n</key><key>m</key><key special="2">⌫</key>
+  </row>
+  <row>
+    <key special="4">123</key><key> </key><key special="3">OK</key>
+  </row>
+</keyboard>

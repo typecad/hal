@@ -54,6 +54,9 @@ website/
 # brainstorming visual companion
 .superpowers/
 
+# Agent planning/research/spec artifacts (kept locally, not source of truth)
+docs/superpowers/
+
 # Generated demo config (per-project override)
 demo/cuttlefish.config.js
 vitest.config.js

@@ -1,0 +1,681 @@
+/* ---------------------------------------------------------------------------
+   hello.ui.css — built-in elements demo
+   ----------------------------------------------------------------------- */
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("DejaVuSans.ttf");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("DejaVuSans-Bold.ttf");
+  font-weight: 700;
+  font-style: normal;
+}
+
+screen {
+  background: #1a1a2e;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+}
+
+#header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 2px solid dodgerblue;
+  padding-bottom: 6px;
+  background: linear-gradient(to bottom, #1e2a4e, #364b8d);
+}
+
+#title {
+  color: dodgerblue;
+  font-family: "ColibriDemo";
+  font-size: 24px;
+  font-smoothing: antialiased;
+  /* font-weight: bold; */
+  text-shadow: 1px 1px 1px rgba(0,0,0,0.8);
+}
+
+#subtitle {
+  color: lightslategray;
+  font-family: "ColibriDemo";
+  font-size: 16px;
+  font-smoothing: antialiased;
+}
+
+#body {
+  overflow: scroll;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+#counter {
+  color: limegreen;
+  font-size: 16px;
+  width: 72px;
+  white-space: nowrap;
+  text-align: left;
+}
+
+@keyframes slideXY {
+  0%, 100% { transform: translate(0px, 0px); background: lightskyblue; }
+  50% { transform: translate(52px, 8px); background: limegreen; }
+}
+
+@keyframes growMove {
+  0%, 100% { transform: translate(0%, 0px) scale(1); background: lightskyblue; }
+  50% { transform: translate(250%, 6px) scale(2.8, 1.6); background: lightcoral; }
+}
+
+@keyframes originScale {
+  0%, 100% { transform: translate(4px, 2px) scale(1); background: lightskyblue; }
+  50% { transform: translate(4px, 2px) scale(2); background: limegreen; }
+}
+
+@keyframes originScaleCenter {
+  0%, 100% { transform: translate(54px, -6px) scale(1); background: lightskyblue; }
+  50% { transform: translate(54px, -6px) scale(2); background: limegreen; }
+}
+
+@keyframes quarterTurn {
+  0%, 24% { transform: translate(30px, 3px) rotate(0deg); background: lightcoral; }
+  25%, 49% { transform: translate(30px, 3px) rotate(90deg); background: lightskyblue; }
+  50%, 74% { transform: translate(30px, 3px) rotate(180deg); background: limegreen; }
+  75%, 100% { transform: translate(30px, 3px) rotate(270deg); background: khaki; }
+}
+
+#transformDemo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+#transformDemoLabel {
+  color: lightslategray;
+  font-size: 16px;
+}
+
+#translateLabel, #scaleLabel, #originLabel, #rotateLabel {
+  color: lightslategray;
+  font-size: 14px;
+}
+
+#transformTrack, #resizeTrack, #originTrack, #rotateTrack {
+  width: 88px;
+  height: 28px;
+  background: #1a3a5c;
+  border: 1px solid #2a5a8c;
+  border-radius: 6px;
+}
+
+#transformDot {
+  width: 20px;
+  height: 20px;
+  background: lightskyblue;
+  border-radius: 4px;
+  animation: slideXY 1800ms infinite;
+}
+
+#resizeDot {
+  width: 10px;
+  height: 10px;
+  background: lightskyblue;
+  border-radius: 4px;
+  transform-origin: left top;
+  animation: growMove 1800ms infinite;
+}
+
+#originLeft, #originCenter {
+  width: 8px;
+  height: 8px;
+  background: lightskyblue;
+  border-radius: 2px;
+  animation: originScale 1600ms infinite;
+}
+
+#originLeft {
+  transform-origin: left top;
+}
+
+#originCenter {
+  transform-origin: center;
+  animation: originScaleCenter 1600ms infinite;
+}
+
+#rotateFill {
+  width: 12px;
+  height: 22px;
+  background: lightcoral;
+  border-radius: 2px;
+  transform-origin: center;
+  animation: quarterTurn 2000ms infinite;
+}
+
+#textLayoutDemo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  background: #16213e;
+  border: 1px solid #2a5a8c;
+  border-radius: 6px;
+}
+
+#textLayoutLabel {
+  color: lightslategray;
+  font-size: 16px;
+}
+
+#layerDemo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#layerDemoLabel {
+  color: lightslategray;
+  font-size: 16px;
+}
+
+#layerStage {
+  display: flex;
+  position: relative;
+  width: 120px;
+  height: 64px;
+  background: #16213e;
+  border: 1px solid #2a5a8c;
+  border-radius: 6px;
+}
+
+#layerBack {
+  position: absolute;
+  left: 14px;
+  top: 10px;
+  width: 72px;
+  height: 36px;
+  background: #1a3a5c;
+  border-radius: 4px;
+}
+
+#layerFront {
+  position: absolute;
+  left: 44px;
+  top: 22px;
+  width: 56px;
+  height: 30px;
+  background: lightcoral;
+  border: 1px solid khaki;
+  border-radius: 4px;
+  z-index: 5;
+}
+
+#layerFrontText {
+  width: 56px;
+  color: white;
+  font-size: 16px;
+  text-align: center;
+}
+
+#conditionalDemo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#conditionalDemoLabel {
+  color: lightslategray;
+  font-size: 16px;
+}
+
+#conditionalStage {
+  position: relative;
+  width: 150px;
+  height: 44px;
+  background: #16213e;
+  border: 1px solid #2a5a8c;
+  border-radius: 6px;
+}
+
+#evenBranch, #oddBranch {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  width: 134px;
+  height: 28px;
+  border-radius: 4px;
+}
+
+#evenBranch {
+  background: #1a6b3c;
+}
+
+#oddBranch {
+  background: #5c1a1a;
+}
+
+#evenBranchText, #oddBranchText {
+  width: 134px;
+  color: white;
+  font-size: 16px;
+  text-align: center;
+}
+
+#wrappedCopy {
+  width: 170px;
+  color: white;
+  font-size: 16px;
+  line-height: 20px;
+  text-align: center;
+}
+
+#preLineCopy {
+  width: 130px;
+  color: lightskyblue;
+  font-size: 14px;
+  line-height: 18px;
+  white-space: pre-line;
+  text-align: center;
+}
+
+#logo {
+  transform: rotate(90deg);
+  transform-origin: center;
+}
+
+#btn {
+  position: relative;
+  top: 0;
+  background: #FFA12B;
+  color: white;
+  font-family: "ColibriDemo";
+  font-weight: bold;
+  font-size: 32px;
+  border-radius: 5px;
+  box-shadow: 0 3px 0 #915100, 0 4px 0 #2B1800;
+  padding: 12px 34px;
+  margin: 4px 3px 18px;
+  text-align: center;
+  transition: background 80ms;
+}
+
+#btn:pressed {
+  top:3px;
+  background: #F78900;
+}
+
+#led {
+  color: lightskyblue;
+  font-size: 16px;
+}
+
+#modeRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+}
+
+#modeRow label {
+  color: lightslategray;
+  font-size: 16px;
+}
+
+#mode {
+  color: khaki;
+  font-size: 16px;
+  text-decoration: underline;
+}
+
+#speedRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 16px;
+}
+
+#speedSlow, #speedFast {
+  color: lightskyblue;
+  font-size: 16px;
+}
+
+#progress {
+  color: limegreen;
+  min-height: 16px;
+}
+
+#aaLabel {
+  color: dodgerblue;
+  font-size: 16px;
+  font-weight: bold;
+  align-self: center;
+}
+
+#aaRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 20px;
+}
+
+#aaRow radio {
+  font-size: 16px;
+}
+
+#aaRow check {
+  font-size: 16px;
+}
+
+#aaOff1, #aaCheck2 {
+  font-smoothing: none;
+}
+
+#aaFontRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 16px;
+}
+
+#aaFontSmooth {
+  color: white;
+  font-family: "ColibriDemo";
+  font-size: 24px;
+  font-weight: bold;
+  font-smoothing: antialiased;
+}
+
+#aaFontBitmap {
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  font-smoothing: none;
+}
+
+#rangeRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+}
+
+#rangeRow label {
+  color: lightslategray;
+  font-size: 16px;
+}
+
+#points {
+  color: lightskyblue;
+  width: 220px;
+}
+
+#inputRow, #portRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+}
+
+#inputRow label, #portRow label {
+  color: lightslategray;
+  font-size: 16px;
+}
+
+#ssid, #port {
+  color: lightskyblue;
+  border: 1px solid lightslategray;
+  padding: 4px 8px;
+  width: 200px;
+}
+
+#footer {
+  padding: 4px 0;
+}
+
+#hint {
+   color: slategray;
+   font-size: 16px;
+   text-decoration: underline;
+ }
+
+#settingsBody,
+#aboutBody {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 10px 0;
+}
+
+#aboutBody {
+  overflow: scroll;
+}
+
+ #fitDemo {
+   display: flex;
+   flex-direction: column;
+   align-items: center;
+   gap: 4px;
+ }
+
+ #fitDemoLabel {
+   color: lightslategray;
+   font-size: 14px;
+ }
+
+#fitContainRow,
+#fitCoverRow,
+#fitFillRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+  width: 152px;
+  height: 42px;
+}
+
+#fitContainLabel,
+#fitCoverLabel,
+#fitFillLabel {
+  width: 84px;
+  color: lightslategray;
+  font-size: 14px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+#fitImgContain,
+#fitImgCover,
+#fitImgFill {
+  background: #0f172a;
+  border: 1px solid #4a6a9c;
+}
+
+#displayNoneDemo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#displayNoneDemoLabel {
+  color: lightslategray;
+  font-size: 14px;
+}
+
+#displayNoneStack {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 180px;
+  background: #2a5a8c;
+  padding: 1px;
+}
+
+#displayBeforeRow,
+#displayAfterRow,
+#hiddenAttrRow,
+#displayNoneRow {
+  width: 180px;
+  height: 24px;
+}
+
+#displayBeforeRow {
+  background: #1a3a5c;
+  border-radius: 4px 4px 0 0;
+}
+
+#displayAfterRow {
+  background: #1a6b3c;
+  border-radius: 0 0 4px 4px;
+}
+
+#hiddenAttrRow,
+#displayNoneRow {
+  background: #5c1a1a;
+}
+
+#displayNoneRow {
+  display: none;
+}
+
+#displayBeforeText,
+#displayAfterText,
+#hiddenAttrText,
+#displayNoneText {
+  width: 180px;
+  color: white;
+  font-size: 14px;
+  text-align: center;
+}
+
+#aspectDemo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+#aspectDemoLabel {
+  color: lightslategray;
+  font-size: 14px;
+}
+
+#aspectWide {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 144px;
+  aspect-ratio: 16 / 9;
+  background: #1a3a5c;
+  border: 1px solid #2a5a8c;
+  border-radius: 4px;
+}
+
+#aspectSquare {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 56px;
+  aspect-ratio: 1 / 1;
+  background: #1a6b3c;
+  border: 1px solid #2a5a8c;
+  border-radius: 4px;
+}
+
+#aspectWideText,
+#aspectSquareText {
+  width: 144px;
+  color: white;
+  font-size: 14px;
+  text-align: center;
+}
+
+#aspectSquareText {
+  width: 56px;
+}
+
+  /* Keyboard styling: digit/letter keys get a distinct color from special keys */
+ .ui-key {
+  background: #1a3a5c;
+  color: lightskyblue;
+  border-color: #2a5a8c;
+}
+
+.ui-key-ok {
+  background: #1a6b3c;
+  color: white;
+}
+
+.ui-key-del {
+  background: #5c1a1a;
+  color: lightcoral;
+}
+
+.ui-key-page {
+  background: #3a3a5c;
+  color: thistle;
+}
+
+.ui-keyboard {
+  background: #0a0a1a;
+}
+
+/* ── Canvas demo ──────────────────────────────────────────────────────── */
+#canvasDemo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+#canvasDemoLabel {
+  color: lightslategray;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+#gaugeLabel,
+#canvasHint {
+  color: lightslategray;
+  font-size: 14px;
+}
+
+/* Layout box matches the drawing buffer (width/height attrs) so nothing clips. */
+#gauge {
+  width: 160px;
+  height: 100px;
+  border: 1px solid #2a2a4a;
+  border-radius: 3px;
+}
+
+#canvasHint {
+  color: dodgerblue;
+  font-size: 12px;
+  margin-top: 6px;
+}
