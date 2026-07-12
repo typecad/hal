@@ -1,0 +1,4 @@
+# The runtime-header byte-identity baseline must be byte-stable across platforms.
+# emitRuntimeHeader() normalizes the TS template literal to LF, so the fixture
+# is LF-only; force git to preserve LF (never convert to CRLF on checkout).
+tests/packages/cuttlefish/__fixtures__/runtime-header-baseline.txt text eol=lf
