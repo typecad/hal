@@ -18,7 +18,7 @@ import { Diagnostic } from "../../types.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
 import { resolveColorInternal } from "../../ui/color.js";
-import { getDisplayProfile } from "../../ui/display-profile-store.js";
+import { getDisplayProfile } from "../../stores/display-profile-store.js";
 import { getContext, type PointerTracker } from "../build-ir-state.js";
 import { makeSourceSpan } from "../ast-node-utils.js";
 import { lowerStatementList } from "../statement-to-ir.js";

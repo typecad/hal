@@ -14,7 +14,7 @@ import { measure, measureWithFonts, type Box } from "../ui/layout-engine.js";
 import { lowerUIToModel } from "../ui/model.js";
 import { selectEngine } from "../ui/select-engine.js";
 import { resolveStyles, type StyledNode } from "../ui/style-resolver.js";
-import { getThemeClass, setThemeClass } from "../ui/theme-store.js";
+import { getThemeClass, setThemeClass } from "../stores/theme-store.js";
 import type {
   PreviewBindingSpec,
   PreviewCallbackSpec,

@@ -19,7 +19,7 @@ import { emitSignalDecl, BindingSpec, ListBindingSpec, recordListBinding, getLis
 import { lowerOnMount, markEntryHasUI, getUIModule } from "../../ui/ui-registry.js";
 import { expressionToIR } from "../expression-to-ir.js";
 import { renderExprAsText } from "../render-expr.js";
-import { getDisplayProfile } from "../../ui/display-profile-store.js";
+import { getDisplayProfile } from "../../stores/display-profile-store.js";
 import { effectiveDisplaySize } from "../../api/shared/display-profile.js";
 import {
   lowerCallbackStatements,

@@ -24,7 +24,7 @@ import { allLoweredUIModules, entryHasUI } from "../../ui/ui-registry.js";
 import { uiSignalDecls, uiBindings, uiPressBindings, watchPinSpecs, clickHandlers } from "../../ir/transformers/ui-call-resolver.js";
 import { emitBindingTable, emitListBindingTable, getListBindings, emitInputBindingTable, getInputBindings } from "../../ir/transformers/ui-reactive.js";
 import { emitCanvasBindings, canvasBindings } from "../../ir/transformers/canvas-lowering.js";
-import { getDisplayProfile } from "../../ui/display-profile-store.js";
+import { getDisplayProfile } from "../../stores/display-profile-store.js";
 import {
   effectiveDisplaySize,
   generateTouchAdapter,

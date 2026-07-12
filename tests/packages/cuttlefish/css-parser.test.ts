@@ -3,7 +3,7 @@ import { parseCss, parseInlineStyle, parseFontFaces, parseKeyframes, parseAnimat
 // For tests that touch theme state, import parseCss from src so it shares the
 // same module instance as setThemeClass (the package export resolves to dist).
 import { parseCss as parseCssSrc } from "../../../packages/cuttlefish/src/ui/css-parser";
-import { setThemeClass } from "../../../packages/cuttlefish/src/ui/theme-store";
+import { setThemeClass } from "../../../packages/cuttlefish/src/stores/theme-store";
 
 describe("CSS subset parser", () => {
   it("parses element selectors", () => {

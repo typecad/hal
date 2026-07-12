@@ -4,7 +4,7 @@ import { describe, it, expect, afterEach } from "vitest";
 // its own module, so the profile must be set on that same instance. This mirrors
 // the pattern in css-parser.test.ts (theme-state sharing).
 import { parseCss } from "../../../packages/cuttlefish/src/ui/css-parser";
-import { setDisplayProfile, resetDisplayProfile } from "../../../packages/cuttlefish/src/ui/display-profile-store";
+import { setDisplayProfile, resetDisplayProfile } from "../../../packages/cuttlefish/src/stores/display-profile-store";
 import type { DisplayProfile } from "../../../packages/cuttlefish/src/api/shared/display-profile";
 
 function idsOf(rules: any[]): string[] {

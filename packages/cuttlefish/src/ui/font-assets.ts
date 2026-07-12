@@ -3,7 +3,7 @@ import path from "node:path";
 import opentype from "opentype.js";
 import type { CSSFontFace, CSSProperty } from "./css-parser.js";
 import type { StyledNode } from "./style-resolver.js";
-import { getDisplayProfile } from "./display-profile-store.js";
+import { getDisplayProfile } from "../stores/display-profile-store.js";
 
 export interface UIFontGlyphModel {
   codepoint: number;

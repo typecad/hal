@@ -9,7 +9,7 @@ import {
   planUIFontAssets,
   selectFontAssetForStyle,
 } from "../../../packages/cuttlefish/src/ui/font-assets";
-import { setDisplayProfile, resetDisplayProfile } from "../../../packages/cuttlefish/src/ui/display-profile-store";
+import { setDisplayProfile, resetDisplayProfile } from "../../../packages/cuttlefish/src/stores/display-profile-store";
 
 function withFontFiles(names: string[], run: (dir: string) => void): void {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-font-assets-"));

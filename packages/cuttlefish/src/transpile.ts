@@ -8,6 +8,8 @@ import { buildProgramIR } from "./ir/build-ir.js";
 import { classDeclarationToIR } from "./ir/declaration-builders.js";
 import { clickHandlers } from "./ir/transformers/ui-call-resolver.js";
 import { splitUiFile } from "./ui/ui-file-splitter.js";
+import { setDisplayProfile, resetDisplayProfile } from "./stores/display-profile-store.js";
+import { setThemeCss, resetThemeCss, setThemeClass } from "./stores/theme-store.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
 import { Diagnostic, GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types.js";
 import { readText } from "./utils/fs.js";
@@ -290,8 +292,6 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   setActiveStrategy(strategy);
 
   // Load display profile from config (if present) into the profile store.
-  const { setDisplayProfile, resetDisplayProfile } = await import("./ui/display-profile-store.js");
-  const { setThemeCss, resetThemeCss } = await import("./ui/theme-store.js");
   resetDisplayProfile();
   resetThemeCss();
   const configDisplay = (options as any).display;
@@ -319,7 +319,6 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       setThemeCss(configDisplay.themeCss);
     }
     if (configDisplay.themeClass) {
-      const { setThemeClass } = await import("./ui/theme-store.js");
       setThemeClass(configDisplay.themeClass);
     }
   }

@@ -11,9 +11,9 @@
 
 import { parse, walk, generate } from "css-tree";
 import type { Diagnostic } from "../types.js";
-import { getDisplayProfile } from "./display-profile-store.js";
+import { getDisplayProfile } from "../stores/display-profile-store.js";
 import { effectiveDisplaySize } from "../api/shared/display-profile.js";
-import { getThemeClass } from "./theme-store.js";
+import { getThemeClass } from "../stores/theme-store.js";
 
 export type CSSSelectorKind = "element" | "id" | "class" | "attribute";
 
