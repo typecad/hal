@@ -1,12 +1,12 @@
 {
   "name": "@typecad/cuttlefish",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "TypeScript to C++ transpiler — native, Arduino, and bare-metal targets",
   "type": "module",
   "main": "./dist/transpile.js",
   "types": "./dist/transpile.d.ts",
   "bin": {
-    "cuttlefish": "./dist/cli.js"
+    "cuttlefish": "dist/cli.js"
   },
   "exports": {
     ".": {
@@ -139,7 +139,7 @@
     "zod": "^3.24.0"
   },
   "peerDependencies": {
-    "@typecad/ui": "0.1.0"
+    "@typecad/ui": "0.1.0-alpha.1"
   },
   "peerDependenciesMeta": {
     "@typecad/ui": {
@@ -147,7 +147,7 @@
     }
   },
   "optionalDependencies": {
-    "@typecad/framework-native": "*"
+    "@typecad/framework-native": "0.1.0-alpha.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.7"
@@ -155,7 +155,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/justind000/typecode.git",
+    "url": "git+https://github.com/justind000/typecode.git",
     "directory": "packages/cuttlefish"
   },
   "homepage": "https://github.com/justind000/typecode/tree/main/packages/cuttlefish",
@@ -178,5 +178,6 @@
   "engines": {
     "node": ">=18"
   },
-  "author": "typecad0"
+  "author": "typecad0",
+  "sideEffects": false
 }

@@ -12,7 +12,7 @@
     "paths": {
       "@typecad":                               ["../packages/board-arduino-uno/src/index.ts"],
       "@typecad/hal":                           ["../packages/hal/src/index.ts"],
-      "@typecad/hal":                          ["../packages/cuttlefish/src/api/index.ts"],
+      "@typecad/board":                         ["../packages/cuttlefish/src/api/index.ts"],
       "@typecad/cuttlefish/api/schema":                        ["../packages/cuttlefish/src/api/schema/index.ts"],
       "@typecad/board-arduino-uno":             ["../packages/board-arduino-uno/src/index.ts"],
       "@typecad/board-esp32-devkit":            ["../packages/board-esp32-devkit/src/index.ts"],

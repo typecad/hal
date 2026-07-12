@@ -5,7 +5,7 @@
 // Uses Arduino-compatible API style.
 // ---------------------------------------------------------------------------
 
-import { A0, UART0, delay } from '@typecad';
+import { A0, UART0, delay } from '@typecad/board';
 
 const serial = UART0.begin(9600);
 A0.asInput()

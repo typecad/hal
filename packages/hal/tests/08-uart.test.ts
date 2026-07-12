@@ -6,7 +6,7 @@
 // UART0 can be tested independently of the protocol serial.
 
 import { describe, done } from '@typecad/expect';
-import { UART0 } from '@TypeCAD';
+import { UART0 } from '@typecad/board';
 
 describe("UART0 lifecycle")
   .it("UART0.begin() is callable")

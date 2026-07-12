@@ -1,5 +1,5 @@
 import { describe, done } from '@typecad/expect';
-import { A0, ADC } from '@TypeCAD';
+import { A0, ADC } from '@typecad/board';
 
 describe("ADC reads")
   .it("ADC.read() on channel 0 returns a value within a sane range")

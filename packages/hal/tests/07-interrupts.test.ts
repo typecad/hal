@@ -1,5 +1,5 @@
 import { describe, done } from '@typecad/expect';
-import { D2 } from '@TypeCAD';
+import { D2 } from '@typecad/board';
 
 describe("Global interrupt control")
   .it("noInterrupts() is callable without crashing")

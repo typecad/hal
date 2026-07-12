@@ -60,7 +60,7 @@ export type ExpressionIR =
   /**
    * Property access: `object.property`.
    * Produced by `expressionToIR` for all property-read expressions so that
-   * the emitter can recognise and translate typehal metadata paths like
+   * the emitter can recognise and translate TypeCAD metadata paths like
    * `Board.definition.mcu` without regex post-processing.
    */
   | { kind: "property-access"; object: ExpressionIR; property: string; isStatic?: boolean; isEnum?: boolean; isNamespace?: boolean; isPointer?: boolean }

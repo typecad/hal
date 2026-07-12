@@ -5,7 +5,7 @@
 // Shows: begin(), transfer(), setMode(), setBitOrder(), setFrequency()
 // ---------------------------------------------------------------------------
 
-import { SPI0, UART0, delay, D10 } from '@typecad';
+import { SPI0, UART0, delay, D10 } from '@typecad/board';
 
 const serial = UART0.begin(9600);
 

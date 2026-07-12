@@ -1,23 +1,23 @@
 # Communication Buses
 
-TypeHAL provides a unified, object-oriented approach to peripheral communication. Buses like **UART**, **I2C**, and **SPI** are treated as first-class resources that transition from "Uninitialized" to "Initialized" states, preventing usage errors (like calling `.read()` before `.begin()`) at compile time.
+TypeCAD provides a unified, object-oriented approach to peripheral communication. Buses like **UART**, **I2C**, and **SPI** are treated as first-class resources that transition from "Uninitialized" to "Initialized" states, preventing usage errors (like calling `.read()` before `.begin()`) at compile time.
 
 ---
 
 ## UART (Serial)
 
-UART is most commonly used for serial communication with a computer or between two microcontrollers. TypeHAL's `ISerialPort` interface provides familiar print methods alongside powerful buffer management and asynchronous waiting.
+UART is most commonly used for serial communication with a computer or between two microcontrollers. TypeCAD's `ISerialPort` interface provides familiar print methods alongside powerful buffer management and asynchronous waiting.
 
 ### Basic Usage
 Initialize a serial port with a baud rate to unlock its full API.
 
 ```typescript
-import { UART0, delay } from '@typehal';
+import { UART0, delay } from '@typecad/board';
 
 // Initialize UART0 at 115200 baud
 const serial = UART0.begin(115200);
 
-serial.println("TypeHAL Serial Initialized");
+serial.println("TypeCAD Serial Initialized");
 
 while (true) {
   serial.printf("Millis: %d\n", millis());
@@ -26,7 +26,7 @@ while (true) {
 ```
 
 ### Reading Data
-TypeHAL provides several ways to read incoming data, from single bytes to entire lines.
+TypeCAD provides several ways to read incoming data, from single bytes to entire lines.
 
 ```typescript
 if (serial.available() > 0) {
@@ -53,13 +53,13 @@ serial.println("Hello, PC! Connection established.");
 
 ## I2C (Inter-Integrated Circuit)
 
-I2C is used for communicating with sensors, displays, and port expanders over two wires (SDA/SCL). TypeHAL automates address management and register access.
+I2C is used for communicating with sensors, displays, and port expanders over two wires (SDA/SCL). TypeCAD automates address management and register access.
 
 ### Accessing a Device
 Instead of manually sending start/stop bits and handling ACK/NACK for every byte, you define a device accessor.
 
 ```typescript
-import { I2C0 } from '@typehal';
+import { I2C0 } from '@typecad/board';
 
 const bus = I2C0.begin();
 const sensor = bus.device(0x76); // Typical address for a BME280 sensor
@@ -83,13 +83,13 @@ bus.recover();        // Attempt to unstick SDA/SCL lines via clock toggling
 
 ## SPI (Serial Peripheral Interface)
 
-SPI is a high-speed bus used for displays, SD cards, and high-performance sensors. TypeHAL manages the **Chip Select (CS)** line automatically for you.
+SPI is a high-speed bus used for displays, SD cards, and high-performance sensors. TypeCAD manages the **Chip Select (CS)** line automatically for you.
 
 ### Automatic CS Management
-When using `.device(csPin)`, TypeHAL automatically asserts (LOW) and deasserts (HIGH) the chip-select pin for every operation, ensuring the slave is active only during data transfer.
+When using `.device(csPin)`, TypeCAD automatically asserts (LOW) and deasserts (HIGH) the chip-select pin for every operation, ensuring the slave is active only during data transfer.
 
 ```typescript
-import { SPI0, D10 } from '@typehal';
+import { SPI0, D10 } from '@typecad/board';
 
 const bus = SPI0.begin();
 const display = bus.device(D10); // Use D10 as Chip Select

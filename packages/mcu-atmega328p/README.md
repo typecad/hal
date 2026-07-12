@@ -1,25 +1,25 @@
-# @typehal/mcu-atmega328p
+# @typecad/mcu-atmega328p
 
-MCU definition package for the **ATmega328P** microcontroller. Provides datasheet-level pin definitions, hardware peripheral descriptions, and framework pin mappings used by the TypeHAL transpiler and board packages.
+MCU definition package for the **ATmega328P** microcontroller. Provides datasheet-level pin definitions, hardware peripheral descriptions, and framework pin mappings used by the TypeCAD transpiler and board packages.
 
 ---
 
 ## Purpose
 
-MCU packages (`@typehal/mcu-*`) are the **hardware abstraction layer between the chip and the framework**. They answer three fundamental questions:
+MCU packages (`@typecad/mcu-*`) are the **hardware abstraction layer between the chip and the framework**. They answer three fundamental questions:
 
 1. **What pins exist on this chip?** — Exports typed `Pin` objects using canonical port names from the MCU datasheet (e.g. `PD0`, `PB5`, `PC0`).
 2. **What peripherals are built into the silicon?** — Describes the hardware peripherals the MCU provides: how many I2C/SPI/UART controllers, ADC channels, timers, PWM capabilities, etc.
 3. **How do port names map to framework pin numbers?** — Provides lookup tables so the transpiler can resolve `Pin.fromPort('PB5')` → Arduino pin `13`.
 
-MCU packages are **framework-agnostic**. They don't know about Arduino, PlatformIO, or any specific board — they only know the chip itself. Board packages (e.g. `@typehal/board-arduino-uno`) import from MCU packages and add board-specific aliases, wiring, and metadata.
+MCU packages are **framework-agnostic**. They don't know about Arduino, PlatformIO, or any specific board — they only know the chip itself. Board packages (e.g. `@typecad/board-arduino-uno`) import from MCU packages and add board-specific aliases, wiring, and metadata.
 
 ### Package Layering
 
 ```
 ┌─────────────────────────────────────────────────┐
 │  User sketch                                     │
-│  import { D13, LED, UART0 } from '@typehal/...' │
+│  import { D13, LED, UART0 } from '@typecad/...' │
 └──────────────────────┬──────────────────────────┘
                        │ imports from
 ┌──────────────────────▼──────────────────────────┐
@@ -54,7 +54,7 @@ MCU packages are **framework-agnostic**. They don't know about Arduino, Platform
 Exports one `Pin` constant per GPIO port on the ATmega328P, using [`Pin.fromPort()`](../hal/src/gpio.ts:201) with the canonical port name from the datasheet:
 
 ```typescript
-import { Pin } from '@typehal/hal';
+import { Pin } from '@typecad/hal';
 
 export const PD0 = Pin.fromPort('PD0');  // Port D, bit 0
 export const PD1 = Pin.fromPort('PD1');  // Port D, bit 1
@@ -160,7 +160,7 @@ Board packages then reference the MCU's peripheral data rather than duplicating 
 
 ```typescript
 // In a board package
-import { MCU_PERIPHERALS } from '@typehal/mcu-atmega328p';
+import { MCU_PERIPHERALS } from '@typecad/mcu-atmega328p';
 
 export const ArduinoUno: BoardDefinition = {
   // ...
@@ -174,10 +174,10 @@ export const ArduinoUno: BoardDefinition = {
 
 ### Auto-Generated HAL Instances
 
-MCU packages also export the concrete HAL instances (`UART0`, `I2C0`, etc.) corresponding to their physical peripherals. To minimize boilerplate and prevent mismatches, these are auto-generated from the peripheral definition arrays using `createHALInstances` from `@typehal/hal`:
+MCU packages also export the concrete HAL instances (`UART0`, `I2C0`, etc.) corresponding to their physical peripherals. To minimize boilerplate and prevent mismatches, these are auto-generated from the peripheral definition arrays using `createHALInstances` from `@typecad/hal`:
 
 ```typescript
-import { createHALInstances, SerialPort, serialName } from '@typehal/hal';
+import { createHALInstances, SerialPort, serialName } from '@typecad/hal';
 
 /** UART/Serial instances */
 export const [UART0] = createHALInstances(UART_INSTANCES, i => new SerialPort(serialName(i)));
@@ -190,7 +190,7 @@ Because `createHALInstances` returns a mapped array, you simply destructure exac
 
 ## How Board Packages Use This
 
-The [`@typehal/board-arduino-uno`](../board-arduino-uno/src/pins.ts) package demonstrates the pattern:
+The [`@typecad/board-arduino-uno`](../board-arduino-uno/src/pins.ts) package demonstrates the pattern:
 
 ```typescript
 // Re-export datasheet pins from the MCU package
@@ -198,10 +198,10 @@ export {
   PD0, PD1, PD2, PD3, PD4, PD5, PD6, PD7,
   PB0, PB1, PB2, PB3, PB4, PB5,
   PC0, PC1, PC2, PC3, PC4, PC5,
-} from '@typehal/mcu-atmega328p';
+} from '@typecad/mcu-atmega328p';
 
 // Import for local aliasing
-import { PD0, PB5, PC4, PC5, /* ... */ } from '@typehal/mcu-atmega328p';
+import { PD0, PB5, PC4, PC5, /* ... */ } from '@typecad/mcu-atmega328p';
 
 // Board-specific aliases
 export const D13 = PB5;   // Arduino digital pin 13
@@ -236,9 +236,9 @@ packages/mcu-<chip>/
 
 ```json
 {
-  "name": "@typehal/mcu-<chip>",
+  "name": "@typecad/mcu-<chip>",
   "version": "0.1.0",
-  "description": "TypeHAL MCU definition for <ChipName>",
+  "description": "TypeCAD MCU definition for <ChipName>",
   "type": "commonjs",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -253,9 +253,8 @@ packages/mcu-<chip>/
     "build": "tsc"
   },
   "dependencies": {
-    "@typehal/core": "*",
-    "@typehal/schema": "*",
-    "@typehal/hal": "*"
+    "@typecad/cuttlefish": "*",
+    "@typecad/hal": "*"
   },
   "license": "MIT"
 }
@@ -279,8 +278,7 @@ packages/mcu-<chip>/
   },
   "include": ["src/**/*.ts"],
   "references": [
-    { "path": "../core" },
-    { "path": "../schema" },
+    { "path": "../cuttlefish" },
     { "path": "../hal" }
   ]
 }
@@ -291,7 +289,7 @@ packages/mcu-<chip>/
 Open the MCU datasheet and find the GPIO port table. Create one `Pin.fromPort()` export per GPIO pin:
 
 ```typescript
-import { Pin } from '@typehal/hal';
+import { Pin } from '@typecad/hal';
 
 // Port A — 8-bit bidirectional I/O port
 export const PA0 = Pin.fromPort('PA0');
@@ -317,8 +315,8 @@ export const PB0 = Pin.fromPort('PB0');
 Open the datasheet's peripheral overview chapter. Document every hardware peripheral built into the silicon using definition arrays, and auto-generate the concrete HAL instances:
 
 ```typescript
-import { PeripheralInstance } from '@typehal/schema';
-import { createHALInstances, SerialPort, serialName } from '@typehal/hal';
+import { PeripheralInstance } from '@typecad/cuttlefish/api/schema';
+import { createHALInstances, SerialPort, serialName } from '@typecad/hal';
 
 export const UART_INSTANCES: readonly PeripheralInstance[] = [
   { instance: 0, pins: { tx: 'PA0', rx: 'PA1' } },
@@ -399,7 +397,7 @@ In the monorepo root `pnpm-workspace.yaml`, the package is automatically include
    // packages/board-<board>/package.json
    {
      "dependencies": {
-       "@typehal/mcu-<chip>": "*"
+       "@typecad/mcu-<chip>": "*"
      }
    }
    ```

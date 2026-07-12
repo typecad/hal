@@ -1,12 +1,12 @@
 {
   "name": "@typecad/expect",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "Hardware test framework for TypeCAD — vitest-style assertions over serial",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "cuttlefish-test": "./dist/host/cli.js"
+    "cuttlefish-test": "dist/host/cli.js"
   },
   "exports": {
     ".": {
@@ -42,7 +42,7 @@
     "serialport": "^12.0.0"
   },
   "devDependencies": {
-    "@typecad/cuttlefish": "*",
+    "@typecad/cuttlefish": "0.1.0-alpha.1",
     "@types/node": "^22.10.7"
   },
   "license": "MIT",
@@ -51,7 +51,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/justind000/typecode.git",
+    "url": "git+https://github.com/justind000/typecode.git",
     "directory": "packages/expect"
   },
   "homepage": "https://github.com/justind000/typecode/tree/main/packages/expect",
@@ -75,5 +75,6 @@
   "engines": {
     "node": ">=18"
   },
-  "author": "typecad0"
+  "author": "typecad0",
+  "sideEffects": false
 }

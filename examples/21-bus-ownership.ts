@@ -18,7 +18,7 @@
 // Ownership is opt-in: if you never call take(), no diagnostics are generated.
 // ---------------------------------------------------------------------------
 
-import { I2C0, SPI0, UART0, delay } from '@typecad';
+import { I2C0, SPI0, UART0, delay } from '@typecad/board';
 
 // ── I2C with ownership ─────────────────────────────────────────────────────
 // take() claims exclusive access; returns undefined if already owned.

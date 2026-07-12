@@ -5,7 +5,7 @@
 // direct API for pin configuration and toggling.
 // ---------------------------------------------------------------------------
 
-import { HIGH, LED, delay } from '@typecad';
+import { HIGH, LED, delay } from '@typecad/board';
 
 // Recommended pattern: alias-based GPIO usage.
 const led = LED.asOutput(HIGH);

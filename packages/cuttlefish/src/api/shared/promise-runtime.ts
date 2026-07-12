@@ -5,9 +5,9 @@
 // for embedded C++ targets. Used by both the generic transpiler strategy
 // and the Arduino framework strategy.
 //
-// Functions named __typehal_async_* and __cuttlefish_wait_pin_edge are the
+// Functions named __typecad_async_* and __cuttlefish_wait_pin_edge are the
 // runtime implementations that the HAL Async module's emit() calls resolve to.
-// They are defined inside the typehal_async namespace (to see Promise<T> and
+// They are defined inside the typecad_async namespace (to see Promise<T> and
 // enqueueMicrotask), and also have unscoped global aliases so the emitted
 // C++ code can call them directly.
 // ---------------------------------------------------------------------------
@@ -70,7 +70,7 @@ export function generatePromiseRuntime(
 
   return `
 // Cooperative microtask queue + minimal Promise runtime
-namespace typehal_async {
+namespace typecad_async {
   using Microtask = std::function<void()>;
 
   class MicrotaskQueue {
@@ -233,17 +233,17 @@ namespace typehal_async {
   }
 
 ${waitForPinEdge}
-} // namespace typehal_async
+} // namespace typecad_async
 
 // ── Global-scope aliases so HAL emit() calls resolve ──
-using typehal_async::__cuttlefish_async_sleep;
-using typehal_async::__cuttlefish_async_yield;
-using typehal_async::__cuttlefish_async_sleep_until;
-using typehal_async::__cuttlefish_async_current_task;
-${includeWaitForPinEdge ? `using typehal_async::__cuttlefish_wait_pin_edge;` : ``}
+using typecad_async::__cuttlefish_async_sleep;
+using typecad_async::__cuttlefish_async_yield;
+using typecad_async::__cuttlefish_async_sleep_until;
+using typecad_async::__cuttlefish_async_current_task;
+${includeWaitForPinEdge ? `using typecad_async::__cuttlefish_wait_pin_edge;` : ``}
 
 inline void cuttlefish_pump_microtasks() {
-  typehal_async::pumpMicrotasks();
+  typecad_async::pumpMicrotasks();
 }
 `;
 }

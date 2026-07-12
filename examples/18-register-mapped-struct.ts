@@ -11,7 +11,7 @@
 //   (*USART1 >> 8) & 3UL                               // USART1.PS read
 // ---------------------------------------------------------------------------
 
-import { UART0 } from '@typecad';
+import { UART0 } from '@typecad/board';
 import { register, bits, type Bit, type Bits } from '@typecad/hal';
 
 // ---------------------------------------------------------------------------

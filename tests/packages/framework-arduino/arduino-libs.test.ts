@@ -39,7 +39,7 @@ describe('Arduino Library Import Detection', () => {
     expect(isArduinoLibraryImport('../parent-module')).toBe(false);
     
     // NPM-style imports
-    expect(isArduinoLibraryImport('@typecad/hal')).toBe(false);
+    expect(isArduinoLibraryImport('@typecad/board')).toBe(false);
     expect(isArduinoLibraryImport('typescript')).toBe(false);
     expect(isArduinoLibraryImport('node/fs')).toBe(false);
     
@@ -348,7 +348,7 @@ describe('Usage Documentation Generation', () => {
     
     const doc = generateUsageDocumentation(parsed, 'Sensor');
     
-    expect(doc).toContain("import { I2C0 } from '@typecad'");
+    expect(doc).toContain("import { I2C0 } from '@typecad/board'");
   });
 
   it('includes editing instructions', () => {

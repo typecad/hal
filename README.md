@@ -1,4 +1,4 @@
-TypeHAL<
+# TypeCAD
 
 - Write firmware in TypeScript. Ship it as C++.
 - Type-safe, board-aware embedded development that catches hardware bugs before you flash — not after a 30-second upload cycle.
@@ -6,14 +6,14 @@ TypeHAL<
 
 ---
 
-## Why TypeHAL?
+## Why TypeCAD?
 
 Embedded firmware development has a feedback loop problem. You write C++, flash it to a board, and *then* discover you passed the wrong pin, forgot to initialize a bus, or used a pin that's already claimed by I2C. Every mistake costs a compile-flash-test cycle.
 
-TypeHAL moves those checks into your editor. You write TypeScript against typed hardware abstractions that know which pins support PWM, which pins are shared with SPI, and whether your I2C bus was initialized before you tried to read from it. If something's wrong, you see the red squiggle immediately — not a blank serial monitor thirty seconds later.
+TypeCAD moves those checks into your editor. You write TypeScript against typed hardware abstractions that know which pins support PWM, which pins are shared with SPI, and whether your I2C bus was initialized before you tried to read from it. If something's wrong, you see the red squiggle immediately — not a blank serial monitor thirty seconds later.
 
 ```typescript
-import { LED, delay } from '@typehal';
+import { LED, delay } from '@typecad/board';
 
 const led = LED.asOutput();
 
@@ -30,7 +30,7 @@ That's a complete Arduino sketch. `LED.asOutput()` configures the pin mode and r
 Every pin has a narrow type that reflects what it can actually do on your board.
 
 ```typescript
-import { D4, D9, A0 } from '@typehal';
+import { D4, D9, A0 } from '@typecad/board';
 
 D4.pwm(50);    // Error: D4 does not support PWM on Arduino Uno
 D9.pwm(50);    // OK — D9 is a PWM pin
@@ -42,7 +42,7 @@ A0.readAnalog(); // OK
 The transpiler also detects conflicts between peripherals and GPIO:
 
 ```typescript
-import { I2C0, A4 } from '@typehal';
+import { I2C0, A4 } from '@typecad/board';
 
 I2C0.begin();
 A4.output(HIGH); // Warning: A4 is claimed by I2C0
@@ -55,13 +55,13 @@ These are not linter hints. They're type errors and transpiler diagnostics roote
 Calling `.device()` on an uninitialized bus is a compile-time error.
 
 ```typescript
-import { I2C0 } from '@typehal';
+import { I2C0 } from '@typecad/board';
 
 I2C0.device(0x76).readByte(0xFA); // Error: I2C0 has not been initialized
 ```
 
 ```typescript
-import { I2C0 } from '@typehal';
+import { I2C0 } from '@typecad/board';
 
 I2C0.begin();
 const who = I2C0.device(0x76).readByte(0xFA); // OK
@@ -72,7 +72,7 @@ SPI and UART follow the same pattern — the type system tracks initialization s
 ## One command to flash
 
 ```bash
-npx typehal sketch.ts --compile --upload --monitor --port COM4
+npx cuttlefish sketch.ts --compile --upload --monitor --port COM4
 ```
 
 Transpile, compile, upload, and open a serial monitor in a single invocation. Or use the individual flags — `--compile` only, `--compile --upload` only — whatever fits your workflow.
@@ -81,9 +81,9 @@ Transpile, compile, upload, and open a serial monitor in a single invocation. Or
 
 | Board | Package | Architecture |
 |---|---|---|
-| Arduino Uno | `@typehal/board-arduino-uno` | AVR |
-| Arduino Nano 33 IoT | `@typehal/board-arduino-nano33iot` | SAMD |
-| ESP32 DevKit | `@typehal/board-esp32-devkit` | ESP32 |
+| Arduino Uno | `@typecad/board-arduino-uno` | AVR |
+| Arduino Nano 33 IoT | `@typecad/board-arduino-nano33iot` | SAMD |
+| ESP32 DevKit | `@typecad/board-esp32-devkit` | ESP32 |
 | ESP32-S3 | `@typecad/board-esp32s3` | ESP32-S3 (Xtensa LX7) |
 | ESP32-C3 | `@typecad/board-esp32c3` | ESP32-C3 (RISC-V) |
 | ESP32-C6 | `@typecad/board-esp32c6` | ESP32-C6 (RISC-V, Wi-Fi 6) |
@@ -93,20 +93,22 @@ Additional architectures are scaffolded and ready for board definitions: ESP32-S
 ## Configure once
 
 ```typescript
-// typehal.config.ts
-import type { TypehalConfig } from '@typehal/core';
+// cuttlefish.config.ts
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
-const config: TypehalConfig = {
+const config: CuttlefishConfig = {
+  entry:  './src/main.ts',
   target: 'avr',
-  board:  '@typehal/board-arduino-uno',
-  fqbn:   'arduino:avr:uno',
+  mcu:    '@typecad/mcu-atmega328p',
+  board:  '@typecad/board-arduino-uno',
+  framework: '@typecad/framework-arduino',
   output: { framework: 'arduino', optimize: 'size', outDir: './out' },
 };
 
 export default config;
 ```
 
-The transpiler auto-generates `typehal-env.d.ts` so your editor resolves the `@typehal` virtual import with full IntelliSense — no `tsconfig.json` changes needed.
+The transpiler auto-generates `cuttlefish-env.d.ts` so your editor resolves the `@typecad/board` virtual import with full IntelliSense — no `tsconfig.json` changes needed.
 
 ## Zero-cost abstractions
 
@@ -120,7 +122,7 @@ TypeScript constructs that have no C++ equivalent are erased or inlined at trans
 ## Rust-inspired bus ownership
 
 ```typescript
-import { I2C0 } from '@typehal';
+import { I2C0 } from '@typecad/board';
 
 const bus = I2C0.take(); // exclusive claim
 
@@ -134,8 +136,8 @@ On single-threaded Arduino, `take`/`release` are emitted as comments. On multi-t
 ## Test on real hardware
 
 ```typescript
-import { describe, it, expect } from '@typehal/expect';
-import { A0 } from '@typehal';
+import { describe, it, expect } from '@typecad/expect';
+import { A0 } from '@typecad/board';
 
 describe('Analog input').it('reads within valid range', () => {
   expect(A0.readAnalog()).toBeWithinRange(0, 1023);
@@ -149,7 +151,7 @@ These tests run on the actual microcontroller over serial. The host-side runner 
 The in-memory simulator lets you develop and test firmware logic in Node.js before touching a board:
 
 ```typescript
-import { createSimBoard } from '@typehal/simulator';
+import { createSimBoard } from '@typecad/simulator';
 
 const board = createSimBoard();
 // Mock I2C devices, inject serial data, verify bus traffic
@@ -159,7 +161,7 @@ Register simulated I2C/SPI devices, inject data, and assert on operation logs �
 
 ## Build hardware UIs with HTML + CSS
 
-TypeHAL includes a compile-time UI framework: write HTML and CSS, and the transpiler generates C++ that renders directly on SPI TFT displays (ILI9341, ST7796S), OLED, and e-ink panels. No browser, no runtime interpreter — the markup compiles to the same retained-mode node tables and draw dispatch as hand-written display code.
+TypeCAD includes a compile-time UI framework: write HTML and CSS, and the transpiler generates C++ that renders directly on SPI TFT displays (ILI9341, ST7796S), OLED, and e-ink panels. No browser, no runtime interpreter — the markup compiles to the same retained-mode node tables and draw dispatch as hand-written display code.
 
 ### Single-file `.ui` components
 
@@ -312,7 +314,7 @@ Set breakpoints in your `.ts` source files. The transpiler injects serial instru
 C++ compiler errors map back to your TypeScript source:
 
 ```bash
-npx typehal map-error out/sketch/sketch.ino.thcppmap.json --line 42 --column 5
+npx cuttlefish map-error out/sketch/sketch.ino.thcppmap.json --line 42 --column 5
 ```
 
 You see the TypeScript file, line, and column — not the generated C++.
@@ -328,34 +330,36 @@ Tree-shaking is on by default. Only code reachable from your entry points (`setu
 Scaffold a new project in one command — no global install needed:
 
 ```bash
-npx @typehal/create my-project --board arduino-uno
+npx cuttlefish create my-project --board arduino-uno
 cd my-project
 npm install
 ```
 
-This creates a complete project with `typehal.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: `arduino-uno`, `esp32-devkit`, `esp32s3`, `esp32c3`, `esp32c6`.
+This creates a complete project with `cuttlefish.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: `arduino-uno`, `esp32-devkit`, `esp32s3`, `esp32c3`, `esp32c6`.
 
 Or launch an interactive wizard:
 
 ```bash
-npx @typehal/create
+npx cuttlefish create
 ```
 
 ### Manual setup
 
 ```bash
-npm install typehal @typehal/board-arduino-uno
+npm install @typecad/board-arduino-uno
 ```
 
-Create `typehal.config.ts`:
+Create `cuttlefish.config.ts`:
 
 ```typescript
-import type { TypehalConfig } from '@typehal/core';
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
-const config: TypehalConfig = {
+const config: CuttlefishConfig = {
+  entry:  './src/main.ts',
   target: 'avr',
-  board:  '@typehal/board-arduino-uno',
-  fqbn:   'arduino:avr:uno',
+  mcu:    '@typecad/mcu-atmega328p',
+  board:  '@typecad/board-arduino-uno',
+  framework: '@typecad/framework-arduino',
   output: { framework: 'arduino', optimize: 'size', outDir: './out' },
 };
 
@@ -365,7 +369,7 @@ export default config;
 Write your sketch:
 
 ```typescript
-import { LED, delay } from '@typehal';
+import { LED, delay } from '@typecad/board';
 
 const led = LED.asOutput();
 
@@ -378,7 +382,7 @@ while (true) {
 Build and flash:
 
 ```bash
-npx typehal sketch.ts --compile --upload --port COM4
+npx cuttlefish sketch.ts --compile --upload --port COM4
 ```
 
 ---
@@ -386,18 +390,18 @@ npx typehal sketch.ts --compile --upload --port COM4
 ## CLI reference
 
 ```bash
-npx @typehal/create [project-name] [options]   # scaffold a new project
-typehal init [project-name] [options]           # scaffold via the full CLI
-typehal <input.ts> [options]
-typehal build                                  # use entry from typehal.config.ts
-typehal gen-libdefs <input.ts>
-typehal map-error <mapFile> [options]
-typehal create-board <name>                    # scaffold a new board package
+npx cuttlefish create [project-name] [options]   # scaffold a new project
+cuttlefish init [project-name] [options]          # scaffold via the full CLI
+cuttlefish <input.ts> [options]
+cuttlefish build                                  # use entry from cuttlefish.config.ts
+cuttlefish gen-libdefs <input.ts>
+cuttlefish map-error <mapFile> [options]
+cuttlefish create-board <name>                    # scaffold a new board package
 ```
 
-### Project scaffolding (`@typehal/create`)
+### Project scaffolding (`cuttlefish create`)
 
-The `@typehal/create` package is standalone — it only depends on `chalk` and Node built-ins, so `npx` downloads it instantly without pulling in the transpiler toolchain.
+The scaffolding is built into the `cuttlefish` CLI — `npx cuttlefish create` downloads the transpiler toolchain on demand and scaffolds a project without pulling in the full set of packages.
 
 | Flag | Description |
 |---|---|
@@ -409,7 +413,7 @@ The `@typehal/create` package is standalone — it only depends on `chalk` and N
 | `--outDir, -o <dir>` | Output directory (default: `./<project-name>`). |
 | `--help, -h` | Show help. |
 
-The `typehal init` command delegates to `@typehal/create` and accepts the same flags.
+The `cuttlefish init` command delegates to the same scaffolder and accepts the same flags.
 
 ### Transpile options
 

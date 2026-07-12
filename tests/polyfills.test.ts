@@ -352,7 +352,7 @@ describe("Async Runtime Polyfill", () => {
       }
     `, { target: "generic" });
 
-    expect(result.cpp).toContain("namespace typehal_async");
+    expect(result.cpp).toContain("namespace typecad_async");
     expect(result.cpp).toContain("class MicrotaskQueue");
     expect(result.cpp).toContain("class Promise");
     expect(result.cpp).toContain("inline void cuttlefish_pump_microtasks()");

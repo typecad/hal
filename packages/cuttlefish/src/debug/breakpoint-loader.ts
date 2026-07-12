@@ -20,15 +20,15 @@ export const CUTTLEFISH_DIR = '.cuttlefish';
 export const BREAKPOINTS_FILE = 'breakpoints.json';
 
 /**
- * Find the .typehal directory by walking up from the given directory.
+ * Find the .cuttlefish directory by walking up from the given directory.
  */
 function findCuttlefishDir(startDir: string): string | undefined {
   let currentDir = path.resolve(startDir);
   
   while (currentDir !== path.dirname(currentDir)) {
-    const typehalDir = path.join(currentDir, CUTTLEFISH_DIR);
-    if (fs.existsSync(typehalDir) && fs.statSync(typehalDir).isDirectory()) {
-      return typehalDir;
+    const cuttlefishDir = path.join(currentDir, CUTTLEFISH_DIR);
+    if (fs.existsSync(cuttlefishDir) && fs.statSync(cuttlefishDir).isDirectory()) {
+      return cuttlefishDir;
     }
     currentDir = path.dirname(currentDir);
   }
@@ -49,12 +49,12 @@ function findCuttlefishDir(startDir: string): string | undefined {
  * @returns BreakpointMap or undefined if no breakpoints file exists
  */
 export function loadBreakpoints(sourceDir: string): BreakpointMap | undefined {
-  const typehalDir = findCuttlefishDir(sourceDir);
-  if (!typehalDir) {
+  const cuttlefishDir = findCuttlefishDir(sourceDir);
+  if (!cuttlefishDir) {
     return undefined;
   }
-  
-  const breakpointsPath = path.join(typehalDir, BREAKPOINTS_FILE);
+
+  const breakpointsPath = path.join(cuttlefishDir, BREAKPOINTS_FILE);
   if (!fs.existsSync(breakpointsPath)) {
     return undefined;
   }

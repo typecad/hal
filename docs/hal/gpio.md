@@ -1,15 +1,15 @@
 # GPIO & Digital I/O
 
-TypeHAL provides a unified, type-safe interface for interacting with the physical pins of your microcontroller. Unlike traditional embedded APIs where you pass integer pin numbers to functions, TypeHAL treats pins as **objects** with specific, compile-time verified capabilities.
+TypeCAD provides a unified, type-safe interface for interacting with the physical pins of your microcontroller. Unlike traditional embedded APIs where you pass integer pin numbers to functions, TypeCAD treats pins as **objects** with specific, compile-time verified capabilities.
 
 ---
 
 ## Basic Usage
 
-To use a pin, you typically start by defining its mode. TypeHAL uses **fluent mode conversion** to provide type safety: once you call `.asOutput()`, your editor will only suggest output-related methods.
+To use a pin, you typically start by defining its mode. TypeCAD uses **fluent mode conversion** to provide type safety: once you call `.asOutput()`, your editor will only suggest output-related methods.
 
 ```typescript
-import { D13, D2, HIGH } from '@typehal';
+import { D13, D2, HIGH } from '@typecad/board';
 
 // Configure pin 13 as an output, initially HIGH (on)
 const led = D13.asOutput(HIGH);
@@ -36,7 +36,7 @@ led.low();  // Set to logic LOW (GND)
 Use this when the value is determined by a variable or logic expression. `DigitalValue` is a type alias for `boolean`.
 
 ```typescript
-import { HIGH, LOW } from '@typehal';
+import { HIGH, LOW } from '@typecad/hal';
 
 let state = HIGH;
 led.write(state);
@@ -119,7 +119,7 @@ if (button.isLow()) {
 This example toggles an LED whenever a button is pressed, with a simple delay for debouncing.
 
 ```typescript
-import { D2, D13, delay } from '@typehal';
+import { D2, D13, delay } from '@typecad/board';
 
 const button = D2.asInputPullUp();
 const led = D13.asOutput();
@@ -136,8 +136,8 @@ while (true) {
 For operations on multiple pins (like an 8-bit LED bar or a parallel bus), use `createPinGroup`.
 
 ```typescript
-import { D2, D3, D4, D5, delay } from '@typehal';
-import { createPinGroup } from '@typehal/core';
+import { D2, D3, D4, D5, delay } from '@typecad/board';
+import { createPinGroup } from '@typecad/hal';
 
 // Define a group for 4 LEDs
 const leds = createPinGroup('StatusDisplay', [D2, D3, D4, D5]);
@@ -155,7 +155,7 @@ leds.fill(false);
 Instead of polling in a loop, you can wait for a pin to change state.
 
 ```typescript
-import { D2 } from '@typehal';
+import { D2 } from '@typecad/board';
 
 const sensor = D2.asInput();
 

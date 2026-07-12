@@ -4,9 +4,9 @@
   "sourceFilePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
   "entries": [
     {
-      "generatedStartLine": 23,
+      "generatedStartLine": 24,
       "generatedStartColumn": 1,
-      "generatedEndLine": 23,
+      "generatedEndLine": 24,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -21,9 +21,9 @@
       "symbolName": "__tc_fn1"
     },
     {
-      "generatedStartLine": 24,
+      "generatedStartLine": 25,
       "generatedStartColumn": 1,
-      "generatedEndLine": 24,
+      "generatedEndLine": 25,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -38,9 +38,9 @@
       "symbolName": "__tc_fn2"
     },
     {
-      "generatedStartLine": 25,
+      "generatedStartLine": 26,
       "generatedStartColumn": 1,
-      "generatedEndLine": 25,
+      "generatedEndLine": 26,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -55,9 +55,9 @@
       "symbolName": "__tc_fn3"
     },
     {
-      "generatedStartLine": 26,
+      "generatedStartLine": 27,
       "generatedStartColumn": 1,
-      "generatedEndLine": 26,
+      "generatedEndLine": 27,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -72,9 +72,9 @@
       "symbolName": "__tc_fn4"
     },
     {
-      "generatedStartLine": 27,
+      "generatedStartLine": 28,
       "generatedStartColumn": 1,
-      "generatedEndLine": 27,
+      "generatedEndLine": 28,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -89,9 +89,9 @@
       "symbolName": "__tc_fn5"
     },
     {
-      "generatedStartLine": 28,
+      "generatedStartLine": 29,
       "generatedStartColumn": 1,
-      "generatedEndLine": 28,
+      "generatedEndLine": 29,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -106,9 +106,9 @@
       "symbolName": "__tc_fn6"
     },
     {
-      "generatedStartLine": 29,
+      "generatedStartLine": 30,
       "generatedStartColumn": 1,
-      "generatedEndLine": 29,
+      "generatedEndLine": 30,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -123,9 +123,9 @@
       "symbolName": "__tc_fn7"
     },
     {
-      "generatedStartLine": 30,
+      "generatedStartLine": 31,
       "generatedStartColumn": 1,
-      "generatedEndLine": 30,
+      "generatedEndLine": 31,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -140,9 +140,9 @@
       "symbolName": "__tc_fn8"
     },
     {
-      "generatedStartLine": 31,
+      "generatedStartLine": 32,
       "generatedStartColumn": 1,
-      "generatedEndLine": 31,
+      "generatedEndLine": 32,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -157,9 +157,9 @@
       "symbolName": "__tc_fn9"
     },
     {
-      "generatedStartLine": 32,
+      "generatedStartLine": 33,
       "generatedStartColumn": 1,
-      "generatedEndLine": 32,
+      "generatedEndLine": 33,
       "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -174,9 +174,9 @@
       "symbolName": "__tc_fn10"
     },
     {
-      "generatedStartLine": 33,
+      "generatedStartLine": 34,
       "generatedStartColumn": 1,
-      "generatedEndLine": 33,
+      "generatedEndLine": 34,
       "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -191,9 +191,9 @@
       "symbolName": "__tc_fn11"
     },
     {
-      "generatedStartLine": 34,
+      "generatedStartLine": 35,
       "generatedStartColumn": 1,
-      "generatedEndLine": 34,
+      "generatedEndLine": 35,
       "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -208,9 +208,9 @@
       "symbolName": "__tc_fn12"
     },
     {
-      "generatedStartLine": 35,
+      "generatedStartLine": 36,
       "generatedStartColumn": 1,
-      "generatedEndLine": 35,
+      "generatedEndLine": 36,
       "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -225,9 +225,9 @@
       "symbolName": "__tc_fn13"
     },
     {
-      "generatedStartLine": 36,
+      "generatedStartLine": 37,
       "generatedStartColumn": 1,
-      "generatedEndLine": 36,
+      "generatedEndLine": 37,
       "generatedEndColumn": 27,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -242,9 +242,9 @@
       "symbolName": "__tc_fn14"
     },
     {
-      "generatedStartLine": 37,
+      "generatedStartLine": 38,
       "generatedStartColumn": 1,
-      "generatedEndLine": 37,
+      "generatedEndLine": 38,
       "generatedEndColumn": 49,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -259,9 +259,9 @@
       "symbolName": "__tc_fn7__add"
     },
     {
-      "generatedStartLine": 38,
+      "generatedStartLine": 39,
       "generatedStartColumn": 1,
-      "generatedEndLine": 38,
+      "generatedEndLine": 39,
       "generatedEndColumn": 82,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -276,9 +276,9 @@
       "symbolName": "__tc_fn8__clamp"
     },
     {
-      "generatedStartLine": 41,
+      "generatedStartLine": 42,
       "generatedStartColumn": 1,
-      "generatedEndLine": 41,
+      "generatedEndLine": 42,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -293,9 +293,9 @@
       "symbolName": "setup"
     },
     {
-      "generatedStartLine": 43,
+      "generatedStartLine": 44,
       "generatedStartColumn": 1,
-      "generatedEndLine": 43,
+      "generatedEndLine": 44,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -309,9 +309,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 44,
+      "generatedStartLine": 45,
       "generatedStartColumn": 1,
-      "generatedEndLine": 44,
+      "generatedEndLine": 45,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -325,9 +325,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 45,
+      "generatedStartLine": 46,
       "generatedStartColumn": 1,
-      "generatedEndLine": 45,
+      "generatedEndLine": 46,
       "generatedEndColumn": 42,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -341,9 +341,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 46,
+      "generatedStartLine": 47,
       "generatedStartColumn": 1,
-      "generatedEndLine": 46,
+      "generatedEndLine": 47,
       "generatedEndColumn": 40,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -357,9 +357,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 47,
+      "generatedStartLine": 48,
       "generatedStartColumn": 1,
-      "generatedEndLine": 47,
+      "generatedEndLine": 48,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -373,9 +373,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 48,
+      "generatedStartLine": 49,
       "generatedStartColumn": 1,
-      "generatedEndLine": 48,
+      "generatedEndLine": 49,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -389,9 +389,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 49,
+      "generatedStartLine": 50,
       "generatedStartColumn": 1,
-      "generatedEndLine": 49,
+      "generatedEndLine": 50,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -405,9 +405,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 50,
+      "generatedStartLine": 51,
       "generatedStartColumn": 1,
-      "generatedEndLine": 50,
+      "generatedEndLine": 51,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -421,9 +421,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 51,
+      "generatedStartLine": 52,
       "generatedStartColumn": 1,
-      "generatedEndLine": 51,
+      "generatedEndLine": 52,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -437,9 +437,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 52,
+      "generatedStartLine": 53,
       "generatedStartColumn": 1,
-      "generatedEndLine": 52,
+      "generatedEndLine": 53,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -453,9 +453,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 53,
+      "generatedStartLine": 54,
       "generatedStartColumn": 1,
-      "generatedEndLine": 53,
+      "generatedEndLine": 54,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -469,9 +469,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 54,
+      "generatedStartLine": 55,
       "generatedStartColumn": 1,
-      "generatedEndLine": 54,
+      "generatedEndLine": 55,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -485,9 +485,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 55,
+      "generatedStartLine": 56,
       "generatedStartColumn": 1,
-      "generatedEndLine": 55,
+      "generatedEndLine": 56,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -501,9 +501,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 56,
+      "generatedStartLine": 57,
       "generatedStartColumn": 1,
-      "generatedEndLine": 56,
+      "generatedEndLine": 57,
       "generatedEndColumn": 49,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -517,9 +517,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 57,
+      "generatedStartLine": 58,
       "generatedStartColumn": 1,
-      "generatedEndLine": 57,
+      "generatedEndLine": 58,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -533,9 +533,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 58,
+      "generatedStartLine": 59,
       "generatedStartColumn": 1,
-      "generatedEndLine": 58,
+      "generatedEndLine": 59,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -549,9 +549,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 59,
+      "generatedStartLine": 60,
       "generatedStartColumn": 1,
-      "generatedEndLine": 59,
+      "generatedEndLine": 60,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -565,9 +565,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 60,
+      "generatedStartLine": 61,
       "generatedStartColumn": 1,
-      "generatedEndLine": 60,
+      "generatedEndLine": 61,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -581,9 +581,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 61,
+      "generatedStartLine": 62,
       "generatedStartColumn": 1,
-      "generatedEndLine": 61,
+      "generatedEndLine": 62,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -597,9 +597,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 62,
+      "generatedStartLine": 63,
       "generatedStartColumn": 1,
-      "generatedEndLine": 62,
+      "generatedEndLine": 63,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -613,9 +613,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 63,
+      "generatedStartLine": 64,
       "generatedStartColumn": 1,
-      "generatedEndLine": 63,
+      "generatedEndLine": 64,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -629,9 +629,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 64,
+      "generatedStartLine": 65,
       "generatedStartColumn": 1,
-      "generatedEndLine": 64,
+      "generatedEndLine": 65,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -645,9 +645,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 65,
+      "generatedStartLine": 66,
       "generatedStartColumn": 1,
-      "generatedEndLine": 65,
+      "generatedEndLine": 66,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -661,9 +661,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 66,
+      "generatedStartLine": 67,
       "generatedStartColumn": 1,
-      "generatedEndLine": 66,
+      "generatedEndLine": 67,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -677,9 +677,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 67,
+      "generatedStartLine": 68,
       "generatedStartColumn": 1,
-      "generatedEndLine": 67,
+      "generatedEndLine": 68,
       "generatedEndColumn": 38,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -693,9 +693,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 68,
+      "generatedStartLine": 69,
       "generatedStartColumn": 1,
-      "generatedEndLine": 68,
+      "generatedEndLine": 69,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -709,9 +709,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 69,
+      "generatedStartLine": 70,
       "generatedStartColumn": 1,
-      "generatedEndLine": 69,
+      "generatedEndLine": 70,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -725,9 +725,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 70,
+      "generatedStartLine": 71,
       "generatedStartColumn": 1,
-      "generatedEndLine": 70,
+      "generatedEndLine": 71,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -741,9 +741,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 71,
+      "generatedStartLine": 72,
       "generatedStartColumn": 1,
-      "generatedEndLine": 71,
+      "generatedEndLine": 72,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -757,9 +757,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 72,
+      "generatedStartLine": 73,
       "generatedStartColumn": 1,
-      "generatedEndLine": 72,
+      "generatedEndLine": 73,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -773,9 +773,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 73,
+      "generatedStartLine": 74,
       "generatedStartColumn": 1,
-      "generatedEndLine": 73,
+      "generatedEndLine": 74,
       "generatedEndColumn": 36,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -789,9 +789,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 74,
+      "generatedStartLine": 75,
       "generatedStartColumn": 1,
-      "generatedEndLine": 74,
+      "generatedEndLine": 75,
       "generatedEndColumn": 41,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -805,9 +805,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 75,
+      "generatedStartLine": 76,
       "generatedStartColumn": 1,
-      "generatedEndLine": 75,
+      "generatedEndLine": 76,
       "generatedEndColumn": 28,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -821,9 +821,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 76,
+      "generatedStartLine": 77,
       "generatedStartColumn": 1,
-      "generatedEndLine": 76,
+      "generatedEndLine": 77,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -837,9 +837,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 77,
+      "generatedStartLine": 78,
       "generatedStartColumn": 1,
-      "generatedEndLine": 77,
+      "generatedEndLine": 78,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -853,9 +853,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 78,
+      "generatedStartLine": 79,
       "generatedStartColumn": 1,
-      "generatedEndLine": 78,
+      "generatedEndLine": 79,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -869,9 +869,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 79,
+      "generatedStartLine": 80,
       "generatedStartColumn": 1,
-      "generatedEndLine": 79,
+      "generatedEndLine": 80,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -885,9 +885,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 80,
+      "generatedStartLine": 81,
       "generatedStartColumn": 1,
-      "generatedEndLine": 80,
+      "generatedEndLine": 81,
       "generatedEndColumn": 40,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -901,9 +901,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 81,
+      "generatedStartLine": 82,
       "generatedStartColumn": 1,
-      "generatedEndLine": 81,
+      "generatedEndLine": 82,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -917,9 +917,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 82,
+      "generatedStartLine": 83,
       "generatedStartColumn": 1,
-      "generatedEndLine": 82,
+      "generatedEndLine": 83,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -933,9 +933,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 83,
+      "generatedStartLine": 84,
       "generatedStartColumn": 1,
-      "generatedEndLine": 83,
+      "generatedEndLine": 84,
       "generatedEndColumn": 40,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -949,9 +949,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 84,
+      "generatedStartLine": 85,
       "generatedStartColumn": 1,
-      "generatedEndLine": 84,
+      "generatedEndLine": 85,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -965,9 +965,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 85,
+      "generatedStartLine": 86,
       "generatedStartColumn": 1,
-      "generatedEndLine": 85,
+      "generatedEndLine": 86,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -981,9 +981,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 86,
+      "generatedStartLine": 87,
       "generatedStartColumn": 1,
-      "generatedEndLine": 86,
+      "generatedEndLine": 87,
       "generatedEndColumn": 40,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -997,9 +997,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 87,
+      "generatedStartLine": 88,
       "generatedStartColumn": 1,
-      "generatedEndLine": 87,
+      "generatedEndLine": 88,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1013,9 +1013,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 88,
+      "generatedStartLine": 89,
       "generatedStartColumn": 1,
-      "generatedEndLine": 88,
+      "generatedEndLine": 89,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1029,9 +1029,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 89,
+      "generatedStartLine": 90,
       "generatedStartColumn": 1,
-      "generatedEndLine": 89,
+      "generatedEndLine": 90,
       "generatedEndColumn": 40,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1045,9 +1045,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 90,
+      "generatedStartLine": 91,
       "generatedStartColumn": 1,
-      "generatedEndLine": 90,
+      "generatedEndLine": 91,
       "generatedEndColumn": 29,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1061,9 +1061,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 91,
+      "generatedStartLine": 92,
       "generatedStartColumn": 1,
-      "generatedEndLine": 91,
+      "generatedEndLine": 92,
       "generatedEndColumn": 23,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1077,9 +1077,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 92,
+      "generatedStartLine": 93,
       "generatedStartColumn": 1,
-      "generatedEndLine": 92,
+      "generatedEndLine": 93,
       "generatedEndColumn": 36,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1093,9 +1093,9 @@
       "nodeKind": "call"
     },
     {
-      "generatedStartLine": 93,
+      "generatedStartLine": 94,
       "generatedStartColumn": 1,
-      "generatedEndLine": 93,
+      "generatedEndLine": 94,
       "generatedEndColumn": 15,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1109,9 +1109,9 @@
       "nodeKind": "while"
     },
     {
-      "generatedStartLine": 95,
+      "generatedStartLine": 96,
       "generatedStartColumn": 1,
-      "generatedEndLine": 95,
+      "generatedEndLine": 96,
       "generatedEndColumn": 17,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1122,12 +1122,12 @@
         "endLine": 116,
         "endColumn": 27
       },
-      "nodeKind": "call"
+      "nodeKind": "hal-op"
     },
     {
-      "generatedStartLine": 99,
+      "generatedStartLine": 100,
       "generatedStartColumn": 1,
-      "generatedEndLine": 99,
+      "generatedEndLine": 100,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1142,9 +1142,9 @@
       "symbolName": "__tc_fn1"
     },
     {
-      "generatedStartLine": 101,
+      "generatedStartLine": 102,
       "generatedStartColumn": 1,
-      "generatedEndLine": 101,
+      "generatedEndLine": 102,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1158,9 +1158,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 102,
+      "generatedStartLine": 103,
       "generatedStartColumn": 1,
-      "generatedEndLine": 102,
+      "generatedEndLine": 103,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1174,9 +1174,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 103,
+      "generatedStartLine": 104,
       "generatedStartColumn": 1,
-      "generatedEndLine": 103,
+      "generatedEndLine": 104,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1190,9 +1190,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 106,
+      "generatedStartLine": 107,
       "generatedStartColumn": 1,
-      "generatedEndLine": 106,
+      "generatedEndLine": 107,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1207,9 +1207,9 @@
       "symbolName": "__tc_fn2"
     },
     {
-      "generatedStartLine": 108,
+      "generatedStartLine": 109,
       "generatedStartColumn": 1,
-      "generatedEndLine": 108,
+      "generatedEndLine": 109,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1223,9 +1223,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 109,
+      "generatedStartLine": 110,
       "generatedStartColumn": 1,
-      "generatedEndLine": 109,
+      "generatedEndLine": 110,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1239,9 +1239,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 110,
+      "generatedStartLine": 111,
       "generatedStartColumn": 1,
-      "generatedEndLine": 110,
+      "generatedEndLine": 111,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1255,9 +1255,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 113,
+      "generatedStartLine": 114,
       "generatedStartColumn": 1,
-      "generatedEndLine": 113,
+      "generatedEndLine": 114,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1272,9 +1272,9 @@
       "symbolName": "__tc_fn3"
     },
     {
-      "generatedStartLine": 115,
+      "generatedStartLine": 116,
       "generatedStartColumn": 1,
-      "generatedEndLine": 115,
+      "generatedEndLine": 116,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1288,9 +1288,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 116,
+      "generatedStartLine": 117,
       "generatedStartColumn": 1,
-      "generatedEndLine": 116,
+      "generatedEndLine": 117,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1304,9 +1304,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 117,
+      "generatedStartLine": 118,
       "generatedStartColumn": 1,
-      "generatedEndLine": 117,
+      "generatedEndLine": 118,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1320,9 +1320,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 120,
+      "generatedStartLine": 121,
       "generatedStartColumn": 1,
-      "generatedEndLine": 120,
+      "generatedEndLine": 121,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1337,9 +1337,9 @@
       "symbolName": "__tc_fn4"
     },
     {
-      "generatedStartLine": 122,
+      "generatedStartLine": 123,
       "generatedStartColumn": 1,
-      "generatedEndLine": 122,
+      "generatedEndLine": 123,
       "generatedEndColumn": 19,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1353,9 +1353,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 123,
+      "generatedStartLine": 124,
       "generatedStartColumn": 1,
-      "generatedEndLine": 123,
+      "generatedEndLine": 124,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1369,9 +1369,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 126,
+      "generatedStartLine": 127,
       "generatedStartColumn": 1,
-      "generatedEndLine": 126,
+      "generatedEndLine": 127,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1386,9 +1386,9 @@
       "symbolName": "__tc_fn5"
     },
     {
-      "generatedStartLine": 128,
+      "generatedStartLine": 129,
       "generatedStartColumn": 1,
-      "generatedEndLine": 128,
+      "generatedEndLine": 129,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1402,9 +1402,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 129,
+      "generatedStartLine": 130,
       "generatedStartColumn": 1,
-      "generatedEndLine": 129,
+      "generatedEndLine": 130,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1418,9 +1418,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 132,
+      "generatedStartLine": 133,
       "generatedStartColumn": 1,
-      "generatedEndLine": 132,
+      "generatedEndLine": 133,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1435,9 +1435,9 @@
       "symbolName": "__tc_fn6"
     },
     {
-      "generatedStartLine": 134,
+      "generatedStartLine": 135,
       "generatedStartColumn": 1,
-      "generatedEndLine": 134,
+      "generatedEndLine": 135,
       "generatedEndColumn": 13,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1451,9 +1451,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 135,
+      "generatedStartLine": 136,
       "generatedStartColumn": 1,
-      "generatedEndLine": 135,
+      "generatedEndLine": 136,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1467,9 +1467,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 138,
+      "generatedStartLine": 139,
       "generatedStartColumn": 1,
-      "generatedEndLine": 138,
+      "generatedEndLine": 139,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1484,9 +1484,9 @@
       "symbolName": "__tc_fn7"
     },
     {
-      "generatedStartLine": 140,
+      "generatedStartLine": 141,
       "generatedStartColumn": 1,
-      "generatedEndLine": 140,
+      "generatedEndLine": 141,
       "generatedEndColumn": 30,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1500,9 +1500,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 143,
+      "generatedStartLine": 144,
       "generatedStartColumn": 1,
-      "generatedEndLine": 143,
+      "generatedEndLine": 144,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1517,9 +1517,9 @@
       "symbolName": "__tc_fn8"
     },
     {
-      "generatedStartLine": 145,
+      "generatedStartLine": 146,
       "generatedStartColumn": 1,
-      "generatedEndLine": 145,
+      "generatedEndLine": 146,
       "generatedEndColumn": 35,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1533,9 +1533,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 148,
+      "generatedStartLine": 149,
       "generatedStartColumn": 1,
-      "generatedEndLine": 148,
+      "generatedEndLine": 149,
       "generatedEndColumn": 25,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1550,9 +1550,9 @@
       "symbolName": "__tc_fn9"
     },
     {
-      "generatedStartLine": 150,
+      "generatedStartLine": 151,
       "generatedStartColumn": 1,
-      "generatedEndLine": 150,
+      "generatedEndLine": 151,
       "generatedEndColumn": 42,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1566,9 +1566,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 151,
+      "generatedStartLine": 152,
       "generatedStartColumn": 1,
-      "generatedEndLine": 151,
+      "generatedEndLine": 152,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1582,9 +1582,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 154,
+      "generatedStartLine": 155,
       "generatedStartColumn": 1,
-      "generatedEndLine": 154,
+      "generatedEndLine": 155,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1599,9 +1599,9 @@
       "symbolName": "__tc_fn10"
     },
     {
-      "generatedStartLine": 156,
+      "generatedStartLine": 157,
       "generatedStartColumn": 1,
-      "generatedEndLine": 156,
+      "generatedEndLine": 157,
       "generatedEndColumn": 39,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1615,9 +1615,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 157,
+      "generatedStartLine": 158,
       "generatedStartColumn": 1,
-      "generatedEndLine": 157,
+      "generatedEndLine": 158,
       "generatedEndColumn": 24,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1631,9 +1631,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 160,
+      "generatedStartLine": 161,
       "generatedStartColumn": 1,
-      "generatedEndLine": 160,
+      "generatedEndLine": 161,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1648,9 +1648,9 @@
       "symbolName": "__tc_fn11"
     },
     {
-      "generatedStartLine": 162,
+      "generatedStartLine": 163,
       "generatedStartColumn": 1,
-      "generatedEndLine": 162,
+      "generatedEndLine": 163,
       "generatedEndColumn": 45,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1664,9 +1664,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 163,
+      "generatedStartLine": 164,
       "generatedStartColumn": 1,
-      "generatedEndLine": 163,
+      "generatedEndLine": 164,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1680,9 +1680,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 166,
+      "generatedStartLine": 167,
       "generatedStartColumn": 1,
-      "generatedEndLine": 166,
+      "generatedEndLine": 167,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1697,9 +1697,9 @@
       "symbolName": "__tc_fn12"
     },
     {
-      "generatedStartLine": 168,
+      "generatedStartLine": 169,
       "generatedStartColumn": 1,
-      "generatedEndLine": 168,
+      "generatedEndLine": 169,
       "generatedEndColumn": 100,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1713,9 +1713,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 169,
+      "generatedStartLine": 170,
       "generatedStartColumn": 1,
-      "generatedEndLine": 169,
+      "generatedEndLine": 170,
       "generatedEndColumn": 21,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1729,9 +1729,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 172,
+      "generatedStartLine": 173,
       "generatedStartColumn": 1,
-      "generatedEndLine": 172,
+      "generatedEndLine": 173,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1746,9 +1746,9 @@
       "symbolName": "__tc_fn13"
     },
     {
-      "generatedStartLine": 174,
+      "generatedStartLine": 175,
       "generatedStartColumn": 1,
-      "generatedEndLine": 174,
+      "generatedEndLine": 175,
       "generatedEndColumn": 100,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1762,9 +1762,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 175,
+      "generatedStartLine": 176,
       "generatedStartColumn": 1,
-      "generatedEndLine": 175,
+      "generatedEndLine": 176,
       "generatedEndColumn": 31,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1778,9 +1778,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 176,
+      "generatedStartLine": 177,
       "generatedStartColumn": 1,
-      "generatedEndLine": 176,
+      "generatedEndLine": 177,
       "generatedEndColumn": 14,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1794,9 +1794,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 179,
+      "generatedStartLine": 180,
       "generatedStartColumn": 1,
-      "generatedEndLine": 179,
+      "generatedEndLine": 180,
       "generatedEndColumn": 26,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1811,9 +1811,9 @@
       "symbolName": "__tc_fn14"
     },
     {
-      "generatedStartLine": 181,
+      "generatedStartLine": 182,
       "generatedStartColumn": 1,
-      "generatedEndLine": 181,
+      "generatedEndLine": 182,
       "generatedEndColumn": 100,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1827,9 +1827,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 182,
+      "generatedStartLine": 183,
       "generatedStartColumn": 1,
-      "generatedEndLine": 182,
+      "generatedEndLine": 183,
       "generatedEndColumn": 64,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1843,9 +1843,9 @@
       "nodeKind": "var_decl"
     },
     {
-      "generatedStartLine": 183,
+      "generatedStartLine": 184,
       "generatedStartColumn": 1,
-      "generatedEndLine": 183,
+      "generatedEndLine": 184,
       "generatedEndColumn": 18,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1859,9 +1859,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 186,
+      "generatedStartLine": 187,
       "generatedStartColumn": 1,
-      "generatedEndLine": 186,
+      "generatedEndLine": 187,
       "generatedEndColumn": 48,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1876,9 +1876,9 @@
       "symbolName": "__tc_fn7__add"
     },
     {
-      "generatedStartLine": 188,
+      "generatedStartLine": 189,
       "generatedStartColumn": 1,
-      "generatedEndLine": 188,
+      "generatedEndLine": 189,
       "generatedEndColumn": 16,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1892,9 +1892,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 191,
+      "generatedStartLine": 192,
       "generatedStartColumn": 1,
-      "generatedEndLine": 191,
+      "generatedEndLine": 192,
       "generatedEndColumn": 70,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1909,9 +1909,9 @@
       "symbolName": "__tc_fn8__clamp"
     },
     {
-      "generatedStartLine": 193,
+      "generatedStartLine": 194,
       "generatedStartColumn": 1,
-      "generatedEndLine": 193,
+      "generatedEndLine": 194,
       "generatedEndColumn": 88,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",
@@ -1925,9 +1925,9 @@
       "nodeKind": "return"
     },
     {
-      "generatedStartLine": 196,
+      "generatedStartLine": 197,
       "generatedStartColumn": 1,
-      "generatedEndLine": 196,
+      "generatedEndLine": 197,
       "generatedEndColumn": 12,
       "tsSpan": {
         "filePath": "C:\\typecad\\typecode\\packages\\framework-arduino\\tests\\01-basics.test.ts",

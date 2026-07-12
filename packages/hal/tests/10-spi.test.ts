@@ -1,5 +1,5 @@
 import { describe, done } from '@typecad/expect';
-import { D10, SPI0 } from '@TypeCAD';
+import { D10, SPI0 } from '@typecad/board';
 
 describe("SPI0 lifecycle")
   .it("SPI0.begin() is callable")

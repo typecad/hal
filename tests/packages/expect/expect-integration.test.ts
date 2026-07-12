@@ -21,7 +21,7 @@ describe('example test preprocessing', () => {
     expect(result).toContain('[TC:SUITE_START]');
 
     // Should preserve non-expect imports
-    expect(result).toContain("import { A0, A1 } from '@typecad'");
+    expect(result).toContain("import { A0, A1 } from '@typecad/board'");
     expect(result).not.toContain("@typecad/expect");
 
     // Should have describe protocol lines

@@ -1,6 +1,6 @@
 # Single Ownership: `Owned<T>`
 
-The `Owned` type is the foundation of TypeHAL's resource management system. It indicates that a specific variable or parameter has exclusive responsibility for a piece of data. 
+The `Owned` type is the foundation of TypeCAD's resource management system. It indicates that a specific variable or parameter has exclusive responsibility for a piece of data.
 
 ### Why Use `Owned`?
 In standard JavaScript, objects are shared automatically via references. In embedded C++, this can lead to "Double-Free" errors or data corruption if two parts of the code try to modify the same memory at once. `Owned` enforces a strict **Single-Owner** policy.
@@ -12,7 +12,7 @@ When you assign an `Owned` variable to another variable or pass it to a function
 
 ### Example: Ownership Transfer
 ```typescript
-import { Owned } from '@typehal';
+import { Owned } from '@typecad/hal';
 
 const buffer: Owned<Uint8Array> = new Uint8Array([1, 2, 3]);
 
@@ -33,7 +33,7 @@ This error occurs when you attempt to read from or write to a variable that has 
 ---
 
 ## C++ Copy Warnings
-Because TypeHAL targets resource-constrained hardware, it does not use complex C++ move constructors or `std::move`. 
+Because TypeCAD targets resource-constrained hardware, it does not use complex C++ move constructors or `std::move`.
 
 ### Info: `ownership-owned-copy`
 When you move a non-primitive `Owned` variable into an unannotated variable, the transpiler warns you that a **C++ copy** is being created.

@@ -1,22 +1,24 @@
-# @typehal/framework-avr
+# @typecad/framework-avr
 
-Native AVR register-level code generation for TypeHAL.
+Native AVR register-level code generation for TypeCAD.
 
 ## Overview
 
-`@typehal/framework-avr` provides a native AVR code generation strategy for TypeHAL. It targets AVR microcontrollers such as the ATmega328P and emits direct register access instead of Arduino framework calls.
+`@typecad/framework-avr` provides a native AVR code generation strategy for TypeCAD. It targets AVR microcontrollers such as the ATmega328P and emits direct register access instead of Arduino framework calls.
 
 ## Quick start
 
-Use the package in your `typehal.config.ts`:
+Use the package in your `cuttlefish.config.ts`:
 
 ```ts
-import type { TypehalConfig } from '@typehal/core';
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
-const config: TypehalConfig = {
+const config: CuttlefishConfig = {
+  entry: './src/main.ts',
   target: 'avr',
-  board: '@typehal/board-arduino-uno',
-  framework: '@typehal/framework-avr',
+  mcu: '@typecad/mcu-atmega328p',
+  board: '@typecad/board-arduino-uno',
+  framework: '@typecad/framework-avr',
   output: { optimize: 'size' },
 };
 
@@ -26,14 +28,14 @@ export default config;
 Run the CLI to transpile and compile:
 
 ```bash
-npx typehal src/main.ts --compile --upload --port COM4
+npx cuttlefish src/main.ts --compile --upload --port COM4
 ```
 
 ## How to use
 
 ### Framework strategy
 
-Set `framework` to `@typehal/framework-avr` to use the AVR-native emission strategy. This package is optimized for direct register access and low-level AVR firmware patterns.
+Set `framework` to `@typecad/framework-avr` to use the AVR-native emission strategy. This package is optimized for direct register access and low-level AVR firmware patterns.
 
 ### Key exports
 

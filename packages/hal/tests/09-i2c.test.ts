@@ -1,5 +1,5 @@
 import { describe, done } from '@typecad/expect';
-import { I2C0 } from '@TypeCAD';
+import { I2C0 } from '@typecad/board';
 
 describe("I2C0 lifecycle")
   .it("I2C0.begin() is callable")

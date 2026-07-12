@@ -291,7 +291,7 @@ describe("G: int32_t/uint32_t template interpolation uses %d/%u", () => {
 // ---------------------------------------------------------------------------
 describe("E (cross-file): getter access on an imported class", () => {
   it("rewrites instance + static getters across module boundaries", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-e-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-e-"));
     tempDirs.push(workspaceDir);
 
     fs.writeFileSync(

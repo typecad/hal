@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 function writeProject(html: string, css: string): { dir: string; htmlPath: string } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-ui-reg-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-ui-reg-"));
   tempDirs.push(dir);
   const htmlPath = path.join(dir, "app.ui.html");
   const cssPath = path.join(dir, "app.ui.css");
@@ -65,7 +65,7 @@ describe("UI module registry", () => {
   });
 
   it("loadUIModule works with no sibling .ui.css (empty rules)", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-ui-reg-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-ui-reg-"));
     tempDirs.push(dir);
     const htmlPath = path.join(dir, "app.ui.html");
     fs.writeFileSync(htmlPath, `<screen></screen>`, "utf-8");
@@ -88,7 +88,7 @@ describe("UI module registry", () => {
   });
 
   it("generates project UI type declarations under types/ without registering modules", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-ui-reg-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-ui-reg-"));
     tempDirs.push(dir);
     const srcDir = path.join(dir, "src");
     fs.mkdirSync(srcDir, { recursive: true });

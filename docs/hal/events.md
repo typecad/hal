@@ -1,6 +1,6 @@
 # Hardware Events
 
-TypeHAL provides two powerful ways to handle hardware events like pin state changes: **External Interrupts** for immediate, low-latency response, and **Asynchronous Edge Detection** for readable, sequential logic.
+TypeCAD provides two powerful ways to handle hardware events like pin state changes: **External Interrupts** for immediate, low-latency response, and **Asynchronous Edge Detection** for readable, sequential logic.
 
 ---
 
@@ -12,7 +12,7 @@ Interrupts allow the microcontroller to respond to a physical event (like a butt
 Use `.onRising()`, `.onFalling()`, or `.onChange()` to attach an interrupt handler.
 
 ```typescript
-import { D2, D13 } from '@typehal';
+import { D2, D13 } from '@typecad/board';
 
 const led = D13.asOutput();
 
@@ -39,13 +39,13 @@ Interrupt handlers (ISRs) run in a special hardware context. To ensure system st
 
 ## Asynchronous Edge Detection
 
-For many applications, interrupts are unnecessary and can make code logic difficult to follow. TypeHAL provides `async` methods that allow you to "wait" for a hardware event in a clean, sequential style.
+For many applications, interrupts are unnecessary and can make code logic difficult to follow. TypeCAD provides `async` methods that allow you to "wait" for a hardware event in a clean, sequential style.
 
 ### Waiting for an Edge
 The `waitForRising` and `waitForFalling` methods return a `Promise` that resolves when the event occurs. The transpiler automatically generates the necessary state machines to handle this without blocking other tasks.
 
 ```typescript
-import { D2, delay } from '@typehal';
+import { D2, delay } from '@typecad/board';
 
 const sensor = D2.asInput();
 
@@ -113,7 +113,7 @@ Available on all digital input pins.
 While the `Pulse` utility is optimized for high speed, you can use async methods for long-duration pulses.
 
 ```typescript
-import { D2, millis } from '@typehal';
+import { D2, millis } from '@typecad/board';
 
 const pin = D2.asInput();
 

@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 function writeUI(html: string, css: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-ui-call-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-ui-call-"));
   tempDirs.push(dir);
   const htmlPath = path.join(dir, "app.ui.html");
   fs.writeFileSync(htmlPath, html, "utf-8");

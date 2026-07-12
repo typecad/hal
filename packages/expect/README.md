@@ -58,7 +58,11 @@ Hardware test runner for [TypeCAD](../../README.md). Write vitest-style assertio
 
 ## Installation
 
-`@typecad/expect` is included in the TypeCAD monorepo. No separate install step is needed within the workspace.
+```bash
+npm install --save-dev @typecad/expect @typecad/cuttlefish
+```
+
+`@typecad/expect` ships the `cuttlefish-test` CLI. It pairs with [`@typecad/cuttlefish`](https://github.com/justind000/typecode/tree/main/packages/cuttlefish), which transpiles your TypeScript test files to C++ for upload to hardware.
 
 **Prerequisites:**
 
@@ -75,7 +79,7 @@ Test files follow a fluent chaining style. Expectations can use direct values or
 ```typescript
 // examples/my-sensor.test.ts
 import { describe, done } from '@typecad/expect';
-import { A0 } from '@TypeCAD';
+import { A0 } from '@typecad/board';
 
 describe("A0 analog read")
   .it("reads a value in valid ADC range")
@@ -148,13 +152,13 @@ All numeric matchers return the parent `Suite`, so you can continue the chain wi
 
 ```bash
 # Run a specific file
-node packages/expect/dist/host/cli.js examples/my-sensor.test.ts
+npx cuttlefish-test examples/my-sensor.test.ts
 
 # Run all test files matched by config include patterns
-node packages/expect/dist/host/cli.js
+npx cuttlefish-test
 
 # Override the port at run-time
-node packages/expect/dist/host/cli.js --port /dev/ttyACM0 examples/my-sensor.test.ts
+npx cuttlefish-test --port /dev/ttyACM0 examples/my-sensor.test.ts
 ```
 
 Or via the npm script defined in the root `package.json`:
@@ -248,13 +252,11 @@ Use the stock-Uno showcase in [examples/23-transpiler-showcase.ts](../../example
 Example flow:
 
 ```bash
-# 1. Compile and upload the serial-output showcase via the demo workspace
-cd demo
-npm run compile
+# 1. Compile and upload the serial-output showcase
+npx cuttlefish src/23-transpiler-showcase.ts --compile --upload --port COM4
 
 # 2. Run the on-hardware expect test against the connected Uno
-cd ..
-npm run test:hw -- examples/24-uno-validation.test.ts --port COM4
+npx cuttlefish-test examples/24-uno-validation.test.ts --port COM4
 ```
 
 This hybrid workflow is the recommended way to confirm that simple variables, arithmetic, arrays, enums, functions, GPIO, and analog input are behaving correctly on real Uno hardware.

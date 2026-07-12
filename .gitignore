@@ -25,6 +25,9 @@ dbg.txt
 rt.txt
 glyphs.txt
 
+# Local npm pack/install verification scratch (tarballs + scaffolded installs)
+.npm-pack-test/
+
 # Windows reserved-name redirect accidents
 nul
 **/nul

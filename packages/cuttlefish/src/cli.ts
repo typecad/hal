@@ -355,7 +355,7 @@ async function main(): Promise<void> {
       }
 
       // Keep cuttlefish-env.d.ts in sync so the TS language server can resolve
-      // bare '@typecad' imports in editor without a linter error.
+      // '@typecad/board' imports in editor without a linter error.
       // Platform-specific declarations come from the strategy if available.
       let platformDeclarations: string[] | undefined;
       try {

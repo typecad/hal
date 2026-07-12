@@ -68,7 +68,7 @@ export interface TranspileOptions {
   treeShaking?: TreeShakingOptions;
   /**
    * Board package specifier resolved from `cuttlefish.config.ts`.
-   * When present, bare `@typecad` imports are rewritten to this package
+   * When present, `@typecad/board` imports are rewritten to this package
    * (e.g. `'@typecad/board-arduino-uno'`).
    */
   boardPackage?: string;
@@ -151,7 +151,7 @@ export interface CommandLineOptions {
   treeShaking?: TreeShakingOptions;
   /**
    * Board package specifier resolved from `cuttlefish.config.ts`.
-   * When present, bare `@typecad` imports are rewritten to this package.
+   * When present, `@typecad/board` imports are rewritten to this package.
    */
   boardPackage?: string;
   /**

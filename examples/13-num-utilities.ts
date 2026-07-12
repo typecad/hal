@@ -4,7 +4,7 @@
 // Demonstrates both direct and fluent chainable APIs.
 // ---------------------------------------------------------------------------
 
-import { A0, D3, D13, Num, delay } from '@typecad';
+import { A0, D3, D13, Num, delay } from '@typecad/board';
 
 // ---------------------------------------------------------------------------
 // Direct function calls

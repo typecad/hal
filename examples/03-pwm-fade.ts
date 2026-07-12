@@ -6,7 +6,7 @@
 // A non-PWM pin like D4 would produce a compile error.
 // ---------------------------------------------------------------------------
 
-import { D9, delay } from '@typecad';
+import { D9, delay } from '@typecad/board';
 
 D9.asOutput(false);
 

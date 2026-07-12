@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // End-to-end integration: a real multi-file UI program transpiled through
-// transpileFile(), the same path `npx typehal build` takes.
+// transpileFile(), the same path `npx typecad build` takes.
 //
 // This is the North Star test for the UI wiring plan: it proves that an
 // author's .ui.html + .ui.css + .ts program produces emitted C++ containing

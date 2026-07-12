@@ -1,18 +1,18 @@
 # Analog & PWM
 
-TypeHAL provides high-level, hardware-agnostic abstractions for working with varying signals. These are divided into **Analog Input** (reading voltages via ADC) and **Pulse Width Modulation** (approximating analog output).
+TypeCAD provides high-level, hardware-agnostic abstractions for working with varying signals. These are divided into **Analog Input** (reading voltages via ADC) and **Pulse Width Modulation** (approximating analog output).
 
 ---
 
 ## Analog Input (ADC)
 
-Analog input allows you to read a voltage from a pin and convert it into a digital value. TypeHAL supports both raw ADC readings and direct voltage measurements.
+Analog input allows you to read a voltage from a pin and convert it into a digital value. TypeCAD supports both raw ADC readings and direct voltage measurements.
 
 ### Basic Reading
 To read from an analog pin, ensure it is configured as an input.
 
 ```typescript
-import { A0, UART0, delay } from '@typehal';
+import { A0, UART0, delay } from '@typecad/board';
 
 const serial = UART0.begin(9600);
 A0.asInput();
@@ -26,7 +26,7 @@ while (true) {
 ```
 
 ### Voltage Sensing
-TypeHAL can automatically convert raw ADC values into volts based on the board's reference voltage and resolution.
+TypeCAD can automatically convert raw ADC values into volts based on the board's reference voltage and resolution.
 
 ```typescript
 // Read actual voltage (e.g., 2.5 for a 5V system at half-scale)
@@ -52,7 +52,7 @@ PWM allows you to simulate an analog output by rapidly toggling a digital pin. I
 The `.pwm()` method accepts a **percentage** (0 to 100), making your code independent of the underlying hardware's PWM resolution (whether it's 8-bit, 10-bit, or 16-bit).
 
 ```typescript
-import { D9 } from '@typehal';
+import { D9 } from '@typecad/board';
 
 // D9 is a PWM-capable pin on most boards
 const led = D9.asOutput();
@@ -62,10 +62,10 @@ led.pwm(50);
 ```
 
 ### PWM Fade Example
-TypeHAL's percentage-based API simplifies fading logic across different hardware.
+TypeCAD's percentage-based API simplifies fading logic across different hardware.
 
 ```typescript
-import { D9, delay } from '@typehal';
+import { D9, delay } from '@typecad/board';
 
 const led = D9.asOutput();
 
@@ -110,10 +110,10 @@ Available on pins narrowed via `.asOutput()` that have PWM hardware.
 
 ## Capability Guarding
 
-One of TypeHAL's core strengths is **static capability validation**. Because pins are typed, the transpiler will catch errors if you try to use PWM or Analog methods on pins that lack the hardware support.
+One of TypeCAD's core strengths is **static capability validation**. Because pins are typed, the transpiler will catch errors if you try to use PWM or Analog methods on pins that lack the hardware support.
 
 ```typescript
-import { D4, D9, A0 } from '@typehal';
+import { D4, D9, A0 } from '@typecad/board';
 
 D4.pwm(50);      // Error: D4 does not support PWM on this board
 D9.pwm(50);      // OK: D9 is a PWM pin
@@ -129,7 +129,7 @@ D9.readAnalog(); // Error: D9 does not have an ADC
 Mapping an analog input directly to a PWM output is trivial with the normalized percentage API.
 
 ```typescript
-import { A0, D9, delay } from '@typehal';
+import { A0, D9, delay } from '@typecad/board';
 
 A0.asInput();
 const led = D9.asOutput();
@@ -150,7 +150,7 @@ while (true) {
 Using `readVoltage()` simplifies logic by removing the need for manual bit-to-voltage math.
 
 ```typescript
-import { A1, delay } from '@typehal';
+import { A1, delay } from '@typecad/board';
 
 A1.asInput();
 const dividerRatio = 2.0; // Assuming a 10k/10k voltage divider

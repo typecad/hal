@@ -9,29 +9,24 @@ import fs from "node:fs";
 import type { ResolvedNpmPackage } from "../../transpile/resolution.js";
 
 /**
- * Checks if a module specifier resolves to a typehal SDK path.
+ * Checks if a module specifier resolves to a TypeCAD SDK path.
  * Cuttlefish SDK files (code/core/*, code/board-*, @typecad/* packages) are 
  * type-level only and should produce no C++ output or #include directives.
  * 
  * @param moduleSpecifier The import specifier (e.g., "@typecad/hal" or "./pins")
  * @param fromFile The file path from which the import originates
- * @returns true if this is a typehal SDK import
+ * @returns true if this is a TypeCAD SDK import
  */
 export function isCuttlefishSDKImport(moduleSpecifier: string, fromFile: string): boolean {
-  // Compare case-insensitively so the documented virtual import `@TypeCAD`
-  // (mixed case) is treated the same as `@typecad`. Both resolve to the board
-  // package and are type-level only — they must not emit a C++ #include.
+  // All @typecad/* package imports — including the `@typecad/hal` virtual
+  // import, which resolves to the board package — are type-level only and must
+  // not emit a C++ #include. Compare case-insensitively so the documented
+  // mixed-case form is treated identically.
   const spec = moduleSpecifier.toLowerCase();
-  // Check for @typecad/* npm package imports
   if (spec.startsWith("@typecad/")) {
     return true;
   }
 
-  // Check for bare "@typecad" virtual import (resolved via cuttlefish.config.ts)
-  if (spec === "@typecad") {
-    return true;
-  }
-  
   // Check for relative imports to code/core or code/board-* paths
   if (!moduleSpecifier.startsWith(".")) {
     return false;

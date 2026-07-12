@@ -31,7 +31,7 @@ export interface TypeCheckResult {
  * Returns early if any errors are found.
  * 
  * @param files List of TypeScript files to type-check
- * @param _boardPackage Optional board package for resolving @typecad imports
+ * @param _boardPackage Optional board package for resolving @typecad/board imports
  * @param entryFile Entrypoint sketch/main file
  * @returns TypeCheckResult with success status and any error messages
  */

@@ -136,7 +136,7 @@ function isStructReturnType(cppType: string, strategy: PlatformStrategy): boolea
 /**
  * True if a return-value expression lowers to a nullish literal — `null`
  * (`nullptr`), `undefined` (`CUTTLEFISH_UNDEFINED`), or a nullish-coalescing
- * `cuttlefish_nullish(x, nullptr)`/`typehal_nullish(...)` whose fallback is
+ * `cuttlefish_nullish(x, nullptr)`/`typecad_nullish(...)` whose fallback is
  * nullish. Such a value cannot convert to a struct return type. Demo #14 A.
  */
 function isNullishReturnValue(value: ExpressionIR): boolean {
@@ -146,11 +146,11 @@ function isNullishReturnValue(value: ExpressionIR): boolean {
     return value.value === "nullptr" || value.value === "nullptr_" || value.value === "undefined" || value.value === "CUTTLEFISH_UNDEFINED";
   }
   // `x ?? null` lowers to a raw `cuttlefish_nullish(x, nullptr)` /
-  // `typehal_nullish(x, nullptr)`. The fallback is the struct-incompatible
+  // `typecad_nullish(x, nullptr)`. The fallback is the struct-incompatible
   // part; treat the whole expression as nullish for return purposes.
   if (value.kind === "raw") {
     const v = value.value;
-    return /(?:cuttlefish|typehal)_nullish\([^,]*,\s*(?:nullptr|CUTTLEFISH_UNDEFINED)\s*\)/.test(v);
+    return /(?:cuttlefish|typecad)_nullish\([^,]*,\s*(?:nullptr|CUTTLEFISH_UNDEFINED)\s*\)/.test(v);
   }
   return false;
 }

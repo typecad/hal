@@ -1,5 +1,5 @@
 import { describe, done } from '@typecad/expect';
-import { D2, D3, D4, D9, D10, D11, D13, A0, LED } from '@TypeCAD';
+import { D2, D3, D4, D9, D10, D11, D13, A0, LED } from '@typecad/board';
 
 describe("Pin mode configuration")
   .it("Pin.output() alias configures without crashing")

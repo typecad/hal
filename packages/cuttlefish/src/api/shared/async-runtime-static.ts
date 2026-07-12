@@ -34,7 +34,7 @@
 export function generateStaticAsyncRuntime(capacity: number): string {
   return `
 // TypeCAD static (heap-free) async runtime — for targets without <vector>.
-namespace typehal_async_static {
+namespace typecad_async_static {
 
 // A one-shot callback with an opaque context. The callback returns true while
 // it wants to keep running, false once complete. Function pointer + void* only
@@ -145,26 +145,26 @@ private:
 // one pump cycle so that awaiting code observes a deferred step.
 static bool __yieldNoop(void*) { return false; }
 
-} // namespace typehal_async_static
+} // namespace typecad_async_static
 
 // ── Global-scope HAL symbols (the names the HAL Async module emits) ──
 
 // Async.sleep(ms) — arm a one-shot timer. No value is returned; on heap-free
 // targets the HAL method's result is fire-and-forget scheduling.
 inline void __cuttlefish_async_sleep(unsigned long ms) {
-  typehal_async_static::StaticAsyncRuntime::instance().armTimeout(ms);
+  typecad_async_static::StaticAsyncRuntime::instance().armTimeout(ms);
 }
 
 // Async.yield() — defer one pump cycle.
 inline void __cuttlefish_async_yield() {
-  typehal_async_static::StaticAsyncRuntime::instance().enqueue(
-    typehal_async_static::__yieldNoop, 0);
+  typecad_async_static::StaticAsyncRuntime::instance().enqueue(
+    typecad_async_static::__yieldNoop, 0);
 }
 
 // Async.sleepUntil(pollMs) — arm a periodic timer at the poll cadence. The
 // caller's condition is re-evaluated each time the timer elapses.
 inline void __cuttlefish_async_sleep_until(unsigned long pollMs) {
-  typehal_async_static::StaticAsyncRuntime::instance().armInterval(pollMs);
+  typecad_async_static::StaticAsyncRuntime::instance().armInterval(pollMs);
 }
 
 // Async.currentTask() — name of the currently executing task.
@@ -176,7 +176,7 @@ inline const char* __cuttlefish_async_current_task() {
 // drains one-shot tasks. Same name as the heap-based runtime so the emitter's
 // loop injection is identical across targets.
 inline void cuttlefish_pump_microtasks() {
-  typehal_async_static::StaticAsyncRuntime::instance().pump();
+  typecad_async_static::StaticAsyncRuntime::instance().pump();
 }
 
 // HAL-level wait for pin edge — polling-based implementation for static

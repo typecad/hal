@@ -1,0 +1,25 @@
+{
+  "mode": "pre",
+  "tag": "alpha",
+  "initialVersions": {
+    "@typecad/hal": "0.0.0",
+    "@typecad/cuttlefish": "0.0.0",
+    "@typecad/ui": "0.0.0",
+    "@typecad/expect": "0.0.0",
+    "@typecad/simulator": "0.0.0",
+    "@typecad/framework-arduino": "0.0.0",
+    "@typecad/framework-native": "0.0.0",
+    "@typecad/framework-avr": "0.0.0",
+    "@typecad/mcu-atmega328p": "0.0.0",
+    "@typecad/mcu-esp32": "0.0.0",
+    "@typecad/mcu-esp32s3": "0.0.0",
+    "@typecad/mcu-esp32c3": "0.0.0",
+    "@typecad/mcu-esp32c6": "0.0.0",
+    "@typecad/board-arduino-uno": "0.0.0",
+    "@typecad/board-esp32-devkit": "0.0.0",
+    "@typecad/board-esp32s3": "0.0.0",
+    "@typecad/board-esp32c3": "0.0.0",
+    "@typecad/board-esp32c6": "0.0.0"
+  },
+  "changesets": []
+}

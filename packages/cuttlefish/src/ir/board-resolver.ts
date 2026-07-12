@@ -399,7 +399,7 @@ function tryEncodePeripheralPinMap(
 
 /**
  * Given a source file path and a relative import module specifier, check
- * whether the import resolves to a typehal board-definition package
+ * whether the import resolves to a TypeCAD board-definition package
  * (path pattern: /code/board-*\/index.ts).
  *
  * Returns the absolute path to the board index.ts on match, otherwise
@@ -410,11 +410,11 @@ export function tryResolveBoardDefFile(
   moduleSpecifier: string,
   boardPackage?: string,
 ): string | undefined {
-  // Handle bare "@typecad" virtual import — rewrite to the concrete board
+  // Handle the "@typecad/board" virtual import — rewrite to the concrete board
   // package so the rest of the resolution logic works unchanged.
-  // Case-insensitive so the documented `@TypeCAD` import resolves identically.
+  // (Case-insensitive so the documented mixed-case form resolves identically.)
   let effectiveSpecifier = moduleSpecifier;
-  if (moduleSpecifier.toLowerCase() === "@typecad" && boardPackage) {
+  if (moduleSpecifier.toLowerCase() === "@typecad/board" && boardPackage) {
     effectiveSpecifier = boardPackage;
   }
 

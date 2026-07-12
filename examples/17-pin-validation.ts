@@ -9,7 +9,7 @@
  * before using features that require specific capabilities.
  */
 
-import { D2, D3, A0, LED, delay, UART0 } from '@typecad';
+import { D2, D3, A0, LED, delay, UART0 } from '@typecad/board';
 import { hasPWM as isPWMPin, hasAnalogInput as isAnalogPin, hasInterrupt as isInterruptPin, assertPWM } from '@typecad/simulator';
 import type { PWMPin } from '@typecad/simulator';
 

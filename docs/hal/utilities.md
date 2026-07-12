@@ -1,6 +1,6 @@
 # Signal Utilities
 
-TypeHAL provides a set of specialized functions for working with timing-sensitive signals, serializing data, and generating entropy. These utilities bridge the gap between simple GPIO and complex communication buses.
+TypeCAD provides a set of specialized functions for working with timing-sensitive signals, serializing data, and generating entropy. These utilities bridge the gap between simple GPIO and complex communication buses.
 
 ---
 
@@ -12,7 +12,7 @@ The Tone API generates a square wave of a specific frequency on any digital pin.
 Start a continuous tone or a timed beep using the fluent `.for()` builder.
 
 ```typescript
-import { D8 } from '@typehal';
+import { D8 } from '@typecad/board';
 
 const speaker = D8.asOutput();
 
@@ -36,7 +36,7 @@ The `Pulse` utility measures the duration of a signal pulse (HIGH or LOW) in mic
 The fluent API provides a readable way to configure timeouts and pulse polarities.
 
 ```typescript
-import { Pulse, D7 } from '@typehal';
+import { Pulse, D7 } from '@typecad/board';
 
 // Measure a HIGH pulse on D7
 const duration = Pulse.on(D7).high();
@@ -55,7 +55,7 @@ Shift registers allow you to expand your I/O pins by serializing data over two o
 Send 8 bits of data to an output shift register like the 74HC595.
 
 ```typescript
-import { Shift, D2, D3 } from '@typehal';
+import { Shift, D2, D3 } from '@typecad/board';
 
 const dataPin = D2.asOutput();
 const clockPin = D3.asOutput();
@@ -85,7 +85,7 @@ The `Random` utility provides access to the hardware's pseudo-random number gene
 For better randomness, it is recommended to seed the generator with noise from an unconnected analog pin.
 
 ```typescript
-import { Random, A0 } from '@typehal';
+import { Random, A0 } from '@typecad/board';
 
 Random.seed(A0.readAnalog());
 ```

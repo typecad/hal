@@ -1,23 +1,24 @@
-# @typehal/framework-arduino
+# @typecad/framework-arduino
 
-Arduino framework strategy for TypeHAL code generation.
+Arduino framework strategy for TypeCAD code generation.
 
 ## Overview
 
-`@typehal/framework-arduino` implements the Arduino-compatible code generation strategy used by TypeHAL. It emits Arduino-style C++ calls such as `pinMode()`, `digitalWrite()`, and `Serial` operations, and provides helper utilities for Arduino CLI metadata, library discovery, and runtime polyfills.
+`@typecad/framework-arduino` implements the Arduino-compatible code generation strategy used by TypeCAD. It emits Arduino-style C++ calls such as `pinMode()`, `digitalWrite()`, and `Serial` operations, and provides helper utilities for Arduino CLI metadata, library discovery, and runtime polyfills.
 
 ## Quick start
 
-Add the package to your `typehal.config.ts`:
+Add the package to your `cuttlefish.config.ts`:
 
 ```ts
-import type { TypehalConfig } from '@typehal/core';
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
-const config: TypehalConfig = {
+const config: CuttlefishConfig = {
+  entry: './src/main.ts',
   target: 'avr',
-  board: '@typehal/board-arduino-uno',
-  framework: '@typehal/framework-arduino',
-  fqbn: 'arduino:avr:uno',
+  mcu: '@typecad/mcu-atmega328p',
+  board: '@typecad/board-arduino-uno',
+  framework: '@typecad/framework-arduino',
   output: { framework: 'arduino', optimize: 'size' },
 };
 
@@ -27,14 +28,14 @@ export default config;
 Then run the CLI:
 
 ```bash
-npx typehal src/main.ts --compile --upload --port COM4
+npx cuttlefish src/main.ts --compile --upload --port COM4
 ```
 
 ## How to use
 
 ### Framework strategy
 
-When `framework` is set to `@typehal/framework-arduino`, TypeHAL generates code compatible with the Arduino runtime and Arduino CLI toolchain.
+When `framework` is set to `@typecad/framework-arduino`, TypeCAD generates code compatible with the Arduino runtime and Arduino CLI toolchain.
 
 ### Key exports
 
@@ -58,7 +59,7 @@ The package can discover installed Arduino libraries and generate TypeScript dec
 
 ### Serial and console polyfills
 
-`@typehal/framework-arduino` includes helpers for detecting `Serial.begin()` usage and injecting Arduino console support automatically when needed.
+`@typecad/framework-arduino` includes helpers for detecting `Serial.begin()` usage and injecting Arduino console support automatically when needed.
 
 ---
 
@@ -66,13 +67,13 @@ The package can discover installed Arduino libraries and generate TypeScript dec
 
 The following features are automatically applied when targeting AVR (Arduino Uno, Mega, etc.) or ESP32.
 
-### Panic handler — `typehal_halt`
+### Panic handler — `cuttlefish_halt`
 
-TypeScript `throw` statements compile to a `typehal_halt("PANIC")` macro call instead of a bare `for(;;){}` loop. The macro prints the message over Serial (using `F()` for flash storage) then halts:
+TypeScript `throw` statements compile to a `cuttlefish_halt("PANIC")` macro call instead of a bare `for(;;){}` loop. The macro prints the message over Serial (using `F()` for flash storage) then halts:
 
 ```cpp
-#ifndef typehal_halt
-#define typehal_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
+#ifndef cuttlefish_halt
+#define cuttlefish_halt(msg) do { Serial.println(F(msg)); for (;;) {} } while (0)
 #endif
 ```
 
@@ -104,12 +105,12 @@ Variable expressions are passed through without wrapping.
 | `s.startsWith(prefix)`   | `(strncmp(s, prefix, strlen(prefix)) == 0)` |
 | `s.endsWith(suffix)`     | `__tc_endsWith(s, suffix)`                |
 
-### Configurable string buffer size — `TYPEHAL_STR_BUF_SIZE`
+### Configurable string buffer size — `CUTTLEFISH_STR_BUF_SIZE`
 
 String-method polyfills (`.toUpperCase()`, `.toLowerCase()`, `.trim()`, `.replace()`, etc.) use a stack-allocated buffer whose size is controlled by a compile-time macro. Override it in your sketch or build flags:
 
 ```cpp
-#define TYPEHAL_STR_BUF_SIZE 128  // default is 64
+#define CUTTLEFISH_STR_BUF_SIZE 128  // default is 64
 ```
 
 ### Heap-allocation validator
@@ -140,7 +141,7 @@ IRAM_ATTR void myButton_isr_0() { ... }
 
 ### `Timing` — timing utilities
 
-| TypeHAL                      | Generated C++                  |
+| TypeCAD                      | Generated C++                  |
 |-------------------------------|--------------------------------|
 | `Timing.millis()`             | `millis()`                     |
 | `Timing.micros()`             | `micros()`                     |
@@ -157,7 +158,7 @@ const elapsed = Timing.millis() - t0;
 
 Requires `<EEPROM.h>` (included automatically by the board framework).
 
-| TypeHAL                      | Generated C++                  |
+| TypeCAD                      | Generated C++                  |
 |-------------------------------|--------------------------------|
 | `EEPROM.read(addr)`           | `EEPROM.read(addr)`            |
 | `EEPROM.write(addr, val)`     | `EEPROM.write(addr, val)`      |
@@ -172,7 +173,7 @@ Requires `<EEPROM.h>` (included automatically by the board framework).
 
 Controls the AVR hardware watchdog. Requires `<avr/wdt.h>`.
 
-| TypeHAL                      | Generated C++                    |
+| TypeCAD                      | Generated C++                    |
 |-------------------------------|----------------------------------|
 | `WDT.enable('2s')`            | `wdt_enable(WDTO_2S)`            |
 | `WDT.reset()`                 | `wdt_reset()`                    |

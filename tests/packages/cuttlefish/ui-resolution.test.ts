@@ -15,7 +15,7 @@ afterEach(() => {
 
 describe(".ui.html resolution", () => {
   it("resolves a relative .ui.html import and marks it as a UI module", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-ui-res-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-ui-res-"));
     tempDirs.push(dir);
     const importer = path.join(dir, "app.ts");
     fs.writeFileSync(importer, ``, "utf-8");
@@ -29,7 +29,7 @@ describe(".ui.html resolution", () => {
   });
 
   it("does not mark .ts imports as UI modules", () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-ui-res-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-ui-res-"));
     tempDirs.push(dir);
     const importer = path.join(dir, "app.ts");
     fs.writeFileSync(importer, ``, "utf-8");
@@ -46,7 +46,7 @@ describe(".ui.html resolution", () => {
     // graph interception; here we verify the resolver itself surfaces the path
     // so the graph builder can call loadUIModule. (The registry-load happens in
     // collectTranspileGraph, exercised by the integration test.)
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-ui-res-"));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-ui-res-"));
     tempDirs.push(dir);
     const importer = path.join(dir, "app.ts");
     fs.writeFileSync(importer, ``, "utf-8");

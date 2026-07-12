@@ -6,7 +6,7 @@
 //        requestFrom(), available(), read()
 // ---------------------------------------------------------------------------
 
-import { I2C0, UART0, delay } from '@typecad';
+import { I2C0, UART0, delay } from '@typecad/board';
 
 // Initialize UART0 for debug output
 const serial = UART0.begin(9600);

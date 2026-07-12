@@ -9,22 +9,22 @@ describe('preprocessor', () => {
   it('strips @typecad/expect imports', () => {
     const source = `
 import { describe, done } from '@typecad/expect';
-import { A0 } from '@typecad';
+import { A0 } from '@typecad/board';
 done();
 `;
     const result = preprocess(source);
     expect(result).not.toContain("@typecad/expect");
-    expect(result).toContain("@typecad");
+    expect(result).toContain("@typecad/board");
   });
 
   it('preserves non-expect imports', () => {
     const source = `
-import { A0 } from '@typecad';
+import { A0 } from '@typecad/board';
 import { describe, done } from '@typecad/expect';
 done();
 `;
     const result = preprocess(source);
-    expect(result).toContain("import { A0 } from '@typecad'");
+    expect(result).toContain("import { A0 } from '@typecad/board'");
   });
 
   it('emits Serial.initialize preamble', () => {
@@ -77,7 +77,7 @@ done();
   it('hoists complex expressions into const declarations', () => {
     const source = `
 import { describe, done } from '@typecad/expect';
-import { A0 } from '@typecad';
+import { A0 } from '@typecad/board';
 describe("analog")
   .it("reads")
     .expect(A0.read()).toBe(0);
@@ -190,7 +190,7 @@ done();
   it('preserves non-test statements', () => {
     const source = `
 import { describe, done } from '@typecad/expect';
-import { A0 } from '@typecad';
+import { A0 } from '@typecad/board';
 const x: number = 42;
 describe("group")
   .it("test").expect(x).toBe(42);

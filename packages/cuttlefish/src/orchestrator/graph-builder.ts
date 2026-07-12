@@ -84,7 +84,7 @@ export function topologicalSortFiles(
  * Also detects native C++ modules (.d.ts + .cpp pairs).
  * Files are returned in dependency order (dependencies before dependents).
  *
- * @param boardPackage  When provided, bare `@typecad` imports resolve to this
+ * @param boardPackage  When provided, `@typecad/board` imports resolve to this
  *                      board package (e.g. `'@typecad/board-arduino-uno'`).
  */
 export function collectTranspileGraph(entryFile: string, boardPackage?: string): TranspileGraphResult {
@@ -105,7 +105,7 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
 
     visited.add(filePath);
 
-    // Skip typehal SDK files — they are type-level definitions only
+    // Skip TypeCAD SDK files — they are type-level definitions only
     if (isCuttlefishSDKPath(filePath)) {
       continue;
     }
@@ -197,14 +197,14 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
         continue;
       }
 
-      // Skip @typecad/hal, @typecad/board-*, @typecad/mcu-*, and
+      // Skip @typecad/board, @typecad/board-*, @typecad/mcu-*, and
       // @typecad/framework-* — these packages ship src/ for HAL metadata
       // introspection (hal-parser.ts, board-resolver.ts) but their source
       // must NOT be transpiled to C++. The HAL resolver loads class/method
       // metadata from these files separately; emitting them as C++ produces
       // thousands of lines of stub functions (board(), gpioWrite(), etc.)
       // and pulls in unsupported types (Promise, variant, Object.freeze).
-      if (moduleSpecifier === "@typecad/hal"
+      if (moduleSpecifier === "@typecad/board"
         || moduleSpecifier.startsWith("@typecad/board-")
         || moduleSpecifier.startsWith("@typecad/mcu-")
         || moduleSpecifier.startsWith("@typecad/framework-")) {

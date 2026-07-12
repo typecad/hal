@@ -6,7 +6,7 @@
 // returns a type-narrowed alias for subsequent calls.
 // ---------------------------------------------------------------------------
 
-import { HIGH, LED, delay } from '@typecad';
+import { HIGH, LED, delay } from '@typecad/board';
 
 const led = LED.asOutput(HIGH);
 

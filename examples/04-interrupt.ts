@@ -1,4 +1,4 @@
-﻿import { D2, LED, delay } from '@typecad';
+﻿import { D2, LED, delay } from '@typecad/board';
 
 const led = LED.asOutput(false);
 let ledState = false;

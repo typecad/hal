@@ -11,7 +11,7 @@
     "noEmit": true,
     "paths": {
       "@typecad/expect": ["../../expect/src/index.ts"],
-      "@typecad": ["../../board-arduino-uno/src/index.ts"],
+      "@typecad/board": ["../../board-arduino-uno/src/index.ts"],
       "@typecad/*": ["../../*/src"]
     }
   },

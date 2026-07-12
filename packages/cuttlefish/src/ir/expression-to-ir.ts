@@ -886,7 +886,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     return { kind: "string", value: "object" };
   }
 
-  // Recurse into binary expressions so nested typehal calls are translated correctly.
+  // Recurse into binary expressions so nested TypeCAD calls are translated correctly.
   if (ts.isBinaryExpression(expr)) {
     let operator = ts.tokenToString(expr.operatorToken.kind) ?? expr.operatorToken.getText();
     if (operator === "===") operator = "==";

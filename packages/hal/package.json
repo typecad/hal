@@ -1,6 +1,6 @@
 {
   "name": "@typecad/hal",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "description": "TypeCAD hardware abstraction layer — GPIO, I2C, SPI, UART as regular TypeScript",
   "type": "module",
   "main": "./dist/index.js",
@@ -21,7 +21,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/justind000/typecode.git",
+    "url": "git+https://github.com/justind000/typecode.git",
     "directory": "packages/hal"
   },
   "homepage": "https://github.com/justind000/typecode/tree/main/packages/hal",
@@ -49,8 +49,16 @@
   },
   "author": "typecad0",
   "devDependencies": {
-    "@typecad/expect": "*",
-    "@typecad/board-arduino-uno": "*",
-    "@typecad/mcu-atmega328p": "*"
+    "@typecad/expect": "0.1.0-alpha.1",
+    "@typecad/board-arduino-uno": "0.1.0-alpha.1",
+    "@typecad/mcu-atmega328p": "0.1.0-alpha.1"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   }
 }

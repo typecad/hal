@@ -15,7 +15,7 @@ afterEach(() => {
 describe("config-loader", () => {
   describe("findConfigFile", () => {
     it("finds cuttlefish.config.ts in the given directory", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-cfg-"));
       tempDirs.push(dir);
 
       const configPath = path.join(dir, "cuttlefish.config.ts");
@@ -25,7 +25,7 @@ describe("config-loader", () => {
     });
 
     it("walks up to find cuttlefish.config.ts in a parent directory", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-cfg-"));
       tempDirs.push(dir);
 
       const configPath = path.join(dir, "cuttlefish.config.ts");
@@ -38,7 +38,7 @@ describe("config-loader", () => {
     });
 
     it("returns undefined when no config file exists", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-cfg-"));
       tempDirs.push(dir);
 
       // Don't create any config file
@@ -48,7 +48,7 @@ describe("config-loader", () => {
 
   describe("parseConfigFile", () => {
     it("parses a config file with all fields", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-cfg-"));
       tempDirs.push(dir);
 
       const configPath = path.join(dir, "cuttlefish.config.ts");
@@ -83,7 +83,7 @@ describe("config-loader", () => {
     });
 
     it("parses config with inline export default", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-cfg-"));
       tempDirs.push(dir);
 
       const configPath = path.join(dir, "cuttlefish.config.ts");
@@ -108,7 +108,7 @@ describe("config-loader", () => {
     });
 
     it("returns undefined for empty file", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-cfg-"));
       tempDirs.push(dir);
 
       const configPath = path.join(dir, "cuttlefish.config.ts");
@@ -119,7 +119,7 @@ describe("config-loader", () => {
     });
 
     it("handles config with only board and fqbn", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-cfg-"));
       tempDirs.push(dir);
 
       const configPath = path.join(dir, "cuttlefish.config.ts");
@@ -147,7 +147,7 @@ describe("config-loader", () => {
 
   describe("loadCuttlefishConfig", () => {
     it("returns config when cuttlefish.config.ts exists", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-cfg-"));
       tempDirs.push(dir);
 
       const configPath = path.join(dir, "cuttlefish.config.ts");
@@ -170,8 +170,8 @@ describe("config-loader", () => {
       expect(result!.board).toBe("@typecad/board-arduino-uno");
     });
 
-    it("generates typehal-env.d.ts with volatile helper declaration", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
+    it("generates cuttlefish-env.d.ts with volatile helper declaration", () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-cfg-"));
       tempDirs.push(dir);
 
       const configPath = path.join(dir, "cuttlefish.config.ts");
@@ -199,7 +199,7 @@ describe("config-loader", () => {
     });
 
     it("returns undefined when no config file exists", () => {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-cfg-"));
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-cfg-"));
       tempDirs.push(dir);
 
       const result = loadCuttlefishConfig(dir);

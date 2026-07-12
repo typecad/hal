@@ -7,16 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-// TypeCAD Core Shims
-#ifndef CUTTLEFISH_UNDEFINED
-#define CUTTLEFISH_UNDEFINED 0
-#endif
-
-// Nullish helpers — overload set so value/struct types (which always
-// exist) return false from the generic template, while scalars compare
-// against CUTTLEFISH_UNDEFINED. The generic catch-all must NOT cast
-// (T)CUTTLEFISH_UNDEFINED — that fails to compile for non-scalar T.
-
 // TypeCAD Native Polyfills
 #ifndef CUTTLEFISH_STR_BUF_SIZE
 #define CUTTLEFISH_STR_BUF_SIZE 64

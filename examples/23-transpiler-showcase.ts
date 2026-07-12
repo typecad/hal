@@ -6,7 +6,7 @@
 // opening the serial monitor at 115200 baud.
 // ---------------------------------------------------------------------------
 
-import { A0, LED, UART0, delay } from '@typecad';
+import { A0, LED, UART0, delay } from '@typecad/board';
 
 enum SystemMode {
   Idle = 0,

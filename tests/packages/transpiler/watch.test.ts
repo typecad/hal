@@ -82,29 +82,29 @@ describe("watch", () => {
   describe("watch flag parsing", () => {
 
     it("parses --watch flag", () => {
-      const result = parseCommandLine(["node", "typehal", "sketch.ts", "--watch"]);
+      const result = parseCommandLine(["node", "typecad", "sketch.ts", "--watch"]);
       expect(result).toMatchObject({ watch: true, command: "default" });
     });
 
     it("parses -w short flag", () => {
-      const result = parseCommandLine(["node", "typehal", "sketch.ts", "-w"]);
+      const result = parseCommandLine(["node", "typecad", "sketch.ts", "-w"]);
       expect(result).toMatchObject({ watch: true, command: "default" });
     });
 
     it("defaults watch to false", () => {
-      const result = parseCommandLine(["node", "typehal", "sketch.ts"]);
+      const result = parseCommandLine(["node", "typecad", "sketch.ts"]);
       expect(result).toMatchObject({ watch: false, command: "default" });
     });
 
     it("rejects --watch --monitor combination", () => {
       expect(() =>
-        parseCommandLine(["node", "typehal", "sketch.ts", "--watch", "--monitor", "--port", "COM4"]),
+        parseCommandLine(["node", "typecad", "sketch.ts", "--watch", "--monitor", "--port", "COM4"]),
       ).toThrow("--watch and --monitor cannot be used together");
     });
 
     it("allows --watch --compile", () => {
       const result = parseCommandLine([
-        "node", "typehal", "sketch.ts", "--watch", "--compile",
+        "node", "typecad", "sketch.ts", "--watch", "--compile",
         "--fqbn", "arduino:avr:uno",
       ]);
       expect(result).toMatchObject({ watch: true, compile: true });
@@ -112,7 +112,7 @@ describe("watch", () => {
 
     it("allows --watch --compile --upload", () => {
       const result = parseCommandLine([
-        "node", "typehal", "sketch.ts", "--watch", "--compile", "--upload",
+        "node", "typecad", "sketch.ts", "--watch", "--compile", "--upload",
         "--fqbn", "arduino:avr:uno", "--port", "COM4",
       ]);
       expect(result).toMatchObject({ watch: true, compile: true, upload: true });

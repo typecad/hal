@@ -73,7 +73,7 @@ describe("detectExportedEntryPoints", () => {
 // ---------------------------------------------------------------------------
 describe("topological sort", () => {
   it("emits dependency files before dependent files in a three-file chain", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     // A → B → C  (A imports B, B imports C)
@@ -145,7 +145,7 @@ describe("topological sort", () => {
 // ---------------------------------------------------------------------------
 describe("cross-module tree-shaking", () => {
   it("preserves functions imported by the entry file", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "lib.ts");
@@ -196,7 +196,7 @@ describe("cross-module tree-shaking", () => {
     // correctness invariant is checked against `shapes.h` (the sibling enum
     // test below follows the same convention).
     it("preserves classes imported by the entry file", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "shapes.ts");
@@ -244,7 +244,7 @@ describe("cross-module tree-shaking", () => {
   });
 
   it("preserves enums imported by the entry file", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "types.ts");
@@ -294,7 +294,7 @@ describe("cross-module tree-shaking", () => {
 // ---------------------------------------------------------------------------
 describe("forward declarations", () => {
   it("emits forward declarations for cross-module class types in headers", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "sensor.ts");
@@ -341,7 +341,7 @@ describe("forward declarations", () => {
   });
 
   it("does not duplicate forward declarations for classes defined in the same file", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "local.ts");
@@ -393,7 +393,7 @@ describe("forward declarations", () => {
   });
 
   it("emits unique callback names for entry and imported Arduino modules", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const buttonPath = path.join(workspaceDir, "Button.ts");
@@ -402,7 +402,7 @@ describe("forward declarations", () => {
     fs.writeFileSync(
       buttonPath,
       [
-        "import { D2, millis } from '@typecad';",
+        "import { D2, millis } from '@typecad/board';",
         "import type { IInputModePin } from '@typecad/simulator';",
         "",
         "export class Button {",
@@ -444,7 +444,7 @@ describe("forward declarations", () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { D2 } from '@typecad';",
+        "import { D2 } from '@typecad/board';",
         "import { Button } from './Button';",
         "",
         "const btn = Button.start(D2, 50).onPress(() => {",
@@ -476,7 +476,7 @@ describe("forward declarations", () => {
   });
 
   it("emits valid C++ for standalone cross-module fluent API calls", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const entryPath = path.join(workspaceDir, "sketch.ts");
@@ -502,7 +502,7 @@ describe("forward declarations", () => {
     fs.writeFileSync(
       entryPath,
       [
-        "import { D2 } from '@typecad';",
+        "import { D2 } from '@typecad/board';",
         "import { Button } from './Button';",
         "",
         "Button.start(D2, 50).onPress(() => {",
@@ -534,7 +534,7 @@ describe("forward declarations", () => {
   // `#include "main.h"`, so the inline method body failed with
   // "'helper' was not declared in this scope".
   it("emits free function forward declarations before class definitions in split mode", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const entryPath = path.join(workspaceDir, "main.ts");
@@ -581,7 +581,7 @@ describe("forward declarations", () => {
 
 describe("cross-module string interpolation", () => {
   it("uses field and function return types instead of std::to_string heuristics", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const statePath = path.join(workspaceDir, "State.ts");
@@ -628,7 +628,7 @@ describe("cross-module string interpolation", () => {
   });
 
   it("does not classify imported PascalCase interfaces as classes", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const configPath = path.join(workspaceDir, "Config.ts");
@@ -668,7 +668,7 @@ describe("cross-module string interpolation", () => {
 // ---------------------------------------------------------------------------
 describe("header guards", () => {
   it("emits #pragma once in every generated header", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "util.ts");
@@ -718,7 +718,7 @@ describe("header guards", () => {
 // ---------------------------------------------------------------------------
 describe("cross-module variable types", () => {
   it("uses concrete type in header for exported string constant", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "lib.ts");
@@ -761,7 +761,7 @@ describe("cross-module variable types", () => {
   });
 
   it("uses concrete type in header for exported number constant", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "lib.ts");
@@ -804,7 +804,7 @@ describe("cross-module variable types", () => {
   });
 
   it("does not emit std::to_string for imported string constants in snprintf mode", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-"));
     tempDirs.push(workspaceDir);
 
     const libPath = path.join(workspaceDir, "lib.ts");

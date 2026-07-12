@@ -11,7 +11,7 @@
 //   - Structural typing on the pin parameter (interrupt pins only)
 // ---------------------------------------------------------------------------
 
-import { D2, LED, millis } from '@typecad';
+import { D2, LED, millis } from '@typecad/board';
 import type { IInputModePin } from '@typecad/simulator';
 import type { InterruptHandler } from '@typecad/hal';
 

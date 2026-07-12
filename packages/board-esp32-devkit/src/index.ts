@@ -64,18 +64,10 @@ export default ESP32DevKit;
 // Silicon-level re-exports from MCU package
 export * from '@typecad/mcu-esp32';
 
-// Generic HAL re-exports from @typecad/hal
-export {
-  HIGH, LOW, INPUT, OUTPUT, INPUT_PULLUP,
-  delay, millis, micros, delayMicroseconds,
-  map, constrain,
-  abs, min, max, Num,
-  pulseIn, pulseInLong, Pulse,
-  shiftIn, shiftOut, Shift,
-  randomSeed, random, Random,
-  noInterrupts, interrupts, attachInterrupt, detachInterrupt,
-  ADC, AsyncClass, Async
-} from '@typecad/hal';
+// Generic HAL re-exports from @typecad/hal. Full re-export so this board package
+// is a superset of @typecad/hal — `import { ... } from '@typecad/hal'` resolves
+// here at transpile time and exposes every HAL symbol plus board-specific pins.
+export * from '@typecad/hal';
 
 // Board-level pin Discovery API overrides (using silicon pins from MCU)
 import {

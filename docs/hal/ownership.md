@@ -1,8 +1,8 @@
 # Resource Ownership
 
-TypeHAL includes a set of optional features designed to bring memory and hardware safety to embedded TypeScript. These features are inspired by modern systems languages like Rust but are adapted to feel natural and intuitive in a TypeScript environment.
+TypeCAD includes a set of optional features designed to bring memory and hardware safety to embedded TypeScript. These features are inspired by modern systems languages like Rust but are adapted to feel natural and intuitive in a TypeScript environment.
 
-The ownership system is entirely **opt-in**: if you do not use these specific types or methods, TypeHAL behaves like standard TypeScript.
+The ownership system is entirely **opt-in**: if you do not use these specific types or methods, TypeCAD behaves like standard TypeScript.
 
 ---
 
@@ -20,10 +20,10 @@ I2C0.device(0x3C).writeByte(0x00, 0x55);
 ```
 
 ### The Solution: Exclusive Claims
-TypeHAL provides an exclusive acquisition pattern. When you `take()` a bus, you receive a handle that uniquely owns that resource.
+TypeCAD provides an exclusive acquisition pattern. When you `take()` a bus, you receive a handle that uniquely owns that resource.
 
 ```typescript
-import { I2C0 } from '@typehal';
+import { I2C0 } from '@typecad/board';
 
 // Claim exclusive access
 const bus = I2C0.take(); 
@@ -45,7 +45,7 @@ if (bus) {
 
 ## Memory Safety Types (Phantom Types)
 
-TypeHAL uses **Phantom Types** to track how data flows through your program. These types guide the transpiler's static analyzer to prevent common embedded programming errors—like use-after-move or dangling pointers—while having **zero runtime overhead**.
+TypeCAD uses **Phantom Types** to track how data flows through your program. These types guide the transpiler's static analyzer to prevent common embedded programming errors—like use-after-move or dangling pointers—while having **zero runtime overhead**.
 
 Select a type below for detailed documentation and examples:
 
@@ -56,7 +56,7 @@ Select a type below for detailed documentation and examples:
 4.  **[Mutable Borrowing (`Mut<T>`)](../ownership/mut.md)**: Deep dive into in-place mutation.
 
 ### 1. [Single Ownership (`Owned<T>`)](../ownership/owned.md)
-The foundation of TypeHAL's resource management. Ensures that every piece of data has exactly one owner at a time.
+The foundation of TypeCAD's resource management. Ensures that every piece of data has exactly one owner at a time.
 *   **Key Concept**: [Move Semantics](../ownership/owned.md#move-semantics)
 *   **Prevents**: Use-after-move, Double-free errors.
 
@@ -95,7 +95,7 @@ By using `Owned`, `Shared`, and `Mut`, you turn these dangerous runtime crashes 
 
 ## Zero-Cost Abstractions
 
-A core principle of TypeHAL is that safety should not come at the cost of performance. Because these rules are enforced at the **transpiler level**, the generated C++ is identical to hand-written code:
+A core principle of TypeCAD is that safety should not come at the cost of performance. Because these rules are enforced at the **transpiler level**, the generated C++ is identical to hand-written code:
 
 - `Owned<number>` emits as `int`.
 - `Shared<number>` emits as `const int`.
@@ -123,7 +123,7 @@ A core principle of TypeHAL is that safety should not come at the cost of perfor
 ## Complex Example: Safety Across Functions
 
 ```typescript
-import { Owned, Shared } from '@typehal';
+import { Owned, Shared } from '@typecad/hal';
 
 /** Reads data without taking ownership (Borrowing) */
 function analyze(data: Shared<Uint8Array>) {

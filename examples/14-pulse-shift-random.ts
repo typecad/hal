@@ -2,8 +2,8 @@
 // Pulse, Shift, and Random utilities
 // ---------------------------------------------------------------------------
 
-import { D2, D3, D4, D5, A0 } from '@typecad';
-import { Pulse, Shift, Random } from '@typecad';
+import { D2, D3, D4, D5, A0 } from '@typecad/board';
+import { Pulse, Shift, Random } from '@typecad/hal';
 
 // ===========================================================================
 // Pulse measurement examples (pulseIn / pulseInLong)

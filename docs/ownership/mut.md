@@ -23,7 +23,7 @@ clear(data); // ERROR: Cannot pass 'data' (immutable Shared) to 'clear' (Mut).
 ```
 
 ### Warning: Mut Exclusivity
-To prevent race conditions and data corruption, TypeHAL's static analyzer warns you if you attempt to create multiple `Mut` borrows of the same source simultaneously.
+To prevent race conditions and data corruption, TypeCAD's static analyzer warns you if you attempt to create multiple `Mut` borrows of the same source simultaneously.
 
 ---
 

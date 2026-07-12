@@ -1,6 +1,6 @@
 {
   "name": "@typecad/framework-avr",
-  "version": "0.1.0",
+  "version": "0.1.0-alpha.1",
   "private": true,
   "description": "TypeCAD framework package for native AVR register-level code generation",
   "type": "module",
@@ -19,8 +19,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "*",
-    "@typecad/framework-arduino": "*"
+    "@typecad/cuttlefish": "0.1.0-alpha.1",
+    "@typecad/framework-arduino": "0.1.0-alpha.1"
   },
   "license": "MIT"
 }

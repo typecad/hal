@@ -5,14 +5,14 @@
 // and asserts the value using vitest-style fluent chaining.
 //
 // Run with:
-//   npx typehal-test --port COM4 examples/09-expect-demo.test.ts
+//   npx cuttlefish-test --port COM4 examples/09-expect-demo.test.ts
 //
 // Or via npm script:
 //   npm run test:hw -- --port COM4
 // ---------------------------------------------------------------------------
 
 import { describe, done } from '@typecad/expect';
-import { A0, A1 } from '@typecad';
+import { A0, A1 } from '@typecad/board';
 
 // ── Analog reads ──────────────────────────────────────────────────────────
 describe("A0 analog read")

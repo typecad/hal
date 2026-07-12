@@ -1,5 +1,5 @@
 ﻿// ---------------------------------------------------------------------------
-// Tests for `typehal init` project scaffolding
+// Tests for `cuttlefish init` project scaffolding
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -49,9 +49,9 @@ describe("init-templates", () => {
 
       expect(parsed.name).toBe('test-project');
       expect(parsed.private).toBe(true);
-      expect(parsed.dependencies['@typecad/cuttlefish']).toBe('^0.1.0');
-      expect(parsed.dependencies['@typecad/board-arduino-uno']).toBe('^0.1.0');
-      expect(parsed.dependencies['@typecad/framework-arduino']).toBe('^0.1.0');
+      expect(parsed.dependencies['@typecad/cuttlefish']).toBe('^0.1.0-alpha.1');
+      expect(parsed.dependencies['@typecad/board-arduino-uno']).toBe('^0.1.0-alpha.1');
+      expect(parsed.dependencies['@typecad/framework-arduino']).toBe('^0.1.0-alpha.1');
       expect(parsed.scripts.build).toContain('cuttlefish');
       expect(parsed.scripts.compile).toContain('--compile');
       expect(parsed.scripts.upload).toContain('--upload');
@@ -65,7 +65,7 @@ describe("init-templates", () => {
 
       expect(parsed.compilerOptions.noEmit).toBe(true);
       expect(parsed.compilerOptions.strict).toBe(true);
-      expect(parsed.compilerOptions.paths['@typecad']).toBeDefined();
+      expect(parsed.compilerOptions.paths['@typecad/board']).toBeDefined();
       expect(parsed.compilerOptions.allowArbitraryExtensions).toBe(true);
       expect(parsed.compilerOptions.rootDirs).toEqual(["src", "types"]);
       expect(parsed.include).toContain('src/**/*.ts');
@@ -157,10 +157,10 @@ describe("init-templates", () => {
   });
 
   describe("generateProjectEnvDts", () => {
-    it("declares the @typecad module and ownership types", () => {
+    it("declares the @typecad/board module and ownership types", () => {
       const content = generateProjectEnvDts(ARDUINO_UNO_OPTIONS);
 
-      expect(content).toContain("declare module '@typecad'");
+      expect(content).toContain("declare module '@typecad/board'");
       expect(content).toContain("export * from './board.js'");
       expect(content).toContain("type Owned<T = unknown> = T");
       expect(content).toContain("type Shared<T = unknown> = T");
@@ -185,7 +185,7 @@ describe("init-templates", () => {
     it("produces a blink sketch using LED and delay", () => {
       const content = generateStarterSketch(ARDUINO_UNO_OPTIONS);
 
-      expect(content).toContain("import { LED, delay } from '@typecad'");
+      expect(content).toContain("import { LED, delay } from '@typecad/board'");
       expect(content).toContain("LED.asOutput");
       expect(content).toContain("led.toggle()");
       expect(content).toContain("delay(1000)");

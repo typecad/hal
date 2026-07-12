@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <avr/wdt.h>
 
 // TypeCAD Core Shims
 #ifndef CUTTLEFISH_UNDEFINED

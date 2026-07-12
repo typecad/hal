@@ -477,7 +477,7 @@ describe("Native main() return type", () => {
 // ---------------------------------------------------------------------------
 describe("Enum comparison across modules", () => {
   it("casts both sides of an enum equality comparison consistently", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-enum-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-enum-"));
     try {
       const typesPath = path.join(workspaceDir, "SensorTypes.ts");
       const procPath = path.join(workspaceDir, "SensorProcessor.ts");
@@ -592,7 +592,7 @@ describe("Enum comparison across modules", () => {
 // ---------------------------------------------------------------------------
 describe("Cross-module interface-typed const", () => {
   it("emits a single extern + definition using the interface struct", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-iface-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-iface-"));
     try {
       const configPath = path.join(workspaceDir, "Config.ts");
       const svcPath = path.join(workspaceDir, "Service.ts");
@@ -664,7 +664,7 @@ describe("Cross-module interface-typed const", () => {
   });
 
   it("recognizes an interface defined in another file as a parameter type", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typehal-iface-param-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-iface-param-"));
     try {
       const configPath = path.join(workspaceDir, "Config.ts");
       const svcPath = path.join(workspaceDir, "Service.ts");

@@ -93,8 +93,8 @@ npm exec --workspace @typecad/hal -- cuttlefish-test
 
 The suite is configured by [`cuttlefish.config.ts`](./cuttlefish.config.ts).
 Like the [`@typecad/framework-arduino`](https://github.com/justind000/typecode/tree/main/packages/framework-arduino/tests)
-tests, it imports through `@TypeCAD` (the board package) and ambient globals
-declared in `cuttlefish-env.d.ts`, never directly from `@typecad/hal`, so the
+tests, it imports through `@typecad/board` (the board package) and ambient globals
+declared in `cuttlefish-env.d.ts`, never directly from `@typecad/board`, so the
 transpiler resolves each call against the active MCU/board packages.
 
 ### Skipped on AVR

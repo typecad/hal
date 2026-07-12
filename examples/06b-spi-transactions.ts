@@ -5,7 +5,7 @@
 // Shows: Reconfiguring SPI between devices with different settings
 // ---------------------------------------------------------------------------
 
-import { SPI0, UART0, D10, delay } from '@typecad';
+import { SPI0, UART0, D10, delay } from '@typecad/board';
 
 const serial = UART0.begin(9600);
 

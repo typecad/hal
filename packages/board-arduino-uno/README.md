@@ -1,22 +1,24 @@
-# @typehal/board-arduino-uno
+# @typecad/board-arduino-uno
 
-Arduino Uno board definition package for TypeHAL.
+Arduino Uno board definition package for TypeCAD.
 
 ## Overview
 
-`@typehal/board-arduino-uno` provides a fully-typed TypeScript SDK for the Arduino Uno (ATmega328P). It exports pins, peripherals, timing utilities, and board metadata so TypeHAL can perform board-aware transpilation and catch hardware mistakes early.
+`@typecad/board-arduino-uno` provides a fully-typed TypeScript SDK for the Arduino Uno (ATmega328P). It exports pins, peripherals, timing utilities, and board metadata so TypeCAD can perform board-aware transpilation and catch hardware mistakes early.
 
 ## Quick start
 
-Add or reference this board in `typehal.config.ts`:
+Add or reference this board in `cuttlefish.config.ts`:
 
 ```ts
-import type { TypehalConfig } from '@typehal/core';
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
-const config: TypehalConfig = {
+const config: CuttlefishConfig = {
+  entry: './src/main.ts',
   target: 'avr',
-  board: '@typehal/board-arduino-uno',
-  fqbn: 'arduino:avr:uno',
+  mcu: '@typecad/mcu-atmega328p',
+  board: '@typecad/board-arduino-uno',
+  framework: '@typecad/framework-arduino',
   output: { framework: 'arduino', optimize: 'size' },
 };
 
@@ -26,7 +28,7 @@ export default config;
 Transpile and compile:
 
 ```bash
-npx typehal src/main.ts --compile --upload --port COM3
+npx cuttlefish src/main.ts --compile --upload --port COM3
 ```
 
 ## How to use
@@ -35,22 +37,13 @@ npx typehal src/main.ts --compile --upload --port COM3
 
 There are several import styles:
 
-#### Individual imports
+#### Virtual `@typecad/board` import (recommended)
 
 ```ts
-import { D13, A0 } from '@typehal/board-arduino-uno/pins';
-import { UART0 } from '@typehal/board-arduino-uno/peripherals';
-import { delay, millis } from '@typehal/board-arduino-uno/timing';
+import { D13, A0, LED, UART0, delay, millis, I2C0, SPI0, Board } from '@typecad/board';
 ```
 
-#### Board namespace
-
-```ts
-import { Board } from '@typehal/board-arduino-uno/board';
-
-Board.D13.high();
-Board.UART0.println('Hello');
-```
+The `@typecad/board` import is a virtual module that the TypeCAD transpiler resolves to whichever board package you configured in `cuttlefish.config.ts`. This is the recommended style.
 
 #### Barrel import
 
@@ -58,13 +51,16 @@ Board.UART0.println('Hello');
 import {
   D13, A0, LED, UART0, delay, millis,
   I2C0, SPI0, Board,
-} from '@typehal/board-arduino-uno';
+} from '@typecad/board-arduino-uno';
 ```
 
-#### Virtual `@typehal` import (recommended)
+#### Board namespace
 
 ```ts
-import { D13, A0, LED, UART0, delay, millis, I2C0, SPI0, Board } from '@typehal';
+import { Board } from '@typecad/board-arduino-uno';
+
+Board.D13.high();
+Board.UART0.println('Hello');
 ```
 
 ### Pin and peripheral exports
@@ -85,7 +81,7 @@ The package exports full Uno pin definitions plus convenience aliases:
 
 ### Pin safety
 
-The Arduino Uno pin package exposes peripheral pin mappings and capability information that TypeHAL uses to warn about unsafe pin usage. Key reserved pin groups include:
+The Arduino Uno pin package exposes peripheral pin mappings and capability information that TypeCAD uses to warn about unsafe pin usage. Key reserved pin groups include:
 
 - `D0` / `D1` — UART0 RX/TX
 - `A4` / `A5` — I2C0 SDA/SCL
@@ -94,7 +90,7 @@ The Arduino Uno pin package exposes peripheral pin mappings and capability infor
 ### Example
 
 ```ts
-import { LED, delay, HIGH } from '@typehal';
+import { LED, delay, HIGH } from '@typecad/board';
 
 LED.output(HIGH);
 
@@ -104,4 +100,4 @@ while (true) {
 }
 ```
 
-This package is intended to be used through the virtual `@typehal` import resolver in TypeHAL, but direct imports from `@typehal/board-arduino-uno` are also supported when you want explicit board package references.
+This package is intended to be used through the virtual `@typecad/board` import resolver in TypeCAD, but direct imports from `@typecad/board-arduino-uno` are also supported when you want explicit board package references.

@@ -1,5 +1,5 @@
 import { describe, done } from '@typecad/expect';
-import { HIGH, LOW, INPUT, OUTPUT, INPUT_PULLUP, LED } from '@TypeCAD';
+import { HIGH, LOW, INPUT, OUTPUT, INPUT_PULLUP, LED } from '@typecad/board';
 
 describe("Digital value constants")
   .it("HIGH and LOW are distinct, well-known values")

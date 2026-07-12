@@ -35,7 +35,7 @@ function arduinoCtx(ctx?: PlatformContext): ArduinoPlatformContext | undefined {
  */
 const ARDUINO_RESERVED_NAMES: ReadonlySet<string> = new Set([
   // Standard Arduino digital/analog pin-mode macros (all platforms)
-  // HIGH and LOW are phantom constants from @TypeCAD that map directly to Arduino
+  // HIGH and LOW are phantom constants from @typecad/board that map directly to Arduino
   // macros — they must pass through as-is in expressions.
   "INPUT", "OUTPUT", "INPUT_PULLUP", "RISING", "FALLING", "CHANGE",
   // ESP32-specific pin-mode macros (esp32-hal-gpio.h)
@@ -77,7 +77,7 @@ const ARDUINO_ENUM_MEMBER_RENAMES: ReadonlySet<string> = new Set([
  * ARDUINO_RESERVED_NAMES, these are meant to be *invoked* — escaping them to
  * `OUTPUT_` would emit an undefined symbol. HIGH and LOW are included because
  * they too are Arduino macros that must pass through (they are phantom
- * constants from @TypeCAD that map directly to the Arduino HIGH/LOW macros).
+ * constants from @typecad/board that map directly to the Arduino HIGH/LOW macros).
  */
 const ARDUINO_PASSTHROUGH_MACROS: ReadonlySet<string> = new Set([
   "INPUT", "OUTPUT", "INPUT_PULLUP", "INPUT_PULLDOWN",
@@ -1042,13 +1042,13 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       "    getString(key: string, defaultValue: string): string;",
       "    remove(key: string): void;",
       "  };",
-      // Augment the '@TypeCAD' module to re-export ownership types so that
-      // `import { Owned, Shared } from '@TypeCAD'` resolves correctly during
+      // Augment the '@typecad/board' module to re-export ownership types so that
+      // `import { Owned, Shared } from '@typecad/board'` resolves correctly during
       // the transpiler's pre-emit type-check.  The strings below close the
       // enclosing `declare global {`, open a module augmentation, then
       // re-open `declare global {` for the caller's closing brace.
       "}",
-      "declare module '@TypeCAD' {",
+      "declare module '@typecad/board' {",
       "  export type Owned<T = any> = T;",
       "  export type Shared<T = any> = T;",
       "  export type Mutable<T = any> = T;",
@@ -1796,20 +1796,65 @@ function detectSerialBeginCall(program: ProgramIR): boolean {
  * CUTTLEFISH_UNDEFINED shims at runtime.
  */
 function programAnalysisUsesNullish(program: ProgramIR): boolean {
+  // Recursively walk an expression tree for `??` operators and `undefined`/`null`
+  // identifiers. The previous shallow check only inspected the top-level node of
+  // each statement field, so `undefined` nested inside an object/struct literal
+  // (e.g. `{ timeout: undefined }`) or an array element escaped detection — the
+  // emitter still lowered it to CUTTLEFISH_UNDEFINED, but the nullish shim block
+  // (which #defines that macro) was skipped, producing an undeclared-identifier
+  // compile error. This walker covers every ExpressionIR nesting path.
+  const exprUsesNullish = (e: any): boolean => {
+    if (!e || typeof e !== "object") return false;
+    switch (e.kind) {
+      case "identifier":
+        return e.value === "undefined" || e.value === "null";
+      case "binary":
+        return e.operator === "??" || exprUsesNullish(e.left) || exprUsesNullish(e.right);
+      case "unary":
+        return exprUsesNullish(e.operand);
+      case "ternary":
+        return exprUsesNullish(e.condition) || exprUsesNullish(e.whenTrue) || exprUsesNullish(e.whenFalse);
+      case "paren":
+        return exprUsesNullish(e.inner);
+      case "await":
+        return exprUsesNullish(e.value);
+      case "template_string":
+        return exprUsesNullish(e.expression);
+      case "instanceof":
+        return exprUsesNullish(e.object);
+      case "tuple-access":
+        return exprUsesNullish(e.object);
+      case "property-access":
+        return exprUsesNullish(e.object);
+      case "element-access":
+        return exprUsesNullish(e.object) || exprUsesNullish(e.index);
+      case "array":
+        return (e.elements as any[])?.some(exprUsesNullish) ?? false;
+      case "string_concat":
+        return (e.parts as any[])?.some(exprUsesNullish) ?? false;
+      case "object":
+        return (e.fields as any[])?.some((f) => exprUsesNullish(f?.value)) ?? false;
+      case "spread_array":
+        return exprUsesNullish(e.spreadExpr) || ((e.additionalElements as any[])?.some(exprUsesNullish) ?? false);
+      case "method-call":
+        return (e.args as any[])?.some(exprUsesNullish) ?? false;
+      // Leaf nodes: number, string, boolean, raw, hal-expr — no nested nullish.
+      // callback/lambda embed StatementIR[] (handled by the statement walker
+      // below via body/params), not ExpressionIR, so stop here.
+      default:
+        return false;
+    }
+  };
+
   const check = (s: StatementIR): boolean => {
-    if ("condition" in s && s.condition) {
-      const cond = s.condition as any;
-      if (cond.kind === "binary" && cond.operator === "??") return true;
-    }
-    if ("initializer" in s && s.initializer) {
-      const init = s.initializer as any;
-      if (init.kind === "binary" && init.operator === "??") return true;
-      if (init.kind === "identifier" && (init.value === "undefined" || init.value === "null")) return true;
-    }
-    if ("value" in s && s.value !== undefined) {
-      const val = (s as any).value;
-      if (typeof val === "object" && val?.kind === "binary" && val.operator === "??") return true;
-      if (typeof val === "object" && val?.kind === "identifier" && (val.value === "undefined" || val.value === "null")) return true;
+    // Check every statement field that holds an ExpressionIR, recursing fully.
+    for (const field of ["condition", "initializer", "value", "left", "right", "operand", "iterable", "subject", "expression", "delegate"] as const) {
+      if (field in s) {
+        const val = (s as any)[field];
+        if (val && typeof val === "object" && "kind" in val) {
+          if (exprUsesNullish(val)) return true;
+        }
+      }
     }
     for (const key of ["body", "thenBranch", "elseBranch", "tryBlock", "catchBlock"]) {
       if (key in s && Array.isArray((s as any)[key])) {

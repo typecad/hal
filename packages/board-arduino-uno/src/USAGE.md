@@ -1,6 +1,6 @@
-# Arduino Uno TypeHAL SDK — Usage Guide
+# Arduino Uno TypeCAD SDK — Usage Guide
 
-The `@typehal/board-arduino-uno` package provides a fully-typed TypeScript
+The `@typecad/board-arduino-uno` package provides a fully-typed TypeScript
 SDK for the Arduino Uno (ATmega328P).  Every pin, peripheral, and timing
 function carries rich type information so that TypeScript catches hardware
 errors **at compile time** — before you flash anything.
@@ -10,13 +10,15 @@ errors **at compile time** — before you flash anything.
 ## Quick Start
 
 ```typescript
-// typehal.config.ts
-import type { TypehalConfig } from './code/core/config';
+// cuttlefish.config.ts
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
-const config: TypehalConfig = {
+const config: CuttlefishConfig = {
+  entry: './src/main.ts',
   target: 'avr',
-  board: '@typehal/board-arduino-uno',
-  fqbn: 'arduino:avr:uno',
+  mcu: '@typecad/mcu-atmega328p',
+  board: '@typecad/board-arduino-uno',
+  framework: '@typecad/framework-arduino',
   output: { framework: 'arduino', optimize: 'size' },
 };
 export default config;
@@ -41,15 +43,15 @@ There are two import styles — pick whichever you prefer.
 ### Style 1: Individual imports (tree-shakeable)
 
 ```typescript
-import { D13, A0 }        from '@typehal/board-arduino-uno/pins';
-import { UART0 }          from '@typehal/board-arduino-uno/peripherals';
-import { delay, millis }  from '@typehal/board-arduino-uno/timing';
+import { D13, A0 }        from '@typecad/board-arduino-uno/pins';
+import { UART0 }          from '@typecad/board-arduino-uno/peripherals';
+import { delay, millis }  from '@typecad/board-arduino-uno/timing';
 ```
 
 ### Style 2: Unified `Board` namespace
 
 ```typescript
-import { Board } from '@typehal/board-arduino-uno/board';
+import { Board } from '@typecad/board-arduino-uno/board';
 
 Board.D13.high();
 Board.UART0.println("Hello");
@@ -61,13 +63,13 @@ Board.UART0.println("Hello");
 import {
   D13, A0, LED, UART0, delay, millis,
   I2C0, SPI0, Board,
-} from '@typehal/board-arduino-uno';
+} from '@typecad/board-arduino-uno';
 ```
 
-### Style 4: Virtual `@typehal` import (recommended)
+### Style 4: Virtual `@typecad/board` import (recommended)
 
 ```typescript
-import { D13, A0, LED, UART0, delay, millis, I2C0, SPI0, Board } from '@typehal';
+import { D13, A0, LED, UART0, delay, millis, I2C0, SPI0, Board } from '@typecad/board';
 ```
 
 ---
@@ -107,12 +109,12 @@ import { D13, A0, LED, UART0, delay, millis, I2C0, SPI0, Board } from '@typehal'
 - `SDA/A4`, `SCL/A5`, `TX/D1`, and `RX/D0` follow the same rule.
 - PWM pins are grouped by timer on Uno: `D5/D6` share `timer0`, `D9/D10` share `timer1`, and `D3/D11` share `timer2`.
 
-TypeHAL surfaces both conditions as diagnostics so the schematic does not stay hidden until runtime.
+TypeCAD surfaces both conditions as diagnostics so the schematic does not stay hidden until runtime.
 
 ### Type Safety in Action
 
 ```typescript
-import { D4, A0 } from './code/board-arduino-uno/pins';
+import { D4, A0 } from '@typecad/board-arduino-uno/pins';
 
 // ✅ OK  — D4 is IDigitalPin, supports .high()
 D4.high();
@@ -127,7 +129,7 @@ A0.high();  // Property 'high' does not exist on type 'IAnalogInput'
 D4.pwm(50);  // Property 'pwm' does not exist on type 'IDigitalPin'
 
 // ✅ OK  — D5 is IPWMPin, supports .pwm()
-import { D5 } from './code/board-arduino-uno/pins';
+import { D5 } from '@typecad/board-arduino-uno/pins';
 D5.pwm(50);
 ```
 
@@ -142,7 +144,7 @@ transpiler converts to a valid `.ino` sketch.
 
 ```typescript
 // examples/01-blink.ts
-import { LED, delay, HIGH } from '@typehal';
+import { LED, delay, HIGH } from '@typecad/board';
 
 LED.output(HIGH);
 
@@ -169,7 +171,7 @@ void loop() {
 
 ```typescript
 // examples/02-analog-serial.ts
-import { A0, UART0, delay } from '@typehal';
+import { A0, UART0, delay } from '@typecad/board';
 
 UART0.begin(9600);
 
@@ -186,7 +188,7 @@ while (true) {
 
 ```typescript
 // examples/03-pwm-fade.ts
-import { D9, delay, LOW } from '@typehal';
+import { D9, delay, LOW } from '@typecad/board';
 
 D9.output(LOW);
 
@@ -209,7 +211,7 @@ while (true) {
 
 ```typescript
 // examples/04-interrupt.ts
-import { D2, LED, LOW } from '@typehal';
+import { D2, LED, LOW } from '@typecad/board';
 
 LED.output(LOW);
 D2.inputPullUp();
@@ -232,7 +234,7 @@ D2.onFalling(() => {
 
 ```typescript
 // examples/05-i2c-sensor.ts
-import { I2C0, UART0, delay } from '@typehal';
+import { I2C0, UART0, delay } from '@typecad/board';
 
 UART0.begin(9600);
 I2C0.begin();                      // Wire.begin() - master mode
@@ -258,7 +260,7 @@ while (true) {
 
 ```typescript
 // examples/06-spi-shift-register.ts
-import { SPI0, SS, delay, LOW } from '@typehal';
+import { SPI0, SS, delay, LOW } from '@typecad/board';
 
 SPI0.begin();
 SPI0.setFrequency(1_000_000);
@@ -281,7 +283,7 @@ while (true) {
 
 ```typescript
 // examples/07-board-namespace.ts
-import { Board, LOW } from '@typehal';
+import { Board, LOW } from '@typecad/board';
 
 Board.UART0.begin(115200);
 Board.LED.output(LOW);
@@ -304,7 +306,7 @@ while (true) {
 ### Serial (UART 0)
 
 ```typescript
-import { UART0 } from '@typehal';
+import { UART0 } from '@typecad/board';
 
 UART0.begin(9600);
 UART0.println("Hello, World!");
@@ -316,7 +318,7 @@ UART0.flush();   // wait for transmit buffer to empty
 ### I2C0 (Wire)
 
 ```typescript
-import { I2C0, UART0 } from '@typehal';
+import { I2C0, UART0 } from '@typecad/board';
 
 // Initialize as master
 I2C0.begin();            // 100 kHz (default)
@@ -337,8 +339,8 @@ I2C0.device(DEVICE_ADDR).writeByte(0xF4, 0x27);
 This API directly maps to Arduino's Wire library:
 
 ```typescript
-import { I2C0 } from '@typehal';
-import { I2CStatus } from '@typehal/core';
+import { I2C0 } from '@typecad/board';
+import { I2CStatus } from '@typecad/hal';
 
 // Initialize as master
 I2C0.begin();
@@ -384,7 +386,7 @@ if (bytesReceived > 0) {
 ### SPI0
 
 ```typescript
-import { SPI0, SS, D10 } from '@typehal';
+import { SPI0, SS, D10 } from '@typecad/board';
 
 // Initialize and configure
 SPI0.begin();
@@ -411,7 +413,7 @@ const rxData = SPI0.device(CS).transfer(new Uint8Array([0x80, 0x00, 0xFF]));
 ## Timing Functions
 
 ```typescript
-import { delay, millis, micros, delayMicroseconds } from '@typehal';
+import { delay, millis, micros, delayMicroseconds } from '@typecad/board';
 
 delay(1000);             // block 1 second
 delayMicroseconds(10);   // block 10 µs
@@ -425,7 +427,7 @@ const us = micros();     // µs since reset
 ## Utility Functions
 
 ```typescript
-import { map, constrain } from '@typehal';
+import { map, constrain } from '@typecad/board';
 
 // Re-map a 10-bit ADC reading (0–1023) to an 8-bit PWM range (0–255)
 const pwmValue = map(sensorReading, 0, 1023, 0, 255);
@@ -442,7 +444,7 @@ The `ArduinoUno` constant (or `Board.definition`) exposes the full hardware
 manifest at design time.
 
 ```typescript
-import { ArduinoUno, Board } from '@typehal';
+import { ArduinoUno, Board } from '@typecad/board';
 
 // Access via ArduinoUno export
 console.log(ArduinoUno.name);             // "Arduino Uno"
@@ -465,12 +467,12 @@ console.log(Board.definition.name);       // "Arduino Uno"
 
 ```
 my-project/
-├── typehal.config.ts           ← board + target selection
+├── cuttlefish.config.ts        ← board + target selection
 ├── main.ts                      ← your firmware
 ├── lib/
 │   └── bme280.ts                ← reusable driver (uses core interfaces)
 ├── code/
-│   ├── core/                    ← @typehal/core type system
+│   ├── core/                    ← @typecad/cuttlefish type system
 │   └── board-arduino-uno/       ← board SDK
 │       ├── index.ts             ← barrel export + ArduinoUno manifest
 │       ├── board.ts             ← Board namespace (single-import)

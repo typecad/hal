@@ -1,6 +1,6 @@
 # Adding HAL Features with emit/include
 
-This guide explains how to add new hardware abstraction features to TypeHAL using the `emit()`, `include()`, and `board()` compile-time functions. The HAL source files live in `packages/hal/src/` and are read by the transpiler's resolver at build time.
+This guide explains how to add new hardware abstraction features to TypeCAD using the `emit()`, `include()`, and `board()` compile-time functions. The HAL source files live in `packages/hal/src/` and are read by the transpiler's resolver at build time.
 
 ## Core principle
 
@@ -345,7 +345,7 @@ HAL methods can reference board-specific constants (ADC resolution, reference vo
 
 #### What board data is available
 
-Board packages (`@typehal/board-arduino-uno`, `@typehal/board-esp32-devkit`, etc.) export a `BoardDefinition` object containing:
+Board packages (`@typecad/board-arduino-uno`, `@typecad/board-esp32-devkit`, etc.) export a `BoardDefinition` object containing:
 
 | Path | Example (Arduino Uno) | Example (ESP32) |
 |------|-----------------------|-----------------|
@@ -469,7 +469,7 @@ This is the same module-level state pattern used by `requiredIncludes` — the r
 
 ## Naming helpers
 
-Provide a naming function that maps TypeHAL instance numbers to Arduino C++ object names:
+Provide a naming function that maps TypeCAD instance numbers to Arduino C++ object names:
 
 ```ts
 export function serialName(instance: number): string {
@@ -526,7 +526,7 @@ Understanding how the resolver processes your HAL source helps debug issues.
 7. Add the filename to `HAL_SOURCE_FILES` in `packages/transpiler/src/ir/hal-resolver.ts`
 8. If the class is a singleton used without import, add a bare-name fallback entry in `resolveHALReceiver()`
 9. If the class supports pattern-based bus aliases (e.g., `CAN0`), add a regex fallback in `resolveHALReceiver()`
-10. Rebuild: `pnpm --filter @typehal/core build && pnpm --filter @typehal/transpiler build`
+10. Rebuild: `pnpm --filter @typecad/hal build && pnpm --filter @typecad/cuttlefish build`
 11. Add tests in `tests/packages/hal/` asserting against emitted C++ text for each supported board
 12. Run `pnpm vitest run` to verify
 
@@ -559,4 +559,4 @@ Understanding how the resolver processes your HAL source helps debug issues.
 - **board() producing no output** — If the board path doesn't exist in the loaded board definition, the resolver returns `null` for the entire emit template. Check that the path matches the `BoardDefinition` structure exactly (including array indices). Test with a known path like `"architecture"` first.
 - **board() returns wrong value** — The path must match the flat dot-path key used by `resolveBoardConstants`. For array entries, use numeric indices: `peripherals.adc.0.resolution`, not `peripherals.adc[0].resolution`.
 - **Method works on one board but not another** — Different boards have different peripheral definitions. A path like `peripherals.dac.0.resolution` exists on ESP32 but not on Arduino Uno. Use `board()` only for fields that exist across all target boards, or accept that the method won't produce output on boards missing the field.
-- **Rebuild after changes** — HAL source changes require `pnpm --filter @typehal/core build && pnpm --filter @typehal/transpiler build` before the transpiler picks them up.
+- **Rebuild after changes** — HAL source changes require `pnpm --filter @typecad/hal build && pnpm --filter @typecad/cuttlefish build` before the transpiler picks them up.

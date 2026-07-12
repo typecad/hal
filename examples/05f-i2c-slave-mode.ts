@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 import { I2C0 } from '@typecad/framework-arduino/arduino';
-import { UART0, LED, delay } from '@typecad';
+import { UART0, LED, delay } from '@typecad/board';
 
 const serial = UART0.begin(9600);
 const SLAVE_ADDR = 0x08;

@@ -10,7 +10,7 @@
  * Example uses a BME280 sensor (address 0x76 or 0x77).
  */
 
-import { I2C0, delay, UART0 } from '@typecad';
+import { I2C0, delay, UART0 } from '@typecad/board';
 
 // BME280 I2C address (try 0x77 if 0x76 doesn't work)
 const BME280_ADDR = 0x76;

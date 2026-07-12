@@ -1,6 +1,6 @@
 # Immutable Borrowing: `Shared<T>`
 
-The `Shared` type allows you to share data for reading without transferring ownership. It is the most common way to pass arrays, objects, and strings between functions in TypeHAL.
+The `Shared` type allows you to share data for reading without transferring ownership. It is the most common way to pass arrays, objects, and strings between functions in TypeCAD.
 
 ### Key Benefits
 1. **Zero-Copy**: For non-primitive types (arrays/structs), the transpiler emits a **C++ reference** (`const T&`), avoiding expensive memory copies.
@@ -70,7 +70,7 @@ const view: Shared = storage; // Safe zero-copy borrow
 ```
 
 ### Info: `ownership-implicit-copy`
-If you copy a `Shared` variable into a variable with no annotation, TypeHAL warns you that you are creating a copy of the underlying data rather than a new reference.
+If you copy a `Shared` variable into a variable with no annotation, TypeCAD warns you that you are creating a copy of the underlying data rather than a new reference.
 
 ```typescript
 const src: Shared<Uint8Array> = ...;

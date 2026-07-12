@@ -246,9 +246,9 @@ export function resolveImport(
   boardPackage?: string,
 ): { sourcePath: string; npmPackage?: ResolvedNpmPackage; uiModule?: boolean } | undefined {
   let effectiveSpecifier = moduleSpecifier;
-  // Case-insensitive so the documented `@TypeCAD` virtual import is treated
-  // the same as `@typecad` and resolved to the configured board package.
-  if (moduleSpecifier.toLowerCase() === "@typecad" && boardPackage) {
+  // The `@typecad/board` virtual import resolves to the configured board package.
+  // (Case-insensitive so the documented mixed-case form is treated identically.)
+  if (moduleSpecifier.toLowerCase() === "@typecad/board" && boardPackage) {
     effectiveSpecifier = boardPackage;
   }
 
