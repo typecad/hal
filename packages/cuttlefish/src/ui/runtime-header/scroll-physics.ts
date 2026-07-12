@@ -1,0 +1,161 @@
+// Slice of the C++ runtime header (original source lines 1000-1154).
+// Scroll input + physics layer, framebuffer get/push.
+// See docs/superpowers/specs/2026-07-12-split-runtime-header-design.md.
+export function emitScrollPhysics(): string {
+  return `
+// ── Scroll engine: Input layer ───────────────────────────────────────────────
+// raw touch sample → smoothed delta (dy). Capacitive: passthrough 1:1.
+// Resistive: deadband suppresses sub-N-px jitter (steady drag still 1:1).
+// 'none' tier compiles drag scroll out entirely.
+static int16_t __ui_scroll_prev_dy = 0;  // last smoothed delta (low-pass state)
+
+static inline int16_t ui_scroll_scale_dy(int16_t dy) {
+  int32_t scaled = (int32_t)dy * (int32_t)UI_SCROLL_DRAG_SCALE_X10;
+  return (int16_t)(scaled >= 0 ? (scaled + 5) / 10 : (scaled - 5) / 10);
+}
+
+static inline int16_t ui_scroll_smooth_dy(int16_t dy) {
+#if UI_SCROLL_INPUT_TIER_CAPACITIVE
+  __ui_scroll_prev_dy = dy;
+  return ui_scroll_scale_dy(dy);
+#elif UI_SCROLL_INPUT_TIER_RESISTIVE
+  int16_t db = (int16_t)UI_SCROLL_DEADBAND_PX;
+  if (dy >= -db && dy <= db) {
+    // Deadband: kill per-sample jitter around zero. Steady drag (|dy|>db) below
+    // passes through unchanged, so steady-state is 1:1 (spec Q1).
+    __ui_scroll_prev_dy = 0;
+    return 0;
+  }
+  __ui_scroll_prev_dy = dy;
+  return ui_scroll_scale_dy(dy);
+#else
+  (void)dy;
+  return 0;
+#endif
+}
+
+// ── Scroll engine: Physics layer ─────────────────────────────────────────────
+// 1:1 in bounds; rubber-band at edges; bounce-back/snap on release. No fling.
+// On constrained render tiers (no elastic), overscroll is hard-clamped away.
+
+static inline int16_t ui_scroll_max(int16_t node) {
+  if (node < 0) return 0;
+  int16_t m = __ui_nodes[node].contentHeight - __ui_nodes[node].box.h;
+  return m < 0 ? 0 : m;
+}
+
+// Rubber-band excursion for d cumulative pixels dragged past a boundary.
+// r = maxOverscroll * d / (d + stiffness). stiffness held as X10 fixed-point.
+static inline int16_t ui_scroll_overscroll_for(int16_t d) {
+  if (d <= 0) return 0;
+  int16_t maxOv = (int16_t)UI_SCROLL_MAX_OVERSCROLL;
+  int16_t stiffX10 = (int16_t)UI_SCROLL_STIFFNESS_X10;
+  if (stiffX10 <= 0) stiffX10 = 1;
+  int32_t r = ((int32_t)maxOv * (int32_t)d) / ((int32_t)d + (int32_t)stiffX10);
+  return r > maxOv ? maxOv : (int16_t)r;
+}
+
+// Apply a smoothed drag delta to the owning scroll node. Returns 1 if the view
+// changed (needs redraw). Sets overscrollPx for rubber-band excursions; scrollY
+// itself never leaves [0, maxScroll] so the committed position stays valid.
+static inline uint8_t ui_apply_scroll_delta(int16_t node, int16_t dy) {
+  if (node < 0 || dy == 0) return 0;
+  int16_t sy = __ui_nodes[node].scrollY;
+  int16_t maxS = ui_scroll_max(node);
+  int16_t nextY = sy - dy;
+  int16_t prevOv = __ui_nodes[node].overscrollPx;
+  int16_t nextOv = prevOv;
+  if (nextY < 0) {
+    __ui_nodes[node].scrollY = 0;
+    // Cumulative drag past the top boundary since crossing it.
+    int16_t draggedPast = dy - sy;            // how far past 0 this delta pushed
+    int16_t cum = prevOv + draggedPast;
+    if (cum < 0) cum = 0;
+#if UI_SCROLL_ELASTIC
+    nextOv = ui_scroll_overscroll_for(cum);
+#else
+    nextOv = 0;
+#endif
+  } else if (nextY > maxS) {
+    __ui_nodes[node].scrollY = maxS;
+    int16_t draggedPast = nextY - maxS;
+    int16_t cum = (prevOv < 0 ? -prevOv : 0) + draggedPast;  // prevOv<0 = bottom
+    if (cum < 0) cum = 0;
+#if UI_SCROLL_ELASTIC
+    nextOv = -ui_scroll_overscroll_for(cum);   // negative = bottom overshoot
+#else
+    nextOv = 0;
+#endif
+  } else {
+    __ui_nodes[node].scrollY = nextY;
+    nextOv = 0;                                 // returned in-bounds → reset
+  }
+  __ui_nodes[node].overscrollPx = nextOv;
+  uint8_t changed = (__ui_nodes[node].scrollY != sy) || (nextOv != prevOv);
+  if (changed) ui_mark_scroll_view_dirty((uint16_t)node);
+  return changed;
+}
+
+// On release: arm a bounded settle animation — bounce overscroll back to 0, or
+// edge-snap scrollY within edgeSnapPx. The animation runs in ui_tick.
+static inline uint8_t ui_scroll_release(int16_t node) {
+  if (node < 0) return 0;
+  uint8_t changed = 0;
+  if (__ui_nodes[node].overscrollPx != 0) {
+    __ui_nodes[node].settling = 1;
+    __ui_settle_from_overscroll = __ui_nodes[node].overscrollPx;
+    __ui_settle_from_scrollY = 0;
+    __ui_settle_start_ms = millis();
+    changed = 1;
+  } else {
+    int16_t sy = __ui_nodes[node].scrollY;
+    int16_t maxS = ui_scroll_max(node);
+    int16_t snap = (int16_t)UI_SCROLL_EDGE_SNAP_PX;
+    if (sy > 0 && sy <= snap) {
+      __ui_nodes[node].settling = 1;
+      __ui_settle_from_scrollY = sy;            // positive → snap toward 0
+      __ui_settle_from_overscroll = 0;
+      __ui_settle_start_ms = millis();
+      changed = 1;
+    } else if (maxS > 0 && sy < maxS && sy >= maxS - snap) {
+      __ui_nodes[node].settling = 1;
+      __ui_settle_from_scrollY = sy - maxS;     // negative → snap toward max
+      __ui_settle_from_overscroll = 0;
+      __ui_settle_start_ms = millis();
+      changed = 1;
+    }
+  }
+  return changed;
+}
+
+// Advance the settle animation for a node (called from ui_tick). Ease-out over
+// UI_SCROLL_SETTLE_MS, terminating at the boundary. Bounded — always ends.
+static inline void ui_scroll_advance_settle(uint8_t node, uint16_t deltaMs) {
+  (void)deltaMs;
+  if (node >= __ui_node_count || !__ui_nodes[node].settling) return;
+  uint32_t elapsed = millis() - __ui_settle_start_ms;
+  uint16_t dur = (uint16_t)UI_SCROLL_SETTLE_MS;
+  // ease-out: k = 1 - (1 - t)^2, t in [0,1]
+  uint32_t t = elapsed >= dur ? 100 : (elapsed * 100) / dur;
+  uint32_t k = 100 - ((100 - t) * (100 - t)) / 100;
+  if (__ui_nodes[node].overscrollPx != 0) {
+    int16_t from = __ui_settle_from_overscroll;
+    __ui_nodes[node].overscrollPx = (int16_t)(from - (int32_t)(from * k) / 100);
+    if (t >= 100) __ui_nodes[node].overscrollPx = 0;
+  } else if (__ui_settle_from_scrollY != 0) {
+    int16_t from = __ui_settle_from_scrollY;   // +toward 0, -toward max
+    int16_t maxS = ui_scroll_max(node);
+    if (from > 0) {
+      __ui_nodes[node].scrollY = (int16_t)(from - (int32_t)(from * k) / 100);
+      if (t >= 100) __ui_nodes[node].scrollY = 0;
+    } else {  // from < 0: snap toward maxS
+      int16_t target = maxS;
+      __ui_nodes[node].scrollY = target + (int16_t)((int32_t)from * (100 - k) / 100);
+      if (t >= 100) __ui_nodes[node].scrollY = target;
+    }
+  }
+  if (t >= 100) __ui_nodes[node].settling = 0;
+  ui_mark_scroll_view_dirty(node);
+}
+`;
+}

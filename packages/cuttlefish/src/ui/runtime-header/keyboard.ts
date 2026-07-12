@@ -1,0 +1,342 @@
+// Slice of the C++ runtime header (original source lines 5434-5769).
+// On-screen keyboard: add_key/insert/delete/compute_box/open/close/rect/touch/tick/tap/draw.
+// See docs/superpowers/specs/2026-07-12-split-runtime-header-design.md.
+export function emitKeyboard(): string {
+  return `
+// ── On-screen keyboard subsystem ───────────────────────────────────────────
+// (UIKey struct, UI_KB_* defines, __ui_kb_box, __ui_kb_visible, __ui_kb_bs_held,
+//  __ui_last_touch_x/y are declared earlier near the touch state machine so
+//  the touch functions can reference them.)
+
+// Populated by the per-keyboard loader function (emitted by the lowering).
+// (__ui_kb_keys is forward-declared earlier near the touch state machine.)
+static uint8_t __ui_kb_keyCount;
+static uint8_t __ui_kb_rows;
+static uint8_t __ui_kb_cols;
+static char    __ui_kb_buffer[UI_TEXT_BUF + 1];
+static uint8_t __ui_kb_len;
+static uint8_t __ui_kb_maxlen;
+static uint8_t __ui_kb_shift;
+// __ui_kb_visible, __ui_kb_bs_held, __ui_last_touch_x/y are forward-declared
+// earlier (near the touch state machine) because ui_touch_up references them.
+// __ui_kb_target is also forward-declared there (the UI_HIDE_OSK caret/blink
+// paths in ui_tick and the input draw reference it before this point).
+static uint32_t __ui_kb_bs_repeat;   // last auto-repeat deletion time
+// __ui_kb_dirty is forward-declared earlier (near the touch state machine).
+static void    (*__ui_kb_onchange)();
+// Dispatch table: one loader per input node. Indexed by input position.
+extern void (*__ui_kb_loaders[])();
+extern const uint16_t __ui_kb_loader_count;
+
+static inline void ui_kb_add_key(char ch, uint8_t special, UI_COLOR_T bg, UI_COLOR_T fg, UI_COLOR_T borderColor) {
+  if (__ui_kb_keyCount >= UI_KB_MAX) return;
+  __ui_kb_keys[__ui_kb_keyCount] = { ch, special };
+  __ui_kb_styles[__ui_kb_keyCount] = { bg, fg, borderColor };
+  __ui_kb_keyCount++;
+}
+
+// Insert a character into the buffer (if space permits).
+static inline void ui_kb_insert(char c) {
+  if (__ui_kb_maxlen > 0 && __ui_kb_len >= __ui_kb_maxlen) return;
+  if (__ui_kb_len >= UI_TEXT_BUF) return;
+  __ui_kb_buffer[__ui_kb_len++] = c;
+  __ui_kb_buffer[__ui_kb_len] = 0;
+#if defined(UI_HIDE_OSK)
+  // Desktop target: the OSK grid isn't drawn, so the input field itself is the
+  // only place the in-progress text appears. Sync the buffer into the target
+  // node's textBuffer and mark it dirty so the field repaints on the next tick
+  // — without this, typing appears to do nothing until Enter commits at close.
+  if (__ui_kb_target >= 0) {
+    strncpy(__ui_nodes[__ui_kb_target].textBuffer, __ui_kb_buffer, UI_TEXT_BUF);
+    __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
+    ui_mark_dirty((uint16_t)__ui_kb_target);
+  }
+#endif
+}
+
+// Delete one character from the buffer.
+static inline void ui_kb_delete() {
+  if (__ui_kb_len == 0) return;
+  __ui_kb_buffer[--__ui_kb_len] = 0;
+#if defined(UI_HIDE_OSK)
+  if (__ui_kb_target >= 0) {
+    strncpy(__ui_nodes[__ui_kb_target].textBuffer, __ui_kb_buffer, UI_TEXT_BUF);
+    __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
+    ui_mark_dirty((uint16_t)__ui_kb_target);
+  }
+#endif
+}
+
+// Compute the keyboard box on open from display dimensions + grid shape.
+// Alpha (wide grid) docks to the bottom 75%; number (narrow grid) centers at 60%.
+// Uses the display profile dimensions if available, else 320×240.
+#ifndef __ui_display_w
+#define __ui_display_w 320
+#endif
+#ifndef __ui_display_h
+#define __ui_display_h 240
+#endif
+static inline void ui_kb_compute_box() {
+  uint8_t isNumber = (__ui_kb_cols <= 4);
+  uint16_t h = isNumber ? (__ui_display_h * 60 / 100) : (__ui_display_h * 75 / 100);
+  __ui_kb_box.w = isNumber ? (__ui_display_w * 50 / 100) : __ui_display_w;
+  __ui_kb_box.h = h;
+  __ui_kb_box.x = isNumber ? (__ui_display_w - __ui_kb_box.w) / 2 : 0;
+  __ui_kb_box.y = __ui_display_h - h;
+}
+
+// Open the keyboard for an input node.
+static inline void ui_kb_open(uint16_t nodeIdx, uint8_t inputPosition) {
+  __ui_kb_target = nodeIdx;
+  strncpy(__ui_kb_buffer, __ui_nodes[nodeIdx].textBuffer, UI_TEXT_BUF);
+  __ui_kb_buffer[UI_TEXT_BUF] = 0;
+  __ui_kb_len = strlen(__ui_kb_buffer);
+  uint16_t ml = __ui_nodes[nodeIdx].maxlen;
+  __ui_kb_maxlen = (ml > 0 && ml <= UI_TEXT_BUF) ? (uint8_t)ml : UI_TEXT_BUF;
+  __ui_kb_shift = 0;
+  __ui_kb_bs_held = 0;
+  // Load the key set via the dispatch table.
+  if (inputPosition < __ui_kb_loader_count) __ui_kb_loaders[inputPosition]();
+  __ui_kb_set_onchange();
+  ui_kb_compute_box();
+  __ui_kb_visible = 1;
+  __ui_kb_dirty = 1;  // redraw on the first visible frame
+  // Do NOT pre-mark the tree dirty here. While the keyboard is visible the
+  // draw pass is skipped (its opaque background covers app nodes), so any
+  // dirty flags set now are never consumed/cleared — they survive until close,
+  // and the first post-close frame then repaints every dirty node = full-screen
+  // flash on SPI TFTs. The close path scopes the repaint to nodes whose paint
+  // rect intersects __ui_kb_box, which is the only region that needs restoring.
+#if defined(UI_HIDE_OSK)
+  // Desktop target: the OSK isn't drawn, so the draw pass runs normally and the
+  // input field must repaint on focus to show the caret BEFORE the first
+  // keystroke. (The full-screen-flash concern above doesn't apply — there's no
+  // opaque overlay being skipped.) Seed the blink phase so the caret is ON for
+  // the first ~530ms (bit 0x20 set → visible), so focus feels immediate.
+  if (__ui_kb_target >= 0) ui_mark_dirty((uint16_t)__ui_kb_target);
+  __ui_kb_blink = 0x20;
+#endif
+}
+
+// Close the keyboard: commit buffer back to the input node.
+static inline void ui_kb_close() {
+  if (__ui_kb_target >= 0) {
+    strncpy(__ui_nodes[__ui_kb_target].textBuffer, __ui_kb_buffer, UI_TEXT_BUF);
+    __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
+    if (__ui_kb_onchange) __ui_kb_onchange();
+  }
+  // Capture the keyboard box before clearing visibility — it identifies the
+  // screen region the opaque overlay covered and that now needs restoring.
+  UIRect kbBox = __ui_kb_box;
+  __ui_kb_visible = 0;
+  __ui_kb_target = -1;
+  __ui_kb_bs_held = 0;
+  // The <screen> root's paint rect spans the whole display, so it always
+  // intersects kbBox. Routing it through ui_mark_dirty would cascade via
+  // ui_mark_overlapping_higher_layers_dirty into marking every node on the
+  // active screen dirty (its rect overlaps everything), which is the
+  // full-screen flash this function exists to avoid. Repaint just the
+  // keyboard-box slice of its background directly instead.
+  int16_t screenRoot = -1;
+  for (uint16_t i = 0; i < __ui_node_count; i++) {
+    if (__ui_nodes[i].parent == UI_NO_PARENT && __ui_nodes[i].screenId == __ui_active_screen) {
+      screenRoot = (int16_t)i;
+      break;
+    }
+  }
+  if (screenRoot >= 0) {
+    UI_COLOR_T rootBg = (UI_COLOR_T)(__ui_nodes[screenRoot].hasBg
+      ? __ui_nodes[screenRoot].bg
+      : __ui_nodes[screenRoot].clearColor);
+    ui_display_fill_rect(kbBox.x, kbBox.y, kbBox.w, kbBox.h, rootBg);
+  }
+  // Repaint everything else the keyboard overlay actually overwrote: nodes
+  // whose paint rect intersects the keyboard box, plus the edited input
+  // itself (its text just changed). ui_mark_dirty handles overlap repair +
+  // scroll clipping — safe here since these nodes are bounded in size, unlike
+  // the screen root.
+  for (uint16_t i = 0; i < __ui_node_count; i++) {
+    if ((int16_t)i == screenRoot) continue;
+    UIRect r;
+    ui_node_current_paint_rect(i, &r);
+    if (r.w > 0 && r.h > 0 &&
+        ui_rects_intersect(r.x, r.y, r.w, r.h, kbBox.x, kbBox.y, kbBox.w, kbBox.h)) {
+      ui_mark_dirty(i);
+    }
+  }
+}
+
+// Compute a key's rect from its index, given the grid + box.
+// The top UI_KB_TEXT_H pixels of the box are reserved for the preview text row;
+// keys fill the area below it.
+static inline void ui_kb_key_rect(uint8_t idx, UIRect* out) {
+  uint8_t col = idx % __ui_kb_cols;
+  uint8_t row = idx / __ui_kb_cols;
+  int16_t keysH = __ui_kb_box.h - UI_KB_TEXT_H;  // key area height (below text row)
+  out->x = __ui_kb_box.x + (int16_t)col * __ui_kb_box.w / __ui_kb_cols;
+  out->y = __ui_kb_box.y + UI_KB_TEXT_H + (int16_t)row * keysH / __ui_kb_rows;
+  out->w = __ui_kb_box.w / __ui_kb_cols;
+  out->h = keysH / __ui_kb_rows;
+}
+
+// Handle a touch-down inside the keyboard box. tx,ty are display coords.
+// Handle a touch-down inside the keyboard box. Only fires on the initial
+// down edge (tracked by __ui_touch_state in the modal path), NOT every poll.
+// Records WHICH key is under the finger — the same key is activated on release
+// (ui_kb_handle_tap), avoiding mis-targeting from coordinate drift on release.
+static inline void ui_kb_handle_touch(int16_t tx, int16_t ty) {
+  __ui_kb_pressed_key = -1;
+  for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
+    UIKey k = __ui_kb_keys[i];
+    if (k.special == 255) continue;  // padding cell, skip
+    UIRect r;
+    ui_kb_key_rect(i, &r);
+    if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) {
+      __ui_kb_pressed_key = (int8_t)i;  // remember for release
+      __ui_kb_repaint_key = (int8_t)i;
+      __ui_kb_dirty = 2;  // targeted: redraw just this key's highlight
+      // Backspace starts deleting immediately + arms auto-repeat.
+      if (k.special == 2) {
+        __ui_kb_bs_held = 1;
+        __ui_kb_bs_repeat = millis();
+        ui_kb_delete();
+      }
+      return;
+    }
+  }
+}
+
+// Called each frame while the keyboard is visible + a touch is held.
+// Handles ⌫ auto-repeat.
+static inline void ui_kb_tick(uint32_t now) {
+  if (!__ui_kb_bs_held) return;
+  if (now - __ui_kb_bs_repeat >= UI_KB_REPEAT_MS) {
+    ui_kb_delete();
+    __ui_kb_bs_repeat = now;
+    __ui_kb_repaint_key = __ui_kb_pressed_key;  // ⌫ key stays highlighted
+    __ui_kb_dirty = 2;  // targeted: text row + ⌫ key
+  }
+}
+
+// Handle a tap release. Activates the key that was under the finger on
+// touch-down (__ui_kb_pressed_key) — NOT a fresh hit-test, which would
+// mis-target due to coordinate drift on a resistive panel at release.
+static inline void ui_kb_handle_tap(int16_t tx, int16_t ty) {
+  (void)tx; (void)ty;  // key was recorded on touch-down; no re-hit-test
+  if (__ui_kb_pressed_key < 0) return;
+  UIKey k = __ui_kb_keys[__ui_kb_pressed_key];
+  int8_t releasedKey = __ui_kb_pressed_key;
+  __ui_kb_pressed_key = -1;  // clear pressed state → highlight reverts
+  switch (k.special) {
+    case 0: {  // char
+      char c = k.ch;
+      uint8_t wasShift = __ui_kb_shift;
+      if (wasShift && c >= 'a' && c <= 'z') c -= 32;
+      ui_kb_insert(c);
+      __ui_kb_shift = 0;  // shift resets after one char
+      // Text row changes; if shift was active, repaint shift key too.
+      __ui_kb_repaint_key = wasShift ? -1 : releasedKey;
+      __ui_kb_dirty = 2;
+      break;
+    }
+    case 1:  // shift toggle — all letter keys change case, full redraw
+      __ui_kb_shift = !__ui_kb_shift;
+      __ui_kb_dirty = 1;
+      break;
+    case 2:  // backspace: handled on down + repeat; nothing on tap-up
+      __ui_kb_repaint_key = releasedKey;  // revert highlight
+      __ui_kb_dirty = 2;
+      break;
+    case 3:  // OK
+      ui_kb_close();
+      break;
+    case 4: {  // page-swap — new key layout, full redraw
+      extern void __ui_kb_load_default_alpha();
+      extern void __ui_kb_load_default_number();
+      if (__ui_kb_cols <= 4) __ui_kb_load_default_alpha();
+      else __ui_kb_load_default_number();
+      ui_kb_compute_box();
+      __ui_kb_dirty = 1;
+      break;
+    }
+  }
+}
+
+// Draw a single key by index. Shared by the full draw + targeted redraw.
+static inline void ui_kb_draw_key(uint8_t i) {
+  UIKey k = __ui_kb_keys[i];
+  UIKeyStyle ks = __ui_kb_styles[i];
+  UIRect r;
+  ui_kb_key_rect(i, &r);
+  UI_COLOR_T bg = ks.bg;
+  UI_COLOR_T fg = ks.fg;
+  UI_COLOR_T border = ks.borderColor;
+  // Shift-active highlight: brighten the shift key's background — but only
+  // when not pressed, so the press inversion stays high-contrast.
+  if (k.special == 1 && __ui_kb_shift && (int8_t)i != __ui_kb_pressed_key) {
+#if UI_COLOR_DEPTH == 888
+    bg = 0xBDEFFF;
+#else
+    bg = 0xBDF7;
+#endif
+  }
+  // Pressed key: invert colors for clear tap feedback.
+  if ((int8_t)i == __ui_kb_pressed_key) { UI_COLOR_T t = bg; bg = fg; fg = t; }
+  ui_display_fill_rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
+  ui_display_draw_rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, border);
+  ui_display_set_text_color(fg, bg);
+  ui_display_set_text_size(1);
+  // Derive the label string + its length for centering.
+  const char* labelStr;
+  char single[2];
+  switch (k.special) {
+    case 1:  labelStr = "Aa"; break;
+    case 2:  labelStr = "DEL"; break;
+    case 3:  labelStr = "OK"; break;
+    case 4:  labelStr = __ui_kb_cols <= 4 ? "ABC" : "123"; break;
+    default:
+      single[0] = (__ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') ? (char)(k.ch - 32) : k.ch;
+      single[1] = 0;
+      labelStr = single;
+      break;
+  }
+  // Center: textW = len * 6px, textH = 8px. Position inside the key rect.
+  uint8_t len = strlen(labelStr);
+  int16_t textW = (int16_t)len * 6;
+  int16_t textH = 8;
+  int16_t cx = r.x + (r.w - textW) / 2;
+  int16_t cy = r.y + (r.h - textH) / 2;
+  if (cx < r.x + 1) cx = r.x + 1;  // clamp if label wider than key
+  ui_display_set_cursor(cx, cy);
+  ui_display_print(labelStr);
+}
+
+// Redraw only the text display row (top of keyboard box). Used when a char is
+// inserted/deleted without changing key highlights.
+static inline void ui_kb_draw_text_row() {
+  // Clear the text row area (top UI_KB_TEXT_H px of the keyboard box).
+  ui_display_fill_rect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, UI_KB_TEXT_H, __ui_kb_bg);
+  ui_display_set_cursor(__ui_kb_box.x + 4, __ui_kb_box.y + 4);
+#if UI_COLOR_DEPTH == 888
+  ui_display_set_text_color(0xFFFFFF, 0x000000);
+#else
+  ui_display_set_text_color(0xFFFF, 0x0000);
+#endif
+  ui_display_set_text_size(2);
+  ui_display_print(__ui_kb_buffer);
+  ui_display_print("_");  // cursor
+}
+
+// Draw the full keyboard overlay (background + text row + all keys).
+static inline void ui_kb_draw() {
+  // Opaque background over the keyboard box.
+  ui_display_fill_rect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, __ui_kb_bg);
+  ui_kb_draw_text_row();
+  // Keys: one rect per key, label centered.
+  for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
+    if (__ui_kb_keys[i].special == 255) continue;  // padding cell, skip
+    ui_kb_draw_key(i);
+  }
+}
+`;
+}
