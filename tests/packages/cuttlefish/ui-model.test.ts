@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { parseCss } from "@typecad/cuttlefish/ui/css-parser";
-import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
-import { measure } from "@typecad/cuttlefish/ui/layout-engine";
+import { parseCss } from "@typecad/ui/ui-engine/css-parser";
+import { parseHtml } from "@typecad/ui/ui-engine/html-parser";
+import { measure } from "@typecad/ui/ui-engine/layout-engine";
 import {
   easeCurveLerpK,
   lowerUIToModel,
@@ -10,17 +10,17 @@ import {
   TIMING_EASE_OUT,
   TIMING_LINEAR,
   timingFunctionCode,
-} from "@typecad/cuttlefish/ui/model";
-import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
-import type { StyledNode } from "@typecad/cuttlefish/ui/style-resolver";
-import { resolveColor } from "@typecad/cuttlefish/ui/color";
-import { analyzeScrollMemory } from "../../../packages/cuttlefish/src/ui/scroll-memory-diagnostics";
-import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../../packages/cuttlefish/src/ui/default-keyboards";
+} from "@typecad/ui/ui-engine/model";
+import { resolveStyles } from "@typecad/ui/ui-engine/style-resolver";
+import type { StyledNode } from "@typecad/ui/ui-engine/style-resolver";
+import { resolveColor } from "@typecad/ui/ui-engine/color";
+import { analyzeScrollMemory } from "../../../packages/ui/src/ui-engine/scroll-memory-diagnostics";
+import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../../packages/ui/src/ui-engine/default-keyboards";
 
 const loweringDeps = { lowerUIToModel, resolveColor, analyzeScrollMemory, DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD };
-import type { Box } from "@typecad/cuttlefish/ui/layout-engine";
-import { lowerUIToCpp } from "@typecad/cuttlefish/ir/transformers/ui-lowering";
-import { selectEngine } from "../../../packages/cuttlefish/src/ui/select-engine";
+import type { Box } from "@typecad/ui/ui-engine/layout-engine";
+import { lowerUIToCpp } from "@typecad/ui/ui-engine/ui-lowering";
+import { selectEngine } from "../../../packages/ui/src/ui-engine/select-engine";
 
 describe("animation timing-function easing", () => {
   // Regression: the original easeCurveLerpK had a fixed-point scaling bug that

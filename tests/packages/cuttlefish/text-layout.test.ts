@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { layoutText } from "@typecad/cuttlefish/ui/text-layout";
+import { layoutText } from "@typecad/ui/ui-engine/text-layout";
 
 const measure = (text: string) => text.length * 10;
 

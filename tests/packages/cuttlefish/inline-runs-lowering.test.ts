@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
-import { parseHtml, parseAllScreens } from "@typecad/cuttlefish/ui/html-parser";
-import { parseCss } from "@typecad/cuttlefish/ui/css-parser";
-import { lowerUIToModel } from "@typecad/cuttlefish/ui/model";
-import { selectEngine } from "../../../packages/cuttlefish/src/ui/select-engine";
-import { measure } from "@typecad/cuttlefish/ui/layout-engine";
+import { resolveStyles } from "@typecad/ui/ui-engine/style-resolver";
+import { parseHtml, parseAllScreens } from "@typecad/ui/ui-engine/html-parser";
+import { parseCss } from "@typecad/ui/ui-engine/css-parser";
+import { lowerUIToModel } from "@typecad/ui/ui-engine/model";
+import { selectEngine } from "../../../packages/ui/src/ui-engine/select-engine";
+import { measure } from "@typecad/ui/ui-engine/layout-engine";
 
 function lowerOne(html: string, css = "") {
   const styled = resolveStyles(parseHtml(html), parseCss(css));

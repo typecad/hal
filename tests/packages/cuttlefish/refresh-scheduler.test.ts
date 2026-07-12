@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { emitRuntimeHeader } from "../../../packages/cuttlefish/src/ui/runtime-header";
+import { emitRuntimeHeader } from "../../../packages/ui/src/ui-engine/runtime-header";
 
 describe("e-ink dirty-rect refresh union", () => {
   const header = emitRuntimeHeader();

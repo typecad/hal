@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { emitRuntimeHeader } from "../../../packages/cuttlefish/src/ui/runtime-header";
+import { emitRuntimeHeader } from "../../../packages/ui/src/ui-engine/runtime-header";
 
 // Focused tests for the C++ runtime's rich-text (inline run) support. These
 // assert the header string contains the new structures and draw dispatch; full

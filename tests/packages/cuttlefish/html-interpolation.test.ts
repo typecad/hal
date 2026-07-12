@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
+import { parseHtml } from "@typecad/ui/ui-engine/html-parser";
 import { lowerInterpolationText } from "../../../packages/cuttlefish/src/ir/transformers/ui-call-resolver";
 
 describe("{expr} text interpolation", () => {

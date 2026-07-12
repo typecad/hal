@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
-import type { PreviewSnapshot } from "@typecad/cuttlefish/preview/types";
+import { PreviewUIRuntime } from "@typecad/ui/preview/host-ui-runtime";
+import type { PreviewSnapshot } from "@typecad/ui/preview/types";
 
 // `bind:value` is a declarative two-way binding: signal → node value (read),
 // and node → signal (write-back). On hardware (ui-element-auto-wire.ts:124-140),

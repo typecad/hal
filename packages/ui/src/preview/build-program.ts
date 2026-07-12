@@ -1,20 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
-import type { DisplayProfile } from "../api/shared/display-profile.js";
-import { effectiveDisplaySize, resolveDisplayProfile } from "../api/shared/display-profile.js";
-import { ResolvedCuttlefishConfig } from "../config-loader.js";
-import { parseCss, parseFontFaces, parseKeyframes } from "../ui/css-parser.js";
-import { extractStyleBlocks, parseHtmlWithKeyboards } from "../ui/html-parser.js";
-import { splitUiFile } from "../ui/ui-file-splitter.js";
-import { buildUIFontAssets } from "../ui/font-assets.js";
-import { loadImageAssets } from "../ui/image-assets.js";
-import { buildKeyframeSets } from "../ui/keyframes.js";
-import { measure, measureWithFonts, type Box } from "../ui/layout-engine.js";
-import { lowerUIToModel } from "../ui/model.js";
-import { selectEngine } from "../ui/select-engine.js";
-import { resolveStyles, type StyledNode } from "../ui/style-resolver.js";
-import { getThemeClass, setThemeClass } from "../stores/theme-store.js";
+import type { DisplayProfile } from "@typecad/cuttlefish/api/shared";
+import { effectiveDisplaySize, resolveDisplayProfile } from "@typecad/cuttlefish/api/shared";
+import { ResolvedCuttlefishConfig } from "@typecad/cuttlefish/config-loader";
+import { parseCss, parseFontFaces, parseKeyframes } from "../ui-engine/css-parser.js";
+import { extractStyleBlocks, parseHtmlWithKeyboards } from "../ui-engine/html-parser.js";
+import { splitUiFile } from "../ui-engine/ui-file-splitter.js";
+import { buildUIFontAssets } from "../ui-engine/font-assets.js";
+import { loadImageAssets } from "../ui-engine/image-assets.js";
+import { buildKeyframeSets } from "../ui-engine/keyframes.js";
+import { measure, measureWithFonts, type Box } from "../ui-engine/layout-engine.js";
+import { lowerUIToModel } from "../ui-engine/model.js";
+import { selectEngine } from "../ui-engine/select-engine.js";
+import { resolveStyles, type StyledNode } from "../ui-engine/style-resolver.js";
+import { getThemeClass, setThemeClass } from "@typecad/cuttlefish/stores/theme-store";
 import type {
   PreviewBindingSpec,
   PreviewCallbackSpec,

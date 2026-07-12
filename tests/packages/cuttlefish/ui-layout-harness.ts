@@ -1,12 +1,12 @@
-import { parseCss, parseKeyframes, type CSSRule } from "@typecad/cuttlefish/ui/css-parser";
-import { extractStyleBlocks, parseHtmlWithKeyboards, type KeyboardTemplate } from "@typecad/cuttlefish/ui/html-parser";
-import { buildKeyframeSets } from "@typecad/cuttlefish/ui/keyframes";
-import { measure, type Box } from "@typecad/cuttlefish/ui/layout-engine";
-import { lowerUIToModel, type UINodeModel, type UIProgram } from "@typecad/cuttlefish/ui/model";
-import { resolveStyles, type StyledNode } from "@typecad/cuttlefish/ui/style-resolver";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
-import { selectEngine } from "../../../packages/cuttlefish/src/ui/select-engine";
-import type { PreviewSnapshot } from "../../../packages/cuttlefish/src/preview/types";
+import { parseCss, parseKeyframes, type CSSRule } from "@typecad/ui/ui-engine/css-parser";
+import { extractStyleBlocks, parseHtmlWithKeyboards, type KeyboardTemplate } from "@typecad/ui/ui-engine/html-parser";
+import { buildKeyframeSets } from "@typecad/ui/ui-engine/keyframes";
+import { measure, type Box } from "@typecad/ui/ui-engine/layout-engine";
+import { lowerUIToModel, type UINodeModel, type UIProgram } from "@typecad/ui/ui-engine/model";
+import { resolveStyles, type StyledNode } from "@typecad/ui/ui-engine/style-resolver";
+import { PreviewUIRuntime } from "@typecad/ui/preview/host-ui-runtime";
+import { selectEngine } from "../../../packages/ui/src/ui-engine/select-engine";
+import type { PreviewSnapshot } from "../../../packages/ui/src/preview/types";
 
 export interface BuildUiFixtureOptions {
   html: string;

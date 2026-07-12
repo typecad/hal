@@ -1,6 +1,6 @@
-import type { DisplayProfile } from "../api/shared/display-profile.js";
-import { effectiveDisplaySize } from "../api/shared/display-profile.js";
-import { deriveCapabilities } from "../api/shared/display-capabilities.js";
+import type { DisplayProfile } from "@typecad/cuttlefish/api/shared";
+import { effectiveDisplaySize } from "@typecad/cuttlefish/api/shared";
+import { deriveCapabilities } from "@typecad/cuttlefish/api/shared";
 import { resolveColorInternal } from "./color.js";
 import { parseAnimation, type CSSProperty } from "./css-parser.js";
 import type { UIFontAssetModel } from "./font-assets.js";

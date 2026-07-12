@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "@typecad/cuttlefish/ui/default-keyboards";
+import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "@typecad/ui/ui-engine/default-keyboards";
 
 describe("Default keyboard templates", () => {
   it("alpha keyboard has 4 rows", () => {

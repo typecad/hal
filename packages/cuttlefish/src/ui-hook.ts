@@ -12,30 +12,66 @@
 // skipped — cuttlefish works as a pure TypeScript→C++ transpiler.
 // ---------------------------------------------------------------------------
 
-import type { LoweredUI } from "./ir/transformers/ui-lowering.js";
 import type { Diagnostic } from "./api/shared/index.js";
 
-// Re-export types that appear in hook signatures so consumers can reference
-// them without importing from ui/ directly.
-export type { LoweredUI } from "./ir/transformers/ui-lowering.js";
+// LoweredUI — the output of UI lowering. Defined here (not imported from
+// @typecad/ui) to avoid a circular type dependency. The real type in
+// @typecad/ui is structurally identical.
+export interface LoweredUI {
+  fontTables: string;
+  nodeTable: string;
+  transitionTable: string;
+  typeDecl: string;
+  keyboardLoaders: string;
+  keyboardDispatch: string;
+  screenCount: number;
+  imageTables: string;
+  keyframeTables: string;
+  scrollMemoryDiagnostics: Diagnostic[];
+  diagnostics: Diagnostic[];
+}
 
-// The real UIModule and LowerOptions types live in ui/ui-registry.ts. During
-// Phase 3 (all files in-package) we import them directly. After the Phase 5
-// move, these will be re-exported from @typecad/ui's public types.
-export type { UIModule, LowerOptions } from "./ui/ui-registry.js";
+// UIModule and LowerOptions — structural aliases matching the real types in
+// @typecad/ui/ui-engine/ui-registry.ts. Defined locally to avoid importing
+// from @typecad/ui (which would create a circular build dependency).
+export interface UIModule {
+  htmlPath: string;
+  typeDeclPath: string;
+  typeDeclSourceRoot: string;
+  typeDeclRoot: string;
+  styled: unknown;
+  allStyledScreens: unknown[];
+  keyboards: unknown[];
+  rules: unknown[];
+  fontFaces: unknown[];
+  fontAssets: unknown[];
+  rawKeyframes: unknown[];
+  diagnostics: Diagnostic[];
+  mountDiagnostics: Diagnostic[];
+}
 
-// Re-export the UiFileParts type from ui-file-splitter.
-export type { UiFileParts } from "./ui/ui-file-splitter.js";
+export interface LowerOptions {
+  colorFormat: "rgb565" | "rgb666" | "rgb888" | "mono";
+  storage: "progmem" | "flash";
+  viewport: { width: number; height: number };
+}
+
+// Re-export the UiFileParts type.
+export interface UiFileParts {
+  script: string;
+  style: string;
+  html: string;
+}
 
 /** The capabilities cuttlefish core needs from the UI engine. */
 export interface TranspilerUIHook {
   // ── Registry: loading and querying UI modules ───────────────────────────
   resetUIRegistry(): void;
-  loadUIModule(htmlPath: string): import("./ui/ui-registry.js").UIModule | undefined;
-  loadUIModuleFromText(htmlPath: string, htmlText: string, cssText: string, cssPathForFonts?: string): import("./ui/ui-registry.js").UIModule;
-  getUIModule(htmlPath: string): import("./ui/ui-registry.js").UIModule | undefined;
+  loadUIModule(htmlPath: string): UIModule | undefined;
+  loadUIModuleFromText(htmlPath: string, htmlText: string, cssText: string, cssPathForFonts?: string): UIModule;
+  getUIModule(htmlPath: string): UIModule | undefined;
   hasUIModule(htmlPath: string): boolean;
-  allUIModules(): import("./ui/ui-registry.js").UIModule[];
+  allUIModules(): UIModule[];
   allLoweredUIModules(): Array<{ htmlPath: string; lowered: LoweredUI }>;
 
   // ── Entry-point UI detection ────────────────────────────────────────────
@@ -44,7 +80,7 @@ export interface TranspilerUIHook {
   clearEntryHasUI(): void;
 
   // ── Lowering ────────────────────────────────────────────────────────────
-  lowerOnMount(htmlPath: string, opts: import("./ui/ui-registry.js").LowerOptions): LoweredUI;
+  lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI;
 
   // ── Color resolution (used by IR transformers) ──────────────────────────
   resolveColor(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono"): number;
@@ -54,10 +90,10 @@ export interface TranspilerUIHook {
   emitRuntimeHeader(): string;
 
   // ── File splitting ──────────────────────────────────────────────────────
-  splitUiFile(src: string): import("./ui/ui-file-splitter.js").UiFileParts;
+  splitUiFile(src: string): UiFileParts;
 
   // ── Type declaration generation ─────────────────────────────────────────
-  generateProjectUITypeDeclarations(projectRoot: string): import("./ui/ui-registry.js").UITypeDeclarationResult;
+  generateProjectUITypeDeclarations(projectRoot: string): { written: string[]; errors: Array<{ filePath: string; error: Error }> };
 
   // ── Scroll memory diagnostics ───────────────────────────────────────────
   analyzeScrollMemory(styled: unknown, budget: number): Diagnostic[];

@@ -15,6 +15,7 @@ import { loadFrameworkPackage } from "./framework-package.js";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js";
 import { loadCuttlefishConfig, generateVirtualTypeDeclaration } from "./config-loader.js";
 import { requireUIHook } from "./ui-hook.js";
+import { loadUIEngine } from "./ui/ui-bridge.js";
 import { runWatch, discoverWatchDirs } from "./watch.js";
 import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils.js";
 import { runPreviewServer } from "./preview/server.js";
@@ -301,6 +302,9 @@ async function main(): Promise<void> {
     // ── Load cuttlefish.config.ts (config wins over CLI flags) ──────────
     const inputDir = path.dirname(path.resolve(options.inputFile));
     const config = loadCuttlefishConfig(inputDir);
+
+    // Load the UI engine (if @typecad/ui is installed) before any UI work.
+    await loadUIEngine();
 
     let effectivePlatformContext = options.platformContext;
     let effectiveTarget = options.target;

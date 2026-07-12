@@ -2,7 +2,7 @@
 // node's box. See docs/superpowers/specs/2026-06-27-canvas-element-design.md
 
 import { describe, expect, it } from "vitest";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
+import { PreviewUIRuntime } from "@typecad/ui/preview/host-ui-runtime";
 
 function makeNode(overrides: Record<string, unknown>) {
   return {

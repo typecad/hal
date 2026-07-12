@@ -1,6 +1,6 @@
-import type { UIProgram } from "../ui/model.js";
-import type { CSSRule } from "../ui/css-parser.js";
-import type { KeyboardTemplate } from "../ui/html-parser.js";
+import type { UIProgram } from "../ui-engine/model.js";
+import type { CSSRule } from "../ui-engine/css-parser.js";
+import type { KeyboardTemplate } from "../ui-engine/html-parser.js";
 
 export interface PreviewBindingSpec {
   nodeId: string;

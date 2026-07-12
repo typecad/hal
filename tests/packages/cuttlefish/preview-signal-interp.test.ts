@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { PreviewUIRuntime } from "@typecad/cuttlefish/preview/host-ui-runtime";
-import type { PreviewSnapshot } from "@typecad/cuttlefish/preview/types";
+import { PreviewUIRuntime } from "@typecad/ui/preview/host-ui-runtime";
+import type { PreviewSnapshot } from "@typecad/ui/preview/types";
 
 // On the device, `const count = ui.signal(0)` lowers to a plain `int count = 0;`
 // file-scope variable (the getter is a compile-time fiction). References to the

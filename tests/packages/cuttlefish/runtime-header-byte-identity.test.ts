@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { emitRuntimeHeader } from "../../../packages/cuttlefish/src/ui/runtime-header";
+import { emitRuntimeHeader } from "../../../packages/ui/src/ui-engine/runtime-header";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const baseline = readFileSync(

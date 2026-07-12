@@ -3,9 +3,9 @@
 // scrolling; when that exceeds the device budget, runtime falls back to
 // Mode C strip scroll or freezes until memory is available.
 
-import type { Diagnostic } from "../types.js";
+import type { Diagnostic } from "@typecad/cuttlefish/api/shared";
 import type { UINodeModel } from "./model.js";
-import { DEFAULT_SCROLL_CANVAS_BUDGET_BYTES } from "../api/shared/display-profile.js";
+import { DEFAULT_SCROLL_CANVAS_BUDGET_BYTES } from "@typecad/cuttlefish/api/shared";
 
 export { DEFAULT_SCROLL_CANVAS_BUDGET_BYTES };
 

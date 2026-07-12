@@ -1,52 +1,26 @@
 // ---------------------------------------------------------------------------
-// UI bridge — wires the real UI engine implementations into the TranspilerUIHook.
+// UI bridge — loads the UI engine from @typecad/ui and registers it.
 //
-// This module lives in cuttlefish/src/ui/ for now (Phase 3 of the split). In
-// Phase 5 it moves to @typecad/ui/src/ui-engine/ and becomes the
-// registerTranspilerUI() entry point that cuttlefish loads dynamically.
-//
-// For now, transpile.ts calls registerTranspilerUI() directly (static import)
-// to populate the hook. Once the files move to the separate package, the call
-// becomes: const { registerTranspilerUI } = await import("@typecad/ui/engine");
+// transpile.ts calls loadUIEngine() at the start of transpileFile(). If
+// @typecad/ui is not installed, the import fails gracefully and the hook
+// stays null — cuttlefish works as a pure TypeScript→C++ transpiler.
 // ---------------------------------------------------------------------------
 
-import type { TranspilerUIHook } from "../ui-hook.js";
 import { setUIHook } from "../ui-hook.js";
-import { resetUIRegistry, loadUIModule, loadUIModuleFromText, getUIModule, hasUIModule, allUIModules, allLoweredUIModules, markEntryHasUI, entryHasUI, clearEntryHasUI, lowerOnMount, generateProjectUITypeDeclarations } from "./ui-registry.js";
-import { resolveColor, resolveColorInternal } from "./color.js";
-import { emitRuntimeHeader } from "./runtime-header.js";
-import { splitUiFile } from "./ui-file-splitter.js";
-import { analyzeScrollMemory } from "./scroll-memory-diagnostics.js";
 
-/**
- * Build the TranspilerUIHook with the real UI engine implementations.
- * Exported for Phase 5 when this moves to @typecad/ui and cuttlefish calls
- * it via dynamic import. For now (Phase 3), it's also called eagerly below.
- */
-export function registerTranspilerUI(): TranspilerUIHook {
-  return {
-    resetUIRegistry,
-    loadUIModule,
-    loadUIModuleFromText,
-    getUIModule,
-    hasUIModule,
-    allUIModules,
-    allLoweredUIModules,
-    markEntryHasUI,
-    entryHasUI,
-    clearEntryHasUI,
-    lowerOnMount,
-    resolveColor,
-    resolveColorInternal,
-    emitRuntimeHeader,
-    splitUiFile,
-    generateProjectUITypeDeclarations,
-    analyzeScrollMemory,
-  };
+let loaded = false;
+
+/** Dynamically load @typecad/ui/engine and register the hook.
+ *  Called by transpile.ts at the start of each transpile run.
+ *  Safe to call when @typecad/ui is absent (hook stays null). */
+export async function loadUIEngine(): Promise<void> {
+  if (loaded) return;
+  loaded = true;
+  try {
+    const engine = await import("@typecad/ui/engine");
+    const hook = await engine.registerTranspilerUI();
+    setUIHook(hook);
+  } catch {
+    // @typecad/ui is not installed — cuttlefish works without UI support.
+  }
 }
-
-// Eager self-registration: populate the hook on module load so any code that
-// imports transpile.ts (directly or transitively) has the hook available.
-// This is temporary for Phase 3 — in Phase 5 this file moves to @typecad/ui
-// and registration becomes an explicit dynamic-import call in transpile.ts.
-setUIHook(registerTranspilerUI());

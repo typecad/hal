@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { Box, LayoutEngine, measure } from "@typecad/cuttlefish/ui/layout-engine";
-import { BlockLayoutEngine } from "@typecad/cuttlefish/ui/block-layout";
-import { selectEngine } from "../../../packages/cuttlefish/src/ui/select-engine";
-import { resolveStyles } from "@typecad/cuttlefish/ui/style-resolver";
-import { parseHtml } from "@typecad/cuttlefish/ui/html-parser";
-import { parseCss } from "@typecad/cuttlefish/ui/css-parser";
+import { Box, LayoutEngine, measure } from "@typecad/ui/ui-engine/layout-engine";
+import { BlockLayoutEngine } from "@typecad/ui/ui-engine/block-layout";
+import { selectEngine } from "../../../packages/ui/src/ui-engine/select-engine";
+import { resolveStyles } from "@typecad/ui/ui-engine/style-resolver";
+import { parseHtml } from "@typecad/ui/ui-engine/html-parser";
+import { parseCss } from "@typecad/ui/ui-engine/css-parser";
 
 function layout(src: string, css: string, viewport: Box): Box[] {
   const styled = resolveStyles(parseHtml(src), parseCss(css));

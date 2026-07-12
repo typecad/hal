@@ -1,15 +1,15 @@
 import { describe, it, expect } from "vitest";
-import { lowerUIToCpp } from "../../../packages/cuttlefish/src/ir/transformers/ui-lowering";
-import { resolveStyles } from "../../../packages/cuttlefish/src/ui/style-resolver";
-import { parseHtml } from "../../../packages/cuttlefish/src/ui/html-parser";
-import type { KeyboardTemplate } from "../../../packages/cuttlefish/src/ui/html-parser";
-import { parseCss, parseKeyframes } from "../../../packages/cuttlefish/src/ui/css-parser";
-import { BlockLayoutEngine } from "../../../packages/cuttlefish/src/ui/block-layout";
-import { measure } from "../../../packages/cuttlefish/src/ui/layout-engine";
-import { buildKeyframeSets } from "../../../packages/cuttlefish/src/ui/keyframes";
-import { resolveColor } from "../../../packages/cuttlefish/src/ui/color";
-import { analyzeScrollMemory } from "../../../packages/cuttlefish/src/ui/scroll-memory-diagnostics";
-import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../../packages/cuttlefish/src/ui/default-keyboards";
+import { lowerUIToCpp } from "../../../packages/ui/src/ui-engine/ui-lowering";
+import { resolveStyles } from "../../../packages/ui/src/ui-engine/style-resolver";
+import { parseHtml } from "../../../packages/ui/src/ui-engine/html-parser";
+import type { KeyboardTemplate } from "../../../packages/ui/src/ui-engine/html-parser";
+import { parseCss, parseKeyframes } from "../../../packages/ui/src/ui-engine/css-parser";
+import { BlockLayoutEngine } from "../../../packages/ui/src/ui-engine/block-layout";
+import { measure } from "../../../packages/ui/src/ui-engine/layout-engine";
+import { buildKeyframeSets } from "../../../packages/ui/src/ui-engine/keyframes";
+import { resolveColor } from "../../../packages/ui/src/ui-engine/color";
+import { analyzeScrollMemory } from "../../../packages/ui/src/ui-engine/scroll-memory-diagnostics";
+import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../../../packages/ui/src/ui-engine/default-keyboards";
 import {
   KEYFRAME_PROP_BG,
   KEYFRAME_PROP_FG,
@@ -18,7 +18,7 @@ import {
   KEYFRAME_PROP_TRANSFORM,
   lowerUIToModel,
   type KeyframeSetModel,
-} from "../../../packages/cuttlefish/src/ui/model";
+} from "../../../packages/ui/src/ui-engine/model";
 
 /** Build the lowering deps object that lowerUIToCpp now requires. */
 const loweringDeps = { lowerUIToModel, resolveColor, analyzeScrollMemory, DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD };

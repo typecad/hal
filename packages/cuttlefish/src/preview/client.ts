@@ -1,5 +1,5 @@
-import { PreviewUIRuntime } from "./host-ui-runtime.js";
-import type { PreviewPinControlSpec, PreviewSnapshot } from "./types.js";
+import { PreviewUIRuntime } from "@typecad/ui/preview/host-ui-runtime";
+import type { PreviewPinControlSpec, PreviewSnapshot } from "@typecad/ui/preview/types";
 
 let runtime: PreviewUIRuntime | undefined;
 let imageData: ImageData | undefined;

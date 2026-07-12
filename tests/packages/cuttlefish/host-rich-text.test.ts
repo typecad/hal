@@ -9,7 +9,7 @@ import { resolve } from "node:path";
 // showcase compile + preview.
 
 const src = readFileSync(
-  resolve("packages/cuttlefish/src/preview/host-ui-runtime.ts"),
+  resolve("packages/ui/src/preview/host-ui-runtime.ts"),
   "utf8",
 );
 

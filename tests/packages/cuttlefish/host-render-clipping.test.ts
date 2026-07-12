@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const runtimeSrc = readFileSync(
-  resolve("packages/cuttlefish/src/preview/host-ui-runtime.ts"),
+  resolve("packages/ui/src/preview/host-ui-runtime.ts"),
   "utf8",
 );
 
 const gfxSrc = readFileSync(
-  resolve("packages/cuttlefish/src/preview/host-gfx.ts"),
+  resolve("packages/ui/src/preview/host-gfx.ts"),
   "utf8",
 );
 

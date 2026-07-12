@@ -1,4 +1,4 @@
-import { Diagnostic } from "../types.js";
+import type { Diagnostic } from "@typecad/cuttlefish/api/shared";
 
 /** Tags whose content participates in inline flow inside a text container.
  *  Bare text nodes between them flow too. Recognized as inline children of a

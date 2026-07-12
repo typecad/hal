@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { splitUiFile } from "../../../packages/cuttlefish/src/ui/ui-file-splitter";
+import { splitUiFile } from "../../../packages/ui/src/ui-engine/ui-file-splitter";
 
 describe("splitUiFile (.ui single-file component)", () => {
   it("extracts script, style, and template from a .ui file", () => {

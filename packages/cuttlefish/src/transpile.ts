@@ -8,9 +8,7 @@ import { buildProgramIR } from "./ir/build-ir.js";
 import { classDeclarationToIR } from "./ir/declaration-builders.js";
 import { clickHandlers } from "./ir/transformers/ui-call-resolver.js";
 import { setUIHook, requireUIHook } from "./ui-hook.js";
-// Importing ui-bridge.ts triggers eager hook registration (Phase 3).
-// In Phase 5 this becomes: const ui = await import("@typecad/ui/engine").catch(() => null);
-import "./ui/ui-bridge.js";
+import { loadUIEngine } from "./ui/ui-bridge.js";
 import { setDisplayProfile, resetDisplayProfile } from "./stores/display-profile-store.js";
 import { setThemeCss, resetThemeCss, setThemeClass } from "./stores/theme-store.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
@@ -39,7 +37,6 @@ import { CompilationContext, contextStorage } from "./ir/build-ir-state.js";
 import { buildSymbolTable, mergeSymbolTable, resolveInheritance, createSymbolTable } from "./ir/symbol-table.js";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug/index.js";
 import { collectTranspileGraph } from "./orchestrator/graph-builder.js";
-import { allUIModules } from "./ui/ui-registry.js";
 import { typeCheckFiles } from "./orchestrator/type-checker.js";
 import { runSemanticGates } from "./orchestrator/type-checker.js";
 import { autoGenerateMissingDecls } from "./orchestrator/dts-generator.js";
@@ -269,6 +266,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
 
   // Clear session caches at the start of each transpilation
   clearCaches();
+
+  // Load the UI engine from @typecad/ui (if installed). Sets up the hook so
+  // requireUIHook() works throughout this transpile run. Gracefully no-ops
+  // when @typecad/ui is absent (pure TS→C++ transpile).
+  await loadUIEngine();
 
   const entryFile = path.resolve(options.inputFile);
   const entryDir = path.dirname(entryFile);

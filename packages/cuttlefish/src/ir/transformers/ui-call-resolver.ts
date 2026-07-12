@@ -32,8 +32,18 @@ import {
   resolveColorIR,
 } from "./ui-callback-lowering.js";
 import { resolveDrawCanvasCall, resetCanvasBindings } from "./canvas-lowering.js";
-import type { StyledNode } from "../../ui/style-resolver.js";
 import { getContext } from "../build-ir-state.js";
+
+/** Structural alias for @typecad/ui's StyledNode — only the properties
+ *  accessed by the walk functions below are declared. Defined locally to
+ *  avoid importing from @typecad/ui (circular build dependency). */
+interface StyledNode {
+  tag: string;
+  id?: string;
+  screenId: number;
+  children: StyledNode[];
+  [key: string]: unknown;
+}
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { inferExprCppType, type CppTypeHint } from "../type-resolution.js";
 import { escapeCppStringLiteral, escapeSnprintfFormatFragment } from "../../utils/strings.js";
@@ -1317,7 +1327,7 @@ export function resolveNodeIndex(htmlPath: string, id: string, screenId?: string
     for (const c of n.children) { if (walk(c)) return true; }
     return false;
   };
-  const allRoots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  const allRoots: StyledNode[] = mod.allStyledScreens.length > 0 ? mod.allStyledScreens as StyledNode[] : [mod.styled as StyledNode];
   const roots = screenId ? allRoots.filter(r => r.id === screenId) : allRoots;
   for (const root of roots) {
     if (walk(root)) break;
@@ -1339,7 +1349,7 @@ export function resolveNodeTag(htmlPath: string, id: string, screenId?: string):
     for (const c of n.children) { if (walk(c)) return true; }
     return false;
   };
-  const allRoots = mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled];
+  const allRoots: StyledNode[] = mod.allStyledScreens.length > 0 ? mod.allStyledScreens as StyledNode[] : [mod.styled as StyledNode];
   const roots = screenId ? allRoots.filter(r => r.id === screenId) : allRoots;
   for (const root of roots) {
     if (walk(root)) break;

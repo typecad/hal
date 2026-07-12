@@ -3,7 +3,7 @@ import ts from "typescript";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { resetUIRegistry, loadUIModule, clearEntryHasUI } from "../../../packages/cuttlefish/src/ui/ui-registry";
+import { resetUIRegistry, loadUIModule, clearEntryHasUI } from "../../../packages/ui/src/ui-engine/ui-registry";
 import {
   tryResolveUICall,
   resetUICallState,

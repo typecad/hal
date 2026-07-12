@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { resolveColor, resolveColor888, rgb888To666 } from "../../../packages/cuttlefish/src/ui/color";
+import { resolveColor, resolveColor888, rgb888To666 } from "../../../packages/ui/src/ui-engine/color";
 
 describe("resolveColor rgb666 path", () => {
   it("resolveColor(..., 'rgb666') quantizes 888 → 666", () => {

@@ -1,13 +1,13 @@
-import { resolveColor, resolveColor888 } from "../ui/color.js";
-import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../ui/default-keyboards.js";
-import type { CSSProperty, CSSRule } from "../ui/css-parser.js";
-import type { UIFontAssetModel, UIFontGlyphModel } from "../ui/font-assets.js";
-import type { UIImageAsset } from "../ui/image-assets.js";
-import type { KeyboardTemplate, UIKeyTemplate } from "../ui/html-parser.js";
-import type { AnimationModel, KeyframeSetModel, UINodeModel, UIProgram, UITransitionModel } from "../ui/model.js";
-import { resolveScrollConfig } from "../api/shared/display-profile.js";
-import { easeCurveLerpK } from "../ui/easing.js";
-import { layoutText } from "../ui/text-layout.js";
+import { resolveColor, resolveColor888 } from "../ui-engine/color.js";
+import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "../ui-engine/default-keyboards.js";
+import type { CSSProperty, CSSRule } from "../ui-engine/css-parser.js";
+import type { UIFontAssetModel, UIFontGlyphModel } from "../ui-engine/font-assets.js";
+import type { UIImageAsset } from "../ui-engine/image-assets.js";
+import type { KeyboardTemplate, UIKeyTemplate } from "../ui-engine/html-parser.js";
+import type { AnimationModel, KeyframeSetModel, UINodeModel, UIProgram, UITransitionModel } from "../ui-engine/model.js";
+import { resolveScrollConfig } from "@typecad/cuttlefish/api/shared";
+import { easeCurveLerpK } from "../ui-engine/easing.js";
+import { layoutText } from "../ui-engine/text-layout.js";
 import { blendRgb565, blendRgb888, HostAdafruitGFX } from "./host-gfx.js";
 import type {
   PreviewBindingSpec,

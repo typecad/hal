@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { layoutRuns } from "@typecad/cuttlefish/ui/rich-layout";
+import { layoutRuns } from "@typecad/ui/ui-engine/rich-layout";
 
 // measure helpers
 const mono = (s: string) => s.length * 10;       // 10px per char (incl. space)

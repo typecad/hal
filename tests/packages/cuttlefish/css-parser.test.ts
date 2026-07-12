@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { parseCss, parseInlineStyle, parseFontFaces, parseKeyframes, parseAnimation } from "@typecad/cuttlefish/ui/css-parser";
+import { parseCss, parseInlineStyle, parseFontFaces, parseKeyframes, parseAnimation } from "@typecad/ui/ui-engine/css-parser";
 // For tests that touch theme state, import parseCss from src so it shares the
 // same module instance as setThemeClass (the package export resolves to dist).
-import { parseCss as parseCssSrc } from "../../../packages/cuttlefish/src/ui/css-parser";
-import { setThemeClass } from "../../../packages/cuttlefish/src/stores/theme-store";
+import { parseCss as parseCssSrc } from "../../../packages/ui/src/ui-engine/css-parser";
+import { setThemeClass } from "@typecad/cuttlefish/stores/theme-store";
 
 describe("CSS subset parser", () => {
   it("parses element selectors", () => {

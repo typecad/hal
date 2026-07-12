@@ -12,23 +12,25 @@
 //   - typeDecl:        TypeScript declarations so .ui.html imports are typed.
 // ---------------------------------------------------------------------------
 
-import { StyledNode } from "../../ui/style-resolver.js";
-import { Box } from "../../ui/layout-engine.js";
-import type { UIProgram, UINodeModel, KeyframeSetModel } from "../../ui/model.js";
-import type { KeyboardTemplate, UIKeyTemplate } from "../../ui/html-parser.js";
-import { getListBindings } from "./ui-reactive.js";
-import type { CSSRule, CSSProperty } from "../../ui/css-parser.js";
-import type { DisplayProfile } from "../../api/shared/display-profile.js";
-import type { UIFontAssetModel } from "../../ui/font-assets.js";
-import type { Diagnostic } from "../../types.js";
+import { StyledNode } from "./style-resolver.js";
+import { Box } from "./layout-engine.js";
+import { lowerUIToModel, type UIProgram, type UINodeModel, type KeyframeSetModel } from "./model.js";
+import { resolveColor } from "./color.js";
+import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "./default-keyboards.js";
+import type { KeyboardTemplate, UIKeyTemplate } from "./html-parser.js";
+import type { CSSRule, CSSProperty } from "./css-parser.js";
+import type { DisplayProfile } from "@typecad/cuttlefish/api/shared";
+import type { UIFontAssetModel } from "./font-assets.js";
+import type { Diagnostic } from "@typecad/cuttlefish/api/shared";
+import { analyzeScrollMemory } from "./scroll-memory-diagnostics.js";
+import { getListBindings } from "@typecad/cuttlefish/ir/transformers/ui-reactive";
 
-/** UI-side functions injected by the caller (the ui package). These stay
- *  module-scoped so helper functions throughout this file can access them
- *  without threading a deps parameter through every signature. */
+/** UI-side functions used throughout this file. Now that the engine modules
+ *  are siblings, these are direct imports again — no injection needed. */
 interface LoweringDeps {
-  lowerUIToModel: typeof import("../../ui/model.js").lowerUIToModel;
-  resolveColor: typeof import("../../ui/color.js").resolveColor;
-  analyzeScrollMemory: typeof import("../../ui/scroll-memory-diagnostics.js").analyzeScrollMemory;
+  lowerUIToModel: typeof lowerUIToModel;
+  resolveColor: typeof resolveColor;
+  analyzeScrollMemory: typeof analyzeScrollMemory;
   DEFAULT_ALPHA_KEYBOARD: KeyboardTemplate;
   DEFAULT_NUMBER_KEYBOARD: KeyboardTemplate;
 }

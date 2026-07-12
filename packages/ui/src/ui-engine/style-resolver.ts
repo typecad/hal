@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { UIElementNode } from "./html-parser.js";
-import type { Diagnostic } from "../types.js";
+import type { Diagnostic } from "@typecad/cuttlefish/api/shared";
 import { CSSRule, CSSProperty, CSSSelector, SimpleSelector, parseInlineStyle } from "./css-parser.js";
 import { getUARules } from "./ua-stylesheet.js";
 import { TextRun } from "./run-types.js";

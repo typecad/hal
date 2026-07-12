@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { transpileFile } from "@typecad/cuttlefish/testing";
-import { resetUIRegistry } from "@typecad/cuttlefish/ui/ui-registry";
+import { resetUIRegistry } from "@typecad/ui/ui-engine/ui-registry";
 import { resetUICallState } from "../../../packages/cuttlefish/src/ir/transformers/ui-call-resolver";
 
 // Parity for callback bodies (onClick, watchPin, bindInput): arithmetic in

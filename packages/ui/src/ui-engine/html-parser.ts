@@ -13,7 +13,7 @@
 // ---------------------------------------------------------------------------
 
 import { parseHTML } from "linkedom";
-import type { Diagnostic } from "../types.js";
+import type { Diagnostic } from "@typecad/cuttlefish/api/shared";
 import { collectInlineSequence, INLINE_TAGS, InlineItem } from "./inline-parser.js";
 
 export interface UIElementNode {

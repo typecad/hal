@@ -19,7 +19,7 @@ import {
   resetUIRegistry,
   loadUIModule,
   clearEntryHasUI,
-} from "../../../packages/cuttlefish/src/ui/ui-registry";
+} from "../../../packages/ui/src/ui-engine/ui-registry";
 import {
   tryResolveUICall,
   resetUICallState,

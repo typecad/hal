@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { loadUIModuleFromText, lowerOnMount } from "../../../packages/cuttlefish/src/ui/ui-registry";
-import { splitUiFile } from "../../../packages/cuttlefish/src/ui/ui-file-splitter";
+import { loadUIModuleFromText, lowerOnMount } from "../../../packages/ui/src/ui-engine/ui-registry";
+import { splitUiFile } from "../../../packages/ui/src/ui-engine/ui-file-splitter";
 
 function tmpUi(src: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ui-"));
