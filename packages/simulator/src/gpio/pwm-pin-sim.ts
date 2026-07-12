@@ -43,12 +43,24 @@ export class SimPWMPin extends SimDigitalPin implements PWMPin {
     this._pwmFrequency = hz;
   }
 
-  getFrequency(): number {
+  /** Current PWM frequency in Hz (contract method name). */
+  getPwmFrequency(): number {
     return this._pwmFrequency;
   }
 
-  getResolution(): number {
+  /** Current PWM resolution in bits (contract method name). */
+  getPwmResolution(): number {
     return this._pwmResolution;
+  }
+
+  /** @deprecated Use getPwmFrequency() to match the HAL contract. */
+  getFrequency(): number {
+    return this.getPwmFrequency();
+  }
+
+  /** @deprecated Use getPwmResolution() to match the HAL contract. */
+  getResolution(): number {
+    return this.getPwmResolution();
   }
 
   // --- Simulation helpers ---

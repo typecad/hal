@@ -51,8 +51,9 @@ export class SimSerialPort implements ISerialPort {
     this.isEnabled = true;
   }
 
-  end(): never {
-    throw new Error('SimSerialPort.end() not implemented in simulator');
+  end(): void {
+    // In simulation, ending the port disables it without destroying buffers.
+    this.isEnabled = false;
   }
 
   read(): number {

@@ -51,9 +51,10 @@ export class SimBoard {
     }
     this.analogPins = analogMap;
 
-    // PWM pins (commonly 3, 5, 6, 9, 10, 11 on Uno)
+    // PWM pins (e.g. 3, 5, 6, 9, 10, 11 on Uno). Custom/unknown board types
+    // default to no PWM pins unless explicitly configured via `pwmPins`.
     const pwmMap = new Map<number, SimPWMPin>();
-    const pwmPinNumbers = getPwmPinsForBoard(config.boardType);
+    const pwmPinNumbers = config.pwmPins ?? getPwmPinsForBoard(config.boardType);
     for (const pinNum of pwmPinNumbers) {
       if (pinNum < digitalCount) {
         pwmMap.set(pinNum, new SimPWMPin(pinNum));
@@ -61,9 +62,10 @@ export class SimBoard {
     }
     this.pwmPins = pwmMap;
 
-    // Interrupt pins (commonly 2, 3 on Uno)
+    // Interrupt pins (e.g. 2, 3 on Uno). Custom/unknown board types default
+    // to no interrupt pins unless explicitly configured via `interruptPins`.
     const interruptMap = new Map<number, SimInterruptPin>();
-    const intPinNumbers = getInterruptPinsForBoard(config.boardType);
+    const intPinNumbers = config.interruptPins ?? getInterruptPinsForBoard(config.boardType);
     for (const pinNum of intPinNumbers) {
       if (pinNum < digitalCount) {
         interruptMap.set(pinNum, new SimInterruptPin(pinNum));
@@ -179,6 +181,10 @@ export function createSimBoard(config: SimBoardConfig): SimBoard {
 
 // ---------------------------------------------------------------------------
 // Board-specific pin maps
+//
+// Only known board types carry a default capability pin map. Custom and
+// unrecognized board types return an empty set — use `pwmPins` /
+// `interruptPins` on SimBoardConfig to declare capability pins for them.
 // ---------------------------------------------------------------------------
 
 function getPwmPinsForBoard(boardType: string): number[] {
@@ -187,7 +193,7 @@ function getPwmPinsForBoard(boardType: string): number[] {
     case 'arduino-nano':
       return [3, 5, 6, 9, 10, 11];
     default:
-      return [3, 5, 6, 9, 10, 11];
+      return [];
   }
 }
 
@@ -197,108 +203,6 @@ function getInterruptPinsForBoard(boardType: string): number[] {
     case 'arduino-nano':
       return [2, 3];
     default:
-      return [2, 3];
+      return [];
   }
-}
-
-// ---------------------------------------------------------------------------
-// Board Monkey-Patching
-// ---------------------------------------------------------------------------
-
-/**
- * Patch a single pin stub with the implementation from a simulator pin.
- */
-function patchPin(stub: any, sim: any): void {
-  if (!stub || !sim) return;
-  // Copy prototype methods (e.g. read, write, high, low)
-  Object.setPrototypeOf(stub, Object.getPrototypeOf(sim));
-  
-  // Copy state properties (e.g. _value, _history), but PRESERVE stub's identity
-  for (const key of Object.keys(sim)) {
-    if (key !== 'number' && key !== 'gpio' && key !== 'capabilities') {
-      stub[key] = sim[key];
-    }
-  }
-}
-
-/**
- * Attaches a simulator to an existing board singleton, monkey-patching all
- * its pins and buses with fully simulated implementations. This allows
- * firmware to import the board singleton normally and use it in tests.
- */
-export function attachSimulator(board: any): SimBoard {
-  if (!board || !board.definition || !board.definition.id) {
-    throw new Error('attachSimulator expects a valid Board singleton');
-  }
-
-  const simBoard = createSimBoard({ boardType: board.definition.id });
-
-  // Patch digital pins
-  if (board.digital) {
-    for (const key of Object.keys(board.digital)) {
-      const pinStub = board.digital[key];
-      if (pinStub && typeof pinStub.number === 'number') {
-        const pinNum = pinStub.number;
-        
-        let bestSimPin = simBoard.digitalPins.get(pinNum);
-        if (simBoard.pwmPins.has(pinNum)) {
-          bestSimPin = simBoard.pwmPins.get(pinNum);
-        } else if (simBoard.interruptPins.has(pinNum)) {
-          bestSimPin = simBoard.interruptPins.get(pinNum);
-        }
-        
-        if (bestSimPin) {
-           patchPin(pinStub, bestSimPin);
-           
-           (simBoard.digitalPins as Map<number, any>).set(pinNum, pinStub);
-           if (simBoard.pwmPins.has(pinNum)) (simBoard.pwmPins as Map<number, any>).set(pinNum, pinStub);
-           if (simBoard.interruptPins.has(pinNum)) (simBoard.interruptPins as Map<number, any>).set(pinNum, pinStub);
-        }
-      }
-    }
-  }
-
-  // Patch analog pins
-  if (board.analog) {
-    for (const key of Object.keys(board.analog)) {
-      const pinStub = board.analog[key];
-      if (pinStub && typeof pinStub.gpio === 'number') {
-        if (key.startsWith('A')) {
-          const aIndex = parseInt(key.substring(1), 10);
-          const simPin = simBoard.analogPins.get(aIndex);
-          if (simPin) {
-             patchPin(pinStub, simPin);
-             (simBoard.analogPins as Map<number, any>).set(aIndex, pinStub);
-             
-             if (typeof pinStub.number === 'number') {
-               (simBoard.digitalPins as Map<number, any>).set(pinStub.number, pinStub);
-             }
-          }
-        }
-      }
-    }
-  }
-
-  // Patch I2C buses (I2C0)
-  if (board.I2C0) {
-    const simI2c = simBoard.i2cBuses.get(0);
-    patchPin(board.I2C0, simI2c);
-    (simBoard.i2cBuses as Map<number, any>).set(0, board.I2C0);
-  }
-
-  // Patch SPI buses (SPI0)
-  if (board.SPI0) {
-    const simSpi = simBoard.spiBuses.get(0);
-    patchPin(board.SPI0, simSpi);
-    (simBoard.spiBuses as Map<number, any>).set(0, board.SPI0);
-  }
-
-  // Patch UART buses (UART0)
-  if (board.UART0) {
-    const simUart = simBoard.serialPorts.get(0);
-    patchPin(board.UART0, simUart);
-    (simBoard.serialPorts as Map<number, any>).set(0, board.UART0);
-  }
-
-  return simBoard;
 }

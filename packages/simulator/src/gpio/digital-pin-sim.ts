@@ -157,9 +157,8 @@ export class SimDigitalPin implements BasePin {
   }
 
   pulse(_duration: number): void {
-    // In simulation, just toggle and toggle back
-    this.toggle();
-    this.toggle();
+    // In simulation the pulse duration is not awaited, so a pulse produces no
+    // observable transition — leave both pin state and history unchanged.
   }
 
   tone(_frequency: number): IToneAttachment {

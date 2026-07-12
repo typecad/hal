@@ -47,8 +47,9 @@ export class SimI2CBus implements II2CBus {
     this.isEnabled = true;
   }
 
-  end(): never {
-    throw new Error('SimI2CBus.end() not implemented in simulator');
+  end(): void {
+    // In simulation, ending the bus disables it without releasing mock devices.
+    this.isEnabled = false;
   }
 
   setClock(hz: number): void {

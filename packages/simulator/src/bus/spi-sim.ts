@@ -41,8 +41,9 @@ export class SimSPIBus implements ISPIBus {
     this.isEnabled = true;
   }
 
-  end(): never {
-    throw new Error('SimSPIBus.end() not implemented in simulator');
+  end(): void {
+    // In simulation, ending the bus disables it without releasing mock devices.
+    this.isEnabled = false;
   }
 
   setMode(mode: SPIMode): void {

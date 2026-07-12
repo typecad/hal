@@ -17,7 +17,8 @@ export { SimSPIBus } from './bus/spi-sim.js';
 export type { SPIOperationLog } from './bus/spi-sim.js';
 
 // --- Board factory ---
-export { SimBoard, createSimBoard, attachSimulator } from './board/board-sim.js';
+export { SimBoard, createSimBoard } from './board/board-sim.js';
+export { createBoardFromDefinition } from './board/from-definition.js';
 
 // --- Runtime contract interfaces (relocated from @typecad/hal) ---
 // Pin/bus contracts implemented by the Sim* classes above.

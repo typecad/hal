@@ -87,6 +87,16 @@ export interface SimBoardConfig {
   spiBusCount?: number;
   /** Number of UART ports (default: 1) */
   uartCount?: number;
+  /**
+   * PWM-capable pin numbers. Overrides the board type's default PWM pin map.
+   * For unknown/custom board types the default is empty (no PWM pins).
+   */
+  pwmPins?: number[];
+  /**
+   * Interrupt-capable pin numbers. Overrides the board type's default interrupt
+   * pin map. For unknown/custom board types the default is empty.
+   */
+  interruptPins?: number[];
   /** RX buffer size for UART simulation (default: 256) */
   uartRxBufferSize?: number;
   /** TX buffer size for UART simulation (default: 256) */
