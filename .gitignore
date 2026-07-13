@@ -58,15 +58,14 @@ website/
 docs/superpowers/
 
 # Generated demo config (per-project override)
-demo/cuttlefish.config.js
+examples/*/cuttlefish.config.js
 vitest.config.js
 
 # Historical demo snapshots (not source of truth)
-demo/*-backup/
+examples/*/*-backup/
 
 # VS Code extension build artifacts
 *.vsix
 
-# Vendored Arduino libraries (copied into demos for hardware testing, not source)
-# Kept tracked so a fresh clone can flash to hardware without re-fetching.
-demo-ui/lib/
+# Vendored Arduino libraries under examples/*/lib/ are intentionally tracked
+# so a fresh clone can flash to hardware without re-fetching.

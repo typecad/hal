@@ -41,6 +41,10 @@ export interface ProgramAnalysisResult {
   hasSerialBegin: boolean;
   hasGenerators: boolean;
   usesStdMap: boolean;
+  /** Number of setInterval/setTimeout call sites in the program. Used to size
+   *  __tc_TimerRuntime::MAX_TIMERS to the observed count (floor 1) rather than
+   *  a blind constant, so a one-timer program links one slot, not eight. */
+  timerCallCount: number;
 }
 
 // Regex for std:: math calls
@@ -51,7 +55,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -140,6 +144,12 @@ function analyzeExpression(
       }
       if (expr.callee.startsWith("WDT.") || expr.callee === "WDT") {
         result.usesWDT = true;
+      }
+      // Count setInterval/setTimeout call sites (post-rename callee names) so
+      // __tc_TimerRuntime::MAX_TIMERS can be sized to the observed count.
+      if (expr.callee === "__tc_setInterval" || expr.callee === "__tc_setTimeout"
+        || expr.callee === "setInterval" || expr.callee === "setTimeout") {
+        result.timerCallCount++;
       }
       for (const arg of expr.args) {
         analyzeExpression(arg, result, strategy);
@@ -503,6 +513,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     hasSerialBegin: false,
     hasGenerators: false,
     usesStdMap: false,
+    timerCallCount: 0,
   };
 
   // Analyze type aliases

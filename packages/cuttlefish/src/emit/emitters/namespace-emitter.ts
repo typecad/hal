@@ -4,6 +4,7 @@ import { appendSourceLine, appendRenderedStatement } from "./line-appender.js";
 import { createChildEmissionScope } from "../snprintf-helpers.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { isStringEnum } from "../../api/shared/index.js";
+import { resolveEnumValues, narrowestEnumUnderlying } from "../utils/cpp-helpers.js";
 import type { EmitterContext } from "./emitter-context.js";
 
 export function emitNamespaces(ctx: EmitterContext): void {
@@ -44,9 +45,10 @@ export function emitNamespaces(ctx: EmitterContext): void {
       }
 
       const enumKeyword = "enum class";
-      const needsLongUnderlying = strategy.needsLargeEnumUnderlying() &&
-        enumDef.members.some(m => typeof m.value === "number" && (m.value > 32767 || m.value < -32768));
-      const underlyingType = needsLongUnderlying ? " : long" : "";
+      const underlyingType = narrowestEnumUnderlying(
+        resolveEnumValues(enumDef.members),
+        strategy.needsLargeEnumUnderlying(),
+      );
       appendSourceLine(ctx, `  ${enumKeyword} ${enumDef.name}${underlyingType} {`);
       let autoValue = 0;
       for (let i = 0; i < enumDef.members.length; i++) {
@@ -277,9 +279,10 @@ function emitNestedNamespaces(ctx: EmitterContext, namespaces: import("../../api
     for (const enumDef of ns.enums) {
       emitCommentLines(enumDef.leadingComments, `${indent}  `, (line) => appendSourceLine(ctx, line));
       const enumKeyword = "enum class";
-      const needsLongUnderlying = strategy.needsLargeEnumUnderlying() &&
-        enumDef.members.some(m => typeof m.value === "number" && (m.value > 32767 || m.value < -32768));
-      const underlyingType = needsLongUnderlying ? " : long" : "";
+      const underlyingType = narrowestEnumUnderlying(
+        resolveEnumValues(enumDef.members),
+        strategy.needsLargeEnumUnderlying(),
+      );
       appendSourceLine(ctx, `${indent}  ${enumKeyword} ${enumDef.name}${underlyingType} {`);
       let autoValue = 0;
       for (let i = 0; i < enumDef.members.length; i++) {

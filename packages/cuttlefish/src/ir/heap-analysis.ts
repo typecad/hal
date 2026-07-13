@@ -25,8 +25,12 @@ const AVR_TYPE_SIZES: Record<string, number> = {
   uint16_t: 2,
   int: 2,
   "unsigned int": 2,
+  int32_t: 4,
+  uint32_t: 4,
   long: 4,
   "unsigned long": 4,
+  int64_t: 8,
+  uint64_t: 8,
   float: 4,
   double: 4,
   "long long": 8,
@@ -51,8 +55,12 @@ const ESP32_TYPE_SIZES: Record<string, number> = {
   uint16_t: 2,
   int: 4,
   "unsigned int": 4,
+  int32_t: 4,
+  uint32_t: 4,
   long: 4,
   "unsigned long": 4,
+  int64_t: 8,
+  uint64_t: 8,
   float: 4,
   double: 8,
   "long long": 8,
@@ -104,6 +112,65 @@ function estimateTypeSize(cppType: string, typeSizes: Record<string, number>): n
   }
 
   // For struct/class types, we return 0 here and handle in struct size analysis
+  return 0;
+}
+
+/**
+ * Estimate the size of a variable, falling back to the initializer when the
+ * type-based estimate is zero. This handles array-typed variables whose
+ * element count isn't in the type string:
+ *   - `int32_t buf[] = {0,0,...}` (cArray with no size)
+ *   - `std::vector<int32_t> buf = {...}` (vector — common before AVR promotion)
+ *   - `__tc_StaticArray<int32_t, N> buf = {...}` (handled by estimateTypeSize
+ *     when N is known, but the initializer fallback covers edge cases)
+ * Without this, large unsized global arrays (the most common SRAM consumer on
+ * AVR) are silently under-counted in the memory budget estimate.
+ */
+function estimateVariableSize(
+  vd: VariableDeclarationIR,
+  typeSizes: Record<string, number>,
+): number {
+  const typeSize = estimateTypeSize(vd.cppType, typeSizes);
+  if (typeSize > 0) return typeSize;
+
+  if (!vd.initializer) return 0;
+
+  // Determine the element count and element type from the initializer.
+  const init = vd.initializer as { kind?: string; elements?: ExpressionIR[]; elementType?: string; value?: string };
+  let count = 0;
+  let elementType = "";
+
+  if (init.kind === "array" && Array.isArray(init.elements)) {
+    count = init.elements.length;
+    elementType = init.elementType ?? "";
+  } else if (init.kind === "raw" && typeof init.value === "string") {
+    const match = init.value.match(/^\s*\{([\s\S]*)\}\s*$/);
+    if (match) {
+      const inner = match[1].trim();
+      count = inner === "" ? 0 : inner.split(",").length;
+    }
+  }
+
+  if (count === 0) return 0;
+
+  // Recover the element type from the cppType if the initializer didn't carry it.
+  if (!elementType) {
+    const ir = parseCppType(vd.cppType);
+    // cArray: element field holds the element type IR.
+    // std::vector<T> / __tc_StaticArray<T,N>: element field holds T.
+    const arrayLike = ir as { element?: unknown };
+    if (arrayLike.element && typeof arrayLike.element === "object") {
+      elementType = renderCppType(arrayLike.element as Parameters<typeof renderCppType>[0]);
+    } else {
+      // Fallback: try to extract from the raw type string (e.g. "std::vector<int32_t>").
+      const m = vd.cppType.match(/<[ \t]*(\w+)[ \t]*>/);
+      if (m) elementType = m[1];
+    }
+  }
+
+  const elementSize = estimateTypeSize(elementType, typeSizes);
+  if (elementSize > 0) return elementSize * count;
+
   return 0;
 }
 
@@ -261,7 +328,7 @@ export function analyzeHeapUsage(
   for (const stmt of program.topLevelStatements) {
     if (stmt.kind === "var_decl") {
       const vd = stmt as VariableDeclarationIR;
-      const size = estimateTypeSize(vd.cppType, typeSizes);
+      const size = estimateVariableSize(vd, typeSizes);
       if (size > 0) {
         globalVariables.push({
           name: vd.name,
@@ -286,7 +353,7 @@ export function analyzeHeapUsage(
     for (const stmt of fn.statements) {
       if (stmt.kind === "var_decl") {
         const vd = stmt as VariableDeclarationIR;
-        const size = estimateTypeSize(vd.cppType, typeSizes);
+        const size = estimateVariableSize(vd, typeSizes);
         globalVariables.push({
           name: `${fn.originalName}::${vd.name}`,
           cppType: vd.cppType,

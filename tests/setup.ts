@@ -199,16 +199,31 @@ export function findDiagnostics(result: TranspileResult, code: string) {
 }
 
 /**
+ * Diagnostic codes that reflect the build environment rather than the code
+ * under test (e.g. whether `arduino-cli` is installed on the runner). These
+ * are excluded from snapshots so tests are stable across local/CI machines.
+ */
+const ENVIRONMENT_DEPENDENT_DIAGNOSTIC_CODES = new Set([
+  "TS2CPP_ARDUINO_CLI_PROBE_FAILED",
+  "TS2CPP_ARDUINO_CLI_PARSE_FAILED",
+]);
+
+/**
  * Snapshot diagnostics to ensure error reporting remains consistent.
+ * Environment-dependent diagnostics (arduino-cli availability, etc.) are
+ * filtered out — they vary between local and CI machines and are not part of
+ * the semantic behavior under test.
  */
 export function expectDiagnosticsMatchSnapshot(result: TranspileResult): void {
-  const stable = result.diagnostics.map(d => ({
-    code: d.code,
-    severity: d.severity,
-    message: d.message,
-    line: d.line,
-    column: d.column
-  }));
+  const stable = result.diagnostics
+    .filter(d => !ENVIRONMENT_DEPENDENT_DIAGNOSTIC_CODES.has(d.code))
+    .map(d => ({
+      code: d.code,
+      severity: d.severity,
+      message: d.message,
+      line: d.line,
+      column: d.column
+    }));
   expect(stable).toMatchSnapshot();
 }
 

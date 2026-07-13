@@ -145,33 +145,121 @@ function checkSPIFrequency(value: number): string | undefined {
 }
 
 /**
- * Recursively scan a statement and its children for suspicious peripheral config values.
+ * Check a peripheral config value via the appropriate checker. Emits a
+ * diagnostic if the value looks like a unit mistake (kHz instead of Hz, a
+ * baud rate used as SPI freq, etc.). Only literal numbers are checked —
+ * expressions/variables are opaque to this validator.
+ */
+function checkConfigValue(
+  kind: 'baud' | 'i2c' | 'spi',
+  rawValue: unknown,
+  diagnostics: Diagnostic[],
+): void {
+  // HAL ops carry resolved numeric values as `number` when the source arg was
+  // a literal, or as `string` expression text otherwise. Only check numbers.
+  const value = typeof rawValue === 'number' ? rawValue
+    : typeof rawValue === 'string' && /^\d+$/.test(rawValue) ? parseInt(rawValue, 10)
+    : null;
+  if (value === null) return;
+
+  const message =
+    kind === 'baud' ? checkBaudRate(value)
+    : kind === 'i2c' ? checkI2CSpeed(value)
+    : checkSPIFrequency(value);
+  if (message) {
+    diagnostics.push({
+      severity: 'warning',
+      message,
+      code: 'unit-suspicion',
+      source: 'unit-suspicion-validation',
+    });
+  }
+}
+
+/**
+ * Recursively scan a statement and its children for suspicious peripheral
+ * config values. Recognizes the HAL ops that carry clock/baud/frequency
+ * values (i2c.set_clock, uart.begin, spi.begin_transaction) and call
+ * statements whose callee matches known config method names.
  */
 function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
   if (!stmt || typeof stmt !== 'object') return;
-
-  // Recurse into nested statements
   const s = stmt as any;
 
-  if (s.body && Array.isArray(s.body)) {
-    for (const child of s.body) {
-      scanStatement(child, diagnostics);
+  // HAL-op statements carry structured operations with resolved values.
+  if (stmt.kind === 'hal-op' && s.operation) {
+    const op = s.operation;
+    switch (op.operation) {
+      case 'i2c.set_clock':
+        checkConfigValue('i2c', op.hz, diagnostics);
+        break;
+      case 'uart.begin':
+        checkConfigValue('baud', op.baud, diagnostics);
+        break;
+      // SPI frequency flows through SPISettings construction text, which the
+      // HAL op carries as a string — the numeric extraction in
+      // checkConfigValue handles bare-digit strings.
+      case 'spi.begin_transaction':
+        if (typeof op.settings === 'string') {
+          // SPISettings({freq}, ...) — try to extract the leading frequency.
+          const m = op.settings.match(/^\s*(\d+)/);
+          if (m) checkConfigValue('spi', parseInt(m[1], 10), diagnostics);
+        }
+        break;
     }
+  }
+
+  // Call statements: match config method names with a numeric literal arg.
+  // This catches pre-HAL-resolution calls and library-level config helpers.
+  if (stmt.kind === 'call' && typeof s.callee === 'string' && Array.isArray(s.args)) {
+    const method = s.callee.split('.').pop() ?? s.callee;
+    if (method === 'setClock' && s.args.length >= 2) {
+      checkConfigValue('i2c', extractNumericValue(s.args[1]), diagnostics);
+    } else if (method === 'setBaudRate' || method === 'begin') {
+      // Serial.begin(baud) / setBaudRate(baud) — last numeric arg is the baud.
+      for (const arg of s.args) {
+        const v = extractNumericValue(arg);
+        if (v !== undefined) checkConfigValue('baud', v, diagnostics);
+      }
+    } else if (method === 'setFrequency' && s.args.length >= 2) {
+      checkConfigValue('spi', extractNumericValue(s.args[1]), diagnostics);
+    }
+  }
+
+  // Recurse into nested statements
+  if (s.body && Array.isArray(s.body)) {
+    for (const child of s.body) scanStatement(child, diagnostics);
   }
   if (s.thenBranch && Array.isArray(s.thenBranch)) {
-    for (const child of s.thenBranch) {
-      scanStatement(child, diagnostics);
-    }
+    for (const child of s.thenBranch) scanStatement(child, diagnostics);
   }
   if (s.elseBranch && Array.isArray(s.elseBranch)) {
-    for (const child of s.elseBranch) {
-      scanStatement(child, diagnostics);
-    }
+    for (const child of s.elseBranch) scanStatement(child, diagnostics);
   }
   if (s.statements && Array.isArray(s.statements)) {
-    for (const child of s.statements) {
-      scanStatement(child, diagnostics);
+    for (const child of s.statements) scanStatement(child, diagnostics);
+  }
+  if (s.initializer && typeof s.initializer === 'object' && s.initializer.kind) {
+    scanStatement(s.initializer, diagnostics);
+  }
+  if (s.increment && typeof s.increment === 'object' && s.increment.kind) {
+    scanStatement(s.increment, diagnostics);
+  }
+  if (s.cases && Array.isArray(s.cases)) {
+    for (const c of s.cases) {
+      if (c.body && Array.isArray(c.body)) {
+        for (const child of c.body) scanStatement(child, diagnostics);
+      }
     }
+  }
+  if (s.tryBlock && Array.isArray(s.tryBlock)) {
+    for (const child of s.tryBlock) scanStatement(child, diagnostics);
+  }
+  if (s.catchBlock && Array.isArray(s.catchBlock)) {
+    for (const child of s.catchBlock) scanStatement(child, diagnostics);
+  }
+  if (s.finallyBlock && Array.isArray(s.finallyBlock)) {
+    for (const child of s.finallyBlock) scanStatement(child, diagnostics);
   }
 }
 

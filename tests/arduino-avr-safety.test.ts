@@ -205,6 +205,22 @@ describe("CUTTLEFISH_STR_BUF_SIZE macro in string polyfills", () => {
     );
     expect(lines).toHaveLength(0);
   });
+
+  it("__tc_str_ptr copy/assignment copies strlen+1, not the full fixed buffer", () => {
+    // Copy and assignment should bound work to actual content length. A
+    // hand-written copy of a short string copies strlen+1 bytes; the old code
+    // always copied the full CUTTLEFISH_STR_BUF_SIZE (64) regardless of length.
+    const result = transpile(
+      `function setup(): void {
+        const s = "test";
+        console.log(s.toLowerCase());
+      }`,
+      { target: "arduino",
+      mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
+    );
+    expect(result.cpp).toContain("memcpy(buf, o.buf, ::strlen(o.buf) + 1)");
+    expect(result.cpp).not.toMatch(/memcpy\(buf, o\.buf, CUTTLEFISH_STR_BUF_SIZE\)/);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -239,7 +255,12 @@ describe("Heap-allocation validator (AVR)", () => {
       mcu: "@typecad/mcu-atmega328p", ...ESP32_CTX },
     );
     const codes = result.diagnostics.map(d => (d as any).code);
+    // ESP32 does NOT get the AVR-specific warning...
     expect(codes).not.toContain("heap-allocation-avr");
+    // ...but DOES get an info-level heads-up (Gap 4: ESP32 heap awareness).
+    expect(codes).toContain("heap-allocation");
+    const infoDiag = result.diagnostics.find(d => (d as any).code === "heap-allocation");
+    expect((infoDiag as any)?.severity).toBe("info");
   });
 
   it("does not flag typed array constructors (new Uint8Array) on AVR", () => {
@@ -253,6 +274,77 @@ describe("Heap-allocation validator (AVR)", () => {
     // Typed array new expressions are handled by the emitter as C arrays — not heap
     const heapDiags = result.diagnostics.filter(d => (d as any).code === "heap-allocation-avr");
     expect(heapDiags).toHaveLength(0);
+  });
+
+  // Gap 1: the detector previously only inspected var_decl initializers. These
+  // tests confirm `new` is now detected in every statement position.
+  it("detects `new` in an assignment (this.field = new Foo()) on AVR", () => {
+    const result = transpile(
+      `import { D13 } from '@typecad/board-arduino-uno';
+       class Foo { constructor() {} }
+       class Holder { f: Foo; setup() { this.f = new Foo(); } }
+       function setup(): void { const h = new Holder(); h.setup(); }`,
+      { target: "arduino", mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
+    );
+    const codes = result.diagnostics.map(d => (d as any).code);
+    expect(codes).toContain("heap-allocation-avr");
+  });
+
+  it("detects `new` in a return statement on AVR", () => {
+    const result = transpile(
+      `class Foo { constructor() {} }
+       function makeFoo(): Foo { return new Foo(); }
+       function setup(): void { const f = makeFoo(); }`,
+      { target: "arduino", mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
+    );
+    const codes = result.diagnostics.map(d => (d as any).code);
+    expect(codes).toContain("heap-allocation-avr");
+  });
+
+  it("detects `new` inside a call argument on AVR", () => {
+    const result = transpile(
+      `class Foo { constructor() {} }
+       function consume(f: Foo): void {}
+       function setup(): void { consume(new Foo()); }`,
+      { target: "arduino", mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
+    );
+    const codes = result.diagnostics.map(d => (d as any).code);
+    expect(codes).toContain("heap-allocation-avr");
+  });
+
+  it("detects `new` nested in a ternary sub-expression on AVR", () => {
+    const result = transpile(
+      `class A { constructor() {} }
+       function make(cond: boolean): A { return cond ? new A() : new A(); }
+       function setup(): void { const a = make(true); }`,
+      { target: "arduino", mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
+    );
+    const heapDiags = result.diagnostics.filter(d => (d as any).code === "heap-allocation-avr");
+    // Both branches of the ternary allocate.
+    expect(heapDiags.length).toBeGreaterThanOrEqual(2);
+  });
+
+  // Gap 5: `new Array<E>(n)` lowers to std::vector<E> with no marker and text
+  // that doesn't start with `new`. On AVR this must surface as an error.
+  it("errors on `new Array<E>(n)` on AVR (lowers to std::vector, no <vector>)", () => {
+    const result = transpile(
+      `function setup(): void { const v = new Array<int32_t>(10); }`,
+      { target: "arduino", mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
+    );
+    const vectorDiags = result.diagnostics.filter(
+      d => (d as any).code === "heap-allocation-avr" && (d as any).severity === "error"
+    );
+    expect(vectorDiags).toHaveLength(1);
+    expect((vectorDiags[0] as any).message).toContain("std::vector");
+  });
+
+  it("does NOT error on `new Array<E>(n)` on ESP32 (vector is valid)", () => {
+    const result = transpile(
+      `function setup(): void { const v = new Array<int32_t>(10); }`,
+      { target: "arduino", mcu: "@typecad/mcu-esp32", ...ESP32_CTX },
+    );
+    const errorDiags = result.diagnostics.filter(d => (d as any).severity === "error");
+    expect(errorDiags).toHaveLength(0);
   });
 });
 
@@ -379,6 +471,29 @@ describe("WDT namespace dispatch", () => {
       mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
     );
     expect(result.cpp).toContain("wdt_enable(WDTO_500MS)");
+  });
+
+  it("constant-folds WDT.enable('250ms') to wdt_enable(WDTO_250MS)", () => {
+    // A literal preset string folds to the matching macro at transpile time —
+    // the exact call a hand-written sketch uses — instead of a runtime strcmp
+    // chain against the __tc_WDT struct's enable(const char*) overload.
+    const result = transpile(
+      `function setup(): void { WDT.enable("250ms"); }`,
+      { target: "arduino",
+      mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
+    );
+    expect(result.cpp).toContain("wdt_enable(WDTO_250MS)");
+    expect(result.cpp).not.toContain("strcmp");
+  });
+
+  it("constant-folds WDT.enable('2s') to wdt_enable(WDTO_2S)", () => {
+    const result = transpile(
+      `function setup(): void { WDT.enable("2s"); }`,
+      { target: "arduino",
+      mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
+    );
+    expect(result.cpp).toContain("wdt_enable(WDTO_2S)");
+    expect(result.cpp).not.toContain("strcmp");
   });
 });
 

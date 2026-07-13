@@ -895,7 +895,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
     'insert', 'erase',
   ]);
 
-  type LetEntry = { name: string; everAssigned: boolean; span: SourceSpan };
+  type LetEntry = { name: string; everAssigned: boolean; stmt: VariableDeclarationIR; span: SourceSpan };
   type ConstEntry = { stmt: VariableDeclarationIR; span: SourceSpan };
 
   // Every lexical statement body in the program. Demotion (const-content-
@@ -967,7 +967,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
       for (const stmt of statements) {
         if (stmt.kind === 'var_decl') {
           if (stmt.storage === 'let') {
-            letVars.set(stmt.name, { name: stmt.name, everAssigned: false, span: stmt.sourceSpan });
+            letVars.set(stmt.name, { name: stmt.name, everAssigned: false, stmt, span: stmt.sourceSpan });
           } else if (stmt.storage === 'const') {
             // Track const decls whose contents could be mutated via a method
             // or element/member assignment; the mutation checks below decide
@@ -1098,16 +1098,20 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
 
     walk(stmts);
 
-    // Generate suggestions for let vars that were never assigned. A `let`
-    // reassigned in *this* scope (everAssigned) or in any other scope
-    // (globallyAssignedNames — e.g. a top-level `let` reassigned inside a
-    // function) is not a suggest-const candidate.
+    // Promote `let` bindings that are never reassigned (in this scope or any
+    // other) to `const` in the emitted C++. The transpiler's whole-program
+    // reassignment analysis proves the binding is never written after init —
+    // information avr-gcc cannot recover across translation units. Emitting
+    // `const` lets the compiler place the value in flash/ROM and enables
+    // constant folding. The inverse demotion (const→let when a member is
+    // mutated) already mutates `.storage` the same way (see above), so the
+    // emit path already handles both directions.
     for (const entry of letVars.values()) {
       if (!entry.everAssigned && !globallyAssignedNames.has(entry.name)) {
+        entry.stmt.storage = 'const';
         diagnostics.push({
-          severity: 'warning',
-          message: `'${entry.name}' is never reassigned.`,
-          hint: `const ${entry.name} = ...;  // or annotate with Shared to also enforce const T& at the C++ level`,
+          severity: 'info',
+          message: `'${entry.name}' is never reassigned — emitted as \`const\` so the C++ compiler can place it in ROM and fold it.`,
           line: entry.span.startLine,
           column: entry.span.startColumn,
           code: 'ownership-suggest-const',

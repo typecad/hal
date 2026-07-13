@@ -3,6 +3,7 @@ import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./l
 import type { EmitterContext } from "./emitter-context.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { isStringEnum } from "../../api/shared/index.js";
+import { resolveEnumValues, narrowestEnumUnderlying } from "../utils/cpp-helpers.js";
 
 export function emitTypeDeclarations(ctx: EmitterContext): void {
   const { program, strategy, effectiveEmitMode, reservedNames, emittedTopLevelStatements, topLevelScope } = ctx;
@@ -75,9 +76,10 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
     }
 
     const enumKeyword = "enum class";
-    const needsLongUnderlying = strategy.needsLargeEnumUnderlying() &&
-      enumDef.members.some(m => typeof m.value === "number" && (m.value > 32767 || m.value < -32768));
-    const underlyingType = needsLongUnderlying ? " : long" : "";
+    const underlyingType = narrowestEnumUnderlying(
+      resolveEnumValues(enumDef.members),
+      strategy.needsLargeEnumUnderlying(),
+    );
     const guard = apiReservedEnums.has(enumDef.name) ? strategy.enumApiGuard(enumDef.name) : undefined;
     if (guard) {
       appendLine(ctx, guard.open);

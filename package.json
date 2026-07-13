@@ -21,17 +21,15 @@
     "packages/expect",
     "packages/ui",
     "packages/simulator",
-    "demo",
-    "demo-st",
-    "demo-ui",
-    "demo-ui-sd13",
-    "demo-weather",
-    "native_demo"
+    "examples/demo",
+    "examples/demo-st",
+    "examples/demo-ui",
+    "examples/demo-ui-sd13",
+    "examples/demo-weather",
+    "examples/native_demo"
   ],
   "scripts": {
     "clean": "node -e \"const{readdirSync,rmSync}=require('fs');for(const p of readdirSync('packages')){rmSync('packages/'+p+'/dist',{recursive:true,force:true});rmSync('packages/'+p+'/tsconfig.tsbuildinfo',{force:true})}\"",
-    "build": "npm run build --workspaces",
-    "build:clean": "npm run clean && tsc -b",
     "build": "npm run build --workspaces",
     "build:clean": "npm run clean && npm run build",
     "typecheck": "tsc -b",

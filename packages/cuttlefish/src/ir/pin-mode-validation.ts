@@ -83,10 +83,89 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
    * Recursively scan an expression for cuttlefish-call nodes.
    * Pin I/O can appear as expressions inside template literals, function args, etc.
    */
+  /** Infer the receiver kind from the method name. Analog/PWM methods imply
+   *  their respective pin kinds; everything else defaults to digital. */
+  const inferReceiverKind = (method: string): string | undefined => {
+    if (method === 'readAnalog' || method === 'readVoltage') return 'analog-input';
+    if (method === 'pwm' || method === 'tone') return 'pwm';
+    // Methods in the read/write/mode sets that aren't analog/pwm are digital.
+    if (READ_METHODS.has(method) || WRITE_METHODS.has(method) || MODE_SET_METHODS.has(method)) return 'digital';
+    return undefined;
+  };
+
+  /** Check a gpio HAL op for pin-mode issues. Used by both scanExpression
+   *  (hal-expr, for reads used as values) and checkStatement (hal-op, for
+   *  standalone writes/calls). */
+  const checkGpioHalOp = (op: any): void => {
+    if (!op) return;
+    const pinKey = `pin${op.pin}`;
+    if (op.operation === 'gpio.set_mode') {
+      pinModeSet.add(pinKey);
+    } else if (op.operation === 'gpio.read' && !pinModeSet.has(pinKey)) {
+      diagnostics.push({
+        severity: 'warning',
+        message: `Pin ${op.pin} read without prior mode configuration. ` +
+                 `Call asInput() or inputPullUp() first — reading a floating pin is undefined behavior.`,
+        code: 'pin-mode-not-set',
+        source: 'pin-mode-validation',
+      });
+    } else if ((op.operation === 'gpio.write' || op.operation === 'gpio.toggle') && !pinModeSet.has(pinKey)) {
+      diagnostics.push({
+        severity: 'info',
+        message: `Pin ${op.pin} written without explicit mode configuration. ` +
+                 `Arduino implicitly sets OUTPUT, but explicit asOutput() is recommended.`,
+        code: 'pin-mode-not-set',
+        source: 'pin-mode-validation',
+      });
+    }
+  };
+
   const scanExpression = (expr: ExpressionIR | undefined): void => {
     if (!expr || typeof expr !== 'object') return;
     const e = expr as any;
     if (!e.kind) return;
+
+    // Method calls on pins: extract receiver + method and dispatch to
+    // checkCuttlefishCall (pre-HAL-resolution fallback path).
+    if (e.kind === 'method-call' && typeof e.callee === 'string') {
+      const callee = e.callee;
+      const dotIdx = callee.lastIndexOf('.');
+      if (dotIdx > 0) {
+        const receiver = callee.slice(0, dotIdx);
+        const method = callee.slice(dotIdx + 1);
+        const receiverKind = inferReceiverKind(method);
+        if (receiverKind) {
+          checkCuttlefishCall(receiver, receiverKind, method);
+        }
+      }
+    }
+
+    // HAL expression (read used as a value, e.g. `const v = D2.isHigh()`).
+    // After HAL resolution, pin reads become hal-expr nodes with a gpio.read
+    // operation — this is the common form at validation time.
+    if (e.kind === 'hal-expr' && e.operation) {
+      checkGpioHalOp(e.operation);
+    }
+
+    // Raw nodes: after full HAL resolution, some pin ops land as their C++ text
+    // (e.g. `digitalRead(2)`, `digitalWrite(2, 1)`) rather than structured
+    // hal-expr nodes. Extract the pin number and apply the same mode check.
+    // This mirrors how peripheral-usage.ts detects gpio via emitted text.
+    if (e.kind === 'raw' && typeof e.value === 'string') {
+      const readMatch = e.value.match(/digitalRead\((\d+)\)/);
+      const writeMatch = e.value.match(/digitalWrite\((\d+)/);
+      const toggleMatch = e.value.match(/digitalWrite\((\d+),\s*digitalRead/);
+      const pin = readMatch ? parseInt(readMatch[1], 10)
+        : writeMatch ? parseInt(writeMatch[1], 10)
+        : null;
+      if (pin !== null) {
+        const op = toggleMatch
+          ? { operation: 'gpio.toggle', pin }
+          : readMatch ? { operation: 'gpio.read', pin }
+          : { operation: 'gpio.write', pin };
+        checkGpioHalOp(op);
+      }
+    }
 
     // Recurse into nested expressions
     if (e.args && Array.isArray(e.args)) {
@@ -95,11 +174,14 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
     if (e.left) scanExpression(e.left);
     if (e.right) scanExpression(e.right);
     if (e.operand) scanExpression(e.operand);
-    if (e.condition) scanExpression(e.condition);
-    if (e.consequent) scanExpression(e.consequent);
-    if (e.alternate) scanExpression(e.alternate);
-    if (e.object) scanExpression(e.object);
-    if (e.value) scanExpression(e.value);
+    if (e.condition && typeof e.condition === 'object') scanExpression(e.condition);
+    if (e.whenTrue) scanExpression(e.whenTrue);
+    if (e.whenFalse) scanExpression(e.whenFalse);
+    if (e.object && typeof e.object === 'object') scanExpression(e.object);
+    // Only recurse into .value when it's an object with a kind (an expression),
+    // not a primitive (number/string/boolean literals carry primitive values).
+    if (e.value && typeof e.value === 'object' && e.value.kind) scanExpression(e.value);
+    if (e.inner) scanExpression(e.inner);
     if (e.elements && Array.isArray(e.elements)) {
       for (const elem of e.elements) scanExpression(elem);
     }
@@ -113,7 +195,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
       for (const part of e.parts) scanExpression(part);
     }
     // Template literal: template_string wraps an 'expression' (singular)
-    if (e.expression) scanExpression(e.expression);
+    if (e.expression && typeof e.expression === 'object' && e.expression.kind) scanExpression(e.expression);
     // Callback expressions with nested statements
     if (e.statements && Array.isArray(e.statements)) {
       for (const stmt of e.statements) checkStatement(stmt);
@@ -122,6 +204,14 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
 
   const checkStatement = (stmt: StatementIR): void => {
     if (!stmt || typeof stmt !== 'object') return;
+
+    // HAL-op statements: track pin-mode state from gpio.set_mode and warn on
+    // gpio.read/write/toggle without prior mode configuration. After HAL
+    // resolution, pin method calls (D2.isHigh(), D2.high()) become these
+    // structured ops — the method-call form no longer exists at validation time.
+    if (stmt.kind === 'hal-op') {
+      checkGpioHalOp((stmt as any).operation);
+    }
 
     // Scan expressions in other statement types for nested cuttlefish-calls
     if (stmt.kind === 'assign') {

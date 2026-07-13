@@ -828,6 +828,13 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       peripheralUsage: createEmptyPeripheralUsage(),
       interfaces,
       namespaces,
+      // Include registeredCallbacks so interrupt-safety analysis can see
+      // user ISR lambdas (onRising/onFalling/etc.) at validation time. The
+      // callbackIR on each entry carries isInterruptHandler=true (set in
+      // hal-emitter.ts); without this field the scanner's source (3) at
+      // interrupt-analysis.ts:212 never iterates, so ISR unsafe-op detection
+      // silently misses every user interrupt handler.
+      registeredCallbacks: [...registeredCallbacks],
     };
 
     peripheralUsage = analyzePeripheralUsage(partialProgram);

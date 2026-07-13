@@ -411,8 +411,11 @@ export class ArduinoStrategy implements PlatformStrategy {
       "struct __tc_str_ptr {",
       "    char buf[CUTTLEFISH_STR_BUF_SIZE];",
       "    __tc_str_ptr(const char* s = \"\") { strncpy(buf, s, CUTTLEFISH_STR_BUF_SIZE - 1); buf[CUTTLEFISH_STR_BUF_SIZE - 1] = 0; }",
-      "    __tc_str_ptr(const __tc_str_ptr& o) { memcpy(buf, o.buf, CUTTLEFISH_STR_BUF_SIZE); }",
-      "    __tc_str_ptr& operator=(const __tc_str_ptr& o) { memcpy(buf, o.buf, CUTTLEFISH_STR_BUF_SIZE); return *this; }",
+      "    // Copy only up to and NUL: every setter writes a terminator within",
+      "    // bounds and all readers stop at NUL, so the tail is never observed.",
+      "    // Bounds the work to content length instead of the full buffer.",
+      "    __tc_str_ptr(const __tc_str_ptr& o) { memcpy(buf, o.buf, ::strlen(o.buf) + 1); }",
+      "    __tc_str_ptr& operator=(const __tc_str_ptr& o) { memcpy(buf, o.buf, ::strlen(o.buf) + 1); return *this; }",
       "    __tc_str_ptr& operator=(const char* s) { strncpy(buf, s, CUTTLEFISH_STR_BUF_SIZE - 1); buf[CUTTLEFISH_STR_BUF_SIZE - 1] = 0; return *this; }",
       "    const char* c_str() const { return buf; }",
       "    size_t size() const { return ::strlen(buf); }",
@@ -470,9 +473,9 @@ export class ArduinoStrategy implements PlatformStrategy {
     // (demo #34 Finding A). Detection keys off the `newClassName` marker a
     // user-class `new` now tags its raw IR node with, falling back to the
     // text regex for untagged/hand-built IR.
-    if (this.isHeapAllocationUnsafe(arch)) {
-      base.push(...collectHeapAllocationDiagnostics(program, arch));
-    }
+    // Heap-allocation detector always runs; severity scales with the target
+    // (warning+error on AVR, info elsewhere). See collectHeapAllocationDiagnostics.
+    base.push(...collectHeapAllocationDiagnostics(program, arch, this.isHeapAllocationUnsafe(arch)));
     return base;
   }
 
@@ -576,6 +579,14 @@ struct __tc_StaticArray {
 
     // Add cooperative timer methods if used. Callbacks run from loop(), so
     // generated UI/state mutations stay on the main Arduino execution path.
+    // Size MAX_TIMERS to the observed setInterval/setTimeout call count rather
+    // than a blind constant: a one-timer program links one slot, not eight.
+    // The filterPolyfillHelpers gate already strips this polyfill entirely when
+    // no timer calls exist; this sizes it correctly when they do. Floor of 1
+    // keeps the array well-formed even if analysis is conservative.
+    const analysis = (ctx as { analysis?: { timerCallCount?: number } } | undefined)?.analysis;
+    const observedTimers = analysis?.timerCallCount ?? 0;
+    const maxTimers = Math.max(1, observedTimers);
     helpers.push({
       kind: "polyfill",
       id: "timer_methods",
@@ -592,7 +603,7 @@ struct __tc_TimerTask {
 };
 
 class __tc_TimerRuntime {
-    static const int MAX_TIMERS = 8;
+    static const int MAX_TIMERS = ${maxTimers};
     __tc_TimerTask tasks[MAX_TIMERS];
 public:
     __tc_TimerRuntime() {
@@ -1514,6 +1525,30 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       case "raw":
         return { code: op.code };
 
+      // Watchdog timer. The __tc_WDT struct's enable(const char*) overload keeps
+      // a strcmp chain as a fallback for DYNAMIC timeout strings (a runtime
+      // variable). For the common case — a literal preset like "250ms" — fold it
+      // to the matching WDTO_* macro here at transpile time, emitting the exact
+      // wdt_enable(WDTO_250MS) call a hand-written sketch would use. Numeric
+      // timeouts and unrecognized strings pass through unchanged.
+      case "wdt.enable": {
+        const wdtoMap: Record<string, string> = {
+          "15ms": "WDTO_15MS", "30ms": "WDTO_30MS", "60ms": "WDTO_60MS",
+          "120ms": "WDTO_120MS", "250ms": "WDTO_250MS", "500ms": "WDTO_500MS",
+          "1s": "WDTO_1S", "2s": "WDTO_2S", "4s": "WDTO_4S", "8s": "WDTO_8S",
+        };
+        const raw = String(op.timeout);
+        // Strip surrounding quotes the HAL resolver may include for literals.
+        const preset = raw.replace(/^["']|["']$/g, "");
+        const macro = wdtoMap[preset];
+        if (macro) return { code: `wdt_enable(${macro});` };
+        return { code: `wdt_enable(${raw});` };
+      }
+      case "wdt.reset":
+        return { code: `wdt_reset();` };
+      case "wdt.disable":
+        return { code: `wdt_disable();` };
+
       default:
         return undefined;
     }
@@ -1645,82 +1680,184 @@ function collectNoVectorStorageDiagnostics(program: ProgramIR): Diagnostic[] {
 }
 
 /**
- * Surface an informational heads-up for every `new ClassName(...)` heap
- * allocation on small-RAM architectures (AVR/megaAVR). This is a WARNING, not
- * an error: `operator new` / `delete` ARE supported on the Arduino AVR core
- * (the core ships `cores/arduino/new.cpp`, which wraps avr-libc's
- * `malloc`/`free` — a real heap manager). `new` compiles, links, and runs; the
- * transpiler's own memory report prints the available heap (e.g. "Heap: 1.8 KB
- * available"). So heap allocation is routine and valid Arduino C++.
+ * Detect heap allocations (`new ClassName(...)`, `new Array<E>(n)`) anywhere in
+ * the program — in var_decl initializers, assignments, returns, call arguments,
+ * conditions, for-init, and nested sub-expressions — and surface a diagnostic
+ * whose severity scales with the target.
  *
- * The genuine constraint is the heap is SMALL (a Uno has ~1.5–1.8 KB usable
- * after globals/the stack), so heavy or churning allocation risks
- * fragmentation and exhaustion. That is a capacity/performance caveat the
- * author should own — hence a warning with a measured hint, not a hard error
- * that rejects correct, platform-supported code.
+ * Detection keys off the `newClassName` marker a user-class `new` tags its raw
+ * IR node with (set in `expression-to-ir.ts`), falling back to a text regex for
+ * untagged / hand-built raw IR. `new Array<E>(n)` lowers to `std::vector<E>`
+ * with no marker, so it is detected by substring on unsafe targets.
  *
- * (History: a prior version of this gate was a hard `error` whose message
- * claimed AVR had "no heap manager" and that `new` would "corrupt memory or
- * silently fail" — both factually wrong for the Arduino core. Demo #36
- * downgraded it to a warning and corrected the message after verifying
- * `new`+inheritance compiles and runs on the Uno.)
+ * Severity is target-parameterized via `unsafeTarget`:
+ *   - AVR/megaAVR (`unsafeTarget === true`): WARNING for `new` (the Arduino
+ *     core ships operator new/delete over avr-libc malloc/free — a real heap
+ *     manager — so `new` compiles, links, and runs; the only real concern is
+ *     the small heap ~1.5-1.8 KB on a Uno). ERROR for `std::vector` (avr-g++
+ *     has no <vector>, so `new Array<E>(n)` cannot link). (History: a prior
+ *     version of the `new` gate was a hard `error` claiming AVR had "no heap
+ *     manager" — factually wrong; demo #36 downgraded it to a warning.)
+ *   - Other targets (esp32, etc., `unsafeTarget === false`): INFO for `new`.
+ *     These targets have more RAM and a real heap, so a single allocation is
+ *     not inherently risky, but allocations inside loop() churn the heap over
+ *     time. No diagnostic for `std::vector` — it is valid C++ there.
  *
- * Detection keys off the `newClassName` marker a user-class `new` tags its
- * raw IR node with (set in `expression-to-ir.ts`), falling back to a text
- * regex for untagged / hand-built raw IR. The marker makes the detection
- * structural (by construct) rather than textual. The profile-time location
- * derives `arch` from the FQBN so it fires regardless of import structure.
+ * The walker inspects every expression-bearing field of every statement and
+ * recurses into nested sub-expressions, so a `new` inside e.g.
+ * `this.field = new Foo()`, `return cond ? new A() : new B()`, or
+ * `process(new Foo())` is detected, not just top-level var_decl initializers.
  */
-function collectHeapAllocationDiagnostics(program: ProgramIR, arch: string): Diagnostic[] {
+function collectHeapAllocationDiagnostics(program: ProgramIR, arch: string, unsafeTarget: boolean): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
+  const archUpper = arch.toUpperCase();
 
-  // Walk compound-statement bodies recursively (mirrors the small set of
-  // container kinds the build-time validator's walkNestedStatements recurses
-  // into). Kept local and minimal — the public walk helpers live in the
-  // cuttlefish package's ir/utils and are not exported through the api surface
-  // the strategy consumes.
+  // Inspect a single raw IR node for heap allocation. A node is a heap `new`
+  // when it carries the `newClassName` marker (set in expression-to-ir.ts for
+  // user-class `new`) OR its text starts with `new `. On unsafe targets
+  // (AVR/megaAVR), also flag `std::vector<` — the text `new Array<E>(n)`
+  // lowers to — which AVR cannot host (avr-g++ has no <vector>).
+  const checkRaw = (raw: { value: string; newClassName?: string }, stmt: StatementIR): void => {
+    const tagged = raw.newClassName;
+    const isHeapNew = !!tagged || /^new\s+\w/.test(raw.value);
+    if (isHeapNew) {
+      const match = raw.value.match(/^new\s+(\w+)/);
+      const className = tagged ?? (match ? match[1] : "unknown");
+      if (unsafeTarget) {
+        diagnostics.push({
+          severity: "warning" as const,
+          code: "heap-allocation-avr",
+          message:
+            `Heap allocation (\`new ${className}()\`) on ${archUpper} uses the small ` +
+            `runtime heap (~1.5-1.8 KB usable on a Uno). \`new\`/\`delete\` are supported by the ` +
+            `Arduino core, but heavy or churning allocation risks fragmentation/exhaustion.`,
+          hint:
+            `This compiles and runs. For long-lived or frequently-allocated objects on a small-RAM ` +
+            `target, consider a stack/global instance (auto ${className} obj(...);) or reusing a ` +
+            `single allocation to avoid heap fragmentation.`,
+          line: (stmt as { sourceSpan?: { startLine?: number } }).sourceSpan?.startLine,
+          column: (stmt as { sourceSpan?: { startColumn?: number } }).sourceSpan?.startColumn,
+          source: "framework-arduino",
+        });
+      } else {
+        diagnostics.push({
+          severity: "info" as const,
+          code: "heap-allocation",
+          message:
+            `Heap allocation (\`new ${className}()\`) on ${archUpper}. This target has more RAM and ` +
+            `a real heap manager, so a single allocation is not inherently risky, but allocations ` +
+            `inside loop() churn the heap over time and can fragment it on long-running sketches.`,
+          hint:
+            `For large or frequent buffers, prefer PSRAM when available (` +
+            `display_createCanvasPsram / ps_malloc), or reuse a single long-lived allocation ` +
+            `instead of allocating per-iteration.`,
+          line: (stmt as { sourceSpan?: { startLine?: number } }).sourceSpan?.startLine,
+          column: (stmt as { sourceSpan?: { startColumn?: number } }).sourceSpan?.startColumn,
+          source: "framework-arduino",
+        });
+      }
+      return;
+    }
+    // `new Array<E>(n)` lowers to `std::vector<E>(n)` as a raw node with no
+    // marker and text that does not start with `new` — so it evades the check
+    // above. On unsafe targets (AVR) this is a hard failure (no <vector>),
+    // surfaced here as an error rather than an opaque downstream g++ message.
+    if (unsafeTarget && raw.value.includes("std::vector<")) {
+      diagnostics.push({
+        severity: "error" as const,
+        code: "heap-allocation-avr",
+        message:
+          `\`new Array<E>(n)\` lowers to \`std::vector<E>\`, which ${archUpper} cannot host ` +
+          `(avr-g++ ships no <vector>).`,
+        hint:
+          `Use an array literal (\`const a: E[] = [0,0,...]\`) which lowers to a fixed-size ` +
+          `__tc_StaticArray<E,N>, or declare a fixed-size buffer (\`E buf[N];\`).`,
+        line: (stmt as { sourceSpan?: { startLine?: number } }).sourceSpan?.startLine,
+        column: (stmt as { sourceSpan?: { startColumn?: number } }).sourceSpan?.startColumn,
+        source: "framework-arduino",
+      });
+    }
+  };
+
+  // Recursively walk an expression tree, checking every raw leaf. Mirrors the
+  // shape of walkExpressionsInExpression in the cuttlefish ir/utils (not
+  // exported through the api surface this strategy consumes), kept local so a
+  // `new` nested inside e.g. `compute(new Foo())` or `cond ? new A() : new B()`
+  // is still detected.
+  const checkExpression = (expr: ExpressionIR | undefined, stmt: StatementIR): void => {
+    if (!expr || typeof expr !== "object" || !(expr as { kind?: string }).kind) return;
+    const e = expr as Record<string, unknown>;
+    if (expr.kind === "raw") {
+      checkRaw(expr as { value: string; newClassName?: string }, stmt);
+    }
+    if (Array.isArray(e.args)) {
+      for (const a of e.args as ExpressionIR[]) checkExpression(a, stmt);
+    }
+    if (e.left) checkExpression(e.left as ExpressionIR, stmt);
+    if (e.right) checkExpression(e.right as ExpressionIR, stmt);
+    if (e.operand) checkExpression(e.operand as ExpressionIR, stmt);
+    if (e.condition && typeof e.condition === "object") checkExpression(e.condition as ExpressionIR, stmt);
+    if (e.whenTrue) checkExpression(e.whenTrue as ExpressionIR, stmt);
+    if (e.whenFalse) checkExpression(e.whenFalse as ExpressionIR, stmt);
+    if (e.inner) checkExpression(e.inner as ExpressionIR, stmt);
+    if (e.object && typeof e.object === "object" && expr.kind !== "instanceof") {
+      checkExpression(e.object as ExpressionIR, stmt);
+    }
+    if (e.value && typeof e.value === "object" && "kind" in (e.value as object)) {
+      checkExpression(e.value as ExpressionIR, stmt);
+    }
+    if (Array.isArray(e.elements)) {
+      for (const el of e.elements as ExpressionIR[]) checkExpression(el, stmt);
+    }
+    if (Array.isArray(e.fields)) {
+      for (const f of e.fields as Array<{ value: ExpressionIR }>) checkExpression(f.value, stmt);
+    }
+    if (Array.isArray(e.parts)) {
+      for (const p of e.parts as ExpressionIR[]) checkExpression(p, stmt);
+    }
+    if (e.expression && typeof e.expression === "object" && "kind" in (e.expression as object)) {
+      checkExpression(e.expression as ExpressionIR, stmt);
+    }
+    // Lambda/callback bodies embed statements — recurse so a `new` inside an
+    // arrow function is caught.
+    if (Array.isArray(e.statements)) {
+      for (const s of e.statements as StatementIR[]) visit([s]);
+    }
+  };
+
+  // Visit statements: check every expression-bearing field, then recurse into
+  // nested compound bodies. This is statement-position-agnostic — a `new` in an
+  // assignment, return, call arg, condition, or for-init is detected, not just
+  // var_decl initializers.
   const visit = (stmts: StatementIR[]): void => {
     for (const stmt of stmts) {
-      if (stmt.kind === "var_decl") {
-        const init = (stmt as { initializer?: ExpressionIR }).initializer;
-        if (init && init.kind === "raw") {
-          const tagged = (init as { newClassName?: string }).newClassName;
-          const isHeapNew = !!tagged || /^new\s+\w/.test(init.value);
-          if (isHeapNew) {
-            const match = init.value.match(/^new\s+(\w+)/);
-            const className = tagged ?? (match ? match[1] : "unknown");
-            diagnostics.push({
-              // WARNING, not error: `new`/`delete` are supported on the Arduino
-              // AVR core (it ships operator new/delete over avr-libc malloc/free).
-              // The only real concern is the small heap (~1.5-1.8 KB on a Uno),
-              // so this is a capacity heads-up, not a correctness refusal.
-              severity: "warning" as const,
-              code: "heap-allocation-avr",
-              message:
-                `Heap allocation (\`new ${className}()\`) on ${arch.toUpperCase()} uses the small ` +
-                `runtime heap (~1.5-1.8 KB usable on a Uno). \`new\`/\`delete\` are supported by the ` +
-                `Arduino core, but heavy or churning allocation risks fragmentation/exhaustion.`,
-              hint:
-                `This compiles and runs. For long-lived or frequently-allocated objects on a small-RAM ` +
-                `target, consider a stack/global instance (auto ${className} obj(...);) or reusing a ` +
-                `single allocation to avoid heap fragmentation.`,
-              line: (stmt as { sourceSpan?: { startLine?: number } }).sourceSpan?.startLine,
-              column: (stmt as { sourceSpan?: { startColumn?: number } }).sourceSpan?.startColumn,
-              source: "framework-arduino",
-            });
-          }
-        }
+      const s = stmt as unknown as Record<string, unknown>;
+      if (s.initializer) checkExpression(s.initializer as ExpressionIR, stmt);
+      if (s.value && typeof s.value === "object") checkExpression(s.value as ExpressionIR, stmt);
+      if (s.condition && typeof s.condition === "object") checkExpression(s.condition as ExpressionIR, stmt);
+      if (s.expression && typeof s.expression === "object") checkExpression(s.expression as ExpressionIR, stmt);
+      if (Array.isArray(s.args)) {
+        for (const a of s.args as ExpressionIR[]) checkExpression(a, stmt);
+      }
+      // for-of / for-in iterable/object
+      if (s.iterable && typeof s.iterable === "object") checkExpression(s.iterable as ExpressionIR, stmt);
+      if (s.object && typeof s.object === "object") checkExpression(s.object as ExpressionIR, stmt);
+      // for-loop initializer/increment are statements
+      if (s.initializer && typeof s.initializer === "object" && "kind" in (s.initializer as object)) {
+        visit([s.initializer as StatementIR]);
+      }
+      if (s.increment && typeof s.increment === "object" && "kind" in (s.increment as object)) {
+        visit([s.increment as StatementIR]);
       }
       // Recurse into nested compound bodies.
-      const nested = (stmt as unknown as Record<string, unknown>);
-      if (Array.isArray(nested.body)) visit(nested.body as StatementIR[]);
-      if (Array.isArray(nested.thenBranch)) visit(nested.thenBranch as StatementIR[]);
-      if (Array.isArray(nested.elseBranch)) visit(nested.elseBranch as StatementIR[]);
-      if (Array.isArray(nested.tryBlock)) visit(nested.tryBlock as StatementIR[]);
-      if (Array.isArray(nested.catchBlock)) visit(nested.catchBlock as StatementIR[]);
-      if (Array.isArray(nested.finallyBlock)) visit(nested.finallyBlock as StatementIR[]);
-      if (Array.isArray(nested.cases)) {
-        for (const c of nested.cases as Array<{ body?: StatementIR[] }>) {
+      if (Array.isArray(s.body)) visit(s.body as StatementIR[]);
+      if (Array.isArray(s.thenBranch)) visit(s.thenBranch as StatementIR[]);
+      if (Array.isArray(s.elseBranch)) visit(s.elseBranch as StatementIR[]);
+      if (Array.isArray(s.tryBlock)) visit(s.tryBlock as StatementIR[]);
+      if (Array.isArray(s.catchBlock)) visit(s.catchBlock as StatementIR[]);
+      if (Array.isArray(s.finallyBlock)) visit(s.finallyBlock as StatementIR[]);
+      if (Array.isArray(s.cases)) {
+        for (const c of s.cases as Array<{ body?: StatementIR[] }>) {
           if (Array.isArray(c.body)) visit(c.body);
         }
       }

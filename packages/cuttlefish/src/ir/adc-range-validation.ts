@@ -39,11 +39,26 @@ function getADCConfig(boardConstants: BoardConstants | undefined): ADCConfig | n
 }
 
 /**
- * Check if an expression is an analog read (A0.read(), A1.read(), etc.).
+ * Check if an expression is an analog read.
+ *
+ * Two IR shapes carry an ADC read inline:
+ *   - `hal-expr` with operation `adc.read` / `adc.read_voltage` (the structured
+ *     HAL form — the common case for `A0.readAnalog()` inline in a comparison)
+ *   - `raw` whose value text contains `analogRead(` (the lowered text form,
+ *     reached when the HAL op has already been resolved to C++ text)
+ * An assignment `const v = A0.readAnalog(); if (v > 2000)` is NOT caught — `v`
+ * is an identifier by the comparison site, and correlating the two would
+ * require data-flow analysis beyond this validator's scope.
  */
 function isAnalogRead(expr: ExpressionIR): boolean {
   if (!expr || typeof expr !== 'object') return false;
-
+  if (expr.kind === 'hal-expr') {
+    const op = (expr as { operation?: { operation?: string } }).operation?.operation;
+    return op === 'adc.read' || op === 'adc.read_voltage';
+  }
+  if (expr.kind === 'raw') {
+    return /analogRead\s*\(/.test((expr as { value: string }).value);
+  }
   return false;
 }
 
@@ -128,8 +143,8 @@ function scanExpressionForADCRange(
   if (expr.kind === 'ternary') {
     const ternary = expr as any;
     scanExpressionForADCRange(ternary.condition, adcConfig, diagnostics);
-    scanExpressionForADCRange(ternary.consequent, adcConfig, diagnostics);
-    scanExpressionForADCRange(ternary.alternate, adcConfig, diagnostics);
+    scanExpressionForADCRange(ternary.whenTrue, adcConfig, diagnostics);
+    scanExpressionForADCRange(ternary.whenFalse, adcConfig, diagnostics);
   }
 
   // Check property access

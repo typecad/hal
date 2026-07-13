@@ -83,7 +83,7 @@ function rewriteAsIdentifier(expr: ExpressionIR & Record<string, unknown>, callb
 
 function collectCallbackFromExpression(
   expr: ExpressionIR,
-  callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; returnType?: string; typedParams?: { name: string; cppType: string }[] }[],
+  callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; isInterruptHandler?: boolean; returnType?: string; typedParams?: { name: string; cppType: string }[] }[],
   isrPrefix: string,
   counter: { value: number },
 ): void {
@@ -94,6 +94,7 @@ function collectCallbackFromExpression(
       params: expr.params,
       statements: expr.statements,
       debounceMs: expr.debounceMs,
+      isInterruptHandler: (expr as any).isInterruptHandler,
     });
     rewriteAsIdentifier(expr, callbackName);
     return;
@@ -168,7 +169,7 @@ function collectCallbackFromExpression(
 
 function collectCallbacks(
   statements: StatementIR[],
-  callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; returnType?: string; typedParams?: { name: string; cppType: string }[] }[],
+  callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; isInterruptHandler?: boolean; returnType?: string; typedParams?: { name: string; cppType: string }[] }[],
   isrPrefix: string,
   counter: { value: number },
 ): void {
@@ -512,7 +513,7 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
   }
 
   // Collect callback functions
-  const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; returnType?: string; typedParams?: { name: string; cppType: string }[] }[] = [];
+  const callbackFunctions: { name: string; params: string[]; statements: StatementIR[]; debounceMs?: number; isInterruptHandler?: boolean; returnType?: string; typedParams?: { name: string; cppType: string }[] }[] = [];
   const counter = { value: 0 };
 
   collectCallbacks(filteredTopLevelExecutables, callbackFunctions, ctx.isrPrefix, counter);
@@ -543,6 +544,7 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
       params: callbackIR.params,
       statements: callbackIR.statements ?? callbackIR.body ?? [],
       debounceMs: callbackIR.debounceMs,
+      isInterruptHandler: (callbackIR as any).isInterruptHandler,
     });
     replacePlaceholderInAllStatements(filteredTopLevelExecutables, rc.placeholderName, callbackName);
     for (const fn of mappedFunctions) {
