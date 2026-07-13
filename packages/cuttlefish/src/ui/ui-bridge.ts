@@ -6,7 +6,7 @@
 // stays null — cuttlefish works as a pure TypeScript→C++ transpiler.
 // ---------------------------------------------------------------------------
 
-import { setUIHook } from "../ui-hook.js";
+import { setUIHook, type TranspilerUIHook } from "../ui-hook.js";
 
 let loaded = false;
 
@@ -17,12 +17,17 @@ export async function loadUIEngine(): Promise<void> {
   if (loaded) return;
   loaded = true;
   try {
-    // Dynamic import — @typecad/ui is optional. The @ts-ignore suppresses
-    // the "cannot find module" error during clean builds when ui's dist
-    // doesn't exist yet (cuttlefish builds before ui).
-    // @ts-ignore — optional dependency, resolved at runtime
-    const engine = await import("@typecad/ui/engine");
-    const hook = engine.registerTranspilerUI();
+    // Dynamic import — @typecad/ui is optional. The module specifier is
+    // routed through a variable (rather than a string literal) so tsc types
+    // the result as `any` and never resolves @typecad/ui's declaration
+    // files while type-checking this file. A literal specifier here would
+    // make tsc load ui's dist/engine-index.d.ts, which imports back
+    // `@typecad/cuttlefish/ui-hook` — a self-referencing package path that
+    // resolves into this package's own dist/ output and causes TS5055
+    // ("would overwrite input file") on every rebuild where dist/ exists.
+    const uiEnginePath = "@typecad/ui/engine";
+    const engine = await import(uiEnginePath);
+    const hook = engine.registerTranspilerUI() as TranspilerUIHook;
     setUIHook(hook);
   } catch {
     // @typecad/ui is not installed — cuttlefish works without UI support.

@@ -145,8 +145,12 @@ export async function runPreviewServer(options: PreviewServerOptions = {}): Prom
       }
       if (url.pathname === "/snapshot.json") {
         requireUIHook().generateProjectUITypeDeclarations(projectRoot);
-        // @ts-ignore — optional dependency, resolved at runtime
-        const { buildPreviewSnapshot } = await import("@typecad/ui/preview/build-program");
+        // Routed through a variable (not a string literal) so tsc types this
+        // as `any` and never resolves @typecad/ui's declaration files — see
+        // the comment in ui/ui-bridge.ts for why a literal specifier here
+        // causes TS5055 on rebuilds where dist/ already exists.
+        const buildProgramPath = "@typecad/ui/preview/build-program";
+        const { buildPreviewSnapshot } = await import(buildProgramPath);
         const snapshot = await buildPreviewSnapshot({ config, projectRoot });
         writeText(res, 200, JSON.stringify(snapshot), "application/json; charset=utf-8");
         return;

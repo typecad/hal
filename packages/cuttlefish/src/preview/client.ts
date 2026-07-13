@@ -1,5 +1,27 @@
-// @ts-ignore — optional dependency (type-only, resolved via ui dist at runtime)
-import type { PreviewPinControlSpec, PreviewSnapshot } from "@typecad/ui/preview/types";
+// Minimal local structural types matching @typecad/ui's PreviewPinControlSpec
+// and PreviewSnapshot (packages/ui/src/preview/types.ts), covering only the
+// fields this file reads. Duplicated here — rather than imported from
+// @typecad/ui — because ui's preview/types.d.ts transitively imports
+// @typecad/cuttlefish/api/shared; a static import here would make tsc
+// resolve @typecad/ui's dist while building this package, which
+// self-references back into this package's own dist/ output and causes
+// TS5055 ("would overwrite input file") on rebuilds where dist/ already
+// exists. See the comment in ui/ui-bridge.ts for the same pattern.
+interface PreviewPinControlSpec {
+  label: string;
+}
+
+interface PreviewSnapshot {
+  profileName?: string;
+  program: {
+    width: number;
+    height: number;
+    colorFormat: string;
+    display?: { driver?: string };
+  };
+  pinControls: PreviewPinControlSpec[];
+  diagnostics: Array<{ severity: string; message: string }>;
+}
 
 // PreviewUIRuntime is loaded dynamically (see the import in the snapshot
 // handler). Typed as any to avoid a static dependency on @typecad/ui.
@@ -90,8 +112,12 @@ async function start(): Promise<void> {
   status.textContent = `${snapshot.profileName ?? snapshot.program.display?.driver ?? "display"} ${snapshot.program.width}x${snapshot.program.height} ${snapshot.program.colorFormat}`;
 
   const extraDiagnostics: string[] = [];
-  // @ts-ignore — optional dependency, resolved at runtime
-  const { PreviewUIRuntime } = await import("@typecad/ui/preview/host-ui-runtime");
+  // Routed through a variable (not a string literal) so tsc types this as
+  // `any` and never resolves @typecad/ui's declaration files — see the
+  // comment in ui/ui-bridge.ts for why a literal specifier here causes
+  // TS5055 on rebuilds where dist/ already exists.
+  const hostRuntimePath = "@typecad/ui/preview/host-ui-runtime";
+  const { PreviewUIRuntime } = await import(hostRuntimePath);
   runtime = new PreviewUIRuntime(snapshot, {
     onFrame: (rgba: Uint8Array) => {
       if (!imageData) return;

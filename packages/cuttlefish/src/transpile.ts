@@ -378,7 +378,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // type-check behavior above. Skipped alongside type-checking when disabled.
   if (options.skipLint !== true && options.skipTypeCheck !== true && transpileFiles.length > 0) {
     profiler.startTimer("lint:eslint");
-    const eslintErrors = await runEslintCheck(entryDir);
+    // The eslint config lives at the project root (next to cuttlefish.config.ts),
+    // not under src/. Fall back to entryDir for ad-hoc API/test callers that pass
+    // a bare input file without a configured project.
+    const eslintRoot = options.projectRoot ?? entryDir;
+    const eslintErrors = await runEslintCheck(eslintRoot);
     profiler.endTimer("lint:eslint");
 
     if (eslintErrors.length > 0) {

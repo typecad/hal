@@ -87,4 +87,44 @@ describe("ESLint gate (runEslintCheck)", () => {
     const errors = await runEslintCheck(tmpDir);
     expect(errors).toEqual([]);
   });
+
+  // Regression: the ESLint gate used to be called with the entry file's
+  // directory (i.e. src/) as projectRoot, so the config at the real project
+  // root was never found and the gate silently returned []. The fix threads
+  // the config-derived project root through transpileFile. This test mirrors
+  // that layout: config at the project root, source under src/, and asserts
+  // violations are still surfaced when projectRoot points at the root (not src/).
+  it("surfaces violations when config is at project root and source is under src/", async () => {
+    writeFile("eslint.config.mjs", FLAT_CONFIG);
+    writeFile("src/main.ts", "const x: any = 1;\nconsole.log(x);\n");
+
+    // projectRoot must be the directory holding eslint.config.mjs, not src/.
+    const errors = await runEslintCheck(tmpDir);
+
+    expect(errors.length).toBeGreaterThanOrEqual(1);
+    const anyError = errors.find(e => e.ruleId === "@typescript-eslint/no-explicit-any");
+    expect(anyError).toBeDefined();
+    expect(anyError!.filePath).toContain("main.ts");
+  });
+
+  // Regression: a config that exists but cannot be loaded (broken import,
+  // missing plugin, etc.) used to make the gate silently no-op. It must now
+  // throw so the build stops loudly instead of skipping linting.
+  it("throws when the eslint config exists but cannot be loaded", async () => {
+    writeFile("eslint.config.mjs", `import missing from "./does-not-exist.mjs";\nexport default [];\n`);
+    writeFile("src/main.ts", "const x: any = 1;\n");
+
+    await expect(runEslintCheck(tmpDir)).rejects.toThrow(/could not be loaded/);
+  });
+
+  // A pure-.ui project has src/ with no .ts files. ESLint raises "All files
+  // matched by ... are ignored" — that is a legitimate no-op, not a config
+  // failure, so the gate must return [] and let the build proceed.
+  it("returns [] when src/ has no lintable .ts files (all ignored)", async () => {
+    writeFile("eslint.config.mjs", FLAT_CONFIG);
+    writeFile("src/showcase.ui", "<screen></screen>\n");
+
+    const errors = await runEslintCheck(tmpDir);
+    expect(errors).toEqual([]);
+  });
 });

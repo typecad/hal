@@ -1,6 +1,6 @@
 import tsparser from "@typescript-eslint/parser";
 import tseslint from "@typescript-eslint/eslint-plugin";
-import transpilerPlugin from "../eslint-transpiler-rules.mjs";
+import transpilerPlugin from "../../eslint-transpiler-rules.mjs";
 
 const transpilerRules = [
   {

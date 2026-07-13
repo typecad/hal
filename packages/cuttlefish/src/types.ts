@@ -90,6 +90,14 @@ export interface TranspileOptions {
    */
   skipLint?: boolean;
   /**
+   * The user's project root — the directory containing `cuttlefish.config.ts`.
+   * The ESLint gate looks for `.cuttlefish/eslint.config.mjs` (or a root-level
+   * `eslint.config.mjs`) here, not under `src/`. When omitted, the entry file's
+   * directory is used as a fallback (suitable for ad-hoc API/test callers that
+   * pass a bare input file outside a configured project).
+   */
+  projectRoot?: string;
+  /**
    * Force retranspilation of all files, ignoring incremental cache.
    * Currently a no-op: incremental builds are disabled and every build already
    * transpiles the full graph. Retained on the API for forward compatibility.
@@ -175,6 +183,8 @@ export interface CommandLineOptions {
   diagnostics?: boolean;
   /** Config file for preview command */
   configPath?: string;
+  /** Project root (dir of cuttlefish.config.ts); passed to transpileFile for the ESLint gate. */
+  projectRoot?: string;
 }
 
 export interface GenerateLibdefOptions {

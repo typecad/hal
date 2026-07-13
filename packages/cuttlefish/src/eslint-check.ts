@@ -55,7 +55,25 @@ export async function runEslintCheck(projectRoot: string): Promise<ESLintError[]
   const srcDir = path.join(projectRoot, "src");
   if (!fs.existsSync(srcDir)) return [];
 
-  const results = await eslint.lintFiles([srcDir]);
+  let results: any[];
+  try {
+    results = await eslint.lintFiles([srcDir]);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    // "All files matched by ... are ignored" is raised when src/ contains no
+    // lintable .ts files (e.g. a pure-.ui entry). That is a legitimate no-op,
+    // not a config-load failure — return [] so the build proceeds.
+    if (/all files matched/i.test(detail) && /ignored/i.test(detail)) {
+      return [];
+    }
+    // A config that exists but cannot be loaded (broken import, bad parser
+    // reference, etc.) means linting silently no-ops — the exact regression
+    // this gate exists to prevent. Surface it instead of returning [].
+    throw new Error(
+      `ESLint config could not be loaded from ${overrideConfigFile}:\n${detail}\n\n` +
+        `Fix the config so linting runs, or remove it to skip the ESLint gate.`,
+    );
+  }
 
   const errors: ESLintError[] = [];
   for (const result of results) {

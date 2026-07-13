@@ -215,6 +215,10 @@ async function main(): Promise<void> {
 
       assertTypeScriptInput(entryFile);
       (options as any).inputFile = entryFile;
+      // The project root (directory holding cuttlefish.config.ts) is where the
+      // ESLint gate looks for .cuttlefish/eslint.config.mjs. Threading it through
+      // keeps the gate from silently no-op'ing when entry lives under src/.
+      options.projectRoot = path.dirname(buildConfig.configPath);
       // Pass display config from cuttlefish.config.ts through to transpileFile
       if (buildConfig.display) {
         (options as any).display = displayConfigForTranspile(buildConfig);
@@ -407,6 +411,7 @@ async function main(): Promise<void> {
           skipTypeCheck: options.skipTypeCheck,
           diagnostics: options.diagnostics,
           display: displayConfigForTranspile(config),
+          projectRoot: options.projectRoot,
         });
 
         printDiagnostics(result.diagnostics);
@@ -497,6 +502,7 @@ async function main(): Promise<void> {
               skipTypeCheck: options.skipTypeCheck,
               diagnostics: options.diagnostics,
               display: displayConfigForTranspile(config),
+              projectRoot: options.projectRoot,
             });
 
             printDiagnostics(rebuildResult.diagnostics);
@@ -582,6 +588,7 @@ async function main(): Promise<void> {
         skipTypeCheck: options.skipTypeCheck,
         diagnostics: options.diagnostics,
         display: displayConfigForTranspile(config) ?? (options as any).display,
+        projectRoot: options.projectRoot,
       });
 
       printDiagnostics(result.diagnostics);
