@@ -45,6 +45,11 @@ Thumbs.db
 .typecode/
 .zcode/
 
+# Agent/editor instruction files (kept locally, not source of truth)
+AGENTS.md
+CLAUDE.md
+.github/copilot-instructions.md
+
 # Archives
 *.zip
 
@@ -69,3 +74,11 @@ examples/*/*-backup/
 
 # Vendored Arduino libraries under examples/*/lib/ are intentionally tracked
 # so a fresh clone can flash to hardware without re-fetching.
+
+# Demo projects live outside the npm workspace and are not published
+demos/
+
+# Large/unreferenced assets + demo-only eslint rules (kept locally, not published)
+cuttlefish.png
+cuttlefish.svg
+eslint-transpiler-rules.mjs

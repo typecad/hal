@@ -20,13 +20,7 @@
     "packages/board-esp32c6",
     "packages/expect",
     "packages/ui",
-    "packages/simulator",
-    "examples/demo",
-    "examples/demo-st",
-    "examples/demo-ui",
-    "examples/demo-ui-sd13",
-    "examples/demo-weather",
-    "examples/native_demo"
+    "packages/simulator"
   ],
   "scripts": {
     "clean": "node -e \"const{readdirSync,rmSync}=require('fs');for(const p of readdirSync('packages')){rmSync('packages/'+p+'/dist',{recursive:true,force:true});rmSync('packages/'+p+'/tsconfig.tsbuildinfo',{force:true})}\"",
