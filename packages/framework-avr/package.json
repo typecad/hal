@@ -19,8 +19,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "0.1.0-alpha.1",
-    "@typecad/framework-arduino": "0.1.0-alpha.1"
+    "@typecad/cuttlefish": "0.1.0-alpha.2",
+    "@typecad/framework-arduino": "0.1.0-alpha.2"
   },
   "license": "MIT"
 }

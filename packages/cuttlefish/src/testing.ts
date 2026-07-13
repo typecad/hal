@@ -25,6 +25,9 @@ export {
 // ── Transpiler internal API ─────────────────────────────────────────────────
 export { transpileFile } from "./transpile.js";
 
+// ── UI bridge (optional @typecad/ui) ─────────────────────────────────────────
+export { resetUIEngine, __simulateUIAbsentForTest } from "./ui/ui-bridge.js";
+
 // ── Project scaffolding ──────────────────────────────────────────────────────
 export {
   scaffoldProject,

@@ -6,7 +6,7 @@ import { makeDiagnostic } from "../ir/ast-node-utils.js";
 import { canonicalize, buildSemanticFacts } from "./semantic-facts.js";
 import type { BindingResolver } from "./semantic-facts.js";
 import { verifyFacts } from "./semantic-facts-verifier.js";
-import { requireUIHook } from "../ui-hook.js";
+import { requireUIHook, hasUIHook } from "../ui-hook.js";
 
 /**
  * Result of type-checking files
@@ -86,7 +86,9 @@ export function typeCheckFiles(
     }
   }
 
-  const uiModules = requireUIHook().allUIModules();
+  // @typecad/ui is optional — when the engine is not loaded there are no UI
+  // modules and nothing to register with the type-checker.
+  const uiModules = hasUIHook() ? requireUIHook().allUIModules() : [];
   if (uiModules.length > 0) {
     compilerOptions.allowArbitraryExtensions = true;
     const rootDirs = new Set((compilerOptions.rootDirs ?? []).map((dir) => path.resolve(dir)));

@@ -1,6 +1,6 @@
 {
   "name": "@typecad/mcu-esp32",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "TypeCAD MCU definition for ESP32 — datasheet pins, peripheral capabilities, and HAL instances",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,8 +14,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "0.1.0-alpha.1",
-    "@typecad/hal": "0.1.0-alpha.1"
+    "@typecad/cuttlefish": "0.1.0-alpha.2",
+    "@typecad/hal": "0.1.0-alpha.2"
   },
   "license": "MIT",
   "publishConfig": {

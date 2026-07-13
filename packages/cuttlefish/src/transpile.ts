@@ -7,7 +7,7 @@ import ts from "typescript";
 import { buildProgramIR } from "./ir/build-ir.js";
 import { classDeclarationToIR } from "./ir/declaration-builders.js";
 import { clickHandlers } from "./ir/transformers/ui-call-resolver.js";
-import { setUIHook, requireUIHook } from "./ui-hook.js";
+import { setUIHook, requireUIHook, hasUIHook } from "./ui-hook.js";
 import { loadUIEngine } from "./ui/ui-bridge.js";
 import { setDisplayProfile, resetDisplayProfile } from "./stores/display-profile-store.js";
 import { setThemeCss, resetThemeCss, setThemeClass } from "./stores/theme-store.js";
@@ -422,9 +422,12 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // The graph build above already loaded all .ui.html modules; surface their
   // parser warnings (unknown CSS properties, unknown HTML tags) here so the
   // author sees typos and unsupported features instead of silent drops.
-  for (const mod of requireUIHook().allUIModules()) {
-    for (const d of mod.diagnostics) {
-      diagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
+  // Guarded: @typecad/ui is optional, so there may be no UI engine loaded.
+  if (hasUIHook()) {
+    for (const mod of requireUIHook().allUIModules()) {
+      for (const d of mod.diagnostics) {
+        diagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
+      }
     }
   }
 
@@ -578,9 +581,12 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   profiler.endTimer("ir:build-all");
 
   // ── UI mount-time warnings (scroll memory budget, etc.) ─────────────────
-  for (const mod of requireUIHook().allUIModules()) {
-    for (const d of mod.mountDiagnostics) {
-      diagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
+  // Guarded: @typecad/ui is optional; no engine means no UI modules.
+  if (hasUIHook()) {
+    for (const mod of requireUIHook().allUIModules()) {
+      for (const d of mod.mountDiagnostics) {
+        diagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
+      }
     }
   }
 

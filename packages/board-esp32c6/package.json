@@ -1,6 +1,6 @@
 {
   "name": "@typecad/board-esp32c6",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "description": "TypeCAD ESP32-C6 board definition with typed pins and peripherals",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,9 +14,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "0.1.0-alpha.1",
-    "@typecad/hal": "0.1.0-alpha.1",
-    "@typecad/mcu-esp32c6": "0.1.0-alpha.1"
+    "@typecad/cuttlefish": "0.1.0-alpha.2",
+    "@typecad/hal": "0.1.0-alpha.2",
+    "@typecad/mcu-esp32c6": "0.1.0-alpha.2"
   },
   "license": "MIT",
   "publishConfig": {
