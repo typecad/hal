@@ -1,5 +1,5 @@
 ﻿// ---------------------------------------------------------------------------
-// @typecad/arch-avr-native — Native AVR platform strategy
+// @typecad/framework-avr — Native AVR platform strategy
 //
 // This strategy generates direct AVR register access instead of Arduino
 // framework function calls. For example:
