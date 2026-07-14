@@ -520,6 +520,51 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       ''
     );
 
+    // Native tone() driver — Timer2 CTC mode toggling the output-compare pin
+    // at the desired frequency. Guarded with #ifndef ARDUINO so the Arduino
+    // core's tone()/noTone() (Tone.cpp) are used when the core is linked.
+    // Emitted unconditionally (small, only linked if _tc_tone_play is called).
+    lines.push(
+      '#ifndef ARDUINO',
+      '// Native tone driver — Timer2 CTC mode.',
+      'static volatile unsigned long _tc_tone_end = 0;',
+      'static volatile bool _tc_tone_active = false;',
+      'static volatile uint8_t _tc_tone_pin = 0;',
+      '',
+      'static void _tc_tone_stop_inline(void) {',
+      '  TCCR2B = 0;  // stop timer',
+      '  _tc_tone_active = false;',
+      '}',
+      '',
+      'static void _tc_tone_play(uint8_t pin, unsigned long freq, unsigned long duration) {',
+      '  if (freq == 0) { _tc_tone_stop_inline(); return; }',
+      '  _tc_tone_pin = pin;',
+      '  // CTC mode, toggle OC2A on compare match.',
+      '  TCCR2A = (1 << COM2A0) | (1 << WGM21);',
+      '  // OCR2A = F_CPU / (2 * prescaler * freq) - 1',
+      '  // Try prescalers to find one that fits OCR2A < 255.',
+      '  const unsigned long prescalers[] = {1, 8, 32, 64, 128, 256, 1024};',
+      '  const uint8_t cs_bits[] = {(1<<CS20), (1<<CS21), (1<<CS21)|(1<<CS20), (1<<CS22), (1<<CS22)|(1<<CS20), (1<<CS22)|(1<<CS21), (1<<CS22)|(1<<CS21)|(1<<CS20)};',
+      '  for (int i = 0; i < 7; i++) {',
+      '    unsigned long ocr = (F_CPU / (2UL * prescalers[i] * freq)) - 1;',
+      '    if (ocr < 256) {',
+      '      OCR2A = (uint8_t)ocr;',
+      '      TCCR2B = cs_bits[i];',
+      '      break;',
+      '    }',
+      '  }',
+      '  _tc_tone_active = true;',
+      '  _tc_tone_end = (duration > 0) ? (millis() + duration) : 0;',
+      '}',
+      '',
+      'static void _tc_tone_stop(uint8_t pin) {',
+      '  (void)pin;',
+      '  _tc_tone_stop_inline();',
+      '}',
+      '#endif',
+      ''
+    );
+
     // External interrupt handlers — data-driven from the chip descriptor.
     // Guarded with #ifndef ARDUINO so the Arduino core's ISR definitions
     // (from WInterrupts.c) are used when the core is linked, avoiding a
@@ -755,6 +800,76 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         if (!iinfo) return { code: `/* pin ${op.pin} has no external interrupt */;` };
         return { code: `EIMSK &= ~(1 << ${iinfo.interrupt}); ${iinfo.handler} = 0;` };
       }
+      // ── ADC reference/voltage — native ADMUX/ADC, not analogReference() ──
+      case "adc.set_reference": {
+        const refBits = this.adcReferenceBits((op as any).reference);
+        return { code: `ADMUX = (ADMUX & ~((1 << REFS1) | (1 << REFS0))) | ${refBits};` };
+      }
+      case "adc.read_voltage": {
+        const vop = op as any;
+        const vRef = vop.vRef ?? 5.0;
+        const maxVal = vop.maxValue ?? 1023.0;
+        return { expression: `((double)(${nativeAnalogRead(op.pin)}) * ${vRef} / ${maxVal})` };
+      }
+      case "adc.get_resolution":
+        return { expression: "10" };
+      // ── Pulse measurement — native micros() + GPIO, not Arduino pulseIn() ──
+      case "pulse.in": {
+        const pop = op as any;
+        const target = pop.value === 1 ? 1 : 0;
+        const readExpr = nativeDigitalRead(op.pin);
+        const timeoutCheck = pop.timeout !== undefined
+          ? `if (micros() - __start >= ${pop.timeout}) return 0;`
+          : '';
+        return { expression: `({ unsigned long __start = micros(); while ((${readExpr}) != ${target}) { ${timeoutCheck} } __start = micros(); while ((${readExpr}) == ${target}) { ${timeoutCheck} } micros() - __start; })` };
+      }
+      case "pulse.in_long": {
+        // pulse.in_long is the same as pulse.in on AVR (no longer-resolution timer).
+        const pop = op as any;
+        const target = pop.value === 1 ? 1 : 0;
+        const readExpr = nativeDigitalRead(op.pin);
+        return { expression: `({ unsigned long __start = micros(); while ((${readExpr}) != ${target}) {} __start = micros(); while ((${readExpr}) == ${target}) {} micros() - __start; })` };
+      }
+      // ── Shift out/in — native GPIO bit-bang, not Arduino shiftOut()/shiftIn() ──
+      case "shift.out": {
+        const sop = op as any;
+        const dataInfo = getPinInfo(sop.dataPin);
+        const clockInfo = getPinInfo(sop.clockPin);
+        if (!dataInfo || !clockInfo) return { code: `/* shift.out: invalid pin */;` };
+        const dataMask = getPinBitMask(sop.dataPin);
+        const clockMask = getPinBitMask(sop.clockPin);
+        const dataPort = dataInfo.port;
+        const clockPort = clockInfo.port;
+        const lsb = sop.bitOrder === "lsb" || sop.bitOrder === "LSBFIRST";
+        // Emit an IIFE that clocks out 8 bits using native PORT/DDR registers.
+        const bitTest = lsb ? `(1 << __i)` : `(1 << (7 - __i))`;
+        return { code: `{ for (int __i = 0; __i < 8; __i++) { if ((${sop.value}) & ${bitTest}) ${dataPort} |= ${dataMask}; else ${dataPort} &= ~${dataMask}; ${clockPort} |= ${clockMask}; ${clockPort} &= ~${clockMask}; } }` };
+      }
+      case "shift.in": {
+        const sop = op as any;
+        const dataInfo = getPinInfo(sop.dataPin);
+        const clockInfo = getPinInfo(sop.clockPin);
+        if (!dataInfo || !clockInfo) return { expression: `0 /* shift.in: invalid pin */` };
+        const dataPinReg = dataInfo.pinReg;
+        const dataMask = getPinBitMask(sop.dataPin);
+        const clockMask = getPinBitMask(sop.clockPin);
+        const clockPort = clockInfo.port;
+        const lsb = sop.bitOrder === "lsb" || sop.bitOrder === "LSBFIRST";
+        const bitShift = lsb ? `__i` : `(7 - __i)`;
+        return { expression: `({ unsigned char __result = 0; for (int __i = 0; __i < 8; __i++) { ${clockPort} |= ${clockMask}; ${clockPort} &= ~${clockMask}; if ((${dataPinReg} & ${dataMask})) __result |= (1 << ${bitShift}); } __result; })` };
+      }
+      // ── Tone — native Timer2 CTC, not Arduino tone()/noTone() ──
+      case "tone.play": {
+        const top = op as any;
+        const freq = top.frequency;
+        const dur = top.duration;
+        if (dur !== undefined) {
+          return { code: `_tc_tone_play(${op.pin}, ${freq}, ${dur});` };
+        }
+        return { code: `_tc_tone_play(${op.pin}, ${freq}, 0);` };
+      }
+      case "tone.stop":
+        return { code: `_tc_tone_stop(${op.pin});` };
       // ── Invalid-on-AVR ops — no-op with a comment, not undefined symbols ──
       case "dac.write":
         return { code: `/* dac.write not supported on AVR (no DAC hardware) */;` };
@@ -805,6 +920,30 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       case "high":
       case "level":    return set([]);
       default:         return set([isc0, isc1]); // default to rising
+    }
+  }
+
+  /**
+   * Map an ADC reference name to the AVR ADMUX REFS bits.
+   * "default"/"vdd" → AVcc (REFS0), "internal" → 1.1V internal (REFS1|REFS0),
+   * "external" → AREF (0), plus the Arduino macro spellings.
+   */
+  private adcReferenceBits(reference: string | number): string {
+    const ref = typeof reference === "string" ? reference.toLowerCase().replace(/['"]/g, "") : "";
+    switch (ref) {
+      case "internal":
+      case "internal1v1":
+      case "1v1":
+        return "(1 << REFS1) | (1 << REFS0)";
+      case "external":
+      case "aref":
+        return "0";
+      case "default":
+      case "vdd":
+      case "avcc":
+      case "":
+      default:
+        return activeChip.adc.referenceBits;  // AVcc (REFS0) from descriptor
     }
   }
 
