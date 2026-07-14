@@ -90,6 +90,28 @@ const _knownTargets: KnownTarget[] = [
     buildTarget: 'esp32:esp32:esp32c6',
     mcu: 'esp32c6',
   },
+  {
+    id: 'rp2040',
+    displayName: 'RP2040 (Pico)',
+    isNative: false,
+    architecture: 'rp2040',
+    boardPackage: '@typecad/board-rp2040',
+    frameworkPackage: '@typecad/framework-arduino',
+    framework: 'arduino',
+    buildTarget: 'rp2040:rp2040:rpipico',
+    mcu: 'rp2040',
+  },
+  {
+    id: 'rp2350',
+    displayName: 'RP2350 (Pico 2)',
+    isNative: false,
+    architecture: 'rp2350',
+    boardPackage: '@typecad/board-rp2350',
+    frameworkPackage: '@typecad/framework-arduino',
+    framework: 'arduino',
+    buildTarget: 'rp2350:rp2350:rpipico2',
+    mcu: 'rp2350',
+  },
 ];
 
 export function registerKnownTarget(target: KnownTarget): void {

@@ -256,6 +256,20 @@ describe("init-scaffold", () => {
       expect(c6!.architecture).toBe('esp32c6');
       expect(c6!.buildTarget).toBe('esp32:esp32:esp32c6');
     });
+
+    it("contains rp2040", () => {
+      const b = KNOWN_BOARDS.find(b => b.id === 'rp2040');
+      expect(b).toBeDefined();
+      expect(b!.architecture).toBe('rp2040');
+      expect(b!.buildTarget).toBe('rp2040:rp2040:rpipico');
+    });
+
+    it("contains rp2350", () => {
+      const b = KNOWN_BOARDS.find(b => b.id === 'rp2350');
+      expect(b).toBeDefined();
+      expect(b!.architecture).toBe('rp2350');
+      expect(b!.buildTarget).toBe('rp2350:rp2350:rpipico2');
+    });
   });
 
   describe("scaffoldProject", () => {

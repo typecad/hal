@@ -87,6 +87,8 @@ Transpile, compile, upload, and open a serial monitor in a single invocation. Or
 | ESP32-S3 | `@typecad/board-esp32s3` | ESP32-S3 (Xtensa LX7) |
 | ESP32-C3 | `@typecad/board-esp32c3` | ESP32-C3 (RISC-V) |
 | ESP32-C6 | `@typecad/board-esp32c6` | ESP32-C6 (RISC-V, Wi-Fi 6) |
+| RP2040 (Pico) | `@typecad/board-rp2040` | RP2040 (ARM Cortex-M0+) |
+| RP2350 (Pico 2) | `@typecad/board-rp2350` | RP2350 (ARM Cortex-M33) |
 
 Additional architectures are scaffolded and ready for board definitions: ESP32-S2, ESP32-S3, ESP32-C3, RP2040, STM32, nRF52.
 
@@ -335,7 +337,7 @@ cd my-project
 npm install
 ```
 
-This creates a complete project with `cuttlefish.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: `arduino-uno`, `esp32-devkit`, `esp32s3`, `esp32c3`, `esp32c6`.
+This creates a complete project with `cuttlefish.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: `arduino-uno`, `esp32-devkit`, `esp32s3`, `esp32c3`, `esp32c6`, `rp2040`, `rp2350`.
 
 Or launch an interactive wizard:
 
