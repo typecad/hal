@@ -72,13 +72,14 @@ describe("NativeAVRStrategy millis()/micros() Timer0 ISR", () => {
       expect(code).toContain("TIMSK0 = (1 << TOIE0)");
     });
 
-    it("guards the native definitions with #ifndef ARDUINO", () => {
+    it("guards native definitions with #ifndef ARDUINO (avoids core link conflict)", () => {
       setActiveChip(ATMEGA328P);
       const code = millisCode(PROGRAM);
-      // When the Arduino core is linked (arduino-cli builds), the core's
-      // millis()/micros() and Timer0 ISR are used; our definitions would
-      // cause a multiple-definition link error. The guard makes _init_millis
-      // a no-op in that case.
+      // When the Arduino core is linked (Serial/test-harness builds), the
+      // core's millis()/micros() and Timer0 ISR are used; our definitions
+      // would cause a multiple-definition link error. The guard makes
+      // _init_millis a no-op in that case. In a bare-metal build (main()
+      // override, no Serial), the native definitions own the vectors.
       expect(code).toContain("#ifndef ARDUINO");
       expect(code).toContain("#else");
       expect(code).toMatch(/_init_millis\(\) \{\}/);

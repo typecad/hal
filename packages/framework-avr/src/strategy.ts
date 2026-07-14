@@ -128,7 +128,10 @@ function nativeAnalogWrite(pin: number, value: string): string {
  * This strategy overrides the default "arduino" strategy to generate native code.
  */
 export class NativeAVRStrategy extends ArduinoStrategy {
-  // Override the ID to replace the default arduino strategy
+  // Override the ID to replace the default arduino strategy when this
+  // framework is loaded. Both frameworks use id "arduino" — the last-loaded
+  // framework wins in the strategy registry, which is correct: the user's
+  // --framework flag determines which package is loaded.
   override readonly id = "arduino";
 
   /**
@@ -237,16 +240,15 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       helperStructs: [],
       helperFunctions: [
         `// Native millis()/micros() — Timer0 overflow ISR.`,
-        `// Guarded with #ifndef ARDUINO so that when the Arduino core IS linked`,
-        `// (builds via arduino-cli), the core's millis()/micros() and Timer0 ISR`,
-        `// are used instead — avoiding a multiple-definition link error. In a`,
-        `// bare-metal build (no Arduino core), these provide the timing backbone.`,
+        `// Guarded: when the Arduino core is linked (Serial/test-harness builds),`,
+        `// the core's millis()/micros() and Timer0 ISR are used instead. In a`,
+        `// bare-metal build (main() override, no Serial), these own the vectors.`,
         `#ifndef ARDUINO`,
         `static volatile unsigned long _tc_millis_count = 0;`,
         `ISR(${ovfVector}) { _tc_millis_count++; }`,
         `static inline void _init_millis() {`,
         `  TCCR0A = 0;`,
-        `  TCCR0B = ${prescaler === 64 ? '(1 << CS01) | (1 << CS00)' : '(1 << CS00)'};  // prescaler ${prescaler}`,
+        `  TCCR0B = ${prescaler === 64 ? '(1 << CS01) | (1 << CS00)' : '(1 << CS00)'};`,
         `  TIMSK0 = (1 << TOIE0);`,
         `}`,
         `static inline unsigned long millis() {`,
@@ -262,9 +264,8 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         `  return ((m << 8) + t) * (${prescaler}UL / (F_CPU / 1000000UL));`,
         `}`,
         `#else`,
-        `// Arduino core is linked: it provides millis()/micros() and the Timer0`,
-        `// ISR. _init_millis() is a no-op since the core's main() already set up`,
-        `// Timer0 before calling setup().`,
+        `// Arduino core linked: use its millis()/micros(). _init_millis is a no-op`,
+        `// since the core's main() already configured Timer0.`,
         `static inline void _init_millis() {}`,
         `#endif`,
       ],
@@ -522,10 +523,8 @@ export class NativeAVRStrategy extends ArduinoStrategy {
 
     // ── Native SPI driver — SPCR/SPSR/SPDR registers (no Arduino SPI lib) ──
     lines.push(
-      '#ifndef ARDUINO',
       '// Native SPI driver — ATmega328P SPI master mode.',
       'static inline void _spi_init() {',
-      '  // Enable SPI, Master mode, F_CPU/4 clock (SPR0=SPR1=0).',
       '  DDRB |= (1 << 5) | (1 << 3) | (1 << 2);  // MOSI, SCK, /SS as outputs',
       '  DDRB &= ~(1 << 4);  // MISO as input',
       '  SPCR = (1 << SPE) | (1 << MSTR);',
@@ -538,7 +537,6 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       '}',
       '',
       'static inline void _spi_set_mode(uint8_t mode) {',
-      '  // mode: 0=CPOL0/CPHA0, 1=CPOL0/CPHA1, 2=CPOL1/CPHA0, 3=CPOL1/CPHA1',
       '  SPCR = (SPCR & ~((1 << CPOL) | (1 << CPHA)))',
       '       | ((mode & 2) ? (1 << CPOL) : 0)',
       '       | ((mode & 1) ? (1 << CPHA) : 0);',
@@ -549,9 +547,8 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       '}',
       '',
       'static inline void _spi_begin_transaction(unsigned long settings) {',
-      '  (void)settings;  // SPISettings applied via set_mode/set_bit_order',
+      '  (void)settings;',
       '}',
-      '#endif',
       ''
     );
 
@@ -560,7 +557,6 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // already emitted above. These add expression-printing (for uart.print
     // with numeric values), peek, and flush.
     lines.push(
-      '#ifndef ARDUINO',
       '// Print a numeric/string expression via UART (template handles all types).',
       'template<typename T> inline void _uart_print_expr(T val) {',
       '  _uart_print_long((long)val);',
@@ -582,9 +578,8 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       '}',
       '',
       'static inline void _uart_flush() {',
-      '  while (!(UCSR0A & (1 << UDRE0)));  // wait for TX buffer empty',
+      '  while (!(UCSR0A & (1 << UDRE0)));',
       '}',
-      '#endif',
       ''
     );
 
@@ -594,7 +589,6 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // requestFrom/read/available. TWSR status codes are checked after each
     // operation; errors are silent (the read/write returns 0/false).
     lines.push(
-      '#ifndef ARDUINO',
       '// Native TWI (I2C) master driver.',
       '#define TWI_BUFFER_LENGTH 32',
       'static volatile uint8_t _twi_rx_buffer[TWI_BUFFER_LENGTH];',
@@ -692,16 +686,13 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       '  _twi_stop();  // send STOP to release the bus',
       '  DDRC &= ~(1 << 5);  // SCL back to TWI control',
       '}',
-      '#endif',
       ''
     );
 
     // ── Native EEPROM driver — avr-libc <avr/eeprom.h> (no Arduino lib) ──
     // Provides the same EEPROM.read()/write()/update() interface the parent's
     // AVR Preferences shim and the HAL eeprom.ts proxy emit, but backed by
-    // avr-libc eeprom_read_byte/eeprom_write_byte/eeprom_update_byte. Guarded
-    // #ifndef ARDUINO so the Arduino EEPROM library is used when the core is
-    // linked.
+    // avr-libc eeprom_read_byte/eeprom_write_byte/eeprom_update_byte.
     lines.push(
       '#ifndef ARDUINO',
       '#include <avr/eeprom.h>',
@@ -717,11 +708,9 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     );
 
     // Native tone() driver — Timer2 CTC mode toggling the output-compare pin
-    // at the desired frequency. Guarded with #ifndef ARDUINO so the Arduino
-    // core's tone()/noTone() (Tone.cpp) are used when the core is linked.
-    // Emitted unconditionally (small, only linked if _tc_tone_play is called).
+    // at the desired frequency. Emitted unconditionally; only linked if
+    // _tc_tone_play is called.
     lines.push(
-      '#ifndef ARDUINO',
       '// Native tone driver — Timer2 CTC mode.',
       'static volatile unsigned long _tc_tone_end = 0;',
       'static volatile bool _tc_tone_active = false;',
@@ -757,15 +746,13 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       '  (void)pin;',
       '  _tc_tone_stop_inline();',
       '}',
-      '#endif',
       ''
     );
 
     // External interrupt handlers — data-driven from the chip descriptor.
-    // Guarded with #ifndef ARDUINO so the Arduino core's ISR definitions
-    // (from WInterrupts.c) are used when the core is linked, avoiding a
-    // multiple-definition link error. In a bare-metal build, these provide
-    // native ISR dispatch via function-pointer trampolines.
+    // Guarded: when the Arduino core is linked, attachInterrupt() (from
+    // WInterrupts.c) owns these vectors. In a bare-metal build these ISRs
+    // provide native dispatch.
     if (usesExternalInterrupts) {
       const intPins = Object.entries(activeChip.interruptsByPin);
       if (intPins.length > 0) {
@@ -800,6 +787,18 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       // and emit a native replacement that routes through _native_delay_ms,
       // _native_delay_us, and the native millis()/micros() polyfill.
       parentLines = this.filterShimBlock(parentLines, 'struct __tc_Timing {', '} Timing;');
+
+      // Strip Arduino core includes — we're bare-metal (main() prevents the
+      // core from linking, so these headers would be dead weight or cause
+      // conflicts). The native drivers provide every peripheral.
+      // Keep <avr/wdt.h> — it's avr-libc, not Arduino core.
+      parentLines = parentLines.filter(l =>
+        !l.includes('<Arduino.h>') &&
+        !l.includes('<Wire.h>') &&
+        !l.includes('<SPI.h>') &&
+        !l.includes('<EEPROM.h>')
+      );
+
       lines.push(...parentLines);
 
       // Native __tc_Timing replacement — delegates to AVR helpers, not the
@@ -817,6 +816,31 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         '        return (unsigned long)((size_t)&v - (__brkval == 0 ? (size_t)&__heap_start : (size_t)__brkval));',
         '    }',
         '} Timing;',
+        ''
+      );
+    }
+
+    // Bare-metal main() — overrides the Arduino core's main(), preventing the
+    // core from being linked when the program uses no Arduino core symbols.
+    // Calls setup() once, then runs the cooperative super-loop (calling loop()
+    // which contains the timer/microtask pump injected by asyncLoopInjection).
+    //
+    // Gated on UART usage: the on-device test harness and any program using
+    // Serial.print() need the Arduino core's HardwareSerial, which requires
+    // the core's init() + main(). When Serial is NOT used, defining main()
+    // causes the linker to dead-code-eliminate the entire Arduino core
+    // (wiring.c, HardwareSerial, Wire, SPI, etc.), yielding a dramatically
+    // smaller binary (330 bytes vs 2.5 KB for a hello-world).
+    if (!program?.peripheralUsage?.uart) {
+      lines.push(
+        '// Bare-metal entry point — prevents the Arduino core from being linked.',
+        'int main(void) {',
+        '  setup();',
+        '  while (1) {',
+        '    loop();',
+        '  }',
+        '  return 0;',
+        '}',
         ''
       );
     }
