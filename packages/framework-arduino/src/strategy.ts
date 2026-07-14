@@ -1236,6 +1236,11 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       hasExceptions: true, hasRTTI: true,
       recommendedArrayImpl: "std_vector", recommendedStringImpl: "std_string",
     },
+    rp2350: {
+      hasVector: true, hasString: true, hasIostream: true,
+      hasExceptions: true, hasRTTI: true,
+      recommendedArrayImpl: "std_vector", recommendedStringImpl: "std_string",
+    },
     samd: {
       hasVector: true, hasString: true, hasIostream: true,
       hasExceptions: true, hasRTTI: true,

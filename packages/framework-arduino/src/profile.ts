@@ -55,6 +55,7 @@ const PROFILE_VARIANTS: ArduinoProfileVariant[] = [
   { architecture: "esp32c6", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "samd", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "rp2040", forcedIncludes: ["<Arduino.h>"] },
+  { architecture: "rp2350", forcedIncludes: ["<Arduino.h>"] },
 ];
 
 const DEFAULT_PROFILE: ArduinoProfileVariant = {
@@ -105,6 +106,12 @@ const CAPABILITY_TABLE: ArduinoCapabilities[] = [
     builtinGlobals: new Set(["A0", "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "Serial"]),
     fallbackPins: { A0: 26 },
   },
+  {
+    architecture: "rp2350",
+    builtinFunctions: new Set(["pinMode", "digitalWrite", "analogRead", "analogReference", "delay", "millis", "micros", "setInterval", "setTimeout", "clearInterval", "clearTimeout"]),
+    builtinGlobals: new Set(["A0", "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "Serial"]),
+    fallbackPins: { A0: 26 },
+  },
 ];
 
 const DEFAULT_CAPABILITIES: ArduinoCapabilities = {
@@ -124,6 +131,7 @@ const FQBN_PIN_OVERRIDES: FqbnPinOverride[] = [
   { fqbnIncludes: "esp32:esp32c3:", pins: { A0: 0 } },
   { fqbnIncludes: "esp32:esp32c6:", pins: { A0: 0 } },
   { fqbnIncludes: "rp2040:rp2040:", pins: { A0: 26 } },
+  { fqbnIncludes: "rp2350:rp2350:", pins: { A0: 26 } },
 ];
 
 export interface ResolvedArduinoProfile {

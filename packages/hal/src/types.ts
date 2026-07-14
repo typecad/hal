@@ -123,6 +123,7 @@ export type ArchitectureIdentifier =
   | 'esp32c3'
   | 'esp32c6'
   | 'rp2040'
+  | 'rp2350'
   | 'samd'
   | 'stm32'
   | 'nrf52'
