@@ -40,6 +40,10 @@ export type {
 } from './chips/types.js';
 export { ATMEGA328P, ATMEGA2560, setActiveChip } from './chips/index.js';
 
+// Profile resolution — FQBN → chip selection + diagnostics.
+export { resolveAvrProfile, chipForBuildTarget } from './profile.js';
+export type { ResolvedAvrProfile } from './profile.js';
+
 // ---------------------------------------------------------------------------
 // Toolchain — compile/upload/monitor via arduino-cli.
 //

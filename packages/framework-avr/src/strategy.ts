@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { ArduinoStrategy } from '@typecad/framework-arduino';
-import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR } from '@typecad/cuttlefish/api/shared';
+import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR, Diagnostic } from '@typecad/cuttlefish/api/shared';
 import {
   getPinInfo,
   getPinBitMask,
@@ -18,6 +18,8 @@ import {
 } from './registers.js';
 import { activeChip, setActiveChip, ATMEGA328P } from './chips/index.js';
 import type { AVRChipDescriptor } from './chips/types.js';
+import { resolveAvrProfile } from './profile.js';
+import type { ResolvedAvrProfile } from './profile.js';
 
 // ---------------------------------------------------------------------------
 // Native AVR code generation functions
@@ -130,23 +132,68 @@ export class NativeAVRStrategy extends ArduinoStrategy {
   override readonly id = "arduino";
 
   /**
-   * The chip descriptor driving this strategy instance. Register helpers and
-   * the emit path read it via the module-level `activeChip`, which is set
-   * here once per instance. Default is ATmega328P (the most popular AVR);
-   * pass another descriptor to target a different chip.
+   * Cached AVR profile. Resolved lazily from the build target (FQBN) on the
+   * first emit call, so the chip is selected from the user's config rather
+   * than hardcoded. Mirrors ArduinoStrategy's _cachedProfile pattern but uses
+   * distinct field names to avoid shadowing the parent's private cache.
    */
-  constructor(chip: AVRChipDescriptor = ATMEGA328P) {
+  private _avrProfile: ResolvedAvrProfile | null = null;
+  private _avrProfileKey: string | null = null;
+
+  /**
+   * Construct with an explicit chip (default ATmega328P). When the strategy
+   * is loaded via the framework-package loader (no constructor args), the
+   * chip is instead resolved lazily from ctx.frameworkData.buildTarget on the
+   * first emit call — see resolveAvrProfileCached().
+   */
+  constructor(chip?: AVRChipDescriptor) {
     super();
-    setActiveChip(chip);
+    if (chip) {
+      setActiveChip(chip);
+    }
+  }
+
+  /**
+   * Resolve (and cache by buildTarget) the AVR profile. Selects the chip
+   * descriptor from the FQBN board segment, activates it, and collects
+   * diagnostics. The test harness reuses one strategy instance across files,
+   * so caching by buildTarget avoids re-resolving and keeps the active chip
+   * stable for a given transpile.
+   */
+  private resolveAvrProfileCached(program?: ProgramIR, ctx?: PlatformContext): ResolvedAvrProfile {
+    const key = (ctx?.frameworkData as { buildTarget?: string } | undefined)?.buildTarget ?? 'default';
+    if (this._avrProfile && this._avrProfileKey === key) {
+      return this._avrProfile;
+    }
+    this._avrProfile = resolveAvrProfile(program, ctx);
+    this._avrProfileKey = key;
+    return this._avrProfile;
+  }
+
+  /** Reset both the AVR and parent profile caches. Intended for test isolation. */
+  override clearProfileCache(): void {
+    super.clearProfileCache();
+    this._avrProfile = null;
+    this._avrProfileKey = null;
   }
 
   // ── Includes ────────────────────────────────────────────────────────────
 
-  override forcedIncludes(_program?: ProgramIR, _ctx?: PlatformContext): string[] {
-    // Only avr/io.h here - util/delay.h needs F_CPU defined first
-    return [
-      '<avr/io.h>',
-    ];
+  override forcedIncludes(program?: ProgramIR, ctx?: PlatformContext): string[] {
+    // Only avr/io.h here - util/delay.h needs F_CPU defined first (in shimLines)
+    return this.resolveAvrProfileCached(program, ctx).forcedIncludes;
+  }
+
+  /**
+   * Surface AVR-specific diagnostics (invalid pins, unsupported PWM) in
+   * addition to the parent's architecture-gated diagnostics (heap/vector).
+   * Snapshots the profile diagnostics first so the cached array is not
+   * mutated across transpilations.
+   */
+  override profileDiagnostics(program: ProgramIR, ctx?: PlatformContext): Diagnostic[] {
+    const avrDiags = [...this.resolveAvrProfileCached(program, ctx).diagnostics];
+    const parentDiags = super.profileDiagnostics(program, ctx);
+    return [...parentDiags, ...avrDiags];
   }
 
   // ── Polyfill overrides ──────────────────────────────────────────────────
@@ -529,17 +576,8 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     return lines;
   }
 
-  override symbolAliases(_program?: ProgramIR, _ctx?: PlatformContext): Record<string, string> {
-    return {
-      'delay': '_native_delay_ms',
-      'delayMicroseconds': '_native_delay_us',
-      'millis': 'millis',
-      'micros': 'micros',
-      'map': '_native_map',
-      'constrain': '_native_constrain',
-      'noInterrupts': 'cli',
-      'interrupts': 'sei',
-    };
+  override symbolAliases(program?: ProgramIR, ctx?: PlatformContext): Record<string, string> {
+    return this.resolveAvrProfileCached(program, ctx).symbolAliases;
   }
 
   /**
