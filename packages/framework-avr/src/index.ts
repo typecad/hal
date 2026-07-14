@@ -28,6 +28,18 @@ export {
   isInterruptPin,
 } from './registers.js';
 
+// Chip descriptors — author one per supported AVR MCU.
+export type {
+  AVRChipDescriptor,
+  AVRPinMap,
+  AVRTimer,
+  AVRPwmPin,
+  AVRInterruptPin,
+  AVRAdcConfig,
+  AVRUartConfig,
+} from './chips/types.js';
+export { ATMEGA328P, ATMEGA2560, setActiveChip } from './chips/index.js';
+
 // Platform strategy for native AVR code generation
 // Export as FrameworkStrategy for consistency with other framework packages
 export { NativeAVRStrategy, NativeAVRStrategy as FrameworkStrategy, PlatformStrategy } from './strategy.js';

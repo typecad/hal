@@ -1,6 +1,6 @@
 {
   "name": "@typecad/framework-avr",
-  "version": "0.1.0-alpha.1",
+  "version": "0.1.0-alpha.2",
   "private": true,
   "description": "TypeCAD framework package for native AVR register-level code generation",
   "type": "module",

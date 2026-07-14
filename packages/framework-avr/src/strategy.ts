@@ -8,16 +8,16 @@
 // ---------------------------------------------------------------------------
 
 import { ArduinoStrategy } from '@typecad/framework-arduino';
-import type { RuntimePolyfillIR } from '@typecad/cuttlefish/api/shared';
+import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR } from '@typecad/cuttlefish/api/shared';
 import {
   getPinInfo,
-  parsePinFromReceiver,
   getPinBitMask,
   getADCChannel,
   getPWMInfo,
-  inferReceiverKind,
   getInterruptInfo,
 } from './registers.js';
+import { activeChip, setActiveChip, ATMEGA328P } from './chips/index.js';
+import type { AVRChipDescriptor } from './chips/types.js';
 
 // ---------------------------------------------------------------------------
 // Native AVR code generation functions
@@ -25,43 +25,50 @@ import {
 
 /**
  * Generate native pinMode code with pre-computed bit mask.
+ *
+ * Accepts the lowercase canonical mode strings carried by HALOpIR
+ * ("output" | "input" | "input_pullup" | "input_pulldown").
  */
 function nativePinMode(pin: number, mode: string): string {
   const info = getPinInfo(pin);
   if (!info) return `/* invalid pin ${pin} */`;
 
-  const { ddr, port, bit } = info;
+  const { ddr, port } = info;
   const mask = getPinBitMask(pin);  // Pre-computed hex constant
 
-  if (mode === 'OUTPUT' || mode === '1') {
+  if (mode === 'output') {
     return `${ddr} |= ${mask}`;
-  } else if (mode === 'INPUT_PULLUP' || mode === '2') {
-    return `${ddr} &= ~${mask}, ${port} |= ${mask}`;
-  } else if (mode === 'INPUT_PULLDOWN') {
+  } else if (mode === 'input_pullup') {
+    return `${ddr} &= ~${mask}; ${port} |= ${mask}`;
+  } else if (mode === 'input_pulldown') {
     // AVR has no hardware pulldown — fall back to floating input
-    return `${ddr} &= ~${mask}, ${port} &= ~${mask}`;
-  } else { // INPUT
-    return `${ddr} &= ~${mask}, ${port} &= ~${mask}`;
+    return `${ddr} &= ~${mask}; ${port} &= ~${mask}`;
+  } else { // "input"
+    return `${ddr} &= ~${mask}; ${port} &= ~${mask}`;
   }
 }
 
 /**
  * Generate native digitalWrite code with pre-computed bit mask.
+ *
+ * Accepts literal HIGH/LOW or a runtime expression. For runtime values,
+ * emits a branchless assignment (the classic AVR idiom) rather than a
+ * side-effecting ternary, which would be a non-lvalue expression.
  */
 function nativeDigitalWrite(pin: number, value: string): string {
   const info = getPinInfo(pin);
   if (!info) return `/* invalid pin ${pin} */`;
-  
-  const { port, bit } = info;
+
+  const { port } = info;
   const mask = getPinBitMask(pin);  // Pre-computed hex constant
-  
+
   if (value === 'HIGH' || value === '1' || value === 'true') {
     return `${port} |= ${mask}`;
   } else if (value === 'LOW' || value === '0' || value === 'false') {
     return `${port} &= ~${mask}`;
   } else {
-    // Dynamic value - use ternary
-    return `(${value}) ? (${port} |= ${mask}) : (${port} &= ~${mask})`;
+    // Dynamic runtime expression — branchless read-modify-write
+    return `${port} = (${port} & ~${mask}) | ((${value}) ? ${mask} : 0)`;
   }
 }
 
@@ -71,8 +78,8 @@ function nativeDigitalWrite(pin: number, value: string): string {
 function nativeDigitalRead(pin: number): string {
   const info = getPinInfo(pin);
   if (!info) return `0 /* invalid pin ${pin} */`;
-  
-  const { pinReg, bit } = info;
+
+  const { pinReg } = info;
   const mask = getPinBitMask(pin);  // Pre-computed hex constant
   return `((${pinReg} & ${mask}) ? 1 : 0)`;
 }
@@ -84,11 +91,11 @@ function nativeDigitalRead(pin: number): string {
 function nativeAnalogRead(pin: number): string {
   const channel = getADCChannel(pin);
   if (channel === null) return `0 /* invalid analog pin ${pin} */`;
-  
+
   // Use GCC statement expression for multi-step ADC read
   // ADC is initialized once in setup() via _init_adc() - no runtime check needed
   return `({ ` +
-    `ADMUX = (1 << REFS0) | ${channel}; ` +  // AVcc reference, select channel
+    `ADMUX = ${activeChip.adc.referenceBits} | ${channel}; ` +  // reference + channel
     `ADCSRA |= (1 << ADSC); ` +               // Start conversion
     `while (ADCSRA & (1 << ADSC)); ` +        // Wait for completion
     `ADC; ` +                                  // Return result
@@ -122,9 +129,20 @@ export class NativeAVRStrategy extends ArduinoStrategy {
   // Override the ID to replace the default arduino strategy
   override readonly id = "arduino";
 
+  /**
+   * The chip descriptor driving this strategy instance. Register helpers and
+   * the emit path read it via the module-level `activeChip`, which is set
+   * here once per instance. Default is ATmega328P (the most popular AVR);
+   * pass another descriptor to target a different chip.
+   */
+  constructor(chip: AVRChipDescriptor = ATMEGA328P) {
+    super();
+    setActiveChip(chip);
+  }
+
   // ── Includes ────────────────────────────────────────────────────────────
 
-  override forcedIncludes(_program?: any, _ctx?: any): string[] {
+  override forcedIncludes(_program?: ProgramIR, _ctx?: PlatformContext): string[] {
     // Only avr/io.h here - util/delay.h needs F_CPU defined first
     return [
       '<avr/io.h>',
@@ -137,14 +155,14 @@ export class NativeAVRStrategy extends ArduinoStrategy {
    * This strategy provides native implementations for console.log.
    * The emitter will skip emitting the global console polyfill.
    */
-  nativePolyfills(): Set<string> {
+  override nativePolyfills(): Set<string> {
     return new Set(['console']);
   }
 
   /**
    * Generate native console polyfill using UART functions.
    */
-  generateNativePolyfills(program?: any, _ctx?: any): RuntimePolyfillIR[] {
+  override generateNativePolyfills(program?: ProgramIR, _ctx?: PlatformContext): RuntimePolyfillIR[] {
     const usesConsole = this.detectConsoleUsage(program);
     if (!usesConsole) {
       return [];
@@ -198,9 +216,9 @@ export class NativeAVRStrategy extends ArduinoStrategy {
   /**
    * Detect if console is used in the program.
    */
-  private detectConsoleUsage(program?: any): boolean {
+  private detectConsoleUsage(program?: ProgramIR): boolean {
     if (!program) return false;
-    
+
     for (const fn of program.functions ?? []) {
       for (const stmt of fn.statements ?? []) {
         if (this.statementUsesConsole(stmt)) {
@@ -208,20 +226,20 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         }
       }
     }
-    
+
     for (const stmt of program.topLevelStatements ?? []) {
       if (this.statementUsesConsole(stmt)) {
         return true;
       }
     }
-    
+
     return false;
   }
 
   /**
    * Check if a statement uses console.
    */
-  private statementUsesConsole(stmt: any): boolean {
+  private statementUsesConsole(stmt: StatementIR): boolean {
     if (!stmt) return false;
     if (stmt.kind === 'call') {
       const callee = stmt.callee ?? '';
@@ -233,9 +251,10 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         return true;
       }
     }
-    if (stmt.statements) {
-      for (const nested of stmt.statements) {
-        if (this.statementUsesConsole(nested)) {
+    const nested = (stmt as { statements?: StatementIR[] }).statements;
+    if (nested) {
+      for (const child of nested) {
+        if (this.statementUsesConsole(child)) {
           return true;
         }
       }
@@ -243,13 +262,14 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     return false;
   }
 
-  override shimLines(program?: any, _ctx?: any): string[] {
+  override shimLines(program?: ProgramIR, _ctx?: PlatformContext): string[] {
     const lines: string[] = [];
     
     // F_CPU must be defined before including util/delay.h
+    const fcpuLiteral = `${activeChip.fcpu}UL`;
     lines.push(
       '#ifndef F_CPU',
-      '#define F_CPU 16000000UL  // 16 MHz clock frequency',
+      `#define F_CPU ${fcpuLiteral}`,
       '#endif',
       '#include <util/delay.h>',
       '#include <avr/interrupt.h>',
@@ -329,13 +349,14 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       lines.push(
         '// ADC initialization',
         'static inline void _init_adc() {',
-        '  ADCSRA = (1 << ADEN) | (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);',
+        `  ADCSRA = (1 << ADEN) | ${activeChip.adc.prescalerBits};`,
         '}',
         ''
       );
     }
     
-    // PWM timer initialization
+    // PWM timer initialization — one helper per timer actually used, with the
+    // register setup sourced from the active chip descriptor's initCode.
     if (usesPWM && pwmPinsUsed.size > 0) {
       const timersNeeded = new Set<string>();
       for (const pin of pwmPinsUsed) {
@@ -344,29 +365,15 @@ export class NativeAVRStrategy extends ArduinoStrategy {
           timersNeeded.add(pwm.timerId);
         }
       }
-      
+
       lines.push('// PWM timer initialization');
-      
-      if (timersNeeded.has('timer0')) {
+
+      for (const timerId of timersNeeded) {
+        const timer = activeChip.timers[timerId];
+        if (!timer) continue;
         lines.push(
-          'static inline void _init_pwm_timer0() {',
-          '  TCCR0A |= (1 << WGM00); TCCR0B |= (1 << CS01) | (1 << CS00);',
-          '}',
-          ''
-        );
-      }
-      if (timersNeeded.has('timer1')) {
-        lines.push(
-          'static inline void _init_pwm_timer1() {',
-          '  TCCR1A |= (1 << WGM10); TCCR1B |= (1 << CS11);',
-          '}',
-          ''
-        );
-      }
-      if (timersNeeded.has('timer2')) {
-        lines.push(
-          'static inline void _init_pwm_timer2() {',
-          '  TCCR2A |= (1 << WGM20); TCCR2B |= (1 << CS22);',
+          `static inline void _init_pwm_${timerId}() {`,
+          `  ${timer.initCode}`,
           '}',
           ''
         );
@@ -421,49 +428,33 @@ export class NativeAVRStrategy extends ArduinoStrategy {
   /**
    * Generate setup initialization code based on peripheral usage.
    */
-  setupInitCode(program?: any, _ctx?: any): string[] {
+  override setupInitCode(program?: ProgramIR, _ctx?: PlatformContext): string[] {
     const lines: string[] = [];
-    
-    lines.push('_uart_init(9600)');
-    
+
+    lines.push(`_uart_init(${activeChip.uart.defaultBaud})`);
+
     const usage = program?.peripheralUsage;
     const pwmPinsUsed: Set<number> = usage?.pwmPinsUsed ?? new Set<number>();
     const outputPins: Set<number> = usage?.outputPins ?? new Set<number>();
     const inputPullupPins: Set<number> = usage?.inputPullupPins ?? new Set<number>();
     const inputPins: Set<number> = usage?.inputPins ?? new Set<number>();
-    
-    // Batch pin mode configuration by port
+
+    // Batch pin mode configuration by port. Resolve each pin's register info
+    // once (the previous implementation looked it up three times per pin).
     const portBatches = new Map<string, { outputs: number[], inputs: number[], pullups: number[] }>();
-    
-    for (const pin of outputPins) {
-      const port = getPinInfo(pin)?.port;
-      const ddr = getPinInfo(pin)?.ddr;
-      if (port && ddr) {
-        const key = `${ddr}:${port}`;
-        if (!portBatches.has(key)) portBatches.set(key, { outputs: [], inputs: [], pullups: [] });
-        portBatches.get(key)!.outputs.push(pin);
-      }
-    }
-    
-    for (const pin of inputPullupPins) {
-      const port = getPinInfo(pin)?.port;
-      const ddr = getPinInfo(pin)?.ddr;
-      if (port && ddr) {
-        const key = `${ddr}:${port}`;
-        if (!portBatches.has(key)) portBatches.set(key, { outputs: [], inputs: [], pullups: [] });
-        portBatches.get(key)!.pullups.push(pin);
-      }
-    }
-    
-    for (const pin of inputPins) {
-      const port = getPinInfo(pin)?.port;
-      const ddr = getPinInfo(pin)?.ddr;
-      if (port && ddr) {
-        const key = `${ddr}:${port}`;
-        if (!portBatches.has(key)) portBatches.set(key, { outputs: [], inputs: [], pullups: [] });
-        portBatches.get(key)!.inputs.push(pin);
-      }
-    }
+
+    const batchFor = (pin: number, bucket: 'outputs' | 'inputs' | 'pullups') => {
+      const info = getPinInfo(pin);
+      if (!info) return;
+      const key = `${info.ddr}:${info.port}`;
+      let batch = portBatches.get(key);
+      if (!batch) { batch = { outputs: [], inputs: [], pullups: [] }; portBatches.set(key, batch); }
+      batch[bucket].push(pin);
+    };
+
+    for (const pin of outputPins) batchFor(pin, 'outputs');
+    for (const pin of inputPullupPins) batchFor(pin, 'pullups');
+    for (const pin of inputPins) batchFor(pin, 'inputs');
     
     for (const [key, pins] of portBatches) {
       const [ddr, port] = key.split(':');
@@ -527,7 +518,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     return lines;
   }
 
-  override symbolAliases(_program?: any, _ctx?: any): Record<string, string> {
+  override symbolAliases(_program?: ProgramIR, _ctx?: PlatformContext): Record<string, string> {
     return {
       'delay': '_native_delay_ms',
       'delayMicroseconds': '_native_delay_us',
@@ -541,233 +532,56 @@ export class NativeAVRStrategy extends ArduinoStrategy {
   }
 
   /**
-   * Core native code generation for pin method calls and Serial.
+   * Resolve HAL operations to native AVR register access.
+   *
+   * This override is what makes the strategy "native AVR": every GPIO, PWM,
+   * and ADC op is lowered to direct register manipulation (PORTB/DDRB/PINB,
+   * OCRnx, ADMUX/ADC) instead of Arduino Wiring calls (digitalWrite etc.).
+   * Ops not handled here (timing/i2c/spi/uart/interrupt) fall through to the
+   * parent ArduinoStrategy so we don't have to re-implement those.
    */
-   private tryRenderNativeCall(
-    receiver: string,
-    method: string,
-    args: ReadonlyArray<any>,
-    renderArg: (e: any) => string,
-    boardConstants?: any,
-  ): string | undefined {
-    const a = (i: number) => args[i] !== undefined ? renderArg(args[i]) : '';
-    
-    // Handle Serial peripheral calls
-    if (receiver === 'Serial') {
-      switch (method) {
-        case 'initialize':
-        case 'begin': {
-          let baud = '9600';
-          if (args[0]) {
-            const arg = args[0];
-            if (arg.kind === 'object' && arg.fields) {
-              for (const field of arg.fields) {
-                if (field.name === 'baudRate') {
-                  baud = renderArg(field.value);
-                  break;
-                }
-              }
-            } else {
-              baud = a(0);
-            }
-          }
-          return `_uart_init(${baud})`;
-        }
-        case 'print':
-          return `_uart_print(${a(0)})`;
-        case 'println':
-          return args.length > 0 ? `_uart_println(${a(0)})` : '_uart_println("")';
-        case 'printInt':
-        case 'printNumber':
-          return `_uart_print_long(${a(0)})`;
-        case 'printlnInt':
-        case 'printlnNumber':
-          return `_uart_println_long(${a(0)})`;
-        case 'available':
-          return '_uart_available()';
-        case 'read':
-          return '_uart_read()';
-        case 'write':
-          return `_uart_write(${a(0)})`;
-        case 'flush':
-          return '/* UART flush: wait for TX complete */ (void)0';
-        // Ownership (opt-in, single-threaded AVR = boolean flag)
-        case 'take':
-          return `/* ${receiver}.take() */ (!_${receiver.toLowerCase()}_owned && (_${receiver.toLowerCase()}_owned = true))`;
-        case 'release':
-          return `/* ${receiver}.release() */ (_${receiver.toLowerCase()}_owned = false)`;
-        default:
-          return undefined;
+  override resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {
+    switch (op.operation) {
+      case "gpio.set_mode":
+        return { code: `${nativePinMode(op.pin, op.mode)};` };
+      case "gpio.write":
+        return { code: `${nativeDigitalWrite(op.pin, this.gpioValueLiteral(op.value))};` };
+      case "gpio.read":
+        return { expression: nativeDigitalRead(op.pin) };
+      case "gpio.toggle": {
+        const info = getPinInfo(op.pin);
+        if (!info) return { code: `/* invalid pin ${op.pin} */;` };
+        // AVR idiom: writing a 1 to PINx toggles the corresponding bit.
+        return { code: `${info.pinReg} |= ${getPinBitMask(op.pin)};` };
       }
-    }
-    
-    // Handle pin configuration calls
-    if (method.startsWith('config.output.')) {
-      const pin = parsePinFromReceiver(receiver);
-      if (pin !== null) {
-        if (method === 'config.output.initial') {
-          const value = a(0);
-          return `${nativePinMode(pin, 'OUTPUT')}, ${nativeDigitalWrite(pin, value)}`;
-        }
-        return nativePinMode(pin, 'OUTPUT');
-      }
-    }
-    
-    if (method.startsWith('config.input.')) {
-      const pin = parsePinFromReceiver(receiver);
-      if (pin !== null) {
-        if (method === 'config.inputPullUp') {
-          return nativePinMode(pin, 'INPUT_PULLUP');
-        } else if (method === 'config.inputPullDown') {
-          return nativePinMode(pin, 'INPUT_PULLDOWN');
-        } else if (method === 'config.input') {
-          return nativePinMode(pin, 'INPUT');
-        }
-      }
-    }
-
-    if (method === 'input') {
-      const pin = parsePinFromReceiver(receiver);
-      if (pin !== null) {
-        return nativePinMode(pin, 'INPUT');
-      }
-    }
-
-    if (method === 'inputPullUp') {
-      const pin = parsePinFromReceiver(receiver);
-      if (pin !== null) {
-        return nativePinMode(pin, 'INPUT_PULLUP');
-      }
-    }
-
-    if (method === 'inputPullDown') {
-      const pin = parsePinFromReceiver(receiver);
-      if (pin !== null) {
-        return nativePinMode(pin, 'INPUT_PULLDOWN');
-      }
-    }
-
-    // Object-creation aliases (same C++ as output/input/inputPullUp, different TS return types)
-    if (method === 'asOutput') {
-      const pin = parsePinFromReceiver(receiver);
-      if (pin !== null) {
-        return nativePinMode(pin, 'OUTPUT');
-      }
-    }
-
-    if (method === 'asInput') {
-      const pin = parsePinFromReceiver(receiver);
-      if (pin !== null) {
-        return nativePinMode(pin, 'INPUT');
-      }
-    }
-
-    if (method === 'asInputPullUp') {
-      const pin = parsePinFromReceiver(receiver);
-      if (pin !== null) {
-        return nativePinMode(pin, 'INPUT_PULLUP');
-      }
-    }
-    
-    // Parse pin number from receiver
-    const pin = parsePinFromReceiver(receiver);
-    if (pin === null) return undefined;
-
-    const pinKind = inferReceiverKind(pin);
-
-    switch (pinKind) {
-      case 'analog-input':
-        switch (method) {
-          case 'read':
-            return nativeAnalogRead(pin);
-          case 'readVoltage': {
-            const refV = (boardConstants?.get('peripherals.adc.0.referenceVoltage') as number) ?? 5.0;
-            const res = (boardConstants?.get('peripherals.adc.0.resolution') as number) ?? 10;
-            const maxADC = Math.pow(2, res) - 1;
-            return `(nativeAnalogRead(${pin}) * ${refV} / ${maxADC}.0)`;
-          }
-          case 'getResolution': {
-            const res = (boardConstants?.get('peripherals.adc.0.resolution') as number) ?? 10;
-            return `${res}`;
-          }
-          case 'setMode':
-            return nativePinMode(pin, a(0));
-          // Analog pins on AVR are dual-purpose (A0-A5 = D14-D19 on PORTC)
-          // They CAN be used as digital I/O, but analog capability is lost.
-          case 'output':
-            if (args.length > 0) {
-              return `${nativePinMode(pin, 'OUTPUT')}; ${nativeDigitalWrite(pin, a(0))}`;
-            }
-            return nativePinMode(pin, 'OUTPUT');
-          case 'high':
-            return `${nativePinMode(pin, 'OUTPUT')}; ${nativeDigitalWrite(pin, 'HIGH')}`;
-          case 'low':
-            return `${nativePinMode(pin, 'OUTPUT')}; ${nativeDigitalWrite(pin, 'LOW')}`;
-          case 'input':
-            return nativePinMode(pin, 'INPUT');
-          case 'inputPullUp':
-            return nativePinMode(pin, 'INPUT_PULLUP');
-          default:
-            return undefined;
-        }
-
-      case 'digital':
-        switch (method) {
-          case 'read':
-            return nativeDigitalRead(pin);
-          case 'high':
-            return nativeDigitalWrite(pin, 'HIGH');
-          case 'low':
-            return nativeDigitalWrite(pin, 'LOW');
-          case 'toggle': {
-            const info = getPinInfo(pin);
-            if (!info) return undefined;
-            return `${info.port} ^= (1 << ${info.bit})`;
-          }
-          case 'write':
-            return nativeDigitalWrite(pin, a(0));
-          case 'isHigh':
-            return `(${nativeDigitalRead(pin)} == 1)`;
-          case 'isLow':
-            return `(${nativeDigitalRead(pin)} == 0)`;
-          case 'setMode':
-            return nativePinMode(pin, a(0));
-          default:
-            return undefined;
-        }
-
-      case 'pwm':
-        switch (method) {
-          case 'read':
-            return nativeDigitalRead(pin);
-          case 'high':
-            return nativeDigitalWrite(pin, 'HIGH');
-          case 'low':
-            return nativeDigitalWrite(pin, 'LOW');
-          case 'toggle': {
-            const info = getPinInfo(pin);
-            if (!info) return undefined;
-            return `${info.port} ^= (1 << ${info.bit})`;
-          }
-          case 'write':
-            return nativeAnalogWrite(pin, a(0));
-          case 'setDutyCycle':
-            return nativeAnalogWrite(pin, a(0));
-          case 'isHigh':
-            return `(${nativeDigitalRead(pin)} == 1)`;
-          case 'isLow':
-            return `(${nativeDigitalRead(pin)} == 0)`;
-          case 'getResolution':
-            return '8';
-          default:
-            return undefined;
-        }
-
+      case "pwm.write":
+        return { code: `${nativeAnalogWrite(op.pin, this.renderPwmDuty(op.duty))};` };
+      case "adc.read":
+        return { expression: nativeAnalogRead(op.pin) };
       default:
-        return undefined;
+        // Timing, I2C, SPI, UART, interrupt, tone, etc. stay on the
+        // Arduino Wiring API — they are not what "native AVR" optimizes.
+        return super.resolveHALOperation(op);
     }
   }
-  
+
+  /**
+   * Normalize a gpio.write value (literal 0/1 or a runtime expression string)
+   * into the token form nativeDigitalWrite expects.
+   */
+  private gpioValueLiteral(value: 0 | 1 | string): string {
+    if (value === 1) return "HIGH";
+    if (value === 0) return "LOW";
+    return value;
+  }
+
+  /**
+   * Render a pwm.write duty value (numeric or expression string).
+   */
+  private renderPwmDuty(duty: number | string): string {
+    return typeof duty === "number" ? String(duty) : duty;
+  }
+
   override transformConsoleCall(
     method: string,
     renderedArgs: string,
