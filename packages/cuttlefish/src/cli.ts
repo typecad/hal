@@ -420,6 +420,9 @@ async function main(): Promise<void> {
 
         printDiagnostics(result.diagnostics);
         ui.printTasks(result.asyncTaskNames ?? [], result.usesTimers ?? false);
+        if (result.diagnosticsReportPath) {
+          ui.printInfo(`Diagnostics report: ${result.diagnosticsReportPath}`);
+        }
 
         if (result.diagnostics.length === 0) {
           ui.printSuccess();
@@ -515,6 +518,9 @@ async function main(): Promise<void> {
 
             printDiagnostics(rebuildResult.diagnostics);
             ui.printTasks(rebuildResult.asyncTaskNames ?? [], rebuildResult.usesTimers ?? false);
+            if (rebuildResult.diagnosticsReportPath) {
+              ui.printInfo(`Diagnostics report: ${rebuildResult.diagnosticsReportPath}`);
+            }
 
             if (rebuildResult.diagnostics.length > 0) {
               // Errors shown via printDiagnostics — skip compile/upload
@@ -601,6 +607,9 @@ async function main(): Promise<void> {
 
       printDiagnostics(result.diagnostics);
       ui.printTasks(result.asyncTaskNames ?? [], result.usesTimers ?? false);
+      if (result.diagnosticsReportPath) {
+        ui.printInfo(`Diagnostics report: ${result.diagnosticsReportPath}`);
+      }
     }
 
     if (hasFatalDiagnostics(result)) {

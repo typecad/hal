@@ -200,6 +200,8 @@ export interface GeneratedOutputs {
   diagnostics: Diagnostic[];
   asyncTaskNames?: string[];
   usesTimers?: boolean;
+  /** Path to the diagnostics.md report, if --diagnostics was passed. */
+  diagnosticsReportPath?: string;
 }
 
 interface CompileErrorEntry {

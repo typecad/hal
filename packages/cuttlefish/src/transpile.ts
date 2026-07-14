@@ -819,6 +819,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // Profiler session ends (profiling disabled - no report generation)
 
   // ── Generate diagnostics report if enabled ──────────────────────────────
+  let diagnosticsReportPath: string | undefined;
   if (options.diagnostics) {
     try {
       const entryPreBuilt = preBuilt.get(entryFile);
@@ -838,17 +839,23 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         removedSymbols: allRemovedSymbols,
       });
       writeDiagnosticsReport(report, entryPreBuilt?.programIR ?? null, outDir);
+      diagnosticsReportPath = path.join(outDir, "diagnostics.md");
     } catch (e) {
-      // Diagnostics report generation is best-effort; don't fail the build
-      if (options.debug) {
-        logDebug(`Diagnostics report generation failed: ${e instanceof Error ? e.message : String(e)}`, true);
-      }
+      // Diagnostics report generation is best-effort; don't fail the build,
+      // but surface the failure so the user knows --diagnostics didn't work.
+      diagnostics.push({
+        severity: "warning",
+        message: `Diagnostics report generation failed: ${e instanceof Error ? e.message : String(e)}`,
+        code: "diagnostics-report-failed",
+        source: "transpile",
+      });
     }
   }
 
   return {
     ...entryOutputs,
     diagnostics,
+    diagnosticsReportPath,
   };
 }
 
