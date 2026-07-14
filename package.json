@@ -10,6 +10,8 @@
     "packages/mcu-esp32s3",
     "packages/mcu-esp32c3",
     "packages/mcu-esp32c6",
+    "packages/mcu-rp2040",
+    "packages/mcu-rp2350",
     "packages/framework-avr",
     "packages/framework-arduino",
     "packages/framework-native",
@@ -18,6 +20,8 @@
     "packages/board-esp32s3",
     "packages/board-esp32c3",
     "packages/board-esp32c6",
+    "packages/board-rp2040",
+    "packages/board-rp2350",
     "packages/expect",
     "packages/ui",
     "packages/simulator"
