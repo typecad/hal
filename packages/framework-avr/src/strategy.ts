@@ -520,6 +520,74 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       ''
     );
 
+    // ── Native SPI driver — SPCR/SPSR/SPDR registers (no Arduino SPI lib) ──
+    lines.push(
+      '#ifndef ARDUINO',
+      '// Native SPI driver — ATmega328P SPI master mode.',
+      'static inline void _spi_init() {',
+      '  // Enable SPI, Master mode, F_CPU/4 clock (SPR0=SPR1=0).',
+      '  DDRB |= (1 << 5) | (1 << 3) | (1 << 2);  // MOSI, SCK, /SS as outputs',
+      '  DDRB &= ~(1 << 4);  // MISO as input',
+      '  SPCR = (1 << SPE) | (1 << MSTR);',
+      '}',
+      '',
+      'static inline uint8_t _spi_transfer(uint8_t data) {',
+      '  SPDR = data;',
+      '  while (!(SPSR & (1 << SPIF)));',
+      '  return SPDR;',
+      '}',
+      '',
+      'static inline void _spi_set_mode(uint8_t mode) {',
+      '  // mode: 0=CPOL0/CPHA0, 1=CPOL0/CPHA1, 2=CPOL1/CPHA0, 3=CPOL1/CPHA1',
+      '  SPCR = (SPCR & ~((1 << CPOL) | (1 << CPHA)))',
+      '       | ((mode & 2) ? (1 << CPOL) : 0)',
+      '       | ((mode & 1) ? (1 << CPHA) : 0);',
+      '}',
+      '',
+      'static inline void _spi_set_bit_order(uint8_t lsbFirst) {',
+      '  if (lsbFirst) SPCR |= (1 << DORD); else SPCR &= ~(1 << DORD);',
+      '}',
+      '',
+      'static inline void _spi_begin_transaction(unsigned long settings) {',
+      '  (void)settings;  // SPISettings applied via set_mode/set_bit_order',
+      '}',
+      '#endif',
+      ''
+    );
+
+    // ── Native UART extensions — print expressions, peek, flush ──────────
+    // The base _uart_* helpers (init/write/read/available/print/println) are
+    // already emitted above. These add expression-printing (for uart.print
+    // with numeric values), peek, and flush.
+    lines.push(
+      '#ifndef ARDUINO',
+      '// Print a numeric/string expression via UART (template handles all types).',
+      'template<typename T> inline void _uart_print_expr(T val) {',
+      '  _uart_print_long((long)val);',
+      '}',
+      'inline void _uart_print_expr(const char* s) { _uart_print(s); }',
+      'inline void _uart_print_expr(char c) { _uart_write(c); }',
+      'inline void _uart_print_expr(float f) { _uart_print_float(f); }',
+      'inline void _uart_print_expr(double f) { _uart_print_float(f); }',
+      'inline void _uart_print_expr(bool b) { _uart_println(b ? "true" : "false"); }',
+      '',
+      'template<typename T> inline void _uart_println_expr(T val) {',
+      '  _uart_print_long((long)val); _uart_write(\'\\r\'); _uart_write(\'\\n\');',
+      '}',
+      'inline void _uart_println_expr(const char* s) { _uart_println(s); }',
+      'inline void _uart_println_expr(float f) { _uart_print_float(f); _uart_write(\'\\r\'); _uart_write(\'\\n\'); }',
+      '',
+      'static inline int _uart_peek() {',
+      '  return (UCSR0A & (1 << RXC0)) ? UDR0 : -1;',
+      '}',
+      '',
+      'static inline void _uart_flush() {',
+      '  while (!(UCSR0A & (1 << UDRE0)));  // wait for TX buffer empty',
+      '}',
+      '#endif',
+      ''
+    );
+
     // Native tone() driver — Timer2 CTC mode toggling the output-compare pin
     // at the desired frequency. Guarded with #ifndef ARDUINO so the Arduino
     // core's tone()/noTone() (Tone.cpp) are used when the core is linked.
@@ -870,6 +938,50 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       }
       case "tone.stop":
         return { code: `_tc_tone_stop(${op.pin});` };
+      // ── SPI — native SPCR/SPSR/SPDR registers, not Arduino SPI library ──
+      case "spi.begin":
+        return { code: `_spi_init();` };
+      case "spi.end":
+        return { code: `SPCR = 0;` };
+      case "spi.transfer":
+        return { expression: `_spi_transfer(${(op as any).data})` };
+      case "spi.begin_transaction":
+        // SPISettings configure: fold into SPCR/SPSR. The settings expression
+        // is resolved by the HAL; we apply the mode/frequency at begin time.
+        return { code: `_spi_begin_transaction(${(op as any).settings});` };
+      case "spi.end_transaction":
+        return { code: `/* SPI end transaction */;` };
+      case "spi.set_mode":
+        return { code: `_spi_set_mode(${(op as any).mode});` };
+      case "spi.set_bit_order":
+        return { code: `_spi_set_bit_order(${(op as any).order === "lsb" ? 1 : 0});` };
+      case "spi.cs_low":
+        return { code: nativeDigitalWrite(op.pin, "LOW") + ";" };
+      case "spi.cs_high":
+        return { code: nativeDigitalWrite(op.pin, "HIGH") + ";" };
+      // ── UART — native USART0 helpers, not Arduino HardwareSerial ────────
+      case "uart.begin":
+        return { code: `_uart_init(${(op as any).baud});` };
+      case "uart.end":
+        return { code: `UCSR0B = 0;` };
+      case "uart.print":
+        return { code: `_uart_print_expr(${(op as any).value});` };
+      case "uart.println":
+        return { code: `_uart_println_expr(${(op as any).value});` };
+      case "uart.printf": {
+        const uop = op as any;
+        return { code: `{ char __buf[128]; snprintf(__buf, sizeof(__buf), ${uop.format}${uop.args.length > 0 ? ", " + uop.args.join(", ") : ""}); _uart_print(__buf); }` };
+      }
+      case "uart.write":
+        return { code: `_uart_write(${(op as any).data});` };
+      case "uart.read":
+        return { expression: `_uart_read()` };
+      case "uart.peek":
+        return { expression: `_uart_peek()` };
+      case "uart.available":
+        return { expression: `_uart_available()` };
+      case "uart.flush":
+        return { code: `_uart_flush();` };
       // ── Invalid-on-AVR ops — no-op with a comment, not undefined symbols ──
       case "dac.write":
         return { code: `/* dac.write not supported on AVR (no DAC hardware) */;` };
