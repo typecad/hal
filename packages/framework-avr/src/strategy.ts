@@ -262,7 +262,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     return false;
   }
 
-  override shimLines(program?: ProgramIR, _ctx?: PlatformContext): string[] {
+  override shimLines(program?: ProgramIR, ctx?: PlatformContext): string[] {
     const lines: string[] = [];
     
     // F_CPU must be defined before including util/delay.h
@@ -421,7 +421,18 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         ''
       );
     }
-    
+
+    // Merge in the parent Arduino shims. The AVR block above is emitted first
+    // (it defines F_CPU and the AVR peripheral helpers); the parent then
+    // contributes the conditional helpers its emit path also depends on —
+    // CUTTLEFISH_UNDEFINED / cuttlefish_nullish (for `undefined`/`??`),
+    // PinGroup, async runtime, string buffer, etc. Without this delegation,
+    // any program using `undefined` or `??` fails to compile because the
+    // transpiler emits references to symbols this override never defines.
+    if (program && ctx) {
+      lines.push(...super.shimLines(program, ctx));
+    }
+
     return lines;
   }
   
