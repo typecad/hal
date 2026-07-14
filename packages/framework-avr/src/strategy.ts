@@ -520,17 +520,29 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       ''
     );
 
-    // External interrupt handlers
+    // External interrupt handlers — data-driven from the chip descriptor.
+    // Guarded with #ifndef ARDUINO so the Arduino core's ISR definitions
+    // (from WInterrupts.c) are used when the core is linked, avoiding a
+    // multiple-definition link error. In a bare-metal build, these provide
+    // native ISR dispatch via function-pointer trampolines.
     if (usesExternalInterrupts) {
-      lines.push(
-        'static volatile void (*_int0_handler)(void) = 0;',
-        'static volatile void (*_int1_handler)(void) = 0;',
-        '',
-        'ISR(INT0_vect) { if (_int0_handler) _int0_handler(); }',
-        '',
-        'ISR(INT1_vect) { if (_int1_handler) _int1_handler(); }',
-        ''
-      );
+      const intPins = Object.entries(activeChip.interruptsByPin);
+      if (intPins.length > 0) {
+        lines.push('#ifndef ARDUINO');
+        for (const [, info] of intPins) {
+          lines.push(
+            `static volatile void (*${info.handler})(void) = 0;`,
+          );
+        }
+        lines.push('');
+        for (const [, info] of intPins) {
+          lines.push(
+            `ISR(${info.vector}) { if (${info.handler}) ${info.handler}(); }`,
+            '',
+          );
+        }
+        lines.push('#endif');
+      }
     }
 
     // Merge in the parent Arduino shims. The AVR block above is emitted first
@@ -541,10 +553,51 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // any program using `undefined` or `??` fails to compile because the
     // transpiler emits references to symbols this override never defines.
     if (program && ctx) {
-      lines.push(...super.shimLines(program, ctx));
+      let parentLines = super.shimLines(program, ctx);
+      // The parent's __tc_Timing struct calls ::delay()/::millis()/::micros()
+      // with global scope, bypassing the AVR native helpers. Filter it out
+      // and emit a native replacement that routes through _native_delay_ms,
+      // _native_delay_us, and the native millis()/micros() polyfill.
+      parentLines = this.filterShimBlock(parentLines, 'struct __tc_Timing {', '} Timing;');
+      lines.push(...parentLines);
+
+      // Native __tc_Timing replacement — delegates to AVR helpers, not the
+      // Arduino core. freeHeap() uses the avr-libc __heap_start/__brkval trick.
+      lines.push(
+        '// Native __tc_Timing — delegates to AVR helpers, not Arduino core.',
+        'struct __tc_Timing {',
+        '    unsigned long millis() { return millis(); }',
+        '    unsigned long micros() { return micros(); }',
+        '    void delay(unsigned long ms) { _native_delay_ms(ms); }',
+        '    void delayMicroseconds(unsigned int us) { _native_delay_us(us); }',
+        '    unsigned long freeHeap() {',
+        '        extern int __heap_start, *__brkval;',
+        '        int v;',
+        '        return (unsigned long)((size_t)&v - (__brkval == 0 ? (size_t)&__heap_start : (size_t)__brkval));',
+        '    }',
+        '} Timing;',
+        ''
+      );
     }
 
     return lines;
+  }
+
+  /**
+   * Remove a contiguous block of shim lines between startMarker and endMarker
+   * (inclusive). Mirrors the filterShimBlock utility in the emit pipeline.
+   */
+  private filterShimBlock(lines: string[], startMarker: string, endMarker: string): string[] {
+    const startIdx = lines.findIndex(l => l.includes(startMarker));
+    if (startIdx === -1) return lines;
+    const endIdx = lines.findIndex((l, i) => i >= startIdx && l.includes(endMarker));
+    if (endIdx === -1) return lines;
+    const filtered = lines.slice();
+    filtered.splice(startIdx, endIdx - startIdx + 1);
+    while (filtered.length > 0 && filtered[startIdx] === '') {
+      filtered.splice(startIdx, 1);
+    }
+    return filtered;
   }
   
   /**
@@ -681,6 +734,32 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         return { code: `${nativeAnalogWrite(op.pin, this.renderPwmDuty(op.duty))};` };
       case "adc.read":
         return { expression: nativeAnalogRead(op.pin) };
+      // ── Native timing — route through AVR shims, not Arduino core ──────
+      case "timing.delay":
+        return { code: `_native_delay_ms(${(op as any).ms});` };
+      case "timing.delay_microseconds":
+        return { code: `_native_delay_us(${(op as any).us});` };
+      case "timing.millis":
+        return { expression: "millis()" };
+      case "timing.micros":
+        return { expression: "micros()" };
+      // ── Native external interrupts — wire the ISR trampoline + EICRA ──
+      case "interrupt.attach": {
+        const iinfo = getInterruptInfo(op.pin);
+        if (!iinfo) return { code: `/* pin ${op.pin} has no external interrupt */;` };
+        const modeBits = this.interruptModeBits(iinfo.interrupt, (op as any).mode);
+        return { code: `${iinfo.handler} = ${(op as any).handler}; ${modeBits}; EIMSK |= (1 << ${iinfo.interrupt});` };
+      }
+      case "interrupt.detach": {
+        const iinfo = getInterruptInfo(op.pin);
+        if (!iinfo) return { code: `/* pin ${op.pin} has no external interrupt */;` };
+        return { code: `EIMSK &= ~(1 << ${iinfo.interrupt}); ${iinfo.handler} = 0;` };
+      }
+      // ── Invalid-on-AVR ops — no-op with a comment, not undefined symbols ──
+      case "dac.write":
+        return { code: `/* dac.write not supported on AVR (no DAC hardware) */;` };
+      case "power.set_cpu_frequency":
+        return { code: `/* set_cpu_frequency not supported on AVR */;` };
       default:
         // Timing, I2C, SPI, UART, interrupt, tone, etc. stay on the
         // Arduino Wiring API — they are not what "native AVR" optimizes.
@@ -696,6 +775,37 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     if (value === 1) return "HIGH";
     if (value === 0) return "LOW";
     return value;
+  }
+
+  /**
+   * Emit EICRA/EICRB bit configuration for an external interrupt trigger mode.
+   * Mode values come from the HAL IR: "rising" | "falling" | "change" | "low"
+   * (or "high" which AVR treats as "low"-level like "low").
+   *
+   * INT0-3 use EICRA (ISCn0/ISCn1 bits at positions n*2). INT4-7 use EICRB
+   * (ISCn0/ISCn1 at positions (n-4)*2). Only the ATmega2560 has INT4-7.
+   */
+  private interruptModeBits(interruptId: string, mode: string): string {
+    const num = parseInt(interruptId.replace("INT", ""), 10);
+    const reg = num < 4 ? "EICRA" : "EICRB";
+    const bitBase = num < 4 ? num * 2 : (num - 4) * 2;
+    const isc0 = `ISC${num}0`;
+    const isc1 = `ISC${num}1`;
+    // ISC bits: 00 = low level, 01 = any edge, 10 = falling, 11 = rising
+    const set = (bits: string[]) =>
+      bits.length === 0
+        ? `${reg} &= ~((1 << ${isc0}) | (1 << ${isc1}))`
+        : `${reg} = (${reg} & ~((1 << ${isc0}) | (1 << ${isc1}))) | (${bits.map(b => `(1 << ${b})`).join(" | ")})`;
+    switch (mode?.toLowerCase()) {
+      case "rising":   return set([isc0, isc1]);
+      case "falling":  return set([isc1]);
+      case "change":
+      case "both":     return set([isc0]);
+      case "low":
+      case "high":
+      case "level":    return set([]);
+      default:         return set([isc0, isc1]); // default to rising
+    }
   }
 
   /**
