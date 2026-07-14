@@ -166,6 +166,8 @@ export interface ResolvedConfig {
   buildTarget: string;
   board: string;
   target: string;
+  /** Framework package name, e.g. "@typecad/framework-avr". */
+  framework?: string;
   /** Absolute path to project root. */
   projectRoot: string;
 }

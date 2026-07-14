@@ -240,10 +240,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       helperStructs: [],
       helperFunctions: [
         `// Native millis()/micros() — Timer0 overflow ISR.`,
-        `// Guarded: when the Arduino core is linked (Serial/test-harness builds),`,
-        `// the core's millis()/micros() and Timer0 ISR are used instead. In a`,
-        `// bare-metal build (main() override, no Serial), these own the vectors.`,
-        `#ifndef ARDUINO`,
+        `// Native millis()/micros() — Timer0 overflow ISR (no Arduino core).`,
         `static volatile unsigned long _tc_millis_count = 0;`,
         `ISR(${ovfVector}) { _tc_millis_count++; }`,
         `static inline void _init_millis() {`,
@@ -263,11 +260,6 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         `  SREG = oldSREG;`,
         `  return ((m << 8) + t) * (${prescaler}UL / (F_CPU / 1000000UL));`,
         `}`,
-        `#else`,
-        `// Arduino core linked: use its millis()/micros(). _init_millis is a no-op`,
-        `// since the core's main() already configured Timer0.`,
-        `static inline void _init_millis() {}`,
-        `#endif`,
       ],
       shimMacros: [],
       dependencies: [],
@@ -400,7 +392,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       lines.push(
         '// UART initialization (native AVR USART0)',
         'static inline void _uart_init(unsigned long baud) {',
-        '  unsigned int ubrr = (F_CPU / 16 / baud - 1);',
+        '  unsigned int ubrr = (F_CPU + baud * 8L) / (baud * 16L) - 1;  // rounded',
         '  UBRR0H = (unsigned char)(ubrr >> 8);',
         '  UBRR0L = (unsigned char)ubrr;',
         '  UCSR0B = (1 << RXEN0) | (1 << TXEN0);',
@@ -417,8 +409,10 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         '}',
         '',
         'static inline void _uart_write(unsigned char data) {',
+        '  uint8_t s = SREG; cli();',
         '  while (!(UCSR0A & (1 << UDRE0)));',
         '  UDR0 = data;',
+        '  SREG = s;',
         '}',
         '',
         'static inline void _uart_print(const char* str) {',
@@ -694,7 +688,6 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // AVR Preferences shim and the HAL eeprom.ts proxy emit, but backed by
     // avr-libc eeprom_read_byte/eeprom_write_byte/eeprom_update_byte.
     lines.push(
-      '#ifndef ARDUINO',
       '#include <avr/eeprom.h>',
       '// Native EEPROM — wraps avr-libc, matching the Arduino EEPROM API.',
       'struct _NativeEEPROM {',
@@ -703,7 +696,6 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       '  void update(int addr, uint8_t val) { eeprom_update_byte((uint8_t*)addr, val); }',
       '  uint16_t length() { return E2END + 1; }',
       '} EEPROM;',
-      '#endif',
       ''
     );
 
@@ -750,13 +742,12 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     );
 
     // External interrupt handlers — data-driven from the chip descriptor.
-    // Guarded: when the Arduino core is linked, attachInterrupt() (from
-    // WInterrupts.c) owns these vectors. In a bare-metal build these ISRs
-    // provide native dispatch.
+    // Native ISR dispatch via function-pointer trampolines. The bare-metal
+    // main() prevents the Arduino core from being linked, so these ISRs own
+    // the interrupt vectors exclusively.
     if (usesExternalInterrupts) {
       const intPins = Object.entries(activeChip.interruptsByPin);
       if (intPins.length > 0) {
-        lines.push('#ifndef ARDUINO');
         for (const [, info] of intPins) {
           lines.push(
             `static volatile void (*${info.handler})(void) = 0;`,
@@ -769,7 +760,6 @@ export class NativeAVRStrategy extends ArduinoStrategy {
             '',
           );
         }
-        lines.push('#endif');
       }
     }
 
@@ -788,10 +778,9 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       // _native_delay_us, and the native millis()/micros() polyfill.
       parentLines = this.filterShimBlock(parentLines, 'struct __tc_Timing {', '} Timing;');
 
-      // Strip Arduino core includes — we're bare-metal (main() prevents the
-      // core from linking, so these headers would be dead weight or cause
-      // conflicts). The native drivers provide every peripheral.
-      // Keep <avr/wdt.h> — it's avr-libc, not Arduino core.
+      // Strip Arduino core includes — the bare-metal main() prevents the
+      // Arduino core from being linked, so these headers are dead weight.
+      // The native drivers provide every peripheral.
       parentLines = parentLines.filter(l =>
         !l.includes('<Arduino.h>') &&
         !l.includes('<Wire.h>') &&
@@ -824,26 +813,25 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // core from being linked when the program uses no Arduino core symbols.
     // Calls setup() once, then runs the cooperative super-loop (calling loop()
     // which contains the timer/microtask pump injected by asyncLoopInjection).
-    //
-    // Gated on UART usage: the on-device test harness and any program using
-    // Serial.print() need the Arduino core's HardwareSerial, which requires
-    // the core's init() + main(). When Serial is NOT used, defining main()
-    // causes the linker to dead-code-eliminate the entire Arduino core
-    // (wiring.c, HardwareSerial, Wire, SPI, etc.), yielding a dramatically
-    // smaller binary (330 bytes vs 2.5 KB for a hello-world).
-    if (!program?.peripheralUsage?.uart) {
-      lines.push(
-        '// Bare-metal entry point — prevents the Arduino core from being linked.',
-        'int main(void) {',
-        '  setup();',
-        '  while (1) {',
-        '    loop();',
-        '  }',
-        '  return 0;',
-        '}',
-        ''
-      );
-    }
+    // Bare-metal main() — overrides the Arduino core's main(), preventing the
+    // core from being linked. The expect test harness now routes protocol
+    // output through the framework's native _uart_* helpers (via the
+    // OutputShim), so Serial is never referenced and the core isn't needed.
+    // A short startup delay gives the host's serial reader time to open the
+    // port after the DTR reset (the Arduino core does this implicitly).
+    lines.push(
+      '// Bare-metal entry point — prevents the Arduino core from being linked.',
+      'int main(void) {',
+      '  _native_delay_ms(2000);  // let host open port after DTR reset',
+      '  sei();                    // enable Timer0 ISR for millis()',
+      '  setup();',
+      '  while (1) {',
+      '    loop();',
+      '  }',
+      '  return 0;',
+      '}',
+      ''
+    );
 
     return lines;
   }
@@ -871,7 +859,12 @@ export class NativeAVRStrategy extends ArduinoStrategy {
   override setupInitCode(program?: ProgramIR, _ctx?: PlatformContext): string[] {
     const lines: string[] = [];
 
-    lines.push(`_uart_init(${activeChip.uart.defaultBaud})`);
+    // Only init UART at the default baud if the program itself uses console
+    // output. The expect test harness provides its own _uart_init(115200) via
+    // the OutputShim preamble, so we skip this to avoid a double-init.
+    if (program && this.detectConsoleUsage(program)) {
+      lines.push(`_uart_init(${activeChip.uart.defaultBaud})`);
+    }
 
     // Start the Timer0 millis backbone before anything else — timing is
     // foundational (setInterval, delay-relative ops, and the async runtime
@@ -963,7 +956,8 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // Enable global interrupts last, so the Timer0 overflow ISR (and any
     // configured external interrupts) begin firing only after all peripheral
     // setup is complete.
-    lines.push('sei()');
+    // Note: sei() is called in main() after the startup delay, so the Timer0
+    // ISR does not fire during the _uart_init preamble or protocol output.
 
     return lines;
   }

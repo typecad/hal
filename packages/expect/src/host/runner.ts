@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ResolvedConfig, RunResult, FileResult } from './types.js';
 import { findTestFiles } from './finder.js';
-import { preprocess } from './preprocessor.js';
+import { preprocess, serialShim, avrUartShim } from './preprocessor.js';
 import { transpileTestFile, compileSketch, uploadSketch } from './compiler.js';
 import { readSerialOutput } from './serial.js';
 import { parseProtocolLines } from './parser.js';
@@ -107,6 +107,7 @@ async function processTestFile(
   try {
     preprocessed = preprocess(source, path.basename(filePath), {
       isAvr: config.target === 'avr' || config.target === 'megaavr',
+      shim: config.framework === '@typecad/framework-avr' ? avrUartShim : serialShim,
     });
   } catch (e) {
     return errorResult(filePath, `Preprocessing failed: ${(e as Error).message}`, startTime);

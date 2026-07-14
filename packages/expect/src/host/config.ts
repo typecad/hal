@@ -69,6 +69,7 @@ export function loadConfig(
     buildTarget: test.buildTarget ?? raw.frameworkData?.buildTarget ?? 'arduino:avr:uno',
     board: test.board ?? raw.board ?? '@typecad/board-arduino-uno',
     target: raw.target ?? 'avr',
+    framework: raw.framework,
     projectRoot,
   };
 }

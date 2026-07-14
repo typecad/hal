@@ -30,9 +30,43 @@ import { emitSegments } from './protocol-emitter.js';
 // Public API
 // ---------------------------------------------------------------------------
 
+/**
+ * Describes how the test protocol emits output for a given framework.
+ * Each framework provides its own shim so the preprocessor doesn't hardcode
+ * Serial.* (which would force the Arduino core to be linked).
+ */
+export interface OutputShim {
+  /** The init call emitted in the preamble, e.g. "Serial.begin(115200)". */
+  begin: string;
+  /** Print without newline — receives a fully-formed argument expression. */
+  print: (expr: string) => string;
+  /** Print with newline — receives a fully-formed argument expression. */
+  println: (expr: string) => string;
+  /** The idle-loop delay call after SUITE_END, e.g. "delay(1000)". */
+  delay: string;
+}
+
+/** Default shim: Arduino HardwareSerial. */
+export const serialShim: OutputShim = {
+  begin: 'Serial.begin(115200)',
+  print: (e) => `Serial.print(${e})`,
+  println: (e) => `Serial.println(${e})`,
+  delay: 'delay(1000)',
+};
+
+/** AVR native UART shim: routes through framework-avr's _uart_* helpers. */
+export const avrUartShim: OutputShim = {
+  begin: '_uart_init(115200)',
+  print: (e) => `_uart_print_expr(${e})`,
+  println: (e) => `_uart_println_expr(${e})`,
+  delay: '_native_delay_ms(1000)',
+};
+
 export interface PreprocessorOptions {
   /** Wrap string literals in Arduino F() macro to save SRAM on AVR. */
   isAvr?: boolean;
+  /** Output shim — defaults to serialShim (Arduino HardwareSerial). */
+  shim?: OutputShim;
 }
 
 /**
@@ -46,7 +80,7 @@ export interface PreprocessorOptions {
  */
 export function preprocess(source: string, fileName: string = 'test.ts', options?: PreprocessorOptions): string {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const ctx = new PreprocessorContext(options?.isAvr ?? false);
+  const ctx = new PreprocessorContext(options?.isAvr ?? false, options?.shim);
 
   for (const stmt of sf.statements) {
     if (ts.isImportDeclaration(stmt)) {
@@ -72,15 +106,19 @@ export class PreprocessorContext {
   private varCounter = 0;
   private fnCounter = 0;
   private preambleEmitted = false;
-  private readonly baudRate = 115200;
   readonly isAvr: boolean;
+  readonly shim: OutputShim;
 
-  constructor(isAvr: boolean) {
+  constructor(isAvr: boolean, shim: OutputShim = serialShim) {
     this.isAvr = isAvr;
+    this.shim = shim;
   }
 
-  /** Wrap a string literal in F() on AVR to keep it in flash. */
+  /** Wrap a string literal in F() on AVR to keep it in flash.
+   *  Only applies when using the serialShim (Arduino core provides F()).
+   *  The avrUartShim runs without the core, so F() is undefined — plain strings. */
   flash(s: string): string {
+    if (this.shim === avrUartShim) return `"${s}"`;
     return this.isAvr ? `F("${s}")` : `"${s}"`;
   }
 
@@ -102,8 +140,8 @@ export class PreprocessorContext {
 
   private emitPreamble(): void {
     this.preambleEmitted = true;
-    this.lines.push(`Serial.begin(${this.baudRate});`);
-    this.lines.push(`Serial.println(${this.flash('[TC:SUITE_START]')});`);
+    this.lines.push(`${this.shim.begin};`);
+    this.lines.push(`${this.shim.println(this.flash('[TC:SUITE_START]'))};`);
   }
 
   build(): string {
@@ -123,8 +161,8 @@ function processExpressionStatement(
   const expr = stmt.expression;
 
   if (isDoneCall(expr)) {
-    ctx.emit(`Serial.println(${ctx.flash('[TC:SUITE_END]')});`);
-    ctx.emit(`while (true) { delay(1000); }`);
+    ctx.emit(`${ctx.shim.println(ctx.flash('[TC:SUITE_END]'))};`);
+    ctx.emit(`while (true) { ${ctx.shim.delay}; }`);
     return;
   }
 

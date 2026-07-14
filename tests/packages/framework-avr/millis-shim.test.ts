@@ -72,17 +72,15 @@ describe("NativeAVRStrategy millis()/micros() Timer0 ISR", () => {
       expect(code).toContain("TIMSK0 = (1 << TOIE0)");
     });
 
-    it("guards native definitions with #ifndef ARDUINO (avoids core link conflict)", () => {
+    it("always emits native definitions (no ARDUINO guard — bare-metal main() prevents core linking)", () => {
       setActiveChip(ATMEGA328P);
       const code = millisCode(PROGRAM);
-      // When the Arduino core is linked (Serial/test-harness builds), the
-      // core's millis()/micros() and Timer0 ISR are used; our definitions
-      // would cause a multiple-definition link error. The guard makes
-      // _init_millis a no-op in that case. In a bare-metal build (main()
-      // override, no Serial), the native definitions own the vectors.
-      expect(code).toContain("#ifndef ARDUINO");
-      expect(code).toContain("#else");
-      expect(code).toMatch(/_init_millis\(\) \{\}/);
+      // The bare-metal main() always emits (the expect test harness now
+      // routes output through _uart_* via OutputShim, not Serial), so the
+      // Arduino core is never linked. No #ifndef ARDUINO guard needed.
+      expect(code).not.toContain("#ifndef ARDUINO");
+      expect(code).toContain("static inline unsigned long millis()");
+      expect(code).toMatch(/_init_millis\(\)/);
     });
   });
 
@@ -95,13 +93,12 @@ describe("NativeAVRStrategy millis()/micros() Timer0 ISR", () => {
   });
 
   describe("setupInitCode wires the millis backbone", () => {
-    it("calls _init_millis() and sei() so the ISR begins firing", () => {
+    it("calls _init_millis() so the Timer0 ISR is configured", () => {
       setActiveChip(ATMEGA328P);
       const lines = new NativeAVRStrategy().setupInitCode!(PROGRAM, undefined as any);
       expect(lines).toContain("_init_millis()");
-      expect(lines).toContain("sei()");
-      // _init_millis must come before sei (init the timer, then enable IRQs).
-      expect(lines.indexOf("_init_millis()")).toBeLessThan(lines.indexOf("sei()"));
+      // sei() is called in main() (not setupInitCode) to avoid ISR-induced
+      // UART stalls during the test protocol output.
     });
   });
 
