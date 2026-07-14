@@ -199,23 +199,85 @@ export class NativeAVRStrategy extends ArduinoStrategy {
   // ── Polyfill overrides ──────────────────────────────────────────────────
 
   /**
-   * This strategy provides native implementations for console.log.
-   * The emitter will skip emitting the global console polyfill.
+   * This strategy provides a native console implementation via UART, plus the
+   * inherited Arduino polyfills (cuttlefish_halt, string_methods, timer_methods,
+   * async_runtime). The console polyfill is AVR-native; the rest are inherited
+   * verbatim so setInterval/setTimeout and async/await work on AVR.
    */
   override nativePolyfills(): Set<string> {
-    return new Set(['console']);
+    return new Set(['console', 'native_millis', ...super.nativePolyfills()]);
   }
 
   /**
-   * Generate native console polyfill using UART functions.
+   * Generate native polyfills: the AVR console (UART) polyfill, merged with
+   * the parent's polyfills (timer_methods, async_runtime, string_methods,
+   * cuttlefish_halt). Previously this returned only console, which silently
+   * dropped setInterval/setTimeout support — the __tc_TimerRuntime that backs
+   * them was never emitted.
    */
-  override generateNativePolyfills(program?: ProgramIR, _ctx?: PlatformContext): RuntimePolyfillIR[] {
+  override generateNativePolyfills(program?: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
+    const parentPolyfills = program
+      ? super.generateNativePolyfills(program, ctx)
+      : [];
+
+    // The native millis()/micros() Timer0 ISR polyfill is always emitted —
+    // timing is foundational (setInterval, delay-relative ops, the async
+    // runtime, and Timing.millis() all depend on it). It lives in polyfills
+    // (not shimLines) because the emit pipeline filters shim lines containing
+    // 'millis()' when the program doesn't directly call it (setup.ts:225),
+    // which would silently drop the definition.
+    const prescaler = activeChip.millisTimer.prescaler;
+    const ovfVector = activeChip.millisTimer.overflowVector;
+    const millisPolyfill: RuntimePolyfillIR = {
+      id: 'native_millis',
+      kind: 'polyfill',
+      domain: 'arduino',
+      requiredIncludes: [],
+      forwardDeclarations: [],
+      helperStructs: [],
+      helperFunctions: [
+        `// Native millis()/micros() — Timer0 overflow ISR.`,
+        `// Guarded with #ifndef ARDUINO so that when the Arduino core IS linked`,
+        `// (builds via arduino-cli), the core's millis()/micros() and Timer0 ISR`,
+        `// are used instead — avoiding a multiple-definition link error. In a`,
+        `// bare-metal build (no Arduino core), these provide the timing backbone.`,
+        `#ifndef ARDUINO`,
+        `static volatile unsigned long _tc_millis_count = 0;`,
+        `ISR(${ovfVector}) { _tc_millis_count++; }`,
+        `static inline void _init_millis() {`,
+        `  TCCR0A = 0;`,
+        `  TCCR0B = ${prescaler === 64 ? '(1 << CS01) | (1 << CS00)' : '(1 << CS00)'};  // prescaler ${prescaler}`,
+        `  TIMSK0 = (1 << TOIE0);`,
+        `}`,
+        `static inline unsigned long millis() {`,
+        `  unsigned long m; uint8_t oldSREG = SREG; cli();`,
+        `  m = _tc_millis_count * ${prescaler}UL * 256UL / (F_CPU / 1000000UL);`,
+        `  SREG = oldSREG; return m;`,
+        `}`,
+        `static inline unsigned long micros() {`,
+        `  unsigned long m; uint8_t t; uint8_t oldSREG = SREG; cli();`,
+        `  m = _tc_millis_count; t = TCNT0;`,
+        `  if ((TIFR0 & _BV(TOV0)) && t < 255) m++;`,
+        `  SREG = oldSREG;`,
+        `  return ((m << 8) + t) * (${prescaler}UL / (F_CPU / 1000000UL));`,
+        `}`,
+        `#else`,
+        `// Arduino core is linked: it provides millis()/micros() and the Timer0`,
+        `// ISR. _init_millis() is a no-op since the core's main() already set up`,
+        `// Timer0 before calling setup().`,
+        `static inline void _init_millis() {}`,
+        `#endif`,
+      ],
+      shimMacros: [],
+      dependencies: [],
+    };
+
     const usesConsole = this.detectConsoleUsage(program);
     if (!usesConsole) {
-      return [];
+      return [millisPolyfill, ...parentPolyfills];
     }
 
-    return [{
+    const consolePolyfill: RuntimePolyfillIR = {
       id: 'console',
       kind: 'polyfill',
       domain: 'arduino',
@@ -257,7 +319,9 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         `#define console_warn(...) console_warn(__VA_ARGS__)`,
       ],
       dependencies: [],
-    }];
+    };
+
+    return [millisPolyfill, consolePolyfill, ...parentPolyfills];
   }
 
   /**
@@ -455,7 +519,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       '}',
       ''
     );
-    
+
     // External interrupt handlers
     if (usesExternalInterrupts) {
       lines.push(
@@ -490,6 +554,11 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     const lines: string[] = [];
 
     lines.push(`_uart_init(${activeChip.uart.defaultBaud})`);
+
+    // Start the Timer0 millis backbone before anything else — timing is
+    // foundational (setInterval, delay-relative ops, and the async runtime
+    // all depend on it). Enable global interrupts last.
+    lines.push('_init_millis()');
 
     const usage = program?.peripheralUsage;
     const pwmPinsUsed: Set<number> = usage?.pwmPinsUsed ?? new Set<number>();
@@ -572,7 +641,12 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         }
       }
     }
-    
+
+    // Enable global interrupts last, so the Timer0 overflow ISR (and any
+    // configured external interrupts) begin firing only after all peripheral
+    // setup is complete.
+    lines.push('sei()');
+
     return lines;
   }
 

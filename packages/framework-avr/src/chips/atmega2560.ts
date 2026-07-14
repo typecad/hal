@@ -199,4 +199,8 @@ export const ATMEGA2560: AVRChipDescriptor = {
     2:  { interrupt: 'INT4', handler: '_int4_handler', vector: 'INT4_vect' },
     3:  { interrupt: 'INT5', handler: '_int5_handler', vector: 'INT5_vect' },
   },
+  millisTimer: {
+    overflowVector: 'TIM0_OVF_vect',
+    prescaler: 64,
+  },
 };

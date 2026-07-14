@@ -30,6 +30,18 @@ than the Arduino framework provides.
 Timing, I2C, SPI, UART, and interrupts fall through to the parent Arduino
 strategy — only GPIO, PWM, and ADC are lowered to registers.
 
+### Native timing (`setInterval`/`setTimeout`/`millis`)
+
+The framework provides its own `millis()`/`micros()` via a **Timer0 overflow
+ISR**, driven by the chip descriptor's `millisTimer` config. `setInterval` and
+`setTimeout` are backed by a cooperative timer runtime (`__tc_TimerRuntime`)
+pumped from `loop()` — no Arduino core `wiring.c` dependency.
+
+When built via `arduino-cli` (which links the Arduino core), the native
+definitions are guarded with `#ifndef ARDUINO` and the core's `millis()` is
+used. In a bare-metal build (no Arduino core), the framework's Timer0 ISR
+provides the timing backbone.
+
 ## Supported chips
 
 Pin/register mapping is driven by **chip descriptors** — pure-data tables

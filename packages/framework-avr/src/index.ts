@@ -37,6 +37,7 @@ export type {
   AVRInterruptPin,
   AVRAdcConfig,
   AVRUartConfig,
+  AVRMillisTimer,
 } from './chips/types.js';
 export { ATMEGA328P, ATMEGA2560, setActiveChip } from './chips/index.js';
 

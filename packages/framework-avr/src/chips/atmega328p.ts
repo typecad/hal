@@ -79,4 +79,8 @@ export const ATMEGA328P: AVRChipDescriptor = {
     2: { interrupt: 'INT0', handler: '_int0_handler', vector: 'INT0_vect' },
     3: { interrupt: 'INT1', handler: '_int1_handler', vector: 'INT1_vect' },
   },
+  millisTimer: {
+    overflowVector: 'TIM0_OVF_vect',
+    prescaler: 64,
+  },
 };

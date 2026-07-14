@@ -109,4 +109,22 @@ export interface AVRChipDescriptor {
   pwmByPin: Record<number, AVRPwmPin>;
   /** Pins carrying external interrupts, keyed by Arduino/framework pin number. */
   interruptsByPin: Record<number, AVRInterruptPin>;
+  /**
+   * The timer used to back millis()/micros() via an overflow ISR.
+   * On classic megaAVR this is Timer0; the vector is TIM0_OVF_vect.
+   */
+  millisTimer: AVRMillisTimer;
+}
+
+/**
+ * Configuration for the millis()/micros() backing timer.
+ */
+export interface AVRMillisTimer {
+  /** Timer overflow ISR vector, e.g. "TIM0_OVF_vect". */
+  overflowVector: string;
+  /**
+   * Timer prescaler divisor (e.g. 64). Combined with F_CPU and the 8-bit
+   * overflow width to derive the millis/micros conversion math.
+   */
+  prescaler: number;
 }
