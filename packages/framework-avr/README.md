@@ -17,18 +17,28 @@ than the Arduino framework provides.
 
 ### What it lowers natively
 
-| Operation | Arduino framework | framework-avr |
-|---|---|---|
-| Pin output high | `digitalWrite(13, HIGH)` | `PORTB \|= 0x20` |
-| Pin output low | `digitalWrite(13, LOW)` | `PORTB &= ~0x20` |
-| Pin read | `digitalRead(13)` | `((PINB & 0x20) ? 1 : 0)` |
-| Pin toggle | `digitalWrite(n, !digitalRead(n))` | `PINB \|= 0x20` |
-| Pin mode | `pinMode(13, OUTPUT)` | `DDRB \|= 0x20` |
-| PWM write | `analogWrite(11, 128)` | `OCR2A = 128` |
-| ADC read | `analogRead(A0)` | `({ ADMUX = (1<<REFS0)\|0; ...; ADC; })` |
+Every hardware peripheral is lowered to direct register access — no HAL op
+falls through to the Arduino Wiring API:
 
-Timing, I2C, SPI, UART, and interrupts fall through to the parent Arduino
-strategy — only GPIO, PWM, and ADC are lowered to registers.
+| Peripheral | Operation | Arduino framework | framework-avr |
+|---|---|---|---|
+| GPIO | pin high | `digitalWrite(13, HIGH)` | `PORTB \|= 0x20` |
+| GPIO | pin read | `digitalRead(13)` | `((PINB & 0x20) ? 1 : 0)` |
+| GPIO | pin toggle | `digitalWrite(n, !digitalRead(n))` | `PINB \|= 0x20` |
+| GPIO | pin mode | `pinMode(13, OUTPUT)` | `DDRB \|= 0x20` |
+| PWM | duty cycle | `analogWrite(11, 128)` | `OCR2A = 128` |
+| ADC | read | `analogRead(A0)` | `({ ADMUX=(1<<REFS0)\|0; ...; ADC; })` |
+| ADC | set reference | `analogReference(INTERNAL)` | `ADMUX = ... \| (1<<REFS1) \| (1<<REFS0)` |
+| Timing | delay | `delay(500)` | `_native_delay_ms(500)` |
+| Timing | millis | `millis()` | native Timer0 ISR `millis()` |
+| Interrupts | attach | `attachInterrupt(digitalPinToInterrupt(2), fn, FALLING)` | `EICRA \| ISC bits; EIMSK \| (1<<INT0)` |
+| Tone | play | `tone(11, 440)` | `_tc_tone_play(11, 440, 0)` (Timer2 CTC) |
+| Pulse | measure | `pulseIn(7, HIGH)` | native `micros()` + GPIO poll loop |
+| Shift | out | `shiftOut(D10, D11, LSBFIRST, val)` | inline PORT/clock bit-bang loop |
+| SPI | transfer | `SPI.transfer(0xFF)` | `_spi_transfer(0xFF)` (SPDR + SPIF) |
+| UART | print | `Serial.print(val)` | `_uart_print_expr(val)` (USART0) |
+| I2C | write | `Wire.write(data)` | `_twi_write_byte(data)` (TWDR + TWCR) |
+| EEPROM | read | `EEPROM.read(addr)` | `eeprom_read_byte((uint8_t*)addr)` |
 
 ### Native timing (`setInterval`/`setTimeout`/`millis`)
 

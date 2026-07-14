@@ -696,6 +696,26 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       ''
     );
 
+    // ── Native EEPROM driver — avr-libc <avr/eeprom.h> (no Arduino lib) ──
+    // Provides the same EEPROM.read()/write()/update() interface the parent's
+    // AVR Preferences shim and the HAL eeprom.ts proxy emit, but backed by
+    // avr-libc eeprom_read_byte/eeprom_write_byte/eeprom_update_byte. Guarded
+    // #ifndef ARDUINO so the Arduino EEPROM library is used when the core is
+    // linked.
+    lines.push(
+      '#ifndef ARDUINO',
+      '#include <avr/eeprom.h>',
+      '// Native EEPROM — wraps avr-libc, matching the Arduino EEPROM API.',
+      'struct _NativeEEPROM {',
+      '  uint8_t read(int addr) { return eeprom_read_byte((uint8_t*)addr); }',
+      '  void write(int addr, uint8_t val) { eeprom_write_byte((uint8_t*)addr, val); }',
+      '  void update(int addr, uint8_t val) { eeprom_update_byte((uint8_t*)addr, val); }',
+      '  uint16_t length() { return E2END + 1; }',
+      '} EEPROM;',
+      '#endif',
+      ''
+    );
+
     // Native tone() driver — Timer2 CTC mode toggling the output-compare pin
     // at the desired frequency. Guarded with #ifndef ARDUINO so the Arduino
     // core's tone()/noTone() (Tone.cpp) are used when the core is linked.
