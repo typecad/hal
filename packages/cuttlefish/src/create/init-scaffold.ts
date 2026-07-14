@@ -109,7 +109,7 @@ const _knownTargets: KnownTarget[] = [
     boardPackage: '@typecad/board-rp2350',
     frameworkPackage: '@typecad/framework-arduino',
     framework: 'arduino',
-    buildTarget: 'rp2350:rp2350:rpipico2',
+    buildTarget: 'rp2040:rp2040:rpipico2',
     mcu: 'rp2350',
   },
 ];

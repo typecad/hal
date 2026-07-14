@@ -268,7 +268,7 @@ describe("init-scaffold", () => {
       const b = KNOWN_BOARDS.find(b => b.id === 'rp2350');
       expect(b).toBeDefined();
       expect(b!.architecture).toBe('rp2350');
-      expect(b!.buildTarget).toBe('rp2350:rp2350:rpipico2');
+      expect(b!.buildTarget).toBe('rp2040:rp2040:rpipico2');
     });
   });
 

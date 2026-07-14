@@ -41,7 +41,7 @@ export const RP2350Board: BoardDefinition = {
   build: {
     frameworks: {
       platformio: 'rp2350',
-      arduino: 'rp2350:rp2350:rpipico2',
+      arduino: 'rp2040:rp2040:rpipico2',
     },
     defines: {
       F_CPU:           '150000000UL',
