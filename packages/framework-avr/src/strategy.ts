@@ -588,6 +588,114 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       ''
     );
 
+    // ── Native TWI (I2C) driver — TWBR/TWCR/TWDR/TWSR (no Arduino Wire) ───
+    // Master-mode state machine: START → SLA+W → write data → STOP, and
+    // repeated-START → SLA+R → read N bytes → STOP. An RX ring buffer backs
+    // requestFrom/read/available. TWSR status codes are checked after each
+    // operation; errors are silent (the read/write returns 0/false).
+    lines.push(
+      '#ifndef ARDUINO',
+      '// Native TWI (I2C) master driver.',
+      '#define TWI_BUFFER_LENGTH 32',
+      'static volatile uint8_t _twi_rx_buffer[TWI_BUFFER_LENGTH];',
+      'static volatile uint8_t _twi_rx_head = 0;',
+      'static volatile uint8_t _twi_rx_tail = 0;',
+      'static volatile uint8_t _twi_master_error = 0;',
+      '',
+      '// TWBR = ((F_CPU / SCL) - 16) / 2  (prescaler = 1, TWSR TWPS = 0)',
+      'static inline void _twi_init() {',
+      '  TWSR = 0;  // prescaler 1',
+      '  TWBR = ((F_CPU / 100000UL) - 16) / 2;  // default 100 kHz',
+      '  TWCR = (1 << TWEN);  // enable TWI',
+      '}',
+      '',
+      'static inline void _twi_set_clock(unsigned long hz) {',
+      '  TWBR = ((F_CPU / hz) - 16) / 2;',
+      '}',
+      '',
+      '// Send START or repeated START condition.',
+      'static inline void _twi_start() {',
+      '  TWCR = (1 << TWINT) | (1 << TWSTA) | (1 << TWEN);',
+      '  while (!(TWCR & (1 << TWINT)));',
+      '}',
+      '',
+      '// Send STOP condition.',
+      'static inline void _twi_stop() {',
+      '  TWCR = (1 << TWINT) | (1 << TWSTO) | (1 << TWEN);',
+      '}',
+      '',
+      '// Write one byte and wait for ACK/NACK. Returns 0 on ACK.',
+      'static inline uint8_t _twi_write_byte(uint8_t data) {',
+      '  TWDR = data;',
+      '  TWCR = (1 << TWINT) | (1 << TWEN);',
+      '  while (!(TWCR & (1 << TWINT)));',
+      '  return (TWSR & 0xF8);  // status code',
+      '}',
+      '',
+      '// Write a C array buffer of known size.',
+      'static inline void _twi_write_buffer(const uint8_t* data, size_t len) {',
+      '  for (size_t i = 0; i < len; i++) _twi_write_byte(data[i]);',
+      '}',
+      '',
+      '// Read one byte: ack=1 sends ACK (expect more), ack=0 sends NACK (last).',
+      'static inline uint8_t _twi_read_byte(uint8_t ack) {',
+      '  TWCR = (1 << TWINT) | (1 << TWEN) | (ack ? (1 << TWEA) : 0);',
+      '  while (!(TWCR & (1 << TWINT)));',
+      '  return TWDR;',
+      '}',
+      '',
+      '// Ring-buffer helpers for received data.',
+      'static inline int _twi_available() {',
+      '  return (int)(_twi_rx_head - _twi_rx_tail) & 0xFF;',
+      '}',
+      'static inline int _twi_read() {',
+      '  if (_twi_rx_head == _twi_rx_tail) return -1;',
+      '  uint8_t b = _twi_rx_buffer[_twi_rx_tail++];',
+      '  return b;',
+      '}',
+      '',
+      '// Begin a master transmission to the given address (SLA+W).',
+      'static inline void _twi_begin_transmission(uint8_t address) {',
+      '  _twi_start();',
+      '  _twi_write_byte(address << 1);  // SLA+W',
+      '}',
+      '',
+      '// End a master transmission: send STOP if requested.',
+      'static inline void _twi_end_transmission(uint8_t sendStop) {',
+      '  if (sendStop) _twi_stop();',
+      '}',
+      '',
+      '// Master read: request N bytes from a slave into the RX ring buffer.',
+      'static inline void _twi_request_from(uint8_t address, uint8_t count, uint8_t sendStop) {',
+      '  _twi_start();',
+      '  _twi_write_byte((address << 1) | 1);  // SLA+R',
+      '  _twi_rx_head = 0; _twi_rx_tail = 0;',
+      '  for (uint8_t i = 0; i < count; i++) {',
+      '    uint8_t ack = (i < count - 1) ? 1 : 0;  // ACK all but last',
+      '    if (_twi_rx_head < TWI_BUFFER_LENGTH) {',
+      '      _twi_rx_buffer[_twi_rx_head++] = _twi_read_byte(ack);',
+      '    } else {',
+      '      _twi_read_byte(0);',
+      '    }',
+      '  }',
+      '  if (sendStop) _twi_stop();',
+      '}',
+      '',
+      '// Bus recovery: clock up to 9 SCL pulses to release a stuck slave.',
+      'static inline void _twi_recover() {',
+      '  DDRC |= (1 << 5);  // SCL as output',
+      '  DDRC &= ~(1 << 4);  // SDA as input',
+      '  for (int i = 0; i < 9; i++) {',
+      '    PORTC &= ~(1 << 5); _native_delay_us(5);',
+      '    PORTC |= (1 << 5); _native_delay_us(5);',
+      '  }',
+      '  _twi_stop();  // send STOP to release the bus',
+      '  DDRC &= ~(1 << 5);  // SCL back to TWI control',
+      '}',
+      '#endif',
+      ''
+    );
+
     // Native tone() driver — Timer2 CTC mode toggling the output-compare pin
     // at the desired frequency. Guarded with #ifndef ARDUINO so the Arduino
     // core's tone()/noTone() (Tone.cpp) are used when the core is linked.
@@ -982,6 +1090,42 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         return { expression: `_uart_available()` };
       case "uart.flush":
         return { code: `_uart_flush();` };
+      // ── I2C — native TWBR/TWCR/TWDR/TWSR, not Arduino Wire library ──────
+      case "i2c.begin":
+        return { code: `_twi_init();` };
+      case "i2c.end":
+        return { code: `TWCR = 0;` };
+      case "i2c.set_clock":
+        return { code: `_twi_set_clock(${(op as any).hz});` };
+      case "i2c.begin_transmission":
+        return { code: `_twi_begin_transmission(${(op as any).address});` };
+      case "i2c.write":
+        return { code: `_twi_write_byte(${(op as any).data});` };
+      case "i2c.write_bytes": {
+        const wop = op as any;
+        return { code: wop.bytes.map((b: number | string) => `_twi_write_byte(${b});`).join(" ") };
+      }
+      case "i2c.write_buffer":
+        return { code: `_twi_write_buffer(${(op as any).data}, sizeof(${(op as any).data}));` };
+      case "i2c.read_buffer": {
+        const rop = op as any;
+        if (rop.buffer === "__DISCARD__") {
+          return { code: `for (int __i = 0; __i < ${rop.count}; __i++) (void)_twi_read_byte(0);` };
+        }
+        return { code: `for (int __i = 0; __i < ${rop.count}; __i++) ${rop.buffer}[__i] = _twi_read_byte(__i < ${rop.count} - 1 ? 1 : 0);` };
+      }
+      case "i2c.end_transmission":
+        return { code: `_twi_end_transmission(${(op as any).stop ? 1 : 0});` };
+      case "i2c.request_from": {
+        const rfop = op as any;
+        return { code: `_twi_request_from(${rfop.address}, ${rfop.quantity}, ${rfop.stop ? 1 : 0});` };
+      }
+      case "i2c.available":
+        return { expression: `_twi_available()` };
+      case "i2c.read":
+        return { expression: `_twi_read()` };
+      case "i2c.recover":
+        return { code: `_twi_recover();` };
       // ── Invalid-on-AVR ops — no-op with a comment, not undefined symbols ──
       case "dac.write":
         return { code: `/* dac.write not supported on AVR (no DAC hardware) */;` };
