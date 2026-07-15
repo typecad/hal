@@ -1,6 +1,6 @@
 {
   "name": "@typecad/simulator",
-  "version": "0.1.0-alpha.2",
+  "version": "1.0.0-alpha.3",
   "description": "Hardware simulation runtime for TypeCAD — test HAL code in Node.js without hardware",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,12 +17,12 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/hal": "0.1.0-alpha.2"
+    "@typecad/hal": "1.0.0-alpha.3"
   },
   "devDependencies": {
     "typescript": "^5.7.3",
     "@types/node": "^22.10.7",
-    "@typecad/cuttlefish": "0.1.0-alpha.2"
+    "@typecad/cuttlefish": "1.0.0-alpha.3"
   },
   "license": "MIT",
   "repository": {

@@ -1,6 +1,6 @@
 {
   "name": "@typecad/framework-arduino",
-  "version": "0.1.0-alpha.2",
+  "version": "1.0.0-alpha.3",
   "description": "TypeCAD framework package for Arduino framework code generation",
   "type": "module",
   "main": "./dist/index.js",
@@ -34,11 +34,11 @@
     "test:hw:basics": "npm exec -- cuttlefish-test tests/01-basics.test.ts"
   },
   "dependencies": {
-    "@typecad/hal": "0.1.0-alpha.2"
+    "@typecad/hal": "1.0.0-alpha.3"
   },
   "devDependencies": {
-    "@typecad/expect": "0.1.0-alpha.2",
-    "@typecad/board-esp32-devkit": "0.1.0-alpha.2"
+    "@typecad/expect": "1.0.0-alpha.3",
+    "@typecad/board-esp32-devkit": "1.0.0-alpha.3"
   },
   "license": "MIT",
   "publishConfig": {

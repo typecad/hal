@@ -1,5 +1,13 @@
 # @typecad/mcu-esp32c6
 
+## 1.0.0-alpha.3
+
+### Patch Changes
+
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.3
+  - @typecad/hal@1.0.0-alpha.3
+
 ## 0.1.0-alpha.2
 
 ### Patch Changes

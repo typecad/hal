@@ -1,6 +1,6 @@
 {
   "name": "@typecad/mcu-atmega328p",
-  "version": "0.1.0-alpha.2",
+  "version": "1.0.0-alpha.3",
   "description": "TypeCAD MCU definition for ATmega328P — datasheet pins, Arduino pin mapping, peripheral capabilities",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,8 +14,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "0.1.0-alpha.2",
-    "@typecad/hal": "0.1.0-alpha.2"
+    "@typecad/cuttlefish": "1.0.0-alpha.3",
+    "@typecad/hal": "1.0.0-alpha.3"
   },
   "license": "MIT",
   "publishConfig": {
