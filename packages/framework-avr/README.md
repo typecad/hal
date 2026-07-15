@@ -43,14 +43,29 @@ falls through to the Arduino Wiring API:
 ### Native timing (`setInterval`/`setTimeout`/`millis`)
 
 The framework provides its own `millis()`/`micros()` via a **Timer0 overflow
-ISR**, driven by the chip descriptor's `millisTimer` config. `setInterval` and
-`setTimeout` are backed by a cooperative timer runtime (`__tc_TimerRuntime`)
-pumped from `loop()` — no Arduino core `wiring.c` dependency.
+ISR**, driven by the chip descriptor's `millisTimer` config. The ISR uses
+the Arduino `wiring.c` fractional-accumulator pattern (incremental
+millisecond accumulation, not multiply-at-read) for accurate long-running
+timing. `setInterval` and `setTimeout` are backed by a cooperative timer
+runtime (`__tc_TimerRuntime`) pumped from `loop()`.
 
-When built via `arduino-cli` (which links the Arduino core), the native
-definitions are guarded with `#ifndef ARDUINO` and the core's `millis()` is
-used. In a bare-metal build (no Arduino core), the framework's Timer0 ISR
-provides the timing backbone.
+### Bare-metal `main()` — no Arduino core linked
+
+The strategy emits a bare-metal `int main(void)` that calls `setup()` once,
+then runs the cooperative `while(1) { loop(); }` super-loop. Defining
+`main()` overrides the Arduino core's entry point, causing the linker to
+dead-code-eliminate the entire core (`wiring.c`, `HardwareSerial`, `Wire`,
+`SPI`, `EEPROM`, `Tone`). Result: **72% Flash reduction** (198 bytes vs 712
+bytes for a pin toggle, 724 bytes vs 2.5 KB for a multi-peripheral demo).
+
+### Testing
+
+The `@typecad/expect` test framework supports a **pluggable OutputShim**
+(`avrUartShim`) that routes test protocol output through the framework's
+native `_uart_*` helpers instead of Arduino `Serial`. This means test
+builds are fully bare-metal too — no Arduino core is linked even when
+running on-device tests. The shim is selected automatically based on the
+config's `framework` field.
 
 ## Supported chips
 

@@ -43,13 +43,19 @@
   routes test protocol through native `_uart_*` helpers, so test builds
   are fully bare-metal too.
 
+  ### Removed #ifndef ARDUINO guards
+
+  All `#ifndef ARDUINO` guards from alpha.2 have been removed. The
+  bare-metal `main()` unconditionally provides native timing, EEPROM,
+  and interrupt drivers — the Arduino core is never linked.
+
   ### Additional changes across packages
 
   - `@typecad/cuttlefish`: added `filterRequiredIncludes()` to
     `PlatformStrategy` so frameworks can strip stale HAL includes
   - `@typecad/expect`: `OutputShim` interface, `serialShim`/`avrUartShim`
     built-ins, `ResolvedConfig.framework` field threaded through config
-  - All packages: version-aligned at 0.1.0-alpha.3
+  - All packages: version-aligned at 1.0.0-alpha.3
 
 ### Patch Changes
 

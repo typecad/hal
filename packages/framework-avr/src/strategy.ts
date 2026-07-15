@@ -1083,11 +1083,12 @@ export class NativeAVRStrategy extends ArduinoStrategy {
   /**
    * Resolve HAL operations to native AVR register access.
    *
-   * This override is what makes the strategy "native AVR": every GPIO, PWM,
-   * and ADC op is lowered to direct register manipulation (PORTB/DDRB/PINB,
-   * OCRnx, ADMUX/ADC) instead of Arduino Wiring calls (digitalWrite etc.).
-   * Ops not handled here (timing/i2c/spi/uart/interrupt) fall through to the
-   * parent ArduinoStrategy so we don't have to re-implement those.
+   * This override lowers every hardware peripheral to direct register access:
+   * GPIO (PORTx/DDRx/PINx), PWM (OCRnx), ADC (ADMUX/ADCSRA), timing
+   * (Timer0 ISR), interrupts (EICRA/EIMSK), tone (Timer2 CTC), pulse/shift
+   * (micros + GPIO loops), SPI (SPCR/SPSR/SPDR), UART (USART0), and I2C/TWI
+   * (TWBR/TWCR/TWDR). No HAL op falls through to Arduino Wiring calls.
+   * Genuinely unhandled ops (see default) delegate to the parent.
    */
   override resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {
     switch (op.operation) {
