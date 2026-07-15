@@ -1171,7 +1171,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         const clockMask = getPinBitMask(sop.clockPin);
         const dataPort = dataInfo.port;
         const clockPort = clockInfo.port;
-        const lsb = sop.bitOrder === "lsb" || sop.bitOrder === "LSBFIRST";
+        const lsb = String(sop.bitOrder).toLowerCase().startsWith("lsb");
         // Emit an IIFE that clocks out 8 bits using native PORT/DDR registers.
         const bitTest = lsb ? `(1 << __i)` : `(1 << (7 - __i))`;
         return { code: `{ for (int __i = 0; __i < 8; __i++) { if ((${sop.value}) & ${bitTest}) ${dataPort} |= ${dataMask}; else ${dataPort} &= ~${dataMask}; ${clockPort} |= ${clockMask}; ${clockPort} &= ~${clockMask}; } }` };
@@ -1185,7 +1185,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         const dataMask = getPinBitMask(sop.dataPin);
         const clockMask = getPinBitMask(sop.clockPin);
         const clockPort = clockInfo.port;
-        const lsb = sop.bitOrder === "lsb" || sop.bitOrder === "LSBFIRST";
+        const lsb = String(sop.bitOrder).toLowerCase().startsWith("lsb");
         const bitShift = lsb ? `__i` : `(7 - __i)`;
         return { expression: `({ unsigned char __result = 0; for (int __i = 0; __i < 8; __i++) { ${clockPort} |= ${clockMask}; ${clockPort} &= ~${clockMask}; if ((${dataPinReg} & ${dataMask})) __result |= (1 << ${bitShift}); } __result; })` };
       }
@@ -1217,7 +1217,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       case "spi.set_mode":
         return { code: `_spi_set_mode(${(op as any).mode});` };
       case "spi.set_bit_order":
-        return { code: `_spi_set_bit_order(${(op as any).order === "lsb" ? 1 : 0});` };
+        return { code: `_spi_set_bit_order(${String((op as any).order).toLowerCase().startsWith("lsb") ? 1 : 0});` };
       case "spi.cs_low":
         return { code: nativeDigitalWrite(op.pin, "LOW") + ";" };
       case "spi.cs_high":
