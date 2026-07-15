@@ -36,13 +36,16 @@ function nativePinMode(pin: number, mode: string): string {
   if (!info) return `/* invalid pin ${pin} */`;
 
   const { ddr, port } = info;
-  const mask = getPinBitMask(pin);  // Pre-computed hex constant
+  const mask = getPinBitMask(pin);
+  // Normalize: the HAL source passes uppercase Arduino macros ("OUTPUT",
+  // "INPUT_PULLUP") while the HALOpIR docs say lowercase ("output"). Accept both.
+  const m = mode.toLowerCase();
 
-  if (mode === 'output') {
+  if (m === 'output') {
     return `${ddr} |= ${mask}`;
-  } else if (mode === 'input_pullup') {
+  } else if (m === 'input_pullup') {
     return `${ddr} &= ~${mask}; ${port} |= ${mask}`;
-  } else if (mode === 'input_pulldown') {
+  } else if (m === 'input_pulldown') {
     // AVR has no hardware pulldown — fall back to floating input
     return `${ddr} &= ~${mask}; ${port} &= ~${mask}`;
   } else { // "input"
