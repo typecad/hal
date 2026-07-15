@@ -62,7 +62,7 @@ Hardware test runner for [TypeCAD](../../README.md). Write vitest-style assertio
 npm install --save-dev @typecad/expect @typecad/cuttlefish
 ```
 
-`@typecad/expect` ships the `cuttlefish-test` CLI. It pairs with [`@typecad/cuttlefish`](https://github.com/justind000/typecode/tree/main/packages/cuttlefish), which transpiles your TypeScript test files to C++ for upload to hardware.
+`@typecad/expect` ships the `cuttlefish-test` CLI. It pairs with [`@typecad/cuttlefish`](https://cuttlefish.typecad.net), which transpiles your TypeScript test files to C++ for upload to hardware.
 
 **Prerequisites:**
 

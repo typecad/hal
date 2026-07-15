@@ -113,7 +113,7 @@ board.pwm(9).pwm(50);                  // PWM on PB1 (pin 9)
 board.analog(0).injectVoltage(2.5);    // A0, 10-bit ADC, 5V reference
 ```
 
-This is the recommended path for board-specific tests. The board package must be built so its `BoardDefinition` is importable at runtime. See the [Software-Defined Hardware docs](https://typecad.dev/docs/simulation/software-defined-hardware#simulating-a-real-board-package) for the full list of derived fields.
+This is the recommended path for board-specific tests. The board package must be built so its `BoardDefinition` is importable at runtime. See the [Software-Defined Hardware docs](https://cuttlefish.typecad.net/docs/simulation/software-defined-hardware#simulating-a-real-board-package) for the full list of derived fields.
 
 ### Verify state and reset
 

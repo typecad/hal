@@ -1,6 +1,6 @@
 # `@typecad/hal`
 
-Hardware abstraction layer for [TypeCAD](https://github.com/justind000/typecode) —
+Hardware abstraction layer for [TypeCAD](https://cuttlefish.typecad.net) —
 GPIO, I2C, SPI, UART, timers, ADC/DAC, EEPROM, and more, written as regular
 TypeScript.
 
@@ -77,7 +77,7 @@ For I2C/SPI/UART, instantiate the bus class with the board's pinned instance
 
 The [`tests/`](./tests/) directory contains a hardware test suite that
 exercises every AVR-compilable HAL subsystem against real Arduino Uno hardware,
-using [`@typecad/expect`](https://github.com/justind000/typecode/tree/main/packages/expect)
+using [`@typecad/expect`](https://cuttlefish.typecad.net)
 (`describe()` / `.it()` / `.expect()` / `done()`) over serial. Each file covers
 one subsystem: GPIO, timing, math, random, pulse, shift, interrupts, UART,
 I2C, SPI, ADC, EEPROM, WDT, Preferences, async, and constants.
@@ -92,7 +92,7 @@ npm exec --workspace @typecad/hal -- cuttlefish-test
 ```
 
 The suite is configured by [`cuttlefish.config.ts`](./cuttlefish.config.ts).
-Like the [`@typecad/framework-arduino`](https://github.com/justind000/typecode/tree/main/packages/framework-arduino/tests)
+Like the [`@typecad/framework-arduino`](https://cuttlefish.typecad.net)
 tests, it imports through `@typecad/board` (the board package) and ambient globals
 declared in `cuttlefish-env.d.ts`, never directly from `@typecad/board`, so the
 transpiler resolves each call against the active MCU/board packages.
@@ -117,8 +117,8 @@ entirely — they require an ESP32 target.
 
 ## Ecosystem
 
-- [`@typecad/cuttlefish`](https://github.com/justind000/typecode/tree/main/packages/cuttlefish) — the transpiler that resolves HAL calls to C++.
-- [`@typecad/ui`](https://github.com/justind000/typecode/tree/main/packages/ui) — HTML/CSS-driven display graphics.
+- [`@typecad/cuttlefish`](https://cuttlefish.typecad.net) — the transpiler that resolves HAL calls to C++.
+- [`@typecad/ui`](https://cuttlefish.typecad.net) — HTML/CSS-driven display graphics.
 - `@typecad/mcu-*` — silicon pin/port/peripheral definitions.
 - `@typecad/board-*` — board-level pin mappings and bus aliases.
 

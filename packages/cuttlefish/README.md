@@ -3,7 +3,7 @@
 TypeScript → C++ transpiler for embedded firmware. Targets native (desktop),
 Arduino, and bare-metal MCU builds from a single TypeScript codebase.
 
-`cuttlefish` is the command-line tool at the center of the [TypeCAD](https://github.com/justind000/typecode)
+`cuttlefish` is the command-line tool at the center of the [TypeCAD](https://cuttlefish.typecad.net)
 toolchain: it loads `cuttlefish.config.ts`, transpiles TypeScript firmware to
 C++, and can chain compile, upload, and serial-monitor steps.
 
@@ -67,11 +67,11 @@ export default config;
 
 `@typecad/cuttlefish` is the transpiler core. It pairs with sibling packages:
 
-- [`@typecad/hal`](https://github.com/justind000/typecode/tree/main/packages/hal) — hardware abstraction (GPIO, I2C, SPI, UART) as regular TypeScript.
-- [`@typecad/ui`](https://github.com/justind000/typecode/tree/main/packages/ui) — HTML/CSS-driven graphics for microcontroller displays.
-- [`@typecad/expect`](https://github.com/justind000/typecode/tree/main/packages/expect) — hardware test framework (vitest-style assertions over serial).
-- [`@typecad/framework-arduino`](https://github.com/justind000/typecode/tree/main/packages/framework-arduino) — Arduino framework code-gen strategy.
-- [`@typecad/framework-native`](https://github.com/justind000/typecode/tree/main/packages/framework-native) — native desktop C++ code-gen strategy.
+- [`@typecad/hal`](https://cuttlefish.typecad.net) — hardware abstraction (GPIO, I2C, SPI, UART) as regular TypeScript.
+- [`@typecad/ui`](https://cuttlefish.typecad.net) — HTML/CSS-driven graphics for microcontroller displays.
+- [`@typecad/expect`](https://cuttlefish.typecad.net) — hardware test framework (vitest-style assertions over serial).
+- [`@typecad/framework-arduino`](https://cuttlefish.typecad.net) — Arduino framework code-gen strategy.
+- [`@typecad/framework-native`](https://cuttlefish.typecad.net) — native desktop C++ code-gen strategy.
 - `@typecad/mcu-*` and `@typecad/board-*` — silicon- and board-level pin/peripheral definitions.
 
 ## License
