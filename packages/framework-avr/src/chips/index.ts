@@ -9,7 +9,7 @@ import type { AVRChipDescriptor } from './types.js';
 import { ATMEGA328P } from './atmega328p.js';
 import { ATMEGA2560 } from './atmega2560.js';
 
-export type { AVRChipDescriptor, AVRPinMap, AVRTimer, AVRPwmPin, AVRInterruptPin, AVRAdcConfig, AVRUartConfig, AVRMillisTimer } from './types.js';
+export type { AVRChipDescriptor, AVRPinMap, AVRTimer, AVRPwmPin, AVRInterruptPin, AVRAdcConfig, AVRUartConfig, AVRSpiConfig, AVRTwiConfig, AVRMillisTimer } from './types.js';
 export { ATMEGA328P } from './atmega328p.js';
 export { ATMEGA2560 } from './atmega2560.js';
 

@@ -86,6 +86,37 @@ export interface AVRUartConfig {
 }
 
 /**
+ * Hardware SPI pin configuration (master mode).
+ * Bit positions are within the given DDR/PORT register.
+ */
+export interface AVRSpiConfig {
+  /** Data-direction register for the SPI pins, e.g. "DDRB". */
+  ddr: string;
+  /** MOSI bit position. */
+  mosiBit: number;
+  /** MISO bit position. */
+  misoBit: number;
+  /** SCK bit position. */
+  sckBit: number;
+  /** /SS bit position (must be output in master mode to avoid slave select). */
+  ssBit: number;
+}
+
+/**
+ * TWI (I2C) SCL/SDA pin configuration for bit-bang bus recovery.
+ */
+export interface AVRTwiConfig {
+  /** Port output register for SDA/SCL, e.g. "PORTC". */
+  port: string;
+  /** Data-direction register for SDA/SCL, e.g. "DDRC". */
+  ddr: string;
+  /** SDA bit position. */
+  sdaBit: number;
+  /** SCL bit position. */
+  sclBit: number;
+}
+
+/**
  * Pure-data description of a supported AVR MCU.
  *
  * Author one of these per chip. The strategy and register helpers read from
@@ -101,6 +132,10 @@ export interface AVRChipDescriptor {
   uart: AVRUartConfig;
   /** ADC block. */
   adc: AVRAdcConfig;
+  /** Hardware SPI pins. */
+  spi: AVRSpiConfig;
+  /** TWI (I2C) SCL/SDA pins for bus recovery. */
+  twi: AVRTwiConfig;
   /** Arduino/framework pin number -> register mapping. */
   pins: Record<number, AVRPinMap>;
   /** Timers available for PWM, keyed by id. */
@@ -111,7 +146,7 @@ export interface AVRChipDescriptor {
   interruptsByPin: Record<number, AVRInterruptPin>;
   /**
    * The timer used to back millis()/micros() via an overflow ISR.
-   * On classic megaAVR this is Timer0; the vector is TIM0_OVF_vect.
+   * On classic megaAVR this is Timer0; the vector is TIMER0_OVF_vect.
    */
   millisTimer: AVRMillisTimer;
 }
@@ -120,7 +155,7 @@ export interface AVRChipDescriptor {
  * Configuration for the millis()/micros() backing timer.
  */
 export interface AVRMillisTimer {
-  /** Timer overflow ISR vector, e.g. "TIM0_OVF_vect". */
+  /** Timer overflow ISR vector, e.g. "TIMER0_OVF_vect". */
   overflowVector: string;
   /**
    * Timer prescaler divisor (e.g. 64). Combined with F_CPU and the 8-bit

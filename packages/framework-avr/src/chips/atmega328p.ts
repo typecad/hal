@@ -45,6 +45,10 @@ export const ATMEGA328P: AVRChipDescriptor = {
     prescalerBits: '(1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0)',
     channelsByPin: { 14: 0, 15: 1, 16: 2, 17: 3, 18: 4, 19: 5 },
   },
+  // Hardware SPI on Port B: SS=PB2, MOSI=PB3, MISO=PB4, SCK=PB5.
+  spi: { ddr: 'DDRB', ssBit: 2, mosiBit: 3, misoBit: 4, sckBit: 5 },
+  // TWI on Port C: SDA=PC4 (A4), SCL=PC5 (A5).
+  twi: { port: 'PORTC', ddr: 'DDRC', sdaBit: 4, sclBit: 5 },
   pins: {
     ...portBlock(0, 8, 'PORTD', 'DDRD', 'PIND'),   // D0-D7  -> Port D
     ...portBlock(8, 6, 'PORTB', 'DDRB', 'PINB'),    // D8-D13 -> Port B
@@ -53,17 +57,19 @@ export const ATMEGA328P: AVRChipDescriptor = {
   timers: {
     timer0: {
       id: 'timer0',
-      // Phase-correct PWM, prescaler 64. Matches the previous hardcoded shim.
-      initCode: 'TCCR0A |= (1 << WGM00); TCCR0B |= (1 << CS01) | (1 << CS00);',
+      // 8-bit fast PWM (WGM01|WGM00), prescaler 64. Matches Arduino wiring.c so
+      // TOV0 fires every 256 ticks — the same period millis()/micros() assume.
+      // Phase-correct (WGM00 alone) would fire every 510 ticks and drift timing ~2×.
+      initCode: 'TCCR0A |= (1 << WGM01) | (1 << WGM00); TCCR0B |= (1 << CS01) | (1 << CS00);',
     },
     timer1: {
       id: 'timer1',
-      // 8-bit fast PWM via TIMER1A buffer, prescaler 8.
+      // 8-bit phase-correct PWM (WGM10 alone = mode 1), prescaler 8 (~3.9 kHz @ 16 MHz).
       initCode: 'TCCR1A |= (1 << WGM10); TCCR1B |= (1 << CS11);',
     },
     timer2: {
       id: 'timer2',
-      // Phase-correct PWM, prescaler 256.
+      // Phase-correct PWM (WGM20), Timer2 CS22 alone = presc. 64 (~490 Hz @ 16 MHz).
       initCode: 'TCCR2A |= (1 << WGM20); TCCR2B |= (1 << CS22);',
     },
   },
@@ -80,7 +86,8 @@ export const ATMEGA328P: AVRChipDescriptor = {
     3: { interrupt: 'INT1', handler: '_int1_handler', vector: 'INT1_vect' },
   },
   millisTimer: {
-    overflowVector: 'TIM0_OVF_vect',
+    // MegaAVR spelling (ATtiny uses TIM0_OVF_vect).
+    overflowVector: 'TIMER0_OVF_vect',
     prescaler: 64,
   },
 };

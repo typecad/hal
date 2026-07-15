@@ -28,14 +28,18 @@ function millisCode(program: ProgramIR): string {
 
 describe("NativeAVRStrategy millis()/micros() Timer0 ISR", () => {
   describe("ATmega328P", () => {
-    it("emits the Timer0 overflow ISR with the chip's overflow vector", () => {
+    it("emits the Timer0 overflow ISR with the megaAVR overflow vector", () => {
       setActiveChip(ATMEGA328P);
       const code = millisCode(PROGRAM);
-      expect(code).toContain("ISR(TIM0_OVF_vect)");
-      expect(code).toContain("_tc_millis_count++");
+      // Must be TIMER0_OVF_vect (megaAVR). TIM0_OVF_vect is the ATtiny spelling
+      // and would leave the real vector as __bad_interrupt → reset loop.
+      expect(code).toContain("ISR(TIMER0_OVF_vect)");
+      expect(code).not.toContain("TIM0_OVF_vect");
+      expect(code).toContain("_tc_millis_count");
+      expect(code).toContain("_tc_overflow_count");
     });
 
-    it("millis() reads the overflow counter atomically (cli + SREG restore)", () => {
+    it("millis() reads the soft counter atomically (cli + SREG restore)", () => {
       setActiveChip(ATMEGA328P);
       const code = millisCode(PROGRAM);
       // The 32-bit volatile counter is ISR-owned; millis() must disable
@@ -44,14 +48,19 @@ describe("NativeAVRStrategy millis()/micros() Timer0 ISR", () => {
       expect(code).toMatch(/uint8_t oldSREG = SREG/);
       expect(code).toMatch(/cli\(\)/);
       expect(code).toMatch(/SREG = oldSREG/);
+      // Soft counter is returned as-is (milliseconds), not multiplied by cycle math.
+      expect(code).toMatch(/m = _tc_millis_count;/);
+      expect(code).not.toMatch(/_tc_millis_count \* .*256/);
     });
 
-    it("millis() math uses the descriptor prescaler (64) and F_CPU", () => {
+    it("ISR accumulates milliseconds with Arduino-style fractional correction", () => {
       setActiveChip(ATMEGA328P);
       const code = millisCode(PROGRAM);
-      // overflow_count * prescaler * 256 / (F_CPU / 1000000) = ms
-      expect(code).toContain("64UL * 256UL");
-      expect(code).toContain("F_CPU / 1000000UL");
+      // 16 MHz / presc 64 → 1024 us/overflow → MILLIS_INC=1, FRACT_INC=3, FRACT_MAX=125
+      expect(code).toContain("m += 1;");
+      expect(code).toContain("f += 3;");
+      expect(code).toContain("if (f >= 125)");
+      expect(code).toContain("_tc_millis_fract");
     });
 
     it("micros() reads TCNT0 for sub-overflow precision with a TIFR0 race fix", () => {
@@ -59,17 +68,26 @@ describe("NativeAVRStrategy millis()/micros() Timer0 ISR", () => {
       const code = millisCode(PROGRAM);
       expect(code).toMatch(/unsigned long micros\(\)/);
       expect(code).toContain("TCNT0");
+      expect(code).toContain("_tc_overflow_count");
       // The race fix: if an overflow is pending (TOV0) but TCNT0 already
       // wrapped past 255, increment the overflow count.
       expect(code).toContain("TIFR0 & _BV(TOV0)");
+      // 16 MHz / presc 64 → 4 us per timer tick
+      expect(code).toContain("((m << 8) + t) * 4UL");
     });
 
-    it("emits _init_millis() that configures Timer0 normal mode + overflow IRQ", () => {
+    it("emits _init_millis() that configures Timer0 fast PWM + overflow IRQ", () => {
       setActiveChip(ATMEGA328P);
       const code = millisCode(PROGRAM);
       expect(code).toContain("_init_millis()");
-      expect(code).toContain("WGM01");
+      // Fast PWM (WGM01|WGM00) matches Timer0 PWM init and keeps TOV0 at 256 ticks.
+      expect(code).toContain("(1 << WGM01) | (1 << WGM00)");
       expect(code).toContain("TIMSK0 = (1 << TOIE0)");
+      expect(code).toContain("(1 << CS01) | (1 << CS00)");
+      // sei() must live inside _init_millis (polyfill), not bare-metal main:
+      // the emit pipeline strips shim lines containing the substring "millis()",
+      // which previously dropped both _init_millis() and sei() from main.
+      expect(code).toMatch(/TIMSK0 = \(1 << TOIE0\);\s*sei\(\);/s);
     });
 
     it("always emits native definitions (no ARDUINO guard — bare-metal main() prevents core linking)", () => {
@@ -85,10 +103,22 @@ describe("NativeAVRStrategy millis()/micros() Timer0 ISR", () => {
   });
 
   describe("ATmega2560 (same Timer0, different chip)", () => {
-    it("emits the same overflow vector (TIM0_OVF_vect) for the 2560", () => {
+    it("emits the same overflow vector (TIMER0_OVF_vect) for the 2560", () => {
       setActiveChip(ATMEGA2560);
       const code = millisCode(PROGRAM);
-      expect(code).toContain("ISR(TIM0_OVF_vect)");
+      expect(code).toContain("ISR(TIMER0_OVF_vect)");
+    });
+  });
+
+  describe("Timer0 PWM init matches millis overflow period", () => {
+    it("328P timer0 initCode uses fast PWM (WGM01|WGM00), not phase-correct alone", () => {
+      expect(ATMEGA328P.timers.timer0.initCode).toContain("WGM01");
+      expect(ATMEGA328P.timers.timer0.initCode).toContain("WGM00");
+    });
+
+    it("2560 timer0 initCode uses fast PWM (WGM01|WGM00)", () => {
+      expect(ATMEGA2560.timers.timer0.initCode).toContain("WGM01");
+      expect(ATMEGA2560.timers.timer0.initCode).toContain("WGM00");
     });
   });
 

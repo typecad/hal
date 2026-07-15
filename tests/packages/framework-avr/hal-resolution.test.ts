@@ -53,8 +53,8 @@ describe("NativeAVRStrategy.resolveHALOperation emits AVR register access", () =
   describe("adc on A0 (ADC channel 0)", () => {
     it("read returns an ADMUX/ADC statement expression", () => {
       const out = resolve({ operation: "adc.read", pin: 14 }); // A0 = D14
-      // GCC statement expression: select channel, start, wait, return ADC.
-      expect(out?.expression).toMatch(/ADMUX = \(1 << REFS0\) \| 0/);
+      // GCC statement expression: select channel (preserving REFS), start, wait, return ADC.
+      expect(out?.expression).toMatch(/ADMUX = \(ADMUX & \(\(1 << REFS1\) \| \(1 << REFS0\)\)\) \| 0/);
       expect(out?.expression).toMatch(/ADCSRA \|= \(1 << ADSC\)/);
       expect(out?.expression).toMatch(/while \(ADCSRA & \(1 << ADSC\)\)/);
       // Returns the ADC data register as the expression's value. The GCC

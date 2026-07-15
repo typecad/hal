@@ -50,6 +50,10 @@ export const ATMEGA2560: AVRChipDescriptor = {
       62: 8, 63: 9, 64: 10, 65: 11, 66: 12, 67: 13, 68: 14, 69: 15,
     },
   },
+  // Hardware SPI on Port B: SS=PB0 (D53), SCK=PB1 (D52), MOSI=PB2 (D51), MISO=PB3 (D50).
+  spi: { ddr: 'DDRB', ssBit: 0, sckBit: 1, mosiBit: 2, misoBit: 3 },
+  // TWI on Port D: SDA=PD1 (D20), SCL=PD0 (D21).
+  twi: { port: 'PORTD', ddr: 'DDRD', sdaBit: 1, sclBit: 0 },
   pins: {
     // Port E — D0, D1, D2, D3, D5 (PE0, PE1, PE4, PE5, PE3 — non-contiguous bits)
     0:  { port: 'PORTE', ddr: 'DDRE', pinReg: 'PINE', bit: 0 },
@@ -102,9 +106,9 @@ export const ATMEGA2560: AVRChipDescriptor = {
     38: { port: 'PORTD', ddr: 'DDRD', pinReg: 'PIND', bit: 7 },
     // D39 — Port G PG2
     39: { port: 'PORTG', ddr: 'DDRG', pinReg: 'PING', bit: 2 },
-    // Port G — D40, D41 (PG0, PG1)
-    40: { port: 'PORTG', ddr: 'DDRG', pinReg: 'PING', bit: 0 },
-    41: { port: 'PORTG', ddr: 'DDRG', pinReg: 'PING', bit: 1 },
+    // Port G — D40=PG1, D41=PG0 (Arduino Mega pin map)
+    40: { port: 'PORTG', ddr: 'DDRG', pinReg: 'PING', bit: 1 },
+    41: { port: 'PORTG', ddr: 'DDRG', pinReg: 'PING', bit: 0 },
     // Port L — D42-D49 (PL7-PL0, reverse bit order)
     42: { port: 'PORTL', ddr: 'DDRL', pinReg: 'PINL', bit: 7 },
     43: { port: 'PORTL', ddr: 'DDRL', pinReg: 'PINL', bit: 6 },
@@ -141,32 +145,32 @@ export const ATMEGA2560: AVRChipDescriptor = {
   timers: {
     timer0: {
       id: 'timer0',
-      // 8-bit fast PWM, prescaler 64.
-      initCode: 'TCCR0A |= (1 << WGM00); TCCR0B |= (1 << CS01) | (1 << CS00);',
+      // 8-bit fast PWM (WGM01|WGM00), prescaler 64. Matches millis() overflow period.
+      initCode: 'TCCR0A |= (1 << WGM01) | (1 << WGM00); TCCR0B |= (1 << CS01) | (1 << CS00);',
     },
     timer1: {
       id: 'timer1',
-      // 8-bit fast PWM via WGM10, prescaler 8.
+      // 8-bit phase-correct PWM (WGM10 = mode 1), prescaler 8.
       initCode: 'TCCR1A |= (1 << WGM10); TCCR1B |= (1 << CS11);',
     },
     timer2: {
       id: 'timer2',
-      // Phase-correct PWM, prescaler 256.
+      // Phase-correct PWM (WGM20), Timer2 CS22 alone = presc. 64.
       initCode: 'TCCR2A |= (1 << WGM20); TCCR2B |= (1 << CS22);',
     },
     timer3: {
       id: 'timer3',
-      // 16-bit timer, 8-bit fast PWM via WGM10, prescaler 8.
+      // 16-bit timer, 8-bit phase-correct PWM via WGM30, prescaler 8.
       initCode: 'TCCR3A |= (1 << WGM30); TCCR3B |= (1 << CS31);',
     },
     timer4: {
       id: 'timer4',
-      // 16-bit timer, 8-bit fast PWM via WGM40, prescaler 8.
+      // 16-bit timer, 8-bit phase-correct PWM via WGM40, prescaler 8.
       initCode: 'TCCR4A |= (1 << WGM40); TCCR4B |= (1 << CS41);',
     },
     timer5: {
       id: 'timer5',
-      // 16-bit timer, 8-bit fast PWM via WGM50, prescaler 8.
+      // 16-bit timer, 8-bit phase-correct PWM via WGM50, prescaler 8.
       initCode: 'TCCR5A |= (1 << WGM50); TCCR5B |= (1 << CS51);',
     },
   },
@@ -200,7 +204,8 @@ export const ATMEGA2560: AVRChipDescriptor = {
     3:  { interrupt: 'INT5', handler: '_int5_handler', vector: 'INT5_vect' },
   },
   millisTimer: {
-    overflowVector: 'TIM0_OVF_vect',
+    // MegaAVR spelling (ATtiny uses TIM0_OVF_vect).
+    overflowVector: 'TIMER0_OVF_vect',
     prescaler: 64,
   },
 };

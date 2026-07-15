@@ -102,10 +102,39 @@ describe("chip descriptor portability", () => {
       expect(resolve({ operation: "pwm.write", pin: 6, duty: 200 })).toEqual({ code: "OCR4A = 200;" });
     });
 
-    it("2560: adc.read A0 (D54) selects ADC channel 0 via ADMUX", () => {
+    it("2560: adc.read A0 (D54) selects ADC channel 0 via ADMUX (preserves REFS)", () => {
       const resolve = resolveWith(ATMEGA2560);
       const out = resolve({ operation: "adc.read", pin: 54 });
-      expect(out?.expression).toMatch(/ADMUX = \(1 << REFS0\) \| 0/);
+      expect(out?.expression).toMatch(/ADMUX = \(ADMUX & \(\(1 << REFS1\) \| \(1 << REFS0\)\)\) \| 0/);
+      expect(out?.expression).toContain("ADCSRB &= ~(1 << MUX5)");
+    });
+
+    it("2560: adc.read A8 (D62) sets MUX5 and ADMUX channel 0 (not channel & 0x1F)", () => {
+      const resolve = resolveWith(ATMEGA2560);
+      const out = resolve({ operation: "adc.read", pin: 62 });
+      expect(out?.expression).toContain("ADCSRB |= (1 << MUX5)");
+      expect(out?.expression).toMatch(/ADMUX = \(ADMUX & \(\(1 << REFS1\) \| \(1 << REFS0\)\)\) \| 0/);
+      // Must NOT leave bit 3 set in ADMUX (would select differential channels).
+      expect(out?.expression).not.toMatch(/\| 8/);
+    });
+
+    it("2560: D40 is PG1 and D41 is PG0", () => {
+      setActiveChip(ATMEGA2560);
+      expect(getPinInfo(40)?.bit).toBe(1);
+      expect(getPinInfo(41)?.bit).toBe(0);
+    });
+
+    it("i2c.read_buffer drains the RX ring via _twi_read, not _twi_read_byte", () => {
+      const resolve = resolveWith(ATMEGA328P);
+      const out = resolve({ operation: "i2c.read_buffer", bus: "Wire", count: 4, buffer: "buf" } as any);
+      expect(out?.code).toContain("_twi_read()");
+      expect(out?.code).not.toContain("_twi_read_byte");
+    });
+
+    it("tone.play passes PORT/DDR/mask for the requested pin", () => {
+      const resolve = resolveWith(ATMEGA328P);
+      const out = resolve({ operation: "tone.play", pin: 8, frequency: 440, duration: 100 } as any);
+      expect(out?.code).toMatch(/_tc_tone_play\(&PORTB, &DDRB, 0x1,/);
     });
   });
 

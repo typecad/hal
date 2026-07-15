@@ -18,7 +18,8 @@
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "test:hw": "npm exec -- cuttlefish-test",
-    "test:hw:basics": "npm exec -- cuttlefish-test tests/01-basics.test.ts"
+    "test:hw:basics": "npm exec -- cuttlefish-test tests/01-basics.test.ts",
+    "test:hw:TIMERS": "npm exec -- cuttlefish-test tests/42-timers.test.ts"
   },
   "dependencies": {
     "@typecad/cuttlefish": "0.1.0-alpha.2",

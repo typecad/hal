@@ -97,15 +97,19 @@ function nativeAnalogRead(pin: number): string {
   // On ATmega2560, channels ≥8 require the MUX5 bit in ADCSRB. The 328P
   // has no MUX5, so we only emit the ADCSRB write when the chip has
   // high channels (detected by checking if any channel ≥8 exists).
+  // ADMUX MUX bits get channel & 0x07; MUX5 extends the channel space.
+  // (channel & 0x1F alone wrongly selects differential encodings for 8–15.)
   const hasMux5 = Object.values(activeChip.adc.channelsByPin).some(c => c >= 8);
   const mux5Write = hasMux5
     ? (channel >= 8 ? `ADCSRB |= (1 << MUX5); ` : `ADCSRB &= ~(1 << MUX5); `)
     : '';
-  const admuxChannel = channel & 0x1F;
+  const admuxChannel = channel & 0x07;
 
+  // Preserve REFS bits so adc.set_reference survives across reads. Default
+  // AVcc is installed once by _init_adc().
   return `({ ` +
     `${mux5Write}` +
-    `ADMUX = ${activeChip.adc.referenceBits} | ${admuxChannel}; ` +
+    `ADMUX = (ADMUX & ((1 << REFS1) | (1 << REFS0))) | ${admuxChannel}; ` +
     `ADCSRA |= (1 << ADSC); ` +
     `while (ADCSRA & (1 << ADSC)); ` +
     `ADC; ` +
@@ -253,8 +257,24 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // (not shimLines) because the emit pipeline filters shim lines containing
     // 'millis()' when the program doesn't directly call it (setup.ts:225),
     // which would silently drop the definition.
+    //
+    // Math matches Arduino wiring.c (fast PWM, 256 ticks/overflow):
+    //   us_per_ovf = prescaler * 256 / (F_CPU/1e6)
+    //   MILLIS_INC / FRACT_* accumulate whole milliseconds in the ISR so the
+    //   soft counter never multiplies into a 32-bit overflow on long uptimes.
+    // Constants are baked from the chip descriptor (polyfills emit before the
+    // F_CPU #define in shimLines).
     const prescaler = activeChip.millisTimer.prescaler;
     const ovfVector = activeChip.millisTimer.overflowVector;
+    const cyclesPerUs = activeChip.fcpu / 1_000_000;
+    const usPerOvf = (prescaler * 256) / cyclesPerUs;
+    const millisInc = Math.floor(usPerOvf / 1000);
+    const fractInc = (usPerOvf % 1000) >> 3;
+    const fractMax = 1000 >> 3;
+    const microsMul = prescaler / cyclesPerUs;
+    const csBits = prescaler === 64
+      ? '(1 << CS01) | (1 << CS00)'
+      : '(1 << CS00)';
     const millisPolyfill: RuntimePolyfillIR = {
       id: 'native_millis',
       kind: 'polyfill',
@@ -264,25 +284,39 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       helperStructs: [],
       helperFunctions: [
         `// Native millis()/micros() — Timer0 overflow ISR (no Arduino core).`,
+        `// Fast PWM + presc ${prescaler}: ${usPerOvf} us/overflow @ ${activeChip.fcpu} Hz.`,
         `static volatile unsigned long _tc_millis_count = 0;`,
-        `ISR(${ovfVector}) { _tc_millis_count++; }`,
+        `static volatile unsigned long _tc_overflow_count = 0;`,
+        `static volatile unsigned char _tc_millis_fract = 0;`,
+        `ISR(${ovfVector}) {`,
+        `  unsigned long m = _tc_millis_count;`,
+        `  unsigned char f = _tc_millis_fract;`,
+        `  m += ${millisInc};`,
+        `  f += ${fractInc};`,
+        `  if (f >= ${fractMax}) { f -= ${fractMax}; m += 1; }`,
+        `  _tc_millis_fract = f;`,
+        `  _tc_millis_count = m;`,
+        `  _tc_overflow_count++;`,
+        `}`,
         `static inline void _init_millis() {`,
-        `  // Normal mode (WGM02:0 = 0), preserving COM bits for PWM pins.`,
-        `  TCCR0A &= ~((1 << WGM01) | (1 << WGM00));`,
-        `  TCCR0B = (TCCR0B & ~((1 << WGM02) | (1 << CS02) | (1 << CS01) | (1 << CS00))) | ${prescaler === 64 ? '(1 << CS01) | (1 << CS00)' : '(1 << CS00)'};`,
+        `  // Fast PWM (WGM02:0 = 3), preserving COM bits for PWM pins.`,
+        `  // Same mode as Timer0 PWM init so TOV0 stays at 256 ticks/overflow.`,
+        `  TCCR0A = (TCCR0A & ~((1 << WGM01) | (1 << WGM00))) | (1 << WGM01) | (1 << WGM00);`,
+        `  TCCR0B = (TCCR0B & ~((1 << WGM02) | (1 << CS02) | (1 << CS01) | (1 << CS00))) | ${csBits};`,
         `  TIMSK0 = (1 << TOIE0);`,
+        `  sei();  // global IRQ — must live here: shim lines containing "millis()" get filtered`,
         `}`,
         `static inline unsigned long millis() {`,
         `  unsigned long m; uint8_t oldSREG = SREG; cli();`,
-        `  m = _tc_millis_count * ${prescaler}UL * 256UL / (F_CPU / 1000000UL);`,
+        `  m = _tc_millis_count;`,
         `  SREG = oldSREG; return m;`,
         `}`,
         `static inline unsigned long micros() {`,
         `  unsigned long m; uint8_t t; uint8_t oldSREG = SREG; cli();`,
-        `  m = _tc_millis_count; t = TCNT0;`,
+        `  m = _tc_overflow_count; t = TCNT0;`,
         `  if ((TIFR0 & _BV(TOV0)) && t < 255) m++;`,
         `  SREG = oldSREG;`,
-        `  return ((m << 8) + t) * (${prescaler}UL / (F_CPU / 1000000UL));`,
+        `  return ((m << 8) + t) * ${microsMul}UL;`,
         `}`,
       ],
       shimMacros: [],
@@ -415,28 +449,44 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     if (usesUART) {
       lines.push(
         '// UART initialization (native AVR USART0)',
+        '// Shared peek latch — consumed by _uart_read/_uart_available.',
+        'static unsigned char _uart_peek_byte = 0;',
+        'static uint8_t _uart_has_peek = 0;',
+        'static uint8_t _uart_written = 0;',
+        '',
         'static inline void _uart_init(unsigned long baud) {',
-        '  unsigned int ubrr = (F_CPU + baud * 8L) / (baud * 16L) - 1;  // rounded',
+        '  // Prefer U2X (double speed) for better baud accuracy (e.g. 115200 @ 16 MHz).',
+        '  uint16_t ubrr;',
+        '  UCSR0A = (1 << U2X0);',
+        '  ubrr = (uint16_t)((F_CPU / 4 / baud - 1) / 2);',
+        '  if (ubrr > 4095) {',
+        '    UCSR0A = 0;',
+        '    ubrr = (uint16_t)((F_CPU / 8 / baud - 1) / 2);',
+        '  }',
         '  UBRR0H = (unsigned char)(ubrr >> 8);',
         '  UBRR0L = (unsigned char)ubrr;',
         '  UCSR0B = (1 << RXEN0) | (1 << TXEN0);',
         '  UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);  // 8N1',
+        '  _uart_has_peek = 0;',
+        '  _uart_written = 0;',
         '}',
         '',
         'static inline int _uart_available() {',
-        '  return (UCSR0A & (1 << RXC0)) ? 1 : 0;',
+        '  return (_uart_has_peek || (UCSR0A & (1 << RXC0))) ? 1 : 0;',
         '}',
         '',
         'static inline int _uart_read() {',
+        '  if (_uart_has_peek) { _uart_has_peek = 0; return _uart_peek_byte; }',
         '  while (!(UCSR0A & (1 << RXC0)));',
         '  return UDR0;',
         '}',
         '',
         'static inline void _uart_write(unsigned char data) {',
-        '  uint8_t s = SREG; cli();',
+        '  // Do not cli() while waiting — Timer0 overflows (~1 ms) must keep firing',
+        '  // or millis() stalls during sustained TX.',
         '  while (!(UCSR0A & (1 << UDRE0)));',
         '  UDR0 = data;',
-        '  SREG = s;',
+        '  _uart_written = 1;',
         '}',
         '',
         'static inline void _uart_print(const char* str) {',
@@ -479,6 +529,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       lines.push(
         '// ADC initialization',
         'static inline void _init_adc() {',
+        `  ADMUX = ${activeChip.adc.referenceBits};  // default reference (preserved across reads)`,
         `  ADCSRA = (1 << ADEN) | ${activeChip.adc.prescalerBits};`,
         '}',
         ''
@@ -510,10 +561,19 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       }
     }
     
-    // Native delay functions
+    // Native delay functions. _delay_us requires a compile-time constant, so
+    // runtime values use _delay_loop_2 (4 cycles/iteration) instead of a
+    // per-us loop that adds ~20–25% overhead.
     lines.push(
       'static inline void _native_delay_ms(unsigned long ms) { while (ms--) _delay_ms(1); }',
-      'static inline void _native_delay_us(unsigned int us) { while (us--) _delay_us(1); }',
+      'static inline void _native_delay_us(unsigned int us) {',
+      '  while (us > 0) {',
+      '    unsigned int chunk = us > 1000 ? 1000 : us;',
+      '    uint16_t loops = (uint16_t)(((F_CPU / 1000000UL) * chunk) / 4UL);',
+      '    if (loops) _delay_loop_2(loops);',
+      '    us -= chunk;',
+      '  }',
+      '}',
       ''
     );
     
@@ -540,35 +600,38 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     );
 
     // ── Native SPI driver — SPCR/SPSR/SPDR registers (no Arduino SPI lib) ──
-    lines.push(
-      '// Native SPI driver — ATmega328P SPI master mode.',
-      'static inline void _spi_init() {',
-      '  DDRB |= (1 << 5) | (1 << 3) | (1 << 2);  // MOSI, SCK, /SS as outputs',
-      '  DDRB &= ~(1 << 4);  // MISO as input',
-      '  SPCR = (1 << SPE) | (1 << MSTR);',
-      '}',
-      '',
-      'static inline uint8_t _spi_transfer(uint8_t data) {',
-      '  SPDR = data;',
-      '  while (!(SPSR & (1 << SPIF)));',
-      '  return SPDR;',
-      '}',
-      '',
-      'static inline void _spi_set_mode(uint8_t mode) {',
-      '  SPCR = (SPCR & ~((1 << CPOL) | (1 << CPHA)))',
-      '       | ((mode & 2) ? (1 << CPOL) : 0)',
-      '       | ((mode & 1) ? (1 << CPHA) : 0);',
-      '}',
-      '',
-      'static inline void _spi_set_bit_order(uint8_t lsbFirst) {',
-      '  if (lsbFirst) SPCR |= (1 << DORD); else SPCR &= ~(1 << DORD);',
-      '}',
-      '',
-      'static inline void _spi_begin_transaction(unsigned long settings) {',
-      '  (void)settings;',
-      '}',
-      ''
-    );
+    {
+      const spi = activeChip.spi;
+      lines.push(
+        `// Native SPI driver — ${activeChip.id} SPI master mode.`,
+        'static inline void _spi_init() {',
+        `  ${spi.ddr} |= (1 << ${spi.mosiBit}) | (1 << ${spi.sckBit}) | (1 << ${spi.ssBit});  // MOSI, SCK, /SS as outputs`,
+        `  ${spi.ddr} &= ~(1 << ${spi.misoBit});  // MISO as input`,
+        '  SPCR = (1 << SPE) | (1 << MSTR);',
+        '}',
+        '',
+        'static inline uint8_t _spi_transfer(uint8_t data) {',
+        '  SPDR = data;',
+        '  while (!(SPSR & (1 << SPIF)));',
+        '  return SPDR;',
+        '}',
+        '',
+        'static inline void _spi_set_mode(uint8_t mode) {',
+        '  SPCR = (SPCR & ~((1 << CPOL) | (1 << CPHA)))',
+        '       | ((mode & 2) ? (1 << CPOL) : 0)',
+        '       | ((mode & 1) ? (1 << CPHA) : 0);',
+        '}',
+        '',
+        'static inline void _spi_set_bit_order(uint8_t lsbFirst) {',
+        '  if (lsbFirst) SPCR |= (1 << DORD); else SPCR &= ~(1 << DORD);',
+        '}',
+        '',
+        'static inline void _spi_begin_transaction(unsigned long settings) {',
+        '  (void)settings;',
+        '}',
+        ''
+      );
+    }
 
     // ── Native UART extensions — print expressions, peek, flush ──────────
     // The base _uart_* helpers (init/write/read/available/print/println) are
@@ -583,7 +646,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       'inline void _uart_print_expr(char c) { _uart_write(c); }',
       'inline void _uart_print_expr(float f) { _uart_print_float(f); }',
       'inline void _uart_print_expr(double f) { _uart_print_float(f); }',
-      'inline void _uart_print_expr(bool b) { _uart_println(b ? "true" : "false"); }',
+      'inline void _uart_print_expr(bool b) { _uart_print(b ? "true" : "false"); }',
       '',
       'template<typename T> inline void _uart_println_expr(T val) {',
       '  _uart_print_long((long)val); _uart_write(\'\\r\'); _uart_write(\'\\n\');',
@@ -591,17 +654,16 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       'inline void _uart_println_expr(const char* s) { _uart_println(s); }',
       'inline void _uart_println_expr(float f) { _uart_print_float(f); _uart_write(\'\\r\'); _uart_write(\'\\n\'); }',
       '',
-        'static inline int _uart_peek() {',
-        '  // AVR has no hardware one-byte lookahead; use a shadow variable.',
-        '  static unsigned char _peeked = 0;',
-        '  static bool _has_peeked = false;',
-        '  if (_has_peeked) return _peeked;',
-        '  if (UCSR0A & (1 << RXC0)) { _peeked = UDR0; _has_peeked = true; return _peeked; }',
-        '  return -1;',
-        '}',
+      'static inline int _uart_peek() {',
+      '  if (_uart_has_peek) return _uart_peek_byte;',
+      '  if (UCSR0A & (1 << RXC0)) { _uart_peek_byte = UDR0; _uart_has_peek = 1; return _uart_peek_byte; }',
+      '  return -1;',
+      '}',
       '',
       'static inline void _uart_flush() {',
-      '  while (!(UCSR0A & (1 << UDRE0)));',
+      '  // TXC stays 0 until the first byte is sent; skip if nothing was written.',
+      '  if (!_uart_written) return;',
+      '  while (!(UCSR0A & (1 << TXC0)));',
       '}',
       ''
     );
@@ -611,106 +673,111 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // repeated-START → SLA+R → read N bytes → STOP. An RX ring buffer backs
     // requestFrom/read/available. TWSR status codes are checked after each
     // operation; errors are silent (the read/write returns 0/false).
-    lines.push(
-      '// Native TWI (I2C) master driver.',
-      '#define TWI_BUFFER_LENGTH 32',
-      'static volatile uint8_t _twi_rx_buffer[TWI_BUFFER_LENGTH];',
-      'static volatile uint8_t _twi_rx_head = 0;',
-      'static volatile uint8_t _twi_rx_tail = 0;',
-      'static volatile uint8_t _twi_master_error = 0;',
-      '',
-      '// TWBR = ((F_CPU / SCL) - 16) / 2  (prescaler = 1, TWSR TWPS = 0)',
-      'static inline void _twi_init() {',
-      '  TWSR = 0;  // prescaler 1',
-      '  TWBR = ((F_CPU / 100000UL) - 16) / 2;  // default 100 kHz',
-      '  TWCR = (1 << TWEN);  // enable TWI',
-      '}',
-      '',
-      'static inline void _twi_set_clock(unsigned long hz) {',
-      '  TWBR = ((F_CPU / hz) - 16) / 2;',
-      '}',
-      '',
-      '// Send START or repeated START condition.',
-      'static inline void _twi_start() {',
-      '  TWCR = (1 << TWINT) | (1 << TWSTA) | (1 << TWEN);',
-      '  while (!(TWCR & (1 << TWINT)));',
-      '}',
-      '',
-      '// Send STOP condition.',
-      'static inline void _twi_stop() {',
-      '  TWCR = (1 << TWINT) | (1 << TWSTO) | (1 << TWEN);',
-      '}',
-      '',
-      '// Write one byte and wait for ACK/NACK. Returns 0 on ACK.',
-      'static inline uint8_t _twi_write_byte(uint8_t data) {',
-      '  TWDR = data;',
-      '  TWCR = (1 << TWINT) | (1 << TWEN);',
-      '  while (!(TWCR & (1 << TWINT)));',
-      '  return (TWSR & 0xF8);  // status code',
-      '}',
-      '',
-      '// Write a C array buffer of known size.',
-      'static inline void _twi_write_buffer(const uint8_t* data, size_t len) {',
-      '  for (size_t i = 0; i < len; i++) _twi_write_byte(data[i]);',
-      '}',
-      '',
-      '// Read one byte: ack=1 sends ACK (expect more), ack=0 sends NACK (last).',
-      'static inline uint8_t _twi_read_byte(uint8_t ack) {',
-      '  TWCR = (1 << TWINT) | (1 << TWEN) | (ack ? (1 << TWEA) : 0);',
-      '  while (!(TWCR & (1 << TWINT)));',
-      '  return TWDR;',
-      '}',
-      '',
-      '// Ring-buffer helpers for received data.',
-      'static inline int _twi_available() {',
-      '  return (int)(_twi_rx_head - _twi_rx_tail) & 0xFF;',
-      '}',
-      'static inline int _twi_read() {',
-      '  if (_twi_rx_head == _twi_rx_tail) return -1;',
-      '  uint8_t b = _twi_rx_buffer[_twi_rx_tail++];',
-      '  return b;',
-      '}',
-      '',
-      '// Begin a master transmission to the given address (SLA+W).',
-      'static inline void _twi_begin_transmission(uint8_t address) {',
-      '  _twi_start();',
-      '  _twi_write_byte(address << 1);  // SLA+W',
-      '}',
-      '',
-      '// End a master transmission: send STOP if requested.',
-      'static inline void _twi_end_transmission(uint8_t sendStop) {',
-      '  if (sendStop) _twi_stop();',
-      '}',
-      '',
-      '// Master read: request N bytes from a slave into the RX ring buffer.',
-      'static inline void _twi_request_from(uint8_t address, uint8_t count, uint8_t sendStop) {',
-      '  _twi_start();',
-      '  _twi_write_byte((address << 1) | 1);  // SLA+R',
-      '  _twi_rx_head = 0; _twi_rx_tail = 0;',
-      '  for (uint8_t i = 0; i < count; i++) {',
-      '    uint8_t ack = (i < count - 1) ? 1 : 0;  // ACK all but last',
-      '    if (_twi_rx_head < TWI_BUFFER_LENGTH) {',
-      '      _twi_rx_buffer[_twi_rx_head++] = _twi_read_byte(ack);',
-      '    } else {',
-      '      _twi_read_byte(0);',
-      '    }',
-      '  }',
-      '  if (sendStop) _twi_stop();',
-      '}',
-      '',
-      '// Bus recovery: clock up to 9 SCL pulses to release a stuck slave.',
-      'static inline void _twi_recover() {',
-      '  DDRC |= (1 << 5);  // SCL as output',
-      '  DDRC &= ~(1 << 4);  // SDA as input',
-      '  for (int i = 0; i < 9; i++) {',
-      '    PORTC &= ~(1 << 5); _native_delay_us(5);',
-      '    PORTC |= (1 << 5); _native_delay_us(5);',
-      '  }',
-      '  _twi_stop();  // send STOP to release the bus',
-      '  DDRC &= ~(1 << 5);  // SCL back to TWI control',
-      '}',
-      ''
-    );
+    {
+      const twi = activeChip.twi;
+      lines.push(
+        '// Native TWI (I2C) master driver.',
+        '#define TWI_BUFFER_LENGTH 32',
+        'static volatile uint8_t _twi_rx_buffer[TWI_BUFFER_LENGTH];',
+        'static volatile uint8_t _twi_rx_head = 0;',
+        'static volatile uint8_t _twi_rx_tail = 0;',
+        'static volatile uint8_t _twi_master_error = 0;',
+        '',
+        '// TWBR = ((F_CPU / SCL) - 16) / 2  (prescaler = 1, TWSR TWPS = 0)',
+        'static inline void _twi_init() {',
+        '  TWSR = 0;  // prescaler 1',
+        '  TWBR = ((F_CPU / 100000UL) - 16) / 2;  // default 100 kHz',
+        '  TWCR = (1 << TWEN);  // enable TWI',
+        '}',
+        '',
+        'static inline void _twi_set_clock(unsigned long hz) {',
+        '  TWBR = ((F_CPU / hz) - 16) / 2;',
+        '}',
+        '',
+        '// Send START or repeated START condition.',
+        'static inline void _twi_start() {',
+        '  TWCR = (1 << TWINT) | (1 << TWSTA) | (1 << TWEN);',
+        '  while (!(TWCR & (1 << TWINT)));',
+        '}',
+        '',
+        '// Send STOP and wait until hardware clears TWSTO (STOP complete).',
+        'static inline void _twi_stop() {',
+        '  TWCR = (1 << TWINT) | (1 << TWSTO) | (1 << TWEN);',
+        '  while (TWCR & (1 << TWSTO));',
+        '}',
+        '',
+        '// Write one byte and wait for ACK/NACK. Returns TWSR status (0xF8 mask);',
+        '// ACK statuses are 0x18 (SLA+W) / 0x28 (data), not 0.',
+        'static inline uint8_t _twi_write_byte(uint8_t data) {',
+        '  TWDR = data;',
+        '  TWCR = (1 << TWINT) | (1 << TWEN);',
+        '  while (!(TWCR & (1 << TWINT)));',
+        '  return (TWSR & 0xF8);  // status code',
+        '}',
+        '',
+        '// Write a C array buffer of known size.',
+        'static inline void _twi_write_buffer(const uint8_t* data, size_t len) {',
+        '  for (size_t i = 0; i < len; i++) _twi_write_byte(data[i]);',
+        '}',
+        '',
+        '// Read one byte: ack=1 sends ACK (expect more), ack=0 sends NACK (last).',
+        'static inline uint8_t _twi_read_byte(uint8_t ack) {',
+        '  TWCR = (1 << TWINT) | (1 << TWEN) | (ack ? (1 << TWEA) : 0);',
+        '  while (!(TWCR & (1 << TWINT)));',
+        '  return TWDR;',
+        '}',
+        '',
+        '// Ring-buffer helpers for received data.',
+        'static inline int _twi_available() {',
+        '  return (int)(_twi_rx_head - _twi_rx_tail);',
+        '}',
+        'static inline int _twi_read() {',
+        '  if (_twi_rx_head == _twi_rx_tail) return -1;',
+        '  uint8_t b = _twi_rx_buffer[_twi_rx_tail++];',
+        '  return b;',
+        '}',
+        '',
+        '// Begin a master transmission to the given address (SLA+W).',
+        'static inline void _twi_begin_transmission(uint8_t address) {',
+        '  _twi_start();',
+        '  _twi_write_byte(address << 1);  // SLA+W',
+        '}',
+        '',
+        '// End a master transmission: send STOP if requested.',
+        'static inline void _twi_end_transmission(uint8_t sendStop) {',
+        '  if (sendStop) _twi_stop();',
+        '}',
+        '',
+        '// Master read: request N bytes from a slave into the RX ring buffer.',
+        'static inline void _twi_request_from(uint8_t address, uint8_t count, uint8_t sendStop) {',
+        '  _twi_start();',
+        '  _twi_write_byte((address << 1) | 1);  // SLA+R',
+        '  _twi_rx_head = 0; _twi_rx_tail = 0;',
+        '  for (uint8_t i = 0; i < count; i++) {',
+        '    uint8_t ack = (i < count - 1) ? 1 : 0;  // ACK all but last',
+        '    if (_twi_rx_head < TWI_BUFFER_LENGTH) {',
+        '      _twi_rx_buffer[_twi_rx_head++] = _twi_read_byte(ack);',
+        '    } else {',
+        '      _twi_read_byte(0);',
+        '    }',
+        '  }',
+        '  if (sendStop) _twi_stop();',
+        '}',
+        '',
+        '// Bus recovery: clock up to 9 SCL pulses to release a stuck slave.',
+        'static inline void _twi_recover() {',
+        `  ${twi.ddr} |= (1 << ${twi.sclBit});  // SCL as output`,
+        `  ${twi.ddr} &= ~(1 << ${twi.sdaBit});  // SDA as input`,
+        '  for (int i = 0; i < 9; i++) {',
+        `    ${twi.port} &= ~(1 << ${twi.sclBit}); _native_delay_us(5);`,
+        `    ${twi.port} |= (1 << ${twi.sclBit}); _native_delay_us(5);`,
+        '  }',
+        '  _twi_stop();  // send STOP to release the bus',
+        `  ${twi.ddr} &= ~(1 << ${twi.sclBit});  // SCL back to TWI control`,
+        '}',
+        ''
+      );
+    }
 
     // ── Native EEPROM driver — avr-libc <avr/eeprom.h> (no Arduino lib) ──
     // Provides the same EEPROM.read()/write()/update() interface the parent's
@@ -728,43 +795,60 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       ''
     );
 
-    // Native tone() driver — Timer2 CTC mode toggling the output-compare pin
-    // at the desired frequency. Emitted unconditionally; only linked if
-    // _tc_tone_play is called.
+    // Native tone() driver — Timer2 CTC interrupts soft-toggling the requested
+    // pin. Duration is enforced by counting toggles in the ISR (Arduino-style).
+    // Conflicts with Timer2 PWM (D3/D11 on 328P, D9/D10 on Mega).
     lines.push(
-      '// Native tone driver — Timer2 CTC mode.',
-      'static volatile unsigned long _tc_tone_end = 0;',
-      'static volatile bool _tc_tone_active = false;',
-      'static volatile uint8_t _tc_tone_pin = 0;',
+      '// Native tone driver — Timer2 CTC + GPIO toggle.',
+      'static volatile long _tc_tone_toggle_count = 0;',
+      'static volatile uint8_t *_tc_tone_port = 0;',
+      'static volatile uint8_t _tc_tone_mask = 0;',
       '',
       'static void _tc_tone_stop_inline(void) {',
-      '  TCCR2B = 0;  // stop timer',
-      '  _tc_tone_active = false;',
+      '  TIMSK2 &= ~(1 << OCIE2A);',
+      '  TCCR2B = 0;',
+      '  TCCR2A = 0;',
+      '  _tc_tone_toggle_count = 0;',
+      '  if (_tc_tone_port) *_tc_tone_port &= ~_tc_tone_mask;  // idle low',
       '}',
       '',
-      'static void _tc_tone_play(uint8_t pin, unsigned long freq, unsigned long duration) {',
+      'ISR(TIMER2_COMPA_vect) {',
+      '  if (_tc_tone_port) *_tc_tone_port ^= _tc_tone_mask;',
+      '  if (_tc_tone_toggle_count > 0) {',
+      '    _tc_tone_toggle_count--;',
+      '    if (_tc_tone_toggle_count == 0) _tc_tone_stop_inline();',
+      '  }',
+      '}',
+      '',
+      'static void _tc_tone_play(volatile uint8_t *port, volatile uint8_t *ddr, uint8_t mask, unsigned long freq, unsigned long duration) {',
       '  if (freq == 0) { _tc_tone_stop_inline(); return; }',
-      '  _tc_tone_pin = pin;',
-      '  // CTC mode, toggle OC2A on compare match.',
-      '  TCCR2A = (1 << COM2A0) | (1 << WGM21);',
-      '  // OCR2A = F_CPU / (2 * prescaler * freq) - 1',
-      '  // Try prescalers to find one that fits OCR2A < 255.',
+      '  _tc_tone_port = port;',
+      '  _tc_tone_mask = mask;',
+      '  *ddr |= mask;  // pin as output',
+      '  // CTC mode; ISR toggles the pin at 2*freq for a square wave of `freq` Hz.',
+      '  TCCR2A = (1 << WGM21);',
       '  const unsigned long prescalers[] = {1, 8, 32, 64, 128, 256, 1024};',
       '  const uint8_t cs_bits[] = {(1<<CS20), (1<<CS21), (1<<CS21)|(1<<CS20), (1<<CS22), (1<<CS22)|(1<<CS20), (1<<CS22)|(1<<CS21), (1<<CS22)|(1<<CS21)|(1<<CS20)};',
+      '  unsigned long ocr = 255;',
+      '  uint8_t cs = cs_bits[0];',
       '  for (int i = 0; i < 7; i++) {',
-      '    unsigned long ocr = (F_CPU / (2UL * prescalers[i] * freq)) - 1;',
-      '    if (ocr < 256) {',
-      '      OCR2A = (uint8_t)ocr;',
-      '      TCCR2B = cs_bits[i];',
-      '      break;',
-      '    }',
+      '    unsigned long v = (F_CPU / (2UL * prescalers[i] * freq)) - 1;',
+      '    if (v < 256) { ocr = v; cs = cs_bits[i]; break; }',
       '  }',
-      '  _tc_tone_active = true;',
-      '  _tc_tone_end = (duration > 0) ? (millis() + duration) : 0;',
+      '  OCR2A = (uint8_t)ocr;',
+      '  if (duration > 0) {',
+      '    // toggles needed = 2 * freq * duration_ms / 1000',
+      '    _tc_tone_toggle_count = (long)((2UL * freq * duration) / 1000UL);',
+      '    if (_tc_tone_toggle_count <= 0) _tc_tone_toggle_count = 1;',
+      '  } else {',
+      '    _tc_tone_toggle_count = -1;  // continuous',
+      '  }',
+      '  TCNT2 = 0;',
+      '  TCCR2B = cs;',
+      '  TIMSK2 |= (1 << OCIE2A);',
       '}',
       '',
-      'static void _tc_tone_stop(uint8_t pin) {',
-      '  (void)pin;',
+      'static void _tc_tone_stop(void) {',
       '  _tc_tone_stop_inline();',
       '}',
       ''
@@ -779,7 +863,8 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       if (intPins.length > 0) {
         for (const [, info] of intPins) {
           lines.push(
-            `static volatile void (*${info.handler})(void) = 0;`,
+            // Qualify the pointer as volatile, not the pointed-to void return.
+            `static void (* volatile ${info.handler})(void) = 0;`,
           );
         }
         lines.push('');
@@ -821,11 +906,13 @@ export class NativeAVRStrategy extends ArduinoStrategy {
 
       // Native __tc_Timing replacement — delegates to AVR helpers, not the
       // Arduino core. freeHeap() uses the avr-libc __heap_start/__brkval trick.
+      // Qualifying ::millis()/::micros() is required: an unqualified call inside
+      // a member of the same name is infinite recursion (stack overflow → hang).
       lines.push(
         '// Native __tc_Timing — delegates to AVR helpers, not Arduino core.',
         'struct __tc_Timing {',
-        '    unsigned long millis() { return millis(); }',
-        '    unsigned long micros() { return micros(); }',
+        '    unsigned long millis() { return ::millis(); }',
+        '    unsigned long micros() { return ::micros(); }',
         '    void delay(unsigned long ms) { _native_delay_ms(ms); }',
         '    void delayMicroseconds(unsigned int us) { _native_delay_us(us); }',
         '    unsigned long freeHeap() {',
@@ -838,22 +925,17 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       );
     }
 
-    // Bare-metal main() — overrides the Arduino core's main(), preventing the
-    // core from being linked when the program uses no Arduino core symbols.
-    // Calls setup() once, then runs the cooperative super-loop (calling loop()
-    // which contains the timer/microtask pump injected by asyncLoopInjection).
-    // Bare-metal main() — overrides the Arduino core's main(), preventing the
-    // core from being linked. The expect test harness now routes protocol
-    // output through the framework's native _uart_* helpers (via the
-    // OutputShim), so Serial is never referenced and the core isn't needed.
-    // A short startup delay gives the host's serial reader time to open the
-    // port after the DTR reset (the Arduino core does this implicitly).
+    // Bare-metal main() — overrides the Arduino core's main(), preventing
+    // the core from being linked. Protocol I/O uses native _uart_* helpers,
+    // so Serial is never referenced. Do NOT put the substring "millis()" in
+    // any of these shim lines: the emit pipeline filters them out when
+    // source analysis misses Timing usage (setup.ts), which previously
+    // dropped both _init_millis() and sei() and left the soft clock stuck
+    // at 0. Timer backbone starts from setupInitCode → _init_millis (polyfill).
     lines.push(
       '// Bare-metal entry point — prevents the Arduino core from being linked.',
       'int main(void) {',
-      '  _init_millis();',
       '  _native_delay_ms(2000);  // let host open port after DTR reset',
-      '  sei();                    // enable Timer0 ISR for millis()',
       '  setup();',
       '  while (1) {',
       '    loop();',
@@ -886,19 +968,21 @@ export class NativeAVRStrategy extends ArduinoStrategy {
   /**
    * Generate setup initialization code based on peripheral usage.
    */
-  override setupInitCode(program?: ProgramIR, _ctx?: PlatformContext): string[] {
+  override setupInitCode(program?: ProgramIR, ctx?: PlatformContext): string[] {
     const lines: string[] = [];
 
-    // Only init UART at the default baud if the program itself uses console
-    // output. The expect test harness provides its own _uart_init(115200) via
-    // the OutputShim preamble, so we skip this to avoid a double-init.
+    // Only init UART if the program itself uses console output. Honor
+    // ctx.console.baudRate when set (parity with framework-arduino); fall back
+    // to the chip default. The expect harness provides its own _uart_init via
+    // OutputShim, so skipping when there's no console avoids a double-init.
     if (program && this.detectConsoleUsage(program)) {
-      lines.push(`_uart_init(${activeChip.uart.defaultBaud})`);
+      const baud = ctx?.console?.baudRate ?? activeChip.uart.defaultBaud;
+      lines.push(`_uart_init(${baud})`);
     }
 
-    // Start the Timer0 millis backbone before anything else — timing is
-    // foundational (setInterval, delay-relative ops, and the async runtime
-    // all depend on it). Enable global interrupts last.
+    // Start the Timer0 soft-clock before anything else — setInterval,
+    // delay-relative ops, and the async runtime all depend on it.
+    // _init_millis (polyfill) also calls sei().
     lines.push('_init_millis()');
 
     const usage = program?.peripheralUsage;
@@ -983,12 +1067,8 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       }
     }
 
-    // Enable global interrupts last, so the Timer0 overflow ISR (and any
-    // configured external interrupts) begin firing only after all peripheral
-    // setup is complete.
-    // Note: sei() is called in main() after _init_millis and the startup
-    // delay, so the Timer0 ISR drives millis() during setup() but doesn't
-    // fire during the initial _uart_init preamble.
+    // Global interrupts are enabled inside _init_millis() (polyfill), which
+    // runs first in setup via setupInitCode.
 
     return lines;
   }
@@ -1059,25 +1139,24 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       case "adc.get_resolution":
         return { expression: "10" };
       // ── Pulse measurement — native micros() + GPIO, not Arduino pulseIn() ──
-      case "pulse.in": {
-        const pop = op as any;
-        const target = pop.value === 1 ? 1 : 0;
-        const readExpr = nativeDigitalRead(op.pin);
-        const timeoutCheck = pop.timeout !== undefined
-          ? `if (micros() - __start >= ${pop.timeout}) { __result = 0; break; }`
-          : '';
-        return { expression: `({ unsigned long __start = micros(); unsigned long __result; while ((${readExpr}) != ${target}) { ${timeoutCheck} } __start = micros(); while ((${readExpr}) == ${target}) { ${timeoutCheck} } __result = micros() - __start; __result; })` };
-      }
+      case "pulse.in":
       case "pulse.in_long": {
         // pulse.in_long is the same as pulse.in on AVR (no longer-resolution timer).
-        // Uses the same timeout-safe pattern as pulse.in.
         const pop = op as any;
         const target = pop.value === 1 ? 1 : 0;
         const readExpr = nativeDigitalRead(op.pin);
-        const timeoutCheck = pop.timeout !== undefined
-          ? `if (micros() - __start >= ${pop.timeout}) { __result = 0; break; }`
+        const hasTimeout = pop.timeout !== undefined;
+        const timeoutWait = hasTimeout
+          ? `if (micros() - __start >= ${pop.timeout}) { __timed_out = 1; break; }`
           : '';
-        return { expression: `({ unsigned long __start = micros(); unsigned long __result; while ((${readExpr}) != ${target}) { ${timeoutCheck} } __start = micros(); while ((${readExpr}) == ${target}) { ${timeoutCheck} } __result = micros() - __start; __result; })` };
+        return {
+          expression:
+            `({ unsigned long __start = micros(); unsigned long __result = 0; uint8_t __timed_out = 0; ` +
+            `while ((${readExpr}) != ${target}) { ${timeoutWait} } ` +
+            `if (!__timed_out) { __start = micros(); while ((${readExpr}) == ${target}) { ${timeoutWait} } ` +
+            `if (!__timed_out) __result = micros() - __start; } ` +
+            `__result; })`,
+        };
       }
       // ── Shift out/in — native GPIO bit-bang, not Arduino shiftOut()/shiftIn() ──
       case "shift.out": {
@@ -1107,18 +1186,18 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         const bitShift = lsb ? `__i` : `(7 - __i)`;
         return { expression: `({ unsigned char __result = 0; for (int __i = 0; __i < 8; __i++) { ${clockPort} |= ${clockMask}; ${clockPort} &= ~${clockMask}; if ((${dataPinReg} & ${dataMask})) __result |= (1 << ${bitShift}); } __result; })` };
       }
-      // ── Tone — native Timer2 CTC, not Arduino tone()/noTone() ──
+      // ── Tone — native Timer2 CTC + GPIO toggle, not Arduino tone()/noTone() ──
       case "tone.play": {
         const top = op as any;
+        const info = getPinInfo(op.pin);
+        if (!info) return { code: `/* tone: invalid pin ${op.pin} */;` };
+        const mask = getPinBitMask(op.pin);
         const freq = top.frequency;
-        const dur = top.duration;
-        if (dur !== undefined) {
-          return { code: `_tc_tone_play(${op.pin}, ${freq}, ${dur});` };
-        }
-        return { code: `_tc_tone_play(${op.pin}, ${freq}, 0);` };
+        const dur = top.duration !== undefined ? top.duration : 0;
+        return { code: `_tc_tone_play(&${info.port}, &${info.ddr}, ${mask}, ${freq}, ${dur});` };
       }
       case "tone.stop":
-        return { code: `_tc_tone_stop(${op.pin});` };
+        return { code: `_tc_tone_stop();` };
       // ── SPI — native SPCR/SPSR/SPDR registers, not Arduino SPI library ──
       case "spi.begin":
         return { code: `_spi_init();` };
@@ -1181,11 +1260,14 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       case "i2c.write_buffer":
         return { code: `_twi_write_buffer(${(op as any).data}, sizeof(${(op as any).data}));` };
       case "i2c.read_buffer": {
+        // request_from already filled the RX ring; drain it (Arduino Wire.read()
+        // semantics). Calling _twi_read_byte here would clock the bus after STOP
+        // and hang forever waiting for TWINT.
         const rop = op as any;
         if (rop.buffer === "__DISCARD__") {
-          return { code: `for (int __i = 0; __i < ${rop.count}; __i++) (void)_twi_read_byte(0);` };
+          return { code: `for (int __i = 0; __i < ${rop.count}; __i++) (void)_twi_read();` };
         }
-        return { code: `for (int __i = 0; __i < ${rop.count}; __i++) ${rop.buffer}[__i] = _twi_read_byte(__i < ${rop.count} - 1 ? 1 : 0);` };
+        return { code: `for (int __i = 0; __i < ${rop.count}; __i++) ${rop.buffer}[__i] = _twi_read();` };
       }
       case "i2c.end_transmission":
         return { code: `_twi_end_transmission(${(op as any).stop ? 1 : 0});` };
