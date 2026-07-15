@@ -21,32 +21,28 @@ console.log(tag(true));
   });
 });
 
-// ── A: heap-allocation-avr detection is independent of HAL imports ──────────
-// `new MyClass()` on AVR must be flagged whether or not a HAL/board import is
-// present. Today the no-import case is silently allowed (the gate keys off
-// `raw` IR text whose presence depends on import structure).
-// ── A: heap-allocation-avr is a WARNING (not an error) on AVR ───────────────
+// ── A: user-class `new` no longer emits a heap-allocation diagnostic ────────
 // `new`/`delete` ARE supported on the Arduino AVR core (it ships operator
-// new/delete over avr-libc malloc/free — a real heap). The gate is a capacity
-// heads-up (small heap ~1.5-1.8 KB), NOT a correctness refusal. It must fire
-// as a WARNING regardless of HAL import structure (demo #34 Finding A made
-// detection import-independent; demo #36 downgraded it from error to warning
-// after verifying new+inheritance compiles and runs on the Uno).
-describe("A: heap-allocation-avr fires as a warning regardless of HAL import", () => {
-  it("warns about new Blinker() WITHOUT a HAL import", () => {
+// new/delete over avr-libc malloc/free — a real heap), and a single long-lived
+// allocation does not fragment the small (~1.5-1.8 KB) heap. The earlier
+// `heap-allocation-avr` WARNING (and the non-AVR `heap-allocation` INFO) for
+// user-class `new` were removed as overly cautious. Only the genuine link-time
+// failure — `new Array<E>(n)` lowering to `std::vector`, which avr-g++ cannot
+// host — is still surfaced (as an error). These tests pin that user-class `new`
+// now produces NO diagnostic on any target.
+describe("A: user-class new() produces no heap-allocation diagnostic", () => {
+  it("does NOT warn about new Blinker() on AVR (warning was removed)", () => {
     const src = `
 class Blinker { on: boolean; constructor() { this.on = false; } }
 function run(): void { const b: Blinker = new Blinker(); }
 run();
 `;
     const res = transpileAVR(src);
-    const diags = res.diagnostics.filter(d => d.code === "heap-allocation-avr");
-    expect(diags.length).toBeGreaterThanOrEqual(1);
-    // Must be a WARNING, not a hard error — new is valid on AVR.
-    expect(diags[0].severity).toBe("warning");
+    const diags = res.diagnostics.filter(d => d.code === "heap-allocation-avr" || d.code === "heap-allocation");
+    expect(diags).toEqual([]);
   });
 
-  it("warns about new Blinker() WITH a HAL import", () => {
+  it("does NOT warn about new Blinker() WITH a HAL import on AVR", () => {
     const src = `
 import { LED } from '@typecad/board-arduino-uno';
 class Blinker { on: boolean; constructor() { this.on = false; } }
@@ -55,9 +51,8 @@ function run(): void { const b: Blinker = new Blinker(); }
 run();
 `;
     const res = transpileAVR(src);
-    const diags = res.diagnostics.filter(d => d.code === "heap-allocation-avr");
-    expect(diags.length).toBeGreaterThanOrEqual(1);
-    expect(diags[0].severity).toBe("warning");
+    const diags = res.diagnostics.filter(d => d.code === "heap-allocation-avr" || d.code === "heap-allocation");
+    expect(diags).toEqual([]);
   });
 
   it("does NOT warn on native (heap is ample there)", () => {
@@ -69,6 +64,19 @@ run();
     const res = transpileNative(src);
     const diags = res.diagnostics.filter(d => d.code === "heap-allocation-avr");
     expect(diags).toEqual([]);
+  });
+
+  it("STILL errors on new Array(n) → std::vector on AVR (avr-g++ has no <vector>)", () => {
+    // The vector-lowering error is a correctness gate, not a cautionary
+    // warning, so it is kept even though the new-on-AVR warning was removed.
+    const src = `
+function run(): void { const buf = new Array<number>(8); }
+run();
+`;
+    const res = transpileAVR(src);
+    const diags = res.diagnostics.filter(d => d.code === "heap-allocation-avr");
+    expect(diags.length).toBeGreaterThanOrEqual(1);
+    expect(diags[0].severity).toBe("error");
   });
 });
 

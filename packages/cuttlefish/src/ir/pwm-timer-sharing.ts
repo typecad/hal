@@ -80,6 +80,7 @@ function getPwmTimerPins(boardConstants: BoardConstants | undefined): PwmTimerPi
 export function validatePWMTimerSharing(
   usage: PeripheralUsage,
   boardConstants: BoardConstants | undefined,
+  filePath: string,
 ): Diagnostic[] {
   if (usage.pwmPinsUsed.size < 2 || !boardConstants) {
     return [];
@@ -120,6 +121,7 @@ export function validatePWMTimerSharing(
     diagnostics.push({
       severity: 'info',
       code: 'pwm-timer-sharing',
+      filePath,
       source: 'pwm-timer-sharing',
       message: `${references.join(', ')} share ${timerId}${boardLabel}. Duty cycle can differ per pin, but timer-wide PWM settings are shared across that group. Prefer pins on different timer groups if you need independent PWM timing behavior.`,
     });

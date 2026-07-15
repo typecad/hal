@@ -66,6 +66,7 @@ function getTimer0PwmPins(boardConstants: BoardConstants | undefined): TimerPwmP
 export function validateTimer0PWMTimingConflict(
   usage: PeripheralUsage,
   boardConstants: BoardConstants | undefined,
+  filePath: string,
 ): Diagnostic[] {
   if (!usage.timer0 || usage.pwmPinsUsed.size === 0) {
     return [];
@@ -93,6 +94,7 @@ export function validateTimer0PWMTimingConflict(
   return [{
     severity: 'info',
     code: 'timer0-pwm-timing-conflict',
+    filePath,
     source: 'timer0-pwm-timing-conflict',
     message: `${pinReferences.join(', ')} use Timer0 PWM${boardLabel}, and your program also relies on Timer0-backed timing APIs such as delay(), millis(), or micros(). This coupling is common on AVR boards, so prefer non-Timer0 PWM pins when you want PWM behavior isolated from core timing.`,
   }];

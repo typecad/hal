@@ -1642,7 +1642,7 @@ function collectNoVectorStorageDiagnostics(program: ProgramIR): Diagnostic[] {
       "a Map/Set for keyed storage, or a fixed-shape interface/struct field. See SUPPORT_MATRIX §1.5 (AVR note).",
     line: span?.startLine,
     column: span?.startColumn,
-    source: span?.filePath,
+    filePath: span?.filePath,
   });
 
   // Class fields — `class C { data: int32_t[]; }`.
@@ -1685,28 +1685,29 @@ function collectNoVectorStorageDiagnostics(program: ProgramIR): Diagnostic[] {
 }
 
 /**
- * Detect heap allocations (`new ClassName(...)`, `new Array<E>(n)`) anywhere in
- * the program — in var_decl initializers, assignments, returns, call arguments,
- * conditions, for-init, and nested sub-expressions — and surface a diagnostic
- * whose severity scales with the target.
+ * Detect `new Array<E>(n)` anywhere in the program — in var_decl initializers,
+ * assignments, returns, call arguments, conditions, for-init, and nested
+ * sub-expressions — and, on targets that cannot host `std::vector`, surface it
+ * as an error.
  *
  * Detection keys off the `newClassName` marker a user-class `new` tags its raw
  * IR node with (set in `expression-to-ir.ts`), falling back to a text regex for
- * untagged / hand-built raw IR. `new Array<E>(n)` lowers to `std::vector<E>`
- * with no marker, so it is detected by substring on unsafe targets.
+ * untagged / hand-built raw IR. A plain user-class `new ClassName(...)` is valid
+ * C++ on every supported target (the Arduino core ships operator new/delete;
+ * other targets have ample RAM), so it produces no diagnostic. `new Array<E>(n)`
+ * lowers to `std::vector<E>` with no marker and is detected by substring on
+ * unsafe targets.
  *
- * Severity is target-parameterized via `unsafeTarget`:
- *   - AVR/megaAVR (`unsafeTarget === true`): WARNING for `new` (the Arduino
- *     core ships operator new/delete over avr-libc malloc/free — a real heap
- *     manager — so `new` compiles, links, and runs; the only real concern is
- *     the small heap ~1.5-1.8 KB on a Uno). ERROR for `std::vector` (avr-g++
- *     has no <vector>, so `new Array<E>(n)` cannot link). (History: a prior
- *     version of the `new` gate was a hard `error` claiming AVR had "no heap
- *     manager" — factually wrong; demo #36 downgraded it to a warning.)
- *   - Other targets (esp32, etc., `unsafeTarget === false`): INFO for `new`.
- *     These targets have more RAM and a real heap, so a single allocation is
- *     not inherently risky, but allocations inside loop() churn the heap over
- *     time. No diagnostic for `std::vector` — it is valid C++ there.
+ * `unsafeTarget` selects which lowering failures apply:
+ *   - AVR/megaAVR (`unsafeTarget === true`): ERROR for `std::vector` (avr-g++
+ *     has no <vector>, so `new Array<E>(n)` cannot link).
+ *   - Other targets (`unsafeTarget === false`): no diagnostic — `std::vector`
+ *     is valid C++ there.
+ *
+ * (History: this function previously also emitted a `heap-allocation-avr`
+ * WARNING and a non-AVR `heap-allocation` INFO for user-class `new`. Both were
+ * removed as overly cautious — a single long-lived allocation does not fragment
+ * the AVR heap. Only the genuine link-time `std::vector` failure is kept.)
  *
  * The walker inspects every expression-bearing field of every statement and
  * recurses into nested sub-expressions, so a `new` inside e.g.
@@ -1726,41 +1727,11 @@ function collectHeapAllocationDiagnostics(program: ProgramIR, arch: string, unsa
     const tagged = raw.newClassName;
     const isHeapNew = !!tagged || /^new\s+\w/.test(raw.value);
     if (isHeapNew) {
-      const match = raw.value.match(/^new\s+(\w+)/);
-      const className = tagged ?? (match ? match[1] : "unknown");
-      if (unsafeTarget) {
-        diagnostics.push({
-          severity: "warning" as const,
-          code: "heap-allocation-avr",
-          message:
-            `Heap allocation (\`new ${className}()\`) on ${archUpper} uses the small ` +
-            `runtime heap (~1.5-1.8 KB usable on a Uno). \`new\`/\`delete\` are supported by the ` +
-            `Arduino core, but heavy or churning allocation risks fragmentation/exhaustion.`,
-          hint:
-            `This compiles and runs. For long-lived or frequently-allocated objects on a small-RAM ` +
-            `target, consider a stack/global instance (auto ${className} obj(...);) or reusing a ` +
-            `single allocation to avoid heap fragmentation.`,
-          line: (stmt as { sourceSpan?: { startLine?: number } }).sourceSpan?.startLine,
-          column: (stmt as { sourceSpan?: { startColumn?: number } }).sourceSpan?.startColumn,
-          source: "framework-arduino",
-        });
-      } else {
-        diagnostics.push({
-          severity: "info" as const,
-          code: "heap-allocation",
-          message:
-            `Heap allocation (\`new ${className}()\`) on ${archUpper}. This target has more RAM and ` +
-            `a real heap manager, so a single allocation is not inherently risky, but allocations ` +
-            `inside loop() churn the heap over time and can fragment it on long-running sketches.`,
-          hint:
-            `For large or frequent buffers, prefer PSRAM when available (` +
-            `display_createCanvasPsram / ps_malloc), or reuse a single long-lived allocation ` +
-            `instead of allocating per-iteration.`,
-          line: (stmt as { sourceSpan?: { startLine?: number } }).sourceSpan?.startLine,
-          column: (stmt as { sourceSpan?: { startColumn?: number } }).sourceSpan?.startColumn,
-          source: "framework-arduino",
-        });
-      }
+      // A user-class `new` is valid C++ on every supported target: the Arduino
+      // core ships operator new/delete (AVR over avr-libc malloc/free), and
+      // other targets have ample RAM and a real heap. The earlier
+      // `heap-allocation-avr` warning here was overly cautious — a single
+      // long-lived allocation does not fragment the heap — so it was removed.
       return;
     }
     // `new Array<E>(n)` lowers to `std::vector<E>(n)` as a raw node with no
@@ -1779,6 +1750,7 @@ function collectHeapAllocationDiagnostics(program: ProgramIR, arch: string, unsa
           `__tc_StaticArray<E,N>, or declare a fixed-size buffer (\`E buf[N];\`).`,
         line: (stmt as { sourceSpan?: { startLine?: number } }).sourceSpan?.startLine,
         column: (stmt as { sourceSpan?: { startColumn?: number } }).sourceSpan?.startColumn,
+        filePath: (stmt as { sourceSpan?: { filePath?: string } }).sourceSpan?.filePath,
         source: "framework-arduino",
       });
     }

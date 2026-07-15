@@ -142,10 +142,11 @@ function scanStatementForUnsafeOps(
   unsafeOps: Map<string, IsrUnsafeOp>,
 ): void {
   if (!stmt || typeof stmt !== 'object') return;
+  const filePath = (stmt as { sourceSpan?: { filePath?: string } }).sourceSpan?.filePath;
 
   if (stmt.kind === 'call') {
     const call = stmt as any;
-    checkCalleeForUnsafeOp(call.callee, diagnostics, unsafeOps);
+    checkCalleeForUnsafeOp(call.callee, diagnostics, unsafeOps, filePath);
   }
 
   // HAL-op statements: after HAL resolution, bare Arduino calls like delay()
@@ -160,7 +161,7 @@ function scanStatementForUnsafeOps(
         'timing.delay_microseconds': 'delayMicroseconds',
       };
       const key = HAL_OP_TO_UNSAFE[op.operation];
-      if (key) checkCalleeForUnsafeOp(key, diagnostics, unsafeOps);
+      if (key) checkCalleeForUnsafeOp(key, diagnostics, unsafeOps, filePath);
     }
   }
 
@@ -170,7 +171,12 @@ function scanStatementForUnsafeOps(
 /**
  * Check if a callee is an unsafe operation and generate diagnostic.
  */
-function checkCalleeForUnsafeOp(callee: string, diagnostics: Diagnostic[], unsafeOps: Map<string, IsrUnsafeOp>): void {
+function checkCalleeForUnsafeOp(
+  callee: string,
+  diagnostics: Diagnostic[],
+  unsafeOps: Map<string, IsrUnsafeOp>,
+  filePath?: string,
+): void {
   if (!callee) return;
 
   // Check direct matches
@@ -180,6 +186,7 @@ function checkCalleeForUnsafeOp(callee: string, diagnostics: Diagnostic[], unsaf
       severity: unsafe.severity,
       message: `${callee}() ${unsafe.reason}`,
       code: 'interrupt-unsafe-operation',
+      filePath,
       source: 'interrupt-analysis',
     });
     return;
@@ -192,6 +199,7 @@ function checkCalleeForUnsafeOp(callee: string, diagnostics: Diagnostic[], unsaf
         severity: info.severity,
         message: `${callee} - ${info.reason}`,
         code: 'interrupt-unsafe-operation',
+        filePath,
         source: 'interrupt-analysis',
       });
       return;
@@ -416,6 +424,7 @@ export function inferVolatileForIsrSharedVars(program: ProgramIR, diagnostics: D
       diagnostics.push({
         severity: 'info',
         message: `'${name}' is written in an interrupt handler and read in main code — emitted as \`volatile\` to prevent the compiler from caching it in a register (the classic ISR/loop race).`,
+        filePath: (stmt as any).sourceSpan?.filePath,
         line: (stmt as any).sourceSpan?.startLine,
         column: (stmt as any).sourceSpan?.startColumn,
         code: 'volatile-isr-shared',
@@ -513,6 +522,7 @@ export function detectReentrancyRisk(program: ProgramIR, diagnostics: Diagnostic
         severity: 'warning',
         message: `'${name}' is called from both an interrupt handler and main-thread code. An interrupt firing mid-execution can corrupt the function's local state. Wrap the main-thread call in noInterrupts()/interrupts(), or refactor to avoid sharing the function.`,
         code: 'reentrancy-risk',
+        filePath: program.fileName,
         source: 'interrupt-analysis',
       });
     }

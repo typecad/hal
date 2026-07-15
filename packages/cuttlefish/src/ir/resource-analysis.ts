@@ -52,6 +52,7 @@ export function analyzeResources(program: ProgramIR, strategy: PlatformStrategy)
           diagnostics.push({
             severity: 'warning',
             message: `${pinRef} is configured as ${peripheralName} ${func.role.toUpperCase()}. Using it as GPIO may interfere with communication.\n   → ${suggestion}`,
+            filePath: program.fileName,
             code: 'peripheral-pin-conflict',
             source: 'resource-analysis',
           });
@@ -77,6 +78,7 @@ export function analyzeResources(program: ProgramIR, strategy: PlatformStrategy)
               severity: 'error',
               message: `Hardware Conflict: Pin '${pinName}' is required by both ${peripheralName} and ${other}.`,
               hint: `Move one of the peripherals to different pins if your board supports remapping, or avoid using both simultaneously.`,
+              filePath: program.fileName,
               code: 'peripheral-peripheral-conflict',
               source: 'resource-analysis',
             });

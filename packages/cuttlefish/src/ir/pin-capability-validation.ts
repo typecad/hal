@@ -95,6 +95,7 @@ function checkCapability(
   operation: HALOpIR,
   sourceLine: number | undefined,
   sourceCol: number | undefined,
+  filePath: string | undefined,
   boardConstants: BoardConstants | undefined,
   diagnostics: Diagnostic[],
 ): void {
@@ -162,6 +163,7 @@ function checkCapability(
     hint,
     line: sourceLine,
     column: sourceCol,
+    filePath,
     source: 'pin-capability-validation',
   } as Diagnostic);
 }
@@ -175,43 +177,44 @@ function scanExpression(
   boardConstants: BoardConstants | undefined,
   parentLine: number | undefined,
   parentCol: number | undefined,
+  parentFilePath: string | undefined,
   diagnostics: Diagnostic[],
 ): void {
   if (!expr || typeof expr !== 'object') return;
 
   switch (expr.kind) {
     case 'binary': {
-      scanExpression(expr.left, boardConstants, parentLine, parentCol, diagnostics);
-      scanExpression(expr.right, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.left, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
+      scanExpression(expr.right, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       break;
     }
     case 'ternary': {
-      scanExpression(expr.condition, boardConstants, parentLine, parentCol, diagnostics);
-      scanExpression(expr.whenTrue, boardConstants, parentLine, parentCol, diagnostics);
-      scanExpression(expr.whenFalse, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.condition, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
+      scanExpression(expr.whenTrue, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
+      scanExpression(expr.whenFalse, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       break;
     }
     case 'property-access': {
-      scanExpression(expr.object, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.object, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       break;
     }
     case 'unary': {
-      scanExpression(expr.operand, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.operand, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       break;
     }
     case 'paren': {
-      scanExpression(expr.inner, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.inner, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       break;
     }
     case 'array': {
       for (const el of expr.elements) {
-        scanExpression(el, boardConstants, parentLine, parentCol, diagnostics);
+        scanExpression(el, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       }
       break;
     }
     case 'object': {
       for (const field of expr.fields) {
-        scanExpression(field.value, boardConstants, parentLine, parentCol, diagnostics);
+        scanExpression(field.value, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       }
       break;
     }
@@ -229,43 +232,43 @@ function scanExpression(
     }
     case 'method-call': {
       for (const arg of expr.args) {
-        scanExpression(arg, boardConstants, parentLine, parentCol, diagnostics);
+        scanExpression(arg, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       }
       break;
     }
     case 'element-access': {
-      scanExpression(expr.object, boardConstants, parentLine, parentCol, diagnostics);
-      scanExpression(expr.index, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.object, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
+      scanExpression(expr.index, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       break;
     }
     case 'string_concat': {
       for (const part of expr.parts) {
-        scanExpression(part, boardConstants, parentLine, parentCol, diagnostics);
+        scanExpression(part, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       }
       break;
     }
     case 'template_string': {
-      scanExpression(expr.expression, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.expression, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       break;
     }
     case 'spread_array': {
-      scanExpression(expr.spreadExpr, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.spreadExpr, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       for (const el of expr.additionalElements) {
-        scanExpression(el, boardConstants, parentLine, parentCol, diagnostics);
+        scanExpression(el, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       }
       break;
     }
     case 'instanceof': {
-      scanExpression(expr.object, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.object, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       break;
     }
     case 'await': {
-      scanExpression(expr.value, boardConstants, parentLine, parentCol, diagnostics);
+      scanExpression(expr.value, boardConstants, parentLine, parentCol, parentFilePath, diagnostics);
       break;
     }
     case 'hal-expr': {
       // Expression-form HAL operation (e.g. adc.read used as a value).
-      checkCapability(expr.operation, parentLine, parentCol, boardConstants, diagnostics);
+      checkCapability(expr.operation, parentLine, parentCol, parentFilePath, boardConstants, diagnostics);
       break;
     }
     case 'number':
@@ -289,20 +292,21 @@ function scanStatement(
 
   const line = stmt.sourceSpan?.startLine as number | undefined;
   const col = stmt.sourceSpan?.startColumn as number | undefined;
+  const filePath = stmt.sourceSpan?.filePath as string | undefined;
 
   switch (stmt.kind) {
   case 'var_decl': {
-    if (stmt.initializer) scanExpression(stmt.initializer, boardConstants, line, col, diagnostics);
+    if (stmt.initializer) scanExpression(stmt.initializer, boardConstants, line, col, filePath, diagnostics);
     break;
   }
 
   case 'assign': {
-    if (stmt.value) scanExpression(stmt.value, boardConstants, line, col, diagnostics);
+    if (stmt.value) scanExpression(stmt.value, boardConstants, line, col, filePath, diagnostics);
     break;
   }
 
   case 'if': {
-    if (stmt.condition) scanExpression(stmt.condition, boardConstants, line, col, diagnostics);
+    if (stmt.condition) scanExpression(stmt.condition, boardConstants, line, col, filePath, diagnostics);
     for (const s of stmt.thenBranch) scanStatement(s, boardConstants, diagnostics);
     if (stmt.elseBranch) for (const s of stmt.elseBranch) scanStatement(s, boardConstants, diagnostics);
     break;
@@ -310,13 +314,13 @@ function scanStatement(
 
   case 'while':
   case 'do_while': {
-    if (stmt.condition) scanExpression(stmt.condition, boardConstants, line, col, diagnostics);
+    if (stmt.condition) scanExpression(stmt.condition, boardConstants, line, col, filePath, diagnostics);
     for (const s of stmt.body) scanStatement(s, boardConstants, diagnostics);
     break;
   }
 
   case 'for': {
-    if (stmt.condition) scanExpression(stmt.condition, boardConstants, line, col, diagnostics);
+    if (stmt.condition) scanExpression(stmt.condition, boardConstants, line, col, filePath, diagnostics);
     if (stmt.initializer) scanStatement(stmt.initializer, boardConstants, diagnostics);
     if (stmt.increment) scanStatement(stmt.increment, boardConstants, diagnostics);
     for (const s of stmt.body) scanStatement(s, boardConstants, diagnostics);
@@ -331,25 +335,25 @@ function scanStatement(
   }
 
   case 'return': {
-    if (stmt.value) scanExpression(stmt.value, boardConstants, line, col, diagnostics);
+    if (stmt.value) scanExpression(stmt.value, boardConstants, line, col, filePath, diagnostics);
     break;
   }
 
   case 'call': {
     for (const arg of stmt.args) {
-      scanExpression(arg, boardConstants, line, col, diagnostics);
+      scanExpression(arg, boardConstants, line, col, filePath, diagnostics);
     }
     break;
   }
 
   case 'hal-op': {
     // Statement-form HAL operation — the primary capability check target.
-    checkCapability(stmt.operation, line, col, boardConstants, diagnostics);
+    checkCapability(stmt.operation, line, col, filePath, boardConstants, diagnostics);
     break;
   }
 
   case 'switch': {
-    if (stmt.expression) scanExpression(stmt.expression, boardConstants, line, col, diagnostics);
+    if (stmt.expression) scanExpression(stmt.expression, boardConstants, line, col, filePath, diagnostics);
     for (const c of stmt.cases) {
       for (const s of c.body) scanStatement(s, boardConstants, diagnostics);
     }
@@ -374,7 +378,7 @@ function scanStatement(
   }
 
   case 'throw': {
-    if (stmt.value) scanExpression(stmt.value, boardConstants, line, col, diagnostics);
+    if (stmt.value) scanExpression(stmt.value, boardConstants, line, col, filePath, diagnostics);
     break;
   }
 

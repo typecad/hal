@@ -53,6 +53,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
         message: `Analog pin '${receiver}' used as digital output. ` +
                  `Analog input capability (ADC) is lost while pin is in OUTPUT mode. ` +
                  `Call ${receiver}.asInput() to restore analog reading.`,
+        filePath: program.fileName,
         code: 'analog-pin-as-output',
         source: 'pin-mode-validation',
       });
@@ -65,6 +66,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
         severity: 'warning',
         message: `Pin '${receiver}' read via '${method}()' without prior mode configuration. ` +
                  `Call ${receiver}.asInput() or ${receiver}.inputPullUp() first.`,
+        filePath: program.fileName,
         code: 'pin-mode-not-set',
         source: 'pin-mode-validation',
       });
@@ -73,6 +75,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
         severity: 'info',
         message: `Pin '${receiver}' written via '${method}()' without explicit mode configuration. ` +
                  `Arduino implicitly sets OUTPUT, but explicit ${receiver}.asOutput() is recommended.`,
+        filePath: program.fileName,
         code: 'pin-mode-not-set',
         source: 'pin-mode-validation',
       });
@@ -106,6 +109,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
         severity: 'warning',
         message: `Pin ${op.pin} read without prior mode configuration. ` +
                  `Call asInput() or inputPullUp() first — reading a floating pin is undefined behavior.`,
+        filePath: program.fileName,
         code: 'pin-mode-not-set',
         source: 'pin-mode-validation',
       });
@@ -114,6 +118,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
         severity: 'info',
         message: `Pin ${op.pin} written without explicit mode configuration. ` +
                  `Arduino implicitly sets OUTPUT, but explicit asOutput() is recommended.`,
+        filePath: program.fileName,
         code: 'pin-mode-not-set',
         source: 'pin-mode-validation',
       });

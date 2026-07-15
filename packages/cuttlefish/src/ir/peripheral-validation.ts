@@ -46,7 +46,8 @@ function getPeripheralCapacity(boardConstants: BoardConstants | undefined): Peri
 function validatePeripheralUsage(
   usage: PeripheralUsage,
   capacity: PeripheralCapacity,
-  boardName: string = 'this board',
+  boardName: string,
+  filePath: string,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
 
@@ -58,6 +59,7 @@ function validatePeripheralUsage(
         severity: 'error',
         message: `I2C${instance} is not available on ${boardName}. Available: ${availableName}`,
         code: 'peripheral-not-available',
+        filePath,
         source: 'peripheral-validation',
       });
     }
@@ -71,6 +73,7 @@ function validatePeripheralUsage(
         severity: 'error',
         message: `SPI${instance} is not available on ${boardName}. Available: ${availableName}`,
         code: 'peripheral-not-available',
+        filePath,
         source: 'peripheral-validation',
       });
     }
@@ -84,6 +87,7 @@ function validatePeripheralUsage(
         severity: 'error',
         message: `UART${instance} is not available on ${boardName}. Available: ${availableName}`,
         code: 'peripheral-not-available',
+        filePath,
         source: 'peripheral-validation',
       });
     }
@@ -99,8 +103,9 @@ function validatePeripheralUsage(
 export function validatePeripherals(
   usage: PeripheralUsage,
   boardConstants: BoardConstants | undefined,
+  filePath: string,
 ): Diagnostic[] {
   const capacity = getPeripheralCapacity(boardConstants);
   const boardName = boardConstants?.get('name') as string ?? 'this board';
-  return validatePeripheralUsage(usage, capacity, boardName);
+  return validatePeripheralUsage(usage, capacity, boardName, filePath);
 }

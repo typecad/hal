@@ -83,6 +83,7 @@ function checkComparisonForADCRange(
   operator: string,
   right: ExpressionIR,
   adcConfig: ADCConfig,
+  filePath: string,
   diagnostics: Diagnostic[],
 ): void {
   // Check if one side is an analog read and the other is a literal
@@ -110,6 +111,7 @@ function checkComparisonForADCRange(
       severity: 'info',
       message: `Comparison ${comparisonDesc} may never be true. ADC resolution is ${adcConfig.resolution}-bit (max ${adcConfig.maxValue}) on this board.`,
       code: 'adc-range-warning',
+      filePath,
       source: 'adc-range-validation',
     });
   }
@@ -121,6 +123,7 @@ function checkComparisonForADCRange(
 function scanExpressionForADCRange(
   expr: ExpressionIR,
   adcConfig: ADCConfig,
+  filePath: string,
   diagnostics: Diagnostic[],
 ): void {
   if (!expr || typeof expr !== 'object') return;
@@ -131,26 +134,26 @@ function scanExpressionForADCRange(
     const comparisonOps = ['>', '>=', '<', '<=', '===', '==', '!==', '!='];
 
     if (comparisonOps.includes(bin.operator)) {
-      checkComparisonForADCRange(bin.left, bin.operator, bin.right, adcConfig, diagnostics);
+      checkComparisonForADCRange(bin.left, bin.operator, bin.right, adcConfig, filePath, diagnostics);
     }
 
     // Recursively scan both sides
-    scanExpressionForADCRange(bin.left, adcConfig, diagnostics);
-    scanExpressionForADCRange(bin.right, adcConfig, diagnostics);
+    scanExpressionForADCRange(bin.left, adcConfig, filePath, diagnostics);
+    scanExpressionForADCRange(bin.right, adcConfig, filePath, diagnostics);
   }
 
   // Check ternary conditions
   if (expr.kind === 'ternary') {
     const ternary = expr as any;
-    scanExpressionForADCRange(ternary.condition, adcConfig, diagnostics);
-    scanExpressionForADCRange(ternary.whenTrue, adcConfig, diagnostics);
-    scanExpressionForADCRange(ternary.whenFalse, adcConfig, diagnostics);
+    scanExpressionForADCRange(ternary.condition, adcConfig, filePath, diagnostics);
+    scanExpressionForADCRange(ternary.whenTrue, adcConfig, filePath, diagnostics);
+    scanExpressionForADCRange(ternary.whenFalse, adcConfig, filePath, diagnostics);
   }
 
   // Check property access
   if (expr.kind === 'property-access') {
     const pa = expr as any;
-    scanExpressionForADCRange(pa.object, adcConfig, diagnostics);
+    scanExpressionForADCRange(pa.object, adcConfig, filePath, diagnostics);
   }
 }
 
@@ -160,6 +163,7 @@ function scanExpressionForADCRange(
 function scanStatementForADCRange(
   stmt: StatementIR,
   adcConfig: ADCConfig,
+  filePath: string,
   diagnostics: Diagnostic[],
 ): void {
   if (!stmt || typeof stmt !== 'object') return;
@@ -168,7 +172,7 @@ function scanStatementForADCRange(
   case 'var_decl': {
     const varDecl = stmt as any;
     if (varDecl.initializer) {
-      scanExpressionForADCRange(varDecl.initializer, adcConfig, diagnostics);
+      scanExpressionForADCRange(varDecl.initializer, adcConfig, filePath, diagnostics);
     }
     break;
   }
@@ -176,7 +180,7 @@ function scanStatementForADCRange(
   case 'assign': {
     const assign = stmt as any;
     if (assign.value) {
-      scanExpressionForADCRange(assign.value, adcConfig, diagnostics);
+      scanExpressionForADCRange(assign.value, adcConfig, filePath, diagnostics);
     }
     break;
   }
@@ -184,16 +188,16 @@ function scanStatementForADCRange(
   case 'if': {
     const ifStmt = stmt as any;
     if (ifStmt.condition) {
-      scanExpressionForADCRange(ifStmt.condition, adcConfig, diagnostics);
+      scanExpressionForADCRange(ifStmt.condition, adcConfig, filePath, diagnostics);
     }
     if (ifStmt.thenBranch) {
       for (const s of ifStmt.thenBranch) {
-        scanStatementForADCRange(s, adcConfig, diagnostics);
+        scanStatementForADCRange(s, adcConfig, filePath, diagnostics);
       }
     }
     if (ifStmt.elseBranch) {
       for (const s of ifStmt.elseBranch) {
-        scanStatementForADCRange(s, adcConfig, diagnostics);
+        scanStatementForADCRange(s, adcConfig, filePath, diagnostics);
       }
     }
     break;
@@ -202,11 +206,11 @@ function scanStatementForADCRange(
   case 'while': {
     const whileStmt = stmt as any;
     if (whileStmt.condition) {
-      scanExpressionForADCRange(whileStmt.condition, adcConfig, diagnostics);
+      scanExpressionForADCRange(whileStmt.condition, adcConfig, filePath, diagnostics);
     }
     if (whileStmt.body) {
       for (const s of whileStmt.body) {
-        scanStatementForADCRange(s, adcConfig, diagnostics);
+        scanStatementForADCRange(s, adcConfig, filePath, diagnostics);
       }
     }
     break;
@@ -215,11 +219,11 @@ function scanStatementForADCRange(
   case 'for': {
     const forStmt = stmt as any;
     if (forStmt.condition) {
-      scanExpressionForADCRange(forStmt.condition, adcConfig, diagnostics);
+      scanExpressionForADCRange(forStmt.condition, adcConfig, filePath, diagnostics);
     }
     if (forStmt.body) {
       for (const s of forStmt.body) {
-        scanStatementForADCRange(s, adcConfig, diagnostics);
+        scanStatementForADCRange(s, adcConfig, filePath, diagnostics);
       }
     }
     break;
@@ -228,7 +232,7 @@ function scanStatementForADCRange(
   case 'return': {
     const retStmt = stmt as any;
     if (retStmt.value) {
-      scanExpressionForADCRange(retStmt.value, adcConfig, diagnostics);
+      scanExpressionForADCRange(retStmt.value, adcConfig, filePath, diagnostics);
     }
     break;
   }
@@ -237,7 +241,7 @@ function scanStatementForADCRange(
     const call = stmt as any;
     if (call.args) {
       for (const arg of call.args) {
-        scanExpressionForADCRange(arg, adcConfig, diagnostics);
+        scanExpressionForADCRange(arg, adcConfig, filePath, diagnostics);
       }
     }
     break;
@@ -267,7 +271,7 @@ export function validateADCRange(
   // Scan top-level statements
   if (program.topLevelStatements) {
     for (const stmt of program.topLevelStatements) {
-      scanStatementForADCRange(stmt, adcConfig, diagnostics);
+      scanStatementForADCRange(stmt, adcConfig, program.fileName, diagnostics);
     }
   }
 
@@ -276,7 +280,7 @@ export function validateADCRange(
     for (const fn of program.functions) {
       if (fn.statements) {
         for (const stmt of fn.statements) {
-          scanStatementForADCRange(stmt, adcConfig, diagnostics);
+          scanStatementForADCRange(stmt, adcConfig, program.fileName, diagnostics);
         }
       }
     }
@@ -289,14 +293,14 @@ export function validateADCRange(
         for (const method of cls.methods) {
           if (method.statements) {
             for (const stmt of method.statements) {
-              scanStatementForADCRange(stmt, adcConfig, diagnostics);
+              scanStatementForADCRange(stmt, adcConfig, program.fileName, diagnostics);
             }
           }
         }
       }
       if (cls.constructor?.statements) {
         for (const stmt of cls.constructor.statements) {
-          scanStatementForADCRange(stmt, adcConfig, diagnostics);
+          scanStatementForADCRange(stmt, adcConfig, program.fileName, diagnostics);
         }
       }
     }

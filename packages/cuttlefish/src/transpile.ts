@@ -178,8 +178,9 @@ function formatFatalDiagnostics(entries: LocatedDiagnostic[]): string {
   ];
 
   for (const { filePath, diagnostic } of errors) {
-    const locationBase = filePath
-      ? path.relative(process.cwd(), filePath) || filePath
+    const resolvedFile = filePath ?? diagnostic.filePath;
+    const locationBase = resolvedFile
+      ? path.relative(process.cwd(), resolvedFile) || resolvedFile
       : diagnostic.source ?? "user code";
     const position = diagnostic.line != null
       ? `(${diagnostic.line}:${diagnostic.column ?? 1})`
@@ -413,7 +414,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         code: "themeCss-ui-entry-ignored",
         message: `display.themeCss is ignored for .ui single-file entries; the inline <style> in ${path.basename(options.inputFile)} is the sole CSS source.`,
         hint: `Move the standalone CSS into the .ui file's <style> block, or change the entry to a .ts file that imports a .ui.html module.`,
-        source: path.basename(options.inputFile),
+        filePath: path.basename(options.inputFile),
       });
     }
   }
@@ -426,7 +427,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   if (hasUIHook()) {
     for (const mod of requireUIHook().allUIModules()) {
       for (const d of mod.diagnostics) {
-        diagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
+        diagnostics.push({ ...d, filePath: d.filePath ?? path.basename(mod.htmlPath) });
       }
     }
   }
@@ -585,7 +586,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   if (hasUIHook()) {
     for (const mod of requireUIHook().allUIModules()) {
       for (const d of mod.mountDiagnostics) {
-        diagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
+        diagnostics.push({ ...d, filePath: d.filePath ?? path.basename(mod.htmlPath) });
       }
     }
   }

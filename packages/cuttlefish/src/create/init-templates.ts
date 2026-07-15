@@ -21,11 +21,11 @@ export function generateProjectPackageJson(options: InitProjectOptions): string 
   const { projectName, frameworkPackage, boardPackage } = options;
 
   const deps: Record<string, string> = {
-    "@typecad/cuttlefish": "^0.1.0-alpha.1",
-    [frameworkPackage]: "^0.1.0-alpha.1",
+    "@typecad/cuttlefish": "^1.0.0-alpha.3",
+    [frameworkPackage]: "^1.0.0-alpha.3",
   };
   if (boardPackage) {
-    deps[boardPackage] = "^0.1.0-alpha.1";
+    deps[boardPackage] = "^1.0.0-alpha.3";
   }
 
   const depsJson = Object.entries(deps)
@@ -36,13 +36,14 @@ export function generateProjectPackageJson(options: InitProjectOptions): string 
   // eslint-transpiler-rules plugin (which is plain JS, no dep). Without these
   // devDependencies `npm run lint` fails to resolve the parser/plugin in a
   // freshly created project. Versions mirror the repo demo's package.json.
-  const devDepsJson = [
+  const baseDevDeps = [
     '    "eslint": "^10.4.1"',
     '    "@typescript-eslint/parser": "^8.61.0"',
     '    "@typescript-eslint/eslint-plugin": "^8.61.0"',
-  ].join(',\n');
+  ];
 
   if (options.isNative) {
+    const devDepsJson = baseDevDeps.join(',\n');
     return `{
   "name": "${projectName}",
   "version": "1.0.0",
@@ -62,6 +63,19 @@ ${devDepsJson}
 `;
   }
 
+  // Embedded projects get two host-side testing tiers:
+  //  - @typecad/expect: hardware tests run on the board via cuttlefish-test
+  //    (`npm run test:hw`), scoped to tests/**/*.test.ts.
+  //  - @typecad/simulator + vitest: simulate the board in Node (`npm run
+  //    simulate`), scoped to sim/**/*.test.ts so vitest never collides with the
+  //    @typecad/expect no-op stubs under tests/.
+  // Versions mirror the workspace's published releases / root devDeps.
+  const devDepsJson = [
+    ...baseDevDeps,
+    '    "@typecad/expect": "^1.0.0-alpha.3"',
+    '    "@typecad/simulator": "^1.0.0-alpha.3"',
+    '    "vitest": "^4.0.18"',
+  ].join(',\n');
   return `{
   "name": "${projectName}",
   "version": "1.0.0",
@@ -71,6 +85,8 @@ ${devDepsJson}
     "compile": "cuttlefish build --compile",
     "upload": "cuttlefish build --compile --upload",
     "monitor": "cuttlefish build --compile --upload --monitor",
+    "test:hw": "npm exec -- cuttlefish-test",
+    "simulate": "vitest run sim/",
     "lint": "eslint --config .cuttlefish/eslint.config.mjs src/"
   },
   "dependencies": {
@@ -112,7 +128,7 @@ export function generateProjectTsconfig(options: InitProjectOptions): string {
     "allowArbitraryExtensions": true,
     "rootDirs": ["src", "types"]${paths}
   },
-  "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish.config.ts"${options.boardPackage ? ', ".cuttlefish/cuttlefish-env.d.ts"' : ''}]
+  "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish.config.ts"${options.boardPackage ? ', ".cuttlefish/cuttlefish-env.d.ts"' : ''}${options.isNative ? '' : ', "sim/**/*.ts"'}]
 }
 `;
 }
@@ -158,6 +174,12 @@ export default config;
   const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
   const baudLine = options.baudRate ? `\n\n  // Console polyfill configuration\n  console: {\n    baudRate: ${options.baudRate},\n    // Serial port for upload/monitor. Override with --port on the CLI.\n    port: '${portHint}',\n  },` : '';
 
+  // Hardware test runner configuration — used by \`npm run test:hw\` (cuttlefish-test,
+  // provided by @typecad/expect). It transpiles each tests/**/*.test.ts file,
+  // flashes it to the board, and evaluates the assertions over serial.
+  const resolvedBaud = options.baudRate ?? 115200;
+  const testLine = `\n\n  // Hardware test runner (@typecad/expect / \`npm run test:hw\`)\n  test: {\n    // Serial port for the test board. Override with --port on the CLI or the\n    // CUTTLEFISH_PORT env var (e.g. CUTTLEFISH_PORT=/dev/ttyUSB0 npm run test:hw).\n    port: '${portHint}',\n    baudRate: ${resolvedBaud},\n    timeout: 30000,\n    include: ['tests/**/*.test.ts'],\n  },`;
+
   return `// ---------------------------------------------------------------------------
 // cuttlefish.config.ts — Project configuration
 //
@@ -186,7 +208,7 @@ const config: CuttlefishConfig = {
   // Toolchain configuration
   toolchain: {
     type: '${resolvedToolchain}',
-  },${baudLine}
+  },${baudLine}${testLine}
 };
 
 export default config;
@@ -319,6 +341,150 @@ while (true) {
   led.toggle();
   delay(1000);
 }
+`;
+}
+
+export function generateStarterTest(_options: InitProjectOptions): string {
+  return `// ---------------------------------------------------------------------------
+// Hardware test — Basics
+//
+// Runs on the board via \`npm run test:hw\` (cuttlefish-test). Each test file is
+// transpiled, flashed to the board, and its assertions are evaluated on the host
+// over serial. Change the serial port in cuttlefish.config.ts (the \`test.port\`
+// field) or override it with the CUTTLEFISH_PORT env var.
+//
+// API: describe(...).it(...).expect(value).<matcher>() chains. Import pin
+// objects from '@typecad/board' to assert on real hardware I/O. Every file ends
+// with done().
+// ---------------------------------------------------------------------------
+
+import { describe, done } from '@typecad/expect';
+
+describe("Basics")
+  .it("adds two numbers")
+  .expect(
+    (() => {
+      const a = 1;
+      let b = 2;
+      return a + b;
+    })
+  ).toBe(3)
+  .it("multiplies two numbers")
+  .expect(
+    (() => {
+      let a = 3;
+      let b = 4;
+      return a * b;
+    })
+  ).toBe(12)
+  .it("reads an array element")
+  .expect(
+    (() => {
+      const data = new Uint8Array([0xAA, 0x10, 0x20]);
+      return data[1];
+    })
+  ).toBe(0x10)
+  .it("clamps a value to a range")
+  .expect(
+    (() => {
+      const value = 2000;
+      return Math.max(0, Math.min(1023, value));
+    })
+  ).toBe(1023);
+
+done();
+`;
+}
+
+export function generateStarterSim(options: InitProjectOptions): string {
+  const boardType = options.targetId;
+  return `// ---------------------------------------------------------------------------
+// Hardware simulation — Button + LED
+//
+// Runs entirely on your computer with \`npm run simulate\` (vitest + the
+// @typecad/simulator package). No board, serial port, or arduino-cli required.
+// The simulator mirrors the pins/peripherals of your ${options.targetDisplayName}
+// (${boardType}); you inject fake inputs and assert on the outputs in Node.
+//
+// This is the fast tier — iterate on logic here, then confirm on real hardware
+// with \`npm run test:hw\` (which flashes tests/ to the board).
+// ---------------------------------------------------------------------------
+
+import { describe, it, expect, beforeEach } from "vitest";
+import {
+  createSimBoard,
+  type SimBoard,
+  type SimDigitalPin,
+} from "@typecad/simulator";
+
+// ===========================================================================
+// FIRMWARE LOGIC
+// ---------------------------------------------------------------------------
+// Factor your firmware into a function that takes the simulated pins as
+// arguments. In a real project this same logic runs on the board against real
+// pins — here it runs against the sim board so you can test it without hardware.
+// ===========================================================================
+
+/**
+ * Reads a button and reflects its state on an LED.
+ *
+ * To use your own logic: replace the body of this function with whatever your
+ * firmware does (read a sensor, drive a motor, print to serial, ...). As long
+ * as it only touches pins you pass in, the simulator can exercise it.
+ */
+function reflectButtonOnLed(button: SimDigitalPin, led: SimDigitalPin): void {
+  // The button pin is pulled HIGH (1) at rest and reads LOW (0) when pressed.
+  if (button.isLow()) {
+    led.high();
+  } else {
+    led.low();
+  }
+}
+
+// ===========================================================================
+// TEST BENCH
+// ---------------------------------------------------------------------------
+// \`createSimBoard\` builds an in-memory version of your board. The pin numbers
+// below match the physical pinout. Add the pins/peripherals your firmware uses:
+// board.digital(n), board.analog(n), board.pwm(n), board.serial(n),
+// board.i2c(n), board.spi(n), board.interrupt(n).
+// ===========================================================================
+
+function setupSim(): { board: SimBoard; button: SimDigitalPin; led: SimDigitalPin } {
+  // boardType mirrors the target chosen with \`cuttlefish create\`.
+  const board = createSimBoard({ boardType: "${boardType}" });
+
+  const button = board.digital(2).asInputPullUp();  // button on pin 2 (INPUT_PULLUP)
+  const led = board.digital(13).asOutput(false);    // LED on pin 13
+
+  return { board, button, led };
+}
+
+describe("Button + LED (simulator)", () => {
+  beforeEach(() => {
+    // A fresh board per test keeps state isolated. For a long-running sim you
+    // can call board.reset() between cycles instead.
+  });
+
+  it("keeps the LED off while the button is released", () => {
+    const { button, led } = setupSim();
+
+    // Button at rest: INPUT_PULLUP reads HIGH.
+    reflectButtonOnLed(button, led);
+
+    expect(led.getBitValue()).toBe(0);
+  });
+
+  it("turns the LED on while the button is pressed", () => {
+    const { button, led } = setupSim();
+
+    // Simulate a press: drive the button pin LOW.
+    button.injectValue(0);
+    reflectButtonOnLed(button, led);
+
+    expect(led.getBitValue()).toBe(1);
+  });
+});
 `;
 }
 

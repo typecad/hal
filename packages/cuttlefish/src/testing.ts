@@ -38,6 +38,8 @@ export {
   generateProjectConfig,
   generateProjectEnvDts,
   generateStarterSketch,
+  generateStarterTest,
+  generateStarterSim,
   generateGitignore,
   generateEslintConfig,
   runInitWizard,

@@ -15,6 +15,7 @@ import type { BoardConstants } from './board-resolver.js';
 export function validatePulldownSupport(
   usage: PeripheralUsage,
   boardConstants: BoardConstants | undefined,
+  filePath: string,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
 
@@ -32,6 +33,7 @@ export function validatePulldownSupport(
       diagnostics.push({
         code: 'pulldown-not-supported',
         message: `${pinName ?? `pin ${pinNumber}`} does not support hardware pulldown${arch ? ` on ${arch.toUpperCase()} boards` : ''}. Use ${pinName ?? 'pin'}.asInput() or ${pinName ?? 'pin'}.inputPullUp() instead.`,
+        filePath,
         source: 'pulldown-validation',
         severity: 'error',
       });

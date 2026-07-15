@@ -34,6 +34,14 @@ export interface Diagnostic {
   column?: number;
   code?: string;
   source?: string;
+  /**
+   * Path (or basename) of the source file the diagnostic refers to. When set,
+   * it is rendered in the diagnostic header so the location is not just
+   * `(line,col)` but `path/to/file.ts (line,col)`. Emitters should prefer the
+   * real file path from the originating node's sourceSpan, falling back to a
+   * basename when the full path is unavailable.
+   */
+  filePath?: string;
   /** Text of the source line for display context. */
   sourceLine?: string;
 }

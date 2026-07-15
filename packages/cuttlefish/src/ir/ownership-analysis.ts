@@ -213,6 +213,7 @@ function scanStatementsForByValueMutation(
               hint: `Use '${baseName}: Mutable<T>' to pass by mutable reference (T&) instead of a copy.`,
               line: stmt.sourceSpan.startLine,
               column: stmt.sourceSpan.startColumn,
+              filePath: stmt.sourceSpan.filePath,
               code: 'ownership-mutate-copy',
               source: 'ownership-analysis',
             });
@@ -388,6 +389,7 @@ function analyzeStatement(
                   hint: `const ${stmt.name}: Shared = ${initName};  // borrow by reference instead of copying`,
                   line: span.startLine,
                   column: span.startColumn,
+                  filePath: span.filePath,
                   code: 'ownership-owned-copy',
                   source: 'ownership-analysis',
                 });
@@ -404,6 +406,7 @@ function analyzeStatement(
                 hint: `const ${stmt.name}: Shared = ${initName};  // borrow by const reference, zero copy`,
                 line: span.startLine,
                 column: span.startColumn,
+                filePath: span.filePath,
                 code: 'ownership-implicit-copy',
                 source: 'ownership-analysis',
               });
@@ -422,6 +425,7 @@ function analyzeStatement(
               hint: `${storageKw} _tmp: Owned = ...;\nconst ${stmt.name}: ${annotLabel} = _tmp;`,
               line: span.startLine,
               column: span.startColumn,
+              filePath: span.filePath,
               code: 'ownership-temp-ref-warn',
               source: 'ownership-analysis',
             });
@@ -447,6 +451,7 @@ function analyzeStatement(
           hint: `change '${stmt.target}${typeAnnotation}' → '${stmt.target}: Mutable'  // Mutable allows mutation`,
           line: span.startLine,
           column: span.startColumn,
+          filePath: span.filePath,
           code: 'ownership-assign-to-ref',
           source: 'ownership-analysis',
         });
@@ -494,6 +499,7 @@ function analyzeStatement(
             hint: `Use '${baseName}: Mutable<T>' to pass by mutable reference (T&) instead of a copy.`,
             line: span.startLine,
             column: span.startColumn,
+            filePath: span.filePath,
             code: 'ownership-mutate-copy',
             source: 'ownership-analysis',
           });
@@ -515,6 +521,7 @@ function analyzeStatement(
           hint: `change '${stmt.target}${typeAnnotation}' → '${stmt.target}: Mutable'  // Mutable allows mutation`,
           line: span.startLine,
           column: span.startColumn,
+          filePath: span.filePath,
           code: 'ownership-assign-to-ref',
           source: 'ownership-analysis',
         });
@@ -528,6 +535,7 @@ function analyzeStatement(
           hint: `const ${stmt.target}_ref: Shared = ${stmt.target};  // add this before the move`,
           line: span.startLine,
           column: span.startColumn,
+          filePath: span.filePath,
           code: 'ownership-use-after-move',
           source: 'ownership-analysis',
         });
@@ -546,6 +554,7 @@ function analyzeStatement(
             hint: `Use '${upBaseName}: Mutable<T>' to pass by mutable reference (T&) instead of a copy.`,
             line: span.startLine,
             column: span.startColumn,
+            filePath: span.filePath,
             code: 'ownership-mutate-copy',
             source: 'ownership-analysis',
           });
@@ -579,6 +588,7 @@ function analyzeStatement(
                 hint: `return ${retVar.borrowSource} directly as Owned, or change the function to accept '${retVar.borrowSource}: Shared' as a parameter`,
                 line: span.startLine,
                 column: span.startColumn,
+                filePath: span.filePath,
                 code: 'ownership-return-local-ref',
                 source: 'ownership-analysis',
               });
@@ -720,6 +730,7 @@ function analyzeExpression(
           hint: `const ${name}_ref: Shared = ${name};  // add this before the move`,
           line: span.startLine,
           column: span.startColumn,
+          filePath: span.filePath,
           code: 'ownership-use-after-move',
           source: 'ownership-analysis',
         });
@@ -805,6 +816,7 @@ function analyzeExpression(
               hint: `const ${match}_ref: Shared = ${match};  // add this before the move`,
               line: span.startLine,
               column: span.startColumn,
+              filePath: span.filePath,
               code: 'ownership-use-after-move',
               source: 'ownership-analysis',
             });
@@ -999,6 +1011,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
                 message: `'${baseName}' is declared 'const' but its contents are mutated via index assignment — demoted to non-const in C++ so the mutation compiles.`,
                 line: constEntry.span.startLine,
                 column: constEntry.span.startColumn,
+                filePath: constEntry.span.filePath,
                 code: 'ownership-const-content-mutated',
                 source: 'ownership-analysis',
               });
@@ -1021,6 +1034,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
                 message: `'${baseName}' is declared 'const' but a field is mutated via member assignment — demoted to non-const in C++ so the mutation compiles.`,
                 line: constEntry.span.startLine,
                 column: constEntry.span.startColumn,
+                filePath: constEntry.span.filePath,
                 code: 'ownership-const-content-mutated',
                 source: 'ownership-analysis',
               });
@@ -1047,6 +1061,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
                 message: `'${baseName}' is declared 'const' but a field is mutated via ++/-- — demoted to non-const in C++ so the mutation compiles.`,
                 line: constEntry.span.startLine,
                 column: constEntry.span.startColumn,
+                filePath: constEntry.span.filePath,
                 code: 'ownership-const-content-mutated',
                 source: 'ownership-analysis',
               });
@@ -1080,6 +1095,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
                   message: `'${receiver}' is declared 'const' but its contents are mutated via .${method}() — demoted to non-const in C++ so the mutation compiles.`,
                   line: constEntry.span.startLine,
                   column: constEntry.span.startColumn,
+                  filePath: constEntry.span.filePath,
                   code: 'ownership-const-content-mutated',
                   source: 'ownership-analysis',
                 });
@@ -1114,6 +1130,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
           message: `'${entry.name}' is never reassigned — emitted as \`const\` so the C++ compiler can place it in ROM and fold it.`,
           line: entry.span.startLine,
           column: entry.span.startColumn,
+          filePath: entry.span.filePath,
           code: 'ownership-suggest-const',
           source: 'ownership-analysis',
         });
@@ -1165,6 +1182,7 @@ function checkBorrowMismatch(program: ProgramIR, diagnostics: Diagnostic[]): voi
                   hint: `change '${arg.value}: Shared = ...' → '${arg.value}: Mutable = ...'`,
                   line: stmt.sourceSpan.startLine,
                   column: stmt.sourceSpan.startColumn,
+                  filePath: stmt.sourceSpan.filePath,
                   code: 'ownership-borrow-mismatch',
                   source: 'ownership-analysis',
                 });
@@ -1227,6 +1245,7 @@ function checkDanglingBorrowsOnScopeExit(
           hint: `move '${v.borrowSource}' to the outer scope, or ensure '${v.name}' does not outlive it`,
           line: span.startLine,
           column: span.startColumn,
+          filePath: span.filePath,
           code: 'ownership-dangling-borrow',
           source: 'ownership-analysis',
         });

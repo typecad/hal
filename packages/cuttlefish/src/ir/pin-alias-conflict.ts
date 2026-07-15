@@ -6,6 +6,7 @@ import { findBoardPinByName } from './board-pin-utils.js';
 export function validatePinAliasConflicts(
   usage: PeripheralUsage,
   boardConstants: BoardConstants | undefined,
+  filePath: string,
 ): Diagnostic[] {
   if (!boardConstants || usage.pinsUsed.size === 0) {
     return [];
@@ -39,6 +40,7 @@ export function validatePinAliasConflicts(
     diagnostics.push({
       severity: 'warning',
       code: 'pin-alias-conflict',
+      filePath,
       source: 'pin-alias-conflict',
       message: `Pin '${canonicalPinName}' is referenced through multiple names${boardLabel}: ${orderedNames.join(', ')}. These names refer to the same physical pin. Pick one name to keep pin usage and diagnostics unambiguous.`,
     });

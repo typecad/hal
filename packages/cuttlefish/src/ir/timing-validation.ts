@@ -59,6 +59,7 @@ export function validateBlockingDelayInLoop(program: ProgramIR): Diagnostic[] {
             `or use Async.sleep(ms) / Async.yield() to let other tasks run between checks.`,
           line: (stmt as any).sourceSpan?.startLine,
           column: (stmt as any).sourceSpan?.startColumn,
+          filePath: (stmt as any).sourceSpan?.filePath,
           code: 'blocking-delay-in-loop',
           source: 'timing-validation',
         });

@@ -153,6 +153,7 @@ function checkSPIFrequency(value: number): string | undefined {
 function checkConfigValue(
   kind: 'baud' | 'i2c' | 'spi',
   rawValue: unknown,
+  filePath: string | undefined,
   diagnostics: Diagnostic[],
 ): void {
   // HAL ops carry resolved numeric values as `number` when the source arg was
@@ -171,6 +172,7 @@ function checkConfigValue(
       severity: 'warning',
       message,
       code: 'unit-suspicion',
+      filePath,
       source: 'unit-suspicion-validation',
     });
   }
@@ -185,16 +187,17 @@ function checkConfigValue(
 function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
   if (!stmt || typeof stmt !== 'object') return;
   const s = stmt as any;
+  const filePath = s.sourceSpan?.filePath;
 
   // HAL-op statements carry structured operations with resolved values.
   if (stmt.kind === 'hal-op' && s.operation) {
     const op = s.operation;
     switch (op.operation) {
       case 'i2c.set_clock':
-        checkConfigValue('i2c', op.hz, diagnostics);
+        checkConfigValue('i2c', op.hz, filePath, diagnostics);
         break;
       case 'uart.begin':
-        checkConfigValue('baud', op.baud, diagnostics);
+        checkConfigValue('baud', op.baud, filePath, diagnostics);
         break;
       // SPI frequency flows through SPISettings construction text, which the
       // HAL op carries as a string — the numeric extraction in
@@ -203,7 +206,7 @@ function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
         if (typeof op.settings === 'string') {
           // SPISettings({freq}, ...) — try to extract the leading frequency.
           const m = op.settings.match(/^\s*(\d+)/);
-          if (m) checkConfigValue('spi', parseInt(m[1], 10), diagnostics);
+          if (m) checkConfigValue('spi', parseInt(m[1], 10), filePath, diagnostics);
         }
         break;
     }
@@ -214,15 +217,15 @@ function scanStatement(stmt: StatementIR, diagnostics: Diagnostic[]): void {
   if (stmt.kind === 'call' && typeof s.callee === 'string' && Array.isArray(s.args)) {
     const method = s.callee.split('.').pop() ?? s.callee;
     if (method === 'setClock' && s.args.length >= 2) {
-      checkConfigValue('i2c', extractNumericValue(s.args[1]), diagnostics);
+      checkConfigValue('i2c', extractNumericValue(s.args[1]), filePath, diagnostics);
     } else if (method === 'setBaudRate' || method === 'begin') {
       // Serial.begin(baud) / setBaudRate(baud) — last numeric arg is the baud.
       for (const arg of s.args) {
         const v = extractNumericValue(arg);
-        if (v !== undefined) checkConfigValue('baud', v, diagnostics);
+        if (v !== undefined) checkConfigValue('baud', v, filePath, diagnostics);
       }
     } else if (method === 'setFrequency' && s.args.length >= 2) {
-      checkConfigValue('spi', extractNumericValue(s.args[1]), diagnostics);
+      checkConfigValue('spi', extractNumericValue(s.args[1]), filePath, diagnostics);
     }
   }
 

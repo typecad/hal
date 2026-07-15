@@ -59,6 +59,7 @@ export function validateTryCatch(
         hint: `function readSensor(): number | null {\n  const data = sensor.read();\n  if (!data) return null;  // error path\n  return data.value;       // success path\n}`,
         line: (stmt as any).sourceSpan?.startLine,
         column: (stmt as any).sourceSpan?.startColumn,
+        filePath: (stmt as any).sourceSpan?.filePath,
         source: 'try-catch-validation',
       });
       // Still recurse into nested blocks to find other try/catch
@@ -78,6 +79,7 @@ export function validateTryCatch(
         hint: `return null;  // or return an error code`,
         line: (stmt as any).sourceSpan?.startLine,
         column: (stmt as any).sourceSpan?.startColumn,
+        filePath: (stmt as any).sourceSpan?.filePath,
         source: 'try-catch-validation',
       });
       return;

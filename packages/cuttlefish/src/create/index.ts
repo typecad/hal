@@ -6,6 +6,8 @@ export {
   generateProjectConfig,
   generateProjectEnvDts,
   generateStarterSketch,
+  generateStarterTest,
+  generateStarterSim,
   generateGitignore,
   generateEslintConfig,
 } from './init-templates.js';

@@ -28,13 +28,13 @@ export function runProgramValidations(program: ProgramIR, strategy?: PlatformStr
   const peripheralUsage = (program.peripheralUsage as PeripheralUsage | undefined) ?? createEmptyPeripheralUsage();
 
   diagnostics.push(...validatePinCapabilities(program));
-  diagnostics.push(...validatePeripherals(peripheralUsage, program.boardConstants));
-  diagnostics.push(...validateUnsafePins(peripheralUsage, program.boardConstants));
+  diagnostics.push(...validatePeripherals(peripheralUsage, program.boardConstants, program.fileName));
+  diagnostics.push(...validateUnsafePins(peripheralUsage, program.boardConstants, program.fileName));
   diagnostics.push(...analyzeResources(program, resolvedStrategy));
-  diagnostics.push(...validatePinAliasConflicts(peripheralUsage, program.boardConstants));
-  diagnostics.push(...validatePWMTimerSharing(peripheralUsage, program.boardConstants));
-  diagnostics.push(...validateTimer0PWMTimingConflict(peripheralUsage, program.boardConstants));
-  diagnostics.push(...validatePulldownSupport(peripheralUsage, program.boardConstants));
+  diagnostics.push(...validatePinAliasConflicts(peripheralUsage, program.boardConstants, program.fileName));
+  diagnostics.push(...validatePWMTimerSharing(peripheralUsage, program.boardConstants, program.fileName));
+  diagnostics.push(...validateTimer0PWMTimingConflict(peripheralUsage, program.boardConstants, program.fileName));
+  diagnostics.push(...validatePulldownSupport(peripheralUsage, program.boardConstants, program.fileName));
   diagnostics.push(...analyzeInterruptSafety(program, peripheralUsage));
   inferVolatileForIsrSharedVars(program, diagnostics);
   detectReentrancyRisk(program, diagnostics);

@@ -57,10 +57,11 @@ export function assertTypeScriptInput(filePath: string): void {
   }
 }
 
-export function printDiagnostics(diagnostics: Array<Diagnostic | { severity: string; message: string; hint?: string; line?: number; column?: number; code?: string; sourceLine?: string }>): void {
+export function printDiagnostics(diagnostics: Array<Diagnostic | { severity: string; message: string; hint?: string; line?: number; column?: number; code?: string; filePath?: string; sourceLine?: string }>): void {
   for (const diagnostic of diagnostics) {
     const position = diagnostic.line && diagnostic.column ? chalk.gray(`(${diagnostic.line},${diagnostic.column})`) : "";
     const code = diagnostic.code ? chalk.gray(` [${diagnostic.code}]`) : "";
+    const file = 'filePath' in diagnostic && diagnostic.filePath ? chalk.cyan(diagnostic.filePath) : "";
 
     let severityLabel: string;
     let hintColor: (s: string) => string;
@@ -76,7 +77,8 @@ export function printDiagnostics(diagnostics: Array<Diagnostic | { severity: str
     }
 
     const location = position ? ` ${position}` : "";
-    const header = `${severityLabel}${code}${location}: ${chalk.white(diagnostic.message)}`;
+    const filePrefix = file ? `${file} ` : "";
+    const header = `${filePrefix}${severityLabel}${code}${location}: ${chalk.white(diagnostic.message)}`;
 
     if (diagnostic.severity === "error") {
       console.error(header);

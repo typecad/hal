@@ -9,6 +9,8 @@ import {
   generateProjectConfig,
   generateProjectEnvDts,
   generateStarterSketch,
+  generateStarterTest,
+  generateStarterSim,
   generateGitignore,
   generateBoardForwardingFile,
   generateEslintConfig,
@@ -199,6 +201,26 @@ export function scaffoldProject(
     createdFiles.push(sketchPath);
   }
 
+  // Embedded projects get a starter hardware test (@typecad/expect / cuttlefish-test).
+  // Native projects have no serial/board path, so they get no test setup.
+  if (!options.isNative) {
+    const testsDir = path.join(resolvedOutDir, 'tests');
+    fs.mkdirSync(testsDir, { recursive: true });
+    const testPath = path.join(testsDir, '01-basics.test.ts');
+    fs.writeFileSync(testPath, generateStarterTest(options), 'utf-8');
+    createdFiles.push(testPath);
+
+    // Host-side simulation (@typecad/simulator + vitest). sim/ is kept separate
+    // from tests/ so `vitest run sim/` never loads the @typecad/expect no-op
+    // stubs, and `cuttlefish-test` (which globs tests/) never tries to flash a
+    // simulator file as firmware.
+    const simDir = path.join(resolvedOutDir, 'sim');
+    fs.mkdirSync(simDir, { recursive: true });
+    const simPath = path.join(simDir, 'main.test.ts');
+    fs.writeFileSync(simPath, generateStarterSim(options), 'utf-8');
+    createdFiles.push(simPath);
+  }
+
   return { createdFiles, outDir: resolvedOutDir, options };
 }
 
@@ -216,9 +238,15 @@ export function printInitNextSteps(options: InitProjectOptions, outDir: string):
   if (!options.isNative) {
     const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
     console.log();
+    console.log(chalk.bold.white("To simulate without hardware:"));
+    console.log(`  ${chalk.cyan("npm run simulate")}`);
+    console.log();
     console.log(chalk.bold.white("To upload to your board:"));
     console.log(`  ${chalk.cyan("npm run upload")}`);
     console.log();
-    console.log(chalk.dim(`Edit ${chalk.white("package.json")} to change the serial port from ${chalk.white(portHint)} to your port.`));
+    console.log(chalk.bold.white("To run hardware tests:"));
+    console.log(`  ${chalk.cyan("npm run test:hw")}`);
+    console.log();
+    console.log(chalk.dim(`Edit ${chalk.white("cuttlefish.config.ts")} to change the serial port from ${chalk.white(portHint)} to your port.`));
   }
 }

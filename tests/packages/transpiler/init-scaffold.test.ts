@@ -15,6 +15,8 @@ import {
   generateProjectConfig,
   generateProjectEnvDts,
   generateStarterSketch,
+  generateStarterTest,
+  generateStarterSim,
   generateGitignore,
 } from "@typecad/cuttlefish/testing";
 import type { InitProjectOptions } from "@typecad/cuttlefish/testing";
@@ -25,6 +27,7 @@ import type { InitProjectOptions } from "@typecad/cuttlefish/testing";
 
 const ARDUINO_UNO_OPTIONS: InitProjectOptions = {
   projectName: 'test-project',
+  targetId: 'arduino-uno',
   boardId: 'arduino-uno',
   boardDisplayName: 'Arduino Uno',
   architecture: 'avr',
@@ -49,12 +52,60 @@ describe("init-templates", () => {
 
       expect(parsed.name).toBe('test-project');
       expect(parsed.private).toBe(true);
-      expect(parsed.dependencies['@typecad/cuttlefish']).toBe('^0.1.0-alpha.1');
-      expect(parsed.dependencies['@typecad/board-arduino-uno']).toBe('^0.1.0-alpha.1');
-      expect(parsed.dependencies['@typecad/framework-arduino']).toBe('^0.1.0-alpha.1');
+      // Deps must pin the current @typecad/* release line (1.0.0-alpha.x), not a
+      // stale 0.1.0-alpha.x. Older pins let npm resolve incompatible registry
+      // builds that break at runtime (e.g. `npm run simulate` against an older
+      // @typecad/hal whose module layout no longer matches @typecad/simulator).
+      expect(parsed.dependencies['@typecad/cuttlefish']).toBe('^1.0.0-alpha.3');
+      expect(parsed.dependencies['@typecad/board-arduino-uno']).toBe('^1.0.0-alpha.3');
+      expect(parsed.dependencies['@typecad/framework-arduino']).toBe('^1.0.0-alpha.3');
       expect(parsed.scripts.build).toContain('cuttlefish');
       expect(parsed.scripts.compile).toContain('--compile');
       expect(parsed.scripts.upload).toContain('--upload');
+    });
+
+    it("adds a hardware test setup for embedded targets", () => {
+      // Embedded scaffolds get the @typecad/expect framework and a test:hw
+      // script that runs cuttlefish-test (transpile → flash → serial evaluate).
+      const content = generateProjectPackageJson(ARDUINO_UNO_OPTIONS);
+      const parsed = JSON.parse(content);
+
+      expect(parsed.scripts['test:hw']).toBe('npm exec -- cuttlefish-test');
+      expect(parsed.devDependencies['@typecad/expect']).toBeDefined();
+    });
+
+    it("adds a host-side simulation setup for embedded targets", () => {
+      // Embedded scaffolds also get @typecad/simulator + vitest, run via
+      // `npm run simulate` (scoped to sim/ so it never collides with the
+      // @typecad/expect tests under tests/).
+      const content = generateProjectPackageJson(ARDUINO_UNO_OPTIONS);
+      const parsed = JSON.parse(content);
+
+      expect(parsed.scripts['simulate']).toBe('vitest run sim/');
+      expect(parsed.devDependencies['@typecad/simulator']).toBeDefined();
+      expect(parsed.devDependencies['vitest']).toBeDefined();
+    });
+
+    it("omits both test tiers for native targets", () => {
+      // Native (g++/clang++) has no serial/board path, so it gets no test:hw
+      // script and no @typecad/expect dependency. It also has no MCU
+      // peripherals to simulate, so it gets no simulate script / simulator dep.
+      const nativeOptions: InitProjectOptions = {
+        projectName: 'native-project',
+        targetId: 'native',
+        targetDisplayName: 'Native Desktop',
+        isNative: true,
+        frameworkPackage: '@typecad/framework-native',
+        framework: 'native',
+        includeSketch: true,
+      };
+      const content = generateProjectPackageJson(nativeOptions);
+      const parsed = JSON.parse(content);
+
+      expect(parsed.scripts['test:hw']).toBeUndefined();
+      expect(parsed.devDependencies['@typecad/expect']).toBeUndefined();
+      expect(parsed.scripts['simulate']).toBeUndefined();
+      expect(parsed.devDependencies['@typecad/simulator']).toBeUndefined();
     });
   });
 
@@ -70,6 +121,7 @@ describe("init-templates", () => {
       expect(parsed.compilerOptions.rootDirs).toEqual(["src", "types"]);
       expect(parsed.include).toContain('src/**/*.ts');
       expect(parsed.include).toContain('types/**/*.ts');
+      expect(parsed.include).toContain('sim/**/*.ts');
     });
 
     it("omits 'dom' from lib (console typings come from cuttlefish-env.d.ts)", () => {
@@ -154,6 +206,17 @@ describe("init-templates", () => {
       expect(content).toContain("board: '@typecad/board-esp32s3'");
       expect(content).toContain("buildTarget: 'esp32:esp32:esp32s3'");
     });
+
+    it("includes a hardware test section for embedded targets", () => {
+      // The test: block wires cuttlefish-test discovery (include glob) and the
+      // serial port the runner flashes/reads. Required for `npm run test:hw`.
+      const content = generateProjectConfig(ARDUINO_UNO_OPTIONS);
+
+      expect(content).toContain('test: {');
+      expect(content).toContain("include: ['tests/**/*.test.ts']");
+      expect(content).toContain('port:');
+      expect(content).toContain('baudRate: 9600');
+    });
   });
 
   describe("generateProjectEnvDts", () => {
@@ -189,6 +252,38 @@ describe("init-templates", () => {
       expect(content).toContain("LED.asOutput");
       expect(content).toContain("led.toggle()");
       expect(content).toContain("delay(1000)");
+    });
+  });
+
+  describe("generateStarterTest", () => {
+    it("produces a runnable @typecad/expect hardware test", () => {
+      const content = generateStarterTest(ARDUINO_UNO_OPTIONS);
+
+      // Must import the framework's describe/done entry points and end with done().
+      expect(content).toContain("import { describe, done } from '@typecad/expect';");
+      expect(content).toContain('done();');
+      // Must demonstrate the fluent API: describe → it → expect → matcher.
+      expect(content).toContain('describe(');
+      expect(content).toContain('.it(');
+      expect(content).toContain('.expect(');
+      expect(content).toContain('.toBe(');
+    });
+  });
+
+  describe("generateStarterSim", () => {
+    it("produces a vitest + @typecad/simulator harness for the project's board", () => {
+      const content = generateStarterSim(ARDUINO_UNO_OPTIONS);
+
+      expect(content).toContain('from "vitest"');
+      expect(content).toContain('from "@typecad/simulator"');
+      // Builds a sim board mirroring the project's target id.
+      expect(content).toContain('boardType: "arduino-uno"');
+      expect(content).toContain('createSimBoard');
+      // Demonstrates the vitest API + an injection-based assertion.
+      expect(content).toContain('describe(');
+      expect(content).toContain('it(');
+      expect(content).toContain('injectValue');
+      expect(content).toContain('expect(');
     });
   });
 
@@ -303,6 +398,12 @@ describe("init-scaffold", () => {
       // Verify src directory was created
       expect(fs.existsSync(path.join(tmpDir, 'src'))).toBe(true);
       expect(fs.existsSync(path.join(tmpDir, 'src', 'main.ts'))).toBe(true);
+
+      // Embedded projects get a starter hardware test + a host-side sim harness.
+      expect(dirPaths.some(f => f.endsWith('tests/01-basics.test.ts'))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, 'tests', '01-basics.test.ts'))).toBe(true);
+      expect(dirPaths.some(f => f.endsWith('sim/main.test.ts'))).toBe(true);
+      expect(fs.existsSync(path.join(tmpDir, 'sim', 'main.test.ts'))).toBe(true);
     });
 
     it("creates all expected files without sketch", () => {

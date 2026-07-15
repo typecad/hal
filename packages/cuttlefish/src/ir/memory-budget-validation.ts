@@ -92,6 +92,7 @@ export function validateMemoryBudget(
       hint:
         `Reduce global/static data, move large buffers to PROGMEM (flash), shorten deep call chains, ` +
         `or use a board with more SRAM. See the heap estimate in the diagnostics report for a breakdown.`,
+      filePath: program.fileName,
       code: 'memory-budget',
       source: 'memory-budget-validation',
     });

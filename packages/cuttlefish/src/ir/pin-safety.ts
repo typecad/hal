@@ -46,6 +46,7 @@ function buildUnsafePinMessage(
 export function validateUnsafePins(
   usage: PeripheralUsage,
   boardConstants: BoardConstants | undefined,
+  filePath: string,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
 
@@ -67,6 +68,7 @@ export function validateUnsafePins(
         severity: 'warning',
         message: buildUnsafePinMessage(pinName, boardConstants),
         code: 'unsafe-pin-usage',
+        filePath,
         source: 'pin-safety',
       });
     }
