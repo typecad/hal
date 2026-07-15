@@ -765,7 +765,13 @@ export function buildEmitterContext(
     includes.push(...emittedPolyfills.includes.map((include) => normalizeInclude(include)));
   }
   if (program.requiredIncludes) {
-    includes.push(...program.requiredIncludes);
+    let reqIncludes = [...program.requiredIncludes];
+    // Let the strategy strip stale includes (e.g. framework-avr removes
+    // Arduino library headers it doesn't need — Wire.h, SPI.h, etc.).
+    if (strategy.filterRequiredIncludes) {
+      reqIncludes = strategy.filterRequiredIncludes(reqIncludes);
+    }
+    includes.push(...reqIncludes);
   }
   // UI text bindings lower to snprintf bodies that need <stdio.h>. Pushed here
   // (in buildEmitterContext) rather than in emitUIRuntime because emitPreamble

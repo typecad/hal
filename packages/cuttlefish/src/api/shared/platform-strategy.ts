@@ -30,6 +30,13 @@ export interface PlatformProfileStrategy {
   /** System #include headers forced at the top of every emitted file. */
   forcedIncludes(program: ProgramIR, ctx?: PlatformContext): string[];
 
+  /**
+   * Filter the HAL-discovered required includes (from __includes metadata).
+   * Frameworks that provide native peripheral drivers can strip stale Arduino
+   * library includes here. Defaults to returning the includes unchanged.
+   */
+  filterRequiredIncludes?(includes: string[]): string[];
+
   /** Symbol aliases (TypeScript name → C++ name). */
   symbolAliases(program: ProgramIR, ctx?: PlatformContext): Record<string, string>;
 

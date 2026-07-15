@@ -188,6 +188,22 @@ export class NativeAVRStrategy extends ArduinoStrategy {
   }
 
   /**
+   * Strip Arduino library includes that the native drivers replace. The HAL
+   * proxy metadata (__includes) registers <Wire.h>, <SPI.h>, <EEPROM.h>,
+   * <Arduino.h> — all of which link the Arduino core. Since framework-avr
+   * provides native register-level drivers for every peripheral, these are
+   * dead weight that pulls in the core unnecessarily.
+   */
+  filterRequiredIncludes(includes: string[]): string[] {
+    return includes.filter(inc =>
+      !inc.includes('<Wire.h>') &&
+      !inc.includes('<SPI.h>') &&
+      !inc.includes('<EEPROM.h>') &&
+      !inc.includes('<Arduino.h>')
+    );
+  }
+
+  /**
    * Surface AVR-specific diagnostics (invalid pins, unsupported PWM) in
    * addition to the parent's architecture-gated diagnostics (heap/vector).
    * Snapshots the profile diagnostics first so the cached array is not
