@@ -27,9 +27,21 @@ export type Bit = 0 | 1;
 export type Bits<N extends number = number> = number;
 
 /** Class decorator marking a struct as a memory-mapped register at `address`.
- *  Erased at transpile time — the class becomes a `volatile uint32_t*`. */
-export declare function register(address: number): ClassDecorator;
+ *  Erased at transpile time — the class becomes a `volatile uint32_t*`.
+ *
+ *  These carry real (inert) runtime bodies rather than `declare`, so the
+ *  `export { register, bits }` re-export in index.ts resolves under Node's ESM
+ *  loader, which validates that re-exported bindings exist at runtime. They are
+ *  never invoked: the cuttlefish transpiler detects them by name and lowers the
+ *  decorated struct away, so these stubs are only reached when the decorator
+ *  source is imported without transpilation (e.g. host-side tests). */
+export function register(_address: number): ClassDecorator {
+  return () => {};
+}
 
 /** Property decorator carrying the bit range [lo, hi] (inclusive) of a field
- *  within its register. Erased at transpile time. */
-export declare function bits(hi: number, lo: number): PropertyDecorator;
+ *  within its register. Erased at transpile time. See `register` for why these
+ *  have runtime bodies. */
+export function bits(_hi: number, _lo: number): PropertyDecorator {
+  return () => {};
+}

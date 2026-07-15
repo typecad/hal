@@ -1,6 +1,22 @@
 import { describe, it, expect } from "vitest";
 import { createHALInstances } from "@typecad/hal";
 
+describe("@typecad/hal ESM exports resolve under Node's native loader", () => {
+  // Regression: register.ts declared register/bits as `export declare function`
+  // (no runtime body), so tsc emitted register.js as `export {};` — while
+  // index.js still did `export { register, bits } from './register.js'`. Under
+  // Node's native ESM loader (e.g. a scaffolded project importing
+  // @typecad/simulator → @typecad/hal), re-exporting bindings that the source
+  // module doesn't actually export throws SyntaxError before any code runs.
+  // vitest's transform tolerated it, so only a dynamic import() of the built
+  // dist surfaces the real failure. register/bits now carry inert runtime stubs.
+  it("dynamically importing @typecad/hal does not throw", async () => {
+    const mod = await import("@typecad/hal");
+    expect(typeof mod.register).toBe("function");
+    expect(typeof mod.bits).toBe("function");
+  });
+});
+
 describe("createHALInstances", () => {
   it("inflates a sparse array indexed by instance number", () => {
     const instances = [
