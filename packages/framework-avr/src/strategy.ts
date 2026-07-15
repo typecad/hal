@@ -16,7 +16,7 @@ import {
   getPWMInfo,
   getInterruptInfo,
 } from './registers.js';
-import { activeChip, setActiveChip, ATMEGA328P } from './chips/index.js';
+import { activeChip, setActiveChip } from './chips/index.js';
 import type { AVRChipDescriptor } from './chips/types.js';
 import { resolveAvrProfile } from './profile.js';
 import type { ResolvedAvrProfile } from './profile.js';
@@ -94,13 +94,21 @@ function nativeAnalogRead(pin: number): string {
   const channel = getADCChannel(pin);
   if (channel === null) return `0 /* invalid analog pin ${pin} */`;
 
-  // Use GCC statement expression for multi-step ADC read
-  // ADC is initialized once in setup() via _init_adc() - no runtime check needed
+  // On ATmega2560, channels ≥8 require the MUX5 bit in ADCSRB. The 328P
+  // has no MUX5, so we only emit the ADCSRB write when the chip has
+  // high channels (detected by checking if any channel ≥8 exists).
+  const hasMux5 = Object.values(activeChip.adc.channelsByPin).some(c => c >= 8);
+  const mux5Write = hasMux5
+    ? (channel >= 8 ? `ADCSRB |= (1 << MUX5); ` : `ADCSRB &= ~(1 << MUX5); `)
+    : '';
+  const admuxChannel = channel & 0x1F;
+
   return `({ ` +
-    `ADMUX = ${activeChip.adc.referenceBits} | ${channel}; ` +  // reference + channel
-    `ADCSRA |= (1 << ADSC); ` +               // Start conversion
-    `while (ADCSRA & (1 << ADSC)); ` +        // Wait for completion
-    `ADC; ` +                                  // Return result
+    `${mux5Write}` +
+    `ADMUX = ${activeChip.adc.referenceBits} | ${admuxChannel}; ` +
+    `ADCSRA |= (1 << ADSC); ` +
+    `while (ADCSRA & (1 << ADSC)); ` +
+    `ADC; ` +
   `})`;
 }
 
@@ -255,13 +263,13 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       forwardDeclarations: [],
       helperStructs: [],
       helperFunctions: [
-        `// Native millis()/micros() — Timer0 overflow ISR.`,
         `// Native millis()/micros() — Timer0 overflow ISR (no Arduino core).`,
         `static volatile unsigned long _tc_millis_count = 0;`,
         `ISR(${ovfVector}) { _tc_millis_count++; }`,
         `static inline void _init_millis() {`,
-        `  TCCR0A = 0;`,
-        `  TCCR0B = ${prescaler === 64 ? '(1 << CS01) | (1 << CS00)' : '(1 << CS00)'};`,
+        `  // Normal mode (WGM02:0 = 0), preserving COM bits for PWM pins.`,
+        `  TCCR0A &= ~((1 << WGM01) | (1 << WGM00));`,
+        `  TCCR0B = (TCCR0B & ~((1 << WGM02) | (1 << CS02) | (1 << CS01) | (1 << CS00))) | ${prescaler === 64 ? '(1 << CS01) | (1 << CS00)' : '(1 << CS00)'};`,
         `  TIMSK0 = (1 << TOIE0);`,
         `}`,
         `static inline unsigned long millis() {`,
@@ -583,9 +591,14 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       'inline void _uart_println_expr(const char* s) { _uart_println(s); }',
       'inline void _uart_println_expr(float f) { _uart_print_float(f); _uart_write(\'\\r\'); _uart_write(\'\\n\'); }',
       '',
-      'static inline int _uart_peek() {',
-      '  return (UCSR0A & (1 << RXC0)) ? UDR0 : -1;',
-      '}',
+        'static inline int _uart_peek() {',
+        '  // AVR has no hardware one-byte lookahead; use a shadow variable.',
+        '  static unsigned char _peeked = 0;',
+        '  static bool _has_peeked = false;',
+        '  if (_has_peeked) return _peeked;',
+        '  if (UCSR0A & (1 << RXC0)) { _peeked = UDR0; _has_peeked = true; return _peeked; }',
+        '  return -1;',
+        '}',
       '',
       'static inline void _uart_flush() {',
       '  while (!(UCSR0A & (1 << UDRE0)));',
@@ -838,6 +851,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     lines.push(
       '// Bare-metal entry point — prevents the Arduino core from being linked.',
       'int main(void) {',
+      '  _init_millis();',
       '  _native_delay_ms(2000);  // let host open port after DTR reset',
       '  sei();                    // enable Timer0 ISR for millis()',
       '  setup();',
@@ -972,8 +986,9 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // Enable global interrupts last, so the Timer0 overflow ISR (and any
     // configured external interrupts) begin firing only after all peripheral
     // setup is complete.
-    // Note: sei() is called in main() after the startup delay, so the Timer0
-    // ISR does not fire during the _uart_init preamble or protocol output.
+    // Note: sei() is called in main() after _init_millis and the startup
+    // delay, so the Timer0 ISR drives millis() during setup() but doesn't
+    // fire during the initial _uart_init preamble.
 
     return lines;
   }
@@ -1049,16 +1064,20 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         const target = pop.value === 1 ? 1 : 0;
         const readExpr = nativeDigitalRead(op.pin);
         const timeoutCheck = pop.timeout !== undefined
-          ? `if (micros() - __start >= ${pop.timeout}) return 0;`
+          ? `if (micros() - __start >= ${pop.timeout}) { __result = 0; break; }`
           : '';
-        return { expression: `({ unsigned long __start = micros(); while ((${readExpr}) != ${target}) { ${timeoutCheck} } __start = micros(); while ((${readExpr}) == ${target}) { ${timeoutCheck} } micros() - __start; })` };
+        return { expression: `({ unsigned long __start = micros(); unsigned long __result; while ((${readExpr}) != ${target}) { ${timeoutCheck} } __start = micros(); while ((${readExpr}) == ${target}) { ${timeoutCheck} } __result = micros() - __start; __result; })` };
       }
       case "pulse.in_long": {
         // pulse.in_long is the same as pulse.in on AVR (no longer-resolution timer).
+        // Uses the same timeout-safe pattern as pulse.in.
         const pop = op as any;
         const target = pop.value === 1 ? 1 : 0;
         const readExpr = nativeDigitalRead(op.pin);
-        return { expression: `({ unsigned long __start = micros(); while ((${readExpr}) != ${target}) {} __start = micros(); while ((${readExpr}) == ${target}) {} micros() - __start; })` };
+        const timeoutCheck = pop.timeout !== undefined
+          ? `if (micros() - __start >= ${pop.timeout}) { __result = 0; break; }`
+          : '';
+        return { expression: `({ unsigned long __start = micros(); unsigned long __result; while ((${readExpr}) != ${target}) { ${timeoutCheck} } __start = micros(); while ((${readExpr}) == ${target}) { ${timeoutCheck} } __result = micros() - __start; __result; })` };
       }
       // ── Shift out/in — native GPIO bit-bang, not Arduino shiftOut()/shiftIn() ──
       case "shift.out": {
@@ -1186,8 +1205,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       case "power.set_cpu_frequency":
         return { code: `/* set_cpu_frequency not supported on AVR */;` };
       default:
-        // Timing, I2C, SPI, UART, interrupt, tone, etc. stay on the
-        // Arduino Wiring API — they are not what "native AVR" optimizes.
+        // Ops not explicitly handled above fall through to the parent.
         return super.resolveHALOperation(op);
     }
   }

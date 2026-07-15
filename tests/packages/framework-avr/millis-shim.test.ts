@@ -68,7 +68,7 @@ describe("NativeAVRStrategy millis()/micros() Timer0 ISR", () => {
       setActiveChip(ATMEGA328P);
       const code = millisCode(PROGRAM);
       expect(code).toContain("_init_millis()");
-      expect(code).toContain("TCCR0A = 0");
+      expect(code).toContain("WGM01");
       expect(code).toContain("TIMSK0 = (1 << TOIE0)");
     });
 
@@ -97,8 +97,8 @@ describe("NativeAVRStrategy millis()/micros() Timer0 ISR", () => {
       setActiveChip(ATMEGA328P);
       const lines = new NativeAVRStrategy().setupInitCode!(PROGRAM, undefined as any);
       expect(lines).toContain("_init_millis()");
-      // sei() is called in main() (not setupInitCode) to avoid ISR-induced
-      // UART stalls during the test protocol output.
+      // sei() is called in main() after _init_millis and the startup delay,
+      // so millis() is live during setup() without ISR-induced UART stalls.
     });
   });
 
