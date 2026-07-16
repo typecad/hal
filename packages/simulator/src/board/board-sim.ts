@@ -76,7 +76,7 @@ export class SimBoard {
     // Serial ports
     const serialMap = new Map<number, SimSerialPort>();
     for (let i = 0; i < uartCount; i++) {
-      serialMap.set(i, new SimSerialPort(i, config.uartRxBufferSize, config.uartTxBufferSize));
+      serialMap.set(i, new SimSerialPort(config.uartRxBufferSize, config.uartTxBufferSize));
     }
     this.serialPorts = serialMap;
 

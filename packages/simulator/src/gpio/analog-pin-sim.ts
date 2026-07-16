@@ -40,12 +40,31 @@ export class SimAnalogPin extends SimDigitalPin implements AnalogPin {
     return this._voltage;
   }
 
-  setAnalogReference(voltage: number): void {
-    this._reference = voltage;
+  setAnalogReference(ref: string): void {
+    // Map Arduino analogReference() names to the voltage they represent, so
+    // the sim's ADC conversion math stays correct. Mirrors the HAL
+    // setAnalogReference(ref: string), which lowers to analogReference(name).
+    const known: Record<string, number> = {
+      DEFAULT: 5.0,
+      INTERNAL: 1.1,
+      INTERNAL1V1: 1.1,
+      INTERNAL2V56: 2.56,
+      EXTERNAL: 5.0,
+    };
+    this._reference = known[ref.toUpperCase()] ?? this._reference;
   }
 
   getAnalogResolution(): number {
     return this._resolution;
+  }
+
+  /**
+   * Set the ADC reference voltage directly (simulation helper — not part of the
+   * HAL contract). Used by createBoardFromDefinition to seed the real board's
+   * reference voltage from its board-definition data.
+   */
+  setReferenceVoltage(voltage: number): void {
+    this._reference = voltage;
   }
 
   // --- Simulation helpers ---

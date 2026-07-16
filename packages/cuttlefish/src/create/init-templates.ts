@@ -42,6 +42,21 @@ export function generateProjectPackageJson(options: InitProjectOptions): string 
     '    "@typescript-eslint/eslint-plugin": "^8.61.0"',
   ];
 
+  // Developer-utility scripts shared by every target (native + embedded).
+  // None require hardware or extra dependencies:
+  //   dev        — auto-retranspile on save (transpile-only; append --compile
+  //                to also compile on each change). The fast "does it
+  //                typecheck" feedback loop.
+  //   gen-decls  — generate TypeScript .d.ts from C++ headers. File-argument:
+  //                `npm run gen-decls -- lib/foo.h` or `-- --all lib/`.
+  //   gen-libdefs — generate library-definition stubs from a TS file's imports.
+  //                File-argument: `npm run gen-libdefs -- src/main.ts`.
+  const devScripts = [
+    '"dev": "cuttlefish build --watch"',
+    '"gen-decls": "cuttlefish gen-decls"',
+    '"gen-libdefs": "cuttlefish gen-libdefs"',
+  ];
+
   if (options.isNative) {
     const devDepsJson = baseDevDeps.join(',\n');
     return `{
@@ -51,7 +66,8 @@ export function generateProjectPackageJson(options: InitProjectOptions): string 
   "scripts": {
     "build": "cuttlefish build",
     "compile": "cuttlefish build --compile",
-    "lint": "eslint --config .cuttlefish/eslint.config.mjs src/"
+    "lint": "eslint --config .cuttlefish/eslint.config.mjs src/",
+    ${devScripts.join(',\n    ')}
   },
   "dependencies": {
 ${depsJson}
@@ -87,7 +103,8 @@ ${devDepsJson}
     "monitor": "cuttlefish build --compile --upload --monitor",
     "test:hw": "npm exec -- cuttlefish-test",
     "simulate": "vitest run sim/",
-    "lint": "eslint --config .cuttlefish/eslint.config.mjs src/"
+    "lint": "eslint --config .cuttlefish/eslint.config.mjs src/",
+    ${devScripts.join(',\n    ')}
   },
   "dependencies": {
 ${depsJson}

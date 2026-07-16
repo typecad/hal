@@ -5,9 +5,6 @@
 import { describe, it, expect } from 'vitest';
 import { transpile } from './setup';
 
-// TODO: Peripheral pin conflict detection is not yet generating warnings.
-// The transpiler does not currently track peripheral ownership across pin operations.
-// Re-enable when peripheral-pin-conflict diagnostics are implemented.
 describe('Peripheral Pin Conflict Detection', () => {
   it('generates warning when I2C pin is used as GPIO while I2C is active', () => {
     const result = transpile(`

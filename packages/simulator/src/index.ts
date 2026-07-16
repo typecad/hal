@@ -37,11 +37,10 @@ export type {
   ISerialPort,
   PinCapabilityFlags,
   IToneAttachment,
-  UARTStatusInfo,
   InterruptOptions,
   ErrorPolicy,
 } from './contracts.js';
-export { I2CStatus, SPIStatus, UARTStatus } from './contracts.js';
+export { I2CStatus, SPIStatus } from './contracts.js';
 export { hasPWM, hasAnalogInput, hasInterrupt, assertPWM, assertAnalog, assertInterrupt } from './contracts.js';
 
 // --- Types ---

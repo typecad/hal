@@ -10,6 +10,16 @@ export class I2CDevice {
     this._address = address;
   }
 
+  /** The 7-bit I2C address this accessor targets. Exposed so I2CDevice
+   *  structurally satisfies the @typecad/simulator II2CDeviceAccessor contract
+   *  (which declares `readonly address`), letting the same driver function be
+   *  typed against the contract and accept either a real board device or a
+   *  simulated one. The transpiler strips HAL class bodies to IR, so this
+   *  getter carries no runtime cost in the generated C++. */
+  get address(): number {
+    return this._address;
+  }
+
   writeByte(register: number, value: number): void {
     include("<Wire.h>");
     i2cBeginTx(this._bus, this._address);

@@ -194,59 +194,34 @@ describe('SimInterruptPin', () => {
 
 describe('SimSerialPort', () => {
   it('writes and reads back via TX buffer', () => {
-    const port = new SimSerialPort(0);
+    const port = new SimSerialPort();
     port.begin(9600);
     port.write('Hello');
     expect(port.peekTxAsString()).toBe('Hello');
   });
 
   it('injects RX data and reads it', () => {
-    const port = new SimSerialPort(0);
+    const port = new SimSerialPort();
     port.begin(9600);
     port.injectRx('Hello World\n');
     const line = port.readLine();
     expect(line).toBe('Hello World');
   });
 
-  it('reads exact byte count', () => {
-    const port = new SimSerialPort(0);
-    port.injectRx([0x01, 0x02, 0x03, 0x04, 0x05]);
-    const bytes = port.readBytes(3);
-    expect(bytes.length).toBe(3);
-    expect(bytes[0]).toBe(0x01);
-    expect(bytes[2]).toBe(0x03);
-  });
-
-  it('returns partial data when not enough bytes', () => {
-    const port = new SimSerialPort(0);
-    port.injectRx([0x01, 0x02]);
-    const bytes = port.readBytes(5);
-    expect(bytes.length).toBe(2);
-  });
-
   it('flushes TX buffer', () => {
-    const port = new SimSerialPort(0);
+    const port = new SimSerialPort();
     port.println('test');
     const tx = port.flushTx();
     expect(tx.length).toBeGreaterThan(0);
     expect(port.peekTx()).toHaveLength(0);
   });
 
-  it('triggers onReceive callback', () => {
-    const port = new SimSerialPort(0);
-    let received = 0;
-    port.onReceive((n) => { received = n; });
-    port.injectRx('abc');
-    expect(received).toBe(3);
-  });
-
   it('resets all state', () => {
-    const port = new SimSerialPort(0);
+    const port = new SimSerialPort();
     port.begin(9600);
     port.write('data');
     port.injectRx('rx');
     port.reset();
-    expect(port.isEnabled).toBe(false);
     expect(port.peekTx()).toHaveLength(0);
     expect(port.available()).toBe(0);
   });
@@ -362,9 +337,9 @@ describe('SimSPIBus', () => {
     bus.setMode(0);
     bus.begin();
 
+    // transfer returns the first MISO byte (HAL SPIDevice.transfer returns number)
     const result = bus.device(csPin).transfer(new Uint8Array([0xAA, 0x55]));
-    expect(result[0]).toBe(0x55);
-    expect(result[1]).toBe(0xAA);
+    expect(result).toBe(0x55);
   });
 
   it('writes to a mock device with write handler', () => {
@@ -384,9 +359,10 @@ describe('SimSPIBus', () => {
     bus.attachDevice(csPin, mockDevice);
     bus.begin();
 
-    bus.device(csPin).writeRegister(0x20, new Uint8Array([0xDE, 0xAD]));
+    // writeRegister takes a single value (HAL signature), not a byte array
+    bus.device(csPin).writeRegister(0x20, 0xDE);
     expect(writtenReg).toBe(0x20);
-    expect(writtenData).toEqual([0xDE, 0xAD]);
+    expect(writtenData).toEqual([0xDE]);
   });
 
   it('reads from a mock device with readRegister handler', () => {
@@ -655,9 +631,9 @@ describe('SimAnalogPin (extended)', () => {
     expect(pin.readAnalog()).toBe(256);
   });
 
-  it('setAnalogReference changes the voltage mapping', () => {
+  it('setReferenceVoltage changes the voltage mapping', () => {
     const pin = new SimAnalogPin(2);
-    pin.setAnalogReference(3.3);
+    pin.setReferenceVoltage(3.3);
     pin.injectVoltage(3.3);
     expect(pin.readVoltage()).toBeCloseTo(3.3, 5);
   });
@@ -795,7 +771,7 @@ describe('SimInterruptPin (extended)', () => {
 
 describe('SimSerialPort (extended)', () => {
   it('printf formats %d/%i/%s/%f and %%', () => {
-    const port = new SimSerialPort(0);
+    const port = new SimSerialPort();
     port.printf('int=%d %i str=%s flt=%.2f pct=%%', 7, 3, 'hi', 1.5);
     // Note: .2f precision flag is not honored (impl formats bare %f); just
     // assert the integer/string/percent substitutions landed.
@@ -805,13 +781,13 @@ describe('SimSerialPort (extended)', () => {
   });
 
   it('printf supports {} positional placeholders', () => {
-    const port = new SimSerialPort(0);
+    const port = new SimSerialPort();
     port.printf('{} and {}', 'one', 'two');
     expect(port.peekTxAsString()).toBe('one and two');
   });
 
   it('peek and read return bytes from the RX buffer', () => {
-    const port = new SimSerialPort(0);
+    const port = new SimSerialPort();
     port.injectRx([0x10, 0x20, 0x30]);
     expect(port.peek()).toBe(0x10);
     expect(port.read()).toBe(0x10);
@@ -819,64 +795,19 @@ describe('SimSerialPort (extended)', () => {
   });
 
   it('read returns -1 when the RX buffer is empty', () => {
-    const port = new SimSerialPort(0);
+    const port = new SimSerialPort();
     expect(port.read()).toBe(-1);
     expect(port.peek()).toBe(-1);
   });
 
-  it('readString drains and returns the full RX buffer', () => {
-    const port = new SimSerialPort(0);
-    port.injectRx('hi');
-    expect(port.readString()).toBe('hi');
-    expect(port.available()).toBe(0);
-  });
-
-  it('RX overflow sets the overrun error flag', () => {
-    const port = new SimSerialPort(0, 4, 4); // tiny RX buffer
-    port.injectRx([1, 2, 3, 4, 5, 6]); // exceeds capacity
-    const status = port.getStatus();
-    expect(status.overrunError).toBe(true);
-    expect(status.available).toBeLessThanOrEqual(4);
-  });
-
-  it('clearErrors resets error flags', () => {
-    const port = new SimSerialPort(0, 4, 4);
-    port.injectRx([1, 2, 3, 4, 5]);
-    expect(port.getStatus().overrunError).toBe(true);
-    port.clearErrors();
-    expect(port.getStatus().overrunError).toBe(false);
-  });
-
-  it('onTransmitComplete fires on flush() and flushTx()', () => {
-    const port = new SimSerialPort(0);
-    let calls = 0;
-    port.onTransmitComplete(() => { calls++; });
-    port.write('a');
-    port.flush();
-    expect(calls).toBe(1);
-    port.write('b');
-    port.flushTx();
-    expect(calls).toBe(2);
-  });
-
-  it('isConnected follows begin()/end()', () => {
-    const port = new SimSerialPort(0);
-    expect(port.isConnected()).toBe(false);
-    port.begin(9600);
-    expect(port.isConnected()).toBe(true);
-    port.end();
-    expect(port.isConnected()).toBe(false);
-  });
-
-  it('end() disables the port without throwing', () => {
-    const port = new SimSerialPort(0);
+  it('end() is a no-op that does not throw', () => {
+    const port = new SimSerialPort();
     port.begin(9600);
     expect(() => port.end()).not.toThrow();
-    expect(port.isEnabled).toBe(false);
   });
 
   it('waitForConnection resolves', async () => {
-    const port = new SimSerialPort(0);
+    const port = new SimSerialPort();
     await expect(port.waitForConnection(10)).resolves.toBeUndefined();
   });
 });
@@ -912,9 +843,9 @@ describe('SimI2CBus (extended)', () => {
     expect(errAddr).toBe(0x42);
   });
 
-  it('recover returns true', () => {
+  it('recover completes without throwing', () => {
     const bus = new SimI2CBus(0);
-    expect(bus.recover()).toBe(true);
+    expect(() => bus.recover()).not.toThrow();
   });
 
   it('detachDevice removes a previously attached mock', () => {
@@ -972,20 +903,6 @@ describe('SimSPIBus (extended)', () => {
     expect(bus.isEnabled).toBe(false);
   });
 
-  it('SimSPIDevice.read sends dummy zeros to the mock transfer', () => {
-    const bus = new SimSPIBus();
-    const cs = new SimDigitalPin(10);
-    let seenCount = 0;
-    const mock: ISimSPIDevice = {
-      transfer(mosi: number[]) { seenCount = mosi.length; return [0xAA, 0xBB, 0xCC]; },
-    };
-    bus.attachDevice(cs, mock);
-    bus.begin();
-    const out = bus.device(cs).read(3);
-    expect(seenCount).toBe(3);
-    expect(Array.from(out)).toEqual([0xAA, 0xBB, 0xCC]);
-  });
-
   it('readRegister falls back to transfer with dummy bytes when mock lacks readRegister', () => {
     const bus = new SimSPIBus();
     const cs = new SimDigitalPin(10);
@@ -1009,10 +926,11 @@ describe('SimSPIBus (extended)', () => {
     const mock: ISimSPIDevice = { transfer() { return [0x42]; } };
     bus.attachDevice(cs, mock);
     bus.begin();
-    expect(Array.from(bus.device(cs).transfer([0x01]))).toEqual([0x42]);
+    // transfer returns the first MISO byte (a number)
+    expect(bus.device(cs).transfer([0x01])).toBe(0x42);
     bus.detachDevice(cs);
-    // After detach, transfer returns empty (no device)
-    expect(Array.from(bus.device(cs).transfer([0x01]))).toEqual([]);
+    // After detach, transfer returns 0 (no device)
+    expect(bus.device(cs).transfer([0x01])).toBe(0);
   });
 
   it('clearLog empties the operation log', () => {

@@ -510,4 +510,36 @@ describe('I2C HAL - Two-step device variable pattern', () => {
     ]);
     expectCppNotContains(result, ['this->_address']);
   });
+
+  // Regression: the HAL I2CDevice must be structurally assignable to the
+  // simulator's II2CDeviceAccessor contract so user firmware can type a driver
+  // function against the contract and pass either a real board device or a
+  // simulated one. The only gap was a missing public `address` field (the HAL
+  // class stored it privately as `_address`). Without it, the transpiler's
+  // type-check phase rejects: "Property 'address' is missing in type
+  // 'I2CDevice' but required by type 'II2CDeviceAccessor'."
+  //
+  // We assert the assignment type-checks and transpiles without error (the
+  // concrete Wire-lowering of dev.readByte is not expected here — once the
+  // device flows through the abstract contract type, the HAL alias resolver
+  // can no longer specialize it to Wire calls; that is a separate concern).
+  it('I2CDevice satisfies the II2CDeviceAccessor contract (assignable)', () => {
+    const result = transpileArduino(`
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
+      import type { II2CDeviceAccessor } from '@typecad/simulator';
+
+      function readDevice(dev: II2CDeviceAccessor): number {
+        return dev.readByte(0x00);
+      }
+
+      I2C0.begin();
+      const sensor = I2C0.device(0x44);
+      const val = readDevice(sensor);
+    `);
+
+    // No type error → transpile succeeded. The function signature carries the
+    // contract type, and the device is constructed and passed to it.
+    expect(result.diagnostics.filter(d => d.severity === 'error')).toEqual([]);
+    expect(result.cpp).toContain('readDevice');
+  });
 });

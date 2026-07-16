@@ -38,4 +38,37 @@ describe('Peripheral Ownership Validation', () => {
     );
     expect(ownershipDiagnostics.length).toBe(0);
   });
+
+  it('flags a double-take on the same bus (hal-ownership-double-take)', () => {
+    const result = transpileArduino(`
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
+      I2C0.begin();
+      I2C0.take();
+      I2C0.take();
+    `);
+
+    const doubleTake = result.diagnostics.filter(
+      (d) => d.code === 'hal-ownership-double-take'
+    );
+
+    expect(doubleTake.length).toBe(1);
+    expect(doubleTake[0].severity).toBe('error');
+    expect(doubleTake[0].message).toContain('I2C0');
+  });
+
+  it('flags a release without a preceding take (hal-ownership-unowned-release)', () => {
+    const result = transpileArduino(`
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
+      I2C0.begin();
+      I2C0.release();
+    `);
+
+    const unownedRelease = result.diagnostics.filter(
+      (d) => d.code === 'hal-ownership-unowned-release'
+    );
+
+    expect(unownedRelease.length).toBe(1);
+    expect(unownedRelease[0].severity).toBe('warning');
+    expect(unownedRelease[0].message).toContain('I2C0');
+  });
 });

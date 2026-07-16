@@ -82,7 +82,7 @@ export function createBoardFromDefinition(def: BoardDefinition): SimBoard {
         pin.setResolution(adc.resolution);
       }
       if (typeof adc.referenceVoltage === 'number') {
-        pin.setAnalogReference(adc.referenceVoltage);
+        pin.setReferenceVoltage(adc.referenceVoltage);
       }
     }
   }

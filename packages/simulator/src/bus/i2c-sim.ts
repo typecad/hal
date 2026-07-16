@@ -40,10 +40,16 @@ export class SimI2CBus implements II2CBus {
 
   // --- II2CBus methods ---
 
-  begin(address?: I2CAddress): void {
+  begin(address?: I2CAddress): this {
     if (address !== undefined) {
       this._slaveAddress = address;
     }
+    this.isEnabled = true;
+    return this;
+  }
+
+  beginSlave(address: I2CAddress): void {
+    this._slaveAddress = address;
     this.isEnabled = true;
   }
 
@@ -64,8 +70,8 @@ export class SimI2CBus implements II2CBus {
     this._errorHandler = handler;
   }
 
-  recover(): boolean {
-    return true;
+  recover(): void {
+    // No-op in simulation — the bus is always in a clean state.
   }
 
   // --- Simulation helpers ---

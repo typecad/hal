@@ -60,13 +60,17 @@ export interface InterruptOptions {
 }
 
 // ---------------------------------------------------------------------------
-// Pin interfaces (used by the simulator package)
+// Pin interfaces — mirror the HAL Pin / OutputPin / InputPin classes
+// (packages/hal/src/gpio.ts). The HAL is the source of truth; these contracts
+// carry no `capabilities` field (that lives in the simulator's own Sim*Pin
+// classes, not on the HAL pin types).
 // ---------------------------------------------------------------------------
 
+/** Unconfigured pin — mirrors HAL `Pin`. Use asOutput/asInput to obtain a
+ *  configured pin. Also exposes basic I/O (the HAL Pin is a superset). */
 export interface BasePin {
   readonly number: number;
   readonly gpio: number;
-  readonly capabilities: PinCapabilityFlags;
   read(): DigitalValue;
   isHigh(): boolean;
   isLow(): boolean;
@@ -74,34 +78,18 @@ export interface BasePin {
   high(): void;
   low(): void;
   toggle(): void;
-  pulse(duration: number): void;
+  pwm?(duty: number): void;
   tone(frequency: number): IToneAttachment;
   noTone(): void;
-  inputPullUp(): void;
-  inputPullDown?(): void;
-  outputOpenDrain(initial?: DigitalValue): void;
   asOutput(initial?: DigitalValue): IOutputModePin;
   asInput(): IInputModePin;
   asInputPullUp(): IInputModePin;
-  pwm?(percent: number): void;
-  getPwmFrequency?(): number;
-  getPwmResolution?(): number;
-  readAnalog?(): AnalogValue;
-  readVoltage?(): number;
-  setAnalogReference?(voltage: number): void;
-  getAnalogResolution?(): number;
-  onRising?(handler: InterruptHandler, options?: InterruptOptions): void;
-  onFalling?(handler: InterruptHandler, options?: InterruptOptions): void;
-  onChange?(handler: InterruptHandler, options?: InterruptOptions): void;
-  offInterrupts?(): void;
-  waitForRising(timeout?: number): Promise<void>;
-  waitForFalling(timeout?: number): Promise<void>;
 }
 
+/** Configured output pin — mirrors HAL `OutputPin`. */
 export interface IOutputModePin {
   readonly number: number;
   readonly gpio: number;
-  readonly capabilities: PinCapabilityFlags;
   write(value: DigitalValue): void;
   high(): void;
   low(): void;
@@ -109,27 +97,21 @@ export interface IOutputModePin {
   pulse(duration: number): void;
   tone(frequency: number): IToneAttachment;
   noTone(): void;
-  pwm?(percent: number): void;
+  pwm?(duty: number): void;
   getPwmFrequency?(): number;
   getPwmResolution?(): number;
-  asOutput(initial?: DigitalValue): IOutputModePin;
-  asInput(): IInputModePin;
-  asInputPullUp(): IInputModePin;
-  inputPullUp(): void;
-  inputPullDown?(): void;
-  outputOpenDrain(initial?: DigitalValue): void;
 }
 
+/** Configured input pin — mirrors HAL `InputPin`. */
 export interface IInputModePin {
   readonly number: number;
   readonly gpio: number;
-  readonly capabilities: PinCapabilityFlags;
   read(): DigitalValue;
   isHigh(): boolean;
   isLow(): boolean;
   readAnalog?(): AnalogValue;
   readVoltage?(): number;
-  setAnalogReference?(voltage: number): void;
+  setAnalogReference?(ref: string): void;
   getAnalogResolution?(): number;
   onRising?(handler: InterruptHandler, options?: InterruptOptions): void;
   onFalling?(handler: InterruptHandler, options?: InterruptOptions): void;
@@ -137,22 +119,17 @@ export interface IInputModePin {
   offInterrupts?(): void;
   waitForRising(timeout?: number): Promise<void>;
   waitForFalling(timeout?: number): Promise<void>;
-  asOutput(initial?: DigitalValue): IOutputModePin;
-  asInput(): IInputModePin;
-  asInputPullUp(): IInputModePin;
-  inputPullUp(): void;
-  inputPullDown?(): void;
-  outputOpenDrain(initial?: DigitalValue): void;
 }
 
+/** Pin with PWM output capability. */
 /** Pin with PWM output capability. */
 export type PWMPin = BasePin & { pwm: NonNullable<BasePin['pwm']> };
 
 /** Pin with analog input capability. */
-export type AnalogPin = BasePin & { readAnalog: NonNullable<BasePin['readAnalog']> };
+export type AnalogPin = IInputModePin & { readAnalog: NonNullable<IInputModePin['readAnalog']> };
 
 /** Pin with interrupt capability. */
-export type InterruptPin = BasePin & { onRising: NonNullable<BasePin['onRising']> };
+export type InterruptPin = IInputModePin & { onRising: NonNullable<IInputModePin['onRising']> };
 
 // ---------------------------------------------------------------------------
 // Capability type guards and assertions
@@ -172,11 +149,19 @@ export function hasPWM(pin: unknown): pin is PWMPin {
 }
 
 export function hasAnalogInput(pin: unknown): pin is AnalogPin {
-  return isBasePin(pin) && 'readAnalog' in pin && typeof pin.readAnalog === 'function';
+  return (
+    typeof pin === 'object' && pin !== null &&
+    'number' in pin && 'gpio' in pin &&
+    'readAnalog' in pin && typeof (pin as { readAnalog: unknown }).readAnalog === 'function'
+  );
 }
 
 export function hasInterrupt(pin: unknown): pin is InterruptPin {
-  return isBasePin(pin) && 'onRising' in pin && typeof pin.onRising === 'function';
+  return (
+    typeof pin === 'object' && pin !== null &&
+    'number' in pin && 'gpio' in pin &&
+    'onRising' in pin && typeof (pin as { onRising: unknown }).onRising === 'function'
+  );
 }
 
 export function assertPWM(pin: BasePin, message?: string): asserts pin is PWMPin {
@@ -185,13 +170,13 @@ export function assertPWM(pin: BasePin, message?: string): asserts pin is PWMPin
   }
 }
 
-export function assertAnalog(pin: BasePin, message?: string): asserts pin is AnalogPin {
+export function assertAnalog(pin: IInputModePin, message?: string): asserts pin is AnalogPin {
   if (!hasAnalogInput(pin)) {
     throw new Error(message ?? 'Pin does not support analog input');
   }
 }
 
-export function assertInterrupt(pin: BasePin, message?: string): asserts pin is InterruptPin {
+export function assertInterrupt(pin: IInputModePin, message?: string): asserts pin is InterruptPin {
   if (!hasInterrupt(pin)) {
     throw new Error(message ?? 'Pin does not support interrupts');
   }
@@ -225,16 +210,12 @@ export interface II2CDeviceAccessor {
 }
 
 export interface II2CBus {
-  readonly busNumber: number;
-  readonly isEnabled: boolean;
-  begin(): void;
-  begin(address: I2CAddress): void;
+  begin(): this;
+  beginSlave(address: I2CAddress): void;
   end(): void;
   setClock(hz: number): void;
   device(address: I2CAddress): II2CDeviceAccessor;
-  onError(handler: (status: I2CStatus, address: I2CAddress, operation: 'read' | 'write') => void): void;
-  errorPolicy: ErrorPolicy;
-  recover(): boolean;
+  recover(): void;
 }
 
 // ---------------------------------------------------------------------------
@@ -251,17 +232,14 @@ export enum SPIStatus {
 }
 
 export interface ISPIDevice {
-  readonly chipSelect: BasePin;
-  transfer(data: number | Uint8Array): Uint8Array;
+  transfer(data: number | Uint8Array): number;
   write(data: number | Uint8Array): void;
-  read(count: number): Uint8Array;
-  writeRegister(register: number, data: number | Uint8Array): void;
+  writeRegister(register: number, value: number): void;
   readRegister(register: number, count: number): Uint8Array;
 }
 
 export interface ISPIBus {
-  readonly isEnabled: boolean;
-  begin(): void;
+  begin(): this;
   end(): void;
   setMode(mode: SPIMode): void;
   setBitOrder(order: SPIBitOrder): void;
@@ -269,62 +247,35 @@ export interface ISPIBus {
   beginTransaction(settings: SPISettings): void;
   endTransaction(): void;
   device(chipSelect: BasePin): ISPIDevice;
-  onError(handler: (status: SPIStatus, operation: 'transfer' | 'read' | 'write') => void): void;
-  errorPolicy: ErrorPolicy;
 }
 
 // ---------------------------------------------------------------------------
 // UART types
 // ---------------------------------------------------------------------------
 
-export enum UARTStatus {
-  SUCCESS = 0,
-  NOT_INITIALIZED = 1,
-  TIMEOUT = 2,
-  BUFFER_OVERFLOW = 3,
-  OVERRUN_ERROR = 4,
-  PARITY_ERROR = 5,
-  FRAMING_ERROR = 6,
-  BREAK_DETECTED = 7,
-  WRITE_FAILED = 8,
-  READ_FAILED = 9,
-}
-
-export interface UARTStatusInfo {
-  available: number;
-  writeAvailable: number;
-  overrunError: boolean;
-  parityError: boolean;
-  framingError: boolean;
-  breakDetected: boolean;
-}
+// ---------------------------------------------------------------------------
+// UART types
+//
+// The HAL SerialPort (packages/hal/src/uart.ts) is the source of truth for the
+// runtime UART surface. The contract below mirrors it: no public identity
+// fields, no status/error/callback machinery — just begin/end and the
+// read/write/print methods the HAL exposes.
+// ---------------------------------------------------------------------------
 
 export interface IUARTBus {
-  readonly uartNumber: number;
-  readonly baudRate: number;
-  readonly isEnabled: boolean;
-  begin(baud: number): void;
+  begin(baud: number): this;
   end(): void;
   read(): number;
   peek(): number;
   readLine(): string;
-  readBytes(count: number): Uint8Array;
-  readString(): string;
   available(): number;
-  write(data: number | Uint8Array | string): number;
+  write(data: number | Uint8Array | string): void;
   flush(): void;
-  getStatus(): UARTStatusInfo;
-  clearErrors(): void;
-  onReceive(callback: (bytesAvailable: number) => void): void;
-  onTransmitComplete(callback: () => void): void;
-  onError(callback: (status: UARTStatus) => void): void;
-  errorPolicy: ErrorPolicy;
 }
 
 export interface ISerialPort extends IUARTBus {
   print(...args: unknown[]): void;
   println(...args: unknown[]): void;
   printf(format: string, ...args: unknown[]): void;
-  isConnected(): boolean;
   waitForConnection(timeout?: number): Promise<void>;
 }

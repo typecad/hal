@@ -78,9 +78,9 @@ const PIN_INTERFACE_TYPE_NAMES = new Set<string>([
 ]);
 
 const BUS_INTERFACE_TYPE_NAMES = new Set<string>([
-  "II2CBus", "ISPIBus", "ISerialPort", "IUART",
+  "II2CBus", "ISPIBus", "ISerialPort",
   "I2CConfig", "SPIConfig", "UARTConfig",
-  "I2CAddress", "UARTStatus", "SPITransferOptions",
+  "I2CAddress", "SPITransferOptions",
 ]);
 
 const STRATEGY_TYPE_NAMES = new Set<string>([

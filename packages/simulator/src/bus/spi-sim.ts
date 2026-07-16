@@ -37,8 +37,9 @@ export class SimSPIBus implements ISPIBus {
 
   // --- ISPIBus methods ---
 
-  begin(): void {
+  begin(): this {
     this.isEnabled = true;
+    return this;
   }
 
   end(): void {
@@ -152,38 +153,37 @@ export class SimSPIBus implements ISPIBus {
 }
 
 // ---------------------------------------------------------------------------
-// SimSPIDevice — implements ISPIDevice
+// SimSPIDevice — implements ISPIDevice (HAL SPIDevice is the source of truth)
 // ---------------------------------------------------------------------------
 
 class SimSPIDevice implements ISPIDevice {
-  readonly bus: ISPIBus;
-  readonly chipSelect: BasePin;
   private readonly _simBus: SimSPIBus;
+  private readonly _cs: number;
 
   constructor(bus: SimSPIBus, chipSelect: BasePin) {
-    this.bus = bus;
     this._simBus = bus;
-    this.chipSelect = chipSelect;
+    this._cs = chipSelect.number;
   }
 
-  transfer(data: number | Uint8Array): Uint8Array {
-    const csKey = String(this.chipSelect.number);
+  transfer(data: number | Uint8Array): number {
+    const csKey = String(this._cs);
     const mosiData = typeof data === 'number' ? [data] : Array.from(data);
     const timestamp = Date.now();
     const device = this._simBus._getDevice(csKey);
 
     if (!device) {
       this._simBus._logOperation({ operation: 'transfer', data: mosiData, timestamp });
-      return new Uint8Array(0);
+      return 0;
     }
 
     const misoData = device.transfer(mosiData);
     this._simBus._logOperation({ operation: 'transfer', data: mosiData, response: misoData, timestamp });
-    return new Uint8Array(misoData);
+    // HAL SPIDevice.transfer returns a single number (the MISO byte).
+    return misoData[0] ?? 0;
   }
 
   write(data: number | Uint8Array): void {
-    const csKey = String(this.chipSelect.number);
+    const csKey = String(this._cs);
     const dataArray = typeof data === 'number' ? [data] : Array.from(data);
     const timestamp = Date.now();
     const device = this._simBus._getDevice(csKey);
@@ -202,43 +202,26 @@ class SimSPIDevice implements ISPIDevice {
     this._simBus._logOperation({ operation: 'write', data: dataArray, timestamp });
   }
 
-  read(count: number): Uint8Array {
-    const csKey = String(this.chipSelect.number);
+  writeRegister(register: number, value: number): void {
+    const csKey = String(this._cs);
     const timestamp = Date.now();
     const device = this._simBus._getDevice(csKey);
 
     if (!device) {
-      this._simBus._logOperation({ operation: 'read', count, timestamp });
-      return new Uint8Array(0);
-    }
-
-    // Send dummy bytes to read
-    const misoData = device.transfer(new Array(count).fill(0));
-    this._simBus._logOperation({ operation: 'read', count, data: misoData, timestamp });
-    return new Uint8Array(misoData);
-  }
-
-  writeRegister(register: number, data: number | Uint8Array): void {
-    const csKey = String(this.chipSelect.number);
-    const dataArray = typeof data === 'number' ? [data] : Array.from(data);
-    const timestamp = Date.now();
-    const device = this._simBus._getDevice(csKey);
-
-    if (!device) {
-      this._simBus._logOperation({ operation: 'write', register, data: dataArray, timestamp });
+      this._simBus._logOperation({ operation: 'write', register, data: [value], timestamp });
       return;
     }
 
     if (device.write) {
-      device.write(register, dataArray);
+      device.write(register, [value]);
     } else {
-      device.transfer([register, ...dataArray]);
+      device.transfer([register, value]);
     }
-    this._simBus._logOperation({ operation: 'write', register, data: dataArray, timestamp });
+    this._simBus._logOperation({ operation: 'write', register, data: [value], timestamp });
   }
 
   readRegister(register: number, count: number): Uint8Array {
-    const csKey = String(this.chipSelect.number);
+    const csKey = String(this._cs);
     const timestamp = Date.now();
     const device = this._simBus._getDevice(csKey);
 
@@ -260,7 +243,7 @@ class SimSPIDevice implements ISPIDevice {
 // ---------------------------------------------------------------------------
 
 export interface SPIOperationLog {
-  operation: 'read' | 'write' | 'transfer';
+  operation: 'write' | 'transfer' | 'read';
   register?: number;
   count?: number;
   data?: number[];

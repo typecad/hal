@@ -107,6 +107,28 @@ describe("init-templates", () => {
       expect(parsed.scripts['simulate']).toBeUndefined();
       expect(parsed.devDependencies['@typecad/simulator']).toBeUndefined();
     });
+
+    it("adds dev/gen-decls/gen-libdefs scripts to every target", () => {
+      // These developer-utility scripts are target-agnostic (no hardware, no
+      // extra deps): watch mode for the edit→transpile loop, and the two
+      // C++-interop codegen commands. They must appear on both native and
+      // embedded scaffolds.
+      const nativeOptions: InitProjectOptions = {
+        projectName: 'native-project',
+        targetId: 'native',
+        targetDisplayName: 'Native Desktop',
+        isNative: true,
+        frameworkPackage: '@typecad/framework-native',
+        framework: 'native',
+        includeSketch: true,
+      };
+      for (const opts of [ARDUINO_UNO_OPTIONS, nativeOptions]) {
+        const parsed = JSON.parse(generateProjectPackageJson(opts));
+        expect(parsed.scripts['dev']).toBe('cuttlefish build --watch');
+        expect(parsed.scripts['gen-decls']).toBe('cuttlefish gen-decls');
+        expect(parsed.scripts['gen-libdefs']).toBe('cuttlefish gen-libdefs');
+      }
+    });
   });
 
   describe("generateProjectTsconfig", () => {

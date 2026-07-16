@@ -148,8 +148,10 @@ describe("F: object-literal return", () => {
       ].join("\n"),
     );
     const cpp = result.cpp;
-    // The return must produce a value convertible to Pair (brace-init present).
-    expect(cpp).toContain("return");
+    // The object literal must lower to a braced-init-list constructing Pair.
+    // (Previously this only asserted `toContain("return")`, which every C++
+    // function body satisfies and so could never fail.)
+    expect(cpp).toMatch(/return\s*\{\s*1\s*,\s*2\s*\}/);
   });
 });
 

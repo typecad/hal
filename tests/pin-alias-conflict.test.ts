@@ -35,4 +35,24 @@ describe('Pin Alias Conflict Validation', () => {
     // since only one name (D13) is in pinsUsed.
     expect(aliasWarnings.length).toBe(0);
   });
+
+  // Positive coverage: referencing the same physical pin through two genuinely
+  // distinct names (A4 and SDA both map to PC4) must be flagged. Without this,
+  // the negative cases above would still pass if the validator were deleted.
+  it('flags a pin referenced through multiple distinct names (A4 and SDA)', () => {
+    const result = transpile(`
+      import { A4, SDA } from '@typecad/board-arduino-uno';
+      A4.asInput();
+      SDA.asInput();
+    `, { target: 'arduino' });
+
+    const aliasWarnings = result.diagnostics.filter(
+      d => d.code === 'pin-alias-conflict'
+    );
+
+    expect(aliasWarnings.length).toBe(1);
+    expect(aliasWarnings[0].severity).toBe('warning');
+    expect(aliasWarnings[0].message).toContain('PC4');
+    expect(aliasWarnings[0].message).toContain('SDA');
+  });
 });
