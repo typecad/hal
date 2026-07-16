@@ -194,11 +194,14 @@ function tryArduinoCliProbe(ctx?: ArduinoPlatformContext): { raw?: unknown; diag
   });
 
   if (cmd.error || cmd.status !== 0) {
+    const isEnoent = cmd.error && (cmd.error as NodeJS.ErrnoException).code === "ENOENT";
     return {
       diagnostic: {
         severity: "warning",
         code: "TS2CPP_ARDUINO_CLI_PROBE_FAILED",
-        message: `Failed to parse arduino-cli properties for ${ctx.buildTarget}`,
+        message: isEnoent
+          ? `arduino-cli not found on PATH; using static profile fallbacks. Install it: https://arduino.github.io/arduino-cli/`
+          : `Failed to probe arduino-cli properties for ${ctx.buildTarget}`,
       },
     };
   }
