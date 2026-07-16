@@ -34,7 +34,8 @@
     "test:hw:basics": "npm exec -- cuttlefish-test tests/01-basics.test.ts"
   },
   "dependencies": {
-    "@typecad/hal": "1.0.0-alpha.3"
+    "@typecad/hal": "1.0.0-alpha.3",
+    "@typecad/arduino-cli": "1.0.0-alpha.3"
   },
   "devDependencies": {
     "@typecad/expect": "1.0.0-alpha.3",

@@ -10,6 +10,8 @@ import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 import type { CompileError, CompileResult, UploadResult } from "@typecad/cuttlefish/api/shared";
 import { parseCompileErrors, collectCppFiles } from "@typecad/cuttlefish/api/shared";
+import { arduinoEnvFailureOutput } from "./arduino-env-gate.js";
+import { checkArduinoEnv } from "@typecad/arduino-cli";
 
 export type ArduinoCompileResult = CompileResult;
 export type ArduinoUploadResult = UploadResult;
@@ -224,6 +226,14 @@ export function compileArduinoSketch(
   buildTarget: string,
   options?: { extraFlags?: string[]; defines?: Record<string, string> },
 ): ArduinoCompileResult {
+  // Hard gate: verify arduino-cli + the board's core are present before any
+  // staging or spawning. Returns a failed result with an actionable message.
+  {
+    const gateOutput = arduinoEnvFailureOutput(buildTarget);
+    if (gateOutput !== null) {
+      return { success: false, output: gateOutput, errors: [], memoryUsage: undefined };
+    }
+  }
   const resolvedSketchFilePath = path.resolve(sketchFilePath);
   let sketchDir = path.dirname(resolvedSketchFilePath);
   let sketchDirName = path.basename(sketchDir);
@@ -338,6 +348,13 @@ export function compileArduinoSketch(
 }
 
 export function uploadArduinoSketch(sketchDir: string, buildTarget: string, port: string): ArduinoUploadResult {
+  // Hard gate: verify arduino-cli + core before spawning upload.
+  {
+    const gateOutput = arduinoEnvFailureOutput(buildTarget);
+    if (gateOutput !== null) {
+      return { success: false, output: gateOutput };
+    }
+  }
   const cmd = spawnSync("arduino-cli", ["upload", "--fqbn", buildTarget, "--port", port, sketchDir], {
     encoding: "utf8",
     timeout: 60000,
@@ -352,6 +369,17 @@ export function uploadArduinoSketch(sketchDir: string, buildTarget: string, port
 }
 
 export function monitorArduinoSketch(port: string, baud: number): void {
+  // Hard gate: verify arduino-cli is installed before spawning monitor.
+  // monitorArduinoSketch has no FQBN parameter, so we only check binary
+  // presence (arduino-cli installed), not a specific core. Monitoring does
+  // not compile against a core.
+  {
+    const gate = checkArduinoEnv(undefined);
+    if (!gate.ok) {
+      for (const line of gate.messages) console.error(line);
+      return;
+    }
+  }
   spawnSync("arduino-cli", ["monitor", "--port", port, "--config", `baudrate=${baud}`], {
     stdio: "inherit",
     timeout: 0,
