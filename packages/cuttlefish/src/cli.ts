@@ -21,6 +21,7 @@ import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCom
 import { runPreviewServer } from "./preview/server.js";
 import * as ui from "./utils/ui.js";
 import chalk from "chalk";
+import { checkArduinoEnv } from "@typecad/arduino-cli";
 
 function hasFatalDiagnostics(result: GeneratedOutputs): boolean {
   return result.diagnostics.some((diagnostic) => diagnostic.severity === "error");
@@ -129,6 +130,58 @@ async function handleBoardAdd(options: BoardAddCommandOptions): Promise<void> {
   console.log(generateFrameworkChecklist(spec));
 }
 
+/**
+ * `cuttlefish doctor` — verify arduino-cli is installed and the board's core
+ * (derived from the FQBN in cuttlefish.config.ts) is present. Exits 0 if the
+ * environment is OK, non-zero otherwise. Reuses checkArduinoEnv so the
+ * detection logic is shared with the build/test gates.
+ */
+function runDoctor(): void {
+  ui.printHeader();
+  ui.printStep("Checking arduino-cli environment...");
+
+  const config = loadCuttlefishConfig(process.cwd());
+  const fqbn = config?.buildTarget;
+
+  const result = checkArduinoEnv(fqbn);
+  const check = result.check;
+
+  // arduino-cli presence line
+  if (check.arduinoCliInstalled) {
+    ui.printInfo(`arduino-cli .... ${check.arduinoCliVersion ?? "unknown"}  ✓`);
+  } else if (!result.ok && result.reason === "arduino-cli-not-found") {
+    ui.printError(`arduino-cli .... NOT FOUND on PATH`);
+  } else {
+    ui.printError(`arduino-cli .... found but unresponsive`);
+  }
+
+  // core presence line (only meaningful if we have an FQBN)
+  if (fqbn) {
+    if (check.requiredCore) {
+      const status = check.requiredCoreInstalled ? "installed ✓" : "NOT installed ✗";
+      const line = `${check.requiredCore} ....... ${status}`;
+      if (check.requiredCoreInstalled) {
+        ui.printInfo(line);
+      } else {
+        ui.printError(line);
+        ui.printInfo(`  → run: arduino-cli core install ${check.requiredCore}`);
+      }
+    }
+  } else {
+    ui.printInfo("(no buildTarget in cuttlefish.config.ts — skipping core check)");
+  }
+
+  // Exit code
+  if (result.ok) {
+    ui.printSuccess("Environment OK");
+    return; // exitCode stays unset => 0
+  }
+  if (!result.ok) {
+    for (const line of result.messages) ui.printInfo(line);
+    process.exitCode = 1;
+  }
+}
+
 async function main(): Promise<void> {
   try {
     const options = parseCommandLine(process.argv);
@@ -189,6 +242,11 @@ async function main(): Promise<void> {
       if (mapped.message) {
         console.log(`Compiler message: ${mapped.message}`);
       }
+      return;
+    }
+
+    if (options.command === "doctor") {
+      runDoctor();
       return;
     }
 

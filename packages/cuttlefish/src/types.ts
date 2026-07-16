@@ -131,7 +131,7 @@ export interface LibraryDefinition {
 }
 
 export interface CommandLineOptions {
-  command: "default" | "build" | "gen-libdefs" | "gen-decls" | "map-error" | "preview";
+  command: "default" | "build" | "gen-libdefs" | "gen-decls" | "map-error" | "preview" | "doctor";
   inputFile?: string;
   emitMode: EmitMode;
   target: TargetProfile;

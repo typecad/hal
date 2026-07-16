@@ -21,6 +21,7 @@ export function printHelp(): void {
   console.log(`  cuttlefish board add <spec.jsonc> [--force]   Generate board + MCU packages from a chip spec`);
   console.log(`  cuttlefish gen-decls <input.cpp|--all <directory>>`);
   console.log(`  cuttlefish map-error <mapFile> [options]`);
+  console.log(`  cuttlefish doctor                              Check that arduino-cli is installed and the board's core is present`);
   console.log();
   console.log(chalk.gray(`Transpilation is always performed first. Use --compile, --upload, and`));
   console.log(chalk.gray(`--monitor to chain operations after transpilation.`));
@@ -365,7 +366,28 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       baud: 9600,
       platformContext: {},
       configPath: configPath ? path.resolve(process.cwd(), configPath) : undefined,
-      port: port ? String(port) : undefined,
+    port: port ? String(port) : undefined,
+  };
+  }
+
+  // doctor subcommand — verify arduino-cli + board core presence
+  if (firstArg === "doctor") {
+    return {
+      command: "doctor",
+      // The remaining pipeline fields are unused by doctor; fill with safe
+      // defaults, the same way the preview branch does.
+      inputFile: undefined,
+      emitMode: "split",
+      target: "generic",
+      outDir: undefined,
+      emitMaps: true,
+      noTranspile: false,
+      compile: false,
+      upload: false,
+      monitor: false,
+      watch: false,
+      baud: 9600,
+      platformContext: {},
     };
   }
 
