@@ -436,3 +436,85 @@ export function scanLicenses(options?: ScanOptions): ScanOutcome {
 
   return { ok: true, libraries: entries };
 }
+
+// ---------------------------------------------------------------------------
+// CLI presenter
+// ---------------------------------------------------------------------------
+
+// Imported here (not in cli.ts) so the presenter is unit-testable without
+// importing the binary entry module cli.ts, which has a shebang and runs
+// main() at import time.
+import * as ui from "./utils/ui.js";
+
+/**
+ * `cuttlefish licenses` presenter: scan installed libraries, render a
+ * risk-sorted table, warn on unknowns, and set process.exitCode. Warns (yellow)
+ * when a license can't be determined; exits 0 unless `strict` is set or a hard
+ * environment failure occurs. Never calls process.exit().
+ */
+export function runLicensesPresenter(strict: boolean): void {
+  ui.printHeader();
+  ui.printStep("Checking licenses for installed Arduino libraries");
+
+  const result = scanLicenses();
+
+  if (!result.ok) {
+    if (result.reason === "arduino-cli-unresponsive") {
+      ui.printError(`arduino-cli .... NOT FOUND or unresponsive`);
+      process.exitCode = 1;
+    } else {
+      // no-libraries — informational, not an error (mirrors doctor's skip path)
+      ui.printInfo(`(no libraries installed — nothing to scan)`);
+    }
+    return;
+  }
+
+  // Risk-tagged row rendering.
+  const riskBracket = (risk: CopyleftRisk): string => {
+    switch (risk) {
+      case "strong-copyleft":
+        return "  [COPYLEFT]";
+      case "weak-copyleft":
+        return "  [weak copyleft]";
+      default:
+        return "";
+    }
+  };
+
+  for (const lib of result.libraries) {
+    if (lib.risk === "unknown") {
+      ui.printWarning(`${lib.name} .................. UNKNOWN`);
+    } else {
+      const spdx = lib.spdx ?? "UNKNOWN";
+      const ok = lib.risk === "permissive" ? "  ✓" : "";
+      ui.printInfo(`${lib.name} .................. ${spdx}${riskBracket(lib.risk)}${ok}`);
+    }
+  }
+
+  // Summary counts.
+  const counts: Record<CopyleftRisk, number> = {
+    permissive: 0,
+    "weak-copyleft": 0,
+    "strong-copyleft": 0,
+    unknown: 0,
+  };
+  for (const lib of result.libraries) counts[lib.risk] += 1;
+  ui.printSuccess(
+    `${counts.permissive} permissive, ${counts["weak-copyleft"]} weak copyleft, ` +
+      `${counts["strong-copyleft"]} strong copyleft, ${counts.unknown} unknown`,
+  );
+
+  // Unknowns detail block.
+  const unknowns = result.libraries.filter((l) => l.risk === "unknown");
+  if (unknowns.length > 0) {
+    ui.printWarning(
+      `License could not be determined for ${unknowns.length} ${unknowns.length === 1 ? "library" : "libraries"}:`,
+    );
+    for (const u of unknowns) {
+      ui.printInfo(`    ${u.name} (check library.properties or LICENSE in ${u.path})`);
+    }
+    if (strict) {
+      process.exitCode = 1;
+    }
+  }
+}
