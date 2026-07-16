@@ -9,6 +9,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { parseConfigAST } from './config.js';
+import { checkArduinoEnv, type ArduinoEnvFailure } from '@typecad/arduino-cli';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -26,6 +27,13 @@ export interface UploadResult {
   success: boolean;
   output: string;
   error?: string;
+}
+
+/** Format a check failure into the `error` field used by CompileResult/UploadResult. */
+function formatEnvFailure(failure: ArduinoEnvFailure): string {
+  const lines = [...failure.messages];
+  if (failure.fixCommand) lines.push(`  Fix: ${failure.fixCommand}`);
+  return lines.join('\n');
 }
 
 /**
@@ -117,6 +125,14 @@ export function transpileTestFile(
  * Compile the Arduino sketch using arduino-cli.
  */
 export function compileSketch(sketchDir: string, buildTarget: string): CompileResult {
+  // Hard gate: verify arduino-cli + core before spawning.
+  {
+    const gate = checkArduinoEnv(buildTarget);
+    if (!gate.ok) {
+      const message = formatEnvFailure(gate);
+      return { success: false, sketchDir, sketchPath: '', output: message, error: message };
+    }
+  }
   const result = spawnSync(
     'arduino-cli',
     ['compile', '--fqbn', buildTarget, sketchDir],
@@ -142,6 +158,14 @@ export function uploadSketch(
   buildTarget: string,
   port: string,
 ): UploadResult {
+  // Hard gate: verify arduino-cli + core before spawning.
+  {
+    const gate = checkArduinoEnv(buildTarget);
+    if (!gate.ok) {
+      const message = formatEnvFailure(gate);
+      return { success: false, output: message, error: message };
+    }
+  }
   const result = spawnSync(
     'arduino-cli',
     ['upload', '--fqbn', buildTarget, '--port', port, sketchDir],
