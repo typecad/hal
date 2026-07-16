@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  checkArduinoEnv,
-  type ArduinoEnvResult,
-} from "../../../packages/arduino-cli/src";
+import { checkArduinoEnv } from "@typecad/arduino-cli";
 
 // All FQBN-derivation + set-membership tests use the for-test override hook so
 // they never invoke a real arduino-cli binary.

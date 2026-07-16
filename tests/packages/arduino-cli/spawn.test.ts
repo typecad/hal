@@ -3,7 +3,14 @@ import { spawnSync } from "node:child_process";
 import {
   checkArduinoEnv,
   __invalidateArduinoCliCacheForTest,
-} from "../../../packages/arduino-cli/src";
+  __setArduinoCliRunnerForTest,
+} from "@typecad/arduino-cli";
+
+// Defensively reset any override a prior test file may have installed, so this
+// smoke test exercises the REAL arduino-cli executor regardless of run order.
+// Import from the package (dist), matching the gate test files, so we clear the
+// SAME module instance's state.
+__setArduinoCliRunnerForTest(undefined);
 
 // Detect whether a real arduino-cli is available on PATH. Skip the whole file
 // if not, so CI environments without arduino-cli still pass.
