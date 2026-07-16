@@ -22,6 +22,7 @@ export function printHelp(): void {
   console.log(`  cuttlefish gen-decls <input.cpp|--all <directory>>`);
   console.log(`  cuttlefish map-error <mapFile> [options]`);
   console.log(`  cuttlefish doctor                              Check that arduino-cli is installed and the board's core is present`);
+  console.log(`  cuttlefish licenses [--strict]                 Scan installed Arduino libraries and report each library's SPDX license`);
   console.log();
   console.log(chalk.gray(`Transpilation is always performed first. Use --compile, --upload, and`));
   console.log(chalk.gray(`--monitor to chain operations after transpilation.`));
@@ -376,6 +377,28 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       command: "doctor",
       // The remaining pipeline fields are unused by doctor; fill with safe
       // defaults, the same way the preview branch does.
+      inputFile: undefined,
+      emitMode: "split",
+      target: "generic",
+      outDir: undefined,
+      emitMaps: true,
+      noTranspile: false,
+      compile: false,
+      upload: false,
+      monitor: false,
+      watch: false,
+      baud: 9600,
+      platformContext: {},
+    };
+  }
+
+  // licenses subcommand — scan installed Arduino libraries for SPDX licenses
+  if (firstArg === "licenses") {
+    return {
+      command: "licenses",
+      strict: argv.includes("--strict"),
+      // The remaining pipeline fields are unused by licenses; fill with safe
+      // defaults, the same way the doctor branch does.
       inputFile: undefined,
       emitMode: "split",
       target: "generic",

@@ -131,7 +131,9 @@ export interface LibraryDefinition {
 }
 
 export interface CommandLineOptions {
-  command: "default" | "build" | "gen-libdefs" | "gen-decls" | "map-error" | "preview" | "doctor";
+  command: "default" | "build" | "gen-libdefs" | "gen-decls" | "map-error" | "preview" | "doctor" | "licenses";
+  /** For `licenses`: treat unknown/missing licenses as failures (exit 1). */
+  strict?: boolean;
   inputFile?: string;
   emitMode: EmitMode;
   target: TargetProfile;
