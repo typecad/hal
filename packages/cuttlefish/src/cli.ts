@@ -22,6 +22,7 @@ import { runPreviewServer } from "./preview/server.js";
 import * as ui from "./utils/ui.js";
 import chalk from "chalk";
 import { checkArduinoEnv } from "@typecad/arduino-cli";
+import { scanLicenses, type CopyleftRisk } from "./licenses.js";
 
 function hasFatalDiagnostics(result: GeneratedOutputs): boolean {
   return result.diagnostics.some((diagnostic) => diagnostic.severity === "error");
@@ -182,6 +183,79 @@ function runDoctor(): void {
   }
 }
 
+/**
+ * `cuttlefish licenses` — scan installed Arduino libraries and report each
+ * library's SPDX license with copyleft risk classification. Warns (yellow)
+ * when a license can't be determined; exits 0 unless `--strict` is set or a
+ * hard environment failure occurs.
+ */
+function runLicenses(strict: boolean): void {
+  ui.printHeader();
+  ui.printStep("Checking licenses for installed Arduino libraries");
+
+  const result = scanLicenses();
+
+  if (!result.ok) {
+    if (result.reason === "arduino-cli-unresponsive") {
+      ui.printError(`arduino-cli .... NOT FOUND or unresponsive`);
+      process.exitCode = 1;
+    } else {
+      // no-libraries — informational, not an error (mirrors doctor's skip path)
+      ui.printInfo(`(no libraries installed — nothing to scan)`);
+    }
+    return;
+  }
+
+  // Risk-tagged row rendering.
+  const riskBracket = (risk: CopyleftRisk): string => {
+    switch (risk) {
+      case "strong-copyleft":
+        return "  [COPYLEFT]";
+      case "weak-copyleft":
+        return "  [weak copyleft]";
+      default:
+        return "";
+    }
+  };
+
+  for (const lib of result.libraries) {
+    if (lib.risk === "unknown") {
+      ui.printWarning(`${lib.name} .................. UNKNOWN`);
+    } else {
+      const spdx = lib.spdx ?? "UNKNOWN";
+      const ok = lib.risk === "permissive" ? "  ✓" : "";
+      ui.printInfo(`${lib.name} .................. ${spdx}${riskBracket(lib.risk)}${ok}`);
+    }
+  }
+
+  // Summary counts.
+  const counts: Record<CopyleftRisk, number> = {
+    permissive: 0,
+    "weak-copyleft": 0,
+    "strong-copyleft": 0,
+    unknown: 0,
+  };
+  for (const lib of result.libraries) counts[lib.risk] += 1;
+  ui.printSuccess(
+    `${counts.permissive} permissive, ${counts["weak-copyleft"]} weak copyleft, ` +
+      `${counts["strong-copyleft"]} strong copyleft, ${counts.unknown} unknown`,
+  );
+
+  // Unknowns detail block.
+  const unknowns = result.libraries.filter((l) => l.risk === "unknown");
+  if (unknowns.length > 0) {
+    ui.printWarning(
+      `License could not be determined for ${unknowns.length} ${unknowns.length === 1 ? "library" : "libraries"}:`,
+    );
+    for (const u of unknowns) {
+      ui.printInfo(`    ${u.name} (check library.properties or LICENSE in ${u.path})`);
+    }
+    if (strict) {
+      process.exitCode = 1;
+    }
+  }
+}
+
 async function main(): Promise<void> {
   try {
     const options = parseCommandLine(process.argv);
@@ -247,6 +321,11 @@ async function main(): Promise<void> {
 
     if (options.command === "doctor") {
       runDoctor();
+      return;
+    }
+
+    if (options.command === "licenses") {
+      runLicenses(options.strict ?? false);
       return;
     }
 
