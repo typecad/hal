@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { identifySpdx, classifyRisk } from "../../../packages/cuttlefish/src/licenses";
+import {
+  identifySpdx,
+  classifyRisk,
+  scanLicenses,
+  coerceLibList,
+  type ScanOptions,
+} from "../../../packages/cuttlefish/src/licenses";
 
 describe("identifySpdx — alias matching (short library.properties values)", () => {
   it("matches canonical SPDX IDs", () => {
@@ -69,5 +75,139 @@ describe("classifyRisk", () => {
 
   it("returns unknown for unrecognized ids", () => {
     expect(classifyRisk("Made-Up-License")).toBe("unknown");
+  });
+});
+
+// ---- scanLicenses fixtures ----
+
+function makeOpts(
+  libs: unknown[] | null,
+  readFile: (p: string) => string | undefined,
+  readdir: (d: string) => string[] = () => [],
+): ScanOptions {
+  return {
+    fakeLibList: () => libs as any,
+    fakeReadFile: readFile,
+    fakeReaddir: readdir,
+  };
+}
+
+describe("scanLicenses — enumeration failure modes", () => {
+  it("fails with arduino-cli-unresponsive when lib list returns null", () => {
+    const result = scanLicenses(makeOpts(null, () => undefined));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("arduino-cli-unresponsive");
+    }
+  });
+
+  it("fails with no-libraries when the list is empty", () => {
+    const result = scanLicenses(makeOpts([], () => undefined));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toBe("no-libraries");
+    }
+  });
+});
+
+describe("scanLicenses — per-library resolution priority", () => {
+  it("prefers library.properties license= over a LICENSE file", () => {
+    const result = scanLicenses(
+      makeOpts(
+        [{ name: "L", install_dir: "/L" }],
+        (p) => {
+          if (p.endsWith("library.properties")) return "license=MIT\nname=L\n";
+          if (p.endsWith("LICENSE")) return "BSD 3-Clause text...";
+          return undefined;
+        },
+        () => ["library.properties", "LICENSE"],
+      ),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.libraries[0].spdx).toBe("MIT");
+      expect(result.libraries[0].source).toBe("library.properties");
+    }
+  });
+
+  it("falls back to the LICENSE file when properties omits license", () => {
+    const result = scanLicenses(
+      makeOpts(
+        [{ name: "L", install_dir: "/L" }],
+        (p) => {
+          if (p.endsWith("library.properties")) return "name=L\n";
+          if (p.endsWith("LICENSE")) return "Apache License\nVersion 2.0";
+          return undefined;
+        },
+        () => ["library.properties", "LICENSE"],
+      ),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.libraries[0].spdx).toBe("Apache-2.0");
+      expect(result.libraries[0].source).toBe("license-file");
+    }
+  });
+
+  it("marks unknown when neither properties nor a LICENSE file resolves", () => {
+    const result = scanLicenses(
+      makeOpts(
+        [{ name: "L", install_dir: "/L" }],
+        () => undefined,
+      ),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.libraries[0].spdx).toBeUndefined();
+      expect(result.libraries[0].risk).toBe("unknown");
+      expect(result.libraries[0].source).toBe("none");
+    }
+  });
+});
+
+describe("coerceLibList — dual arduino-cli JSON shape", () => {
+  it("parses the newer wrapped shape", () => {
+    // `coerceLibList` is tested directly because fakeLibList returns the
+    // already-flat list; the dual-shape parsing lives in coerceLibList.
+    const wrapped = { installed_libraries: [{ library: { name: "X", install_dir: "/X" } }] };
+    expect(coerceLibList(wrapped).map((l) => l.name)).toEqual(["X"]);
+  });
+
+  it("parses the legacy bare-array shape", () => {
+    const bare = [{ name: "Y", version: "1.0", install_dir: "/Y" }];
+    expect(coerceLibList(bare).map((l) => l.name)).toEqual(["Y"]);
+  });
+
+  it("returns [] for an unrecognized shape", () => {
+    expect(coerceLibList({ weird: true })).toEqual([]);
+    expect(coerceLibList("string")).toEqual([]);
+    expect(coerceLibList(null)).toEqual([]);
+  });
+});
+
+describe("scanLicenses — sort order (strong → weak → permissive → unknown)", () => {
+  it("returns libraries sorted worst-first", () => {
+    const libs = [
+      { name: "MITLib", install_dir: "/MITLib" },
+      { name: "GPLLib", install_dir: "/GPLLib" },
+      { name: "UnknownLib", install_dir: "/UnknownLib" },
+      { name: "LGSDLib", install_dir: "/LGSDLib" },
+    ];
+    const readFile = (p: string): string | undefined => {
+      if (p === "/MITLib/library.properties") return "license=MIT\n";
+      if (p === "/GPLLib/library.properties") return "license=GPL-3.0\n";
+      if (p === "/LGSDLib/library.properties") return "license=LGPL-2.1\n";
+      return undefined;
+    };
+    const result = scanLicenses(makeOpts(libs as any[], readFile));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.libraries.map((l) => l.name)).toEqual([
+        "GPLLib", // strong-copyleft
+        "LGSDLib", // weak-copyleft
+        "MITLib", // permissive
+        "UnknownLib", // unknown
+      ]);
+    }
   });
 });

@@ -187,3 +187,233 @@ export function classifyRisk(spdx: string): CopyleftRisk {
   const entry = SPDX_TABLE.find((e) => e.id === spdx || e.aliases.includes(spdx));
   return entry ? entry.risk : "unknown";
 }
+
+// ---------------------------------------------------------------------------
+// Arduino library enumeration (via arduino-cli)
+// ---------------------------------------------------------------------------
+
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+
+/** Raw library entry as it appears in `arduino-cli lib list --format json`. */
+export interface RawArduinoLibrary {
+  name: string;
+  version?: string;
+  install_dir?: string;
+}
+
+/** Wrapped (newer) shape: { installed_libraries: [{ library: {...} }] }. */
+interface WrappedLibList {
+  installed_libraries?: { library: RawArduinoLibrary }[];
+}
+
+/**
+ * Candidate LICENSE filenames checked case-insensitively in install_dir.
+ */
+const LICENSE_FILENAMES = [
+  "LICENSE",
+  "LICENSE.md",
+  "LICENSE.txt",
+  "COPYING",
+  "COPYING.txt",
+];
+
+/**
+ * Read library.properties from a directory and return its `license=` value
+ * (raw, untrimmed) if present.
+ */
+function readPropertiesLicense(
+  installDir: string,
+  readFile: (p: string) => string | undefined,
+): string | undefined {
+  const text = readFile(path.join(installDir, "library.properties"));
+  if (!text) return undefined;
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(/^\s*license\s*=\s*(.*)$/);
+    if (m && m[1].trim()) return m[1];
+  }
+  return undefined;
+}
+
+/**
+ * Read the first LICENSE/COPYING file found in installDir and return its text.
+ */
+function readLicenseFile(
+  installDir: string,
+  readFile: (p: string) => string | undefined,
+  readdir: (d: string) => string[],
+): string | undefined {
+  const entries = new Set(readdir(installDir).map((e) => e.toLowerCase()));
+  for (const candidate of LICENSE_FILENAMES) {
+    if (entries.has(candidate.toLowerCase())) {
+      return readFile(path.join(installDir, candidate));
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Resolve a single library's license. Priority: library.properties → LICENSE
+ * file → none.
+ */
+function resolveLibraryLicense(
+  lib: RawArduinoLibrary,
+  readFile: (p: string) => string | undefined,
+  readdir: (d: string) => string[],
+): LibraryLicenseEntry {
+  const installDir = lib.install_dir ?? "";
+
+  // 1. library.properties
+  const propsLicense = readPropertiesLicense(installDir, readFile);
+  if (propsLicense) {
+    const spdx = identifySpdx(propsLicense);
+    if (spdx) {
+      return {
+        name: lib.name,
+        version: lib.version,
+        path: installDir,
+        spdx,
+        risk: classifyRisk(spdx),
+        source: "library.properties",
+      };
+    }
+  }
+
+  // 2. LICENSE file
+  const fileText = readLicenseFile(installDir, readFile, readdir);
+  if (fileText) {
+    const spdx = identifySpdx(fileText);
+    if (spdx) {
+      return {
+        name: lib.name,
+        version: lib.version,
+        path: installDir,
+        spdx,
+        risk: classifyRisk(spdx),
+        source: "license-file",
+      };
+    }
+  }
+
+  // 3. unknown
+  return {
+    name: lib.name,
+    version: lib.version,
+    path: installDir,
+    spdx: undefined,
+    risk: "unknown",
+    source: "none",
+  };
+}
+
+const RISK_RANK: Record<CopyleftRisk, number> = {
+  "strong-copyleft": 0,
+  "weak-copyleft": 1,
+  permissive: 2,
+  unknown: 3,
+};
+
+/**
+ * Options for `scanLicenses`. Production calls omit this object entirely; tests
+ * inject `fakeLibList` and `fakeReadFile` to avoid spawning and disk I/O.
+ */
+export interface ScanOptions {
+  /** Override the `arduino-cli lib list` call. Return null to simulate spawn failure. */
+  fakeLibList?: () => RawArduinoLibrary[] | null;
+  /** Override disk reads of library.properties and LICENSE files. */
+  fakeReadFile?: (p: string) => string | undefined;
+  /** Override directory listings. */
+  fakeReaddir?: (d: string) => string[];
+}
+
+/**
+ * Run `arduino-cli lib list --format json` and parse both known shapes into a
+ * flat list. Returns null on spawn failure or unparseable output (mirrors the
+ * null-on-error convention from framework-arduino/src/lib-discovery.ts).
+ */
+function listLibraries(): RawArduinoLibrary[] | null {
+  try {
+    const result = spawnSync("arduino-cli", ["lib", "list", "--format", "json"], {
+      encoding: "utf8",
+      timeout: 30000,
+    });
+    if (result.error || result.status !== 0) return null;
+    const output = result.stdout?.trim();
+    if (!output) return null;
+    const parsed: unknown = JSON.parse(output);
+    return coerceLibList(parsed);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Normalize either JSON shape (wrapped or bare array) to a flat library list.
+ * Exported for direct unit testing of the dual-shape parsing.
+ */
+export function coerceLibList(parsed: unknown): RawArduinoLibrary[] {
+  if (Array.isArray(parsed)) {
+    return parsed as RawArduinoLibrary[];
+  }
+  if (typeof parsed === "object" && parsed !== null) {
+    const wrapped = parsed as WrappedLibList;
+    if (wrapped.installed_libraries && Array.isArray(wrapped.installed_libraries)) {
+      return wrapped.installed_libraries.map((item) => item.library);
+    }
+  }
+  return [];
+}
+
+/**
+ * Scan installed Arduino libraries and resolve each one's license. Never throws.
+ */
+export function scanLicenses(options?: ScanOptions): ScanOutcome {
+  const listRunner = options?.fakeLibList ?? listLibraries;
+  const readFile =
+    options?.fakeReadFile ??
+    ((p: string) => {
+      try {
+        return fs.readFileSync(p, "utf8");
+      } catch {
+        return undefined;
+      }
+    });
+  const readdir =
+    options?.fakeReaddir ??
+    ((d: string) => {
+      try {
+        return fs.readdirSync(d);
+      } catch {
+        return [];
+      }
+    });
+
+  const libs = listRunner();
+  if (libs === null) {
+    return {
+      ok: false,
+      reason: "arduino-cli-unresponsive",
+      message: "arduino-cli did not return a library list.",
+    };
+  }
+  if (libs.length === 0) {
+    return {
+      ok: false,
+      reason: "no-libraries",
+      message: "No Arduino libraries are installed.",
+    };
+  }
+
+  const entries = libs
+    .filter((lib) => lib.name && lib.install_dir)
+    .map((lib) => resolveLibraryLicense(lib, readFile, readdir));
+
+  entries.sort((a, b) => {
+    const r = RISK_RANK[a.risk] - RISK_RANK[b.risk];
+    if (r !== 0) return r;
+    return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+  });
+
+  return { ok: true, libraries: entries };
+}
