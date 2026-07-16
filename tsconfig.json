@@ -13,6 +13,7 @@
   "references": [
     { "path": "packages/cuttlefish" },
     { "path": "packages/hal" },
+    { "path": "packages/arduino-cli" },
     { "path": "packages/mcu-atmega328p" },
     { "path": "packages/mcu-esp32" },
     { "path": "packages/mcu-esp32s3" },

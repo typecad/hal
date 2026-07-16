@@ -5,6 +5,7 @@
   "workspaces": [
     "packages/cuttlefish",
     "packages/hal",
+    "packages/arduino-cli",
     "packages/mcu-atmega328p",
     "packages/mcu-esp32",
     "packages/mcu-esp32s3",
