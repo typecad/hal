@@ -366,12 +366,30 @@ export function coerceLibList(parsed: unknown): RawArduinoLibrary[] {
 }
 
 /**
+ * Module-level runner override used by presenter tests so `scanLicenses()`
+ * (with no args) does not spawn. Mirrors __setArduinoCliRunnerForTest.
+ */
+export interface LicensesRunner {
+  listLibraries: () => RawArduinoLibrary[] | null;
+  readFile: (p: string) => string | undefined;
+  readdir: (d: string) => string[];
+}
+
+let testRunner: LicensesRunner | undefined;
+
+/** @internal Test-only override of the default runner. */
+export function __setLicensesRunnerForTest(runner: LicensesRunner | undefined): void {
+  testRunner = runner;
+}
+
+/**
  * Scan installed Arduino libraries and resolve each one's license. Never throws.
  */
 export function scanLicenses(options?: ScanOptions): ScanOutcome {
-  const listRunner = options?.fakeLibList ?? listLibraries;
+  const listRunner = options?.fakeLibList ?? testRunner?.listLibraries ?? listLibraries;
   const readFile =
     options?.fakeReadFile ??
+    testRunner?.readFile ??
     ((p: string) => {
       try {
         return fs.readFileSync(p, "utf8");
@@ -381,6 +399,7 @@ export function scanLicenses(options?: ScanOptions): ScanOutcome {
     });
   const readdir =
     options?.fakeReaddir ??
+    testRunner?.readdir ??
     ((d: string) => {
       try {
         return fs.readdirSync(d);

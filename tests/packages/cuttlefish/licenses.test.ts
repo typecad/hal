@@ -1,9 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import {
   identifySpdx,
   classifyRisk,
   scanLicenses,
   coerceLibList,
+  __setLicensesRunnerForTest,
   type ScanOptions,
 } from "../../../packages/cuttlefish/src/licenses";
 
@@ -209,5 +210,31 @@ describe("scanLicenses — sort order (strong → weak → permissive → unknow
         "UnknownLib", // unknown
       ]);
     }
+  });
+});
+
+describe("scanLicenses — module-level test override", () => {
+  afterEach(() => __setLicensesRunnerForTest(undefined));
+
+  it("uses the injected runner when no inline options are passed", () => {
+    __setLicensesRunnerForTest({
+      listLibraries: () => [{ name: "X", install_dir: "/X" }],
+      readFile: () => undefined,
+      readdir: () => [],
+    });
+    const result = scanLicenses();
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.libraries[0].name).toBe("X");
+  });
+
+  it("inline options take precedence over the module override", () => {
+    __setLicensesRunnerForTest({
+      listLibraries: () => [{ name: "MODULE", install_dir: "/MODULE" }],
+      readFile: () => undefined,
+      readdir: () => [],
+    });
+    const result = scanLicenses({ fakeLibList: () => [{ name: "INLINE", install_dir: "/INLINE" }] });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.libraries[0].name).toBe("INLINE");
   });
 });
