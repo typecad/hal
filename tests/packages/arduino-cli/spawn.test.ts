@@ -13,10 +13,11 @@ import {
 __setArduinoCliRunnerForTest(undefined);
 
 // Detect whether a real arduino-cli is available on PATH. Skip the whole file
-// if not, so CI environments without arduino-cli still pass.
+// if not, so CI environments without arduino-cli still pass. Generous timeout
+// matches the probe's own budget (arduino-cli cold-starts a Go binary).
 let arduinoCliAvailable = false;
 try {
-  const probe = spawnSync("arduino-cli", ["version"], { encoding: "utf8", timeout: 5000 });
+  const probe = spawnSync("arduino-cli", ["version"], { encoding: "utf8", timeout: 15000 });
   arduinoCliAvailable = !probe.error && probe.status === 0;
 } catch {
   arduinoCliAvailable = false;

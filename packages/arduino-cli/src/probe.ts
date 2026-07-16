@@ -62,10 +62,12 @@ export function __invalidateArduinoCliCacheForTest(): void {
 function runRealProbe(): ArduinoCliProbeData {
   if (cached) return cached;
 
-  // 1. version probe — tight timeout, fail fast.
+  // 1. version probe. Timeout is generous because arduino-cli cold-starts a Go
+  // binary and this runs once per process (cached below); under CI/load a 5s
+  // budget is too tight and produces spurious "unresponsive" results.
   const versionCmd = spawnSync("arduino-cli", ["version"], {
     encoding: "utf8",
-    timeout: 5000,
+    timeout: 15000,
   });
 
   // ENOENT => binary not on PATH at all.
@@ -99,10 +101,12 @@ function runRealProbe(): ArduinoCliProbeData {
   const versionMatch = versionText.match(/(\d+\.\d+\.\d+)/);
   const arduinoCliVersion = versionMatch ? versionMatch[1] : undefined;
 
-  // 2. core list probe — installed cores only (no --all flag).
+  // 2. core list probe — installed cores only (no --all flag). `core list`
+  // cold-runs in ~4-5s even unloaded, so the timeout must accommodate load;
+  // this is a once-per-process cached call.
   const coresCmd = spawnSync("arduino-cli", ["core", "list", "--format", "json"], {
     encoding: "utf8",
-    timeout: 10000,
+    timeout: 30000,
   });
 
   let installedCores: string[] = [];
