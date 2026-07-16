@@ -48,6 +48,9 @@ function replaceHalReadBufferPlaceholder(op: HALOpIR, varName: string): HALOpIR 
   if (op.operation === "i2c.read_buffer" && op.buffer === "__HAL_READ_BUF__") {
     return { ...op, buffer: varName };
   }
+  if (op.operation === "spi.read_buffer" && op.buffer === "__HAL_READ_BUF__") {
+    return { ...op, buffer: varName };
+  }
   return op;
 }
 
@@ -542,6 +545,46 @@ export function variableStatementToIR(
         if (result && (!isOwnershipMethod || isSingletonReceiver)) {
           const isHalOpReturn = result.returnValue === "__hal_op_return__";
 
+          // A __TYPED_ARRAY__ return comes ONLY from a HAL method body
+          // (`return new Uint8Array(count)` in e.g. I2CDevice.readBytes /
+          // SPIDevice.readRegister). The method's side-effect HAL ops (the
+          // i2c.read_buffer / spi.read_buffer fill loops) write INTO this buffer
+          // via the __HAL_READ_BUF__ placeholder (rewritten to `varName`). So the
+          // buffer var_decl MUST precede the fill ops in emitted order — at top
+          // level the var_decl is hoisted to file scope which masks this, but a
+          // function-local `const data = ...readBytes()` would otherwise emit the
+          // fill loop referencing `data` before its declaration. Detect the typed
+          // array up front so we can emit its declaration first.
+          const isTypedArrayReturn = typeof result.returnValue === "string" && result.returnValue.startsWith("__TYPED_ARRAY__:");
+          if (isTypedArrayReturn && typeof result.returnValue === "string") {
+            const parts = result.returnValue.split(":");
+            const elementType = parts[1];
+            const size = parts[2];
+            // Force non-const storage (the buffer is written by the fill op) and
+            // synthesize a zero-init array initializer so the var_decl renderer
+            // emits `T data[] = { 0, 0, ... }` — a bare `const T data[N];` that
+            // is later written would fail to compile (assignment to const).
+            // Mirrors plain `new Uint8Array(N)` (expression-to-ir.ts).
+            const count = parseInt(size, 10);
+            const initElements = !isNaN(count) && count > 0 && count <= 256
+              ? Array(count).fill(0).map(() => ({ kind: "number" as const, value: 0 }))
+              : [];
+            lowered.push({
+              kind: "var_decl",
+              sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
+              leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
+              trailingComments: [],
+              name: varName,
+              storage: "let",
+              cppType: `${elementType}[${size}]`,
+              initializer: initElements.length > 0
+                ? { kind: "array" as const, elements: initElements, elementType }
+                : undefined,
+            });
+            activeCArrayVars.add(varName);
+            commentsAssigned = true;
+          }
+
           if (result.halOps && result.halOps.length > 0) {
             const sideEffectOps = isHalOpReturn ? result.halOps.slice(0, -1) : result.halOps;
             const halStmts = sideEffectOps.map(op => ({
@@ -635,23 +678,11 @@ export function variableStatementToIR(
               if (/\b\d+\.\d+\b/.test(result.returnValue)) {
                 registerFloatVariable(varName);
               }
+              // __TYPED_ARRAY__ returns are handled above (declared BEFORE the
+              // fill ops). Everything else is a scalar/value return captured
+              // after the side-effect ops.
               const isTypedArray = result.returnValue.startsWith("__TYPED_ARRAY__:");
-              if (isTypedArray) {
-                const parts = result.returnValue.split(":");
-                const elementType = parts[1];
-                const size = parts[2];
-                lowered.push({
-                  kind: "var_decl",
-                  sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
-                  leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
-                  trailingComments: [],
-                  name: varName,
-                  storage,
-                  cppType: `${elementType}[${size}]`,
-                  initializer: undefined,
-                });
-                activeCArrayVars.add(varName);
-              } else {
+              if (!isTypedArray) {
                 lowered.push({
                   kind: "var_decl",
                   sourceSpan: makeSourceSpan(declaration, fileName, sourceText),

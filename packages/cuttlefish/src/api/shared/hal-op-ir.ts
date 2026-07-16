@@ -378,6 +378,16 @@ export interface SpiCsHighOp {
   pin: number;
 }
 
+export interface SpiReadBufferOp {
+  operation: "spi.read_buffer";
+  bus: string;
+  /** Number of bytes — numeric or runtime expression string */
+  count: number | string;
+  /** Buffer variable name, "__HAL_READ_BUF__" placeholder (rewritten to the
+   *  caller's variable by the variable-init transformer), or "__DISCARD__" */
+  buffer: string;
+}
+
 // ---------------------------------------------------------------------------
 // UART — universal asynchronous receiver-transmitter (serial)
 // ---------------------------------------------------------------------------
@@ -610,6 +620,7 @@ export type HALOpIR =
   | SpiSetBitOrderOp
   | SpiCsLowOp
   | SpiCsHighOp
+  | SpiReadBufferOp
   // UART
   | UartBeginOp
   | UartEndOp

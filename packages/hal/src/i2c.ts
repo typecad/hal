@@ -1,4 +1,4 @@
-import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cWriteBuffer, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, rawCpp } from './emit.js';
+import { i2cBegin, i2cEnd, i2cSetClock, i2cBeginTx, i2cWrite, i2cWriteBuffer, i2cEndTx, i2cRequestFrom, i2cAvailable, i2cRead, i2cReadBuffer, rawCpp } from './emit.js';
 import { include } from './include.js';
 
 export class I2CDevice {
@@ -41,9 +41,11 @@ export class I2CDevice {
     i2cWrite(this._bus, register);
     i2cEndTx(this._bus, false);
     i2cRequestFrom(this._bus, this._address, count, true);
-    rawCpp(`static uint8_t __buf[${count}];`);
-    rawCpp(`for (int __i = 0; __i < ${count}; __i++) __buf[__i] = ${this._bus}.read();`);
-    rawCpp(`return __buf;`);
+    // Drain the requested bytes into the caller's buffer (declared by the
+    // Uint8Array return marker as `uint8_t data[count]`). Using the semantic
+    // primitive — NOT rawCpp — keeps the buffer in user scope so it survives
+    // the return (no decayed pointer) and `data.length` / `data[i]` work.
+    i2cReadBuffer(this._bus, count, new Uint8Array(count));
     return new Uint8Array(count);
   }
 }

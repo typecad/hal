@@ -99,6 +99,15 @@ export function i2cRequestFrom(bus: string, address: number, quantity: number, s
 export function i2cAvailable(bus: string): number { return 0; }
 /** Read a byte from I2C. */
 export function i2cRead(bus: string): number { return 0; }
+/**
+ * Drain `count` bytes requested from the I2C bus into a caller-provided buffer.
+ * Semantic primitive: lowers to the `i2c.read_buffer` HAL op. The `buffer`
+ * argument is emitted as a placeholder (`__HAL_READ_BUF__`) that the var-init
+ * transformer rewrites to the caller's own buffer variable, so bytes land in
+ * the `uint8_t data[N]` declared in user scope — NOT an internal temp that
+ * decays to a pointer on return. Keeps `data.length` / `data[i]` valid.
+ */
+export function i2cReadBuffer(bus: string, count: number, buffer: number[] | Uint8Array): void {}
 
 // ---------------------------------------------------------------------------
 // SPI — serial peripheral interface
@@ -118,6 +127,14 @@ export function spiEndTx(bus: string): void {}
 export function spiCsLow(pin: number | string): void {}
 /** Set SPI chip-select pin HIGH. */
 export function spiCsHigh(pin: number | string): void {}
+/**
+ * Read `count` bytes from the SPI bus into a caller-provided buffer by clocking
+ * dummy (0x00) transfers. Semantic primitive: lowers to the `spi.read_buffer`
+ * HAL op (per-byte `bus.transfer(0)` read loop). The `buffer` placeholder is
+ * rewritten to the caller's variable. Mirrors i2cReadBuffer. The caller is
+ * responsible for asserting/de-asserting chip-select around it.
+ */
+export function spiReadBuffer(bus: string, count: number, buffer: number[] | Uint8Array): void {}
 /** Set SPI data mode. */
 export function spiSetMode(bus: string, mode: number): void {}
 /** Set SPI bit order. */

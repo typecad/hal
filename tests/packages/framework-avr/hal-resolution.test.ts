@@ -84,4 +84,26 @@ describe("NativeAVRStrategy.resolveHALOperation emits AVR register access", () =
       expect(out?.code ?? out?.expression).toBeTruthy();
     });
   });
+
+  describe("i2c.read_buffer / spi.read_buffer placeholder remap", () => {
+    // A read-buffer HAL op reaches the strategy with buffer === "__HAL_READ_BUF__"
+    // when the read happens in STATEMENT context (result not captured). The
+    // strategy must remap the placeholder to __DISCARD__ itself, or it would
+    // emit `__HAL_READ_BUF__[i] = _twi_read();` (invalid C++).
+    it("i2c.read_buffer discards when buffer is the placeholder", () => {
+      const out = resolve({ operation: "i2c.read_buffer", bus: "Wire", count: 6, buffer: "__HAL_READ_BUF__" } as HALOpIR);
+      expect(out).toEqual({ code: "for (int __i = 0; __i < 6; __i++) (void)_twi_read();" });
+      expect(out!.code).not.toContain("__HAL_READ_BUF__");
+    });
+
+    it("i2c.read_buffer fills the caller buffer when rewritten to a real variable", () => {
+      const out = resolve({ operation: "i2c.read_buffer", bus: "Wire", count: 4, buffer: "data" } as HALOpIR);
+      expect(out).toEqual({ code: "for (int __i = 0; __i < 4; __i++) data[__i] = _twi_read();" });
+    });
+
+    it("spi.read_buffer discards the placeholder too (consistency)", () => {
+      const out = resolve({ operation: "spi.read_buffer", bus: "SPI", count: 4, buffer: "__HAL_READ_BUF__" } as HALOpIR);
+      expect(out!.code).not.toContain("__HAL_READ_BUF__");
+    });
+  });
 });

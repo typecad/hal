@@ -106,8 +106,52 @@ describe('SPI HAL - Arduino API Transpilation', () => {
         SPI0.begin();
         SPI0.write16(0xABCD);
       `);
-      
+
       expectCppContains(result, ['SPI.transfer16']);
+    });
+
+    // readRegister() returns a buffer of statically-known size (the count arg).
+    // It must lower to a real C array the caller can index AND query .length on
+    // — mirroring I2CDevice.readBytes. Previously the body emitted
+    // `static uint8_t __spi_buf[N]; ...; return __spi_buf;` via rawCpp, which
+    // decayed to a pointer on return and broke `reg.length` (→ reg.size()).
+    it('readRegister result is a real C array whose .length resolves to the count', () => {
+      const result = transpileArduino(`
+        import { SPI0, D10 } from '@typecad/framework-arduino/arduino';
+        SPI0.begin();
+        const dev = SPI0.device(D10);
+        const reg = dev.readRegister(0x80, 4);
+        const n = reg.length;
+        const first = reg[0];
+      `);
+
+      expect(result.cpp).toMatch(/uint8_t\s+reg\s*\[/);
+      expect(result.cpp).not.toMatch(/__spi_buf/);
+      expect(result.cpp).not.toMatch(/auto\s+reg/);
+      expect(result.cpp).not.toMatch(/const\s+uint8_t\s+reg/);
+      expectCppContains(result, ['digitalWrite(10, LOW)', 'SPI.transfer(128)', 'digitalWrite(10, HIGH)']);
+      expect(result.cpp).toMatch(/reg\[__i\]\s*=\s*SPI\.transfer\(0\)/);
+      expect(result.cpp).toContain('sizeof(reg) / sizeof(reg[0])');
+      expect(result.cpp).not.toMatch(/reg\.size\(\)/);
+    });
+
+    // The buffer var_decl must precede the read loop inside a function body.
+    it('readRegister buffer is declared before the read loop inside a function', () => {
+      const result = transpileArduino(`
+        import { SPI0, D10 } from '@typecad/framework-arduino/arduino';
+        function readReg(): number {
+          const reg = SPI0.device(D10).readRegister(0x80, 4);
+          return reg.length;
+        }
+        SPI0.begin();
+        const v = readReg();
+      `);
+
+      const declIdx = result.cpp.indexOf('uint8_t reg[]');
+      const fillIdx = result.cpp.indexOf('reg[__i] = SPI.transfer(0)');
+      expect(declIdx).not.toBe(-1);
+      expect(fillIdx).not.toBe(-1);
+      expect(declIdx).toBeLessThan(fillIdx);
     });
   });
 });

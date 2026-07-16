@@ -108,17 +108,25 @@ describe("HAL bugfix: free attachInterrupt maps mode strings to macros", () => {
   });
 });
 
-describe("HAL bugfix: I2C readBytes uses static buffer (no dangling pointer)", () => {
-  it("readBytes emits a static buffer, not a stack-local return", () => {
+describe("HAL bugfix: I2C readBytes returns a caller-scoped buffer (no dangling pointer)", () => {
+  it("readBytes declares the buffer in the caller's scope and fills it in place", () => {
     const result = transpileArduino(`
       import { I2C0 } from '@typecad/framework-arduino/arduino';
       I2C0.begin();
       const buf = I2C0.device(0x68).readBytes(0x00, 2);
     `);
-    // static buffer (matches the SPI readRegister pattern), so the returned
-    // reference outlives the call instead of pointing at a dead stack frame.
-    expect(result.cpp).toMatch(/static\s+uint8_t\s+__buf/);
-    expect(result.cpp).toMatch(/__buf\[__i\]\s*=\s*Wire\.read/);
+    // The buffer is declared in the CALLER's scope as a real uint8_t array and
+    // filled in place by the i2c.read_buffer op. This supersedes the earlier
+    // `static uint8_t __buf[N]; ...; return __buf;` approach: that returned a
+    // decayed pointer to an internal temp, which (a) broke `buf.length` (a
+    // pointer has no .size()) and (b) aliased every readBytes call to the same
+    // static. A caller-scoped array has neither problem.
+    expect(result.cpp).toMatch(/uint8_t\s+buf\s*\[/);
+    expect(result.cpp).not.toMatch(/static\s+uint8_t\s+__buf/);
+    expect(result.cpp).not.toMatch(/__buf/);
+    expect(result.cpp).toMatch(/buf\[__i\]\s*=\s*Wire\.read/);
+    expect(result.cpp).not.toMatch(/buf\s*=\s*__buf/);
+    expect(result.cpp).not.toMatch(/auto\s+buf/);
   });
 });
 

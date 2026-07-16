@@ -1209,6 +1209,14 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         return { code: `SPCR = 0;` };
       case "spi.transfer":
         return { expression: `_spi_transfer(${(op as any).data})` };
+      case "spi.read_buffer": {
+        const rop = op as any;
+        const target = rop.buffer === "__HAL_READ_BUF__" ? "__DISCARD__" : rop.buffer;
+        if (target === "__DISCARD__") {
+          return { code: `for (int __i = 0; __i < ${rop.count}; __i++) (void)_spi_transfer(0);` };
+        }
+        return { code: `for (int __i = 0; __i < ${rop.count}; __i++) ${target}[__i] = _spi_transfer(0);` };
+      }
       case "spi.begin_transaction":
         // SPISettings configure: fold into SPCR/SPSR. The settings expression
         // is resolved by the HAL; we apply the mode/frequency at begin time.
@@ -1268,10 +1276,15 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         // semantics). Calling _twi_read_byte here would clock the bus after STOP
         // and hang forever waiting for TWINT.
         const rop = op as any;
-        if (rop.buffer === "__DISCARD__") {
+        // Statement-context reads reach the strategy with the placeholder
+        // __HAL_READ_BUF__ (not a caller variable); remap to __DISCARD__ so we
+        // read-and-drop instead of emitting `__HAL_READ_BUF__[i] = _twi_read();`
+        // (invalid C++). Mirrors spi.read_buffer above + ArduinoStrategy.
+        const target = rop.buffer === "__HAL_READ_BUF__" ? "__DISCARD__" : rop.buffer;
+        if (target === "__DISCARD__") {
           return { code: `for (int __i = 0; __i < ${rop.count}; __i++) (void)_twi_read();` };
         }
-        return { code: `for (int __i = 0; __i < ${rop.count}; __i++) ${rop.buffer}[__i] = _twi_read();` };
+        return { code: `for (int __i = 0; __i < ${rop.count}; __i++) ${target}[__i] = _twi_read();` };
       }
       case "i2c.end_transmission":
         return { code: `_twi_end_transmission(${(op as any).stop ? 1 : 0});` };

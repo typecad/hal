@@ -1405,14 +1405,15 @@ describe("HAL map/constrain free-function lowering", () => {
 });
 
 // ===========================================================================
-// I2CDevice.readBytes(register, count) — edge case. count=0 produces a
-// zero-length static array (static uint8_t __buf[0]) which is technically
-// invalid C++. This test documents the current behavior so a future fix to
-// guard count>=1 is visible.
+// I2CDevice.readBytes(register, count) — the buffer is declared in the
+// CALLER's scope as a real uint8_t C array (zero-initialized) and filled in
+// place by the i2c.read_buffer op. This supersedes an earlier lowering that
+// emitted an internal `static uint8_t __buf[N]; ...; return __buf;` (which
+// decayed to a pointer on return, breaking `buf.length`).
 // ===========================================================================
 
 describe("HAL I2CDevice.readBytes edge cases", () => {
-  it("emits a correctly-sized buffer for count=4", () => {
+  it("emits a caller-scoped buffer filled in place for count=4", () => {
     const result = transpile(`
       import { I2C0 } from '@typecad/board-arduino-uno';
       I2C0.begin();
@@ -1420,14 +1421,14 @@ describe("HAL I2CDevice.readBytes edge cases", () => {
       const buf = dev.readBytes(0x00, 4);
     `, { target: 'arduino' });
 
-    expect(result.cpp).toContain('static uint8_t __buf[4]');
-    expect(result.cpp).toContain('__buf[__i] = Wire.read()');
+    expect(result.cpp).toMatch(/uint8_t\s+buf\s*\[/);
+    expect(result.cpp).not.toMatch(/static\s+uint8_t\s+__buf/);
+    expect(result.cpp).toContain('buf[__i] = Wire.read()');
   });
 
-  it("emits a zero-length buffer for count=0 (known limitation)", () => {
-    // count=0 produces `static uint8_t __buf[0]` — technically invalid C++
-    // (zero-length arrays are a GCC extension but not standard). This test
-    // documents the current behavior. A future fix should guard count>=1.
+  it("emits an empty array for count=0 (no invalid zero-length static)", () => {
+    // count=0 previously produced `static uint8_t __buf[0]` — a non-standard
+    // GCC extension. The caller-scoped lowering now declares an empty array.
     const result = transpile(`
       import { I2C0 } from '@typecad/board-arduino-uno';
       I2C0.begin();
@@ -1435,7 +1436,8 @@ describe("HAL I2CDevice.readBytes edge cases", () => {
       const buf = dev.readBytes(0x00, 0);
     `, { target: 'arduino' });
 
-    expect(result.cpp).toContain('static uint8_t __buf[0]');
+    expect(result.cpp).toMatch(/uint8_t\s+buf\s*\[/);
+    expect(result.cpp).not.toMatch(/static\s+uint8_t\s+__buf/);
   });
 });
 

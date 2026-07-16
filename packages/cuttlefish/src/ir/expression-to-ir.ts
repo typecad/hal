@@ -271,14 +271,64 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
     }
     if (ts.isCallExpression(receiverNode)) {
-      const returnType = ts.isPropertyAccessExpression(receiverNode.expression) && ts.isIdentifier(receiverNode.expression.expression)
-        ? getCurrentIrTypeScope()?.locals.get(receiverNode.expression.expression.text)
-        : undefined;
-      if (returnType === "std::string") return `static_cast<long long>(${safeText}.length())`;
+      // Case B: a HAL buffer-returning method (I2CDevice.readBytes /
+      // SPIDevice.readRegister) used INLINE as a sub-expression — e.g.
+      // `dev.readBytes(0,6).length`. These methods lower to STATEMENTS (a fill
+      // loop), not a single C++ expression, so by the time we get here the
+      // receiver text is already a leaked `for (...) __buf[__i] = Wire.read()`
+      // statement spliced where an expression is required. The buffer also has
+      // no caller-side name to sizeof. Only the var-init form is supported
+      // (`const data = dev.readBytes(...)`); emit a clear diagnostic so the
+      // user gets an actionable error instead of inscrutable broken C++.
+      if (/\bfor\s*\(/.test(safeText) || /__buf|__spi_buf/.test(safeText)) {
+        const calleeName = ts.isPropertyAccessExpression(receiverNode.expression)
+          ? receiverNode.expression.name.text : "call";
+        diagnostics.push(makeDiagnostic(
+          sourceText,
+          receiverNode.getStart(),
+          `\`${calleeName}(...)\` returns a buffer and cannot be queried inline. Capture it into a variable first (e.g. \`const data = ${calleeName}(...)\`), then use \`data.length\`.`,
+          "error",
+          "TC_BUFFER_INLINE_LENGTH",
+        ));
+        return `0 /* ${calleeName}() result must be captured into a variable to use .length */`;
+      }
+      // Resolve the call's RETURN type (not the receiver object's type, which
+      // the previous code incorrectly did). Method calls resolve via the class
+      // registry; free-function calls resolve by scanning the source AST for
+      // the declared return type.
+      const returnType = resolveExprCppType(receiverNode)
+        ?? resolveCallReturnTypeForNullGuard(receiverNode, sourceText);
+      if (returnType) {
+        const parsed = parseCppType(returnType);
+        // std::string → .length(); any STL container (vector/map/set) → .size().
+        if (parsedIsStdString(returnType)) {
+          return `static_cast<long long>(${safeText}.length())`;
+        }
+        if (parsedIsVector(returnType) || parsedIsMap(returnType) || parsedIsSet(returnType) || isContainer(parsed)) {
+          return `static_cast<long long>(${safeText}.size())`;
+        }
+        // A raw pointer / decayed-array return (e.g. uint8_t*) carries no size
+        // at the call site — sizeof would yield sizeof(pointer). This is
+        // genuinely un-sizeable inline; surface it rather than emit wrong code.
+        if (parsedIsPointer(returnType) || /\]\s*$/.test(returnType)) {
+          const calleeName = ts.isPropertyAccessExpression(receiverNode.expression)
+            ? receiverNode.expression.name.text
+            : (ts.isIdentifier(receiverNode.expression) ? receiverNode.expression.text : "call");
+          diagnostics.push(makeDiagnostic(
+            sourceText,
+            receiverNode.getStart(),
+            `Cannot use \`.length\` on \`${calleeName}()\` which returns a pointer (${returnType}); the size is not available at the call site. Capture the buffer into a variable first.`,
+            "error",
+            "TC_LENGTH_ON_POINTER_RETURN",
+          ));
+          return `0 /* .length unavailable on ${returnType} return */`;
+        }
+      }
       // Cast .size() to long long to match the loop-counter type (TS number ->
       // long long). Without this, `i < vec.size()` compares long long vs
       // size_t (unsigned) and g++ -Wall warns -Wsign-compare on every
-      // indexed loop over an array.
+      // indexed loop over an array. (Fallback for unresolvable return types —
+      // historically every call-result .length landed here.)
       return `static_cast<long long>(${safeText}.size())`;
     }
     // Resolve by concrete cppType first so std::string vars render member calls

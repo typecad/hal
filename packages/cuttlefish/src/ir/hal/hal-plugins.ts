@@ -616,6 +616,15 @@ export function tryResolveSemanticCall(
       if (bus === null || order === null) return null;
       return { operation: "spi.set_bit_order", bus, order };
     }
+    case "spiReadBuffer": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const count = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || count === null) return null;
+      // The buffer arg (args[2]) is only a placeholder for type resolution;
+      // the real target is the caller's variable, rewritten from
+      // __HAL_READ_BUF__ by replaceHalReadBufferPlaceholder.
+      return { operation: "spi.read_buffer", bus, count, buffer: "__HAL_READ_BUF__" };
+    }
 
     // ── UART ──
     case "uartBegin": {

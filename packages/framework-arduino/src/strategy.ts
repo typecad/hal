@@ -1426,6 +1426,13 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
         return { code: `${op.bus}.end();` };
       case "spi.transfer":
         return { expression: `${op.bus}.transfer(${op.data})` };
+      case "spi.read_buffer": {
+        const target = op.buffer === "__HAL_READ_BUF__" ? "__DISCARD__" : op.buffer;
+        if (target === "__DISCARD__") {
+          return { code: `for (int __i = 0; __i < ${op.count}; __i++) (void)${op.bus}.transfer(0);` };
+        }
+        return { code: `for (int __i = 0; __i < ${op.count}; __i++) ${target}[__i] = ${op.bus}.transfer(0);` };
+      }
       case "spi.begin_transaction":
         return { code: `${op.bus}.beginTransaction(${op.settings});` };
       case "spi.end_transaction":

@@ -1,4 +1,4 @@
-import { spiBegin, spiEnd, spiTransfer, spiBeginTx, spiEndTx, spiCsLow, spiCsHigh, spiSetMode, spiSetBitOrder, rawCpp } from './emit.js';
+import { spiBegin, spiEnd, spiTransfer, spiBeginTx, spiEndTx, spiCsLow, spiCsHigh, spiSetMode, spiSetBitOrder, spiReadBuffer, rawCpp } from './emit.js';
 import { include } from './include.js';
 import type { Pin } from './gpio.js';
 import type { SPIMode, SPISettings } from './types.js';
@@ -30,12 +30,15 @@ export class SPIDevice {
 
   readRegister(register: number, count: number): Uint8Array {
     include("<SPI.h>");
-    rawCpp(`digitalWrite(${this._cs}, LOW);`);
-    rawCpp(`${this._bus}.transfer(${register});`);
-    rawCpp(`static uint8_t __spi_buf[${count}];`);
-    rawCpp(`for (int i=0; i<${count}; i++) __spi_buf[i] = ${this._bus}.transfer(0x00);`);
-    rawCpp(`digitalWrite(${this._cs}, HIGH);`);
-    rawCpp(`return __spi_buf;`);
+    spiCsLow(this._cs);
+    spiTransfer(this._bus, register);
+    // Clock `count` dummy bytes and drain them into the caller's buffer
+    // (declared by the Uint8Array return marker as `uint8_t data[count]`).
+    // Using the semantic primitive — NOT rawCpp — keeps the buffer in user
+    // scope so it survives the return (no decayed pointer) and `data.length`
+    // / `data[i]` work, mirroring I2CDevice.readBytes.
+    spiReadBuffer(this._bus, count, new Uint8Array(count));
+    spiCsHigh(this._cs);
     return new Uint8Array(count);
   }
 

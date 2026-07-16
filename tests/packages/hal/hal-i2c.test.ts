@@ -199,6 +199,56 @@ describe('I2C HAL - Device Accessor Pattern', () => {
     expect(result.cpp).not.toMatch(/buf\s*=\s*Wire\.beginTransmission/);
     expect(result.cpp).not.toMatch(/const int buf\s*=/);
   });
+
+  // readBytes() returns a buffer of statically-known size (the count arg).
+  // It must lower to a real C array the caller can index AND query .length on.
+  // Previously the body emitted `static uint8_t __buf[N]; ...; return __buf;`
+  // via rawCpp, which decays to a raw uint8_t* pointer — so .length lowered to
+  // `data.size()` (invalid: a pointer has no .size()). The buffer must be
+  // declared in the caller's scope as a real uint8_t array and filled by the
+  // i2c.read_buffer semantic op so .length resolves to N.
+  it('readBytes result is a real C array whose .length resolves to the count', () => {
+    const result = transpileArduino(`
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
+      I2C0.begin();
+      const sensor = I2C0.device(0x44);
+      sensor.writeByte(0x2c, 0x06);
+      const data = sensor.readBytes(0, 6);
+      const n = data.length;
+      const first = data[0];
+    `);
+
+    expect(result.cpp).toMatch(/uint8_t\s+data\s*\[/);
+    expect(result.cpp).not.toMatch(/__buf/);
+    expect(result.cpp).not.toMatch(/auto\s+data/);
+    expect(result.cpp).not.toMatch(/const\s+uint8_t\s+data/);
+    expect(result.cpp).toContain('sizeof(data) / sizeof(data[0])');
+    expect(result.cpp).not.toMatch(/data\.size\(\)/);
+    expectCppContains(result, ['Wire.requestFrom(68, 6, true)', 'data[__i] = Wire.read()']);
+    expect(result.cpp).toMatch(/data\s*\[\s*0\s*\]/);
+  });
+
+  // The buffer var_decl must precede the fill loop in emitted C++ order. At top
+  // level the var_decl is hoisted to file scope (masking the ordering), but a
+  // function-local `const data = ...readBytes()` must still declare `data`
+  // BEFORE the fill loop references it.
+  it('readBytes buffer is declared before the fill loop inside a function', () => {
+    const result = transpileArduino(`
+      import { I2C0 } from '@typecad/framework-arduino/arduino';
+      function readSensor(): number {
+        const data = I2C0.device(0x68).readBytes(0xFA, 4);
+        return data[0];
+      }
+      I2C0.begin();
+      const v = readSensor();
+    `);
+
+    const declIdx = result.cpp.indexOf('uint8_t data[]');
+    const fillIdx = result.cpp.indexOf('data[__i] = Wire.read()');
+    expect(declIdx).not.toBe(-1);
+    expect(fillIdx).not.toBe(-1);
+    expect(declIdx).toBeLessThan(fillIdx);
+  });
 });
 
 describe('I2C HAL - Bus Variable Aliasing', () => {
