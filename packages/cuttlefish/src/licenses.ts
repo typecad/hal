@@ -129,9 +129,13 @@ export function resolveProjectHeaders(
   const configDir = path.dirname(config.configPath);
   const entryBase = config.entry ? path.basename(config.entry).replace(/\.[tj]s$/, "") : "";
 
-  // 1. Prefer the generated .ino (authoritative).
+  // 1. Prefer the generated .ino (authoritative). The outDir is resolved
+  // relative to the entry's directory, matching the transpile path
+  // (transpile.ts:280 -> outBaseDir defaults to the entry dir, and cli.ts
+  // resolves config.outputOutDir against inputDir = entry dir).
   if (entryBase) {
-    const outDir = path.resolve(configDir, config.outputOutDir ?? "./out");
+    const entryDir = path.dirname(path.resolve(configDir, config.entry!));
+    const outDir = path.resolve(entryDir, config.outputOutDir ?? "./out");
     const inoPath = path.join(outDir, entryBase, `${entryBase}.ino`);
     const inoText = readFile(inoPath);
     if (inoText) {
@@ -876,7 +880,7 @@ function runProjectScope(strict: boolean): void {
     if (lib.risk === "unknown") {
       ui.printWarning(`${lib.name} .................. UNKNOWN`);
     } else {
-      ui.printInfo(`${lib.name} .................. ${lib.spdx ?? "UNKNOWN"}${riskBracket(lib.risk)}`);
+      ui.printInfo(`${lib.name} .................. ${lib.spdx ?? "UNKNOWN"}${riskBracket(lib.risk)}${statusMark(lib.risk)}`);
     }
   }
   for (const ni of notInstalled) {
@@ -930,7 +934,7 @@ function renderAllLicenses(result: ScanOutcome, strict: boolean): void {
     if (lib.risk === "unknown") {
       ui.printWarning(`${lib.name} .................. UNKNOWN`);
     } else {
-      ui.printInfo(`${lib.name} .................. ${lib.spdx ?? "UNKNOWN"}${riskBracket(lib.risk)}`);
+      ui.printInfo(`${lib.name} .................. ${lib.spdx ?? "UNKNOWN"}${riskBracket(lib.risk)}${statusMark(lib.risk)}`);
     }
   }
   ui.printSuccess(
@@ -954,6 +958,9 @@ function riskBracket(risk: CopyleftRisk): string {
   if (risk === "strong-copyleft") return "  [COPYLEFT]";
   if (risk === "weak-copyleft") return "  [weak copyleft]";
   return "";
+}
+function statusMark(risk: CopyleftRisk): string {
+  return risk === "permissive" ? "  ✓" : "";
 }
 function countByRisk(libs: LibraryLicenseEntry[]): Record<CopyleftRisk, number> {
   const counts: Record<CopyleftRisk, number> = {
