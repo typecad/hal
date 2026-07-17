@@ -163,6 +163,63 @@ export function resolveProjectHeaders(
   };
 }
 
+/**
+ * One project header, joined to its owning library or flagged not-installed.
+ */
+export type ProjectLibrary =
+  | { kind: "resolved"; lib: LibraryLicenseEntry }
+  | { kind: "not-installed"; header: string };
+
+/**
+ * Build a header-basename -> owning library map from the installed libraries,
+ * scanning each install_dir root and its `src/` subdir for .h/.hpp files.
+ */
+function buildHeaderIndex(
+  libs: RawArduinoLibrary[],
+  readdir: (d: string) => string[],
+): Map<string, RawArduinoLibrary> {
+  const index = new Map<string, RawArduinoLibrary>();
+  const dirs = (installDir: string) => [installDir, ...LICENSE_SUBDIRS.map((s) => path.join(installDir, s))];
+  for (const lib of libs) {
+    if (!lib.install_dir) continue;
+    for (const dir of dirs(lib.install_dir)) {
+      let entries: string[];
+      try {
+        entries = readdir(dir);
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        const lower = entry.toLowerCase();
+        if (lower.endsWith(".h") || lower.endsWith(".hpp")) {
+          if (!index.has(entry)) index.set(entry, lib); // first-wins
+        }
+      }
+    }
+  }
+  return index;
+}
+
+/**
+ * Join each project header to its owning installed library (resolved) or flag
+ * it not-installed. Resolved entries carry the full license entry (license
+ * resolved via the existing resolveLibraryLicense).
+ */
+export function joinHeadersToLibraries(
+  headers: string[],
+  libs: RawArduinoLibrary[],
+  readdir: (d: string) => string[],
+  readFile: (p: string) => string | undefined,
+): ProjectLibrary[] {
+  const index = buildHeaderIndex(libs, readdir);
+  return headers.map((header) => {
+    const owner = index.get(header);
+    if (!owner) return { kind: "not-installed" as const, header };
+    const entry = resolveLibraryLicense(owner, readFile, readdir);
+    return { kind: "resolved" as const, lib: entry };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Static SPDX table
 // ---------------------------------------------------------------------------

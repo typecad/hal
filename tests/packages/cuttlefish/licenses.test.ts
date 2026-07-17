@@ -5,6 +5,7 @@ import {
   scanLicenses,
   coerceLibList,
   resolveProjectHeaders,
+  joinHeadersToLibraries,
   __setLicensesRunnerForTest,
   type ScanOptions,
 } from "../../../packages/cuttlefish/src/licenses";
@@ -465,5 +466,67 @@ describe("resolveProjectHeaders — config fallback (no .ino)", () => {
     const result = resolveProjectHeaders(config as any, () => undefined);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("no-entry");
+  });
+});
+
+describe("joinHeadersToLibraries — header → library filesystem join", () => {
+  // Fake installed libraries. Each owns certain headers in its dir.
+  const libs = [
+    { name: "Adafruit ILI9341", version: "1.6.0", install_dir: "/libs/ILI9341" },
+    { name: "Adafruit GFX", version: "1.11.5", install_dir: "/libs/GFX" },
+    { name: "ArduinoHttpClient", version: "0.5.0", install_dir: "/libs/AHC" }, // header under src/
+  ];
+
+  // readdir: ILI9341 owns Adafruit_ILI9341.h in root; GFX owns Adafruit_GFX.h
+  // in root; AHC owns HttpClient.h under src/. Match by trailing path segment
+  // so the fixture is path-separator-agnostic (path.join uses \ on Windows).
+  const lastSeg = (d: string): string => d.split(/[\\/]/).filter(Boolean).pop() ?? "";
+  const readdir = (d: string): string[] => {
+    const seg = lastSeg(d);
+    // AHC's src/ subdir owns HttpClient.h; gate on the AHC path segment so the
+    // non-existent src/ under the other libs' dirs doesn't claim it.
+    if (seg === "ILI9341") return ["Adafruit_ILI9341.h", "library.properties"];
+    if (seg === "GFX") return ["Adafruit_GFX.h"];
+    if (seg === "AHC") return ["src"];
+    if (seg === "src" && d.toUpperCase().includes("AHC")) return ["HttpClient.h"];
+    return [];
+  };
+  const readFile = (p: string): string | undefined => {
+    if (p.endsWith("library.properties")) return "license=BSD-3-Clause\n";
+    return undefined;
+  };
+
+  it("resolves a header present in a library's root dir", () => {
+    const joined = joinHeadersToLibraries(
+      ["Adafruit_ILI9341.h"],
+      libs as any,
+      readdir,
+      readFile,
+    );
+    expect(joined).toHaveLength(1);
+    expect(joined[0].kind).toBe("resolved");
+    if (joined[0].kind === "resolved") expect(joined[0].lib.name).toBe("Adafruit ILI9341");
+  });
+
+  it("resolves a header only present under a library's src/ dir", () => {
+    const joined = joinHeadersToLibraries(["HttpClient.h"], libs as any, readdir, readFile);
+    expect(joined[0].kind).toBe("resolved");
+    if (joined[0].kind === "resolved") expect(joined[0].lib.name).toBe("ArduinoHttpClient");
+  });
+
+  it("marks a header no installed library provides as not-installed", () => {
+    const joined = joinHeadersToLibraries(["Adafruit_ST7796S.h"], libs as any, readdir, readFile);
+    expect(joined[0].kind).toBe("not-installed");
+    if (joined[0].kind === "not-installed") expect(joined[0].header).toBe("Adafruit_ST7796S.h");
+  });
+
+  it("returns a mixed list preserving project-header order", () => {
+    const joined = joinHeadersToLibraries(
+      ["Adafruit_GFX.h", "Adafruit_ST7796S.h", "HttpClient.h"],
+      libs as any,
+      readdir,
+      readFile,
+    );
+    expect(joined.map((j) => j.kind)).toEqual(["resolved", "not-installed", "resolved"]);
   });
 });
