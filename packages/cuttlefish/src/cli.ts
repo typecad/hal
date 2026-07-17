@@ -258,7 +258,7 @@ async function main(): Promise<void> {
     }
 
     if (options.command === "licenses") {
-      runLicensesPresenter(options.strict ?? false);
+      runLicensesPresenter(options.strict ?? false, options.all ?? false);
       return;
     }
 

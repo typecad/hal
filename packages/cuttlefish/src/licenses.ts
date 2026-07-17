@@ -793,66 +793,150 @@ export function scanLicenses(options?: ScanOptions): ScanOutcome {
 // importing the binary entry module cli.ts, which has a shebang and runs
 // main() at import time.
 import * as ui from "./utils/ui.js";
+import { loadCuttlefishConfig } from "./config-loader.js";
+
+let testProjectConfig: ProjectConfig | undefined;
+
+/** @internal Test-only override of the project config (normally loaded via loadCuttlefishConfig). */
+export function __setProjectConfigForTest(config: ProjectConfig | undefined): void {
+  testProjectConfig = config;
+}
 
 /**
- * `cuttlefish licenses` presenter: scan installed libraries, render a
- * risk-sorted table, warn on unknowns, and set process.exitCode. Warns (yellow)
- * when a license can't be determined; exits 0 unless `strict` is set or a hard
- * environment failure occurs. Never calls process.exit().
+ * `cuttlefish licenses` presenter. `all === false` (default, project scope)
+ * resolves this project's libraries from the generated .ino (or config
+ * fallback), joins each to an installed library, and reports only those.
+ * `all === true` reports every installed library (the original behavior).
+ * Warns on unknown licenses; flags NOT INSTALLED headers in project scope; sets
+ * process.exitCode under --strict. Never calls process.exit().
  */
-export function runLicensesPresenter(strict: boolean): void {
+export function runLicensesPresenter(strict: boolean, all: boolean): void {
   ui.printHeader();
-  ui.printStep("Checking licenses for installed Arduino libraries");
 
-  const result = scanLicenses();
+  if (all) {
+    runAllScope(strict);
+    return;
+  }
+  runProjectScope(strict);
+}
 
+/** Original system-wide behavior: scan every installed library. */
+function runAllScope(strict: boolean): void {
+  ui.printStep("Checking licenses for all installed Arduino libraries");
+  renderAllLicenses(scanLicenses(), strict);
+}
+
+/** Project scope: resolve this project's headers, join, render. */
+function runProjectScope(strict: boolean): void {
+  const config = testProjectConfig ?? loadProjectConfig();
+  const readFile = testRunner?.readFile ?? makeDefaultReadFile();
+  const headers = resolveProjectHeaders(config, readFile);
+  if (!headers.ok) {
+    ui.printStep("Checking licenses for this project");
+    if (headers.reason === "no-config") {
+      ui.printInfo(`(no cuttlefish.config.ts found — run from a project dir, or use 'cuttlefish licenses --all')`);
+    } else {
+      ui.printInfo(`(${headers.message})`);
+    }
+    return;
+  }
+
+  const label =
+    headers.source === "ino" && headers.inoPath
+      ? `Checking licenses for this project (from ${relFromCwd(headers.inoPath)})`
+      : "Checking licenses for this project (from cuttlefish.config.ts — run 'cuttlefish build' for the full set)";
+  ui.printStep(label);
+
+  const listRunner = testRunner?.listLibraries ?? listLibraries;
+  const libs = listRunner();
+  if (libs === null) {
+    ui.printError(`arduino-cli .... NOT FOUND or unresponsive`);
+    process.exitCode = 1;
+    return;
+  }
+  const readdir = testRunner?.readdir ?? makeDefaultReaddir();
+  const project = joinHeadersToLibraries(headers.headers, libs, readdir, readFile);
+
+  const resolved = project.filter(
+    (p): p is { kind: "resolved"; lib: LibraryLicenseEntry } => p.kind === "resolved",
+  );
+  const notInstalled = project.filter(
+    (p): p is { kind: "not-installed"; header: string } => p.kind === "not-installed",
+  );
+
+  // Sort resolved by risk, then name.
+  resolved.sort((a, b) => {
+    const r = RISK_RANK[a.lib.risk] - RISK_RANK[b.lib.risk];
+    if (r !== 0) return r;
+    return a.lib.name.toLowerCase().localeCompare(b.lib.name.toLowerCase());
+  });
+
+  for (const r of resolved) {
+    const lib = r.lib;
+    if (lib.risk === "unknown") {
+      ui.printWarning(`${lib.name} .................. UNKNOWN`);
+    } else {
+      ui.printInfo(`${lib.name} .................. ${lib.spdx ?? "UNKNOWN"}${riskBracket(lib.risk)}`);
+    }
+  }
+  for (const ni of notInstalled) {
+    ui.printError(`${ni.header} .................. NOT INSTALLED`);
+  }
+
+  const counts = countByRisk(resolved.map((r) => r.lib));
+  ui.printSuccess(
+    `${counts.permissive} permissive, ${counts["weak-copyleft"]} weak copyleft, ` +
+      `${counts["strong-copyleft"]} strong copyleft, ${counts.unknown} unknown` +
+      (notInstalled.length > 0 ? `; ${notInstalled.length} not installed` : ""),
+  );
+
+  const unknowns = resolved.filter((r) => r.lib.risk === "unknown").map((r) => r.lib);
+  if (unknowns.length > 0) {
+    ui.printWarning(
+      `License could not be determined for ${unknowns.length} ${unknowns.length === 1 ? "library" : "libraries"}:`,
+    );
+    for (const u of unknowns) {
+      ui.printInfo(`    ${u.name} (check library.properties or LICENSE in ${u.path})`);
+    }
+  }
+
+  if (notInstalled.length > 0) {
+    ui.printError(
+      `${notInstalled.length} project ${notInstalled.length === 1 ? "dependency is" : "dependencies are"} not installed:`,
+    );
+    for (const ni of notInstalled) {
+      ui.printInfo(`    ${ni.header} (no installed Arduino library provides this header)`);
+    }
+  }
+
+  if ((unknowns.length > 0 || notInstalled.length > 0) && strict) {
+    process.exitCode = 1;
+  }
+}
+
+/** Render the --all scope's scanLicenses outcome. */
+function renderAllLicenses(result: ScanOutcome, strict: boolean): void {
   if (!result.ok) {
     if (result.reason === "arduino-cli-unresponsive") {
       ui.printError(`arduino-cli .... NOT FOUND or unresponsive`);
       process.exitCode = 1;
     } else {
-      // no-libraries — informational, not an error (mirrors doctor's skip path)
       ui.printInfo(`(no libraries installed — nothing to scan)`);
     }
     return;
   }
-
-  // Risk-tagged row rendering.
-  const riskBracket = (risk: CopyleftRisk): string => {
-    switch (risk) {
-      case "strong-copyleft":
-        return "  [COPYLEFT]";
-      case "weak-copyleft":
-        return "  [weak copyleft]";
-      default:
-        return "";
-    }
-  };
-
+  const counts = countByRisk(result.libraries);
   for (const lib of result.libraries) {
     if (lib.risk === "unknown") {
       ui.printWarning(`${lib.name} .................. UNKNOWN`);
     } else {
-      const spdx = lib.spdx ?? "UNKNOWN";
-      const ok = lib.risk === "permissive" ? "  ✓" : "";
-      ui.printInfo(`${lib.name} .................. ${spdx}${riskBracket(lib.risk)}${ok}`);
+      ui.printInfo(`${lib.name} .................. ${lib.spdx ?? "UNKNOWN"}${riskBracket(lib.risk)}`);
     }
   }
-
-  // Summary counts.
-  const counts: Record<CopyleftRisk, number> = {
-    permissive: 0,
-    "weak-copyleft": 0,
-    "strong-copyleft": 0,
-    unknown: 0,
-  };
-  for (const lib of result.libraries) counts[lib.risk] += 1;
   ui.printSuccess(
     `${counts.permissive} permissive, ${counts["weak-copyleft"]} weak copyleft, ` +
       `${counts["strong-copyleft"]} strong copyleft, ${counts.unknown} unknown`,
   );
-
-  // Unknowns detail block.
   const unknowns = result.libraries.filter((l) => l.risk === "unknown");
   if (unknowns.length > 0) {
     ui.printWarning(
@@ -861,8 +945,48 @@ export function runLicensesPresenter(strict: boolean): void {
     for (const u of unknowns) {
       ui.printInfo(`    ${u.name} (check library.properties or LICENSE in ${u.path})`);
     }
-    if (strict) {
-      process.exitCode = 1;
-    }
+    if (strict) process.exitCode = 1;
   }
+}
+
+// Small helpers used by both scopes.
+function riskBracket(risk: CopyleftRisk): string {
+  if (risk === "strong-copyleft") return "  [COPYLEFT]";
+  if (risk === "weak-copyleft") return "  [weak copyleft]";
+  return "";
+}
+function countByRisk(libs: LibraryLicenseEntry[]): Record<CopyleftRisk, number> {
+  const counts: Record<CopyleftRisk, number> = {
+    permissive: 0,
+    "weak-copyleft": 0,
+    "strong-copyleft": 0,
+    unknown: 0,
+  };
+  for (const l of libs) counts[l.risk] += 1;
+  return counts;
+}
+function relFromCwd(p: string): string {
+  return path.relative(process.cwd(), p) || p;
+}
+function loadProjectConfig(): ProjectConfig | undefined {
+  // loadCuttlefishConfig walks up from cwd for cuttlefish.config.ts.
+  return loadCuttlefishConfig(process.cwd()) as ProjectConfig | undefined;
+}
+function makeDefaultReadFile(): (p: string) => string | undefined {
+  return (p) => {
+    try {
+      return fs.readFileSync(p, "utf8");
+    } catch {
+      return undefined;
+    }
+  };
+}
+function makeDefaultReaddir(): (d: string) => string[] {
+  return (d) => {
+    try {
+      return fs.readdirSync(d);
+    } catch {
+      return [];
+    }
+  };
 }
