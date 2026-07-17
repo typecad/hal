@@ -140,6 +140,35 @@ const SPDX_TABLE: SpdxEntry[] = [
     ],
     shortMarkers: [],
   },
+  {
+    id: "CC-BY-4.0",
+    risk: "permissive",
+    aliases: ["CC-BY-4.0", "Creative Commons Attribution 4.0", "cc by 4.0"],
+    markers: ["creative commons attribution 4.0"],
+    shortMarkers: [],
+  },
+  {
+    id: "CC-BY-SA-4.0",
+    risk: "strong-copyleft",
+    aliases: [
+      "CC-BY-SA-4.0",
+      "Creative Commons Attribution-ShareAlike 4.0",
+      "cc by-sa 4.0",
+    ],
+    markers: ["creative commons attribution-sharealike 4.0"],
+    shortMarkers: [],
+  },
+  {
+    id: "CC-BY-NC-4.0",
+    risk: "strong-copyleft",
+    aliases: [
+      "CC-BY-NC-4.0",
+      "Creative Commons Attribution-NonCommercial 4.0",
+      "cc by-nc 4.0",
+    ],
+    markers: ["creative commons attribution-noncommercial 4.0"],
+    shortMarkers: [],
+  },
 ];
 
 // ---------------------------------------------------------------------------

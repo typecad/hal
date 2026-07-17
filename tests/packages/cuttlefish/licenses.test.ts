@@ -23,6 +23,14 @@ describe("identifySpdx — alias matching (short library.properties values)", ()
     expect(identifySpdx("GPLv3")).toBe("GPL-3.0");
   });
 
+  it("matches Creative Commons SPDX IDs and aliases", () => {
+    expect(identifySpdx("CC-BY-4.0")).toBe("CC-BY-4.0");
+    expect(identifySpdx("CC-BY-SA-4.0")).toBe("CC-BY-SA-4.0");
+    expect(identifySpdx("CC-BY-NC-4.0")).toBe("CC-BY-NC-4.0");
+    expect(identifySpdx("Creative Commons Attribution 4.0")).toBe("CC-BY-4.0");
+    expect(identifySpdx("cc by-sa 4.0")).toBe("CC-BY-SA-4.0");
+  });
+
   it("returns undefined for an unrecognized string", () => {
     expect(identifySpdx("some-custom-license")).toBeUndefined();
   });
@@ -54,6 +62,15 @@ describe("identifySpdx — full LICENSE file content", () => {
   it("returns undefined for a license body that matches nothing", () => {
     expect(identifySpdx("This is some weird proprietary text with no known markers.")).toBeUndefined();
   });
+
+  it("identifies a Creative Commons CC-BY-4.0 LICENSE file body", () => {
+    const text =
+      "Creative Commons Attribution 4.0 International License\n" +
+      "By exercising the Licensed Rights, You accept and agree to the terms.\n" +
+      "Section 1 – Definitions.\n" +
+      "Section 2 – Scope.";
+    expect(identifySpdx(text)).toBe("CC-BY-4.0");
+  });
 });
 
 describe("classifyRisk", () => {
@@ -72,6 +89,14 @@ describe("classifyRisk", () => {
     expect(classifyRisk("GPL-2.0")).toBe("strong-copyleft");
     expect(classifyRisk("GPL-3.0")).toBe("strong-copyleft");
     expect(classifyRisk("AGPL-3.0")).toBe("strong-copyleft");
+  });
+
+  it("classifies Creative Commons licenses", () => {
+    expect(classifyRisk("CC-BY-4.0")).toBe("permissive");
+    // CC-BY-SA is share-alike (the CC analog of copyleft).
+    expect(classifyRisk("CC-BY-SA-4.0")).toBe("strong-copyleft");
+    // CC-BY-NC's non-commercial restriction is a red flag for commercial firmware.
+    expect(classifyRisk("CC-BY-NC-4.0")).toBe("strong-copyleft");
   });
 
   it("returns unknown for unrecognized ids", () => {
