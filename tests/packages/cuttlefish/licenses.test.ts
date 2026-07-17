@@ -166,6 +166,116 @@ describe("scanLicenses — per-library resolution priority", () => {
   });
 });
 
+describe("scanLicenses — British LICENCE.txt spelling (lvgl pattern)", () => {
+  it("finds a license in LICENCE.txt (British spelling)", () => {
+    const result = scanLicenses({
+      fakeLibList: () => [{ name: "lvgl", install_dir: "/lvgl" }],
+      fakeReadFile: (p) =>
+        p.endsWith("LICENCE.txt")
+          ? "MIT licence\nCopyright (c) 2025\n\nPermission is hereby granted, free of charge"
+          : undefined,
+      fakeReaddir: (d) => (d === "/lvgl" ? ["LICENCE.txt"] : []),
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.libraries[0].spdx).toBe("MIT");
+      expect(result.libraries[0].source).toBe("license-file");
+    }
+  });
+});
+
+describe("scanLicenses — LICENSE file in src/ subdir (Arduino convention)", () => {
+  it("finds a LICENSE file under src/ when none is in the root", () => {
+    const result = scanLicenses({
+      fakeLibList: () => [{ name: "L", install_dir: "/L" }],
+      // Match by basename so the test is path-separator-agnostic (path.join
+      // uses \ on Windows).
+      fakeReadFile: (p) =>
+        p.endsWith("LICENSE") && p.includes("src") ? "Apache License\nVersion 2.0" : undefined,
+      fakeReaddir: (d) => (d.endsWith("L") && !d.includes("src") ? ["src"] : d.includes("src") ? ["LICENSE"] : []),
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.libraries[0].spdx).toBe("Apache-2.0");
+      expect(result.libraries[0].source).toBe("license-file");
+    }
+  });
+});
+
+describe("scanLicenses — source header comments when no LICENSE file (Adafruit pattern)", () => {
+  it("reads 'BSD license' from a .h header comment and classifies BSD-3", () => {
+    const header =
+      "/*! @file Adafruit_ILI9341.h\n" +
+      " * Written by Limor Fried for Adafruit Industries.\n" +
+      " *\n" +
+      " * BSD license, all text here must be included in any redistribution.\n" +
+      " */\n" +
+      "#ifndef _ADAFRUIT_ILI9341H_\n";
+    const result = scanLicenses({
+      fakeLibList: () => [{ name: "Adafruit_ILI9341", install_dir: "/ILI9341" }],
+      fakeReadFile: (p) => (p.endsWith("Adafruit_ILI9341.h") ? header : undefined),
+      fakeReaddir: (d) => (d === "/ILI9341" ? ["Adafruit_ILI9341.h", "library.properties"] : []),
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.libraries[0].spdx).toBe("BSD-3-Clause");
+      expect(result.libraries[0].source).toBe("source-header");
+    }
+  });
+
+  it("reads a full MIT notice from a .h header when no LICENSE file exists", () => {
+    const header =
+      "/* Touchscreen library\n" +
+      " * Copyright (c) 2015, Paul Stoffregen\n" +
+      " *\n" +
+      " * Permission is hereby granted, free of charge, to any person obtaining a copy\n" +
+      " * of this software and associated documentation files (the \"Software\"), to deal\n" +
+      " */\n";
+    const result = scanLicenses({
+      fakeLibList: () => [{ name: "XPT2046_Touchscreen", install_dir: "/XPT" }],
+      fakeReadFile: (p) => (p.endsWith("XPT2046_Touchscreen.h") ? header : undefined),
+      fakeReaddir: (d) => (d === "/XPT" ? ["XPT2046_Touchscreen.h"] : []),
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.libraries[0].spdx).toBe("MIT");
+      expect(result.libraries[0].source).toBe("source-header");
+    }
+  });
+
+  it("reads 'Apache License, version 2.0' from a header comment", () => {
+    const header =
+      "// ArduinoHttpClient\n" +
+      "// Released under Apache License, version 2.0\n";
+    const result = scanLicenses({
+      fakeLibList: () => [{ name: "ArduinoHttpClient", install_dir: "/AHC" }],
+      fakeReadFile: (p) => (p.endsWith("HttpClient.h") ? header : undefined),
+      // Separator-agnostic: root lists "src", the src dir lists the header.
+      fakeReaddir: (d) =>
+        d.endsWith("AHC") && !d.includes("src") ? ["src"] : d.includes("src") ? ["HttpClient.h"] : [],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.libraries[0].spdx).toBe("Apache-2.0");
+      expect(result.libraries[0].source).toBe("source-header");
+    }
+  });
+
+  it("still falls to unknown when the header has no recognizable license text", () => {
+    const header = "#pragma once\n#include \"Arduino.h\"\n";
+    const result = scanLicenses({
+      fakeLibList: () => [{ name: "NTPClient", install_dir: "/NTP" }],
+      fakeReadFile: (p) => (p.endsWith("NTPClient.h") ? header : undefined),
+      fakeReaddir: (d) => (d === "/NTP" ? ["NTPClient.h"] : []),
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.libraries[0].spdx).toBeUndefined();
+      expect(result.libraries[0].risk).toBe("unknown");
+    }
+  });
+});
+
 describe("coerceLibList — dual arduino-cli JSON shape", () => {
   it("parses the newer wrapped shape", () => {
     // `coerceLibList` is tested directly because fakeLibList returns the
