@@ -33,6 +33,15 @@ describe("identifySpdx — alias matching (short library.properties values)", ()
     expect(identifySpdx("cc by-sa 4.0")).toBe("CC-BY-SA-4.0");
   });
 
+  it("matches SPDX -only / -or-later suffixes (used by SPDX-License-Identifier markers)", () => {
+    expect(identifySpdx("SPDX-License-Identifier: GPL-3.0-only")).toBe("GPL-3.0");
+    expect(identifySpdx("SPDX-License-Identifier: GPL-3.0-or-later")).toBe("GPL-3.0");
+    expect(identifySpdx("SPDX-License-Identifier: GPL-2.0-only")).toBe("GPL-2.0");
+    expect(identifySpdx("SPDX-License-Identifier: LGPL-2.1-or-later")).toBe("LGPL-2.1");
+    expect(identifySpdx("SPDX-License-Identifier: LGPL-3.0-only")).toBe("LGPL-3.0");
+    expect(identifySpdx("SPDX-License-Identifier: AGPL-3.0-or-later")).toBe("AGPL-3.0");
+  });
+
   it("returns undefined for an unrecognized string", () => {
     expect(identifySpdx("some-custom-license")).toBeUndefined();
   });
@@ -405,6 +414,30 @@ describe("resolveProjectHeaders — .ino parsing", () => {
     const result = resolveProjectHeaders(config as any, (p) => (p.endsWith("main.ino") ? ino : undefined));
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.headers).toEqual(["Wire.h"]);
+  });
+
+  it("captures quote includes as well as angle-bracket includes", () => {
+    // Arduino libraries may be pulled in via #include "Foo.h".
+    const ino = '#include <Adafruit_GFX.h>\n#include "Servo.h"\n';
+    const config = { configPath: "/proj/cuttlefish.config.ts", entry: "./src/main.ts", outputOutDir: "./out" };
+    const result = resolveProjectHeaders(config as any, (p) => (p.endsWith("main.ino") ? ino : undefined));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.headers).toEqual(["Adafruit_GFX.h", "Servo.h"]);
+  });
+
+  it("drops project-local headers co-located with the .ino (not libraries)", () => {
+    // A header that lives next to the .ino (e.g. a cuttlefish-emitted polyfill)
+    // is project code, not a missing library — it must not be reported.
+    const ino = '#include <Adafruit_GFX.h>\n#include "sht30.h"\n';
+    const config = { configPath: "/proj/cuttlefish.config.ts", entry: "./src/main.ts", outputOutDir: "./out" };
+    // readFile: returns the .ino AND the co-located sht30.h (project-local).
+    const result = resolveProjectHeaders(config as any, (p) => {
+      if (p.endsWith("main.ino")) return ino;
+      if (p.endsWith("sht30.h")) return "// polyfill\n";
+      return undefined;
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.headers).toEqual(["Adafruit_GFX.h"]);
   });
 
   it("returns no-entry when entry is absent and no .ino exists", () => {

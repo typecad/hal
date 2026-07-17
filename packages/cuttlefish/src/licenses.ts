@@ -63,8 +63,13 @@ interface ProjectConfig {
   display?: { profile?: string; driver?: string; touch?: { library?: string } } | null;
 }
 
-/** Angle-bracket #include capture, e.g. '#include <Adafruit_GFX.h>' -> 'Adafruit_GFX.h'. */
-const INCLUDE_RE = /^\s*#include\s*<([^>]+)>\s*$/;
+/**
+ * #include capture for both angle-bracket and quote forms. Returns the bare
+ * header name, e.g. '#include <Adafruit_GFX.h>' or '#include "Servo.h'" -> the
+ * captured header. Quote includes with a path separator (e.g. "./foo.h",
+ * "../util/bar.h") are project-relative and excluded by the second regex.
+ */
+const INCLUDE_RE = /^\s*#include\s*[<"]([^>"]+)[>"]\s*$/;
 
 /** System/stdlib headers that are never Arduino libraries. Matched verbatim. */
 const SYSTEM_HEADERS = new Set([
@@ -139,7 +144,13 @@ export function resolveProjectHeaders(
     const inoPath = path.join(outDir, entryBase, `${entryBase}.ino`);
     const inoText = readFile(inoPath);
     if (inoText) {
-      return { ok: true, headers: parseInoHeaders(inoText), source: "ino", inoPath };
+      const parsed = parseInoHeaders(inoText);
+      // Drop project-local headers: a header co-located with the .ino (e.g. a
+      // cuttlefish-emitted polyfill like sht30.h) is project code, not a
+      // missing library — it must not be reported as NOT INSTALLED.
+      const inoDir = path.dirname(inoPath);
+      const headers = parsed.filter((h) => readFile(path.join(inoDir, h)) === undefined);
+      return { ok: true, headers, source: "ino", inoPath };
     }
   }
 
@@ -283,7 +294,7 @@ const SPDX_TABLE: SpdxEntry[] = [
   {
     id: "LGPL-2.1",
     risk: "weak-copyleft",
-    aliases: ["LGPL-2.1", "Lesser GPL 2.1"],
+    aliases: ["LGPL-2.1", "LGPL-2.1-only", "LGPL-2.1-or-later", "Lesser GPL 2.1"],
     markers: ["gnu lesser general public license", "version 2.1"],
     // ESP32Servo header: "GNU Lesser General Public ... version 2.1"
     shortMarkers: ["gnu lesser general public", "version 2.1"],
@@ -291,28 +302,28 @@ const SPDX_TABLE: SpdxEntry[] = [
   {
     id: "LGPL-3.0",
     risk: "weak-copyleft",
-    aliases: ["LGPL-3.0", "LGPL-3", "LGPL-3.0-only"],
+    aliases: ["LGPL-3.0", "LGPL-3", "LGPL-3.0-only", "LGPL-3.0-or-later"],
     markers: ["gnu lesser general public license", "version 3"],
     shortMarkers: [],
   },
   {
     id: "GPL-2.0",
     risk: "strong-copyleft",
-    aliases: ["GPL-2.0", "GPL-2", "GPLv2"],
+    aliases: ["GPL-2.0", "GPL-2", "GPLv2", "GPL-2.0-only", "GPL-2.0-or-later"],
     markers: ["gnu general public license", "version 2"],
     shortMarkers: [],
   },
   {
     id: "GPL-3.0",
     risk: "strong-copyleft",
-    aliases: ["GPL-3.0", "GPL-3", "GPLv3"],
+    aliases: ["GPL-3.0", "GPL-3", "GPLv3", "GPL-3.0-only", "GPL-3.0-or-later"],
     markers: ["gnu general public license", "version 3"],
     shortMarkers: [],
   },
   {
     id: "AGPL-3.0",
     risk: "strong-copyleft",
-    aliases: ["AGPL-3.0", "AGPL-3", "Affero GPL 3"],
+    aliases: ["AGPL-3.0", "AGPL-3", "Affero GPL 3", "AGPL-3.0-only", "AGPL-3.0-or-later"],
     markers: ["gnu affero general public license"],
     shortMarkers: [],
   },
