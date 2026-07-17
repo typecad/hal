@@ -4,6 +4,7 @@ import {
   classifyRisk,
   scanLicenses,
   coerceLibList,
+  resolveProjectHeaders,
   __setLicensesRunnerForTest,
   type ScanOptions,
 } from "../../../packages/cuttlefish/src/licenses";
@@ -371,5 +372,44 @@ describe("scanLicenses — module-level test override", () => {
     const result = scanLicenses({ fakeLibList: () => [{ name: "INLINE", install_dir: "/INLINE" }] });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.libraries[0].name).toBe("INLINE");
+  });
+});
+
+describe("resolveProjectHeaders — .ino parsing", () => {
+  const denylist = ["Arduino.h", "stdio.h", "stdint.h", "stdlib.h", "string.h", "Esp.h", "math.h"];
+
+  it("extracts library headers from a .ino and drops system headers", () => {
+    const ino =
+      "#include <Adafruit_GFX.h>\n" +
+      "#include <Adafruit_ILI9341.h>\n" +
+      "#include <Arduino.h>\n" +
+      "#include <stdio.h>\n" +
+      "#include <XPT2046_Touchscreen.h>\n";
+    const config = {
+      configPath: "/proj/cuttlefish.config.ts",
+      entry: "./src/main.ts",
+      outputOutDir: "./out",
+    };
+    const result = resolveProjectHeaders(config as any, (p) => (p.endsWith("main.ino") ? ino : undefined));
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.source).toBe("ino");
+      expect(result.headers).toEqual(["Adafruit_GFX.h", "Adafruit_ILI9341.h", "XPT2046_Touchscreen.h"]);
+    }
+  });
+
+  it("excludes every system/stdlib header", () => {
+    const ino = denylist.map((h) => `#include <${h}>\n`).join("") + "#include <Wire.h>\n";
+    const config = { configPath: "/proj/cuttlefish.config.ts", entry: "./src/main.ts", outputOutDir: "./out" };
+    const result = resolveProjectHeaders(config as any, (p) => (p.endsWith("main.ino") ? ino : undefined));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.headers).toEqual(["Wire.h"]);
+  });
+
+  it("returns no-entry when entry is absent and no .ino exists", () => {
+    const config = { configPath: "/proj/cuttlefish.config.ts" };
+    const result = resolveProjectHeaders(config as any, () => undefined);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("no-entry");
   });
 });

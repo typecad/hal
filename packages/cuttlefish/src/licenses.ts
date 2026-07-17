@@ -40,6 +40,81 @@ export type ScanOutcome =
     };
 
 // ---------------------------------------------------------------------------
+// Project-scope resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Headers the project needs. `source` is "ino" when read from the generated
+ * .ino (authoritative) or "config" when derived from cuttlefish.config.ts
+ * (partial: display/touch only).
+ */
+export type ProjectHeaders =
+  | { ok: true; headers: string[]; source: "ino" | "config"; inoPath?: string }
+  | { ok: false; reason: "no-config" | "no-entry" | "unreadable-ino"; message: string };
+
+/**
+ * Minimal view of ResolvedCuttlefishConfig that resolveProjectHeaders needs.
+ * Kept structural so we don't import the full config type (avoids a cycle).
+ */
+interface ProjectConfig {
+  configPath: string;
+  entry?: string;
+  outputOutDir?: string;
+  display?: { profile?: string; driver?: string; touch?: { library?: string } } | null;
+}
+
+/** Angle-bracket #include capture, e.g. '#include <Adafruit_GFX.h>' -> 'Adafruit_GFX.h'. */
+const INCLUDE_RE = /^\s*#include\s*<([^>]+)>\s*$/;
+
+/** System/stdlib headers that are never Arduino libraries. Matched verbatim. */
+const SYSTEM_HEADERS = new Set([
+  "Arduino.h",
+  "stdio.h",
+  "stdlib.h",
+  "string.h",
+  "stdint.h",
+  "Esp.h",
+  "math.h",
+  "avr/pgmspace.h",
+]);
+
+/** Pull library header names out of an .ino's text. */
+function parseInoHeaders(inoText: string): string[] {
+  const headers: string[] = [];
+  for (const line of inoText.split(/\r?\n/)) {
+    const m = line.match(INCLUDE_RE);
+    if (m && !SYSTEM_HEADERS.has(m[1])) headers.push(m[1]);
+  }
+  return headers;
+}
+
+/**
+ * Resolve the project's library headers. Prefers the generated .ino; this task
+ * implements only the .ino path. The config fallback is added in Task 2.
+ */
+export function resolveProjectHeaders(
+  config: ProjectConfig | undefined,
+  readFile: (p: string) => string | undefined,
+): ProjectHeaders {
+  if (!config) {
+    return { ok: false, reason: "no-config", message: "No cuttlefish.config.ts found." };
+  }
+  // Derive the .ino path the way the transpile path does.
+  const configDir = path.dirname(config.configPath);
+  const entryBase = config.entry ? path.basename(config.entry).replace(/\.[tj]s$/, "") : "";
+  if (!entryBase) {
+    return { ok: false, reason: "no-entry", message: "No entry point in config." };
+  }
+  const outDir = path.resolve(configDir, config.outputOutDir ?? "./out");
+  const inoPath = path.join(outDir, entryBase, `${entryBase}.ino`);
+  const inoText = readFile(inoPath);
+  if (!inoText) {
+    return { ok: false, reason: "no-entry", message: `No generated .ino at ${inoPath}.` };
+  }
+  return { ok: true, headers: parseInoHeaders(inoText), source: "ino", inoPath };
+}
+
+// ---------------------------------------------------------------------------
 // Static SPDX table
 // ---------------------------------------------------------------------------
 
