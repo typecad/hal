@@ -78,6 +78,32 @@ const SYSTEM_HEADERS = new Set([
   "avr/pgmspace.h",
 ]);
 
+/**
+ * Static driver -> library-header mapping for the config fallback. Mirrors the
+ * `includes` each display adapter emits (those strings are static per driver —
+ * verified against the adapters in api/shared/display-adapter*.ts). Kept here
+ * rather than calling generateDisplayAdapter() so the fallback doesn't need to
+ * construct a full ResolvedDisplay (which requires resolved mount pins).
+ */
+const DRIVER_HEADERS: Record<string, string[]> = {
+  ili9341: ["Adafruit_GFX.h", "Adafruit_ILI9341.h"],
+  st7796: ["Adafruit_GFX.h", "Adafruit_ST7796S.h"],
+  ssd1309: ["Adafruit_GFX.h", "Adafruit_SSD1306.h"],
+  ssd1680: ["Adafruit_EPD.h"],
+  sdl: [],
+};
+
+/**
+ * Built-in touch library -> header, mirroring generateTouchAdapter()'s includes.
+ */
+const TOUCH_HEADERS: Record<string, string[]> = {
+  XPT2046_Touchscreen: ["XPT2046_Touchscreen.h"],
+  Adafruit_TouchScreen: ["TouchScreen.h"],
+  Adafruit_STMPE610: ["Adafruit_STMPE610.h"],
+  FT6336U: ["Wire.h", "RAK14014_FT6336U.h"],
+  sdl: ["SDL2/SDL.h"],
+};
+
 /** Pull library header names out of an .ino's text. */
 function parseInoHeaders(inoText: string): string[] {
   const headers: string[] = [];
@@ -89,8 +115,9 @@ function parseInoHeaders(inoText: string): string[] {
 }
 
 /**
- * Resolve the project's library headers. Prefers the generated .ino; this task
- * implements only the .ino path. The config fallback is added in Task 2.
+ * Resolve the project's library headers. Prefers the generated .ino
+ * (authoritative); falls back to display/touch headers derived from config
+ * (partial picture, no transpile required).
  */
 export function resolveProjectHeaders(
   config: ProjectConfig | undefined,
@@ -99,19 +126,41 @@ export function resolveProjectHeaders(
   if (!config) {
     return { ok: false, reason: "no-config", message: "No cuttlefish.config.ts found." };
   }
-  // Derive the .ino path the way the transpile path does.
   const configDir = path.dirname(config.configPath);
   const entryBase = config.entry ? path.basename(config.entry).replace(/\.[tj]s$/, "") : "";
-  if (!entryBase) {
-    return { ok: false, reason: "no-entry", message: "No entry point in config." };
+
+  // 1. Prefer the generated .ino (authoritative).
+  if (entryBase) {
+    const outDir = path.resolve(configDir, config.outputOutDir ?? "./out");
+    const inoPath = path.join(outDir, entryBase, `${entryBase}.ino`);
+    const inoText = readFile(inoPath);
+    if (inoText) {
+      return { ok: true, headers: parseInoHeaders(inoText), source: "ino", inoPath };
+    }
   }
-  const outDir = path.resolve(configDir, config.outputOutDir ?? "./out");
-  const inoPath = path.join(outDir, entryBase, `${entryBase}.ino`);
-  const inoText = readFile(inoPath);
-  if (!inoText) {
-    return { ok: false, reason: "no-entry", message: `No generated .ino at ${inoPath}.` };
+
+  // 2. Fallback: derive display + touch headers from config (partial picture).
+  const headers: string[] = [];
+  const driver = config.display?.driver;
+  if (driver && DRIVER_HEADERS[driver]) {
+    headers.push(...DRIVER_HEADERS[driver]);
   }
-  return { ok: true, headers: parseInoHeaders(inoText), source: "ino", inoPath };
+  const touchLib = config.display?.touch?.library;
+  if (touchLib && TOUCH_HEADERS[touchLib]) {
+    headers.push(...TOUCH_HEADERS[touchLib]);
+  }
+  if (headers.length > 0) {
+    return { ok: true, headers, source: "config" };
+  }
+
+  // 3. Nothing to go on.
+  return {
+    ok: false,
+    reason: "no-entry",
+    message: entryBase
+      ? "No generated .ino and no display config. Run 'cuttlefish build'."
+      : "No entry point in config.",
+  };
 }
 
 // ---------------------------------------------------------------------------

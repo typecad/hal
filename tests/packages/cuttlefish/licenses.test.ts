@@ -413,3 +413,57 @@ describe("resolveProjectHeaders — .ino parsing", () => {
     if (!result.ok) expect(result.reason).toBe("no-entry");
   });
 });
+
+describe("resolveProjectHeaders — config fallback (no .ino)", () => {
+  it("derives display + touch headers from config when no .ino exists", () => {
+    const config = {
+      configPath: "/proj/cuttlefish.config.ts",
+      entry: "./src/main.ts",
+      outputOutDir: "./out",
+      display: { driver: "ili9341", touch: { library: "XPT2046_Touchscreen" } },
+    };
+    const result = resolveProjectHeaders(config as any, () => undefined); // no .ino
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.source).toBe("config");
+      expect(result.headers).toContain("Adafruit_GFX.h");
+      expect(result.headers).toContain("Adafruit_ILI9341.h");
+      expect(result.headers).toContain("XPT2046_Touchscreen.h");
+    }
+  });
+
+  it("derives display headers without touch", () => {
+    const config = {
+      configPath: "/proj/cuttlefish.config.ts",
+      entry: "./src/main.ts",
+      outputOutDir: "./out",
+      display: { driver: "st7796" },
+    };
+    const result = resolveProjectHeaders(config as any, () => undefined);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.headers).toContain("Adafruit_GFX.h");
+      expect(result.headers).toContain("Adafruit_ST7796S.h");
+    }
+  });
+
+  it(".ino is preferred over config when both are available", () => {
+    const ino = "#include <Adafruit_GFX.h>\n";
+    const config = {
+      configPath: "/proj/cuttlefish.config.ts",
+      entry: "./src/main.ts",
+      outputOutDir: "./out",
+      display: { driver: "ili9341" },
+    };
+    const result = resolveProjectHeaders(config as any, (p) => (p.endsWith("main.ino") ? ino : undefined));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.source).toBe("ino");
+  });
+
+  it("returns no-entry when there is no .ino and no display config", () => {
+    const config = { configPath: "/proj/cuttlefish.config.ts", entry: "./src/main.ts", outputOutDir: "./out" };
+    const result = resolveProjectHeaders(config as any, () => undefined);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("no-entry");
+  });
+});
