@@ -134,6 +134,8 @@ export interface CommandLineOptions {
   command: "default" | "build" | "gen-libdefs" | "gen-decls" | "map-error" | "preview" | "doctor" | "licenses";
   /** For `licenses`: treat unknown/missing licenses as failures (exit 1). */
   strict?: boolean;
+  /** For `licenses`: scan all installed libraries (default: this project's only). */
+  all?: boolean;
   inputFile?: string;
   emitMode: EmitMode;
   target: TargetProfile;
