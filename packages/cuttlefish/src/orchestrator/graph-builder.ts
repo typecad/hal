@@ -197,14 +197,18 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
         continue;
       }
 
-      // Skip @typecad/board, @typecad/board-*, @typecad/mcu-*, and
-      // @typecad/framework-* — these packages ship src/ for HAL metadata
+      // Skip @typecad/board, @typecad/board-*, @typecad/mcu-*, @typecad/hal,
+      // and @typecad/framework-* — these packages ship src/ for HAL metadata
       // introspection (hal-parser.ts, board-resolver.ts) but their source
       // must NOT be transpiled to C++. The HAL resolver loads class/method
       // metadata from these files separately; emitting them as C++ produces
       // thousands of lines of stub functions (board(), gpioWrite(), etc.)
       // and pulls in unsupported types (Promise, variant, Object.freeze).
+      // Skipping @typecad/hal is especially important: its 28 source files
+      // (gpio.ts, i2c.ts, spi.ts, etc.) were all walked through full
+      // buildProgramIR, adding ~40 seconds to every transpile.
       if (moduleSpecifier === "@typecad/board"
+        || moduleSpecifier === "@typecad/hal"
         || moduleSpecifier.startsWith("@typecad/board-")
         || moduleSpecifier.startsWith("@typecad/mcu-")
         || moduleSpecifier.startsWith("@typecad/framework-")) {
