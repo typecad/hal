@@ -52,11 +52,13 @@ describe('scaffoldEspIdfProject', () => {
     expect(cfg).toMatch(/CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y/);
   });
 
-  it('writes .gitignore with build/ and sdkconfig', () => {
+  it('writes .gitignore with build/, sdkconfig, and cuttlefish-idf-env.*', () => {
     scaffoldEspIdfProject(tmpDir, 'esp32');
     const gi = readFileSync(join(tmpDir, '.gitignore'), 'utf8');
     expect(gi).toMatch(/^build\//m);
     expect(gi).toMatch(/^sdkconfig$/m);
+    expect(gi).toMatch(/^cuttlefish-idf-env\.sh$/m);
+    expect(gi).toMatch(/^cuttlefish-idf-env\.bat$/m);
   });
 
   it('is idempotent — overwrites without error on second call', () => {

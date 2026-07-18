@@ -42,6 +42,15 @@ export function scaffoldEspIdfProject(projectDir: string, target: string): void 
 
   writeFileSync(
     join(projectDir, '.gitignore'),
-    ['build/', 'sdkconfig', 'managed_components/', 'dependencies.lock', ''].join('\n'),
+    [
+      'build/',
+      'sdkconfig',
+      'managed_components/',
+      'dependencies.lock',
+      '# Auto-generated ESP-IDF env wrapper (per-machine; not portable)',
+      'cuttlefish-idf-env.sh',
+      'cuttlefish-idf-env.bat',
+      '',
+    ].join('\n'),
   );
 }
