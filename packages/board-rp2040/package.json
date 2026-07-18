@@ -1,6 +1,6 @@
 {
   "name": "@typecad/board-rp2040",
-  "version": "1.0.0-alpha.3",
+  "version": "1.0.0-alpha.6",
   "description": "TypeCAD RP2040 (Raspberry Pi Pico) board definition",
   "type": "module",
   "main": "./dist/index.js",
@@ -18,9 +18,9 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.3",
-    "@typecad/hal": "1.0.0-alpha.3",
-    "@typecad/mcu-rp2040": "1.0.0-alpha.3"
+    "@typecad/cuttlefish": "1.0.0-alpha.6",
+    "@typecad/hal": "1.0.0-alpha.6",
+    "@typecad/mcu-rp2040": "1.0.0-alpha.6"
   },
   "license": "MIT",
   "publishConfig": {

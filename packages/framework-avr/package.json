@@ -1,6 +1,6 @@
 {
   "name": "@typecad/framework-avr",
-  "version": "1.0.0-alpha.3",
+  "version": "1.0.0-alpha.6",
   "description": "TypeCAD framework package for native AVR register-level code generation",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,12 +22,12 @@
     "test:hw:timers": "npm exec -- cuttlefish-test tests/42-timers.test.ts"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.3",
-    "@typecad/framework-arduino": "1.0.0-alpha.3"
+    "@typecad/cuttlefish": "1.0.0-alpha.6",
+    "@typecad/framework-arduino": "1.0.0-alpha.6"
   },
   "devDependencies": {
-    "@typecad/expect": "1.0.0-alpha.3",
-    "@typecad/board-arduino-uno": "1.0.0-alpha.3"
+    "@typecad/expect": "1.0.0-alpha.6",
+    "@typecad/board-arduino-uno": "1.0.0-alpha.6"
   },
   "license": "MIT"
 }

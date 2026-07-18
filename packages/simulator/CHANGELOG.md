@@ -1,5 +1,24 @@
 # @typecad/simulator
 
+## 1.0.0-alpha.6
+
+### Patch Changes
+
+- @typecad/hal@1.0.0-alpha.6
+
+## 1.0.0-alpha.5
+
+### Patch Changes
+
+- @typecad/hal@1.0.0-alpha.5
+
+## 1.0.0-alpha.4
+
+### Patch Changes
+
+- Updated dependencies
+  - @typecad/hal@1.0.0-alpha.4
+
 ## 1.0.0-alpha.3
 
 ### Patch Changes

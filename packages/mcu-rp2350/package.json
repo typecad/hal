@@ -1,6 +1,6 @@
 {
   "name": "@typecad/mcu-rp2350",
-  "version": "1.0.0-alpha.3",
+  "version": "1.0.0-alpha.6",
   "description": "TypeCAD MCU definition for RP2350 — datasheet pins, peripheral capabilities, and HAL instances",
   "type": "module",
   "main": "./dist/index.js",
@@ -18,8 +18,8 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.3",
-    "@typecad/hal": "1.0.0-alpha.3"
+    "@typecad/cuttlefish": "1.0.0-alpha.6",
+    "@typecad/hal": "1.0.0-alpha.6"
   },
   "license": "MIT"
 }
