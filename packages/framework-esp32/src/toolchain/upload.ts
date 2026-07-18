@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { requireIdfEnv } from './idf-env.js';
+import { idfSpawn } from './activate.js';
 
 export interface EspIdfUploadResult {
   success: boolean;
@@ -9,21 +9,23 @@ export interface EspIdfUploadResult {
 
 export function uploadEspIdf(outputDir: string, port: string): EspIdfUploadResult {
   try {
-    requireIdfEnv();
+    // idfSpawn throws if discovery fails entirely (no install + no env).
+    const inv = idfSpawn(outputDir, ['-p', port, 'flash'], {
+      cwd: outputDir,
+      encoding: 'utf8',
+      shell: true,
+      timeout: 120000,
+    });
+    const result = spawnSync(inv.command, inv.args, inv.options);
+    const activationNotice = inv.activation?.message ? `${inv.activation.message}\n` : '';
+
+    return {
+      success: result.status === 0,
+      output: activationNotice + (result.stdout ?? '') + (result.stderr ?? ''),
+      errorMessage: result.status !== 0 ? `idf.py flash exited with ${result.status}` : undefined,
+    };
   } catch (e) {
-    return { success: false, output: '', errorMessage: (e as Error).message };
+    const msg = (e as Error).message;
+    return { success: false, output: msg, errorMessage: msg };
   }
-
-  const result = spawnSync('idf.py', ['-p', port, 'flash'], {
-    cwd: outputDir,
-    encoding: 'utf8',
-    shell: true,
-    timeout: 120000,
-  });
-
-  return {
-    success: result.status === 0,
-    output: (result.stdout ?? '') + (result.stderr ?? ''),
-    errorMessage: result.status !== 0 ? `idf.py flash exited with ${result.status}` : undefined,
-  };
 }

@@ -68,6 +68,6 @@ export const Toolchain = {
     };
   },
   monitor(o: ToolchainOptions): void {
-    monitorEspIdf(o.port ?? '');
+    monitorEspIdf(o.port ?? '', projectRootFromOptions(o));
   },
 };
