@@ -16,7 +16,9 @@
   ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test:hw": "npm exec -- cuttlefish-test",
+    "test:hw:hardware": "npm exec -- cuttlefish-test tests/01-hardware.test.ts"
   },
   "dependencies": {
     "@typecad/cuttlefish": "1.0.0-alpha.6",
