@@ -269,6 +269,7 @@ export function resolveProjectHeaders(
  */
 export type ProjectLibrary =
   | { kind: "resolved"; lib: LibraryLicenseEntry }
+  | { kind: "core"; header: string }
   | { kind: "not-installed"; header: string };
 
 /**
@@ -302,22 +303,81 @@ function buildHeaderIndex(
 }
 
 /**
- * Join each project header to its owning installed library (resolved) or flag
- * it not-installed. Resolved entries carry the full license entry (license
- * resolved via the existing resolveLibraryLicense).
+ * Build a header-basename -> bundled-library map from a board core's bundled
+ * libraries. Scans `<coreDir>/libraries/<Lib>/src/` for .h files (e.g. Wire.h,
+ * SPI.h). Each header maps to a synthetic RawArduinoLibrary so the existing
+ * resolveLibraryLicense can read its license from the bundled lib's header
+ * notice or library.properties.
+ */
+export function buildCoreHeaderIndex(
+  coreDir: string,
+  readdir: (d: string) => string[],
+): Map<string, RawArduinoLibrary> {
+  const index = new Map<string, RawArduinoLibrary>();
+  const libsDir = path.join(coreDir, "libraries");
+  let libNames: string[];
+  try {
+    libNames = readdir(libsDir);
+  } catch {
+    return index;
+  }
+  for (const libName of libNames) {
+    const srcDir = path.join(libsDir, libName, "src");
+    let headers: string[];
+    try {
+      headers = readdir(srcDir);
+    } catch {
+      continue;
+    }
+    const synthetic: RawArduinoLibrary = {
+      name: libName,
+      install_dir: path.join(libsDir, libName),
+    };
+    for (const entry of headers) {
+      const lower = entry.toLowerCase();
+      if ((lower.endsWith(".h") || lower.endsWith(".hpp")) && !index.has(entry)) {
+        index.set(entry, synthetic);
+      }
+    }
+  }
+  return index;
+}
+
+/**
+ * Join each project header to its owning library or classify it. Pipeline:
+ *   1. user library (arduino-cli lib list)  -> resolved (license)
+ *   2. core library (project's own core)    -> resolved (license, e.g. LGPL-2.1)
+ *   3. toolchain header (avr/*, util/*)     -> core (gray, no license)
+ *   4. else                                  -> not-installed
+ *
+ * `coreDir` is optional; when absent, step 2 is skipped.
  */
 export function joinHeadersToLibraries(
   headers: string[],
   libs: RawArduinoLibrary[],
   readdir: (d: string) => string[],
   readFile: (p: string) => string | undefined,
+  coreDir?: string,
 ): ProjectLibrary[] {
-  const index = buildHeaderIndex(libs, readdir);
+  const userIndex = buildHeaderIndex(libs, readdir);
+  const coreIndex = coreDir ? buildCoreHeaderIndex(coreDir, readdir) : new Map<string, RawArduinoLibrary>();
   return headers.map((header) => {
-    const owner = index.get(header);
-    if (!owner) return { kind: "not-installed" as const, header };
-    const entry = resolveLibraryLicense(owner, readFile, readdir);
-    return { kind: "resolved" as const, lib: entry };
+    // 1. user library
+    const userOwner = userIndex.get(header);
+    if (userOwner) {
+      return { kind: "resolved" as const, lib: resolveLibraryLicense(userOwner, readFile, readdir) };
+    }
+    // 2. core library
+    const coreOwner = coreIndex.get(header);
+    if (coreOwner) {
+      return { kind: "resolved" as const, lib: resolveLibraryLicense(coreOwner, readFile, readdir) };
+    }
+    // 3. toolchain header
+    if (isToolchainHeader(header)) {
+      return { kind: "core" as const, header };
+    }
+    // 4. not installed
+    return { kind: "not-installed" as const, header };
   });
 }
 

@@ -8,6 +8,7 @@ import {
   joinHeadersToLibraries,
   isToolchainHeader,
   resolveProjectCore,
+  buildCoreHeaderIndex,
   __setLicensesRunnerForTest,
   type ScanOptions,
 } from "../../../packages/cuttlefish/src/licenses";
@@ -633,5 +634,108 @@ describe("resolveProjectCore — FQBN to core path", () => {
     const result = resolveProjectCore("arduino:avr:uno", fakeConfigDump("/A15"), readdir);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toBe("no-core");
+  });
+});
+
+describe("buildCoreHeaderIndex — core bundled-library header index", () => {
+  it("indexes headers under <core>/libraries/<Lib>/src/", () => {
+    // Core dir layout: libraries/Wire/src/Wire.h, libraries/SPI/src/SPI.h
+    // Separator-agnostic matching (path.join uses \ on Windows).
+    const lastSeg = (d: string): string => d.split(/[\\/]/).filter(Boolean).pop() ?? "";
+    const readdir = (d: string): string[] => {
+      const seg = lastSeg(d);
+      const parent = d.split(/[\\/]/).filter(Boolean).slice(-2, -1)[0] ?? "";
+      if (seg === "core" && parent === "") return ["libraries"];
+      if (seg === "libraries" && parent === "core") return ["Wire", "SPI"];
+      if (seg === "Wire" && parent === "libraries") return ["src"];
+      if (seg === "src" && parent === "Wire") return ["Wire.h", "twi.h"];
+      if (seg === "SPI" && parent === "libraries") return ["src"];
+      if (seg === "src" && parent === "SPI") return ["SPI.h"];
+      return [];
+    };
+    const index = buildCoreHeaderIndex("/core", readdir);
+    expect(index.get("Wire.h")?.name).toBe("Wire");
+    expect(index.get("SPI.h")?.name).toBe("SPI");
+    // twi.h is an internal header also indexed (first-wins).
+    expect(index.get("twi.h")?.name).toBe("Wire");
+  });
+});
+
+describe("joinHeadersToLibraries — 4-step pipeline (user → core → toolchain → not-installed)", () => {
+  // A user library owning Adafruit_ILI9341.h.
+  const libs = [{ name: "Adafruit ILI9341", version: "1.6.3", install_dir: "/libs/ILI9341" }];
+
+  // Core dir owning Wire (its header carries an LGPL-2.1 notice).
+  const coreDir = "/core";
+  const lastSeg = (d: string): string => d.split(/[\\/]/).filter(Boolean).pop() ?? "";
+  const parentSeg = (d: string): string => d.split(/[\\/]/).filter(Boolean).slice(-2, -1)[0] ?? "";
+  const readdir = (d: string): string[] => {
+    const seg = lastSeg(d);
+    const parent = parentSeg(d);
+    // user lib
+    if (seg === "ILI9341" && parent === "libs") return ["Adafruit_ILI9341.h", "library.properties"];
+    // core
+    if (seg === "core") return ["libraries"];
+    if (seg === "libraries" && parent === "core") return ["Wire"];
+    if (seg === "Wire" && parent === "libraries") return ["src"];
+    if (seg === "src" && parent === "Wire") return ["Wire.h"];
+    return [];
+  };
+  const readFile = (p: string): string | undefined => {
+    if (p.endsWith("Adafruit_ILI9341/library.properties")) return "license=BSD-3-Clause\n";
+    if (p.endsWith("Wire/src/Wire.h") || p.endsWith("Wire.h")) {
+      return (
+        "/* TwoWire.h - TWI/I2C library\n" +
+        " * This library is free software; you can redistribute it and/or\n" +
+        " * modify it under the terms of the GNU Lesser General Public\n" +
+        " * License as published by the Free Software Foundation; either\n" +
+        " * version 2.1 of the License.\n" +
+        " */\n"
+      );
+    }
+    return undefined;
+  };
+
+  it("resolves a core-bundled lib header to its license (LGPL-2.1 from the header notice)", () => {
+    const joined = joinHeadersToLibraries(["Wire.h"], libs, readdir, readFile, coreDir);
+    expect(joined[0].kind).toBe("resolved");
+    if (joined[0].kind === "resolved") {
+      expect(joined[0].lib.spdx).toBe("LGPL-2.1");
+      expect(joined[0].lib.source).toBe("source-header");
+    }
+  });
+
+  it("classifies a toolchain header as core (not not-installed)", () => {
+    const joined = joinHeadersToLibraries(["avr/wdt.h"], libs, readdir, readFile, coreDir);
+    expect(joined[0].kind).toBe("core");
+    if (joined[0].kind === "core") expect(joined[0].header).toBe("avr/wdt.h");
+  });
+
+  it("still resolves a user library header", () => {
+    const joined = joinHeadersToLibraries(["Adafruit_ILI9341.h"], libs, readdir, readFile, coreDir);
+    expect(joined[0].kind).toBe("resolved");
+    if (joined[0].kind === "resolved") expect(joined[0].lib.name).toBe("Adafruit ILI9341");
+  });
+
+  it("falls through to not-installed for a genuinely missing header", () => {
+    const joined = joinHeadersToLibraries(["Adafruit_ST7796S.h"], libs, readdir, readFile, coreDir);
+    expect(joined[0].kind).toBe("not-installed");
+  });
+
+  it("returns a mixed list with all four kinds", () => {
+    const joined = joinHeadersToLibraries(
+      ["Adafruit_ILI9341.h", "Wire.h", "avr/wdt.h", "Adafruit_ST7796S.h"],
+      libs,
+      readdir,
+      readFile,
+      coreDir,
+    );
+    expect(joined.map((j) => j.kind)).toEqual(["resolved", "resolved", "core", "not-installed"]);
+  });
+
+  it("skips the core-index step when coreDir is omitted (user → toolchain → not-installed)", () => {
+    // No coreDir: Wire.h has no owner and is not a toolchain header → not-installed.
+    const joined = joinHeadersToLibraries(["Wire.h", "avr/wdt.h"], libs, readdir, readFile);
+    expect(joined.map((j) => j.kind)).toEqual(["not-installed", "core"]);
   });
 });
