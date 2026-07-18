@@ -349,6 +349,37 @@ export function buildEmitterContext(
     if (!programAnalysis.usesTone) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_TONE_BEGIN', '// CUTTLEFISH_TONE_END');
     }
+    // framework-esp32 native peripheral driver shims. Same defensive-backstop
+    // pattern as the UART/SPI/TWI/EEPROM/tone blocks above. framework-arduino's
+    // and framework-avr's shimLines contain none of these markers, so these
+    // filters are no-ops there.
+    if (!programAnalysis.usesGPIO) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_GPIO_BEGIN', '// CUTTLEFISH_GPIO_END');
+    }
+    if (!programAnalysis.usesPWM) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_PWM_BEGIN', '// CUTTLEFISH_PWM_END');
+    }
+    if (!programAnalysis.usesADC) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_ADC_BEGIN', '// CUTTLEFISH_ADC_END');
+    }
+    if (!programAnalysis.usesDAC) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_DAC_BEGIN', '// CUTTLEFISH_DAC_END');
+    }
+    if (!programAnalysis.usesPower) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_POWER_BEGIN', '// CUTTLEFISH_POWER_END');
+    }
+    if (!programAnalysis.usesWdt) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_WDT_BEGIN', '// CUTTLEFISH_WDT_END');
+    }
+    if (!programAnalysis.usesInterrupts) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_INTR_BEGIN', '// CUTTLEFISH_INTR_END');
+    }
+    if (!programAnalysis.usesPulse) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_PULSE_BEGIN', '// CUTTLEFISH_PULSE_END');
+    }
+    if (!programAnalysis.usesShift) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_SHIFT_BEGIN', '// CUTTLEFISH_SHIFT_END');
+    }
     profileDiagnostics = [...strategy.profileDiagnostics(program, options.platformContext)];
   }
 

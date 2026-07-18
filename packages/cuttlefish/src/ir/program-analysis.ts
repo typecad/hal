@@ -66,6 +66,19 @@ export interface ProgramAnalysisResult {
    *  __tc_TimerRuntime::MAX_TIMERS to the observed count (floor 1) rather than
    *  a blind constant, so a one-timer program links one slot, not eight. */
   timerCallCount: number;
+  /** ESP32 peripheral usage — framework-esp32 gates its IDF driver blocks and
+   *  forced includes on these. Detected from HAL-op operation names, the same
+   *  way usesUart/usesSPI/usesI2C are. Other frameworks have no CUTTLEFISH_*
+   *  blocks with these marker names so the setup.ts filters are no-ops there. */
+  usesGPIO: boolean;
+  usesPWM: boolean;
+  usesADC: boolean;
+  usesDAC: boolean;
+  usesPower: boolean;
+  usesWdt: boolean;
+  usesInterrupts: boolean;
+  usesPulse: boolean;
+  usesShift: boolean;
 }
 
 // Regex for std:: math calls
@@ -76,7 +89,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -510,6 +523,18 @@ function analyzeStatement(
         if (opName.startsWith("i2c.")) result.usesI2C = true;
         if (opName.startsWith("tone.")) result.usesTone = true;
         if (opName.startsWith("uart.")) result.usesUart = true;
+        // ESP32 peripheral usage — framework-esp32 gates IDF driver blocks
+        // and forced includes on these. No-op for other frameworks (their
+        // shimLines emit no CUTTLEFISH_* blocks with these marker names).
+        if (opName.startsWith("gpio."))      result.usesGPIO = true;
+        if (opName.startsWith("pwm."))       result.usesPWM = true;
+        if (opName.startsWith("adc."))       result.usesADC = true;
+        if (opName.startsWith("dac."))       result.usesDAC = true;
+        if (opName.startsWith("power."))     result.usesPower = true;
+        if (opName.startsWith("wdt."))       result.usesWdt = true;
+        if (opName.startsWith("interrupt.")) result.usesInterrupts = true;
+        if (opName.startsWith("pulse."))     result.usesPulse = true;
+        if (opName.startsWith("shift."))     result.usesShift = true;
         // Timing HAL ops (timing.delay/millis/micros) carry a typed operation
         // name, not raw code, so the regex scans below miss them. Mirror the
         // raw-code timing detection here so usesMillis/usesTiming (and thus
@@ -627,6 +652,15 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     hasGenerators: false,
     usesStdMap: false,
     timerCallCount: 0,
+    usesGPIO: false,
+    usesPWM: false,
+    usesADC: false,
+    usesDAC: false,
+    usesPower: false,
+    usesWdt: false,
+    usesInterrupts: false,
+    usesPulse: false,
+    usesShift: false,
   };
 
   // Analyze type aliases
