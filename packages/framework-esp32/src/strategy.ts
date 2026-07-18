@@ -246,6 +246,38 @@ export class Esp32Strategy extends ArduinoStrategy {
 
     return diags;
   }
+
+  // Ambient type declarations appended to the generated cuttlefish-env.d.ts.
+  // Fresh ESP-IDF-appropriate set (parent's declares Arduino's Serial/EEPROM-
+  // flavored bits which don't apply here). Spec §7.5.
+  override ambientTypeDeclarations(): string[] {
+    return [
+      '',
+      '  // framework-esp32 ambient types:',
+      '  // - Timing: lowered via __tc_Timing (esp_timer_get_time, vTaskDelay).',
+      '  // - WDT: lowered via __tc_WDT (esp_task_wdt_*).',
+      '  // - Preferences: TS type retained; runtime lowering deferred to v1.1.',
+      '  //   v1 emits a transpile-time diagnostic if Preferences is used.',
+      '  // - EEPROM: not lowered (use Preferences / NVS instead).',
+      '  const Timing: {',
+      '    millis(): number;',
+      '    micros(): number;',
+      '    delay(ms: number): void;',
+      '    delayMicroseconds(us: number): void;',
+      '    freeHeap(): number;',
+      '  };',
+      '',
+      '  const WDT: {',
+      '    enable(): void;',
+      '    reset(): void;',
+      '    disable(): void;',
+      '  };',
+      '',
+      '  // Preferences: v1.1 — lowering pending (NVS / nvs_flash.h).',
+      '  // const Preferences: { ... };',
+      '',
+    ];
+  }
 }
 
 // Minimal `<<`-chain splitter — mirrors the parent's splitStreamChain helper.
