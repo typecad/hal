@@ -35,9 +35,13 @@ afterEach(() => {
 describe('buildWrapperContent', () => {
   const root = fakeRoot(IS_WIN ? 'C:\\esp\\v6.0.2\\esp-idf' : '/opt/esp/v6.0.2/esp-idf');
 
-  it('includes a root marker comment', () => {
+  it('includes a root marker comment in the platform-correct syntax', () => {
     const content = buildWrapperContent(root);
-    expect(content).toContain('# cuttlefish-idf-root:');
+    if (IS_WIN) {
+      expect(content).toContain('REM cuttlefish-idf-root:');
+    } else {
+      expect(content).toContain('# cuttlefish-idf-root:');
+    }
     expect(content).toContain(root.path);
   });
 
