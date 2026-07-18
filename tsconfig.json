@@ -21,6 +21,7 @@
     { "path": "packages/mcu-esp32c6" },
     { "path": "packages/framework-avr" },
     { "path": "packages/framework-arduino" },
+    { "path": "packages/framework-esp32" },
     { "path": "packages/framework-native" },
     { "path": "packages/board-arduino-uno" },
     { "path": "packages/board-esp32-devkit" },

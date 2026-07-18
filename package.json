@@ -15,6 +15,7 @@
     "packages/mcu-rp2350",
     "packages/framework-avr",
     "packages/framework-arduino",
+    "packages/framework-esp32",
     "packages/framework-native",
     "packages/board-arduino-uno",
     "packages/board-esp32-devkit",
