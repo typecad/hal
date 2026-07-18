@@ -2,6 +2,9 @@ import { ArduinoStrategy } from '@typecad/framework-arduino';
 import type { ProgramIR, PlatformContext, HALOpIR } from '@typecad/cuttlefish/api/shared';
 import { resolveEsp32Profile } from './profile.js';
 import { lowerHalOp } from './lowering/index.js';
+import { uartInitLines } from './lowering/uart.js';
+import { i2cInitLines }  from './lowering/i2c.js';
+import { spiInitLines }  from './lowering/spi.js';
 
 const ARDUINO_UMBRELLA_HEADERS: ReadonlySet<string> = new Set([
   '<Arduino.h>',
@@ -67,7 +70,17 @@ export class Esp32Strategy extends ArduinoStrategy {
 
   override shimLines(program: ProgramIR, ctx?: PlatformContext): string[] {
     resolveEsp32Profile(ctx?.frameworkData?.target as string | undefined);
+    const a = (ctx as any)?.analysis;
+    const espInit: string[] = [];
+    // Emit IDF driver init blocks for each peripheral the program actually uses.
+    // Each block is bracketed with CUTTLEFISH_*_BEGIN/END so setup.ts can strip
+    // the unused ones as a defensive backstop (matches framework-avr's pattern).
+    if (a?.usesUART) espInit.push(...uartInitLines(0));
+    if (a?.usesI2C)  espInit.push(...i2cInitLines(0));
+    if (a?.usesSPI)  espInit.push(...spiInitLines(0));
+
     return [
+      ...espInit,
       '// --- ESP32 IDF entrypoint: app_main + __tc_app_task ---',
       '// The cuttlefish synthesizer emits setup() and loop() (it keys off',
       '// entrypointFunctionName()="setup" and requiresLoopFunction()=true).',
