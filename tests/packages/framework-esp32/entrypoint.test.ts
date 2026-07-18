@@ -19,6 +19,12 @@ describe('Esp32Strategy app_main trampoline', () => {
     expect(shim).toMatch(/loop\(\)/);
   });
 
+  it('yields with vTaskDelay(1) inside the loop to prevent watchdog starvation', () => {
+    // An empty or non-blocking loop() would starve the IDLE task and trigger
+    // the task watchdog. The trampoline yields 1 tick per iteration.
+    expect(shim).toMatch(/vTaskDelay\(1\)/);
+  });
+
   it('spawns the task with xTaskCreate', () => {
     expect(shim).toMatch(/xTaskCreate\s*\(\s*__tc_app_task/);
   });
