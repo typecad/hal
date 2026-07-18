@@ -1,5 +1,5 @@
 import { ArduinoStrategy } from '@typecad/framework-arduino';
-import type { ProgramIR, PlatformContext, HALOpIR } from '@typecad/cuttlefish/api/shared';
+import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR } from '@typecad/cuttlefish/api/shared';
 import { resolveEsp32Profile } from './profile.js';
 import { lowerHalOp } from './lowering/index.js';
 import { uartInitLines } from './lowering/uart.js';
@@ -126,4 +126,99 @@ export class Esp32Strategy extends ArduinoStrategy {
   override resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {
     return lowerHalOp(op);
   }
+
+  // Route console.log/info → printf, debug/warn/error → ESP_LOG[DWE].
+  // Signature matches ArduinoStrategy.transformConsoleCall: renderedArgs is a
+  // single pre-rendered string (possibly a `<<` chain), not an array.
+  override transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
+    const semi = forHeader ? '' : ';';
+    // Strip a wrapping String(...) if present (the parent adds it for Arduino).
+    const isBareLiteral = /^"[^"]*"$/.test(renderedArgs.trim());
+    const isChain = !isBareLiteral && renderedArgs.includes('<<');
+    // For ESP-IDF we use printf/ESP_LOG* which take a format string + args,
+    // not a stream chain. Split chains the way Arduino does, then format each
+    // part as a separate printf call.
+    const tag = '"tc"';
+    let prefix = '';
+    switch (method) {
+      case 'error': prefix = `ESP_LOGE(${tag}, "[ERROR] ")${semi} `; break;
+      case 'warn':  prefix = `ESP_LOGW(${tag}, "[WARN] ")${semi} `;  break;
+      case 'info':  prefix = `ESP_LOGI(${tag}, "[INFO] ")${semi} `;  break;
+      case 'debug': prefix = `ESP_LOGD(${tag}, "[DEBUG] ")${semi} `; break;
+      default: break;
+    }
+
+    // Choose output fn: ESP_LOG* for warn/error/debug/info, printf for log.
+    const usesLogMacro = method === 'error' || method === 'warn' || method === 'debug' || method === 'info';
+    const outFn = usesLogMacro
+      ? (method === 'error' ? `ESP_LOGE(${tag}` : method === 'warn' ? `ESP_LOGW(${tag}` : method === 'info' ? `ESP_LOGI(${tag}` : `ESP_LOGD(${tag}`)
+      : 'printf(';
+
+    // Bare string literal → emit directly as the format string (we assume the
+    // caller passed a string literal with no interpolation; non-literal args
+    // are emitted as-is which works for %s/%d-compatible expressions).
+    if (isChain) {
+      // Split "a" << b << c — for v1, just concat by issuing separate calls.
+      // (Loses one-line guarantee; v1.1 should build a single format string.)
+      const parts = splitStreamChain(renderedArgs);
+      const calls = parts.map((p) => {
+        const trimmed = p.trim();
+        return `${outFn}, ${trimmed})${semi}`;
+      });
+      return prefix + calls.join(' ');
+    }
+    return `${prefix}${outFn}, ${renderedArgs})${semi}`;
+  }
+
+  // Override cuttlefish_halt to use esp_system_abort (IDF-native fatal) instead
+  // of the parent's Serial.println + infinite loop. Inherits the rest of the
+  // parent's polyfills (string_methods, timer_methods, async_runtime) unchanged.
+  override generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
+    const base = super.generateNativePolyfills(program, ctx);
+    return base.map((p) => {
+      if (p.id === 'cuttlefish_halt') {
+        return {
+          ...p,
+          domain: 'esp32',
+          helperFunctions: [
+            `#ifndef cuttlefish_halt
+#define cuttlefish_halt(msg) esp_system_abort(msg)
+#endif`,
+          ],
+        };
+      }
+      return p;
+    });
+  }
+}
+
+// Minimal `<<`-chain splitter — mirrors the parent's splitStreamChain helper.
+// Walks the string respecting double-quoted string literals, splitting on top-
+// level `<<` (not inside a string). Returns the parts (may be empty strings).
+function splitStreamChain(s: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let inStr = false;
+  let cur = '';
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      cur += c;
+      if (c === '\\' && i + 1 < s.length) { cur += s[i + 1]; i++; continue; }
+      if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; cur += c; continue; }
+    if (c === '(') depth++;
+    if (c === ')') depth--;
+    if (depth === 0 && c === '<' && s[i + 1] === '<') {
+      parts.push(cur);
+      cur = '';
+      i++;  // skip second <
+      continue;
+    }
+    cur += c;
+  }
+  parts.push(cur);
+  return parts;
 }
