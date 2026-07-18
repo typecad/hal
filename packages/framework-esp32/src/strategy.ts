@@ -1,6 +1,15 @@
 import { ArduinoStrategy } from '@typecad/framework-arduino';
 import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic } from '@typecad/cuttlefish/api/shared';
 import { resolveEsp32Profile } from './profile.js';
+
+/** Read the IDF target ('esp32'|'esp32s3'|'esp32c3'|'esp32c6') from the
+ *  platform context. Accepts either frameworkData.target (preferred) or
+ *  frameworkData.buildTarget (what the cuttlefish CLI populates from the
+ *  config's frameworkData.buildTarget field — see cli.ts:462). */
+function targetFromContext(ctx?: PlatformContext): string | undefined {
+  const fd = ctx?.frameworkData as Record<string, unknown> | undefined;
+  return (fd?.target as string | undefined) ?? (fd?.buildTarget as string | undefined);
+}
 import { lowerHalOp } from './lowering/index.js';
 import { uartInitLines } from './lowering/uart.js';
 import { i2cInitLines }  from './lowering/i2c.js';
@@ -43,8 +52,34 @@ export class Esp32Strategy extends ArduinoStrategy {
   // literal "arduino", and TS won't allow any redeclaration. The inherited
   // value is fine; consumers select frameworks by package name, not strategy id.
 
+  // ── File-shape overrides (ESP-IDF project, not Arduino sketch) ─────────────
+  // The parent assumes Arduino sketch shape (.ino entry, folder-name === sketch
+  // name, single-file flattening). ESP-IDF uses a real C++ project: entry file
+  // is main.cc (under main/), with CMakeLists registering SRCS "main.cc".
+  override sourceExtension(isEntryFile: boolean, isNpmPackage: boolean): string {
+    if (isNpmPackage) return 'cpp';
+    if (isEntryFile) return 'cc';   // main.cc — the ESP-IDF entrypoint source
+    return 'h';
+  }
+
+  override overrideBaseName(_originalBaseName: string, _outDirBaseName: string, isEntryFile: boolean, _isNpmPackage: boolean): string {
+    // ESP-IDF's main/CMakeLists.txt registers SRCS "main.cc" — the entry file
+    // MUST be named "main" regardless of the project/output dir name.
+    return isEntryFile ? 'main' : _originalBaseName;
+  }
+
+  override generateHeaderFile(): boolean {
+    // ESP-IDF doesn't flatten into a single .ino; keep the .h pair for modules.
+    return true;
+  }
+
+  override outputSubdirectory(_baseName: string): string {
+    // ESP-IDF project layout: source files live under main/.
+    return 'main';
+  }
+
   override forcedIncludes(program: ProgramIR, ctx?: PlatformContext): string[] {
-    resolveEsp32Profile(ctx?.frameworkData?.target as string | undefined);
+    resolveEsp32Profile(targetFromContext(ctx));
     const a = (ctx as any)?.analysis;
     const uses = (f: string): boolean => (a ? !!a[f] : true);  // defensive default true
 
@@ -77,7 +112,7 @@ export class Esp32Strategy extends ArduinoStrategy {
   }
 
   override shimLines(program: ProgramIR, ctx?: PlatformContext): string[] {
-    resolveEsp32Profile(ctx?.frameworkData?.target as string | undefined);
+    resolveEsp32Profile(targetFromContext(ctx));
     const a = (ctx as any)?.analysis;
     const espInit: string[] = [];
     // Emit IDF driver init blocks for each peripheral the program actually uses.
@@ -201,7 +236,7 @@ export class Esp32Strategy extends ArduinoStrategy {
   // operate on the raw program tree + analysis flags.
   override profileDiagnostics(program: ProgramIR, ctx?: PlatformContext): Diagnostic[] {
     const diags: Diagnostic[] = [];
-    const chip = resolveEsp32Profile(ctx?.frameworkData?.target as string | undefined);
+    const chip = resolveEsp32Profile(targetFromContext(ctx));
     const a = (ctx as any)?.analysis ?? {};
 
     // DAC on a chip without DAC (C3/C6)

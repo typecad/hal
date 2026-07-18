@@ -22,13 +22,20 @@ export interface EspIdfCompileResult {
  * Spec §3.4.
  */
 export function compileEspIdf(options: EspIdfCompileOptions): EspIdfCompileResult {
+  // Scaffold FIRST, before env detection, so the user can inspect/edit the
+  // project files (CMakeLists.txt, sdkconfig.defaults) even on machines
+  // without ESP-IDF installed. The actual build needs the env, but the
+  // project skeleton is useful on its own.
+  scaffoldEspIdfProject(options.sourcePath, options.target);
+
   try {
     requireIdfEnv();
   } catch (e) {
-    return { success: false, output: '', errorMessage: (e as Error).message };
+    // Put the message in `output` (not just errorMessage) so the CLI's
+    // console.error(compileResult.output) fallback actually prints it.
+    const msg = (e as Error).message;
+    return { success: false, output: msg, errorMessage: msg };
   }
-
-  scaffoldEspIdfProject(options.sourcePath, options.target);
 
   const sdkconfigPath = `${options.sourcePath}/sdkconfig`;
   if (!existsSync(sdkconfigPath)) {

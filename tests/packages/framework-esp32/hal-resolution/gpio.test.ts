@@ -33,6 +33,21 @@ describe('gpio lowering', () => {
     expect(out.code).not.toMatch(/pullup|pulldown/);
   });
 
+  it('gpio.set_mode "OUTPUT" (uppercase, as HAL actually emits) → GPIO_MODE_OUTPUT', () => {
+    // The HAL source passes uppercase Arduino macros ("OUTPUT") even though
+    // GpioSetModeOp's docstring says lowercase. framework-avr documents this
+    // mismatch at strategy.ts:40-41; framework-esp32 must accept both.
+    const out = lowerGpio({ operation: 'gpio.set_mode', pin: 2, mode: 'OUTPUT' });
+    expect(out.code).toContain('GPIO_MODE_OUTPUT');
+    expect(out.code).not.toContain('GPIO_MODE_INPUT');
+  });
+
+  it('gpio.set_mode "INPUT_PULLUP" (uppercase) adds gpio_pullup_en', () => {
+    const out = lowerGpio({ operation: 'gpio.set_mode', pin: 4, mode: 'INPUT_PULLUP' });
+    expect(out.code).toContain('gpio_pullup_en((gpio_num_t)4)');
+    expect(out.code).toContain('GPIO_MODE_INPUT');
+  });
+
   it('gpio.set_mode "input_pullup" adds gpio_pullup_en', () => {
     const out = lowerGpio({ operation: 'gpio.set_mode', pin: 4, mode: 'input_pullup' });
     expect(out.code).toContain('gpio_pullup_en((gpio_num_t)4)');

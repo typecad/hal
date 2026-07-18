@@ -3,6 +3,25 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { scaffoldEspIdfProject } from '../../../packages/framework-esp32/src/toolchain/scaffold';
+import { projectRootFromOptions } from '../../../packages/framework-esp32/src/toolchain/index';
+
+describe('projectRootFromOptions', () => {
+  it('returns parent of outputDir when outputDir basename is "main"', () => {
+    const o = { outputDir: '/proj/out/main', sourcePath: '/proj/out/main/main.cc' } as any;
+    expect(projectRootFromOptions(o)).toBe('/proj/out');
+  });
+  it('returns outputDir unchanged when basename is not "main"', () => {
+    const o = { outputDir: '/proj/some-other', sourcePath: '/proj/some-other/main.cc' } as any;
+    expect(projectRootFromOptions(o)).toBe('/proj/some-other');
+  });
+  it('handles Windows-style paths', () => {
+    const o = { outputDir: 'C:\\proj\\out\\main', sourcePath: 'C:\\proj\\out\\main\\main.cc' } as any;
+    // basename uses platform separator; on Windows this is backslash.
+    // Just assert it doesn't throw and returns a string ending in 'out'.
+    const result = projectRootFromOptions(o);
+    expect(result).toMatch(/[\\/]out$/);
+  });
+});
 
 let tmpDir: string;
 
