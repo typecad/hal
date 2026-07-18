@@ -84,6 +84,20 @@ const SYSTEM_HEADERS = new Set([
 ]);
 
 /**
+ * Header prefixes that come from the compiler toolchain's C library
+ * (avr-libc, newlib), not from any installable Arduino library. Such headers
+ * are present on the system (via the toolchain) and should be reported as
+ * CORE/TOOLCHAIN rather than NOT INSTALLED. Deliberately conservative — only
+ * confident patterns; anything else still surfaces as not-installed.
+ */
+const TOOLCHAIN_HEADER_PREFIXES = ["avr/", "util/"];
+
+/** Classify a header as a compiler-toolchain C-library header. */
+export function isToolchainHeader(header: string): boolean {
+  return TOOLCHAIN_HEADER_PREFIXES.some((p) => header.toLowerCase().startsWith(p));
+}
+
+/**
  * Static driver -> library-header mapping for the config fallback. Mirrors the
  * `includes` each display adapter emits (those strings are static per driver —
  * verified against the adapters in api/shared/display-adapter*.ts). Kept here

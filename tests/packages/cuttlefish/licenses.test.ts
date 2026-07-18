@@ -6,6 +6,7 @@ import {
   coerceLibList,
   resolveProjectHeaders,
   joinHeadersToLibraries,
+  isToolchainHeader,
   __setLicensesRunnerForTest,
   type ScanOptions,
 } from "../../../packages/cuttlefish/src/licenses";
@@ -561,5 +562,26 @@ describe("joinHeadersToLibraries — header → library filesystem join", () => 
       readFile,
     );
     expect(joined.map((j) => j.kind)).toEqual(["resolved", "not-installed", "resolved"]);
+  });
+});
+
+describe("isToolchainHeader — toolchain C-library header classifier", () => {
+  it("classifies avr-libc avr/*.h headers as toolchain", () => {
+    expect(isToolchainHeader("avr/wdt.h")).toBe(true);
+    expect(isToolchainHeader("avr/interrupt.h")).toBe(true);
+    expect(isToolchainHeader("avr/pgmspace.h")).toBe(true);
+    expect(isToolchainHeader("avr/sleep.h")).toBe(true);
+  });
+
+  it("classifies avr-libc util/*.h headers as toolchain", () => {
+    expect(isToolchainHeader("util/delay.h")).toBe(true);
+    expect(isToolchainHeader("util/atomic.h")).toBe(true);
+  });
+
+  it("does NOT classify library or core headers as toolchain", () => {
+    expect(isToolchainHeader("Wire.h")).toBe(false);
+    expect(isToolchainHeader("Adafruit_ILI9341.h")).toBe(false);
+    expect(isToolchainHeader("Servo.h")).toBe(false);
+    expect(isToolchainHeader("SPI.h")).toBe(false);
   });
 });
