@@ -396,6 +396,16 @@ export interface PlatformSafetyStrategy {
    * StaticArray wrapper's methods or the std::vector/__tc_* helper form.
    */
   promotesArrayLiteralsToStaticArray?(): boolean;
+
+  /**
+   * Whether this target runs on a preemptive RTOS where blocking calls
+   * (e.g. vTaskDelay) yield the CPU to other tasks. When true, delay() inside
+   * loop() does NOT freeze the async queue or UI rendering — the timing
+   * validator suppresses the 'blocking-delay-in-loop' warning for plain delay().
+   * Defaults to false (Arduino/AVR use cooperative scheduling where delay
+   * freezes everything). ESP-IDF (FreeRTOS) returns true.
+   */
+  isRtosTarget?(): boolean;
 }
 
 // ---------------------------------------------------------------------------

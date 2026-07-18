@@ -12,24 +12,44 @@
 // g++ sees only an ordinary function. This validator flags blocking delays in
 // loop()'s direct body so the user can replace them with the cooperative
 // Async.sleep() / millis()-comparison pattern.
+//
+// IMPORTANT: on RTOS targets (ESP-IDF / FreeRTOS), delay() lowers to
+// vTaskDelay which YIELDS the CPU — it does not freeze other tasks, UI
+// rendering, or the async queue. Only delayMicroseconds (esp_rom_delay_us)
+// is a true busy-wait. So for RTOS targets, only delay_microseconds triggers
+// the warning; delay is safe.
 // ---------------------------------------------------------------------------
 
 import type { ProgramIR, StatementIR } from '../api/index.js';
 import type { Diagnostic } from '../types.js';
+import type { PlatformStrategy } from '../api/shared/index.js';
 import { walkNestedStatements } from './utils/walk-ir.js';
+import { hasLoadedFramework, getLoadedFramework } from '../framework-registry.js';
 
-/** Check a single statement for a blocking delay call or hal-op. */
-function isBlockingDelay(stmt: StatementIR): boolean {
+/** Check a single statement for a blocking delay call or hal-op.
+ *  On RTOS targets, timing.delay (vTaskDelay) is NOT blocking — only
+ *  timing.delay_microseconds (esp_rom_delay_us) is. */
+function isBlockingDelay(stmt: StatementIR, isRtos: boolean): boolean {
   const s = stmt as any;
   // Direct call: delay(...) or delayMicroseconds(...)
   if (stmt.kind === 'call' && typeof s.callee === 'string') {
-    if (s.callee === 'delay' || s.callee === 'delayMicroseconds') return true;
+    if (isRtos) {
+      // On RTOS targets, only delayMicroseconds is a busy-wait.
+      if (s.callee === 'delayMicroseconds') return true;
+    } else {
+      if (s.callee === 'delay' || s.callee === 'delayMicroseconds') return true;
+    }
   }
   // Hal-op: after HAL resolution, delay() becomes timing.delay /
   // timing.delay_microseconds.
   if (stmt.kind === 'hal-op' && s.operation?.operation) {
-    if (s.operation.operation === 'timing.delay' || s.operation.operation === 'timing.delay_microseconds') {
-      return true;
+    if (isRtos) {
+      // On RTOS targets, only timing.delay_microseconds is blocking.
+      if (s.operation.operation === 'timing.delay_microseconds') return true;
+    } else {
+      if (s.operation.operation === 'timing.delay' || s.operation.operation === 'timing.delay_microseconds') {
+        return true;
+      }
     }
   }
   return false;
@@ -38,25 +58,39 @@ function isBlockingDelay(stmt: StatementIR): boolean {
 /**
  * Detect blocking delay() calls inside loop()'s body. Emits a warning for
  * each, explaining the cooperative-async alternative.
+ *
+ * On RTOS targets (ESP-IDF), timing.delay lowers to vTaskDelay which yields
+ * the CPU — it does NOT freeze the async queue or UI. Only delayMicroseconds
+ * (busy-wait) triggers the warning.
  */
-export function validateBlockingDelayInLoop(program: ProgramIR): Diagnostic[] {
+export function validateBlockingDelayInLoop(program: ProgramIR, strategy?: PlatformStrategy): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
+
+  // Detect RTOS targets where delay() yields rather than blocks.
+  // framework-esp32 uses FreeRTOS; vTaskDelay is a yielding delay.
+  const isRtos = strategy?.isRtosTarget?.() === true
+    || (hasLoadedFramework() && getLoadedFramework().strategy.isRtosTarget?.() === true);
 
   const loopFn = program.functions.find(fn => fn.originalName === 'loop');
   if (!loopFn || !loopFn.statements) return diagnostics;
 
   const visit = (stmts: StatementIR[]): void => {
     for (const stmt of stmts) {
-      if (isBlockingDelay(stmt)) {
+      if (isBlockingDelay(stmt, isRtos)) {
         const s = stmt as any;
+        const message = isRtos
+          ? `Blocking delayMicroseconds() inside loop() is a busy-wait that wastes CPU cycles. ` +
+            `On RTOS targets (ESP-IDF), prefer timing.delay() (vTaskDelay) which yields the CPU to other tasks.`
+          : `Blocking delay() inside loop() freezes the async microtask queue and UI rendering ` +
+            `for the delay duration. This causes display tearing and makes the sketch unresponsive.`;
+        const hint = isRtos
+          ? `Replace delayMicroseconds with delay() if the timing permits, or accept the brief busy-wait if sub-millisecond precision is required.`
+          : `Use the cooperative pattern instead: track elapsed time with millis() comparisons, ` +
+            `or use Async.sleep(ms) / Async.yield() to let other tasks run between checks.`;
         diagnostics.push({
           severity: 'warning',
-          message:
-            `Blocking delay() inside loop() freezes the async microtask queue and UI rendering ` +
-            `for the delay duration. This causes display tearing and makes the sketch unresponsive.`,
-          hint:
-            `Use the cooperative pattern instead: track elapsed time with millis() comparisons, ` +
-            `or use Async.sleep(ms) / Async.yield() to let other tasks run between checks.`,
+          message,
+          hint,
           line: (stmt as any).sourceSpan?.startLine,
           column: (stmt as any).sourceSpan?.startColumn,
           filePath: (stmt as any).sourceSpan?.filePath,

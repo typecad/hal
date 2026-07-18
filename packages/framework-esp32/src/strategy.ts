@@ -62,6 +62,14 @@ export class Esp32Strategy extends ArduinoStrategy {
     return 'h';
   }
 
+  // ESP-IDF uses FreeRTOS — a preemptive RTOS where delay() (vTaskDelay) YIELDS
+  // the CPU. This is NOT a blocking busy-wait; other tasks run during the delay.
+  // The timing validator uses this to suppress the 'blocking-delay-in-loop'
+  // warning for plain delay() (delayMicroseconds is still a busy-wait).
+  isRtosTarget(): boolean {
+    return true;
+  }
+
   override overrideBaseName(_originalBaseName: string, _outDirBaseName: string, isEntryFile: boolean, _isNpmPackage: boolean): string {
     // ESP-IDF's main/CMakeLists.txt registers SRCS "main.cc" — the entry file
     // MUST be named "main" regardless of the project/output dir name.

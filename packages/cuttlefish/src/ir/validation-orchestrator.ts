@@ -45,7 +45,7 @@ export function runProgramValidations(program: ProgramIR, strategy?: PlatformStr
   diagnostics.push(...validateOwnership(program));
   diagnostics.push(...validateTryCatch(program, program.boardConstants, resolvedStrategy));
   diagnostics.push(...validateMemoryBudget(program, program.boardConstants));
-  diagnostics.push(...validateBlockingDelayInLoop(program));
+  diagnostics.push(...validateBlockingDelayInLoop(program, resolvedStrategy));
 
   return diagnostics;
 }
