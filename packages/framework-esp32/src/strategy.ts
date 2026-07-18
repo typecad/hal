@@ -1,6 +1,7 @@
 import { ArduinoStrategy } from '@typecad/framework-arduino';
-import type { ProgramIR, PlatformContext } from '@typecad/cuttlefish/api/shared';
+import type { ProgramIR, PlatformContext, HALOpIR } from '@typecad/cuttlefish/api/shared';
 import { resolveEsp32Profile } from './profile.js';
+import { lowerHalOp } from './lowering/index.js';
 
 const ARDUINO_UMBRELLA_HEADERS: ReadonlySet<string> = new Set([
   '<Arduino.h>',
@@ -88,5 +89,12 @@ export class Esp32Strategy extends ArduinoStrategy {
       '}',
       '',
     ];
+  }
+
+  // Resolve a HAL op to native ESP-IDF C++. Delegates to lowerHalOp, which
+  // dispatches by op.operation prefix and THROWS on unknown ops (no silent
+  // fallback to Arduino lowering — that would defeat this framework's purpose).
+  override resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {
+    return lowerHalOp(op);
   }
 }
