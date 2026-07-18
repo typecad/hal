@@ -964,6 +964,13 @@ export function __setProjectConfigForTest(config: ProjectConfig | undefined): vo
   testProjectConfig = config;
 }
 
+let testConfigDump: (() => string) | undefined;
+
+/** @internal Test-only override of `arduino-cli config dump` stdout. */
+export function __setConfigDumpForTest(fn: (() => string) | undefined): void {
+  testConfigDump = fn;
+}
+
 /**
  * `cuttlefish licenses` presenter. `all === false` (default, project scope)
  * resolves this project's libraries from the generated .ino (or config
@@ -1017,7 +1024,12 @@ function runProjectScope(strict: boolean): void {
     return;
   }
   const readdir = testRunner?.readdir ?? makeDefaultReaddir();
-  const project = joinHeadersToLibraries(headers.headers, libs, readdir, readFile);
+  // Resolve the project's board core (for core-bundled libs like Wire). Best-effort:
+  // on any failure, skip the core-index step.
+  const configDump = testConfigDump ?? makeDefaultConfigDump();
+  const core = resolveProjectCore(config?.buildTarget, configDump, readdir);
+  const coreDir = core.ok ? core.coreDir : undefined;
+  const project = joinHeadersToLibraries(headers.headers, libs, readdir, readFile, coreDir);
 
   const resolved = project.filter(
     (p): p is { kind: "resolved"; lib: LibraryLicenseEntry } => p.kind === "resolved",
@@ -1043,6 +1055,12 @@ function runProjectScope(strict: boolean): void {
   }
   for (const ni of notInstalled) {
     ui.printError(`${ni.header} .................. NOT INSTALLED`);
+  }
+  const coreHeaders = project.filter(
+    (p): p is { kind: "core"; header: string } => p.kind === "core",
+  );
+  for (const c of coreHeaders) {
+    ui.printInfo(`${c.header} ... CORE/TOOLCHAIN`);
   }
 
   const counts = countByRisk(resolved.map((r) => r.lib));
@@ -1152,6 +1170,20 @@ function makeDefaultReaddir(): (d: string) => string[] {
       return fs.readdirSync(d);
     } catch {
       return [];
+    }
+  };
+}
+function makeDefaultConfigDump(): () => string {
+  return () => {
+    try {
+      const result = spawnSync("arduino-cli", ["config", "dump", "--format", "json"], {
+        encoding: "utf8",
+        timeout: 30000,
+      });
+      if (result.error || result.status !== 0) return "";
+      return result.stdout ?? "";
+    } catch {
+      return "";
     }
   };
 }

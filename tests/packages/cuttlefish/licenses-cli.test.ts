@@ -3,6 +3,7 @@ import {
   runLicensesPresenter,
   __setLicensesRunnerForTest,
   __setProjectConfigForTest,
+  __setConfigDumpForTest,
 } from "../../../packages/cuttlefish/src/licenses";
 
 // The presenter lives in licenses.ts (not cli.ts) so it is importable from
@@ -197,5 +198,116 @@ describe("runLicensesPresenter — project scope", () => {
     expect(output()).toContain("ArduinoJson");
     expect(output()).not.toContain("NOT INSTALLED");
     expect(process.exitCode).toBeUndefined();
+  });
+});
+
+describe("runLicensesPresenter — core & toolchain rows", () => {
+  let logSpy: ReturnType<typeof vi.spyOn>;
+  let exitCode: number | string | undefined;
+
+  beforeEach(() => {
+    logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    exitCode = process.exitCode;
+    process.exitCode = undefined;
+  });
+
+  afterEach(() => {
+    __setLicensesRunnerForTest(undefined);
+    __setProjectConfigForTest(undefined);
+    __setConfigDumpForTest(undefined);
+    logSpy.mockRestore();
+    process.exitCode = exitCode;
+  });
+
+  function output(): string {
+    return logSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+  }
+
+  it("renders core lib license, gray toolchain row, red not-installed; counts exclude core", () => {
+    __setProjectConfigForTest({
+      configPath: "/proj/cuttlefish.config.ts",
+      entry: "./src/main.ts",
+      outputOutDir: "./out",
+      buildTarget: "arduino:avr:uno",
+    });
+    // config dump -> data dir /A15; core at /A15/packages/arduino/hardware/avr/1.8.7
+    __setConfigDumpForTest(() => JSON.stringify({ config: { directories: { data: "/A15" } } }));
+    __setLicensesRunnerForTest({
+      listLibraries: () => [], // no user libs
+      readFile: (p) => {
+        if (p.endsWith("main.ino")) {
+          return "#include <Wire.h>\n#include <avr/wdt.h>\n#include <Adafruit_ST7796S.h>\n";
+        }
+        // Wire's bundled header carries an LGPL-2.1 notice. Return it only when
+        // Wire.h's immediate parent dir is `src` (the core's bundled-lib
+        // layout). This avoids satisfying the project-local-header exclusion
+        // probe (path.join(inoDir, "Wire.h"), whose parent is `main`).
+        const norm = p.split(/[\\/]/).filter(Boolean);
+        if (norm[norm.length - 1] === "Wire.h" && norm[norm.length - 2] === "src") {
+          return (
+            "/* TwoWire.h\n" +
+            " * GNU Lesser General Public License version 2.1.\n" +
+            " */\n"
+          );
+        }
+        return undefined;
+      },
+      readdir: (d) => {
+        // Separator-agnostic segment matching (path.join uses \ on Windows).
+        const segs = d.split(/[\\/]/).filter(Boolean);
+        const seg = segs[segs.length - 1] ?? "";
+        const parent = segs[segs.length - 2] ?? "";
+        // project-local check: nothing co-located with the .ino
+        // core layout under .../1.8.7
+        if (seg === "1.8.7" && parent === "avr") return ["libraries"];
+        if (seg === "libraries" && parent === "1.8.7") return ["Wire"];
+        if (seg === "Wire" && parent === "libraries") return ["src"];
+        if (seg === "src" && parent === "Wire") return ["Wire.h"];
+        // hardware dir for version listing
+        if (seg === "avr" && parent === "hardware") return ["1.8.7"];
+        return [];
+      },
+    });
+    runLicensesPresenter(false, false);
+    // Wire resolved with LGPL-2.1
+    expect(output()).toContain("Wire");
+    expect(output()).toContain("LGPL-2.1");
+    // avr/wdt.h rendered as gray CORE/TOOLCHAIN
+    expect(output()).toContain("avr/wdt.h");
+    expect(output()).toContain("CORE/TOOLCHAIN");
+    // Adafruit_ST7796S.h still NOT INSTALLED
+    expect(output()).toContain("Adafruit_ST7796S.h");
+    expect(output()).toContain("NOT INSTALLED");
+    // summary counts only Wire (the resolved lib) — no "; N core"
+    expect(output()).toContain("1 weak copyleft");
+    expect(output()).not.toMatch(/; \d+ core/);
+    // exit 0 without --strict
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it("--strict exits 1 only for not-installed, not for the core/toolchain header", () => {
+    __setProjectConfigForTest({
+      configPath: "/proj/cuttlefish.config.ts",
+      entry: "./src/main.ts",
+      outputOutDir: "./out",
+      buildTarget: "arduino:avr:uno",
+    });
+    __setConfigDumpForTest(() => JSON.stringify({ config: { directories: { data: "/A15" } } }));
+    __setLicensesRunnerForTest({
+      listLibraries: () => [],
+      readFile: (p) => (p.endsWith("main.ino") ? "#include <avr/wdt.h>\n#include <Adafruit_ST7796S.h>\n" : undefined),
+      readdir: (d) => {
+        const segs = d.split(/[\\/]/).filter(Boolean);
+        const seg = segs[segs.length - 1] ?? "";
+        const parent = segs[segs.length - 2] ?? "";
+        if (seg === "avr" && parent === "hardware") return ["1.8.7"];
+        if (seg === "1.8.7" && parent === "avr") return ["libraries"];
+        return [];
+      },
+    });
+    runLicensesPresenter(true, false);
+    // avr/wdt.h alone wouldn't force exit 1; ST7796S does.
+    expect(process.exitCode).toBe(1);
+    expect(output()).toContain("Adafruit_ST7796S.h");
   });
 });
