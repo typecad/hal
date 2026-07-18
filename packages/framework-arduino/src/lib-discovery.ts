@@ -164,13 +164,48 @@ export function getInstalledLibraries(): Map<string, ArduinoLibrary> {
 }
 
 /**
- * Find an Arduino library by name.
+ * Normalize a library name or import specifier for matching: lowercase, and
+ * treat spaces, underscores, and hyphens as equivalent. arduino-cli reports
+ * library names with spaces (e.g. "Adafruit ILI9341") while TypeScript imports
+ * use underscores (e.g. "Adafruit_ILI9341"); both must resolve to the same lib.
+ */
+function normalizeLibraryName(name: string): string {
+  return name.toLowerCase().replace(/[\s_-]+/g, " ").trim();
+}
+
+/**
+ * Pure matcher: find the installed library whose name corresponds to a given
+ * import specifier, normalizing spaces/underscores/hyphens and case. Takes the
+ * library iterable directly so it is unit-testable without arduino-cli.
+ */
+export function matchLibraryBySpecifier(
+  specifier: string,
+  libraries: Iterable<ArduinoLibrary>,
+): ArduinoLibrary | undefined {
+  const target = normalizeLibraryName(specifier);
+  // Prefer exact (normalized) match, then a starts-with match as a fallback
+  // for specifiers that omit a trailing "Library" suffix.
+  let exact: ArduinoLibrary | undefined;
+  let prefix: ArduinoLibrary | undefined;
+  for (const lib of libraries) {
+    const norm = normalizeLibraryName(lib.name);
+    if (norm === target) return lib;
+    if (!exact && norm === target) exact = lib;
+    if (!prefix && (norm.startsWith(target) || target.startsWith(norm))) prefix = lib;
+  }
+  return exact ?? prefix;
+}
+
+/**
+ * Find an Arduino library by name (or underscored import specifier).
  */
 export function findArduinoLibrary(name: string): ArduinoLibrary | undefined {
   const libraries = getInstalledLibraries();
-  
-  // Try exact match first, then case-insensitive
-  return libraries.get(name) || libraries.get(name.toLowerCase());
+  // Fast path: the cache is keyed by exact + lowercased name.
+  const direct = libraries.get(name) || libraries.get(name.toLowerCase());
+  if (direct) return direct;
+  // Normalized path: match "Adafruit_ILI9341" <-> "Adafruit ILI9341".
+  return matchLibraryBySpecifier(name, libraries.values());
 }
 
 /**

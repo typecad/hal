@@ -13,6 +13,7 @@ import {
   parseCppClass,
   generateUsageDocumentation,
   clearLibraryCache,
+  matchLibraryBySpecifier,
   type ArduinoLibrary,
 } from '../../../packages/framework-arduino/src/arduino-libs';
 
@@ -47,6 +48,41 @@ describe('Arduino Library Import Detection', () => {
     expect(isArduinoLibraryImport('fs')).toBe(false);
     expect(isArduinoLibraryImport('path')).toBe(false);
     expect(isArduinoLibraryImport('http')).toBe(false);
+  });
+});
+
+describe('matchLibraryBySpecifier — name normalization', () => {
+  // arduino-cli reports library names with spaces; TS imports use underscores.
+  // Both must resolve to the same library. Case-insensitive throughout.
+  const libs: ArduinoLibrary[] = [
+    { name: 'Adafruit ILI9341', version: '1.6.3', path: '/libs/Adafruit_ILI9341' },
+    { name: 'Adafruit GFX Library', version: '1.11.5', path: '/libs/Adafruit_GFX_Library' },
+    { name: 'OneWire', version: '2.3.8', path: '/libs/OneWire' },
+    { name: 'Adafruit BusIO', version: '1.17', path: '/libs/Adafruit_BusIO' },
+  ];
+
+  it('matches an underscored specifier to a spaced library name (the ILI9341 bug)', () => {
+    const lib = matchLibraryBySpecifier('Adafruit_ILI9341', libs);
+    expect(lib?.name).toBe('Adafruit ILI9341');
+  });
+
+  it('matches case-insensitively', () => {
+    expect(matchLibraryBySpecifier('adafruit_ili9341', libs)?.name).toBe('Adafruit ILI9341');
+    expect(matchLibraryBySpecifier('ADAFRUIT_ILI9341', libs)?.name).toBe('Adafruit ILI9341');
+  });
+
+  it('still matches when specifier and name already agree (exact)', () => {
+    expect(matchLibraryBySpecifier('OneWire', libs)?.name).toBe('OneWire');
+    expect(matchLibraryBySpecifier('onewire', libs)?.name).toBe('OneWire');
+  });
+
+  it('matches multi-word library names', () => {
+    expect(matchLibraryBySpecifier('Adafruit_BusIO', libs)?.name).toBe('Adafruit BusIO');
+    expect(matchLibraryBySpecifier('Adafruit_GFX_Library', libs)?.name).toBe('Adafruit GFX Library');
+  });
+
+  it('returns undefined when nothing matches', () => {
+    expect(matchLibraryBySpecifier('Nonexistent_Lib', libs)).toBeUndefined();
   });
 });
 

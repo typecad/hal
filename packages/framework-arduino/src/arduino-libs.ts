@@ -13,6 +13,7 @@ export {
   findArduinoLibrary,
   findLibraryHeader,
   isArduinoLibraryImport,
+  matchLibraryBySpecifier,
   clearLibraryCache,
 } from './lib-discovery.js';
 
