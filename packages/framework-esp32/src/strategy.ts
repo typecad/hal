@@ -1,5 +1,5 @@
 import { ArduinoStrategy } from '@typecad/framework-arduino';
-import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR } from '@typecad/cuttlefish/api/shared';
+import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic } from '@typecad/cuttlefish/api/shared';
 import { resolveEsp32Profile } from './profile.js';
 import { lowerHalOp } from './lowering/index.js';
 import { uartInitLines } from './lowering/uart.js';
@@ -189,6 +189,62 @@ export class Esp32Strategy extends ArduinoStrategy {
       }
       return p;
     });
+  }
+
+  // Variant-specific sanity checks at transpile time. Catches impossible
+  // configs (DAC on C3/C6, input-only pins as OUTPUT) before they reach the
+  // linker. Spec §6.
+  //
+  // Does NOT call super.profileDiagnostics() — the parent's diagnostics walk
+  // Arduino-specific IR shape (collectUsedIdentifiers over program.functions
+  // with assumptions about FQBN-derived arch). Our checks are independent and
+  // operate on the raw program tree + analysis flags.
+  override profileDiagnostics(program: ProgramIR, ctx?: PlatformContext): Diagnostic[] {
+    const diags: Diagnostic[] = [];
+    const chip = resolveEsp32Profile(ctx?.frameworkData?.target as string | undefined);
+    const a = (ctx as any)?.analysis ?? {};
+
+    // DAC on a chip without DAC (C3/C6)
+    if (a.usesDAC && chip.lacks.includes('dac')) {
+      diags.push({
+        severity: 'error',
+        code: 'esp32-dac-unavailable',
+        message: `${chip.id} has no DAC peripheral. DAC output is only available on ESP32 (classic) and ESP32-S3.`,
+        source: program.fileName,
+      });
+    }
+
+    // Walk program IR for OUTPUT-mode pins and check against inputOnly list.
+    // (Classic ESP32 pins 34-39 are input-only; cannot be OUTPUT.)
+    const outputPins = new Set<number>();
+    const visit = (node: any): void => {
+      if (node && typeof node === 'object') {
+        if (node.operation && typeof node.operation === 'object'
+            && node.operation.operation === 'gpio.set_mode'
+            && node.operation.mode === 'output') {
+          outputPins.add(node.operation.pin);
+        }
+        for (const k of Object.keys(node)) {
+          const v = node[k];
+          if (Array.isArray(v)) v.forEach(visit);
+          else if (typeof v === 'object' && v !== null) visit(v);
+        }
+      }
+    };
+    visit(program);
+    for (const pin of outputPins) {
+      if (chip.gpio.inputOnly.includes(pin)) {
+        diags.push({
+          severity: 'error',
+          code: 'esp32-input-only-pin-as-output',
+          message: `GPIO ${pin} is input-only on ${chip.id} and cannot be configured as OUTPUT.`,
+          hint: 'Use a different pin for output, or change the mode to INPUT/INPUT_PULLUP.',
+          source: program.fileName,
+        });
+      }
+    }
+
+    return diags;
   }
 }
 
