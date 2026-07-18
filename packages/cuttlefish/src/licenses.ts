@@ -60,6 +60,8 @@ interface ProjectConfig {
   configPath: string;
   entry?: string;
   outputOutDir?: string;
+  /** FQBN, e.g. 'arduino:avr:uno'. Used to resolve the board core for core-bundled libs. */
+  buildTarget?: string;
   display?: { profile?: string; driver?: string; touch?: { library?: string } } | null;
 }
 
@@ -95,6 +97,76 @@ const TOOLCHAIN_HEADER_PREFIXES = ["avr/", "util/"];
 /** Classify a header as a compiler-toolchain C-library header. */
 export function isToolchainHeader(header: string): boolean {
   return TOOLCHAIN_HEADER_PREFIXES.some((p) => header.toLowerCase().startsWith(p));
+}
+
+/**
+ * Result of resolving the project's board core directory.
+ */
+export type ProjectCore =
+  | { ok: true; coreDir: string }
+  | { ok: false; reason: "no-fqbn" | "no-core"; message: string };
+
+/**
+ * Compare two version strings as semver (major.minor.patch). Falls back to
+ * lexical comparison when either isn't a clean semver.
+ */
+function compareVersion(a: string, b: string): number {
+  const pa = a.split(".").map((n) => Number(n));
+  const pb = b.split(".").map((n) => Number(n));
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const va = pa[i] ?? 0;
+    const vb = pb[i] ?? 0;
+    if (va !== vb) return va - vb;
+  }
+  return a.localeCompare(b);
+}
+
+/**
+ * Resolve the project's board-core directory from its FQBN, via
+ * `arduino-cli config dump` (for the packages data dir) and the on-disk
+ * `<data>/packages/<packager>/hardware/<arch>/<version>/` layout. Returns the
+ * highest-versioned core dir. Never throws.
+ *
+ * `runConfigDump` is an injected seam (returns the `config dump` stdout, or ""
+ * on failure) so the function is unit-testable without spawning.
+ */
+export function resolveProjectCore(
+  fqbn: string | undefined,
+  runConfigDump: () => string,
+  readdir: (d: string) => string[],
+): ProjectCore {
+  const coreId = deriveRequiredCore(fqbn);
+  if (!coreId) {
+    return { ok: false, reason: "no-fqbn", message: "No buildTarget (FQBN) in config." };
+  }
+  const [packager, arch] = coreId.split(":");
+
+  let dataDir: string | undefined;
+  try {
+    const stdout = runConfigDump();
+    if (stdout) {
+      const parsed = JSON.parse(stdout);
+      dataDir = parsed?.config?.directories?.data;
+    }
+  } catch {
+    // fall through to no-core
+  }
+  if (!dataDir) {
+    return { ok: false, reason: "no-core", message: "Could not read arduino-cli data directory." };
+  }
+
+  const hardwareDir = path.join(dataDir, "packages", packager, "hardware", arch);
+  let versions: string[];
+  try {
+    versions = readdir(hardwareDir);
+  } catch {
+    return { ok: false, reason: "no-core", message: `No core versions at ${hardwareDir}.` };
+  }
+  if (versions.length === 0) {
+    return { ok: false, reason: "no-core", message: `No core versions at ${hardwareDir}.` };
+  }
+  versions.sort((a, b) => compareVersion(b, a)); // descending
+  return { ok: true, coreDir: path.join(hardwareDir, versions[0]) };
 }
 
 /**
@@ -823,6 +895,7 @@ export function scanLicenses(options?: ScanOptions): ScanOutcome {
 // main() at import time.
 import * as ui from "./utils/ui.js";
 import { loadCuttlefishConfig } from "./config-loader.js";
+import { deriveRequiredCore } from "@typecad/arduino-cli";
 
 let testProjectConfig: ProjectConfig | undefined;
 

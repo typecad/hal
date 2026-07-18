@@ -7,6 +7,7 @@ import {
   resolveProjectHeaders,
   joinHeadersToLibraries,
   isToolchainHeader,
+  resolveProjectCore,
   __setLicensesRunnerForTest,
   type ScanOptions,
 } from "../../../packages/cuttlefish/src/licenses";
@@ -583,5 +584,54 @@ describe("isToolchainHeader — toolchain C-library header classifier", () => {
     expect(isToolchainHeader("Adafruit_ILI9341.h")).toBe(false);
     expect(isToolchainHeader("Servo.h")).toBe(false);
     expect(isToolchainHeader("SPI.h")).toBe(false);
+  });
+});
+
+describe("resolveProjectCore — FQBN to core path", () => {
+  // Fake arduino-cli runner returning config dump JSON. The real shape is
+  // { config: { directories: { data: "<packagesRoot>" } } }.
+  const fakeConfigDump = (dataDir: string) => () =>
+    JSON.stringify({ config: { directories: { data: dataDir } } });
+
+  // Match the hardware dir by its trailing path segment so the fixture is
+  // separator-agnostic (path.join uses \ on Windows).
+  const isHardwareAvrDir = (d: string): boolean => /[/\\]hardware[/\\]avr$/.test(d);
+
+  it("derives the core path from an FQBN and picks the highest installed version", () => {
+    // Two versions installed; 1.8.7 > 1.8.6 by semver.
+    const readdir = (d: string): string[] => (isHardwareAvrDir(d) ? ["1.8.6", "1.8.7"] : []);
+    const result = resolveProjectCore("arduino:avr:uno", fakeConfigDump("/A15"), readdir);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Normalized to forward slashes for a stable cross-platform assertion.
+      const dir = result.coreDir.split("\\").join("/");
+      expect(dir).toBe("/A15/packages/arduino/hardware/avr/1.8.7");
+    }
+  });
+
+  it("falls back to the single available version", () => {
+    const readdir = (d: string): string[] => (isHardwareAvrDir(d) ? ["1.8.7"] : []);
+    const result = resolveProjectCore("arduino:avr:uno", fakeConfigDump("/A15"), readdir);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.coreDir.split("\\").join("/")).toBe("/A15/packages/arduino/hardware/avr/1.8.7");
+  });
+
+  it("returns no-fqbn when the FQBN is absent", () => {
+    const result = resolveProjectCore(undefined, fakeConfigDump("/A15"), () => []);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("no-fqbn");
+  });
+
+  it("returns no-core when config dump fails (runner returns empty)", () => {
+    const result = resolveProjectCore("arduino:avr:uno", () => "", () => []);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("no-core");
+  });
+
+  it("returns no-core when the core dir has no versions", () => {
+    const readdir = (d: string): string[] => (isHardwareAvrDir(d) ? [] : []);
+    const result = resolveProjectCore("arduino:avr:uno", fakeConfigDump("/A15"), readdir);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.reason).toBe("no-core");
   });
 });
