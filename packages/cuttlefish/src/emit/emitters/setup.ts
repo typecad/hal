@@ -56,6 +56,69 @@ function filterShimBlock(lines: string[], startMarker: string, endMarker: string
 }
 
 /**
+ * Detect whether a program uses the watchdog timer. The HAL resolver lowers
+ * `WDT.enable/reset/disable` calls to structured `wdt.*` hal-ops, which the
+ * setup emitter then renders as bare `wdt_enable/wdt_reset/wdt_disable` calls
+ * (or constant-folded `wdt_enable(WDTO_*)` macros). All of those require
+ * `<avr/wdt.h>`, so the include is gated on this check instead of being forced
+ * into every AVR program.
+ *
+ * `programAnalysis.usesWDT` is NOT used here: it scans `WDT.`-prefixed
+ * callees and raw-code hal-ops, but the structured `wdt.*` ops carry a typed
+ * operation name with no raw code, so the analysis misses them.
+ *
+ * The recursion mirrors `collectStatementIdentifiers` (identifier-collector.ts)
+ * — the canonical IR walker — so every compound statement shape is covered.
+ */
+function programUsesWdt(program: ProgramIR): boolean {
+  const visitStatement = (stmt: StatementIR): boolean => {
+    if (stmt.kind === "hal-op") {
+      const opName = (stmt as any).operation?.operation;
+      if (typeof opName === "string" && opName.startsWith("wdt.")) return true;
+    }
+    switch (stmt.kind) {
+      case "block":
+      case "labeled":
+        return visit(stmt.body);
+      case "if":
+        return visit(stmt.thenBranch) || visit(stmt.elseBranch ?? []);
+      case "for":
+        return visit(stmt.body)
+          || (stmt.initializer ? visitStatement(stmt.initializer) : false);
+      case "while":
+      case "do_while":
+      case "for_of":
+      case "for_in":
+        return visit(stmt.body);
+      case "switch":
+        return stmt.cases.some((c: any) => visit(c.body ?? []));
+      case "try":
+        return visit(stmt.tryBlock) || visit(stmt.catchBlock ?? []) || visit(stmt.finallyBlock ?? []);
+      default:
+        return false;
+    }
+  };
+  const visit = (statements: StatementIR[] | undefined): boolean => {
+    if (!statements) return false;
+    for (const stmt of statements) {
+      if (visitStatement(stmt)) return true;
+    }
+    return false;
+  };
+  if (visit(program.topLevelStatements)) return true;
+  for (const fn of program.functions) {
+    if (visit(fn.statements)) return true;
+  }
+  for (const cls of program.classes) {
+    for (const m of cls.methods) if (visit(m.statements)) return true;
+    for (const g of cls.getters) if (visit(g.statements)) return true;
+    for (const s of cls.setters) if (visit(s.statements)) return true;
+    if (cls.constructor && visit(cls.constructor.statements)) return true;
+  }
+  return false;
+}
+
+/**
  * Extract a `#ifndef MACRO ... #endif` include-guard block from a shim line
  * list. Used to emit just the macro definition (e.g. CUTTLEFISH_UNDEFINED) in
  * non-entry files of a split compilation, where the full helper shim belongs
@@ -144,6 +207,14 @@ export function buildEmitterContext(
   const programAnalysis = analyzeProgram(program, strategy);
 
   if (options.platformContext) {
+    // The UI runtime's per-frame tick calls millis() (injected by the emitter,
+    // not present in user source), so a mounted UI needs the native millis ISR
+    // even when usesNativeTiming is false. OR entryHasUI() into the flag the
+    // AVR strategy reads when gating native_millis, so framework-avr doesn't
+    // drop the Timer0 ISR from a UI program.
+    if (!programAnalysis.usesNativeTiming && entryHasUI()) {
+      programAnalysis.usesNativeTiming = true;
+    }
     options.platformContext.analysis = programAnalysis;
     if (!options.platformContext.architecture && program.boardConstants) {
       options.platformContext.architecture = program.boardConstants.get("architecture") as string;
@@ -255,6 +326,28 @@ export function buildEmitterContext(
     }
     if (!programAnalysis.usesStrPtr) {
       shimLines = filterShimBlock(shimLines, '#ifndef CUTTLEFISH_STR_BUF_SIZE', 'inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }');
+    }
+    // framework-avr native peripheral driver shims. Each block carries a
+    // CUTTLEFISH_*_BEGIN/END marker pair; strip the ones the program doesn't
+    // use. framework-arduino's shimLines contain none of these markers, so
+    // these filters are no-ops there. The strategies also self-gate on the
+    // same flags; this is the defensive backstop (mirrors how usesWDT/etc.
+    // backstop the strategy-side gating above).
+    if (!programAnalysis.usesUart) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_UART_BEGIN', '// CUTTLEFISH_UART_END');
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_UART_EXT_BEGIN', '// CUTTLEFISH_UART_EXT_END');
+    }
+    if (!programAnalysis.usesSPI) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_SPI_BEGIN', '// CUTTLEFISH_SPI_END');
+    }
+    if (!programAnalysis.usesI2C) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_TWI_BEGIN', '// CUTTLEFISH_TWI_END');
+    }
+    if (!programAnalysis.usesEEPROM) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_EEPROM_BEGIN', '// CUTTLEFISH_EEPROM_END');
+    }
+    if (!programAnalysis.usesTone) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_TONE_BEGIN', '// CUTTLEFISH_TONE_END');
     }
     profileDiagnostics = [...strategy.profileDiagnostics(program, options.platformContext)];
   }
@@ -796,6 +889,17 @@ export function buildEmitterContext(
   // Header name is platform-specific: <cstring> on hosted, <string.h> on AVR.
   if (stringEnumNames.size > 0) {
     includes.push(strategy.cstringHeader());
+  }
+  // `<avr/wdt.h>` is only needed when the program actually uses the watchdog.
+  // The HAL resolver lowers WDT.enable/reset/disable to bare wdt_*() calls
+  // (or constant-folded wdt_enable(WDTO_*) macros), all of which require the
+  // header. Detect the structured `wdt.*` hal-ops directly here rather than
+  // relying on programAnalysis.usesWDT (which misses these ops — they carry
+  // a typed operation name, not raw code the analysis scans) or on a forced
+  // include in the AVR profile (which leaked the header into every AVR
+  // program, even ones that never touch the watchdog like `led.toggle()`).
+  if (programUsesWdt(program)) {
+    includes.push("<avr/wdt.h>");
   }
 
   // Placeholder defaults for fields that are computed later by other phases

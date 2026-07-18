@@ -140,6 +140,7 @@ describe("init-templates", () => {
       expect(parsed.compilerOptions.strict).toBe(true);
       expect(parsed.compilerOptions.paths['@typecad/board']).toBeDefined();
       expect(parsed.compilerOptions.allowArbitraryExtensions).toBe(true);
+      expect(parsed.compilerOptions.allowImportingTsExtensions).toBe(true);
       expect(parsed.compilerOptions.rootDirs).toEqual(["src", "types"]);
       expect(parsed.include).toContain('src/**/*.ts');
       expect(parsed.include).toContain('types/**/*.ts');

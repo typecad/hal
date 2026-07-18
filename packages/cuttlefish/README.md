@@ -12,15 +12,15 @@ C++, and can chain compile, upload, and serial-monitor steps.
 From a project root containing `cuttlefish.config.ts`:
 
 ```bash
-npx cuttlefish build
-npx cuttlefish build --compile --upload --port COM4
-npx cuttlefish build --compile --upload --monitor --port COM4 --baud 115200
+npx @typecad/cuttlefish build
+npx @typecad/cuttlefish build --compile --upload --port COM4
+npx @typecad/cuttlefish build --compile --upload --monitor --port COM4 --baud 115200
 ```
 
 Scaffold a starter project with the built-in wizard:
 
 ```bash
-npx cuttlefish create --board arduino:avr:uno --framework arduino
+npx @typecad/cuttlefish create --board arduino:avr:uno --framework arduino
 ```
 
 ## Commands

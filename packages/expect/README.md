@@ -152,13 +152,13 @@ All numeric matchers return the parent `Suite`, so you can continue the chain wi
 
 ```bash
 # Run a specific file
-npx cuttlefish-test examples/my-sensor.test.ts
+npx --package=@typecad/expect cuttlefish-test examples/my-sensor.test.ts
 
 # Run all test files matched by config include patterns
-npx cuttlefish-test
+npx --package=@typecad/expect cuttlefish-test
 
 # Override the port at run-time
-npx cuttlefish-test --port /dev/ttyACM0 examples/my-sensor.test.ts
+npx --package=@typecad/expect cuttlefish-test --port /dev/ttyACM0 examples/my-sensor.test.ts
 ```
 
 Or via the npm script defined in the root `package.json`:
@@ -253,10 +253,10 @@ Example flow:
 
 ```bash
 # 1. Compile and upload the serial-output showcase
-npx cuttlefish src/23-transpiler-showcase.ts --compile --upload --port COM4
+npx @typecad/cuttlefish src/23-transpiler-showcase.ts --compile --upload --port COM4
 
 # 2. Run the on-hardware expect test against the connected Uno
-npx cuttlefish-test examples/24-uno-validation.test.ts --port COM4
+npx --package=@typecad/expect cuttlefish-test examples/24-uno-validation.test.ts --port COM4
 ```
 
 This hybrid workflow is the recommended way to confirm that simple variables, arithmetic, arrays, enums, functions, GPIO, and analog input are behaving correctly on real Uno hardware.

@@ -72,7 +72,7 @@ SPI and UART follow the same pattern — the type system tracks initialization s
 ## One command to flash
 
 ```bash
-npx cuttlefish sketch.ts --compile --upload --monitor --port COM4
+npx @typecad/cuttlefish sketch.ts --compile --upload --monitor --port COM4
 ```
 
 Transpile, compile, upload, and open a serial monitor in a single invocation. Or use the individual flags — `--compile` only, `--compile --upload` only — whatever fits your workflow.
@@ -316,7 +316,7 @@ Set breakpoints in your `.ts` source files. The transpiler injects serial instru
 C++ compiler errors map back to your TypeScript source:
 
 ```bash
-npx cuttlefish map-error out/sketch/sketch.ino.thcppmap.json --line 42 --column 5
+npx @typecad/cuttlefish map-error out/sketch/sketch.ino.thcppmap.json --line 42 --column 5
 ```
 
 You see the TypeScript file, line, and column — not the generated C++.
@@ -332,7 +332,7 @@ Tree-shaking is on by default. Only code reachable from your entry points (`setu
 Scaffold a new project in one command — no global install needed:
 
 ```bash
-npx cuttlefish create my-project --board arduino-uno
+npx @typecad/cuttlefish create my-project --board arduino-uno
 cd my-project
 npm install
 ```
@@ -342,7 +342,7 @@ This creates a complete project with `cuttlefish.config.ts`, `tsconfig.json`, a 
 Or launch an interactive wizard:
 
 ```bash
-npx cuttlefish create
+npx @typecad/cuttlefish create
 ```
 
 ### Manual setup
@@ -384,7 +384,7 @@ while (true) {
 Build and flash:
 
 ```bash
-npx cuttlefish sketch.ts --compile --upload --port COM4
+npx @typecad/cuttlefish sketch.ts --compile --upload --port COM4
 ```
 
 ---
@@ -392,8 +392,8 @@ npx cuttlefish sketch.ts --compile --upload --port COM4
 ## CLI reference
 
 ```bash
-npx cuttlefish create [project-name] [options]   # scaffold a new project
-cuttlefish init [project-name] [options]          # scaffold via the full CLI
+npx @typecad/cuttlefish create [project-name] [options]   # scaffold a new project
+cuttlefish init [project-name] [options]                  # scaffold via the full CLI (after install)
 cuttlefish <input.ts> [options]
 cuttlefish build                                  # use entry from cuttlefish.config.ts
 cuttlefish gen-libdefs <input.ts>
@@ -403,7 +403,7 @@ cuttlefish create-board <name>                    # scaffold a new board package
 
 ### Project scaffolding (`cuttlefish create`)
 
-The scaffolding is built into the `cuttlefish` CLI — `npx cuttlefish create` downloads the transpiler toolchain on demand and scaffolds a project without pulling in the full set of packages.
+The scaffolding is built into the `cuttlefish` CLI — `npx @typecad/cuttlefish create` downloads the transpiler toolchain on demand and scaffolds a project without pulling in the full set of packages. Once installed in a project (or globally), the binary is just `cuttlefish`.
 
 | Flag | Description |
 |---|---|

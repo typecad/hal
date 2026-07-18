@@ -28,7 +28,7 @@ export default config;
 Then run the CLI:
 
 ```bash
-npx cuttlefish src/main.ts --compile --upload --port COM4
+npx @typecad/cuttlefish src/main.ts --compile --upload --port COM4
 ```
 
 ## How to use

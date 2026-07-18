@@ -105,7 +105,7 @@ export default config;
 Transpile, compile, and upload:
 
 ```bash
-npx cuttlefish src/main.ts --compile --upload --port COM4
+npx @typecad/cuttlefish src/main.ts --compile --upload --port COM4
 ```
 
 ## Pin references

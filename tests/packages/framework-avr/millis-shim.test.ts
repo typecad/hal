@@ -1,16 +1,23 @@
 import { describe, it, expect } from "vitest";
 import { NativeAVRStrategy } from "../../../packages/framework-avr/src/strategy";
 import { ATMEGA328P, ATMEGA2560, setActiveChip } from "../../../packages/framework-avr/src/chips/index.js";
-import type { ProgramIR } from "@typecad/cuttlefish/api/shared";
+import { buildProgramIR } from "../../../packages/cuttlefish/src/testing";
+import { analyzeProgram } from "../../../packages/cuttlefish/src/ir/program-analysis";
+import type { ProgramIR, PlatformContext } from "@typecad/cuttlefish/api/shared";
 
 // Native millis()/micros() via Timer0 overflow ISR.
 //
 // Before this work, framework-avr depended on millis()/micros() from the
 // Arduino core (wiring.c) — a contradiction for a "no Arduino core" framework.
-// The strategy now emits its own Timer0 ISR + atomic millis()/micros() in a
+// The strategy emits its own Timer0 ISR + atomic millis()/micros() in a
 // native_millis polyfill (not shimLines, because the emit pipeline filters
 // shim lines containing 'millis()'). Driven by the chip descriptor's
 // millisTimer config. These tests pin the generated C++ at the string level.
+//
+// The polyfill is gated on actual timing usage (usesNativeTiming) so a trivial
+// program like `led.toggle()` doesn't pull in the Timer0 ISR. When ctx is
+// undefined (no analysis available, e.g. direct strategy unit tests) the
+// polyfill is emitted defensively — preserving the historical behavior.
 
 const PROGRAM = {
   topLevelStatements: [],
@@ -142,9 +149,55 @@ describe("NativeAVRStrategy millis()/micros() Timer0 ISR", () => {
       expect(ids).toContain("timer_methods");
     });
 
-    it("always includes the native_millis polyfill", () => {
+    it("includes the native_millis polyfill when ctx is unavailable (defensive default)", () => {
+      // When no PlatformContext is supplied (e.g. direct strategy unit tests,
+      // or code paths that predate analysis), the strategy can't read usage
+      // flags. It emits native_millis defensively to avoid silently dropping
+      // the Timer0 ISR from a program that needs it.
       setActiveChip(ATMEGA328P);
       const polyfills = new NativeAVRStrategy().generateNativePolyfills(PROGRAM, undefined as any);
+      expect(polyfills.map(p => p.id)).toContain("native_millis");
+    });
+  });
+
+  // ── Usage gating: native_millis is emitted only when timing is used ─────
+  // A trivial program (no delay/millis/micros/setInterval/async/UI) must not
+  // pull in the Timer0 ISR. This is the regression guard for the ~400-line
+  // uncalled-code bug: led.toggle() must not emit native_millis.
+  describe("usage gating on timing", () => {
+    function ctxFor(program: ProgramIR): PlatformContext {
+      const strategy = new NativeAVRStrategy();
+      const analysis = analyzeProgram(program, strategy);
+      return { frameworkData: { buildTarget: "arduino:avr:uno" }, analysis } as any as PlatformContext;
+    }
+
+    it("omits native_millis when the program uses no timing", () => {
+      setActiveChip(ATMEGA328P);
+      const program = buildProgramIR("test.ts",
+        `import { D13 } from '@typecad/board-arduino-uno';
+         const led = D13.asOutput();
+         led.toggle();`) as any as ProgramIR;
+      const ctx = ctxFor(program);
+      const polyfills = new NativeAVRStrategy().generateNativePolyfills(program, ctx);
+      expect(polyfills.map(p => p.id)).not.toContain("native_millis");
+    });
+
+    it("does not call _init_millis() in setupInitCode when timing is unused", () => {
+      setActiveChip(ATMEGA328P);
+      const program = buildProgramIR("test.ts",
+        `import { D13 } from '@typecad/board-arduino-uno';
+         const led = D13.asOutput();
+         led.toggle();`) as any as ProgramIR;
+      const ctx = ctxFor(program);
+      const lines = new NativeAVRStrategy().setupInitCode!(program, ctx);
+      expect(lines).not.toContain("_init_millis()");
+    });
+
+    it("emits native_millis when the program calls delay()", () => {
+      setActiveChip(ATMEGA328P);
+      const program = buildProgramIR("test.ts", `delay(100);`) as any as ProgramIR;
+      const ctx = ctxFor(program);
+      const polyfills = new NativeAVRStrategy().generateNativePolyfills(program, ctx);
       expect(polyfills.map(p => p.id)).toContain("native_millis");
     });
   });

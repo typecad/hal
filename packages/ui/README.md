@@ -243,7 +243,7 @@ export default config;
 ### 3. Build
 
 ```bash
-npx cuttlefish build --compile
+npx @typecad/cuttlefish build --compile
 ```
 
 ## Elements

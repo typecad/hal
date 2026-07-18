@@ -38,6 +38,27 @@ export interface ProgramAnalysisResult {
   usesTiming: boolean;
   usesWDT: boolean;
   usesStrPtr: boolean;
+  // Native AVR peripheral usage — framework-avr gates its UART/SPI/TWI/
+  // EEPROM/tone driver shims on these (mirroring how framework-arduino gates
+  // __tc_Num/__tc_WDT on usesNum/usesWDT). Detected from HAL-op operation
+  // names + lowered callee/raw-code references so usage that flows through
+  // the HAL resolver (SPI0.begin() → spi.begin hal-op) is still seen.
+  usesUart: boolean;
+  usesSPI: boolean;
+  usesI2C: boolean;
+  usesEEPROM: boolean;
+  usesTone: boolean;
+  /** map()/constrain() Arduino-API calls. framework-avr gates its native
+   *  _native_map/_native_constrain helpers on these (they're dead code
+   *  otherwise — no other internal caller references them). */
+  usesMap: boolean;
+  usesConstrain: boolean;
+  /** Comprehensive timing gate for the native millis() Timer0 ISR on AVR.
+   *  True when the program directly uses millis/delay/micros, OR has hidden
+   *  consumers of the soft clock: setInterval/setTimeout (timerCallCount),
+   *  async functions (the runtime polls millis), or a mounted UI (per-frame
+   *  tick injected by the emitter, not present in user source). */
+  usesNativeTiming: boolean;
   hasSerialBegin: boolean;
   hasGenerators: boolean;
   usesStdMap: boolean;
@@ -55,7 +76,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -145,6 +166,28 @@ function analyzeExpression(
       if (expr.callee.startsWith("WDT.") || expr.callee === "WDT") {
         result.usesWDT = true;
       }
+      // Native AVR peripheral usage from namespace-prefixed method calls
+      // (Serial.* / SPI.* / Wire.* / EEPROM.*). The HAL resolver lowers these
+      // to structured hal-ops (detected in analyzeStatement) OR to bare
+      // lowered calls; these checks cover the pre-lowering and direct forms.
+      if (expr.callee.startsWith("Serial.") || expr.callee === "Serial") {
+        result.usesUart = true;
+      }
+      if (expr.callee.startsWith("SPI.") || expr.callee === "SPI") {
+        result.usesSPI = true;
+      }
+      if (expr.callee.startsWith("Wire.") || expr.callee === "Wire") {
+        result.usesI2C = true;
+      }
+      if (expr.callee.startsWith("EEPROM.") || expr.callee === "EEPROM") {
+        result.usesEEPROM = true;
+      }
+      // map()/constrain() Arduino-API calls appear as method-call exprs
+      // (callee "map"/"constrain"). framework-avr lowers these to _native_map/
+      // _native_constrain via symbol aliases, so the helpers are dead code
+      // unless the program actually calls them.
+      if (expr.callee === "map") result.usesMap = true;
+      if (expr.callee === "constrain") result.usesConstrain = true;
       // Count setInterval/setTimeout call sites (post-rename callee names) so
       // __tc_TimerRuntime::MAX_TIMERS can be sized to the observed count.
       if (expr.callee === "__tc_setInterval" || expr.callee === "__tc_setTimeout"
@@ -295,6 +338,30 @@ function analyzeStatement(
       if (statement.callee.startsWith("WDT.") || statement.callee === "WDT") {
         result.usesWDT = true;
       }
+      // Native AVR peripheral usage from statement-form calls. tone()/noTone()
+      // are bare Arduino-API calls; console.* / Serial.* drive UART; the
+      // namespace prefixes mirror the method-call checks above.
+      if (statement.callee === "tone" || statement.callee === "noTone") {
+        result.usesTone = true;
+      }
+      if (statement.callee.startsWith("console.") || statement.callee.startsWith("_uart_")) {
+        result.usesUart = true;
+      }
+      if (statement.callee.startsWith("Serial.") || statement.callee === "Serial") {
+        result.usesUart = true;
+      }
+      if (statement.callee.startsWith("SPI.") || statement.callee === "SPI") {
+        result.usesSPI = true;
+      }
+      if (statement.callee.startsWith("Wire.") || statement.callee === "Wire") {
+        result.usesI2C = true;
+      }
+      if (statement.callee.startsWith("EEPROM.") || statement.callee === "EEPROM") {
+        result.usesEEPROM = true;
+      }
+      // Statement-form map()/constrain() mirror the method-call checks above.
+      if (statement.callee === "map") result.usesMap = true;
+      if (statement.callee === "constrain") result.usesConstrain = true;
       // The HAL resolver lowers WDT.*/Timing.* namespace calls to bare AVR
       // library functions (WDT.reset() → wdt_reset(), Timing.delay() → delay(),
       // Timing.millis() → millis()). When that happens the `WDT.`/`Timing.`
@@ -430,6 +497,29 @@ function analyzeStatement(
       break;
 
     case "hal-op":
+      // Structured HAL ops carry a typed operation name (e.g. "spi.begin",
+      // "i2c.read_byte", "tone.play", "uart.write") rather than raw code.
+      // Detect peripheral usage here so framework-avr's driver shims can be
+      // gated on actual use. Without this, SPI0.begin() → spi.begin hal-op
+      // would be invisible (no raw code to scan) and the SPI driver would
+      // always be emitted. Same blind spot the wdt.* fix below the raw-code
+      // block addresses for the watchdog.
+      if (statement.operation && typeof statement.operation.operation === "string") {
+        const opName = statement.operation.operation;
+        if (opName.startsWith("spi.")) result.usesSPI = true;
+        if (opName.startsWith("i2c.")) result.usesI2C = true;
+        if (opName.startsWith("tone.")) result.usesTone = true;
+        if (opName.startsWith("uart.")) result.usesUart = true;
+        // Timing HAL ops (timing.delay/millis/micros) carry a typed operation
+        // name, not raw code, so the regex scans below miss them. Mirror the
+        // raw-code timing detection here so usesMillis/usesTiming (and thus
+        // usesNativeTiming) fire for `delay()`/`millis()` on AVR.
+        if (opName === "timing.delay" || opName === "timing.delay_microseconds"
+          || opName === "timing.millis" || opName === "timing.micros") {
+          result.usesTiming = true;
+          result.usesMillis = true;
+        }
+      }
       // Scan raw C++ code in HAL ops for polyfill helper usage
       if (statement.operation && statement.operation.operation === "raw" && typeof statement.operation.code === "string") {
         const code = statement.operation.code;
@@ -456,6 +546,21 @@ function analyzeStatement(
         if (/\b(millis|micros|delay|delayMicroseconds)\s*\(/.test(code)) {
           result.usesTiming = true;
           result.usesMillis = true;
+        }
+        // Native AVR peripheral usage inside raw hal-op code (e.g. the
+        // EEPROM namespace lowers to `EEPROM.write(...)` in a raw hal-op;
+        // Serial/SPI/Wire may appear as lowered library calls too).
+        if (/\bEEPROM\b/.test(code) || /\beeprom_(read|write|update)_byte\b/.test(code)) {
+          result.usesEEPROM = true;
+        }
+        if (/\b(Serial|console)\b/.test(code)) {
+          result.usesUart = true;
+        }
+        if (/\bSPI\b/.test(code)) {
+          result.usesSPI = true;
+        }
+        if (/\bWire\b/.test(code)) {
+          result.usesI2C = true;
         }
       }
       break;
@@ -510,6 +615,14 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesTiming: false,
     usesWDT: false,
     usesStrPtr: false,
+    usesUart: false,
+    usesSPI: false,
+    usesI2C: false,
+    usesEEPROM: false,
+    usesTone: false,
+    usesMap: false,
+    usesConstrain: false,
+    usesNativeTiming: false,
     hasSerialBegin: false,
     hasGenerators: false,
     usesStdMap: false,
@@ -664,6 +777,20 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
   if (loweredConsoleInCallback()) {
     result.hasConsoleCalls = true;
   }
+
+  // Derive the comprehensive native-timing gate for the AVR millis() Timer0
+  // ISR. The ISR is needed whenever the program touches the soft clock
+  // directly (millis/delay/micros) OR has a hidden consumer: setInterval/
+  // setTimeout (the scheduler polls millis), or async functions (the runtime
+  // polls millis). The per-frame UI tick is injected by the emitter, not
+  // present in user source — the setup emitter ORs entryHasUI() in at the
+  // consume site. Without this gate, every AVR program pulled in the Timer0
+  // ISR even when it never uses timing.
+  const hasAsync = program.functions.some(fn => fn.isAsync);
+  result.usesNativeTiming = result.usesMillis
+    || result.usesTiming
+    || result.timerCallCount > 0
+    || hasAsync;
 
   return result;
 }

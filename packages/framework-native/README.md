@@ -25,7 +25,7 @@ export default config;
 Compile and run:
 
 ```bash
-npx cuttlefish build --compile
+npx @typecad/cuttlefish build --compile
 ./main    # or main.exe on Windows
 ```
 

@@ -5,7 +5,7 @@
 // and asserts the value using vitest-style fluent chaining.
 //
 // Run with:
-//   npx cuttlefish-test --port COM4 examples/09-expect-demo.test.ts
+//   npx --package=@typecad/expect cuttlefish-test --port COM4 examples/09-expect-demo.test.ts
 //
 // Or via npm script:
 //   npm run test:hw -- --port COM4

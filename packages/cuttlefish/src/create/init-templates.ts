@@ -143,6 +143,7 @@ export function generateProjectTsconfig(options: InitProjectOptions): string {
     "noEmit": true,
     "resolveJsonModule": true,
     "allowArbitraryExtensions": true,
+    "allowImportingTsExtensions": true,
     "rootDirs": ["src", "types"]${paths}
   },
   "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish.config.ts"${options.boardPackage ? ', ".cuttlefish/cuttlefish-env.d.ts"' : ''}${options.isNative ? '' : ', "sim/**/*.ts"'}]

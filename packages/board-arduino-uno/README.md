@@ -28,7 +28,7 @@ export default config;
 Transpile and compile:
 
 ```bash
-npx cuttlefish src/main.ts --compile --upload --port COM3
+npx @typecad/cuttlefish src/main.ts --compile --upload --port COM3
 ```
 
 ## How to use

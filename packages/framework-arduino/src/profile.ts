@@ -48,7 +48,7 @@ interface FqbnPinOverride {
 }
 
 const PROFILE_VARIANTS: ArduinoProfileVariant[] = [
-  { architecture: "avr", forcedIncludes: ["<Arduino.h>", "<avr/wdt.h>"] },
+  { architecture: "avr", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "esp32", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "esp32s3", forcedIncludes: ["<Arduino.h>"] },
   { architecture: "esp32c3", forcedIncludes: ["<Arduino.h>"] },
@@ -650,6 +650,12 @@ export function resolveArduinoProfile(program: ProgramIR, platformContext?: Plat
     }
   }
 
+  // `<avr/wdt.h>` is no longer forced here. It is added on demand by the
+  // cuttlefish setup emitter when the generated output actually references
+  // wdt_enable/wdt_reset/wdt_disable (the HAL resolver lowers WDT.* calls to
+  // those). Forcing it here leaked the include into every AVR program — even
+  // trivial ones like `led.toggle()` — and making it program-dependent here
+  // would conflict with the profile cache (keyed on buildTarget only).
   const needsPreferences = used.has("Preferences") && !declared.has("Preferences");
   if (needsPreferences) {
     const arch = toArchitectureFromFqbn(context?.buildTarget);
