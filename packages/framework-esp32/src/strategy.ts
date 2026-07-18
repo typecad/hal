@@ -1,4 +1,15 @@
 import { ArduinoStrategy } from '@typecad/framework-arduino';
+import type { ProgramIR, PlatformContext } from '@typecad/cuttlefish/api/shared';
+import { resolveEsp32Profile } from './profile.js';
+
+const ARDUINO_UMBRELLA_HEADERS: ReadonlySet<string> = new Set([
+  '<Arduino.h>',
+  '<Wire.h>',
+  '<SPI.h>',
+  '<EEPROM.h>',
+  '<Preferences.h>',
+  '<HardwareSerial.h>',
+]);
 
 /**
  * Esp32Strategy — lowers TypeCAD HAL operation IR to native ESP-IDF driver
@@ -19,4 +30,63 @@ export class Esp32Strategy extends ArduinoStrategy {
   // Deliberately no `override readonly id` — the parent narrows id to the
   // literal "arduino", and TS won't allow any redeclaration. The inherited
   // value is fine; consumers select frameworks by package name, not strategy id.
+
+  override forcedIncludes(program: ProgramIR, ctx?: PlatformContext): string[] {
+    resolveEsp32Profile(ctx?.frameworkData?.target as string | undefined);
+    const a = (ctx as any)?.analysis;
+    const uses = (f: string): boolean => (a ? !!a[f] : true);  // defensive default true
+
+    const inc: string[] = [
+      '<stdio.h>',
+      '<string.h>',
+      '"freertos/FreeRTOS.h"',
+      '"freertos/task.h"',
+      '"esp_log.h"',
+      '"esp_system.h"',
+      '"esp_timer.h"',
+    ];
+    if (uses('usesGPIO'))         inc.push('"driver/gpio.h"');
+    if (uses('usesI2C'))          inc.push('"driver/i2c_master.h"');
+    if (uses('usesSPI'))          inc.push('"driver/spi_master.h"');
+    if (uses('usesUART'))         inc.push('"driver/uart.h"');
+    if (uses('usesPWM'))          inc.push('"driver/ledc.h"');
+    if (uses('usesADC'))          inc.push('"driver/adc.h"', '"driver/adc_oneshot.h"', '"esp_adc_cal.h"');
+    if (uses('usesDAC'))          inc.push('"driver/dac.h"');
+    if (uses('usesPower'))        inc.push('"esp_sleep.h"');
+    if (uses('usesWdt'))          inc.push('"esp_task_wdt.h"');
+    if (uses('usesInterrupts'))   inc.push('"esp_intr_alloc.h"');
+    return inc;
+  }
+
+  // Note: no `override` — ArduinoStrategy does not declare filterRequiredIncludes
+  // (it's optional on PlatformProfileStrategy). This is a fresh implementation.
+  filterRequiredIncludes(includes: string[]): string[] {
+    return includes.filter((h) => !ARDUINO_UMBRELLA_HEADERS.has(h));
+  }
+
+  override shimLines(program: ProgramIR, ctx?: PlatformContext): string[] {
+    resolveEsp32Profile(ctx?.frameworkData?.target as string | undefined);
+    return [
+      '// --- ESP32 IDF entrypoint: app_main + __tc_app_task ---',
+      '// The cuttlefish synthesizer emits setup() and loop() (it keys off',
+      '// entrypointFunctionName()="setup" and requiresLoopFunction()=true).',
+      '// This trampoline spawns a FreeRTOS task that runs them, matching',
+      '// Arduino\'s default task config (8192 stack, priority 1, tskNO_AFFINITY).',
+      'extern void setup(void);',
+      'extern void loop(void);',
+      '',
+      'static void __tc_app_task(void *arg) {',
+      '    (void)arg;',
+      '    setup();',
+      '    for (;;) {',
+      '        loop();',
+      '    }',
+      '}',
+      '',
+      'extern "C" void app_main(void) {',
+      '    xTaskCreate(__tc_app_task, "tc_app", 8192, NULL, 1, NULL);',
+      '}',
+      '',
+    ];
+  }
 }
