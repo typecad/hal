@@ -2,7 +2,7 @@
   "name": "demo-console-app",
   "version": "1.0.0",
   "private": true,
-  "description": "ESP32-S3 demo using the TypeCAD transpiler",
+  "description": "ESP32 demo using the TypeCAD transpiler with native ESP-IDF lowering",
   "type": "module",
   "scripts": {
     "build": "cuttlefish build",
@@ -12,10 +12,9 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "@typecad/framework-arduino": "*",
-    "@typecad/board-esp32s3": "*",
-    "@typecad/mcu-esp32s3": "*",
-    "@typecad/ui": "*"
+    "@typecad/framework-esp32": "*",
+    "@typecad/board-esp32-devkit": "*",
+    "@typecad/mcu-esp32": "*"
   },
   "devDependencies": {
     "eslint": "^10.4.1",

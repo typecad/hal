@@ -1,6 +1,6 @@
-import { D13 } from '@typecad/board-arduino-uno';
+import { D2 } from '@typecad/board-esp32-devkit';
 
-const led = D13.asOutput();
+const led = D2.asOutput();
 
 // In setup — nothing needed
 // In loop — toggle the LED
