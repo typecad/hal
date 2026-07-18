@@ -59,6 +59,26 @@ export default {
 - **pulse** → `esp_timer_get_time`-based edge timer (no native IDF equivalent)
 - **shift** → GPIO bit-bang (`__tc_shift_in`/`__tc_shift_out`)
 
+## Watchdog
+
+The `__tc_app_task` trampoline calls `vTaskDelay(1)` after each `loop()` iteration. This yields the CPU to the IDLE task so its watchdog doesn't fire when `loop()` is empty or runs without blocking. **This does not interfere with the user-facing watchdog** (`WDT.enable`/`WDT.reset`):
+
+- **Without `WDT.enable()`** (default): `tc_app` is not subscribed to the task watchdog. If `loop()` hangs, nothing happens — same as Arduino's default.
+- **With `WDT.enable(timeout)`**: `tc_app` is subscribed via `esp_task_wdt_add(NULL)`. The user must call `WDT.reset()` within the timeout, or the watchdog fires and the device reboots. The trampoline's `vTaskDelay(1)` does NOT call `esp_task_wdt_reset()`, so it does not feed the user's watchdog — if `loop()` hangs, the watchdog still fires correctly.
+
+```ts
+import { WDT, Timing } from '@typecad/hal';
+
+export function setup() {
+  WDT.enable(5000);  // 5s timeout
+}
+
+export function loop() {
+  // ... do work ...
+  WDT.reset();  // feed the watchdog. If loop() hangs >5s, device reboots.
+}
+```
+
 ## Console
 
 `console.log`/`console.info` → `printf`; `console.debug`/`warn`/`error` → `ESP_LOG[DWI]` with a `"tc"` tag. ESP_LOG* only emit at or below the configured log level (default `INFO`; debug suppressed unless bumped).
