@@ -27,6 +27,9 @@ export interface KnownTarget {
   framework: string;
   buildTarget?: string;
   mcu?: string;
+  /** Framework-specific config (becomes frameworkData in cuttlefish.config.ts).
+   *  Used by framework-esp32 to carry `target: 'esp32'|'esp32s3'|'esp32c3'|'esp32c6'`. */
+  frameworkData?: Record<string, unknown>;
 }
 
 const _knownTargets: KnownTarget[] = [
@@ -60,6 +63,18 @@ const _knownTargets: KnownTarget[] = [
     mcu: 'esp32',
   },
   {
+    id: 'esp32-devkit-idf',
+    displayName: 'ESP32 DevKit (native ESP-IDF)',
+    isNative: false,
+    architecture: 'esp32',
+    boardPackage: '@typecad/board-esp32-devkit',
+    frameworkPackage: '@typecad/framework-esp32',
+    framework: 'esp32',
+    buildTarget: 'esp32:esp32:esp32',
+    mcu: 'esp32',
+    frameworkData: { target: 'esp32' },
+  },
+  {
     id: 'esp32s3',
     displayName: 'ESP32-S3',
     isNative: false,
@@ -69,6 +84,18 @@ const _knownTargets: KnownTarget[] = [
     framework: 'arduino',
     buildTarget: 'esp32:esp32:esp32s3',
     mcu: 'esp32s3',
+  },
+  {
+    id: 'esp32s3-idf',
+    displayName: 'ESP32-S3 (native ESP-IDF)',
+    isNative: false,
+    architecture: 'esp32s3',
+    boardPackage: '@typecad/board-esp32s3',
+    frameworkPackage: '@typecad/framework-esp32',
+    framework: 'esp32',
+    buildTarget: 'esp32:esp32:esp32s3',
+    mcu: 'esp32s3',
+    frameworkData: { target: 'esp32s3' },
   },
   {
     id: 'esp32c3',
@@ -82,6 +109,18 @@ const _knownTargets: KnownTarget[] = [
     mcu: 'esp32c3',
   },
   {
+    id: 'esp32c3-idf',
+    displayName: 'ESP32-C3 (native ESP-IDF)',
+    isNative: false,
+    architecture: 'esp32c3',
+    boardPackage: '@typecad/board-esp32c3',
+    frameworkPackage: '@typecad/framework-esp32',
+    framework: 'esp32',
+    buildTarget: 'esp32:esp32:esp32c3',
+    mcu: 'esp32c3',
+    frameworkData: { target: 'esp32c3' },
+  },
+  {
     id: 'esp32c6',
     displayName: 'ESP32-C6',
     isNative: false,
@@ -91,6 +130,18 @@ const _knownTargets: KnownTarget[] = [
     framework: 'arduino',
     buildTarget: 'esp32:esp32:esp32c6',
     mcu: 'esp32c6',
+  },
+  {
+    id: 'esp32c6-idf',
+    displayName: 'ESP32-C6 (native ESP-IDF)',
+    isNative: false,
+    architecture: 'esp32c6',
+    boardPackage: '@typecad/board-esp32c6',
+    frameworkPackage: '@typecad/framework-esp32',
+    framework: 'esp32',
+    buildTarget: 'esp32:esp32:esp32c6',
+    mcu: 'esp32c6',
+    frameworkData: { target: 'esp32c6' },
   },
   {
     id: 'rp2040',

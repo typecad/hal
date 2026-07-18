@@ -129,6 +129,11 @@ export async function runInitWizard(
       if (target.architecture === 'avr') {
         frameworkOptions.push({ label: "Bare-metal AVR (PORTB, etc.)", value: 'avr', pkg: '@typecad/framework-avr' });
       }
+      // ESP32 family: offer the native ESP-IDF flavor alongside Arduino.
+      if (target.architecture === 'esp32' || target.architecture === 'esp32s3'
+          || target.architecture === 'esp32c3' || target.architecture === 'esp32c6') {
+        frameworkOptions.push({ label: "ESP32 (native ESP-IDF)", value: 'esp32', pkg: '@typecad/framework-esp32' });
+      }
 
       if (partialOptions?.framework) {
         const match = frameworkOptions.find(f => f.value === partialOptions.framework);
