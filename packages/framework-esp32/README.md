@@ -118,17 +118,26 @@ framework-esp32 then:
 3. **Generates `.d.ts` stubs** for each component's headers, so user code
    can `import` the component APIs.
 
-C components (free functions, typedefs, structs) are emitted as a
-**namespace of functions** — e.g. `esp_wifi_init` becomes `esp_wifi.init`.
-C++ components use the existing class-based emitter. Generated stubs live
-inside the gitignored `managed_components/` and are regenerated on each
-reconfigure.
+C components (free functions, typedefs, structs) are emitted as **free
+functions whose names match the C header 1-to-1** — `esp_wifi_init` stays
+`esp_wifi_init`. This is deliberate: ESP-IDF examples call `esp_wifi_init`,
+never `esp_wifi.init`, and the dotted form has no C++ representation (there
+is no `esp_wifi` object in the real header). Mirroring the C names verbatim
+means the transpiler lowers TS calls directly to valid C with zero
+translation. C++ components use the existing class-based emitter. Generated
+stubs live inside the gitignored `managed_components/` and are regenerated
+on each reconfigure.
 
 Use the stubs from your TypeScript:
 
 ```ts
-import { esp_wifi } from '../managed_components/espressif__esp_wifi/include/esp_wifi';
-esp_wifi.init(/* ... */);
+import {
+  esp_wifi_init,
+  esp_wifi_set_mode,
+  WIFI_MODE_STA,
+} from '../managed_components/espressif__esp_wifi/include/esp_wifi';
+esp_wifi_set_mode(WIFI_MODE_STA);
+esp_wifi_init(/* ... */);
 ```
 
 Standalone regeneration (without a full build):

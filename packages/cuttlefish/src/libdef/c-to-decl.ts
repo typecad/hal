@@ -3,10 +3,22 @@
  *
  * Complements cpp-to-decl.ts (which is class-focused). ESP-IDF components
  * are mostly C: free functions, opaque handles, typedef'd enums and structs.
- * The natural TS shape is a namespace of free functions, not a class.
  *
- * Spec: docs/superpowers/specs/2026-07-19-framework-esp32-components-design.md
- *       (Layer 4 — "Emission — C component flavor").
+ * EMISSION POLICY — names match the C header 1-to-1.
+ *
+ *   esp_err_t esp_wifi_init(const wifi_config_t *config);
+ *
+ * becomes
+ *
+ *   export declare function esp_wifi_init(config: number): esp_err_t;
+ *
+ * not `esp_wifi.init(...)`. ESP-IDF examples call `esp_wifi_init`, never
+ * `esp_wifi.init`; the dotted form has no C++ representation (there is no
+ * `esp_wifi` object or namespace in the real header) and would not link.
+ * Mirroring the C names verbatim means the transpiler lowers TS calls
+ * directly to valid C with zero translation.
+ *
+ * Spec: docs/superpowers/specs/2026-07-19-demo-wifi-design.md
  */
 
 import fs from 'node:fs';
@@ -19,14 +31,35 @@ interface CFunction {
   params: { type: string; name: string }[];
 }
 
-interface CTypedef {
+interface CEnumTypedef {
+  kind: 'enum';
   name: string;
-  kind: 'enum' | 'struct' | 'opaque';
-  // enum
-  enumValues?: { name: string; value?: number }[];
-  // struct
-  fields?: { type: string; name: string }[];
+  values: { name: string; value?: number }[];
 }
+
+interface CStructTypedef {
+  kind: 'struct';
+  name: string;
+  fields: { type: string; name: string; isArray: boolean }[];
+}
+
+interface COpaqueTypedef {
+  kind: 'opaque';
+  name: string;
+}
+
+interface CAliasTypedef {
+  kind: 'alias';
+  name: string;
+  aliasedType: string;
+}
+
+interface CFuncPtrTypedef {
+  kind: 'funcptr';
+  name: string;
+}
+
+type CTypedef = CEnumTypedef | CStructTypedef | COpaqueTypedef | CAliasTypedef | CFuncPtrTypedef;
 
 interface CHeader {
   functions: CFunction[];
@@ -34,50 +67,68 @@ interface CHeader {
   defines: { name: string; value: string }[];
 }
 
-/** Map a C primitive/known type to TS. Mirrors cpp-to-decl's mapCppTypeToTs. */
+const BUILTIN_TS_TYPES = new Set(['number', 'string', 'boolean', 'void', 'any']);
+
+/**
+ * Map a C type string to a TS type string. Pointer types become `number`
+ * (handles/opaque addresses) since the transpiler treats C pointers as
+ * numbers anyway. Unknown named types are returned as-is so they resolve
+ * to a typedef alias emitted by this same header (or fall back to `number`
+ * via the alias-emission pass in generateCDecl).
+ */
 function mapCTypeToTs(cType: string): string {
-  const trimmed = cType.trim().replace(/^const\s+/, '');
+  let t = cType.trim();
+  // Strip leading `const`/`volatile` qualifiers — they don't affect the TS shape.
+  t = t.replace(/^(?:const|volatile)\s+/, '');
   const typeMap: Record<string, string> = {
     int: 'number',
     'unsigned int': 'number',
+    'unsigned': 'number',
+    'short': 'number',
+    'unsigned short': 'number',
+    'long': 'number',
+    'unsigned long': 'number',
+    'long long': 'number',
+    'unsigned long long': 'number',
     uint8_t: 'number',
     uint16_t: 'number',
     uint32_t: 'number',
+    uint64_t: 'number',
     int8_t: 'number',
     int16_t: 'number',
     int32_t: 'number',
+    int64_t: 'number',
     size_t: 'number',
+    ssize_t: 'number',
+    intptr_t: 'number',
+    uintptr_t: 'number',
     float: 'number',
     double: 'number',
     bool: 'boolean',
+    _Bool: 'boolean',
     void: 'void',
     char: 'number',
   };
-  if (typeMap[trimmed]) return typeMap[trimmed];
-  // Pointer (with or without leading const): treat as number (handle).
-  // Handles cases like "device_handle_t *", "const device_config_t *".
-  const noConst = trimmed.replace(/^const\s+/, '');
-  if (noConst.endsWith('*')) return 'number';
-  return trimmed; // unknown — keep the name (resolves to a typedef alias if present)
+  if (typeMap[t]) return typeMap[t];
+  // Strip a trailing pointer; pointers are number-typed handles/addresses.
+  if (t.endsWith('*')) return 'number';
+  return t;
 }
 
 /** Parse function signatures like `esp_err_t foo(int x, const char *y);`. */
 function parseFunctions(stripped: string): CFunction[] {
   const fns: CFunction[] = [];
-  // Match: <returnType> <name>(<params>);
-  // returnType can include * and const; name is an identifier; params are comma-separated.
   const fnRegex = /^([\w\s\*]+?)\s+(\w+)\s*\(([^;]*)\)\s*;/gm;
   let m: RegExpExecArray | null;
   while ((m = fnRegex.exec(stripped)) !== null) {
     const returnType = m[1].trim();
     const name = m[2];
     const paramsRaw = m[3].trim();
-    // Skip typedef/struct/enum declarations — handled elsewhere.
+    // Skip non-function declarations these regexes might catch.
     if (returnType === 'typedef' || returnType === 'struct' || returnType === 'enum') continue;
-    // Skip control-flow keywords that might match (defensive).
-    if (name === 'if' || name === 'for' || name === 'while' || name === 'return') continue;
-    const params = parseParams(paramsRaw);
-    fns.push({ returnType, name, params });
+    if (returnType === 'static' || returnType === 'extern' || returnType === 'inline') continue;
+    if (name === 'if' || name === 'for' || name === 'while' || name === 'return' || name === 'switch') continue;
+    fns.push({ returnType, name, params: parseParams(paramsRaw) });
   }
   return fns;
 }
@@ -86,17 +137,20 @@ function parseParams(raw: string): { type: string; name: string }[] {
   if (!raw || raw === 'void') return [];
   return raw.split(',').map((part, idx) => {
     let trimmed = part.trim();
-    // Strip default values (rare in C, but the C++ path handles them).
     trimmed = trimmed.split('=')[0].trim();
-    // Last identifier is the name; everything before is the type.
-    // For "const char *y", type="const char *", name="y".
-    // For "int x", type="int", name="x".
+    if (!trimmed) return { type: '', name: `_arg${idx}` };
+    // A parameter is `<type> <name>` where name is the trailing identifier
+    // and type is everything before. For function-pointer params (rare in
+    // user-facing IDF APIs) we fall back to treating the whole thing as a
+    // type with a synthesized name.
+    if (trimmed.includes('(*)')) {
+      return { type: trimmed, name: `_arg${idx}` };
+    }
     const m = trimmed.match(/^(.*?)(\b\w+)$/);
     if (!m) return { type: trimmed, name: `_arg${idx}` };
     let type = m[1].trim();
     const name = m[2];
     // If the regex left the * glued to the name, pull it back to the type.
-    // e.g. "device_handle_t*h" wouldn't normally occur, but be defensive.
     if (!type && trimmed.includes('*')) {
       type = '*';
     }
@@ -104,17 +158,17 @@ function parseParams(raw: string): { type: string; name: string }[] {
   });
 }
 
-/** Parse typedef'd enums: `typedef enum { A, B=2, C } foo_t;` */
-function parseEnumTypedefs(stripped: string): CTypedef[] {
-  const tds: CTypedef[] = [];
-  const re = /typedef\s+enum\s*\{([^}]*)\}\s*(\w+)\s*;/g;
+/** Parse typedef'd enums: `typedef enum { A, B=2, C } foo_t;`. */
+function parseEnumTypedefs(stripped: string): CEnumTypedef[] {
+  const tds: CEnumTypedef[] = [];
+  const re = /typedef\s+enum\s*(?:\w+\s*)?\{([^}]*)\}\s*(\w+)\s*;/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(stripped)) !== null) {
     const body = m[1];
     const name = m[2];
     const members = body.split(',').map((s) => s.trim()).filter(Boolean);
     let next = 0;
-    const enumValues = members.map((mem) => {
+    const values = members.map((mem) => {
       const eq = mem.indexOf('=');
       if (eq >= 0) {
         const val = parseInt(mem.slice(eq + 1).trim(), 10);
@@ -124,14 +178,16 @@ function parseEnumTypedefs(stripped: string): CTypedef[] {
       const v = next++;
       return { name: mem, value: v };
     });
-    tds.push({ name, kind: 'enum', enumValues });
+    tds.push({ kind: 'enum', name, values });
   }
   return tds;
 }
 
-/** Parse typedef'd structs: `typedef struct { int x; } foo_t;` */
-function parseStructTypedefs(stripped: string): CTypedef[] {
-  const tds: CTypedef[] = [];
+/** Parse typedef'd structs: `typedef struct { int x; } foo_t;` or
+ *  `typedef struct foo { int x; } foo_t;`. Handles array fields
+ *  (`int arr[6]`) by recording the array-ness on the field. */
+function parseStructTypedefs(stripped: string): CStructTypedef[] {
+  const tds: CStructTypedef[] = [];
   const re = /typedef\s+struct\s*(?:\w+\s*)?\{([^}]*)\}\s*(\w+)\s*;/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(stripped)) !== null) {
@@ -142,22 +198,62 @@ function parseStructTypedefs(stripped: string): CTypedef[] {
       .map((s) => s.trim())
       .filter(Boolean)
       .map((field, idx) => {
+        // Array field: `<type> <name>[<size>]` → name + isArray.
+        const arr = field.match(/^(.*?)\b(\w+)\s*\[[^\]]*\]\s*$/);
+        if (arr) {
+          return { type: arr[1].trim() || field, name: arr[2], isArray: true };
+        }
         const pm = field.match(/^(.*?)(\b\w+)$/);
-        if (!pm) return { type: field, name: `_f${idx}` };
-        return { type: pm[1].trim() || field, name: pm[2] };
+        if (!pm) return { type: field, name: `_f${idx}`, isArray: false };
+        return { type: pm[1].trim() || field, name: pm[2], isArray: false };
       });
-    tds.push({ name, kind: 'struct', fields });
+    tds.push({ kind: 'struct', name, fields });
   }
   return tds;
 }
 
-/** Parse opaque handle typedefs: `typedef struct foo *foo_handle_t;` */
-function parseOpaqueTypedefs(stripped: string): CTypedef[] {
-  const tds: CTypedef[] = [];
+/** Parse opaque handle typedefs: `typedef struct foo *foo_handle_t;`. */
+function parseOpaqueTypedefs(stripped: string): COpaqueTypedef[] {
+  const tds: COpaqueTypedef[] = [];
   const re = /typedef\s+struct\s+\w+\s*\*\s*(\w+)\s*;/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(stripped)) !== null) {
-    tds.push({ name: m[1], kind: 'opaque' });
+    tds.push({ kind: 'opaque', name: m[1] });
+  }
+  return tds;
+}
+
+/** Parse function-pointer typedefs: `typedef void (*handler_t)(void *arg);`.
+ *  Emits as `any` — TS has no faithful representation of a C function pointer,
+ *  and IDF user code that registers one needs `rawCpp()` anyway. */
+function parseFuncPtrTypedefs(stripped: string): CFuncPtrTypedef[] {
+  const tds: CFuncPtrTypedef[] = [];
+  const re = /typedef\s+[\w\s\*]+?\(\s*\*\s*(\w+)\s*\)\s*\([^;]*\)\s*;/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(stripped)) !== null) {
+    tds.push({ kind: 'funcptr', name: m[1] });
+  }
+  return tds;
+}
+
+/** Parse plain alias typedefs: `typedef int esp_err_t;`, `typedef uint32_t foo_t;`.
+ *  These are extremely common in ESP-IDF (esp_err_t, TickType_t, etc.). */
+function parseAliasTypedefs(stripped: string): CAliasTypedef[] {
+  const tds: CAliasTypedef[] = [];
+  // `typedef <type> <name>;` where <type> is a single token (possibly with
+  // qualifiers) and <name> is the alias. Struct/enum/funcptr typedefs are
+  // handled by their own parsers, so exclude those keywords here.
+  const re = /typedef\s+(?!struct\b)(?!enum\b)(?!union\b)([\w\s\*]+?)\s+(\w+)\s*;/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(stripped)) !== null) {
+    const aliasedType = m[1].trim();
+    const name = m[2];
+    // Skip if this is actually the tail of a struct/enum/funcptr typedef that
+    // a sibling parser already consumed (defensive — the negative lookahead
+    // should already exclude those, but the regex can still match fragments
+    // inside a `typedef struct { ... } foo_t;` body in edge cases).
+    if (aliasedType === '' || aliasedType.includes('{')) continue;
+    tds.push({ kind: 'alias', name, aliasedType });
   }
   return tds;
 }
@@ -170,7 +266,6 @@ function parseSimpleDefines(content: string): { name: string; value: string }[] 
   while ((m = re.exec(content)) !== null) {
     const name = m[1];
     const value = m[2].trim();
-    // Only keep simple integer or string literals.
     if (/^-?\d+$/.test(value) || /^"[^"]*"$/.test(value)) {
       out.push({ name, value });
     }
@@ -182,7 +277,6 @@ function parseSimpleDefines(content: string): { name: string; value: string }[] 
 // Block comments and line comments are both removed; preprocessor
 // directives are preserved (stripPreprocessorBlocks handles those next).
 function stripComments(content: string): string {
-  // Remove block comments (non-greedy, multiline) then line comments.
   return content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 }
 
@@ -195,84 +289,63 @@ function parseHeader(content: string): CHeader {
       ...parseEnumTypedefs(stripped),
       ...parseStructTypedefs(stripped),
       ...parseOpaqueTypedefs(stripped),
+      ...parseFuncPtrTypedefs(stripped),
+      ...parseAliasTypedefs(stripped),
     ],
     defines: parseSimpleDefines(noComments),
   };
 }
 
-/**
- * Derive the namespace name from the longest common prefix of all function
- * names that ends at an underscore boundary.
- *
- * For [esp_wifi_init, esp_wifi_set_mode] the common prefix is "esp_wifi_";
- * we return "esp_wifi" and stripPrefix turns "esp_wifi_init" → "init".
- *
- * Falls back to the first underscore segment of the first function when no
- * common multi-segment prefix exists, and to the bare first name when there
- * are no underscores at all.
- */
-function deriveNamespace(functions: CFunction[]): string {
-  if (functions.length === 0) return '';
-  const names = functions.map((f) => f.name);
-  // Find the longest common prefix across all names.
-  let prefixLen = names[0].length;
-  for (let i = 1; i < names.length; i++) {
-    let j = 0;
-    while (j < prefixLen && j < names[i].length && names[0][j] === names[i][j]) j++;
-    prefixLen = j;
+function emitEnumTypedef(td: CEnumTypedef): string[] {
+  const literalUnion = td.values.every((v) => typeof v.value === 'number')
+    ? td.values.map((v) => v.value!).join(' | ')
+    : 'number';
+  const lines = [`export type ${td.name} = ${literalUnion};`];
+  // Export named constants so user code can reference WIFI_MODE_STA directly,
+  // exactly as ESP-IDF examples do.
+  for (const v of td.values) {
+    lines.push(`export const ${v.name}: ${td.name} = ${v.value ?? 0};`);
   }
-  let prefix = names[0].slice(0, prefixLen);
-  // Trim back to the last underscore so we don't cut mid-token.
-  // e.g. common prefix "esp_wifi_i" (init vs set_mode diverge at index 9)
-  // trims to "esp_wifi".
-  const lastUnderscore = prefix.lastIndexOf('_');
-  if (lastUnderscore > 0) {
-    prefix = prefix.slice(0, lastUnderscore);
-  }
-  if (prefix) return prefix;
-  // No shared underscore-bounded prefix: fall back to the first function's
-  // first underscore segment (or its whole name if no underscore).
-  const first = names[0];
-  const firstUnder = first.indexOf('_');
-  return firstUnder > 0 ? first.slice(0, firstUnder) : first;
+  return lines;
 }
 
-/** Strip the namespace prefix from a function name: `esp_wifi_init` → `init`. */
-function stripPrefix(fnName: string, ns: string): string {
-  return fnName.startsWith(ns + '_') ? fnName.slice(ns.length + 1) : fnName;
+function emitStructTypedef(td: CStructTypedef): string[] {
+  const fields = td.fields.map((f) => {
+    const tsType = mapCTypeToTs(f.type);
+    return `  ${f.name}: ${f.isArray ? `${tsType}[]` : tsType};`;
+  });
+  return [`export interface ${td.name} {`, ...fields, `}`];
 }
 
 function emitTypedef(td: CTypedef): string[] {
   switch (td.kind) {
-    case 'enum': {
-      const vals = td.enumValues ?? [];
-      const literalUnion = vals.every((v) => typeof v.value === 'number')
-        ? vals.map((v) => v.value!).join(' | ')
-        : 'number';
-      const lines = [`export type ${td.name} = ${literalUnion};`];
-      // Also export named constants so user code can reference WIFI_MODE_STA.
-      for (const v of vals) {
-        lines.push(`export const ${v.name}: ${td.name} = ${v.value ?? 0};`);
-      }
-      return lines;
-    }
-    case 'struct': {
-      const fields = (td.fields ?? []).map((f) => `  ${f.name}: ${mapCTypeToTs(f.type)};`);
-      return [`export interface ${td.name} {`, ...fields, `}`];
-    }
+    case 'enum':
+      return emitEnumTypedef(td);
+    case 'struct':
+      return emitStructTypedef(td);
     case 'opaque':
       return [`export type ${td.name} = number;`];
+    case 'alias':
+      return [`export type ${td.name} = ${mapCTypeToTs(td.aliasedType)};`];
+    case 'funcptr':
+      // Function-pointer typedefs have no faithful TS representation. Emit
+      // `any` with a comment so users know to use `rawCpp()` for callbacks.
+      return [
+        `// ${td.name} is a C function-pointer typedef; TS has no faithful representation.`,
+        `export type ${td.name} = any;`,
+      ];
   }
 }
 
-function emitNamespace(ns: string, fns: CFunction[]): string[] {
-  const methods = fns.map((f) => {
-    const params = f.params.map(
-      (p, idx) => `${p.name || `_arg${idx}`}: ${mapCTypeToTs(p.type)}`,
-    );
-    return `  ${stripPrefix(f.name, ns)}(${params.join(', ')}): ${mapCTypeToTs(f.returnType)};`;
+/** Emit a free function declaration, name matching the C header 1-to-1. */
+function emitFunction(fn: CFunction): string {
+  const params = fn.params.map((p, idx) => {
+    const name = p.name || `_arg${idx}`;
+    const tsType = p.type === '' ? 'any' : mapCTypeToTs(p.type);
+    return `${name}: ${tsType}`;
   });
-  return [`export declare const ${ns}: {`, ...methods, `};`];
+  const returnType = mapCTypeToTs(fn.returnType);
+  return `export declare function ${fn.name}(${params.join(', ')}): ${returnType};`;
 }
 
 /**
@@ -284,27 +357,35 @@ export function generateCDecl(filePath: string, outputPath?: string): string | n
   const content = fs.readFileSync(filePath, 'utf8');
   const header = parseHeader(content);
 
-  // Collect known type names so we can decide which referenced types need an alias.
+  // Collect every type name the header defines so the alias-emission pass
+  // below doesn't emit spurious `export type X = number;` for types that
+  // are already declared.
   const knownTypes = new Set<string>([
     ...header.typedefs.map((t) => t.name),
-    'number',
-    'string',
-    'boolean',
-    'void',
-    'any',
+    ...BUILTIN_TS_TYPES,
   ]);
+
+  // Find referenced types that aren't declared anywhere in this header and
+  // aren't builtins — emit them as `export type X = number;` so the .d.ts
+  // compiles standalone. (Common case: a header references `esp_err_t` from
+  // another header without re-typedef'ing it.)
   const referencedTypes = new Set<string>();
   for (const f of header.functions) {
     referencedTypes.add(mapCTypeToTs(f.returnType));
     for (const p of f.params) referencedTypes.add(mapCTypeToTs(p.type));
   }
-  // Emit `export type X = number;` for unknown, non-union referenced types.
-  const builtins = /^(number|string|boolean|void|any)$/;
+  for (const td of header.typedefs) {
+    if (td.kind === 'struct') {
+      for (const f of td.fields) referencedTypes.add(mapCTypeToTs(f.type));
+    } else if (td.kind === 'alias') {
+      referencedTypes.add(mapCTypeToTs(td.aliasedType));
+    }
+  }
   const aliasesToEmit = [...referencedTypes].filter(
-    (t) => !knownTypes.has(t) && !t.includes('|') && !builtins.test(t),
+    (t) => !knownTypes.has(t) && !t.includes('|') && !BUILTIN_TS_TYPES.has(t),
   );
 
-  // If there's nothing to emit, signal that to the caller.
+  // Nothing to emit → tell the caller.
   if (
     header.functions.length === 0 &&
     header.typedefs.length === 0 &&
@@ -317,15 +398,22 @@ export function generateCDecl(filePath: string, outputPath?: string): string | n
   const lines: string[] = [
     '// Auto-generated by cuttlefish gen-decls. Do not edit.',
     '// Source: ' + path.basename(filePath),
+    '// C names are preserved verbatim; calls lower 1-to-1 to the C header.',
     '',
   ];
 
+  // Standalone type aliases for cross-header references (e.g. esp_err_t).
   for (const a of aliasesToEmit) {
     lines.push(`export type ${a} = number;`);
   }
+  if (aliasesToEmit.length > 0) lines.push('');
 
-  for (const td of header.typedefs) lines.push(...emitTypedef(td), '');
+  // Typedefs (enums, structs, opaque handles, aliases, function pointers).
+  for (const td of header.typedefs) {
+    lines.push(...emitTypedef(td), '');
+  }
 
+  // #define constants (integer/string literals only).
   for (const d of header.defines) {
     lines.push(
       `export const ${d.name}: ${/^"/.test(d.value) ? 'string' : 'number'} = ${d.value};`,
@@ -333,9 +421,9 @@ export function generateCDecl(filePath: string, outputPath?: string): string | n
   }
   if (header.defines.length > 0) lines.push('');
 
-  const ns = deriveNamespace(header.functions);
-  if (ns && header.functions.length > 0) {
-    lines.push(...emitNamespace(ns, header.functions));
+  // Free functions, named 1-to-1 with the C header.
+  for (const fn of header.functions) {
+    lines.push(emitFunction(fn));
   }
 
   const outPath = outputPath ?? filePath.replace(/\.h$/i, '.d.ts');

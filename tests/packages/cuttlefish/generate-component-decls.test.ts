@@ -22,8 +22,8 @@ describe('generateComponentDeclsForProject', () => {
     const created = generateComponentDeclsForProject(tmpDir, { managed: ['foo'], local: [] });
     expect(created.length).toBe(1);
     const content = fs.readFileSync(created[0], 'utf8');
-    expect(content).toContain('export declare const foo: {');
-    expect(content).toContain('init(): void;');
+    // C emitter produces free functions named 1-to-1 with the header.
+    expect(content).toContain('export declare function foo_init(): void;');
   });
 
   it('uses the C++ emitter for headers with classes', () => {

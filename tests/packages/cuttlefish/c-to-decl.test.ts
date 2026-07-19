@@ -5,25 +5,28 @@ import { generateCDecl } from '../../../packages/cuttlefish/src/libdef/c-to-decl
 
 const FIXTURES = path.join(__dirname, 'c-to-decl-fixtures');
 
-describe('generateCDecl — free functions', () => {
-  it('emits a namespace of functions with prefix-stripped names', () => {
+describe('generateCDecl — free functions (names verbatim)', () => {
+  it('emits one export declare function per C function, name unchanged', () => {
     const header = path.join(FIXTURES, 'simple_funcs.h');
     const out = generateCDecl(header);
     expect(out).toBeTruthy();
     const content = fs.readFileSync(out!, 'utf8');
 
-    // Namespace derived from common prefix `simple_`.
-    expect(content).toContain('export declare const simple: {');
-    expect(content).toContain('init(port: number): esp_err_t;');
-    expect(content).toContain('set_mode(mode: number): esp_err_t;');
-    expect(content).toContain('no_args(): void;');
+    // Names are preserved 1-to-1 with the C header — no namespace grouping.
+    expect(content).toContain('export declare function simple_init(port: number): esp_err_t;');
+    expect(content).toContain('export declare function simple_set_mode(mode: number): esp_err_t;');
+    expect(content).toContain('export declare function simple_no_args(): void;');
 
-    // Unknown return type `esp_err_t` falls back to a type alias of number.
+    // Unknown return type `esp_err_t` falls back to a type alias of number
+    // (cross-header reference) so the .d.ts compiles standalone.
     expect(content).toContain('export type esp_err_t = number;');
+
+    // No dotted/namespace form anywhere.
+    expect(content).not.toMatch(/export declare const \w+: \{/);
   });
 });
 
-describe('generateCDecl — enums, structs, opaque handles', () => {
+describe('generateCDecl — enums, structs, opaque handles, arrays', () => {
   const header = path.join(FIXTURES, 'types.h');
 
   it('emits an enum as a union of literal values plus named const exports', () => {
@@ -48,41 +51,69 @@ describe('generateCDecl — enums, structs, opaque handles', () => {
     expect(content).toContain('export type device_handle_t = number;');
   });
 
-  it('emits the namespace with prefix-stripped methods', () => {
+  it('emits functions named verbatim (no prefix stripping)', () => {
     const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
-    expect(content).toContain('export declare const device: {');
-    // const device_config_t *cfg → cfg: number (pointer)
-    expect(content).toContain('open(cfg: number): device_handle_t;');
-    // device_handle_t h → keeps the typedef name (more faithful than collapsing to number)
-    expect(content).toContain('get_mode(h: device_handle_t): device_mode_t;');
+    expect(content).toContain('export declare function device_open(cfg: number): device_handle_t;');
+    expect(content).toContain(
+      'export declare function device_get_mode(h: device_handle_t): device_mode_t;',
+    );
   });
 });
 
-describe('generateCDecl — multi-segment namespace derivation', () => {
-  it('uses the longest common underscore-bounded prefix as the namespace', () => {
-    // esp_wifi_init and esp_wifi_set_mode share "esp_wifi_" → namespace "esp_wifi".
-    // Regression guard: an earlier version took only the first segment ("esp"),
-    // which produced esp.wifi_init instead of esp_wifi.init.
-    const tmp = path.join(
-      __dirname,
-      'c-to-decl-fixtures',
-      `.multi-segment-${Date.now()}.h`,
+describe('generateCDecl — ESP-IDF-style headers (the demo target)', () => {
+  const header = path.join(FIXTURES, 'esp_idf_style.h');
+
+  it('emits plain alias typedefs (esp_err_t) as type aliases', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    expect(content).toContain('export type esp_err_t = number;');
+  });
+
+  it('emits opaque handles (esp_netif_t) as number', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    expect(content).toContain('export type esp_netif_t = number;');
+  });
+
+  it('emits named enum constants verbatim (WIFI_MODE_STA, WIFI_IF_STA)', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    expect(content).toContain('export const WIFI_MODE_STA: wifi_mode_t = 1;');
+    expect(content).toContain('export const WIFI_IF_STA: wifi_interface_t = 0;');
+  });
+
+  it('emits struct array fields as TS arrays', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    expect(content).toMatch(/ssid_addr:\s+number\[\]/);
+  });
+
+  it('emits function-pointer typedefs as any with an explanatory comment', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    expect(content).toContain('export type esp_event_handler_t = any;');
+    expect(content).toMatch(/esp_event_handler_t.*function-pointer/i);
+  });
+
+  it('emits free functions named exactly as ESP-IDF examples call them', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    // These names are lifted verbatim from ESP-IDF station example code.
+    expect(content).toContain('export declare function nvs_flash_init(): esp_err_t;');
+    expect(content).toContain('export declare function esp_netif_init(): esp_err_t;');
+    expect(content).toContain(
+      'export declare function esp_event_loop_create_default(): esp_err_t;',
     );
-    fs.writeFileSync(
-      tmp,
-      'int esp_wifi_init(int cfg);\nint esp_wifi_set_mode(int mode);\n',
-      'utf8',
+    expect(content).toContain(
+      'export declare function esp_netif_create_default_wifi_sta(): esp_netif_t;',
     );
-    try {
-      const out = generateCDecl(tmp);
-      const content = fs.readFileSync(out!, 'utf8');
-      expect(content).toContain('export declare const esp_wifi: {');
-      expect(content).toContain('init(cfg: number): number;');
-      expect(content).toContain('set_mode(mode: number): number;');
-      expect(content).not.toContain('esp.');
-    } finally {
-      fs.rmSync(tmp, { force: true });
-      fs.rmSync(tmp.replace(/\.h$/, '.d.ts'), { force: true });
-    }
+    expect(content).toContain(
+      'export declare function esp_wifi_init(config: number): esp_err_t;',
+    );
+    expect(content).toContain(
+      'export declare function esp_wifi_set_mode(mode: wifi_mode_t): esp_err_t;',
+    );
+    expect(content).toContain(
+      'export declare function esp_wifi_set_config(interface: wifi_interface_t, conf: number): esp_err_t;',
+    );
+    expect(content).toContain('export declare function esp_wifi_start(): esp_err_t;');
+    expect(content).toContain('export declare function esp_wifi_connect(): esp_err_t;');
+    expect(content).toContain(
+      'export declare function esp_netif_get_ip_info(esp_netif: esp_netif_t, ip_info: number): esp_err_t;',
+    );
   });
 });

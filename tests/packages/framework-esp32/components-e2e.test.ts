@@ -47,9 +47,10 @@ describe('components end-to-end (no IDF)', () => {
     });
     expect(created.length).toBeGreaterThan(0);
     const dts = fs.readFileSync(created[0], 'utf8');
-    expect(dts).toContain('export declare const esp_wifi: {');
-    expect(dts).toContain('init(cfg: number): number;');
-    expect(dts).toContain('set_mode(mode: wifi_mode_t): number;');
+    // Free functions named 1-to-1 with the C header — no namespace wrapper.
+    expect(dts).toContain('export declare function esp_wifi_init(cfg: number): number;');
+    expect(dts).toContain('export declare function esp_wifi_set_mode(mode: wifi_mode_t): number;');
+    expect(dts).toContain('export const WIFI_MODE_STA: wifi_mode_t = 1;');
     expect(dts).toContain('export type wifi_mode_t = 0 | 1;');
   });
 });
