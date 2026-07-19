@@ -87,27 +87,73 @@ export function loop() {
 
 The first `idf.py build` for a target takes 1-3 minutes (generates `sdkconfig`, configures CMake for the chip via `idf.py set-target`). Subsequent builds are fast (~10s incremental). This is inherent to ESP-IDF's chip-specific configuration step.
 
-## Library discovery (v1: manual)
+## Components (managed + local)
 
-framework-esp32 does not run the ESP-IDF component manager automatically. Add components by editing `main/idf_component.yml`:
+Declare ESP-IDF components in `cuttlefish.config.ts` under `frameworkData.components`:
 
-```yaml
-dependencies:
-  espressif/esp_wifi: "^1.0"
-  espressif/esp_lcd_ili9341: "^1.0"
+```ts
+const config: CuttlefishConfig = {
+  // ...
+  frameworkData: {
+    target: 'esp32s3',
+    components: {
+      managed: {
+        'espressif/esp_wifi': '^1.0',
+        'espressif/esp_mqtt': '^1.0',
+      },
+      local: [
+        './components/my_sensor',   // becomes an EXTRA_COMPONENT_DIRS entry
+      ],
+    },
+  },
+};
 ```
 
-Then `idf.py reconfigure` fetches them from the ESP Component Registry.
+framework-esp32 then:
+
+1. **Scaffolds** `main/idf_component.yml` from `managed` (and emits
+   `EXTRA_COMPONENT_DIRS` into the root `CMakeLists.txt` from `local`).
+2. **Reconfigures** (`idf.py reconfigure`) when the deps hash changes,
+   populating `managed_components/`.
+3. **Generates `.d.ts` stubs** for each component's headers, so user code
+   can `import` the component APIs.
+
+C components (free functions, typedefs, structs) are emitted as a
+**namespace of functions** — e.g. `esp_wifi_init` becomes `esp_wifi.init`.
+C++ components use the existing class-based emitter. Generated stubs live
+inside the gitignored `managed_components/` and are regenerated on each
+reconfigure.
+
+Use the stubs from your TypeScript:
+
+```ts
+import { esp_wifi } from '../managed_components/espressif__esp_wifi/include/esp_wifi';
+esp_wifi.init(/* ... */);
+```
+
+Standalone regeneration (without a full build):
+
+```bash
+cuttlefish gen-decls --components
+```
+
+### Limitations
+
+- Headers with heavy macros, function-pointer callbacks, or Kconfig-gated
+  types may emit `any` fallbacks with a diagnostic. Use `rawCpp()` for
+  anything the generated stub doesn't cover.
+- `main/idf_component.yml` is generated from config — hand edits are
+  overwritten on the next scaffold. Edit `cuttlefish.config.ts` instead.
 
 ## Limitations (v1)
 
-- Preferences/NVS lowering not yet implemented; use `rawCpp()` + `#include "nvs_flash.h"`.
-- WiFi/BLE/mDNS lowering not yet implemented (pending HAL ops).
+- Preferences/NVS lowering not yet implemented; type-checks but emits no runtime code. Use `rawCpp()` + `#include "nvs_flash.h"`.
+- EEPROM lowering not yet implemented; type-checks but emits no runtime code. Use Preferences / NVS instead.
+- WiFi/BLE/mDNS: no first-class HAL ops, but usable via components (see above) or `rawCpp()`.
 - Deep-sleep pin wakeup (RTC GPIO) not yet implemented; timer wakeup works.
 - ADC calibration uses deprecated `esp_adc_cal_*`; will migrate to `adc_cali_line_fitting_*` in v1.1.
-- `tone.play`/`tone.stop` are stubs pending LEDC channel allocation work.
+- Display/graphics overrides not yet implemented (inherited from ArduinoStrategy; may emit Arduino API calls).
 - No `menuconfig` pass-through; edit `sdkconfig.defaults` directly or run `idf.py menuconfig` yourself.
-- `idf.py` error parsing into structured `CompileError[]` deferred to v1.1 (v1 dumps raw output).
 
 ## Design
 
