@@ -5,6 +5,7 @@ import { compileEspIdf } from './compile.js';
 import { uploadEspIdf } from './upload.js';
 import { monitorEspIdf } from './monitor.js';
 import { normalizeIdfTarget } from '../lowering/util.js';
+import { resolveComponents } from '../components/types.js';
 
 function targetFromOptions(o: ToolchainOptions): string {
   // The cuttlefish CLI populates ToolchainOptions.buildTarget from
@@ -46,11 +47,16 @@ export const Toolchain = {
     // no-op — scaffold happens in compile()
   },
   compile(o: ToolchainOptions): CompileResult {
+    // projectRoot is the dir holding cuttlefish.config.ts — the same dir the
+    // resolver uses to anchor relative component paths.
+    const projectRoot = projectRootFromOptions(o);
+    const components = resolveComponents(o.frameworkConfig, projectRoot);
     const r = compileEspIdf({
-      sourcePath: projectRootFromOptions(o),
+      sourcePath: projectRoot,
       target: targetFromOptions(o),
       defines: o.defines,
       extraFlags: o.extraFlags,
+      components,
     });
     return {
       success: r.success,
