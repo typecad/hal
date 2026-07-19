@@ -12,7 +12,7 @@ import { toneInitLines } from './lowering/tone.js';
 import { interruptsInitLines } from './lowering/interrupts.js';
 import { powerInitLines } from './lowering/power.js';
 import { wdtInitLines }   from './lowering/wdt.js';
-import { pulseShiftInitLines } from './lowering/pulse-shift.js';
+import { pulseShiftInitLines, pulseInitLines, shiftInitLines } from './lowering/pulse-shift.js';
 
 /** Read the IDF target ('esp32'|'esp32s3'|'esp32c3'|'esp32c6') from the
  *  platform context. Accepts either frameworkData.target (preferred) or
@@ -72,6 +72,17 @@ export class Esp32Strategy extends ArduinoStrategy {
 
   override symbolAliases(_program: ProgramIR, _ctx?: PlatformContext): Record<string, string> {
     return {};
+  }
+
+  // ESP-IDF has no Serial/Wire/SPI Arduino objects. Don't map peripheral
+  // identifiers — HAL ops handle all peripheral access directly.
+  override mapPeripheralIdentifier(_name: string): string | undefined {
+    return undefined;
+  }
+
+  // Don't return AVR-specific pin types. ESP32 uses generic int for pins.
+  override resolvePinType(_objectName: string, _fieldName: string): string | undefined {
+    return undefined;
   }
 
   /** All ESP32 variants need IRAM_ATTR on ISR handlers (parent keys off FQBN arch). */
@@ -136,7 +147,8 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (a?.usesInterrupts)  espInit.push(...interruptsInitLines());
     if (a?.usesPower)       espInit.push(...powerInitLines());
     if (a?.usesWdt)         espInit.push(...wdtInitLines());
-    if (a?.usesPulse || a?.usesShift) espInit.push(...pulseShiftInitLines());
+    if (a?.usesPulse) espInit.push(...pulseInitLines());
+    if (a?.usesShift) espInit.push(...shiftInitLines());
 
     return [
       ...espInit,
@@ -162,9 +174,7 @@ export class Esp32Strategy extends ArduinoStrategy {
       '',
       'extern "C" void app_main(void) {',
       '    xTaskCreate(__tc_app_task, "tc_app", 8192, NULL, 1, NULL);',
-      '    // app_main must NOT return — IDF would log "Returned from app_main"',
-      '    // and eventually abort. Block forever; the task runs independently.',
-      '    vTaskDelay(portMAX_DELAY);',
+      '    vTaskDelete(NULL);  // app_main exits cleanly; tc_app runs independently',
       '}',
       '',
     ];
@@ -267,7 +277,8 @@ export class Esp32Strategy extends ArduinoStrategy {
       if (node && typeof node === 'object') {
         if (node.operation && typeof node.operation === 'object'
             && node.operation.operation === 'gpio.set_mode'
-            && node.operation.mode === 'output') {
+            && typeof node.operation.mode === 'string'
+            && node.operation.mode.toLowerCase() === 'output') {
           outputPins.add(node.operation.pin);
         }
         for (const k of Object.keys(node)) {
@@ -310,7 +321,6 @@ export class Esp32Strategy extends ArduinoStrategy {
       '  // - Timing: lowered via __tc_Timing (esp_timer_get_time, vTaskDelay).',
       '  // - WDT: lowered via __tc_WDT (esp_task_wdt_*).',
       '  // - Preferences: TS type retained; runtime lowering deferred to v1.1.',
-      '  //   v1 emits a transpile-time diagnostic if Preferences is used.',
       '  // - EEPROM: not lowered (use Preferences / NVS instead).',
       '  const Timing: {',
       '    millis(): number;',
@@ -321,13 +331,34 @@ export class Esp32Strategy extends ArduinoStrategy {
       '  };',
       '',
       '  const WDT: {',
-      '    enable(): void;',
+      '    enable(timeout?: number | string): void;',
       '    reset(): void;',
       '    disable(): void;',
       '  };',
       '',
       '  // Preferences: v1.1 — lowering pending (NVS / nvs_flash.h).',
-      '  // const Preferences: { ... };',
+      '  // Type is declared so user code type-checks; transpile emits a diagnostic.',
+      '  const Preferences: {',
+      '    begin(name: string, readOnly?: boolean): boolean;',
+      '    putInt(key: string, value: number): boolean;',
+      '    getInt(key: string, defaultValue?: number): number;',
+      '    putString(key: string, value: string): boolean;',
+      '    getString(key: string, defaultValue?: string): string;',
+      '    putBool(key: string, value: boolean): boolean;',
+      '    getBool(key: string, defaultValue?: boolean): boolean;',
+      '    remove(key: string): boolean;',
+      '    clear(): boolean;',
+      '    end(): void;',
+      '  };',
+      '',
+      '  // EEPROM: not lowered on ESP-IDF (use Preferences / NVS instead).',
+      '  // Type is declared so user code type-checks; transpile emits a diagnostic.',
+      '  const EEPROM: {',
+      '    write(address: number, value: number): void;',
+      '    read(address: number): number;',
+      '    update(address: number, value: number): void;',
+      '    length(): number;',
+      '  };',
       '',
     ];
   }

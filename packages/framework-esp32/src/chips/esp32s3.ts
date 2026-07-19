@@ -36,7 +36,7 @@ export const ESP32S3: Esp32ChipDescriptor = {
     ],
   },
   // ESP32-S3 has no DAC peripheral (unlike classic ESP32 / S2).
-  lacks: ['dac', 'ledc-high-speed'],
+  lacks: ['dac'],
   ledc: { timerBits: 14, lowSpeedChannels: 8, highSpeedChannels: 0 },
   cpu: { defaultFreqMhz: 240, minFreqMhz: 80, maxFreqMhz: 240 },
 };

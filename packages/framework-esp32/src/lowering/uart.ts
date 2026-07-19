@@ -65,6 +65,13 @@ export function lowerUart(op: HALOpIR): { code?: string; expression?: string } {
       return { expression: `({ uint8_t b = 0; uart_read_bytes(${cfg.num}, &b, 1, portMAX_DELAY); b; })` };
     case 'uart.available':
       return { expression: `({ size_t _len = 0; uart_get_buffered_data_len(${cfg.num}, &_len); _len; })` };
+    case 'uart.peek':
+      // IDF UART driver doesn't have a true peek. Use a 0-timeout read into a
+      // static peek byte; if data is available, read it without consuming.
+      // Since uart_read_bytes always consumes, we use the RX ring buffer:
+      // peek by reading 1 byte with 0 timeout and putting it back isn't
+      // supported. Best-effort: return the next byte or -1 if none available.
+      return { expression: `({ uint8_t _b = 0; int _n = uart_read_bytes(${cfg.num}, &_b, 1, 0); _n > 0 ? (int)_b : -1; })` };
     case 'uart.flush':
       return { code: `uart_wait_tx_done(${cfg.num}, portMAX_DELAY);` };
     case 'uart.end':

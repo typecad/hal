@@ -35,5 +35,10 @@ export function lowerHalOp(op: HALOpIR): { code?: string; expression?: string } 
   if (op.operation.startsWith('pulse.'))     return lowerPulse(op);
   if (op.operation.startsWith('shift.'))     return lowerShift(op);
   if (op.operation === 'board.resolve')      return lowerBoard(op);
+  // raw and snprintf.emit: pass through verbatim
+  if (op.operation === 'raw')                return { code: (op as any).code ?? '' };
+  if (op.operation === 'snprintf.emit')      return { code: (op as any).code ?? (op as any).statement ?? '' };
+  // Display ops are deferred to v1.1 (spec §9.2)
+  if (op.operation.startsWith('display.'))   throw new Error(`framework-esp32 does not yet support display ops (v1.1).`);
   throw new Error(`framework-esp32 does not yet support HAL op \`${op.operation}\`. Open an issue or use rawCpp() to emit it manually.`);
 }

@@ -79,6 +79,16 @@ export function lowerSpi(op: HALOpIR): { code?: string; expression?: string } {
       return { code: `/* spi.set_bit_order(${o.order}): ESP-IDF master uses MSB */` };
     case 'spi.end_transaction':
       return { code: `` };
+    case 'spi.read_buffer': {
+      // Full-duplex read: send dummy bytes while receiving into user buffer.
+      // Buffer is the variable name; count is the number of bytes.
+      return { code: [
+        `({ spi_transaction_t _t = {0};`,
+        `   uint8_t _dummy[${o.count}]; memset(_dummy, 0xFF, ${o.count});`,
+        `   _t.tx_buffer = _dummy; _t.rx_buffer = ${o.buffer}; _t.length = ${o.count} * 8;`,
+        `   spi_device_polling_transmit(__tc_spi${idx}_dev, &_t); })`,
+      ].join(' ') };
+    }
     case 'spi.end':
       return { code: `if (__tc_spi${idx}_dev) { spi_bus_remove_device(__tc_spi${idx}_dev); __tc_spi${idx}_dev = NULL; spi_bus_free(${cfg.host}); __tc_spi${idx}_bus_ready = false; }` };
     default:

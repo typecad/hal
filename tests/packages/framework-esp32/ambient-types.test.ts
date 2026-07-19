@@ -15,19 +15,20 @@ describe('Esp32Strategy ambientTypeDeclarations', () => {
     expect(decl).toMatch(/freeHeap\(\): number/);
   });
 
-  it('declares WDT interface', () => {
+  it('declares WDT interface with timeout parameter', () => {
     expect(decl).toMatch(/const WDT/);
-    expect(decl).toMatch(/enable\(\): void/);
-    expect(decl).toMatch(/reset\(\): void/);
-    expect(decl).toMatch(/disable\(\): void/);
+    expect(decl).toMatch(/enable\(timeout/);
+    expect(decl).toMatch(/reset\(\)/);
+    expect(decl).toMatch(/disable\(\)/);
   });
 
-  it('mentions Preferences as v1.1 pending', () => {
-    expect(decl).toMatch(/Preferences.*v1\.1|v1\.1.*Preferences/);
+  it('declares Preferences (type retained, lowering deferred to v1.1)', () => {
+    expect(decl).toMatch(/const Preferences/);
+    expect(decl).toMatch(/putInt|getInt/);
   });
 
-  it('does NOT declare EEPROM', () => {
-    expect(decl).not.toMatch(/const EEPROM/);
+  it('declares EEPROM (type retained, not lowered)', () => {
+    expect(decl).toMatch(/const EEPROM/);
   });
 
   it('does NOT declare Arduino Serial', () => {

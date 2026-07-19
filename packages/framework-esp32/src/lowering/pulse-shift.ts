@@ -1,6 +1,6 @@
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 
-export function pulseShiftInitLines(): string[] {
+export function pulseInitLines(): string[] {
   return [
     `// CUTTLEFISH_PULSE_BEGIN`,
     `static uint32_t __tc_pulse_in(int pin, int state, uint32_t timeout_us) {`,
@@ -12,6 +12,11 @@ export function pulseShiftInitLines(): string[] {
     `}`,
     `// CUTTLEFISH_PULSE_END`,
     ``,
+  ];
+}
+
+export function shiftInitLines(): string[] {
+  return [
     `// CUTTLEFISH_SHIFT_BEGIN`,
     `static uint8_t __tc_shift_in(int dataPin, int clockPin, int bitOrder) {`,
     `    uint8_t v = 0;`,
@@ -34,6 +39,10 @@ export function pulseShiftInitLines(): string[] {
     `// CUTTLEFISH_SHIFT_END`,
     ``,
   ];
+}
+
+export function pulseShiftInitLines(): string[] {
+  return [...pulseInitLines(), ...shiftInitLines()];
 }
 
 // HAL's bitOrder is "lsb" | "msb". Translate to the 0|1 form the helper uses.

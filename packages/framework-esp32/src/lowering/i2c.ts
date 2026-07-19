@@ -11,6 +11,7 @@ export function i2cInitLines(controllerIndex: number): string[] {
     `static i2c_master_bus_handle_t __tc_i2c${controllerIndex}_bus = NULL;`,
     `static i2c_master_dev_handle_t __tc_i2c${controllerIndex}_dev = NULL;`,
     `static uint16_t __tc_i2c${controllerIndex}_addr = 0xFFFF;`,
+    `static uint32_t __tc_i2c${controllerIndex}_clk = 100000;`,
     `static uint8_t __tc_i2c${controllerIndex}_txbuf[32];`,
     `static size_t  __tc_i2c${controllerIndex}_txlen = 0;`,
     `static uint8_t __tc_i2c${controllerIndex}_rxbuf[32];`,
@@ -42,13 +43,14 @@ export function lowerI2c(op: HALOpIR): { code?: string; expression?: string } {
     case 'i2c.begin':
       return { code: `__tc_i2c${idx}_init();` };
     case 'i2c.set_clock':
-      return { code: `/* i2c.set_clock(${o.hz}): applied at device-add time */` };
+      // Store the requested clock; applied when the device is (re)added.
+      return { code: `__tc_i2c${idx}_clk = ${o.hz};` };
     case 'i2c.begin_transmission': {
       const addr = o.address;
       return { code: [
         `if (!__tc_i2c${idx}_dev || __tc_i2c${idx}_addr != (uint16_t)(${addr})) {`,
         `    if (__tc_i2c${idx}_dev) { i2c_master_bus_rm_device(__tc_i2c${idx}_dev); __tc_i2c${idx}_dev = NULL; }`,
-        `    const i2c_device_config_t dcfg = { .dev_addr_length = I2C_ADDR_BIT_LEN_7, .device_address = ${addr}, .scl_speed_hz = 100000 };`,
+        `    const i2c_device_config_t dcfg = { .dev_addr_length = I2C_ADDR_BIT_LEN_7, .device_address = ${addr}, .scl_speed_hz = __tc_i2c${idx}_clk };`,
         `    i2c_master_bus_add_device(__tc_i2c${idx}_bus, &dcfg, &__tc_i2c${idx}_dev);`,
         `    __tc_i2c${idx}_addr = (uint16_t)(${addr});`,
         `}`,
@@ -62,7 +64,10 @@ export function lowerI2c(op: HALOpIR): { code?: string; expression?: string } {
       return { code: stmts.join(' ') };
     }
     case 'i2c.write_buffer':
-      return { code: `/* i2c.write_buffer(${o.data}): use i2c.write_bytes for explicit byte lists (v1) */` };
+      // Copy the user's buffer into the txbuf. Data is a C array/buffer variable name.
+      // We emit a loop since we don't know the buffer length at transpile time.
+      // The HAL op carries `data` (buffer name) — we copy up to txbuf capacity.
+      return { code: `for (size_t __i = 0; __i < sizeof(${o.data}) && __tc_i2c${idx}_txlen < sizeof(__tc_i2c${idx}_txbuf); __i++) __tc_i2c${idx}_txbuf[__tc_i2c${idx}_txlen++] = ${o.data}[__i];` };
     case 'i2c.end_transmission':
       return { code: `i2c_master_transmit(__tc_i2c${idx}_dev, __tc_i2c${idx}_txbuf, __tc_i2c${idx}_txlen, -1);` };
     case 'i2c.request_from': {
@@ -76,6 +81,16 @@ export function lowerI2c(op: HALOpIR): { code?: string; expression?: string } {
       return { expression: `(__tc_i2c${idx}_rxlen - __tc_i2c${idx}_rxpos)` };
     case 'i2c.read':
       return { expression: `__tc_i2c${idx}_rxbuf[__tc_i2c${idx}_rxpos++]` };
+    case 'i2c.read_buffer': {
+      // Read into the user's buffer variable. Buffer is the variable name;
+      // count is the number of bytes.
+      return { code: [
+        `i2c_master_receive(__tc_i2c${idx}_dev, (uint8_t*)${o.buffer}, ${o.count}, -1);`,
+      ].join(' ') };
+    }
+    case 'i2c.recover':
+      // Reset the I2C bus if stuck (IDF v5: i2c_master_bus_reset)
+      return { code: `i2c_master_bus_reset(__tc_i2c${idx}_bus);` };
     case 'i2c.end':
       return { code: `if (__tc_i2c${idx}_bus) { if (__tc_i2c${idx}_dev) { i2c_master_bus_rm_device(__tc_i2c${idx}_dev); __tc_i2c${idx}_dev = NULL; } i2c_del_master_bus(__tc_i2c${idx}_bus); __tc_i2c${idx}_bus = NULL; __tc_i2c${idx}_addr = 0xFFFF; }` };
     default:

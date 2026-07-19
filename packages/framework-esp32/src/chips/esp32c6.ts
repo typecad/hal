@@ -31,7 +31,7 @@ export const ESP32C6: Esp32ChipDescriptor = {
       { unit: 'ADC_UNIT_1', channelForPin: { 0: 'ADC1_CH0', 1: 'ADC1_CH1', 2: 'ADC1_CH2', 3: 'ADC1_CH3', 4: 'ADC1_CH4', 5: 'ADC1_CH5', 6: 'ADC1_CH6' } },
     ],
   },
-  lacks: ['dac', 'ledc-high-speed'],
+  lacks: ['dac'],
   ledc: { timerBits: 20, lowSpeedChannels: 6, highSpeedChannels: 0 },
   cpu: { defaultFreqMhz: 160, minFreqMhz: 80, maxFreqMhz: 160 },
 };
