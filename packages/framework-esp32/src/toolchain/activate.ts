@@ -296,13 +296,13 @@ export function idfSpawn(projectDir: string, idfArgs: string[], baseOptions: Spa
   if (cachedEnv) {
     // Fast path: use cached env directly. No wrapper, no export.bat sourcing.
     // idf.py is called directly with the cached environment.
-    // IMPORTANT: don't pass shell:true — it adds overhead and idf.py resolves
-    // fine from the cached PATH.
+    // Enable ccache for faster cold builds (IDF disables it by default).
     const { shell: _drop, ...optsWithoutShell } = baseOptions as any;
+    const envWithCcache = { ...cachedEnv, IDF_CCACHE_ENABLE: '1' };
     return {
       command: 'idf.py',
       args: idfArgs,
-      options: { ...optsWithoutShell, env: cachedEnv },
+      options: { ...optsWithoutShell, env: envWithCcache },
       activation: {
         activated: true,
         root,
