@@ -200,12 +200,41 @@ function parseHeader(content: string): CHeader {
   };
 }
 
-/** Derive the namespace name from the common function prefix. */
+/**
+ * Derive the namespace name from the longest common prefix of all function
+ * names that ends at an underscore boundary.
+ *
+ * For [esp_wifi_init, esp_wifi_set_mode] the common prefix is "esp_wifi_";
+ * we return "esp_wifi" and stripPrefix turns "esp_wifi_init" → "init".
+ *
+ * Falls back to the first underscore segment of the first function when no
+ * common multi-segment prefix exists, and to the bare first name when there
+ * are no underscores at all.
+ */
 function deriveNamespace(functions: CFunction[]): string {
   if (functions.length === 0) return '';
-  const firstName = functions[0].name;
-  const prefixEnd = firstName.indexOf('_');
-  return prefixEnd > 0 ? firstName.slice(0, prefixEnd) : firstName;
+  const names = functions.map((f) => f.name);
+  // Find the longest common prefix across all names.
+  let prefixLen = names[0].length;
+  for (let i = 1; i < names.length; i++) {
+    let j = 0;
+    while (j < prefixLen && j < names[i].length && names[0][j] === names[i][j]) j++;
+    prefixLen = j;
+  }
+  let prefix = names[0].slice(0, prefixLen);
+  // Trim back to the last underscore so we don't cut mid-token.
+  // e.g. common prefix "esp_wifi_i" (init vs set_mode diverge at index 9)
+  // trims to "esp_wifi".
+  const lastUnderscore = prefix.lastIndexOf('_');
+  if (lastUnderscore > 0) {
+    prefix = prefix.slice(0, lastUnderscore);
+  }
+  if (prefix) return prefix;
+  // No shared underscore-bounded prefix: fall back to the first function's
+  // first underscore segment (or its whole name if no underscore).
+  const first = names[0];
+  const firstUnder = first.indexOf('_');
+  return firstUnder > 0 ? first.slice(0, firstUnder) : first;
 }
 
 /** Strip the namespace prefix from a function name: `esp_wifi_init` → `init`. */

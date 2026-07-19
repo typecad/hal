@@ -57,3 +57,32 @@ describe('generateCDecl — enums, structs, opaque handles', () => {
     expect(content).toContain('get_mode(h: device_handle_t): device_mode_t;');
   });
 });
+
+describe('generateCDecl — multi-segment namespace derivation', () => {
+  it('uses the longest common underscore-bounded prefix as the namespace', () => {
+    // esp_wifi_init and esp_wifi_set_mode share "esp_wifi_" → namespace "esp_wifi".
+    // Regression guard: an earlier version took only the first segment ("esp"),
+    // which produced esp.wifi_init instead of esp_wifi.init.
+    const tmp = path.join(
+      __dirname,
+      'c-to-decl-fixtures',
+      `.multi-segment-${Date.now()}.h`,
+    );
+    fs.writeFileSync(
+      tmp,
+      'int esp_wifi_init(int cfg);\nint esp_wifi_set_mode(int mode);\n',
+      'utf8',
+    );
+    try {
+      const out = generateCDecl(tmp);
+      const content = fs.readFileSync(out!, 'utf8');
+      expect(content).toContain('export declare const esp_wifi: {');
+      expect(content).toContain('init(cfg: number): number;');
+      expect(content).toContain('set_mode(mode: number): number;');
+      expect(content).not.toContain('esp.');
+    } finally {
+      fs.rmSync(tmp, { force: true });
+      fs.rmSync(tmp.replace(/\.h$/, '.d.ts'), { force: true });
+    }
+  });
+});
