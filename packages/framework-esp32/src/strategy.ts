@@ -84,6 +84,15 @@ export class Esp32Strategy extends ArduinoStrategy {
     return [];
   }
 
+  // ESP-IDF doesn't use arduino-cli at all — the buildTarget is an IDF target
+  // string ('esp32s3'), not an FQBN. Override symbolAliases to avoid
+  // triggering the parent's getOrResolveProfile() → loadArduinoCliMetadata()
+  // → arduino-cli board details probe, which costs ~5s per build for no
+  // benefit (the probe returns empty metadata for IDF target strings).
+  override symbolAliases(_program: ProgramIR, _ctx?: PlatformContext): Record<string, string> {
+    return {};
+  }
+
   override overrideBaseName(_originalBaseName: string, _outDirBaseName: string, isEntryFile: boolean, _isNpmPackage: boolean): string {
     // ESP-IDF's main/CMakeLists.txt registers SRCS "main.cc" — the entry file
     // MUST be named "main" regardless of the project/output dir name.
