@@ -1,7 +1,7 @@
 ﻿import fs from "node:fs";
 import path from "node:path";
 import { LibraryDefinition, LibraryDefinitionCondition, PlatformContext, TargetProfile } from "../types.js";
-import { listFiles, readText } from "../utils/fs.js";
+import { listFilesRecursive, readText } from "../utils/fs.js";
 import { toModuleKey, toPascalCase } from "../utils/strings.js";
 import type { ImportIR } from "../api/index.js";
 import { getLoadedFramework, hasLoadedFramework } from "../framework-registry.js";
@@ -29,7 +29,10 @@ interface ResolvedImport {
 
 export function loadLibraryDefinitions(definitionsDir: string): Map<string, LibraryDefinition> {
   const registry = new Map<string, LibraryDefinition>();
-  const files = listFiles(definitionsDir, ".libdef.json");
+  // Recursive scan: libdefs may live at the entry dir (single-level convention)
+  // or nested under cache trees like `.cuttlefish/component-decls/<component>/`
+  // (per-component overrides generated alongside .d.ts stubs).
+  const files = listFilesRecursive(definitionsDir, ".libdef.json");
 
   for (const filePath of files) {
     let def: LibraryDefinition;

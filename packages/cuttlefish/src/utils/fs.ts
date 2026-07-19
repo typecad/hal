@@ -33,3 +33,43 @@ export function listFiles(dirPath: string, extension: string): string[] {
     .filter((name) => name.toLowerCase().endsWith(extension.toLowerCase()))
     .map((name) => path.join(dirPath, name));
 }
+
+/**
+ * Recursive variant of {@link listFiles}. Walks `dirPath` depth-first and
+ * returns every file (in every subdirectory) whose name ends with `extension`.
+ *
+ * Used by {@link loadLibraryDefinitions} so libdefs under nested cache dirs
+ * like `.cuttlefish/component-decls/<component>/` are discovered. Purely
+ * additive vs. the non-recursive `listFiles` — single-level layouts keep
+ * working, nested layouts now also work.
+ *
+ * Returns absolute paths. Unreadable directories are silently skipped
+ * (matches `listFiles`'s not-exist behavior for non-existent roots).
+ */
+export function listFilesRecursive(dirPath: string, extension: string): string[] {
+  if (!fs.existsSync(dirPath)) {
+    return [];
+  }
+  const ext = extension.toLowerCase();
+  const out: string[] = [];
+  const stack: string[] = [dirPath];
+  while (stack.length > 0) {
+    const cur = stack.pop()!;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(cur, { withFileTypes: true });
+    } catch {
+      // Permission error / race / etc. Skip this subtree.
+      continue;
+    }
+    for (const entry of entries) {
+      const full = path.join(cur, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(full);
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(ext)) {
+        out.push(full);
+      }
+    }
+  }
+  return out;
+}
