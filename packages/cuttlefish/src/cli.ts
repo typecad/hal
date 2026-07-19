@@ -7,7 +7,7 @@ import type { CreateCommandOptions, BoardAddCommandOptions } from "./types.js";
 import { scaffoldProject, printInitNextSteps, KNOWN_TARGETS } from "./create/index.js";
 import { runInitWizard } from "./create/index.js";
 import { generateLibraryDefinitions, transpileFile } from "./transpile.js";
-import { generateDecl, generateDeclsForDirectory } from "./libdef/cpp-to-decl.js";
+import { generateDecl, generateDeclsForDirectory, generateComponentDeclsForProject } from "./libdef/cpp-to-decl.js";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map.js";
 import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain.js";
 import { resolveStrategy } from "./platform/registry.js";
@@ -313,6 +313,35 @@ async function main(): Promise<void> {
     // it intentionally has no inputFile (it scans scanDir instead), so the
     // generic "Missing input file path" check would otherwise block it.
     if (options.command === "gen-decls") {
+      // Check for --components flag (ESP-IDF components: managed + local).
+      // Runs before scanDir/single-file branches; components mode has no
+      // inputFile by design (it scans managed_components/ + components/).
+      const componentsDir = (options as any).componentsDir as string | undefined;
+      if (componentsDir) {
+        ui.printHeader();
+        ui.printStep(`Generating component declarations for ${componentsDir}...`);
+        const config = loadCuttlefishConfig(componentsDir);
+        const frameworkConfig = (config?.frameworkConfig ?? {}) as Record<string, unknown>;
+        const componentsNode = (frameworkConfig as any)?.components ?? {};
+        const managedSpecs = Object.keys(componentsNode.managed ?? {}) as string[];
+        // idf.py stores managed deps as <namespace>__<name> (slashes → __).
+        const managedNames = managedSpecs.map((spec) => spec.replace("/", "__"));
+        const localPaths = ((componentsNode.local as string[]) ?? []).map((p: string) =>
+          path.isAbsolute(p) ? p : path.resolve(componentsDir, p),
+        );
+        const created = generateComponentDeclsForProject(componentsDir, {
+          managed: managedNames,
+          local: localPaths,
+        });
+        if (created.length === 0) {
+          ui.printInfo("No component declaration files created.");
+        } else {
+          ui.printSuccess(`Created ${created.length} declaration file(s):`);
+          for (const f of created) ui.printFileCreated(f);
+        }
+        return;
+      }
+
       // Check for --all flag (scan directory)
       const scanDir = (options as any).scanDir as string | undefined;
 

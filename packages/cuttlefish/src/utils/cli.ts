@@ -472,13 +472,20 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
     // gen-decls - generate .d.ts from C++ files
     if (command === "gen-decls") {
       const allFlag = argv.includes("--all");
+      const componentsFlag = argv.includes("--components");
+
+      if (allFlag && componentsFlag) {
+        throw new Error(
+          "gen-decls: --components and --all are mutually exclusive. Use one or the other.",
+        );
+      }
 
       // The positional path may sit at argv[3] or argv[4] depending on whether
       // --all precedes or follows it. Scan argv starting after the subcommand
       // name (argv[2]) for the first token that is not a flag and not a known
       // flag's value. This mirrors the default-pipeline approach of "first
       // non-flag token wins".
-      const booleanFlags = new Set(["--all"]);
+      const booleanFlags = new Set(["--all", "--components"]);
       const valueFlags = new Set([
         "--emit", "--target", "--outDir", "--out-dir", "--emit-maps", "--build-target",
       ]);
@@ -498,13 +505,36 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
         break;
       }
 
+      // --components mode: scan managed_components/ + components/ declared in
+      // cuttlefish.config.ts. Falls back to cwd when no path is given.
+      if (componentsFlag) {
+        const componentsDir = inputPath || process.cwd();
+        return {
+          command: "gen-decls",
+          inputFile: undefined,
+          emitMode,
+          target,
+          outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
+          emitMaps,
+          noTranspile: false,
+          compile: false,
+          upload: false,
+          monitor: false,
+          watch: false,
+          baud: 9600,
+          platformContext,
+          scanDir: undefined,
+          componentsDir: path.resolve(process.cwd(), componentsDir),
+        } as CommandLineOptions;
+      }
+
       if (!inputPath && !allFlag) {
         throw new Error("Missing input C++ file path. Use: gen-decls <file.cpp> or gen-decls --all <directory>");
       }
 
       const scanDir = allFlag ? (inputPath || process.cwd()) : undefined;
       const inputFile = allFlag ? undefined : inputPath;
-      
+
       return {
         command: "gen-decls",
         inputFile: inputFile ? path.resolve(process.cwd(), inputFile) : undefined,
