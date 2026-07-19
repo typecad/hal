@@ -143,7 +143,11 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   const parentStrategy = getContext().activeStrategy;
   return contextStorage.run(new CompilationContext(), () => {
     getContext().activeStrategy = parentStrategy;
-    loadHALModules(true); // Parse HAL source files (force reload to pick up changes)
+    // Ensure HAL modules are loaded. transpile.ts warms the HAL registry once
+    // per transpile run (before the per-file IR build), so this is normally a
+    // cheap no-op. The non-forced call is a safety net for direct/test callers
+    // of buildProgramIR that didn't warm the registry first.
+    loadHALModules();
     const normalizedSourceText = normalizeEntrypointSyntax(sourceText);
   const source = parseSource(fileName, normalizedSourceText);
   const diagnostics: Diagnostic[] = [];

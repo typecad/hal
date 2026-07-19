@@ -32,7 +32,7 @@ import {
 import { detectEntryPoints, detectExportedEntryPoints } from "./ir/entry-points.js";
 import { analyzeReachability } from "./ir/reachability.js";
 import { filterProgramIR } from "./ir/filter.js";
-import { setActiveStrategy } from "./ir/hal-resolver.js";
+import { setActiveStrategy, loadHALModules } from "./ir/hal-resolver.js";
 import { CompilationContext, contextStorage } from "./ir/build-ir-state.js";
 import { buildSymbolTable, mergeSymbolTable, resolveInheritance, createSymbolTable } from "./ir/symbol-table.js";
 import { loadBreakpoints, preprocess as debugPreprocess } from "./debug/index.js";
@@ -41,6 +41,7 @@ import { typeCheckFiles } from "./orchestrator/type-checker.js";
 import { runSemanticGates } from "./orchestrator/type-checker.js";
 import { autoGenerateMissingDecls } from "./orchestrator/dts-generator.js";
 import { runEslintCheck, printEslintErrors } from "./eslint-check.js";
+import { checkLintCache, recordLintSuccess } from "./lint-cache.js";
 import { initProfiler, getProfiler } from "./profiler/index.js";
 import { buildDiagnosticsReport, writeDiagnosticsReport } from "./diagnostics/diagnostics-report.js";
 import {
@@ -377,23 +378,45 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
 
   // ── ESLint gate ──────────────────────────────────────────────────────────
   // ESLint catches what the type-checker cannot (idiom violations, banned
-  // globals, explicit `any`, etc.). Errors abort the build, mirroring the
-  // type-check behavior above. Skipped alongside type-checking when disabled.
+  // globals, explicit `any`, etc.). It is a mandatory correctness gate: it
+  // excludes non-AOT code patterns the transpiler cannot accept, so it cannot
+  // be dropped. Errors abort the build, mirroring the type-check behavior
+  // above. Skipped alongside type-checking when disabled.
+  //
+  // Because the lint result is a whole-program boolean that depends only on
+  // the source files, the eslint config, and the eslint/transpiler versions,
+  // it is cacheable. On a cache hit we skip the ~3s ESLint run entirely; on a
+  // miss we run ESLint and, only if clean, persist the result. See lint-cache.ts
+  // for the soundness contract.
   if (options.skipLint !== true && options.skipTypeCheck !== true && transpileFiles.length > 0) {
-    profiler.startTimer("lint:eslint");
     // The eslint config lives at the project root (next to cuttlefish.config.ts),
     // not under src/. Fall back to entryDir for ad-hoc API/test callers that pass
     // a bare input file without a configured project.
     const eslintRoot = options.projectRoot ?? entryDir;
-    const eslintErrors = await runEslintCheck(eslintRoot);
-    profiler.endTimer("lint:eslint");
+    const lintCache = checkLintCache(eslintRoot, sourceDir, { force: options.force });
 
-    if (eslintErrors.length > 0) {
-      // Abort with a formatted message. The structured-diagnostic channel is
-      // not populated here because a thrown error discards the output anyway;
-      // printEslintErrors gives the user file/line/column/caret directly.
-      printEslintErrors(eslintErrors);
-      throw new Error(`ESLint reported ${eslintErrors.length} error${eslintErrors.length === 1 ? "" : "s"} — transpilation aborted.`);
+    if (lintCache.hit) {
+      // Cache hit: previous clean run still applies, skip ESLint entirely.
+      profiler.startTimer("lint:eslint:cached");
+      profiler.endTimer("lint:eslint:cached");
+    } else {
+      profiler.startTimer("lint:eslint");
+      const eslintErrors = await runEslintCheck(eslintRoot);
+      profiler.endTimer("lint:eslint");
+
+      if (eslintErrors.length > 0) {
+        // Abort with a formatted message. The structured-diagnostic channel is
+        // not populated here because a thrown error discards the output anyway;
+        // printEslintErrors gives the user file/line/column/caret directly.
+        // Do NOT persist a cache entry for a failing run.
+        printEslintErrors(eslintErrors);
+        throw new Error(`ESLint reported ${eslintErrors.length} error${eslintErrors.length === 1 ? "" : "s"} — transpilation aborted.`);
+      }
+
+      // Clean run: record the fingerprint so subsequent unchanged builds skip.
+      if (lintCache.fingerprint) {
+        recordLintSuccess(eslintRoot, lintCache.fingerprint);
+      }
     }
   }
   const npmPackages = graphResult.npmPackages;
@@ -579,6 +602,15 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
 
   profiler.startTimer("ir:build-all");
   profiler.captureMemorySnapshot("ir:pre-build");
+  // Load + parse the @typecad/hal source files ONCE for this transpile run.
+  // buildProgramIR used to force-reload HAL per graph file (O(files) re-reads
+  // and re-parses of all 28 HAL modules); warming it here makes the per-file
+  // loadHALModules() call inside buildProgramIR a cheap no-op. A fresh run of
+  // transpileFile always reaches this point, so edits to @typecad/hal source
+  // are picked up on the next build.
+  profiler.startTimer("ir:load-hal");
+  loadHALModules(true);
+  profiler.endTimer("ir:load-hal");
   const rawIRArray = await Promise.all(filesToProcess.map(buildRawIR));
   profiler.captureMemorySnapshot("ir:post-build");
   profiler.endTimer("ir:build-all");

@@ -298,11 +298,13 @@ export default [
     files: ["src/**/*.ts"],
     languageOptions: {
       parser: tsparser,
-      parserOptions: {
-        // Type-aware parsing so @typescript-eslint/no-explicit-any resolves
-        // imported bindings to their real types instead of defaulting to any.
-        project: "./tsconfig.json",
-      },
+      // NOTE: do NOT set parserOptions.project here. None of the rules below
+      // (no-restricted-syntax, the cuttlefish/* AST rules, no-explicit-any,
+      // no-eval, ...) consume type information, so enabling type-aware linting
+      // only forces ESLint to build a full TS type-program per file — ~3.4s of
+      // pure overhead on small projects with zero change to what is detected.
+      // If a future rule needs types, scope project to that rule only via
+      // parserOptions on a dedicated config block, not globally.
     },
     plugins: {
       "@typescript-eslint": tseslint,

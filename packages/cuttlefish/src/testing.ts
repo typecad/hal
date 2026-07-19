@@ -77,6 +77,16 @@ export type { LintRule, FeatureEntry, FeatureStatus, DiagnosticMatch } from "./i
 export { runEslintCheck } from "./eslint-check.js";
 export type { ESLintError } from "./eslint-check.js";
 
+// ── ESLint gate cache ────────────────────────────────────────────────────────
+export {
+  checkLintCache,
+  recordLintSuccess,
+  invalidateLint,
+  computeLintFingerprint,
+  resolveEslintConfigPath,
+} from "./lint-cache.js";
+export type { LintFingerprint, GateCacheResult } from "./lint-cache.js";
+
 // ── Semantic gates (TypeChecker-based) ──────────────────────────────────────
 export { runSemanticGates } from "./orchestrator/type-checker.js";
 export {

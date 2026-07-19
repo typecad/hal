@@ -18,6 +18,7 @@ import {
   generateStarterTest,
   generateStarterSim,
   generateGitignore,
+  generateEslintConfig,
 } from "@typecad/cuttlefish/testing";
 import type { InitProjectOptions } from "@typecad/cuttlefish/testing";
 
@@ -316,6 +317,39 @@ describe("init-templates", () => {
 
       expect(content).toContain("node_modules/");
       expect(content).toContain("out/");
+    });
+
+    // Regression: the ESLint gate cache (lint-cache.ts) writes
+    // .cuttlefish-cache.json at the project root. It must be gitignored so the
+    // per-machine cache is never committed. Without this, a teammate's stale
+    // cache could mask real lint violations.
+    it("gitignores the .cuttlefish-cache.json gate cache file", () => {
+      const content = generateGitignore(ARDUINO_UNO_OPTIONS);
+      expect(content).toContain(".cuttlefish-cache.json");
+    });
+  });
+
+  describe("generateEslintConfig", () => {
+    // Regression: the scaffolded config must NOT set parserOptions.project.
+    // None of the rules in the config (no-restricted-syntax, the cuttlefish/*
+    // AST rules, no-explicit-any, no-eval, ...) consume type information, so
+    // enabling type-aware linting only forces ESLint to build a full TS
+    // type-program per file — ~3.4s of pure overhead on small projects with
+    // zero change to what is detected (measured 135x slower, identical
+    // violation set). If a future rule needs types, scope project to that rule
+    // via a dedicated config block, not globally.
+    it("does not enable type-aware parsing (no parserOptions.project)", () => {
+      const content = generateEslintConfig(ARDUINO_UNO_OPTIONS);
+      expect(content).not.toContain("project:");
+      expect(content).not.toMatch(/parserOptions\s*:\s*\{/);
+    });
+
+    it("still registers the transpiler rules and AOT-safety rules", () => {
+      const content = generateEslintConfig(ARDUINO_UNO_OPTIONS);
+      // The rule surface that excludes non-AOT patterns must remain intact.
+      expect(content).toContain('"no-restricted-syntax"');
+      expect(content).toContain('"@typescript-eslint/no-explicit-any"');
+      expect(content).toContain('"no-eval"');
     });
   });
 });
