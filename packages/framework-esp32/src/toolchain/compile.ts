@@ -1,13 +1,17 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import { scaffoldEspIdfProject } from './scaffold.js';
 import { idfSpawn } from './activate.js';
+import { depsHashChanged, writeDepsHash } from '../components/deps-hash.js';
+import type { ScaffoldComponents } from '../components/types.js';
 
 export interface EspIdfCompileOptions {
   sourcePath: string;
   target: string;
   defines?: Record<string, string>;
   extraFlags?: string[];
+  components?: ScaffoldComponents;
 }
 
 export interface EspIdfCompileResult {
@@ -17,28 +21,68 @@ export interface EspIdfCompileResult {
 }
 
 /**
+ * Decide whether `idf.py reconfigure` must run this build.
+ *
+ * - depsChanged: the components hash differs from (or has no) on-disk record.
+ * - sdkconfigExists: a prior `idf.py set-target` already configured this project.
+ *
+ * Reconfigure when deps moved OR when this is a fresh project (no sdkconfig)
+ * — in the fresh case, set-target runs first and would fetch components, but
+ * reconfigure is harmless and ensures managed_components/ is populated even
+ * when set-target is skipped on subsequent runs.
+ */
+export function shouldReconfigure(depsChanged: boolean, sdkconfigExists: boolean): boolean {
+  if (depsChanged) return true;
+  if (!sdkconfigExists) return true;
+  return false;
+}
+
+/**
  * Compile an ESP-IDF project via `idf.py build`. Scaffolds the project
- * skeleton if missing, runs set-target on first build, then builds.
+ * skeleton, runs `idf.py reconfigure` (when components changed), then
+ * `idf.py set-target` on first build, then `idf.py build`.
  *
  * Env activation is automatic: if $IDF_PATH isn't sourced but a discovery
  * strategy finds an install, idfSpawn generates a wrapper that sources
  * export.{sh,bat} and runs idf.py through it.
  */
 export function compileEspIdf(options: EspIdfCompileOptions): EspIdfCompileResult {
-  // Scaffold FIRST, before env detection, so the user can inspect/edit the
-  // project files (CMakeLists.txt, sdkconfig.defaults) even on machines
-  // without ESP-IDF installed.
-  scaffoldEspIdfProject(options.sourcePath, options.target);
+  const components = options.components ?? { managed: {}, local: [] };
+  const hasComponents =
+    Object.keys(components.managed).length > 0 || components.local.length > 0;
 
-  // idfSpawn throws if discovery fails entirely (no install + no env) — catch
-  // and convert to the result shape so the message surfaces cleanly.
+  // Scaffold FIRST, before env detection, so the user can inspect the project
+  // files even on machines without ESP-IDF installed.
+  scaffoldEspIdfProject(options.sourcePath, options.target, components);
+
+  const sdkconfigPath = join(options.sourcePath, 'sdkconfig');
+  const sdkconfigExists = existsSync(sdkconfigPath);
+  const spawnOpts = {
+    cwd: options.sourcePath,
+    encoding: 'utf8' as const,
+    timeout: 300000,
+  };
+
   try {
-    // First-time setup: run `idf.py set-target <chip>` to generate sdkconfig.
-    const sdkconfigPath = `${options.sourcePath}/sdkconfig`;
-    if (!existsSync(sdkconfigPath)) {
+    // ── reconfigure (only when there are components and the gate says so) ──
+    if (hasComponents && shouldReconfigure(depsHashChanged(options.sourcePath, components), sdkconfigExists)) {
+      const reconfigInv = idfSpawn(options.sourcePath, ['reconfigure'], spawnOpts);
+      const reconfig = spawnSync(reconfigInv.command, reconfigInv.args, reconfigInv.options);
+      if (reconfig.status !== 0) {
+        const activationNotice = reconfigInv.activation?.message ? `${reconfigInv.activation.message}\n` : '';
+        return {
+          success: false,
+          output: activationNotice + (reconfig.stdout ?? '') + (reconfig.stderr ?? ''),
+          errorMessage: `idf.py reconfigure failed with exit ${reconfig.status}`,
+        };
+      }
+      writeDepsHash(options.sourcePath, components);
+    }
+
+    // ── set-target (first run only) ───────────────────────────────────────
+    if (!sdkconfigExists) {
       const setupInv = idfSpawn(options.sourcePath, ['set-target', options.target], {
-        cwd: options.sourcePath,
-        encoding: 'utf8',
+        ...spawnOpts,
         timeout: 180000,
       });
       const setup = spawnSync(setupInv.command, setupInv.args, setupInv.options);
@@ -52,18 +96,14 @@ export function compileEspIdf(options: EspIdfCompileOptions): EspIdfCompileResul
       }
     }
 
-    // Build.
+    // ── build ─────────────────────────────────────────────────────────────
     const args = ['build'];
     for (const [k, v] of Object.entries(options.defines ?? {})) {
       args.push('-D', `${k}=${v}`);
     }
     args.push(...(options.extraFlags ?? []));
 
-    const buildInv = idfSpawn(options.sourcePath, args, {
-      cwd: options.sourcePath,
-      encoding: 'utf8',
-      timeout: 300000,
-    });
+    const buildInv = idfSpawn(options.sourcePath, args, spawnOpts);
     const result = spawnSync(buildInv.command, buildInv.args, buildInv.options);
     const activationNotice = buildInv.activation?.message ? `${buildInv.activation.message}\n` : '';
 
