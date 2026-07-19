@@ -1,5 +1,5 @@
 import { D2 } from '@typecad/board-esp32s3';
-import { Timing } from '@typecad/hal';
+import { delay } from '@typecad/hal';
 
 const led = D2.asOutput();
 
@@ -8,5 +8,5 @@ const led = D2.asOutput();
 // needed at the top level.)
 export function loop() {
   led.toggle();
-  Timing.delay(500);
+  delay(500);
 }
