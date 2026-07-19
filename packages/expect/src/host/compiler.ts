@@ -53,13 +53,32 @@ export function transpileTestFile(
   projectRoot: string,
   buildTarget: string,
 ): CompileResult {
-  // Create a build directory for this test file
+  // Create a build directory for this test file.
+  // For idf.py targets, use a SHARED build directory across all test files —
+  // only main/main.cc changes between files, so idf.py can do incremental
+  // builds (ninja detects only the changed .cc and relinks). This turns the
+  // 2nd+ file from a ~130s full rebuild into a ~10-15s incremental build.
+  // For arduino-cli targets, use per-file directories (no incremental benefit).
   const baseName = path.basename(originalFilePath, '.test.ts').replace(/[^a-zA-Z0-9_]/g, '_');
-  const buildDir = path.join(projectRoot, '.build', 'expect', baseName);
+  const isEsp32 = buildTarget === 'esp32' || buildTarget === 'esp32s3' || buildTarget === 'esp32c3' || buildTarget === 'esp32c6';
+  const buildDir = isEsp32
+    ? path.join(projectRoot, '.build', 'expect', 'esp32_shared')
+    : path.join(projectRoot, '.build', 'expect', baseName);
 
   try {
-    fs.rmSync(buildDir, { recursive: true, force: true });
-    fs.mkdirSync(buildDir, { recursive: true });
+    if (isEsp32 && fs.existsSync(buildDir)) {
+      // Shared ESP32 build dir: preserve it. The transpiler will overwrite
+      // the .ts source and regenerate main.cc; ninja does an incremental build.
+      // Only remove the old .ts file so the transpiler doesn't pick up stale ones.
+      const oldTsFiles = fs.readdirSync(buildDir).filter(f => f.endsWith('.ts'));
+      for (const f of oldTsFiles) {
+        try { fs.unlinkSync(path.join(buildDir, f)); } catch {}
+      }
+    } else {
+      // Fresh dir (first run, or arduino-cli target).
+      fs.rmSync(buildDir, { recursive: true, force: true });
+      fs.mkdirSync(buildDir, { recursive: true });
+    }
   } catch {
     return { success: false, sketchDir: buildDir, sketchPath: '', output: '', error: `Failed to create build dir: ${buildDir}` };
   }
