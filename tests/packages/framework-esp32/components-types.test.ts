@@ -44,4 +44,21 @@ describe('resolveComponents', () => {
     const cfg = { components: { local: ['ok', 42] } };
     expect(() => resolveComponents(cfg, '/proj')).toThrow(/local/);
   });
+
+  it('reads builtin list verbatim (no path resolution)', () => {
+    const cfg = { components: { builtin: ['esp_wifi', 'nvs_flash'] } };
+    const r = resolveComponents(cfg, '/proj');
+    expect(r.builtin).toEqual(['esp_wifi', 'nvs_flash']);
+  });
+
+  it('throws on malformed builtin (not a string array)', () => {
+    const cfg = { components: { builtin: ['ok', 42] } };
+    expect(() => resolveComponents(cfg, '/proj')).toThrow(/builtin/);
+  });
+
+  it('returns empty builtin when absent', () => {
+    const cfg = { components: { managed: { 'a/b': '^1.0' } } };
+    const r = resolveComponents(cfg, '/proj');
+    expect(r.builtin).toEqual([]);
+  });
 });

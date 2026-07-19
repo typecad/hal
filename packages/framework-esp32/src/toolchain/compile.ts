@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { scaffoldEspIdfProject } from './scaffold.js';
 import { idfSpawn } from './activate.js';
+import { discoverIdfRoot } from './discover.js';
 import { depsHashChanged, writeDepsHash } from '../components/deps-hash.js';
 import { generateComponentDeclsForProject } from '@typecad/cuttlefish/lib/component-decls';
 import type { ScaffoldComponents } from '../components/types.js';
@@ -48,9 +49,10 @@ export function shouldReconfigure(depsChanged: boolean, sdkconfigExists: boolean
  * export.{sh,bat} and runs idf.py through it.
  */
 export function compileEspIdf(options: EspIdfCompileOptions): EspIdfCompileResult {
-  const components = options.components ?? { managed: {}, local: [] };
-  const hasComponents =
+  const components = options.components ?? { managed: {}, local: [], builtin: [] };
+  const hasManagedOrLocal =
     Object.keys(components.managed).length > 0 || components.local.length > 0;
+  const hasAnyComponents = hasManagedOrLocal || components.builtin.length > 0;
 
   // Scaffold FIRST, before env detection, so the user can inspect the project
   // files even on machines without ESP-IDF installed.
@@ -65,8 +67,8 @@ export function compileEspIdf(options: EspIdfCompileOptions): EspIdfCompileResul
   };
 
   try {
-    // ── reconfigure (only when there are components and the gate says so) ──
-    if (hasComponents && shouldReconfigure(depsHashChanged(options.sourcePath, components), sdkconfigExists)) {
+    // ── reconfigure (only for managed/local deps — builtins ship with IDF) ──
+    if (hasManagedOrLocal && shouldReconfigure(depsHashChanged(options.sourcePath, components), sdkconfigExists)) {
       const reconfigInv = idfSpawn(options.sourcePath, ['reconfigure'], spawnOpts);
       const reconfig = spawnSync(reconfigInv.command, reconfigInv.args, reconfigInv.options);
       if (reconfig.status !== 0) {
@@ -78,14 +80,31 @@ export function compileEspIdf(options: EspIdfCompileOptions): EspIdfCompileResul
         };
       }
       writeDepsHash(options.sourcePath, components);
+    }
 
-      // After reconfigure populates managed_components/, regenerate .d.ts
-      // stubs so user code can import the component APIs.
+    // ── gen-decls (for ANY component kind — managed, local, or builtin) ────
+    // Runs after reconfigure (so managed_components/ is populated) and after
+    // any prior set-target (so the IDF root is known). Built-in components
+    // are resolved against $IDF_PATH/components/<name>/include/.
+    if (hasAnyComponents) {
+      let idfRoot: string | undefined;
+      if (components.builtin.length > 0) {
+        // Lazily discover the IDF root only when builtins are declared —
+        // avoids the discovery cost when only managed/local are used.
+        idfRoot = discoverIdfRoot()?.path;
+        if (!idfRoot) {
+          console.warn(
+            '[cuttlefish] components.builtin declared but no ESP-IDF install found; skipping builtin gen-decls.',
+          );
+        }
+      }
       try {
         generateComponentDeclsForProject(options.sourcePath, {
           // idf.py stores managed deps as <namespace>__<name> (slashes → __).
           managed: Object.keys(components.managed).map((spec) => spec.replace('/', '__')),
           local: components.local,
+          builtin: idfRoot ? components.builtin : [],
+          idfRoot,
         });
       } catch (genErr) {
         // Non-fatal: gen-decls failure should not block a build. Surface as

@@ -19,6 +19,7 @@ export function hashForComponents(components: ScaffoldComponents): string {
   const payload = JSON.stringify({
     managed: managedEntries, // sorted
     local: components.local,
+    builtin: [...components.builtin].sort(),
   });
   return createHash('sha256').update(payload).digest('hex');
 }
