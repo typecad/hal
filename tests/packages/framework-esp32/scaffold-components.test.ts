@@ -62,3 +62,32 @@ describe('scaffoldEspIdfProject — idf_component.yml', () => {
     expect(cmake).not.toContain('EXTRA_COMPONENT_DIRS');
   });
 });
+
+describe('scaffoldEspIdfProject — EXTRA_COMPONENT_DIRS', () => {
+  it('emits EXTRA_COMPONENT_DIRS block when local is non-empty', () => {
+    scaffoldEspIdfProject(tmpDir, 'esp32s3', {
+      managed: {},
+      local: [
+        path.join(tmpDir, 'components', 'my_sensor'),
+        path.join(tmpDir, 'components', 'display'),
+      ],
+    });
+    const cmake = fs.readFileSync(path.join(tmpDir, 'CMakeLists.txt'), 'utf8');
+    expect(cmake).toContain('set(EXTRA_COMPONENT_DIRS');
+    expect(cmake).toContain('components/my_sensor');
+    expect(cmake).toContain('components/display');
+    expect(cmake).toContain(')');
+  });
+
+  it('places EXTRA_COMPONENT_DIRS before the include(project.cmake) line', () => {
+    scaffoldEspIdfProject(tmpDir, 'esp32s3', {
+      managed: {},
+      local: [path.join(tmpDir, 'components', 'foo')],
+    });
+    const cmake = fs.readFileSync(path.join(tmpDir, 'CMakeLists.txt'), 'utf8');
+    const setIdx = cmake.indexOf('set(EXTRA_COMPONENT_DIRS');
+    const includeIdx = cmake.indexOf('include($ENV{IDF_PATH}');
+    expect(setIdx).toBeGreaterThan(-1);
+    expect(includeIdx).toBeGreaterThan(setIdx);
+  });
+});
