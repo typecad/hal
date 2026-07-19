@@ -22,3 +22,38 @@ describe('generateCDecl — free functions', () => {
     expect(content).toContain('export type esp_err_t = number;');
   });
 });
+
+describe('generateCDecl — enums, structs, opaque handles', () => {
+  const header = path.join(FIXTURES, 'types.h');
+
+  it('emits an enum as a union of literal values plus named const exports', () => {
+    const out = generateCDecl(header);
+    const content = fs.readFileSync(out!, 'utf8');
+    expect(content).toContain('export type device_mode_t = 0 | 1 | 5;');
+    expect(content).toContain('export const MODE_OFF: device_mode_t = 0;');
+    expect(content).toContain('export const MODE_ON: device_mode_t = 1;');
+    expect(content).toContain('export const MODE_AUTO: device_mode_t = 5;');
+  });
+
+  it('emits a struct as an interface with mapped field types', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    expect(content).toContain('export interface device_config_t {');
+    expect(content).toContain('slot: number;');
+    expect(content).toContain('flags: number;');
+    expect(content).toContain('}');
+  });
+
+  it('emits an opaque handle typedef as number', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    expect(content).toContain('export type device_handle_t = number;');
+  });
+
+  it('emits the namespace with prefix-stripped methods', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    expect(content).toContain('export declare const device: {');
+    // const device_config_t *cfg → cfg: number (pointer)
+    expect(content).toContain('open(cfg: number): device_handle_t;');
+    // device_handle_t h → keeps the typedef name (more faithful than collapsing to number)
+    expect(content).toContain('get_mode(h: device_handle_t): device_mode_t;');
+  });
+});

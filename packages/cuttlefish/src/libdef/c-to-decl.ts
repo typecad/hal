@@ -178,8 +178,17 @@ function parseSimpleDefines(content: string): { name: string; value: string }[] 
   return out;
 }
 
+// Strip C-style comments so they don't interfere with parsing.
+// Block comments and line comments are both removed; preprocessor
+// directives are preserved (stripPreprocessorBlocks handles those next).
+function stripComments(content: string): string {
+  // Remove block comments (non-greedy, multiline) then line comments.
+  return content.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+}
+
 function parseHeader(content: string): CHeader {
-  const stripped = stripPreprocessorBlocks(content);
+  const noComments = stripComments(content);
+  const stripped = stripPreprocessorBlocks(noComments);
   return {
     functions: parseFunctions(stripped),
     typedefs: [
@@ -187,7 +196,7 @@ function parseHeader(content: string): CHeader {
       ...parseStructTypedefs(stripped),
       ...parseOpaqueTypedefs(stripped),
     ],
-    defines: parseSimpleDefines(content),
+    defines: parseSimpleDefines(noComments),
   };
 }
 
