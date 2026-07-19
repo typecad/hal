@@ -8,8 +8,13 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { parseConfigAST } from './config.js';
 import { checkArduinoEnv, type ArduinoEnvFailure } from '@typecad/arduino-cli';
+
+// createRequire lets us synchronously require CommonJS modules from this ESM
+// file. Used to load framework-esp32's compiled dist at runtime.
+const require_ = createRequire(import.meta.url);
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -122,9 +127,29 @@ export function transpileTestFile(
 }
 
 /**
- * Compile the Arduino sketch using arduino-cli.
+ * Compile the sketch. Detects the toolchain from the framework:
+ * - framework-esp32 → idf.py build (via framework-esp32's compileEspIdf)
+ * - everything else → arduino-cli compile
  */
-export function compileSketch(sketchDir: string, buildTarget: string): CompileResult {
+export function compileSketch(sketchDir: string, buildTarget: string, framework?: string): CompileResult {
+  if (framework?.includes('framework-esp32')) {
+    return compileEspIdfSketch(sketchDir, buildTarget);
+  }
+  return compileArduinoSketch(sketchDir, buildTarget);
+}
+
+/** Resolve the framework-esp32 dist/toolchain directory from node_modules.
+ *  Uses the main export entry point (dist/index.js) to find the dist dir,
+ *  avoiding the package's exports field restriction on subpaths. */
+function resolveFrameworkEsp32Dist(): string {
+  const indexPath = require_.resolve('@typecad/framework-esp32');
+  // indexPath = .../packages/framework-esp32/dist/index.js
+  // toolchain dir = .../packages/framework-esp32/dist/toolchain
+  return path.join(path.dirname(indexPath), 'toolchain');
+}
+
+/** Compile via arduino-cli (framework-arduino / framework-avr). */
+function compileArduinoSketch(sketchDir: string, buildTarget: string): CompileResult {
   // Hard gate: verify arduino-cli + core before spawning.
   {
     const gate = checkArduinoEnv(buildTarget);
@@ -153,7 +178,74 @@ export function compileSketch(sketchDir: string, buildTarget: string): CompileRe
 /**
  * Upload the compiled sketch to the board.
  */
+/**
+ * Upload firmware. Detects the toolchain from the framework:
+ * - framework-esp32 → idf.py flash
+ * - everything else → arduino-cli upload
+ */
 export function uploadSketch(
+  sketchDir: string,
+  buildTarget: string,
+  port: string,
+  framework?: string,
+): UploadResult {
+  if (framework?.includes('framework-esp32')) {
+    return uploadEspIdfSketch(sketchDir, buildTarget, port);
+  }
+  return uploadArduinoSketch(sketchDir, buildTarget, port);
+}
+
+/** Compile via idf.py build (framework-esp32). */
+function compileEspIdfSketch(sketchDir: string, buildTarget: string): CompileResult {
+  try {
+    const projectDir = path.basename(sketchDir) === 'main' ? path.dirname(sketchDir) : sketchDir;
+    const distDir = resolveFrameworkEsp32Dist();
+    const { compileEspIdf } = require_(path.join(distDir, 'compile.js'));
+    const result = compileEspIdf({
+      sourcePath: projectDir,
+      target: buildTarget || 'esp32',
+    });
+    return {
+      success: result.success,
+      sketchDir: projectDir,
+      sketchPath: '',
+      output: result.output,
+      error: result.errorMessage,
+    };
+  } catch (e) {
+    return {
+      success: false,
+      sketchDir,
+      sketchPath: '',
+      output: '',
+      error: `idf.py compile failed: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+}
+
+/** Upload via idf.py flash (framework-esp32). */
+function uploadEspIdfSketch(sketchDir: string, buildTarget: string, port: string): UploadResult {
+  try {
+    const projectDir = path.basename(sketchDir) === 'main' ? path.dirname(sketchDir) : sketchDir;
+    const distDir = resolveFrameworkEsp32Dist();
+    const { uploadEspIdf } = require_(path.join(distDir, 'upload.js'));
+    const result = uploadEspIdf(projectDir, port);
+    return {
+      success: result.success,
+      output: result.output,
+      error: result.errorMessage,
+    };
+  } catch (e) {
+    return {
+      success: false,
+      output: '',
+      error: `idf.py flash failed: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
+}
+
+/** Upload via arduino-cli (framework-arduino / framework-avr). */
+function uploadArduinoSketch(
   sketchDir: string,
   buildTarget: string,
   port: string,
@@ -236,13 +328,14 @@ function findOutputDir(buildDir: string, baseName: string, projectRoot: string):
 
 function hasInoFile(dir: string): boolean {
   if (!fs.existsSync(dir)) return false;
-  return fs.readdirSync(dir).some(f => f.endsWith('.ino'));
+  return fs.readdirSync(dir).some(f => f.endsWith('.ino') || f.endsWith('.cc'));
 }
 
 function findInoFile(dir: string): string | undefined {
   if (!fs.existsSync(dir)) return undefined;
   for (const entry of fs.readdirSync(dir)) {
-    if (entry.endsWith('.ino')) {
+    // Accept .ino (Arduino) and .cc (ESP-IDF main.cc) as entry files.
+    if (entry.endsWith('.ino') || entry.endsWith('.cc')) {
       return path.join(dir, entry);
     }
   }
@@ -252,7 +345,7 @@ function findInoFile(dir: string): string | undefined {
 function findInoFileRecursive(dir: string): string | undefined {
   if (!fs.existsSync(dir)) return undefined;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name.endsWith('.ino')) {
+    if (entry.name.endsWith('.ino') || entry.name.endsWith('.cc')) {
       return path.join(dir, entry.name);
     }
     if (entry.isDirectory()) {

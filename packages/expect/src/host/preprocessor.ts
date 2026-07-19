@@ -62,6 +62,19 @@ export const avrUartShim: OutputShim = {
   delay: '_native_delay_ms(1000)',
 };
 
+/** ESP-IDF shim: emits console.debug (print, no newline) and console.log
+ *  (println, with newline) calls. The transpiler's transformConsoleCall lowers
+ *  these to printf for framework-esp32. Using different console methods lets
+ *  the lowering distinguish "partial line" (print/debug) from "end of line"
+ *  (println/log) — critical for the [TC:EXPECT:...] protocol format which
+ *  spans multiple print calls on a single line. */
+export const espIdfShim: OutputShim = {
+  begin: '',
+  print: (e) => `console.debug(${e})`,
+  println: (e) => `console.log(${e})`,
+  delay: 'Timing.delay(1000)',
+};
+
 export interface PreprocessorOptions {
   /** Wrap string literals in Arduino F() macro to save SRAM on AVR. */
   isAvr?: boolean;

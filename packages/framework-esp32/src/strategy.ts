@@ -70,6 +70,20 @@ export class Esp32Strategy extends ArduinoStrategy {
     return true;
   }
 
+  // ESP-IDF's libc has full <iostream> support (unlike AVR). Enable it so
+  // std::cout/cerr are available — used by the expect test runner and by
+  // programs that prefer streams over printf.
+  override needsIostream(): boolean {
+    return true;
+  }
+
+  // ESP-IDF's console is on UART0 by default (configured by the boot ROM);
+  // no Serial.begin() needed. The parent's setupInitCode emits Serial.begin
+  // which is an Arduino-only symbol that doesn't exist on ESP-IDF.
+  override setupInitCode(_program: ProgramIR, _ctx?: PlatformContext): string[] {
+    return [];
+  }
+
   override overrideBaseName(_originalBaseName: string, _outDirBaseName: string, isEntryFile: boolean, _isNpmPackage: boolean): string {
     // ESP-IDF's main/CMakeLists.txt registers SRCS "main.cc" — the entry file
     // MUST be named "main" regardless of the project/output dir name.
@@ -162,6 +176,9 @@ export class Esp32Strategy extends ArduinoStrategy {
       '',
       'extern "C" void app_main(void) {',
       '    xTaskCreate(__tc_app_task, "tc_app", 8192, NULL, 1, NULL);',
+      '    // app_main must NOT return — IDF would log "Returned from app_main"',
+      '    // and eventually abort. Block forever; the task runs independently.',
+      '    vTaskDelay(portMAX_DELAY);',
       '}',
       '',
     ];
@@ -179,42 +196,52 @@ export class Esp32Strategy extends ArduinoStrategy {
   // single pre-rendered string (possibly a `<<` chain), not an array.
   override transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
     const semi = forHeader ? '' : ';';
-    // Strip a wrapping String(...) if present (the parent adds it for Arduino).
     const isBareLiteral = /^"[^"]*"$/.test(renderedArgs.trim());
     const isChain = !isBareLiteral && renderedArgs.includes('<<');
-    // For ESP-IDF we use printf/ESP_LOG* which take a format string + args,
-    // not a stream chain. Split chains the way Arduino does, then format each
-    // part as a separate printf call.
     const tag = '"tc"';
+
+    // For log/info/debug: use printf (format-string based, no tag needed).
+    //   - log: printf with \n (end of protocol line)
+    //   - debug: printf WITHOUT \n (partial protocol line — used by expect
+    //     test runner for multi-print EXPECT format)
+    // For warn/error: use ESP_LOG* macros (tag + format + \n).
+    const usesLogMacro = method === 'error' || method === 'warn';
+
     let prefix = '';
-    switch (method) {
-      case 'error': prefix = `ESP_LOGE(${tag}, "[ERROR] ")${semi} `; break;
-      case 'warn':  prefix = `ESP_LOGW(${tag}, "[WARN] ")${semi} `;  break;
-      case 'info':  prefix = `ESP_LOGI(${tag}, "[INFO] ")${semi} `;  break;
-      case 'debug': prefix = `ESP_LOGD(${tag}, "[DEBUG] ")${semi} `; break;
-      default: break;
+    if (usesLogMacro) {
+      const macroFn = method === 'error' ? `ESP_LOGE(${tag}` : `ESP_LOGW(${tag}`;
+      const levelTag = method === 'error' ? '[ERROR]' : '[WARN]';
+      prefix = `${macroFn}, "${levelTag} ")${semi} `;
     }
 
-    // Choose output fn: ESP_LOG* for warn/error/debug/info, printf for log.
-    const usesLogMacro = method === 'error' || method === 'warn' || method === 'debug' || method === 'info';
-    const outFn = usesLogMacro
-      ? (method === 'error' ? `ESP_LOGE(${tag}` : method === 'warn' ? `ESP_LOGW(${tag}` : method === 'info' ? `ESP_LOGI(${tag}` : `ESP_LOGD(${tag}`)
-      : 'printf(';
-
-    // Bare string literal → emit directly as the format string (we assume the
-    // caller passed a string literal with no interpolation; non-literal args
-    // are emitted as-is which works for %s/%d-compatible expressions).
     if (isChain) {
-      // Split "a" << b << c — for v1, just concat by issuing separate calls.
-      // (Loses one-line guarantee; v1.1 should build a single format string.)
       const parts = splitStreamChain(renderedArgs);
       const calls = parts.map((p) => {
         const trimmed = p.trim();
-        return `${outFn}, ${trimmed})${semi}`;
+        if (usesLogMacro) {
+          const macroFn = method === 'error' ? `ESP_LOGE(${tag}` : `ESP_LOGW(${tag}`;
+          return `${macroFn}, ${trimmed})${semi}`;
+        }
+        return `printf(${trimmed})${semi}`;
       });
       return prefix + calls.join(' ');
     }
-    return `${prefix}${outFn}, ${renderedArgs})${semi}`;
+    // Single arg.
+    if (usesLogMacro) {
+      const macroFn = method === 'error' ? `ESP_LOGE(${tag}` : `ESP_LOGW(${tag}`;
+      return `${prefix}${macroFn}, ${renderedArgs})${semi}`;
+    }
+    // For log: printf with \n (end of protocol line).
+    // For debug: printf WITHOUT \n (partial protocol line — the EXPECT format
+    // spans multiple print calls before the final println).
+    const appendNewline = method !== 'debug';
+    const trimmed = renderedArgs.trim();
+    if (/^".*"$/.test(trimmed)) {
+      const inner = trimmed.slice(1, -1);
+      return `printf("${inner}${appendNewline ? '\\n' : ''}")${semi}`;
+    }
+    // Non-string expression.
+    return `printf("%g${appendNewline ? '\\n' : ''}", ${renderedArgs})${semi}`;
   }
 
   // Override cuttlefish_halt to use esp_system_abort (IDF-native fatal) instead
