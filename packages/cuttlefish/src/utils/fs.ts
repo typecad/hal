@@ -13,6 +13,13 @@ export function readText(filePath: string): string {
 
 export function writeText(filePath: string, content: string): void {
   ensureDir(path.dirname(filePath));
+  // Skip writing when content is identical — preserves mtime so downstream
+  // build tools (idf.py/ninja, arduino-cli, make) can skip recompilation.
+  try {
+    if (fs.readFileSync(filePath, "utf8") === content) return;
+  } catch {
+    // File doesn't exist yet — fall through to write.
+  }
   fs.writeFileSync(filePath, content, "utf8");
 }
 

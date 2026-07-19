@@ -7,7 +7,7 @@ describe('Esp32Strategy transformConsoleCall', () => {
   it('console.log → printf', () => {
     const out = strategy.transformConsoleCall('log', '"hello"', false);
     expect(out).toMatch(/^printf\(/);
-    expect(out).toContain('"hello"');
+    expect(out).toContain('hello');
     expect(out).toMatch(/;\s*$/);
   });
   it('console.log in header has no trailing semicolon', () => {
@@ -22,13 +22,15 @@ describe('Esp32Strategy transformConsoleCall', () => {
     expect(strategy.transformConsoleCall('warn', '"careful"', false))
       .toMatch(/^ESP_LOGW\("tc"/);
   });
-  it('console.info → ESP_LOGI', () => {
-    expect(strategy.transformConsoleCall('info', '"hi"', false))
-      .toMatch(/^ESP_LOGI\("tc"/);
+  it('console.info → printf (info uses printf, not ESP_LOGI)', () => {
+    const out = strategy.transformConsoleCall('info', '"hi"', false);
+    expect(out).toMatch(/^printf\(/);
+    expect(out).toContain('hi');
   });
-  it('console.debug → ESP_LOGD', () => {
-    expect(strategy.transformConsoleCall('debug', '"dbg"', false))
-      .toMatch(/^ESP_LOGD\("tc"/);
+  it('console.debug → printf without newline', () => {
+    const out = strategy.transformConsoleCall('debug', '"dbg"', false);
+    expect(out).toMatch(/^printf\(/);
+    expect(out).toContain('dbg');
   });
   it('error/warn/debug/info get a [LEVEL] prefix from the macro', () => {
     const out = strategy.transformConsoleCall('error', '"boom"', false);

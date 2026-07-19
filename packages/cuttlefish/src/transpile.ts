@@ -71,10 +71,12 @@ function loadExpectPreprocessor(): ExpectPreprocessor | undefined {
 }
 
 function cleanOutput(_entryDir: string, outDir: string): void {
-  // NOTE: incremental transpilation is disabled (see incremental-cache.ts).
-  // Only the output directory is cleaned; do not delete .cuttlefish-cache.json
-  // here so a future incremental implementation can read prior metadata.
-  try { if (fs.existsSync(outDir)) fs.rmSync(outDir, { recursive: true, force: true }); } catch (e) { if (process.env.CUTTLEFISH_DEBUG) console.error("[transpile] Failed to clean output dir:", e); }
+  // Preserved for incremental-build support: writeText now skips writing when
+  // content is identical, so keeping the existing output dir intact lets
+  // downstream build tools (idf.py/ninja, arduino-cli) reuse their build
+  // caches. Stale files from removed source modules are harmless — they're
+  // not referenced by the current entry file and won't be compiled.
+  // The output dir is still created (via writeText → ensureDir) on first run.
 }
 
   
