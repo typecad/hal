@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import {
   discoverIdfRoot, discoverFromEnv, discoverFromWellKnown, discoverFromVersionScan,
   detectIdfVersion, compareSemver, eimManifestPath, wellKnownPaths, versionScanParents,
+  resetDiscoverIdfRootCache,
 } from '../../../packages/framework-esp32/src/toolchain/discover';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -28,9 +29,13 @@ const ORIG_IDF_PATH = process.env.IDF_PATH;
 const ORIG_HOME = process.env.HOME;
 const ORIG_SYSTEMDRIVE = process.env.SystemDrive;
 
-beforeEach(() => { tmpDir = mkdtempSync(join(tmpdir(), 'tc-discover-')); });
+beforeEach(() => {
+  tmpDir = mkdtempSync(join(tmpdir(), 'tc-discover-'));
+  resetDiscoverIdfRootCache();
+});
 afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true });
+  resetDiscoverIdfRootCache();
   if (ORIG_IDF_PATH === undefined) delete process.env.IDF_PATH;
   else process.env.IDF_PATH = ORIG_IDF_PATH;
   if (ORIG_HOME === undefined) delete process.env.HOME;

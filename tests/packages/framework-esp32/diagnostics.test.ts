@@ -39,10 +39,10 @@ describe('Esp32Strategy profileDiagnostics', () => {
     expect(diags.some((d) => d.code === 'esp32-dac-unavailable')).toBe(false);
   });
 
-  it('does NOT flag DAC usage on S3', () => {
+  it('flags DAC usage on S3 (no DAC peripheral)', () => {
     const ctx = { analysis: { usesDAC: true }, frameworkData: { target: 'esp32s3' } } as any;
     const diags = strategy.profileDiagnostics(fakeProgram(), ctx);
-    expect(diags.some((d) => d.code === 'esp32-dac-unavailable')).toBe(false);
+    expect(diags.some((d) => d.code === 'esp32-dac-unavailable')).toBe(true);
   });
 
   it('flags input-only pin (34) used as OUTPUT on classic ESP32', () => {
@@ -75,6 +75,18 @@ describe('Esp32Strategy profileDiagnostics', () => {
     const diag = diags.find((d) => d.code === 'esp32-input-only-pin-as-output');
     expect(diag?.hint).toBeDefined();
     expect(diag?.hint).toMatch(/INPUT_PULLUP|different pin/i);
+  });
+
+  it('warns when tone is used (v1 stub)', () => {
+    const ctx = { analysis: { usesTone: true }, frameworkData: { target: 'esp32' } } as any;
+    const diags = strategy.profileDiagnostics(fakeProgram(), ctx);
+    expect(diags.some((d) => d.code === 'esp32-tone-stub' && d.severity === 'warning')).toBe(true);
+  });
+
+  it('warns when a strapping pin is used as OUTPUT', () => {
+    const ctx = { frameworkData: { target: 'esp32' } } as any;
+    const diags = strategy.profileDiagnostics(fakeProgram([{ pin: 0, mode: 'output' }]), ctx);
+    expect(diags.some((d) => d.code === 'esp32-strapping-pin' && d.message.includes('0'))).toBe(true);
   });
 });
 

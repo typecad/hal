@@ -3,6 +3,7 @@ import { ESP32 }   from './esp32.js';
 import { ESP32S3 } from './esp32s3.js';
 import { ESP32C3 } from './esp32c3.js';
 import { ESP32C6 } from './esp32c6.js';
+import { normalizeIdfTarget } from '../lowering/util.js';
 
 export { ESP32, ESP32S3, ESP32C3, ESP32C6 };
 export type { Esp32ChipDescriptor } from './types.js';
@@ -18,17 +19,15 @@ export function getActiveChip(): Esp32ChipDescriptor {
 }
 
 /**
- * Resolve a chip descriptor from frameworkData.target.
- * Replaces the FQBN-based router from the abandoned arduino-cli spec —
- * there is no FQBN here, just the IDF target string. Spec §6.2.
+ * Resolve a chip descriptor from frameworkData.target / buildTarget.
+ * Accepts bare IDF targets ('esp32s3') or Arduino FQBNs ('esp32:esp32:esp32s3').
  */
 export function chipForTarget(target?: string): Esp32ChipDescriptor {
-  switch (target) {
+  switch (normalizeIdfTarget(target)) {
     case 'esp32s3': return ESP32S3;
     case 'esp32c3': return ESP32C3;
     case 'esp32c6': return ESP32C6;
     case 'esp32':
-    case undefined:
     default:
       return ESP32;
   }

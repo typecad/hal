@@ -3,9 +3,12 @@ import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 export function interruptsInitLines(): string[] {
   return [
     `// CUTTLEFISH_INTR_BEGIN`,
+    `static bool __tc_intr_ready = false;`,
     `static void __tc_intr_install(void) {`,
-    `    // One-time init; idempotent if the service is already installed.`,
-    `    gpio_install_isr_service(ESP_INTR_FLAG_IRAM);`,
+    `    if (__tc_intr_ready) return;`,
+    `    // Idempotent: ESP_ERR_INVALID_STATE if already installed.`,
+    `    (void)gpio_install_isr_service(ESP_INTR_FLAG_IRAM);`,
+    `    __tc_intr_ready = true;`,
     `}`,
     `// CUTTLEFISH_INTR_END`,
     ``,
@@ -28,6 +31,7 @@ export function lowerInterrupts(op: HALOpIR): { code?: string; expression?: stri
     case 'interrupt.attach': {
       const intr = EDGE_MAP[o.mode] ?? 'GPIO_INTR_ANYEDGE';
       return { code: [
+        `__tc_intr_install();`,
         `gpio_set_intr_type((gpio_num_t)${o.pin}, ${intr});`,
         `gpio_isr_handler_add((gpio_num_t)${o.pin}, (void(*)(void*))${o.handler}, NULL);`,
       ].join(' ') };

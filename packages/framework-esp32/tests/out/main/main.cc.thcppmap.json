@@ -1,0 +1,3689 @@
+{
+  "version": 1,
+  "generatedFilePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\out\\main\\main.cc",
+  "sourceFilePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+  "entries": [
+    {
+      "generatedStartLine": 35,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 35,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 103,
+        "endOffset": 245,
+        "startLine": 4,
+        "startColumn": 1,
+        "endLine": 10,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn1"
+    },
+    {
+      "generatedStartLine": 36,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 36,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 246,
+        "endOffset": 400,
+        "startLine": 11,
+        "startColumn": 1,
+        "endLine": 18,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn2"
+    },
+    {
+      "generatedStartLine": 37,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 37,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 401,
+        "endOffset": 548,
+        "startLine": 19,
+        "startColumn": 1,
+        "endLine": 25,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn3"
+    },
+    {
+      "generatedStartLine": 38,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 38,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 549,
+        "endOffset": 753,
+        "startLine": 26,
+        "startColumn": 1,
+        "endLine": 31,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn4"
+    },
+    {
+      "generatedStartLine": 39,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 39,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 754,
+        "endOffset": 1022,
+        "startLine": 32,
+        "startColumn": 1,
+        "endLine": 39,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn5"
+    },
+    {
+      "generatedStartLine": 40,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 40,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1023,
+        "endOffset": 1416,
+        "startLine": 40,
+        "startColumn": 1,
+        "endLine": 49,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn6"
+    },
+    {
+      "generatedStartLine": 41,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 41,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2443,
+        "endOffset": 2540,
+        "startLine": 75,
+        "startColumn": 1,
+        "endLine": 78,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn7"
+    },
+    {
+      "generatedStartLine": 42,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 42,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2541,
+        "endOffset": 2638,
+        "startLine": 79,
+        "startColumn": 1,
+        "endLine": 82,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn8"
+    },
+    {
+      "generatedStartLine": 43,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 43,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2639,
+        "endOffset": 2796,
+        "startLine": 83,
+        "startColumn": 1,
+        "endLine": 88,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn9"
+    },
+    {
+      "generatedStartLine": 44,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 44,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2797,
+        "endOffset": 2968,
+        "startLine": 89,
+        "startColumn": 1,
+        "endLine": 94,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn10"
+    },
+    {
+      "generatedStartLine": 45,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 45,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2969,
+        "endOffset": 3044,
+        "startLine": 95,
+        "startColumn": 1,
+        "endLine": 98,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn11"
+    },
+    {
+      "generatedStartLine": 46,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 46,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3045,
+        "endOffset": 3133,
+        "startLine": 99,
+        "startColumn": 1,
+        "endLine": 102,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn12"
+    },
+    {
+      "generatedStartLine": 47,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 47,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3134,
+        "endOffset": 3233,
+        "startLine": 103,
+        "startColumn": 1,
+        "endLine": 106,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn13"
+    },
+    {
+      "generatedStartLine": 48,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 48,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4385,
+        "endOffset": 4655,
+        "startLine": 136,
+        "startColumn": 1,
+        "endLine": 142,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn14"
+    },
+    {
+      "generatedStartLine": 49,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 49,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4656,
+        "endOffset": 4784,
+        "startLine": 143,
+        "startColumn": 1,
+        "endLine": 147,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn15"
+    },
+    {
+      "generatedStartLine": 50,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 50,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4785,
+        "endOffset": 5063,
+        "startLine": 148,
+        "startColumn": 1,
+        "endLine": 154,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn16"
+    },
+    {
+      "generatedStartLine": 51,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 51,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5064,
+        "endOffset": 5345,
+        "startLine": 155,
+        "startColumn": 1,
+        "endLine": 162,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn17"
+    },
+    {
+      "generatedStartLine": 52,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 52,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6091,
+        "endOffset": 6176,
+        "startLine": 180,
+        "startColumn": 1,
+        "endLine": 183,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn18"
+    },
+    {
+      "generatedStartLine": 53,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 53,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6388,
+        "endOffset": 6480,
+        "startLine": 189,
+        "startColumn": 1,
+        "endLine": 193,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn19"
+    },
+    {
+      "generatedStartLine": 54,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 54,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6481,
+        "endOffset": 6622,
+        "startLine": 194,
+        "startColumn": 1,
+        "endLine": 199,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn20"
+    },
+    {
+      "generatedStartLine": 55,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 55,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6623,
+        "endOffset": 6730,
+        "startLine": 200,
+        "startColumn": 1,
+        "endLine": 203,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn21"
+    },
+    {
+      "generatedStartLine": 56,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 56,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6731,
+        "endOffset": 6895,
+        "startLine": 204,
+        "startColumn": 1,
+        "endLine": 208,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn22"
+    },
+    {
+      "generatedStartLine": 57,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 57,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6896,
+        "endOffset": 7007,
+        "startLine": 209,
+        "startColumn": 1,
+        "endLine": 212,
+        "endColumn": 6
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn23"
+    },
+    {
+      "generatedStartLine": 58,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 58,
+      "generatedEndColumn": 50,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6518,
+        "endOffset": 6592,
+        "startLine": 195,
+        "startColumn": 7,
+        "endLine": 197,
+        "endColumn": 8
+      },
+      "nodeKind": "function_declaration",
+      "symbolName": "__tc_fn20__add"
+    },
+    {
+      "generatedStartLine": 61,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 61,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "setup"
+    },
+    {
+      "generatedStartLine": 63,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 63,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 0,
+        "endOffset": 20,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 21
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 64,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 64,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 22,
+        "endOffset": 56,
+        "startLine": 2,
+        "startColumn": 1,
+        "endLine": 2,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 65,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 65,
+      "generatedEndColumn": 74,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1417,
+        "endOffset": 1487,
+        "startLine": 50,
+        "startColumn": 1,
+        "endLine": 50,
+        "endColumn": 71
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 66,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 66,
+      "generatedEndColumn": 86,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1489,
+        "endOffset": 1571,
+        "startLine": 51,
+        "startColumn": 1,
+        "endLine": 51,
+        "endColumn": 83
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 67,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 67,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1573,
+        "endOffset": 1607,
+        "startLine": 52,
+        "startColumn": 1,
+        "endLine": 52,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 68,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 68,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1609,
+        "endOffset": 1633,
+        "startLine": 53,
+        "startColumn": 1,
+        "endLine": 53,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 69,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 69,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1635,
+        "endOffset": 1654,
+        "startLine": 54,
+        "startColumn": 1,
+        "endLine": 54,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 70,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 70,
+      "generatedEndColumn": 85,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1656,
+        "endOffset": 1737,
+        "startLine": 55,
+        "startColumn": 1,
+        "endLine": 55,
+        "endColumn": 82
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 71,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 71,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1739,
+        "endOffset": 1773,
+        "startLine": 56,
+        "startColumn": 1,
+        "endLine": 56,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 72,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 72,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1775,
+        "endOffset": 1799,
+        "startLine": 57,
+        "startColumn": 1,
+        "endLine": 57,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 73,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 73,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1801,
+        "endOffset": 1820,
+        "startLine": 58,
+        "startColumn": 1,
+        "endLine": 58,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 74,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 74,
+      "generatedEndColumn": 64,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1822,
+        "endOffset": 1882,
+        "startLine": 59,
+        "startColumn": 1,
+        "endLine": 59,
+        "endColumn": 61
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 75,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 75,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1884,
+        "endOffset": 1918,
+        "startLine": 60,
+        "startColumn": 1,
+        "endLine": 60,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 76,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 76,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1920,
+        "endOffset": 1944,
+        "startLine": 61,
+        "startColumn": 1,
+        "endLine": 61,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 77,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 77,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1946,
+        "endOffset": 1965,
+        "startLine": 62,
+        "startColumn": 1,
+        "endLine": 62,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 78,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 78,
+      "generatedEndColumn": 76,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1967,
+        "endOffset": 2039,
+        "startLine": 63,
+        "startColumn": 1,
+        "endLine": 63,
+        "endColumn": 73
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 79,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 79,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2041,
+        "endOffset": 2075,
+        "startLine": 64,
+        "startColumn": 1,
+        "endLine": 64,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 80,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 80,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2077,
+        "endOffset": 2101,
+        "startLine": 65,
+        "startColumn": 1,
+        "endLine": 65,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 81,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 81,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2103,
+        "endOffset": 2122,
+        "startLine": 66,
+        "startColumn": 1,
+        "endLine": 66,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 82,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 82,
+      "generatedEndColumn": 74,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2124,
+        "endOffset": 2194,
+        "startLine": 67,
+        "startColumn": 1,
+        "endLine": 67,
+        "endColumn": 71
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 83,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 83,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2196,
+        "endOffset": 2230,
+        "startLine": 68,
+        "startColumn": 1,
+        "endLine": 68,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 84,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 84,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2232,
+        "endOffset": 2256,
+        "startLine": 69,
+        "startColumn": 1,
+        "endLine": 69,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 85,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 85,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2258,
+        "endOffset": 2277,
+        "startLine": 70,
+        "startColumn": 1,
+        "endLine": 70,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 86,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 86,
+      "generatedEndColumn": 83,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2279,
+        "endOffset": 2358,
+        "startLine": 71,
+        "startColumn": 1,
+        "endLine": 71,
+        "endColumn": 80
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 87,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 87,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2360,
+        "endOffset": 2394,
+        "startLine": 72,
+        "startColumn": 1,
+        "endLine": 72,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 88,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 88,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2396,
+        "endOffset": 2420,
+        "startLine": 73,
+        "startColumn": 1,
+        "endLine": 73,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 89,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 89,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2422,
+        "endOffset": 2441,
+        "startLine": 74,
+        "startColumn": 1,
+        "endLine": 74,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 90,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 90,
+      "generatedEndColumn": 76,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3234,
+        "endOffset": 3306,
+        "startLine": 107,
+        "startColumn": 1,
+        "endLine": 107,
+        "endColumn": 73
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 91,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 91,
+      "generatedEndColumn": 74,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3308,
+        "endOffset": 3378,
+        "startLine": 108,
+        "startColumn": 1,
+        "endLine": 108,
+        "endColumn": 71
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 92,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 92,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3380,
+        "endOffset": 3414,
+        "startLine": 109,
+        "startColumn": 1,
+        "endLine": 109,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 93,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 93,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3416,
+        "endOffset": 3440,
+        "startLine": 110,
+        "startColumn": 1,
+        "endLine": 110,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 94,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 94,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3442,
+        "endOffset": 3461,
+        "startLine": 111,
+        "startColumn": 1,
+        "endLine": 111,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 95,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 95,
+      "generatedEndColumn": 74,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3463,
+        "endOffset": 3533,
+        "startLine": 112,
+        "startColumn": 1,
+        "endLine": 112,
+        "endColumn": 71
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 96,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 96,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3535,
+        "endOffset": 3569,
+        "startLine": 113,
+        "startColumn": 1,
+        "endLine": 113,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 97,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 97,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3571,
+        "endOffset": 3595,
+        "startLine": 114,
+        "startColumn": 1,
+        "endLine": 114,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 98,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 98,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3597,
+        "endOffset": 3616,
+        "startLine": 115,
+        "startColumn": 1,
+        "endLine": 115,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 99,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 99,
+      "generatedEndColumn": 64,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3618,
+        "endOffset": 3678,
+        "startLine": 116,
+        "startColumn": 1,
+        "endLine": 116,
+        "endColumn": 61
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 100,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 100,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3680,
+        "endOffset": 3714,
+        "startLine": 117,
+        "startColumn": 1,
+        "endLine": 117,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 101,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 101,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3716,
+        "endOffset": 3740,
+        "startLine": 118,
+        "startColumn": 1,
+        "endLine": 118,
+        "endColumn": 25
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 102,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 102,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3742,
+        "endOffset": 3761,
+        "startLine": 119,
+        "startColumn": 1,
+        "endLine": 119,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 103,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 103,
+      "generatedEndColumn": 64,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3763,
+        "endOffset": 3823,
+        "startLine": 120,
+        "startColumn": 1,
+        "endLine": 120,
+        "endColumn": 61
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 104,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 104,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3825,
+        "endOffset": 3859,
+        "startLine": 121,
+        "startColumn": 1,
+        "endLine": 121,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 105,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 105,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3861,
+        "endOffset": 3886,
+        "startLine": 122,
+        "startColumn": 1,
+        "endLine": 122,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 106,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 106,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3888,
+        "endOffset": 3907,
+        "startLine": 123,
+        "startColumn": 1,
+        "endLine": 123,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 107,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 107,
+      "generatedEndColumn": 73,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3909,
+        "endOffset": 3978,
+        "startLine": 124,
+        "startColumn": 1,
+        "endLine": 124,
+        "endColumn": 70
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 108,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 108,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3980,
+        "endOffset": 4014,
+        "startLine": 125,
+        "startColumn": 1,
+        "endLine": 125,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 109,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 109,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4016,
+        "endOffset": 4041,
+        "startLine": 126,
+        "startColumn": 1,
+        "endLine": 126,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 110,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 110,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4043,
+        "endOffset": 4062,
+        "startLine": 127,
+        "startColumn": 1,
+        "endLine": 127,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 111,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 111,
+      "generatedEndColumn": 85,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4064,
+        "endOffset": 4145,
+        "startLine": 128,
+        "startColumn": 1,
+        "endLine": 128,
+        "endColumn": 82
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 112,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 112,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4147,
+        "endOffset": 4181,
+        "startLine": 129,
+        "startColumn": 1,
+        "endLine": 129,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 113,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 113,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4183,
+        "endOffset": 4208,
+        "startLine": 130,
+        "startColumn": 1,
+        "endLine": 130,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 114,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 114,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4210,
+        "endOffset": 4229,
+        "startLine": 131,
+        "startColumn": 1,
+        "endLine": 131,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 115,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 115,
+      "generatedEndColumn": 72,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4231,
+        "endOffset": 4299,
+        "startLine": 132,
+        "startColumn": 1,
+        "endLine": 132,
+        "endColumn": 69
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 116,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 116,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4301,
+        "endOffset": 4335,
+        "startLine": 133,
+        "startColumn": 1,
+        "endLine": 133,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 117,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 117,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4337,
+        "endOffset": 4362,
+        "startLine": 134,
+        "startColumn": 1,
+        "endLine": 134,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 118,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 118,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4364,
+        "endOffset": 4383,
+        "startLine": 135,
+        "startColumn": 1,
+        "endLine": 135,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 119,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 119,
+      "generatedEndColumn": 68,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5346,
+        "endOffset": 5410,
+        "startLine": 163,
+        "startColumn": 1,
+        "endLine": 163,
+        "endColumn": 65
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 120,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 120,
+      "generatedEndColumn": 96,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5412,
+        "endOffset": 5504,
+        "startLine": 164,
+        "startColumn": 1,
+        "endLine": 164,
+        "endColumn": 93
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 121,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 121,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5506,
+        "endOffset": 5540,
+        "startLine": 165,
+        "startColumn": 1,
+        "endLine": 165,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 122,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 122,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5542,
+        "endOffset": 5567,
+        "startLine": 166,
+        "startColumn": 1,
+        "endLine": 166,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 123,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 123,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5569,
+        "endOffset": 5588,
+        "startLine": 167,
+        "startColumn": 1,
+        "endLine": 167,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 124,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 124,
+      "generatedEndColumn": 70,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5590,
+        "endOffset": 5656,
+        "startLine": 168,
+        "startColumn": 1,
+        "endLine": 168,
+        "endColumn": 67
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 125,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 125,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5658,
+        "endOffset": 5692,
+        "startLine": 169,
+        "startColumn": 1,
+        "endLine": 169,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 126,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 126,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5694,
+        "endOffset": 5719,
+        "startLine": 170,
+        "startColumn": 1,
+        "endLine": 170,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 127,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 127,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5721,
+        "endOffset": 5740,
+        "startLine": 171,
+        "startColumn": 1,
+        "endLine": 171,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 128,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 128,
+      "generatedEndColumn": 94,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5742,
+        "endOffset": 5832,
+        "startLine": 172,
+        "startColumn": 1,
+        "endLine": 172,
+        "endColumn": 91
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 129,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 129,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5834,
+        "endOffset": 5868,
+        "startLine": 173,
+        "startColumn": 1,
+        "endLine": 173,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 130,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 130,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5870,
+        "endOffset": 5895,
+        "startLine": 174,
+        "startColumn": 1,
+        "endLine": 174,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 131,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 131,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5897,
+        "endOffset": 5916,
+        "startLine": 175,
+        "startColumn": 1,
+        "endLine": 175,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 132,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 132,
+      "generatedEndColumn": 91,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5918,
+        "endOffset": 6005,
+        "startLine": 176,
+        "startColumn": 1,
+        "endLine": 176,
+        "endColumn": 88
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 133,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 133,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6007,
+        "endOffset": 6041,
+        "startLine": 177,
+        "startColumn": 1,
+        "endLine": 177,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 134,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 134,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6043,
+        "endOffset": 6068,
+        "startLine": 178,
+        "startColumn": 1,
+        "endLine": 178,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 135,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 135,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6070,
+        "endOffset": 6089,
+        "startLine": 179,
+        "startColumn": 1,
+        "endLine": 179,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 136,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 136,
+      "generatedEndColumn": 61,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6177,
+        "endOffset": 6234,
+        "startLine": 184,
+        "startColumn": 1,
+        "endLine": 184,
+        "endColumn": 58
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 137,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 137,
+      "generatedEndColumn": 70,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6236,
+        "endOffset": 6302,
+        "startLine": 185,
+        "startColumn": 1,
+        "endLine": 185,
+        "endColumn": 67
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 138,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 138,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6304,
+        "endOffset": 6338,
+        "startLine": 186,
+        "startColumn": 1,
+        "endLine": 186,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 139,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 139,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6340,
+        "endOffset": 6365,
+        "startLine": 187,
+        "startColumn": 1,
+        "endLine": 187,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 140,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 140,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6367,
+        "endOffset": 6386,
+        "startLine": 188,
+        "startColumn": 1,
+        "endLine": 188,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 141,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 141,
+      "generatedEndColumn": 51,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7008,
+        "endOffset": 7055,
+        "startLine": 213,
+        "startColumn": 1,
+        "endLine": 213,
+        "endColumn": 48
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 142,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 142,
+      "generatedEndColumn": 40,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7057,
+        "endOffset": 7093,
+        "startLine": 214,
+        "startColumn": 1,
+        "endLine": 214,
+        "endColumn": 37
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 143,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 143,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7095,
+        "endOffset": 7129,
+        "startLine": 215,
+        "startColumn": 1,
+        "endLine": 215,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 144,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 144,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7131,
+        "endOffset": 7156,
+        "startLine": 216,
+        "startColumn": 1,
+        "endLine": 216,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 145,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 145,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7158,
+        "endOffset": 7177,
+        "startLine": 217,
+        "startColumn": 1,
+        "endLine": 217,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 146,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 146,
+      "generatedEndColumn": 39,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7179,
+        "endOffset": 7214,
+        "startLine": 218,
+        "startColumn": 1,
+        "endLine": 218,
+        "endColumn": 36
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 147,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 147,
+      "generatedEndColumn": 38,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7216,
+        "endOffset": 7250,
+        "startLine": 219,
+        "startColumn": 1,
+        "endLine": 219,
+        "endColumn": 35
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 148,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 148,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7252,
+        "endOffset": 7277,
+        "startLine": 220,
+        "startColumn": 1,
+        "endLine": 220,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 149,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 149,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7279,
+        "endOffset": 7298,
+        "startLine": 221,
+        "startColumn": 1,
+        "endLine": 221,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 150,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 150,
+      "generatedEndColumn": 37,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7300,
+        "endOffset": 7333,
+        "startLine": 222,
+        "startColumn": 1,
+        "endLine": 222,
+        "endColumn": 34
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 151,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 151,
+      "generatedEndColumn": 40,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7335,
+        "endOffset": 7371,
+        "startLine": 223,
+        "startColumn": 1,
+        "endLine": 223,
+        "endColumn": 37
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 152,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 152,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7373,
+        "endOffset": 7398,
+        "startLine": 224,
+        "startColumn": 1,
+        "endLine": 224,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 153,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 153,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7400,
+        "endOffset": 7419,
+        "startLine": 225,
+        "startColumn": 1,
+        "endLine": 225,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 154,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 154,
+      "generatedEndColumn": 56,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7421,
+        "endOffset": 7473,
+        "startLine": 226,
+        "startColumn": 1,
+        "endLine": 226,
+        "endColumn": 53
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 155,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 155,
+      "generatedEndColumn": 40,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7475,
+        "endOffset": 7511,
+        "startLine": 227,
+        "startColumn": 1,
+        "endLine": 227,
+        "endColumn": 37
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 156,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 156,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7513,
+        "endOffset": 7538,
+        "startLine": 228,
+        "startColumn": 1,
+        "endLine": 228,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 157,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 157,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7540,
+        "endOffset": 7559,
+        "startLine": 229,
+        "startColumn": 1,
+        "endLine": 229,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 158,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 158,
+      "generatedEndColumn": 40,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7561,
+        "endOffset": 7597,
+        "startLine": 230,
+        "startColumn": 1,
+        "endLine": 230,
+        "endColumn": 37
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 159,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 159,
+      "generatedEndColumn": 41,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7599,
+        "endOffset": 7636,
+        "startLine": 231,
+        "startColumn": 1,
+        "endLine": 231,
+        "endColumn": 38
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 160,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 160,
+      "generatedEndColumn": 29,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7638,
+        "endOffset": 7663,
+        "startLine": 232,
+        "startColumn": 1,
+        "endLine": 232,
+        "endColumn": 26
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 161,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 161,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7665,
+        "endOffset": 7684,
+        "startLine": 233,
+        "startColumn": 1,
+        "endLine": 233,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 162,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 162,
+      "generatedEndColumn": 36,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7686,
+        "endOffset": 7718,
+        "startLine": 234,
+        "startColumn": 1,
+        "endLine": 234,
+        "endColumn": 33
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 163,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 163,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7720,
+        "endOffset": 7749,
+        "startLine": 235,
+        "startColumn": 1,
+        "endLine": 235,
+        "endColumn": 30
+      },
+      "nodeKind": "while"
+    },
+    {
+      "generatedStartLine": 165,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 165,
+      "generatedEndColumn": 37,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 7735,
+        "endOffset": 7746,
+        "startLine": 235,
+        "startColumn": 16,
+        "endLine": 235,
+        "endColumn": 27
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 169,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 169,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 103,
+        "endOffset": 245,
+        "startLine": 4,
+        "startColumn": 1,
+        "endLine": 10,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn1"
+    },
+    {
+      "generatedStartLine": 171,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 171,
+      "generatedEndColumn": 86,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 151,
+        "endOffset": 164,
+        "startLine": 5,
+        "startColumn": 19,
+        "endLine": 5,
+        "endColumn": 32
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 172,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 172,
+      "generatedEndColumn": 36,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 172,
+        "endOffset": 182,
+        "startLine": 6,
+        "startColumn": 7,
+        "endLine": 6,
+        "endColumn": 17
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 173,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 173,
+      "generatedEndColumn": 32,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 190,
+        "endOffset": 205,
+        "startLine": 7,
+        "startColumn": 7,
+        "endLine": 7,
+        "endColumn": 22
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 174,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 174,
+      "generatedEndColumn": 36,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 213,
+        "endOffset": 222,
+        "startLine": 8,
+        "startColumn": 7,
+        "endLine": 8,
+        "endColumn": 16
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 175,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 175,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 230,
+        "endOffset": 239,
+        "startLine": 9,
+        "startColumn": 7,
+        "endLine": 9,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 178,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 178,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 246,
+        "endOffset": 400,
+        "startLine": 11,
+        "startColumn": 1,
+        "endLine": 18,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn2"
+    },
+    {
+      "generatedStartLine": 180,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 180,
+      "generatedEndColumn": 86,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 294,
+        "endOffset": 307,
+        "startLine": 12,
+        "startColumn": 19,
+        "endLine": 12,
+        "endColumn": 32
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 181,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 181,
+      "generatedEndColumn": 13,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 319,
+        "endOffset": 324,
+        "startLine": 13,
+        "startColumn": 11,
+        "endLine": 13,
+        "endColumn": 16
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 182,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 182,
+      "generatedEndColumn": 48,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 332,
+        "endOffset": 344,
+        "startLine": 14,
+        "startColumn": 7,
+        "endLine": 14,
+        "endColumn": 19
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 183,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 183,
+      "generatedEndColumn": 9,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 352,
+        "endOffset": 358,
+        "startLine": 15,
+        "startColumn": 7,
+        "endLine": 15,
+        "endColumn": 13
+      },
+      "nodeKind": "assign"
+    },
+    {
+      "generatedStartLine": 184,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 184,
+      "generatedEndColumn": 48,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 365,
+        "endOffset": 377,
+        "startLine": 16,
+        "startColumn": 7,
+        "endLine": 16,
+        "endColumn": 19
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 185,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 185,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 385,
+        "endOffset": 394,
+        "startLine": 17,
+        "startColumn": 7,
+        "endLine": 17,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 188,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 188,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 401,
+        "endOffset": 548,
+        "startLine": 19,
+        "startColumn": 1,
+        "endLine": 25,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn3"
+    },
+    {
+      "generatedStartLine": 190,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 190,
+      "generatedEndColumn": 86,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 449,
+        "endOffset": 462,
+        "startLine": 20,
+        "startColumn": 19,
+        "endLine": 20,
+        "endColumn": 32
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 191,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 191,
+      "generatedEndColumn": 65,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 470,
+        "endOffset": 482,
+        "startLine": 21,
+        "startColumn": 7,
+        "endLine": 21,
+        "endColumn": 19
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 192,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 192,
+      "generatedEndColumn": 32,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 490,
+        "endOffset": 505,
+        "startLine": 22,
+        "startColumn": 7,
+        "endLine": 22,
+        "endColumn": 22
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 193,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 193,
+      "generatedEndColumn": 65,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 513,
+        "endOffset": 525,
+        "startLine": 23,
+        "startColumn": 7,
+        "endLine": 23,
+        "endColumn": 19
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 194,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 194,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 533,
+        "endOffset": 542,
+        "startLine": 24,
+        "startColumn": 7,
+        "endLine": 24,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 197,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 197,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 549,
+        "endOffset": 753,
+        "startLine": 26,
+        "startColumn": 1,
+        "endLine": 31,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn4"
+    },
+    {
+      "generatedStartLine": 199,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 199,
+      "generatedEndColumn": 116,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 672,
+        "endOffset": 690,
+        "startLine": 28,
+        "startColumn": 19,
+        "endLine": 28,
+        "endColumn": 37
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 200,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 200,
+      "generatedEndColumn": 32,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 698,
+        "endOffset": 713,
+        "startLine": 29,
+        "startColumn": 7,
+        "endLine": 29,
+        "endColumn": 22
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 201,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 201,
+      "generatedEndColumn": 50,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 721,
+        "endOffset": 747,
+        "startLine": 30,
+        "startColumn": 7,
+        "endLine": 30,
+        "endColumn": 33
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 204,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 204,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 754,
+        "endOffset": 1022,
+        "startLine": 32,
+        "startColumn": 1,
+        "endLine": 39,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn5"
+    },
+    {
+      "generatedStartLine": 206,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 206,
+      "generatedEndColumn": 85,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 876,
+        "endOffset": 888,
+        "startLine": 34,
+        "startColumn": 19,
+        "endLine": 34,
+        "endColumn": 31
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 207,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 207,
+      "generatedEndColumn": 32,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 896,
+        "endOffset": 911,
+        "startLine": 35,
+        "startColumn": 7,
+        "endLine": 35,
+        "endColumn": 22
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 208,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 208,
+      "generatedEndColumn": 33,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 989,
+        "endOffset": 999,
+        "startLine": 37,
+        "startColumn": 7,
+        "endLine": 37,
+        "endColumn": 17
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 209,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 209,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1007,
+        "endOffset": 1016,
+        "startLine": 38,
+        "startColumn": 7,
+        "endLine": 38,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 212,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 212,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1023,
+        "endOffset": 1416,
+        "startLine": 40,
+        "startColumn": 1,
+        "endLine": 49,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn6"
+    },
+    {
+      "generatedStartLine": 214,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 214,
+      "generatedEndColumn": 86,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1284,
+        "endOffset": 1298,
+        "startLine": 44,
+        "startColumn": 19,
+        "endLine": 44,
+        "endColumn": 33
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 215,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 215,
+      "generatedEndColumn": 36,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1284,
+        "endOffset": 1298,
+        "startLine": 44,
+        "startColumn": 19,
+        "endLine": 44,
+        "endColumn": 33
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 216,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 216,
+      "generatedEndColumn": 32,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1306,
+        "endOffset": 1321,
+        "startLine": 45,
+        "startColumn": 7,
+        "endLine": 45,
+        "endColumn": 22
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 217,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 217,
+      "generatedEndColumn": 85,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1341,
+        "endOffset": 1353,
+        "startLine": 46,
+        "startColumn": 19,
+        "endLine": 46,
+        "endColumn": 31
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 218,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 218,
+      "generatedEndColumn": 32,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1361,
+        "endOffset": 1376,
+        "startLine": 47,
+        "startColumn": 7,
+        "endLine": 47,
+        "endColumn": 22
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 219,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 219,
+      "generatedEndColumn": 50,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 1384,
+        "endOffset": 1410,
+        "startLine": 48,
+        "startColumn": 7,
+        "endLine": 48,
+        "endColumn": 33
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 222,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 222,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2443,
+        "endOffset": 2540,
+        "startLine": 75,
+        "startColumn": 1,
+        "endLine": 78,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn7"
+    },
+    {
+      "generatedStartLine": 224,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 224,
+      "generatedEndColumn": 48,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2485,
+        "endOffset": 2504,
+        "startLine": 76,
+        "startColumn": 13,
+        "endLine": 76,
+        "endColumn": 32
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 225,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 225,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2512,
+        "endOffset": 2534,
+        "startLine": 77,
+        "startColumn": 7,
+        "endLine": 77,
+        "endColumn": 29
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 228,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 228,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2541,
+        "endOffset": 2638,
+        "startLine": 79,
+        "startColumn": 1,
+        "endLine": 82,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn8"
+    },
+    {
+      "generatedStartLine": 230,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 230,
+      "generatedEndColumn": 39,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2583,
+        "endOffset": 2602,
+        "startLine": 80,
+        "startColumn": 13,
+        "endLine": 80,
+        "endColumn": 32
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 231,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 231,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2610,
+        "endOffset": 2632,
+        "startLine": 81,
+        "startColumn": 7,
+        "endLine": 81,
+        "endColumn": 29
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 234,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 234,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2639,
+        "endOffset": 2796,
+        "startLine": 83,
+        "startColumn": 1,
+        "endLine": 88,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn9"
+    },
+    {
+      "generatedStartLine": 236,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 236,
+      "generatedEndColumn": 49,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2681,
+        "endOffset": 2701,
+        "startLine": 84,
+        "startColumn": 13,
+        "endLine": 84,
+        "endColumn": 33
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 237,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 237,
+      "generatedEndColumn": 33,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2709,
+        "endOffset": 2725,
+        "startLine": 85,
+        "startColumn": 7,
+        "endLine": 85,
+        "endColumn": 23
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 238,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 238,
+      "generatedEndColumn": 49,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2739,
+        "endOffset": 2759,
+        "startLine": 86,
+        "startColumn": 13,
+        "endLine": 86,
+        "endColumn": 33
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 239,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 239,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2767,
+        "endOffset": 2790,
+        "startLine": 87,
+        "startColumn": 7,
+        "endLine": 87,
+        "endColumn": 30
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 242,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 242,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2797,
+        "endOffset": 2968,
+        "startLine": 89,
+        "startColumn": 1,
+        "endLine": 94,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn10"
+    },
+    {
+      "generatedStartLine": 244,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 244,
+      "generatedEndColumn": 40,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2840,
+        "endOffset": 2860,
+        "startLine": 90,
+        "startColumn": 13,
+        "endLine": 90,
+        "endColumn": 33
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 245,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 245,
+      "generatedEndColumn": 25,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2868,
+        "endOffset": 2897,
+        "startLine": 91,
+        "startColumn": 7,
+        "endLine": 91,
+        "endColumn": 36
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 246,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 246,
+      "generatedEndColumn": 40,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2911,
+        "endOffset": 2931,
+        "startLine": 92,
+        "startColumn": 13,
+        "endLine": 92,
+        "endColumn": 33
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 247,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 247,
+      "generatedEndColumn": 28,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2939,
+        "endOffset": 2962,
+        "startLine": 93,
+        "startColumn": 7,
+        "endLine": 93,
+        "endColumn": 30
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 250,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 250,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 2969,
+        "endOffset": 3044,
+        "startLine": 95,
+        "startColumn": 1,
+        "endLine": 98,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn11"
+    },
+    {
+      "generatedStartLine": 252,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 252,
+      "generatedEndColumn": 32,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3006,
+        "endOffset": 3021,
+        "startLine": 96,
+        "startColumn": 7,
+        "endLine": 96,
+        "endColumn": 22
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 253,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 253,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3029,
+        "endOffset": 3038,
+        "startLine": 97,
+        "startColumn": 7,
+        "endLine": 97,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 256,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 256,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3045,
+        "endOffset": 3133,
+        "startLine": 99,
+        "startColumn": 1,
+        "endLine": 102,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn12"
+    },
+    {
+      "generatedStartLine": 258,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 258,
+      "generatedEndColumn": 24,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3082,
+        "endOffset": 3110,
+        "startLine": 100,
+        "startColumn": 7,
+        "endLine": 100,
+        "endColumn": 35
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 259,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 259,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3118,
+        "endOffset": 3127,
+        "startLine": 101,
+        "startColumn": 7,
+        "endLine": 101,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 262,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 262,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3134,
+        "endOffset": 3233,
+        "startLine": 103,
+        "startColumn": 1,
+        "endLine": 106,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn13"
+    },
+    {
+      "generatedStartLine": 264,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 264,
+      "generatedEndColumn": 43,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3177,
+        "endOffset": 3198,
+        "startLine": 104,
+        "startColumn": 13,
+        "endLine": 104,
+        "endColumn": 34
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 265,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 265,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 3206,
+        "endOffset": 3227,
+        "startLine": 105,
+        "startColumn": 7,
+        "endLine": 105,
+        "endColumn": 28
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 268,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 268,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4385,
+        "endOffset": 4655,
+        "startLine": 136,
+        "startColumn": 1,
+        "endLine": 142,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn14"
+    },
+    {
+      "generatedStartLine": 270,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 270,
+      "generatedEndColumn": 85,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4560,
+        "endOffset": 4572,
+        "startLine": 139,
+        "startColumn": 17,
+        "endLine": 139,
+        "endColumn": 29
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 271,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 271,
+      "generatedEndColumn": 47,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4586,
+        "endOffset": 4604,
+        "startLine": 140,
+        "startColumn": 13,
+        "endLine": 140,
+        "endColumn": 31
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 272,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 272,
+      "generatedEndColumn": 42,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4612,
+        "endOffset": 4649,
+        "startLine": 141,
+        "startColumn": 7,
+        "endLine": 141,
+        "endColumn": 44
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 275,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 275,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4656,
+        "endOffset": 4784,
+        "startLine": 143,
+        "startColumn": 1,
+        "endLine": 147,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn15"
+    },
+    {
+      "generatedStartLine": 277,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 277,
+      "generatedEndColumn": 85,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4703,
+        "endOffset": 4715,
+        "startLine": 144,
+        "startColumn": 17,
+        "endLine": 144,
+        "endColumn": 29
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 278,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 278,
+      "generatedEndColumn": 92,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4729,
+        "endOffset": 4748,
+        "startLine": 145,
+        "startColumn": 13,
+        "endLine": 145,
+        "endColumn": 32
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 279,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 279,
+      "generatedEndColumn": 27,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4756,
+        "endOffset": 4778,
+        "startLine": 146,
+        "startColumn": 7,
+        "endLine": 146,
+        "endColumn": 29
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 282,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 282,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4785,
+        "endOffset": 5063,
+        "startLine": 148,
+        "startColumn": 1,
+        "endLine": 154,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn16"
+    },
+    {
+      "generatedStartLine": 284,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 284,
+      "generatedEndColumn": 85,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4967,
+        "endOffset": 4979,
+        "startLine": 151,
+        "startColumn": 17,
+        "endLine": 151,
+        "endColumn": 29
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 285,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 285,
+      "generatedEndColumn": 92,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 4993,
+        "endOffset": 5012,
+        "startLine": 152,
+        "startColumn": 13,
+        "endLine": 152,
+        "endColumn": 32
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 286,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 286,
+      "generatedEndColumn": 42,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5020,
+        "endOffset": 5057,
+        "startLine": 153,
+        "startColumn": 7,
+        "endLine": 153,
+        "endColumn": 44
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 289,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 289,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5064,
+        "endOffset": 5345,
+        "startLine": 155,
+        "startColumn": 1,
+        "endLine": 162,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn17"
+    },
+    {
+      "generatedStartLine": 291,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 291,
+      "generatedEndColumn": 85,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5111,
+        "endOffset": 5123,
+        "startLine": 156,
+        "startColumn": 17,
+        "endLine": 156,
+        "endColumn": 29
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 292,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 292,
+      "generatedEndColumn": 48,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5137,
+        "endOffset": 5156,
+        "startLine": 157,
+        "startColumn": 13,
+        "endLine": 157,
+        "endColumn": 32
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 293,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 293,
+      "generatedEndColumn": 48,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5170,
+        "endOffset": 5189,
+        "startLine": 158,
+        "startColumn": 13,
+        "endLine": 158,
+        "endColumn": 32
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 294,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 294,
+      "generatedEndColumn": 52,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5203,
+        "endOffset": 5238,
+        "startLine": 159,
+        "startColumn": 13,
+        "endLine": 159,
+        "endColumn": 48
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 296,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 296,
+      "generatedEndColumn": 33,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 5311,
+        "endOffset": 5339,
+        "startLine": 161,
+        "startColumn": 7,
+        "endLine": 161,
+        "endColumn": 35
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 299,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 299,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6091,
+        "endOffset": 6176,
+        "startLine": 180,
+        "startColumn": 1,
+        "endLine": 183,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn18"
+    },
+    {
+      "generatedStartLine": 301,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 301,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6128,
+        "endOffset": 6153,
+        "startLine": 181,
+        "startColumn": 7,
+        "endLine": 181,
+        "endColumn": 32
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 302,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 302,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6161,
+        "endOffset": 6170,
+        "startLine": 182,
+        "startColumn": 7,
+        "endLine": 182,
+        "endColumn": 16
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 305,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 305,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6388,
+        "endOffset": 6480,
+        "startLine": 189,
+        "startColumn": 1,
+        "endLine": 193,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn19"
+    },
+    {
+      "generatedStartLine": 307,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 307,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6431,
+        "endOffset": 6436,
+        "startLine": 190,
+        "startColumn": 13,
+        "endLine": 190,
+        "endColumn": 18
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 308,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 308,
+      "generatedEndColumn": 19,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6448,
+        "endOffset": 6453,
+        "startLine": 191,
+        "startColumn": 11,
+        "endLine": 191,
+        "endColumn": 16
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 309,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 309,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6461,
+        "endOffset": 6474,
+        "startLine": 192,
+        "startColumn": 7,
+        "endLine": 192,
+        "endColumn": 20
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 312,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 312,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6481,
+        "endOffset": 6622,
+        "startLine": 194,
+        "startColumn": 1,
+        "endLine": 199,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn20"
+    },
+    {
+      "generatedStartLine": 314,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 314,
+      "generatedEndColumn": 31,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6599,
+        "endOffset": 6616,
+        "startLine": 198,
+        "startColumn": 7,
+        "endLine": 198,
+        "endColumn": 24
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 317,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 317,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6623,
+        "endOffset": 6730,
+        "startLine": 200,
+        "startColumn": 1,
+        "endLine": 203,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn21"
+    },
+    {
+      "generatedStartLine": 319,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 319,
+      "generatedEndColumn": 65,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6666,
+        "endOffset": 6698,
+        "startLine": 201,
+        "startColumn": 13,
+        "endLine": 201,
+        "endColumn": 45
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 320,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 320,
+      "generatedEndColumn": 21,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6706,
+        "endOffset": 6724,
+        "startLine": 202,
+        "startColumn": 7,
+        "endLine": 202,
+        "endColumn": 25
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 323,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 323,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6731,
+        "endOffset": 6895,
+        "startLine": 204,
+        "startColumn": 1,
+        "endLine": 208,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn22"
+    },
+    {
+      "generatedStartLine": 325,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 325,
+      "generatedEndColumn": 100,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6774,
+        "endOffset": 6826,
+        "startLine": 205,
+        "startColumn": 13,
+        "endLine": 205,
+        "endColumn": 65
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 326,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 326,
+      "generatedEndColumn": 64,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6842,
+        "endOffset": 6855,
+        "startLine": 206,
+        "startColumn": 15,
+        "endLine": 206,
+        "endColumn": 28
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 327,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 327,
+      "generatedEndColumn": 18,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6874,
+        "endOffset": 6889,
+        "startLine": 207,
+        "startColumn": 7,
+        "endLine": 207,
+        "endColumn": 22
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 330,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 330,
+      "generatedEndColumn": 26,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6896,
+        "endOffset": 7007,
+        "startLine": 209,
+        "startColumn": 1,
+        "endLine": 212,
+        "endColumn": 6
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn23"
+    },
+    {
+      "generatedStartLine": 332,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 332,
+      "generatedEndColumn": 35,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6939,
+        "endOffset": 6979,
+        "startLine": 210,
+        "startColumn": 13,
+        "endLine": 210,
+        "endColumn": 53
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 333,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 333,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6987,
+        "endOffset": 7001,
+        "startLine": 211,
+        "startColumn": 7,
+        "endLine": 211,
+        "endColumn": 21
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 336,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 336,
+      "generatedEndColumn": 49,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6518,
+        "endOffset": 6592,
+        "startLine": 195,
+        "startColumn": 7,
+        "endLine": 197,
+        "endColumn": 8
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "__tc_fn20__add"
+    },
+    {
+      "generatedStartLine": 338,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 338,
+      "generatedEndColumn": 16,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 6571,
+        "endOffset": 6584,
+        "startLine": 196,
+        "startColumn": 9,
+        "endLine": 196,
+        "endColumn": 22
+      },
+      "nodeKind": "return"
+    },
+    {
+      "generatedStartLine": 341,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 341,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-esp32\\tests\\01-hardware.test.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "loop"
+    }
+  ]
+}

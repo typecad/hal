@@ -13,6 +13,13 @@ export interface IdfEnvStatus {
   message: string;
 }
 
+let cachedEnvStatus: IdfEnvStatus | undefined;
+
+/** Clear the process-local env detection cache (for tests). */
+export function resetDetectIdfEnvCache(): void {
+  cachedEnvStatus = undefined;
+}
+
 /**
  * Validate the ESP-IDF environment in the current shell.
  *
@@ -27,8 +34,16 @@ export interface IdfEnvStatus {
  *
  * Returns `{available: false}` with no discoveredRoot when no install is
  * found at all; the message tells the user how to install/source ESP-IDF.
+ *
+ * Result is memoized for the process lifetime.
  */
 export function detectIdfEnv(): IdfEnvStatus {
+  if (cachedEnvStatus) return cachedEnvStatus;
+  cachedEnvStatus = detectIdfEnvUncached();
+  return cachedEnvStatus;
+}
+
+function detectIdfEnvUncached(): IdfEnvStatus {
   const idfPath = process.env.IDF_PATH;
   const discoveredRoot = discoverIdfRoot();
 
@@ -66,7 +81,6 @@ export function detectIdfEnv(): IdfEnvStatus {
     shell: true,
   });
   if (which.status !== 0) {
-    // IDF_PATH is set but idf.py isn't on PATH — env was partially configured.
     const msg = [
       `idf.py not found on $PATH (IDF_PATH=${idfPath}).`,
     ];

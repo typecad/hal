@@ -35,7 +35,8 @@ export const ESP32S3: Esp32ChipDescriptor = {
       { unit: 'ADC_UNIT_2', channelForPin: { 11: 'ADC2_CH0', 12: 'ADC2_CH1', 13: 'ADC2_CH2', 14: 'ADC2_CH3', 15: 'ADC2_CH4', 16: 'ADC2_CH5', 17: 'ADC2_CH6', 18: 'ADC2_CH7', 19: 'ADC2_CH8', 20: 'ADC2_CH9' } },
     ],
   },
-  lacks: [],
+  // ESP32-S3 has no DAC peripheral (unlike classic ESP32 / S2).
+  lacks: ['dac', 'ledc-high-speed'],
   ledc: { timerBits: 14, lowSpeedChannels: 8, highSpeedChannels: 0 },
   cpu: { defaultFreqMhz: 240, minFreqMhz: 80, maxFreqMhz: 240 },
 };

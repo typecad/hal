@@ -20,10 +20,11 @@ describe('spi lowering', () => {
     expect(lowerSpi({ operation: 'spi.begin', bus: 'SPI0' }))
       .toEqual({ code: '__tc_spi0_init();' });
   });
-  it('begin_transaction adds device on first call', () => {
+  it('begin_transaction parses SPISettings clock/mode', () => {
     const out = lowerSpi({ operation: 'spi.begin_transaction', bus: 'SPI0', settings: 'SPISettings(4000000, MSBFIRST, SPI_MODE0)' }).code!;
     expect(out).toContain('spi_bus_add_device');
-    expect(out).toContain('clock_speed_hz');
+    expect(out).toContain('clock_speed_hz = 4000000');
+    expect(out).toContain('.mode = 0');
   });
   it('cs_low drives GPIO low', () => {
     expect(lowerSpi({ operation: 'spi.cs_low', pin: 5 }))

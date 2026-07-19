@@ -5,7 +5,8 @@ import { join } from 'node:path';
 import {
   buildWrapperContent, ensureIdfActivated, idfSpawn, wrapperPathFor, WRAPPER_NAME,
 } from '../../../packages/framework-esp32/src/toolchain/activate';
-import { discoverIdfRoot, type IdfRoot } from '../../../packages/framework-esp32/src/toolchain/discover';
+import { discoverIdfRoot, resetDiscoverIdfRootCache, type IdfRoot } from '../../../packages/framework-esp32/src/toolchain/discover';
+import { resetDetectIdfEnvCache } from '../../../packages/framework-esp32/src/toolchain/idf-env';
 
 const IS_WIN = process.platform === 'win32';
 
@@ -18,6 +19,8 @@ const ORIG_IDF_PATH = process.env.IDF_PATH;
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'tc-activate-'));
+  resetDiscoverIdfRootCache();
+  resetDetectIdfEnvCache();
   // Make sure IDF_PATH is unset so detectIdfEnv reports "not available",
   // forcing the activation path. (detectIdfEnv also checks idf.py on PATH,
   // which we can't easily clear, but on most CI/dev machines idf.py isn't on
@@ -26,6 +29,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true });
+  resetDiscoverIdfRootCache();
+  resetDetectIdfEnvCache();
   if (ORIG_IDF_PATH === undefined) delete process.env.IDF_PATH;
   else process.env.IDF_PATH = ORIG_IDF_PATH;
 });

@@ -231,14 +231,24 @@ export function discoverFromPath(): IdfRoot | null {
 
 // ── Top-level cascade ────────────────────────────────────────────────────────
 
+let cachedDiscoverResult: IdfRoot | null | undefined;
+
+/** Clear the process-local discovery cache (for tests). */
+export function resetDiscoverIdfRootCache(): void {
+  cachedDiscoverResult = undefined;
+}
+
 /**
  * Try each discovery strategy in order; return the first IdfRoot found, or null.
  * Order: $IDF_PATH → EIM manifest → well-known defaults → version-dir scan → PATH.
+ * Result is memoized for the process lifetime.
  */
 export function discoverIdfRoot(): IdfRoot | null {
-  return discoverFromEnv()
+  if (cachedDiscoverResult !== undefined) return cachedDiscoverResult;
+  cachedDiscoverResult = discoverFromEnv()
     ?? discoverFromEimManifest()
     ?? discoverFromWellKnown()
     ?? discoverFromVersionScan()
     ?? discoverFromPath();
+  return cachedDiscoverResult;
 }

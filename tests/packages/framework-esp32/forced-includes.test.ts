@@ -34,7 +34,7 @@ describe('Esp32Strategy forcedIncludes', () => {
 
   it('includes all peripheral headers when all usage flags are true', () => {
     const ctx = {
-      analysis: { usesGPIO: true, usesI2C: true, usesSPI: true, usesUART: true,
+      analysis: { usesGPIO: true, usesI2C: true, usesSPI: true, usesUart: true,
                   usesPWM: true, usesADC: true, usesDAC: true, usesPower: true,
                   usesWdt: true, usesInterrupts: true },
       frameworkData: { target: 'esp32' },
@@ -45,8 +45,12 @@ describe('Esp32Strategy forcedIncludes', () => {
     expect(inc).toContain('"driver/ledc.h"');
     expect(inc).toContain('"driver/dac.h"');
     expect(inc).toContain('"esp_sleep.h"');
+    expect(inc).toContain('"soc/rtc.h"');
     expect(inc).toContain('"esp_task_wdt.h"');
     expect(inc).toContain('"esp_intr_alloc.h"');
+  });
+  it('isrFunctionAttribute always returns IRAM_ATTR', () => {
+    expect(strategy.isrFunctionAttribute()).toBe('IRAM_ATTR ');
   });
 });
 

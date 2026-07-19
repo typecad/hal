@@ -15,6 +15,8 @@ export interface InitProjectOptions {
   baudRate?: number;
   includeSketch: boolean;
   toolchainType?: string;
+  /** Extra frameworkData fields (e.g. `{ target: 'esp32s3' }` for framework-esp32). */
+  frameworkData?: Record<string, unknown>;
 }
 
 export function generateProjectPackageJson(options: InitProjectOptions): string {
@@ -178,8 +180,26 @@ export default config;
   }
 
   const buildTarget = options.buildTarget;
-  const resolvedToolchain = options.toolchainType ?? 'arduino-cli';
-  const buildTargetLine = buildTarget ? `\n  // Framework data\n  frameworkData: {\n    buildTarget: '${buildTarget}',\n  },` : '';
+  const isEspIdf = options.frameworkPackage === '@typecad/framework-esp32'
+    || options.framework === 'esp32'
+    || options.toolchainType === 'idf';
+  const resolvedToolchain = options.toolchainType
+    ?? (isEspIdf ? 'idf' : 'arduino-cli');
+
+  // framework-esp32 wants IDF chip ids in frameworkData (target + buildTarget),
+  // not Arduino FQBNs. Known IDF targets already set frameworkData.target;
+  // wizard/CLI may still pass an FQBN in buildTarget — normalize to the last segment.
+  let frameworkDataBlock = '';
+  if (isEspIdf) {
+    const idfTarget = (options.frameworkData?.target as string | undefined)
+      ?? (options.frameworkData?.buildTarget as string | undefined)
+      ?? (buildTarget?.includes(':') ? buildTarget.split(':').filter(Boolean).pop() : buildTarget)
+      ?? options.architecture
+      ?? 'esp32';
+    frameworkDataBlock = `\n  // Framework data (IDF chip target)\n  frameworkData: {\n    target: '${idfTarget}',\n    buildTarget: '${idfTarget}',\n  },`;
+  } else if (buildTarget) {
+    frameworkDataBlock = `\n  // Framework data\n  frameworkData: {\n    buildTarget: '${buildTarget}',\n  },`;
+  }
 
   const mcuLine = options.mcu
     ? `\n  // MCU package — provides silicon-level pin definitions\n  mcu: '${options.mcu.startsWith('@') ? options.mcu : `@typecad/mcu-${options.mcu}`}',\n`
@@ -214,7 +234,7 @@ const config: CuttlefishConfig = {
   target: '${options.architecture}',${mcuLine}${boardLine}
 
   // Framework package — controls code generation strategy
-  framework: '${options.frameworkPackage}',${buildTargetLine}
+  framework: '${options.frameworkPackage}',${frameworkDataBlock}
 
   // Output / build options
   output: {

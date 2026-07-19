@@ -20,4 +20,8 @@ describe('chipForTarget', () => {
   it('defaults to classic esp32 on unknown target', () => {
     expect(chipForTarget('esp32s2').id).toBe('esp32');
   });
+  it('normalizes Arduino FQBN to chip id', () => {
+    expect(chipForTarget('esp32:esp32:esp32s3').id).toBe('esp32s3');
+    expect(chipForTarget('esp32:esp32:esp32c3').id).toBe('esp32c3');
+  });
 });

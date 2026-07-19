@@ -33,7 +33,7 @@ export const ESP32C3: Esp32ChipDescriptor = {
       { unit: 'ADC_UNIT_2', channelForPin: { 5: 'ADC2_CH0' } },
     ],
   },
-  lacks: ['dac'],
+  lacks: ['dac', 'ledc-high-speed'],
   ledc: { timerBits: 14, lowSpeedChannels: 6, highSpeedChannels: 0 },
   cpu: { defaultFreqMhz: 160, minFreqMhz: 80, maxFreqMhz: 160 },
 };

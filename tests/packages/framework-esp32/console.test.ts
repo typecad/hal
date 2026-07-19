@@ -32,10 +32,11 @@ describe('Esp32Strategy transformConsoleCall', () => {
     expect(out).toMatch(/^printf\(/);
     expect(out).toContain('dbg');
   });
-  it('error/warn/debug/info get a [LEVEL] prefix from the macro', () => {
+  it('error/warn embed a [LEVEL] prefix in a single ESP_LOG* call', () => {
     const out = strategy.transformConsoleCall('error', '"boom"', false);
-    // The prefix is itself an ESP_LOGE call (the [ERROR] tag line).
-    expect(out).toMatch(/ESP_LOGE.*\[ERROR\]/);
+    expect(out).toMatch(/^ESP_LOGE\("tc", "\[ERROR\] boom"\)/);
+    // Must not emit a second ESP_LOGE for the prefix.
+    expect((out.match(/ESP_LOGE/g) ?? []).length).toBe(1);
   });
   it('stream chain splits into multiple calls', () => {
     const out = strategy.transformConsoleCall('log', '"x=" << x', false);

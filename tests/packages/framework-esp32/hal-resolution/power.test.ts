@@ -21,9 +21,10 @@ describe('power lowering', () => {
     expect(lowerPower({ operation: 'power.light_sleep' }))
       .toEqual({ code: 'esp_light_sleep_start();' });
   });
-  it('set_cpu_frequency → rtc_clk_cpu_freq_set_freq_hz', () => {
-    expect(lowerPower({ operation: 'power.set_cpu_frequency', mhz: 160 }))
-      .toEqual({ code: 'rtc_clk_cpu_freq_set_freq_hz(160);' });
+  it('set_cpu_frequency uses rtc_clk_cpu_freq_mhz_to_config', () => {
+    const out = lowerPower({ operation: 'power.set_cpu_frequency', mhz: 160 }).code!;
+    expect(out).toContain('rtc_clk_cpu_freq_mhz_to_config(160');
+    expect(out).toContain('rtc_clk_cpu_freq_set_config');
   });
   it('unknown power.* op throws', () => {
     expect(() => lowerPower({ operation: 'power.unknown' } as any)).toThrow(/does not yet support/);

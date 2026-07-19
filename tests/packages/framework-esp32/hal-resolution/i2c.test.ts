@@ -28,6 +28,7 @@ describe('i2c lowering', () => {
     const out = lowerI2c({ operation: 'i2c.begin_transmission', bus: 'I2C0', address: 0x76 }).code!;
     expect(out).toContain('i2c_master_bus_add_device');
     expect(out).toContain('.device_address = 118');
+    expect(out).toContain('__tc_i2c0_addr');
     expect(out).toContain('__tc_i2c0_txlen = 0');
   });
   it('write buffers a byte', () => {

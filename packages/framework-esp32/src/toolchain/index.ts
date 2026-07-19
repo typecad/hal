@@ -4,17 +4,15 @@ import { parseCompileErrors } from '@typecad/cuttlefish/api/shared';
 import { compileEspIdf } from './compile.js';
 import { uploadEspIdf } from './upload.js';
 import { monitorEspIdf } from './monitor.js';
+import { normalizeIdfTarget } from '../lowering/util.js';
 
 function targetFromOptions(o: ToolchainOptions): string {
   // The cuttlefish CLI populates ToolchainOptions.buildTarget from
-  // config.frameworkData.buildTarget (see cli.ts:462/503/etc.). We read that
-  // as the IDF target string ('esp32' | 'esp32s3' | 'esp32c3' | 'esp32c6').
-  // Fall back to frameworkConfig.target for callers that use that field, then
-  // to 'esp32' as the default.
+  // config.frameworkData.buildTarget. Accept bare IDF targets or Arduino FQBNs.
   const t = (o.buildTarget as string | undefined)
     ?? (o.frameworkConfig?.target as string | undefined)
     ?? 'esp32';
-  return t;
+  return normalizeIdfTarget(t);
 }
 
 /**

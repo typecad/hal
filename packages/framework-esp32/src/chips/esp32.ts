@@ -37,6 +37,7 @@ export const ESP32: Esp32ChipDescriptor = {
       { unit: 'ADC_UNIT_2', channelForPin: { 0: 'ADC2_CH1', 2: 'ADC2_CH2', 4: 'ADC2_CH0', 12: 'ADC2_CH5', 13: 'ADC2_CH4', 14: 'ADC2_CH6', 15: 'ADC2_CH3', 25: 'ADC2_CH8', 26: 'ADC2_CH9' } },
     ],
   },
+  dac: { channelForPin: { 25: 'DAC_CHAN_0', 26: 'DAC_CHAN_1' } },
   lacks: [],
   ledc: { timerBits: 14, lowSpeedChannels: 8, highSpeedChannels: 8 },
   cpu: { defaultFreqMhz: 240, minFreqMhz: 80, maxFreqMhz: 240 },

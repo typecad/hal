@@ -13,8 +13,10 @@ describe('pwm init block', () => {
 });
 
 describe('pwm lowering', () => {
-  it('first write allocates channel 0 and sets duty', () => {
+  it('first write allocates channel 0, inits timer, configs channel, sets duty', () => {
     const out = lowerPwm({ operation: 'pwm.write', pin: 2, duty: 512 });
+    expect(out.code).toContain('__tc_ledc_init()');
+    expect(out.code).toContain('ledc_channel_config');
     expect(out.code).toContain('LEDC_CHANNEL_0');
     expect(out.code).toContain('ledc_set_duty');
     expect(out.code).toContain('512');

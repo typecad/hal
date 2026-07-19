@@ -57,9 +57,15 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
         ? '@typecad/framework-avr'
         : framework === 'arduino'
           ? '@typecad/framework-arduino'
-          : `@typecad/framework-${framework}`;
+          : framework === 'esp32'
+            ? '@typecad/framework-esp32'
+            : `@typecad/framework-${framework}`;
 
     const projectName = options.projectName || 'my-project';
+    const isEspIdf = frameworkPackage === '@typecad/framework-esp32' || framework === 'esp32';
+    const idfTarget = (target.frameworkData?.target as string | undefined)
+      ?? target.architecture
+      ?? 'esp32';
 
     const result = scaffoldProject({
       projectName,
@@ -70,10 +76,18 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       boardPackage: target.boardPackage,
       frameworkPackage,
       framework,
-      buildTarget: target.buildTarget,
+      buildTarget: isEspIdf ? idfTarget : target.buildTarget,
       mcu: target.mcu,
       baudRate: target.isNative ? undefined : (options.baud ?? 9600),
       includeSketch: !options.noSketch,
+      ...(isEspIdf
+        ? {
+            toolchainType: 'idf' as const,
+            frameworkData: target.frameworkData ?? { target: idfTarget, buildTarget: idfTarget },
+          }
+        : target.frameworkData
+          ? { frameworkData: target.frameworkData }
+          : {}),
     }, options.outDir);
 
     console.log(`\n${chalk.green("✓")} Created project files:`);

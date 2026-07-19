@@ -14,9 +14,15 @@ describe('adc init block', () => {
 });
 
 describe('adc lowering', () => {
-  it('read on ADC1 pin (GPIO32) → adc1_get_raw with channel', () => {
+  it('read on ADC1 pin (GPIO32) → adc1_get_raw with channel + init', () => {
     const out = lowerAdc({ operation: 'adc.read', pin: 32 });
+    expect(out.expression).toContain('__tc_adc_init()');
     expect(out.expression).toMatch(/adc1_get_raw\(ADC1_CHANNEL_\d+\)/);
+  });
+  it('read on ADC2 pin (GPIO4) → adc2_get_raw', () => {
+    const out = lowerAdc({ operation: 'adc.read', pin: 4 });
+    expect(out.expression).toContain('adc2_get_raw');
+    expect(out.expression).toMatch(/ADC2_CHANNEL_\d+/);
   });
   it('read_voltage uses esp_adc_cal_raw_to_voltage', () => {
     const out = lowerAdc({ operation: 'adc.read_voltage', pin: 32 });

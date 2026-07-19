@@ -27,6 +27,9 @@ describe('chip descriptor data integrity', () => {
     it('has no high-speed LEDC channels', () => {
       expect(ESP32S3.ledc.highSpeedChannels).toBe(0);
     });
+    it('lacks DAC', () => {
+      expect(ESP32S3.lacks).toContain('dac');
+    });
   });
 
   describe('ESP32-C3', () => {

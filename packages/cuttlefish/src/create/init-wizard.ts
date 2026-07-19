@@ -180,6 +180,11 @@ export async function runInitWizard(
       includeSketch = await promptConfirm(rl, "Create starter sketch?", true);
     }
 
+    const isEspIdf = frameworkPackage === '@typecad/framework-esp32' || framework === 'esp32';
+    const idfTarget = (target.frameworkData?.target as string | undefined)
+      ?? target.architecture
+      ?? 'esp32';
+
     return {
       projectName,
       targetId: target.id,
@@ -189,10 +194,20 @@ export async function runInitWizard(
       boardPackage: target.boardPackage,
       frameworkPackage,
       framework,
-      buildTarget: target.buildTarget,
+      buildTarget: isEspIdf ? idfTarget : target.buildTarget,
       mcu: target.mcu,
       baudRate,
       includeSketch,
+      ...(isEspIdf
+        ? {
+            toolchainType: 'idf' as const,
+            frameworkData: target.frameworkData?.target
+              ? { ...target.frameworkData }
+              : { target: idfTarget, buildTarget: idfTarget },
+          }
+        : target.frameworkData
+          ? { frameworkData: target.frameworkData }
+          : {}),
     };
   } catch (err) {
     if (err && typeof err === 'object' && (err as any).code === 'ERR_USE_AFTER_CLOSE') {

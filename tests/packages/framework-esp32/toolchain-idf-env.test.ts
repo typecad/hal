@@ -1,13 +1,17 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { detectIdfEnv } from '../../../packages/framework-esp32/src/toolchain/idf-env';
-import { discoverIdfRoot } from '../../../packages/framework-esp32/src/toolchain/discover';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { detectIdfEnv, resetDetectIdfEnvCache } from '../../../packages/framework-esp32/src/toolchain/idf-env';
+import { discoverIdfRoot, resetDiscoverIdfRootCache } from '../../../packages/framework-esp32/src/toolchain/discover';
 
 const ORIG_IDF_PATH = process.env.IDF_PATH;
 
+beforeEach(() => {
+  resetDetectIdfEnvCache();
+  resetDiscoverIdfRootCache();
+});
+
 afterEach(() => {
+  resetDetectIdfEnvCache();
+  resetDiscoverIdfRootCache();
   if (ORIG_IDF_PATH === undefined) delete process.env.IDF_PATH;
   else process.env.IDF_PATH = ORIG_IDF_PATH;
 });
@@ -46,6 +50,7 @@ describe('detectIdfEnv discoveredRoot', () => {
       return;
     }
     delete process.env.IDF_PATH;
+    resetDetectIdfEnvCache();
     const status = detectIdfEnv();
     expect(status.available).toBe(false);
     expect(status.discoveredRoot).toBeDefined();
@@ -61,6 +66,7 @@ describe('detectIdfEnv discoveredRoot', () => {
       return;
     }
     delete process.env.IDF_PATH;
+    resetDetectIdfEnvCache();
     const status = detectIdfEnv();
     expect(status.discoveredRoot).toBeUndefined();
   });

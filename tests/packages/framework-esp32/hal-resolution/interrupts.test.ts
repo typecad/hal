@@ -11,8 +11,9 @@ describe('interrupts init block', () => {
 });
 
 describe('interrupts lowering', () => {
-  it('attach with rising mode → GPIO_INTR_POSEDGE + isr_handler_add', () => {
+  it('attach with rising mode → install + GPIO_INTR_POSEDGE + isr_handler_add', () => {
     const out = lowerInterrupts({ operation: 'interrupt.attach', pin: 4, handler: 'onRise', mode: 'rising' }).code!;
+    expect(out).toContain('__tc_intr_install()');
     expect(out).toContain('GPIO_INTR_POSEDGE');
     expect(out).toContain('gpio_isr_handler_add((gpio_num_t)4, (void(*)(void*))onRise, NULL)');
   });

@@ -11,7 +11,7 @@ export interface Esp32ChipDescriptor {
     inputOnly: number[];
     /** Strapping pins — boot-mode critical; touch with care. */
     strapping: number[];
-    /** RTC-only pins — route through rtc_gpio_* for deep-sleep wakeup. */
+    /** RTC-capable pins — route through rtc_gpio_* for deep-sleep wakeup. */
     rtcOnly: number[];
   };
 
@@ -47,6 +47,11 @@ export interface Esp32ChipDescriptor {
       /** Map of GPIO -> ADC channel name (only populated for ADC-capable pins). */
       channelForPin: Record<number, string>;
     }[];
+  };
+
+  /** DAC channel map (classic ESP32 only). Absent / empty when chip.lacks includes 'dac'. */
+  dac?: {
+    channelForPin: Record<number, string>;
   };
 
   /** Capabilities absent on this variant — drives profileDiagnostics errors. */

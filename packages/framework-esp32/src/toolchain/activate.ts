@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import type { SpawnSyncOptions } from 'node:child_process';
 import { type IdfRoot, discoverIdfRoot } from './discover.js';
 import { detectIdfEnv } from './idf-env.js';
+import { scrubMsysEnv } from '../lowering/util.js';
 
 const IS_WIN = process.platform === 'win32';
 
@@ -37,15 +38,7 @@ function captureSourcedEnv(root: IdfRoot): Record<string, string> | null {
   if (!existsSync(exportScript)) return null;
 
   // Strip MSYS vars (Windows) so export.bat doesn't bail.
-  const cleanEnv = { ...process.env };
-  if (IS_WIN) {
-    for (const k of Object.keys(cleanEnv)) {
-      if (k === 'MSYSTEM' || k === 'MSYSTEM_CHOST' || k === 'MSYSTEM_PREFIX'
-          || k === 'MINGW_CHOST' || k === 'MINGW_PREFIX' || k === 'MINGW_PACKAGE_PREFIX') {
-        delete cleanEnv[k];
-      }
-    }
-  }
+  const cleanEnv = scrubMsysEnv({ ...process.env }) as NodeJS.ProcessEnv;
 
   if (IS_WIN) {
     // cmd.exe's arg handling with quoted paths is broken in Node's spawn.
@@ -138,8 +131,6 @@ function loadOrCaptureEnv(root: IdfRoot): Record<string, string> | null {
   return env;
 }
 
-/** Marker comment embedded in the wrapper so we can detect when the wrapper
- *  already targets the desired root (idempotence check). */
 /** Marker comment embedded in the wrapper so we can detect when the wrapper
  *  already targets the desired root (idempotence check). Platform-specific
  *  comment prefix — REM in .bat, # in .sh. */
@@ -318,13 +309,7 @@ export function idfSpawn(projectDir: string, idfArgs: string[], baseOptions: Spa
 
   if (IS_WIN) {
     const cmdLine = `"${wrapperPath}" ${idfArgs.join(' ')}`;
-    const childEnv = { ...process.env };
-    for (const k of Object.keys(childEnv)) {
-      if (k === 'MSYSTEM' || k === 'MSYSTEM_CHOST' || k === 'MSYSTEM_PREFIX'
-          || k === 'MINGW_CHOST' || k === 'MINGW_PREFIX' || k === 'MINGW_PACKAGE_PREFIX') {
-        delete childEnv[k];
-      }
-    }
+    const childEnv = scrubMsysEnv({ ...process.env }) as NodeJS.ProcessEnv;
     return {
       command: 'cmd.exe',
       args: ['/d', '/s', '/c', cmdLine],

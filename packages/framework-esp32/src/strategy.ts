@@ -1,15 +1,6 @@
-import { ArduinoStrategy } from '@typecad/framework-arduino';
+import { ArduinoStrategy, splitStreamChain } from '@typecad/framework-arduino';
 import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic } from '@typecad/cuttlefish/api/shared';
 import { resolveEsp32Profile } from './profile.js';
-
-/** Read the IDF target ('esp32'|'esp32s3'|'esp32c3'|'esp32c6') from the
- *  platform context. Accepts either frameworkData.target (preferred) or
- *  frameworkData.buildTarget (what the cuttlefish CLI populates from the
- *  config's frameworkData.buildTarget field — see cli.ts:462). */
-function targetFromContext(ctx?: PlatformContext): string | undefined {
-  const fd = ctx?.frameworkData as Record<string, unknown> | undefined;
-  return (fd?.target as string | undefined) ?? (fd?.buildTarget as string | undefined);
-}
 import { lowerHalOp } from './lowering/index.js';
 import { uartInitLines } from './lowering/uart.js';
 import { i2cInitLines }  from './lowering/i2c.js';
@@ -22,6 +13,15 @@ import { interruptsInitLines } from './lowering/interrupts.js';
 import { powerInitLines } from './lowering/power.js';
 import { wdtInitLines }   from './lowering/wdt.js';
 import { pulseShiftInitLines } from './lowering/pulse-shift.js';
+
+/** Read the IDF target ('esp32'|'esp32s3'|'esp32c3'|'esp32c6') from the
+ *  platform context. Accepts either frameworkData.target (preferred) or
+ *  frameworkData.buildTarget (what the cuttlefish CLI populates from the
+ *  config's frameworkData.buildTarget field — see cli.ts:462). */
+function targetFromContext(ctx?: PlatformContext): string | undefined {
+  const fd = ctx?.frameworkData as Record<string, unknown> | undefined;
+  return (fd?.target as string | undefined) ?? (fd?.buildTarget as string | undefined);
+}
 
 const ARDUINO_UMBRELLA_HEADERS: ReadonlySet<string> = new Set([
   '<Arduino.h>',
@@ -44,8 +44,6 @@ const ARDUINO_UMBRELLA_HEADERS: ReadonlySet<string> = new Set([
  * value in a subclass. The distinct identity of framework-esp32 is carried
  * by the package name (selected via the user's `framework` config field),
  * not by strategy.id. Same tradeoff framework-avr makes.
- *
- * See docs/superpowers/specs/2026-07-18-framework-esp32-design.md.
  */
 export class Esp32Strategy extends ArduinoStrategy {
   // Deliberately no `override readonly id` — the parent narrows id to the
@@ -53,66 +51,50 @@ export class Esp32Strategy extends ArduinoStrategy {
   // value is fine; consumers select frameworks by package name, not strategy id.
 
   // ── File-shape overrides (ESP-IDF project, not Arduino sketch) ─────────────
-  // The parent assumes Arduino sketch shape (.ino entry, folder-name === sketch
-  // name, single-file flattening). ESP-IDF uses a real C++ project: entry file
-  // is main.cc (under main/), with CMakeLists registering SRCS "main.cc".
   override sourceExtension(isEntryFile: boolean, isNpmPackage: boolean): string {
     if (isNpmPackage) return 'cpp';
-    if (isEntryFile) return 'cc';   // main.cc — the ESP-IDF entrypoint source
+    if (isEntryFile) return 'cc';
     return 'h';
   }
 
-  // ESP-IDF uses FreeRTOS — a preemptive RTOS where delay() (vTaskDelay) YIELDS
-  // the CPU. This is NOT a blocking busy-wait; other tasks run during the delay.
-  // The timing validator uses this to suppress the 'blocking-delay-in-loop'
-  // warning for plain delay() (delayMicroseconds is still a busy-wait).
+  // ESP-IDF uses FreeRTOS — delay() yields; suppress blocking-delay-in-loop.
   isRtosTarget(): boolean {
     return true;
   }
 
-  // ESP-IDF's libc has full <iostream> support (unlike AVR). Enable it so
-  // std::cout/cerr are available — used by the expect test runner and by
-  // programs that prefer streams over printf.
   override needsIostream(): boolean {
     return true;
   }
 
-  // ESP-IDF's console is on UART0 by default (configured by the boot ROM);
-  // no Serial.begin() needed. The parent's setupInitCode emits Serial.begin
-  // which is an Arduino-only symbol that doesn't exist on ESP-IDF.
   override setupInitCode(_program: ProgramIR, _ctx?: PlatformContext): string[] {
     return [];
   }
 
-  // ESP-IDF doesn't use arduino-cli at all — the buildTarget is an IDF target
-  // string ('esp32s3'), not an FQBN. Override symbolAliases to avoid
-  // triggering the parent's getOrResolveProfile() → loadArduinoCliMetadata()
-  // → arduino-cli board details probe, which costs ~5s per build for no
-  // benefit (the probe returns empty metadata for IDF target strings).
   override symbolAliases(_program: ProgramIR, _ctx?: PlatformContext): Record<string, string> {
     return {};
   }
 
+  /** All ESP32 variants need IRAM_ATTR on ISR handlers (parent keys off FQBN arch). */
+  override isrFunctionAttribute(): string {
+    return 'IRAM_ATTR ';
+  }
+
   override overrideBaseName(_originalBaseName: string, _outDirBaseName: string, isEntryFile: boolean, _isNpmPackage: boolean): string {
-    // ESP-IDF's main/CMakeLists.txt registers SRCS "main.cc" — the entry file
-    // MUST be named "main" regardless of the project/output dir name.
     return isEntryFile ? 'main' : _originalBaseName;
   }
 
   override generateHeaderFile(): boolean {
-    // ESP-IDF doesn't flatten into a single .ino; keep the .h pair for modules.
     return true;
   }
 
   override outputSubdirectory(_baseName: string): string {
-    // ESP-IDF project layout: source files live under main/.
     return 'main';
   }
 
   override forcedIncludes(program: ProgramIR, ctx?: PlatformContext): string[] {
     resolveEsp32Profile(targetFromContext(ctx));
     const a = (ctx as any)?.analysis;
-    const uses = (f: string): boolean => (a ? !!a[f] : true);  // defensive default true
+    const uses = (f: string): boolean => (a ? !!a[f] : true);
 
     const inc: string[] = [
       '<stdio.h>',
@@ -126,18 +108,16 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (uses('usesGPIO'))         inc.push('"driver/gpio.h"');
     if (uses('usesI2C'))          inc.push('"driver/i2c_master.h"');
     if (uses('usesSPI'))          inc.push('"driver/spi_master.h"');
-    if (uses('usesUART'))         inc.push('"driver/uart.h"');
+    if (uses('usesUart'))         inc.push('"driver/uart.h"');
     if (uses('usesPWM'))          inc.push('"driver/ledc.h"');
     if (uses('usesADC'))          inc.push('"driver/adc.h"', '"driver/adc_oneshot.h"', '"esp_adc_cal.h"');
     if (uses('usesDAC'))          inc.push('"driver/dac.h"');
-    if (uses('usesPower'))        inc.push('"esp_sleep.h"');
+    if (uses('usesPower'))        inc.push('"esp_sleep.h"', '"soc/rtc.h"');
     if (uses('usesWdt'))          inc.push('"esp_task_wdt.h"');
     if (uses('usesInterrupts'))   inc.push('"esp_intr_alloc.h"');
     return inc;
   }
 
-  // Note: no `override` — ArduinoStrategy does not declare filterRequiredIncludes
-  // (it's optional on PlatformProfileStrategy). This is a fresh implementation.
   filterRequiredIncludes(includes: string[]): string[] {
     return includes.filter((h) => !ARDUINO_UMBRELLA_HEADERS.has(h));
   }
@@ -146,10 +126,7 @@ export class Esp32Strategy extends ArduinoStrategy {
     resolveEsp32Profile(targetFromContext(ctx));
     const a = (ctx as any)?.analysis;
     const espInit: string[] = [];
-    // Emit IDF driver init blocks for each peripheral the program actually uses.
-    // Each block is bracketed with CUTTLEFISH_*_BEGIN/END so setup.ts can strip
-    // the unused ones as a defensive backstop (matches framework-avr's pattern).
-    if (a?.usesUART) espInit.push(...uartInitLines(0));
+    if (a?.usesUart) espInit.push(...uartInitLines(0));
     if (a?.usesI2C)  espInit.push(...i2cInitLines(0));
     if (a?.usesSPI)  espInit.push(...spiInitLines(0));
     if (a?.usesPWM)         espInit.push(...pwmInitLines());
@@ -193,69 +170,56 @@ export class Esp32Strategy extends ArduinoStrategy {
     ];
   }
 
-  // Resolve a HAL op to native ESP-IDF C++. Delegates to lowerHalOp, which
-  // dispatches by op.operation prefix and THROWS on unknown ops (no silent
-  // fallback to Arduino lowering — that would defeat this framework's purpose).
   override resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {
     return lowerHalOp(op);
   }
 
-  // Route console.log/info → printf, debug/warn/error → ESP_LOG[DWE].
-  // Signature matches ArduinoStrategy.transformConsoleCall: renderedArgs is a
-  // single pre-rendered string (possibly a `<<` chain), not an array.
+  // Route console.log/info → printf, debug → printf without \n, warn/error → ESP_LOG*.
   override transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
     const semi = forHeader ? '' : ';';
     const isBareLiteral = /^"[^"]*"$/.test(renderedArgs.trim());
     const isChain = !isBareLiteral && renderedArgs.includes('<<');
     const tag = '"tc"';
-
-    // For log/info/debug: use printf (format-string based, no tag needed).
-    //   - log: printf with \n (end of protocol line)
-    //   - debug: printf WITHOUT \n (partial protocol line — used by expect
-    //     test runner for multi-print EXPECT format)
-    // For warn/error: use ESP_LOG* macros (tag + format + \n).
     const usesLogMacro = method === 'error' || method === 'warn';
-
-    let prefix = '';
-    if (usesLogMacro) {
-      const macroFn = method === 'error' ? `ESP_LOGE(${tag}` : `ESP_LOGW(${tag}`;
-      const levelTag = method === 'error' ? '[ERROR]' : '[WARN]';
-      prefix = `${macroFn}, "${levelTag} ")${semi} `;
-    }
+    const levelTag = method === 'error' ? '[ERROR] ' : method === 'warn' ? '[WARN] ' : '';
 
     if (isChain) {
       const parts = splitStreamChain(renderedArgs);
-      const calls = parts.map((p) => {
+      const calls = parts.map((p, i) => {
         const trimmed = p.trim();
         if (usesLogMacro) {
           const macroFn = method === 'error' ? `ESP_LOGE(${tag}` : `ESP_LOGW(${tag}`;
-          return `${macroFn}, ${trimmed})${semi}`;
+          const prefix = i === 0 ? levelTag : '';
+          if (/^".*"$/.test(trimmed)) {
+            const inner = trimmed.slice(1, -1);
+            return `${macroFn}, "${prefix}${inner}")${semi}`;
+          }
+          return `${macroFn}, "${prefix}%s", ${trimmed})${semi}`;
         }
         return `printf(${trimmed})${semi}`;
       });
-      return prefix + calls.join(' ');
+      return calls.join(' ');
     }
-    // Single arg.
+
     if (usesLogMacro) {
       const macroFn = method === 'error' ? `ESP_LOGE(${tag}` : `ESP_LOGW(${tag}`;
-      return `${prefix}${macroFn}, ${renderedArgs})${semi}`;
+      const trimmed = renderedArgs.trim();
+      if (/^".*"$/.test(trimmed)) {
+        const inner = trimmed.slice(1, -1);
+        return `${macroFn}, "${levelTag}${inner}")${semi}`;
+      }
+      return `${macroFn}, "${levelTag}%s", ${renderedArgs})${semi}`;
     }
-    // For log: printf with \n (end of protocol line).
-    // For debug: printf WITHOUT \n (partial protocol line — the EXPECT format
-    // spans multiple print calls before the final println).
+
     const appendNewline = method !== 'debug';
     const trimmed = renderedArgs.trim();
     if (/^".*"$/.test(trimmed)) {
       const inner = trimmed.slice(1, -1);
       return `printf("${inner}${appendNewline ? '\\n' : ''}")${semi}`;
     }
-    // Non-string expression.
     return `printf("%g${appendNewline ? '\\n' : ''}", ${renderedArgs})${semi}`;
   }
 
-  // Override cuttlefish_halt to use esp_system_abort (IDF-native fatal) instead
-  // of the parent's Serial.println + infinite loop. Inherits the rest of the
-  // parent's polyfills (string_methods, timer_methods, async_runtime) unchanged.
   override generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
     const base = super.generateNativePolyfills(program, ctx);
     return base.map((p) => {
@@ -274,31 +238,30 @@ export class Esp32Strategy extends ArduinoStrategy {
     });
   }
 
-  // Variant-specific sanity checks at transpile time. Catches impossible
-  // configs (DAC on C3/C6, input-only pins as OUTPUT) before they reach the
-  // linker. Spec §6.
-  //
-  // Does NOT call super.profileDiagnostics() — the parent's diagnostics walk
-  // Arduino-specific IR shape (collectUsedIdentifiers over program.functions
-  // with assumptions about FQBN-derived arch). Our checks are independent and
-  // operate on the raw program tree + analysis flags.
   override profileDiagnostics(program: ProgramIR, ctx?: PlatformContext): Diagnostic[] {
     const diags: Diagnostic[] = [];
     const chip = resolveEsp32Profile(targetFromContext(ctx));
     const a = (ctx as any)?.analysis ?? {};
 
-    // DAC on a chip without DAC (C3/C6)
     if (a.usesDAC && chip.lacks.includes('dac')) {
       diags.push({
         severity: 'error',
         code: 'esp32-dac-unavailable',
-        message: `${chip.id} has no DAC peripheral. DAC output is only available on ESP32 (classic) and ESP32-S3.`,
+        message: `${chip.id} has no DAC peripheral. DAC output is only available on classic ESP32 (GPIO 25/26).`,
         source: program.fileName,
       });
     }
 
-    // Walk program IR for OUTPUT-mode pins and check against inputOnly list.
-    // (Classic ESP32 pins 34-39 are input-only; cannot be OUTPUT.)
+    if (a.usesTone) {
+      diags.push({
+        severity: 'warning',
+        code: 'esp32-tone-stub',
+        message: `tone.* is a no-op stub on framework-esp32 v1 (LEDC channel sharing with PWM is deferred).`,
+        hint: 'Use pwm.write with a fixed frequency, or rawCpp() for a dedicated LEDC tone channel.',
+        source: program.fileName,
+      });
+    }
+
     const outputPins = new Set<number>();
     const visit = (node: any): void => {
       if (node && typeof node === 'object') {
@@ -315,6 +278,7 @@ export class Esp32Strategy extends ArduinoStrategy {
       }
     };
     visit(program);
+
     for (const pin of outputPins) {
       if (chip.gpio.inputOnly.includes(pin)) {
         diags.push({
@@ -325,14 +289,20 @@ export class Esp32Strategy extends ArduinoStrategy {
           source: program.fileName,
         });
       }
+      if (chip.gpio.strapping.includes(pin)) {
+        diags.push({
+          severity: 'warning',
+          code: 'esp32-strapping-pin',
+          message: `GPIO ${pin} is a strapping pin on ${chip.id}; driving it as OUTPUT can affect boot mode.`,
+          hint: 'Prefer a non-strapping pin for outputs that toggle during reset/boot.',
+          source: program.fileName,
+        });
+      }
     }
 
     return diags;
   }
 
-  // Ambient type declarations appended to the generated cuttlefish-env.d.ts.
-  // Fresh ESP-IDF-appropriate set (parent's declares Arduino's Serial/EEPROM-
-  // flavored bits which don't apply here). Spec §7.5.
   override ambientTypeDeclarations(): string[] {
     return [
       '',
@@ -361,35 +331,4 @@ export class Esp32Strategy extends ArduinoStrategy {
       '',
     ];
   }
-}
-
-// Minimal `<<`-chain splitter — mirrors the parent's splitStreamChain helper.
-// Walks the string respecting double-quoted string literals, splitting on top-
-// level `<<` (not inside a string). Returns the parts (may be empty strings).
-function splitStreamChain(s: string): string[] {
-  const parts: string[] = [];
-  let depth = 0;
-  let inStr = false;
-  let cur = '';
-  for (let i = 0; i < s.length; i++) {
-    const c = s[i];
-    if (inStr) {
-      cur += c;
-      if (c === '\\' && i + 1 < s.length) { cur += s[i + 1]; i++; continue; }
-      if (c === '"') inStr = false;
-      continue;
-    }
-    if (c === '"') { inStr = true; cur += c; continue; }
-    if (c === '(') depth++;
-    if (c === ')') depth--;
-    if (depth === 0 && c === '<' && s[i + 1] === '<') {
-      parts.push(cur);
-      cur = '';
-      i++;  // skip second <
-      continue;
-    }
-    cur += c;
-  }
-  parts.push(cur);
-  return parts;
 }

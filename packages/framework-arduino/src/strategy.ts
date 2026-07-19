@@ -2030,7 +2030,8 @@ function detectPinGroupUsage(program: ProgramIR): boolean {
  * returned trimmed. Used by transformConsoleCall to emit one Serial.print per
  * argument (HardwareSerial has no operator<<).
  */
-function splitStreamChain(renderedArgs: string): string[] {
+/** Split a `<<`-chain into top-level parts. Exported for framework-esp32. */
+export function splitStreamChain(renderedArgs: string): string[] {
   const parts: string[] = [];
   let depth = 0;          // paren/bracket nesting
   let inString = false;   // inside a "..." literal

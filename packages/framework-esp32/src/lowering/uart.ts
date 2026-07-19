@@ -1,12 +1,8 @@
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import { getActiveChip } from '../chips/index.js';
+import { parseControllerIndex } from './util.js';
 
-/** Parse a peripheral bus/port string like "UART0" / "I2C1" / "SPI2" → numeric index. */
-export function parseControllerIndex(busOrPort: string | undefined): number {
-  if (!busOrPort) return 0;
-  const m = busOrPort.match(/(\d+)$/);
-  return m ? parseInt(m[1], 10) : 0;
-}
+export { parseControllerIndex } from './util.js';
 
 export function uartInitLines(controllerIndex: number): string[] {
   const chip = getActiveChip();
@@ -35,6 +31,17 @@ export function uartInitLines(controllerIndex: number): string[] {
   ];
 }
 
+/** Emit uart_write_bytes with a length that works for literals and C strings. */
+function uartWrite(num: string, value: string, appendNl: boolean): string {
+  const trimmed = String(value).trim();
+  const isLit = /^".*"$/.test(trimmed);
+  const lenExpr = isLit ? `sizeof(${trimmed}) - 1` : `strlen((const char*)${trimmed})`;
+  const write = `uart_write_bytes(${num}, ${trimmed}, ${lenExpr})`;
+  return appendNl
+    ? `${write}; uart_write_bytes(${num}, "\\n", 1);`
+    : `${write};`;
+}
+
 /** Resolve a HAL uart.* op to ESP-IDF C++. */
 export function lowerUart(op: HALOpIR): { code?: string; expression?: string } {
   const o = op as any;
@@ -47,19 +54,13 @@ export function lowerUart(op: HALOpIR): { code?: string; expression?: string } {
     case 'uart.begin':
       return { code: `__tc_uart${idx}_init(${o.baud ?? 0});` };
     case 'uart.print':
-    case 'uart.println': {
-      // uart.print takes a resolved C++ expression; emit as a string write.
-      // println appends \n. The expression may be a string literal or a
-      // variable; for non-string types the caller is expected to have already
-      // formatted via snprintf (cuttlefish's console lowering handles this).
-      const nl = op.operation === 'uart.println' ? '\\n' : '';
-      return { code: `uart_write_bytes(${cfg.num}, ${o.value}, sizeof(${o.value}) - 1);` +
-        (nl ? ` uart_write_bytes(${cfg.num}, "\\n", 1);` : '') };
-    }
+      return { code: uartWrite(cfg.num, o.value, false) };
+    case 'uart.println':
+      return { code: uartWrite(cfg.num, o.value, true) };
     case 'uart.printf':
       return { code: `({ char __buf[128]; int __n = snprintf(__buf, sizeof(__buf), ${o.format}${o.args?.length ? ', ' + o.args.join(', ') : ''}); uart_write_bytes(${cfg.num}, __buf, __n > 0 ? __n : 0); })` };
     case 'uart.write':
-      return { code: `uart_write_bytes(${cfg.num}, ${o.data}, sizeof(${o.data}) - 1);` };
+      return { code: uartWrite(cfg.num, o.data, false) };
     case 'uart.read':
       return { expression: `({ uint8_t b = 0; uart_read_bytes(${cfg.num}, &b, 1, portMAX_DELAY); b; })` };
     case 'uart.available':

@@ -12,6 +12,7 @@ const config: CuttlefishConfig = {
   // One framework package handles all ESP32 variants; the variant is data.
   framework: '@typecad/framework-esp32',
   frameworkData: {
+    target: 'esp32s3',
     buildTarget: 'esp32s3',
   },
 

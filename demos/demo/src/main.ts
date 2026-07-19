@@ -3,10 +3,8 @@ import { delay } from '@typecad/hal';
 
 const led = D2.asOutput();
 
-// In loop — toggle the LED with a delay so the watchdog doesn't fire.
-// (framework-esp32's __tc_app_task calls loop() repeatedly; no while(true)
-// needed at the top level.)
-export function loop() {
+while(1) {
   led.toggle();
   delay(500);
+  console.log('toggle');
 }

@@ -6,7 +6,7 @@
 // ---------------------------------------------------------------------------
 
 // Export the main strategy class
-export { ArduinoStrategy } from './strategy.js';
+export { ArduinoStrategy, splitStreamChain } from './strategy.js';
 
 // Export as FrameworkStrategy for consistency with framework package naming
 export { ArduinoStrategy as FrameworkStrategy } from './strategy.js';
