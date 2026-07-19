@@ -117,3 +117,34 @@ describe('generateCDecl — ESP-IDF-style headers (the demo target)', () => {
     );
   });
 });
+
+describe('generateCDecl — array declarators (params + struct fields)', () => {
+  const header = path.join(FIXTURES, 'arrays.h');
+
+  it('normalizes a sized array parameter: uint8_t mac[6] → type uint8_t, name mac', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    // The bogus `export type uint8_t mac[6] = number;` form must NOT appear
+    // (it's invalid TS and was the bug that motivated this regression suite).
+    expect(content).not.toMatch(/export type uint8_t mac/);
+    // The function emits with the array stripped from the param type — the
+    // array decays to a pointer in C anyway, and the TS-side type is the
+    // element type.
+    expect(content).toContain(
+      'export declare function set_mac_sized(ifx: number, mac: number)',
+    );
+  });
+
+  it('normalizes an unsized array parameter: uint8_t mac[] → type uint8_t, name mac', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    expect(content).not.toMatch(/export type uint8_t mac/);
+    expect(content).toContain(
+      'export declare function set_mac_unsized(ifx: number, mac: number)',
+    );
+  });
+
+  it('emits struct array fields as TS arrays', () => {
+    const content = fs.readFileSync(generateCDecl(header)!, 'utf8');
+    expect(content).toMatch(/bytes:\s+number\[\]/);
+    expect(content).toMatch(/n:\s+number/);
+  });
+});

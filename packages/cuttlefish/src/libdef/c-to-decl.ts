@@ -139,6 +139,17 @@ function parseParams(raw: string): { type: string; name: string }[] {
     let trimmed = part.trim();
     trimmed = trimmed.split('=')[0].trim();
     if (!trimmed) return { type: '', name: `_arg${idx}` };
+    // C array declarator on a parameter: `<type> <name>[<size>]` or `<type> <name>[]`.
+    // Normalize: the array decays to a pointer in C anyway, so we record the
+    // base type and the original name. e.g. `uint8_t mac[6]` → type="uint8_t",
+    // name="mac"; `uint8_t mac[]` → same.
+    const arrParam = trimmed.match(/^(.*?)\b(\w+)\s*\[[^\]]*\]\s*$/);
+    if (arrParam) {
+      const type = arrParam[1].trim();
+      // If the type is empty (e.g. bare `mac[6]` with no preceding type),
+      // fall through to the default parser rather than emitting a bogus type.
+      if (type) return { type, name: arrParam[2] };
+    }
     // A parameter is `<type> <name>` where name is the trailing identifier
     // and type is everything before. For function-pointer params (rare in
     // user-facing IDF APIs) we fall back to treating the whole thing as a
@@ -253,6 +264,13 @@ function parseAliasTypedefs(stripped: string): CAliasTypedef[] {
     // should already exclude those, but the regex can still match fragments
     // inside a `typedef struct { ... } foo_t;` body in edge cases).
     if (aliasedType === '' || aliasedType.includes('{')) continue;
+    // Skip array typedefs: `typedef uint8_t mac[6];` is NOT a plain alias.
+    // It would parse as aliasedType="uint8_t" name="mac" with the regex, but
+    // the trailing `[6]` between name and `;` makes it an array typedef — the
+    // regex's `\s*;` lookahead fails to match `[6];`, so this branch only
+    // fires for true plain aliases. Defensive: bail if the captured aliasedType
+    // somehow contains a `[` (would indicate a parse fragment).
+    if (aliasedType.includes('[')) continue;
     tds.push({ kind: 'alias', name, aliasedType });
   }
   return tds;

@@ -1,11 +1,35 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { basename, join } from 'node:path';
 
 export interface ComponentScanRoots {
   /** Subdirectory names under managed_components/ (e.g. espressif__esp_wifi). */
   managed: string[];
   /** Absolute paths to local component directories. */
   local: string[];
+  /**
+   * ESP-IDF built-in component names (e.g. esp_wifi). Resolved against
+   * `idfRoot/components/<name>/include/` when idfRoot is provided; ignored
+   * otherwise (the caller is responsible for passing idfRoot when builtins
+   * are present).
+   */
+  builtin: string[];
+  /** Optional ESP-IDF install root for resolving `builtin` names. */
+  idfRoot?: string;
+}
+
+/**
+ * A discovered header plus the directory its generated .d.ts should land in.
+ *
+ * `outputDir` is alongside the header for managed/local components (so the
+ * .d.ts lives in the same gitignored component dir, regenerated on each run).
+ * For built-in components it's a project-local cache — NEVER write into the
+ * IDF install itself.
+ */
+export interface DiscoveredHeader {
+  /** Absolute path to the source .h file. */
+  path: string;
+  /** Absolute directory where the generated .d.ts should be written. */
+  outputDir: string;
 }
 
 /** Walk a directory recursively, returning all .h files. */
@@ -41,29 +65,53 @@ function walkHeaders(dir: string): string[] {
 /**
  * Find all .h files for the declared components.
  *
- * For each managed component: look in `managed_components/<name>/include/`,
- * falling back to `managed_components/<name>/` if no include/ subdir exists.
- * For each local component: same logic against the given path.
+ * - managed: scan `managed_components/<name>/include/` (falling back to the
+ *   component dir if no include/ exists). Populated by `idf.py reconfigure`.
+ * - local: scan `<path>/include/` (or `<path>/`).
+ * - builtin: scan `<idfRoot>/components/<name>/include/` (IDF ships with these).
  *
- * Returned paths are absolute and unsorted — the caller decides ordering.
+ * For builtins the output .d.ts goes to `<projectDir>/.cuttlefish/component-decls/<component>/`
+ * — never into `$IDF_PATH/components/`, which would pollute the IDF install.
+ *
+ * Returned entries are unsorted — the caller decides ordering.
  */
 export function discoverComponentHeaders(
   projectDir: string,
   roots: ComponentScanRoots,
-): string[] {
-  const headers: string[] = [];
+): DiscoveredHeader[] {
+  const headers: DiscoveredHeader[] = [];
 
   for (const name of roots.managed) {
     const base = join(projectDir, 'managed_components', name);
     const includeDir = join(base, 'include');
     const dir = existsSync(includeDir) ? includeDir : base;
-    headers.push(...walkHeaders(dir));
+    for (const h of walkHeaders(dir)) {
+      headers.push({ path: h, outputDir: dir });
+    }
   }
 
   for (const localPath of roots.local) {
     const includeDir = join(localPath, 'include');
     const dir = existsSync(includeDir) ? includeDir : localPath;
-    headers.push(...walkHeaders(dir));
+    for (const h of walkHeaders(dir)) {
+      headers.push({ path: h, outputDir: dir });
+    }
+  }
+
+  if (roots.idfRoot) {
+    for (const name of roots.builtin) {
+      const base = join(roots.idfRoot, 'components', name);
+      const includeDir = join(base, 'include');
+      const dir = existsSync(includeDir) ? includeDir : base;
+      // Project-local cache for builtins. Mirrors the include/ layout so
+      // imports can substitute `managed_components/<name>/include/X.d.ts`
+      // patterns. Each header's .d.ts is named after the header basename.
+      const outDir = join(projectDir, '.cuttlefish', 'component-decls', name);
+      if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+      for (const h of walkHeaders(dir)) {
+        headers.push({ path: h, outputDir: outDir });
+      }
+    }
   }
 
   return headers;

@@ -704,8 +704,14 @@ export function generateComponentDeclsForProject(
 ): string[] {
   const headers = discoverComponentHeaders(projectDir, roots);
   const created: string[] = [];
-  for (const header of headers) {
-    const out = hasClasses(header) ? generateDecl(header) : generateCDecl(header);
+  for (const discovered of headers) {
+    // Output path: <outputDir>/<basename>.d.ts. For managed/local this is
+    // alongside the header; for builtins it's the project-local cache dir.
+    const baseName = path.basename(discovered.path).replace(/\.h$/i, '');
+    const outputPath = path.join(discovered.outputDir, baseName + '.d.ts');
+    const out = hasClasses(discovered.path)
+      ? generateDecl(discovered.path, outputPath)
+      : generateCDecl(discovered.path, outputPath);
     if (out) created.push(out);
   }
   return created;
