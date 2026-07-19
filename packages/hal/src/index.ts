@@ -19,7 +19,7 @@ export type { SPIBitOrder, SPIMode, SPISettings } from './types.js';
 export { include } from './include.js';
 export { board } from './board.js';
 export { callback } from './callback.js';
-export { rawCpp, boardResolve } from './emit.js';
+export { rawCpp, rawCppExpr, boardResolve } from './emit.js';
 export { HIGH, LOW, OUTPUT, INPUT, INPUT_PULLUP, INPUT_PULLDOWN, OUTPUT_OPEN_DRAIN, ANALOG, LED_BUILTIN, LSBFIRST, MSBFIRST, WDTO_15MS, WDTO_30MS, WDTO_60MS, WDTO_120MS, WDTO_250MS, WDTO_500MS, WDTO_1S, WDTO_2S, WDTO_4S, WDTO_8S } from './constants.js';
 export { delay, millis, micros, delayMicroseconds, map, constrain, TimingClass, Timing } from './timing.js';
 export { freeHeap, setInterval, setTimeout, clearInterval, clearTimeout } from './timing.js';

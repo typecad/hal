@@ -977,6 +977,20 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   }
 
   if (ts.isCallExpression(expr)) {
+    // ---- rawCppExpr() — compile-time C++ injection in expression context ----
+    // Mirrors the statement-position rawCpp()/__EMIT__ path, but emits the raw
+    // text as an expression (e.g. for IDF macros like WIFI_INIT_CONFIG_DEFAULT()
+    // that produce struct values). The type parameter is a TS hint only — the
+    // transpiler emits the raw text verbatim.
+    if (ts.isIdentifier(expr.expression) && expr.expression.text === "rawCppExpr") {
+      const arg = expr.arguments[0];
+      if (arg && ts.isStringLiteral(arg)) {
+        return { kind: "raw", value: arg.text };
+      }
+      if (arg && ts.isNoSubstitutionTemplateLiteral(arg)) {
+        return { kind: "raw", value: arg.text };
+      }
+    }
     // ---- board() / boardResolve() — compile-time board constant lookup ----
     if (ts.isIdentifier(expr.expression) && (expr.expression.text === "board" || expr.expression.text === "boardResolve")) {
       const pathArg = expr.arguments[0];
