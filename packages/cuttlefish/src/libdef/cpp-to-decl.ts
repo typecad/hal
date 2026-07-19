@@ -670,3 +670,43 @@ function generateDeclWithResolver(
   }
   return outPath;
 }
+
+// ─── ESP-IDF component dispatch ───────────────────────────────────────────
+//
+// Picks the C or C++ emitter per header based on whether it declares classes.
+// ESP-IDF components are mostly C (free functions + typedefs); Arduino-style
+// libraries are C++ classes. Spec:
+// docs/superpowers/specs/2026-07-19-framework-esp32-components-design.md
+
+import { generateCDecl } from "./c-to-decl.js";
+import { discoverComponentHeaders, type ComponentScanRoots } from "./component-discovery.js";
+
+/** Heuristic: does this header declare any C++ classes? */
+function hasClasses(headerPath: string): boolean {
+  try {
+    const content = fs.readFileSync(headerPath, "utf8");
+    return parseHeader(content).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Generate .d.ts declarations for every declared component's headers,
+ * picking the C or C++ emitter per header based on whether it declares classes.
+ *
+ * Returns the list of created/updated .d.ts paths (headers that produced no
+ * declarations are skipped).
+ */
+export function generateComponentDeclsForProject(
+  projectDir: string,
+  roots: ComponentScanRoots,
+): string[] {
+  const headers = discoverComponentHeaders(projectDir, roots);
+  const created: string[] = [];
+  for (const header of headers) {
+    const out = hasClasses(header) ? generateDecl(header) : generateCDecl(header);
+    if (out) created.push(out);
+  }
+  return created;
+}
