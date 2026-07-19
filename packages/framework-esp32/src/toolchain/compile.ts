@@ -39,7 +39,6 @@ export function compileEspIdf(options: EspIdfCompileOptions): EspIdfCompileResul
       const setupInv = idfSpawn(options.sourcePath, ['set-target', options.target], {
         cwd: options.sourcePath,
         encoding: 'utf8',
-        shell: true,
         timeout: 180000,
       });
       const setup = spawnSync(setupInv.command, setupInv.args, setupInv.options);
@@ -63,7 +62,6 @@ export function compileEspIdf(options: EspIdfCompileOptions): EspIdfCompileResul
     const buildInv = idfSpawn(options.sourcePath, args, {
       cwd: options.sourcePath,
       encoding: 'utf8',
-      shell: true,
       timeout: 300000,
     });
     const result = spawnSync(buildInv.command, buildInv.args, buildInv.options);

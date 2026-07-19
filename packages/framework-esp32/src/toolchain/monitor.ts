@@ -7,7 +7,6 @@ export function monitorEspIdf(port: string, projectDir: string = process.cwd()):
   const inv = idfSpawn(projectDir, ['-p', port, 'monitor'], {
     cwd: projectDir,
     stdio: 'inherit',
-    shell: true,
     timeout: 0,
   });
   if (inv.activation?.message) {

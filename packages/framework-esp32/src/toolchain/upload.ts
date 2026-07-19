@@ -13,7 +13,6 @@ export function uploadEspIdf(outputDir: string, port: string): EspIdfUploadResul
     const inv = idfSpawn(outputDir, ['-p', port, 'flash'], {
       cwd: outputDir,
       encoding: 'utf8',
-      shell: true,
       timeout: 120000,
     });
     const result = spawnSync(inv.command, inv.args, inv.options);
