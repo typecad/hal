@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { scaffoldEspIdfProject } from './scaffold.js';
 import { idfSpawn } from './activate.js';
 import { depsHashChanged, writeDepsHash } from '../components/deps-hash.js';
+import { generateComponentDeclsForProject } from '@typecad/cuttlefish/lib/component-decls';
 import type { ScaffoldComponents } from '../components/types.js';
 
 export interface EspIdfCompileOptions {
@@ -77,6 +78,22 @@ export function compileEspIdf(options: EspIdfCompileOptions): EspIdfCompileResul
         };
       }
       writeDepsHash(options.sourcePath, components);
+
+      // After reconfigure populates managed_components/, regenerate .d.ts
+      // stubs so user code can import the component APIs.
+      try {
+        generateComponentDeclsForProject(options.sourcePath, {
+          // idf.py stores managed deps as <namespace>__<name> (slashes → __).
+          managed: Object.keys(components.managed).map((spec) => spec.replace('/', '__')),
+          local: components.local,
+        });
+      } catch (genErr) {
+        // Non-fatal: gen-decls failure should not block a build. Surface as
+        // a notice in the build output.
+        console.warn(
+          `[cuttlefish] gen-decls for components failed: ${(genErr as Error).message}`,
+        );
+      }
     }
 
     // ── set-target (first run only) ───────────────────────────────────────

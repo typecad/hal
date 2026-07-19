@@ -49,6 +49,10 @@
       "types": "./dist/emit/route-hal-op.d.ts",
       "default": "./dist/emit/route-hal-op.js"
     },
+    "./lib/component-decls": {
+      "types": "./dist/libdef/component-decls.d.ts",
+      "default": "./dist/libdef/component-decls.js"
+    },
     "./ir/transformers/ui-lowering": {
       "types": "./dist/ir/transformers/ui-lowering.d.ts",
       "default": "./dist/ir/transformers/ui-lowering.js"
