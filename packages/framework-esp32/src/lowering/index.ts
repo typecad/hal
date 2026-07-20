@@ -13,6 +13,8 @@ import { lowerPower } from './power.js';
 import { lowerWdt }   from './wdt.js';
 import { lowerPulse, lowerShift } from './pulse-shift.js';
 import { lowerBoard } from './board.js';
+import { lowerWifi } from './wifi.js';
+import { lowerHttp } from './http.js';
 
 /**
  * Dispatch a HALOpIR to the appropriate peripheral lowering function.
@@ -34,6 +36,8 @@ export function lowerHalOp(op: HALOpIR): { code?: string; expression?: string } 
   if (op.operation.startsWith('wdt.'))       return lowerWdt(op);
   if (op.operation.startsWith('pulse.'))     return lowerPulse(op);
   if (op.operation.startsWith('shift.'))     return lowerShift(op);
+  if (op.operation.startsWith('wifi.'))      return lowerWifi(op);
+  if (op.operation.startsWith('http.'))      return lowerHttp(op);
   if (op.operation === 'board.resolve')      return lowerBoard(op);
   // raw and snprintf.emit: pass through verbatim
   if (op.operation === 'raw')                return { code: (op as any).code ?? '' };

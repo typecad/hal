@@ -380,6 +380,12 @@ export function buildEmitterContext(
     if (!programAnalysis.usesShift) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_SHIFT_BEGIN', '// CUTTLEFISH_SHIFT_END');
     }
+    if (!programAnalysis.usesWifi) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_WIFI_BEGIN', '// CUTTLEFISH_WIFI_END');
+    }
+    if (!programAnalysis.usesHttp) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_HTTP_BEGIN', '// CUTTLEFISH_HTTP_END');
+    }
     profileDiagnostics = [...strategy.profileDiagnostics(program, options.platformContext)];
   }
 

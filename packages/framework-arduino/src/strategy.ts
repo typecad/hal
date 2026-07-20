@@ -401,7 +401,19 @@ export class ArduinoStrategy implements PlatformStrategy {
       );
     }
 
-    lines.push(
+    lines.push(...this.strPtrShimLines());
+
+    lines.push(...profileLines);
+    return lines;
+  }
+  /** The `__tc_str_ptr` string-helper shim block. Emitted by shimLines() on
+   *  both framework-arduino and framework-esp32 (Esp32Strategy overrides
+   *  shimLines entirely but still normalizes `std::string` → `__tc_str_ptr`,
+   *  so it must emit this block too). setup.ts strips it when the program
+   *  analysis reports !usesStrPtr — keep the first/last lines in sync with
+   *  that filter ('#ifndef CUTTLEFISH_STR_BUF_SIZE' … 'inline size_t (strlen)…'). */
+  protected strPtrShimLines(): string[] {
+    return [
       "",
       "#ifndef CUTTLEFISH_STR_BUF_SIZE",
       "#define CUTTLEFISH_STR_BUF_SIZE 64",
@@ -427,12 +439,10 @@ export class ArduinoStrategy implements PlatformStrategy {
       "    bool operator==(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) == 0; }",
       "    bool operator!=(const __tc_str_ptr& o) const { return strcmp(buf, o.buf) != 0; }",
       "};",
-      "inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }"
-    );
-
-    lines.push(...profileLines);
-    return lines;
+      "inline size_t (strlen)(const __tc_str_ptr& s) { return ::strlen(s.buf); }",
+    ];
   }
+
   profileDiagnostics(program: ProgramIR, ctx?: PlatformContext): Diagnostic[] {
     // Copy the cached profile's diagnostics into a FRESH array — the profile
     // is cached by buildTarget (getOrResolveProfile), so mutating its

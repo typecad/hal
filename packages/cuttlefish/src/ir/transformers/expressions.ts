@@ -35,6 +35,16 @@ export function expressionStatementToIR(
     if (callStmt && callStmt.kind === "call") {
       return { ...callStmt, isAwaited: true };
     }
+    // Awaited network HAL ops (WiFi.connect / WiFi.untilConnected / Http.send
+    // / ...) resolve to hal-op statements, which would otherwise lower to the
+    // BLOCKING shim call even inside an async state machine. Rewrite them to
+    // an awaited __WIFI_WAIT__/__HTTP_WAIT__ marker call carrying the original
+    // op; the async state-machine generator turns it into a start + poll state
+    // pair, and the statement renderer falls back to the blocking form when
+    // the marker is rendered outside a state machine (top-level await, awaits
+    // nested in unsupported positions).
+    const netMarker = awaitedNetMarker(callStmt);
+    if (netMarker) return netMarker;
     return callStmt;
   }
 
@@ -446,5 +456,51 @@ export function expressionStatementToIR(
     }
   }
 
+  return undefined;
+}
+
+/** HAL ops with a start/poll split available in the async state machine
+ *  (see async-state-machine.ts netWaitInfo — keep the two in sync).
+ *  timing.delay is included because `delay()` from @typecad/hal resolves to a
+ *  hal-op, dropping the isAwaited flag the state machine keys on. */
+const AWAITABLE_HAL_OPS = new Set<string>([
+  "timing.delay",
+  "wifi.connect",
+  "wifi.wait_connected",
+  "wifi.wait_disconnected",
+  "wifi.scan",
+  "http.send",
+]);
+
+/**
+ * Rewrite an awaited hal-op statement (or a block whose LAST statement is
+ * one — chained HAL calls resolve to blocks of hal-ops) into an awaited
+ * `__WIFI_WAIT__` / `__HTTP_WAIT__` / `__HAL_WAIT__` marker call carrying the
+ * original op as a hal-expr argument. Returns undefined when the statement is
+ * not an awaitable HAL op.
+ */
+function awaitedNetMarker(stmt: StatementIR | undefined): StatementIR | undefined {
+  if (!stmt) return undefined;
+  if (stmt.kind === "hal-op" && AWAITABLE_HAL_OPS.has(stmt.operation.operation)) {
+    const opName = stmt.operation.operation;
+    const callee = opName.startsWith("http.") ? "__HTTP_WAIT__"
+      : opName.startsWith("wifi.") ? "__WIFI_WAIT__"
+      : "__HAL_WAIT__";
+    return {
+      kind: "call",
+      sourceSpan: stmt.sourceSpan,
+      leadingComments: stmt.leadingComments,
+      trailingComments: stmt.trailingComments,
+      callee,
+      args: [{ kind: "hal-expr", operation: stmt.operation }],
+      isAwaited: true,
+    };
+  }
+  if (stmt.kind === "block" && stmt.body.length > 0) {
+    const last = awaitedNetMarker(stmt.body[stmt.body.length - 1]);
+    if (last) {
+      return { ...stmt, body: [...stmt.body.slice(0, -1), last] };
+    }
+  }
   return undefined;
 }

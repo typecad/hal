@@ -13,6 +13,8 @@ import { interruptsInitLines } from './lowering/interrupts.js';
 import { powerInitLines } from './lowering/power.js';
 import { wdtInitLines }   from './lowering/wdt.js';
 import { pulseShiftInitLines, pulseInitLines, shiftInitLines } from './lowering/pulse-shift.js';
+import { wifiInitLines } from './lowering/wifi.js';
+import { httpInitLines } from './lowering/http.js';
 
 /** Read the IDF target ('esp32'|'esp32s3'|'esp32c3'|'esp32c6') from the
  *  platform context. Accepts either frameworkData.target (preferred) or
@@ -60,6 +62,11 @@ export class Esp32Strategy extends ArduinoStrategy {
   // ESP-IDF uses FreeRTOS — delay() yields; suppress blocking-delay-in-loop.
   isRtosTarget(): boolean {
     return true;
+  }
+
+  // No Arduino millis() in ESP-IDF; esp_timer.h is always included.
+  override currentTimeMillis(): string {
+    return '(unsigned long)(esp_timer_get_time() / 1000)';
   }
 
   override needsIostream(): boolean {
@@ -126,6 +133,19 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (uses('usesPower'))        inc.push('"esp_sleep.h"', '"soc/rtc.h"');
     if (uses('usesWdt'))          inc.push('"esp_task_wdt.h"');
     if (uses('usesInterrupts'))   inc.push('"esp_intr_alloc.h"');
+    if (uses('usesWifi')) {
+      inc.push(
+        '"esp_wifi.h"',
+        '"esp_netif.h"',
+        '"esp_event.h"',
+        '"esp_mac.h"',
+        '"nvs_flash.h"',
+        '"nvs.h"',
+      );
+    }
+    if (uses('usesHttp')) {
+      inc.push('"esp_http_client.h"', '"esp_crt_bundle.h"', '<stdlib.h>');
+    }
     return inc;
   }
 
@@ -149,14 +169,22 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (a?.usesWdt)         espInit.push(...wdtInitLines());
     if (a?.usesPulse) espInit.push(...pulseInitLines());
     if (a?.usesShift) espInit.push(...shiftInitLines());
+    if (a?.usesWifi)  espInit.push(...wifiInitLines());
+    if (a?.usesHttp)  espInit.push(...httpInitLines());
 
     return [
+      // __tc_str_ptr string helpers — Esp32Strategy inherits the parent's
+      // `std::string` → `__tc_str_ptr` type normalization, so it must also
+      // emit the struct definition. setup.ts strips the block when the
+      // program analysis reports !usesStrPtr.
+      ...this.strPtrShimLines(),
       ...espInit,
       '// --- ESP32 IDF entrypoint: app_main + __tc_app_task ---',
       '// The cuttlefish synthesizer emits setup() and loop() (it keys off',
       '// entrypointFunctionName()="setup" and requiresLoopFunction()=true).',
-      '// This trampoline spawns a FreeRTOS task that runs them, matching',
-      '// Arduino\'s default task config (8192 stack, priority 1, tskNO_AFFINITY).',
+      '// Stack is 16 KB (bytes): WiFi/HTTP paths (esp_wifi_connect, event',
+      '// handlers, printf) overflow the Arduino-classic 8 KB and reboot with',
+      '// no useful panic line — looks like a USB reconnect loop.',
       'extern void setup(void);',
       'extern void loop(void);',
       '',
@@ -173,7 +201,7 @@ export class Esp32Strategy extends ArduinoStrategy {
       '}',
       '',
       'extern "C" void app_main(void) {',
-      '    xTaskCreate(__tc_app_task, "tc_app", 8192, NULL, 1, NULL);',
+      '    xTaskCreate(__tc_app_task, "tc_app", 16384, NULL, 1, NULL);',
       '    vTaskDelete(NULL);  // app_main exits cleanly; tc_app runs independently',
       '}',
       '',
@@ -227,12 +255,26 @@ export class Esp32Strategy extends ArduinoStrategy {
       const inner = trimmed.slice(1, -1);
       return `printf("${inner}${appendNewline ? '\\n' : ''}")${semi}`;
     }
+    // Known string arguments need %s, not %g: const char*-returning runtime
+    // shims (wifi/http) and template-literal snprintf buffers (__cuttlefish_str_N).
+    if (/^__tc_(wifi_(local_ip|mac|ap_ip|scan_ssid)|http_(body|response_header))\s*\(/.test(trimmed)
+        || /^__cuttlefish_str_\d+$/.test(trimmed)) {
+      return `printf("%s${appendNewline ? '\\n' : ''}", ${renderedArgs})${semi}`;
+    }
+    // int/bool-returning wifi/http shims need %d (%g with an int is UB).
+    if (/^__tc_(wifi_(rssi|scan(_count|_rssi|_channel|_encryption)?|ap_client_count|is_connected|connect|connect_saved|ap_start)|http_(status|ok|done|send))\s*\(/.test(trimmed)) {
+      return `printf("%d${appendNewline ? '\\n' : ''}", ${renderedArgs})${semi}`;
+    }
+    // long-returning content-length shim.
+    if (/^__tc_http_content_length\s*\(/.test(trimmed)) {
+      return `printf("%ld${appendNewline ? '\\n' : ''}", ${renderedArgs})${semi}`;
+    }
     return `printf("%g${appendNewline ? '\\n' : ''}", ${renderedArgs})${semi}`;
   }
 
   override generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
     const base = super.generateNativePolyfills(program, ctx);
-    return base.map((p) => {
+    const mapped = base.map((p) => {
       if (p.id === 'cuttlefish_halt') {
         return {
           ...p,
@@ -244,8 +286,61 @@ export class Esp32Strategy extends ArduinoStrategy {
           ],
         };
       }
+      // Shared Promise runtime (from framework-arduino) calls Arduino millis() /
+      // digitalRead / HIGH / LOW / RISING. Provide IDF-backed stand-ins so the
+      // same polyfill compiles under ESP-IDF. Keep waitForPinEdge — it works
+      // once these symbols exist.
+      if (p.id === 'async_runtime') {
+        return {
+          ...p,
+          domain: 'esp32',
+          requiredIncludes: [
+            ...p.requiredIncludes,
+            '"esp_timer.h"',
+            '"driver/gpio.h"',
+          ],
+        };
+      }
       return p;
     });
+
+    if (mapped.some((p) => p.id === 'async_runtime')) {
+      // Must precede async_runtime in the emit list so millis/digitalRead exist
+      // before the Promise helpers that call them.
+      mapped.unshift({
+        kind: 'polyfill',
+        id: 'esp32_arduino_compat',
+        domain: 'esp32',
+        requiredIncludes: ['"esp_timer.h"', '"driver/gpio.h"'],
+        forwardDeclarations: [],
+        helperStructs: [],
+        helperFunctions: [
+          `// Arduino-compat symbols for the shared async_runtime polyfill (ESP-IDF).
+#ifndef HIGH
+#define HIGH 1
+#endif
+#ifndef LOW
+#define LOW 0
+#endif
+#ifndef RISING
+#define RISING 0x01
+#endif
+#ifndef FALLING
+#define FALLING 0x02
+#endif
+static inline unsigned long millis() {
+    return (unsigned long)(esp_timer_get_time() / 1000);
+}
+static inline int digitalRead(int pin) {
+    return (int)gpio_get_level((gpio_num_t)pin);
+}
+`,
+        ],
+        shimMacros: [],
+        dependencies: [],
+      });
+    }
+    return mapped;
   }
 
   override profileDiagnostics(program: ProgramIR, ctx?: PlatformContext): Diagnostic[] {

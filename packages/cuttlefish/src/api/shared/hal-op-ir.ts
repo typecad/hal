@@ -540,6 +540,259 @@ export interface SnprintfEmitOp {
 }
 
 // ---------------------------------------------------------------------------
+// WiFi
+// ---------------------------------------------------------------------------
+
+export interface WifiConnectOp {
+  operation: "wifi.connect";
+  ssid: string;
+  password?: string;
+  timeoutMs: number | string;
+  blocking: boolean;
+}
+
+export interface WifiConnectStartOp {
+  operation: "wifi.connect_start";
+  ssid: string;
+  password?: string;
+}
+
+export interface WifiDisconnectOp {
+  operation: "wifi.disconnect";
+}
+
+export interface WifiStatusOp {
+  operation: "wifi.status";
+}
+
+export interface WifiIsConnectedOp {
+  operation: "wifi.is_connected";
+}
+
+export interface WifiLocalIpOp {
+  operation: "wifi.local_ip";
+}
+
+export interface WifiRssiOp {
+  operation: "wifi.rssi";
+}
+
+export interface WifiMacOp {
+  operation: "wifi.mac";
+}
+
+export interface WifiSetHostnameOp {
+  operation: "wifi.set_hostname";
+  name: string;
+}
+
+export interface WifiSetStaticIpOp {
+  operation: "wifi.set_static_ip";
+  ip: string;
+  gateway: string;
+  subnet: string;
+  dns?: string;
+}
+
+export interface WifiSetAutoReconnectOp {
+  operation: "wifi.set_auto_reconnect";
+  enabled: boolean | string;
+}
+
+export interface WifiSetPowerSaveOp {
+  operation: "wifi.set_power_save";
+  mode: string;
+}
+
+export interface WifiSetTxPowerOp {
+  operation: "wifi.set_tx_power";
+  dbm: number | string;
+}
+
+export interface WifiOnEventOp {
+  operation: "wifi.on_event";
+  event: "connect" | "disconnect" | "got_ip" | string;
+  handler: string;
+}
+
+export interface WifiApStartOp {
+  operation: "wifi.ap_start";
+  ssid: string;
+  password?: string;
+  channel?: number | string;
+  hidden?: boolean | string;
+  maxClients?: number | string;
+}
+
+export interface WifiApStopOp {
+  operation: "wifi.ap_stop";
+}
+
+export interface WifiApClientCountOp {
+  operation: "wifi.ap_client_count";
+}
+
+export interface WifiApIpOp {
+  operation: "wifi.ap_ip";
+}
+
+export interface WifiApSetChannelOp {
+  operation: "wifi.ap_set_channel";
+  channel: number | string;
+}
+
+export interface WifiApSetHiddenOp {
+  operation: "wifi.ap_set_hidden";
+  hidden: boolean | string;
+}
+
+export interface WifiApSetMaxClientsOp {
+  operation: "wifi.ap_set_max_clients";
+  maxClients: number | string;
+}
+
+export interface WifiScanOp {
+  operation: "wifi.scan";
+}
+
+export interface WifiScanStartOp {
+  operation: "wifi.scan_start";
+}
+
+/** Poll predicate paired with wifi.scan_start — true when scan results are ready. */
+export interface WifiScanDoneOp {
+  operation: "wifi.scan_done";
+}
+
+export interface WifiScanCountOp {
+  operation: "wifi.scan_count";
+}
+
+export interface WifiScanSsidOp {
+  operation: "wifi.scan_ssid";
+  index: number | string;
+}
+
+export interface WifiScanRssiOp {
+  operation: "wifi.scan_rssi";
+  index: number | string;
+}
+
+export interface WifiScanEncryptionOp {
+  operation: "wifi.scan_encryption";
+  index: number | string;
+}
+
+export interface WifiScanChannelOp {
+  operation: "wifi.scan_channel";
+  index: number | string;
+}
+
+export interface WifiSaveCredentialsOp {
+  operation: "wifi.save_credentials";
+  ssid: string;
+  password: string;
+}
+
+export interface WifiConnectSavedOp {
+  operation: "wifi.connect_saved";
+  timeoutMs: number | string;
+}
+
+export interface WifiClearCredentialsOp {
+  operation: "wifi.clear_credentials";
+}
+
+export interface WifiWaitConnectedOp {
+  operation: "wifi.wait_connected";
+  timeoutMs: number | string;
+}
+
+export interface WifiWaitDisconnectedOp {
+  operation: "wifi.wait_disconnected";
+}
+
+// ---------------------------------------------------------------------------
+// HTTP client
+// ---------------------------------------------------------------------------
+
+export interface HttpBeginOp {
+  operation: "http.begin";
+  method: string;
+  url: string;
+}
+
+export interface HttpResetOp {
+  operation: "http.reset";
+}
+
+export interface HttpSetHeaderOp {
+  operation: "http.set_header";
+  name: string;
+  value: string;
+}
+
+export interface HttpSetTimeoutOp {
+  operation: "http.set_timeout";
+  ms: number | string;
+}
+
+export interface HttpSetMaxBodyOp {
+  operation: "http.set_max_body";
+  bytes: number | string;
+}
+
+export interface HttpSetBodyOp {
+  operation: "http.set_body";
+  data: string;
+  json?: boolean;
+}
+
+export interface HttpSetInsecureOp {
+  operation: "http.set_insecure";
+}
+
+export interface HttpSetCaCertOp {
+  operation: "http.set_ca_cert";
+  pem: string;
+}
+
+export interface HttpSendOp {
+  operation: "http.send";
+  blocking: boolean;
+}
+
+export interface HttpSendStartOp {
+  operation: "http.send_start";
+}
+
+/** Poll predicate paired with http.send_start — true when the response is in. */
+export interface HttpDoneOp {
+  operation: "http.done";
+}
+
+export interface HttpStatusOp {
+  operation: "http.status";
+}
+
+export interface HttpOkOp {
+  operation: "http.ok";
+}
+
+export interface HttpBodyOp {
+  operation: "http.body";
+}
+
+export interface HttpContentLengthOp {
+  operation: "http.content_length";
+}
+
+export interface HttpResponseHeaderOp {
+  operation: "http.response_header";
+  name: string;
+}
+
+// ---------------------------------------------------------------------------
 // Raw C++ passthrough — escape hatch for unsupported operations
 // ---------------------------------------------------------------------------
 
@@ -646,6 +899,58 @@ export type HALOpIR =
   | WdtDisableOp
   // Snprintf
   | SnprintfEmitOp
+  // WiFi
+  | WifiConnectOp
+  | WifiConnectStartOp
+  | WifiDisconnectOp
+  | WifiStatusOp
+  | WifiIsConnectedOp
+  | WifiLocalIpOp
+  | WifiRssiOp
+  | WifiMacOp
+  | WifiSetHostnameOp
+  | WifiSetStaticIpOp
+  | WifiSetAutoReconnectOp
+  | WifiSetPowerSaveOp
+  | WifiSetTxPowerOp
+  | WifiOnEventOp
+  | WifiApStartOp
+  | WifiApStopOp
+  | WifiApClientCountOp
+  | WifiApIpOp
+  | WifiApSetChannelOp
+  | WifiApSetHiddenOp
+  | WifiApSetMaxClientsOp
+  | WifiScanOp
+  | WifiScanStartOp
+  | WifiScanDoneOp
+  | WifiScanCountOp
+  | WifiScanSsidOp
+  | WifiScanRssiOp
+  | WifiScanEncryptionOp
+  | WifiScanChannelOp
+  | WifiSaveCredentialsOp
+  | WifiConnectSavedOp
+  | WifiClearCredentialsOp
+  | WifiWaitConnectedOp
+  | WifiWaitDisconnectedOp
+  // HTTP
+  | HttpBeginOp
+  | HttpResetOp
+  | HttpSetHeaderOp
+  | HttpSetTimeoutOp
+  | HttpSetMaxBodyOp
+  | HttpSetBodyOp
+  | HttpSetInsecureOp
+  | HttpSetCaCertOp
+  | HttpSendOp
+  | HttpSendStartOp
+  | HttpDoneOp
+  | HttpStatusOp
+  | HttpOkOp
+  | HttpBodyOp
+  | HttpContentLengthOp
+  | HttpResponseHeaderOp
   // Raw passthrough
   | RawCppOp
   // Display / graphics

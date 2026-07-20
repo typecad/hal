@@ -249,6 +249,29 @@ export function getCtorIncludes(className: string): string[] {
   return halCtorIncludes.get(className) ?? [];
 }
 
+/** Map an HttpClass factory method name to its HTTP verb, or null. */
+export function httpFactoryVerb(methodName: string): string | null {
+  switch (methodName) {
+    case "get": return "GET";
+    case "post": return "POST";
+    case "put": return "PUT";
+    case "del": return "DELETE";
+    case "head": return "HEAD";
+    case "patch": return "PATCH";
+    default: return null;
+  }
+}
+
+/** Render an Http factory URL argument as C++ expression text (string
+ *  literals quoted, identifiers/member accesses verbatim), or null when the
+ *  argument shape can't be resolved at compile time. */
+export function httpUrlArgText(arg: ts.Expression): string | null {
+  if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) return JSON.stringify(arg.text);
+  if (ts.isIdentifier(arg)) return arg.text;
+  if (ts.isPropertyAccessExpression(arg)) return arg.getText();
+  return null;
+}
+
 /** Resolve a call receiver to a tracked HAL instance. */
 export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null {
   const result = (() => {
@@ -373,6 +396,23 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
           }
         }
 
+        // Specialized handling for Http factory chaining
+        // (Http.get(url).header(...).send()): the factory records the HTTP
+        // verb and URL into the HttpRequest instance so send() can resolve
+        // this._method / this._url.
+        if (innerInstance.className === "HttpClass") {
+          const verb = httpFactoryVerb(methodName);
+          if (verb && receiver.arguments.length > 0) {
+            const urlText = httpUrlArgText(receiver.arguments[0]);
+            if (urlText) {
+              return {
+                className: "HttpRequest",
+                fieldValues: new Map([["_method", verb], ["_url", urlText]]),
+              };
+            }
+          }
+        }
+
         // General fallback: if the method is known to return another HAL class, carry over fields
         const classEntry = halClassRegistry.get(innerInstance.className);
         const methodEntry = classEntry?.methods.get(methodName);
@@ -381,6 +421,12 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
           if (halClassRegistry.has(returnClassName)) {
             return { className: returnClassName, fieldValues: new Map(innerInstance.fieldValues) };
           }
+        }
+
+        // Fluent `this`-returning methods (e.g. HttpRequest.header/timeout):
+        // the chain result is the same instance, so keep resolving through it.
+        if (methodEntry && methodEntry.methodNode.type && methodEntry.methodNode.type.kind === ts.SyntaxKind.ThisType) {
+          return innerInstance;
         }
       }
     }

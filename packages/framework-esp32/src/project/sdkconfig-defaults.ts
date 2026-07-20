@@ -22,6 +22,10 @@ export function sdkconfigDefaultsForTarget(target: string): string {
     '# Components the framework uses',
     'CONFIG_ESP_TASK_WDT_INIT=y',
     '',
+    '# HTTPS via esp_http_client + esp_crt_bundle_attach',
+    'CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y',
+    'CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y',
+    '',
   ];
 
   switch (target) {

@@ -41,6 +41,7 @@ import {
   isHALSingleton,
   HALInstance,
 } from "../hal-resolver.js";
+import { httpFactoryVerb, httpUrlArgText } from "../hal/hal-parser.js";
 import { resolveHALCallForVarInit } from "./hal-call-resolver.js";
 import { recordSignal } from "./ui-call-resolver.js";
 
@@ -519,6 +520,15 @@ export function variableStatementToIR(
             }
           }
 
+          // new HttpRequest(method, url) — positional ctor fields. The URL is
+          // stored as C++ expression text (quoted literal or identifier).
+          if (className === "HttpRequest" && ctorArgs && ctorArgs.length >= 2) {
+            const methodArg = ctorArgs[0];
+            if (ts.isStringLiteral(methodArg)) fieldValues.set("_method", methodArg.text.toUpperCase());
+            const urlText = httpUrlArgText(ctorArgs[1]);
+            if (urlText) fieldValues.set("_url", urlText);
+          }
+
           if (ctorArgs) {
             for (const arg of ctorArgs) {
               if (ts.isIdentifier(arg) && className === "Pin") {
@@ -627,6 +637,17 @@ export function variableStatementToIR(
                 }
               }
             }
+            // For Http factory calls (const req = Http.get(url)), record the
+            // HTTP verb + URL so req.send() can resolve this._method/this._url.
+            if (result.returnClassName === "HttpRequest") {
+              const verb = httpFactoryVerb(init.expression.name.text);
+              if (verb) fieldValues.set("_method", verb);
+              const urlArg = init.arguments?.[0];
+              if (urlArg) {
+                const urlText = httpUrlArgText(urlArg);
+                if (urlText) fieldValues.set("_url", urlText);
+              }
+            }
             halInstances.set(varName, {
               className: result.returnClassName,
               fieldValues,
@@ -682,7 +703,14 @@ export function variableStatementToIR(
               // fill ops). Everything else is a scalar/value return captured
               // after the side-effect ops.
               const isTypedArray = result.returnValue.startsWith("__TYPED_ARRAY__:");
-              if (!isTypedArray) {
+              // A factory returning a compile-time HAL instance (e.g.
+              // `const req = Http.get(url)` → returnValue `new HttpRequest(...)`)
+              // is fully tracked via halInstances — every later method call on
+              // the variable resolves at compile time. Emitting the raw
+              // `new HttpRequest(...)` would reference a class that doesn't
+              // exist in the C++ output.
+              const isHalInstanceReturn = !!result.returnClassName && /^new\s/.test(result.returnValue.trim());
+              if (!isTypedArray && !isHalInstanceReturn) {
                 lowered.push({
                   kind: "var_decl",
                   sourceSpan: makeSourceSpan(declaration, fileName, sourceText),

@@ -79,6 +79,11 @@ export interface ProgramAnalysisResult {
   usesInterrupts: boolean;
   usesPulse: boolean;
   usesShift: boolean;
+  /** WiFi / HTTP client usage — framework-esp32 gates the __tc_wifi/__tc_http
+   *  runtime shims and their esp_wifi/esp_http_client includes on these.
+   *  Detected from wifi.* / http.* HAL-op operation names. */
+  usesWifi: boolean;
+  usesHttp: boolean;
 }
 
 // Regex for std:: math calls
@@ -89,7 +94,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesHttp'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -303,6 +308,18 @@ function analyzeExpression(
         analyzeExpression(expr.expression, result, strategy);
       }
       break;
+
+    case "hal-expr":
+      // Value-position HAL ops (e.g. `const ip = WiFi.localIP()` lowers to a
+      // hal-expr initializer) never pass through the statement-level hal-op
+      // detection above, so mirror the wifi./http. flag detection here. These
+      // gate the framework-esp32 __tc_wifi/__tc_http runtime shims.
+      if (expr.operation && typeof expr.operation.operation === "string") {
+        const opName = expr.operation.operation;
+        if (opName.startsWith("wifi.")) result.usesWifi = true;
+        if (opName.startsWith("http.")) result.usesHttp = true;
+      }
+      break;
   }
 }
 
@@ -335,6 +352,11 @@ function analyzeStatement(
       if (statement.callee === "millis" || statement.callee === "delay") {
         result.usesMillis = true;
       }
+      // Awaited HAL wait markers become async state-machine poll states that
+      // arm deadlines via currentTimeMillis().
+      if (statement.callee === "__WIFI_WAIT__" || statement.callee === "__HTTP_WAIT__" || statement.callee === "__HAL_WAIT__") {
+        result.usesMillis = true;
+      }
       // Namespace-qualified polyfill entry points used as bare call statements
       // (e.g. `Timing.delay(5);`). The expression-level analyzer (case
       // "method-call") already checks these prefixes, but a statement-form call
@@ -357,7 +379,10 @@ function analyzeStatement(
       if (statement.callee === "tone" || statement.callee === "noTone") {
         result.usesTone = true;
       }
-      if (statement.callee.startsWith("console.") || statement.callee.startsWith("_uart_")) {
+      // console.* is NOT UART: on ESP-IDF it lowers to printf, on Arduino to
+      // Serial via hasConsoleCalls. Only real UART HAL / Serial peripheral
+      // usage should gate the uart shim (avoids unused __tc_uart*_init).
+      if (statement.callee.startsWith("_uart_")) {
         result.usesUart = true;
       }
       if (statement.callee.startsWith("Serial.") || statement.callee === "Serial") {
@@ -535,6 +560,8 @@ function analyzeStatement(
         if (opName.startsWith("interrupt.")) result.usesInterrupts = true;
         if (opName.startsWith("pulse."))     result.usesPulse = true;
         if (opName.startsWith("shift."))     result.usesShift = true;
+        if (opName.startsWith("wifi."))      result.usesWifi = true;
+        if (opName.startsWith("http."))      result.usesHttp = true;
         // Timing HAL ops (timing.delay/millis/micros) carry a typed operation
         // name, not raw code, so the regex scans below miss them. Mirror the
         // raw-code timing detection here so usesMillis/usesTiming (and thus
@@ -578,7 +605,7 @@ function analyzeStatement(
         if (/\bEEPROM\b/.test(code) || /\beeprom_(read|write|update)_byte\b/.test(code)) {
           result.usesEEPROM = true;
         }
-        if (/\b(Serial|console)\b/.test(code)) {
+        if (/\bSerial\b/.test(code)) {
           result.usesUart = true;
         }
         if (/\bSPI\b/.test(code)) {
@@ -661,6 +688,8 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesInterrupts: false,
     usesPulse: false,
     usesShift: false,
+    usesWifi: false,
+    usesHttp: false,
   };
 
   // Analyze type aliases

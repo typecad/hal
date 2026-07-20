@@ -16,6 +16,7 @@ import { accessorGetterName } from "./utils/cpp-helpers.js";
 import { INTEGRAL_CPP_TYPE_RE } from "./utils/cpp-helpers.js";
 import { renderPeripheralProperty } from "../mapping/peripheral-names.js";
 import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsStringLike, parsedElementString, parsedIsVector, needsCStrForStringLike } from "../api/shared/cpp-type-ir.js";
+import { cppTypeForHalOp } from "./utils/hal-op-cpp-type.js";
 
 /**
  * Context needed for expression rendering.
@@ -492,6 +493,8 @@ export class ExpressionRenderer {
       }
       case "unary":
         return expr.operator === "!" ? "bool" : this.inferExpressionCppType(expr.operand, knownVariableTypes);
+      case "hal-expr":
+        return cppTypeForHalOp(expr.operation.operation);
       default:
         return undefined;
     }
@@ -834,9 +837,15 @@ export class ExpressionRenderer {
       }
       case "hal-expr": {
         const rendered = this.render(expr, exprTransformer);
-        // HAL expressions that resolve to string-like outputs use %s
         if (rendered.startsWith('"') || this.stringVarNames?.has(rendered)) {
           return { format: "%s", arg: rendered, estimatedLength: 32 };
+        }
+        const cppType = cppTypeForHalOp(expr.operation.operation);
+        if (cppType && this.isStringLikeCppType(cppType)) {
+          return { format: "%s", arg: rendered, estimatedLength: 32 };
+        }
+        if (cppType === "bool") {
+          return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5 };
         }
         return { format: "%d", arg: rendered, estimatedLength: 12 };
       }

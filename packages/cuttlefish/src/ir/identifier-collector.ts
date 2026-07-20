@@ -483,6 +483,22 @@ function collectHALOpIdentifiers(op: HALOpIR): Set<string> {
     }
     // Other HAL ops have only numeric/literal fields — no identifier references
   }
+  // wifi.* / http.* ops carry resolved C++ expression texts in their string
+  // fields (e.g. wifi.connect ssid: `WIFI_SSID` — a top-level const, or a
+  // quoted literal). Scan every string field for identifiers so referenced
+  // globals survive tree-shaking; quoted literals are skipped.
+  if (op.operation.startsWith("wifi.") || op.operation.startsWith("http.")) {
+    for (const value of Object.values(op)) {
+      if (typeof value !== "string" || value === op.operation) continue;
+      if (/^".*"$/.test(value.trim())) continue;
+      const matches = value.match(/[A-Za-z_][A-Za-z0-9_]*/g);
+      if (matches) {
+        for (const match of matches) {
+          identifiers.add(match);
+        }
+      }
+    }
+  }
   return identifiers;
 }
 

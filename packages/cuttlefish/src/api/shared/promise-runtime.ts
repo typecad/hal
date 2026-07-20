@@ -186,6 +186,84 @@ namespace typecad_async {
     std::vector<std::function<void(const std::string&)>> _onRejected;
   };
 
+  // Promise<void> — T=_value/const T& is illegal for void. Helpers below pass
+  // resolve as std::function<void(const void*)> (pointer, not reference).
+  template <>
+  class Promise<void> {
+  public:
+    enum class State { Pending, Fulfilled, Rejected };
+
+    using ResolveFn = std::function<void(const void*)>;
+    using RejectFn = std::function<void(const std::string&)>;
+    using Executor = std::function<void(ResolveFn, RejectFn)>;
+
+    Promise() : _state(State::Pending), _error{} {}
+
+    explicit Promise(Executor executor)
+      : _state(State::Pending), _error{} {
+      executor(
+        [this](const void*) { this->resolve(nullptr); },
+        [this](const std::string& error) { this->reject(error); }
+      );
+    }
+
+    static Promise<void> resolveValue() {
+      Promise<void> promise;
+      promise.resolve(nullptr);
+      return promise;
+    }
+
+    static Promise<void> rejectValue(const std::string& error) {
+      Promise<void> promise;
+      promise.reject(error);
+      return promise;
+    }
+
+    void resolve(const void* = nullptr) {
+      if (_state != State::Pending) return;
+      _state = State::Fulfilled;
+      auto callbacks = _onFulfilled;
+      enqueueMicrotask([callbacks]() mutable {
+        for (auto& callback : callbacks) { callback(nullptr); }
+      });
+    }
+
+    void reject(const std::string& error) {
+      if (_state != State::Pending) return;
+      _state = State::Rejected;
+      _error = error;
+      auto callbacks = _onRejected;
+      enqueueMicrotask([callbacks, error]() mutable {
+        for (auto& callback : callbacks) { callback(error); }
+      });
+    }
+
+    Promise<void>& then(std::function<void(const void*)> onFulfilled) {
+      if (_state == State::Fulfilled) {
+        enqueueMicrotask([onFulfilled]() mutable { onFulfilled(nullptr); });
+      } else if (_state == State::Pending) {
+        _onFulfilled.push_back(std::move(onFulfilled));
+      }
+      return *this;
+    }
+
+    Promise<void>& catchError(std::function<void(const std::string&)> onRejected) {
+      if (_state == State::Rejected) {
+        const std::string error = _error;
+        enqueueMicrotask([onRejected, error]() mutable { onRejected(error); });
+      } else if (_state == State::Pending) {
+        _onRejected.push_back(std::move(onRejected));
+      }
+      return *this;
+    }
+
+  private:
+    State _state;
+    std::string _error;
+    std::vector<std::function<void(const void*)>> _onFulfilled;
+    std::vector<std::function<void(const std::string&)>> _onRejected;
+  };
+
   // ── HAL-level implementations (inside namespace so they see Promise<T> and enqueueMicrotask) ──
 
   // Async.sleep() — cooperative delay using millis polling

@@ -46,3 +46,5 @@ export { HardwareTimer, Timer0, Timer1, Timer2 } from './timer.js';
 export { FSClass, FS } from './fs.js';
 export { PowerClass, Power } from './power.js';
 export { AsyncClass, Async } from './async.js';
+export { WiFiClass, WiFi, WiFiStatus, WiFiEncryption } from './wifi.js';
+export { HttpClass, Http, HttpRequest, HttpMethod } from './http.js';

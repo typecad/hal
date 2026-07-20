@@ -30,7 +30,7 @@ function polyfillDefinitionGuard(definition: string): string | null {
 }
 
 export function emitPreamble(ctx: EmitterContext): void {
-  const { strategy, effectiveEmitMode, program, shimLines, emittedPolyfills, asyncTaskClasses, includes, programAnalysis } = ctx;
+  const { strategy, effectiveEmitMode, program, shimLines, emittedPolyfills, includes, programAnalysis } = ctx;
 
   for (const include of dedupe(includes)) {
     appendSourceLineLocal(ctx, `#include ${include}`);
@@ -80,16 +80,8 @@ export function emitPreamble(ctx: EmitterContext): void {
     appendSourceLineLocal(ctx, "");
   }
 
-  if (asyncTaskClasses.length > 0) {
-    for (const { classDef, instanceDecl } of asyncTaskClasses) {
-      for (const line of classDef.split("\n")) {
-        appendSourceLineLocal(ctx, line);
-      }
-      appendSourceLineLocal(ctx, "");
-      appendSourceLineLocal(ctx, instanceDecl);
-      appendSourceLineLocal(ctx, "");
-    }
-  }
+  // Async task classes are emitted later (emitAsyncTaskClasses) AFTER top-level
+  // globals so references like WIFI_SSID inside the state machine compile.
 
   if (strategy.needsVectorOverload() && hasConsoleCalls(program, strategy) && (programAnalysis.usesVectorTypes || programAnalysis.hasArrayInObjectLiteral)) {
     appendSourceLineLocal(ctx, "template <typename T>");
@@ -142,6 +134,24 @@ export function emitPreamble(ctx: EmitterContext): void {
     appendSourceLineLocal(ctx, "  iterator begin() { handle.resume(); return {handle, handle.done()}; }");
     appendSourceLineLocal(ctx, "  iterator end() { return {handle, true}; }");
     appendSourceLineLocal(ctx, "};");
+    appendSourceLineLocal(ctx, "");
+  }
+}
+
+/**
+ * Emit cooperative async state-machine classes. Must run AFTER top-level
+ * globals (emitTypeDeclarations) so identifiers like WIFI_SSID referenced
+ * from task bodies are already declared.
+ */
+export function emitAsyncTaskClasses(ctx: EmitterContext): void {
+  const { asyncTaskClasses } = ctx;
+  if (asyncTaskClasses.length === 0) return;
+  for (const { classDef, instanceDecl } of asyncTaskClasses) {
+    for (const line of classDef.split("\n")) {
+      appendSourceLineLocal(ctx, line);
+    }
+    appendSourceLineLocal(ctx, "");
+    appendSourceLineLocal(ctx, instanceDecl);
     appendSourceLineLocal(ctx, "");
   }
 }

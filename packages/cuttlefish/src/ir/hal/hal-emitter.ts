@@ -6,6 +6,7 @@ import { renderExprAsText } from "../render-expr.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser.js";
 import { tryResolveSemanticCall, tryResolveBoardResolveArg, tryResolveCompoundSemanticReturn, resolveConcatPath } from "./hal-plugins.js";
+import { cppTypeForHalOp } from "../../emit/utils/hal-op-cpp-type.js";
 
 /** Escape C++ keywords in resolved text, but only when the text looks like a
  *  variable reference (not a literal like "false", "true", "42", or a string). */
@@ -777,13 +778,19 @@ export function buildSnprintfFromConcat(
       } else if (part.kind === "template_string" && part.expression.kind === "hal-expr") {
         // HAL expression inside template literal — resolve via strategy
         const resolved = resolveHALExprToText(part.expression);
-        if (resolved !== null) {
-          formatString += "%d";
-          args.push(resolved);
-          estimatedLength += 12;
+        const argText = resolved !== null ? resolved : text;
+        const cppType = cppTypeForHalOp(part.expression.operation.operation);
+        if (cppType === "const char*" || (cppType !== undefined && /char\s*\*$/.test(cppType))) {
+          formatString += "%s";
+          args.push(argText);
+          estimatedLength += 32;
+        } else if (cppType === "bool") {
+          formatString += "%s";
+          args.push(`(${argText} ? "true" : "false")`);
+          estimatedLength += 5;
         } else {
           formatString += "%d";
-          args.push(text);
+          args.push(argText);
           estimatedLength += 12;
         }
       } else {

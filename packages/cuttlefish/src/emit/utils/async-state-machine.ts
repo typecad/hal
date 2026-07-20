@@ -5,8 +5,9 @@
  */
 
 import type { StatementIR, ExpressionIR } from "../../api/index.js";
-import type { PlatformStrategy } from "../../api/shared/index.js";
+import type { HALOpIR, PlatformStrategy } from "../../api/shared/index.js";
 import { escapeCppStringLiteral } from "../../utils/strings.js";
+import { routeHALOp } from "../route-hal-op.js";
 
 /**
  * Converts a string to PascalCase.
@@ -90,6 +91,20 @@ export function generateAsyncTaskClass(
     if (stmt.kind === "call" && stmt.isAwaited) {
       segments.push({ preStatements: currentPre, awaitedCallee: stmt.callee, awaitedArgs: stmt.args });
       currentPre = [];
+    } else if (
+      // Chained HAL calls (e.g. `await Http.get(url).send()`) resolve to a
+      // block of hal-ops whose LAST statement is the awaited wait marker.
+      // Flatten it so the split sees the marker; the leading ops (begin,
+      // setters) run as pre-statements of the same segment.
+      stmt.kind === "block" &&
+      stmt.body.length > 0 &&
+      stmt.body[stmt.body.length - 1].kind === "call" &&
+      (stmt.body[stmt.body.length - 1] as Extract<StatementIR, { kind: "call" }>).isAwaited
+    ) {
+      const last = stmt.body[stmt.body.length - 1] as Extract<StatementIR, { kind: "call" }>;
+      currentPre.push(...stmt.body.slice(0, -1));
+      segments.push({ preStatements: currentPre, awaitedCallee: last.callee, awaitedArgs: last.args });
+      currentPre = [];
     } else {
       currentPre.push(stmt);
     }
@@ -145,18 +160,77 @@ export function generateAsyncTaskClass(
     }
   }
 
+  // Collect net-wait (WiFi/HTTP/HAL) markers: awaited hal-ops rewritten to
+  // __WIFI_WAIT__/__HTTP_WAIT__/__HAL_WAIT__ calls carrying the op as a
+  // hal-expr arg. The strategy lowers the op to start code + poll condition.
+  const netInfoMap = new Map<number, NetWaitInfo>();
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (
+      (seg.awaitedCallee === "__WIFI_WAIT__" || seg.awaitedCallee === "__HTTP_WAIT__" || seg.awaitedCallee === "__HAL_WAIT__") &&
+      seg.awaitedArgs[0]?.kind === "hal-expr"
+    ) {
+      const op = (seg.awaitedArgs[0] as Extract<ExpressionIR, { kind: "hal-expr" }>).operation;
+      netInfoMap.set(i, netWaitInfo(op, strategy));
+    }
+  }
+
+  // ── Render each state ──────────────────────────────────────────────────
+  // Decomposition: a state's ENTRY condition comes from the await that ended
+  // the PREVIOUS segment (edge / tap / net poll / timed deadline); once the
+  // condition fires, the segment body runs and the await ending THIS segment
+  // is armed (pin snapshot / tap snapshot / net start op / deadline).
+
+  // Lines that arm the await ending segment i and advance the state.
+  const armNextLines = (i: number, pad: string): string[] => {
+    const seg = segments[i];
+    const lines: string[] = [];
+    if (seg.awaitedCallee === undefined) {
+      lines.push(`${pad}_state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
+      return lines;
+    }
+    const edge = edgeInfoMap.get(i);
+    const tap = tapInfoMap.get(i);
+    const net = netInfoMap.get(i);
+    if (edge) {
+      lines.push(`${pad}_edgePrev_p${edge.pin} = digitalRead(${edge.pin});`);
+      if (edge.timeout !== null) {
+        lines.push(`${pad}_waitUntil = ${strategy.currentTimeMillis()} + ${edge.timeout};`);
+      }
+    } else if (tap) {
+      lines.push(`${pad}_tapPrev_${i} = __ui_tap_seq;`);
+    } else if (net) {
+      for (const startLine of net.startLines) lines.push(`${pad}${startLine}`);
+      if (net.timeoutExpr !== null) {
+        lines.push(`${pad}_waitUntil = ${strategy.currentTimeMillis()} + ${net.timeoutExpr};`);
+      }
+    } else {
+      // Plain timed wait (await delay(ms)) — arm its deadline.
+      const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
+      lines.push(`${pad}_waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
+    }
+    lines.push(`${pad}_state = STATE_${i + 1};`);
+    return lines;
+  };
+
   const caseLines: string[] = [];
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     const stateName = `STATE_${i}`;
-    const isTerminal = seg.awaitedCallee === undefined;
     const body: string[] = [];
 
-    const edgeSetup = edgeInfoMap.get(i);
     const edgePoll = i > 0 ? edgeInfoMap.get(i - 1) : undefined;
-    const tapSetup = tapInfoMap.get(i);
     const tapPoll = i > 0 ? tapInfoMap.get(i - 1) : undefined;
+    const netPoll = i > 0 ? netInfoMap.get(i - 1) : undefined;
+
+    // Segment body + arming of the next await, at the given indent.
+    const runSegment = (pad: string): string[] => {
+      const lines: string[] = [];
+      for (const stmt of seg.preStatements) lines.push(`${pad}${renderStmt(stmt)}`);
+      lines.push(...armNextLines(i, pad));
+      return lines;
+    };
 
     if (edgePoll) {
       // Poll state: check pin transition via digitalRead
@@ -172,45 +246,11 @@ export function generateAsyncTaskClass(
       body.push(`          int _cur = digitalRead(${edgePoll.pin});`);
       body.push(`          if (${fullCond}) {`);
       body.push(`            ${prevVar} = _cur;`);
-      for (const stmt of seg.preStatements) body.push(`            ${renderStmt(stmt)}`);
-      if (edgeSetup) {
-        // Next await is also edge detection — set up its pin tracking
-        body.push(`            _edgePrev_p${edgeSetup.pin} = digitalRead(${edgeSetup.pin});`);
-        if (edgeSetup.timeout !== null) {
-          body.push(`            _waitUntil = ${strategy.currentTimeMillis()} + ${edgeSetup.timeout};`);
-        }
-        body.push(`            _state = STATE_${i + 1};`);
-      } else if (!isTerminal) {
-        const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
-        body.push(`            _waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
-        body.push(`            _state = STATE_${i + 1};`);
-      } else {
-        body.push(`            _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
-      }
+      body.push(...runSegment(`            `));
       body.push(`          } else {`);
       body.push(`            ${prevVar} = _cur;`);
       body.push(`          }`);
       body.push(`        }`);
-    } else if (edgeSetup) {
-      // Setup state: capture initial pin state before polling
-      const prevVar = `_edgePrev_p${edgeSetup.pin}`;
-      if (i === 0) {
-        for (const stmt of seg.preStatements) body.push(`        ${renderStmt(stmt)}`);
-        body.push(`        ${prevVar} = digitalRead(${edgeSetup.pin});`);
-        if (edgeSetup.timeout !== null) {
-          body.push(`        _waitUntil = ${strategy.currentTimeMillis()} + ${edgeSetup.timeout};`);
-        }
-        body.push(`        _state = STATE_${i + 1};`);
-      } else {
-        body.push(`        if (${strategy.currentTimeMillis()} >= _waitUntil) {`);
-        for (const stmt of seg.preStatements) body.push(`          ${renderStmt(stmt)}`);
-        body.push(`          ${prevVar} = digitalRead(${edgeSetup.pin});`);
-        if (edgeSetup.timeout !== null) {
-          body.push(`          _waitUntil = ${strategy.currentTimeMillis()} + ${edgeSetup.timeout};`);
-        }
-        body.push(`          _state = STATE_${i + 1};`);
-        body.push(`        }`);
-      }
     } else if (tapPoll) {
       // Tap-poll state: a previous segment ended with `await ui.onTap()`.
       // Wait until __ui_tap_seq bumps from the captured snapshot. A per-node
@@ -221,67 +261,28 @@ export function generateAsyncTaskClass(
         ? `__ui_tap_seq != ${prevVar}`
         : `(__ui_tap_seq != ${prevVar}) && (__ui_tap_node == ${nodeFilter})`;
       body.push(`        if (${cond}) {`);
-      for (const stmt of seg.preStatements) body.push(`          ${renderStmt(stmt)}`);
-      // What does the NEXT await (ending this segment) look like? Re-derive
-      // from the maps via a fresh lookup so TS doesn't narrow edgeSetup away.
-      const nextEdge = edgeInfoMap.get(i) ?? null;
-      if (tapSetup) {
-        // Next await is also a tap — capture its snapshot now.
-        body.push(`          _tapPrev_${i} = __ui_tap_seq;`);
-        body.push(`          _state = STATE_${i + 1};`);
-      } else if (nextEdge) {
-        body.push(`          _edgePrev_p${nextEdge.pin} = digitalRead(${nextEdge.pin});`);
-        if (nextEdge.timeout !== null) {
-          body.push(`          _waitUntil = ${strategy.currentTimeMillis()} + ${nextEdge.timeout};`);
-        }
-        body.push(`          _state = STATE_${i + 1};`);
-      } else if (!isTerminal) {
-        // Next await is a normal timed wait (delay) — arm its deadline.
-        const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
-        body.push(`          _waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
-        body.push(`          _state = STATE_${i + 1};`);
-      } else {
-        body.push(`          _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
-      }
+      body.push(...runSegment(`          `));
       body.push(`        }`);
-    } else if (tapSetup && !edgePoll) {
-      // Tap-setup state: this segment ends with `await ui.onTap()`. Capture the
-      // current tap counter so the poll state can detect the NEXT bump.
-      // (edgePoll takes precedence when the previous await was an edge.)
-      if (i === 0) {
-        for (const stmt of seg.preStatements) body.push(`        ${renderStmt(stmt)}`);
-        body.push(`        _tapPrev_${i} = __ui_tap_seq;`);
-        body.push(`        _state = STATE_${i + 1};`);
-      } else {
-        body.push(`        if (${strategy.currentTimeMillis()} >= _waitUntil) {`);
-        for (const stmt of seg.preStatements) body.push(`          ${renderStmt(stmt)}`);
-        body.push(`          _tapPrev_${i} = __ui_tap_seq;`);
-        body.push(`          _state = STATE_${i + 1};`);
-        body.push(`        }`);
-      }
+    } else if (netPoll) {
+      // Net-poll state: a previous segment ended with an awaited WiFi/HTTP
+      // op. Wait until its poll condition fires (or its deadline expires).
+      const deadline = `${strategy.currentTimeMillis()} >= _waitUntil`;
+      const cond = netPoll.pollCond === null
+        ? deadline
+        : netPoll.timeoutExpr !== null
+          ? `(${netPoll.pollCond}) || ${deadline}`
+          : netPoll.pollCond;
+      body.push(`        if (${cond}) {`);
+      body.push(...runSegment(`          `));
+      body.push(`        }`);
+    } else if (i === 0) {
+      // First state runs immediately.
+      body.push(...runSegment(`        `));
     } else {
-      // Normal timed-wait state
-      if (i === 0) {
-        for (const stmt of seg.preStatements) body.push(`        ${renderStmt(stmt)}`);
-        if (!isTerminal) {
-          const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
-          body.push(`        _waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
-          body.push(`        _state = STATE_${i + 1};`);
-        } else {
-          body.push(`        _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
-        }
-      } else {
-        body.push(`        if (${strategy.currentTimeMillis()} >= _waitUntil) {`);
-        for (const stmt of seg.preStatements) body.push(`          ${renderStmt(stmt)}`);
-        if (!isTerminal) {
-          const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
-          body.push(`          _waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
-          body.push(`          _state = STATE_${i + 1};`);
-        } else {
-          body.push(`          _state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
-        }
-        body.push(`        }`);
-      }
+      // Previous await was a plain timed wait — poll its deadline.
+      body.push(`        if (${strategy.currentTimeMillis()} >= _waitUntil) {`);
+      body.push(...runSegment(`          `));
+      body.push(`        }`);
     }
 
     caseLines.push(`      case ${stateName}:`, `        {`, ...body, `        }`, `        break;`);
@@ -360,6 +361,102 @@ function renderExpression(expr: ExpressionIR, strategy: PlatformStrategy): strin
     default:
       return "/* complex expr */";
   }
+}
+
+/**
+ * Start/poll split for an awaited network (or timed) HAL op.
+ * Produced by netWaitInfo from the op carried on a __WIFI_WAIT__ /
+ * __HTTP_WAIT__ / __HAL_WAIT__ marker.
+ */
+interface NetWaitInfo {
+  /** C++ statements that kick the operation off (may be empty). */
+  startLines: string[];
+  /** Completion condition polled each tick; null = deadline-only wait. */
+  pollCond: string | null;
+  /** Deadline (ms expression) to arm `_waitUntil` with; null = no deadline. */
+  timeoutExpr: string | null;
+}
+
+/** Numeric-or-rendered HAL field → C++ text. */
+function ms(v: unknown): string {
+  return String(v);
+}
+
+/** True when a timeout field is the literal 0 (wait forever, no deadline). */
+function isZeroTimeout(v: unknown): boolean {
+  return v === undefined || v === null || String(v).trim() === "0";
+}
+
+/**
+ * Map an awaitable HAL op to its start statements + poll condition, lowering
+ * the start op and poll predicate through the platform strategy. Keep the set
+ * of handled ops in sync with AWAITABLE_HAL_OPS in ir/transformers/expressions.ts.
+ *
+ * Falls back to running the blocking form as the "start" with an immediate
+ * completion when the strategy can't lower the split ops.
+ */
+function netWaitInfo(op: HALOpIR, strategy: PlatformStrategy): NetWaitInfo {
+  const o = op as any;
+  const route = (routedOp: Record<string, unknown>): { code?: string; expression?: string } | undefined =>
+    routeHALOp(routedOp as unknown as HALOpIR, strategy);
+  const expr = (operation: string): string | null =>
+    route({ operation })?.expression ?? null;
+
+  switch (op.operation) {
+    case "timing.delay":
+      return { startLines: [], pollCond: null, timeoutExpr: ms(o.ms) };
+    case "wifi.connect": {
+      const start = route({ operation: "wifi.connect_start", ssid: o.ssid, password: o.password });
+      const poll = expr("wifi.is_connected");
+      if (start?.code && poll) {
+        return {
+          startLines: [start.code],
+          pollCond: poll,
+          timeoutExpr: isZeroTimeout(o.timeoutMs) ? null : ms(o.timeoutMs),
+        };
+      }
+      break;
+    }
+    case "wifi.wait_connected": {
+      const poll = expr("wifi.is_connected");
+      if (poll) {
+        return {
+          startLines: [],
+          pollCond: poll,
+          timeoutExpr: isZeroTimeout(o.timeoutMs) ? null : ms(o.timeoutMs),
+        };
+      }
+      break;
+    }
+    case "wifi.wait_disconnected": {
+      const poll = expr("wifi.is_connected");
+      if (poll) {
+        return { startLines: [], pollCond: `!${poll}`, timeoutExpr: null };
+      }
+      break;
+    }
+    case "wifi.scan": {
+      const start = route({ operation: "wifi.scan_start" });
+      const poll = expr("wifi.scan_done");
+      if (start?.code && poll) {
+        return { startLines: [start.code], pollCond: poll, timeoutExpr: null };
+      }
+      break;
+    }
+    case "http.send": {
+      const start = route({ operation: "http.send_start" });
+      const poll = expr("http.done");
+      if (start?.code && poll) {
+        return { startLines: [start.code], pollCond: poll, timeoutExpr: null };
+      }
+      break;
+    }
+  }
+
+  // Fallback: run the blocking form immediately and complete on the next tick.
+  const blocking = routeHALOp(op, strategy);
+  const line = blocking?.code ?? (blocking?.expression ? `${blocking.expression};` : `/* unhandled awaited hal-op: ${op.operation} */`);
+  return { startLines: [line], pollCond: null, timeoutExpr: "0" };
 }
 
 interface EdgeInfo {

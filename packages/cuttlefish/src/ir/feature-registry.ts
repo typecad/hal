@@ -280,11 +280,13 @@ function kindBasedLintRules(): LintRule[] {
 // `no-restricted-syntax` selector for real-time editor warnings. Kept here so
 // that all editor-time selectors live in one place.
 //
-// NOTE on async/generator/yield severity: these are flagged as `"error"` by
-// ESLint (matching the prior hand-maintained config) but the transpiler only
-// emits a `TS2CPP_ASYNC_STUB` *warning* at build time and emits stub code.
-// The severity mismatch is intentional and documented here — it is not a bug
-// this refactor introduces or should silently "fix".
+// NOTE on async/await: the transpiler fully supports these — each `async`
+// function is lowered to a cooperative state-machine task driven from
+// `loop()` (see `emit/utils/async-state-machine.ts` and the
+// `async-runtime-static.ts` microtask pump). `await expr` lowers to the task
+// yielding between segments, so blocking waits become polls. They are
+// therefore intentionally NOT linted here. Generators/yield and
+// `for await...of` still have no lowering and remain flagged.
 const CONTEXT_LINT_RULES: ReadonlyArray<LintRule> = [
   {
     selector: "ForOfStatement[await=true]",
@@ -324,26 +326,6 @@ const CONTEXT_LINT_RULES: ReadonlyArray<LintRule> = [
   {
     selector: "CallExpression > MemberExpression.callee[property.name='then']",
     message: "[transpiler] .then() on a Promise is not supported (no promise runtime). Use synchronous return values or callbacks.",
-    source: "context",
-  },
-  {
-    selector: "FunctionDeclaration[async=true]",
-    message: "[transpiler] async functions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous function.",
-    source: "context",
-  },
-  {
-    selector: "FunctionExpression[async=true]",
-    message: "[transpiler] async function expressions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous function.",
-    source: "context",
-  },
-  {
-    selector: "ArrowFunctionExpression[async=true]",
-    message: "[transpiler] async arrow functions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous arrow function.",
-    source: "context",
-  },
-  {
-    selector: "AwaitExpression",
-    message: "[transpiler] await is stripped to an inline expression — semantics are approximate and there is no event loop on bare metal. Avoid in firmware.",
     source: "context",
   },
   {

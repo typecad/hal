@@ -5,7 +5,7 @@ import { buildEmitterContext } from "./emitters/setup.js";
 import type { EmitterOptions } from "./emitters/emitter-context.js";
 export { type EmitterOptions } from "./emitters/emitter-context.js";
 
-import { emitPreamble } from "./emitters/output-finalizer.js";
+import { emitPreamble, emitAsyncTaskClasses, finalizeOutput } from "./emitters/output-finalizer.js";
 import { runTopLevelPreprocessing } from "./emitters/top-level-prep.js";
 import { synthesizeEntrypoints } from "./emitters/entrypoint-synthesizer.js";
 import { emitTypeDeclarations } from "./emitters/type-decl-emitter.js";
@@ -13,7 +13,6 @@ import { emitNamespaces } from "./emitters/namespace-emitter.js";
 import { emitClasses } from "./emitters/class-emitter.js";
 import { emitPostClassDeclarations, emitCallbackFunctions, emitFunctions, emitFunctionForwardDeclarations } from "./emitters/function-emitter-impl.js";
 import { emitUIRuntime } from "./emitters/ui-emitter.js";
-import { finalizeOutput } from "./emitters/output-finalizer.js";
 
 const globalEnumNames = new Set<string>();
 const globalLargeEnumNames = new Set<string>();
@@ -31,7 +30,7 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
   // 1. Build shared emitter context (strategy, renderers, analysis, etc.)
   const ctx = buildEmitterContext(program, options);
 
-  // 2. Emit preamble (includes, polyfills, async task classes, shims)
+  // 2. Emit preamble (includes, polyfills, shims) — async task classes deferred
   emitPreamble(ctx);
 
   // 2.5. Emit UI runtime (header structs + static tables) — entry file only,
@@ -46,6 +45,9 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // 5. Emit type declarations (enums, type aliases, interfaces, top-level constants)
   emitTypeDeclarations(ctx);
+
+  // 5.5. Async state machines — after globals so WIFI_SSID etc. are in scope
+  emitAsyncTaskClasses(ctx);
 
   // 6. Emit namespaces
   emitNamespaces(ctx);

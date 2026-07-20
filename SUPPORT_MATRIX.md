@@ -320,15 +320,16 @@ platform-driven **by-design** restriction, not a transpiler limitation.
 
 | Pattern | Status | Notes |
 |---|---|---|
-| `async function` | 🟡 | Adds `async_stub` boilerplate + `TS2CPP_ASYNC_STUB` warning; **semantics approximate** — there is no event loop on bare metal. `function-builder.ts:191`. |
-| `await expr` | 🟡 | Await stripped, expression emitted inline. `tests/functions.test.ts:220`. |
+| `async function` | ✅ | Lowered to a cooperative state-machine task class driven from `loop()`; the awaited call's start + poll states replace the blocking wait. `emit/utils/async-state-machine.ts`, `api/shared/async-runtime-static.ts`. |
+| `await expr` | ✅ | Splits the enclosing async task into segments; the awaited call drives start→poll transitions between them. No event loop is required — the scheduler is a fixed array of tasks pumped once per `loop()`. |
 | `await` on a statement | ✅ → call statement | |
-| `Promise`, `Promise.all`, `.then` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). User-authored Promise APIs require a JS/event-loop runtime. Use synchronous values, explicit callbacks, or framework-provided async primitives. |
-| `function*` generator | 🟡 | Tracked (`isGenerator`), `yield` lowers to `co_yield`, but **no coroutine runtime** is wired for AVR — effectively unusable. |
-| `yield` / `yield*` | 🟡 → `co_yield` | Same caveat. `expression-to-ir.ts:1675`. |
+| `Promise`, `Promise.all`, `.then` | 🚫 | **Build error** (`TS2CPP_NO_EQUIVALENT`). User-authored Promise APIs require a JS/event-loop runtime. Use synchronous values, explicit callbacks, or framework-provided async primitives (the `async`/`await` lowering above is a separate, supported cooperative mechanism). |
+| `function*` generator | 🚫 | Tracked (`isGenerator`), `yield` lowers to `co_yield`, but **no coroutine runtime** is wired for embedded targets — effectively unusable. Linted as an error. |
+| `yield` / `yield*` | 🚫 → `co_yield` | Same caveat. `expression-to-ir.ts:1675`. |
 
-**Verdict:** async/generators are recognized for parse-compatibility but cannot produce correct
-firmware behavior. Treat any async code as **never truly supported** for embedded targets.
+**Verdict:** `async`/`await` are fully supported via the cooperative task scheduler
+(one task per `async function`, pumped from `loop()`). Generators and user-authored
+`Promise` APIs remain unsupported (no coroutine runtime / no JS event loop).
 
 ---
 

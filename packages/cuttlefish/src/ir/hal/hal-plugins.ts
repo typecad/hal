@@ -134,6 +134,22 @@ function resolveNumericOrExpression(
   return resolveSemanticArg(args, idx, instance, paramNames, callArgTexts, paramDefaults);
 }
 
+/** Normalize an optional resolved arg: an omitted optional parameter with no
+ *  default resolves to the literal text "undefined" (see resolveExpressionText);
+ *  map that to null so op builders can omit the field entirely. */
+function dropUndefined(value: string | null): string | null {
+  return value === "undefined" ? null : value;
+}
+
+/** Quote a resolved string value unless it is already a quoted literal or a
+ *  plain identifier / member-access expression (i.e. a runtime variable). */
+function quoteNonIdentifier(value: string): string {
+  const t = value.trim();
+  if (/^".*"$/.test(t)) return t;
+  if (/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(t)) return t;
+  return JSON.stringify(t);
+}
+
 /** Extract the MCU port name from the current HAL instance, if available. */
 export function portFromInstance(instance: HALInstance): string | undefined {
   const port = instance.fieldValues.get('_port');
@@ -441,6 +457,217 @@ export function tryResolveSemanticCall(
       const mhz = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (mhz === null) return null;
       return { operation: "power.set_cpu_frequency", mhz };
+    }
+
+    // ── WiFi ──
+    // Optional string args (password, dns) resolve to the text "undefined"
+    // when omitted at the call site (no default in the HAL signature). Treat
+    // that as absent so the backend emits its own default ("").
+    case "wifiConnect": {
+      const ssid = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const password = dropUndefined(resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults));
+      const timeoutMs = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults) ?? 15000;
+      if (ssid === null) return null;
+      return {
+        operation: "wifi.connect",
+        ssid,
+        ...(password !== null ? { password } : {}),
+        timeoutMs,
+        blocking: true,
+      };
+    }
+    case "wifiConnectStart": {
+      const ssid = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const password = dropUndefined(resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults));
+      if (ssid === null) return null;
+      return { operation: "wifi.connect_start", ssid, ...(password !== null ? { password } : {}) };
+    }
+    case "wifiDisconnect":
+      return { operation: "wifi.disconnect" };
+    case "wifiStatus":
+      return { operation: "wifi.status" };
+    case "wifiIsConnected":
+      return { operation: "wifi.is_connected" };
+    case "wifiLocalIp":
+      return { operation: "wifi.local_ip" };
+    case "wifiRssi":
+      return { operation: "wifi.rssi" };
+    case "wifiMac":
+      return { operation: "wifi.mac" };
+    case "wifiSetHostname": {
+      const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (name === null) return null;
+      return { operation: "wifi.set_hostname", name };
+    }
+    case "wifiSetStaticIp": {
+      const ip = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const gateway = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const subnet = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const dns = dropUndefined(resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults));
+      if (ip === null || gateway === null || subnet === null) return null;
+      return { operation: "wifi.set_static_ip", ip, gateway, subnet, ...(dns !== null ? { dns } : {}) };
+    }
+    case "wifiSetAutoReconnect": {
+      const enabled = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (enabled === null) return null;
+      return { operation: "wifi.set_auto_reconnect", enabled: enabled === "true" };
+    }
+    case "wifiSetPowerSave": {
+      const mode = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (mode === null) return null;
+      return { operation: "wifi.set_power_save", mode };
+    }
+    case "wifiSetTxPower": {
+      const dbm = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (dbm === null) return null;
+      return { operation: "wifi.set_tx_power", dbm };
+    }
+    case "wifiOnEvent": {
+      const event = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (event === null || handler === null) return null;
+      return { operation: "wifi.on_event", event: String(event).replace(/^["']|["']$/g, ""), handler };
+    }
+    case "wifiApStart": {
+      const ssid = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const password = dropUndefined(resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults));
+      const channel = dropUndefined(resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults));
+      const hidden = dropUndefined(resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults));
+      const maxClients = dropUndefined(resolveSemanticArg(args, 4, instance, paramNames, callArgTexts, paramDefaults));
+      if (ssid === null) return null;
+      return {
+        operation: "wifi.ap_start",
+        ssid,
+        ...(password !== null ? { password } : {}),
+        ...(channel !== null ? { channel } : {}),
+        ...(hidden !== null ? { hidden } : {}),
+        ...(maxClients !== null ? { maxClients } : {}),
+      };
+    }
+    case "wifiApStop":
+      return { operation: "wifi.ap_stop" };
+    case "wifiApClientCount":
+      return { operation: "wifi.ap_client_count" };
+    case "wifiApIp":
+      return { operation: "wifi.ap_ip" };
+    case "wifiApSetChannel": {
+      const channel = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (channel === null) return null;
+      return { operation: "wifi.ap_set_channel", channel };
+    }
+    case "wifiApSetHidden": {
+      const hidden = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (hidden === null) return null;
+      return { operation: "wifi.ap_set_hidden", hidden };
+    }
+    case "wifiApSetMaxClients": {
+      const maxClients = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (maxClients === null) return null;
+      return { operation: "wifi.ap_set_max_clients", maxClients };
+    }
+    case "wifiScan":
+      return { operation: "wifi.scan" };
+    case "wifiScanStart":
+      return { operation: "wifi.scan_start" };
+    case "wifiScanCount":
+      return { operation: "wifi.scan_count" };
+    case "wifiScanSsid": {
+      const index = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (index === null) return null;
+      return { operation: "wifi.scan_ssid", index };
+    }
+    case "wifiScanRssi": {
+      const index = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (index === null) return null;
+      return { operation: "wifi.scan_rssi", index };
+    }
+    case "wifiScanEncryption": {
+      const index = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (index === null) return null;
+      return { operation: "wifi.scan_encryption", index };
+    }
+    case "wifiScanChannel": {
+      const index = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (index === null) return null;
+      return { operation: "wifi.scan_channel", index };
+    }
+    case "wifiSaveCredentials": {
+      const ssid = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const password = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (ssid === null || password === null) return null;
+      return { operation: "wifi.save_credentials", ssid, password };
+    }
+    case "wifiConnectSaved": {
+      const timeoutMs = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults) ?? 15000;
+      return { operation: "wifi.connect_saved", timeoutMs };
+    }
+    case "wifiClearCredentials":
+      return { operation: "wifi.clear_credentials" };
+    case "wifiWaitConnected": {
+      const timeoutMs = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults) ?? 15000;
+      return { operation: "wifi.wait_connected", timeoutMs };
+    }
+    case "wifiWaitDisconnected":
+      return { operation: "wifi.wait_disconnected" };
+
+    // ── HTTP ──
+    case "httpBegin": {
+      const method = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const url = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (method === null || url === null) return null;
+      // this._url resolved through `new HttpRequest(...)` ctor fields stores
+      // string literals without quotes; re-quote anything that isn't already
+      // a quoted literal or a plain identifier/member expression so the
+      // lowering emits valid C++.
+      return { operation: "http.begin", method, url: quoteNonIdentifier(url) };
+    }
+    case "httpReset":
+      return { operation: "http.reset" };
+    case "httpSetHeader": {
+      const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (name === null || value === null) return null;
+      return { operation: "http.set_header", name, value };
+    }
+    case "httpSetTimeout": {
+      const ms = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ms === null) return null;
+      return { operation: "http.set_timeout", ms };
+    }
+    case "httpSetMaxBody": {
+      const bytes = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (bytes === null) return null;
+      return { operation: "http.set_max_body", bytes };
+    }
+    case "httpSetBody": {
+      const data = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const json = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (data === null) return null;
+      return { operation: "http.set_body", data, json: json === "true" };
+    }
+    case "httpSetInsecure":
+      return { operation: "http.set_insecure" };
+    case "httpSetCaCert": {
+      const pem = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pem === null) return null;
+      return { operation: "http.set_ca_cert", pem };
+    }
+    case "httpSend":
+      return { operation: "http.send", blocking: true };
+    case "httpSendStart":
+      return { operation: "http.send_start" };
+    case "httpStatus":
+      return { operation: "http.status" };
+    case "httpOk":
+      return { operation: "http.ok" };
+    case "httpBody":
+      return { operation: "http.body" };
+    case "httpContentLength":
+      return { operation: "http.content_length" };
+    case "httpResponseHeader": {
+      const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (name === null) return null;
+      return { operation: "http.response_header", name };
     }
 
     // ── Interrupts ──

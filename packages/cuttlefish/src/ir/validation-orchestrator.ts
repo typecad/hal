@@ -21,6 +21,7 @@ import { validateBlockingDelayInLoop } from "./timing-validation.js";
 import { validateUnitSuspicion } from "./unit-suspicion-validation.js";
 import { validateOwnership } from "./ownership-analysis.js";
 import { validatePinCapabilities } from "./pin-capability-validation.js";
+import { validateNetworkUsage } from "./network-validation.js";
 
 export function runProgramValidations(program: ProgramIR, strategy?: PlatformStrategy): Diagnostic[] {
   const resolvedStrategy = strategy ?? (hasLoadedFramework() ? getLoadedFramework().strategy : resolveStrategy('generic'));
@@ -46,6 +47,7 @@ export function runProgramValidations(program: ProgramIR, strategy?: PlatformStr
   diagnostics.push(...validateTryCatch(program, program.boardConstants, resolvedStrategy));
   diagnostics.push(...validateMemoryBudget(program, program.boardConstants));
   diagnostics.push(...validateBlockingDelayInLoop(program, resolvedStrategy));
+  diagnostics.push(...validateNetworkUsage(program));
 
   return diagnostics;
 }

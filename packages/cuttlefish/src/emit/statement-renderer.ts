@@ -591,6 +591,19 @@ export class StatementRenderer {
       const rawStmt = statement.callee.slice('__RAW_STMT__'.length);
       return forHeader ? rawStmt : `${rawStmt.endsWith(';') ? rawStmt : rawStmt + ';'}`;
     }
+    // Awaited network markers (__WIFI_WAIT__/__HTTP_WAIT__) reaching the
+    // plain renderer means the await sits outside an async state machine
+    // (top-level await, or a position the state-machine splitter doesn't
+    // support). Fall back to the blocking form of the op they carry.
+    if ((statement.callee === "__WIFI_WAIT__" || statement.callee === "__HTTP_WAIT__" || statement.callee === "__HAL_WAIT__")
+        && statement.args[0]?.kind === "hal-expr") {
+      const resolved = routeHALOp(statement.args[0].operation, this.strategy);
+      const code = resolved?.code ?? (resolved?.expression ? `${resolved.expression};` : undefined);
+      if (code) {
+        return forHeader ? code.replace(/;$/, "") : code;
+      }
+      return `/* unhandled awaited hal-op: ${statement.args[0].operation.operation} */`;
+    }
     // Handle emit() — compile-time C++ injection
     if (statement.callee === "__EMIT__") {
       const rawText = statement.args.map(arg => this.renderEmitArg(arg)).join("");

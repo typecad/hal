@@ -209,6 +209,10 @@ export function emitFunctions(ctx: EmitterContext): void {
 
   for (let fi = 0; fi < mappedFunctions.length; fi++) {
     const fn = mappedFunctions[fi];
+    // Async functions become cooperative *Task state machines (emitAsyncTaskClasses).
+    // Emitting an empty stub here triggers -Wunused-function with no value.
+    if (fn.isAsync && ctx.hasAsyncRuntime) continue;
+
     const declarationParameterList = ctx.statementRenderer.renderParameters(fn.parameters, true);
     const definitionParameterList = ctx.statementRenderer.renderParameters(fn.parameters, false);
     const readonlyPrefix = fn.isReadonlyReturnType ? "const " : "";
@@ -290,68 +294,64 @@ export function emitFunctions(ctx: EmitterContext): void {
     if (hasPromiseRuntime && fn.name === asyncDriverFn) {
       appendSourceLine(ctx, "  cuttlefish_pump_microtasks();");
     }
-    if (fn.isAsync && ctx.hasAsyncRuntime) {
-      appendSourceLine(ctx, `  // driven as cooperative task in ${asyncDriverFn}()`);
-    } else {
-      if (fn.typeParameterConstraints) {
-        for (const [param, expr] of fn.typeParameterConstraints) {
-          appendSourceLine(ctx, `  static_assert(${expr}, "${param} constraint violated");`);
-        }
+    if (fn.typeParameterConstraints) {
+      for (const [param, expr] of fn.typeParameterConstraints) {
+        appendSourceLine(ctx, `  static_assert(${expr}, "${param} constraint violated");`);
       }
-      const functionScope = createChildEmissionScope(topLevelScope, fn.parameters);
-      ctx.cArrayVarNames = ctx.fnCArrayVarNames.get(String(fi)) ?? new Set();
+    }
+    const functionScope = createChildEmissionScope(topLevelScope, fn.parameters);
+    ctx.cArrayVarNames = ctx.fnCArrayVarNames.get(String(fi)) ?? new Set();
 
-      const isLoopDriver = fn.name === asyncDriverFn;
-      const lastStmt = fn.statements.length > 0 ? fn.statements[fn.statements.length - 1] : null;
-      const lastIsReturn = lastStmt?.kind === "return";
-      const stmtsToEmit = (isLoopDriver && lastIsReturn)
-        ? fn.statements.slice(0, -1)
-        : fn.statements;
+    const isLoopDriver = fn.name === asyncDriverFn;
+    const lastStmt = fn.statements.length > 0 ? fn.statements[fn.statements.length - 1] : null;
+    const lastIsReturn = lastStmt?.kind === "return";
+    const stmtsToEmit = (isLoopDriver && lastIsReturn)
+      ? fn.statements.slice(0, -1)
+      : fn.statements;
 
-      for (const statement of stmtsToEmit) {
-        appendRenderedStatement(ctx, statement, "  ", functionScope);
+    for (const statement of stmtsToEmit) {
+      appendRenderedStatement(ctx, statement, "  ", functionScope);
+    }
+
+    // Drive the UI runtime each frame. Fires only in the driver function when
+    // a UI is mounted (entryHasUI). Uses a separate gate from the async pump
+    // so a pure-UI program (no async/timers) still animates. When the strategy
+    // provides hostEventLoop, the per-frame work runs inside a while loop so a
+    // host target (SDL) can pump events and present between ticks. Emitted
+    // AFTER the function's init statements (ui_init/display_init/touch_init)
+    // so initialization precedes the loop.
+    if (entryHasUI() && fn.name === asyncDriverFn) {
+      const loop = strategy.hostEventLoop?.();
+      if (loop) {
+        appendSourceLine(ctx, `  bool ${loop.flagName} = true;`);
+        appendSourceLine(ctx, `  while (${loop.continueCondition}) {`);
+        appendSourceLine(ctx, `    ${loop.preIteration}`);
       }
-
-      // Drive the UI runtime each frame. Fires only in the driver function when
-      // a UI is mounted (entryHasUI). Uses a separate gate from the async pump
-      // so a pure-UI program (no async/timers) still animates. When the strategy
-      // provides hostEventLoop, the per-frame work runs inside a while loop so a
-      // host target (SDL) can pump events and present between ticks. Emitted
-      // AFTER the function's init statements (ui_init/display_init/touch_init)
-      // so initialization precedes the loop.
-      if (entryHasUI() && fn.name === asyncDriverFn) {
-        const loop = strategy.hostEventLoop?.();
-        if (loop) {
-          appendSourceLine(ctx, `  bool ${loop.flagName} = true;`);
-          appendSourceLine(ctx, `  while (${loop.continueCondition}) {`);
-          appendSourceLine(ctx, `    ${loop.preIteration}`);
-        }
-        appendSourceLine(ctx, `  uint32_t __tc_ui_now = (uint32_t)${strategy.currentTimeMillis()};`);
-        appendSourceLine(ctx, "  static uint32_t __tc_ui_last_tick = __tc_ui_now;");
-        appendSourceLine(ctx, "  uint32_t __tc_ui_delta = __tc_ui_now - __tc_ui_last_tick;");
-        appendSourceLine(ctx, "  __tc_ui_last_tick = __tc_ui_now;");
-        appendSourceLine(ctx, "  if (__tc_ui_delta > 250) __tc_ui_delta = 250;");
-        appendSourceLine(ctx, "  ui_tick((uint16_t)__tc_ui_delta);");
-        if (loop) {
-          appendSourceLine(ctx, `    ${loop.postIteration}`);
-          appendSourceLine(ctx, `  }`);
-        }
+      appendSourceLine(ctx, `  uint32_t __tc_ui_now = (uint32_t)${strategy.currentTimeMillis()};`);
+      appendSourceLine(ctx, "  static uint32_t __tc_ui_last_tick = __tc_ui_now;");
+      appendSourceLine(ctx, "  uint32_t __tc_ui_delta = __tc_ui_now - __tc_ui_last_tick;");
+      appendSourceLine(ctx, "  __tc_ui_last_tick = __tc_ui_now;");
+      appendSourceLine(ctx, "  if (__tc_ui_delta > 250) __tc_ui_delta = 250;");
+      appendSourceLine(ctx, "  ui_tick((uint16_t)__tc_ui_delta);");
+      if (loop) {
+        appendSourceLine(ctx, `    ${loop.postIteration}`);
+        appendSourceLine(ctx, `  }`);
       }
+    }
 
-      if (isLoopDriver && (hasPromiseRuntime || asyncTaskClasses.length > 0 || usesTimers)) {
-        const taskNames = asyncTaskClasses.map(t => t.taskVarName);
-        const asyncConfig = strategy.getAsyncRuntimeConfig();
-        asyncConfig.hasPromiseRuntime = hasPromiseRuntime;
-        asyncConfig.hasTimers = usesTimers;
-        const injectionLines = strategy.asyncLoopInjection(taskNames, asyncConfig);
-        for (const line of injectionLines) {
-          appendSourceLine(ctx, `  ${line}`);
-        }
+    if (isLoopDriver && (hasPromiseRuntime || asyncTaskClasses.length > 0 || usesTimers)) {
+      const taskNames = asyncTaskClasses.map(t => t.taskVarName);
+      const asyncConfig = strategy.getAsyncRuntimeConfig();
+      asyncConfig.hasPromiseRuntime = hasPromiseRuntime;
+      asyncConfig.hasTimers = usesTimers;
+      const injectionLines = strategy.asyncLoopInjection(taskNames, asyncConfig);
+      for (const line of injectionLines) {
+        appendSourceLine(ctx, `  ${line}`);
       }
+    }
 
-      if (isLoopDriver && lastIsReturn) {
-        appendRenderedStatement(ctx, lastStmt, "  ", functionScope);
-      }
+    if (isLoopDriver && lastIsReturn) {
+      appendRenderedStatement(ctx, lastStmt, "  ", functionScope);
     }
     appendSourceLine(ctx, "}");
     emitCommentLines(fn.trailingComments, "", (line) => appendSourceLine(ctx, line));
@@ -399,6 +399,9 @@ export function emitFunctionForwardDeclarations(ctx: EmitterContext): void {
   let emittedAnyFn = false;
   for (const fn of ctx.mappedFunctions) {
     if (excludedNames.has(fn.name)) continue;
+    // Async functions become *Task classes; calls lower to `fooTask.run()`.
+    // Forward-declaring empty stubs triggers -Wunused-function.
+    if (fn.isAsync && ctx.hasAsyncRuntime) continue;
     const isExported = fn.isExported === true;
     // A function is an entrypoint if it is the strategy's primary entrypoint
     // (e.g. `setup` on Arduino, `main` on native) OR one of the platform's

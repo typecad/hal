@@ -140,28 +140,11 @@ const transpilerRules = [
     message:
       "[transpiler] .then() on a Promise is not supported (no promise runtime). Use synchronous return values or callbacks.",
   },
-  // §2.6 🟡 — async/await/generators are parse-compatible but cannot produce
-  // correct firmware behavior; treat as unsupported to avoid silent surprises.
-  {
-    selector: "FunctionDeclaration[async=true]",
-    message:
-      "[transpiler] async functions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous function.",
-  },
-  {
-    selector: "FunctionExpression[async=true]",
-    message:
-      "[transpiler] async function expressions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous function.",
-  },
-  {
-    selector: "ArrowFunctionExpression[async=true]",
-    message:
-      "[transpiler] async arrow functions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous arrow function.",
-  },
-  {
-    selector: "AwaitExpression",
-    message:
-      "[transpiler] await is stripped to an inline expression — semantics are approximate and there is no event loop on bare metal. Avoid in firmware.",
-  },
+  // §2.6 — async/await ARE supported: each `async function` lowers to a
+  // cooperative state-machine task driven from loop() (see
+  // emit/utils/async-state-machine.ts + the async-runtime microtask pump),
+  // and `await` lowers to the task yielding between segments. Generators and
+  // `for await...of` still have no lowering and remain flagged.
   {
     selector: "FunctionDeclaration[generator=true]",
     message:

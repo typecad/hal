@@ -12,6 +12,7 @@ import type { AssignmentIR, ExpressionIR, StatementIR, VariableDeclarationIR } f
 import type { PlatformStrategy } from "../api/shared/index.js";
 import type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer } from "../api/shared/index.js";
 import { escapeCppStringLiteral, escapeSnprintfFormatFragment } from "../utils/strings.js";
+import { cppTypeForHalOp } from "./utils/hal-op-cpp-type.js";
 import { formatKindOf, parseCppType, parsedElementString, parsedIsStringLike } from "../api/shared/cpp-type-ir.js";
 
 export type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer };
@@ -384,6 +385,13 @@ export function inferSnprintfArg(
       const rendered = renderExpression(expr);
       if (rendered.startsWith('"') || stringVarNames?.has(rendered)) {
         return { format: "%s", arg: rendered, estimatedLength: 32, preludeLines: [] };
+      }
+      const cppType = cppTypeForHalOp(expr.operation.operation);
+      if (cppType && strategy.isStringLikeType(cppType)) {
+        return { format: "%s", arg: rendered, estimatedLength: 32, preludeLines: [] };
+      }
+      if (cppType === "bool") {
+        return { format: "%s", arg: `(${rendered} ? "true" : "false")`, estimatedLength: 5, preludeLines: [] };
       }
       return { format: "%d", arg: rendered, estimatedLength: 12, preludeLines: [] };
     }

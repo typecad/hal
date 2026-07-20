@@ -220,6 +220,64 @@ export function powerLightSleep(): void {}
 export function powerSetCpuFrequency(mhz: number): void {}
 
 // ---------------------------------------------------------------------------
+// WiFi
+// ---------------------------------------------------------------------------
+
+export function wifiConnect(ssid: string, password?: string, timeoutMs?: number): boolean { return false; }
+export function wifiConnectStart(ssid: string, password?: string): void {}
+export function wifiDisconnect(): void {}
+export function wifiStatus(): number { return 0; }
+export function wifiIsConnected(): boolean { return false; }
+export function wifiLocalIp(): string { return ""; }
+export function wifiRssi(): number { return 0; }
+export function wifiMac(): string { return ""; }
+export function wifiSetHostname(name: string): void {}
+export function wifiSetStaticIp(ip: string, gateway: string, subnet: string, dns?: string): void {}
+export function wifiSetAutoReconnect(enabled: boolean): void {}
+export function wifiSetPowerSave(mode: string): void {}
+export function wifiSetTxPower(dbm: number): void {}
+export function wifiOnEvent(event: string, handler: string): void {}
+export function wifiApStart(ssid: string, password?: string, channel?: number, hidden?: boolean, maxClients?: number): boolean { return false; }
+export function wifiApStop(): void {}
+export function wifiApClientCount(): number { return 0; }
+export function wifiApIp(): string { return ""; }
+export function wifiApSetChannel(channel: number): void {}
+export function wifiApSetHidden(hidden: boolean): void {}
+export function wifiApSetMaxClients(maxClients: number): void {}
+export function wifiScan(): number { return 0; }
+export function wifiScanStart(): void {}
+export function wifiScanCount(): number { return 0; }
+export function wifiScanSsid(index: number): string { return ""; }
+export function wifiScanRssi(index: number): number { return 0; }
+export function wifiScanEncryption(index: number): number { return 0; }
+export function wifiScanChannel(index: number): number { return 0; }
+export function wifiSaveCredentials(ssid: string, password: string): void {}
+export function wifiConnectSaved(timeoutMs?: number): boolean { return false; }
+export function wifiClearCredentials(): void {}
+export function wifiWaitConnected(timeoutMs?: number): boolean { return false; }
+export function wifiWaitDisconnected(): void {}
+
+// ---------------------------------------------------------------------------
+// HTTP client
+// ---------------------------------------------------------------------------
+
+export function httpBegin(method: string, url: string): void {}
+export function httpReset(): void {}
+export function httpSetHeader(name: string, value: string): void {}
+export function httpSetTimeout(ms: number): void {}
+export function httpSetMaxBody(bytes: number): void {}
+export function httpSetBody(data: string, json?: boolean): void {}
+export function httpSetInsecure(): void {}
+export function httpSetCaCert(pem: string): void {}
+export function httpSend(): boolean { return false; }
+export function httpSendStart(): void {}
+export function httpStatus(): number { return 0; }
+export function httpOk(): boolean { return false; }
+export function httpBody(): string { return ""; }
+export function httpContentLength(): number { return 0; }
+export function httpResponseHeader(name: string): string { return ""; }
+
+// ---------------------------------------------------------------------------
 // Raw C++ escape hatch
 // ---------------------------------------------------------------------------
 
