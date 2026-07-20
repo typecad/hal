@@ -49,6 +49,20 @@ describe('Esp32Strategy forcedIncludes', () => {
     expect(inc).toContain('"esp_task_wdt.h"');
     expect(inc).toContain('"esp_intr_alloc.h"');
   });
+
+  it('includes esp_private/esp_task_wdt.h when only usesWifi is true (WDT-pause around blocking waits)', () => {
+    // The WiFi shim wraps its blocking wait_* / scan loops with
+    // esp_task_wdt_stop()/restart(). Those functions are declared in the
+    // *private* header (esp_private/esp_task_wdt.h), not the public one —
+    // esp_task_wdt.h only exposes reset/add/status. Must be pulled in whenever
+    // WiFi is used, independent of usesWdt (which is the user-facing watchdog
+    // API, not what the WiFi shim uses).
+    const ctx = { analysis: { usesWifi: true }, frameworkData: { target: 'esp32' } } as any;
+    expect(strategy.forcedIncludes(fakeProgram, ctx)).toContain('"esp_private/esp_task_wdt.h"');
+    // And the negative case — no WiFi, no WDT → no header.
+    const ctxNo = { analysis: { usesWifi: false, usesWdt: false }, frameworkData: { target: 'esp32' } } as any;
+    expect(strategy.forcedIncludes(fakeProgram, ctxNo)).not.toContain('"esp_private/esp_task_wdt.h"');
+  });
   it('isrFunctionAttribute always returns IRAM_ATTR', () => {
     expect(strategy.isrFunctionAttribute()).toBe('IRAM_ATTR ');
   });

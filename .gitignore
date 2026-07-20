@@ -75,8 +75,17 @@ examples/*/*-backup/
 # Vendored Arduino libraries under examples/*/lib/ are intentionally tracked
 # so a fresh clone can flash to hardware without re-fetching.
 
-# Demo projects live outside the npm workspace and are not published
-demos/
+# Demo projects live outside the npm workspace and are not published.
+# Ignore the *contents* of demos/ (not demos/ itself) so that narrow
+# per-directory exceptions can re-include specific files. The exception
+# below keeps the wifi-demo compiled snapshots under version control as
+# a regression corpus for the WiFi/HTTP lowering — future drift (stack
+# sizes, shim shape, etc.) shows up as a diff against these files.
+demos/*
+!demos/wifi-demo/
+demos/wifi-demo/*
+!demos/wifi-demo/out-samples/
+!demos/wifi-demo/out-samples/**
 
 # Large/unreferenced assets + demo-only eslint rules (kept locally, not published)
 cuttlefish.png

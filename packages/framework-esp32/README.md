@@ -15,7 +15,7 @@ The framework detects `$IDF_PATH` and `idf.py` on `$PATH`. If either is missing,
 
 - HAL ops (`gpio.write`, `i2c.begin`, etc.) lower to native IDF driver calls (`gpio_set_level`, `i2c_master_*`, etc.) — no Arduino API.
 - The generated `main/main.cc` defines `extern "C" void app_main(void)` — the IDF-canonical entrypoint.
-- `app_main` spawns a FreeRTOS task (`__tc_app_task`) that runs the synthesizer-emitted `setup()` once, then loops `loop()`. Stack/priority match the Arduino loopTask defaults (8192, priority 1).
+- `app_main` runs the synthesizer-emitted `setup()` once, then loops `loop()` forever — the IDF-idiomatic pattern (cf. the official `esp_http_client` example, where `app_main` itself blocks on `example_connect()`). `app_main` never returns. Stack is `CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384` (set in sdkconfig.defaults); the IDF default of 3584 overflows on WiFi/HTTP paths.
 - The framework emits a complete ESP-IDF project: root `CMakeLists.txt`, `main/CMakeLists.txt`, `sdkconfig.defaults`, `.gitignore`.
 
 ## Installation
@@ -61,10 +61,12 @@ export default {
 
 ## Watchdog
 
-The `__tc_app_task` trampoline calls `vTaskDelay(1)` after each `loop()` iteration. This yields the CPU to the IDLE task so its watchdog doesn't fire when `loop()` is empty or runs without blocking. **This does not interfere with the user-facing watchdog** (`WDT.enable`/`WDT.reset`):
+`app_main` calls `vTaskDelay(1)` after each `loop()` iteration. This yields the CPU to the IDLE task so its watchdog doesn't fire when `loop()` is empty or runs without blocking. **This does not interfere with the user-facing watchdog** (`WDT.enable`/`WDT.reset`):
 
-- **Without `WDT.enable()`** (default): `tc_app` is not subscribed to the task watchdog. If `loop()` hangs, nothing happens — same as Arduino's default.
-- **With `WDT.enable(timeout)`**: `tc_app` is subscribed via `esp_task_wdt_add(NULL)`. The user must call `WDT.reset()` within the timeout, or the watchdog fires and the device reboots. The trampoline's `vTaskDelay(1)` does NOT call `esp_task_wdt_reset()`, so it does not feed the user's watchdog — if `loop()` hangs, the watchdog still fires correctly.
+- **Without `WDT.enable()`** (default): `main_task` is not subscribed to the task watchdog. If `loop()` hangs, nothing happens — same as Arduino's default.
+- **With `WDT.enable(timeout)`**: `main_task` is subscribed via `esp_task_wdt_add(NULL)`. The user must call `WDT.reset()` within the timeout, or the watchdog fires and the device reboots. The loop's `vTaskDelay(1)` does NOT call `esp_task_wdt_reset()`, so it does not feed the user's watchdog — if `loop()` hangs, the watchdog still fires correctly.
+
+Separately, the WiFi shim wraps its blocking `WiFi.connect()` / `WiFi.scan()` / `untilConnected()` / `untilDisconnected()` waits with `esp_task_wdt_stop()` / `esp_task_wdt_restart()` (compile-gated on `CONFIG_ESP_TASK_WDT_EN`). `main_task` isn't WDT-subscribed, so `esp_task_wdt_reset()` is a no-op for it — the timer itself has to be paused while the user's code blocks for up to 15 s on a connect, otherwise the prio-23 WiFi task can starve CPU0's IDLE task during radio bring-up and trip the WDT.
 
 ```ts
 import { WDT, Timing } from '@typecad/hal';

@@ -141,6 +141,15 @@ export class Esp32Strategy extends ArduinoStrategy {
         '"esp_mac.h"',
         '"nvs_flash.h"',
         '"nvs.h"',
+        // esp_private/esp_task_wdt.h for esp_task_wdt_stop()/restart() around
+        // the blocking WiFi wait loops. The user's app task is not WDT-
+        // subscribed (only the IDLE tasks are), so esp_task_wdt_reset() is a
+        // no-op for us — we have to pause the timer itself while the app task
+        // blocks for up to 15 s on a connect. Without this, CPU0's IDLE task
+        // can be starved by the prio-23 WiFi task during radio bring-up and
+        // trip the WDT. Note: stop/restart live in the *private* header, not
+        // the public esp_task_wdt.h (which only exposes reset/add/status).
+        '"esp_private/esp_task_wdt.h"',
       );
     }
     if (uses('usesHttp')) {
@@ -179,30 +188,31 @@ export class Esp32Strategy extends ArduinoStrategy {
       // program analysis reports !usesStrPtr.
       ...this.strPtrShimLines(),
       ...espInit,
-      '// --- ESP32 IDF entrypoint: app_main + __tc_app_task ---',
+      '// --- ESP32 IDF entrypoint: app_main runs setup()/loop() directly ---',
       '// The cuttlefish synthesizer emits setup() and loop() (it keys off',
       '// entrypointFunctionName()="setup" and requiresLoopFunction()=true).',
-      '// Stack is 16 KB (bytes): WiFi/HTTP paths (esp_wifi_connect, event',
-      '// handlers, printf) overflow the Arduino-classic 8 KB and reboot with',
-      '// no useful panic line — looks like a USB reconnect loop.',
+      '//',
+      '// Following the IDF-idiomatic pattern (see esp_http_client example:',      '// app_main blocks on example_connect() directly), app_main itself runs',
+      '// setup() and the loop() forever. setup() typically blocks on WiFi',
+      '// connect — exactly what main_task is designed for. Spawning a separate',
+      '// task to host setup/loop was non-idiomatic and caused watchdog resets',
+      '// under WiFi load: main_task sat idle while our prio-1 spawned task',
+      '// competed with the prio-23 WiFi task for CPU0.',
+      '//',
+      '// Stack: CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384 (set in sdkconfig.defaults)',
+      '// — the IDF default of 3584 overflows on WiFi/HTTP paths (esp_wifi_connect,',
+      '// TLS handshake, printf with response bodies).',
       'extern void setup(void);',
       'extern void loop(void);',
       '',
-      'static void __tc_app_task(void *arg) {',
-      '    (void)arg;',
+      'extern "C" void app_main(void) {',
       '    setup();',
       '    for (;;) {',
       '        loop();',
-      '        // Yield to the IDLE task so the task watchdog doesn\'t fire',
-      '        // when loop() is empty or runs without blocking. Costs ~1ms',
-      '        // per iteration.',
+      '        // Yield to the IDLE task so the task watchdog does not fire when',
+      '        // loop() is empty or runs without blocking. Costs ~1 ms/iteration.',
       '        vTaskDelay(1);',
       '    }',
-      '}',
-      '',
-      'extern "C" void app_main(void) {',
-      '    xTaskCreate(__tc_app_task, "tc_app", 16384, NULL, 1, NULL);',
-      '    vTaskDelete(NULL);  // app_main exits cleanly; tc_app runs independently',
       '}',
       '',
     ];

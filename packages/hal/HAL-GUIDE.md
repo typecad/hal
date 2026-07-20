@@ -33,11 +33,18 @@ declare function board(path: string): number;
 
 ```
 packages/hal/src/
-  emit.ts          — emit() declaration
+  emit.ts          — emit()/rawCpp()/rawCppExpr() + semantic-op stubs (gpioWrite, wifiConnect, …)
   include.ts       — include() function
   board.ts         — board() declaration
+  callback.ts      — callback() helper for interrupt/event handler registration
   constants.ts     — phantom C++ constants (HIGH, LOW, WDTO_*, etc.)
-  gpio.ts          — Pin class (digital I/O)
+  types.ts         — shared protocol types (PinMode, InterruptMode, SPISettings, …)
+  utils.ts         — shared utilities (createHALInstances factory)
+  register.ts      — @register/@bits decorators for memory-mapped peripherals
+  index.ts         — barrel re-exports
+
+  ── Peripherals using the emit()/template mechanism documented in this guide ──
+  gpio.ts          — Pin / OutputPin / InputPin class (digital I/O, PWM, tone)
   i2c.ts           — I2CBus + I2CDevice classes
   spi.ts           — SPIBus + SPIDevice classes
   uart.ts          — SerialPort class
@@ -48,8 +55,23 @@ packages/hal/src/
   pulse.ts         — declare function stubs (pulseIn, pulseInLong)
   shift.ts         — declare function stubs (shiftIn, shiftOut)
   random.ts        — declare function stubs (randomSeed, random)
-  index.ts         — barrel re-exports
+
+  ── Peripherals using the semantic-op pattern (method bodies call emit.ts
+     stubs; each call lowers via the active framework strategy's
+     resolveHALOperation). New HAL domains should follow this pattern. ──
+  adc.ts           — ADCClass singleton
+  dac.ts           — DACClass singleton
+  power.ts         — Power singleton
+  timer.ts         — HardwareTimer / Timer0..2 classes
+  interrupts.ts    — attachInterrupt / detachInterrupt
+  async.ts         — Async cooperative-scheduling singleton
+  preferences.ts   — Preferences (NVFlash) singleton
+  fs.ts            — FS singleton
+  wifi.ts          — WiFiClass singleton + WiFiStatus/WiFiEncryption enums
+  http.ts          — HttpClass + HttpRequest fluent builder + HttpMethod enum
 ```
+
+> **Two authoring styles coexist.** The `emit()`/`include()`/`board()` directives taught in this guide remain the right tool for peripherals whose C++ is a thin wrapper around an existing API (e.g. `Wire.begin()`). The **semantic-op** pattern (where the method body calls a stub from `emit.ts` like `gpioWrite(pin, v)`, which the transpiler turns into a `HALOpIR` node and the framework strategy lowers) is the preferred style for new domains that need target-specific lowering (GPIO/PWM/ADC/I2C/SPI/UART on ESP32 vs AVR, WiFi/HTTP). `wifi.ts` and `http.ts` are the clearest reference implementations of the semantic-op pattern; see `docs/hal/networking.md` for the user-facing API.
 
 To add a new HAL peripheral, create a `.ts` file in this directory and add the filename to the `HAL_SOURCE_FILES` array in `packages/transpiler/src/ir/hal-resolver.ts`:
 
@@ -478,6 +500,17 @@ export function serialName(instance: number): string {
 ```
 
 Usage: `new SerialPort(serialName(0))` → `_port` = `"Serial"`.
+
+### Singleton vs. indexed runtime-shim naming
+
+The framework lowering emits a runtime "shim" block (helpers + state) for HAL domains that need it (I2C, SPI, UART, ADC, WiFi, HTTP, …). The C-symbol naming convention inside that block splits two ways, and it's worth knowing which one your new domain should follow:
+
+- **Multi-instance buses** (I2C, SPI, UART) emit per-instance symbols with the controller index baked in: `__tc_i2c0_bus`, `__tc_i2c1_bus`, `__tc_spi0_dev`, etc. The shim-block generator takes a controller index (`i2cInitLines(0)`).
+- **Singleton domains** (WiFi, HTTP, ADC, DAC, WDT, …) emit index-free symbols: `__tc_wifi_connect_start`, `__tc_http_send`. The shim generator takes no index (`wifiInitLines()`).
+
+If your domain is conceptually a singleton (one radio, one HTTP client, one ADC), follow the WiFi/HTTP form: index-free `__tc_<domain>_*` symbols, no argument to the `*InitLines()` function. If it's a multi-instance peripheral, follow I2C/SPI/UART.
+
+> **One further style split inside the shim itself.** Multi-instance shims use free `static` globals (`static i2c_master_bus_handle_t __tc_i2c0_bus;`); singleton shims wrap their state in a single aggregate (`static struct { volatile int status; … } __tc_wifi = { … };`). The aggregate form is cleaner when the state has more than a handful of fields; use whichever reads best for your domain.
 
 ---
 

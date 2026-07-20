@@ -1,8 +1,8 @@
 # `@typecad/hal`
 
 Hardware abstraction layer for [TypeCAD](https://cuttlefish.typecad.net) —
-GPIO, I2C, SPI, UART, timers, ADC/DAC, EEPROM, and more, written as regular
-TypeScript.
+GPIO, I2C, SPI, UART, timers, ADC/DAC, EEPROM, WiFi/HTTP, and more, written as
+regular TypeScript.
 
 `@typecad/hal` is what firmware code imports to talk to hardware. You write
 normal TypeScript (`pin.high()`, `i2c.write(...)`, `Serial0.print(...)`); the
@@ -41,6 +41,7 @@ add new HAL features.
 | **I2C** | `I2CBus`, `II2CBus`, `I2CStatus`, `i2cName` |
 | **SPI** | `SPIBus`, `ISPIBus`, `SPIStatus`, `SPISettings`, `spiName` |
 | **UART / Serial** | `SerialPort`, `IUARTBus`, `UARTStatus`, `serialName` |
+| **Networking** | `WiFi`, `WiFiClass`, `WiFiStatus`, `WiFiEncryption`, `Http`, `HttpClass`, `HttpRequest`, `HttpMethod` |
 | **Timing** | `delay`, `millis`, `micros`, `delayMicroseconds`, `Timing`, `map`, `constrain` |
 | **Pulse / Shift** | `pulseIn`, `shiftIn`, `shiftOut` |
 | **Interrupts** | `attachInterrupt`, `detachInterrupt`, `noInterrupts`, `interrupts`, `InterruptMode` |

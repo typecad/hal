@@ -154,12 +154,39 @@ export function wifiInitLines(): string[] {
     `    return true;`,
     `}`,
     ``,
+    // Pause/resume the Task Watchdog around the blocking wait_* / scan loops.
+    // main_task (which runs setup/loop via app_main) is not on the WDT
+    // subscription list (only the per-core IDLE tasks are), so
+    // esp_task_wdt_reset() is a no-op here. We have to stop the timer itself,
+    // otherwise the prio-23 WiFi task can starve CPU0's IDLE task during radio
+    // bring-up and trip the WDT (reset cause TG1WDT_SYS_RST). The whole thing
+    // is gated on CONFIG_ESP_TASK_WDT_EN because esp_task_wdt_stop()/restart()
+    // are only declared by the header when the WDT is compiled in — without
+    // this guard, builds with the WDT disabled would fail to compile (not just
+    // fail at runtime).
+    `#if CONFIG_ESP_TASK_WDT_EN`,
+    `static inline void __tc_wifi_pause_wdt(void) {`,
+    `    esp_task_wdt_stop();`,
+    `}`,
+    `static inline void __tc_wifi_resume_wdt(void) {`,
+    `    esp_task_wdt_restart();`,
+    `}`,
+    `#else`,
+    `static inline void __tc_wifi_pause_wdt(void) {}`,
+    `static inline void __tc_wifi_resume_wdt(void) {}`,
+    `#endif`,
+    ``,
     `static inline bool __tc_wifi_wait_connected(uint32_t timeout_ms) {`,
+    `    __tc_wifi_pause_wdt();`,
     `    int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;`,
     `    while (!__tc_wifi_is_connected()) {`,
-    `        if (timeout_ms > 0 && esp_timer_get_time() >= deadline) return false;`,
+    `        if (timeout_ms > 0 && esp_timer_get_time() >= deadline) {`,
+    `            __tc_wifi_resume_wdt();`,
+    `            return false;`,
+    `        }`,
     `        vTaskDelay(pdMS_TO_TICKS(50));`,
     `    }`,
+    `    __tc_wifi_resume_wdt();`,
     `    return true;`,
     `}`,
     ``,
@@ -169,7 +196,9 @@ export function wifiInitLines(): string[] {
     `}`,
     ``,
     `static inline void __tc_wifi_wait_disconnected(void) {`,
+    `    __tc_wifi_pause_wdt();`,
     `    while (__tc_wifi_is_connected()) vTaskDelay(pdMS_TO_TICKS(50));`,
+    `    __tc_wifi_resume_wdt();`,
     `}`,
     ``,
     `static inline void __tc_wifi_disconnect(void) {`,
@@ -300,7 +329,9 @@ export function wifiInitLines(): string[] {
     ``,
     `static inline int __tc_wifi_scan(void) {`,
     `    __tc_wifi_scan_start();`,
+    `    __tc_wifi_pause_wdt();`,
     `    while (!__tc_wifi.scan_done) vTaskDelay(pdMS_TO_TICKS(50));`,
+    `    __tc_wifi_resume_wdt();`,
     `    return __tc_wifi.scan_count;`,
     `}`,
     ``,
