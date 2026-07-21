@@ -204,3 +204,10 @@ export type {
   FrameworkManifest,
   HalCategory,
 } from './framework-manifest.js';
+
+// Framework manifest discovery
+export {
+  KNOWN_FRAMEWORK_PACKAGES,
+  loadFrameworkManifest,
+} from './framework-manifest-registry.js';
+export type { KnownFrameworkPackage } from './framework-manifest-registry.js';
