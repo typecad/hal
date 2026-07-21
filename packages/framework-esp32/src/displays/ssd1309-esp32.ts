@@ -5,6 +5,20 @@
 // bus + device handle (__esp32_i2c_display_*), separate from user I2C
 // devices so a display and I2C sensors coexist.
 //
+// ──── BSD-3-Clause attribution ────────────────────────────────────────────
+// The SSD1306/SSD1309 panel init command table emitted by this adapter is
+// transcribed from Adafruit's Adafruit_SSD1306 library:
+//
+//   Adafruit_SSD1306.cpp ssd1306_128x64_i2c_init[]
+//   Copyright (c) 2013 Adafruit Industries. All rights reserved.
+//   Licensed under BSD-3-Clause.
+//   Upstream: https://github.com/adafruit/Adafruit_SSD1306
+//
+// The init bytes themselves are manufacturer (Solomon Systech) reference
+// code from the SSD1306/SSD1309 datasheet. The transcription here is from
+// Adafruit's published source.
+// ──── End BSD-3-Clause attribution ────────────────────────────────────────
+//
 // Memory model: page-buffered. 128x64 mono = 1024 bytes. The buffer is the
 // backing store; draws go into it, then display_partial_refresh flushes it
 // over I2C.

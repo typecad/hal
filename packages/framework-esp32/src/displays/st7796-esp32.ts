@@ -5,6 +5,22 @@
 // the ST7796S-specific init sequence: manufacturer unlock (0xF0,0xC3 then
 // 0xF0,0x96) before the standard power/VCOM/MADCTL/COLMOD sequence.
 //
+// ──── BSD-3-Clause attribution ────────────────────────────────────────────
+// The ST7796S panel init command table emitted by this adapter is transcribed
+// from a community-maintained Adafruit-style library:
+//
+//   Adafruit_ST7796S_kbv.cpp initcmd[]
+//   Copyright (c) David Prentice (prenticedavid).
+//   Licensed under BSD-3-Clause.
+//   Upstream: https://github.com/prenticedavid/Adafruit_ST7796S_kbv
+//
+// NOTE: this is a third-party community fork, not a canonical Adafruit
+// Industries release. The init bytes are manufacturer (SITROX/ST) reference
+// code from the ST7796S datasheet; equivalent sequences appear in TFT_eSPI,
+// LovyanGFX, and other libraries under various licenses. The transcription
+// here is from the Adafruit_ST7796S_kbv source above.
+// ──── End BSD-3-Clause attribution ────────────────────────────────────────
+//
 // This is the adapter the demos/demo-display hardware proof targets. Pin
 // wiring (CS=5, DC=17, RST=16) matches demos/demo-st exactly so the same
 // hardware setup works for both Adafruit (arduino-cli) and native (ESP-IDF)

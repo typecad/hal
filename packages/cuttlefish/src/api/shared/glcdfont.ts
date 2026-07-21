@@ -1,6 +1,16 @@
 // ---------------------------------------------------------------------------
-// Canonical Adafruit GFX 5x7 glcdfont. Public domain.
-// Source: Adafruit_GFX library glcdfont.c.
+// Adafruit GFX 5x7 glcdfont — the 'classic' fixed-space bitmap font shipped
+// with Adafruit_GFX since 1.0.
+//
+// Source: Adafruit_GFX library glcdfont.c
+//   Copyright (c) 2013 Adafruit Industries. All rights reserved.
+//   Licensed under BSD-3-Clause (as part of the Adafruit_GFX library).
+//   Upstream: https://github.com/adafruit/Adafruit-GFX-Library/blob/master/glcdfont.c
+//
+// NOTE: an earlier revision of this file described the bytes as "public
+// domain." That claim could not be verified — glcdfont.c carries no
+// per-file license statement and is distributed as part of the BSD-3-Clause
+// Adafruit_GFX library, so the conservative treatment is BSD-3-Clause.
 //
 // Shared between:
 //   - packages/cuttlefish/src/api/shared/display-adapters/sdl.ts

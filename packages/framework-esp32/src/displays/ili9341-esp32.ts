@@ -2,15 +2,25 @@
 // ESP32 native ILI9341 display adapter — RGB565 SPI TFT (240x320).
 //
 // Drives the panel through ESP-IDF's spi_master driver via a dedicated device
-// handle (__tc_spi_display_dev) on SPI2_HOST. No Adafruit, no Arduino-ESP32
-// core dependency.
+// handle (__tc_spi_display_dev) on SPI2_HOST. No Adafruit library link, no
+// Arduino-ESP32 core dependency.
 //
 // Bus ownership: .spics_io_num = -1 — the SPI driver does NOT toggle CS.
 // The adapter toggles CS/DC via gpio_set_level before/after each transaction.
 //
-// Init sequence: transcribed verbatim from the Adafruit_ILI9341 reference
-// initcmd[] (manufacturer power-on sequence + power control + gamma + sleep
-// out + display on).
+// ──── BSD-3-Clause attribution ────────────────────────────────────────────
+// The ILI9341 panel init command table emitted by this adapter is transcribed
+// from Adafruit's Adafruit_ILI9341 library:
+//
+//   Adafruit_ILI9341.cpp initcmd[]
+//   Copyright (c) 2013 Adafruit Industries. All rights reserved.
+//   Licensed under BSD-3-Clause.
+//   Upstream: https://github.com/adafruit/Adafruit_ILI9341
+//
+// The init bytes themselves are manufacturer (Ilitek) reference code from the
+// ILI9341 datasheet; they appear verbatim across many libraries under various
+// licenses. The transcription here is from Adafruit's published source.
+// ──── End BSD-3-Clause attribution ────────────────────────────────────────
 //
 // Memory model: direct mode. Every draw call hits the panel via setAddrWindow
 // + writePixels. PSRAM-backed offscreen canvases are supported for AA text

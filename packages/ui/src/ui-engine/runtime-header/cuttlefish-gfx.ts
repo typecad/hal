@@ -4,11 +4,42 @@
 // adapters. Emitted ONLY when a native adapter is active; Arduino paths use
 // Adafruit_GFX directly and never see this code.
 //
-// Algorithms are ported verbatim from Adafruit_GFX.cpp (Bresenham line,
-// midpoint circle, circle helpers, round-rect, triangles, glyph rendering).
-// Pixel output must be byte-for-byte identical to Adafruit_GFX because the
-// runtime's text layout and the AGENTS.md scroll/canvas invariants depend
-// on it.
+// ──── BSD-3-Clause attribution ────────────────────────────────────────────
+// The geometry algorithm implementations emitted by this slice (drawLine,
+// drawCircle, drawCircleHelper, fillCircleHelper, drawRoundRect,
+// fillRoundRect, drawTriangle, fillTriangle, drawChar, and the glyph loop
+// in write()) are ported from Adafruit's Adafruit_GFX library:
+//
+//   Adafruit_GFX.cpp / Adafruit_GFX.h
+//   Copyright (c) 2013 Adafruit Industries. All rights reserved.
+//   Licensed under BSD-3-Clause.
+//   Upstream: https://github.com/adafruit/Adafruit-GFX-Library
+//
+// Redistribution and use in source and binary forms, with or without
+// modification, are permitted provided that the following conditions are met:
+//
+// - Redistributions of source code must retain the above copyright notice,
+//   this list of conditions and the following disclaimer.
+// - Redistributions in binary form must reproduce the above copyright notice,
+//   this list of conditions and the following disclaimer in the documentation
+//   and/or other materials provided with the distribution.
+//
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+// AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+// IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+// ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+// LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+// CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+// SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+// INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+// CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+// POSSIBILITY OF SUCH DAMAGE.
+// ──── End BSD-3-Clause attribution ────────────────────────────────────────
+//
+// Pixel output of the ported algorithms is byte-for-byte identical to
+// Adafruit_GFX because the runtime's text layout and the AGENTS.md
+// scroll/canvas invariants depend on it.
 //
 // AGENTS.md rendering guardrails: canvas ops reuse persistent buffers,
 // use memmove-shift repair strips for scroll (handled in scroll slices that
@@ -56,7 +87,7 @@ struct CuttlefishPanelOps {
 // Same logic as the Adafruit SSD1309 adapter: any nonzero 565 → white.
 static inline uint16_t ssd_mono(uint16_t c) { return c ? 0xFFFFu : 0x0000u; }
 
-// ── 5x7 font (Adafruit glcdfont, public domain) ────────────────────────────
+// ── 5x7 font (Adafruit glcdfont, BSD-3-Clause — see file header) ──────────
 // 256 glyphs × 5 bytes per glyph. Indexed as cuttlefish_glcdfont[ch * 5 + col].
 ${fontArray}
 

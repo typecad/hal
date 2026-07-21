@@ -5,6 +5,21 @@
 // emitted by NativeAVRStrategy.shimLines()). No vendor GFX library, no
 // Arduino <Wire.h>.
 //
+// ──── BSD-3-Clause attribution ────────────────────────────────────────────
+// The SSD1306/SSD1309 panel init command table emitted by this adapter is
+// transcribed from Adafruit's Adafruit_SSD1306 library:
+//
+//   Adafruit_SSD1306.cpp ssd1306_128x64_i2c_init[]
+//   Copyright (c) 2013 Adafruit Industries. All rights reserved.
+//   Licensed under BSD-3-Clause.
+//   Upstream: https://github.com/adafruit/Adafruit_SSD1306
+//
+// The init bytes themselves are manufacturer (Solomon Systech) reference
+// code from the SSD1306/SSD1309 datasheet; equivalent sequences appear
+// across many OLED libraries. The transcription here is from Adafruit's
+// published source.
+// ──── End BSD-3-Clause attribution ────────────────────────────────────────
+//
 // Memory model: page-buffered. 128x64 mono panel = 128 * 64 / 8 = 1024 bytes,
 // which fits comfortably in ATmega328P's 2KB RAM. The buffer is the backing
 // store; draws go into it, then display_partial_refresh flushes it to the
@@ -14,8 +29,6 @@
 // _twi_begin_transmission takes the 7-bit address and shifts internally.
 //
 // SSD1306 and SSD1309 share the same command set for our purposes.
-// Init sequence transcribed verbatim from the reference 128x64 I2C panel
-// init used by the cuttlefish SDL preview's _mountAddress path.
 // ---------------------------------------------------------------------------
 
 import type { DisplayAdapterGenerator } from "@typecad/cuttlefish/api/shared";
