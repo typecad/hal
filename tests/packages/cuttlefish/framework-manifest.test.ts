@@ -9,6 +9,7 @@ import {
   resolveFrameworkPackageRoot,
   resolveRepoTestsDir,
   validateFramework,
+  validateFrameworkWithCoverage,
   loadFrameworkForValidation,
 } from './manifest-test-helpers.js';
 // Renderer lives in scripts/ — vitest resolves TS directly. Imports from
@@ -55,7 +56,10 @@ describe('framework manifests', () => {
   for (const packageName of KNOWN_FRAMEWORK_PACKAGES) {
     describe(packageName, () => {
       it('declares a manifest matching its implementation (modulo known strategic errors)', async () => {
-        const result = await validateFramework(packageName);
+        const { result, coverageTable } = await validateFrameworkWithCoverage(packageName);
+        // Print the per-op coverage table on every run so coverage is visible
+        // without a separate command.
+        console.log(coverageTable);
         const novel = result.errors.filter(
           (e) => !KNOWN_STRATEGIC_ERRORS.has(e.code),
         );
