@@ -1,6 +1,6 @@
 import { ArduinoStrategy, splitStreamChain } from '@typecad/framework-arduino';
 import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode } from '@typecad/cuttlefish/api/shared';
-import { esp32Ili9341Adapter, esp32St7796Adapter, esp32Ssd1309Adapter, esp32Ssd1680Adapter } from './displays/index.js';
+import { esp32Ili9341Adapter, esp32St7796Adapter, esp32Ssd1309Adapter } from './displays/index.js';
 import { resolveEsp32Profile } from './profile.js';
 import { lowerHalOp } from './lowering/index.js';
 import { uartInitLines } from './lowering/uart.js';
@@ -282,7 +282,17 @@ export class Esp32Strategy extends ArduinoStrategy {
       case "ili9341": return esp32Ili9341Adapter(display);
       case "st7796":  return esp32St7796Adapter(display);
       case "ssd1309": return esp32Ssd1309Adapter(display);
-      case "ssd1680": return esp32Ssd1680Adapter(display);
+      case "ssd1680":
+        // E-ink is intentionally not supported: the LUT-driven refresh cycle
+        // + busy-pin handling adds significant complexity for a panel class
+        // that's a marginal fit for the SPI TFT-focused runtime. Throw a
+        // clear compile-time error instead of falling through to Adafruit.
+        throw new Error(
+          `display driver "ssd1680" (e-ink) is not supported on ESP32: ` +
+          `the LUT-driven refresh cycle and busy-pin handling are out of scope ` +
+          `for the native display layer. Use the Adafruit path (framework-arduino) ` +
+          `for SSD1680 panels.`,
+        );
       default: return undefined;  // defer to built-in Adafruit registry
     }
   }

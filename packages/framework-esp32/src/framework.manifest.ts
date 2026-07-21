@@ -269,14 +269,18 @@ export default defineFrameworkManifest({
       // dispatches by driver. The display.* throw at lowering/index.ts:46 is
       // removed (unreachable now).
       //
-      // ops are 'probe-inconclusive' rather than 'supported' until the four
-      // native adapters (ili9341/st7796/ssd1309/ssd1680) land. The validator
-      // probes each op via resolveDisplayOp, which returns undefined because
-      // the adapter path bypasses HAL lowering — so the probe can't see the
-      // implementation. Flip to 'supported' in Task 17 once the adapters are
-      // emitted and unit-tested.
+      // SSD1680/e-ink is intentionally not supported on ESP32: the LUT-driven
+      // refresh cycle + busy-pin handling adds significant complexity for a
+      // panel class that's a marginal fit for the SPI TFT-focused runtime.
+      // resolveDisplayAdapter throws a clear error for 'ssd1680'.
+      //
+      // ops are 'probe-inconclusive' rather than 'supported' until the three
+      // native adapters (ili9341/st7796/ssd1309) are emitted and unit-tested.
+      // The validator probes each op via resolveDisplayOp, which returns
+      // undefined because the adapter path bypasses HAL lowering — so the
+      // probe can't see the implementation. Flip to 'supported' in Task 17.
       supported: true,
-      drivers: ['ili9341', 'st7796', 'ssd1309', 'ssd1680'],
+      drivers: ['ili9341', 'st7796', 'ssd1309'],
       colorFormat: 'rgb565',
       partialCoverage: false,
       ops: {
