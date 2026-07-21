@@ -180,9 +180,14 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // adapter functions (__tc_display, display_init, etc.) are available.
   const profile = getDisplayProfile();
 
-  // 0. SPI-bus display drivers (ILI9341, ST7796, …) need the SPI library.
-  // Host render targets (sdl, native-preview) have no SPI bus, so skip it.
-  const spiDriver = profile?.driver !== "sdl" && profile?.driver !== "native-preview";
+  // 0. SPI-bus display drivers (ILI9341, ST7796, …) need the Arduino SPI
+  // library — but ONLY on the Adafruit path. Native adapters (AVR, ESP32)
+  // emit their own bus setup and would break on <SPI.h>. Host render targets
+  // (sdl, native-preview) have no SPI bus at all.
+  const nativeAdapter = ctx.strategy?.providesDisplayAdapter?.() ?? false;
+  const spiDriver = profile?.driver !== "sdl"
+    && profile?.driver !== "native-preview"
+    && !nativeAdapter;
   if (spiDriver && !ctx.includes.includes("<SPI.h>")) {
     ctx.includes.push("<SPI.h>");
   }
@@ -191,7 +196,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   // function, so a push here would be too late to land in the output.
 
   if (profile) {
-    const adapter = generateDisplayAdapter(profile);
+    const adapter = generateDisplayAdapter(profile, ctx.strategy);
     // Prepend includes to the very front — Arduino's auto-prototyper scans
     // the whole .ino and generates prototypes that reference GFXcanvas16
     // etc. before any #include, so the GFX header must come first.
