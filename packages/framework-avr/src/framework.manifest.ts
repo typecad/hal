@@ -4,10 +4,10 @@ import { defineFrameworkManifest } from '@typecad/cuttlefish/api/shared';
 // (NativeAVRStrategy inherits from ArduinoStrategy; differences are in the
 // overridden methods). WiFi/HTTP are unsupported on AVR (no hardware).
 //
-// Display is declared unsupported: AVR has no display driver lowering. The
-// validator will flag this against the inherited resolveDisplayOp (which still
-// lowers display.init) — that latent inheritance bug is documented for a
-// future spec.
+// Display is supported for SSD1309 only (AVR's 2KB RAM excludes TFT/e-ink
+// panels — see the display block below). Display HAL ops resolve through
+// resolveDisplayAdapter (not resolveHALOperation), so per-op status is
+// 'probe-inconclusive' by design.
 
 export default defineFrameworkManifest({
   schemaVersion: 1,
@@ -270,12 +270,20 @@ export default defineFrameworkManifest({
       // (ATmega328P) constrains support to page-buffered displays — only
       // SSD1309 (1KB page buffer) fits. ILI9341/ST7796S need 150KB+ RGB565
       // framebuffers or unacceptably slow direct-mode SPI on an 8-bit MCU;
-      // SSD1680 needs 5KB+ mono buffers. Those three are not supported on AVR.
-      // ESP32 (with PSRAM) supports all four — see framework-esp32.
+      // SSD1680 needs 5KB+ mono buffers. Those three throw a clear error in
+      // resolveDisplayAdapter rather than emitting uncompilable code. ESP32
+      // supports ILI9341/ST7796S/SSD1309 — see framework-esp32.
       //
       // resolveDisplayOp returns undefined (display ops are resolved through
       // the adapter path, not per-op HAL lowering) and resolveDisplayAdapter
-      // dispatches by driver, throwing a clear error for unsupported drivers.
+      // dispatches by driver.
+      //
+      // ops are 'probe-inconclusive' rather than 'supported' BY DESIGN. The
+      // validator probes each op via resolveDisplayOp, which returns undefined
+      // because the adapter path bypasses HAL lowering entirely. The
+      // implementation is real and unit-tested in
+      // tests/packages/framework-avr/displays/, but structurally invisible to
+      // the validator's probe. 'probe-inconclusive' is the honest status.
       supported: true,
       drivers: ['ssd1309'],
       colorFormat: 'rgb565',

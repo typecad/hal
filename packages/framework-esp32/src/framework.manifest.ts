@@ -274,11 +274,12 @@ export default defineFrameworkManifest({
       // panel class that's a marginal fit for the SPI TFT-focused runtime.
       // resolveDisplayAdapter throws a clear error for 'ssd1680'.
       //
-      // ops are 'probe-inconclusive' rather than 'supported' until the three
-      // native adapters (ili9341/st7796/ssd1309) are emitted and unit-tested.
-      // The validator probes each op via resolveDisplayOp, which returns
-      // undefined because the adapter path bypasses HAL lowering — so the
-      // probe can't see the implementation. Flip to 'supported' in Task 17.
+      // ops are 'probe-inconclusive' rather than 'supported' BY DESIGN. The
+      // validator probes each op via resolveDisplayOp, which returns undefined
+      // because the adapter path bypasses HAL lowering entirely. The
+      // implementation is real and unit-tested in
+      // tests/packages/framework-esp32/displays/, but structurally invisible
+      // to the validator's probe. 'probe-inconclusive' is the honest status.
       supported: true,
       drivers: ['ili9341', 'st7796', 'ssd1309'],
       colorFormat: 'rgb565',
