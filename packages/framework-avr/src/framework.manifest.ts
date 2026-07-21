@@ -278,22 +278,23 @@ export default defineFrameworkManifest({
       // the adapter path, not per-op HAL lowering) and resolveDisplayAdapter
       // dispatches by driver.
       //
-      // ops are 'probe-inconclusive' rather than 'supported' BY DESIGN. The
-      // validator probes each op via resolveDisplayOp, which returns undefined
-      // because the adapter path bypasses HAL lowering entirely. The
-      // implementation is real and unit-tested in
-      // tests/packages/framework-avr/displays/, but structurally invisible to
-      // the validator's probe. 'probe-inconclusive' is the honest status.
+      // Per-op status is 'supported' — resolveDisplayOp lowers each display.*
+      // op to a call into the adapter surface (display_init /
+      // display_targetFillRect / etc.) via resolveNativeDisplayOp, and the
+      // validator's probe sees the lowering. Earlier this was marked
+      // 'probe-inconclusive' under the (incorrect) assumption that the adapter
+      // path bypassed HAL lowering; that assumption was stale after
+      // resolveNativeDisplayOp landed.
       supported: true,
       drivers: ['ssd1309'],
       colorFormat: 'rgb565',
       partialCoverage: false,
       ops: {
-        'display.init': 'probe-inconclusive',
-        'display.fill_rect': 'probe-inconclusive',
-        'display.draw_text': 'probe-inconclusive',
-        'display.draw_rect': 'probe-inconclusive',
-        'display.flush': 'probe-inconclusive',
+        'display.init': 'supported',
+        'display.fill_rect': 'supported',
+        'display.draw_text': 'supported',
+        'display.draw_rect': 'supported',
+        'display.flush': 'supported',
       },
     },
     raw: { supported: true },

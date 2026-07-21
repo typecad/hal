@@ -97,8 +97,10 @@ class CuttlefishGFX {
   void setTextSize(uint8_t s) { textsize_ = (s > 0) ? s : 1; }
   void setTextWrap(bool w) { wrap_ = w; }
 
-  int16_t width() const { return ops_->width ? ops_->width(ctx_) : 0; }
-  int16_t height() const { return ops_->height ? ops_->height(ctx_) : 0; }
+  // virtual so CuttlefishCanvas16/Mono overrides route through their stored
+  // canvas dimensions instead of trying to deref the null ops_.
+  virtual int16_t width() const { return (ops_ && ops_->width) ? ops_->width(ctx_) : 0; }
+  virtual int16_t height() const { return (ops_ && ops_->height) ? ops_->height(ctx_) : 0; }
   int16_t getCursorX() const { return cursor_x_; }
   int16_t getCursorY() const { return cursor_y_; }
 
@@ -126,6 +128,13 @@ class CuttlefishCanvas16 : public CuttlefishGFX {
   virtual ~CuttlefishCanvas16();
   virtual void drawPixel(int16_t x, int16_t y, uint16_t color);
   virtual void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
+  // Override width()/height() — the base implementation reads ops_->width,
+  // which is null for canvases (constructed with CuttlefishGFX(nullptr, nullptr)).
+  // Without these overrides, any code path that calls width()/height() on a
+  // canvas target (text wrapping, scroll clipping, ui_display_target_bounds)
+  // dereferences null.
+  virtual int16_t width() const { return canvas_w_; }
+  virtual int16_t height() const { return canvas_h_; }
   uint16_t* getBuffer() const { return buffer_; }
   uint16_t getPixel(int16_t x, int16_t y) const;
   void fillScreen(uint16_t color) { fillRect(0, 0, canvas_w_, canvas_h_, color); }
@@ -145,6 +154,9 @@ class CuttlefishCanvasMono : public CuttlefishGFX {
   virtual ~CuttlefishCanvasMono();
   virtual void drawPixel(int16_t x, int16_t y, uint16_t color);
   virtual void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
+  // Override width()/height() — see CuttlefishCanvas16 for rationale.
+  virtual int16_t width() const { return canvas_w_; }
+  virtual int16_t height() const { return canvas_h_; }
   uint8_t* getBuffer() const { return buffer_; }
   uint16_t getPixel(int16_t x, int16_t y) const;
   void fillScreen(uint16_t color) { fillRect(0, 0, canvas_w_, canvas_h_, color); }
@@ -160,15 +172,22 @@ class CuttlefishCanvasMono : public CuttlefishGFX {
 // ───────────────────────────────────────────────────────────────────────────
 
 void CuttlefishGFX::drawPixel(int16_t x, int16_t y, uint16_t color) {
-  if (ops_->writePixel) ops_->writePixel(ctx_, x, y, color);
+  // Dispatch through ops_->writePixel when present (live panel); otherwise
+  // rely on subclasses (CuttlefishCanvas16/Mono) overriding drawPixel to
+  // write into their buffers. The null check on ops_ is required because
+  // canvases construct their base with CuttlefishGFX(nullptr, nullptr).
+  if (ops_ && ops_->writePixel) ops_->writePixel(ctx_, x, y, color);
 }
 
 void CuttlefishGFX::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color) {
-  if (ops_->fillRect) ops_->fillRect(ctx_, x, y, 1, h, color);
+  // Dispatch through the virtual fillRect so canvases (which override it)
+  // route into their buffer. Do NOT call the panel op directly here —
+  // canvases construct their base with a null panel-ops struct.
+  fillRect(x, y, 1, h, color);
 }
 
 void CuttlefishGFX::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) {
-  if (ops_->fillRect) ops_->fillRect(ctx_, x, y, w, 1, color);
+  fillRect(x, y, w, 1, color);
 }
 
 void CuttlefishGFX::drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
@@ -179,7 +198,10 @@ void CuttlefishGFX::drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_
 }
 
 void CuttlefishGFX::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
-  if (ops_->fillRect) ops_->fillRect(ctx_, x, y, w, h, color);
+  // Live panel fast-path: bypass the per-pixel virtual call and ask the
+  // panel to fill directly. Canvases override this method to write into
+  // their buffer (so they never reach this base path).
+  if (ops_ && ops_->fillRect) ops_->fillRect(ctx_, x, y, w, h, color);
 }
 
 // Bresenham line — Adafruit_GFX.cpp drawLine, unchanged.

@@ -274,22 +274,20 @@ export default defineFrameworkManifest({
       // panel class that's a marginal fit for the SPI TFT-focused runtime.
       // resolveDisplayAdapter throws a clear error for 'ssd1680'.
       //
-      // ops are 'probe-inconclusive' rather than 'supported' BY DESIGN. The
-      // validator probes each op via resolveDisplayOp, which returns undefined
-      // because the adapter path bypasses HAL lowering entirely. The
-      // implementation is real and unit-tested in
-      // tests/packages/framework-esp32/displays/, but structurally invisible
-      // to the validator's probe. 'probe-inconclusive' is the honest status.
+      // Per-op status is 'supported' — resolveDisplayOp lowers each display.*
+      // op to a call into the adapter surface (display_init /
+      // display_targetFillRect / etc.) via resolveNativeDisplayOp, and the
+      // validator's probe sees the lowering.
       supported: true,
       drivers: ['ili9341', 'st7796', 'ssd1309'],
       colorFormat: 'rgb565',
       partialCoverage: false,
       ops: {
-        'display.init': 'probe-inconclusive',
-        'display.fill_rect': 'probe-inconclusive',
-        'display.draw_text': 'probe-inconclusive',
-        'display.draw_rect': 'probe-inconclusive',
-        'display.flush': 'probe-inconclusive',
+        'display.init': 'supported',
+        'display.fill_rect': 'supported',
+        'display.draw_text': 'supported',
+        'display.draw_rect': 'supported',
+        'display.flush': 'supported',
       },
     },
     raw: { supported: true },

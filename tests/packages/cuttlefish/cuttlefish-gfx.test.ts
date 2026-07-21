@@ -80,4 +80,59 @@ describe("emitCuttlefishGfx slice", () => {
       expect(h).toMatch(/void\s+CuttlefishGFX::drawChar/);
     });
   });
+
+  // Regression coverage for canvas-target null-deref bugs (C1/C2):
+  // CuttlefishCanvas16/Mono construct their base with ops_=nullptr, so
+  // any base-class method that dereferences ops_ crashes on a canvas target.
+  // The fix: width()/height() are virtual; base geometry methods dispatch
+  // through the virtual fillRect/drawPixel rather than through ops_ directly.
+  describe("canvas target safety (no null ops_ deref)", () => {
+    const h = emitCuttlefishGfx(true);
+
+    it("base width()/height() are virtual so canvas overrides dispatch", () => {
+      // The base declaration must say 'virtual' for the canvas override to
+      // take effect through a CuttlefishGFX* pointer.
+      const baseWidthMatch = h.match(/class\s+CuttlefishGFX\s*\{[\s\S]*?virtual\s+int16_t\s+width\(\)\s*const/);
+      expect(baseWidthMatch, "base CuttlefishGFX::width() must be virtual").not.toBeNull();
+      const baseHeightMatch = h.match(/class\s+CuttlefishGFX\s*\{[\s\S]*?virtual\s+int16_t\s+height\(\)\s*const/);
+      expect(baseHeightMatch, "base CuttlefishGFX::height() must be virtual").not.toBeNull();
+    });
+
+    it("CuttlefishCanvas16 overrides width()/height()", () => {
+      const canvasMatch = h.match(/class\s+CuttlefishCanvas16\s*:\s*public\s+CuttlefishGFX\s*\{([\s\S]*?)\};/);
+      expect(canvasMatch).not.toBeNull();
+      expect(canvasMatch![1]).toMatch(/virtual\s+int16_t\s+width\(\)\s*const\s*\{[^}]*canvas_w_/);
+      expect(canvasMatch![1]).toMatch(/virtual\s+int16_t\s+height\(\)\s*const\s*\{[^}]*canvas_h_/);
+    });
+
+    it("CuttlefishCanvasMono overrides width()/height()", () => {
+      const canvasMatch = h.match(/class\s+CuttlefishCanvasMono\s*:\s*public\s+CuttlefishGFX\s*\{([\s\S]*?)\};/);
+      expect(canvasMatch).not.toBeNull();
+      expect(canvasMatch![1]).toMatch(/virtual\s+int16_t\s+width\(\)\s*const\s*\{[^}]*canvas_w_/);
+      expect(canvasMatch![1]).toMatch(/virtual\s+int16_t\s+height\(\)\s*const\s*\{[^}]*canvas_h_/);
+    });
+
+    it("base drawFastVLine/HLine dispatch through virtual fillRect, not ops_->fillRect", () => {
+      // Regression: previously these did `if (ops_->fillRect) ops_->fillRect(...)`
+      // which dereferences the null ops_ on a canvas target. They must now
+      // call the virtual fillRect(...) so the canvas's buffer-writing override runs.
+      const vlineImpl = h.match(/void\s+CuttlefishGFX::drawFastVLine[\s\S]*?\{[\s\S]*?\}/);
+      expect(vlineImpl, "drawFastVLine implementation must exist").not.toBeNull();
+      expect(vlineImpl![0]).toContain("fillRect(");
+      expect(vlineImpl![0]).not.toMatch(/ops_->fillRect/);
+
+      const hlineImpl = h.match(/void\s+CuttlefishGFX::drawFastHLine[\s\S]*?\{[\s\S]*?\}/);
+      expect(hlineImpl, "drawFastHLine implementation must exist").not.toBeNull();
+      expect(hlineImpl![0]).toContain("fillRect(");
+      expect(hlineImpl![0]).not.toMatch(/ops_->fillRect/);
+    });
+
+    it("base drawPixel and fillRect null-check ops_ before dereferencing", () => {
+      const drawPixelImpl = h.match(/void\s+CuttlefishGFX::drawPixel[\s\S]*?\{[\s\S]*?\}/)![0];
+      expect(drawPixelImpl).toMatch(/if\s*\(\s*ops_\s*&&\s*ops_->writePixel\s*\)/);
+
+      const fillRectImpl = h.match(/void\s+CuttlefishGFX::fillRect[\s\S]*?\{[\s\S]*?\}/)![0];
+      expect(fillRectImpl).toMatch(/if\s*\(\s*ops_\s*&&\s*ops_->fillRect\s*\)/);
+    });
+  });
 });
