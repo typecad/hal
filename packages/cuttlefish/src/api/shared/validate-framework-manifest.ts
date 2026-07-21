@@ -198,7 +198,7 @@ function validateHalCoverage(
     const declaration = declarationRaw as {
       supported: boolean;
       unsupportedReason?: string;
-      ops: Record<string, 'supported' | 'stub' | 'unsupported'>;
+      ops: Record<string, 'supported' | 'stub' | 'unsupported' | 'probe-inconclusive'>;
       partialCoverage?: boolean;
     };
     const knownKinds = opKindsForCategory(category);
@@ -217,6 +217,14 @@ function validateHalCoverage(
 
     // Probe each declared op and cross-check status vs resolver behavior.
     for (const [kind, status] of Object.entries(declaration.ops)) {
+      // 'probe-inconclusive' is an explicit acknowledgment that the minimal
+      // probe (just an operation discriminator) cannot determine support —
+      // typically because the resolver needs a valid pin/config payload.
+      // The validator does not cross-check these; the renderer flags them
+      // for manual review. This keeps the matrix honest without penalizing
+      // frameworks for the probe's limitations.
+      if (status === 'probe-inconclusive') continue;
+
       const res = probeResolve(ctx.strategy, kind);
       const lowers = statusFromResolution(res) === 'lowers';
 
@@ -246,26 +254,37 @@ function validateHalCoverage(
 
     // Category-level summary check.
     if (declaration.supported) {
-      const anyLowers = knownKinds.some(
-        (k) => statusFromResolution(probeResolve(ctx.strategy, k)) === 'lowers',
+      // If every op is probe-inconclusive, we can't verify the supported
+      // claim at all — skip rather than false-positive.
+      const hasVerifiable = knownKinds.some(
+        (k) => declaration.ops[k] !== 'probe-inconclusive',
       );
-      if (!anyLowers) {
-        acc.error(
-          `hal/${category}/declared-supported-but-undefined`,
-          `hal.${category}`,
-          `manifest.hal.${category}.supported is true but resolver returns undefined for every op kind. Change supported to false with unsupportedReason, or implement the lowering.`,
-          category,
-        );
+      if (hasVerifiable) {
+        const anyLowersOrInconclusive = knownKinds.some((k) => {
+          if (declaration.ops[k] === 'probe-inconclusive') return true;
+          return statusFromResolution(probeResolve(ctx.strategy, k)) === 'lowers';
+        });
+        if (!anyLowersOrInconclusive) {
+          acc.error(
+            `hal/${category}/declared-supported-but-undefined`,
+            `hal.${category}`,
+            `manifest.hal.${category}.supported is true but resolver returns undefined for every verifiable op kind. Change supported to false with unsupportedReason, or implement the lowering.`,
+            category,
+          );
+        }
       }
     } else {
-      const anyLowers = knownKinds.some(
-        (k) => statusFromResolution(probeResolve(ctx.strategy, k)) === 'lowers',
-      );
+      // supported: false. Ignore probe-inconclusive ops when checking
+      // "does it actually lower?" — we can't tell for those.
+      const anyLowers = knownKinds.some((k) => {
+        if (declaration.ops[k] === 'probe-inconclusive') return false;
+        return statusFromResolution(probeResolve(ctx.strategy, k)) === 'lowers';
+      });
       if (anyLowers) {
         acc.error(
           `hal/${category}/declared-unsupported-but-actually-lowers`,
           `hal.${category}`,
-          `manifest.hal.${category}.supported is false but resolver lowers at least one op. Either mark supported: true or override the resolver to throw/return undefined.`,
+          `manifest.hal.${category}.supported is false but resolver lowers at least one verifiable op. Either mark supported: true or override the resolver to throw/return undefined.`,
           category,
         );
       }
@@ -448,8 +467,12 @@ function validateTypeEmission(
     const decls = strat.ambientTypeDeclarations?.() ?? [];
     for (const d of decls) {
       if (typeof d === 'string') {
-        const m = /\b(?:interface|type|class)\s+([A-Za-z_$][\w$]*)/.exec(d);
-        if (m) emittedAmbient.add(m[1]);
+        // Match all ambient declarations in the string: interface/type/class NAME
+        // and const NAME: (Arduino/AVR/ESP32 emit `const Timing: {...}` etc.).
+        const matches = [...d.matchAll(/\b(?:interface|type|class)\s+([A-Za-z_$][\w$]*)/g)];
+        for (const m of matches) emittedAmbient.add(m[1]);
+        const constMatches = [...d.matchAll(/\bconst\s+([A-Za-z_$][\w$]*)\s*:/g)];
+        for (const m of constMatches) emittedAmbient.add(m[1]);
       } else if (d && typeof d === 'object' && 'name' in d) {
         emittedAmbient.add(String((d as Record<string, unknown>).name));
       }

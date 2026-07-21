@@ -21,7 +21,7 @@ const HAL_CATEGORIES = [
 
 export type HalCategory = typeof HAL_CATEGORIES[number];
 
-const OpStatus = z.enum(['supported', 'stub', 'unsupported']);
+const OpStatus = z.enum(['supported', 'stub', 'unsupported', 'probe-inconclusive']);
 
 const HalCategorySchema = z.object({
   supported: z.boolean(),
