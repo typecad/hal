@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { ArduinoStrategy } from '@typecad/framework-arduino';
-import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR, Diagnostic } from '@typecad/cuttlefish/api/shared';
+import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR, Diagnostic, DisplayHALOp } from '@typecad/cuttlefish/api/shared';
 import {
   getPinInfo,
   getPinBitMask,
@@ -1165,6 +1165,20 @@ export class NativeAVRStrategy extends ArduinoStrategy {
 
   override symbolAliases(program?: ProgramIR, ctx?: PlatformContext): Record<string, string> {
     return this.resolveAvrProfileCached(program, ctx).symbolAliases;
+  }
+
+  /**
+   * Display HAL ops on AVR go through the adapter path (providesDisplayAdapter
+   * → resolveDisplayAdapter → CuttlefishGFX + native _spi_ and _twi_ primitives),
+   * NOT through per-op HAL lowering. Return undefined for every display. op so
+   * the emitter falls back to the adapter-generated display_ functions.
+   *
+   * This override fixes the latent inheritance bug where NativeAVRStrategy
+   * inherited ArduinoStrategy.resolveDisplayOp and lowered display.init via
+   * __tc_display (a non-existent Adafruit object on AVR).
+   */
+  override resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
+    return undefined;
   }
 
   /**
