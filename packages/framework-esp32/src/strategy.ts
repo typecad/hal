@@ -1,5 +1,6 @@
 import { ArduinoStrategy, splitStreamChain } from '@typecad/framework-arduino';
 import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode } from '@typecad/cuttlefish/api/shared';
+import { resolveNativeDisplayOp } from '@typecad/cuttlefish/api/shared';
 import { esp32Ili9341Adapter, esp32St7796Adapter, esp32Ssd1309Adapter } from './displays/index.js';
 import { resolveEsp32Profile } from './profile.js';
 import { lowerHalOp } from './lowering/index.js';
@@ -264,15 +265,17 @@ export class Esp32Strategy extends ArduinoStrategy {
   /**
    * Display HAL ops on ESP32 go through the adapter path (providesDisplayAdapter
    * → resolveDisplayAdapter → CuttlefishGFX + native spi_device_polling_transmit
-   * / i2c_master_transmit primitives), NOT through per-op HAL lowering.
+   * / i2c_master_transmit primitives), but user code that emits display.* HAL
+   * ops still needs to lower to calls into the adapter surface (display_init /
+   * display_targetFillRect / etc.). The shared resolveNativeDisplayOp does
+   * that lowering — the surface is identical across native adapters.
    *
-   * This override fixes the latent inheritance bug where Esp32Strategy inherited
-   * ArduinoStrategy.resolveDisplayOp and lowered display.init via __tc_display
-   * (a non-existent Adafruit object on ESP-IDF). It also makes the display
-   * throw at lowering/index.ts unreachable, so that throw is removed.
+   * Replacing ArduinoStrategy.resolveDisplayOp fixes the latent inheritance
+   * bug where display.init lowered via __tc_display (a non-existent Adafruit
+   * object on ESP-IDF).
    */
-  override resolveDisplayOp(_op: DisplayHALOp): { code?: string; expression?: string } | undefined {
-    return undefined;
+  override resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
+    return resolveNativeDisplayOp(op);
   }
 
   override providesDisplayAdapter(): boolean { return true; }

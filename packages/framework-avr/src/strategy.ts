@@ -9,6 +9,7 @@
 
 import { ArduinoStrategy } from '@typecad/framework-arduino';
 import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode } from '@typecad/cuttlefish/api/shared';
+import { resolveNativeDisplayOp } from '@typecad/cuttlefish/api/shared';
 import { avrSsd1309Adapter } from './displays/index.js';
 import {
   getPinInfo,
@@ -1170,16 +1171,18 @@ export class NativeAVRStrategy extends ArduinoStrategy {
 
   /**
    * Display HAL ops on AVR go through the adapter path (providesDisplayAdapter
-   * → resolveDisplayAdapter → CuttlefishGFX + native _spi_ and _twi_ primitives),
-   * NOT through per-op HAL lowering. Return undefined for every display. op so
-   * the emitter falls back to the adapter-generated display_ functions.
+   * → resolveDisplayAdapter → CuttlefishGFX + native _twi_ primitives), but
+   * user code that emits display.* HAL ops still needs to lower to calls into
+   * the adapter surface (display_init / display_targetFillRect / etc.). The
+   * shared resolveNativeDisplayOp does that lowering — the surface is
+   * identical across native adapters.
    *
-   * This override fixes the latent inheritance bug where NativeAVRStrategy
-   * inherited ArduinoStrategy.resolveDisplayOp and lowered display.init via
-   * __tc_display (a non-existent Adafruit object on AVR).
+   * Replacing ArduinoStrategy.resolveDisplayOp fixes the latent inheritance
+   * bug where display.init lowered via __tc_display (a non-existent Adafruit
+   * object on AVR).
    */
   override resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
-    return undefined;
+    return resolveNativeDisplayOp(op);
   }
 
   override providesDisplayAdapter(): boolean { return true; }

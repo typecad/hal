@@ -312,10 +312,19 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       // Load built-in profiles from the framework package via its exported path
       const registry = new Map();
       if (options.frameworkPackage) {
+        // Built-in display profiles live in the framework's displays/ili9341-spi
+        // module. Non-Arduino frameworks (avr, esp32) may not ship their own
+        // profile registry — fall back to framework-arduino, which all current
+        // frameworks depend on and which owns the canonical profile definitions.
         const profileMod = await import(options.frameworkPackage + "/displays/ili9341-spi").catch(() => null);
-        if (profileMod?.BUILT_IN_PROFILES) {
-          for (const [k, v] of Object.entries(profileMod.BUILT_IN_PROFILES)) {
-            registry.set(k, v as any);
+        const fallbackMod = (options.frameworkPackage !== "@typecad/framework-arduino")
+          ? await import("@typecad/framework-arduino/displays/ili9341-spi").catch(() => null)
+          : null;
+        for (const mod of [profileMod, fallbackMod]) {
+          if (mod?.BUILT_IN_PROFILES) {
+            for (const [k, v] of Object.entries(mod.BUILT_IN_PROFILES)) {
+              registry.set(k, v as any);
+            }
           }
         }
       }
