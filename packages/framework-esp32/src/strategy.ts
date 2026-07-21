@@ -424,6 +424,17 @@ static inline unsigned long millis() {
 static inline int digitalRead(int pin) {
     return (int)gpio_get_level((gpio_num_t)pin);
 }
+// Arduino core math helpers — referenced by runtime header code (touch
+// keyboard's range-clamping in touch-keyboard-fwd.ts). On Arduino these are
+// macros in Arduino.h; ESP-IDF has no equivalent so we define them as macros
+// here (matching Arduino's exact shape, so type deduction matches call sites
+// like constrain(int16_t, int, int)).
+#ifndef constrain
+#define constrain(amt, low, high) ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
+#endif
+#ifndef map
+#define map(x, in_min, in_max, out_min, out_max) ((x) - (in_min)) * ((out_max) - (out_min)) / ((in_max) - (in_min)) + (out_min)
+#endif
 `,
         ],
         shimMacros: [],

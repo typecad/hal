@@ -2809,7 +2809,9 @@ static void ui_touch_up() {
   // including holds (released above) and taps on empty space (__ui_touch_node
   // == -1), which is what makes "wake on any touch" work for display-sleep.
   // Placed AFTER the click/release dispatch so onClick always fires first.
-  __ui_tap_seq++;
+  // Note: explicit '+ 1' instead of '++' — GCC 13+ (IDF v6) deprecates '++'
+  // on volatile-qualified types under -Werror=volatile.
+  __ui_tap_seq = __ui_tap_seq + 1;
   __ui_tap_node = __ui_touch_node;
   // Virtualized list item tap: if the touch was inside a list, compute the item
   // index from the touch Y. Use total movement (not drag flag) to distinguish
