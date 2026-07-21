@@ -1,0 +1,43 @@
+<script lang="ts">
+  // showcase.ui — minimal display-only scene for the native ESP32 ST7796S
+  // adapter verification. Static scene exercises every draw primitive
+  // (fill, rect, line, circle, text) so a single visual check proves the
+  // full GFX path:
+  //   ui_display_* shim → display_target* → CuttlefishGFX → spi_master
+  //
+  // No touch, no scroll, no canvas compositing — those paths get unit-test
+  // coverage. This scene is small enough that pass/fail is visually obvious
+  // on the panel in a few seconds.
+
+  import { ui } from '@typecad/ui';
+
+  ui.mount(screen);
+</script>
+
+<style>
+  #home {
+    background: #000000;
+  }
+  .title {
+    color: #ffffff;
+    font-size: 24px;
+  }
+  .caption {
+    color: #aaaaaa;
+    font-size: 14px;
+  }
+</style>
+
+<screen id="home">
+  <text class="title" style="left: 10px; top: 10px;">Cuttlefish native ESP32</text>
+  <text class="caption" style="left: 10px; top: 40px;">ST7796S over spi_master</text>
+
+  <view style="left: 10px; top: 80px; width: 100px; height: 50px; background: #ff0000;" />
+  <view style="left: 120px; top: 80px; width: 100px; height: 50px; border: 2px solid #00ff00; background: #000000;" />
+  <view style="left: 10px; top: 140px; width: 210px; height: 4px; background: #0000ff;" />
+
+  <view style="left: 20px; top: 170px; width: 60px; height: 60px; border: 2px solid #ffff00; border-radius: 30; background: #000000;" />
+  <view style="left: 110px; top: 170px; width: 60px; height: 60px; border-radius: 30; background: #ff00ff;" />
+
+  <text class="caption" style="left: 10px; top: 250px;">if you see this, text works</text>
+</screen>
