@@ -10,6 +10,8 @@
 // ---------------------------------------------------------------------------
 
 import type { DisplayHALOp } from "./display-op-ir.js";
+import type { ResolvedDisplay } from "./display-profile.js";
+import type { DisplayAdapterCode } from "./display-adapter.js";
 
 export interface GraphicsCapacity {
   /** Max nodes the retained tree may hold on this target. */
@@ -25,6 +27,20 @@ export interface GraphicsCapacity {
 export interface PlatformGraphicsStrategy {
   /** Resolve a display HAL op to target-specific C++. Return undefined to fall back. */
   resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined;
+
+  /**
+   * True if this strategy emits its own display adapters (AVR, ESP32). When
+   * false or undefined, generateDisplayAdapter() falls back to the built-in
+   * Adafruit registry — the Arduino path, unchanged.
+   */
+  providesDisplayAdapter?(): boolean;
+
+  /**
+   * Returns the adapter code for one display, or undefined to defer to the
+   * built-in Adafruit registry. Only called when providesDisplayAdapter()
+   * returns true.
+   */
+  resolveDisplayAdapter?(display: ResolvedDisplay): DisplayAdapterCode | undefined;
 
   /** Display driver ids this framework provides (e.g. new Set(["ili9341"])). */
   supportedDisplayDrivers(): ReadonlySet<string>;
