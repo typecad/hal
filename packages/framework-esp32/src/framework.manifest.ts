@@ -286,7 +286,6 @@ export default defineFrameworkManifest({
       { id: 'cuttlefish_halt', domain: 'esp32', notes: 'Mapped to esp_system_abort' },
       { id: 'timer_methods', domain: 'standard' },
       { id: 'static_array', domain: 'standard' },
-      { id: 'esp32_arduino_compat', domain: 'esp32', notes: 'HIGH/LOW/RISING/FALLING macros + millis() stand-ins' },
     ],
     suppressed: [],
   },

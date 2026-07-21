@@ -106,7 +106,12 @@ describe('docs/framework-coverage.md freshness', () => {
     // This file is tests/packages/cuttlefish/framework-manifest.test.ts.
     // Three ups reaches the repo root, then docs/framework-coverage.md.
     const committedPath = path.resolve(__dirname, '..', '..', '..', 'docs', 'framework-coverage.md');
-    const committed = fs.readFileSync(committedPath, 'utf8');
-    expect(committed, 'Run `npm run render:framework-coverage` to regenerate').toBe(fresh);
+    // Normalize CRLF → LF on both sides: git's core.autocrlf may rewrite
+    // line endings on commit/checkout (especially on Windows), so the
+    // working-tree file may have CRLF even though the renderer emits LF.
+    // The semantic content is what matters.
+    const committed = fs.readFileSync(committedPath, 'utf8').replace(/\r\n/g, '\n');
+    const normalizedFresh = fresh.replace(/\r\n/g, '\n');
+    expect(committed, 'Run `npm run render:framework-coverage` to regenerate').toBe(normalizedFresh);
   });
 });
