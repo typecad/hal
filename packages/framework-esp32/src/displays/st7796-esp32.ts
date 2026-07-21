@@ -21,6 +21,7 @@ import {
   esp32SpiCmdDataHelpers,
   esp32SpiPanelOps,
   esp32SpiAdapterSurface,
+  esp32SpiDisplayIncludes,
 } from "./esp32-spi-display-helpers.js";
 
 export const esp32St7796Adapter: DisplayAdapterGenerator = (display) => {
@@ -48,6 +49,7 @@ export const esp32St7796Adapter: DisplayAdapterGenerator = (display) => {
       `// No vendor GFX library, no Arduino SPI header.`,
       `#define CuttlefishDisplayTarget CuttlefishGFX`,
       `#define CuttlefishCanvas16 CuttlefishCanvas16`,
+      esp32SpiDisplayIncludes(),
     ].join("\n"),
 
     declaration: [

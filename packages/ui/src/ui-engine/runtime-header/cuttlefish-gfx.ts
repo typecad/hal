@@ -84,6 +84,9 @@ class CuttlefishGFX {
   virtual void drawTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color);
   virtual void fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2, int16_t y2, uint16_t color);
 
+  // Bitmaps — match Adafruit_GFX signatures.
+  virtual void drawRGBBitmap(int16_t x, int16_t y, const uint16_t* bitmap, int16_t w, int16_t h);
+
   // Text
   virtual void drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg, uint8_t size);
   virtual void write(uint8_t c);
@@ -326,6 +329,18 @@ void CuttlefishGFX::fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
     sb += dx02;
     if (a > b) { int16_t t = a; a = b; b = t; }
     drawFastHLine(a, y, b - a + 1, color);
+  }
+}
+
+// RGB565 bitmap — Adafruit_GFX.cpp drawRGBBitmap, adapted to call writePixel
+// through the panel ops (no memory-backed variant; the Adafruit mem-version
+// is unused by the cuttlefish runtime).
+void CuttlefishGFX::drawRGBBitmap(int16_t x, int16_t y, const uint16_t* bitmap, int16_t w, int16_t h) {
+  if (!bitmap || w <= 0 || h <= 0) return;
+  for (int16_t j = 0; j < h; j++) {
+    for (int16_t i = 0; i < w; i++) {
+      drawPixel(x + i, y + j, bitmap[(int32_t)j * w + i]);
+    }
   }
 }
 

@@ -88,6 +88,15 @@ export interface TranspilerUIHook {
 
   // ── Runtime header emission ─────────────────────────────────────────────
   /**
+   * Emits ONLY the CuttlefishGFX class definition (the shared GFX base for
+   * native display paths). Called separately from emitRuntimeHeader so the
+   * class can be emitted BEFORE display adapter declarations that
+   * instantiate CuttlefishGFX by value. Returns "" when active is false
+   * (Arduino path).
+   */
+  emitCuttlefishGfx(active: boolean): string;
+
+  /**
    * Options controlling runtime-header emission.
    *   - nativeDisplayActive: when true, emit the shared CuttlefishGFX class
    *     (used by native display adapters on AVR/ESP32). Arduino paths pass

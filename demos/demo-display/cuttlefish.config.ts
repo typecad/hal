@@ -15,9 +15,16 @@ const config: CuttlefishConfig = {
   mcu: '@typecad/mcu-esp32s3',
   board: '@typecad/board-esp32s3',
   framework: '@typecad/framework-esp32',
-  frameworkData: { buildTarget: 'esp32s3' },
+  frameworkData: {
+    buildTarget: 'esp32s3',
+    // The ST7796S native display adapter uses the IDF spi_master driver, which
+    // lives in the esp_driver_spi component (IDF v5+). The framework doesn't
+    // yet auto-add this component based on the active display driver — track
+    // as a follow-up. Declared here explicitly so the demo compiles.
+    components: { builtin: ['esp_driver_spi'] },
+  },
   output: { framework: 'esp32', optimize: 'size', outDir: './out' },
-  toolchain: { type: 'esp-idf' },
+  toolchain: { type: 'idf' },
   display: {
     profile: 'st7796-spi',
     cs: 5,

@@ -10,9 +10,25 @@
 // does NOT toggle CS. The adapter toggles CS itself via gpio_set_level
 // before/after each transaction. DC pin is likewise a separate GPIO the
 // adapter drives (low = command, high = data).
+//
+// Headers: this module emits the transport #includes (driver/spi_master.h,
+// driver/gpio.h) in the returned `includes` string so the adapter is
+// self-contained — the strategy's forcedIncludes doesn't need to know that
+// the active display uses SPI.
 // ---------------------------------------------------------------------------
 
 import type { ResolvedDisplay } from "@typecad/cuttlefish/api/shared";
+
+/**
+ * The C++ #include lines every ESP32 SPI display needs. Appended to the
+ * adapter's own `includes` block.
+ */
+export function esp32SpiDisplayIncludes(): string {
+  return [
+    `#include "driver/spi_master.h"`,
+    `#include "driver/gpio.h"`,
+  ].join("\n");
+}
 
 /**
  * The C++ state block emitted before the adapter functions. Declares the
@@ -42,6 +58,12 @@ export function esp32SpiDisplayState(display: ResolvedDisplay, controllerIndex: 
     `  /*.height=*/ 0,`,
     `  /*.ready=*/  false,`,
     `};`,
+    `// Forward-declare the panel-ops struct so __tc_display can reference it`,
+    `// before the function-pointer definitions (in functions block) are emitted.`,
+    `// 'extern' is the correct linkage here — the actual definition (with`,
+    `// initializers) lives in the functions block below.`,
+    `struct CuttlefishPanelOps;`,
+    `extern const CuttlefishPanelOps __esp32_display_ops;`,
   ].join("\n");
 }
 
@@ -66,6 +88,11 @@ export function esp32SpiBusInit(
     `{`,
     `  static bool __esp32_display_bus_ready = false;`,
     `  if (!__esp32_display_bus_ready) {`,
+    `    // IDF v6's spi_bus_config_t contains anonymous union members that trip`,
+    `    // -Werror=missing-field-initializers under any brace initialization in`,
+    `    // C++ (even {0}). Suppress the warning for this block only.`,
+    `#pragma GCC diagnostic push`,
+    `#pragma GCC diagnostic ignored "-Wmissing-field-initializers"`,
     `    spi_bus_config_t buscfg = {`,
     `      .mosi_io_num = ${mosiPin},`,
     `      .miso_io_num = ${misoPin < 0 ? -1 : misoPin},`,
@@ -73,17 +100,32 @@ export function esp32SpiBusInit(
     `      .quadwp_io_num = -1,`,
     `      .quadhd_io_num = -1,`,
     `    };`,
-    `    esp_err_t _r = spi_bus_initialize(${hostEnum}, &buscfg, SPI_DMA_CH_AUTO);`,
-    `    (void)_r;`,
-    `    __esp32_display_bus_ready = true;`,
-    `  }`,
-    `  if (!__esp32_display.dev) {`,
+    `    // Field order matches spi_device_interface_config_t declaration`,
+    `    // (C++ requires designators in declaration order):`,
+    `    //   mode → clock_speed_hz → spics_io_num → queue_size.`,
     `    spi_device_interface_config_t devcfg = {`,
-    `      .clock_speed_hz = ${spiHz},`,
     `      .mode = ${spiMode},`,
+    `      .clock_speed_hz = ${spiHz},`,
     `      .spics_io_num = -1,  // CS driven manually via gpio_set_level`,
     `      .queue_size = 4,`,
     `    };`,
+    `#pragma GCC diagnostic pop`,
+    `    esp_err_t _r = spi_bus_initialize(${hostEnum}, &buscfg, SPI_DMA_CH_AUTO);`,
+    `    (void)_r;`,
+    `    __esp32_display_bus_ready = true;`,
+    `    if (!__esp32_display.dev) {`,
+    `      spi_bus_add_device(${hostEnum}, &devcfg, &__esp32_display.dev);`,
+    `    }`,
+    `  } else if (!__esp32_display.dev) {`,
+    `#pragma GCC diagnostic push`,
+    `#pragma GCC diagnostic ignored "-Wmissing-field-initializers"`,
+    `    spi_device_interface_config_t devcfg = {`,
+    `      .mode = ${spiMode},`,
+    `      .clock_speed_hz = ${spiHz},`,
+    `      .spics_io_num = -1,`,
+    `      .queue_size = 4,`,
+    `    };`,
+    `#pragma GCC diagnostic pop`,
     `    spi_bus_add_device(${hostEnum}, &devcfg, &__esp32_display.dev);`,
     `  }`,
     `  __esp32_display.ready = true;`,
@@ -230,17 +272,17 @@ export function esp32SpiPanelOps(addrWindowCmds: "ili9341" | "st7796"): string {
     `static int16_t __esp32_op_width(void* /*ctx*/)  { return __esp32_display.width; }`,
     `static int16_t __esp32_op_height(void* /*ctx*/) { return __esp32_display.height; }`,
     ``,
-    `static const CuttlefishPanelOps __esp32_display_ops = {`,
-    `  __esp32_op_startWrite,`,
-    `  __esp32_op_endWrite,`,
-    `  __esp32_op_setAddrWindow,`,
-    `  __esp32_op_writePixels,`,
-    `  __esp32_op_writePixel,`,
-    `  __esp32_op_fillRect,`,
-    `  __esp32_op_width,`,
-    `  __esp32_op_height,`,
-    `  nullptr,  // flush — direct-mode panel, no backing store`,
-    `};`,
+      `const CuttlefishPanelOps __esp32_display_ops = {`,
+      `  __esp32_op_startWrite,`,
+      `  __esp32_op_endWrite,`,
+      `  __esp32_op_setAddrWindow,`,
+      `  __esp32_op_writePixels,`,
+      `  __esp32_op_writePixel,`,
+      `  __esp32_op_fillRect,`,
+      `  __esp32_op_width,`,
+      `  __esp32_op_height,`,
+      `  nullptr,  // flush — direct-mode panel, no backing store`,
+      `};`,
   ].join("\n");
 }
 

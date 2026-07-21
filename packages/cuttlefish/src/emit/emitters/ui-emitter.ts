@@ -211,6 +211,14 @@ export function emitUIRuntime(ctx: EmitterContext): void {
         ? "#define UI_COLOR_DEPTH 888\n#define UI_COLOR_T uint32_t\n#define UI_DIM_MASK 0x7F7F7Fu"
         : "#define UI_COLOR_DEPTH 565\n#define UI_COLOR_T uint16_t\n#define UI_DIM_MASK 0x7BEFu",
     );
+    // Native display adapters (AVR, ESP32) instantiate CuttlefishGFX by value
+    // in their declaration block. The class MUST be defined before that —
+    // emit the cuttlefish-gfx slice here, between the color preamble and the
+    // adapter declaration. Arduino path (Adafruit) returns "" from the slice.
+    const nativeDisplayActive = ctx.strategy?.providesDisplayAdapter?.() ?? false;
+    if (nativeDisplayActive) {
+      ctx.sourceLines.push(ui.emitCuttlefishGfx(true));
+    }
     ctx.sourceLines.push(adapter.declaration);
     ctx.sourceLines.push(adapter.functions);
   }
