@@ -108,6 +108,7 @@ export type {
   HALOpIR,
   HALOperationKind,
 } from './hal-op-ir.js';
+export { HAL_OPERATION_KINDS } from './hal-op-ir.js';
 
 // Display HAL Operation IR types (graphics draw calls)
 export type {
@@ -192,3 +193,30 @@ export type { AsyncRuntimeConfig } from './async-types.js';
 export { generatePromiseRuntime } from './promise-runtime.js';
 // Heap-free static async runtime generator (AVR / megaavr / no-<vector> targets)
 export { generateStaticAsyncRuntime } from './async-runtime-static.js';
+
+// Framework manifest schema + helper
+export {
+  FrameworkManifestSchema,
+  defineFrameworkManifest,
+  HAL_CATEGORIES,
+} from './framework-manifest.js';
+export type {
+  FrameworkManifest,
+  HalCategory,
+} from './framework-manifest.js';
+
+// Framework manifest discovery
+export {
+  KNOWN_FRAMEWORK_PACKAGES,
+  loadFrameworkManifest,
+} from './framework-manifest-registry.js';
+export type { KnownFrameworkPackage } from './framework-manifest-registry.js';
+
+// Framework manifest validator
+export { validateFrameworkManifest } from './validate-framework-manifest.js';
+export type {
+  ManifestValidationContext,
+  ManifestValidationResult,
+  ManifestValidationError,
+  ManifestValidationWarning,
+} from './validate-framework-manifest.js';

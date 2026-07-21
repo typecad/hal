@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./framework.manifest": {
+      "types": "./dist/framework.manifest.d.ts",
+      "default": "./dist/framework.manifest.js"
     }
   },
   "files": [

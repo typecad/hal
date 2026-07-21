@@ -167,6 +167,8 @@ import type { PlatformStrategy } from "./api/shared/index.js";
 import { isStringEnum } from "./api/shared/index.js";
 import { resolveStrategy } from "./platform/registry.js";
 import { loadFrameworkPackage } from "./framework-package.js";
+export { loadFrameworkPackage };
+export { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js";
 
 type LocatedDiagnostic = {

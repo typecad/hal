@@ -1,0 +1,116 @@
+# Framework Manifest Error Codes
+
+Every error produced by `validateFrameworkManifest` (in
+`packages/cuttlefish/src/api/shared/validate-framework-manifest.ts`) carries a
+stable `code` of the form `<category>/<subject>/<reason>`. This catalog lists
+every code, when it fires, and how to fix it.
+
+Warnings are prefixed `W/` and surface in the validator's `warnings` array
+but do not fail the build.
+
+## Identity
+
+| Code | Trigger | Fix |
+|---|---|---|
+| `identity/id-mismatch` | `strategy.id` ≠ `manifest.frameworkId` and no `inheritsStrategyId` declared | Set distinct strategy ids, or add `inheritsStrategyId: "<strategy.id>"` to the manifest to document intentional id reuse (AVR/ESP32 reuse `id = "arduino"` for registry takeover) |
+
+## Entrypoint
+
+| Code | Trigger | Fix |
+|---|---|---|
+| `entrypoint/entrypointFunctionName/mismatch` | Declared value differs from `strategy.entrypointFunctionName()` | Update manifest or strategy |
+| `entrypoint/requiresLoopFunction/mismatch` | Declared value differs from `strategy.requiresLoopFunction()` | Update manifest or strategy |
+| `entrypoint/sourceExtension/mismatch` | Declared value differs from `strategy.sourceExtension(true, false)` | Update manifest or strategy |
+| `entrypoint/generateHeaderFile/mismatch` | Declared value differs from `strategy.generateHeaderFile()` | Update manifest or strategy |
+
+## HAL coverage
+
+The HAL coverage validator probes `resolveHALOperation` (and `resolveDisplayOp`
+for `display.*` ops) with a minimal payload carrying just the operation
+discriminator. Op status is one of `supported`, `stub`, `unsupported`, or
+`probe-inconclusive`. The first three are cross-checked against resolver
+behavior; `probe-inconclusive` is an explicit acknowledgment that the minimal
+probe can't determine support (typically because the resolver needs a valid
+pin/config payload). The validator skips cross-checks for
+`probe-inconclusive` ops; the renderer flags them for manual review.
+
+| Code | Trigger | Fix |
+|---|---|---|
+| `hal/<cat>/declared-supported-but-undefined` | Category `supported: true` but resolver returns `undefined`/throws for every verifiable op | Implement lowering or change status to `unsupported` with a reason |
+| `hal/<cat>/declared-unsupported-but-actually-lowers` | Category `supported: false` but resolver lowers at least one verifiable op | Either mark supported or override the resolver to throw/return undefined. **This code catches inherited-broken behavior** — e.g. a framework that inherits the parent's `resolveDisplayOp` without overriding it will lower display ops despite declaring display unsupported. |
+| `hal/<cat>/op/<kind>/status-mismatch` | Per-op status disagrees with resolver behavior | Align op status with reality |
+| `hal/<cat>/op/<kind>/undeclared` | Known op kind (from `HAL_OPERATION_KINDS` / `DISPLAY_OPERATION_KINDS`) missing from `manifest.hal.<cat>.ops` | Add the missing op kind |
+
+### Known strategic violations
+
+Two frameworks currently emit display-related errors because they inherit
+`resolveDisplayOp` from Arduino without overriding it:
+
+- `framework-avr`: declares `display.supported: false`, but inherited resolver lowers `display.init`.
+- `framework-esp32`: declares `display.supported: false` (v1.1 deferral), but inherited resolver lowers `display.init`.
+
+These are acknowledged in `tests/packages/cuttlefish/framework-manifest.test.ts`
+as `KNOWN_STRATEGIC_ERRORS` and tolerated until a separate spec fixes the
+inheritance. The central test fails on any *other* error so new regressions
+surface immediately.
+
+## Polyfills
+
+A polyfill is "produced" if either `generateNativePolyfills()` OR
+`nativePolyfills()` mentions it. The former filters by program analysis (may
+omit polyfills not needed for the probe's synthetic empty program); the
+latter is the unconditional set the strategy claims to handle natively.
+
+| Code | Trigger | Fix |
+|---|---|---|
+| `polyfill/<id>/declared-but-not-emitted` | Polyfill listed in `emitted` but not produced by either method | Remove from `emitted` or implement |
+| `polyfill/<id>/declared-suppressed-but-emitted` | Polyfill listed in `suppressed` but actually produced | Remove from `suppressed` or stop producing |
+
+## Toolchain
+
+| Code | Trigger | Fix |
+|---|---|---|
+| `toolchain/compile/required` | `toolchain.operations.compile: false` | Must be true (LoadedFramework contract requires a compile implementation) |
+| `toolchain/<op>/declared-but-missing` | Operation declared true but not a function on the loaded Toolchain object | Implement or change declaration |
+
+## Library resolution
+
+| Code | Trigger | Fix |
+|---|---|---|
+| `library-resolution/<field>/declared-but-not-exported` | Field declared true but corresponding named export missing from framework index | Export it from `src/index.ts` or change declaration. (`field` ∈ `isFrameworkLibraryImport`, `getFrameworkLibraryHeaderName`, `buildClassNameMap`, `tryGenerateLibDecl`.) |
+
+## Type emission
+
+| Code | Trigger | Fix |
+|---|---|---|
+| `type-emission/<field>/mismatch` | `mathHeader`, `needsStdString`, `needsStdVector`, `needsIostream`, or `needsStdFunction` differs from strategy method | Align manifest with strategy |
+| `type-emission/stdlib-support-mismatch` | `stdlibSupport` object ≠ `strategy.getStdLibSupport()` | Update one |
+
+## Ambient types
+
+Ambient type names are extracted from `strategy.ambientTypeDeclarations()`
+output by matching `interface|type|class NAME` and `const NAME:` patterns.
+
+| Code | Trigger | Fix |
+|---|---|---|
+| `ambient-types/<name>/declared-but-not-emitted` | Listed in `ambientTypes` but not found in `ambientTypeDeclarations()` output | Add or remove |
+| `W/ambient-types/<name>/emitted-but-undeclared` | Strategy emits but manifest doesn't list | Add to manifest (warning only) |
+
+## Conformance
+
+| Code | Trigger | Fix |
+|---|---|---|
+| `conformance/hardware/<group>/file-not-found` | Listed `hardwareTestGroups` entry has no `<packageRoot>/tests/<group>.test.ts` | Remove from list or add the test |
+| `conformance/hal/<name>/file-not-found` | Listed `halResolutionTests` entry has no `<repoTestsDir>/packages/<package-dir-name>/hal-resolution/<name>.test.ts` | Remove from list or add the test. `<package-dir-name>` is the last segment of `packageName` (e.g. `framework-esp32`). |
+
+## Adding a new error code
+
+1. Pick a code of the form `<category>/<subject>/<reason>` using existing
+   category prefixes (`identity`, `entrypoint`, `hal`, `polyfill`,
+   `toolchain`, `library-resolution`, `type-emission`, `ambient-types`,
+   `conformance`).
+2. Add the code as a constant or inline string in `validate-framework-manifest.ts`.
+3. Add a row to the appropriate table above.
+4. If the code is a warning (not an error), prefix it with `W/`.
+5. If the code can be triggered by a unit test, add a case to
+   `tests/packages/cuttlefish/validate-framework-manifest.test.ts`.

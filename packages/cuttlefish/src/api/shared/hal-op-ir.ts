@@ -961,3 +961,81 @@ export type HALOpIR =
  * Useful for type-safe switch statements in framework strategies.
  */
 export type HALOperationKind = HALOpIR["operation"];
+
+/**
+ * Runtime registry of every HAL operation discriminator, parallel to
+ * {@link DISPLAY_OPERATION_KINDS}. Lets tests and the manifest validator
+ * enumerate HAL op kinds without parsing types (which are erased at runtime).
+ * Keep in sync with {@link HALOpIR} above.
+ *
+ * Note: `display.*` ops are NOT listed here — they live in
+ * {@link DISPLAY_OPERATION_KINDS} in `display-op-ir.ts`. The manifest
+ * validator imports both and unions them when probing display ops.
+ */
+export const HAL_OPERATION_KINDS = [
+  // GPIO
+  'gpio.write', 'gpio.read', 'gpio.toggle', 'gpio.set_mode',
+  // PWM
+  'pwm.write', 'pwm.get_frequency', 'pwm.get_resolution',
+  // ADC
+  'adc.read', 'adc.get_resolution', 'adc.set_reference',
+  'adc.get_reference', 'adc.read_voltage',
+  // DAC
+  'dac.write',
+  // Interrupts
+  'interrupt.attach', 'interrupt.detach',
+  // Tone
+  'tone.play', 'tone.stop',
+  // Timing
+  'timing.delay', 'timing.delay_microseconds', 'timing.millis',
+  'timing.micros', 'timing.free_heap', 'timing.set_interval',
+  'timing.set_timeout', 'timing.clear_interval', 'timing.clear_timeout',
+  // Power
+  'power.deep_sleep', 'power.light_sleep', 'power.set_cpu_frequency',
+  // I2C
+  'i2c.begin', 'i2c.end', 'i2c.set_clock', 'i2c.begin_transmission',
+  'i2c.write', 'i2c.write_bytes', 'i2c.write_buffer', 'i2c.read_buffer',
+  'i2c.end_transmission', 'i2c.request_from', 'i2c.available', 'i2c.read',
+  'i2c.recover',
+  // SPI
+  'spi.begin', 'spi.end', 'spi.transfer', 'spi.begin_transaction',
+  'spi.end_transaction', 'spi.set_mode', 'spi.set_bit_order',
+  'spi.cs_low', 'spi.cs_high', 'spi.read_buffer',
+  // UART
+  'uart.begin', 'uart.end', 'uart.print', 'uart.println', 'uart.printf',
+  'uart.write', 'uart.read', 'uart.peek', 'uart.available', 'uart.flush',
+  // Pulse
+  'pulse.in', 'pulse.in_long',
+  // Shift
+  'shift.out', 'shift.in',
+  // Board
+  'board.resolve',
+  // Watchdog timer
+  'wdt.enable', 'wdt.reset', 'wdt.disable',
+  // Snprintf
+  'snprintf.emit',
+  // WiFi
+  'wifi.connect', 'wifi.connect_start', 'wifi.disconnect', 'wifi.status',
+  'wifi.is_connected', 'wifi.local_ip', 'wifi.rssi', 'wifi.mac',
+  'wifi.set_hostname', 'wifi.set_static_ip', 'wifi.set_auto_reconnect',
+  'wifi.set_power_save', 'wifi.set_tx_power', 'wifi.on_event',
+  'wifi.ap_start', 'wifi.ap_stop', 'wifi.ap_client_count', 'wifi.ap_ip',
+  'wifi.ap_set_channel', 'wifi.ap_set_hidden', 'wifi.ap_set_max_clients',
+  'wifi.scan', 'wifi.scan_start', 'wifi.scan_done', 'wifi.scan_count',
+  'wifi.scan_ssid', 'wifi.scan_rssi', 'wifi.scan_encryption',
+  'wifi.scan_channel', 'wifi.save_credentials', 'wifi.connect_saved',
+  'wifi.clear_credentials', 'wifi.wait_connected', 'wifi.wait_disconnected',
+  // HTTP
+  'http.begin', 'http.reset', 'http.set_header', 'http.set_timeout',
+  'http.set_max_body', 'http.set_body', 'http.set_insecure',
+  'http.set_ca_cert', 'http.send', 'http.send_start', 'http.done',
+  'http.status', 'http.ok', 'http.body', 'http.content_length',
+  'http.response_header',
+  // Raw passthrough
+  'raw',
+] as const;
+
+// Compile-time exhaustiveness check: every HAL_OPERATION_KINDS entry must
+// be a valid HALOpIR["operation"]. If you add an op to the const but not the
+// union (or vice versa), this assignment fails to type-check.
+const _halOpKindsExhaustive: HALOperationKind[] = [...HAL_OPERATION_KINDS];

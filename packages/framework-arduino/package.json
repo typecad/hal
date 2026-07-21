@@ -21,6 +21,10 @@
     "./displays/ili9341-spi": {
       "types": "./dist/displays/ili9341-spi.d.ts",
       "default": "./dist/displays/ili9341-spi.js"
+    },
+    "./framework.manifest": {
+      "types": "./dist/framework.manifest.d.ts",
+      "default": "./dist/framework.manifest.js"
     }
   },
   "files": [
