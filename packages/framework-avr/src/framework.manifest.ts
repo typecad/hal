@@ -266,22 +266,18 @@ export default defineFrameworkManifest({
       },
     },
     display: {
-      // Native AVR drivers via framework-avr/src/displays/*. Each drives the
-      // panel through _spi_ and _twi_ register helpers already emitted by
-      // shimLines(). No Adafruit, no <SPI.h>/<Wire.h>.
+      // Native AVR drivers via framework-avr/src/displays/*. AVR's 2KB RAM
+      // (ATmega328P) constrains support to page-buffered displays — only
+      // SSD1309 (1KB page buffer) fits. ILI9341/ST7796S need 150KB+ RGB565
+      // framebuffers or unacceptably slow direct-mode SPI on an 8-bit MCU;
+      // SSD1680 needs 5KB+ mono buffers. Those three are not supported on AVR.
+      // ESP32 (with PSRAM) supports all four — see framework-esp32.
       //
       // resolveDisplayOp returns undefined (display ops are resolved through
       // the adapter path, not per-op HAL lowering) and resolveDisplayAdapter
-      // dispatches by driver.
-      //
-      // ops are 'probe-inconclusive' rather than 'supported' until the four
-      // native adapters (ili9341/st7796/ssd1309/ssd1680) land. The validator
-      // probes each op via resolveDisplayOp, which returns undefined because
-      // the adapter path bypasses HAL lowering — so the probe can't see the
-      // implementation. Flip to 'supported' in Task 17 once the adapters are
-      // emitted and unit-tested.
+      // dispatches by driver, throwing a clear error for unsupported drivers.
       supported: true,
-      drivers: ['ili9341', 'st7796', 'ssd1309', 'ssd1680'],
+      drivers: ['ssd1309'],
       colorFormat: 'rgb565',
       partialCoverage: false,
       ops: {

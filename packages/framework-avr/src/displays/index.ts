@@ -1,8 +1,8 @@
-// Barrel for AVR native display adapters. Each adapter drives its panel through
-// the _spi_* (TFTs) or _twi_* (SSD1309) register helpers already emitted by
-// NativeAVRStrategy.shimLines(). No Adafruit, no <SPI.h>/<Wire.h>.
+// Barrel for AVR native display adapters.
+//
+// AVR's 2KB RAM (ATmega328P) constrains support to page-buffered displays.
+// Only SSD1309 (1KB page buffer) is supported. ILI9341/ST7796S/SSD1680 need
+// framebuffers that exceed AVR's RAM; the strategy's resolveDisplayAdapter
+// throws a clear error for those drivers instead of routing here.
 
-export { avrIli9341Adapter } from "./ili9341-avr.js";
-export { avrSt7796Adapter } from "./st7796-avr.js";
 export { avrSsd1309Adapter } from "./ssd1309-avr.js";
-export { avrSsd1680Adapter } from "./ssd1680-avr.js";

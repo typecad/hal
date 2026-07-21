@@ -9,7 +9,7 @@
 
 import { ArduinoStrategy } from '@typecad/framework-arduino';
 import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode } from '@typecad/cuttlefish/api/shared';
-import { avrIli9341Adapter, avrSt7796Adapter, avrSsd1309Adapter, avrSsd1680Adapter } from './displays/index.js';
+import { avrSsd1309Adapter } from './displays/index.js';
 import {
   getPinInfo,
   getPinBitMask,
@@ -1186,10 +1186,21 @@ export class NativeAVRStrategy extends ArduinoStrategy {
 
   override resolveDisplayAdapter(display: ResolvedDisplay): DisplayAdapterCode | undefined {
     switch (display.driver) {
-      case "ili9341": return avrIli9341Adapter(display);
-      case "st7796":  return avrSt7796Adapter(display);
       case "ssd1309": return avrSsd1309Adapter(display);
-      case "ssd1680": return avrSsd1680Adapter(display);
+      case "ili9341":
+      case "st7796":
+      case "ssd1680":
+        // These drivers need framebuffers (150KB+ for RGB565 TFTs, 5KB+ for
+        // SSD1680 e-ink) that don't fit in AVR's 2KB RAM, and direct-mode
+        // SPI without a framebuffer is unusably slow on an 8-bit MCU. Throw
+        // a clear compile-time error rather than falling through to the
+        // Adafruit registry (which would emit uncompilable Arduino code).
+        throw new Error(
+          `display driver "${display.driver}" is not supported on AVR: ` +
+          `the panel's framebuffer requirements exceed AVR's 2KB RAM. ` +
+          `SSD1309 (1KB page buffer) is the only supported display on AVR. ` +
+          `For TFT/e-ink panels, target framework-esp32 (with PSRAM).`,
+        );
       default: return undefined;  // defer to built-in Adafruit registry
     }
   }
