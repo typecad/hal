@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
   KNOWN_FRAMEWORK_PACKAGES,
   loadFrameworkManifest,
@@ -9,6 +11,9 @@ import {
   validateFramework,
   loadFrameworkForValidation,
 } from './manifest-test-helpers.js';
+// Renderer lives in scripts/ — vitest resolves TS directly. Imports from
+// the built cuttlefish dist, so the cuttlefish build must run first.
+import { renderCoverageToString } from '../../../scripts/render-framework-coverage.js';
 
 // Error codes that are acknowledged "known strategic" failures — documented
 // in the manifest itself and slated for a separate fix spec. The central
@@ -93,4 +98,15 @@ describe('framework manifests', () => {
   void resolveFrameworkPackageRoot;
   void resolveRepoTestsDir;
   void loadFrameworkForValidation;
+});
+
+describe('docs/framework-coverage.md freshness', () => {
+  it('matches a fresh render', async () => {
+    const fresh = await renderCoverageToString();
+    // This file is tests/packages/cuttlefish/framework-manifest.test.ts.
+    // Three ups reaches the repo root, then docs/framework-coverage.md.
+    const committedPath = path.resolve(__dirname, '..', '..', '..', 'docs', 'framework-coverage.md');
+    const committed = fs.readFileSync(committedPath, 'utf8');
+    expect(committed, 'Run `npm run render:framework-coverage` to regenerate').toBe(fresh);
+  });
 });
