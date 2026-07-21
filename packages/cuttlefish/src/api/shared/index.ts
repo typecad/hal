@@ -132,6 +132,10 @@ export { effectiveDisplaySize, normalizeDisplayRotation, resolveDisplayProfile, 
 // the SDL preview adapter and the native CuttlefishGFX runtime-header slice.
 export { GLCDFONT_BYTES, renderGlcdfontArray } from './glcdfont.js';
 
+// Display adapter generator types. Consumed by strategy.resolveDisplayAdapter
+// implementations (AVR, ESP32) and the Adafruit registry.
+export type { DisplayAdapterCode, DisplayAdapterGenerator } from './display-adapter.js';
+
 // Display capabilities descriptor (Phase 2: display-agnostic core)
 export type {
   DisplayCapabilities,

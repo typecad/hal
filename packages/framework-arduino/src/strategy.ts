@@ -5,7 +5,7 @@
 // cpp-emitter.ts, TypeCAD-map.ts, and arduino-profile.ts.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig, GraphicsCapacity, DisplayHALOp } from "@typecad/cuttlefish/api/shared";
+import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig, GraphicsCapacity, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode } from "@typecad/cuttlefish/api/shared";
 import type { StatementIR, HALOpIR } from "@typecad/cuttlefish/api/shared";
 import { generatePromiseRuntime, generateStaticAsyncRuntime, applyStringMethodRewrites, parsedIsVector } from "@typecad/cuttlefish/api/shared";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen.js";
@@ -1601,6 +1601,17 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
     // Only resolve once a display is initialized (display.init sets the context).
     if (!this._displayCtx) return undefined;
     return resolveILI9341Op(op, this._displayCtx);
+  }
+
+  /**
+   * Arduino uses the built-in Adafruit adapter registry — does NOT provide
+   * its own. Native strategies (AVR, ESP32) override this to return true and
+   * implement resolveDisplayAdapter to emit framework-native driver code.
+   */
+  providesDisplayAdapter(): boolean { return false; }
+
+  resolveDisplayAdapter(_display: ResolvedDisplay): DisplayAdapterCode | undefined {
+    return undefined;  // defer to the Adafruit registry
   }
 
   supportedDisplayDrivers(): ReadonlySet<string> {

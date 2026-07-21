@@ -8,7 +8,8 @@
 // ---------------------------------------------------------------------------
 
 import { ArduinoStrategy } from '@typecad/framework-arduino';
-import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR, Diagnostic, DisplayHALOp } from '@typecad/cuttlefish/api/shared';
+import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode } from '@typecad/cuttlefish/api/shared';
+import { avrIli9341Adapter, avrSt7796Adapter, avrSsd1309Adapter, avrSsd1680Adapter } from './displays/index.js';
 import {
   getPinInfo,
   getPinBitMask,
@@ -1179,6 +1180,18 @@ export class NativeAVRStrategy extends ArduinoStrategy {
    */
   override resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
     return undefined;
+  }
+
+  override providesDisplayAdapter(): boolean { return true; }
+
+  override resolveDisplayAdapter(display: ResolvedDisplay): DisplayAdapterCode | undefined {
+    switch (display.driver) {
+      case "ili9341": return avrIli9341Adapter(display);
+      case "st7796":  return avrSt7796Adapter(display);
+      case "ssd1309": return avrSsd1309Adapter(display);
+      case "ssd1680": return avrSsd1680Adapter(display);
+      default: return undefined;  // defer to built-in Adafruit registry
+    }
   }
 
   /**
