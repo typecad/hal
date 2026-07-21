@@ -531,10 +531,14 @@ function validateConformance(
     }
   }
   for (const name of manifest.conformance.halResolutionTests) {
+    // Test dir convention is tests/packages/<package-dir-name>/hal-resolution/.
+    // Package dir name is the last segment of packageName (e.g.
+    // "@typecad/framework-esp32" -> "framework-esp32"), not frameworkId.
+    const packageDirName = manifest.packageName.split('/').pop() ?? manifest.frameworkId;
     const filePath = path.join(
       ctx.repoTestsDir,
       'packages',
-      manifest.frameworkId,
+      packageDirName,
       'hal-resolution',
       `${name}.test.ts`,
     );
