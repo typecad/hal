@@ -168,16 +168,23 @@ Map results to manifest op status:
 | Probe result | Manifest status | Meaning |
 |---|---|---|
 | `lowers` | `'supported'` | Fully lowered via `resolveHALOperation`; verified by probe |
-| `throws` | `'probe-inconclusive'` | Probe can't verify (resolver needs real pin/config args). Common for `dac.write`, `adc.read` |
+| `throws` | `'probe-inconclusive'` | Probe can't verify — resolver needs strategy-held state (e.g. `board.resolve` needs a configured board profile; `display.*` needs driver init; `dac.write` on ESP32 validates pin against actual DAC pins). Consider adding a payload template to `OP_PROBE_PAYLOADS` if the throw is just missing-arg validation rather than missing-state |
 | `no-emit` | `'unsupported'` | No lowering; verify your strategy legitimately doesn't handle it |
 | (special) | `'polyfill'` | Lowered via runtime polyfill, not HAL resolver. Currently only `timing.set_interval/set_timeout/clear_interval/clear_timeout` (backed by `timer_methods`). See `POLYFILL_BACKED_OPS` |
 | (special) | `'stub'` | Emits code but partial/non-functional. Rare — use when a real lowering exists but isn't complete |
 
 > **Note on `throws` vs `unsupported`:** if your resolver throws for an op
 > because the minimal probe lacks valid args, declare it
-> `'probe-inconclusive'`. Declaring it `'unsupported'` when the framework
-> actually supports the op is dishonest — and a future richer probe will
-> catch the contradiction.
+> `'probe-inconclusive'` — but FIRST check whether adding a payload to
+> `OP_PROBE_PAYLOADS` (in `validate-framework-manifest.ts`) would let the
+> probe succeed. Many ops just need a few required fields (e.g. `i2c.write_bytes`
+> needs `bus`+`bytes`, `uart.printf` needs `format`+`args`). Only fall back
+> to `probe-inconclusive` if the resolver needs strategy-held state (board
+> profile, display driver) that a payload can't supply.
+>
+> Declaring an op `'unsupported'` when the framework actually supports it is
+> dishonest — the validator will eventually catch the contradiction when
+> `OP_PROBE_PAYLOADS` grows an entry for it.
 
 ### 2.3 Probe the non-HAL fields
 
@@ -508,6 +515,7 @@ strategy on every test run.
 - **Discovery registry:** `packages/cuttlefish/src/api/shared/framework-manifest-registry.ts`
 - **HAL op kinds:** `packages/cuttlefish/src/api/shared/hal-op-ir.ts` (`HAL_OPERATION_KINDS`)
 - **Display op kinds:** `packages/cuttlefish/src/api/shared/display-op-ir.ts` (`DISPLAY_OPERATION_KINDS`)
+- **Per-op probe payloads:** `OP_PROBE_PAYLOADS` in `validate-framework-manifest.ts` — minimal valid args for ops whose resolver needs more than the operation discriminator (e.g. `i2c.write_bytes` needs `bus`+`bytes`, `uart.printf` needs `format`+`args`). When you add a new HAL op kind whose resolver destructures required fields, add an entry here so the validator can probe it instead of marking it `probe-inconclusive`.
 - **Polyfill-routed ops:** `POLYFILL_BACKED_OPS` in `framework-manifest.ts`
 - **Renderer:** `scripts/render-framework-coverage.ts`
 - **Central test:** `tests/packages/cuttlefish/framework-manifest.test.ts`

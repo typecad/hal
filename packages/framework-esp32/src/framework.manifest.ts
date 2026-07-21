@@ -59,11 +59,11 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: true,
       ops: {
-        'adc.read': 'probe-inconclusive',
+        'adc.read': 'supported',
         'adc.get_resolution': 'supported',
         'adc.set_reference': 'supported',
         'adc.get_reference': 'supported',
-        'adc.read_voltage': 'probe-inconclusive',
+        'adc.read_voltage': 'supported',
       },
     },
     dac: {
@@ -122,7 +122,7 @@ export default defineFrameworkManifest({
         'i2c.set_clock': 'supported',
         'i2c.begin_transmission': 'supported',
         'i2c.write': 'supported',
-        'i2c.write_bytes': 'probe-inconclusive',
+        'i2c.write_bytes': 'supported',
         'i2c.write_buffer': 'supported',
         'i2c.read_buffer': 'supported',
         'i2c.end_transmission': 'supported',

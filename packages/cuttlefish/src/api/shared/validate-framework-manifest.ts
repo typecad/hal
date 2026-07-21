@@ -90,15 +90,42 @@ function opKindsForCategory(category: string): string[] {
   return all.filter((k) => prefixes.some((p) => k.startsWith(p)));
 }
 
-// Builds a minimal HALOpIR probe carrying just the operation discriminator.
-// resolveHALOperation typically dispatches on op.operation; the rest of the
-// payload is usually irrelevant for "does this framework handle this op".
+// Minimal valid payloads for op kinds whose resolver requires more than just
+// the operation discriminator. The default probe (just `{ operation: kind }`)
+// works for most ops; this map fills in the smallest payload that lets the
+// resolver run without throwing on missing-arg validation.
+//
+// Templates must be the MINIMAL payload the resolver needs — enough to prove
+// the framework handles the op, not to produce semantically correct output.
+// Keep entries scoped to fields the resolver actually destructures.
+const OP_PROBE_PAYLOADS: Readonly<Record<string, object>> = {
+  // i2c.write_bytes requires bus + bytes (resolver iterates bytes).
+  'i2c.write_bytes': { bus: 'i2c0', address: 0x50, bytes: [0x00, 0x01] },
+  // uart.printf requires format + args (resolver joins args).
+  'uart.printf': { port: 'Serial', format: '%d', args: ['x'] },
+  // adc.read / adc.read_voltage require pin.
+  'adc.read': { pin: 0 },
+  'adc.read_voltage': { pin: 0 },
+  // dac.write requires pin + value.
+  'dac.write': { pin: 0, value: 128 },
+  // display.* require coordinates/color (still inconclusive without driver
+  // context — included so future driver-aware probes can build on them).
+  'display.fill_rect': { x: 0, y: 0, w: 10, h: 10, color: 0xffff },
+  'display.draw_text': { x: 0, y: 0, text: 'x', font: '8x16', color: 0xffff },
+  'display.draw_rect': { x: 0, y: 0, w: 10, h: 10, color: 0xffff },
+  'display.flush': { rects: [{ x: 0, y: 0, w: 10, h: 10 }] },
+};
+
+// Builds a HALOpIR probe. Uses OP_PROBE_PAYLOADS when available so resolvers
+// that destructure required fields don't throw on the probe itself.
 function buildHalProbe(opKind: string): HALOpIR {
-  return { operation: opKind } as unknown as HALOpIR;
+  const payload = OP_PROBE_PAYLOADS[opKind];
+  return { operation: opKind, ...(payload ?? {}) } as unknown as HALOpIR;
 }
 
 function buildDisplayProbe(opKind: string): DisplayHALOp {
-  return { operation: opKind } as unknown as DisplayHALOp;
+  const payload = OP_PROBE_PAYLOADS[opKind];
+  return { operation: opKind, ...(payload ?? {}) } as unknown as DisplayHALOp;
 }
 
 type OpResolutionResult = 'code' | 'expression' | 'undefined' | 'thrown';

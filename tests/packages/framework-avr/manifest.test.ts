@@ -6,6 +6,10 @@ import { validateFrameworkWithCoverage } from '../cuttlefish/manifest-test-helpe
 const KNOWN_STRATEGIC_ERRORS: ReadonlySet<string> = new Set<string>([
   'hal/display/declared-unsupported-but-actually-lowers',
   'hal/display/op/display.init/status-mismatch',
+  'hal/display/op/display.fill_rect/status-mismatch',
+  'hal/display/op/display.draw_text/status-mismatch',
+  'hal/display/op/display.draw_rect/status-mismatch',
+  'hal/display/op/display.flush/status-mismatch',
 ]);
 
 describe('framework-avr manifest', () => {
