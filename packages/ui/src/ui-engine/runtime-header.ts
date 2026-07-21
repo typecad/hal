@@ -41,9 +41,20 @@ import { emitTick } from "./runtime-header/tick.js";
 import { emitAntialiasing } from "./runtime-header/antialiasing.js";
 import { emitKeyboard } from "./runtime-header/keyboard.js";
 import { emitGuardClose } from "./runtime-header/guard-close.js";
+import { emitCuttlefishGfx } from "./runtime-header/cuttlefish-gfx.js";
 
-export function emitRuntimeHeader(): string {
+export interface EmitRuntimeHeaderOptions {
+  /**
+   * True when a native display adapter (AVR, ESP32) is in use. Emits the
+   * shared CuttlefishGFX class into the runtime header. Arduino (Adafruit)
+   * passes false (or omits the option) and never sees the class.
+   */
+  nativeDisplayActive?: boolean;
+}
+
+export function emitRuntimeHeader(opts?: EmitRuntimeHeaderOptions): string {
   return [
+    emitCuttlefishGfx(opts?.nativeDisplayActive ?? false),
     emitTypesDefines(),
     emitStructs(),
     emitColorMonoRefresh(),

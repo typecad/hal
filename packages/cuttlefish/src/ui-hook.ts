@@ -87,7 +87,13 @@ export interface TranspilerUIHook {
   resolveColorInternal(input: string, format: "rgb565" | "rgb666" | "rgb888" | "mono"): number;
 
   // ── Runtime header emission ─────────────────────────────────────────────
-  emitRuntimeHeader(): string;
+  /**
+   * Options controlling runtime-header emission.
+   *   - nativeDisplayActive: when true, emit the shared CuttlefishGFX class
+   *     (used by native display adapters on AVR/ESP32). Arduino paths pass
+   *     false (default) and use Adafruit_GFX directly.
+   */
+  emitRuntimeHeader(opts?: { nativeDisplayActive?: boolean }): string;
 
   // ── File splitting ──────────────────────────────────────────────────────
   splitUiFile(src: string): UiFileParts;
