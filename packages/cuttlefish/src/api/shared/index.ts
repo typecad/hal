@@ -108,6 +108,7 @@ export type {
   HALOpIR,
   HALOperationKind,
 } from './hal-op-ir.js';
+export { HAL_OPERATION_KINDS } from './hal-op-ir.js';
 
 // Display HAL Operation IR types (graphics draw calls)
 export type {
