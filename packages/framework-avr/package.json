@@ -11,7 +11,7 @@
       "default": "./dist/index.js"
     },
     "./framework.manifest": {
-      "types": "./framework.manifest.ts",
+      "types": "./dist/framework.manifest.d.ts",
       "default": "./dist/framework.manifest.js"
     }
   },

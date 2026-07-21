@@ -1,0 +1,342 @@
+import { defineFrameworkManifest } from '@typecad/cuttlefish/api/shared';
+
+// AVR framework manifest. Coverage reflects actual resolveHALOperation behavior
+// (NativeAVRStrategy inherits from ArduinoStrategy; differences are in the
+// overridden methods). WiFi/HTTP are unsupported on AVR (no hardware).
+//
+// Display is declared unsupported: AVR has no display driver lowering. The
+// validator will flag this against the inherited resolveDisplayOp (which still
+// lowers display.init) — that latent inheritance bug is documented for a
+// future spec.
+
+export default defineFrameworkManifest({
+  schemaVersion: 1,
+  frameworkId: 'avr',
+  packageName: '@typecad/framework-avr',
+  canonical: false,
+  displayName: 'AVR (bare-metal)',
+  description: 'Bare-metal AVR framework. Native register access via ArduinoStrategy overrides.',
+  basedOn: '@typecad/framework-arduino',
+  implementationMode: 'extends-canonical',
+  inheritsStrategyId: 'arduino',
+
+  entrypoint: {
+    entrypointFunctionName: 'setup',
+    requiresLoopFunction: true,
+    sourceExtension: 'ino',
+    generateHeaderFile: false,
+  },
+
+  profile: {
+    targets: ['atmega328p', 'atmega2560'],
+    forcedIncludes: ['<avr/io.h>'],
+    symbolAliases: {
+      delay: '_native_delay_ms',
+      delayMicroseconds: '_native_delay_us',
+      map: '_native_map',
+      constrain: '_native_constrain',
+      noInterrupts: 'cli',
+      interrupts: 'sei',
+    },
+  },
+
+  hal: {
+    gpio: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'gpio.write': 'supported',
+        'gpio.read': 'supported',
+        'gpio.toggle': 'supported',
+        'gpio.set_mode': 'supported',
+      },
+    },
+    pwm: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'pwm.write': 'supported',
+        'pwm.get_frequency': 'supported',
+        'pwm.get_resolution': 'supported',
+      },
+    },
+    adc: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'adc.read': 'supported',
+        'adc.get_resolution': 'supported',
+        'adc.set_reference': 'supported',
+        'adc.get_reference': 'supported',
+        'adc.read_voltage': 'supported',
+      },
+    },
+    dac: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'dac.write': 'supported',
+      },
+    },
+    interrupts: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'interrupt.attach': 'supported',
+        'interrupt.detach': 'supported',
+      },
+    },
+    tone: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'tone.play': 'supported',
+        'tone.stop': 'supported',
+      },
+    },
+    timing: {
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        'timing.delay': 'supported',
+        'timing.delay_microseconds': 'supported',
+        'timing.millis': 'supported',
+        'timing.micros': 'supported',
+        'timing.free_heap': 'supported',
+        'timing.set_interval': 'unsupported',
+        'timing.set_timeout': 'unsupported',
+        'timing.clear_interval': 'unsupported',
+        'timing.clear_timeout': 'unsupported',
+      },
+    },
+    power: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'power.deep_sleep': 'supported',
+        'power.light_sleep': 'supported',
+        'power.set_cpu_frequency': 'supported',
+      },
+    },
+    i2c: {
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        'i2c.begin': 'supported',
+        'i2c.end': 'supported',
+        'i2c.set_clock': 'supported',
+        'i2c.begin_transmission': 'supported',
+        'i2c.write': 'supported',
+        'i2c.write_bytes': 'probe-inconclusive',
+        'i2c.write_buffer': 'supported',
+        'i2c.read_buffer': 'supported',
+        'i2c.end_transmission': 'supported',
+        'i2c.request_from': 'supported',
+        'i2c.available': 'supported',
+        'i2c.read': 'supported',
+        'i2c.recover': 'supported',
+      },
+    },
+    spi: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'spi.begin': 'supported',
+        'spi.end': 'supported',
+        'spi.transfer': 'supported',
+        'spi.begin_transaction': 'supported',
+        'spi.end_transaction': 'supported',
+        'spi.set_mode': 'supported',
+        'spi.set_bit_order': 'supported',
+        'spi.cs_low': 'supported',
+        'spi.cs_high': 'supported',
+        'spi.read_buffer': 'supported',
+      },
+    },
+    uart: {
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        'uart.begin': 'supported',
+        'uart.end': 'supported',
+        'uart.print': 'supported',
+        'uart.println': 'supported',
+        'uart.printf': 'probe-inconclusive',
+        'uart.write': 'supported',
+        'uart.read': 'supported',
+        'uart.peek': 'supported',
+        'uart.available': 'supported',
+        'uart.flush': 'supported',
+      },
+    },
+    pulse: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'pulse.in': 'supported',
+        'pulse.in_long': 'supported',
+      },
+    },
+    shift: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'shift.out': 'supported',
+        'shift.in': 'supported',
+      },
+    },
+    board: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'board.resolve': 'probe-inconclusive',
+      },
+    },
+    wdt: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'wdt.enable': 'supported',
+        'wdt.reset': 'supported',
+        'wdt.disable': 'supported',
+      },
+    },
+    wifi: {
+      supported: false,
+      unsupportedReason: 'AVR has no native WiFi hardware.',
+      partialCoverage: false,
+      ops: {
+        'wifi.connect': 'unsupported',
+        'wifi.connect_start': 'unsupported',
+        'wifi.disconnect': 'unsupported',
+        'wifi.status': 'unsupported',
+        'wifi.is_connected': 'unsupported',
+        'wifi.local_ip': 'unsupported',
+        'wifi.rssi': 'unsupported',
+        'wifi.mac': 'unsupported',
+        'wifi.set_hostname': 'unsupported',
+        'wifi.set_static_ip': 'unsupported',
+        'wifi.set_auto_reconnect': 'unsupported',
+        'wifi.set_power_save': 'unsupported',
+        'wifi.set_tx_power': 'unsupported',
+        'wifi.on_event': 'unsupported',
+        'wifi.ap_start': 'unsupported',
+        'wifi.ap_stop': 'unsupported',
+        'wifi.ap_client_count': 'unsupported',
+        'wifi.ap_ip': 'unsupported',
+        'wifi.ap_set_channel': 'unsupported',
+        'wifi.ap_set_hidden': 'unsupported',
+        'wifi.ap_set_max_clients': 'unsupported',
+        'wifi.scan': 'unsupported',
+        'wifi.scan_start': 'unsupported',
+        'wifi.scan_done': 'unsupported',
+        'wifi.scan_count': 'unsupported',
+        'wifi.scan_ssid': 'unsupported',
+        'wifi.scan_rssi': 'unsupported',
+        'wifi.scan_encryption': 'unsupported',
+        'wifi.scan_channel': 'unsupported',
+        'wifi.save_credentials': 'unsupported',
+        'wifi.connect_saved': 'unsupported',
+        'wifi.clear_credentials': 'unsupported',
+        'wifi.wait_connected': 'unsupported',
+        'wifi.wait_disconnected': 'unsupported',
+      },
+    },
+    http: {
+      supported: false,
+      unsupportedReason: 'AVR has no native HTTP client.',
+      partialCoverage: false,
+      ops: {
+        'http.begin': 'unsupported',
+        'http.reset': 'unsupported',
+        'http.set_header': 'unsupported',
+        'http.set_timeout': 'unsupported',
+        'http.set_max_body': 'unsupported',
+        'http.set_body': 'unsupported',
+        'http.set_insecure': 'unsupported',
+        'http.set_ca_cert': 'unsupported',
+        'http.send': 'unsupported',
+        'http.send_start': 'unsupported',
+        'http.done': 'unsupported',
+        'http.status': 'unsupported',
+        'http.ok': 'unsupported',
+        'http.body': 'unsupported',
+        'http.content_length': 'unsupported',
+        'http.response_header': 'unsupported',
+      },
+    },
+    display: {
+      // HONEST DECLARATION: AVR has no display driver. The strategy inherits
+      // Arduino's resolveDisplayOp, which lowers display.init — a latent bug.
+      // The validator catches this contradiction; resolution tracked in a
+      // future spec (override resolveDisplayOp to throw on AVR).
+      supported: false,
+      unsupportedReason: 'AVR has no display driver. resolveDisplayOp is inherited from Arduino and lowers display.init — known latent inheritance bug; future spec will override.',
+      drivers: [],
+      colorFormat: null,
+      partialCoverage: false,
+      ops: {
+        'display.init': 'unsupported',
+        'display.fill_rect': 'unsupported',
+        'display.draw_text': 'unsupported',
+        'display.draw_rect': 'unsupported',
+        'display.flush': 'unsupported',
+      },
+    },
+    raw: { supported: true },
+  },
+
+  polyfills: {
+    emitted: [
+      { id: 'string_methods', domain: 'standard' },
+      { id: 'cuttlefish_halt', domain: 'standard' },
+      { id: 'timer_methods', domain: 'standard' },
+      { id: 'static_array', domain: 'standard' },
+      { id: 'console', domain: 'embedded', notes: 'Native UART console polyfill' },
+      { id: 'native_millis', domain: 'embedded', notes: 'Timer0 ISR-based millis/micros' },
+    ],
+    suppressed: [],
+  },
+
+  toolchain: {
+    backend: 'arduino-cli',
+    operations: { prepare: true, compile: true, upload: true, monitor: true },
+    reexportedFrom: '@typecad/framework-arduino',
+  },
+
+  libraryResolution: {
+    isFrameworkLibraryImport: true,
+    getFrameworkLibraryHeaderName: true,
+    buildClassNameMap: true,
+    tryGenerateLibDecl: true,
+    reexportedFrom: '@typecad/framework-arduino',
+  },
+
+  typeEmission: {
+    normalizeCppType: true,
+    mathHeader: '<math.h>',
+    needsStdString: false,
+    needsStdVector: false,
+    needsIostream: false,
+    needsStdFunction: false,
+    stdlibSupport: {
+      hasVector: true,
+      hasString: true,
+      hasIostream: true,
+      hasExceptions: true,
+      hasRTTI: true,
+      recommendedArrayImpl: 'std_vector',
+      recommendedStringImpl: 'std_string',
+    },
+  },
+
+  ambientTypes: ['Timing', 'EEPROM', 'WDT', 'Preferences', 'Owned', 'Shared', 'Mutable'],
+
+  conformance: {
+    hardwareTestGroups: [
+      '01-basics', '15-math-functions', '16-bit-operations', '30-timing',
+      '40-gpio', '41-analog', '42-timers',
+    ],
+    halResolutionTests: [],
+  },
+});

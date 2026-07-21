@@ -302,18 +302,26 @@ function validatePolyfills(
   acc: Accumulator,
 ): void {
   const strat = ctx.strategy;
+  // A polyfill is "produced" if either generateNativePolyfills OR
+  // nativePolyfills mentions it. generateNativePolyfills filters by program
+  // analysis (may omit polyfills not needed for the empty probe program);
+  // nativePolyfills is the unconditional set the strategy handles natively.
+  // Unioning both gives the true picture of what the strategy claims to emit.
   const produced = new Set<string>();
   try {
     const irs = strat.generateNativePolyfills?.(
-      // Empty program is fine: polyfill selection is by id, not analysis.
       { kind: 'program', modules: [], classes: [], functions: [] } as never,
       undefined,
     ) ?? [];
     for (const ir of irs) produced.add(ir.id);
   } catch {
-    // If the strategy throws on a synthetic program, fall back to nativePolyfills().
+    // generateNativePolyfills may throw on synthetic input; that's fine.
+  }
+  try {
     const ids = strat.nativePolyfills?.() ?? new Set<string>();
     for (const id of ids) produced.add(id);
+  } catch {
+    // nativePolyfills is optional.
   }
 
   for (const declared of manifest.polyfills.emitted) {
