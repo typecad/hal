@@ -35,6 +35,7 @@
     "typecheck": "tsc -b",
     "ci": "npm test && npm run build --workspaces",
     "test": "vitest run",
+    "render:framework-coverage": "tsx scripts/render-framework-coverage.ts",
     "test:watch": "vitest",
     "test:ui-layout": "vitest run tests/packages/cuttlefish/ui-layout-harness.test.ts",
     "test:hw": "npm run test:hw --workspace @typecad/hal && npm run test:hw --workspace @typecad/framework-arduino",
@@ -52,6 +53,7 @@
     "css-tree": "^3.2.1",
     "eslint": "^10.4.1",
     "linkedom": "^0.18.12",
+    "tsx": "^4.23.1",
     "vitest": "^4.0.18",
     "yoga-layout": "^3.2.1"
   }
