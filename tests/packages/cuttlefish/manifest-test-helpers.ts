@@ -29,12 +29,12 @@ export function resolveFrameworkPackageRoot(packageName: string): string {
 /**
  * Resolves the repo-rooted tests directory: <repoRoot>/tests.
  * This file lives at tests/packages/cuttlefish/manifest-test-helpers.ts,
- * so the repo root is three directories up from __dirname's parent.
+ * so the tests dir is two directories up from __dirname.
  */
 export function resolveRepoTestsDir(): string {
   // __dirname is tests/packages/cuttlefish (after tsc; same relative layout
-  // in vitest's TS resolution). Three ups lands at the repo root.
-  return path.resolve(__dirname, '..', '..', '..');
+  // in vitest's TS resolution). Two ups lands at <repoRoot>/tests.
+  return path.resolve(__dirname, '..', '..');
 }
 
 /**
