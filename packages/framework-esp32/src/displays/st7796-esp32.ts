@@ -53,8 +53,26 @@ export const esp32St7796Adapter: DisplayAdapterGenerator = (display) => {
   if (!spi0) throw new Error(`ESP32 chip ${chip.id} has no SPI controller 0`);
   const spiMode = 0;
 
-  // MADCTL: 0x40 (MX) + 0x08 if BGR. Matches Adafruit_ST7796S's colorOrder handling.
-  const madctl = colorOrder === "bgr" ? 0x48 : 0x40;
+  // MADCTL byte: combines orientation bits (rotation) with the color-order
+  // bit (BGR). Transcribed from Adafruit_ST7796S::setRotation() (see
+  // demos/demo-st/lib/Adafruit_ST7735_and_ST7789_Library/Adafruit_ST7796S.cpp):
+  //   rotation 0 (portrait)         → MX
+  //   rotation 1 (landscape)        → MV  ← the demo's default
+  //   rotation 2 (portrait flipped) → MY
+  //   rotation 3 (landscape flipped)→ MY | MX | MV
+  // Color order: BGR adds 0x08; RGB is 0x00 (no-op bit).
+  // ST77XX_MADCTL_MY=0x80, _MX=0x40, _MV=0x20, _RGB=0x00.
+  const colorBit = colorOrder === "bgr" ? 0x08 : 0x00;
+  const rotationBits = (() => {
+    switch (rotation & 3) {
+      case 0: return 0x40;            // MX
+      case 1: return 0x20;            // MV (landscape)
+      case 2: return 0x80;            // MY
+      case 3: return 0x80 | 0x40 | 0x20; // MY | MX | MV
+      default: return 0x20;           // defensive: landscape
+    }
+  })();
+  const madctl = rotationBits | colorBit;
 
   // Inversion command: 0x21 INVON or 0x20 INVOFF, sent after sleep-out.
   const invCmd = invertDisplay ? "0x21" : "0x20";
@@ -94,7 +112,7 @@ export const esp32St7796Adapter: DisplayAdapterGenerator = (display) => {
       `  { uint8_t b2[]  = { 0xF0, 1, 0xC3 }; __esp32_spi_cmd_data(b2, 3); }  // unlock`,
       `  { uint8_t b3[]  = { 0xF0, 1, 0x96 }; __esp32_spi_cmd_data(b3, 3); }`,
       `  { uint8_t b4[]  = { 0xC5, 1, 0x1C }; __esp32_spi_cmd_data(b4, 3); }  // VCOM control`,
-      `  { uint8_t b5[]  = { 0x36, 1, ${"0x" + madctl.toString(16)} }; __esp32_spi_cmd_data(b5, 3); }  // MADCTL (MX + BGR when configured)`,
+      `  { uint8_t b5[]  = { 0x36, 1, ${"0x" + madctl.toString(16)} }; __esp32_spi_cmd_data(b5, 3); }  // MADCTL (rotation ${rotation & 3} + ${colorOrder})`,
       `  { uint8_t b6[]  = { 0x3A, 1, 0x55 }; __esp32_spi_cmd_data(b6, 3); }  // 565 (16-bit/pixel)`,
       `  { uint8_t b7[]  = { 0xB0, 1, 0x80 }; __esp32_spi_cmd_data(b7, 3); }  // Interface`,
       `  { uint8_t b8[]  = { 0xB4, 1, 0x01 }; __esp32_spi_cmd_data(b8, 3); }  // Inversion control`,
@@ -108,7 +126,7 @@ export const esp32St7796Adapter: DisplayAdapterGenerator = (display) => {
       `  __esp32_spi_cmd(0x29);   // DISPON`,
       `  vTaskDelay(pdMS_TO_TICKS(150));`,
       `  __esp32_op_fillRect(NULL, 0, 0, ${w}, ${h}, 0x0000);`,
-      `  (void)${rotation};`,
+      `  (void)${rotation};  // rotation applied via MADCTL byte above`,
       `}`,
 
       ``,

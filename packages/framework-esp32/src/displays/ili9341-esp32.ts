@@ -43,12 +43,34 @@ export const esp32Ili9341Adapter: DisplayAdapterGenerator = (display) => {
   const h = display.height;
   const rotation = display.rotation ?? 1;
   const spiHz = display.spiFrequency ?? 40_000_000;
+  const colorOrder = display.colorOrder ?? "bgr";
 
   // SPI2_HOST is the conventional display bus on ESP32-S3.
   const chip = getActiveChip();
   const spi0 = chip.spi.controllers[0];
   if (!spi0) throw new Error(`ESP32 chip ${chip.id} has no SPI controller 0`);
   const spiMode = 0;
+
+  // MADCTL byte: combines orientation bits (rotation) with the color-order
+  // bit (BGR). Transcribed from Adafruit_ILI9341::setRotation() (see
+  // demos/demo-st/lib/Adafruit_ILI9341/Adafruit_ILI9341.cpp):
+  //   rotation 0 (portrait)         → MX
+  //   rotation 1 (landscape)        → MV
+  //   rotation 2 (portrait flipped) → MY
+  //   rotation 3 (landscape flipped)→ MX | MY | MV
+  // Color order: BGR adds 0x08; RGB is 0x00.
+  // MADCTL_MY=0x80, _MX=0x40, _MV=0x20, _BGR=0x08.
+  const colorBit = colorOrder === "bgr" ? 0x08 : 0x00;
+  const rotationBits = (() => {
+    switch (rotation & 3) {
+      case 0: return 0x40;            // MX
+      case 1: return 0x20;            // MV (landscape)
+      case 2: return 0x80;            // MY
+      case 3: return 0x40 | 0x80 | 0x20; // MX | MY | MV
+      default: return 0x20;           // defensive: landscape
+    }
+  })();
+  const madctl = rotationBits | colorBit;
 
   return {
     includes: [
@@ -95,7 +117,7 @@ export const esp32Ili9341Adapter: DisplayAdapterGenerator = (display) => {
       `    { 0xC1, 1, 0x10 },   // PWCTR2`,
       `    { 0xC5, 2, 0x3e, 0x28 },   // VMCTR1`,
       `    { 0xC7, 1, 0x86 },   // VMCTR2`,
-      `    { 0x36, 1, 0x48 },   // MADCTL: MX | BGR`,
+      `    { 0x36, 1, ${"0x" + madctl.toString(16)} },   // MADCTL: rotation ${rotation & 3} + ${colorOrder}`,
       `    { 0x37, 1, 0x00 },   // VSCRSADD`,
       `    { 0x3A, 1, 0x55 },   // PIXFMT: 16-bit/pixel (565)`,
       `    { 0xB1, 2, 0x00, 0x18 },   // FRMCTR1`,
@@ -114,7 +136,7 @@ export const esp32Ili9341Adapter: DisplayAdapterGenerator = (display) => {
       `  vTaskDelay(pdMS_TO_TICKS(150));`,
       `  // Fill black on init.`,
       `  __esp32_op_fillRect(NULL, 0, 0, ${w}, ${h}, 0x0000);`,
-      `  (void)${rotation};  // rotation applied via MADCTL bit 0x80 if needed`,
+      `  (void)${rotation};  // rotation applied via MADCTL byte above`,
       `}`,
 
       ``,

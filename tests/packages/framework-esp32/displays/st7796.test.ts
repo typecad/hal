@@ -56,9 +56,17 @@ describe("ESP32 ST7796S adapter", () => {
     expect(a.functions).toContain("80000000");
   });
 
-  it("honors colorOrder: bgr (MADCTL bit 0x08)", () => {
-    // MADCTL byte for ST7796S with BGR should be 0x48 (MX | BGR).
-    expect(a.functions).toContain("0x48");
+  it("honors rotation: 1 (landscape, MV bit) + colorOrder: bgr (BGR bit)", () => {
+    // MADCTL byte for ST7796S rotation=1 (landscape, MV=0x20) + BGR (0x08)
+    // = 0x28. Transcribed from Adafruit_ST7796S::setRotation(1).
+    // The base fixture uses rotation: 1, colorOrder: 'bgr'.
+    // Match the MADCTL b5[] line specifically (the value 0x48 also appears
+    // in source comments that get emitted into the output).
+    expect(a.functions).toMatch(/b5\[\][^}]*0x36,\s*1,\s*0x28\b/);
+    // The MV bit (0x20) MUST be present — without it the panel stays in
+    // portrait and the transpiler's landscape geometry produces a 95%-white
+    // screen (the bug this test guards against).
+    expect(a.functions).not.toMatch(/b5\[\][^}]*0x36,\s*1,\s*0x48\b/);  // 0x48 = rotation 0, no MV
   });
 
   it("implements all required display_* adapter functions", () => {
