@@ -1,0 +1,545 @@
+// ---------------------------------------------------------------------------
+// Framework manifest validator
+//
+// Cross-checks each manifest claim against the loaded PlatformStrategy,
+// Toolchain, and module exports. Errors are plain data (not thrown) so the
+// validator can be called from tests, a future CLI, or agents reading errors
+// programmatically.
+//
+// Categories A-H are documented in docs/framework-manifest-error-codes.md.
+// ---------------------------------------------------------------------------
+
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+import type { PlatformStrategy } from './platform-strategy.js';
+import type { FrameworkToolchain } from '../../framework-registry.js';
+import type { FrameworkManifest } from './framework-manifest.js';
+import { HAL_OPERATION_KINDS } from './hal-op-ir.js';
+import { DISPLAY_OPERATION_KINDS } from './display-op-ir.js';
+import type { HALOpIR } from './hal-op-ir.js';
+import type { DisplayHALOp } from './display-op-ir.js';
+
+export interface ManifestValidationContext {
+  strategy: PlatformStrategy;
+  toolchain?: FrameworkToolchain;
+  moduleExports: Record<string, unknown>;
+  packageRoot: string;
+  repoTestsDir: string;
+}
+
+export interface ManifestValidationError {
+  code: string;
+  path: string;
+  message: string;
+  subject?: string;
+}
+
+export interface ManifestValidationWarning {
+  code: string;
+  path: string;
+  message: string;
+  subject?: string;
+}
+
+export interface ManifestValidationResult {
+  valid: boolean;
+  errors: ManifestValidationError[];
+  warnings: ManifestValidationWarning[];
+}
+
+class Accumulator {
+  readonly errors: ManifestValidationError[] = [];
+  readonly warnings: ManifestValidationWarning[] = [];
+
+  error(code: string, path: string, message: string, subject?: string): void {
+    this.errors.push({ code, path, message, subject });
+  }
+
+  warning(code: string, path: string, message: string, subject?: string): void {
+    this.warnings.push({ code, path, message, subject });
+  }
+}
+
+// Map each HAL category to the prefix its op kinds share.
+const CATEGORY_PREFIXES: Record<string, string[]> = {
+  gpio: ['gpio.'],
+  pwm: ['pwm.'],
+  adc: ['adc.'],
+  dac: ['dac.'],
+  interrupts: ['interrupt.'],
+  tone: ['tone.'],
+  timing: ['timing.'],
+  power: ['power.'],
+  i2c: ['i2c.'],
+  spi: ['spi.'],
+  uart: ['uart.'],
+  pulse: ['pulse.'],
+  shift: ['shift.'],
+  board: ['board.'],
+  wdt: ['wdt.'],
+  wifi: ['wifi.'],
+  http: ['http.'],
+  display: ['display.'],
+};
+
+function opKindsForCategory(category: string): string[] {
+  const prefixes = CATEGORY_PREFIXES[category] ?? [];
+  const all = [...HAL_OPERATION_KINDS, ...DISPLAY_OPERATION_KINDS];
+  return all.filter((k) => prefixes.some((p) => k.startsWith(p)));
+}
+
+// Builds a minimal HALOpIR probe carrying just the operation discriminator.
+// resolveHALOperation typically dispatches on op.operation; the rest of the
+// payload is usually irrelevant for "does this framework handle this op".
+function buildHalProbe(opKind: string): HALOpIR {
+  return { operation: opKind } as unknown as HALOpIR;
+}
+
+function buildDisplayProbe(opKind: string): DisplayHALOp {
+  return { operation: opKind } as unknown as DisplayHALOp;
+}
+
+type OpResolutionResult = 'code' | 'expression' | 'undefined' | 'thrown';
+
+function probeResolve(
+  strategy: PlatformStrategy,
+  opKind: string,
+): OpResolutionResult {
+  const isDisplay = opKind.startsWith('display.');
+  try {
+    const op = isDisplay ? buildDisplayProbe(opKind) : buildHalProbe(opKind);
+    const result = isDisplay
+      ? strategy.resolveDisplayOp?.(op as DisplayHALOp)
+      : strategy.resolveHALOperation?.(op as HALOpIR);
+    if (!result) return 'undefined';
+    if (result.code !== undefined) return 'code';
+    if (result.expression !== undefined) return 'expression';
+    return 'undefined';
+  } catch {
+    return 'thrown';
+  }
+}
+
+function statusFromResolution(res: OpResolutionResult): 'lowers' | 'no-emit' {
+  return res === 'undefined' || res === 'thrown' ? 'no-emit' : 'lowers';
+}
+
+// ---------------------------------------------------------------------------
+// Category A — identity
+// ---------------------------------------------------------------------------
+
+function validateIdentity(
+  manifest: FrameworkManifest,
+  ctx: ManifestValidationContext,
+  acc: Accumulator,
+): void {
+  const strategyId = ctx.strategy.id;
+  const matchesDirect = strategyId === manifest.frameworkId;
+  const matchesInherited =
+    manifest.inheritsStrategyId !== undefined &&
+    manifest.inheritsStrategyId === strategyId;
+  if (!matchesDirect && !matchesInherited) {
+    acc.error(
+      'identity/id-mismatch',
+      'frameworkId',
+      `manifest.frameworkId is "${manifest.frameworkId}" but strategy.id is "${strategyId}". ` +
+        `Set strategy.id to match, or add "inheritsStrategyId: "${strategyId}"" to the manifest ` +
+        `to document intentional id reuse.`,
+      manifest.frameworkId,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Category B — entrypoint
+// ---------------------------------------------------------------------------
+
+function validateEntrypoint(
+  manifest: FrameworkManifest,
+  ctx: ManifestValidationContext,
+  acc: Accumulator,
+): void {
+  const ep = manifest.entrypoint;
+  const strat = ctx.strategy;
+  const checks: Array<[
+    'entrypointFunctionName' | 'requiresLoopFunction' | 'sourceExtension' | 'generateHeaderFile',
+    unknown,
+    unknown,
+  ]> = [
+    ['entrypointFunctionName', ep.entrypointFunctionName, strat.entrypointFunctionName()],
+    ['requiresLoopFunction', ep.requiresLoopFunction, strat.requiresLoopFunction()],
+    ['sourceExtension', ep.sourceExtension, strat.sourceExtension(true, false)],
+    ['generateHeaderFile', ep.generateHeaderFile, strat.generateHeaderFile()],
+  ];
+  for (const [field, declared, actual] of checks) {
+    if (declared !== actual) {
+      acc.error(
+        `entrypoint/${field}/mismatch`,
+        `entrypoint.${field}`,
+        `manifest declares ${field}=${JSON.stringify(declared)} but strategy returns ${JSON.stringify(actual)}.`,
+        field,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Category C — HAL coverage
+// ---------------------------------------------------------------------------
+
+function validateHalCoverage(
+  manifest: FrameworkManifest,
+  ctx: ManifestValidationContext,
+  acc: Accumulator,
+): void {
+  for (const [category, declarationRaw] of Object.entries(manifest.hal)) {
+    if (category === 'raw') continue;
+    const declaration = declarationRaw as {
+      supported: boolean;
+      unsupportedReason?: string;
+      ops: Record<string, 'supported' | 'stub' | 'unsupported'>;
+      partialCoverage?: boolean;
+    };
+    const knownKinds = opKindsForCategory(category);
+
+    // Check that every known op kind for this category appears in ops.
+    for (const kind of knownKinds) {
+      if (!(kind in declaration.ops)) {
+        acc.error(
+          `hal/${category}/op/${kind}/undeclared`,
+          `hal.${category}.ops.${kind}`,
+          `manifest.hal.${category}.ops is missing "${kind}". Add it with a status of supported/stub/unsupported.`,
+          kind,
+        );
+      }
+    }
+
+    // Probe each declared op and cross-check status vs resolver behavior.
+    for (const [kind, status] of Object.entries(declaration.ops)) {
+      const res = probeResolve(ctx.strategy, kind);
+      const lowers = statusFromResolution(res) === 'lowers';
+
+      if (status === 'supported' && !lowers) {
+        acc.error(
+          `hal/${category}/op/${kind}/status-mismatch`,
+          `hal.${category}.ops.${kind}`,
+          `op "${kind}" declared "supported" but resolver returned ${res}. Either implement the lowering or change the op status.`,
+          kind,
+        );
+      } else if (status === 'stub' && !lowers) {
+        acc.error(
+          `hal/${category}/op/${kind}/status-mismatch`,
+          `hal.${category}.ops.${kind}`,
+          `op "${kind}" declared "stub" but resolver emitted nothing (${res}). Either emit something or change to "unsupported".`,
+          kind,
+        );
+      } else if (status === 'unsupported' && lowers) {
+        acc.error(
+          `hal/${category}/op/${kind}/status-mismatch`,
+          `hal.${category}.ops.${kind}`,
+          `op "${kind}" declared "unsupported" but resolver actually lowers (${res}). Either mark it supported or remove the lowering.`,
+          kind,
+        );
+      }
+    }
+
+    // Category-level summary check.
+    if (declaration.supported) {
+      const anyLowers = knownKinds.some(
+        (k) => statusFromResolution(probeResolve(ctx.strategy, k)) === 'lowers',
+      );
+      if (!anyLowers) {
+        acc.error(
+          `hal/${category}/declared-supported-but-undefined`,
+          `hal.${category}`,
+          `manifest.hal.${category}.supported is true but resolver returns undefined for every op kind. Change supported to false with unsupportedReason, or implement the lowering.`,
+          category,
+        );
+      }
+    } else {
+      const anyLowers = knownKinds.some(
+        (k) => statusFromResolution(probeResolve(ctx.strategy, k)) === 'lowers',
+      );
+      if (anyLowers) {
+        acc.error(
+          `hal/${category}/declared-unsupported-but-actually-lowers`,
+          `hal.${category}`,
+          `manifest.hal.${category}.supported is false but resolver lowers at least one op. Either mark supported: true or override the resolver to throw/return undefined.`,
+          category,
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Category D — polyfills
+// ---------------------------------------------------------------------------
+
+function validatePolyfills(
+  manifest: FrameworkManifest,
+  ctx: ManifestValidationContext,
+  acc: Accumulator,
+): void {
+  const strat = ctx.strategy;
+  const produced = new Set<string>();
+  try {
+    const irs = strat.generateNativePolyfills?.(
+      // Empty program is fine: polyfill selection is by id, not analysis.
+      { kind: 'program', modules: [], classes: [], functions: [] } as never,
+      undefined,
+    ) ?? [];
+    for (const ir of irs) produced.add(ir.id);
+  } catch {
+    // If the strategy throws on a synthetic program, fall back to nativePolyfills().
+    const ids = strat.nativePolyfills?.() ?? new Set<string>();
+    for (const id of ids) produced.add(id);
+  }
+
+  for (const declared of manifest.polyfills.emitted) {
+    if (!produced.has(declared.id)) {
+      acc.error(
+        `polyfill/${declared.id}/declared-but-not-emitted`,
+        `polyfills.emitted.${declared.id}`,
+        `polyfill "${declared.id}" declared emitted but generateNativePolyfills/nativePolyfills did not produce it.`,
+        declared.id,
+      );
+    }
+  }
+  for (const suppressed of manifest.polyfills.suppressed) {
+    if (produced.has(suppressed.id)) {
+      acc.error(
+        `polyfill/${suppressed.id}/declared-suppressed-but-emitted`,
+        `polyfills.suppressed.${suppressed.id}`,
+        `polyfill "${suppressed.id}" declared suppressed but the strategy actually emits it.`,
+        suppressed.id,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Category E — toolchain
+// ---------------------------------------------------------------------------
+
+function validateToolchain(
+  manifest: FrameworkManifest,
+  ctx: ManifestValidationContext,
+  acc: Accumulator,
+): void {
+  const ops = manifest.toolchain.operations;
+  if (!ops.compile) {
+    acc.error(
+      'toolchain/compile/required',
+      'toolchain.operations.compile',
+      'toolchain.operations.compile must be true (LoadedFramework contract requires a compile implementation).',
+      'compile',
+    );
+  }
+  const tc = ctx.toolchain;
+  if (tc) {
+    const checks: Array<['prepare' | 'compile' | 'upload' | 'monitor', boolean]> = [
+      ['prepare', ops.prepare],
+      ['compile', ops.compile],
+      ['upload', ops.upload],
+      ['monitor', ops.monitor],
+    ];
+    for (const [op, declared] of checks) {
+      if (declared && typeof (tc as unknown as Record<string, unknown>)[op] !== 'function') {
+        acc.error(
+          `toolchain/${op}/declared-but-missing`,
+          `toolchain.operations.${op}`,
+          `operation "${op}" declared true but is not a function on the loaded Toolchain.`,
+          op,
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Category F — library resolution
+// ---------------------------------------------------------------------------
+
+function validateLibraryResolution(
+  manifest: FrameworkManifest,
+  ctx: ManifestValidationContext,
+  acc: Accumulator,
+): void {
+  if (!manifest.libraryResolution) return;
+  const lr = manifest.libraryResolution;
+  const checks: Array<[
+    'isFrameworkLibraryImport' | 'getFrameworkLibraryHeaderName' | 'buildClassNameMap' | 'tryGenerateLibDecl',
+    boolean,
+  ]> = [
+    ['isFrameworkLibraryImport', lr.isFrameworkLibraryImport],
+    ['getFrameworkLibraryHeaderName', lr.getFrameworkLibraryHeaderName],
+    ['buildClassNameMap', lr.buildClassNameMap],
+    ['tryGenerateLibDecl', lr.tryGenerateLibDecl],
+  ];
+  for (const [name, declared] of checks) {
+    if (declared && typeof ctx.moduleExports[name] !== 'function') {
+      acc.error(
+        `library-resolution/${name}/declared-but-not-exported`,
+        `libraryResolution.${name}`,
+        `"${name}" declared true but not exported from the framework package index.`,
+        name,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Category G — type emission
+// ---------------------------------------------------------------------------
+
+function validateTypeEmission(
+  manifest: FrameworkManifest,
+  ctx: ManifestValidationContext,
+  acc: Accumulator,
+): void {
+  const te = manifest.typeEmission;
+  const strat = ctx.strategy;
+
+  const fieldChecks: Array<[
+    'mathHeader' | 'needsStdString' | 'needsStdVector' | 'needsIostream' | 'needsStdFunction',
+    unknown,
+    unknown,
+  ]> = [
+    ['mathHeader', te.mathHeader, strat.mathHeader()],
+    ['needsStdString', te.needsStdString, strat.needsStdString()],
+    ['needsStdVector', te.needsStdVector, strat.needsStdVector()],
+    ['needsIostream', te.needsIostream, strat.needsIostream()],
+    ['needsStdFunction', te.needsStdFunction, strat.needsStdFunction()],
+  ];
+  for (const [field, declared, actual] of fieldChecks) {
+    if (declared !== actual) {
+      acc.error(
+        `type-emission/${field}/mismatch`,
+        `typeEmission.${field}`,
+        `manifest declares ${field}=${JSON.stringify(declared)} but strategy returns ${JSON.stringify(actual)}.`,
+        field,
+      );
+    }
+  }
+
+  const actualStdlib = strat.getStdLibSupport();
+  const declaredStdlib = te.stdlibSupport;
+  const stdlibEqual =
+    actualStdlib.hasVector === declaredStdlib.hasVector &&
+    actualStdlib.hasString === declaredStdlib.hasString &&
+    actualStdlib.hasIostream === declaredStdlib.hasIostream &&
+    actualStdlib.hasExceptions === declaredStdlib.hasExceptions &&
+    actualStdlib.hasRTTI === declaredStdlib.hasRTTI &&
+    actualStdlib.recommendedArrayImpl === declaredStdlib.recommendedArrayImpl &&
+    actualStdlib.recommendedStringImpl === declaredStdlib.recommendedStringImpl;
+  if (!stdlibEqual) {
+    acc.error(
+      'type-emission/stdlib-support-mismatch',
+      'typeEmission.stdlibSupport',
+      `manifest stdlibSupport does not match strategy.getStdLibSupport() return.`,
+    );
+  }
+
+  // Ambient types
+  const emittedAmbient = new Set<string>();
+  try {
+    const decls = strat.ambientTypeDeclarations?.() ?? [];
+    for (const d of decls) {
+      if (typeof d === 'string') {
+        const m = /\b(?:interface|type|class)\s+([A-Za-z_$][\w$]*)/.exec(d);
+        if (m) emittedAmbient.add(m[1]);
+      } else if (d && typeof d === 'object' && 'name' in d) {
+        emittedAmbient.add(String((d as Record<string, unknown>).name));
+      }
+    }
+  } catch {
+    // ambientTypeDeclarations is optional and may require a context.
+  }
+  for (const declared of manifest.ambientTypes) {
+    if (!emittedAmbient.has(declared)) {
+      acc.error(
+        `ambient-types/${declared}/declared-but-not-emitted`,
+        `ambientTypes.${declared}`,
+        `ambient type "${declared}" declared but not found in ambientTypeDeclarations() output.`,
+        declared,
+      );
+    }
+  }
+  for (const emitted of emittedAmbient) {
+    if (!manifest.ambientTypes.includes(emitted)) {
+      acc.warning(
+        `ambient-types/${emitted}/emitted-but-undeclared`,
+        'ambientTypes',
+        `ambient type "${emitted}" emitted by strategy but not listed in manifest. Consider adding it.`,
+        emitted,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Category H — conformance
+// ---------------------------------------------------------------------------
+
+function validateConformance(
+  manifest: FrameworkManifest,
+  ctx: ManifestValidationContext,
+  acc: Accumulator,
+): void {
+  for (const group of manifest.conformance.hardwareTestGroups) {
+    const filePath = path.join(ctx.packageRoot, 'tests', `${group}.test.ts`);
+    if (!fs.existsSync(filePath)) {
+      acc.error(
+        `conformance/hardware/${group}/file-not-found`,
+        `conformance.hardwareTestGroups.${group}`,
+        `hardware test group "${group}" listed but ${filePath} does not exist.`,
+        group,
+      );
+    }
+  }
+  for (const name of manifest.conformance.halResolutionTests) {
+    const filePath = path.join(
+      ctx.repoTestsDir,
+      'packages',
+      manifest.frameworkId,
+      'hal-resolution',
+      `${name}.test.ts`,
+    );
+    if (!fs.existsSync(filePath)) {
+      acc.error(
+        `conformance/hal/${name}/file-not-found`,
+        `conformance.halResolutionTests.${name}`,
+        `HAL resolution test "${name}" listed but ${filePath} does not exist.`,
+        name,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Entry point
+// ---------------------------------------------------------------------------
+
+export function validateFrameworkManifest(
+  manifest: FrameworkManifest,
+  ctx: ManifestValidationContext,
+): ManifestValidationResult {
+  const acc = new Accumulator();
+
+  validateIdentity(manifest, ctx, acc);
+  validateEntrypoint(manifest, ctx, acc);
+  validateHalCoverage(manifest, ctx, acc);
+  validatePolyfills(manifest, ctx, acc);
+  validateToolchain(manifest, ctx, acc);
+  validateLibraryResolution(manifest, ctx, acc);
+  validateTypeEmission(manifest, ctx, acc);
+  validateConformance(manifest, ctx, acc);
+
+  return {
+    valid: acc.errors.length === 0,
+    errors: acc.errors,
+    warnings: acc.warnings,
+  };
+}

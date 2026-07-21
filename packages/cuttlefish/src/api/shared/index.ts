@@ -211,3 +211,12 @@ export {
   loadFrameworkManifest,
 } from './framework-manifest-registry.js';
 export type { KnownFrameworkPackage } from './framework-manifest-registry.js';
+
+// Framework manifest validator
+export { validateFrameworkManifest } from './validate-framework-manifest.js';
+export type {
+  ManifestValidationContext,
+  ManifestValidationResult,
+  ManifestValidationError,
+  ManifestValidationWarning,
+} from './validate-framework-manifest.js';
