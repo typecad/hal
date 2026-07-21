@@ -193,3 +193,14 @@ export type { AsyncRuntimeConfig } from './async-types.js';
 export { generatePromiseRuntime } from './promise-runtime.js';
 // Heap-free static async runtime generator (AVR / megaavr / no-<vector> targets)
 export { generateStaticAsyncRuntime } from './async-runtime-static.js';
+
+// Framework manifest schema + helper
+export {
+  FrameworkManifestSchema,
+  defineFrameworkManifest,
+  HAL_CATEGORIES,
+} from './framework-manifest.js';
+export type {
+  FrameworkManifest,
+  HalCategory,
+} from './framework-manifest.js';
