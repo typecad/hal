@@ -1,5 +1,6 @@
 import { ArduinoStrategy, splitStreamChain } from '@typecad/framework-arduino';
-import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic } from '@typecad/cuttlefish/api/shared';
+import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode } from '@typecad/cuttlefish/api/shared';
+import { esp32Ili9341Adapter, esp32St7796Adapter, esp32Ssd1309Adapter, esp32Ssd1680Adapter } from './displays/index.js';
 import { resolveEsp32Profile } from './profile.js';
 import { lowerHalOp } from './lowering/index.js';
 import { uartInitLines } from './lowering/uart.js';
@@ -181,13 +182,51 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (a?.usesWifi)  espInit.push(...wifiInitLines());
     if (a?.usesHttp)  espInit.push(...httpInitLines());
 
+    // After timer_methods polyfill (emitted before shimLines): hook delay() so
+    // setInterval fires inside setup()'s blocking while+delay loops.
+    // Prefer usedPolyfillHelpers — HAL setInterval lowers via rawCpp and may
+    // not increment timerCallCount.
+    const timerCoop: string[] = [];
+    const usesTimerPolyfill =
+      (a?.timerCallCount ?? 0) > 0 ||
+      a?.usedPolyfillHelpers?.has?.('__tc_setInterval') ||
+      a?.usedPolyfillHelpers?.has?.('__tc_setTimeout');
+    if (usesTimerPolyfill) {
+      timerCoop.push(
+        'static void __tc_timer_coop_poll(void) { __tc_timer_runtime.run(); }',
+        'struct __tc_TimerCoopInit {',
+        '    __tc_TimerCoopInit() { __tc_coop_poll_hook = &__tc_timer_coop_poll; }',
+        '};',
+        'static __tc_TimerCoopInit __tc_timer_coop_init;',
+        '',
+      );
+    }
+
     return [
       // __tc_str_ptr string helpers — Esp32Strategy inherits the parent's
       // `std::string` → `__tc_str_ptr` type normalization, so it must also
       // emit the struct definition. setup.ts strips the block when the
       // program analysis reports !usesStrPtr.
       ...this.strPtrShimLines(),
+      // Cooperative delay for setInterval/setTimeout. Top-level `while (true)
+      // { ...; delay(ms); }` lives in setup() and never returns to loop(),
+      // where __tc_timer_runtime.run() is normally pumped. When timers are
+      // used, __tc_TimerCoopInit (below) registers the poll hook.
+      'static void (*__tc_coop_poll_hook)(void) = NULL;',
+      'static inline void __tc_delay(uint32_t ms) {',
+      '    if (__tc_coop_poll_hook == NULL) {',
+      '        vTaskDelay(pdMS_TO_TICKS(ms == 0 ? 1 : ms));',
+      '        return;',
+      '    }',
+      '    int64_t deadline = esp_timer_get_time() + (int64_t)ms * 1000;',
+      '    do {',
+      '        __tc_coop_poll_hook();',
+      '        vTaskDelay(1);',
+      '    } while (esp_timer_get_time() < deadline);',
+      '}',
+      '',
       ...espInit,
+      ...timerCoop,
       '// --- ESP32 IDF entrypoint: app_main runs setup()/loop() directly ---',
       '// The cuttlefish synthesizer emits setup() and loop() (it keys off',
       '// entrypointFunctionName()="setup" and requiresLoopFunction()=true).',
@@ -220,6 +259,32 @@ export class Esp32Strategy extends ArduinoStrategy {
 
   override resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {
     return lowerHalOp(op);
+  }
+
+  /**
+   * Display HAL ops on ESP32 go through the adapter path (providesDisplayAdapter
+   * → resolveDisplayAdapter → CuttlefishGFX + native spi_device_polling_transmit
+   * / i2c_master_transmit primitives), NOT through per-op HAL lowering.
+   *
+   * This override fixes the latent inheritance bug where Esp32Strategy inherited
+   * ArduinoStrategy.resolveDisplayOp and lowered display.init via __tc_display
+   * (a non-existent Adafruit object on ESP-IDF). It also makes the display
+   * throw at lowering/index.ts unreachable, so that throw is removed.
+   */
+  override resolveDisplayOp(_op: DisplayHALOp): { code?: string; expression?: string } | undefined {
+    return undefined;
+  }
+
+  override providesDisplayAdapter(): boolean { return true; }
+
+  override resolveDisplayAdapter(display: ResolvedDisplay): DisplayAdapterCode | undefined {
+    switch (display.driver) {
+      case "ili9341": return esp32Ili9341Adapter(display);
+      case "st7796":  return esp32St7796Adapter(display);
+      case "ssd1309": return esp32Ssd1309Adapter(display);
+      case "ssd1680": return esp32Ssd1680Adapter(display);
+      default: return undefined;  // defer to built-in Adafruit registry
+    }
   }
 
   // Route console.log/info → printf, debug → printf without \n, warn/error → ESP_LOG*.
@@ -314,9 +379,11 @@ export class Esp32Strategy extends ArduinoStrategy {
       return p;
     });
 
-    if (mapped.some((p) => p.id === 'async_runtime')) {
-      // Must precede async_runtime in the emit list so millis/digitalRead exist
-      // before the Promise helpers that call them.
+    if (mapped.some((p) => p.id === 'async_runtime' || p.id === 'timer_methods')) {
+      // Must precede async_runtime / timer_methods so millis() exists before
+      // Promise helpers and __tc_TimerRuntime that call it. timer_methods alone
+      // (setInterval without async/await) previously omitted this shim and
+      // failed with "'millis' was not declared in this scope".
       mapped.unshift({
         kind: 'polyfill',
         id: 'esp32_arduino_compat',
@@ -325,7 +392,7 @@ export class Esp32Strategy extends ArduinoStrategy {
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [
-          `// Arduino-compat symbols for the shared async_runtime polyfill (ESP-IDF).
+          `// Arduino-compat symbols for shared polyfills (ESP-IDF).
 #ifndef HIGH
 #define HIGH 1
 #endif
