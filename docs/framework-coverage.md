@@ -8,8 +8,8 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | Framework | HAL cats supported | HAL cats partial | HAL cats unsupported | Toolchain | Last validated |
 |---|---|---|---|---|---|
 | framework-arduino (canonical) | 12/18 | 4 | 2 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-21 |
-| framework-avr | 12/18 | 3 | 3 | arduino-cli (reexported from @typecad/framework-arduino) (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-21 |
-| framework-esp32 | 14/18 | 3 | 1 | idf.py (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-21 |
+| framework-avr | 13/18 | 3 | 2 | arduino-cli (reexported from @typecad/framework-arduino) (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-21 |
+| framework-esp32 | 15/18 | 3 | 0 | idf.py (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-21 |
 
 ## framework-arduino
 
@@ -71,7 +71,7 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | wdt | supported | — |
 | wifi | unsupported | AVR has no native WiFi hardware. |
 | http | unsupported | AVR has no native HTTP client. |
-| display | unsupported | AVR has no display driver. resolveDisplayOp is inherited from Arduino and lowers display.init — known latent inheritance bug; future spec will override. |
+| display | supported | — |
 
 ## framework-esp32
 
@@ -102,7 +102,7 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | wdt | supported | — |
 | wifi | supported | — |
 | http | supported | — |
-| display | unsupported | Deferred to v1.1; ESP-IDF display drivers pending. See packages/framework-esp32/src/lowering/index.ts:46. |
+| display | supported | — |
 
 ## Cross-framework gaps
 
@@ -125,4 +125,4 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | wdt | ✓ | ✓ | ✓ |
 | wifi | ✗ (arduino core has no wifi hal) | ✗ (avr has no native wifi hardware) | ✓ |
 | http | ✗ (arduino core has no http client hal) | ✗ (avr has no native http client) | ✓ |
-| display | ◐ partial | ✗ (avr has no display driver) | ✗ (deferred to v1) |
+| display | ◐ partial | ✓ | ✓ |
