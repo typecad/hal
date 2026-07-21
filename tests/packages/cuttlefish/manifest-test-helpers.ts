@@ -13,6 +13,7 @@ import {
   HAL_OPERATION_KINDS,
   DISPLAY_OPERATION_KINDS,
   HAL_CATEGORIES,
+  POLYFILL_BACKED_OPS,
   type FrameworkManifest,
   type ManifestValidationContext,
   type ManifestValidationResult,
@@ -80,23 +81,25 @@ export async function validateFramework(packageName: string): Promise<ManifestVa
 //
 // Builds a human-readable table from a manifest's hal block. Printed by the
 // manifest tests on every run so you can see exactly which HAL op kinds are
-// declared supported/partial/inconclusive/unsupported for the framework
-// under test.
+// declared supported/partial/inconclusive/unsupported/polyfill for the
+// framework under test.
 //
 // The manifest is the source of truth — the validator already verified it
 // matches resolver behavior, so we don't re-probe here.
 //
-// Symbol legend (4-state):
-//   ✓  supported           — fully lowered, runs on hardware
+// Symbol legend (5-state):
+//   ✓  supported           — fully lowered via resolveHALOperation
+//   ⊕  polyfill            — lowered via runtime polyfill (not HAL resolver)
 //   ◐  stub / partial      — emits code but partial/non-functional
 //   ?  probe-inconclusive  — minimal probe can't verify (needs real pin args)
 //   ✗  unsupported         — no lowering (with reason)
 
-type OpStatusValue = 'supported' | 'stub' | 'unsupported' | 'probe-inconclusive';
+type OpStatusValue = 'supported' | 'stub' | 'unsupported' | 'probe-inconclusive' | 'polyfill';
 
 function symbolFor(status: OpStatusValue): string {
   switch (status) {
     case 'supported': return '✓';
+    case 'polyfill': return '⊕';
     case 'stub': return '◐';
     case 'probe-inconclusive': return '?';
     case 'unsupported': return '✗';
@@ -164,8 +167,12 @@ export function renderHalCoverageTable(manifest: FrameworkManifest): string {
     }
     const opKinds = opKindsForCategory(cat);
     const supportedCount = opKinds.filter((k) => decl.ops[k] === 'supported').length;
+    const polyfillCount = opKinds.filter((k) => decl.ops[k] === 'polyfill').length;
+    const coveredCount = supportedCount + polyfillCount;
     const catLabel = decl.supported
-      ? (decl.partialCoverage ? `${cat} (partial: ${supportedCount}/${opKinds.length} ops supported)` : `${cat} (${supportedCount}/${opKinds.length} supported)`)
+      ? (decl.partialCoverage
+          ? `${cat} (partial: ${supportedCount} supported + ${polyfillCount} polyfill = ${coveredCount}/${opKinds.length} ops covered)`
+          : `${cat} (${supportedCount}/${opKinds.length} supported)`)
       : `${cat} (0/${opKinds.length} supported — unsupported: ${decl.unsupportedReason ?? 'no reason given'})`;
     lines.push(catLabel);
 
@@ -175,15 +182,19 @@ export function renderHalCoverageTable(manifest: FrameworkManifest): string {
       const status = decl.ops[kind] ?? 'unsupported';
       const padded = kind.padEnd(maxKindLen);
       const sym = symbolFor(status);
-      const note = status === 'unsupported' && decl.unsupportedReason && opKinds.length === 1
-        ? `  (${decl.unsupportedReason})`
-        : '';
+      let note = '';
+      if (status === 'polyfill') {
+        const polyfillId = POLYFILL_BACKED_OPS[kind];
+        if (polyfillId) note = `  (${polyfillId})`;
+      } else if (status === 'unsupported' && decl.unsupportedReason && opKinds.length === 1) {
+        note = `  (${decl.unsupportedReason})`;
+      }
       lines.push(`  ${padded}  ${sym}${note}`);
     }
     lines.push(``);
   }
 
-  lines.push(`Legend: ✓ supported  ◐ stub  ? probe-inconclusive  ✗ unsupported`);
+  lines.push(`Legend: ✓ supported  ⊕ polyfill  ◐ stub  ? probe-inconclusive  ✗ unsupported`);
 
   return lines.join('\n');
 }

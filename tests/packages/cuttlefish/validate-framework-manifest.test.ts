@@ -258,6 +258,88 @@ describe('validateFrameworkManifest — HAL coverage', () => {
     expect(result.errors.map((e) => e.code))
       .not.toContain('hal/dac/declared-stub-but-emits-nothing');
   });
+
+  it('errors when polyfill op references a polyfill not in polyfills.emitted', () => {
+    const manifest = makeMinimalManifest();
+    // timing.set_interval is in POLYFILL_BACKED_OPS → backed by timer_methods.
+    manifest.hal.timing = {
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        'timing.delay': 'supported',
+        'timing.delay_microseconds': 'supported',
+        'timing.millis': 'supported',
+        'timing.micros': 'supported',
+        'timing.free_heap': 'supported',
+        'timing.set_interval': 'polyfill',
+        'timing.set_timeout': 'polyfill',
+        'timing.clear_interval': 'polyfill',
+        'timing.clear_timeout': 'polyfill',
+      },
+    };
+    // manifest.polyfills.emitted is empty — timer_methods is missing.
+    const strategy = makeStubStrategy({
+      resolveHALOperation: (op: { operation: string }) => {
+        if (op.operation.startsWith('timing.delay') || op.operation === 'timing.millis' || op.operation === 'timing.micros' || op.operation === 'timing.free_heap') return { code: `// ${op.operation}` };
+        return undefined;
+      },
+    } as Partial<PlatformStrategy>);
+    const result = validateFrameworkManifest(manifest, {
+      strategy, moduleExports: {}, packageRoot: '/x', repoTestsDir: '/x',
+    });
+    expect(result.errors.map((e) => e.code))
+      .toContain('hal/timing/op/timing.set_interval/polyfill-not-declared');
+  });
+
+  it('errors when polyfill op is not in POLYFILL_BACKED_OPS', () => {
+    const manifest = makeMinimalManifest();
+    // gpio.write is NOT in POLYFILL_BACKED_OPS.
+    manifest.hal.gpio = {
+      supported: true,
+      ops: { 'gpio.write': 'polyfill' },
+    };
+    const strategy = makeStubStrategy();
+    const result = validateFrameworkManifest(manifest, {
+      strategy, moduleExports: {}, packageRoot: '/x', repoTestsDir: '/x',
+    });
+    expect(result.errors.map((e) => e.code))
+      .toContain('hal/gpio/op/gpio.write/polyfill-not-recognized');
+  });
+
+  it('passes when polyfill op is backed by a declared polyfill', () => {
+    const manifest = makeMinimalManifest();
+    manifest.hal.timing = {
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        'timing.delay': 'supported',
+        'timing.delay_microseconds': 'supported',
+        'timing.millis': 'supported',
+        'timing.micros': 'supported',
+        'timing.free_heap': 'supported',
+        'timing.set_interval': 'polyfill',
+        'timing.set_timeout': 'polyfill',
+        'timing.clear_interval': 'polyfill',
+        'timing.clear_timeout': 'polyfill',
+      },
+    };
+    manifest.polyfills.emitted = [{ id: 'timer_methods', domain: 'standard' }];
+    const strategy = makeStubStrategy({
+      resolveHALOperation: (op: { operation: string }) => {
+        if (['timing.delay', 'timing.delay_microseconds', 'timing.millis', 'timing.micros', 'timing.free_heap'].includes(op.operation)) return { code: `// ${op.operation}` };
+        return undefined;
+      },
+    } as Partial<PlatformStrategy>);
+    const result = validateFrameworkManifest(manifest, {
+      strategy, moduleExports: {}, packageRoot: '/x', repoTestsDir: '/x',
+    });
+    // Only check the HAL polyfill-status cross-check codes (not the unrelated
+    // polyfill-emission check, which is exercised by the stub strategy).
+    const halPolyfillErrors = result.errors.filter(
+      (e) => e.code.startsWith('hal/') && e.code.includes('polyfill'),
+    );
+    expect(halPolyfillErrors).toEqual([]);
+  });
 });
 
 describe('validateFrameworkManifest — polyfills', () => {

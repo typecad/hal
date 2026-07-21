@@ -15,6 +15,7 @@ import * as path from 'node:path';
 import type { PlatformStrategy } from './platform-strategy.js';
 import type { FrameworkToolchain } from '../../framework-registry.js';
 import type { FrameworkManifest } from './framework-manifest.js';
+import { POLYFILL_BACKED_OPS } from './framework-manifest.js';
 import { HAL_OPERATION_KINDS } from './hal-op-ir.js';
 import { DISPLAY_OPERATION_KINDS } from './display-op-ir.js';
 import type { HALOpIR } from './hal-op-ir.js';
@@ -198,7 +199,7 @@ function validateHalCoverage(
     const declaration = declarationRaw as {
       supported: boolean;
       unsupportedReason?: string;
-      ops: Record<string, 'supported' | 'stub' | 'unsupported' | 'probe-inconclusive'>;
+      ops: Record<string, 'supported' | 'stub' | 'unsupported' | 'probe-inconclusive' | 'polyfill'>;
       partialCoverage?: boolean;
     };
     const knownKinds = opKindsForCategory(category);
@@ -224,6 +225,33 @@ function validateHalCoverage(
       // for manual review. This keeps the matrix honest without penalizing
       // frameworks for the probe's limitations.
       if (status === 'probe-inconclusive') continue;
+
+      // 'polyfill' means the op is backed by a runtime polyfill, NOT by
+      // resolveHALOperation. Verify the named polyfill exists in
+      // POLYFILL_BACKED_OPS and is declared in polyfills.emitted.
+      // No HAL probe — the resolver legitimately returns undefined for these.
+      if (status === 'polyfill') {
+        const expectedPolyfill = POLYFILL_BACKED_OPS[kind];
+        if (!expectedPolyfill) {
+          acc.error(
+            `hal/${category}/op/${kind}/polyfill-not-recognized`,
+            `hal.${category}.ops.${kind}`,
+            `op "${kind}" declared "polyfill" but is not in POLYFILL_BACKED_OPS. Either add it to packages/cuttlefish/src/api/shared/framework-manifest.ts or use a different status.`,
+            kind,
+          );
+          continue;
+        }
+        const emitted = manifest.polyfills.emitted.map((p) => p.id);
+        if (!emitted.includes(expectedPolyfill)) {
+          acc.error(
+            `hal/${category}/op/${kind}/polyfill-not-declared`,
+            `hal.${category}.ops.${kind}`,
+            `op "${kind}" declared "polyfill" (backed by "${expectedPolyfill}") but "${expectedPolyfill}" is not in polyfills.emitted. Add it, or remove this op from the polyfill status.`,
+            kind,
+          );
+        }
+        continue;
+      }
 
       const res = probeResolve(ctx.strategy, kind);
       const lowers = statusFromResolution(res) === 'lowers';
@@ -262,6 +290,7 @@ function validateHalCoverage(
       if (hasVerifiable) {
         const anyLowersOrInconclusive = knownKinds.some((k) => {
           if (declaration.ops[k] === 'probe-inconclusive') return true;
+          if (declaration.ops[k] === 'polyfill') return true;
           return statusFromResolution(probeResolve(ctx.strategy, k)) === 'lowers';
         });
         if (!anyLowersOrInconclusive) {
@@ -274,10 +303,12 @@ function validateHalCoverage(
         }
       }
     } else {
-      // supported: false. Ignore probe-inconclusive ops when checking
-      // "does it actually lower?" — we can't tell for those.
+      // supported: false. Ignore probe-inconclusive and polyfill ops when
+      // checking "does it actually lower?" — polyfill ops legitimately
+      // return undefined from the HAL resolver.
       const anyLowers = knownKinds.some((k) => {
         if (declaration.ops[k] === 'probe-inconclusive') return false;
+        if (declaration.ops[k] === 'polyfill') return false;
         return statusFromResolution(probeResolve(ctx.strategy, k)) === 'lowers';
       });
       if (anyLowers) {

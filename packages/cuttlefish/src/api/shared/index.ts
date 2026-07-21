@@ -199,6 +199,7 @@ export {
   FrameworkManifestSchema,
   defineFrameworkManifest,
   HAL_CATEGORIES,
+  POLYFILL_BACKED_OPS,
 } from './framework-manifest.js';
 export type {
   FrameworkManifest,

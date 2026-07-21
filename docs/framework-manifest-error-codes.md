@@ -27,12 +27,21 @@ but do not fail the build.
 
 The HAL coverage validator probes `resolveHALOperation` (and `resolveDisplayOp`
 for `display.*` ops) with a minimal payload carrying just the operation
-discriminator. Op status is one of `supported`, `stub`, `unsupported`, or
-`probe-inconclusive`. The first three are cross-checked against resolver
-behavior; `probe-inconclusive` is an explicit acknowledgment that the minimal
-probe can't determine support (typically because the resolver needs a valid
-pin/config payload). The validator skips cross-checks for
-`probe-inconclusive` ops; the renderer flags them for manual review.
+discriminator. Op status is one of `supported`, `polyfill`, `stub`,
+`unsupported`, or `probe-inconclusive`:
+
+- `supported` — fully lowered via `resolveHALOperation`; verified by probe.
+- `polyfill` — lowered via a runtime polyfill, NOT the HAL resolver. Verified
+  by checking the op kind exists in `POLYFILL_BACKED_OPS`
+  (`packages/cuttlefish/src/api/shared/framework-manifest.ts`) AND the named
+  polyfill id is present in `polyfills.emitted`. Use for ops like
+  `timing.set_interval` that route through the `timer_methods` polyfill
+  rather than the resolver.
+- `stub` — emits code but partial/non-functional; verified by probe.
+- `unsupported` — no lowering; verified by probe.
+- `probe-inconclusive` — minimal probe can't determine support (typically
+  because the resolver needs a valid pin/config payload). The validator
+  skips cross-checks; the renderer flags them for manual review.
 
 | Code | Trigger | Fix |
 |---|---|---|
@@ -40,6 +49,8 @@ pin/config payload). The validator skips cross-checks for
 | `hal/<cat>/declared-unsupported-but-actually-lowers` | Category `supported: false` but resolver lowers at least one verifiable op | Either mark supported or override the resolver to throw/return undefined. **This code catches inherited-broken behavior** — e.g. a framework that inherits the parent's `resolveDisplayOp` without overriding it will lower display ops despite declaring display unsupported. |
 | `hal/<cat>/op/<kind>/status-mismatch` | Per-op status disagrees with resolver behavior | Align op status with reality |
 | `hal/<cat>/op/<kind>/undeclared` | Known op kind (from `HAL_OPERATION_KINDS` / `DISPLAY_OPERATION_KINDS`) missing from `manifest.hal.<cat>.ops` | Add the missing op kind |
+| `hal/<cat>/op/<kind>/polyfill-not-recognized` | Op declared `polyfill` but not in `POLYFILL_BACKED_OPS` | Add the op kind → polyfill id mapping to `packages/cuttlefish/src/api/shared/framework-manifest.ts`, or use a different status |
+| `hal/<cat>/op/<kind>/polyfill-not-declared` | Op declared `polyfill` (mapping says backed by polyfill X) but X not in `polyfills.emitted` | Add the polyfill to `polyfills.emitted`, or remove this op from polyfill status |
 
 ### Known strategic violations
 

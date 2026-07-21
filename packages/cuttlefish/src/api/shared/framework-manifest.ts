@@ -21,7 +21,7 @@ const HAL_CATEGORIES = [
 
 export type HalCategory = typeof HAL_CATEGORIES[number];
 
-const OpStatus = z.enum(['supported', 'stub', 'unsupported', 'probe-inconclusive']);
+const OpStatus = z.enum(['supported', 'stub', 'unsupported', 'probe-inconclusive', 'polyfill']);
 
 const HalCategorySchema = z.object({
   supported: z.boolean(),
@@ -140,6 +140,27 @@ export const FrameworkManifestSchema = z.object({
 });
 
 export type FrameworkManifest = z.infer<typeof FrameworkManifestSchema>;
+
+/**
+ * Authoritative map of HAL op kinds that are lowered via the polyfill system
+ * rather than via `resolveHALOperation`. Keyed by op kind; value is the
+ * polyfill id that backs it.
+ *
+ * The manifest validator uses this to verify `polyfill`-declared ops: if a
+ * manifest declares `timing.set_interval: 'polyfill'`, the framework's
+ * `polyfills.emitted` list must include the polyfill id named here.
+ *
+ * Keep in sync with the transpiler's lowering routes — when a new op kind
+ * starts being routed via a polyfill instead of the HAL resolver, add it
+ * here. The set is intentionally small and stable: polyfill-routed ops are
+ * the exception, not the rule.
+ */
+export const POLYFILL_BACKED_OPS: Readonly<Record<string, string>> = {
+  'timing.set_interval': 'timer_methods',
+  'timing.set_timeout': 'timer_methods',
+  'timing.clear_interval': 'timer_methods',
+  'timing.clear_timeout': 'timer_methods',
+};
 
 /**
  * Validates and returns a FrameworkManifest. Frameworks call this from their
