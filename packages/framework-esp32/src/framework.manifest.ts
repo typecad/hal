@@ -259,22 +259,32 @@ export default defineFrameworkManifest({
       },
     },
     display: {
-      // HONEST DECLARATION: ESP32 has no native display lowering yet (v1.1).
-      // lowerHalOp throws at lowering/index.ts:46. The strategy inherits
-      // Arduino's resolveDisplayOp, which still lowers display.init — a
-      // latent inheritance bug the validator catches. Resolution tracked for
-      // v1.1: override resolveDisplayOp to throw on ESP32.
-      supported: false,
-      unsupportedReason: 'Deferred to v1.1; ESP-IDF display drivers pending. See packages/framework-esp32/src/lowering/index.ts:46.',
-      drivers: [],
-      colorFormat: null,
+      // Native ESP32 drivers via framework-esp32/src/displays/*. Each drives
+      // the panel through spi_device_polling_transmit (TFTs) or
+      // i2c_master_transmit (SSD1309) from the existing lowering files.
+      // No Adafruit, no Arduino-ESP32 core dependency for displays.
+      //
+      // resolveDisplayOp returns undefined (display ops are resolved through
+      // the adapter path, not per-op HAL lowering) and resolveDisplayAdapter
+      // dispatches by driver. The display.* throw at lowering/index.ts:46 is
+      // removed (unreachable now).
+      //
+      // ops are 'probe-inconclusive' rather than 'supported' until the four
+      // native adapters (ili9341/st7796/ssd1309/ssd1680) land. The validator
+      // probes each op via resolveDisplayOp, which returns undefined because
+      // the adapter path bypasses HAL lowering — so the probe can't see the
+      // implementation. Flip to 'supported' in Task 17 once the adapters are
+      // emitted and unit-tested.
+      supported: true,
+      drivers: ['ili9341', 'st7796', 'ssd1309', 'ssd1680'],
+      colorFormat: 'rgb565',
       partialCoverage: false,
       ops: {
-        'display.init': 'unsupported',
-        'display.fill_rect': 'unsupported',
-        'display.draw_text': 'unsupported',
-        'display.draw_rect': 'unsupported',
-        'display.flush': 'unsupported',
+        'display.init': 'probe-inconclusive',
+        'display.fill_rect': 'probe-inconclusive',
+        'display.draw_text': 'probe-inconclusive',
+        'display.draw_rect': 'probe-inconclusive',
+        'display.flush': 'probe-inconclusive',
       },
     },
     raw: { supported: true },

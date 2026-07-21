@@ -20,19 +20,13 @@ import { renderCoverageToString } from '../../../scripts/render-framework-covera
 // in the manifest itself and slated for a separate fix spec. The central
 // test allows these but fails on any OTHER error, so new regressions surface
 // immediately while we don't pretend the latent bugs are fixed.
-const KNOWN_STRATEGIC_ERRORS: ReadonlySet<string> = new Set<string>([
-  // AVR + ESP32 inherit Arduino's resolveDisplayOp. They declare display
-  // unsupported honestly; the inherited resolver still lowers every display
-  // op (init/fill_rect/draw_text/draw_rect/flush) when given valid args.
-  // Fix is a separate spec: override resolveDisplayOp to throw on these
-  // frameworks (or implement native display lowering for ESP32 in v1.1).
-  'hal/display/declared-unsupported-but-actually-lowers',
-  'hal/display/op/display.init/status-mismatch',
-  'hal/display/op/display.fill_rect/status-mismatch',
-  'hal/display/op/display.draw_text/status-mismatch',
-  'hal/display/op/display.draw_rect/status-mismatch',
-  'hal/display/op/display.flush/status-mismatch',
-]);
+//
+// The previous display inheritance codes (hal/display/*) were removed when
+// framework-avr and framework-esp32 began overriding resolveDisplayOp +
+// dispatching through resolveDisplayAdapter. Both frameworks now declare
+// display supported with native drivers; the validator no longer flags
+// these frameworks for display-related contradictions.
+const KNOWN_STRATEGIC_ERRORS: ReadonlySet<string> = new Set<string>([]);
 
 describe('framework manifests', () => {
   it('exactly one framework is canonical', async () => {
@@ -77,41 +71,23 @@ describe('framework manifests', () => {
   }
 
   // Document the known strategic errors explicitly so they don't drift
-  // silently. If a future spec fixes the display inheritance bug, these
-  // expectations go away and the test above starts enforcing the stricter
-  // invariant.
+  // silently. The set is currently empty — the previous display inheritance
+  // codes were removed when AVR + ESP32 began overriding resolveDisplayOp and
+  // dispatching through resolveDisplayAdapter. If a new latent bug is found,
+  // add its code to KNOWN_STRATEGIC_ERRORS above and a regression test here.
   describe('known strategic errors (documented, not fixed)', () => {
-    // AVR + ESP32 inherit Arduino's resolveDisplayOp without overriding it.
-    // When probed with valid args (OP_PROBE_PAYLOADS), the inherited resolver
-    // lowers ALL 5 display ops despite the manifest declaring them unsupported.
-    const EXPECTED_DISPLAY_ERRORS = [
-      'hal/display/declared-unsupported-but-actually-lowers',
-      'hal/display/op/display.init/status-mismatch',
-      'hal/display/op/display.fill_rect/status-mismatch',
-      'hal/display/op/display.draw_text/status-mismatch',
-      'hal/display/op/display.draw_rect/status-mismatch',
-      'hal/display/op/display.flush/status-mismatch',
-    ];
-
-    it('framework-avr exhibits exactly the display inheritance errors', async () => {
+    it('framework-avr has no display inheritance errors (fixed via resolveDisplayOp override)', async () => {
       const result = await validateFramework('@typecad/framework-avr');
-      const codes = new Set(result.errors.map((e) => e.code));
-      for (const code of EXPECTED_DISPLAY_ERRORS) {
-        expect(codes, `missing expected error: ${code}`).toContain(code);
-      }
-      // No OTHER errors besides the known display ones.
-      const novel = result.errors.filter((e) => !KNOWN_STRATEGIC_ERRORS.has(e.code));
-      expect(novel).toEqual([]);
+      const codes = result.errors.map((e) => e.code);
+      expect(codes).not.toContain('hal/display/declared-unsupported-but-actually-lowers');
+      expect(codes).not.toContain('hal/display/op/display.init/status-mismatch');
     });
 
-    it('framework-esp32 exhibits exactly the display inheritance errors', async () => {
+    it('framework-esp32 has no display inheritance errors (fixed via resolveDisplayOp override)', async () => {
       const result = await validateFramework('@typecad/framework-esp32');
-      const codes = new Set(result.errors.map((e) => e.code));
-      for (const code of EXPECTED_DISPLAY_ERRORS) {
-        expect(codes, `missing expected error: ${code}`).toContain(code);
-      }
-      const novel = result.errors.filter((e) => !KNOWN_STRATEGIC_ERRORS.has(e.code));
-      expect(novel).toEqual([]);
+      const codes = result.errors.map((e) => e.code);
+      expect(codes).not.toContain('hal/display/declared-unsupported-but-actually-lowers');
+      expect(codes).not.toContain('hal/display/op/display.init/status-mismatch');
     });
 
     it('framework-arduino has no display inheritance errors (canonical reference)', async () => {

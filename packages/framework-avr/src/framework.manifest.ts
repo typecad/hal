@@ -266,21 +266,30 @@ export default defineFrameworkManifest({
       },
     },
     display: {
-      // HONEST DECLARATION: AVR has no display driver. The strategy inherits
-      // Arduino's resolveDisplayOp, which lowers display.init — a latent bug.
-      // The validator catches this contradiction; resolution tracked in a
-      // future spec (override resolveDisplayOp to throw on AVR).
-      supported: false,
-      unsupportedReason: 'AVR has no display driver. resolveDisplayOp is inherited from Arduino and lowers display.init — known latent inheritance bug; future spec will override.',
-      drivers: [],
-      colorFormat: null,
+      // Native AVR drivers via framework-avr/src/displays/*. Each drives the
+      // panel through _spi_ and _twi_ register helpers already emitted by
+      // shimLines(). No Adafruit, no <SPI.h>/<Wire.h>.
+      //
+      // resolveDisplayOp returns undefined (display ops are resolved through
+      // the adapter path, not per-op HAL lowering) and resolveDisplayAdapter
+      // dispatches by driver.
+      //
+      // ops are 'probe-inconclusive' rather than 'supported' until the four
+      // native adapters (ili9341/st7796/ssd1309/ssd1680) land. The validator
+      // probes each op via resolveDisplayOp, which returns undefined because
+      // the adapter path bypasses HAL lowering — so the probe can't see the
+      // implementation. Flip to 'supported' in Task 17 once the adapters are
+      // emitted and unit-tested.
+      supported: true,
+      drivers: ['ili9341', 'st7796', 'ssd1309', 'ssd1680'],
+      colorFormat: 'rgb565',
       partialCoverage: false,
       ops: {
-        'display.init': 'unsupported',
-        'display.fill_rect': 'unsupported',
-        'display.draw_text': 'unsupported',
-        'display.draw_rect': 'unsupported',
-        'display.flush': 'unsupported',
+        'display.init': 'probe-inconclusive',
+        'display.fill_rect': 'probe-inconclusive',
+        'display.draw_text': 'probe-inconclusive',
+        'display.draw_rect': 'probe-inconclusive',
+        'display.flush': 'probe-inconclusive',
       },
     },
     raw: { supported: true },
