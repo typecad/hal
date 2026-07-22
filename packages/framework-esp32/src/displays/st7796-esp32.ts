@@ -74,7 +74,12 @@ export const esp32St7796Adapter: DisplayAdapterGenerator = (display) => {
   })();
   const madctl = rotationBits | colorBit;
 
-  // Inversion command: 0x21 INVON or 0x20 INVOFF, sent after sleep-out.
+  // Inversion command. ST7796S modules vary: some power up non-inverted and
+  // need INVOFF (0x20, the safe no-op default), others power up inverted and
+  // need INVON (0x21) to render correctly. Adafruit_ST7796S always sends 0x21
+  // internally (its begin() swaps the INVON/INVOFF labels). Our default
+  // matches demo-st's working config (invertDisplay: false → 0x20). The panel
+  // tested here (ESP32-S3 + ST7796S, 320x480) is non-inverted at power-on.
   const invCmd = invertDisplay ? "0x21" : "0x20";
 
   return {
@@ -124,9 +129,13 @@ export const esp32St7796Adapter: DisplayAdapterGenerator = (display) => {
       `  __esp32_spi_cmd_data((const uint8_t[]){ 0xF0, 0x3C }, 2);`,
       `  __esp32_spi_cmd(0x11);   // SLPOUT`,
       `  vTaskDelay(pdMS_TO_TICKS(150));`,
-      `  __esp32_spi_cmd(${invCmd});  // INVON or INVOFF per config`,
       `  __esp32_spi_cmd(0x29);   // DISPON`,
       `  vTaskDelay(pdMS_TO_TICKS(150));`,
+      `  // Inversion command after DISPON (matches Adafruit_ST7796S::begin(),`,
+      `  // which calls invertDisplay() after displayInit() — the init table ends`,
+      `  // with DISPON). invertDisplay=false (the default) sends 0x20 (INVOFF),`,
+      `  // leaving the panel in its non-inverted power-on state.`,
+      `  __esp32_spi_cmd(${invCmd});`,
       `  __esp32_op_fillRect(NULL, 0, 0, ${w}, ${h}, 0x0000);`,
       `  (void)${rotation};  // rotation applied via MADCTL byte above`,
       `}`,

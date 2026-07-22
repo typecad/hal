@@ -61,4 +61,32 @@ describe('resolveComponents', () => {
     const r = resolveComponents(cfg, '/proj');
     expect(r.builtin).toEqual([]);
   });
+
+  it('defaults psram to false when absent', () => {
+    const r = resolveComponents(undefined, '/proj');
+    expect(r.psram).toBe(false);
+  });
+
+  it('reads psram: "opi" verbatim', () => {
+    const cfg = { psram: 'opi' as const };
+    const r = resolveComponents(cfg, '/proj');
+    expect(r.psram).toBe('opi');
+  });
+
+  it('reads psram: "quad" verbatim', () => {
+    const cfg = { psram: 'quad' as const };
+    const r = resolveComponents(cfg, '/proj');
+    expect(r.psram).toBe('quad');
+  });
+
+  it('accepts psram: false explicitly', () => {
+    const cfg = { psram: false };
+    const r = resolveComponents(cfg, '/proj');
+    expect(r.psram).toBe(false);
+  });
+
+  it('throws on malformed psram (not opi/quad/false)', () => {
+    const cfg = { psram: 'octal' };
+    expect(() => resolveComponents(cfg, '/proj')).toThrow(/psram/);
+  });
 });

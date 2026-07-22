@@ -5,17 +5,14 @@
 const WIFI_SSID = "Skynet";
 const WIFI_PASSWORD = "justin04";
 
-import { WiFi, delay, Http } from '@typecad/hal';
+import { WiFi, delay, Http, setInterval } from '@typecad/hal';
 WiFi.txPower(10);
 
-WiFi.connect(WIFI_SSID, WIFI_PASSWORD);
-
-const req = Http.get("https://webhook.site/85434668-ea2e-4e9e-a5b7-73dd529234a6");
-req.timeout(10000);
-req.send();
-console.log(`status=${req.status()}`);
-console.log(req.text());
+WiFi.apChannel(6).apMaxClients(4);
+WiFi.startAP("cuttlefish-setup", "config123");
+console.log(WiFi.apIP());
 
 while (true) {
-  delay(1000);
+  console.log(`clients: ${WiFi.apClientCount()}`);
+  delay(5000);
 }

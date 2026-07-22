@@ -1,11 +1,13 @@
 import { ArduinoStrategy, splitStreamChain } from '@typecad/framework-arduino';
-import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode } from '@typecad/cuttlefish/api/shared';
+import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode, TouchProfile } from '@typecad/cuttlefish/api/shared';
 import { resolveNativeDisplayOp } from '@typecad/cuttlefish/api/shared';
 import { esp32Ili9341Adapter, esp32St7796Adapter, esp32Ssd1309Adapter } from './displays/index.js';
+import { esp32Ft6336uTouchAdapter, type TouchAdapterCodegen } from './touch/index.js';
 import { resolveEsp32Profile } from './profile.js';
 import { lowerHalOp } from './lowering/index.js';
 import { uartInitLines } from './lowering/uart.js';
 import { i2cInitLines }  from './lowering/i2c.js';
+import { emitSharedI2cBusStore } from './lowering/i2c-bus-store.js';
 import { spiInitLines }  from './lowering/spi.js';
 import { pwmInitLines }  from './lowering/pwm.js';
 import { adcInitLines }  from './lowering/adc.js';
@@ -209,6 +211,13 @@ export class Esp32Strategy extends ArduinoStrategy {
       // emit the struct definition. setup.ts strips the block when the
       // program analysis reports !usesStrPtr.
       ...this.strPtrShimLines(),
+      // Shared I2C bus handle store — one i2c_master_bus_handle_t per controller.
+      // Emitted unconditionally (zero cost if unused): display, touch, and user
+      // I2C consumers call __esp32_i2c_bus_get(idx) to fetch the shared handle,
+      // then i2c_master_bus_add_device against it. This avoids the B1 bug where
+      // each adapter independently calling i2c_new_master_bus() on the same port
+      // fails silently for the second caller.
+      emitSharedI2cBusStore(),
       // Cooperative delay for setInterval/setTimeout. Top-level `while (true)
       // { ...; delay(ms); }` lives in setup() and never returns to loop(),
       // where __tc_timer_runtime.run() is normally pumped. When timers are
@@ -297,6 +306,31 @@ export class Esp32Strategy extends ArduinoStrategy {
           `for SSD1680 panels.`,
         );
       default: return undefined;  // defer to built-in Adafruit registry
+    }
+  }
+
+  override providesTouchAdapter(): boolean { return true; }
+
+  override resolveTouchAdapter(touch: TouchProfile): TouchAdapterCodegen | undefined {
+    switch (touch.library) {
+      case "FT6336U":
+        return esp32Ft6336uTouchAdapter(touch);
+      case undefined:
+        return undefined;  // no library specified — nothing to resolve
+      default:
+        // SPI touch (XPT2046, STMPE610) and analog resistive have no native
+        // ESP-IDF implementation. Throw a clear error rather than deferring to
+        // the Arduino library switch (which emits #include <XPT2046_Touchscreen.h>
+        // etc. — headers that don't exist in an ESP-IDF project, producing an
+        // opaque "file not found" error). Native SPI touch is tracked as a
+        // follow-up.
+        throw new Error(
+          `touch library "${touch.library}" is not supported on the native ESP32 ` +
+          `path. Only FT6336U (I2C capacitive) has a native ESP-IDF adapter. ` +
+          `For SPI/resistive touch controllers, use the Arduino path ` +
+          `(framework-arduino + arduino-cli toolchain). Native SPI touch is ` +
+          `tracked as a follow-up.`,
+        );
     }
   }
 

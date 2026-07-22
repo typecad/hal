@@ -49,7 +49,7 @@ export function shouldReconfigure(depsChanged: boolean, sdkconfigExists: boolean
  * export.{sh,bat} and runs idf.py through it.
  */
 export function compileEspIdf(options: EspIdfCompileOptions): EspIdfCompileResult {
-  const components = options.components ?? { managed: {}, local: [], builtin: [] };
+  const components = options.components ?? { managed: {}, local: [], builtin: [], psram: false };
   const hasManagedOrLocal =
     Object.keys(components.managed).length > 0 || components.local.length > 0;
   const hasAnyComponents = hasManagedOrLocal || components.builtin.length > 0;

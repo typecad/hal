@@ -31,7 +31,6 @@
 // ---------------------------------------------------------------------------
 
 import type { DisplayAdapterGenerator } from "@typecad/cuttlefish/api/shared";
-import { getActiveChip } from "../chips/index.js";
 
 export const esp32Ssd1309Adapter: DisplayAdapterGenerator = (display) => {
   const w = display.width;
@@ -39,10 +38,6 @@ export const esp32Ssd1309Adapter: DisplayAdapterGenerator = (display) => {
   const address = display._mountAddress ?? 0x3c;
   const addrHex = "0x" + address.toString(16);
   const bufferSize = (w * h) / 8;
-
-  const chip = getActiveChip();
-  const i2c0 = chip.i2c.controllers[0];
-  if (!i2c0) throw new Error(`ESP32 chip ${chip.id} has no I2C controller 0`);
 
   return {
     includes: [
@@ -53,14 +48,15 @@ export const esp32Ssd1309Adapter: DisplayAdapterGenerator = (display) => {
     ].join("\n"),
 
     declaration: [
-      `// ESP32 display I2C state — dedicated bus + device handles.`,
+      `// ESP32 display I2C state — device handle on the shared I2C bus.`,
+      `// The bus itself is created/fetched via __esp32_i2c_bus_get(0) so the`,
+      `// display, touch, and user I2C share one bus handle (B1 fix).`,
       `struct __Esp32I2cDisplayCtx {`,
-      `  i2c_master_bus_handle_t bus;`,
       `  i2c_master_dev_handle_t dev;`,
       `  int16_t width;`,
       `  int16_t height;`,
       `};`,
-      `static __Esp32I2cDisplayCtx __esp32_i2c_display = { NULL, NULL, 0, 0 };`,
+      `static __Esp32I2cDisplayCtx __esp32_i2c_display = { NULL, 0, 0 };`,
       `// 1KB page buffer for ${w}x${h} mono panel.`,
       `static uint8_t __ssd1309_buffer[${bufferSize}];`,
       `// Flush buffer — first byte is the SSD1306 control byte 0x40 (data stream),`,
@@ -142,23 +138,14 @@ export const esp32Ssd1309Adapter: DisplayAdapterGenerator = (display) => {
       ``,
       `// ── display_* adapter surface ──────────────────────────────────────────`,
       `static inline void display_init() {`,
-      `  // Initialize dedicated I2C bus + device for the display.`,
-      `  if (!__esp32_i2c_display.bus) {`,
-      `    i2c_master_bus_config_t bcfg = {};`,
-      `    bcfg.i2c_port = ${i2c0.host};`,
-      `    bcfg.sda_io_num = ${i2c0.defaultSda};`,
-      `    bcfg.scl_io_num = ${i2c0.defaultScl};`,
-      `    bcfg.clk_source = I2C_CLK_SRC_DEFAULT;`,
-      `    bcfg.glitch_ignore_cnt = 7;`,
-      `    bcfg.flags.enable_internal_pullup = 1;`,
-      `    i2c_new_master_bus(&bcfg, &__esp32_i2c_display.bus);`,
-      `  }`,
+      `  // Fetch the shared I2C bus handle (created idempotently by the store).`,
+      `  i2c_master_bus_handle_t bus = __esp32_i2c_bus_get(0);`,
       `  if (!__esp32_i2c_display.dev) {`,
       `    i2c_device_config_t dcfg = {};`,
       `    dcfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;`,
       `    dcfg.device_address = ${addrHex};`,
       `    dcfg.scl_speed_hz = 400000;`,
-      `    i2c_master_bus_add_device(__esp32_i2c_display.bus, &dcfg, &__esp32_i2c_display.dev);`,
+      `    i2c_master_bus_add_device(bus, &dcfg, &__esp32_i2c_display.dev);`,
       `  }`,
       `  __esp32_i2c_display.width  = ${w};`,
       `  __esp32_i2c_display.height = ${h};`,

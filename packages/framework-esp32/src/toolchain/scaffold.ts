@@ -129,7 +129,7 @@ export function scaffoldEspIdfProject(
 
   writeIfChanged(
     join(projectDir, 'sdkconfig.defaults'),
-    sdkconfigDefaultsForTarget(target),
+    sdkconfigDefaultsForTarget(target, components?.psram ?? false),
   );
 
   writeIfChanged(

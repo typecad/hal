@@ -199,7 +199,22 @@ function emitKeyboardLoader(name: string, kb: KeyboardTemplate, rules: CSSRule[]
 
 /** Emit one key's keys[] + styles[] lines, resolving CSS classes to colors. */
 function emitKeyLine(key: UIKeyTemplate, kbClasses: string[] | undefined, rules: CSSRule[], colorFormat: ColorFormat): string {
-  const chEsc = key.ch === "\\" ? "\\\\" : key.ch === "'" ? "\\'" : key.ch;
+  // The C++ UIKey.ch field is a single `char`. Special keys (shift=1, bs=2,
+  // ok=3, page=4) use the `special` field for their behavior and label — the
+  // `ch` value is never read. Their label strings ("OK", "123", "⇧", "⌫") are
+  // multi-char or multi-byte and would overflow `char` if emitted as literals.
+  // Emit a space placeholder for any key whose ch isn't a single ASCII byte.
+  const isSingleAscii = key.special === 0 && key.ch.length === 1 && key.ch.charCodeAt(0) < 128;
+  if (key.special === 0 && !isSingleAscii) {
+    console.warn(
+      `[cuttlefish] keyboard key ch="${key.ch}" is non-ASCII and will be emitted as ` +
+      `a space placeholder. The native C++ UIKey.ch field is a single char and ` +
+      `cannot hold multi-byte codepoints. Use a custom keyboard layout or the ` +
+      `Adafruit path for full Unicode key labels.`,
+    );
+  }
+  const chRaw = isSingleAscii ? key.ch : ' ';
+  const chEsc = chRaw === "\\" ? "\\\\" : chRaw === "'" ? "\\'" : chRaw;
   const style = resolveKeyStyle(key.classes, kbClasses, rules);
   const bg = style.background ? resolveColor(style.background, colorFormat) : DEFAULT_KEY_BG;
   const fg = style.color ? resolveColor(style.color, colorFormat) : DEFAULT_KEY_FG;

@@ -5,7 +5,14 @@
 // cpp-emitter.ts, TypeCAD-map.ts, and arduino-profile.ts.
 // ---------------------------------------------------------------------------
 
-import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig, GraphicsCapacity, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode } from "@typecad/cuttlefish/api/shared";
+import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig, GraphicsCapacity, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode, TouchProfile } from "@typecad/cuttlefish/api/shared";
+
+/** Structural mirror of cuttlefish's TouchAdapterCodegen (avoids stale dist .d.ts). */
+interface TouchAdapterCodegen {
+  includes: string[];
+  declaration: string;
+  functions: string;
+}
 import type { StatementIR, HALOpIR } from "@typecad/cuttlefish/api/shared";
 import { generatePromiseRuntime, generateStaticAsyncRuntime, applyStringMethodRewrites, parsedIsVector } from "@typecad/cuttlefish/api/shared";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen.js";
@@ -1612,6 +1619,17 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
   resolveDisplayAdapter(_display: ResolvedDisplay): DisplayAdapterCode | undefined {
     return undefined;  // defer to the Adafruit registry
+  }
+
+  /**
+   * Arduino uses the built-in touch library switch — does NOT provide its own
+   * native touch adapter. Native strategies (ESP32) override this to return
+   * true and implement resolveTouchAdapter for framework-native I2C/SPI touch.
+   */
+  providesTouchAdapter(): boolean { return false; }
+
+  resolveTouchAdapter(_touch: TouchProfile): TouchAdapterCodegen | undefined {
+    return undefined;  // defer to the built-in library switch
   }
 
   supportedDisplayDrivers(): ReadonlySet<string> {

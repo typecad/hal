@@ -7,7 +7,6 @@ export function emitScrollPhysics(): string {
 // raw touch sample → smoothed delta (dy). Capacitive: passthrough 1:1.
 // Resistive: deadband suppresses sub-N-px jitter (steady drag still 1:1).
 // 'none' tier compiles drag scroll out entirely.
-static int16_t __ui_scroll_prev_dy = 0;  // last smoothed delta (low-pass state)
 
 static inline int16_t ui_scroll_scale_dy(int16_t dy) {
   int32_t scaled = (int32_t)dy * (int32_t)UI_SCROLL_DRAG_SCALE_X10;
@@ -16,17 +15,14 @@ static inline int16_t ui_scroll_scale_dy(int16_t dy) {
 
 static inline int16_t ui_scroll_smooth_dy(int16_t dy) {
 #if UI_SCROLL_INPUT_TIER_CAPACITIVE
-  __ui_scroll_prev_dy = dy;
   return ui_scroll_scale_dy(dy);
 #elif UI_SCROLL_INPUT_TIER_RESISTIVE
   int16_t db = (int16_t)UI_SCROLL_DEADBAND_PX;
   if (dy >= -db && dy <= db) {
     // Deadband: kill per-sample jitter around zero. Steady drag (|dy|>db) below
     // passes through unchanged, so steady-state is 1:1 (spec Q1).
-    __ui_scroll_prev_dy = 0;
     return 0;
   }
-  __ui_scroll_prev_dy = dy;
   return ui_scroll_scale_dy(dy);
 #else
   (void)dy;

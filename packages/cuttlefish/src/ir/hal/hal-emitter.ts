@@ -287,13 +287,29 @@ export function resolveExpressionText(
   return expr.getText ? expr.getText() : null;
 }
 
+/** Semantic HAL helpers whose callbacks run in true ISR context (need IRAM_ATTR).
+ *  WiFi event handlers, timers, setInterval, etc. use callback() too but run in
+ *  a task / event loop — marking those as ISRs puts printf in IRAM and, on
+ *  ESP-IDF, trips -Werror=attributes when IRAM_ATTR's __COUNTER__ disagrees
+ *  between forward declaration and definition. */
+const ISR_CALLBACK_SEMANTIC_FNS = new Set([
+  "interruptAttach",
+]);
+
+/** True when a HAL semantic call name wraps a GPIO/hardware ISR callback. */
+export function semanticCallUsesIsrCallback(fnName: string): boolean {
+  return ISR_CALLBACK_SEMANTIC_FNS.has(fnName);
+}
+
 /** Scan an expression AST for callback() calls, extract callback IR from callArgs,
- *  register them, and patch callArgTexts with placeholder names. */
+ *  register them, and patch callArgTexts with placeholder names.
+ *  @param isInterruptHandler — only true for GPIO interrupt attach paths. */
 export function extractAndRegisterCallbacks(
   expr: ts.Expression,
   paramNames: string[],
   callArgs: ExpressionIR[],
   callArgTexts: string[],
+  isInterruptHandler: boolean = false,
 ): void {
   function scan(node: ts.Expression): void {
     if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === "callback") {
@@ -318,10 +334,12 @@ export function extractAndRegisterCallbacks(
                     startOffset: 0,
                     endOffset: 0,
                   },
-                  isInterruptHandler: true,
+                  ...(isInterruptHandler ? { isInterruptHandler: true } : {}),
                 }
               : callbackIR;
-            normalized.isInterruptHandler = true;
+            if (isInterruptHandler) {
+              normalized.isInterruptHandler = true;
+            }
             registeredCallbacks.push({ placeholderName: placeholder, callbackIR: normalized });
             callArgTexts[paramIdx] = placeholder;
           }
@@ -435,8 +453,9 @@ export function processHALMethodBody(
       if (ts.isIdentifier(call.expression)) {
         // Extract callbacks from semantic call arguments and patch callArgTexts
         // with placeholder names before resolving (mirrors the emit() path).
+        const isIsr = semanticCallUsesIsrCallback(call.expression.text);
         for (const arg of call.arguments) {
-          extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts);
+          extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts, isIsr);
         }
 
         const semanticOp = tryResolveSemanticCall(
@@ -522,8 +541,9 @@ export function processHALMethodBody(
         actualRetExpr = actualRetExpr.expression;
       }
       if (ts.isCallExpression(actualRetExpr) && ts.isIdentifier(actualRetExpr.expression)) {
+        const isIsr = semanticCallUsesIsrCallback(actualRetExpr.expression.text);
         for (const arg of actualRetExpr.arguments) {
-          extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts);
+          extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts, isIsr);
         }
         const semanticOp = tryResolveSemanticCall(
           actualRetExpr.expression.text,
@@ -670,8 +690,9 @@ export function processStatementList(
           }
         } else {
           // R3: Try semantic HAL function call
+          const isIsr = semanticCallUsesIsrCallback(call.expression.text);
           for (const arg of call.arguments) {
-            extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts);
+            extractAndRegisterCallbacks(arg, paramNames, callArgs, callArgTexts, isIsr);
           }
           const semanticOp = tryResolveSemanticCall(
             call.expression.text, call.arguments,

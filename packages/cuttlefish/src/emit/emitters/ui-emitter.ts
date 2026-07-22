@@ -229,7 +229,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   if (profile.touch) {
     const t = profile.touch;
     if (t.library) {
-      touchAdapter = generateTouchAdapter(t);
+      touchAdapter = generateTouchAdapter(t, ctx.strategy);
       // Prepend includes to the front (Arduino auto-prototyper safety).
       ctx.sourceLines.unshift(touchAdapter.includes[0]);
       for (let i = 1; i < touchAdapter.includes.length; i++) {
@@ -312,7 +312,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   //     header so its #ifndef guards adopt them. Source of truth:
   //     resolveScrollConfig(profile.scroll). Defaults derive from the declared
   //     touch hardware, so the demo (XPT2046) gets resistive+full with no config.
-  const scroll = resolveScrollConfig(profile, { buildTarget: (profile as any)._buildTarget });
+  const scroll = resolveScrollConfig(profile, { buildTarget: (profile as any)._buildTarget, psram: (profile as any)._psram });
   ctx.sourceLines.push(
     `#define UI_SCROLL_MAX_OVERSCROLL ${scroll.maxOverscroll}`,
     `#define UI_SCROLL_STIFFNESS_X10 ${Math.round(scroll.stiffness * 10)}`,

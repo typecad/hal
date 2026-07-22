@@ -51,6 +51,7 @@ static UIKeyStyle __ui_kb_styles[UI_KB_MAX];
 static UI_COLOR_T __ui_kb_bg = 0x0000;  // keyboard background (resolved from CSS)
 static uint8_t __ui_kb_bs_held = 0;
 static uint8_t __ui_kb_dirty = 0;     // 0=clean, 1=full redraw, 2=text row + single key
+// (__ui_kb_canvas is declared in forward-decls.ts alongside the other persistent canvases.)
 // Forward-declared here (defined in the keyboard subsystem block below) so the
 // UI_HIDE_OSK caret/blink paths in ui_tick and the input draw can reference it.
 static int16_t  __ui_kb_target;

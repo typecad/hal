@@ -109,6 +109,10 @@ export interface ResolvedDisplay extends DisplayProfile {
   /** Arduino FQBN (e.g. "esp32:esp32:esp32s3:PSRAM=opi"), used to derive PSRAM
    *  availability for the scroll-canvas-memory budget. Optional. */
   _buildTarget?: string;
+  /** Explicit PSRAM flag from frameworkData.psram (IDF path). When true, the
+   *  scroll-canvas-memory diagnostic uses the PSRAM budget instead of the
+   *  SRAM default. Falls back to buildTargetHasPsram(_buildTarget) when unset. */
+  _psram?: boolean;
 }
 
 export interface DisplayConfig {
@@ -290,7 +294,7 @@ export function resolveScrollConfig(
     touch?: TouchProfile | false;
     scroll?: ScrollConfig;
   },
-  ctx?: { buildTarget?: string },
+  ctx?: { buildTarget?: string; psram?: boolean },
 ): ResolvedScrollConfig {
   const s = display.scroll ?? {};
   const lib =
@@ -304,10 +308,11 @@ export function resolveScrollConfig(
         ? "capacitive"
         : "none";
   // PSRAM-aware canvas budget: an explicit override always wins; otherwise use
-  // the PSRAM budget when the build target opts into PSRAM (so the scroll-canvas-
-  // memory diagnostic doesn't emit stale warnings for canvases the runtime
-  // allocates in external RAM without issue), else the no-PSRAM SRAM default.
-  const psramBudget = buildTargetHasPsram(ctx?.buildTarget);
+  // the PSRAM budget when the target opts into PSRAM — either via an explicit
+  // frameworkData.psram flag (IDF path) or an Arduino FQBN PSRAM= option — so
+  // the scroll-canvas-memory diagnostic doesn't emit stale warnings for canvases
+  // the runtime allocates in external RAM without issue. Else the SRAM default.
+  const psramBudget = ctx?.psram === true || buildTargetHasPsram(ctx?.buildTarget);
   const budgetDefault = psramBudget
     ? PSRAM_SCROLL_CANVAS_BUDGET_BYTES
     : DEFAULT_SCROLL_CANVAS_BUDGET_BYTES;
@@ -411,8 +416,27 @@ export interface TouchAdapterCodegen {
   functions: string;
 }
 
-/** Generate C++ code for a built-in touch library adapter. */
-export function generateTouchAdapter(touch: TouchProfile): TouchAdapterCodegen {
+/** Generate C++ code for a built-in touch library adapter.
+ *
+ *  Strategy-owned touch adapters (ESP32 native) take precedence: when the
+ *  strategy's `providesTouchAdapter()` returns true and `resolveTouchAdapter`
+ *  returns non-null, that codegen wins. Otherwise falls through to the
+ *  built-in library switch below (the Arduino path, unchanged).
+ *
+ *  Passing `undefined` for the strategy (or a strategy that doesn't provide
+ *  touch adapters) keeps the historical behavior — the Arduino library switch.
+ */
+export function generateTouchAdapter(
+  touch: TouchProfile,
+  strategy?: {
+    providesTouchAdapter?(): boolean;
+    resolveTouchAdapter?(touch: TouchProfile): TouchAdapterCodegen | undefined;
+  },
+): TouchAdapterCodegen {
+  if (strategy?.providesTouchAdapter?.() && strategy.resolveTouchAdapter) {
+    const code = strategy.resolveTouchAdapter(touch);
+    if (code) return code;
+  }
   const cs = touch.cs ?? 0;
   const irq = touch.irq;
 
