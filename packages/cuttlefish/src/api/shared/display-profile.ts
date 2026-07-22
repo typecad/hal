@@ -14,7 +14,7 @@ import type { DisplayCapabilities } from "./display-capabilities.js";
 // The transpiler handles calibration (raw ADC → screen pixels) and rotation.
 // ---------------------------------------------------------------------------
 
-export type TouchLibrary = "XPT2046_Touchscreen" | "Adafruit_TouchScreen" | "Adafruit_STMPE610" | "FT6336U" | "sdl";
+export type TouchLibrary = "XPT2046_Touchscreen" | "Adafruit_TouchScreen" | "Adafruit_STMPE610" | "FT6336U" | "GT911" | "CST816S" | "sdl";
 
 export interface TouchProfile {
   /**

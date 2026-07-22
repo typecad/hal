@@ -2,7 +2,7 @@ import { ArduinoStrategy, splitStreamChain } from '@typecad/framework-arduino';
 import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode, TouchProfile } from '@typecad/cuttlefish/api/shared';
 import { resolveNativeDisplayOp } from '@typecad/cuttlefish/api/shared';
 import { esp32Ili9341Adapter, esp32St7796Adapter, esp32Ssd1309Adapter } from './displays/index.js';
-import { esp32Ft6336uTouchAdapter, type TouchAdapterCodegen } from './touch/index.js';
+import { esp32Ft6336uTouchAdapter, esp32Xpt2046TouchAdapter, esp32Stmpe610TouchAdapter, esp32Gt911TouchAdapter, esp32Cst816sTouchAdapter, type TouchAdapterCodegen } from './touch/index.js';
 import { resolveEsp32Profile } from './profile.js';
 import { lowerHalOp } from './lowering/index.js';
 import { uartInitLines } from './lowering/uart.js';
@@ -315,21 +315,26 @@ export class Esp32Strategy extends ArduinoStrategy {
     switch (touch.library) {
       case "FT6336U":
         return esp32Ft6336uTouchAdapter(touch);
+      case "XPT2046_Touchscreen":
+        return esp32Xpt2046TouchAdapter(touch);
+      case "Adafruit_STMPE610":
+        return esp32Stmpe610TouchAdapter(touch);
+      case "GT911":
+        return esp32Gt911TouchAdapter(touch);
+      case "CST816S":
+        return esp32Cst816sTouchAdapter(touch);
       case undefined:
         return undefined;  // no library specified — nothing to resolve
       default:
-        // SPI touch (XPT2046, STMPE610) and analog resistive have no native
-        // ESP-IDF implementation. Throw a clear error rather than deferring to
-        // the Arduino library switch (which emits #include <XPT2046_Touchscreen.h>
-        // etc. — headers that don't exist in an ESP-IDF project, producing an
-        // opaque "file not found" error). Native SPI touch is tracked as a
-        // follow-up.
+        // Adafruit_TouchScreen (4-wire analog resistive) has no native ESP-IDF
+        // adapter — it requires Arduino ADC primitives (analogRead on cross-
+        // coupled GPIO) that don't map cleanly to IDF's ADC oneshot driver.
         throw new Error(
           `touch library "${touch.library}" is not supported on the native ESP32 ` +
-          `path. Only FT6336U (I2C capacitive) has a native ESP-IDF adapter. ` +
-          `For SPI/resistive touch controllers, use the Arduino path ` +
-          `(framework-arduino + arduino-cli toolchain). Native SPI touch is ` +
-          `tracked as a follow-up.`,
+          `path. Supported: FT6336U (I2C), GT911 (I2C), CST816S (I2C), ` +
+          `XPT2046_Touchscreen (SPI), Adafruit_STMPE610 (SPI). ` +
+          `For Adafruit_TouchScreen (4-wire analog), use the Arduino path ` +
+          `(framework-arduino + arduino-cli toolchain).`,
         );
     }
   }

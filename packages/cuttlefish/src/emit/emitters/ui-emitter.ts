@@ -46,7 +46,7 @@ import { getRadioGroups } from "../../ir/ui-element-auto-wire.js";
 // STMPE610, Adafruit_TouchScreen) keep the gate.
 // ---------------------------------------------------------------------------
 
-const CAPACITIVE_TOUCH_LIBS: ReadonlySet<string> = new Set(["FT6336U", "sdl"]);
+const CAPACITIVE_TOUCH_LIBS: ReadonlySet<string> = new Set(["FT6336U", "GT911", "CST816S", "sdl"]);
 
 export interface TouchPollInput {
   library?: string;
