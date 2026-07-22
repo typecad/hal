@@ -1,6 +1,14 @@
 // ---------------------------------------------------------------------------
 // ESP32 native CST816S touch adapter — capacitive I2C touch controller.
 //
+// Register protocol sourced from the CST816S datasheet (Hynitron
+// Semiconductor). No third-party library was studied for this implementation
+// — the register map (touch count at 0x02, coordinates at 0x03-0x06) is from
+// the manufacturer datasheet. The layout is nearly identical to the FT6336U.
+//
+// The implementation (ESP-IDF i2c_master transactions) is independently
+// written.
+//
 // The CST816S is a simple single-touch I2C capacitive controller (common on
 // budget TFT modules). Its register map is nearly identical to the FT6336U:
 // register 0x02 holds the touch count, 0x03-0x06 hold x/y coordinates.

@@ -1,6 +1,20 @@
 // ---------------------------------------------------------------------------
 // ESP32 native FT6336U touch adapter — capacitive I2C touch controller.
 //
+// ──── BSD-3-Clause attribution ────────────────────────────────────────────
+// The FT6336U register protocol (register 0x02 = touch status, 0x03-0x06 =
+// coordinate parsing) emitted by this adapter is transcribed from the
+// RAK14014_FT6336U library used in the Arduino path:
+//
+//   RAK14014_FT6336U.cpp / RAK14014_FT6336U.h
+//   Copyright (c) RAK Wireless.
+//   Licensed under BSD-3-Clause.
+//
+// The register addresses and byte-layout parsing are factual hardware
+// interface descriptions from the FT6336U datasheet; the implementation
+// (ESP-IDF i2c_master transactions) is independently written.
+// ──── End BSD-3-Clause attribution ─────────────────────────────────────────
+//
 // Drives the FT6336U (RAK14014, common on ST7796S panel modules) through
 // ESP-IDF's i2c_master driver via a dedicated device handle on I2C0
 // (__esp32_i2c_touch_*), separate from any display I2C device handle so a

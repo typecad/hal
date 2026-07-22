@@ -10,10 +10,11 @@ by this project, beyond what is linked at compile time by end-user projects.
 Third-party attributions — code emitted into generated sketches
 ================================================================================
 
-The native display paths (framework-avr, framework-esp32) emit C++ adapter
-code into the sketches this project transpiles. Some of that code is ported
-or transcribed from third-party BSD-3-Clause sources. End users distributing
-firmware built from those sketches should retain the attributions below.
+The native display and touch paths (framework-avr, framework-esp32) emit C++
+adapter code into the sketches this project transpiles. Some of that code is
+ported or transcribed from third-party BSD-3-Clause and MIT sources. End users
+distributing firmware built from those sketches should retain the attributions
+below.
 
 The Adafruit (arduino-cli) path does NOT bundle or emit Adafruit-derived
 code — it links the Adafruit libraries directly, and end users retain the
@@ -119,8 +120,75 @@ distribution.
               datasheet; equivalent sequences appear in TFT_eSPI, LovyanGFX,
               and other libraries under various licenses.
 
+--------------------------------------------------------------------------------
+6. RAK14014_FT6336U touch register protocol  (BSD-3-Clause)
+--------------------------------------------------------------------------------
+
+  Source:     RAK14014_FT6336U.cpp / RAK14014_FT6336U.h
+  Copyright:  (c) RAK Wireless
+  License:    BSD-3-Clause
+
+  Used by:    packages/framework-esp32/src/touch/ft6336u-esp32.ts
+                (the FT6336U register read protocol: register 0x02 for
+                touch status, 0x03-0x06 for coordinate parsing)
+
+  Scope:      The register addresses and byte-layout parsing are factual
+              hardware interface descriptions from the FT6336U datasheet.
+              The ESP-IDF i2c_master implementation is independently written.
+
+--------------------------------------------------------------------------------
+7. XPT2046_Touchscreen touch read sequence  (MIT)
+--------------------------------------------------------------------------------
+
+  Source:     XPT2046_Touchscreen.cpp / XPT2046_Touchscreen.h
+  Copyright:  (c) 2015, Paul Stoffregen, paul@pjrc.com
+  License:    MIT
+  Upstream:   https://github.com/PaulStoffregen/XPT2046_Touchscreen
+
+  Used by:    packages/framework-esp32/src/touch/xpt2046-esp32.ts
+                (the XPT2046 read sequence: Z1/Z2 pressure computation,
+                3x oversample, best-two-average filter, channel command
+                bytes 0xB1/0xC1/0x91/0xD1)
+
+  Scope:      The command bytes and pressure formula are from the
+              XPT2046/ADS7843 datasheet. The best-two-average filter is a
+              generic signal-processing technique. The ESP-IDF full-duplex
+              SPI implementation is independently written.
+
+--------------------------------------------------------------------------------
+8. Adafruit_STMPE610 touch register protocol  (MIT)
+--------------------------------------------------------------------------------
+
+  Source:     Adafruit_STMPE610.cpp / Adafruit_STMPE610.h
+  Copyright:  (c) Adafruit Industries
+  License:    MIT
+  Upstream:   https://github.com/adafruit/Adafruit_STMPE610
+
+  Used by:    packages/framework-esp32/src/touch/stmpe610-esp32.ts
+                (the STMPE610 register map, init sequence, and FIFO
+                data-parsing logic)
+
+  Scope:      The register addresses and data byte layout are from the
+              STMPE611/STMPE811 datasheet (STMicroelectronics). The ESP-IDF
+              half-duplex SPI implementation is independently written.
+
+--------------------------------------------------------------------------------
+9. GT911 and CST816S touch register protocols  (datasheet-sourced)
+--------------------------------------------------------------------------------
+
+  Source:     GT911 Programming Guide (Goodix Technology)
+              CST816S Datasheet (Hynitron Semiconductor)
+
+  Used by:    packages/framework-esp32/src/touch/gt911-esp32.ts
+              packages/framework-esp32/src/touch/cst816s-esp32.ts
+
+  Scope:      Register maps sourced directly from manufacturer datasheets.
+              No third-party library was studied for these implementations.
+              The ESP-IDF i2c_master implementations are independently
+              written.
+
 ================================================================================
-BSD-3-Clause text (applies to all attributions above)
+BSD-3-Clause text (applies to attributions 1-6)
 ================================================================================
 
 Redistribution and use in source and binary forms, with or without
@@ -148,3 +216,25 @@ INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
 CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 POSSIBILITY OF SUCH DAMAGE.
+
+================================================================================
+MIT License text (applies to attributions 7-8)
+================================================================================
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.

@@ -1,6 +1,22 @@
 // ---------------------------------------------------------------------------
 // ESP32 native XPT2046 touch adapter — resistive SPI touch controller.
 //
+// ──── MIT attribution ─────────────────────────────────────────────────────
+// The XPT2046 read sequence (Z1/Z2 pressure computation, 3x oversample,
+// best-two-average filter, and channel command bytes) is transcribed from:
+//
+//   XPT2046_Touchscreen.cpp / XPT2046_Touchscreen.h
+//   Copyright (c) 2015, Paul Stoffregen, paul@pjrc.com
+//   Licensed under the MIT License.
+//   Upstream: https://github.com/PaulStoffregen/XPT2046_Touchscreen
+//
+// The command bytes (0xB1=Z1, 0xC1=Z2, 0x91=X, 0xD1=Y) and the pressure
+// formula (z = 4095 + z1 - z2) are from the XPT2046/ADS7843 datasheet.
+// The best-two-average filter is a generic signal-processing technique.
+// The implementation (ESP-IDF spi_device_polling_transmit full-duplex) is
+// independently written.
+// ──── End MIT attribution ─────────────────────────────────────────────────
+//
 // The XPT2046 is a streaming SAR ADC: send a command byte to select a channel,
 // read the 12-bit result during the NEXT command's transfer (full-duplex).
 // Pressure is computed from Z1 and Z2 channel readings: z = 4095 + z1 - z2.

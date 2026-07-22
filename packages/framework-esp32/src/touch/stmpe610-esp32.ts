@@ -1,6 +1,21 @@
 // ---------------------------------------------------------------------------
 // ESP32 native STMPE610 touch adapter — SPI register-addressed touch controller.
 //
+// ──── MIT attribution ─────────────────────────────────────────────────────
+// The STMPE610 register map, init sequence, and FIFO data-parsing logic are
+// transcribed from:
+//
+//   Adafruit_STMPE610.cpp / Adafruit_STMPE610.h
+//   Copyright (c) Adafruit Industries.
+//   Licensed under the MIT License.
+//   Upstream: https://github.com/adafruit/Adafruit_STMPE610
+//
+// The register addresses and data byte layout are from the STMPE611/STMPE811
+// datasheet (STMicroelectronics). The implementation (ESP-IDF
+// spi_device_polling_transmit half-duplex register reads) is independently
+// written.
+// ──── End MIT attribution ─────────────────────────────────────────────────
+//
 // The STMPE610 uses register-based access: write (reg) to set the register
 // pointer for writes, write (0x80 | reg) for reads. Touch data is drained
 // from a FIFO via the data register 0xD7. Touch status is bit 7 of TSC_CTRL

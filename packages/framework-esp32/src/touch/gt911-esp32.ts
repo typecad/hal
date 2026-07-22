@@ -1,6 +1,14 @@
 // ---------------------------------------------------------------------------
 // ESP32 native GT911 touch adapter — capacitive I2C touch controller.
 //
+// Register protocol sourced from the GT911 Programming Guide (Goodix
+// Technology). No third-party library was studied for this implementation —
+// the register map (status 0x814E, coordinates 0x8150, 16-bit big-endian
+// register addressing) is from the manufacturer datasheet.
+//
+// The implementation (ESP-IDF i2c_master transactions) is independently
+// written.
+//
 // The GT911 (Goodix) supports up to 5 simultaneous touch points, uses 16-bit
 // register addresses, and requires a config-write on init for reliable
 // operation. This adapter reads a single touch point (the runtime's
