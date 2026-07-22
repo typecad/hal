@@ -62,7 +62,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
   if (reason == 1) reasonText = "scroll viewport exceeds compile-time canvas budget";
   else if (reason == 2) reasonText = "using Mode C strip fallback (smooth scroll canvas unavailable)";
 
-#if defined(ESP32)
+#if defined(ESP32) && defined(ARDUINO)
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t maxAlloc = ESP.getMaxAllocHeap();
   Serial.printf(
@@ -71,7 +71,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
     "Shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\\n",
     label, vw, vh, (unsigned long)need, reasonText,
     (unsigned long)freeHeap, (unsigned long)maxAlloc, UI_SCROLL_CANVAS_BUDGET_BYTES);
-#elif defined(ESP8266)
+#elif defined(ESP8266) && defined(ARDUINO)
   uint32_t freeHeap = ESP.getFreeHeap();
   Serial.printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "

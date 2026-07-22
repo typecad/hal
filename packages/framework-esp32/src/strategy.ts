@@ -406,6 +406,14 @@ export class Esp32Strategy extends ArduinoStrategy {
         helperStructs: [],
         helperFunctions: [
           `// Arduino-compat symbols for shared polyfills (ESP-IDF).
+// Suppress multichar warnings: the runtime header's touch-keyboard code
+// uses multi-character constants like 'OK' and 'ABC' as int-sized key
+// labels (GCC extension). -Werror=multichar would flag these.
+#pragma GCC diagnostic ignored "-Wmultichar"
+// Suppress missing-field-initializers: the runtime header's static tables
+// (UITransition, UINode, etc.) use designated initializers that don't name
+// every field. C++ (unlike C) warns on this under -Werror.
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #ifndef HIGH
 #define HIGH 1
 #endif
@@ -434,6 +442,19 @@ static inline int digitalRead(int pin) {
 #endif
 #ifndef map
 #define map(x, in_min, in_max, out_min, out_max) ((x) - (in_min)) * ((out_max) - (out_min)) / ((in_max) - (in_min)) + (out_min)
+#endif
+// PROGMEM + pgm_read_* — AVR flash-memory macros. On ESP32 all memory is
+// uniform (no Harvard architecture), so PROGMEM is a no-op and pgm_read
+// is a simple dereference. Font tables emitted by the runtime header use
+// these (e.g. __ui_font_N_alpha[] PROGMEM).
+#ifndef PROGMEM
+#define PROGMEM
+#endif
+#ifndef pgm_read_byte
+#define pgm_read_byte(addr) (*(const uint8_t*)(addr))
+#endif
+#ifndef pgm_read_word
+#define pgm_read_word(addr) (*(const uint16_t*)(addr))
 #endif
 `,
         ],

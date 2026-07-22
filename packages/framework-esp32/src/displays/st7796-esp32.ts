@@ -105,7 +105,6 @@ export const esp32St7796Adapter: DisplayAdapterGenerator = (display) => {
       `  __esp32_display.width  = ${w};`,
       `  __esp32_display.height = ${h};`,
       esp32SpiBusInit(0, spi0.host, spi0.defaultMosi, spi0.defaultSclk, spi0.defaultMiso, spiHz, spiMode),
-      `  printf("[display] init complete, dev=%p w=%d h=%d\\n", __esp32_display.dev, __esp32_display.width, __esp32_display.height);`,
 
       `  // ST7796S init — transcribed from Adafruit_ST7796S.cpp st7796s_init[].`,
       `  // Each register write sends {cmd, data...} via __esp32_spi_cmd_data,`,
