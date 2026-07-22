@@ -483,6 +483,102 @@ code:
    npm run render:framework-coverage
    ```
 
+## Adding a native display adapter
+
+If your framework cannot use the Adafruit_GFX-based adapters (e.g. bare-metal
+AVR with no Arduino core, ESP-IDF without Arduino-ESP32), you can provide
+native display adapters that reuse your framework's existing peripheral
+primitives.
+
+### When to override
+
+Override both `providesDisplayAdapter()` (return `true`) and
+`resolveDisplayAdapter(display)` on your `PlatformStrategy`. The base
+`ArduinoStrategy` declares them as `providesDisplayAdapter(): boolean { return
+false; }` and `resolveDisplayAdapter(): undefined` so subclasses can override
+them. When `providesDisplayAdapter()` is false, `generateDisplayAdapter()`
+falls through to the built-in Adafruit registry — that fallback only works
+when Adafruit libraries are available.
+
+You MUST also override `resolveDisplayOp(op)` to return `undefined`, breaking
+the latent inheritance from `ArduinoStrategy.resolveDisplayOp`. Otherwise
+display HAL ops fall through to the broken `__tc_display.fillRect(...)` path
+that assumes an Adafruit object exists.
+
+For drivers you don't support, throw a clear compile-time error from
+`resolveDisplayAdapter` instead of returning `undefined` (which would defer
+to the Adafruit registry and emit uncompilable code).
+
+### The panel-ops contract
+
+Each adapter fills a `CuttlefishPanelOps` struct with function pointers
+(declared in `packages/ui/src/ui-engine/runtime-header/cuttlefish-gfx.ts`):
+
+- `startWrite` / `endWrite` — claim/release the bus (may be nullptr).
+- `setAddrWindow` — set the panel's active write region.
+- `writePixels` — stream RGB565 pixels (RGB TFTs).
+- `writePixel` — direct-mode single pixel.
+- `fillRect` — fast path for axis-aligned fills.
+- `width` / `height`.
+- `flush` — backing-store flush (SSD1309 only; nullptr on direct-mode panels).
+
+The `CuttlefishGFX` class (geometry/canvas/text) is emitted into the runtime
+header only when `providesDisplayAdapter()` is true. Adapters reference the
+already-defined `CuttlefishGFX` symbol in their `declaration` block.
+
+### Direct vs buffered mode
+
+- **Direct mode** (ILI9341, ST7796S on ESP32): no backing store; every draw
+  hits the panel via `setAddrWindow` + `writePixels`. Required when RAM can't
+  fit a framebuffer.
+- **Buffered mode** (SSD1309 on AVR/ESP32): RAM backing store, flush on
+  demand via the `flush` op. Mandatory for page-buffered panels.
+
+### RAM budget
+
+ATmega328P (2KB RAM) constraints — why AVR supports only SSD1309:
+- SSD1309 128×64 page buffer: 1KB — fits.
+- ILI9341/ST7796S RGB565 framebuffer: 150KB+ — does NOT fit; direct mode is
+  unusably slow on an 8-bit MCU. AVR's `resolveDisplayAdapter` throws for
+  these drivers.
+- SSD1680 mono buffer: 5KB+ — does NOT fit.
+
+ESP32-S3 with PSRAM has no practical constraint. ESP32 supports ILI9341,
+ST7796S, SSD1309.
+
+### Emitting pin control
+
+Use `gpio_set_level((gpio_num_t)PIN, 0/1)` on ESP32 and `PORTx |= mask` /
+`PORTx &= ~mask` on AVR (via the `getPinBitMask(pin)` /
+`getPortReg(pin)` helpers in `framework-avr/src/registers.ts`). Do NOT call
+strategy-side helpers like `nativeDigitalWrite` from adapter-emit code —
+those are for HAL lowering, not display adapters.
+
+### Manifest declaration
+
+Display ops should be declared `'probe-inconclusive'`, NOT `'supported'`.
+The validator probes display ops via `resolveDisplayOp`, which returns
+`undefined` because the adapter path bypasses HAL lowering entirely. The
+implementation is real and unit-tested in
+`tests/packages/framework-<framework>/displays/`, but structurally invisible
+to the validator's probe. `'probe-inconclusive'` is the honest status;
+`'supported'` will fail validation with `status-mismatch`.
+
+### Reference implementations
+
+- `packages/framework-avr/src/displays/ssd1309-avr.ts` — AVR + I2C OLED,
+  buffered mode, uses `_twi_*` primitives.
+- `packages/framework-esp32/src/displays/ili9341-esp32.ts` — ESP32 + SPI TFT,
+  direct mode, uses `spi_device_polling_transmit`.
+- `packages/framework-esp32/src/displays/st7796-esp32.ts` — same shape as
+  ILI9341, different init sequence. This is the adapter the hardware
+  verification demo targets.
+- `packages/framework-esp32/src/displays/ssd1309-esp32.ts` — ESP32 + I2C OLED,
+  buffered mode. Note the bypass of `__tc_i2cN_txbuf` (32-byte limit) via
+  direct `i2c_master_transmit` calls.
+- `packages/framework-esp32/src/displays/esp32-spi-display-helpers.ts` —
+  shared transport infrastructure for ESP32 SPI displays.
+
 ## Minimum-viable path
 
 If you want the absolute smallest setup to get a new framework passing CI:

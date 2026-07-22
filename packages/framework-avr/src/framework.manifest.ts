@@ -4,10 +4,10 @@ import { defineFrameworkManifest } from '@typecad/cuttlefish/api/shared';
 // (NativeAVRStrategy inherits from ArduinoStrategy; differences are in the
 // overridden methods). WiFi/HTTP are unsupported on AVR (no hardware).
 //
-// Display is declared unsupported: AVR has no display driver lowering. The
-// validator will flag this against the inherited resolveDisplayOp (which still
-// lowers display.init) — that latent inheritance bug is documented for a
-// future spec.
+// Display is supported for SSD1309 only (AVR's 2KB RAM excludes TFT/e-ink
+// panels — see the display block below). Display HAL ops resolve through
+// resolveDisplayAdapter (not resolveHALOperation), so per-op status is
+// 'probe-inconclusive' by design.
 
 export default defineFrameworkManifest({
   schemaVersion: 1,
@@ -266,21 +266,35 @@ export default defineFrameworkManifest({
       },
     },
     display: {
-      // HONEST DECLARATION: AVR has no display driver. The strategy inherits
-      // Arduino's resolveDisplayOp, which lowers display.init — a latent bug.
-      // The validator catches this contradiction; resolution tracked in a
-      // future spec (override resolveDisplayOp to throw on AVR).
-      supported: false,
-      unsupportedReason: 'AVR has no display driver. resolveDisplayOp is inherited from Arduino and lowers display.init — known latent inheritance bug; future spec will override.',
-      drivers: [],
-      colorFormat: null,
+      // Native AVR drivers via framework-avr/src/displays/*. AVR's 2KB RAM
+      // (ATmega328P) constrains support to page-buffered displays — only
+      // SSD1309 (1KB page buffer) fits. ILI9341/ST7796S need 150KB+ RGB565
+      // framebuffers or unacceptably slow direct-mode SPI on an 8-bit MCU;
+      // SSD1680 needs 5KB+ mono buffers. Those three throw a clear error in
+      // resolveDisplayAdapter rather than emitting uncompilable code. ESP32
+      // supports ILI9341/ST7796S/SSD1309 — see framework-esp32.
+      //
+      // resolveDisplayOp returns undefined (display ops are resolved through
+      // the adapter path, not per-op HAL lowering) and resolveDisplayAdapter
+      // dispatches by driver.
+      //
+      // Per-op status is 'supported' — resolveDisplayOp lowers each display.*
+      // op to a call into the adapter surface (display_init /
+      // display_targetFillRect / etc.) via resolveNativeDisplayOp, and the
+      // validator's probe sees the lowering. Earlier this was marked
+      // 'probe-inconclusive' under the (incorrect) assumption that the adapter
+      // path bypassed HAL lowering; that assumption was stale after
+      // resolveNativeDisplayOp landed.
+      supported: true,
+      drivers: ['ssd1309'],
+      colorFormat: 'rgb565',
       partialCoverage: false,
       ops: {
-        'display.init': 'unsupported',
-        'display.fill_rect': 'unsupported',
-        'display.draw_text': 'unsupported',
-        'display.draw_rect': 'unsupported',
-        'display.flush': 'unsupported',
+        'display.init': 'supported',
+        'display.fill_rect': 'supported',
+        'display.draw_text': 'supported',
+        'display.draw_rect': 'supported',
+        'display.flush': 'supported',
       },
     },
     raw: { supported: true },

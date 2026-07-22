@@ -11,6 +11,9 @@ const HASH_FILENAME = '.cuttlefish-deps-hash';
  * cache. Local deps keep their declared order (they map 1:1 to
  * EXTRA_COMPONENT_DIRS lines, whose order doesn't matter functionally but
  * is preserved for stability).
+ *
+ * `psram` is part of the hash so toggling it triggers `idf.py reconfigure`
+ * to regenerate sdkconfig from the updated sdkconfig.defaults.
  */
 export function hashForComponents(components: ScaffoldComponents): string {
   const managedEntries = Object.entries(components.managed).sort(([a], [b]) =>
@@ -20,6 +23,7 @@ export function hashForComponents(components: ScaffoldComponents): string {
     managed: managedEntries, // sorted
     local: components.local,
     builtin: [...components.builtin].sort(),
+    psram: components.psram,
   });
   return createHash('sha256').update(payload).digest('hex');
 }

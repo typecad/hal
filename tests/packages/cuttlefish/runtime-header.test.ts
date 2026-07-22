@@ -689,7 +689,9 @@ describe("C++ reactive runtime header", () => {
   it("scrolls virtualized lists by shifting cached pixels and repainting only the exposed strip", () => {
     expect(header).toContain("__ui_list_canvas_node");
     expect(header).not.toContain("ui_push_canvas_rect_rows");
-    expect(header).toMatch(/ui_get_repair_canvas[\s\S]*display_canvasWidth\(__ui_repair_canvas\) < w[\s\S]*display_canvasHeight\(__ui_repair_canvas\) < h/);
+    // Repair canvas reallocates on exact-size mismatch (not just when growing).
+    // A reused larger canvas keeps its old stride, corrupting the push.
+    expect(header).toMatch(/ui_get_repair_canvas[\s\S]*display_canvasWidth\(__ui_repair_canvas\) != w[\s\S]*display_canvasHeight\(__ui_repair_canvas\) != h/);
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*deltaY\s*=\s*listScrollY\s*-\s*__ui_nodes\[i\]\.lastPaintedScrollY/);
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*canShiftList[\s\S]*ui_shift_container_canvas\(lc,\s*deltaY,\s*clearCol,\s*&repaintY,\s*&repaintH\)/);
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*ui_get_repair_canvas\(bw,\s*repaintH\)[\s\S]*listTextOffsetY\s*=\s*repaintY/);

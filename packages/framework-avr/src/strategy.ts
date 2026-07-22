@@ -8,7 +8,9 @@
 // ---------------------------------------------------------------------------
 
 import { ArduinoStrategy } from '@typecad/framework-arduino';
-import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR, Diagnostic } from '@typecad/cuttlefish/api/shared';
+import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode } from '@typecad/cuttlefish/api/shared';
+import { resolveNativeDisplayOp } from '@typecad/cuttlefish/api/shared';
+import { avrSsd1309Adapter } from './displays/index.js';
 import {
   getPinInfo,
   getPinBitMask,
@@ -1165,6 +1167,45 @@ export class NativeAVRStrategy extends ArduinoStrategy {
 
   override symbolAliases(program?: ProgramIR, ctx?: PlatformContext): Record<string, string> {
     return this.resolveAvrProfileCached(program, ctx).symbolAliases;
+  }
+
+  /**
+   * Display HAL ops on AVR go through the adapter path (providesDisplayAdapter
+   * → resolveDisplayAdapter → CuttlefishGFX + native _twi_ primitives), but
+   * user code that emits display.* HAL ops still needs to lower to calls into
+   * the adapter surface (display_init / display_targetFillRect / etc.). The
+   * shared resolveNativeDisplayOp does that lowering — the surface is
+   * identical across native adapters.
+   *
+   * Replacing ArduinoStrategy.resolveDisplayOp fixes the latent inheritance
+   * bug where display.init lowered via __tc_display (a non-existent Adafruit
+   * object on AVR).
+   */
+  override resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
+    return resolveNativeDisplayOp(op);
+  }
+
+  override providesDisplayAdapter(): boolean { return true; }
+
+  override resolveDisplayAdapter(display: ResolvedDisplay): DisplayAdapterCode | undefined {
+    switch (display.driver) {
+      case "ssd1309": return avrSsd1309Adapter(display);
+      case "ili9341":
+      case "st7796":
+      case "ssd1680":
+        // These drivers need framebuffers (150KB+ for RGB565 TFTs, 5KB+ for
+        // SSD1680 e-ink) that don't fit in AVR's 2KB RAM, and direct-mode
+        // SPI without a framebuffer is unusably slow on an 8-bit MCU. Throw
+        // a clear compile-time error rather than falling through to the
+        // Adafruit registry (which would emit uncompilable Arduino code).
+        throw new Error(
+          `display driver "${display.driver}" is not supported on AVR: ` +
+          `the panel's framebuffer requirements exceed AVR's 2KB RAM. ` +
+          `SSD1309 (1KB page buffer) is the only supported display on AVR. ` +
+          `For TFT/e-ink panels, target framework-esp32 (with PSRAM).`,
+        );
+      default: return undefined;  // defer to built-in Adafruit registry
+    }
   }
 
   /**

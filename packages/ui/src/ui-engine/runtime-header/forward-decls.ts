@@ -3,10 +3,6 @@
 // See docs/superpowers/specs/2026-07-12-split-runtime-header-design.md.
 export function emitForwardDecls(): string {
   return `
-static uint8_t __ui_fade_opacity = 100;  // fade-in animation (0=transparent, 100=full)
-static uint16_t __ui_fade_elapsed = 0;
-static uint16_t __ui_fade_duration = 200; // ms
-
 // Early forward declaration: ui_navigate (below) calls ui_release_canvas_state
 // and ui_set_pressed (defined later) during screen changes. Needed on native
 // (single TU, no Arduino auto-prototyper).
@@ -14,7 +10,8 @@ static inline void ui_release_canvas_state();
 static inline void ui_set_pressed(uint16_t nodeIdx, uint8_t pressed);
 static inline void ui_refresh_active_screen_bg_node();
 
-// Navigate to a screen by index. Marks the new screen's nodes dirty + starts fade.
+// Navigate to a screen by index. Marks the new screen's nodes dirty, releases
+// persistent canvas state, and optionally clears the display.
 static inline void ui_navigate(uint8_t screenIdx) {
   if (screenIdx >= __ui_screen_count || screenIdx == __ui_active_screen) return;
   __ui_active_screen = screenIdx;
@@ -93,12 +90,14 @@ static inline void ui_draw_node_decoration_clipped(uint16_t nodeIdx, int16_t dra
 // single native translation unit (Arduino's auto-prototyper hides this;
 // native emits one TU so explicit forwards are needed).
 static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py);
+#ifdef UI_AA
 static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, UI_COLOR_T bg);
 static inline void ui_aa_end(CuttlefishCanvas16* c);
 static inline void ui_aa_push(CuttlefishCanvas16* c, int16_t dx, int16_t dy);
 static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x1, float y1, UI_COLOR_T color);
 static inline void ui_aa_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, UI_COLOR_T color);
 static inline void ui_aa_fill_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, UI_COLOR_T color);
+#endif
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx, UIRect* r);
 static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* paintRect);
 static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect* oldRect);
@@ -126,6 +125,7 @@ static CuttlefishCanvas16* __ui_list_canvas = nullptr;       // virtualized <lis
 static int16_t __ui_list_canvas_node = -1;                   // node currently represented by __ui_list_canvas
 static CuttlefishCanvas16* __ui_node_canvas = nullptr;       // <canvas> element offscreen
 static CuttlefishCanvas16* __ui_repair_canvas = nullptr;     // buffered-paint / exposed-strip
+static CuttlefishCanvas16* __ui_kb_canvas = nullptr;         // on-screen keyboard overlay
 static int16_t __ui_canvas_fallback_w = 0;                   // dimensions for direct <canvas> fallback
 static int16_t __ui_canvas_fallback_h = 0;
 // Draw offset: normally zero. The <canvas> allocation fallback sets it so

@@ -10,6 +10,7 @@ static inline void ui_release_canvas_state() {
   __ui_list_canvas_node = -1;
   display_deleteCanvas(__ui_node_canvas);      __ui_node_canvas = nullptr;
   display_deleteCanvas(__ui_repair_canvas);    __ui_repair_canvas = nullptr;
+  display_deleteCanvas(__ui_kb_canvas);        __ui_kb_canvas = nullptr;
 }
 
 // Lazily allocate/reuse a viewport-sized canvas for a scroll container. Resizes
@@ -62,7 +63,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
   if (reason == 1) reasonText = "scroll viewport exceeds compile-time canvas budget";
   else if (reason == 2) reasonText = "using Mode C strip fallback (smooth scroll canvas unavailable)";
 
-#if defined(ESP32)
+#if defined(ESP32) && defined(ARDUINO)
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t maxAlloc = ESP.getMaxAllocHeap();
   Serial.printf(
@@ -71,7 +72,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
     "Shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\\n",
     label, vw, vh, (unsigned long)need, reasonText,
     (unsigned long)freeHeap, (unsigned long)maxAlloc, UI_SCROLL_CANVAS_BUDGET_BYTES);
-#elif defined(ESP8266)
+#elif defined(ESP8266) && defined(ARDUINO)
   uint32_t freeHeap = ESP.getFreeHeap();
   Serial.printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
@@ -139,13 +140,18 @@ static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t
 }
 
 // Repair canvas: parent-seeded background repaints + exposed-strip redraws.
-// Grow-only between navigations so small scroll-delta changes do not allocate
-// and free a new strip canvas during drag.
+// Reused across navigations when size matches; reallocated on exact-size
+// mismatch (a reused larger canvas would keep its old stride, corrupting the
+// pushed pixels — see the inline comment below).
 static inline CuttlefishCanvas16* ui_get_repair_canvas(int16_t w, int16_t h) {
   if (w <= 0 || h <= 0) return nullptr;
+  // Reallocate when size differs at all (not just when growing). A reused
+  // larger canvas keeps its old stride, and ui_push_canvas_rect uses that
+  // stride for row offsets — a mismatch with the caller's expected (w,h)
+  // corrupts the pushed pixels. Exact-size reallocation guarantees stride == w.
   if (!__ui_repair_canvas || !display_canvasBuffer(__ui_repair_canvas) ||
-      display_canvasWidth(__ui_repair_canvas) < w ||
-      display_canvasHeight(__ui_repair_canvas) < h) {
+      display_canvasWidth(__ui_repair_canvas) != w ||
+      display_canvasHeight(__ui_repair_canvas) != h) {
     display_deleteCanvas(__ui_repair_canvas);
     __ui_repair_canvas = ui_create_canvas_best(w, h);
   }

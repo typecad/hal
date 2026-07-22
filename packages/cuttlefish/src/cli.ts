@@ -505,9 +505,17 @@ async function main(): Promise<void> {
       let configBuildTarget = config.buildTarget;
 
       if (configBuildTarget) {
+        // Reconstruct frameworkData from buildTarget, preserving other fields
+        // (psram, components, etc.) from the resolved frameworkConfig so the
+        // transpile-time diagnostics (e.g. scroll-canvas-memory PSRAM budget)
+        // and the toolchain both see the full frameworkData, not just buildTarget.
+        const fcPsram = (config.frameworkConfig as any)?.psram;
         effectivePlatformContext = {
           architecture: configBuildTarget.split(":")?.[1]?.toLowerCase(),
-          frameworkData: { buildTarget: configBuildTarget },
+          frameworkData: {
+            buildTarget: configBuildTarget,
+            ...(fcPsram ? { psram: fcPsram } : {}),
+          },
         };
       }
       if (config.outputOutDir && !options.outDir) {

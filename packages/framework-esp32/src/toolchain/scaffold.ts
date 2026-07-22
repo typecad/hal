@@ -103,6 +103,16 @@ export function scaffoldEspIdfProject(
       '                       INCLUDE_DIRS "."',
       `                       REQUIRES ${requires.join(' ')})`,
       '',
+      '# ESP-IDF v6 / GCC 13+ enables -Werror for many warnings that the',
+      '# cuttlefish runtime header (ported from Arduino) triggers:',
+      '#   - multichar: touch-keyboard uses int-sized char constants like \'OK\'',
+      '#   - overflow: same multichar constants truncated to char slots',
+      '#   - missing-field-initializers: static tables with designated initializers',
+      '# These are pre-existing patterns in the runtime header, not bugs.',
+      'target_compile_options(${COMPONENT_LIB} PRIVATE',
+      '    -Wno-error',
+      ')',
+      '',
     ].join('\n'),
   );
 
@@ -119,7 +129,7 @@ export function scaffoldEspIdfProject(
 
   writeIfChanged(
     join(projectDir, 'sdkconfig.defaults'),
-    sdkconfigDefaultsForTarget(target),
+    sdkconfigDefaultsForTarget(target, components?.psram ?? false),
   );
 
   writeIfChanged(

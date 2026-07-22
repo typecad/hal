@@ -1,9 +1,13 @@
 import { ArduinoStrategy, splitStreamChain } from '@typecad/framework-arduino';
-import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic } from '@typecad/cuttlefish/api/shared';
+import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode, TouchProfile } from '@typecad/cuttlefish/api/shared';
+import { resolveNativeDisplayOp } from '@typecad/cuttlefish/api/shared';
+import { esp32Ili9341Adapter, esp32St7796Adapter, esp32Ssd1309Adapter } from './displays/index.js';
+import { esp32Ft6336uTouchAdapter, type TouchAdapterCodegen } from './touch/index.js';
 import { resolveEsp32Profile } from './profile.js';
 import { lowerHalOp } from './lowering/index.js';
 import { uartInitLines } from './lowering/uart.js';
 import { i2cInitLines }  from './lowering/i2c.js';
+import { emitSharedI2cBusStore } from './lowering/i2c-bus-store.js';
 import { spiInitLines }  from './lowering/spi.js';
 import { pwmInitLines }  from './lowering/pwm.js';
 import { adcInitLines }  from './lowering/adc.js';
@@ -181,13 +185,58 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (a?.usesWifi)  espInit.push(...wifiInitLines());
     if (a?.usesHttp)  espInit.push(...httpInitLines());
 
+    // After timer_methods polyfill (emitted before shimLines): hook delay() so
+    // setInterval fires inside setup()'s blocking while+delay loops.
+    // Prefer usedPolyfillHelpers — HAL setInterval lowers via rawCpp and may
+    // not increment timerCallCount.
+    const timerCoop: string[] = [];
+    const usesTimerPolyfill =
+      (a?.timerCallCount ?? 0) > 0 ||
+      a?.usedPolyfillHelpers?.has?.('__tc_setInterval') ||
+      a?.usedPolyfillHelpers?.has?.('__tc_setTimeout');
+    if (usesTimerPolyfill) {
+      timerCoop.push(
+        'static void __tc_timer_coop_poll(void) { __tc_timer_runtime.run(); }',
+        'struct __tc_TimerCoopInit {',
+        '    __tc_TimerCoopInit() { __tc_coop_poll_hook = &__tc_timer_coop_poll; }',
+        '};',
+        'static __tc_TimerCoopInit __tc_timer_coop_init;',
+        '',
+      );
+    }
+
     return [
       // __tc_str_ptr string helpers — Esp32Strategy inherits the parent's
       // `std::string` → `__tc_str_ptr` type normalization, so it must also
       // emit the struct definition. setup.ts strips the block when the
       // program analysis reports !usesStrPtr.
       ...this.strPtrShimLines(),
+      // Shared I2C bus handle store — one i2c_master_bus_handle_t per controller.
+      // Emitted unconditionally (zero cost if unused): display, touch, and user
+      // I2C consumers call __esp32_i2c_bus_get(idx) to fetch the shared handle,
+      // then i2c_master_bus_add_device against it. This avoids the B1 bug where
+      // each adapter independently calling i2c_new_master_bus() on the same port
+      // fails silently for the second caller.
+      emitSharedI2cBusStore(),
+      // Cooperative delay for setInterval/setTimeout. Top-level `while (true)
+      // { ...; delay(ms); }` lives in setup() and never returns to loop(),
+      // where __tc_timer_runtime.run() is normally pumped. When timers are
+      // used, __tc_TimerCoopInit (below) registers the poll hook.
+      'static void (*__tc_coop_poll_hook)(void) = NULL;',
+      'static inline void __tc_delay(uint32_t ms) {',
+      '    if (__tc_coop_poll_hook == NULL) {',
+      '        vTaskDelay(pdMS_TO_TICKS(ms == 0 ? 1 : ms));',
+      '        return;',
+      '    }',
+      '    int64_t deadline = esp_timer_get_time() + (int64_t)ms * 1000;',
+      '    do {',
+      '        __tc_coop_poll_hook();',
+      '        vTaskDelay(1);',
+      '    } while (esp_timer_get_time() < deadline);',
+      '}',
+      '',
       ...espInit,
+      ...timerCoop,
       '// --- ESP32 IDF entrypoint: app_main runs setup()/loop() directly ---',
       '// The cuttlefish synthesizer emits setup() and loop() (it keys off',
       '// entrypointFunctionName()="setup" and requiresLoopFunction()=true).',
@@ -220,6 +269,69 @@ export class Esp32Strategy extends ArduinoStrategy {
 
   override resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {
     return lowerHalOp(op);
+  }
+
+  /**
+   * Display HAL ops on ESP32 go through the adapter path (providesDisplayAdapter
+   * → resolveDisplayAdapter → CuttlefishGFX + native spi_device_polling_transmit
+   * / i2c_master_transmit primitives), but user code that emits display.* HAL
+   * ops still needs to lower to calls into the adapter surface (display_init /
+   * display_targetFillRect / etc.). The shared resolveNativeDisplayOp does
+   * that lowering — the surface is identical across native adapters.
+   *
+   * Replacing ArduinoStrategy.resolveDisplayOp fixes the latent inheritance
+   * bug where display.init lowered via __tc_display (a non-existent Adafruit
+   * object on ESP-IDF).
+   */
+  override resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
+    return resolveNativeDisplayOp(op);
+  }
+
+  override providesDisplayAdapter(): boolean { return true; }
+
+  override resolveDisplayAdapter(display: ResolvedDisplay): DisplayAdapterCode | undefined {
+    switch (display.driver) {
+      case "ili9341": return esp32Ili9341Adapter(display);
+      case "st7796":  return esp32St7796Adapter(display);
+      case "ssd1309": return esp32Ssd1309Adapter(display);
+      case "ssd1680":
+        // E-ink is intentionally not supported: the LUT-driven refresh cycle
+        // + busy-pin handling adds significant complexity for a panel class
+        // that's a marginal fit for the SPI TFT-focused runtime. Throw a
+        // clear compile-time error instead of falling through to Adafruit.
+        throw new Error(
+          `display driver "ssd1680" (e-ink) is not supported on ESP32: ` +
+          `the LUT-driven refresh cycle and busy-pin handling are out of scope ` +
+          `for the native display layer. Use the Adafruit path (framework-arduino) ` +
+          `for SSD1680 panels.`,
+        );
+      default: return undefined;  // defer to built-in Adafruit registry
+    }
+  }
+
+  override providesTouchAdapter(): boolean { return true; }
+
+  override resolveTouchAdapter(touch: TouchProfile): TouchAdapterCodegen | undefined {
+    switch (touch.library) {
+      case "FT6336U":
+        return esp32Ft6336uTouchAdapter(touch);
+      case undefined:
+        return undefined;  // no library specified — nothing to resolve
+      default:
+        // SPI touch (XPT2046, STMPE610) and analog resistive have no native
+        // ESP-IDF implementation. Throw a clear error rather than deferring to
+        // the Arduino library switch (which emits #include <XPT2046_Touchscreen.h>
+        // etc. — headers that don't exist in an ESP-IDF project, producing an
+        // opaque "file not found" error). Native SPI touch is tracked as a
+        // follow-up.
+        throw new Error(
+          `touch library "${touch.library}" is not supported on the native ESP32 ` +
+          `path. Only FT6336U (I2C capacitive) has a native ESP-IDF adapter. ` +
+          `For SPI/resistive touch controllers, use the Arduino path ` +
+          `(framework-arduino + arduino-cli toolchain). Native SPI touch is ` +
+          `tracked as a follow-up.`,
+        );
+    }
   }
 
   // Route console.log/info → printf, debug → printf without \n, warn/error → ESP_LOG*.
@@ -314,9 +426,11 @@ export class Esp32Strategy extends ArduinoStrategy {
       return p;
     });
 
-    if (mapped.some((p) => p.id === 'async_runtime')) {
-      // Must precede async_runtime in the emit list so millis/digitalRead exist
-      // before the Promise helpers that call them.
+    if (mapped.some((p) => p.id === 'async_runtime' || p.id === 'timer_methods')) {
+      // Must precede async_runtime / timer_methods so millis() exists before
+      // Promise helpers and __tc_TimerRuntime that call it. timer_methods alone
+      // (setInterval without async/await) previously omitted this shim and
+      // failed with "'millis' was not declared in this scope".
       mapped.unshift({
         kind: 'polyfill',
         id: 'esp32_arduino_compat',
@@ -325,7 +439,15 @@ export class Esp32Strategy extends ArduinoStrategy {
         forwardDeclarations: [],
         helperStructs: [],
         helperFunctions: [
-          `// Arduino-compat symbols for the shared async_runtime polyfill (ESP-IDF).
+          `// Arduino-compat symbols for shared polyfills (ESP-IDF).
+// Suppress multichar warnings: the runtime header's touch-keyboard code
+// uses multi-character constants like 'OK' and 'ABC' as int-sized key
+// labels (GCC extension). -Werror=multichar would flag these.
+#pragma GCC diagnostic ignored "-Wmultichar"
+// Suppress missing-field-initializers: the runtime header's static tables
+// (UITransition, UINode, etc.) use designated initializers that don't name
+// every field. C++ (unlike C) warns on this under -Werror.
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #ifndef HIGH
 #define HIGH 1
 #endif
@@ -344,6 +466,30 @@ static inline unsigned long millis() {
 static inline int digitalRead(int pin) {
     return (int)gpio_get_level((gpio_num_t)pin);
 }
+// Arduino core math helpers — referenced by runtime header code (touch
+// keyboard's range-clamping in touch-keyboard-fwd.ts). On Arduino these are
+// macros in Arduino.h; ESP-IDF has no equivalent so we define them as macros
+// here (matching Arduino's exact shape, so type deduction matches call sites
+// like constrain(int16_t, int, int)).
+#ifndef constrain
+#define constrain(amt, low, high) ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
+#endif
+#ifndef map
+#define map(x, in_min, in_max, out_min, out_max) ((x) - (in_min)) * ((out_max) - (out_min)) / ((in_max) - (in_min)) + (out_min)
+#endif
+// PROGMEM + pgm_read_* — AVR flash-memory macros. On ESP32 all memory is
+// uniform (no Harvard architecture), so PROGMEM is a no-op and pgm_read
+// is a simple dereference. Font tables emitted by the runtime header use
+// these (e.g. __ui_font_N_alpha[] PROGMEM).
+#ifndef PROGMEM
+#define PROGMEM
+#endif
+#ifndef pgm_read_byte
+#define pgm_read_byte(addr) (*(const uint8_t*)(addr))
+#endif
+#ifndef pgm_read_word
+#define pgm_read_word(addr) (*(const uint16_t*)(addr))
+#endif
 `,
         ],
         shimMacros: [],

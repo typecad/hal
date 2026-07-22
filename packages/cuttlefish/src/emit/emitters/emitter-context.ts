@@ -56,6 +56,11 @@ export interface CallbackFunction {
   statements: StatementIR[];
   debounceMs?: number;
   /**
+   * True for GPIO / hardware ISR callbacks only. WiFi event handlers, timers,
+   * and setInterval use the same hoist path but must NOT get IRAM_ATTR.
+   */
+  isInterruptHandler?: boolean;
+  /**
    * Return type of the synthesized free function. Defaults to "void" (the
    * historical ISR/HAL-callback case). Populated from a hoisted lambda's
    * return-type annotation so a `(x): int16_t => {...}` callback lowers to

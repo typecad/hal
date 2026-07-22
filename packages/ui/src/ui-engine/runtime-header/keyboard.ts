@@ -328,15 +328,56 @@ static inline void ui_kb_draw_text_row() {
 }
 
 // Draw the full keyboard overlay (background + text row + all keys).
+// Renders into a dedicated offscreen canvas first, then pushes in a single
+// SPI transaction — avoids the per-key/per-rect display writes that show up
+// as visible row-by-row painting on SPI TFTs.
+// (__ui_kb_canvas is forward-declared in the touch-keyboard-fwd slice.)
 static inline void ui_kb_draw() {
-  // Opaque background over the keyboard box.
-  ui_display_fill_rect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, __ui_kb_bg);
+  int16_t kw = __ui_kb_box.w;
+  int16_t kh = __ui_kb_box.h;
+  if (kw <= 0 || kh <= 0) return;
+  // (Re)allocate the keyboard canvas to exact size (see repair-canvas comment
+  // — stride mismatch corrupts the push when reusing a differently-sized canvas).
+  if (!__ui_kb_canvas || !display_canvasBuffer(__ui_kb_canvas) ||
+      display_canvasWidth(__ui_kb_canvas) != kw ||
+      display_canvasHeight(__ui_kb_canvas) != kh) {
+    display_deleteCanvas(__ui_kb_canvas);
+    __ui_kb_canvas = display_createCanvas(kw, kh);
+  }
+  if (!__ui_kb_canvas || !display_canvasBuffer(__ui_kb_canvas)) {
+    // Canvas alloc failed — fall back to direct draw (slow but correct).
+    ui_display_fill_rect(__ui_kb_box.x, __ui_kb_box.y, kw, kh, __ui_kb_bg);
+    ui_kb_draw_text_row();
+    for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
+      if (__ui_kb_keys[i].special == 255) continue;
+      ui_kb_draw_key(i);
+    }
+    return;
+  }
+  // Redirect drawing into the canvas. All ui_display_* calls below go to RAM.
+  CuttlefishDisplayTarget* __kb_prev_target = ui_display_get_target();
+  ui_display_set_target(__ui_kb_canvas);
+  // Opaque background over the keyboard box (canvas-local 0,0).
+  ui_display_fill_rect(0, 0, kw, kh, __ui_kb_bg);
+  // Text row + keys: temporarily shift box origin to canvas-local so the
+  // existing draw_text_row / draw_key functions compute coords at (0,0).
+  int16_t saveBoxX = __ui_kb_box.x;
+  int16_t saveBoxY = __ui_kb_box.y;
+  __ui_kb_box.x = 0;
+  __ui_kb_box.y = 0;
   ui_kb_draw_text_row();
-  // Keys: one rect per key, label centered.
   for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
-    if (__ui_kb_keys[i].special == 255) continue;  // padding cell, skip
+    if (__ui_kb_keys[i].special == 255) continue;
     ui_kb_draw_key(i);
   }
+  __ui_kb_box.x = saveBoxX;
+  __ui_kb_box.y = saveBoxY;
+  // Restore display target and push the canvas in one transaction.
+  ui_display_set_target(__kb_prev_target);
+  display_startWrite();
+  display_setAddrWindow(saveBoxX, saveBoxY, kw, kh);
+  display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * kh);
+  display_endWrite();
 }
 `;
 }

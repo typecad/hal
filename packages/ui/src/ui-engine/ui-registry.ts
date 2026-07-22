@@ -220,7 +220,8 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
 
   const imageAssets = loadImageAssets(allStyled.length > 0 ? allStyled : [mod.styled], path.dirname(abs));
 
-  const scrollBudget = resolveScrollConfig(getDisplayProfile(), { buildTarget: getDisplayProfile()._buildTarget }).scrollCanvasBudgetBytes;
+  const _p = getDisplayProfile() as any;
+  const scrollBudget = resolveScrollConfig(_p, { buildTarget: _p._buildTarget, psram: _p._psram } as any).scrollCanvasBudgetBytes;
   const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets, scrollBudget);
 
   for (const d of result.scrollMemoryDiagnostics) {

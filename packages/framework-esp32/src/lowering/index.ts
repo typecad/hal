@@ -42,7 +42,10 @@ export function lowerHalOp(op: HALOpIR): { code?: string; expression?: string } 
   // raw and snprintf.emit: pass through verbatim
   if (op.operation === 'raw')                return { code: (op as any).code ?? '' };
   if (op.operation === 'snprintf.emit')      return { code: (op as any).code ?? (op as any).statement ?? '' };
-  // Display ops are deferred to v1.1 (spec §9.2)
-  if (op.operation.startsWith('display.'))   throw new Error(`framework-esp32 does not yet support display ops (v1.1).`);
+  // Display ops are NOT lowered here. They are resolved at adapter-emission
+  // time (Esp32Strategy.resolveDisplayAdapter → src/displays/*.ts), which
+  // runs before HAL lowering. If a display.* op ever reaches this point it
+  // is a bug in the dispatch boundary — do NOT add display handling here;
+  // fix the adapter emitter instead.
   throw new Error(`framework-esp32 does not yet support HAL op \`${op.operation}\`. Open an issue or use rawCpp() to emit it manually.`);
 }

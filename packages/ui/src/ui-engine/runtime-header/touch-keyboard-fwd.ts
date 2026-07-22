@@ -51,6 +51,7 @@ static UIKeyStyle __ui_kb_styles[UI_KB_MAX];
 static UI_COLOR_T __ui_kb_bg = 0x0000;  // keyboard background (resolved from CSS)
 static uint8_t __ui_kb_bs_held = 0;
 static uint8_t __ui_kb_dirty = 0;     // 0=clean, 1=full redraw, 2=text row + single key
+// (__ui_kb_canvas is declared in forward-decls.ts alongside the other persistent canvases.)
 // Forward-declared here (defined in the keyboard subsystem block below) so the
 // UI_HIDE_OSK caret/blink paths in ui_tick and the input draw can reference it.
 static int16_t  __ui_kb_target;
@@ -268,7 +269,9 @@ static void ui_touch_up() {
   // including holds (released above) and taps on empty space (__ui_touch_node
   // == -1), which is what makes "wake on any touch" work for display-sleep.
   // Placed AFTER the click/release dispatch so onClick always fires first.
-  __ui_tap_seq++;
+  // Note: explicit '+ 1' instead of '++' — GCC 13+ (IDF v6) deprecates '++'
+  // on volatile-qualified types under -Werror=volatile.
+  __ui_tap_seq = __ui_tap_seq + 1;
   __ui_tap_node = __ui_touch_node;
   // Virtualized list item tap: if the touch was inside a list, compute the item
   // index from the touch Y. Use total movement (not drag flag) to distinguish

@@ -160,7 +160,12 @@ export function emitCallbackFunctions(ctx: EmitterContext): void {
       appendSourceLine(ctx, `const unsigned long ${callback.name}_debounce = ${callback.debounceMs};`);
       appendSourceLine(ctx, "");
     }
-    appendSourceLine(ctx, `${strategy.isrFunctionAttribute?.() ?? ""}${renderCallbackSignature(callback)} {`);
+    // IRAM_ATTR only on true ISR definitions. ESP-IDF's IRAM_ATTR uses
+    // __COUNTER__, so putting it on both forward decl and definition assigns
+    // conflicting .iram1.N sections (-Werror=attributes). Non-ISR callbacks
+    // (WiFi events, timers) must not be IRAM-placed either — they call printf.
+    const isrAttr = callback.isInterruptHandler ? (strategy.isrFunctionAttribute?.() ?? "") : "";
+    appendSourceLine(ctx, `${isrAttr}${renderCallbackSignature(callback)} {`);
     if (callback.debounceMs !== undefined && callback.debounceMs > 0) {
       appendSourceLine(ctx, `  volatile unsigned long now = ${strategy.currentTimeMillis()};`);
       appendSourceLine(ctx, `  if (now - ${callback.name}_lastTime < ${callback.name}_debounce) return;`);
@@ -174,10 +179,11 @@ export function emitCallbackFunctions(ctx: EmitterContext): void {
     appendSourceLine(ctx, "");
   }
 
-  // Split-mode ISR callback forward declarations in header
+  // Split-mode ISR callback forward declarations in header (no IRAM_ATTR —
+  // attribute belongs on the definition only; see comment above).
   if (effectiveEmitMode === "split") {
     for (const callback of ctx.callbackFunctions) {
-      appendHeaderLine(ctx, `${strategy.isrFunctionAttribute?.() ?? ""}${renderCallbackSignature(callback)};`);
+      appendHeaderLine(ctx, `${renderCallbackSignature(callback)};`);
     }
   }
 }
@@ -389,10 +395,11 @@ export function emitFunctionForwardDeclarations(ctx: EmitterContext): void {
   const { strategy, effectiveEmitMode } = ctx;
   const excludedNames = new Set(strategy.forwardDeclarationExclusions?.() ?? []);
 
-  // ISR callback forward declarations.
+  // Callback forward declarations (no IRAM_ATTR — ESP-IDF's attribute uses
+  // __COUNTER__, so decl+def would get conflicting .iram1.N sections).
   if (effectiveEmitMode !== "split") {
     for (const callback of ctx.callbackFunctions) {
-      appendSourceLine(ctx, `${strategy.isrFunctionAttribute?.() ?? ""}${renderCallbackSignature(callback)};`);
+      appendSourceLine(ctx, `${renderCallbackSignature(callback)};`);
     }
   }
 

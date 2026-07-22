@@ -176,7 +176,6 @@ static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY,
   if (__ui_nodes[i].hasPerSideBorder) {
     int16_t w = __ui_nodes[i].box.w;
     int16_t h = __ui_nodes[i].box.h;
-    uint8_t st = __ui_nodes[i].borderStyle;
     // Top edge
     if (__ui_nodes[i].borderTopWidth > 0) {
       ui_display_fill_rect(drawX, drawY, w, __ui_nodes[i].borderTopWidth, color);

@@ -376,8 +376,15 @@ function glcdfontBytes(): string[] {
   return lines;
 }
 
-// Canonical Adafruit GFX 5x7 glcdfont. Public domain.
-// Source: Adafruit_GFX library glcdfont.c.
+// Adafruit GFX 5x7 glcdfont — the 'classic' fixed-space bitmap font shipped
+// with Adafruit_GFX since 1.0. BSD-3-Clause as part of the Adafruit_GFX
+// library (the file carries no per-file license statement; an earlier
+// revision of this comment claimed "public domain" but that could not be
+// verified). See packages/cuttlefish/src/api/shared/glcdfont.ts for the
+// canonical attribution header; this array is the same bytes, retained
+// here to keep the SDL preview self-contained.
+// Source: Adafruit_GFX library glcdfont.c
+//   Upstream: https://github.com/adafruit/Adafruit-GFX-Library/blob/master/glcdfont.c
 const GLCDFONT_BYTES: number[] = [
   0x00, 0x00, 0x00, 0x00, 0x00, 0x3e, 0x5b, 0x4f, 0x5b, 0x3e, 0x3e, 0x6b, 0x4f, 0x6b, 0x3e, 0x1c,
   0x3e, 0x7c, 0x3e, 0x1c, 0x18, 0x3c, 0x7e, 0x3c, 0x18, 0x1c, 0x57, 0x7d, 0x57, 0x1c, 0x1c, 0x5e,

@@ -125,8 +125,21 @@ export { DISPLAY_OPERATION_KINDS } from './display-op-ir.js';
 export type { PlatformGraphicsStrategy, GraphicsCapacity } from './graphics-strategy.js';
 
 // Display profiles (declarative hardware description)
-export type { DisplayProfile, DisplayConfig, DisplaySize, TouchProfile, TouchLibrary, ResolvedDisplay } from './display-profile.js';
+export type { DisplayProfile, DisplayConfig, DisplaySize, TouchProfile, TouchLibrary, TouchAdapterCodegen, ResolvedDisplay } from './display-profile.js';
 export { effectiveDisplaySize, normalizeDisplayRotation, resolveDisplayProfile, resolveScrollConfig, DEFAULT_SCROLL_CANVAS_BUDGET_BYTES } from './display-profile.js';
+
+// Shared 5x7 glcdfont table (Adafruit public-domain source). Consumed by
+// the SDL preview adapter and the native CuttlefishGFX runtime-header slice.
+export { GLCDFONT_BYTES, renderGlcdfontArray } from './glcdfont.js';
+
+// Display adapter generator types. Consumed by strategy.resolveDisplayAdapter
+// implementations (AVR, ESP32) and the Adafruit registry.
+export type { DisplayAdapterCode, DisplayAdapterGenerator } from './display-adapter.js';
+
+// Native display-op resolver — lowers display.* HAL ops into calls against
+// the adapter surface (display_init / display_targetFillRect / etc.). Used
+// by NativeAVRStrategy and Esp32Strategy's resolveDisplayOp overrides.
+export { resolveNativeDisplayOp } from './native-display-op-resolver.js';
 
 // Display capabilities descriptor (Phase 2: display-agnostic core)
 export type {

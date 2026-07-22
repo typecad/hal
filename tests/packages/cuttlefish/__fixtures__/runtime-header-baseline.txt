@@ -604,10 +604,6 @@ extern const uint16_t __ui_input_binding_count;
 // The UIListBinding table below is still emitted by the lowering for the
 // node-initializer to read at static-init time; the runtime never indexes it.
 
-static uint8_t __ui_fade_opacity = 100;  // fade-in animation (0=transparent, 100=full)
-static uint16_t __ui_fade_elapsed = 0;
-static uint16_t __ui_fade_duration = 200; // ms
-
 // Early forward declaration: ui_navigate (below) calls ui_release_canvas_state
 // and ui_set_pressed (defined later) during screen changes. Needed on native
 // (single TU, no Arduino auto-prototyper).
@@ -615,7 +611,8 @@ static inline void ui_release_canvas_state();
 static inline void ui_set_pressed(uint16_t nodeIdx, uint8_t pressed);
 static inline void ui_refresh_active_screen_bg_node();
 
-// Navigate to a screen by index. Marks the new screen's nodes dirty + starts fade.
+// Navigate to a screen by index. Marks the new screen's nodes dirty, releases
+// persistent canvas state, and optionally clears the display.
 static inline void ui_navigate(uint8_t screenIdx) {
   if (screenIdx >= __ui_screen_count || screenIdx == __ui_active_screen) return;
   __ui_active_screen = screenIdx;
@@ -694,12 +691,14 @@ static inline void ui_draw_node_decoration_clipped(uint16_t nodeIdx, int16_t dra
 // single native translation unit (Arduino's auto-prototyper hides this;
 // native emits one TU so explicit forwards are needed).
 static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py);
+#ifdef UI_AA
 static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, UI_COLOR_T bg);
 static inline void ui_aa_end(CuttlefishCanvas16* c);
 static inline void ui_aa_push(CuttlefishCanvas16* c, int16_t dx, int16_t dy);
 static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x1, float y1, UI_COLOR_T color);
 static inline void ui_aa_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, UI_COLOR_T color);
 static inline void ui_aa_fill_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, UI_COLOR_T color);
+#endif
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx, UIRect* r);
 static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* paintRect);
 static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect* oldRect);
@@ -727,6 +726,7 @@ static CuttlefishCanvas16* __ui_list_canvas = nullptr;       // virtualized <lis
 static int16_t __ui_list_canvas_node = -1;                   // node currently represented by __ui_list_canvas
 static CuttlefishCanvas16* __ui_node_canvas = nullptr;       // <canvas> element offscreen
 static CuttlefishCanvas16* __ui_repair_canvas = nullptr;     // buffered-paint / exposed-strip
+static CuttlefishCanvas16* __ui_kb_canvas = nullptr;         // on-screen keyboard overlay
 static int16_t __ui_canvas_fallback_w = 0;                   // dimensions for direct <canvas> fallback
 static int16_t __ui_canvas_fallback_h = 0;
 // Draw offset: normally zero. The <canvas> allocation fallback sets it so
@@ -742,6 +742,7 @@ static inline void ui_release_canvas_state() {
   __ui_list_canvas_node = -1;
   display_deleteCanvas(__ui_node_canvas);      __ui_node_canvas = nullptr;
   display_deleteCanvas(__ui_repair_canvas);    __ui_repair_canvas = nullptr;
+  display_deleteCanvas(__ui_kb_canvas);        __ui_kb_canvas = nullptr;
 }
 
 // Lazily allocate/reuse a viewport-sized canvas for a scroll container. Resizes
@@ -794,7 +795,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
   if (reason == 1) reasonText = "scroll viewport exceeds compile-time canvas budget";
   else if (reason == 2) reasonText = "using Mode C strip fallback (smooth scroll canvas unavailable)";
 
-#if defined(ESP32)
+#if defined(ESP32) && defined(ARDUINO)
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t maxAlloc = ESP.getMaxAllocHeap();
   Serial.printf(
@@ -803,7 +804,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
     "Shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\n",
     label, vw, vh, (unsigned long)need, reasonText,
     (unsigned long)freeHeap, (unsigned long)maxAlloc, UI_SCROLL_CANVAS_BUDGET_BYTES);
-#elif defined(ESP8266)
+#elif defined(ESP8266) && defined(ARDUINO)
   uint32_t freeHeap = ESP.getFreeHeap();
   Serial.printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
@@ -871,13 +872,18 @@ static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t
 }
 
 // Repair canvas: parent-seeded background repaints + exposed-strip redraws.
-// Grow-only between navigations so small scroll-delta changes do not allocate
-// and free a new strip canvas during drag.
+// Reused across navigations when size matches; reallocated on exact-size
+// mismatch (a reused larger canvas would keep its old stride, corrupting the
+// pushed pixels — see the inline comment below).
 static inline CuttlefishCanvas16* ui_get_repair_canvas(int16_t w, int16_t h) {
   if (w <= 0 || h <= 0) return nullptr;
+  // Reallocate when size differs at all (not just when growing). A reused
+  // larger canvas keeps its old stride, and ui_push_canvas_rect uses that
+  // stride for row offsets — a mismatch with the caller's expected (w,h)
+  // corrupts the pushed pixels. Exact-size reallocation guarantees stride == w.
   if (!__ui_repair_canvas || !display_canvasBuffer(__ui_repair_canvas) ||
-      display_canvasWidth(__ui_repair_canvas) < w ||
-      display_canvasHeight(__ui_repair_canvas) < h) {
+      display_canvasWidth(__ui_repair_canvas) != w ||
+      display_canvasHeight(__ui_repair_canvas) != h) {
     display_deleteCanvas(__ui_repair_canvas);
     __ui_repair_canvas = ui_create_canvas_best(w, h);
   }
@@ -986,7 +992,6 @@ static inline void ui_display_print(const char* text) {
 // raw touch sample → smoothed delta (dy). Capacitive: passthrough 1:1.
 // Resistive: deadband suppresses sub-N-px jitter (steady drag still 1:1).
 // 'none' tier compiles drag scroll out entirely.
-static int16_t __ui_scroll_prev_dy = 0;  // last smoothed delta (low-pass state)
 
 static inline int16_t ui_scroll_scale_dy(int16_t dy) {
   int32_t scaled = (int32_t)dy * (int32_t)UI_SCROLL_DRAG_SCALE_X10;
@@ -995,17 +1000,14 @@ static inline int16_t ui_scroll_scale_dy(int16_t dy) {
 
 static inline int16_t ui_scroll_smooth_dy(int16_t dy) {
 #if UI_SCROLL_INPUT_TIER_CAPACITIVE
-  __ui_scroll_prev_dy = dy;
   return ui_scroll_scale_dy(dy);
 #elif UI_SCROLL_INPUT_TIER_RESISTIVE
   int16_t db = (int16_t)UI_SCROLL_DEADBAND_PX;
   if (dy >= -db && dy <= db) {
     // Deadband: kill per-sample jitter around zero. Steady drag (|dy|>db) below
     // passes through unchanged, so steady-state is 1:1 (spec Q1).
-    __ui_scroll_prev_dy = 0;
     return 0;
   }
-  __ui_scroll_prev_dy = dy;
   return ui_scroll_scale_dy(dy);
 #else
   (void)dy;
@@ -2592,6 +2594,7 @@ static UIKeyStyle __ui_kb_styles[UI_KB_MAX];
 static UI_COLOR_T __ui_kb_bg = 0x0000;  // keyboard background (resolved from CSS)
 static uint8_t __ui_kb_bs_held = 0;
 static uint8_t __ui_kb_dirty = 0;     // 0=clean, 1=full redraw, 2=text row + single key
+// (__ui_kb_canvas is declared in forward-decls.ts alongside the other persistent canvases.)
 // Forward-declared here (defined in the keyboard subsystem block below) so the
 // UI_HIDE_OSK caret/blink paths in ui_tick and the input draw can reference it.
 static int16_t  __ui_kb_target;
@@ -2809,7 +2812,9 @@ static void ui_touch_up() {
   // including holds (released above) and taps on empty space (__ui_touch_node
   // == -1), which is what makes "wake on any touch" work for display-sleep.
   // Placed AFTER the click/release dispatch so onClick always fires first.
-  __ui_tap_seq++;
+  // Note: explicit '+ 1' instead of '++' — GCC 13+ (IDF v6) deprecates '++'
+  // on volatile-qualified types under -Werror=volatile.
+  __ui_tap_seq = __ui_tap_seq + 1;
   __ui_tap_node = __ui_touch_node;
   // Virtualized list item tap: if the touch was inside a list, compute the item
   // index from the touch Y. Use total movement (not drag flag) to distinguish
@@ -3859,7 +3864,6 @@ static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY,
   if (__ui_nodes[i].hasPerSideBorder) {
     int16_t w = __ui_nodes[i].box.w;
     int16_t h = __ui_nodes[i].box.h;
-    uint8_t st = __ui_nodes[i].borderStyle;
     // Top edge
     if (__ui_nodes[i].borderTopWidth > 0) {
       ui_display_fill_rect(drawX, drawY, w, __ui_nodes[i].borderTopWidth, color);
@@ -4240,9 +4244,48 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (__ui_kb_dirty == 1) {
       ui_kb_draw();
     } else if (__ui_kb_dirty == 2) {
-      ui_kb_draw_text_row();
-      if (__ui_kb_repaint_key >= 0 && __ui_kb_keys[__ui_kb_repaint_key].special != 255) {
-        ui_kb_draw_key((uint8_t)__ui_kb_repaint_key);
+      // Buffer the targeted update through the keyboard canvas too — drawing
+      // the text row directly to the display (fill_rect clear + text redraw)
+      // flashes on SPI TFTs because the clear is visible for one frame.
+      // Re-render into the canvas and push in one transaction. The canvas
+      // already holds the last full-keyboard frame, so we only need to redraw
+      // the text row + the single changed key on top of it.
+      // (__ui_kb_canvas is declared static in the keyboard slice, earlier in
+      // this same translation unit — no extern needed.)
+      if (__ui_kb_canvas && display_canvasBuffer(__ui_kb_canvas)) {
+        int16_t kw = __ui_kb_box.w;
+        int16_t saveBoxX = __ui_kb_box.x;
+        int16_t saveBoxY = __ui_kb_box.y;
+        CuttlefishDisplayTarget* __kb_prev = ui_display_get_target();
+        ui_display_set_target(__ui_kb_canvas);
+        __ui_kb_box.x = 0;
+        __ui_kb_box.y = 0;
+        ui_kb_draw_text_row();
+        uint8_t has_key_repaint = (__ui_kb_repaint_key >= 0 && __ui_kb_keys[__ui_kb_repaint_key].special != 255) ? 1 : 0;
+        if (has_key_repaint) {
+          ui_kb_draw_key((uint8_t)__ui_kb_repaint_key);
+        }
+        __ui_kb_box.x = saveBoxX;
+        __ui_kb_box.y = saveBoxY;
+        ui_display_set_target(__kb_prev);
+        // Push only the changed region: text row alone (UI_KB_TEXT_H) when no
+        // key highlight changed, or the full canvas when a key was repainted
+        // (the key could be anywhere in the keyboard grid).
+        display_startWrite();
+        if (has_key_repaint) {
+          display_setAddrWindow(saveBoxX, saveBoxY, kw, __ui_kb_box.h);
+          display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * __ui_kb_box.h);
+        } else {
+          display_setAddrWindow(saveBoxX, saveBoxY, kw, UI_KB_TEXT_H);
+          display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * UI_KB_TEXT_H);
+        }
+        display_endWrite();
+      } else {
+        // No canvas — fall back to direct draw (slow but correct).
+        ui_kb_draw_text_row();
+        if (__ui_kb_repaint_key >= 0 && __ui_kb_keys[__ui_kb_repaint_key].special != 255) {
+          ui_kb_draw_key((uint8_t)__ui_kb_repaint_key);
+        }
       }
     }
     __ui_kb_dirty = 0;
@@ -4485,10 +4528,6 @@ static inline void ui_tick(uint16_t deltaMs) {
 
     UIRect paintRect;
     ui_node_paint_rect(i, baseDrawX, baseDrawY, drawX, drawY, paintTextW, paintTextH, &paintRect);
-    int16_t cullX = paintRect.x;
-    int16_t cullY = paintRect.y;
-    int16_t cullW = paintRect.w;
-    int16_t cullH = paintRect.h;
     if (drawingBufferedScroll) {
       // Canvas-local clip: skip nodes fully outside the viewport (0..vw, 0..vh).
       // Use the node's face rect (box.w/h), NOT the paint rect — the paint rect
@@ -5741,15 +5780,56 @@ static inline void ui_kb_draw_text_row() {
 }
 
 // Draw the full keyboard overlay (background + text row + all keys).
+// Renders into a dedicated offscreen canvas first, then pushes in a single
+// SPI transaction — avoids the per-key/per-rect display writes that show up
+// as visible row-by-row painting on SPI TFTs.
+// (__ui_kb_canvas is forward-declared in the touch-keyboard-fwd slice.)
 static inline void ui_kb_draw() {
-  // Opaque background over the keyboard box.
-  ui_display_fill_rect(__ui_kb_box.x, __ui_kb_box.y, __ui_kb_box.w, __ui_kb_box.h, __ui_kb_bg);
+  int16_t kw = __ui_kb_box.w;
+  int16_t kh = __ui_kb_box.h;
+  if (kw <= 0 || kh <= 0) return;
+  // (Re)allocate the keyboard canvas to exact size (see repair-canvas comment
+  // — stride mismatch corrupts the push when reusing a differently-sized canvas).
+  if (!__ui_kb_canvas || !display_canvasBuffer(__ui_kb_canvas) ||
+      display_canvasWidth(__ui_kb_canvas) != kw ||
+      display_canvasHeight(__ui_kb_canvas) != kh) {
+    display_deleteCanvas(__ui_kb_canvas);
+    __ui_kb_canvas = display_createCanvas(kw, kh);
+  }
+  if (!__ui_kb_canvas || !display_canvasBuffer(__ui_kb_canvas)) {
+    // Canvas alloc failed — fall back to direct draw (slow but correct).
+    ui_display_fill_rect(__ui_kb_box.x, __ui_kb_box.y, kw, kh, __ui_kb_bg);
+    ui_kb_draw_text_row();
+    for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
+      if (__ui_kb_keys[i].special == 255) continue;
+      ui_kb_draw_key(i);
+    }
+    return;
+  }
+  // Redirect drawing into the canvas. All ui_display_* calls below go to RAM.
+  CuttlefishDisplayTarget* __kb_prev_target = ui_display_get_target();
+  ui_display_set_target(__ui_kb_canvas);
+  // Opaque background over the keyboard box (canvas-local 0,0).
+  ui_display_fill_rect(0, 0, kw, kh, __ui_kb_bg);
+  // Text row + keys: temporarily shift box origin to canvas-local so the
+  // existing draw_text_row / draw_key functions compute coords at (0,0).
+  int16_t saveBoxX = __ui_kb_box.x;
+  int16_t saveBoxY = __ui_kb_box.y;
+  __ui_kb_box.x = 0;
+  __ui_kb_box.y = 0;
   ui_kb_draw_text_row();
-  // Keys: one rect per key, label centered.
   for (uint8_t i = 0; i < __ui_kb_keyCount; i++) {
-    if (__ui_kb_keys[i].special == 255) continue;  // padding cell, skip
+    if (__ui_kb_keys[i].special == 255) continue;
     ui_kb_draw_key(i);
   }
+  __ui_kb_box.x = saveBoxX;
+  __ui_kb_box.y = saveBoxY;
+  // Restore display target and push the canvas in one transaction.
+  ui_display_set_target(__kb_prev_target);
+  display_startWrite();
+  display_setAddrWindow(saveBoxX, saveBoxY, kw, kh);
+  display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * kh);
+  display_endWrite();
 }
 
 #endif

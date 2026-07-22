@@ -1,0 +1,150 @@
+TypeCAD
+Copyright (c) 2026 typecad0
+
+Licensed under the MIT License (see LICENSE).
+
+This NOTICE file documents third-party code that is bundled into or emitted
+by this project, beyond what is linked at compile time by end-user projects.
+
+================================================================================
+Third-party attributions — code emitted into generated sketches
+================================================================================
+
+The native display paths (framework-avr, framework-esp32) emit C++ adapter
+code into the sketches this project transpiles. Some of that code is ported
+or transcribed from third-party BSD-3-Clause sources. End users distributing
+firmware built from those sketches should retain the attributions below.
+
+The Adafruit (arduino-cli) path does NOT bundle or emit Adafruit-derived
+code — it links the Adafruit libraries directly, and end users retain the
+Adafruit library LICENSE/attribution files through normal Arduino library
+distribution.
+
+--------------------------------------------------------------------------------
+1. Adafruit_GFX geometry algorithms  (BSD-3-Clause)
+--------------------------------------------------------------------------------
+
+  Source:     Adafruit_GFX.cpp / Adafruit_GFX.h
+  Copyright:  (c) 2013 Adafruit Industries. All rights reserved.
+  License:    BSD-3-Clause
+  Upstream:   https://github.com/adafruit/Adafruit-GFX-Library
+
+  Used by:    packages/ui/src/ui-engine/runtime-header/cuttlefish-gfx.ts
+              (the CuttlefishGFX class — geometry/canvas/text base emitted
+              only when a native display adapter is active)
+
+  Scope:      The following method implementations are ported from
+              Adafruit_GFX.cpp: drawLine (Bresenham), drawCircle
+              (midpoint), drawCircleHelper, fillCircleHelper, drawRoundRect,
+              fillRoundRect, drawTriangle, fillTriangle, drawChar, and the
+              glyph loop in write(). Pixel output is byte-for-byte
+              identical to Adafruit_GFX.
+
+--------------------------------------------------------------------------------
+2. Adafruit_GFX 5x7 glcdfont  (BSD-3-Clause)
+--------------------------------------------------------------------------------
+
+  Source:     glcdfont.c
+  Copyright:  (c) 2013 Adafruit Industries. All rights reserved.
+  License:    BSD-3-Clause (as part of the Adafruit_GFX library)
+  Upstream:   https://github.com/adafruit/Adafruit-GFX-Library/blob/master/glcdfont.c
+
+  Used by:    packages/cuttlefish/src/api/shared/glcdfont.ts
+                (shared byte table)
+              packages/cuttlefish/src/api/shared/display-adapters/sdl.ts
+                (emits __sdl_glcdfont[] for the SDL preview host adapter)
+              packages/ui/src/ui-engine/runtime-header/cuttlefish-gfx.ts
+                (emits cuttlefish_glcdfont[] for native display adapters)
+
+  Scope:      The full 256-glyph × 5-byte font table.
+
+  Note:       An earlier revision of this project described glcdfont.c as
+              "public domain." That claim could not be verified — the file
+              carries no per-file license statement and is distributed as
+              part of the BSD-3-Clause Adafruit_GFX library, so the
+              conservative treatment is BSD-3-Clause.
+
+--------------------------------------------------------------------------------
+3. Adafruit_ILI9341 panel init sequence  (BSD-3-Clause)
+--------------------------------------------------------------------------------
+
+  Source:     Adafruit_ILI9341.cpp initcmd[]
+  Copyright:  (c) 2013 Adafruit Industries. All rights reserved.
+  License:    BSD-3-Clause
+  Upstream:   https://github.com/adafruit/Adafruit_ILI9341
+
+  Used by:    packages/framework-esp32/src/displays/ili9341-esp32.ts
+                (the ILI9341 init command table)
+
+  Scope:      The manufacturer power-on sequence + power control + gamma +
+              sleep-out + display-on command bytes. The bytes themselves
+              are Ilitek reference code from the ILI9341 datasheet; the
+              transcription here is from Adafruit's published source.
+
+--------------------------------------------------------------------------------
+4. Adafruit_SSD1306 panel init sequence  (BSD-3-Clause)
+--------------------------------------------------------------------------------
+
+  Source:     Adafruit_SSD1306.cpp ssd1306_128x64_i2c_init[]
+  Copyright:  (c) 2013 Adafruit Industries. All rights reserved.
+  License:    BSD-3-Clause
+  Upstream:   https://github.com/adafruit/Adafruit_SSD1306
+
+  Used by:    packages/framework-avr/src/displays/ssd1309-avr.ts
+              packages/framework-esp32/src/displays/ssd1309-esp32.ts
+                (the SSD1306/SSD1309 init command table)
+
+  Scope:      The 128×64 I2C panel init sequence. The bytes themselves are
+              Solomon Systech reference code from the SSD1306/SSD1309
+              datasheet; the transcription here is from Adafruit's source.
+
+--------------------------------------------------------------------------------
+5. Adafruit_ST7796S_kbv panel init sequence  (BSD-3-Clause, third-party)
+--------------------------------------------------------------------------------
+
+  Source:     Adafruit_ST7796S_kbv.cpp initcmd[]
+  Copyright:  (c) David Prentice
+  License:    BSD-3-Clause
+  Upstream:   https://github.com/prenticedavid/Adafruit_ST7796S_kbv
+
+  Used by:    packages/framework-esp32/src/displays/st7796-esp32.ts
+                (the ST7796S init command table, including the
+                manufacturer-unlock sequence 0xF0,0xC3 / 0xF0,0x96)
+
+  Scope:      The ST7796S init command table.
+
+  Note:       This is a community-maintained Adafruit-style fork by David
+              Prentice, NOT a canonical Adafruit Industries release. The
+              init bytes are SITROX/ST reference code from the ST7796S
+              datasheet; equivalent sequences appear in TFT_eSPI, LovyanGFX,
+              and other libraries under various licenses.
+
+================================================================================
+BSD-3-Clause text (applies to all attributions above)
+================================================================================
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice,
+   this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.

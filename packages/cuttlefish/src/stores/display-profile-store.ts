@@ -18,7 +18,7 @@ let currentProfile: ResolvedDisplay | null = null;
 /** Set the display profile for this transpile run. Called from transpileFile. */
 export function setDisplayProfile(
   profile: DisplayProfile,
-  wiring: { cs?: number; dc?: number; rst?: number; bus?: string; address?: number; reset?: number; buildTarget?: string },
+  wiring: { cs?: number; dc?: number; rst?: number; bus?: string; address?: number; reset?: number; buildTarget?: string; psram?: boolean },
 ): void {
   currentProfile = {
     ...profile,
@@ -29,6 +29,7 @@ export function setDisplayProfile(
     _mountAddress: wiring.address ?? 0x3C,
     _mountReset: wiring.reset ?? -1,
     _buildTarget: wiring.buildTarget,
+    _psram: wiring.psram,
   };
 }
 

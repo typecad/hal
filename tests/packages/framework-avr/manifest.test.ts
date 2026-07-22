@@ -1,23 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { validateFrameworkWithCoverage } from '../cuttlefish/manifest-test-helpers.js';
 
-// AVR: known display inheritance errors are tolerated (documented in the
-// manifest itself). Anything else is a regression.
-const KNOWN_STRATEGIC_ERRORS: ReadonlySet<string> = new Set<string>([
-  'hal/display/declared-unsupported-but-actually-lowers',
-  'hal/display/op/display.init/status-mismatch',
-  'hal/display/op/display.fill_rect/status-mismatch',
-  'hal/display/op/display.draw_text/status-mismatch',
-  'hal/display/op/display.draw_rect/status-mismatch',
-  'hal/display/op/display.flush/status-mismatch',
-]);
-
+// AVR: display inheritance errors are fixed — resolveDisplayOp now returns
+// undefined and resolveDisplayAdapter dispatches to native drivers. Zero
+// strategic errors are tolerated; any error is a regression.
 describe('framework-avr manifest', () => {
-  it('matches its implementation modulo known display inheritance errors', async () => {
+  it('matches its implementation with zero errors', async () => {
     const { result, coverageTable } = await validateFrameworkWithCoverage('@typecad/framework-avr');
     console.log(coverageTable);
-    const novel = result.errors.filter((e) => !KNOWN_STRATEGIC_ERRORS.has(e.code));
-    const dump = novel.map((e) => `[${e.code}] ${e.message}`).join('\n');
-    expect(novel, dump).toEqual([]);
+    const dump = result.errors.map((e) => `[${e.code}] ${e.message}`).join('\n');
+    expect(result.errors, dump).toEqual([]);
   });
 });

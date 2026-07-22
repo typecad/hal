@@ -8,7 +8,9 @@ export function i2cInitLines(controllerIndex: number): string[] {
   if (!cfg) throw new Error(`I2C controller ${controllerIndex} not present on ${chip.id}`);
   return [
     `// CUTTLEFISH_I2C_BEGIN`,
-    `static i2c_master_bus_handle_t __tc_i2c${controllerIndex}_bus = NULL;`,
+    `// User I2C device handle — the bus itself is shared via __esp32_i2c_bus_get().`,
+    `// This avoids the B1 bug where each I2C consumer independently calling`,
+    `// i2c_new_master_bus() on the same port fails silently for the second caller.`,
     `static i2c_master_dev_handle_t __tc_i2c${controllerIndex}_dev = NULL;`,
     `static uint16_t __tc_i2c${controllerIndex}_addr = 0xFFFF;`,
     `static uint32_t __tc_i2c${controllerIndex}_clk = 100000;`,
@@ -18,16 +20,8 @@ export function i2cInitLines(controllerIndex: number): string[] {
     `static size_t  __tc_i2c${controllerIndex}_rxlen = 0;`,
     `static size_t  __tc_i2c${controllerIndex}_rxpos = 0;`,
     `static void __tc_i2c${controllerIndex}_init(void) {`,
-    `    if (__tc_i2c${controllerIndex}_bus) return;`,
-    `    const i2c_master_bus_config_t bcfg = {`,
-    `        .i2c_port = ${cfg.host},`,
-    `        .sda_io_num = ${cfg.defaultSda},`,
-    `        .scl_io_num = ${cfg.defaultScl},`,
-    `        .clk_source = I2C_CLK_SRC_DEFAULT,`,
-    `        .glitch_ignore_cnt = 7,`,
-    `        .flags = { .enable_internal_pullup = 1 },`,
-    `    };`,
-    `    i2c_new_master_bus(&bcfg, &__tc_i2c${controllerIndex}_bus);`,
+    `    // Bus is created idempotently by the shared store; fetch the handle.`,
+    `    (void)__esp32_i2c_bus_get(${controllerIndex});`,
     `}`,
     `// CUTTLEFISH_I2C_END`,
     ``,
@@ -51,7 +45,7 @@ export function lowerI2c(op: HALOpIR): { code?: string; expression?: string } {
         `if (!__tc_i2c${idx}_dev || __tc_i2c${idx}_addr != (uint16_t)(${addr})) {`,
         `    if (__tc_i2c${idx}_dev) { i2c_master_bus_rm_device(__tc_i2c${idx}_dev); __tc_i2c${idx}_dev = NULL; }`,
         `    const i2c_device_config_t dcfg = { .dev_addr_length = I2C_ADDR_BIT_LEN_7, .device_address = ${addr}, .scl_speed_hz = __tc_i2c${idx}_clk };`,
-        `    i2c_master_bus_add_device(__tc_i2c${idx}_bus, &dcfg, &__tc_i2c${idx}_dev);`,
+        `    i2c_master_bus_add_device(__esp32_i2c_bus_get(${idx}), &dcfg, &__tc_i2c${idx}_dev);`,
         `    __tc_i2c${idx}_addr = (uint16_t)(${addr});`,
         `}`,
         `__tc_i2c${idx}_txlen = 0;`,
@@ -90,9 +84,10 @@ export function lowerI2c(op: HALOpIR): { code?: string; expression?: string } {
     }
     case 'i2c.recover':
       // Reset the I2C bus if stuck (IDF v5: i2c_master_bus_reset)
-      return { code: `i2c_master_bus_reset(__tc_i2c${idx}_bus);` };
+      return { code: `i2c_master_bus_reset(__esp32_i2c_bus_get(${idx}));` };
     case 'i2c.end':
-      return { code: `if (__tc_i2c${idx}_bus) { if (__tc_i2c${idx}_dev) { i2c_master_bus_rm_device(__tc_i2c${idx}_dev); __tc_i2c${idx}_dev = NULL; } i2c_del_master_bus(__tc_i2c${idx}_bus); __tc_i2c${idx}_bus = NULL; __tc_i2c${idx}_addr = 0xFFFF; }` };
+      // Remove this consumer's device handle; the shared bus persists for other consumers.
+      return { code: `if (__tc_i2c${idx}_dev) { i2c_master_bus_rm_device(__tc_i2c${idx}_dev); __tc_i2c${idx}_dev = NULL; __tc_i2c${idx}_addr = 0xFFFF; }` };
     default:
       throw new Error(`framework-esp32 does not yet support HAL op \`${op.operation}\`.`);
   }

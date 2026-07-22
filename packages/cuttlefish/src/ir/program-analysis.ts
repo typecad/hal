@@ -548,6 +548,15 @@ function analyzeStatement(
         if (opName.startsWith("i2c.")) result.usesI2C = true;
         if (opName.startsWith("tone.")) result.usesTone = true;
         if (opName.startsWith("uart.")) result.usesUart = true;
+        // Display HAL ops (display.init from ui.mount, display.flush per frame)
+        // always imply GPIO usage (CS/DC/RST pins). Native SPI/I2C display
+        // adapters emit their own transport #includes (driver/spi_master.h,
+        // driver/i2c_master.h) — we don't force usesSPI/usesI2C here because
+        // that would pull headers even for non-display SPI/I2C code, and the
+        // display's transport type can't be determined from the op alone.
+        if (opName.startsWith("display.")) {
+          result.usesGPIO = true;
+        }
         // ESP32 peripheral usage — framework-esp32 gates IDF driver blocks
         // and forced includes on these. No-op for other frameworks (their
         // shimLines emit no CUTTLEFISH_* blocks with these marker names).

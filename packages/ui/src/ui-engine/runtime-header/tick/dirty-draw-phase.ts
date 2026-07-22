@@ -27,9 +27,48 @@ export function emitTickDirtyDrawPhase(): string {
     if (__ui_kb_dirty == 1) {
       ui_kb_draw();
     } else if (__ui_kb_dirty == 2) {
-      ui_kb_draw_text_row();
-      if (__ui_kb_repaint_key >= 0 && __ui_kb_keys[__ui_kb_repaint_key].special != 255) {
-        ui_kb_draw_key((uint8_t)__ui_kb_repaint_key);
+      // Buffer the targeted update through the keyboard canvas too — drawing
+      // the text row directly to the display (fill_rect clear + text redraw)
+      // flashes on SPI TFTs because the clear is visible for one frame.
+      // Re-render into the canvas and push in one transaction. The canvas
+      // already holds the last full-keyboard frame, so we only need to redraw
+      // the text row + the single changed key on top of it.
+      // (__ui_kb_canvas is declared static in the keyboard slice, earlier in
+      // this same translation unit — no extern needed.)
+      if (__ui_kb_canvas && display_canvasBuffer(__ui_kb_canvas)) {
+        int16_t kw = __ui_kb_box.w;
+        int16_t saveBoxX = __ui_kb_box.x;
+        int16_t saveBoxY = __ui_kb_box.y;
+        CuttlefishDisplayTarget* __kb_prev = ui_display_get_target();
+        ui_display_set_target(__ui_kb_canvas);
+        __ui_kb_box.x = 0;
+        __ui_kb_box.y = 0;
+        ui_kb_draw_text_row();
+        uint8_t has_key_repaint = (__ui_kb_repaint_key >= 0 && __ui_kb_keys[__ui_kb_repaint_key].special != 255) ? 1 : 0;
+        if (has_key_repaint) {
+          ui_kb_draw_key((uint8_t)__ui_kb_repaint_key);
+        }
+        __ui_kb_box.x = saveBoxX;
+        __ui_kb_box.y = saveBoxY;
+        ui_display_set_target(__kb_prev);
+        // Push only the changed region: text row alone (UI_KB_TEXT_H) when no
+        // key highlight changed, or the full canvas when a key was repainted
+        // (the key could be anywhere in the keyboard grid).
+        display_startWrite();
+        if (has_key_repaint) {
+          display_setAddrWindow(saveBoxX, saveBoxY, kw, __ui_kb_box.h);
+          display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * __ui_kb_box.h);
+        } else {
+          display_setAddrWindow(saveBoxX, saveBoxY, kw, UI_KB_TEXT_H);
+          display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * UI_KB_TEXT_H);
+        }
+        display_endWrite();
+      } else {
+        // No canvas — fall back to direct draw (slow but correct).
+        ui_kb_draw_text_row();
+        if (__ui_kb_repaint_key >= 0 && __ui_kb_keys[__ui_kb_repaint_key].special != 255) {
+          ui_kb_draw_key((uint8_t)__ui_kb_repaint_key);
+        }
       }
     }
     __ui_kb_dirty = 0;
@@ -272,10 +311,6 @@ export function emitTickDirtyDrawPhase(): string {
 
     UIRect paintRect;
     ui_node_paint_rect(i, baseDrawX, baseDrawY, drawX, drawY, paintTextW, paintTextH, &paintRect);
-    int16_t cullX = paintRect.x;
-    int16_t cullY = paintRect.y;
-    int16_t cullW = paintRect.w;
-    int16_t cullH = paintRect.h;
     if (drawingBufferedScroll) {
       // Canvas-local clip: skip nodes fully outside the viewport (0..vw, 0..vh).
       // Use the node's face rect (box.w/h), NOT the paint rect — the paint rect

@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ResolvedDisplay } from "./display-profile.js";
+import type { PlatformStrategy } from "./platform-strategy.js";
 
 export interface DisplayAdapterCode {
   /** C++ #include lines (e.g. "#include <Adafruit_ILI9341.h>"). */
@@ -30,7 +31,16 @@ export function registerDisplayAdapter(driver: string, gen: DisplayAdapterGenera
   adapters.set(driver, gen);
 }
 
-export function generateDisplayAdapter(display: ResolvedDisplay): DisplayAdapterCode {
+export function generateDisplayAdapter(
+  display: ResolvedDisplay,
+  strategy?: Pick<PlatformStrategy, "providesDisplayAdapter" | "resolveDisplayAdapter">,
+): DisplayAdapterCode {
+  // Strategy-owned adapters (AVR, ESP32) take precedence. Falls through to
+  // the built-in Adafruit registry for Arduino.
+  if (strategy?.providesDisplayAdapter?.() && strategy.resolveDisplayAdapter) {
+    const code = strategy.resolveDisplayAdapter(display);
+    if (code) return code;
+  }
   const driver = display.driver;
   const gen = adapters.get(driver);
   if (!gen) {

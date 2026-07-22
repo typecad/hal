@@ -8,7 +8,10 @@ export function lowerTiming(op: HALOpIR): { code?: string; expression?: string }
   const o = op as any;
   switch (op.operation) {
     case 'timing.delay':
-      return { code: `vTaskDelay(pdMS_TO_TICKS(${o.ms}));` };
+      // Cooperative delay: pumps setInterval/setTimeout when timer_methods
+      // registers __tc_coop_poll_hook. A bare vTaskDelay in setup()'s
+      // while(true) never returns to loop(), so timers would never fire.
+      return { code: `__tc_delay(${o.ms});` };
     case 'timing.delay_microseconds':
       return { code: `esp_rom_delay_us(${o.us});` };
     case 'timing.millis':
