@@ -160,7 +160,9 @@ cuttlefish gen-decls --components
 
 - Preferences/NVS lowering not yet implemented; type-checks but emits no runtime code. Use `rawCpp()` + `#include "nvs_flash.h"`.
 - EEPROM lowering not yet implemented; type-checks but emits no runtime code. Use Preferences / NVS instead.
-- WiFi/BLE/mDNS: no first-class HAL ops, but usable via components (see above) or `rawCpp()`.
+- WiFi/HTTP: first-class HAL ops (native `esp_wifi`/`esp_http_client`), including async/await.
+- BLE (NimBLE): first-class HAL ops for GATT peripheral (server/characteristics, read/write/notify callbacks, async connect). Central/client is a follow-on.
+- mDNS: no first-class HAL ops; usable via components or `rawCpp()`.
 - Deep-sleep pin wakeup (RTC GPIO) not yet implemented; timer wakeup works.
 - ADC calibration uses deprecated `esp_adc_cal_*`; will migrate to `adc_cali_line_fitting_*` in v1.1.
 - Display/graphics overrides not yet implemented (inherited from ArduinoStrategy; may emit Arduino API calls).
