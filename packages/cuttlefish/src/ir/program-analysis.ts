@@ -79,11 +79,12 @@ export interface ProgramAnalysisResult {
   usesInterrupts: boolean;
   usesPulse: boolean;
   usesShift: boolean;
-  /** WiFi / HTTP client usage — framework-esp32 gates the __tc_wifi/__tc_http
-   *  runtime shims and their esp_wifi/esp_http_client includes on these.
-   *  Detected from wifi.* / http.* HAL-op operation names. */
+  /** WiFi / HTTP / BLE usage — framework-esp32 gates the __tc_wifi/__tc_http/
+   *  __tc_ble runtime shims and their esp_wifi/esp_http_client/nimble includes
+   *  on these. Detected from wifi.* / http.* / ble.* HAL-op operation names. */
   usesWifi: boolean;
   usesHttp: boolean;
+  usesBle: boolean;
 }
 
 // Regex for std:: math calls
@@ -94,7 +95,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesHttp'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesHttp' | 'usesBle'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -318,6 +319,7 @@ function analyzeExpression(
         const opName = expr.operation.operation;
         if (opName.startsWith("wifi.")) result.usesWifi = true;
         if (opName.startsWith("http.")) result.usesHttp = true;
+        if (opName.startsWith("ble.")) result.usesBle = true;
       }
       break;
   }
@@ -571,6 +573,7 @@ function analyzeStatement(
         if (opName.startsWith("shift."))     result.usesShift = true;
         if (opName.startsWith("wifi."))      result.usesWifi = true;
         if (opName.startsWith("http."))      result.usesHttp = true;
+        if (opName.startsWith("ble."))       result.usesBle = true;
         // Timing HAL ops (timing.delay/millis/micros) carry a typed operation
         // name, not raw code, so the regex scans below miss them. Mirror the
         // raw-code timing detection here so usesMillis/usesTiming (and thus
@@ -699,6 +702,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesShift: false,
     usesWifi: false,
     usesHttp: false,
+    usesBle: false,
   };
 
   // Analyze type aliases
