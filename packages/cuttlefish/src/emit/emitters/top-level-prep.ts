@@ -538,13 +538,15 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
   // Process registered callbacks from HAL resolver
   for (const rc of (program.registeredCallbacks ?? [])) {
     const callbackName = `${ctx.isrPrefix}_isr_${counter.value++}`;
-    const callbackIR = rc.callbackIR as ExpressionIR & { kind: "callback"; body?: StatementIR[] };
+    const callbackIR = rc.callbackIR as ExpressionIR & { kind: "callback"; body?: StatementIR[]; returnType?: string; typedParams?: { name: string; cppType: string }[] };
     callbackFunctions.push({
       name: callbackName,
       params: callbackIR.params,
       statements: callbackIR.statements ?? callbackIR.body ?? [],
       debounceMs: callbackIR.debounceMs,
       isInterruptHandler: (callbackIR as any).isInterruptHandler,
+      ...(callbackIR.returnType ? { returnType: callbackIR.returnType } : {}),
+      ...(callbackIR.typedParams ? { typedParams: callbackIR.typedParams } : {}),
     });
     replacePlaceholderInAllStatements(filteredTopLevelExecutables, rc.placeholderName, callbackName);
     for (const fn of mappedFunctions) {

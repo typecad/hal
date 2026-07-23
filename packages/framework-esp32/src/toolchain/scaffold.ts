@@ -91,6 +91,8 @@ export function scaffoldEspIdfProject(
       'esp_timer',
       'esp_driver_uart',
       'esp_driver_gpio',
+      'esp_driver_i2c',
+      'esp_driver_spi',
       'esp_http_client',
       'esp-tls',
       'mbedtls',

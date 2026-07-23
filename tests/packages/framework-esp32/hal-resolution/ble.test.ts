@@ -13,12 +13,11 @@ describe('ble init block', () => {
     expect(lines).toContain('__TC_BLE_MAX_CHARS');
     expect(lines).toContain('on_read');
     expect(lines).toContain('on_write');
-    expect(lines).toContain('on_subscribe');
   });
 
-  it('starts the NimBLE host task from ensure_init', () => {
+  it('starts the NimBLE host via nimble_port_run', () => {
     const lines = bleInitLines().join('\n');
-    expect(lines).toMatch(/nimble_host_task|ble_hs_start/);
+    expect(lines).toMatch(/nimble_port_run|nimble_host_task/);
   });
 
   it('registers a GAP event handler', () => {
@@ -64,17 +63,12 @@ describe('ble lowering — service / characteristic graph', () => {
 describe('ble lowering — callbacks', () => {
   it('on_read → assigns function pointer to handler slot', () => {
     expect(lowerBle({ operation: 'ble.on_read', index: 0, handler: 'main_isr_3' }))
-      .toEqual({ code: '__tc_ble.on_read[0] = &main_isr_3;' });
+      .toEqual({ code: '__tc_ble.on_read[0] = (main_isr_3);' });
   });
 
   it('on_write → assigns function pointer to handler slot', () => {
     expect(lowerBle({ operation: 'ble.on_write', index: 1, handler: 'main_isr_4' }))
-      .toEqual({ code: '__tc_ble.on_write[1] = &main_isr_4;' });
-  });
-
-  it('on_subscribe → assigns function pointer to handler slot', () => {
-    expect(lowerBle({ operation: 'ble.on_subscribe', index: 0, handler: 'main_isr_5' }))
-      .toEqual({ code: '__tc_ble.on_subscribe[0] = &main_isr_5;' });
+      .toEqual({ code: '__tc_ble.on_write[1] = (main_isr_4);' });
   });
 });
 

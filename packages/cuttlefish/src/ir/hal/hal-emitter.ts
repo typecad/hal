@@ -325,6 +325,8 @@ export function extractAndRegisterCallbacks(
                   kind: "callback",
                   params: callbackIR.params.map((p) => p.name),
                   statements: callbackIR.body,
+                  ...(callbackIR.returnType && callbackIR.returnType !== "void" ? { returnType: callbackIR.returnType } : {}),
+                  ...(callbackIR.params ? { typedParams: callbackIR.params.map((p: any) => ({ name: p.name, cppType: p.cppType })).filter((p: any) => p.cppType && p.cppType !== "void") } : {}),
                   sourceSpan: callbackIR.body[0]?.sourceSpan ?? {
                     filePath: "",
                     startLine: 0,
