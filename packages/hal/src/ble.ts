@@ -170,7 +170,7 @@ export class BleServer {
   }
 
   /** Register a write handler for the most recently added characteristic. */
-  onWrite(handler: () => void): this {
+  onWrite(handler: (value: number) => void): this {
     bleOnWrite(this._lastChar, callback(handler));
     return this;
   }
