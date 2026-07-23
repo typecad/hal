@@ -7,6 +7,8 @@ import {
   bleOnRead,
   bleOnWrite,
   bleOnSubscribe,
+  bleOnConnect,
+  bleOnDisconnect,
   bleNotify,
   bleIsConnected,
   bleClientCount,
@@ -184,6 +186,18 @@ export class BleServer {
   /** Register a subscribe handler for the most recently added characteristic. */
   onSubscribe(handler: (enabled: boolean) => void): this {
     bleOnSubscribe(this._lastChar, callback(handler));
+    return this;
+  }
+
+  /** Register a connect handler (called when a central connects). */
+  onConnect(handler: () => void): this {
+    bleOnConnect(callback(handler));
+    return this;
+  }
+
+  /** Register a disconnect handler (called when a central disconnects). */
+  onDisconnect(handler: () => void): this {
+    bleOnDisconnect(callback(handler));
     return this;
   }
 

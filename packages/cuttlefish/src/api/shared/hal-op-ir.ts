@@ -841,6 +841,16 @@ export interface BleOnSubscribeOp {
   handler: string;
 }
 
+export interface BleOnConnectOp {
+  operation: "ble.on_connect";
+  handler: string;
+}
+
+export interface BleOnDisconnectOp {
+  operation: "ble.on_disconnect";
+  handler: string;
+}
+
 export interface BleNotifyOp {
   operation: "ble.notify";
   index: number | string;
@@ -1047,6 +1057,8 @@ export type HALOpIR =
   | BleOnReadOp
   | BleOnWriteOp
   | BleOnSubscribeOp
+  | BleOnConnectOp
+  | BleOnDisconnectOp
   | BleNotifyOp
   | BleIsConnectedOp
   | BleClientCountOp
@@ -1138,7 +1150,7 @@ export const HAL_OPERATION_KINDS = [
   // BLE (NimBLE GATT peripheral)
   'ble.server_begin', 'ble.advertise_start', 'ble.advertise_stop',
   'ble.add_service', 'ble.add_char',
-  'ble.on_read', 'ble.on_write', 'ble.on_subscribe', 'ble.notify',
+  'ble.on_read', 'ble.on_write', 'ble.on_subscribe', 'ble.on_connect', 'ble.on_disconnect', 'ble.notify',
   'ble.is_connected', 'ble.client_count', 'ble.set_name',
   'ble.until_connected', 'ble.until_connected_start',
   'ble.set_tx_power', 'ble.status',

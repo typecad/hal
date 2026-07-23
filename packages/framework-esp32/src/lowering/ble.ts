@@ -24,6 +24,7 @@ export function bleInitLines(): string[] {
     `// The access CB bridges NimBLE's ble_gatt_access_ctxt to these typed callbacks.`,
     `typedef int  (*__tc_ble_read_cb_t)(void);`,
     `typedef void (*__tc_ble_write_cb_t)(int value);`,
+    `typedef void (*__tc_ble_event_cb_t)(void);`,
     ``,
     `// Deferred characteristic definition (populated before __tc_ble_server_begin).`,
     `typedef struct {`,
@@ -42,8 +43,10 @@ export function bleInitLines(): string[] {
     `    int current_char;          // set by add_char, read by on_read/on_write`,
     `    __tc_ble_read_cb_t   on_read[__TC_BLE_MAX_CHARS];`,
     `    __tc_ble_write_cb_t  on_write[__TC_BLE_MAX_CHARS];`,
+    `    __tc_ble_event_cb_t  on_connect;`,
+    `    __tc_ble_event_cb_t  on_disconnect;`,
     `    char name[32];`,
-    `} __tc_ble = { 0, false, false, 0, -1, 0, 0, {}, {}, {} };`,
+    `} __tc_ble = { 0, false, false, 0, -1, 0, 0, {}, {}, NULL, NULL, {} };`,
     ``,
     `static __tc_ble_char_def_t __tc_ble_char_defs[__TC_BLE_MAX_CHARS];`,
     `static int __tc_ble_char_count = 0;`,
@@ -92,11 +95,13 @@ export function bleInitLines(): string[] {
     `            __tc_ble.connected_clients = __tc_ble.connected_clients + 1;`,
     `            __tc_ble.conn_handle = event->connect.conn_handle;`,
     `            __tc_ble.status = 3; // Connected`,
+    `            if (__tc_ble.on_connect) __tc_ble.on_connect();`,
     `        } else {`,
     `            __tc_ble_advertise_start();`,
     `        }`,
     `        break;`,
     `    case BLE_GAP_EVENT_DISCONNECT:`,
+    `        if (__tc_ble.on_disconnect) __tc_ble.on_disconnect();`,
     `        __tc_ble.connected_clients = __tc_ble.connected_clients > 0 ? __tc_ble.connected_clients - 1 : 0;`,
     `        __tc_ble.conn_handle = -1;`,
     `        __tc_ble.status = 2; // Advertising`,
@@ -311,6 +316,10 @@ export function lowerBle(op: HALOpIR): { code?: string; expression?: string } {
       return { code: `__tc_ble.on_read[__tc_ble.current_char] = (${s(o.handler)});` };
     case 'ble.on_write':
       return { code: `__tc_ble.on_write[__tc_ble.current_char] = (${s(o.handler)});` };
+    case 'ble.on_connect':
+      return { code: `__tc_ble.on_connect = (${s(o.handler)});` };
+    case 'ble.on_disconnect':
+      return { code: `__tc_ble.on_disconnect = (${s(o.handler)});` };
     case 'ble.notify':
       return { expression: `__tc_ble_notify(__tc_ble.current_char, ${s(o.value)})` };
     case 'ble.is_connected':

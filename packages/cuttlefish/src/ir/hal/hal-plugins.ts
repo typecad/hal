@@ -749,6 +749,16 @@ export function tryResolveSemanticCall(
       if (handler === null) return null;
       return { operation: "ble.on_subscribe", index: index ?? 0, handler };
     }
+    case "bleOnConnect": {
+      const handler = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (handler === null) return null;
+      return { operation: "ble.on_connect", handler };
+    }
+    case "bleOnDisconnect": {
+      const handler = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (handler === null) return null;
+      return { operation: "ble.on_disconnect", handler };
+    }
     case "bleNotify": {
       const index = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);

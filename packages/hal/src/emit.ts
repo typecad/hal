@@ -289,6 +289,8 @@ export function bleAddChar(index: number, uuid: string, type: string, perms: num
 export function bleOnRead(index: number, handler: string): void {}
 export function bleOnWrite(index: number, handler: string): void {}
 export function bleOnSubscribe(index: number, handler: string): void {}
+export function bleOnConnect(handler: string): void {}
+export function bleOnDisconnect(handler: string): void {}
 export function bleNotify(index: number, value: number | string): void {}
 export function bleIsConnected(): boolean { return false; }
 export function bleClientCount(): number { return 0; }
