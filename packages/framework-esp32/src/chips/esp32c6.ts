@@ -32,6 +32,6 @@ export const ESP32C6: Esp32ChipDescriptor = {
     ],
   },
   lacks: ['dac'],
-  ledc: { timerBits: 20, lowSpeedChannels: 6, highSpeedChannels: 0 },
+  ledc: { timerBits: 20, lowSpeedChannels: 6 },
   cpu: { defaultFreqMhz: 160, minFreqMhz: 80, maxFreqMhz: 160 },
 };

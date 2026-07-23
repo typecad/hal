@@ -6,6 +6,7 @@ import {
   discoverIdfRoot, discoverFromEnv, discoverFromWellKnown, discoverFromVersionScan,
   detectIdfVersion, compareSemver, eimManifestPath, wellKnownPaths, versionScanParents,
   resetDiscoverIdfRootCache,
+  meetsIdfFloor, enforceIdfFloorOrThrow,
 } from '../../../packages/framework-esp32/src/toolchain/discover';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -184,8 +185,45 @@ describe('discoverIdfRoot cascade', () => {
     // has ESP-IDF installed somewhere we'd find.
     const result = discoverIdfRoot();
     if (result && existsSync(join(result.path, 'tools', 'idf.py'))) {
-      // Host has a real install; can't assert null. Just assert the shape is sane.
+      // Host has a real install; can't assert null. Just assert the shape is sane
+      // and that it meets the v6 floor (otherwise discoverIdfRoot would throw).
       expect(['env', 'eim-manifest', 'well-known', 'version-scan', 'path']).toContain(result.source);
+      expect(compareSemver(result.version ?? '0.0.0', '6.0.0')).toBeGreaterThanOrEqual(0);
+    } else {
+      expect(result).toBeNull();
+    }
+  });
+});
+
+describe('IDF v6 version floor', () => {
+  it('meetsIdfFloor: true for v6+, false for known v5, true for unknown version', () => {
+    const r6 = { path: '/x', version: '6.0.0', source: 'env' as const };
+    const r6patch = { path: '/x', version: '6.1.3', source: 'env' as const };
+    const r5 = { path: '/x', version: '5.1.0', source: 'env' as const };
+    const rUnknown = { path: '/x', version: undefined, source: 'env' as const };
+    expect(meetsIdfFloor(r6)).toBe(true);
+    expect(meetsIdfFloor(r6patch)).toBe(true);
+    expect(meetsIdfFloor(r5)).toBe(false);
+    expect(meetsIdfFloor(rUnknown)).toBe(true);  // unknown = trust it
+    expect(meetsIdfFloor(null)).toBe(false);
+  });
+
+  it('enforceIdfFloorOrThrow throws only for a known-below-floor root', () => {
+    const r5 = { path: '/old', version: '5.0.0', source: 'env' as const };
+    expect(() => enforceIdfFloorOrThrow(r5)).toThrow(/ESP-IDF >= 6\.0\.0 is required.*5\.0\.0/s);
+    // No throw for null, unknown-version, or floor-meeting roots.
+    expect(() => enforceIdfFloorOrThrow(null)).not.toThrow();
+    expect(() => enforceIdfFloorOrThrow({ path: '/x', version: undefined, source: 'env' as const })).not.toThrow();
+    expect(() => enforceIdfFloorOrThrow({ path: '/x', version: '6.0.0', source: 'env' as const })).not.toThrow();
+  });
+
+  it('discoverIdfRoot returns a floor-meeting root (or null) and never a known-below-floor root', () => {
+    // On hosts with a real v6 install (this dev machine has C:\esp\v6.0.2),
+    // discovery returns it. On hosts with none, returns null. In neither case
+    // should it silently return a known-below-floor root.
+    const result = discoverIdfRoot();
+    if (result) {
+      expect(meetsIdfFloor(result)).toBe(true);
     } else {
       expect(result).toBeNull();
     }

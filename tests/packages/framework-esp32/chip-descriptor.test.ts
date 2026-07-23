@@ -24,8 +24,8 @@ describe('chip descriptor data integrity', () => {
     it('has no input-only pins', () => {
       expect(ESP32S3.gpio.inputOnly).toEqual([]);
     });
-    it('has no high-speed LEDC channels', () => {
-      expect(ESP32S3.ledc.highSpeedChannels).toBe(0);
+    it('has low-speed LEDC channels', () => {
+      expect(ESP32S3.ledc.lowSpeedChannels).toBeGreaterThan(0);
     });
     it('lacks DAC', () => {
       expect(ESP32S3.lacks).toContain('dac');

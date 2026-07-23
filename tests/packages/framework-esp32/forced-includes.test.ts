@@ -43,9 +43,14 @@ describe('Esp32Strategy forcedIncludes', () => {
     expect(inc).toContain('"driver/spi_master.h"');
     expect(inc).toContain('"driver/uart.h"');
     expect(inc).toContain('"driver/ledc.h"');
-    expect(inc).toContain('"driver/dac.h"');
+    // v6 oneshot + line-fitting calibration (not the deprecated esp_adc_cal / legacy ADC).
+    expect(inc).toContain('"driver/adc_oneshot.h"');
+    expect(inc).toContain('"esp_adc/adc_cali.h"');
+    expect(inc).not.toContain('"esp_adc_cal.h"');
+    expect(inc).toContain('"driver/dac_oneshot.h"');
     expect(inc).toContain('"esp_sleep.h"');
-    expect(inc).toContain('"soc/rtc.h"');
+    expect(inc).toContain('"esp_pm.h"');
+    expect(inc).not.toContain('"soc/rtc.h"');
     expect(inc).toContain('"esp_task_wdt.h"');
     expect(inc).toContain('"esp_intr_alloc.h"');
   });
