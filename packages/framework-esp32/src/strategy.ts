@@ -19,6 +19,7 @@ import { wdtInitLines }   from './lowering/wdt.js';
 import { pulseShiftInitLines, pulseInitLines, shiftInitLines } from './lowering/pulse-shift.js';
 import { wifiInitLines } from './lowering/wifi.js';
 import { httpInitLines } from './lowering/http.js';
+import { bleInitLines } from './lowering/ble.js';
 
 /** Read the IDF target ('esp32'|'esp32s3'|'esp32c3'|'esp32c6') from the
  *  platform context. Accepts either frameworkData.target (preferred) or
@@ -159,6 +160,18 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (uses('usesHttp')) {
       inc.push('"esp_http_client.h"', '"esp_crt_bundle.h"', '<stdlib.h>');
     }
+    if (uses('usesBle')) {
+      inc.push(
+        '"esp_nimble_hci.h"',
+        '"nimble/nimble_port.h"',
+        '"nimble/nimble_port_freertos.h"',
+        '"host/ble_hs.h"',
+        '"host/ble_gap.h"',
+        '"host/ble_gatt.h"',
+        '"services/gap/ble_svc_gap.h"',
+        '"services/gatt/ble_svc_gatt.h"',
+      );
+    }
     return inc;
   }
 
@@ -184,6 +197,7 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (a?.usesShift) espInit.push(...shiftInitLines());
     if (a?.usesWifi)  espInit.push(...wifiInitLines());
     if (a?.usesHttp)  espInit.push(...httpInitLines());
+    if (a?.usesBle)   espInit.push(...bleInitLines());
 
     // After timer_methods polyfill (emitted before shimLines): hook delay() so
     // setInterval fires inside setup()'s blocking while+delay loops.
