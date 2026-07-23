@@ -470,6 +470,7 @@ const AWAITABLE_HAL_OPS = new Set<string>([
   "wifi.wait_disconnected",
   "wifi.scan",
   "http.send",
+  "ble.until_connected",
 ]);
 
 /**
@@ -485,6 +486,7 @@ function awaitedNetMarker(stmt: StatementIR | undefined): StatementIR | undefine
     const opName = stmt.operation.operation;
     const callee = opName.startsWith("http.") ? "__HTTP_WAIT__"
       : opName.startsWith("wifi.") ? "__WIFI_WAIT__"
+      : opName.startsWith("ble.") ? "__BLE_WAIT__"
       : "__HAL_WAIT__";
     return {
       kind: "call",

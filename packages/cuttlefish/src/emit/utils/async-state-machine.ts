@@ -167,7 +167,7 @@ export function generateAsyncTaskClass(
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
     if (
-      (seg.awaitedCallee === "__WIFI_WAIT__" || seg.awaitedCallee === "__HTTP_WAIT__" || seg.awaitedCallee === "__HAL_WAIT__") &&
+      (seg.awaitedCallee === "__WIFI_WAIT__" || seg.awaitedCallee === "__HTTP_WAIT__" || seg.awaitedCallee === "__BLE_WAIT__" || seg.awaitedCallee === "__HAL_WAIT__") &&
       seg.awaitedArgs[0]?.kind === "hal-expr"
     ) {
       const op = (seg.awaitedArgs[0] as Extract<ExpressionIR, { kind: "hal-expr" }>).operation;
@@ -448,6 +448,18 @@ function netWaitInfo(op: HALOpIR, strategy: PlatformStrategy): NetWaitInfo {
       const poll = expr("http.done");
       if (start?.code && poll) {
         return { startLines: [start.code], pollCond: poll, timeoutExpr: null };
+      }
+      break;
+    }
+    case "ble.until_connected": {
+      const start = route({ operation: "ble.until_connected_start" });
+      const poll = expr("ble.is_connected");
+      if (start?.code && poll) {
+        return {
+          startLines: [start.code],
+          pollCond: poll,
+          timeoutExpr: isZeroTimeout(o.timeoutMs) ? null : ms(o.timeoutMs),
+        };
       }
       break;
     }

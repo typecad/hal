@@ -595,7 +595,7 @@ export class StatementRenderer {
     // plain renderer means the await sits outside an async state machine
     // (top-level await, or a position the state-machine splitter doesn't
     // support). Fall back to the blocking form of the op they carry.
-    if ((statement.callee === "__WIFI_WAIT__" || statement.callee === "__HTTP_WAIT__" || statement.callee === "__HAL_WAIT__")
+    if ((statement.callee === "__WIFI_WAIT__" || statement.callee === "__HTTP_WAIT__" || statement.callee === "__BLE_WAIT__" || statement.callee === "__HAL_WAIT__")
         && statement.args[0]?.kind === "hal-expr") {
       const resolved = routeHALOp(statement.args[0].operation, this.strategy);
       const code = resolved?.code ?? (resolved?.expression ? `${resolved.expression};` : undefined);
