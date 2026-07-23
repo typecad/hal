@@ -282,6 +282,30 @@ export default defineFrameworkManifest({
         'ble.status': 'supported',
       },
     },
+    preferences: {
+      // Native ESP-IDF NVS-backed key/value store (nvs_open/set/get/commit).
+      // Lowered via framework-esp32/src/lowering/preferences.ts. Mirrors the
+      // HAL Preferences surface; float is memcpy'd into uint32 (NVS has no
+      // native float type).
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'preferences.begin': 'supported',
+        'preferences.end': 'supported',
+        'preferences.clear': 'supported',
+        'preferences.remove': 'supported',
+        'preferences.put_int': 'supported',
+        'preferences.get_int': 'supported',
+        'preferences.put_uint': 'supported',
+        'preferences.get_uint': 'supported',
+        'preferences.put_bool': 'supported',
+        'preferences.get_bool': 'supported',
+        'preferences.put_float': 'supported',
+        'preferences.get_float': 'supported',
+        'preferences.put_string': 'supported',
+        'preferences.get_string': 'supported',
+      },
+    },
     display: {
       // Native ESP32 drivers via framework-esp32/src/displays/*. Each drives
       // the panel through spi_device_polling_transmit (TFTs) or
@@ -362,7 +386,7 @@ export default defineFrameworkManifest({
   conformance: {
     hardwareTestGroups: ['01-hardware', '02-math-bits', '03-advanced'],
     halResolutionTests: [
-      'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'power', 'pulse-shift',
+      'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'power', 'preferences', 'pulse-shift',
       'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt', 'wifi',
     ],
   },

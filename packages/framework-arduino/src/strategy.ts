@@ -1546,6 +1546,41 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       case "power.set_cpu_frequency":
         return { code: `setCpuFrequencyMhz(${op.mhz});` };
 
+      // Preferences — Arduino-ESP32 core <Preferences.h> (and the AVR EEPROM-
+      // backed polyfill injected by profile.ts). The HAL Preferences class used
+      // to lower via rawCpp; it now emits typed preferences.* ops, so this switch
+      // restores the Arduino-core singleton calls. The `Preferences` identifier
+      // is #define'd to the per-arch shim (__tc_prefs on ESP32, __tc_Preferences
+      // on AVR) by profile.ts when the program uses Preferences.
+      case "preferences.begin":
+        return { code: `Preferences.begin(${op.namespace}, ${op.readOnly ? "true" : "false"});` };
+      case "preferences.end":
+        return { code: `Preferences.end();` };
+      case "preferences.clear":
+        return { code: `Preferences.clear();` };
+      case "preferences.remove":
+        return { code: `Preferences.remove(${op.key});` };
+      case "preferences.put_int":
+        return { code: `Preferences.putInt(${op.key}, ${op.value});` };
+      case "preferences.get_int":
+        return { expression: `Preferences.getInt(${op.key}, ${op.defaultValue})` };
+      case "preferences.put_uint":
+        return { code: `Preferences.putUInt(${op.key}, ${op.value});` };
+      case "preferences.get_uint":
+        return { expression: `Preferences.getUInt(${op.key}, ${op.defaultValue})` };
+      case "preferences.put_bool":
+        return { code: `Preferences.putBool(${op.key}, ${op.value ? "true" : "false"});` };
+      case "preferences.get_bool":
+        return { expression: `Preferences.getBool(${op.key}, ${op.defaultValue ? "true" : "false"})` };
+      case "preferences.put_float":
+        return { code: `Preferences.putFloat(${op.key}, ${op.value});` };
+      case "preferences.get_float":
+        return { expression: `Preferences.getFloat(${op.key}, ${op.defaultValue})` };
+      case "preferences.put_string":
+        return { code: `Preferences.putString(${op.key}, ${op.value});` };
+      case "preferences.get_string":
+        return { expression: `Preferences.getString(${op.key}, ${op.defaultValue})` };
+
       // Snprintf
       case "snprintf.emit":
         return { code: `snprintf(${op.bufferName}, sizeof(${op.bufferName}), ${op.format}, ${op.args.join(", ")});` };

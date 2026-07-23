@@ -20,6 +20,7 @@ import { pulseShiftInitLines, pulseInitLines, shiftInitLines } from './lowering/
 import { wifiInitLines } from './lowering/wifi.js';
 import { httpInitLines } from './lowering/http.js';
 import { bleInitLines } from './lowering/ble.js';
+import { preferencesInitLines } from './lowering/preferences.js';
 
 /** Read the IDF target ('esp32'|'esp32s3'|'esp32c3'|'esp32c6') from the
  *  platform context. Accepts either frameworkData.target (preferred) or
@@ -178,6 +179,11 @@ export class Esp32Strategy extends ArduinoStrategy {
         '"services/gatt/ble_svc_gatt.h"',
       );
     }
+    if (uses('usesPreferences')) {
+      // NVS for the __tc_prefs persistent key/value store. May be used without
+      // WiFi/BLE, so this is gated independently of their nvs_flash.h include.
+      inc.push('"nvs_flash.h"', '"nvs.h"');
+    }
     return inc;
   }
 
@@ -204,6 +210,7 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (a?.usesWifi)  espInit.push(...wifiInitLines());
     if (a?.usesHttp)  espInit.push(...httpInitLines());
     if (a?.usesBle)   espInit.push(...bleInitLines());
+    if (a?.usesPreferences) espInit.push(...preferencesInitLines());
 
     // After timer_methods polyfill (emitted before shimLines): hook delay() so
     // setInterval fires inside setup()'s blocking while+delay loops.
@@ -607,7 +614,7 @@ static inline int digitalRead(int pin) {
       '  // framework-esp32 ambient types:',
       '  // - Timing: lowered via __tc_Timing (esp_timer_get_time, vTaskDelay).',
       '  // - WDT: lowered via __tc_WDT (esp_task_wdt_*).',
-      '  // - Preferences: TS type retained; runtime lowering deferred to v1.1.',
+      '  // - Preferences: lowered via __tc_prefs (native NVS: nvs_open/set/get).',
       '  // - EEPROM: not lowered (use Preferences / NVS instead).',
       '  const Timing: {',
       '    millis(): number;',
@@ -623,12 +630,15 @@ static inline int digitalRead(int pin) {
       '    disable(): void;',
       '  };',
       '',
-      '  // Preferences: v1.1 — lowering pending (NVS / nvs_flash.h).',
-      '  // Type is declared so user code type-checks; transpile emits a diagnostic.',
+      '  // Preferences: native NVS-backed key/value store (lowered via __tc_prefs).',
       '  const Preferences: {',
       '    begin(name: string, readOnly?: boolean): boolean;',
       '    putInt(key: string, value: number): boolean;',
       '    getInt(key: string, defaultValue?: number): number;',
+      '    putUInt(key: string, value: number): boolean;',
+      '    getUInt(key: string, defaultValue?: number): number;',
+      '    putFloat(key: string, value: number): boolean;',
+      '    getFloat(key: string, defaultValue?: number): number;',
       '    putString(key: string, value: string): boolean;',
       '    getString(key: string, defaultValue?: string): string;',
       '    putBool(key: string, value: boolean): boolean;',

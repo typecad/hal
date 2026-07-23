@@ -223,8 +223,23 @@ export function powerSetCpuFrequency(mhz: number): void {}
 export function powerDeepSleepPin(pin: number, level: number): void {}
 
 // ---------------------------------------------------------------------------
-// WiFi
+// Preferences (NVS-backed key/value store)
 // ---------------------------------------------------------------------------
+
+export function preferencesBegin(namespace: string, readOnly: boolean): void {}
+export function preferencesEnd(): void {}
+export function preferencesClear(): void {}
+export function preferencesRemove(key: string): void {}
+export function preferencesPutInt(key: string, value: number): void {}
+export function preferencesGetInt(key: string, defaultValue: number): number { return 0; }
+export function preferencesPutUInt(key: string, value: number): void {}
+export function preferencesGetUInt(key: string, defaultValue: number): number { return 0; }
+export function preferencesPutBool(key: string, value: boolean): void {}
+export function preferencesGetBool(key: string, defaultValue: boolean): boolean { return false; }
+export function preferencesPutFloat(key: string, value: number): void {}
+export function preferencesGetFloat(key: string, defaultValue: number): number { return 0; }
+export function preferencesPutString(key: string, value: string): void {}
+export function preferencesGetString(key: string, defaultValue: string): string { return ""; }
 
 export function wifiConnect(ssid: string, password?: string, timeoutMs?: number): boolean { return false; }
 export function wifiConnectStart(ssid: string, password?: string): void {}

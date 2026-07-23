@@ -58,6 +58,7 @@ export default {
 - **WDT** → `esp_task_wdt_init`/`add`/`reset`/`delete`/`deinit` (task watchdog, not RTC watchdog)
 - **pulse** → `esp_timer_get_time`-based edge timer (no native IDF equivalent)
 - **shift** → GPIO bit-bang (`__tc_shift_in`/`__tc_shift_out`)
+- **Preferences** → native NVS (`nvs_open`/`nvs_set_i32`/`nvs_get_str`/…); float stored as `uint32` (no native NVS float type)
 
 ## Watchdog
 
@@ -158,7 +159,6 @@ cuttlefish gen-decls --components
 
 ## Limitations (v1)
 
-- Preferences/NVS lowering not yet implemented; type-checks but emits no runtime code. Use `rawCpp()` + `#include "nvs_flash.h"`.
 - EEPROM lowering not yet implemented; type-checks but emits no runtime code. Use Preferences / NVS instead.
 - WiFi/HTTP: first-class HAL ops (native `esp_wifi`/`esp_http_client`), including async/await.
 - BLE (NimBLE): first-class HAL ops for GATT peripheral (server/characteristics, read/write/notify callbacks, async connect). Central/client is a follow-on.

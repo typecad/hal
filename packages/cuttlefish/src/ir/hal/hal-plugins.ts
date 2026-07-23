@@ -788,6 +788,83 @@ export function tryResolveSemanticCall(
       return { operation: "ble.set_tx_power", dbm };
     }
 
+    // ── Preferences (NVS key/value store) ──
+    case "preferencesBegin": {
+      const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const ro = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (ns === null) return null;
+      return { operation: "preferences.begin", namespace: quoteNonIdentifier(ns), readOnly: ro === "true" };
+    }
+    case "preferencesEnd":
+      return { operation: "preferences.end" };
+    case "preferencesClear":
+      return { operation: "preferences.clear" };
+    case "preferencesRemove": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (key === null) return null;
+      return { operation: "preferences.remove", key: quoteNonIdentifier(key) };
+    }
+    case "preferencesPutInt": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (key === null || value === null) return null;
+      return { operation: "preferences.put_int", key: quoteNonIdentifier(key), value };
+    }
+    case "preferencesGetInt": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const def = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      if (key === null) return null;
+      return { operation: "preferences.get_int", key: quoteNonIdentifier(key), defaultValue: def };
+    }
+    case "preferencesPutUInt": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (key === null || value === null) return null;
+      return { operation: "preferences.put_uint", key: quoteNonIdentifier(key), value };
+    }
+    case "preferencesGetUInt": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const def = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      if (key === null) return null;
+      return { operation: "preferences.get_uint", key: quoteNonIdentifier(key), defaultValue: def };
+    }
+    case "preferencesPutBool": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (key === null || value === null) return null;
+      return { operation: "preferences.put_bool", key: quoteNonIdentifier(key), value: value === "true" };
+    }
+    case "preferencesGetBool": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const def = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (key === null) return null;
+      return { operation: "preferences.get_bool", key: quoteNonIdentifier(key), defaultValue: def === "true" };
+    }
+    case "preferencesPutFloat": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (key === null || value === null) return null;
+      return { operation: "preferences.put_float", key: quoteNonIdentifier(key), value };
+    }
+    case "preferencesGetFloat": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const def = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      if (key === null) return null;
+      return { operation: "preferences.get_float", key: quoteNonIdentifier(key), defaultValue: def };
+    }
+    case "preferencesPutString": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (key === null || value === null) return null;
+      return { operation: "preferences.put_string", key: quoteNonIdentifier(key), value: quoteNonIdentifier(value) };
+    }
+    case "preferencesGetString": {
+      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const def = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults) ?? '""';
+      if (key === null) return null;
+      return { operation: "preferences.get_string", key: quoteNonIdentifier(key), defaultValue: quoteNonIdentifier(def) };
+    }
+
     // ── Interrupts ──
     case "interruptAttach": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);

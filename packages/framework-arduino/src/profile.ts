@@ -240,6 +240,12 @@ function collectUsedIdentifiers(program: ProgramIR): Set<string> {
           used.add(token);
         }
       }
+      // Typed preferences.* ops replaced the rawCpp path. Map them back to the
+      // "Preferences" namespace identifier so the per-arch shim (AVR EEPROM /
+      // ESP32 <Preferences.h>) still fires from needsPreferences below.
+      if (op && typeof op.operation === "string" && op.operation.startsWith("preferences.")) {
+        used.add("Preferences");
+      }
       return;
     }
 

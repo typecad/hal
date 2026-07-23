@@ -386,6 +386,9 @@ export function buildEmitterContext(
     if (!programAnalysis.usesHttp) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_HTTP_BEGIN', '// CUTTLEFISH_HTTP_END');
     }
+    if (!programAnalysis.usesPreferences) {
+      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_PREFERENCES_BEGIN', '// CUTTLEFISH_PREFERENCES_END');
+    }
     profileDiagnostics = [...strategy.profileDiagnostics(program, options.platformContext)];
   }
 
