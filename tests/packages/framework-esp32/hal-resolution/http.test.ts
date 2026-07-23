@@ -17,6 +17,20 @@ describe('http init block', () => {
     // stack and reboots with no useful panic line. Lock the 16 KB value in.
     expect(httpInitLines().join('\n')).toMatch(/xTaskCreate\(__tc_http_send_task,\s*"tc_http",\s*16384,/);
   });
+
+  it('hands the async result off via a task notification (cross-core visibility fix)', () => {
+    // L3: the worker task can run on CPU1 while app_main polls done/resp on CPU0.
+    // `volatile bool done` gives no memory-ordering guarantee across cores, so the
+    // main task could observe done==true with stale resp/status/ok. The fix is a
+    // FreeRTOS task notification (xTaskNotifyGive / ulTaskNotifyTake) which issues
+    // a full memory barrier — the worker signals completion via the notification,
+    // and the done-poll consumes it.
+    const lines = httpInitLines().join('\n');
+    expect(lines).toContain('xTaskNotifyGive');
+    expect(lines).toContain('ulTaskNotifyTake');
+    const worker = lines.match(/static void __tc_http_send_task\(void\* arg\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+    expect(worker).toContain('xTaskNotifyGive');
+  });
 });
 
 describe('http lowering — factory / lifecycle', () => {

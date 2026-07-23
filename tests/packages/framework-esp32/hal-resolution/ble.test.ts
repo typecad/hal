@@ -24,6 +24,58 @@ describe('ble init block', () => {
     const lines = bleInitLines().join('\n');
     expect(lines).toMatch(/ble_gap_event|gap_event/);
   });
+
+  // C1: 128-bit UUIDs must be stored little-endian (reversed) in ble_uuid128_t.value.
+  // The Bluetooth Core Spec transmits 128-bit UUIDs in little-endian byte order and
+  // NimBLE's BLE_UUID128_INIT expects bytes reversed relative to the canonical string.
+  // Storing left-to-right (string order) silently advertises the wrong UUID, so a
+  // central scanning for the UUID the user wrote never finds the characteristic.
+  // Regression guard: assert the parser writes into the value array via a reversed
+  // index (value[15 - bi]) rather than value[bi++].
+  it('parses 128-bit UUIDs into ble_uuid128_t.value in little-endian (reversed) order', () => {
+    const lines = bleInitLines().join('\n');
+    // The parser must write the first hex pair of the string into the LAST byte slot.
+    expect(lines).toContain('value[15 -');
+    expect(lines).not.toMatch(/b\[bi\+\+\]\s*=\s*.*strtol/);
+  });
+
+  it('uses os_mbuf_copydata to decode write payloads (handles chained mbufs)', () => {
+    // M2: reading ctxt->om->om_data directly only works for single-segment mbufs.
+    // For correctness across chained mbufs the write path must copy out with
+    // os_mbuf_copydata(ctxt->om, 0, len, &dst).
+    const lines = bleInitLines().join('\n');
+    expect(lines).toContain('os_mbuf_copydata');
+    // Must not reach into the mbuf data pointer directly in the write branch.
+    expect(lines).not.toContain('ctxt->om->om_data[0]');
+  });
+
+  // H1: legacy advertising payloads are capped at 31 bytes. Cramming flags +
+  // complete local name + TX power into one packet overflows for any name longer
+  // than ~20 chars, and ble_gap_adv_set_fields returns BLE_HS_EMSGSIZE — which the
+  // old code ignored, leaving the device silently undiscoverable. The name must go
+  // into the scan response, and the return codes of both field-setters must be
+  // checked.
+  it('moves the complete name to scan response and checks adv field return codes', () => {
+    const lines = bleInitLines().join('\n');
+    // Capture the advertise_start *definition* (ends with '{'), not the forward
+    // declaration (ends with ';'). Take up to the next standalone closing brace.
+    const adv = lines.match(/static void __tc_ble_advertise_start\(void\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+    expect(adv).toContain('ble_gap_adv_rsp_set_fields');
+    // The return code of both field setters must be inspected (not bare statements).
+    expect(adv).toMatch(/rc\s*=\s*ble_gap_adv_set_fields/);
+    expect(adv).not.toMatch(/^(\s*)ble_gap_adv_set_fields\(&adv\);\s*$/m);
+  });
+
+  // L1: __tc_ble_add_char's idx parameter is the characteristic slot. It must not be
+  // discarded with (void)idx — on_read/on_write key off current_char (set from the
+  // counter), so the idx argument the HAL passes is effectively ignored today.
+  it('add_char honors the idx slot argument instead of discarding it', () => {
+    const lines = bleInitLines().join('\n');
+    // The idx parameter must drive the slot index, not be discarded.
+    const addChar = lines.match(/static inline void __tc_ble_add_char\([\s\S]*?^}/m)?.[0] ?? '';
+    expect(addChar).not.toContain('(void)idx');
+    expect(addChar).toMatch(/idx\s*<\s*0\s*\|\|\s*idx\s*>=\s*__TC_BLE_MAX_CHARS/);
+  });
 });
 
 describe('ble lowering — server / advertise lifecycle', () => {

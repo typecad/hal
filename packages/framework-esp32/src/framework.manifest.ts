@@ -277,7 +277,7 @@ export default defineFrameworkManifest({
         'ble.set_name': 'supported',
         'ble.until_connected': 'supported',
         'ble.until_connected_start': 'supported',
-        'ble.set_tx_power': 'supported',
+        'ble.set_tx_power': 'partial', // NimBLE sets TX power via PHY/controller at init; the runtime shim is a no-op
         'ble.status': 'supported',
       },
     },
