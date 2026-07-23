@@ -44,6 +44,12 @@ export function sdkconfigDefaultsForTarget(
     'CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y',
     'CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_CMN=y',
     '',
+    '# Bluetooth (NimBLE) — enabled by the BLE HAL domain. GATT peripheral v1.',
+    'CONFIG_BT_ENABLED=y',
+    'CONFIG_BT_NIMBLE_ENABLED=y',
+    'CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y',
+    'CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1',
+    '',
   ];
 
   // ── PSRAM ────────────────────────────────────────────────────────────────
