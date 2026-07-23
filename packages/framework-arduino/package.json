@@ -34,6 +34,8 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
+    "test": "vitest run --root ../.. tests/packages/framework-arduino/manifest.test.ts",
+    "test:coverage": "npm test && tsx ../../scripts/render-framework-coverage.ts",
     "test:hw": "npm exec -- cuttlefish-test",
     "test:hw:basics": "npm exec -- cuttlefish-test tests/01-basics.test.ts"
   },

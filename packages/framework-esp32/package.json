@@ -21,6 +21,8 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
+    "test": "vitest run --root ../.. tests/packages/framework-esp32/manifest.test.ts",
+    "test:coverage": "npm test && tsx ../../scripts/render-framework-coverage.ts",
     "test:hw": "npm exec -- cuttlefish-test",
     "test:hw:hardware": "npm exec -- cuttlefish-test tests/01-hardware.test.ts"
   },
