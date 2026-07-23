@@ -255,6 +255,31 @@ export default defineFrameworkManifest({
         'http.response_header': 'supported',
       },
     },
+    ble: {
+      // Native ESP-IDF NimBLE BLE (GATT peripheral role only in v1).
+      // Uses the nimble_host stack (not Bluedroid). Lowered via
+      // framework-esp32/src/lowering/ble.ts. Central/client is a follow-on.
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'ble.server_begin': 'supported',
+        'ble.advertise_start': 'supported',
+        'ble.advertise_stop': 'supported',
+        'ble.add_service': 'supported',
+        'ble.add_char': 'supported',
+        'ble.on_read': 'supported',
+        'ble.on_write': 'supported',
+        'ble.on_subscribe': 'supported',
+        'ble.notify': 'supported',
+        'ble.is_connected': 'supported',
+        'ble.client_count': 'supported',
+        'ble.set_name': 'supported',
+        'ble.until_connected': 'supported',
+        'ble.until_connected_start': 'supported',
+        'ble.set_tx_power': 'supported',
+        'ble.status': 'supported',
+      },
+    },
     display: {
       // Native ESP32 drivers via framework-esp32/src/displays/*. Each drives
       // the panel through spi_device_polling_transmit (TFTs) or
@@ -335,7 +360,7 @@ export default defineFrameworkManifest({
   conformance: {
     hardwareTestGroups: ['01-hardware', '02-math-bits', '03-advanced'],
     halResolutionTests: [
-      'adc', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'power', 'pulse-shift',
+      'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'power', 'pulse-shift',
       'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt', 'wifi',
     ],
   },
