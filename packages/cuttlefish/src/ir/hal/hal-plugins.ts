@@ -670,6 +670,84 @@ export function tryResolveSemanticCall(
       return { operation: "http.response_header", name };
     }
 
+    // ── BLE (NimBLE GATT peripheral) ──
+    case "bleServerBegin": {
+      const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (name === null) return null;
+      return { operation: "ble.server_begin", name: quoteNonIdentifier(name) };
+    }
+    case "bleAdvertiseStart":
+      return { operation: "ble.advertise_start" };
+    case "bleAdvertiseStop":
+      return { operation: "ble.advertise_stop" };
+    case "bleAddService": {
+      const uuid = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (uuid === null) return null;
+      return { operation: "ble.add_service", uuid: quoteNonIdentifier(uuid) };
+    }
+    case "bleAddChar": {
+      const index = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const uuid = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const type = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const perms = resolveNumericOrExpression(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const svcIndex = resolveNumericOrExpression(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      if (uuid === null || type === null) return null;
+      return {
+        operation: "ble.add_char",
+        index: index ?? 0,
+        uuid: quoteNonIdentifier(uuid),
+        type: quoteNonIdentifier(type),
+        perms: perms ?? 0,
+        svcIndex: svcIndex ?? 0,
+      };
+    }
+    case "bleOnRead": {
+      const index = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (handler === null) return null;
+      return { operation: "ble.on_read", index: index ?? 0, handler };
+    }
+    case "bleOnWrite": {
+      const index = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (handler === null) return null;
+      return { operation: "ble.on_write", index: index ?? 0, handler };
+    }
+    case "bleOnSubscribe": {
+      const index = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (handler === null) return null;
+      return { operation: "ble.on_subscribe", index: index ?? 0, handler };
+    }
+    case "bleNotify": {
+      const index = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (value === null) return null;
+      return { operation: "ble.notify", index: index ?? 0, value };
+    }
+    case "bleIsConnected":
+      return { operation: "ble.is_connected" };
+    case "bleClientCount":
+      return { operation: "ble.client_count" };
+    case "bleStatus":
+      return { operation: "ble.status" };
+    case "bleSetName": {
+      const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (name === null) return null;
+      return { operation: "ble.set_name", name: quoteNonIdentifier(name) };
+    }
+    case "bleUntilConnected": {
+      const timeoutMs = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      return { operation: "ble.until_connected", timeoutMs, blocking: true };
+    }
+    case "bleUntilConnectedStart":
+      return { operation: "ble.until_connected_start" };
+    case "bleSetTxPower": {
+      const dbm = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (dbm === null) return null;
+      return { operation: "ble.set_tx_power", dbm };
+    }
+
     // ── Interrupts ──
     case "interruptAttach": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);

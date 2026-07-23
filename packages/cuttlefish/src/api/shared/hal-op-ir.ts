@@ -819,7 +819,7 @@ export interface BleAddCharOp {
   index: number | string;
   uuid: string;
   type: string;
-  perms: string;   // bitmask string: e.g. "5" = READ|WRITE
+  perms: number | string;   // bitmask: READ=1, WRITE=2, NOTIFY=4
   svcIndex?: number | string;
 }
 
