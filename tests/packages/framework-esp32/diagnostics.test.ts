@@ -88,5 +88,36 @@ describe('Esp32Strategy profileDiagnostics', () => {
     const diags = strategy.profileDiagnostics(fakeProgram([{ pin: 0, mode: 'output' }]), ctx);
     expect(diags.some((d) => d.code === 'esp32-strapping-pin' && d.message.includes('0'))).toBe(true);
   });
+
+  // deep-sleep pin wakeup only works on RTC GPIO. ext0/ext1 (ESP32/S3) and the
+  // gpio_wakeup variant (C3/C6) are both restricted to RTC-capable pins in deep
+  // sleep, so a non-RTC pin must be flagged at compile time rather than failing
+  // silently at runtime.
+  function fakeProgramWithWakeupPin(pin: number): any {
+    return {
+      fileName: 'test.ts',
+      functions: [{
+        name: 'setup',
+        statements: [{ kind: 'hal-op', operation: { operation: 'power.deep_sleep_pin', pin, level: 0 } }],
+        parameters: [],
+      }],
+      imports: [],
+      typeAliases: [],
+    };
+  }
+
+  it('flags a non-RTC pin used for deep-sleep wakeup', () => {
+    const ctx = { frameworkData: { target: 'esp32' } } as any;
+    // GPIO 2 is not in ESP32's rtcOnly set ([32,33,34,35,36,37,38,39]).
+    const diags = strategy.profileDiagnostics(fakeProgramWithWakeupPin(2), ctx);
+    expect(diags.some((d) => d.code === 'esp32-wakeup-pin-not-rtc' && d.severity === 'error')).toBe(true);
+  });
+
+  it('does NOT flag an RTC pin used for deep-sleep wakeup', () => {
+    const ctx = { frameworkData: { target: 'esp32' } } as any;
+    // GPIO 33 is RTC-capable on classic ESP32.
+    const diags = strategy.profileDiagnostics(fakeProgramWithWakeupPin(33), ctx);
+    expect(diags.some((d) => d.code === 'esp32-wakeup-pin-not-rtc')).toBe(false);
+  });
 });
 

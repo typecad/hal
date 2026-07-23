@@ -228,6 +228,12 @@ export interface PowerSetCpuFrequencyOp {
   mhz: number;
 }
 
+export interface PowerDeepSleepPinOp {
+  operation: "power.deep_sleep_pin";
+  pin: number;
+  level: number;
+}
+
 // ---------------------------------------------------------------------------
 // I2C — inter-integrated circuit bus
 // ---------------------------------------------------------------------------
@@ -940,6 +946,7 @@ export type HALOpIR =
   | PowerDeepSleepOp
   | PowerLightSleepOp
   | PowerSetCpuFrequencyOp
+  | PowerDeepSleepPinOp
   // I2C
   | I2cBeginOp
   | I2cEndOp
@@ -1100,7 +1107,7 @@ export const HAL_OPERATION_KINDS = [
   'timing.micros', 'timing.free_heap', 'timing.set_interval',
   'timing.set_timeout', 'timing.clear_interval', 'timing.clear_timeout',
   // Power
-  'power.deep_sleep', 'power.light_sleep', 'power.set_cpu_frequency',
+  'power.deep_sleep', 'power.light_sleep', 'power.set_cpu_frequency', 'power.deep_sleep_pin',
   // I2C
   'i2c.begin', 'i2c.end', 'i2c.set_clock', 'i2c.begin_transmission',
   'i2c.write', 'i2c.write_bytes', 'i2c.write_buffer', 'i2c.read_buffer',

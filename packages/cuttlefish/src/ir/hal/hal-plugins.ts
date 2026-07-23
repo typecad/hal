@@ -479,6 +479,12 @@ export function tryResolveSemanticCall(
       if (mhz === null) return null;
       return { operation: "power.set_cpu_frequency", mhz };
     }
+    case "powerDeepSleepPin": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const level = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || level === null) return null;
+      return { operation: "power.deep_sleep_pin", pin, level };
+    }
 
     // ── WiFi ──
     // Optional string args (password, dns) resolve to the text "undefined"

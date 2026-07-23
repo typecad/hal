@@ -218,6 +218,9 @@ export function powerDeepSleep(ms: number): void {}
 export function powerLightSleep(): void {}
 /** Set the CPU frequency (MHz). */
 export function powerSetCpuFrequency(mhz: number): void {}
+/** Enter deep sleep until `pin` reaches `level` (pin wakeup). Architecture-aware:
+ *  ext0 on Xtensa (RTC pins), gpio-wakeup on RISC-V. */
+export function powerDeepSleepPin(pin: number, level: number): void {}
 
 // ---------------------------------------------------------------------------
 // WiFi

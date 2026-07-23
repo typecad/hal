@@ -54,7 +54,7 @@ export default {
 - **UART** → `uart_driver_install`/`write_bytes`/`read_bytes`/`get_buffered_data_len`/`wait_tx_done`
 - **Timing** → `vTaskDelay` (delay), `esp_rom_delay_us` (delayMicroseconds), `esp_timer_get_time` (millis/micros), `esp_get_free_heap_size`
 - **Interrupts** → `gpio_install_isr_service` + `gpio_isr_handler_add`/`remove` (handlers carry `IRAM_ATTR`)
-- **Power** → `esp_sleep_enable_timer_wakeup` + `esp_deep_sleep_start`/`esp_light_sleep_start`; `set_cpu_frequency` → `esp_pm_configure` (pins CPU freq via `max_freq_mhz`/`min_freq_mhz`)
+- **Power** → `esp_sleep_enable_timer_wakeup` + `esp_deep_sleep_start`/`esp_light_sleep_start`; `set_cpu_frequency` → `esp_pm_configure` (pins CPU freq via `max_freq_mhz`/`min_freq_mhz`); `deepSleepPin` → `esp_sleep_enable_ext0_wakeup` (Xtensa, RTC pins) / `esp_sleep_enable_gpio_wakeup` (RISC-V)
 - **WDT** → `esp_task_wdt_init`/`add`/`reset`/`delete`/`deinit` (task watchdog, not RTC watchdog)
 - **pulse** → `esp_timer_get_time`-based edge timer (no native IDF equivalent)
 - **shift** → GPIO bit-bang (`__tc_shift_in`/`__tc_shift_out`)
@@ -163,7 +163,6 @@ cuttlefish gen-decls --components
 - WiFi/HTTP: first-class HAL ops (native `esp_wifi`/`esp_http_client`), including async/await.
 - BLE (NimBLE): first-class HAL ops for GATT peripheral (server/characteristics, read/write/notify callbacks, async connect). Central/client is a follow-on.
 - mDNS: no first-class HAL ops; usable via components or `rawCpp()`.
-- Deep-sleep pin wakeup (RTC GPIO) not yet implemented; timer wakeup works.
 - Display/graphics overrides not yet implemented (inherited from ArduinoStrategy; may emit Arduino API calls).
 - No `menuconfig` pass-through; edit `sdkconfig.defaults` directly or run `idf.py menuconfig` yourself.
 

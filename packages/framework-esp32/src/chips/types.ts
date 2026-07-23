@@ -13,6 +13,10 @@ export interface Esp32ChipDescriptor {
     strapping: number[];
     /** RTC-capable pins — route through rtc_gpio_* for deep-sleep wakeup. */
     rtcOnly: number[];
+    /** Deep-sleep pin-wakeup API family this chip uses.
+     *  Xtensa (ESP32, S3) support ext0/ext1 on RTC GPIO; RISC-V (C3, C6) use the
+     *  esp_sleep_enable_gpio_wakeup variant. Drives the power.deep_sleep_pin lowering. */
+    wakeupApi: 'ext0_ext1' | 'gpio_wakeup';
   };
 
   i2c: {

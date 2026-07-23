@@ -539,6 +539,7 @@ static inline int digitalRead(int pin) {
     }
 
     const outputPins = new Set<number>();
+    const wakeupPins = new Set<number>();
     const visit = (node: any): void => {
       if (node && typeof node === 'object') {
         if (node.operation && typeof node.operation === 'object'
@@ -546,6 +547,14 @@ static inline int digitalRead(int pin) {
             && typeof node.operation.mode === 'string'
             && node.operation.mode.toLowerCase() === 'output') {
           outputPins.add(node.operation.pin);
+        }
+        // deep-sleep pin wakeup only works on RTC GPIO (ext0/ext1 on Xtensa,
+        // gpio_wakeup on RISC-V are both RTC-only in deep sleep). Flag non-RTC
+        // pins at compile time rather than letting them fail silently at runtime.
+        if (node.operation && typeof node.operation === 'object'
+            && node.operation.operation === 'power.deep_sleep_pin'
+            && typeof node.operation.pin === 'number') {
+          wakeupPins.add(node.operation.pin);
         }
         for (const k of Object.keys(node)) {
           const v = node[k];
@@ -572,6 +581,18 @@ static inline int digitalRead(int pin) {
           code: 'esp32-strapping-pin',
           message: `GPIO ${pin} is a strapping pin on ${chip.id}; driving it as OUTPUT can affect boot mode.`,
           hint: 'Prefer a non-strapping pin for outputs that toggle during reset/boot.',
+          source: program.fileName,
+        });
+      }
+    }
+
+    for (const pin of wakeupPins) {
+      if (!chip.gpio.rtcOnly.includes(pin)) {
+        diags.push({
+          severity: 'error',
+          code: 'esp32-wakeup-pin-not-rtc',
+          message: `GPIO ${pin} is not an RTC GPIO on ${chip.id} and cannot wake from deep sleep.`,
+          hint: `Deep-sleep pin wakeup requires an RTC-capable pin. On ${chip.id}: ${chip.gpio.rtcOnly.join(', ')}.`,
           source: program.fileName,
         });
       }

@@ -11,6 +11,7 @@ export const ESP32: Esp32ChipDescriptor = {
     inputOnly: [34, 35, 36, 39],
     strapping: [0, 2, 5, 12, 15],
     rtcOnly: [32, 33, 34, 35, 36, 37, 38, 39],
+    wakeupApi: 'ext0_ext1',
   },
   i2c: {
     controllers: [

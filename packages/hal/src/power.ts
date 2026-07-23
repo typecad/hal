@@ -1,4 +1,4 @@
-import { powerDeepSleep, powerLightSleep, powerSetCpuFrequency } from './emit.js';
+import { powerDeepSleep, powerLightSleep, powerSetCpuFrequency, powerDeepSleepPin } from './emit.js';
 
 /**
  * PowerClass provides control over MCU power states and clock frequencies.
@@ -12,6 +12,16 @@ export class PowerClass {
 
   deepSleep(ms: number): void {
     powerDeepSleep(ms);
+  }
+
+  /** Enter deep sleep until `pin` reaches `level` (0 = low, 1 = high).
+   *
+   *  Lowers to ext0 wakeup (Xtensa ESP32/S3, RTC pins only) or the gpio-wakeup
+   *  variant (RISC-V C3/C6) depending on the target. `pin` must be RTC-capable;
+   *  the framework flags non-RTC pins at compile time. Wakeup resets the chip,
+   *  so this call never returns. */
+  deepSleepPin(pin: number, level: 0 | 1): void {
+    powerDeepSleepPin(pin, level);
   }
 
   lightSleep(): void {

@@ -10,6 +10,7 @@ export const ESP32C6: Esp32ChipDescriptor = {
     inputOnly: [],
     strapping: [2, 9, 12, 13, 22, 23],
     rtcOnly: [0, 1, 2, 3, 4, 5, 6, 7],
+    wakeupApi: 'gpio_wakeup',
   },
   i2c: {
     controllers: [
