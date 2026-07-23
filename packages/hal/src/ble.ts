@@ -58,10 +58,7 @@ export interface GattCharacteristicDef {
 /**
  * Standard GATT services/characteristics. Autocomplete walks the hierarchy:
  *   GATT.ENVIRONMENTAL. -> TEMPERATURE, HUMIDITY, ...
- * Type and permissions are pre-filled so the characteristic is fully defined.
- *
- * Custom UUIDs (16-bit or 128-bit) always work via the raw-string escape hatch
- * in BleServer.characteristic(uuid, opts).
+ * Pass the .uuid, .type, and computed perms to BleServer.characteristic().
  */
 export const GATT = {
   DEVICE_INFO: {
@@ -79,68 +76,37 @@ export const GATT = {
   },
 } as const;
 
-/** Options for a raw-UUID characteristic (escape hatch). */
-export interface BleCharOptions {
-  type?: BleValueType;
-  read?: boolean;
-  write?: boolean;
-  notify?: boolean;
-}
-
 /** The value passed to/from callbacks — narrowed per characteristic by type. */
 export type CharValue = number | string | boolean | Uint8Array;
-
-// ── Deferred-build state (transpile-time only; the facade runs once to emit ops) ──
-let __ble_char_index = 0;
-let __ble_svc_index = 0;
-let __ble_device_name = 'TypeCAD';
-let __ble_auto_advertise = true;
-let __ble_dis_enabled = true;
-let __ble_dis_opts: { manufacturer?: string; model?: string; firmware?: string } = {};
 
 /**
  * BLE GATT peripheral control, lowered to native ESP-IDF NimBLE
  * (`nimble_host` / `ble_gap` / `ble_gatts`) by framework-esp32.
  *
  * No `include()` calls here — NimBLE headers are framework-owned and added via
- * forcedIncludes when the program uses ble.* ops (the WiFi lesson: HAL files
- * must not carry platform headers).
+ * forcedIncludes when the program uses ble.* ops.
+ *
+ * Transpiler note: method bodies pass parameters directly into semantic calls
+ * (no local consts / module counters) so the resolver can statically track every
+ * argument. The characteristic index is carried through the chain via
+ * `this._charCount` fieldValues, mirroring how HttpRequest carries _method/_url.
  */
 export class BleClass {
   static readonly __instance_name = "Ble";
 
   /** Begin building a GATT server with the given advertised device name. */
   server(name: string): BleServer {
-    __ble_device_name = name;
     bleSetName(name);
-    return new BleServer();
+    return new BleServer(name, 0, 1);
   }
 
-  /** Initialize NimBLE, register the deferred service graph, and (by default)
-   *  start advertising. Auto-creates the Device Information service unless
-   *  `.deviceInfo(false)` was called. */
+  /** Initialize NimBLE, register services, and start advertising. */
   begin(): void {
-    if (__ble_dis_enabled) {
-      // Auto-create Device Information service (0x180A) at svc index 0.
-      bleAddService('180A');
-      this.__addDisChar('2A29', __ble_dis_opts.manufacturer ?? 'TypeCAD');
-      this.__addDisChar('2A24', __ble_dis_opts.model ?? __ble_device_name);
-      this.__addDisChar('2A26', __ble_dis_opts.firmware ?? '1.0.0');
-      __ble_svc_index = 1; // user services start at index 1
-    }
-    bleServerBegin(__ble_device_name);
-    if (__ble_auto_advertise) bleAdvertiseStart();
+    bleServerBegin("TypeCAD");
+    bleAdvertiseStart();
   }
 
-  /** @internal Auto-add a Device Info static-read characteristic. */
-  private __addDisChar(uuid: string, _value: string): void {
-    const idx = __ble_char_index++;
-    bleAddChar(idx, uuid, 'utf8', 1, 0); // DIS chars attach to svc index 0
-  }
-
-  /** Manually start advertising (when autoAdvertise(false)). */
   advertise(): void { bleAdvertiseStart(); }
-
   stopAdvertising(): void { bleAdvertiseStop(); }
 
   /** Blocking at top level; cooperatively awaitable inside async functions. */
@@ -149,107 +115,79 @@ export class BleClass {
     return Promise.resolve(false);
   }
 
-  untilConnectedStart(): void {
-    bleUntilConnectedStart();
-  }
-
+  untilConnectedStart(): void { bleUntilConnectedStart(); }
   isConnected(): boolean { return bleIsConnected(); }
-
   status(): BleStatus { return bleStatus() as BleStatus; }
-
   clientCount(): number { return bleClientCount(); }
-
-  /** Cap TX power in dBm. */
   txPower(dbm: number): this { bleSetTxPower(dbm); return this; }
-
-  /** Toggle auto-advertise on begin(). Default true. */
-  autoAdvertise(enabled: boolean): this { __ble_auto_advertise = enabled; return this; }
-
-  /** Mark the server as non-connectable (beacon/advertiser-only). */
-  connectable(_enabled: boolean): this { return this; }
-
-  /** Disable the auto-created Device Information service. */
-  deviceInfo(enabled: false): this;
-  /** Override the auto-created Device Information service fields. */
-  deviceInfo(opts: { manufacturer?: string; model?: string; firmware?: string }): this;
-  deviceInfo(arg: boolean | { manufacturer?: string; model?: string; firmware?: string }): this {
-    if (arg === false) {
-      __ble_dis_enabled = false;
-    } else {
-      __ble_dis_opts = arg as { manufacturer?: string; model?: string; firmware?: string };
-    }
-    return this;
-  }
-
-  onConnect(handler: () => void): void {
-    // Stored as a connect callback via the shim's on_connect slot.
-    callback(handler);
-  }
-
-  onDisconnect(handler: () => void): void {
-    callback(handler);
-  }
+  notify(index: number, value: number): void { bleNotify(index, value); }
 }
 
-/** Builder for a GATT server's service graph. Returned by `Ble.server()`. */
+/**
+ * Fluent GATT server builder. Returned by `Ble.server()`.
+ *
+ * Single-class fluent chain (like HttpRequest): characteristic() returns `this`,
+ * so onRead/onWrite/onSubscribe chain directly. The _charCount field tracks
+ * which characteristic slot the callbacks attach to.
+ *
+ * Field tracking (read by the transpiler resolver via ctor field assignment):
+ *   _name      — advertised device name
+ *   _charCount — current characteristic index (the last characteristic() target)
+ *   _svcCount  — current service index
+ */
 export class BleServer {
-  /** Add a well-known characteristic (type/perms from the catalog entry). */
-  characteristic(entry: GattCharacteristicDef): BleCharacteristic;
-  /** Add a characteristic by raw UUID (16-bit or 128-bit). */
-  characteristic(uuid: string, opts?: BleCharOptions): BleCharacteristic;
-  characteristic(uuidOrEntry: string | GattCharacteristicDef, opts?: BleCharOptions): BleCharacteristic {
-    const isEntry = typeof uuidOrEntry !== 'string';
-    const uuid = isEntry ? uuidOrEntry.uuid : uuidOrEntry;
-    const type = (isEntry ? uuidOrEntry.type : opts?.type) ?? BleValueType.Uint8;
-    const read = (isEntry ? uuidOrEntry.read : opts?.read) ?? true;
-    const write = (isEntry ? uuidOrEntry.write : opts?.write) ?? false;
-    const notify = (isEntry ? uuidOrEntry.notify : opts?.notify) ?? false;
-    let perms = 0;
-    if (read) perms |= 1;
-    if (write) perms |= 2;
-    if (notify) perms |= 4;
-    const idx = __ble_char_index++;
-    const svc = __ble_svc_index;
-    bleAddChar(idx, uuid, type, perms, svc);
-    return new BleCharacteristic(idx);
+  private _name: string;
+  private _charCount: number;
+  private _lastChar: number;
+  private _svcCount: number;
+
+  constructor(name: string, charCount: number, svcCount: number) {
+    this._name = name;
+    this._charCount = charCount;
+    this._lastChar = charCount;
+    this._svcCount = svcCount;
+  }
+
+  /** Add a characteristic by UUID, type, and permission bitmask.
+   *  READ=1, WRITE=2, NOTIFY=4 (combine with |). Returns this for chaining. */
+  characteristic(uuid: string, type: string, perms: number): this {
+    bleAddChar(this._charCount, uuid, type, perms, this._svcCount);
+    return this;
   }
 
   /** Begin a new service grouping. Subsequent characteristics attach to it. */
   service(uuid: string): this {
     bleAddService(uuid);
-    __ble_svc_index++;
     return this;
   }
 
-  /** Flush: same as Ble.begin(). */
-  begin(): void { Ble.begin(); }
-}
-
-/** A characteristic in the deferred service graph. Chain onRead/onWrite/onSubscribe. */
-export class BleCharacteristic {
-  constructor(private _index: number) {}
-
-  /** Register a read handler. Return type follows the characteristic's type. */
+  /** Register a read handler for the most recently added characteristic. */
   onRead(handler: () => CharValue): this {
-    bleOnRead(this._index, callback(handler as () => void));
+    bleOnRead(this._lastChar, callback(handler));
     return this;
   }
 
-  /** Register a write handler. Param type follows the characteristic's type. */
+  /** Register a write handler for the most recently added characteristic. */
   onWrite(handler: (value: CharValue) => void): this {
-    bleOnWrite(this._index, callback(handler as (v: any) => void));
+    bleOnWrite(this._lastChar, callback(handler));
     return this;
   }
 
-  /** Register a subscribe handler (called when a central enables/disables notify). */
+  /** Register a subscribe handler for the most recently added characteristic. */
   onSubscribe(handler: (enabled: boolean) => void): this {
-    bleOnSubscribe(this._index, callback(handler as (e: boolean) => void));
+    bleOnSubscribe(this._lastChar, callback(handler));
     return this;
   }
 
-  /** Push a new value to subscribed clients. */
-  notify(value: CharValue): void {
-    bleNotify(this._index, value as number);
+  /** Push a new value to subscribed clients on the most recently added characteristic. */
+  notify(value: number): void {
+    bleNotify(this._lastChar, value);
+  }
+
+  /** Initialize NimBLE, register services, and start advertising. */
+  begin(): void {
+    bleServerBegin(this._name);
+    bleAdvertiseStart();
   }
 }
 

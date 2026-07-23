@@ -413,6 +413,37 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
           }
         }
 
+        // Specialized handling for BLE factory chaining
+        // (Ble.server(name).characteristic(uuid,type,perms).onRead(handler)):
+        // server() creates a BleServer with _name, _charCount=0, _lastChar=0,
+        // _svcCount=1. characteristic() reads _charCount for the add_char call,
+        // then sets _lastChar=_charCount and increments _charCount so the next
+        // characteristic gets the next slot. onRead/onWrite read _lastChar.
+        if (innerInstance.className === "BleClass" && methodName === "server" && receiver.arguments.length > 0) {
+          const nameText = httpUrlArgText(receiver.arguments[0]);
+          if (nameText) {
+            return {
+              className: "BleServer",
+              fieldValues: new Map([["_name", nameText], ["_charCount", "0"], ["_lastChar", "0"], ["_svcCount", "1"]]),
+            };
+          }
+        }
+        if (innerInstance.className === "BleServer" && methodName === "characteristic") {
+          // characteristic() returns this (BleServer). The method body reads
+          // this._charCount for bleAddChar. After processing, advance the
+          // counters: _lastChar = old _charCount, _charCount = old + 1.
+          const count = Number(innerInstance.fieldValues.get("_charCount") ?? "0");
+          innerInstance.fieldValues.set("_lastChar", String(count));
+          innerInstance.fieldValues.set("_charCount", String(count + 1));
+          return innerInstance;
+        }
+        if (innerInstance.className === "BleServer" && methodName === "service") {
+          // service() returns this (BleServer); advance the service counter.
+          const svc = Number(innerInstance.fieldValues.get("_svcCount") ?? "1") + 1;
+          innerInstance.fieldValues.set("_svcCount", String(svc));
+          return innerInstance;
+        }
+
         // General fallback: if the method is known to return another HAL class, carry over fields
         const classEntry = halClassRegistry.get(innerInstance.className);
         const methodEntry = classEntry?.methods.get(methodName);
