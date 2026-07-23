@@ -278,6 +278,27 @@ export function httpContentLength(): number { return 0; }
 export function httpResponseHeader(name: string): string { return ""; }
 
 // ---------------------------------------------------------------------------
+// BLE (NimBLE GATT peripheral)
+// ---------------------------------------------------------------------------
+
+export function bleServerBegin(name: string): void {}
+export function bleAdvertiseStart(): void {}
+export function bleAdvertiseStop(): void {}
+export function bleAddService(uuid: string): void {}
+export function bleAddChar(index: number, uuid: string, type: string, perms: number, svcIndex: number): void {}
+export function bleOnRead(index: number, handler: string): void {}
+export function bleOnWrite(index: number, handler: string): void {}
+export function bleOnSubscribe(index: number, handler: string): void {}
+export function bleNotify(index: number, value: number | string): void {}
+export function bleIsConnected(): boolean { return false; }
+export function bleClientCount(): number { return 0; }
+export function bleSetName(name: string): void {}
+export function bleUntilConnected(timeoutMs?: number): boolean { return false; }
+export function bleUntilConnectedStart(): void {}
+export function bleSetTxPower(dbm: number): void {}
+export function bleStatus(): number { return 0; }
+
+// ---------------------------------------------------------------------------
 // Raw C++ escape hatch
 // ---------------------------------------------------------------------------
 
