@@ -79,6 +79,8 @@ export function scaffoldEspIdfProject(
   // HTTP/TLS are always listed too: usesHttp gates the #includes/shim, but the
   // component must be on REQUIRES or esp_http_client.h / esp_crt_bundle.h are
   // invisible (IDF does not expose transitive include dirs to main).
+  // bt is always listed so NimBLE headers (nimble_port.h, ble_hs.h, etc.) are
+  // visible when the BLE shim is emitted (gated by usesBle in the strategy).
   const builtin = components?.builtin ?? [];
   const requires = Array.from(
     new Set([
@@ -92,6 +94,7 @@ export function scaffoldEspIdfProject(
       'esp_http_client',
       'esp-tls',
       'mbedtls',
+      'bt',
       ...builtin,
     ]),
   );
