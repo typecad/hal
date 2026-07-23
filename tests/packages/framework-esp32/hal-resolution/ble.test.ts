@@ -50,32 +50,32 @@ describe('ble lowering — service / characteristic graph', () => {
   });
 
   it('add_char → __tc_ble_add_char(index, uuid, type, perms, svcIndex); statement', () => {
-    expect(lowerBle({ operation: 'ble.add_char', index: 0, uuid: '"2A6E"', type: '"int16"', perms: '5', svcIndex: 0 }))
+    expect(lowerBle({ operation: 'ble.add_char', index: 0, uuid: '"2A6E"', type: '"int16"', perms: 5, svcIndex: 0 }))
       .toEqual({ code: '__tc_ble_add_char(0, "2A6E", "int16", 5, 0);' });
   });
 
   it('add_char defaults svcIndex to 0 when omitted', () => {
-    expect(lowerBle({ operation: 'ble.add_char', index: 1, uuid: '"2A6F"', type: '"uint16"', perms: '1' } as any))
+    expect(lowerBle({ operation: 'ble.add_char', index: 1, uuid: '"2A6F"', type: '"uint16"', perms: 1 } as any))
       .toEqual({ code: '__tc_ble_add_char(1, "2A6F", "uint16", 1, 0);' });
   });
 });
 
 describe('ble lowering — callbacks', () => {
-  it('on_read → assigns function pointer to handler slot', () => {
+  it('on_read → assigns function pointer via current_char', () => {
     expect(lowerBle({ operation: 'ble.on_read', index: 0, handler: 'main_isr_3' }))
-      .toEqual({ code: '__tc_ble.on_read[0] = (main_isr_3);' });
+      .toEqual({ code: '__tc_ble.on_read[__tc_ble.current_char] = (main_isr_3);' });
   });
 
-  it('on_write → assigns function pointer to handler slot', () => {
+  it('on_write → assigns function pointer via current_char', () => {
     expect(lowerBle({ operation: 'ble.on_write', index: 1, handler: 'main_isr_4' }))
-      .toEqual({ code: '__tc_ble.on_write[1] = (main_isr_4);' });
+      .toEqual({ code: '__tc_ble.on_write[__tc_ble.current_char] = (main_isr_4);' });
   });
 });
 
 describe('ble lowering — notify / status queries', () => {
-  it('notify → __tc_ble_notify(index, value) expression', () => {
+  it('notify → __tc_ble_notify(current_char, value) expression', () => {
     expect(lowerBle({ operation: 'ble.notify', index: 0, value: 42 }))
-      .toEqual({ expression: '__tc_ble_notify(0, 42)' });
+      .toEqual({ expression: '__tc_ble_notify(__tc_ble.current_char, 42)' });
   });
 
   it('is_connected → __tc_ble_is_connected() expression', () => {

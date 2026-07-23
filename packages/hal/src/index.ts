@@ -50,6 +50,6 @@ export { WiFiClass, WiFi, WiFiStatus, WiFiEncryption } from './wifi.js';
 export { HttpClass, Http, HttpRequest, HttpMethod } from './http.js';
 export {
   BleClass, Ble, BleServer,
-  BleValueType, BleStatus, BleAdvertisingMode, GATT,
+  BleValueType, BlePerm, BleStatus, BleAdvertisingMode, GATT,
 } from './ble.js';
 export type { GattCharacteristicDef, CharValue } from './ble.js';

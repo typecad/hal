@@ -39,10 +39,11 @@ export function bleInitLines(): string[] {
     `    int connected_clients;`,
     `    int conn_handle;           // active connection handle (-1 = none)`,
     `    uint16_t svc_count;`,
+    `    int current_char;          // set by add_char, read by on_read/on_write`,
     `    __tc_ble_read_cb_t   on_read[__TC_BLE_MAX_CHARS];`,
     `    __tc_ble_write_cb_t  on_write[__TC_BLE_MAX_CHARS];`,
     `    char name[32];`,
-    `} __tc_ble = { 0, false, false, 0, -1, 0, {}, {}, {} };`,
+    `} __tc_ble = { 0, false, false, 0, -1, 0, 0, {}, {}, {} };`,
     ``,
     `static __tc_ble_char_def_t __tc_ble_char_defs[__TC_BLE_MAX_CHARS];`,
     `static int __tc_ble_char_count = 0;`,
@@ -166,12 +167,14 @@ export function bleInitLines(): string[] {
     `}`,
     ``,
     `static inline void __tc_ble_add_char(int idx, const char* uuid_str, const char* type, int perms, int svc_index) {`,
-    `    (void)type;`,
-    `    if (idx >= 0 && idx < __TC_BLE_MAX_CHARS) {`,
-    `        __tc_ble_char_defs[idx].uuid16 = (uint16_t)strtol(uuid_str, NULL, 16);`,
-    `        __tc_ble_char_defs[idx].perms = perms;`,
-    `        __tc_ble_char_defs[idx].svc_index = svc_index;`,
-    `        if (idx + 1 > __tc_ble_char_count) __tc_ble_char_count = idx + 1;`,
+    `    (void)idx; (void)type;  // idx is from the resolver; we auto-assign`,
+    `    int c = __tc_ble_char_count;`,
+    `    if (c < __TC_BLE_MAX_CHARS) {`,
+    `        __tc_ble_char_defs[c].uuid16 = (uint16_t)strtol(uuid_str, NULL, 16);`,
+    `        __tc_ble_char_defs[c].perms = perms;`,
+    `        __tc_ble_char_defs[c].svc_index = svc_index;`,
+    `        __tc_ble_char_count = c + 1;`,
+    `        __tc_ble.current_char = c;  // so on_read/on_write attach to this char`,
     `    }`,
     `}`,
     ``,
@@ -305,11 +308,11 @@ export function lowerBle(op: HALOpIR): { code?: string; expression?: string } {
     case 'ble.add_char':
       return { code: `__tc_ble_add_char(${s(o.index)}, ${s(o.uuid)}, ${s(o.type)}, ${s(o.perms)}, ${s(o.svcIndex ?? 0)});` };
     case 'ble.on_read':
-      return { code: `__tc_ble.on_read[${s(o.index)}] = (${s(o.handler)});` };
+      return { code: `__tc_ble.on_read[__tc_ble.current_char] = (${s(o.handler)});` };
     case 'ble.on_write':
-      return { code: `__tc_ble.on_write[${s(o.index)}] = (${s(o.handler)});` };
+      return { code: `__tc_ble.on_write[__tc_ble.current_char] = (${s(o.handler)});` };
     case 'ble.notify':
-      return { expression: `__tc_ble_notify(${s(o.index)}, ${s(o.value)})` };
+      return { expression: `__tc_ble_notify(__tc_ble.current_char, ${s(o.value)})` };
     case 'ble.is_connected':
       return { expression: `__tc_ble_is_connected()` };
     case 'ble.client_count':

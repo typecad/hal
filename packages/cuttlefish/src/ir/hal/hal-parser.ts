@@ -415,8 +415,10 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
 
         // Specialized handling for BLE factory chaining
         // (Ble.server(name).characteristic(uuid,type,perms).onRead(handler)):
-        // server() creates a BleServer with _name, _charCount=0, _lastChar=0,
-        // _svcCount=1. characteristic() reads _charCount for the add_char call,
+        // server() creates a BleServer with _name, _charCount from a global
+        // counter (persists across separate server() calls so multi-char
+        // servers get unique indices), _svcCount=1.
+        // characteristic() reads _charCount for the add_char call,
         // then sets _lastChar=_charCount and increments _charCount so the next
         // characteristic gets the next slot. onRead/onWrite read _lastChar.
         if (innerInstance.className === "BleClass" && methodName === "server" && receiver.arguments.length > 0) {
@@ -429,18 +431,9 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
           }
         }
         if (innerInstance.className === "BleServer" && methodName === "characteristic") {
-          // characteristic(uuid, type, perms, index?) returns this (BleServer).
-          // If an explicit index arg is passed, use it for _lastChar so the
-          // following onRead/onWrite attach to the right slot. Otherwise
-          // auto-advance from _charCount.
-          const explicitIdx = receiver.arguments[3];
-          if (explicitIdx && ts.isNumericLiteral(explicitIdx)) {
-            innerInstance.fieldValues.set("_lastChar", explicitIdx.text);
-          } else {
-            const count = Number(innerInstance.fieldValues.get("_charCount") ?? "0");
-            innerInstance.fieldValues.set("_lastChar", String(count));
-            innerInstance.fieldValues.set("_charCount", String(count + 1));
-          }
+          // characteristic(uuid, type, perms) returns this (BleServer).
+          // The C++ shim auto-assigns the char index at runtime via
+          // __tc_ble.current_char, so the resolver doesn't need to track indices.
           return innerInstance;
         }
         if (innerInstance.className === "BleServer" && methodName === "service") {

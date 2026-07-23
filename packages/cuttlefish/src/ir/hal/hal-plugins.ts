@@ -150,6 +150,27 @@ function quoteNonIdentifier(value: string): string {
   return JSON.stringify(t);
 }
 
+/** Resolve a BlePerm expression to its numeric bitmask.
+ *  Handles: plain numbers (3), "BlePerm.Read", "BlePerm.Read | BlePerm.Notify". */
+const BLE_PERM_VALUES: Record<string, number> = {
+  Read: 1, Write: 2, Notify: 4,
+};
+function resolveBlePermExpr(raw: string | number | null): number {
+  if (raw === null) return 0;
+  const s = String(raw).trim();
+  if (/^\d+$/.test(s)) return Number(s);
+  // Extract all BlePerm.X member names and sum their values.
+  let sum = 0;
+  const re = /BlePerm\.(\w+)/g;
+  let m: RegExpExecArray | null;
+  let matched = false;
+  while ((m = re.exec(s)) !== null) {
+    matched = true;
+    sum += BLE_PERM_VALUES[m[1]] ?? 0;
+  }
+  return matched ? sum : 0;
+}
+
 /** Extract the MCU port name from the current HAL instance, if available. */
 export function portFromInstance(instance: HALInstance): string | undefined {
   const port = instance.fieldValues.get('_port');
@@ -692,12 +713,21 @@ export function tryResolveSemanticCall(
       const perms = resolveNumericOrExpression(args, 3, instance, paramNames, callArgTexts, paramDefaults);
       const svcIndex = resolveNumericOrExpression(args, 4, instance, paramNames, callArgTexts, paramDefaults);
       if (uuid === null || type === null) return null;
+      // Resolve BleValueType.X → the enum's string value (e.g. Int16 → 'int16').
+      const resolvedType = type.startsWith("BleValueType.")
+        ? JSON.stringify(type.replace(/^BleValueType\./, "").toLowerCase())
+        : quoteNonIdentifier(type);
+      // Resolve BlePerm.X | BlePerm.Y → numeric bitmask.
+      // The | expression renders as "BlePerm.Read | BlePerm.Notify" via the
+      // binary-expression handler in resolveExpressionText, which keeps the
+      // raw text. Evaluate it by extracting member names and mapping to values.
+      const resolvedPerms = resolveBlePermExpr(perms);
       return {
         operation: "ble.add_char",
         index: index ?? 0,
         uuid: quoteNonIdentifier(uuid),
-        type: quoteNonIdentifier(type),
-        perms: perms ?? 0,
+        type: resolvedType,
+        perms: resolvedPerms,
         svcIndex: svcIndex ?? 0,
       };
     }

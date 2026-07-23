@@ -32,6 +32,13 @@ export enum BleValueType {
   Bytes = 'bytes',
 }
 
+/** GATT characteristic permission flags. Combine with `|`. */
+export enum BlePerm {
+  Read = 1,
+  Write = 2,
+  Notify = 4,
+}
+
 /** BLE peripheral status (mirrored by the runtime shim). */
 export enum BleStatus {
   Idle = 0,
@@ -148,12 +155,11 @@ export class BleServer {
     this._svcCount = svcCount;
   }
 
-  /** Add a characteristic by UUID, type, and permission bitmask.
-   *  READ=1, WRITE=2, NOTIFY=4 (combine with |). Returns this for chaining.
-   *  Pass an explicit index (0-based) when adding multiple characteristics so
-   *  each gets a unique slot; omit it for single-characteristic servers. */
-  characteristic(uuid: string, type: string, perms: number, index: number = 0): this {
-    bleAddChar(index, uuid, type, perms, this._svcCount);
+  /** Add a characteristic by UUID, value type, and permissions.
+   *  Combine permissions with `|`: `BlePerm.Read | BlePerm.Notify`.
+   *  Returns this for chaining. */
+  characteristic(uuid: string, type: BleValueType, perms: number): this {
+    bleAddChar(this._charCount, uuid, type, perms, this._svcCount);
     return this;
   }
 
