@@ -429,12 +429,18 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
           }
         }
         if (innerInstance.className === "BleServer" && methodName === "characteristic") {
-          // characteristic() returns this (BleServer). The method body reads
-          // this._charCount for bleAddChar. After processing, advance the
-          // counters: _lastChar = old _charCount, _charCount = old + 1.
-          const count = Number(innerInstance.fieldValues.get("_charCount") ?? "0");
-          innerInstance.fieldValues.set("_lastChar", String(count));
-          innerInstance.fieldValues.set("_charCount", String(count + 1));
+          // characteristic(uuid, type, perms, index?) returns this (BleServer).
+          // If an explicit index arg is passed, use it for _lastChar so the
+          // following onRead/onWrite attach to the right slot. Otherwise
+          // auto-advance from _charCount.
+          const explicitIdx = receiver.arguments[3];
+          if (explicitIdx && ts.isNumericLiteral(explicitIdx)) {
+            innerInstance.fieldValues.set("_lastChar", explicitIdx.text);
+          } else {
+            const count = Number(innerInstance.fieldValues.get("_charCount") ?? "0");
+            innerInstance.fieldValues.set("_lastChar", String(count));
+            innerInstance.fieldValues.set("_charCount", String(count + 1));
+          }
           return innerInstance;
         }
         if (innerInstance.className === "BleServer" && methodName === "service") {

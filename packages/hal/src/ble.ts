@@ -149,9 +149,11 @@ export class BleServer {
   }
 
   /** Add a characteristic by UUID, type, and permission bitmask.
-   *  READ=1, WRITE=2, NOTIFY=4 (combine with |). Returns this for chaining. */
-  characteristic(uuid: string, type: string, perms: number): this {
-    bleAddChar(this._charCount, uuid, type, perms, this._svcCount);
+   *  READ=1, WRITE=2, NOTIFY=4 (combine with |). Returns this for chaining.
+   *  Pass an explicit index (0-based) when adding multiple characteristics so
+   *  each gets a unique slot; omit it for single-characteristic servers. */
+  characteristic(uuid: string, type: string, perms: number, index: number = 0): this {
+    bleAddChar(index, uuid, type, perms, this._svcCount);
     return this;
   }
 
