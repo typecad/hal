@@ -162,6 +162,7 @@ export class Esp32Strategy extends ArduinoStrategy {
     }
     if (uses('usesBle')) {
       inc.push(
+        '<string>',
         '"nvs_flash.h"',
         '"nimble/nimble_port.h"',
         '"nimble/nimble_port_freertos.h"',

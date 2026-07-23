@@ -63,7 +63,7 @@ describe('ble lowering — service / characteristic graph', () => {
 describe('ble lowering — callbacks', () => {
   it('on_read → assigns function pointer via current_char', () => {
     expect(lowerBle({ operation: 'ble.on_read', index: 0, handler: 'main_isr_3' }))
-      .toEqual({ code: '__tc_ble.on_read[__tc_ble.current_char] = (main_isr_3);' });
+      .toEqual({ code: '__tc_ble.on_read[__tc_ble.current_char] = (void*)(main_isr_3);' });
   });
 
   it('on_write → assigns function pointer via current_char', () => {
