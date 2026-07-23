@@ -793,6 +793,93 @@ export interface HttpResponseHeaderOp {
 }
 
 // ---------------------------------------------------------------------------
+// BLE (NimBLE GATT peripheral)
+// ---------------------------------------------------------------------------
+
+export interface BleServerBeginOp {
+  operation: "ble.server_begin";
+  name: string;
+}
+
+export interface BleAdvertiseStartOp {
+  operation: "ble.advertise_start";
+}
+
+export interface BleAdvertiseStopOp {
+  operation: "ble.advertise_stop";
+}
+
+export interface BleAddServiceOp {
+  operation: "ble.add_service";
+  uuid: string;
+}
+
+export interface BleAddCharOp {
+  operation: "ble.add_char";
+  index: number | string;
+  uuid: string;
+  type: string;
+  perms: string;   // bitmask string: e.g. "5" = READ|WRITE
+  svcIndex?: number | string;
+}
+
+export interface BleOnReadOp {
+  operation: "ble.on_read";
+  index: number | string;
+  handler: string;
+}
+
+export interface BleOnWriteOp {
+  operation: "ble.on_write";
+  index: number | string;
+  handler: string;
+}
+
+export interface BleOnSubscribeOp {
+  operation: "ble.on_subscribe";
+  index: number | string;
+  handler: string;
+}
+
+export interface BleNotifyOp {
+  operation: "ble.notify";
+  index: number | string;
+  value: number | string;
+}
+
+export interface BleIsConnectedOp {
+  operation: "ble.is_connected";
+}
+
+export interface BleClientCountOp {
+  operation: "ble.client_count";
+}
+
+export interface BleSetNameOp {
+  operation: "ble.set_name";
+  name: string;
+}
+
+export interface BleUntilConnectedOp {
+  operation: "ble.until_connected";
+  timeoutMs: number | string;
+  blocking: boolean;
+}
+
+export interface BleUntilConnectedStartOp {
+  operation: "ble.until_connected_start";
+}
+
+export interface BleSetTxPowerOp {
+  operation: "ble.set_tx_power";
+  dbm: number | string;
+}
+
+export interface BleStatusOp {
+  operation: "ble.status";
+}
+
+// ---------------------------------------------------------------------------
 // Raw C++ passthrough — escape hatch for unsupported operations
 // ---------------------------------------------------------------------------
 
@@ -951,6 +1038,23 @@ export type HALOpIR =
   | HttpBodyOp
   | HttpContentLengthOp
   | HttpResponseHeaderOp
+  // BLE (NimBLE GATT peripheral)
+  | BleServerBeginOp
+  | BleAdvertiseStartOp
+  | BleAdvertiseStopOp
+  | BleAddServiceOp
+  | BleAddCharOp
+  | BleOnReadOp
+  | BleOnWriteOp
+  | BleOnSubscribeOp
+  | BleNotifyOp
+  | BleIsConnectedOp
+  | BleClientCountOp
+  | BleSetNameOp
+  | BleUntilConnectedOp
+  | BleUntilConnectedStartOp
+  | BleSetTxPowerOp
+  | BleStatusOp
   // Raw passthrough
   | RawCppOp
   // Display / graphics
@@ -1031,6 +1135,13 @@ export const HAL_OPERATION_KINDS = [
   'http.set_ca_cert', 'http.send', 'http.send_start', 'http.done',
   'http.status', 'http.ok', 'http.body', 'http.content_length',
   'http.response_header',
+  // BLE (NimBLE GATT peripheral)
+  'ble.server_begin', 'ble.advertise_start', 'ble.advertise_stop',
+  'ble.add_service', 'ble.add_char',
+  'ble.on_read', 'ble.on_write', 'ble.on_subscribe', 'ble.notify',
+  'ble.is_connected', 'ble.client_count', 'ble.set_name',
+  'ble.until_connected', 'ble.until_connected_start',
+  'ble.set_tx_power', 'ble.status',
   // Raw passthrough
   'raw',
 ] as const;
