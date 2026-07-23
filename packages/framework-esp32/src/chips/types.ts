@@ -55,12 +55,11 @@ export interface Esp32ChipDescriptor {
   };
 
   /** Capabilities absent on this variant — drives profileDiagnostics errors. */
-  lacks: ('dac' | 'ledc-high-speed')[];
+  lacks: 'dac'[];
 
   ledc: {
     timerBits: number;
     lowSpeedChannels: number;
-    highSpeedChannels: number;
   };
 
   cpu: {

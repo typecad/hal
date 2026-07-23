@@ -10,11 +10,18 @@ describe('i2c init block', () => {
     expect(lines).toContain('// CUTTLEFISH_I2C_BEGIN');
     expect(lines).toContain('// CUTTLEFISH_I2C_END');
   });
-  it('creates bus handle variable', () => {
-    expect(i2cInitLines(0).join('\n')).toMatch(/__tc_i2c0_bus/);
-  });
-  it('calls i2c_new_master_bus', () => {
-    expect(i2cInitLines(0).join('\n')).toMatch(/i2c_new_master_bus/);
+  it('creates a device handle and fetches the shared bus', () => {
+    // The bus handle itself lives in the shared store (i2c-bus-store.ts) so
+    // every I2C consumer shares one i2c_new_master_bus() per controller. The
+    // init block holds this consumer's device handle and calls the getter —
+    // it never constructs the bus itself, only fetches it.
+    const lines = i2cInitLines(0).join('\n');
+    expect(lines).toMatch(/__tc_i2c0_dev/);
+    expect(lines).toMatch(/__esp32_i2c_bus_get\(0\)/);
+    // No i2c_new_master_bus *call* on a real code line. (The explanatory
+    // comment names the function, so strip comments before checking.)
+    const codeOnly = lines.replace(/\/\/[^\n]*/g, '');
+    expect(codeOnly).not.toMatch(/i2c_new_master_bus\s*\(/);
   });
 });
 

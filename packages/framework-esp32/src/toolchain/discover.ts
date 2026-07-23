@@ -231,6 +231,11 @@ export function discoverFromPath(): IdfRoot | null {
 
 // ── Top-level cascade ────────────────────────────────────────────────────────
 
+/** Minimum ESP-IDF version this framework compiles against. The lowerings use
+ *  v6 public APIs (adc_oneshot, dac_oneshot, esp_pm, i2c_master) that are absent
+ *  or deprecated on older installs. */
+export const IDF_VERSION_FLOOR = '6.0.0';
+
 let cachedDiscoverResult: IdfRoot | null | undefined;
 
 /** Clear the process-local discovery cache (for tests). */
@@ -238,17 +243,69 @@ export function resetDiscoverIdfRootCache(): void {
   cachedDiscoverResult = undefined;
 }
 
+/** True when root is non-null and at or above the v6 floor. A root whose
+ *  version cannot be determined (no version.cmake) is treated as meeting the
+ *  floor — we only reject installs we *know* are too old. */
+export function meetsIdfFloor(root: IdfRoot | null | undefined): boolean {
+  if (!root) return false;
+  if (!root.version) return true;
+  return compareSemver(root.version, IDF_VERSION_FLOOR) >= 0;
+}
+
+/** Throw a clear diagnostic when an IDF install was found but is below the v6
+ *  floor. No-op when root is null (nothing found) or already meets the floor. */
+export function enforceIdfFloorOrThrow(root: IdfRoot | null | undefined): void {
+  if (root && !meetsIdfFloor(root)) {
+    throw new Error(
+      `ESP-IDF >= ${IDF_VERSION_FLOOR} is required by @typecad/framework-esp32, ` +
+      `but found version ${root.version ?? '(unknown)'} at ${root.path} ` +
+      `(${root.source}). Install ESP-IDF v6.0 or newer, or point IDF_PATH at it.`,
+    );
+  }
+}
+
 /**
- * Try each discovery strategy in order; return the first IdfRoot found, or null.
- * Order: $IDF_PATH → EIM manifest → well-known defaults → version-dir scan → PATH.
- * Result is memoized for the process lifetime.
+ * Try each discovery strategy in order, preferring the first install that meets
+ * the v6 floor. Order: $IDF_PATH → EIM manifest → well-known defaults →
+ * version-dir scan → PATH. If a later strategy finds a v6 install, it wins over
+ * an older install found earlier. Result is memoized for the process lifetime.
+ *
+ * Returns the chosen IdfRoot, or null when no install is found at all. Throws
+ * when at least one install was found but none meets the v6 floor.
  */
 export function discoverIdfRoot(): IdfRoot | null {
-  if (cachedDiscoverResult !== undefined) return cachedDiscoverResult;
-  cachedDiscoverResult = discoverFromEnv()
-    ?? discoverFromEimManifest()
-    ?? discoverFromWellKnown()
-    ?? discoverFromVersionScan()
-    ?? discoverFromPath();
-  return cachedDiscoverResult;
+  if (cachedDiscoverResult !== undefined) {
+    enforceIdfFloorOrThrow(cachedDiscoverResult);
+    return cachedDiscoverResult;
+  }
+  const strategies: Array<() => IdfRoot | null> = [
+    discoverFromEnv,
+    discoverFromEimManifest,
+    discoverFromWellKnown,
+    discoverFromVersionScan,
+    discoverFromPath,
+  ];
+  // Highest-version below-floor root seen, used only for the diagnostic if no
+  // strategy yields a floor-meeting install.
+  let bestBelowFloor: IdfRoot | null = null;
+  for (const strat of strategies) {
+    let candidate: IdfRoot | null = null;
+    try {
+      candidate = strat();
+    } catch {
+      // A strategy that errors (e.g. unreadable manifest) is treated as no hit.
+      candidate = null;
+    }
+    if (!candidate) continue;
+    if (meetsIdfFloor(candidate)) {
+      cachedDiscoverResult = candidate;
+      return candidate;
+    }
+    if (!bestBelowFloor || compareSemver(candidate.version, bestBelowFloor.version) > 0) {
+      bestBelowFloor = candidate;
+    }
+  }
+  cachedDiscoverResult = bestBelowFloor;
+  enforceIdfFloorOrThrow(bestBelowFloor);
+  return bestBelowFloor;
 }

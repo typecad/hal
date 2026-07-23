@@ -77,10 +77,10 @@ describe('Esp32Strategy profileDiagnostics', () => {
     expect(diag?.hint).toMatch(/INPUT_PULLUP|different pin/i);
   });
 
-  it('warns when tone is used (v1 stub)', () => {
+  it('does NOT warn about tone (lowered on LEDC_TIMER_1, no longer a stub)', () => {
     const ctx = { analysis: { usesTone: true }, frameworkData: { target: 'esp32' } } as any;
     const diags = strategy.profileDiagnostics(fakeProgram(), ctx);
-    expect(diags.some((d) => d.code === 'esp32-tone-stub' && d.severity === 'warning')).toBe(true);
+    expect(diags.some((d) => d.code === 'esp32-tone-stub')).toBe(false);
   });
 
   it('warns when a strapping pin is used as OUTPUT', () => {

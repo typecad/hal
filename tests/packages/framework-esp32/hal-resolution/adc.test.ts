@@ -9,25 +9,28 @@ describe('adc init block', () => {
     const lines = adcInitLines().join('\n');
     expect(lines).toContain('// CUTTLEFISH_ADC_BEGIN');
     expect(lines).toContain('// CUTTLEFISH_ADC_END');
-    expect(lines).toContain('esp_adc_cal_characterize');
+    // v6 oneshot driver — not the deprecated esp_adc_cal_* API.
+    expect(lines).toContain('adc_oneshot_new_unit');
+    expect(lines).toContain('adc_cali_create_line_fitting');
+    expect(lines).not.toContain('esp_adc_cal_');
   });
 });
 
 describe('adc lowering', () => {
-  it('read on ADC1 pin (GPIO32) → adc1_get_raw with channel + init', () => {
+  it('read on ADC1 pin (GPIO32) → __tc_adc_read with ADC1 channel + unit', () => {
     const out = lowerAdc({ operation: 'adc.read', pin: 32 });
-    expect(out.expression).toContain('__tc_adc_init()');
-    expect(out.expression).toMatch(/adc1_get_raw\(ADC1_CHANNEL_\d+\)/);
+    expect(out.expression).toContain('__tc_adc_read(1,');
+    expect(out.expression).toMatch(/ADC_CHANNEL_\d+/);
   });
-  it('read on ADC2 pin (GPIO4) → adc2_get_raw', () => {
+  it('read on ADC2 pin (GPIO4) → __tc_adc_read with unit 2', () => {
     const out = lowerAdc({ operation: 'adc.read', pin: 4 });
-    expect(out.expression).toContain('adc2_get_raw');
-    expect(out.expression).toMatch(/ADC2_CHANNEL_\d+/);
+    expect(out.expression).toContain('__tc_adc_read(2,');
+    expect(out.expression).toMatch(/ADC_CHANNEL_\d+/);
   });
-  it('read_voltage uses esp_adc_cal_raw_to_voltage', () => {
+  it('read_voltage uses __tc_adc_read_voltage (adc_cali path)', () => {
     const out = lowerAdc({ operation: 'adc.read_voltage', pin: 32 });
-    expect(out.expression).toContain('esp_adc_cal_raw_to_voltage');
-    expect(out.expression).toContain('__tc_adc_chars');
+    expect(out.expression).toContain('__tc_adc_read_voltage(1,');
+    expect(out.expression).toMatch(/ADC_CHANNEL_\d+/);
   });
   it('get_resolution returns 12 (expression)', () => {
     expect(lowerAdc({ operation: 'adc.get_resolution' })).toEqual({ expression: '12' });

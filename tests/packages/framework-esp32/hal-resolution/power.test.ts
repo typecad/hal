@@ -21,10 +21,12 @@ describe('power lowering', () => {
     expect(lowerPower({ operation: 'power.light_sleep' }))
       .toEqual({ code: 'esp_light_sleep_start();' });
   });
-  it('set_cpu_frequency uses rtc_clk_cpu_freq_mhz_to_config', () => {
+  it('set_cpu_frequency uses esp_pm_configure with chip-specific struct', () => {
     const out = lowerPower({ operation: 'power.set_cpu_frequency', mhz: 160 }).code!;
-    expect(out).toContain('rtc_clk_cpu_freq_mhz_to_config(160');
-    expect(out).toContain('rtc_clk_cpu_freq_set_config');
+    expect(out).toContain('esp_pm_configure');
+    expect(out).toContain('esp_pm_config_esp32_t');
+    expect(out).toContain('.max_freq_mhz = 160');
+    expect(out).toContain('.min_freq_mhz = 160');
   });
   it('unknown power.* op throws', () => {
     expect(() => lowerPower({ operation: 'power.unknown' } as any)).toThrow(/does not yet support/);

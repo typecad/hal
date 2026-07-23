@@ -132,9 +132,9 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (uses('usesSPI'))          inc.push('"driver/spi_master.h"');
     if (uses('usesUart'))         inc.push('"driver/uart.h"');
     if (uses('usesPWM'))          inc.push('"driver/ledc.h"');
-    if (uses('usesADC'))          inc.push('"driver/adc.h"', '"driver/adc_oneshot.h"', '"esp_adc_cal.h"');
-    if (uses('usesDAC'))          inc.push('"driver/dac.h"');
-    if (uses('usesPower'))        inc.push('"esp_sleep.h"', '"soc/rtc.h"');
+    if (uses('usesADC'))          inc.push('"driver/adc_oneshot.h"', '"esp_adc/adc_cali.h"', '"esp_adc/adc_cali_scheme.h"');
+    if (uses('usesDAC'))          inc.push('"driver/dac_oneshot.h"');
+    if (uses('usesPower'))        inc.push('"esp_sleep.h"', '"esp_pm.h"');
     if (uses('usesWdt'))          inc.push('"esp_task_wdt.h"');
     if (uses('usesInterrupts'))   inc.push('"esp_intr_alloc.h"');
     if (uses('usesWifi')) {
@@ -514,16 +514,6 @@ static inline int digitalRead(int pin) {
         severity: 'error',
         code: 'esp32-dac-unavailable',
         message: `${chip.id} has no DAC peripheral. DAC output is only available on classic ESP32 (GPIO 25/26).`,
-        source: program.fileName,
-      });
-    }
-
-    if (a.usesTone) {
-      diags.push({
-        severity: 'warning',
-        code: 'esp32-tone-stub',
-        message: `tone.* is a no-op stub on framework-esp32 v1 (LEDC channel sharing with PWM is deferred).`,
-        hint: 'Use pwm.write with a fixed frequency, or rawCpp() for a dedicated LEDC tone channel.',
         source: program.fileName,
       });
     }

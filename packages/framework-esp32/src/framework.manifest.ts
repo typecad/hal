@@ -2,11 +2,8 @@ import { defineFrameworkManifest } from '@typecad/cuttlefish/api/shared';
 
 // ESP32 framework manifest. Coverage reflects actual resolveHALOperation /
 // lowerHalOp behavior. WiFi and HTTP are fully supported (ESP-IDF native).
-//
-// Display is declared unsupported: ESP32 has no ESP-IDF display driver
-// lowering (lowering/index.ts:46 throws). The strategy inherits Arduino's
-// resolveDisplayOp, which still lowers display.init — a latent inheritance
-// bug the validator catches. Resolution tracked for v1.1.
+// Display + touch use native ESP-IDF adapters (ILI9341/ST7796/SSD1309,
+// FT6336U/GT911/CST816S/XPT2046/STMPE610).
 
 export default defineFrameworkManifest({
   schemaVersion: 1,

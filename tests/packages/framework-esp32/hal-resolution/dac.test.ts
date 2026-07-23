@@ -9,18 +9,20 @@ describe('dac init block', () => {
     const lines = dacInitLines().join('\n');
     expect(lines).toContain('// CUTTLEFISH_DAC_BEGIN');
     expect(lines).toContain('// CUTTLEFISH_DAC_END');
-    expect(lines).toContain('dac_output_enable');
+    // v6 oneshot driver — not the legacy dac_output_* API.
+    expect(lines).toContain('dac_oneshot_output_new_channel');
+    expect(lines).not.toContain('dac_output_enable');
   });
 });
 
 describe('dac lowering', () => {
-  it('GPIO25 → DAC_CHAN_0 with init', () => {
+  it('GPIO25 → DAC_CHAN_0 via oneshot handle', () => {
     expect(lowerDac({ operation: 'dac.write', pin: 25, value: 128 }))
-      .toEqual({ code: '__tc_dac_init(); dac_output_voltage(DAC_CHAN_0, 128);' });
+      .toEqual({ code: 'dac_oneshot_output_voltage(__tc_dac_get(DAC_CHAN_0), 128);' });
   });
-  it('GPIO26 → DAC_CHAN_1', () => {
+  it('GPIO26 → DAC_CHAN_1 via oneshot handle', () => {
     expect(lowerDac({ operation: 'dac.write', pin: 26, value: 200 }))
-      .toEqual({ code: '__tc_dac_init(); dac_output_voltage(DAC_CHAN_1, 200);' });
+      .toEqual({ code: 'dac_oneshot_output_voltage(__tc_dac_get(DAC_CHAN_1), 200);' });
   });
   it('unknown DAC pin throws', () => {
     expect(() => lowerDac({ operation: 'dac.write', pin: 4, value: 0 }))

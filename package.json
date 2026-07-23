@@ -30,10 +30,10 @@
   ],
   "scripts": {
     "clean": "node -e \"const{readdirSync,rmSync}=require('fs');for(const p of readdirSync('packages')){rmSync('packages/'+p+'/dist',{recursive:true,force:true});rmSync('packages/'+p+'/tsconfig.tsbuildinfo',{force:true})}\"",
-    "build": "npm run build --workspaces",
+    "build": "node scripts/build-workspaces.mjs",
     "build:clean": "npm run clean && npm run build",
     "typecheck": "tsc -b",
-    "ci": "npm test && npm run build --workspaces",
+    "ci": "npm test && npm run build",
     "test": "vitest run",
     "render:framework-coverage": "tsx scripts/render-framework-coverage.ts",
     "test:watch": "vitest",
