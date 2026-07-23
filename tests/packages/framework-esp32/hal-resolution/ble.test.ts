@@ -76,6 +76,42 @@ describe('ble init block', () => {
     expect(addChar).not.toContain('(void)idx');
     expect(addChar).toMatch(/idx\s*<\s*0\s*\|\|\s*idx\s*>=\s*__TC_BLE_MAX_CHARS/);
   });
+
+  // ble.notify: was a no-op. The real path is ble_gatts_notify_custom, which needs
+  // (conn_handle, val_handle, os_mbuf). val_handle is assigned by NimBLE during
+  // service registration, so the shim must capture it from the characteristic
+  // table after ble_gatts_add_svcs and key it by char index.
+  it('captures each characteristic val_handle after ble_gatts_add_svcs', () => {
+    const lines = bleInitLines().join('\n');
+    expect(lines).toContain('ble_gatts_add_svcs');
+    // After registration, walk the characteristic table and store val_handles
+    // so notify can look them up by index.
+    expect(lines).toMatch(/val_handle/);
+    expect(lines).toMatch(/ble_gatts_chr_val_handles|val_handles\[/);
+  });
+
+  it('notify sends via ble_gatts_notify_custom (not a printf no-op)', () => {
+    const lines = bleInitLines().join('\n');
+    const notify = lines.match(/static inline void __tc_ble_notify\(int idx[\s\S]*?\n\}/)?.[0] ?? '';
+    expect(notify).not.toContain('not yet implemented');
+    expect(notify).toContain('ble_gatts_notify_custom');
+    // Must guard against no active connection / invalid index.
+    expect(notify).toMatch(/conn_handle\s*<\s*0|__tc_ble\.conn_handle\s*<\s*0/);
+  });
+
+  // ble.set_tx_power: was a no-op. The runtime path is esp_ble_tx_power_set on the
+  // DEFAULT power type, applied after the controller is up. The requested dBm is
+  // stashed (like the WiFi tx-power stash) and applied after nimble_port_init.
+  it('applies BLE TX power via esp_ble_tx_power_set after stack init', () => {
+    const lines = bleInitLines().join('\n');
+    expect(lines).toContain('esp_ble_tx_power_set');
+    // A stash field holds the requested dBm so set_tx_power before begin() still
+    // applies once the controller is up.
+    expect(lines).toMatch(/tx_power_dbm|pending_tx_power/);
+    // The set_tx_power shim must not be a bare no-op.
+    const setTx = lines.match(/static inline void __tc_ble_set_tx_power\(int dbm\) \{[\s\S]*?\n\}/)?.[0] ?? '';
+    expect(setTx).not.toMatch(/\(void\)dbm;\s*\}/);
+  });
 });
 
 describe('ble lowering — server / advertise lifecycle', () => {

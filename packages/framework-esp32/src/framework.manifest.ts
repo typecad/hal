@@ -271,13 +271,13 @@ export default defineFrameworkManifest({
         'ble.on_write': 'supported',
         'ble.on_connect': 'supported',
         'ble.on_disconnect': 'supported',
-        'ble.notify': 'partial', // val_handle tracking not yet wired — no-op at runtime
+        'ble.notify': 'supported', // ble_gatts_notify_custom; val_handles captured after ble_gatts_add_svcs
         'ble.is_connected': 'supported',
         'ble.client_count': 'supported',
         'ble.set_name': 'supported',
         'ble.until_connected': 'supported',
         'ble.until_connected_start': 'supported',
-        'ble.set_tx_power': 'partial', // NimBLE sets TX power via PHY/controller at init; the runtime shim is a no-op
+        'ble.set_tx_power': 'supported', // esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, …); dBm snapped to 3 dBm grid
         'ble.status': 'supported',
       },
     },

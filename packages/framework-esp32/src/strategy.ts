@@ -164,11 +164,16 @@ export class Esp32Strategy extends ArduinoStrategy {
       inc.push(
         '<string>',
         '"nvs_flash.h"',
+        // esp_bt.h for esp_ble_tx_power_set / esp_power_level_t (BLE TX power
+        // control). It's a controller-level API and is available under NimBLE.
+        '"esp_bt.h"',
         '"nimble/nimble_port.h"',
         '"nimble/nimble_port_freertos.h"',
         '"host/ble_hs.h"',
         '"host/ble_gap.h"',
         '"host/ble_gatt.h"',
+        // os_mbuf / os_msys_get for ble_gatts_notify_custom payloads.
+        '"os/os_mbuf.h"',
         '"services/gap/ble_svc_gap.h"',
         '"services/gatt/ble_svc_gatt.h"',
       );
