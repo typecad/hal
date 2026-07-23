@@ -269,10 +269,9 @@ export default defineFrameworkManifest({
         'ble.add_char': 'supported',
         'ble.on_read': 'supported',
         'ble.on_write': 'supported',
-        'ble.on_subscribe': 'supported',
         'ble.on_connect': 'supported',
         'ble.on_disconnect': 'supported',
-        'ble.notify': 'supported',
+        'ble.notify': 'partial', // val_handle tracking not yet wired — no-op at runtime
         'ble.is_connected': 'supported',
         'ble.client_count': 'supported',
         'ble.set_name': 'supported',
