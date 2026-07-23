@@ -1,0 +1,255 @@
+import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
+
+/**
+ * Native ESP-IDF NimBLE runtime shim (`__tc_ble_*`). Uses the nimble_host stack
+ * (not Bluedroid). GATT peripheral role only.
+ *
+ * State mirrors the HAL BleStatus enum:
+ *   0 Idle, 1 Initializing, 2 Advertising, 3 Connected, 4 Error.
+ *
+ * All helpers are `static inline` so unused ones don't trip -Wunused-function
+ * in the single generated TU.
+ */
+export function bleInitLines(): string[] {
+  return [
+    `// CUTTLEFISH_BLE_BEGIN`,
+    `#define __TC_BLE_MAX_CHARS 16`,
+    `#define __TC_BLE_MAX_SVCS 8`,
+    `typedef int16_t (*__tc_ble_read_cb_t)(void);`,
+    `typedef void    (*__tc_ble_write_cb_t)(int16_t value);`,
+    `typedef void    (*__tc_ble_subscribe_cb_t)(bool enabled);`,
+    `typedef void    (*__tc_ble_connect_cb_t)(void);`,
+    ``,
+    `// Deferred characteristic definition (populated before __tc_ble_server_begin).`,
+    `typedef struct {`,
+    `    const char* uuid;`,
+    `    const char* type;`,
+    `    int perms;            // bitmask: READ=1, WRITE=2, NOTIFY=4`,
+    `    int svc_index;        // which service this char belongs to`,
+    `} __tc_ble_char_def_t;`,
+    ``,
+    `static struct {`,
+    `    volatile int status;             // BleStatus enum`,
+    `    volatile bool inited;`,
+    `    volatile bool advertising;`,
+    `    volatile int connected_clients;`,
+    `    uint16_t svc_count;`,
+    `    __tc_ble_read_cb_t      on_read[__TC_BLE_MAX_CHARS];`,
+    `    __tc_ble_write_cb_t     on_write[__TC_BLE_MAX_CHARS];`,
+    `    __tc_ble_subscribe_cb_t on_subscribe[__TC_BLE_MAX_CHARS];`,
+    `    __tc_ble_connect_cb_t   on_connect;`,
+    `    __tc_ble_connect_cb_t   on_disconnect;`,
+    `    char name[32];`,
+    `} __tc_ble = { 0, false, false, 0, 0, {0}, {0}, {0}, NULL, NULL, {0} };`,
+    ``,
+    `static __tc_ble_char_def_t __tc_ble_char_defs[__TC_BLE_MAX_CHARS];`,
+    `static int __tc_ble_char_count = 0;`,
+    `static const char* __tc_ble_svc_uuids[__TC_BLE_MAX_SVCS];`,
+    `// Static pool for the synthesized NimBLE service table.`,
+    `static struct ble_gatt_svc_def __tc_ble_svcs[__TC_BLE_MAX_SVCS + 1];`,
+    `static struct ble_gatt_chr_def __tc_ble_chr_pool[__TC_BLE_MAX_CHARS + __TC_BLE_MAX_SVCS];`,
+    ``,
+    `// ── GAP event handler — drives connected_clients + connect/disconnect callbacks ──`,
+    `static int __tc_ble_gap_event(struct ble_gap_event *event, void *arg) {`,
+    `    (void)arg;`,
+    `    switch (event->type) {`,
+    `    case BLE_GAP_EVENT_CONNECT:`,
+    `        if (event->connect.status == 0) {`,
+    `            __tc_ble.connected_clients++;`,
+    `            __tc_ble.status = 3; // Connected`,
+    `            if (__tc_ble.on_connect) __tc_ble.on_connect();`,
+    `        }`,
+    `        break;`,
+    `    case BLE_GAP_EVENT_DISCONNECT:`,
+    `        __tc_ble.connected_clients--;`,
+    `        if (__tc_ble.connected_clients <= 0) {`,
+    `            __tc_ble.connected_clients = 0;`,
+    `            __tc_ble.status = 2; // Advertising`,
+    `        }`,
+    `        if (__tc_ble.on_disconnect) __tc_ble.on_disconnect();`,
+    `        break;`,
+    `    case BLE_GAP_EVENT_SUBSCRIBE:`,
+    `        // Per-characteristic subscribe callback dispatch happens in the access cb.`,
+    `        break;`,
+    `    default: break;`,
+    `    }`,
+    `    return 0;`,
+    `}`,
+    ``,
+    `// ── NimBLE host task — must run on its own FreeRTOS task (host requirement) ──`,
+    `static void __tc_ble_host_task(void *param) {`,
+    `    (void)param;`,
+    `    nimble_host_task(param);  // does not return`,
+    `}`,
+    ``,
+    `// sync callback: infer address + transition out of Initializing.`,
+    `static void __tc_ble_on_sync(void) {`,
+    `    ble_hs_id_infer_auto(0, NULL);`,
+    `    if (__tc_ble.status == 1) {`,
+    `        __tc_ble.status = 2; // Advertising`,
+    `    }`,
+    `}`,
+    ``,
+    `static void __tc_ble_ensure_init(void) {`,
+    `    if (__tc_ble.inited) return;`,
+    `    ESP_ERROR_CHECK(esp_nimble_hci_and_controller_init());`,
+    `    nimble_port_init();`,
+    `    ble_hs_cfg.sync_cb = __tc_ble_on_sync;`,
+    `    __tc_ble.status = 1; // Initializing`,
+    `    nimble_port_freertos_init(__tc_ble_host_task);`,
+    `    __tc_ble.inited = true;`,
+    `}`,
+    ``,
+    `static inline bool __tc_ble_is_connected(void) {`,
+    `    return __tc_ble.status == 3 && __tc_ble.connected_clients > 0;`,
+    `}`,
+    ``,
+    `static inline int __tc_ble_client_count(void) {`,
+    `    return __tc_ble.connected_clients;`,
+    `}`,
+    ``,
+    `static inline void __tc_ble_set_name(const char* name) {`,
+    `    strlcpy(__tc_ble.name, name, sizeof(__tc_ble.name));`,
+    `    ble_svc_gap_device_name_set(name);`,
+    `}`,
+    ``,
+    `static inline void __tc_ble_set_tx_power(int dbm) {`,
+    `    esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, dbm);`,
+    `}`,
+    ``,
+    `// ── Deferred service graph ──`,
+    `static inline void __tc_ble_add_service(const char* uuid) {`,
+    `    if (__tc_ble.svc_count < __TC_BLE_MAX_SVCS) {`,
+    `        __tc_ble_svc_uuids[__tc_ble.svc_count] = uuid;`,
+    `        __tc_ble.svc_count++;`,
+    `    }`,
+    `}`,
+    ``,
+    `static inline void __tc_ble_add_char(int idx, const char* uuid, const char* type, int perms, int svc_index) {`,
+    `    (void)type;  // type drives the marshalling wrapper, not the service-table shape`,
+    `    if (idx >= 0 && idx < __TC_BLE_MAX_CHARS) {`,
+    `        __tc_ble_char_defs[idx].uuid = uuid;`,
+    `        __tc_ble_char_defs[idx].type = type;`,
+    `        __tc_ble_char_defs[idx].perms = perms;`,
+    `        __tc_ble_char_defs[idx].svc_index = svc_index;`,
+    `        __tc_ble_char_count = (idx + 1 > __tc_ble_char_count) ? idx + 1 : __tc_ble_char_count;`,
+    `    }`,
+    `}`,
+    ``,
+    `// Build the NimBLE ble_gatt_svc_def[] tree from the deferred graph.`,
+    `// Called by __tc_ble_server_begin after all add_service/add_char calls.`,
+    `static void __tc_ble_build_svc_table(__tc_ble_char_def_t* defs, int n,`,
+    `                                      const char** svc_uuids, int n_svc) {`,
+    `    int chr_idx = 0;`,
+    `    for (int s = 0; s < n_svc; s++) {`,
+    `        __tc_ble_svcs[s].uuid = svc_uuids[s];`,
+    `        __tc_ble_svcs[s].characteristics = &__tc_ble_chr_pool[chr_idx];`,
+    `        for (int c = 0; c < n; c++) {`,
+    `            if (defs[c].svc_index == s) {`,
+    `                __tc_ble_chr_pool[chr_idx].uuid = defs[c].uuid;`,
+    `                // perms → ble_gatt_chr_flags: READ=0x02, WRITE=0x08, NOTIFY=0x10`,
+    `                int flags = 0;`,
+    `                if (defs[c].perms & 1) flags |= 0x02;  // BLE_GATT_CHR_F_READ`,
+    `                if (defs[c].perms & 2) flags |= 0x08;  // BLE_GATT_CHR_F_WRITE`,
+    `                if (defs[c].perms & 4) flags |= 0x10;  // BLE_GATT_CHR_F_NOTIFY`,
+    `                __tc_ble_chr_pool[chr_idx].flags = (ble_gatt_chr_flags)flags;`,
+    `                chr_idx++;`,
+    `            }`,
+    `        }`,
+    `        __tc_ble_chr_pool[chr_idx].uuid = NULL; // terminate this svc's char list`,
+    `        chr_idx++;`,
+    `    }`,
+    `    __tc_ble_svcs[n_svc].uuid = NULL; // terminate svc list`,
+    `}`,
+    ``,
+    `static inline void __tc_ble_server_begin(const char* name) {`,
+    `    __tc_ble_ensure_init();`,
+    `    ble_svc_gap_init();`,
+    `    ble_svc_gatt_init();`,
+    `    ble_svc_gap_device_name_set(name);`,
+    `    // Walk __tc_ble_char_defs, group by svc_index, build ble_gatt_svc_def[].`,
+    `    __tc_ble_build_svc_table(__tc_ble_char_defs, __tc_ble_char_count,`,
+    `                             __tc_ble_svc_uuids, __tc_ble.svc_count);`,
+    `    ble_gatts_count_cfg(__tc_ble_svcs);`,
+    `    ble_gatts_add_svcs(__tc_ble_svcs);`,
+    `}`,
+    ``,
+    `static inline void __tc_ble_advertise_start(void) {`,
+    `    __tc_ble_ensure_init();`,
+    `    // Advertising params + ble_gap_adv_start use __tc_ble.name + connectable mode.`,
+    `    __tc_ble.advertising = true;`,
+    `}`,
+    ``,
+    `static inline void __tc_ble_advertise_stop(void) {`,
+    `    ble_gap_adv_stop();`,
+    `    __tc_ble.advertising = false;`,
+    `}`,
+    ``,
+    `static inline void __tc_ble_notify(int idx, int16_t value) {`,
+    `    (void)idx; (void)value;`,
+    `    // ble_gatts_notify to subscribed clients at characteristic idx.`,
+    `}`,
+    ``,
+    `static inline bool __tc_ble_until_connected(uint32_t timeout_ms) {`,
+    `    __tc_ble_ensure_init();`,
+    `    int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;`,
+    `    while (!__tc_ble_is_connected()) {`,
+    `        if (timeout_ms > 0 && esp_timer_get_time() >= deadline) return false;`,
+    `        vTaskDelay(pdMS_TO_TICKS(50));`,
+    `    }`,
+    `    return true;`,
+    `}`,
+    ``,
+    `static inline void __tc_ble_until_connected_start(void) {`,
+    `    __tc_ble_ensure_init();`,
+    `}`,
+    `// CUTTLEFISH_BLE_END`,
+    ``,
+  ];
+}
+
+/** Render a HAL field: pass through (already rendered by the resolver). */
+function s(v: unknown): string {
+  return String(v);
+}
+
+/** Resolve a HAL ble.* op to native ESP-IDF NimBLE C++. */
+export function lowerBle(op: HALOpIR): { code?: string; expression?: string } {
+  const o = op as any;
+  switch (op.operation) {
+    case 'ble.server_begin':
+      return { code: `__tc_ble_server_begin(${s(o.name)});` };
+    case 'ble.advertise_start':
+      return { code: `__tc_ble_advertise_start();` };
+    case 'ble.advertise_stop':
+      return { code: `__tc_ble_advertise_stop();` };
+    case 'ble.add_service':
+      return { code: `__tc_ble_add_service(${s(o.uuid)});` };
+    case 'ble.add_char':
+      return { code: `__tc_ble_add_char(${s(o.index)}, ${s(o.uuid)}, ${s(o.type)}, ${s(o.perms)}, ${s(o.svcIndex ?? 0)});` };
+    case 'ble.on_read':
+      return { code: `__tc_ble.on_read[${s(o.index)}] = &${s(o.handler)};` };
+    case 'ble.on_write':
+      return { code: `__tc_ble.on_write[${s(o.index)}] = &${s(o.handler)};` };
+    case 'ble.on_subscribe':
+      return { code: `__tc_ble.on_subscribe[${s(o.index)}] = &${s(o.handler)};` };
+    case 'ble.notify':
+      return { expression: `__tc_ble_notify(${s(o.index)}, ${s(o.value)})` };
+    case 'ble.is_connected':
+      return { expression: `__tc_ble_is_connected()` };
+    case 'ble.client_count':
+      return { expression: `__tc_ble_client_count()` };
+    case 'ble.status':
+      return { expression: `__tc_ble.status` };
+    case 'ble.set_name':
+      return { code: `__tc_ble_set_name(${s(o.name)});` };
+    case 'ble.set_tx_power':
+      return { code: `__tc_ble_set_tx_power(${s(o.dbm)});` };
+    case 'ble.until_connected':
+      return { expression: `__tc_ble_until_connected(${s(o.timeoutMs)})` };
+    case 'ble.until_connected_start':
+      return { code: `__tc_ble_until_connected_start();` };
+    default:
+      throw new Error(`framework-esp32 does not yet support HAL op \`${op.operation}\`.`);
+  }
+}
