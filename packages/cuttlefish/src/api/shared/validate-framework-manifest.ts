@@ -106,8 +106,10 @@ const OP_PROBE_PAYLOADS: Readonly<Record<string, object>> = {
   // adc.read / adc.read_voltage require pin.
   'adc.read': { pin: 0 },
   'adc.read_voltage': { pin: 0 },
-  // dac.write requires pin + value.
-  'dac.write': { pin: 0, value: 128 },
+  // dac.write requires pin + value. Use pin 25 (a valid DAC pin on ESP32;
+  // pin 0 throws "not a DAC pin" on ESP32 and Arduino maps it to a
+  // non-DAC pin too).
+  'dac.write': { pin: 25, value: 128 },
   // display.* require coordinates/color (still inconclusive without driver
   // context — included so future driver-aware probes can build on them).
   'display.fill_rect': { x: 0, y: 0, w: 10, h: 10, color: 0xffff },

@@ -67,7 +67,7 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       ops: {
-        'dac.write': 'probe-inconclusive',
+        'dac.write': 'supported',
       },
     },
     interrupts: {
