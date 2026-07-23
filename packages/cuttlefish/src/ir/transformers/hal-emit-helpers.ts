@@ -39,7 +39,7 @@ export function collectChainedHALEmits(
       }
     }
     // Continue recursion to collect deeper chain levels
-    if (ts.isCallExpression(innerReceiver) && ts.isPropertyAccessExpression(innerReceiver)) {
+    if (ts.isCallExpression(innerReceiver) && ts.isPropertyAccessExpression(innerReceiver.expression)) {
       collectChainedHALEmits(innerReceiver, sourceText, diagnostics, pointerVars, emitLines, halOps);
     }
   }
