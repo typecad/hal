@@ -29,9 +29,13 @@ describe("ESP32 SSD1309 adapter", () => {
   });
 
   it("references ESP-IDF I2C primitives (NOT _twi_)", () => {
+    // The adapter drives the panel via the new I2C master API. The bus itself
+    // is shared (i2c_new_master_bus lives in the shared bus store, not inline
+    // here), so this adapter calls i2c_master_transmit + i2c_master_bus_add_device
+    // against __esp32_i2c_display.
     expect(a.functions).toContain("i2c_master_transmit");
-    expect(a.functions).toContain("i2c_new_master_bus");
     expect(a.functions).toContain("i2c_master_bus_add_device");
+    expect(a.functions).not.toMatch(/_twi_/);
   });
 
   it("uses a dedicated display I2C bus (not __tc_i2c0_*)", () => {

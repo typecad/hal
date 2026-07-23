@@ -57,10 +57,10 @@ describe("ESP32 ILI9341 adapter", () => {
     // MADCTL for rotation 1 = MV (0x20) + BGR (0x08) = 0x28.
     // Without MV the panel renders portrait while the transpiler writes
     // landscape geometry → white screen bug.
-    // Match the MADCTL line specifically (0x48 also appears as an unrelated
-    // gamma byte in the E1 negative-gamma table).
-    expect(a.functions).toMatch(/0x36,\s*1,\s*0x28\b/);
-    expect(a.functions).not.toMatch(/0x36,\s*1,\s*0x48\b/);
+    // The init sequence is encoded as __esp32_spi_cmd_data((const uint8_t[]){cmd, data...}, len);
+    // match the MADCTL write (command 0x36) and require the 0x28 value.
+    expect(a.functions).toMatch(/\{\s*0x36,\s*0x28\s*\}/);
+    expect(a.functions).not.toMatch(/\{\s*0x36,\s*0x48\s*\}/);  // 0x48 = rotation 0, no MV
     expect(a.functions).toContain("0x29");  // DISPON
     expect(a.functions).toContain("0x3A");  // PIXFMT
     expect(a.functions).toContain("0x55");  // 16-bit/pixel
