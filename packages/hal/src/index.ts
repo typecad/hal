@@ -48,3 +48,8 @@ export { PowerClass, Power } from './power.js';
 export { AsyncClass, Async } from './async.js';
 export { WiFiClass, WiFi, WiFiStatus, WiFiEncryption } from './wifi.js';
 export { HttpClass, Http, HttpRequest, HttpMethod } from './http.js';
+export {
+  BleClass, Ble, BleServer, BleCharacteristic, GATT,
+  BleValueType, BleStatus, BleAdvertisingMode,
+} from './ble.js';
+export type { GattCharacteristicDef, BleCharOptions, CharValue } from './ble.js';
