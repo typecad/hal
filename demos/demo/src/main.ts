@@ -1,18 +1,17 @@
-// 03 — async/await: cooperative connect while the heartbeat keeps running.
-// Each async function becomes a state-machine task driven from loop(). The
-// awaited WiFi calls lower to start + poll states (no blocking waits), so the
-// LED keeps blinking while WiFi.connect() waits for the link.
-const WIFI_SSID = "Skynet";
-const WIFI_PASSWORD = "justin04";
+// 06 — custom 128-bit UUIDs for vendor-specific services.
+// The raw-UUID escape hatch: pass any 128-bit string instead of a 16-bit SIG UUID.
+import { Ble, delay, BleValueType, BlePerm } from '@typecad/hal';
 
-import { WiFi, delay, Http, setInterval } from '@typecad/hal';
-WiFi.txPower(10);
+Ble.server('CustomDevice')
+  .characteristic('a1b2c3d4-0000-1000-8000-00805f9b34fb', BleValueType.Uint8, BlePerm.Read)
+  .onRead(() => 42);
 
-WiFi.apChannel(6).apMaxClients(4);
-WiFi.startAP("cuttlefish-setup", "config123");
-console.log(WiFi.apIP());
+Ble.server('CustomDevice')
+  .characteristic('a1b2c3d4-0001-1000-8000-00805f9b34fb', BleValueType.Utf8, BlePerm.Read)
+  .onRead(() => 'hello ble');
+
+Ble.server('CustomDevice').begin();
 
 while (true) {
-  console.log(`clients: ${WiFi.apClientCount()}`);
-  delay(5000);
+  delay(1000);
 }
