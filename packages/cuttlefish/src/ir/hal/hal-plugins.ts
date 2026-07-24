@@ -414,6 +414,84 @@ export function tryResolveSemanticCall(
       return { operation: "pwm.write", port, pin, duty };
     }
 
+    // ── RMT ──
+    // rmtTxInit is positional (see hal/rmt.ts wrapper that destructures opts):
+    //   rmtTxInit(pin, resolutionHz, bit0Hi, bit0Lo, bit1Hi, bit1Lo, msbFirst, queueDepth)
+    case "rmtTxInit": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const resolutionHz = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const bit0Hi = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const bit0Lo = resolveNumericOrExpression(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const bit1Hi = resolveNumericOrExpression(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      const bit1Lo = resolveNumericOrExpression(args, 5, instance, paramNames, callArgTexts, paramDefaults);
+      const msbFirst = resolveSemanticArg(args, 6, instance, paramNames, callArgTexts, paramDefaults);
+      const queueDepth = resolveNumericOrExpression(args, 7, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || resolutionHz === null) return null;
+      const op: any = { operation: "rmt.tx_init", port, pin, resolutionHz, bit0Hi, bit0Lo, bit1Hi, bit1Lo };
+      if (queueDepth !== null) op.queueDepth = queueDepth;
+      if (msbFirst !== null) op.msbFirst = msbFirst;
+      return op;
+    }
+    case "rmtTxWriteBytes": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      // bytes is an array literal — resolveSemanticArg renders it positionally as "1, 2, 3".
+      const bytes = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || bytes === null) return null;
+      return { operation: "rmt.tx_write_bytes", port, pin, bytes };
+    }
+    case "rmtTxWriteSymbols": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const symbols = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || symbols === null) return null;
+      return { operation: "rmt.tx_write_symbols", port, pin, symbols };
+    }
+    case "rmtTxWaitDone": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const timeoutMs = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      const op: any = { operation: "rmt.tx_wait_done", port, pin };
+      if (timeoutMs !== null) op.timeoutMs = timeoutMs;
+      return op;
+    }
+    case "rmtTxDeinit": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "rmt.tx_deinit", port, pin };
+    }
+    case "rmtRxInit": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const resolutionHz = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || resolutionHz === null) return null;
+      return { operation: "rmt.rx_init", port, pin, resolutionHz };
+    }
+    case "rmtRxOnReceived": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || handler === null) return null;
+      return { operation: "rmt.rx_on_received", port, pin, handler };
+    }
+    case "rmtRxStart": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "rmt.rx_start", port, pin };
+    }
+    case "rmtRxStop": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "rmt.rx_stop", port, pin };
+    }
+    case "rmtRxRead": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const maxCount = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || maxCount === null) return null;
+      return { operation: "rmt.rx_read", port, pin, maxCount };
+    }
+    case "rmtRxDeinit": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "rmt.rx_deinit", port, pin };
+    }
+
     // ── ADC ──
     case "adcRead": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
