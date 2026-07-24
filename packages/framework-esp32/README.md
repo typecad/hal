@@ -4,7 +4,7 @@ TypeCAD framework package that lowers HAL operation IR to **native ESP-IDF drive
 
 ## Requirements
 
-- ESP-IDF v5.x installed. Source the environment before running cuttlefish:
+- ESP-IDF v5.x or v6.x installed. Source the environment before running cuttlefish:
   - POSIX: `. $IDF_PATH/export.sh`
   - Windows: `%IDF_PATH%\export.bat`
 - Or use the ESP-IDF VS Code extension, which sources the env on terminal open.
@@ -47,6 +47,7 @@ export default {
 
 - **GPIO** → `gpio_set_direction/level/get_level/reset_pin` + `gpio_pullup_en`/`gpio_pulldown_en`
 - **PWM** → LEDC (`ledc_timer_config`, `ledc_set_duty`/`ledc_update_duty`); channels allocated lazily per pin
+- **RMT** → v5/v6 driver (`driver/rmt_tx.h`+`rmt_rx.h`): `rmt_new_tx_channel`/`rmt_new_rx_channel`, bytes-encoder for WS2812/SK6812/IR (`rmt_new_bytes_encoder`), raw-symbol copy encoder, RX via callback + sync `xSemaphoreTake`. Channels allocated lazily per pin via the `RmtChannel` class (bit timings fixed at init — IDF bakes them into the encoder)
 - **ADC** → `adc_oneshot_*` driver + `adc_cali_line_fitting_*` calibration (ADC1 only in v1; ADC2 conflicts with WiFi)
 - **DAC** → `dac_output_voltage` (classic ESP32 + S3 only — `profileDiagnostics` errors on C3/C6)
 - **I2C** → v5 master bus API (`i2c_new_master_bus`, `i2c_master_bus_add_device`, `i2c_master_transmit`/`receive`); three-step `beginTransmission`/`write`/`endTransmission` dance preserved as a txbuf buffering pattern
