@@ -28,6 +28,25 @@ export function lowerPower(op: HALOpIR): { code?: string; expression?: string } 
   switch (op.operation) {
     case 'power.deep_sleep':
       return { code: `esp_sleep_enable_timer_wakeup(((uint64_t)${o.ms}) * 1000ULL); esp_deep_sleep_start();` };
+    case 'power.deep_sleep_pin': {
+      // Pin wakeup. Classic ESP32/S3 use ext0 (single RTC pin, level-triggered);
+      // the pin must be initialized as an RTC GPIO first. C3/C6 have no ext0/ext1
+      // and use the gpio_wakeup variant. profileDiagnostics flags non-RTC pins;
+      // both API families only reliably wake from deep sleep on RTC-capable GPIO.
+      const chip = getActiveChip();
+      const pin = o.pin;
+      const level = o.level ? 1 : 0;
+      if (chip.gpio.wakeupApi === 'ext0_ext1') {
+        return {
+          code: `rtc_gpio_init((gpio_num_t)${pin}); esp_sleep_enable_ext0_wakeup((gpio_num_t)${pin}, ${level}); esp_deep_sleep_start();`,
+        };
+      }
+      // gpio_wakeup (C3/C6): a pin-mask + level. level 1 → HIGH, 0 → LOW.
+      const lvlMacro = level ? 'ESP_GPIO_WAKEUP_GPIO_HIGH' : 'ESP_GPIO_WAKEUP_GPIO_LOW';
+      return {
+        code: `esp_sleep_enable_gpio_wakeup((1ULL << ${pin}), ${lvlMacro}); esp_deep_sleep_start();`,
+      };
+    }
     case 'power.light_sleep':
       return { code: `esp_light_sleep_start();` };
     case 'power.set_cpu_frequency': {

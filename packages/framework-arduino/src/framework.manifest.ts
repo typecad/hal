@@ -102,6 +102,7 @@ export default defineFrameworkManifest({
       partialCoverage: false,
       ops: {
         'power.deep_sleep': 'supported',
+        'power.deep_sleep_pin': 'unsupported',
         'power.light_sleep': 'supported',
         'power.set_cpu_frequency': 'supported',
       },

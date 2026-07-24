@@ -1,57 +1,86 @@
-import { rawCpp } from './emit.js';
+import {
+  preferencesBegin,
+  preferencesEnd,
+  preferencesClear,
+  preferencesRemove,
+  preferencesPutInt,
+  preferencesGetInt,
+  preferencesPutUInt,
+  preferencesGetUInt,
+  preferencesPutBool,
+  preferencesGetBool,
+  preferencesPutFloat,
+  preferencesGetFloat,
+  preferencesPutString,
+  preferencesGetString,
+} from './emit.js';
 
+/**
+ * Preferences — a persistent key/value store, lowered to native NVS
+ * (nvs_flash / nvs_open / nvs_set_* / nvs_get_*) by framework-esp32.
+ *
+ * No include() calls here — NVS headers are framework-owned and added via
+ * forcedIncludes when the program uses preferences.* ops. Method bodies pass
+ * parameters directly into semantic calls so the resolver can statically track
+ * every argument (matching the WiFi/HTTP HAL pattern).
+ */
 export class PreferencesClass {
   static readonly __instance_name = "Preferences";
-  // NOTE: no __includes here. The transpiler emits singleton __includes on
-  // every architecture with no filtering, and <Preferences.h> is ESP32-only —
-  // adding it would break AVR builds. The class is ESP32-only by convention.
 
   begin(name: string, readOnly: boolean = false): void {
-    rawCpp(`Preferences.begin(${name}.c_str(), ${readOnly});`);
+    preferencesBegin(name, readOnly);
   }
+
   end(): void {
-    rawCpp(`Preferences.end();`);
+    preferencesEnd();
   }
+
   clear(): void {
-    rawCpp(`Preferences.clear();`);
+    preferencesClear();
   }
+
   remove(key: string): void {
-    rawCpp(`Preferences.remove(${key}.c_str());`);
+    preferencesRemove(key);
   }
+
   putInt(key: string, value: number): void {
-    rawCpp(`Preferences.putInt(${key}.c_str(), ${value});`);
+    preferencesPutInt(key, value);
   }
+
   getInt(key: string, defaultValue: number = 0): number {
-    rawCpp(`return Preferences.getInt(${key}.c_str(), ${defaultValue});`);
-    return 0;
+    return preferencesGetInt(key, defaultValue);
   }
+
   putUInt(key: string, value: number): void {
-    rawCpp(`Preferences.putUInt(${key}.c_str(), ${value});`);
+    preferencesPutUInt(key, value);
   }
+
   getUInt(key: string, defaultValue: number = 0): number {
-    rawCpp(`return Preferences.getUInt(${key}.c_str(), ${defaultValue});`);
-    return 0;
+    return preferencesGetUInt(key, defaultValue);
   }
-  putFloat(key: string, value: number): void {
-    rawCpp(`Preferences.putFloat(${key}.c_str(), ${value});`);
-  }
-  getFloat(key: string, defaultValue: number = 0): number {
-    rawCpp(`return Preferences.getFloat(${key}.c_str(), ${defaultValue});`);
-    return 0;
-  }
+
   putBool(key: string, value: boolean): void {
-    rawCpp(`Preferences.putBool(${key}.c_str(), ${value});`);
+    preferencesPutBool(key, value);
   }
+
   getBool(key: string, defaultValue: boolean = false): boolean {
-    rawCpp(`return Preferences.getBool(${key}.c_str(), ${defaultValue});`);
-    return false;
+    return preferencesGetBool(key, defaultValue);
   }
+
+  putFloat(key: string, value: number): void {
+    preferencesPutFloat(key, value);
+  }
+
+  getFloat(key: string, defaultValue: number = 0): number {
+    return preferencesGetFloat(key, defaultValue);
+  }
+
   putString(key: string, value: string): void {
-    rawCpp(`Preferences.putString(${key}.c_str(), ${value}.c_str());`);
+    preferencesPutString(key, value);
   }
+
   getString(key: string, defaultValue: string = ""): string {
-    rawCpp(`return Preferences.getString(${key}.c_str(), ${defaultValue}.c_str());`);
-    return "";
+    return preferencesGetString(key, defaultValue);
   }
 }
 

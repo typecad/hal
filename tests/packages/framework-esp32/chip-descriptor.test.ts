@@ -52,4 +52,22 @@ describe('chip descriptor data integrity', () => {
       expect(ESP32C6.lacks).toContain('dac');
     });
   });
+
+  // deep-sleep pin wakeup API family: Xtensa (ESP32/S3) use ext0/ext1 on RTC
+  // GPIO; RISC-V (C3/C6) use the esp_sleep_enable_gpio_wakeup variant. The
+  // descriptor carries which family each chip uses so the lowering can branch.
+  describe('deep-sleep wakeup API family', () => {
+    it('ESP32 (classic) uses ext0/ext1', () => {
+      expect(ESP32.gpio.wakeupApi).toBe('ext0_ext1');
+    });
+    it('ESP32-S3 uses ext0/ext1', () => {
+      expect(ESP32S3.gpio.wakeupApi).toBe('ext0_ext1');
+    });
+    it('ESP32-C3 uses gpio_wakeup', () => {
+      expect(ESP32C3.gpio.wakeupApi).toBe('gpio_wakeup');
+    });
+    it('ESP32-C6 uses gpio_wakeup', () => {
+      expect(ESP32C6.gpio.wakeupApi).toBe('gpio_wakeup');
+    });
+  });
 });

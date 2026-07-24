@@ -52,6 +52,19 @@ describe('wifi init block', () => {
     expect(scan).toContain('__tc_wifi_pause_wdt()');
     expect(scan).toContain('__tc_wifi_resume_wdt()');
   });
+  it('gates auto-reconnect on a pending-disconnect flag (disconnect+autoReconnect race fix)', () => {
+    // M1: esp_wifi_disconnect() does NOT wait for WIFI_EVENT_STA_DISCONNECTED, which
+    // the event handler processes later. The old code toggled auto_reconnect off
+    // around the call and restored it synchronously — so with autoReconnect(true),
+    // an explicit disconnect() immediately reconnected, defeating the call.
+    // The fix is a dedicated "expecting this disconnect" flag that the handler
+    // honors (skipping auto-reconnect once) instead of mutating auto_reconnect.
+    const lines = wifiInitLines().join('\n');
+    expect(lines).toContain('pending_disconnect');
+    // The STA_DISCONNECTED branch must consult the flag before auto-reconnecting.
+    const disconnected = lines.match(/case WIFI_EVENT_STA_DISCONNECTED:[\s\S]*?break/)?.[0] ?? '';
+    expect(disconnected).toContain('pending_disconnect');
+  });
 });
 
 describe('wifi lowering — connect / lifecycle', () => {

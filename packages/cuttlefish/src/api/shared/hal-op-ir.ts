@@ -228,6 +228,12 @@ export interface PowerSetCpuFrequencyOp {
   mhz: number;
 }
 
+export interface PowerDeepSleepPinOp {
+  operation: "power.deep_sleep_pin";
+  pin: number;
+  level: number;
+}
+
 // ---------------------------------------------------------------------------
 // I2C — inter-integrated circuit bus
 // ---------------------------------------------------------------------------
@@ -884,6 +890,89 @@ export interface BleStatusOp {
 }
 
 // ---------------------------------------------------------------------------
+// Preferences (NVS-backed persistent key/value store)
+// ---------------------------------------------------------------------------
+
+export interface PreferencesBeginOp {
+  operation: "preferences.begin";
+  namespace: string;
+  readOnly: boolean;
+}
+
+export interface PreferencesEndOp {
+  operation: "preferences.end";
+}
+
+export interface PreferencesClearOp {
+  operation: "preferences.clear";
+}
+
+export interface PreferencesRemoveOp {
+  operation: "preferences.remove";
+  key: string;
+}
+
+export interface PreferencesPutIntOp {
+  operation: "preferences.put_int";
+  key: string;
+  value: number | string;
+}
+
+export interface PreferencesGetIntOp {
+  operation: "preferences.get_int";
+  key: string;
+  defaultValue: number | string;
+}
+
+export interface PreferencesPutUIntOp {
+  operation: "preferences.put_uint";
+  key: string;
+  value: number | string;
+}
+
+export interface PreferencesGetUIntOp {
+  operation: "preferences.get_uint";
+  key: string;
+  defaultValue: number | string;
+}
+
+export interface PreferencesPutBoolOp {
+  operation: "preferences.put_bool";
+  key: string;
+  value: boolean;
+}
+
+export interface PreferencesGetBoolOp {
+  operation: "preferences.get_bool";
+  key: string;
+  defaultValue: boolean;
+}
+
+export interface PreferencesPutFloatOp {
+  operation: "preferences.put_float";
+  key: string;
+  value: number | string;
+}
+
+export interface PreferencesGetFloatOp {
+  operation: "preferences.get_float";
+  key: string;
+  defaultValue: number | string;
+}
+
+export interface PreferencesPutStringOp {
+  operation: "preferences.put_string";
+  key: string;
+  value: string;
+}
+
+export interface PreferencesGetStringOp {
+  operation: "preferences.get_string";
+  key: string;
+  defaultValue: string;
+}
+
+// ---------------------------------------------------------------------------
 // Raw C++ passthrough — escape hatch for unsupported operations
 // ---------------------------------------------------------------------------
 
@@ -940,6 +1029,7 @@ export type HALOpIR =
   | PowerDeepSleepOp
   | PowerLightSleepOp
   | PowerSetCpuFrequencyOp
+  | PowerDeepSleepPinOp
   // I2C
   | I2cBeginOp
   | I2cEndOp
@@ -1060,6 +1150,21 @@ export type HALOpIR =
   | BleUntilConnectedStartOp
   | BleSetTxPowerOp
   | BleStatusOp
+  // Preferences (NVS)
+  | PreferencesBeginOp
+  | PreferencesEndOp
+  | PreferencesClearOp
+  | PreferencesRemoveOp
+  | PreferencesPutIntOp
+  | PreferencesGetIntOp
+  | PreferencesPutUIntOp
+  | PreferencesGetUIntOp
+  | PreferencesPutBoolOp
+  | PreferencesGetBoolOp
+  | PreferencesPutFloatOp
+  | PreferencesGetFloatOp
+  | PreferencesPutStringOp
+  | PreferencesGetStringOp
   // Raw passthrough
   | RawCppOp
   // Display / graphics
@@ -1100,7 +1205,7 @@ export const HAL_OPERATION_KINDS = [
   'timing.micros', 'timing.free_heap', 'timing.set_interval',
   'timing.set_timeout', 'timing.clear_interval', 'timing.clear_timeout',
   // Power
-  'power.deep_sleep', 'power.light_sleep', 'power.set_cpu_frequency',
+  'power.deep_sleep', 'power.light_sleep', 'power.set_cpu_frequency', 'power.deep_sleep_pin',
   // I2C
   'i2c.begin', 'i2c.end', 'i2c.set_clock', 'i2c.begin_transmission',
   'i2c.write', 'i2c.write_bytes', 'i2c.write_buffer', 'i2c.read_buffer',
@@ -1147,6 +1252,13 @@ export const HAL_OPERATION_KINDS = [
   'ble.is_connected', 'ble.client_count', 'ble.set_name',
   'ble.until_connected', 'ble.until_connected_start',
   'ble.set_tx_power', 'ble.status',
+  // Preferences (NVS)
+  'preferences.begin', 'preferences.end', 'preferences.clear', 'preferences.remove',
+  'preferences.put_int', 'preferences.get_int',
+  'preferences.put_uint', 'preferences.get_uint',
+  'preferences.put_bool', 'preferences.get_bool',
+  'preferences.put_float', 'preferences.get_float',
+  'preferences.put_string', 'preferences.get_string',
   // Raw passthrough
   'raw',
 ] as const;

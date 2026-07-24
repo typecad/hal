@@ -82,6 +82,7 @@ const CATEGORY_PREFIXES: Record<string, string[]> = {
   wifi: ['wifi.'],
   http: ['http.'],
   display: ['display.'],
+  preferences: ['preferences.'],
 };
 
 function opKindsForCategory(category: string): string[] {

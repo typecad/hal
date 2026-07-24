@@ -106,6 +106,7 @@ export default defineFrameworkManifest({
       partialCoverage: false,
       ops: {
         'power.deep_sleep': 'supported',
+        'power.deep_sleep_pin': 'supported',
         'power.light_sleep': 'supported',
         'power.set_cpu_frequency': 'supported',
       },
@@ -271,14 +272,38 @@ export default defineFrameworkManifest({
         'ble.on_write': 'supported',
         'ble.on_connect': 'supported',
         'ble.on_disconnect': 'supported',
-        'ble.notify': 'partial', // val_handle tracking not yet wired — no-op at runtime
+        'ble.notify': 'supported', // ble_gatts_notify_custom; val_handles captured after ble_gatts_add_svcs
         'ble.is_connected': 'supported',
         'ble.client_count': 'supported',
         'ble.set_name': 'supported',
         'ble.until_connected': 'supported',
         'ble.until_connected_start': 'supported',
-        'ble.set_tx_power': 'supported',
+        'ble.set_tx_power': 'supported', // esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, …); dBm snapped to 3 dBm grid
         'ble.status': 'supported',
+      },
+    },
+    preferences: {
+      // Native ESP-IDF NVS-backed key/value store (nvs_open/set/get/commit).
+      // Lowered via framework-esp32/src/lowering/preferences.ts. Mirrors the
+      // HAL Preferences surface; float is memcpy'd into uint32 (NVS has no
+      // native float type).
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'preferences.begin': 'supported',
+        'preferences.end': 'supported',
+        'preferences.clear': 'supported',
+        'preferences.remove': 'supported',
+        'preferences.put_int': 'supported',
+        'preferences.get_int': 'supported',
+        'preferences.put_uint': 'supported',
+        'preferences.get_uint': 'supported',
+        'preferences.put_bool': 'supported',
+        'preferences.get_bool': 'supported',
+        'preferences.put_float': 'supported',
+        'preferences.get_float': 'supported',
+        'preferences.put_string': 'supported',
+        'preferences.get_string': 'supported',
       },
     },
     display: {
@@ -361,7 +386,7 @@ export default defineFrameworkManifest({
   conformance: {
     hardwareTestGroups: ['01-hardware', '02-math-bits', '03-advanced'],
     halResolutionTests: [
-      'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'power', 'pulse-shift',
+      'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'power', 'preferences', 'pulse-shift',
       'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt', 'wifi',
     ],
   },
