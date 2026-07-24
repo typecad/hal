@@ -72,6 +72,7 @@ export interface ProgramAnalysisResult {
    *  blocks with these marker names so the setup.ts filters are no-ops there. */
   usesGPIO: boolean;
   usesPWM: boolean;
+  usesRmt: boolean;
   usesADC: boolean;
   usesDAC: boolean;
   usesPower: boolean;
@@ -98,7 +99,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesHttp' | 'usesBle' | 'usesPreferences'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesHttp' | 'usesBle' | 'usesPreferences'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -568,6 +569,7 @@ function analyzeStatement(
         // shimLines emit no CUTTLEFISH_* blocks with these marker names).
         if (opName.startsWith("gpio."))      result.usesGPIO = true;
         if (opName.startsWith("pwm."))       result.usesPWM = true;
+        if (opName.startsWith("rmt."))       result.usesRmt = true;
         if (opName.startsWith("adc."))       result.usesADC = true;
         if (opName.startsWith("dac."))       result.usesDAC = true;
         if (opName.startsWith("power."))     result.usesPower = true;
@@ -698,6 +700,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     timerCallCount: 0,
     usesGPIO: false,
     usesPWM: false,
+    usesRmt: false,
     usesADC: false,
     usesDAC: false,
     usesPower: false,
