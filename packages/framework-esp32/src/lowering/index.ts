@@ -5,6 +5,7 @@ import { lowerUart } from './uart.js';
 import { lowerI2c }  from './i2c.js';
 import { lowerSpi }  from './spi.js';
 import { lowerPwm }  from './pwm.js';
+import { lowerRmt }  from './rmt.js';
 import { lowerAdc }  from './adc.js';
 import { lowerDac }  from './dac.js';
 import { lowerTone } from './tone.js';
@@ -30,6 +31,7 @@ export function lowerHalOp(op: HALOpIR): { code?: string; expression?: string } 
   if (op.operation.startsWith('i2c.'))       return lowerI2c(op);
   if (op.operation.startsWith('spi.'))       return lowerSpi(op);
   if (op.operation.startsWith('pwm.'))       return lowerPwm(op);
+  if (op.operation.startsWith('rmt.'))       return lowerRmt(op);
   if (op.operation.startsWith('adc.'))       return lowerAdc(op);
   if (op.operation.startsWith('dac.'))       return lowerDac(op);
   if (op.operation.startsWith('tone.'))      return lowerTone(op);

@@ -10,6 +10,7 @@ import { i2cInitLines }  from './lowering/i2c.js';
 import { emitSharedI2cBusStore } from './lowering/i2c-bus-store.js';
 import { spiInitLines }  from './lowering/spi.js';
 import { pwmInitLines }  from './lowering/pwm.js';
+import { rmtInitLines }  from './lowering/rmt.js';
 import { adcInitLines }  from './lowering/adc.js';
 import { dacInitLines }  from './lowering/dac.js';
 import { toneInitLines } from './lowering/tone.js';
@@ -134,6 +135,7 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (uses('usesSPI'))          inc.push('"driver/spi_master.h"');
     if (uses('usesUart'))         inc.push('"driver/uart.h"');
     if (uses('usesPWM'))          inc.push('"driver/ledc.h"');
+    if (uses('usesRmt'))          inc.push('"driver/rmt_tx.h"', '"driver/rmt_rx.h"');
     if (uses('usesADC'))          inc.push('"driver/adc_oneshot.h"', '"esp_adc/adc_cali.h"', '"esp_adc/adc_cali_scheme.h"');
     if (uses('usesDAC'))          inc.push('"driver/dac_oneshot.h"');
     if (uses('usesPower'))        inc.push('"esp_sleep.h"', '"esp_pm.h"');
@@ -199,6 +201,7 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (a?.usesI2C)  espInit.push(...i2cInitLines(0));
     if (a?.usesSPI)  espInit.push(...spiInitLines(0));
     if (a?.usesPWM)         espInit.push(...pwmInitLines());
+    if (a?.usesRmt)         espInit.push(...rmtInitLines(program));
     if (a?.usesADC)         espInit.push(...adcInitLines());
     if (a?.usesDAC)         espInit.push(...dacInitLines());
     if (a?.usesTone)        espInit.push(...toneInitLines());
