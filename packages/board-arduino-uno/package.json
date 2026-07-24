@@ -1,6 +1,6 @@
 {
   "name": "@typecad/board-arduino-uno",
-  "version": "1.0.0-alpha.6",
+  "version": "1.0.0-alpha.7",
   "description": "TypeCAD Arduino Uno board definition with typed pins and peripherals",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,9 +14,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.6",
-    "@typecad/hal": "1.0.0-alpha.6",
-    "@typecad/mcu-atmega328p": "1.0.0-alpha.6"
+    "@typecad/cuttlefish": "1.0.0-alpha.7",
+    "@typecad/hal": "1.0.0-alpha.7",
+    "@typecad/mcu-atmega328p": "1.0.0-alpha.7"
   },
   "license": "MIT",
   "publishConfig": {

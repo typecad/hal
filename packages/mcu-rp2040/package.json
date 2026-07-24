@@ -1,6 +1,6 @@
 {
   "name": "@typecad/mcu-rp2040",
-  "version": "1.0.0-alpha.6",
+  "version": "1.0.0-alpha.7",
   "description": "TypeCAD MCU definition for RP2040 — datasheet pins, peripheral capabilities, and HAL instances",
   "type": "module",
   "main": "./dist/index.js",
@@ -19,8 +19,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.6",
-    "@typecad/hal": "1.0.0-alpha.6"
+    "@typecad/cuttlefish": "1.0.0-alpha.7",
+    "@typecad/hal": "1.0.0-alpha.7"
   },
   "license": "MIT",
   "publishConfig": {

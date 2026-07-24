@@ -1,8 +1,8 @@
-# @typecad/ui
+# @typecad/framework-esp32
 
 ## 1.0.0-alpha.7
 
-### Patch Changes
+### Minor Changes
 
 - 0320018: ## ESP32: BLE, WiFi/HTTP, RMT, native display + touch, ESP-IDF v6
 
@@ -59,45 +59,8 @@ onDisconnect()`, `.notify()`, `.set_tx_power()`.
     since the AVR console polyfill routes `console.log` through `_uart_*` symbols
     (previously emitted an undefined-symbol link error).
 
+### Patch Changes
+
 - Updated dependencies [0320018]
   - @typecad/cuttlefish@1.0.0-alpha.7
-
-## 1.0.0-alpha.6
-
-### Patch Changes
-
-- @typecad/cuttlefish@1.0.0-alpha.6
-
-## 1.0.0-alpha.5
-
-### Patch Changes
-
-- Updated dependencies
-  - @typecad/cuttlefish@1.0.0-alpha.5
-
-## 1.0.0-alpha.4
-
-### Patch Changes
-
-- Updated dependencies
-  - @typecad/cuttlefish@1.0.0-alpha.4
-
-## 1.0.0-alpha.3
-
-### Patch Changes
-
-- Updated dependencies
-  - @typecad/cuttlefish@1.0.0-alpha.3
-
-## 0.1.0-alpha.2
-
-### Patch Changes
-
-- Updated dependencies
-  - @typecad/cuttlefish@0.1.0-alpha.2
-
-## 0.1.0-alpha.1
-
-### Minor Changes
-
-- Initial publication of the TypeCAD package suite.
+  - @typecad/framework-arduino@1.0.0-alpha.7

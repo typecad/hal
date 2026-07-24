@@ -1,6 +1,6 @@
 {
   "name": "@typecad/framework-esp32",
-  "version": "1.0.0-alpha.6",
+  "version": "1.0.0-alpha.7",
   "description": "TypeCAD framework package for native ESP-IDF driver API code generation on ESP32",
   "type": "module",
   "main": "./dist/index.js",
@@ -27,11 +27,11 @@
     "test:hw:hardware": "npm exec -- cuttlefish-test tests/01-hardware.test.ts"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.6",
-    "@typecad/framework-arduino": "1.0.0-alpha.6"
+    "@typecad/cuttlefish": "1.0.0-alpha.7",
+    "@typecad/framework-arduino": "1.0.0-alpha.7"
   },
   "devDependencies": {
-    "@typecad/expect": "1.0.0-alpha.6"
+    "@typecad/expect": "1.0.0-alpha.7"
   },
   "license": "MIT",
   "publishConfig": {

@@ -1,6 +1,6 @@
 {
   "name": "@typecad/cuttlefish",
-  "version": "1.0.0-alpha.6",
+  "version": "1.0.0-alpha.7",
   "description": "TypeScript to C++ transpiler — native, Arduino, and bare-metal targets",
   "type": "module",
   "main": "./dist/transpile.js",
@@ -85,10 +85,10 @@
     "chalk": "^4.1.2",
     "typescript": "^5.7.3",
     "zod": "^3.24.0",
-    "@typecad/arduino-cli": "1.0.0-alpha.6"
+    "@typecad/arduino-cli": "1.0.0-alpha.7"
   },
   "peerDependencies": {
-    "@typecad/ui": "1.0.0-alpha.6"
+    "@typecad/ui": "1.0.0-alpha.7"
   },
   "peerDependenciesMeta": {
     "@typecad/ui": {
@@ -96,7 +96,7 @@
     }
   },
   "optionalDependencies": {
-    "@typecad/framework-native": "1.0.0-alpha.6"
+    "@typecad/framework-native": "1.0.0-alpha.7"
   },
   "devDependencies": {
     "@types/node": "^22.10.7"

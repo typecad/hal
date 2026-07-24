@@ -1,5 +1,7 @@
 # @typecad/arduino-cli
 
+## 1.0.0-alpha.7
+
 ## 1.0.0-alpha.6
 
 ### Patch Changes

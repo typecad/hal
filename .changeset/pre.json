@@ -24,10 +24,12 @@
     "@typecad/board-esp32c6": "0.0.0",
     "@typecad/board-rp2040": "0.0.0",
     "@typecad/board-rp2350": "0.0.0",
-    "@typecad/arduino-cli": "1.0.0-alpha.3"
+    "@typecad/arduino-cli": "1.0.0-alpha.3",
+    "@typecad/framework-esp32": "1.0.0-alpha.6"
   },
   "changesets": [
     "align-arduino-cli",
+    "esp32-ble-wifi-rmt-native-hal",
     "framework-avr-bare-metal",
     "framework-avr-dead-code-elimination",
     "licenses-command",
