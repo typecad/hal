@@ -415,7 +415,11 @@ export function tryResolveSemanticCall(
     }
 
     // ── RMT ──
-    // rmtTxInit is positional (see hal/rmt.ts wrapper that destructures opts):
+    // rmtTxInit/rmtRxInit are POSITIONAL semantic primitives (the ergonomic
+    // opts-object form lives in hal/rmt.ts's RmtChannel class, which
+    // destructures opts and forwards positionally). The resolver dispatches on
+    // the literal callee name, so rmt.ts must call these by their real names
+    // (no `as _rmtTxInit` aliasing — that breaks the switch).
     //   rmtTxInit(pin, resolutionHz, bit0Hi, bit0Lo, bit1Hi, bit1Lo, msbFirst, queueDepth)
     case "rmtTxInit": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);

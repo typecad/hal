@@ -37,36 +37,41 @@ export function pwmWrite(pin: number | string, duty: number): void {}
 // opts-object form lives in hal/rmt.ts (which destructures and forwards). The
 // resolver collapses object literals, so HALOpIR fields must be scalars; the
 // rmt.ts wrapper bridges the ergonomic API to these positional calls.
+//
+// Pin params accept Pin | number | string so callers can pass a board alias
+// like LED (a Pin object) directly; the transpiler resolves it to its number.
+import type { Pin } from './gpio.js';
+type RmtPin = Pin | number | string;
 
 /** Positional semantic primitive. Args: pin, resolutionHz, bit0Hi, bit0Lo,
  *  bit1Hi, bit1Lo, msbFirst, queueDepth. Use rmtTxInit() from hal/rmt.ts. */
 export function rmtTxInit(
-  pin: number | string,
+  pin: RmtPin,
   resolutionHz: number,
   bit0Hi: number, bit0Lo: number, bit1Hi: number, bit1Lo: number,
   msbFirst: boolean, queueDepth: number,
 ): void {}
 /** Write bytes via the channel's bytes-encoder (timings fixed at init). */
-export function rmtTxWriteBytes(pin: number | string, bytes: number[] | Uint8Array): void {}
+export function rmtTxWriteBytes(pin: RmtPin, bytes: number[] | Uint8Array): void {}
 /** Write raw RMT symbols — arbitrary [hiTicks, loTicks] pairs. */
-export function rmtTxWriteSymbols(pin: number | string, symbols: [number, number][]): void {}
+export function rmtTxWriteSymbols(pin: RmtPin, symbols: [number, number][]): void {}
 /** Block until the queued TX completes. */
-export function rmtTxWaitDone(pin: number | string, timeoutMs?: number): void {}
+export function rmtTxWaitDone(pin: RmtPin, timeoutMs?: number): void {}
 /** Tear down the TX channel and release its slot. */
-export function rmtTxDeinit(pin: number | string): void {}
+export function rmtTxDeinit(pin: RmtPin): void {}
 
 /** Positional semantic primitive — use rmtRxInit() from hal/rmt.ts. */
-export function rmtRxInit(pin: number | string, resolutionHz: number): void {}
+export function rmtRxInit(pin: RmtPin, resolutionHz: number): void {}
 /** Register a callback-by-name invoked when an RX burst completes. */
-export function rmtRxOnReceived(pin: number | string, handler: string): void {}
+export function rmtRxOnReceived(pin: RmtPin, handler: string): void {}
 /** Start receiving. */
-export function rmtRxStart(pin: number | string): void {}
+export function rmtRxStart(pin: RmtPin): void {}
 /** Stop receiving. */
-export function rmtRxStop(pin: number | string): void {}
+export function rmtRxStop(pin: RmtPin): void {}
 /** Blocking read — returns flattened symbols [d0,l0,d1,l1,…] in ticks. */
-export function rmtRxRead(pin: number | string, maxCount: number): number[] { return []; }
+export function rmtRxRead(pin: RmtPin, maxCount: number): number[] { return []; }
 /** Tear down the RX channel and release its slot. */
-export function rmtRxDeinit(pin: number | string): void {}
+export function rmtRxDeinit(pin: RmtPin): void {}
 
 // ---------------------------------------------------------------------------
 // ADC — analog-to-digital conversion

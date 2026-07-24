@@ -232,7 +232,12 @@ export function lowerRmt(op: HALOpIR): { code?: string; expression?: string } {
     case 'rmt.tx_wait_done': {
       const pin = Number(o.pin);
       const h = txSym(pin);
-      const timeoutMs = (o.timeoutMs !== undefined && o.timeoutMs !== null) ? Number(o.timeoutMs) : -1;
+      // timeoutMs defaults to -1 (portMAX_DELAY equivalent). Guard against
+      // undefined/NaN: Number(undefined) === NaN, and NaN is !== null so the
+      // truthy check alone would emit "NaN".
+      const raw = o.timeoutMs;
+      const timeoutMs = (raw !== undefined && raw !== null && raw !== '' && !Number.isNaN(Number(raw)))
+        ? Number(raw) : -1;
       return { code: `${h}_init(); rmt_tx_wait_all_done(${h}, ${timeoutMs});` };
     }
     case 'rmt.tx_deinit': {
