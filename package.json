@@ -42,6 +42,8 @@
     "test:hw:hal": "npm run test:hw --workspace @typecad/hal",
     "test:hw:framework": "npm run test:hw --workspace @typecad/framework-arduino",
     "test:hw:basics": "npm run test:hw:basics --workspace @typecad/framework-arduino",
+    "test:http": "tsx tests/hardware/start-server.ts",
+    "test:hw:http": "cd tests/hardware && npm exec -- cuttlefish-test http-client.test.ts --port COM10",
     "changeset": "changeset",
     "version": "changeset version"
   },

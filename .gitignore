@@ -91,3 +91,7 @@ demos/wifi-demo/*
 cuttlefish.png
 cuttlefish.svg
 eslint-transpiler-rules.mjs
+
+# Generated WiFi credentials + server address for the HTTP hardware test.
+# Produced by `npm run test:http` (tests/hardware/start-server.ts).
+tests/hardware/secrets.ts
