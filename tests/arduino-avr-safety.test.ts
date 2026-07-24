@@ -228,7 +228,13 @@ describe("CUTTLEFISH_STR_BUF_SIZE macro in string polyfills", () => {
 // ---------------------------------------------------------------------------
 
 describe("Heap-allocation validator (AVR)", () => {
-  it("emits a heap-allocation-avr diagnostic for `new ClassName()` on AVR", () => {
+  // Policy (commit 42408916): the heap-allocation-avr *warning* for user-class
+  // `new ClassName()` was removed — a single long-lived `new` does not fragment
+  // the small AVR heap, so the warning was overly cautious. Only the
+  // heap-allocation-avr *error* for `new Array<E>(n)` → std::vector survives
+  // (covered by the test at the end of this block). These tests pin the new
+  // behavior: user-class `new` in any position produces no heap diagnostic.
+  it("does not emit a heap-allocation-avr diagnostic for `new ClassName()` on AVR", () => {
     // Board import is required to resolve boardConstants (architecture = 'avr');
     // without it the validator has no arch info and returns no diagnostics.
     const result = transpile(
@@ -242,10 +248,11 @@ describe("Heap-allocation validator (AVR)", () => {
       mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
     );
     const codes = result.diagnostics.map(d => (d as any).code);
-    expect(codes).toContain("heap-allocation-avr");
+    expect(codes).not.toContain("heap-allocation-avr");
+    expect(codes).not.toContain("heap-allocation");
   });
 
-  it("does not emit heap-allocation-avr diagnostic on ESP32", () => {
+  it("does not emit a heap-allocation diagnostic for user-class `new` on ESP32", () => {
     const result = transpile(
       `class Bar { constructor(x: int) {} }
        function setup(): void {
@@ -255,12 +262,10 @@ describe("Heap-allocation validator (AVR)", () => {
       mcu: "@typecad/mcu-atmega328p", ...ESP32_CTX },
     );
     const codes = result.diagnostics.map(d => (d as any).code);
-    // ESP32 does NOT get the AVR-specific warning...
+    // Neither the AVR-specific warning nor the generic ESP32 info heads-up is
+    // emitted for user-class `new` (both dropped in 42408916).
     expect(codes).not.toContain("heap-allocation-avr");
-    // ...but DOES get an info-level heads-up (Gap 4: ESP32 heap awareness).
-    expect(codes).toContain("heap-allocation");
-    const infoDiag = result.diagnostics.find(d => (d as any).code === "heap-allocation");
-    expect((infoDiag as any)?.severity).toBe("info");
+    expect(codes).not.toContain("heap-allocation");
   });
 
   it("does not flag typed array constructors (new Uint8Array) on AVR", () => {
@@ -276,9 +281,9 @@ describe("Heap-allocation validator (AVR)", () => {
     expect(heapDiags).toHaveLength(0);
   });
 
-  // Gap 1: the detector previously only inspected var_decl initializers. These
-  // tests confirm `new` is now detected in every statement position.
-  it("detects `new` in an assignment (this.field = new Foo()) on AVR", () => {
+  // The detector still walks `new` in every statement position; these confirm
+  // it no longer surfaces a diagnostic for any of them (post-42408916 policy).
+  it("does not flag `new` in an assignment (this.field = new Foo()) on AVR", () => {
     const result = transpile(
       `import { D13 } from '@typecad/board-arduino-uno';
        class Foo { constructor() {} }
@@ -287,10 +292,10 @@ describe("Heap-allocation validator (AVR)", () => {
       { target: "arduino", mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
     );
     const codes = result.diagnostics.map(d => (d as any).code);
-    expect(codes).toContain("heap-allocation-avr");
+    expect(codes).not.toContain("heap-allocation-avr");
   });
 
-  it("detects `new` in a return statement on AVR", () => {
+  it("does not flag `new` in a return statement on AVR", () => {
     const result = transpile(
       `class Foo { constructor() {} }
        function makeFoo(): Foo { return new Foo(); }
@@ -298,10 +303,10 @@ describe("Heap-allocation validator (AVR)", () => {
       { target: "arduino", mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
     );
     const codes = result.diagnostics.map(d => (d as any).code);
-    expect(codes).toContain("heap-allocation-avr");
+    expect(codes).not.toContain("heap-allocation-avr");
   });
 
-  it("detects `new` inside a call argument on AVR", () => {
+  it("does not flag `new` inside a call argument on AVR", () => {
     const result = transpile(
       `class Foo { constructor() {} }
        function consume(f: Foo): void {}
@@ -309,10 +314,10 @@ describe("Heap-allocation validator (AVR)", () => {
       { target: "arduino", mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
     );
     const codes = result.diagnostics.map(d => (d as any).code);
-    expect(codes).toContain("heap-allocation-avr");
+    expect(codes).not.toContain("heap-allocation-avr");
   });
 
-  it("detects `new` nested in a ternary sub-expression on AVR", () => {
+  it("does not flag `new` nested in a ternary sub-expression on AVR", () => {
     const result = transpile(
       `class A { constructor() {} }
        function make(cond: boolean): A { return cond ? new A() : new A(); }
@@ -320,8 +325,7 @@ describe("Heap-allocation validator (AVR)", () => {
       { target: "arduino", mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
     );
     const heapDiags = result.diagnostics.filter(d => (d as any).code === "heap-allocation-avr");
-    // Both branches of the ternary allocate.
-    expect(heapDiags.length).toBeGreaterThanOrEqual(2);
+    expect(heapDiags).toHaveLength(0);
   });
 
   // Gap 5: `new Array<E>(n)` lowers to std::vector<E> with no marker and text

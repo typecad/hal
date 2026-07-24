@@ -7,9 +7,9 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 
 | Framework | HAL cats supported | HAL cats partial | HAL cats unsupported | Toolchain | Last validated |
 |---|---|---|---|---|---|
-| framework-arduino (canonical) | 12/18 | 4 | 2 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-23 |
-| framework-avr | 13/18 | 3 | 2 | arduino-cli (reexported from @typecad/framework-arduino) (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-23 |
-| framework-esp32 | 15/18 | 3 | 0 | idf.py (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-23 |
+| framework-arduino (canonical) | 12/18 | 4 | 2 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-24 |
+| framework-avr | 13/18 | 3 | 2 | arduino-cli (reexported from @typecad/framework-arduino) (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-24 |
+| framework-esp32 | 15/18 | 3 | 0 | idf.py (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-24 |
 
 ## framework-arduino
 

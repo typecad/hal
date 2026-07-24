@@ -450,12 +450,15 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     const usesPWM = usage?.pwm ?? false;
     const usesExternalInterrupts = usage?.externalInterrupts ?? false;
     // UART driver is gated on actual UART/console usage (programAnalysis.usesUart),
-    // set by analyzeProgram when Serial./console./uart.* appear. Defensive
-    // default (emit) when no analysis is available — mirrors the native_millis
-    // polyfill's behavior and preserves the historical emit for direct strategy
-    // callers that don't supply a PlatformContext.
+    // set by analyzeProgram when Serial./uart.* appear. On AVR, console.* also
+    // routes through UART — the console polyfill below emits _uart_println /
+    // _uart_print calls, so any console usage must keep the _uart_* shim alive
+    // (otherwise the emitted console_log() references an undefined symbol).
+    // Defensive default (emit) when no analysis is available — mirrors the
+    // native_millis polyfill's behavior and preserves the historical emit for
+    // direct strategy callers that don't supply a PlatformContext.
     const analysis = (ctx as any)?.analysis;
-    const usesUART = analysis ? !!analysis.usesUart : true;
+    const usesUART = analysis ? !!(analysis.usesUart || analysis.hasConsoleCalls) : true;
     const pwmPinsUsed = usage?.pwmPinsUsed ?? new Set<number>();
 
     // F_CPU is referenced by the chip descriptor's baked register bits and by

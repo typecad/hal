@@ -12,10 +12,12 @@ describe("ui.onTap runtime source (awaitable tap notifications)", () => {
   });
 
   it("bumps __ui_tap_seq inside ui_touch_up (after click/release dispatch)", () => {
-    // The increment must be AFTER ui_dispatch(__ui_click_handlers) so onClick
+    // The increment must be AFTER ui_dispatch(__ui_release_handlers) so onClick
     // always fires before the awaiter resumes ("both fire" semantics).
+    // Accept either `++` or `= ... + 1`: volatile-qualified integers use the
+    // explicit `+ 1` form under GCC 13+/IDF v6 (-Werror=volatile deprecates `++`).
     expect(header).toMatch(
-      /ui_dispatch\(__ui_release_handlers[\s\S]*?__ui_tap_seq\+\+/,
+      /ui_dispatch\(__ui_release_handlers[\s\S]*?__ui_tap_seq(?:\+\+| = __ui_tap_seq \+ 1)/,
     );
     expect(header).toContain("__ui_tap_node = __ui_touch_node");
   });

@@ -1073,7 +1073,20 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
         // keep the binding non-const so push_back/splice/etc. compile. The
         // callee is the lowered C++ name, e.g. "arr.push_back".
         if (stmt.kind === 'call' && typeof (stmt as any).callee === 'string') {
-          const callee: string = (stmt as any).callee;
+          // Value-arg array methods (.push/.pop/.fill/...) are lowered in
+          // call-statement.ts to a fully-formed raw C++ expression wrapped as
+          // `__RAW_STMT__<receiver>.<method>(<args>)` (e.g. `__RAW_STMT__arr.push_back(1)`).
+          // Strip the wrapper — and the trailing `(args)` when present — before
+          // splitting, otherwise the dot parse yields a receiver of
+          // `__RAW_STMT__arr` and a method of `push_back(1)` and the demotion
+          // below never fires, leaving a non-compiling `const std::vector` +
+          // push_back. Mirrors the __RAW_STMT__ handling in program-analysis.ts.
+          const rawCallee: string = (stmt as any).callee;
+          const unwrapped = rawCallee.startsWith('__RAW_STMT__')
+            ? rawCallee.slice('__RAW_STMT__'.length)
+            : rawCallee;
+          const parenIdx = unwrapped.indexOf('(');
+          const callee = parenIdx > 0 ? unwrapped.slice(0, parenIdx) : unwrapped;
           const dot = callee.lastIndexOf('.');
           if (dot > 0) {
             const receiver = callee.slice(0, dot);
