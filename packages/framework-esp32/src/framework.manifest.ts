@@ -52,6 +52,23 @@ export default defineFrameworkManifest({
         'pwm.get_resolution': 'supported',
       },
     },
+    rmt: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'rmt.tx_init': 'supported',
+        'rmt.tx_write_bytes': 'supported',
+        'rmt.tx_write_symbols': 'supported',
+        'rmt.tx_wait_done': 'supported',
+        'rmt.tx_deinit': 'supported',
+        'rmt.rx_init': 'supported',
+        'rmt.rx_on_received': 'supported',
+        'rmt.rx_start': 'supported',
+        'rmt.rx_stop': 'supported',
+        'rmt.rx_read': 'supported',
+        'rmt.rx_deinit': 'supported',
+      },
+    },
     adc: {
       supported: true,
       partialCoverage: true,
@@ -387,7 +404,7 @@ export default defineFrameworkManifest({
     hardwareTestGroups: ['01-hardware', '02-math-bits', '03-advanced'],
     halResolutionTests: [
       'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'power', 'preferences', 'pulse-shift',
-      'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt', 'wifi',
+      'pwm', 'rmt', 'spi', 'timing', 'tone', 'uart', 'wdt', 'wifi',
     ],
   },
 });
