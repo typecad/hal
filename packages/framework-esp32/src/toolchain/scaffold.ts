@@ -93,6 +93,16 @@ export function scaffoldEspIdfProject(
       'esp_driver_gpio',
       'esp_driver_i2c',
       'esp_driver_spi',
+      // ESP-IDF v6 removed transitive deps from the legacy `driver` component;
+      // each peripheral header now resolves only via its explicit component.
+      // ledc/dac/rmt fix a latent v6 build break (they previously resolved
+      // through the dropped umbrella). ADC's component is `esp_adc` (not
+      // esp_driver_adc — ADC lives under a different name than the others and
+      // already provided its own headers). These resolve on v5 too.
+      'esp_driver_ledc',
+      'esp_adc',
+      'esp_driver_dac',
+      'esp_driver_rmt',
       'esp_http_client',
       'esp-tls',
       'mbedtls',

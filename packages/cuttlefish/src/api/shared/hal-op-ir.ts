@@ -77,6 +77,95 @@ export interface PwmGetResolutionOp {
 }
 
 // ---------------------------------------------------------------------------
+// RMT — Remote Control Transceiver (addressable LEDs, IR, raw waveforms)
+// ---------------------------------------------------------------------------
+// Fields are flat scalars: the resolver collapses object literals to positional
+// strings, so a nested `opts` object is not representable on a HALOpIR.
+// bit0/bit1 timings are [hi, lo] tick pairs flattened to two fields each.
+
+export interface RmtTxInitOp {
+  operation: "rmt.tx_init";
+  port?: string;
+  pin: number;
+  resolutionHz: number | string;
+  bit0Hi: number | string;
+  bit0Lo: number | string;
+  bit1Hi: number | string;
+  bit1Lo: number | string;
+  msbFirst?: boolean | string;
+  queueDepth?: number | string;
+}
+
+export interface RmtTxWriteBytesOp {
+  operation: "rmt.tx_write_bytes";
+  port?: string;
+  pin: number;
+  /** Pre-rendered C array initializer body, e.g. "1, 2, 3" (positional; bytes arg is array-literal-rendered). */
+  bytes: string;
+}
+
+export interface RmtTxWriteSymbolsOp {
+  operation: "rmt.tx_write_symbols";
+  port?: string;
+  pin: number;
+  /** Rendered rmt_symbol_word_t array body, one row per symbol. */
+  symbols: string;
+}
+
+export interface RmtTxWaitDoneOp {
+  operation: "rmt.tx_wait_done";
+  port?: string;
+  pin: number;
+  timeoutMs?: number | string;
+}
+
+export interface RmtTxDeinitOp {
+  operation: "rmt.tx_deinit";
+  port?: string;
+  pin: number;
+}
+
+export interface RmtRxInitOp {
+  operation: "rmt.rx_init";
+  port?: string;
+  pin: number;
+  resolutionHz: number | string;
+}
+
+export interface RmtRxOnReceivedOp {
+  operation: "rmt.rx_on_received";
+  port?: string;
+  pin: number;
+  /** User-declared C function name to call on receive. */
+  handler: string;
+}
+
+export interface RmtRxStartOp {
+  operation: "rmt.rx_start";
+  port?: string;
+  pin: number;
+}
+
+export interface RmtRxStopOp {
+  operation: "rmt.rx_stop";
+  port?: string;
+  pin: number;
+}
+
+export interface RmtRxReadOp {
+  operation: "rmt.rx_read";
+  port?: string;
+  pin: number;
+  maxCount: number | string;
+}
+
+export interface RmtRxDeinitOp {
+  operation: "rmt.rx_deinit";
+  port?: string;
+  pin: number;
+}
+
+// ---------------------------------------------------------------------------
 // ADC — analog-to-digital conversion
 // ---------------------------------------------------------------------------
 
@@ -1001,6 +1090,18 @@ export type HALOpIR =
   | PwmWriteOp
   | PwmGetFrequencyOp
   | PwmGetResolutionOp
+  // RMT
+  | RmtTxInitOp
+  | RmtTxWriteBytesOp
+  | RmtTxWriteSymbolsOp
+  | RmtTxWaitDoneOp
+  | RmtTxDeinitOp
+  | RmtRxInitOp
+  | RmtRxOnReceivedOp
+  | RmtRxStartOp
+  | RmtRxStopOp
+  | RmtRxReadOp
+  | RmtRxDeinitOp
   // ADC
   | AdcReadOp
   | AdcGetResolutionOp
@@ -1191,6 +1292,11 @@ export const HAL_OPERATION_KINDS = [
   'gpio.write', 'gpio.read', 'gpio.toggle', 'gpio.set_mode',
   // PWM
   'pwm.write', 'pwm.get_frequency', 'pwm.get_resolution',
+  // RMT
+  'rmt.tx_init', 'rmt.tx_write_bytes', 'rmt.tx_write_symbols',
+  'rmt.tx_wait_done', 'rmt.tx_deinit',
+  'rmt.rx_init', 'rmt.rx_on_received', 'rmt.rx_start',
+  'rmt.rx_stop', 'rmt.rx_read', 'rmt.rx_deinit',
   // ADC
   'adc.read', 'adc.get_resolution', 'adc.set_reference',
   'adc.get_reference', 'adc.read_voltage',

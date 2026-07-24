@@ -53,3 +53,4 @@ export {
   BleValueType, BlePerm, BleStatus, BleAdvertisingMode, GATT,
 } from './ble.js';
 export type { GattCharacteristicDef, CharValue } from './ble.js';
+export { RmtChannel } from './rmt.js';

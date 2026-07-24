@@ -36,6 +36,7 @@ import { buildInlineForLoop } from "./array-methods.js";
 import {
   isKnownHALClass,
   getCtorIncludes,
+  getHALCtorFieldMap,
   registerFloatVariable,
   resolveHALReceiver,
   isHALSingleton,
@@ -530,8 +531,15 @@ export function variableStatementToIR(
           }
 
           if (ctorArgs) {
+            // Resolve a Pin-identifier ctor arg to its _pin number, for any HAL
+            // class whose first constructor field is _pin (Pin itself, plus
+            // pin-bearing wrappers like RmtChannel). Mirrors the Pin branch
+            // above but keyed off the class's registered ctor field map so new
+            // pin-keyed classes work without a per-class branch here.
+            const ctorFieldMap = getHALCtorFieldMap(className);
+            const firstFieldIsPin = ctorFieldMap && Array.from(ctorFieldMap.keys())[0] === "_pin";
             for (const arg of ctorArgs) {
-              if (ts.isIdentifier(arg) && className === "Pin") {
+              if (ts.isIdentifier(arg) && (className === "Pin" || firstFieldIsPin)) {
                 const existing = halInstances.get(arg.text);
                 if (existing && existing.fieldValues.has("_pin")) {
                   fieldValues.set("_pin", existing.fieldValues.get("_pin")!);
