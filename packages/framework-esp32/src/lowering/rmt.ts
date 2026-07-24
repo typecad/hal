@@ -68,6 +68,39 @@ export function resetRmtChannels(): void {
 function txSym(pin: number): string { return `__tc_rmt_tx${pin}`; }
 function rxSym(pin: number): string { return `__tc_rmt_rx${pin}`; }
 
+/** Render a tick/count value as a clean C integer literal. The resolver can
+ *  hand us values like "4.0f" (C float literal — float-typed first positional
+ *  arg) or "4" or a number; we parse and emit a bare integer so brace-enclosed
+ *  initializers don't hit float→uint16 narrowing errors. Non-numeric (runtime
+ *  expression) strings pass through unchanged. */
+function intLit(v: unknown): string {
+  if (typeof v === 'number') return String(Math.trunc(v));
+  if (typeof v === 'boolean') return v ? '1' : '0';
+  const s = String(v ?? '').trim();
+  if (s === '') return '0';
+  // Strip C float suffixes (4.0f, 9.0F) and parse.
+  const cleaned = s.replace(/[fFuUlL]+$/, '');
+  const n = Number(cleaned);
+  return !Number.isNaN(n) ? String(Math.trunc(n)) : s;
+}
+
+/** Split a comma-separated initializer body on top-level commas only, so an
+ *  element like `f(a,b)` or `{x,y}` stays intact. Used to cast each byte of a
+ *  txWriteBytes buffer individually. */
+function splitTopLevelCommas(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of s) {
+    if (ch === '(' || ch === '{' || ch === '[') depth++;
+    else if (ch === ')' || ch === '}' || ch === ']') depth--;
+    if (ch === ',' && depth === 0) { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  if (cur.trim() !== '') out.push(cur);
+  return out;
+}
+
 // ── init lines: scan IR, emit file-scope declarations ────────────────────────
 export function rmtInitLines(program: ProgramIR): string[] {
   // Walk the IR collecting tx_init / rx_init pins. lowerRmt may also have
@@ -101,10 +134,14 @@ function registerTxPin(op: any): TxPinCfg {
   const cfg: TxPinCfg = {
     pin,
     resolutionHz: String(op.resolutionHz ?? 10000000),
-    bit0Hi: String(op.bit0Hi ?? 4), bit0Lo: String(op.bit0Lo ?? 9),
-    bit1Hi: String(op.bit1Hi ?? 9), bit1Lo: String(op.bit1Lo ?? 4),
+    // Coerce to clean integers: the resolver can render numeric literals with
+    // a float suffix (e.g. "4.0f") for the first element of a positional arg
+    // list, and inside a brace-enclosed struct initializer float→uint16
+    // narrowing is a hard error. RMT tick durations are always integers.
+    bit0Hi: intLit(op.bit0Hi ?? 4), bit0Lo: intLit(op.bit0Lo ?? 9),
+    bit1Hi: intLit(op.bit1Hi ?? 9), bit1Lo: intLit(op.bit1Lo ?? 4),
     msbFirst: String(op.msbFirst ?? false),
-    queueDepth: String(op.queueDepth ?? 4),
+    queueDepth: intLit(op.queueDepth ?? 4),
   };
   txPins.set(pin, cfg);
   return cfg;
@@ -136,7 +173,7 @@ function emitTxDecl(c: TxPinCfg): string[] {
     `static void ${h}_init(void) {`,
     `  if (${h}_ready) return;`,
     `  rmt_tx_channel_config_t ${h}_cfg = {`,
-    `    .gpio_num = ${c.pin},`,
+    `    .gpio_num = (gpio_num_t)${c.pin},`,
     `    .clk_src = RMT_CLK_SRC_DEFAULT,`,
     `    .resolution_hz = ${c.resolutionHz},`,
     `    .mem_block_symbols = SOC_RMT_MEM_WORDS_PER_CHANNEL,`,
@@ -174,7 +211,7 @@ function emitRxDecl(c: RxPinCfg): string[] {
     `static void ${h}_init(void) {`,
     `  if (${h}) return;`,
     `  rmt_rx_channel_config_t ${h}_cfg = {`,
-    `    .gpio_num = ${c.pin},`,
+    `    .gpio_num = (gpio_num_t)${c.pin},`,
     `    .clk_src = RMT_CLK_SRC_DEFAULT,`,
     `    .resolution_hz = ${c.resolutionHz},`,
     `    .mem_block_symbols = SOC_RMT_MEM_WORDS_PER_CHANNEL,`,
@@ -204,10 +241,19 @@ export function lowerRmt(op: HALOpIR): { code?: string; expression?: string } {
     case 'rmt.tx_write_bytes': {
       const pin = Number(o.pin);
       const h = txSym(pin);
-      const bytes = String(o.bytes ?? '');
+      // The resolver renders an array literal [g, r, b] as a braced "{ g, r, b }".
+      // Elements may be runtime int variables; initializing a uint8_t[] from
+      // them via braced-init triggers -Wnarrowing (hard error under -Werror).
+      // Strip the braces and re-emit each element wrapped in an explicit
+      // (uint8_t) cast so the narrowing is intentional, not implicit.
+      const bytes = String(o.bytes ?? '').trim();
+      const inner = bytes.startsWith('{') ? bytes.slice(1, -1) : bytes;
       const buf = `${h}_buf`;
+      // Count elements to size the buffer (split on top-level commas).
+      const elems = splitTopLevelCommas(inner);
+      const casted = elems.map((e) => `(uint8_t)(${e.trim()})`).join(', ');
       return { code: [
-        `static const uint8_t ${buf}[] = { ${bytes} };`,
+        `uint8_t ${buf}[${elems.length}] = { ${casted} };`,
         `${h}_init();`,
         `${h}_txcfg.loop_count = 0;`,
         `rmt_transmit(${h}, ${h}_enc, ${buf}, sizeof(${buf}), &${h}_txcfg);`,
@@ -216,12 +262,12 @@ export function lowerRmt(op: HALOpIR): { code?: string; expression?: string } {
     case 'rmt.tx_write_symbols': {
       const pin = Number(o.pin);
       const h = txSym(pin);
-      const symbols = String(o.symbols ?? '');
+      // symbols renders as a braced list (same caveat as tx_write_bytes).
+      const symbols = String(o.symbols ?? '').trim();
+      const init = symbols.startsWith('{') ? symbols : `{ ${symbols} }`;
       const arr = `${h}_syms`;
       return { code: [
-        `static const rmt_symbol_word_t ${arr}[] = {`,
-        symbols,
-        `  };`,
+        `static const rmt_symbol_word_t ${arr}[] = ${init};`,
         `${h}_init();`,
         `rmt_copy_encoder_config_t ${h}_ccopy = {};`,
         `rmt_encoder_handle_t ${h}_copyenc = NULL;`,

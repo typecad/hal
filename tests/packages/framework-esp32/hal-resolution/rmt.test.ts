@@ -35,7 +35,8 @@ describe('rmtInitLines(program)', () => {
     expect(lines).toContain('static rmt_channel_handle_t __tc_rmt_tx48 = NULL');
     expect(lines).toContain('static void __tc_rmt_tx48_init(void)');
     expect(lines).toContain('rmt_new_tx_channel');
-    expect(lines).toContain('.gpio_num = 48');
+    // gpio_num is cast to gpio_num_t (int→enum is a hard error without it).
+    expect(lines).toContain('.gpio_num = (gpio_num_t)48');
     expect(lines).toContain('.resolution_hz = 10000000');
     expect(lines).toContain('rmt_new_bytes_encoder');
     // bit timings baked in
