@@ -59,7 +59,16 @@ export interface Esp32ChipDescriptor {
   };
 
   /** Capabilities absent on this variant — drives profileDiagnostics errors. */
-  lacks: 'dac'[];
+  lacks: ('dac' | 'rmt')[];
+
+  /** RMT channel budget per variant. Classic ESP32 channels are bidirectional
+   *  (8 total); modeled here as separate TX/RX caps since the pin-based
+   *  allocator counts each direction independently. Absent when lacks includes
+   *  'rmt' (none of the four current variants lack it, but the path exists). */
+  rmt?: {
+    txChannels: number;
+    rxChannels: number;
+  };
 
   ledc: {
     timerBits: number;

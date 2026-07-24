@@ -31,6 +31,44 @@ export function gpioSetMode(pin: number | string, mode: string): void {}
 export function pwmWrite(pin: number | string, duty: number): void {}
 
 // ---------------------------------------------------------------------------
+// RMT — Remote Control Transceiver (addressable LEDs, IR, raw digital waveforms)
+// ---------------------------------------------------------------------------
+// rmtTxInit/rmtRxInit are POSITIONAL semantic primitives — the ergonomic
+// opts-object form lives in hal/rmt.ts (which destructures and forwards). The
+// resolver collapses object literals, so HALOpIR fields must be scalars; the
+// rmt.ts wrapper bridges the ergonomic API to these positional calls.
+
+/** Positional semantic primitive. Args: pin, resolutionHz, bit0Hi, bit0Lo,
+ *  bit1Hi, bit1Lo, msbFirst, queueDepth. Use rmtTxInit() from hal/rmt.ts. */
+export function rmtTxInit(
+  pin: number | string,
+  resolutionHz: number,
+  bit0Hi: number, bit0Lo: number, bit1Hi: number, bit1Lo: number,
+  msbFirst: boolean, queueDepth: number,
+): void {}
+/** Write bytes via the channel's bytes-encoder (timings fixed at init). */
+export function rmtTxWriteBytes(pin: number | string, bytes: number[] | Uint8Array): void {}
+/** Write raw RMT symbols — arbitrary [hiTicks, loTicks] pairs. */
+export function rmtTxWriteSymbols(pin: number | string, symbols: [number, number][]): void {}
+/** Block until the queued TX completes. */
+export function rmtTxWaitDone(pin: number | string, timeoutMs?: number): void {}
+/** Tear down the TX channel and release its slot. */
+export function rmtTxDeinit(pin: number | string): void {}
+
+/** Positional semantic primitive — use rmtRxInit() from hal/rmt.ts. */
+export function rmtRxInit(pin: number | string, resolutionHz: number): void {}
+/** Register a callback-by-name invoked when an RX burst completes. */
+export function rmtRxOnReceived(pin: number | string, handler: string): void {}
+/** Start receiving. */
+export function rmtRxStart(pin: number | string): void {}
+/** Stop receiving. */
+export function rmtRxStop(pin: number | string): void {}
+/** Blocking read — returns flattened symbols [d0,l0,d1,l1,…] in ticks. */
+export function rmtRxRead(pin: number | string, maxCount: number): number[] { return []; }
+/** Tear down the RX channel and release its slot. */
+export function rmtRxDeinit(pin: number | string): void {}
+
+// ---------------------------------------------------------------------------
 // ADC — analog-to-digital conversion
 // ---------------------------------------------------------------------------
 

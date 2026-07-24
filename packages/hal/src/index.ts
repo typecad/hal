@@ -53,3 +53,7 @@ export {
   BleValueType, BlePerm, BleStatus, BleAdvertisingMode, GATT,
 } from './ble.js';
 export type { GattCharacteristicDef, CharValue } from './ble.js';
+export {
+  rmtTxInit, rmtTxWriteBytes, rmtTxWriteSymbols, rmtTxWaitDone, rmtTxDeinit,
+  rmtRxInit, rmtRxOnReceived, rmtRxStart, rmtRxStop, rmtRxRead, rmtRxDeinit,
+} from './rmt.js';
