@@ -35,5 +35,8 @@
     "@typecad/expect": "1.0.0-alpha.6",
     "@typecad/board-arduino-uno": "1.0.0-alpha.6"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }
