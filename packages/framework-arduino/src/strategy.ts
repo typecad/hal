@@ -1631,7 +1631,57 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
         return { expression: `random(2147483647)` };
       case "random.range": {
         const r = op as any;
+        // Arduino random(min, max) → [min, max-1]. When min is a literal 0,
+        // emit the single-arg random(max) form (equivalent range, and what the
+        // Arduino core + HAL Random.upTo(max) expect — Random.upTo collapses
+        // to random.range with min=0).
+        if (String(r.min) === '0') return { expression: `random(${r.max})` };
         return { expression: `random(${r.min}, ${r.max})` };
+      }
+
+      // FS — Arduino-core FS.h / SD.h filesystem. The HAL FS class used to
+      // lower via rawCpp; it now emits typed fs.* ops, so this switch restores
+      // the Arduino-core multi-statement bodies. ESP32 overrides to the native
+      // esp_vfs_fat_sdmmc_mount + POSIX helpers.
+      case "fs.begin":
+        return { code: `return FS.begin();` };
+      case "fs.exists": {
+        const f = op as any;
+        return { code: `return FS.exists(${f.path});` };
+      }
+      case "fs.remove": {
+        const f = op as any;
+        return { code: `return FS.remove(${f.path});` };
+      }
+      case "fs.read_text": {
+        const f = op as any;
+        return { code: `File f = FS.open(${f.path}, "r"); if (!f) return ""; String s = f.readString(); f.close(); return s.c_str();` };
+      }
+      case "fs.write_text": {
+        const f = op as any;
+        return { code: `File f = FS.open(${f.path}, "w"); if (f) { f.print(${f.content}); f.close(); }` };
+      }
+
+      // Hardware timers — STM32-Arduino HardwareTimer singletons (Timer0/1/2).
+      // The HAL HardwareTimer class (Timer.setFrequency/onOverflow/start/stop)
+      // used to lower via rawCpp to bare TimerN.* calls; it now emits typed
+      // hwtimer.* ops, so this switch restores the Arduino-core singleton calls.
+      // ESP32 overrides this in Esp32Strategy to use the GPTimer driver.
+      case "hwtimer.set_frequency": {
+        const t = op as any;
+        return { code: `Timer${t.instance}.setFrequency(${t.hz});` };
+      }
+      case "hwtimer.on_overflow": {
+        const t = op as any;
+        return { code: `Timer${t.instance}.onOverflow(${t.handler});` };
+      }
+      case "hwtimer.start": {
+        const t = op as any;
+        return { code: `Timer${t.instance}.start();` };
+      }
+      case "hwtimer.stop": {
+        const t = op as any;
+        return { code: `Timer${t.instance}.stop();` };
       }
 
       default:
