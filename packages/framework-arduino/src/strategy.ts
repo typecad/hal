@@ -3,6 +3,12 @@
 //
 // Absorbs all Arduino-specific emit logic previously scattered across
 // cpp-emitter.ts, TypeCAD-map.ts, and arduino-profile.ts.
+//
+// EMIT BOUNDARY: This file is a canonical entry point of the framework strategy
+// surface (B) — its setup()/loop()/.ino scaffold bytes land in user sketches.
+// The emitted bytes are covered by the TypeCAD Runtime Exception (see
+// RUNTIME_EXCEPTION.md at the repository root) and are not subject to the
+// license of this tool source.
 // ---------------------------------------------------------------------------
 
 import type { PlatformStrategy, ExpressionIR, ProgramIR, Diagnostic, PlatformContext, BoardConstants, RuntimePolyfillIR, StdLibSupport, AsyncRuntimeConfig, GraphicsCapacity, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode, TouchProfile } from "@typecad/cuttlefish/api/shared";
@@ -1612,6 +1618,21 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
         return { code: `wdt_reset();` };
       case "wdt.disable":
         return { code: `wdt_disable();` };
+
+      // Random — Arduino core random()/randomSeed(). The HAL Random class
+      // (Random.upTo/between/int) used to lower via rawCpp to bare random()
+      // calls; it now emits typed random.* ops, so this switch restores the
+      // Arduino-core calls. ESP32 overrides this in Esp32Strategy to use the
+      // hardware RNG (esp_random()) instead.
+      case "random.seed":
+        return { code: `randomSeed(${op.seed});` };
+      case "random.int":
+        // Non-negative 31-bit integer via Arduino random(INT_MAX) → [0, 2^31-2].
+        return { expression: `random(2147483647)` };
+      case "random.range": {
+        const r = op as any;
+        return { expression: `random(${r.min}, ${r.max})` };
+      }
 
       default:
         return undefined;

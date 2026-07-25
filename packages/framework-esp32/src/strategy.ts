@@ -1,3 +1,13 @@
+// ---------------------------------------------------------------------------
+// ESP32Strategy — ESP-IDF framework target (setup/loop, Wi-Fi, native displays)
+//
+// EMIT BOUNDARY: This file is a canonical entry point of the framework strategy
+// surface (B) — its ESP-IDF setup/loop scaffold, peripheral adapter, and
+// display/touch lowering bytes land in user sketches. The emitted bytes are
+// covered by the TypeCAD Runtime Exception (see RUNTIME_EXCEPTION.md at the
+// repository root) and are not subject to the license of this tool source.
+// ---------------------------------------------------------------------------
+
 import { ArduinoStrategy, splitStreamChain } from '@typecad/framework-arduino';
 import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode, TouchProfile } from '@typecad/cuttlefish/api/shared';
 import { resolveNativeDisplayOp } from '@typecad/cuttlefish/api/shared';

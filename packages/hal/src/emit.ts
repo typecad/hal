@@ -5,6 +5,11 @@
 // resolver.  The framework strategy translates each operation into
 // framework-specific C++ at code generation time.
 //
+// EMIT BOUNDARY: This file is a canonical entry point of the HAL lowering
+// surface (A) — its C++ output lands in user sketches. The emitted bytes are
+// covered by the TypeCAD Runtime Exception (see RUNTIME_EXCEPTION.md at the
+// repository root) and are not subject to the license of this tool source.
+//
 // Pin parameters accept both `number` (legacy framework pin number) and
 // `string` (MCU port name like "PB5"). The transpiler resolves port names
 // to framework pin numbers via the MCU package's pin mapping.

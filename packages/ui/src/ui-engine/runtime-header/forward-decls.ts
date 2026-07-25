@@ -1,6 +1,12 @@
 // Slice of the C++ runtime header (original source lines 622-752).
 // navigate, canvas/scroll/text/paint/clip/AA/image forward declarations, persistent canvas globals.
 // See docs/superpowers/specs/2026-07-12-split-runtime-header-design.md.
+//
+// EMIT BOUNDARY: This file is the structural head of the UI runtime header
+// surface (C) — every partial emitter in this directory produces bytes that are
+// assembled into the C++ header inlined into user sketches. The emitted bytes
+// are covered by the TypeCAD Runtime Exception (see RUNTIME_EXCEPTION.md at the
+// repository root) and are not subject to the license of this tool source.
 export function emitForwardDecls(): string {
   return `
 // Early forward declaration: ui_navigate (below) calls ui_release_canvas_state

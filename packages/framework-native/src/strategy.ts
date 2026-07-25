@@ -3,6 +3,12 @@
 //
 // Outputs standard C++ with main(), std::cout, std::string, and std::thread-
 // based async. No hardware or Arduino dependencies.
+//
+// EMIT BOUNDARY: This file is a canonical entry point of the framework strategy
+// surface (B) — its main()/stdout scaffold bytes land in user executables.
+// The emitted bytes are covered by the TypeCAD Runtime Exception (see
+// RUNTIME_EXCEPTION.md at the repository root) and are not subject to the
+// license of this tool source.
 // ---------------------------------------------------------------------------
 
 import type {

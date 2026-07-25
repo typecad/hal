@@ -5,6 +5,12 @@
 // framework function calls. For example:
 //   D13.high()  →  PORTB |= (1 << PB5)
 //   A0.read()   →  ADC register operations
+//
+// EMIT BOUNDARY: This file is a canonical entry point of the framework strategy
+// surface (B) — its register-access scaffold bytes land in user sketches.
+// The emitted bytes are covered by the TypeCAD Runtime Exception (see
+// RUNTIME_EXCEPTION.md at the repository root) and are not subject to the
+// license of this tool source.
 // ---------------------------------------------------------------------------
 
 import { ArduinoStrategy } from '@typecad/framework-arduino';
