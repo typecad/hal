@@ -601,7 +601,13 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       sourceText = preprocess(sourceText, filePath);
     }
 
-    if (options.debug && breakpoints) {
+    // Printf instrumentation runs only in printf debug mode. In gdb mode
+    // (e.g. ESP32-S3), --debug emits #line markers at the emit stage and
+    // uses VS Code native breakpoints; the printf preprocessor is skipped
+    // so the source reaches IR/emit unmodified.
+    const buildTarget = (options.platformContext?.frameworkData as { buildTarget?: string } | undefined)?.buildTarget;
+    const debugMode = strategy.debugMode?.(buildTarget) ?? 'printf';
+    if (options.debug && breakpoints && debugMode === 'printf') {
       const instrumented = debugPreprocess({
         fileName: filePath,
         breakpoints,
