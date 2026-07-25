@@ -8,12 +8,18 @@
 
 import ts from 'typescript';
 import path from 'node:path';
-import type { BreakpointMap, CapturedVariable, RichBreakpoint } from './types.js';
+import type { BreakpointMap, CapturedVariable, DebugCppType, RichBreakpoint } from './types.js';
 import { getBreakpointsForFile } from './breakpoint-loader.js';
 import { getLoadedFramework, hasLoadedFramework } from '../framework-registry.js';
 import { GenericStrategy } from '../platform/generic-strategy.js';
 
 type LogMessagePart = { type: 'text' | 'variable'; value: string };
+
+/** A function-like declaration with a body and parameters (scope-bearing). */
+type ScopeBearingFunction =
+  | ts.FunctionDeclaration
+  | ts.ArrowFunction
+  | ts.MethodDeclaration;
 
 function getDebugStrategy() {
   if (hasLoadedFramework()) {
@@ -58,6 +64,13 @@ export function preprocess(options: {
   const scopeAnalyzer = new ScopeAnalyzer(sf);
   const debugStrategy = getDebugStrategy();
 
+  // Per-file breakpoint ID counter. Each HALTING breakpoint gets a stable
+  // integer ID so the codegen can emit a per-breakpoint disable flag (skipped
+  // via the 's' key at runtime). IDs are scoped to this file and reset per
+  // preprocess() call, so they stay small and deterministic across builds.
+  // Logpoints never halt and don't need an ID.
+  let nextBreakpointId = 0;
+
   // Find the first non-import, non-comment line to insert debug init
   let insertIndex = 0;
   for (let i = 0; i < lines.length; i++) {
@@ -89,8 +102,13 @@ export function preprocess(options: {
       // Collect variables in scope at this line
       const vars = scopeAnalyzer.getVariablesInScope(lineNum);
 
+      // Halting breakpoints get a per-file ID (used by the codegen to emit a
+      // disable flag the user can toggle at runtime with the 's' key). Logpoints
+      // never halt, so they pass no ID.
+      const breakpointId = bp.logMessage ? undefined : nextBreakpointId++;
+
       // Inject debug code BEFORE the breakpoint line
-      outputLines.push(...generateBreakpointCode(relativeFileName, lineNum + 1, displayLine, vars, bp, debugStrategy));
+      outputLines.push(...generateBreakpointCode(relativeFileName, lineNum + 1, displayLine, vars, bp, debugStrategy, breakpointId));
     }
 
     // Always include the original line
@@ -121,6 +139,7 @@ function generateBreakpointCode(
   variables: CapturedVariable[],
   bp: RichBreakpoint,
   debugStrategy: ReturnType<typeof getDebugStrategy>,
+  breakpointId: number | undefined,
 ): string[] {
   // If this is a logpoint (has logMessage), generate log-only code
   if (bp.logMessage) {
@@ -128,7 +147,7 @@ function generateBreakpointCode(
     if (debugStrategy.generateDebugLogpointCode) {
       return debugStrategy.generateDebugLogpointCode({
         fileName, lineNum, parts,
-        variables: variables.map(v => ({ name: v.name, isFunction: v.isFunction })),
+        variables: variables.map(v => ({ name: v.name, isFunction: v.isFunction, cppType: v.cppType })),
       });
     }
     return [];
@@ -140,8 +159,9 @@ function generateBreakpointCode(
   if (debugStrategy.generateDebugBreakpointCode) {
     return debugStrategy.generateDebugBreakpointCode({
       fileName, lineNum, originalLine,
-      variables: variables.map(v => ({ name: v.name, isFunction: v.isFunction })),
+      variables: variables.map(v => ({ name: v.name, isFunction: v.isFunction, cppType: v.cppType })),
       normalizedCondition,
+      breakpointId,
     });
   }
 
@@ -213,56 +233,183 @@ class ScopeAnalyzer {
   }
 
   private analyze(): void {
+    // Top-level (module-scope) variables. Iterating sf.statements is reliable
+    // across TS statement-classification variants (a bare `let x = 0;` can be
+    // parsed as either VariableStatement or FirstStatement; both expose
+    // .declarationList, so read it uniformly).
     const topLevelVars: CapturedVariable[] = [];
-    this.collectVariables(this.sf, topLevelVars);
+    for (const stmt of this.sf.statements) {
+      this.collectVariablesFromStatement(stmt, topLevelVars);
+    }
     this.functionVars.set(-1, topLevelVars);
 
-    const visit = (node: ts.Node, currentVars: CapturedVariable[]): CapturedVariable[] => {
-      if (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node)) {
-        const startLine = this.sf.getLineAndCharacterOfPosition(node.getStart()).line;
-        const endLine = node.body
-          ? this.sf.getLineAndCharacterOfPosition(node.body.getEnd()).line
-          : startLine;
-        const localVars: CapturedVariable[] = [...currentVars];
+    // Record a scope entry for every line inside each function body, capturing
+    // enclosing-scope vars + parameters + body locals. Nested functions get
+    // their own entries that shadow the parent on their line range.
+    //
+    // Per-line scope filtering: body locals are only in scope on lines STRICTLY
+    // AFTER their declaration line. The breakpoint dump is injected at the
+    // START of the breakpoint line (before that line's own declaration runs),
+    // so a local declared on line N is not yet in scope at line N. Params and
+    // enclosing-scope vars are in scope from the function's first line.
+    const recordFunction = (node: ScopeBearingFunction, currentVars: CapturedVariable[]): void => {
+      const startLine = this.sf.getLineAndCharacterOfPosition(node.getStart()).line;
+      const endLine = node.body
+        ? this.sf.getLineAndCharacterOfPosition(node.body.getEnd()).line
+        : startLine;
 
-        for (const param of node.parameters) {
-          if (ts.isIdentifier(param.name)) {
-            localVars.push({ name: param.name.text });
-          }
+      // Always-in-scope from the function's first line: enclosing vars + params.
+      const alwaysInScope: CapturedVariable[] = [...currentVars];
+      for (const param of node.parameters) {
+        if (ts.isIdentifier(param.name)) {
+          alwaysInScope.push({
+            name: param.name.text,
+            // Params have no initializer; infer from the annotation only.
+            cppType: this.inferCppTypeFromAnnotation(param.type),
+          });
         }
-
-        if (node.body) {
-          this.collectVariables(node.body, localVars);
-        }
-
-        for (let line = startLine; line <= endLine; line++) {
-          this.functionVars.set(line, localVars);
-        }
-        return localVars;
       }
 
-      ts.forEachChild(node, child => visit(child, currentVars));
-      return currentVars;
+      // Body locals carry their own declaration line for per-line filtering.
+      const bodyLocals: CapturedVariable[] = [];
+      if (node.body) {
+        this.collectVariablesInBody(node.body, bodyLocals, recordFunction);
+      }
+
+      for (let line = startLine; line <= endLine; line++) {
+        // A body local is in scope at `line` only if declared on a strictly
+        // earlier line (declLine < line). This prevents both compile errors
+        // (use-before-declaration on the declaring line) and runtime reads of
+        // uninitialized locals at breakpoints above the declaration.
+        const localsInScope = bodyLocals.filter(v => v.declLine === undefined || v.declLine < line);
+        this.functionVars.set(line, [...alwaysInScope, ...localsInScope]);
+      }
     };
 
-    visit(this.sf, topLevelVars);
+    // Find top-level functions, then recurse into their bodies for nested ones.
+    for (const stmt of this.sf.statements) {
+      this.findAndRecordFunctions(stmt, topLevelVars, recordFunction);
+    }
   }
 
-  private collectVariables(node: ts.Node, vars: CapturedVariable[]): void {
-    if (ts.isVariableStatement(node)) {
-      for (const decl of node.declarationList.declarations) {
-        if (ts.isIdentifier(decl.name)) {
-          const isFunction = decl.initializer !== undefined && this.isFunctionExpression(decl.initializer);
-          vars.push({ name: decl.name.text, isFunction });
-        }
+  /** Collect variables declared directly by a single statement (top-level use). */
+  private collectVariablesFromStatement(stmt: ts.Statement, vars: CapturedVariable[]): void {
+    if (ts.isVariableStatement(stmt) && stmt.declarationList) {
+      this.collectFromDeclarationList(stmt.declarationList, vars);
+    } else if (this.isFirstStatementVariableDeclaration(stmt)) {
+      this.collectFromDeclarationList((stmt as unknown as { declarationList: ts.VariableDeclarationList }).declarationList, vars);
+    }
+  }
+
+  /**
+   * Walk a function body collecting locals, recursing into nested functions so
+   * they get their own scope entry (without leaking their locals to the parent).
+   */
+  private collectVariablesInBody(
+    body: ts.Node,
+    vars: CapturedVariable[],
+    recordFunction: (node: ScopeBearingFunction, currentVars: CapturedVariable[]) => void,
+  ): void {
+    ts.forEachChild(body, (child) => {
+      if (ts.isFunctionDeclaration(child) || ts.isArrowFunction(child) || ts.isMethodDeclaration(child)) {
+        // Nested function: record its scope, but do not add its name to this
+        // scope's printable vars (it's a function value).
+        recordFunction(child as ScopeBearingFunction, vars);
+        return;
+      }
+      this.collectVariablesFromStatement(child as ts.Statement, vars);
+      this.collectVariablesInBody(child, vars, recordFunction);
+    });
+  }
+
+  /** Recurse looking for function declarations to record. */
+  private findAndRecordFunctions(
+    node: ts.Node,
+    currentVars: CapturedVariable[],
+    recordFunction: (node: ScopeBearingFunction, currentVars: CapturedVariable[]) => void,
+  ): void {
+    if (ts.isFunctionDeclaration(node) || ts.isArrowFunction(node) || ts.isMethodDeclaration(node)) {
+      recordFunction(node as ScopeBearingFunction, currentVars);
+      return; // recordFunction already walks the body for nested functions.
+    }
+    ts.forEachChild(node, (child) => this.findAndRecordFunctions(child, currentVars, recordFunction));
+  }
+
+  private collectFromDeclarationList(list: ts.VariableDeclarationList, vars: CapturedVariable[]): void {
+    for (const decl of list.declarations) {
+      if (ts.isIdentifier(decl.name)) {
+        const isFunction = decl.initializer !== undefined && this.isFunctionExpression(decl.initializer);
+        // declLine is the 0-indexed source line of the declaration. Used by
+        // recordFunction to filter body locals per line (declLine < line).
+        const declLine = this.sf.getLineAndCharacterOfPosition(decl.getStart()).line;
+        vars.push({
+          name: decl.name.text,
+          isFunction,
+          declLine,
+          cppType: isFunction ? undefined : this.inferCppType(decl),
+        });
+      }
+    }
+  }
+
+  /**
+   * Infer a coarse C++ type category from an explicit `: T` type annotation
+   * node. Returns `unknown` when there is no annotation or it isn't a primitive
+   * keyword we recognize.
+   */
+  private inferCppTypeFromAnnotation(typeNode: ts.TypeNode | undefined): DebugCppType {
+    if (!typeNode) return 'unknown';
+    if (typeNode.kind === ts.SyntaxKind.BooleanKeyword) return 'bool';
+    if (typeNode.kind === ts.SyntaxKind.StringKeyword) return 'string';
+    if (typeNode.kind === ts.SyntaxKind.NumberKeyword) return 'float'; // TS number → %g is the safe choice
+    if (typeNode.kind === ts.SyntaxKind.BigIntKeyword) return 'long';
+    return 'unknown';
+  }
+
+  /**
+   * Infer a coarse C++ type category from a variable declaration, WITHOUT a
+   * TypeChecker (the debug path is parse-only). Priority:
+   *   1. Explicit `: T` annotation (authoritative).
+   *   2. Initializer shape (literal kind, or a small allowlist of known HAL
+   *      calls like millis()/micros() → long).
+   *   3. `unknown` — printf codegens cast to double + %g so it always compiles.
+   *
+   * Function-valued vars are handled by the caller (isFunction); this returns
+   * unknown for them but the caller skips emission of function-typed vars.
+   */
+  private inferCppType(decl: ts.VariableDeclaration): DebugCppType {
+    // 1. Explicit type annotation wins.
+    const fromAnnotation = this.inferCppTypeFromAnnotation(decl.type);
+    if (fromAnnotation !== 'unknown') return fromAnnotation;
+
+    // 2. Initializer shape.
+    const init = decl.initializer;
+    if (init) {
+      if (init.kind === ts.SyntaxKind.TrueKeyword || init.kind === ts.SyntaxKind.FalseKeyword) return 'bool';
+      if (ts.isStringLiteral(init)) return 'string';
+      if (ts.isNoSubstitutionTemplateLiteral(init) || ts.isTemplateExpression(init)) return 'string';
+      if (ts.isNumericLiteral(init)) {
+        // Integer literal unless it contains '.' or an exponent marker.
+        return /[.eE]/.test(init.text) ? 'float' : 'int';
+      }
+      if (ts.isCallExpression(init)) {
+        // A small allowlist of HAL calls with known C++ return types.
+        const callee = ts.isIdentifier(init.expression) ? init.expression.text : '';
+        if (callee === 'millis' || callee === 'micros') return 'long';
       }
     }
 
-    ts.forEachChild(node, child => {
-      if (!ts.isFunctionDeclaration(child) && !ts.isArrowFunction(child) && !ts.isMethodDeclaration(child)) {
-        this.collectVariables(child, vars);
-      }
-    });
+    // 3. Anything else (references, binary expressions, unknown calls, …).
+    return 'unknown';
+  }
+
+  /**
+   * TS sometimes parses a bare `let x = 0;` as a FirstStatement node rather
+   * than a VariableStatement. Detect that case by shape (has declarationList).
+   */
+  private isFirstStatementVariableDeclaration(node: ts.Node): boolean {
+    if (node.kind !== ts.SyntaxKind.FirstStatement) return false;
+    return Object.prototype.hasOwnProperty.call(node, 'declarationList');
   }
 
   private isFunctionExpression(expr: ts.Expression): boolean {

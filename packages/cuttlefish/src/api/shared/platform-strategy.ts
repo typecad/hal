@@ -437,6 +437,15 @@ export interface PlatformBuildStrategy {
 // ---------------------------------------------------------------------------
 
 /**
+ * Coarse C++ type category carried per debug variable, so printf-based codegens
+ * (ESP-IDF) can pick the right format specifier. Inferred by the debug
+ * preprocessor from AST shape (no TypeChecker); `unknown` is the fallback.
+ * Mirrors `DebugCppType` in cuttlefish/src/debug/types.ts — duplicated here to
+ * avoid a cross-module import from the api surface.
+ */
+export type DebugCppType = 'bool' | 'int' | 'long' | 'float' | 'string' | 'unknown';
+
+/**
  * Debug code generation sub-interface.
  * Frameworks implement these to provide platform-specific debug output
  * (e.g., Serial.println on embedded, std::cout on hosted targets).
@@ -449,15 +458,22 @@ export interface PlatformDebugStrategy {
     fileName: string;
     lineNum: number;
     originalLine: string;
-    variables: Array<{ name: string; isFunction?: boolean }>;
+    variables: Array<{ name: string; isFunction?: boolean; cppType?: DebugCppType }>;
     normalizedCondition?: string;
+    /**
+     * Stable per-file ID assigned by the preprocessor. When present, the
+     * codegen emits a `static bool __tc_bp_disabled_<id>` flag and wraps the
+     * halt in `if (!__tc_bp_disabled_<id>)`, so the user can skip/disable this
+     * one breakpoint for the rest of the run (the 's' key sets the flag).
+     */
+    breakpointId?: number;
   }): string[];
   /** Generate code for a logpoint with interpolated message parts. */
   generateDebugLogpointCode?(params: {
     fileName: string;
     lineNum: number;
     parts: Array<{ type: 'text' | 'variable'; value: string }>;
-    variables: Array<{ name: string; isFunction?: boolean }>;
+    variables: Array<{ name: string; isFunction?: boolean; cppType?: DebugCppType }>;
   }): string[];
 }
 

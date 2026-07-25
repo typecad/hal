@@ -108,6 +108,12 @@ export function printHelp(): void {
   console.log(`  --diagnostics           Generate diagnostics.md and diagnostics.json reports`);
   console.log(`                          Includes IR graph, heap analysis, and task analysis`);
   console.log();
+  console.log(`  --debug                 Inject Serial.println instrumentation at breakpoints.`);
+  console.log(`                          Reads .cuttlefish/breakpoints.json (written by the`);
+  console.log(`                          TypeCAD Debug VS Code extension). At each breakpoint the`);
+  console.log(`                          firmware prints the location, original line, and in-scope`);
+  console.log(`                          variables, then halts — press ENTER over serial to continue.`);
+  console.log();
   console.log(`  --help, -h              Show this help message`);
   console.log();
   console.log(chalk.cyan(`PROJECT CREATION`));
