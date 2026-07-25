@@ -1311,6 +1311,15 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
   // ── Debug code generation ─────────────────────────────────────────────────
 
+  /**
+   * Arduino targets use the printf/Serial instrumentation path. Declared
+   * (not inherited from GenericStrategy) so Esp32Strategy can override it
+   * for the chips it supports natively.
+   */
+  debugMode(_target?: string): 'gdb' | 'printf' {
+    return 'printf';
+  }
+
   generateDebugInitCode(): string[] {
     return generateSerialInitCode();
   }

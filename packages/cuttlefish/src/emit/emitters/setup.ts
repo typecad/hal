@@ -1025,6 +1025,14 @@ export function buildEmitterContext(
     headerLines: ["#pragma once", ""],
     sourceMapEntries: [],
     headerMapEntries: [],
+    // GDB debug mode: emit #line markers at appendSourceLine when 'gdb'.
+    // Resolved once from strategy.debugMode(buildTarget); defaults to 'printf'
+    // so all existing paths keep their pre-marker behavior.
+    debugMode: (() => {
+      const buildTarget = (options.platformContext?.frameworkData as { buildTarget?: string } | undefined)?.buildTarget;
+      return strategy.debugMode?.(buildTarget) ?? 'printf';
+    })(),
+    lastEmittedSource: null,
     cArrayVarNames: new Set(),
     fnCArrayVarNames: new Map(),
     globalPointerVarTypes,

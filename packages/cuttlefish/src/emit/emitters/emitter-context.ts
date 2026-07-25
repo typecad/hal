@@ -145,6 +145,19 @@ export interface EmitterContext {
   sourceMapEntries: SourceMapEntry[];
   headerMapEntries: SourceMapEntry[];
 
+  // ── GDB debug mode (line directives) ──────────────────────────────────────
+  /**
+   * Active debug mode. When 'gdb', appendSourceLine emits `#line` markers
+   * before lines whose TS source span transitions. 'printf' = no markers.
+   * Resolved once from strategy.debugMode(buildTarget) during setup.
+   */
+  debugMode: 'gdb' | 'printf';
+  /**
+   * The {filePath, line} of the most recently emitted linemarker, or null if
+   * none yet. Used by appendSourceLine for transition detection.
+   */
+  lastEmittedSource: { filePath: string; line: number } | null;
+
   // ── Mutable per-function state for C-array tracking ───────────────────────
   cArrayVarNames: Set<string>;
   fnCArrayVarNames: Map<string, Set<string>>;
