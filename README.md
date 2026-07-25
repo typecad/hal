@@ -309,7 +309,7 @@ Supported `@media` features: `(e-ink)`, `(update: slow|fast)`, `(monochrome)`, `
 
 ## Debug in VS Code
 
-Set breakpoints in your `.ts` source files. The transpiler injects serial instrumentation that reports variable values and lets you step through execution — directly from your TypeScript code.
+Set breakpoints (or logpoints) in your `.ts` source files using the **TypeCAD Debug** extension in [`packages/vscode-typecad-debug`](packages/vscode-typecad-debug). The extension syncs them to `.cuttlefish/breakpoints.json`; then run `cuttlefish build --debug` (or `cuttlefish src/index.ts --debug`) and the transpiler injects `Serial.println` instrumentation that reports variable values and halts at each breakpoint — press ENTER over serial to continue. This is a `Serial.print`-based instrumentation shim, not a DAP debug adapter; see the extension's README for the JSON schema and limitations.
 
 ## Source maps for embedded
 

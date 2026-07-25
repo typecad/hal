@@ -35,8 +35,11 @@ code --install-extension vscode-typecad-debug-0.2.0.vsix
    `.ts` save.
 4. Upload the instrumented firmware and open a serial monitor (`--monitor`).
    At each breakpoint the firmware prints the location, the original source
-   line, and the variables in scope, then halts. **Press ENTER in the serial
-   monitor to continue.**
+   line, and the variables in scope, then halts. Two keys are available:
+   - **ENTER** — continue (the breakpoint will halt here again the next time
+     execution reaches it).
+   - **`s`** — skip this breakpoint for the rest of the run: it won't halt
+     here again until the device reboots. Other breakpoints are unaffected.
 
 ### Commands
 
@@ -90,10 +93,18 @@ breakpoints — acceptable for typical single-sketch Arduino projects.
 
 - This is a `Serial.print`-based instrumentation shim, not a DAP debug
   adapter. There is no native step/step-in/step-out — each breakpoint halts
-  until ENTER is received over serial.
+  until ENTER (continue) or `s` (skip this breakpoint for the run) is received
+  over serial.
 - The scope analyzer captures module-scope identifiers plus locals and
   parameters in the enclosing function. Member access and arbitrary
   expressions are not resolved; `{ value }` in a logpoint emits the literal
   `"{value}"` if `value` is not in scope.
 - Baud rate is hardcoded to `9600` in the injected `Serial.begin` regardless
   of the CLI `--baud` value.
+- **Target-specific output:** on Arduino/AVR the injected code uses `Serial.*`
+  and blocks on `Serial.available()`. On ESP-IDF (`@typecad/framework-esp32`)
+  it routes through native `printf` and blocks on `getchar()` with the task
+  watchdog fed — so an ESP32 debug build must have `idf.py monitor` (or
+  equivalent) attached, or it will hang at the first breakpoint until power
+  is cycled. This is the ESP-IDF equivalent of "no IDE attached to a
+  breakpoint."
