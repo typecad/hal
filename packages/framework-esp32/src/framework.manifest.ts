@@ -323,6 +323,212 @@ export default defineFrameworkManifest({
         'preferences.get_string': 'supported',
       },
     },
+    random: {
+      // Native ESP-IDF hardware RNG (esp_random). Lowered via
+      // framework-esp32/src/lowering/random.ts. esp_random() is seeded by RF
+      // noise (no explicit seeding needed), so random.seed is a no-op.
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'random.int': 'supported',
+        'random.range': 'supported',
+        'random.seed': 'supported',
+      },
+    },
+    fs: {
+      // Native ESP-IDF SD-card filesystem: esp_vfs_fat_sdmmc_mount (FAT on the
+      // SDMMC host) + POSIX file helpers. Lowered via
+      // framework-esp32/src/lowering/fs.ts. SPI (SDSPI) and on-flash LittleFS
+      // are follow-ons; this covers the common SD-card data-logging case.
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        'fs.begin': 'supported',
+        'fs.read_text': 'supported',
+        'fs.write_text': 'supported',
+        'fs.exists': 'supported',
+        'fs.remove': 'supported',
+      },
+    },
+    mdns: {
+      // Native ESP-IDF esp_mdns. Lowered via framework-esp32/src/lowering/mdns.ts.
+      // Rides on the WiFi station interface. Built-in ESP-IDF component.
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'mdns.start': 'supported',
+        'mdns.set_hostname': 'supported',
+        'mdns.add_service': 'supported',
+        'mdns.announce': 'supported',
+        'mdns.stop': 'supported',
+      },
+    },
+    mqtt: {
+      // Native ESP-IDF esp_mqtt client (3.1.1). Lowered via
+      // framework-esp32/src/lowering/mqtt.ts. Built-in ESP-IDF component.
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'mqtt.connect': 'supported',
+        'mqtt.on_message': 'supported',
+        'mqtt.subscribe': 'supported',
+        'mqtt.publish': 'supported',
+        'mqtt.connected': 'supported',
+        'mqtt.disconnect': 'supported',
+      },
+    },
+    ota: {
+      // Native ESP-IDF esp_https_ota / esp_ota_ops. Lowered via
+      // framework-esp32/src/lowering/ota.ts. Requires an OTA partition table.
+      // Built-in ESP-IDF components.
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'ota.from_url': 'supported',
+        'ota.begin': 'supported',
+        'ota.write': 'supported',
+        'ota.apply': 'supported',
+      },
+    },
+    temp: {
+      // On-chip die temperature sensor. Lowered via
+      // framework-esp32/src/lowering/temp.ts (temperature_sensor driver).
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'temp.read': 'supported',
+      },
+    },
+    hwtimer: {
+      // General-purpose timer (GPTimer). Lowered via
+      // framework-esp32/src/lowering/hwtimer.ts. High-precision periodic ISRs,
+      // distinct from software setInterval.
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'hwtimer.set_frequency': 'supported',
+        'hwtimer.on_overflow': 'supported',
+        'hwtimer.start': 'supported',
+        'hwtimer.stop': 'supported',
+      },
+    },
+    capacitive: {
+      // On-chip capacitive touch pins (touch_sensor peripheral). Lowered via
+      // framework-esp32/src/lowering/capacitive.ts. Distinct from touch
+      // *display* controllers (FT6336U etc., in src/touch/).
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'capacitive.read': 'supported',
+      },
+    },
+    // ── Unimplemented ESP32-native peripherals ──────────────────────────────
+    // Each of the following is a real ESP32 peripheral that this framework does
+    // NOT lower yet. They are declared here as unsupported so the manifest is a
+    // complete, honest record of the chip's capability surface: a future
+    // implementation flips supported to true and adds the lowering — no schema
+    // or validator change is needed. Reachable today via rawCpp() or ESP-IDF
+    // components (see frameworkData.components).
+    i2s: {
+      supported: false,
+      unsupportedReason:
+        'I2S / digital audio is not lowered. Use the driver/i2s_* ESP-IDF API via rawCpp() ' +
+        'or a managed component (espressif/esp_codec_dev). Tracks: microphones, I2S DAC-audio, PDM.',
+      partialCoverage: false,
+      ops: {
+        'i2s.init': 'unsupported',
+        'i2s.write': 'unsupported',
+        'i2s.read': 'unsupported',
+      },
+    },
+    twai: {
+      supported: false,
+      unsupportedReason:
+        'CAN / TWAI is not lowered. Use the driver/twai.h ESP-IDF API via rawCpp(). ' +
+        'Tracks: automotive/industrial CAN bus.',
+      partialCoverage: false,
+      ops: {
+        'twai.init': 'unsupported',
+        'twai.send': 'unsupported',
+        'twai.receive': 'unsupported',
+      },
+    },
+    usb: {
+      supported: false,
+      unsupportedReason:
+        'USB OTG / USB-Serial-JTAG is not lowered. Use TinyUSB (driver/usb_serial_jtag.h or ' +
+        'tinyusb) via rawCpp() or a managed component. Tracks: USB host/device on S3; ' +
+        'USB-Serial-JTAG on C3/C6.',
+      partialCoverage: false,
+      ops: {
+        'usb.init': 'unsupported',
+        'usb.write': 'unsupported',
+        'usb.read': 'unsupported',
+      },
+    },
+    eth: {
+      supported: false,
+      unsupportedReason:
+        'Ethernet MAC is not lowered. Use the esp_eth (esp_eth_mac_*) ESP-IDF API via rawCpp(). ' +
+        'Tracks: internal EMAC + external PHY (e.g. IP101, LAN8720).',
+      partialCoverage: false,
+      ops: {
+        'eth.init': 'unsupported',
+        'eth.start': 'unsupported',
+        'eth.is_linked': 'unsupported',
+      },
+    },
+    espnow: {
+      supported: false,
+      unsupportedReason:
+        'ESP-NOW peer-to-peer wireless is not lowered. Use the esp_now (esp_now_init/send) ' +
+        'ESP-IDF API via rawCpp(). Tracks: low-latency ESP-to-ESP mesh without a router.',
+      partialCoverage: false,
+      ops: {
+        'espnow.init': 'unsupported',
+        'espnow.add_peer': 'unsupported',
+        'espnow.send': 'unsupported',
+        'espnow.on_receive': 'unsupported',
+      },
+    },
+    crypto: {
+      supported: false,
+      unsupportedReason:
+        'Hardware crypto acceleration (AES/SHA/HMAC/RSA/ECC) is not lowered as HAL ops. ' +
+        'Use mbedtls directly via rawCpp() — the ESP32 hardware acceleration is transparent ' +
+        'under the mbedtls API. Tracks: TLS, signing, hashing.',
+      partialCoverage: false,
+      ops: {
+        'crypto.aes_encrypt': 'unsupported',
+        'crypto.sha256': 'unsupported',
+        'crypto.hmac': 'unsupported',
+      },
+    },
+    pcnt: {
+      supported: false,
+      unsupportedReason:
+        'Pulse counter (PCNT) is not lowered. Use the driver/pcnt.h ESP-IDF API via rawCpp(). ' +
+        'Tracks: hardware event counting, quadrature/flow sensors.',
+      partialCoverage: false,
+      ops: {
+        'pcnt.init': 'unsupported',
+        'pcnt.count': 'unsupported',
+        'pcnt.clear': 'unsupported',
+      },
+    },
+    mcpwm: {
+      supported: false,
+      unsupportedReason:
+        'Motor control PWM (MCPWM) is not lowered. Use the driver/mcpwm.h ESP-IDF API via ' +
+        'rawCpp(). Distinct from the LEDC general-purpose PWM (already lowered as pwm.*). ' +
+        'Tracks: BLDC/servo motor control, complementary PWM.',
+      partialCoverage: false,
+      ops: {
+        'mcpwm.init': 'unsupported',
+        'mcpwm.set_duty': 'unsupported',
+        'mcpwm.start': 'unsupported',
+      },
+    },
     display: {
       // Native ESP32 drivers via framework-esp32/src/displays/*. Each drives
       // the panel through spi_device_polling_transmit (TFTs) or
@@ -403,8 +609,9 @@ export default defineFrameworkManifest({
   conformance: {
     hardwareTestGroups: ['01-hardware', '02-math-bits', '03-advanced'],
     halResolutionTests: [
-      'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'power', 'preferences', 'pulse-shift',
-      'pwm', 'rmt', 'spi', 'timing', 'tone', 'uart', 'wdt', 'wifi',
+      'adc', 'ble', 'capacitive', 'dac', 'fs', 'gpio', 'hwtimer', 'http', 'i2c', 'interrupts',
+      'mdns', 'mqtt', 'ota', 'power', 'preferences', 'pulse-shift', 'pwm', 'random', 'rmt',
+      'spi', 'temp', 'timing', 'tone', 'uart', 'wdt', 'wifi',
     ],
   },
 });

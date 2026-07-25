@@ -29,7 +29,11 @@ Or in `cuttlefish.config.ts`:
 ```ts
 export default {
   framework: '@typecad/framework-esp32',
-  frameworkData: { target: 'esp32' },  // or esp32s3 / esp32c3 / esp32c6
+  frameworkData: {
+    target: 'esp32',                  // or esp32s3 / esp32c3 / esp32c6
+    // SD card (FS HAL) SDMMC slot pins — omit to use the chip defaults
+    // sdmmc: { clk: 14, cmd: 15, d0: 2, width: 1 },
+  },
   toolchain: { type: 'idf' },
 };
 ```
@@ -60,6 +64,14 @@ export default {
 - **pulse** → `esp_timer_get_time`-based edge timer (no native IDF equivalent)
 - **shift** → GPIO bit-bang (`__tc_shift_in`/`__tc_shift_out`)
 - **Preferences** → native NVS (`nvs_open`/`nvs_set_i32`/`nvs_get_str`/…); float stored as `uint32` (no native NVS float type)
+- **Random** → hardware RNG (`esp_random()`); `random.seed` is a no-op (RF-noise-seeded)
+- **FS (SD card)** → `esp_vfs_fat_sdmmc_mount` (FAT on SDMMC) + POSIX file helpers (`__tc_fs_read_text`/`__tc_fs_write_text`/…). SDMMC slot pins are configurable via `frameworkData.sdmmc` in `cuttlefish.config.ts`; omit it to use the chip's default slot pins.
+- **mDNS** → `esp_mdns` (`mdns_hostname_set`/`mdns_service_add`)
+- **MQTT** → `esp_mqtt` client (`esp_mqtt_client_init`/`publish`/`subscribe`/event-handler → TS `onMessage`)
+- **OTA** → `esp_https_ota` (one-shot HTTPS) + `esp_ota_ops` (manual begin/write/apply)
+- **Temperature** → `temperature_sensor` driver (die temp in °C)
+- **Hardware timers** → `gptimer` driver (`hwtimer.set_frequency`/`on_overflow`/`start`/`stop`)
+- **Capacitive touch pins** → `touch_sensor` peripheral (`capacitive.read`, the on-chip touch GPIOs — distinct from touch *display* controllers)
 
 ## Watchdog
 
@@ -163,8 +175,9 @@ cuttlefish gen-decls --components
 - EEPROM lowering not yet implemented; type-checks but emits no runtime code. Use Preferences / NVS instead.
 - WiFi/HTTP: first-class HAL ops (native `esp_wifi`/`esp_http_client`), including async/await.
 - BLE (NimBLE): first-class HAL ops for GATT peripheral (server/characteristics, read/write/notify callbacks, async connect). Central/client is a follow-on.
+- Random: first-class HAL ops lowered to the hardware RNG (`esp_random()`).
 - mDNS: no first-class HAL ops; usable via components or `rawCpp()`.
-- Display/graphics overrides not yet implemented (inherited from ArduinoStrategy; may emit Arduino API calls).
+- Native display adapters (ILI9341/ST7796/SSD1309) and touch adapters (XPT2046/STMPE610/GT911/CST816S) are implemented; FT6336U native I2C is in progress.
 - No `menuconfig` pass-through; edit `sdkconfig.defaults` directly or run `idf.py menuconfig` yourself.
 
 ## Design

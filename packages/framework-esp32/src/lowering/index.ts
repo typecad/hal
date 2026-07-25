@@ -18,6 +18,14 @@ import { lowerWifi } from './wifi.js';
 import { lowerHttp } from './http.js';
 import { lowerBle } from './ble.js';
 import { lowerPreferences } from './preferences.js';
+import { lowerRandom } from './random.js';
+import { lowerFs } from './fs.js';
+import { lowerMdns } from './mdns.js';
+import { lowerMqtt } from './mqtt.js';
+import { lowerOta } from './ota.js';
+import { lowerTemp } from './temp.js';
+import { lowerHwtimer } from './hwtimer.js';
+import { lowerCapacitive } from './capacitive.js';
 
 /**
  * Dispatch a HALOpIR to the appropriate peripheral lowering function.
@@ -44,6 +52,14 @@ export function lowerHalOp(op: HALOpIR): { code?: string; expression?: string } 
   if (op.operation.startsWith('http.'))      return lowerHttp(op);
   if (op.operation.startsWith('ble.'))       return lowerBle(op);
   if (op.operation.startsWith('preferences.')) return lowerPreferences(op);
+  if (op.operation.startsWith('random.'))      return lowerRandom(op);
+  if (op.operation.startsWith('fs.'))          return lowerFs(op);
+  if (op.operation.startsWith('mdns.'))        return lowerMdns(op);
+  if (op.operation.startsWith('mqtt.'))        return lowerMqtt(op);
+  if (op.operation.startsWith('ota.'))         return lowerOta(op);
+  if (op.operation.startsWith('temp.'))        return lowerTemp(op);
+  if (op.operation.startsWith('hwtimer.'))     return lowerHwtimer(op);
+  if (op.operation.startsWith('capacitive.'))  return lowerCapacitive(op);
   if (op.operation === 'board.resolve')      return lowerBoard(op);
   // raw and snprintf.emit: pass through verbatim
   if (op.operation === 'raw')                return { code: (op as any).code ?? '' };

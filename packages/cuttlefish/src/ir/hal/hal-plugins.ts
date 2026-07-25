@@ -947,6 +947,133 @@ export function tryResolveSemanticCall(
       return { operation: "preferences.get_string", key: quoteNonIdentifier(key), defaultValue: quoteNonIdentifier(def) };
     }
 
+    // ── FS (filesystem) ──
+    case "fsBegin":
+      return { operation: "fs.begin" };
+    case "fsReadText": {
+      const path = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (path === null) return null;
+      return { operation: "fs.read_text", path };
+    }
+    case "fsWriteText": {
+      const path = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const content = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (path === null || content === null) return null;
+      return { operation: "fs.write_text", path, content };
+    }
+    case "fsExists": {
+      const path = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (path === null) return null;
+      return { operation: "fs.exists", path };
+    }
+    case "fsRemove": {
+      const path = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (path === null) return null;
+      return { operation: "fs.remove", path };
+    }
+
+    // ── mDNS ──
+    case "mdnsStart": {
+      const hostname = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (hostname === null) return null;
+      return { operation: "mdns.start", hostname };
+    }
+    case "mdnsSetHostname": {
+      const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (name === null) return null;
+      return { operation: "mdns.set_hostname", name };
+    }
+    case "mdnsAddService": {
+      const instanceName = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const proto = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const port = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (instanceName === null || proto === null || port === null) return null;
+      return { operation: "mdns.add_service", instance: instanceName, proto, port };
+    }
+    case "mdnsAnnounce":
+      return { operation: "mdns.announce" };
+    case "mdnsStop":
+      return { operation: "mdns.stop" };
+
+    // ── MQTT ──
+    case "mqttConnect": {
+      const brokerUri = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const clientId = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (brokerUri === null || clientId === null) return null;
+      return { operation: "mqtt.connect", brokerUri, clientId };
+    }
+    case "mqttOnMessage": {
+      const handler = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (handler === null) return null;
+      return { operation: "mqtt.on_message", handler };
+    }
+    case "mqttSubscribe": {
+      const topic = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (topic === null) return null;
+      return { operation: "mqtt.subscribe", topic };
+    }
+    case "mqttPublish": {
+      const topic = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const data = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (topic === null || data === null) return null;
+      return { operation: "mqtt.publish", topic, data };
+    }
+    case "mqttConnected":
+      return { operation: "mqtt.connected" };
+    case "mqttDisconnect":
+      return { operation: "mqtt.disconnect" };
+
+    // ── OTA ──
+    case "otaFromUrl": {
+      const url = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (url === null) return null;
+      return { operation: "ota.from_url", url };
+    }
+    case "otaBegin":
+      return { operation: "ota.begin" };
+    case "otaWrite": {
+      const chunk = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (chunk === null) return null;
+      return { operation: "ota.write", chunk };
+    }
+    case "otaApply":
+      return { operation: "ota.apply" };
+
+    // ── Temperature (die temp) ──
+    case "tempRead":
+      return { operation: "temp.read" };
+
+    // ── Hardware timer (GPTimer) ──
+    case "hwtimerSetFrequency": {
+      const inst = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (inst === null || hz === null) return null;
+      return { operation: "hwtimer.set_frequency", instance: inst, hz };
+    }
+    case "hwtimerOnOverflow": {
+      const inst = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (inst === null || handler === null) return null;
+      return { operation: "hwtimer.on_overflow", instance: inst, handler };
+    }
+    case "hwtimerStart": {
+      const inst = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (inst === null) return null;
+      return { operation: "hwtimer.start", instance: inst };
+    }
+    case "hwtimerStop": {
+      const inst = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (inst === null) return null;
+      return { operation: "hwtimer.stop", instance: inst };
+    }
+
+    // ── Capacitive touch pins ──
+    case "capacitiveRead": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null) return null;
+      return { operation: "capacitive.read", port, pin };
+    }
+
     // ── Interrupts ──
     case "interruptAttach": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);

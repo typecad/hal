@@ -7,8 +7,9 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 // ESP32-S3 + ST7796S hardware setup works for both Adafruit (arduino-cli) and
 // native (ESP-IDF) paths.
 //
-// Touch is DISABLED — the FT6336U touch shim still hardcodes Arduino Wire
-// (see display-profile.ts:487-528). Native touch port is deferred.
+// Native FT6336U touch is enabled — the framework-esp32 FT6336U adapter drives
+// the controller via ESP-IDF i2c_master (no Arduino Wire). Pin wiring matches
+// demos/demo-st so the same hardware setup works for both paths.
 const config: CuttlefishConfig = {
   entry: './src/showcase.ui',
   target: 'esp32s3',

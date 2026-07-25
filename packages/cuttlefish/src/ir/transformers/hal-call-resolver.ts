@@ -288,5 +288,27 @@ export function tryResolveHALExpression(
     }
   }
 
+  // Namespace method fallbacks (Pulse, Shift, Random) in expression context.
+  // Value-returning namespace methods (e.g. Random.upTo/between/int) lower to
+  // HAL ops; surface the last op as a hal-expr so the strategy lowers it to the
+  // platform PRNG (Arduino random(), ESP-IDF esp_random()). Without this, an
+  // inline `if (Random.upTo(5) > 2)` would fall through to a 0 placeholder.
+  if (ts.isIdentifier(receiver)) {
+    const ns = receiver.text;
+    const nsResult = resolveNamespaceMethodCall(ns, method, argIRs);
+    if (nsResult) {
+      if (nsResult.halOps.length > 0) {
+        const lastOp = nsResult.halOps[nsResult.halOps.length - 1];
+        return {
+          ir: { kind: "hal-expr", operation: lastOp },
+          sideEffects: nsResult.emitLines,
+        };
+      }
+      if (nsResult.returnValue && nsResult.returnValue !== "__hal_op_return__") {
+        return { ir: { kind: "raw", value: nsResult.returnValue }, sideEffects: nsResult.emitLines };
+      }
+    }
+  }
+
   return null;
 }

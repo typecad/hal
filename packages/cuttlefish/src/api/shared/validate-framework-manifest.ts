@@ -66,6 +66,7 @@ class Accumulator {
 const CATEGORY_PREFIXES: Record<string, string[]> = {
   gpio: ['gpio.'],
   pwm: ['pwm.'],
+  rmt: ['rmt.'],
   adc: ['adc.'],
   dac: ['dac.'],
   interrupts: ['interrupt.'],
@@ -83,6 +84,27 @@ const CATEGORY_PREFIXES: Record<string, string[]> = {
   http: ['http.'],
   display: ['display.'],
   preferences: ['preferences.'],
+  ble: ['ble.'],
+  random: ['random.'],
+  fs: ['fs.'],
+  mdns: ['mdns.'],
+  mqtt: ['mqtt.'],
+  ota: ['ota.'],
+  temp: ['temp.'],
+  hwtimer: ['hwtimer.'],
+  capacitive: ['capacitive.'],
+  // Unimplemented-but-recognized categories: each framework may declare these
+  // as unsupported in its manifest so the coverage matrix records them as a
+  // roadmap. The validator probes the resolver and confirms it does NOT lower
+  // them (consistent with the 'unsupported' status).
+  i2s: ['i2s.'],
+  twai: ['twai.'],
+  usb: ['usb.'],
+  eth: ['eth.'],
+  espnow: ['espnow.'],
+  crypto: ['crypto.'],
+  pcnt: ['pcnt.'],
+  mcpwm: ['mcpwm.'],
 };
 
 function opKindsForCategory(category: string): string[] {
@@ -117,6 +139,32 @@ const OP_PROBE_PAYLOADS: Readonly<Record<string, object>> = {
   'display.draw_text': { x: 0, y: 0, text: 'x', font: '8x16', color: 0xffff },
   'display.draw_rect': { x: 0, y: 0, w: 10, h: 10, color: 0xffff },
   'display.flush': { rects: [{ x: 0, y: 0, w: 10, h: 10 }] },
+  // fs.* require a path (and content for write_text).
+  'fs.read_text': { path: '/sdcard/x.txt' },
+  'fs.write_text': { path: '/sdcard/x.txt', content: 'hi' },
+  'fs.exists': { path: '/sdcard/x.txt' },
+  'fs.remove': { path: '/sdcard/x.txt' },
+  // random.range requires min/max.
+  'random.range': { min: 0, max: 10 },
+  // mdns.add_service requires instance/proto/port.
+  'mdns.start': { hostname: 'h' },
+  'mdns.set_hostname': { name: 'h' },
+  'mdns.add_service': { instance: 'i', proto: '_tcp', port: 80 },
+  // mqtt.connect requires brokerUri/clientId; mqtt.publish requires topic/data.
+  'mqtt.connect': { brokerUri: 'mqtt://b', clientId: 'c' },
+  'mqtt.on_message': { handler: 'cb' },
+  'mqtt.subscribe': { topic: 't' },
+  'mqtt.publish': { topic: 't', data: 'd' },
+  // ota.from_url requires url; ota.write requires chunk.
+  'ota.from_url': { url: 'https://x' },
+  'ota.write': { chunk: 'buf' },
+  // hwtimer.* require an instance (and hz/handler).
+  'hwtimer.set_frequency': { instance: 0, hz: 1000 },
+  'hwtimer.on_overflow': { instance: 0, handler: 'cb' },
+  'hwtimer.start': { instance: 0 },
+  'hwtimer.stop': { instance: 0 },
+  // capacitive.read requires pin.
+  'capacitive.read': { pin: 4 },
 };
 
 // Builds a HALOpIR probe. Uses OP_PROBE_PAYLOADS when available so resolvers

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { lowerAdc, adcInitLines } from '../../../../packages/framework-esp32/src/lowering/adc';
 import { setActiveChip, ESP32 } from '../../../../packages/framework-esp32/src/chips/index';
+import { transpileEsp32Strategy } from '../../../setup';
 
 beforeEach(() => setActiveChip(ESP32));
 
@@ -44,5 +45,27 @@ describe('adc lowering', () => {
   });
   it('unknown adc.* op throws', () => {
     expect(() => lowerAdc({ operation: 'adc.unknown', pin: 32 } as any)).toThrow(/does not yet support/);
+  });
+});
+
+// Regression: a value-position HAL op (D32.readAnalog() used in a var-init)
+// lowers to an adc.read hal-expr. The analysis pass must set usesADC from the
+// hal-expr so the CUTTLEFISH_ADC init block (shimLines) and adc_oneshot.h
+// forced include both emit. Without the hal-expr detection fix, the lowering
+// ran (__tc_adc_read emitted) but its runtime + include were dropped — a
+// silent link failure on device.
+describe('adc lowering end-to-end (init-block propagation)', () => {
+  it('D32.readAnalog() var-init emits the init block + v6 includes', () => {
+    const r = transpileEsp32Strategy(`
+      import { D32 } from '@typecad/board-esp32-devkit';
+      export function setup() {
+        const v = D32.readAnalog();
+        console.log(v);
+      }
+    `);
+    expect(r.cpp).toContain('__tc_adc_read(1, ADC_CHANNEL_4)');
+    expect(r.cpp).toContain('CUTTLEFISH_ADC_BEGIN');
+    expect(r.cpp).toMatch(/adc_oneshot\.h/);
+    expect(r.cpp).toMatch(/adc_cali_scheme\.h/);
   });
 });

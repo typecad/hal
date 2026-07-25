@@ -94,31 +94,37 @@ export function resolveNamespaceMethodCall(
   }
 
   if (ns === "Random") {
+    // Random.* lowers to the random.* HAL op family, which frameworks lower to
+    // their platform PRNG (Arduino random()/randomSeed(), ESP-IDF esp_random()).
+    // Previously these emitted bare `random()`/`randomSeed()` calls, which only
+    // resolve to symbols on Arduino-core frameworks — on ESP-IDF they were
+    // undefined and failed at C++ link time.
     if (method === "seed") {
-      return { emitLines: [`randomSeed(${argText(0)});`], halOps: [] };
+      return { emitLines: [], halOps: [{ operation: "random.seed", seed: argText(0) }] };
     }
     if (method === "number") {
       const min = argText(0);
       const max = argText(1);
-      return {
-        emitLines: [],
-        halOps: [],
-        returnValue: max ? `random(${min}, ${max})` : `random(${min})`,
-      };
+      if (max) {
+        return { emitLines: [], halOps: [{ operation: "random.range", min, max }], returnValue: "__hal_op_return__" };
+      }
+      // Single-arg form: Random.number(max) → [0, max-1]
+      return { emitLines: [], halOps: [{ operation: "random.range", min: "0", max: min }], returnValue: "__hal_op_return__" };
     }
-    // Current class API: Random.upTo(max) → random(max)
+    // Random.upTo(max) → [0, max-1]
     if (method === "upTo") {
-      return { emitLines: [], halOps: [], returnValue: `random(${argText(0)})` };
+      return { emitLines: [], halOps: [{ operation: "random.range", min: "0", max: argText(0) }], returnValue: "__hal_op_return__" };
     }
-    // Random.between(min, max) → random(min, max)
+    // Random.between(min, max) → [min, max-1]
     if (method === "between") {
-      return { emitLines: [], halOps: [], returnValue: `random(${argText(0)}, ${argText(1)})` };
+      return { emitLines: [], halOps: [{ operation: "random.range", min: argText(0), max: argText(1) }], returnValue: "__hal_op_return__" };
     }
-    // Random.int() → random(2147483647)
+    // Random.int() → non-negative 31-bit integer
     if (method === "int") {
-      return { emitLines: [], halOps: [], returnValue: `random(2147483647)` };
+      return { emitLines: [], halOps: [{ operation: "random.int" }], returnValue: "__hal_op_return__" };
     }
   }
+
 
   return null;
 }

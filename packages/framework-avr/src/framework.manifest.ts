@@ -298,6 +298,58 @@ export default defineFrameworkManifest({
         'display.flush': 'supported',
       },
     },
+    // ESP32-silicon-specific peripherals. These do not exist on AVR hardware
+    // (ATmega328P etc.) at all — they are ESP-IDF-only. Declared unsupported
+    // here so the coverage matrix is uniform across frameworks.
+    // (framework-esp32 owns the roadmap for native lowerings.)
+    i2s: {
+      supported: false,
+      unsupportedReason: 'I2S / digital audio is an ESP32 peripheral; AVR hardware has no I2S block.',
+      partialCoverage: false,
+      ops: { 'i2s.init': 'unsupported', 'i2s.write': 'unsupported', 'i2s.read': 'unsupported' },
+    },
+    twai: {
+      supported: false,
+      unsupportedReason: 'CAN / TWAI is an ESP32 peripheral; AVR hardware has no CAN controller.',
+      partialCoverage: false,
+      ops: { 'twai.init': 'unsupported', 'twai.send': 'unsupported', 'twai.receive': 'unsupported' },
+    },
+    usb: {
+      supported: false,
+      unsupportedReason: 'USB OTG / USB-Serial-JTAG is an ESP32-S3/C3/C6 peripheral; AVR has no USB block.',
+      partialCoverage: false,
+      ops: { 'usb.init': 'unsupported', 'usb.write': 'unsupported', 'usb.read': 'unsupported' },
+    },
+    eth: {
+      supported: false,
+      unsupportedReason: 'Ethernet MAC is an ESP32 peripheral; AVR has no Ethernet MAC.',
+      partialCoverage: false,
+      ops: { 'eth.init': 'unsupported', 'eth.start': 'unsupported', 'eth.is_linked': 'unsupported' },
+    },
+    espnow: {
+      supported: false,
+      unsupportedReason: 'ESP-NOW is an ESP-exclusive wireless protocol; AVR has no WiFi radio.',
+      partialCoverage: false,
+      ops: { 'espnow.init': 'unsupported', 'espnow.add_peer': 'unsupported', 'espnow.send': 'unsupported', 'espnow.on_receive': 'unsupported' },
+    },
+    crypto: {
+      supported: false,
+      unsupportedReason: 'Hardware crypto acceleration (AES/SHA/HMAC/RSA/ECC) is an ESP32 peripheral; AVR has no crypto accelerator.',
+      partialCoverage: false,
+      ops: { 'crypto.aes_encrypt': 'unsupported', 'crypto.sha256': 'unsupported', 'crypto.hmac': 'unsupported' },
+    },
+    pcnt: {
+      supported: false,
+      unsupportedReason: 'Pulse counter (PCNT) is an ESP32 peripheral; AVR has no dedicated PCNT block.',
+      partialCoverage: false,
+      ops: { 'pcnt.init': 'unsupported', 'pcnt.count': 'unsupported', 'pcnt.clear': 'unsupported' },
+    },
+    mcpwm: {
+      supported: false,
+      unsupportedReason: 'Motor control PWM (MCPWM) is an ESP32 peripheral; AVR timers are general-purpose only.',
+      partialCoverage: false,
+      ops: { 'mcpwm.init': 'unsupported', 'mcpwm.set_duty': 'unsupported', 'mcpwm.start': 'unsupported' },
+    },
     raw: { supported: true },
   },
 

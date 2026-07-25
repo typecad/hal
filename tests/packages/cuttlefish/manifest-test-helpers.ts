@@ -150,15 +150,23 @@ export function renderHalCoverageTable(manifest: FrameworkManifest): string {
 
   const lines: string[] = [];
   const shortName = manifest.packageName.replace('@typecad/', '');
+  // Render core categories first (HAL_CATEGORIES), then any extended categories
+  // a framework declares via the catchall (i2s, twai, espnow, ...). This makes
+  // the coverage table a complete record of the manifest's declared surface —
+  // otherwise unsupported extended categories (the unimplemented-peripheral
+  // roadmap) are silently omitted.
+  const declaredCats = Object.keys(hal).filter((c) => c !== 'raw');
+  const extendedCats = declaredCats.filter((c) => !(HAL_CATEGORIES as readonly string[]).includes(c));
+  const allCats = [...HAL_CATEGORIES, ...extendedCats];
   let catSupported = 0;
-  for (const cat of HAL_CATEGORIES) {
+  for (const cat of allCats) {
     if (hal[cat]?.supported && !hal[cat]?.partialCoverage) catSupported++;
   }
   lines.push(``);
-  lines.push(`HAL coverage for ${manifest.packageName} (${catSupported}/${HAL_CATEGORIES.length} categories fully supported)`);
+  lines.push(`HAL coverage for ${manifest.packageName} (${catSupported}/${allCats.length} categories fully supported)`);
   lines.push(``);
 
-  for (const cat of HAL_CATEGORIES) {
+  for (const cat of allCats) {
     const decl = hal[cat];
     if (!decl) {
       lines.push(`${cat} (undeclared)`);

@@ -32,6 +32,13 @@ import { wifiInitLines } from './lowering/wifi.js';
 import { httpInitLines } from './lowering/http.js';
 import { bleInitLines } from './lowering/ble.js';
 import { preferencesInitLines } from './lowering/preferences.js';
+import { fsInitLines } from './lowering/fs.js';
+import { mdnsInitLines } from './lowering/mdns.js';
+import { mqttInitLines } from './lowering/mqtt.js';
+import { otaInitLines } from './lowering/ota.js';
+import { tempInitLines } from './lowering/temp.js';
+import { hwtimerInitLines } from './lowering/hwtimer.js';
+import { capacitiveInitLines } from './lowering/capacitive.js';
 
 /** Read the IDF target ('esp32'|'esp32s3'|'esp32c3'|'esp32c6') from the
  *  platform context. Accepts either frameworkData.target (preferred) or
@@ -196,6 +203,37 @@ export class Esp32Strategy extends ArduinoStrategy {
       // WiFi/BLE, so this is gated independently of their nvs_flash.h include.
       inc.push('"nvs_flash.h"', '"nvs.h"');
     }
+    if (uses('usesRandom')) {
+      // esp_random() — hardware RNG. Seeded by RF noise after WiFi/BLE init.
+      inc.push('"esp_random.h"');
+    }
+    if (uses('usesFS')) {
+      // SD-card filesystem: esp_vfs_fat_sdmmc_mount + POSIX file helpers.
+      // sdmmc_cmd.h for the SDMMC host; esp_vfs_fat.h for the FAT mount;
+      // <stdio.h>/<sys/stat.h> for fopen/stat/unlink.
+      inc.push('"esp_vfs_fat.h"', '"sdmmc_cmd.h"', '"driver/sdmmc_host.h"', '"driver/sdspi_host.h"', '<sys/stat.h>');
+    }
+    if (uses('usesMdns')) {
+      // esp_mdns — built-in ESP-IDF component. Rides on the WiFi station iface.
+      inc.push('"mdns.h"');
+    }
+    if (uses('usesMqtt')) {
+      // esp_mqtt — built-in ESP-IDF component.
+      inc.push('"mqtt_client.h"');
+    }
+    if (uses('usesOta')) {
+      // esp_https_ota + esp_ota_ops — built-in ESP-IDF components.
+      inc.push('"esp_https_ota.h"', '"esp_ota_ops.h"', '"esp_app_format.h"', '"esp_http_client.h"', '"esp_partition.h"');
+    }
+    if (uses('usesTemp')) {
+      inc.push('"driver/temperature_sensor.h"');
+    }
+    if (uses('usesHwtimer')) {
+      inc.push('"driver/gptimer.h"');
+    }
+    if (uses('usesCapacitive')) {
+      inc.push('"driver/touch_sensor.h"');
+    }
     return inc;
   }
 
@@ -224,6 +262,16 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (a?.usesHttp)  espInit.push(...httpInitLines());
     if (a?.usesBle)   espInit.push(...bleInitLines());
     if (a?.usesPreferences) espInit.push(...preferencesInitLines());
+    if (a?.usesFS) {
+      const fd = (ctx as any)?.frameworkData as Record<string, unknown> | undefined;
+      espInit.push(...fsInitLines(fd?.sdmmc as any ?? null, targetFromContext(ctx)));
+    }
+    if (a?.usesMdns)  espInit.push(...mdnsInitLines());
+    if (a?.usesMqtt)  espInit.push(...mqttInitLines());
+    if (a?.usesOta)   espInit.push(...otaInitLines());
+    if (a?.usesTemp)       espInit.push(...tempInitLines());
+    if (a?.usesHwtimer)    espInit.push(...hwtimerInitLines());
+    if (a?.usesCapacitive) espInit.push(...capacitiveInitLines());
 
     // After timer_methods polyfill (emitted before shimLines): hook delay() so
     // setInterval fires inside setup()'s blocking while+delay loops.
@@ -558,8 +606,25 @@ static inline int digitalRead(int pin) {
       });
     }
 
+    // ESP-IDF has no AVR-style EEPROM. The EEPROM ambient type is declared so
+    // user code type-checks, but the rawCpp it emits references undefined
+    // Arduino-core symbols. Surface a clear compile-time error instead of a
+    // silent no-op (the README already points users at Preferences/NVS, which
+    // IS fully lowered). Without this, EEPROM usage fails only at C++ link
+    // time with an opaque undefined-symbol error.
+    if (a.usesEEPROM) {
+      diags.push({
+        severity: 'error',
+        code: 'esp32-eeprom-unavailable',
+        message: `EEPROM is not available on the native ESP-IDF path (no AVR-style EEPROM). Use Preferences / NVS instead — it is fully lowered and persists across reboots.`,
+        hint: 'Replace `EEPROM.write/read/update(addr, val)` with `Preferences.put*/get*(key, val)`. See the Preferences HAL docs.',
+        source: program.fileName,
+      });
+    }
+
     const outputPins = new Set<number>();
     const wakeupPins = new Set<number>();
+    const adcReadPins = new Set<number>();
     const visit = (node: any): void => {
       if (node && typeof node === 'object') {
         if (node.operation && typeof node.operation === 'object'
@@ -575,6 +640,14 @@ static inline int digitalRead(int pin) {
             && node.operation.operation === 'power.deep_sleep_pin'
             && typeof node.operation.pin === 'number') {
           wakeupPins.add(node.operation.pin);
+        }
+        // adc.read / adc.read_voltage carry the pin. Collect them so we can flag
+        // ADC2 pins (which conflict with WiFi at runtime — the ADC2 peripheral is
+        // shared with the WiFi radio and reads return garbage while WiFi is on).
+        if (node.operation && typeof node.operation === 'object'
+            && (node.operation.operation === 'adc.read' || node.operation.operation === 'adc.read_voltage')
+            && typeof node.operation.pin === 'number') {
+          adcReadPins.add(node.operation.pin);
         }
         for (const k of Object.keys(node)) {
           const v = node[k];
@@ -613,6 +686,33 @@ static inline int digitalRead(int pin) {
           code: 'esp32-wakeup-pin-not-rtc',
           message: `GPIO ${pin} is not an RTC GPIO on ${chip.id} and cannot wake from deep sleep.`,
           hint: `Deep-sleep pin wakeup requires an RTC-capable pin. On ${chip.id}: ${chip.gpio.rtcOnly.join(', ')}.`,
+          source: program.fileName,
+        });
+      }
+    }
+
+    // ADC2 shares its peripheral with the WiFi radio: while WiFi is connected,
+    // ADC2 reads return garbage / fail. This is a silicon-level constraint, not
+    // a driver bug — the only safe analog inputs alongside WiFi are ADC1 pins.
+    // Flag ADC2-pin reads when WiFi is also used so users don't chase silent
+    // bad readings. The ADC1 pin set is chip-specific (classic ESP32: GPIO
+    // 32-39; S3: GPIO1-10).
+    if (a.usesWifi && adcReadPins.size > 0 && chip.adc?.units) {
+      const adc2Unit = chip.adc.units.find((u: any) => /ADC_UNIT_2/.test(String(u.unit)));
+      const adc2Pins = adc2Unit ? Object.keys(adc2Unit.channelForPin).map(Number) : [];
+      const adc2Set = new Set(adc2Pins);
+      const conflicting = [...adcReadPins].filter((p) => adc2Set.has(p));
+      if (conflicting.length > 0) {
+        const adc1Pins = adc2Pins.length > 0
+          ? chip.adc.units.flatMap((u: any) => /ADC_UNIT_1/.test(String(u.unit)) ? Object.keys(u.channelForPin).map(Number) : [])
+          : [];
+        diags.push({
+          severity: 'warning',
+          code: 'esp32-adc2-wifi-conflict',
+          message: `GPIO ${conflicting.join(', ')} is on ADC2, which is shared with the WiFi radio — analog reads return garbage while WiFi is connected.`,
+          hint: adc1Pins.length > 0
+            ? `Use an ADC1 pin for analog input alongside WiFi. On ${chip.id} (ADC1): ${adc1Pins.join(', ')}.`
+            : `Use an ADC1 pin for analog input alongside WiFi.`,
           source: program.fileName,
         });
       }

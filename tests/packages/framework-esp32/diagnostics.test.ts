@@ -5,13 +5,19 @@ const strategy = new Esp32Strategy();
 
 // The parent's profileDiagnostics walks program.functions[].statements
 // (via collectUsedIdentifiers). Provide a minimal valid ProgramIR shape.
-function fakeProgram(gpioSetModePins: Array<{ pin: number; mode: string }> = []): any {
-  // Embed gpio.set_mode ops inside a function's statements so both the parent's
-  // walker and our visit() reach them.
-  const statements = gpioSetModePins.map(({ pin, mode }) => ({
-    kind: 'hal-op',
-    operation: { operation: 'gpio.set_mode', pin, mode },
-  }));
+function fakeProgram(gpioSetModePins: Array<{ pin: number; mode: string }> = [], adcReadPins: number[] = []): any {
+  // Embed gpio.set_mode + adc.read ops inside a function's statements so both
+  // the parent's walker and our visit() reach them.
+  const statements: any[] = [
+    ...gpioSetModePins.map(({ pin, mode }) => ({
+      kind: 'hal-op',
+      operation: { operation: 'gpio.set_mode', pin, mode },
+    })),
+    ...adcReadPins.map((pin) => ({
+      kind: 'hal-op',
+      operation: { operation: 'adc.read', pin },
+    })),
+  ];
   return {
     fileName: 'test.ts',
     functions: [{ name: 'setup', statements, parameters: [] }],
@@ -43,6 +49,48 @@ describe('Esp32Strategy profileDiagnostics', () => {
     const ctx = { analysis: { usesDAC: true }, frameworkData: { target: 'esp32s3' } } as any;
     const diags = strategy.profileDiagnostics(fakeProgram(), ctx);
     expect(diags.some((d) => d.code === 'esp32-dac-unavailable')).toBe(true);
+  });
+
+  it('flags EEPROM usage (not available on ESP-IDF) pointing to Preferences/NVS', () => {
+    const ctx = { analysis: { usesEEPROM: true }, frameworkData: { target: 'esp32s3' } } as any;
+    const diags = strategy.profileDiagnostics(fakeProgram(), ctx);
+    const eeprom = diags.find((d) => d.code === 'esp32-eeprom-unavailable');
+    expect(eeprom).toBeDefined();
+    expect(eeprom!.severity).toBe('error');
+    // The hint must steer users toward the lowered alternative.
+    expect(eeprom!.hint).toMatch(/Preferences/i);
+  });
+
+  it('does NOT flag EEPROM when unused', () => {
+    const ctx = { analysis: { usesEEPROM: false }, frameworkData: { target: 'esp32s3' } } as any;
+    const diags = strategy.profileDiagnostics(fakeProgram(), ctx);
+    expect(diags.some((d) => d.code === 'esp32-eeprom-unavailable')).toBe(false);
+  });
+
+  it('flags ADC2 pin read + WiFi (ADC2 conflicts with the WiFi radio)', () => {
+    // GPIO4 is ADC2_CH0 on classic ESP32; WiFi is used → conflict.
+    const ctx = { analysis: { usesWifi: true }, frameworkData: { target: 'esp32' } } as any;
+    const diags = strategy.profileDiagnostics(fakeProgram([], [4]), ctx);
+    const adc2 = diags.find((d) => d.code === 'esp32-adc2-wifi-conflict');
+    expect(adc2).toBeDefined();
+    expect(adc2!.severity).toBe('warning');
+    // Hint must steer toward ADC1 pins (GPIO32-39 on classic ESP32).
+    expect(adc2!.hint).toMatch(/ADC1/);
+    expect(adc2!.hint).toMatch(/32/);
+  });
+
+  it('does NOT flag ADC1 pin read + WiFi (ADC1 is WiFi-safe)', () => {
+    // GPIO32 is ADC1_CH4 on classic ESP32; WiFi is used but ADC1 is fine.
+    const ctx = { analysis: { usesWifi: true }, frameworkData: { target: 'esp32' } } as any;
+    const diags = strategy.profileDiagnostics(fakeProgram([], [32]), ctx);
+    expect(diags.some((d) => d.code === 'esp32-adc2-wifi-conflict')).toBe(false);
+  });
+
+  it('does NOT flag ADC2 pin read when WiFi is unused', () => {
+    // GPIO4 is ADC2, but no WiFi → no conflict (ADC2 works without WiFi).
+    const ctx = { analysis: { usesWifi: false }, frameworkData: { target: 'esp32' } } as any;
+    const diags = strategy.profileDiagnostics(fakeProgram([], [4]), ctx);
+    expect(diags.some((d) => d.code === 'esp32-adc2-wifi-conflict')).toBe(false);
   });
 
   it('flags input-only pin (34) used as OUTPUT on classic ESP32', () => {

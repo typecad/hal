@@ -1062,6 +1062,444 @@ export interface PreferencesGetStringOp {
 }
 
 // ---------------------------------------------------------------------------
+// Random — random number generation
+// ---------------------------------------------------------------------------
+// Frameworks lower these to their platform's PRNG: Arduino `random()`/
+// `randomSeed()` (core), ESP-IDF `esp_random()` (hardware RNG seeded by RF
+// noise). The op carries the min/max as runtime expression strings so
+// variable arguments resolve correctly.
+
+export interface RandomIntOp {
+  operation: "random.int";
+}
+
+export interface RandomRangeOp {
+  operation: "random.range";
+  /** Inclusive lower bound — numeric or runtime expression string */
+  min: number | string;
+  /** Inclusive upper bound — numeric or runtime expression string */
+  max: number | string;
+}
+
+export interface RandomSeedOp {
+  operation: "random.seed";
+  /** Seed value — numeric or runtime expression string */
+  seed: number | string;
+}
+
+// ---------------------------------------------------------------------------
+// FS — filesystem (SD card / flash filesystem)
+// ---------------------------------------------------------------------------
+// Frameworks lower these to their platform's filesystem. The HAL surface is a
+// high-level string-oriented API (readText/writeText); frameworks back it with
+// their native VFS + partition layout (ESP-IDF: esp_vfs_fat_sdmmc_mount for SD
+// cards; Arduino: SD.h / LittleFS). The runtime shim owns the open/read/write/
+// close dance and returns heap strings for readText (caller-owned, must not be
+// freed by the caller on Arduino-ESP32 where String manages its own heap).
+
+export interface FsBeginOp {
+  operation: "fs.begin";
+}
+
+export interface FsReadTextOp {
+  operation: "fs.read_text";
+  /** C string expression for the path */
+  path: string;
+}
+
+export interface FsWriteTextOp {
+  operation: "fs.write_text";
+  /** C string expression for the path */
+  path: string;
+  /** C string expression for the content */
+  content: string;
+}
+
+export interface FsExistsOp {
+  operation: "fs.exists";
+  /** C string expression for the path */
+  path: string;
+}
+
+export interface FsRemoveOp {
+  operation: "fs.remove";
+  /** C string expression for the path */
+  path: string;
+}
+
+// ---------------------------------------------------------------------------
+// mDNS — service discovery (esp_mdns)
+// ---------------------------------------------------------------------------
+
+export interface MdnsStartOp {
+  operation: "mdns.start";
+  /** C string expression for the host name */
+  hostname: string;
+}
+
+export interface MdnsSetHostnameOp {
+  operation: "mdns.set_hostname";
+  /** C string expression for the host name */
+  name: string;
+}
+
+export interface MdnsAddServiceOp {
+  operation: "mdns.add_service";
+  /** C string expression for the service instance name */
+  instance: string;
+  /** C string expression for the protocol ("_tcp" / "_udp") */
+  proto: string;
+  /** Port number — numeric or runtime expression string */
+  port: number | string;
+}
+
+export interface MdnsAnnounceOp {
+  operation: "mdns.announce";
+}
+
+export interface MdnsStopOp {
+  operation: "mdns.stop";
+}
+
+// ---------------------------------------------------------------------------
+// MQTT — pub/sub client (esp_mqtt)
+// ---------------------------------------------------------------------------
+
+export interface MqttConnectOp {
+  operation: "mqtt.connect";
+  /** C string expression for the broker URI ("mqtt://..." / "mqtts://...") */
+  brokerUri: string;
+  /** C string expression for the client id */
+  clientId: string;
+}
+
+export interface MqttOnMessageOp {
+  operation: "mqtt.on_message";
+  /** Resolved C++ callback function name (topic, payload) */
+  handler: string;
+}
+
+export interface MqttSubscribeOp {
+  operation: "mqtt.subscribe";
+  /** C string expression for the topic filter */
+  topic: string;
+}
+
+export interface MqttPublishOp {
+  operation: "mqtt.publish";
+  /** C string expression for the topic */
+  topic: string;
+  /** C string expression for the payload */
+  data: string;
+}
+
+export interface MqttConnectedOp {
+  operation: "mqtt.connected";
+}
+
+export interface MqttDisconnectOp {
+  operation: "mqtt.disconnect";
+}
+
+// ---------------------------------------------------------------------------
+// OTA — over-the-air firmware update (esp_https_ota)
+// ---------------------------------------------------------------------------
+
+export interface OtaFromUrlOp {
+  operation: "ota.from_url";
+  /** C string expression for the HTTPS firmware URL */
+  url: string;
+}
+
+export interface OtaBeginOp {
+  operation: "ota.begin";
+}
+
+export interface OtaWriteOp {
+  operation: "ota.write";
+  /** C expression for the chunk data (buffer/pointer) */
+  chunk: string;
+}
+
+export interface OtaApplyOp {
+  operation: "ota.apply";
+}
+
+// ---------------------------------------------------------------------------
+// Temperature — on-chip die temperature sensor
+// ---------------------------------------------------------------------------
+
+export interface TempReadOp {
+  operation: "temp.read";
+}
+
+// ---------------------------------------------------------------------------
+// Hardware timer — GPTimer / TIM (high-precision periodic interrupts)
+// ---------------------------------------------------------------------------
+
+export interface HwtimerSetFrequencyOp {
+  operation: "hwtimer.set_frequency";
+  /** Timer instance index */
+  instance: number | string;
+  /** Frequency in Hz */
+  hz: number | string;
+}
+
+export interface HwtimerOnOverflowOp {
+  operation: "hwtimer.on_overflow";
+  /** Timer instance index */
+  instance: number | string;
+  /** Resolved C++ callback function name */
+  handler: string;
+}
+
+export interface HwtimerStartOp {
+  operation: "hwtimer.start";
+  /** Timer instance index */
+  instance: number | string;
+}
+
+export interface HwtimerStopOp {
+  operation: "hwtimer.stop";
+  /** Timer instance index */
+  instance: number | string;
+}
+
+// ---------------------------------------------------------------------------
+// Capacitive touch pins — ESP32 on-chip capacitive sensing
+// ---------------------------------------------------------------------------
+
+export interface CapacitiveReadOp {
+  operation: "capacitive.read";
+  port?: string;
+  /** Touch-capable GPIO pin number */
+  pin: number;
+}
+
+// ---------------------------------------------------------------------------
+// I2S — Inter-IC Sound / digital audio (ESP32 I2S peripheral)
+// ---------------------------------------------------------------------------
+// NOTE: the op surface below is declared so the manifest can record this
+// peripheral as unsupported on every framework (see each framework manifest's
+// hal.i2s block). No framework lowers these ops yet; the resolver returns
+// undefined for all of them. When a framework implements I2S, it declares the
+// ops 'supported' and adds a lowering — no manifest-schema or validator change
+// is needed because the category is already recognized.
+
+export interface I2sInitOp {
+  operation: "i2s.init";
+  /** Sample rate in Hz */
+  sampleRate: number | string;
+  /** Number of channels (1 = mono, 2 = stereo) */
+  channels?: number | string;
+  /** Bits per sample (8, 16, 24, 32) */
+  bitsPerSample?: number | string;
+}
+export interface I2sWriteOp {
+  operation: "i2s.write";
+  /** C expression for the sample buffer */
+  data: string;
+  /** Number of bytes to write */
+  length: number | string;
+}
+export interface I2sReadOp {
+  operation: "i2s.read";
+  /** Buffer variable name */
+  buffer: string;
+  /** Number of bytes to read */
+  length: number | string;
+}
+
+// ---------------------------------------------------------------------------
+// TWAI — Controller Area Network (ESP32 CAN, marketed as TWAI)
+// ---------------------------------------------------------------------------
+
+export interface TwaiInitOp {
+  operation: "twai.init";
+  /** Baud rate in bits per second */
+  baudrate: number | string;
+  /** TX GPIO pin number */
+  txPin: number;
+  /** RX GPIO pin number */
+  rxPin: number;
+}
+export interface TwaiSendOp {
+  operation: "twai.send";
+  /** CAN identifier */
+  id: number | string;
+  /** C expression for the payload bytes */
+  data: string;
+  /** Number of payload bytes (0-8) */
+  length: number | string;
+}
+export interface TwaiReceiveOp {
+  operation: "twai.receive";
+  /** Buffer variable name */
+  buffer: string;
+}
+
+// ---------------------------------------------------------------------------
+// USB — USB OTG / USB-Serial-JTAG (ESP32-S3 OTG; C3/C6 USB-Serial-JTAG)
+// ---------------------------------------------------------------------------
+
+export interface UsbInitOp {
+  operation: "usb.init";
+  /** Device descriptor name or C expression (framework-specific) */
+  descriptor?: string;
+}
+export interface UsbWriteOp {
+  operation: "usb.write";
+  /** Endpoint index (0 for control/default) */
+  endpoint: number | string;
+  /** C expression for the data buffer */
+  data: string;
+  /** Number of bytes */
+  length: number | string;
+}
+export interface UsbReadOp {
+  operation: "usb.read";
+  /** Endpoint index */
+  endpoint: number | string;
+  /** Buffer variable name */
+  buffer: string;
+  /** Max bytes to read */
+  length: number | string;
+}
+
+// ---------------------------------------------------------------------------
+// Ethernet — Ethernet MAC (ESP32 internal EMAC + external PHY)
+// ---------------------------------------------------------------------------
+
+export interface EthInitOp {
+  operation: "eth.init";
+  /** PHY address (0-31) */
+  phyAddress: number | string;
+  /** MDC GPIO pin */
+  mdcPin: number;
+  /** MDIO GPIO pin */
+  mdioPin: number;
+}
+export interface EthStartOp {
+  operation: "eth.start";
+}
+export interface EthIsLinkedOp {
+  operation: "eth.is_linked";
+}
+
+// ---------------------------------------------------------------------------
+// ESPNOW — ESP-exclusive peer-to-peer wireless protocol
+// ---------------------------------------------------------------------------
+
+export interface EspnowInitOp {
+  operation: "espnow.init";
+}
+export interface EspnowAddPeerOp {
+  operation: "espnow.add_peer";
+  /** Peer MAC address as a C expression (e.g. an array initializer) */
+  mac: string;
+}
+export interface EspnowSendOp {
+  operation: "espnow.send";
+  /** Peer MAC address C expression, or NULL for broadcast */
+  mac: string;
+  /** C expression for the payload */
+  data: string;
+  /** Number of bytes */
+  length: number | string;
+}
+export interface EspnowOnReceiveOp {
+  operation: "espnow.on_receive";
+  /** Resolved C++ callback function name */
+  handler: string;
+}
+
+// ---------------------------------------------------------------------------
+// Crypto — hardware crypto acceleration (AES/SHA/HMAC/RSA/ECC via mbedtls)
+// ---------------------------------------------------------------------------
+
+export interface CryptoAesEncryptOp {
+  operation: "crypto.aes_encrypt";
+  /** C expression for the key buffer */
+  key: string;
+  /** C expression for the plaintext buffer */
+  input: string;
+  /** Output buffer variable name */
+  output: string;
+  /** Number of bytes (must be a multiple of 16) */
+  length: number | string;
+}
+export interface CryptoSha256Op {
+  operation: "crypto.sha256";
+  /** C expression for the input buffer */
+  input: string;
+  /** Number of bytes */
+  length: number | string;
+  /** Output buffer variable name (32 bytes) */
+  output: string;
+}
+export interface CryptoHmacOp {
+  operation: "crypto.hmac";
+  /** Key C expression */
+  key: string;
+  /** Message C expression */
+  message: string;
+  /** Message length in bytes */
+  length: number | string;
+  /** Output buffer variable name */
+  output: string;
+}
+
+// ---------------------------------------------------------------------------
+// PCNT — pulse counter peripheral (hardware event counting)
+// ---------------------------------------------------------------------------
+
+export interface PcntInitOp {
+  operation: "pcnt.init";
+  /** PCNT unit index */
+  unit: number | string;
+  /** Pulse input GPIO pin */
+  pulsePin: number;
+  /** Optional control/filter GPIO pin */
+  ctrlPin?: number;
+}
+export interface PcntCountOp {
+  operation: "pcnt.count";
+  /** PCNT unit index */
+  unit: number | string;
+}
+export interface PcntClearOp {
+  operation: "pcnt.clear";
+  /** PCNT unit index */
+  unit: number | string;
+}
+
+// ---------------------------------------------------------------------------
+// MCPWM — motor control PWM (distinct from the LEDC general-purpose PWM)
+// ---------------------------------------------------------------------------
+
+export interface McpwmInitOp {
+  operation: "mcpwm.init";
+  /** MCPWM unit index */
+  unit: number | string;
+  /** PWM frequency in Hz */
+  frequency: number | string;
+}
+export interface McpwmSetDutyOp {
+  operation: "mcpwm.set_duty";
+  /** MCPWM unit index */
+  unit: number | string;
+  /** Operator/timer index */
+  operator: number | string;
+  /** Duty cycle percentage (0.0 - 100.0) */
+  duty: number | string;
+}
+export interface McpwmStartOp {
+  operation: "mcpwm.start";
+  /** MCPWM unit index */
+  unit: number | string;
+}
+
+// ---------------------------------------------------------------------------
 // Raw C++ passthrough — escape hatch for unsupported operations
 // ---------------------------------------------------------------------------
 
@@ -1266,6 +1704,76 @@ export type HALOpIR =
   | PreferencesGetFloatOp
   | PreferencesPutStringOp
   | PreferencesGetStringOp
+  // Random
+  | RandomIntOp
+  | RandomRangeOp
+  | RandomSeedOp
+  // FS (filesystem)
+  | FsBeginOp
+  | FsReadTextOp
+  | FsWriteTextOp
+  | FsExistsOp
+  | FsRemoveOp
+  // mDNS
+  | MdnsStartOp
+  | MdnsSetHostnameOp
+  | MdnsAddServiceOp
+  | MdnsAnnounceOp
+  | MdnsStopOp
+  // MQTT
+  | MqttConnectOp
+  | MqttOnMessageOp
+  | MqttSubscribeOp
+  | MqttPublishOp
+  | MqttConnectedOp
+  | MqttDisconnectOp
+  // OTA
+  | OtaFromUrlOp
+  | OtaBeginOp
+  | OtaWriteOp
+  | OtaApplyOp
+  // Temperature
+  | TempReadOp
+  // Hardware timer
+  | HwtimerSetFrequencyOp
+  | HwtimerOnOverflowOp
+  | HwtimerStartOp
+  | HwtimerStopOp
+  // Capacitive touch pins
+  | CapacitiveReadOp
+  // I2S / digital audio (unimplemented surface)
+  | I2sInitOp
+  | I2sWriteOp
+  | I2sReadOp
+  // TWAI / CAN (unimplemented surface)
+  | TwaiInitOp
+  | TwaiSendOp
+  | TwaiReceiveOp
+  // USB OTG / USB-Serial-JTAG (unimplemented surface)
+  | UsbInitOp
+  | UsbWriteOp
+  | UsbReadOp
+  // Ethernet MAC (unimplemented surface)
+  | EthInitOp
+  | EthStartOp
+  | EthIsLinkedOp
+  // ESPNOW (unimplemented surface)
+  | EspnowInitOp
+  | EspnowAddPeerOp
+  | EspnowSendOp
+  | EspnowOnReceiveOp
+  // Hardware crypto (unimplemented surface)
+  | CryptoAesEncryptOp
+  | CryptoSha256Op
+  | CryptoHmacOp
+  // Pulse counter (unimplemented surface)
+  | PcntInitOp
+  | PcntCountOp
+  | PcntClearOp
+  // Motor control PWM (unimplemented surface)
+  | McpwmInitOp
+  | McpwmSetDutyOp
+  | McpwmStartOp
   // Raw passthrough
   | RawCppOp
   // Display / graphics
@@ -1365,6 +1873,38 @@ export const HAL_OPERATION_KINDS = [
   'preferences.put_bool', 'preferences.get_bool',
   'preferences.put_float', 'preferences.get_float',
   'preferences.put_string', 'preferences.get_string',
+  // Random
+  'random.int', 'random.range', 'random.seed',
+  // FS (filesystem)
+  'fs.begin', 'fs.read_text', 'fs.write_text', 'fs.exists', 'fs.remove',
+  // mDNS
+  'mdns.start', 'mdns.set_hostname', 'mdns.add_service', 'mdns.announce', 'mdns.stop',
+  // MQTT
+  'mqtt.connect', 'mqtt.on_message', 'mqtt.subscribe', 'mqtt.publish', 'mqtt.connected', 'mqtt.disconnect',
+  // OTA
+  'ota.from_url', 'ota.begin', 'ota.write', 'ota.apply',
+  // Temperature
+  'temp.read',
+  // Hardware timer
+  'hwtimer.set_frequency', 'hwtimer.on_overflow', 'hwtimer.start', 'hwtimer.stop',
+  // Capacitive touch pins
+  'capacitive.read',
+  // I2S / digital audio (unimplemented — declared unsupported by all frameworks)
+  'i2s.init', 'i2s.write', 'i2s.read',
+  // TWAI / CAN (unimplemented)
+  'twai.init', 'twai.send', 'twai.receive',
+  // USB OTG / USB-Serial-JTAG (unimplemented)
+  'usb.init', 'usb.write', 'usb.read',
+  // Ethernet MAC (unimplemented)
+  'eth.init', 'eth.start', 'eth.is_linked',
+  // ESPNOW (unimplemented)
+  'espnow.init', 'espnow.add_peer', 'espnow.send', 'espnow.on_receive',
+  // Hardware crypto (unimplemented)
+  'crypto.aes_encrypt', 'crypto.sha256', 'crypto.hmac',
+  // Pulse counter (unimplemented)
+  'pcnt.init', 'pcnt.count', 'pcnt.clear',
+  // Motor control PWM (unimplemented)
+  'mcpwm.init', 'mcpwm.set_duty', 'mcpwm.start',
   // Raw passthrough
   'raw',
 ] as const;

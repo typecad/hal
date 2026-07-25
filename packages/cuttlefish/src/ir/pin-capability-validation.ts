@@ -87,6 +87,32 @@ function findPinsWithCapability(capability: string, boardConstants: BoardConstan
   return result;
 }
 
+/**
+ * Does the board declare ANY per-pin `type:'pwm'` function entry anywhere?
+ *
+ * AVR-family boards (atmega328p, etc.) hardwire PWM to specific timer-output
+ * pins, so their MCU descriptors list `{ type:'pwm', ... }` per pin and the
+ * capability check correctly rejects PWM on non-timer pins. ESP32-family
+ * boards route LEDC to ANY output GPIO via the GPIO matrix, so their MCU
+ * descriptors carry zero `type:'pwm'` entries — PWM is a board-wide property
+ * (the `pins.pwm` collection), not a per-pin function. On such boards the
+ * per-pin capability check would false-positive on every pin, so the caller
+ * skips it when this returns false. This distinguishes the two families
+ * cleanly (AVR has entries, ESP32 has none) without special-casing arch names.
+ */
+function boardHasAnyPwmFunctionEntries(boardConstants: BoardConstants | undefined): boolean {
+  if (!boardConstants) return false;
+  for (let i = 0; i < 100; i++) {
+    if (boardConstants.get(`pins.all.${i}.name`) === undefined) continue;
+    for (let j = 0; j < 10; j++) {
+      const type = boardConstants.get(`pins.all.${i}.functions.${j}.type`);
+      if (type === undefined) break;
+      if (String(type) === 'pwm') return true;
+    }
+  }
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Capability check for a single HAL operation
 // ---------------------------------------------------------------------------
@@ -105,6 +131,13 @@ function checkCapability(
 
   const capability = operationToCapability(op);
   if (!capability) return; // GPIO/timing — always available.
+
+  // ESP32-family boards route PWM (LEDC) to any output GPIO via the GPIO
+  // matrix, so they carry zero per-pin `type:'pwm'` entries (unlike AVR,
+  // which hardwires PWM to timer-output pins). On such boards the per-pin PWM
+  // capability check would reject every pin; skip it and let the framework's
+  // LEDC driver handle routing. This does NOT weaken AVR, which has entries.
+  if (capability === 'pwm' && !boardHasAnyPwmFunctionEntries(boardConstants)) return;
 
   const pin = (operation as any).pin as number;
   if (typeof pin !== 'number' || pin < 0) return;

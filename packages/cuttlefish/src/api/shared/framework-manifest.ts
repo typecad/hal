@@ -13,6 +13,17 @@
 
 import { z } from 'zod';
 
+// Core HAL categories that EVERY framework MUST declare coverage for (the
+// universal embedded surface: digital/analog I/O, comms buses, timing, power,
+// watchdog). These keys are required in every manifest's `hal` block.
+//
+// Extended categories — `rmt`, `ble`, `preferences`, `random`, `fs`, `mqtt`,
+// `mdns`, `ota`, etc. — are OPTIONAL: a framework declares them only if it
+// lowers them. The HalCoverageSchema below uses `.catchall()` so declared
+// extended categories survive zod parsing (they used to be silently stripped,
+// which made esp32's ble/rmt/preferences manifest blocks dead data) and get
+// validated by the manifest validator like any core category. A framework that
+// does not lower an extended category simply omits it.
 const HAL_CATEGORIES = [
   'gpio', 'pwm', 'adc', 'dac', 'interrupts', 'tone', 'timing', 'power',
   'i2c', 'spi', 'uart', 'pulse', 'shift', 'board', 'wdt', 'wifi', 'http',
@@ -44,7 +55,15 @@ const HalCoverageSchema = z.object(
   ),
 ).extend({
   raw: z.object({ supported: z.boolean() }).default({ supported: true }),
-});
+  // catchall: extended categories (rmt, ble, preferences, random, fs, mqtt,
+  // mdns, ota, ...) declared by a framework that lowers them. Without this,
+  // zod's default object parsing silently strips unknown keys, so a manifest's
+  // `ble:` / `rmt:` / `preferences:` / `random:` blocks never reached the
+  // validator or consumers. The catchall validates them with the same shape as
+  // core categories (HalCategorySchema) and preserves them on the parsed
+  // object. Frameworks that don't lower an extended category simply omit it.
+  // `raw` is excluded — it is the escape hatch, not a HAL category.
+}).catchall(HalCategorySchema);
 
 const EntrypointSchema = z.object({
   entrypointFunctionName: z.string(),

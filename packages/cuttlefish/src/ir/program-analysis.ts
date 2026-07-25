@@ -89,6 +89,24 @@ export interface ProgramAnalysisResult {
   /** Preferences (NVS) usage — framework-esp32 gates the __tc_prefs runtime shim
    *  and its nvs_flash/nvs includes on this. Detected from preferences.* ops. */
   usesPreferences: boolean;
+  /** Random usage — frameworks gate their PRNG runtime/include on this
+   *  (e.g. framework-esp32 includes <esp_random.h>). Detected from random.* ops. */
+  usesRandom: boolean;
+  /** FS (filesystem) usage — frameworks gate their VFS/SD runtime shim on this.
+   *  Detected from fs.* ops. */
+  usesFS: boolean;
+  /** mDNS usage — frameworks gate the esp_mdns runtime/include on this. */
+  usesMdns: boolean;
+  /** MQTT usage — frameworks gate the esp_mqtt runtime/include on this. */
+  usesMqtt: boolean;
+  /** OTA usage — frameworks gate the esp_https_ota runtime/include on this. */
+  usesOta: boolean;
+  /** Temperature (die temp) usage. Detected from temp.* ops. */
+  usesTemp: boolean;
+  /** Hardware timer (GPTimer) usage. Detected from hwtimer.* ops. */
+  usesHwtimer: boolean;
+  /** Capacitive touch pins usage. Detected from capacitive.* ops. */
+  usesCapacitive: boolean;
 }
 
 // Regex for std:: math calls
@@ -99,7 +117,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesHttp' | 'usesBle' | 'usesPreferences'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -315,16 +333,46 @@ function analyzeExpression(
       break;
 
     case "hal-expr":
-      // Value-position HAL ops (e.g. `const ip = WiFi.localIP()` lowers to a
-      // hal-expr initializer) never pass through the statement-level hal-op
-      // detection above, so mirror the wifi./http. flag detection here. These
-      // gate the framework-esp32 __tc_wifi/__tc_http runtime shims.
+      // Value-position HAL ops (e.g. `const v = D32.readAnalog()` lowers to an
+      // adc.read hal-expr initializer; `const ip = WiFi.localIP()` to a wifi
+      // hal-expr) never pass through the statement-level hal-op detection
+      // below, so mirror the FULL peripheral-flag detection here. Without this,
+      // a value-returning HAL op used in a var-init or expression context fails
+      // to set its analysis flag — the framework then drops the matching init
+      // block + forced includes (e.g. __tc_adc_read was emitted but the
+      // CUTTLEFISH_ADC init block and adc_oneshot.h include were not). Keep this
+      // list in sync with the hal-op statement case at the bottom of this file.
       if (expr.operation && typeof expr.operation.operation === "string") {
         const opName = expr.operation.operation;
-        if (opName.startsWith("wifi.")) result.usesWifi = true;
-        if (opName.startsWith("http.")) result.usesHttp = true;
-        if (opName.startsWith("ble.")) result.usesBle = true;
+        if (opName.startsWith("display.")) {
+          result.usesGPIO = true;
+        }
+        if (opName.startsWith("gpio."))      result.usesGPIO = true;
+        if (opName.startsWith("pwm."))       result.usesPWM = true;
+        if (opName.startsWith("rmt."))       result.usesRmt = true;
+        if (opName.startsWith("adc."))       result.usesADC = true;
+        if (opName.startsWith("dac."))       result.usesDAC = true;
+        if (opName.startsWith("power."))     result.usesPower = true;
+        if (opName.startsWith("wdt."))       result.usesWdt = true;
+        if (opName.startsWith("interrupt.")) result.usesInterrupts = true;
+        if (opName.startsWith("pulse."))     result.usesPulse = true;
+        if (opName.startsWith("shift."))     result.usesShift = true;
+        if (opName.startsWith("tone."))      result.usesTone = true;
+        if (opName.startsWith("i2c."))       result.usesI2C = true;
+        if (opName.startsWith("spi."))       result.usesSPI = true;
+        if (opName.startsWith("uart."))      result.usesUart = true;
+        if (opName.startsWith("wifi."))      result.usesWifi = true;
+        if (opName.startsWith("http."))      result.usesHttp = true;
+        if (opName.startsWith("ble."))       result.usesBle = true;
         if (opName.startsWith("preferences.")) result.usesPreferences = true;
+        if (opName.startsWith("random."))    result.usesRandom = true;
+        if (opName.startsWith("fs."))        result.usesFS = true;
+        if (opName.startsWith("mdns."))      result.usesMdns = true;
+        if (opName.startsWith("mqtt."))      result.usesMqtt = true;
+        if (opName.startsWith("ota."))       result.usesOta = true;
+        if (opName.startsWith("temp."))      result.usesTemp = true;
+        if (opName.startsWith("hwtimer."))   result.usesHwtimer = true;
+        if (opName.startsWith("capacitive.")) result.usesCapacitive = true;
       }
       break;
   }
@@ -581,6 +629,14 @@ function analyzeStatement(
         if (opName.startsWith("http."))      result.usesHttp = true;
         if (opName.startsWith("ble."))       result.usesBle = true;
         if (opName.startsWith("preferences.")) result.usesPreferences = true;
+        if (opName.startsWith("random."))     result.usesRandom = true;
+        if (opName.startsWith("fs."))         result.usesFS = true;
+        if (opName.startsWith("mdns."))       result.usesMdns = true;
+        if (opName.startsWith("mqtt."))       result.usesMqtt = true;
+        if (opName.startsWith("ota."))        result.usesOta = true;
+        if (opName.startsWith("temp."))       result.usesTemp = true;
+        if (opName.startsWith("hwtimer."))    result.usesHwtimer = true;
+        if (opName.startsWith("capacitive.")) result.usesCapacitive = true;
         // Timing HAL ops (timing.delay/millis/micros) carry a typed operation
         // name, not raw code, so the regex scans below miss them. Mirror the
         // raw-code timing detection here so usesMillis/usesTiming (and thus
@@ -712,6 +768,14 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesHttp: false,
     usesBle: false,
     usesPreferences: false,
+    usesRandom: false,
+    usesFS: false,
+    usesMdns: false,
+    usesMqtt: false,
+    usesOta: false,
+    usesTemp: false,
+    usesHwtimer: false,
+    usesCapacitive: false,
   };
 
   // Analyze type aliases

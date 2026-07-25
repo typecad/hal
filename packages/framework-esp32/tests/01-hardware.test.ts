@@ -152,24 +152,56 @@ describe("Timing (esp_timer_get_time + vTaskDelay)")
   ).toBe(1)
 
 // ──────────────────────────────────────────────────────────────────────────
-// ADC — adc1_get_raw + esp_adc_cal_raw_to_voltage
-// NOTE: ADC tests are temporarily skipped because the ADC init block
-// (__tc_adc_chars declaration) is not emitted via shimLines when the
-// transpile goes through the expect test runner's path. The ADC lowering
-// is correct (unit-tested); the issue is the expect preprocessor's
-// transpile invocation not propagating the usesADC analysis flag to
-// shimLines. Uncomment once the init-block emission is fixed.
+// ADC — adc_oneshot + adc_cali_line_fitting (v6 driver)
+// D5 (GPIO5) is ADC1_CH4 on the ESP32-S3. ADC1 is usable while WiFi is active
+// (ADC2 conflicts with the radio). readAnalog() returns a raw count; the
+// lowering resolves the ADC1 channel + unit from the pin.
 // ──────────────────────────────────────────────────────────────────────────
 
+describe("ADC (adc_oneshot + adc_cali_line_fitting)")
+  .it("D5.readAnalog() returns a non-negative raw count")
+  .expect(
+    (() => {
+      const v = D5.readAnalog();
+      return v >= 0 ? 1 : 0;
+    })
+  ).toBe(1)
+  .it("D5.readAnalog() is bounded by the ADC resolution (12-bit → 0..4095)")
+  .expect(
+    (() => {
+      const v = D5.readAnalog();
+      return v <= 4095 ? 1 : 0;
+    })
+  ).toBe(1)
+
 // ──────────────────────────────────────────────────────────────────────────
-// PWM — LEDC (ledc_timer_config + ledc_set_duty)
-// NOTE: PWM tests are temporarily skipped because the S3 board descriptor's
-// per-pin functions array doesn't include type:'pwm' entries, causing the
-// transpiler's pin-capability validator to reject out.pwm() calls. The LEDC
-// peripheral can drive any GPIO on the S3 via the GPIO matrix; this is a
-// board-descriptor limitation, not a framework-esp32 limitation. Once the
-// board descriptor adds pwm function entries per pin, uncomment this section.
+// PWM — LEDC (ledc_timer_config + ledc_set_duty + ledc_update_duty)
+// The ESP32-S3 routes LEDC to any output GPIO via the GPIO matrix, so PWM is
+// not tied to specific timer-output pins (unlike AVR). D2 is a safe output.
+// The pin-capability validator skips the per-pin PWM check on GPIO-matrix
+// boards (no per-pin type:'pwm' entries), so out.pwm() is accepted.
 // ──────────────────────────────────────────────────────────────────────────
+
+describe("PWM (LEDC)")
+  .it("D2.pwm(128) compiles and runs without crashing")
+  .expect(
+    (() => {
+      const out = D2.asOutput();
+      out.pwm(128);
+      Timing.delay(1);
+      return 1;
+    })
+  ).toBe(1)
+  .it("D2.pwm(0) and D2.pwm(255) are callable (duty extremes)")
+  .expect(
+    (() => {
+      const out = D2.asOutput();
+      out.pwm(0);
+      out.pwm(255);
+      return 1;
+    })
+  ).toBe(1)
+
 
 // ──────────────────────────────────────────────────────────────────────────
 // Console — printf works implicitly: all protocol lines above use printf.
