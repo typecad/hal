@@ -15,6 +15,7 @@ import { resolveStrategy } from "./platform/registry.js";
 import { loadFrameworkPackage } from "./framework-package.js";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js";
 import { loadCuttlefishConfig, generateVirtualTypeDeclaration } from "./config-loader.js";
+import { generateContractBoard } from "./contract/index.js";
 import { requireUIHook, hasUIHook } from "./ui-hook.js";
 import { loadUIEngine } from "./ui/ui-bridge.js";
 import { runWatch, discoverWatchDirs } from "./watch.js";
@@ -435,6 +436,16 @@ async function main(): Promise<void> {
     // ── Load cuttlefish.config.ts (config wins over CLI flags) ──────────
     const inputDir = path.dirname(path.resolve(options.inputFile));
     const config = loadCuttlefishConfig(inputDir);
+
+    // ── Contract-based board narrowing ──────────────────────────────────
+    // If the config names a TypeCAD contract (*.contract.json from typecad.net),
+    // generate the narrowed `.cuttlefish/board.ts` BEFORE env.d.ts is written
+    // (it emits `export * from './board.js'` for this case) and before the
+    // board package is resolved downstream. The generated board re-exports
+    // only the pins/peripherals the PCB actually wires.
+    if (config?.contract) {
+      await generateContractBoard(config);
+    }
 
     // ── Pre-transpile: generate component .d.ts stubs ───────────────────
     // The transpile type-check needs the .d.ts imports in main.ts to resolve.
