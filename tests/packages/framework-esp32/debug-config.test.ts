@@ -9,7 +9,11 @@ import {
   buildTasksJson,
   buildOpenOcdCfg,
   buildSdkconfigDefaultsDebug,
+  writeDebugConfig,
 } from '../../../packages/framework-esp32/src/toolchain/debug-config';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const OPTS = {
   projectName: 'demo',
@@ -29,6 +33,11 @@ describe('buildLaunchJson', () => {
     expect(cfg.gdbPath).toBe('${command:espIdf.getToolchainGdb}');
     expect(cfg.target).toEqual({ type: 'remote', host: 'localhost', port: '3333' });
     expect(cfg.preLaunchTask).toBe('cuttlefish: debug prep');
+  });
+
+  it('collapses sketchRel="." so the path has no ./ segment', () => {
+    const json = JSON.parse(buildLaunchJson({ ...OPTS, sketchRel: '.' }));
+    expect(json.configurations[0].program).toBe('${workspaceFolder}/src/out-esp32s3/build/demo.elf');
   });
 
   it('scopes auto-load safe-path to the workspace', () => {
@@ -87,5 +96,97 @@ describe('buildSdkconfigDefaultsDebug', () => {
 
   it('keeps assertions enabled', () => {
     expect(buildSdkconfigDefaultsDebug()).toContain('CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_LEVEL=1');
+  });
+});
+
+describe('writeDebugConfig', () => {
+  it('writes all four core artifacts under the project out dir', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-debug-'));
+    try {
+      writeDebugConfig({
+        projectRoot,
+        projectName: 'demo',
+        sketchRel: 'demos/demo',
+        port: 'COM10',
+        target: 'esp32s3',
+        workspaceRoot: projectRoot,
+        sourceMapPath: join(projectRoot, 'main', 'main.cc.thcppmap.json'),
+      });
+
+      expect(existsSync(join(projectRoot, '.vscode/launch.json'))).toBe(true);
+      expect(existsSync(join(projectRoot, '.vscode/tasks.json'))).toBe(true);
+      expect(existsSync(join(projectRoot, '.cuttlefish/openocd.cfg'))).toBe(true);
+      expect(existsSync(join(projectRoot, 'sdkconfig.defaults.debug'))).toBe(true);
+
+      const launch = JSON.parse(readFileSync(join(projectRoot, '.vscode/launch.json'), 'utf8'));
+      expect(launch.configurations[0].program).toContain('build/demo.elf');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('writes the gdb script when a source map with _isr_N entries is provided', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-debug-'));
+    try {
+      const mapPath = join(projectRoot, 'main', 'main.cc.thcppmap.json');
+      mkdirSync(join(projectRoot, 'main'), { recursive: true });
+      writeFileSync(mapPath, JSON.stringify({
+        version: 1,
+        generatedFilePath: 'main/main.cc',
+        sourceFilePath: 'main.ts',
+        entries: [
+          { generatedStartLine: 1, generatedStartColumn: 1, generatedEndLine: 2, generatedEndColumn: 1,
+            tsSpan: { filePath: 'main.ts', startOffset: 0, endOffset: 1, startLine: 4, startColumn: 0, endLine: 4, endColumn: 1 },
+            nodeKind: 'function_definition', symbolName: 'main_isr_0' },
+        ],
+      }));
+
+      writeDebugConfig({
+        projectRoot,
+        projectName: 'demo',
+        sketchRel: 'demos/demo',
+        port: 'COM10',
+        target: 'esp32s3',
+        workspaceRoot: projectRoot,
+        sourceMapPath: mapPath,
+      });
+
+      const script = readFileSync(join(projectRoot, '.cuttlefish/.cuttlefish-gdb.py'), 'utf8');
+      expect(script).toContain('"main_isr_0"');
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does NOT write the gdb script when the source map has no _isr_N entries', () => {
+    const projectRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-debug-'));
+    try {
+      const mapPath = join(projectRoot, 'main', 'main.cc.thcppmap.json');
+      mkdirSync(join(projectRoot, 'main'), { recursive: true });
+      writeFileSync(mapPath, JSON.stringify({
+        version: 1,
+        generatedFilePath: 'main/main.cc',
+        sourceFilePath: 'main.ts',
+        entries: [
+          { generatedStartLine: 1, generatedStartColumn: 1, generatedEndLine: 2, generatedEndColumn: 1,
+            tsSpan: { filePath: 'main.ts', startOffset: 0, endOffset: 1, startLine: 0, startColumn: 0, endLine: 0, endColumn: 1 },
+            nodeKind: 'function_definition', symbolName: 'setup' },
+        ],
+      }));
+
+      writeDebugConfig({
+        projectRoot,
+        projectName: 'demo',
+        sketchRel: 'demos/demo',
+        port: 'COM10',
+        target: 'esp32s3',
+        workspaceRoot: projectRoot,
+        sourceMapPath: mapPath,
+      });
+
+      expect(existsSync(join(projectRoot, '.cuttlefish/.cuttlefish-gdb.py'))).toBe(false);
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
   });
 });

@@ -6,6 +6,11 @@
  * Paths are baked at generation time: VS Code sees no angle-bracket placeholders.
  */
 
+import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import type { GeneratedSourceMap } from '@typecad/cuttlefish/api';
+import { generateGdbScript } from './gdb-script.js';
+
 export interface DebugConfigOptions {
   /** ELF base name, e.g. 'demo' → build/demo.elf */
   projectName: string;
@@ -17,8 +22,22 @@ export interface DebugConfigOptions {
   target: string;
 }
 
+export interface WriteDebugConfigOptions extends DebugConfigOptions {
+  /** Absolute path to the ESP-IDF project root (the out-<target> dir). */
+  projectRoot: string;
+  /** Absolute workspace root, for path normalization. */
+  workspaceRoot: string;
+  /** Path to main/main.cc.thcppmap.json — feeds the gdb script. */
+  sourceMapPath: string;
+}
+
 function outRel(opts: DebugConfigOptions): string {
-  return `${opts.sketchRel}/src/out-${opts.target}`;
+  // sketchRel is the workspace-relative path to the sketch dir. When the user
+  // opens the sketch dir itself in VS Code (the common case — npm scripts run
+  // from there), sketchRel is '.' and we collapse it to avoid an ugly
+  // '${workspaceFolder}/./src/out-...' path.
+  const sketch = opts.sketchRel === '.' || opts.sketchRel === '' ? '' : `${opts.sketchRel}/`;
+  return `${sketch}src/out-${opts.target}`;
 }
 
 export function buildLaunchJson(opts: DebugConfigOptions): string {
@@ -94,4 +113,42 @@ export function buildSdkconfigDefaultsDebug(): string {
     'CONFIG_COMPILER_OPTIMIZATION_SIZE=',
     'CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_LEVEL=1',
   ].join('\n') + '\n';
+}
+
+/**
+ * Write all gdb debug artifacts under `projectRoot`. Idempotent: re-running
+ * overwrites with identical content (deterministic generators).
+ *
+ * Writes:
+ *   .vscode/launch.json
+ *   .vscode/tasks.json
+ *   .cuttlefish/openocd.cfg
+ *   sdkconfig.defaults.debug
+ *   .cuttlefish/.cuttlefish-gdb.py   (only if source map has _isr_N entries)
+ */
+export function writeDebugConfig(opts: WriteDebugConfigOptions): void {
+  const baseOpts: DebugConfigOptions = {
+    projectName: opts.projectName,
+    sketchRel: opts.sketchRel,
+    port: opts.port,
+    target: opts.target,
+  };
+
+  mkdirSync(join(opts.projectRoot, '.vscode'), { recursive: true });
+  mkdirSync(join(opts.projectRoot, '.cuttlefish'), { recursive: true });
+
+  writeFileSync(join(opts.projectRoot, '.vscode/launch.json'), buildLaunchJson(baseOpts));
+  writeFileSync(join(opts.projectRoot, '.vscode/tasks.json'), buildTasksJson(baseOpts));
+  writeFileSync(join(opts.projectRoot, '.cuttlefish/openocd.cfg'), buildOpenOcdCfg());
+  writeFileSync(join(opts.projectRoot, 'sdkconfig.defaults.debug'), buildSdkconfigDefaultsDebug());
+
+  // GDB script: only if a source map exists and contains _isr_N symbols.
+  // Avoids emitting a no-op script for sketches with no hoisted lambdas.
+  if (existsSync(opts.sourceMapPath)) {
+    const map = JSON.parse(readFileSync(opts.sourceMapPath, 'utf8')) as GeneratedSourceMap;
+    const hasIsr = map.entries.some((e) => e.symbolName && /_isr_\d+$/.test(e.symbolName));
+    if (hasIsr) {
+      writeFileSync(join(opts.projectRoot, '.cuttlefish/.cuttlefish-gdb.py'), generateGdbScript(map));
+    }
+  }
 }

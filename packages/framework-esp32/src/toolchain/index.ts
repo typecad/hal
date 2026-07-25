@@ -1,11 +1,13 @@
-import { dirname, basename } from 'node:path';
+import { dirname, basename, join } from 'node:path';
 import type { ToolchainOptions, CompileResult, UploadResult } from '@typecad/cuttlefish/api/shared';
 import { parseCompileErrors } from '@typecad/cuttlefish/api/shared';
 import { compileEspIdf } from './compile.js';
 import { uploadEspIdf } from './upload.js';
 import { monitorEspIdf } from './monitor.js';
+import { writeDebugConfig } from './debug-config.js';
 import { normalizeIdfTarget } from '../lowering/util.js';
 import { resolveComponents } from '../components/types.js';
+import { Esp32Strategy } from '../strategy.js';
 
 function targetFromOptions(o: ToolchainOptions): string {
   // The cuttlefish CLI populates ToolchainOptions.buildTarget from
@@ -58,6 +60,37 @@ export const Toolchain = {
       extraFlags: o.extraFlags,
       components,
     });
+
+    // After a successful build in gdb mode (esp32s3), write the VS Code/OpenOCD/
+    // sdkconfig/gdb-script artifacts next to the build output so F5 attaches
+    // GDB to the chip's USB-Serial-JTAG. Non-fatal on failure — a missing
+    // artifact doesn't block the build, and the user can still flash+monitor.
+    if (r.success) {
+      const target = targetFromOptions(o);
+      const debugMode = new Esp32Strategy().debugMode(target);
+      if (debugMode === 'gdb') {
+        try {
+          writeDebugConfig({
+            projectRoot,
+            // ELF base name matches what the scaffold writes to CMakeLists:
+            // project(${basename(projectDir)}). Verified against prior builds
+            // (e.g. demos/rmt-demo produces out-esp32s3.elf).
+            projectName: basename(projectRoot),
+            // The cuttlefish CLI runs with cwd = sketch dir, and that's the
+            // folder users open in VS Code, so the sketch is at the workspace
+            // root. outRel collapses this to 'src/out-<target>'.
+            sketchRel: '.',
+            port: o.port ?? '',
+            target,
+            workspaceRoot: process.cwd(),
+            sourceMapPath: join(projectRoot, 'main', 'main.cc.thcppmap.json'),
+          });
+        } catch (e) {
+          console.warn(`[cuttlefish] gdb debug config generation failed: ${(e as Error).message}`);
+        }
+      }
+    }
+
     return {
       success: r.success,
       output: r.output,
