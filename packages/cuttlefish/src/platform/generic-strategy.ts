@@ -256,6 +256,10 @@ export class GenericStrategy implements PlatformStrategy {
 
   // ── Debug code generation ─────────────────────────────────────────────────
 
+  debugMode(_target?: string): 'gdb' | 'printf' {
+    return 'printf';
+  }
+
   generateDebugInitCode(): string[] {
     return [
       '// === DEBUG: Initialize ===',

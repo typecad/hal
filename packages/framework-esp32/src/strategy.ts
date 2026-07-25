@@ -528,6 +528,17 @@ export class Esp32Strategy extends ArduinoStrategy {
   // would inherit Serial.* calls that cannot compile on ESP-IDF (no <HardwareSerial.h>).
   // See cuttlefish/src/debug/preprocessor.ts:getDebugStrategy for dispatch.
 
+  /**
+   * ESP32-S3 supports native source-level debugging over its built-in
+   * USB-Serial-JTAG (one USB cable, no external probe), so --debug takes the
+   * GDB path (#line directives + generated launch.json/openocd/sdkconfig).
+   * All other ESP32 variants stay on the printf instrumentation path until
+   * they're wired for gdb.
+   */
+  override debugMode(target?: string): 'gdb' | 'printf' {
+    return target === 'esp32s3' ? 'gdb' : 'printf';
+  }
+
   override generateDebugInitCode(): string[] {
     return generateEspIdfInitCode();
   }

@@ -451,6 +451,18 @@ export type DebugCppType = 'bool' | 'int' | 'long' | 'float' | 'string' | 'unkno
  * (e.g., Serial.println on embedded, std::cout on hosted targets).
  */
 export interface PlatformDebugStrategy {
+  /**
+   * Debug mode for the given build target. Controls whether `--debug` emits
+   * GDB-oriented output (`#line` directives + debug config artifacts, value
+   * `'gdb'`) or the legacy printf/Serial instrumentation (`'printf'`).
+   *
+   * Frameworks that support native source-level debugging for a chip return
+   * `'gdb'` for that target; everything else inherits the `'printf'` default
+   * and the existing instrumentation path is used unchanged.
+   *
+   * @param target the frameworkData.buildTarget value (e.g. 'esp32s3')
+   */
+  debugMode?(target?: string): 'gdb' | 'printf';
   /** Generate initialization code for the debug subsystem. */
   generateDebugInitCode?(): string[];
   /** Generate code for a breakpoint with optional condition and variable dump. */
