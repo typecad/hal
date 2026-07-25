@@ -8,6 +8,12 @@
 export interface CapturedVariable {
   name: string;
   isFunction?: boolean;
+  /**
+   * Coarse C++ type category (ignored by Arduino — Serial.println is
+   * type-agnostic via overload resolution). Present for shape-compatibility
+   * with the strategy interface and the ESP-IDF codegen.
+   */
+  cppType?: 'bool' | 'int' | 'long' | 'float' | 'string' | 'unknown';
 }
 
 export interface LogMessagePart {
@@ -34,6 +40,10 @@ export function generateSerialInitCode(): string[] {
 
 /**
  * Generate the Serial debug code for a breakpoint.
+ *
+ * When `breakpointId` is set, the whole halt block is wrapped in
+ * `if (!__tc_bp_disabled_<id>)`, so a skipped breakpoint becomes a no-op
+ * until reboot. The flag is `static` so it persists across loop() iterations.
  */
 export function generateBreakpointCode(
   fileName: string,
@@ -41,62 +51,81 @@ export function generateBreakpointCode(
   originalLine: string,
   variables: CapturedVariable[],
   normalizedCondition: string | undefined,
+  breakpointId?: number,
 ): string[] {
   const lines: string[] = [];
+  const hasDisableGuard = breakpointId !== undefined;
+  // Inner-block padding: +2 for the condition wrap, +2 for the disable guard.
+  const pad = (hasDisableGuard ? '  ' : '') + (normalizedCondition ? '  ' : '');
 
   // Comment marker
   lines.push(`  // === BREAKPOINT: ${fileName}:${lineNum} ===`);
 
+  // Disable guard: a skipped breakpoint becomes a no-op until reboot. The
+  // disable state lives in the framework's debug shim (a static registry keyed
+  // by breakpointId) — NOT as a per-breakpoint declaration here, because the
+  // transpiler mangles `static bool` declarations injected into the source.
+  if (hasDisableGuard) {
+    lines.push(`  if (!__tc_bp_is_disabled(${breakpointId})) {`);
+  }
+
   // If conditional, wrap everything in an if statement
   if (normalizedCondition) {
-    lines.push(`  if (${normalizedCondition}) {`);
+    lines.push(`  ${hasDisableGuard ? '  ' : ''}if (${normalizedCondition}) {`);
   }
 
   // Visual separator
-  lines.push(`  ${normalizedCondition ? '  ' : ''}Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");`);
+  lines.push(`  ${pad}Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");`);
 
   // Breakpoint header (with condition indicator if present)
-  const headerText = normalizedCondition 
+  const headerText = normalizedCondition
     ? `⏸️  BREAKPOINT: ${fileName}:${lineNum} (condition: ${escapeString(normalizedCondition)})`
     : `⏸️  BREAKPOINT: ${fileName}:${lineNum}`;
-  lines.push(`  ${normalizedCondition ? '  ' : ''}Serial.println("${headerText}");`);
+  lines.push(`  ${pad}Serial.println("${headerText}");`);
 
   // Original source line (escaped)
   const escapedLine = escapeString(originalLine);
-  lines.push(`  ${normalizedCondition ? '  ' : ''}Serial.println("  ${escapedLine}");`);
+  lines.push(`  ${pad}Serial.println("  ${escapedLine}");`);
 
   // Blank line
-  lines.push(`  ${normalizedCondition ? '  ' : ''}Serial.println("");`);
+  lines.push(`  ${pad}Serial.println("");`);
 
   // Variables section
   if (variables.length > 0) {
-    lines.push(`  ${normalizedCondition ? '  ' : ''}Serial.println("  Variables:");`);
+    lines.push(`  ${pad}Serial.println("  Variables:");`);
     for (const v of variables) {
       if (v.isFunction) {
-        lines.push(`  ${normalizedCondition ? '  ' : ''}Serial.println("  • ${v.name} = [function]");`);
+        lines.push(`  ${pad}Serial.println("  • ${v.name} = [function]");`);
       } else {
-        lines.push(`  ${normalizedCondition ? '  ' : ''}Serial.print("  • ${v.name} = "); Serial.println(${v.name});`);
+        lines.push(`  ${pad}Serial.print("  • ${v.name} = "); Serial.println(${v.name});`);
       }
     }
   } else {
-    lines.push(`  ${normalizedCondition ? '  ' : ''}Serial.println("  (no variables in scope)");`);
+    lines.push(`  ${pad}Serial.println("  (no variables in scope)");`);
   }
 
   // Blank line
-  lines.push(`  ${normalizedCondition ? '  ' : ''}Serial.println("");`);
+  lines.push(`  ${pad}Serial.println("");`);
 
   // Continue prompt
-  lines.push(`  ${normalizedCondition ? '  ' : ''}Serial.println("  [Press ENTER to continue...]");`);
+  lines.push(`  ${pad}Serial.println("  [ENTER: continue | s: skip this breakpoint]");`);
 
   // Visual separator (end)
-  lines.push(`  ${normalizedCondition ? '  ' : ''}Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");`);
+  lines.push(`  ${pad}Serial.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");`);
 
-  // Blocking wait for serial input
-  lines.push(`  ${normalizedCondition ? '  ' : ''}while(Serial.available() == 0) { delay(10); }`);
-  lines.push(`  ${normalizedCondition ? '  ' : ''}while(Serial.available() > 0) { Serial.read(); delay(10); }`);
+  // Blocking wait for one serial byte via the framework's continue/skip helper.
+  // 's'/'S' disables this breakpoint (id) for the rest of the run; anything
+  // else (typically ENTER '\r'/'\n') just continues. The helper lives in the
+  // framework's shim so no declaration is needed here.
+  lines.push(`  ${pad}__tc_debug_wait_for_continue(${hasDisableGuard ? breakpointId : -1});`);
 
   // Close conditional if statement
   if (normalizedCondition) {
+    lines.push(`  ${hasDisableGuard ? '  ' : ''}}`);
+  }
+
+  // Close disable guard
+  if (hasDisableGuard) {
     lines.push(`  }`);
   }
 

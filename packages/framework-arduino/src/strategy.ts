@@ -416,6 +416,28 @@ export class ArduinoStrategy implements PlatformStrategy {
 
     lines.push(...this.strPtrShimLines());
 
+    // Debug-mode per-breakpoint disable registry + halt helper. The disable
+    // state lives here (raw C++ shim, survives emit verbatim) rather than as
+    // per-breakpoint declarations in the transpiled source, because the
+    // transpiler mangles `static bool` declarations injected into the source.
+    // Each breakpoint references its state by an integer id assigned by the
+    // preprocessor. Emitted unconditionally (dead-stripped if --debug unused).
+    lines.push(
+      "// TypeCAD Debug — breakpoint disable registry + continue/skip helper",
+      "static bool __tc_bp_disabled[256] = {0};",
+      "static inline bool __tc_bp_is_disabled(int id) { return id >= 0 && id < 256 && __tc_bp_disabled[id]; }",
+      "// Blocks until a serial byte arrives. ENTER (or any non-s byte) continues;",
+      "// 's'/'S' disables breakpoint <id> for the rest of the run.",
+      "static inline char __tc_debug_wait_for_continue(int id) {",
+      "    while (Serial.available() == 0) { delay(10); }",
+      "    char c = (char)Serial.read();",
+      "    while (Serial.available() > 0) { Serial.read(); delay(10); }",
+      "    if (c == 's' || c == 'S') { if (id >= 0 && id < 256) __tc_bp_disabled[id] = true; }",
+      "    return c;",
+      "}",
+      "",
+    );
+
     lines.push(...profileLines);
     return lines;
   }
@@ -1295,12 +1317,13 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
   generateDebugBreakpointCode(params: {
     fileName: string; lineNum: number; originalLine: string;
-    variables: Array<{ name: string; isFunction?: boolean }>;
+    variables: Array<{ name: string; isFunction?: boolean; cppType?: 'bool'|'int'|'long'|'float'|'string'|'unknown' }>;
     normalizedCondition?: string;
+    breakpointId?: number;
   }): string[] {
     return generateBreakpointCode(
       params.fileName, params.lineNum, params.originalLine,
-      params.variables, params.normalizedCondition,
+      params.variables, params.normalizedCondition, params.breakpointId,
     );
   }
 
