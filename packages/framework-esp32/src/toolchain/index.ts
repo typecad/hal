@@ -4,7 +4,7 @@ import { parseCompileErrors } from '@typecad/cuttlefish/api/shared';
 import { compileEspIdf } from './compile.js';
 import { uploadEspIdf } from './upload.js';
 import { monitorEspIdf } from './monitor.js';
-import { writeDebugConfig } from './debug-config.js';
+import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
 import { normalizeIdfTarget } from '../lowering/util.js';
 import { resolveComponents } from '../components/types.js';
 import { Esp32Strategy } from '../strategy.js';
@@ -62,27 +62,29 @@ export const Toolchain = {
     });
 
     // After a successful build in gdb mode (esp32s3), write the VS Code/OpenOCD/
-    // sdkconfig/gdb-script artifacts next to the build output so F5 attaches
-    // GDB to the chip's USB-Serial-JTAG. Non-fatal on failure — a missing
-    // artifact doesn't block the build, and the user can still flash+monitor.
+    // sdkconfig/gdb-script artifacts so F5 attaches GDB to the chip's USB-Serial-
+    // JTAG. Non-fatal on failure — a missing artifact doesn't block the build.
+    //
+    // VS Code only reads .vscode/ from the workspace root (the folder the user
+    // has open). In a monorepo that's almost always the git root, NOT the sketch
+    // dir — so we resolve the git root from cwd and write there, with launch.json
+    // paths expressed relative to it (e.g. ${workspaceFolder}/demos/demo/...).
     if (r.success) {
       const target = targetFromOptions(o);
       const debugMode = new Esp32Strategy().debugMode(target);
       if (debugMode === 'gdb') {
         try {
+          const { workspaceRoot, sketchRel } = resolveDebugLocations(process.cwd());
           writeDebugConfig({
             projectRoot,
             // ELF base name matches what the scaffold writes to CMakeLists:
             // project(${basename(projectDir)}). Verified against prior builds
             // (e.g. demos/rmt-demo produces out-esp32s3.elf).
             projectName: basename(projectRoot),
-            // The cuttlefish CLI runs with cwd = sketch dir, and that's the
-            // folder users open in VS Code, so the sketch is at the workspace
-            // root. outRel collapses this to 'src/out-<target>'.
-            sketchRel: '.',
+            sketchRel,
             port: o.port ?? '',
             target,
-            workspaceRoot: process.cwd(),
+            workspaceRoot,
             sourceMapPath: join(projectRoot, 'main', 'main.cc.thcppmap.json'),
           });
         } catch (e) {

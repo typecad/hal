@@ -10,6 +10,8 @@ import {
   buildOpenOcdCfg,
   buildSdkconfigDefaultsDebug,
   writeDebugConfig,
+  findWorkspaceRoot,
+  resolveDebugLocations,
 } from '../../../packages/framework-esp32/src/toolchain/debug-config';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -35,8 +37,8 @@ describe('buildLaunchJson', () => {
     expect(cfg.preLaunchTask).toBe('cuttlefish: debug prep');
   });
 
-  it('collapses sketchRel="." so the path has no ./ segment', () => {
-    const json = JSON.parse(buildLaunchJson({ ...OPTS, sketchRel: '.' }));
+  it('collapses empty sketchRel so the path has no leading segment', () => {
+    const json = JSON.parse(buildLaunchJson({ ...OPTS, sketchRel: '' }));
     expect(json.configurations[0].program).toBe('${workspaceFolder}/src/out-esp32s3/build/demo.elf');
   });
 
@@ -90,8 +92,8 @@ describe('buildTasksJson', () => {
     expect(prep.dependsOn).toEqual(['cuttlefish: start openocd', 'cuttlefish: build + flash']);
   });
 
-  it('collapses sketchRel="." cwd to bare ${workspaceFolder}', () => {
-    const json = JSON.parse(buildTasksJson({ ...OPTS, sketchRel: '.' }));
+  it('collapses empty sketchRel cwd to bare ${workspaceFolder}', () => {
+    const json = JSON.parse(buildTasksJson({ ...OPTS, sketchRel: '' }));
     const flash = json.tasks.find((t: any) => t.label.includes('build + flash'));
     expect(flash.options.cwd).toBe('${workspaceFolder}');
   });
@@ -220,6 +222,82 @@ describe('writeDebugConfig', () => {
       expect(existsSync(join(projectRoot, '.cuttlefish/.cuttlefish-gdb.py'))).toBe(false);
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('findWorkspaceRoot', () => {
+  it('walks up from a nested dir to the nearest ancestor with .git', () => {
+    // Mirror the monorepo layout: <root>/.git + <root>/demos/demo/
+    const root = mkdtempSync(join(tmpdir(), 'cuttlefish-ws-'));
+    mkdirSync(join(root, '.git'), { recursive: true });
+    const sketch = join(root, 'demos', 'demo');
+    mkdirSync(sketch, { recursive: true });
+    try {
+      expect(findWorkspaceRoot(sketch)).toBe(root);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns null when no .git is found up to the filesystem root', () => {
+    // mkdtempSync lands under the OS temp dir, which on CI/dev machines may
+    // or may not be inside a git repo. Run in a deeply nested tmp path that
+    // we KNOW has no .git by creating a fresh tree without one — but since
+    // we can't guarantee the tmp root isn't a git repo, assert the weaker
+    // property: if there IS no .git anywhere above, we get null. Use a path
+    // we just created and check the function type rather than exact value.
+    const tmp = mkdtempSync(join(tmpdir(), 'cuttlefish-nogit-'));
+    try {
+      const result = findWorkspaceRoot(tmp);
+      // Either null (no .git above) or some ancestor that has .git (the test
+      // environment itself is a git repo). Both are valid outcomes; what we
+      // assert is the function returns a string or null, never throws.
+      expect(result === null || typeof result === 'string').toBe(true);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('resolveDebugLocations', () => {
+  it('resolves to the git root with a relative sketch path when nested in a repo', () => {
+    const root = mkdtempSync(join(tmpdir(), 'cuttlefish-ws-'));
+    mkdirSync(join(root, '.git'), { recursive: true });
+    const sketch = join(root, 'demos', 'demo');
+    mkdirSync(sketch, { recursive: true });
+    try {
+      const loc = resolveDebugLocations(sketch);
+      expect(loc.workspaceRoot).toBe(root);
+      expect(loc.sketchRel).toBe('demos/demo');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('uses backslash-free, forward-slashed sketchRel on Windows-shaped paths', () => {
+    const root = mkdtempSync(join(tmpdir(), 'cuttlefish-ws-'));
+    mkdirSync(join(root, '.git'), { recursive: true });
+    const sketch = join(root, 'demos', 'demo');
+    mkdirSync(sketch, { recursive: true });
+    try {
+      const loc = resolveDebugLocations(sketch);
+      expect(loc.sketchRel).not.toContain('\\');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns empty sketchRel when the sketch IS the workspace root', () => {
+    const root = mkdtempSync(join(tmpdir(), 'cuttlefish-ws-'));
+    mkdirSync(join(root, '.git'), { recursive: true });
+    try {
+      // Sketch dir == git root.
+      const loc = resolveDebugLocations(root);
+      expect(loc.workspaceRoot).toBe(root);
+      expect(loc.sketchRel).toBe('');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

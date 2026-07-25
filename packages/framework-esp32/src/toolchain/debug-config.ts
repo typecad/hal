@@ -7,9 +7,71 @@
  */
 
 import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname, relative, sep } from 'node:path';
 import type { GeneratedSourceMap } from '@typecad/cuttlefish/api';
 import { generateGdbScript } from './gdb-script.js';
+
+/**
+ * Walk up from `start` to the nearest ancestor containing a `.git` marker
+ * (directory or file — submodule worktrees use a file). Returns the absolute
+ * path of that ancestor, or `null` if none is found before the filesystem root.
+ *
+ * Used to decide where VS Code is most likely to read `.vscode/` from: the
+ * git/workspace root is the conventional folder to open for a monorepo, so
+ * launch.json/tasks.json are written there. Falls back to the sketch dir
+ * (see resolveDebugLocations) when not in a git repo.
+ */
+export function findWorkspaceRoot(start: string): string | null {
+  let dir = start;
+  // Walk until dirname(dir) === dir (filesystem root).
+  while (true) {
+    if (existsSync(join(dir, '.git'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/**
+ * Normalize a path to forward slashes for use in launch.json/tasks.json.
+ * VS Code accepts either separator on Windows, but forward slashes avoid
+ * JSON-escaping backslashes and are portable.
+ */
+function toForwardSlash(p: string): string {
+  return p.split(sep).join('/');
+}
+
+export interface DebugLocations {
+  /** Where to write .vscode/launch.json + tasks.json (the workspace root). */
+  workspaceRoot: string;
+  /**
+   * Path from the workspace root to the sketch dir, forward-slashed.
+   * Empty string when the sketch IS the workspace root (so generators can
+   * collapse the path). Otherwise e.g. 'demos/demo'.
+   */
+  sketchRel: string;
+}
+
+/**
+ * Resolve where to write the VS Code configs and the relative path from there
+ * to the sketch dir.
+ *
+ * Strategy: if the sketch is inside a git repo, write to the repo root (the
+ * most common folder to have open in VS Code) and compute sketchRel relative
+ * to it. If not in a git repo, write at the sketch dir itself with sketchRel
+ * empty.
+ *
+ * Returns forward-slashed sketchRel so it can be interpolated directly into
+ * launch.json paths.
+ */
+export function resolveDebugLocations(sketchDir: string): DebugLocations {
+  const wsRoot = findWorkspaceRoot(sketchDir);
+  if (wsRoot && wsRoot !== sketchDir) {
+    return { workspaceRoot: wsRoot, sketchRel: toForwardSlash(relative(wsRoot, sketchDir)) };
+  }
+  // Either no git repo, or the sketch IS the repo root.
+  return { workspaceRoot: sketchDir, sketchRel: '' };
+}
 
 export interface DebugConfigOptions {
   /** ELF base name, e.g. 'demo' → build/demo.elf */
@@ -39,23 +101,20 @@ export interface WriteDebugConfigOptions extends DebugConfigOptions {
 }
 
 function outRel(opts: DebugConfigOptions): string {
-  // sketchRel is the workspace-relative path to the sketch dir. When the user
-  // opens the sketch dir itself in VS Code (the common case — npm scripts run
-  // from there), sketchRel is '.' and we collapse it to avoid an ugly
-  // '${workspaceFolder}/./src/out-...' path.
-  const sketch = opts.sketchRel === '.' || opts.sketchRel === '' ? '' : `${opts.sketchRel}/`;
+  // sketchRel is the workspace-relative path to the sketch dir. When empty
+  // (the sketch IS the workspace root), collapse it to avoid an ugly
+  // '${workspaceFolder}//src/out-...' path; otherwise prepend it.
+  const sketch = opts.sketchRel === '' ? '' : `${opts.sketchRel}/`;
   return `${sketch}src/out-${opts.target}`;
 }
 
 /**
- * Build the tasks.json `cwd` for the sketch dir. When sketchRel is '.' (the
- * common case where the workspace IS the sketch dir), collapse to bare
- * ${workspaceFolder} rather than the ugly ${workspaceFolder}/.
+ * Build the tasks.json `cwd` for the sketch dir. When sketchRel is empty
+ * (workspace IS the sketch dir), collapse to bare ${workspaceFolder} rather
+ * than ${workspaceFolder}/.
  */
 function sketchCwd(sketchRel: string): string {
-  return sketchRel === '.' || sketchRel === ''
-    ? '${workspaceFolder}'
-    : `\${workspaceFolder}/${sketchRel}`;
+  return sketchRel === '' ? '${workspaceFolder}' : `\${workspaceFolder}/${sketchRel}`;
 }
 
 export function buildLaunchJson(opts: DebugConfigOptions): string {

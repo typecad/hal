@@ -16,11 +16,13 @@ debugging** over the chip's built-in USB-Serial-JTAG.
 
 `cuttlefish build --debug` on `esp32s3` takes the GDB path: it emits `#line`
 directives in the generated C++ (so GDB maps execution back to the `.ts`
-source) and writes VS Code config + OpenOCD config next to the build output:
+source) and writes the VS Code + OpenOCD configs. VS Code only reads
+`.vscode/` from the workspace root, so the config lands at the git root
+(the folder you open in VS Code), with paths expressed relative to it:
 
 ```
-demos/demo/.vscode/launch.json              ← VS Code reads this for F5
-demos/demo/.vscode/tasks.json               ← preLaunchTask: build+flash+openocd
+<repo-root>/.vscode/launch.json              ← VS Code reads this for F5
+<repo-root>/.vscode/tasks.json               ← preLaunchTask: build+flash+openocd
 demos/demo/src/out-esp32s3/.cuttlefish/openocd.cfg     ← board/esp32s3-builtin.cfg
 demos/demo/src/out-esp32s3/sdkconfig.defaults.debug    ← -Og, asserts, LTO off
 demos/demo/src/out-esp32s3/.cuttlefish/.cuttlefish-gdb.py  ← _isr_N frame filter (if any)
@@ -32,7 +34,10 @@ demos/demo/src/out-esp32s3/.cuttlefish/.cuttlefish-gdb.py  ← _isr_N frame filt
    GDB, and the `gdbtarget` debug adapter. Nothing else to install.
 2. Set the board's serial port in `cuttlefish.config.ts` (`console.port` —
    e.g. `'COM10'` on Windows, `'/dev/ttyACM0'` on Linux), or pass `--port`.
-3. Open this folder (`demos/demo`) in VS Code and press **F5**.
+3. Open the **repository root** in VS Code (not the `demos/demo` subfolder —
+   that's the most common reason F5 falls back to the Node.js picker and the
+   debug controls flash on then off). Run `npm run upload` once from
+   `demos/demo/` so the configs get written, then press **F5**.
 
 What happens on F5:
 
