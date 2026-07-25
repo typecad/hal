@@ -39,6 +39,7 @@ import { otaInitLines } from './lowering/ota.js';
 import { tempInitLines } from './lowering/temp.js';
 import { hwtimerInitLines } from './lowering/hwtimer.js';
 import { capacitiveInitLines } from './lowering/capacitive.js';
+import { generateEspIdfInitCode, generateEspIdfBreakpointCode, generateEspIdfLogpointCode } from './debug-codegen.js';
 
 /** Read the IDF target ('esp32'|'esp32s3'|'esp32c3'|'esp32c6') from the
  *  platform context. Accepts either frameworkData.target (preferred) or
@@ -146,6 +147,10 @@ export class Esp32Strategy extends ArduinoStrategy {
       '"esp_log.h"',
       '"esp_system.h"',
       '"esp_timer.h"',
+      // esp_task_wdt.h is needed by the __tc_debug_wait_for_enter() helper in
+      // shimLines (always emitted), even when the user sketch does not use the
+      // WDT HAL. The header is tiny and always linked (WDT is in sdkconfig).
+      '"esp_task_wdt.h"',
     ];
     if (uses('usesGPIO'))         inc.push('"driver/gpio.h"');
     if (uses('usesI2C'))          inc.push('"driver/i2c_master.h"');
@@ -322,6 +327,36 @@ export class Esp32Strategy extends ArduinoStrategy {
       '        vTaskDelay(1);',
       '    } while (esp_timer_get_time() < deadline);',
       '}',
+      // Debug-mode halt + per-breakpoint disable registry.
+      //
+      // The disable state lives here (raw C++ shim, survives emit verbatim)
+      // rather than as per-breakpoint declarations in the transpiled source,
+      // because the transpiler would mangle a `static bool` declaration in the
+      // injected breakpoint block. Each breakpoint references its state by an
+      // integer id assigned by the preprocessor — pure call expressions, which
+      // the emitter passes through untouched.
+      //
+      // __tc_debug_wait_for_continue(id): blocks until a byte arrives on the
+      // IDF console (idf.py monitor), feeding the task watchdog so an
+      // unattended breakpoint does not reboot the chip. ENTER (or any non-s
+      // byte) = continue; 's'/'S' = skip this breakpoint for the rest of the
+      // run (records the id as disabled). Emitted unconditionally (static
+      // inline, dead-stripped if --debug is not used).
+      'static bool __tc_bp_disabled[256] = {0};',
+      'static inline bool __tc_bp_is_disabled(int id) { return id >= 0 && id < 256 && __tc_bp_disabled[id]; }',
+      'static inline char __tc_debug_wait_for_continue(int id) {',
+      '    esp_task_wdt_add(NULL);',
+      '    int c = EOF;',
+      '    while ((c = getchar()) == EOF || c == 0) {',
+      '        esp_task_wdt_reset();',
+      '        vTaskDelay(pdMS_TO_TICKS(10));',
+      '    }',
+      '    // Drain the rest of the typed line so the next breakpoint waits fresh.',
+      '    while (c != \'\\n\' && c != EOF) { c = getchar(); }',
+      '    esp_task_wdt_delete(NULL);',
+      '    if (c == \'s\' || c == \'S\') { if (id >= 0 && id < 256) __tc_bp_disabled[id] = true; }',
+      '    return (char)c;',
+      '}',
       '',
       ...espInit,
       ...timerCoop,
@@ -485,6 +520,36 @@ export class Esp32Strategy extends ArduinoStrategy {
       return `printf("%ld${appendNewline ? '\\n' : ''}", ${renderedArgs})${semi}`;
     }
     return `printf("%g${appendNewline ? '\\n' : ''}", ${renderedArgs})${semi}`;
+  }
+
+  // ── Debug code generation ─────────────────────────────────────────────────
+  // Override Arduino's Serial.println-based debug codegen with native ESP-IDF
+  // output (printf + getchar halt). Without these overrides Esp32Strategy
+  // would inherit Serial.* calls that cannot compile on ESP-IDF (no <HardwareSerial.h>).
+  // See cuttlefish/src/debug/preprocessor.ts:getDebugStrategy for dispatch.
+
+  override generateDebugInitCode(): string[] {
+    return generateEspIdfInitCode();
+  }
+
+  override generateDebugBreakpointCode(params: {
+    fileName: string; lineNum: number; originalLine: string;
+    variables: Array<{ name: string; isFunction?: boolean; cppType?: 'bool'|'int'|'long'|'float'|'string'|'unknown' }>;
+    normalizedCondition?: string;
+    breakpointId?: number;
+  }): string[] {
+    return generateEspIdfBreakpointCode(
+      params.fileName, params.lineNum, params.originalLine,
+      params.variables, params.normalizedCondition, params.breakpointId,
+    );
+  }
+
+  override generateDebugLogpointCode(params: {
+    fileName: string; lineNum: number;
+    parts: Array<{ type: 'text' | 'variable'; value: string }>;
+    variables: Array<{ name: string; isFunction?: boolean }>;
+  }): string[] {
+    return generateEspIdfLogpointCode(params.fileName, params.lineNum, params.parts, params.variables);
   }
 
   override generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
