@@ -5,12 +5,23 @@ import type { EmissionScopeState } from "../snprintf-helpers.js";
 import { emitCommentLines } from "../utils/index.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import type { EmitterContext } from "./emitter-context.js";
+import { formatLinemarker, shouldEmitMarker, sourceKey } from "./line-marker.js";
 
 export function appendSourceLine(
   ctx: EmitterContext,
   line: string,
   entry?: { tsSpan: SourceSpan; nodeKind: string; symbolName?: string },
 ): void {
+  // GDB debug mode: emit a linemarker before lines whose source span transitions.
+  // Runs only when an entry is present (raw braces/whitespace carry no span).
+  if (ctx.debugMode === 'gdb' && entry) {
+    const next = sourceKey(entry.tsSpan);
+    if (shouldEmitMarker(ctx.lastEmittedSource, next)) {
+      ctx.sourceLines.push(formatLinemarker(entry.tsSpan.filePath, entry.tsSpan.startLine));
+    }
+    ctx.lastEmittedSource = next;
+  }
+
   ctx.sourceLines.push(line);
   if (!entry) return;
 
@@ -31,6 +42,16 @@ export function appendHeaderLine(
   line: string,
   entry?: { tsSpan: SourceSpan; nodeKind: string; symbolName?: string },
 ): void {
+  // GDB debug mode: same transition logic as appendSourceLine, against the
+  // shared lastEmittedSource slot. See line-marker.ts for rationale.
+  if (ctx.debugMode === 'gdb' && entry) {
+    const next = sourceKey(entry.tsSpan);
+    if (shouldEmitMarker(ctx.lastEmittedSource, next)) {
+      ctx.headerLines.push(formatLinemarker(entry.tsSpan.filePath, entry.tsSpan.startLine));
+    }
+    ctx.lastEmittedSource = next;
+  }
+
   ctx.headerLines.push(line);
   if (!entry) return;
 
