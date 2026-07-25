@@ -89,12 +89,31 @@ under cuttlefish's basename-matching loader):
 Two source files sharing the same basename in one project will share
 breakpoints — acceptable for typical single-sketch Arduino projects.
 
+## Native debugging on ESP32-S3
+
+For ESP32-S3, this extension's printf instrumentation is superseded by a
+native GDB path. `cuttlefish build --debug` on `esp32s3` emits `#line`
+directives in the generated C++ and writes `.vscode/launch.json` +
+`tasks.json` + `openocd.cfg` + `sdkconfig.defaults.debug` under the project's
+`src/out-esp32s3/` directory. Press **F5** in VS Code and the generated
+config attaches GDB (via the ESP-IDF extension's `gdbtarget` adapter) to the
+chip's built-in USB-Serial-JTAG — one USB cable, no external probe.
+
+Requirements: ESP-IDF + its VS Code extension installed (these bundle OpenOCD,
+the xtensa GDB, and the debug adapter — nothing extra to install). Set the
+board's serial port in `cuttlefish.config.ts` (`console.port`) or pass
+`--port`. See `demos/demo/src/main.ts` for the full F5 flow.
+
+The printf instrumentation documented below remains the path for targets that
+don't yet support native debugging (Arduino, other ESP32 variants).
+
 ## Limitations
 
 - This is a `Serial.print`-based instrumentation shim, not a DAP debug
   adapter. There is no native step/step-in/step-out — each breakpoint halts
   until ENTER (continue) or `s` (skip this breakpoint for the run) is received
-  over serial.
+  over serial. **On ESP32-S3, use the native GDB path above instead** — it
+  provides full stepping, call stacks, and TS-named variable inspection.
 - The scope analyzer captures module-scope identifiers plus locals and
   parameters in the enclosing function. Member access and arbitrary
   expressions are not resolved; `{ value }` in a logpoint emits the literal

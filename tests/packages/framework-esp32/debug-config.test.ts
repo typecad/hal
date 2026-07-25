@@ -45,11 +45,22 @@ describe('buildLaunchJson', () => {
     expect(json.configurations[0].initCommands).toContain('set auto-load safe-path ${workspaceFolder}');
   });
 
-  it('sources the generated gdb script from the project out dir', () => {
-    const json = JSON.parse(buildLaunchJson(OPTS));
+  it('sources the generated gdb script when hasGdbScript is true', () => {
+    const json = JSON.parse(buildLaunchJson({ ...OPTS, hasGdbScript: true }));
     expect(json.configurations[0].initCommands).toContain(
       'source ${workspaceFolder}/demos/demo/src/out-esp32s3/.cuttlefish/.cuttlefish-gdb.py',
     );
+  });
+
+  it('omits the gdb-script source directive when hasGdbScript is false (no _isr_N)', () => {
+    const json = JSON.parse(buildLaunchJson({ ...OPTS, hasGdbScript: false }));
+    const initCommands: string[] = json.configurations[0].initCommands;
+    expect(initCommands).not.toContain(
+      'source ${workspaceFolder}/demos/demo/src/out-esp32s3/.cuttlefish/.cuttlefish-gdb.py',
+    );
+    // Watchpoint limit and safe-path are still present.
+    expect(initCommands).toContain('set auto-load safe-path ${workspaceFolder}');
+    expect(initCommands).toContain('set remote hardware-watchpoint-limit 2');
   });
 });
 
@@ -77,6 +88,12 @@ describe('buildTasksJson', () => {
     const prep = json.tasks.find((t: any) => t.label.includes('debug prep'));
     expect(prep.dependsOrder).toBe('parallel');
     expect(prep.dependsOn).toEqual(['cuttlefish: start openocd', 'cuttlefish: build + flash']);
+  });
+
+  it('collapses sketchRel="." cwd to bare ${workspaceFolder}', () => {
+    const json = JSON.parse(buildTasksJson({ ...OPTS, sketchRel: '.' }));
+    const flash = json.tasks.find((t: any) => t.label.includes('build + flash'));
+    expect(flash.options.cwd).toBe('${workspaceFolder}');
   });
 });
 
@@ -125,7 +142,7 @@ describe('writeDebugConfig', () => {
     }
   });
 
-  it('writes the gdb script when a source map with _isr_N entries is provided', () => {
+  it('writes the gdb script and threads hasGdbScript into launch.json when _isr_N entries exist', () => {
     const projectRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-debug-'));
     try {
       const mapPath = join(projectRoot, 'main', 'main.cc.thcppmap.json');
@@ -153,6 +170,9 @@ describe('writeDebugConfig', () => {
 
       const script = readFileSync(join(projectRoot, '.cuttlefish/.cuttlefish-gdb.py'), 'utf8');
       expect(script).toContain('"main_isr_0"');
+      // launch.json should now include the matching source directive.
+      const launch = readFileSync(join(projectRoot, '.vscode/launch.json'), 'utf8');
+      expect(launch).toContain('.cuttlefish-gdb.py');
     } finally {
       rmSync(projectRoot, { recursive: true, force: true });
     }

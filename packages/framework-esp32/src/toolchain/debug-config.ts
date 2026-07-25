@@ -20,6 +20,13 @@ export interface DebugConfigOptions {
   port: string;
   /** Build target (currently only 'esp32s3' is wired for gdb) */
   target: string;
+  /**
+   * Whether a .cuttlefish-gdb.py was generated for this build (i.e. the
+   * source map had _isr_N entries). When true, launch.json adds a `source`
+   * initCommand for it; when false, the directive is omitted so GDB doesn't
+   * error on a missing file.
+   */
+  hasGdbScript?: boolean;
 }
 
 export interface WriteDebugConfigOptions extends DebugConfigOptions {
@@ -40,7 +47,30 @@ function outRel(opts: DebugConfigOptions): string {
   return `${sketch}src/out-${opts.target}`;
 }
 
+/**
+ * Build the tasks.json `cwd` for the sketch dir. When sketchRel is '.' (the
+ * common case where the workspace IS the sketch dir), collapse to bare
+ * ${workspaceFolder} rather than the ugly ${workspaceFolder}/.
+ */
+function sketchCwd(sketchRel: string): string {
+  return sketchRel === '.' || sketchRel === ''
+    ? '${workspaceFolder}'
+    : `\${workspaceFolder}/${sketchRel}`;
+}
+
 export function buildLaunchJson(opts: DebugConfigOptions): string {
+  // Only emit the `source` directive for the gdb script when one was actually
+  // generated. GDB errors on `source <missing-file>`, and sketches with no
+  // hoisted lambdas produce no .cuttlefish-gdb.py.
+  const initCommands = [
+    'set directories ${workspaceFolder}',
+    'set auto-load safe-path ${workspaceFolder}',
+  ];
+  if (opts.hasGdbScript) {
+    initCommands.push(`source \${workspaceFolder}/${outRel(opts)}/.cuttlefish/.cuttlefish-gdb.py`);
+  }
+  initCommands.push('set remote hardware-watchpoint-limit 2');
+
   const cfg = {
     version: '0.2.0',
     configurations: [
@@ -52,12 +82,7 @@ export function buildLaunchJson(opts: DebugConfigOptions): string {
         gdbPath: '${command:espIdf.getToolchainGdb}',
         target: { type: 'remote', host: 'localhost', port: '3333' },
         preLaunchTask: 'cuttlefish: debug prep',
-        initCommands: [
-          'set directories ${workspaceFolder}',
-          'set auto-load safe-path ${workspaceFolder}',
-          `source \${workspaceFolder}/${outRel(opts)}/.cuttlefish/.cuttlefish-gdb.py`,
-          'set remote hardware-watchpoint-limit 2',
-        ],
+        initCommands,
       },
     ],
   };
@@ -87,7 +112,7 @@ export function buildTasksJson(opts: DebugConfigOptions): string {
         label: 'cuttlefish: build + flash',
         type: 'shell',
         command: `cuttlefish build --compile --upload --debug --port ${opts.port}`,
-        options: { cwd: `\${workspaceFolder}/${opts.sketchRel}` },
+        options: { cwd: sketchCwd(opts.sketchRel) },
       },
       {
         label: 'cuttlefish: debug prep',
@@ -127,11 +152,25 @@ export function buildSdkconfigDefaultsDebug(): string {
  *   .cuttlefish/.cuttlefish-gdb.py   (only if source map has _isr_N entries)
  */
 export function writeDebugConfig(opts: WriteDebugConfigOptions): void {
+  // GDB script: only if a source map exists and contains _isr_N symbols.
+  // Avoids emitting a no-op script for sketches with no hoisted lambdas, and
+  // controls whether launch.json adds the matching `source` directive.
+  let hasGdbScript = false;
+  if (existsSync(opts.sourceMapPath)) {
+    const map = JSON.parse(readFileSync(opts.sourceMapPath, 'utf8')) as GeneratedSourceMap;
+    hasGdbScript = map.entries.some((e) => e.symbolName && /_isr_\d+$/.test(e.symbolName));
+    if (hasGdbScript) {
+      mkdirSync(join(opts.projectRoot, '.cuttlefish'), { recursive: true });
+      writeFileSync(join(opts.projectRoot, '.cuttlefish/.cuttlefish-gdb.py'), generateGdbScript(map));
+    }
+  }
+
   const baseOpts: DebugConfigOptions = {
     projectName: opts.projectName,
     sketchRel: opts.sketchRel,
     port: opts.port,
     target: opts.target,
+    hasGdbScript,
   };
 
   mkdirSync(join(opts.projectRoot, '.vscode'), { recursive: true });
@@ -141,14 +180,4 @@ export function writeDebugConfig(opts: WriteDebugConfigOptions): void {
   writeFileSync(join(opts.projectRoot, '.vscode/tasks.json'), buildTasksJson(baseOpts));
   writeFileSync(join(opts.projectRoot, '.cuttlefish/openocd.cfg'), buildOpenOcdCfg());
   writeFileSync(join(opts.projectRoot, 'sdkconfig.defaults.debug'), buildSdkconfigDefaultsDebug());
-
-  // GDB script: only if a source map exists and contains _isr_N symbols.
-  // Avoids emitting a no-op script for sketches with no hoisted lambdas.
-  if (existsSync(opts.sourceMapPath)) {
-    const map = JSON.parse(readFileSync(opts.sourceMapPath, 'utf8')) as GeneratedSourceMap;
-    const hasIsr = map.entries.some((e) => e.symbolName && /_isr_\d+$/.test(e.symbolName));
-    if (hasIsr) {
-      writeFileSync(join(opts.projectRoot, '.cuttlefish/.cuttlefish-gdb.py'), generateGdbScript(map));
-    }
-  }
 }

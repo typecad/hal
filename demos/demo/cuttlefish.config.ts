@@ -15,7 +15,11 @@ const config: CuttlefishConfig = {
   frameworkData: { buildTarget: 'esp32s3' },
   output: { framework: 'esp32', optimize: 'size', outDir: './out-esp32s3' },
   toolchain: { type: 'idf' },
-  console: { baudRate: 115200 },
+  // console.port is the serial port for flash + monitor, and is threaded into
+  // the generated launch.json/tasks.json for F5 debugging. Change to your
+  // board's USB-Serial-JTAG port (e.g. '/dev/ttyACM0' on Linux), or override
+  // at the CLI with --port.
+  console: { baudRate: 115200, port: 'COM10' },
 };
 
 export default config;
