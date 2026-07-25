@@ -6,6 +6,8 @@
 
 // Base types
 export type { Diagnostic, PlatformContext, SourceSpan, TargetProfile } from './types.js';
+// Source-map types (read by framework-esp32's gdb-script generator)
+export type { GeneratedSourceMap, SourceMapEntry } from '../../types.js';
 
 // C++ type IR (structured replacement for stringly-typed CppType)
 export type {
