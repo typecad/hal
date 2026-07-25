@@ -141,15 +141,23 @@ export function buildSdkconfigDefaultsDebug(): string {
 }
 
 /**
- * Write all gdb debug artifacts under `projectRoot`. Idempotent: re-running
- * overwrites with identical content (deterministic generators).
+ * Write all gdb debug artifacts. Idempotent: re-running overwrites with
+ * identical content (deterministic generators).
  *
- * Writes:
- *   .vscode/launch.json
- *   .vscode/tasks.json
- *   .cuttlefish/openocd.cfg
- *   sdkconfig.defaults.debug
- *   .cuttlefish/.cuttlefish-gdb.py   (only if source map has _isr_N entries)
+ * Two distinct landing locations, by who consumes them:
+ *
+ *   workspaceRoot/.vscode/launch.json      ← VS Code loads launch configs ONLY
+ *   workspaceRoot/.vscode/tasks.json         from the workspace root, so these
+ *                                            must land here for F5 to discover them.
+ *
+ *   projectRoot/.cuttlefish/openocd.cfg     ← Consumed by OpenOCD/GDB relative
+ *   projectRoot/.cuttlefish/.cuttlefish-gdb.py  to the build output, which lives
+ *   projectRoot/sdkconfig.defaults.debug       under projectRoot (next to the ELF).
+ *
+ * projectRoot is the ESP-IDF project dir (the `src/out-<target>/` folder);
+ * workspaceRoot is the folder the user opens in VS Code (the sketch dir, which
+ * holds cuttlefish.config.ts). launch.json/tasks.json use ${workspaceFolder} to
+ * address projectRoot-relative paths, so the split doesn't break references.
  */
 export function writeDebugConfig(opts: WriteDebugConfigOptions): void {
   // GDB script: only if a source map exists and contains _isr_N symbols.
@@ -173,11 +181,13 @@ export function writeDebugConfig(opts: WriteDebugConfigOptions): void {
     hasGdbScript,
   };
 
-  mkdirSync(join(opts.projectRoot, '.vscode'), { recursive: true });
-  mkdirSync(join(opts.projectRoot, '.cuttlefish'), { recursive: true });
+  // launch.json + tasks.json: workspace root (where VS Code discovers them).
+  mkdirSync(join(opts.workspaceRoot, '.vscode'), { recursive: true });
+  writeFileSync(join(opts.workspaceRoot, '.vscode/launch.json'), buildLaunchJson(baseOpts));
+  writeFileSync(join(opts.workspaceRoot, '.vscode/tasks.json'), buildTasksJson(baseOpts));
 
-  writeFileSync(join(opts.projectRoot, '.vscode/launch.json'), buildLaunchJson(baseOpts));
-  writeFileSync(join(opts.projectRoot, '.vscode/tasks.json'), buildTasksJson(baseOpts));
+  // openocd.cfg + sdkconfig.defaults.debug: project root (next to build output).
+  mkdirSync(join(opts.projectRoot, '.cuttlefish'), { recursive: true });
   writeFileSync(join(opts.projectRoot, '.cuttlefish/openocd.cfg'), buildOpenOcdCfg());
   writeFileSync(join(opts.projectRoot, 'sdkconfig.defaults.debug'), buildSdkconfigDefaultsDebug());
 }

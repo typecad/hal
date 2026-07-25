@@ -117,8 +117,12 @@ describe('buildSdkconfigDefaultsDebug', () => {
 });
 
 describe('writeDebugConfig', () => {
-  it('writes all four core artifacts under the project out dir', () => {
-    const projectRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-debug-'));
+  it('writes launch.json/tasks.json at the workspace root, build artifacts at the project root', () => {
+    // Use distinct dirs so the split is actually exercised: VS Code reads
+    // launch.json from the workspace root, while openocd/sdkconfig belong
+    // next to the build output under the project root.
+    const workspaceRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-ws-'));
+    const projectRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-proj-'));
     try {
       writeDebugConfig({
         projectRoot,
@@ -126,24 +130,32 @@ describe('writeDebugConfig', () => {
         sketchRel: 'demos/demo',
         port: 'COM10',
         target: 'esp32s3',
-        workspaceRoot: projectRoot,
+        workspaceRoot,
         sourceMapPath: join(projectRoot, 'main', 'main.cc.thcppmap.json'),
       });
 
-      expect(existsSync(join(projectRoot, '.vscode/launch.json'))).toBe(true);
-      expect(existsSync(join(projectRoot, '.vscode/tasks.json'))).toBe(true);
+      // VS Code-discovered configs live at the workspace root.
+      expect(existsSync(join(workspaceRoot, '.vscode/launch.json'))).toBe(true);
+      expect(existsSync(join(workspaceRoot, '.vscode/tasks.json'))).toBe(true);
+      // Build-output artifacts live at the project root (next to the ELF).
       expect(existsSync(join(projectRoot, '.cuttlefish/openocd.cfg'))).toBe(true);
       expect(existsSync(join(projectRoot, 'sdkconfig.defaults.debug'))).toBe(true);
 
-      const launch = JSON.parse(readFileSync(join(projectRoot, '.vscode/launch.json'), 'utf8'));
+      // Nothing should leak to the wrong side of the split.
+      expect(existsSync(join(projectRoot, '.vscode/launch.json'))).toBe(false);
+      expect(existsSync(join(workspaceRoot, '.cuttlefish/openocd.cfg'))).toBe(false);
+
+      const launch = JSON.parse(readFileSync(join(workspaceRoot, '.vscode/launch.json'), 'utf8'));
       expect(launch.configurations[0].program).toContain('build/demo.elf');
     } finally {
+      rmSync(workspaceRoot, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });
     }
   });
 
   it('writes the gdb script and threads hasGdbScript into launch.json when _isr_N entries exist', () => {
-    const projectRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-debug-'));
+    const workspaceRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-ws-'));
+    const projectRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-proj-'));
     try {
       const mapPath = join(projectRoot, 'main', 'main.cc.thcppmap.json');
       mkdirSync(join(projectRoot, 'main'), { recursive: true });
@@ -164,16 +176,17 @@ describe('writeDebugConfig', () => {
         sketchRel: 'demos/demo',
         port: 'COM10',
         target: 'esp32s3',
-        workspaceRoot: projectRoot,
+        workspaceRoot,
         sourceMapPath: mapPath,
       });
 
+      // gdb script lives at the project root (next to openocd.cfg), launch.json at the workspace root.
       const script = readFileSync(join(projectRoot, '.cuttlefish/.cuttlefish-gdb.py'), 'utf8');
       expect(script).toContain('"main_isr_0"');
-      // launch.json should now include the matching source directive.
-      const launch = readFileSync(join(projectRoot, '.vscode/launch.json'), 'utf8');
+      const launch = readFileSync(join(workspaceRoot, '.vscode/launch.json'), 'utf8');
       expect(launch).toContain('.cuttlefish-gdb.py');
     } finally {
+      rmSync(workspaceRoot, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });
     }
   });
