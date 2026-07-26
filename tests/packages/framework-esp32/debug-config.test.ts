@@ -112,9 +112,11 @@ describe('buildLaunchJson — cortex-debug config', () => {
     // armToolchainPath resolves nm/objdump (they live in a separate binutils
     // toolchain, not the gdb dir). Without it cortex-debug warns ENOENT.
     expect(cfg.armToolchainPath).toBe('C:/espressif/tools/xtensa-esp-elf/esp-15.2/bin');
-    // When the toolchain is resolvable, toolchainPrefix is NOT emitted (the
-    // explicit gdbPath supersedes it; emitting both would be contradictory).
-    expect(cfg.toolchainPrefix).toBeUndefined();
+    // toolchainPrefix MUST be emitted even with gdbPath set — gdbPath points
+    // at the GDB binary, but cortex-debug still uses toolchainPrefix to derive
+    // nm/objdump/objcopy names from armToolchainPath. Without it cortex-debug
+    // defaults to 'arm-none-eabi-' and looks for nonexistent binaries (ENOENT).
+    expect(cfg.toolchainPrefix).toBe('xtensa-esp-elf');
   });
 
   it('omits armToolchainPath when binutilsDir is absent (nm/objdump warning only)', () => {

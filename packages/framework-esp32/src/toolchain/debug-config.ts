@@ -186,11 +186,13 @@ export function buildLaunchJson(opts: DebugConfigOptions): string {
     if (opts.toolchainPaths.binutilsDir) {
       cortexDebug.armToolchainPath = opts.toolchainPaths.binutilsDir;
     }
-  } else {
-    // No resolvable toolchain — let cortex-debug find GDB by prefix. Note this
-    // must match the IDF version's layout (v6: xtensa-esp-elf, older: xtensa-esp32s3-elf).
-    cortexDebug.toolchainPrefix = 'xtensa-esp-elf';
   }
+  // toolchainPrefix is needed in BOTH cases (with and without toolchainPaths):
+  // gdbPath points cortex-debug at the exact GDB binary, but cortex-debug STILL
+  // uses toolchainPrefix to derive nm/objdump/objcopy names from armToolchainPath.
+  // Without it, cortex-debug defaults to 'arm-none-eabi-' and looks for
+  // arm-none-eabi-nm.exe (which doesn't exist) — ENOENT on every binutils call.
+  cortexDebug.toolchainPrefix = 'xtensa-esp-elf';
   if (opts.hasGdbScript) {
     cortexDebug.postStartupCommands = [`source \${workspaceFolder}/${outRel(opts)}/.cuttlefish/.cuttlefish-gdb.py`];
   }
