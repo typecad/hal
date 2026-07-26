@@ -7,7 +7,7 @@
   "scripts": {
     "build": "cuttlefish build",
     "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload --port COM10 --monitor --debug",
+    "upload": "cuttlefish build --compile --upload --monitor --debug",
     "transpile": "cuttlefish build --no-transpile",
     "lint": "eslint src/"
   },
