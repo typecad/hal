@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -129,6 +129,107 @@ function loadOrCaptureEnv(root: IdfRoot): Record<string, string> | null {
   }
 
   return env;
+}
+
+/**
+ * Resolved absolute paths for the ESP toolchain binaries that cortex-debug
+ * needs to launch GDB + OpenOCD directly. Unlike gdbtarget (which can resolve
+ * these via the ESP-IDF extension's ${command:espIdf.getToolchainGdb}),
+ * cortex-debug has no ESP-IDF awareness and must be told the exact paths.
+ */
+export interface EspToolchainPaths {
+  /** Absolute path to the xtensa GDB executable (e.g. xtensa-esp-elf-gdb.exe). */
+  gdbPath: string;
+  /** Absolute path to the OpenOCD executable (e.g. openocd.exe / openocd). */
+  openocdPath: string;
+}
+
+/**
+ * Resolve the ESP toolchain GDB + OpenOCD executable paths for the discovered
+ * IDF install. Reads the activated env cache (which IDF's export.{sh,bat}
+ * populated with the toolchain bin dirs on PATH), picks the xtensa GDB and
+ * openocd entries, and returns their absolute executable paths.
+ *
+ * Returns null when no IDF root is discoverable or the env cache can't be
+ * loaded — callers fall back to leaving gdbPath/serverpath unset (the user
+ * can set cortex-debug.gdbPath / .openocdPath in settings.json manually).
+ *
+ * Exported for use by debug-config generation.
+ */
+export function resolveEspToolchains(): EspToolchainPaths | null {
+  const root = discoverIdfRoot();
+  if (!root) return null;
+  const env = loadOrCaptureEnv(root);
+  if (!env || !env.PATH) return null;
+
+  // Split PATH on the platform separator ONLY. Splitting on both ';' and ':'
+  // would corrupt Windows drive-prefixed entries like 'C:\Users\...'.
+  const sep = IS_WIN ? ';' : ':';
+  const pathEntries = env.PATH.split(sep).map((p) => p.replace(/\\/g, '/')).filter(Boolean);
+
+  // IDF v6 ships the unified `xtensa-esp-elf-gdb`; older IDF used per-target
+  // `xtensa-esp32s3-elf-gdb`. Match the prefix so both layouts resolve.
+  const gdbBinDir = pathEntries.find((p) => /xtensa-esp[a-z0-9-]*-elf-gdb\/bin$/i.test(p));
+  const openocdBinDir = pathEntries.find((p) => /openocd-esp[a-z0-9]*\/bin$/i.test(p));
+  if (!gdbBinDir || !openocdBinDir) return null;
+
+  const exe = IS_WIN ? '.exe' : '';
+
+  // The GDB executable name mirrors the toolchain dir's parent (e.g.
+  // 'xtensa-esp-elf-gdb'). IDF v6 also ships version-suffixed variants
+  // (xtensa-esp-elf-gdb-3.14.exe) — prefer the bare-named binary if present,
+  // otherwise pick the highest version-suffixed one deterministically.
+  const gdbBaseName = gdbBinDir.split('/').filter(Boolean).slice(-2, -1)[0] ?? 'xtensa-esp-elf-gdb';
+  const gdbPath = resolveVersionedBinary(gdbBinDir, gdbBaseName, exe);
+
+  // OpenOCD's binary is plain 'openocd' even though IDF's fork ships under an
+  // 'openocd-esp32' dir. Use resolveVersionedBinary so it prefers the bare
+  // name and falls back to version-suffixed siblings if present.
+  const openocdPath = resolveVersionedBinary(openocdBinDir, 'openocd', exe);
+  return {
+    gdbPath: gdbPath ?? `${gdbBinDir}/${gdbBaseName}${exe}`,
+    openocdPath: openocdPath ?? `${openocdBinDir}/openocd${exe}`,
+  };
+}
+
+/**
+ * Given a toolchain bin dir and a base binary name, return the path to the
+ * bare-named executable if it exists; otherwise pick the highest
+ * version-suffixed sibling (e.g. `xtensa-esp-elf-gdb-3.14.exe` from
+ * `xtensa-esp-elf-gdb`). Returns null if no candidate is found.
+ *
+ * Version comparison is component-wise (3.14 > 3.9), NOT float — parseFloat
+ * would rank 3.9 > 3.14 and 3.10 < 3.9, both wrong.
+ */
+export function resolveVersionedBinary(binDir: string, baseName: string, exe: string): string | null {
+  try {
+    const entries = readdirSync(binDir.replace(/\//g, IS_WIN ? '\\' : '/'));
+    // Prefer the exact bare name.
+    const bare = `${baseName}${exe}`;
+    if (entries.includes(bare)) return `${binDir}/${bare}`;
+    // Otherwise find version-suffixed siblings and pick the highest version.
+    const versions = entries
+      .filter((e) => e.startsWith(`${baseName}-`) && e.endsWith(exe))
+      .map((e) => e.slice(baseName.length + 1, e.length - exe.length));
+    if (versions.length === 0) return null;
+    versions.sort(compareVersions);
+    return `${binDir}/${baseName}-${versions[versions.length - 1]}${exe}`;
+  } catch {
+    return null;
+  }
+}
+
+/** Component-wise dotted-version comparison. 3.14 > 3.9, 3.10 > 3.9, 3.9.1 > 3.9. */
+function compareVersions(a: string, b: string): number {
+  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i++) {
+    const da = pa[i] ?? 0;
+    const db = pb[i] ?? 0;
+    if (da !== db) return da - db;
+  }
+  return 0;
 }
 
 /** Marker comment embedded in the wrapper so we can detect when the wrapper

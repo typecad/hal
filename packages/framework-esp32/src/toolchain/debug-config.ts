@@ -89,6 +89,14 @@ export interface DebugConfigOptions {
    * error on a missing file.
    */
   hasGdbScript?: boolean;
+  /**
+   * Resolved ESP toolchain paths (xtensa GDB + OpenOCD). When present, the
+   * cortex-debug config bakes them in as `gdbPath` / `serverpath` so the user
+   * doesn't need to set cortex-debug.gdbPath/.openocdPath manually. When
+   * absent (no IDF root discoverable), those fields are omitted and the user
+   * must configure cortex-debug themselves.
+   */
+  toolchainPaths?: { gdbPath: string; openocdPath: string };
 }
 
 export interface WriteDebugConfigOptions extends DebugConfigOptions {
@@ -143,6 +151,34 @@ export function buildLaunchJson(opts: DebugConfigOptions): string {
   //     preLaunchTask (`cuttlefish: build + flash`) skips the separate start.
   // Each config drives only what its adapter needs, so they don't conflict on
   // the JTAG port.
+  // Build the cortex-debug config. gdbPath/serverpath are baked in when the
+  // ESP toolchain was resolvable (the common case after `cuttlefish build` ran
+  // idf.py), so the user needs zero manual cortex-debug.* settings. When the
+  // toolchain couldn't be resolved (no IDF root), we fall back to toolchainPrefix
+  // only and the user sets cortex-debug.gdbPath / .openocdPath themselves.
+  const cortexDebug: Record<string, unknown> = {
+    type: 'cortex-debug',
+    request: 'launch',
+    name: 'TypeCAD Debug (ESP32-S3 / cortex-debug)',
+    cwd: '${workspaceFolder}',
+    executable: elfPath,
+    servertype: 'openocd',
+    // board/esp32s3-builtin.cfg configures the S3's built-in USB-Serial-JTAG.
+    configFiles: ['board/esp32s3-builtin.cfg'],
+  };
+  if (opts.toolchainPaths) {
+    cortexDebug.gdbPath = opts.toolchainPaths.gdbPath;
+    cortexDebug.serverpath = opts.toolchainPaths.openocdPath;
+  } else {
+    // No resolvable toolchain — let cortex-debug find GDB by prefix. Note this
+    // must match the IDF version's layout (v6: xtensa-esp-elf, older: xtensa-esp32s3-elf).
+    cortexDebug.toolchainPrefix = 'xtensa-esp-elf';
+  }
+  if (opts.hasGdbScript) {
+    cortexDebug.postStartupCommands = [`source \${workspaceFolder}/${outRel(opts)}/.cuttlefish/.cuttlefish-gdb.py`];
+  }
+  cortexDebug.preLaunchTask = 'cuttlefish: build + flash';
+
   const cfg = {
     version: '0.2.0',
     configurations: [
@@ -156,28 +192,7 @@ export function buildLaunchJson(opts: DebugConfigOptions): string {
         preLaunchTask: 'cuttlefish: debug prep',
         initCommands,
       },
-      {
-        type: 'cortex-debug',
-        request: 'launch',
-        name: 'TypeCAD Debug (ESP32-S3 / cortex-debug)',
-        cwd: '${workspaceFolder}',
-        executable: elfPath,
-        servertype: 'openocd',
-        // board/esp32s3-builtin.cfg configures the S3's built-in USB-Serial-JTAG.
-        // cortex-debug looks up openocd on PATH; the ESP-IDF install puts it there
-        // (or set cortex-debug.openocdPath in settings.json to point at it).
-        configFiles: ['board/esp32s3-builtin.cfg'],
-        toolchainPrefix: 'xtensa-esp32s3-elf',
-        // Use the same gdb-script source if one was generated (best-effort —
-        // cortex-debug accepts a `swoConfig`/`svdFile` too, but we only need
-        // the _isr_N frame filter, which is plain GDB `source`-able).
-        ...(
-          opts.hasGdbScript
-            ? { postStartupCommands: [`source \${workspaceFolder}/${outRel(opts)}/.cuttlefish/.cuttlefish-gdb.py`] }
-            : {}
-        ),
-        preLaunchTask: 'cuttlefish: build + flash',
-      },
+      cortexDebug,
     ],
   };
   return JSON.stringify(cfg, null, 2);
@@ -273,6 +288,7 @@ export function writeDebugConfig(opts: WriteDebugConfigOptions): void {
     port: opts.port,
     target: opts.target,
     hasGdbScript,
+    toolchainPaths: opts.toolchainPaths,
   };
 
   // launch.json + tasks.json: workspace root (where VS Code discovers them).

@@ -108,9 +108,10 @@ have installed works:
   Self-manages OpenOCD via `servertype: "openocd"`.
 
 Install **one** of these. ESP-IDF bundles OpenOCD + the xtensa GDB (but
-needs ESP-IDF itself configured); cortex-debug is lighter and expects those
-on PATH (an ESP-IDF install puts them there). Set the board's serial port in
-`cuttlefish.config.ts` (`console.port`) or pass `--port`. See
+needs ESP-IDF itself configured); cortex-debug is lighter and its config
+auto-discovers the GDB + OpenOCD paths from the ESP-IDF install (no manual
+`cortex-debug.gdbPath` / `.openocdPath` settings needed). Set the board's
+serial port in `cuttlefish.config.ts` (`console.port`) or pass `--port`. See
 `demos/demo/README.md` for the full F5 flow.
 
 The printf instrumentation documented below remains the path for targets that

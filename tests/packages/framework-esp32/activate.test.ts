@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   buildWrapperContent, ensureIdfActivated, idfSpawn, wrapperPathFor, WRAPPER_NAME,
+  resolveEspToolchains, resolveVersionedBinary,
 } from '../../../packages/framework-esp32/src/toolchain/activate';
 import { discoverIdfRoot, resetDiscoverIdfRootCache, type IdfRoot } from '../../../packages/framework-esp32/src/toolchain/discover';
 import { resetDetectIdfEnvCache } from '../../../packages/framework-esp32/src/toolchain/idf-env';
@@ -137,5 +138,81 @@ describe('idfSpawn when no IDF is installed', () => {
     mkdirSync(projDir);
     expect(() => idfSpawn(projDir, ['build'], { cwd: projDir }))
       .toThrow(/ESP-IDF environment not detected|\$IDF_PATH is not set|idf\.py not found/);
+  });
+});
+
+describe('resolveVersionedBinary', () => {
+  const exe = IS_WIN ? '.exe' : '';
+
+  it('prefers the bare-named binary when present', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cuttlefish-bin-'));
+    try {
+      writeFileSync(join(dir, `gdb${exe}`), '');
+      writeFileSync(join(dir, `gdb-3.9${exe}`), '');
+      const result = resolveVersionedBinary(dir.replace(/\\/g, '/'), 'gdb', exe);
+      expect(result).toBe(`${dir.replace(/\\/g, '/')}/gdb${exe}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('picks the highest version-suffixed sibling (component-wise, not float)', () => {
+    // Float math would rank 3.9 > 3.14 and 3.10 < 3.9 — both wrong.
+    const dir = mkdtempSync(join(tmpdir(), 'cuttlefish-bin-'));
+    try {
+      for (const v of ['3.8', '3.9', '3.10', '3.14']) {
+        writeFileSync(join(dir, `xtensa-esp-elf-gdb-${v}${exe}`), '');
+      }
+      const result = resolveVersionedBinary(dir.replace(/\\/g, '/'), 'xtensa-esp-elf-gdb', exe);
+      expect(result).toMatch(/xtensa-esp-elf-gdb-3\.14/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('handles multi-component versions like 3.9.1 > 3.9', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cuttlefish-bin-'));
+    try {
+      writeFileSync(join(dir, `gdb-3.9${exe}`), '');
+      writeFileSync(join(dir, `gdb-3.9.1${exe}`), '');
+      const result = resolveVersionedBinary(dir.replace(/\\/g, '/'), 'gdb', exe);
+      expect(result).toMatch(/gdb-3\.9\.1/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('returns null when no matching binary exists', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'cuttlefish-bin-'));
+    try {
+      const result = resolveVersionedBinary(dir.replace(/\\/g, '/'), 'gdb', exe);
+      expect(result).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('resolveEspToolchains', () => {
+  // Best-effort smoke: depends on the host having ESP-IDF installed. When it
+  // does, we assert the resolved shape (absolute paths, correct binary names).
+  // When it doesn't, we only assert it returns null (the documented fallback).
+  it('returns null or a valid {gdbPath, openocdPath} shape, never throws', () => {
+    const result = resolveEspToolchains();
+    if (result === null) {
+      expect(result).toBeNull();
+      return;
+    }
+    expect(typeof result.gdbPath).toBe('string');
+    expect(typeof result.openocdPath).toBe('string');
+    // gdbPath must resolve to an xtensa GDB executable.
+    expect(result.gdbPath).toMatch(/xtensa-esp[a-z0-9-]*-elf-gdb/);
+    // openocdPath must resolve to an OpenOCD executable.
+    expect(result.openocdPath).toMatch(/openocd/i);
+    // Drive-letter paths on Windows must be intact (no lost C: prefix).
+    if (IS_WIN) {
+      expect(result.gdbPath).toMatch(/^[A-Z]:\//);
+      expect(result.openocdPath).toMatch(/^[A-Z]:\//);
+    }
   });
 });

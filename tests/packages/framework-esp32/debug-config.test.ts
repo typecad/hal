@@ -94,8 +94,26 @@ describe('buildLaunchJson — cortex-debug config', () => {
     expect(cfg.configFiles).toEqual(['board/esp32s3-builtin.cfg']);
   });
 
-  it('uses the xtensa-esp32s3-elf toolchain prefix', () => {
-    expect(cortex().toolchainPrefix).toBe('xtensa-esp32s3-elf');
+  it('bakes gdbPath/serverpath in when toolchainPaths is provided (no manual config needed)', () => {
+    const cfg = cortex({
+      ...OPTS,
+      toolchainPaths: {
+        gdbPath: 'C:/espressif/tools/xtensa-esp-elf-gdb/17.1/bin/xtensa-esp-elf-gdb.exe',
+        openocdPath: 'C:/espressif/tools/openocd-esp32/v0.12/bin/openocd-esp32.exe',
+      },
+    });
+    expect(cfg.gdbPath).toBe('C:/espressif/tools/xtensa-esp-elf-gdb/17.1/bin/xtensa-esp-elf-gdb.exe');
+    expect(cfg.serverpath).toBe('C:/espressif/tools/openocd-esp32/v0.12/bin/openocd-esp32.exe');
+    // When the toolchain is resolvable, toolchainPrefix is NOT emitted (the
+    // explicit gdbPath supersedes it; emitting both would be contradictory).
+    expect(cfg.toolchainPrefix).toBeUndefined();
+  });
+
+  it('falls back to toolchainPrefix when toolchainPaths is absent (user configures manually)', () => {
+    const cfg = cortex(OPTS); // no toolchainPaths
+    expect(cfg.toolchainPrefix).toBe('xtensa-esp-elf');
+    expect(cfg.gdbPath).toBeUndefined();
+    expect(cfg.serverpath).toBeUndefined();
   });
 
   it('sources the gdb script via postStartupCommands when hasGdbScript is true', () => {
