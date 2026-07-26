@@ -138,10 +138,18 @@ function loadOrCaptureEnv(root: IdfRoot): Record<string, string> | null {
  * cortex-debug has no ESP-IDF awareness and must be told the exact paths.
  */
 export interface EspToolchainPaths {
-  /** Absolute path to the xtensa GDB executable (e.g. xtensa-esp-elf-gdb.exe). */
+  /** Absolute path to the xtensa GDB executable (e.g. xtensa-esp32s3-elf-gdb.exe). */
   gdbPath: string;
   /** Absolute path to the OpenOCD executable (e.g. openocd.exe / openocd). */
   openocdPath: string;
+  /** Absolute path to OpenOCD's scripts dir (where board/*.cfg live).
+   * Passed as cortex-debug's searchDir so `board/esp32s3-builtin.cfg` resolves. */
+  openocdScripts: string;
+  /** Absolute path to the binutils bin dir (where nm/objdump/objcopy live).
+   * Passed as cortex-debug's armToolchainPath so it finds the unified
+   * xtensa-esp-elf-nm.exe / -objdump.exe (the gdb dir has no nm/objdump).
+   * Optional — when absent the nm/objdump warning fires (non-fatal). */
+  binutilsDir?: string;
 }
 
 /**
@@ -212,7 +220,26 @@ export function resolveEspToolchains(target?: string): EspToolchainPaths | null 
   // OpenOCD ships as plain 'openocd' under an 'openocd-esp32' dir.
   const openocdPath = pickExact(openocdBinDir, 'openocd', exe) ?? `${openocdBinDir}/openocd${exe}`;
 
-  return { gdbPath, openocdPath };
+  // OpenOCD scripts dir: IDF sets OPENOCD_SCRIPTS in the activated env. Without
+  // this, cortex-debug passes -s <workspaceFolder>, which has no board/*.cfg —
+  // OpenOCD errors "board/esp32s3-builtin.cfg not found" and quits immediately.
+  const openocdScripts = env.OPENOCD_SCRIPTS ? env.OPENOCD_SCRIPTS.replace(/\\/g, '/') : null;
+
+  // Binutils (nm/objdump/objcopy) live in a SEPARATE toolchain component from
+  // the gdb — the unified `xtensa-esp-elf/bin` dir, not the gdb dir. cortex-debug
+  // derives nm/objdump paths by suffix-substitution on the gdb basename, so
+  // without armToolchainPath it looks next to the gdb (no nm there → ENOENT
+  // warning). Pointing it at the binutils dir resolves the unified xtensa-esp-elf-* tools.
+  const binutilsDir = pathEntries.find((p) => /xtensa-esp-elf\/bin$/i.test(p)
+    && !/xtensa-esp-elf-gdb/i.test(p)) ?? null;
+
+  // openocdScripts + binutilsDir are required for a working cortex-debug session;
+  // without openocdScripts OpenOCD can't find board configs (fatal), without
+  // binutilsDir the nm/objdump warning fires (non-fatal but noisy). Require the
+  // fatal one; degrade gracefully on the warning-only one.
+  if (!openocdScripts) return null;
+
+  return { gdbPath, openocdPath, openocdScripts, binutilsDir: binutilsDir ?? undefined };
 }
 
 /**

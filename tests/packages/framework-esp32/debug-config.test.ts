@@ -94,19 +94,41 @@ describe('buildLaunchJson — cortex-debug config', () => {
     expect(cfg.configFiles).toEqual(['board/esp32s3-builtin.cfg']);
   });
 
-  it('bakes gdbPath/serverpath in when toolchainPaths is provided (no manual config needed)', () => {
+  it('bakes gdbPath/serverpath/searchDir/armToolchainPath in when toolchainPaths is provided', () => {
     const cfg = cortex({
       ...OPTS,
       toolchainPaths: {
         gdbPath: 'C:/espressif/tools/xtensa-esp-elf-gdb/17.1/bin/xtensa-esp-elf-gdb.exe',
         openocdPath: 'C:/espressif/tools/openocd-esp32/v0.12/bin/openocd-esp32.exe',
+        openocdScripts: 'C:/espressif/tools/openocd-esp32/v0.12/share/openocd/scripts',
+        binutilsDir: 'C:/espressif/tools/xtensa-esp-elf/esp-15.2/bin',
       },
     });
     expect(cfg.gdbPath).toBe('C:/espressif/tools/xtensa-esp-elf-gdb/17.1/bin/xtensa-esp-elf-gdb.exe');
     expect(cfg.serverpath).toBe('C:/espressif/tools/openocd-esp32/v0.12/bin/openocd-esp32.exe');
+    // searchDir is the OpenOCD -s flag — without it, board/esp32s3-builtin.cfg
+    // can't be found and OpenOCD quits (the fatal "GDB Server Quit" error).
+    expect(cfg.searchDir).toBe('C:/espressif/tools/openocd-esp32/v0.12/share/openocd/scripts');
+    // armToolchainPath resolves nm/objdump (they live in a separate binutils
+    // toolchain, not the gdb dir). Without it cortex-debug warns ENOENT.
+    expect(cfg.armToolchainPath).toBe('C:/espressif/tools/xtensa-esp-elf/esp-15.2/bin');
     // When the toolchain is resolvable, toolchainPrefix is NOT emitted (the
     // explicit gdbPath supersedes it; emitting both would be contradictory).
     expect(cfg.toolchainPrefix).toBeUndefined();
+  });
+
+  it('omits armToolchainPath when binutilsDir is absent (nm/objdump warning only)', () => {
+    const cfg = cortex({
+      ...OPTS,
+      toolchainPaths: {
+        gdbPath: 'C:/gdb.exe',
+        openocdPath: 'C:/openocd.exe',
+        openocdScripts: 'C:/scripts',
+      },
+    });
+    expect(cfg.armToolchainPath).toBeUndefined();
+    // searchDir still emitted (it's required, not optional).
+    expect(cfg.searchDir).toBe('C:/scripts');
   });
 
   it('falls back to toolchainPrefix when toolchainPaths is absent (user configures manually)', () => {

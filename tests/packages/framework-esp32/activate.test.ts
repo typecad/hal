@@ -194,22 +194,26 @@ describe('resolveEspToolchains', () => {
   // Best-effort smoke: depends on the host having ESP-IDF installed. When it
   // does, we assert the resolved shape (absolute paths, correct binary names).
   // When it doesn't, we only assert it returns null (the documented fallback).
-  it('returns null or a valid {gdbPath, openocdPath} shape, never throws', () => {
-    const result = resolveEspToolchains();
+  it('returns null or a valid toolchain shape, never throws', () => {
+    const result = resolveEspToolchains('esp32s3');
     if (result === null) {
       expect(result).toBeNull();
       return;
     }
     expect(typeof result.gdbPath).toBe('string');
     expect(typeof result.openocdPath).toBe('string');
+    expect(typeof result.openocdScripts).toBe('string');
     // gdbPath must resolve to an xtensa GDB executable.
     expect(result.gdbPath).toMatch(/xtensa-esp[a-z0-9-]*-elf-gdb/);
     // openocdPath must resolve to an OpenOCD executable.
     expect(result.openocdPath).toMatch(/openocd/i);
+    // openocdScripts must point at the scripts dir (where board/*.cfg live).
+    expect(result.openocdScripts.toLowerCase()).toMatch(/openocd.*scripts|scripts.*openocd/);
     // Drive-letter paths on Windows must be intact (no lost C: prefix).
     if (IS_WIN) {
       expect(result.gdbPath).toMatch(/^[A-Z]:\//);
       expect(result.openocdPath).toMatch(/^[A-Z]:\//);
+      expect(result.openocdScripts).toMatch(/^[A-Z]:\//);
     }
   });
 });

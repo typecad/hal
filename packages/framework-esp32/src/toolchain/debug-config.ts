@@ -96,7 +96,14 @@ export interface DebugConfigOptions {
    * absent (no IDF root discoverable), those fields are omitted and the user
    * must configure cortex-debug themselves.
    */
-  toolchainPaths?: { gdbPath: string; openocdPath: string };
+  toolchainPaths?: {
+    gdbPath: string;
+    openocdPath: string;
+    /** OpenOCD scripts dir; passed as cortex-debug `searchDir`. */
+    openocdScripts: string;
+    /** Binutils bin dir; passed as cortex-debug `armToolchainPath` when present. */
+    binutilsDir?: string;
+  };
 }
 
 export interface WriteDebugConfigOptions extends DebugConfigOptions {
@@ -169,6 +176,16 @@ export function buildLaunchJson(opts: DebugConfigOptions): string {
   if (opts.toolchainPaths) {
     cortexDebug.gdbPath = opts.toolchainPaths.gdbPath;
     cortexDebug.serverpath = opts.toolchainPaths.openocdPath;
+    // searchDir → OpenOCD -s flag. Without it cortex-debug passes
+    // -s <workspaceFolder>, which has no board/*.cfg, and OpenOCD quits with
+    // "board/esp32s3-builtin.cfg not found" (the fatal GDB Server Quit error).
+    cortexDebug.searchDir = opts.toolchainPaths.openocdScripts;
+    // armToolchainPath → where nm/objdump/objcopy live. cortex-debug derives
+    // those by suffix-substitution on the gdb basename; the gdb dir has no nm,
+    // so without this it warns "xtensa-esp32s3-elf-nm.exe ENOENT" (non-fatal).
+    if (opts.toolchainPaths.binutilsDir) {
+      cortexDebug.armToolchainPath = opts.toolchainPaths.binutilsDir;
+    }
   } else {
     // No resolvable toolchain — let cortex-debug find GDB by prefix. Note this
     // must match the IDF version's layout (v6: xtensa-esp-elf, older: xtensa-esp32s3-elf).

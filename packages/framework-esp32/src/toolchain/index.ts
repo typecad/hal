@@ -82,7 +82,7 @@ export const Toolchain = {
           // awareness. gdbtarget doesn't need it (uses espIdf.getToolchainGdb).
           // Best-effort: null when no IDF root is discoverable, in which case
           // the config omits gdbPath/serverpath and the user configures manually.
-          let toolchainPaths: { gdbPath: string; openocdPath: string } | undefined;
+          let toolchainPaths;
           try {
             toolchainPaths = resolveEspToolchains(target) ?? undefined;
           } catch {
