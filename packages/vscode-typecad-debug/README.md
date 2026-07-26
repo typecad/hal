@@ -94,15 +94,24 @@ breakpoints — acceptable for typical single-sketch Arduino projects.
 For ESP32-S3, this extension's printf instrumentation is superseded by a
 native GDB path. `cuttlefish build --debug` on `esp32s3` emits `#line`
 directives in the generated C++ and writes `.vscode/launch.json` +
-`tasks.json` + `openocd.cfg` + `sdkconfig.defaults.debug` under the project's
-`src/out-esp32s3/` directory. Press **F5** in VS Code and the generated
-config attaches GDB (via the ESP-IDF extension's `gdbtarget` adapter) to the
-chip's built-in USB-Serial-JTAG — one USB cable, no external probe.
+`tasks.json` (at the git/workspace root, where VS Code reads them) plus
+`openocd.cfg` + `sdkconfig.defaults.debug` next to the build output. Press
+**F5** in VS Code and the generated config attaches GDB to the chip's
+built-in USB-Serial-JTAG — one USB cable, no external probe.
 
-Requirements: ESP-IDF + its VS Code extension installed (these bundle OpenOCD,
-the xtensa GDB, and the debug adapter — nothing extra to install). Set the
-board's serial port in `cuttlefish.config.ts` (`console.port`) or pass
-`--port`. See `demos/demo/src/main.ts` for the full F5 flow.
+`launch.json` ships **two** configurations so whichever debug extension you
+have installed works:
+
+- **`gdbtarget`** — provided by the ESP-IDF extension. OpenOCD is started by
+  the `preLaunchTask`.
+- **`cortex-debug`** — provided by the `marus25.cortex-debug` extension.
+  Self-manages OpenOCD via `servertype: "openocd"`.
+
+Install **one** of these. ESP-IDF bundles OpenOCD + the xtensa GDB (but
+needs ESP-IDF itself configured); cortex-debug is lighter and expects those
+on PATH (an ESP-IDF install puts them there). Set the board's serial port in
+`cuttlefish.config.ts` (`console.port`) or pass `--port`. See
+`demos/demo/README.md` for the full F5 flow.
 
 The printf instrumentation documented below remains the path for targets that
 don't yet support native debugging (Arduino, other ESP32 variants).

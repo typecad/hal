@@ -30,8 +30,14 @@ demos/demo/src/out-esp32s3/.cuttlefish/.cuttlefish-gdb.py  ← _isr_N frame filt
 
 **To debug:**
 
-1. Install the **ESP-IDF VS Code extension** — it bundles OpenOCD, the xtensa
-   GDB, and the `gdbtarget` debug adapter. Nothing else to install.
+1. Install **one** of these VS Code extensions (either works — `launch.json`
+   ships both configs and you pick whichever in the Run and Debug dropdown):
+   - **ESP-IDF extension** (`espressif.esp-idf-extension`) — provides the
+     `gdbtarget` debug type. Bundles OpenOCD + the xtensa GDB, but requires
+     ESP-IDF itself to be configured in the extension's settings.
+   - **cortex-debug** (`marus25.cortex-debug`) — provides the `cortex-debug`
+     debug type and self-manages OpenOCD. Lighter weight; you'll need OpenOCD
+     and the xtensa GDB on PATH (an ESP-IDF install puts them there).
 2. Set the board's serial port in `cuttlefish.config.ts` (`console.port` —
    e.g. `'COM10'` on Windows, `'/dev/ttyACM0'` on Linux), or pass `--port`.
 3. Open the **repository root** in VS Code (not the `demos/demo` subfolder —

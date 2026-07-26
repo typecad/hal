@@ -64,6 +64,51 @@ describe('buildLaunchJson', () => {
     expect(initCommands).toContain('set auto-load safe-path ${workspaceFolder}');
     expect(initCommands).toContain('set remote hardware-watchpoint-limit 2');
   });
+
+  it('emits BOTH a gdbtarget and a cortex-debug config so either extension works', () => {
+    const json = JSON.parse(buildLaunchJson(OPTS));
+    const types = json.configurations.map((c: any) => c.type);
+    expect(types).toContain('gdbtarget');
+    expect(types).toContain('cortex-debug');
+    expect(json.configurations).toHaveLength(2);
+  });
+});
+
+describe('buildLaunchJson — cortex-debug config', () => {
+  const cortex = (opts = OPTS) => {
+    const json = JSON.parse(buildLaunchJson(opts));
+    return json.configurations.find((c: any) => c.type === 'cortex-debug');
+  };
+
+  it('uses servertype openocd and self-manages OpenOCD (no external start task)', () => {
+    const cfg = cortex();
+    expect(cfg.servertype).toBe('openocd');
+    // cortex-debug spawns OpenOCD itself, so its preLaunchTask must NOT be the
+    // `debug prep` task that starts a competing OpenOCD on 3333.
+    expect(cfg.preLaunchTask).toBe('cuttlefish: build + flash');
+  });
+
+  it('points executable at the ELF and uses board/esp32s3-builtin.cfg', () => {
+    const cfg = cortex();
+    expect(cfg.executable).toBe('${workspaceFolder}/demos/demo/src/out-esp32s3/build/demo.elf');
+    expect(cfg.configFiles).toEqual(['board/esp32s3-builtin.cfg']);
+  });
+
+  it('uses the xtensa-esp32s3-elf toolchain prefix', () => {
+    expect(cortex().toolchainPrefix).toBe('xtensa-esp32s3-elf');
+  });
+
+  it('sources the gdb script via postStartupCommands when hasGdbScript is true', () => {
+    const cfg = cortex({ ...OPTS, hasGdbScript: true });
+    expect(cfg.postStartupCommands).toContain(
+      'source ${workspaceFolder}/demos/demo/src/out-esp32s3/.cuttlefish/.cuttlefish-gdb.py',
+    );
+  });
+
+  it('omits postStartupCommands when hasGdbScript is false', () => {
+    const cfg = cortex({ ...OPTS, hasGdbScript: false });
+    expect(cfg.postStartupCommands).toBeUndefined();
+  });
 });
 
 describe('buildTasksJson', () => {
