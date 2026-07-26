@@ -170,6 +170,12 @@ export function buildLaunchJson(opts: DebugConfigOptions): string {
     cwd: '${workspaceFolder}',
     executable: elfPath,
     servertype: 'openocd',
+    // Surface every GDB/OpenOCD transaction in DEBUG CONSOLE. The default
+    // ('messages') hides the gdb-server launch line and OpenOCD output, which
+    // makes silent session-startup failures (board not attached, OpenOCD quit,
+    // GDB attach timeout) impossible to diagnose. 'raw' is noisier on success
+    // but indispensable when the session won't come up.
+    showDevDebugOutput: 'raw',
     // board/esp32s3-builtin.cfg configures the S3's built-in USB-Serial-JTAG.
     configFiles: ['board/esp32s3-builtin.cfg'],
   };

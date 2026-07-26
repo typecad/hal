@@ -88,6 +88,12 @@ describe('buildLaunchJson — cortex-debug config', () => {
     expect(cfg.preLaunchTask).toBe('cuttlefish: build + flash');
   });
 
+  it('enables raw dev debug output so silent session-startup failures are diagnosable', () => {
+    // Without this, cortex-debug hides the gdb-server launch line and OpenOCD
+    // output, making "session never started" failures impossible to diagnose.
+    expect(cortex().showDevDebugOutput).toBe('raw');
+  });
+
   it('points executable at the ELF and uses board/esp32s3-builtin.cfg', () => {
     const cfg = cortex();
     expect(cfg.executable).toBe('${workspaceFolder}/demos/demo/src/out-esp32s3/build/demo.elf');
