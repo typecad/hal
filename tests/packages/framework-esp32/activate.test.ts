@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   buildWrapperContent, ensureIdfActivated, idfSpawn, wrapperPathFor, WRAPPER_NAME,
-  resolveEspToolchains, selectGdbBinary,
 } from '../../../packages/framework-esp32/src/toolchain/activate';
 import { discoverIdfRoot, resetDiscoverIdfRootCache, type IdfRoot } from '../../../packages/framework-esp32/src/toolchain/discover';
 import { resetDetectIdfEnvCache } from '../../../packages/framework-esp32/src/toolchain/idf-env';
@@ -138,82 +137,5 @@ describe('idfSpawn when no IDF is installed', () => {
     mkdirSync(projDir);
     expect(() => idfSpawn(projDir, ['build'], { cwd: projDir }))
       .toThrow(/ESP-IDF environment not detected|\$IDF_PATH is not set|idf\.py not found/);
-  });
-});
-
-describe('selectGdbBinary', () => {
-  const exe = IS_WIN ? '.exe' : '';
-
-  it('prefers the per-target binary when it exists (IDF v6 layout)', () => {
-    // IDF v6 ships per-target binaries (xtensa-esp32s3-elf-gdb.exe) alongside
-    // the unified toolchain. The per-target binary is linked against host
-    // Python and runs reliably; prefer it over the Python-suffixed unified ones.
-    const entries = [
-      `xtensa-esp-elf-gdb-3.13${exe}`,
-      `xtensa-esp-elf-gdb-3.14${exe}`,  // would fail: no Python 3.14 installed
-      `xtensa-esp-elf-gdb-no-python${exe}`,
-      `xtensa-esp32s3-elf-gdb${exe}`,
-    ];
-    expect(selectGdbBinary(entries, 'esp32s3')).toBe(`xtensa-esp32s3-elf-gdb${exe}`);
-  });
-
-  it('falls back to xtensa-esp-elf-gdb-no-python when no per-target binary', () => {
-    const entries = [
-      `xtensa-esp-elf-gdb-3.13${exe}`,
-      `xtensa-esp-elf-gdb-3.14${exe}`,
-      `xtensa-esp-elf-gdb-no-python${exe}`,
-    ];
-    expect(selectGdbBinary(entries, 'esp32s3')).toBe(`xtensa-esp-elf-gdb-no-python${exe}`);
-  });
-
-  it('falls back to bare xtensa-esp-elf-gdb when present (older IDF layout)', () => {
-    const entries = [`xtensa-esp-elf-gdb${exe}`, `xtensa-esp-elf-gdb-3.8${exe}`];
-    expect(selectGdbBinary(entries, 'esp32s3')).toBe(`xtensa-esp-elf-gdb${exe}`);
-  });
-
-  it('last resort: picks the first version-suffixed variant alphabetically', () => {
-    const entries = [`xtensa-esp-elf-gdb-3.14${exe}`, `xtensa-esp-elf-gdb-3.8${exe}`];
-    // Sorted alphabetically: 3.14 < 3.8 (string comparison), so 3.14 wins.
-    // This is a last resort — we don't try to be clever about version ordering
-    // because the suffix is a Python ABI tag, not a GDB version.
-    expect(selectGdbBinary(entries, 'esp32s3')).toBe(`xtensa-esp-elf-gdb-3.14${exe}`);
-  });
-
-  it('returns null when no GDB binary exists', () => {
-    expect(selectGdbBinary([], 'esp32s3')).toBeNull();
-    expect(selectGdbBinary(['unrelated.exe'])).toBeNull();
-  });
-
-  it('without a target, skips the per-target lookup', () => {
-    const entries = [`xtensa-esp32s3-elf-gdb${exe}`, `xtensa-esp-elf-gdb-no-python${exe}`];
-    expect(selectGdbBinary(entries)).toBe(`xtensa-esp-elf-gdb-no-python${exe}`);
-  });
-});
-
-describe('resolveEspToolchains', () => {
-  // Best-effort smoke: depends on the host having ESP-IDF installed. When it
-  // does, we assert the resolved shape (absolute paths, correct binary names).
-  // When it doesn't, we only assert it returns null (the documented fallback).
-  it('returns null or a valid toolchain shape, never throws', () => {
-    const result = resolveEspToolchains('esp32s3');
-    if (result === null) {
-      expect(result).toBeNull();
-      return;
-    }
-    expect(typeof result.gdbPath).toBe('string');
-    expect(typeof result.openocdPath).toBe('string');
-    expect(typeof result.openocdScripts).toBe('string');
-    // gdbPath must resolve to an xtensa GDB executable.
-    expect(result.gdbPath).toMatch(/xtensa-esp[a-z0-9-]*-elf-gdb/);
-    // openocdPath must resolve to an OpenOCD executable.
-    expect(result.openocdPath).toMatch(/openocd/i);
-    // openocdScripts must point at the scripts dir (where board/*.cfg live).
-    expect(result.openocdScripts.toLowerCase()).toMatch(/openocd.*scripts|scripts.*openocd/);
-    // Drive-letter paths on Windows must be intact (no lost C: prefix).
-    if (IS_WIN) {
-      expect(result.gdbPath).toMatch(/^[A-Z]:\//);
-      expect(result.openocdPath).toMatch(/^[A-Z]:\//);
-      expect(result.openocdScripts).toMatch(/^[A-Z]:\//);
-    }
   });
 });

@@ -21,7 +21,6 @@ import { join } from 'node:path';
 const OPTS = {
   projectName: 'demo',
   sketchRel: 'demos/demo',
-  port: 'COM10',
   target: 'esp32s3',
 };
 
@@ -69,148 +68,20 @@ describe('buildLaunchJson', () => {
     expect(initCommands).toContain('set remote hardware-watchpoint-limit 2');
   });
 
-  it('emits BOTH a gdbtarget and a cortex-debug config so either extension works', () => {
+  it('emits exactly one gdbtarget config (the ESP-IDF extension debug type)', () => {
     const json = JSON.parse(buildLaunchJson(OPTS));
-    const types = json.configurations.map((c: any) => c.type);
-    expect(types).toContain('gdbtarget');
-    expect(types).toContain('cortex-debug');
-    expect(json.configurations).toHaveLength(2);
-  });
-});
-
-describe('buildLaunchJson — cortex-debug config', () => {
-  const cortex = (opts = OPTS) => {
-    const json = JSON.parse(buildLaunchJson(opts));
-    return json.configurations.find((c: any) => c.type === 'cortex-debug');
-  };
-
-  it('uses servertype openocd and self-manages OpenOCD (no external start task)', () => {
-    const cfg = cortex();
-    expect(cfg.servertype).toBe('openocd');
-    // cortex-debug spawns OpenOCD itself, so its preLaunchTask must NOT be the
-    // `debug prep` task that starts a competing OpenOCD on 3333.
-    expect(cfg.preLaunchTask).toBe('cuttlefish: build + flash');
-  });
-
-  it('enables raw dev debug output so silent session-startup failures are diagnosable', () => {
-    // Without this, cortex-debug hides the gdb-server launch line and OpenOCD
-    // output, making "session never started" failures impossible to diagnose.
-    expect(cortex().showDevDebugOutput).toBe('raw');
-  });
-
-  it('points executable at the ELF and uses board/esp32s3-builtin.cfg', () => {
-    const cfg = cortex();
-    expect(cfg.executable).toBe('${workspaceFolder}/demos/demo/src/out-esp32s3/build/demo.elf');
-    expect(cfg.configFiles).toEqual(['board/esp32s3-builtin.cfg']);
-  });
-
-  it('bakes gdbPath/serverpath/searchDir/armToolchainPath in when toolchainPaths is provided', () => {
-    const cfg = cortex({
-      ...OPTS,
-      toolchainPaths: {
-        gdbPath: 'C:/espressif/tools/xtensa-esp-elf-gdb/17.1/bin/xtensa-esp-elf-gdb.exe',
-        openocdPath: 'C:/espressif/tools/openocd-esp32/v0.12/bin/openocd-esp32.exe',
-        openocdScripts: 'C:/espressif/tools/openocd-esp32/v0.12/share/openocd/scripts',
-        binutilsDir: 'C:/espressif/tools/xtensa-esp-elf/esp-15.2/bin',
-      },
-    });
-    expect(cfg.gdbPath).toBe('C:/espressif/tools/xtensa-esp-elf-gdb/17.1/bin/xtensa-esp-elf-gdb.exe');
-    expect(cfg.serverpath).toBe('C:/espressif/tools/openocd-esp32/v0.12/bin/openocd-esp32.exe');
-    // searchDir is the OpenOCD -s flag — without it, board/esp32s3-builtin.cfg
-    // can't be found and OpenOCD quits (the fatal "GDB Server Quit" error).
-    expect(cfg.searchDir).toBe('C:/espressif/tools/openocd-esp32/v0.12/share/openocd/scripts');
-    // armToolchainPath resolves nm/objdump (they live in a separate binutils
-    // toolchain, not the gdb dir). Without it cortex-debug warns ENOENT.
-    expect(cfg.armToolchainPath).toBe('C:/espressif/tools/xtensa-esp-elf/esp-15.2/bin');
-    // toolchainPrefix MUST be emitted even with gdbPath set — gdbPath points
-    // at the GDB binary, but cortex-debug still uses toolchainPrefix to derive
-    // nm/objdump/objcopy names from armToolchainPath. Without it cortex-debug
-    // defaults to 'arm-none-eabi-' and looks for nonexistent binaries (ENOENT).
-    expect(cfg.toolchainPrefix).toBe('xtensa-esp-elf');
-  });
-
-  it('omits armToolchainPath when binutilsDir is absent (nm/objdump warning only)', () => {
-    const cfg = cortex({
-      ...OPTS,
-      toolchainPaths: {
-        gdbPath: 'C:/gdb.exe',
-        openocdPath: 'C:/openocd.exe',
-        openocdScripts: 'C:/scripts',
-      },
-    });
-    expect(cfg.armToolchainPath).toBeUndefined();
-    // searchDir still emitted (it's required, not optional).
-    expect(cfg.searchDir).toBe('C:/scripts');
-  });
-
-  it('falls back to toolchainPrefix when toolchainPaths is absent (user configures manually)', () => {
-    const cfg = cortex(OPTS); // no toolchainPaths
-    expect(cfg.toolchainPrefix).toBe('xtensa-esp-elf');
-    expect(cfg.gdbPath).toBeUndefined();
-    expect(cfg.serverpath).toBeUndefined();
-  });
-
-  it('sources the gdb script via postStartupCommands when hasGdbScript is true', () => {
-    const cfg = cortex({ ...OPTS, hasGdbScript: true });
-    expect(cfg.postStartupCommands).toContain(
-      'source ${workspaceFolder}/demos/demo/src/out-esp32s3/.cuttlefish/.cuttlefish-gdb.py',
-    );
-  });
-
-  it('omits postStartupCommands when hasGdbScript is false', () => {
-    const cfg = cortex({ ...OPTS, hasGdbScript: false });
-    expect(cfg.postStartupCommands).toBeUndefined();
+    expect(json.configurations).toHaveLength(1);
+    expect(json.configurations[0].type).toBe('gdbtarget');
   });
 });
 
 describe('buildTasksJson', () => {
-  it('includes a background openocd task with a readiness matcher', () => {
-    const json = JSON.parse(buildTasksJson(OPTS));
-    const openocd = json.tasks.find((t: any) => t.label.includes('openocd'));
-    expect(openocd.isBackground).toBe(true);
-    expect(openocd.problemMatcher.background.endsPattern).toContain('Listening on port 3333');
-    // Command points at the generated openocd.cfg (which itself sources
-    // board/esp32s3-builtin.cfg — verified in buildOpenOcdCfg test below).
-    expect(openocd.command).toContain('.cuttlefish/openocd.cfg');
-  });
-
-  it('uses the resolved openocd.exe path when toolchainPaths is provided (not bare "openocd")', () => {
-    // OpenOCD isn't on the system PATH (only in the IDF env), so a bare
-    // `openocd` in the task fails silently — the isBackground+problemMatcher
-    // swallows the not-found error, and gdbtarget then errors
-    // "OpenOCD is not running" because nothing is listening on 3333.
-    const json = JSON.parse(buildTasksJson({
-      ...OPTS,
-      toolchainPaths: {
-        gdbPath: 'C:/gdb.exe',
-        openocdPath: 'C:/espressif/tools/openocd-esp32/v0.12/bin/openocd.exe',
-        openocdScripts: 'C:/scripts',
-      },
-    }));
-    const openocd = json.tasks.find((t: any) => t.label.includes('openocd'));
-    expect(openocd.command).toMatch(/^C:\/espressif\/tools\/openocd-esp32\/v0\.12\/bin\/openocd\.exe /);
-    expect(openocd.command).not.toMatch(/^openocd /);
-  });
-
-  it('falls back to bare openocd when toolchainPaths is absent', () => {
-    const json = JSON.parse(buildTasksJson(OPTS));
-    const openocd = json.tasks.find((t: any) => t.label.includes('openocd'));
-    expect(openocd.command).toMatch(/^openocd /);
-  });
-
   it('omits --port from build+flash (CLI resolves it from config.console.port at runtime)', () => {
     const json = JSON.parse(buildTasksJson(OPTS));
     const flash = json.tasks.find((t: any) => t.label.includes('build + flash'));
     expect(flash.command).not.toMatch(/--port/);
     expect(flash.command).toContain('--debug');
     expect(flash.options.cwd).toBe('${workspaceFolder}/demos/demo');
-  });
-
-  it('has a debug-prep aggregate depending on openocd and flash in parallel', () => {
-    const json = JSON.parse(buildTasksJson(OPTS));
-    const prep = json.tasks.find((t: any) => t.label.includes('debug prep'));
-    expect(prep.dependsOrder).toBe('parallel');
-    expect(prep.dependsOn).toEqual(['cuttlefish: start openocd', 'cuttlefish: build + flash']);
   });
 
   it('collapses empty sketchRel cwd to bare ${workspaceFolder}', () => {
@@ -317,7 +188,6 @@ describe('writeDebugConfig', () => {
         projectRoot,
         projectName: 'demo',
         sketchRel: 'demos/demo',
-        port: 'COM10',
         target: 'esp32s3',
         workspaceRoot,
         sourceMapPath: join(projectRoot, 'main', 'main.cc.thcppmap.json'),
@@ -364,7 +234,6 @@ describe('writeDebugConfig', () => {
         projectRoot,
         projectName: 'demo',
         sketchRel: 'demos/demo',
-        port: 'COM10',
         target: 'esp32s3',
         workspaceRoot,
         sourceMapPath: join(projectRoot, 'main', 'main.cc.thcppmap.json'),
@@ -404,7 +273,6 @@ describe('writeDebugConfig', () => {
         projectRoot,
         projectName: 'demo',
         sketchRel: 'demos/demo',
-        port: 'COM10',
         target: 'esp32s3',
         workspaceRoot,
         sourceMapPath: mapPath,
@@ -441,7 +309,6 @@ describe('writeDebugConfig', () => {
         projectRoot,
         projectName: 'demo',
         sketchRel: 'demos/demo',
-        port: 'COM10',
         target: 'esp32s3',
         workspaceRoot: projectRoot,
         sourceMapPath: mapPath,

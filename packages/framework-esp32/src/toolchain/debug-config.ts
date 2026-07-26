@@ -78,8 +78,6 @@ export interface DebugConfigOptions {
   projectName: string;
   /** Workspace-relative path to the sketch dir, e.g. 'demos/demo' */
   sketchRel: string;
-  /** Serial port, from config.port ?? cliPort */
-  port: string;
   /** Build target (currently only 'esp32s3' is wired for gdb) */
   target: string;
   /**
@@ -89,21 +87,6 @@ export interface DebugConfigOptions {
    * error on a missing file.
    */
   hasGdbScript?: boolean;
-  /**
-   * Resolved ESP toolchain paths (xtensa GDB + OpenOCD). When present, the
-   * cortex-debug config bakes them in as `gdbPath` / `serverpath` so the user
-   * doesn't need to set cortex-debug.gdbPath/.openocdPath manually. When
-   * absent (no IDF root discoverable), those fields are omitted and the user
-   * must configure cortex-debug themselves.
-   */
-  toolchainPaths?: {
-    gdbPath: string;
-    openocdPath: string;
-    /** OpenOCD scripts dir; passed as cortex-debug `searchDir`. */
-    openocdScripts: string;
-    /** Binutils bin dir; passed as cortex-debug `armToolchainPath` when present. */
-    binutilsDir?: string;
-  };
 }
 
 export interface WriteDebugConfigOptions extends DebugConfigOptions {
@@ -133,7 +116,7 @@ function sketchCwd(sketchRel: string): string {
 }
 
 export function buildLaunchJson(opts: DebugConfigOptions): string {
-  // The ELF path is shared by both debug configurations.
+  // The ELF path for the gdbtarget config.
   const elfPath = `\${workspaceFolder}/${outRel(opts)}/build/${opts.projectName}.elf`;
 
   // Only emit the `source` directive for the gdb script when one was actually
@@ -148,125 +131,43 @@ export function buildLaunchJson(opts: DebugConfigOptions): string {
   }
   initCommands.push('set remote hardware-watchpoint-limit 2');
 
-  // Two configurations, one per supported debug-type provider. Users install
-  // EITHER the ESP-IDF extension (provides `gdbtarget`) OR cortex-debug; both
-  // configs live here so F5 finds a working one regardless of which is
-  // installed. They differ in OpenOCD handling:
-  //   - gdbtarget expects OpenOCD already running, so its preLaunchTask
-  //     (`cuttlefish: debug prep`) starts it as a background task.
-  //   - cortex-debug spawns OpenOCD itself via `servertype: "openocd"`, so its
-  //     preLaunchTask (`cuttlefish: build + flash`) skips the separate start.
-  // Each config drives only what its adapter needs, so they don't conflict on
-  // the JTAG port.
-  // Build the cortex-debug config. gdbPath/serverpath are baked in when the
-  // ESP toolchain was resolvable (the common case after `cuttlefish build` ran
-  // idf.py), so the user needs zero manual cortex-debug.* settings. When the
-  // toolchain couldn't be resolved (no IDF root), we fall back to toolchainPrefix
-  // only and the user sets cortex-debug.gdbPath / .openocdPath themselves.
-  const cortexDebug: Record<string, unknown> = {
-    type: 'cortex-debug',
-    request: 'launch',
-    name: 'TypeCAD Debug (ESP32-S3 / cortex-debug)',
-    cwd: '${workspaceFolder}',
-    executable: elfPath,
-    servertype: 'openocd',
-    // Surface every GDB/OpenOCD transaction in DEBUG CONSOLE. The default
-    // ('messages') hides the gdb-server launch line and OpenOCD output, which
-    // makes silent session-startup failures (board not attached, OpenOCD quit,
-    // GDB attach timeout) impossible to diagnose. 'raw' is noisier on success
-    // but indispensable when the session won't come up.
-    showDevDebugOutput: 'raw',
-    // board/esp32s3-builtin.cfg configures the S3's built-in USB-Serial-JTAG.
-    configFiles: ['board/esp32s3-builtin.cfg'],
-  };
-  if (opts.toolchainPaths) {
-    cortexDebug.gdbPath = opts.toolchainPaths.gdbPath;
-    cortexDebug.serverpath = opts.toolchainPaths.openocdPath;
-    // searchDir → OpenOCD -s flag. Without it cortex-debug passes
-    // -s <workspaceFolder>, which has no board/*.cfg, and OpenOCD quits with
-    // "board/esp32s3-builtin.cfg not found" (the fatal GDB Server Quit error).
-    cortexDebug.searchDir = opts.toolchainPaths.openocdScripts;
-    // armToolchainPath → where nm/objdump/objcopy live. cortex-debug derives
-    // those by suffix-substitution on the gdb basename; the gdb dir has no nm,
-    // so without this it warns "xtensa-esp32s3-elf-nm.exe ENOENT" (non-fatal).
-    if (opts.toolchainPaths.binutilsDir) {
-      cortexDebug.armToolchainPath = opts.toolchainPaths.binutilsDir;
-    }
-  }
-  // toolchainPrefix is needed in BOTH cases (with and without toolchainPaths):
-  // gdbPath points cortex-debug at the exact GDB binary, but cortex-debug STILL
-  // uses toolchainPrefix to derive nm/objdump/objcopy names from armToolchainPath.
-  // Without it, cortex-debug defaults to 'arm-none-eabi-' and looks for
-  // arm-none-eabi-nm.exe (which doesn't exist) — ENOENT on every binutils call.
-  cortexDebug.toolchainPrefix = 'xtensa-esp-elf';
-  if (opts.hasGdbScript) {
-    cortexDebug.postStartupCommands = [`source \${workspaceFolder}/${outRel(opts)}/.cuttlefish/.cuttlefish-gdb.py`];
-  }
-  cortexDebug.preLaunchTask = 'cuttlefish: build + flash';
-
+  // Single gdbtarget configuration. The ESP-IDF VS Code extension provides the
+  // `gdbtarget` debug type and resolves GDB itself via ${command:espIdf.getToolchainGdb}.
+  // The IDF extension's gdbtarget adapter also starts its OWN OpenOCD via its
+  // OpenOCD Manager (reading idf.openOcdConfigs from settings) — so we must NOT
+  // start a competing OpenOCD. The preLaunchTask is just build+flash.
   const cfg = {
     version: '0.2.0',
     configurations: [
       {
         type: 'gdbtarget',
         request: 'attach',
-        name: 'TypeCAD Debug (ESP32-S3 / gdbtarget)',
+        name: 'TypeCAD Debug (ESP32-S3)',
         program: elfPath,
         gdbPath: '${command:espIdf.getToolchainGdb}',
         target: { type: 'remote', host: 'localhost', port: '3333' },
-        // preLaunchTask is build+flash ONLY. The ESP-IDF extension's gdbtarget
-        // adapter starts its OWN OpenOCD via its OpenOCD Manager (reading
-        // idf.openOcdConfigs from settings) — so we must NOT start a competing
-        // OpenOCD here. Two OpenOCD processes on the same JTAG device →
-        // LIBUSB_ERROR_ACCESS / timeouts. The IDF adapter handles OpenOCD
-        // lifecycle; we just ensure the firmware is flashed first.
         preLaunchTask: 'cuttlefish: build + flash',
         initCommands,
       },
-      cortexDebug,
     ],
   };
   return JSON.stringify(cfg, null, 2);
 }
 
 export function buildTasksJson(opts: DebugConfigOptions): string {
+  // Single task: build + flash. The ESP-IDF extension's gdbtarget adapter
+  // starts its own OpenOCD via its OpenOCD Manager — we don't start one here.
+  // No --port flag: the cuttlefish CLI resolves the port from config.console.port
+  // at runtime, so changing console.port takes effect on the next F5 without
+  // a rebuild.
   const tasks = {
     version: '2.0.0',
     tasks: [
       {
-        label: 'cuttlefish: start openocd',
-        type: 'shell',
-        // Use the resolved openocd.exe when available — OpenOCD isn't on the
-        // system PATH (only in the IDF env), so a bare `openocd` here fails
-        // silently. The isBackground+problemMatcher below swallows the failure
-        // (endsPattern never matches), so the gdbtarget session then launches
-        // GDB with nothing listening on 3333 → "OpenOCD is not running."
-        command: `${opts.toolchainPaths?.openocdPath ?? 'openocd'} -f \${workspaceFolder}/${outRel(opts)}/.cuttlefish/openocd.cfg`,
-        isBackground: true,
-        problemMatcher: {
-          owner: 'openocd',
-          pattern: { regexp: '^[^N]' },
-          background: {
-            activeOnStart: true,
-            beginsPattern: '^Open On-Chip Debugger',
-            endsPattern: '^Info : Listening on port 3333 for gdb connections',
-          },
-        },
-      },
-      {
         label: 'cuttlefish: build + flash',
         type: 'shell',
-        // No --port flag: the cuttlefish CLI resolves the port from
-        // config.console.port at runtime (overridable by --port at the CLI).
-        // Baking the port here would freeze it at generation time, so changing
-        // console.port wouldn't take effect until the next rebuild.
         command: 'cuttlefish build --compile --upload --debug',
         options: { cwd: sketchCwd(opts.sketchRel) },
-      },
-      {
-        label: 'cuttlefish: debug prep',
-        dependsOn: ['cuttlefish: start openocd', 'cuttlefish: build + flash'],
-        dependsOrder: 'parallel',
       },
     ],
   };
@@ -370,10 +271,8 @@ export function writeDebugConfig(opts: WriteDebugConfigOptions): void {
   const baseOpts: DebugConfigOptions = {
     projectName: opts.projectName,
     sketchRel: opts.sketchRel,
-    port: opts.port,
     target: opts.target,
     hasGdbScript,
-    toolchainPaths: opts.toolchainPaths,
   };
 
   // launch.json + tasks.json: workspace root (where VS Code discovers them).
@@ -382,10 +281,10 @@ export function writeDebugConfig(opts: WriteDebugConfigOptions): void {
   writeFileSync(join(opts.workspaceRoot, '.vscode/tasks.json'), buildTasksJson(baseOpts));
 
   // settings.json: merge cuttlefish-owned keys into the existing file. The
-  // gdbtarget path runs OpenOCD via the IDF extension's Manager, which ignores
-  // .cuttlefish/openocd.cfg — the adapter-speed override has to land in
-  // idf.openOcdLaunchArgs or the S3's USB-Serial-JTAG drops transfers at 40 MHz.
-  // Read-merge-write so we don't clobber user/other-extension settings.
+  // gdbtarget path runs OpenOCD via the IDF extension's Manager, which reads
+  // idf.openOcdConfigs — we point it at our generated .cuttlefish/openocd.cfg
+  // (which contains the adapter-speed override). Read-merge-write so we don't
+  // clobber user/other-extension settings.
   const settingsPath = join(opts.workspaceRoot, '.vscode/settings.json');
   let existingSettings: Record<string, unknown> = {};
   if (existsSync(settingsPath)) {

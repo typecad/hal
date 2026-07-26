@@ -5,7 +5,6 @@ import { compileEspIdf } from './compile.js';
 import { uploadEspIdf } from './upload.js';
 import { monitorEspIdf } from './monitor.js';
 import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
-import { resolveEspToolchains } from './activate.js';
 import { normalizeIdfTarget } from '../lowering/util.js';
 import { resolveComponents } from '../components/types.js';
 import { Esp32Strategy } from '../strategy.js';
@@ -76,18 +75,6 @@ export const Toolchain = {
       if (debugMode === 'gdb') {
         try {
           const { workspaceRoot, sketchRel } = resolveDebugLocations(process.cwd());
-          // Resolve the ESP toolchain GDB + OpenOCD so the cortex-debug config
-          // can bake them in — without this, cortex-debug errors with
-          // "please configure cortex-debug.gdbPath" because it has no ESP-IDF
-          // awareness. gdbtarget doesn't need it (uses espIdf.getToolchainGdb).
-          // Best-effort: null when no IDF root is discoverable, in which case
-          // the config omits gdbPath/serverpath and the user configures manually.
-          let toolchainPaths;
-          try {
-            toolchainPaths = resolveEspToolchains(target) ?? undefined;
-          } catch {
-            toolchainPaths = undefined;
-          }
           writeDebugConfig({
             projectRoot,
             // ELF base name matches what the scaffold writes to CMakeLists:
@@ -95,10 +82,8 @@ export const Toolchain = {
             // (e.g. demos/rmt-demo produces out-esp32s3.elf).
             projectName: basename(projectRoot),
             sketchRel,
-            port: o.port ?? '',
             target,
             workspaceRoot,
-            toolchainPaths,
             sourceMapPath: join(projectRoot, 'main', 'main.cc.thcppmap.json'),
           });
         } catch (e) {

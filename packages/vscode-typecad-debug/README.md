@@ -99,19 +99,13 @@ directives in the generated C++ and writes `.vscode/launch.json` +
 **F5** in VS Code and the generated config attaches GDB to the chip's
 built-in USB-Serial-JTAG — one USB cable, no external probe.
 
-`launch.json` ships **two** configurations so whichever debug extension you
-have installed works:
-
-- **`gdbtarget`** — provided by the ESP-IDF extension. OpenOCD is started by
-  the `preLaunchTask`.
-- **`cortex-debug`** — provided by the `marus25.cortex-debug` extension.
-  Self-manages OpenOCD via `servertype: "openocd"`.
-
-Install **one** of these. ESP-IDF bundles OpenOCD + the xtensa GDB (but
-needs ESP-IDF itself configured); cortex-debug is lighter and its config
-auto-discovers the GDB + OpenOCD paths from the ESP-IDF install (no manual
-`cortex-debug.gdbPath` / `.openocdPath` settings needed). Set the board's
-serial port in `cuttlefish.config.ts` (`console.port`) or pass `--port`. See
+`launch.json` ships a single **`gdbtarget`** configuration, provided by the
+ESP-IDF VS Code extension. The extension's gdbtarget adapter manages OpenOCD
+itself (via its OpenOCD Manager, reading `idf.openOcdConfigs` from settings).
+The `preLaunchTask` is just `build + flash` — no competing OpenOCD process.
+Install the ESP-IDF extension (which bundles OpenOCD + the xtensa GDB, and
+requires ESP-IDF itself configured), set the board's serial port in
+`cuttlefish.config.ts` (`console.port`) or pass `--port`. See
 `demos/demo/README.md` for the full F5 flow.
 
 The printf instrumentation documented below remains the path for targets that

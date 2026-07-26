@@ -22,26 +22,19 @@ source) and writes the VS Code + OpenOCD configs. VS Code only reads
 
 ```
 <repo-root>/.vscode/launch.json              ← VS Code reads this for F5
-<repo-root>/.vscode/tasks.json               ← preLaunchTask: build+flash+openocd
-demos/demo/src/out-esp32s3/.cuttlefish/openocd.cfg     ← board/esp32s3-builtin.cfg
+<repo-root>/.vscode/tasks.json               ← preLaunchTask: build+flash
+demos/demo/src/out-esp32s3/.cuttlefish/openocd.cfg     ← board/esp32s3-builtin.cfg + adapter speed
 demos/demo/src/out-esp32s3/sdkconfig.defaults.debug    ← -Og, asserts, LTO off
 demos/demo/src/out-esp32s3/.cuttlefish/.cuttlefish-gdb.py  ← _isr_N frame filter (if any)
 ```
 
 **To debug:**
 
-1. Install **one** of these VS Code extensions (either works — `launch.json`
-   ships both configs and you pick whichever in the Run and Debug dropdown):
-   - **ESP-IDF extension** (`espressif.esp-idf-extension`) — provides the
-     `gdbtarget` debug type. Bundles OpenOCD + the xtensa GDB, but requires
-     ESP-IDF itself to be configured in the extension's settings.
-   - **cortex-debug** (`marus25.cortex-debug`) — provides the `cortex-debug`
-     debug type and self-manages OpenOCD. Lighter weight. The GDB + OpenOCD
-     paths are auto-discovered from your ESP-IDF install and baked into the
-     generated config, so no manual `cortex-debug.gdbPath` / `.openocdPath`
-     settings are needed.
+1. Install the **ESP-IDF VS Code extension** (`espressif.esp-idf-extension`) —
+   it provides the `gdbtarget` debug type and manages OpenOCD + GDB itself.
+   Requires ESP-IDF to be configured in the extension's settings.
 2. Set the board's serial port in `cuttlefish.config.ts` (`console.port` —
-   e.g. `'COM10'` on Windows, `'/dev/ttyACM0'` on Linux), or pass `--port`.
+   e.g. `'COM4'` on Windows, `'/dev/ttyACM0'` on Linux), or pass `--port`.
 3. Open the **repository root** in VS Code (not the `demos/demo` subfolder —
    that's the most common reason F5 falls back to the Node.js picker and the
    debug controls flash on then off). Run `npm run upload` once from
@@ -49,10 +42,13 @@ demos/demo/src/out-esp32s3/.cuttlefish/.cuttlefish-gdb.py  ← _isr_N frame filt
 
 What happens on F5:
 
-- The `preLaunchTask` (`cuttlefish: debug prep`) runs two tasks in parallel:
-  build + flash (`cuttlefish build --compile --upload --debug --port ...`),
-  and start OpenOCD (which binds the JTAG port on 3333).
-- Once both succeed, the `gdbtarget` adapter attaches GDB to OpenOCD.
+- The `preLaunchTask` (`cuttlefish: build + flash`) builds and flashes the
+  firmware. The port is resolved from `config.console.port` at runtime — no
+  need to rebuild when the COM port changes.
+- The ESP-IDF extension's `gdbtarget` adapter starts its own OpenOCD via its
+  OpenOCD Manager (reading `idf.openOcdConfigs`, which points at the generated
+  `.cuttlefish/openocd.cfg` with the 5 MHz adapter-speed override), then
+  attaches GDB to port 3333.
 - Breakpoints you set as red dots in `main.ts` stop on the chip. Step, step-in,
   step-out, call stack, and watch all work. Variables show their **TypeScript
   names** — the transpiler doesn't mangle them.
