@@ -195,10 +195,10 @@ describe('buildTasksJson', () => {
     expect(openocd.command).toMatch(/^openocd /);
   });
 
-  it('threads the port into the build+flash command', () => {
+  it('omits --port from build+flash (CLI resolves it from config.console.port at runtime)', () => {
     const json = JSON.parse(buildTasksJson(OPTS));
     const flash = json.tasks.find((t: any) => t.label.includes('build + flash'));
-    expect(flash.command).toContain('--port COM10');
+    expect(flash.command).not.toMatch(/--port/);
     expect(flash.command).toContain('--debug');
     expect(flash.options.cwd).toBe('${workspaceFolder}/demos/demo');
   });

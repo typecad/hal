@@ -250,7 +250,11 @@ export function buildTasksJson(opts: DebugConfigOptions): string {
       {
         label: 'cuttlefish: build + flash',
         type: 'shell',
-        command: `cuttlefish build --compile --upload --debug --port ${opts.port}`,
+        // No --port flag: the cuttlefish CLI resolves the port from
+        // config.console.port at runtime (overridable by --port at the CLI).
+        // Baking the port here would freeze it at generation time, so changing
+        // console.port wouldn't take effect until the next rebuild.
+        command: 'cuttlefish build --compile --upload --debug',
         options: { cwd: sketchCwd(opts.sketchRel) },
       },
       {
