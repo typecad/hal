@@ -264,7 +264,17 @@ export function buildTasksJson(opts: DebugConfigOptions): string {
 }
 
 export function buildOpenOcdCfg(): string {
-  return 'source [find board/esp32s3-builtin.cfg]\n';
+  // The board config sources interface/esp_usb_jtag.cfg + target/esp32s3.cfg
+  // but doesn't set adapter speed, so OpenOCD defaults to the chip max (40 MHz).
+  // The S3's built-in USB-Serial-JTAG is a software (bitq) adapter that
+  // bit-bangs JTAG over USB bulk transfers — at 40 MHz it can't keep up,
+  // drops transfers (LIBUSB_ERROR_IO), and emits "missing data from bitq
+  // interface" in a re-examine loop. 5 MHz is the commonly-recommended stable
+  // speed for the USB-Serial-JTAG peripheral across Espressif's forums/issues.
+  return [
+    'source [find board/esp32s3-builtin.cfg]',
+    'adapter speed 5000',
+  ].join('\n') + '\n';
 }
 
 export function buildSdkconfigDefaultsDebug(): string {

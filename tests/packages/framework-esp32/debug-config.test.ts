@@ -217,8 +217,14 @@ describe('buildTasksJson', () => {
 });
 
 describe('buildOpenOcdCfg', () => {
-  it('sources the esp32s3 builtin board config', () => {
-    expect(buildOpenOcdCfg().trim()).toBe('source [find board/esp32s3-builtin.cfg]');
+  it('sources the esp32s3 builtin board config and caps adapter speed', () => {
+    const lines = buildOpenOcdCfg().trim().split('\n');
+    expect(lines[0]).toBe('source [find board/esp32s3-builtin.cfg]');
+    // The USB-Serial-JTAG peripheral is a software bitq adapter that drops
+    // bulk transfers at the default 40 MHz, causing "missing data from bitq
+    // interface" + LIBUSB_ERROR_IO in a re-examine loop. 5 MHz is the
+    // commonly-recommended stable speed.
+    expect(lines).toContain('adapter speed 5000');
   });
 });
 
