@@ -9,6 +9,7 @@ import {
   buildTasksJson,
   buildOpenOcdCfg,
   buildSdkconfigDefaultsDebug,
+  buildVscodeSettings,
   writeDebugConfig,
   findWorkspaceRoot,
   resolveDebugLocations,
@@ -241,6 +242,50 @@ describe('buildSdkconfigDefaultsDebug', () => {
   });
 });
 
+describe('buildVscodeSettings', () => {
+  it('injects idf.openOcdLaunchArgs (flat dotted key) with the adapter-speed override', () => {
+    const out = buildVscodeSettings({});
+    // FLAT dotted key, NOT a nested { idf: {...} } — VS Code/IDF extension
+    // settings are flat. A nested object would be silently ignored.
+    expect(out['idf.openOcdLaunchArgs']).toEqual(['-c', 'adapter speed 5000']);
+    expect(out.idf).toBeUndefined();
+  });
+
+  it('preserves unrelated top-level keys (cmake, clangd, etc.)', () => {
+    const existing = {
+      'cmake.ignoreCMakeListsMissing': true,
+      'clangd.path': 'C:/clangd.exe',
+      'editor.tabSize': 2,
+    };
+    const out = buildVscodeSettings(existing);
+    expect(out['cmake.ignoreCMakeListsMissing']).toBe(true);
+    expect(out['clangd.path']).toBe('C:/clangd.exe');
+    expect(out['editor.tabSize']).toBe(2);
+    expect(out['idf.openOcdLaunchArgs']).toEqual(['-c', 'adapter speed 5000']);
+  });
+
+  it('preserves other idf.* keys (flat dotted) — does NOT clobber idf.openOcdConfigs', () => {
+    // The IDF extension's openOcdConfigs is user-managed (set via
+    // ESP-IDF: Select OpenOCD Board Configuration). cuttlefish must NOT clobber it.
+    // Both keys are FLAT — "idf.openOcdConfigs" and "idf.openOcdLaunchArgs" sit
+    // side by side as top-level properties.
+    const existing = {
+      'idf.currentSetup': 'C:/esp/v6.0.2/esp-idf',
+      'idf.openOcdConfigs': ['board/esp32s3-builtin.cfg'],
+    };
+    const out = buildVscodeSettings(existing);
+    expect(out['idf.currentSetup']).toBe('C:/esp/v6.0.2/esp-idf');
+    expect(out['idf.openOcdConfigs']).toEqual(['board/esp32s3-builtin.cfg']);
+    expect(out['idf.openOcdLaunchArgs']).toEqual(['-c', 'adapter speed 5000']);
+  });
+
+  it('is idempotent — re-merging its own output produces the same shape', () => {
+    const once = buildVscodeSettings({ 'editor.tabSize': 4 });
+    const twice = buildVscodeSettings(once);
+    expect(twice).toEqual(once);
+  });
+});
+
 describe('writeDebugConfig', () => {
   it('writes launch.json/tasks.json at the workspace root, build artifacts at the project root', () => {
     // Use distinct dirs so the split is actually exercised: VS Code reads
@@ -272,6 +317,46 @@ describe('writeDebugConfig', () => {
 
       const launch = JSON.parse(readFileSync(join(workspaceRoot, '.vscode/launch.json'), 'utf8'));
       expect(launch.configurations[0].program).toContain('build/demo.elf');
+    } finally {
+      rmSync(workspaceRoot, { recursive: true, force: true });
+      rmSync(projectRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('merges idf.openOcdLaunchArgs into an existing settings.json without clobbering it', () => {
+    // The IDF extension's openOcdConfigs (user-set via Command Palette) and
+    // unrelated settings must survive cuttlefish writing the speed override.
+    const workspaceRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-ws-'));
+    const projectRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-proj-'));
+    try {
+      mkdirSync(join(workspaceRoot, '.vscode'), { recursive: true });
+      writeFileSync(
+        join(workspaceRoot, '.vscode/settings.json'),
+        JSON.stringify({
+          'cmake.ignoreCMakeListsMissing': true,
+          // FLAT dotted keys, as the IDF extension writes them.
+          'idf.currentSetup': 'C:/esp-idf',
+          'idf.openOcdConfigs': ['board/esp32s3-builtin.cfg'],
+        }, null, 2),
+      );
+
+      writeDebugConfig({
+        projectRoot,
+        projectName: 'demo',
+        sketchRel: 'demos/demo',
+        port: 'COM10',
+        target: 'esp32s3',
+        workspaceRoot,
+        sourceMapPath: join(projectRoot, 'main', 'main.cc.thcppmap.json'),
+      });
+
+      const settings = JSON.parse(readFileSync(join(workspaceRoot, '.vscode/settings.json'), 'utf8'));
+      // Preserved:
+      expect(settings['cmake.ignoreCMakeListsMissing']).toBe(true);
+      expect(settings['idf.currentSetup']).toBe('C:/esp-idf');
+      expect(settings['idf.openOcdConfigs']).toEqual(['board/esp32s3-builtin.cfg']);
+      // Added (also flat):
+      expect(settings['idf.openOcdLaunchArgs']).toEqual(['-c', 'adapter speed 5000']);
     } finally {
       rmSync(workspaceRoot, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });
