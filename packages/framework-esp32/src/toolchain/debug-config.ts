@@ -214,7 +214,13 @@ export function buildLaunchJson(opts: DebugConfigOptions): string {
         program: elfPath,
         gdbPath: '${command:espIdf.getToolchainGdb}',
         target: { type: 'remote', host: 'localhost', port: '3333' },
-        preLaunchTask: 'cuttlefish: debug prep',
+        // preLaunchTask is build+flash ONLY. The ESP-IDF extension's gdbtarget
+        // adapter starts its OWN OpenOCD via its OpenOCD Manager (reading
+        // idf.openOcdConfigs from settings) — so we must NOT start a competing
+        // OpenOCD here. Two OpenOCD processes on the same JTAG device →
+        // LIBUSB_ERROR_ACCESS / timeouts. The IDF adapter handles OpenOCD
+        // lifecycle; we just ensure the firmware is flashed first.
+        preLaunchTask: 'cuttlefish: build + flash',
         initCommands,
       },
       cortexDebug,

@@ -35,7 +35,10 @@ describe('buildLaunchJson', () => {
     expect(cfg.program).toBe('${workspaceFolder}/demos/demo/src/out-esp32s3/build/demo.elf');
     expect(cfg.gdbPath).toBe('${command:espIdf.getToolchainGdb}');
     expect(cfg.target).toEqual({ type: 'remote', host: 'localhost', port: '3333' });
-    expect(cfg.preLaunchTask).toBe('cuttlefish: debug prep');
+    // preLaunchTask is build+flash ONLY — the IDF extension's gdbtarget
+    // adapter starts its own OpenOCD; starting a competing one here causes
+    // LIBUSB_ERROR_ACCESS / timeouts.
+    expect(cfg.preLaunchTask).toBe('cuttlefish: build + flash');
   });
 
   it('collapses empty sketchRel so the path has no leading segment', () => {
