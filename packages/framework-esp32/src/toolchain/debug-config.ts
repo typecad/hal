@@ -278,35 +278,38 @@ export function buildOpenOcdCfg(): string {
 }
 
 /**
- * The OpenOCD command-line args cuttlefish owns for the gdbtarget debug path.
- * Passed via `idf.openOcdLaunchArgs` in workspace settings.json (the IDF
- * extension's OpenOCD Manager reads these and ignores .cuttlefish/openocd.cfg).
- *
- * The S3's USB-Serial-JTAG peripheral is a software bitq adapter that drops
- * bulk transfers at the default 40 MHz, causing "missing data from bitq
- * interface" + LIBUSB_ERROR_IO in a re-examine loop. -c "adapter speed 5000"
- * overrides the speed the board/target cfg files set; 5 MHz is stable.
- *
- * cortex-debug doesn't need this — it reads .cuttlefish/openocd.cfg directly,
- * which already contains the same `adapter speed 5000` line.
- */
-export const OPENOCD_LAUNCH_ARGS = ['-c', 'adapter speed 5000'];
-
-/**
  * Merge cuttlefish-owned settings into an existing VS Code settings object.
- * Preserves every key the user/other extensions set; only writes the keys
- * cuttlefish owns (currently just idf.openOcdLaunchArgs for the speed override).
  *
- * VS Code settings use FLAT DOTTED KEYS ("idf.openOcdLaunchArgs", "idf.currentSetup")
- * as top-level object properties — NOT a nested { idf: { ... } } structure. The
- * IDF extension reads `idf.openOcdLaunchArgs` as a flat key, so we must write it
- * that way to match how `ESP-IDF: Select OpenOCD Board Configuration` writes
- * `idf.openOcdConfigs`. A nested object would be silently ignored.
+ * The gdbtarget debug path runs OpenOCD via the ESP-IDF extension's OpenOCD
+ * Manager, which reads `idf.openOcdConfigs` (a list of cfg files / board cfg
+ * names to pass via -f). The Manager IGNORES .cuttlefish/openocd.cfg, so to
+ * get the adapter-speed override applied we point idf.openOcdConfigs at our
+ * generated cfg — which contains BOTH `source board/esp32s3-builtin.cfg` AND
+ * `adapter speed 5000` in the correct order (speed AFTER the adapter driver
+ * is loaded by the board cfg). Setting speed via -c idf.openOcdLaunchArgs
+ * fails because -c is processed before -f, so the speed command runs before
+ * any adapter driver is registered → "Debug Adapter has to be specified."
+ *
+ * `openocdCfgPath` is the absolute path to the generated .cuttlefish/openocd.cfg
+ * (forward-slashed for OpenOCD portability).
+ *
+ * VS Code settings use FLAT DOTTED KEYS ("idf.openOcdConfigs" as a top-level
+ * string property), NOT a nested { idf: {...} } structure — the IDF extension
+ * reads them flat. A nested object would be silently ignored.
  *
  * `existing` is the parsed settings.json (or {} when absent/corrupt).
  */
-export function buildVscodeSettings(existing: Record<string, unknown> = {}): Record<string, unknown> {
-  return { ...existing, 'idf.openOcdLaunchArgs': OPENOCD_LAUNCH_ARGS };
+export function buildVscodeSettings(
+  openocdCfgPath: string,
+  existing: Record<string, unknown> = {},
+): Record<string, unknown> {
+  // Drop idf.openOcdLaunchArgs if a prior cuttlefish version wrote it — the
+  // -c "adapter speed" approach fails because -c is processed before -f, so
+  // the speed command runs before any adapter driver is registered. The speed
+  // override now lives inside the generated cfg (sourced via idf.openOcdConfigs),
+  // after the board cfg loads the adapter driver.
+  const { 'idf.openOcdLaunchArgs': _drop, ...rest } = existing;
+  return { ...rest, 'idf.openOcdConfigs': [openocdCfgPath] };
 }
 
 export function buildSdkconfigDefaultsDebug(): string {
@@ -384,7 +387,12 @@ export function writeDebugConfig(opts: WriteDebugConfigOptions): void {
       existingSettings = {};
     }
   }
-  writeFileSync(settingsPath, JSON.stringify(buildVscodeSettings(existingSettings), null, 2) + '\n');
+  // The generated .cuttlefish/openocd.cfg lives at the project root (next to
+  // the build output). The IDF extension's OpenOCD Manager reads it via
+  // idf.openOcdConfigs (set below), so it needs an absolute, forward-slashed
+  // path (OpenOCD is picky about backslashes on Windows).
+  const openocdCfgPath = join(opts.projectRoot, '.cuttlefish', 'openocd.cfg').replace(/\\/g, '/');
+  writeFileSync(settingsPath, JSON.stringify(buildVscodeSettings(openocdCfgPath, existingSettings), null, 2) + '\n');
 
   // openocd.cfg + sdkconfig.defaults.debug: project root (next to build output).
   mkdirSync(join(opts.projectRoot, '.cuttlefish'), { recursive: true });

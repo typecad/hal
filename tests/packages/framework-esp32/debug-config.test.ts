@@ -243,11 +243,11 @@ describe('buildSdkconfigDefaultsDebug', () => {
 });
 
 describe('buildVscodeSettings', () => {
-  it('injects idf.openOcdLaunchArgs (flat dotted key) with the adapter-speed override', () => {
-    const out = buildVscodeSettings({});
+  it('points idf.openOcdConfigs (flat dotted key) at the generated openocd.cfg', () => {
+    const out = buildVscodeSettings('C:/proj/.cuttlefish/openocd.cfg', {});
     // FLAT dotted key, NOT a nested { idf: {...} } — VS Code/IDF extension
     // settings are flat. A nested object would be silently ignored.
-    expect(out['idf.openOcdLaunchArgs']).toEqual(['-c', 'adapter speed 5000']);
+    expect(out['idf.openOcdConfigs']).toEqual(['C:/proj/.cuttlefish/openocd.cfg']);
     expect(out.idf).toBeUndefined();
   });
 
@@ -257,32 +257,48 @@ describe('buildVscodeSettings', () => {
       'clangd.path': 'C:/clangd.exe',
       'editor.tabSize': 2,
     };
-    const out = buildVscodeSettings(existing);
+    const out = buildVscodeSettings('C:/cfg.cfg', existing);
     expect(out['cmake.ignoreCMakeListsMissing']).toBe(true);
     expect(out['clangd.path']).toBe('C:/clangd.exe');
     expect(out['editor.tabSize']).toBe(2);
-    expect(out['idf.openOcdLaunchArgs']).toEqual(['-c', 'adapter speed 5000']);
+    expect(out['idf.openOcdConfigs']).toEqual(['C:/cfg.cfg']);
   });
 
-  it('preserves other idf.* keys (flat dotted) — does NOT clobber idf.openOcdConfigs', () => {
-    // The IDF extension's openOcdConfigs is user-managed (set via
-    // ESP-IDF: Select OpenOCD Board Configuration). cuttlefish must NOT clobber it.
-    // Both keys are FLAT — "idf.openOcdConfigs" and "idf.openOcdLaunchArgs" sit
-    // side by side as top-level properties.
+  it('owns idf.openOcdConfigs during debug builds — overwrites a stale user value', () => {
+    // cuttlefish manages idf.openOcdConfigs during debug builds so the IDF
+    // extension's OpenOCD Manager loads the generated cfg (which has the
+    // adapter-speed override in the right order). A user's prior manual value
+    // (e.g. bare 'board/esp32s3-builtin.cfg' without the speed line) is replaced.
+    // Other idf.* keys (currentSetup, customExtraVars) are still preserved.
     const existing = {
       'idf.currentSetup': 'C:/esp/v6.0.2/esp-idf',
-      'idf.openOcdConfigs': ['board/esp32s3-builtin.cfg'],
+      'idf.openOcdConfigs': ['board/esp32s3-builtin.cfg'], // stale — will be replaced
     };
-    const out = buildVscodeSettings(existing);
-    expect(out['idf.currentSetup']).toBe('C:/esp/v6.0.2/esp-idf');
-    expect(out['idf.openOcdConfigs']).toEqual(['board/esp32s3-builtin.cfg']);
-    expect(out['idf.openOcdLaunchArgs']).toEqual(['-c', 'adapter speed 5000']);
+    const out = buildVscodeSettings('C:/proj/.cuttlefish/openocd.cfg', existing);
+    expect(out['idf.currentSetup']).toBe('C:/esp/v6.0.2/esp-idf'); // preserved
+    expect(out['idf.openOcdConfigs']).toEqual(['C:/proj/.cuttlefish/openocd.cfg']); // replaced
   });
 
   it('is idempotent — re-merging its own output produces the same shape', () => {
-    const once = buildVscodeSettings({ 'editor.tabSize': 4 });
-    const twice = buildVscodeSettings(once);
+    const once = buildVscodeSettings('C:/cfg.cfg', { 'editor.tabSize': 4 });
+    const twice = buildVscodeSettings('C:/cfg.cfg', once);
     expect(twice).toEqual(once);
+  });
+
+  it('strips a stale idf.openOcdLaunchArgs from a prior cuttlefish version', () => {
+    // An earlier cuttlefish version wrote idf.openOcdLaunchArgs: ['-c', 'adapter speed 5000'].
+    // That approach fails because -c runs before -f (before any adapter driver
+    // is registered) → "Debug Adapter has to be specified". The speed override
+    // now lives inside the generated cfg sourced via idf.openOcdConfigs, so the
+    // stale launch args must be removed or the IDF extension still passes them.
+    const existing = {
+      'idf.openOcdLaunchArgs': ['-c', 'adapter speed 5000'], // stale — must be dropped
+      'editor.tabSize': 4,
+    };
+    const out = buildVscodeSettings('C:/cfg.cfg', existing);
+    expect(out['idf.openOcdLaunchArgs']).toBeUndefined();
+    expect(out['editor.tabSize']).toBe(4); // unrelated key still preserved
+    expect(out['idf.openOcdConfigs']).toEqual(['C:/cfg.cfg']);
   });
 });
 
@@ -323,9 +339,10 @@ describe('writeDebugConfig', () => {
     }
   });
 
-  it('merges idf.openOcdLaunchArgs into an existing settings.json without clobbering it', () => {
-    // The IDF extension's openOcdConfigs (user-set via Command Palette) and
-    // unrelated settings must survive cuttlefish writing the speed override.
+  it('rewrites idf.openOcdConfigs to point at the generated cfg, preserving other keys', () => {
+    // cuttlefish owns idf.openOcdConfigs during debug builds (pointing it at
+    // the generated .cuttlefish/openocd.cfg, which has the speed override in
+    // the right order). Unrelated settings + other idf.* keys must survive.
     const workspaceRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-ws-'));
     const projectRoot = mkdtempSync(join(tmpdir(), 'cuttlefish-proj-'));
     try {
@@ -336,7 +353,7 @@ describe('writeDebugConfig', () => {
           'cmake.ignoreCMakeListsMissing': true,
           // FLAT dotted keys, as the IDF extension writes them.
           'idf.currentSetup': 'C:/esp-idf',
-          'idf.openOcdConfigs': ['board/esp32s3-builtin.cfg'],
+          'idf.openOcdConfigs': ['board/esp32s3-builtin.cfg'], // will be replaced
         }, null, 2),
       );
 
@@ -354,9 +371,9 @@ describe('writeDebugConfig', () => {
       // Preserved:
       expect(settings['cmake.ignoreCMakeListsMissing']).toBe(true);
       expect(settings['idf.currentSetup']).toBe('C:/esp-idf');
-      expect(settings['idf.openOcdConfigs']).toEqual(['board/esp32s3-builtin.cfg']);
-      // Added (also flat):
-      expect(settings['idf.openOcdLaunchArgs']).toEqual(['-c', 'adapter speed 5000']);
+      // Replaced — points at the generated cfg (forward-slashed absolute path):
+      const expectedCfgPath = join(projectRoot, '.cuttlefish', 'openocd.cfg').replace(/\\/g, '/');
+      expect(settings['idf.openOcdConfigs']).toEqual([expectedCfgPath]);
     } finally {
       rmSync(workspaceRoot, { recursive: true, force: true });
       rmSync(projectRoot, { recursive: true, force: true });
