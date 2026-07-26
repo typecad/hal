@@ -156,7 +156,25 @@ export interface EspToolchainPaths {
  *
  * Exported for use by debug-config generation.
  */
-export function resolveEspToolchains(): EspToolchainPaths | null {
+/**
+ * Resolve the ESP toolchain GDB + OpenOCD executable paths for the discovered
+ * IDF install. Reads the activated env cache (which IDF's export.{sh,bat}
+ * populated with the toolchain bin dirs on PATH), picks the xtensa GDB and
+ * openocd entries, and returns their absolute executable paths.
+ *
+ * @param target build target (e.g. 'esp32s3') — when provided, the per-target
+ *   GDB (e.g. `xtensa-esp32s3-elf-gdb`) is preferred. These per-target
+ *   binaries are linked against the host Python and run reliably; the unified
+ *   `xtensa-esp-elf-gdb` family ships Python-version-suffixed variants that
+ *   only run when that exact Python is installed.
+ *
+ * Returns null when no IDF root is discoverable or the env cache can't be
+ * loaded — callers fall back to leaving gdbPath/serverpath unset (the user
+ * can set cortex-debug.gdbPath / .openocdPath in settings.json manually).
+ *
+ * Exported for use by debug-config generation.
+ */
+export function resolveEspToolchains(target?: string): EspToolchainPaths | null {
   const root = discoverIdfRoot();
   if (!root) return null;
   const env = loadOrCaptureEnv(root);
@@ -175,61 +193,58 @@ export function resolveEspToolchains(): EspToolchainPaths | null {
 
   const exe = IS_WIN ? '.exe' : '';
 
-  // The GDB executable name mirrors the toolchain dir's parent (e.g.
-  // 'xtensa-esp-elf-gdb'). IDF v6 also ships version-suffixed variants
-  // (xtensa-esp-elf-gdb-3.14.exe) — prefer the bare-named binary if present,
-  // otherwise pick the highest version-suffixed one deterministically.
-  const gdbBaseName = gdbBinDir.split('/').filter(Boolean).slice(-2, -1)[0] ?? 'xtensa-esp-elf-gdb';
-  const gdbPath = resolveVersionedBinary(gdbBinDir, gdbBaseName, exe);
+  // GDB binary selection — in priority order:
+  //   1. Per-target binary for the requested target (e.g.
+  //      `xtensa-esp32s3-elf-gdb`). IDF v6 ships these alongside the unified
+  //      toolchain; they're linked against the host Python and run reliably,
+  //      unlike the unified family's Python-version-suffixed variants
+  //      (`xtensa-esp-elf-gdb-3.14.exe`) which only run when that exact
+  //      Python is installed (cortex-debug would error "gdb could not start").
+  //   2. `xtensa-esp-elf-gdb-no-python` — portable, no Python dependency.
+  //      Costs the GDB Python frame-filter script when one is generated.
+  //   3. The bare-named `xtensa-esp-elf-gdb` if present (older IDF).
+  //   4. First version-suffixed variant as a last resort.
+  const entries = listDir(gdbBinDir);
+  const gdbName = selectGdbBinary(entries, target);
+  if (!gdbName) return null;
+  const gdbPath = `${gdbBinDir}/${gdbName}`;
 
-  // OpenOCD's binary is plain 'openocd' even though IDF's fork ships under an
-  // 'openocd-esp32' dir. Use resolveVersionedBinary so it prefers the bare
-  // name and falls back to version-suffixed siblings if present.
-  const openocdPath = resolveVersionedBinary(openocdBinDir, 'openocd', exe);
-  return {
-    gdbPath: gdbPath ?? `${gdbBinDir}/${gdbBaseName}${exe}`,
-    openocdPath: openocdPath ?? `${openocdBinDir}/openocd${exe}`,
-  };
+  // OpenOCD ships as plain 'openocd' under an 'openocd-esp32' dir.
+  const openocdPath = pickExact(openocdBinDir, 'openocd', exe) ?? `${openocdBinDir}/openocd${exe}`;
+
+  return { gdbPath, openocdPath };
 }
 
 /**
- * Given a toolchain bin dir and a base binary name, return the path to the
- * bare-named executable if it exists; otherwise pick the highest
- * version-suffixed sibling (e.g. `xtensa-esp-elf-gdb-3.14.exe` from
- * `xtensa-esp-elf-gdb`). Returns null if no candidate is found.
- *
- * Version comparison is component-wise (3.14 > 3.9), NOT float — parseFloat
- * would rank 3.9 > 3.14 and 3.10 < 3.9, both wrong.
+ * Pure selection logic: given the GDB bin dir's entries and a build target,
+ * pick the GDB binary filename per the priority order documented above.
+ * Exported for unit testing (no filesystem access).
  */
-export function resolveVersionedBinary(binDir: string, baseName: string, exe: string): string | null {
+export function selectGdbBinary(entries: string[], target?: string): string | null {
+  const exe = IS_WIN ? '.exe' : '';
+  const has = (name: string) => entries.includes(name);
+  if (target && has(`xtensa-${target}-elf-gdb${exe}`)) return `xtensa-${target}-elf-gdb${exe}`;
+  if (has(`xtensa-esp-elf-gdb-no-python${exe}`)) return `xtensa-esp-elf-gdb-no-python${exe}`;
+  if (has(`xtensa-esp-elf-gdb${exe}`)) return `xtensa-esp-elf-gdb${exe}`;
+  const suffixed = entries
+    .filter((e) => e.startsWith(`xtensa-esp-elf-gdb-`) && e.endsWith(exe))
+    .sort()[0];
+  return suffixed ?? null;
+}
+
+/** readdirSync wrapper that tolerates missing dirs (returns [] on error). */
+function listDir(dir: string): string[] {
   try {
-    const entries = readdirSync(binDir.replace(/\//g, IS_WIN ? '\\' : '/'));
-    // Prefer the exact bare name.
-    const bare = `${baseName}${exe}`;
-    if (entries.includes(bare)) return `${binDir}/${bare}`;
-    // Otherwise find version-suffixed siblings and pick the highest version.
-    const versions = entries
-      .filter((e) => e.startsWith(`${baseName}-`) && e.endsWith(exe))
-      .map((e) => e.slice(baseName.length + 1, e.length - exe.length));
-    if (versions.length === 0) return null;
-    versions.sort(compareVersions);
-    return `${binDir}/${baseName}-${versions[versions.length - 1]}${exe}`;
+    return readdirSync(dir.replace(/\//g, IS_WIN ? '\\' : '/'));
   } catch {
-    return null;
+    return [];
   }
 }
 
-/** Component-wise dotted-version comparison. 3.14 > 3.9, 3.10 > 3.9, 3.9.1 > 3.9. */
-function compareVersions(a: string, b: string): number {
-  const pa = a.split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = b.split('.').map((n) => parseInt(n, 10) || 0);
-  const len = Math.max(pa.length, pb.length);
-  for (let i = 0; i < len; i++) {
-    const da = pa[i] ?? 0;
-    const db = pb[i] ?? 0;
-    if (da !== db) return da - db;
-  }
-  return 0;
+/** Return `<binDir>/<baseName><exe>` if that exact file exists, else null. */
+function pickExact(binDir: string, baseName: string, exe: string): string | null {
+  const candidate = `${binDir}/${baseName}${exe}`;
+  return existsSync(candidate.replace(/\//g, IS_WIN ? '\\' : '/')) ? candidate : null;
 }
 
 /** Marker comment embedded in the wrapper so we can detect when the wrapper

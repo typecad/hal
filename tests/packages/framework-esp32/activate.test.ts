@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   buildWrapperContent, ensureIdfActivated, idfSpawn, wrapperPathFor, WRAPPER_NAME,
-  resolveEspToolchains, resolveVersionedBinary,
+  resolveEspToolchains, selectGdbBinary,
 } from '../../../packages/framework-esp32/src/toolchain/activate';
 import { discoverIdfRoot, resetDiscoverIdfRootCache, type IdfRoot } from '../../../packages/framework-esp32/src/toolchain/discover';
 import { resetDetectIdfEnvCache } from '../../../packages/framework-esp32/src/toolchain/idf-env';
@@ -141,55 +141,52 @@ describe('idfSpawn when no IDF is installed', () => {
   });
 });
 
-describe('resolveVersionedBinary', () => {
+describe('selectGdbBinary', () => {
   const exe = IS_WIN ? '.exe' : '';
 
-  it('prefers the bare-named binary when present', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'cuttlefish-bin-'));
-    try {
-      writeFileSync(join(dir, `gdb${exe}`), '');
-      writeFileSync(join(dir, `gdb-3.9${exe}`), '');
-      const result = resolveVersionedBinary(dir.replace(/\\/g, '/'), 'gdb', exe);
-      expect(result).toBe(`${dir.replace(/\\/g, '/')}/gdb${exe}`);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  it('prefers the per-target binary when it exists (IDF v6 layout)', () => {
+    // IDF v6 ships per-target binaries (xtensa-esp32s3-elf-gdb.exe) alongside
+    // the unified toolchain. The per-target binary is linked against host
+    // Python and runs reliably; prefer it over the Python-suffixed unified ones.
+    const entries = [
+      `xtensa-esp-elf-gdb-3.13${exe}`,
+      `xtensa-esp-elf-gdb-3.14${exe}`,  // would fail: no Python 3.14 installed
+      `xtensa-esp-elf-gdb-no-python${exe}`,
+      `xtensa-esp32s3-elf-gdb${exe}`,
+    ];
+    expect(selectGdbBinary(entries, 'esp32s3')).toBe(`xtensa-esp32s3-elf-gdb${exe}`);
   });
 
-  it('picks the highest version-suffixed sibling (component-wise, not float)', () => {
-    // Float math would rank 3.9 > 3.14 and 3.10 < 3.9 — both wrong.
-    const dir = mkdtempSync(join(tmpdir(), 'cuttlefish-bin-'));
-    try {
-      for (const v of ['3.8', '3.9', '3.10', '3.14']) {
-        writeFileSync(join(dir, `xtensa-esp-elf-gdb-${v}${exe}`), '');
-      }
-      const result = resolveVersionedBinary(dir.replace(/\\/g, '/'), 'xtensa-esp-elf-gdb', exe);
-      expect(result).toMatch(/xtensa-esp-elf-gdb-3\.14/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  it('falls back to xtensa-esp-elf-gdb-no-python when no per-target binary', () => {
+    const entries = [
+      `xtensa-esp-elf-gdb-3.13${exe}`,
+      `xtensa-esp-elf-gdb-3.14${exe}`,
+      `xtensa-esp-elf-gdb-no-python${exe}`,
+    ];
+    expect(selectGdbBinary(entries, 'esp32s3')).toBe(`xtensa-esp-elf-gdb-no-python${exe}`);
   });
 
-  it('handles multi-component versions like 3.9.1 > 3.9', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'cuttlefish-bin-'));
-    try {
-      writeFileSync(join(dir, `gdb-3.9${exe}`), '');
-      writeFileSync(join(dir, `gdb-3.9.1${exe}`), '');
-      const result = resolveVersionedBinary(dir.replace(/\\/g, '/'), 'gdb', exe);
-      expect(result).toMatch(/gdb-3\.9\.1/);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  it('falls back to bare xtensa-esp-elf-gdb when present (older IDF layout)', () => {
+    const entries = [`xtensa-esp-elf-gdb${exe}`, `xtensa-esp-elf-gdb-3.8${exe}`];
+    expect(selectGdbBinary(entries, 'esp32s3')).toBe(`xtensa-esp-elf-gdb${exe}`);
   });
 
-  it('returns null when no matching binary exists', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'cuttlefish-bin-'));
-    try {
-      const result = resolveVersionedBinary(dir.replace(/\\/g, '/'), 'gdb', exe);
-      expect(result).toBeNull();
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+  it('last resort: picks the first version-suffixed variant alphabetically', () => {
+    const entries = [`xtensa-esp-elf-gdb-3.14${exe}`, `xtensa-esp-elf-gdb-3.8${exe}`];
+    // Sorted alphabetically: 3.14 < 3.8 (string comparison), so 3.14 wins.
+    // This is a last resort — we don't try to be clever about version ordering
+    // because the suffix is a Python ABI tag, not a GDB version.
+    expect(selectGdbBinary(entries, 'esp32s3')).toBe(`xtensa-esp-elf-gdb-3.14${exe}`);
+  });
+
+  it('returns null when no GDB binary exists', () => {
+    expect(selectGdbBinary([], 'esp32s3')).toBeNull();
+    expect(selectGdbBinary(['unrelated.exe'])).toBeNull();
+  });
+
+  it('without a target, skips the per-target lookup', () => {
+    const entries = [`xtensa-esp32s3-elf-gdb${exe}`, `xtensa-esp-elf-gdb-no-python${exe}`];
+    expect(selectGdbBinary(entries)).toBe(`xtensa-esp-elf-gdb-no-python${exe}`);
   });
 });
 

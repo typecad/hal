@@ -84,7 +84,7 @@ export const Toolchain = {
           // the config omits gdbPath/serverpath and the user configures manually.
           let toolchainPaths: { gdbPath: string; openocdPath: string } | undefined;
           try {
-            toolchainPaths = resolveEspToolchains() ?? undefined;
+            toolchainPaths = resolveEspToolchains(target) ?? undefined;
           } catch {
             toolchainPaths = undefined;
           }
