@@ -230,7 +230,12 @@ export function buildTasksJson(opts: DebugConfigOptions): string {
       {
         label: 'cuttlefish: start openocd',
         type: 'shell',
-        command: `openocd -f \${workspaceFolder}/${outRel(opts)}/.cuttlefish/openocd.cfg`,
+        // Use the resolved openocd.exe when available — OpenOCD isn't on the
+        // system PATH (only in the IDF env), so a bare `openocd` here fails
+        // silently. The isBackground+problemMatcher below swallows the failure
+        // (endsPattern never matches), so the gdbtarget session then launches
+        // GDB with nothing listening on 3333 → "OpenOCD is not running."
+        command: `${opts.toolchainPaths?.openocdPath ?? 'openocd'} -f \${workspaceFolder}/${outRel(opts)}/.cuttlefish/openocd.cfg`,
         isBackground: true,
         problemMatcher: {
           owner: 'openocd',

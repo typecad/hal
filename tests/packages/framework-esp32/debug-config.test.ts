@@ -170,6 +170,30 @@ describe('buildTasksJson', () => {
     expect(openocd.command).toContain('.cuttlefish/openocd.cfg');
   });
 
+  it('uses the resolved openocd.exe path when toolchainPaths is provided (not bare "openocd")', () => {
+    // OpenOCD isn't on the system PATH (only in the IDF env), so a bare
+    // `openocd` in the task fails silently — the isBackground+problemMatcher
+    // swallows the not-found error, and gdbtarget then errors
+    // "OpenOCD is not running" because nothing is listening on 3333.
+    const json = JSON.parse(buildTasksJson({
+      ...OPTS,
+      toolchainPaths: {
+        gdbPath: 'C:/gdb.exe',
+        openocdPath: 'C:/espressif/tools/openocd-esp32/v0.12/bin/openocd.exe',
+        openocdScripts: 'C:/scripts',
+      },
+    }));
+    const openocd = json.tasks.find((t: any) => t.label.includes('openocd'));
+    expect(openocd.command).toMatch(/^C:\/espressif\/tools\/openocd-esp32\/v0\.12\/bin\/openocd\.exe /);
+    expect(openocd.command).not.toMatch(/^openocd /);
+  });
+
+  it('falls back to bare openocd when toolchainPaths is absent', () => {
+    const json = JSON.parse(buildTasksJson(OPTS));
+    const openocd = json.tasks.find((t: any) => t.label.includes('openocd'));
+    expect(openocd.command).toMatch(/^openocd /);
+  });
+
   it('threads the port into the build+flash command', () => {
     const json = JSON.parse(buildTasksJson(OPTS));
     const flash = json.tasks.find((t: any) => t.label.includes('build + flash'));
