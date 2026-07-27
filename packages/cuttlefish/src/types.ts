@@ -7,6 +7,8 @@
 
 export type EmitMode = "cpp" | "split";
 
+export type ComplianceMode = "off" | "warn" | "strict";
+
 export type TargetProfile = CoreTargetProfile;
 export type PlatformContext = CorePlatformContext;
 export type SourceSpan = CoreSourceSpan;
