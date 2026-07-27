@@ -38,7 +38,7 @@ static inline void ui_push_framebuffer() {
   int16_t h = display_canvasHeight(__ui_fb);
   display_startWrite();
   display_setAddrWindow(0, 0, w, h);
-  display_writePixels(display_canvasBuffer(__ui_fb), (uint32_t)w * h);
+  display_writePixels(display_canvasBuffer(__ui_fb), static_cast<uint32_t>(w) * h);
   display_endWrite();
 }
 
@@ -82,8 +82,8 @@ static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t
     offX = 0;
     offY = 0;
   } else if (fitMode == 2 || fitMode == 3 || fitMode == 4) {
-    int32_t scaleX = ((int32_t)targetW * 1000) / srcW;
-    int32_t scaleY = ((int32_t)targetH * 1000) / srcH;
+    int32_t scaleX = (static_cast<int32_t>(targetW) * 1000) / srcW;
+    int32_t scaleY = (static_cast<int32_t>(targetH) * 1000) / srcH;
     if (scaleX < 1) scaleX = 1;
     if (scaleY < 1) scaleY = 1;
     int32_t scale = scaleX;
@@ -95,8 +95,8 @@ static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t
       if (scaleY < scaleX) scale = scaleY;
       if (scale > 1000) scale = 1000;
     }
-    drawW = (int16_t)((int32_t)srcW * scale / 1000);
-    drawH = (int16_t)((int32_t)srcH * scale / 1000);
+    drawW = static_cast<int16_t>(static_cast<int32_t>(srcW) * scale / 1000);
+    drawH = static_cast<int16_t>(static_cast<int32_t>(srcH) * scale / 1000);
     if (drawW < 1) drawW = 1;
     if (drawH < 1) drawH = 1;
     if (fitMode == 3) {
@@ -115,40 +115,40 @@ static inline void ui_draw_image_with_fit(const UIImage* img, int16_t x, int16_t
   if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
   int16_t txStart = 0, txEnd = targetW, tyStart = 0, tyEnd = targetH;
   if (q == 0) {
-    txStart = ui_clamp_i16((int16_t)(clipX - x), 0, targetW);
-    txEnd = ui_clamp_i16((int16_t)(clipX + clipW - x), 0, targetW);
-    tyStart = ui_clamp_i16((int16_t)(clipY - y), 0, targetH);
-    tyEnd = ui_clamp_i16((int16_t)(clipY + clipH - y), 0, targetH);
+    txStart = ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, targetW);
+    txEnd = ui_clamp_i16(static_cast<int16_t>(clipX + clipW - x), 0, targetW);
+    tyStart = ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, targetH);
+    tyEnd = ui_clamp_i16(static_cast<int16_t>(clipY + clipH - y), 0, targetH);
   } else if (q == 1) {
-    txStart = ui_clamp_i16((int16_t)(clipY - y), 0, targetW);
-    txEnd = ui_clamp_i16((int16_t)(clipY + clipH - y), 0, targetW);
-    tyStart = ui_clamp_i16((int16_t)(x + targetH - (clipX + clipW)), 0, targetH);
-    tyEnd = ui_clamp_i16((int16_t)(x + targetH - clipX), 0, targetH);
+    txStart = ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, targetW);
+    txEnd = ui_clamp_i16(static_cast<int16_t>(clipY + clipH - y), 0, targetW);
+    tyStart = ui_clamp_i16(static_cast<int16_t>(x + targetH - (clipX + clipW)), 0, targetH);
+    tyEnd = ui_clamp_i16(static_cast<int16_t>(x + targetH - clipX), 0, targetH);
   } else if (q == 2) {
-    txStart = ui_clamp_i16((int16_t)(x + targetW - (clipX + clipW)), 0, targetW);
-    txEnd = ui_clamp_i16((int16_t)(x + targetW - clipX), 0, targetW);
-    tyStart = ui_clamp_i16((int16_t)(y + targetH - (clipY + clipH)), 0, targetH);
-    tyEnd = ui_clamp_i16((int16_t)(y + targetH - clipY), 0, targetH);
+    txStart = ui_clamp_i16(static_cast<int16_t>(x + targetW - (clipX + clipW)), 0, targetW);
+    txEnd = ui_clamp_i16(static_cast<int16_t>(x + targetW - clipX), 0, targetW);
+    tyStart = ui_clamp_i16(static_cast<int16_t>(y + targetH - (clipY + clipH)), 0, targetH);
+    tyEnd = ui_clamp_i16(static_cast<int16_t>(y + targetH - clipY), 0, targetH);
   } else {
-    txStart = ui_clamp_i16((int16_t)(y + targetW - (clipY + clipH)), 0, targetW);
-    txEnd = ui_clamp_i16((int16_t)(y + targetW - clipY), 0, targetW);
-    tyStart = ui_clamp_i16((int16_t)(clipX - x), 0, targetH);
-    tyEnd = ui_clamp_i16((int16_t)(clipX + clipW - x), 0, targetH);
+    txStart = ui_clamp_i16(static_cast<int16_t>(y + targetW - (clipY + clipH)), 0, targetW);
+    txEnd = ui_clamp_i16(static_cast<int16_t>(y + targetW - clipY), 0, targetW);
+    tyStart = ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, targetH);
+    tyEnd = ui_clamp_i16(static_cast<int16_t>(clipX + clipW - x), 0, targetH);
   }
   if (txStart >= txEnd || tyStart >= tyEnd) return;
   for (int16_t ty = tyStart; ty < tyEnd; ty++) {
     int16_t localY = ty - offY;
     if (localY < 0 || localY >= drawH) continue;
-    int16_t srcY = ((int32_t)localY * srcH) / drawH;
+    int16_t srcY = (static_cast<int32_t>(localY) * srcH) / drawH;
     if (srcY < 0) srcY = 0;
     if (srcY >= srcH) srcY = srcH - 1;
     for (int16_t tx = txStart; tx < txEnd; tx++) {
       int16_t localX = tx - offX;
       if (localX < 0 || localX >= drawW) continue;
-      int16_t srcX = ((int32_t)localX * srcW) / drawW;
+      int16_t srcX = (static_cast<int32_t>(localX) * srcW) / drawW;
       if (srcX < 0) srcX = 0;
       if (srcX >= srcW) srcX = srcW - 1;
-      UI_COLOR_T color = img->data[(int32_t)srcY * srcW + srcX];
+      UI_COLOR_T color = img->data[static_cast<int32_t>(srcY) * srcW + srcX];
       int16_t dx = tx;
       int16_t dy = ty;
       if (q == 1) {
@@ -177,43 +177,43 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
   if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
   int16_t dxStart = 0, dxEnd = drawW, dyStart = 0, dyEnd = drawH;
   if (q == 0) {
-    dxStart = ui_clamp_i16((int16_t)(clipX - x), 0, drawW);
-    dxEnd = ui_clamp_i16((int16_t)(clipX + clipW - x), 0, drawW);
-    dyStart = ui_clamp_i16((int16_t)(clipY - y), 0, drawH);
-    dyEnd = ui_clamp_i16((int16_t)(clipY + clipH - y), 0, drawH);
+    dxStart = ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, drawW);
+    dxEnd = ui_clamp_i16(static_cast<int16_t>(clipX + clipW - x), 0, drawW);
+    dyStart = ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, drawH);
+    dyEnd = ui_clamp_i16(static_cast<int16_t>(clipY + clipH - y), 0, drawH);
   } else if (q == 1) {
-    dxStart = ui_clamp_i16((int16_t)(clipY - y), 0, drawW);
-    dxEnd = ui_clamp_i16((int16_t)(clipY + clipH - y), 0, drawW);
-    dyStart = ui_clamp_i16((int16_t)(x + drawH - (clipX + clipW)), 0, drawH);
-    dyEnd = ui_clamp_i16((int16_t)(x + drawH - clipX), 0, drawH);
+    dxStart = ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, drawW);
+    dxEnd = ui_clamp_i16(static_cast<int16_t>(clipY + clipH - y), 0, drawW);
+    dyStart = ui_clamp_i16(static_cast<int16_t>(x + drawH - (clipX + clipW)), 0, drawH);
+    dyEnd = ui_clamp_i16(static_cast<int16_t>(x + drawH - clipX), 0, drawH);
   } else if (q == 2) {
-    dxStart = ui_clamp_i16((int16_t)(x + drawW - (clipX + clipW)), 0, drawW);
-    dxEnd = ui_clamp_i16((int16_t)(x + drawW - clipX), 0, drawW);
-    dyStart = ui_clamp_i16((int16_t)(y + drawH - (clipY + clipH)), 0, drawH);
-    dyEnd = ui_clamp_i16((int16_t)(y + drawH - clipY), 0, drawH);
+    dxStart = ui_clamp_i16(static_cast<int16_t>(x + drawW - (clipX + clipW)), 0, drawW);
+    dxEnd = ui_clamp_i16(static_cast<int16_t>(x + drawW - clipX), 0, drawW);
+    dyStart = ui_clamp_i16(static_cast<int16_t>(y + drawH - (clipY + clipH)), 0, drawH);
+    dyEnd = ui_clamp_i16(static_cast<int16_t>(y + drawH - clipY), 0, drawH);
   } else {
-    dxStart = ui_clamp_i16((int16_t)(y + drawW - (clipY + clipH)), 0, drawW);
-    dxEnd = ui_clamp_i16((int16_t)(y + drawW - clipY), 0, drawW);
-    dyStart = ui_clamp_i16((int16_t)(clipX - x), 0, drawH);
-    dyEnd = ui_clamp_i16((int16_t)(clipX + clipW - x), 0, drawH);
+    dxStart = ui_clamp_i16(static_cast<int16_t>(y + drawW - (clipY + clipH)), 0, drawW);
+    dxEnd = ui_clamp_i16(static_cast<int16_t>(y + drawW - clipY), 0, drawW);
+    dyStart = ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, drawH);
+    dyEnd = ui_clamp_i16(static_cast<int16_t>(clipX + clipW - x), 0, drawH);
   }
   if (dxStart >= dxEnd || dyStart >= dyEnd) return;
   if (q == 0) {
     // Simple case: no rotation, draw with scaling
     if (drawW == img->w && drawH == img->h) {
-      int16_t rows = (int16_t)(dyEnd - dyStart);
-      int16_t cols = (int16_t)(dxEnd - dxStart);
+      int16_t rows = static_cast<int16_t>(dyEnd - dyStart);
+      int16_t cols = static_cast<int16_t>(dxEnd - dxStart);
       for (int16_t row = 0; row < rows; row++) {
-        ui_display_draw_rgb_bitmap((int16_t)(x + dxStart), (int16_t)(y + dyStart + row),
-          img->data + (int32_t)(dyStart + row) * img->w + dxStart, cols, 1);
+        ui_display_draw_rgb_bitmap(static_cast<int16_t>(x + dxStart), static_cast<int16_t>(y + dyStart + row),
+          img->data + static_cast<int32_t>(dyStart + row) * img->w + dxStart, cols, 1);
       }
     } else {
       // Scale using nearest-neighbor
       for (int16_t dy = dyStart; dy < dyEnd; dy++) {
-        int16_t srcY = ((int32_t)dy * img->h) / drawH;
+        int16_t srcY = (static_cast<int32_t>(dy) * img->h) / drawH;
         for (int16_t dx = dxStart; dx < dxEnd; dx++) {
-          int16_t srcX = ((int32_t)dx * img->w) / drawW;
-          UI_COLOR_T color = img->data[(int32_t)srcY * img->w + srcX];
+          int16_t srcX = (static_cast<int32_t>(dx) * img->w) / drawW;
+          UI_COLOR_T color = img->data[static_cast<int32_t>(srcY) * img->w + srcX];
           ui_display_draw_pixel(x + dx, y + dy, color);
         }
       }
@@ -221,10 +221,10 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
     return;
   }
   for (int16_t dy = dyStart; dy < dyEnd; dy++) {
-    int16_t srcY = ((int32_t)dy * img->h) / drawH;
+    int16_t srcY = (static_cast<int32_t>(dy) * img->h) / drawH;
     for (int16_t dx = dxStart; dx < dxEnd; dx++) {
-      int16_t srcX = ((int32_t)dx * img->w) / drawW;
-      UI_COLOR_T color = img->data[(int32_t)srcY * img->w + srcX];
+      int16_t srcX = (static_cast<int32_t>(dx) * img->w) / drawW;
+      UI_COLOR_T color = img->data[static_cast<int32_t>(srcY) * img->w + srcX];
       int16_t rdx = 0, rdy = 0;
       if (q == 1) {
         rdx = drawH - 1 - dy;
@@ -249,48 +249,48 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
    int16_t clipH = (q == 1 || q == 3) ? img->w : img->h;
    if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
    if (q == 0) {
-     int16_t sx0 = ui_clamp_i16((int16_t)(clipX - x), 0, (int16_t)img->w);
-     int16_t sy0 = ui_clamp_i16((int16_t)(clipY - y), 0, (int16_t)img->h);
-     int16_t sw = ui_clamp_i16(clipW, 0, (int16_t)(img->w - sx0));
-     int16_t sh = ui_clamp_i16(clipH, 0, (int16_t)(img->h - sy0));
+     int16_t sx0 = ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, static_cast<int16_t>(img)->w);
+     int16_t sy0 = ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img)->h);
+     int16_t sw = ui_clamp_i16(clipW, 0, static_cast<int16_t>(img->w - sx0));
+     int16_t sh = ui_clamp_i16(clipH, 0, static_cast<int16_t>(img->h - sy0));
      for (int16_t row = 0; row < sh; row++) {
-       ui_display_draw_rgb_bitmap((int16_t)(x + sx0), (int16_t)(y + sy0 + row),
-         img->data + (int32_t)(sy0 + row) * img->w + sx0, sw, 1);
+       ui_display_draw_rgb_bitmap(static_cast<int16_t>(x + sx0), static_cast<int16_t>(y + sy0 + row),
+         img->data + static_cast<int32_t>(sy0 + row) * img->w + sx0, sw, 1);
      }
      return;
    }
    uint16_t sxStart = 0, sxEnd = img->w, syStart = 0, syEnd = img->h;
    if (q == 1) {
-     sxStart = (uint16_t)ui_clamp_i16((int16_t)(clipY - y), 0, (int16_t)img->w);
-     sxEnd = (uint16_t)ui_clamp_i16((int16_t)(clipY + clipH - y), 0, (int16_t)img->w);
-     syStart = (uint16_t)ui_clamp_i16((int16_t)(x + img->h - (clipX + clipW)), 0, (int16_t)img->h);
-     syEnd = (uint16_t)ui_clamp_i16((int16_t)(x + img->h - clipX), 0, (int16_t)img->h);
+     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img)->w));
+     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipY + clipH - y), 0, static_cast<int16_t>(img)->w));
+     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->h - (clipX + clipW)), 0, static_cast<int16_t>(img)->h));
+     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->h - clipX), 0, static_cast<int16_t>(img)->h));
    } else if (q == 2) {
-     sxStart = (uint16_t)ui_clamp_i16((int16_t)(x + img->w - (clipX + clipW)), 0, (int16_t)img->w);
-     sxEnd = (uint16_t)ui_clamp_i16((int16_t)(x + img->w - clipX), 0, (int16_t)img->w);
-     syStart = (uint16_t)ui_clamp_i16((int16_t)(y + img->h - (clipY + clipH)), 0, (int16_t)img->h);
-     syEnd = (uint16_t)ui_clamp_i16((int16_t)(y + img->h - clipY), 0, (int16_t)img->h);
+     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->w - (clipX + clipW)), 0, static_cast<int16_t>(img)->w));
+     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->w - clipX), 0, static_cast<int16_t>(img)->w));
+     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->h - (clipY + clipH)), 0, static_cast<int16_t>(img)->h));
+     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->h - clipY), 0, static_cast<int16_t>(img)->h));
    } else {
-     sxStart = (uint16_t)ui_clamp_i16((int16_t)(y + img->w - (clipY + clipH)), 0, (int16_t)img->w);
-     sxEnd = (uint16_t)ui_clamp_i16((int16_t)(y + img->w - clipY), 0, (int16_t)img->w);
-     syStart = (uint16_t)ui_clamp_i16((int16_t)(clipX - x), 0, (int16_t)img->h);
-     syEnd = (uint16_t)ui_clamp_i16((int16_t)(clipX + clipW - x), 0, (int16_t)img->h);
+     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->w - (clipY + clipH)), 0, static_cast<int16_t>(img)->w));
+     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->w - clipY), 0, static_cast<int16_t>(img)->w));
+     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, static_cast<int16_t>(img)->h));
+     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipX + clipW - x), 0, static_cast<int16_t>(img)->h));
    }
    if (sxStart >= sxEnd || syStart >= syEnd) return;
    for (uint16_t sy = syStart; sy < syEnd; sy++) {
      for (uint16_t sx = sxStart; sx < sxEnd; sx++) {
-       UI_COLOR_T color = img->data[(uint32_t)sy * img->w + sx];
+       UI_COLOR_T color = img->data[static_cast<uint32_t>(sy) * img->w + sx];
        int16_t dx = 0;
        int16_t dy = 0;
        if (q == 1) {
-         dx = (int16_t)(img->h - 1 - sy);
-         dy = (int16_t)sx;
+         dx = static_cast<int16_t>(img->h - 1 - sy);
+         dy = static_cast<int16_t>(sx);
        } else if (q == 2) {
-         dx = (int16_t)(img->w - 1 - sx);
-         dy = (int16_t)(img->h - 1 - sy);
+         dx = static_cast<int16_t>(img->w - 1 - sx);
+         dy = static_cast<int16_t>(img->h - 1 - sy);
        } else {
-         dx = (int16_t)sy;
-         dy = (int16_t)(img->w - 1 - sx);
+         dx = static_cast<int16_t>(sy);
+         dy = static_cast<int16_t>(img->w - 1 - sx);
        }
        ui_display_draw_pixel(x + dx, y + dy, color);
      }
