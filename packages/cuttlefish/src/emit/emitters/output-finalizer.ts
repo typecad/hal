@@ -299,16 +299,52 @@ export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
   if (ctx.compliance.isEnabled()) {
     const findings = runSelfCheck(ctx.compliance, ctx.sourceLines, ctx.headerLines);
     const mode = ctx.compliance.mode();
+
+    // Helper: map a C++ generated line back to its originating TS source
+    // line via the source map, so diagnostics point at the user's code.
+    const mapCppLineToTs = (cppLine: number): { filePath: string; line: number } | null => {
+      // Find the source-map entry whose generated range covers cppLine.
+      // Entries are ordered by generatedStartLine; find the last one whose
+      // start is ≤ cppLine.
+      let best: SourceMapEntry | null = null;
+      for (const entry of ctx.sourceMapEntries) {
+        if (entry.generatedStartLine <= cppLine) {
+          if (!best || entry.generatedStartLine > best.generatedStartLine) {
+            best = entry;
+          }
+        }
+      }
+      if (best) {
+        return { filePath: best.tsSpan.filePath, line: best.tsSpan.startLine };
+      }
+      return null;
+    };
+
     for (const f of findings) {
       const isError =
         mode === "strict" &&
         f.kind === "unrecorded-violation" &&
         f.severity === "required";
+
+      // Map the C++ line back to TS so the diagnostic points at user code.
+      const tsLoc = mapCppLineToTs(f.line);
+      const emittedFile = f.file === "header" ? `${baseName}.h` : path.basename(sourcePath);
+      const cppRef = `${emittedFile}:${f.line}`;
+      const tsRef = tsLoc ? `${path.basename(tsLoc.filePath)}:${tsLoc.line}` : null;
+      const locationDesc = tsRef
+        ? `${tsRef} (emitted at ${cppRef})`
+        : cppRef;
+
       const diag: Diagnostic = {
         severity: isError ? "error" : "warning",
         code: `AUTOSAR_${f.ruleId}`,
-        message: `AUTOSAR ${f.ruleId} ${f.kind} at ${f.file} line ${f.line}: ${f.snippet}`,
-        line: f.line,
+        message: `AUTOSAR ${f.ruleId} ${f.kind} at ${locationDesc}: ${f.snippet}`,
+        // Point the diagnostic at the TS source line (if mapped) so the
+        // CLI's file:line:col display is meaningful to the user. If the
+        // violation is in framework/runtime shim code with no TS origin,
+        // point at the emitted C++ artifact instead.
+        filePath: tsLoc?.filePath ?? sourcePath,
+        line: tsLoc?.line ?? f.line,
         column: 1,
       };
       diagnostics.push(diag);

@@ -199,7 +199,11 @@ function formatFatalDiagnostics(entries: LocatedDiagnostic[]): string {
   ];
 
   for (const { filePath, diagnostic } of errors) {
-    const resolvedFile = filePath ?? diagnostic.filePath;
+    // Prefer diagnostic.filePath (set explicitly by the emitter, e.g. AUTOSAR
+    // diagnostics that map a C++ line back to TS) over the wrapper's filePath
+    // (the TS source file being processed, which may not be the right pointer
+    // for emit-stage diagnostics).
+    const resolvedFile = diagnostic.filePath ?? filePath;
     const locationBase = resolvedFile
       ? path.relative(process.cwd(), resolvedFile) || resolvedFile
       : diagnostic.source ?? "user code";
