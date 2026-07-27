@@ -37,6 +37,8 @@ export interface EmitterOptions {
   autosar?: ComplianceMode;
   /** Tool version, written into the sidecar deviation registry. */
   toolVersion?: string;
+  /** When true (and autosar is warn/strict), also write the .autosar-deviations.arxml sidecar. */
+  autosarArxml?: boolean;
 }
 
 export interface MappedFunction {

@@ -8,6 +8,7 @@ import { appendHeaderLine } from "./line-appender.js";
 import type { EmitterContext } from "./emitter-context.js";
 import { runSelfCheck } from "../compliance/rule-engine.js";
 import { renderRegistryJson } from "../compliance/deviation-writer.js";
+import { renderArxml } from "../compliance/arxml-writer.js";
 import type { Diagnostic } from "../../api/shared/index.js";
 
 /** Derives a unique C preprocessor guard name from a source file path. */
@@ -319,6 +320,13 @@ export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
     const toolVersion = options.toolVersion ?? "unknown";
     const registryPath = path.join(outDir, `${baseName}.autosar-deviations.json`);
     writeText(registryPath, renderRegistryJson(ctx.compliance, path.basename(sourcePath), toolVersion));
+
+    // Optional ARXML projection (Artop/DaVinci tooling). Gated behind
+    // --autosar-arxml so projects that don't need it pay no cost.
+    if (options.autosarArxml) {
+      const arxmlPath = path.join(outDir, `${baseName}.autosar-deviations.arxml`);
+      writeText(arxmlPath, renderArxml(ctx.compliance, path.basename(sourcePath)));
+    }
   }
 
   return {

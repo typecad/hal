@@ -112,6 +112,8 @@ export interface TranspileOptions {
   display?: import("./api/shared/display-profile.js").DisplayConfig;
   /** AUTOSAR C++14 compliance mode for emitted code (default: "off"). */
   autosar?: ComplianceMode;
+  /** When true (and autosar is warn/strict), also emit the .autosar-deviations.arxml sidecar. */
+  autosarArxml?: boolean;
 }
 
 export interface LibraryDefinitionCondition {
@@ -191,6 +193,8 @@ export interface CommandLineOptions {
   diagnostics?: boolean;
   /** AUTOSAR C++14 compliance mode for emitted code (default: "off"). */
   autosar?: ComplianceMode;
+  /** When true (and autosar is warn/strict), also emit the .autosar-deviations.arxml sidecar. */
+  autosarArxml?: boolean;
   /** Config file for preview command */
   configPath?: string;
   /** Project root (dir of cuttlefish.config.ts); passed to transpileFile for the ESLint gate. */

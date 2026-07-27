@@ -50,6 +50,9 @@ export function printHelp(): void {
   console.log(`                          A sidecar <name>.autosar-deviations.json is written next to the`);
   console.log(`                          emitted artifact in warn/strict modes. See COMPLIANCE.md.`);
   console.log();
+  console.log(`  --autosar-arxml         Also write <name>.autosar-deviations.arxml (Artop/DaVinci).`);
+  console.log(`                          No-op unless --autosar is warn or strict.`);
+  console.log();
   console.log(chalk.cyan(`BUILD COMMANDS`) + chalk.gray(` (chain in order: --compile → --upload → --monitor)`));
   console.log();
   console.log(`  --compile               Compile the generated output using the framework toolchain.`);
@@ -283,6 +286,10 @@ function parsePipelineCommand(
     }
   }
 
+  // --autosar-arxml: also write the .autosar-deviations.arxml sidecar
+  // (Artop/DaVinci tooling). No-op unless --autosar is warn or strict.
+  const autosarArxml = readBooleanFlag(argv, ["--autosar-arxml"]);
+
   const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
   const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
   // Accept any target string — the framework package registers its own strategy id.
@@ -338,6 +345,7 @@ function parsePipelineCommand(
     expectFile,
     frameworkPackage: frameworkFlag,
     autosar,
+    autosarArxml,
   };
 }
 

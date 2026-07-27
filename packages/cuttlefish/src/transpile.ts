@@ -844,6 +844,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       crossModuleVariableTypes: allVariableTypes,
       autosar: options.autosar,
       toolVersion: CUTTLEFISH_VERSION,
+      autosarArxml: options.autosarArxml,
     };
     // Pass the already-resolved strategy (framework-loaded or target-based)
     emitOptions.strategy = strategy;
