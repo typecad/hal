@@ -316,7 +316,7 @@ export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
     // Sidecar deviation registry — written for both warn and strict modes
     // alongside the emitted artifact (mirrors how .thcppmap.json sits next
     // to the .cpp/.ino today).
-    const toolVersion = (options as { toolVersion?: string }).toolVersion ?? "unknown";
+    const toolVersion = options.toolVersion ?? "unknown";
     const registryPath = path.join(outDir, `${baseName}.autosar-deviations.json`);
     writeText(registryPath, renderRegistryJson(ctx.compliance, path.basename(sourcePath), toolVersion));
   }

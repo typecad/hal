@@ -43,6 +43,13 @@ export function printHelp(): void {
   console.log(`  --emit-maps <bool>      Emit source maps: "true" or "false" (default: true)`);
   console.log(`                          Source maps enable mapping C++ errors back to TypeScript`);
   console.log();
+  console.log(`  --autosar[=<mode>]      AUTOSAR C++14 compliance mode for emitted code:`);
+  console.log(`                            off     no enforcement (default)`);
+  console.log(`                            warn    emit AUTOSAR_* diagnostics + sidecar, build still succeeds`);
+  console.log(`                            strict  abort emit on unrecorded required violations`);
+  console.log(`                          A sidecar <name>.autosar-deviations.json is written next to the`);
+  console.log(`                          emitted artifact in warn/strict modes. See COMPLIANCE.md.`);
+  console.log();
   console.log(chalk.cyan(`BUILD COMMANDS`) + chalk.gray(` (chain in order: --compile → --upload → --monitor)`));
   console.log();
   console.log(`  --compile               Compile the generated output using the framework toolchain.`);
@@ -254,6 +261,28 @@ function parsePipelineCommand(
   const keepUnusedVariables = readBooleanFlag(argv, ["--keep-unused-variables"]);
   const entryPoints = readRepeatedFlag(argv, "--entry-point");
 
+  // AUTOSAR C++14 compliance mode for emitted code. Accepts both
+  // `--autosar=strict` (= syntax) and `--autosar strict` (space syntax),
+  // plus the bare `--autosar` (treated as "strict"). Defaults to undefined,
+  // which the emitter treats as "off".
+  let autosar: "off" | "warn" | "strict" | undefined;
+  const autosarFlagIdx = argv.findIndex((a) => a === "--autosar" || a.startsWith("--autosar="));
+  if (autosarFlagIdx !== -1) {
+    const raw = argv[autosarFlagIdx];
+    if (raw === "--autosar") {
+      // Bare flag → strict. (No following value consumed.)
+      autosar = "strict";
+    } else {
+      // --autosar=<mode>
+      const value = raw.slice("--autosar=".length);
+      if (value === "strict" || value === "warn" || value === "off") {
+        autosar = value;
+      } else {
+        throw new Error(`--autosar must be one of: strict, warn, off (got: ${value})`);
+      }
+    }
+  }
+
   const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
   const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
   // Accept any target string — the framework package registers its own strategy id.
@@ -308,6 +337,7 @@ function parsePipelineCommand(
     expect,
     expectFile,
     frameworkPackage: frameworkFlag,
+    autosar,
   };
 }
 

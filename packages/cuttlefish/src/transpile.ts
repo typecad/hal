@@ -4,6 +4,19 @@ import path from "node:path";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import ts from "typescript";
+
+// Read once at module load. Used to populate the AUTOSAR deviation sidecar's
+// `toolVersion` field. Falls back to "unknown" if the read fails (e.g. tests
+// that import the module from an unexpected location).
+const CUTTLEFISH_VERSION: string = (() => {
+  try {
+    const require_ = createRequire(import.meta.url);
+    const pkg = require_("../../package.json") as { version?: string };
+    return pkg.version ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+})();
 import { buildProgramIR } from "./ir/build-ir.js";
 import { classDeclarationToIR } from "./ir/declaration-builders.js";
 import { clickHandlers } from "./ir/transformers/ui-call-resolver.js";
@@ -829,6 +842,8 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       crossModuleEnumNames: allEnumNames,
       crossModuleStringEnumNames: allStringEnumNames,
       crossModuleVariableTypes: allVariableTypes,
+      autosar: options.autosar,
+      toolVersion: CUTTLEFISH_VERSION,
     };
     // Pass the already-resolved strategy (framework-loaded or target-based)
     emitOptions.strategy = strategy;

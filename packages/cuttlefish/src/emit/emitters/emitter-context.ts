@@ -35,6 +35,8 @@ export interface EmitterOptions {
   crossModuleVariableTypes?: Map<string, string>;
   /** AUTOSAR C++14 compliance mode. Default 'off' — feature is opt-in. */
   autosar?: ComplianceMode;
+  /** Tool version, written into the sidecar deviation registry. */
+  toolVersion?: string;
 }
 
 export interface MappedFunction {
