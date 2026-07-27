@@ -14,7 +14,7 @@ export function uartInitLines(controllerIndex: number): string[] {
     `static void __tc_uart${controllerIndex}_init(unsigned long baud) {`,
     `    if (baud == 0) baud = ${cfg.defaultBaud};`,
     `    const uart_config_t ucfg = {`,
-    `        .baud_rate = (int)baud,`,
+    `        .baud_rate = static_cast<int>(baud),`,
     `        .data_bits = UART_DATA_8_BITS,`,
     `        .parity = UART_PARITY_DISABLE,`,
     `        .stop_bits = UART_STOP_BITS_1,`,
@@ -74,7 +74,7 @@ export function lowerUart(op: HALOpIR): { code?: string; expression?: string } {
       // Since uart_read_bytes always consumes, we use the RX ring buffer:
       // peek by reading 1 byte with 0 timeout and putting it back isn't
       // supported. Best-effort: return the next byte or -1 if none available.
-      return { expression: `({ uint8_t _b = 0; int _n = uart_read_bytes(${cfg.num}, &_b, 1, 0); _n > 0 ? (int)_b : -1; })` };
+      return { expression: `({ uint8_t _b = 0; int _n = uart_read_bytes(${cfg.num}, &_b, 1, 0); _n > 0 ? static_cast<int>(_b) : -1; })` };
     case 'uart.flush':
       return { code: `uart_wait_tx_done(${cfg.num}, portMAX_DELAY);` };
     case 'uart.end':

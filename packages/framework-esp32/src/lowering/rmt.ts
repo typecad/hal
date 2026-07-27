@@ -205,7 +205,7 @@ function emitRxDecl(c: RxPinCfg): string[] {
     `  if (cpy > 64) cpy = 64;`,
     `  memcpy(${h}_buf, e->received_symbols, cpy * sizeof(*e->received_symbols));`,
     `  ${h}_n = cpy;`,
-    `  if (${h}_user_cb) ((void(*)(rmt_symbol_word_t*, size_t))(size_t)${h}_user_cb)(${h}_buf, ${h}_n);`,
+    `  if (${h}_user_cb) ((void(*)(rmt_symbol_word_t*, size_t))static_cast<size_t>(${h}_user_cb))(${h}_buf, ${h}_n);`,
     `  if (${h}_sem) xSemaphoreGiveFromISR(${h}_sem, NULL);`,
     `}`,
     `static void ${h}_init(void) {`,
@@ -251,7 +251,7 @@ export function lowerRmt(op: HALOpIR): { code?: string; expression?: string } {
       const buf = `${h}_buf`;
       // Count elements to size the buffer (split on top-level commas).
       const elems = splitTopLevelCommas(inner);
-      const casted = elems.map((e) => `(uint8_t)(${e.trim()})`).join(', ');
+      const casted = elems.map((e) => `static_cast<uint8_t>(${e.trim()})`).join(', ');
       return { code: [
         `uint8_t ${buf}[${elems.length}] = { ${casted} };`,
         `${h}_init();`,

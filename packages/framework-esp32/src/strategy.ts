@@ -91,7 +91,7 @@ export class Esp32Strategy extends ArduinoStrategy {
 
   // No Arduino millis() in ESP-IDF; esp_timer.h is always included.
   override currentTimeMillis(): string {
-    return '(unsigned long)(esp_timer_get_time() / 1000)';
+    return 'static_cast<unsigned long>(esp_timer_get_time() / 1000)';
   }
 
   override needsIostream(): boolean {
@@ -355,7 +355,7 @@ export class Esp32Strategy extends ArduinoStrategy {
       '    while (c != \'\\n\' && c != EOF) { c = getchar(); }',
       '    esp_task_wdt_delete(NULL);',
       '    if (c == \'s\' || c == \'S\') { if (id >= 0 && id < 256) __tc_bp_disabled[id] = true; }',
-      '    return (char)c;',
+      '    return static_cast<char>(c);',
       '}',
       '',
       ...espInit,
@@ -630,10 +630,10 @@ export class Esp32Strategy extends ArduinoStrategy {
 #define FALLING 0x02
 #endif
 static inline unsigned long millis() {
-    return (unsigned long)(esp_timer_get_time() / 1000);
+    return static_cast<unsigned long>(esp_timer_get_time() / 1000);
 }
 static inline int digitalRead(int pin) {
-    return (int)gpio_get_level((gpio_num_t)pin);
+    return static_cast<int>(gpio_get_level((gpio_num_t)pin));
 }
 // Arduino core math helpers — referenced by runtime header code (touch
 // keyboard's range-clamping in touch-keyboard-fwd.ts). On Arduino these are

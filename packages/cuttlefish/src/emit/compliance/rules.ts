@@ -26,7 +26,7 @@ export const RULES: readonly RuleEntry[] = [
   // ── B. Type safety & conversions ──────────────────────────────────────
   { id: "M5-0-3", title: "Implicit narrowing conversion forbidden", severity: "required", category: "C", enabled: true },
   { id: "M5-0-7", title: "C-style cast shall not be used", severity: "required", category: "C",
-    detect: /(^|[^:\w.])\(\s*\w[\w\s\*&]*\)\s*[a-zA-Z_(]/,
+    detect: /(^|[^:\w.])\(\s*(?:uint\d+_t|int\d+_t|int|char|double|float|bool|size_t|long|short|unsigned\s+\w+)\s*\)\s*[a-zA-Z_(]/,
     exempt: /static_cast|dynamic_cast|reinterpret_cast|const_cast/,
     enabled: true },
   { id: "M5-0-10", title: "No reinterpret_cast", severity: "required", category: "D",

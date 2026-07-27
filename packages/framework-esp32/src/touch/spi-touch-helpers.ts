@@ -85,7 +85,7 @@ export function emitSpiTouchXfer16(): string {
     `  t.tx_buffer = tx;`,
     `  t.rx_buffer = rx;`,
     `  spi_device_polling_transmit(__esp32_spi_touch.dev, &t);`,
-    `  return ((uint16_t)rx[0] << 8) | rx[1];`,
+    `  return (static_cast<uint16_t>(rx[0]) << 8) | rx[1];`,
     `}`,
   ].join('\n');
 }

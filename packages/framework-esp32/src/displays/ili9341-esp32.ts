@@ -137,7 +137,7 @@ export const esp32Ili9341Adapter: DisplayAdapterGenerator = (display) => {
 
       ``,
       `static inline void display_fillScreen(UI_COLOR_T color) {`,
-      `  __esp32_op_fillRect(NULL, 0, 0, ${w}, ${h}, (uint16_t)color);`,
+      `  __esp32_op_fillRect(NULL, 0, 0, ${w}, ${h}, static_cast<uint16_t>(color));`,
       `}`,
       `static inline CuttlefishDisplayTarget* display_defaultTarget() { return &__tc_display; }`,
       `static inline int16_t display_width()  { return ${w}; }`,
