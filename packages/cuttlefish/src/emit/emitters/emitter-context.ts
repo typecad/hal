@@ -4,10 +4,11 @@ import type { ProgramAnalysisResult } from "../../ir/program-analysis.js";
 import type { EmissionScopeState } from "../snprintf-helpers.js";
 import type { ExpressionRenderer } from "../expression-renderer.js";
 import type { StatementRenderer } from "../statement-renderer.js";
-import type { Diagnostic, EmitMode, SourceMapEntry, SourceSpan } from "../../types.js";
+import type { Diagnostic, EmitMode, ComplianceMode, SourceMapEntry, SourceSpan } from "../../types.js";
 import type { ResolvedNpmPackage } from "../../transpile/resolution.js";
 import type { BoardConstants } from "../../ir/board-resolver.js";
 import type { LibraryDefinition } from "../../types.js";
+import type { ComplianceContext } from "../compliance/compliance-context.js";
 
 /** Options controlling C++ emission. */
 export interface EmitterOptions {
@@ -32,6 +33,12 @@ export interface EmitterOptions {
   crossModuleEnumNames?: Set<string>;
   crossModuleStringEnumNames?: Set<string>;
   crossModuleVariableTypes?: Map<string, string>;
+  /** AUTOSAR C++14 compliance mode. Default 'off' — feature is opt-in. */
+  autosar?: ComplianceMode;
+  /** Tool version, written into the sidecar deviation registry. */
+  toolVersion?: string;
+  /** When true (and autosar is warn/strict), also write the .autosar-deviations.arxml sidecar. */
+  autosarArxml?: boolean;
 }
 
 export interface MappedFunction {
@@ -195,4 +202,7 @@ export interface EmitterContext {
   interfaceNamespaceMap: Map<string, string>;
   /** Map of interface name to its field types (e.g., "Task" -> Map("id" -> "std::string", "title" -> "std::string")) */
   interfaceFieldTypes: Map<string, Map<string, string>>;
+
+  // ── AUTOSAR C++14 compliance (emit-time enforcement + deviations) ────────
+  compliance: ComplianceContext;
 }

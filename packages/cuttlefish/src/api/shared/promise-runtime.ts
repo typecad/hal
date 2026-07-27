@@ -40,13 +40,13 @@ export function generatePromiseRuntime(
       auto pollTarget = [pin, targetState, timeout, start, resolve]() {
         if (digitalRead(pin) == targetState) {
           resolve(nullptr);
-        } else if (timeout >= 0 && (millis() - start >= (unsigned long)timeout)) {
+        } else if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) {
           resolve(nullptr);
         } else {
           enqueueMicrotask([pin, targetState, timeout, start, resolve]() {
             if (digitalRead(pin) == targetState) {
               resolve(nullptr);
-            } else if (timeout >= 0 && (millis() - start >= (unsigned long)timeout)) {
+            } else if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) {
               resolve(nullptr);
             } else {
               enqueueMicrotask([pin, targetState, timeout, start, resolve]() {});
@@ -58,7 +58,7 @@ export function generatePromiseRuntime(
       enqueueMicrotask([pin, idleState, timeout, start, resolve, pollTarget]() {
         if (digitalRead(pin) == idleState) {
           pollTarget();
-        } else if (timeout >= 0 && (millis() - start >= (unsigned long)timeout)) {
+        } else if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) {
           resolve(nullptr);
         } else {
           enqueueMicrotask([pin, idleState, timeout, start, resolve, pollTarget]() {});

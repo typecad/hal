@@ -7,6 +7,8 @@
 
 export type EmitMode = "cpp" | "split";
 
+export type ComplianceMode = "off" | "warn" | "strict";
+
 export type TargetProfile = CoreTargetProfile;
 export type PlatformContext = CorePlatformContext;
 export type SourceSpan = CoreSourceSpan;
@@ -108,6 +110,10 @@ export interface TranspileOptions {
   diagnostics?: boolean;
   /** Display profile config from cuttlefish.config.ts */
   display?: import("./api/shared/display-profile.js").DisplayConfig;
+  /** AUTOSAR C++14 compliance mode for emitted code (default: "off"). */
+  autosar?: ComplianceMode;
+  /** When true (and autosar is warn/strict), also emit the .autosar-deviations.arxml sidecar. */
+  autosarArxml?: boolean;
 }
 
 export interface LibraryDefinitionCondition {
@@ -185,6 +191,10 @@ export interface CommandLineOptions {
   expectFile?: string;
   /** Generate diagnostics.md and diagnostics.json reports */
   diagnostics?: boolean;
+  /** AUTOSAR C++14 compliance mode for emitted code (default: "off"). */
+  autosar?: ComplianceMode;
+  /** When true (and autosar is warn/strict), also emit the .autosar-deviations.arxml sidecar. */
+  autosarArxml?: boolean;
   /** Config file for preview command */
   configPath?: string;
   /** Project root (dir of cuttlefish.config.ts); passed to transpileFile for the ESLint gate. */

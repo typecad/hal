@@ -8,7 +8,7 @@ import {
   clearAllProfileCaches
 } from "../packages/cuttlefish/src/testing";
 import { setActiveStrategy } from "../packages/cuttlefish/src/ir/hal-resolver";
-import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "../packages/cuttlefish/src/types";
+import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext, ComplianceMode } from "../packages/cuttlefish/src/types";
 import type { PlatformStrategy } from "../packages/cuttlefish/src/api/shared/platform-strategy";
 import { ArduinoStrategy } from "../packages/framework-arduino/src";
 import { NativeStrategy } from "../packages/framework-native/src";
@@ -54,6 +54,8 @@ export interface TranspileOptions {
    * (which has no wifi/http lowering).
    */
   strategy?: PlatformStrategy;
+  /** AUTOSAR C++14 compliance mode for this transpile. Default "off". */
+  autosar?: ComplianceMode;
 }
 
 let testCounter = 0;
@@ -94,6 +96,7 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
     libdefs,
     emitMaps: false,
     platformContext,
+    autosar: options.autosar,
     // Pass the active strategy through so the statement/expression renderers
     // pick it up via context.strategy (not just the setActiveStrategy side
     // effect, which only covers expression-position hal-expr resolution).

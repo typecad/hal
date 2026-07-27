@@ -1,0 +1,102 @@
+import type { RuleEntry } from "./types.js";
+
+/**
+ * Curated AUTOSAR C++14 rule subset enforced by the cuttlefish compliance
+ * module. ~50 rules: 39 [C] (enforce-by-construction) and 11 [D] (deviation).
+ *
+ * Detection regexes are deliberately conservative: prefer false-negatives
+ * over false-positives, because a false positive aborts builds in strict
+ * mode. The renderer is the primary enforcement; the self-check is the
+ * secondary net.
+ *
+ * See docs/superpowers/specs/2026-07-26-autosar-compliance-design.md §
+ * "Curated rule subset".
+ */
+export const RULES: readonly RuleEntry[] = [
+  // ── A. Preprocessor & macros ──────────────────────────────────────────
+  { id: "A16-0-1", title: "No #include of unused header", severity: "required", category: "C", enabled: true },
+  { id: "A16-0-3", title: "No #include inside namespace", severity: "required", category: "C",
+    detect: /^\s*namespace\s+\w+\s*\{[^}]*#include/m, enabled: true },
+  { id: "A16-0-4", title: "No #define inside another #define", severity: "required", category: "C", enabled: true },
+  { id: "A16-0-5", title: "Header file path unambiguous", severity: "required", category: "C", enabled: true },
+  { id: "A16-0-8", title: "#include not used for textual inclusion of code", severity: "required", category: "D", enabled: true },
+  { id: "A16-7-1", title: "Header guards via #pragma once", severity: "required", category: "C",
+    detect: /#ifndef\s+\w+_H\s*$|#define\s+\w+_H\s*$/m, enabled: true },
+
+  // ── B. Type safety & conversions ──────────────────────────────────────
+  { id: "M5-0-3", title: "Implicit narrowing conversion forbidden", severity: "required", category: "C", enabled: true },
+  { id: "M5-0-7", title: "C-style cast shall not be used", severity: "required", category: "C",
+    detect: /(^|[^:\w.])\(\s*\w[\w\s\*&]*\)\s*[a-zA-Z_(]/,
+    exempt: /static_cast|dynamic_cast|reinterpret_cast|const_cast/,
+    enabled: true },
+  { id: "M5-0-10", title: "No reinterpret_cast", severity: "required", category: "D",
+    detect: /reinterpret_cast</, enabled: true },
+  { id: "M5-2-8", title: "No pointer arithmetic out of bounds", severity: "required", category: "C", enabled: true },
+  { id: "A5-2-2", title: "No static_cast downcast of polymorphic type", severity: "required", category: "C", enabled: true },
+  { id: "M5-3-2", title: "No bitwise ops on signed narrow types", severity: "required", category: "C", enabled: true },
+  { id: "A5-3-2", title: "No bitwise assignment on signed narrow types", severity: "required", category: "C", enabled: true },
+  { id: "A7-1-1", title: "const on objects that are not modified", severity: "required", category: "C", enabled: true },
+  { id: "A7-1-6", title: "No typedef outside a function -> use using alias", severity: "required", category: "C",
+    detect: /\btypedef\b/, exempt: /\busing\b/, enabled: true },
+  { id: "A7-2-1", title: "Enumerators use scoped enums (enum class)", severity: "required", category: "C",
+    detect: /\benum\s+(?!class\b|struct\b)\w+/, enabled: true },
+
+  // ── C. Memory & objects ───────────────────────────────────────────────
+  { id: "A18-0-1", title: "<cstring> over C headers", severity: "required", category: "C",
+    detect: /#include\s+<string\.h>/, enabled: true },
+  { id: "A18-5-8", title: "No new/delete on plain objects", severity: "required", category: "D",
+    detect: /\bnew\s+\w|\bdelete\s+\w/, enabled: true },
+  { id: "A18-5-10", title: "No malloc/calloc/realloc", severity: "required", category: "C",
+    detect: /\b(malloc|calloc|realloc)\s*\(/, enabled: true },
+  { id: "A27-0-4", title: "No function returning std::move of local", severity: "required", category: "C",
+    detect: /return\s+std::move\s*\(/, enabled: true },
+  { id: "M5-2-9", title: "No copy of volatile std::atomic", severity: "required", category: "C", enabled: true },
+
+  // ── D. Functions & interfaces ─────────────────────────────────────────
+  { id: "A8-4-2", title: "Forward-declare parameters before use", severity: "required", category: "C", enabled: true },
+  { id: "A8-4-10", title: "Single return per function", severity: "advisory", category: "D", enabled: true },
+  { id: "M3-2-1", title: "All static-storage objects const-initialized", severity: "required", category: "D", enabled: true },
+  { id: "M3-2-3", title: "No aggregate inits the compiler can't order statically", severity: "required", category: "C", enabled: true },
+  { id: "M3-2-4", title: "No non-trivial init at static storage", severity: "required", category: "D", enabled: true },
+  { id: "A3-1-1", title: "final on leaf classes", severity: "required", category: "C", enabled: true },
+  { id: "A3-1-5", title: "All virtual methods have override or final", severity: "required", category: "C", enabled: true },
+  { id: "A10-3-1", title: "No function hiding in derived classes", severity: "required", category: "C", enabled: true },
+  { id: "A8-4-7", title: "One definition of an inline function", severity: "required", category: "C", enabled: true },
+
+  // ── E. Control flow & exceptions ──────────────────────────────────────
+  { id: "A5-1-1", title: "No recursion", severity: "required", category: "C", enabled: true },
+  { id: "A15-0-2", title: "noexcept on functions that can't throw", severity: "required", category: "C", enabled: true },
+  { id: "A15-5-1", title: "Destructors must not throw", severity: "required", category: "C", enabled: true },
+  { id: "M15-1-3", title: "No throw expressions; no try/catch", severity: "required", category: "D",
+    detect: /\bthrow\b|\btry\s*\{|\bcatch\s*\(/, enabled: true },
+  { id: "A7-5-1", title: "[[fallthrough]] required where switch falls through", severity: "required", category: "C", enabled: true },
+  { id: "M6-2-1", title: "switch must have default", severity: "required", category: "C", enabled: true },
+  { id: "M6-4-3", title: "for condition guarded against finite iteration", severity: "required", category: "C", enabled: true },
+  { id: "A6-5-1", title: "for/while have single loop variable", severity: "required", category: "C", enabled: true },
+
+  // ── F. Literal & style ────────────────────────────────────────────────
+  { id: "A2-10-5", title: "Identifier reuse across scopes limited", severity: "advisory", category: "C", enabled: true },
+  { id: "A2-13-1", title: "Only hex literals are bitwise", severity: "required", category: "D", enabled: true },
+  { id: "A3-9-1", title: "Fixed-width integers (uint32_t not unsigned int)", severity: "required", category: "C", enabled: true },
+  { id: "M4-5-1", title: "No magic numbers; named constants", severity: "advisory", category: "D", enabled: true },
+  { id: "A18-1-1", title: "C-style arrays -> std::array", severity: "required", category: "D", enabled: true },
+  { id: "A8-4-4", title: "No goto", severity: "required", category: "C",
+    detect: /\bgoto\s+\w+;/, enabled: true },
+  { id: "A7-1-2", title: "No register keyword", severity: "required", category: "C",
+    detect: /\bregister\b/, enabled: true },
+
+  // ── G. Source organization ────────────────────────────────────────────
+  { id: "A3-3-2", title: "No unreachable code", severity: "required", category: "C", enabled: true },
+  { id: "A0-1-1", title: "No unused variables/functions", severity: "required", category: "C", enabled: true },
+  { id: "A2-11-1", title: "No identifier is simultaneously typedef and another entity", severity: "required", category: "C", enabled: true },
+  { id: "M0-1-2", title: "No value-convertible dead code", severity: "required", category: "C", enabled: true },
+  { id: "A7-3-1", title: "No public/protected mutable non-static members", severity: "required", category: "D", enabled: true },
+];
+
+export function getRule(id: string): RuleEntry | undefined {
+  return RULES.find((r) => r.id === id);
+}
+
+export function rulesByCategory(category: "C" | "D"): readonly RuleEntry[] {
+  return RULES.filter((r) => r.category === category);
+}

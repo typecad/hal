@@ -115,9 +115,23 @@ export function generateAsyncTaskClass(
   const awaitCount = segments.filter((s) => s.awaitedCallee !== undefined).length;
   const stateCount = awaitCount + 1; // STATE_0 … STATE_{awaitCount}; cyclic loops back, linear adds STATE_DONE
 
+  // State enum is emitted as `enum class State` (AUTOSAR A7-2-1), so all
+  // references must be scope-qualified as `State::STATE_X`. The stateEnumList
+  // (used inside `enum class State { ... }`) uses the bare names; everywhere
+  // else (assignments, case labels, comparisons) uses the qualified form.
   const stateNames: string[] = [];
-  for (let i = 0; i < stateCount; i++) stateNames.push(`STATE_${i}`);
-  if (!isCyclic) stateNames.push("STATE_DONE");
+  const qualifiedStateNames: string[] = [];
+  for (let i = 0; i < stateCount; i++) {
+    stateNames.push(`STATE_${i}`);
+    qualifiedStateNames.push(`State::STATE_${i}`);
+  }
+  if (!isCyclic) {
+    stateNames.push("STATE_DONE");
+    qualifiedStateNames.push("State::STATE_DONE");
+  }
+  const Q = (i: number) => qualifiedStateNames[i];
+  const Q_DONE = "State::STATE_DONE";
+  const Q_0 = "State::STATE_0";
 
   // Helper: render a non-await statement as a single C++ line
   const renderStmt = (stmt: StatementIR): string =>
@@ -186,7 +200,7 @@ export function generateAsyncTaskClass(
     const seg = segments[i];
     const lines: string[] = [];
     if (seg.awaitedCallee === undefined) {
-      lines.push(`${pad}_state = ${isCyclic ? "STATE_0" : "STATE_DONE"};`);
+      lines.push(`${pad}_state = ${isCyclic ? Q_0 : Q_DONE};`);
       return lines;
     }
     const edge = edgeInfoMap.get(i);
@@ -209,7 +223,7 @@ export function generateAsyncTaskClass(
       const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
       lines.push(`${pad}_waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
     }
-    lines.push(`${pad}_state = STATE_${i + 1};`);
+    lines.push(`${pad}_state = ${Q(i + 1)};`);
     return lines;
   };
 
@@ -217,7 +231,7 @@ export function generateAsyncTaskClass(
 
   for (let i = 0; i < segments.length; i++) {
     const seg = segments[i];
-    const stateName = `STATE_${i}`;
+    const stateName = Q(i);
     const body: string[] = [];
 
     const edgePoll = i > 0 ? edgeInfoMap.get(i - 1) : undefined;
@@ -288,15 +302,15 @@ export function generateAsyncTaskClass(
     caseLines.push(`      case ${stateName}:`, `        {`, ...body, `        }`, `        break;`);
   }
 
-  if (!isCyclic) caseLines.push(`      case STATE_DONE:`, `        break;`);
+  if (!isCyclic) caseLines.push(`      case ${Q_DONE}:`, `        break;`);
 
   const stateEnumList = stateNames.join(", ");
-  const isCompleteExpr = isCyclic ? "false" : "_state == STATE_DONE";
+  const isCompleteExpr = isCyclic ? "false" : `_state == ${Q_DONE}`;
 
   // Build constructor initializer list and edge/tap member declarations
   const edgeMemberArr = Array.from(edgeMembers);
   const tapMemberArr = Array.from(tapMembers.keys());
-  const inits: string[] = [`_state(STATE_0)`, `_waitUntil(0)`];
+  const inits: string[] = [`_state(${Q_0})`, `_waitUntil(0)`];
   for (const m of edgeMemberArr) inits.push(`${m}(LOW)`);
   for (const m of tapMemberArr) inits.push(`${m}(0)`);
   const ctorInitList = inits.join(", ");
@@ -310,7 +324,7 @@ export function generateAsyncTaskClass(
     `// Async state machine for ${fnName}`,
     `class ${className} {`,
     `public:`,
-    `  enum State { ${stateEnumList} };`,
+    `  enum class State { ${stateEnumList} };`,
     `  ${className}() : ${ctorInitList} {}`,
     `  void run() {`,
     `    switch (_state) {`,
@@ -318,7 +332,7 @@ export function generateAsyncTaskClass(
     `    }`,
     `  }`,
     `  bool isComplete() const { return ${isCompleteExpr}; }`,
-    `  void reset() { _state = STATE_0; _waitUntil = 0;${edgeResetList}${tapResetList} }`,
+    `  void reset() { _state = ${Q_0}; _waitUntil = 0;${edgeResetList}${tapResetList} }`,
     `private:`,
     `  State _state;`,
     `  unsigned long _waitUntil;`,

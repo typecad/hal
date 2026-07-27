@@ -115,7 +115,7 @@ public:
     for (int i = 0; i < CAP; ++i) {
       if (_timers[i].active) {
         // (now - deadline) handles the millis() 32-bit wrap correctly
-        if ((long)(now - _timers[i].deadline) >= 0) {
+        if (static_cast<long>(now - _timers[i].deadline) >= 0) {
           if (_timers[i].repeat) {
             _timers[i].deadline = now + _timers[i].periodMs;
           } else {
@@ -189,12 +189,12 @@ inline void __cuttlefish_wait_pin_edge(int pin, int mode, long timeout) {
   unsigned long start = millis();
   // Phase 1: wait for the pin to be in the idle state (the "before" level)
   while (digitalRead(pin) != idleState) {
-    if (timeout >= 0 && (millis() - start >= (unsigned long)timeout)) return;
+    if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) return;
     delay(1);
   }
   // Phase 2: wait for the transition to the target state (the actual edge)
   while (digitalRead(pin) != targetState) {
-    if (timeout >= 0 && (millis() - start >= (unsigned long)timeout)) return;
+    if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) return;
     delay(1);
   }
 }

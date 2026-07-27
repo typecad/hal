@@ -6,6 +6,10 @@ import { makeGeneratedMap, writeSourceMap } from "../../mapping/source-map.js";
 import { dedupe, hasConsoleCalls, resolveTranspiledModuleInclude } from "../utils/index.js";
 import { appendHeaderLine } from "./line-appender.js";
 import type { EmitterContext } from "./emitter-context.js";
+import { runSelfCheck } from "../compliance/rule-engine.js";
+import { renderRegistryJson } from "../compliance/deviation-writer.js";
+import { renderArxml } from "../compliance/arxml-writer.js";
+import type { Diagnostic } from "../../api/shared/index.js";
 
 /** Derives a unique C preprocessor guard name from a source file path. */
 function sanitizeGuardName(filePath: string): string {
@@ -286,6 +290,44 @@ export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
 
   const diagnostics = [...program.diagnostics, ...ctx.profileDiagnostics, ...ctx.emitDiagnostics];
   diagnostics.push(...strategy.emitDiagnostics(options.emitMode));
+
+  // ── AUTOSAR compliance self-check + sidecar ────────────────────────────
+  // Runs only when --autosar is warn or strict. Emits an AUTOSAR_<ruleId>
+  // diagnostic per finding (severity: error for required unrecorded
+  // violations in strict mode, otherwise warning) and writes the sidecar
+  // deviation registry next to the emitted artifact.
+  if (ctx.compliance.isEnabled()) {
+    const findings = runSelfCheck(ctx.compliance, ctx.sourceLines, ctx.headerLines);
+    const mode = ctx.compliance.mode();
+    for (const f of findings) {
+      const isError =
+        mode === "strict" &&
+        f.kind === "unrecorded-violation" &&
+        f.severity === "required";
+      const diag: Diagnostic = {
+        severity: isError ? "error" : "warning",
+        code: `AUTOSAR_${f.ruleId}`,
+        message: `AUTOSAR ${f.ruleId} ${f.kind} at ${f.file} line ${f.line}: ${f.snippet}`,
+        line: f.line,
+        column: 1,
+      };
+      diagnostics.push(diag);
+    }
+
+    // Sidecar deviation registry — written for both warn and strict modes
+    // alongside the emitted artifact (mirrors how .thcppmap.json sits next
+    // to the .cpp/.ino today).
+    const toolVersion = options.toolVersion ?? "unknown";
+    const registryPath = path.join(outDir, `${baseName}.autosar-deviations.json`);
+    writeText(registryPath, renderRegistryJson(ctx.compliance, path.basename(sourcePath), toolVersion));
+
+    // Optional ARXML projection (Artop/DaVinci tooling). Gated behind
+    // --autosar-arxml so projects that don't need it pay no cost.
+    if (options.autosarArxml) {
+      const arxmlPath = path.join(outDir, `${baseName}.autosar-deviations.arxml`);
+      writeText(arxmlPath, renderArxml(ctx.compliance, path.basename(sourcePath)));
+    }
+  }
 
   return {
     headerPath: outputHeaderPath,

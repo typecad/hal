@@ -11,6 +11,7 @@ import { ResolvedNpmPackage } from "../../transpile/resolution.js";
 import { resolveStrategy } from "../../platform/registry.js";
 import { getLoadedFramework } from "../../framework-registry.js";
 import { entryHasUI } from "../../ui-hook.js";
+import { ComplianceContext } from "../compliance/compliance-context.js";
 import {
   createEmissionScopeState,
   statementNeedsSnprintf,
@@ -1050,5 +1051,6 @@ export function buildEmitterContext(
     templateInterfaceNames,
     interfaceNamespaceMap,
     interfaceFieldTypes,
+    compliance: new ComplianceContext(options.autosar ?? "off"),
   };
 }
