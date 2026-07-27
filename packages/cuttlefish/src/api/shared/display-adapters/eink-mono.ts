@@ -48,7 +48,7 @@ export const einkMonoAdapter: DisplayAdapterGenerator = (display) => {
       // then calls this with the unioned dirty rect. TODO Phase 5: verify the
       // exact partial-refresh API for the target EPD library.
       "static inline void display_partial_refresh(int16_t x, int16_t y, int16_t w, int16_t h) {",
-      "  __tc_display.refreshPartial(x, y, (uint16_t)w, (uint16_t)h);",
+      "  __tc_display.refreshPartial(x, y, static_cast<uint16_t>(w), static_cast<uint16_t>(h));",
       "}",
       // drawPixel goes through GFX into the EPD buffer; partial_refresh publishes it.
       "static inline void display_fillScreen(uint32_t color) { __tc_display.fillScreen(color ? EPD_WHITE : EPD_BLACK); }",

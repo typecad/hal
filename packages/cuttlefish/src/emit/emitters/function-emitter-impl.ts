@@ -333,12 +333,12 @@ export function emitFunctions(ctx: EmitterContext): void {
         appendSourceLine(ctx, `  while (${loop.continueCondition}) {`);
         appendSourceLine(ctx, `    ${loop.preIteration}`);
       }
-      appendSourceLine(ctx, `  uint32_t __tc_ui_now = (uint32_t)${strategy.currentTimeMillis()};`);
+      appendSourceLine(ctx, `  uint32_t __tc_ui_now = static_cast<uint32_t>(${strategy.currentTimeMillis()});`);
       appendSourceLine(ctx, "  static uint32_t __tc_ui_last_tick = __tc_ui_now;");
       appendSourceLine(ctx, "  uint32_t __tc_ui_delta = __tc_ui_now - __tc_ui_last_tick;");
       appendSourceLine(ctx, "  __tc_ui_last_tick = __tc_ui_now;");
       appendSourceLine(ctx, "  if (__tc_ui_delta > 250) __tc_ui_delta = 250;");
-      appendSourceLine(ctx, "  ui_tick((uint16_t)__tc_ui_delta);");
+      appendSourceLine(ctx, "  ui_tick(static_cast<uint16_t>(__tc_ui_delta));");
       if (loop) {
         appendSourceLine(ctx, `    ${loop.postIteration}`);
         appendSourceLine(ctx, `  }`);
