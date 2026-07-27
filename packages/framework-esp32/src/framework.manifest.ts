@@ -28,7 +28,7 @@ export default defineFrameworkManifest({
 
   profile: {
     targets: ['esp32', 'esp32s3', 'esp32c3', 'esp32c6'],
-    forcedIncludes: ['<stdio.h>', '<string.h>', '"freertos/FreeRTOS.h"', '"esp_log.h"', '"esp_system.h"'],
+    forcedIncludes: ['<stdio.h>', '<cstring>', '"freertos/FreeRTOS.h"', '"esp_log.h"', '"esp_system.h"'],
     symbolAliases: {},
   },
 

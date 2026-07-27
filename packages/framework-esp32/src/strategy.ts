@@ -141,7 +141,7 @@ export class Esp32Strategy extends ArduinoStrategy {
 
     const inc: string[] = [
       '<stdio.h>',
-      '<string.h>',
+      '<cstring>',
       '"freertos/FreeRTOS.h"',
       '"freertos/task.h"',
       '"esp_log.h"',
@@ -321,7 +321,7 @@ export class Esp32Strategy extends ArduinoStrategy {
       '        vTaskDelay(pdMS_TO_TICKS(ms == 0 ? 1 : ms));',
       '        return;',
       '    }',
-      '    int64_t deadline = esp_timer_get_time() + (int64_t)ms * 1000;',
+      '    int64_t deadline = esp_timer_get_time() + static_cast<int64_t>(ms) * 1000;',
       '    do {',
       '        __tc_coop_poll_hook();',
       '        vTaskDelay(1);',
@@ -848,4 +848,10 @@ static inline int digitalRead(int pin) {
       '',
     ];
   }
+
+  // A18-0-1: ESP-IDF compiles C++ and provides <cstring> (which wraps
+  // <string.h> and makes names available in both std:: and global namespace).
+  // Use the C++ form for AUTOSAR compliance; the inherited ArduinoStrategy
+  // returns <string.h> for AVR compatibility, but ESP32 is not AVR.
+  override cstringHeader(): string { return '<cstring>'; }
 }

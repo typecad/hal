@@ -17,7 +17,7 @@ import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 export function mqttInitLines(): string[] {
   return [
     `// CUTTLEFISH_MQTT_BEGIN`,
-    `#include <string.h>`,
+    `#include <cstring>`,
     `static esp_mqtt_client_handle_t __tc_mqtt_client = NULL;`,
     `static bool __tc_mqtt_connected = false;`,
     `// User callback registered via mqtt.on_message: void(const char* topic, const char* payload).`,

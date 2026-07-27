@@ -13,7 +13,7 @@ export function hwtimerInitLines(): string[] {
   return [
     `// CUTTLEFISH_HWTIMER_BEGIN`,
     `#include "driver/gptimer.h"`,
-    `#include <string.h>`,
+    `#include <cstring>`,
     `// Per-instance handles + overflow callbacks. GPTIMER_MAX Timers (4 on most`,
     `// ESP32 variants) is a safe upper bound; instances beyond that no-op.`,
     `#define __TC_HWTIMER_MAX 4`,
