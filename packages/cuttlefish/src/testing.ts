@@ -14,6 +14,10 @@ export { setLoadedFramework } from "./framework-registry.js";
 export { registerPlatformStrategy, resolveStrategy, clearAllProfileCaches } from "./platform/registry.js";
 export type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext } from "./types.js";
 
+// ── AUTOSAR compliance module (test-visible) ───────────────────────────────
+export { ComplianceContext, runSelfCheck, renderRegistryJson } from "./emit/compliance/index.js";
+export type { ComplianceMode, SelfCheckFinding, Deviation } from "./emit/compliance/index.js";
+
 // ── Config loader ───────────────────────────────────────────────────────────
 export {
   findConfigFile,
