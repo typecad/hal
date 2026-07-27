@@ -61,7 +61,7 @@ export const RULES: readonly RuleEntry[] = [
   { id: "A18-0-1", title: "<cstring> over C headers", severity: "required", category: "C",
     detect: /#include\s+<string\.h>/, enabled: true },
   { id: "A18-5-8", title: "No new/delete on plain objects", severity: "required", category: "D",
-    detect: /\bnew\s+\w|\bdelete\s+\w/, enabled: true },
+    detect: /\bnew\s+(?:[A-Z_]|\()|\bdelete\s+(?:\w+\s*\[|\w)/, enabled: true },
   { id: "A18-5-10", title: "No malloc/calloc/realloc", severity: "required", category: "C",
     detect: /\b(malloc|calloc|realloc)\s*\(/, enabled: true },
   { id: "A27-0-4", title: "No function returning std::move of local", severity: "required", category: "C",

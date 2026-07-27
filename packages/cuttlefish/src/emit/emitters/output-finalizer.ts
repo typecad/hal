@@ -1,7 +1,7 @@
 ﻿import path from "node:path";
 import type { ProgramIR } from "../../api/index.js";
 import type { GeneratedOutputs, SourceMapEntry } from "../../types.js";
-import { writeText } from "../../utils/fs.js";
+import { writeText, readText } from "../../utils/fs.js";
 import { makeGeneratedMap, writeSourceMap } from "../../mapping/source-map.js";
 import { dedupe, hasConsoleCalls, resolveTranspiledModuleInclude } from "../utils/index.js";
 import { appendHeaderLine } from "./line-appender.js";
@@ -297,7 +297,17 @@ export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
   // violations in strict mode, otherwise warning) and writes the sidecar
   // deviation registry next to the emitted artifact.
   if (ctx.compliance.isEnabled()) {
-    const findings = runSelfCheck(ctx.compliance, ctx.sourceLines, ctx.headerLines);
+    // Scan the ACTUAL file content (post-writeText) rather than ctx.sourceLines,
+    // because some ctx.sourceLines entries contain embedded newlines (e.g. ESP32
+    // shim blocks pushed as multi-line strings), making array indices != file
+    // line numbers. Reading the written file gives correct 1:1 line numbers.
+    const actualSourceLines = outputHeaderPath
+      ? readText(sourcePath).split("\n")
+      : readText(sourcePath).split("\n");
+    const actualHeaderLines = outputHeaderPath
+      ? readText(outputHeaderPath).split("\n")
+      : [];
+    const findings = runSelfCheck(ctx.compliance, actualSourceLines, actualHeaderLines);
     const mode = ctx.compliance.mode();
 
     // Helper: map a C++ generated line back to its originating TS source
