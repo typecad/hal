@@ -33,7 +33,7 @@ static inline void ui_aa_push(CuttlefishCanvas16* c, int16_t dx, int16_t dy) {
   // or the display directly when not. Row-by-row drawRGBBitmap (no transparent
   // alpha — the AA canvas already has the blended pixels).
   for (int16_t row = 0; row < h; row++) {
-    ui_display_draw_rgb_bitmap(dx, dy + row, display_canvasBuffer(c) + (int32_t)row * w, w, 1);
+    ui_display_draw_rgb_bitmap(dx, dy + row, display_canvasBuffer(c) + static_cast<int32_t>(row) * w, w, 1);
   }
 }
 
@@ -44,15 +44,15 @@ static inline void ui_aa_pixel(CuttlefishCanvas16* c, int16_t x, int16_t y, UI_C
   if (x < 0 || y < 0 || x >= display_canvasWidth(c) || y >= display_canvasHeight(c)) return;
   if (cov >= 255) { display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, color); return; }
   UI_COLOR_T bg = display_canvasGetPixel(c, x, y);
-  uint8_t op = (uint8_t)((uint16_t)cov * 100 / 255);
+  uint8_t op = static_cast<uint8_t>(static_cast<uint16_t>(cov) * 100 / 255);
   display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, ui_blend(color, bg, op));
 }
 
 // Xiaolin Wu antialiased line. Coordinates are in canvas-local space.
 static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x1, float y1, UI_COLOR_T color) {
   if (!c || !display_canvasBuffer(c)) return;
-  auto ipart = [](float f) { return (int16_t)f; };
-  auto round_f = [](float f) { return (int16_t)(f + 0.5f); };
+  auto ipart = [](float f) { return static_cast<int16_t>(f); };
+  auto round_f = [](float f) { return static_cast<int16_t>(f + 0.5f); };
   auto fpart = [](float f) { return f - static_cast<float>(static_cast<int16_t>(f)); };
   auto rfpart = [&](float f) { return 1.0f - fpart(f); };
 
@@ -69,11 +69,11 @@ static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x
 
   for (int16_t x = xpx1; x <= ipart(x1); x++) {
     if (steep) {
-      ui_aa_pixel(c, ipart(intery), x, color, (uint8_t)(rfpart(intery) * 255));
-      ui_aa_pixel(c, ipart(intery) + 1, x, color, (uint8_t)(fpart(intery) * 255));
+      ui_aa_pixel(c, ipart(intery), x, color, static_cast<uint8_t>(rfpart(intery) * 255));
+      ui_aa_pixel(c, ipart(intery) + 1, x, color, static_cast<uint8_t>(fpart(intery) * 255));
     } else {
-      ui_aa_pixel(c, x, ipart(intery), color, (uint8_t)(rfpart(intery) * 255));
-      ui_aa_pixel(c, x, ipart(intery) + 1, color, (uint8_t)(fpart(intery) * 255));
+      ui_aa_pixel(c, x, ipart(intery), color, static_cast<uint8_t>(rfpart(intery) * 255));
+      ui_aa_pixel(c, x, ipart(intery) + 1, color, static_cast<uint8_t>(fpart(intery) * 255));
     }
     intery += gradient;
   }
@@ -84,24 +84,24 @@ static inline void ui_aa_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, f
   if (!c || !display_canvasBuffer(c)) return;
   if (r <= 0) return;
   // Walk each scanline from top to bottom of the bounding box.
-  int16_t y0 = (int16_t)floor(cy - r);
-  int16_t y1 = (int16_t)ceil(cy + r);
+  int16_t y0 = static_cast<int16_t>(floor(cy - r));
+  int16_t y1 = static_cast<int16_t>(ceil(cy + r));
   for (int16_t y = y0; y <= y1; y++) {
-    float dy = (float)y - cy;
+    float dy = static_cast<float>(y) - cy;
     float dx = r * r - dy * dy;
     if (dx < 0) continue;
     float halfW = sqrtf(dx);
-    float leftX = (float)cx - halfW;
-    float rightX = (float)cx + halfW;
+    float leftX = static_cast<float>(cx) - halfW;
+    float rightX = static_cast<float>(cx) + halfW;
     // Left edge: blend two pixels at the coverage split.
-    int16_t lx = (int16_t)floor(leftX);
+    int16_t lx = static_cast<int16_t>(floor(leftX));
     float lfrac = leftX - lx;
-    ui_aa_pixel(c, lx, y, color, (uint8_t)((1.0f - lfrac) * 255));
+    ui_aa_pixel(c, lx, y, color, static_cast<uint8_t>((1.0f - lfrac) * 255));
     ui_aa_pixel(c, lx + 1, y, color, 0);  // interior starts here (drawn solid below)
     // Right edge.
-    int16_t rx = (int16_t)floor(rightX);
+    int16_t rx = static_cast<int16_t>(floor(rightX));
     float rfrac = rightX - rx;
-    ui_aa_pixel(c, rx, y, color, (uint8_t)(rfrac * 255));
+    ui_aa_pixel(c, rx, y, color, static_cast<uint8_t>(rfrac * 255));
     ui_aa_pixel(c, rx + 1, y, color, 0);
     // Solid fill between edges (skip the edge pixels already blended).
     for (int16_t x = lx + 1; x < rx; x++) {
@@ -114,21 +114,21 @@ static inline void ui_aa_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, f
 static inline void ui_aa_fill_circle(CuttlefishCanvas16* c, int16_t cx, int16_t cy, float r, UI_COLOR_T color) {
   if (!c || !display_canvasBuffer(c)) return;
   if (r <= 0) return;
-  int16_t y0 = (int16_t)floor(cy - r);
-  int16_t y1 = (int16_t)ceil(cy + r);
+  int16_t y0 = static_cast<int16_t>(floor(cy - r));
+  int16_t y1 = static_cast<int16_t>(ceil(cy + r));
   for (int16_t y = y0; y <= y1; y++) {
-    float dy = (float)y - cy;
+    float dy = static_cast<float>(y) - cy;
     float dx = r * r - dy * dy;
     if (dx < 0) continue;
     float halfW = sqrtf(dx);
-    float leftX = (float)cx - halfW;
-    float rightX = (float)cx + halfW;
-    int16_t lx = (int16_t)floor(leftX);
-    int16_t rx = (int16_t)ceil(rightX);
+    float leftX = static_cast<float>(cx) - halfW;
+    float rightX = static_cast<float>(cx) + halfW;
+    int16_t lx = static_cast<int16_t>(floor(leftX));
+    int16_t rx = static_cast<int16_t>(ceil(rightX));
     // Blend left edge.
-    ui_aa_pixel(c, lx, y, color, (uint8_t)((1.0f - (leftX - lx)) * 255));
+    ui_aa_pixel(c, lx, y, color, static_cast<uint8_t>((1.0f - (leftX - lx)) * 255));
     // Blend right edge.
-    ui_aa_pixel(c, rx, y, color, (uint8_t)((rightX - (rx - 1)) * 255));
+    ui_aa_pixel(c, rx, y, color, static_cast<uint8_t>((rightX - (rx - 1)) * 255));
     // Solid interior.
     for (int16_t x = lx + 1; x < rx; x++) {
       if (x >= 0 && x < display_canvasWidth(c) && y >= 0 && y < display_canvasHeight(c)) display_targetDrawPixel((CuttlefishDisplayTarget*)c, x, y, color);

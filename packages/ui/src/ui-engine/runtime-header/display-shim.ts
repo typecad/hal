@@ -44,8 +44,8 @@ static inline uint8_t ui_clip_rect_to_display_target(int16_t* x, int16_t* y, int
   if (x0 >= x1 || y0 >= y1) return 0;
   *x = x0;
   *y = y0;
-  *w = (int16_t)(x1 - x0);
-  *h = (int16_t)(y1 - y0);
+  *w = static_cast<int16_t>(x1 - x0);
+  *h = static_cast<int16_t>(y1 - y0);
   return 1;
 }
 static inline void ui_display_draw_pixel(int16_t x, int16_t y, UI_COLOR_T color) {

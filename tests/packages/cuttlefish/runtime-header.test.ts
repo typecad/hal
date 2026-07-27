@@ -103,7 +103,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/static inline uint8_t ui_ease_lerp_k\s*\(uint8_t timing,\s*uint8_t k\)/);
     expect(header).toMatch(/case\s+UI_TIMING_EASE_IN_OUT:\s*x1\s*=\s*420;\s*y1\s*=\s*0;\s*x2\s*=\s*580;\s*y2\s*=\s*1000/);
     expect(header).toMatch(/int32_t lo\s*=\s*0,\s*hi\s*=\s*1000/);
-    expect(header).toMatch(/int64_t termX1\s*=\s*\(int64_t\)3\s*\*\s*mt\s*\*\s*mt\s*\*\s*t\s*\*\s*x1/);
+    expect(header).toMatch(/int64_t termX1\s*=\s*static_cast<int64_t>\(3\)\s*\*\s*mt\s*\*\s*mt\s*\*\s*t\s*\*\s*x1/);
     // The helper body (signature → closing brace) must not use floating-point types.
     const helperBody = header.match(/static inline uint8_t ui_ease_lerp_k[\s\S]*?\n}/)?.[0] ?? "";
     expect(helperBody).not.toMatch(/\b(float|double)\b/);

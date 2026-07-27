@@ -117,17 +117,17 @@ static inline uint8_t ui_ease_lerp_k(uint8_t timing, uint8_t k) {
   for (uint8_t i = 0; i < 14; i++) {
     int32_t t = (lo + hi) >> 1;
     int32_t mt = 1000 - t;
-    int64_t termX1 = (int64_t)3 * mt * mt * t * x1;   // /1e12
-    int64_t termX2 = (int64_t)3 * mt * t * t * x2;    // /1e12
-    int64_t termX3 = (int64_t)t * t * t * 1000;       // /1e12 (t³ was /1e9)
+    int64_t termX1 = static_cast<int64_t>(3) * mt * mt * t * x1;   // /1e12
+    int64_t termX2 = static_cast<int64_t>(3) * mt * t * t * x2;    // /1e12
+    int64_t termX3 = static_cast<int64_t>(t) * t * t * 1000;       // /1e12 (t³ was /1e9)
     int32_t X = static_cast<int32_t>((termX1 + termX2 + termX3) / 1000000000LL);  // back to /1000
     if (X < targetX) lo = t; else hi = t;
   }
   int32_t t = (lo + hi) >> 1;
   int32_t mt = 1000 - t;
-  int64_t termY1 = (int64_t)3 * mt * mt * t * y1;
-  int64_t termY2 = (int64_t)3 * mt * t * t * y2;
-  int64_t termY3 = (int64_t)t * t * t * 1000;
+  int64_t termY1 = static_cast<int64_t>(3) * mt * mt * t * y1;
+  int64_t termY2 = static_cast<int64_t>(3) * mt * t * t * y2;
+  int64_t termY3 = static_cast<int64_t>(t) * t * t * 1000;
   int32_t Y = static_cast<int32_t>((termY1 + termY2 + termY3) / 1000000000LL);  // /1000
   return static_cast<uint8_t>(Y / 10);  // back to /100
 }

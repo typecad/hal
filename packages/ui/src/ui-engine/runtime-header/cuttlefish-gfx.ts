@@ -61,8 +61,8 @@ export function emitCuttlefishGfx(active: boolean): string {
 #define CUTTLEFISH_GFX_DEFINED
 
 #include <stdint.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 
 // ── Panel-ops interface ────────────────────────────────────────────────────
 // Each native adapter fills a CuttlefishPanelOps with function pointers that
@@ -445,7 +445,7 @@ CuttlefishCanvas16::CuttlefishCanvas16(int16_t w, int16_t h)
     buffer_(nullptr), canvas_w_(w), canvas_h_(h) {
   if ((w > 0) && (h > 0)) {
     size_t bytes = static_cast<size_t>(w) * static_cast<size_t>(h) * sizeof(uint16_t);
-    buffer_ = (uint16_t*)malloc(bytes);
+    buffer_ = new (std::nothrow) uint16_t[static_cast<size_t>(w) * static_cast<size_t>(h)];
     if (buffer_) memset(buffer_, 0, bytes);
   }
 }
@@ -485,7 +485,7 @@ CuttlefishCanvasMono::CuttlefishCanvasMono(int16_t w, int16_t h)
   if ((w > 0) && (h > 0)) {
     size_t row_bytes = (static_cast<size_t>(w) + 7u) / 8u;
     size_t bytes = row_bytes * static_cast<size_t>(h);
-    buffer_ = (uint8_t*)malloc(bytes);
+    buffer_ = new (std::nothrow) uint8_t[row_bytes * static_cast<size_t>(h)];
     if (buffer_) memset(buffer_, 0, bytes);
   }
 }

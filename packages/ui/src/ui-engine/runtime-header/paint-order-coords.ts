@@ -30,7 +30,7 @@ static inline uint8_t ui_node_draws_before(uint16_t a, uint16_t b) {
 // re-scanning all nodes for every dirty repaint (O(D·N)).
 static inline void ui_build_draw_order() {
   if (__ui_draw_order || __ui_node_count == 0) return;
-  __ui_draw_order = (uint16_t*)malloc(static_cast<size_t>(__ui_node_count) * sizeof(uint16_t));
+  __ui_draw_order = new (std::nothrow) uint16_t[__ui_node_count];
   if (!__ui_draw_order) return;
   for (uint16_t i = 0; i < __ui_node_count; i++) __ui_draw_order[i] = i;
   for (uint16_t a = 1; a < __ui_node_count; a++) {
@@ -54,7 +54,7 @@ static inline void ui_build_scroll_owner_table() {
   }
   __ui_scroll_owner_count = count;
   if (!count) return;
-  __ui_scroll_owners = (uint16_t*)malloc(static_cast<size_t>(count) * sizeof(uint16_t));
+  __ui_scroll_owners = new (std::nothrow) uint16_t[count];
   if (!__ui_scroll_owners) {
     __ui_scroll_owner_count = 0;
     return;

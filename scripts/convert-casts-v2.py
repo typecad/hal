@@ -16,6 +16,7 @@ Loops to stable so nested casts inside absorbed sub-expressions also convert:
 import os, re, sys
 
 PRIMS = ['uint16_t', 'uint8_t', 'int16_t', 'int8_t', 'uint32_t', 'int32_t',
+         'uint64_t', 'int64_t',
          'double', 'float', 'bool', 'int', 'char', 'long', 'short', 'size_t',
          'unsigned long', 'unsigned int', 'unsigned char']
 # Match longest primitive names first so 'unsigned long' wins over 'unsigned'.
@@ -58,7 +59,11 @@ def convert_line(line):
     C-style casts on it get converted. (A line-level exempt check would
     incorrectly skip nested casts after the first conversion.)"""
     stripped = line.lstrip()
-    if stripped.startswith('//') or stripped.startswith('*') or stripped.startswith('/*'):
+    if stripped.startswith('//') or stripped.startswith('/*'):
+        return line, 0
+    # Skip block-comment continuation lines (start with ' * ' or ' */'),
+    # but NOT pointer dereferences like '*w = ...' or '*ptr->field'.
+    if stripped.startswith('* ') or stripped.startswith('*/') or stripped == '*':
         return line, 0
     count = 0
     out = []

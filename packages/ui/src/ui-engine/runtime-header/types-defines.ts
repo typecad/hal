@@ -7,7 +7,8 @@ export function emitTypesDefines(): string {
 #ifndef __TC_UI_RUNTIME
 #define __TC_UI_RUNTIME
 #include <stdint.h>
-#include <string.h>
+#include <cstring>
+#include <new>
 #define UI_TEXT_BUF 32   // max stored UI text chars, excluding the trailing NUL
 #define UI_TEXT_LINE_BUF 96
 #define UI_WS_NORMAL 0

@@ -13,10 +13,10 @@ static inline void ui_init(void) {
   // containers start locked until the scroll-container loop proves their
   // canvas fits.
   if (!__ui_scroll_canvas_ok && __ui_node_count > 0) {
-    __ui_scroll_canvas_ok = (uint8_t*)calloc(__ui_node_count, sizeof(uint8_t));
+    __ui_scroll_canvas_ok = new (std::nothrow) uint8_t[__ui_node_count]();
   }
   if (!__ui_scroll_mem_warned && __ui_node_count > 0) {
-    __ui_scroll_mem_warned = (uint8_t*)calloc(__ui_node_count, sizeof(uint8_t));
+    __ui_scroll_mem_warned = new (std::nothrow) uint8_t[__ui_node_count]();
   }
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
@@ -99,7 +99,7 @@ static inline void ui_on_release(uint16_t nodeIdx) {
 }
 
 // Pin-watch callback type: void fn(void)
-typedef void (*PinWatchCallback)(void);
+using PinWatchCallback = void (*)(void);
 
 struct UIPinWatch {
   uint8_t pin;

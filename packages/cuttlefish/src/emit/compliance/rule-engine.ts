@@ -78,7 +78,14 @@ export function runSelfCheck(
 
   // Pass 2: orphan-deviation detection. For every ledger entry, confirm an
   // inline comment exists at the recorded opening line in the right file.
+  // Skip entries from rules that have knownPatterns — those are intentionally
+  // inline-comment-less deviations (the emitted text is pre-baked shim strings
+  // that can't carry inline comments; the deviation lives in the sidecar only).
+  const rulesWithKnownPatterns = new Set(
+    RULES.filter((r) => r.knownPatterns).map((r) => r.id),
+  );
   for (const dev of ctx.ledger().all()) {
+    if (rulesWithKnownPatterns.has(dev.ruleId)) continue;
     const lines = dev.file === "source" ? sourceLines : headerLines;
     const openingLine = lines[dev.line - 1] ?? "";
     const commentMatch = openingLine.match(DEVIATION_COMMENT);

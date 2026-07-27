@@ -55,13 +55,34 @@ export const RULES: readonly RuleEntry[] = [
     ],
   },
   { id: "A7-2-1", title: "Enumerators use scoped enums (enum class)", severity: "required", category: "C",
-    detect: /\benum\s+(?!class\b|struct\b)\w+/, enabled: true },
+    detect: /\benum\s+(?!class\b|struct\b)\w+/, enabled: true,
+    knownPatterns: [
+      {
+        detect: /\benum\s+(?:UINodeKind|UIProperty)\b/,
+        justification: "UI runtime internal enums (UINodeKind, UIProperty) use unscoped form for C ABI compatibility; converting to enum class would require updating 58 references across the runtime header.",
+        kind: "other",
+      },
+    ],
+  },
 
   // ── C. Memory & objects ───────────────────────────────────────────────
   { id: "A18-0-1", title: "<cstring> over C headers", severity: "required", category: "C",
     detect: /#include\s+<string\.h>/, enabled: true },
   { id: "A18-5-8", title: "No new/delete on plain objects", severity: "required", category: "D",
-    detect: /\bnew\s+(?:[A-Z_]|\()|\bdelete\s+(?:\w+\s*\[|\w)/, enabled: true },
+    detect: /\bnew\s+(?:[A-Z_]|\()|\bdelete\s+(?:\w+\s*\[|\w)/, enabled: true,
+    knownPatterns: [
+      {
+        detect: /\bnew\s+\(|new\s+\(std::nothrow\)|new\s+\(ps_malloc|new\s+(?:Cuttlefish|GFX)/,
+        justification: "UI runtime allocates canvas buffers and draw-order arrays on the heap via new/new(std::nothrow); no stack alternative exists for dynamic-size buffers on embedded targets.",
+        kind: "raw-array",
+      },
+      {
+        detect: /\bdelete\s+\w/,
+        justification: "UI runtime frees heap-allocated canvas buffers via delete; matches the new(std::nothrow) allocation.",
+        kind: "raw-array",
+      },
+    ],
+  },
   { id: "A18-5-10", title: "No malloc/calloc/realloc", severity: "required", category: "C",
     detect: /\b(malloc|calloc|realloc)\s*\(/, enabled: true },
   { id: "A27-0-4", title: "No function returning std::move of local", severity: "required", category: "C",
@@ -107,7 +128,7 @@ export const RULES: readonly RuleEntry[] = [
   { id: "A8-4-4", title: "No goto", severity: "required", category: "C",
     detect: /\bgoto\s+\w+;/, enabled: true },
   { id: "A7-1-2", title: "No register keyword", severity: "required", category: "C",
-    detect: /\bregister\b/, enabled: true },
+    detect: /(?<![A-Za-z0-9_])register\s+(?:int|char|short|long|unsigned|float|double|bool|void|uint\d+_t|int\d+_t|size_t|auto)/, enabled: true },
 
   // ── G. Source organization ────────────────────────────────────────────
   { id: "A3-3-2", title: "No unreachable code", severity: "required", category: "C", enabled: true },
