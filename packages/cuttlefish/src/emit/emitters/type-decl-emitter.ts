@@ -9,9 +9,11 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
   const { program, strategy, effectiveEmitMode, reservedNames, emittedTopLevelStatements, topLevelScope } = ctx;
   const normalizeCppTypeForTarget = (cppType: string) => {
     // A3-9-1: resolve "auto" and substitute "int" with the fixed-width
-    // default under autosar.
-    if (cppType === "auto" || (cppType === "int" && ctx.compliance.isEnabled() && ctx.compliance.isBanned("A3-9-1"))) {
-      return strategy.defaultNumericType(ctx.compliance.isEnabled() ? ctx.compliance : undefined);
+    // default — but ONLY when autosar is active. When off, fall through to
+    // the strategy's normalizeCppType (Arduino returns "auto" for "auto").
+    const autosarOn = ctx.compliance.isEnabled() && ctx.compliance.isBanned("A3-9-1");
+    if (autosarOn && (cppType === "auto" || cppType === "int")) {
+      return strategy.defaultNumericType(ctx.compliance);
     }
     return strategy.normalizeCppType(cppType);
   };
