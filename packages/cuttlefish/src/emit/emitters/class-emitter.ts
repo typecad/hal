@@ -231,7 +231,12 @@ export function emitClasses(ctx: EmitterContext): void {
       if (classDef.typeParameters && classDef.typeParameters.length > 0) {
         appendSourceLine(ctx, `template<typename ${(classDef.typeParameters as string[]).join(", typename ")}>`);
       }
-      appendSourceLine(ctx, `class ${classDef.name}${inheritanceClause} {`);
+      // A3-1-1: stamp `final` on leaf classes (nothing inherits from them).
+      // baseClassesNeeded holds every class name that appears as an
+      // extendsClass somewhere in the program. Disabled when autosar is off.
+      const isLeaf = !baseClassesNeeded.has(classDef.name);
+      const finalKw = ctx.compliance.isEnabled() && isLeaf ? " final" : "";
+      appendSourceLine(ctx, `class ${classDef.name}${inheritanceClause}${finalKw} {`);
     }
 
     const publicFields = classDef.fields.filter(f => f.visibility === "public");
