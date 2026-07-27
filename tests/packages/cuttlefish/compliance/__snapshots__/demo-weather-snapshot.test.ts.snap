@@ -1,0 +1,11 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`demo-weather deviation snapshot > matches the recorded deviation set for demo-weather 1`] = `
+[
+  {
+    "code": "AUTOSAR_M5-0-7",
+    "count": 2,
+    "severity": "warning",
+  },
+]
+`;
