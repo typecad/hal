@@ -21,7 +21,7 @@ describe("C++ reactive runtime header", () => {
 
   it("contains a color lerp helper for transitions", () => {
     expect(header).toContain("lerp_color");
-    expect(header).toMatch(/\(int16_t\)br\s*-\s*\(int16_t\)ar/);
+    expect(header).toMatch(/static_cast<int16_t>\(br\)\s*-\s*static_cast<int16_t>\(ar\)/);
   });
 
   it("declares property-aware keyframe animation structs", () => {
@@ -240,10 +240,10 @@ describe("C++ reactive runtime header", () => {
 
   it("draws NODE_TEXT inside its CSS padding content box", () => {
     expect(header).toContain("ui_node_text_max_width");
-    expect(header).toMatch(/case NODE_TEXT:[\s\S]*int16_t insetL = \(int16_t\)__ui_nodes\[i\]\.borderWidth \+ \(int16_t\)__ui_nodes\[i\]\.paddingLeft/);
+    expect(header).toMatch(/case NODE_TEXT:[\s\S]*int16_t insetL = static_cast<int16_t>\(__ui_nodes\[i\]\.borderWidth\) \+ static_cast<int16_t>\(__ui_nodes\[i\]\.paddingLeft\)/);
     expect(header).toMatch(/case NODE_TEXT:[\s\S]*int16_t textX = __ui_nodes\[i\]\.box\.x \+ insetL/);
     expect(header).toMatch(/case NODE_TEXT:[\s\S]*ui_draw_node_border\(i, __ui_nodes\[i\]\.box\.x, drawY, bColor\)[\s\S]*case NODE_BUTTON:/);
-    expect(header).toMatch(/case NODE_TEXT:[\s\S]*ui_draw_wrapped_text\(displayText, textX, textY, \(uint16_t\)textW/);
+    expect(header).toMatch(/case NODE_TEXT:[\s\S]*ui_draw_wrapped_text\(displayText, textX, textY, static_cast<uint16_t>\(textW\)/);
   });
 
   it("supports wrapped text layout without heap allocation", () => {
@@ -259,7 +259,7 @@ describe("C++ reactive runtime header", () => {
   it("clips loop-heavy render helpers to the active display target before inner work", () => {
     expect(header).toContain("ui_clip_rect_to_display_target");
     expect(header).toMatch(/ui_draw_wrapped_text[\s\S]*ui_display_target_bounds\(&targetLeft[\s\S]*lineBottom <= targetTop \|\| lineY >= targetBottom[\s\S]*ui_copy_text_span/);
-    expect(header).toMatch(/ui_draw_asset_text[\s\S]*ui_display_target_bounds\(&targetLeft[\s\S]*glyphX \+ \(int16_t\)glyph->width <= targetLeft[\s\S]*for \(int16_t gy = gyStart; gy < gyEnd; gy\+\+\)/);
+    expect(header).toMatch(/ui_draw_asset_text[\s\S]*ui_display_target_bounds\(&targetLeft[\s\S]*glyphX \+ static_cast<int16_t>\(glyph->width\) <= targetLeft[\s\S]*for \(int16_t gy = gyStart; gy < gyEnd; gy\+\+\)/);
     expect(header).toMatch(/ui_draw_aa_text[\s\S]*ui_clip_rect_to_display_target\(&clipX,\s*&clipY,\s*&clipW,\s*&clipH\)[\s\S]*for \(int16_t yy = localY; yy < localY \+ clipH; yy\+\+\)/);
     expect(header).toMatch(/ui_draw_image_with_fit[\s\S]*ui_clip_rect_to_display_target\(&clipX,\s*&clipY,\s*&clipW,\s*&clipH\)[\s\S]*for \(int16_t ty = tyStart; ty < tyEnd; ty\+\+\)/);
     expect(header).toMatch(/ui_draw_gradient_fill[\s\S]*ui_clip_rect_to_display_target\(&clipX,\s*&clipY,\s*&clipW,\s*&clipH\)[\s\S]*for \(int16_t y = yStart; y < yEnd; y\+\+\)/);
@@ -342,8 +342,8 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_build_draw_order");
     expect(header).toContain("__ui_draw_order");
     expect(header).toMatch(/ui_build_draw_order\(\)/);
-    expect(header).toMatch(/i = \(int16_t\)__ui_draw_order\[__ui_draw_pass\+\+\]/);
-    expect(header).toMatch(/ui_node_draws_before\(candidate,\s*\(uint16_t\)i\)/);
+    expect(header).toMatch(/i = static_cast<int16_t>\(__ui_draw_order\[__ui_draw_pass\+\+\]\)/);
+    expect(header).toMatch(/ui_node_draws_before\(candidate,\s*static_cast<uint16_t>\(i\)\)/);
   });
 
   it("buffers pixel-heavy images and generated-font text through the RAM paint canvas", () => {
@@ -413,7 +413,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_warn_scroll_memory");
     expect(header).toContain("__ui_scroll_mem_warned");
     expect(header).toContain("__ui_scroll_node_id");
-    expect(header).toMatch(/ui_warn_scroll_memory\(\(uint16_t\)s, 2\)/);
+    expect(header).toMatch(/ui_warn_scroll_memory\(static_cast<uint16_t>\(s\), 2\)/);
     expect(header).toMatch(/Serial\.printf\([\s\S]*cuttlefish.*WARNING/);
     expect(header).toMatch(/ESP\.getFreeHeap\(\)/);
     expect(header).toMatch(/ESP\.getMaxAllocHeap\(\)/);
@@ -651,7 +651,7 @@ describe("C++ reactive runtime header", () => {
   it("pushes buffered scroll canvases before later outside layers can be repaired", () => {
     expect(header).toContain("ui_push_buffered_scroll_canvas");
     expect(header).toContain("ui_scroll_subtree_has_dirty");
-    expect(header).toMatch(/!ui_scroll_subtree_has_dirty\(\(uint16_t\)bufferedScrollNode\)\) \{[\s\S]*ui_push_buffered_scroll_canvas/);
+    expect(header).toMatch(/!ui_scroll_subtree_has_dirty\(static_cast<uint16_t>\(bufferedScrollNode\)\)\) \{[\s\S]*ui_push_buffered_scroll_canvas/);
     expect(header).toMatch(/if \(bufferedScrollNode >= 0 && bufferedScrollCanvas\) \{[\s\S]*ui_push_buffered_scroll_canvas/);
   });
 
@@ -739,8 +739,8 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/if\s*\(bufferedScrollRepaintCanvas\)\s*\{[\s\S]*scrollDrawW\s*=\s*__ui_nodes\[bufferedScrollNode\]\.box\.w;[\s\S]*scrollDrawH\s*=\s*bufferedScrollRepaintH/);
     expect(header).toMatch(/if\s*\(geometryChanged && !repairedGeometry\)[\s\S]*ui_invalidate_scroll_canvas_for_node\(n\)/);
     expect(header).toMatch(/__ui_nodes\[n\]\.box\.h = nextHeight;[\s\S]*ui_invalidate_text_layout_cache\(n\);[\s\S]*if\s*\(!repairedGeometry\)\s*ui_mark_dirty\(n\);/);
-    expect(header).not.toMatch(/if\s*\(geometryScrollParent\s*>=\s*0\)\s*\{[\s\S]*ui_mark_scroll_view_dirty\(\(uint16_t\)geometryScrollParent\)/);
-    expect(header).not.toMatch(/if\s*\(geometryChanged\)[\s\S]*ui_mark_scroll_subtree_dirty\(\(uint8_t\)scrollParent\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
+    expect(header).not.toMatch(/if\s*\(geometryScrollParent\s*>=\s*0\)\s*\{[\s\S]*ui_mark_scroll_view_dirty\(static_cast<uint16_t>\(geometryScrollParent\)\)/);
+    expect(header).not.toMatch(/if\s*\(geometryChanged\)[\s\S]*ui_mark_scroll_subtree_dirty\(static_cast<uint8_t>\(scrollParent\)\)[\s\S]*__ui_nodes\[n\]\.transformOffsetX = nextTransformX/);
   });
 
   it("pauses geometry keyframe animations while scroll motion is active", () => {
@@ -917,7 +917,7 @@ describe("canvas runtime", () => {
     expect(header).toMatch(/ui_display_set_cursor\(int16_t x[\s\S]*x \+ __ui_draw_off_x/);
     expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*uint8_t\s+__ui_canvas_drawn\s*=\s*0/);
     expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*if\s*\(ui_display_is_default_target\(\)\)[\s\S]*display_createCanvas/);
-    expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*if\s*\(!__ui_canvas_drawn\)[\s\S]*__ui_draw_off_x = \(int16_t\)\(__ui_prev_off_x \+ __ui_nodes\[i\]\.box\.x\)[\s\S]*__ui_canvas_fn\(nullptr\)[\s\S]*__ui_draw_off_x = __ui_prev_off_x/);
+    expect(header).toMatch(/case\s+NODE_CANVAS:[\s\S]*if\s*\(!__ui_canvas_drawn\)[\s\S]*__ui_draw_off_x = static_cast<int16_t>\(__ui_prev_off_x \+ __ui_nodes\[i\]\.box\.x\)[\s\S]*__ui_canvas_fn\(nullptr\)[\s\S]*__ui_draw_off_x = __ui_prev_off_x/);
   });
 });
 

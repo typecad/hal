@@ -46,7 +46,7 @@ export function emitTickDirtyDrawPhase(): string {
         ui_kb_draw_text_row();
         uint8_t has_key_repaint = (__ui_kb_repaint_key >= 0 && __ui_kb_keys[__ui_kb_repaint_key].special != 255) ? 1 : 0;
         if (has_key_repaint) {
-          ui_kb_draw_key((uint8_t)__ui_kb_repaint_key);
+          ui_kb_draw_key(static_cast<uint8_t>(__ui_kb_repaint_key));
         }
         __ui_kb_box.x = saveBoxX;
         __ui_kb_box.y = saveBoxY;
@@ -57,17 +57,17 @@ export function emitTickDirtyDrawPhase(): string {
         display_startWrite();
         if (has_key_repaint) {
           display_setAddrWindow(saveBoxX, saveBoxY, kw, __ui_kb_box.h);
-          display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * __ui_kb_box.h);
+          display_writePixels(display_canvasBuffer(__ui_kb_canvas), static_cast<uint32_t>(kw) * __ui_kb_box.h);
         } else {
           display_setAddrWindow(saveBoxX, saveBoxY, kw, UI_KB_TEXT_H);
-          display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * UI_KB_TEXT_H);
+          display_writePixels(display_canvasBuffer(__ui_kb_canvas), static_cast<uint32_t>(kw) * UI_KB_TEXT_H);
         }
         display_endWrite();
       } else {
         // No canvas — fall back to direct draw (slow but correct).
         ui_kb_draw_text_row();
         if (__ui_kb_repaint_key >= 0 && __ui_kb_keys[__ui_kb_repaint_key].special != 255) {
-          ui_kb_draw_key((uint8_t)__ui_kb_repaint_key);
+          ui_kb_draw_key(static_cast<uint8_t>(__ui_kb_repaint_key));
         }
       }
     }
@@ -115,7 +115,7 @@ export function emitTickDirtyDrawPhase(): string {
       __ui_scroll_canvas_ok[s] = bufferedScrollCanvas ? 1 : 0;
     }
     if (bufferedScrollCanvas) {
-      bufferedScrollNode = (int16_t)s;
+      bufferedScrollNode = static_cast<int16_t>(s);
       bufferedScrollVX = vox;
       bufferedScrollVY = voy;
 
@@ -134,7 +134,7 @@ export function emitTickDirtyDrawPhase(): string {
           bufferedScrollRepaintY = exposedY;
           bufferedScrollRepaintH = exposedH;
           display_canvasFillScreen(bufferedScrollRepaintCanvas, scrollBg);
-          UIRect exposed = { vox, (int16_t)(voy + exposedY), vw, exposedH };
+          UIRect exposed = { vox, static_cast<int16_t>(voy + exposedY), vw, exposedH };
           for (uint16_t c = s + 1; c < __ui_nodes[s].subtreeEnd; c++) {
             if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) {
               __ui_nodes[c].dirty = 0;
@@ -177,15 +177,15 @@ export function emitTickDirtyDrawPhase(): string {
       // scroll subtree to the display — that clears the live viewport and flashes.
       int16_t deltaY = __ui_nodes[s].scrollY - __ui_nodes[s].lastPaintedScrollY;
       int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
-      uint32_t scrollNeed = (uint32_t)(vw > 0 ? vw : 0) * (uint32_t)(vh > 0 ? vh : 0) * 2u;
+      uint32_t scrollNeed = static_cast<uint32_t>(vw > 0 ? vw : 0) * static_cast<uint32_t>(vh > 0 ? vh : 0) * 2u;
       if (absDelta > 0 && absDelta < vh) {
-        bufferedScrollNode = (int16_t)s;
+        bufferedScrollNode = static_cast<int16_t>(s);
         bufferedScrollDirectStrip = 1;
-        ui_warn_scroll_memory((uint16_t)s, 2);
+        ui_warn_scroll_memory(static_cast<uint16_t>(s), 2);
         ui_scroll_direct_prepare(s, &bufferedScrollVX, &bufferedScrollVY);
         break;
       }
-      ui_warn_scroll_memory((uint16_t)s, scrollNeed > (uint32_t)UI_SCROLL_CANVAS_BUDGET_BYTES ? 1 : 0);
+      ui_warn_scroll_memory(static_cast<uint16_t>(s), scrollNeed > static_cast<uint32_t>(UI_SCROLL_CANVAS_BUDGET_BYTES) ? 1 : 0);
       if (__ui_scroll_canvas_ok) __ui_scroll_canvas_ok[s] = 0;
       continue;
     }
@@ -217,7 +217,7 @@ export function emitTickDirtyDrawPhase(): string {
   for (uint16_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; ) {
     int16_t i;
     if (__ui_draw_order) {
-      i = (int16_t)__ui_draw_order[__ui_draw_pass++];
+      i = static_cast<int16_t>(__ui_draw_order[__ui_draw_pass++]);
       if (!__ui_nodes[i].dirty) continue;
       if (!ui_is_effectively_visible(i)) { __ui_nodes[i].dirty = 0; continue; }
       if (__ui_nodes[i].screenId != __ui_active_screen) { __ui_nodes[i].dirty = 0; continue; }
@@ -228,7 +228,7 @@ export function emitTickDirtyDrawPhase(): string {
         if (!__ui_nodes[candidate].dirty) continue;
         if (!ui_is_effectively_visible(candidate)) { __ui_nodes[candidate].dirty = 0; continue; }
         if (__ui_nodes[candidate].screenId != __ui_active_screen) { __ui_nodes[candidate].dirty = 0; continue; }
-        if (i < 0 || ui_node_draws_before(candidate, (uint16_t)i)) i = (int16_t)candidate;
+        if (i < 0 || ui_node_draws_before(candidate, static_cast<uint16_t>(i))) i = static_cast<int16_t>(candidate);
       }
       if (i < 0) break;
       __ui_draw_pass++;
@@ -238,12 +238,12 @@ export function emitTickDirtyDrawPhase(): string {
     // frame (Mode B canvas or Mode C strip). Drawing them directly clears the live
     // viewport and produces sequential flashes (AGENTS.md).
     {
-      int16_t scrollComp = ui_overflow_scroll_compositor((uint16_t)i);
+      int16_t scrollComp = ui_overflow_scroll_compositor(static_cast<uint16_t>(i));
       if (scrollComp >= 0) {
         uint8_t compositing = scrollComp == bufferedScrollNode &&
           (bufferedScrollCanvas || bufferedScrollDirectStrip);
         if (!compositing) {
-          if ((uint16_t)i == (uint16_t)scrollComp) break;
+          if (static_cast<uint16_t>(i) == static_cast<uint16_t>(scrollComp)) break;
           __ui_nodes[i].dirty = 0;
           continue;
         }
@@ -252,15 +252,15 @@ export function emitTickDirtyDrawPhase(): string {
 
     // Mode C strip: scroll owner is not drawn directly (would fill the viewport).
     if (bufferedScrollDirectStrip && bufferedScrollNode >= 0 &&
-        (uint16_t)i == (uint16_t)bufferedScrollNode) {
+        static_cast<uint16_t>(i) == static_cast<uint16_t>(bufferedScrollNode)) {
       __ui_nodes[i].dirty = 0;
       continue;
     }
 
     if (bufferedScrollNode >= 0 && bufferedScrollCanvas &&
         !(i > bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd) &&
-        ui_node_draws_before((uint16_t)bufferedScrollNode, (uint16_t)i) &&
-        !ui_scroll_subtree_has_dirty((uint16_t)bufferedScrollNode)) {
+        ui_node_draws_before(static_cast<uint16_t>(bufferedScrollNode), static_cast<uint16_t>(i)) &&
+        !ui_scroll_subtree_has_dirty(static_cast<uint16_t>(bufferedScrollNode))) {
       ui_push_buffered_scroll_canvas(bufferedScrollCanvas, bufferedScrollRepaintCanvas,
         bufferedScrollNode, bufferedScrollVX, bufferedScrollVY,
         bufferedScrollRepaintY, bufferedScrollRepaintH, __ui_draw_target);
@@ -299,10 +299,10 @@ export function emitTickDirtyDrawPhase(): string {
     uint16_t paintTextW = tw;
     uint16_t paintTextH = th;
     if (__ui_nodes[i].kind == NODE_TEXT) {
-      uint16_t hInset = (uint16_t)__ui_nodes[i].paddingLeft + (uint16_t)__ui_nodes[i].paddingRight + (uint16_t)__ui_nodes[i].borderWidth * 2;
-      uint16_t vInset = (uint16_t)__ui_nodes[i].paddingTop + (uint16_t)__ui_nodes[i].paddingBottom + (uint16_t)__ui_nodes[i].borderWidth * 2;
-      paintTextW = (uint16_t)(tw + hInset);
-      paintTextH = (uint16_t)(th + vInset);
+      uint16_t hInset = static_cast<uint16_t>(__ui_nodes[i].paddingLeft) + static_cast<uint16_t>(__ui_nodes[i].paddingRight) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
+      uint16_t vInset = static_cast<uint16_t>(__ui_nodes[i].paddingTop) + static_cast<uint16_t>(__ui_nodes[i].paddingBottom) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
+      paintTextW = static_cast<uint16_t>(tw + hInset);
+      paintTextH = static_cast<uint16_t>(th + vInset);
     }
     if (__ui_nodes[i].kind == NODE_CHECK || __ui_nodes[i].kind == NODE_RADIO) {
       paintTextW = tw + 22;
@@ -420,12 +420,12 @@ export function emitTickDirtyDrawPhase(): string {
         break;
       case NODE_TEXT:
         {
-          int16_t insetL = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingLeft;
-          int16_t insetR = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingRight;
-          int16_t insetT = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingTop;
+          int16_t insetL = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingLeft);
+          int16_t insetR = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingRight);
+          int16_t insetT = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingTop);
           int16_t textX = __ui_nodes[i].box.x + insetL;
           int16_t textY = drawY + insetT;
-          int16_t textW = (int16_t)__ui_nodes[i].box.w - insetL - insetR;
+          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
           if (textW < 1) textW = 1;
           uint8_t textBoxPainted = 0;
           if (__ui_nodes[i].gradientEnabled > 0) {
@@ -442,21 +442,21 @@ export function emitTickDirtyDrawPhase(): string {
           }
           {
             uint16_t clearW = __ui_nodes[i].box.w;
-            int16_t paintedTextW = (int16_t)__ui_nodes[i].lastTextWidth + insetL + insetR;
-            if (__ui_nodes[i].lastTextWidth > 0 && paintedTextW > (int16_t)clearW) {
-              clearW = (uint16_t)paintedTextW;
+            int16_t paintedTextW = static_cast<int16_t>(__ui_nodes[i].lastTextWidth) + insetL + insetR;
+            if (__ui_nodes[i].lastTextWidth > 0 && paintedTextW > static_cast<int16_t>(clearW)) {
+              clearW = static_cast<uint16_t>(paintedTextW);
             }
-            uint16_t paddedTw = (uint16_t)((int16_t)tw + insetL + insetR);
+            uint16_t paddedTw = static_cast<uint16_t>(static_cast<int16_t>(tw) + insetL + insetR);
             if (paddedTw > clearW) clearW = paddedTw;
             // overflow:hidden/scroll: never clear past the node's own box. A nowrap
             // line wider than its box would otherwise erase the parent's border.
             if (__ui_nodes[i].scrollable) clearW = __ui_nodes[i].box.w;
             uint16_t clearH = __ui_nodes[i].box.h;
-            int16_t paintedTextH = (int16_t)__ui_nodes[i].lastTextHeight + insetT + (int16_t)__ui_nodes[i].paddingBottom + (int16_t)__ui_nodes[i].borderWidth;
-            if (__ui_nodes[i].lastTextHeight > 0 && paintedTextH > (int16_t)clearH) {
-              clearH = (uint16_t)paintedTextH;
+            int16_t paintedTextH = static_cast<int16_t>(__ui_nodes[i].lastTextHeight) + insetT + static_cast<int16_t>(__ui_nodes[i].paddingBottom) + static_cast<int16_t>(__ui_nodes[i].borderWidth);
+            if (__ui_nodes[i].lastTextHeight > 0 && paintedTextH > static_cast<int16_t>(clearH)) {
+              clearH = static_cast<uint16_t>(paintedTextH);
             }
-            uint16_t paddedTh = (uint16_t)((int16_t)th + insetT + (int16_t)__ui_nodes[i].paddingBottom + (int16_t)__ui_nodes[i].borderWidth);
+            uint16_t paddedTh = static_cast<uint16_t>(static_cast<int16_t>(th) + insetT + static_cast<int16_t>(__ui_nodes[i].paddingBottom) + static_cast<int16_t>(__ui_nodes[i].borderWidth));
             if (paddedTh > clearH) clearH = paddedTh;
             // Dynamic transparent text still needs a clear, otherwise old glyph
             // pixels accumulate when only this text node is dirty.
@@ -499,9 +499,9 @@ export function emitTickDirtyDrawPhase(): string {
             ui_draw_rich_text(i,
               textX + __ui_nodes[i].textShadowOffsetX,
               textY + __ui_nodes[i].textShadowOffsetY,
-              tsClear, __ui_nodes[i].fontAntialias, 1, tsCol, (uint16_t)textW);
+              tsClear, __ui_nodes[i].fontAntialias, 1, tsCol, static_cast<uint16_t>(textW));
           }
-          ui_draw_rich_text(i, textX, textY, richTextBg, __ui_nodes[i].fontAntialias, 0, 0, (uint16_t)textW);
+          ui_draw_rich_text(i, textX, textY, richTextBg, __ui_nodes[i].fontAntialias, 0, 0, static_cast<uint16_t>(textW));
           break;
         }
         {
@@ -512,7 +512,7 @@ export function emitTickDirtyDrawPhase(): string {
             ui_draw_wrapped_text(displayText,
               textX + __ui_nodes[i].textShadowOffsetX,
               textY + __ui_nodes[i].textShadowOffsetY,
-              (uint16_t)textW, tsCol, tsCol, ts, __ui_nodes[i].fontAntialias,
+              static_cast<uint16_t>(textW), tsCol, tsCol, ts, __ui_nodes[i].fontAntialias,
               __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight,
               __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, 0, __ui_nodes[i].textOverflow);
           }
@@ -536,7 +536,7 @@ export function emitTickDirtyDrawPhase(): string {
           } else {
             textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
           }
-          ui_draw_wrapped_text(displayText, textX, textY, (uint16_t)textW,
+          ui_draw_wrapped_text(displayText, textX, textY, static_cast<uint16_t>(textW),
             __ui_nodes[i].fg, textBg, ts, __ui_nodes[i].fontAntialias,
             __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight,
             __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
@@ -553,20 +553,20 @@ export function emitTickDirtyDrawPhase(): string {
           ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
         }
         {
-          int16_t insetL = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingLeft;
-          int16_t insetR = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingRight;
-          int16_t insetT = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingTop;
-          int16_t insetB = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingBottom;
+          int16_t insetL = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingLeft);
+          int16_t insetR = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingRight);
+          int16_t insetT = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingTop);
+          int16_t insetB = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingBottom);
           int16_t textX = __ui_nodes[i].box.x + insetL;
           int16_t textY = drawY + insetT;
-          int16_t textW = (int16_t)__ui_nodes[i].box.w - insetL - insetR;
-          int16_t textH = (int16_t)__ui_nodes[i].box.h - insetT - insetB;
+          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
+          int16_t textH = static_cast<int16_t>(__ui_nodes[i].box.h) - insetT - insetB;
           if (textW < 1) textW = 1;
-          if (textH < 1) textH = (int16_t)th;
+          if (textH < 1) textH = static_cast<int16_t>(th);
           ui_draw_wrapped_text(displayText,
             textX,
-            textY + (textH - (int16_t)th) / 2,
-            (uint16_t)textW,
+            textY + (textH - static_cast<int16_t>(th)) / 2,
+            static_cast<uint16_t>(textW),
             __ui_nodes[i].fg,
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
@@ -576,13 +576,13 @@ export function emitTickDirtyDrawPhase(): string {
       case NODE_CHECK:
         {
           uint16_t clearW = __ui_nodes[i].box.w;
-          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > (int16_t)clearW) {
-            clearW = (uint16_t)__ui_nodes[i].lastTextWidth;
+          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > static_cast<int16_t>(clearW)) {
+            clearW = static_cast<uint16_t>(__ui_nodes[i].lastTextWidth);
           }
           if (paintTextW > clearW) clearW = paintTextW;
           uint16_t clearH = __ui_nodes[i].box.h;
-          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > (int16_t)clearH) {
-            clearH = (uint16_t)__ui_nodes[i].lastTextHeight;
+          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > static_cast<int16_t>(clearH)) {
+            clearH = static_cast<uint16_t>(__ui_nodes[i].lastTextHeight);
           }
           if (paintTextH > clearH) clearH = paintTextH;
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
@@ -628,13 +628,13 @@ export function emitTickDirtyDrawPhase(): string {
       case NODE_RADIO:
         {
           uint16_t clearW = __ui_nodes[i].box.w;
-          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > (int16_t)clearW) {
-            clearW = (uint16_t)__ui_nodes[i].lastTextWidth;
+          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > static_cast<int16_t>(clearW)) {
+            clearW = static_cast<uint16_t>(__ui_nodes[i].lastTextWidth);
           }
           if (paintTextW > clearW) clearW = paintTextW;
           uint16_t clearH = __ui_nodes[i].box.h;
-          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > (int16_t)clearH) {
-            clearH = (uint16_t)__ui_nodes[i].lastTextHeight;
+          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > static_cast<int16_t>(clearH)) {
+            clearH = static_cast<uint16_t>(__ui_nodes[i].lastTextHeight);
           }
           if (paintTextH > clearH) clearH = paintTextH;
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
@@ -684,7 +684,7 @@ export function emitTickDirtyDrawPhase(): string {
           // On first draw (lastTextWidth < 0), draw everything.
           // Otherwise incremental: only update the changed portion.
           uint8_t pct = constrain(__ui_nodes[i].value, 0, 100);
-          int16_t fillW = ((int32_t)(bw - 2) * pct) / 100;
+          int16_t fillW = (static_cast<int32_t>(bw - 2) * pct) / 100;
           int16_t prevW = __ui_nodes[i].lastTextWidth; // reused as previous fill width
 
           if (prevW < 0) {
@@ -726,7 +726,7 @@ export function emitTickDirtyDrawPhase(): string {
           int16_t range = rMax - rMin;
           if (range <= 0) range = 100;
           int16_t pct = constrain(__ui_nodes[i].value, rMin, rMax) - rMin;
-          int16_t fillW = ((int32_t)(bw - 8) * pct) / range;
+          int16_t fillW = (static_cast<int32_t>(bw - 8) * pct) / range;
           // lastTextWidth carries the previous fill width, or -1 if this node
           // has never been drawn (fillW=0 at value=min is a valid thumb pos).
           int16_t prevFillW = __ui_nodes[i].lastTextWidth;
@@ -800,7 +800,7 @@ export function emitTickDirtyDrawPhase(): string {
           // textBuffer on focus, so without this the placeholder ("enter name")
           // would render with the caret at its end. Hide it so the caret shows
           // on a clean field at position 0 until the user types.
-          if (__ui_kb_visible && (int16_t)__ui_kb_target == (int16_t)i && __ui_nodes[i].textBuffer[0] == 0) {
+          if (__ui_kb_visible && static_cast<int16_t>(__ui_kb_target) == static_cast<int16_t>(i) && __ui_nodes[i].textBuffer[0] == 0) {
             disp = "";
           }
 #endif
@@ -823,7 +823,7 @@ export function emitTickDirtyDrawPhase(): string {
           // the border or wraps to the next line.
           int16_t maxChars = (bw - 8) / (ts * 6);
           if (maxChars < 0) maxChars = 0;
-          int16_t len = (int16_t)strlen(disp);
+          int16_t len = static_cast<int16_t>(strlen(disp));
           if (len > maxChars) len = maxChars;
           if (len > UI_TEXT_BUF) len = UI_TEXT_BUF;
           char clipped[UI_TEXT_BUF + 1];
@@ -838,14 +838,14 @@ export function emitTickDirtyDrawPhase(): string {
           // blinking caret at the end of the typed text on the active edit target
           // so the user sees which field they're editing. Blink ~3×/sec via the
           // top bits of __ui_kb_blink (mask 0x20 toggles every 32 ticks ≈ 530ms).
-          if (__ui_kb_visible && (int16_t)__ui_kb_target == (int16_t)i && (__ui_kb_blink & 0x20)) {
+          if (__ui_kb_visible && static_cast<int16_t>(__ui_kb_target) == static_cast<int16_t>(i) && (__ui_kb_blink & 0x20)) {
             uint16_t caretW = ui_text_width(clipped, ts, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
-            int16_t caretX = bx + 4 + (int16_t)caretW;
+            int16_t caretX = bx + 4 + static_cast<int16_t>(caretW);
             int16_t caretYTop = by + (bh - ts * 8) / 2;
             // fgCol (not textCol): the placeholder-dimming path sets textCol to
             // gray, which would make the caret nearly invisible on a focused
             // empty field. The caret should always be the input's foreground.
-            ui_display_fill_rect(caretX, caretYTop, (int16_t)(ts > 1 ? 2 : 1), (int16_t)(ts * 8), fgCol);
+            ui_display_fill_rect(caretX, caretYTop, static_cast<int16_t>(ts > 1 ? 2 : 1), static_cast<int16_t>(ts * 8), fgCol);
           }
 #endif
         }
@@ -914,8 +914,8 @@ export function emitTickDirtyDrawPhase(): string {
               int16_t __ui_prev_canvas_h = __ui_canvas_fallback_h;
               __ui_canvas_fallback_w = __ui_cw;
               __ui_canvas_fallback_h = __ui_ch;
-              __ui_draw_off_x = (int16_t)(__ui_prev_off_x + __ui_nodes[i].box.x);
-              __ui_draw_off_y = (int16_t)(__ui_prev_off_y + drawY);
+              __ui_draw_off_x = static_cast<int16_t>(__ui_prev_off_x + __ui_nodes[i].box.x);
+              __ui_draw_off_y = static_cast<int16_t>(__ui_prev_off_y + drawY);
               __ui_canvas_fn(nullptr);
               __ui_draw_off_x = __ui_prev_off_x;
               __ui_draw_off_y = __ui_prev_off_y;
@@ -955,7 +955,7 @@ export function emitTickDirtyDrawPhase(): string {
         if (!lc || !display_canvasBuffer(lc)) {
           break;
         }
-        if (__ui_list_canvas_node != (int16_t)i) listFullRepaint = 1;
+        if (__ui_list_canvas_node != static_cast<int16_t>(i)) listFullRepaint = 1;
         int16_t repaintY = 0;
         int16_t repaintH = bh;
         int16_t deltaY = listScrollY - __ui_nodes[i].lastPaintedScrollY;
@@ -999,7 +999,7 @@ export function emitTickDirtyDrawPhase(): string {
         display_targetSetTextWrap((CuttlefishDisplayTarget*)listTextCanvas, false);
         if (itemCount > 0 && repaintH > 0) {
           for (uint16_t idx = first; idx <= last; idx++) {
-            int16_t itemY = (int16_t)(idx * ih) - listScrollY - listTextOffsetY;
+            int16_t itemY = static_cast<int16_t>(idx * ih) - listScrollY - listTextOffsetY;
             __ui_nodes[i].listItemFn(idx, listBuf, UI_TEXT_BUF + 1);
             listBuf[UI_TEXT_BUF] = 0;
             display_targetSetCursor((CuttlefishDisplayTarget*)listTextCanvas, 4, itemY + (ih - 16) / 2);
@@ -1017,10 +1017,10 @@ export function emitTickDirtyDrawPhase(): string {
         // Scrollbar (canvas-local coords).
         if (listContentH > bh) {
           int16_t tx = bw - 4;
-          uint16_t thumbH = (uint32_t)bh * bh / listContentH;
+          uint16_t thumbH = static_cast<uint32_t>(bh) * bh / listContentH;
           if (thumbH < 8) thumbH = 8;
           int16_t maxScroll = listContentH - bh;
-          uint16_t thumbY = maxScroll > 0 ? (uint32_t)(bh - thumbH) * listScrollY / maxScroll : 0;
+          uint16_t thumbY = maxScroll > 0 ? static_cast<uint32_t>(bh - thumbH) * listScrollY / maxScroll : 0;
           UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[i].fg >> 1) & UI_DIM_MASK);
           display_canvasFillRect(lc, tx, 0, 3, bh, dimFg);
           display_canvasFillRect(lc, tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
@@ -1048,7 +1048,7 @@ export function emitTickDirtyDrawPhase(): string {
           ui_draw_node_border(i, bx, by, bColor);
         }
         ui_draw_node_outline(i, bx, by);
-        __ui_list_canvas_node = (int16_t)i;
+        __ui_list_canvas_node = static_cast<int16_t>(i);
         __ui_nodes[i].lastPaintedScrollY = listScrollY;
         __ui_nodes[i].dirty = 0;
         ui_display_set_target(__ui_draw_target);

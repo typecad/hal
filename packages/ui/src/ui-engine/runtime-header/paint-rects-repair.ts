@@ -12,8 +12,8 @@ static inline void ui_node_paint_rect(uint16_t nodeIdx, int16_t baseX, int16_t b
   if (__ui_nodes[nodeIdx].kind == NODE_TEXT || __ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
     if (__ui_nodes[nodeIdx].lastTextWidth > faceW) faceW = __ui_nodes[nodeIdx].lastTextWidth;
     if (__ui_nodes[nodeIdx].lastTextHeight > faceH) faceH = __ui_nodes[nodeIdx].lastTextHeight;
-    if ((int16_t)textW > faceW) faceW = (int16_t)textW;
-    if ((int16_t)textH > faceH) faceH = (int16_t)textH;
+    if (static_cast<int16_t>(textW) > faceW) faceW = static_cast<int16_t>(textW);
+    if (static_cast<int16_t>(textH) > faceH) faceH = static_cast<int16_t>(textH);
   }
   int16_t unrotatedFaceW = faceW;
   int16_t unrotatedFaceH = faceH;
@@ -150,7 +150,7 @@ static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_
   if (__ui_nodes[nodeIdx].kind == NODE_LIST) return 0;
   // <canvas> elements batch via __ui_node_canvas when drawing to the display.
   if (__ui_nodes[nodeIdx].kind == NODE_CANVAS) return 0;
-  if ((uint32_t)w * (uint32_t)h > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
+  if (static_cast<uint32_t>(w) * static_cast<uint32_t>(h) > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
   if (ui_pixel_heavy_node(nodeIdx)) return 1;
   if (__ui_nodes[nodeIdx].kind == NODE_FILL &&
       __ui_nodes[nodeIdx].hasBg &&
@@ -222,7 +222,7 @@ static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCan
 
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx, UIRect* r) {
   if (!r || r->w <= 0 || r->h <= 0) return 0;
-  if ((uint32_t)r->w * (uint32_t)r->h > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
+  if (static_cast<uint32_t>(r->w) * static_cast<uint32_t>(r->h) > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
   CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(r->w, r->h);
   if (!repairCanvas) return 0;
   ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, r->x, r->y);
@@ -439,7 +439,7 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   int16_t y0 = oldRect->y < newRect.y ? oldRect->y : newRect.y;
   int16_t x1 = oldRect->x + oldRect->w > newRect.x + newRect.w ? oldRect->x + oldRect->w : newRect.x + newRect.w;
   int16_t y1 = oldRect->y + oldRect->h > newRect.y + newRect.h ? oldRect->y + oldRect->h : newRect.y + newRect.h;
-  UIRect repair = { x0, y0, (int16_t)(x1 - x0), (int16_t)(y1 - y0) };
+  UIRect repair = { x0, y0, static_cast<int16_t>(x1 - x0), static_cast<int16_t>(y1 - y0) };
   int16_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
   if (scrollParent >= 0) {
     UIRect clip = {
@@ -456,7 +456,7 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
     return 0;
   }
   if (repair.w <= 0 || repair.h <= 0) return 0;
-  if ((uint32_t)repair.w * (uint32_t)repair.h > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
+  if (static_cast<uint32_t>(repair.w) * static_cast<uint32_t>(repair.h) > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
   CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(repair.w, repair.h);
   if (!repairCanvas) return 0;
 
@@ -530,7 +530,7 @@ static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible) {
     ui_clear_subtree_current_paint(nodeIdx);
     int16_t end = __ui_nodes[nodeIdx].subtreeEnd;
     if (end > __ui_node_count) end = __ui_node_count;
-    for (int16_t c = end - 1; c >= (int16_t)nodeIdx; c--) {
+    for (int16_t c = end - 1; c >= static_cast<int16_t>(nodeIdx); c--) {
       if (__ui_nodes[c].screenId != __ui_active_screen) continue;
       __ui_nodes[c].dirty = 0;
     }

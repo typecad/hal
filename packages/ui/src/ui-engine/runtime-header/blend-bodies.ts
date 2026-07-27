@@ -15,9 +15,9 @@ static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
   // Unpack to 8-bit (5-bit → 8-bit: (v << 3) | (v >> 2)).
   uint16_t fr8 = (fr << 3) | (fr >> 2), fg8 = (fg5 << 2) | (fg5 >> 4), fb8 = (fb << 3) | (fb >> 2);
   uint16_t br8 = (br << 3) | (br >> 2), bg8 = (bg5 << 2) | (bg5 >> 4), bb8 = (bb << 3) | (bb >> 2);
-  uint16_t r = (uint16_t)((fr8 * opacity + br8 * (100 - opacity)) / 100);
-  uint16_t g = (uint16_t)((fg8 * opacity + bg8 * (100 - opacity)) / 100);
-  uint16_t b = (uint16_t)((fb8 * opacity + bb8 * (100 - opacity)) / 100);
+  uint16_t r = static_cast<uint16_t>((fr8 * opacity + br8 * (100 - opacity)) / 100);
+  uint16_t g = static_cast<uint16_t>((fg8 * opacity + bg8 * (100 - opacity)) / 100);
+  uint16_t b = static_cast<uint16_t>((fb8 * opacity + bb8 * (100 - opacity)) / 100);
   return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
 }
 
@@ -33,7 +33,7 @@ static inline uint32_t ui_blend888(uint32_t fg, uint32_t bg, uint8_t opacity) {
   uint8_t r = (fr * opacity + br * (100 - opacity)) / 100;
   uint8_t g = (fg8 * opacity + bg8 * (100 - opacity)) / 100;
   uint8_t b = (fb * opacity + bb * (100 - opacity)) / 100;
-  return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+  return (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
 }
 `;
 }

@@ -249,8 +249,8 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
    int16_t clipH = (q == 1 || q == 3) ? img->w : img->h;
    if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
    if (q == 0) {
-     int16_t sx0 = ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, static_cast<int16_t>(img)->w);
-     int16_t sy0 = ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img)->h);
+     int16_t sx0 = ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, static_cast<int16_t>(img->w));
+     int16_t sy0 = ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img->h));
      int16_t sw = ui_clamp_i16(clipW, 0, static_cast<int16_t>(img->w - sx0));
      int16_t sh = ui_clamp_i16(clipH, 0, static_cast<int16_t>(img->h - sy0));
      for (int16_t row = 0; row < sh; row++) {
@@ -261,20 +261,20 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
    }
    uint16_t sxStart = 0, sxEnd = img->w, syStart = 0, syEnd = img->h;
    if (q == 1) {
-     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img)->w));
-     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipY + clipH - y), 0, static_cast<int16_t>(img)->w));
-     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->h - (clipX + clipW)), 0, static_cast<int16_t>(img)->h));
-     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->h - clipX), 0, static_cast<int16_t>(img)->h));
+     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img->w)));
+     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipY + clipH - y), 0, static_cast<int16_t>(img->w)));
+     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->h - (clipX + clipW)), 0, static_cast<int16_t>(img->h)));
+     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->h - clipX), 0, static_cast<int16_t>(img->h)));
    } else if (q == 2) {
-     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->w - (clipX + clipW)), 0, static_cast<int16_t>(img)->w));
-     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->w - clipX), 0, static_cast<int16_t>(img)->w));
-     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->h - (clipY + clipH)), 0, static_cast<int16_t>(img)->h));
-     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->h - clipY), 0, static_cast<int16_t>(img)->h));
+     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->w - (clipX + clipW)), 0, static_cast<int16_t>(img->w)));
+     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->w - clipX), 0, static_cast<int16_t>(img->w)));
+     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->h - (clipY + clipH)), 0, static_cast<int16_t>(img->h)));
+     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->h - clipY), 0, static_cast<int16_t>(img->h)));
    } else {
-     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->w - (clipY + clipH)), 0, static_cast<int16_t>(img)->w));
-     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->w - clipY), 0, static_cast<int16_t>(img)->w));
-     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, static_cast<int16_t>(img)->h));
-     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipX + clipW - x), 0, static_cast<int16_t>(img)->h));
+     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->w - (clipY + clipH)), 0, static_cast<int16_t>(img->w)));
+     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->w - clipY), 0, static_cast<int16_t>(img->w)));
+     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, static_cast<int16_t>(img->h)));
+     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipX + clipW - x), 0, static_cast<int16_t>(img->h)));
    }
    if (sxStart >= sxEnd || syStart >= syEnd) return;
    for (uint16_t sy = syStart; sy < syEnd; sy++) {

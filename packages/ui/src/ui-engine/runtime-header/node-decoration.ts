@@ -18,19 +18,19 @@ static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY) {
   uint8_t dir = __ui_nodes[i].gradientEnabled;  // 1=vertical, 2=horizontal
   if (dir == 1) {
     // Vertical: top=c1, bottom=c2. Draw row by row.
-    int16_t yStart = (int16_t)(clipY - by);
-    int16_t yEnd = (int16_t)(clipY + clipH - by);
+    int16_t yStart = static_cast<int16_t>(clipY - by);
+    int16_t yEnd = static_cast<int16_t>(clipY + clipH - by);
     for (int16_t y = yStart; y < yEnd; y++) {
-      uint8_t op = (uint8_t)((uint16_t)y * 100 / (bh > 1 ? bh - 1 : 1));
+      uint8_t op = static_cast<uint8_t>(static_cast<uint16_t>(y) * 100 / (bh > 1 ? bh - 1 : 1));
       uint32_t col = ui_blend(c1, c2, op);
       ui_display_draw_fast_hline(clipX, by + y, clipW, col);
     }
   } else {
     // Horizontal: left=c1, right=c2. Draw column by column.
-    int16_t xStart = (int16_t)(clipX - bx);
-    int16_t xEnd = (int16_t)(clipX + clipW - bx);
+    int16_t xStart = static_cast<int16_t>(clipX - bx);
+    int16_t xEnd = static_cast<int16_t>(clipX + clipW - bx);
     for (int16_t x = xStart; x < xEnd; x++) {
-      uint8_t op = (uint8_t)((uint16_t)x * 100 / (bw > 1 ? bw - 1 : 1));
+      uint8_t op = static_cast<uint8_t>(static_cast<uint16_t>(x) * 100 / (bw > 1 ? bw - 1 : 1));
       uint32_t col = ui_blend(c1, c2, op);
       ui_display_draw_fast_vline(bx + x, clipY, clipH, col);
     }
@@ -79,7 +79,7 @@ static inline void ui_draw_shadow(uint16_t i, int16_t drawY, uint8_t insetOnly) 
     }
 
     for (int8_t pass = blur; pass >= 1; pass--) {
-      uint8_t opacity = (uint8_t)((uint16_t)baseAlpha / (pass + 1));
+      uint8_t opacity = static_cast<uint8_t>(static_cast<uint16_t>(baseAlpha) / (pass + 1));
       uint32_t col = ui_blend(shadowCol, inset ? (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : clearCol) : clearCol, opacity);
       if (inset) {
         // Inset: draw inside the element, shrinking inward by pass.
@@ -104,7 +104,7 @@ static inline void ui_draw_shadow(uint16_t i, int16_t drawY, uint8_t insetOnly) 
         int16_t sw = bw + 2 * pass;
         int16_t sh_ = bh + 2 * pass;
         if (radius > 0) {
-          uint8_t r = radius + (uint8_t)pass;
+          uint8_t r = radius + static_cast<uint8_t>(pass);
           if (r > sw / 2) r = sw / 2;
           if (r > sh_ / 2) r = sh_ / 2;
           ui_display_fill_round_rect(sx, sy, sw, sh_, r, col);

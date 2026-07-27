@@ -49,7 +49,7 @@ static inline void ui_kb_insert(char c) {
   if (__ui_kb_target >= 0) {
     strncpy(__ui_nodes[__ui_kb_target].textBuffer, __ui_kb_buffer, UI_TEXT_BUF);
     __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
-    ui_mark_dirty((uint16_t)__ui_kb_target);
+    ui_mark_dirty(static_cast<uint16_t>(__ui_kb_target));
   }
 #endif
 }
@@ -62,7 +62,7 @@ static inline void ui_kb_delete() {
   if (__ui_kb_target >= 0) {
     strncpy(__ui_nodes[__ui_kb_target].textBuffer, __ui_kb_buffer, UI_TEXT_BUF);
     __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
-    ui_mark_dirty((uint16_t)__ui_kb_target);
+    ui_mark_dirty(static_cast<uint16_t>(__ui_kb_target));
   }
 #endif
 }
@@ -92,7 +92,7 @@ static inline void ui_kb_open(uint16_t nodeIdx, uint8_t inputPosition) {
   __ui_kb_buffer[UI_TEXT_BUF] = 0;
   __ui_kb_len = strlen(__ui_kb_buffer);
   uint16_t ml = __ui_nodes[nodeIdx].maxlen;
-  __ui_kb_maxlen = (ml > 0 && ml <= UI_TEXT_BUF) ? (uint8_t)ml : UI_TEXT_BUF;
+  __ui_kb_maxlen = (ml > 0 && ml <= UI_TEXT_BUF) ? static_cast<uint8_t>(ml) : UI_TEXT_BUF;
   __ui_kb_shift = 0;
   __ui_kb_bs_held = 0;
   // Load the key set via the dispatch table.
@@ -113,7 +113,7 @@ static inline void ui_kb_open(uint16_t nodeIdx, uint8_t inputPosition) {
   // keystroke. (The full-screen-flash concern above doesn't apply — there's no
   // opaque overlay being skipped.) Seed the blink phase so the caret is ON for
   // the first ~530ms (bit 0x20 set → visible), so focus feels immediate.
-  if (__ui_kb_target >= 0) ui_mark_dirty((uint16_t)__ui_kb_target);
+  if (__ui_kb_target >= 0) ui_mark_dirty(static_cast<uint16_t>(__ui_kb_target));
   __ui_kb_blink = 0x20;
 #endif
 }
@@ -140,7 +140,7 @@ static inline void ui_kb_close() {
   int16_t screenRoot = -1;
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     if (__ui_nodes[i].parent == UI_NO_PARENT && __ui_nodes[i].screenId == __ui_active_screen) {
-      screenRoot = (int16_t)i;
+      screenRoot = static_cast<int16_t>(i);
       break;
     }
   }
@@ -156,7 +156,7 @@ static inline void ui_kb_close() {
   // scroll clipping — safe here since these nodes are bounded in size, unlike
   // the screen root.
   for (uint16_t i = 0; i < __ui_node_count; i++) {
-    if ((int16_t)i == screenRoot) continue;
+    if (static_cast<int16_t>(i) == screenRoot) continue;
     UIRect r;
     ui_node_current_paint_rect(i, &r);
     if (r.w > 0 && r.h > 0 &&
@@ -173,8 +173,8 @@ static inline void ui_kb_key_rect(uint8_t idx, UIRect* out) {
   uint8_t col = idx % __ui_kb_cols;
   uint8_t row = idx / __ui_kb_cols;
   int16_t keysH = __ui_kb_box.h - UI_KB_TEXT_H;  // key area height (below text row)
-  out->x = __ui_kb_box.x + (int16_t)col * __ui_kb_box.w / __ui_kb_cols;
-  out->y = __ui_kb_box.y + UI_KB_TEXT_H + (int16_t)row * keysH / __ui_kb_rows;
+  out->x = __ui_kb_box.x + static_cast<int16_t>(col) * __ui_kb_box.w / __ui_kb_cols;
+  out->y = __ui_kb_box.y + UI_KB_TEXT_H + static_cast<int16_t>(row) * keysH / __ui_kb_rows;
   out->w = __ui_kb_box.w / __ui_kb_cols;
   out->h = keysH / __ui_kb_rows;
 }
@@ -192,8 +192,8 @@ static inline void ui_kb_handle_touch(int16_t tx, int16_t ty) {
     UIRect r;
     ui_kb_key_rect(i, &r);
     if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) {
-      __ui_kb_pressed_key = (int8_t)i;  // remember for release
-      __ui_kb_repaint_key = (int8_t)i;
+      __ui_kb_pressed_key = static_cast<int8_t>(i);  // remember for release
+      __ui_kb_repaint_key = static_cast<int8_t>(i);
       __ui_kb_dirty = 2;  // targeted: redraw just this key's highlight
       // Backspace starts deleting immediately + arms auto-repeat.
       if (k.special == 2) {
@@ -273,7 +273,7 @@ static inline void ui_kb_draw_key(uint8_t i) {
   UI_COLOR_T border = ks.borderColor;
   // Shift-active highlight: brighten the shift key's background — but only
   // when not pressed, so the press inversion stays high-contrast.
-  if (k.special == 1 && __ui_kb_shift && (int8_t)i != __ui_kb_pressed_key) {
+  if (k.special == 1 && __ui_kb_shift && static_cast<int8_t>(i) != __ui_kb_pressed_key) {
 #if UI_COLOR_DEPTH == 888
     bg = 0xBDEFFF;
 #else
@@ -281,7 +281,7 @@ static inline void ui_kb_draw_key(uint8_t i) {
 #endif
   }
   // Pressed key: invert colors for clear tap feedback.
-  if ((int8_t)i == __ui_kb_pressed_key) { UI_COLOR_T t = bg; bg = fg; fg = t; }
+  if (static_cast<int8_t>(i) == __ui_kb_pressed_key) { UI_COLOR_T t = bg; bg = fg; fg = t; }
   ui_display_fill_rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
   ui_display_draw_rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, border);
   ui_display_set_text_color(fg, bg);
@@ -295,14 +295,14 @@ static inline void ui_kb_draw_key(uint8_t i) {
     case 3:  labelStr = "OK"; break;
     case 4:  labelStr = __ui_kb_cols <= 4 ? "ABC" : "123"; break;
     default:
-      single[0] = (__ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') ? (char)(k.ch - 32) : k.ch;
+      single[0] = (__ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') ? static_cast<char>(k.ch - 32) : k.ch;
       single[1] = 0;
       labelStr = single;
       break;
   }
   // Center: textW = len * 6px, textH = 8px. Position inside the key rect.
   uint8_t len = strlen(labelStr);
-  int16_t textW = (int16_t)len * 6;
+  int16_t textW = static_cast<int16_t>(len) * 6;
   int16_t textH = 8;
   int16_t cx = r.x + (r.w - textW) / 2;
   int16_t cy = r.y + (r.h - textH) / 2;
@@ -376,7 +376,7 @@ static inline void ui_kb_draw() {
   ui_display_set_target(__kb_prev_target);
   display_startWrite();
   display_setAddrWindow(saveBoxX, saveBoxY, kw, kh);
-  display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * kh);
+  display_writePixels(display_canvasBuffer(__ui_kb_canvas), static_cast<uint32_t>(kw) * kh);
   display_endWrite();
 }
 `;

@@ -250,10 +250,10 @@ static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100) {
   uint8_t br5 = (b >> 11) & 0x1f, bg6 = (b >> 5) & 0x3f, bb5 = b & 0x1f;
   uint16_t ar8 = (ar5 << 3) | (ar5 >> 2), ag8 = (ag6 << 2) | (ag6 >> 4), ab8 = (ab5 << 3) | (ab5 >> 2);
   uint16_t br8 = (br5 << 3) | (br5 >> 2), bg8 = (bg6 << 2) | (bg6 >> 4), bb8 = (bb5 << 3) | (bb5 >> 2);
-  int16_t r = (int16_t)(ar8 + (int16_t)((br8 - ar8) * k100 / 100));
-  int16_t g = (int16_t)(ag8 + (int16_t)((bg8 - ag8) * k100 / 100));
-  int16_t bl = (int16_t)(ab8 + (int16_t)((bb8 - ab8) * k100 / 100));
-  return ((uint16_t)((r >> 3) & 0x1f) << 11) | ((uint16_t)((g >> 2) & 0x3f) << 5) | (uint16_t)((bl >> 3) & 0x1f);
+  int16_t r = static_cast<int16_t>(ar8 + static_cast<int16_t>((br8 - ar8) * k100 / 100));
+  int16_t g = static_cast<int16_t>(ag8 + static_cast<int16_t>((bg8 - ag8) * k100 / 100));
+  int16_t bl = static_cast<int16_t>(ab8 + static_cast<int16_t>((bb8 - ab8) * k100 / 100));
+  return (static_cast<uint16_t>((r >> 3) & 0x1f) << 11) | (static_cast<uint16_t>((g >> 2) & 0x3f) << 5) | static_cast<uint16_t>((bl >> 3) & 0x1f);
 }
 
 // RGB888 lerp — for transitions on RGB888/RGB666 targets (Phase 2+). Unused in
@@ -263,10 +263,10 @@ static inline uint32_t lerp_color_888(uint32_t a, uint32_t b, uint8_t k100) {
   if (k100 >= 100) return b;
   uint8_t ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
   uint8_t br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
-  int16_t r = ar + (int16_t)(((int16_t)br - (int16_t)ar) * k100 / 100);
-  int16_t g = ag + (int16_t)(((int16_t)bg - (int16_t)ag) * k100 / 100);
-  int16_t bl = ab + (int16_t)(((int16_t)bb - (int16_t)ab) * k100 / 100);
-  return ((uint32_t)(r & 0xff) << 16) | ((uint32_t)(g & 0xff) << 8) | (uint32_t)(bl & 0xff);
+  int16_t r = ar + static_cast<int16_t>((static_cast<int16_t>(br) - static_cast<int16_t>(ar)) * k100 / 100);
+  int16_t g = ag + static_cast<int16_t>((static_cast<int16_t>(bg) - static_cast<int16_t>(ag)) * k100 / 100);
+  int16_t bl = ab + static_cast<int16_t>((static_cast<int16_t>(bb) - static_cast<int16_t>(ab)) * k100 / 100);
+  return (static_cast<uint32_t>(r & 0xff) << 16) | (static_cast<uint32_t>(g & 0xff) << 8) | static_cast<uint32_t>(bl & 0xff);
 }
 
 // Declared by the lowering output (the tables). Matches the mutable (non-const)
@@ -322,11 +322,11 @@ static inline uint32_t ui_blend888(uint32_t fg, uint32_t bg, uint8_t opacity);
 static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100);
 static inline uint32_t lerp_color_888(uint32_t a, uint32_t b, uint8_t k100);
 #if UI_COLOR_DEPTH == 888
-  #define ui_blend(fg, bg, op)        ui_blend888((uint32_t)(fg), (uint32_t)(bg), (op))
-  #define UI_LERP_COLOR(a, b, k)      lerp_color_888((uint32_t)(a), (uint32_t)(b), (k))
+  #define ui_blend(fg, bg, op)        ui_blend888(static_cast<uint32_t>(fg), static_cast<uint32_t>(bg), (op))
+  #define UI_LERP_COLOR(a, b, k)      lerp_color_888(static_cast<uint32_t>(a), static_cast<uint32_t>(b), (k))
 #else
-  #define ui_blend(fg, bg, op)        ui_blend565((uint16_t)(fg), (uint16_t)(bg), (op))
-  #define UI_LERP_COLOR(a, b, k)      lerp_color((uint16_t)(a), (uint16_t)(b), (k))
+  #define ui_blend(fg, bg, op)        ui_blend565(static_cast<uint16_t>(fg), static_cast<uint16_t>(bg), (op))
+  #define UI_LERP_COLOR(a, b, k)      lerp_color(static_cast<uint16_t>(a), static_cast<uint16_t>(b), (k))
 #endif
 
 // ── 1-bit mono snap (UI_NATIVE_MONO) ─────────────────────────────────────────
@@ -340,7 +340,7 @@ static inline uint32_t ui_snap_mono(uint32_t c) {
   uint8_t r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
   // Match the transpile-time toMono threshold: (0.299r + 0.587g + 0.114b)/255 >= 0.27.
   // Integer form: 299r+587g+114b >= 68850 (= 0.27*255*1000). Verified 0 mismatches.
-  return ((uint32_t)(299 * r + 587 * g + 114 * b) >= 68850u) ? 0xffffffu : 0x000000u;
+  return (static_cast<uint32_t>(299 * r + 587 * g + 114 * b) >= 68850u) ? 0xffffffu : 0x000000u;
 }
 // Snap an RGB565 value to 1-bit mono. Mono panels run at UI_COLOR_DEPTH 565, so
 // node fields hold 565 values; reconstruct 8-bit channels then apply the threshold.
@@ -351,10 +351,10 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
   if (c == 0x0001u || c == 0xffffu) return 0xffffu;
   uint8_t r5 = (c >> 11) & 0x1f, g6 = (c >> 5) & 0x3f, b5 = c & 0x1f;
   uint8_t r = (r5 << 3) | (r5 >> 2), g = (g6 << 2) | (g6 >> 4), b = (b5 << 3) | (b5 >> 2);
-  return ((uint32_t)(299 * r + 587 * g + 114 * b) >= 68850u) ? 0xffffu : 0x0000u;
+  return (static_cast<uint32_t>(299 * r + 587 * g + 114 * b) >= 68850u) ? 0xffffu : 0x0000u;
 }
-#define UI_MAYBE_SNAP_MONO(c)    (ui_snap_mono((uint32_t)(c)))
-#define UI_MAYBE_SNAP_MONO565(c) (ui_snap_mono565((uint16_t)(c)))
+#define UI_MAYBE_SNAP_MONO(c)    (ui_snap_mono(static_cast<uint32_t>(c)))
+#define UI_MAYBE_SNAP_MONO565(c) (ui_snap_mono565(static_cast<uint16_t>(c)))
 #else
 #define UI_MAYBE_SNAP_MONO(c)    (c)
 #define UI_MAYBE_SNAP_MONO565(c) (c)
@@ -398,7 +398,7 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
       const UIRect16& r = __ui_refresh_rects[i];
       if (r.x < x0) x0 = r.x;
       if (r.y < y0) y0 = r.y;
-      int16_t rx1 = (int16_t)(r.x + r.w), ry1 = (int16_t)(r.y + r.h);
+      int16_t rx1 = static_cast<int16_t>(r.x + r.w), ry1 = static_cast<int16_t>(r.y + r.h);
       if (rx1 > x1) x1 = rx1;
       if (ry1 > y1) y1 = ry1;
     }
@@ -407,7 +407,7 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
     if (x1 > display_width()) x1 = display_width();
     if (y1 > display_height()) y1 = display_height();
     if (x1 > x0 && y1 > y0) {
-      display_partial_refresh(x0, y0, (int16_t)(x1 - x0), (int16_t)(y1 - y0));
+      display_partial_refresh(x0, y0, static_cast<int16_t>(x1 - x0), static_cast<int16_t>(y1 - y0));
     }
   }
 #elif defined(UI_BATCH_SPI_WRITES)
@@ -543,7 +543,7 @@ static inline uint8_t ui_ease_lerp_k(uint8_t timing, uint8_t k) {
   // converges. Products of four /1000 values are /1e12; t³ is /1e9 (×1000 to align).
   // int64 accumulation avoids overflow (3e12 > INT32_MAX). Identical algorithm +
   // control points to easeCurveLerpK in model.ts — preview and device must agree.
-  int32_t targetX = (int32_t)k * 10;          // input on the /1000 x axis
+  int32_t targetX = static_cast<int32_t>(k) * 10;          // input on the /1000 x axis
   int32_t lo = 0, hi = 1000;
   for (uint8_t i = 0; i < 14; i++) {
     int32_t t = (lo + hi) >> 1;
@@ -551,7 +551,7 @@ static inline uint8_t ui_ease_lerp_k(uint8_t timing, uint8_t k) {
     int64_t termX1 = (int64_t)3 * mt * mt * t * x1;   // /1e12
     int64_t termX2 = (int64_t)3 * mt * t * t * x2;    // /1e12
     int64_t termX3 = (int64_t)t * t * t * 1000;       // /1e12 (t³ was /1e9)
-    int32_t X = (int32_t)((termX1 + termX2 + termX3) / 1000000000LL);  // back to /1000
+    int32_t X = static_cast<int32_t>((termX1 + termX2 + termX3) / 1000000000LL);  // back to /1000
     if (X < targetX) lo = t; else hi = t;
   }
   int32_t t = (lo + hi) >> 1;
@@ -559,8 +559,8 @@ static inline uint8_t ui_ease_lerp_k(uint8_t timing, uint8_t k) {
   int64_t termY1 = (int64_t)3 * mt * mt * t * y1;
   int64_t termY2 = (int64_t)3 * mt * t * t * y2;
   int64_t termY3 = (int64_t)t * t * t * 1000;
-  int32_t Y = (int32_t)((termY1 + termY2 + termY3) / 1000000000LL);  // /1000
-  return (uint8_t)(Y / 10);  // back to /100
+  int32_t Y = static_cast<int32_t>((termY1 + termY2 + termY3) / 1000000000LL);  // /1000
+  return static_cast<uint8_t>(Y / 10);  // back to /100
 }
 extern const UIKeyframeSet __ui_keyframe_sets[];
 extern const uint16_t __ui_keyframe_set_count;
@@ -624,7 +624,7 @@ static inline void ui_navigate(uint8_t screenIdx) {
   // and the button would stay stuck in its :pressed color.
   if (__ui_touch_node >= 0 && __ui_touch_node < __ui_node_count &&
       __ui_nodes[__ui_touch_node].kind == NODE_BUTTON && __ui_nodes[__ui_touch_node].value != 0) {
-    ui_set_pressed((uint16_t)__ui_touch_node, 0);
+    ui_set_pressed(static_cast<uint16_t>(__ui_touch_node), 0);
   }
   __ui_scroll_node = -1;
   __ui_touch_node = -1;
@@ -788,7 +788,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
 
   int16_t vw = __ui_nodes[nodeIdx].box.w;
   int16_t vh = __ui_nodes[nodeIdx].box.h;
-  uint32_t need = (uint32_t)(vw > 0 ? vw : 0) * (uint32_t)(vh > 0 ? vh : 0) * 2u;
+  uint32_t need = static_cast<uint32_t>(vw > 0 ? vw : 0) * static_cast<uint32_t>(vh > 0 ? vh : 0) * 2u;
   const char* id = __ui_scroll_node_id(nodeIdx);
   const char* label = (id && id[0]) ? id : "scroll viewport";
   const char* reasonText = "scroll canvas allocation failed";
@@ -802,23 +802,23 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
     "heap free=%lu max_alloc=%lu budget=%d. "
     "Shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\n",
-    label, vw, vh, (unsigned long)need, reasonText,
-    (unsigned long)freeHeap, (unsigned long)maxAlloc, UI_SCROLL_CANVAS_BUDGET_BYTES);
+    label, vw, vh, static_cast<unsigned long>(need), reasonText,
+    static_cast<unsigned long>(freeHeap), static_cast<unsigned long>(maxAlloc), UI_SCROLL_CANVAS_BUDGET_BYTES);
 #elif defined(ESP8266) && defined(ARDUINO)
   uint32_t freeHeap = ESP.getFreeHeap();
   Serial.printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
     "heap free=%lu budget=%d. "
     "Shrink the scroll viewport in CSS, trim fonts/images, or reduce UI footprint.\n",
-    label, vw, vh, (unsigned long)need, reasonText,
-    (unsigned long)freeHeap, UI_SCROLL_CANVAS_BUDGET_BYTES);
+    label, vw, vh, static_cast<unsigned long>(need), reasonText,
+    static_cast<unsigned long>(freeHeap), UI_SCROLL_CANVAS_BUDGET_BYTES);
 #else
   // Non-Arduino target (e.g. SDL native): no Serial, so use standard-C printf.
   // The native framework forces <cstdio> so printf is available here.
   printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
     "budget=%d. Shrink the scroll viewport in CSS or trim UI assets.\n",
-    label, vw, vh, (unsigned long)need, reasonText, UI_SCROLL_CANVAS_BUDGET_BYTES);
+    label, vw, vh, static_cast<unsigned long>(need), reasonText, UI_SCROLL_CANVAS_BUDGET_BYTES);
 #endif
 }
 
@@ -850,16 +850,16 @@ static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t
   // band at the TOP. (Matches the proven pre-rewrite direction.)
   if (deltaY > 0) {
     for (int16_t row = 0; row < h - shift; row++) {
-      memmove(pixels + (int32_t)row * stride,
-              pixels + (int32_t)(row + shift) * stride,
-              (size_t)contentW * sizeof(UI_COLOR_T));
+      memmove(pixels + static_cast<int32_t>(row) * stride,
+              pixels + static_cast<int32_t>(row + shift) * stride,
+              static_cast<size_t>(contentW) * sizeof(UI_COLOR_T));
     }
     if (exposedY) *exposedY = h - shift;
   } else {
     for (int16_t row = h - shift - 1; row >= 0; row--) {
-      memmove(pixels + (int32_t)(row + shift) * stride,
-              pixels + (int32_t)row * stride,
-              (size_t)contentW * sizeof(UI_COLOR_T));
+      memmove(pixels + static_cast<int32_t>(row + shift) * stride,
+              pixels + static_cast<int32_t>(row) * stride,
+              static_cast<size_t>(contentW) * sizeof(UI_COLOR_T));
     }
     if (exposedY) *exposedY = 0;
   }
@@ -913,10 +913,10 @@ static inline int16_t ui_clamp_i16(int16_t value, int16_t lo, int16_t hi) {
   return value;
 }
 static inline void ui_display_target_bounds(int16_t* left, int16_t* top, int16_t* right, int16_t* bottom) {
-  if (left) *left = (int16_t)(-__ui_draw_off_x);
-  if (top) *top = (int16_t)(-__ui_draw_off_y);
-  if (right) *right = (int16_t)(ui_display_target_width() - __ui_draw_off_x);
-  if (bottom) *bottom = (int16_t)(ui_display_target_height() - __ui_draw_off_y);
+  if (left) *left = static_cast<int16_t>(-__ui_draw_off_x);
+  if (top) *top = static_cast<int16_t>(-__ui_draw_off_y);
+  if (right) *right = static_cast<int16_t>(ui_display_target_width() - __ui_draw_off_x);
+  if (bottom) *bottom = static_cast<int16_t>(ui_display_target_height() - __ui_draw_off_y);
 }
 static inline uint8_t ui_clip_rect_to_display_target(int16_t* x, int16_t* y, int16_t* w, int16_t* h) {
   if (!x || !y || !w || !h || *w <= 0 || *h <= 0) return 0;
@@ -924,8 +924,8 @@ static inline uint8_t ui_clip_rect_to_display_target(int16_t* x, int16_t* y, int
   ui_display_target_bounds(&left, &top, &right, &bottom);
   int16_t x0 = *x > left ? *x : left;
   int16_t y0 = *y > top ? *y : top;
-  int16_t x1 = (int16_t)(*x + *w);
-  int16_t y1 = (int16_t)(*y + *h);
+  int16_t x1 = static_cast<int16_t>(*x + *w);
+  int16_t y1 = static_cast<int16_t>(*y + *h);
   if (x1 > right) x1 = right;
   if (y1 > bottom) y1 = bottom;
   if (x0 >= x1 || y0 >= y1) return 0;
@@ -994,15 +994,15 @@ static inline void ui_display_print(const char* text) {
 // 'none' tier compiles drag scroll out entirely.
 
 static inline int16_t ui_scroll_scale_dy(int16_t dy) {
-  int32_t scaled = (int32_t)dy * (int32_t)UI_SCROLL_DRAG_SCALE_X10;
-  return (int16_t)(scaled >= 0 ? (scaled + 5) / 10 : (scaled - 5) / 10);
+  int32_t scaled = static_cast<int32_t>(dy) * static_cast<int32_t>(UI_SCROLL_DRAG_SCALE_X10);
+  return static_cast<int16_t>(scaled >= 0 ? (scaled + 5) / 10 : (scaled - 5) / 10);
 }
 
 static inline int16_t ui_scroll_smooth_dy(int16_t dy) {
 #if UI_SCROLL_INPUT_TIER_CAPACITIVE
   return ui_scroll_scale_dy(dy);
 #elif UI_SCROLL_INPUT_TIER_RESISTIVE
-  int16_t db = (int16_t)UI_SCROLL_DEADBAND_PX;
+  int16_t db = static_cast<int16_t>(UI_SCROLL_DEADBAND_PX);
   if (dy >= -db && dy <= db) {
     // Deadband: kill per-sample jitter around zero. Steady drag (|dy|>db) below
     // passes through unchanged, so steady-state is 1:1 (spec Q1).
@@ -1029,11 +1029,11 @@ static inline int16_t ui_scroll_max(int16_t node) {
 // r = maxOverscroll * d / (d + stiffness). stiffness held as X10 fixed-point.
 static inline int16_t ui_scroll_overscroll_for(int16_t d) {
   if (d <= 0) return 0;
-  int16_t maxOv = (int16_t)UI_SCROLL_MAX_OVERSCROLL;
-  int16_t stiffX10 = (int16_t)UI_SCROLL_STIFFNESS_X10;
+  int16_t maxOv = static_cast<int16_t>(UI_SCROLL_MAX_OVERSCROLL);
+  int16_t stiffX10 = static_cast<int16_t>(UI_SCROLL_STIFFNESS_X10);
   if (stiffX10 <= 0) stiffX10 = 1;
-  int32_t r = ((int32_t)maxOv * (int32_t)d) / ((int32_t)d + (int32_t)stiffX10);
-  return r > maxOv ? maxOv : (int16_t)r;
+  int32_t r = (static_cast<int32_t>(maxOv) * static_cast<int32_t>(d)) / (static_cast<int32_t>(d) + static_cast<int32_t>(stiffX10));
+  return r > maxOv ? maxOv : static_cast<int16_t>(r);
 }
 
 // Apply a smoothed drag delta to the owning scroll node. Returns 1 if the view
@@ -1073,7 +1073,7 @@ static inline uint8_t ui_apply_scroll_delta(int16_t node, int16_t dy) {
   }
   __ui_nodes[node].overscrollPx = nextOv;
   uint8_t changed = (__ui_nodes[node].scrollY != sy) || (nextOv != prevOv);
-  if (changed) ui_mark_scroll_view_dirty((uint16_t)node);
+  if (changed) ui_mark_scroll_view_dirty(static_cast<uint16_t>(node));
   return changed;
 }
 
@@ -1091,7 +1091,7 @@ static inline uint8_t ui_scroll_release(int16_t node) {
   } else {
     int16_t sy = __ui_nodes[node].scrollY;
     int16_t maxS = ui_scroll_max(node);
-    int16_t snap = (int16_t)UI_SCROLL_EDGE_SNAP_PX;
+    int16_t snap = static_cast<int16_t>(UI_SCROLL_EDGE_SNAP_PX);
     if (sy > 0 && sy <= snap) {
       __ui_nodes[node].settling = 1;
       __ui_settle_from_scrollY = sy;            // positive → snap toward 0
@@ -1115,23 +1115,23 @@ static inline void ui_scroll_advance_settle(uint8_t node, uint16_t deltaMs) {
   (void)deltaMs;
   if (node >= __ui_node_count || !__ui_nodes[node].settling) return;
   uint32_t elapsed = millis() - __ui_settle_start_ms;
-  uint16_t dur = (uint16_t)UI_SCROLL_SETTLE_MS;
+  uint16_t dur = static_cast<uint16_t>(UI_SCROLL_SETTLE_MS);
   // ease-out: k = 1 - (1 - t)^2, t in [0,1]
   uint32_t t = elapsed >= dur ? 100 : (elapsed * 100) / dur;
   uint32_t k = 100 - ((100 - t) * (100 - t)) / 100;
   if (__ui_nodes[node].overscrollPx != 0) {
     int16_t from = __ui_settle_from_overscroll;
-    __ui_nodes[node].overscrollPx = (int16_t)(from - (int32_t)(from * k) / 100);
+    __ui_nodes[node].overscrollPx = static_cast<int16_t>(from - static_cast<int32_t>(from * k) / 100);
     if (t >= 100) __ui_nodes[node].overscrollPx = 0;
   } else if (__ui_settle_from_scrollY != 0) {
     int16_t from = __ui_settle_from_scrollY;   // +toward 0, -toward max
     int16_t maxS = ui_scroll_max(node);
     if (from > 0) {
-      __ui_nodes[node].scrollY = (int16_t)(from - (int32_t)(from * k) / 100);
+      __ui_nodes[node].scrollY = static_cast<int16_t>(from - static_cast<int32_t>(from * k) / 100);
       if (t >= 100) __ui_nodes[node].scrollY = 0;
     } else {  // from < 0: snap toward maxS
       int16_t target = maxS;
-      __ui_nodes[node].scrollY = target + (int16_t)((int32_t)from * (100 - k) / 100);
+      __ui_nodes[node].scrollY = target + static_cast<int16_t>(static_cast<int32_t>(from) * (100 - k) / 100);
       if (t >= 100) __ui_nodes[node].scrollY = target;
     }
   }
@@ -1385,8 +1385,8 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
    int16_t clipH = (q == 1 || q == 3) ? img->w : img->h;
    if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
    if (q == 0) {
-     int16_t sx0 = ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, static_cast<int16_t>(img)->w);
-     int16_t sy0 = ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img)->h);
+     int16_t sx0 = ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, static_cast<int16_t>(img->w));
+     int16_t sy0 = ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img->h));
      int16_t sw = ui_clamp_i16(clipW, 0, static_cast<int16_t>(img->w - sx0));
      int16_t sh = ui_clamp_i16(clipH, 0, static_cast<int16_t>(img->h - sy0));
      for (int16_t row = 0; row < sh; row++) {
@@ -1397,20 +1397,20 @@ static inline void ui_draw_image_rotated(const UIImage* img, int16_t x, int16_t 
    }
    uint16_t sxStart = 0, sxEnd = img->w, syStart = 0, syEnd = img->h;
    if (q == 1) {
-     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img)->w));
-     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipY + clipH - y), 0, static_cast<int16_t>(img)->w));
-     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->h - (clipX + clipW)), 0, static_cast<int16_t>(img)->h));
-     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->h - clipX), 0, static_cast<int16_t>(img)->h));
+     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipY - y), 0, static_cast<int16_t>(img->w)));
+     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipY + clipH - y), 0, static_cast<int16_t>(img->w)));
+     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->h - (clipX + clipW)), 0, static_cast<int16_t>(img->h)));
+     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->h - clipX), 0, static_cast<int16_t>(img->h)));
    } else if (q == 2) {
-     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->w - (clipX + clipW)), 0, static_cast<int16_t>(img)->w));
-     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->w - clipX), 0, static_cast<int16_t>(img)->w));
-     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->h - (clipY + clipH)), 0, static_cast<int16_t>(img)->h));
-     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->h - clipY), 0, static_cast<int16_t>(img)->h));
+     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->w - (clipX + clipW)), 0, static_cast<int16_t>(img->w)));
+     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(x + img->w - clipX), 0, static_cast<int16_t>(img->w)));
+     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->h - (clipY + clipH)), 0, static_cast<int16_t>(img->h)));
+     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->h - clipY), 0, static_cast<int16_t>(img->h)));
    } else {
-     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->w - (clipY + clipH)), 0, static_cast<int16_t>(img)->w));
-     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->w - clipY), 0, static_cast<int16_t>(img)->w));
-     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, static_cast<int16_t>(img)->h));
-     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipX + clipW - x), 0, static_cast<int16_t>(img)->h));
+     sxStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->w - (clipY + clipH)), 0, static_cast<int16_t>(img->w)));
+     sxEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(y + img->w - clipY), 0, static_cast<int16_t>(img->w)));
+     syStart = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipX - x), 0, static_cast<int16_t>(img->h)));
+     syEnd = static_cast<uint16_t>(ui_clamp_i16(static_cast<int16_t>(clipX + clipW - x), 0, static_cast<int16_t>(img->h)));
    }
    if (sxStart >= sxEnd || syStart >= syEnd) return;
    for (uint16_t sy = syStart; sy < syEnd; sy++) {
@@ -1448,7 +1448,7 @@ static inline void ui_push_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, in
       return;
     }
     for (int16_t row = 0; row < h; row++) {
-      ui_display_draw_rgb_bitmap(x, y + row, pixels + (int32_t)row * stride, w, 1);
+      ui_display_draw_rgb_bitmap(x, y + row, pixels + static_cast<int32_t>(row) * stride, w, 1);
     }
     return;
   }
@@ -1456,12 +1456,12 @@ static inline void ui_push_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, in
   display_setAddrWindow(x, y, w, h);
   if (w == stride) {
     // Full-width: contiguous in buffer, single write.
-    display_writePixels(pixels, (uint32_t)w * h);
+    display_writePixels(pixels, static_cast<uint32_t>(w) * h);
     display_endWrite();
     return;
   }
   for (int16_t row = 0; row < h; row++) {
-    display_writePixels(pixels + (int32_t)row * stride, w);
+    display_writePixels(pixels + static_cast<int32_t>(row) * stride, w);
   }
   display_endWrite();
 }
@@ -1475,7 +1475,7 @@ static inline void ui_draw_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, in
     return;
   }
   for (int16_t row = 0; row < h; row++) {
-    ui_display_draw_rgb_bitmap(x, y + row, pixels + (int32_t)row * stride, w, 1);
+    ui_display_draw_rgb_bitmap(x, y + row, pixels + static_cast<int32_t>(row) * stride, w, 1);
   }
 }
 
@@ -1497,10 +1497,10 @@ static inline void ui_push_buffered_scroll_canvas(CuttlefishCanvas16* bufferedSc
     ui_draw_canvas_rect(bufferedScrollRepaintCanvas, 0, bufferedScrollRepaintY, vw, bufferedScrollRepaintH);
   }
   int16_t tx = vw - 4;
-  uint16_t thumbH = (uint32_t)vh * vh / __ui_nodes[si].contentHeight;
+  uint16_t thumbH = static_cast<uint32_t>(vh) * vh / __ui_nodes[si].contentHeight;
   if (thumbH < 8) thumbH = 8;
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
-  uint16_t thumbY = (uint32_t)(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
+  uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
   ui_display_fill_rect(tx, 0, 3, vh, dimFg);
   ui_display_fill_rect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
@@ -1517,18 +1517,18 @@ static inline void ui_push_buffered_scroll_canvas(CuttlefishCanvas16* bufferedSc
 
 // Draw a scroll container's scrollbar directly on the display (Mode C).
 static inline void ui_draw_scrollbar_direct(int16_t si, int16_t vox, int16_t voy) {
-  if (si < 0 || si >= (int16_t)__ui_node_count) return;
+  if (si < 0 || si >= static_cast<int16_t>(__ui_node_count)) return;
   int16_t vw = __ui_nodes[si].box.w;
   int16_t vh = __ui_nodes[si].box.h;
   if (__ui_nodes[si].contentHeight <= vh) return;
   int16_t tx = vox + vw - 4;
-  uint16_t thumbH = (uint32_t)vh * vh / __ui_nodes[si].contentHeight;
+  uint16_t thumbH = static_cast<uint32_t>(vh) * vh / __ui_nodes[si].contentHeight;
   if (thumbH < 8) thumbH = 8;
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
-  uint16_t thumbY = (uint32_t)(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
+  uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
   ui_display_fill_rect(tx, voy, 3, vh, dimFg);
-  ui_display_fill_rect(tx, (int16_t)(voy + thumbY), 3, thumbH, __ui_nodes[si].fg);
+  ui_display_fill_rect(tx, static_cast<int16_t>(voy + thumbY), 3, thumbH, __ui_nodes[si].fg);
 }
 
 // Per-node dirty marker (called by press handlers and binding evaluation).
@@ -1602,8 +1602,8 @@ static inline void ui_scroll_direct_prepare(uint16_t s, int16_t* outVX, int16_t*
   UI_COLOR_T scrollBg = __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor;
   int16_t deltaY = __ui_nodes[s].scrollY - __ui_nodes[s].lastPaintedScrollY;
   int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
-  int16_t stripY = deltaY > 0 ? (int16_t)(vh - absDelta) : 0;
-  ui_display_fill_rect(vox, (int16_t)(voy + stripY), vw, absDelta, scrollBg);
+  int16_t stripY = deltaY > 0 ? static_cast<int16_t>(vh - absDelta) : 0;
+  ui_display_fill_rect(vox, static_cast<int16_t>(voy + stripY), vw, absDelta, scrollBg);
   for (uint16_t c = s + 1; c < __ui_nodes[s].subtreeEnd; c++) {
     if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) {
       __ui_nodes[c].dirty = 0;
@@ -1625,13 +1625,13 @@ static inline int16_t ui_overflow_scroll_compositor(uint16_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return -1;
   if (__ui_nodes[nodeIdx].scrollable && !__ui_nodes[nodeIdx].virtualized &&
       __ui_nodes[nodeIdx].contentHeight > __ui_nodes[nodeIdx].box.h) {
-    return (int16_t)nodeIdx;
+    return static_cast<int16_t>(nodeIdx);
   }
   uint16_t p = __ui_nodes[nodeIdx].parent;
   while (p != UI_NO_PARENT && p < __ui_node_count) {
     if (__ui_nodes[p].scrollable && !__ui_nodes[p].virtualized &&
         __ui_nodes[p].contentHeight > __ui_nodes[p].box.h) {
-      return (int16_t)p;
+      return static_cast<int16_t>(p);
     }
     p = __ui_nodes[p].parent;
   }
@@ -1680,7 +1680,7 @@ static inline void ui_mark_scroll_view_dirty(uint16_t scrollNode) {
 static inline int16_t ui_scroll_ancestor_for_node(uint16_t nodeIdx) {
   uint16_t p = __ui_nodes[nodeIdx].parent;
   while (p != UI_NO_PARENT && p < __ui_node_count) {
-    if (__ui_nodes[p].scrollable) return (int16_t)p;
+    if (__ui_nodes[p].scrollable) return static_cast<int16_t>(p);
     p = __ui_nodes[p].parent;
   }
   return -1;
@@ -1722,12 +1722,12 @@ static inline uint8_t ui_node_draws_before(uint16_t a, uint16_t b) {
 // re-scanning all nodes for every dirty repaint (O(D·N)).
 static inline void ui_build_draw_order() {
   if (__ui_draw_order || __ui_node_count == 0) return;
-  __ui_draw_order = (uint16_t*)malloc((size_t)__ui_node_count * sizeof(uint16_t));
+  __ui_draw_order = (uint16_t*)malloc(static_cast<size_t>(__ui_node_count) * sizeof(uint16_t));
   if (!__ui_draw_order) return;
   for (uint16_t i = 0; i < __ui_node_count; i++) __ui_draw_order[i] = i;
   for (uint16_t a = 1; a < __ui_node_count; a++) {
     uint16_t key = __ui_draw_order[a];
-    int16_t j = (int16_t)a - 1;
+    int16_t j = static_cast<int16_t>(a) - 1;
     while (j >= 0 && ui_node_draws_before(key, __ui_draw_order[j])) {
       __ui_draw_order[j + 1] = __ui_draw_order[j];
       j--;
@@ -1746,7 +1746,7 @@ static inline void ui_build_scroll_owner_table() {
   }
   __ui_scroll_owner_count = count;
   if (!count) return;
-  __ui_scroll_owners = (uint16_t*)malloc((size_t)count * sizeof(uint16_t));
+  __ui_scroll_owners = (uint16_t*)malloc(static_cast<size_t>(count) * sizeof(uint16_t));
   if (!__ui_scroll_owners) {
     __ui_scroll_owner_count = 0;
     return;
@@ -1834,11 +1834,11 @@ static inline int16_t ui_scroll_node_at(int16_t tx, int16_t ty) {
     if (!__ui_nodes[i].scrollable || !ui_is_effectively_visible(i)) continue;
     if (__ui_nodes[i].screenId != __ui_active_screen) continue;
     if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
-    int16_t drawX = ui_draw_x_for_node((uint16_t)i);
-    int16_t drawY = ui_draw_y_for_node((uint16_t)i);
+    int16_t drawX = ui_draw_x_for_node(static_cast<uint16_t>(i));
+    int16_t drawY = ui_draw_y_for_node(static_cast<uint16_t>(i));
     if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
-      if (bestScroll < 0 || ui_node_draws_before((uint16_t)bestScroll, i)) bestScroll = (int16_t)i;
+      if (bestScroll < 0 || ui_node_draws_before(static_cast<uint16_t>(bestScroll), i)) bestScroll = static_cast<int16_t>(i);
     }
   }
   return bestScroll;
@@ -1888,8 +1888,8 @@ static inline void ui_node_paint_rect(uint16_t nodeIdx, int16_t baseX, int16_t b
   if (__ui_nodes[nodeIdx].kind == NODE_TEXT || __ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
     if (__ui_nodes[nodeIdx].lastTextWidth > faceW) faceW = __ui_nodes[nodeIdx].lastTextWidth;
     if (__ui_nodes[nodeIdx].lastTextHeight > faceH) faceH = __ui_nodes[nodeIdx].lastTextHeight;
-    if ((int16_t)textW > faceW) faceW = (int16_t)textW;
-    if ((int16_t)textH > faceH) faceH = (int16_t)textH;
+    if (static_cast<int16_t>(textW) > faceW) faceW = static_cast<int16_t>(textW);
+    if (static_cast<int16_t>(textH) > faceH) faceH = static_cast<int16_t>(textH);
   }
   int16_t unrotatedFaceW = faceW;
   int16_t unrotatedFaceH = faceH;
@@ -2026,7 +2026,7 @@ static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_
   if (__ui_nodes[nodeIdx].kind == NODE_LIST) return 0;
   // <canvas> elements batch via __ui_node_canvas when drawing to the display.
   if (__ui_nodes[nodeIdx].kind == NODE_CANVAS) return 0;
-  if ((uint32_t)w * (uint32_t)h > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
+  if (static_cast<uint32_t>(w) * static_cast<uint32_t>(h) > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
   if (ui_pixel_heavy_node(nodeIdx)) return 1;
   if (__ui_nodes[nodeIdx].kind == NODE_FILL &&
       __ui_nodes[nodeIdx].hasBg &&
@@ -2098,7 +2098,7 @@ static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCan
 
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx, UIRect* r) {
   if (!r || r->w <= 0 || r->h <= 0) return 0;
-  if ((uint32_t)r->w * (uint32_t)r->h > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
+  if (static_cast<uint32_t>(r->w) * static_cast<uint32_t>(r->h) > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
   CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(r->w, r->h);
   if (!repairCanvas) return 0;
   ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, r->x, r->y);
@@ -2315,7 +2315,7 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   int16_t y0 = oldRect->y < newRect.y ? oldRect->y : newRect.y;
   int16_t x1 = oldRect->x + oldRect->w > newRect.x + newRect.w ? oldRect->x + oldRect->w : newRect.x + newRect.w;
   int16_t y1 = oldRect->y + oldRect->h > newRect.y + newRect.h ? oldRect->y + oldRect->h : newRect.y + newRect.h;
-  UIRect repair = { x0, y0, (int16_t)(x1 - x0), (int16_t)(y1 - y0) };
+  UIRect repair = { x0, y0, static_cast<int16_t>(x1 - x0), static_cast<int16_t>(y1 - y0) };
   int16_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
   if (scrollParent >= 0) {
     UIRect clip = {
@@ -2332,7 +2332,7 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
     return 0;
   }
   if (repair.w <= 0 || repair.h <= 0) return 0;
-  if ((uint32_t)repair.w * (uint32_t)repair.h > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
+  if (static_cast<uint32_t>(repair.w) * static_cast<uint32_t>(repair.h) > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
   CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(repair.w, repair.h);
   if (!repairCanvas) return 0;
 
@@ -2406,7 +2406,7 @@ static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible) {
     ui_clear_subtree_current_paint(nodeIdx);
     int16_t end = __ui_nodes[nodeIdx].subtreeEnd;
     if (end > __ui_node_count) end = __ui_node_count;
-    for (int16_t c = end - 1; c >= (int16_t)nodeIdx; c--) {
+    for (int16_t c = end - 1; c >= static_cast<int16_t>(nodeIdx); c--) {
       if (__ui_nodes[c].screenId != __ui_active_screen) continue;
       __ui_nodes[c].dirty = 0;
     }
@@ -2475,7 +2475,7 @@ static inline void ui_init(void) {
     uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
     uint16_t cnt = __ui_nodes[i].listCountFn();
     __ui_nodes[i].listCount = cnt;
-    __ui_nodes[i].contentHeight = (int16_t)((uint32_t)cnt * ih);
+    __ui_nodes[i].contentHeight = static_cast<int16_t>(static_cast<uint32_t>(cnt) * ih);
     __ui_nodes[i].scrollY = 0;
     __ui_nodes[i].overscrollPx = 0;
     __ui_nodes[i].settling = 0;
@@ -2635,15 +2635,15 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     if (!ui_is_effectively_visible(i)) continue;
     if (__ui_nodes[i].screenId != __ui_active_screen) continue;
-    int16_t drawX = ui_draw_x_for_node((uint16_t)i);
-    int16_t drawY = ui_draw_y_for_node((uint16_t)i);
+    int16_t drawX = ui_draw_x_for_node(static_cast<uint16_t>(i));
+    int16_t drawY = ui_draw_y_for_node(static_cast<uint16_t>(i));
     if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
       // The node's box contains the tap. For nodes inside a scroll container,
       // the tap point (not the whole box) must lie within the visible viewport:
       // a tall wrapped paragraph can overflow below the fold yet still have a
       // tappable link segment in its visible portion.
-      if (ui_is_point_clipped_by_scroll((uint16_t)i, tx, ty)) continue;
+      if (ui_is_point_clipped_by_scroll(static_cast<uint16_t>(i), tx, ty)) continue;
       // Skip nodes without any click handler — they're containers, not targets.
       // Exceptions: NODE_RANGE (horizontal drag), NODE_INPUT (opens keyboard),
       // NODE_LIST (virtualized item tap), and NODE_BUTTON — the last so a button
@@ -2664,7 +2664,7 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
 
 // Dispatch a handler from the given table if registered for the node.
 static void ui_dispatch(void (**table)(), uint16_t count, int16_t node) {
-  if (node >= 0 && (uint16_t)node < count && table[node]) {
+  if (node >= 0 && static_cast<uint16_t>(node) < count && table[node]) {
     table[node]();
   }
 }
@@ -2714,8 +2714,8 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
     if (__ui_nodes[i].screenId != __ui_active_screen) continue;
     // Only scrollable if content overflows the viewport.
     if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
-    int16_t drawX = ui_draw_x_for_node((uint16_t)i);
-    int16_t drawY = ui_draw_y_for_node((uint16_t)i);
+    int16_t drawX = ui_draw_x_for_node(static_cast<uint16_t>(i));
+    int16_t drawY = ui_draw_y_for_node(static_cast<uint16_t>(i));
     if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
       if (bestScroll < 0 || ui_node_draws_before(bestScroll, i)) bestScroll = i;
@@ -2728,7 +2728,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   if (node >= 0) {
     uint8_t handledTouchTarget = 0;
     if (__ui_nodes[node].kind == NODE_BUTTON) {
-      ui_set_pressed((uint16_t)node, 1);
+      ui_set_pressed(static_cast<uint16_t>(node), 1);
       handledTouchTarget = 1;
     }
     // Track range nodes for horizontal drag
@@ -2742,10 +2742,10 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
       int16_t rMax = __ui_nodes[node].rangeMax;
       int16_t range = rMax - rMin;
       if (range <= 0) range = 100;
-      int16_t relX = tx - ui_draw_x_for_node((uint16_t)node) - 4;
+      int16_t relX = tx - ui_draw_x_for_node(static_cast<uint16_t>(node)) - 4;
       int16_t usable = __ui_nodes[node].box.w - 8;
       if (usable <= 0) usable = 1;
-      int16_t nextVal = rMin + ((int32_t)relX * range) / usable;
+      int16_t nextVal = rMin + (static_cast<int32_t>(relX) * range) / usable;
       nextVal = constrain(nextVal, rMin, rMax);
       if (nextVal != __ui_nodes[node].value) {
         __ui_nodes[node].value = nextVal;
@@ -2784,17 +2784,17 @@ static void ui_touch_up() {
     int16_t clickedNode = __ui_touch_node;
     if (elapsed < UI_TOUCH_HOLD_MS) {
       if (__ui_nodes[clickedNode].kind == NODE_INPUT) {
-        ui_open_keyboard_for_input((uint16_t)clickedNode);
+        ui_open_keyboard_for_input(static_cast<uint16_t>(clickedNode));
       }
       ui_dispatch(__ui_click_handlers, __ui_click_handler_count, __ui_touch_node);
       // Rich-text inline link: if the tapped node has link runs, find which link
       // segment the tap falls within and navigate to its target screen. Copies
       // the list-item subdivision precedent with measured run rects.
       if (__ui_nodes[clickedNode].runCount > 0) {
-        int16_t ndx = __ui_last_touch_x - ui_draw_x_for_node((uint16_t)clickedNode);
-        int16_t ndy = __ui_last_touch_y - ui_draw_y_for_node((uint16_t)clickedNode);
-        int8_t target = ui_rich_link_hit((uint16_t)clickedNode, ndx, ndy);
-        if (target >= 0) ui_navigate((uint8_t)target);
+        int16_t ndx = __ui_last_touch_x - ui_draw_x_for_node(static_cast<uint16_t>(clickedNode));
+        int16_t ndy = __ui_last_touch_y - ui_draw_y_for_node(static_cast<uint16_t>(clickedNode));
+        int8_t target = ui_rich_link_hit(static_cast<uint16_t>(clickedNode), ndx, ndy);
+        if (target >= 0) ui_navigate(static_cast<uint8_t>(target));
       }
     }
     ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
@@ -2806,7 +2806,7 @@ static void ui_touch_up() {
   // otherwise a touch-down on a button followed by a scroll leaves it stuck).
   if (__ui_touch_node >= 0 && __ui_touch_node < __ui_node_count &&
       __ui_nodes[__ui_touch_node].kind == NODE_BUTTON && __ui_nodes[__ui_touch_node].value != 0) {
-    ui_set_pressed((uint16_t)__ui_touch_node, 0);
+    ui_set_pressed(static_cast<uint16_t>(__ui_touch_node), 0);
   }
   // Resume any `await ui.onTap()` awaiter. Runs for EVERY completed tap —
   // including holds (released above) and taps on empty space (__ui_touch_node
@@ -2826,9 +2826,9 @@ static void ui_touch_up() {
       int16_t relY = __ui_last_touch_y - drawY;
       int16_t totalMove = abs(__ui_last_touch_y - __ui_touch_down_y_pos);
       uint16_t ih = __ui_nodes[n].listItemHeight > 0 ? __ui_nodes[n].listItemHeight : 24;
-      if (totalMove < (int16_t)(ih / 2) &&
+      if (totalMove < static_cast<int16_t>(ih / 2) &&
           relY >= 0 && relY < __ui_nodes[n].box.h) {
-        uint16_t itemIdx = (uint16_t)((relY + __ui_nodes[n].scrollY) / ih);
+        uint16_t itemIdx = static_cast<uint16_t>((relY + __ui_nodes[n].scrollY) / ih);
         if (itemIdx < __ui_nodes[n].listCount) {
           __ui_nodes[n].listTapFn(itemIdx);
         }
@@ -2892,16 +2892,16 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
       int16_t rMax = __ui_nodes[__ui_range_node].rangeMax;
       int16_t range = rMax - rMin;
       if (range <= 0) range = 100;
-      int16_t relX = tx - ui_draw_x_for_node((uint16_t)__ui_range_node) - 4;
+      int16_t relX = tx - ui_draw_x_for_node(static_cast<uint16_t>(__ui_range_node)) - 4;
       int16_t usable = __ui_nodes[__ui_range_node].box.w - 8;
       if (usable <= 0) usable = 1;
-      int16_t newVal = rMin + ((int32_t)relX * range) / usable;
+      int16_t newVal = rMin + (static_cast<int32_t>(relX) * range) / usable;
       newVal = constrain(newVal, rMin, rMax);
       if (newVal != __ui_nodes[__ui_range_node].value) {
         __ui_nodes[__ui_range_node].value = newVal;
         ui_mark_dirty(__ui_range_node);
         // Fire the onChange callback (if any) — every value change during drag.
-        if (__ui_range_node < (int16_t)__ui_rangechange_handler_count &&
+        if (__ui_range_node < static_cast<int16_t>(__ui_rangechange_handler_count) &&
             __ui_rangechange_handlers[__ui_range_node]) {
           __ui_rangechange_handlers[__ui_range_node]();
         }
@@ -2922,7 +2922,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
           Serial.printf("scroll dy=%d sy=%d ov=%d virt=%d\n",
             dy, __ui_nodes[__ui_scroll_node].scrollY,
             __ui_nodes[__ui_scroll_node].overscrollPx,
-            (int)__ui_nodes[__ui_scroll_node].virtualized);
+            static_cast<int>(__ui_nodes[__ui_scroll_node].virtualized));
 #endif
         }
       }
@@ -2961,9 +2961,9 @@ static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
   // Unpack to 8-bit (5-bit → 8-bit: (v << 3) | (v >> 2)).
   uint16_t fr8 = (fr << 3) | (fr >> 2), fg8 = (fg5 << 2) | (fg5 >> 4), fb8 = (fb << 3) | (fb >> 2);
   uint16_t br8 = (br << 3) | (br >> 2), bg8 = (bg5 << 2) | (bg5 >> 4), bb8 = (bb << 3) | (bb >> 2);
-  uint16_t r = (uint16_t)((fr8 * opacity + br8 * (100 - opacity)) / 100);
-  uint16_t g = (uint16_t)((fg8 * opacity + bg8 * (100 - opacity)) / 100);
-  uint16_t b = (uint16_t)((fb8 * opacity + bb8 * (100 - opacity)) / 100);
+  uint16_t r = static_cast<uint16_t>((fr8 * opacity + br8 * (100 - opacity)) / 100);
+  uint16_t g = static_cast<uint16_t>((fg8 * opacity + bg8 * (100 - opacity)) / 100);
+  uint16_t b = static_cast<uint16_t>((fb8 * opacity + bb8 * (100 - opacity)) / 100);
   return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
 }
 
@@ -2979,7 +2979,7 @@ static inline uint32_t ui_blend888(uint32_t fg, uint32_t bg, uint8_t opacity) {
   uint8_t r = (fr * opacity + br * (100 - opacity)) / 100;
   uint8_t g = (fg8 * opacity + bg8 * (100 - opacity)) / 100;
   uint8_t b = (fb * opacity + bb * (100 - opacity)) / 100;
-  return ((uint32_t)r << 16) | ((uint32_t)g << 8) | b;
+  return (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
 }
 
 static inline const UIFontFace* ui_font_face(uint8_t id) {
@@ -3019,12 +3019,12 @@ static inline uint16_t ui_next_utf8_codepoint(const unsigned char** p) {
     return b0;
   }
   if ((b0 & 0xE0) == 0xC0 && (s[0] & 0xC0) == 0x80) {
-    uint16_t cp = ((uint16_t)(b0 & 0x1F) << 6) | (uint16_t)(s[0] & 0x3F);
+    uint16_t cp = (static_cast<uint16_t>(b0 & 0x1F) << 6) | static_cast<uint16_t>(s[0] & 0x3F);
     *p = s + 1;
     return cp;
   }
   if ((b0 & 0xF0) == 0xE0 && (s[0] & 0xC0) == 0x80 && (s[1] & 0xC0) == 0x80) {
-    uint16_t cp = ((uint16_t)(b0 & 0x0F) << 12) | ((uint16_t)(s[0] & 0x3F) << 6) | (uint16_t)(s[1] & 0x3F);
+    uint16_t cp = (static_cast<uint16_t>(b0 & 0x0F) << 12) | (static_cast<uint16_t>(s[0] & 0x3F) << 6) | static_cast<uint16_t>(s[1] & 0x3F);
     *p = s + 2;
     return cp;
   }
@@ -3100,12 +3100,12 @@ static inline uint16_t ui_next_utf8_codepoint_bounded(const unsigned char** p, c
     return b0;
   }
   if ((b0 & 0xE0) == 0xC0 && s < end && (s[0] & 0xC0) == 0x80) {
-    uint16_t cp = ((uint16_t)(b0 & 0x1F) << 6) | (uint16_t)(s[0] & 0x3F);
+    uint16_t cp = (static_cast<uint16_t>(b0 & 0x1F) << 6) | static_cast<uint16_t>(s[0] & 0x3F);
     *p = s + 1;
     return cp;
   }
   if ((b0 & 0xF0) == 0xE0 && s + 1 < end && (s[0] & 0xC0) == 0x80 && (s[1] & 0xC0) == 0x80) {
-    uint16_t cp = ((uint16_t)(b0 & 0x0F) << 12) | ((uint16_t)(s[0] & 0x3F) << 6) | (uint16_t)(s[1] & 0x3F);
+    uint16_t cp = (static_cast<uint16_t>(b0 & 0x0F) << 12) | (static_cast<uint16_t>(s[0] & 0x3F) << 6) | static_cast<uint16_t>(s[1] & 0x3F);
     *p = s + 2;
     return cp;
   }
@@ -3123,8 +3123,8 @@ static inline uint16_t ui_text_codepoint_advance(uint16_t codepoint, uint8_t ts,
     const UIFontGlyph* glyph = ui_font_glyph(face, codepoint);
     return glyph ? glyph->advance : (face->lineHeight / 2);
   }
-  int16_t adv = (int16_t)(ts ? ts : 2) * 6 + letterSpacing;
-  return adv > 0 ? (uint16_t)adv : 1;
+  int16_t adv = static_cast<int16_t>(ts ? ts : 2) * 6 + letterSpacing;
+  return adv > 0 ? static_cast<uint16_t>(adv) : 1;
 }
 
 static inline uint16_t ui_text_span_width(const char* start, const char* end, uint8_t ts, uint8_t fontFace, int8_t letterSpacing) {
@@ -3264,12 +3264,12 @@ static inline uint32_t ui_text_layout_cache_key(uint16_t nodeIdx, uint16_t textM
   uint8_t ts = __ui_nodes[nodeIdx].textSize ? __ui_nodes[nodeIdx].textSize : 2;
   key = key * 31u + ts;
   key = key * 31u + __ui_nodes[nodeIdx].fontFace;
-  key = key * 31u + (uint8_t)(__ui_nodes[nodeIdx].letterSpacing + 128);
+  key = key * 31u + static_cast<uint8_t>(__ui_nodes[nodeIdx].letterSpacing + 128);
   key = key * 31u + __ui_nodes[nodeIdx].lineHeight;
   if (__ui_nodes[nodeIdx].hasTextBinding) {
     const char* t = __ui_nodes[nodeIdx].textBuffer;
     while (t && *t) {
-      key = key * 31u + (uint8_t)*t;
+      key = key * 31u + static_cast<uint8_t>(*t);
       t++;
     }
   }
@@ -3280,11 +3280,11 @@ static inline uint16_t ui_node_text_max_width(uint16_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return 0;
   uint16_t textMaxW = __ui_nodes[nodeIdx].box.w;
   if (__ui_nodes[nodeIdx].kind == NODE_TEXT || __ui_nodes[nodeIdx].kind == NODE_BUTTON) {
-    uint16_t hInset = (uint16_t)__ui_nodes[nodeIdx].paddingLeft + (uint16_t)__ui_nodes[nodeIdx].paddingRight +
-      (uint16_t)__ui_nodes[nodeIdx].borderWidth * 2;
-    textMaxW = __ui_nodes[nodeIdx].box.w > hInset ? (uint16_t)(__ui_nodes[nodeIdx].box.w - hInset) : 0;
+    uint16_t hInset = static_cast<uint16_t>(__ui_nodes[nodeIdx].paddingLeft) + static_cast<uint16_t>(__ui_nodes[nodeIdx].paddingRight) +
+      static_cast<uint16_t>(__ui_nodes[nodeIdx].borderWidth) * 2;
+    textMaxW = __ui_nodes[nodeIdx].box.w > hInset ? static_cast<uint16_t>(__ui_nodes[nodeIdx].box.w - hInset) : 0;
   } else if (__ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
-    textMaxW = __ui_nodes[nodeIdx].box.w > 22 ? (uint16_t)(__ui_nodes[nodeIdx].box.w - 22) : 0;
+    textMaxW = __ui_nodes[nodeIdx].box.w > 22 ? static_cast<uint16_t>(__ui_nodes[nodeIdx].box.w - 22) : 0;
   }
   return textMaxW;
 }
@@ -3342,18 +3342,18 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
     }
     int16_t glyphX = cursor + glyph->xOffset;
     int16_t glyphY = baseline + glyph->yOffset;
-    if (glyphX + (int16_t)glyph->width <= targetLeft || glyphX >= targetRight ||
-        glyphY + (int16_t)glyph->height <= targetTop || glyphY >= targetBottom) {
+    if (glyphX + static_cast<int16_t>(glyph->width) <= targetLeft || glyphX >= targetRight ||
+        glyphY + static_cast<int16_t>(glyph->height) <= targetTop || glyphY >= targetBottom) {
       cursor += glyph->advance;
       continue;
     }
-    int16_t gxStart = glyphX < targetLeft ? (int16_t)(targetLeft - glyphX) : 0;
-    int16_t gyStart = glyphY < targetTop ? (int16_t)(targetTop - glyphY) : 0;
-    int16_t gxEnd = glyphX + (int16_t)glyph->width > targetRight ? (int16_t)(targetRight - glyphX) : glyph->width;
-    int16_t gyEnd = glyphY + (int16_t)glyph->height > targetBottom ? (int16_t)(targetBottom - glyphY) : glyph->height;
+    int16_t gxStart = glyphX < targetLeft ? static_cast<int16_t>(targetLeft - glyphX) : 0;
+    int16_t gyStart = glyphY < targetTop ? static_cast<int16_t>(targetTop - glyphY) : 0;
+    int16_t gxEnd = glyphX + static_cast<int16_t>(glyph->width) > targetRight ? static_cast<int16_t>(targetRight - glyphX) : glyph->width;
+    int16_t gyEnd = glyphY + static_cast<int16_t>(glyph->height) > targetBottom ? static_cast<int16_t>(targetBottom - glyphY) : glyph->height;
     for (int16_t gy = gyStart; gy < gyEnd; gy++) {
       for (int16_t gx = gxStart; gx < gxEnd; gx++) {
-        uint16_t pixelIndex = (uint16_t)gy * glyph->width + (uint16_t)gx;
+        uint16_t pixelIndex = static_cast<uint16_t>(gy) * glyph->width + static_cast<uint16_t>(gx);
         uint8_t alpha = ui_font_alpha_at(face, glyph, pixelIndex);
         if (alpha == 0) continue;
         int16_t dx = glyphX + gx;
@@ -3365,7 +3365,7 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
             // the bumpy look from flattening sub-pixel coverage to solid.
             if (alpha >= 8) ui_display_draw_pixel(dx, dy, fg);
           } else {
-            ui_display_draw_pixel(dx, dy, alpha >= 15 ? fg : ui_blend(fg, bg, (uint8_t)((uint16_t)alpha * 100 / 15)));
+            ui_display_draw_pixel(dx, dy, alpha >= 15 ? fg : ui_blend(fg, bg, static_cast<uint8_t>(static_cast<uint16_t>(alpha) * 100 / 15)));
           }
         } else if (alpha >= 8) {
           ui_display_draw_pixel(dx, dy, fg);
@@ -3416,10 +3416,10 @@ static inline void ui_draw_bitmap_text(const char* text, int16_t x, int16_t y, U
 
  static inline uint8_t ui_text_fg_neighbors(CuttlefishCanvas16* src, int16_t x, int16_t y, int16_t w, int16_t h, UI_COLOR_T fg, uint8_t radius = 1) {
   uint8_t count = 0;
-  for (int8_t dy = -(int8_t)radius; dy <= (int8_t)radius; dy++) {
+  for (int8_t dy = -static_cast<int8_t>(radius); dy <= static_cast<int8_t>(radius); dy++) {
     int16_t yy = y + dy;
     if (yy < 0 || yy >= h) continue;
-    for (int8_t dx = -(int8_t)radius; dx <= (int8_t)radius; dx++) {
+    for (int8_t dx = -static_cast<int8_t>(radius); dx <= static_cast<int8_t>(radius); dx++) {
       int16_t xx = x + dx;
       if (xx < 0 || xx >= w) continue;
       if (display_canvasGetPixel(src, xx, yy) == fg) count++;
@@ -3461,15 +3461,15 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, UI_CO
   }
   int16_t clipX = x;
   int16_t clipY = y;
-  int16_t clipW = (int16_t)w;
-  int16_t clipH = (int16_t)h;
+  int16_t clipW = static_cast<int16_t>(w);
+  int16_t clipH = static_cast<int16_t>(h);
   if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
-  int16_t localX = (int16_t)(clipX - x);
-  int16_t localY = (int16_t)(clipY - y);
+  int16_t localX = static_cast<int16_t>(clipX - x);
+  int16_t localY = static_cast<int16_t>(clipY - y);
 
 // Use pre-allocated static canvases (no dynamic allocation)
-   CuttlefishCanvas16* src = ui_text_canvas(&__ui_text_src_canvas, (int16_t)w, (int16_t)h);
-   CuttlefishCanvas16* dst = ui_text_canvas(&__ui_text_dst_canvas, (int16_t)w, (int16_t)h);
+   CuttlefishCanvas16* src = ui_text_canvas(&__ui_text_src_canvas, static_cast<int16_t>(w), static_cast<int16_t>(h));
+   CuttlefishCanvas16* dst = ui_text_canvas(&__ui_text_dst_canvas, static_cast<int16_t>(w), static_cast<int16_t>(h));
    if (!src || !dst || !display_canvasBuffer(src) || !display_canvasBuffer(dst)) {
      ui_draw_bitmap_text(text, x, y, fg, bg, ts, 0);
      return;
@@ -3486,10 +3486,10 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, UI_CO
    for (int16_t yy = localY; yy < localY + clipH; yy++) {
      for (int16_t xx = localX; xx < localX + clipW; xx++) {
        UI_COLOR_T px = display_canvasGetPixel(src, xx, yy);
-       uint8_t neighbors = ui_text_fg_neighbors(src, xx, yy, (int16_t)w, h, fg);
+       uint8_t neighbors = ui_text_fg_neighbors(src, xx, yy, static_cast<int16_t>(w), h, fg);
        uint8_t outerNeighbors = 0;
        if (ts >= 3 && px != fg && neighbors == 0) {
-         outerNeighbors = ui_text_fg_neighbors(src, xx, yy, (int16_t)w, h, fg, 2);
+         outerNeighbors = ui_text_fg_neighbors(src, xx, yy, static_cast<int16_t>(w), h, fg, 2);
        }
        uint8_t coverage = ui_text_aa_coverage(neighbors, outerNeighbors, px == fg ? 1 : 0, ts);
        display_targetDrawPixel((CuttlefishDisplayTarget*)dst, xx, yy, coverage == 0 ? bg : ui_blend(fg, bg, coverage));
@@ -3499,8 +3499,8 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, UI_CO
    int16_t stride = display_canvasWidth(dst);
    UI_COLOR_T* pixels = display_canvasBuffer(dst);
    for (int16_t row = 0; row < clipH; row++) {
-     ui_display_draw_rgb_bitmap(clipX, (int16_t)(clipY + row),
-       pixels + (int32_t)(localY + row) * stride + localX, clipW, 1);
+     ui_display_draw_rgb_bitmap(clipX, static_cast<int16_t>(clipY + row),
+       pixels + static_cast<int32_t>(localY + row) * stride + localX, clipW, 1);
    }
  }
 
@@ -3533,16 +3533,16 @@ static inline void ui_draw_text(const char* text, int16_t x, int16_t y, UI_COLOR
 static inline void ui_truncate_ellipsis(char* buf, uint8_t bufSize, uint16_t maxWidth,
                                         uint8_t ts, uint8_t fontFace, int8_t letterSpacing) {
   if (!buf || bufSize == 0) return;
-  uint8_t len = (uint8_t)strlen(buf);
+  uint8_t len = static_cast<uint8_t>(strlen(buf));
   // Reserve space for the three trailing dots.
-  uint16_t dotsW = (uint16_t)3 * ui_text_codepoint_advance((uint16_t)'.', ts, fontFace, letterSpacing);
-  int16_t budget = (int16_t)maxWidth - (int16_t)dotsW;
+  uint16_t dotsW = static_cast<uint16_t>(3) * ui_text_codepoint_advance(static_cast<uint16_t>('.'), ts, fontFace, letterSpacing);
+  int16_t budget = static_cast<int16_t>(maxWidth) - static_cast<int16_t>(dotsW);
   if (budget <= 0) { if (bufSize > 3) { buf[0]='.'; buf[1]='.'; buf[2]='.'; buf[3]=0; } return; }
   // Trim trailing chars until the prefix fits the budget.
   uint8_t prefix = len;
   while (prefix > 0) {
     uint16_t w = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
-    if ((int16_t)w <= budget) break;
+    if (static_cast<int16_t>(w) <= budget) break;
     prefix--;
   }
   if (prefix + 3 < bufSize) {
@@ -3557,11 +3557,11 @@ static inline void ui_truncate_ellipsis(char* buf, uint8_t bufSize, uint16_t max
 static inline void ui_truncate_clip(char* buf, uint8_t bufSize, uint16_t maxWidth,
                                      uint8_t ts, uint8_t fontFace, int8_t letterSpacing) {
   if (!buf || bufSize == 0) return;
-  uint8_t len = (uint8_t)strlen(buf);
+  uint8_t len = static_cast<uint8_t>(strlen(buf));
   uint8_t prefix = len;
   while (prefix > 0) {
     uint16_t w = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
-    if ((int16_t)w <= (int16_t)maxWidth) break;
+    if (static_cast<int16_t>(w) <= static_cast<int16_t>(maxWidth)) break;
     prefix--;
   }
   if (prefix < bufSize) buf[prefix] = 0;
@@ -3579,15 +3579,15 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
   int16_t targetLeft, targetTop, targetRight, targetBottom;
   ui_display_target_bounds(&targetLeft, &targetTop, &targetRight, &targetBottom);
   while (ui_text_next_line(&cursor, maxWidth, whiteSpaceMode, ts, fontFace, letterSpacing, &line)) {
-    int16_t lineBottom = (int16_t)(lineY + lh);
+    int16_t lineBottom = static_cast<int16_t>(lineY + lh);
     if (lineBottom <= targetTop || lineY >= targetBottom) {
       lineY += lh;
       continue;
     }
     int16_t lineX = x;
-    if (textAlign == 1) lineX = x + ((int16_t)maxWidth - (int16_t)line.width) / 2;
-    else if (textAlign == 2) lineX = x + (int16_t)maxWidth - (int16_t)line.width;
-    if (lineX + (int16_t)line.width <= targetLeft || lineX >= targetRight) {
+    if (textAlign == 1) lineX = x + (static_cast<int16_t>(maxWidth) - static_cast<int16_t>(line.width)) / 2;
+    else if (textAlign == 2) lineX = x + static_cast<int16_t>(maxWidth) - static_cast<int16_t>(line.width);
+    if (lineX + static_cast<int16_t>(line.width) <= targetLeft || lineX >= targetRight) {
       lineY += lh;
       continue;
     }
@@ -3595,7 +3595,7 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
     // text-overflow — only applies when the line is wider than maxWidth.
     //   textOverflow==1 (ellipsis): trim the span and append "...".
     //   textOverflow==0 (clip):     trim the span to the edge, no dots.
-    if ((int16_t)line.width > (int16_t)maxWidth) {
+    if (static_cast<int16_t>(line.width) > static_cast<int16_t>(maxWidth)) {
       if (textOverflow) ui_truncate_ellipsis(lineBuf, UI_TEXT_LINE_BUF, maxWidth, ts, fontFace, letterSpacing);
       else              ui_truncate_clip(lineBuf, UI_TEXT_LINE_BUF, maxWidth, ts, fontFace, letterSpacing);
     }
@@ -3617,23 +3617,23 @@ static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, UI_
                                      uint8_t useFgOverride = 0, UI_COLOR_T fgOverride = 0, uint16_t maxWidth = 0) {
   UINode* n = &__ui_nodes[nodeIdx];
   uint16_t alignWidth = maxWidth ? maxWidth : n->box.w;
-  int16_t targetLeft = (int16_t)(-__ui_draw_off_x);
-  int16_t targetTop = (int16_t)(-__ui_draw_off_y);
-  int16_t targetRight = (int16_t)(ui_display_target_width() - __ui_draw_off_x);
-  int16_t targetBottom = (int16_t)(ui_display_target_height() - __ui_draw_off_y);
-  uint16_t richSegEnd = (uint16_t)(n->richSegStart + n->richSegCount);
+  int16_t targetLeft = static_cast<int16_t>(-__ui_draw_off_x);
+  int16_t targetTop = static_cast<int16_t>(-__ui_draw_off_y);
+  int16_t targetRight = static_cast<int16_t>(ui_display_target_width() - __ui_draw_off_x);
+  int16_t targetBottom = static_cast<int16_t>(ui_display_target_height() - __ui_draw_off_y);
+  uint16_t richSegEnd = static_cast<uint16_t>(n->richSegStart + n->richSegCount);
   for (uint16_t si = n->richSegStart; si < richSegEnd; si++) {
     UIRichSeg* seg = &__ui_rich_segs[si];
     if (seg->line >= n->richLineCount) continue;
     UIRichLine* line = &__ui_rich_lines[n->richLineStart + seg->line];
     int16_t lineTop = y + line->y;
-    int16_t lineBottom = (int16_t)(lineTop + (int16_t)line->h);
+    int16_t lineBottom = static_cast<int16_t>(lineTop + static_cast<int16_t>(line->h));
     if (lineBottom <= targetTop || lineTop >= targetBottom) continue;
     int16_t lineX = x;
-    if (n->textAlign == 1) lineX = x + ((int16_t)alignWidth - (int16_t)line->w) / 2;
-    else if (n->textAlign == 2) lineX = x + (int16_t)alignWidth - (int16_t)line->w;
-    int16_t segX = (int16_t)(lineX + seg->x);
-    int16_t segRight = (int16_t)(segX + (int16_t)seg->w);
+    if (n->textAlign == 1) lineX = x + (static_cast<int16_t>(alignWidth) - static_cast<int16_t>(line->w)) / 2;
+    else if (n->textAlign == 2) lineX = x + static_cast<int16_t>(alignWidth) - static_cast<int16_t>(line->w);
+    int16_t segX = static_cast<int16_t>(lineX + seg->x);
+    int16_t segRight = static_cast<int16_t>(segX + static_cast<int16_t>(seg->w));
     if (segRight <= targetLeft || segX >= targetRight) continue;
     UIRichRun* run = &__ui_runs[n->runStart + seg->runIndex];
     // Baseline alignment: for asset fonts, the ascent is the font face's
@@ -3643,9 +3643,9 @@ static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, UI_
     int16_t ascent;
     if (run->fontFace) {
       const UIFontFace* face = ui_font_face(run->fontFace);
-      ascent = face ? (int16_t)face->baseline : (7 * (int16_t)run->textSize);
+      ascent = face ? static_cast<int16_t>(face->baseline) : (7 * static_cast<int16_t>(run->textSize));
     } else {
-      ascent = 7 * (int16_t)run->textSize;
+      ascent = 7 * static_cast<int16_t>(run->textSize);
     }
     int16_t segY = y + line->baseline - ascent;
     UI_COLOR_T fg = useFgOverride ? fgOverride : run->fg;
@@ -3661,13 +3661,13 @@ static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, UI_
 // but uses measured segment rects instead of fixed row heights.
 static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py) {
   UINode* n = &__ui_nodes[nodeIdx];
-  int16_t insetL = (int16_t)n->borderWidth + (int16_t)n->paddingLeft;
-  int16_t insetR = (int16_t)n->borderWidth + (int16_t)n->paddingRight;
-  int16_t insetT = (int16_t)n->borderWidth + (int16_t)n->paddingTop;
+  int16_t insetL = static_cast<int16_t>(n->borderWidth) + static_cast<int16_t>(n->paddingLeft);
+  int16_t insetR = static_cast<int16_t>(n->borderWidth) + static_cast<int16_t>(n->paddingRight);
+  int16_t insetT = static_cast<int16_t>(n->borderWidth) + static_cast<int16_t>(n->paddingTop);
   int16_t localX = px - insetL;
   int16_t localY = py - insetT;
-  uint16_t alignWidth = n->box.w > (uint16_t)(insetL + insetR)
-    ? (uint16_t)((int16_t)n->box.w - insetL - insetR)
+  uint16_t alignWidth = n->box.w > static_cast<uint16_t>(insetL + insetR)
+    ? static_cast<uint16_t>(static_cast<int16_t>(n->box).w - insetL - insetR)
     : 0;
   for (uint16_t si = n->richSegStart; si < n->richSegStart + n->richSegCount; si++) {
     UIRichSeg* seg = &__ui_rich_segs[si];
@@ -3677,11 +3677,11 @@ static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py) 
     // Segment x is relative to its line's left edge (pre-alignment). For the
     // hit-test, account for center/right alignment the same way draw does.
     int16_t originX = 0;
-    if (n->textAlign == 1) originX = ((int16_t)alignWidth - (int16_t)line->w) / 2;
-    else if (n->textAlign == 2) originX = (int16_t)alignWidth - (int16_t)line->w;
+    if (n->textAlign == 1) originX = (static_cast<int16_t>(alignWidth) - static_cast<int16_t>(line->w)) / 2;
+    else if (n->textAlign == 2) originX = static_cast<int16_t>(alignWidth) - static_cast<int16_t>(line->w);
     int16_t sx = originX + seg->x;
     int16_t sy = line->y;
-    if (localX >= sx && localX < sx + (int16_t)seg->w && localY >= sy && localY < sy + (int16_t)line->h) {
+    if (localX >= sx && localX < sx + static_cast<int16_t>(seg->w) && localY >= sy && localY < sy + static_cast<int16_t>(line->h)) {
       return run->linkTarget;
     }
   }
@@ -3706,19 +3706,19 @@ static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY) {
   uint8_t dir = __ui_nodes[i].gradientEnabled;  // 1=vertical, 2=horizontal
   if (dir == 1) {
     // Vertical: top=c1, bottom=c2. Draw row by row.
-    int16_t yStart = (int16_t)(clipY - by);
-    int16_t yEnd = (int16_t)(clipY + clipH - by);
+    int16_t yStart = static_cast<int16_t>(clipY - by);
+    int16_t yEnd = static_cast<int16_t>(clipY + clipH - by);
     for (int16_t y = yStart; y < yEnd; y++) {
-      uint8_t op = (uint8_t)((uint16_t)y * 100 / (bh > 1 ? bh - 1 : 1));
+      uint8_t op = static_cast<uint8_t>(static_cast<uint16_t>(y) * 100 / (bh > 1 ? bh - 1 : 1));
       uint32_t col = ui_blend(c1, c2, op);
       ui_display_draw_fast_hline(clipX, by + y, clipW, col);
     }
   } else {
     // Horizontal: left=c1, right=c2. Draw column by column.
-    int16_t xStart = (int16_t)(clipX - bx);
-    int16_t xEnd = (int16_t)(clipX + clipW - bx);
+    int16_t xStart = static_cast<int16_t>(clipX - bx);
+    int16_t xEnd = static_cast<int16_t>(clipX + clipW - bx);
     for (int16_t x = xStart; x < xEnd; x++) {
-      uint8_t op = (uint8_t)((uint16_t)x * 100 / (bw > 1 ? bw - 1 : 1));
+      uint8_t op = static_cast<uint8_t>(static_cast<uint16_t>(x) * 100 / (bw > 1 ? bw - 1 : 1));
       uint32_t col = ui_blend(c1, c2, op);
       ui_display_draw_fast_vline(bx + x, clipY, clipH, col);
     }
@@ -3767,7 +3767,7 @@ static inline void ui_draw_shadow(uint16_t i, int16_t drawY, uint8_t insetOnly) 
     }
 
     for (int8_t pass = blur; pass >= 1; pass--) {
-      uint8_t opacity = (uint8_t)((uint16_t)baseAlpha / (pass + 1));
+      uint8_t opacity = static_cast<uint8_t>(static_cast<uint16_t>(baseAlpha) / (pass + 1));
       uint32_t col = ui_blend(shadowCol, inset ? (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : clearCol) : clearCol, opacity);
       if (inset) {
         // Inset: draw inside the element, shrinking inward by pass.
@@ -3792,7 +3792,7 @@ static inline void ui_draw_shadow(uint16_t i, int16_t drawY, uint8_t insetOnly) 
         int16_t sw = bw + 2 * pass;
         int16_t sh_ = bh + 2 * pass;
         if (radius > 0) {
-          uint8_t r = radius + (uint8_t)pass;
+          uint8_t r = radius + static_cast<uint8_t>(pass);
           if (r > sw / 2) r = sw / 2;
           if (r > sh_ / 2) r = sh_ / 2;
           ui_display_fill_round_rect(sx, sy, sw, sh_, r, col);
@@ -3928,7 +3928,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   // keeps cycling even when no other state changes (otherwise the caret
   // freezes once the typed-text dirty clears).
   if (__ui_kb_visible && __ui_kb_target >= 0 && (__ui_kb_blink & 0x10)) {
-    ui_mark_dirty((uint16_t)__ui_kb_target);
+    ui_mark_dirty(static_cast<uint16_t>(__ui_kb_target));
   }
 #endif
   // ⓪ Evaluate bindings: call each binding's fn, compare to the node's
@@ -3959,7 +3959,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       if (__ui_bindings[i].prop == PROP_VALUE) {
         // Numeric value binding: drive a progress/range node's value live.
         uint16_t n = __ui_bindings[i].node;
-        int16_t v = (int16_t)__ui_bindings[i].fn();
+        int16_t v = static_cast<int16_t>(__ui_bindings[i].fn());
         if (v != __ui_nodes[n].value) {
           __ui_nodes[n].value = v;
           ui_mark_dirty(n);
@@ -3991,7 +3991,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       uint16_t newCount = __ui_nodes[i].listCountFn();
       if (newCount != __ui_nodes[i].listCount) {
         __ui_nodes[i].listCount = newCount;
-        __ui_nodes[i].contentHeight = (int16_t)((uint32_t)newCount * ih);
+        __ui_nodes[i].contentHeight = static_cast<int16_t>(static_cast<uint32_t>(newCount) * ih);
         __ui_nodes[i].lastPaintedScrollY = __ui_nodes[i].scrollY - (__ui_nodes[i].box.h > 0 ? __ui_nodes[i].box.h : 1);
         ui_mark_dirty(i);
       }
@@ -4020,9 +4020,9 @@ static inline void ui_tick(uint16_t deltaMs) {
     __ui_trans[i].elapsed += deltaMs;
     uint16_t k = __ui_trans[i].durationMs == 0
       ? 100
-      : (uint16_t)((uint32_t)__ui_trans[i].elapsed * 100 / __ui_trans[i].durationMs);
+      : static_cast<uint16_t>(static_cast<uint32_t>(__ui_trans[i].elapsed) * 100 / __ui_trans[i].durationMs);
     if (__ui_trans[i].durationMs > 0 && __ui_trans[i].durationMs <= UI_TRANSITION_SNAP_MS) k = 100;
-    uint32_t v = UI_LERP_COLOR(__ui_trans[i].prevValue, __ui_trans[i].targetValue, (uint8_t)k);
+    uint32_t v = UI_LERP_COLOR(__ui_trans[i].prevValue, __ui_trans[i].targetValue, static_cast<uint8_t>(k));
     if (__ui_trans[i].prop == PROP_FG) {
       __ui_nodes[__ui_trans[i].node].fg = v;
     } else {
@@ -4054,14 +4054,14 @@ static inline void ui_tick(uint16_t deltaMs) {
         ui_keyframe_set_has_scroll_sensitive_geometry(__ui_anims[i].keyframeSet)) {
       continue;
     }
-    __ui_anims[i].elapsed += (uint32_t)deltaMs;
+    __ui_anims[i].elapsed += static_cast<uint32_t>(deltaMs);
     uint32_t elapsedNoDelay = __ui_anims[i].elapsed;
     if (elapsedNoDelay < __ui_anims[i].delayMs) continue;
     elapsedNoDelay -= __ui_anims[i].delayMs;
     // Check iteration limit (finite).
     uint8_t completing = 0;
     if (__ui_anims[i].iterations > 0) {
-      uint32_t totalDuration = (uint32_t)__ui_anims[i].iterations * (uint32_t)__ui_anims[i].durationMs;
+      uint32_t totalDuration = static_cast<uint32_t>(__ui_anims[i].iterations) * static_cast<uint32_t>(__ui_anims[i].durationMs);
       if (elapsedNoDelay >= totalDuration) {
         elapsedNoDelay = totalDuration;
         completing = 1;
@@ -4071,7 +4071,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     uint8_t pct = 100;
     if (!completing && __ui_anims[i].durationMs > 0) {
       uint32_t cycleMs = elapsedNoDelay % __ui_anims[i].durationMs;
-      pct = (uint8_t)((uint32_t)cycleMs * 100 / __ui_anims[i].durationMs);
+      pct = static_cast<uint8_t>(static_cast<uint32_t>(cycleMs) * 100 / __ui_anims[i].durationMs);
     }
     // Find surrounding keyframe stops.
     if (__ui_anims[i].keyframeSet >= __ui_keyframe_set_count) continue;
@@ -4087,7 +4087,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     const UIKeyframeStop* sHi = &ks->stops[hi];
     // Lerp factor between lo and hi.
     uint8_t range = sHi->percent - sLo->percent;
-    uint8_t lerpK = range > 0 ? (uint8_t)((uint16_t)(pct - sLo->percent) * 100 / range) : 0;
+    uint8_t lerpK = range > 0 ? static_cast<uint8_t>(static_cast<uint16_t>(pct - sLo->percent) * 100 / range) : 0;
     // Shape the lerp by the animation's timing function (ease-in-out, etc.).
     // CSS attaches it to the animation and applies it between stops.
     lerpK = ui_ease_lerp_k(__ui_anims[i].timingFunction, lerpK);
@@ -4105,7 +4105,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     }
     if ((sLo->props & UI_KF_OPACITY) && (sHi->props & UI_KF_OPACITY)) {
       uint8_t newOp = range > 0
-        ? (uint8_t)((int16_t)sLo->opacity + ((int16_t)sHi->opacity - (int16_t)sLo->opacity) * lerpK / 100)
+        ? static_cast<uint8_t>(static_cast<int16_t>(sLo->opacity) + (static_cast<int16_t>(sHi->opacity) - static_cast<int16_t>(sLo->opacity)) * lerpK / 100)
         : sLo->opacity;
       if (newOp != __ui_nodes[n].opacity) { __ui_nodes[n].opacity = newOp; changed = 1; }
     }
@@ -4118,10 +4118,10 @@ static inline void ui_tick(uint16_t deltaMs) {
     uint8_t hasSizeFrame = (sLo->props & UI_KF_SIZE) && (sHi->props & UI_KF_SIZE);
     if (hasSizeFrame) {
       nextWidth = range > 0
-        ? (int16_t)((int32_t)sLo->width + ((int32_t)sHi->width - (int32_t)sLo->width) * lerpK / 100)
+        ? static_cast<int16_t>(static_cast<int32_t>(sLo->width) + (static_cast<int32_t>(sHi->width) - static_cast<int32_t>(sLo->width)) * lerpK / 100)
         : sLo->width;
       nextHeight = range > 0
-        ? (int16_t)((int32_t)sLo->height + ((int32_t)sHi->height - (int32_t)sLo->height) * lerpK / 100)
+        ? static_cast<int16_t>(static_cast<int32_t>(sLo->height) + (static_cast<int32_t>(sHi->height) - static_cast<int32_t>(sLo->height)) * lerpK / 100)
         : sLo->height;
       if (nextWidth < 0) nextWidth = 0;
       if (nextHeight < 0) nextHeight = 0;
@@ -4132,25 +4132,25 @@ static inline void ui_tick(uint16_t deltaMs) {
     }
     if ((sLo->props & UI_KF_TRANSFORM) && (sHi->props & UI_KF_TRANSFORM)) {
       int16_t pxX = range > 0
-        ? (int16_t)((int32_t)sLo->transformOffsetX + ((int32_t)sHi->transformOffsetX - (int32_t)sLo->transformOffsetX) * lerpK / 100)
+        ? static_cast<int16_t>(static_cast<int32_t>(sLo->transformOffsetX) + (static_cast<int32_t>(sHi->transformOffsetX) - static_cast<int32_t>(sLo->transformOffsetX)) * lerpK / 100)
         : sLo->transformOffsetX;
       int16_t pxY = range > 0
-        ? (int16_t)((int32_t)sLo->transformOffsetY + ((int32_t)sHi->transformOffsetY - (int32_t)sLo->transformOffsetY) * lerpK / 100)
+        ? static_cast<int16_t>(static_cast<int32_t>(sLo->transformOffsetY) + (static_cast<int32_t>(sHi->transformOffsetY) - static_cast<int32_t>(sLo->transformOffsetY)) * lerpK / 100)
         : sLo->transformOffsetY;
       int16_t pctX = range > 0
-        ? (int16_t)((int32_t)sLo->translatePctX + ((int32_t)sHi->translatePctX - (int32_t)sLo->translatePctX) * lerpK / 100)
+        ? static_cast<int16_t>(static_cast<int32_t>(sLo->translatePctX) + (static_cast<int32_t>(sHi->translatePctX) - static_cast<int32_t>(sLo->translatePctX)) * lerpK / 100)
         : sLo->translatePctX;
       int16_t pctY = range > 0
-        ? (int16_t)((int32_t)sLo->translatePctY + ((int32_t)sHi->translatePctY - (int32_t)sLo->translatePctY) * lerpK / 100)
+        ? static_cast<int16_t>(static_cast<int32_t>(sLo->translatePctY) + (static_cast<int32_t>(sHi->translatePctY) - static_cast<int32_t>(sLo->translatePctY)) * lerpK / 100)
         : sLo->translatePctY;
       int16_t scaleX = range > 0
-        ? (int16_t)((int32_t)sLo->scaleX + ((int32_t)sHi->scaleX - (int32_t)sLo->scaleX) * lerpK / 100)
+        ? static_cast<int16_t>(static_cast<int32_t>(sLo->scaleX) + (static_cast<int32_t>(sHi->scaleX) - static_cast<int32_t>(sLo->scaleX)) * lerpK / 100)
         : sLo->scaleX;
       int16_t scaleY = range > 0
-        ? (int16_t)((int32_t)sLo->scaleY + ((int32_t)sHi->scaleY - (int32_t)sLo->scaleY) * lerpK / 100)
+        ? static_cast<int16_t>(static_cast<int32_t>(sLo->scaleY) + (static_cast<int32_t>(sHi->scaleY) - static_cast<int32_t>(sLo->scaleY)) * lerpK / 100)
         : sLo->scaleY;
       nextRotateDeg = range > 0
-        ? (int16_t)((int32_t)sLo->rotateDeg + ((int32_t)sHi->rotateDeg - (int32_t)sLo->rotateDeg) * lerpK / 100)
+        ? static_cast<int16_t>(static_cast<int32_t>(sLo->rotateDeg) + (static_cast<int32_t>(sHi->rotateDeg) - static_cast<int32_t>(sLo->rotateDeg)) * lerpK / 100)
         : sLo->rotateDeg;
       if (scaleX < 0) scaleX = 0;
       if (scaleY < 0) scaleY = 0;
@@ -4158,14 +4158,14 @@ static inline void ui_tick(uint16_t deltaMs) {
       int16_t refH = hasSizeFrame ? nextHeight : __ui_anims[i].baseHeight;
       if (refW <= 0) refW = __ui_nodes[n].box.w;
       if (refH <= 0) refH = __ui_nodes[n].box.h;
-      int16_t originPxX = (int16_t)((int32_t)refW * __ui_anims[i].originX / 100);
-      int16_t originPxY = (int16_t)((int32_t)refH * __ui_anims[i].originY / 100);
-      int16_t scaledW = (int16_t)((int32_t)refW * scaleX / 100);
-      int16_t scaledH = (int16_t)((int32_t)refH * scaleY / 100);
-      int16_t scaleOffsetX = originPxX - (int16_t)((int32_t)originPxX * scaleX / 100);
-      int16_t scaleOffsetY = originPxY - (int16_t)((int32_t)originPxY * scaleY / 100);
-      nextTransformX = pxX + (int16_t)((int32_t)refW * pctX / 100) + scaleOffsetX;
-      nextTransformY = pxY + (int16_t)((int32_t)refH * pctY / 100) + scaleOffsetY;
+      int16_t originPxX = static_cast<int16_t>(static_cast<int32_t>(refW) * __ui_anims[i].originX / 100);
+      int16_t originPxY = static_cast<int16_t>(static_cast<int32_t>(refH) * __ui_anims[i].originY / 100);
+      int16_t scaledW = static_cast<int16_t>(static_cast<int32_t>(refW) * scaleX / 100);
+      int16_t scaledH = static_cast<int16_t>(static_cast<int32_t>(refH) * scaleY / 100);
+      int16_t scaleOffsetX = originPxX - static_cast<int16_t>(static_cast<int32_t>(originPxX) * scaleX / 100);
+      int16_t scaleOffsetY = originPxY - static_cast<int16_t>(static_cast<int32_t>(originPxY) * scaleY / 100);
+      nextTransformX = pxX + static_cast<int16_t>(static_cast<int32_t>(refW) * pctX / 100) + scaleOffsetX;
+      nextTransformY = pxY + static_cast<int16_t>(static_cast<int32_t>(refH) * pctY / 100) + scaleOffsetY;
       nextWidth = scaledW < 0 ? 0 : scaledW;
       nextHeight = scaledH < 0 ? 0 : scaledH;
       if (nextTransformX != __ui_nodes[n].transformOffsetX ||
@@ -4263,7 +4263,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         ui_kb_draw_text_row();
         uint8_t has_key_repaint = (__ui_kb_repaint_key >= 0 && __ui_kb_keys[__ui_kb_repaint_key].special != 255) ? 1 : 0;
         if (has_key_repaint) {
-          ui_kb_draw_key((uint8_t)__ui_kb_repaint_key);
+          ui_kb_draw_key(static_cast<uint8_t>(__ui_kb_repaint_key));
         }
         __ui_kb_box.x = saveBoxX;
         __ui_kb_box.y = saveBoxY;
@@ -4274,17 +4274,17 @@ static inline void ui_tick(uint16_t deltaMs) {
         display_startWrite();
         if (has_key_repaint) {
           display_setAddrWindow(saveBoxX, saveBoxY, kw, __ui_kb_box.h);
-          display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * __ui_kb_box.h);
+          display_writePixels(display_canvasBuffer(__ui_kb_canvas), static_cast<uint32_t>(kw) * __ui_kb_box.h);
         } else {
           display_setAddrWindow(saveBoxX, saveBoxY, kw, UI_KB_TEXT_H);
-          display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * UI_KB_TEXT_H);
+          display_writePixels(display_canvasBuffer(__ui_kb_canvas), static_cast<uint32_t>(kw) * UI_KB_TEXT_H);
         }
         display_endWrite();
       } else {
         // No canvas — fall back to direct draw (slow but correct).
         ui_kb_draw_text_row();
         if (__ui_kb_repaint_key >= 0 && __ui_kb_keys[__ui_kb_repaint_key].special != 255) {
-          ui_kb_draw_key((uint8_t)__ui_kb_repaint_key);
+          ui_kb_draw_key(static_cast<uint8_t>(__ui_kb_repaint_key));
         }
       }
     }
@@ -4332,7 +4332,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       __ui_scroll_canvas_ok[s] = bufferedScrollCanvas ? 1 : 0;
     }
     if (bufferedScrollCanvas) {
-      bufferedScrollNode = (int16_t)s;
+      bufferedScrollNode = static_cast<int16_t>(s);
       bufferedScrollVX = vox;
       bufferedScrollVY = voy;
 
@@ -4351,7 +4351,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           bufferedScrollRepaintY = exposedY;
           bufferedScrollRepaintH = exposedH;
           display_canvasFillScreen(bufferedScrollRepaintCanvas, scrollBg);
-          UIRect exposed = { vox, (int16_t)(voy + exposedY), vw, exposedH };
+          UIRect exposed = { vox, static_cast<int16_t>(voy + exposedY), vw, exposedH };
           for (uint16_t c = s + 1; c < __ui_nodes[s].subtreeEnd; c++) {
             if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) {
               __ui_nodes[c].dirty = 0;
@@ -4394,15 +4394,15 @@ static inline void ui_tick(uint16_t deltaMs) {
       // scroll subtree to the display — that clears the live viewport and flashes.
       int16_t deltaY = __ui_nodes[s].scrollY - __ui_nodes[s].lastPaintedScrollY;
       int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
-      uint32_t scrollNeed = (uint32_t)(vw > 0 ? vw : 0) * (uint32_t)(vh > 0 ? vh : 0) * 2u;
+      uint32_t scrollNeed = static_cast<uint32_t>(vw > 0 ? vw : 0) * static_cast<uint32_t>(vh > 0 ? vh : 0) * 2u;
       if (absDelta > 0 && absDelta < vh) {
-        bufferedScrollNode = (int16_t)s;
+        bufferedScrollNode = static_cast<int16_t>(s);
         bufferedScrollDirectStrip = 1;
-        ui_warn_scroll_memory((uint16_t)s, 2);
+        ui_warn_scroll_memory(static_cast<uint16_t>(s), 2);
         ui_scroll_direct_prepare(s, &bufferedScrollVX, &bufferedScrollVY);
         break;
       }
-      ui_warn_scroll_memory((uint16_t)s, scrollNeed > (uint32_t)UI_SCROLL_CANVAS_BUDGET_BYTES ? 1 : 0);
+      ui_warn_scroll_memory(static_cast<uint16_t>(s), scrollNeed > static_cast<uint32_t>(UI_SCROLL_CANVAS_BUDGET_BYTES) ? 1 : 0);
       if (__ui_scroll_canvas_ok) __ui_scroll_canvas_ok[s] = 0;
       continue;
     }
@@ -4434,7 +4434,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint16_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; ) {
     int16_t i;
     if (__ui_draw_order) {
-      i = (int16_t)__ui_draw_order[__ui_draw_pass++];
+      i = static_cast<int16_t>(__ui_draw_order[__ui_draw_pass++]);
       if (!__ui_nodes[i].dirty) continue;
       if (!ui_is_effectively_visible(i)) { __ui_nodes[i].dirty = 0; continue; }
       if (__ui_nodes[i].screenId != __ui_active_screen) { __ui_nodes[i].dirty = 0; continue; }
@@ -4445,7 +4445,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         if (!__ui_nodes[candidate].dirty) continue;
         if (!ui_is_effectively_visible(candidate)) { __ui_nodes[candidate].dirty = 0; continue; }
         if (__ui_nodes[candidate].screenId != __ui_active_screen) { __ui_nodes[candidate].dirty = 0; continue; }
-        if (i < 0 || ui_node_draws_before(candidate, (uint16_t)i)) i = (int16_t)candidate;
+        if (i < 0 || ui_node_draws_before(candidate, static_cast<uint16_t>(i))) i = static_cast<int16_t>(candidate);
       }
       if (i < 0) break;
       __ui_draw_pass++;
@@ -4455,12 +4455,12 @@ static inline void ui_tick(uint16_t deltaMs) {
     // frame (Mode B canvas or Mode C strip). Drawing them directly clears the live
     // viewport and produces sequential flashes (AGENTS.md).
     {
-      int16_t scrollComp = ui_overflow_scroll_compositor((uint16_t)i);
+      int16_t scrollComp = ui_overflow_scroll_compositor(static_cast<uint16_t>(i));
       if (scrollComp >= 0) {
         uint8_t compositing = scrollComp == bufferedScrollNode &&
           (bufferedScrollCanvas || bufferedScrollDirectStrip);
         if (!compositing) {
-          if ((uint16_t)i == (uint16_t)scrollComp) break;
+          if (static_cast<uint16_t>(i) == static_cast<uint16_t>(scrollComp)) break;
           __ui_nodes[i].dirty = 0;
           continue;
         }
@@ -4469,15 +4469,15 @@ static inline void ui_tick(uint16_t deltaMs) {
 
     // Mode C strip: scroll owner is not drawn directly (would fill the viewport).
     if (bufferedScrollDirectStrip && bufferedScrollNode >= 0 &&
-        (uint16_t)i == (uint16_t)bufferedScrollNode) {
+        static_cast<uint16_t>(i) == static_cast<uint16_t>(bufferedScrollNode)) {
       __ui_nodes[i].dirty = 0;
       continue;
     }
 
     if (bufferedScrollNode >= 0 && bufferedScrollCanvas &&
         !(i > bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd) &&
-        ui_node_draws_before((uint16_t)bufferedScrollNode, (uint16_t)i) &&
-        !ui_scroll_subtree_has_dirty((uint16_t)bufferedScrollNode)) {
+        ui_node_draws_before(static_cast<uint16_t>(bufferedScrollNode), static_cast<uint16_t>(i)) &&
+        !ui_scroll_subtree_has_dirty(static_cast<uint16_t>(bufferedScrollNode))) {
       ui_push_buffered_scroll_canvas(bufferedScrollCanvas, bufferedScrollRepaintCanvas,
         bufferedScrollNode, bufferedScrollVX, bufferedScrollVY,
         bufferedScrollRepaintY, bufferedScrollRepaintH, __ui_draw_target);
@@ -4516,10 +4516,10 @@ static inline void ui_tick(uint16_t deltaMs) {
     uint16_t paintTextW = tw;
     uint16_t paintTextH = th;
     if (__ui_nodes[i].kind == NODE_TEXT) {
-      uint16_t hInset = (uint16_t)__ui_nodes[i].paddingLeft + (uint16_t)__ui_nodes[i].paddingRight + (uint16_t)__ui_nodes[i].borderWidth * 2;
-      uint16_t vInset = (uint16_t)__ui_nodes[i].paddingTop + (uint16_t)__ui_nodes[i].paddingBottom + (uint16_t)__ui_nodes[i].borderWidth * 2;
-      paintTextW = (uint16_t)(tw + hInset);
-      paintTextH = (uint16_t)(th + vInset);
+      uint16_t hInset = static_cast<uint16_t>(__ui_nodes[i].paddingLeft) + static_cast<uint16_t>(__ui_nodes[i].paddingRight) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
+      uint16_t vInset = static_cast<uint16_t>(__ui_nodes[i].paddingTop) + static_cast<uint16_t>(__ui_nodes[i].paddingBottom) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
+      paintTextW = static_cast<uint16_t>(tw + hInset);
+      paintTextH = static_cast<uint16_t>(th + vInset);
     }
     if (__ui_nodes[i].kind == NODE_CHECK || __ui_nodes[i].kind == NODE_RADIO) {
       paintTextW = tw + 22;
@@ -4637,12 +4637,12 @@ static inline void ui_tick(uint16_t deltaMs) {
         break;
       case NODE_TEXT:
         {
-          int16_t insetL = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingLeft;
-          int16_t insetR = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingRight;
-          int16_t insetT = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingTop;
+          int16_t insetL = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingLeft);
+          int16_t insetR = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingRight);
+          int16_t insetT = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingTop);
           int16_t textX = __ui_nodes[i].box.x + insetL;
           int16_t textY = drawY + insetT;
-          int16_t textW = (int16_t)__ui_nodes[i].box.w - insetL - insetR;
+          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
           if (textW < 1) textW = 1;
           uint8_t textBoxPainted = 0;
           if (__ui_nodes[i].gradientEnabled > 0) {
@@ -4659,21 +4659,21 @@ static inline void ui_tick(uint16_t deltaMs) {
           }
           {
             uint16_t clearW = __ui_nodes[i].box.w;
-            int16_t paintedTextW = (int16_t)__ui_nodes[i].lastTextWidth + insetL + insetR;
-            if (__ui_nodes[i].lastTextWidth > 0 && paintedTextW > (int16_t)clearW) {
-              clearW = (uint16_t)paintedTextW;
+            int16_t paintedTextW = static_cast<int16_t>(__ui_nodes[i].lastTextWidth) + insetL + insetR;
+            if (__ui_nodes[i].lastTextWidth > 0 && paintedTextW > static_cast<int16_t>(clearW)) {
+              clearW = static_cast<uint16_t>(paintedTextW);
             }
-            uint16_t paddedTw = (uint16_t)((int16_t)tw + insetL + insetR);
+            uint16_t paddedTw = static_cast<uint16_t>(static_cast<int16_t>(tw) + insetL + insetR);
             if (paddedTw > clearW) clearW = paddedTw;
             // overflow:hidden/scroll: never clear past the node's own box. A nowrap
             // line wider than its box would otherwise erase the parent's border.
             if (__ui_nodes[i].scrollable) clearW = __ui_nodes[i].box.w;
             uint16_t clearH = __ui_nodes[i].box.h;
-            int16_t paintedTextH = (int16_t)__ui_nodes[i].lastTextHeight + insetT + (int16_t)__ui_nodes[i].paddingBottom + (int16_t)__ui_nodes[i].borderWidth;
-            if (__ui_nodes[i].lastTextHeight > 0 && paintedTextH > (int16_t)clearH) {
-              clearH = (uint16_t)paintedTextH;
+            int16_t paintedTextH = static_cast<int16_t>(__ui_nodes[i].lastTextHeight) + insetT + static_cast<int16_t>(__ui_nodes[i].paddingBottom) + static_cast<int16_t>(__ui_nodes[i].borderWidth);
+            if (__ui_nodes[i].lastTextHeight > 0 && paintedTextH > static_cast<int16_t>(clearH)) {
+              clearH = static_cast<uint16_t>(paintedTextH);
             }
-            uint16_t paddedTh = (uint16_t)((int16_t)th + insetT + (int16_t)__ui_nodes[i].paddingBottom + (int16_t)__ui_nodes[i].borderWidth);
+            uint16_t paddedTh = static_cast<uint16_t>(static_cast<int16_t>(th) + insetT + static_cast<int16_t>(__ui_nodes[i].paddingBottom) + static_cast<int16_t>(__ui_nodes[i].borderWidth));
             if (paddedTh > clearH) clearH = paddedTh;
             // Dynamic transparent text still needs a clear, otherwise old glyph
             // pixels accumulate when only this text node is dirty.
@@ -4716,9 +4716,9 @@ static inline void ui_tick(uint16_t deltaMs) {
             ui_draw_rich_text(i,
               textX + __ui_nodes[i].textShadowOffsetX,
               textY + __ui_nodes[i].textShadowOffsetY,
-              tsClear, __ui_nodes[i].fontAntialias, 1, tsCol, (uint16_t)textW);
+              tsClear, __ui_nodes[i].fontAntialias, 1, tsCol, static_cast<uint16_t>(textW));
           }
-          ui_draw_rich_text(i, textX, textY, richTextBg, __ui_nodes[i].fontAntialias, 0, 0, (uint16_t)textW);
+          ui_draw_rich_text(i, textX, textY, richTextBg, __ui_nodes[i].fontAntialias, 0, 0, static_cast<uint16_t>(textW));
           break;
         }
         {
@@ -4729,7 +4729,7 @@ static inline void ui_tick(uint16_t deltaMs) {
             ui_draw_wrapped_text(displayText,
               textX + __ui_nodes[i].textShadowOffsetX,
               textY + __ui_nodes[i].textShadowOffsetY,
-              (uint16_t)textW, tsCol, tsCol, ts, __ui_nodes[i].fontAntialias,
+              static_cast<uint16_t>(textW), tsCol, tsCol, ts, __ui_nodes[i].fontAntialias,
               __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight,
               __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, 0, __ui_nodes[i].textOverflow);
           }
@@ -4753,7 +4753,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           } else {
             textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
           }
-          ui_draw_wrapped_text(displayText, textX, textY, (uint16_t)textW,
+          ui_draw_wrapped_text(displayText, textX, textY, static_cast<uint16_t>(textW),
             __ui_nodes[i].fg, textBg, ts, __ui_nodes[i].fontAntialias,
             __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight,
             __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
@@ -4770,20 +4770,20 @@ static inline void ui_tick(uint16_t deltaMs) {
           ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
         }
         {
-          int16_t insetL = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingLeft;
-          int16_t insetR = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingRight;
-          int16_t insetT = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingTop;
-          int16_t insetB = (int16_t)__ui_nodes[i].borderWidth + (int16_t)__ui_nodes[i].paddingBottom;
+          int16_t insetL = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingLeft);
+          int16_t insetR = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingRight);
+          int16_t insetT = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingTop);
+          int16_t insetB = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingBottom);
           int16_t textX = __ui_nodes[i].box.x + insetL;
           int16_t textY = drawY + insetT;
-          int16_t textW = (int16_t)__ui_nodes[i].box.w - insetL - insetR;
-          int16_t textH = (int16_t)__ui_nodes[i].box.h - insetT - insetB;
+          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
+          int16_t textH = static_cast<int16_t>(__ui_nodes[i].box.h) - insetT - insetB;
           if (textW < 1) textW = 1;
-          if (textH < 1) textH = (int16_t)th;
+          if (textH < 1) textH = static_cast<int16_t>(th);
           ui_draw_wrapped_text(displayText,
             textX,
-            textY + (textH - (int16_t)th) / 2,
-            (uint16_t)textW,
+            textY + (textH - static_cast<int16_t>(th)) / 2,
+            static_cast<uint16_t>(textW),
             __ui_nodes[i].fg,
             __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
@@ -4793,13 +4793,13 @@ static inline void ui_tick(uint16_t deltaMs) {
       case NODE_CHECK:
         {
           uint16_t clearW = __ui_nodes[i].box.w;
-          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > (int16_t)clearW) {
-            clearW = (uint16_t)__ui_nodes[i].lastTextWidth;
+          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > static_cast<int16_t>(clearW)) {
+            clearW = static_cast<uint16_t>(__ui_nodes[i].lastTextWidth);
           }
           if (paintTextW > clearW) clearW = paintTextW;
           uint16_t clearH = __ui_nodes[i].box.h;
-          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > (int16_t)clearH) {
-            clearH = (uint16_t)__ui_nodes[i].lastTextHeight;
+          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > static_cast<int16_t>(clearH)) {
+            clearH = static_cast<uint16_t>(__ui_nodes[i].lastTextHeight);
           }
           if (paintTextH > clearH) clearH = paintTextH;
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
@@ -4845,13 +4845,13 @@ static inline void ui_tick(uint16_t deltaMs) {
       case NODE_RADIO:
         {
           uint16_t clearW = __ui_nodes[i].box.w;
-          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > (int16_t)clearW) {
-            clearW = (uint16_t)__ui_nodes[i].lastTextWidth;
+          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > static_cast<int16_t>(clearW)) {
+            clearW = static_cast<uint16_t>(__ui_nodes[i].lastTextWidth);
           }
           if (paintTextW > clearW) clearW = paintTextW;
           uint16_t clearH = __ui_nodes[i].box.h;
-          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > (int16_t)clearH) {
-            clearH = (uint16_t)__ui_nodes[i].lastTextHeight;
+          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > static_cast<int16_t>(clearH)) {
+            clearH = static_cast<uint16_t>(__ui_nodes[i].lastTextHeight);
           }
           if (paintTextH > clearH) clearH = paintTextH;
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
@@ -4901,7 +4901,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           // On first draw (lastTextWidth < 0), draw everything.
           // Otherwise incremental: only update the changed portion.
           uint8_t pct = constrain(__ui_nodes[i].value, 0, 100);
-          int16_t fillW = ((int32_t)(bw - 2) * pct) / 100;
+          int16_t fillW = (static_cast<int32_t>(bw - 2) * pct) / 100;
           int16_t prevW = __ui_nodes[i].lastTextWidth; // reused as previous fill width
 
           if (prevW < 0) {
@@ -4943,7 +4943,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           int16_t range = rMax - rMin;
           if (range <= 0) range = 100;
           int16_t pct = constrain(__ui_nodes[i].value, rMin, rMax) - rMin;
-          int16_t fillW = ((int32_t)(bw - 8) * pct) / range;
+          int16_t fillW = (static_cast<int32_t>(bw - 8) * pct) / range;
           // lastTextWidth carries the previous fill width, or -1 if this node
           // has never been drawn (fillW=0 at value=min is a valid thumb pos).
           int16_t prevFillW = __ui_nodes[i].lastTextWidth;
@@ -5017,7 +5017,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           // textBuffer on focus, so without this the placeholder ("enter name")
           // would render with the caret at its end. Hide it so the caret shows
           // on a clean field at position 0 until the user types.
-          if (__ui_kb_visible && (int16_t)__ui_kb_target == (int16_t)i && __ui_nodes[i].textBuffer[0] == 0) {
+          if (__ui_kb_visible && static_cast<int16_t>(__ui_kb_target) == static_cast<int16_t>(i) && __ui_nodes[i].textBuffer[0] == 0) {
             disp = "";
           }
 #endif
@@ -5040,7 +5040,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           // the border or wraps to the next line.
           int16_t maxChars = (bw - 8) / (ts * 6);
           if (maxChars < 0) maxChars = 0;
-          int16_t len = (int16_t)strlen(disp);
+          int16_t len = static_cast<int16_t>(strlen(disp));
           if (len > maxChars) len = maxChars;
           if (len > UI_TEXT_BUF) len = UI_TEXT_BUF;
           char clipped[UI_TEXT_BUF + 1];
@@ -5055,14 +5055,14 @@ static inline void ui_tick(uint16_t deltaMs) {
           // blinking caret at the end of the typed text on the active edit target
           // so the user sees which field they're editing. Blink ~3×/sec via the
           // top bits of __ui_kb_blink (mask 0x20 toggles every 32 ticks ≈ 530ms).
-          if (__ui_kb_visible && (int16_t)__ui_kb_target == (int16_t)i && (__ui_kb_blink & 0x20)) {
+          if (__ui_kb_visible && static_cast<int16_t>(__ui_kb_target) == static_cast<int16_t>(i) && (__ui_kb_blink & 0x20)) {
             uint16_t caretW = ui_text_width(clipped, ts, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
-            int16_t caretX = bx + 4 + (int16_t)caretW;
+            int16_t caretX = bx + 4 + static_cast<int16_t>(caretW);
             int16_t caretYTop = by + (bh - ts * 8) / 2;
             // fgCol (not textCol): the placeholder-dimming path sets textCol to
             // gray, which would make the caret nearly invisible on a focused
             // empty field. The caret should always be the input's foreground.
-            ui_display_fill_rect(caretX, caretYTop, (int16_t)(ts > 1 ? 2 : 1), (int16_t)(ts * 8), fgCol);
+            ui_display_fill_rect(caretX, caretYTop, static_cast<int16_t>(ts > 1 ? 2 : 1), static_cast<int16_t>(ts * 8), fgCol);
           }
 #endif
         }
@@ -5131,8 +5131,8 @@ static inline void ui_tick(uint16_t deltaMs) {
               int16_t __ui_prev_canvas_h = __ui_canvas_fallback_h;
               __ui_canvas_fallback_w = __ui_cw;
               __ui_canvas_fallback_h = __ui_ch;
-              __ui_draw_off_x = (int16_t)(__ui_prev_off_x + __ui_nodes[i].box.x);
-              __ui_draw_off_y = (int16_t)(__ui_prev_off_y + drawY);
+              __ui_draw_off_x = static_cast<int16_t>(__ui_prev_off_x + __ui_nodes[i].box.x);
+              __ui_draw_off_y = static_cast<int16_t>(__ui_prev_off_y + drawY);
               __ui_canvas_fn(nullptr);
               __ui_draw_off_x = __ui_prev_off_x;
               __ui_draw_off_y = __ui_prev_off_y;
@@ -5172,7 +5172,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         if (!lc || !display_canvasBuffer(lc)) {
           break;
         }
-        if (__ui_list_canvas_node != (int16_t)i) listFullRepaint = 1;
+        if (__ui_list_canvas_node != static_cast<int16_t>(i)) listFullRepaint = 1;
         int16_t repaintY = 0;
         int16_t repaintH = bh;
         int16_t deltaY = listScrollY - __ui_nodes[i].lastPaintedScrollY;
@@ -5216,7 +5216,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         display_targetSetTextWrap((CuttlefishDisplayTarget*)listTextCanvas, false);
         if (itemCount > 0 && repaintH > 0) {
           for (uint16_t idx = first; idx <= last; idx++) {
-            int16_t itemY = (int16_t)(idx * ih) - listScrollY - listTextOffsetY;
+            int16_t itemY = static_cast<int16_t>(idx * ih) - listScrollY - listTextOffsetY;
             __ui_nodes[i].listItemFn(idx, listBuf, UI_TEXT_BUF + 1);
             listBuf[UI_TEXT_BUF] = 0;
             display_targetSetCursor((CuttlefishDisplayTarget*)listTextCanvas, 4, itemY + (ih - 16) / 2);
@@ -5234,10 +5234,10 @@ static inline void ui_tick(uint16_t deltaMs) {
         // Scrollbar (canvas-local coords).
         if (listContentH > bh) {
           int16_t tx = bw - 4;
-          uint16_t thumbH = (uint32_t)bh * bh / listContentH;
+          uint16_t thumbH = static_cast<uint32_t>(bh) * bh / listContentH;
           if (thumbH < 8) thumbH = 8;
           int16_t maxScroll = listContentH - bh;
-          uint16_t thumbY = maxScroll > 0 ? (uint32_t)(bh - thumbH) * listScrollY / maxScroll : 0;
+          uint16_t thumbY = maxScroll > 0 ? static_cast<uint32_t>(bh - thumbH) * listScrollY / maxScroll : 0;
           UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[i].fg >> 1) & UI_DIM_MASK);
           display_canvasFillRect(lc, tx, 0, 3, bh, dimFg);
           display_canvasFillRect(lc, tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
@@ -5265,7 +5265,7 @@ static inline void ui_tick(uint16_t deltaMs) {
           ui_draw_node_border(i, bx, by, bColor);
         }
         ui_draw_node_outline(i, bx, by);
-        __ui_list_canvas_node = (int16_t)i;
+        __ui_list_canvas_node = static_cast<int16_t>(i);
         __ui_nodes[i].lastPaintedScrollY = listScrollY;
         __ui_nodes[i].dirty = 0;
         ui_display_set_target(__ui_draw_target);
@@ -5501,7 +5501,7 @@ static inline void ui_kb_insert(char c) {
   if (__ui_kb_target >= 0) {
     strncpy(__ui_nodes[__ui_kb_target].textBuffer, __ui_kb_buffer, UI_TEXT_BUF);
     __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
-    ui_mark_dirty((uint16_t)__ui_kb_target);
+    ui_mark_dirty(static_cast<uint16_t>(__ui_kb_target));
   }
 #endif
 }
@@ -5514,7 +5514,7 @@ static inline void ui_kb_delete() {
   if (__ui_kb_target >= 0) {
     strncpy(__ui_nodes[__ui_kb_target].textBuffer, __ui_kb_buffer, UI_TEXT_BUF);
     __ui_nodes[__ui_kb_target].textBuffer[UI_TEXT_BUF] = 0;
-    ui_mark_dirty((uint16_t)__ui_kb_target);
+    ui_mark_dirty(static_cast<uint16_t>(__ui_kb_target));
   }
 #endif
 }
@@ -5544,7 +5544,7 @@ static inline void ui_kb_open(uint16_t nodeIdx, uint8_t inputPosition) {
   __ui_kb_buffer[UI_TEXT_BUF] = 0;
   __ui_kb_len = strlen(__ui_kb_buffer);
   uint16_t ml = __ui_nodes[nodeIdx].maxlen;
-  __ui_kb_maxlen = (ml > 0 && ml <= UI_TEXT_BUF) ? (uint8_t)ml : UI_TEXT_BUF;
+  __ui_kb_maxlen = (ml > 0 && ml <= UI_TEXT_BUF) ? static_cast<uint8_t>(ml) : UI_TEXT_BUF;
   __ui_kb_shift = 0;
   __ui_kb_bs_held = 0;
   // Load the key set via the dispatch table.
@@ -5565,7 +5565,7 @@ static inline void ui_kb_open(uint16_t nodeIdx, uint8_t inputPosition) {
   // keystroke. (The full-screen-flash concern above doesn't apply — there's no
   // opaque overlay being skipped.) Seed the blink phase so the caret is ON for
   // the first ~530ms (bit 0x20 set → visible), so focus feels immediate.
-  if (__ui_kb_target >= 0) ui_mark_dirty((uint16_t)__ui_kb_target);
+  if (__ui_kb_target >= 0) ui_mark_dirty(static_cast<uint16_t>(__ui_kb_target));
   __ui_kb_blink = 0x20;
 #endif
 }
@@ -5592,7 +5592,7 @@ static inline void ui_kb_close() {
   int16_t screenRoot = -1;
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     if (__ui_nodes[i].parent == UI_NO_PARENT && __ui_nodes[i].screenId == __ui_active_screen) {
-      screenRoot = (int16_t)i;
+      screenRoot = static_cast<int16_t>(i);
       break;
     }
   }
@@ -5608,7 +5608,7 @@ static inline void ui_kb_close() {
   // scroll clipping — safe here since these nodes are bounded in size, unlike
   // the screen root.
   for (uint16_t i = 0; i < __ui_node_count; i++) {
-    if ((int16_t)i == screenRoot) continue;
+    if (static_cast<int16_t>(i) == screenRoot) continue;
     UIRect r;
     ui_node_current_paint_rect(i, &r);
     if (r.w > 0 && r.h > 0 &&
@@ -5625,8 +5625,8 @@ static inline void ui_kb_key_rect(uint8_t idx, UIRect* out) {
   uint8_t col = idx % __ui_kb_cols;
   uint8_t row = idx / __ui_kb_cols;
   int16_t keysH = __ui_kb_box.h - UI_KB_TEXT_H;  // key area height (below text row)
-  out->x = __ui_kb_box.x + (int16_t)col * __ui_kb_box.w / __ui_kb_cols;
-  out->y = __ui_kb_box.y + UI_KB_TEXT_H + (int16_t)row * keysH / __ui_kb_rows;
+  out->x = __ui_kb_box.x + static_cast<int16_t>(col) * __ui_kb_box.w / __ui_kb_cols;
+  out->y = __ui_kb_box.y + UI_KB_TEXT_H + static_cast<int16_t>(row) * keysH / __ui_kb_rows;
   out->w = __ui_kb_box.w / __ui_kb_cols;
   out->h = keysH / __ui_kb_rows;
 }
@@ -5644,8 +5644,8 @@ static inline void ui_kb_handle_touch(int16_t tx, int16_t ty) {
     UIRect r;
     ui_kb_key_rect(i, &r);
     if (tx >= r.x && tx < r.x + r.w && ty >= r.y && ty < r.y + r.h) {
-      __ui_kb_pressed_key = (int8_t)i;  // remember for release
-      __ui_kb_repaint_key = (int8_t)i;
+      __ui_kb_pressed_key = static_cast<int8_t>(i);  // remember for release
+      __ui_kb_repaint_key = static_cast<int8_t>(i);
       __ui_kb_dirty = 2;  // targeted: redraw just this key's highlight
       // Backspace starts deleting immediately + arms auto-repeat.
       if (k.special == 2) {
@@ -5725,7 +5725,7 @@ static inline void ui_kb_draw_key(uint8_t i) {
   UI_COLOR_T border = ks.borderColor;
   // Shift-active highlight: brighten the shift key's background — but only
   // when not pressed, so the press inversion stays high-contrast.
-  if (k.special == 1 && __ui_kb_shift && (int8_t)i != __ui_kb_pressed_key) {
+  if (k.special == 1 && __ui_kb_shift && static_cast<int8_t>(i) != __ui_kb_pressed_key) {
 #if UI_COLOR_DEPTH == 888
     bg = 0xBDEFFF;
 #else
@@ -5733,7 +5733,7 @@ static inline void ui_kb_draw_key(uint8_t i) {
 #endif
   }
   // Pressed key: invert colors for clear tap feedback.
-  if ((int8_t)i == __ui_kb_pressed_key) { UI_COLOR_T t = bg; bg = fg; fg = t; }
+  if (static_cast<int8_t>(i) == __ui_kb_pressed_key) { UI_COLOR_T t = bg; bg = fg; fg = t; }
   ui_display_fill_rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, bg);
   ui_display_draw_rect(r.x + 1, r.y + 1, r.w - 2, r.h - 2, border);
   ui_display_set_text_color(fg, bg);
@@ -5747,14 +5747,14 @@ static inline void ui_kb_draw_key(uint8_t i) {
     case 3:  labelStr = "OK"; break;
     case 4:  labelStr = __ui_kb_cols <= 4 ? "ABC" : "123"; break;
     default:
-      single[0] = (__ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') ? (char)(k.ch - 32) : k.ch;
+      single[0] = (__ui_kb_shift && k.ch >= 'a' && k.ch <= 'z') ? static_cast<char>(k.ch - 32) : k.ch;
       single[1] = 0;
       labelStr = single;
       break;
   }
   // Center: textW = len * 6px, textH = 8px. Position inside the key rect.
   uint8_t len = strlen(labelStr);
-  int16_t textW = (int16_t)len * 6;
+  int16_t textW = static_cast<int16_t>(len) * 6;
   int16_t textH = 8;
   int16_t cx = r.x + (r.w - textW) / 2;
   int16_t cy = r.y + (r.h - textH) / 2;
@@ -5828,7 +5828,7 @@ static inline void ui_kb_draw() {
   ui_display_set_target(__kb_prev_target);
   display_startWrite();
   display_setAddrWindow(saveBoxX, saveBoxY, kw, kh);
-  display_writePixels(display_canvasBuffer(__ui_kb_canvas), (uint32_t)kw * kh);
+  display_writePixels(display_canvasBuffer(__ui_kb_canvas), static_cast<uint32_t>(kw) * kh);
   display_endWrite();
 }
 
