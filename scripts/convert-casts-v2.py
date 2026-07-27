@@ -25,7 +25,10 @@ TYPE_ALT = '|'.join(re.escape(p) for p in PRIMS_sorted)
 CAST_START = re.compile(r'(?<![A-Za-z0-9_\.:])\(\s*(' + TYPE_ALT + r')\s*\)')
 
 # Characters that terminate a "bare" cast target (no parens).
-TERMINATORS = set(' \t)+-*/%,;<>&|^~!]=}?:')
+# Includes ' and " so the converter stops at TS string-literal boundaries
+# (most C++ shims live inside TS '...' strings; without these, the script
+# eats past the C++ into the TS quote syntax and produces broken output).
+TERMINATORS = set(' \t)+-*/%,;<>&|^~!]=}?:\'"')
 
 
 def find_target_end(s, start):
