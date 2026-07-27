@@ -781,6 +781,11 @@ export function buildEmitterContext(
     diagnostics: emitDiagnostics,
   });
 
+  // Construct the compliance context early so it can be threaded into the
+  // renderers (StatementRenderer needs it for A3-9-1 fixed-width integer
+  // default). It's also returned in the EmitterContext at the end.
+  const compliance = new ComplianceContext(options.autosar ?? "off");
+
   const statementRenderer = new StatementRenderer({
     strategy,
     boardConstants: program.boardConstants,
@@ -799,6 +804,7 @@ export function buildEmitterContext(
     interfaceFieldTypes,
     crossModuleClassNames: classNames,
     diagnostics: emitDiagnostics,
+    compliance,
   });
 
   const asyncFunctionOriginalNames = new Set(
@@ -1051,6 +1057,6 @@ export function buildEmitterContext(
     templateInterfaceNames,
     interfaceNamespaceMap,
     interfaceFieldTypes,
-    compliance: new ComplianceContext(options.autosar ?? "off"),
+    compliance,
   };
 }

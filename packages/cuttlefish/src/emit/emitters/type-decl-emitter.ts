@@ -7,7 +7,14 @@ import { resolveEnumValues, narrowestEnumUnderlying } from "../utils/cpp-helpers
 
 export function emitTypeDeclarations(ctx: EmitterContext): void {
   const { program, strategy, effectiveEmitMode, reservedNames, emittedTopLevelStatements, topLevelScope } = ctx;
-  const normalizeCppTypeForTarget = (cppType: string) => strategy.normalizeCppType(cppType);
+  const normalizeCppTypeForTarget = (cppType: string) => {
+    // A3-9-1: resolve "auto" and substitute "int" with the fixed-width
+    // default under autosar.
+    if (cppType === "auto" || (cppType === "int" && ctx.compliance.isEnabled() && ctx.compliance.isBanned("A3-9-1"))) {
+      return strategy.defaultNumericType(ctx.compliance.isEnabled() ? ctx.compliance : undefined);
+    }
+    return strategy.normalizeCppType(cppType);
+  };
 
   // Split-mode header include + forward declarations
   if (effectiveEmitMode === "split") {
@@ -243,7 +250,7 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
       if (cppType === "auto" && statement.initializer && statement.initializer.kind === "array") {
         const elemType = statement.initializer.elementType && statement.initializer.elementType !== "auto"
           ? strategy.normalizeCppType(statement.initializer.elementType)
-          : strategy.defaultNumericType();
+          : strategy.defaultNumericType(ctx.compliance.isEnabled() ? ctx.compliance : undefined);
         appendHeaderLine(ctx, `extern ${constPrefix}${elemType} ${varName}[];`);
         emitted = true;
         continue;

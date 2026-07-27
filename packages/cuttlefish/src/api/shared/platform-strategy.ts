@@ -175,8 +175,11 @@ export interface PlatformTypeStrategy {
    */
   passthroughEnumNames?(): ReadonlySet<string>;
 
-  /** Default numeric type for the platform (e.g. "int" on hosted, "int32_t" on embedded). */
-  defaultNumericType(): string;
+  /**
+   * Default numeric type for the platform (e.g. "int" on hosted, "int32_t" on embedded).
+   * Optional compliance context: when A3-9-1 is enforced, returns a fixed-width type.
+   */
+  defaultNumericType(compliance?: { isBanned(ruleId: string): boolean }): string;
 
   /**
    * Inform the strategy which enums have values exceeding the signed 16-bit range.

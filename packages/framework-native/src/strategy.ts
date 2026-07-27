@@ -132,7 +132,9 @@ export class NativeStrategy implements PlatformStrategy {
     return typeName;
   }
 
-  defaultNumericType(): string { return 'long long'; }
+  defaultNumericType(compliance?: { isBanned(ruleId: string): boolean }): string {
+    return compliance?.isBanned("A3-9-1") ? 'int64_t' : 'long long';
+  }
 
   mapReturnType(functionName: string, returnType: string): string {
     if (functionName === 'main') return 'int';

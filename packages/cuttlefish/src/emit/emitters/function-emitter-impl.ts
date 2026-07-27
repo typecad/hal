@@ -82,7 +82,7 @@ export function emitPostClassDeclarations(ctx: EmitterContext): void {
           ctx.largeEnumNames,
           statement.name,
           field.name,
-          strategy.defaultNumericType(),
+          strategy.defaultNumericType(ctx.compliance.isEnabled() ? ctx.compliance : undefined),
           (o, n) => strategy.resolvePinType?.(o, n),
         );
         return [field.name, inferred] as const;

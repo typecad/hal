@@ -797,7 +797,9 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
   // ── Type normalisation ──────────────────────────────────────────────────
 
-  defaultNumericType(): string { return "int"; }
+  defaultNumericType(compliance?: { isBanned(ruleId: string): boolean }): string {
+    return compliance?.isBanned("A3-9-1") ? "int32_t" : "int";
+  }
   normalizeCppType(typeName: string): string {
     if (typeName === "auto") return "auto";
     if (typeName === "std::string") return "__tc_str_ptr";

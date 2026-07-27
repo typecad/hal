@@ -69,6 +69,12 @@ interface StatementRendererContext {
    * list. Optional so ad-hoc/test constructions still work.
    */
   diagnostics?: Diagnostic[];
+  /**
+   * Optional compliance context for A3-9-1 (fixed-width integer default).
+   * When provided and A3-9-1 is enforced, defaultNumericType() returns a
+   * fixed-width type instead of the legacy 'int'.
+   */
+  compliance?: { isBanned(ruleId: string): boolean };
 }
 
 /**
@@ -174,6 +180,8 @@ export class StatementRenderer {
   private readonly interfaceFieldTypes: Map<string, Map<string, string>>;
   /** Shared emit-time diagnostics sink (see StatementRendererContext.diagnostics). */
   private readonly _diagnostics: Diagnostic[];
+  /** Compliance context for A3-9-1 fixed-width integer default. */
+  private readonly _compliance?: { isBanned(ruleId: string): boolean };
 
   constructor(context: StatementRendererContext) {
     this.strategy = context.strategy;
@@ -188,6 +196,7 @@ export class StatementRenderer {
     this.namespaceNames = context.namespaceNames ?? new Set();
     this.interfaceFieldTypes = context.interfaceFieldTypes ?? new Map();
     this._diagnostics = context.diagnostics ?? [];
+    this._compliance = context.compliance;
 
     // Create expression renderer with shared context
     this.expressionRenderer = new ExpressionRenderer({
@@ -407,7 +416,7 @@ export class StatementRenderer {
           this.expressionRenderer.pushPrelude([
             `const char* ${idxVar}_keys[] = { ${keysArr} };`,
           ]);
-          return `for (${this.strategy.defaultNumericType()} ${idxVar} = 0; ${idxVar} < ${statement.keys.length}; ${idxVar}++)`;
+          return `for (${this.strategy.defaultNumericType(this._compliance)} ${idxVar} = 0; ${idxVar} < ${statement.keys.length}; ${idxVar}++)`;
         }
         const varDecl = statement.variable;
         if (varDecl.kind === "var_decl") {
@@ -780,14 +789,14 @@ export class StatementRenderer {
           // that don't support std::vector → emit as a plain C-style array.
           // Mutable arrays (.push/.pop/.indexOf) are rewritten to StaticArray<int> in
           // the IR builder (via mutableArrayVars) and never reach this branch.
-          const elementType = parsedElementString(rawType) ?? this.strategy.defaultNumericType();
+          const elementType = parsedElementString(rawType) ?? this.strategy.defaultNumericType(this._compliance);
           return forHeader
             ? `${elementType} ${safeArrName}[] = { ${elements} }`
             : `${elementType} ${safeArrName}[] = { ${elements} };`;
         }
 
         // Use "int" for "auto" element type since C arrays need explicit types
-        const arrayType = statement.initializer.elementType === "auto" ? this.strategy.defaultNumericType() : statement.initializer.elementType;
+        const arrayType = statement.initializer.elementType === "auto" ? this.strategy.defaultNumericType(this._compliance) : statement.initializer.elementType;
         return forHeader
           ? `${arrayType} ${safeArrName}[] = { ${elements} }`
           : `${arrayType} ${safeArrName}[] = { ${elements} };`;
@@ -871,7 +880,7 @@ export class StatementRenderer {
       }
       // Handle spread array initializers
       if (statement.initializer.kind === "spread_array") {
-        let arrayType = statement.initializer.elementType === "auto" ? this.strategy.defaultNumericType() : statement.initializer.elementType;
+        let arrayType = statement.initializer.elementType === "auto" ? this.strategy.defaultNumericType(this._compliance) : statement.initializer.elementType;
         const spreadName = this.expressionRenderer.render(statement.initializer.spreadExpr, calleeTransformer, knownVariableTypes);
         if (statement.initializer.elementType === "auto" && knownVariableTypes && statement.initializer.spreadExpr.kind === "identifier") {
           const srcInfo = knownVariableTypes.get(statement.initializer.spreadExpr.value);
@@ -1036,6 +1045,17 @@ export class StatementRenderer {
     if (this.stringEnumNames.has(typeName)) {
       return this.strategy.normalizeCppType("const char*");
     }
+    // A3-9-1: when the type is "auto", resolve via defaultNumericType with
+    // compliance context so fixed-width integers are used under autosar.
+    if (typeName === "auto") {
+      return this.strategy.defaultNumericType(this._compliance);
+    }
+    // A3-9-1: under autosar, substitute the platform's default numeric type
+    // for the legacy "int" spelling. The IR layer hardcodes "int" for number
+    // literals, so we catch it here at the renderer boundary.
+    if (typeName === "int" && this._compliance?.isBanned("A3-9-1")) {
+      return this.strategy.defaultNumericType(this._compliance);
+    }
     return this.strategy.normalizeCppType(typeName);
   }
 
@@ -1049,7 +1069,7 @@ export class StatementRenderer {
       undefined, // largeEnumNames - would need to pass through
       parentName,
       fieldName,
-      this.strategy.defaultNumericType(),
+      this.strategy.defaultNumericType(this._compliance),
       (o, n) => this.strategy.resolvePinType?.(o, n),
     );
   }
