@@ -31,6 +31,31 @@ export class ComplianceContext {
     return this.ledgerInstance;
   }
 
+  /**
+   * Record a deviation for a known unavoidable pattern (used by the
+   * self-check's knownPatterns mechanism). Unlike emitWithDeviation, this
+   * does NOT append an inline comment — the deviation is recorded in the
+   * ledger only, so the sidecar lists it. The emitted C++ text is unchanged.
+   */
+  recordKnownDeviation(
+    ruleId: string,
+    justification: string,
+    line: number,
+    file: "source" | "header",
+    snippet: string,
+    source?: { tsFile: string; tsLine: number; kind: DeviationKind },
+  ): void {
+    if (!this.isEnabled()) return;
+    this.ledgerInstance.record({
+      ruleId,
+      file,
+      line,
+      snippet,
+      justification,
+      source,
+    });
+  }
+
   /** Renderer gate: should it avoid the banned spelling for this rule? */
   isBanned(ruleId: string): boolean {
     if (!this.isEnabled()) return false;

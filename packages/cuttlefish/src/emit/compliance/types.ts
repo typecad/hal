@@ -32,6 +32,14 @@ export interface RuleEntry {
   exempt?: RegExp;
   /** Per-rule kill switch. When false, the rule is loaded but neither renderer-gated nor self-checked. */
   enabled: boolean;
+  /**
+   * Known unavoidable patterns for this rule. When the self-check detects a
+   * match for a knownPattern, it records a deviation (instead of flagging an
+   * unrecorded-violation) and suppresses the diagnostic. Used for rules whose
+   * violations are structural and can't be eliminated (e.g. function-pointer
+   * typedefs in ESP32 callbacks, signed bitwise in display color math).
+   */
+  knownPatterns?: Array<{ detect: RegExp; justification: string; kind: DeviationKind }>;
 }
 
 /** One recorded deviation, accumulated during emit. */

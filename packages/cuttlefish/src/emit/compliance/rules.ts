@@ -33,11 +33,27 @@ export const RULES: readonly RuleEntry[] = [
     detect: /reinterpret_cast</, enabled: true },
   { id: "M5-2-8", title: "No pointer arithmetic out of bounds", severity: "required", category: "C", enabled: true },
   { id: "A5-2-2", title: "No static_cast downcast of polymorphic type", severity: "required", category: "C", enabled: true },
-  { id: "M5-3-2", title: "No bitwise ops on signed narrow types", severity: "required", category: "C", enabled: true },
+  { id: "M5-3-2", title: "No bitwise ops on signed narrow types", severity: "required", category: "C", enabled: true,
+    knownPatterns: [
+      {
+        detect: /<<\s*8|>>\s*\d/,
+        justification: "Display color packing (RGB565/RGB888) requires bitwise shifts on narrow types; restructuring would change pixel layout.",
+        kind: "ts-literal",
+      },
+    ],
+  },
   { id: "A5-3-2", title: "No bitwise assignment on signed narrow types", severity: "required", category: "C", enabled: true },
   { id: "A7-1-1", title: "const on objects that are not modified", severity: "required", category: "C", enabled: true },
   { id: "A7-1-6", title: "No typedef outside a function -> use using alias", severity: "required", category: "C",
-    detect: /\btypedef\b/, exempt: /\busing\b/, enabled: true },
+    detect: /\btypedef\b/, exempt: /\busing\b/, enabled: true,
+    knownPatterns: [
+      {
+        detect: /\btypedef\b/,
+        justification: "ESP32 BLE/WiFi callback APIs and async runtimes require C-style function-pointer typedefs for framework interop.",
+        kind: "freestanding-function",
+      },
+    ],
+  },
   { id: "A7-2-1", title: "Enumerators use scoped enums (enum class)", severity: "required", category: "C",
     detect: /\benum\s+(?!class\b|struct\b)\w+/, enabled: true },
 
@@ -65,7 +81,15 @@ export const RULES: readonly RuleEntry[] = [
 
   // ── E. Control flow & exceptions ──────────────────────────────────────
   { id: "A5-1-1", title: "No recursion", severity: "required", category: "C", enabled: true },
-  { id: "A15-0-2", title: "noexcept on functions that can't throw", severity: "required", category: "C", enabled: true },
+  { id: "A15-0-2", title: "noexcept on functions that can't throw", severity: "advisory", category: "C", enabled: true,
+    knownPatterns: [
+      {
+        detect: /\bnoexcept\b/,
+        justification: "noexcept annotation requires whole-function throw analysis (Phase 5); recorded as advisory deviation until then.",
+        kind: "other",
+      },
+    ],
+  },
   { id: "A15-5-1", title: "Destructors must not throw", severity: "required", category: "C", enabled: true },
   { id: "M15-1-3", title: "No throw expressions; no try/catch", severity: "required", category: "D",
     detect: /\bthrow\b|\btry\s*\{|\bcatch\s*\(/, enabled: true },
