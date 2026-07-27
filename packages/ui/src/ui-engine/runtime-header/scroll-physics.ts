@@ -9,15 +9,15 @@ export function emitScrollPhysics(): string {
 // 'none' tier compiles drag scroll out entirely.
 
 static inline int16_t ui_scroll_scale_dy(int16_t dy) {
-  int32_t scaled = (int32_t)dy * (int32_t)UI_SCROLL_DRAG_SCALE_X10;
-  return (int16_t)(scaled >= 0 ? (scaled + 5) / 10 : (scaled - 5) / 10);
+  int32_t scaled = static_cast<int32_t>(dy) * static_cast<int32_t>(UI_SCROLL_DRAG_SCALE_X10);
+  return static_cast<int16_t>(scaled >= 0 ? (scaled + 5) / 10 : (scaled - 5) / 10);
 }
 
 static inline int16_t ui_scroll_smooth_dy(int16_t dy) {
 #if UI_SCROLL_INPUT_TIER_CAPACITIVE
   return ui_scroll_scale_dy(dy);
 #elif UI_SCROLL_INPUT_TIER_RESISTIVE
-  int16_t db = (int16_t)UI_SCROLL_DEADBAND_PX;
+  int16_t db = static_cast<int16_t>(UI_SCROLL_DEADBAND_PX);
   if (dy >= -db && dy <= db) {
     // Deadband: kill per-sample jitter around zero. Steady drag (|dy|>db) below
     // passes through unchanged, so steady-state is 1:1 (spec Q1).
@@ -44,11 +44,11 @@ static inline int16_t ui_scroll_max(int16_t node) {
 // r = maxOverscroll * d / (d + stiffness). stiffness held as X10 fixed-point.
 static inline int16_t ui_scroll_overscroll_for(int16_t d) {
   if (d <= 0) return 0;
-  int16_t maxOv = (int16_t)UI_SCROLL_MAX_OVERSCROLL;
-  int16_t stiffX10 = (int16_t)UI_SCROLL_STIFFNESS_X10;
+  int16_t maxOv = static_cast<int16_t>(UI_SCROLL_MAX_OVERSCROLL);
+  int16_t stiffX10 = static_cast<int16_t>(UI_SCROLL_STIFFNESS_X10);
   if (stiffX10 <= 0) stiffX10 = 1;
-  int32_t r = ((int32_t)maxOv * (int32_t)d) / ((int32_t)d + (int32_t)stiffX10);
-  return r > maxOv ? maxOv : (int16_t)r;
+  int32_t r = (static_cast<int32_t>(maxOv) * static_cast<int32_t>(d)) / (static_cast<int32_t>(d) + static_cast<int32_t>(stiffX10));
+  return r > maxOv ? maxOv : static_cast<int16_t>(r);
 }
 
 // Apply a smoothed drag delta to the owning scroll node. Returns 1 if the view
@@ -88,7 +88,7 @@ static inline uint8_t ui_apply_scroll_delta(int16_t node, int16_t dy) {
   }
   __ui_nodes[node].overscrollPx = nextOv;
   uint8_t changed = (__ui_nodes[node].scrollY != sy) || (nextOv != prevOv);
-  if (changed) ui_mark_scroll_view_dirty((uint16_t)node);
+  if (changed) ui_mark_scroll_view_dirty(static_cast<uint16_t>(node));
   return changed;
 }
 
@@ -106,7 +106,7 @@ static inline uint8_t ui_scroll_release(int16_t node) {
   } else {
     int16_t sy = __ui_nodes[node].scrollY;
     int16_t maxS = ui_scroll_max(node);
-    int16_t snap = (int16_t)UI_SCROLL_EDGE_SNAP_PX;
+    int16_t snap = static_cast<int16_t>(UI_SCROLL_EDGE_SNAP_PX);
     if (sy > 0 && sy <= snap) {
       __ui_nodes[node].settling = 1;
       __ui_settle_from_scrollY = sy;            // positive → snap toward 0
@@ -130,23 +130,23 @@ static inline void ui_scroll_advance_settle(uint8_t node, uint16_t deltaMs) {
   (void)deltaMs;
   if (node >= __ui_node_count || !__ui_nodes[node].settling) return;
   uint32_t elapsed = millis() - __ui_settle_start_ms;
-  uint16_t dur = (uint16_t)UI_SCROLL_SETTLE_MS;
+  uint16_t dur = static_cast<uint16_t>(UI_SCROLL_SETTLE_MS);
   // ease-out: k = 1 - (1 - t)^2, t in [0,1]
   uint32_t t = elapsed >= dur ? 100 : (elapsed * 100) / dur;
   uint32_t k = 100 - ((100 - t) * (100 - t)) / 100;
   if (__ui_nodes[node].overscrollPx != 0) {
     int16_t from = __ui_settle_from_overscroll;
-    __ui_nodes[node].overscrollPx = (int16_t)(from - (int32_t)(from * k) / 100);
+    __ui_nodes[node].overscrollPx = static_cast<int16_t>(from - static_cast<int32_t>(from * k) / 100);
     if (t >= 100) __ui_nodes[node].overscrollPx = 0;
   } else if (__ui_settle_from_scrollY != 0) {
     int16_t from = __ui_settle_from_scrollY;   // +toward 0, -toward max
     int16_t maxS = ui_scroll_max(node);
     if (from > 0) {
-      __ui_nodes[node].scrollY = (int16_t)(from - (int32_t)(from * k) / 100);
+      __ui_nodes[node].scrollY = static_cast<int16_t>(from - static_cast<int32_t>(from * k) / 100);
       if (t >= 100) __ui_nodes[node].scrollY = 0;
     } else {  // from < 0: snap toward maxS
       int16_t target = maxS;
-      __ui_nodes[node].scrollY = target + (int16_t)((int32_t)from * (100 - k) / 100);
+      __ui_nodes[node].scrollY = target + static_cast<int16_t>(static_cast<int32_t>(from) * (100 - k) / 100);
       if (t >= 100) __ui_nodes[node].scrollY = target;
     }
   }

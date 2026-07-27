@@ -92,15 +92,15 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     if (!ui_is_effectively_visible(i)) continue;
     if (__ui_nodes[i].screenId != __ui_active_screen) continue;
-    int16_t drawX = ui_draw_x_for_node((uint16_t)i);
-    int16_t drawY = ui_draw_y_for_node((uint16_t)i);
+    int16_t drawX = ui_draw_x_for_node(static_cast<uint16_t>(i));
+    int16_t drawY = ui_draw_y_for_node(static_cast<uint16_t>(i));
     if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
       // The node's box contains the tap. For nodes inside a scroll container,
       // the tap point (not the whole box) must lie within the visible viewport:
       // a tall wrapped paragraph can overflow below the fold yet still have a
       // tappable link segment in its visible portion.
-      if (ui_is_point_clipped_by_scroll((uint16_t)i, tx, ty)) continue;
+      if (ui_is_point_clipped_by_scroll(static_cast<uint16_t>(i), tx, ty)) continue;
       // Skip nodes without any click handler — they're containers, not targets.
       // Exceptions: NODE_RANGE (horizontal drag), NODE_INPUT (opens keyboard),
       // NODE_LIST (virtualized item tap), and NODE_BUTTON — the last so a button
@@ -121,7 +121,7 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
 
 // Dispatch a handler from the given table if registered for the node.
 static void ui_dispatch(void (**table)(), uint16_t count, int16_t node) {
-  if (node >= 0 && (uint16_t)node < count && table[node]) {
+  if (node >= 0 && static_cast<uint16_t>(node) < count && table[node]) {
     table[node]();
   }
 }
@@ -171,8 +171,8 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
     if (__ui_nodes[i].screenId != __ui_active_screen) continue;
     // Only scrollable if content overflows the viewport.
     if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
-    int16_t drawX = ui_draw_x_for_node((uint16_t)i);
-    int16_t drawY = ui_draw_y_for_node((uint16_t)i);
+    int16_t drawX = ui_draw_x_for_node(static_cast<uint16_t>(i));
+    int16_t drawY = ui_draw_y_for_node(static_cast<uint16_t>(i));
     if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
       if (bestScroll < 0 || ui_node_draws_before(bestScroll, i)) bestScroll = i;
@@ -185,7 +185,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   if (node >= 0) {
     uint8_t handledTouchTarget = 0;
     if (__ui_nodes[node].kind == NODE_BUTTON) {
-      ui_set_pressed((uint16_t)node, 1);
+      ui_set_pressed(static_cast<uint16_t>(node), 1);
       handledTouchTarget = 1;
     }
     // Track range nodes for horizontal drag
@@ -199,10 +199,10 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
       int16_t rMax = __ui_nodes[node].rangeMax;
       int16_t range = rMax - rMin;
       if (range <= 0) range = 100;
-      int16_t relX = tx - ui_draw_x_for_node((uint16_t)node) - 4;
+      int16_t relX = tx - ui_draw_x_for_node(static_cast<uint16_t>(node)) - 4;
       int16_t usable = __ui_nodes[node].box.w - 8;
       if (usable <= 0) usable = 1;
-      int16_t nextVal = rMin + ((int32_t)relX * range) / usable;
+      int16_t nextVal = rMin + (static_cast<int32_t>(relX) * range) / usable;
       nextVal = constrain(nextVal, rMin, rMax);
       if (nextVal != __ui_nodes[node].value) {
         __ui_nodes[node].value = nextVal;
@@ -241,17 +241,17 @@ static void ui_touch_up() {
     int16_t clickedNode = __ui_touch_node;
     if (elapsed < UI_TOUCH_HOLD_MS) {
       if (__ui_nodes[clickedNode].kind == NODE_INPUT) {
-        ui_open_keyboard_for_input((uint16_t)clickedNode);
+        ui_open_keyboard_for_input(static_cast<uint16_t>(clickedNode));
       }
       ui_dispatch(__ui_click_handlers, __ui_click_handler_count, __ui_touch_node);
       // Rich-text inline link: if the tapped node has link runs, find which link
       // segment the tap falls within and navigate to its target screen. Copies
       // the list-item subdivision precedent with measured run rects.
       if (__ui_nodes[clickedNode].runCount > 0) {
-        int16_t ndx = __ui_last_touch_x - ui_draw_x_for_node((uint16_t)clickedNode);
-        int16_t ndy = __ui_last_touch_y - ui_draw_y_for_node((uint16_t)clickedNode);
-        int8_t target = ui_rich_link_hit((uint16_t)clickedNode, ndx, ndy);
-        if (target >= 0) ui_navigate((uint8_t)target);
+        int16_t ndx = __ui_last_touch_x - ui_draw_x_for_node(static_cast<uint16_t>(clickedNode));
+        int16_t ndy = __ui_last_touch_y - ui_draw_y_for_node(static_cast<uint16_t>(clickedNode));
+        int8_t target = ui_rich_link_hit(static_cast<uint16_t>(clickedNode), ndx, ndy);
+        if (target >= 0) ui_navigate(static_cast<uint8_t>(target));
       }
     }
     ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
@@ -263,7 +263,7 @@ static void ui_touch_up() {
   // otherwise a touch-down on a button followed by a scroll leaves it stuck).
   if (__ui_touch_node >= 0 && __ui_touch_node < __ui_node_count &&
       __ui_nodes[__ui_touch_node].kind == NODE_BUTTON && __ui_nodes[__ui_touch_node].value != 0) {
-    ui_set_pressed((uint16_t)__ui_touch_node, 0);
+    ui_set_pressed(static_cast<uint16_t>(__ui_touch_node), 0);
   }
   // Resume any \`await ui.onTap()\` awaiter. Runs for EVERY completed tap —
   // including holds (released above) and taps on empty space (__ui_touch_node
@@ -283,9 +283,9 @@ static void ui_touch_up() {
       int16_t relY = __ui_last_touch_y - drawY;
       int16_t totalMove = abs(__ui_last_touch_y - __ui_touch_down_y_pos);
       uint16_t ih = __ui_nodes[n].listItemHeight > 0 ? __ui_nodes[n].listItemHeight : 24;
-      if (totalMove < (int16_t)(ih / 2) &&
+      if (totalMove < static_cast<int16_t>(ih / 2) &&
           relY >= 0 && relY < __ui_nodes[n].box.h) {
-        uint16_t itemIdx = (uint16_t)((relY + __ui_nodes[n].scrollY) / ih);
+        uint16_t itemIdx = static_cast<uint16_t>((relY + __ui_nodes[n].scrollY) / ih);
         if (itemIdx < __ui_nodes[n].listCount) {
           __ui_nodes[n].listTapFn(itemIdx);
         }
@@ -349,16 +349,16 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
       int16_t rMax = __ui_nodes[__ui_range_node].rangeMax;
       int16_t range = rMax - rMin;
       if (range <= 0) range = 100;
-      int16_t relX = tx - ui_draw_x_for_node((uint16_t)__ui_range_node) - 4;
+      int16_t relX = tx - ui_draw_x_for_node(static_cast<uint16_t>(__ui_range_node)) - 4;
       int16_t usable = __ui_nodes[__ui_range_node].box.w - 8;
       if (usable <= 0) usable = 1;
-      int16_t newVal = rMin + ((int32_t)relX * range) / usable;
+      int16_t newVal = rMin + (static_cast<int32_t>(relX) * range) / usable;
       newVal = constrain(newVal, rMin, rMax);
       if (newVal != __ui_nodes[__ui_range_node].value) {
         __ui_nodes[__ui_range_node].value = newVal;
         ui_mark_dirty(__ui_range_node);
         // Fire the onChange callback (if any) — every value change during drag.
-        if (__ui_range_node < (int16_t)__ui_rangechange_handler_count &&
+        if (__ui_range_node < static_cast<int16_t>(__ui_rangechange_handler_count) &&
             __ui_rangechange_handlers[__ui_range_node]) {
           __ui_rangechange_handlers[__ui_range_node]();
         }
@@ -379,7 +379,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
           Serial.printf("scroll dy=%d sy=%d ov=%d virt=%d\\n",
             dy, __ui_nodes[__ui_scroll_node].scrollY,
             __ui_nodes[__ui_scroll_node].overscrollPx,
-            (int)__ui_nodes[__ui_scroll_node].virtualized);
+            static_cast<int>(__ui_nodes[__ui_scroll_node].virtualized));
 #endif
         }
       }

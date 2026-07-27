@@ -52,7 +52,7 @@ static inline void ui_init(void) {
     uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
     uint16_t cnt = __ui_nodes[i].listCountFn();
     __ui_nodes[i].listCount = cnt;
-    __ui_nodes[i].contentHeight = (int16_t)((uint32_t)cnt * ih);
+    __ui_nodes[i].contentHeight = static_cast<int16_t>(static_cast<uint32_t>(cnt) * ih);
     __ui_nodes[i].scrollY = 0;
     __ui_nodes[i].overscrollPx = 0;
     __ui_nodes[i].settling = 0;

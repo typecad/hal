@@ -29,7 +29,7 @@ static inline void ui_navigate(uint8_t screenIdx) {
   // and the button would stay stuck in its :pressed color.
   if (__ui_touch_node >= 0 && __ui_touch_node < __ui_node_count &&
       __ui_nodes[__ui_touch_node].kind == NODE_BUTTON && __ui_nodes[__ui_touch_node].value != 0) {
-    ui_set_pressed((uint16_t)__ui_touch_node, 0);
+    ui_set_pressed(static_cast<uint16_t>(__ui_touch_node), 0);
   }
   __ui_scroll_node = -1;
   __ui_touch_node = -1;

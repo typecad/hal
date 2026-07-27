@@ -73,8 +73,8 @@ static inline void ui_scroll_direct_prepare(uint16_t s, int16_t* outVX, int16_t*
   UI_COLOR_T scrollBg = __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor;
   int16_t deltaY = __ui_nodes[s].scrollY - __ui_nodes[s].lastPaintedScrollY;
   int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
-  int16_t stripY = deltaY > 0 ? (int16_t)(vh - absDelta) : 0;
-  ui_display_fill_rect(vox, (int16_t)(voy + stripY), vw, absDelta, scrollBg);
+  int16_t stripY = deltaY > 0 ? static_cast<int16_t>(vh - absDelta) : 0;
+  ui_display_fill_rect(vox, static_cast<int16_t>(voy + stripY), vw, absDelta, scrollBg);
   for (uint16_t c = s + 1; c < __ui_nodes[s].subtreeEnd; c++) {
     if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) {
       __ui_nodes[c].dirty = 0;
@@ -96,13 +96,13 @@ static inline int16_t ui_overflow_scroll_compositor(uint16_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return -1;
   if (__ui_nodes[nodeIdx].scrollable && !__ui_nodes[nodeIdx].virtualized &&
       __ui_nodes[nodeIdx].contentHeight > __ui_nodes[nodeIdx].box.h) {
-    return (int16_t)nodeIdx;
+    return static_cast<int16_t>(nodeIdx);
   }
   uint16_t p = __ui_nodes[nodeIdx].parent;
   while (p != UI_NO_PARENT && p < __ui_node_count) {
     if (__ui_nodes[p].scrollable && !__ui_nodes[p].virtualized &&
         __ui_nodes[p].contentHeight > __ui_nodes[p].box.h) {
-      return (int16_t)p;
+      return static_cast<int16_t>(p);
     }
     p = __ui_nodes[p].parent;
   }
@@ -151,7 +151,7 @@ static inline void ui_mark_scroll_view_dirty(uint16_t scrollNode) {
 static inline int16_t ui_scroll_ancestor_for_node(uint16_t nodeIdx) {
   uint16_t p = __ui_nodes[nodeIdx].parent;
   while (p != UI_NO_PARENT && p < __ui_node_count) {
-    if (__ui_nodes[p].scrollable) return (int16_t)p;
+    if (__ui_nodes[p].scrollable) return static_cast<int16_t>(p);
     p = __ui_nodes[p].parent;
   }
   return -1;

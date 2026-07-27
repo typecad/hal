@@ -27,7 +27,7 @@ export function lowerRandom(op: HALOpIR): { code?: string; expression?: string }
 
     case 'random.int':
       // Non-negative 31-bit integer: mask off the sign bit.
-      return { expression: '((long)(esp_random() & 0x7FFFFFFF))' };
+      return { expression: '(static_cast<long>(esp_random() & 0x7FFFFFFF))' };
 
     case 'random.range': {
       const min = o.min;
@@ -37,7 +37,7 @@ export function lowerRandom(op: HALOpIR): { code?: string; expression?: string }
       // degenerate range (max == min → returns min) to avoid mod-by-zero.
       return {
         expression:
-          `((long)((esp_random() % (uint32_t)((${max}) - (${min}))) + (${min})))`,
+          `(static_cast<long>((esp_random() % static_cast<uint32_t>((${max}) - (${min}))) + (${min})))`,
       };
     }
 

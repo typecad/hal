@@ -18,7 +18,7 @@ static inline void ui_push_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, in
       return;
     }
     for (int16_t row = 0; row < h; row++) {
-      ui_display_draw_rgb_bitmap(x, y + row, pixels + (int32_t)row * stride, w, 1);
+      ui_display_draw_rgb_bitmap(x, y + row, pixels + static_cast<int32_t>(row) * stride, w, 1);
     }
     return;
   }
@@ -26,12 +26,12 @@ static inline void ui_push_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, in
   display_setAddrWindow(x, y, w, h);
   if (w == stride) {
     // Full-width: contiguous in buffer, single write.
-    display_writePixels(pixels, (uint32_t)w * h);
+    display_writePixels(pixels, static_cast<uint32_t>(w) * h);
     display_endWrite();
     return;
   }
   for (int16_t row = 0; row < h; row++) {
-    display_writePixels(pixels + (int32_t)row * stride, w);
+    display_writePixels(pixels + static_cast<int32_t>(row) * stride, w);
   }
   display_endWrite();
 }
@@ -45,7 +45,7 @@ static inline void ui_draw_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, in
     return;
   }
   for (int16_t row = 0; row < h; row++) {
-    ui_display_draw_rgb_bitmap(x, y + row, pixels + (int32_t)row * stride, w, 1);
+    ui_display_draw_rgb_bitmap(x, y + row, pixels + static_cast<int32_t>(row) * stride, w, 1);
   }
 }
 
@@ -67,10 +67,10 @@ static inline void ui_push_buffered_scroll_canvas(CuttlefishCanvas16* bufferedSc
     ui_draw_canvas_rect(bufferedScrollRepaintCanvas, 0, bufferedScrollRepaintY, vw, bufferedScrollRepaintH);
   }
   int16_t tx = vw - 4;
-  uint16_t thumbH = (uint32_t)vh * vh / __ui_nodes[si].contentHeight;
+  uint16_t thumbH = static_cast<uint32_t>(vh) * vh / __ui_nodes[si].contentHeight;
   if (thumbH < 8) thumbH = 8;
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
-  uint16_t thumbY = (uint32_t)(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
+  uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
   ui_display_fill_rect(tx, 0, 3, vh, dimFg);
   ui_display_fill_rect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
@@ -87,18 +87,18 @@ static inline void ui_push_buffered_scroll_canvas(CuttlefishCanvas16* bufferedSc
 
 // Draw a scroll container's scrollbar directly on the display (Mode C).
 static inline void ui_draw_scrollbar_direct(int16_t si, int16_t vox, int16_t voy) {
-  if (si < 0 || si >= (int16_t)__ui_node_count) return;
+  if (si < 0 || si >= static_cast<int16_t>(__ui_node_count)) return;
   int16_t vw = __ui_nodes[si].box.w;
   int16_t vh = __ui_nodes[si].box.h;
   if (__ui_nodes[si].contentHeight <= vh) return;
   int16_t tx = vox + vw - 4;
-  uint16_t thumbH = (uint32_t)vh * vh / __ui_nodes[si].contentHeight;
+  uint16_t thumbH = static_cast<uint32_t>(vh) * vh / __ui_nodes[si].contentHeight;
   if (thumbH < 8) thumbH = 8;
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
-  uint16_t thumbY = (uint32_t)(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
+  uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
   ui_display_fill_rect(tx, voy, 3, vh, dimFg);
-  ui_display_fill_rect(tx, (int16_t)(voy + thumbY), 3, thumbH, __ui_nodes[si].fg);
+  ui_display_fill_rect(tx, static_cast<int16_t>(voy + thumbY), 3, thumbH, __ui_nodes[si].fg);
 }
 
 // Per-node dirty marker (called by press handlers and binding evaluation).`;

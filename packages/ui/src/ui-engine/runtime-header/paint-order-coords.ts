@@ -30,12 +30,12 @@ static inline uint8_t ui_node_draws_before(uint16_t a, uint16_t b) {
 // re-scanning all nodes for every dirty repaint (O(D·N)).
 static inline void ui_build_draw_order() {
   if (__ui_draw_order || __ui_node_count == 0) return;
-  __ui_draw_order = (uint16_t*)malloc((size_t)__ui_node_count * sizeof(uint16_t));
+  __ui_draw_order = (uint16_t*)malloc(static_cast<size_t>(__ui_node_count) * sizeof(uint16_t));
   if (!__ui_draw_order) return;
   for (uint16_t i = 0; i < __ui_node_count; i++) __ui_draw_order[i] = i;
   for (uint16_t a = 1; a < __ui_node_count; a++) {
     uint16_t key = __ui_draw_order[a];
-    int16_t j = (int16_t)a - 1;
+    int16_t j = static_cast<int16_t>(a) - 1;
     while (j >= 0 && ui_node_draws_before(key, __ui_draw_order[j])) {
       __ui_draw_order[j + 1] = __ui_draw_order[j];
       j--;
@@ -54,7 +54,7 @@ static inline void ui_build_scroll_owner_table() {
   }
   __ui_scroll_owner_count = count;
   if (!count) return;
-  __ui_scroll_owners = (uint16_t*)malloc((size_t)count * sizeof(uint16_t));
+  __ui_scroll_owners = (uint16_t*)malloc(static_cast<size_t>(count) * sizeof(uint16_t));
   if (!__ui_scroll_owners) {
     __ui_scroll_owner_count = 0;
     return;
@@ -142,11 +142,11 @@ static inline int16_t ui_scroll_node_at(int16_t tx, int16_t ty) {
     if (!__ui_nodes[i].scrollable || !ui_is_effectively_visible(i)) continue;
     if (__ui_nodes[i].screenId != __ui_active_screen) continue;
     if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
-    int16_t drawX = ui_draw_x_for_node((uint16_t)i);
-    int16_t drawY = ui_draw_y_for_node((uint16_t)i);
+    int16_t drawX = ui_draw_x_for_node(static_cast<uint16_t>(i));
+    int16_t drawY = ui_draw_y_for_node(static_cast<uint16_t>(i));
     if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
         ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
-      if (bestScroll < 0 || ui_node_draws_before((uint16_t)bestScroll, i)) bestScroll = (int16_t)i;
+      if (bestScroll < 0 || ui_node_draws_before(static_cast<uint16_t>(bestScroll), i)) bestScroll = static_cast<int16_t>(i);
     }
   }
   return bestScroll;

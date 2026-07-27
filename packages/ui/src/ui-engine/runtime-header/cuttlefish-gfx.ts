@@ -121,7 +121,7 @@ class CuttlefishGFX {
   // Text
   virtual void drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg, uint8_t size);
   virtual void write(uint8_t c);
-  void print(const char* s) { while (*s) write((uint8_t)*s++); }
+  void print(const char* s) { while (*s) write(static_cast<uint8_t>(*s++)); }
   void setCursor(int16_t x, int16_t y) { cursor_x_ = x; cursor_y_ = y; }
   void setTextColor(uint16_t c) { textcolor_ = c; }
   void setTextColor(uint16_t c, uint16_t bg) { textcolor_ = c; textbgcolor_ = bg; }
@@ -373,8 +373,8 @@ void CuttlefishGFX::fillTriangle(int16_t x0, int16_t y0, int16_t x1, int16_t y1,
     if (a > b) { int16_t t = a; a = b; b = t; }
     drawFastHLine(a, y, b - a + 1, color);
   }
-  sa = (int32_t)dx12 * (last - y1);
-  sb = (int32_t)dx02 * (last - y0);
+  sa = static_cast<int32_t>(dx12) * (last - y1);
+  sb = static_cast<int32_t>(dx02) * (last - y0);
   for (; y <= y2; y++) {
     a = x1 + sa / dy12;
     b = x0 + sb / dy02;
@@ -392,7 +392,7 @@ void CuttlefishGFX::drawRGBBitmap(int16_t x, int16_t y, const uint16_t* bitmap, 
   if (!bitmap || w <= 0 || h <= 0) return;
   for (int16_t j = 0; j < h; j++) {
     for (int16_t i = 0; i < w; i++) {
-      drawPixel(x + i, y + j, bitmap[(int32_t)j * w + i]);
+      drawPixel(x + i, y + j, bitmap[static_cast<int32_t>(j) * w + i]);
     }
   }
 }
@@ -406,7 +406,7 @@ void CuttlefishGFX::drawChar(int16_t x, int16_t y, unsigned char c, uint16_t col
     return;
   if (c >= 176) c++; // Adafruit '±' fixup
   for (int8_t i = 0; i < 5; i++) {
-    uint8_t line = cuttlefish_glcdfont[(size_t)c * 5 + i];
+    uint8_t line = cuttlefish_glcdfont[static_cast<size_t>(c) * 5 + i];
     for (int8_t j = 0; j < 8; j++, line >>= 1) {
       if (line & 1) {
         if (size == 1) drawPixel(x + i, y + j, color);
@@ -444,7 +444,7 @@ CuttlefishCanvas16::CuttlefishCanvas16(int16_t w, int16_t h)
   : CuttlefishGFX(nullptr, nullptr),
     buffer_(nullptr), canvas_w_(w), canvas_h_(h) {
   if ((w > 0) && (h > 0)) {
-    size_t bytes = (size_t)w * (size_t)h * sizeof(uint16_t);
+    size_t bytes = static_cast<size_t>(w) * static_cast<size_t>(h) * sizeof(uint16_t);
     buffer_ = (uint16_t*)malloc(bytes);
     if (buffer_) memset(buffer_, 0, bytes);
   }
@@ -457,7 +457,7 @@ CuttlefishCanvas16::~CuttlefishCanvas16() {
 void CuttlefishCanvas16::drawPixel(int16_t x, int16_t y, uint16_t color) {
   if (!buffer_) return;
   if ((x < 0) || (y < 0) || (x >= canvas_w_) || (y >= canvas_h_)) return;
-  buffer_[(size_t)y * (size_t)canvas_w_ + (size_t)x] = color;
+  buffer_[static_cast<size_t>(y) * static_cast<size_t>(canvas_w_) + static_cast<size_t>(x)] = color;
 }
 
 void CuttlefishCanvas16::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color) {
@@ -469,22 +469,22 @@ void CuttlefishCanvas16::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, ui
   // Cull before the inner loop (AGENTS.md: clip before expensive work).
   if (x2 <= x1 || y2 <= y1) return;
   for (int16_t j = y1; j < y2; j++) {
-    uint16_t* row = buffer_ + (size_t)j * (size_t)canvas_w_;
+    uint16_t* row = buffer_ + static_cast<size_t>(j) * static_cast<size_t>(canvas_w_);
     for (int16_t i = x1; i < x2; i++) row[i] = color;
   }
 }
 
 uint16_t CuttlefishCanvas16::getPixel(int16_t x, int16_t y) const {
   if (!buffer_ || (x < 0) || (y < 0) || (x >= canvas_w_) || (y >= canvas_h_)) return 0;
-  return buffer_[(size_t)y * (size_t)canvas_w_ + (size_t)x];
+  return buffer_[static_cast<size_t>(y) * static_cast<size_t>(canvas_w_) + static_cast<size_t>(x)];
 }
 
 CuttlefishCanvasMono::CuttlefishCanvasMono(int16_t w, int16_t h)
   : CuttlefishGFX(nullptr, nullptr),
     buffer_(nullptr), canvas_w_(w), canvas_h_(h) {
   if ((w > 0) && (h > 0)) {
-    size_t row_bytes = ((size_t)w + 7u) / 8u;
-    size_t bytes = row_bytes * (size_t)h;
+    size_t row_bytes = (static_cast<size_t>(w) + 7u) / 8u;
+    size_t bytes = row_bytes * static_cast<size_t>(h);
     buffer_ = (uint8_t*)malloc(bytes);
     if (buffer_) memset(buffer_, 0, bytes);
   }
@@ -497,8 +497,8 @@ CuttlefishCanvasMono::~CuttlefishCanvasMono() {
 void CuttlefishCanvasMono::drawPixel(int16_t x, int16_t y, uint16_t color) {
   if (!buffer_) return;
   if ((x < 0) || (y < 0) || (x >= canvas_w_) || (y >= canvas_h_)) return;
-  size_t row_bytes = ((size_t)canvas_w_ + 7u) / 8u;
-  uint8_t* row = buffer_ + (size_t)y * row_bytes;
+  size_t row_bytes = (static_cast<size_t>(canvas_w_) + 7u) / 8u;
+  uint8_t* row = buffer_ + static_cast<size_t>(y) * row_bytes;
   uint8_t mask = 0x80u >> (x & 7);
   if (color) row[x >> 3] |= mask;
   else       row[x >> 3] &= ~mask;
@@ -514,8 +514,8 @@ void CuttlefishCanvasMono::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, 
   uint8_t fill = color ? 0xFFu : 0x00u;
   for (int16_t j = y1; j < y2; j++) {
     for (int16_t i = x1; i < x2; i++) {
-      size_t row_bytes = ((size_t)canvas_w_ + 7u) / 8u;
-      uint8_t* row = buffer_ + (size_t)j * row_bytes;
+      size_t row_bytes = (static_cast<size_t>(canvas_w_) + 7u) / 8u;
+      uint8_t* row = buffer_ + static_cast<size_t>(j) * row_bytes;
       uint8_t mask = 0x80u >> (i & 7);
       if (color) row[i >> 3] |= mask;
       else       row[i >> 3] &= ~mask;
@@ -526,8 +526,8 @@ void CuttlefishCanvasMono::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, 
 
 uint16_t CuttlefishCanvasMono::getPixel(int16_t x, int16_t y) const {
   if (!buffer_ || (x < 0) || (y < 0) || (x >= canvas_w_) || (y >= canvas_h_)) return 0;
-  size_t row_bytes = ((size_t)canvas_w_ + 7u) / 8u;
-  const uint8_t* row = buffer_ + (size_t)y * row_bytes;
+  size_t row_bytes = (static_cast<size_t>(canvas_w_) + 7u) / 8u;
+  const uint8_t* row = buffer_ + static_cast<size_t>(y) * row_bytes;
   return (row[x >> 3] & (0x80u >> (x & 7))) ? 0xFFFFu : 0x0000u;
 }
 

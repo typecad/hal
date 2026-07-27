@@ -53,10 +53,14 @@ export class GenericStrategy implements PlatformStrategy {
   // ── Type normalisation ──────────────────────────────────────────────────
 
   normalizeCppType(typeName: string): string {
-    if (typeName === "auto") return "int";
+    if (typeName === "auto") return this.defaultNumericType();
     return typeName;
   }
-  defaultNumericType(): string { return "int"; }
+  defaultNumericType(compliance?: { isBanned(ruleId: string): boolean }): string {
+    // A3-9-1: fixed-width integers under AUTOSAR. Legacy 'int' spelling
+    // preserved when autosar is off so default output is byte-identical.
+    return compliance?.isBanned("A3-9-1") ? "int32_t" : "int";
+  }
   mapReturnType(_functionName: string, returnType: string): string {
     return this.normalizeCppType(returnType);
   }

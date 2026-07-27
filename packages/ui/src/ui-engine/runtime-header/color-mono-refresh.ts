@@ -39,11 +39,11 @@ static inline uint32_t ui_blend888(uint32_t fg, uint32_t bg, uint8_t opacity);
 static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100);
 static inline uint32_t lerp_color_888(uint32_t a, uint32_t b, uint8_t k100);
 #if UI_COLOR_DEPTH == 888
-  #define ui_blend(fg, bg, op)        ui_blend888((uint32_t)(fg), (uint32_t)(bg), (op))
-  #define UI_LERP_COLOR(a, b, k)      lerp_color_888((uint32_t)(a), (uint32_t)(b), (k))
+  #define ui_blend(fg, bg, op)        ui_blend888(static_cast<uint32_t>(fg), static_cast<uint32_t>(bg), (op))
+  #define UI_LERP_COLOR(a, b, k)      lerp_color_888(static_cast<uint32_t>(a), static_cast<uint32_t>(b), (k))
 #else
-  #define ui_blend(fg, bg, op)        ui_blend565((uint16_t)(fg), (uint16_t)(bg), (op))
-  #define UI_LERP_COLOR(a, b, k)      lerp_color((uint16_t)(a), (uint16_t)(b), (k))
+  #define ui_blend(fg, bg, op)        ui_blend565(static_cast<uint16_t>(fg), static_cast<uint16_t>(bg), (op))
+  #define UI_LERP_COLOR(a, b, k)      lerp_color(static_cast<uint16_t>(a), static_cast<uint16_t>(b), (k))
 #endif
 
 // ── 1-bit mono snap (UI_NATIVE_MONO) ─────────────────────────────────────────
@@ -57,7 +57,7 @@ static inline uint32_t ui_snap_mono(uint32_t c) {
   uint8_t r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
   // Match the transpile-time toMono threshold: (0.299r + 0.587g + 0.114b)/255 >= 0.27.
   // Integer form: 299r+587g+114b >= 68850 (= 0.27*255*1000). Verified 0 mismatches.
-  return ((uint32_t)(299 * r + 587 * g + 114 * b) >= 68850u) ? 0xffffffu : 0x000000u;
+  return (static_cast<uint32_t>(299 * r + 587 * g + 114 * b) >= 68850u) ? 0xffffffu : 0x000000u;
 }
 // Snap an RGB565 value to 1-bit mono. Mono panels run at UI_COLOR_DEPTH 565, so
 // node fields hold 565 values; reconstruct 8-bit channels then apply the threshold.
@@ -68,10 +68,10 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
   if (c == 0x0001u || c == 0xffffu) return 0xffffu;
   uint8_t r5 = (c >> 11) & 0x1f, g6 = (c >> 5) & 0x3f, b5 = c & 0x1f;
   uint8_t r = (r5 << 3) | (r5 >> 2), g = (g6 << 2) | (g6 >> 4), b = (b5 << 3) | (b5 >> 2);
-  return ((uint32_t)(299 * r + 587 * g + 114 * b) >= 68850u) ? 0xffffu : 0x0000u;
+  return (static_cast<uint32_t>(299 * r + 587 * g + 114 * b) >= 68850u) ? 0xffffu : 0x0000u;
 }
-#define UI_MAYBE_SNAP_MONO(c)    (ui_snap_mono((uint32_t)(c)))
-#define UI_MAYBE_SNAP_MONO565(c) (ui_snap_mono565((uint16_t)(c)))
+#define UI_MAYBE_SNAP_MONO(c)    (ui_snap_mono(static_cast<uint32_t>(c)))
+#define UI_MAYBE_SNAP_MONO565(c) (ui_snap_mono565(static_cast<uint16_t>(c)))
 #else
 #define UI_MAYBE_SNAP_MONO(c)    (c)
 #define UI_MAYBE_SNAP_MONO565(c) (c)
@@ -115,7 +115,7 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
       const UIRect16& r = __ui_refresh_rects[i];
       if (r.x < x0) x0 = r.x;
       if (r.y < y0) y0 = r.y;
-      int16_t rx1 = (int16_t)(r.x + r.w), ry1 = (int16_t)(r.y + r.h);
+      int16_t rx1 = static_cast<int16_t>(r.x + r.w), ry1 = static_cast<int16_t>(r.y + r.h);
       if (rx1 > x1) x1 = rx1;
       if (ry1 > y1) y1 = ry1;
     }
@@ -124,7 +124,7 @@ static inline uint16_t ui_snap_mono565(uint16_t c) {
     if (x1 > display_width()) x1 = display_width();
     if (y1 > display_height()) y1 = display_height();
     if (x1 > x0 && y1 > y0) {
-      display_partial_refresh(x0, y0, (int16_t)(x1 - x0), (int16_t)(y1 - y0));
+      display_partial_refresh(x0, y0, static_cast<int16_t>(x1 - x0), static_cast<int16_t>(y1 - y0));
     }
   }
 #elif defined(UI_BATCH_SPI_WRITES)

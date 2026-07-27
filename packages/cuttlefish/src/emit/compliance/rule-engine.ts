@@ -45,6 +45,20 @@ export function runSelfCheck(
         if (rule.exempt && rule.exempt.test(line)) continue;
         if (!rule.detect.test(line)) continue;
 
+        // Check knownPatterns: if this match falls under a known unavoidable
+        // pattern, record a deviation and suppress the finding.
+        if (rule.knownPatterns) {
+          const known = rule.knownPatterns.find((kp) => kp.detect.test(line));
+          if (known) {
+            ctx.recordKnownDeviation(rule.id, known.justification, lineNo, file, line.trim(), {
+              tsFile: "",
+              tsLine: 0,
+              kind: known.kind,
+            });
+            continue;
+          }
+        }
+
         // Match found. Is it covered by an inline comment or a ledger entry?
         const covered =
           commentedIds.has(rule.id) || ctx.ledger().hasEntry(file, lineNo, rule.id);

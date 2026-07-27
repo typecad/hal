@@ -15,7 +15,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   // keeps cycling even when no other state changes (otherwise the caret
   // freezes once the typed-text dirty clears).
   if (__ui_kb_visible && __ui_kb_target >= 0 && (__ui_kb_blink & 0x10)) {
-    ui_mark_dirty((uint16_t)__ui_kb_target);
+    ui_mark_dirty(static_cast<uint16_t>(__ui_kb_target));
   }
 #endif
   // ⓪ Evaluate bindings: call each binding's fn, compare to the node's
@@ -46,7 +46,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       if (__ui_bindings[i].prop == PROP_VALUE) {
         // Numeric value binding: drive a progress/range node's value live.
         uint16_t n = __ui_bindings[i].node;
-        int16_t v = (int16_t)__ui_bindings[i].fn();
+        int16_t v = static_cast<int16_t>(__ui_bindings[i].fn());
         if (v != __ui_nodes[n].value) {
           __ui_nodes[n].value = v;
           ui_mark_dirty(n);
@@ -78,7 +78,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       uint16_t newCount = __ui_nodes[i].listCountFn();
       if (newCount != __ui_nodes[i].listCount) {
         __ui_nodes[i].listCount = newCount;
-        __ui_nodes[i].contentHeight = (int16_t)((uint32_t)newCount * ih);
+        __ui_nodes[i].contentHeight = static_cast<int16_t>(static_cast<uint32_t>(newCount) * ih);
         __ui_nodes[i].lastPaintedScrollY = __ui_nodes[i].scrollY - (__ui_nodes[i].box.h > 0 ? __ui_nodes[i].box.h : 1);
         ui_mark_dirty(i);
       }

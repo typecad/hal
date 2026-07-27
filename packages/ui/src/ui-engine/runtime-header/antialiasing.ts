@@ -53,7 +53,7 @@ static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x
   if (!c || !display_canvasBuffer(c)) return;
   auto ipart = [](float f) { return (int16_t)f; };
   auto round_f = [](float f) { return (int16_t)(f + 0.5f); };
-  auto fpart = [](float f) { return f - (float)(int16_t)f; };
+  auto fpart = [](float f) { return f - static_cast<float>(static_cast<int16_t>(f)); };
   auto rfpart = [&](float f) { return 1.0f - fpart(f); };
 
   bool steep = fabs(y1 - y0) > fabs(x1 - x0);

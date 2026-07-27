@@ -181,10 +181,10 @@ static inline uint16_t lerp_color(uint16_t a, uint16_t b, uint8_t k100) {
   uint8_t br5 = (b >> 11) & 0x1f, bg6 = (b >> 5) & 0x3f, bb5 = b & 0x1f;
   uint16_t ar8 = (ar5 << 3) | (ar5 >> 2), ag8 = (ag6 << 2) | (ag6 >> 4), ab8 = (ab5 << 3) | (ab5 >> 2);
   uint16_t br8 = (br5 << 3) | (br5 >> 2), bg8 = (bg6 << 2) | (bg6 >> 4), bb8 = (bb5 << 3) | (bb5 >> 2);
-  int16_t r = (int16_t)(ar8 + (int16_t)((br8 - ar8) * k100 / 100));
-  int16_t g = (int16_t)(ag8 + (int16_t)((bg8 - ag8) * k100 / 100));
-  int16_t bl = (int16_t)(ab8 + (int16_t)((bb8 - ab8) * k100 / 100));
-  return ((uint16_t)((r >> 3) & 0x1f) << 11) | ((uint16_t)((g >> 2) & 0x3f) << 5) | (uint16_t)((bl >> 3) & 0x1f);
+  int16_t r = static_cast<int16_t>(ar8 + static_cast<int16_t>((br8 - ar8) * k100 / 100));
+  int16_t g = static_cast<int16_t>(ag8 + static_cast<int16_t>((bg8 - ag8) * k100 / 100));
+  int16_t bl = static_cast<int16_t>(ab8 + static_cast<int16_t>((bb8 - ab8) * k100 / 100));
+  return (static_cast<uint16_t>((r >> 3) & 0x1f) << 11) | (static_cast<uint16_t>((g >> 2) & 0x3f) << 5) | static_cast<uint16_t>((bl >> 3) & 0x1f);
 }
 
 // RGB888 lerp — for transitions on RGB888/RGB666 targets (Phase 2+). Unused in
@@ -194,10 +194,10 @@ static inline uint32_t lerp_color_888(uint32_t a, uint32_t b, uint8_t k100) {
   if (k100 >= 100) return b;
   uint8_t ar = (a >> 16) & 0xff, ag = (a >> 8) & 0xff, ab = a & 0xff;
   uint8_t br = (b >> 16) & 0xff, bg = (b >> 8) & 0xff, bb = b & 0xff;
-  int16_t r = ar + (int16_t)(((int16_t)br - (int16_t)ar) * k100 / 100);
-  int16_t g = ag + (int16_t)(((int16_t)bg - (int16_t)ag) * k100 / 100);
-  int16_t bl = ab + (int16_t)(((int16_t)bb - (int16_t)ab) * k100 / 100);
-  return ((uint32_t)(r & 0xff) << 16) | ((uint32_t)(g & 0xff) << 8) | (uint32_t)(bl & 0xff);
+  int16_t r = ar + static_cast<int16_t>((static_cast<int16_t>(br) - static_cast<int16_t>(ar)) * k100 / 100);
+  int16_t g = ag + static_cast<int16_t>((static_cast<int16_t>(bg) - static_cast<int16_t>(ag)) * k100 / 100);
+  int16_t bl = ab + static_cast<int16_t>((static_cast<int16_t>(bb) - static_cast<int16_t>(ab)) * k100 / 100);
+  return (static_cast<uint32_t>(r & 0xff) << 16) | (static_cast<uint32_t>(g & 0xff) << 8) | static_cast<uint32_t>(bl & 0xff);
 }
 
 // Declared by the lowering output (the tables). Matches the mutable (non-const)

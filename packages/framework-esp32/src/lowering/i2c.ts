@@ -42,11 +42,11 @@ export function lowerI2c(op: HALOpIR): { code?: string; expression?: string } {
     case 'i2c.begin_transmission': {
       const addr = o.address;
       return { code: [
-        `if (!__tc_i2c${idx}_dev || __tc_i2c${idx}_addr != (uint16_t)(${addr})) {`,
+        `if (!__tc_i2c${idx}_dev || __tc_i2c${idx}_addr != static_cast<uint16_t>(${addr})) {`,
         `    if (__tc_i2c${idx}_dev) { i2c_master_bus_rm_device(__tc_i2c${idx}_dev); __tc_i2c${idx}_dev = NULL; }`,
         `    const i2c_device_config_t dcfg = { .dev_addr_length = I2C_ADDR_BIT_LEN_7, .device_address = ${addr}, .scl_speed_hz = __tc_i2c${idx}_clk };`,
         `    i2c_master_bus_add_device(__esp32_i2c_bus_get(${idx}), &dcfg, &__tc_i2c${idx}_dev);`,
-        `    __tc_i2c${idx}_addr = (uint16_t)(${addr});`,
+        `    __tc_i2c${idx}_addr = static_cast<uint16_t>(${addr});`,
         `}`,
         `__tc_i2c${idx}_txlen = 0;`,
       ].join(' ') };

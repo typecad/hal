@@ -69,13 +69,13 @@ export class NativeStrategy implements PlatformStrategy {
       'template<typename T> inline bool cuttlefish_is_nullish(const T& v) { return false; }',
       'inline bool cuttlefish_is_nullish(long long v) { return v == CUTTLEFISH_UNDEFINED; }',
       'inline bool cuttlefish_is_nullish(int v) { return v == CUTTLEFISH_UNDEFINED; }',
-      'inline bool cuttlefish_is_nullish(double v) { return v == (double)CUTTLEFISH_UNDEFINED; }',
+      'inline bool cuttlefish_is_nullish(double v) { return v == static_cast<double>(CUTTLEFISH_UNDEFINED); }',
       'inline bool cuttlefish_is_nullish(bool v) { return v == false; }',
       'template<typename T> inline bool cuttlefish_is_nullish(T* v) { return v == nullptr; }',
       'template<typename T> inline bool cuttlefish_exists(const T& v) { return !cuttlefish_is_nullish(v); }',
       'template<typename T, typename U> inline T cuttlefish_nullish(const T& a, U b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }',
-      'namespace Date { inline long now() { auto t = std::chrono::system_clock::now(); return (long)std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch()).count(); } }',
-      'inline unsigned long millis() { return (unsigned long)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }',
+      'namespace Date { inline long now() { auto t = std::chrono::system_clock::now(); return static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch()).count()); } }',
+      'inline unsigned long millis() { return static_cast<unsigned long>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }',
       '// Arduino-compat polyfills used by the UI runtime (pin reads, constrain, map).',
       '// The runtime header references these; native provides no-op/identity impls.',
       '#ifndef HIGH', '#define HIGH 1', '#endif',
@@ -132,7 +132,9 @@ export class NativeStrategy implements PlatformStrategy {
     return typeName;
   }
 
-  defaultNumericType(): string { return 'long long'; }
+  defaultNumericType(compliance?: { isBanned(ruleId: string): boolean }): string {
+    return compliance?.isBanned("A3-9-1") ? 'int64_t' : 'long long';
+  }
 
   mapReturnType(functionName: string, returnType: string): string {
     if (functionName === 'main') return 'int';
@@ -438,26 +440,26 @@ export class NativeStrategy implements PlatformStrategy {
         helperStructs: [],
         helperFunctions: [
           // ── Core string methods (existing) ─────────────────────────────
-          'inline std::string __tc_toUpperCase(const std::string& s) { std::string r = s; for (auto& c : r) c = (char)toupper((unsigned char)c); return r; }',
-          'inline std::string __tc_toLowerCase(const std::string& s) { std::string r = s; for (auto& c : r) c = (char)tolower((unsigned char)c); return r; }',
+          'inline std::string __tc_toUpperCase(const std::string& s) { std::string r = s; for (auto& c : r) c = static_cast<char>(toupper(static_cast<unsigned char>(c))); return r; }',
+          'inline std::string __tc_toLowerCase(const std::string& s) { std::string r = s; for (auto& c : r) c = static_cast<char>(tolower(static_cast<unsigned char>(c))); return r; }',
           'inline std::string __tc_trim(const std::string& s) { size_t start = s.find_first_not_of(" \\t\\n\\r"); if (start == std::string::npos) return ""; size_t end = s.find_last_not_of(" \\t\\n\\r"); return s.substr(start, end - start + 1); }',
           'inline std::string __tc_substring2(const std::string& s, int start, int end) { return s.substr(start, end - start); }',
           'inline std::string __tc_substring1(const std::string& s, int start) { return s.substr(start); }',
           'inline std::string __tc_replace(const std::string& s, const std::string& old, const std::string& repl) { std::string r = s; size_t pos = 0; while ((pos = r.find(old, pos)) != std::string::npos) { r.replace(pos, old.length(), repl); pos += repl.length(); } return r; }',
           'inline std::string __tc_charAt(const std::string& s, int idx) { return std::string(1, s[idx]); }',
-          'inline int __tc_charCodeAt(const std::string& s, int idx) { return (int)(unsigned char)s[idx]; }',
+          'inline int __tc_charCodeAt(const std::string& s, int idx) { return static_cast<int>(static_cast<unsigned char>(s[idx])); }',
           'inline std::vector<std::string> __tc_split(const std::string& s, const std::string& delim) { std::vector<std::string> parts; if (delim.empty()) { for (char c : s) parts.push_back(std::string(1, c)); return parts; } size_t start = 0, end; while ((end = s.find(delim, start)) != std::string::npos) { parts.push_back(s.substr(start, end - start)); start = end + delim.length(); } parts.push_back(s.substr(start)); return parts; }',
           // ── Extended string methods (Phase 1) ──────────────────────────
           'inline bool __tc_endsWith(const std::string& s, const std::string& suffix) { if (suffix.size() > s.size()) return false; return s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0; }',
-          'inline int __tc_lastIndexOf(const std::string& s, const std::string& search) { size_t pos = s.rfind(search); return pos != std::string::npos ? (int)pos : -1; }',
-          'inline std::string __tc_padStart(const std::string& s, int len, const std::string& fill) { if ((int)s.size() >= len) return s; std::string result; int padLen = len - (int)s.size(); for (int i = 0; i < padLen; i++) result += fill[i % (int)fill.size()]; return result + s; }',
+          'inline int __tc_lastIndexOf(const std::string& s, const std::string& search) { size_t pos = s.rfind(search); return pos != std::string::npos ? static_cast<int>(pos) : -1; }',
+          'inline std::string __tc_padStart(const std::string& s, int len, const std::string& fill) { if (static_cast<int>(s.size()) >= len) return s; std::string result; int padLen = len - static_cast<int>(s.size()); for (int i = 0; i < padLen; i++) result += fill[i % static_cast<int>(fill.size())]; return result + s; }',
           'inline std::string __tc_padStart_default(const std::string& s, int len) { return __tc_padStart(s, len, " "); }',
-          'inline std::string __tc_padEnd(const std::string& s, int len, const std::string& fill) { if ((int)s.size() >= len) return s; std::string result = s; int padLen = len - (int)s.size(); for (int i = 0; i < padLen; i++) result += fill[i % (int)fill.size()]; return result; }',
+          'inline std::string __tc_padEnd(const std::string& s, int len, const std::string& fill) { if (static_cast<int>(s.size()) >= len) return s; std::string result = s; int padLen = len - static_cast<int>(s.size()); for (int i = 0; i < padLen; i++) result += fill[i % static_cast<int>(fill.size())]; return result; }',
           'inline std::string __tc_padEnd_default(const std::string& s, int len) { return __tc_padEnd(s, len, " "); }',
           'inline std::string __tc_repeat(const std::string& s, int count) { std::string result; for (int i = 0; i < count; i++) result += s; return result; }',
           // ── Overloaded includes/indexOf for std::string ────────────────
           'inline bool __tc_includes(const std::string& s, const std::string& search) { return s.find(search) != std::string::npos; }',
-          'inline int __tc_indexOf(const std::string& s, const std::string& search) { size_t pos = s.find(search); return pos != std::string::npos ? (int)pos : -1; }',
+          'inline int __tc_indexOf(const std::string& s, const std::string& search) { size_t pos = s.find(search); return pos != std::string::npos ? static_cast<int>(pos) : -1; }',
           // ── String slice overloads ──────────────────────────────────────
           'inline std::string __tc_slice2(const std::string& s, int start, int end) { return s.substr(start, end - start); }',
           'inline std::string __tc_slice1(const std::string& s, int start) { return s.substr(start); }',
@@ -526,12 +528,12 @@ export class NativeStrategy implements PlatformStrategy {
         helperFunctions: [
           // ── Core array methods (existing) ───────────────────────────────
           'template<typename T> std::string __tc_join(const std::vector<T>& v, const std::string& delim) { std::ostringstream oss; for (size_t i = 0; i < v.size(); i++) { if (i > 0) oss << delim; oss << v[i]; } return oss.str(); }',
-          'template<typename T> std::vector<T> __tc_slice2(const std::vector<T>& v, int start, int end) { if (end > (int)v.size()) end = (int)v.size(); return std::vector<T>(v.begin() + start, v.begin() + end); }',
+          'template<typename T> std::vector<T> __tc_slice2(const std::vector<T>& v, int start, int end) { if (end > static_cast<int>(v.size())) end = static_cast<int>(v.size()); return std::vector<T>(v.begin() + start, v.begin() + end); }',
           'template<typename T> std::vector<T> __tc_slice1(const std::vector<T>& v, int start) { return std::vector<T>(v.begin() + start, v.end()); }',
           'template<typename T> std::vector<T> __tc_reverse(std::vector<T> v) { std::reverse(v.begin(), v.end()); return v; }',
           // ── Overloaded includes/indexOf for std::vector ─────────────────
           'template<typename T> bool __tc_includes(const std::vector<T>& v, const T& val) { return std::find(v.begin(), v.end(), val) != v.end(); }',
-          'template<typename T> int __tc_indexOf(const std::vector<T>& v, const T& val) { auto it = std::find(v.begin(), v.end(), val); return it != v.end() ? (int)(it - v.begin()) : -1; }',
+          'template<typename T> int __tc_indexOf(const std::vector<T>& v, const T& val) { auto it = std::find(v.begin(), v.end(), val); return it != v.end() ? static_cast<int>(it - v.begin()) : -1; }',
           // ── Array mutation methods (Phase 1) ────────────────────────────
           'template<typename T> T __tc_shift(std::vector<T>& v) { T val = v.front(); v.erase(v.begin()); return val; }',
           'template<typename T> T __tc_pop(std::vector<T>& v) { T val = v.back(); v.pop_back(); return val; }',
@@ -539,17 +541,17 @@ export class NativeStrategy implements PlatformStrategy {
           'template<typename T> void __tc_sort(std::vector<T>& v) { std::sort(v.begin(), v.end()); }',
           'template<typename T, typename F> void __tc_sort_fn(std::vector<T>& v, F comp) { std::sort(v.begin(), v.end(), [&v, comp](const typename std::vector<T>::value_type& a, const typename std::vector<T>::value_type& b) { return comp(a, b) < 0; }); }',
           'template<typename T> void __tc_fill(std::vector<T>& v, const T& val) { std::fill(v.begin(), v.end(), val); }',
-          'template<typename T> void __tc_fill3(std::vector<T>& v, const T& val, int start, int end) { if (end > (int)v.size()) end = (int)v.size(); std::fill(v.begin() + start, v.begin() + end, val); }',
+          'template<typename T> void __tc_fill3(std::vector<T>& v, const T& val, int start, int end) { if (end > static_cast<int>(v.size())) end = static_cast<int>(v.size()); std::fill(v.begin() + start, v.begin() + end, val); }',
           'template<typename T> std::vector<T> __tc_concat(const std::vector<T>& a, const std::vector<T>& b) { std::vector<T> result = a; result.insert(result.end(), b.begin(), b.end()); return result; }',
           'template<typename T> std::vector<T> __tc_splice1(std::vector<T>& v, int start) { std::vector<T> removed(v.begin() + start, v.end()); v.erase(v.begin() + start, v.end()); return removed; }',
-          'template<typename T> std::vector<T> __tc_splice2(std::vector<T>& v, int start, int deleteCount) { int end = start + deleteCount; if (end > (int)v.size()) end = (int)v.size(); std::vector<T> removed(v.begin() + start, v.begin() + end); v.erase(v.begin() + start, v.begin() + end); return removed; }',
+          'template<typename T> std::vector<T> __tc_splice2(std::vector<T>& v, int start, int deleteCount) { int end = start + deleteCount; if (end > static_cast<int>(v.size())) end = static_cast<int>(v.size()); std::vector<T> removed(v.begin() + start, v.begin() + end); v.erase(v.begin() + start, v.begin() + end); return removed; }',
           // ── Array functional methods (Phase 1) ──────────────────────────
           'template<typename T, typename F> std::vector<T> __tc_filter(const std::vector<T>& v, F pred) { std::vector<T> result; for (const auto& x : v) if (pred(x)) result.push_back(x); return result; }',
           'template<typename T, typename F> auto __tc_map(const std::vector<T>& v, F fn) -> std::vector<decltype(fn(v[0]))> { using R = decltype(fn(v[0])); std::vector<R> result; result.reserve(v.size()); for (const auto& x : v) result.push_back(fn(x)); return result; }',
           'template<typename T, typename U, typename F> auto __tc_reduce(const std::vector<T>& v, F fn, U init) -> U { U acc = init; for (const auto& x : v) acc = fn(acc, x); return acc; }',
           'template<typename T, typename F> T __tc_reduce_no_init(std::vector<T>& v, F fn) { T acc = v[0]; for (size_t i = 1; i < v.size(); i++) acc = fn(acc, v[i]); return acc; }',
           'template<typename T, typename F> T __tc_find(const std::vector<T>& v, F pred) { for (const auto& x : v) if (pred(x)) return x; return T(); }',
-          'template<typename T, typename F> int __tc_findIndex(const std::vector<T>& v, F pred) { for (int i = 0; i < (int)v.size(); i++) if (pred(v[i])) return i; return -1; }',
+          'template<typename T, typename F> int __tc_findIndex(const std::vector<T>& v, F pred) { for (int i = 0; i < static_cast<int>(v.size()); i++) if (pred(v[i])) return i; return -1; }',
           'template<typename T, typename F> bool __tc_every(const std::vector<T>& v, F pred) { for (const auto& x : v) if (!pred(x)) return false; return true; }',
           'template<typename T, typename F> bool __tc_some(const std::vector<T>& v, F pred) { for (const auto& x : v) if (pred(x)) return true; return false; }',
           // ── Map helper methods (Object.keys/values/entries) ──────────────
@@ -605,11 +607,11 @@ export class NativeStrategy implements PlatformStrategy {
         `  if (__e.type == SDL_QUIT) { sdl_running = false; }`,
         `  else if (__e.type == SDL_MOUSEBUTTONDOWN || __e.type == SDL_MOUSEBUTTONUP) {`,
         `    __sdl_mouse_down = (__e.type == SDL_MOUSEBUTTONDOWN && __e.button.button == SDL_BUTTON_LEFT) ? 1 : 0;`,
-        `    __sdl_mouse_x = (int16_t)__e.button.x;`,
-        `    __sdl_mouse_y = (int16_t)__e.button.y;`,
+        `    __sdl_mouse_x = static_cast<int16_t>(__e.button.x);`,
+        `    __sdl_mouse_y = static_cast<int16_t>(__e.button.y);`,
         `  } else if (__e.type == SDL_MOUSEMOTION) {`,
-        `    __sdl_mouse_x = (int16_t)__e.motion.x;`,
-        `    __sdl_mouse_y = (int16_t)__e.motion.y;`,
+        `    __sdl_mouse_x = static_cast<int16_t>(__e.motion.x);`,
+        `    __sdl_mouse_y = static_cast<int16_t>(__e.motion.y);`,
         `  }`,
         // Feature 1 — real keyboard text input: route keystrokes into the
         // on-screen keyboard buffer while it's visible, so a desktop user types
@@ -641,10 +643,10 @@ export class NativeStrategy implements PlatformStrategy {
         `    int __ww = 0, __wh = 0; SDL_GetWindowSize(__tc_display.win, &__ww, &__wh);`,
         `    if (__ww <= 0) __ww = display_width();`,
         `    if (__wh <= 0) __wh = display_height();`,
-        `    int16_t __fx = (int16_t)((int32_t)__wx * display_width() / __ww);`,
-        `    int16_t __fy = (int16_t)((int32_t)__wy * display_height() / __wh);`,
+        `    int16_t __fx = static_cast<int16_t>(static_cast<int32_t>(__wx) * display_width() / __ww);`,
+        `    int16_t __fy = static_cast<int16_t>(static_cast<int32_t>(__wy) * display_height() / __wh);`,
         `    int16_t __owner = ui_scroll_node_at(__fx, __fy);`,
-        `    if (__owner >= 0) ui_apply_scroll_delta(__owner, (int16_t)(__e.wheel.y * 40));`,
+        `    if (__owner >= 0) ui_apply_scroll_delta(__owner, static_cast<int16_t>(__e.wheel.y * 40));`,
         `  }`,
         `}`,
         // Track keyboard visibility with SDL text input so IME composition works

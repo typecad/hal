@@ -40,12 +40,12 @@ static inline uint16_t ui_next_utf8_codepoint(const unsigned char** p) {
     return b0;
   }
   if ((b0 & 0xE0) == 0xC0 && (s[0] & 0xC0) == 0x80) {
-    uint16_t cp = ((uint16_t)(b0 & 0x1F) << 6) | (uint16_t)(s[0] & 0x3F);
+    uint16_t cp = (static_cast<uint16_t>(b0 & 0x1F) << 6) | static_cast<uint16_t>(s[0] & 0x3F);
     *p = s + 1;
     return cp;
   }
   if ((b0 & 0xF0) == 0xE0 && (s[0] & 0xC0) == 0x80 && (s[1] & 0xC0) == 0x80) {
-    uint16_t cp = ((uint16_t)(b0 & 0x0F) << 12) | ((uint16_t)(s[0] & 0x3F) << 6) | (uint16_t)(s[1] & 0x3F);
+    uint16_t cp = (static_cast<uint16_t>(b0 & 0x0F) << 12) | (static_cast<uint16_t>(s[0] & 0x3F) << 6) | static_cast<uint16_t>(s[1] & 0x3F);
     *p = s + 2;
     return cp;
   }
@@ -121,12 +121,12 @@ static inline uint16_t ui_next_utf8_codepoint_bounded(const unsigned char** p, c
     return b0;
   }
   if ((b0 & 0xE0) == 0xC0 && s < end && (s[0] & 0xC0) == 0x80) {
-    uint16_t cp = ((uint16_t)(b0 & 0x1F) << 6) | (uint16_t)(s[0] & 0x3F);
+    uint16_t cp = (static_cast<uint16_t>(b0 & 0x1F) << 6) | static_cast<uint16_t>(s[0] & 0x3F);
     *p = s + 1;
     return cp;
   }
   if ((b0 & 0xF0) == 0xE0 && s + 1 < end && (s[0] & 0xC0) == 0x80 && (s[1] & 0xC0) == 0x80) {
-    uint16_t cp = ((uint16_t)(b0 & 0x0F) << 12) | ((uint16_t)(s[0] & 0x3F) << 6) | (uint16_t)(s[1] & 0x3F);
+    uint16_t cp = (static_cast<uint16_t>(b0 & 0x0F) << 12) | (static_cast<uint16_t>(s[0] & 0x3F) << 6) | static_cast<uint16_t>(s[1] & 0x3F);
     *p = s + 2;
     return cp;
   }
@@ -144,8 +144,8 @@ static inline uint16_t ui_text_codepoint_advance(uint16_t codepoint, uint8_t ts,
     const UIFontGlyph* glyph = ui_font_glyph(face, codepoint);
     return glyph ? glyph->advance : (face->lineHeight / 2);
   }
-  int16_t adv = (int16_t)(ts ? ts : 2) * 6 + letterSpacing;
-  return adv > 0 ? (uint16_t)adv : 1;
+  int16_t adv = static_cast<int16_t>(ts ? ts : 2) * 6 + letterSpacing;
+  return adv > 0 ? static_cast<uint16_t>(adv) : 1;
 }
 
 static inline uint16_t ui_text_span_width(const char* start, const char* end, uint8_t ts, uint8_t fontFace, int8_t letterSpacing) {
@@ -285,12 +285,12 @@ static inline uint32_t ui_text_layout_cache_key(uint16_t nodeIdx, uint16_t textM
   uint8_t ts = __ui_nodes[nodeIdx].textSize ? __ui_nodes[nodeIdx].textSize : 2;
   key = key * 31u + ts;
   key = key * 31u + __ui_nodes[nodeIdx].fontFace;
-  key = key * 31u + (uint8_t)(__ui_nodes[nodeIdx].letterSpacing + 128);
+  key = key * 31u + static_cast<uint8_t>(__ui_nodes[nodeIdx].letterSpacing + 128);
   key = key * 31u + __ui_nodes[nodeIdx].lineHeight;
   if (__ui_nodes[nodeIdx].hasTextBinding) {
     const char* t = __ui_nodes[nodeIdx].textBuffer;
     while (t && *t) {
-      key = key * 31u + (uint8_t)*t;
+      key = key * 31u + static_cast<uint8_t>(*t);
       t++;
     }
   }
@@ -301,11 +301,11 @@ static inline uint16_t ui_node_text_max_width(uint16_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return 0;
   uint16_t textMaxW = __ui_nodes[nodeIdx].box.w;
   if (__ui_nodes[nodeIdx].kind == NODE_TEXT || __ui_nodes[nodeIdx].kind == NODE_BUTTON) {
-    uint16_t hInset = (uint16_t)__ui_nodes[nodeIdx].paddingLeft + (uint16_t)__ui_nodes[nodeIdx].paddingRight +
-      (uint16_t)__ui_nodes[nodeIdx].borderWidth * 2;
-    textMaxW = __ui_nodes[nodeIdx].box.w > hInset ? (uint16_t)(__ui_nodes[nodeIdx].box.w - hInset) : 0;
+    uint16_t hInset = static_cast<uint16_t>(__ui_nodes[nodeIdx].paddingLeft) + static_cast<uint16_t>(__ui_nodes[nodeIdx].paddingRight) +
+      static_cast<uint16_t>(__ui_nodes[nodeIdx].borderWidth) * 2;
+    textMaxW = __ui_nodes[nodeIdx].box.w > hInset ? static_cast<uint16_t>(__ui_nodes[nodeIdx].box.w - hInset) : 0;
   } else if (__ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
-    textMaxW = __ui_nodes[nodeIdx].box.w > 22 ? (uint16_t)(__ui_nodes[nodeIdx].box.w - 22) : 0;
+    textMaxW = __ui_nodes[nodeIdx].box.w > 22 ? static_cast<uint16_t>(__ui_nodes[nodeIdx].box.w - 22) : 0;
   }
   return textMaxW;
 }
@@ -363,18 +363,18 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
     }
     int16_t glyphX = cursor + glyph->xOffset;
     int16_t glyphY = baseline + glyph->yOffset;
-    if (glyphX + (int16_t)glyph->width <= targetLeft || glyphX >= targetRight ||
-        glyphY + (int16_t)glyph->height <= targetTop || glyphY >= targetBottom) {
+    if (glyphX + static_cast<int16_t>(glyph->width) <= targetLeft || glyphX >= targetRight ||
+        glyphY + static_cast<int16_t>(glyph->height) <= targetTop || glyphY >= targetBottom) {
       cursor += glyph->advance;
       continue;
     }
-    int16_t gxStart = glyphX < targetLeft ? (int16_t)(targetLeft - glyphX) : 0;
-    int16_t gyStart = glyphY < targetTop ? (int16_t)(targetTop - glyphY) : 0;
-    int16_t gxEnd = glyphX + (int16_t)glyph->width > targetRight ? (int16_t)(targetRight - glyphX) : glyph->width;
-    int16_t gyEnd = glyphY + (int16_t)glyph->height > targetBottom ? (int16_t)(targetBottom - glyphY) : glyph->height;
+    int16_t gxStart = glyphX < targetLeft ? static_cast<int16_t>(targetLeft - glyphX) : 0;
+    int16_t gyStart = glyphY < targetTop ? static_cast<int16_t>(targetTop - glyphY) : 0;
+    int16_t gxEnd = glyphX + static_cast<int16_t>(glyph->width) > targetRight ? static_cast<int16_t>(targetRight - glyphX) : glyph->width;
+    int16_t gyEnd = glyphY + static_cast<int16_t>(glyph->height) > targetBottom ? static_cast<int16_t>(targetBottom - glyphY) : glyph->height;
     for (int16_t gy = gyStart; gy < gyEnd; gy++) {
       for (int16_t gx = gxStart; gx < gxEnd; gx++) {
-        uint16_t pixelIndex = (uint16_t)gy * glyph->width + (uint16_t)gx;
+        uint16_t pixelIndex = static_cast<uint16_t>(gy) * glyph->width + static_cast<uint16_t>(gx);
         uint8_t alpha = ui_font_alpha_at(face, glyph, pixelIndex);
         if (alpha == 0) continue;
         int16_t dx = glyphX + gx;
@@ -386,7 +386,7 @@ static inline uint8_t ui_draw_asset_text(const char* text, int16_t x, int16_t y,
             // the bumpy look from flattening sub-pixel coverage to solid.
             if (alpha >= 8) ui_display_draw_pixel(dx, dy, fg);
           } else {
-            ui_display_draw_pixel(dx, dy, alpha >= 15 ? fg : ui_blend(fg, bg, (uint8_t)((uint16_t)alpha * 100 / 15)));
+            ui_display_draw_pixel(dx, dy, alpha >= 15 ? fg : ui_blend(fg, bg, static_cast<uint8_t>(static_cast<uint16_t>(alpha) * 100 / 15)));
           }
         } else if (alpha >= 8) {
           ui_display_draw_pixel(dx, dy, fg);
@@ -437,10 +437,10 @@ static inline void ui_draw_bitmap_text(const char* text, int16_t x, int16_t y, U
 
  static inline uint8_t ui_text_fg_neighbors(CuttlefishCanvas16* src, int16_t x, int16_t y, int16_t w, int16_t h, UI_COLOR_T fg, uint8_t radius = 1) {
   uint8_t count = 0;
-  for (int8_t dy = -(int8_t)radius; dy <= (int8_t)radius; dy++) {
+  for (int8_t dy = -static_cast<int8_t>(radius); dy <= static_cast<int8_t>(radius); dy++) {
     int16_t yy = y + dy;
     if (yy < 0 || yy >= h) continue;
-    for (int8_t dx = -(int8_t)radius; dx <= (int8_t)radius; dx++) {
+    for (int8_t dx = -static_cast<int8_t>(radius); dx <= static_cast<int8_t>(radius); dx++) {
       int16_t xx = x + dx;
       if (xx < 0 || xx >= w) continue;
       if (display_canvasGetPixel(src, xx, yy) == fg) count++;
@@ -482,15 +482,15 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, UI_CO
   }
   int16_t clipX = x;
   int16_t clipY = y;
-  int16_t clipW = (int16_t)w;
-  int16_t clipH = (int16_t)h;
+  int16_t clipW = static_cast<int16_t>(w);
+  int16_t clipH = static_cast<int16_t>(h);
   if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
-  int16_t localX = (int16_t)(clipX - x);
-  int16_t localY = (int16_t)(clipY - y);
+  int16_t localX = static_cast<int16_t>(clipX - x);
+  int16_t localY = static_cast<int16_t>(clipY - y);
 
 // Use pre-allocated static canvases (no dynamic allocation)
-   CuttlefishCanvas16* src = ui_text_canvas(&__ui_text_src_canvas, (int16_t)w, (int16_t)h);
-   CuttlefishCanvas16* dst = ui_text_canvas(&__ui_text_dst_canvas, (int16_t)w, (int16_t)h);
+   CuttlefishCanvas16* src = ui_text_canvas(&__ui_text_src_canvas, static_cast<int16_t>(w), static_cast<int16_t>(h));
+   CuttlefishCanvas16* dst = ui_text_canvas(&__ui_text_dst_canvas, static_cast<int16_t>(w), static_cast<int16_t>(h));
    if (!src || !dst || !display_canvasBuffer(src) || !display_canvasBuffer(dst)) {
      ui_draw_bitmap_text(text, x, y, fg, bg, ts, 0);
      return;
@@ -507,10 +507,10 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, UI_CO
    for (int16_t yy = localY; yy < localY + clipH; yy++) {
      for (int16_t xx = localX; xx < localX + clipW; xx++) {
        UI_COLOR_T px = display_canvasGetPixel(src, xx, yy);
-       uint8_t neighbors = ui_text_fg_neighbors(src, xx, yy, (int16_t)w, h, fg);
+       uint8_t neighbors = ui_text_fg_neighbors(src, xx, yy, static_cast<int16_t>(w), h, fg);
        uint8_t outerNeighbors = 0;
        if (ts >= 3 && px != fg && neighbors == 0) {
-         outerNeighbors = ui_text_fg_neighbors(src, xx, yy, (int16_t)w, h, fg, 2);
+         outerNeighbors = ui_text_fg_neighbors(src, xx, yy, static_cast<int16_t>(w), h, fg, 2);
        }
        uint8_t coverage = ui_text_aa_coverage(neighbors, outerNeighbors, px == fg ? 1 : 0, ts);
        display_targetDrawPixel((CuttlefishDisplayTarget*)dst, xx, yy, coverage == 0 ? bg : ui_blend(fg, bg, coverage));
@@ -520,8 +520,8 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, UI_CO
    int16_t stride = display_canvasWidth(dst);
    UI_COLOR_T* pixels = display_canvasBuffer(dst);
    for (int16_t row = 0; row < clipH; row++) {
-     ui_display_draw_rgb_bitmap(clipX, (int16_t)(clipY + row),
-       pixels + (int32_t)(localY + row) * stride + localX, clipW, 1);
+     ui_display_draw_rgb_bitmap(clipX, static_cast<int16_t>(clipY + row),
+       pixels + static_cast<int32_t>(localY + row) * stride + localX, clipW, 1);
    }
  }
 
@@ -554,16 +554,16 @@ static inline void ui_draw_text(const char* text, int16_t x, int16_t y, UI_COLOR
 static inline void ui_truncate_ellipsis(char* buf, uint8_t bufSize, uint16_t maxWidth,
                                         uint8_t ts, uint8_t fontFace, int8_t letterSpacing) {
   if (!buf || bufSize == 0) return;
-  uint8_t len = (uint8_t)strlen(buf);
+  uint8_t len = static_cast<uint8_t>(strlen(buf));
   // Reserve space for the three trailing dots.
-  uint16_t dotsW = (uint16_t)3 * ui_text_codepoint_advance((uint16_t)'.', ts, fontFace, letterSpacing);
-  int16_t budget = (int16_t)maxWidth - (int16_t)dotsW;
+  uint16_t dotsW = static_cast<uint16_t>(3) * ui_text_codepoint_advance(static_cast<uint16_t>('.'), ts, fontFace, letterSpacing);
+  int16_t budget = static_cast<int16_t>(maxWidth) - static_cast<int16_t>(dotsW);
   if (budget <= 0) { if (bufSize > 3) { buf[0]='.'; buf[1]='.'; buf[2]='.'; buf[3]=0; } return; }
   // Trim trailing chars until the prefix fits the budget.
   uint8_t prefix = len;
   while (prefix > 0) {
     uint16_t w = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
-    if ((int16_t)w <= budget) break;
+    if (static_cast<int16_t>(w) <= budget) break;
     prefix--;
   }
   if (prefix + 3 < bufSize) {
@@ -578,11 +578,11 @@ static inline void ui_truncate_ellipsis(char* buf, uint8_t bufSize, uint16_t max
 static inline void ui_truncate_clip(char* buf, uint8_t bufSize, uint16_t maxWidth,
                                      uint8_t ts, uint8_t fontFace, int8_t letterSpacing) {
   if (!buf || bufSize == 0) return;
-  uint8_t len = (uint8_t)strlen(buf);
+  uint8_t len = static_cast<uint8_t>(strlen(buf));
   uint8_t prefix = len;
   while (prefix > 0) {
     uint16_t w = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
-    if ((int16_t)w <= (int16_t)maxWidth) break;
+    if (static_cast<int16_t>(w) <= static_cast<int16_t>(maxWidth)) break;
     prefix--;
   }
   if (prefix < bufSize) buf[prefix] = 0;
@@ -600,15 +600,15 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
   int16_t targetLeft, targetTop, targetRight, targetBottom;
   ui_display_target_bounds(&targetLeft, &targetTop, &targetRight, &targetBottom);
   while (ui_text_next_line(&cursor, maxWidth, whiteSpaceMode, ts, fontFace, letterSpacing, &line)) {
-    int16_t lineBottom = (int16_t)(lineY + lh);
+    int16_t lineBottom = static_cast<int16_t>(lineY + lh);
     if (lineBottom <= targetTop || lineY >= targetBottom) {
       lineY += lh;
       continue;
     }
     int16_t lineX = x;
-    if (textAlign == 1) lineX = x + ((int16_t)maxWidth - (int16_t)line.width) / 2;
-    else if (textAlign == 2) lineX = x + (int16_t)maxWidth - (int16_t)line.width;
-    if (lineX + (int16_t)line.width <= targetLeft || lineX >= targetRight) {
+    if (textAlign == 1) lineX = x + (static_cast<int16_t>(maxWidth) - static_cast<int16_t>(line.width)) / 2;
+    else if (textAlign == 2) lineX = x + static_cast<int16_t>(maxWidth) - static_cast<int16_t>(line.width);
+    if (lineX + static_cast<int16_t>(line.width) <= targetLeft || lineX >= targetRight) {
       lineY += lh;
       continue;
     }
@@ -616,7 +616,7 @@ static inline void ui_draw_wrapped_text(const char* text, int16_t x, int16_t y, 
     // text-overflow — only applies when the line is wider than maxWidth.
     //   textOverflow==1 (ellipsis): trim the span and append "...".
     //   textOverflow==0 (clip):     trim the span to the edge, no dots.
-    if ((int16_t)line.width > (int16_t)maxWidth) {
+    if (static_cast<int16_t>(line.width) > static_cast<int16_t>(maxWidth)) {
       if (textOverflow) ui_truncate_ellipsis(lineBuf, UI_TEXT_LINE_BUF, maxWidth, ts, fontFace, letterSpacing);
       else              ui_truncate_clip(lineBuf, UI_TEXT_LINE_BUF, maxWidth, ts, fontFace, letterSpacing);
     }
@@ -638,23 +638,23 @@ static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, UI_
                                      uint8_t useFgOverride = 0, UI_COLOR_T fgOverride = 0, uint16_t maxWidth = 0) {
   UINode* n = &__ui_nodes[nodeIdx];
   uint16_t alignWidth = maxWidth ? maxWidth : n->box.w;
-  int16_t targetLeft = (int16_t)(-__ui_draw_off_x);
-  int16_t targetTop = (int16_t)(-__ui_draw_off_y);
-  int16_t targetRight = (int16_t)(ui_display_target_width() - __ui_draw_off_x);
-  int16_t targetBottom = (int16_t)(ui_display_target_height() - __ui_draw_off_y);
-  uint16_t richSegEnd = (uint16_t)(n->richSegStart + n->richSegCount);
+  int16_t targetLeft = static_cast<int16_t>(-__ui_draw_off_x);
+  int16_t targetTop = static_cast<int16_t>(-__ui_draw_off_y);
+  int16_t targetRight = static_cast<int16_t>(ui_display_target_width() - __ui_draw_off_x);
+  int16_t targetBottom = static_cast<int16_t>(ui_display_target_height() - __ui_draw_off_y);
+  uint16_t richSegEnd = static_cast<uint16_t>(n->richSegStart + n->richSegCount);
   for (uint16_t si = n->richSegStart; si < richSegEnd; si++) {
     UIRichSeg* seg = &__ui_rich_segs[si];
     if (seg->line >= n->richLineCount) continue;
     UIRichLine* line = &__ui_rich_lines[n->richLineStart + seg->line];
     int16_t lineTop = y + line->y;
-    int16_t lineBottom = (int16_t)(lineTop + (int16_t)line->h);
+    int16_t lineBottom = static_cast<int16_t>(lineTop + static_cast<int16_t>(line->h));
     if (lineBottom <= targetTop || lineTop >= targetBottom) continue;
     int16_t lineX = x;
-    if (n->textAlign == 1) lineX = x + ((int16_t)alignWidth - (int16_t)line->w) / 2;
-    else if (n->textAlign == 2) lineX = x + (int16_t)alignWidth - (int16_t)line->w;
-    int16_t segX = (int16_t)(lineX + seg->x);
-    int16_t segRight = (int16_t)(segX + (int16_t)seg->w);
+    if (n->textAlign == 1) lineX = x + (static_cast<int16_t>(alignWidth) - static_cast<int16_t>(line->w)) / 2;
+    else if (n->textAlign == 2) lineX = x + static_cast<int16_t>(alignWidth) - static_cast<int16_t>(line->w);
+    int16_t segX = static_cast<int16_t>(lineX + seg->x);
+    int16_t segRight = static_cast<int16_t>(segX + static_cast<int16_t>(seg->w));
     if (segRight <= targetLeft || segX >= targetRight) continue;
     UIRichRun* run = &__ui_runs[n->runStart + seg->runIndex];
     // Baseline alignment: for asset fonts, the ascent is the font face's
@@ -664,9 +664,9 @@ static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, UI_
     int16_t ascent;
     if (run->fontFace) {
       const UIFontFace* face = ui_font_face(run->fontFace);
-      ascent = face ? (int16_t)face->baseline : (7 * (int16_t)run->textSize);
+      ascent = face ? static_cast<int16_t>(face->baseline) : (7 * static_cast<int16_t>(run->textSize));
     } else {
-      ascent = 7 * (int16_t)run->textSize;
+      ascent = 7 * static_cast<int16_t>(run->textSize);
     }
     int16_t segY = y + line->baseline - ascent;
     UI_COLOR_T fg = useFgOverride ? fgOverride : run->fg;
@@ -682,13 +682,13 @@ static inline void ui_draw_rich_text(uint16_t nodeIdx, int16_t x, int16_t y, UI_
 // but uses measured segment rects instead of fixed row heights.
 static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py) {
   UINode* n = &__ui_nodes[nodeIdx];
-  int16_t insetL = (int16_t)n->borderWidth + (int16_t)n->paddingLeft;
-  int16_t insetR = (int16_t)n->borderWidth + (int16_t)n->paddingRight;
-  int16_t insetT = (int16_t)n->borderWidth + (int16_t)n->paddingTop;
+  int16_t insetL = static_cast<int16_t>(n->borderWidth) + static_cast<int16_t>(n->paddingLeft);
+  int16_t insetR = static_cast<int16_t>(n->borderWidth) + static_cast<int16_t>(n->paddingRight);
+  int16_t insetT = static_cast<int16_t>(n->borderWidth) + static_cast<int16_t>(n->paddingTop);
   int16_t localX = px - insetL;
   int16_t localY = py - insetT;
-  uint16_t alignWidth = n->box.w > (uint16_t)(insetL + insetR)
-    ? (uint16_t)((int16_t)n->box.w - insetL - insetR)
+  uint16_t alignWidth = n->box.w > static_cast<uint16_t>(insetL + insetR)
+    ? static_cast<uint16_t>(static_cast<int16_t>(n->box).w - insetL - insetR)
     : 0;
   for (uint16_t si = n->richSegStart; si < n->richSegStart + n->richSegCount; si++) {
     UIRichSeg* seg = &__ui_rich_segs[si];
@@ -698,11 +698,11 @@ static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py) 
     // Segment x is relative to its line's left edge (pre-alignment). For the
     // hit-test, account for center/right alignment the same way draw does.
     int16_t originX = 0;
-    if (n->textAlign == 1) originX = ((int16_t)alignWidth - (int16_t)line->w) / 2;
-    else if (n->textAlign == 2) originX = (int16_t)alignWidth - (int16_t)line->w;
+    if (n->textAlign == 1) originX = (static_cast<int16_t>(alignWidth) - static_cast<int16_t>(line->w)) / 2;
+    else if (n->textAlign == 2) originX = static_cast<int16_t>(alignWidth) - static_cast<int16_t>(line->w);
     int16_t sx = originX + seg->x;
     int16_t sy = line->y;
-    if (localX >= sx && localX < sx + (int16_t)seg->w && localY >= sy && localY < sy + (int16_t)line->h) {
+    if (localX >= sx && localX < sx + static_cast<int16_t>(seg->w) && localY >= sy && localY < sy + static_cast<int16_t>(line->h)) {
       return run->linkTarget;
     }
   }

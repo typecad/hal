@@ -56,7 +56,7 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
 
   int16_t vw = __ui_nodes[nodeIdx].box.w;
   int16_t vh = __ui_nodes[nodeIdx].box.h;
-  uint32_t need = (uint32_t)(vw > 0 ? vw : 0) * (uint32_t)(vh > 0 ? vh : 0) * 2u;
+  uint32_t need = static_cast<uint32_t>(vw > 0 ? vw : 0) * static_cast<uint32_t>(vh > 0 ? vh : 0) * 2u;
   const char* id = __ui_scroll_node_id(nodeIdx);
   const char* label = (id && id[0]) ? id : "scroll viewport";
   const char* reasonText = "scroll canvas allocation failed";
@@ -70,23 +70,23 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
     "heap free=%lu max_alloc=%lu budget=%d. "
     "Shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\\n",
-    label, vw, vh, (unsigned long)need, reasonText,
-    (unsigned long)freeHeap, (unsigned long)maxAlloc, UI_SCROLL_CANVAS_BUDGET_BYTES);
+    label, vw, vh, static_cast<unsigned long>(need), reasonText,
+    static_cast<unsigned long>(freeHeap), static_cast<unsigned long>(maxAlloc), UI_SCROLL_CANVAS_BUDGET_BYTES);
 #elif defined(ESP8266) && defined(ARDUINO)
   uint32_t freeHeap = ESP.getFreeHeap();
   Serial.printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
     "heap free=%lu budget=%d. "
     "Shrink the scroll viewport in CSS, trim fonts/images, or reduce UI footprint.\\n",
-    label, vw, vh, (unsigned long)need, reasonText,
-    (unsigned long)freeHeap, UI_SCROLL_CANVAS_BUDGET_BYTES);
+    label, vw, vh, static_cast<unsigned long>(need), reasonText,
+    static_cast<unsigned long>(freeHeap), UI_SCROLL_CANVAS_BUDGET_BYTES);
 #else
   // Non-Arduino target (e.g. SDL native): no Serial, so use standard-C printf.
   // The native framework forces <cstdio> so printf is available here.
   printf(
     "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
     "budget=%d. Shrink the scroll viewport in CSS or trim UI assets.\\n",
-    label, vw, vh, (unsigned long)need, reasonText, UI_SCROLL_CANVAS_BUDGET_BYTES);
+    label, vw, vh, static_cast<unsigned long>(need), reasonText, UI_SCROLL_CANVAS_BUDGET_BYTES);
 #endif
 }
 
@@ -118,16 +118,16 @@ static inline void ui_shift_container_canvas(CuttlefishCanvas16* canvas, int16_t
   // band at the TOP. (Matches the proven pre-rewrite direction.)
   if (deltaY > 0) {
     for (int16_t row = 0; row < h - shift; row++) {
-      memmove(pixels + (int32_t)row * stride,
-              pixels + (int32_t)(row + shift) * stride,
-              (size_t)contentW * sizeof(UI_COLOR_T));
+      memmove(pixels + static_cast<int32_t>(row) * stride,
+              pixels + static_cast<int32_t>(row + shift) * stride,
+              static_cast<size_t>(contentW) * sizeof(UI_COLOR_T));
     }
     if (exposedY) *exposedY = h - shift;
   } else {
     for (int16_t row = h - shift - 1; row >= 0; row--) {
-      memmove(pixels + (int32_t)(row + shift) * stride,
-              pixels + (int32_t)row * stride,
-              (size_t)contentW * sizeof(UI_COLOR_T));
+      memmove(pixels + static_cast<int32_t>(row + shift) * stride,
+              pixels + static_cast<int32_t>(row) * stride,
+              static_cast<size_t>(contentW) * sizeof(UI_COLOR_T));
     }
     if (exposedY) *exposedY = 0;
   }

@@ -22,7 +22,7 @@ export function hwtimerInitLines(): string[] {
     ``,
     `static bool __tc_hwtimer_isr(gptimer_handle_t timer, const gptimer_alarm_event_data_t* edata, void* user_ctx) {`,
     `    (void)timer; (void)edata;`,
-    `    int idx = (int)(intptr_t)user_ctx;`,
+    `    int idx = static_cast<int>(intptr_t)user_ctx;`,
     `    if (idx >= 0 && idx < __TC_HWTIMER_MAX && __tc_hwtimer_cb[idx]) __tc_hwtimer_cb[idx]();`,
     `    return false;`,
     `}`,

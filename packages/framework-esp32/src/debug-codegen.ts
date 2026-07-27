@@ -199,6 +199,6 @@ function formatSpecFor(
     case 'unknown':
     default:
       // Cast to double so printf compiles regardless of the real C++ type.
-      return { spec: '%g', arg: `(double)(${varName})` };
+      return { spec: '%g', arg: `static_cast<double>(${varName})` };
   }
 }

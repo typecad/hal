@@ -26,10 +26,10 @@ static inline int16_t ui_clamp_i16(int16_t value, int16_t lo, int16_t hi) {
   return value;
 }
 static inline void ui_display_target_bounds(int16_t* left, int16_t* top, int16_t* right, int16_t* bottom) {
-  if (left) *left = (int16_t)(-__ui_draw_off_x);
-  if (top) *top = (int16_t)(-__ui_draw_off_y);
-  if (right) *right = (int16_t)(ui_display_target_width() - __ui_draw_off_x);
-  if (bottom) *bottom = (int16_t)(ui_display_target_height() - __ui_draw_off_y);
+  if (left) *left = static_cast<int16_t>(-__ui_draw_off_x);
+  if (top) *top = static_cast<int16_t>(-__ui_draw_off_y);
+  if (right) *right = static_cast<int16_t>(ui_display_target_width() - __ui_draw_off_x);
+  if (bottom) *bottom = static_cast<int16_t>(ui_display_target_height() - __ui_draw_off_y);
 }
 static inline uint8_t ui_clip_rect_to_display_target(int16_t* x, int16_t* y, int16_t* w, int16_t* h) {
   if (!x || !y || !w || !h || *w <= 0 || *h <= 0) return 0;
@@ -37,8 +37,8 @@ static inline uint8_t ui_clip_rect_to_display_target(int16_t* x, int16_t* y, int
   ui_display_target_bounds(&left, &top, &right, &bottom);
   int16_t x0 = *x > left ? *x : left;
   int16_t y0 = *y > top ? *y : top;
-  int16_t x1 = (int16_t)(*x + *w);
-  int16_t y1 = (int16_t)(*y + *h);
+  int16_t x1 = static_cast<int16_t>(*x + *w);
+  int16_t y1 = static_cast<int16_t>(*y + *h);
   if (x1 > right) x1 = right;
   if (y1 > bottom) y1 = bottom;
   if (x0 >= x1 || y0 >= y1) return 0;
