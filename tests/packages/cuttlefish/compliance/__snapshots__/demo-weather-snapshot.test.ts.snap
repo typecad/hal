@@ -4,7 +4,7 @@ exports[`demo-weather deviation snapshot > matches the recorded deviation set fo
 [
   {
     "code": "AUTOSAR_M5-0-7",
-    "count": 2,
+    "count": 1,
     "severity": "warning",
   },
 ]

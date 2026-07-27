@@ -285,7 +285,7 @@ export class ArduinoStrategy implements PlatformStrategy {
         "template<typename T> inline bool cuttlefish_is_nullish(const T&) { return false; }",
         "inline bool cuttlefish_is_nullish(int v) { return v == CUTTLEFISH_UNDEFINED; }",
         "inline bool cuttlefish_is_nullish(long v) { return v == CUTTLEFISH_UNDEFINED; }",
-        "inline bool cuttlefish_is_nullish(double v) { return v == (double)CUTTLEFISH_UNDEFINED; }",
+        "inline bool cuttlefish_is_nullish(double v) { return v == static_cast<double>(CUTTLEFISH_UNDEFINED); }",
         "inline bool cuttlefish_is_nullish(bool v) { return v == false; }",
         "template<typename T> inline bool cuttlefish_is_nullish(T* v) { return v == nullptr; }",
         "template<typename T> inline bool cuttlefish_exists(const T& v) { return !cuttlefish_is_nullish(v); }",
@@ -373,7 +373,7 @@ export class ArduinoStrategy implements PlatformStrategy {
       "    unsigned long freeHeap() {",
       "        extern int __heap_start, *__brkval;",
       "        int v;",
-      "        return (unsigned long) &v - (__brkval == 0 ? (unsigned long) &__heap_start : (unsigned long) __brkval);",
+      "        return static_cast<unsigned long>(&v) - (__brkval == 0 ? static_cast<unsigned long>(&__heap_start) : static_cast<unsigned long>(__brkval));",
       "    }",
       );
     } else {
@@ -430,7 +430,7 @@ export class ArduinoStrategy implements PlatformStrategy {
       "// 's'/'S' disables breakpoint <id> for the rest of the run.",
       "static inline char __tc_debug_wait_for_continue(int id) {",
       "    while (Serial.available() == 0) { delay(10); }",
-      "    char c = (char)Serial.read();",
+      "    char c = static_cast<char>(Serial.read());",
       "    while (Serial.available() > 0) { Serial.read(); delay(10); }",
       "    if (c == 's' || c == 'S') { if (id >= 0 && id < 256) __tc_bp_disabled[id] = true; }",
       "    return c;",
@@ -576,10 +576,10 @@ const char* __tc_substring2(const char* s, int start, int end) { static char buf
 const char* __tc_substring1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
 const char* __tc_slice2(const char* s, int start, int end) { return __tc_substring2(s, start, end); }
 const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
-const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = (int)(pos - s); int oldLen = (int)strlen(old); int replLen = (int)strlen(repl); if (beforeLen + replLen + (int)strlen(pos + oldLen) >= CUTTLEFISH_STR_BUF_SIZE) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
+const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = static_cast<int>(pos - s); int oldLen = static_cast<int>(strlen(old)); int replLen = static_cast<int>(strlen(repl)); if (beforeLen + replLen + static_cast<int>(strlen(pos + oldLen)) >= CUTTLEFISH_STR_BUF_SIZE) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
 const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
-int __tc_charCodeAt(const char* s, int idx) { return (int)(unsigned char)s[idx]; }
-int __tc_indexOf(const char* s, const char* needle) { const char* p = strstr(s, needle); return p ? (int)(p - s) : -1; }
+int __tc_charCodeAt(const char* s, int idx) { return static_cast<int>static_cast<unsigned char>(s[idx]); }
+int __tc_indexOf(const char* s, const char* needle) { const char* p = strstr(s, needle); return p ? static_cast<int>(p - s) : -1; }
 `],
       shimMacros: [],
       dependencies: [],
