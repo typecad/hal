@@ -72,7 +72,7 @@ export const RULES: readonly RuleEntry[] = [
     detect: /\bnew\s+(?:[A-Z_]|\()|\bdelete\s+(?:\w+\s*\[|\w)/, enabled: true,
     knownPatterns: [
       {
-        detect: /\bnew\s+\(|new\s+\(std::nothrow\)|new\s+\(ps_malloc|new\s+(?:Cuttlefish|GFX)/,
+        detect: /\bnew\s+\(|new\s+\(std::nothrow\)|new\s+\(ps_malloc|new\s+(?:Cuttlefish|GFX|Sdl)/,
         justification: "UI runtime allocates canvas buffers and draw-order arrays on the heap via new/new(std::nothrow); no stack alternative exists for dynamic-size buffers on embedded targets.",
         kind: "raw-array",
       },

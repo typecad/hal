@@ -30,11 +30,18 @@ export function runSelfCheck(
       const lineNo = i + 1;
       const line = lines[i];
 
+      // Strip trailing // comments and skip full comment lines before
+      // running detect regexes — rules shouldn't match words in prose.
+      // Preserve deviation comments (checked separately below).
+      const deviationCommentMatch = line.match(DEVIATION_COMMENT);
+      const codePart = line.replace(/\s*\/\/(?!.*AUTOSAR Deviation).*$/, "");
+      const isFullComment = /^\s*(\/\/|\/\*|\*)/.test(line);
+      const detectTarget = isFullComment ? "" : codePart;
+
       // Extract any deviation ruleIds already present on this line.
       const commentedIds = new Set<string>();
-      const commentMatch = line.match(DEVIATION_COMMENT);
-      if (commentMatch) {
-        for (const id of commentMatch[1].split(",").map((s) => s.trim())) {
+      if (deviationCommentMatch) {
+        for (const id of deviationCommentMatch[1].split(",").map((s) => s.trim())) {
           commentedIds.add(id);
         }
       }
@@ -42,13 +49,13 @@ export function runSelfCheck(
       for (const rule of RULES) {
         if (!rule.detect) continue;
         if (!rule.enabled) continue;
-        if (rule.exempt && rule.exempt.test(line)) continue;
-        if (!rule.detect.test(line)) continue;
+        if (rule.exempt && rule.exempt.test(detectTarget)) continue;
+        if (!rule.detect.test(detectTarget)) continue;
 
         // Check knownPatterns: if this match falls under a known unavoidable
         // pattern, record a deviation and suppress the finding.
         if (rule.knownPatterns) {
-          const known = rule.knownPatterns.find((kp) => kp.detect.test(line));
+          const known = rule.knownPatterns.find((kp) => kp.detect.test(detectTarget));
           if (known) {
             ctx.recordKnownDeviation(rule.id, known.justification, lineNo, file, line.trim(), {
               tsFile: "",

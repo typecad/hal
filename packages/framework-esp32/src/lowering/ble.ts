@@ -473,7 +473,7 @@ export function bleInitLines(): string[] {
     ``,
     `static inline bool __tc_ble_until_connected(uint32_t timeout_ms) {`,
     `    __tc_ble_ensure_init();`,
-    `    int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;`,
+    `    int64_t deadline = esp_timer_get_time() + static_cast<int64_t>(timeout_ms) * 1000;`,
     `    while (!__tc_ble_is_connected()) {`,
     `        if (timeout_ms > 0 && esp_timer_get_time() >= deadline) return false;`,
     `        vTaskDelay(pdMS_TO_TICKS(50));`,

@@ -182,7 +182,7 @@ export function wifiInitLines(): string[] {
     ``,
     `static inline bool __tc_wifi_wait_connected(uint32_t timeout_ms) {`,
     `    __tc_wifi_pause_wdt();`,
-    `    int64_t deadline = esp_timer_get_time() + (int64_t)timeout_ms * 1000;`,
+    `    int64_t deadline = esp_timer_get_time() + static_cast<int64_t>(timeout_ms) * 1000;`,
     `    while (!__tc_wifi_is_connected()) {`,
     `        if (timeout_ms > 0 && esp_timer_get_time() >= deadline) {`,
     `            __tc_wifi_resume_wdt();`,
