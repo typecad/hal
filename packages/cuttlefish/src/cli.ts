@@ -607,6 +607,8 @@ async function main(): Promise<void> {
           diagnostics: options.diagnostics,
           display: displayConfigForTranspile(config),
           projectRoot: options.projectRoot,
+          autosar: options.autosar,
+          autosarArxml: options.autosarArxml,
         });
 
         printDiagnostics(result.diagnostics);
@@ -705,6 +707,8 @@ async function main(): Promise<void> {
               diagnostics: options.diagnostics,
               display: displayConfigForTranspile(config),
               projectRoot: options.projectRoot,
+              autosar: options.autosar,
+              autosarArxml: options.autosarArxml,
             });
 
             printDiagnostics(rebuildResult.diagnostics);
@@ -794,6 +798,8 @@ async function main(): Promise<void> {
         diagnostics: options.diagnostics,
         display: displayConfigForTranspile(config) ?? (options as any).display,
         projectRoot: options.projectRoot,
+        autosar: options.autosar,
+        autosarArxml: options.autosarArxml,
       });
 
       printDiagnostics(result.diagnostics);

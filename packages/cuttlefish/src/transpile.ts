@@ -11,7 +11,10 @@ import ts from "typescript";
 const CUTTLEFISH_VERSION: string = (() => {
   try {
     const require_ = createRequire(import.meta.url);
-    const pkg = require_("../../package.json") as { version?: string };
+    // transpile.ts lives in src/, compiled to dist/transpile.js. The package
+    // root is one level up from dist/, so from dist/ the path is ../package.json.
+    // From src/ (TypeScript source used by tests) it's also ../package.json.
+    const pkg = require_("../package.json") as { version?: string };
     return pkg.version ?? "unknown";
   } catch {
     return "unknown";
