@@ -18,6 +18,7 @@ import { loadCuttlefishConfig, generateVirtualTypeDeclaration } from "./config-l
 import { generateContractBoard } from "./contract/index.js";
 import { requireUIHook, hasUIHook } from "./ui-hook.js";
 import { loadUIEngine } from "./ui/ui-bridge.js";
+import { loadSafetyEngine } from "./safety/safety-bridge.js";
 import { runWatch, discoverWatchDirs } from "./watch.js";
 import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils.js";
 import { runPreviewServer } from "./preview/server.js";
@@ -492,6 +493,10 @@ async function main(): Promise<void> {
 
     // Load the UI engine (if @typecad/ui is installed) before any UI work.
     await loadUIEngine();
+
+    // Load the safety engine (if @typecad/safety is installed) before any
+    // safety work.
+    await loadSafetyEngine();
 
     let effectivePlatformContext = options.platformContext;
     let effectiveTarget = options.target;
