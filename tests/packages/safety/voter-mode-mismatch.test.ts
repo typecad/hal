@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { modeTablePolyfill } from "../../../packages/safety/src/runtime/mode-table";
 import { voterPolyfill } from "../../../packages/safety/src/runtime/vote";
 
-describe("voter C++ — pin-mode branches", () => {
+describe("voter C++ (v2 — __tc_gpio_read)", () => {
   const tableSrc = modeTablePolyfill().helperFunctions.join("\n");
   const voterSrc = voterPolyfill().helperFunctions.join("\n");
 
@@ -26,10 +26,19 @@ describe("voter C++ — pin-mode branches", () => {
     expect(voterSrc).toContain("result.value = r0;");
   });
 
-  it("mode table records INPUT/OUTPUT/INPUT_PULLUP correctly", () => {
-    expect(tableSrc).toContain("case 0U: g_pin_mode_table[pin] = TrackedMode::Input;");
-    expect(tableSrc).toContain("case 1U: g_pin_mode_table[pin] = TrackedMode::Output;");
-    expect(tableSrc).toContain("case 2U: g_pin_mode_table[pin] = TrackedMode::InputPullup;");
+  it("voter calls __tc_gpio_read (NOT digitalRead) — MCU-agnostic", () => {
+    expect(voterSrc).toContain("__tc_gpio_read(pin)");
+    expect(voterSrc).not.toContain("digitalRead");
+  });
+
+  it("mode table includes InputPulldown (5-value enum)", () => {
+    expect(tableSrc).toContain("InputPulldown = 4U");
+  });
+
+  it("record_pin_mode takes uint8_t and casts (no 4-way switch)", () => {
+    expect(tableSrc).toContain("inline void record_pin_mode(uint8_t pin, uint8_t mode)");
+    expect(tableSrc).toContain("static_cast<TrackedMode>(mode)");
+    expect(tableSrc).not.toContain("case 0U: g_pin_mode_table");
   });
 
   it("voter depends on the mode-table polyfill", () => {
