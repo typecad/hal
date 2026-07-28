@@ -29,6 +29,10 @@
       "types": "./dist/ui-hook.d.ts",
       "default": "./dist/ui-hook.js"
     },
+    "./safety-hook-types": {
+      "types": "./dist/safety-hook.d.ts",
+      "default": "./dist/safety-hook.js"
+    },
     "./config-loader": {
       "types": "./dist/config-loader.d.ts",
       "default": "./dist/config-loader.js"
@@ -88,10 +92,14 @@
     "@typecad/arduino-cli": "1.0.0-alpha.7"
   },
   "peerDependencies": {
-    "@typecad/ui": "1.0.0-alpha.7"
+    "@typecad/ui": "1.0.0-alpha.7",
+    "@typecad/safety": "1.0.0-alpha.7"
   },
   "peerDependenciesMeta": {
     "@typecad/ui": {
+      "optional": true
+    },
+    "@typecad/safety": {
       "optional": true
     }
   },
