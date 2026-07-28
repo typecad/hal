@@ -13,8 +13,8 @@ if (ok) { console.log(current); }
     const result = transpile(ts, { autosar: "warn" });
     expect(result.cpp).toContain("template <typename T>");
     expect(result.cpp).toContain("struct SafeVariable");
-    expect(result.cpp).toContain("~static_cast<T>");
-    expect(result.cpp).toContain("value ^ inverted");
+    expect(result.cpp).toContain("replicaValid");
+    expect(result.cpp).toContain("replicaA_val");
   });
 
   it("always emits SafeVariable template when safety package is active", () => {
