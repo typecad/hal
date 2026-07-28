@@ -1,7 +1,11 @@
 import type { RuntimePolyfillIR } from "@typecad/cuttlefish/api";
 
-/** The 2-of-3 voter. Tree-shaken out unless __tc_safety::read_safe appears
- *  in the program (registered in POLYFILL_HELPER_MAP). */
+/** The 2-of-3 voter. Tree-shaken out unless __tc_safety_read_safe appears
+ *  in the program (registered in POLYFILL_HELPER_MAP).
+ *
+ *  Naming: the voter lives in the __tc_safety namespace; the user-callable
+ *  wrapper is exposed at global scope as __tc_safety_read_safe so the
+ *  polyfill-helper-registry extractor regex matches it. */
 export function voterPolyfill(): RuntimePolyfillIR {
   return {
     kind: "polyfill",
@@ -57,6 +61,12 @@ inline SafeReadResult read_safe(uint8_t pin) {
 }
 
 }  // namespace __tc_safety
+
+// Global-scope callable wrapper (the __tc_safety_read_safe name is what
+// resolveSafetyOp emits and what POLYFILL_HELPER_MAP registers).
+inline SafeReadResult __tc_safety_read_safe(uint8_t pin) {
+  return __tc_safety::read_safe(pin);
+}
 `.trim()],
     shimMacros: [],
     dependencies: ["safety_mode_table"],

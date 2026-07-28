@@ -7,6 +7,7 @@ import { type CppTypeHint } from "../type-resolution.js";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
 import { tryResolveHALMethod } from "./hal-call-resolver.js";
 import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, resolveNodeTag, watchPinSpecs, recordWatchPin, recordClickHandler, clickHandlers, pushUnknownElementDiagnostic } from "./ui-call-resolver.js";
+import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
 import {
   lowerCallbackStatements,
   resolveCallbackArg,
@@ -156,6 +157,60 @@ function lowerPreludeCallback(
     ],
     sourceSpan,
   };
+}
+
+/** Detect `safe.<method>(...)` calls in statement position and lower them to
+ *  a hal-op statement via the safety hook's resolveSemanticCall. Mirrors the
+ *  UI call resolver pattern. Returns null when:
+ *  - the safety engine is not loaded (hasSafetyHook() === false), or
+ *  - the call is not a `safe.<method>(...)` shape, or
+ *  - the hook declines to lower it (returns undefined).
+ *
+ *  Expression-position safe.* calls (e.g. `const r = safe.read(pin)`) are
+ *  handled separately in the variable-declaration transformer. */
+function tryResolveSafetyCallStatement(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+): StatementIR | null {
+  if (!hasSafetyHook()) return null;
+  // Shape: safe.<method>(args...) — PropertyAccessExpression on identifier "safe".
+  if (!ts.isPropertyAccessExpression(call.expression)) return null;
+  if (!ts.isIdentifier(call.expression.expression)) return null;
+  if (call.expression.expression.text !== "safe") return null;
+
+  const method = call.expression.name.text;
+  // Extract simple literal/identifier arg values; non-literal args are passed
+  // as their rendered text so the hook can decide. The hook only consumes
+  // safe.read (pin) and safe.pinMode (pin, mode), so numeric/identifier args
+  // cover the real cases.
+  const argValues: unknown[] = call.arguments.map((a) => {
+    if (ts.isNumericLiteral(a)) return Number(a.text);
+    if (ts.isStringLiteral(a)) return a.text;
+    if (a.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (a.kind === ts.SyntaxKind.FalseKeyword) return false;
+    if (ts.isIdentifier(a)) {
+      // Recognize Arduino mode macros (INPUT/OUTPUT/INPUT_PULLUP) and pass
+      // them through as their numeric values so safe.pinMode(pin, INPUT)
+      // works in source. The mode table uses 0/1/2 internally.
+      const name = a.text;
+      if (name === "INPUT") return 0;
+      if (name === "OUTPUT") return 1;
+      if (name === "INPUT_PULLUP") return 2;
+      return name;
+    }
+    return undefined;
+  });
+
+  const op = requireSafetyHook().resolveSemanticCall?.(`safe.${method}`, argValues);
+  if (!op) return null;
+
+  return {
+    kind: "hal-op",
+    operation: op,
+    returns_value: false,
+    sourceSpan: makeSourceSpan(call, fileName, sourceText),
+  } as StatementIR;
 }
 
 export function callToStatement(
@@ -538,6 +593,14 @@ export function callToStatement(
   // and synthesize a signal name.
   const uiResolved = tryResolveUICall(call, fileName, sourceText, diagnostics);
   if (uiResolved) return uiResolved;
+
+  // ---- safe.* — @typecad/safety authoring calls (statement position) ---
+  // Handles statement-position safe.* calls like safe.pinMode(pin, mode).
+  // The expression-position form (const r = safe.read(pin)) is handled in
+  // the variable-declaration transformer. Both produce hal-op IR nodes that
+  // routeHALOp() later dispatches to the safety hook.
+  const safetyResolved = tryResolveSafetyCallStatement(call, fileName, sourceText);
+  if (safetyResolved) return safetyResolved;
 
   // Handle super() calls in constructors - transform to super_call IR for class emitter
   if (call.expression.kind === ts.SyntaxKind.SuperKeyword) {

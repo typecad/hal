@@ -71,15 +71,21 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   '__tc_jsonStringify(': ['__tc_jsonStringify'],
   '__tc_jsonParse(': ['__tc_jsonParse'],
 
-  // Safety helpers — emitted by @typecad/safety's polyfills. The call-pattern
-  // keys are the substrings program analysis scans source for; the values are
-  // the __tc_safety::* / __tc_* names that filterPolyfillHelpers matches in
-  // helperFunctions text. extractHelperFunctionNames' regex matches the
-  // leading `__tc_safety` identifier in `__tc_safety::record_pin_mode(` and
-  // `__tc_safety::read_safe(`, so the polyfill's helperFunctions text is kept
-  // when either call pattern appears in user code.
-  '__tc_safety::record_pin_mode(': ['__tc_safety'],
-  '__tc_safety::read_safe(':       ['__tc_safety'],
+  // Safety helpers — emitted by @typecad/safety's polyfills as global-scope
+  // __tc_safety_* free functions (the polyfill-helper-registry extractor
+  // expects __tc_* immediately followed by `(`, so namespaced names would be
+  // missed). The call-pattern keys are the substrings program analysis scans
+  // source for; the values are the __tc_safety_* names that
+  // filterPolyfillHelpers matches in helperFunctions text.
+  //
+  // Two key forms per helper: the user-facing safe.* source spelling (which
+  // program analysis sees in raw IR before lowering) and the lowered
+  // __tc_safety_* spelling (which appears after the safety call-statement
+  // transformer emits hal-op resolution text). Both map to the same helper.
+  'safe.pinMode(':                ['__tc_safety_record_pin_mode'],
+  'safe.read(':                   ['__tc_safety_read_safe'],
+  '__tc_safety_record_pin_mode(': ['__tc_safety_record_pin_mode'],
+  '__tc_safety_read_safe(':       ['__tc_safety_read_safe'],
 };
 
 function extractHelperFunctionNames(funcDef: string): string[] {

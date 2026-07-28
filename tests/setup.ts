@@ -8,6 +8,7 @@ import {
   clearAllProfileCaches
 } from "../packages/cuttlefish/src/testing";
 import { setActiveStrategy } from "../packages/cuttlefish/src/ir/hal-resolver";
+import { hasSafetyHook, requireSafetyHook } from "../packages/cuttlefish/src/safety-hook";
 import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext, ComplianceMode } from "../packages/cuttlefish/src/types";
 import type { PlatformStrategy } from "../packages/cuttlefish/src/api/shared/platform-strategy";
 import { ArduinoStrategy } from "../packages/framework-arduino/src";
@@ -88,6 +89,17 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
   }
 
   const programIR = buildProgramIR(fileName, tsCode, boardPackage);
+  // Phase D — safety transform (mirrors transpile.ts: when @typecad/safety is
+  // loaded, run its post-build IR transform so safe.* calls get their
+  // companions and the polyfill tree-shaking keys land in the IR).
+  if (hasSafetyHook()) {
+    const hook = requireSafetyHook();
+    const transformed = hook.transformIR(programIR, {
+      safetyInUse: programIR.imports.some((i) => i.moduleSpecifier === "@typecad/safety"),
+      target,
+    });
+    Object.assign(programIR, transformed);
+  }
   const libdefs = new Map();
   const result = emitCpp(programIR, {
     outDir: uniqueOutDir,

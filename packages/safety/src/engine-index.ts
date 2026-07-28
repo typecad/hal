@@ -23,11 +23,11 @@ function resolveSafetyOp(op: HALOpIR): { code?: string; expression?: string } | 
   const fields = op as unknown as { pin?: unknown; mode?: unknown };
   switch (operation) {
     case "safety.record_pin_mode":
-      return { code: `__tc_safety::record_pin_mode(${fields.pin}, ${fields.mode});` };
+      return { code: `__tc_safety_record_pin_mode(${fields.pin}, ${fields.mode});` };
     case "safety.pin_mode":
-      return { code: `pinMode(${fields.pin}, ${modeConstant(fields.mode as 0 | 1 | 2)}); __tc_safety::record_pin_mode(${fields.pin}, ${fields.mode});` };
+      return { code: `pinMode(${fields.pin}, ${modeConstant(fields.mode as 0 | 1 | 2)}); __tc_safety_record_pin_mode(${fields.pin}, ${fields.mode});` };
     case "safety.read_safe":
-      return { expression: `__tc_safety::read_safe(${fields.pin})` };
+      return { expression: `__tc_safety_read_safe(${fields.pin})` };
     default:
       return undefined;
   }

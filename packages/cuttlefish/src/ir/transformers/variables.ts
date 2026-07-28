@@ -45,6 +45,7 @@ import {
 import { httpFactoryVerb, httpUrlArgText } from "../hal/hal-parser.js";
 import { resolveHALCallForVarInit } from "./hal-call-resolver.js";
 import { recordSignal } from "./ui-call-resolver.js";
+import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
 
 function replaceHalReadBufferPlaceholder(op: HALOpIR, varName: string): HALOpIR {
   if (op.operation === "i2c.read_buffer" && op.buffer === "__HAL_READ_BUF__") {
@@ -491,6 +492,52 @@ export function variableStatementToIR(
         // and hoisted timer callbacks). Just register the type for lookups.
         localVariableTypes.set(varName, cppType as CppTypeHint);
         continue;
+      }
+
+      // ── safe.<method>(...) — @typecad/safety call as initializer.
+      // Handles expression-position safe.* calls like `const r = safe.read(pin)`.
+      // The statement-position form (safe.pinMode(...)) is handled in the
+      // call-statement transformer. Both produce hal-op IR nodes that
+      // routeHALOp() later dispatches to the safety hook.
+      if (
+        hasSafetyHook() &&
+        ts.isCallExpression(declaration.initializer) &&
+        ts.isPropertyAccessExpression(declaration.initializer.expression) &&
+        ts.isIdentifier(declaration.initializer.expression.expression) &&
+        declaration.initializer.expression.expression.text === "safe"
+      ) {
+        const method = declaration.initializer.expression.name.text;
+        const argValues: unknown[] = declaration.initializer.arguments.map((a) => {
+          if (ts.isNumericLiteral(a)) return Number(a.text);
+          if (ts.isStringLiteral(a)) return a.text;
+          if (a.kind === ts.SyntaxKind.TrueKeyword) return true;
+          if (a.kind === ts.SyntaxKind.FalseKeyword) return false;
+          if (ts.isIdentifier(a)) {
+            const name = a.text;
+            if (name === "INPUT") return 0;
+            if (name === "OUTPUT") return 1;
+            if (name === "INPUT_PULLUP") return 2;
+            return name;
+          }
+          return undefined;
+        });
+        const op = requireSafetyHook().resolveSemanticCall?.(`safe.${method}`, argValues);
+        if (op) {
+          // Emit a var_decl initialized by a hal-expr carrying the safety op.
+          // routeHALOp() resolves it to the C++ expression at emit time.
+          const initExpr: ExpressionIR = { kind: "hal-expr", operation: op } as ExpressionIR;
+          lowered.push({
+            kind: "var_decl",
+            name: varName,
+            storage,
+            cppType: "auto",
+            initializer: initExpr,
+            sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
+          } as unknown as StatementIR);
+          // auto-deduced to SafeReadResult on the C++ side.
+          localVariableTypes.set(varName, "auto" as CppTypeHint);
+          continue;
+        }
       }
 
       if (ts.isNewExpression(declaration.initializer) && ts.isIdentifier(declaration.initializer.expression)) {

@@ -2,8 +2,13 @@ import type { RuntimePolyfillIR } from "@typecad/cuttlefish/api";
 import { emitResultStructs } from "./result-struct.js";
 
 /** The pin-mode tracking table + accessors. Tree-shaken out unless
- *  __tc_safety::record_pin_mode appears in the program (registered in
- *  POLYFILL_HELPER_MAP). */
+ *  __tc_safety_record_pin_mode appears in the program (registered in
+ *  POLYFILL_HELPER_MAP).
+ *
+ *  Naming: internal types live in the __tc_safety namespace; the user-callable
+ *  helpers are exposed at global scope as __tc_safety_* free functions. This
+ *  matches the polyfill-helper-registry's extractor regex, which expects
+ *  `__tc_*` immediately followed by `(`. */
 export function modeTablePolyfill(): RuntimePolyfillIR {
   return {
     kind: "polyfill",
@@ -12,10 +17,6 @@ export function modeTablePolyfill(): RuntimePolyfillIR {
     requiredIncludes: [],
     forwardDeclarations: [],
     helperStructs: [],
-    // helperFunctions is what filterPolyfillHelpers scans for __tc_* names.
-    // record_pin_mode and get_pin_mode live in the __tc_safety namespace so
-    // they are visible to read_safe (same namespace). The result structs are
-    // emitted first so the voter can return SafeReadResult.
     helperFunctions: [
       emitResultStructs(),
       `
@@ -53,6 +54,12 @@ inline TrackedMode get_pin_mode(uint8_t pin) {
   return TrackedMode::Unknown;
 }
 }  // namespace __tc_safety
+
+// Global-scope callable wrappers (the __tc_safety_* names are what
+// resolveSafetyOp emits and what POLYFILL_HELPER_MAP registers).
+inline void __tc_safety_record_pin_mode(uint8_t pin, uint8_t mode) {
+  __tc_safety::record_pin_mode(pin, mode);
+}
 `.trim(),
     ],
     shimMacros: [],
