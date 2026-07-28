@@ -108,13 +108,13 @@ function programUsesWdt(program: ProgramIR): boolean {
     return false;
   };
   if (visit(program.topLevelStatements)) return true;
-  for (const fn of program.functions) {
+  for (const fn of program.functions ?? []) {
     if (visit(fn.statements)) return true;
   }
-  for (const cls of program.classes) {
-    for (const m of cls.methods) if (visit(m.statements)) return true;
-    for (const g of cls.getters) if (visit(g.statements)) return true;
-    for (const s of cls.setters) if (visit(s.statements)) return true;
+  for (const cls of program.classes ?? []) {
+    for (const m of cls.methods ?? []) if (visit(m.statements)) return true;
+    for (const g of cls.getters ?? []) if (visit(g.statements)) return true;
+    for (const s of cls.setters ?? []) if (visit(s.statements)) return true;
     if (cls.constructor && visit(cls.constructor.statements)) return true;
   }
   return false;
@@ -137,6 +137,11 @@ function programUsesWdt(program: ProgramIR): boolean {
  * robustness.
  */
 export function programUsesSafety(program: ProgramIR): boolean {
+  // Defensive: some test fixtures and partial-program callers pass a minimal
+  // object (e.g. `{} as any`). Treat a missing iterable field as "no safety
+  // ops" rather than crashing — matches how the existing ArduinoStrategy path
+  // behaves when given a partial program.
+  if (!program) return false;
   const visitStatement = (stmt: StatementIR): boolean => {
     if (stmt.kind === "hal-op") {
       const opName = (stmt as any).operation?.operation;
@@ -172,13 +177,13 @@ export function programUsesSafety(program: ProgramIR): boolean {
     return false;
   };
   if (visit(program.topLevelStatements)) return true;
-  for (const fn of program.functions) {
+  for (const fn of program.functions ?? []) {
     if (visit(fn.statements)) return true;
   }
-  for (const cls of program.classes) {
-    for (const m of cls.methods) if (visit(m.statements)) return true;
-    for (const g of cls.getters) if (visit(g.statements)) return true;
-    for (const s of cls.setters) if (visit(s.statements)) return true;
+  for (const cls of program.classes ?? []) {
+    for (const m of cls.methods ?? []) if (visit(m.statements)) return true;
+    for (const g of cls.getters ?? []) if (visit(g.statements)) return true;
+    for (const s of cls.setters ?? []) if (visit(s.statements)) return true;
     if (cls.constructor && visit(cls.constructor.statements)) return true;
   }
   return false;
