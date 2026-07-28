@@ -15,6 +15,11 @@ export function voterPolyfill(): RuntimePolyfillIR {
     forwardDeclarations: [],
     helperStructs: [],
     helperFunctions: [`
+// Forward declaration — the strategy's shimLines() defines this AFTER the
+// polyfill block (polyfills emit before shims in emitPreamble). Without the
+// forward decl, the voter's __tc_gpio_read calls below would be unresolved.
+int __tc_gpio_read(uint8_t pin);
+
 namespace __tc_safety {
 
 // Perform 3 temporally-separated reads via the strategy-injected shim, take

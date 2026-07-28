@@ -11,16 +11,36 @@
 //    expected; if a rule fires anyway, add one (see
 //    docs/superpowers/plans/2026-07-27-safety-package-part-a.md Task 17).
 
-/** Returns the C++ SafeReadResult struct definition.
+/** Returns the C++ enum + struct definitions for the safety runtime.
  *
- *  NOTE: SafetyFaultCategory and SafetyFaultCode are NOT emitted here. They
- *  are TypeScript `enum`s in the public API (index.ts), which the cuttlefish
- *  transpiler lowers to C++ `enum class` definitions in user code. The
- *  polyfill only emits the SafeReadResult struct that references them by
- *  name. Emitting the enums here too would cause duplicate-definition
- *  conflicts with the user-code lowering. */
+ *  These are emitted by the polyfill as the SINGLE canonical source.
+ *  @typecad/safety is skipped by the graph-builder (like @typecad/ui), so
+ *  its TypeScript source is never parsed into the user program's IR — the
+ *  type-decl emitter never sees the enums. The polyfill provides the
+ *  definitions that both the voter and the user's switch statements
+ *  reference. Works in both .ino (single-file) and .cc (split) modes because
+ *  the polyfill is inlined into the entry file's source, visible to all
+ *  functions in that translation unit. */
 export function emitResultStructs(): string {
   return `
+enum class SafetyFaultCategory : uint8_t {
+  Ok            = 0U,
+  Signal        = 1U,
+  Integrity     = 2U,
+  Timing        = 3U,
+  System        = 4U,
+  Configuration = 5U,
+};
+
+enum class SafetyFaultCode : uint8_t {
+  Ok               = 0U,
+  VoteDisagreement = 1U,
+  StuckHigh        = 2U,
+  StuckLow         = 3U,
+  PinModeMismatch  = 16U,
+  PinModeUnknown   = 17U,
+};
+
 struct SafeReadResult {
   bool ok;
   uint8_t value;

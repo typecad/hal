@@ -256,10 +256,28 @@ export function buildEmitterContext(
       stringEnumNames.add(name);
     }
   }
+  // When @typecad/safety is active, register its enum names so the expression
+  // renderer uses :: (C++ enum-class scope resolution) instead of . (TS dot
+  // access) for member access like SafetyFaultCategory.Configuration. The
+  // graph-builder skips @typecad/safety (its source isn't parsed), so these
+  // enum names never enter program.enums — we register them manually here.
+  if (hasSafetyHook()) {
+    enumNames.add("SafetyFaultCategory");
+    enumNames.add("SafetyFaultCode");
+  }
 
   const strategy = options.strategy ?? resolveStrategy(options.target ?? "generic");
   strategy.setLargeEnumNames?.(largeEnumNames);
   const reservedNames = strategy.reservedNames();
+  // When @typecad/safety is active, `safe` is a compile-time-only construct
+  // (its methods are intercepted at IR-build time). Its top-level var_decl
+  // (from the parsed safety module source) must NOT be emitted as a C++
+  // _safe_t struct — add it to reservedNames so the top-level-prep filter
+  // strips it. Mirrors how platform reserved names (HIGH, LOW, etc.) are
+  // kept out of user-code emission.
+  if (hasSafetyHook()) {
+    reservedNames.add("safe");
+  }
 
   ensureDir(options.outDir);
 

@@ -143,7 +143,7 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
           moduleSpecifier = statement.moduleSpecifier.text;
         }
         if (!moduleSpecifier) continue;
-        if (moduleSpecifier === "@typecad/expect" || moduleSpecifier === "@typecad/ui") continue;
+        if (moduleSpecifier === "@typecad/expect" || moduleSpecifier === "@typecad/ui" || moduleSpecifier === "@typecad/safety") continue;
         if (moduleSpecifier.startsWith("@typecad/")) continue;
         const resolved = resolveImport(filePath, moduleSpecifier, boardPackage);
         if (!resolved) continue;
@@ -188,12 +188,13 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
         continue;
       }
 
-      // Skip @typecad/ui (and the future @typecad/ui rename) — it provides
-      // compile-time authoring stubs only. ui.mount/signal/bind calls are
-      // intercepted by tryResolveUICall and lowered to IR; the package itself
-      // must NOT be emitted as a C++ module (it would synthesize a bogus
-      // _ui_t struct for the `ui` namespace value).
-      if (moduleSpecifier === "@typecad/ui" || moduleSpecifier === "@typecad/ui") {
+      // Skip @typecad/ui and @typecad/safety — they provide compile-time
+      // authoring stubs only. Their calls (ui.mount/signal/bind, safe.read)
+      // are intercepted at IR-build time and lowered to IR; the packages
+      // themselves must NOT be emitted as C++ modules (they would synthesize
+      // bogus _ui_t / _safe_t structs). All runtime definitions the user code
+      // needs (enums, structs, shims) are provided by the safety polyfill.
+      if (moduleSpecifier === "@typecad/ui" || moduleSpecifier === "@typecad/safety") {
         continue;
       }
 

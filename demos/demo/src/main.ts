@@ -24,9 +24,10 @@
 // provides a stub).
 // ---------------------------------------------------------------------------
 
-import { Pin } from '@typecad/hal';
-import { safe, SafetyFaultCategory } from '@typecad/safety';
 import { delay } from '@typecad/hal';
+import { safe, SafetyFaultCategory, SafetyFaultCode } from '@typecad/safety';
+import { GPIO4, GPIO2, GPIO15 } from '@typecad/board';
+
 
 // --- Pin wiring ---------------------------------------------------------
 //
@@ -36,9 +37,9 @@ import { delay } from '@typecad/hal';
 //
 // GPIO numbers on ESP32-S3 are the canonical identity; Pin.fromPort() is the
 // idiomatic HAL constructor.
-const buttonPin = Pin.fromPort("GPIO4").asInputPullUp();
-const ledPin    = Pin.fromPort("GPIO2").asOutput();
-const wrongModePin = Pin.fromPort("GPIO5").asOutput();  // OUTPUT — wrong for reading
+const buttonPin = GPIO4.asInputPullUp();
+const ledPin    = GPIO2.asOutput();
+const wrongModePin = GPIO15.asOutput();  // OUTPUT — wrong for reading
 
 // Throttle the diagnostic fault logs so they don't spam — log the mismatch
 // scenario at most once every ~5 seconds (20 * 250ms loop).
@@ -78,7 +79,7 @@ function loop(): void {
 /** Coarse fault routing by category — survives future safety standards
  *  (ISO 26262, IEC 61508, DO-178C all surface faults under the same 5
  *  categories). The specific code is logged for diagnosis. */
-function handleFault(scenario: string, category: SafetyFaultCategory, code: number): void {
+function handleFault(scenario: string, category: SafetyFaultCategory, code: SafetyFaultCode): void {
   switch (category) {
     case SafetyFaultCategory.Configuration:
       // A pin-mode problem (mismatch or unknown). For a real safety-critical
