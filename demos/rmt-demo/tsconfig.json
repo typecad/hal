@@ -15,7 +15,11 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "@typecad/board": ["./.cuttlefish/board.ts"]
+    }
   },
   "include": ["src/**/*.ts", "cuttlefish-env.d.ts"],
   "exclude": ["node_modules"],
