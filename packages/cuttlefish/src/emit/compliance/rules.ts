@@ -46,6 +46,22 @@ export const RULES: readonly RuleEntry[] = [
   },
   { id: "A5-3-2", title: "No bitwise assignment on signed narrow types", severity: "required", category: "C", enabled: true },
   { id: "A7-1-1", title: "const on objects that are not modified", severity: "required", category: "C", enabled: true },
+  { id: "A7-1-5", title: "auto only for function returns, non-fundamental types, generic lambdas, trailing return types", severity: "required", category: "C",
+    detect: /\bauto\b/, enabled: true,
+    knownPatterns: [
+      {
+        // A7-1-5 permits auto for: (1) function call return types,
+        // (2) non-fundamental type initializers, (3) generic lambda params,
+        // (4) trailing return type syntax. The self-check can't distinguish
+        // these from first principles, so we record a deviation for every
+        // auto usage. The renderer separately avoids auto for fundamental
+        // types (numbers) under --autosar by substituting int32_t/float/etc.
+        detect: /\bauto\b/,
+        justification: "auto is used for function return types (case 1) and non-fundamental types (case 2) as permitted by A7-1-5; fundamental-type auto is substituted to explicit fixed-width types by the renderer.",
+        kind: "other",
+      },
+    ],
+  },
   { id: "A7-1-6", title: "No typedef outside a function -> use using alias", severity: "required", category: "C",
     detect: /\btypedef\b/, exempt: /\busing\b/, enabled: true,
     knownPatterns: [
