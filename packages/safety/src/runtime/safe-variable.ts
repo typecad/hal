@@ -36,6 +36,7 @@ private:
   T inverted;
 
 public:
+  constexpr SafeVariable() noexcept : value(T{}), inverted(static_cast<T>(~T{})) {}
   constexpr SafeVariable(T initial) noexcept
       : value(initial), inverted(static_cast<T>(~initial)) {}
 
