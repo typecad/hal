@@ -65,12 +65,14 @@ inline SafeReadResult read_safe(uint8_t pin) {
   return result;
 }
 
-}  // namespace __tc_safety
-
+// Namespace-scoped forwarding entry point — kept inside the namespace so
+// Arduino's .ino preprocessor does not generate a global prototype that
+// references SafeReadResult before the struct is defined.
 inline SafeReadResult __tc_safety_read_safe(uint8_t pin) {
-  return __tc_safety::read_safe(pin);
+  return read_safe(pin);
 }
-`.trim()],
+
+}  // namespace __tc_safety`.trim()],
     shimMacros: [],
     dependencies: ["safety_mode_table"],
   };

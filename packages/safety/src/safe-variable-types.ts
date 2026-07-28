@@ -1,23 +1,28 @@
-/** Phantom type alias for SafeVariable<T>.
+/** SafeVariable<T> — SEU-resistant storage with inverted-redundancy.
  *
- *  Like Shared<T> / Mutable<T>, this is a compile-time-only wrapper that
- *  the cuttlefish transpiler intercepts at type-resolution time. It does
- *  NOT alias to T — instead, the transpiler resolves SafeVariable<number>
- *  to the C++ template form SafeVariable<int32_t>, and the polyfill
- *  provides the template definition.
+ *  The cuttlefish transpiler resolves SafeVariable<number> to the C++
+ *  template form SafeVariable<int> (or int32_t under --autosar), and the
+ *  safety polyfill provides the template definition.
+ *
+ *  Declared as an interface (not a type alias) so TypeScript recognizes
+ *  the .set()/.get()/.valid() method calls.
  *
  *  Usage:
  *    let targetSpeed: SafeVariable<number> = 1000;
  *    targetSpeed.set(2000);
- *    let ok = false;
- *    const current = targetSpeed.read(&ok);
- *    if (ok) { ... use current ... }
+ *    if (targetSpeed.valid()) {
+ *      const current = targetSpeed.get();
+ *    }
  */
-export type SafeVariable<T = unknown> = T;
-
-/** Result of a SafeVariable read when using the boolean-pointer form.
- *  Provided for documentation; the actual C++ lowers read(bool*) directly. */
-export interface SafeVarResult<T = number> {
-  readonly ok: boolean;
-  readonly value: T;
+export interface SafeVariable<T = number> {
+  set(value: T): void;
+  get(): T;
+  valid(): boolean;
 }
+
+/** Construct a SafeVariable with an initial value.
+ *  At runtime this is a compile-time-only construct — the transpiler
+ *  lowers `SafeVariable(0)` to the C++ `SafeVariable<int> x = 0;`
+ *  constructor call. */
+export declare function SafeVariable(initial: number): SafeVariable<number>;
+

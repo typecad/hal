@@ -39,13 +39,15 @@ public:
   constexpr SafeVariable(T initial) noexcept
       : value(initial), inverted(static_cast<T>(~initial)) {}
 
-  [[nodiscard]] constexpr T read(bool* ok) const noexcept {
+  [[nodiscard]] constexpr T get() const noexcept {
     if ((value ^ inverted) == static_cast<T>(~static_cast<T>(0))) {
-      *ok = true;
       return value;
     }
-    *ok = false;
     return T{};
+  }
+
+  [[nodiscard]] constexpr bool valid() const noexcept {
+    return (value ^ inverted) == static_cast<T>(~static_cast<T>(0));
   }
 
   constexpr void set(T newValue) noexcept {

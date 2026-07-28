@@ -26,7 +26,7 @@ function resolveSafetyOp(op: HALOpIR): { code?: string; expression?: string } | 
       // mode is a TrackedMode enum value (numeric) — emitted as-is.
       return { code: `__tc_safety_record_pin_mode(${fields.pin}, ${fields.mode});` };
     case "safety.read_safe":
-      return { expression: `__tc_safety_read_safe(${fields.pin})` };
+      return { expression: `__tc_safety::read_safe(${fields.pin})` };
     default:
       return undefined;
   }

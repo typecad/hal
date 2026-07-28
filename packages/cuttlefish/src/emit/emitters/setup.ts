@@ -268,14 +268,15 @@ export function buildEmitterContext(
 
   const strategy = options.strategy ?? resolveStrategy(options.target ?? "generic");
   strategy.setLargeEnumNames?.(largeEnumNames);
-  const reservedNames = strategy.reservedNames();
   // When @typecad/safety is active, `safe` is a compile-time-only construct
   // (its methods are intercepted at IR-build time). Its top-level var_decl
   // (from the parsed safety module source) must NOT be emitted as a C++
   // _safe_t struct — add it to reservedNames so the top-level-prep filter
   // strips it. Mirrors how platform reserved names (HIGH, LOW, etc.) are
   // kept out of user-code emission.
+  let reservedNames: Set<string> = new Set(strategy.reservedNames());
   if (hasSafetyHook()) {
+    reservedNames = new Set(reservedNames);
     reservedNames.add("safe");
   }
 
@@ -433,7 +434,9 @@ export function buildEmitterContext(
     // these filters are no-ops there. The strategies also self-gate on the
     // same flags; this is the defensive backstop (mirrors how usesWDT/etc.
     // backstop the strategy-side gating above).
-    if (!programAnalysis.usesUart) {
+    // Keep the UART block when console calls are present (console_log etc.
+    // call _uart_* functions) even if no direct uart.* HAL ops are used.
+    if (!programAnalysis.usesUart && !programAnalysis.hasConsoleCalls) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_UART_BEGIN', '// CUTTLEFISH_UART_END');
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_UART_EXT_BEGIN', '// CUTTLEFISH_UART_EXT_END');
     }

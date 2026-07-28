@@ -265,7 +265,10 @@ declare global {
   type Owned<T = unknown> = T;
   type Shared<T = unknown> = T;
   type Mutable<T = unknown> = T;
-  type SafeVariable<T = unknown> = T;
+  // SafeVariable: SEU-resistant storage. The transpiler lowers SafeVariable<number>
+  // to a C++ template with inverted-redundancy storage. Declared as an interface
+  // (not a type alias) so the TS type checker recognizes method calls.
+  interface SafeVariable<T = number> { set(value: T): void; get(): T; valid(): boolean; }
 
   type uint8_t = number;
   type int8_t = number;
@@ -310,7 +313,10 @@ declare global {
   type Owned<T = unknown> = T;
   type Shared<T = unknown> = T;
   type Mutable<T = unknown> = T;
-  type SafeVariable<T = unknown> = T;
+  // SafeVariable: SEU-resistant storage. The transpiler lowers SafeVariable<number>
+  // to a C++ template with inverted-redundancy storage. Declared as an interface
+  // (not a type alias) so the TS type checker recognizes method calls.
+  interface SafeVariable<T = number> { set(value: T): void; get(): T; valid(): boolean; }
 
   type uint8_t = number;
   type int8_t = number;
@@ -343,7 +349,6 @@ declare module '@typecad/board' {
   export type Owned<T = unknown> = T;
   export type Shared<T = unknown> = T;
   export type Mutable<T = unknown> = T;
-  export type SafeVariable<T = unknown> = T;
 }
 
 export {};

@@ -9,7 +9,7 @@
 // Part A v2: mode configuration belongs to @typecad/hal (Pin.asInput() etc.).
 // The safety package owns only the verified read.
 
-export type { SafeVariable, SafeVarResult } from "./safe-variable-types.js";
+export { SafeVariable } from "./safe-variable-types.js";
 
 import type { Pin, InputPin, OutputPin } from "@typecad/hal";
 

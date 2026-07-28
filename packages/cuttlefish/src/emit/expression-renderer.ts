@@ -315,7 +315,22 @@ export class ExpressionRenderer {
     if (this.strategy.passthroughMacroNames().has(value)) {
       return value;
     }
-    return escapeCppKeyword(value, this.strategy.reservedNames());
+    // Platform-reserved names (e.g. Arduino `Serial`) are globals provided by
+    // the framework headers. Escaping them would break references to those
+    // globals. Only escape if the name is a user-declared variable that would
+    // collide with the platform global — declaration sites already handle
+    // escaping for user vars separately.
+    const reservedNames = this.strategy.reservedNames();
+    if (reservedNames.has(value)) {
+      const isUserVar = (this.knownVariableTypes !== undefined && this.knownVariableTypes.has(value)) ||
+        (this.pointerVarTypes !== undefined && this.pointerVarTypes.has(value)) ||
+        (this.globalPointerVarTypes !== undefined && this.globalPointerVarTypes.has(value)) ||
+        (this.stringVarNames !== undefined && this.stringVarNames.has(value));
+      if (!isUserVar) {
+        return value;
+      }
+    }
+    return escapeCppKeyword(value, reservedNames);
   }
 
   private renderRaw(value: string, exprTransformer?: (expr: string) => string): string {
