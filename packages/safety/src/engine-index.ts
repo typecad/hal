@@ -33,10 +33,36 @@ function resolveSafetyOp(op: HALOpIR): { code?: string; expression?: string } | 
   }
 }
 
+/** Lower a safe.* TS call to a HAL op. Called from an extension point in
+ *  tryResolveSemanticCall (hal-plugins.ts) when the callee resolves to the
+ *  @typecad/safety package. */
+function resolveSemanticCall(callee: string, args: readonly unknown[]): HALOpIR | undefined {
+  // `safe.read(pin)` → safety.read_safe
+  if (callee === "safe.read") {
+    const pin = args[0];
+    if (typeof pin === "number") {
+      return { operation: "safety.read_safe", pin } as unknown as HALOpIR;
+    }
+    return undefined;
+  }
+  // `safe.pinMode(pin, mode)` → safety.pin_mode
+  // (the intercept pass will inject the record_pin_mode companion)
+  if (callee === "safe.pinMode") {
+    const pin = args[0];
+    const mode = args[1];
+    if (typeof pin === "number" && (mode === 0 || mode === 1 || mode === 2)) {
+      return { operation: "safety.pin_mode", pin, mode } as unknown as HALOpIR;
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
 export function registerSafetyEngine(): TranspilerSafetyHook {
   return {
     transformIR: pinModeInterceptPass,
     resolveSafetyOp,
+    resolveSemanticCall,
     buildPolyfills: buildSafetyPolyfills,
   };
 }

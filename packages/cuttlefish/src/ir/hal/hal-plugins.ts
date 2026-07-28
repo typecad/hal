@@ -5,6 +5,7 @@ import { getCurrentBoardConstants, halInstances } from "../build-ir-state.js";
 import { resolveExpressionText, extractAndRegisterCallbacks } from "./hal-emitter.js";
 import { renderExprAsText } from "../render-expr.js";
 import type { ExpressionIR } from "../../api/index.js";
+import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
 
 /**
  * Split a comma-joined argument list back into individual arguments, respecting
@@ -369,6 +370,15 @@ export function tryResolveSemanticCall(
   paramDefaults: Map<string, string> | undefined,
   callArgs?: ExpressionIR[],
 ): HALOpIR | null {
+  // ── Safety (@typecad/safety — safe.read / safe.pinMode) ──────────────────
+  // The safety package owns lowering for `safe.*` callees. Check the hook
+  // before the switch so safety calls never fall through to GPIO/etc.
+  // hasSafetyHook() guards the call site (no-op when @typecad/safety absent).
+  if (hasSafetyHook()) {
+    const op = requireSafetyHook().resolveSemanticCall?.(fnName, callArgs ?? []);
+    if (op) return op;
+  }
+
   // Extract MCU port name from instance (set by Pin.fromPort())
   const port = portFromInstance(instance);
 
