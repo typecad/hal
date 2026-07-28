@@ -1,10 +1,15 @@
 // Public API surface for @typecad/safety.
 //
 // `safe` is a COMPILE-TIME CONSTRUCT ONLY. The cuttlefish transpiler
-// intercepts safe.read / safe.pinMode calls (via tryResolveSemanticCall →
-// the safety hook's resolveSemanticCall) and lowers them to HAL ops. The
-// runtime stubs below throw so importing `safe` from plain Node never
+// intercepts safe.read calls (via tryResolveSemanticCall → the safety hook's
+// resolveSemanticCall) and lowers them to safety.read_safe HAL ops. The
+// runtime stub below throws so importing `safe` from plain Node never
 // silently works — mirrors how @typecad/ui's ui.mount behaves.
+//
+// Part A v2: mode configuration belongs to @typecad/hal (Pin.asInput() etc.).
+// The safety package owns only the verified read.
+
+import type { Pin } from "@typecad/hal";
 
 /** Two-tier fault taxonomy. Stable across safety standards (ISO 26262,
  *  IEC 61508, DO-178C). The category is the coarse user-space routing axis;
@@ -24,11 +29,6 @@ export const SafetyFaultCode = {
 } as const;
 export type SafetyFaultCode = typeof SafetyFaultCode[keyof typeof SafetyFaultCode];
 
-/** Pin mode argument for safe.pinMode. Named type (rather than `0 | 1 | 2`)
- *  so the safety API's stringified type doesn't contain " | ", which would
- *  trip the TS2CPP_UNION_MEMBER_ACCESS semantic gate at the call site. */
-export type PinMode = 0 | 1 | 2;
-
 export interface SafeReadResult {
   readonly ok: boolean;
   readonly value: 0 | 1;
@@ -43,18 +43,19 @@ class CompileTimeOnly extends Error {
 }
 
 /** Safe GPIO API. Compile-time construct only — the cuttlefish transpiler
- *  intercepts safe.read / safe.pinMode and lowers them to HAL ops. The
+ *  intercepts safe.read and lowers it to a safety.read_safe HAL op. The
  *  type annotation (rather than `as const`) gives `safe` a single object
  *  type so member access doesn't lower to std::variant access — same reason
  *  @typecad/ui's `ui` uses an explicit type annotation. */
 export const safe: {
-  /** Safe digital read: confirms pin is INPUT, performs a 2-of-3 vote,
-   *  returns a SafeReadResult carrying any detected fault. */
-  read(pin: number): SafeReadResult;
-  /** Pin mode that also records into the safety mode table. The runtime
-   *  mode table is *also* populated by auto-intercepted pinMode() calls. */
-  pinMode(pin: number, mode: PinMode): void;
+  /** Safe digital read: confirms the pin's recorded mode is INPUT or
+   *  INPUT_PULLUP (via the auto-populated mode table), performs a 2-of-3
+   *  vote via the strategy-injected __tc_gpio_read shim, returns a
+   *  SafeReadResult carrying any detected fault. Accepts any Pin-derived
+   *  instance (Pin, InputPin, OutputPin — they are the same runtime
+   *  object, re-typed). The pin number is resolved at IR time from the
+   *  Pin instance via the halInstances registry. */
+  read(pin: Pin): SafeReadResult;
 } = {
-  read(_pin: number): SafeReadResult { throw new CompileTimeOnly(); },
-  pinMode(_pin: number, _mode: PinMode): void { throw new CompileTimeOnly(); },
+  read(_pin: Pin): SafeReadResult { throw new CompileTimeOnly(); },
 };
