@@ -201,6 +201,9 @@ export type { StringMethodSpec, StringMethodArgForm } from './string-method-regi
 // Runtime helpers
 export { isStringEnum } from './ir-declarations.js';
 
+// IR transform helpers (used by the optional @typecad/safety package's pass)
+export { mapProgramStatements } from '../../ir/utils/map-statements.js';
+
 // Async types
 export type { AsyncRuntimeConfig } from './async-types.js';
 

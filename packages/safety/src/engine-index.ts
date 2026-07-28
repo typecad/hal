@@ -4,6 +4,8 @@
 import type { HALOpIR } from "@typecad/cuttlefish/api";
 import type { TranspilerSafetyHook } from "@typecad/cuttlefish/safety-hook-types";
 import { modeConstant } from "./hal/ops.js";
+import { pinModeInterceptPass } from "./passes/pinMode-intercept.js";
+import { buildSafetyPolyfills } from "./runtime/polyfills.js";
 
 /** Resolve a safety.* HAL op to C++. MCU-agnostic: only emits calls to
  *  pinMode() / __tc_safety::* — the standard Arduino symbols every strategy
@@ -33,8 +35,9 @@ function resolveSafetyOp(op: HALOpIR): { code?: string; expression?: string } | 
 
 export function registerSafetyEngine(): TranspilerSafetyHook {
   return {
-    transformIR: (program) => program, // no-op until Task 10
+    transformIR: pinModeInterceptPass,
     resolveSafetyOp,
+    buildPolyfills: buildSafetyPolyfills,
   };
 }
 
