@@ -11,33 +11,16 @@
 //    expected; if a rule fires anyway, add one (see
 //    docs/superpowers/plans/2026-07-27-safety-package-part-a.md Task 17).
 
-/** Returns the C++ defining SafetyFaultCategory, SafetyFaultCode, SafeReadResult. */
+/** Returns the C++ SafeReadResult struct definition.
+ *
+ *  NOTE: SafetyFaultCategory and SafetyFaultCode are NOT emitted here. They
+ *  are TypeScript `enum`s in the public API (index.ts), which the cuttlefish
+ *  transpiler lowers to C++ `enum class` definitions in user code. The
+ *  polyfill only emits the SafeReadResult struct that references them by
+ *  name. Emitting the enums here too would cause duplicate-definition
+ *  conflicts with the user-code lowering. */
 export function emitResultStructs(): string {
   return `
-enum class SafetyFaultCategory : uint8_t {
-  Ok            = 0U,
-  Signal        = 1U,
-  Integrity     = 2U,
-  Timing        = 3U,
-  System        = 4U,
-  Configuration = 5U,
-};
-
-enum class SafetyFaultCode : uint8_t {
-  // Signal sub-codes (Part A: code 1 implemented; codes 2,3 reserved for stuck-fault detection)
-  Ok               = 0U,
-  VoteDisagreement = 1U,
-  StuckHigh        = 2U,
-  StuckLow         = 3U,
-  // Configuration sub-codes (Part A: implemented)
-  PinModeMismatch  = 16U,
-  PinModeUnknown   = 17U,
-  // Reserved ranges for Part B/C:
-  //   32-47 Integrity (RAM CRC, ECC, ROM)
-  //   48-63 Timing (program-flow, watchdog)
-  //   64-79 System (MPU, stack)
-};
-
 struct SafeReadResult {
   bool ok;
   uint8_t value;

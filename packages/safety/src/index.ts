@@ -21,21 +21,31 @@ export type AnyPin = Pin | InputPin | OutputPin;
 
 /** Two-tier fault taxonomy. Stable across safety standards (ISO 26262,
  *  IEC 61508, DO-178C). The category is the coarse user-space routing axis;
- *  the code is standard-specific detail. */
-export const SafetyFaultCategory = {
-  Ok: 0, Signal: 1, Integrity: 2, Timing: 3, System: 4, Configuration: 5,
-} as const;
-export type SafetyFaultCategory = typeof SafetyFaultCategory[keyof typeof SafetyFaultCategory];
+ *  the code is standard-specific detail.
+ *
+ *  Declared as TypeScript `enum` (not `const` object + type alias) so the
+ *  cuttlefish transpiler lowers these to a single C++ `enum class` definition
+ *  matching the runtime polyfill's enum, rather than emitting a conflicting
+ *  struct per usage scope. The transpiler's enum lowering and the polyfill's
+ *  enum class are structurally identical (same tag name, same enumerators,
+ *  same values). */
+export enum SafetyFaultCategory {
+  Ok            = 0,
+  Signal        = 1,
+  Integrity     = 2,
+  Timing        = 3,
+  System        = 4,
+  Configuration = 5,
+}
 
-export const SafetyFaultCode = {
-  Ok: 0,
-  VoteDisagreement: 1,
-  StuckHigh: 2,
-  StuckLow: 3,
-  PinModeMismatch: 16,
-  PinModeUnknown: 17,
-} as const;
-export type SafetyFaultCode = typeof SafetyFaultCode[keyof typeof SafetyFaultCode];
+export enum SafetyFaultCode {
+  Ok               = 0,
+  VoteDisagreement = 1,
+  StuckHigh        = 2,
+  StuckLow         = 3,
+  PinModeMismatch  = 16,
+  PinModeUnknown   = 17,
+}
 
 export interface SafeReadResult {
   readonly ok: boolean;
