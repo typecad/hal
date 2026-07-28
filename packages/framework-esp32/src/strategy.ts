@@ -11,6 +11,7 @@
 import { ArduinoStrategy, splitStreamChain } from '@typecad/framework-arduino';
 import type { ProgramIR, PlatformContext, HALOpIR, RuntimePolyfillIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode, TouchProfile } from '@typecad/cuttlefish/api/shared';
 import { resolveNativeDisplayOp } from '@typecad/cuttlefish/api/shared';
+import { programUsesSafety } from '@typecad/cuttlefish/api';
 import { esp32Ili9341Adapter, esp32St7796Adapter, esp32Ssd1309Adapter } from './displays/index.js';
 import { esp32Ft6336uTouchAdapter, esp32Xpt2046TouchAdapter, esp32Stmpe610TouchAdapter, esp32Gt911TouchAdapter, esp32Cst816sTouchAdapter, type TouchAdapterCodegen } from './touch/index.js';
 import { resolveEsp32Profile } from './profile.js';
@@ -313,7 +314,7 @@ export class Esp32Strategy extends ArduinoStrategy {
       );
     }
 
-    return [
+    const lines = [
       // TypeCAD Core Shims — must match parent's nullish/undefined helpers.
       "#ifndef CUTTLEFISH_UNDEFINED",
       "#define CUTTLEFISH_UNDEFINED 0",
@@ -449,17 +450,30 @@ export class Esp32Strategy extends ArduinoStrategy {
       'extern void setup(void);',
       'extern void loop(void);',
       '',
-      'extern "C" void app_main(void) {',
-      '    setup();',
-      '    for (;;) {',
-      '        loop();',
-      '        // Yield to the IDLE task so the task watchdog does not fire when',
-      '        // loop() is empty or runs without blocking. Costs ~1 ms/iteration.',
-      '        vTaskDelay(1);',
-      '    }',
-      '}',
-      '',
+'extern "C" void app_main(void) {',
+    '    setup();',
+    '    for (;;) {',
+    '        loop();',
+    '        // Yield to the IDLE task so the task watchdog does not fire when',
+    '        // loop() is empty or runs without blocking. Costs ~1 ms/iteration.',
+    '        vTaskDelay(1);',
+    '    }',
+    '}',
+    '',
     ];
+
+    // Safety: emit the __tc_gpio_read shim when the program uses @typecad/safety.
+    // The safety voter polyfill calls __tc_gpio_read; without this shim, the
+    // emitted code would not compile. Gated on programUsesSafety(program).
+    // (ESP32 overrides shimLines completely — does NOT call super.shimLines() —
+    // so the Arduino base's shim does NOT propagate; emit our own.)
+    if (programUsesSafety(program)) {
+      lines.push(
+        "inline int __tc_gpio_read(uint8_t pin) { return digitalRead(pin); }",
+      );
+    }
+
+    return lines;
   }
 
   override resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {

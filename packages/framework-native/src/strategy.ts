@@ -25,6 +25,7 @@ import type {
   DisplayHALOp,
 } from '@typecad/cuttlefish/api/shared';
 import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
+import { programUsesSafety } from '@typecad/cuttlefish/api';
 import { resolveTerminalPreviewOp } from './graphics/terminal-preview.js';
 
 export class NativeStrategy implements PlatformStrategy {
@@ -53,8 +54,8 @@ export class NativeStrategy implements PlatformStrategy {
     return {};
   }
 
-  shimLines(): string[] {
-    return [
+  shimLines(program?: ProgramIR): string[] {
+    const baseLines = [
       '// cuttlefish runtime shim. Wrapped in a single include guard so the',
       '// block is safe to emit into multiple headers and .cpp files within',
       '// one translation unit (a .cpp may #include several headers that each',
@@ -86,6 +87,16 @@ export class NativeStrategy implements PlatformStrategy {
       'inline long constrain(long x, long a, long b) { return x < a ? a : (x > b ? b : x); }',
       '#endif // CUTTLEFISH_SHIM_DEFINED',
     ];
+    // Safety: emit the __tc_gpio_read shim when the program uses @typecad/safety.
+    // Native target stubs GPIO read (the SDL simulator doesn't model real
+    // digital input levels); returns 0 (LOW). Real native demos that exercise
+    // safe.read would need their own input source wired in here.
+    if (program && programUsesSafety(program)) {
+      baseLines.push(
+        'inline int __tc_gpio_read(uint8_t pin) { return 0; }',
+      );
+    }
+    return baseLines;
   }
 
   profileDiagnostics(): Diagnostic[] {
