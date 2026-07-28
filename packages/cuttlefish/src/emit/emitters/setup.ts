@@ -1,6 +1,7 @@
 ﻿import path from "node:path";
 import type { ProgramIR, StatementIR } from "../../api/index.js";
 import { filterPolyfillHelpers, isStringEnum } from "../../api/shared/index.js";
+import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
 import { analyzeProgram } from "../../ir/program-analysis.js";
 import { collectStatementIdentifiers } from "../../ir/identifier-collector.js";
 import { Diagnostic, EmitMode, SourceMapEntry } from "../../types.js";
@@ -256,6 +257,17 @@ export function buildEmitterContext(
     filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "timer_methods");
   }
 
+  // Safety polyfills (mode table + voter). Gated on hasSafetyHook() so they
+  // only appear when @typecad/safety is in use; filtered through the same
+  // filterPolyfillHelpers call so unused helpers tree-shake out.
+  if (isEntryFile && hasSafetyHook()) {
+    const safetyPolyfills = filterPolyfillHelpers(
+      requireSafetyHook().buildPolyfills?.() ?? [],
+      programAnalysis.usedPolyfillHelpers,
+    );
+    filteredNativePolyfills = [...filteredNativePolyfills, ...safetyPolyfills];
+  }
+
   const allPolyfills = filteredNativePolyfills;
   const emittedPolyfills = allPolyfills.length > 0
     ? emitPolyfillBoilerplate(allPolyfills)
@@ -423,11 +435,13 @@ export function buildEmitterContext(
       if (defaultName) symbolMap[defaultName] = defaultName;
       continue;
     }
-    // Compile-time-only packages (@typecad/ui, @typecad/ui): their calls are
-    // intercepted at IR-build time; the package emits NO C++ module/header.
-    // Register the imported symbols so references resolve, but skip the
-    // #include generation (there is no Ui.h to include).
-    if (imported.moduleSpecifier === "@typecad/ui" || imported.moduleSpecifier === "@typecad/ui") {
+    // Compile-time-only packages: their calls are intercepted at IR-build
+    // time; the package emits NO C++ module/header. Register the imported
+    // symbols so references resolve, but skip the #include generation.
+    if (
+      imported.moduleSpecifier === "@typecad/ui" ||
+      imported.moduleSpecifier === "@typecad/safety"
+    ) {
       for (const symbol of imported.namedImports) {
         symbolMap[symbol] = symbol;
       }
