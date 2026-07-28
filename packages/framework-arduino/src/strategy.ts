@@ -1113,23 +1113,6 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       "    getString(key: string, defaultValue: string): string;",
       "    remove(key: string): void;",
       "  };",
-      // Augment the '@typecad/board' module to re-export ownership types so that
-      // `import { Owned, Shared } from '@typecad/board'` resolves correctly during
-      // the transpiler's pre-emit type-check.  The strings below close the
-      // enclosing `declare global {`, open a module augmentation, then
-      // re-open `declare global {` for the caller's closing brace.
-      "}",
-      "declare module '@typecad/board' {",
-      "  export type Owned<T = any> = T;",
-      "  export type Shared<T = any> = T;",
-      "  export type Mutable<T = any> = T;",
-      "}",
-      "declare global {",
-      "  export type Owned<T = any> = T;",
-      "  export type Shared<T = any> = T;",
-      "  export type Mutable<T = any> = T;",
-      "}",
-      "declare global {",
     ];
   }
 
