@@ -9,7 +9,15 @@
 // Part A v2: mode configuration belongs to @typecad/hal (Pin.asInput() etc.).
 // The safety package owns only the verified read.
 
-import type { Pin } from "@typecad/hal";
+import type { Pin, InputPin, OutputPin } from "@typecad/hal";
+
+/** Any pin-shaped argument safe.read accepts. Named type (rather than
+ *  `Pin | InputPin | OutputPin` inline) so the safety API's stringified
+ *  type doesn't contain " | ", which would trip the TS2CPP_UNION_MEMBER_ACCESS
+ *  semantic gate at the call site. At runtime these three classes share
+ *  the same `_pin: number` field — the safety package resolves it via the
+ *  halInstances registry at IR time. */
+export type AnyPin = Pin | InputPin | OutputPin;
 
 /** Two-tier fault taxonomy. Stable across safety standards (ISO 26262,
  *  IEC 61508, DO-178C). The category is the coarse user-space routing axis;
@@ -51,11 +59,14 @@ export const safe: {
   /** Safe digital read: confirms the pin's recorded mode is INPUT or
    *  INPUT_PULLUP (via the auto-populated mode table), performs a 2-of-3
    *  vote via the strategy-injected __tc_gpio_read shim, returns a
-   *  SafeReadResult carrying any detected fault. Accepts any Pin-derived
-   *  instance (Pin, InputPin, OutputPin — they are the same runtime
-   *  object, re-typed). The pin number is resolved at IR time from the
-   *  Pin instance via the halInstances registry. */
-  read(pin: Pin): SafeReadResult;
+   *  SafeReadResult carrying any detected fault.
+   *
+   *  Accepts Pin, InputPin, or OutputPin — at runtime they are the same
+   *  object (Pin.asInput() returns `this as unknown as InputPin`, a
+   *  re-typed reference to the same Pin). The runtime mode-table check
+   *  rejects pins configured as OUTPUT (returns PinModeMismatch), so
+   *  passing an OutputPin is technically allowed but always faults. */
+  read(pin: AnyPin): SafeReadResult;
 } = {
-  read(_pin: Pin): SafeReadResult { throw new CompileTimeOnly(); },
+  read(_pin: AnyPin): SafeReadResult { throw new CompileTimeOnly(); },
 };
