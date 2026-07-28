@@ -203,6 +203,9 @@ export { isStringEnum } from './ir-declarations.js';
 
 // IR transform helpers (used by the optional @typecad/safety package's pass)
 export { mapProgramStatements } from '../../ir/utils/map-statements.js';
+// Safety-use detector (used by framework strategies to gate __tc_gpio_read
+// shim emission — mirrors programUsesWdt for the watchdog).
+export { programUsesSafety } from '../../emit/emitters/setup.js';
 
 // Async types
 export type { AsyncRuntimeConfig } from './async-types.js';

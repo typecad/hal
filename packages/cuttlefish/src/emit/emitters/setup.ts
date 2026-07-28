@@ -121,6 +121,70 @@ function programUsesWdt(program: ProgramIR): boolean {
 }
 
 /**
+ * Detect whether a program uses @typecad/safety. The safety transform pass
+ * injects safety.* ops when in use; strategies consult this to decide
+ * whether to emit the __tc_gpio_read shim that the safety voter calls.
+ * Mirrors programUsesWdt() above (same inline walker pattern).
+ *
+ * `hal-expr` (the expression-position safety.read_safe lowering produced
+ * by `const r = safe.read(pin)`) lives in expression trees, not at statement
+ * level — but it's carried inside a var_decl statement whose initializer is
+ * the hal-expr, and the var_decl gets visited as a top-level statement. We
+ * detect both: statement-level `hal-op` operations, and any statement whose
+ * rendered initializer text mentions safety.* (a defensive catch for the
+ * hal-expr-in-initializer case). The latter is rarely needed because the
+ * voter's read_safe op is also captured at the call site, but kept for
+ * robustness.
+ */
+export function programUsesSafety(program: ProgramIR): boolean {
+  const visitStatement = (stmt: StatementIR): boolean => {
+    if (stmt.kind === "hal-op") {
+      const opName = (stmt as any).operation?.operation;
+      if (typeof opName === "string" && opName.startsWith("safety.")) return true;
+    }
+    switch (stmt.kind) {
+      case "block":
+      case "labeled":
+        return visit(stmt.body);
+      case "if":
+        return visit(stmt.thenBranch) || visit(stmt.elseBranch ?? []);
+      case "for":
+        return visit(stmt.body)
+          || (stmt.initializer ? visitStatement(stmt.initializer) : false);
+      case "while":
+      case "do_while":
+      case "for_of":
+      case "for_in":
+        return visit(stmt.body);
+      case "switch":
+        return stmt.cases.some((c: any) => visit(c.body ?? []));
+      case "try":
+        return visit(stmt.tryBlock) || visit(stmt.catchBlock ?? []) || visit(stmt.finallyBlock ?? []);
+      default:
+        return false;
+    }
+  };
+  const visit = (statements: StatementIR[] | undefined): boolean => {
+    if (!statements) return false;
+    for (const stmt of statements) {
+      if (visitStatement(stmt)) return true;
+    }
+    return false;
+  };
+  if (visit(program.topLevelStatements)) return true;
+  for (const fn of program.functions) {
+    if (visit(fn.statements)) return true;
+  }
+  for (const cls of program.classes) {
+    for (const m of cls.methods) if (visit(m.statements)) return true;
+    for (const g of cls.getters) if (visit(g.statements)) return true;
+    for (const s of cls.setters) if (visit(s.statements)) return true;
+    if (cls.constructor && visit(cls.constructor.statements)) return true;
+  }
+  return false;
+}
+
+/**
  * Extract a `#ifndef MACRO ... #endif` include-guard block from a shim line
  * list. Used to emit just the macro definition (e.g. CUTTLEFISH_UNDEFINED) in
  * non-entry files of a split compilation, where the full helper shim belongs

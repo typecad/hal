@@ -21,6 +21,7 @@ interface TouchAdapterCodegen {
 }
 import type { StatementIR, HALOpIR } from "@typecad/cuttlefish/api/shared";
 import { generatePromiseRuntime, generateStaticAsyncRuntime, applyStringMethodRewrites, parsedIsVector } from "@typecad/cuttlefish/api/shared";
+import { programUsesSafety } from "@typecad/cuttlefish/api";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen.js";
 import { resolveArduinoProfile } from "./profile.js";
 import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341.js";
@@ -440,6 +441,15 @@ export class ArduinoStrategy implements PlatformStrategy {
       "#endif // __TC_BP_DISABLED_DEFINED",
       "",
     );
+
+    // Safety: emit the __tc_gpio_read shim when the program uses @typecad/safety.
+    // The safety voter polyfill calls __tc_gpio_read; without this shim, the
+    // emitted code would not compile. Gated on programUsesSafety(program).
+    if (programUsesSafety(program)) {
+      lines.push(
+        "inline int __tc_gpio_read(uint8_t pin) { return digitalRead(pin); }",
+      );
+    }
 
     lines.push(...profileLines);
     return lines;
