@@ -370,10 +370,12 @@ export function tryResolveSemanticCall(
   paramDefaults: Map<string, string> | undefined,
   callArgs?: ExpressionIR[],
 ): HALOpIR | null {
-  // ── Safety (@typecad/safety — safe.read / safe.pinMode) ──────────────────
-  // The safety package owns lowering for `safe.*` callees. Check the hook
-  // before the switch so safety calls never fall through to GPIO/etc.
-  // hasSafetyHook() guards the call site (no-op when @typecad/safety absent).
+  // ── Safety (@typecad/safety — safe.read) ────────────────────────────────
+  // The safety package owns lowering for `safe.*` callees (v2: only safe.read;
+  // safe.pinMode was removed — mode config is the HAL's job via Pin.asInput()
+  // etc.). Check the hook before the switch so safety calls never fall
+  // through to GPIO/etc. hasSafetyHook() guards the call site (no-op when
+  // @typecad/safety absent).
   if (hasSafetyHook()) {
     const op = requireSafetyHook().resolveSemanticCall?.(fnName, callArgs ?? []);
     if (op) return op;

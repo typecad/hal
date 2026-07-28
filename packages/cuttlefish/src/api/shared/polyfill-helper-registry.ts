@@ -82,7 +82,6 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   // program analysis sees in raw IR before lowering) and the lowered
   // __tc_safety_* spelling (which appears after the safety call-statement
   // transformer emits hal-op resolution text). Both map to the same helper.
-  'safe.pinMode(':                ['__tc_safety_record_pin_mode'],
   'safe.read(':                   ['__tc_safety_read_safe'],
   '__tc_safety_record_pin_mode(': ['__tc_safety_record_pin_mode'],
   '__tc_safety_read_safe(':       ['__tc_safety_read_safe'],

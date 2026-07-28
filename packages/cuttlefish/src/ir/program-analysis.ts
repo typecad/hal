@@ -361,7 +361,7 @@ function analyzeExpression(
         // HALOpIR operation union is closed and doesn't include safety.* ops
         // (those are owned by the optional @typecad/safety package).
         const safetyOpName = opName as string;
-        if (safetyOpName === "safety.record_pin_mode" || safetyOpName === "safety.pin_mode") {
+        if (safetyOpName === "safety.record_pin_mode") {
           result.usedPolyfillHelpers.add("__tc_safety_record_pin_mode");
         }
         if (safetyOpName === "safety.read_safe") {
@@ -642,7 +642,7 @@ function analyzeStatement(
         // HALOpIR operation union is closed and doesn't include safety.* ops
         // (those are owned by the optional @typecad/safety package).
         const safetyOpName = opName as string;
-        if (safetyOpName === "safety.record_pin_mode" || safetyOpName === "safety.pin_mode") {
+        if (safetyOpName === "safety.record_pin_mode") {
           result.usedPolyfillHelpers.add("__tc_safety_record_pin_mode");
         }
         if (safetyOpName === "safety.read_safe") {
