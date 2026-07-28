@@ -10,12 +10,12 @@ const halOp = (operation: string, extra: Record<string, unknown> = {}): Statemen
     returns_value: false,
   }) as unknown as StatementIR;
 
-describe("companion invariant", () => {
-  it("every gpio.pin_mode / safety.pin_mode has an immediate record_pin_mode successor", () => {
+describe("companion invariant (v2 — gpio.set_mode)", () => {
+  it("every gpio.set_mode has an immediate record_pin_mode successor", () => {
     const statements: StatementIR[] = [
-      halOp("gpio.pin_mode", { pin: 1, mode: 0 }),
+      halOp("gpio.set_mode", { pin: 1, mode: "INPUT" }),
       halOp("gpio.write", { pin: 2, value: 1 }),
-      halOp("safety.pin_mode", { pin: 3, mode: 2 }),
+      halOp("gpio.set_mode", { pin: 3, mode: "OUTPUT" }),
       halOp("gpio.read", { pin: 4 }),
     ];
     const prog: ProgramIR = {
@@ -30,7 +30,7 @@ describe("companion invariant", () => {
       const s = out.topLevelStatements[i]!;
       if (s.kind !== "hal-op") continue;
       const opName = (s as any).operation.operation as string;
-      if (opName === "gpio.pin_mode" || opName === "safety.pin_mode") {
+      if (opName === "gpio.set_mode") {
         const next = out.topLevelStatements[i + 1];
         expect(next).toBeDefined();
         expect((next as any)?.operation?.operation).toBe("safety.record_pin_mode");

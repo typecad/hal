@@ -15,7 +15,7 @@ describe("pinModeInterceptPass no-op behavior", () => {
     const prog: ProgramIR = {
       fileName: "t.ts", imports: [], reExports: [], structs: [], enums: [],
       classes: [], typeAliases: [],
-      topLevelStatements: [halOp("gpio.pin_mode", { pin: 5, mode: 0 })],
+      topLevelStatements: [halOp("gpio.set_mode", { pin: 5, mode: "INPUT" })],
       functions: [], boilerplates: [], diagnostics: [], registerClasses: [],
       boardConstants: undefined, interfaces: [], namespaces: [],
       peripheralUsage: {}, requiredIncludes: [],
