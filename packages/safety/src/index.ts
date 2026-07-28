@@ -24,6 +24,11 @@ export const SafetyFaultCode = {
 } as const;
 export type SafetyFaultCode = typeof SafetyFaultCode[keyof typeof SafetyFaultCode];
 
+/** Pin mode argument for safe.pinMode. Named type (rather than `0 | 1 | 2`)
+ *  so the safety API's stringified type doesn't contain " | ", which would
+ *  trip the TS2CPP_UNION_MEMBER_ACCESS semantic gate at the call site. */
+export type PinMode = 0 | 1 | 2;
+
 export interface SafeReadResult {
   readonly ok: boolean;
   readonly value: 0 | 1;
@@ -37,9 +42,19 @@ class CompileTimeOnly extends Error {
   }
 }
 
-/** Safe GPIO read: confirms pin is INPUT, performs a 2-of-3 vote, returns
- *  a SafeReadResult carrying any detected fault. */
-export const safe = {
+/** Safe GPIO API. Compile-time construct only — the cuttlefish transpiler
+ *  intercepts safe.read / safe.pinMode and lowers them to HAL ops. The
+ *  type annotation (rather than `as const`) gives `safe` a single object
+ *  type so member access doesn't lower to std::variant access — same reason
+ *  @typecad/ui's `ui` uses an explicit type annotation. */
+export const safe: {
+  /** Safe digital read: confirms pin is INPUT, performs a 2-of-3 vote,
+   *  returns a SafeReadResult carrying any detected fault. */
+  read(pin: number): SafeReadResult;
+  /** Pin mode that also records into the safety mode table. The runtime
+   *  mode table is *also* populated by auto-intercepted pinMode() calls. */
+  pinMode(pin: number, mode: PinMode): void;
+} = {
   read(_pin: number): SafeReadResult { throw new CompileTimeOnly(); },
-  pinMode(_pin: number, _mode: 0 | 1 | 2): void { throw new CompileTimeOnly(); },
+  pinMode(_pin: number, _mode: PinMode): void { throw new CompileTimeOnly(); },
 };
