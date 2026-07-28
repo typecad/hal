@@ -31,6 +31,10 @@ describe("deviation-writer", () => {
       tsLine: 12,
       kind: "hal-instance",
     });
+    expect(json.deviations[0].cpp).toMatchObject({
+      file: "main.ino",
+      line: 42,
+    });
   });
 
   it("renders an empty registry when there are no deviations", () => {

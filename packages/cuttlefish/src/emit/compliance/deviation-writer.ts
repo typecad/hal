@@ -14,7 +14,10 @@ export interface RegistryJson {
     totalDeviations: number;
     byRule: Record<string, number>;
   };
-  deviations: Deviation[];
+  deviations: Array<Deviation & {
+    /** C++ location of the deviation, mirroring the diagnostic messages. */
+    cpp?: { file: string; line: number };
+  }>;
 }
 
 /**
@@ -32,6 +35,11 @@ export function renderRegistryJson(
     byRule[d.ruleId] = (byRule[d.ruleId] ?? 0) + 1;
   }
 
+  // Derive the C++ artifact name for the cpp field. For header deviations,
+  // the artifact is the .h file (derived from the source artifact name).
+  const sourceArtifact = emittedArtifact;
+  const headerArtifact = emittedArtifact.replace(/\.\w+$/, ".h");
+
   const payload: RegistryJson = {
     schemaVersion: "1.0.0",
     standard: "AUTOSAR C++14",
@@ -44,7 +52,13 @@ export function renderRegistryJson(
       totalDeviations: deviations.length,
       byRule,
     },
-    deviations,
+    deviations: deviations.map((d) => ({
+      ...d,
+      cpp: {
+        file: d.file === "header" ? headerArtifact : sourceArtifact,
+        line: d.line,
+      },
+    })),
   };
 
   return JSON.stringify(payload, null, 2);

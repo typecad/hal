@@ -116,6 +116,10 @@ next to the `.cpp`/`.ino`). Schema:
         "tsFile": "src/hardware/display.ts",
         "tsLine": 12,
         "kind": "hal-instance"
+      },
+      "cpp": {
+        "file": "main.ino",
+        "line": 42
       }
     }
   ]
