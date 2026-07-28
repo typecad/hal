@@ -18,4 +18,4 @@ export interface SafeVariable<T = number> {
   valid(): boolean;
 }
 
-export declare function SafeVariable<T extends number | string>(initial: T): SafeVariable<T>;
+export declare function SafeVariable(initial: number | string): SafeVariable<any>;

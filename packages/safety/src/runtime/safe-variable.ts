@@ -25,7 +25,7 @@ export function safeVariablePolyfill(): RuntimePolyfillIR {
     kind: "polyfill",
     id: "safety_safe_variable",
     domain: "embedded",
-    requiredIncludes: [],
+    requiredIncludes: ["<type_traits>", "<string>"],
     forwardDeclarations: [],
     helperStructs: [],
     helperFunctions: [`
@@ -37,7 +37,16 @@ struct SafeVariableImpl {
   T value;
   T inverted;
   constexpr SafeVariableImpl() noexcept : value(0), inverted(static_cast<T>(~static_cast<T>(0))) {}
-  constexpr SafeVariableImpl(T initial) noexcept : value(initial), inverted(static_cast<T>(~initial)) {}
+  template <typename U, typename = typename std::enable_if<std::is_integral<U>::value>::type>
+  constexpr SafeVariableImpl(U initial) noexcept : value(static_cast<T>(initial)), inverted(static_cast<T>(~static_cast<T>(initial))) {}
+  template <typename U, bool UI, typename = typename std::enable_if<std::is_integral<U>::value>::type>
+  constexpr SafeVariableImpl(const SafeVariableImpl<U, UI>& other) noexcept : value(other.value), inverted(other.inverted) {}
+  template <typename U, bool UI, typename = typename std::enable_if<std::is_integral<U>::value>::type>
+  constexpr SafeVariableImpl& operator=(const SafeVariableImpl<U, UI>& other) noexcept {
+    value = other.value;
+    inverted = other.inverted;
+    return *this;
+  }
   [[nodiscard]] constexpr T get() const noexcept {
     if ((value ^ inverted) == static_cast<T>(~static_cast<T>(0))) { return value; }
     return T{};
@@ -51,7 +60,7 @@ struct SafeVariableImpl {
   }
 };
 
-// SafeVariable for non-integer types (float, double, string): stores
+// SafeVariable for non-integer types (float, double): stores
 // two identical copies and checks equality. Less SEU-resistant than
 // the integer variant (a matching double-flip in both copies passes),
 // but still catches single-copy corruption.
@@ -60,7 +69,16 @@ struct SafeVariableImpl<T, false> {
   T value;
   T backup;
   SafeVariableImpl() : value(T{}), backup(T{}) {}
-  SafeVariableImpl(T initial) : value(initial), backup(initial) {}
+  template <typename U, typename = typename std::enable_if<std::is_floating_point<U>::value || std::is_same<typename std::decay<U>::type, T>::value>::type>
+  SafeVariableImpl(U initial) : value(static_cast<T>(initial)), backup(static_cast<T>(initial)) {}
+  template <typename U, bool UI>
+  SafeVariableImpl(const SafeVariableImpl<U, UI>& other) : value(other.value), backup(other.backup) {}
+  template <typename U, bool UI>
+  SafeVariableImpl& operator=(const SafeVariableImpl<U, UI>& other) {
+    value = other.value;
+    backup = other.backup;
+    return *this;
+  }
   [[nodiscard]] T get() const noexcept {
     if (value == backup) { return value; }
     return T{};
@@ -76,6 +94,9 @@ struct SafeVariableImpl<T, false> {
 
 template <typename T>
 using SafeVariable = SafeVariableImpl<T, std::is_integral<T>::value>;
+
+// Deduction guide so SafeVariable(0) deduces SafeVariableImpl<int, true>.
+template <typename T> SafeVariableImpl(T) -> SafeVariableImpl<T, std::is_integral<T>::value>;
 
 // The tree-shaker keeps helperFunctions whose extracted __tc_ names appear in
 // the program's used-helpers set, OR whose extractHelperFunctionNames returns
