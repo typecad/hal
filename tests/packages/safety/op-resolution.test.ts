@@ -11,12 +11,12 @@ describe("resolveSafetyOp (v2)", () => {
       pin: 5,
       mode: TrackedMode.Input,
     } as any);
-    expect(result?.code).toBe("__tc_safety_record_pin_mode(5, 1);");
+    expect(result?.code).toBe(`__tc_safety_record_pin_mode(5, ${TrackedMode.Input});`);
   });
 
   it("resolves safety.read_safe to a read_safe expression", () => {
     const result = hook.resolveSafetyOp({ operation: "safety.read_safe", pin: 9 } as any);
-    expect(result?.expression).toBe("__tc_safety_read_safe(9)");
+    expect(result?.expression).toBe("__tc_safety::read_safe(9)");
   });
 
   it("returns undefined for unknown ops", () => {

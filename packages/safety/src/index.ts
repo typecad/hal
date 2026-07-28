@@ -32,26 +32,29 @@ export type AnyPin = Pin | InputPin | OutputPin;
  *  enum class are structurally identical (same tag name, same enumerators,
  *  same values). */
 export enum SafetyFaultCategory {
-  Ok            = 0,
-  Signal        = 1,
-  Integrity     = 2,
-  Timing        = 3,
-  System        = 4,
-  Configuration = 5,
+  Ok            = 0x3C3C3C3C,
+  Signal        = 0x5A5A5A5A,
+  Integrity     = 0xA5A5A5A5,
+  Timing        = 0xC3C3C3C3,
+  System        = 0x55AA55AA,
+  Configuration = 0xAA55AA55,
 }
 
 export enum SafetyFaultCode {
-  Ok               = 0,
-  VoteDisagreement = 1,
-  StuckHigh        = 2,
-  StuckLow         = 3,
-  PinModeMismatch  = 16,
-  PinModeUnknown   = 17,
+  Ok               = 0x3C3C3C3C,
+  VoteDisagreement = 0x5A5A5A5A,
+  StuckHigh        = 0xA5A5A5A5,
+  StuckLow         = 0xC3C3C3C3,
+  PinModeMismatch  = 0x55AA55AA,
+  PinModeUnknown   = 0xAA55AA55,
 }
 
+export const SAFETY_STATUS_OK = 0x5A5A5A5A;
+export const SAFETY_STATUS_FAULT = 0xA5A5A5A5;
+
 export interface SafeReadResult {
-  readonly ok: boolean;
-  readonly value: 0 | 1;
+  readonly status: number;
+  readonly value: number;
   readonly category: SafetyFaultCategory;
   readonly code: SafetyFaultCode;
 }

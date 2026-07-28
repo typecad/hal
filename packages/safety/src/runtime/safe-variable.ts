@@ -25,33 +25,29 @@ export function safeVariablePolyfill(): RuntimePolyfillIR {
     kind: "polyfill",
     id: "safety_safe_variable",
     domain: "embedded",
-    requiredIncludes: ["<type_traits>", "<string>"],
+    requiredIncludes: [],
     forwardDeclarations: [],
     helperStructs: [],
     helperFunctions: [`
+#ifndef __TC_SAFE_VARIABLE_DEFINED
+#define __TC_SAFE_VARIABLE_DEFINED
 // SafeVariable for integer types: stores value + bitwise inverse.
 // XOR check catches any single-bit SEU in either copy.
-// Specialized for non-integer types (float, string) below via SFINAE.
-template <typename T, bool IsIntegral>
-struct SafeVariableImpl {
+template <typename T>
+struct SafeVariable {
+private:
   T value;
   T inverted;
-  constexpr SafeVariableImpl() noexcept : value(0), inverted(static_cast<T>(~static_cast<T>(0))) {}
-  template <typename U, typename = typename std::enable_if<std::is_integral<U>::value>::type>
-  constexpr SafeVariableImpl(U initial) noexcept : value(static_cast<T>(initial)), inverted(static_cast<T>(~static_cast<T>(initial))) {}
-  // Converting constructor from another integral SafeVariableImpl (e.g.
-  // SafeVariableImpl<int, true> → SafeVariableImpl<long int, true>).
-  // Needed because the deduction guide deduces 'int' from literal 0,
-  // but int32_t on ESP32 is 'long int'.
-  template <typename U, typename = typename std::enable_if<std::is_integral<U>::value && !std::is_same<U, T>::value>::type>
-  constexpr SafeVariableImpl(const SafeVariableImpl<U, true>& other) noexcept
-      : value(other.value), inverted(other.inverted) {}
-  template <typename U, typename = typename std::enable_if<std::is_integral<U>::value && !std::is_same<U, T>::value>::type>
-  constexpr SafeVariableImpl& operator=(const SafeVariableImpl<U, true>& other) noexcept {
-    value = other.value;
-    inverted = other.inverted;
-    return *this;
-  }
+  template <typename U> friend struct SafeVariable;
+public:
+  constexpr SafeVariable() noexcept : value(0), inverted(static_cast<T>(~static_cast<T>(0))) {}
+  constexpr SafeVariable(T initial) noexcept : value(initial), inverted(static_cast<T>(~initial)) {}
+  // Converting constructor: SafeVariable(0) deduces SafeVariable<int>,
+  // but the variable's type may be SafeVariable<long int> (int32_t on
+  // ESP32). Allow implicit conversion between integral instantiations.
+  template <typename U>
+  constexpr SafeVariable(const SafeVariable<U>& other) noexcept
+      : value(static_cast<T>(other.value)), inverted(static_cast<T>(other.inverted)) {}
   [[nodiscard]] constexpr T get() const noexcept {
     if ((value ^ inverted) == static_cast<T>(~static_cast<T>(0))) { return value; }
     return T{};
@@ -64,55 +60,55 @@ struct SafeVariableImpl {
     inverted = static_cast<T>(~newValue);
   }
 };
-
-// SafeVariable for non-integer types (float, double, string): stores
-// two identical copies and checks equality. Less SEU-resistant than
-// the integer variant (a matching double-flip in both copies passes),
-// but still catches single-copy corruption.
-template <typename T>
-struct SafeVariableImpl<T, false> {
-  T value;
-  T backup;
-  SafeVariableImpl() : value(T{}), backup(T{}) {}
-  template <typename U, typename = typename std::enable_if<std::is_constructible<T, U>::value>::type>
-  SafeVariableImpl(const U& initial) : value(T(initial)), backup(T(initial)) {}
-  // Cross-type conversion: SafeVariableImpl<const char*, false> →
-  // SafeVariableImpl<std::string, false>. Needed because CTAD deduces
-  // const char* from string literals, but the target type is std::string.
-  template <typename U>
-  SafeVariableImpl(const SafeVariableImpl<U, false>& other)
-      : value(T(other.value)), backup(T(other.backup)) {}
-  template <typename U>
-  SafeVariableImpl& operator=(const SafeVariableImpl<U, false>& other) {
-    value = T(other.value);
-    backup = T(other.backup);
-    return *this;
-  }
-  [[nodiscard]] T get() const noexcept {
+// SafeVariable<float>: dual-copy equality check (no bitwise ops on float).
+template <>
+struct SafeVariable<float> {
+private:
+  float value;
+  float backup;
+public:
+  SafeVariable() : value(0.0f), backup(0.0f) {}
+  SafeVariable(float initial) : value(initial), backup(initial) {}
+  [[nodiscard]] float get() const noexcept {
     if (value == backup) { return value; }
-    return T{};
+    return 0.0f;
   }
   [[nodiscard]] bool valid() const noexcept {
     return value == backup;
   }
-  void set(T newValue) noexcept {
+  void set(float newValue) noexcept {
     value = newValue;
     backup = newValue;
   }
 };
-
-template <typename T>
-using SafeVariable = SafeVariableImpl<T, std::is_integral<T>::value>;
-
-// Deduction guide.
-template <typename T> SafeVariableImpl(T) -> SafeVariableImpl<T, std::is_integral<T>::value>;
-
+// SafeVariable<double>: dual-copy equality check (no bitwise ops on double).
+template <>
+struct SafeVariable<double> {
+private:
+  double value;
+  double backup;
+public:
+  SafeVariable() : value(0.0), backup(0.0) {}
+  SafeVariable(double initial) : value(initial), backup(initial) {}
+  [[nodiscard]] double get() const noexcept {
+    if (value == backup) { return value; }
+    return 0.0;
+  }
+  [[nodiscard]] bool valid() const noexcept {
+    return value == backup;
+  }
+  void set(double newValue) noexcept {
+    value = newValue;
+    backup = newValue;
+  }
+};
 // The tree-shaker keeps helperFunctions whose extracted __tc_ names appear in
 // the program's used-helpers set, OR whose extractHelperFunctionNames returns
 // empty (non-__tc_ code is always kept). Since SafeVariable<T> is a type
 // annotation (not a call expression), the tree-shaker can't detect it at IR
 // time. The template is always emitted when @typecad/safety is active — it's
 // a small definition and the safety package is opt-in.
+#endif // __TC_SAFE_VARIABLE_DEFINED
 `.trim()],
     shimMacros: [],
     dependencies: [],

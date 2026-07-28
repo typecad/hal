@@ -16,14 +16,14 @@ export function modeTablePolyfill(): RuntimePolyfillIR {
       emitResultStructs(),
       `
 namespace __tc_safety {
-constexpr uint8_t TC_SAFETY_PIN_TABLE_SIZE = 255U;
+constexpr uint32_t TC_SAFETY_PIN_TABLE_SIZE = 255U;
 
-enum class TrackedMode : uint8_t {
-  Unknown       = 0U,
-  Input         = 1U,
-  Output        = 2U,
-  InputPullup   = 3U,
-  InputPulldown = 4U,
+enum class TrackedMode : uint32_t {
+  Unknown       = 0x00000000U,
+  Input         = 0x5A5A5A5AU,
+  Output        = 0xA5A5A5A5U,
+  InputPullup   = 0x3C3C3C3CU,
+  InputPulldown = 0xC3C3C3C3U,
 };
 
 // Raw array: unavoidable for O(1) pin-indexed lookup in an embedded shim.
@@ -32,13 +32,13 @@ enum class TrackedMode : uint8_t {
 // deviation needed (verified in Part A v1).
 TrackedMode g_pin_mode_table[TC_SAFETY_PIN_TABLE_SIZE];
 
-inline void record_pin_mode(uint8_t pin, uint8_t mode) {
+inline void record_pin_mode(uint32_t pin, uint32_t mode) {
   if (pin < TC_SAFETY_PIN_TABLE_SIZE) {
-    g_pin_mode_table[pin] = static_cast<TrackedMode>(mode);
+    g_pin_mode_table[pin] = static_cast<TrackedMode>(static_cast<TrackedMode>(mode));
   }
 }
 
-inline TrackedMode get_pin_mode(uint8_t pin) {
+inline TrackedMode get_pin_mode(uint32_t pin) {
   if (pin < TC_SAFETY_PIN_TABLE_SIZE) {
     return g_pin_mode_table[pin];
   }
@@ -46,7 +46,7 @@ inline TrackedMode get_pin_mode(uint8_t pin) {
 }
 }  // namespace __tc_safety
 
-inline void __tc_safety_record_pin_mode(uint8_t pin, uint8_t mode) {
+inline void __tc_safety_record_pin_mode(uint32_t pin, uint32_t mode) {
   __tc_safety::record_pin_mode(pin, mode);
 }
 `.trim(),

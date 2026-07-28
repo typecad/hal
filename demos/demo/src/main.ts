@@ -25,8 +25,8 @@
 // ---------------------------------------------------------------------------
 
 import { delay } from '@typecad/hal';
-import { safe, SafetyFaultCategory, SafetyFaultCode } from '@typecad/safety';
-import { GPIO4, GPIO2, GPIO15 } from '@typecad/board';
+import { safe, SafetyFaultCategory, SafetyFaultCode, SAFETY_STATUS_OK } from '@typecad/safety';
+import { D4, D11, D12 } from '@typecad/board';
 
 
 // --- Pin wiring ---------------------------------------------------------
@@ -37,9 +37,9 @@ import { GPIO4, GPIO2, GPIO15 } from '@typecad/board';
 //
 // GPIO numbers on ESP32-S3 are the canonical identity; Pin.fromPort() is the
 // idiomatic HAL constructor.
-const buttonPin = GPIO4.asInputPullUp();
-const ledPin    = GPIO2.asOutput();
-const wrongModePin = GPIO15.asOutput();  // OUTPUT — wrong for reading
+const buttonPin = D4.asInputPullUp();
+const ledPin    = D11.asOutput();
+const wrongModePin = D12.asOutput();  // OUTPUT — wrong for reading
 
 // Throttle the diagnostic fault logs so they don't spam — log the mismatch
 // scenario at most once every ~5 seconds (20 * 250ms loop).
@@ -57,7 +57,7 @@ function loop(): void {
   // buttonPin is INPUT_PULLUP — safe.read verifies the mode (valid for
   // reading), performs a 2-of-3 vote, returns Ok with the debounced value.
   const button = safe.read(buttonPin);
-  if (button.ok) {
+  if (button.status === SAFETY_STATUS_OK) {
     ledPin.write(button.value);
   } else {
     handleFault("button", button.category, button.code);
@@ -67,7 +67,7 @@ function loop(): void {
   // wrongModePin is configured as OUTPUT — safe.read rejects it with a
   // Configuration/PinModeMismatch fault. Throttled to avoid log spam.
   const wrongMode = safe.read(wrongModePin);
-  if (!wrongMode.ok && (iteration - loggedMismatchAt) >= LOG_THROTTLE_ITERATIONS) {
+  if (wrongMode.status !== SAFETY_STATUS_OK && (iteration - loggedMismatchAt) >= LOG_THROTTLE_ITERATIONS) {
     handleFault("wrong-mode", wrongMode.category, wrongMode.code);
     loggedMismatchAt = iteration;
   }

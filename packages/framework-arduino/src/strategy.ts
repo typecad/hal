@@ -447,7 +447,7 @@ export class ArduinoStrategy implements PlatformStrategy {
     // emitted code would not compile. Gated on programUsesSafety(program).
     if (programUsesSafety(program)) {
       lines.push(
-        "inline int __tc_gpio_read(uint8_t pin) { return digitalRead(pin); }",
+        "inline int __tc_gpio_read(uint32_t pin) { return digitalRead(pin); }",
       );
     }
 

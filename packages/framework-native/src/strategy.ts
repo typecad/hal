@@ -93,7 +93,7 @@ export class NativeStrategy implements PlatformStrategy {
     // safe.read would need their own input source wired in here.
     if (program && programUsesSafety(program)) {
       baseLines.push(
-        'inline int __tc_gpio_read(uint8_t pin) { return 0; }',
+        'inline int __tc_gpio_read(uint32_t pin) { return 0; }',
       );
     }
     return baseLines;

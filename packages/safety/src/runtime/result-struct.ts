@@ -23,27 +23,30 @@
  *  functions in that translation unit. */
 export function emitResultStructs(): string {
   return `
-enum class SafetyFaultCategory : uint8_t {
-  Ok            = 0U,
-  Signal        = 1U,
-  Integrity     = 2U,
-  Timing        = 3U,
-  System        = 4U,
-  Configuration = 5U,
+enum class SafetyFaultCategory : uint32_t {
+  Ok            = 0x3C3C3C3CU,
+  Signal        = 0x5A5A5A5AU,
+  Integrity     = 0xA5A5A5A5U,
+  Timing        = 0xC3C3C3C3U,
+  System        = 0x55AA55AAU,
+  Configuration = 0xAA55AA55U,
 };
 
-enum class SafetyFaultCode : uint8_t {
-  Ok               = 0U,
-  VoteDisagreement = 1U,
-  StuckHigh        = 2U,
-  StuckLow         = 3U,
-  PinModeMismatch  = 16U,
-  PinModeUnknown   = 17U,
+enum class SafetyFaultCode : uint32_t {
+  Ok               = 0x3C3C3C3CU,
+  VoteDisagreement = 0x5A5A5A5AU,
+  StuckHigh        = 0xA5A5A5A5U,
+  StuckLow         = 0xC3C3C3C3U,
+  PinModeMismatch  = 0x55AA55AAU,
+  PinModeUnknown   = 0xAA55AA55U,
 };
+
+constexpr uint32_t SAFETY_STATUS_OK = 0x5A5A5A5AU;
+constexpr uint32_t SAFETY_STATUS_FAULT = 0xA5A5A5A5U;
 
 struct SafeReadResult {
-  bool ok;
-  uint8_t value;
+  uint32_t status;
+  uint32_t value;
   SafetyFaultCategory category;
   SafetyFaultCode code;
 };

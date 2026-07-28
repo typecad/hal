@@ -10,11 +10,11 @@
  *  values (no strcmp at runtime). Matches the C++ enum class TrackedMode
  *  in runtime/mode-table.ts. */
 export enum TrackedMode {
-  Unknown       = 0,
-  Input         = 1,
-  Output        = 2,
-  InputPullup   = 3,
-  InputPulldown = 4,
+  Unknown       = 0x00000000,
+  Input         = 0x5A5A5A5A,
+  Output        = 0xA5A5A5A5,
+  InputPullup   = 0x3C3C3C3C,
+  InputPulldown = 0xC3C3C3C3,
 }
 
 /** Map a gpio.set_mode mode string (uppercase Arduino macro form, as inlined
