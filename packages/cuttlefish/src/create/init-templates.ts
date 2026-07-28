@@ -265,6 +265,7 @@ declare global {
   type Owned<T = unknown> = T;
   type Shared<T = unknown> = T;
   type Mutable<T = unknown> = T;
+  type SafeVariable<T = unknown> = T;
 
   type uint8_t = number;
   type int8_t = number;
@@ -309,6 +310,7 @@ declare global {
   type Owned<T = unknown> = T;
   type Shared<T = unknown> = T;
   type Mutable<T = unknown> = T;
+  type SafeVariable<T = unknown> = T;
 
   type uint8_t = number;
   type int8_t = number;
@@ -341,6 +343,7 @@ declare module '@typecad/board' {
   export type Owned<T = unknown> = T;
   export type Shared<T = unknown> = T;
   export type Mutable<T = unknown> = T;
+  export type SafeVariable<T = unknown> = T;
 }
 
 export {};

@@ -97,6 +97,14 @@ const OWNERSHIP_WRAPPER_TYPE_NAMES = new Set<string>([
   "Owned", "Shared", "Mutable",
 ]);
 
+/** Safety wrapper types: like ownership wrappers (phantom TS types that carry
+ *  a type parameter), but instead of stripping the wrapper, the C++ keeps it
+ *  as a template instantiation: SafeVariable<number> → SafeVariable<int32_t>.
+ *  The C++ template definition is provided by the safety polyfill. */
+const SAFE_WRAPPER_TYPE_NAMES = new Set<string>([
+  "SafeVariable",
+]);
+
 export function resolveAliasedTypeNode(
   node: ts.TypeNode | undefined,
   typeAliases?: Map<string, ts.TypeNode>,
@@ -218,6 +226,16 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     if (OWNERSHIP_WRAPPER_TYPE_NAMES.has(wrapperName)) {
       const innerTypeNode = node.typeArguments?.[0];
       return typeNodeToCppType(innerTypeNode, typeAliases, typeParametersInScope);
+    }
+    // SafeVariable<T> is a safety wrapper: unlike ownership wrappers (which
+    // strip the wrapper name entirely), SafeVariable keeps the wrapper name
+    // in the C++ type because the polyfill provides a template definition.
+    // SafeVariable<number> → SafeVariable<int> (the template is emitted by
+    // the safety polyfill's helperStructs).
+    if (SAFE_WRAPPER_TYPE_NAMES.has(wrapperName)) {
+      const innerTypeNode = node.typeArguments?.[0];
+      const innerCppType = typeNodeToCppType(innerTypeNode, typeAliases, typeParametersInScope);
+      return `${wrapperName}<${innerCppType}>` as CppTypeHint;
     }
   }
 
