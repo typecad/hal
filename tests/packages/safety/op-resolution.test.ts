@@ -1,26 +1,32 @@
 import { describe, it, expect } from "vitest";
 import { registerSafetyEngine } from "../../../packages/safety/src/engine-index";
+import { TrackedMode } from "../../../packages/safety/src/hal/ops";
 
-describe("resolveSafetyOp", () => {
+describe("resolveSafetyOp (v2)", () => {
   const hook = registerSafetyEngine();
 
-  it("resolves safety.record_pin_mode to record_pin_mode + semicolon", () => {
-    const result = hook.resolveSafetyOp({ operation: "safety.record_pin_mode", pin: 5, mode: 0 });
-    expect(result?.code).toBe("__tc_safety_record_pin_mode(5, 0);");
-  });
-
-  it("resolves safety.pin_mode to pinMode + record_pin_mode", () => {
-    const result = hook.resolveSafetyOp({ operation: "safety.pin_mode", pin: 7, mode: 1 });
-    expect(result?.code).toBe("pinMode(7, OUTPUT); __tc_safety_record_pin_mode(7, 1);");
+  it("resolves safety.record_pin_mode with numeric TrackedMode value", () => {
+    const result = hook.resolveSafetyOp({
+      operation: "safety.record_pin_mode",
+      pin: 5,
+      mode: TrackedMode.Input,
+    } as any);
+    expect(result?.code).toBe("__tc_safety_record_pin_mode(5, 1);");
   });
 
   it("resolves safety.read_safe to a read_safe expression", () => {
-    const result = hook.resolveSafetyOp({ operation: "safety.read_safe", pin: 9 });
+    const result = hook.resolveSafetyOp({ operation: "safety.read_safe", pin: 9 } as any);
     expect(result?.expression).toBe("__tc_safety_read_safe(9)");
   });
 
   it("returns undefined for unknown ops", () => {
-    const result = hook.resolveSafetyOp({ operation: "safety.unknown" });
+    const result = hook.resolveSafetyOp({ operation: "safety.unknown" } as any);
+    expect(result).toBeUndefined();
+  });
+
+  it("returns undefined for safety.pin_mode (removed in v2)", () => {
+    // safety.pin_mode no longer exists — verify it falls through.
+    const result = hook.resolveSafetyOp({ operation: "safety.pin_mode", pin: 5, mode: 0 } as any);
     expect(result).toBeUndefined();
   });
 });

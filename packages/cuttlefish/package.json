@@ -33,6 +33,10 @@
       "types": "./dist/safety-hook.d.ts",
       "default": "./dist/safety-hook.js"
     },
+    "./build-ir-state": {
+      "types": "./dist/ir/build-ir-state.d.ts",
+      "default": "./dist/ir/build-ir-state.js"
+    },
     "./config-loader": {
       "types": "./dist/config-loader.d.ts",
       "default": "./dist/config-loader.js"
