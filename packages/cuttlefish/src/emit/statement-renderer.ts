@@ -1045,13 +1045,6 @@ export class StatementRenderer {
     if (this.stringEnumNames.has(typeName)) {
       return this.strategy.normalizeCppType("const char*");
     }
-    // A3-9-1: when the type is "auto" AND autosar is active, resolve via
-    // defaultNumericType with compliance context so fixed-width integers are
-    // used. When autosar is off, fall through to the strategy's normalizeCppType
-    // (Arduino returns "auto" for "auto"; GenericStrategy returns "int").
-    if (typeName === "auto" && this._compliance?.isBanned("A3-9-1")) {
-      return this.strategy.defaultNumericType(this._compliance);
-    }
     // A3-9-1: under autosar, substitute the platform's default numeric type
     // for the legacy "int" spelling. The IR layer hardcodes "int" for number
     // literals, so we catch it here at the renderer boundary.
