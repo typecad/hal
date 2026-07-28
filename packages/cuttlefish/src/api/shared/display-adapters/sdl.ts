@@ -237,7 +237,7 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
       `    if (*s == '\\n') { cx = 0; cy += 8 * textSize; s++; continue; }`,
       `    if (*s == '\\r') { s++; continue; }`,
       `    if (wrap && cx + 6 * textSize > w_) { cx = 0; cy += 8 * textSize; }`,
-      `    drawChar(cx, cy, static_cast<unsigned char>()*s, fg, bg, textSize);`,
+      `    drawChar(cx, cy, static_cast<unsigned char>(*s), fg, bg, textSize);`,
       `    cx += 6 * textSize;`,
       `    s++;`,
       `  }`,

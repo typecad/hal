@@ -607,7 +607,7 @@ export default defineFrameworkManifest({
   ambientTypes: ['Timing', 'WDT', 'Preferences', 'EEPROM'],
 
   conformance: {
-    hardwareTestGroups: ['01-hardware', '02-math-bits', '03-advanced'],
+    hardwareTestGroups: ['01-basics', '02-language-basics', '07-classes-enums', '08-strings-expressions', '09-arrays-functions', '10-math-bits', '11-type-system', '12-hal', '13-language-advanced', '14-string-methods', '42-timers'],
     halResolutionTests: [
       'adc', 'ble', 'capacitive', 'dac', 'fs', 'gpio', 'hwtimer', 'http', 'i2c', 'interrupts',
       'mdns', 'mqtt', 'ota', 'power', 'preferences', 'pulse-shift', 'pwm', 'random', 'rmt',

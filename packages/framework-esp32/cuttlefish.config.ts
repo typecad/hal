@@ -1,7 +1,7 @@
 import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
 const config: CuttlefishConfig = {
-  entry: './tests/01-hardware.test.ts',
+  entry: './tests/01-basics.test.ts',
 
   // Target architecture family; the specific chip variant is selected via
   // frameworkData.buildTarget below.
@@ -31,7 +31,7 @@ const config: CuttlefishConfig = {
   },
 
   test: {
-    port: 'COM6',
+    port: 'COM5',
     baudRate: 115200,
     timeout: 30000,
     include: [

@@ -84,6 +84,21 @@ export class Esp32Strategy extends ArduinoStrategy {
     return 'h';
   }
 
+  /** Extends strPtrShimLines to emit __TC_STR_PTR_H guard so that
+   *  __tc_printf_val(const __tc_str_ptr&) wrappers injected into non-entry
+   *  headers are skipped when this block is filtered out by setup.ts.
+   *  The #define is inserted INSIDE the struct so it is removed together
+   *  with the struct when setup.ts strips the block. */
+  protected override strPtrShimLines(): string[] {
+    const base = super.strPtrShimLines();
+    // The struct definition ends with "};". Insert #define right before it.
+    const structEnd = base.findIndex(l => l.trim() === '};');
+    if (structEnd !== -1) {
+      base.splice(structEnd, 0, '  #define __TC_STR_PTR_H');
+    }
+    return base;
+  }
+
   // ESP-IDF uses FreeRTOS — delay() yields; suppress blocking-delay-in-loop.
   isRtosTarget(): boolean {
     return true;
@@ -299,6 +314,46 @@ export class Esp32Strategy extends ArduinoStrategy {
     }
 
     return [
+      // TypeCAD Core Shims — must match parent's nullish/undefined helpers.
+      "#ifndef CUTTLEFISH_UNDEFINED",
+      "#define CUTTLEFISH_UNDEFINED 0",
+      "#endif",
+      "",
+      "// Nullish helpers — overload set so value/struct types (which always",
+      "// exist) return false from the generic template, while scalars compare",
+      "// against CUTTLEFISH_UNDEFINED. The generic catch-all must NOT cast",
+      "// (T)CUTTLEFISH_UNDEFINED — that fails to compile for non-scalar T.",
+      "template<typename T> inline bool cuttlefish_is_nullish(const T&) { return false; }",
+      "inline bool cuttlefish_is_nullish(int v) { return v == CUTTLEFISH_UNDEFINED; }",
+      "inline bool cuttlefish_is_nullish(long v) { return v == CUTTLEFISH_UNDEFINED; }",
+      "inline bool cuttlefish_is_nullish(double v) { return v == static_cast<double>(CUTTLEFISH_UNDEFINED); }",
+      "inline bool cuttlefish_is_nullish(bool v) { return v == false; }",
+      "template<typename T> inline bool cuttlefish_is_nullish(T* v) { return v == nullptr; }",
+      "template<typename T> inline bool cuttlefish_exists(const T& v) { return !cuttlefish_is_nullish(v); }",
+      "template<typename T, typename U> inline T cuttlefish_nullish(const T& a, const U& b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }",
+      "",
+      // Num fluent math helper — identical to parent's __tc_Num struct.
+      "struct __tc_Num {",
+      "    struct MapChain {",
+      "        long v; long fl, fh;",
+      "        MapChain(long _v) : v(_v), fl(0), fh(1023) {}",
+      "        MapChain& from(long l, long h) { fl = l; fh = h; return *this; }",
+      "        long to(long l, long h) { return (v - fl) * (h - l) / (fh - fl) + l; }",
+      "        long toPercent() { return (v - fl) * 100 / (fh - fl); }",
+      "        long toByte() { return (v - fl) * 255 / (fh - fl); }",
+      "    };",
+      "    struct ConstrainChain {",
+      "        long v;",
+      "        ConstrainChain(long _v) : v(_v) {}",
+      "        long between(long l, long h) { return v < l ? l : (v > h ? h : v); }",
+      "    };",
+      "    static long (_abs)(long x) { return x < 0 ? -x : x; }",
+      "    static long (_min)(long a, long b) { return a < b ? a : b; }",
+      "    static long (_max)(long a, long b) { return a > b ? a : b; }",
+      "    static MapChain (_map)(long v) { return MapChain(v); }",
+      "    static ConstrainChain (_constrain)(long v) { return ConstrainChain(v); }",
+      "} Num;",
+      "",
       // __tc_str_ptr string helpers — Esp32Strategy inherits the parent's
       // `std::string` → `__tc_str_ptr` type normalization, so it must also
       // emit the struct definition. setup.ts strips the block when the
@@ -342,6 +397,8 @@ export class Esp32Strategy extends ArduinoStrategy {
       // byte) = continue; 's'/'S' = skip this breakpoint for the rest of the
       // run (records the id as disabled). Emitted unconditionally (static
       // inline, dead-stripped if --debug is not used).
+      '#ifndef __TC_BP_DISABLED_DEFINED',
+      '#define __TC_BP_DISABLED_DEFINED',
       'static bool __tc_bp_disabled[256] = {0};',
       'static inline bool __tc_bp_is_disabled(int id) { return id >= 0 && id < 256 && __tc_bp_disabled[id]; }',
       'static inline char __tc_debug_wait_for_continue(int id) {',
@@ -357,6 +414,21 @@ export class Esp32Strategy extends ArduinoStrategy {
       '    if (c == \'s\' || c == \'S\') { if (id >= 0 && id < 256) __tc_bp_disabled[id] = true; }',
       '    return static_cast<char>(c);',
       '}',
+      '#endif // __TC_BP_DISABLED_DEFINED',
+      '',
+      // Type-safe printf dispatcher — handles double/int/long/const char*/__tc_str_ptr
+      // so that generated printf calls don't need to guess the format specifier.
+      'static inline void __tc_printf_val(double v, bool nl) { printf("%.12g%s", v, nl ? "\\n" : ""); }',
+      'static inline void __tc_printf_val(int v, bool nl)    { printf("%d%s", v, nl ? "\\n" : ""); }',
+      'static inline void __tc_printf_val(long v, bool nl)   { printf("%ld%s", v, nl ? "\\n" : ""); }',
+      'static inline void __tc_printf_val(unsigned long v, bool nl) { printf("%lu%s", v, nl ? "\\n" : ""); }',
+      'static inline void __tc_printf_val(bool v, bool nl)   { printf("%s%s", v ? "true" : "false", nl ? "\\n" : ""); }',
+      'static inline void __tc_printf_val(const char* v, bool nl) { printf("%s%s", v, nl ? "\\n" : ""); }',
+      '// Only emitted when __tc_str_ptr is available (guarded by __TC_STR_PTR_H).',
+      '// When injected into non-entry headers that lack the struct, this is skipped.',
+      '#ifdef __TC_STR_PTR_H',
+      'static inline void __tc_printf_val(const __tc_str_ptr& v, bool nl) { printf("%s%s", v.c_str(), nl ? "\\n" : ""); }',
+      '#endif',
       '',
       ...espInit,
       ...timerCoop,
@@ -470,6 +542,7 @@ export class Esp32Strategy extends ArduinoStrategy {
     const tag = '"tc"';
     const usesLogMacro = method === 'error' || method === 'warn';
     const levelTag = method === 'error' ? '[ERROR] ' : method === 'warn' ? '[WARN] ' : '';
+    const escPct = (s: string) => s.replace(/%/g, '%%');
 
     if (isChain) {
       const parts = splitStreamChain(renderedArgs);
@@ -480,9 +553,9 @@ export class Esp32Strategy extends ArduinoStrategy {
           const prefix = i === 0 ? levelTag : '';
           if (/^".*"$/.test(trimmed)) {
             const inner = trimmed.slice(1, -1);
-            return `${macroFn}, "${prefix}${inner}")${semi}`;
+            return `${macroFn}, "${escPct(prefix)}${escPct(inner)}")${semi}`;
           }
-          return `${macroFn}, "${prefix}%s", ${trimmed})${semi}`;
+          return `${macroFn}, "${escPct(prefix)}%s", ${trimmed})${semi}`;
         }
         return `printf(${trimmed})${semi}`;
       });
@@ -494,16 +567,16 @@ export class Esp32Strategy extends ArduinoStrategy {
       const trimmed = renderedArgs.trim();
       if (/^".*"$/.test(trimmed)) {
         const inner = trimmed.slice(1, -1);
-        return `${macroFn}, "${levelTag}${inner}")${semi}`;
+        return `${macroFn}, "${escPct(levelTag)}${escPct(inner)}")${semi}`;
       }
-      return `${macroFn}, "${levelTag}%s", ${renderedArgs})${semi}`;
+      return `${macroFn}, "${escPct(levelTag)}%s", ${renderedArgs})${semi}`;
     }
 
     const appendNewline = method !== 'debug';
     const trimmed = renderedArgs.trim();
     if (/^".*"$/.test(trimmed)) {
       const inner = trimmed.slice(1, -1);
-      return `printf("${inner}${appendNewline ? '\\n' : ''}")${semi}`;
+      return `printf("${escPct(inner)}${appendNewline ? '\\n' : ''}")${semi}`;
     }
     // Known string arguments need %s, not %g: const char*-returning runtime
     // shims (wifi/http) and template-literal snprintf buffers (__cuttlefish_str_N).
@@ -519,10 +592,9 @@ export class Esp32Strategy extends ArduinoStrategy {
     if (/^__tc_http_content_length\s*\(/.test(trimmed)) {
       return `printf("%ld${appendNewline ? '\\n' : ''}", ${renderedArgs})${semi}`;
     }
-    return `printf("%g${appendNewline ? '\\n' : ''}", ${renderedArgs})${semi}`;
+    return `__tc_printf_val(${renderedArgs}, ${appendNewline ? 'true' : 'false'})${semi}`;
   }
 
-  // ── Debug code generation ─────────────────────────────────────────────────
   // Override Arduino's Serial.println-based debug codegen with native ESP-IDF
   // output (printf + getchar halt). Without these overrides Esp32Strategy
   // would inherit Serial.* calls that cannot compile on ESP-IDF (no <HardwareSerial.h>).

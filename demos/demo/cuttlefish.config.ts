@@ -19,7 +19,7 @@ const config: CuttlefishConfig = {
   // the generated launch.json/tasks.json for F5 debugging. Change to your
   // board's USB-Serial-JTAG port (e.g. '/dev/ttyACM0' on Linux), or override
   // at the CLI with --port.
-  console: { baudRate: 115200, port: 'COM10' },
+  console: { baudRate: 115200, port: 'COM5' },
 };
 
 export default config;

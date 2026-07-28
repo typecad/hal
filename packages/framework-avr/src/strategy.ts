@@ -465,6 +465,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // direct strategy callers that don't supply a PlatformContext.
     const analysis = (ctx as any)?.analysis;
     const usesUART = analysis ? !!(analysis.usesUart || analysis.hasConsoleCalls) : true;
+    const usesStrPtr = analysis ? !!(analysis.usesStrPtr) : true;
     const pwmPinsUsed = usage?.pwmPinsUsed ?? new Set<number>();
 
     // F_CPU is referenced by the chip descriptor's baked register bits and by
@@ -476,7 +477,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     //                        interrupt ISRs (usesExternalInterrupts).
     // Defensive default: emit when no analysis is available.
     const noAnalysis = !analysis;
-    const needsDelay = noAnalysis || analysis.usesNativeTiming || analysis.usesI2C;
+    const needsDelay = noAnalysis || analysis.usesNativeTiming || analysis.usesI2C || usesUART;
     const needsInterrupt = noAnalysis || analysis.usesNativeTiming || analysis.usesTone || usesExternalInterrupts;
     const headerLines: string[] = [
       '#ifndef F_CPU',
@@ -487,6 +488,12 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     if (needsInterrupt) headerLines.push('#include <avr/interrupt.h>');
     headerLines.push('');
     lines.push(...headerLines);
+
+    // Forward-declare __tc_str_ptr so Arduino preprocessor prototypes compile.
+    if (usesStrPtr) lines.push('struct __tc_str_ptr;', '');
+
+    // ── String helpers — must be early so Arduino preprocessor prototypes work ──
+    if (usesStrPtr) lines.push(...this.strPtrShimLines());
 
     // UART initialization and helper functions
     if (usesUART) {
@@ -612,7 +619,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // Gated on actual consumers: the __tc_Timing struct (usesNativeTiming)
     // and _twi_recover (usesI2C) are the only internal callers, plus the
     // timing.delay HAL-op lowering. Emit defensively when no analysis.
-    if (analysis ? (analysis.usesNativeTiming || analysis.usesI2C) : true) {
+    if (analysis ? (analysis.usesNativeTiming || analysis.usesI2C || usesUART) : true) {
       lines.push(
         'static inline void _native_delay_ms(unsigned long ms) { while (ms--) _delay_ms(1); }',
         'static inline void _native_delay_us(unsigned int us) {',
@@ -711,11 +718,13 @@ export class NativeAVRStrategy extends ArduinoStrategy {
         'inline void _uart_print_expr(float f) { _uart_print_float(f); }',
         'inline void _uart_print_expr(double f) { _uart_print_float(f); }',
         'inline void _uart_print_expr(bool b) { _uart_print(b ? "true" : "false"); }',
+        ...(usesStrPtr ? ['inline auto _uart_print_expr(const __tc_str_ptr& s) -> decltype(_uart_print(s.c_str()), void()) { _uart_print(s.c_str()); }'] : []),
         '',
         'template<typename T> inline void _uart_println_expr(T val) {',
         '  _uart_print_long(static_cast<long>(val)); _uart_write(\'\\r\'); _uart_write(\'\\n\');',
         '}',
         'inline void _uart_println_expr(const char* s) { _uart_println(s); }',
+        ...(usesStrPtr ? ['inline auto _uart_println_expr(const __tc_str_ptr& s) -> decltype(_uart_println(s.c_str()), void()) { _uart_println(s.c_str()); }'] : []),
         'inline void _uart_println_expr(float f) { _uart_print_float(f); _uart_write(\'\\r\'); _uart_write(\'\\n\'); }',
         '',
         'static inline int _uart_peek() {',
@@ -852,8 +861,9 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // Provides the same EEPROM.read()/write()/update() interface the parent's
     // AVR Preferences shim and the HAL eeprom.ts proxy emit, but backed by
     // avr-libc eeprom_read_byte/eeprom_write_byte/eeprom_update_byte.
-    // Gated on programAnalysis.usesEEPROM (set when EEPROM.*/eeprom_* appear).
-    if (analysis ? analysis.usesEEPROM : true) {
+    // Gated on programAnalysis.usesEEPROM or usesPreferences (the parent's Preferences
+    // shim uses EEPROM.read/update internally).
+    if (analysis ? (analysis.usesEEPROM || analysis.usesPreferences) : true) {
       lines.push(
         '// CUTTLEFISH_EEPROM_BEGIN',
         '#include <avr/eeprom.h>',
@@ -972,6 +982,9 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       // _native_delay_us, and the native millis()/micros() polyfill.
       parentLines = this.filterShimBlock(parentLines, 'struct __tc_Timing {', '} Timing;');
 
+      // Filter out strPtr block — already emitted before UART extensions.
+      parentLines = this.filterShimBlock(parentLines, '// String helpers', 'inline size_t (strlen)(const __tc_str_ptr& s)');
+
       // Strip Arduino core includes — the bare-metal main() prevents the
       // Arduino core from being linked, so these headers are dead weight.
       // The native drivers provide every peripheral.
@@ -1004,7 +1017,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
           '    unsigned long freeHeap() {',
           '        extern int __heap_start, *__brkval;',
           '        int v;',
-          '        return static_cast<unsigned long>(static_cast<size_t>(&v) - (__brkval == 0 ? static_cast<size_t>(&__heap_start) : static_cast<size_t>(__brkval)));',
+          '        return static_cast<unsigned long>(reinterpret_cast<size_t>(&v) - (__brkval == 0 ? reinterpret_cast<size_t>(&__heap_start) : reinterpret_cast<size_t>(__brkval)));',
           '    }',
           '} Timing;',
           ''
@@ -1027,6 +1040,9 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     const mainDelay = usesUART ? '  _native_delay_ms(2000);  // let host open port after DTR reset' : null;
     const mainLines = [
       '// Bare-metal entry point — prevents the Arduino core from being linked.',
+      '// Guarded to avoid redefinition when shimLines are injected into headers.',
+      '#ifndef __TC_MAIN_DEFINED',
+      '#define __TC_MAIN_DEFINED',
       'int main(void) {',
       ...(mainDelay ? [mainDelay] : []),
       '  setup();',
@@ -1035,6 +1051,7 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       '  }',
       '  return 0;',
       '}',
+      '#endif // __TC_MAIN_DEFINED',
       '',
     ];
     lines.push(...mainLines);

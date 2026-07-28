@@ -33,7 +33,7 @@ const config: CuttlefishConfig = {
   },
 
   test: {
-    port: 'COM9',
+    port: 'COM8',
     baudRate: 115200,
     timeout: 30000,
     include: [

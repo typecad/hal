@@ -373,7 +373,7 @@ export class ArduinoStrategy implements PlatformStrategy {
       "    unsigned long freeHeap() {",
       "        extern int __heap_start, *__brkval;",
       "        int v;",
-      "        return static_cast<unsigned long>(&v) - (__brkval == 0 ? static_cast<unsigned long>(&__heap_start) : static_cast<unsigned long>(__brkval));",
+      "        return static_cast<unsigned long>(reinterpret_cast<size_t>(&v) - (__brkval == 0 ? reinterpret_cast<size_t>(&__heap_start) : reinterpret_cast<size_t>(__brkval)));",
       "    }",
       );
     } else {
@@ -424,6 +424,8 @@ export class ArduinoStrategy implements PlatformStrategy {
     // preprocessor. Emitted unconditionally (dead-stripped if --debug unused).
     lines.push(
       "// TypeCAD Debug — breakpoint disable registry + continue/skip helper",
+      "#ifndef __TC_BP_DISABLED_DEFINED",
+      "#define __TC_BP_DISABLED_DEFINED",
       "static bool __tc_bp_disabled[256] = {0};",
       "static inline bool __tc_bp_is_disabled(int id) { return id >= 0 && id < 256 && __tc_bp_disabled[id]; }",
       "// Blocks until a serial byte arrives. ENTER (or any non-s byte) continues;",
@@ -435,6 +437,7 @@ export class ArduinoStrategy implements PlatformStrategy {
       "    if (c == 's' || c == 'S') { if (id >= 0 && id < 256) __tc_bp_disabled[id] = true; }",
       "    return c;",
       "}",
+      "#endif // __TC_BP_DISABLED_DEFINED",
       "",
     );
 
@@ -578,7 +581,7 @@ const char* __tc_slice2(const char* s, int start, int end) { return __tc_substri
 const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
 const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = static_cast<int>(pos - s); int oldLen = static_cast<int>(strlen(old)); int replLen = static_cast<int>(strlen(repl)); if (beforeLen + replLen + static_cast<int>(strlen(pos + oldLen)) >= CUTTLEFISH_STR_BUF_SIZE) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
 const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
-int __tc_charCodeAt(const char* s, int idx) { return static_cast<int>static_cast<unsigned char>(s[idx]); }
+int __tc_charCodeAt(const char* s, int idx) { return static_cast<int>(static_cast<unsigned char>(s[idx])); }
 int __tc_indexOf(const char* s, const char* needle) { const char* p = strstr(s, needle); return p ? static_cast<int>(p - s) : -1; }
 `],
       shimMacros: [],

@@ -21,7 +21,9 @@ export const RULES: readonly RuleEntry[] = [
   { id: "A16-0-5", title: "Header file path unambiguous", severity: "required", category: "C", enabled: true },
   { id: "A16-0-8", title: "#include not used for textual inclusion of code", severity: "required", category: "D", enabled: true },
   { id: "A16-7-1", title: "Header guards via #pragma once", severity: "required", category: "C",
-    detect: /#ifndef\s+\w+_H\s*$|#define\s+\w+_H\s*$/m, enabled: true },
+    detect: /#ifndef\s+\w+_H\s*$/,
+    exempt: /#pragma once/,
+    enabled: true },
 
   // ── B. Type safety & conversions ──────────────────────────────────────
   { id: "M5-0-3", title: "Implicit narrowing conversion forbidden", severity: "required", category: "C", enabled: true },

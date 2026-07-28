@@ -47,7 +47,7 @@ export function httpInitLines(): string[] {
     `    case HTTP_EVENT_ON_DATA:`,
     `        if (__tc_http.resp && evt->data_len > 0) {`,
     `            size_t room = __tc_http.max_body - __tc_http.resp_len;`,
-    `            size_t n = static_cast<size_t>(evt)->data_len < room ? static_cast<size_t>(evt)->data_len : room;`,
+    `            size_t n = static_cast<size_t>(evt->data_len) < room ? static_cast<size_t>(evt->data_len) : room;`,
     `            memcpy(__tc_http.resp + __tc_http.resp_len, evt->data, n);`,
     `            __tc_http.resp_len += n;`,
     `        }`,

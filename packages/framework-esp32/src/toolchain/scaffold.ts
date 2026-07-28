@@ -129,6 +129,7 @@ export function scaffoldEspIdfProject(
       '    -Wno-error=multichar',
       '    -Wno-error=overflow',
       '    -Wno-error=missing-field-initializers',
+      '    -Wno-error=volatile',
       ')',
       '',
     ].join('\n'),
