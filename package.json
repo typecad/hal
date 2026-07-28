@@ -26,6 +26,7 @@
     "packages/board-rp2350",
     "packages/expect",
     "packages/ui",
+    "packages/safety",
     "packages/simulator",
     "packages/vscode-typecad-debug"
   ],
