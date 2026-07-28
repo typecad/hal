@@ -29,33 +29,53 @@ export function safeVariablePolyfill(): RuntimePolyfillIR {
     forwardDeclarations: [],
     helperStructs: [],
     helperFunctions: [`
-template <typename T>
-struct SafeVariable {
-private:
+// SafeVariable for integer types: stores value + bitwise inverse.
+// XOR check catches any single-bit SEU in either copy.
+// Specialized for non-integer types (float, string) below via SFINAE.
+template <typename T, bool IsIntegral>
+struct SafeVariableImpl {
   T value;
   T inverted;
-
-public:
-  constexpr SafeVariable() noexcept : value(T{}), inverted(static_cast<T>(~T{})) {}
-  constexpr SafeVariable(T initial) noexcept
-      : value(initial), inverted(static_cast<T>(~initial)) {}
-
+  constexpr SafeVariableImpl() noexcept : value(0), inverted(static_cast<T>(~static_cast<T>(0))) {}
+  constexpr SafeVariableImpl(T initial) noexcept : value(initial), inverted(static_cast<T>(~initial)) {}
   [[nodiscard]] constexpr T get() const noexcept {
-    if ((value ^ inverted) == static_cast<T>(~static_cast<T>(0))) {
-      return value;
-    }
+    if ((value ^ inverted) == static_cast<T>(~static_cast<T>(0))) { return value; }
     return T{};
   }
-
   [[nodiscard]] constexpr bool valid() const noexcept {
     return (value ^ inverted) == static_cast<T>(~static_cast<T>(0));
   }
-
   constexpr void set(T newValue) noexcept {
     value = newValue;
     inverted = static_cast<T>(~newValue);
   }
 };
+
+// SafeVariable for non-integer types (float, double, string): stores
+// two identical copies and checks equality. Less SEU-resistant than
+// the integer variant (a matching double-flip in both copies passes),
+// but still catches single-copy corruption.
+template <typename T>
+struct SafeVariableImpl<T, false> {
+  T value;
+  T backup;
+  SafeVariableImpl() : value(T{}), backup(T{}) {}
+  SafeVariableImpl(T initial) : value(initial), backup(initial) {}
+  [[nodiscard]] T get() const noexcept {
+    if (value == backup) { return value; }
+    return T{};
+  }
+  [[nodiscard]] bool valid() const noexcept {
+    return value == backup;
+  }
+  void set(T newValue) noexcept {
+    value = newValue;
+    backup = newValue;
+  }
+};
+
+template <typename T>
+using SafeVariable = SafeVariableImpl<T, std::is_integral<T>::value>;
 
 // The tree-shaker keeps helperFunctions whose extracted __tc_ names appear in
 // the program's used-helpers set, OR whose extractHelperFunctionNames returns

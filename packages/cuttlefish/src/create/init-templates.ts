@@ -268,7 +268,7 @@ declare global {
   // SafeVariable: SEU-resistant storage. The transpiler lowers SafeVariable<number>
   // to a C++ template with inverted-redundancy storage. Declared as an interface
   // (not a type alias) so the TS type checker recognizes method calls.
-  interface SafeVariable<T = number> { set(value: T): void; get(): T; valid(): boolean; }
+  interface SafeVariable<T = number | string> { set(value: T): void; get(): T; valid(): boolean; }
 
   type uint8_t = number;
   type int8_t = number;
@@ -316,7 +316,7 @@ declare global {
   // SafeVariable: SEU-resistant storage. The transpiler lowers SafeVariable<number>
   // to a C++ template with inverted-redundancy storage. Declared as an interface
   // (not a type alias) so the TS type checker recognizes method calls.
-  interface SafeVariable<T = number> { set(value: T): void; get(): T; valid(): boolean; }
+  interface SafeVariable<T = number | string> { set(value: T): void; get(): T; valid(): boolean; }
 
   type uint8_t = number;
   type int8_t = number;
