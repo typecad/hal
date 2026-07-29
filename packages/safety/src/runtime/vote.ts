@@ -15,12 +15,19 @@ export function voterPolyfill(): RuntimePolyfillIR {
     forwardDeclarations: [],
     helperStructs: [],
     helperFunctions: [`
-// Forward declaration — the strategy's shimLines() defines this AFTER the
+// Forward declarations — the strategy's shimLines() defines these AFTER the
 // polyfill block (polyfills emit before shims in emitPreamble). Without the
-// forward decl, the voter's __tc_gpio_read calls below would be unresolved.
+// forward decls, the voter's __tc_gpio_read / __tc_delay_us calls below would
+// be unresolved.
 int __tc_gpio_read(uint32_t pin);
+void __tc_delay_us(uint32_t us);
 
 namespace __tc_safety {
+
+// Settle delay between temporally-separated reads. ~2 us is enough to defeat
+// single-event transient (SET) glitches on a typical GPIO line while staying
+// well under a debounce timescale. Tunable in one place.
+constexpr uint32_t TC_SAFETY_SETTLE_US = 2U;
 
 // Perform 3 temporally-separated reads via the strategy-injected shim, take
 // the majority. On disagreement, VoteDisagreement. On pin-mode mismatch,
@@ -33,7 +40,10 @@ inline SafeReadResult read_safe(uint32_t pin) {
   result.code     = SafetyFaultCode::Ok;
   result.status   = SafetyStatus::Ok;
 
-  // 1. Confirm pin mode (Input or InputPullup are valid for reading).
+  // 1. Confirm pin mode (Input, InputPullup, or InputPulldown are valid for
+  // reading). Output is rejected (PinModeMismatch). InputPulldown is
+  // accepted because it is a legitimate input mode on ESP32 (and AVR via
+  // external pulldown); rejecting it caused false faults.
   const TrackedMode mode = get_pin_mode(pin);
   if (mode == TrackedMode::Unknown) {
     result.category = SafetyFaultCategory::Configuration;
@@ -41,7 +51,7 @@ inline SafeReadResult read_safe(uint32_t pin) {
     result.status   = SafetyStatus::Fault;
     return result;
   }
-  if ((mode != TrackedMode::Input) && (mode != TrackedMode::InputPullup)) {
+  if ((mode != TrackedMode::Input) && (mode != TrackedMode::InputPullup) && (mode != TrackedMode::InputPulldown)) {
     result.category = SafetyFaultCategory::Configuration;
     result.code     = SafetyFaultCode::PinModeMismatch;
     result.status   = SafetyStatus::Fault;
@@ -49,12 +59,14 @@ inline SafeReadResult read_safe(uint32_t pin) {
   }
 
   // 2. 2-of-3 vote via the strategy-injected __tc_gpio_read shim.
-  // The asm volatile("") prevents the compiler from optimizing away
-  // the settle delay between reads (which would defeat temporal separation).
+  // __tc_delay_us provides temporal separation between reads so a single
+  // input glitch is unlikely to corrupt two samples; the strategy injects a
+  // real microsecond delay (Arduino/ESP32: delayMicroseconds; AVR:
+  // _native_delay_us; native: stub).
   const uint32_t r0 = __tc_gpio_read(pin);
-  for (uint32_t i = 0U; i < 50U; ++i) { asm volatile(""); }
+  __tc_delay_us(TC_SAFETY_SETTLE_US);
   const uint32_t r1 = __tc_gpio_read(pin);
-  for (uint32_t i = 0U; i < 50U; ++i) { asm volatile(""); }
+  __tc_delay_us(TC_SAFETY_SETTLE_US);
   const uint32_t r2 = __tc_gpio_read(pin);
 
   if ((r0 == r1) && (r1 == r2)) {

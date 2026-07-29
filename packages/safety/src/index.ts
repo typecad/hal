@@ -10,6 +10,7 @@
 // The safety package owns only the verified read.
 
 export { SafeVariable } from "./safe-variable-types.js";
+export { SafeInt } from "./safe-int-types.js";
 
 import type { Pin, InputPin, OutputPin } from "@typecad/hal";
 
@@ -47,16 +48,36 @@ export enum SafetyFaultCode {
   StuckLow         = 0xC3C3C3C3,
   PinModeMismatch  = 0x55AA55AA,
   PinModeUnknown   = 0xAA55AA55,
+  WriteMismatch    = 0x3C5AA5C3,
 }
 
-export const SAFETY_STATUS_OK = 0x5A5A5A5A;
-export const SAFETY_STATUS_FAULT = 0xA5A5A5A5;
+export enum SafetyStatus {
+  Ok    = 0x5A5A5A5A,
+  Fault = 0xA5A5A5A5,
+}
 
 export interface SafeReadResult {
-  readonly status: number;
+  readonly status: SafetyStatus;
   readonly value: number;
   readonly category: SafetyFaultCategory;
   readonly code: SafetyFaultCode;
+  /** Run handler iff status === Ok. Handler receives the full result. Returns the result (chainable). */
+  ok(handler: (r: SafeReadResult) => void): SafeReadResult;
+  /** Run handler iff status !== Ok. Handler receives the full result. Returns the result (chainable). */
+  fail(handler: (r: SafeReadResult) => void): SafeReadResult;
+  /** Alias of fail(). */
+  fault(handler: (r: SafeReadResult) => void): SafeReadResult;
+  /** Run handler unconditionally. Returns the result (chainable). */
+  always(handler: (r: SafeReadResult) => void): SafeReadResult;
+}
+
+export interface SafeWriteResult {
+  readonly status: SafetyStatus;
+  readonly code: SafetyFaultCode;
+  ok(handler: (r: SafeWriteResult) => void): SafeWriteResult;
+  fail(handler: (r: SafeWriteResult) => void): SafeWriteResult;
+  fault(handler: (r: SafeWriteResult) => void): SafeWriteResult;
+  always(handler: (r: SafeWriteResult) => void): SafeWriteResult;
 }
 
 class CompileTimeOnly extends Error {
@@ -82,6 +103,16 @@ export const safe: {
    *  rejects pins configured as OUTPUT (returns PinModeMismatch), so
    *  passing an OutputPin is technically allowed but always faults. */
   read(pin: AnyPin): SafeReadResult;
+
+  /** Safe digital write with readback verification. Writes the value,
+   *  immediately reads the physical pin state back, and returns a
+   *  SafeWriteResult confirming the write succeeded or flagging a fault.
+   *
+   *  Verifies the pin's recorded mode is OUTPUT (returns PinModeMismatch
+   *  for non-output pins). On write/read mismatch, returns
+   *  WriteMismatch. */
+  write(pin: OutputPin, value: number): SafeWriteResult;
 } = {
   read(_pin: AnyPin): SafeReadResult { throw new CompileTimeOnly(); },
+  write(_pin: OutputPin, _value: number): SafeWriteResult { throw new CompileTimeOnly(); },
 };

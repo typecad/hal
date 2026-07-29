@@ -6,9 +6,13 @@
 // __tc_gpio_read shim — never to target-specific symbols like digitalRead).
 
 /** 5-value pin mode, mapped from gpio.set_mode's string field at IR time.
- *  Numeric so the C++ table is 1 byte/pin and the voter switches on enum
- *  values (no strcmp at runtime). Matches the C++ enum class TrackedMode
- *  in runtime/mode-table.ts. */
+ *  Numeric so the voter switches on enum values (no strcmp at runtime). The
+ *  values are 32-bit Hamming-distance constants (0x5A5A5A5A etc.) chosen for
+ *  SEU resistance — a single-bit flip never lands on another valid mode.
+ *  This makes the C++ mode table 4 bytes/pin (~1 KB for the 255-entry table
+ *  on AVR, which has 2 KB SRAM). That is a deliberate trade-off vs 1-byte
+ *  storage: the SEU resistance is the whole point of the safety package.
+ *  Matches the C++ enum class TrackedMode in runtime/mode-table.ts. */
 export enum TrackedMode {
   Unknown       = 0x00000000,
   Input         = 0x5A5A5A5A,

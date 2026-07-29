@@ -859,6 +859,24 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       preBuilt.set(filePath, { ...item, programIR: newIR });
     }
     profiler.endTimer("safety:transform");
+
+    // Part B: ISO 26262 Part 6 read-only IR analysis. Runs after transformIR
+    // so it sees the final IR (including injected safety ops). Returned
+    // diagnostics flow into the build's diagnostic list; error-severity
+    // diagnostics abort via throwIfFatalDiagnostics.
+    if (hook.analyzeIR) {
+      profiler.startTimer("safety:analyze");
+      for (const [, item] of preBuilt) {
+        const irDiags = hook.analyzeIR(item.programIR, {
+          safetyInUse: entryImportsSafety(item.programIR),
+          target: options.target,
+        });
+        if (irDiags.length > 0) {
+          diagnostics.push(...irDiags);
+        }
+      }
+      profiler.endTimer("safety:analyze");
+    }
   }
 
   // ── Pass 2: emit (only for files that needed retranspilation) ─────────────

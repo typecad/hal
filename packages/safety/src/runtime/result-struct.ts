@@ -23,6 +23,11 @@
  *  functions in that translation unit. */
 export function emitResultStructs(): string {
   return `
+enum class SafetyStatus : uint32_t {
+  Ok    = 0x5A5A5A5AU,
+  Fault = 0xA5A5A5A5U,
+};
+
 enum class SafetyFaultCategory : uint32_t {
   Ok            = 0x3C3C3C3CU,
   Signal        = 0x5A5A5A5AU,
@@ -39,16 +44,56 @@ enum class SafetyFaultCode : uint32_t {
   StuckLow         = 0xC3C3C3C3U,
   PinModeMismatch  = 0x55AA55AAU,
   PinModeUnknown   = 0xAA55AA55U,
+  WriteMismatch    = 0x3C5AA5C3U,
 };
 
-constexpr uint32_t SAFETY_STATUS_OK = 0x5A5A5A5AU;
-constexpr uint32_t SAFETY_STATUS_FAULT = 0xA5A5A5A5U;
-
 struct SafeReadResult {
-  uint32_t status;
+  SafetyStatus status;
   uint32_t value;
   SafetyFaultCategory category;
   SafetyFaultCode code;
+
+  // Chainable result handlers. Each calls the handler at runtime when its
+  // condition matches, then returns *this so chains compose and the result
+  // stays inspectable afterward. Template F&& accepts the inline C++ lambdas
+  // cuttlefish renders — no std::function, no heap allocation.
+  template <typename F>
+  SafeReadResult& ok(F&& handler) noexcept {
+    if (status == SafetyStatus::Ok) { handler(*this); }
+    return *this;
+  }
+  template <typename F>
+  SafeReadResult& fail(F&& handler) noexcept {
+    if (status != SafetyStatus::Ok) { handler(*this); }
+    return *this;
+  }
+  // fault is an alias of fail (no std::forward — avoids the <utility> header
+  // AVR lacks; the handler is called once immediately, so perfect forwarding
+  // is not load-bearing).
+  template <typename F>
+  SafeReadResult& fault(F&& handler) noexcept { return fail(handler); }
+  template <typename F>
+  SafeReadResult& always(F&& handler) noexcept { handler(*this); return *this; }
+};
+
+struct SafeWriteResult {
+  SafetyStatus status;
+  SafetyFaultCode code;
+
+  template <typename F>
+  SafeWriteResult& ok(F&& handler) noexcept {
+    if (status == SafetyStatus::Ok) { handler(*this); }
+    return *this;
+  }
+  template <typename F>
+  SafeWriteResult& fail(F&& handler) noexcept {
+    if (status != SafetyStatus::Ok) { handler(*this); }
+    return *this;
+  }
+  template <typename F>
+  SafeWriteResult& fault(F&& handler) noexcept { return fail(handler); }
+  template <typename F>
+  SafeWriteResult& always(F&& handler) noexcept { handler(*this); return *this; }
 };
 `.trim();
 }

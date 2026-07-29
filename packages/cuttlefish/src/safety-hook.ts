@@ -25,7 +25,7 @@ export interface SafetyTransformContext {
 /** Capabilities cuttlefish core needs from the safety engine.
  *
  *  Part A uses transformIR + resolveSafetyOp + resolveSemanticCall.
- *  Part B (ISO 26262 Part 6 rules) will add analyzeIR; Part C (sidecar) will
+ *  Part B (ISO 26262 Part 6 rules) adds analyzeIR; Part C (sidecar) will
  *  add collectSafetyMetadata. Both reuse this same seam with no new core
  *  machinery. */
 export interface TranspilerSafetyHook {
@@ -49,6 +49,13 @@ export interface TranspilerSafetyHook {
    *  buildEmitterContext so the polyfills participate in tree-shaking.
    *  Returns [] when safety is not in use. */
   buildPolyfills?(): RuntimePolyfillIR[];
+
+  /** Part B: read-only ISO 26262 Part 6 software-rule analysis. Called
+   *  after transformIR completes, on the final transformed IR. Returns
+   *  diagnostics that flow into the build's diagnostic list. Diagnostics
+   *  with severity "error" abort the build (via throwIfFatalDiagnostics);
+   *  "warning"/"info" are logged but the build succeeds. */
+  analyzeIR?(program: ProgramIR, ctx: SafetyTransformContext): Diagnostic[];
 }
 
 // ── Module-level hook state ────────────────────────────────────────────────

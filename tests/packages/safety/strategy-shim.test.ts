@@ -21,21 +21,24 @@ function programWithSafetyOps(usesSafety: boolean): ProgramIR {
   } as unknown as ProgramIR;
 }
 
-describe("ArduinoStrategy __tc_gpio_read shim", () => {
-  it("emits __tc_gpio_read when the program uses safety.* ops", () => {
+describe("ArduinoStrategy safety shims", () => {
+  it("emits __tc_gpio_read and __tc_delay_us when the program uses safety.* ops", () => {
     const strategy = new ArduinoStrategy();
     const program = programWithSafetyOps(true);
     const lines = strategy.shimLines(program);
     const joined = lines.join("\n");
     expect(joined).toContain("__tc_gpio_read");
     expect(joined).toContain("digitalRead(pin)");
+    expect(joined).toContain("__tc_delay_us");
+    expect(joined).toContain("delayMicroseconds(us)");
   });
 
-  it("does NOT emit __tc_gpio_read when the program does not use safety", () => {
+  it("does NOT emit safety shims when the program does not use safety", () => {
     const strategy = new ArduinoStrategy();
     const program = programWithSafetyOps(false);
     const lines = strategy.shimLines(program);
     const joined = lines.join("\n");
     expect(joined).not.toContain("__tc_gpio_read");
+    expect(joined).not.toContain("__tc_delay_us");
   });
 });

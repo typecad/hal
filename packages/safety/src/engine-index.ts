@@ -6,6 +6,7 @@ import type { TranspilerSafetyHook } from "@typecad/cuttlefish/safety-hook-types
 import { pinModeInterceptPass } from "./passes/pinMode-intercept.js";
 import { buildSafetyPolyfills } from "./runtime/polyfills.js";
 import { halInstances } from "@typecad/cuttlefish/build-ir-state";
+import { analyzeProgram } from "./iso26262/analyze.js";
 
 /** Resolve a safety.* HAL op to C++. MCU-agnostic: emits calls only to the
  *  safety package's own __tc_safety_* helpers (never to target-specific
@@ -80,6 +81,7 @@ export function registerSafetyEngine(): TranspilerSafetyHook {
     resolveSafetyOp,
     resolveSemanticCall,
     buildPolyfills: buildSafetyPolyfills,
+    analyzeIR: analyzeProgram,
   };
 }
 

@@ -7,8 +7,12 @@ describe("voter C++ (v2 — __tc_gpio_read)", () => {
   const voterSrc = voterPolyfill().helperFunctions.join("\n");
 
   it("mode-mismatch branch returns PinModeMismatch when mode is Output", () => {
-    expect(voterSrc).toContain("if ((mode != TrackedMode::Input) && (mode != TrackedMode::InputPullup))");
+    expect(voterSrc).toContain("if ((mode != TrackedMode::Input) && (mode != TrackedMode::InputPullup) && (mode != TrackedMode::InputPulldown))");
     expect(voterSrc).toContain("SafetyFaultCode::PinModeMismatch");
+  });
+
+  it("accepts InputPulldown as a valid read mode (no false PinModeMismatch)", () => {
+    expect(voterSrc).toContain("TrackedMode::InputPulldown");
   });
 
   it("mode-unknown branch returns PinModeUnknown for untracked pins", () => {
@@ -22,12 +26,12 @@ describe("voter C++ (v2 — __tc_gpio_read)", () => {
   });
 
   it("ok branch sets status=OK and value when all three reads agree", () => {
-    expect(voterSrc).toContain("result.status = SAFETY_STATUS_OK");
+    expect(voterSrc).toContain("result.status = SafetyStatus::Ok");
     expect(voterSrc).toContain("result.value  = r0 ? 0xFFFFFFFFU : 0x00000000U");
   });
 
   it("fault branches set status=FAULT", () => {
-    expect(voterSrc).toContain("result.status   = SAFETY_STATUS_FAULT");
+    expect(voterSrc).toContain("result.status   = SafetyStatus::Fault");
   });
 
   it("voter calls __tc_gpio_read (NOT digitalRead) — MCU-agnostic", () => {

@@ -34,7 +34,7 @@ TrackedMode g_pin_mode_table[TC_SAFETY_PIN_TABLE_SIZE];
 
 inline void record_pin_mode(uint32_t pin, uint32_t mode) {
   if (pin < TC_SAFETY_PIN_TABLE_SIZE) {
-    g_pin_mode_table[pin] = static_cast<TrackedMode>(static_cast<TrackedMode>(mode));
+    g_pin_mode_table[pin] = static_cast<TrackedMode>(mode);
   }
 }
 

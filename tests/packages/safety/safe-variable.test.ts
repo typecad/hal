@@ -17,16 +17,16 @@ if (ok) { console.log(current); }
     expect(result.cpp).toContain("replicaA_val");
   });
 
-  it("always emits SafeVariable template when safety package is active", () => {
-    // SafeVariable is a type annotation, not a call expression — the tree-shaker
-    // can't detect it at IR time. The template is always emitted when
-    // @typecad/safety is installed. It's a small definition and the safety
-    // package is opt-in.
+  it("does NOT emit SafeVariable template when the sketch doesn't use it", () => {
+    // Polyfill emission is gated on programUsesSafety(program), which detects
+    // SafeVariable/SafeInt usage via var_decl cppTypes. A sketch with no safety
+    // usage must not leak the ~200-line polyfill (previously it did, which
+    // tripped byte-identity / lowering assertions because SafeInt's `return
+    // *this` chaining methods injected a `this` token into every sketch).
     const ts = `const x = 5;`;
     const result = transpile(ts);
-    // The safety hook is registered in tests/setup-framework.ts, so the
-    // polyfill is always available.
-    expect(result.cpp).toContain("struct SafeVariable");
+    expect(result.cpp).not.toContain("struct SafeVariable");
+    expect(result.cpp).not.toContain("struct SafeInt");
   });
 
   it("resolves SafeVariable<number> to SafeVariable<CppType> in emitted C++", () => {
