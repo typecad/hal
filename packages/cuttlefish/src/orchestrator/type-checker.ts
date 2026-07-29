@@ -7,6 +7,7 @@ import { canonicalize, buildSemanticFacts } from "./semantic-facts.js";
 import type { BindingResolver } from "./semantic-facts.js";
 import { verifyFacts } from "./semantic-facts-verifier.js";
 import { requireUIHook, hasUIHook } from "../ui-hook.js";
+import { hasSafetyHook } from "../safety-hook.js";
 
 /**
  * Result of type-checking files
@@ -116,6 +117,13 @@ export function typeCheckFiles(
   // Also skip errors from files in node_modules or packages directories (not user code)
   const errors = allDiagnostics.filter(d => {
     if (d.category !== ts.DiagnosticCategory.Error) {
+      return false;
+    }
+    // TS1206 "Decorators are not valid here" — TypeScript doesn't support
+    // decorators on function declarations (only classes). The cuttlefish
+    // transpiler handles function decorators (e.g. @asilD from @typecad/safety)
+    // via its own IR builder, so suppress this diagnostic when safety is active.
+    if (d.code === 1206 && hasSafetyHook()) {
       return false;
     }
     // Include errors without a file (global errors)
