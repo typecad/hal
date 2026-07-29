@@ -103,6 +103,7 @@ const OWNERSHIP_WRAPPER_TYPE_NAMES = new Set<string>([
  *  The C++ template definition is provided by the safety polyfill. */
 const SAFE_WRAPPER_TYPE_NAMES = new Set<string>([
   "SafeVariable",
+  "SafeInt",
 ]);
 
 export function resolveAliasedTypeNode(

@@ -600,6 +600,15 @@ export class StatementRenderer {
       const rawStmt = statement.callee.slice('__RAW_STMT__'.length);
       return forHeader ? rawStmt : `${rawStmt.endsWith(';') ? rawStmt : rawStmt + ';'}`;
     }
+    // Handle expression statements whose IR must render at EMIT time (not the
+    // build-time renderExprAsText). The safe.read().ok().fail() chain uses this:
+    // its lambda args can only render via the emit-time renderLambda (which
+    // produces [&](){...}), so the structured chain IR is carried as args[0]
+    // and rendered here via the expression renderer.
+    if (statement.callee === '__EXPR_STMT__' && statement.args.length >= 1) {
+      const exprText = this.expressionRenderer.render(statement.args[0]!, undefined, knownVariableTypes);
+      return forHeader ? exprText : `${exprText};`;
+    }
     // Awaited network markers (__WIFI_WAIT__/__HTTP_WAIT__) reaching the
     // plain renderer means the await sits outside an async state machine
     // (top-level await, or a position the state-machine splitter doesn't

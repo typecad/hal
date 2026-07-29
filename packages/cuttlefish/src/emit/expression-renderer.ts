@@ -254,6 +254,21 @@ export class ExpressionRenderer {
       case "method-call":
         rendered = this.renderMethodCall(expr, exprTransformer);
         break;
+      case "call": {
+        // Bare call expression: `Name(args)` with no receiver (e.g. a
+        // constructor call `SafeInt(x)` written inline, or a free function).
+        // Method-on-receiver calls lower as "method-call"; this arm is for the
+        // receiverless form. The callee is escaped against C++ reserved names;
+        // when a target type is in scope, renderValueForTarget (the caller)
+        // wraps this with template args (SafeInt(x) -> SafeInt<int32_t>(x)).
+        const callArgs = expr.args.map(a => this.render(a, exprTransformer)).join(", ");
+        const callCallee = escapeCppKeyword(
+          exprTransformer ? exprTransformer(expr.callee) : expr.callee,
+          this.strategy.reservedNames(),
+        );
+        rendered = `${callCallee}(${callArgs})`;
+        break;
+      }
       case "element-access":
         rendered = this.renderElementAccess(expr, exprTransformer, knownVariableTypes);
         break;
@@ -1034,9 +1049,28 @@ export class ExpressionRenderer {
     knownVariableTypes?: Map<string, KnownVariableInfo>,
     exprTransformer?: (expr: string) => string,
   ): string {
-    const rendered = this.render(expr, exprTransformer, knownVariableTypes);
-    if (!targetType) return rendered;
+    if (!targetType) return this.render(expr, exprTransformer, knownVariableTypes);
     const normalizedTarget = targetType.trim();
+
+    // Inject template args for constructor calls on pre-C++17 toolchains
+    // (e.g. AVR without CTAD). SafeVariable(0) → SafeVariable<int32_t>(0).
+    // Handles both `method-call` (when the constructor appears as a standalone
+    // initializer) and `call` (when it appears on the RHS of an assignment,
+    // which lowers as `T x = {}; x = T(args);`). The callee must match the
+    // template name and the target must be a `Name<...>` instantiation, so a
+    // regular function call assigned to a non-templated type never matches.
+    const tmplMatch = normalizedTarget.match(/^([A-Za-z_]\w*)<(.+)>/);
+    const exprAny = expr as { kind?: string; callee?: string; args?: ExpressionIR[] };
+    const isCtorCall = tmplMatch != null
+      && (exprAny.kind === "method-call" || exprAny.kind === "call")
+      && exprAny.callee === tmplMatch[1]
+      && exprAny.callee != null && !exprAny.callee.includes("<");
+    if (isCtorCall && exprAny.args) {
+      const argsText = exprAny.args.map(a => this.render(a, exprTransformer, knownVariableTypes)).join(", ");
+      return `${tmplMatch[1]}<${tmplMatch[2]}>(${argsText})`;
+    }
+
+    const rendered = this.render(expr, exprTransformer, knownVariableTypes);
     // Never cast into string-like storage — enums that lower to const char*
     // (string enums) already match, and a string target is never an enum boundary.
     if (this.isStringLikeCppType(normalizedTarget)) return rendered;
@@ -1526,6 +1560,8 @@ export class ExpressionRenderer {
   private renderMethodCall(expr: Extract<ExpressionIR, { kind: "method-call" }>, exprTransformer?: (expr: string) => string): string {
     const argsText = expr.args.map(a => this.render(a, exprTransformer)).join(", ");
     let callee = exprTransformer ? exprTransformer(expr.callee) : expr.callee;
+    const rExpr = (expr as { receiverExpr?: ExpressionIR }).receiverExpr;
+    const mName = (expr as { methodName?: string }).methodName;
     
     // Convert . to :: for static or namespace method calls if the IR flagged them.
     if (expr.isStatic || expr.isNamespace) {
@@ -1558,6 +1594,18 @@ export class ExpressionRenderer {
       return callee;
     }
     callee = this.escapeFinalMemberName(callee);
+    // Structured-receiver path: when the method-call IR carries a receiverExpr
+    // (the safe.read().ok().fail() chain builder sets this), render the receiver
+    // via the full renderer so nested lambda args survive (the flat callee string
+    // would have destroyed them as /* __lambda__ */ placeholders). The methodName
+    // is escaped against reserved names (e.g. div -> div_).
+    const receiverExpr = (expr as { receiverExpr?: ExpressionIR }).receiverExpr;
+    const methodName = (expr as { methodName?: string }).methodName;
+    if (receiverExpr !== undefined && methodName !== undefined) {
+      const receiverText = this.render(receiverExpr, exprTransformer);
+      const escapedMethod = escapeCppKeyword(methodName, this.strategy.reservedNames());
+      return `${receiverText}.${escapedMethod}(${argsText})`;
+    }
     return `${callee}(${argsText})`;
   }
 

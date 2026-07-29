@@ -602,6 +602,47 @@ export function callToStatement(
   const safetyResolved = tryResolveSafetyCallStatement(call, fileName, sourceText);
   if (safetyResolved) return safetyResolved;
 
+  // ---- safe.read/safe.write chained with .ok/.fail/.fault/.always (statement) ----
+  // A statement like `safe.read(pin).ok(r => {...}).fail(r => {...})` is a
+  // method chain on a safe.* result. The terminal safe.* interceptor above
+  // returns null for it (the shape isn't `safe.<method>` — it's `.fail` on a
+  // chain). Delegate to expressionToIR, which has tryResolveSafetyChain to
+  // build the structured nested method-call IR that preserves lambda args,
+  // then render to text for a __RAW_STMT__ statement.
+  if (hasSafetyHook() && ts.isPropertyAccessExpression(call.expression)) {
+    let walk: ts.Node = call;
+    let isSafeChain = false;
+    while (ts.isCallExpression(walk) && ts.isPropertyAccessExpression(walk.expression)) {
+      walk = walk.expression.expression;
+      if (
+        ts.isCallExpression(walk) &&
+        ts.isPropertyAccessExpression(walk.expression) &&
+        ts.isIdentifier(walk.expression.expression) &&
+        walk.expression.expression.text === "safe"
+      ) {
+        isSafeChain = true;
+        break;
+      }
+    }
+    if (isSafeChain) {
+      // Build the structured chain IR via expressionToIR (the chain resolver
+      // produces nested method-call nodes with receiverExpr so lambdas survive).
+      // Carry it as the arg of a __EXPR_STMT__ call statement; the statement
+      // renderer renders it via the EMIT-TIME expression renderer (which has
+      // renderLambda for inline [&](){...} lambdas), NOT via the build-time
+      // renderExprAsText (which flattens lambdas to /* __lambda__ */).
+      const exprIR = expressionToIR(call, sourceText, diagnostics, pointerVars);
+      return {
+        kind: "call",
+        sourceSpan: makeSourceSpan(call, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        callee: "__EXPR_STMT__",
+        args: [exprIR],
+      };
+    }
+  }
+
   // Handle super() calls in constructors - transform to super_call IR for class emitter
   if (call.expression.kind === ts.SyntaxKind.SuperKeyword) {
     return {

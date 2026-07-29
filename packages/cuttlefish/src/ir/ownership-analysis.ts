@@ -863,6 +863,13 @@ function analyzeExpression(
       break;
     }
 
+    case 'call': {
+      for (const arg of expr.args) {
+        analyzeExpression(arg, scope, diagnostics, span);
+      }
+      break;
+    }
+
     case 'number':
     case 'string':
     case 'boolean':

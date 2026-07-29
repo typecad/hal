@@ -83,8 +83,10 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   // __tc_safety_* spelling (which appears after the safety call-statement
   // transformer emits hal-op resolution text). Both map to the same helper.
   'safe.read(':                   ['__tc_safety_read_safe'],
+  'safe.write(':                  ['__tc_safety_write_verify'],
   '__tc_safety_record_pin_mode(': ['__tc_safety_record_pin_mode'],
   '__tc_safety_read_safe(':       ['__tc_safety_read_safe'],
+  '__tc_safety_write_verify(':    ['__tc_safety_write_verify'],
 };
 
 function extractHelperFunctionNames(funcDef: string): string[] {

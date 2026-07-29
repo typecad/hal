@@ -32,7 +32,22 @@ export const RULES: readonly RuleEntry[] = [
     exempt: /static_cast|dynamic_cast|reinterpret_cast|const_cast/,
     enabled: true },
   { id: "M5-0-10", title: "No reinterpret_cast", severity: "required", category: "D",
-    detect: /reinterpret_cast</, enabled: true },
+    detect: /reinterpret_cast</, enabled: true,
+    knownPatterns: [
+      {
+        // freeHeap() on AVR exposes no numeric API — avr-libc publishes the
+        // heap boundary as the linker symbols __heap_start (int) and __brkval
+        // (int*). Computing the free byte count requires subtracting two
+        // addresses, which is only expressible as a pointer→integer cast.
+        // This is the canonical AUTOSAR category-D "unavoidable platform
+        // constraint" deviation. ESP32 uses ESP.getFreeHeap() and needs no
+        // cast; this pattern matches only the AVR idiom.
+        detect: /reinterpret_cast<size_t>\(&(v|__heap_start)\)|reinterpret_cast<size_t>\(__brkval\)/,
+        justification: "AVR freeHeap() measures the gap between the stack and heap via the avr-libc __heap_start/__brkval linker symbols; pointer-to-integer conversion is the only way to compute a byte distance between two addresses on a target with no numeric free-heap API.",
+        kind: "polyfill",
+      },
+    ],
+  },
   { id: "M5-2-8", title: "No pointer arithmetic out of bounds", severity: "required", category: "C", enabled: true },
   { id: "A5-2-2", title: "No static_cast downcast of polymorphic type", severity: "required", category: "C", enabled: true },
   { id: "M5-3-2", title: "No bitwise ops on signed narrow types", severity: "required", category: "C", enabled: true,

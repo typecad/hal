@@ -33,6 +33,10 @@ export interface FunctionIR {
   isGenerator?: boolean;
   /** True when the function is exported (has `export` keyword). */
   isExported?: boolean;
+  /** Decorators applied to this function (e.g. ["asilD"]). Mirrors
+   *  ClassIR.decorators. Used by the safety hook's analyzeIR to gate
+   *  ISO 26262 rule enforcement by ASIL level. */
+  decorators?: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -101,6 +105,8 @@ export interface ClassMethodIR {
   typeParameters?: string[];
   /** True when this is a generator method. */
   isGenerator?: boolean;
+  /** Decorators applied to this method (e.g. ["asilD"]). */
+  decorators?: string[];
 }
 
 export interface ClassGetterIR {

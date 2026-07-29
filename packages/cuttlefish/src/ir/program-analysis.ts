@@ -367,6 +367,9 @@ function analyzeExpression(
         if (safetyOpName === "safety.read_safe") {
           result.usedPolyfillHelpers.add("__tc_safety_read_safe");
         }
+        if (safetyOpName === "safety.write_verify") {
+          result.usedPolyfillHelpers.add("__tc_safety_write_verify");
+        }
         if (opName.startsWith("interrupt.")) result.usesInterrupts = true;
         if (opName.startsWith("pulse."))     result.usesPulse = true;
         if (opName.startsWith("shift."))     result.usesShift = true;
@@ -647,6 +650,9 @@ function analyzeStatement(
         }
         if (safetyOpName === "safety.read_safe") {
           result.usedPolyfillHelpers.add("__tc_safety_read_safe");
+        }
+        if (safetyOpName === "safety.write_verify") {
+          result.usedPolyfillHelpers.add("__tc_safety_write_verify");
         }
         if (opName.startsWith("interrupt.")) result.usesInterrupts = true;
         if (opName.startsWith("pulse."))     result.usesPulse = true;

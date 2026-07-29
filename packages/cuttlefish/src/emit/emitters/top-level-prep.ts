@@ -175,6 +175,11 @@ function collectCallbacks(
 ): void {
   for (const stmt of statements) {
     if (stmt.kind === "call") {
+      // __EXPR_STMT__ statements carry an expression IR (args[0]) that the
+      // statement renderer renders at EMIT time via the expression renderer
+      // (which handles lambdas inline via renderLambda). Do NOT hoist lambdas
+      // from these — they must stay inline to preserve closure captures.
+      if (stmt.callee === "__EXPR_STMT__") continue;
       for (const arg of stmt.args) {
         collectCallbackFromExpression(arg, callbackFunctions, isrPrefix, counter);
       }

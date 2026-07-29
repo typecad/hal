@@ -15,6 +15,17 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
     if (autosarOn && (cppType === "auto" || cppType === "int")) {
       return strategy.defaultNumericType(ctx.compliance);
     }
+    // Also apply the int->int32_t substitution to the inner template argument
+    // of safety wrappers (SafeInt<int> -> SafeInt<int32_t>, SafeVariable<int>
+    // -> SafeVariable<int32_t>). The whole-type check above misses these
+    // because the full string is "Name<int>", not "int".
+    if (autosarOn) {
+      const wrapperMatch = cppType.match(/^(Safe(?:Int|Variable))<int>$/);
+      if (wrapperMatch) {
+        const fixedWidth = strategy.defaultNumericType(ctx.compliance);
+        return `${wrapperMatch[1]}<${fixedWidth}>`;
+      }
+    }
     return strategy.normalizeCppType(cppType);
   };
 

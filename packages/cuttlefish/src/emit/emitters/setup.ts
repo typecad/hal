@@ -186,16 +186,28 @@ export function programUsesSafety(program: ProgramIR): boolean {
     for (const s of cls.setters ?? []) if (visit(s.statements)) return true;
     if (cls.constructor && visit(cls.constructor.statements)) return true;
   }
+  // SafeInt<T> / SafeVariable<T> usage does not produce safety.* hal-ops
+  // (they are plain C++ template types), so the op-walk above misses them.
+  // Detect via the var_decl cppType: any declaration whose type starts with
+  // "SafeInt" or "SafeVariable" needs the corresponding polyfill to ship.
+  const usesSafeWrapperType = (statements: StatementIR[] | undefined): boolean => {
+    if (!statements) return false;
+    for (const stmt of statements) {
+      if (stmt.kind === "var_decl") {
+        const cppType = (stmt as any).cppType as string | undefined;
+        if (typeof cppType === "string" && (cppType.startsWith("SafeInt") || cppType.startsWith("SafeVariable"))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  if (usesSafeWrapperType(program.topLevelStatements)) return true;
+  for (const fn of program.functions ?? []) {
+    if (usesSafeWrapperType(fn.statements)) return true;
+  }
   return false;
 }
-
-/**
- * Extract a `#ifndef MACRO ... #endif` include-guard block from a shim line
- * list. Used to emit just the macro definition (e.g. CUTTLEFISH_UNDEFINED) in
- * non-entry files of a split compilation, where the full helper shim belongs
- * to the entry file but the macro token is still referenced here.
- * Returns an empty array if no matching guard is found.
- */
 function extractShimMacro(lines: string[], macroName: string): string[] {
   const ifndefIdx = lines.findIndex(l => {
     const trimmed = l.trim();
@@ -264,6 +276,7 @@ export function buildEmitterContext(
   if (hasSafetyHook()) {
     enumNames.add("SafetyFaultCategory");
     enumNames.add("SafetyFaultCode");
+    enumNames.add("SafetyStatus");
   }
 
   const strategy = options.strategy ?? resolveStrategy(options.target ?? "generic");
@@ -345,10 +358,14 @@ export function buildEmitterContext(
     filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "timer_methods");
   }
 
-  // Safety polyfills (mode table + voter). Gated on hasSafetyHook() so they
-  // only appear when @typecad/safety is in use; filtered through the same
-  // filterPolyfillHelpers call so unused helpers tree-shake out.
-  if (isEntryFile && hasSafetyHook()) {
+  // Safety polyfills (mode table + voter + SafeVariable + SafeInt). Gated on
+  // programUsesSafety(program) so they ONLY appear when the sketch actually
+  // references a safety construct — emitting them unconditionally (just because
+  // @typecad/safety is installed and registered its hook) leaks ~200 lines of
+  // polyfill into every sketch, and SafeInt's `return *this` chaining methods
+  // tripped byte-identity / lowering assertions that expect no `this` token.
+  // programUsesSafety walks the IR for any safety.* hal-op.
+  if (isEntryFile && hasSafetyHook() && programUsesSafety(program)) {
     const safetyPolyfills = filterPolyfillHelpers(
       requireSafetyHook().buildPolyfills?.() ?? [],
       programAnalysis.usedPolyfillHelpers,

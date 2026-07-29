@@ -1,24 +1,40 @@
 import type { ProgramIR, Diagnostic } from "@typecad/cuttlefish/api";
 import type { SafetyTransformContext } from "@typecad/cuttlefish/safety-hook-types";
+import { asilLevel, ASIL_THRESHOLDS } from "./asil.js";
 
-/** B1: No recursion (ISO 26262 Part 6, Table 8 — ASIL C/D).
+/** B1: No recursion (ISO 26262 Part 6, Table 8 — ASIL B+).
  *
- *  Builds a call graph from the program's IR and runs cycle detection
- *  via DFS with a recursion stack. Any back-edge in the DFS indicates a
- *  cycle (mutual recursion or self-recursion).
+ *  Only checks functions decorated with @asilB or higher.
+ *  QM/ASIL A functions are skipped.
  *
- *  Returns one diagnostic per detected cycle, naming the functions involved. */
+ *  Builds a function call graph and runs DFS cycle detection. */
 export function checkRecursion(
   program: ProgramIR,
   _ctx: SafetyTransformContext,
 ): Diagnostic[] {
   const diags: Diagnostic[] = [];
 
-  // Build a simple function-dependency map: function name → set of called function names.
-  // We scan each function's statements for "call" and "method-call" IR nodes.
+  // Build function set (only ASIL-annotated functions are checked)
+  const asilFnNames = new Set<string>();
+  for (const fn of program.functions) {
+    if (asilLevel(fn.decorators) >= ASIL_THRESHOLDS.recursion) {
+      asilFnNames.add(fn.originalName);
+    }
+  }
+  for (const cls of program.classes) {
+    for (const method of cls.methods) {
+      if (method.name && asilLevel(method.decorators) >= ASIL_THRESHOLDS.recursion) {
+        asilFnNames.add(method.name);
+      }
+    }
+  }
+
+  if (asilFnNames.size === 0) return diags;
+
+  // Build call graph (all functions, not just ASIL — callees matter)
   const callGraph = buildFunctionCallGraph(program);
 
-  // DFS cycle detection using recursion stack
+  // DFS cycle detection — only report cycles involving ASIL functions
   const WHITE = 0, GRAY = 1, BLACK = 2;
   const color = new Map<string, number>();
   for (const name of callGraph.keys()) {
@@ -29,12 +45,15 @@ export function checkRecursion(
     if (color.get(entry) === WHITE) {
       const path: string[] = [];
       dfs(entry, callGraph, color, path, (cycle) => {
-        diags.push({
-          severity: "error",
-          code: "ISO26262_B1_RECURSION",
-          message: `Recursion detected: ${cycle.join(" → ")}`,
-          hint: "ASIL C/D requires bounded call depth. Refactor to an iterative loop or use a fixed-size memoization table.",
-        });
+        // Only report if any function in the cycle is ASIL-annotated
+        if (cycle.some(name => asilFnNames.has(name))) {
+          diags.push({
+            severity: "error",
+            code: "ISO26262_B1_RECURSION",
+            message: `Recursion detected: ${cycle.join(" → ")}`,
+            hint: "ASIL B+ requires bounded call depth. Refactor to an iterative loop or use a fixed-size memoization table.",
+          });
+        }
       });
     }
   }
@@ -42,14 +61,12 @@ export function checkRecursion(
   return diags;
 }
 
-/** Build a map of function name → set of function names it calls. */
 function buildFunctionCallGraph(program: ProgramIR): Map<string, Set<string>> {
   const graph = new Map<string, Set<string>>();
   const allFnNames = new Set<string>();
   for (const fn of program.functions) {
     allFnNames.add(fn.originalName);
   }
-  // Also class methods
   for (const cls of program.classes) {
     for (const method of cls.methods) {
       if (method.name) allFnNames.add(method.name);
@@ -72,7 +89,6 @@ function buildFunctionCallGraph(program: ProgramIR): Map<string, Set<string>> {
       for (const stmt of method.statements) {
         collectCallTargets(stmt, allFnNames, deps);
       }
-      // Merge with existing (top-level function might have same name)
       const existing = graph.get(method.name);
       if (existing) {
         for (const d of deps) existing.add(d);
@@ -85,7 +101,6 @@ function buildFunctionCallGraph(program: ProgramIR): Map<string, Set<string>> {
   return graph;
 }
 
-/** Recursively walk a statement and collect function-call targets. */
 function collectCallTargets(stmt: any, allFnNames: Set<string>, deps: Set<string>): void {
   if (!stmt || typeof stmt !== "object") return;
   if (stmt.kind === "call" && typeof stmt.callee === "string" && allFnNames.has(stmt.callee)) {
@@ -94,7 +109,6 @@ function collectCallTargets(stmt: any, allFnNames: Set<string>, deps: Set<string
   if (stmt.kind === "method-call" && typeof stmt.callee === "string" && allFnNames.has(stmt.callee)) {
     deps.add(stmt.callee);
   }
-  // Recurse into child statements/expressions
   for (const key of Object.keys(stmt)) {
     const val = stmt[key];
     if (Array.isArray(val)) {
@@ -109,7 +123,6 @@ function collectCallTargets(stmt: any, allFnNames: Set<string>, deps: Set<string
   }
 }
 
-/** DFS with back-edge detection. Calls onCycle when a cycle is found. */
 function dfs(
   node: string,
   graph: Map<string, Set<string>>,
@@ -125,12 +138,10 @@ function dfs(
     for (const next of neighbors) {
       const nextColor = color.get(next);
       if (nextColor === 1) {
-        // GRAY — back-edge: found a cycle. Extract the cycle path.
         const cycleStart = path.indexOf(next);
         const cycle = path.slice(cycleStart).concat(next);
         onCycle(cycle);
       } else if (nextColor === 0) {
-        // WHITE — unvisited
         dfs(next, graph, color, path, onCycle);
       }
     }

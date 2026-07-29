@@ -5,38 +5,31 @@ import type { SafetyTransformContext } from "@typecad/cuttlefish/safety-hook-typ
 
 const ctx: SafetyTransformContext = { safetyInUse: true, target: "arduino" };
 
-function makeProgram(functions: Array<{ originalName: string; mappedName?: string; statements: any[] }>): ProgramIR {
+function makeProgram(functions: any[]): ProgramIR {
   return {
-    fileName: "test.ts",
-    imports: [],
-    reExports: [],
-    structs: [],
-    enums: [],
-    classes: [],
-    interfaces: [],
-    namespaces: [],
-    typeAliases: [],
-    registerClasses: [],
-    topLevelStatements: [],
-    functions: functions as any,
-    boilerplates: new Set<string>(),
-    diagnostics: [],
+    fileName: "test.ts", imports: [], reExports: [], structs: [], enums: [],
+    classes: [], interfaces: [], namespaces: [], typeAliases: [],
+    registerClasses: [], topLevelStatements: [], functions,
+    boilerplates: new Set(), diagnostics: [],
   } as unknown as ProgramIR;
 }
 
-describe("B1: Recursion checker", () => {
-  it("returns no diagnostics for non-recursive code", () => {
-    const program = makeProgram([
-      { originalName: "add", statements: [{ kind: "return", value: { kind: "binary", op: "+", left: { kind: "identifier", value: "a" }, right: { kind: "identifier", value: "b" } } }] },
-      { originalName: "main", statements: [{ kind: "call", callee: "add", args: [] }] },
-    ]);
-    const diags = checkRecursion(program, ctx);
-    expect(diags).toEqual([]);
-  });
-
-  it("detects direct self-recursion", () => {
+describe("B1: Recursion checker (ASIL-gated)", () => {
+  it("does NOT check QM functions (no decorator)", () => {
     const program = makeProgram([
       { originalName: "fib", statements: [
+        { kind: "if", condition: { kind: "number", value: 1 },
+          thenBranch: [{ kind: "return", value: { kind: "number", value: 1 } }],
+          elseBranch: [{ kind: "call", callee: "fib", args: [] }],
+        },
+      ]},
+    ]);
+    expect(checkRecursion(program, ctx)).toEqual([]);
+  });
+
+  it("checks @asilB functions for recursion", () => {
+    const program = makeProgram([
+      { originalName: "fib", decorators: ["asilB"], statements: [
         { kind: "if", condition: { kind: "number", value: 1 },
           thenBranch: [{ kind: "return", value: { kind: "number", value: 1 } }],
           elseBranch: [{ kind: "call", callee: "fib", args: [] }],
@@ -47,41 +40,48 @@ describe("B1: Recursion checker", () => {
     expect(diags).toHaveLength(1);
     expect(diags[0].code).toBe("ISO26262_B1_RECURSION");
     expect(diags[0].severity).toBe("error");
-    expect(diags[0].message).toContain("fib");
   });
 
-  it("detects mutual recursion (A calls B, B calls A)", () => {
+  it("checks @asilD functions for recursion", () => {
     const program = makeProgram([
-      { originalName: "funcA", statements: [{ kind: "call", callee: "funcB", args: [] }] },
+      { originalName: "factorial", decorators: ["asilD"], statements: [
+        { kind: "call", callee: "factorial", args: [] },
+      ]},
+    ]);
+    const diags = checkRecursion(program, ctx);
+    expect(diags).toHaveLength(1);
+    expect(diags[0].message).toContain("factorial");
+  });
+
+  it("detects mutual recursion when one function is ASIL", () => {
+    const program = makeProgram([
+      { originalName: "funcA", decorators: ["asilC"], statements: [{ kind: "call", callee: "funcB", args: [] }] },
       { originalName: "funcB", statements: [{ kind: "call", callee: "funcA", args: [] }] },
     ]);
     const diags = checkRecursion(program, ctx);
     expect(diags).toHaveLength(1);
-    expect(diags[0].code).toBe("ISO26262_B1_RECURSION");
     expect(diags[0].message).toMatch(/funcA.*funcB|funcB.*funcA/);
   });
 
-  it("returns no diagnostics for a program with no functions", () => {
-    const program = makeProgram([]);
-    const diags = checkRecursion(program, ctx);
-    expect(diags).toEqual([]);
+  it("does NOT check @asilA functions", () => {
+    const program = makeProgram([
+      { originalName: "fib", decorators: ["asilA"], statements: [
+        { kind: "call", callee: "fib", args: [] },
+      ]},
+    ]);
+    expect(checkRecursion(program, ctx)).toEqual([]);
   });
 
-  it("detects recursion in class methods", () => {
-    const program = makeProgram([]);
-    (program as any).classes = [{
-      name: "Counter",
-      fields: [],
-      methods: [{
-        name: "increment",
-        isStatic: false,
-        statements: [{ kind: "call", callee: "increment", args: [] }],
-      }],
-      getters: [],
-      setters: [],
-    }];
-    const diags = checkRecursion(program, ctx);
-    expect(diags).toHaveLength(1);
-    expect(diags[0].message).toContain("increment");
+  it("returns no diagnostics for non-recursive ASIL function", () => {
+    const program = makeProgram([
+      { originalName: "compute", decorators: ["asilD"], statements: [
+        { kind: "return", value: { kind: "number", value: 42 } },
+      ]},
+    ]);
+    expect(checkRecursion(program, ctx)).toEqual([]);
+  });
+
+  it("returns no diagnostics for empty program", () => {
+    expect(checkRecursion(makeProgram([]), ctx)).toEqual([]);
   });
 });
