@@ -31,37 +31,39 @@ inline SafeReadResult read_safe(uint32_t pin) {
   result.value    = 0x00000000U;
   result.category = SafetyFaultCategory::Ok;
   result.code     = SafetyFaultCode::Ok;
-  result.status   = SAFETY_STATUS_OK;
+  result.status   = SafetyStatus::Ok;
 
   // 1. Confirm pin mode (Input or InputPullup are valid for reading).
   const TrackedMode mode = get_pin_mode(pin);
   if (mode == TrackedMode::Unknown) {
     result.category = SafetyFaultCategory::Configuration;
     result.code     = SafetyFaultCode::PinModeUnknown;
-    result.status   = SAFETY_STATUS_FAULT;
+    result.status   = SafetyStatus::Fault;
     return result;
   }
   if ((mode != TrackedMode::Input) && (mode != TrackedMode::InputPullup)) {
     result.category = SafetyFaultCategory::Configuration;
     result.code     = SafetyFaultCode::PinModeMismatch;
-    result.status   = SAFETY_STATUS_FAULT;
+    result.status   = SafetyStatus::Fault;
     return result;
   }
 
   // 2. 2-of-3 vote via the strategy-injected __tc_gpio_read shim.
+  // The asm volatile("") prevents the compiler from optimizing away
+  // the settle delay between reads (which would defeat temporal separation).
   const uint32_t r0 = __tc_gpio_read(pin);
-  for (uint32_t i = 0U; i < 50U; ++i) { /* short settle */ }
+  for (uint32_t i = 0U; i < 50U; ++i) { asm volatile(""); }
   const uint32_t r1 = __tc_gpio_read(pin);
-  for (uint32_t i = 0U; i < 50U; ++i) { }
+  for (uint32_t i = 0U; i < 50U; ++i) { asm volatile(""); }
   const uint32_t r2 = __tc_gpio_read(pin);
 
   if ((r0 == r1) && (r1 == r2)) {
-    result.status = SAFETY_STATUS_OK;
+    result.status = SafetyStatus::Ok;
     result.value  = r0 ? 0xFFFFFFFFU : 0x00000000U;
   } else {
     result.category = SafetyFaultCategory::Signal;
     result.code     = SafetyFaultCode::VoteDisagreement;
-    result.status   = SAFETY_STATUS_FAULT;
+    result.status   = SafetyStatus::Fault;
   }
   return result;
 }

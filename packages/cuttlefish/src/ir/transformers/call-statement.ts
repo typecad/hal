@@ -181,25 +181,25 @@ function tryResolveSafetyCallStatement(
 
   const method = call.expression.name.text;
   // Extract simple literal/identifier arg values; non-literal args are passed
-  // as their rendered text so the hook can decide. The hook only consumes
-  // safe.read (pin) and safe.pinMode (pin, mode), so numeric/identifier args
-  // cover the real cases.
+  // as their rendered text so the hook can decide. The hook consumes
+  // safe.read (pin), safe.write (pin, value), and safe.pinMode (pin, mode).
+  // For safe.write, the value may be a property access (r.value), arithmetic
+  // expression, or variable — rendered to its C++ text form.
   const argValues: unknown[] = call.arguments.map((a) => {
     if (ts.isNumericLiteral(a)) return Number(a.text);
     if (ts.isStringLiteral(a)) return a.text;
     if (a.kind === ts.SyntaxKind.TrueKeyword) return true;
     if (a.kind === ts.SyntaxKind.FalseKeyword) return false;
     if (ts.isIdentifier(a)) {
-      // Recognize Arduino mode macros (INPUT/OUTPUT/INPUT_PULLUP) and pass
-      // them through as their numeric values so safe.pinMode(pin, INPUT)
-      // works in source. The mode table uses 0/1/2 internally.
       const name = a.text;
       if (name === "INPUT") return 0;
       if (name === "OUTPUT") return 1;
       if (name === "INPUT_PULLUP") return 2;
       return name;
     }
-    return undefined;
+    // Property access (e.g. r.value), arithmetic, or other expression:
+    // render to the C++ expression text so the op can emit it inline.
+    return a.getText();
   });
 
   const op = requireSafetyHook().resolveSemanticCall?.(`safe.${method}`, argValues);

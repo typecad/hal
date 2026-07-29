@@ -49,6 +49,18 @@ export interface SafetyReadSafeOp {
   pin: number;
 }
 
+/** Op produced by `safe.write(OutputPin, value)`. Resolves to a C++ expression
+ *  returning a SafeWriteResult. The pin number is resolved at IR time from the
+ *  Pin instance via the halInstances registry. The value may be a numeric
+ *  literal or a string containing the rendered C++ expression text (e.g.
+ *  "r.value", "x + 1"). */
+export interface SafetyWriteVerifyOp {
+  operation: "safety.write_verify";
+  pin: number;
+  value: number | string;
+}
+
 export type SafetyHALOp =
   | SafetyRecordPinModeOp
-  | SafetyReadSafeOp;
+  | SafetyReadSafeOp
+  | SafetyWriteVerifyOp;

@@ -20,13 +20,15 @@ import { halInstances } from "@typecad/cuttlefish/build-ir-state";
  *  the safety op shapes are not part of the HALOpIR union. */
 function resolveSafetyOp(op: HALOpIR): { code?: string; expression?: string } | undefined {
   const operation = op.operation as string;
-  const fields = op as unknown as { pin?: unknown; mode?: unknown };
+  const fields = op as unknown as { pin?: unknown; mode?: unknown; value?: unknown };
   switch (operation) {
     case "safety.record_pin_mode":
       // mode is a TrackedMode enum value (numeric) — emitted as-is.
       return { code: `__tc_safety_record_pin_mode(${fields.pin}, ${fields.mode});` };
     case "safety.read_safe":
       return { expression: `__tc_safety::read_safe(${fields.pin})` };
+    case "safety.write_verify":
+      return { expression: `__tc_safety::write_verify(${fields.pin}, ${fields.value})` };
     default:
       return undefined;
   }
@@ -60,6 +62,14 @@ function resolveSemanticCall(callee: string, args: readonly unknown[]): HALOpIR 
     const pin = resolvePinArg(args[0]);
     if (pin === undefined) return undefined;
     return { operation: "safety.read_safe", pin } as unknown as HALOpIR;
+  }
+  // `safe.write(OutputPin, value)` → safety.write_verify
+  // value may be a number (literal) or string (rendered C++ expression text)
+  if (callee === "safe.write") {
+    const pin = resolvePinArg(args[0]);
+    if (pin === undefined) return undefined;
+    const value = args[1] ?? 0;
+    return { operation: "safety.write_verify", pin, value } as unknown as HALOpIR;
   }
   return undefined;
 }

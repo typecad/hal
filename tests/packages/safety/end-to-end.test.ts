@@ -10,14 +10,14 @@ describe("safe.read end-to-end (v2 — HAL Pin flow)", () => {
   it("emits __tc_safety_read_safe, record_pin_mode, and __tc_gpio_read shim", () => {
     const { cpp } = transpileArduino(`
       import { Pin } from "@typecad/hal";
-      import { safe, SAFETY_STATUS_OK } from "@typecad/safety";
+      import { safe, SafetyStatus } from "@typecad/safety";
 
       const btn = Pin.fromPort("PD2").asInput();
 
       function setup(): void {}
       function loop(): void {
         const r = safe.read(btn);
-        if (r.status === SAFETY_STATUS_OK) { /* use r.value */ }
+        if (r.status === SafetyStatus.Ok) { /* use r.value */ }
       }
     `);
 
