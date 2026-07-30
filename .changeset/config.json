@@ -2,7 +2,7 @@
   "$schema": "https://unpkg.com/@changesets/config@3.1.4/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
-  "fixed": [["@typecad/cuttlefish", "@typecad/ui", "@typecad/hal", "@typecad/arduino-cli", "@typecad/framework-arduino", "@typecad/framework-avr", "@typecad/framework-esp32", "@typecad/framework-native", "@typecad/board-arduino-uno", "@typecad/board-esp32-devkit", "@typecad/board-esp32s3", "@typecad/board-esp32c3", "@typecad/board-esp32c6", "@typecad/board-rp2040", "@typecad/board-rp2350", "@typecad/mcu-atmega328p", "@typecad/mcu-esp32", "@typecad/mcu-esp32s3", "@typecad/mcu-esp32c3", "@typecad/mcu-esp32c6", "@typecad/mcu-rp2040", "@typecad/mcu-rp2350", "@typecad/expect", "@typecad/simulator"]],
+  "fixed": [["@typecad/cuttlefish", "@typecad/ui", "@typecad/hal", "@typecad/arduino-cli", "@typecad/framework-arduino", "@typecad/framework-avr", "@typecad/framework-esp32", "@typecad/framework-native", "@typecad/framework-zephyr", "@typecad/board-arduino-uno", "@typecad/board-esp32-devkit", "@typecad/board-esp32s3", "@typecad/board-esp32c3", "@typecad/board-esp32c6", "@typecad/board-xiao-nrf52840", "@typecad/board-rp2040", "@typecad/board-rp2350", "@typecad/mcu-atmega328p", "@typecad/mcu-esp32", "@typecad/mcu-esp32s3", "@typecad/mcu-esp32c3", "@typecad/mcu-esp32c6", "@typecad/mcu-nrf52840", "@typecad/mcu-rp2040", "@typecad/mcu-rp2350", "@typecad/expect", "@typecad/simulator"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",

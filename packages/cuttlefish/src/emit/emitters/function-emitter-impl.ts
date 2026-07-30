@@ -35,6 +35,12 @@ export function emitPostClassDeclarations(ctx: EmitterContext): void {
   if (ctx.promotedVarDecls.size > 0) {
     for (const [varName, info] of ctx.promotedVarDecls) {
       appendSourceLine(ctx, `${info.cppType} ${escapeCppKeyword(varName, platformReservedNames)} = {};`);
+      // Seed the top-level scope's type map so subsequent assign rendering
+      // (e.g. the deferred `c = SafeInt(0)` initializer) can resolve the
+      // variable's type and inject template args / casts via
+      // renderValueForTarget. Without this, type-aware rendering of promoted
+      // vars is unreachable (inferLvalueCppType returns undefined).
+      ctx.topLevelScope.knownVariableTypes.set(varName, { cppType: info.cppType });
     }
     appendSourceLine(ctx, "");
   }

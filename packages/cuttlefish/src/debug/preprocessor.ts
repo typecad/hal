@@ -229,7 +229,10 @@ class ScopeAnalyzer {
     if (this.functionVars.has(line)) {
       return this.functionVars.get(line)!;
     }
-    return this.functionVars.get(-1) || [];
+    // Module-scope (top-level): filter by declaration order so breakpoints
+    // before a variable's declaration don't reference it (use-before-declare).
+    const topVars = this.functionVars.get(-1) || [];
+    return topVars.filter(v => v.declLine === undefined || v.declLine < line);
   }
 
   private analyze(): void {

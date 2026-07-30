@@ -21,6 +21,7 @@ interface TouchAdapterCodegen {
 }
 import type { StatementIR, HALOpIR } from "@typecad/cuttlefish/api/shared";
 import { generatePromiseRuntime, generateStaticAsyncRuntime, applyStringMethodRewrites, parsedIsVector } from "@typecad/cuttlefish/api/shared";
+import { programUsesSafety } from "@typecad/cuttlefish/api";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen.js";
 import { resolveArduinoProfile } from "./profile.js";
 import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341.js";
@@ -440,6 +441,22 @@ export class ArduinoStrategy implements PlatformStrategy {
       "#endif // __TC_BP_DISABLED_DEFINED",
       "",
     );
+
+    // Safety: emit the __tc_gpio_read / __tc_delay_us shims when the program
+    // uses @typecad/safety. The safety voter polyfill calls these; without
+    // them the emitted code would not compile. Gated on programUsesSafety(program).
+    // The #ifndef guard lets a subclass (AVR) override __tc_delay_us with a
+    // native helper without producing a redefinition error.
+    if (programUsesSafety(program)) {
+      lines.push(
+        "inline int __tc_gpio_read(uint32_t pin) { return digitalRead(pin); }",
+        "inline void __tc_gpio_write(uint32_t pin, uint32_t value) { digitalWrite(pin, (value != 0U) ? HIGH : LOW); }",
+        "#ifndef __TC_DELAY_US_DEFINED",
+        "#define __TC_DELAY_US_DEFINED",
+        "inline void __tc_delay_us(uint32_t us) { delayMicroseconds(us); }",
+        "#endif",
+      );
+    }
 
     lines.push(...profileLines);
     return lines;
@@ -1103,23 +1120,6 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       "    getString(key: string, defaultValue: string): string;",
       "    remove(key: string): void;",
       "  };",
-      // Augment the '@typecad/board' module to re-export ownership types so that
-      // `import { Owned, Shared } from '@typecad/board'` resolves correctly during
-      // the transpiler's pre-emit type-check.  The strings below close the
-      // enclosing `declare global {`, open a module augmentation, then
-      // re-open `declare global {` for the caller's closing brace.
-      "}",
-      "declare module '@typecad/board' {",
-      "  export type Owned<T = any> = T;",
-      "  export type Shared<T = any> = T;",
-      "  export type Mutable<T = any> = T;",
-      "}",
-      "declare global {",
-      "  export type Owned<T = any> = T;",
-      "  export type Shared<T = any> = T;",
-      "  export type Mutable<T = any> = T;",
-      "}",
-      "declare global {",
     ];
   }
 

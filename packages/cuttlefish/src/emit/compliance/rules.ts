@@ -32,7 +32,22 @@ export const RULES: readonly RuleEntry[] = [
     exempt: /static_cast|dynamic_cast|reinterpret_cast|const_cast/,
     enabled: true },
   { id: "M5-0-10", title: "No reinterpret_cast", severity: "required", category: "D",
-    detect: /reinterpret_cast</, enabled: true },
+    detect: /reinterpret_cast</, enabled: true,
+    knownPatterns: [
+      {
+        // freeHeap() on AVR exposes no numeric API — avr-libc publishes the
+        // heap boundary as the linker symbols __heap_start (int) and __brkval
+        // (int*). Computing the free byte count requires subtracting two
+        // addresses, which is only expressible as a pointer→integer cast.
+        // This is the canonical AUTOSAR category-D "unavoidable platform
+        // constraint" deviation. ESP32 uses ESP.getFreeHeap() and needs no
+        // cast; this pattern matches only the AVR idiom.
+        detect: /reinterpret_cast<size_t>\(&(v|__heap_start)\)|reinterpret_cast<size_t>\(__brkval\)/,
+        justification: "AVR freeHeap() measures the gap between the stack and heap via the avr-libc __heap_start/__brkval linker symbols; pointer-to-integer conversion is the only way to compute a byte distance between two addresses on a target with no numeric free-heap API.",
+        kind: "polyfill",
+      },
+    ],
+  },
   { id: "M5-2-8", title: "No pointer arithmetic out of bounds", severity: "required", category: "C", enabled: true },
   { id: "A5-2-2", title: "No static_cast downcast of polymorphic type", severity: "required", category: "C", enabled: true },
   { id: "M5-3-2", title: "No bitwise ops on signed narrow types", severity: "required", category: "C", enabled: true,
@@ -46,6 +61,22 @@ export const RULES: readonly RuleEntry[] = [
   },
   { id: "A5-3-2", title: "No bitwise assignment on signed narrow types", severity: "required", category: "C", enabled: true },
   { id: "A7-1-1", title: "const on objects that are not modified", severity: "required", category: "C", enabled: true },
+  { id: "A7-1-5", title: "auto only for function returns, non-fundamental types, generic lambdas, trailing return types", severity: "required", category: "C",
+    detect: /\bauto\b/, enabled: true,
+    knownPatterns: [
+      {
+        // A7-1-5 permits auto for: (1) function call return types,
+        // (2) non-fundamental type initializers, (3) generic lambda params,
+        // (4) trailing return type syntax. The self-check can't distinguish
+        // these from first principles, so we record a deviation for every
+        // auto usage. The renderer separately avoids auto for fundamental
+        // types (numbers) under --autosar by substituting int32_t/float/etc.
+        detect: /\bauto\b/,
+        justification: "auto is used for function return types (case 1) and non-fundamental types (case 2) as permitted by A7-1-5; fundamental-type auto is substituted to explicit fixed-width types by the renderer.",
+        kind: "other",
+      },
+    ],
+  },
   { id: "A7-1-6", title: "No typedef outside a function -> use using alias", severity: "required", category: "C",
     detect: /\btypedef\b/, exempt: /\busing\b/, enabled: true,
     knownPatterns: [

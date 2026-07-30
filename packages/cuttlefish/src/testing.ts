@@ -32,6 +32,10 @@ export { transpileFile } from "./transpile.js";
 // ── UI bridge (optional @typecad/ui) ─────────────────────────────────────────
 export { resetUIEngine, __simulateUIAbsentForTest } from "./ui/ui-bridge.js";
 
+// ── Safety bridge (optional @typecad/safety) ────────────────────────────────
+export { resetSafetyEngine, __simulateSafetyAbsentForTest } from "./safety/safety-bridge.js";
+export { setSafetyHook, hasSafetyHook } from "./safety-hook.js";
+
 // ── Project scaffolding ──────────────────────────────────────────────────────
 export {
   scaffoldProject,

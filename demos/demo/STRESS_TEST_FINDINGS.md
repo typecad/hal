@@ -1,8 +1,14 @@
 # Enum stress test — findings (cuttlefish, Arduino ESP32-S3)
 
+> **STALE (2026-07-28):** `demos/demo/src/main.ts` was rewritten to showcase
+> `@typecad/safety`'s `safe.read` feature; it no longer contains the enum
+> stress-test sketch this writeup analyzes. Kept as a historical reference
+> for the enum-lowering findings, which remain valid language-level claims.
+
 A maximal enum showcase hammered the enum surface (SUPPORT_MATRIX §1.7) to
-find where the claims break. Source: `demo/src/main.ts`. Originally developed
-against AVR; now targets the ESP32-S3 (`esp32:esp32s3:esp32s3`). The findings
+find where the claims break. Source: `demo/src/main.ts` (previous revision).
+Originally developed against AVR; now targets the ESP32-S3
+(`esp32:esp32s3:esp32s3`). The findings
 below are language-level (enum lowering) and apply across architectures.
 Covers numeric `const enum`, string enum, enum with gaps, enum as array index,
 relational comparison, switch, string-enum comparison/concat,

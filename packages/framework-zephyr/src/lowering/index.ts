@@ -1,0 +1,68 @@
+// ---------------------------------------------------------------------------
+// HAL lowering dispatcher
+//
+// Routes a HALOpIR to the per-category lowering module by category prefix
+// (e.g. 'gpio.write' → lowerGpio). Returns undefined for categories the
+// framework does not lower (wifi/http/display/board/preferences/random/fs/
+// mdns/mqtt/ota/rmt/dac/hwtimer/capacitive/temp/espnow/crypto/i2s/twai/usb/
+// eth/pcnt/mcpwm — see the manifest), so the transpiler falls back and the
+// manifest validator cross-checks the unsupported categories.
+//
+// Prefix dispatch (matching framework-esp32's lowerHalOp) keeps this resilient:
+// a new op added to a category's lowering fn is picked up here automatically,
+// without also editing a 40-case switch. The per-fn default arm still throws a
+// clear "unsupported op" error for ops that fall within a category prefix but
+// aren't handled, so coverage stays honest.
+// ---------------------------------------------------------------------------
+
+import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
+import { getActiveChip } from '../chips/index.js';
+import { lowerGpio } from './gpio.js';
+import { lowerTiming } from './timing.js';
+import { lowerAdc } from './adc.js';
+import { lowerPwm } from './pwm.js';
+import { lowerI2c } from './i2c.js';
+import { lowerSpi } from './spi.js';
+import { lowerUart } from './uart.js';
+import { lowerInterrupt } from './interrupts.js';
+import { lowerWdt } from './wdt.js';
+import { lowerPower } from './power.js';
+import { lowerTone } from './tone.js';
+import { lowerPulseOrShift } from './pulse.js';
+import { lowerBle } from './ble.js';
+
+export {
+  lowerGpio, lowerTiming, lowerAdc, lowerPwm, lowerI2c, lowerSpi, lowerUart,
+  lowerInterrupt, lowerWdt, lowerPower, lowerTone, lowerPulseOrShift, lowerBle,
+};
+
+/**
+ * Lower a HAL op to Zephyr C++. Returns undefined for unsupported categories
+ * (mirrors lowerHalOp in framework-esp32/src/lowering/index.ts).
+ */
+export function lowerHalOp(
+  op: HALOpIR,
+): { code?: string; expression?: string } | undefined {
+  const chip = getActiveChip();
+
+  if (op.operation.startsWith('gpio.'))       return lowerGpio(op, chip);
+  if (op.operation.startsWith('timing.'))     return lowerTiming(op);
+  if (op.operation.startsWith('adc.'))        return lowerAdc(op, chip);
+  if (op.operation.startsWith('pwm.'))        return lowerPwm(op, chip);
+  if (op.operation.startsWith('i2c.'))        return lowerI2c(op, chip);
+  if (op.operation.startsWith('spi.'))        return lowerSpi(op, chip);
+  if (op.operation.startsWith('uart.'))       return lowerUart(op);
+  if (op.operation.startsWith('interrupt.'))  return lowerInterrupt(op, chip);
+  if (op.operation.startsWith('wdt.'))        return lowerWdt(op);
+  if (op.operation.startsWith('power.'))      return lowerPower(op);
+  if (op.operation.startsWith('tone.'))       return lowerTone(op, chip);
+  // pulse.* and shift.* share a bit-bang lowering module.
+  if (op.operation.startsWith('pulse.') || op.operation.startsWith('shift.'))
+    return lowerPulseOrShift(op, chip);
+  if (op.operation.startsWith('ble.'))        return lowerBle(op);
+
+  // raw / snprintf.emit / display.* / board.* / wifi.* / http.* / ... — not
+  // lowered by this framework. Return undefined so the transpiler falls back
+  // and the manifest validator confirms the unsupported declaration.
+  return undefined;
+}

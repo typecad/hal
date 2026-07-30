@@ -14,6 +14,7 @@ import { tryLowerRegisterRead } from "./transformers/register-assignment.js";
 import { tryLowerArrayAndStringMethods } from "./transformers/array-methods.js";
 import { collectReturns, inferExprCppType, typeNodeToCppType, type CppTypeHint } from "./type-resolution.js";
 import { parseCppType, elementOf, renderCppType, isPointer, bareType, parsedIsPointer, parsedIsVector, parsedIsMap, parsedIsSet, parsedIsTuple, parsedIsStdString, parsedElementString, parsedBareString, isVector, isMap, isSet, isContainer } from "../api/shared/cpp-type-ir.js";
+import { hasSafetyHook, requireSafetyHook } from "../safety-hook.js";
 
 function resolveExprCppType(expr: ts.Expression): string | undefined {
   if (ts.isNonNullExpression(expr) || ts.isParenthesizedExpression(expr)) {
@@ -180,6 +181,153 @@ function resolveCallReturnTypeForNullGuard(call: ts.CallExpression, sourceText: 
     return undefined;
   }
   return undefined;
+}
+
+/** The SafeReadResult/SafeWriteResult chain methods whose lambda args must
+ *  render inline (preserving closure captures). Detected on the TS chain to
+ *  decide whether to take the structured-receiver path. */
+const SAFETY_RESULT_CHAIN_METHODS = new Set(["ok", "fail", "fault", "always"]);
+
+/** Detect `safe.<read|write>(...).<ok|fail|fault|always>(handler)...` chains
+ *  and build them as nested method-call IR nodes with a STRUCTURED receiverExpr
+ *  (not a flattened callee string). This preserves inner lambda args so the
+ *  emit pipeline can render them inline via renderLambda.
+ *
+ *  Returns null when the expression is not a safe.* call chained with at least
+ *  one result method (terminal safe.read/safe.write are handled by the
+ *  statement/var-decl interceptors; non-safe chains use the generic path). */
+function tryResolveSafetyChain(
+  expr: ts.CallExpression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+  pointerVars: PointerTracker,
+): ExpressionIR | null {
+  if (!hasSafetyHook()) return null;
+
+  // Walk down the property-access chain collecting (methodName, callNode) pairs.
+  // For `safe.read(pin).ok(cb).fail(cb)`: the outermost expr is .fail(cb), whose
+  // expression is the PropertyAccess `....fail`; its .expression is the .ok(cb)
+  // call; THAT call's .expression.expression is the safe.read(pin) call; and the
+  // safe.read call's .expression.expression is the identifier `safe`.
+  // So each loop iteration: push the current call's method name, then descend to
+  // cur.expression.expression (the receiver of the current property-access call).
+  type ChainLink = { methodName: string; callNode: ts.CallExpression };
+  const chain: ChainLink[] = [];
+  let cur: ts.Expression = expr;
+  while (ts.isCallExpression(cur) && ts.isPropertyAccessExpression(cur.expression)) {
+    chain.push({ methodName: cur.expression.name.text, callNode: cur });
+    cur = cur.expression.expression;
+  }
+
+  // After the loop, `cur` is the innermost receiver. For a safe.* chain, the
+  // last-pushed chain element is the safe.read/safe.write root (its
+  // callNode.expression.expression is the identifier `safe`). Identify it.
+  if (chain.length === 0) return null;
+  const root = chain[chain.length - 1]!;
+  const rootCall = root.callNode;
+  // rootCall.expression is `safe.read` (PropertyAccess); rootCall.expression.expression
+  // must be the identifier `safe` for this to be a safe.* root.
+
+  // The root method is read/write; the links above it (chain[0..length-2]) must
+  // include at least one result-chain method (ok/fail/fault/always).
+  const resultLinks = chain.slice(0, chain.length - 1);
+  const hasChainMethod = resultLinks.some((link) => SAFETY_RESULT_CHAIN_METHODS.has(link.methodName));
+  if (!hasChainMethod) return null;
+
+  // Resolve the safe.<method>(...) root to a hal-expr (the same way variables.ts
+  // does for `const r = safe.read(pin)`). This becomes the innermost receiver.
+  const rootPropAccess = rootCall.expression as ts.PropertyAccessExpression;
+  const safeMethod = rootPropAccess.name.text;
+  const argValues: unknown[] = rootCall.arguments.map((a) => {
+    if (ts.isNumericLiteral(a)) return Number(a.text);
+    if (ts.isStringLiteral(a)) return a.text;
+    if (a.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (a.kind === ts.SyntaxKind.FalseKeyword) return false;
+    if (ts.isIdentifier(a)) return a.text;
+    return a.getText();
+  });
+  const op = requireSafetyHook().resolveSemanticCall?.(`safe.${safeMethod}`, argValues);
+  // If the hook couldn't resolve the pin (halInstances not yet populated for
+  // this identifier at this point in IR building), fall back to rendering the
+  // root verbatim. The chain structure (with inline lambdas) is still correct;
+  // only the root's HAL resolution is deferred. This happens for multi-link
+  // chains where the resolver runs before the pin's HAL instance is registered.
+  let receiver: ExpressionIR;
+  if (op) {
+    receiver = { kind: "hal-expr", operation: op } as ExpressionIR;
+  } else {
+    // Best-effort: resolve the pin number directly from halInstances (the hook's
+    // resolvePinArg does the same lookup, but calling it directly here avoids the
+    // hook's early-return on unresolved pins).
+    const pinArg = argValues[0];
+    let pinNum: number | undefined;
+    if (typeof pinArg === "string") {
+      const inst = halInstances.get(pinArg);
+      if (inst) {
+        const pv = inst.fieldValues.get("_pin") ?? inst.fieldValues.get("pin");
+        if (pv !== undefined) pinNum = Number(pv);
+      }
+    } else if (typeof pinArg === "number") {
+      pinNum = pinArg;
+    }
+    if (pinNum !== undefined) {
+      // Build the op manually now that we have the pin.
+      const fallbackOp = safeMethod === "read"
+        ? { operation: "safety.read_safe", pin: pinNum } as unknown
+        : { operation: "safety.write_verify", pin: pinNum, value: argValues[1] ?? 0 } as unknown;
+      receiver = { kind: "hal-expr", operation: fallbackOp } as ExpressionIR;
+    } else {
+      // Last resort: verbatim text. The chain renders but the root won't have
+      // resolved to __tc_safety::read_safe — acceptable degradation.
+      receiver = { kind: "raw", value: rootCall.getText() } as ExpressionIR;
+    }
+  }
+
+  // The root renders as __tc_safety::read_safe(pin) — render it to text so the
+  // callee string (used for non-receiverExpr consumers like type inference) is
+  // correct.
+  const rootText = renderExprAsText(receiver);
+
+  // Build nested method-call nodes bottom-up over the RESULT links only
+  // (chain[0..length-2], excluding the root at chain[length-1]). chain[0] is the
+  // outermost call (e.g. .fail); we build from the innermost result link outward.
+  for (let i = resultLinks.length - 1; i >= 0; i--) {
+    const link = resultLinks[i]!;
+    // Render this link's args as IR (lambdas become lambda IR nodes that
+    // renderLambda handles at emit time).
+    const argIRs = link.callNode.arguments.map((a) => expressionToIR(a, sourceText, diagnostics, pointerVars));
+    // Set concrete param types on lambda args so renderLambda emits
+    // `const SafeReadResult& r` instead of `auto r`. Generic lambdas (auto
+    // params) require C++14; AVR's gnu++11 doesn't support them. The chain
+    // knows the result type from the root (read -> SafeReadResult,
+    // write -> SafeWriteResult).
+    const resultType = safeMethod === "read" ? "SafeReadResult" : "SafeWriteResult";
+    for (const argIR of argIRs) {
+      if (argIR.kind === "lambda" && argIR.params) {
+        for (const p of argIR.params) {
+          if (!p.cppType || p.cppType === "auto") {
+            p.cppType = `const ${resultType}&`;
+          }
+        }
+      }
+    }
+    // Build a callee string for backward-compat with consumers that read
+    // method-call.callee. The receiver text is rootText for the innermost link,
+    // or the prior receiver's rendered text for outer links.
+    const priorCallee = i === resultLinks.length - 1
+      ? rootText
+      : renderExprAsText(receiver);
+    const callee = `${priorCallee}.${escapeCppKeyword(link.methodName, new Set<string>())}`;
+    receiver = {
+      kind: "method-call",
+      callee,
+      args: argIRs,
+      methodName: link.methodName,
+      receiverExpr: receiver,
+    } as ExpressionIR;
+  }
+
+  return receiver;
 }
 
 export function expressionToIR(expr: ts.Expression, sourceText: string, diagnostics: Diagnostic[], pointerVars: PointerTracker = new Map()): ExpressionIR {
@@ -977,6 +1125,18 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   }
 
   if (ts.isCallExpression(expr)) {
+    // ---- safe.read/safe.write chained with .ok/.fail/.fault/.always ----
+    // Method chains like `safe.read(pin).ok(r => {...}).fail(r => {...})` cannot
+    // use the generic method-call builder because it flattens the receiver into
+    // a callee STRING (expression-to-ir.ts ~line 1475), destroying inner lambda
+    // args (they become `/* __lambda__ */` placeholders baked into the callee
+    // text). This resolver detects a safe.* call followed by a chain of fluent
+    // result methods and builds it bottom-up as nested method-call nodes with a
+    // STRUCTURED receiverExpr, so the emit pipeline renders each lambda arg
+    // inline via renderLambda (preserving closure captures).
+    const safetyChain = tryResolveSafetyChain(expr, sourceText, diagnostics, pointerVars);
+    if (safetyChain) return safetyChain;
+
     // ---- rawCppExpr() — compile-time C++ injection in expression context ----
     // Mirrors the statement-position rawCpp()/__EMIT__ path, but emits the raw
     // text as an expression (e.g. for IDF macros like WIFI_INIT_CONFIG_DEFAULT()

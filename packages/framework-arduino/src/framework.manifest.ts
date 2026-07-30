@@ -373,7 +373,10 @@ export default defineFrameworkManifest({
     },
   },
 
-  ambientTypes: ['Timing', 'EEPROM', 'WDT', 'Preferences', 'Owned', 'Shared', 'Mutable'],
+  // Owned/Shared/Mutable are emitted centrally by generateVirtualTypeDeclaration
+  // (config-loader.ts) for every framework, so they are not framework-specific
+  // ambient types and are intentionally omitted here.
+  ambientTypes: ['Timing', 'EEPROM', 'WDT', 'Preferences'],
 
   conformance: {
     hardwareTestGroups: [

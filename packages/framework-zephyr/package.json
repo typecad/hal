@@ -1,0 +1,74 @@
+{
+  "name": "@typecad/framework-zephyr",
+  "version": "1.0.0-alpha.7",
+  "description": "TypeCAD framework package for the Zephyr RTOS — west/CMake build, devicetree-driven GPIO",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./framework.manifest": {
+      "types": "./dist/framework.manifest.d.ts",
+      "default": "./dist/framework.manifest.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run --root ../.. tests/packages/framework-zephyr/manifest.test.ts",
+    "test:coverage": "npm test && tsx ../../scripts/render-framework-coverage.ts",
+    "test:hw": "npm exec -- cuttlefish-test",
+    "test:hw:basics": "npm exec -- cuttlefish-test tests/01-basics.test.ts",
+    "test:hw:gpio": "npm exec -- cuttlefish-test tests/40-gpio.test.ts",
+    "test:hw:timers": "npm exec -- cuttlefish-test tests/42-timers.test.ts"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "1.0.0-alpha.7"
+  },
+  "devDependencies": {
+    "@typecad/expect": "1.0.0-alpha.7",
+    "@typecad/board-xiao-nrf52840": "1.0.0-alpha.7",
+    "typescript": "^5.7.3"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justind000/typecode.git",
+    "directory": "packages/framework-zephyr"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/packages/framework-zephyr",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "ble",
+    "cpp",
+    "cuttlefish",
+    "embedded",
+    "firmware",
+    "framework",
+    "gpio",
+    "microcontroller",
+    "nordic",
+    "nrf52840",
+    "rtos",
+    "typecad",
+    "typescript",
+    "zephyr"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0",
+  "sideEffects": false
+}

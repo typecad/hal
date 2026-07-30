@@ -600,6 +600,15 @@ export class StatementRenderer {
       const rawStmt = statement.callee.slice('__RAW_STMT__'.length);
       return forHeader ? rawStmt : `${rawStmt.endsWith(';') ? rawStmt : rawStmt + ';'}`;
     }
+    // Handle expression statements whose IR must render at EMIT time (not the
+    // build-time renderExprAsText). The safe.read().ok().fail() chain uses this:
+    // its lambda args can only render via the emit-time renderLambda (which
+    // produces [&](){...}), so the structured chain IR is carried as args[0]
+    // and rendered here via the expression renderer.
+    if (statement.callee === '__EXPR_STMT__' && statement.args.length >= 1) {
+      const exprText = this.expressionRenderer.render(statement.args[0]!, undefined, knownVariableTypes);
+      return forHeader ? exprText : `${exprText};`;
+    }
     // Awaited network markers (__WIFI_WAIT__/__HTTP_WAIT__) reaching the
     // plain renderer means the await sits outside an async state machine
     // (top-level await, or a position the state-machine splitter doesn't
@@ -1044,13 +1053,6 @@ export class StatementRenderer {
     // `const const char* c` (valid: const pointer to const char).
     if (this.stringEnumNames.has(typeName)) {
       return this.strategy.normalizeCppType("const char*");
-    }
-    // A3-9-1: when the type is "auto" AND autosar is active, resolve via
-    // defaultNumericType with compliance context so fixed-width integers are
-    // used. When autosar is off, fall through to the strategy's normalizeCppType
-    // (Arduino returns "auto" for "auto"; GenericStrategy returns "int").
-    if (typeName === "auto" && this._compliance?.isBanned("A3-9-1")) {
-      return this.strategy.defaultNumericType(this._compliance);
     }
     // A3-9-1: under autosar, substitute the platform's default numeric type
     // for the legacy "int" spelling. The IR layer hardcodes "int" for number

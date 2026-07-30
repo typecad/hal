@@ -354,6 +354,22 @@ function analyzeExpression(
         if (opName.startsWith("dac."))       result.usesDAC = true;
         if (opName.startsWith("power."))     result.usesPower = true;
         if (opName.startsWith("wdt."))       result.usesWdt = true;
+        // Safety HAL ops (@typecad/safety) — map each op to the
+        // __tc_safety_* polyfill helper it triggers, so the mode-table and
+        // voter polyfills survive tree-shaking when actually used. Matches
+        // the resolveSafetyOp output naming. Cast through string because the
+        // HALOpIR operation union is closed and doesn't include safety.* ops
+        // (those are owned by the optional @typecad/safety package).
+        const safetyOpName = opName as string;
+        if (safetyOpName === "safety.record_pin_mode") {
+          result.usedPolyfillHelpers.add("__tc_safety_record_pin_mode");
+        }
+        if (safetyOpName === "safety.read_safe") {
+          result.usedPolyfillHelpers.add("__tc_safety_read_safe");
+        }
+        if (safetyOpName === "safety.write_verify") {
+          result.usedPolyfillHelpers.add("__tc_safety_write_verify");
+        }
         if (opName.startsWith("interrupt.")) result.usesInterrupts = true;
         if (opName.startsWith("pulse."))     result.usesPulse = true;
         if (opName.startsWith("shift."))     result.usesShift = true;
@@ -622,6 +638,22 @@ function analyzeStatement(
         if (opName.startsWith("dac."))       result.usesDAC = true;
         if (opName.startsWith("power."))     result.usesPower = true;
         if (opName.startsWith("wdt."))       result.usesWdt = true;
+        // Safety HAL ops (@typecad/safety) — map each op to the
+        // __tc_safety_* polyfill helper it triggers, so the mode-table and
+        // voter polyfills survive tree-shaking when actually used. Matches
+        // the resolveSafetyOp output naming. Cast through string because the
+        // HALOpIR operation union is closed and doesn't include safety.* ops
+        // (those are owned by the optional @typecad/safety package).
+        const safetyOpName = opName as string;
+        if (safetyOpName === "safety.record_pin_mode") {
+          result.usedPolyfillHelpers.add("__tc_safety_record_pin_mode");
+        }
+        if (safetyOpName === "safety.read_safe") {
+          result.usedPolyfillHelpers.add("__tc_safety_read_safe");
+        }
+        if (safetyOpName === "safety.write_verify") {
+          result.usedPolyfillHelpers.add("__tc_safety_write_verify");
+        }
         if (opName.startsWith("interrupt.")) result.usesInterrupts = true;
         if (opName.startsWith("pulse."))     result.usesPulse = true;
         if (opName.startsWith("shift."))     result.usesShift = true;

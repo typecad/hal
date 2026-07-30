@@ -310,6 +310,7 @@ function scanExpression(
     case 'identifier':
     case 'raw':
     case 'tuple-access':
+    case 'call':
       break;
     default:
       assertNever(expr);

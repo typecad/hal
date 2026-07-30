@@ -1,83 +1,62 @@
-# ESP32-S3 debug demo
+# `@typecad/safety` showcase demo
 
-A small blink sketch (`src/main.ts`) that exercises TypeCAD's two debug paths
-on an ESP32-S3, and serves as the canonical walkthrough for **native GDB
-debugging** over the chip's built-in USB-Serial-JTAG.
+A sketch (`src/main.ts`) that exercises `@typecad/safety`'s `safe.read(Pin)` —
+a `digitalRead` that composes with `@typecad/hal`'s `Pin` class, verifies the
+pin's recorded mode at runtime via an auto-populated mode table, performs a
+2-of-3 vote via a strategy-injected `__tc_gpio_read` shim, and returns a
+`SafeReadResult` carrying any detected fault.
 
-- **Target:** ESP32-S3 (built-in USB-Serial-JTAG — one USB cable, no external probe)
-- **Framework:** `@typecad/framework-esp32` → native ESP-IDF (`idf.py`)
-- **Sketch:** toggles the LED every 250 ms, exposes module-scope state
-  (`toggles`, `lastReport`) and a function with locals (`toggleLed` → `now`),
-  and marks interesting breakpoints with `// ← breakpoint` / `// ← logpoint`.
+- **Target:** ESP32-S3 (Arduino core via ESP-IDF lowering)
+- **Framework:** `@typecad/framework-esp32`
+- **Sketch:** two deterministic scenarios surface the `SafeReadResult`
+  fault taxonomy end-to-end (no electrical noise required):
+  1. **Happy path** — button on GPIO4 (INPUT_PULLUP); `safe.read` returns
+     `Ok` and the value drives the LED on GPIO2.
+  2. **PinModeMismatch** — GPIO5 deliberately configured as OUTPUT, then
+     read; `safe.read` returns a `Configuration` fault.
 
-## Debugging
+## What this demonstrates
 
-### Native GDB debugging (ESP32-S3, recommended)
+- **Idiomatic HAL authoring** — `Pin.fromPort("GPIO4").asInputPullUp()` is
+  the user-facing mode config; the safety package doesn't second-guess it.
+- **Auto-intercept** — every `gpio.set_mode` op (produced by `asInput`/
+  `asOutput`/etc.) gets a `safety.record_pin_mode` companion injected by
+  the post-build IR transform, so the runtime mode table is authoritative
+  regardless of how the user configured the pin.
+- **MCU-agnosticism** — the safety package references zero target-specific
+  symbols. The voter calls `__tc_gpio_read`, a one-line shim each framework
+  strategy contributes (Arduino → `digitalRead`, native → stub).
+- **Two-tier fault taxonomy** — `category` (Ok/Signal/Integrity/Timing/
+  System/Configuration) is stable across safety standards (ISO 26262,
+  IEC 61508, DO-178C); `code` is the specific detail.
 
-`cuttlefish build --debug` on `esp32s3` takes the GDB path: it emits `#line`
-directives in the generated C++ (so GDB maps execution back to the `.ts`
-source) and writes the VS Code + OpenOCD configs. VS Code only reads
-`.vscode/` from the workspace root, so the config lands at the git root
-(the folder you open in VS Code), with paths expressed relative to it:
-
-```
-<repo-root>/.vscode/launch.json              ← VS Code reads this for F5
-<repo-root>/.vscode/tasks.json               ← preLaunchTask: build+flash
-demos/demo/src/out-esp32s3/.cuttlefish/openocd.cfg     ← board/esp32s3-builtin.cfg + adapter speed
-demos/demo/src/out-esp32s3/sdkconfig.defaults.debug    ← -Og, asserts, LTO off
-demos/demo/src/out-esp32s3/.cuttlefish/.cuttlefish-gdb.py  ← _isr_N frame filter (if any)
-```
-
-**To debug:**
-
-1. Install the **ESP-IDF VS Code extension** (`espressif.esp-idf-extension`) —
-   it provides the `gdbtarget` debug type and manages OpenOCD + GDB itself.
-   Requires ESP-IDF to be configured in the extension's settings.
-2. Set the board's serial port in `cuttlefish.config.ts` (`console.port` —
-   e.g. `'COM4'` on Windows, `'/dev/ttyACM0'` on Linux), or pass `--port`.
-3. Open the **repository root** in VS Code (not the `demos/demo` subfolder —
-   that's the most common reason F5 falls back to the Node.js picker and the
-   debug controls flash on then off). Run `npm run upload` once from
-   `demos/demo/` so the configs get written, then press **F5**.
-
-What happens on F5:
-
-- The `preLaunchTask` (`cuttlefish: build + flash`) builds and flashes the
-  firmware. The port is resolved from `config.console.port` at runtime — no
-  need to rebuild when the COM port changes.
-- The ESP-IDF extension's `gdbtarget` adapter starts its own OpenOCD via its
-  OpenOCD Manager (reading `idf.openOcdConfigs`, which points at the generated
-  `.cuttlefish/openocd.cfg` with the 5 MHz adapter-speed override), then
-  attaches GDB to port 3333.
-- Breakpoints you set as red dots in `main.ts` stop on the chip. Step, step-in,
-  step-out, call stack, and watch all work. Variables show their **TypeScript
-  names** — the transpiler doesn't mangle them.
-- Hoisted `_isr_N` frames (from anonymous lambdas passed as arguments) are
-  relabeled to `<lambda> @ file:line` by the generated `.cuttlefish-gdb.py`.
-
-**OS notes:**
-- **Linux:** copy OpenOCD's udev rules into `/etc/udev/rules.d/` first.
-- **Windows:** the ESP32-S3 USB-Serial-JTAG composite device may need its
-  driver installed (most devkits work with the inbox driver).
-
-### Printf instrumentation (fallback, other targets)
-
-On targets without native GDB support (Arduino, other ESP32 variants),
-`--debug` instead injects `printf`/`Serial` instrumentation at the
-`// ← breakpoint` / `// ← logpoint` lines:
+## Build
 
 ```bash
-npm run upload    # cuttlefish build --compile --upload --port <port> --monitor --debug
-```
-
-Keep the monitor attached and press ENTER to continue past each breakpoint, or
-`S` to skip it for the rest of the run. See
-`packages/vscode-typecad-debug/README.md` for the breakpoint/logpoint schema.
-
-## Other scripts
-
-```bash
-npm run build       # transpile TS -> C++ only
+npm run build       # transpile TS -> C++ (ESP-IDF .cc output)
 npm run compile     # transpile + compile with idf.py
 npm run lint        # ESLint with the cuttlefish transpiler-rules plugin
 ```
+
+For AUTOSAR C++14 strict-mode compliance checking (zero deviations expected):
+
+```bash
+npx cuttlefish build --autosar=strict
+```
+
+## Note on the demo's previous purpose
+
+This demo previously exercised TypeCAD's debug paths (GDB over USB-Serial-JTAG,
+printf instrumentation) via a blink sketch. That walkthrough has been
+superseded by this safety showcase. The debug-path documentation lived in
+this README and the sketch's header comment; both have been replaced. The
+separate `STRESS_TEST_FINDINGS.md` (an enum-stress-test writeup from an even
+earlier sketch purpose) is now also stale and kept only as historical
+reference.
+
+## See also
+
+- Spec: `docs/superpowers/specs/2026-07-27-safety-package-part-a-design.md`
+  (Part A v2 section at the top).
+- Plan: `docs/superpowers/plans/2026-07-28-safety-package-part-a-v2.md`.
+- The safety package itself: `packages/safety/`.

@@ -13,6 +13,7 @@ export const KNOWN_FRAMEWORK_PACKAGES = [
   '@typecad/framework-arduino',
   '@typecad/framework-avr',
   '@typecad/framework-esp32',
+  '@typecad/framework-zephyr',
 ] as const;
 
 export type KnownFrameworkPackage = typeof KNOWN_FRAMEWORK_PACKAGES[number];

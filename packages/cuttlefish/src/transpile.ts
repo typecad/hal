@@ -25,6 +25,8 @@ import { classDeclarationToIR } from "./ir/declaration-builders.js";
 import { clickHandlers } from "./ir/transformers/ui-call-resolver.js";
 import { setUIHook, requireUIHook, hasUIHook } from "./ui-hook.js";
 import { loadUIEngine } from "./ui/ui-bridge.js";
+import { hasSafetyHook, requireSafetyHook } from "./safety-hook.js";
+import { loadSafetyEngine } from "./safety/safety-bridge.js";
 import { setDisplayProfile, resetDisplayProfile } from "./stores/display-profile-store.js";
 import { setThemeCss, resetThemeCss, setThemeClass } from "./stores/theme-store.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
@@ -104,6 +106,18 @@ function cleanOutput(_entryDir: string, outDir: string): void {
  * Returns list of generated files.
  */
 
+
+/**
+ * True iff the program imports `@typecad/safety` anywhere. The safety
+ * transform pass uses this as its fast no-op guard — when no file imports
+ * safety, the pass returns the program unchanged.
+ */
+function entryImportsSafety(program: ProgramIR): boolean {
+  for (const imp of program.imports) {
+    if (imp.moduleSpecifier === "@typecad/safety") return true;
+  }
+  return false;
+}
 
 /**
  * Apply tree-shaking to program IR if enabled
@@ -297,6 +311,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // requireUIHook() works throughout this transpile run. Gracefully no-ops
   // when @typecad/ui is absent (pure TS→C++ transpile).
   await loadUIEngine();
+
+  // Load the safety engine from @typecad/safety (if installed). Sets up the
+  // hook so requireSafetyHook() works throughout this transpile run.
+  // Gracefully no-ops when @typecad/safety is absent.
+  await loadSafetyEngine();
 
   const entryFile = path.resolve(options.inputFile);
   const entryDir = path.dirname(entryFile);
@@ -823,6 +842,42 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   profiler.startTimer("emit:register-enums");
   registerAllEnumNames(allEnumIRs);
   profiler.endTimer("emit:register-enums");
+
+  // ── Phase D: safety transform pass ──────────────────────────────────────
+  // When @typecad/safety is in use, run its post-build IR transform to inject
+  // safety ops (e.g. companion safety.record_pin_mode after every
+  // gpio.pin_mode). Produces new IR per file; no-op when safety is off or
+  // absent.
+  if (hasSafetyHook()) {
+    profiler.startTimer("safety:transform");
+    const hook = requireSafetyHook();
+    for (const [filePath, item] of preBuilt) {
+      const newIR = hook.transformIR(item.programIR, {
+        safetyInUse: entryImportsSafety(item.programIR),
+        target: options.target,
+      });
+      preBuilt.set(filePath, { ...item, programIR: newIR });
+    }
+    profiler.endTimer("safety:transform");
+
+    // Part B: ISO 26262 Part 6 read-only IR analysis. Runs after transformIR
+    // so it sees the final IR (including injected safety ops). Returned
+    // diagnostics flow into the build's diagnostic list; error-severity
+    // diagnostics abort via throwIfFatalDiagnostics.
+    if (hook.analyzeIR) {
+      profiler.startTimer("safety:analyze");
+      for (const [, item] of preBuilt) {
+        const irDiags = hook.analyzeIR(item.programIR, {
+          safetyInUse: entryImportsSafety(item.programIR),
+          target: options.target,
+        });
+        if (irDiags.length > 0) {
+          diagnostics.push(...irDiags);
+        }
+      }
+      profiler.endTimer("safety:analyze");
+    }
+  }
 
   // ── Pass 2: emit (only for files that needed retranspilation) ─────────────
   profiler.startTimer("emit:all");

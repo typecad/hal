@@ -7,6 +7,7 @@ import { type CppTypeHint } from "../type-resolution.js";
 import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
 import { tryResolveHALMethod } from "./hal-call-resolver.js";
 import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, resolveNodeTag, watchPinSpecs, recordWatchPin, recordClickHandler, clickHandlers, pushUnknownElementDiagnostic } from "./ui-call-resolver.js";
+import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
 import {
   lowerCallbackStatements,
   resolveCallbackArg,
@@ -156,6 +157,60 @@ function lowerPreludeCallback(
     ],
     sourceSpan,
   };
+}
+
+/** Detect `safe.<method>(...)` calls in statement position and lower them to
+ *  a hal-op statement via the safety hook's resolveSemanticCall. Mirrors the
+ *  UI call resolver pattern. Returns null when:
+ *  - the safety engine is not loaded (hasSafetyHook() === false), or
+ *  - the call is not a `safe.<method>(...)` shape, or
+ *  - the hook declines to lower it (returns undefined).
+ *
+ *  Expression-position safe.* calls (e.g. `const r = safe.read(pin)`) are
+ *  handled separately in the variable-declaration transformer. */
+function tryResolveSafetyCallStatement(
+  call: ts.CallExpression,
+  fileName: string,
+  sourceText: string,
+): StatementIR | null {
+  if (!hasSafetyHook()) return null;
+  // Shape: safe.<method>(args...) — PropertyAccessExpression on identifier "safe".
+  if (!ts.isPropertyAccessExpression(call.expression)) return null;
+  if (!ts.isIdentifier(call.expression.expression)) return null;
+  if (call.expression.expression.text !== "safe") return null;
+
+  const method = call.expression.name.text;
+  // Extract simple literal/identifier arg values; non-literal args are passed
+  // as their rendered text so the hook can decide. The hook consumes
+  // safe.read (pin), safe.write (pin, value), and safe.pinMode (pin, mode).
+  // For safe.write, the value may be a property access (r.value), arithmetic
+  // expression, or variable — rendered to its C++ text form.
+  const argValues: unknown[] = call.arguments.map((a) => {
+    if (ts.isNumericLiteral(a)) return Number(a.text);
+    if (ts.isStringLiteral(a)) return a.text;
+    if (a.kind === ts.SyntaxKind.TrueKeyword) return true;
+    if (a.kind === ts.SyntaxKind.FalseKeyword) return false;
+    if (ts.isIdentifier(a)) {
+      const name = a.text;
+      if (name === "INPUT") return 0;
+      if (name === "OUTPUT") return 1;
+      if (name === "INPUT_PULLUP") return 2;
+      return name;
+    }
+    // Property access (e.g. r.value), arithmetic, or other expression:
+    // render to the C++ expression text so the op can emit it inline.
+    return a.getText();
+  });
+
+  const op = requireSafetyHook().resolveSemanticCall?.(`safe.${method}`, argValues);
+  if (!op) return null;
+
+  return {
+    kind: "hal-op",
+    operation: op,
+    returns_value: false,
+    sourceSpan: makeSourceSpan(call, fileName, sourceText),
+  } as StatementIR;
 }
 
 export function callToStatement(
@@ -538,6 +593,55 @@ export function callToStatement(
   // and synthesize a signal name.
   const uiResolved = tryResolveUICall(call, fileName, sourceText, diagnostics);
   if (uiResolved) return uiResolved;
+
+  // ---- safe.* — @typecad/safety authoring calls (statement position) ---
+  // Handles statement-position safe.* calls like safe.pinMode(pin, mode).
+  // The expression-position form (const r = safe.read(pin)) is handled in
+  // the variable-declaration transformer. Both produce hal-op IR nodes that
+  // routeHALOp() later dispatches to the safety hook.
+  const safetyResolved = tryResolveSafetyCallStatement(call, fileName, sourceText);
+  if (safetyResolved) return safetyResolved;
+
+  // ---- safe.read/safe.write chained with .ok/.fail/.fault/.always (statement) ----
+  // A statement like `safe.read(pin).ok(r => {...}).fail(r => {...})` is a
+  // method chain on a safe.* result. The terminal safe.* interceptor above
+  // returns null for it (the shape isn't `safe.<method>` — it's `.fail` on a
+  // chain). Delegate to expressionToIR, which has tryResolveSafetyChain to
+  // build the structured nested method-call IR that preserves lambda args,
+  // then render to text for a __RAW_STMT__ statement.
+  if (hasSafetyHook() && ts.isPropertyAccessExpression(call.expression)) {
+    let walk: ts.Node = call;
+    let isSafeChain = false;
+    while (ts.isCallExpression(walk) && ts.isPropertyAccessExpression(walk.expression)) {
+      walk = walk.expression.expression;
+      if (
+        ts.isCallExpression(walk) &&
+        ts.isPropertyAccessExpression(walk.expression) &&
+        ts.isIdentifier(walk.expression.expression) &&
+        walk.expression.expression.text === "safe"
+      ) {
+        isSafeChain = true;
+        break;
+      }
+    }
+    if (isSafeChain) {
+      // Build the structured chain IR via expressionToIR (the chain resolver
+      // produces nested method-call nodes with receiverExpr so lambdas survive).
+      // Carry it as the arg of a __EXPR_STMT__ call statement; the statement
+      // renderer renders it via the EMIT-TIME expression renderer (which has
+      // renderLambda for inline [&](){...} lambdas), NOT via the build-time
+      // renderExprAsText (which flattens lambdas to /* __lambda__ */).
+      const exprIR = expressionToIR(call, sourceText, diagnostics, pointerVars);
+      return {
+        kind: "call",
+        sourceSpan: makeSourceSpan(call, fileName, sourceText),
+        leadingComments: comments.leadingComments,
+        trailingComments: comments.trailingComments,
+        callee: "__EXPR_STMT__",
+        args: [exprIR],
+      };
+    }
+  }
 
   // Handle super() calls in constructors - transform to super_call IR for class emitter
   if (call.expression.kind === ts.SyntaxKind.SuperKeyword) {

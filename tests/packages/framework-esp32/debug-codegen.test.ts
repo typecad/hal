@@ -44,8 +44,8 @@ describe('generateEspIdfBreakpointCode — plain', () => {
     expect(out).toContain('printf("  let x = compute();\\n");');
   });
 
-  it('dumps non-function variables (unknown type → (double) cast + %g) and labels functions [function]', () => {
-    expect(out).toContain('printf("  • x = %g\\n", (double)(x));');
+  it('dumps non-function variables (unknown type → static_cast<double> + %g) and labels functions [function]', () => {
+    expect(out).toContain('printf("  • x = %g\\n", static_cast<double>(x));');
     expect(out).toContain('printf("  • compute = [function]\\n");');
   });
 
@@ -139,9 +139,9 @@ describe('generateEspIdfBreakpointCode — format specifier per cppType', () => 
     { name: 'uptime', cppType: 'long', expect: 'printf("  • uptime = %ld\\n", uptime);' },
     { name: 'temp', cppType: 'float', expect: 'printf("  • temp = %g\\n", temp);' },
     { name: 'msg', cppType: 'string', expect: 'printf("  • msg = %s\\n", msg);' },
-    { name: 'opaque', cppType: 'unknown', expect: 'printf("  • opaque = %g\\n", (double)(opaque));' },
+    { name: 'opaque', cppType: 'unknown', expect: 'printf("  • opaque = %g\\n", static_cast<double>(opaque));' },
     // No cppType at all (e.g. a bare { name } from an older caller) → unknown.
-    { name: 'bare', cppType: undefined as never, expect: 'printf("  • bare = %g\\n", (double)(bare));' },
+    { name: 'bare', cppType: undefined as never, expect: 'printf("  • bare = %g\\n", static_cast<double>(bare));' },
   ];
 
   for (const c of cases) {
@@ -162,7 +162,7 @@ describe('generateEspIdfLogpointCode', () => {
     expect(out).toContain('// === LOGPOINT: index.ts:8 ===');
     expect(out).toContain('printf("[LOG index.ts:8] ");');
     expect(out).toContain('printf("reading = ");');
-    expect(out).toContain('printf("%g", (double)(value));');
+    expect(out).toContain('printf("%g", static_cast<double>(value));');
   });
 
   it('does not halt (logpoints never block)', () => {

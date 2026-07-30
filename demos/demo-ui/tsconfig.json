@@ -17,7 +17,11 @@
     "noEmit": true,
     "resolveJsonModule": true,
     "allowArbitraryExtensions": true,
-    "rootDirs": ["src", "types"]
+    "rootDirs": ["src", "types"],
+    "baseUrl": ".",
+    "paths": {
+      "@typecad/board": ["./.cuttlefish/board.ts"]
+    }
   },
   "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish-env.d.ts"],
   "exclude": ["node_modules"],

@@ -1,71 +1,96 @@
 // ---------------------------------------------------------------------------
-// main.ts — ESP32-S3 debug demo
+// main.ts — @typecad/safety showcase demo
 //
-// A small blink sketch that exercises TypeCAD's debug paths.
+// Demonstrates safe.read(Pin): a digitalRead that composes with @typecad/hal's
+// Pin class, verifies the pin's recorded mode at runtime (via the auto-
+// populated mode table), performs a 2-of-3 vote via the strategy-injected
+// __tc_gpio_read shim, and returns a SafeReadResult carrying any detected
+// fault.
 //
-// ── Real debugging (GDB over USB-Serial-JTAG) ─────────────────────────────
-// ESP32-S3 has built-in USB-Serial-JTAG: one USB cable, no external probe.
-// `cuttlefish build --debug` on esp32s3 emits #line directives in the
-// generated C++ and writes .vscode/launch.json + tasks.json + openocd.cfg
-// under src/out-esp32s3/. To debug:
+// Two scenarios surface the SafeReadResult surface deterministically (no
+// electrical noise required):
+//   1. Happy path      — button pin configured as INPUT_PULLUP; safe.read
+//                        returns Ok and the value drives the LED.
+//   2. PinModeMismatch — pin explicitly configured as OUTPUT, then read;
+//                        safe.read returns the Configuration fault.
 //
-//   1. Install the ESP-IDF VS Code extension (bundles OpenOCD + xtensa GDB +
-//      the gdbtarget debug adapter — nothing extra to install).
-//   2. Set this project's port in cuttlefish.config.ts (console.port), or
-//      pass --port. The generated tasks.json threads it into flash.
-//   3. Open this folder in VS Code and press F5. The preLaunchTask builds +
-//      flashes and starts OpenOCD; gdbtarget attaches; breakpoints you set
-//      in this .ts file stop on the chip. Variables show their TS names
-//      (the transpiler doesn't mangle them). Hoisted _isr_N frames, if any,
-//      are relabeled by the generated .cuttlefish-gdb.py.
+// The two-tier fault taxonomy (category + code) lets user-space route faults
+// coarsely by category (survives future safety standards like ISO 26262)
+// while still logging the specific code for diagnosis.
 //
-// On Linux, copy OpenOCD's udev rules to /etc/udev/rules.d first. On Windows
-// the ESP32-S3 USB-Serial-JTAG driver may need installing depending on the
-// board. See packages/vscode-typecad-debug/README.md for more.
-//
-// ── Printf instrumentation (other targets) ────────────────────────────────
-// On targets without native GDB support (Arduino, other ESP32 variants),
-// `--debug` falls back to printf/Serial instrumentation: set red-dot
-// breakpoints or logpoints on the lines marked `// ← breakpoint` /
-// `// ← logpoint`, run `cuttlefish build --debug`, and keep `idf.py monitor`
-// (or Serial Monitor) attached — press ENTER to step past each breakpoint.
+// Target: AVR (Arduino Uno). The same sketch compiles unchanged on any
+// target whose framework strategy contributes the __tc_gpio_read shim
+// (AVR/ESP32 inherit from ArduinoStrategy; native provides a stub).
 // ---------------------------------------------------------------------------
 
-// ---------------------------------------------------------------------------
+import { delay } from '@typecad/hal';
+import { safe, SafetyFaultCategory, SafetyFaultCode, SafetyStatus } from '@typecad/safety';
+import { D4, D11, D12 } from '@typecad/board';
 
-import { LED } from '@typecad/board-esp32s3';
-import { delay, millis } from '@typecad/hal';
 
-// Module-scope state — visible in every breakpoint's variable dump.
-const led = LED.asOutput();
-let toggles = 0;          // ← breakpoint: watch the counter accumulate
-let lastReport = 0;       // millis() of the last status logpoint
+// --- Pin wiring ---------------------------------------------------------
+//
+// GPIO4: button (input, pulled up — pressed = LOW). The happy-path pin.
+// GPIO5: deliberately configured as OUTPUT to demonstrate PinModeMismatch.
+// GPIO2: onboard-style LED (output) — reflects the button state.
+//
+// GPIO numbers on ESP32-S3 are the canonical identity; Pin.fromPort() is the
+// idiomatic HAL constructor.
+const buttonPin = D4.asInputPullUp();
+const ledPin    = D11.asOutput();
+const wrongModePin = D12.asOutput();  // OUTPUT — wrong for reading
 
-/** Toggle the LED and return the new state. A breakpoint here also captures
- *  the `on` parameter and the `now` local. */
-function toggleLed(on: boolean): boolean {
-  led.write(on);
-  const now = millis();           // ← breakpoint: function-scope locals
-  return !on;
+// Throttle the diagnostic fault logs so they don't spam — log the mismatch
+// scenario at most once every ~5 seconds (20 * 250ms loop).
+const LOG_THROTTLE_ITERATIONS = 20;
+let loggedMismatchAt: number = -LOG_THROTTLE_ITERATIONS;
+let iteration: number = 0;
+
+function setup(): void {
+  console.log("safety showcase ready");
+  console.log("scenarios: button (GPIO4 → LED), wrong-mode (GPIO5 → fault)");
 }
 
-// Main loop. The breakpoints below sit on the most interesting moments: the
-// toggle decision, the boundary crossing, and the periodic status report.
-while (true) {
-  const on = (toggles % 2) === 0;
-  toggleLed(on);                  // logpoint: "toggle #{toggles} on={on}"
-
-  if (toggles > 0 && toggles % 10 === 0) {   // ← breakpoint: every 10th toggle
-    // (conditional breakpoints are supported — set condition `toggles === 50`
-    //  on the line above to halt only on the 50th.)
+function loop(): void {
+  // --- Scenario 1: happy path -------------------------------------------
+  // buttonPin is INPUT_PULLUP — safe.read verifies the mode (valid for
+  // reading), performs a 2-of-3 vote, returns Ok with the debounced value.
+  const button = safe.read(buttonPin);
+  if (button.status === SafetyStatus.Ok) {
+    ledPin.write(button.value);
+  } else {
+    handleFault("button", button.category, button.code);
   }
 
-  // Report once per second using a logpoint so the loop keeps running.
-  const now = millis();
-  if (now - lastReport >= 1000) {            // logpoint: "uptime {now}ms, toggles {toggles}"
-    lastReport = now;
+  // --- Scenario 2: PinModeMismatch --------------------------------------
+  // wrongModePin is configured as OUTPUT — safe.read rejects it with a
+  // Configuration/PinModeMismatch fault. Throttled to avoid log spam.
+  const wrongMode = safe.read(wrongModePin);
+  if (wrongMode.status !== SafetyStatus.Ok && (iteration - loggedMismatchAt) >= LOG_THROTTLE_ITERATIONS) {
+    handleFault("wrong-mode", wrongMode.category, wrongMode.code);
+    loggedMismatchAt = iteration;
   }
 
-  toggles = toggles + 1;
+  iteration = iteration + 1;
   delay(250);
+}
+
+/** Coarse fault routing by category — survives future safety standards
+ *  (ISO 26262, IEC 61508, DO-178C all surface faults under the same 5
+ *  categories). The specific code is logged for diagnosis. */
+function handleFault(scenario: string, category: SafetyFaultCategory, code: SafetyFaultCode): void {
+  switch (category) {
+    case SafetyFaultCategory.Configuration:
+      // A pin-mode problem (mismatch or unknown). For a real safety-critical
+      // system this is where you'd log to NVS, fail safe, or halt.
+      console.log(`[${scenario}] configuration fault (code ${code})`);
+      break;
+    case SafetyFaultCategory.Signal:
+      // Vote disagreement — transient noise on the line.
+      console.log(`[${scenario}] signal fault (code ${code})`);
+      break;
+    default:
+      console.log(`[${scenario}] unexpected category ${category} (code ${code})`);
+      break;
+  }
 }

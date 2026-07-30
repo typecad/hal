@@ -247,6 +247,8 @@ export function functionDeclarationToIR(
     restParamFunctions.set(node.name.text, elementType);
   }
 
+  const fnDecorators = extractDecoratorNames(node);
+
   return {
     originalName: node.name.text,
     isAsync,
@@ -258,7 +260,28 @@ export function functionDeclarationToIR(
     ...(fnTypeParams && fnTypeParams.length > 0 ? { typeParameters: fnTypeParams } : {}),
     ...(isGenerator ? { isGenerator: true } : {}),
     ...(isExported ? { isExported: true } : {}),
+    ...(fnDecorators && fnDecorators.length > 0 ? { decorators: fnDecorators } : {}),
   };
+}
+
+/** Extract decorator names from a node (e.g. @asilD → "asilD").
+ *  Handles both legacy (node.decorators) and TS 5.0+ (ts.getDecorators) APIs. */
+function extractDecoratorNames(node: ts.Node): string[] | undefined {
+  // TS 5.x: decorators live in node.modifiers, accessed via ts.getDecorators().
+  // ts.canHaveDecorators() returns false for function declarations (it only
+  // returns true for classes/methods/properties), but getDecorators() still
+  // works. So don't gate on canHaveDecorators — just call getDecorators.
+  const decorators = (ts as any).getDecorators?.(node) ?? (node as any).decorators;
+  if (!decorators) return undefined;
+  const names: string[] = [];
+  for (const dec of decorators as ts.NodeArray<ts.Decorator>) {
+    if (ts.isIdentifier(dec.expression)) {
+      names.push(dec.expression.text);
+    } else if (ts.isCallExpression(dec.expression) && ts.isIdentifier(dec.expression.expression)) {
+      names.push(dec.expression.expression.text);
+    }
+  }
+  return names.length > 0 ? names : undefined;
 }
 
 export function variableAsFunctionToIR(

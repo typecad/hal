@@ -90,6 +90,17 @@ export function renderExprAsText(expr: ExpressionIR): string {
     case "lambda":
       return `/* __lambda__ */`;
     case "method-call": {
+      // Structured-receiver path: when the method-call IR carries a receiverExpr
+      // (set by the safe.read().ok().fail() chain builder), render the receiver
+      // recursively so nested lambda args are NOT flattened into the callee
+      // string as /* __lambda__ */ placeholders. The flat callee path below
+      // destroys lambdas; this preserves them.
+      const receiverExpr = (expr as { receiverExpr?: ExpressionIR }).receiverExpr;
+      const methodName = (expr as { methodName?: string }).methodName;
+      if (receiverExpr !== undefined && methodName !== undefined) {
+        const argsText = expr.args.map(a => renderExprAsText(a)).join(", ");
+        return `${renderExprAsText(receiverExpr)}.${methodName}(${argsText})`;
+      }
       const argsText = expr.args.map(a => renderExprAsText(a)).join(", ");
       return `${expr.callee}(${argsText})`;
     }

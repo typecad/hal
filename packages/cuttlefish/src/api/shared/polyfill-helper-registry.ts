@@ -70,6 +70,23 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   // JSON helpers
   '__tc_jsonStringify(': ['__tc_jsonStringify'],
   '__tc_jsonParse(': ['__tc_jsonParse'],
+
+  // Safety helpers — emitted by @typecad/safety's polyfills as global-scope
+  // __tc_safety_* free functions (the polyfill-helper-registry extractor
+  // expects __tc_* immediately followed by `(`, so namespaced names would be
+  // missed). The call-pattern keys are the substrings program analysis scans
+  // source for; the values are the __tc_safety_* names that
+  // filterPolyfillHelpers matches in helperFunctions text.
+  //
+  // Two key forms per helper: the user-facing safe.* source spelling (which
+  // program analysis sees in raw IR before lowering) and the lowered
+  // __tc_safety_* spelling (which appears after the safety call-statement
+  // transformer emits hal-op resolution text). Both map to the same helper.
+  'safe.read(':                   ['__tc_safety_read_safe'],
+  'safe.write(':                  ['__tc_safety_write_verify'],
+  '__tc_safety_record_pin_mode(': ['__tc_safety_record_pin_mode'],
+  '__tc_safety_read_safe(':       ['__tc_safety_read_safe'],
+  '__tc_safety_write_verify(':    ['__tc_safety_write_verify'],
 };
 
 function extractHelperFunctionNames(funcDef: string): string[] {

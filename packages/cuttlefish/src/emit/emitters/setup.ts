@@ -1,6 +1,7 @@
 ﻿import path from "node:path";
 import type { ProgramIR, StatementIR } from "../../api/index.js";
 import { filterPolyfillHelpers, isStringEnum } from "../../api/shared/index.js";
+import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
 import { analyzeProgram } from "../../ir/program-analysis.js";
 import { collectStatementIdentifiers } from "../../ir/identifier-collector.js";
 import { Diagnostic, EmitMode, SourceMapEntry } from "../../types.js";
@@ -107,25 +108,106 @@ function programUsesWdt(program: ProgramIR): boolean {
     return false;
   };
   if (visit(program.topLevelStatements)) return true;
-  for (const fn of program.functions) {
+  for (const fn of program.functions ?? []) {
     if (visit(fn.statements)) return true;
   }
-  for (const cls of program.classes) {
-    for (const m of cls.methods) if (visit(m.statements)) return true;
-    for (const g of cls.getters) if (visit(g.statements)) return true;
-    for (const s of cls.setters) if (visit(s.statements)) return true;
+  for (const cls of program.classes ?? []) {
+    for (const m of cls.methods ?? []) if (visit(m.statements)) return true;
+    for (const g of cls.getters ?? []) if (visit(g.statements)) return true;
+    for (const s of cls.setters ?? []) if (visit(s.statements)) return true;
     if (cls.constructor && visit(cls.constructor.statements)) return true;
   }
   return false;
 }
 
 /**
- * Extract a `#ifndef MACRO ... #endif` include-guard block from a shim line
- * list. Used to emit just the macro definition (e.g. CUTTLEFISH_UNDEFINED) in
- * non-entry files of a split compilation, where the full helper shim belongs
- * to the entry file but the macro token is still referenced here.
- * Returns an empty array if no matching guard is found.
+ * Detect whether a program uses @typecad/safety. The safety transform pass
+ * injects safety.* ops when in use; strategies consult this to decide
+ * whether to emit the __tc_gpio_read shim that the safety voter calls.
+ * Mirrors programUsesWdt() above (same inline walker pattern).
+ *
+ * `hal-expr` (the expression-position safety.read_safe lowering produced
+ * by `const r = safe.read(pin)`) lives in expression trees, not at statement
+ * level — but it's carried inside a var_decl statement whose initializer is
+ * the hal-expr, and the var_decl gets visited as a top-level statement. We
+ * detect both: statement-level `hal-op` operations, and any statement whose
+ * rendered initializer text mentions safety.* (a defensive catch for the
+ * hal-expr-in-initializer case). The latter is rarely needed because the
+ * voter's read_safe op is also captured at the call site, but kept for
+ * robustness.
  */
+export function programUsesSafety(program: ProgramIR): boolean {
+  // Defensive: some test fixtures and partial-program callers pass a minimal
+  // object (e.g. `{} as any`). Treat a missing iterable field as "no safety
+  // ops" rather than crashing — matches how the existing ArduinoStrategy path
+  // behaves when given a partial program.
+  if (!program) return false;
+  const visitStatement = (stmt: StatementIR): boolean => {
+    if (stmt.kind === "hal-op") {
+      const opName = (stmt as any).operation?.operation;
+      if (typeof opName === "string" && opName.startsWith("safety.")) return true;
+    }
+    switch (stmt.kind) {
+      case "block":
+      case "labeled":
+        return visit(stmt.body);
+      case "if":
+        return visit(stmt.thenBranch) || visit(stmt.elseBranch ?? []);
+      case "for":
+        return visit(stmt.body)
+          || (stmt.initializer ? visitStatement(stmt.initializer) : false);
+      case "while":
+      case "do_while":
+      case "for_of":
+      case "for_in":
+        return visit(stmt.body);
+      case "switch":
+        return stmt.cases.some((c: any) => visit(c.body ?? []));
+      case "try":
+        return visit(stmt.tryBlock) || visit(stmt.catchBlock ?? []) || visit(stmt.finallyBlock ?? []);
+      default:
+        return false;
+    }
+  };
+  const visit = (statements: StatementIR[] | undefined): boolean => {
+    if (!statements) return false;
+    for (const stmt of statements) {
+      if (visitStatement(stmt)) return true;
+    }
+    return false;
+  };
+  if (visit(program.topLevelStatements)) return true;
+  for (const fn of program.functions ?? []) {
+    if (visit(fn.statements)) return true;
+  }
+  for (const cls of program.classes ?? []) {
+    for (const m of cls.methods ?? []) if (visit(m.statements)) return true;
+    for (const g of cls.getters ?? []) if (visit(g.statements)) return true;
+    for (const s of cls.setters ?? []) if (visit(s.statements)) return true;
+    if (cls.constructor && visit(cls.constructor.statements)) return true;
+  }
+  // SafeInt<T> / SafeVariable<T> usage does not produce safety.* hal-ops
+  // (they are plain C++ template types), so the op-walk above misses them.
+  // Detect via the var_decl cppType: any declaration whose type starts with
+  // "SafeInt" or "SafeVariable" needs the corresponding polyfill to ship.
+  const usesSafeWrapperType = (statements: StatementIR[] | undefined): boolean => {
+    if (!statements) return false;
+    for (const stmt of statements) {
+      if (stmt.kind === "var_decl") {
+        const cppType = (stmt as any).cppType as string | undefined;
+        if (typeof cppType === "string" && (cppType.startsWith("SafeInt") || cppType.startsWith("SafeVariable"))) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  if (usesSafeWrapperType(program.topLevelStatements)) return true;
+  for (const fn of program.functions ?? []) {
+    if (usesSafeWrapperType(fn.statements)) return true;
+  }
+  return false;
+}
 function extractShimMacro(lines: string[], macroName: string): string[] {
   const ifndefIdx = lines.findIndex(l => {
     const trimmed = l.trim();
@@ -186,10 +268,30 @@ export function buildEmitterContext(
       stringEnumNames.add(name);
     }
   }
+  // When @typecad/safety is active, register its enum names so the expression
+  // renderer uses :: (C++ enum-class scope resolution) instead of . (TS dot
+  // access) for member access like SafetyFaultCategory.Configuration. The
+  // graph-builder skips @typecad/safety (its source isn't parsed), so these
+  // enum names never enter program.enums — we register them manually here.
+  if (hasSafetyHook()) {
+    enumNames.add("SafetyFaultCategory");
+    enumNames.add("SafetyFaultCode");
+    enumNames.add("SafetyStatus");
+  }
 
   const strategy = options.strategy ?? resolveStrategy(options.target ?? "generic");
   strategy.setLargeEnumNames?.(largeEnumNames);
-  const reservedNames = strategy.reservedNames();
+  // When @typecad/safety is active, `safe` is a compile-time-only construct
+  // (its methods are intercepted at IR-build time). Its top-level var_decl
+  // (from the parsed safety module source) must NOT be emitted as a C++
+  // _safe_t struct — add it to reservedNames so the top-level-prep filter
+  // strips it. Mirrors how platform reserved names (HIGH, LOW, etc.) are
+  // kept out of user-code emission.
+  let reservedNames: Set<string> = new Set(strategy.reservedNames());
+  if (hasSafetyHook()) {
+    reservedNames = new Set(reservedNames);
+    reservedNames.add("safe");
+  }
 
   ensureDir(options.outDir);
 
@@ -254,6 +356,21 @@ export function buildEmitterContext(
                      programAnalysis.usedPolyfillHelpers.has('__tc_setTimeout');
   if (!usesTimers) {
     filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "timer_methods");
+  }
+
+  // Safety polyfills (mode table + voter + SafeVariable + SafeInt). Gated on
+  // programUsesSafety(program) so they ONLY appear when the sketch actually
+  // references a safety construct — emitting them unconditionally (just because
+  // @typecad/safety is installed and registered its hook) leaks ~200 lines of
+  // polyfill into every sketch, and SafeInt's `return *this` chaining methods
+  // tripped byte-identity / lowering assertions that expect no `this` token.
+  // programUsesSafety walks the IR for any safety.* hal-op.
+  if (isEntryFile && hasSafetyHook() && programUsesSafety(program)) {
+    const safetyPolyfills = filterPolyfillHelpers(
+      requireSafetyHook().buildPolyfills?.() ?? [],
+      programAnalysis.usedPolyfillHelpers,
+    );
+    filteredNativePolyfills = [...filteredNativePolyfills, ...safetyPolyfills];
   }
 
   const allPolyfills = filteredNativePolyfills;
@@ -334,7 +451,9 @@ export function buildEmitterContext(
     // these filters are no-ops there. The strategies also self-gate on the
     // same flags; this is the defensive backstop (mirrors how usesWDT/etc.
     // backstop the strategy-side gating above).
-    if (!programAnalysis.usesUart) {
+    // Keep the UART block when console calls are present (console_log etc.
+    // call _uart_* functions) even if no direct uart.* HAL ops are used.
+    if (!programAnalysis.usesUart && !programAnalysis.hasConsoleCalls) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_UART_BEGIN', '// CUTTLEFISH_UART_END');
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_UART_EXT_BEGIN', '// CUTTLEFISH_UART_EXT_END');
     }
@@ -423,11 +542,13 @@ export function buildEmitterContext(
       if (defaultName) symbolMap[defaultName] = defaultName;
       continue;
     }
-    // Compile-time-only packages (@typecad/ui, @typecad/ui): their calls are
-    // intercepted at IR-build time; the package emits NO C++ module/header.
-    // Register the imported symbols so references resolve, but skip the
-    // #include generation (there is no Ui.h to include).
-    if (imported.moduleSpecifier === "@typecad/ui" || imported.moduleSpecifier === "@typecad/ui") {
+    // Compile-time-only packages: their calls are intercepted at IR-build
+    // time; the package emits NO C++ module/header. Register the imported
+    // symbols so references resolve, but skip the #include generation.
+    if (
+      imported.moduleSpecifier === "@typecad/ui" ||
+      imported.moduleSpecifier === "@typecad/safety"
+    ) {
       for (const symbol of imported.namedImports) {
         symbolMap[symbol] = symbol;
       }

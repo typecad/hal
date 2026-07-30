@@ -265,6 +265,22 @@ declare global {
   type Owned<T = unknown> = T;
   type Shared<T = unknown> = T;
   type Mutable<T = unknown> = T;
+  // SafeVariable: SEU-resistant storage. The transpiler lowers SafeVariable<number>
+  // to a C++ template with inverted-redundancy storage. Declared as an interface
+  // (not a type alias) so the TS type checker recognizes method calls.
+  // Arithmetic T only (integral or floating-point); string is rejected by a
+  // static_assert in the emitted C++ template.
+  interface SafeVariable<T = number> { set(value: T): void; get(): T; valid(): boolean; hasFault(): boolean; }
+  // SafeInt: chainable bounds-checked signed-integer arithmetic. The transpiler
+  // lowers SafeInt<number> to SafeInt<int32_t> (a C++ template with sticky-fault
+  // overflow detection). Signed integer T only — unsigned/bool/float/string are
+  // rejected by a static_assert in the emitted C++ template.
+  interface SafeInt<T = number> {
+    add(delta: T): SafeInt<T>; sub(delta: T): SafeInt<T>;
+    mul(factor: T): SafeInt<T>; divide(d: T): SafeInt<T>; mod(d: T): SafeInt<T>;
+    negate(): SafeInt<T>; absValue(): SafeInt<T>;
+    get(): T; hasFault(): boolean; valid(): boolean; reset(newValue: T): void;
+  }
 
   type uint8_t = number;
   type int8_t = number;
@@ -309,6 +325,22 @@ declare global {
   type Owned<T = unknown> = T;
   type Shared<T = unknown> = T;
   type Mutable<T = unknown> = T;
+  // SafeVariable: SEU-resistant storage. The transpiler lowers SafeVariable<number>
+  // to a C++ template with inverted-redundancy storage. Declared as an interface
+  // (not a type alias) so the TS type checker recognizes method calls.
+  // Arithmetic T only (integral or floating-point); string is rejected by a
+  // static_assert in the emitted C++ template.
+  interface SafeVariable<T = number> { set(value: T): void; get(): T; valid(): boolean; hasFault(): boolean; }
+  // SafeInt: chainable bounds-checked signed-integer arithmetic. The transpiler
+  // lowers SafeInt<number> to SafeInt<int32_t> (a C++ template with sticky-fault
+  // overflow detection). Signed integer T only — unsigned/bool/float/string are
+  // rejected by a static_assert in the emitted C++ template.
+  interface SafeInt<T = number> {
+    add(delta: T): SafeInt<T>; sub(delta: T): SafeInt<T>;
+    mul(factor: T): SafeInt<T>; divide(d: T): SafeInt<T>; mod(d: T): SafeInt<T>;
+    negate(): SafeInt<T>; absValue(): SafeInt<T>;
+    get(): T; hasFault(): boolean; valid(): boolean; reset(newValue: T): void;
+  }
 
   type uint8_t = number;
   type int8_t = number;
