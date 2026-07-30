@@ -3,7 +3,6 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import chalk from "chalk";
-import { hasSafetyHook } from "./safety-hook.js";
 
 const selfRequire = createRequire(import.meta.url);
 
@@ -86,13 +85,6 @@ export async function runEslintCheck(projectRoot: string): Promise<ESLintError[]
         : [];
     for (const msg of result.messages) {
       if (msg.severity !== 2) continue;
-      // Suppress parser-level "Decorators are not valid here" when the safety
-      // hook is active. @typescript-eslint/parser doesn't support decorators
-      // on function declarations (only classes). The cuttlefish transpiler
-      // handles them via its own IR builder, so this is a false positive.
-      if (hasSafetyHook() && /Decorators are not valid here/i.test(msg.message)) {
-        continue;
-      }
       errors.push({
         filePath: path.relative(projectRoot, result.filePath),
         line: msg.line,

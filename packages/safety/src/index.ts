@@ -11,7 +11,6 @@
 
 export { SafeVariable } from "./safe-variable-types.js";
 export { SafeInt } from "./safe-int-types.js";
-export { asilD, asilC, asilB, asilA, asilQM } from "./asil-decorators.js";
 
 import type { Pin, InputPin, OutputPin } from "@typecad/hal";
 

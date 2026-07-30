@@ -247,7 +247,7 @@ export function functionDeclarationToIR(
     restParamFunctions.set(node.name.text, elementType);
   }
 
-  const fnDecorators = extractDecoratorNames(node);
+  const fnDecorators = extractAsilFromComments(node, sourceText);
 
   return {
     originalName: node.name.text,
@@ -264,21 +264,22 @@ export function functionDeclarationToIR(
   };
 }
 
-/** Extract decorator names from a node (e.g. @asilD → "asilD").
- *  Handles both legacy (node.decorators) and TS 5.0+ (ts.getDecorators) APIs. */
-function extractDecoratorNames(node: ts.Node): string[] | undefined {
-  // TS 5.x: decorators live in node.modifiers, accessed via ts.getDecorators().
-  // ts.canHaveDecorators() returns false for function declarations (it only
-  // returns true for classes/methods/properties), but getDecorators() still
-  // works. So don't gate on canHaveDecorators — just call getDecorators.
-  const decorators = (ts as any).getDecorators?.(node) ?? (node as any).decorators;
-  if (!decorators) return undefined;
+/** Extract ASIL annotations from leading comments (e.g. `// @asilD`).
+ *
+ *  Uses comment-based annotations instead of TypeScript decorators because
+ *  TS decorators on function declarations produce TS1206 errors in the VS Code
+ *  language server and the @typescript-eslint/parser (both reject decorators
+ *  on functions — only class/method/property decorators are supported).
+ *  Comment annotations are valid TypeScript in any context, any editor, and
+ *  any toolchain — no false-positive errors. */
+function extractAsilFromComments(node: ts.Node, sourceText: string): string[] | undefined {
+  const comments = extractNodeComments(node, sourceText);
   const names: string[] = [];
-  for (const dec of decorators as ts.NodeArray<ts.Decorator>) {
-    if (ts.isIdentifier(dec.expression)) {
-      names.push(dec.expression.text);
-    } else if (ts.isCallExpression(dec.expression) && ts.isIdentifier(dec.expression.expression)) {
-      names.push(dec.expression.expression.text);
+  for (const comment of comments.leadingComments) {
+    // Match `// @asilD`, `// @asilC`, `// @asilB`, `// @asilA`, `// @asilQM`
+    const match = comment.match(/@(asil[DCBAQM])/i);
+    if (match) {
+      names.push(match[1]);
     }
   }
   return names.length > 0 ? names : undefined;

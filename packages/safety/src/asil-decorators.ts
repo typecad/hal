@@ -1,38 +1,31 @@
-/** ISO 26262 ASIL-level decorators for functions and classes.
+/** ASIL level annotations for functions — comment-based.
  *
- *  These are compile-time-only annotations. The cuttlefish transpiler
- *  captures them as decorator names on the FunctionIR/ClassIR nodes
- *  and strips them from emitted C++ (they never appear in the output).
+ *  ASIL levels are declared via leading comment annotations rather than
+ *  TypeScript decorators because:
+ *  - TS decorators on function declarations produce TS1206 errors in the
+ *    VS Code language server and @typescript-eslint/parser
+ *  - Comment annotations work in any editor, any toolchain, without
+ *    `experimentalDecorators` or special config
  *
- *  Part B's ISO 26262 checkers (analyzeIR) read these decorators to
- *  decide which rules to enforce on each function:
+ *  The cuttlefish IR builder extracts these from leading comments via
+ *  extractAsilFromComments() in function-builder.ts.
  *
- *    @asilD → all rules enforced (recursion, heap, loops)
- *    @asilC → recursion + loops enforced (heap is ASIL D only)
- *    @asilB → recursion enforced
- *    @asilA → no rules enforced (quality-managed)
- *    (no decorator) → no rules enforced (QM)
+ *  Part B's ISO 26262 checkers (analyzeIR) read the resulting `decorators`
+ *  field on FunctionIR to decide which rules to enforce:
+ *
+ *    // @asilD → all rules enforced (recursion, heap, loops)
+ *    // @asilC → recursion + loops enforced (heap is ASIL D only)
+ *    // @asilB → recursion enforced
+ *    // @asilA → no rules enforced (quality-managed)
+ *    (no annotation) → no rules enforced (implicit QM)
  *
  *  Usage:
- *    import { asilD } from "@typecad/safety";
- *
- *    @asilD
+ *    // @asilD
  *    function engageBrake(): void {
  *      safe.write(brakePin, 1);
  *    }
+ *
+ *  These are documentation-only exports — they have no runtime behavior
+ *  and are never imported by user code. They exist so the ASIL level
+ *  names appear in type hints and IDE autocomplete.
  */
-
-/** ASIL D — highest safety integrity level. All Part B rules enforced. */
-export declare function asilD<T>(target: T): T;
-
-/** ASIL C — recursion + unbounded loops enforced. */
-export declare function asilC<T>(target: T): T;
-
-/** ASIL B — recursion enforced. */
-export declare function asilB<T>(target: T): T;
-
-/** ASIL A — quality-managed, no rules enforced. Explicit marker. */
-export declare function asilA<T>(target: T): T;
-
-/** QM — quality-managed, no rules enforced. Explicit marker. */
-export declare function asilQM<T>(target: T): T;
