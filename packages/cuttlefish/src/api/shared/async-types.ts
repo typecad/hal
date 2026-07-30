@@ -52,4 +52,51 @@ export interface AsyncRuntimeConfig {
    * e.g. ["<functional>", "<vector>", "<utility>", "<string>"]
    */
   requiredIncludes: string[];
+
+  // ── Cooperative scheduler tuning (Phase 0: priority + time-budget) ───────
+  //
+  // These fields govern the no-STL CoopSched emitted alongside the per-frame
+  // pump in asyncLoopInjection(). They are OPTIONAL and default off, so all
+  // existing strategies continue to emit the legacy flat pump sequence and
+  // observe zero behavioral change.
+  //
+  // When `enablePriority` / `enableTimeBudget` are true, the per-frame work
+  // units (async task .run(), microtask pump, timer pump) are registered into
+  // CoopSched once at startup and dispatched by a single CoopSched::run()
+  // call each frame, in descending priority order, breaking mid-batch once
+  // `timeBudgetMs` of wall-clock time has elapsed.
+  //
+  // CoopSched is deliberately no-STL (function-pointer + void* trampolines,
+  // statically-allocated fixed slots): it compiles on Zephyr's minimal libc
+  // where std::function/std::vector are unavailable, giving Zephyr full
+  // cooperative-scheduling parity without touching the std::function-based
+  // MicrotaskQueue / Promise<T> runtime.
+
+  /**
+   * Enable priority-ordered dispatch of per-frame work units.
+   * Default false → legacy flat pump sequence. When true, higher-priority
+   * units drain before lower-priority ones each frame.
+   */
+  enablePriority?: boolean;
+
+  /**
+   * Enable mid-batch yielding when the per-frame time budget is exceeded.
+   * Default false. When true, CoopSched::run() breaks out of its dispatch
+   * loop once `timeBudgetMs` has elapsed, leaving remaining units for the
+   * next frame. This bounds worst-case latency for background RTOS work and
+   * prevents a single greedy unit from starving others.
+   */
+  enableTimeBudget?: boolean;
+
+  /**
+   * Per-frame wall-clock budget in milliseconds. Only consulted when
+   * `enableTimeBudget` is true. Default 5.
+   */
+  timeBudgetMs?: number;
+
+  /**
+   * Number of distinct priority levels CoopSched should model. Default 2
+   * (high/low). Only consulted when `enablePriority` is true.
+   */
+  schedulerPriorities?: number;
 }

@@ -30,9 +30,12 @@ import type {
   DisplayHALOp,
 } from '@typecad/cuttlefish/api/shared';
 import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
+import { buildWorkerRuntimePolyfill } from '@typecad/cuttlefish/api/shared';
 import { programUsesSafety } from '@typecad/cuttlefish/api';
 import { chipForTarget, setActiveChip, getActiveChip } from './chips/index.js';
+import { emitGpioDevDispatcher } from './chips/controllers.js';
 import { lowerHalOp } from './lowering/index.js';
+import { buildZephyrWorkerBacking } from './lowering/worker-backing.js';
 import { adcInitLines } from './lowering/adc.js';
 import { pwmInitLines } from './lowering/pwm.js';
 import { i2cInitLines } from './lowering/i2c.js';
@@ -89,6 +92,11 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesWDT')) inc.push('<zephyr/drivers/watchdog.h>');
     if (uses('usesPower')) inc.push('<zephyr/pm/pm.h>', '<zephyr/pm/state.h>', '<zephyr/pm/policy.h>');
     if (uses('usesBle')) inc.push('<stdlib.h>', '<string.h>', '<zephyr/bluetooth/bluetooth.h>', '<zephyr/bluetooth/conn.h>', '<zephyr/bluetooth/gatt.h>', '<zephyr/bluetooth/uuid.h>');
+    // std::string — Zephyr has no umbrella header that transitively pulls in
+    // <string> (unlike framework-arduino's <Arduino.h>), so a program that
+    // lowers a std::string parameter/variable must request it explicitly. Uses
+    // <string>, not <string.h>: the latter is the C flat-string header.
+    if (uses('usesStdString')) inc.push('<string>');
     return inc;
   }
 
@@ -221,10 +229,19 @@ export class ZephyrStrategy implements PlatformStrategy {
     // Safety shims: when the program uses @typecad/safety, provide __tc_gpio_read
     // / __tc_gpio_write backed by the raw controller (a best-effort read that
     // does not depend on a pin having a DT spec). __tc_delay_us uses k_busy_wait.
+    //
+    // The pin is a RUNTIME value here (safety's voter passes whatever pin it
+    // was handed), so the controller cannot be baked in as a single DT_NODELABEL
+    // on a multi-controller SoC (ESP32-S3: pins 0–31 → gpio0, 32–48 → gpio1).
+    // Emit a tiny __tc_gpio_dev(pin) dispatcher that resolves the owning
+    // controller's device per pin; single-controller SoCs collapse it to a
+    // one-liner. Each DT_NODELABEL is still compile-time-resolved per branch, so
+    // it is always statically valid.
     if (program && programUsesSafety(program)) {
+      lines.push(...emitGpioDevDispatcher(chip));
       lines.push(
-        `inline int __tc_gpio_read(uint32_t pin) { return gpio_pin_get_raw(DEVICE_DT_GET(DT_NODELABEL(${chip.gpioController})), pin); }`,
-        `inline void __tc_gpio_write(uint32_t pin, uint32_t value) { gpio_pin_set_raw(DEVICE_DT_GET(DT_NODELABEL(${chip.gpioController})), pin, value); }`,
+        'inline int __tc_gpio_read(uint32_t pin) { return gpio_pin_get_raw(__tc_gpio_dev(pin), pin); }',
+        'inline void __tc_gpio_write(uint32_t pin, uint32_t value) { gpio_pin_set_raw(__tc_gpio_dev(pin), pin, value); }',
         '#ifndef __TC_DELAY_US_DEFINED',
         '#define __TC_DELAY_US_DEFINED',
         'inline void __tc_delay_us(uint32_t us) { k_busy_wait(us); }',
@@ -664,8 +681,8 @@ export class ZephyrStrategy implements PlatformStrategy {
     return new Set<string>();
   }
 
-  generateNativePolyfills(): RuntimePolyfillIR[] {
-    return [
+  generateNativePolyfills(program?: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
+    const polyfills: RuntimePolyfillIR[] = [
       {
         kind: 'polyfill',
         id: 'cuttlefish_halt',
@@ -680,6 +697,16 @@ export class ZephyrStrategy implements PlatformStrategy {
         dependencies: [],
       },
     ];
+
+    // Worker-offload runtime (Phase 1). Emitted only when the program uses
+    // worker.* ops, backed by the Zephyr primitives in worker-backing.ts
+    // (k_work system workqueue + k_sem for the completion barrier).
+    const usesWorker = !!((ctx as any)?.analysis?.usesWorker);
+    if (program && usesWorker) {
+      const workerPoly = buildWorkerRuntimePolyfill(program, this, buildZephyrWorkerBacking(), { poolSize: 4 });
+      if (workerPoly) polyfills.push(workerPoly);
+    }
+    return polyfills;
   }
 
   // ── HAL ──────────────────────────────────────────────────────────────────
@@ -698,6 +725,22 @@ export class ZephyrStrategy implements PlatformStrategy {
     // Zephyr is a preemptive RTOS — delay()/k_msleep inside loop() is the
     // expected cooperative yield, not an anti-pattern to warn about.
     return true;
+  }
+
+  // ── Worker offload backing (Phase 1) ─────────────────────────────────────
+  // Delegates to the Zephyr backing (worker-backing.ts): k_work system
+  // workqueue + k_sem for completion. k_sem provides the kernel memory barrier
+  // the dual-core contract requires (the worker runs on a workqueue thread).
+  private _workerBacking = buildZephyrWorkerBacking();
+
+  workerSpawnLines(handleId: number, trampolineName: string, waiterExpr: string): string[] | undefined {
+    return this._workerBacking.spawnLines(handleId, trampolineName, waiterExpr);
+  }
+  workerSignalDoneExpr(handleId: number): string | undefined {
+    return this._workerBacking.signalDoneExpr(handleId);
+  }
+  workerIsDoneExpr(handleId: number): string | undefined {
+    return this._workerBacking.isDoneExpr(handleId);
   }
 
   // ── Graphics (none for MVP) ──────────────────────────────────────────────

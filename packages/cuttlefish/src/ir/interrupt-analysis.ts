@@ -317,7 +317,7 @@ function scanExpressionForCallbacks(
 // ---------------------------------------------------------------------------
 
 /** Collect variable names assigned (written) within a statement body. */
-function collectAssignedNames(stmts: readonly StatementIR[], names: Set<string>): void {
+export function collectAssignedNames(stmts: readonly StatementIR[], names: Set<string>): void {
   for (const stmt of stmts) {
     const s = stmt as any;
     if (stmt.kind === 'assign') {
@@ -339,7 +339,7 @@ function collectAssignedNames(stmts: readonly StatementIR[], names: Set<string>)
 }
 
 /** Collect variable names read (referenced) within a statement body. */
-function collectReadNames(stmts: readonly StatementIR[], names: Set<string>): void {
+export function collectReadNames(stmts: readonly StatementIR[], names: Set<string>): void {
   for (const stmt of stmts) {
     walkExpressionsInStatement(stmt, (expr) => {
       if (expr.kind === 'identifier' && typeof (expr as any).value === 'string') {

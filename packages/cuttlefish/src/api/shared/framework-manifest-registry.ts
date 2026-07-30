@@ -11,8 +11,6 @@ import type { FrameworkManifest } from './framework-manifest.js';
 
 export const KNOWN_FRAMEWORK_PACKAGES = [
   '@typecad/framework-arduino',
-  '@typecad/framework-avr',
-  '@typecad/framework-esp32',
   '@typecad/framework-zephyr',
 ] as const;
 

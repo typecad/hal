@@ -10,13 +10,6 @@
 import path from "node:path";
 import fs from "node:fs";
 import ts from "typescript";
-
-/** True for the framework-esp32 package or any path that resolves to it.
- *  Used to decide whether to route frameworkData → frameworkConfig so the
- *  ESP-IDF toolchain can read components, target, etc. */
-function isEspIdfFramework(framework: string): boolean {
-  return framework === "@typecad/framework-esp32" || framework.endsWith("framework-esp32");
-}
 import { safeValidateConfig } from "./config-schema.js";
 
 /** The filename we search for when walking up directories. */
@@ -45,7 +38,8 @@ export interface ResolvedCuttlefishConfig {
   outputOutDir?: string;
   /**
    * Framework package for code generation strategy.
-   * Can be '@typecad/framework-arduino', '@typecad/framework-avr', or a custom path.
+   * Can be '@typecad/framework-arduino', '@typecad/framework-zephyr',
+   * '@typecad/framework-native', or a custom path.
    */
   framework?: string;
   /** Entry point TypeScript file (relative to config file directory). */
@@ -399,17 +393,6 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   const nativeSection = extractFrameworkSection(configObject, "native");
   if (nativeSection) {
     resolved.frameworkConfig = nativeSection;
-  } else if (resolved.framework && isEspIdfFramework(resolved.framework)) {
-    // ESP-IDF: route frameworkData through frameworkConfig so the toolchain
-    // can read components, target, and other framework-specific fields.
-    // extractFrameworkSection walks the AST and preserves nested shapes
-    // (components.managed, components.local, etc.).
-    const frameworkData = configObject
-      ? extractFrameworkSection(configObject, "frameworkData")
-      : undefined;
-    if (frameworkData) {
-      resolved.frameworkConfig = frameworkData;
-    }
   }
 
   // Parse display profile config (nested object with profile name, wiring, touch)

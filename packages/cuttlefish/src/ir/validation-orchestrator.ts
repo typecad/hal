@@ -4,6 +4,7 @@ import type { PlatformStrategy } from "../api/shared/index.js";
 import { resolveStrategy } from "../platform/registry.js";
 import { hasLoadedFramework, getLoadedFramework } from "../framework-registry.js";
 import { analyzeInterruptSafety, inferVolatileForIsrSharedVars, detectReentrancyRisk } from "./interrupt-analysis.js";
+import { analyzeWorkerIsolation } from "./worker-analysis.js";
 import { validateADCRange } from "./adc-range-validation.js";
 import { createEmptyPeripheralUsage, type PeripheralUsage } from "./peripheral-usage.js";
 import { validatePeripherals } from "./peripheral-validation.js";
@@ -39,6 +40,10 @@ export function runProgramValidations(program: ProgramIR, strategy?: PlatformStr
   diagnostics.push(...analyzeInterruptSafety(program, peripheralUsage));
   inferVolatileForIsrSharedVars(program, diagnostics);
   detectReentrancyRisk(program, diagnostics);
+  // Worker isolation: bus access in workers is a hard error; worker-shared
+  // globals get volatile promotion (info) or a data-race warning. Only fires
+  // when worker.submit ops are present, so non-worker programs are unaffected.
+  analyzeWorkerIsolation(program, diagnostics);
   diagnostics.push(...validateADCRange(program, program.boardConstants));
   diagnostics.push(...validateUnitSuspicion(program));
   diagnostics.push(...validatePinModeConfig(program));

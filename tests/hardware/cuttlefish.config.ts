@@ -14,9 +14,9 @@ const config: CuttlefishConfig = {
   target: 'esp32s3',
   mcu: '@typecad/mcu-esp32s3',
   board: '@typecad/board-esp32s3',
-  framework: '@typecad/framework-esp32',
-  frameworkData: { buildTarget: 'esp32s3' },
-  toolchain: { type: 'idf' },
+  framework: '@typecad/framework-arduino',
+  frameworkData: { buildTarget: 'esp32:esp32:esp32s3' },
+  toolchain: { type: 'arduino-cli' },
   console: { baudRate: 115200 },
   test: {
     // Set via --port COM4 (or /dev/ttyUSB0 on Linux/macOS).

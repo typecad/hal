@@ -30,6 +30,7 @@ import { lowerPower } from './power.js';
 import { lowerTone } from './tone.js';
 import { lowerPulseOrShift } from './pulse.js';
 import { lowerBle } from './ble.js';
+import { lowerWorker } from './worker.js';
 
 export {
   lowerGpio, lowerTiming, lowerAdc, lowerPwm, lowerI2c, lowerSpi, lowerUart,
@@ -60,6 +61,7 @@ export function lowerHalOp(
   if (op.operation.startsWith('pulse.') || op.operation.startsWith('shift.'))
     return lowerPulseOrShift(op, chip);
   if (op.operation.startsWith('ble.'))        return lowerBle(op);
+  if (op.operation.startsWith('worker.'))     return lowerWorker(op);
 
   // raw / snprintf.emit / display.* / board.* / wifi.* / http.* / ... — not
   // lowered by this framework. Return undefined so the transpiler falls back

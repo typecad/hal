@@ -107,6 +107,9 @@ export interface ProgramAnalysisResult {
   usesHwtimer: boolean;
   /** Capacitive touch pins usage. Detected from capacitive.* ops. */
   usesCapacitive: boolean;
+  /** Worker offload usage. Detected from worker.* ops. Frameworks gate the
+   *  worker_runtime polyfill (and its per-framework backing) on this. */
+  usesWorker: boolean;
 }
 
 // Regex for std:: math calls
@@ -117,7 +120,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -389,6 +392,7 @@ function analyzeExpression(
         if (opName.startsWith("temp."))      result.usesTemp = true;
         if (opName.startsWith("hwtimer."))   result.usesHwtimer = true;
         if (opName.startsWith("capacitive.")) result.usesCapacitive = true;
+        if (opName.startsWith("worker."))    result.usesWorker = true;
       }
       break;
   }
@@ -669,6 +673,7 @@ function analyzeStatement(
         if (opName.startsWith("temp."))       result.usesTemp = true;
         if (opName.startsWith("hwtimer."))    result.usesHwtimer = true;
         if (opName.startsWith("capacitive.")) result.usesCapacitive = true;
+        if (opName.startsWith("worker."))     result.usesWorker = true;
         // Timing HAL ops (timing.delay/millis/micros) carry a typed operation
         // name, not raw code, so the regex scans below miss them. Mirror the
         // raw-code timing detection here so usesMillis/usesTiming (and thus
@@ -808,6 +813,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesTemp: false,
     usesHwtimer: false,
     usesCapacitive: false,
+    usesWorker: false,
   };
 
   // Analyze type aliases

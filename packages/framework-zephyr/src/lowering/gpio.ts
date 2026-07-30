@@ -17,6 +17,7 @@
 
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
+import { controllerNodelabelForPin } from '../chips/controllers.js';
 
 /** The C identifier emitted for a pin's gpio_dt_spec variable. */
 export function dtSpecVarName(dtSpec: string): string {
@@ -119,7 +120,9 @@ function lowerGpioRaw(
 ): { code?: string; expression?: string } {
   const o = op as any;
   const pin: number = o.pin;
-  const controller = `DEVICE_DT_GET(DT_NODELABEL(${chip.gpioController}))`;
+  // Resolve the owning controller by pin range (ESP32-S3 splits GPIO across
+  // gpio0/gpio1). For single-controller SoCs this is just chip.gpioController.
+  const controller = `DEVICE_DT_GET(DT_NODELABEL(${controllerNodelabelForPin(chip, pin)}))`;
 
   switch (op.operation) {
     case 'gpio.set_mode': {

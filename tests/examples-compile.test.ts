@@ -30,11 +30,11 @@ const examplesRoot = path.resolve(__dirname, '..', 'website', 'src', 'content', 
 
 /**
  * The config's `framework` field is a package specifier
- * ('@typecad/framework-arduino' | '@typecad/framework-avr' |
+ * ('@typecad/framework-arduino' | '@typecad/framework-zephyr' |
  * '@typecad/framework-native' | custom). transpile()'s `target` option is the
  * framework *family* ('arduino' | 'native' | 'generic'). Only native maps to
- * 'native'; the Arduino and AVR frameworks both transpile under 'arduino',
- * with the specific board carried by buildTarget (FQBN) + boardPackage.
+ * 'native'; the Arduino framework transpiles under 'arduino', with the
+ * specific board carried by buildTarget (FQBN) + boardPackage.
  */
 function targetForFramework(framework?: string): 'arduino' | 'native' {
 	if (!framework) return 'arduino';

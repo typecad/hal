@@ -16,6 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import type { SpawnSyncOptions } from 'node:child_process';
+import { dirname } from 'node:path';
 import { type WestInstall, discoverWest } from './west-discover.js';
 
 export interface WestInvocation {
@@ -30,12 +31,49 @@ export interface WestInvocation {
   install: WestInstall;
 }
 
-/** The env to pass to the west spawn: the process env, with ZEPHYR_BASE
- *  injected when a SDK root was discovered (and not already set). */
+/**
+ * The Scripts/ (Windows) or bin/ (POSIX) directory of the venv the discovered
+ * west runs under. `pythonExecutable` lives in that directory, so it is its
+ * dirname. Returns undefined for launcher-mode installs where no venv is known.
+ */
+function venvBinDir(install: WestInstall): string | undefined {
+  return install.pythonExecutable ? dirname(install.pythonExecutable) : undefined;
+}
+
+/**
+ * The env to pass to the west spawn: the process env, with ZEPHYR_BASE injected
+ * when a SDK root was discovered, AND the venv's bin/Scripts dir prepended to
+ * PATH when west was found via a venv Python.
+ *
+ * The PATH prepend matters: `west flash` shells out to bare runner tools
+ * (`esptool`, `openocd`, `nrfjprog`, …) via check_call, so they resolve from
+ * PATH. Without the prepend, the user's PATH may surface a *different* tool
+ * ahead of the venv's — e.g. an older esptool whose argument spelling is
+ * incompatible with the runner. Putting the venv's bin first makes west's
+ * delegated subprocesses resolve to the same versions west itself runs under.
+ */
 function buildEnv(install: WestInstall): NodeJS.ProcessEnv {
   const env = { ...process.env };
   if (install.zephyrBase && !env.ZEPHYR_BASE) {
     env.ZEPHYR_BASE = install.zephyrBase;
+  }
+  const bin = venvBinDir(install);
+  if (bin) {
+    const sep = process.platform === 'win32' ? ';' : ':';
+    // On Windows the PATH environment variable may be cased as `Path` (the
+    // registry-native form, the only one populated when node is launched from
+    // PowerShell/cmd) or `PATH` (POSIX form, set by Git Bash). Writing only one
+    // casing can leave the other stale/empty, which under PowerShell would drop
+    // the user's real PATH (cmake, ninja, …) — breaking `west` configure. Read
+    // whichever casing is populated and write that same casing back, preserving
+    // the full existing value with the venv dir prepended.
+    const existing = env.Path ?? env.PATH ?? '';
+    const updated = bin + sep + existing;
+    if (env.Path !== undefined || (env.PATH === undefined && process.platform === 'win32')) {
+      env.Path = updated;
+    } else {
+      env.PATH = updated;
+    }
   }
   return env;
 }

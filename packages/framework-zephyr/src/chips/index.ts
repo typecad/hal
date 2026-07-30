@@ -9,13 +9,14 @@
 
 import type { ZephyrChipDescriptor } from './types.js';
 import { XIAO_BLE } from './xiao-ble.js';
+import { ESP32S3_DEVKITC } from './esp32s3.js';
 
-export { XIAO_BLE };
+export { XIAO_BLE, ESP32S3_DEVKITC };
 export type { ZephyrChipDescriptor, ZephyrGpioDtSpec } from './types.js';
 
 /**
  * Default chip used when no buildTarget is supplied. The XIAO nRF52840 is the
- * MVP's sole target; subsequent board additions extend the switch below.
+ * canonical MVP target; subsequent board additions extend the switch below.
  */
 const DEFAULT_CHIP: ZephyrChipDescriptor = XIAO_BLE;
 
@@ -32,7 +33,8 @@ export function getActiveChip(): ZephyrChipDescriptor {
 /**
  * Resolve a chip descriptor from the Zephyr board target string
  * (frameworkData.buildTarget / frameworkData.target). Accepts the bare board
- * id ('xiao_ble') or a board/qualifier path ('xiao_ble/nrf52840').
+ * id ('xiao_ble', 'esp32s3_devkitc') or a board/qualifier path
+ * ('esp32s3_devkitc/esp32s3/procpu').
  */
 export function chipForTarget(target?: string): ZephyrChipDescriptor {
   const t = (target ?? '').trim().toLowerCase();
@@ -40,6 +42,8 @@ export function chipForTarget(target?: string): ZephyrChipDescriptor {
   switch (boardId) {
     case 'xiao_ble':
       return XIAO_BLE;
+    case 'esp32s3_devkitc':
+      return ESP32S3_DEVKITC;
     case '':
     default:
       return DEFAULT_CHIP;

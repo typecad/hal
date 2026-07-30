@@ -2,7 +2,7 @@
   "name": "demo-display",
   "version": "1.0.0",
   "private": true,
-  "description": "ESP32-S3 + ST7796S display-only demo exercising the native ESP32 display adapter (no Adafruit, no Arduino-ESP32 core). Touch disabled — native touch shim port is deferred.",
+  "description": "ESP32-S3 + ST7796S display + FT6336U touch demo over the Arduino-ESP32 core (Adafruit GFX + Wire), mirroring demos/demo-st.",
   "type": "module",
   "scripts": {
     "build": "cuttlefish build",
@@ -12,7 +12,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "@typecad/framework-esp32": "*",
+    "@typecad/framework-arduino": "*",
     "@typecad/board-esp32s3": "*",
     "@typecad/mcu-esp32s3": "*",
     "@typecad/ui": "*"

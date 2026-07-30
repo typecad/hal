@@ -13,7 +13,6 @@ import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext, Compli
 import type { PlatformStrategy } from "../packages/cuttlefish/src/api/shared/platform-strategy";
 import { ArduinoStrategy } from "../packages/framework-arduino/src";
 import { NativeStrategy } from "../packages/framework-native/src";
-import { Esp32Strategy } from "../packages/framework-esp32/src/strategy";
 import { expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
@@ -22,9 +21,6 @@ import * as path from "path";
 // can access framework functions without going through transpileFile().
 const _arduinoStrategy = new ArduinoStrategy();
 const _nativeStrategy = new NativeStrategy();
-// ESP32 strategy is instantiated lazily for transpileEsp32Strategy(); it is
-// NOT the default (most tests still expect Arduino semantics). See usage below.
-let _esp32Strategy: Esp32Strategy | null = null;
 setLoadedFramework({ strategy: _arduinoStrategy });
 registerPlatformStrategy(_arduinoStrategy);
 registerPlatformStrategy(_nativeStrategy);
@@ -49,10 +45,8 @@ export interface TranspileOptions {
   boardPackage?: string;
   /**
    * Optional explicit strategy. When provided, overrides target-based
-   * resolution. Used by transpileEsp32Strategy() so that semantic-op HAL
-   * lowering (wifi dot-star / http dotstar ops) routes through
-   * Esp32Strategy.resolveHALOperation instead of the default ArduinoStrategy
-   * (which has no wifi/http lowering).
+   * resolution so semantic-op HAL lowering routes through the given
+   * strategy's resolveHALOperation instead of the default.
    */
   strategy?: PlatformStrategy;
   /** AUTOSAR C++14 compliance mode for this transpile. Default "off". */
@@ -148,24 +142,6 @@ export function transpileESP32(tsCode: string): TranspileResult {
   return transpile(tsCode, { 
     target: "arduino", 
     platformContext: { frameworkData: { buildTarget: "esp32:esp32:devkitv1" } } 
-  });
-}
-
-/**
- * Transpile with Esp32Strategy as the ACTIVE strategy. Required for HAL
- * domains whose lowering lives on Esp32Strategy.resolveHALOperation (the
- * semantic-op wifi and http ops) — the plain transpileESP32() helper leaves
- * ArduinoStrategy active, which has no wifi/http lowering and would emit
- * an `unhandled hal-op` marker. The platformContext still pins the ESP32
- * build target so board-constant lookups (architecture, etc.) behave
- * correctly.
- */
-export function transpileEsp32Strategy(tsCode: string): TranspileResult {
-  if (!_esp32Strategy) _esp32Strategy = new Esp32Strategy();
-  return transpile(tsCode, {
-    target: "arduino",
-    strategy: _esp32Strategy,
-    platformContext: { frameworkData: { buildTarget: "esp32:esp32:devkitv1" } },
   });
 }
 

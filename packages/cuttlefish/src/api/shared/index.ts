@@ -214,6 +214,13 @@ export type { AsyncRuntimeConfig } from './async-types.js';
 export { generatePromiseRuntime } from './promise-runtime.js';
 // Heap-free static async runtime generator (AVR / megaavr / no-<vector> targets)
 export { generateStaticAsyncRuntime } from './async-runtime-static.js';
+// No-STL cooperative scheduler (priority + time-budget) — Zephyr-friendly
+export { generateCoopScheduler, buildCoopSchedInjection } from './coop-scheduler.js';
+export type { CoopWorkUnit, CoopSchedOptions } from './coop-scheduler.js';
+// Worker offload runtime (generalized request-in / poll-out)
+export { generateWorkerRuntime, lowerWorkerOp } from './worker-runtime.js';
+export type { WorkerRuntimeOptions, WorkerBacking } from './worker-runtime.js';
+export { buildWorkerRuntimePolyfill } from './worker-runtime-polyfill.js';
 
 // Framework manifest schema + helper
 export {

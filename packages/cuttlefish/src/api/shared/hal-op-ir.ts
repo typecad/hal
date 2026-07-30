@@ -866,6 +866,43 @@ export interface HttpDoneOp {
   operation: "http.done";
 }
 
+// ---------------------------------------------------------------------------
+// Worker offload (generalized request-in / poll-out over a worker pool).
+//
+// These ops model the isolated-worker pattern: a pure/compute function is
+// submitted to a per-framework worker backend (ESP32: FreeRTOS task; Zephyr:
+// k_work workqueue) and its completion is polled. The worker receives its
+// inputs by value and exposes its outputs only through an opaque handle, so
+// the program-facing API stays single-threaded cooperative — no mutex/
+// semaphore is added to the IR. The worker-isolation analyzer (see
+// worker-analysis.ts) statically forbids shared mutable state (globals get
+// volatile promotion + warning; bus access inside a worker is a hard error
+// because take()/release() is runtime-unimplemented).
+//
+// `handleId` selects a fixed worker slot (the runtime ships a small pool, e.g.
+// 4 slots). `fnRef` is the C++ symbol of the submitted function (signature
+// `void(void*)`). `argRef` is an optional opaque argument expression passed
+// through verbatim (worker-owned; the worker must not alias app globals).
+// ---------------------------------------------------------------------------
+
+/** Submit `fnRef(argRef)` to worker slot `handleId`; returns immediately. */
+export interface WorkerSubmitOp {
+  operation: "worker.submit";
+  /** Fixed worker slot index (0..poolSize-1). */
+  handleId: number;
+  /** C++ symbol of the function to run: `void fn(void* arg)`. */
+  fnRef: string;
+  /** Optional argument expression (passed through verbatim). */
+  argRef?: string;
+}
+
+/** Poll predicate paired with worker.submit — true once the worker finished. */
+export interface WorkerDoneOp {
+  operation: "worker.done";
+  /** Worker slot index, matching the worker.submit it polls. */
+  handleId: number;
+}
+
 export interface HttpStatusOp {
   operation: "http.status";
 }
@@ -1666,6 +1703,8 @@ export type HALOpIR =
   | HttpSendOp
   | HttpSendStartOp
   | HttpDoneOp
+  | WorkerSubmitOp
+  | WorkerDoneOp
   | HttpStatusOp
   | HttpOkOp
   | HttpBodyOp
@@ -1859,6 +1898,8 @@ export const HAL_OPERATION_KINDS = [
   'http.set_ca_cert', 'http.send', 'http.send_start', 'http.done',
   'http.status', 'http.ok', 'http.body', 'http.content_length',
   'http.response_header',
+  // Worker offload (generalized request-in / poll-out over a worker pool)
+  'worker.submit', 'worker.done',
   // BLE (NimBLE GATT peripheral)
   'ble.server_begin', 'ble.advertise_start', 'ble.advertise_stop',
   'ble.add_service', 'ble.add_char',

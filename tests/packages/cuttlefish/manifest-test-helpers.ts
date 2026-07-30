@@ -124,7 +124,7 @@ function opKindsForCategory(category: string): string[] {
  *
  * Example output:
  *
- *   HAL coverage for @typecad/framework-esp32 (14/18 categories supported)
+ *   HAL coverage for @typecad/framework-zephyr (14/18 categories supported)
  *
  *   gpio (4/4 supported)
      gpio.write         ✓

@@ -80,9 +80,8 @@ alongside the other frameworks:
 
 ```json
 "workspaces": [
-  "packages/framework-avr",
   "packages/framework-arduino",
-  "packages/framework-esp32",
+  "packages/framework-zephyr",
   "packages/framework-rp2040"
 ]
 ```
@@ -131,8 +130,7 @@ Edit `packages/cuttlefish/src/api/shared/framework-manifest-registry.ts`:
 ```ts
 export const KNOWN_FRAMEWORK_PACKAGES = [
   '@typecad/framework-arduino',
-  '@typecad/framework-avr',
-  '@typecad/framework-esp32',
+  '@typecad/framework-zephyr',
   '@typecad/framework-rp2040',   // ← add
 ] as const;
 ```

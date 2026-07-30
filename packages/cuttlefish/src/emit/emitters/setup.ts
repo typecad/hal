@@ -10,6 +10,7 @@ import { resolveImport } from "../../libdef/registry.js";
 import { emitPolyfillBoilerplate } from "../native-helpers-emitter.js";
 import { ResolvedNpmPackage } from "../../transpile/resolution.js";
 import { resolveStrategy } from "../../platform/registry.js";
+import { buildCoopSchedulerPolyfill } from "../../platform/coop-scheduler-runtime.js";
 import { getLoadedFramework } from "../../framework-registry.js";
 import { entryHasUI } from "../../ui-hook.js";
 import { ComplianceContext } from "../compliance/compliance-context.js";
@@ -371,6 +372,23 @@ export function buildEmitterContext(
       programAnalysis.usedPolyfillHelpers,
     );
     filteredNativePolyfills = [...filteredNativePolyfills, ...safetyPolyfills];
+  }
+
+  // Cooperative scheduler polyfill (Phase 0). Injected centrally when the
+  // strategy opts into priority/time-budget scheduling AND there is per-frame
+  // work to schedule (async tasks, the std::function microtask pump, or the
+  // cooperative timer pump). The polyfill carries only the no-STL CoopSched
+  // namespace; per-program trampoline registration is emitted by the function
+  // emitter around the driver's loop injection. STL-free so it links on
+  // minimal-libc targets (Zephyr) where the Promise runtime does not.
+  const coopConfig = strategy.getAsyncRuntimeConfig?.();
+  const hasCoopWork =
+    program.functions.some(fn => fn.isAsync) ||
+    programAnalysis.usedPolyfillHelpers.has('__tc_setInterval') ||
+    programAnalysis.usedPolyfillHelpers.has('__tc_setTimeout');
+  if (isEntryFile && coopConfig && hasCoopWork) {
+    const coop = buildCoopSchedulerPolyfill(program, coopConfig, strategy.currentTimeMillis());
+    if (coop) filteredNativePolyfills = [...filteredNativePolyfills, coop];
   }
 
   const allPolyfills = filteredNativePolyfills;

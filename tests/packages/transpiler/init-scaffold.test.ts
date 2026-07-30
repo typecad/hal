@@ -191,18 +191,6 @@ describe("init-templates", () => {
       expect(content).toContain("baudRate: 9600");
     });
 
-    it("uses avr framework when specified", () => {
-      const avrOptions: InitProjectOptions = {
-        ...ARDUINO_UNO_OPTIONS,
-        framework: 'avr',
-        frameworkPackage: '@typecad/framework-avr',
-      };
-      const content = generateProjectConfig(avrOptions);
-
-      expect(content).toContain("framework: '@typecad/framework-avr'");
-      expect(content).toContain("framework: 'avr'");
-    });
-
     it("expands the esp32s3 registry mcu to @typecad/mcu-esp32s3", () => {
       // Regression: the esp32s3 registry entry carries `mcu: 'esp32s3'`, which
       // the template wraps as `@typecad/mcu-${mcu}`. An earlier value of

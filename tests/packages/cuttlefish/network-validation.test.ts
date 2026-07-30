@@ -4,24 +4,21 @@
 // The first test coverage for packages/cuttlefish/src/ir/network-validation.ts.
 // Exercises all five existing diagnostics at the unit level by calling
 // validateNetworkUsage() directly with a hand-built ProgramIR + fake
-// boardConstants Map (the way tests/packages/framework-esp32/diagnostics.test.ts
-// does for profileDiagnostics).
+// boardConstants Map.
 //
 // Why unit-level and not via transpile(): the transpileAVR() helper does not
 // populate the AVR `architecture` board constant, and the validator's
 // "no fallbacks" rule means absent board data emits nothing — so the
 // wifi-no-radio positive case is only reachable by injecting a fake
-// boardConstants Map. The transpiler-path negative case is covered in
-// tests/packages/hal/hal-wifi.test.ts.
+// boardConstants Map.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
 import { validateNetworkUsage } from '../../../packages/cuttlefish/src/ir/network-validation';
 
 /** Build a minimal ProgramIR whose `functions[].statements` carry the given
- *  hal-op statements. Mirrors the fakeProgram() helper in
- *  tests/packages/framework-esp32/diagnostics.test.ts, plus the extra fields
- *  walkProgramIR reads (topLevelStatements / classes / namespaces). */
+ *  hal-op statements, plus the extra fields walkProgramIR reads
+ *  (topLevelStatements / classes / namespaces). */
 function fakeProgram(
   statementsByFn: Array<{ name?: string; originalName?: string; statements: any[] }> = [],
 ): any {

@@ -32,6 +32,24 @@ export interface ZephyrGpioDtSpec {
 }
 
 /**
+ * A GPIO controller devicetree node, and the HAL pin-number range it owns.
+ *
+ * Most SoCs expose a single GPIO controller (nRF52840: `gpio0` owns every
+ * pin). SoCs that split GPIO across multiple devicetree nodes — e.g. the
+ * ESP32-S3 (`gpio0`: pins 0–31, `gpio1`: pins 32–48) — list one entry per
+ * controller so the lowering can route a HAL pin to the owning controller at
+ * runtime. Pin numbers match the HAL op `pin` field.
+ */
+export interface ZephyrGpioController {
+  /** Devicetree nodelabel, e.g. 'gpio0', 'gpio1'. */
+  readonly nodelabel: string;
+  /** First HAL pin number owned by this controller (inclusive). */
+  readonly minPin: number;
+  /** Last HAL pin number owned by this controller (inclusive). */
+  readonly maxPin: number;
+}
+
+/**
  * A bus controller (I2C / SPI / UART) described by its devicetree nodelabel.
  *
  * Zephyr resolves the `const struct device*` at compile time via
@@ -95,8 +113,21 @@ export interface ZephyrChipDescriptor {
    * Default GPIO controller nodelabel for the raw-pin fallback. Pins not in
    * `gpio.dtSpecs` are addressed via
    * `DEVICE_DT_GET(DT_NODELABEL(<gpioController>))` + gpio_pin_*_raw().
+   *
+   * For SoCs that split GPIO across multiple devicetree nodes, `gpioControllers`
+   * overrides this per pin range; this field is then only the out-of-range
+   * fallback (so a single-controller board is unaffected by it).
    */
   readonly gpioController: string;
+  /**
+   * Per-range GPIO controllers for SoCs that split GPIO across multiple
+   * devicetree nodes (ESP32-S3: `gpio0` 0–31, `gpio1` 32–48). When present, the
+   * lowering routes a HAL pin to its owning controller at runtime via the
+   * emitted `__tc_gpio_dev(pin)` dispatcher; `gpioController` is the fallback.
+   * Omit on single-controller SoCs (nRF52840, RP2040, …) — every pin is on the
+   * one controller described by `gpioController`.
+   */
+  readonly gpioControllers?: readonly ZephyrGpioController[];
   /** GPIO pins with devicetree specs (LEDs, buttons, board-defined pins). */
   readonly gpio: {
     readonly dtSpecs: readonly ZephyrGpioDtSpec[];

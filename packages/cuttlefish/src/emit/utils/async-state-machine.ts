@@ -477,6 +477,21 @@ function netWaitInfo(op: HALOpIR, strategy: PlatformStrategy): NetWaitInfo {
       }
       break;
     }
+    case "worker.submit": {
+      // Worker offload (Phase 3). `await worker.submit(fn, arg)` rewrites to:
+      // submit the worker (start), then poll worker.done on the same handle.
+      // The submit op is emitted verbatim as the start line; the poll predicate
+      // is worker.done(handle) carrying the SAME handleId. This is a predicate-
+      // poll resume (same per-frame cost as net/timer awaits), NOT an ISR-driven
+      // resume — that defers with DMA-backed awaits.
+      const submit = routeHALOp(op as unknown as HALOpIR, strategy);
+      // Carry the handle through to the poll so submit + done agree on the slot.
+      const poll = route({ operation: "worker.done", handleId: o.handleId })?.expression ?? null;
+      if (submit?.code && poll) {
+        return { startLines: [submit.code], pollCond: poll, timeoutExpr: null };
+      }
+      break;
+    }
   }
 
   // Fallback: run the blocking form immediately and complete on the next tick.

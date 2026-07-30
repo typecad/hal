@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ResolvedConfig, RunResult, FileResult } from './types.js';
 import { findTestFiles } from './finder.js';
-import { preprocess, serialShim, avrUartShim, espIdfShim } from './preprocessor.js';
+import { preprocess, serialShim } from './preprocessor.js';
 import { transpileTestFile, compileSketch, uploadSketch } from './compiler.js';
 import { readSerialOutput } from './serial.js';
 import { parseProtocolLines } from './parser.js';
@@ -107,9 +107,7 @@ async function processTestFile(
   try {
     preprocessed = preprocess(source, path.basename(filePath), {
       isAvr: config.target === 'avr' || config.target === 'megaavr',
-      shim: config.framework === '@typecad/framework-avr' ? avrUartShim
-          : config.framework?.includes('framework-esp32') ? espIdfShim
-          : serialShim,
+      shim: serialShim,
     });
   } catch (e) {
     return errorResult(filePath, `Preprocessing failed: ${(e as Error).message}`, startTime);
@@ -127,14 +125,14 @@ async function processTestFile(
     return errorResult(filePath, transpileResult.error ?? 'Transpilation failed', startTime);
   }
 
-  // Step 3: Compile (arduino-cli or idf.py depending on framework)
+  // Step 3: Compile via arduino-cli
   console.log(`  ${DIM}compiling...${RESET}`);
   const compileResult = compileSketch(transpileResult.sketchDir, config.buildTarget, config.framework);
   if (!compileResult.success) {
     return errorResult(filePath, compileResult.error ?? 'Compilation failed', startTime);
   }
 
-  // Step 4: Upload (arduino-cli or idf.py depending on framework)
+  // Step 4: Upload via arduino-cli
   console.log(`  ${DIM}uploading to ${config.test.port}...${RESET}`);
   const uploadResult = uploadSketch(
     transpileResult.sketchDir,

@@ -20,12 +20,6 @@ import { renderCoverageToString } from '../../../scripts/render-framework-covera
 // in the manifest itself and slated for a separate fix spec. The central
 // test allows these but fails on any OTHER error, so new regressions surface
 // immediately while we don't pretend the latent bugs are fixed.
-//
-// The previous display inheritance codes (hal/display/*) were removed when
-// framework-avr and framework-esp32 began overriding resolveDisplayOp +
-// dispatching through resolveDisplayAdapter. Both frameworks now declare
-// display supported with native drivers; the validator no longer flags
-// these frameworks for display-related contradictions.
 const KNOWN_STRATEGIC_ERRORS: ReadonlySet<string> = new Set<string>([]);
 
 describe('framework manifests', () => {
@@ -71,25 +65,9 @@ describe('framework manifests', () => {
   }
 
   // Document the known strategic errors explicitly so they don't drift
-  // silently. The set is currently empty — the previous display inheritance
-  // codes were removed when AVR + ESP32 began overriding resolveDisplayOp and
-  // dispatching through resolveDisplayAdapter. If a new latent bug is found,
+  // silently. The set is currently empty. If a new latent bug is found,
   // add its code to KNOWN_STRATEGIC_ERRORS above and a regression test here.
   describe('known strategic errors (documented, not fixed)', () => {
-    it('framework-avr has no display inheritance errors (fixed via resolveDisplayOp override)', async () => {
-      const result = await validateFramework('@typecad/framework-avr');
-      const codes = result.errors.map((e) => e.code);
-      expect(codes).not.toContain('hal/display/declared-unsupported-but-actually-lowers');
-      expect(codes).not.toContain('hal/display/op/display.init/status-mismatch');
-    });
-
-    it('framework-esp32 has no display inheritance errors (fixed via resolveDisplayOp override)', async () => {
-      const result = await validateFramework('@typecad/framework-esp32');
-      const codes = result.errors.map((e) => e.code);
-      expect(codes).not.toContain('hal/display/declared-unsupported-but-actually-lowers');
-      expect(codes).not.toContain('hal/display/op/display.init/status-mismatch');
-    });
-
     it('framework-arduino has no display inheritance errors (canonical reference)', async () => {
       const result = await validateFramework('@typecad/framework-arduino');
       const codes = result.errors.map((e) => e.code);

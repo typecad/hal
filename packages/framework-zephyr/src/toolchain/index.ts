@@ -100,9 +100,21 @@ export const Toolchain = {
   upload(o: ToolchainOptions): UploadResult {
     const projectRoot = projectRootFromOptions(o);
     const buildDir = join(projectRoot, 'build');
+    const board = targetFromOptions(o);
     const args = ['flash', '-d', buildDir];
+
+    // Flash runner is target-specific. nRF boards (xiao_ble) flash over J-Link
+    // via nrfjprog; Espressif boards (esp32s3_devkitc / esp32*) flash over USB
+    // via the esptool runner that the board's board.cmake selects by default.
+    // Forcing --runner nrfjprog unconditionally broke ESP flashing.
     if (o.port) {
-      args.push('--runner', 'nrfjprog'); // nRF52840 flashes via J-Link/nrfjprog
+      if (board.startsWith('esp32')) {
+        // esptool reads the device from --esp-device. Let board.cmake pick the
+        // runner; just forward the port so COM5 (etc.) flashes the right device.
+        args.push('--esp-device', o.port);
+      } else {
+        args.push('--runner', 'nrfjprog'); // nRF52840 flashes via J-Link/nrfjprog
+      }
     }
 
     const inv = westSpawn(args, {

@@ -47,7 +47,10 @@ export default defineFrameworkManifest({
   },
 
   profile: {
-    targets: ['xiao_ble'],
+    // Informational list of supported board targets. The manifest validator
+    // never iterates this; chipForTarget (src/chips/index.ts) is the real
+    // resolver. ESP32-S3 added alongside the original nRF52840 MVP target.
+    targets: ['xiao_ble', 'esp32s3_devkitc'],
     forcedIncludes: ['<zephyr/kernel.h>', '<zephyr/drivers/gpio.h>', '<cstdint>'],
     symbolAliases: {},
   },
@@ -111,7 +114,7 @@ export default defineFrameworkManifest({
     },
     dac: {
       supported: false,
-      unsupportedReason: 'No DAC on nRF52840; lowering not applicable for the MVP target.',
+      unsupportedReason: 'No DAC lowering implemented in the framework (not applicable on nRF52840; ESP32 variants with DAC not yet wired).',
       ops: { 'dac.write': 'unsupported' },
     },
     interrupts: {
@@ -199,7 +202,7 @@ export default defineFrameworkManifest({
     },
     wifi: {
       supported: false,
-      unsupportedReason: 'nRF52840 has no WiFi; not applicable for this target.',
+      unsupportedReason: 'No WiFi lowering implemented (nRF52840 has no WiFi; ESP32 WiFi not yet wired).',
       ops: unsupportedOps('wifi.'),
     },
     http: {

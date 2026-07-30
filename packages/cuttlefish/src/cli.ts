@@ -8,7 +8,6 @@ import { scaffoldProject, printInitNextSteps, KNOWN_TARGETS } from "./create/ind
 import { runInitWizard } from "./create/index.js";
 import { generateLibraryDefinitions, transpileFile } from "./transpile.js";
 import { generateDecl, generateDeclsForDirectory, generateComponentDeclsForProject } from "./libdef/cpp-to-decl.js";
-import { discoverIdfRootForGenDecls } from "./libdef/idf-discovery.js";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map.js";
 import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain.js";
 import { resolveStrategy } from "./platform/registry.js";
@@ -56,19 +55,11 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
     const framework: string = options.framework ?? target.framework;
     const frameworkPackage = target.isNative
       ? target.frameworkPackage
-      : framework === 'avr'
-        ? '@typecad/framework-avr'
-        : framework === 'arduino'
-          ? '@typecad/framework-arduino'
-          : framework === 'esp32'
-            ? '@typecad/framework-esp32'
-            : `@typecad/framework-${framework}`;
+      : framework === 'arduino'
+        ? '@typecad/framework-arduino'
+        : `@typecad/framework-${framework}`;
 
     const projectName = options.projectName || 'my-project';
-    const isEspIdf = frameworkPackage === '@typecad/framework-esp32' || framework === 'esp32';
-    const idfTarget = (target.frameworkData?.target as string | undefined)
-      ?? target.architecture
-      ?? 'esp32';
 
     const result = scaffoldProject({
       projectName,
@@ -79,18 +70,13 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       boardPackage: target.boardPackage,
       frameworkPackage,
       framework,
-      buildTarget: isEspIdf ? idfTarget : target.buildTarget,
+      buildTarget: target.buildTarget,
       mcu: target.mcu,
       baudRate: target.isNative ? undefined : (options.baud ?? 9600),
       includeSketch: !options.noSketch,
-      ...(isEspIdf
-        ? {
-            toolchainType: 'idf' as const,
-            frameworkData: target.frameworkData ?? { target: idfTarget, buildTarget: idfTarget },
-          }
-        : target.frameworkData
-          ? { frameworkData: target.frameworkData }
-          : {}),
+      ...(target.frameworkData
+        ? { frameworkData: target.frameworkData }
+        : {}),
     }, options.outDir);
 
     console.log(`\n${chalk.green("✓")} Created project files:`);
@@ -333,23 +319,11 @@ async function main(): Promise<void> {
           path.isAbsolute(p) ? p : path.resolve(componentsDir, p),
         );
         const builtinNames = (componentsNode.builtin as string[]) ?? [];
-        // Built-in components resolve against an ESP-IDF install. The CLI
-        // uses minimal discovery (env var + well-known paths). If no install
-        // is found, builtins are skipped with a notice — the framework-esp32
-        // compile path performs richer discovery and is the primary entry
-        // point for builtin gen-decls.
-        const idfRoot = discoverIdfRootForGenDecls();
-        if (builtinNames.length > 0 && !idfRoot) {
-          ui.printInfo(
-            'components.builtin declared but no ESP-IDF install was found; skipping builtin headers. ' +
-              'Run via `cuttlefish build --compile` (which performs full IDF discovery) or set $IDF_PATH.',
-          );
-        }
         const created = generateComponentDeclsForProject(componentsDir, {
           managed: managedNames,
           local: localPaths,
-          builtin: idfRoot ? builtinNames : [],
-          idfRoot,
+          builtin: [],
+          idfRoot: undefined,
         });
         if (created.length === 0) {
           ui.printInfo("No component declaration files created.");
@@ -471,17 +445,12 @@ async function main(): Promise<void> {
         const outBase = config.outputOutDir
           ? path.resolve(inputDir, config.outputOutDir)
           : inputDir;
-        // For builtins we need IDF_PATH. Use cuttlefish's minimal discovery
-        // (env var + well-known paths) — full discovery is done by
-        // framework-esp32 at --compile time. If no install is found,
-        // builtins are skipped; --compile will regenerate them.
-        const idfRoot = discoverIdfRootForGenDecls();
         try {
           generateComponentDeclsForProject(outBase, {
             managed: managedSpecs.map((s) => s.replace('/', '__')),
             local: localPaths,
-            builtin: idfRoot ? builtinNames : [],
-            idfRoot,
+            builtin: [],
+            idfRoot: undefined,
           });
         } catch {
           // Non-fatal: if gen-decls fails (e.g. component not yet fetched),

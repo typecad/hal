@@ -15,6 +15,7 @@
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 import { parseControllerIndex } from './util.js';
+import { controllerNodelabelForPin } from '../chips/controllers.js';
 
 /** The C variable prefix for a controller's state. */
 function prefix(idx: number): string {
@@ -85,10 +86,12 @@ export function lowerSpi(
     }
     case 'spi.cs_low':
     case 'spi.cs_high': {
-      // CS driven as a plain GPIO via the raw controller (the CS pin comes from
-      // the op's `pin` field; Zephyr uses gpio_pin_set_raw).
+      // CS driven as a plain GPIO via the owning controller (the CS pin comes
+      // from the op's `pin` field; Zephyr uses gpio_pin_set_raw). Resolve the
+      // controller by pin so a CS on a high-numbered pin (ESP32-S3 gpio1) lands
+      // on the right node.
       const val = op.operation === 'spi.cs_low' ? 0 : 1;
-      const gpioController = chip.gpioController;
+      const gpioController = controllerNodelabelForPin(chip, o.pin);
       return {
         code: `gpio_pin_set_raw(DEVICE_DT_GET(DT_NODELABEL(${gpioController})), ${o.pin}, ${val});`,
       };

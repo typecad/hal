@@ -1,35 +1,28 @@
 import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
-// Native ESP32 display demo — exercises the framework-esp32 ST7796S adapter
-// (no Adafruit, no Arduino-ESP32 core dependency for displays).
+// ESP32-S3 display demo — exercises the Adafruit ST7796S adapter over the
+// Arduino-ESP32 core (arduino-cli), mirroring demos/demo-st so the same
+// ESP32-S3 + ST7796S + FT6336U hardware setup works for both demos.
 //
-// Pin wiring matches demos/demo-st exactly (CS=5, DC=17, RST=16) so the same
-// ESP32-S3 + ST7796S hardware setup works for both Adafruit (arduino-cli) and
-// native (ESP-IDF) paths.
+// Pin wiring matches demos/demo-st exactly (CS=5, DC=17, RST=16).
 //
-// Native FT6336U touch is enabled — the framework-esp32 FT6336U adapter drives
-// the controller via ESP-IDF i2c_master (no Arduino Wire). Pin wiring matches
-// demos/demo-st so the same hardware setup works for both paths.
+// FT6336U touch is enabled over Arduino Wire, matching demos/demo-st so the
+// same hardware setup works for both demos.
 const config: CuttlefishConfig = {
   entry: './src/showcase.ui',
   target: 'esp32s3',
   mcu: '@typecad/mcu-esp32s3',
   board: '@typecad/board-esp32s3',
-  framework: '@typecad/framework-esp32',
+  framework: '@typecad/framework-arduino',
   frameworkData: {
-    buildTarget: 'esp32s3',
     // Enable Octal PSRAM (ESP32-S3 module is N16R8 — 16 MB flash + 8 MB OPI
     // PSRAM). The showcase scroll viewports exceed the 88 KB internal-SRAM
     // canvas budget; PSRAM-backed canvases (ps_malloc under
     // #if defined(BOARD_HAS_PSRAM)) give them room to render smoothly.
-    psram: 'opi',
-    // The ST7796S native display adapter uses the IDF spi_master driver, and
-    // the FT6336U touch adapter uses i2c_master. The framework doesn't auto-add
-    // these components yet — declared explicitly so the demo compiles.
-    components: { builtin: ['esp_driver_spi', 'esp_driver_i2c'] },
+    buildTarget: 'esp32:esp32:esp32s3:PSRAM=opi',
   },
-  output: { framework: 'esp32', optimize: 'size', outDir: './out' },
-  toolchain: { type: 'idf' },
+  output: { framework: 'arduino', optimize: 'size', outDir: './out' },
+  toolchain: { type: 'arduino-cli' },
   display: {
     profile: 'st7796-spi',
     cs: 5,
@@ -42,8 +35,8 @@ const config: CuttlefishConfig = {
     // Leave inversion off — matches demo-st and the panel's native state.
     invertDisplay: false,
     themeClass: 'dark',  // same theme as demo-st for side-by-side comparison
-    // Native FT6336U touch (I2C via esp_driver_i2c). Pin wiring matches
-    // demos/demo-st exactly so the same hardware setup works for both paths.
+    // FT6336U touch over Arduino Wire. Pin wiring matches demos/demo-st
+    // exactly so the same hardware setup works for both demos.
     touch: {
       library: 'FT6336U',
       i2cAddress: 0x38,

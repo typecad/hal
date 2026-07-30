@@ -54,27 +54,6 @@ export const serialShim: OutputShim = {
   delay: 'delay(1000)',
 };
 
-/** AVR native UART shim: routes through framework-avr's _uart_* helpers. */
-export const avrUartShim: OutputShim = {
-  begin: '_uart_init(115200)',
-  print: (e) => `_uart_print_expr(${e})`,
-  println: (e) => `_uart_println_expr(${e})`,
-  delay: '_native_delay_ms(1000)',
-};
-
-/** ESP-IDF shim: emits console.debug (print, no newline) and console.log
- *  (println, with newline) calls. The transpiler's transformConsoleCall lowers
- *  these to printf for framework-esp32. Using different console methods lets
- *  the lowering distinguish "partial line" (print/debug) from "end of line"
- *  (println/log) — critical for the [TC:EXPECT:...] protocol format which
- *  spans multiple print calls on a single line. */
-export const espIdfShim: OutputShim = {
-  begin: '',
-  print: (e) => `console.debug(${e})`,
-  println: (e) => `console.log(${e})`,
-  delay: 'Timing.delay(1000)',
-};
-
 export interface PreprocessorOptions {
   /** Wrap string literals in Arduino F() macro to save SRAM on AVR. */
   isAvr?: boolean;
@@ -128,10 +107,8 @@ export class PreprocessorContext {
   }
 
   /** Wrap a string literal in F() on AVR to keep it in flash.
-   *  Only applies when using the serialShim (Arduino core provides F()).
-   *  The avrUartShim runs without the core, so F() is undefined — plain strings. */
+   *  Only applies when using the serialShim (Arduino core provides F()). */
   flash(s: string): string {
-    if (this.shim === avrUartShim) return `"${s}"`;
     return this.isAvr ? `F("${s}")` : `"${s}"`;
   }
 

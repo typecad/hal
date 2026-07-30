@@ -6,6 +6,7 @@ import type { EmitterContext } from "./emitter-context.js";
 import { parsedIsPlainStructType } from "../../api/shared/cpp-type-ir.js";
 import { entryHasUI } from "../../ui-hook.js";
 import { activeNamespaceNames } from "../../ir/build-ir-state.js";
+import { buildCoopSchedInjection, type CoopWorkUnit } from "../../api/shared/coop-scheduler.js";
 
 export function emitPostClassDeclarations(ctx: EmitterContext): void {
   const { strategy, effectiveEmitMode, mappedFunctions, isEntryFile, topLevelScope } = ctx;
@@ -289,6 +290,35 @@ export function emitFunctions(ctx: EmitterContext): void {
       ctx.headerMapEntries = _swapMaps;
     }
 
+    // Cooperative scheduler trampolines (Phase 0).
+    //
+    // When the strategy opts into priority/time-budget scheduling, the driver
+    // function's per-frame pumps are routed through the no-STL CoopSched. The
+    // trampolines (file-scope `static void __tc_coop_*(void*)`) must appear
+    // before the driver function definition so CoopSched can call them; they
+    // reference only global/static names (task instances, pump functions) so
+    // no captures are needed. Emitted once, ahead of the driver only.
+    const asyncDriverFnForTrampolines = strategy.asyncDriverFunctionName();
+    if (
+      fn.name === asyncDriverFnForTrampolines &&
+      (hasPromiseRuntime || asyncTaskClasses.length > 0 || usesTimers)
+    ) {
+      const coopConfig = strategy.getAsyncRuntimeConfig();
+      if (coopConfig.enablePriority || coopConfig.enableTimeBudget) {
+        const coopUnits = buildDriverCoopUnits(
+          asyncTaskClasses.map(t => t.taskVarName),
+          hasPromiseRuntime,
+          usesTimers,
+        );
+        if (coopUnits.length > 0) {
+          const { trampolines } = buildCoopSchedInjection(coopUnits);
+          appendSourceLine(ctx, "// ── CoopSched trampolines (priority/time-budget scheduling) ──");
+          for (const t of trampolines) appendSourceLine(ctx, t);
+          appendSourceLine(ctx, "");
+        }
+      }
+    }
+
     emitCommentLines(fn.leadingComments, "", (line) => appendSourceLine(ctx, line));
     if (fn.typeParameters && fn.typeParameters.length > 0) {
       appendSourceLine(ctx, `template<typename ${fn.typeParameters.join(", typename ")}>`);
@@ -356,9 +386,27 @@ export function emitFunctions(ctx: EmitterContext): void {
       const asyncConfig = strategy.getAsyncRuntimeConfig();
       asyncConfig.hasPromiseRuntime = hasPromiseRuntime;
       asyncConfig.hasTimers = usesTimers;
-      const injectionLines = strategy.asyncLoopInjection(taskNames, asyncConfig);
-      for (const line of injectionLines) {
-        appendSourceLine(ctx, `  ${line}`);
+
+      // Cooperative scheduler path (Phase 0): when opted in, replace the flat
+      // per-frame pump sequence with a single CoopSched dispatch. The work
+      // units mirror exactly what the strategy's asyncLoopInjection() would
+      // have emitted (so Zephyr, which omits the microtask pump, still omits
+      // it), but they are dispatched in priority order and budget-bounded.
+      if (asyncConfig.enablePriority || asyncConfig.enableTimeBudget) {
+        const coopUnits = buildDriverCoopUnits(taskNames, hasPromiseRuntime, usesTimers);
+        if (coopUnits.length > 0) {
+          const { injection } = buildCoopSchedInjection(coopUnits);
+          for (const line of injection) appendSourceLine(ctx, line);
+        } else {
+          // No work units: fall back to the strategy's own injection.
+          const injectionLines = strategy.asyncLoopInjection(taskNames, asyncConfig);
+          for (const line of injectionLines) appendSourceLine(ctx, `  ${line}`);
+        }
+      } else {
+        const injectionLines = strategy.asyncLoopInjection(taskNames, asyncConfig);
+        for (const line of injectionLines) {
+          appendSourceLine(ctx, `  ${line}`);
+        }
       }
     }
 
@@ -496,4 +544,48 @@ export function emitFunctionForwardDeclarations(ctx: EmitterContext): void {
   if (ctx.callbackFunctions.length > 0 || emittedAnyFn) {
     appendSourceLine(ctx, "");
   }
+}
+
+/**
+ * Build the CoopSched work units for the driver function's per-frame pumps.
+ *
+ * The units mirror what a strategy's asyncLoopInjection() emits as a flat
+ * sequence, so the cooperative scheduler preserves each strategy's decisions
+ * about WHICH pumps run (e.g. Zephyr omits the std::function microtask pump
+ * because its async path is state-machine-based). Default priorities:
+ *   - async task .run()        → priority 1 (latency-sensitive: drives awaits)
+ *   - microtask pump           → priority 1 (continuations of resolved promises)
+ *   - cooperative timer pump   → priority 0 (less latency-critical)
+ * Both are tunable via AsyncRuntimeConfig.schedulerPriorities; the scheduler
+ * bucket-walks from the highest level down to 0.
+ */
+function buildDriverCoopUnits(
+  taskVarNames: string[],
+  hasPromiseRuntime: boolean,
+  hasTimers: boolean,
+): CoopWorkUnit[] {
+  const units: CoopWorkUnit[] = [];
+  let taskIdx = 0;
+  for (const name of taskVarNames) {
+    units.push({
+      name: `task_${taskIdx++}`,
+      body: `${name}.run();`,
+      priority: 1,
+    });
+  }
+  if (hasPromiseRuntime) {
+    units.push({
+      name: "microtasks",
+      body: "cuttlefish_pump_microtasks();",
+      priority: 1,
+    });
+  }
+  if (hasTimers) {
+    units.push({
+      name: "timers",
+      body: "__tc_timer_runtime.run();",
+      priority: 0,
+    });
+  }
+  return units;
 }
