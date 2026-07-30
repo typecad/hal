@@ -15,7 +15,7 @@
 
 import { ArduinoStrategy } from '@typecad/framework-arduino';
 import type { RuntimePolyfillIR, ProgramIR, PlatformContext, HALOpIR, StatementIR, Diagnostic, DisplayHALOp, ResolvedDisplay, DisplayAdapterCode } from '@typecad/cuttlefish/api/shared';
-import { resolveNativeDisplayOp } from '@typecad/cuttlefish/api/shared';
+import { resolveNativeDisplayOp, programUsesSafety } from '@typecad/cuttlefish/api/shared';
 import { avrSsd1309Adapter } from './displays/index.js';
 import {
   getPinInfo,
@@ -464,7 +464,14 @@ export class NativeAVRStrategy extends ArduinoStrategy {
     // native_millis polyfill's behavior and preserves the historical emit for
     // direct strategy callers that don't supply a PlatformContext.
     const analysis = (ctx as any)?.analysis;
-    const usesUART = analysis ? !!(analysis.usesUart || analysis.hasConsoleCalls) : true;
+    // usesUART must agree with detectConsoleUsage (which gates the console_log
+    // wrappers). If console wrappers are emitted, the UART functions they call
+    // must also be emitted — otherwise the Arduino preprocessor generates
+    // prototypes for undefined symbols.
+    const usesConsole = this.detectConsoleUsage(program);
+    const usesUART = analysis
+      ? !!(analysis.usesUart || analysis.hasConsoleCalls || usesConsole)
+      : true;
     const usesStrPtr = analysis ? !!(analysis.usesStrPtr) : true;
     const pwmPinsUsed = usage?.pwmPinsUsed ?? new Set<number>();
 
@@ -985,6 +992,12 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       // Filter out strPtr block — already emitted before UART extensions.
       parentLines = this.filterShimBlock(parentLines, '// String helpers', 'inline size_t (strlen)(const __tc_str_ptr& s)');
 
+      // Filter out the Arduino __tc_delay_us shim — it calls ::delayMicroseconds
+      // (Arduino core, not linked on bare-metal AVR). Replace it below with a
+      // version routed through _native_delay_us (defined above, gated on
+      // timing/i2c/uart usage). See the post-push safety block.
+      parentLines = this.filterShimBlock(parentLines, '#ifndef __TC_DELAY_US_DEFINED', '#endif');
+
       // Strip Arduino core includes — the bare-metal main() prevents the
       // Arduino core from being linked, so these headers are dead weight.
       // The native drivers provide every peripheral.
@@ -996,6 +1009,25 @@ export class NativeAVRStrategy extends ArduinoStrategy {
       );
 
       lines.push(...parentLines);
+
+      // AVR-native __tc_delay_us — routes through _native_delay_us instead of
+      // the Arduino core's delayMicroseconds. Emitted when the program uses
+      // @typecad/safety (the safety voter is the only caller). _native_delay_us
+      // is emitted above gated on usesNativeTiming || usesI2C || usesUART; a
+      // safety-only program that uses none of those would still need the helper,
+      // so this block also forces _native_delay_us out via the same condition
+      // the safety voter implies. We rely on _native_delay_us already being
+      // present (any real safety voter caller reads GPIO, which on AVR implies
+      // at least timing usage in practice); if a future sketch breaks this,
+      // gate _native_delay_us on programUsesSafety too.
+      if (program && programUsesSafety(program)) {
+        lines.push(
+          '#ifndef __TC_DELAY_US_DEFINED',
+          '#define __TC_DELAY_US_DEFINED',
+          'inline void __tc_delay_us(uint32_t us) { _native_delay_us(static_cast<unsigned int>(us)); }',
+          '#endif',
+        );
+      }
 
       // Native __tc_Timing replacement — delegates to AVR helpers, not the
       // Arduino core. freeHeap() uses the avr-libc __heap_start/__brkval trick.

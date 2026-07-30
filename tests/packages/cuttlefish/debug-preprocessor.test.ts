@@ -63,12 +63,12 @@ describe('preprocess — breakpoint kinds', () => {
 
   it('emits a logpoint (no halt loop) when logMessage is set', () => {
     const breakpoints: BreakpointMap = {
-      'sample.ts': [{ file: 'sample.ts', line: 3, logMessage: 'label is {label}' }],
+      'sample.ts': [{ file: 'sample.ts', line: 5, logMessage: 'label is {label}' }],
     };
     const out = preprocess({ fileName: 'sample.ts', breakpoints, source: SRC });
 
-    expect(out).toContain('// === LOGPOINT: sample.ts:3 ===');
-    // Logpoints interpolate in-scope variables and never block.
+    expect(out).toContain('// === LOGPOINT: sample.ts:5 ===');
+    // Logpoints interpolate in-scope variables (label declared at line 4).
     expect(out).toContain('Serial.print(label);');
     // The blocking halt loop belongs only to plain breakpoints.
     expect(out).not.toContain('while(Serial.available() == 0)');
@@ -86,9 +86,9 @@ describe('preprocess — breakpoint kinds', () => {
 
 describe('preprocess — scope analysis', () => {
   it('captures in-scope module variables and renders functions as [function]', () => {
-    // Line 2 is at module scope: counter, label, compute, and the breakpoint's
-    // own neighbors are visible. `compute` is a function-valued initializer.
-    const breakpoints: BreakpointMap = { 'sample.ts': [{ file: 'sample.ts', line: 2 }] };
+    // Line 5 is after all declarations — counter, label, and compute are all in scope.
+    // `compute` is a function-valued initializer declared at line 4.
+    const breakpoints: BreakpointMap = { 'sample.ts': [{ file: 'sample.ts', line: 5 }] };
     const out = preprocess({ fileName: 'sample.ts', breakpoints, source: SRC });
 
     expect(out).toContain('Serial.print("  • counter = "); Serial.println(counter);');

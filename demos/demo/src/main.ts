@@ -18,14 +18,13 @@
 // coarsely by category (survives future safety standards like ISO 26262)
 // while still logging the specific code for diagnosis.
 //
-// Target: ESP32-S3 (Arduino core via ESP-IDF lowering). The same sketch
-// compiles unchanged on any target whose framework strategy contributes the
-// __tc_gpio_read shim (AVR/ESP32 inherit from ArduinoStrategy; native
-// provides a stub).
+// Target: AVR (Arduino Uno). The same sketch compiles unchanged on any
+// target whose framework strategy contributes the __tc_gpio_read shim
+// (AVR/ESP32 inherit from ArduinoStrategy; native provides a stub).
 // ---------------------------------------------------------------------------
 
 import { delay } from '@typecad/hal';
-import { safe, SafetyFaultCategory, SafetyFaultCode, SAFETY_STATUS_OK } from '@typecad/safety';
+import { safe, SafetyFaultCategory, SafetyFaultCode, SafetyStatus } from '@typecad/safety';
 import { D4, D11, D12 } from '@typecad/board';
 
 
@@ -57,7 +56,7 @@ function loop(): void {
   // buttonPin is INPUT_PULLUP — safe.read verifies the mode (valid for
   // reading), performs a 2-of-3 vote, returns Ok with the debounced value.
   const button = safe.read(buttonPin);
-  if (button.status === SAFETY_STATUS_OK) {
+  if (button.status === SafetyStatus.Ok) {
     ledPin.write(button.value);
   } else {
     handleFault("button", button.category, button.code);
@@ -67,7 +66,7 @@ function loop(): void {
   // wrongModePin is configured as OUTPUT — safe.read rejects it with a
   // Configuration/PinModeMismatch fault. Throttled to avoid log spam.
   const wrongMode = safe.read(wrongModePin);
-  if (wrongMode.status !== SAFETY_STATUS_OK && (iteration - loggedMismatchAt) >= LOG_THROTTLE_ITERATIONS) {
+  if (wrongMode.status !== SafetyStatus.Ok && (iteration - loggedMismatchAt) >= LOG_THROTTLE_ITERATIONS) {
     handleFault("wrong-mode", wrongMode.category, wrongMode.code);
     loggedMismatchAt = iteration;
   }

@@ -3668,7 +3668,7 @@ static inline int8_t ui_rich_link_hit(uint16_t nodeIdx, int16_t px, int16_t py) 
   int16_t localX = px - insetL;
   int16_t localY = py - insetT;
   uint16_t alignWidth = n->box.w > static_cast<uint16_t>(insetL + insetR)
-    ? static_cast<uint16_t>(static_cast<int16_t>(n->box).w - insetL - insetR)
+    ? static_cast<uint16_t>(static_cast<int16_t>(n->box.w) - insetL - insetR)
     : 0;
   for (uint16_t si = n->richSegStart; si < n->richSegStart + n->richSegCount; si++) {
     UIRichSeg* seg = &__ui_rich_segs[si];

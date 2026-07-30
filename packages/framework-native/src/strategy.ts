@@ -87,13 +87,19 @@ export class NativeStrategy implements PlatformStrategy {
       'inline long constrain(long x, long a, long b) { return x < a ? a : (x > b ? b : x); }',
       '#endif // CUTTLEFISH_SHIM_DEFINED',
     ];
-    // Safety: emit the __tc_gpio_read shim when the program uses @typecad/safety.
-    // Native target stubs GPIO read (the SDL simulator doesn't model real
-    // digital input levels); returns 0 (LOW). Real native demos that exercise
-    // safe.read would need their own input source wired in here.
+    // Safety: emit the __tc_gpio_read / __tc_delay_us shims when the program
+    // uses @typecad/safety. Native target stubs GPIO read (the SDL simulator
+    // doesn't model real digital input levels) and the microsecond delay
+    // (no real timing source); returns 0 (LOW) / no-op. Real native demos
+    // that exercise safe.read would need their own input source wired in here.
     if (program && programUsesSafety(program)) {
       baseLines.push(
         'inline int __tc_gpio_read(uint32_t pin) { return 0; }',
+        'inline void __tc_gpio_write(uint32_t pin, uint32_t value) { (void)pin; (void)value; }',
+        '#ifndef __TC_DELAY_US_DEFINED',
+        '#define __TC_DELAY_US_DEFINED',
+        'inline void __tc_delay_us(uint32_t us) { (void)us; }',
+        '#endif',
       );
     }
     return baseLines;

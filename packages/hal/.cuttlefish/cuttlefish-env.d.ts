@@ -90,18 +90,6 @@ declare global {
     remove(key: string): void;
   };
 }
-declare module '@typecad/board' {
-  export type Owned<T = any> = T;
-  export type Shared<T = any> = T;
-  export type Mutable<T = any> = T;
-}
-declare global {
-  export type Owned<T = any> = T;
-  export type Shared<T = any> = T;
-  export type Mutable<T = any> = T;
-}
-declare global {
-}
 
 declare module '@typecad/board' {
   export * from '@typecad/board-arduino-uno';

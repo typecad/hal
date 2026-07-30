@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "experimentalDecorators": true,
+    "noEmit": true,
+    "paths": {
+      "@typecad/expect": ["../../expect/src/index.ts"],
+      "@typecad/board": ["../../board-xiao-nrf52840/src/index.ts"],
+      "@typecad/hal": ["../../hal/src/index.ts"],
+      "@typecad/*": ["../../*/src"]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "../cuttlefish-env.d.ts"
+  ]
+}

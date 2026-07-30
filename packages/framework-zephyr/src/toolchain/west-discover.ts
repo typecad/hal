@@ -1,0 +1,233 @@
+// ---------------------------------------------------------------------------
+// west discovery — find a usable `west` (and the Zephyr SDK / ZEPHYR_BASE)
+//
+// west installs into a Python venv that must be activated before `west` is on
+// PATH. We resolve a working invocation WITHOUT requiring the user to have
+// activated the venv, by preferring the robust `<python> -m west` form: it
+// sidesteps shebang-launcher fragility on Windows and works with any venv
+// once we know which Python interpreter has west installed.
+//
+// Discovery cascade (first usable wins):
+//   1. `west` already on PATH (env already activated / global install).
+//   2. $ZEPHYR_BASE venv: ${ZEPHYR_BASE}/../.venv/<python> -m west.
+//   3. Well-known workspace layouts: ~/zephyrproject/.venv, /opt/zephyrproject/.
+//      venv, etc.
+//   4. System pythons (`python`, `python3`, `py`) via `-m west`.
+//
+// Leaner than the ESP-IDF equivalent: west needs no env sourcing (no 15s
+// export.sh) — only the right interpreter + ZEPHYR_BASE.
+// ---------------------------------------------------------------------------
+
+import { existsSync, realpathSync, statSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
+import { spawnSync } from 'node:child_process';
+
+const IS_WIN = process.platform === 'win32';
+
+/** The Python executable name inside a venv's bin/ (POSIX) or Scripts/ (Win). */
+function venvPython(venvDir: string): string {
+  return join(venvDir, IS_WIN ? 'Scripts' : 'bin', IS_WIN ? 'python.exe' : 'python');
+}
+
+/** True if `exe` runs `python -m west --version` successfully. */
+function pythonRunsWest(exe: string): boolean {
+  try {
+    const r = spawnSync(exe, ['-m', 'west', '--version'], {
+      encoding: 'utf8',
+      timeout: 15_000,
+      windowsHide: true,
+    });
+    return r.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+/** True if `cmd` runs `west --version` successfully. */
+function westOnPath(cmd: string): boolean {
+  try {
+    const r = spawnSync(cmd, ['--version'], {
+      encoding: 'utf8',
+      timeout: 15_000,
+      shell: IS_WIN,
+      windowsHide: true,
+    });
+    return r.status === 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A discovered, usable west installation. `mode` tells the caller how to
+ * invoke it: 'launcher' = call `westExecutable` directly; 'module' = call
+ * `pythonExecutable -m west`.
+ */
+export interface WestInstall {
+  mode: 'launcher' | 'module';
+  /** Absolute path to a `west` launcher (mode 'launcher') or undefined. */
+  westExecutable?: string;
+  /** Absolute path to a Python interpreter with west installed (mode 'module'). */
+  pythonExecutable?: string;
+  /** Absolute path to the Zephyr SDK root (for $ZEPHYR_BASE), if found. */
+  zephyrBase?: string;
+  /** Which discovery strategy found this install. */
+  source: 'path' | 'zephyr-base-venv' | 'well-known' | 'system-python';
+}
+
+/** True if `dir` looks like a Zephyr SDK root: has CMakeLists.txt and the
+ *  kernel header. */
+export function isZephyrBase(dir: string): boolean {
+  if (!dir) return false;
+  return (
+    existsSync(join(dir, 'CMakeLists.txt')) &&
+    existsSync(join(dir, 'include', 'zephyr', 'kernel.h'))
+  );
+}
+
+// ── Strategy 1: `west` on PATH ──────────────────────────────────────────────
+
+export function discoverFromPath(): WestInstall | null {
+  const which = spawnSync(IS_WIN ? 'where' : 'which', ['west'], {
+    encoding: 'utf8',
+    shell: true,
+    windowsHide: true,
+  });
+  if (which.status !== 0) return null;
+  const lines = (which.stdout ?? '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  for (const line of lines) {
+    if (!existsSync(line)) continue;
+    if (!westOnPath(line)) continue;
+    return {
+      mode: 'launcher',
+      westExecutable: line,
+      zephyrBase: process.env.ZEPHYR_BASE || undefined,
+      source: 'path',
+    };
+  }
+  return null;
+}
+
+// ── Strategy 2: $ZEPHYR_BASE sibling venv ───────────────────────────────────
+
+/** The canonical Zephyr workspace layout puts the venv beside the SDK:
+ *  <workspace>/{.venv, zephyr}. So ${ZEPHYR_BASE}/../.venv is the venv. */
+export function discoverFromZephyrBase(): WestInstall | null {
+  const zb = process.env.ZEPHYR_BASE;
+  if (!zb || !isZephyrBase(zb)) return null;
+  const workspaceDir = dirname(zb);
+  const venvDir = join(workspaceDir, '.venv');
+  const py = venvPython(venvDir);
+  if (!existsSync(py) || !pythonRunsWest(py)) return null;
+  return {
+    mode: 'module',
+    pythonExecutable: py,
+    zephyrBase: zb,
+    source: 'zephyr-base-venv',
+  };
+}
+
+// ── Strategy 3: well-known workspace layouts ───────────────────────────────
+
+/** Candidate Zephyr workspace directories. Each may contain both `.venv/`
+ *  and `zephyr/` (the SDK). Exported for test injection. */
+export function wellKnownWorkspaces(): string[] {
+  const home = homedir();
+  if (IS_WIN) {
+    return [
+      join(home, 'zephyrproject'),
+      join(home, 'zephyr'),
+      'C:\\zephyrproject',
+      'C:\\zephyr',
+    ];
+  }
+  return [
+    join(home, 'zephyrproject'),
+    join(home, 'zephyr'),
+    '/opt/zephyrproject',
+    '/opt/zephyr',
+  ];
+}
+
+export function discoverFromWellKnown(
+  workspaces: string[] = wellKnownWorkspaces(),
+): WestInstall | null {
+  for (const ws of workspaces) {
+    const venvDir = join(ws, '.venv');
+    const py = venvPython(venvDir);
+    if (!existsSync(py) || !pythonRunsWest(py)) continue;
+    // Resolve ZEPHYR_BASE if the SDK sits beside the venv.
+    const zb = join(ws, 'zephyr');
+    return {
+      mode: 'module',
+      pythonExecutable: py,
+      zephyrBase: isZephyrBase(zb) ? zb : undefined,
+      source: 'well-known',
+    };
+  }
+  return null;
+}
+
+// ── Strategy 4: system pythons via `-m west` ────────────────────────────────
+
+/** Candidate system Python interpreters to probe with `-m west`. */
+export function systemPythons(): string[] {
+  if (IS_WIN) return ['py', 'python', 'python3'];
+  return ['python3', 'python'];
+}
+
+export function discoverFromSystemPython(
+  pythons: string[] = systemPythons(),
+): WestInstall | null {
+  for (const py of pythons) {
+    if (!pythonRunsWest(py)) continue;
+    return {
+      mode: 'module',
+      pythonExecutable: py,
+      zephyrBase: process.env.ZEPHYR_BASE || undefined,
+      source: 'system-python',
+    };
+  }
+  return null;
+}
+
+// ── Top-level cascade ────────────────────────────────────────────────────────
+
+let cachedDiscover: WestInstall | null | undefined;
+
+/** Clear the process-local discovery cache (for tests). */
+export function resetWestDiscoveryCache(): void {
+  cachedDiscover = undefined;
+}
+
+/**
+ * Try each discovery strategy in order. The first usable install wins.
+ * Result is memoized for the process lifetime (west installs don't move).
+ *
+ * Order: PATH → $ZEPHYR_BASE venv → well-known workspaces → system pythons.
+ * Returns null when no usable west install is found.
+ */
+export function discoverWest(): WestInstall | null {
+  if (cachedDiscover !== undefined) return cachedDiscover;
+  const strategies: Array<() => WestInstall | null> = [
+    discoverFromPath,
+    discoverFromZephyrBase,
+    discoverFromWellKnown,
+    discoverFromSystemPython,
+  ];
+  for (const strat of strategies) {
+    let install: WestInstall | null = null;
+    try {
+      install = strat();
+    } catch {
+      install = null;
+    }
+    if (install) {
+      cachedDiscover = install;
+      return install;
+    }
+  }
+  cachedDiscover = null;
+  return null;
+}

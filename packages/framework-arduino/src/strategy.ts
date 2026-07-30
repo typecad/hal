@@ -442,12 +442,19 @@ export class ArduinoStrategy implements PlatformStrategy {
       "",
     );
 
-    // Safety: emit the __tc_gpio_read shim when the program uses @typecad/safety.
-    // The safety voter polyfill calls __tc_gpio_read; without this shim, the
-    // emitted code would not compile. Gated on programUsesSafety(program).
+    // Safety: emit the __tc_gpio_read / __tc_delay_us shims when the program
+    // uses @typecad/safety. The safety voter polyfill calls these; without
+    // them the emitted code would not compile. Gated on programUsesSafety(program).
+    // The #ifndef guard lets a subclass (AVR) override __tc_delay_us with a
+    // native helper without producing a redefinition error.
     if (programUsesSafety(program)) {
       lines.push(
         "inline int __tc_gpio_read(uint32_t pin) { return digitalRead(pin); }",
+        "inline void __tc_gpio_write(uint32_t pin, uint32_t value) { digitalWrite(pin, (value != 0U) ? HIGH : LOW); }",
+        "#ifndef __TC_DELAY_US_DEFINED",
+        "#define __TC_DELAY_US_DEFINED",
+        "inline void __tc_delay_us(uint32_t us) { delayMicroseconds(us); }",
+        "#endif",
       );
     }
 
