@@ -267,9 +267,11 @@ export function functionDeclarationToIR(
 /** Extract decorator names from a node (e.g. @asilD → "asilD").
  *  Handles both legacy (node.decorators) and TS 5.0+ (ts.getDecorators) APIs. */
 function extractDecoratorNames(node: ts.Node): string[] | undefined {
-  const decorators = (ts as any).canHaveDecorators?.(node)
-    ? (ts as any).getDecorators?.(node)
-    : (node as any).decorators;
+  // TS 5.x: decorators live in node.modifiers, accessed via ts.getDecorators().
+  // ts.canHaveDecorators() returns false for function declarations (it only
+  // returns true for classes/methods/properties), but getDecorators() still
+  // works. So don't gate on canHaveDecorators — just call getDecorators.
+  const decorators = (ts as any).getDecorators?.(node) ?? (node as any).decorators;
   if (!decorators) return undefined;
   const names: string[] = [];
   for (const dec of decorators as ts.NodeArray<ts.Decorator>) {
