@@ -92,16 +92,16 @@ describe("board-codegen", () => {
 
       const fileNames = result.createdFiles.map(f => path.relative(tmpRoot, f));
       // MCU package
-      expect(fileNames).toContain(path.join('packages/mcu-esp32c6/package.json'));
-      expect(fileNames).toContain(path.join('packages/mcu-esp32c6/src/index.ts'));
-      expect(fileNames).toContain(path.join('packages/mcu-esp32c6/src/pins.ts'));
-      expect(fileNames).toContain(path.join('packages/mcu-esp32c6/src/peripherals.ts'));
+      expect(fileNames).toContain(path.join('mcus/mcu-esp32c6/package.json'));
+      expect(fileNames).toContain(path.join('mcus/mcu-esp32c6/src/index.ts'));
+      expect(fileNames).toContain(path.join('mcus/mcu-esp32c6/src/pins.ts'));
+      expect(fileNames).toContain(path.join('mcus/mcu-esp32c6/src/peripherals.ts'));
       // Board package
-      expect(fileNames).toContain(path.join('packages/board-esp32c6/package.json'));
-      expect(fileNames).toContain(path.join('packages/board-esp32c6/src/index.ts'));
-      expect(fileNames).toContain(path.join('packages/board-esp32c6/src/pins.ts'));
-      expect(fileNames).toContain(path.join('packages/board-esp32c6/src/analog.ts'));
-      expect(fileNames).toContain(path.join('packages/board-esp32c6/src/board.ts'));
+      expect(fileNames).toContain(path.join('boards/board-esp32c6/package.json'));
+      expect(fileNames).toContain(path.join('boards/board-esp32c6/src/index.ts'));
+      expect(fileNames).toContain(path.join('boards/board-esp32c6/src/pins.ts'));
+      expect(fileNames).toContain(path.join('boards/board-esp32c6/src/analog.ts'));
+      expect(fileNames).toContain(path.join('boards/board-esp32c6/src/board.ts'));
     });
 
     it("refuses to overwrite without --force", () => {

@@ -62,8 +62,8 @@ export function scaffoldBoardPackages(
   const arch = spec.architecture;
   const rootDir = opts.rootDir ? path.resolve(opts.rootDir) : findMonorepoRoot(process.cwd());
 
-  const mcuDir = path.join(rootDir, 'packages', `mcu-${arch}`);
-  const boardDir = path.join(rootDir, 'packages', `board-${arch}`);
+  const mcuDir = path.join(rootDir, 'mcus', `mcu-${arch}`);
+  const boardDir = path.join(rootDir, 'boards', `board-${arch}`);
 
   // Overwrite protection
   const mcuExists = fs.existsSync(mcuDir);
@@ -108,8 +108,8 @@ export function scaffoldBoardPackages(
   if (fs.existsSync(rootPjPath)) {
     try {
       const rootPj = JSON.parse(fs.readFileSync(rootPjPath, 'utf8'));
-      if (Array.isArray(rootPj.workspaces) && !rootPj.workspaces.includes(`packages/mcu-${arch}`)) {
-        rootPj.workspaces.push(`packages/mcu-${arch}`, `packages/board-${arch}`);
+      if (Array.isArray(rootPj.workspaces) && !rootPj.workspaces.includes(`mcus/mcu-${arch}`)) {
+        rootPj.workspaces.push(`mcus/mcu-${arch}`, `boards/board-${arch}`);
         fs.writeFileSync(rootPjPath, JSON.stringify(rootPj, null, 2) + '\n', 'utf8');
       }
     } catch { /* best-effort: skip if package.json isn't valid */ }

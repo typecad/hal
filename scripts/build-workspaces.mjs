@@ -20,30 +20,53 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rootPkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
-const workspaces = rootPkg.workspaces.map((w) => w.replace('packages/', ''));
 
-// Build {pkg -> [runtime @typecad deps that are workspaces]}.
+// Each workspace entry is a path relative to the repo root (e.g.
+// 'packages/cuttlefish', 'boards/board-esp32s3', 'mcus/mcu-esp32s3'). The
+// package's directory name is the last path segment. We key everything by that
+// name so dependency lookups (@typecad/<name>) match across the graph, while
+// keeping the original relative path for filesystem resolution.
+//
+// Note: npm workspace entries may also be globs (e.g. 'packages/*'); we expand
+// none here because this monorepo lists each package explicitly. If globs are
+// introduced, expand them with glob.sync before building the map.
+const workspaces = rootPkg.workspaces;
+const dirByName = new Map();        // <pkg-dir-name> -> <rel path from root>
+const nameByDir = new Map();        // <rel path>     -> <pkg-dir-name>
+for (const rel of workspaces) {
+  const dir = rel.split('/').pop();
+  dirByName.set(dir, rel);
+  nameByDir.set(rel, dir);
+}
+
+const readPkg = (rel) =>
+  JSON.parse(readFileSync(resolve(root, rel, 'package.json'), 'utf8'));
+
+// Build {pkg dir -> [runtime @typecad deps that are workspaces]}.
 const graph = {};
-for (const pkg of workspaces) {
-  const p = JSON.parse(readFileSync(resolve(root, 'packages', pkg, 'package.json'), 'utf8'));
+for (const rel of workspaces) {
+  const dir = nameByDir.get(rel);
+  const p = readPkg(rel);
   const deps = Object.keys(p.dependencies ?? {})
     .filter((k) => k.startsWith('@typecad/'))
     .map((k) => k.replace('@typecad/', ''))
-    .filter((d) => workspaces.includes(d));
-  graph[pkg] = deps;
+    .filter((d) => dirByName.has(d));
+  graph[dir] = deps;
 }
 
+const dirs = [...dirByName.keys()];
+
 // Kahn's algorithm. Ties broken alphabetically for determinism.
-const indeg = Object.fromEntries(workspaces.map((w) => [w, 0]));
-const adj = Object.fromEntries(workspaces.map((w) => [w, []]));
-for (const n of workspaces) {
+const indeg = Object.fromEntries(dirs.map((w) => [w, 0]));
+const adj = Object.fromEntries(dirs.map((w) => [w, []]));
+for (const n of dirs) {
   for (const d of graph[n]) {
     // n depends on d → edge d → n (d must build before n).
     adj[d].push(n);
     indeg[n]++;
   }
 }
-const queue = workspaces.filter((w) => indeg[w] === 0).sort();
+const queue = dirs.filter((w) => indeg[w] === 0).sort();
 const order = [];
 while (queue.length) {
   const n = queue.shift();
@@ -56,8 +79,8 @@ while (queue.length) {
   queue.sort();
 }
 
-if (order.length !== workspaces.length) {
-  const cyclic = workspaces.filter((w) => !order.includes(w));
+if (order.length !== dirs.length) {
+  const cyclic = dirs.filter((w) => !order.includes(w));
   console.error('Build error: dependency cycle detected among:', cyclic.join(', '));
   for (const n of cyclic) console.error(`  ${n} -> ${graph[n].join(', ')}`);
   process.exit(1);
@@ -67,15 +90,16 @@ console.log(`Building ${order.length} workspaces in topological order:`);
 console.log('  ' + order.join(' → '));
 console.log('');
 
-for (const pkg of order) {
-  const p = JSON.parse(readFileSync(resolve(root, 'packages', pkg, 'package.json'), 'utf8'));
+for (const dir of order) {
+  const rel = dirByName.get(dir);
+  const p = readPkg(rel);
   if (!p.scripts?.build) continue; // skip packages without a build script
-  process.stdout.write(`▸ @typecad/${pkg} ... `);
+  process.stdout.write(`▸ @typecad/${dir} ... `);
   try {
-    execSync('npm run build', { stdio: 'inherit', cwd: resolve(root, 'packages', pkg) });
+    execSync('npm run build', { stdio: 'inherit', cwd: resolve(root, rel) });
     console.log('ok');
   } catch {
-    console.error(`\n✗ @typecad/${pkg} build failed`);
+    console.error(`\n✗ @typecad/${dir} build failed`);
     process.exit(1);
   }
 }

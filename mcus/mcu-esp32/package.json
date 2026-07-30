@@ -1,0 +1,60 @@
+{
+  "name": "@typecad/mcu-esp32",
+  "version": "1.0.0-alpha.7",
+  "description": "TypeCAD MCU definition for ESP32 — datasheet pins, peripheral capabilities, and HAL instances",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "1.0.0-alpha.7",
+    "@typecad/hal": "1.0.0-alpha.7"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justind000/typecode.git",
+    "directory": "mcus/mcu-esp32"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/mcus/mcu-esp32",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "arduino",
+    "cpp",
+    "cuttlefish",
+    "embedded",
+    "esp32",
+    "firmware",
+    "mcu",
+    "microcontroller",
+    "peripherals",
+    "pins",
+    "silicon",
+    "typecad",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  }
+}

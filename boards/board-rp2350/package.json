@@ -1,0 +1,30 @@
+{
+  "name": "@typecad/board-rp2350",
+  "version": "1.0.0-alpha.7",
+  "description": "TypeCAD RP2350 (Raspberry Pi Pico 2) board definition",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "1.0.0-alpha.7",
+    "@typecad/hal": "1.0.0-alpha.7",
+    "@typecad/mcu-rp2350": "1.0.0-alpha.7"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}

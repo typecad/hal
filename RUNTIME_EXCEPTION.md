@@ -56,8 +56,6 @@ lands in user .ino / .cpp / .h files:
       setup()/loop() scaffolds, .ino structure, and peripheral adapters.
       Entered via:
         packages/framework-arduino/src/strategy.ts
-        packages/framework-avr/src/strategy.ts
-        packages/framework-esp32/src/strategy.ts
         packages/framework-native/src/strategy.ts
 
   (C) UI runtime header

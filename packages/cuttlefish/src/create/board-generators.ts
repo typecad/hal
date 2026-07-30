@@ -3,8 +3,8 @@
 // tool. Each function takes a BoardSpec and returns the file content as a
 // string. No filesystem I/O — the orchestrator (board-codegen.ts) writes files.
 //
-// Golden reference: the hand-written packages/mcu-esp32c6/ and
-// packages/board-esp32c6/ packages. These generators reproduce them from a
+// Golden reference: the hand-written mcus/mcu-esp32c6/ and
+// boards/board-esp32c6/ packages. These generators reproduce them from a
 // C6 spec.
 // ---------------------------------------------------------------------------
 
@@ -78,7 +78,7 @@ export function genMcuTsconfig(_spec: BoardSpec): string {
       experimentalDecorators: true, emitDecoratorMetadata: true,
     },
     include: ['src/**/*.ts'],
-    references: [{ path: '../hal' }, { path: '../cuttlefish' }],
+    references: [{ path: '../../packages/hal' }, { path: '../../packages/cuttlefish' }],
   }, null, 2) + '\n';
 }
 
@@ -443,7 +443,7 @@ export function genBoardTsconfig(spec: BoardSpec): string {
     },
     include: ['src/**/*.ts'],
     references: [
-      { path: '../hal' }, { path: '../cuttlefish' }, { path: `../mcu-${spec.architecture}` },
+      { path: '../../packages/hal' }, { path: '../../packages/cuttlefish' }, { path: `../../mcus/mcu-${spec.architecture}` },
     ],
   }, null, 2) + '\n';
 }
