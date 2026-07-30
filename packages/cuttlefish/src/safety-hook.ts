@@ -56,6 +56,12 @@ export interface TranspilerSafetyHook {
    *  with severity "error" abort the build (via throwIfFatalDiagnostics);
    *  "warning"/"info" are logged but the build succeeds. */
   analyzeIR?(program: ProgramIR, ctx: SafetyTransformContext): Diagnostic[];
+
+  /** Part C: collect safety metadata for sidecar artifact generation.
+   *  Called after analyzeIR completes. Returns structured metadata about
+   *  each safety-critical function (ASIL level, mechanisms, rule results)
+   *  that the caller writes to a sidecar JSON file. */
+  collectSafetyMetadata?(program: ProgramIR, ctx: SafetyTransformContext): SafetyMetadata[];
 }
 
 // ── Module-level hook state ────────────────────────────────────────────────
@@ -94,3 +100,17 @@ export function requireSafetyHook(): TranspilerSafetyHook {
 // Re-export the types the safety package consumes (so the subpath export is
 // self-contained).
 export type { Diagnostic };
+
+/** Metadata about one safety-critical function, collected for Part C. */
+export interface SafetyFunctionMetadata {
+  name: string;
+  asilLevel: string;
+  source?: { tsFile: string; tsLine: number };
+  mechanisms: string[];
+  rules: Record<string, "pass" | { severity: string; message: string }>;
+}
+
+/** Result of Part C's metadata collection. */
+export interface SafetyMetadata {
+  functions: SafetyFunctionMetadata[];
+}

@@ -31,7 +31,7 @@ import { setDisplayProfile, resetDisplayProfile } from "./stores/display-profile
 import { setThemeCss, resetThemeCss, setThemeClass } from "./stores/theme-store.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
 import { Diagnostic, GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types.js";
-import { readText } from "./utils/fs.js";
+import { readText, writeText } from "./utils/fs.js";
 import { debug as logDebug, info } from "./utils/logger.js";
 import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry.js";
 import type { ClassIR, ProgramIR } from "./api/index.js";
@@ -876,6 +876,26 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         }
       }
       profiler.endTimer("safety:analyze");
+    }
+
+    // Part C: collect safety metadata and write sidecar artifact.
+    if (hook.collectSafetyMetadata) {
+      profiler.startTimer("safety:collect");
+      for (const [filePath, item] of preBuilt) {
+        if (!entryImportsSafety(item.programIR)) continue;
+        const metadata = hook.collectSafetyMetadata(item.programIR, {
+          safetyInUse: true,
+          target: options.target,
+        });
+        if (metadata.length > 0 && metadata[0].functions.length > 0) {
+          const { renderSafetySidecar } = await import("./safety/sidecar-bridge.js");
+          const toolVersion = CUTTLEFISH_VERSION;
+          const sidecarPath = path.join(outDir, path.basename(filePath).replace(/\.\w+$/, ".safety-sidecar.json"));
+          const sidecarJson = await renderSafetySidecar(metadata[0], toolVersion);
+          writeText(sidecarPath, sidecarJson);
+        }
+      }
+      profiler.endTimer("safety:collect");
     }
   }
 
