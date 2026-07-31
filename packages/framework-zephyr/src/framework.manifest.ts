@@ -157,7 +157,7 @@ export default defineFrameworkManifest({
     },
     spi: {
       supported: true,
-      partialCoverage: true,
+      partialCoverage: false,
       ops: {
         'spi.begin': 'supported', 'spi.end': 'supported', 'spi.transfer': 'supported',
         'spi.begin_transaction': 'supported', 'spi.end_transaction': 'supported',
