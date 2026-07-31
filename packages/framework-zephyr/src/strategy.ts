@@ -406,11 +406,25 @@ export class ZephyrStrategy implements PlatformStrategy {
     return true;
   }
 
-  overrideBaseName(originalBaseName: string): string {
+  overrideBaseName(
+    originalBaseName: string,
+    outDirBaseName: string,
+    isEntryFile: boolean,
+    isNpmPackage: boolean,
+  ): string {
+    // npm packages are library-style — don't rename. Entry files (non-npm) take
+    // the out-dir name (mirrors Arduino's .ino-must-match-dir rule). Everything
+    // else passes through. (The manifest's entrypoint.overrideBaseName field is
+    // dead — never read in src/ — so this method is the sole name source.)
+    if (isNpmPackage) return originalBaseName;
+    if (isEntryFile) return outDirBaseName;
     return originalBaseName;
   }
 
-  effectiveEmitMode(requestedMode: string): string {
+  effectiveEmitMode(requestedMode: string, _isNpmPackage: boolean): string {
+    // Zephyr always emits .cpp (no .ino equivalent to force away from), so this
+    // is passthrough regardless of npm/app. The 2-param shape matches the
+    // interface and Arduino; behavior is identical across branches.
     return requestedMode;
   }
 
