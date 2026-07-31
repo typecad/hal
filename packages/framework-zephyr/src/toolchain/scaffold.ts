@@ -56,7 +56,7 @@ function readEmittedSources(srcDir: string): string {
  *
  * Idempotent. Mirrors scaffoldEspIdfProject's writeIfChanged discipline.
  */
-export function scaffoldZephyrProject(projectRoot: string): void {
+export function scaffoldZephyrProject(projectRoot: string, debug = false): void {
   const srcDir = join(projectRoot, 'src');
   if (!existsSync(srcDir)) mkdirSync(srcDir, { recursive: true });
 
@@ -147,12 +147,25 @@ export function scaffoldZephyrProject(projectRoot: string): void {
     '# Main thread stack — bumped for setup() init paths.',
     'CONFIG_MAIN_STACK_SIZE=4096',
     '',
-    '# System workqueue stack — bumped for worker-offload (Phase 1): worker',
-    '# functions submitted via worker.* run on the system workqueue, and the',
-    '# default ~2 KB stack overflows under heavy workers (TLS, sensor fusion).',
-    '# Bump to 8 KB; pin a private workqueue (k_work_q_start) if a worker needs more.',
+    '# System workqueue — bumped for worker-offload (Phase 1) AND the timer',
+    "# methods polyfill (timer callbacks run on the system workqueue via k_work).",
+    '# The default ~2 KB stack overflows under heavy workers / timer callbacks.',
+    '# Bump to 8 KB; pin a private workqueue (k_work_q_start) if more is needed.',
+    'CONFIG_SYSTEM_WORKQUEUE=y',
     'CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE=8192',
     '',
   );
+  if (debug) {
+    // Debug build: -Og (stable single-step over -Os) + ASSERTIONS for runtime
+    // checks. Zephyr emits DWARF (-g) by default, so no explicit DEBUG_INFO is
+    // needed. CONFIG_DEBUG also enables the CONFIG_ASSERT assert path which is
+    // valuable while debugging.
+    prjConf.push(
+      '# Debug build (--debug): -Og optimization + assertions enabled.',
+      'CONFIG_DEBUG=y',
+      'CONFIG_DEBUG_OPTIMIZATIONS=y',
+      '',
+    );
+  }
   writeIfChanged(join(projectRoot, 'prj.conf'), prjConf.join('\n'));
 }

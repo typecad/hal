@@ -68,24 +68,23 @@ export default defineFrameworkManifest({
       },
     },
 
-    // ── Partial: Timing (delay/millis/delay_us/micros/free_heap; no timers) ─
+    // ── Supported: Timing (delay/millis/delay_us/micros/free_heap; timers via polyfill) ─
     timing: {
       supported: true,
-      partialCoverage: true,
+      partialCoverage: false,
       ops: {
         'timing.delay': 'supported',            // → k_msleep(ms)
         'timing.delay_microseconds': 'supported', // → k_busy_wait(us)
         'timing.millis': 'supported',           // → k_uptime_get_32()
         'timing.micros': 'supported',           // → k_cycle_get_32 + cycles/sec
         'timing.free_heap': 'supported',        // → 0 (no portable query; see lowering)
-        // Timer ops are POLYFILL_BACKED_OPS. Declared unsupported here because
-        // the framework does not emit the timer_methods polyfill yet (no async
-        // runtime). The validator only requires 'polyfill' status when the
-        // named polyfill is in polyfills.emitted — it is not.
-        'timing.set_interval': 'unsupported',
-        'timing.set_timeout': 'unsupported',
-        'timing.clear_interval': 'unsupported',
-        'timing.clear_timeout': 'unsupported',
+        // Timer ops are POLYFILL_BACKED_OPS → timer_methods. The validator skips
+        // the resolver probe (these legitimately return polyfill-helper calls,
+        // not direct lowering) and requires the polyfill be in polyfills.emitted.
+        'timing.set_interval': 'polyfill',
+        'timing.set_timeout': 'polyfill',
+        'timing.clear_interval': 'polyfill',
+        'timing.clear_timeout': 'polyfill',
       },
     },
 
@@ -237,6 +236,8 @@ export default defineFrameworkManifest({
   polyfills: {
     emitted: [
       { id: 'cuttlefish_halt', domain: 'standard', notes: 'Mapped to a k_msleep halt loop (exceptions disabled)' },
+      { id: 'timer_methods', domain: 'embedded', notes: 'k_timer + k_work pool (system workqueue); callbacks run in thread context' },
+      { id: 'async_runtime', domain: 'embedded', notes: 'Heap-free static Promise/microtask runtime (generateStaticAsyncRuntime), pumped in loop()' },
     ],
     suppressed: [],
   },
