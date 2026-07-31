@@ -232,6 +232,137 @@ export default defineFrameworkManifest({
         HAL_OPERATION_KINDS.filter((k) => k.startsWith('ble.')).map((k) => [k, 'supported']),
       ),
     },
+
+    // ── Supported: Worker offload (k_work system workqueue + k_sem) ──────────
+    // worker.* is lowered via lowerWorkerOp against the shared __tc_worker
+    // contract; the Zephyr backing (worker-backing.ts) supplies k_work + k_sem.
+    worker: {
+      supported: true,
+      partialCoverage: false,
+      ops: { 'worker.submit': 'supported', 'worker.done': 'supported' },
+    },
+
+    // ── Honestly unsupported extended categories ─────────────────────────────
+    // These have op-kinds in HAL_OPERATION_KINDS but no Zephyr lowering. Each
+    // is declared unsupported (with a reason) so the coverage matrix is uniform
+    // and the resolver's `return undefined` for these prefixes is honest. The
+    // catchall schema (HalCoverageSchema) validates any declared extended
+    // category; declaring them keeps the manifest a complete coverage record.
+
+    rmt: {
+      supported: false,
+      unsupportedReason: 'RMT (ESP32 infrared/transaction peripheral) has no Zephyr lowering.',
+      partialCoverage: false,
+      ops: unsupportedOps('rmt.'),
+    },
+    snprintf: {
+      supported: false,
+      unsupportedReason: 'snprintf.emit is a raw escape hatch; the Zephyr resolver returns undefined (use rawCpp()).',
+      partialCoverage: false,
+      ops: { 'snprintf.emit': 'unsupported' },
+    },
+    preferences: {
+      supported: false,
+      unsupportedReason: 'No NVS/Preferences lowering on Zephyr (Zephyr has settings subsystem; not wired).',
+      partialCoverage: false,
+      ops: unsupportedOps('preferences.'),
+    },
+    random: {
+      supported: false,
+      unsupportedReason: 'No random lowering on Zephyr (use sys_rand_get directly via rawCpp() if needed).',
+      partialCoverage: false,
+      ops: unsupportedOps('random.'),
+    },
+    fs: {
+      supported: false,
+      unsupportedReason: 'No filesystem lowering on Zephyr (Zephyr has its own FS API; not wired).',
+      partialCoverage: false,
+      ops: unsupportedOps('fs.'),
+    },
+    mdns: {
+      supported: false,
+      unsupportedReason: 'No mDNS lowering on Zephyr (requires networking stack).',
+      partialCoverage: false,
+      ops: unsupportedOps('mdns.'),
+    },
+    mqtt: {
+      supported: false,
+      unsupportedReason: 'No MQTT lowering on Zephyr (requires networking stack).',
+      partialCoverage: false,
+      ops: unsupportedOps('mqtt.'),
+    },
+    ota: {
+      supported: false,
+      unsupportedReason: 'No OTA lowering on Zephyr (Zephyr has MCUmgr; not wired).',
+      partialCoverage: false,
+      ops: unsupportedOps('ota.'),
+    },
+    temp: {
+      supported: false,
+      unsupportedReason: 'No on-chip temperature lowering on Zephyr (nRF52840 TEMP peripheral; not wired).',
+      partialCoverage: false,
+      ops: { 'temp.read': 'unsupported' },
+    },
+    hwtimer: {
+      supported: false,
+      unsupportedReason: 'No hardware-timer lowering on Zephyr (timers are handled via the k_timer polyfill, not hwtimer.*).',
+      partialCoverage: false,
+      ops: unsupportedOps('hwtimer.'),
+    },
+    capacitive: {
+      supported: false,
+      unsupportedReason: 'No capacitive-touch lowering on Zephyr (no such peripheral on nRF52840).',
+      partialCoverage: false,
+      ops: { 'capacitive.read': 'unsupported' },
+    },
+    i2s: {
+      supported: false,
+      unsupportedReason: 'No I2S / digital audio lowering on Zephyr.',
+      partialCoverage: false,
+      ops: unsupportedOps('i2s.'),
+    },
+    twai: {
+      supported: false,
+      unsupportedReason: 'No CAN / TWAI lowering on Zephyr (Zephyr CAN driver not wired).',
+      partialCoverage: false,
+      ops: unsupportedOps('twai.'),
+    },
+    usb: {
+      supported: false,
+      unsupportedReason: 'No USB OTG / USB-Serial lowering on Zephyr (Zephyr USB device stack not wired).',
+      partialCoverage: false,
+      ops: unsupportedOps('usb.'),
+    },
+    eth: {
+      supported: false,
+      unsupportedReason: 'No Ethernet MAC lowering on Zephyr.',
+      partialCoverage: false,
+      ops: unsupportedOps('eth.'),
+    },
+    espnow: {
+      supported: false,
+      unsupportedReason: 'ESP-NOW is an ESP-exclusive wireless protocol; no Zephyr lowering.',
+      partialCoverage: false,
+      ops: unsupportedOps('espnow.'),
+    },
+    crypto: {
+      supported: false,
+      unsupportedReason: 'No hardware crypto (AES/SHA/HMAC) lowering on Zephyr.',
+      partialCoverage: false,
+      ops: unsupportedOps('crypto.'),
+    },
+    pcnt: {
+      supported: false,
+      unsupportedReason: 'No pulse-counter (PCNT) lowering on Zephyr.',
+      partialCoverage: false,
+      ops: unsupportedOps('pcnt.'),
+    },
+    mcpwm: {
+      supported: false,
+      unsupportedReason: 'No motor-control PWM (MCPWM) lowering on Zephyr.',
+      partialCoverage: false,
+      ops: unsupportedOps('mcpwm.'),
+    },
     raw: { supported: true },
   },
 
@@ -295,7 +426,7 @@ export default defineFrameworkManifest({
     // catches regressions like silent pull-resistor / interrupt no-ops.
     halResolutionTests: [
       'adc', 'ble', 'dac', 'gpio', 'i2c', 'interrupts', 'power', 'pulse',
-      'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt',
+      'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt', 'worker',
     ],
   },
 });
