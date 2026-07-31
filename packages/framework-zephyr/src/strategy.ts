@@ -47,6 +47,9 @@ import { bleInitLines } from './lowering/ble.js';
 import { generateZephyrInitCode, generateZephyrBreakpointCode, generateZephyrLogpointCode } from './debug-codegen.js';
 import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
 import { buildTimerPolyfill } from './async/timer-polyfill.js';
+import { resolveZephyrDisplayOp, newDisplayState, type DisplayState } from './display/index.js';
+import { buildDisplayRuntime } from './display/gfx.js';
+import { ZEPHYR_DISPLAY_PROFILES } from './display/profiles.js';
 
 export class ZephyrStrategy implements PlatformStrategy {
   readonly id = 'zephyr';
@@ -112,6 +115,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesWDT')) inc.push('<zephyr/drivers/watchdog.h>');
     if (uses('usesPower')) inc.push('<zephyr/pm/pm.h>', '<zephyr/pm/state.h>', '<zephyr/pm/policy.h>');
     if (uses('usesBle')) inc.push('<stdlib.h>', '<string.h>', '<zephyr/bluetooth/bluetooth.h>', '<zephyr/bluetooth/conn.h>', '<zephyr/bluetooth/gatt.h>', '<zephyr/bluetooth/uuid.h>');
+    if (uses('usesDisplay')) inc.push('<zephyr/drivers/display.h>');
     // std::string — Zephyr has no umbrella header that transitively pulls in
     // <string> (unlike framework-arduino's <Arduino.h>), so a program that
     // lowers a std::string parameter/variable must request it explicitly. Uses
@@ -186,6 +190,12 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesInterrupts')) lines.push(...interruptInitLines(chip));
     if (uses('usesWDT') && chip.wdt) lines.push(...wdtInitLines(chip));
     if (uses('usesBle')) lines.push(...bleInitLines());
+    if (uses('usesDisplay')) {
+      const rt = buildDisplayRuntime(this._displayState.profile);
+      lines.push(...rt.stateLines);
+      lines.push(rt.fontTable);
+      lines.push(rt.helpers);
+    }
 
     lines.push('#endif // CUTTLEFISH_SHIM_DEFINED');
 
@@ -786,6 +796,10 @@ export class ZephyrStrategy implements PlatformStrategy {
   // the dual-core contract requires (the worker runs on a workqueue thread).
   private _workerBacking = buildZephyrWorkerBacking();
 
+  // Display state (mirrors Arduino's _displayCtx). Seeded on display.init; the
+  // validator-probe path seeds the default profile lazily.
+  private _displayState: DisplayState = newDisplayState();
+
   workerSpawnLines(handleId: number, trampolineName: string, waiterExpr: string): string[] | undefined {
     return this._workerBacking.spawnLines(handleId, trampolineName, waiterExpr);
   }
@@ -796,14 +810,18 @@ export class ZephyrStrategy implements PlatformStrategy {
     return this._workerBacking.isDoneExpr(handleId);
   }
 
-  // ── Graphics (none for MVP) ──────────────────────────────────────────────
+  // ── Graphics ──────────────────────────────────────────────────────────────
+  // Generic <zephyr/drivers/display.h> + ported GFX primitives (see src/display/).
+  // resolveDisplayOp delegates to resolveZephyrDisplayOp with the per-build
+  // DisplayState; the GFX runtime (device handle + line buffer + helpers) is
+  // emitted into shimLines when usesDisplay.
 
-  resolveDisplayOp(_op: DisplayHALOp): { code?: string; expression?: string } | undefined {
-    return undefined;
+  resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined {
+    return resolveZephyrDisplayOp(op, this._displayState);
   }
 
   supportedDisplayDrivers(): ReadonlySet<string> {
-    return new Set<string>();
+    return new Set<string>(Object.keys(ZEPHYR_DISPLAY_PROFILES));
   }
 
   colorFormat(): 'rgb565' | 'rgb666' | 'rgb888' | 'mono' {
@@ -812,9 +830,9 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   graphicsCapacity(): GraphicsCapacity {
     return {
-      maxNodes: 0,
-      maxBindings: 0,
-      maxActiveTransitions: 0,
+      maxNodes: 256,
+      maxBindings: 64,
+      maxActiveTransitions: 32,
       nodeStorage: 'flash',
     };
   }
