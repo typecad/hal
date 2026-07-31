@@ -21,4 +21,22 @@ describe('Toolchain.prepare writes the DT overlay', () => {
     expect(txt).toContain('&i2c1');
     expect(txt).toContain('status = "okay"');
   });
+
+  it('enables the display DT node when the program uses the display', () => {
+    const srcDir = join(dir, 'src');
+    mkdirSync(srcDir, { recursive: true });
+    writeFileSync(join(srcDir, 'main.cpp'), 'int main(){ display_init(); display_fill_rect(); return 0; }');
+    Toolchain.prepare(dir, join(srcDir, 'main.cpp'));
+    const txt = readFileSync(join(dir, 'app', 'boards', 'xiao_ble.overlay'), 'utf8');
+    expect(txt).toContain('&display0');
+  });
+
+  it('omits the display node when the program does not use the display', () => {
+    const srcDir = join(dir, 'src');
+    mkdirSync(srcDir, { recursive: true });
+    writeFileSync(join(srcDir, 'main.cpp'), 'int main(){ gpio_pin_set(); return 0; }');
+    Toolchain.prepare(dir, join(srcDir, 'main.cpp'));
+    const txt = readFileSync(join(dir, 'app', 'boards', 'xiao_ble.overlay'), 'utf8');
+    expect(txt).not.toContain('&display0');
+  });
 });

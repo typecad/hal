@@ -49,12 +49,15 @@ export function lowerTiming(
       // Return 0 with a comment so callers don't get a link error.
       return { expression: '(0 /* free_heap: enable CONFIG_SYS_HEAP_RUNTIME_STATS for real value */)' };
     case 'timing.set_interval':
-      // Backed by the timer_methods polyfill (k_timer + k_work). The callback is
-      // a lowered function pointer; ms is the repeat period.
-      return { expression: `__tc_setInterval(${o.callback}, ${o.ms})` };
+      // Backed by the timer_methods polyfill (k_timer + k_work). The handler is
+      // the resolved C++ callback name; timeout is the repeat period (ms).
+      // NOTE: these ops are declared 'polyfill' in the manifest, so setInterval
+      // is rewritten to __tc_setInterval before reaching the lowering — these
+      // cases are a fallback/defense and use the real op fields (handler/timeout).
+      return { expression: `__tc_setInterval(${o.handler}, ${o.timeout})` };
     case 'timing.set_timeout':
       // One-shot: k_timer with K_FOREVER period.
-      return { expression: `__tc_setTimeout(${o.callback}, ${o.ms})` };
+      return { expression: `__tc_setTimeout(${o.handler}, ${o.timeout})` };
     case 'timing.clear_interval':
       return { code: `__tc_clearInterval(${o.id});` };
     case 'timing.clear_timeout':

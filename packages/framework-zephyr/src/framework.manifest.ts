@@ -1,12 +1,13 @@
 // ---------------------------------------------------------------------------
 // Zephyr framework manifest
 //
-// Coverage reflects actual resolveHALOperation / lowerHalOp behavior. GPIO,
-// PWM, ADC, I2C, SPI, UART, interrupts, tone, power, pulse, shift, WDT, BLE,
-// and timing are lowered; WiFi/HTTP/display/board are honestly unsupported
-// (nRF52840 has no WiFi; display deferred). The manifest validator probes
-// every declared op against the resolver: a 'supported' op must lower, an
-// 'unsupported' op must return undefined.
+// Coverage reflects actual resolveHALOperation / lowerHalOp + resolveDisplayOp
+// behavior. GPIO, PWM, ADC, I2C, SPI, UART, interrupts, tone, power, pulse,
+// shift, WDT, BLE, and timing are lowered; display is lowered via the generic
+// <zephyr/drivers/display.h> GFX runtime. WiFi/HTTP/board are honestly
+// unsupported (nRF52840 has no WiFi; board-specific lowering deferred). The
+// manifest validator probes every declared op against the resolver: a
+// 'supported' op must lower, an 'unsupported' op must return undefined.
 // ---------------------------------------------------------------------------
 
 import { defineFrameworkManifest, HAL_OPERATION_KINDS } from '@typecad/cuttlefish/api/shared';
@@ -140,7 +141,7 @@ export default defineFrameworkManifest({
         'power.deep_sleep': 'supported',   // k_sleep (deepest allowed state)
         'power.light_sleep': 'supported',  // pm_state_force SUSPEND_TO_IDLE
         'power.set_cpu_frequency': 'supported', // comment (nRF clock API deferred)
-        'power.deep_sleep_pin': 'supported',   // comment (GPIOTE sense deferred)
+        'power.deep_sleep_pin': 'supported',   // GPIO-interrupt wake + k_sleep
       },
     },
     i2c: {

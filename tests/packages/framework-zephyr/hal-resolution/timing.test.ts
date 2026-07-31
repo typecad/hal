@@ -31,9 +31,9 @@ describe('timing lowering', () => {
   });
 
   it('timer ops lower to polyfill helpers (no longer throw)', () => {
-    expect(lowerTiming({ operation: 'timing.set_interval', callback: 'cb', ms: 100 } as any))
+    expect(lowerTiming({ operation: 'timing.set_interval', handler: 'cb', timeout: 100 } as any))
       .toEqual({ expression: '__tc_setInterval(cb, 100)' });
-    expect(lowerTiming({ operation: 'timing.set_timeout', callback: 'cb', ms: 50 } as any))
+    expect(lowerTiming({ operation: 'timing.set_timeout', handler: 'cb', timeout: 50 } as any))
       .toEqual({ expression: '__tc_setTimeout(cb, 50)' });
     expect(lowerTiming({ operation: 'timing.clear_interval', id: 2 } as any))
       .toEqual({ code: '__tc_clearInterval(2);' });

@@ -43,9 +43,9 @@ static struct __tc_TimerSlot __tc_timer_slots[${maxTimers}];
 static void __tc_timer_work_handler(struct k_work* w) {
     // Runs on the system workqueue thread (NOT ISR). Find the owning slot by
     // address and invoke the callback. Must not block.
-    for (int i = 0; i < ${maxTimers}; i++) {
+    for (int32_t i = 0; i < ${maxTimers}; i++) {
         if (&__tc_timer_slots[i].work == w) {
-            if (__tc_timer_slots[i].callback) { __tc_timer_slots[i].callback(); }
+            if (__tc_timer_slots[i].callback != nullptr) { __tc_timer_slots[i].callback(); }
             return;
         }
     }
@@ -53,7 +53,7 @@ static void __tc_timer_work_handler(struct k_work* w) {
 
 static void __tc_timer_expiry_fn(struct k_timer* t) {
     // ISR context: submit the work item, do NOT run the callback here.
-    for (int i = 0; i < ${maxTimers}; i++) {
+    for (int32_t i = 0; i < ${maxTimers}; i++) {
         if (&__tc_timer_slots[i].timer == t) {
             (void)k_work_submit(&__tc_timer_slots[i].work);
             return;
@@ -61,12 +61,12 @@ static void __tc_timer_expiry_fn(struct k_timer* t) {
     }
 }
 
-static int __tc_timer_add(void (*cb)(void), long ms, bool repeat) {
-    for (int i = 0; i < ${maxTimers}; i++) {
+static int32_t __tc_timer_add(void (*cb)(void), int32_t ms, bool repeat) {
+    for (int32_t i = 0; i < ${maxTimers}; i++) {
         if (!__tc_timer_slots[i].active) {
             __tc_timer_slots[i].callback = cb;
             __tc_timer_slots[i].active = true;
-            k_timer_init(&__tc_timer_slots[i].timer, __tc_timer_expiry_fn, NULL);
+            k_timer_init(&__tc_timer_slots[i].timer, __tc_timer_expiry_fn, nullptr);
             k_work_init(&__tc_timer_slots[i].work, __tc_timer_work_handler);
             k_timer_start(&__tc_timer_slots[i].timer, K_MSEC(ms), repeat ? K_MSEC(ms) : K_FOREVER);
             return i + 1;  // 1-based id (Arduino parity)
@@ -75,21 +75,21 @@ static int __tc_timer_add(void (*cb)(void), long ms, bool repeat) {
     return 0;  // pool full
 }
 
-static void __tc_timer_clear(int id) {
+static void __tc_timer_clear(int32_t id) {
     if (id > 0 && id <= ${maxTimers}) {
-        int i = id - 1;
+        int32_t i = id - 1;
         k_timer_stop(&__tc_timer_slots[i].timer);
         __tc_timer_slots[i].active = false;
-        __tc_timer_slots[i].callback = NULL;
+        __tc_timer_slots[i].callback = nullptr;
     }
 }
 `];
 
   const helperFunctions = [`
-int __tc_setInterval(void (*cb)(), long ms) { return __tc_timer_add(cb, ms, true); }
-int __tc_setTimeout(void (*cb)(), long ms) { return __tc_timer_add(cb, ms, false); }
-void __tc_clearInterval(int id) { __tc_timer_clear(id); }
-void __tc_clearTimeout(int id) { __tc_timer_clear(id); }
+int32_t __tc_setInterval(void (*cb)(), int32_t ms) { return __tc_timer_add(cb, ms, true); }
+int32_t __tc_setTimeout(void (*cb)(), int32_t ms) { return __tc_timer_add(cb, ms, false); }
+void __tc_clearInterval(int32_t id) { __tc_timer_clear(id); }
+void __tc_clearTimeout(int32_t id) { __tc_timer_clear(id); }
 `];
 
   return {

@@ -41,7 +41,8 @@ describe('display runtime builder', () => {
 
   it('draw_text falls back unknown chars to a space', () => {
     const r = buildDisplayRuntime(profile);
-    expect(r.helpers).toContain("glyph = __tc_font5x7[(int)' ']");
+    // Falls back to the space glyph (AUTOSAR-clean static_cast form).
+    expect(r.helpers).toContain("glyph = &__tc_font5x7[static_cast<uint8_t>(' ')][0]");
   });
 
   it('DEFAULT profile is the ili9341 entry', () => {

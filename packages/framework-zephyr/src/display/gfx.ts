@@ -104,48 +104,69 @@ export function buildDisplayRuntime(profile: ZephyrDisplayProfile): DisplayRunti
     : '';
 
   const helpers = `
+// Write a single row of \`rw\` rgb565 pixels at (x,y). Builds the
+// display_buffer_descriptor the Zephyr display_write API requires (rgb565 =
+// 2 bytes/pixel) and pushes the one-row line buffer.
+static inline void __tc_display_write_row(uint16_t x, uint16_t y, uint16_t rw) {
+    struct display_buffer_descriptor __desc;
+    __desc.buf_size = static_cast<uint32_t>(rw) * 2U;   // 2 bytes per rgb565 pixel
+    __desc.width = rw;
+    __desc.height = 1U;
+    __desc.pitch = rw;
+    __desc.frame_incomplete = false;
+    (void)display_write(__tc_display, x, y, &__desc, __tc_display_line);
+}
+
 static inline void display_init(void) {
     if (!device_is_ready(__tc_display)) { for (;;) { k_msleep(1000); } }
 ${blInit}
     display_blanking_off(__tc_display);
 }
 
-static inline void display_fill_rect(int16_t x, int16_t y, int16_t rw, int16_t h, uint16_t color) {
-    for (int16_t row = 0; row < h; row++) {
-        for (int16_t i = 0; i < rw; i++) { __tc_display_line[i] = color; }
-        display_write(__tc_display, x, y + row, rw, 1, __tc_display_line);
+static inline void display_fill_rect(uint16_t x, uint16_t y, uint16_t rw, uint16_t h, uint16_t color) {
+    for (uint16_t row = 0; row < h; row++) {
+        for (uint16_t i = 0; i < rw; i++) { __tc_display_line[i] = color; }
+        __tc_display_write_row(x, static_cast<uint16_t>(y + row), rw);
     }
 }
 
-static inline void display_draw_rect(int16_t x, int16_t y, int16_t rw, int16_t h, uint16_t color) {
+static inline void display_draw_rect(uint16_t x, uint16_t y, uint16_t rw, uint16_t h, uint16_t color) {
     // Top + bottom edges.
-    for (int16_t i = 0; i < rw; i++) { __tc_display_line[i] = color; }
-    display_write(__tc_display, x, y, rw, 1, __tc_display_line);
-    display_write(__tc_display, x, y + h - 1, rw, 1, __tc_display_line);
+    for (uint16_t i = 0; i < rw; i++) { __tc_display_line[i] = color; }
+    __tc_display_write_row(x, y, rw);
+    __tc_display_write_row(x, static_cast<uint16_t>(y + h - 1U), rw);
     // Left + right edges.
-    for (int16_t row = 1; row < h - 1; row++) {
+    for (uint16_t row = 1U; row < h - 1U; row++) {
         __tc_display_line[0] = color;
-        if (rw > 1) { __tc_display_line[rw - 1] = color; }
-        display_write(__tc_display, x, y + row, rw, 1, __tc_display_line);
+        if (rw > 1U) { __tc_display_line[rw - 1U] = color; }
+        __tc_display_write_row(x, static_cast<uint16_t>(y + row), rw);
     }
 }
 
-static inline void display_draw_text(int16_t x, int16_t y, const char* text, uint16_t color) {
-    int16_t cx = x;
+static inline void display_draw_text(uint16_t x, uint16_t y, const char* text, uint16_t color) {
+    uint16_t cx = x;
     for (const char* p = text; *p != 0; p++) {
-        char ch = *p;
-        if (ch >= 'a' && ch <= 'z') { ch = (char)(ch - 32); }  // uppercase only
-        if (ch >= 128) { ch = ' '; }                            // unknown → space
-        const uint8_t* glyph = __tc_font5x7[(int)ch];
-        if (ch != ' ' && (ch < '0' || (ch > '9' && ch < 'A') || ch > 'Z')) { glyph = __tc_font5x7[(int)' ']; }
-        for (int col = 0; col < 5; col++) {
+        // Read the byte UNSIGNED so bytes >= 0x80 don't index the 128-entry
+        // font table negatively (signed char would make 0x80 == -128).
+        uint8_t uc = static_cast<uint8_t>(*p);
+        if (uc >= 128U) { uc = static_cast<uint8_t>(' '); }     // unknown → space
+        const uint8_t* glyph = &__tc_font5x7[uc][0];
+        // Lowercase → uppercase; anything outside 0-9/A-Z → space glyph.
+        if (uc >= static_cast<uint8_t>('a') && uc <= static_cast<uint8_t>('z')) {
+            glyph = &__tc_font5x7[uc - 32U][0];
+        } else if (uc < static_cast<uint8_t>('0')
+                   || (uc > static_cast<uint8_t>('9') && uc < static_cast<uint8_t>('A'))
+                   || uc > static_cast<uint8_t>('Z')) {
+            glyph = &__tc_font5x7[static_cast<uint8_t>(' ')][0];
+        }
+        for (uint16_t col = 0; col < 5U; col++) {
             uint8_t bits = glyph[col];
-            for (int row = 0; row < 7; row++) {
-                __tc_display_line[0] = (bits & (1 << row)) ? color : 0;
-                display_write(__tc_display, cx + col, y + row, 1, 1, __tc_display_line);
+            for (uint16_t row = 0; row < 7U; row++) {
+                __tc_display_line[0] = ((bits & static_cast<uint8_t>(1U << row)) != 0U) ? color : 0U;
+                __tc_display_write_row(static_cast<uint16_t>(cx + col), static_cast<uint16_t>(y + row), 1U);
             }
         }
-        cx += 6;  // 5 cols + 1 space
+        cx = static_cast<uint16_t>(cx + 6U);  // 5 cols + 1 space
     }
 }
 

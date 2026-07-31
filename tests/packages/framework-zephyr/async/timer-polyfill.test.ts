@@ -29,10 +29,10 @@ describe('timer polyfill builder', () => {
   it('exposes __tc_setInterval / __tc_setTimeout / __tc_clearInterval / __tc_clearTimeout helpers', () => {
     const ir = buildTimerPolyfill(2);
     const fns = ir.helperFunctions.join('\n');
-    expect(fns).toContain('int __tc_setInterval(void (*cb)(), long ms)');
-    expect(fns).toContain('int __tc_setTimeout(void (*cb)(), long ms)');
-    expect(fns).toContain('void __tc_clearInterval(int id)');
-    expect(fns).toContain('void __tc_clearTimeout(int id)');
+    expect(fns).toContain('int32_t __tc_setInterval(void (*cb)(), int32_t ms)');
+    expect(fns).toContain('int32_t __tc_setTimeout(void (*cb)(), int32_t ms)');
+    expect(fns).toContain('void __tc_clearInterval(int32_t id)');
+    expect(fns).toContain('void __tc_clearTimeout(int32_t id)');
   });
 
   it('expiry fn submits work; work handler runs the callback on the system workqueue', () => {

@@ -29,6 +29,7 @@ import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
 import { ZephyrStrategy } from '../strategy.js';
 import { generateOverlay } from '../dt-config/overlay.js';
 import { chipForTarget } from '../chips/index.js';
+import { DEFAULT_ZEPHYR_DISPLAY_PROFILE } from '../display/profiles.js';
 
 /** Default board target — the framework's MVP canonical board. */
 const DEFAULT_BOARD = 'xiao_ble';
@@ -90,12 +91,18 @@ export const Toolchain = {
       }
     } catch { /* src may not exist yet on first prepare */ }
     const uses = (t: string): boolean => src.includes(t);
+    const usesDisplay = uses('display_write') || uses('display_init') || uses('display_fill_rect');
+    // When the program uses the display, resolve a profile so the overlay
+    // enables the display DT node (&display0). For now the default profile is
+    // the only one registered; thread frameworkData.display through here when a
+    // board carries more than one display binding.
+    const displayProfile = usesDisplay ? DEFAULT_ZEPHYR_DISPLAY_PROFILE : undefined;
     const overlay = generateOverlay(chip, {
       usesI2c: uses('i2c_'),
       usesSpi: uses('spi_'),
       usesUart: uses('uart_'),
-      usesDisplay: uses('display_'),
-    }, undefined);
+      usesDisplay,
+    }, displayProfile);
     const overlayDir = join(projectRoot, 'app', 'boards');
     mkdirSync(overlayDir, { recursive: true });
     writeIfChanged(join(overlayDir, `${board}.overlay`), overlay);

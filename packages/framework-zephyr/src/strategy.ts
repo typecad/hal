@@ -115,7 +115,10 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesWDT')) inc.push('<zephyr/drivers/watchdog.h>');
     if (uses('usesPower')) inc.push('<zephyr/pm/pm.h>', '<zephyr/pm/state.h>', '<zephyr/pm/policy.h>');
     if (uses('usesBle')) inc.push('<stdlib.h>', '<string.h>', '<zephyr/bluetooth/bluetooth.h>', '<zephyr/bluetooth/conn.h>', '<zephyr/bluetooth/gatt.h>', '<zephyr/bluetooth/uuid.h>');
-    if (uses('usesDisplay')) inc.push('<zephyr/drivers/display.h>');
+    // Display: the analyzer exposes no usesDisplay flag, so detect display usage
+    // directly from the program IR. (When program is absent — e.g. a capability
+    // query — default to emitting the include so a real build never strips it.)
+    if (!_program || this.programUsesDisplay(_program)) inc.push('<zephyr/drivers/display.h>');
     // std::string — Zephyr has no umbrella header that transitively pulls in
     // <string> (unlike framework-arduino's <Arduino.h>), so a program that
     // lowers a std::string parameter/variable must request it explicitly. Uses
@@ -126,6 +129,69 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   symbolAliases(): Record<string, string> {
     return {};
+  }
+
+  /**
+   * Detect display usage by walking the program IR for any `display.*` op. The
+   * shared analyzer (ProgramAnalysisResult) has no `usesDisplay` flag, so we
+   * detect from the program directly — the same way profileDiagnostics detects
+   * pin usage. Used by forcedIncludes/shimLines to gate the display runtime,
+   * which must be emitted in the setup phase (before any resolveDisplayOp call
+   * could seed _displayState).
+   */
+  private programUsesDisplay(program?: ProgramIR): boolean {
+    if (!program) return false;
+    let found = false;
+    const visit = (node: any): void => {
+      if (found || !node || typeof node !== 'object') return;
+      if (node.operation && typeof node.operation === 'object'
+          && typeof node.operation.operation === 'string'
+          && node.operation.operation.startsWith('display.')) {
+        found = true;
+        return;
+      }
+      for (const v of Object.values(node)) {
+        if (Array.isArray(v)) { for (const item of v) visit(item); }
+        else if (v && typeof v === 'object') visit(v);
+      }
+    };
+    visit(program);
+    return found;
+  }
+
+  /**
+   * Detect async-runtime usage: a program needs the Promise/microtask runtime
+   * if it declares an async function OR references an async-runtime symbol
+   * (`__cuttlefish_async_`) — e.g. Async.sleep()/.then() called from a non-async
+   * function. Mirrors Arduino's programUsesAsyncRuntime walk (that helper is
+   * private to framework-arduino and not exported from cuttlefish, so we walk
+   * here). The token appears in `raw` expr nodes and in `hal-expr`/`hal-op`
+   * nodes whose resolved `raw` code references it.
+   */
+  private programUsesAsyncRuntime(program?: ProgramIR): boolean {
+    if (!program) return false;
+    const TOKEN = '__cuttlefish_async_';
+    let found = false;
+    const visit = (node: any): void => {
+      if (found || !node || typeof node !== 'object') return;
+      // raw expression node
+      if (node.kind === 'raw' && typeof node.value === 'string' && node.value.includes(TOKEN)) {
+        found = true; return;
+      }
+      // hal-expr / hal-op node whose operation is a raw op carrying code
+      if (node.operation && typeof node.operation === 'object'
+          && node.operation.operation === 'raw'
+          && typeof node.operation.code === 'string'
+          && node.operation.code.includes(TOKEN)) {
+        found = true; return;
+      }
+      for (const v of Object.values(node)) {
+        if (Array.isArray(v)) { for (const item of v) visit(item); }
+        else if (v && typeof v === 'object') visit(v);
+      }
+    };
+    visit(program);
+    return found;
   }
 
   shimLines(program?: ProgramIR, ctx?: PlatformContext): string[] {
@@ -190,7 +256,11 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesInterrupts')) lines.push(...interruptInitLines(chip));
     if (uses('usesWDT') && chip.wdt) lines.push(...wdtInitLines(chip));
     if (uses('usesBle')) lines.push(...bleInitLines());
-    if (uses('usesDisplay')) {
+    // Display runtime: gated on program-IR display usage (the analyzer has no
+    // usesDisplay flag). Must emit here in the setup phase — resolveDisplayOp
+    // (which seeds _displayState) runs later during op lowering, so we cannot
+    // key off _displayState.initialized at shimLines time.
+    if (this.programUsesDisplay(program)) {
       const rt = buildDisplayRuntime(this._displayState.profile);
       lines.push(...rt.stateLines);
       lines.push(rt.fontTable);
@@ -765,10 +835,12 @@ export class ZephyrStrategy implements PlatformStrategy {
       polyfills.push(buildTimerPolyfill(timerCallCount));
     }
 
-    // async_runtime — heap-free static Promise/microtask runtime. Emitted only
-    // when the program declares an async function (the shared runtime's static
-    // path requires no STL headers, so it is safe under Zephyr's minimal C++ lib).
-    const usesAsync = !!program && program.functions.some((fn: any) => fn && fn.isAsync);
+    // async_runtime — heap-free static Promise/microtask runtime. Emitted when
+    // the program declares an async function OR references an async-runtime
+    // symbol (Async.sleep/.then from a non-async fn). The static path requires
+    // no STL headers, so it is safe under Zephyr's minimal C++ lib.
+    const usesAsync = !!program
+      && (program.functions.some((fn: any) => fn && fn.isAsync) || this.programUsesAsyncRuntime(program));
     if (usesAsync) {
       polyfills.push({
         kind: 'polyfill',
