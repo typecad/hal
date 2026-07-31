@@ -1,9 +1,11 @@
 // ---------------------------------------------------------------------------
 // Timing lowering — Zephyr kernel timing
 //
-// delay/millis/delay_microseconds/micros are fully lowered. The four timer ops
-// (set_interval/set_timeout/clear_interval/clear_timeout) stay unsupported —
-// they need a polyfill-backed async runtime this framework doesn't emit yet.
+// delay/millis/delay_microseconds/micros/free_heap lower directly. The four
+// timer ops (set_interval/set_timeout/clear_interval/clear_timeout) call the
+// timer_methods polyfill helpers (k_timer + k_work pool), declared as 'polyfill'
+// status in the manifest — the validator skips the resolver probe for these
+// (they legitimately return polyfill-helper calls, not direct lowering).
 // free_heap has no portable Zephyr query without CONFIG_SYS_HEAP_RUNTIME_STATS;
 // it returns 0 with a comment (honest limitation).
 // ---------------------------------------------------------------------------
@@ -46,6 +48,17 @@ export function lowerTiming(
       // No portable free-heap query without CONFIG_SYS_HEAP_RUNTIME_STATS.
       // Return 0 with a comment so callers don't get a link error.
       return { expression: '(0 /* free_heap: enable CONFIG_SYS_HEAP_RUNTIME_STATS for real value */)' };
+    case 'timing.set_interval':
+      // Backed by the timer_methods polyfill (k_timer + k_work). The callback is
+      // a lowered function pointer; ms is the repeat period.
+      return { expression: `__tc_setInterval(${o.callback}, ${o.ms})` };
+    case 'timing.set_timeout':
+      // One-shot: k_timer with K_FOREVER period.
+      return { expression: `__tc_setTimeout(${o.callback}, ${o.ms})` };
+    case 'timing.clear_interval':
+      return { code: `__tc_clearInterval(${o.id});` };
+    case 'timing.clear_timeout':
+      return { code: `__tc_clearTimeout(${o.id});` };
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +

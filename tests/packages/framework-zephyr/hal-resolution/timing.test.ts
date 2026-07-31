@@ -30,10 +30,14 @@ describe('timing lowering', () => {
     expect(out.expression).toContain('CONFIG_SYS_HEAP_RUNTIME_STATS');
   });
 
-  it('timer ops throw (unsupported — no async runtime yet)', () => {
-    expect(() => lowerTiming({ operation: 'timing.set_interval' } as any)).toThrow(/does not yet support/);
-    expect(() => lowerTiming({ operation: 'timing.set_timeout' } as any)).toThrow(/does not yet support/);
-    expect(() => lowerTiming({ operation: 'timing.clear_interval' } as any)).toThrow(/does not yet support/);
-    expect(() => lowerTiming({ operation: 'timing.clear_timeout' } as any)).toThrow(/does not yet support/);
+  it('timer ops lower to polyfill helpers (no longer throw)', () => {
+    expect(lowerTiming({ operation: 'timing.set_interval', callback: 'cb', ms: 100 } as any))
+      .toEqual({ expression: '__tc_setInterval(cb, 100)' });
+    expect(lowerTiming({ operation: 'timing.set_timeout', callback: 'cb', ms: 50 } as any))
+      .toEqual({ expression: '__tc_setTimeout(cb, 50)' });
+    expect(lowerTiming({ operation: 'timing.clear_interval', id: 2 } as any))
+      .toEqual({ code: '__tc_clearInterval(2);' });
+    expect(lowerTiming({ operation: 'timing.clear_timeout', id: 2 } as any))
+      .toEqual({ code: '__tc_clearTimeout(2);' });
   });
 });
