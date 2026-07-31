@@ -75,6 +75,7 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false): void 
   const usesSpi = uses('spi_');
   const usesWdt = uses('wdt_');
   const usesBle = uses('bt_') || uses('bt_gatt') || uses('bt_le_');
+  const usesDisplay = uses('display_write') || uses('display_init') || uses('display_fill_rect');
 
   // ── Root CMakeLists.txt ─────────────────────────────────────────────────
   // The canonical Zephyr CMake application. GLOB src/*.cpp so future multi-
@@ -121,6 +122,7 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false): void 
   if (usesI2c) prjConf.push('CONFIG_I2C=y');
   if (usesSpi) prjConf.push('CONFIG_SPI=y');
   if (usesWdt) prjConf.push('CONFIG_WATCHDOG=y');
+  if (usesDisplay) prjConf.push('CONFIG_DISPLAY=y');
   if (usesBle) {
     // Bluetooth (NimBLE peripheral). CONFIG_BT_GATT_DYNAMIC_DB enables the
     // runtime bt_gatt_service_register path the BLE lowering uses.
