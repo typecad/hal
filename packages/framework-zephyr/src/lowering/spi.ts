@@ -24,7 +24,9 @@ function prefix(idx: number): string {
 
 /**
  * Emit the per-controller SPI state. The bus device resolves at compile time;
- * a static spi_config holds the operation flags (MSB, 8-bit, controller mode).
+ * a static spi_config holds the base operation flags, and mutable runtime fields
+ * hold the mode (CPOL/CPHA bits) + bit order (lsb) so set_mode/set_bit_order can
+ * rebuild operation at init time (Zephyr's spi_config.operation is the only knob).
  */
 export function spiInitLines(chip: ZephyrChipDescriptor, controllerIndex: number): string[] {
   const ctrl = chip.spi?.controllers[controllerIndex];
@@ -34,11 +36,21 @@ export function spiInitLines(chip: ZephyrChipDescriptor, controllerIndex: number
     '// CUTTLEFISH_SPI_BEGIN',
     `static const struct device* ${p}_dev = DEVICE_DT_GET(DT_NODELABEL(${ctrl.nodeLabel}));`,
     `static bool ${p}_ready = false;`,
+    `static uint8_t ${p}_mode = 0;   // bit0=CPOL, bit1=CPHA`,
+    `static bool ${p}_lsb = false;   // false=MSB (default), true=LSB`,
     `static struct spi_config ${p}_cfg = {`,
     `    .frequency = 1000000,`,
-    `    .operation = SPI_OP_MODE_MASTER | SPI_TRANSFER_MSB | SPI_WORD_SET(8),`,
     `};`,
-    `static void ${p}_init(void) { if (!${p}_ready) { ${p}_cfg.bus = ${p}_dev; ${p}_ready = true; } }`,
+    `static void ${p}_init(void) {`,
+    `    if (!${p}_ready) {`,
+    `        ${p}_cfg.bus = ${p}_dev;`,
+    `        ${p}_cfg.operation = SPI_OP_MODE_MASTER | SPI_WORD_SET(8)`,
+    `            | (${p}_lsb ? SPI_TRANSFER_LSB : SPI_TRANSFER_MSB)`,
+    `            | ((${p}_mode & 0x1) ? SPI_MODE_CPOL : 0)`,
+    `            | ((${p}_mode & 0x2) ? SPI_MODE_CPHA : 0);`,
+    `        ${p}_ready = true;`,
+    `    }`,
+    `}`,
     '// CUTTLEFISH_SPI_END',
   ];
 }
@@ -66,11 +78,18 @@ export function lowerSpi(
     case 'spi.end_transaction':
       return { code: `(void)0;` };
     case 'spi.set_mode':
-      // Mode (0-3) would require rebuilding the spi_config operation flags.
-      // Record intent; applying it is deferred (CPOL/CPHA bits).
-      return { code: `/* spi.set_mode(${o.mode}): SPI_MODE_CPHA/CPOL — deferred */` };
-    case 'spi.set_bit_order':
-      return { code: `/* spi.set_bit_order(${o.order}): fixed SPI_TRANSFER_MSB */` };
+      // Apply CPOL/CPHA: store the mode byte then re-init so the next transfer
+      // picks up the rebuilt operation flags. The ready flag is cleared so
+      // _init() rebuilds rather than early-returning.
+      return { code: `{ ${p}_mode = static_cast<uint8_t>(${o.mode}); ${p}_ready = false; ${p}_init(); }` };
+    case 'spi.set_bit_order': {
+      // The HAL payload `order` is a string ("lsb" | "msb"), per SpiSetBitOrderOp.
+      // Normalize here in TS so we emit a boolean literal, not the raw string
+      // (which would be an undeclared C++ identifier).
+      const key = String(o.order).replace(/^["']|["']$/g, '').toLowerCase();
+      const lsb = (key === 'lsb' || key === 'lsbfirst') ? 'true' : 'false';
+      return { code: `{ ${p}_lsb = ${lsb}; ${p}_ready = false; ${p}_init(); }` };
+    }
     case 'spi.transfer': {
       // Single-byte full-duplex, returns the received byte (GCC stmt-expr).
       return {
@@ -81,7 +100,7 @@ export function lowerSpi(
       // Read count bytes by sending 0xFF dummy bytes (full-duplex read).
       const count = o.count;
       return {
-        code: `{ uint8_t __dummy[${count}] = {0}; for (int __i = 0; __i < (int)(${count}); __i++) __dummy[__i] = 0xFF; struct spi_buf __tb = { .buf = __dummy, .len = ${count} }; struct spi_buf_set __tbs = { .buffers = &__tb, .count = 1 }; struct spi_buf __rb = { .buf = (void*)${o.buffer}, .len = ${count} }; struct spi_buf_set __rbs = { .buffers = &__rb, .count = 1 }; ${p}_init(); spi_transceive(${p}_dev, &${p}_cfg, &__tbs, &__rbs); }`,
+        code: `{ uint8_t __dummy[${count}] = {0}; for (int __i = 0; __i < (int)(${count}); __i++) __dummy[__i] = 0xFF; struct spi_buf __tb = { .buf = __dummy, .len = ${count} }; struct spi_buf_set __tbs = { .buffers = &__tb, .count = 1 }; struct spi_buf __rb = { .buf = reinterpret_cast<void*>(${o.buffer}), .len = ${count} }; struct spi_buf_set __rbs = { .buffers = &__rb, .count = 1 }; ${p}_init(); spi_transceive(${p}_dev, &${p}_cfg, &__tbs, &__rbs); }`,
       };
     }
     case 'spi.cs_low':

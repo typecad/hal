@@ -20,10 +20,16 @@
 
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, join } from 'node:path';
+import { readdirSync, readFileSync, mkdirSync } from 'node:fs';
 import type { ToolchainOptions, CompileResult, UploadResult } from '@typecad/cuttlefish/api/shared';
 import { parseCompileErrors } from '@typecad/cuttlefish/api/shared';
-import { scaffoldZephyrProject } from './scaffold.js';
+import { scaffoldZephyrProject, writeIfChanged } from './scaffold.js';
 import { westSpawn } from './west-spawn.js';
+import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
+import { ZephyrStrategy } from '../strategy.js';
+import { generateOverlay } from '../dt-config/overlay.js';
+import { chipForTarget } from '../chips/index.js';
+import { DEFAULT_ZEPHYR_DISPLAY_PROFILE } from '../display/profiles.js';
 
 /** Default board target — the framework's MVP canonical board. */
 const DEFAULT_BOARD = 'xiao_ble';
@@ -64,16 +70,51 @@ const FLASH_TIMEOUT_MS = 120_000;
  * happens at compile time when the target is known.
  */
 export const Toolchain = {
-  prepare(_outputDir: string, _entryPoint: string): void {
-    // no-op — scaffold happens in compile() so CMakeLists/prj.conf are always
-    // in sync with the current config.
+  prepare(outputDir: string, entryPoint: string): void {
+    // Write the DT overlay for the default board (the real target is known at
+    // compile time; prepare runs before compile, so use the default board id).
+    // The overlay is additive and idempotent; compile re-runs prepare-equivalent
+    // logic in scaffold via the usage scan. Mirrors how Arduino's library
+    // resolution is a pre-build artifact step.
+    const projectRoot = basename(outputDir) === 'src' ? dirname(outputDir) : outputDir;
+    const board = DEFAULT_BOARD;
+    const chip = chipForTarget(board);
+    // Scan the emitted source for usage tokens (same authoritative signal the
+    // scaffold uses). entryPoint is the path to main.cpp; its dir is src/.
+    const srcDir = dirname(entryPoint);
+    let src = '';
+    try {
+      for (const name of readdirSync(srcDir)) {
+        if (name.endsWith('.cpp') || name.endsWith('.c')) {
+          src += readFileSync(join(srcDir, name), 'utf8');
+        }
+      }
+    } catch { /* src may not exist yet on first prepare */ }
+    const uses = (t: string): boolean => src.includes(t);
+    const usesDisplay = uses('display_write') || uses('display_init') || uses('display_fill_rect');
+    // When the program uses the display, resolve a profile so the overlay
+    // enables the display DT node (&display0). For now the default profile is
+    // the only one registered; thread frameworkData.display through here when a
+    // board carries more than one display binding.
+    const displayProfile = usesDisplay ? DEFAULT_ZEPHYR_DISPLAY_PROFILE : undefined;
+    const overlay = generateOverlay(chip, {
+      usesI2c: uses('i2c_'),
+      usesSpi: uses('spi_'),
+      usesUart: uses('uart_'),
+      usesDisplay,
+    }, displayProfile);
+    const overlayDir = join(projectRoot, 'app', 'boards');
+    mkdirSync(overlayDir, { recursive: true });
+    writeIfChanged(join(overlayDir, `${board}.overlay`), overlay);
   },
 
   compile(o: ToolchainOptions): CompileResult {
     const projectRoot = projectRootFromOptions(o);
-    scaffoldZephyrProject(projectRoot);
-
     const board = targetFromOptions(o);
+    const debugMode = new ZephyrStrategy().debugMode(board);
+    const isGdbDebug = o.debug === true && debugMode === 'gdb';
+    scaffoldZephyrProject(projectRoot, isGdbDebug);
+
     // Use a stable build dir so incremental builds reuse the Ninja graph.
     // west defaults to <projectRoot>/build.
     const buildDir = join(projectRoot, 'build');
@@ -90,6 +131,28 @@ export const Toolchain = {
     // Prefix the build log with how west was resolved, for transparency.
     const header = `Using west via ${inv.install.source}` +
       (inv.install.zephyrBase ? ` (ZEPHYR_BASE=${inv.install.zephyrBase})` : '') + '\n';
+
+    // After a successful build in gdb mode (--debug on a probe-capable target),
+    // write the VS Code launch.json + tasks.json + gdb-script artifacts so F5
+    // attaches GDB to the chip's debug probe. Non-fatal on failure — a missing
+    // artifact doesn't block the build. Mirrors the deleted framework-esp32
+    // toolchain compile() debug-config wiring.
+    if (result.status === 0 && isGdbDebug) {
+      try {
+        const { workspaceRoot, sketchRel } = resolveDebugLocations(projectRoot);
+        writeDebugConfig({
+          projectRoot,
+          workspaceRoot,
+          sketchRel,
+          target: board,
+          buildDir,
+          sourceMapPath: join(dirname(o.sourcePath), `${basename(o.sourcePath)}.thcppmap.json`),
+        });
+      } catch (e) {
+        console.warn(`[cuttlefish] gdb debug config generation failed: ${(e as Error).message}`);
+      }
+    }
+
     return {
       success: result.status === 0,
       output: header + output,
@@ -139,6 +202,23 @@ export const Toolchain = {
     const port = o.port ?? '';
     const args = ['serial', ...(port ? ['--port', port] : [])];
     const inv = westSpawn(args, {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+      stdio: 'inherit',
+    });
+    spawnSync(inv.command, inv.args, inv.options);
+  },
+
+  debug(o: ToolchainOptions): void {
+    // Launch an interactive GDB session for the last build. `west debug`
+    // auto-resolves the runner (openocd for esp32s3, nrfjprog/jlink for nRF)
+    // and the GDB binary from the build dir's CMakeCache/board.cmake — no
+    // hand-authored gdbinit needed. Inherits stdio so GDB runs interactively.
+    // (Not invoked by the standard build/compile flow; powers an explicit
+    // debug-attach entry point for terminal-driven debugging without VS Code.)
+    const projectRoot = projectRootFromOptions(o);
+    const buildDir = join(projectRoot, 'build');
+    const inv = westSpawn(['debug', '-d', buildDir], {
       cwd: projectRoot,
       encoding: 'utf-8',
       stdio: 'inherit',

@@ -1,12 +1,13 @@
 // ---------------------------------------------------------------------------
 // Zephyr framework manifest
 //
-// Coverage reflects actual resolveHALOperation / lowerHalOp behavior. GPIO,
-// PWM, ADC, I2C, SPI, UART, interrupts, tone, power, pulse, shift, WDT, BLE,
-// and timing are lowered; WiFi/HTTP/display/board are honestly unsupported
-// (nRF52840 has no WiFi; display deferred). The manifest validator probes
-// every declared op against the resolver: a 'supported' op must lower, an
-// 'unsupported' op must return undefined.
+// Coverage reflects actual resolveHALOperation / lowerHalOp + resolveDisplayOp
+// behavior. GPIO, PWM, ADC, I2C, SPI, UART, interrupts, tone, power, pulse,
+// shift, WDT, BLE, and timing are lowered; display is lowered via the generic
+// <zephyr/drivers/display.h> GFX runtime. WiFi/HTTP/board are honestly
+// unsupported (nRF52840 has no WiFi; board-specific lowering deferred). The
+// manifest validator probes every declared op against the resolver: a
+// 'supported' op must lower, an 'unsupported' op must return undefined.
 // ---------------------------------------------------------------------------
 
 import { defineFrameworkManifest, HAL_OPERATION_KINDS } from '@typecad/cuttlefish/api/shared';
@@ -68,24 +69,23 @@ export default defineFrameworkManifest({
       },
     },
 
-    // ── Partial: Timing (delay/millis/delay_us/micros/free_heap; no timers) ─
+    // ── Supported: Timing (delay/millis/delay_us/micros/free_heap; timers via polyfill) ─
     timing: {
       supported: true,
-      partialCoverage: true,
+      partialCoverage: false,
       ops: {
         'timing.delay': 'supported',            // → k_msleep(ms)
         'timing.delay_microseconds': 'supported', // → k_busy_wait(us)
         'timing.millis': 'supported',           // → k_uptime_get_32()
         'timing.micros': 'supported',           // → k_cycle_get_32 + cycles/sec
         'timing.free_heap': 'supported',        // → 0 (no portable query; see lowering)
-        // Timer ops are POLYFILL_BACKED_OPS. Declared unsupported here because
-        // the framework does not emit the timer_methods polyfill yet (no async
-        // runtime). The validator only requires 'polyfill' status when the
-        // named polyfill is in polyfills.emitted — it is not.
-        'timing.set_interval': 'unsupported',
-        'timing.set_timeout': 'unsupported',
-        'timing.clear_interval': 'unsupported',
-        'timing.clear_timeout': 'unsupported',
+        // Timer ops are POLYFILL_BACKED_OPS → timer_methods. The validator skips
+        // the resolver probe (these legitimately return polyfill-helper calls,
+        // not direct lowering) and requires the polyfill be in polyfills.emitted.
+        'timing.set_interval': 'polyfill',
+        'timing.set_timeout': 'polyfill',
+        'timing.clear_interval': 'polyfill',
+        'timing.clear_timeout': 'polyfill',
       },
     },
 
@@ -141,7 +141,7 @@ export default defineFrameworkManifest({
         'power.deep_sleep': 'supported',   // k_sleep (deepest allowed state)
         'power.light_sleep': 'supported',  // pm_state_force SUSPEND_TO_IDLE
         'power.set_cpu_frequency': 'supported', // comment (nRF clock API deferred)
-        'power.deep_sleep_pin': 'supported',   // comment (GPIOTE sense deferred)
+        'power.deep_sleep_pin': 'supported',   // GPIO-interrupt wake + k_sleep
       },
     },
     i2c: {
@@ -158,7 +158,7 @@ export default defineFrameworkManifest({
     },
     spi: {
       supported: true,
-      partialCoverage: true,
+      partialCoverage: false,
       ops: {
         'spi.begin': 'supported', 'spi.end': 'supported', 'spi.transfer': 'supported',
         'spi.begin_transaction': 'supported', 'spi.end_transaction': 'supported',
@@ -211,16 +211,17 @@ export default defineFrameworkManifest({
       ops: unsupportedOps('http.'),
     },
     display: {
-      supported: false,
-      unsupportedReason: 'Display lowering deferred.',
-      drivers: [],
-      colorFormat: null,
+      supported: true,
+      partialCoverage: false,
+      unsupportedReason: undefined,
+      drivers: ['ili9341-zephyr'],
+      colorFormat: 'rgb565',
       ops: {
-        'display.init': 'unsupported',
-        'display.fill_rect': 'unsupported',
-        'display.draw_text': 'unsupported',
-        'display.draw_rect': 'unsupported',
-        'display.flush': 'unsupported',
+        'display.init': 'supported',
+        'display.fill_rect': 'supported',
+        'display.draw_text': 'supported',
+        'display.draw_rect': 'supported',
+        'display.flush': 'supported',
       },
     },
     // ── Supported: BLE (NimBLE GATT peripheral via runtime service register) ──
@@ -231,12 +232,145 @@ export default defineFrameworkManifest({
         HAL_OPERATION_KINDS.filter((k) => k.startsWith('ble.')).map((k) => [k, 'supported']),
       ),
     },
+
+    // ── Supported: Worker offload (k_work system workqueue + k_sem) ──────────
+    // worker.* is lowered via lowerWorkerOp against the shared __tc_worker
+    // contract; the Zephyr backing (worker-backing.ts) supplies k_work + k_sem.
+    worker: {
+      supported: true,
+      partialCoverage: false,
+      ops: { 'worker.submit': 'supported', 'worker.done': 'supported' },
+    },
+
+    // ── Honestly unsupported extended categories ─────────────────────────────
+    // These have op-kinds in HAL_OPERATION_KINDS but no Zephyr lowering. Each
+    // is declared unsupported (with a reason) so the coverage matrix is uniform
+    // and the resolver's `return undefined` for these prefixes is honest. The
+    // catchall schema (HalCoverageSchema) validates any declared extended
+    // category; declaring them keeps the manifest a complete coverage record.
+
+    rmt: {
+      supported: false,
+      unsupportedReason: 'RMT (ESP32 infrared/transaction peripheral) has no Zephyr lowering.',
+      partialCoverage: false,
+      ops: unsupportedOps('rmt.'),
+    },
+    snprintf: {
+      supported: false,
+      unsupportedReason: 'snprintf.emit is a raw escape hatch; the Zephyr resolver returns undefined (use rawCpp()).',
+      partialCoverage: false,
+      ops: { 'snprintf.emit': 'unsupported' },
+    },
+    preferences: {
+      supported: false,
+      unsupportedReason: 'No NVS/Preferences lowering on Zephyr (Zephyr has settings subsystem; not wired).',
+      partialCoverage: false,
+      ops: unsupportedOps('preferences.'),
+    },
+    random: {
+      supported: false,
+      unsupportedReason: 'No random lowering on Zephyr (use sys_rand_get directly via rawCpp() if needed).',
+      partialCoverage: false,
+      ops: unsupportedOps('random.'),
+    },
+    fs: {
+      supported: false,
+      unsupportedReason: 'No filesystem lowering on Zephyr (Zephyr has its own FS API; not wired).',
+      partialCoverage: false,
+      ops: unsupportedOps('fs.'),
+    },
+    mdns: {
+      supported: false,
+      unsupportedReason: 'No mDNS lowering on Zephyr (requires networking stack).',
+      partialCoverage: false,
+      ops: unsupportedOps('mdns.'),
+    },
+    mqtt: {
+      supported: false,
+      unsupportedReason: 'No MQTT lowering on Zephyr (requires networking stack).',
+      partialCoverage: false,
+      ops: unsupportedOps('mqtt.'),
+    },
+    ota: {
+      supported: false,
+      unsupportedReason: 'No OTA lowering on Zephyr (Zephyr has MCUmgr; not wired).',
+      partialCoverage: false,
+      ops: unsupportedOps('ota.'),
+    },
+    temp: {
+      supported: false,
+      unsupportedReason: 'No on-chip temperature lowering on Zephyr (nRF52840 TEMP peripheral; not wired).',
+      partialCoverage: false,
+      ops: { 'temp.read': 'unsupported' },
+    },
+    hwtimer: {
+      supported: false,
+      unsupportedReason: 'No hardware-timer lowering on Zephyr (timers are handled via the k_timer polyfill, not hwtimer.*).',
+      partialCoverage: false,
+      ops: unsupportedOps('hwtimer.'),
+    },
+    capacitive: {
+      supported: false,
+      unsupportedReason: 'No capacitive-touch lowering on Zephyr (no such peripheral on nRF52840).',
+      partialCoverage: false,
+      ops: { 'capacitive.read': 'unsupported' },
+    },
+    i2s: {
+      supported: false,
+      unsupportedReason: 'No I2S / digital audio lowering on Zephyr.',
+      partialCoverage: false,
+      ops: unsupportedOps('i2s.'),
+    },
+    twai: {
+      supported: false,
+      unsupportedReason: 'No CAN / TWAI lowering on Zephyr (Zephyr CAN driver not wired).',
+      partialCoverage: false,
+      ops: unsupportedOps('twai.'),
+    },
+    usb: {
+      supported: false,
+      unsupportedReason: 'No USB OTG / USB-Serial lowering on Zephyr (Zephyr USB device stack not wired).',
+      partialCoverage: false,
+      ops: unsupportedOps('usb.'),
+    },
+    eth: {
+      supported: false,
+      unsupportedReason: 'No Ethernet MAC lowering on Zephyr.',
+      partialCoverage: false,
+      ops: unsupportedOps('eth.'),
+    },
+    espnow: {
+      supported: false,
+      unsupportedReason: 'ESP-NOW is an ESP-exclusive wireless protocol; no Zephyr lowering.',
+      partialCoverage: false,
+      ops: unsupportedOps('espnow.'),
+    },
+    crypto: {
+      supported: false,
+      unsupportedReason: 'No hardware crypto (AES/SHA/HMAC) lowering on Zephyr.',
+      partialCoverage: false,
+      ops: unsupportedOps('crypto.'),
+    },
+    pcnt: {
+      supported: false,
+      unsupportedReason: 'No pulse-counter (PCNT) lowering on Zephyr.',
+      partialCoverage: false,
+      ops: unsupportedOps('pcnt.'),
+    },
+    mcpwm: {
+      supported: false,
+      unsupportedReason: 'No motor-control PWM (MCPWM) lowering on Zephyr.',
+      partialCoverage: false,
+      ops: unsupportedOps('mcpwm.'),
+    },
     raw: { supported: true },
   },
 
   polyfills: {
     emitted: [
       { id: 'cuttlefish_halt', domain: 'standard', notes: 'Mapped to a k_msleep halt loop (exceptions disabled)' },
+      { id: 'timer_methods', domain: 'embedded', notes: 'k_timer + k_work pool (system workqueue); callbacks run in thread context' },
+      { id: 'async_runtime', domain: 'embedded', notes: 'Heap-free static Promise/microtask runtime (generateStaticAsyncRuntime), pumped in loop()' },
     ],
     suppressed: [],
   },
@@ -292,7 +426,7 @@ export default defineFrameworkManifest({
     // catches regressions like silent pull-resistor / interrupt no-ops.
     halResolutionTests: [
       'adc', 'ble', 'dac', 'gpio', 'i2c', 'interrupts', 'power', 'pulse',
-      'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt',
+      'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt', 'worker',
     ],
   },
 });
