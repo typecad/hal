@@ -45,6 +45,8 @@ import { interruptInitLines } from './lowering/interrupts.js';
 import { wdtInitLines } from './lowering/wdt.js';
 import { bleInitLines } from './lowering/ble.js';
 import { generateZephyrInitCode, generateZephyrBreakpointCode, generateZephyrLogpointCode } from './debug-codegen.js';
+import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
+import { buildTimerPolyfill } from './async/timer-polyfill.js';
 
 export class ZephyrStrategy implements PlatformStrategy {
   readonly id = 'zephyr';
@@ -66,7 +68,24 @@ export class ZephyrStrategy implements PlatformStrategy {
     return chip;
   }
 
+  /**
+   * Resolve the debug mode for the active target from the platform context.
+   * Mirrors resolveChip's target extraction so shimLines/forcedIncludes can
+   * gate the printf halt shim + console UART include to printf builds only
+   * (gdb builds use VS Code native breakpoints + #line markers, so the
+   * __tc_debug_wait_for_continue shim and its <zephyr/drivers/uart.h> include
+   * are dead code there).
+   */
+  private resolveDebugMode(ctx?: PlatformContext): 'gdb' | 'printf' {
+    const fd = ctx?.frameworkData as Record<string, unknown> | undefined;
+    const target =
+      (fd?.target as string | undefined) ??
+      (fd?.buildTarget as string | undefined);
+    return this.debugMode(target);
+  }
+
   forcedIncludes(_program?: ProgramIR, ctx?: PlatformContext): string[] {
+    const isPrintf = this.resolveDebugMode(ctx) === 'printf';
     // <zephyr/kernel.h> for k_msleep / k_uptime_get_32 / k_busy_wait / printk.
     // <zephyr/drivers/gpio.h> for the gpio_pin_*_dt / gpio_dt_spec API.
     // <cstdint> because DIRECT_CPP_TYPE_MAP passes int32_t/uint8_t through
@@ -83,10 +102,11 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesI2C')) inc.push('<zephyr/drivers/i2c.h>');
     if (uses('usesSPI')) inc.push('<zephyr/drivers/spi.h>');
     if (uses('usesUart')) inc.push('<zephyr/drivers/uart.h>');
-    // uart.h is also needed by the unconditional debug halt shim
+    // uart.h is also needed by the printf-mode debug halt shim
     // (__tc_debug_wait_for_continue polls the console UART) even when the
-    // program itself does not use the UART HAL. Tiny header; always linked.
-    if (!inc.includes('<zephyr/drivers/uart.h>')) inc.push('<zephyr/drivers/uart.h>');
+    // program itself does not use the UART HAL. In gdb mode the shim is not
+    // emitted, so skip the include there to avoid pulling in an unused header.
+    if (isPrintf && !inc.includes('<zephyr/drivers/uart.h>')) inc.push('<zephyr/drivers/uart.h>');
     if (uses('usesADC')) inc.push('<zephyr/drivers/adc.h>');
     if (uses('usesPWM')) inc.push('<zephyr/drivers/pwm.h>');
     if (uses('usesWDT')) inc.push('<zephyr/drivers/watchdog.h>');
@@ -106,6 +126,7 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   shimLines(program?: ProgramIR, ctx?: PlatformContext): string[] {
     const chip = this.resolveChip(ctx);
+    const isPrintf = this.resolveDebugMode(ctx) === 'printf';
     const lines: string[] = [
       '// cuttlefish runtime shim. Wrapped in a single include guard so the',
       '// block is safe to emit into multiple headers and .cpp files within',
@@ -170,38 +191,44 @@ export class ZephyrStrategy implements PlatformStrategy {
 
     // --- Debug-mode halt + per-breakpoint disable registry ---
     //
-    // Emitted unconditionally (guarded, static inline → dead-stripped when
-    // --debug is not used), mirroring framework-esp32. The cuttlefish debug
-    // preprocessor injects __tc_debug_wait_for_continue(id) calls at each
-    // breakpoint; without these definitions the emitted code would not link.
+    // Printf mode only. In gdb mode the cuttlefish debug preprocessor is
+    // skipped (core emits #line markers + VS Code native breakpoints instead),
+    // so __tc_debug_wait_for_continue is never called — skip the shim and its
+    // <zephyr/drivers/uart.h> dependency entirely (forcedIncludes mirrors this).
+    //
+    // The cuttlefish debug preprocessor injects __tc_debug_wait_for_continue(id)
+    // calls at each breakpoint; without these definitions the emitted code
+    // would not link.
     //
     // Zephyr's minimal libc has no getchar()/EOF, so the halt polls the console
     // UART directly via uart_poll_in on the system console device, yielding to
     // the scheduler with k_msleep between polls so an unattended breakpoint
     // does not starve the system. ENTER (or any non-'s' byte) = continue;
     // 's'/'S' = skip this breakpoint for the rest of the run (records the id).
-    lines.push(
-      '#ifndef __TC_BP_DISABLED_DEFINED',
-      '#define __TC_BP_DISABLED_DEFINED',
-      'static bool __tc_bp_disabled[256] = {0};',
-      'static inline bool __tc_bp_is_disabled(int id) { return id >= 0 && id < 256 && __tc_bp_disabled[id]; }',
-      // Console input: poll the UART console device. DEVICE_DT_GET(DT_CHOSEN(zephyr_console))
-      // resolves to the board's console (UART0 USB-CDC on the XIAO nRF52840).
-      'static inline char __tc_debug_wait_for_continue(int id) {',
-      '    const struct device* __con = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));',
-      '    unsigned char __c = 0;',
-      "    while (uart_poll_in(__con, &__c) != 0) {",
-      '        k_msleep(10);',
-      '    }',
-      "    // Drain the rest of the typed line so the next breakpoint waits fresh.",
-      "    unsigned char __peek = 0;",
-      "    while (uart_poll_in(__con, &__peek) == 0 && __peek != '\\n') { (void)0; }",
-      "    if ((__c == 's') || (__c == 'S')) { if (id >= 0 && id < 256) __tc_bp_disabled[id] = true; }",
-      '    return static_cast<char>(__c);',
-      '}',
-      '#endif // __TC_BP_DISABLED_DEFINED',
-      '',
-    );
+    if (isPrintf) {
+      lines.push(
+        '#ifndef __TC_BP_DISABLED_DEFINED',
+        '#define __TC_BP_DISABLED_DEFINED',
+        'static bool __tc_bp_disabled[256] = {0};',
+        'static inline bool __tc_bp_is_disabled(int id) { return id >= 0 && id < 256 && __tc_bp_disabled[id]; }',
+        // Console input: poll the UART console device. DEVICE_DT_GET(DT_CHOSEN(zephyr_console))
+        // resolves to the board's console (UART0 USB-CDC on the XIAO nRF52840).
+        'static inline char __tc_debug_wait_for_continue(int id) {',
+        '    const struct device* __con = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));',
+        '    unsigned char __c = 0;',
+        "    while (uart_poll_in(__con, &__c) != 0) {",
+        '        k_msleep(10);',
+        '    }',
+        "    // Drain the rest of the typed line so the next breakpoint waits fresh.",
+        "    unsigned char __peek = 0;",
+        "    while (uart_poll_in(__con, &__peek) == 0 && __peek != '\\n') { (void)0; }",
+        "    if ((__c == 's') || (__c == 'S')) { if (id >= 0 && id < 256) __tc_bp_disabled[id] = true; }",
+        '    return static_cast<char>(__c);',
+        '}',
+        '#endif // __TC_BP_DISABLED_DEFINED',
+        '',
+      );
+    }
 
     // --- Zephyr entrypoint: main() runs setup()/loop() directly ---
     // The cuttlefish synthesizer emits setup() and loop() (it keys off
@@ -574,24 +601,19 @@ export class ZephyrStrategy implements PlatformStrategy {
   }
 
   // ── Async ───────────────────────────────────────────────────────────────
-  // The MVP lowers no async runtime: the manifest declares all timer ops
-  // (timing.set_interval/timeout/clear_*) unsupported and emits no
-  // timer_methods or async_runtime polyfills (see generateNativePolyfills /
-  // manifest.polyfills.emitted). getAsyncRuntimeConfig therefore reports
-  // hasPromiseRuntime:false + hasTimers:false. asyncLoopInjection keeps a
-  // cooperative-pump branch for completeness, but with those flags both false
-  // it is inert — it always returns []. When timers land (workqueue / k_thread
-  // backing), flip the flags here, add the polyfills to the manifest, and the
-  // pump branch activates without further strategy changes.
+  // Hybrid: timers are native (k_timer + k_work, see src/async/timer-polyfill.ts);
+  // Promises use the heap-free static runtime (generateStaticAsyncRuntime), pumped
+  // cooperatively in loop() via cuttlefish_pump_microtasks(). There is no
+  // __tc_timer_runtime.run() poll — native timers fire from their own expiry path.
 
   getAsyncRuntimeConfig(): AsyncRuntimeConfig {
     return {
       queueCapacity: 64,
       scheduler: 'microtask',
       waitForPinEdge: 'stub',
-      hasPromiseRuntime: false,
-      hasTimers: false,
-      // Minimal C++ lib — no STL headers available.
+      hasPromiseRuntime: true,
+      hasTimers: true,
+      // Static (heap-free) runtime — no STL headers required.
       requiredIncludes: [],
     };
   }
@@ -678,7 +700,11 @@ export class ZephyrStrategy implements PlatformStrategy {
   // one symbol the runtime header may reference; supply it as a halt loop.
 
   nativePolyfills(): Set<string> {
-    return new Set<string>();
+    // cuttlefish_halt: always (the runtime header may reference it).
+    // timer_methods: k_timer/k_work pool for setInterval/setTimeout (gated on
+    //   timerCallCount at emit time in generateNativePolyfills).
+    // async_runtime: heap-free static Promise/microtask runtime (no STL needed).
+    return new Set<string>(['cuttlefish_halt', 'timer_methods', 'async_runtime']);
   }
 
   generateNativePolyfills(program?: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
@@ -705,6 +731,33 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (program && usesWorker) {
       const workerPoly = buildWorkerRuntimePolyfill(program, this, buildZephyrWorkerBacking(), { poolSize: 4 });
       if (workerPoly) polyfills.push(workerPoly);
+    }
+
+    // timer_methods — k_timer/k_work pool. Gated on observed timer call count;
+    // a program with no setInterval/setTimeout emits nothing.
+    const analysis = (ctx as { analysis?: { timerCallCount?: number } } | undefined)?.analysis;
+    const timerCallCount = analysis?.timerCallCount ?? 0;
+    if (timerCallCount > 0) {
+      polyfills.push(buildTimerPolyfill(timerCallCount));
+    }
+
+    // async_runtime — heap-free static Promise/microtask runtime. Emitted only
+    // when the program declares an async function (the shared runtime's static
+    // path requires no STL headers, so it is safe under Zephyr's minimal C++ lib).
+    const usesAsync = !!program && program.functions.some((fn: any) => fn && fn.isAsync);
+    if (usesAsync) {
+      polyfills.push({
+        kind: 'polyfill',
+        id: 'async_runtime',
+        domain: 'embedded',
+        requiredIncludes: [],
+        forwardDeclarations: [],
+        helperStructs: [generateStaticAsyncRuntime(8)],
+        helperFunctions: [],
+        shimMacros: [],
+        dependencies: [],
+        hasPromiseRuntime: true,
+      } as RuntimePolyfillIR);
     }
     return polyfills;
   }
@@ -773,10 +826,20 @@ export class ZephyrStrategy implements PlatformStrategy {
   // available, no CONFIG_CONSOLE dependency) and the __tc_debug_wait_for_continue
   // halt emitted in shimLines. See src/debug-codegen.ts.
   //
-  // All Zephyr targets stay on the printf/printk instrumentation path (no GDB
-  // wiring yet — a J-Link/OpenOCD path for the XIAO nRF52840 is a follow-on).
+  // Target-selective: targets with a debug probe get native GDB source-level
+  // debugging (core emits #line markers + skips printf instrumentation); the
+  // rest fall back to the printk instrumentation path. The ESP32-S3 has a
+  // built-in USB-JTAG (single-cable GDB via OpenOCD) so it selects 'gdb'.
+  // The XIAO nRF52840 needs its J-Link wired up; its GDB path is a follow-on,
+  // so it stays on printf for now.
 
-  debugMode(_target?: string): 'gdb' | 'printf' {
+  debugMode(target?: string): 'gdb' | 'printf' {
+    // `target` is the Zephyr board id (optionally with a /qualifier suffix,
+    // e.g. 'esp32s3_devkitc/esp32s3/procpu'). Match on the bare board id.
+    const boardId = (target ?? '').split('/')[0];
+    if (boardId === 'esp32s3_devkitc' || boardId.startsWith('esp32s3')) {
+      return 'gdb';
+    }
     return 'printf';
   }
 
