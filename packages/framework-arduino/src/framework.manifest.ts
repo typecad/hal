@@ -330,6 +330,112 @@ export default defineFrameworkManifest({
       partialCoverage: false,
       ops: { 'mcpwm.init': 'unsupported', 'mcpwm.set_duty': 'unsupported', 'mcpwm.start': 'unsupported' },
     },
+    // ── Remaining extended categories ────────────────────────────────────────
+    // These have op-kinds in HAL_OPERATION_KINDS. fs/preferences/hwtimer/
+    // snprintf are supported via the Arduino core (FS.h, Preferences, STM32
+    // HardwareTimer, snprintf). The rest are genuinely unsupported on the
+    // Arduino core (networking/ESP32-silicon/RTOS categories — framework-esp32
+    // owns the native lowerings). Declaring them all keeps the coverage matrix
+    // uniform and satisfies the completeness check.
+    fs: {
+      // Arduino-core FS.h / SD.h filesystem (STM32/samd cores). ESP32 overrides
+      // to esp_vfs_fat_sdmmc_mount + POSIX helpers.
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'fs.begin': 'supported', 'fs.read_text': 'supported', 'fs.write_text': 'supported',
+        'fs.exists': 'supported', 'fs.remove': 'supported',
+      },
+    },
+    mdns: {
+      supported: false,
+      unsupportedReason: 'No mDNS lowering in the Arduino core (requires networking stack).',
+      partialCoverage: false,
+      ops: { 'mdns.start': 'unsupported', 'mdns.set_hostname': 'unsupported', 'mdns.add_service': 'unsupported', 'mdns.announce': 'unsupported', 'mdns.stop': 'unsupported' },
+    },
+    mqtt: {
+      supported: false,
+      unsupportedReason: 'No MQTT lowering in the Arduino core (requires networking stack).',
+      partialCoverage: false,
+      ops: { 'mqtt.connect': 'unsupported', 'mqtt.on_message': 'unsupported', 'mqtt.subscribe': 'unsupported', 'mqtt.publish': 'unsupported', 'mqtt.connected': 'unsupported', 'mqtt.disconnect': 'unsupported' },
+    },
+    ota: {
+      supported: false,
+      unsupportedReason: 'No OTA lowering in the Arduino core.',
+      partialCoverage: false,
+      ops: { 'ota.from_url': 'unsupported', 'ota.begin': 'unsupported', 'ota.write': 'unsupported', 'ota.apply': 'unsupported' },
+    },
+    preferences: {
+      // Arduino-core Preferences (NVS on esp32, EEPROM-backed AVR shim elsewhere).
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'preferences.begin': 'supported', 'preferences.end': 'supported', 'preferences.clear': 'supported', 'preferences.remove': 'supported',
+        'preferences.put_int': 'supported', 'preferences.get_int': 'supported',
+        'preferences.put_uint': 'supported', 'preferences.get_uint': 'supported',
+        'preferences.put_bool': 'supported', 'preferences.get_bool': 'supported',
+        'preferences.put_float': 'supported', 'preferences.get_float': 'supported',
+        'preferences.put_string': 'supported', 'preferences.get_string': 'supported',
+      },
+    },
+    worker: {
+      supported: false,
+      unsupportedReason: 'No worker-offload lowering in the Arduino core (single-threaded loop model).',
+      partialCoverage: false,
+      ops: { 'worker.submit': 'unsupported', 'worker.done': 'unsupported' },
+    },
+    temp: {
+      supported: false,
+      unsupportedReason: 'No on-chip temperature lowering in the Arduino core.',
+      partialCoverage: false,
+      ops: { 'temp.read': 'unsupported' },
+    },
+    hwtimer: {
+      // STM32-Arduino HardwareTimer singletons (Timer0/1/2). ESP32 overrides to
+      // the GPTimer driver.
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'hwtimer.set_frequency': 'supported', 'hwtimer.on_overflow': 'supported',
+        'hwtimer.start': 'supported', 'hwtimer.stop': 'supported',
+      },
+    },
+    capacitive: {
+      supported: false,
+      unsupportedReason: 'No capacitive-touch lowering in the Arduino core (no such peripheral on AVR/SAMD).',
+      partialCoverage: false,
+      ops: { 'capacitive.read': 'unsupported' },
+    },
+    rmt: {
+      supported: false,
+      unsupportedReason: 'RMT is an ESP32 peripheral, not part of the Arduino core on AVR/SAMD.',
+      partialCoverage: false,
+      ops: { 'rmt.tx_init': 'unsupported', 'rmt.tx_write_bytes': 'unsupported', 'rmt.tx_write_symbols': 'unsupported', 'rmt.tx_wait_done': 'unsupported', 'rmt.tx_deinit': 'unsupported', 'rmt.rx_init': 'unsupported', 'rmt.rx_on_received': 'unsupported', 'rmt.rx_start': 'unsupported', 'rmt.rx_stop': 'unsupported', 'rmt.rx_read': 'unsupported', 'rmt.rx_deinit': 'unsupported' },
+    },
+    ble: {
+      supported: false,
+      unsupportedReason: 'No BLE lowering as Arduino-core HAL (BLE is library-level on esp32/nRF52 cores, not core HAL).',
+      partialCoverage: false,
+      ops: {
+        'ble.server_begin': 'unsupported', 'ble.advertise_start': 'unsupported', 'ble.advertise_stop': 'unsupported',
+        'ble.add_service': 'unsupported', 'ble.add_char': 'unsupported',
+        'ble.on_read': 'unsupported', 'ble.on_write': 'unsupported', 'ble.on_connect': 'unsupported',
+        'ble.on_disconnect': 'unsupported', 'ble.notify': 'unsupported',
+        'ble.is_connected': 'unsupported', 'ble.client_count': 'unsupported', 'ble.set_name': 'unsupported',
+        'ble.until_connected': 'unsupported', 'ble.until_connected_start': 'unsupported',
+        'ble.set_tx_power': 'unsupported', 'ble.status': 'unsupported',
+      },
+    },
+    snprintf: {
+      // snprintf.emit lowers to a real snprintf() call, but the minimal probe
+      // (just { operation }) can't exercise it — it needs bufferName/format/
+      // args, and op.args.join() throws without them. probe-inconclusive is the
+      // honest status: the renderer flags it for manual review rather than the
+      // validator false-negativing a real lowering.
+      supported: true,
+      partialCoverage: false,
+      ops: { 'snprintf.emit': 'probe-inconclusive' },
+    },
     raw: { supported: true },
   },
 
