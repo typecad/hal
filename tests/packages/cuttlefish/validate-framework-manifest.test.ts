@@ -490,3 +490,44 @@ describe('validateFrameworkManifest — conformance', () => {
 // from the same barrel as HAL_OPERATION_KINDS and we want to assert both are
 // available to consumers (the validator imports them internally).
 void DISPLAY_OPERATION_KINDS;
+
+describe('validateFrameworkManifest — HAL completeness', () => {
+  it('errors when a known category is missing from manifest.hal', () => {
+    const manifest = makeMinimalManifest();
+    // Remove a category the validator knows about (rmt is in CATEGORY_PREFIXES).
+    delete (manifest.hal as Record<string, unknown>).rmt;
+    const result = validateFrameworkManifest(manifest, {
+      strategy: makeStubStrategy(),
+      moduleExports: {},
+      packageRoot: '/x',
+      repoTestsDir: '/x',
+    });
+    expect(result.errors.map((e) => e.code)).toContain('hal/rmt/category-undeclared');
+  });
+
+  it('passes when every known category is declared', () => {
+    // makeMinimalManifest already covers every category (makeDefaultHal derives
+    // from HAL_OPERATION_KINDS), so the completeness check produces no errors.
+    const result = validateFrameworkManifest(makeMinimalManifest(), {
+      strategy: makeStubStrategy(),
+      moduleExports: {},
+      packageRoot: '/x',
+      repoTestsDir: '/x',
+    });
+    const completenessErrors = result.errors.filter((e) =>
+      e.code.endsWith('/category-undeclared'));
+    expect(completenessErrors).toEqual([]);
+  });
+
+  it('does not require raw (raw is schema-handled, not a real category)', () => {
+    const manifest = makeMinimalManifest();
+    delete (manifest.hal as Record<string, unknown>).raw;
+    const result = validateFrameworkManifest(manifest, {
+      strategy: makeStubStrategy(),
+      moduleExports: {},
+      packageRoot: '/x',
+      repoTestsDir: '/x',
+    });
+    expect(result.errors.map((e) => e.code)).not.toContain('hal/raw/category-undeclared');
+  });
+});

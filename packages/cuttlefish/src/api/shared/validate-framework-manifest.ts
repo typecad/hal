@@ -407,6 +407,36 @@ function validateHalCoverage(
 }
 
 // ---------------------------------------------------------------------------
+// Category C2 — HAL completeness
+// ---------------------------------------------------------------------------
+
+/**
+ * Verify every known HAL category appears in manifest.hal. validateHalCoverage
+ * only audits categories the manifest declares; a category omitted entirely is
+ * invisible to it (and to the per-op check). This step closes that hole: each
+ * category in CATEGORY_PREFIXES must be accounted for, even as unsupported.
+ * `raw` is excluded — it is the schema-level escape hatch, not a real category,
+ * and is not in CATEGORY_PREFIXES.
+ */
+function validateHalCompleteness(
+  manifest: FrameworkManifest,
+  _ctx: ManifestValidationContext,
+  acc: Accumulator,
+): void {
+  const declared = new Set(Object.keys(manifest.hal));
+  for (const category of Object.keys(CATEGORY_PREFIXES)) {
+    if (!declared.has(category)) {
+      acc.error(
+        `hal/${category}/category-undeclared`,
+        `manifest.hal.${category}`,
+        `manifest.hal is missing the "${category}" category. Add a block declaring it (supported: true/false with ops, or unsupported with unsupportedReason).`,
+        category,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Category D — polyfills
 // ---------------------------------------------------------------------------
 
@@ -680,6 +710,7 @@ export function validateFrameworkManifest(
   validateIdentity(manifest, ctx, acc);
   validateEntrypoint(manifest, ctx, acc);
   validateHalCoverage(manifest, ctx, acc);
+  validateHalCompleteness(manifest, ctx, acc);
   validatePolyfills(manifest, ctx, acc);
   validateToolchain(manifest, ctx, acc);
   validateLibraryResolution(manifest, ctx, acc);
