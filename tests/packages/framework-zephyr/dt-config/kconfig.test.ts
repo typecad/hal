@@ -46,4 +46,13 @@ describe('resolveKconfigFragments', () => {
     expect(m.get('CONFIG_BT')).toBe('y');
     expect(m.get('CONFIG_BT_PERIPHERAL')).toBe('y');
   });
+
+  it('enables WiFi + networking symbols when usesWifi', () => {
+    const m = resolveKconfigFragments({ usesWifi: true }, false);
+    expect(m.get('CONFIG_WIFI')).toBe('y');
+    expect(m.get('CONFIG_WIFI_ESP32')).toBe('y');
+    expect(m.get('CONFIG_NET_CONNECTION_MANAGER')).toBe('y');
+    expect(m.get('CONFIG_NET_MGMT_EVENT')).toBe('y');
+    expect(m.get('CONFIG_NET_DHCPV4')).toBe('y');
+  });
 });

@@ -18,6 +18,7 @@ export interface KconfigUsage {
   usesBle?: boolean;
   usesDisplay?: boolean;
   usesPower?: boolean;
+  usesWifi?: boolean;
 }
 
 /**
@@ -44,6 +45,17 @@ export function resolveKconfigFragments(
   if (usage.usesPower) {
     m.set('CONFIG_PM', 'y');
     m.set('CONFIG_PM_DEVICE', 'y');
+  }
+  if (usage.usesWifi) {
+    m.set('CONFIG_WIFI', 'y');
+    m.set('CONFIG_WIFI_ESP32', 'y');            // ESP32-specific driver (sole WiFi target)
+    m.set('CONFIG_NET_L2_ETHERNET', 'y');
+    m.set('CONFIG_NET_IPV4', 'y');
+    m.set('CONFIG_NET_DHCPV4', 'y');
+    m.set('CONFIG_NET_CONFIG', 'y');            // brings the iface up at boot
+    m.set('CONFIG_NET_MGMT', 'y');
+    m.set('CONFIG_NET_MGMT_EVENT', 'y');        // required for the net_mgmt callbacks
+    m.set('CONFIG_NET_CONNECTION_MANAGER', 'y'); // conn_mgr — the connect portability layer
   }
   if (usage.usesBle) {
     m.set('CONFIG_BT', 'y');
