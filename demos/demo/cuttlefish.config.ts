@@ -18,7 +18,7 @@ const config: CuttlefishConfig = {
   frameworkData: { buildTarget: 'esp32s3_devkitc/esp32s3/procpu' },
   output: { outDir: './out' },
   toolchain: { type: 'west' },
-  console: { baudRate: 115200 },
+  console: { baudRate: 115200, port: 'COM5' },
 };
 
 export default config;

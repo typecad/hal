@@ -608,6 +608,7 @@ async function main(): Promise<void> {
               extraFlags: config?.outputExtraFlags,
               defines: config?.outputDefines,
               frameworkConfig: config?.frameworkConfig,
+              debug: options.debug,
             };
             ui.printCompiling(buildTarget ?? "native");
             const compileResult = compileSource(watchOpts);
@@ -708,6 +709,7 @@ async function main(): Promise<void> {
                   extraFlags: config?.outputExtraFlags,
                   defines: config?.outputDefines,
                   frameworkConfig: config?.frameworkConfig,
+                  debug: options.debug,
                 };
                 ui.printCompiling(buildTarget ?? "native");
                 const compileResult = compileSource(rebuildOpts);
@@ -815,6 +817,7 @@ async function main(): Promise<void> {
       extraFlags: config?.outputExtraFlags,
       defines: config?.outputDefines,
       frameworkConfig: config?.frameworkConfig,
+      debug: options.debug,
     };
 
     ui.printCompiling(buildTarget ?? "native");
