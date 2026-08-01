@@ -218,9 +218,10 @@ export default defineFrameworkManifest({
         'wifi.scan_done': 'supported', 'wifi.scan_count': 'supported',
         'wifi.scan_ssid': 'supported', 'wifi.scan_rssi': 'supported',
         'wifi.scan_encryption': 'supported', 'wifi.scan_channel': 'supported',
-        // Config (2) — hostname + tx power.
-        'wifi.set_hostname': 'supported', 'wifi.set_tx_power': 'supported',
-        // Out of scope (15) — each genuinely not lowered (resolver returns undefined).
+        // Config (1) — hostname. (set_tx_power unsupported: no net_mgmt request
+        // constant in this Zephyr version.)
+        'wifi.set_hostname': 'supported',
+        // Out of scope (16) — each genuinely not lowered (resolver returns undefined).
         'wifi.ap_start': 'unsupported', 'wifi.ap_stop': 'unsupported',
         'wifi.ap_client_count': 'unsupported', 'wifi.ap_ip': 'unsupported',
         'wifi.ap_set_channel': 'unsupported', 'wifi.ap_set_hidden': 'unsupported',
@@ -230,6 +231,7 @@ export default defineFrameworkManifest({
         'wifi.wait_connected': 'unsupported', 'wifi.wait_disconnected': 'unsupported',
         'wifi.set_power_save': 'unsupported', 'wifi.set_static_ip': 'unsupported',
         'wifi.set_auto_reconnect': 'unsupported', 'wifi.on_event': 'unsupported',
+        'wifi.set_tx_power': 'unsupported',
       },
     },
     http: {

@@ -18,9 +18,11 @@ describe('resolveKconfigFragments', () => {
     expect(m.has('CONFIG_I2C')).toBe(false);  // not used
   });
 
-  it('enables SYSTEM_WORKQUEUE + bumps stack', () => {
+  it('bumps SYSTEM_WORKQUEUE_STACK_SIZE (workqueue itself is unconditional)', () => {
     const m = resolveKconfigFragments({}, false);
-    expect(m.get('CONFIG_SYSTEM_WORKQUEUE')).toBe('y');
+    // CONFIG_SYSTEM_WORKQUEUE is not a real Zephyr symbol (the workqueue is
+    // always built); only the stack size is a real knob.
+    expect(m.has('CONFIG_SYSTEM_WORKQUEUE')).toBe(false);
     expect(m.get('CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE')).toBe('8192');
   });
 
@@ -49,10 +51,12 @@ describe('resolveKconfigFragments', () => {
 
   it('enables WiFi + networking symbols when usesWifi', () => {
     const m = resolveKconfigFragments({ usesWifi: true }, false);
+    expect(m.get('CONFIG_NETWORKING')).toBe('y');   // master switch
     expect(m.get('CONFIG_WIFI')).toBe('y');
     expect(m.get('CONFIG_WIFI_ESP32')).toBe('y');
     expect(m.get('CONFIG_NET_CONNECTION_MANAGER')).toBe('y');
     expect(m.get('CONFIG_NET_MGMT_EVENT')).toBe('y');
     expect(m.get('CONFIG_NET_DHCPV4')).toBe('y');
+    expect(m.get('CONFIG_NET_CONFIG_SETTINGS')).toBe('y');
   });
 });

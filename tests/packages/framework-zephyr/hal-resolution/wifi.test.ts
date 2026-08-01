@@ -19,7 +19,7 @@ describe('wifi init shim', () => {
   });
 
   it('registers a net_mgmt handler for L4 connectivity + WiFi scan events', () => {
-    expect(shim).toContain('net_mgmt_init_event_handler');
+    expect(shim).toContain('net_mgmt_init_event_callback');
     expect(shim).toContain('NET_EVENT_L4_CONNECTED');
     expect(shim).toContain('NET_EVENT_L4_DISCONNECTED');
     expect(shim).toContain('NET_EVENT_WIFI_SCAN_RESULT');
@@ -90,10 +90,6 @@ describe('wifi lowering — config ops', () => {
     expect(lowerWifi({ operation: 'wifi.set_hostname', name: '"dev"' } as any))
       .toEqual({ code: '__tc_wifi_set_hostname("dev");' });
   });
-  it('set_tx_power → shim call', () => {
-    expect(lowerWifi({ operation: 'wifi.set_tx_power', dbm: 20 } as any))
-      .toEqual({ code: '__tc_wifi_set_tx_power(20);' });
-  });
 });
 
 describe('wifi lowering — out-of-scope ops return undefined', () => {
@@ -107,6 +103,7 @@ describe('wifi lowering — out-of-scope ops return undefined', () => {
     'wifi.save_credentials', 'wifi.connect_saved', 'wifi.clear_credentials',
     'wifi.wait_connected', 'wifi.wait_disconnected',
     'wifi.set_power_save', 'wifi.set_static_ip', 'wifi.set_auto_reconnect', 'wifi.on_event',
+    'wifi.set_tx_power',
   ];
   for (const op of unsupported) {
     it(`${op} → undefined`, () => {
