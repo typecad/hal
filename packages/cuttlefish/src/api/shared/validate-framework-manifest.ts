@@ -105,6 +105,11 @@ const CATEGORY_PREFIXES: Record<string, string[]> = {
   crypto: ['crypto.'],
   pcnt: ['pcnt.'],
   mcpwm: ['mcpwm.'],
+  // Worker offload + snprintf raw-escape: recognized categories. Frameworks
+  // that lower worker.* declare it supported; snprintf.emit is a raw escape
+  // hatch (declared unsupported by frameworks that don't special-case it).
+  worker: ['worker.'],
+  snprintf: ['snprintf.'],
 };
 
 function opKindsForCategory(category: string): string[] {
