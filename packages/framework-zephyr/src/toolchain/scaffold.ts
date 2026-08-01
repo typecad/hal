@@ -80,6 +80,7 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false): void 
     usesBle: uses('bt_') || uses('bt_gatt') || uses('bt_le_'),
     usesDisplay: uses('display_write') || uses('display_init') || uses('display_fill_rect'),
     usesPower: uses('pm_') || uses('k_sleep') || uses('power_'),
+    usesWifi: uses('wifi_') || uses('net_mgmt') || uses('conn_mgr'),
   };
 
   // ── Root CMakeLists.txt ─────────────────────────────────────────────────
@@ -122,10 +123,15 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false): void 
   ];
   // Emit a section header before the BT block when present.
   let btHeaderEmitted = false;
+  let wifiHeaderEmitted = false;
   for (const [sym, val] of symbols) {
     if (sym === 'CONFIG_BT' && !btHeaderEmitted) {
       prjConf.push('', '# Bluetooth (NimBLE peripheral).');
       btHeaderEmitted = true;
+    }
+    if (sym === 'CONFIG_WIFI' && !wifiHeaderEmitted) {
+      prjConf.push('', '# WiFi / networking (conn_mgr + esp32 wifi driver).');
+      wifiHeaderEmitted = true;
     }
     prjConf.push(`${sym}=${val}`);
   }

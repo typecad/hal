@@ -44,6 +44,7 @@ import { uartInitLines } from './lowering/uart.js';
 import { interruptInitLines } from './lowering/interrupts.js';
 import { wdtInitLines } from './lowering/wdt.js';
 import { bleInitLines } from './lowering/ble.js';
+import { wifiInitLines } from './lowering/wifi.js';
 import { generateZephyrInitCode, generateZephyrBreakpointCode, generateZephyrLogpointCode } from './debug-codegen.js';
 import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
 import { buildTimerPolyfill } from './async/timer-polyfill.js';
@@ -119,6 +120,11 @@ export class ZephyrStrategy implements PlatformStrategy {
     // directly from the program IR. (When program is absent — e.g. a capability
     // query — default to emitting the include so a real build never strips it.)
     if (!_program || this.programUsesDisplay(_program)) inc.push('<zephyr/drivers/display.h>');
+    if (uses('usesWifi')) inc.push(
+      '<zephyr/net/net_mgmt.h>', '<zephyr/net/wifi_mgmt.h>',
+      '<zephyr/net/net_if.h>', '<zephyr/net/net_ip.h>',
+      '<zephyr/net/conn_mgr_connectivity.h>', '<zephyr/net/conn_mgr_monitor.h>',
+    );
     // std::string — Zephyr has no umbrella header that transitively pulls in
     // <string> (unlike framework-arduino's <Arduino.h>), so a program that
     // lowers a std::string parameter/variable must request it explicitly. Uses
@@ -266,6 +272,7 @@ export class ZephyrStrategy implements PlatformStrategy {
       lines.push(rt.fontTable);
       lines.push(rt.helpers);
     }
+    if (uses('usesWifi')) lines.push(...wifiInitLines());
 
     lines.push('#endif // CUTTLEFISH_SHIM_DEFINED');
 
@@ -372,6 +379,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     const outputPins = new Set<number>();
     const adcReadPins = new Set<number>();
     const interruptPins = new Set<number>();
+    let usesWifiOps = false;
     const visit = (node: any): void => {
       if (node && typeof node === 'object') {
         if (node.operation && typeof node.operation === 'object') {
@@ -388,6 +396,9 @@ export class ZephyrStrategy implements PlatformStrategy {
           }
           if (op.operation === 'interrupt.attach' && typeof op.pin === 'number') {
             interruptPins.add(op.pin);
+          }
+          if (typeof op.operation === 'string' && op.operation.startsWith('wifi.')) {
+            usesWifiOps = true;
           }
         }
         for (const k of Object.keys(node)) {
@@ -439,6 +450,21 @@ export class ZephyrStrategy implements PlatformStrategy {
           source: program.fileName,
         });
       }
+    }
+
+    // ── WiFi target validity ────────────────────────────────────────────────
+    // WiFi ops require a chip with a WiFi radio. The ESP32-S3 descriptor sets
+    // wifi.supported; the XIAO nRF52840 omits it (no radio). Flag wifi usage on
+    // a radioless chip so the user gets a clear "use esp32s3_devkitc" message
+    // instead of an opaque link/DT failure.
+    if (usesWifiOps && !chip.wifi?.supported) {
+      diags.push({
+        severity: 'error',
+        code: 'zephyr-wifi-unavailable-on-target',
+        message: `WiFi ops are used but ${chip.id} has no WiFi radio.`,
+        hint: `Use the esp32s3_devkitc target (the ESP32-S3 has a 2.4GHz WiFi radio).`,
+        source: program.fileName,
+      });
     }
 
     // ── Unused-analysis: surface a hint that this is a no-analysis probe ────

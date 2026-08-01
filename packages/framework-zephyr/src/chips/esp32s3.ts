@@ -51,4 +51,7 @@ export const ESP32S3_DEVKITC: ZephyrChipDescriptor = {
   // devicetree at compile time and don't need to be carried as data here. ADC is
   // omitted as well — added when a demo needs analog reads, with the verified
   // ESP32-S3 ADC1/ADC2 pin→channel map.
+  // WiFi: the ESP32-S3 has a 2.4GHz radio; conn_mgr + the esp32 wifi driver
+  // (CONFIG_WIFI_ESP32) provide connectivity. Omitted on radioless targets.
+  wifi: { supported: true },
 };

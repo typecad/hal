@@ -16,7 +16,6 @@
     "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "resolveJsonModule": true,
-    "baseUrl": ".",
     "paths": {
       "@typecad/board": ["./.cuttlefish/board.ts"]
     }

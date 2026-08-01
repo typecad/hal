@@ -153,5 +153,11 @@ export interface ZephyrChipDescriptor {
   };
   /** Watchdog node label, e.g. 'wdt0'. */
   readonly wdt?: { readonly nodeLabel: string };
+  /**
+   * WiFi capability marker. Present only on chips with a WiFi radio (ESP32-S3).
+   * Read by profileDiagnostics to flag wifi.* usage on chips without a radio.
+   * Omit on radioless chips (nRF52840) — its absence is the "no WiFi" signal.
+   */
+  readonly wifi?: { readonly supported: true };
 }
 

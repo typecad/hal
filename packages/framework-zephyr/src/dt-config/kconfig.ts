@@ -18,6 +18,7 @@ export interface KconfigUsage {
   usesBle?: boolean;
   usesDisplay?: boolean;
   usesPower?: boolean;
+  usesWifi?: boolean;
 }
 
 /**
@@ -45,6 +46,21 @@ export function resolveKconfigFragments(
     m.set('CONFIG_PM', 'y');
     m.set('CONFIG_PM_DEVICE', 'y');
   }
+  if (usage.usesWifi) {
+    // Master networking switch — every CONFIG_NET_* symbol depends on NETWORKING
+    // (without it, Kconfig silently forces them all to n).
+    m.set('CONFIG_NETWORKING', 'y');
+    m.set('CONFIG_WIFI', 'y');
+    m.set('CONFIG_WIFI_ESP32', 'y');            // ESP32-specific driver (sole WiFi target)
+    m.set('CONFIG_NET_L2_ETHERNET', 'y');
+    m.set('CONFIG_NET_IPV4', 'y');
+    m.set('CONFIG_NET_UDP', 'y');               // transitive dep of NET_DHCPV4
+    m.set('CONFIG_NET_DHCPV4', 'y');
+    m.set('CONFIG_NET_CONFIG_SETTINGS', 'y');   // the real symbol (CONFIG_NET_CONFIG is undefined)
+    m.set('CONFIG_NET_MGMT', 'y');
+    m.set('CONFIG_NET_MGMT_EVENT', 'y');        // required for the net_mgmt callbacks
+    m.set('CONFIG_NET_CONNECTION_MANAGER', 'y'); // conn_mgr — the connect portability layer
+  }
   if (usage.usesBle) {
     m.set('CONFIG_BT', 'y');
     m.set('CONFIG_BT_PERIPHERAL', 'y');
@@ -53,8 +69,10 @@ export function resolveKconfigFragments(
   // usesUart: the board enables the console UART by default; the overlay (not
   // Kconfig) is where a UART node would be enabled, so no symbol here.
 
-  // System workqueue — bumped for worker-offload AND timer callbacks.
-  m.set('CONFIG_SYSTEM_WORKQUEUE', 'y');
+  // System workqueue — bumped for worker-offload AND timer callbacks. The
+  // workqueue itself is unconditionally built (no CONFIG_SYSTEM_WORKQUEUE symbol
+  // exists in Zephyr — that was a phantom that broke real builds); only the
+  // stack size is a real Kconfig knob.
   m.set('CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE', '8192');
 
   // C++ support.

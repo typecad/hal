@@ -53,6 +53,13 @@ export interface FrameworkToolchain {
   compile(options: ToolchainOptions): CompileResult;
   upload?(options: ToolchainOptions): UploadResult;
   monitor?(options: ToolchainOptions): void;
+  /**
+   * Optional: launch an interactive debugger session for the last build
+   * (e.g. `west debug`). Not invoked by the standard build/compile flow;
+   * powers an explicit debug-attach entry point. Frameworks that support
+   * source-level debugging implement this to spawn their native debugger.
+   */
+  debug?(options: ToolchainOptions): void;
 }
 
 // ── Singleton state ────────────────────────────────────────────────────────

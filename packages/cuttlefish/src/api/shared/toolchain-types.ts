@@ -58,6 +58,12 @@ export interface ToolchainOptions {
    * Each framework casts this to its own typed interface.
    */
   frameworkConfig?: Record<string, unknown>;
+  /**
+   * True when `--debug` is active. Frameworks read this to generate debug
+   * artifacts (e.g. VS Code launch configs, debug Kconfig symbols) and to
+   * select their debug mode (gdb vs printf) via PlatformDebugStrategy.
+   */
+  debug?: boolean;
 }
 
 /**
