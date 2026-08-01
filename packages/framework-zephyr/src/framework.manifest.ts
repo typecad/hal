@@ -200,10 +200,37 @@ export default defineFrameworkManifest({
         'wdt.disable': 'supported',
       },
     },
+    // ── Partial: WiFi (STA connect + scan + config via conn_mgr/net_mgmt) ────
+    // ESP32-S3 only — profileDiagnostics flags wifi usage on radioless chips.
+    // AP mode, credential persistence, static IP, and event callbacks deferred.
     wifi: {
-      supported: false,
-      unsupportedReason: 'No WiFi lowering implemented (nRF52840 has no WiFi; ESP32 WiFi not yet wired).',
-      ops: unsupportedOps('wifi.'),
+      supported: true,
+      partialCoverage: true,
+      unsupportedReason: 'AP mode, credential persistence, static IP, and event callbacks not yet lowered.',
+      ops: {
+        // Connection (8) — conn_mgr_if_connect/disconnect + L4 connectivity state.
+        'wifi.connect': 'supported', 'wifi.connect_start': 'supported',
+        'wifi.disconnect': 'supported', 'wifi.status': 'supported',
+        'wifi.is_connected': 'supported', 'wifi.local_ip': 'supported',
+        'wifi.rssi': 'supported', 'wifi.mac': 'supported',
+        // Scan (8) — net_mgmt NET_REQUEST_WIFI_SCAN + result pool.
+        'wifi.scan': 'supported', 'wifi.scan_start': 'supported',
+        'wifi.scan_done': 'supported', 'wifi.scan_count': 'supported',
+        'wifi.scan_ssid': 'supported', 'wifi.scan_rssi': 'supported',
+        'wifi.scan_encryption': 'supported', 'wifi.scan_channel': 'supported',
+        // Config (2) — hostname + tx power.
+        'wifi.set_hostname': 'supported', 'wifi.set_tx_power': 'supported',
+        // Out of scope (15) — each genuinely not lowered (resolver returns undefined).
+        'wifi.ap_start': 'unsupported', 'wifi.ap_stop': 'unsupported',
+        'wifi.ap_client_count': 'unsupported', 'wifi.ap_ip': 'unsupported',
+        'wifi.ap_set_channel': 'unsupported', 'wifi.ap_set_hidden': 'unsupported',
+        'wifi.ap_set_max_clients': 'unsupported',
+        'wifi.save_credentials': 'unsupported', 'wifi.connect_saved': 'unsupported',
+        'wifi.clear_credentials': 'unsupported',
+        'wifi.wait_connected': 'unsupported', 'wifi.wait_disconnected': 'unsupported',
+        'wifi.set_power_save': 'unsupported', 'wifi.set_static_ip': 'unsupported',
+        'wifi.set_auto_reconnect': 'unsupported', 'wifi.on_event': 'unsupported',
+      },
     },
     http: {
       supported: false,
