@@ -7,8 +7,8 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 
 | Framework | HAL cats supported | HAL cats partial | HAL cats unsupported | Toolchain | Last validated |
 |---|---|---|---|---|---|
-| framework-arduino (canonical) | 12/18 | 4 | 2 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-30 |
-| framework-zephyr | 6/18 | 7 | 5 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-07-30 |
+| framework-arduino (canonical) | 12/18 | 4 | 2 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-01 |
+| framework-zephyr | 9/18 | 5 | 4 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-01 |
 
 ## framework-arduino
 
@@ -59,10 +59,10 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | dac | unsupported | No DAC lowering implemented in the framework (not applicable on nRF52840; ESP32 variants with DAC not yet wired). |
 | interrupts | partial | — |
 | tone | partial | — |
-| timing | partial | — |
+| timing | supported | — |
 | power | partial | — |
 | i2c | supported | — |
-| spi | partial | — |
+| spi | supported | — |
 | uart | partial | — |
 | pulse | partial | — |
 | shift | supported | — |
@@ -70,7 +70,7 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | wdt | supported | — |
 | wifi | unsupported | No WiFi lowering implemented (nRF52840 has no WiFi; ESP32 WiFi not yet wired). |
 | http | unsupported | HTTP lowering deferred (requires networking stack). |
-| display | unsupported | Display lowering deferred. |
+| display | supported | — |
 
 ## Cross-framework gaps
 
@@ -82,10 +82,10 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | dac | ✓ | ✗ (no dac lowering implemented in the framework (not applicable on nrf52840) |
 | interrupts | ✓ | ◐ partial |
 | tone | ✓ | ◐ partial |
-| timing | ◐ partial | ◐ partial |
+| timing | ◐ partial | ✓ |
 | power | ✓ | ◐ partial |
 | i2c | ◐ partial | ✓ |
-| spi | ✓ | ◐ partial |
+| spi | ✓ | ✓ |
 | uart | ◐ partial | ◐ partial |
 | pulse | ✓ | ◐ partial |
 | shift | ✓ | ✓ |
@@ -93,4 +93,4 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | wdt | ✓ | ✓ |
 | wifi | ✗ (arduino core has no wifi hal) | ✗ (no wifi lowering implemented (nrf52840 has no wifi) |
 | http | ✗ (arduino core has no http client hal) | ✗ (http lowering deferred (requires networking stack)) |
-| display | ◐ partial | ✗ (display lowering deferred) |
+| display | ◐ partial | ✓ |
