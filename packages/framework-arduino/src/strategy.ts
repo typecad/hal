@@ -25,6 +25,7 @@ import { programUsesSafety } from "@typecad/cuttlefish/api";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen.js";
 import { resolveArduinoProfile } from "./profile.js";
 import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341.js";
+import { ADAFRUIT_ADAPTERS } from "./displays/adafruit-adapters.js";
 
 /**
  * Arduino-specific platform context.
@@ -1808,14 +1809,16 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
   }
 
   /**
-   * Arduino uses the built-in Adafruit adapter registry — does NOT provide
-   * its own. Native strategies (AVR, ESP32) override this to return true and
-   * implement resolveDisplayAdapter to emit framework-native driver code.
+   * Arduino owns the Adafruit_GFX-based display adapters (ili9341, st7796,
+   * ssd1309). They live in this package so cuttlefish carries no Adafruit/
+   * Wiring-specific display knowledge. resolveDisplayAdapter dispatches
+   * through the ADAFRUIT_ADAPTERS registry by driver name.
    */
-  providesDisplayAdapter(): boolean { return false; }
+  providesDisplayAdapter(): boolean { return true; }
 
-  resolveDisplayAdapter(_display: ResolvedDisplay): DisplayAdapterCode | undefined {
-    return undefined;  // defer to the Adafruit registry
+  resolveDisplayAdapter(display: ResolvedDisplay): DisplayAdapterCode | undefined {
+    const gen = ADAFRUIT_ADAPTERS.get(display.driver);
+    return gen ? gen(display) : undefined;
   }
 
   /**
