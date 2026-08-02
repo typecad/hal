@@ -26,6 +26,18 @@ describe('wifi init shim', () => {
     expect(shim).toContain('NET_EVENT_WIFI_SCAN_DONE');
   });
 
+  it('registers an IPv4-addr handler + fires on_disconnect/on_got_ip callbacks', () => {
+    // wifi.on_event: on_disconnect ← NET_EVENT_L4_DISCONNECTED,
+    // on_got_ip ← NET_EVENT_IPV4_ADDR_ADD (DHCP). 'connect' stays unsupported.
+    expect(shim).toContain('NET_EVENT_IPV4_ADDR_ADD');
+    expect(shim).toContain('__tc_wifi_cb_t');
+    expect(shim).toContain('on_disconnect');
+    expect(shim).toContain('on_got_ip');
+    // The handler fires the callbacks (null-checked).
+    expect(shim).toContain('if (__tc_wifi.on_disconnect != nullptr) __tc_wifi.on_disconnect();');
+    expect(shim).toContain('if (__tc_wifi.on_got_ip != nullptr) __tc_wifi.on_got_ip();');
+  });
+
   it('connects/disconnects via net_mgmt (conn_mgr monitor supplies L4 events)', () => {
     expect(shim).toContain('net_if_up');
     expect(shim).toContain('NET_REQUEST_WIFI_CONNECT');
@@ -102,6 +114,18 @@ describe('wifi lowering — config ops', () => {
     expect(lowerWifi({ operation: 'wifi.set_hostname', name: '"dev"' } as any))
       .toEqual({ code: '__tc_wifi_set_hostname("dev");' });
   });
+  it('on_event disconnect → assigns on_disconnect callback', () => {
+    expect(lowerWifi({ operation: 'wifi.on_event', event: 'disconnect', handler: 'onLinkLost' } as any))
+      .toEqual({ code: '__tc_wifi.on_disconnect = onLinkLost;' });
+  });
+  it('on_event got_ip → assigns on_got_ip callback', () => {
+    expect(lowerWifi({ operation: 'wifi.on_event', event: 'got_ip', handler: 'onOnline' } as any))
+      .toEqual({ code: '__tc_wifi.on_got_ip = onOnline;' });
+  });
+  it('on_event connect → undefined (unsupported; Zephyr collapses connect/got_ip)', () => {
+    expect(lowerWifi({ operation: 'wifi.on_event', event: 'connect', handler: 'onUp' } as any))
+      .toBeUndefined();
+  });
 });
 
 describe('wifi lowering — out-of-scope ops return undefined', () => {
@@ -114,7 +138,7 @@ describe('wifi lowering — out-of-scope ops return undefined', () => {
     'wifi.ap_set_channel', 'wifi.ap_set_hidden', 'wifi.ap_set_max_clients',
     'wifi.save_credentials', 'wifi.connect_saved', 'wifi.clear_credentials',
     'wifi.wait_connected', 'wifi.wait_disconnected',
-    'wifi.set_power_save', 'wifi.set_static_ip', 'wifi.set_auto_reconnect', 'wifi.on_event',
+    'wifi.set_power_save', 'wifi.set_static_ip', 'wifi.set_auto_reconnect',
     'wifi.set_tx_power',
   ];
   for (const op of unsupported) {

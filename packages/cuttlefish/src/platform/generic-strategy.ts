@@ -223,17 +223,23 @@ export class GenericStrategy implements PlatformStrategy {
     return helpers;
   }
 
-  asyncLoopInjection(_taskVarNames: string[], config: AsyncRuntimeConfig): string[];
-  asyncLoopInjection(_taskVarNames: string[], hasPromiseRuntime: boolean): string[];
-  asyncLoopInjection(_taskVarNames: string[], configOrBool: AsyncRuntimeConfig | boolean): string[] {
+  asyncLoopInjection(taskVarNames: string[], config: AsyncRuntimeConfig): string[];
+  asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean): string[];
+  asyncLoopInjection(taskVarNames: string[], configOrBool: AsyncRuntimeConfig | boolean): string[] {
     let hasPromiseRuntime: boolean;
-    if (typeof configOrBool === 'boolean') {
+    if (typeof configOrBool === "boolean") {
       hasPromiseRuntime = configOrBool;
     } else {
       hasPromiseRuntime = configOrBool.hasPromiseRuntime;
     }
+    // Drive every async state-machine task once per driver-function iteration.
+    // Task globals auto-start on their first .run() (STATE_0 runs
+    // unconditionally); the state machine no-ops in its terminal/cyclic state.
     const lines: string[] = [];
     if (hasPromiseRuntime) lines.push("  cuttlefish_pump_microtasks();");
+    for (const n of taskVarNames) {
+      lines.push(`  ${n}.run();`);
+    }
     return lines;
   }
   asyncDriverFunctionName(): string { return "main"; }

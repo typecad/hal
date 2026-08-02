@@ -231,7 +231,12 @@ export default defineFrameworkManifest({
         'wifi.clear_credentials': 'unsupported',
         'wifi.wait_connected': 'unsupported', 'wifi.wait_disconnected': 'unsupported',
         'wifi.set_power_save': 'unsupported', 'wifi.set_static_ip': 'unsupported',
-        'wifi.set_auto_reconnect': 'unsupported', 'wifi.on_event': 'unsupported',
+        'wifi.set_auto_reconnect': 'unsupported',
+        // on_event: 'disconnect' (NET_EVENT_L4_DISCONNECTED) + 'got_ip'
+        // (NET_EVENT_IPV4_ADDR_ADD) are lowered. 'connect' returns undefined —
+        // Zephyr collapses connect/got_ip (L4 fires post-DHCP), so a distinct
+        // link-only connect callback can't be honored honestly.
+        'wifi.on_event': 'supported',
         'wifi.set_tx_power': 'unsupported',
       },
     },

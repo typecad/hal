@@ -36,6 +36,10 @@ export function wifiInitLines(): string[] {
     `// CUTTLEFISH_WIFI_BEGIN`,
     `#define __TC_WIFI_MAX_SCAN 16`,
     ``,
+    `// WiFi event callback signature (wifi.on_event). One slot per supported`,
+    `// event — a second registration overwrites the first (matches framework-esp32).`,
+    `typedef void (*__tc_wifi_cb_t)(void);`,
+    ``,
     `// WiFi state. connected reflects IP connectivity (L4), not just link —`,
     `// connect takes the iface admin-up (net_if_up) and conn_mgr_monitor raises`,
     `// the L4 event once DHCP completes. is_connected polls this flag.`,
@@ -48,11 +52,19 @@ export function wifiInitLines(): string[] {
     `    char ssid_buf[__TC_WIFI_MAX_SCAN][33];   // SSIDs ≤32 chars + NUL`,
     `    uint8_t mac[6];           // filled lazily by wifi.mac`,
     `    struct net_if* iface;     // resolved WiFi iface`,
-    `} __tc_wifi = { false, false, false, 0, {}, {}, {}, nullptr };`,
+    `    __tc_wifi_cb_t on_disconnect;  // fired by NET_EVENT_L4_DISCONNECTED`,
+    `    __tc_wifi_cb_t on_got_ip;      // fired by NET_EVENT_IPV4_ADDR_ADD (DHCP)`,
+    `    struct k_work disconnect_work; // deferred on_disconnect (k_work_submit)`,
+    `} __tc_wifi = { false, false, false, 0, {}, {}, {}, nullptr, nullptr, nullptr, {} };`,
     ``,
     `// ── net_mgmt event handler ──────────────────────────────────────────────`,
     `// One callback for both event families. L4 events drive \`connected\`; WiFi`,
     `// scan events fill the scan pool. Registered once at first use.`,
+    `static void __tc_wifi_disconnect_work_handler(struct k_work* w) {`,
+    `    (void)w;`,
+    `    if (__tc_wifi.on_disconnect != nullptr) __tc_wifi.on_disconnect();`,
+    `}`,
+    ``,
     `static void __tc_wifi_mgmt_cb(struct net_mgmt_event_callback* cbb, uint64_t mgmt_event,`,
     `                              struct net_if* iface) {`,
     `    (void)cbb;`,
@@ -61,6 +73,17 @@ export function wifiInitLines(): string[] {
     `        __tc_wifi.connected = true;`,
     `    } else if (mgmt_event == NET_EVENT_L4_DISCONNECTED) {`,
     `        __tc_wifi.connected = false;`,
+    `        // Defer on_disconnect via k_work_submit so the user callback (which`,
+    `        // typically calls connectAsync) runs outside the net_mgmt event`,
+    `        // chain. Calling NET_REQUEST_WIFI_CONNECT from within the disconnect`,
+    `        // callback causes re-entrancy that prevents re-association.`,
+    `        if (__tc_wifi.on_disconnect != nullptr) {`,
+    `            (void)k_work_submit(&__tc_wifi.disconnect_work);`,
+    `        }`,
+    `    } else if (mgmt_event == NET_EVENT_IPV4_ADDR_ADD) {`,
+    `        // DHCP assigned an IPv4 address — the true "got IP" signal. Fires`,
+    `        // after NET_EVENT_L4_CONNECTED on a successful DHCP join.`,
+    `        if (__tc_wifi.on_got_ip != nullptr) __tc_wifi.on_got_ip();`,
     `    } else if (mgmt_event == NET_EVENT_WIFI_SCAN_RESULT) {`,
     `        // Per-result during a scan. Bounds-check against the pool cap.`,
     `        const struct wifi_scan_result* res = static_cast<const struct wifi_scan_result*>(cbb->info);`,
@@ -79,23 +102,28 @@ export function wifiInitLines(): string[] {
     `}`,
     ``,
     `static struct net_mgmt_event_callback __tc_wifi_l4_cb;`,
+    `static struct net_mgmt_event_callback __tc_wifi_ipv4_cb;`,
     `static struct net_mgmt_event_callback __tc_wifi_scan_cb;`,
     ``,
-    `// Register both handlers + resolve the WiFi iface. Idempotent (inited guard).`,
+    `// Register the handlers + resolve the WiFi iface. Idempotent (inited guard).`,
+    `// Three callback structs: L4 (connect/disconnect), IPv4 (got-IP / DHCP), scan.`,
     `static void __tc_wifi_ensure_init(void) {`,
     `    if (__tc_wifi.inited) return;`,
+    `    k_work_init(&__tc_wifi.disconnect_work, __tc_wifi_disconnect_work_handler);`,
     `    __tc_wifi.iface = net_if_get_default();`,
     `    if (__tc_wifi.iface != nullptr) {`,
     `        net_mgmt_init_event_callback(&__tc_wifi_l4_cb, __tc_wifi_mgmt_cb,`,
     `            NET_EVENT_L4_CONNECTED | NET_EVENT_L4_DISCONNECTED);`,
     `        net_mgmt_add_event_callback(&__tc_wifi_l4_cb);`,
+    `        net_mgmt_init_event_callback(&__tc_wifi_ipv4_cb, __tc_wifi_mgmt_cb,`,
+    `            NET_EVENT_IPV4_ADDR_ADD);`,
+    `        net_mgmt_add_event_callback(&__tc_wifi_ipv4_cb);`,
     `        net_mgmt_init_event_callback(&__tc_wifi_scan_cb, __tc_wifi_mgmt_cb,`,
     `            NET_EVENT_WIFI_SCAN_RESULT | NET_EVENT_WIFI_SCAN_DONE);`,
     `        net_mgmt_add_event_callback(&__tc_wifi_scan_cb);`,
     `    }`,
     `    __tc_wifi.inited = true;`,
     `}`,
-    ``,
     `// ── connect / disconnect (net_mgmt — conn_mgr monitor supplies L4 events) ─`,
     `// SSID/PSK are staged into static buffers (wifi_connect_req_params.ssid/psk`,
     `// are const uint8_t* — they point at caller-owned storage that must outlive`,
@@ -299,6 +327,20 @@ export function lowerWifi(op: HALOpIR): { code?: string; expression?: string } |
     // ── Config ──
     case 'wifi.set_hostname':
       return { code: `__tc_wifi_set_hostname(${s(o.name)});` };
+    case 'wifi.on_event': {
+      // Event callbacks (wifi.on_event). Only 'disconnect' and 'got_ip' are
+      // supported — Zephyr's net_mgmt collapses 'connect' into the got-IP path
+      // (NET_EVENT_L4_CONNECTED fires post-DHCP), so a distinct link-only
+      // 'connect' callback would fire at the same time as got_ip. 'connect'
+      // falls through to default → undefined (stays unsupported in the manifest).
+      if (o.event === 'disconnect') {
+        return { code: `__tc_wifi.on_disconnect = ${s(o.handler)};` };
+      }
+      if (o.event === 'got_ip') {
+        return { code: `__tc_wifi.on_got_ip = ${s(o.handler)};` };
+      }
+      return undefined;
+    }
     default:
       // Out-of-scope (AP, credentials, waits, power-save, set_tx_power, deferred
       // config): return undefined so the resolver falls back and the manifest's

@@ -475,6 +475,18 @@ function analyzeStatement(
       // Statement-form map()/constrain() mirror the method-call checks above.
       if (statement.callee === "map") result.usesMap = true;
       if (statement.callee === "constrain") result.usesConstrain = true;
+      // Statement-form setInterval/setTimeout mirror the expression-level
+      // timer-count (analyzeExpression). A top-level `setInterval(...)` call
+      // stays a `call` statement (never becomes a method-call expression — see
+      // the comment above re: Timing./Num./WDT.), so without this mirror the
+      // timer polyfill gate (timerCallCount) stays 0 and __tc_setInterval is
+      // emitted as a call but never defined (demo: "'__tc_setInterval' was not
+      // declared in this scope"). The arrow-callback hoister renames the callee
+      // to __tc_setInterval/__tc_setTimeout, so check both pre- and post-rename.
+      if (statement.callee === "setInterval" || statement.callee === "setTimeout"
+        || statement.callee === "__tc_setInterval" || statement.callee === "__tc_setTimeout") {
+        result.timerCallCount++;
+      }
       // The HAL resolver lowers WDT.*/Timing.* namespace calls to bare AVR
       // library functions (WDT.reset() → wdt_reset(), Timing.delay() → delay(),
       // Timing.millis() → millis()). When that happens the `WDT.`/`Timing.`

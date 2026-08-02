@@ -747,7 +747,7 @@ export class ZephyrStrategy implements PlatformStrategy {
   asyncLoopInjection(taskVarNames: string[], config: AsyncRuntimeConfig): string[];
   asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean, hasTimers: boolean): string[];
   asyncLoopInjection(
-    _taskVarNames: string[],
+    taskVarNames: string[],
     configOrBool: AsyncRuntimeConfig | boolean,
     _hasTimers?: boolean,
   ): string[] {
@@ -755,12 +755,21 @@ export class ZephyrStrategy implements PlatformStrategy {
       typeof configOrBool === 'boolean'
         ? { hasPromiseRuntime: configOrBool, hasTimers: _hasTimers ?? false }
         : configOrBool;
-    // No background pump for the MVP — return empty unless a Promise runtime is
-    // active, in which case pump cooperatively each loop iteration.
+    // Drive every async state-machine task once per loop() iteration. The task
+    // globals auto-start on their first .run() (constructor sets STATE_0, which
+    // runs unconditionally), so this is both the start and the per-frame advance.
+    // The state machine no-ops in its terminal/cyclic state, so unconditional
+    // .run() is correct (mirrors framework-arduino). No isComplete() gating.
+    const lines: string[] = [];
     if (cfg.hasPromiseRuntime) {
-      return ['cuttlefish_pump_microtasks();'];
+      lines.push('cuttlefish_pump_microtasks();');
     }
-    return [];
+    for (const n of taskVarNames) {
+      lines.push(`${n}.run();`);
+    }
+    // NOTE: no __tc_timer_runtime.run() — Zephyr timers are native k_timer
+    // (timer-polyfill.ts), not a cooperative poll.
+    return lines;
   }
 
   asyncDriverFunctionName(): string {
@@ -880,7 +889,7 @@ export class ZephyrStrategy implements PlatformStrategy {
         domain: 'embedded',
         requiredIncludes: [],
         forwardDeclarations: [],
-        helperStructs: [generateStaticAsyncRuntime(8)],
+        helperStructs: [generateStaticAsyncRuntime(8, this.getAsyncRuntimeConfig().waitForPinEdge)],
         helperFunctions: [],
         shimMacros: [],
         dependencies: [],
