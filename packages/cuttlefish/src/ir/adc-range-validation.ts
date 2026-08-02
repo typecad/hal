@@ -8,6 +8,7 @@
 import type { ProgramIR, ExpressionIR, StatementIR } from '../api/index.js';
 import type { BoardConstants } from '../api/shared/index.js';
 import type { Diagnostic } from '../types.js';
+import { hasLoadedFramework, getLoadedFramework } from '../framework-registry.js';
 
 /**
  * Board-specific ADC configurations.
@@ -57,7 +58,18 @@ function isAnalogRead(expr: ExpressionIR): boolean {
     return op === 'adc.read' || op === 'adc.read_voltage';
   }
   if (expr.kind === 'raw') {
-    return /analogRead\s*\(/.test((expr as { value: string }).value);
+    const value = (expr as { value: string }).value;
+    // Ask the loaded framework which call names produce an ADC read; fall back
+    // to the Wiring-derived analogRead when no framework is loaded.
+    const frameworkNames = hasLoadedFramework()
+      ? getLoadedFramework().strategy.analogReadCallNames?.()
+      : undefined;
+    const names = frameworkNames ?? new Set<string>(['analogRead']);
+    for (const name of names) {
+      const re = new RegExp(`${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\(`);
+      if (re.test(value)) return true;
+    }
+    return false;
   }
   return false;
 }
