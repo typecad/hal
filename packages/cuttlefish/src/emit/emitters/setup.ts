@@ -350,8 +350,17 @@ export function buildEmitterContext(
     : (strategy.generateNativePolyfills?.(program, options.platformContext) ?? []);
 
   let filteredNativePolyfills = filterPolyfillHelpers(nativePolyfills, programAnalysis.usedPolyfillHelpers);
-  if (!programAnalysis.hasThrowStatements) {
+  // cuttlefish_halt: keep when the program throws (throw lowers to cuttlefish_halt)
+  // OR explicitly calls cuttlefish_halt in lowered raw text.
+  if (!programAnalysis.hasThrowStatements && !programAnalysis.usesHalt) {
     filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "cuttlefish_halt");
+  }
+  // static_array: the __tc_StaticArray struct has no __tc_*() call pattern, so
+  // filterPolyfillHelpers' per-function tree-shaker can't drop it (it sees no
+  // extractable name). Gate at the polyfill-id level instead: keep only when
+  // __tc_StaticArray genuinely appears in used code.
+  if (!programAnalysis.usedPolyfillHelpers.has('__tc_StaticArray')) {
+    filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "static_array");
   }
   const usesTimers = programAnalysis.usedPolyfillHelpers.has('__tc_setInterval') ||
                      programAnalysis.usedPolyfillHelpers.has('__tc_setTimeout');
