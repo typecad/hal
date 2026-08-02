@@ -412,22 +412,15 @@ export function buildEmitterContext(
   if (!isNpmPackage) {
     includes.push(...strategy.forcedIncludes(program, options.platformContext));
     Object.assign(symbolMap, strategy.symbolAliases(program, options.platformContext));
-    if (isEntryFile) {
-      shimLines = [...strategy.shimLines(program, options.platformContext)];
-    } else {
-      // Non-entry files in split compilation: always emit the full shim
-      // block. A class method body that uses `??` lowers to a
-      // cuttlefish_nullish(...) call, but the helper lives in the entry
-      // file's shim — which isn't visible from this header. We used to gate
-      // this on programAnalysis.usesNullish, but that flag is unreliable:
-      // the analysis runs before the expression renderer, which can
-      // introduce cuttlefish_nullish calls (e.g. for default-param
-      // destructuring, or `??` inside class methods on abstract bases)
-      // that the analysis pass didn't see, leaving the header referencing
-      // an undeclared helper. The shim is fully idempotent (#ifndef
-      // guards), so emitting it unconditionally is safe and cheap.
-      shimLines = [...strategy.shimLines(program, options.platformContext)];
-    }
+    // Both entry and non-entry files get the strategy's shim lines, then the
+    // Layer B filters below strip unused blocks based on programAnalysis. For
+    // non-entry (split-file) headers, the per-file pre-render analysis can miss
+    // renderer-introduced calls (e.g. cuttlefish_nullish from `??` lowering);
+    // output-finalizer.ts handles that case with a post-render text scan that
+    // re-injects the nullish helper shim into a header whose emitted lines
+    // actually contain a cuttlefish_nullish( call. So gating here is safe — the
+    // post-render injection covers the one unreliable pre-render signal.
+    shimLines = [...strategy.shimLines(program, options.platformContext)];
     if (!programAnalysis.usesStringConversion) {
       shimLines = shimLines.filter(l => !l.includes('std::string String('));
     }
