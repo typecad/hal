@@ -31,13 +31,22 @@ import { hasLoadedFramework, getLoadedFramework } from '../framework-registry.js
  *  timing.delay_microseconds (esp_rom_delay_us) is. */
 function isBlockingDelay(stmt: StatementIR, isRtos: boolean): boolean {
   const s = stmt as any;
-  // Direct call: delay(...) or delayMicroseconds(...)
+  // Derive the blocking delay call names from the loaded framework's
+  // ISR-unsafe table (delay, delayMicroseconds on Wiring-derived frameworks).
+  // Fall back to those two names when no framework is loaded.
+  const frameworkUnsafe = hasLoadedFramework()
+    ? getLoadedFramework().strategy.isrUnsafeOperations?.()
+    : undefined;
+  const delayNames = frameworkUnsafe
+    ? [...frameworkUnsafe.keys()].filter(k => k === 'delay' || k === 'delayMicroseconds')
+    : ['delay', 'delayMicroseconds'];
+  // Direct call: a blocking delay call by name.
   if (stmt.kind === 'call' && typeof s.callee === 'string') {
     if (isRtos) {
       // On RTOS targets, only delayMicroseconds is a busy-wait.
       if (s.callee === 'delayMicroseconds') return true;
     } else {
-      if (s.callee === 'delay' || s.callee === 'delayMicroseconds') return true;
+      if (delayNames.includes(s.callee)) return true;
     }
   }
   // Hal-op: after HAL resolution, delay() becomes timing.delay /
