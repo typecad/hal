@@ -520,6 +520,22 @@ export function buildEmitterContext(
     }
     if (!programAnalysis.usesWifi) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_WIFI_BEGIN', '// CUTTLEFISH_WIFI_END');
+    } else {
+      if (!programAnalysis.usesWifiConnect) {
+        shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_WIFI_CONNECT_BEGIN', '// CUTTLEFISH_WIFI_CONNECT_END');
+      }
+      if (!programAnalysis.usesWifiConnectBlocking) {
+        shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_WIFI_CONNECT_BLOCKING_BEGIN', '// CUTTLEFISH_WIFI_CONNECT_BLOCKING_END');
+      }
+      if (!programAnalysis.usesWifiQuery) {
+        shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_WIFI_QUERY_BEGIN', '// CUTTLEFISH_WIFI_QUERY_END');
+      }
+      if (!programAnalysis.usesWifiScan) {
+        shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_WIFI_SCAN_BEGIN', '// CUTTLEFISH_WIFI_SCAN_END');
+      }
+      if (!programAnalysis.usesWifiConfig) {
+        shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_WIFI_CONFIG_BEGIN', '// CUTTLEFISH_WIFI_CONFIG_END');
+      }
     }
     if (!programAnalysis.usesHttp) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_HTTP_BEGIN', '// CUTTLEFISH_HTTP_END');

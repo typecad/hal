@@ -4,7 +4,7 @@ const WIFI_PASSWORD = "justin04";
 
 import { WiFi, delay, setInterval } from '@typecad/hal';
 
-WiFi.onGotIP(() => {
+WiFi.onConnect(() => {
   console.log("online");
 });
 

@@ -160,11 +160,10 @@ const OP_PROBE_PAYLOADS: Readonly<Record<string, object>> = {
   'mqtt.on_message': { handler: 'cb' },
   'mqtt.subscribe': { topic: 't' },
   'mqtt.publish': { topic: 't', data: 'd' },
-  // wifi.on_event requires an event + handler. Probe with 'got_ip' (a supported
-  // sub-event on Zephyr; 'connect' is intentionally unsupported there). Without
-  // a payload the probe sends event=undefined and a 'supported' declaration
-  // would false-fail as "resolver returned undefined".
-  'wifi.on_event': { event: 'got_ip', handler: 'cb' },
+  // wifi.on_event requires an event + handler. Probe with 'connect'.
+  // Without a payload the probe sends event=undefined and a 'supported'
+  // declaration would false-fail as "resolver returned undefined".
+  'wifi.on_event': { event: 'connect', handler: 'cb' },
   // ota.from_url requires url; ota.write requires chunk.
   'ota.from_url': { url: 'https://x' },
   'ota.write': { chunk: 'buf' },

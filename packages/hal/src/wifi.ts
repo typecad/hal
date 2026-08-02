@@ -157,10 +157,6 @@ export class WiFiClass {
     wifiOnEvent("disconnect", callback(handler));
   }
 
-  onGotIP(handler: () => void): void {
-    wifiOnEvent("got_ip", callback(handler));
-  }
-
   startAP(ssid: string, password?: string): boolean {
     return wifiApStart(ssid, password);
   }

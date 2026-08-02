@@ -26,16 +26,16 @@ describe('wifi init shim', () => {
     expect(shim).toContain('NET_EVENT_WIFI_SCAN_DONE');
   });
 
-  it('registers an IPv4-addr handler + fires on_disconnect/on_got_ip callbacks', () => {
+  it('registers an IPv4-addr handler + fires on_disconnect/on_connect callbacks', () => {
     // wifi.on_event: on_disconnect ← NET_EVENT_L4_DISCONNECTED,
-    // on_got_ip ← NET_EVENT_IPV4_ADDR_ADD (DHCP). 'connect' stays unsupported.
+    // on_connect ← NET_EVENT_IPV4_ADDR_ADD (DHCP).
     expect(shim).toContain('NET_EVENT_IPV4_ADDR_ADD');
     expect(shim).toContain('__tc_wifi_cb_t');
     expect(shim).toContain('on_disconnect');
-    expect(shim).toContain('on_got_ip');
+    expect(shim).toContain('on_connect');
     // The handler fires the callbacks (null-checked).
     expect(shim).toContain('if (__tc_wifi.on_disconnect != nullptr) __tc_wifi.on_disconnect();');
-    expect(shim).toContain('if (__tc_wifi.on_got_ip != nullptr) __tc_wifi.on_got_ip();');
+    expect(shim).toContain('if (__tc_wifi.on_connect != nullptr) __tc_wifi.on_connect();');
   });
 
   it('connects/disconnects via net_mgmt (conn_mgr monitor supplies L4 events)', () => {
@@ -118,13 +118,9 @@ describe('wifi lowering — config ops', () => {
     expect(lowerWifi({ operation: 'wifi.on_event', event: 'disconnect', handler: 'onLinkLost' } as any))
       .toEqual({ code: '__tc_wifi.on_disconnect = onLinkLost;' });
   });
-  it('on_event got_ip → assigns on_got_ip callback', () => {
-    expect(lowerWifi({ operation: 'wifi.on_event', event: 'got_ip', handler: 'onOnline' } as any))
-      .toEqual({ code: '__tc_wifi.on_got_ip = onOnline;' });
-  });
-  it('on_event connect → undefined (unsupported; Zephyr collapses connect/got_ip)', () => {
-    expect(lowerWifi({ operation: 'wifi.on_event', event: 'connect', handler: 'onUp' } as any))
-      .toBeUndefined();
+  it('on_event connect → assigns on_connect callback', () => {
+    expect(lowerWifi({ operation: 'wifi.on_event', event: 'connect', handler: 'onOnline' } as any))
+      .toEqual({ code: '__tc_wifi.on_connect = onOnline;' });
   });
 });
 

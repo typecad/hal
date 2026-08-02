@@ -706,7 +706,7 @@ export interface WifiSetTxPowerOp {
 
 export interface WifiOnEventOp {
   operation: "wifi.on_event";
-  event: "connect" | "disconnect" | "got_ip" | string;
+  event: "connect" | "disconnect" | string;
   handler: string;
 }
 

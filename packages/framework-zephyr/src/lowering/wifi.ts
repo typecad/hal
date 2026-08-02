@@ -36,6 +36,8 @@ export function wifiInitLines(): string[] {
     `// CUTTLEFISH_WIFI_BEGIN`,
     `#define __TC_WIFI_MAX_SCAN 16`,
     ``,
+    `// ── core (always needed when wifi.* is used) ────────────────────────────`,
+    `// CUTTLEFISH_WIFI_CORE_BEGIN`,
     `// WiFi event callback signature (wifi.on_event). One slot per supported`,
     `// event — a second registration overwrites the first (matches framework-esp32).`,
     `typedef void (*__tc_wifi_cb_t)(void);`,
@@ -53,7 +55,7 @@ export function wifiInitLines(): string[] {
     `    uint8_t mac[6];           // filled lazily by wifi.mac`,
     `    struct net_if* iface;     // resolved WiFi iface`,
     `    __tc_wifi_cb_t on_disconnect;  // fired by NET_EVENT_L4_DISCONNECTED`,
-    `    __tc_wifi_cb_t on_got_ip;      // fired by NET_EVENT_IPV4_ADDR_ADD (DHCP)`,
+    `    __tc_wifi_cb_t on_connect;     // fired by NET_EVENT_IPV4_ADDR_ADD (DHCP)`,
     `    struct k_work disconnect_work; // deferred on_disconnect (k_work_submit)`,
     `} __tc_wifi = { false, false, false, 0, {}, {}, {}, nullptr, nullptr, nullptr, {} };`,
     ``,
@@ -83,7 +85,7 @@ export function wifiInitLines(): string[] {
     `    } else if (mgmt_event == NET_EVENT_IPV4_ADDR_ADD) {`,
     `        // DHCP assigned an IPv4 address — the true "got IP" signal. Fires`,
     `        // after NET_EVENT_L4_CONNECTED on a successful DHCP join.`,
-    `        if (__tc_wifi.on_got_ip != nullptr) __tc_wifi.on_got_ip();`,
+    `        if (__tc_wifi.on_connect != nullptr) __tc_wifi.on_connect();`,
     `    } else if (mgmt_event == NET_EVENT_WIFI_SCAN_RESULT) {`,
     `        // Per-result during a scan. Bounds-check against the pool cap.`,
     `        const struct wifi_scan_result* res = static_cast<const struct wifi_scan_result*>(cbb->info);`,
@@ -124,7 +126,10 @@ export function wifiInitLines(): string[] {
     `    }`,
     `    __tc_wifi.inited = true;`,
     `}`,
+    `// CUTTLEFISH_WIFI_CORE_END`,
+    ``,
     `// ── connect / disconnect (net_mgmt — conn_mgr monitor supplies L4 events) ─`,
+    `// CUTTLEFISH_WIFI_CONNECT_BEGIN`,
     `// SSID/PSK are staged into static buffers (wifi_connect_req_params.ssid/psk`,
     `// are const uint8_t* — they point at caller-owned storage that must outlive`,
     `// the request), then net_if_up takes the iface admin-up and NET_REQUEST_WIFI_CONNECT`,
@@ -171,6 +176,7 @@ export function wifiInitLines(): string[] {
     `    printk("tc-wifi: connecting to %s\\n", ssid);`,
     `}`,
     ``,
+    `// CUTTLEFISH_WIFI_CONNECT_BLOCKING_BEGIN`,
     `static void __tc_wifi_connect(const char* ssid, const char* password, int32_t timeout_ms) {`,
     `    __tc_wifi_connect_start(ssid, password);`,
     `    // Block until the L4 handler signals connectivity or the deadline passes.`,
@@ -178,6 +184,7 @@ export function wifiInitLines(): string[] {
     `    while (!__tc_wifi.connected && waited < timeout_ms) { k_msleep(100); waited += 100; }`,
     `    printk("tc-wifi: connect %s after %dms\\n", __tc_wifi.connected ? "ok" : "timeout", waited);`,
     `}`,
+    `// CUTTLEFISH_WIFI_CONNECT_BLOCKING_END`,
     ``,
     `static void __tc_wifi_disconnect(void) {`,
     `    __tc_wifi_ensure_init();`,
@@ -186,8 +193,10 @@ export function wifiInitLines(): string[] {
     `        (void)net_mgmt(NET_REQUEST_WIFI_DISCONNECT, __tc_wifi.iface, nullptr, 0);`,
     `    }`,
     `}`,
+    `// CUTTLEFISH_WIFI_CONNECT_END`,
     ``,
     `// ── status / radio queries ───────────────────────────────────────────────`,
+    `// CUTTLEFISH_WIFI_QUERY_BEGIN`,
     `static int32_t __tc_wifi_status(void) {`,
     `    return __tc_wifi.connected ? 3 : 0;   // 3=Connected in the HAL status enum`,
     `}`,
@@ -223,8 +232,10 @@ export function wifiInitLines(): string[] {
     `    for (int32_t b = 0; b < 6; b++) { m = (m << 8) | static_cast<uint64_t>(status.bssid[b]); }`,
     `    return m;`,
     `}`,
+    `// CUTTLEFISH_WIFI_QUERY_END`,
     ``,
     `// ── scan (net_mgmt — conn_mgr has no scan surface) ───────────────────────`,
+    `// CUTTLEFISH_WIFI_SCAN_BEGIN`,
     `static void __tc_wifi_scan_start(void) {`,
     `    __tc_wifi_ensure_init();`,
     `    __tc_wifi.scanning = true;`,
@@ -258,8 +269,10 @@ export function wifiInitLines(): string[] {
     `    if (i < 0 || i >= __tc_wifi.scan_count || i >= __TC_WIFI_MAX_SCAN) return 0;`,
     `    return static_cast<int32_t>(__tc_wifi.scan_results[i].channel);`,
     `}`,
+    `// CUTTLEFISH_WIFI_SCAN_END`,
     ``,
     `// ── config ───────────────────────────────────────────────────────────────`,
+    `// CUTTLEFISH_WIFI_CONFIG_BEGIN`,
     `// NOTE: wifi.set_tx_power is intentionally NOT lowered here. The Zephyr esp32`,
     `// WiFi driver owns esp_wifi_start/esp_wifi_connect, and calling`,
     `// esp_wifi_set_max_tx_power from this shim fights the driver for control of`,
@@ -275,6 +288,7 @@ export function wifiInitLines(): string[] {
     `    (void)name;`,
     `    (void)__tc_wifi;`,
     `}`,
+    `// CUTTLEFISH_WIFI_CONFIG_END`,
     ``,
     `// CUTTLEFISH_WIFI_END`,
   ];
@@ -328,16 +342,12 @@ export function lowerWifi(op: HALOpIR): { code?: string; expression?: string } |
     case 'wifi.set_hostname':
       return { code: `__tc_wifi_set_hostname(${s(o.name)});` };
     case 'wifi.on_event': {
-      // Event callbacks (wifi.on_event). Only 'disconnect' and 'got_ip' are
-      // supported — Zephyr's net_mgmt collapses 'connect' into the got-IP path
-      // (NET_EVENT_L4_CONNECTED fires post-DHCP), so a distinct link-only
-      // 'connect' callback would fire at the same time as got_ip. 'connect'
-      // falls through to default → undefined (stays unsupported in the manifest).
+      // Event callbacks (wifi.on_event). 'disconnect' and 'connect' are supported.
       if (o.event === 'disconnect') {
         return { code: `__tc_wifi.on_disconnect = ${s(o.handler)};` };
       }
-      if (o.event === 'got_ip') {
-        return { code: `__tc_wifi.on_got_ip = ${s(o.handler)};` };
+      if (o.event === 'connect') {
+        return { code: `__tc_wifi.on_connect = ${s(o.handler)};` };
       }
       return undefined;
     }
