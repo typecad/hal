@@ -50,18 +50,14 @@ export function generateDisplayAdapter(
   return gen(display);
 }
 
-// ── eink-mono adapter (SSD1680-class, 1-bit, deferred partial refresh) ───────
-import { einkMonoAdapter } from "./display-adapters/eink-mono.js";
-registerDisplayAdapter("ssd1680", einkMonoAdapter);
-
 // ── SDL2 adapter (native desktop window, RGB888) ────────────────────────────
 import { sdlAdapter } from "./display-adapters/sdl.js";
 registerDisplayAdapter("sdl", sdlAdapter);
 
-// NOTE: The Adafruit_GFX-based adapters (ili9341, st7796, ssd1309) were moved
-// to @typecad/framework-arduino (src/displays/adafruit-adapters.ts). They are
-// now strategy-owned: ArduinoStrategy.providesDisplayAdapter() returns true and
-// resolveDisplayAdapter() dispatches to them by driver name. Cuttlefish keeps
-// only the generic adapter registry infrastructure + the framework-agnostic
-// drivers (eink-mono for SSD1680-class e-ink, sdl for native desktop).
+// NOTE: The Adafruit_GFX-based adapters (ili9341, st7796, ssd1309, ssd1680
+// eink) were moved to @typecad/framework-arduino (src/displays/
+// adafruit-adapters.ts). They are now strategy-owned: ArduinoStrategy.
+// providesDisplayAdapter() returns true and resolveDisplayAdapter() dispatches
+// to them by driver name. Cuttlefish keeps only the generic adapter registry
+// infrastructure + the framework-agnostic sdl driver for native desktop.
 

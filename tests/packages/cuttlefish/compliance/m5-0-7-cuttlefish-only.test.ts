@@ -69,7 +69,7 @@ describe("M5-0-7: cuttlefish display adapters have no C-style casts", () => {
   });
 
   it("eink-mono (ssd1680) driver shim has no C-style casts", () => {
-    const adapter = generateDisplayAdapter({ ...baseDriverSpec, driver: "ssd1680" } as any);
+    const adapter = generateDisplayAdapter({ ...baseDriverSpec, driver: "ssd1680" } as any, arduino);
     const offenders = findCStyleCasts(joinAdapterText(adapter));
     expect(offenders, `C-style casts in ssd1680:\n${offenders.join("\n")}`).toEqual([]);
   });

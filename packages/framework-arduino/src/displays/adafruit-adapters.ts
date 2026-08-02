@@ -375,6 +375,52 @@ export const ssd1309Adapter: DisplayAdapterGenerator = (display): DisplayAdapter
   };
 };
 
+// ── eink-mono adapter (SSD1680-class, 1-bit, deferred partial refresh) ───────
+
+export const einkMonoAdapter: DisplayAdapterGenerator = (display) => {
+  const cs = display._mountCs;
+  const dc = display._mountDc;
+  const rst = display._mountRst;
+  const rotation = display.rotation ?? 0;
+  const w = display.width;
+  const h = display.height;
+
+  return {
+    includes: [
+      "#include <Adafruit_GFX.h>",
+      "#include <Adafruit_EPD.h>",
+    ].join("\n"),
+    // busy pin = -1 (unused); SRCS+D/C+RST+CS wiring. Adafruit_SSD168x(width, height, dc, rst, cs, busy).
+    declaration: `Adafruit_SSD168x __tc_display(${w}, ${h}, ${dc}, ${rst}, ${cs}, -1);`,
+    functions: [
+      "// --- Display adapter: eink-mono (SSD1680-class, 1-bit, deferred refresh) ---",
+      "static inline void display_init() {",
+      "  __tc_display.begin();",
+      `  __tc_display.setRotation(${rotation});`,
+      "  // No full-screen clear here — e-ink flashes on a full clear. The runtime",
+      "  // marks all nodes dirty (UI_REFRESH_DEFERRED) and the first flush repaints",
+      "  // via partial refresh instead.",
+      "}",
+      "",
+      "static inline CuttlefishDisplayTarget* display_defaultTarget() { return &__tc_display; }",
+      "static inline int16_t display_width() { return __tc_display.width(); }",
+      "static inline int16_t display_height() { return __tc_display.height(); }",
+      "static inline void display_startWrite() {}",
+      "static inline void display_endWrite() {}",
+      "static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t w, int16_t h) { (void)x; (void)y; (void)w; (void)h; }",
+      // Partial refresh: push just the dirty region. The runtime draws into the
+      // EPD's built-in GFX buffer (the display IS the backing store for 1-bit),
+      // then calls this with the unioned dirty rect. TODO Phase 5: verify the
+      // exact partial-refresh API for the target EPD library.
+      "static inline void display_partial_refresh(int16_t x, int16_t y, int16_t w, int16_t h) {",
+      "  __tc_display.refreshPartial(x, y, static_cast<uint16_t>(w), static_cast<uint16_t>(h));",
+      "}",
+      // drawPixel goes through GFX into the EPD buffer; partial_refresh publishes it.
+      "static inline void display_fillScreen(uint32_t color) { __tc_display.fillScreen(color ? EPD_WHITE : EPD_BLACK); }",
+    ].join("\n"),
+  };
+};
+
 /**
  * Registry of Adafruit_GFX-based adapters keyed by driver name.
  * ArduinoStrategy.resolveDisplayAdapter dispatches through this map.
@@ -383,4 +429,5 @@ export const ADAFRUIT_ADAPTERS: ReadonlyMap<string, DisplayAdapterGenerator> = n
   ["ili9341", ili9341Adapter],
   ["st7796", st7796Adapter],
   ["ssd1309", ssd1309Adapter],
+  ["ssd1680", einkMonoAdapter],
 ]);
