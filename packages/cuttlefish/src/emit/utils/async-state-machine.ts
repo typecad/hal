@@ -207,7 +207,7 @@ export function generateAsyncTaskClass(
     const tap = tapInfoMap.get(i);
     const net = netInfoMap.get(i);
     if (edge) {
-      lines.push(`${pad}_edgePrev_p${edge.pin} = digitalRead(${edge.pin});`);
+      lines.push(`${pad}_edgePrev_p${edge.pin} = ${strategy.readDigitalPin?.(String(edge.pin)) ?? `digitalRead(${edge.pin})`};`);
       if (edge.timeout !== null) {
         lines.push(`${pad}_waitUntil = ${strategy.currentTimeMillis()} + ${edge.timeout};`);
       }
@@ -257,7 +257,7 @@ export function generateAsyncTaskClass(
         : cond;
 
       body.push(`        {`);
-      body.push(`          int _cur = digitalRead(${edgePoll.pin});`);
+      body.push(`          int _cur = ${strategy.readDigitalPin?.(String(edgePoll.pin)) ?? `digitalRead(${edgePoll.pin})`};`);
       body.push(`          if (${fullCond}) {`);
       body.push(`            ${prevVar} = _cur;`);
       body.push(...runSegment(`            `));
