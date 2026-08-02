@@ -11,7 +11,7 @@ import {
   buildCoreHeaderIndex,
   __setLicensesRunnerForTest,
   type ScanOptions,
-} from "../../../packages/cuttlefish/src/licenses";
+} from "../../../packages/framework-arduino/src/licenses";
 
 describe("identifySpdx — alias matching (short library.properties values)", () => {
   it("matches canonical SPDX IDs", () => {

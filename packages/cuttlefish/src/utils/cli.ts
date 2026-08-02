@@ -21,7 +21,7 @@ export function printHelp(): void {
   console.log(`  cuttlefish board add <spec.jsonc> [--force]   Generate board + MCU packages from a chip spec`);
   console.log(`  cuttlefish gen-decls <input.cpp|--all <directory>>`);
   console.log(`  cuttlefish map-error <mapFile> [options]`);
-  console.log(`  cuttlefish doctor                              Check that arduino-cli is installed and the board's core is present`);
+  console.log(`  cuttlefish doctor                              Check the active framework's environment (e.g. toolchain + board core)`);
   console.log(`  cuttlefish licenses [--all] [--strict]          Scan this project's Arduino libraries for SPDX licenses (--all: every installed library)`);
   console.log();
   console.log(chalk.gray(`Transpilation is always performed first. Use --compile, --upload, and`));
@@ -419,7 +419,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
   };
   }
 
-  // doctor subcommand — verify arduino-cli + board core presence
+  // doctor subcommand — verify the active framework's environment
   if (firstArg === "doctor") {
     return {
       command: "doctor",

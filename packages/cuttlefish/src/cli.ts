@@ -23,8 +23,6 @@ import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCom
 import { runPreviewServer } from "./preview/server.js";
 import * as ui from "./utils/ui.js";
 import chalk from "chalk";
-import { checkArduinoEnv } from "@typecad/arduino-cli";
-import { runLicensesPresenter } from "./licenses.js";
 
 function hasFatalDiagnostics(result: GeneratedOutputs): boolean {
   return result.diagnostics.some((diagnostic) => diagnostic.severity === "error");
@@ -135,62 +133,23 @@ async function handleBoardAdd(options: BoardAddCommandOptions): Promise<void> {
 }
 
 /**
- * `cuttlefish doctor` — verify arduino-cli is installed and the board's core
- * (derived from the FQBN in cuttlefish.config.ts) is present. Exits 0 if the
- * environment is OK, non-zero otherwise. Reuses checkArduinoEnv so the
- * detection logic is shared with the build/test gates.
+ * `cuttlefish doctor` — verify the active framework's environment. The actual
+ * detection logic is framework-owned (e.g. framework-arduino checks arduino-cli
+ * and the board core). Cuttlefish only dispatches: it forwards to the loaded
+ * framework's `doctor` export, or reports that the framework provides none.
+ *
+ * Doctor is a user-facing diagnostic command, so it must not throw if no
+ * framework is loaded yet (the user may run it before any build). The
+ * hasLoadedFramework() guard returns a safe optional instead.
  */
 function runDoctor(): void {
-  ui.printHeader();
-  ui.printStep("Checking arduino-cli environment...");
-
-  const config = loadCuttlefishConfig(process.cwd());
-  const fqbn = config?.buildTarget;
-
-  const result = checkArduinoEnv(fqbn);
-  const check = result.check;
-
-  // arduino-cli presence line
-  if (check.arduinoCliInstalled) {
-    ui.printInfo(`arduino-cli .... ${check.arduinoCliVersion ?? "unknown"}  ✓`);
-  } else if (!result.ok && result.reason === "arduino-cli-not-found") {
-    ui.printError(`arduino-cli .... NOT FOUND on PATH`);
-  } else {
-    ui.printError(`arduino-cli .... found but unresponsive`);
+  const fw = hasLoadedFramework() ? getLoadedFramework() : undefined;
+  if (!fw?.doctor) {
+    ui.printInfo("This framework provides no doctor support.");
+    return;
   }
-
-  // core presence line (only meaningful if we have an FQBN)
-  if (fqbn) {
-    if (check.requiredCore) {
-      const status = check.requiredCoreInstalled ? "installed ✓" : "NOT installed ✗";
-      const line = `${check.requiredCore} ....... ${status}`;
-      if (check.requiredCoreInstalled) {
-        ui.printInfo(line);
-      } else {
-        ui.printError(line);
-        ui.printInfo(`  → run: arduino-cli core install ${check.requiredCore}`);
-      }
-    }
-  } else {
-    ui.printInfo("(no buildTarget in cuttlefish.config.ts — skipping core check)");
-  }
-
-  // Exit code
-  if (result.ok) {
-    ui.printSuccess("Environment OK");
-    return; // exitCode stays unset => 0
-  }
-  if (!result.ok) {
-    for (const line of result.messages) ui.printInfo(line);
-    process.exitCode = 1;
-  }
+  fw.doctor();
 }
-
-/**
- * `cuttlefish licenses` dispatch — the presenter lives in licenses.ts so it is
- * unit-testable without importing this binary entry module (cli.ts has a
- * shebang and runs main() at import time). See runLicensesPresenter.
- */
 
 async function main(): Promise<void> {
   try {
@@ -261,7 +220,12 @@ async function main(): Promise<void> {
     }
 
     if (options.command === "licenses") {
-      runLicensesPresenter(options.strict ?? false, options.all ?? false);
+      const fw = hasLoadedFramework() ? getLoadedFramework() : undefined;
+      if (!fw?.licenses) {
+        ui.printInfo("This framework provides no licenses support.");
+        return;
+      }
+      fw.licenses(options.strict ?? false, options.all ?? false);
       return;
     }
 

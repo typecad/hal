@@ -498,4 +498,11 @@ export default defineFrameworkManifest({
     ],
     halResolutionTests: [],
   },
+
+  // Optional subcommands owned by this framework. framework-arduino ships both
+  // presenters (doctor checks arduino-cli + board core; licenses scans Arduino
+  // library SPDX). Cuttlefish dispatches `cuttlefish doctor` / `cuttlefish
+  // licenses` to the framework's runtime exports when these are available.
+  doctor: { available: true },
+  licenses: { available: true },
 });

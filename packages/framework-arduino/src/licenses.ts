@@ -1,11 +1,16 @@
 // ---------------------------------------------------------------------------
-// @typecad/cuttlefish — Arduino library license scanner
+// @typecad/framework-arduino — Arduino library license scanner
 //
 // Pure detection core for the `cuttlefish licenses` subcommand. Enumerates
 // installed Arduino libraries, resolves each library's SPDX license from
 // library.properties and/or the LICENSE file, classifies copyleft risk, and
-// returns a sorted list. Never throws. The CLI presenter (runLicenses in
-// cli.ts) renders the result and sets process.exitCode.
+// returns a sorted list. Never throws. The presenter (runLicensesPresenter)
+// renders the result and sets process.exitCode.
+//
+// This module used to live in @typecad/cuttlefish (Phase 5 decoupling). It was
+// moved here because it is Arduino-specific (it shells out to `arduino-cli`
+// and reads Arduino core/library layout). Cuttlefish now dispatches the
+// `licenses` command through the loaded framework's `licenses` export.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -67,7 +72,7 @@ interface ProjectConfig {
 
 /**
  * #include capture for both angle-bracket and quote forms. Returns the bare
- * header name, e.g. '#include <Adafruit_GFX.h>' or '#include "Servo.h'" -> the
+ * header name, e.g. '#include <Adafruit_GFX.h>' or '#include "Servo.h"' -> the
  * captured header. Quote includes with a path separator (e.g. "./foo.h",
  * "../util/bar.h") are project-relative and excluded by the second regex.
  */
@@ -597,6 +602,9 @@ export function classifyRisk(spdx: string): CopyleftRisk {
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import * as ui from "@typecad/cuttlefish/utils/ui";
+import { loadCuttlefishConfig } from "@typecad/cuttlefish/config-loader";
+import { checkArduinoEnv, deriveRequiredCore } from "@typecad/arduino-cli";
 
 /** Raw library entry as it appears in `arduino-cli lib list --format json`. */
 export interface RawArduinoLibrary {
@@ -949,13 +957,6 @@ export function scanLicenses(options?: ScanOptions): ScanOutcome {
 // ---------------------------------------------------------------------------
 // CLI presenter
 // ---------------------------------------------------------------------------
-
-// Imported here (not in cli.ts) so the presenter is unit-testable without
-// importing the binary entry module cli.ts, which has a shebang and runs
-// main() at import time.
-import * as ui from "./utils/ui.js";
-import { loadCuttlefishConfig } from "./config-loader.js";
-import { deriveRequiredCore } from "@typecad/arduino-cli";
 
 let testProjectConfig: ProjectConfig | undefined;
 

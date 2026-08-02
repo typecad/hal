@@ -41,6 +41,10 @@
       "types": "./dist/config-loader.d.ts",
       "default": "./dist/config-loader.js"
     },
+    "./utils/ui": {
+      "types": "./dist/utils/ui.d.ts",
+      "default": "./dist/utils/ui.js"
+    },
     "./stores/display-profile-store": {
       "types": "./dist/stores/display-profile-store.d.ts",
       "default": "./dist/stores/display-profile-store.js"
@@ -92,8 +96,7 @@
   "dependencies": {
     "chalk": "^4.1.2",
     "typescript": "^5.7.3",
-    "zod": "^3.24.0",
-    "@typecad/arduino-cli": "1.0.0-alpha.7"
+    "zod": "^3.24.0"
   },
   "peerDependencies": {
     "@typecad/ui": "1.0.0-alpha.7",
