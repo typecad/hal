@@ -20,7 +20,7 @@ const READ_METHODS = new Set([
   'read', 'isHigh', 'isLow', 'readAnalog', 'readVoltage',
 ]);
 
-/** Write operations that implicitly set OUTPUT mode on Arduino. */
+/** Write operations that implicitly set OUTPUT mode on Wiring-derived frameworks. */
 const WRITE_METHODS = new Set([
   'write', 'high', 'low', 'toggle', 'pulse', 'pwm', 'tone',
 ]);
@@ -34,8 +34,8 @@ const PIN_RECEIVER_KINDS = new Set([
  * Validate that GPIO I/O operations are preceded by mode configuration.
  *
  * - Read without prior mode → **warning** (undefined behavior on floating pin)
- * - Write without prior mode → **info** (Arduino implicitly sets OUTPUT, but
- *   explicit configuration is recommended)
+ * - Write without prior mode → **info** (Wiring-derived frameworks implicitly
+ *   set OUTPUT, but explicit configuration is recommended)
  */
 export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
@@ -74,7 +74,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
       diagnostics.push({
         severity: 'info',
         message: `Pin '${receiver}' written via '${method}()' without explicit mode configuration. ` +
-                 `Arduino implicitly sets OUTPUT, but explicit ${receiver}.asOutput() is recommended.`,
+                 `The target framework implicitly sets OUTPUT, but explicit ${receiver}.asOutput() is recommended.`,
         filePath: program.fileName,
         code: 'pin-mode-not-set',
         source: 'pin-mode-validation',
@@ -117,7 +117,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
       diagnostics.push({
         severity: 'info',
         message: `Pin ${op.pin} written without explicit mode configuration. ` +
-                 `Arduino implicitly sets OUTPUT, but explicit asOutput() is recommended.`,
+                 `The target framework implicitly sets OUTPUT, but explicit asOutput() is recommended.`,
         filePath: program.fileName,
         code: 'pin-mode-not-set',
         source: 'pin-mode-validation',
@@ -155,7 +155,12 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
     // Raw nodes: after full HAL resolution, some pin ops land as their C++ text
     // (e.g. `digitalRead(2)`, `digitalWrite(2, 1)`) rather than structured
     // hal-expr nodes. Extract the pin number and apply the same mode check.
-    // This mirrors how peripheral-usage.ts detects gpio via emitted text.
+    // Detect GPIO ops in lowered raw C++ text. The names digitalRead/
+    // digitalWrite are the Wiring-derived HAL conventions that the lowered text
+    // contains for hardware frameworks; the structured hal-op branch above
+    // handles the IR-form case. (This is a heuristic for Wiring-derived
+    // frameworks; non-Wiring frameworks emit their own forms and would need a
+    // strategy-provided read/write name classification to be detected here.)
     if (e.kind === 'raw' && typeof e.value === 'string') {
       const readMatch = e.value.match(/digitalRead\((\d+)\)/);
       const writeMatch = e.value.match(/digitalWrite\((\d+)/);
