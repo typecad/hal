@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { ZephyrStrategy } from '../../../../packages/framework-zephyr/src/strategy';
 
-// A minimal ProgramIR carrying a single display.* op node, the shape
-// programUsesDisplay walks for. Mirrors how the real analyzer would surface a
-// display.init call — detection must not depend on an injected analysis flag
-// (the analyzer exposes no usesDisplay flag).
+// Display gating now uses the shared analyzer's usesDisplay flag (set by
+// display.* hal-ops) injected via ctx.analysis, replacing the per-framework
+// programUsesDisplay IR walk. The minimal ProgramIR shapes below are kept for
+// resolveDisplayOp parity; the gating tests inject the analysis flag directly.
 const programWithDisplay = {
   functions: [{
     statements: [{
@@ -38,17 +38,17 @@ describe('ZephyrStrategy display wiring', () => {
   });
 
   it('forcedIncludes adds <zephyr/drivers/display.h> when the program uses display', () => {
-    const inc = s.forcedIncludes(programWithDisplay, { frameworkData: {} } as any);
+    const inc = s.forcedIncludes(programWithDisplay, { frameworkData: {}, analysis: { usesDisplay: true } } as any);
     expect(inc).toContain('<zephyr/drivers/display.h>');
   });
 
   it('forcedIncludes omits <zephyr/drivers/display.h> when the program has no display', () => {
-    const inc = s.forcedIncludes(programWithoutDisplay, { frameworkData: {} } as any);
+    const inc = s.forcedIncludes(programWithoutDisplay, { frameworkData: {}, analysis: { usesDisplay: false } } as any);
     expect(inc).not.toContain('<zephyr/drivers/display.h>');
   });
 
   it('shimLines emits the display runtime when the program uses display', () => {
-    const lines = s.shimLines(programWithDisplay, { frameworkData: {} } as any);
+    const lines = s.shimLines(programWithDisplay, { frameworkData: {}, analysis: { usesDisplay: true } } as any);
     const joined = lines.join('\n');
     expect(joined).toContain('CUTTLEFISH_DISPLAY_BEGIN');
     expect(joined).toContain('__tc_display_line');
@@ -56,7 +56,7 @@ describe('ZephyrStrategy display wiring', () => {
   });
 
   it('shimLines omits the display runtime when the program has no display', () => {
-    const lines = s.shimLines(programWithoutDisplay, { frameworkData: {} } as any);
+    const lines = s.shimLines(programWithoutDisplay, { frameworkData: {}, analysis: { usesDisplay: false } } as any);
     expect(lines.join('\n')).not.toContain('CUTTLEFISH_DISPLAY_BEGIN');
   });
 });

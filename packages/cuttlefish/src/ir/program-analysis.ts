@@ -117,6 +117,20 @@ export interface ProgramAnalysisResult {
   /** Worker offload usage. Detected from worker.* ops. Frameworks gate the
    *  worker_runtime polyfill (and its per-framework backing) on this. */
   usesWorker: boolean;
+  /** Native/desktop: std::chrono / steady_clock usage (gates <chrono>). */
+  usesChrono: boolean;
+  /** Native/desktop: std::set usage (gates <set>). */
+  usesSet: boolean;
+  /** Native/desktop: std::algorithm usage (std::sort/find/transform etc., gates <algorithm>). */
+  usesAlgorithm: boolean;
+  /** Native/desktop: cstdio usage (printf/fprintf/snprintf, gates <cstdio>). */
+  usesCstdio: boolean;
+  /** digitalRead() in lowered raw text or gpio.read hal-op (gates the native digitalRead shim). */
+  usesDigitalRead: boolean;
+  /** display.* hal-op present, or a UI is mounted (replaces ad-hoc programUsesDisplay walks). */
+  usesDisplay: boolean;
+  /** cuttlefish_halt() in lowered raw text (gates the cuttlefish_halt macro polyfill). */
+  usesHalt: boolean;
 }
 
 // Regex for std:: math calls
@@ -127,7 +141,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesChrono' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -176,6 +190,24 @@ function analyzeExpression(
       }
       if (expr.value.includes('__tc_str_ptr')) {
         result.usesStrPtr = true;
+      }
+      if (/std::chrono|steady_clock/.test(expr.value)) {
+        result.usesChrono = true;
+      }
+      if (/std::set\s*</.test(expr.value)) {
+        result.usesSet = true;
+      }
+      if (/std::(sort|find|transform|copy|fill|remove|count|reverse|accumulate)\s*\(/.test(expr.value)) {
+        result.usesAlgorithm = true;
+      }
+      if (/\b(printf|fprintf|sprintf|snprintf)\s*\(/.test(expr.value)) {
+        result.usesCstdio = true;
+      }
+      if (/\bdigitalRead\s*\(/.test(expr.value)) {
+        result.usesDigitalRead = true;
+      }
+      if (/cuttlefish_halt\s*\(/.test(expr.value)) {
+        result.usesHalt = true;
       }
       break;
 
@@ -356,8 +388,10 @@ function analyzeExpression(
         const opName = expr.operation.operation;
         if (opName.startsWith("display.")) {
           result.usesGPIO = true;
+          result.usesDisplay = true;
         }
         if (opName.startsWith("gpio."))      result.usesGPIO = true;
+        if (opName === "gpio.read") result.usesDigitalRead = true;
         if (opName.startsWith("pwm."))       result.usesPWM = true;
         if (opName.startsWith("rmt."))       result.usesRmt = true;
         if (opName.startsWith("adc."))       result.usesADC = true;
@@ -659,11 +693,13 @@ function analyzeStatement(
         // display's transport type can't be determined from the op alone.
         if (opName.startsWith("display.")) {
           result.usesGPIO = true;
+          result.usesDisplay = true;
         }
         // ESP32 peripheral usage — framework-esp32 gates IDF driver blocks
         // and forced includes on these. No-op for other frameworks (their
         // shimLines emit no CUTTLEFISH_* blocks with these marker names).
         if (opName.startsWith("gpio."))      result.usesGPIO = true;
+        if (opName === "gpio.read") result.usesDigitalRead = true;
         if (opName.startsWith("pwm."))       result.usesPWM = true;
         if (opName.startsWith("rmt."))       result.usesRmt = true;
         if (opName.startsWith("adc."))       result.usesADC = true;
@@ -856,6 +892,13 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesHwtimer: false,
     usesCapacitive: false,
     usesWorker: false,
+    usesChrono: false,
+    usesSet: false,
+    usesAlgorithm: false,
+    usesCstdio: false,
+    usesDigitalRead: false,
+    usesDisplay: false,
+    usesHalt: false,
   };
 
   // Analyze type aliases

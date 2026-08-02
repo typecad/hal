@@ -33,28 +33,32 @@ export class NativeStrategy implements PlatformStrategy {
 
   // ── Profile ─────────────────────────────────────────────────────────────
 
-  forcedIncludes(): string[] {
-    // <cstdint> is needed because DIRECT_CPP_TYPE_MAP (type-resolution.ts)
-    // passes int32_t/uint8_t/etc. through verbatim, and the native default
-    // include set doesn't otherwise pull in their definitions.
-    //
-    // <vector> and <map> are pulled in unconditionally because the
-    // usage-driven include logic (setup.ts) only adds them when an inline
-    // array/Map *literal* is seen in the IR — but std::vector/std::map can
-    // also appear as a struct field type, function parameter, return type,
-    // or cross-module type with no literal at the use site, which would
-    // leave the type undefined. Including them here is cheap (header only)
-    // and matches how <cstdint> is already justified. <cstdio> for printf,
-    // used by the runtime-header's non-Arduino (#else) warning branches so the
-    // SDL native target can emit the same diagnostics without Serial.
-    return ['<cctype>', '<cstdint>', '<vector>', '<map>', '<set>', '<chrono>', '<algorithm>', '<cstdio>'];
+  forcedIncludes(program: ProgramIR, ctx?: PlatformContext): string[] {
+    // <cstdint> and <cctype> are universal: type-resolution passes int32_t/
+    // uint8_t/etc. through verbatim, and char classification is broadly used.
+    // The remaining headers are gated on usage analysis so a native program
+    // that doesn't touch std::vector / std::chrono / etc. doesn't pull them in.
+    // When ctx.analysis is absent (capability queries, manifest validation),
+    // the gates default open to preserve existing behavior in those paths.
+    const inc: string[] = ['<cctype>', '<cstdint>'];
+    const a = (ctx as any)?.analysis;
+    const uses = (f: string): boolean => a ? !!a[f] : true;
+    if (uses('usesVectorTypes')) inc.push('<vector>');
+    if (uses('usesStdMap')) inc.push('<map>');
+    if (uses('usesSet')) inc.push('<set>');
+    if (uses('usesChrono')) inc.push('<chrono>');
+    if (uses('usesAlgorithm')) inc.push('<algorithm>');
+    if (uses('usesCstdio') || uses('hasConsoleCalls')) inc.push('<cstdio>');
+    return inc;
   }
 
   symbolAliases(): Record<string, string> {
     return {};
   }
 
-  shimLines(program?: ProgramIR): string[] {
+  shimLines(program: ProgramIR, ctx?: PlatformContext): string[] {
+    const a = (ctx as any)?.analysis;
+    const uses = (f: string): boolean => a ? !!a[f] : true;
     const baseLines = [
       '// cuttlefish runtime shim. Wrapped in a single include guard so the',
       '// block is safe to emit into multiple headers and .cpp files within',
@@ -77,16 +81,26 @@ export class NativeStrategy implements PlatformStrategy {
       'template<typename T, typename U> inline T cuttlefish_nullish(const T& a, U b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }',
       'namespace Date { inline long now() { auto t = std::chrono::system_clock::now(); return static_cast<long>(std::chrono::duration_cast<std::chrono::milliseconds>(t.time_since_epoch()).count()); } }',
       'inline unsigned long millis() { return static_cast<unsigned long>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count()); }',
-      '// Arduino-compat polyfills used by the UI runtime (pin reads, constrain, map).',
-      '// The runtime header references these; native provides no-op/identity impls.',
-      '#ifndef HIGH', '#define HIGH 1', '#endif',
-      '#ifndef LOW', '#define LOW 0', '#endif',
-      '#ifndef PROGMEM', '#define PROGMEM', '#endif',
-      'inline int digitalRead(int) { return LOW; }',
-      'inline long map(long x, long in_min, long in_max, long out_min, long out_max) { return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min; }',
-      'inline long constrain(long x, long a, long b) { return x < a ? a : (x > b ? b : x); }',
-      '#endif // CUTTLEFISH_SHIM_DEFINED',
     ];
+    // Arduino-compat polyfills (pin reads, constrain, map) — emit only when the
+    // program (or a mounted UI) actually references them. The UI runtime references
+    // digitalRead/HIGH/LOW, so emit them when GPIO is in use too. Default open
+    // when ctx.analysis is absent (capability queries).
+    if (uses('usesDigitalRead') || uses('usesGPIO')) {
+      baseLines.push(
+        '#ifndef HIGH', '#define HIGH 1', '#endif',
+        '#ifndef LOW', '#define LOW 0', '#endif',
+        '#ifndef PROGMEM', '#define PROGMEM', '#endif',
+        'inline int digitalRead(int) { return LOW; }',
+      );
+    }
+    if (uses('usesMap')) {
+      baseLines.push('inline long map(long x, long in_min, long in_max, long out_min, long out_max) { return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min; }');
+    }
+    if (uses('usesConstrain')) {
+      baseLines.push('inline long constrain(long x, long a, long b) { return x < a ? a : (x > b ? b : x); }');
+    }
+    baseLines.push('#endif // CUTTLEFISH_SHIM_DEFINED');
     // Safety: emit the __tc_gpio_read / __tc_delay_us shims when the program
     // uses @typecad/safety. Native target stubs GPIO read (the SDL simulator
     // doesn't model real digital input levels) and the microsecond delay
