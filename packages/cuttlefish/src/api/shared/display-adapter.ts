@@ -14,9 +14,9 @@ import type { ResolvedDisplay } from "./display-profile.js";
 import type { PlatformStrategy } from "./platform-strategy.js";
 
 export interface DisplayAdapterCode {
-  /** C++ #include lines (e.g. "#include <Adafruit_ILI9341.h>"). */
+  /** C++ #include lines (e.g. "#include <SDL2/SDL.h>"). */
   includes: string;
-  /** C++ display object declaration (e.g. "Adafruit_ILI9341 __tc_display = ..."). */
+  /** C++ display object declaration (e.g. the framework-specific display object). */
   declaration: string;
   /** C++ static inline adapter functions (display_init, display_fillScreen, etc.). */
   functions: string;
@@ -35,8 +35,9 @@ export function generateDisplayAdapter(
   display: ResolvedDisplay,
   strategy?: Pick<PlatformStrategy, "providesDisplayAdapter" | "resolveDisplayAdapter">,
 ): DisplayAdapterCode {
-  // Strategy-owned adapters (AVR, ESP32) take precedence. Falls through to
-  // the built-in Adafruit registry for Arduino.
+  // Strategy-owned adapters take precedence (frameworks supply their own
+  // display driver code). Falls through to cuttlefish's generic built-in
+  // registry (e.g. the SDL native driver) when no strategy provides one.
   if (strategy?.providesDisplayAdapter?.() && strategy.resolveDisplayAdapter) {
     const code = strategy.resolveDisplayAdapter(display);
     if (code) return code;

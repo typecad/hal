@@ -29,15 +29,16 @@ export interface PlatformGraphicsStrategy {
   resolveDisplayOp(op: DisplayHALOp): { code?: string; expression?: string } | undefined;
 
   /**
-   * True if this strategy emits its own display adapters (AVR, ESP32). When
-   * false or undefined, generateDisplayAdapter() falls back to the built-in
-   * Adafruit registry — the Arduino path, unchanged.
+   * True if this strategy emits its own display adapters (e.g. framework-arduino
+   * owns the Adafruit_GFX drivers, framework-native owns SDL). When false or
+   * undefined, generateDisplayAdapter() falls back to cuttlefish's generic
+   * built-in adapter registry.
    */
   providesDisplayAdapter?(): boolean;
 
   /**
-   * Returns the adapter code for one display, or undefined to defer to the
-   * built-in Adafruit registry. Only called when providesDisplayAdapter()
+   * Returns the adapter code for one display, or undefined to defer to cuttlefish's
+   * built-in adapter registry. Only called when providesDisplayAdapter()
    * returns true.
    */
   resolveDisplayAdapter?(display: ResolvedDisplay): DisplayAdapterCode | undefined;
