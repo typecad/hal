@@ -63,32 +63,43 @@ const BOARD_CHAIN = new Set([
   "Demo", "Board", "ATmega328P", "Features", "Esp32", "DevKit",
 ]);
 
-/** Known Arduino / HAL runtime API calls. */
-function isArduinoAPI(name: string): boolean {
-  const apis: string[] = [
-    // GPIO
-    "digitalWrite", "digitalRead", "analogWrite", "analogRead", "pinMode",
-    // Serial
-    "Serial", "println", "print", "read", "write",
-    // Audio
-    "tone", "noTone",
-    // Timing
-    "millis", "micros", "delay", "delayMicroseconds",
-    // Interrupts
-    "attachInterrupt", "detachInterrupt",
-    // SPI / Shift
-    "shiftOut", "shiftIn", "pulseIn",
-    // HAL event tokens (from Button, etc.)
-    "pressed", "released", "input",
-  ];
-  return apis.includes(name);
+/**
+ * Known HAL runtime API call names used for diagram coloring/grouping.
+ *
+ * This is the cross-framework Wiring-derived HAL surface (the call names that
+ * appear in emitted C++ across Arduino-core, ESP32 Arduino, RP2040 Arduino,
+ * etc.). It is a diagnostic heuristic for grouping nodes in the mermaid
+ * execution-flow and interrupt-map diagrams — not emitted code. The set is
+ * generic: it identifies "this is a HAL/runtime call" for coloring purposes,
+ * regardless of which Wiring-derived framework produced it.
+ */
+const HAL_API_NAMES: ReadonlySet<string> = new Set<string>([
+  // GPIO
+  "digitalWrite", "digitalRead", "analogWrite", "analogRead", "pinMode",
+  // Serial
+  "Serial", "println", "print", "read", "write",
+  // Audio
+  "tone", "noTone",
+  // Timing
+  "millis", "micros", "delay", "delayMicroseconds",
+  // Interrupts
+  "attachInterrupt", "detachInterrupt",
+  // SPI / Shift
+  "shiftOut", "shiftIn", "pulseIn",
+  // HAL event tokens (from Button, etc.)
+  "pressed", "released", "input",
+]);
+
+/** Recognize a HAL/runtime API call name for diagram coloring. */
+function isHalApi(name: string): boolean {
+  return HAL_API_NAMES.has(name);
 }
 
 // ── Execution Flow Diagram ──────────────────────────────────────────────────
 
 /**
  * Build a categorized architecture diagram showing how the sketch
- * is organized: entry points, HAL objects, Arduino APIs (grouped by
+ * is organized: entry points, HAL objects, HAL APIs (grouped by
  * subsystem), state variables, and custom functions.
  *
  * Noise symbols (true/false/HIGH/board chain) are filtered out.
@@ -166,7 +177,7 @@ export function buildExecutionFlowDiagram(
     if (entry.has(name) || isr.has(name) || async.has(name)) continue;
     const node = callGraph.nodes.get(name);
 
-    if (isArduinoAPI(name)) {
+    if (isHalApi(name)) {
       apis.push(name);
     } else if (node?.kind === "function") {
       userFns.push(name);
@@ -221,9 +232,9 @@ export function buildExecutionFlowDiagram(
     lines.push("");
   }
 
-  // --- Arduino APIs (grouped by subsystem) ─────────────────────────
+  // --- HAL APIs (grouped by subsystem) ─────────────────────────────
   if (apis.length > 0) {
-    lines.push("  subgraph APIs[\"Arduino APIs\"]");
+    lines.push("  subgraph APIs[\"HAL APIs\"]");
     lines.push("    direction LR");
 
     const groups: Record<string, string[]> = {
@@ -379,7 +390,7 @@ export function buildInterruptMap(
     visited.add(name);
 
     const node = callGraph.nodes.get(name);
-    const style = isRoot ? ":::isr" : (isArduinoAPI(name) ? ":::api" : ":::logic");
+    const style = isRoot ? ":::isr" : (isHalApi(name) ? ":::api" : ":::logic");
     const shape = isRoot ? `[[${esc(name)}]]` : `(${esc(name)})`;
     lines.push(`  ${name}${shape}${style}`);
 
