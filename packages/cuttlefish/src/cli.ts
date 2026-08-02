@@ -50,12 +50,19 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       );
     }
 
-    const framework: string = options.framework ?? target.framework;
-    const frameworkPackage = target.isNative
-      ? target.frameworkPackage
-      : framework === 'arduino'
-        ? '@typecad/framework-arduino'
-        : `@typecad/framework-${framework}`;
+    const framework: string | undefined = options.framework ?? target.framework;
+    const frameworkPackage = target.frameworkPackage
+      ?? (framework ? `@typecad/framework-${framework}` : undefined);
+    if (!frameworkPackage) {
+      throw new Error(
+        `No framework package resolved for target '${target.id}'. ` +
+        `Pass --framework <name> or install a @typecad/framework-* package.`,
+      );
+    }
+    // Derive the short framework id from the package name (e.g.
+    // @typecad/framework-arduino → arduino) when neither the option nor the
+    // target supplied one. KNOWN_TARGETS embedded boards no longer hardcode it.
+    const frameworkId = framework ?? frameworkPackage.replace(/^@typecad\/framework-/, '');
 
     const projectName = options.projectName || 'my-project';
 
@@ -67,7 +74,7 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       architecture: target.architecture,
       boardPackage: target.boardPackage,
       frameworkPackage,
-      framework,
+      framework: frameworkId,
       buildTarget: target.buildTarget,
       mcu: target.mcu,
       baudRate: target.isNative ? undefined : (options.baud ?? 9600),

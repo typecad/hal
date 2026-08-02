@@ -23,8 +23,12 @@ export interface KnownTarget {
   isNative: boolean;
   architecture?: ArchitectureIdentifier;
   boardPackage?: string;
-  frameworkPackage: string;
-  framework: string;
+  /** Framework package + id. Optional on embedded targets: the scaffold wizard
+   *  fills these in by discovering installed @typecad/framework-* packages, so
+   *  KNOWN_TARGETS board entries do not hardcode a framework. Native targets
+   *  set them directly. */
+  frameworkPackage?: string;
+  framework?: string;
   buildTarget?: string;
   mcu?: string;
   /** Framework-specific config (becomes frameworkData in cuttlefish.config.ts).
@@ -46,8 +50,6 @@ const _knownTargets: KnownTarget[] = [
     isNative: false,
     architecture: 'avr',
     boardPackage: '@typecad/board-arduino-uno',
-    frameworkPackage: '@typecad/framework-arduino',
-    framework: 'arduino',
     buildTarget: 'arduino:avr:uno',
     mcu: 'atmega328p',
   },
@@ -57,8 +59,6 @@ const _knownTargets: KnownTarget[] = [
     isNative: false,
     architecture: 'esp32',
     boardPackage: '@typecad/board-esp32-devkit',
-    frameworkPackage: '@typecad/framework-arduino',
-    framework: 'arduino',
     buildTarget: 'esp32:esp32:esp32',
     mcu: 'esp32',
   },
@@ -68,8 +68,6 @@ const _knownTargets: KnownTarget[] = [
     isNative: false,
     architecture: 'esp32s3',
     boardPackage: '@typecad/board-esp32s3',
-    frameworkPackage: '@typecad/framework-arduino',
-    framework: 'arduino',
     buildTarget: 'esp32:esp32:esp32s3',
     mcu: 'esp32s3',
   },
@@ -79,8 +77,6 @@ const _knownTargets: KnownTarget[] = [
     isNative: false,
     architecture: 'esp32c3',
     boardPackage: '@typecad/board-esp32c3',
-    frameworkPackage: '@typecad/framework-arduino',
-    framework: 'arduino',
     buildTarget: 'esp32:esp32:esp32c3',
     mcu: 'esp32c3',
   },
@@ -90,8 +86,6 @@ const _knownTargets: KnownTarget[] = [
     isNative: false,
     architecture: 'esp32c6',
     boardPackage: '@typecad/board-esp32c6',
-    frameworkPackage: '@typecad/framework-arduino',
-    framework: 'arduino',
     buildTarget: 'esp32:esp32:esp32c6',
     mcu: 'esp32c6',
   },
@@ -101,8 +95,6 @@ const _knownTargets: KnownTarget[] = [
     isNative: false,
     architecture: 'rp2040',
     boardPackage: '@typecad/board-rp2040',
-    frameworkPackage: '@typecad/framework-arduino',
-    framework: 'arduino',
     buildTarget: 'rp2040:rp2040:rpipico',
     mcu: 'rp2040',
   },
@@ -112,8 +104,6 @@ const _knownTargets: KnownTarget[] = [
     isNative: false,
     architecture: 'rp2350',
     boardPackage: '@typecad/board-rp2350',
-    frameworkPackage: '@typecad/framework-arduino',
-    framework: 'arduino',
     buildTarget: 'rp2040:rp2040:rpipico2',
     mcu: 'rp2350',
   },

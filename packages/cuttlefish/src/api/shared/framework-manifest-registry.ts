@@ -1,10 +1,13 @@
 // ---------------------------------------------------------------------------
 // Framework manifest discovery
 //
-// KNOWN_FRAMEWORK_PACKAGES is the authoritative list of framework packages.
-// Add a new framework here when it ships. loadFrameworkManifest uses the
-// "./framework.manifest" subpath export each framework declares in its
-// package.json.
+// KNOWN_FRAMEWORK_PACKAGES is the authoritative list of framework packages
+// that ship a framework.manifest (i.e. participate in the manifest validation
+// system). It names real packages by their npm scope+name so the manifest
+// validator and coverage tooling can iterate them — it is not framework-
+// specific knowledge. Add a new framework here when it ships a manifest.
+// loadFrameworkManifest uses the "./framework.manifest" subpath export each
+// framework declares in its package.json.
 // ---------------------------------------------------------------------------
 
 import type { FrameworkManifest } from './framework-manifest.js';
