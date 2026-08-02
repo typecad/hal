@@ -26,6 +26,10 @@ export function generatePromiseRuntime(
   includeWaitForPinEdge: boolean = false,
   strategy?: import("./platform-strategy.js").PlatformStrategy,
 ): string {
+  // The current-time expression (millis() on Wiring-derived frameworks,
+  // std::chrono on generic). Falling back to millis() preserves the historical
+  // behavior when no strategy is supplied.
+  const now = strategy?.currentTimeMillis?.() ?? "millis()";
   const waitForPinEdge = includeWaitForPinEdge ? `
   // HAL-level wait for pin edge — polling-based implementation.
   // Detects an actual transition (idle→target), not just the current level.
@@ -36,18 +40,18 @@ export function generatePromiseRuntime(
     return Promise<void>([pin, mode, timeout](std::function<void(const void*)> resolve, std::function<void(const std::string&)> reject) {
       int targetState = (mode == RISING) ? HIGH : LOW;
       int idleState = (mode == RISING) ? LOW : HIGH;
-      unsigned long start = millis();
+      unsigned long start = ${now};
       // Phase 2 poller: waits for the pin to reach the target state (the edge).
       auto pollTarget = [pin, targetState, timeout, start, resolve]() {
         if (${strategy?.readDigitalPin?.("pin") ?? "digitalRead(pin)"} == targetState) {
           resolve(nullptr);
-        } else if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) {
+        } else if (timeout >= 0 && (${now} - start >= static_cast<unsigned long>(timeout))) {
           resolve(nullptr);
         } else {
           enqueueMicrotask([pin, targetState, timeout, start, resolve]() {
             if (${strategy?.readDigitalPin?.("pin") ?? "digitalRead(pin)"} == targetState) {
               resolve(nullptr);
-            } else if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) {
+            } else if (timeout >= 0 && (${now} - start >= static_cast<unsigned long>(timeout))) {
               resolve(nullptr);
             } else {
               enqueueMicrotask([pin, targetState, timeout, start, resolve]() {});
@@ -59,7 +63,7 @@ export function generatePromiseRuntime(
       enqueueMicrotask([pin, idleState, timeout, start, resolve, pollTarget]() {
         if (${strategy?.readDigitalPin?.("pin") ?? "digitalRead(pin)"} == idleState) {
           pollTarget();
-        } else if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) {
+        } else if (timeout >= 0 && (${now} - start >= static_cast<unsigned long>(timeout))) {
           resolve(nullptr);
         } else {
           enqueueMicrotask([pin, idleState, timeout, start, resolve, pollTarget]() {});
@@ -270,12 +274,12 @@ namespace typecad_async {
   // Async.sleep() — cooperative delay using millis polling
   inline Promise<void> __cuttlefish_async_sleep(unsigned long ms) {
     return Promise<void>([ms](std::function<void(const void*)> resolve, std::function<void(const std::string&)> reject) {
-      unsigned long start = millis();
-      if (millis() - start >= ms) {
+      unsigned long start = ${now};
+      if (${now} - start >= ms) {
         resolve(nullptr);
       } else {
         enqueueMicrotask([ms, start, resolve]() {
-          if (millis() - start >= ms) {
+          if (${now} - start >= ms) {
             resolve(nullptr);
           } else {
             enqueueMicrotask([ms, start, resolve]() { /* will be re-checked next cycle */ });
@@ -295,9 +299,9 @@ namespace typecad_async {
   // Async.sleepUntil() — poll condition every interval ms
   inline Promise<void> __cuttlefish_async_sleep_until(unsigned long pollIntervalMs) {
     return Promise<void>([pollIntervalMs](std::function<void(const void*)> resolve, std::function<void(const std::string&)> reject) {
-      unsigned long start = millis();
+      unsigned long start = ${now};
       enqueueMicrotask([pollIntervalMs, start, resolve]() {
-        if (millis() - start >= pollIntervalMs) {
+        if (${now} - start >= pollIntervalMs) {
           resolve(nullptr);  // caller re-checks condition
         } else {
           enqueueMicrotask([pollIntervalMs, start, resolve]() { /* re-check next cycle */ });
