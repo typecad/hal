@@ -352,24 +352,13 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       const registry = new Map();
       if (options.frameworkPackage) {
         // Built-in display profiles live in the framework's displays/ili9341-spi
-        // module. Non-Arduino frameworks (avr, esp32) may not ship their own
-        // profile registry — fall back to framework-arduino, which all current
-        // frameworks depend on and which owns the canonical profile definitions.
+        // module. Each framework owns its canonical profile definitions; there is
+        // no cross-framework fallback. If a framework ships no profile registry,
+        // resolveDisplayProfile throws a clear "unknown profile" error.
         const profileMod = await import(options.frameworkPackage + "/displays/ili9341-spi").catch(() => null);
-        // The fallback uses a non-literal specifier so tsc does not require
-        // framework-arduino to be a build-time dependency (it is an optional
-        // runtime fallback — frameworks like avr/esp32 may not ship their own
-        // profile registry). Declaring it as a dependency would create a cycle
-        // (framework-arduino already depends on cuttlefish).
-        const fallbackPkg = "@typecad/framework-arduino";
-        const fallbackMod = (options.frameworkPackage !== fallbackPkg)
-          ? await import(fallbackPkg + "/displays/ili9341-spi").catch(() => null)
-          : null;
-        for (const mod of [profileMod, fallbackMod]) {
-          if (mod?.BUILT_IN_PROFILES) {
-            for (const [k, v] of Object.entries(mod.BUILT_IN_PROFILES)) {
-              registry.set(k, v as any);
-            }
+        if (profileMod?.BUILT_IN_PROFILES) {
+          for (const [k, v] of Object.entries(profileMod.BUILT_IN_PROFILES)) {
+            registry.set(k, v as any);
           }
         }
       }

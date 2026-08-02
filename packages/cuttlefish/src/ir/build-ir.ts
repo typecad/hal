@@ -440,14 +440,14 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         }
       }
 
-      // Track HAL instances imported from board packages and framework stubs
-      // so the HAL resolver can resolve them to Arduino C++ names.
+      // Track HAL instances imported from board packages and framework HAL
+      // subpaths so the HAL resolver can resolve them to framework C++ names.
       // The `@typecad/board` virtual import resolves to the board package, so it
       // also registers pin aliases (LED, etc.). Case-insensitive on the scope.
       const lowerSpecifier = moduleSpecifier.toLowerCase();
       const isHALSource = lowerSpecifier.startsWith('@typecad/board-')
-        || lowerSpecifier === '@typecad/framework-arduino/arduino'
-        || lowerSpecifier === '@typecad/board';
+        || lowerSpecifier === '@typecad/board'
+        || /^@typecad\/framework-[a-z0-9-]+\/(arduino|hal|gpio)$/.test(lowerSpecifier);
 
       // UI authoring namespace: `import { ui } from "@typecad/ui"`. The `ui`
       // value is a compile-time construct (its calls are intercepted by
