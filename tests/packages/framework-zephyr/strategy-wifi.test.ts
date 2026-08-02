@@ -18,6 +18,9 @@ describe('ZephyrStrategy WiFi wiring', () => {
     const inc = s.forcedIncludes(undefined, { analysis: { usesWifi: true } } as any);
     expect(inc).toContain('<zephyr/net/conn_mgr_connectivity.h>');
     expect(inc).toContain('<zephyr/net/wifi_mgmt.h>');
+    // No <esp_wifi.h>: txPower is not lowered (driver owns the radio), so the
+    // ESP-IDF HAL header isn't pulled in.
+    expect(inc).not.toContain('<esp_wifi.h>');
   });
 
   it('shimLines emits the WiFi runtime when usesWifi', () => {
@@ -35,6 +38,12 @@ describe('ZephyrStrategy WiFi wiring', () => {
 
   it('profileDiagnostics does NOT flag wifi usage on ESP32-S3', () => {
     const diags = s.profileDiagnostics(programWithWifi, { frameworkData: { target: 'esp32s3_devkitc' } } as any);
+    const codes = diags.map((d) => d.code);
+    expect(codes).not.toContain('zephyr-wifi-unavailable-on-target');
+  });
+
+  it('profileDiagnostics does NOT flag wifi usage on plain ESP32', () => {
+    const diags = s.profileDiagnostics(programWithWifi, { frameworkData: { target: 'esp32_devkitc' } } as any);
     const codes = diags.map((d) => d.code);
     expect(codes).not.toContain('zephyr-wifi-unavailable-on-target');
   });

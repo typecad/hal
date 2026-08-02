@@ -20,11 +20,12 @@
 
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, join } from 'node:path';
-import { readdirSync, readFileSync, mkdirSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
 import type { ToolchainOptions, CompileResult, UploadResult } from '@typecad/cuttlefish/api/shared';
 import { parseCompileErrors } from '@typecad/cuttlefish/api/shared';
 import { scaffoldZephyrProject, writeIfChanged } from './scaffold.js';
-import { westSpawn } from './west-spawn.js';
+import { westSpawn, buildEnv } from './west-spawn.js';
+import { discoverWest } from './west-discover.js';
 import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
 import { ZephyrStrategy } from '../strategy.js';
 import { generateOverlay } from '../dt-config/overlay.js';
@@ -113,14 +114,31 @@ export const Toolchain = {
     const board = targetFromOptions(o);
     const debugMode = new ZephyrStrategy().debugMode(board);
     const isGdbDebug = o.debug === true && debugMode === 'gdb';
-    scaffoldZephyrProject(projectRoot, isGdbDebug);
+    const zc = o.zephyrConfig as Record<string, unknown> | undefined;
+    const userKconfig = zc?.kconfig as Record<string, string> | undefined;
+    const configChanged = scaffoldZephyrProject(projectRoot, isGdbDebug, userKconfig);
 
     // Use a stable build dir so incremental builds reuse the Ninja graph.
     // west defaults to <projectRoot>/build.
     const buildDir = join(projectRoot, 'build');
 
+    // When prj.conf, CMakeLists.txt, or the DT overlay changed, nuke the build
+    // directory so CMake reconfigures from scratch. Without this, stale Ninja
+    // dependency graphs in the build/ cache can produce `ninja: error:
+    // dependency cycle` when Kconfig symbols and generated headers diverge.
+    if (configChanged) {
+      try { rmSync(buildDir, { recursive: true, force: true }); } catch { /* may not exist */ }
+    }
+
+    const buildArgs = ['build', '-b', board, '-d', buildDir, projectRoot];
+    // Append user cmake args from cuttlefish.config.ts zephyr.cmakeArgs.
+    const userCmakeArgs = zc?.cmakeArgs as string[] | undefined;
+    if (userCmakeArgs && userCmakeArgs.length > 0) {
+      buildArgs.push('--');
+      buildArgs.push(...userCmakeArgs);
+    }
     const inv = westSpawn(
-      ['build', '-b', board, '-d', buildDir, projectRoot],
+      buildArgs,
       { cwd: projectRoot, encoding: 'utf-8', timeout: BUILD_TIMEOUT_MS },
     );
     const result = spawnSync(inv.command, inv.args, inv.options);
@@ -164,7 +182,15 @@ export const Toolchain = {
     const projectRoot = projectRootFromOptions(o);
     const buildDir = join(projectRoot, 'build');
     const board = targetFromOptions(o);
+    const zc = o.zephyrConfig as Record<string, unknown> | undefined;
     const args = ['flash', '-d', buildDir];
+
+    // User-configured runner from cuttlefish.config.ts zephyr.runner.
+    // When set it overrides the auto-detected runner below.
+    const userRunner = zc?.runner as string | undefined;
+    if (userRunner) {
+      args.push('--runner', userRunner);
+    }
 
     // Flash runner is target-specific. nRF boards (xiao_ble) flash over J-Link
     // via nrfjprog; Espressif boards (esp32s3_devkitc / esp32*) flash over USB
@@ -175,7 +201,8 @@ export const Toolchain = {
         // esptool reads the device from --esp-device. Let board.cmake pick the
         // runner; just forward the port so COM5 (etc.) flashes the right device.
         args.push('--esp-device', o.port);
-      } else {
+      } else if (!userRunner) {
+        // Only auto-set to nrfjprog if the user hasn't already specified one.
         args.push('--runner', 'nrfjprog'); // nRF52840 flashes via J-Link/nrfjprog
       }
     }
@@ -196,17 +223,32 @@ export const Toolchain = {
   },
 
   monitor(o: ToolchainOptions): void {
-    // Best-effort serial monitor. Zephyr's console output goes to UART/RTT;
-    // for the XIAO nRF52840 the USB-CDC serial is the common path.
-    const projectRoot = projectRootFromOptions(o);
-    const port = o.port ?? '';
-    const args = ['serial', ...(port ? ['--port', port] : [])];
-    const inv = westSpawn(args, {
-      cwd: projectRoot,
-      encoding: 'utf-8',
+    // Serial monitor over USB-CDC. Zephyr does NOT ship a `west serial`
+    // subcommand (it's not a real west command — invoking it errors with
+    // "unknown command"). The discovered west install's venv carries pyserial,
+    // so run its bundled miniterm directly: `python -m serial.tools.miniterm`.
+    // That is the same cross-platform terminal pyserial provides in ESP-IDF's
+    // idf.py monitor, and it inherits stdio so Ctrl+C exits cleanly.
+    if (!o.port) {
+      throw new Error(
+        'A serial port is required to monitor. Pass --port <COMx/ttyX>.',
+      );
+    }
+    // ESP32 USB-CDC console runs at 115200 (the Zephyr ESP32 board default).
+    // The CLI's generic default of 9600 is wrong for this target; honor an
+    // explicit --baud / config.console.baudRate when given, else 115200.
+    const baud = o.baud ?? 115200;
+    const install = discoverWest();
+    const py = install?.pythonExecutable ?? process.env.PYTHON ?? 'python';
+    // Reuse west-spawn's env builder (prepends the venv bin dir to PATH so the
+    // python we spawn resolves pyserial from the same venv). Falls back to the
+    // process env when no install is discovered.
+    const env = install ? buildEnv(install) : process.env;
+    spawnSync(py, ['-m', 'serial.tools.miniterm', o.port, String(baud)], {
+      cwd: projectRootFromOptions(o),
+      env,
       stdio: 'inherit',
     });
-    spawnSync(inv.command, inv.args, inv.options);
   },
 
   debug(o: ToolchainOptions): void {

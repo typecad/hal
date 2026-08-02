@@ -52,7 +52,7 @@ function venvBinDir(install: WestInstall): string | undefined {
  * incompatible with the runner. Putting the venv's bin first makes west's
  * delegated subprocesses resolve to the same versions west itself runs under.
  */
-function buildEnv(install: WestInstall): NodeJS.ProcessEnv {
+export function buildEnv(install: WestInstall): NodeJS.ProcessEnv {
   const env = { ...process.env };
   if (install.zephyrBase && !env.ZEPHYR_BASE) {
     env.ZEPHYR_BASE = install.zephyrBase;

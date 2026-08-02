@@ -84,6 +84,13 @@ export interface ProgramAnalysisResult {
    *  __tc_ble runtime shims and their esp_wifi/esp_http_client/nimble includes
    *  on these. Detected from wifi.* / http.* / ble.* HAL-op operation names. */
   usesWifi: boolean;
+  /** Fine-grained WiFi sub-feature tracking — gates individual shim sub-blocks
+   *  so that unused static helper functions don't trigger -Wunused-function. */
+  usesWifiConnect: boolean;
+  usesWifiConnectBlocking: boolean;
+  usesWifiQuery: boolean;
+  usesWifiScan: boolean;
+  usesWifiConfig: boolean;
   usesHttp: boolean;
   usesBle: boolean;
   /** Preferences (NVS) usage — framework-esp32 gates the __tc_prefs runtime shim
@@ -120,7 +127,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -380,7 +387,16 @@ function analyzeExpression(
         if (opName.startsWith("i2c."))       result.usesI2C = true;
         if (opName.startsWith("spi."))       result.usesSPI = true;
         if (opName.startsWith("uart."))      result.usesUart = true;
-        if (opName.startsWith("wifi."))      result.usesWifi = true;
+        if (opName.startsWith("wifi.")) {
+          result.usesWifi = true;
+          if (opName === "wifi.connect" || opName === "wifi.connect_start" || opName === "wifi.disconnect") {
+            result.usesWifiConnect = true;
+            if (opName === "wifi.connect") result.usesWifiConnectBlocking = true;
+          }
+          else if (opName.startsWith("wifi.scan")) result.usesWifiScan = true;
+          else if (opName === "wifi.status" || opName === "wifi.local_ip" || opName === "wifi.rssi" || opName === "wifi.mac") result.usesWifiQuery = true;
+          else if (opName === "wifi.set_hostname") result.usesWifiConfig = true;
+        }
         if (opName.startsWith("http."))      result.usesHttp = true;
         if (opName.startsWith("ble."))       result.usesBle = true;
         if (opName.startsWith("preferences.")) result.usesPreferences = true;
@@ -475,6 +491,18 @@ function analyzeStatement(
       // Statement-form map()/constrain() mirror the method-call checks above.
       if (statement.callee === "map") result.usesMap = true;
       if (statement.callee === "constrain") result.usesConstrain = true;
+      // Statement-form setInterval/setTimeout mirror the expression-level
+      // timer-count (analyzeExpression). A top-level `setInterval(...)` call
+      // stays a `call` statement (never becomes a method-call expression — see
+      // the comment above re: Timing./Num./WDT.), so without this mirror the
+      // timer polyfill gate (timerCallCount) stays 0 and __tc_setInterval is
+      // emitted as a call but never defined (demo: "'__tc_setInterval' was not
+      // declared in this scope"). The arrow-callback hoister renames the callee
+      // to __tc_setInterval/__tc_setTimeout, so check both pre- and post-rename.
+      if (statement.callee === "setInterval" || statement.callee === "setTimeout"
+        || statement.callee === "__tc_setInterval" || statement.callee === "__tc_setTimeout") {
+        result.timerCallCount++;
+      }
       // The HAL resolver lowers WDT.*/Timing.* namespace calls to bare AVR
       // library functions (WDT.reset() → wdt_reset(), Timing.delay() → delay(),
       // Timing.millis() → millis()). When that happens the `WDT.`/`Timing.`
@@ -661,7 +689,16 @@ function analyzeStatement(
         if (opName.startsWith("interrupt.")) result.usesInterrupts = true;
         if (opName.startsWith("pulse."))     result.usesPulse = true;
         if (opName.startsWith("shift."))     result.usesShift = true;
-        if (opName.startsWith("wifi."))      result.usesWifi = true;
+        if (opName.startsWith("wifi.")) {
+          result.usesWifi = true;
+          if (opName === "wifi.connect" || opName === "wifi.connect_start" || opName === "wifi.disconnect") {
+            result.usesWifiConnect = true;
+            if (opName === "wifi.connect") result.usesWifiConnectBlocking = true;
+          }
+          else if (opName.startsWith("wifi.scan")) result.usesWifiScan = true;
+          else if (opName === "wifi.status" || opName === "wifi.local_ip" || opName === "wifi.rssi" || opName === "wifi.mac") result.usesWifiQuery = true;
+          else if (opName === "wifi.set_hostname") result.usesWifiConfig = true;
+        }
         if (opName.startsWith("http."))      result.usesHttp = true;
         if (opName.startsWith("ble."))       result.usesBle = true;
         if (opName.startsWith("preferences.")) result.usesPreferences = true;
@@ -802,6 +839,11 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesPulse: false,
     usesShift: false,
     usesWifi: false,
+    usesWifiConnect: false,
+    usesWifiConnectBlocking: false,
+    usesWifiQuery: false,
+    usesWifiScan: false,
+    usesWifiConfig: false,
     usesHttp: false,
     usesBle: false,
     usesPreferences: false,

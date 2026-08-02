@@ -455,14 +455,14 @@ export class ZephyrStrategy implements PlatformStrategy {
     // ── WiFi target validity ────────────────────────────────────────────────
     // WiFi ops require a chip with a WiFi radio. The ESP32-S3 descriptor sets
     // wifi.supported; the XIAO nRF52840 omits it (no radio). Flag wifi usage on
-    // a radioless chip so the user gets a clear "use esp32s3_devkitc" message
+    // a radioless chip so the user gets a clear "use an ESP32 target" message
     // instead of an opaque link/DT failure.
     if (usesWifiOps && !chip.wifi?.supported) {
       diags.push({
         severity: 'error',
         code: 'zephyr-wifi-unavailable-on-target',
         message: `WiFi ops are used but ${chip.id} has no WiFi radio.`,
-        hint: `Use the esp32s3_devkitc target (the ESP32-S3 has a 2.4GHz WiFi radio).`,
+        hint: `Use an esp32s3_devkitc or esp32_devkitc target (Espressif ESP32 variants have a 2.4GHz WiFi radio).`,
         source: program.fileName,
       });
     }
@@ -528,6 +528,7 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   normalizeCppType(typeName: string): string {
     if (typeName === 'auto') return 'auto';
+    if (typeName === 'std::string') return 'const char*';
     return typeName;
   }
 
@@ -624,10 +625,15 @@ export class ZephyrStrategy implements PlatformStrategy {
   transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
     const semi = forHeader ? '' : ';';
     const empty = !renderedArgs || renderedArgs.trim() === '';
-    // printk is the always-available Zephyr console (no CONFIG_CONSOLE dependency).
     const tag = method === 'error' ? '[ERROR] ' : method === 'warn' ? '[WARN] ' : '';
     if (empty) return `printk("%s\\n", "${tag}")${semi}`;
-    return `printk("%s%s\\n", "${tag}", (${renderedArgs}))${semi}`;
+    const parts = renderedArgs.split(' << ');
+    if (parts.length === 1) {
+      return `printk("%s%s\\n", "${tag}", (${renderedArgs}))${semi}`;
+    }
+    const fmt = '%s' + '%s'.repeat(parts.length) + '\\n';
+    const args = [`"${tag}"`, ...parts].join(', ');
+    return `printk("${fmt}", ${args})${semi}`;
   }
 
   transformConsoleExpression(_method: string, _renderedArgs: string): string | undefined {
@@ -741,7 +747,7 @@ export class ZephyrStrategy implements PlatformStrategy {
   asyncLoopInjection(taskVarNames: string[], config: AsyncRuntimeConfig): string[];
   asyncLoopInjection(taskVarNames: string[], hasPromiseRuntime: boolean, hasTimers: boolean): string[];
   asyncLoopInjection(
-    _taskVarNames: string[],
+    taskVarNames: string[],
     configOrBool: AsyncRuntimeConfig | boolean,
     _hasTimers?: boolean,
   ): string[] {
@@ -749,12 +755,21 @@ export class ZephyrStrategy implements PlatformStrategy {
       typeof configOrBool === 'boolean'
         ? { hasPromiseRuntime: configOrBool, hasTimers: _hasTimers ?? false }
         : configOrBool;
-    // No background pump for the MVP — return empty unless a Promise runtime is
-    // active, in which case pump cooperatively each loop iteration.
+    // Drive every async state-machine task once per loop() iteration. The task
+    // globals auto-start on their first .run() (constructor sets STATE_0, which
+    // runs unconditionally), so this is both the start and the per-frame advance.
+    // The state machine no-ops in its terminal/cyclic state, so unconditional
+    // .run() is correct (mirrors framework-arduino). No isComplete() gating.
+    const lines: string[] = [];
     if (cfg.hasPromiseRuntime) {
-      return ['cuttlefish_pump_microtasks();'];
+      lines.push('cuttlefish_pump_microtasks();');
     }
-    return [];
+    for (const n of taskVarNames) {
+      lines.push(`${n}.run();`);
+    }
+    // NOTE: no __tc_timer_runtime.run() — Zephyr timers are native k_timer
+    // (timer-polyfill.ts), not a cooperative poll.
+    return lines;
   }
 
   asyncDriverFunctionName(): string {
@@ -874,7 +889,7 @@ export class ZephyrStrategy implements PlatformStrategy {
         domain: 'embedded',
         requiredIncludes: [],
         forwardDeclarations: [],
-        helperStructs: [generateStaticAsyncRuntime(8)],
+        helperStructs: [generateStaticAsyncRuntime(8, this.getAsyncRuntimeConfig().waitForPinEdge)],
         helperFunctions: [],
         shimMacros: [],
         dependencies: [],
@@ -970,6 +985,9 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (boardId === 'esp32s3_devkitc' || boardId.startsWith('esp32s3')) {
       return 'gdb';
     }
+    // The plain ESP32 (esp32_devkitc) intentionally stays on 'printf': unlike
+    // the S3 it has NO built-in USB-JTAG, so gdb needs an external ESP-PROG
+    // probe + a different OpenOCD cfg/toolchain dir (deferred). Falls through.
     return 'printf';
   }
 

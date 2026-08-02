@@ -11,16 +11,18 @@ import { writeFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 
 import { join } from 'node:path';
 import { resolveKconfigFragments, type KconfigUsage } from '../dt-config/kconfig.js';
 
-/** Write a file only if the content differs from the existing file. */
-export function writeIfChanged(filePath: string, content: string): void {
+/** Write a file only if the content differs from the existing file.
+ *  Returns true when the file was written (content changed or file was new). */
+export function writeIfChanged(filePath: string, content: string): boolean {
   if (existsSync(filePath)) {
     try {
-      if (readFileSync(filePath, 'utf8') === content) return;
+      if (readFileSync(filePath, 'utf8') === content) return false;
     } catch {
       // Read failed — fall through to write.
     }
   }
   writeFileSync(filePath, content);
+  return true;
 }
 
 /**
@@ -57,7 +59,7 @@ function readEmittedSources(srcDir: string): string {
  *
  * Idempotent. Mirrors scaffoldEspIdfProject's writeIfChanged discipline.
  */
-export function scaffoldZephyrProject(projectRoot: string, debug = false): void {
+export function scaffoldZephyrProject(projectRoot: string, debug = false, userKconfig?: Record<string, string>): boolean {
   const srcDir = join(projectRoot, 'src');
   if (!existsSync(srcDir)) mkdirSync(srcDir, { recursive: true });
 
@@ -69,7 +71,17 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false): void 
   // in a workspace. The symbol set itself lives in resolveKconfigFragments
   // (dt-config/kconfig.ts), unit-tested separately.
   const src = readEmittedSources(srcDir);
-  const uses = (token: string): boolean => src.includes(token);
+  // Boundary-anchored token scan: a bare `src.includes('power_')` would match
+  // `tx_power_dbm` (emitted by the WiFi shim) and flip CONFIG_PM on for a
+  // WiFi-only program — on the ESP32-S3 that spins the PM soft-off retry loop
+  // forever and starves the app. Anchor each `<prefix>_` token at a leading
+  // word boundary so it matches the intended driver/HAL symbol, not a suffix.
+  const uses = (token: string): boolean => {
+    if (token.endsWith('_')) {
+      return new RegExp(`\\b${token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(src);
+    }
+    return src.includes(token);
+  };
   const usage: KconfigUsage = {
     usesAdc: uses('adc_'),
     usesPwm: uses('pwm_'),
@@ -79,9 +91,14 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false): void 
     usesWdt: uses('wdt_'),
     usesBle: uses('bt_') || uses('bt_gatt') || uses('bt_le_'),
     usesDisplay: uses('display_write') || uses('display_init') || uses('display_fill_rect'),
-    usesPower: uses('pm_') || uses('k_sleep') || uses('power_'),
+    // Power tokens: k_sleep + pm_state_force / PM_STATE_* (what power.ts emits).
+    // The old `power_` token matched nothing the power HAL emits and collides
+    // with tx_power_dbm — removed.
+    usesPower: uses('pm_') || uses('k_sleep') || uses('PM_STATE_'),
     usesWifi: uses('wifi_') || uses('net_mgmt') || uses('conn_mgr'),
   };
+
+  let changed = false;
 
   // ── Root CMakeLists.txt ─────────────────────────────────────────────────
   // The canonical Zephyr CMake application. GLOB src/*.cpp so future multi-
@@ -100,7 +117,7 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false): void 
     'target_sources(app PRIVATE ${app_sources})',
     '',
   ].join('\n');
-  writeIfChanged(join(projectRoot, 'CMakeLists.txt'), cmakeLists);
+  if (writeIfChanged(join(projectRoot, 'CMakeLists.txt'), cmakeLists)) changed = true;
 
   // ── prj.conf ────────────────────────────────────────────────────────────
   // Driver Kconfig symbols are usage-gated on the emitted source: only a
@@ -133,11 +150,24 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false): void 
       prjConf.push('', '# WiFi / networking (conn_mgr + esp32 wifi driver).');
       wifiHeaderEmitted = true;
     }
+    // Skip auto-detected symbols that the user explicitly overrides
+    // in cuttlefish.config.ts zephyr.kconfig — the user value is
+    // emitted in the User Kconfig section below and takes precedence.
+    if (userKconfig && userKconfig.hasOwnProperty(sym)) continue;
     prjConf.push(`${sym}=${val}`);
+  }
+  // Emit user-specified Kconfig from cuttlefish.config.ts zephyr.kconfig.
+  // These override any matching auto-detected symbol (skipped above).
+  if (userKconfig) {
+    prjConf.push('', '# User Kconfig (cuttlefish.config.ts → zephyr.kconfig).');
+    for (const [sym, val] of Object.entries(userKconfig)) {
+      prjConf.push(`${sym}=${val}`);
+    }
   }
   // CONFIG_BT_DEVICE_NAME is a string value not produced by the resolver — add
   // it after the BT block when BLE is used (parity with the previous inline form).
   if (usage.usesBle) prjConf.push('CONFIG_BT_DEVICE_NAME="TypeCAD"');
   prjConf.push('');
-  writeIfChanged(join(projectRoot, 'prj.conf'), prjConf.join('\n'));
+  if (writeIfChanged(join(projectRoot, 'prj.conf'), prjConf.join('\n'))) changed = true;
+  return changed;
 }

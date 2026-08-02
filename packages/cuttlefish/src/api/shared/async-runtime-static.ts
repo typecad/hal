@@ -30,8 +30,22 @@
  * @param capacity Fixed number of timer/task slots. Keep small on constrained
  *   targets (e.g. 8 on AVR). Caps the number of simultaneously pending
  *   Async.sleep / sleepUntil / yield operations.
+ * @param waitForPinEdge How `__cuttlefish_wait_pin_edge` (the HAL gpio
+ *   waitForRising/waitForFalling lowering target) is implemented:
+ *   - "polling" (default): a busy-wait loop using digitalRead/delay/millis +
+ *     the RISING/FALLING/HIGH/LOW symbols. For Arduino-style targets where
+ *     those are part of the core API.
+ *   - "stub": resolve immediately, emitting NO Arduino symbols in the body.
+ *     Also defines RISING/FALLING (guarded) so the call site
+ *     `__cuttlefish_wait_pin_edge(pin, RISING, t)` compiles on targets that
+ *     don't define them (e.g. Zephyr). For testing/debug or targets where edge
+ *     waits are not yet wired.
+ *   - "interrupt": omit entirely — the strategy/ISR layer provides the symbol.
  */
-export function generateStaticAsyncRuntime(capacity: number): string {
+export function generateStaticAsyncRuntime(
+  capacity: number,
+  waitForPinEdge: "interrupt" | "polling" | "stub" = "polling",
+): string {
   return `
 // TypeCAD static (heap-free) async runtime — for targets without <vector>.
 namespace typecad_async_static {
@@ -179,24 +193,55 @@ inline void cuttlefish_pump_microtasks() {
   typecad_async_static::StaticAsyncRuntime::instance().pump();
 }
 
-// HAL-level wait for pin edge — polling-based implementation for static
-// (heap-free) targets. Blocks the current task until the pin edge is detected
-// or the timeout elapses. An edge is a transition: for RISING, the pin must
-// first be LOW then go HIGH; for FALLING, first HIGH then go LOW.
-inline void __cuttlefish_wait_pin_edge(int pin, int mode, long timeout) {
-  int targetState = (mode == RISING) ? HIGH : LOW;
-  int idleState = (mode == RISING) ? LOW : HIGH;
-  unsigned long start = millis();
-  // Phase 1: wait for the pin to be in the idle state (the "before" level)
-  while (digitalRead(pin) != idleState) {
-    if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) return;
-    delay(1);
-  }
-  // Phase 2: wait for the transition to the target state (the actual edge)
-  while (digitalRead(pin) != targetState) {
-    if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) return;
-    delay(1);
-  }
-}
+// HAL-level wait for pin edge. The body depends on the strategy's
+// waitForPinEdge mode — see generateStaticAsyncRuntime()'s doc comment.
+${waitPinEdgeForMode(waitForPinEdge)}
 `;
+}
+
+/** Emit `__cuttlefish_wait_pin_edge` per the strategy's waitForPinEdge mode. */
+function waitPinEdgeForMode(mode: "interrupt" | "polling" | "stub"): string {
+  if (mode === "interrupt") {
+    // The strategy/ISR layer provides the symbol; emit nothing here.
+    return "// __cuttlefish_wait_pin_edge is provided by the strategy (interrupt mode).";
+  }
+  if (mode === "stub") {
+    // Resolve immediately. Define RISING/FALLING (guarded) so the call site
+    // `__cuttlefish_wait_pin_edge(pin, RISING, t)` compiles on targets that
+    // don't define them (Zephyr). No digitalRead/delay/millis in the body.
+    return [
+      "#ifndef RISING",
+      "#define RISING 1",
+      "#endif",
+      "#ifndef FALLING",
+      "#define FALLING 2",
+      "#endif",
+      "// Stub: edge waits resolve immediately (waitForPinEdge=\"stub\").",
+      "inline void __cuttlefish_wait_pin_edge(int /*pin*/, int /*mode*/, long /*timeout*/) {",
+      "}",
+    ].join("\n");
+  }
+  // polling: busy-wait using Arduino-style digitalRead/delay/millis + RISING/
+  // FALLING/HIGH/LOW. For targets whose core API defines those (Arduino).
+  return [
+    "// HAL-level wait for pin edge — polling-based implementation for static",
+    "// (heap-free) targets. Blocks the current task until the pin edge is detected",
+    "// or the timeout elapses. An edge is a transition: for RISING, the pin must",
+    "// first be LOW then go HIGH; for FALLING, first HIGH then go LOW.",
+    "inline void __cuttlefish_wait_pin_edge(int pin, int mode, long timeout) {",
+    "  int targetState = (mode == RISING) ? HIGH : LOW;",
+    "  int idleState = (mode == RISING) ? LOW : HIGH;",
+    "  unsigned long start = millis();",
+    "  // Phase 1: wait for the pin to be in the idle state (the \"before\" level)",
+    "  while (digitalRead(pin) != idleState) {",
+    "    if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) return;",
+    "    delay(1);",
+    "  }",
+    "  // Phase 2: wait for the transition to the target state (the actual edge)",
+    "  while (digitalRead(pin) != targetState) {",
+    "    if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) return;",
+    "    delay(1);",
+    "  }",
+    "}",
+  ].join("\n");
 }

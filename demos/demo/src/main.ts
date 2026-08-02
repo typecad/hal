@@ -1,10 +1,25 @@
-import { GPIO13 } from '@typecad/board';
-import { delay } from '@typecad/hal';
+// 04 — event-callback style: no async functions, no blocking connect.
+const WIFI_SSID = "Skynet";
+const WIFI_PASSWORD = "justin04";
 
-const led = GPIO13.asOutput();
-let cnt = 0;
+import { WiFi, delay, setInterval } from '@typecad/hal';
 
-setInterval(() => {
-  led.toggle();
-  cnt++;
-}, 500)
+WiFi.onConnect(() => {
+  console.log("online");
+});
+
+WiFi.onDisconnect(() => {
+  console.log("link lost, auto-reconnecting");
+  WiFi.connectAsync(WIFI_SSID, WIFI_PASSWORD);
+});
+
+WiFi.connectAsync(WIFI_SSID, WIFI_PASSWORD);
+
+setInterval(() => (WiFi.disconnect()), 30000);
+
+while (true) {
+  if (WiFi.isConnected()) {
+    // do connected work here
+  }
+  delay(250);
+}

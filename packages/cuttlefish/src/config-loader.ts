@@ -57,6 +57,8 @@ export interface ResolvedCuttlefishConfig {
   outputDefines?: Record<string, string>;
   /** Framework-specific config (e.g. `native` section). */
   frameworkConfig?: Record<string, unknown>;
+  /** Zephyr-specific config (e.g. `zephyr` section). */
+  zephyrConfig?: Record<string, unknown>;
   /** Display profile config. */
   display?: import("./api/shared/display-profile.js").DisplayConfig;
 }
@@ -395,6 +397,18 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
     resolved.frameworkConfig = nativeSection;
   }
 
+  // Parse zephyr-specific config section.
+  const zephyrKconfig = extractStringRecord(configObject, ["zephyr", "kconfig"]);
+  const zephyrCmakeArgs = extractStringArray(configObject, ["zephyr", "cmakeArgs"]);
+  const zephyrRunner = flat.get("zephyr.runner");
+  if (zephyrKconfig || zephyrCmakeArgs || typeof zephyrRunner === "string") {
+    resolved.zephyrConfig = {
+      ...(zephyrKconfig ? { kconfig: zephyrKconfig } : {}),
+      ...(zephyrCmakeArgs ? { cmakeArgs: zephyrCmakeArgs } : {}),
+      ...(typeof zephyrRunner === "string" ? { runner: zephyrRunner } : {}),
+    };
+  }
+
   // Parse display profile config (nested object with profile name, wiring, touch)
   const displaySection = extractFrameworkSection(configObject, "display");
   if (displaySection) (resolved as any).display = displaySection;
@@ -418,6 +432,7 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
     };
   }
   if (resolved.console) structuredForValidation.console = resolved.console;
+  if (resolved.zephyrConfig) structuredForValidation.zephyr = resolved.zephyrConfig;
   if (resolved.buildTarget) {
     structuredForValidation.frameworkData = { buildTarget: resolved.buildTarget };
   }

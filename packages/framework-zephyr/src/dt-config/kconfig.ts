@@ -34,6 +34,9 @@ export function resolveKconfigFragments(
 
   // Core driver + console.
   m.set('CONFIG_GPIO', 'y');
+  m.set('CONFIG_PRINTK', 'y');
+  m.set('CONFIG_PRINTK_SYNC', 'y');
+  m.set('CONFIG_CONSOLE', 'y');
 
   if (usage.usesAdc) m.set('CONFIG_ADC', 'y');
   if (usage.usesPwm) m.set('CONFIG_PWM', 'y');
@@ -56,10 +59,32 @@ export function resolveKconfigFragments(
     m.set('CONFIG_NET_IPV4', 'y');
     m.set('CONFIG_NET_UDP', 'y');               // transitive dep of NET_DHCPV4
     m.set('CONFIG_NET_DHCPV4', 'y');
-    m.set('CONFIG_NET_CONFIG_SETTINGS', 'y');   // the real symbol (CONFIG_NET_CONFIG is undefined)
+    // NOT CONFIG_NET_CONFIG_SETTINGS: that runs net_config_init() at boot which
+    // BLOCKS up to NET_CONFIG_INIT_TIMEOUT (default 30s) waiting for the iface
+    // to come up — but our shim brings the iface up itself in setup() (connect),
+    // so net_config waits the full 30s, then the dual management of the same
+    // iface crashes the driver. Our shim owns connectivity (net_mgmt connect/
+    // disconnect + conn_mgr monitor for L4), exactly like the standalone Zephyr
+    // WiFi samples that omit NET_CONFIG_SETTINGS.
     m.set('CONFIG_NET_MGMT', 'y');
     m.set('CONFIG_NET_MGMT_EVENT', 'y');        // required for the net_mgmt callbacks
     m.set('CONFIG_NET_CONNECTION_MANAGER', 'y'); // conn_mgr — the connect portability layer
+    // Networking stack sizes. The defaults are tiny (NET_MGMT_EVENT_STACK_SIZE
+    // is 768 on non-x86) and the WiFi connect result/event handlers run on that
+    // stack — overflowing it freezes the chip mid-connect (silent hard fault,
+    // no panic dump). The official Zephyr WiFi samples (samples/net/wifi/*)
+    // bump exactly these; mirror them. MAIN_STACK 4096→5200 because esp_wifi
+    // device init is stack-hungry and 4096 is marginal on the ESP32-S3.
+    m.set('CONFIG_NET_MGMT_EVENT_STACK_SIZE', '4096');
+    m.set('CONFIG_NET_TX_STACK_SIZE', '2048');
+    m.set('CONFIG_NET_RX_STACK_SIZE', '2048');
+    m.set('CONFIG_MAIN_STACK_SIZE', '5200');
+    // NOTE: wifi.set_tx_power needs no Kconfig symbol. esp_wifi_set_max_tx_power
+    // programs the radio at runtime; its ceiling is baked into the prebuilt
+    // libphy.a / PHY init data, not a prj.conf knob. The ESP-IDF symbol
+    // ESP_PHY_MAX_WIFI_TX_POWER lives in components/esp_phy/Kconfig, which the
+    // Zephyr module integration does NOT source — assigning it here would abort
+    // the build ("undefined symbol").
   }
   if (usage.usesBle) {
     m.set('CONFIG_BT', 'y');
@@ -81,8 +106,11 @@ export function resolveKconfigFragments(
   m.set('CONFIG_REQUIRES_FULL_LIBCPP', 'y');
   m.set('CONFIG_STD_CPP14', 'y');
 
-  // Main thread stack.
-  m.set('CONFIG_MAIN_STACK_SIZE', '4096');
+  // Main thread stack. WiFi already bumps this to 5200 (esp_wifi device init
+  // is stack-hungry); don't overwrite that with the default 4096 here.
+  if (!usage.usesWifi) {
+    m.set('CONFIG_MAIN_STACK_SIZE', '4096');
+  }
 
   if (debug) {
     m.set('CONFIG_DEBUG', 'y');

@@ -241,7 +241,11 @@ function parsePipelineCommand(
   const emitMapsFlag = readFirstFlagValue(argv, ["--emit-maps"]);
   const buildTarget = readFirstFlagValue(argv, ["--build-target"]);
   const port = readFirstFlagValue(argv, ["--port"]);
-  const baud = readNumberFlag(argv, ["--baud"], 9600) ?? 9600;
+  // Default to undefined (NOT 9600) so the build/upload/monitor flow's
+  // `options.baud ?? config.console.baudRate` falls through to the configured
+  // baud. Hardcoding 9600 here shadowed config.console.baudRate whenever --baud
+  // was absent (the monitor then opened the port at 9600, ignoring the config).
+  const baud = readNumberFlag(argv, ["--baud"]);
   const frameworkFlag = readFirstFlagValue(argv, ["--framework"]);
 
   const compile = readBooleanFlag(argv, ["--compile"]);

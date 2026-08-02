@@ -26,13 +26,37 @@ describe('wifi init shim', () => {
     expect(shim).toContain('NET_EVENT_WIFI_SCAN_DONE');
   });
 
-  it('uses conn_mgr for connect/disconnect (portability layer)', () => {
-    expect(shim).toContain('conn_mgr_if_connect');
-    expect(shim).toContain('conn_mgr_if_disconnect');
+  it('registers an IPv4-addr handler + fires on_disconnect/on_connect callbacks', () => {
+    // wifi.on_event: on_disconnect ← NET_EVENT_L4_DISCONNECTED,
+    // on_connect ← NET_EVENT_IPV4_ADDR_ADD (DHCP).
+    expect(shim).toContain('NET_EVENT_IPV4_ADDR_ADD');
+    expect(shim).toContain('__tc_wifi_cb_t');
+    expect(shim).toContain('on_disconnect');
+    expect(shim).toContain('on_connect');
+    // The handler fires the callbacks (null-checked).
+    expect(shim).toContain('if (__tc_wifi.on_disconnect != nullptr) __tc_wifi.on_disconnect();');
+    expect(shim).toContain('if (__tc_wifi.on_connect != nullptr) __tc_wifi.on_connect();');
+  });
+
+  it('connects/disconnects via net_mgmt (conn_mgr monitor supplies L4 events)', () => {
+    expect(shim).toContain('net_if_up');
+    expect(shim).toContain('NET_REQUEST_WIFI_CONNECT');
+    expect(shim).toContain('NET_REQUEST_WIFI_DISCONNECT');
   });
 
   it('uses net_mgmt for scan start + radio queries', () => {
     expect(shim).toContain('NET_REQUEST_WIFI_SCAN');
+  });
+
+  it('does NOT emit a tx-power helper (removed — driver owns the radio)', () => {
+    // wifi.set_tx_power is intentionally not lowered: the Zephyr esp32 driver
+    // owns esp_wifi_start/connect, and the ESP-IDF PHY ceiling isn't a Zephyr
+    // Kconfig symbol (zephyr#45580). The shim must not call esp_wifi_* directly.
+    // (Assert no helper/call symbols; the explanatory comment may name them.)
+    expect(shim).not.toContain('static void __tc_wifi_set_tx_power');
+    expect(shim).not.toContain('esp_wifi_set_max_tx_power(');
+    expect(shim).not.toContain('esp_wifi_start(');
+    expect(shim).not.toContain('tx_power_dbm');
   });
 });
 
@@ -41,11 +65,11 @@ describe('wifi lowering — connection ops', () => {
     expect(lowerWifi({ operation: 'wifi.connect', ssid: '"net"', password: '"pw"', timeoutMs: 10000 } as any))
       .toEqual({ code: '__tc_wifi_connect("net", "pw", 10000);' });
   });
-  it('connect_start → conn_mgr_if_connect kick', () => {
+  it('connect_start → net_if_up + NET_REQUEST_WIFI_CONNECT kick', () => {
     expect(lowerWifi({ operation: 'wifi.connect_start', ssid: '"net"', password: '"pw"' } as any))
       .toEqual({ code: '__tc_wifi_connect_start("net", "pw");' });
   });
-  it('disconnect → conn_mgr_if_disconnect', () => {
+  it('disconnect → NET_REQUEST_WIFI_DISCONNECT', () => {
     expect(lowerWifi({ operation: 'wifi.disconnect' } as any))
       .toEqual({ code: '__tc_wifi_disconnect();' });
   });
@@ -90,6 +114,14 @@ describe('wifi lowering — config ops', () => {
     expect(lowerWifi({ operation: 'wifi.set_hostname', name: '"dev"' } as any))
       .toEqual({ code: '__tc_wifi_set_hostname("dev");' });
   });
+  it('on_event disconnect → assigns on_disconnect callback', () => {
+    expect(lowerWifi({ operation: 'wifi.on_event', event: 'disconnect', handler: 'onLinkLost' } as any))
+      .toEqual({ code: '__tc_wifi.on_disconnect = onLinkLost;' });
+  });
+  it('on_event connect → assigns on_connect callback', () => {
+    expect(lowerWifi({ operation: 'wifi.on_event', event: 'connect', handler: 'onOnline' } as any))
+      .toEqual({ code: '__tc_wifi.on_connect = onOnline;' });
+  });
 });
 
 describe('wifi lowering — out-of-scope ops return undefined', () => {
@@ -102,7 +134,7 @@ describe('wifi lowering — out-of-scope ops return undefined', () => {
     'wifi.ap_set_channel', 'wifi.ap_set_hidden', 'wifi.ap_set_max_clients',
     'wifi.save_credentials', 'wifi.connect_saved', 'wifi.clear_credentials',
     'wifi.wait_connected', 'wifi.wait_disconnected',
-    'wifi.set_power_save', 'wifi.set_static_ip', 'wifi.set_auto_reconnect', 'wifi.on_event',
+    'wifi.set_power_save', 'wifi.set_static_ip', 'wifi.set_auto_reconnect',
     'wifi.set_tx_power',
   ];
   for (const op of unsupported) {

@@ -33,6 +33,13 @@ describe('ZephyrStrategy.debugMode — target selection', () => {
     expect(strategy.debugMode('xiao_ble')).toBe('printf');
   });
 
+  it('falls back to printf for esp32_devkitc (no built-in USB-JTAG; needs ESP-PROG)', () => {
+    // The plain ESP32 has no built-in USB-JTAG unlike the S3, so gdb would need
+    // an external probe + a different OpenOCD cfg/toolchain dir (deferred).
+    expect(strategy.debugMode('esp32_devkitc')).toBe('printf');
+    expect(strategy.debugMode('esp32_devkitc/esp32/procpu')).toBe('printf');
+  });
+
   it('falls back to printf when no target is given', () => {
     expect(strategy.debugMode(undefined)).toBe('printf');
   });
