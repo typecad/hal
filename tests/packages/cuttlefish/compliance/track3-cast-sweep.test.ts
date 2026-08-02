@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { transpile } from "../../../setup";
 import { generateDisplayAdapter } from "../../../../packages/cuttlefish/src/api/shared/display-adapter";
+import { ArduinoStrategy } from "../../../../packages/framework-arduino/src";
+
+// Adafruit adapters (st7796, ssd1309) are strategy-owned; eink-mono (ssd1680)
+// is framework-agnostic and stays in cuttlefish's built-in registry. Passing
+// the strategy is harmless for eink-mono (the hook returns undefined for it,
+// falling through to the built-in registry).
+const arduino = new ArduinoStrategy();
 
 /**
  * Task A8 — Workstream A completion gate.
@@ -50,7 +57,7 @@ screen.mount(display.st7796s({ cs: 5, dc: 17, rst: 16 }), 320, 480);
       _mountBus: "SPI", _mountAddress: 0x3C, _mountReset: -1,
     };
     for (const driver of ["st7796", "ssd1680", "ssd1309"]) {
-      const a = generateDisplayAdapter({ ...base, driver } as any);
+      const a = generateDisplayAdapter({ ...base, driver } as any, arduino);
       const text = [a.includes ?? [], a.declaration ?? "", a.functions ?? ""].join("\n");
       expect(text, `driver ${driver} has C-style cast`).not.toMatch(
         /(^|[^:\w.])\(\s*(uint\d+_t|int\d+_t|int|char|double|float|bool|size_t)\s*\)\s*[a-zA-Z_(]/,

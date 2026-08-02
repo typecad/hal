@@ -26,6 +26,7 @@ import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } 
 import { resolveArduinoProfile } from "./profile.js";
 import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341.js";
 import { ADAFRUIT_ADAPTERS } from "./displays/adafruit-adapters.js";
+import { generateArduinoTouchAdapter } from "./displays/touch-adapters-codegen.js";
 
 /**
  * Arduino-specific platform context.
@@ -1822,14 +1823,17 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
   }
 
   /**
-   * Arduino uses the built-in touch library switch — does NOT provide its own
-   * native touch adapter. Native strategies (ESP32) override this to return
-   * true and implement resolveTouchAdapter for framework-native I2C/SPI touch.
+   * Arduino owns the Adafruit/Arduino-ecosystem touch-library adapters
+   * (XPT2046_Touchscreen, Adafruit_TouchScreen, Adafruit_STMPE610, FT6336U).
+   * They live in this package (src/displays/touch-adapters-codegen.ts) so
+   * cuttlefish carries no Arduino/Wiring-specific touch-library knowledge.
+   * resolveTouchAdapter dispatches through generateArduinoTouchAdapter by
+   * library name. The generic/native touch path (sdl) stays in cuttlefish.
    */
-  providesTouchAdapter(): boolean { return false; }
+  providesTouchAdapter(): boolean { return true; }
 
-  resolveTouchAdapter(_touch: TouchProfile): TouchAdapterCodegen | undefined {
-    return undefined;  // defer to the built-in library switch
+  resolveTouchAdapter(touch: TouchProfile): TouchAdapterCodegen | undefined {
+    return generateArduinoTouchAdapter(touch);
   }
 
   supportedDisplayDrivers(): ReadonlySet<string> {

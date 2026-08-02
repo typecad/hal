@@ -376,7 +376,26 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       const resolved = resolveDisplayProfile(configDisplay, registry);
       const buildTarget = (options.platformContext?.frameworkData?.buildTarget as string | undefined);
       const psramRaw = (options.platformContext?.frameworkData as any)?.psram;
-      const psram = psramRaw === 'opi' || psramRaw === 'quad';
+      // PSRAM flag for the scroll-canvas-memory budget. Two sources, OR'd:
+      //  1. frameworkData.psram — explicit framework-supplied flag (e.g. the
+      //     IDF/native path sets it directly; Arduino config sets it from
+      //     frameworkConfig.psram as 'opi'/'quad').
+      //  2. The Arduino FQBN buildTarget PSRAM= option — parsed by the framework
+      //     package (buildTargetHasPsram in @typecad/framework-arduino), since
+      //     cuttlefish no longer parses Arduino-specific FQBN strings itself.
+      //     The specifier is non-literal so tsc does not require framework-arduino
+      //     as a build-time dependency (it depends on cuttlefish — would cycle).
+      let fqbnPsram = false;
+      if (buildTarget) {
+        try {
+          const psramModSpecifier = "@typecad/framework-arduino/displays/psram";
+          const mod = await import(psramModSpecifier).catch(() => null);
+          fqbnPsram = !!mod?.buildTargetHasPsram?.(buildTarget);
+        } catch {
+          fqbnPsram = false;
+        }
+      }
+      const psram = psramRaw === 'opi' || psramRaw === 'quad' || fqbnPsram;
       setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus, address: resolved.address, reset: resolved.reset, buildTarget, psram });
     } catch {
       // Fall back to default profile — not fatal
