@@ -26,6 +26,7 @@ import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } 
 import { resolveArduinoProfile } from "./profile.js";
 import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341.js";
 import { ADAFRUIT_ADAPTERS } from "./displays/adafruit-adapters.js";
+import { buildTargetHasPsram } from "./displays/psram.js";
 import { generateArduinoTouchAdapter } from "./displays/touch-adapters-codegen.js";
 
 /**
@@ -1405,6 +1406,13 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
   ]);
   analogReadCallNames(): ReadonlySet<string> {
     return ArduinoStrategy._ANALOG_READ_NAMES;
+  }
+
+  derivesPsramFromBuildTarget(buildTarget: string): boolean {
+    // Delegates to the FQBN parser in displays/psram.ts (e.g. an ESP32 FQBN
+    // with a PSRAM=opi option). Keeps the framework-specific FQBN parsing out
+    // of cuttlefish.
+    return buildTargetHasPsram(buildTarget);
   }
 
   resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {

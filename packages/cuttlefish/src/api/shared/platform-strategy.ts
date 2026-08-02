@@ -674,6 +674,15 @@ export interface PlatformHALStrategy {
    * in lowered raw text.
    */
   analogReadCallNames?(): ReadonlySet<string>;
+
+  /**
+   * Whether the framework's build-target string indicates PSRAM is available
+   * (e.g. an Arduino FQBN with a PSRAM= option). Frameworks that encode PSRAM
+   * in their build target implement this so cuttlefish can derive the
+   * scroll-canvas-memory budget without parsing framework-specific strings.
+   * Returns false when the framework doesn't encode PSRAM in the build target.
+   */
+  derivesPsramFromBuildTarget?(buildTarget: string): boolean;
 }
 
 /**

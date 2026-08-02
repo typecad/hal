@@ -149,8 +149,13 @@ export async function runInitWizard(
         frameworkPackage = match?.pkg ?? `@typecad/framework-${partialOptions.framework}`;
         console.log(`${chalk.cyan("?")} Framework: ${chalk.white(framework)}`);
       } else if (frameworkOptions.length === 0) {
-        console.log(`${chalk.yellow("!")} No @typecad/framework-* packages found in this project.`);
-        console.log(`  Install one, e.g. ${chalk.cyan("npm i @typecad/framework-arduino")}.`);
+        // No framework installed and none requested via --framework: abort
+        // rather than produce a broken scaffold with an empty framework field
+        // (which would generate invalid package.json + cuttlefish.config.ts).
+        throw new Error(
+          "No @typecad/framework-* packages found in this project. " +
+          "Install one before scaffolding, e.g.: npm i @typecad/framework-arduino",
+        );
       } else if (frameworkOptions.length === 1) {
         framework = frameworkOptions[0].value;
         frameworkPackage = frameworkOptions[0].pkg;

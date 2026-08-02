@@ -695,6 +695,37 @@ export class NativeStrategy implements PlatformStrategy {
     return false;
   }
 
+  // ── Atomic HAL primitives (no GPIO on the native target) ──────────────────
+  // These return documented no-op stubs so cuttlefish never emits a Wiring
+  // token by name. The native target has no GPIO/timing hardware.
+  readDigitalPin(_pin: string): string {
+    return "/* gpio unavailable on native target */ 0";
+  }
+  readAnalogPin(_pin: string): string {
+    return "/* adc unavailable on native target */ 0";
+  }
+  writeDigitalPin(_pin: string, _val: string): string {
+    return "/* gpio unavailable on native target */";
+  }
+  setPinMode(_pin: string, _mode: string): string {
+    return "/* gpio unavailable on native target */";
+  }
+  delayMs(_ms: string): string {
+    return "/* delay unavailable on native target */";
+  }
+  delayMicroseconds(_us: string): string {
+    return "/* delay unavailable on native target */";
+  }
+  halCallNames(): ReadonlySet<string> {
+    return new Set<string>();
+  }
+  isHalCall(_name: string): boolean {
+    return false;
+  }
+  analogReadCallNames(): ReadonlySet<string> {
+    return new Set<string>();
+  }
+
   colorFormat(): "rgb565" | "rgb666" | "rgb888" | "mono" {
     // Honor the resolved display profile's colorFormat so an rgb888 SDL target
     // lowers colors at full 888 precision (and emits UI_COLOR_DEPTH 888).

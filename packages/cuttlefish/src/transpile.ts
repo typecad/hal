@@ -369,21 +369,13 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       //  1. frameworkData.psram — explicit framework-supplied flag (e.g. the
       //     IDF/native path sets it directly; Arduino config sets it from
       //     frameworkConfig.psram as 'opi'/'quad').
-      //  2. The Arduino FQBN buildTarget PSRAM= option — parsed by the framework
-      //     package (buildTargetHasPsram in @typecad/framework-arduino), since
-      //     cuttlefish no longer parses Arduino-specific FQBN strings itself.
-      //     The specifier is non-literal so tsc does not require framework-arduino
-      //     as a build-time dependency (it depends on cuttlefish — would cycle).
-      let fqbnPsram = false;
-      if (buildTarget) {
-        try {
-          const psramModSpecifier = "@typecad/framework-arduino/displays/psram";
-          const mod = await import(psramModSpecifier).catch(() => null);
-          fqbnPsram = !!mod?.buildTargetHasPsram?.(buildTarget);
-        } catch {
-          fqbnPsram = false;
-        }
-      }
+      //  2. The framework's build-target-derived PSRAM (e.g. an Arduino FQBN
+      //     with a PSRAM= option) — asked of the loaded strategy via
+      //     derivesPsramFromBuildTarget so cuttlefish never parses
+      //     framework-specific FQBN strings itself.
+      const fqbnPsram = buildTarget
+        ? (strategy.derivesPsramFromBuildTarget?.(buildTarget) ?? false)
+        : false;
       const psram = psramRaw === 'opi' || psramRaw === 'quad' || fqbnPsram;
       setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus, address: resolved.address, reset: resolved.reset, buildTarget, psram });
     } catch {

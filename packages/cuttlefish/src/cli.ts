@@ -139,24 +139,6 @@ async function handleBoardAdd(options: BoardAddCommandOptions): Promise<void> {
   console.log(generateFrameworkChecklist(spec));
 }
 
-/**
- * `cuttlefish doctor` — verify the active framework's environment. The actual
- * detection logic is framework-owned (e.g. framework-arduino checks arduino-cli
- * and the board core). Cuttlefish only dispatches: it forwards to the loaded
- * framework's `doctor` export, or reports that the framework provides none.
- *
- * Doctor is a user-facing diagnostic command, so it must not throw if no
- * framework is loaded yet (the user may run it before any build). The
- * hasLoadedFramework() guard returns a safe optional instead.
- */
-function runDoctor(): void {
-  const fw = hasLoadedFramework() ? getLoadedFramework() : undefined;
-  if (!fw?.doctor) {
-    ui.printInfo("This framework provides no doctor support.");
-    return;
-  }
-  fw.doctor();
-}
 
 async function main(): Promise<void> {
   try {
@@ -221,13 +203,30 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (options.command === "doctor") {
-      runDoctor();
-      return;
-    }
-
-    if (options.command === "licenses") {
+    if (options.command === "doctor" || options.command === "licenses") {
+      // These commands run standalone (often before a build), so the framework
+      // isn't loaded yet. Load it from the config's framework field so the
+      // framework-supplied doctor/licenses handlers are available.
+      if (!hasLoadedFramework()) {
+        const config = loadCuttlefishConfig(process.cwd());
+        if (config?.framework) {
+          try {
+            loadFrameworkPackage(config.framework, process.cwd());
+          } catch {
+            // Framework package not resolvable — fall through to the
+            // no-support message below rather than crashing the command.
+          }
+        }
+      }
       const fw = hasLoadedFramework() ? getLoadedFramework() : undefined;
+      if (options.command === "doctor") {
+        if (!fw?.doctor) {
+          ui.printInfo("This framework provides no doctor support.");
+          return;
+        }
+        fw.doctor();
+        return;
+      }
       if (!fw?.licenses) {
         ui.printInfo("This framework provides no licenses support.");
         return;
