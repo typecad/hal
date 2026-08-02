@@ -762,7 +762,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
           domain: "arduino",
           requiredIncludes: [],
           forwardDeclarations: [],
-          helperStructs: [generateStaticAsyncRuntime(8, this.getAsyncRuntimeConfig().waitForPinEdge)],
+          helperStructs: [generateStaticAsyncRuntime(8, this.getAsyncRuntimeConfig().waitForPinEdge, this)],
           helperFunctions: [],
           shimMacros: [],
           dependencies: [],

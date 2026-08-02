@@ -45,6 +45,7 @@
 export function generateStaticAsyncRuntime(
   capacity: number,
   waitForPinEdge: "interrupt" | "polling" | "stub" = "polling",
+  strategy?: import("./platform-strategy.js").PlatformStrategy,
 ): string {
   return `
 // TypeCAD static (heap-free) async runtime — for targets without <vector>.
@@ -195,12 +196,12 @@ inline void cuttlefish_pump_microtasks() {
 
 // HAL-level wait for pin edge. The body depends on the strategy's
 // waitForPinEdge mode — see generateStaticAsyncRuntime()'s doc comment.
-${waitPinEdgeForMode(waitForPinEdge)}
+${waitPinEdgeForMode(waitForPinEdge, strategy)}
 `;
 }
 
 /** Emit `__cuttlefish_wait_pin_edge` per the strategy's waitForPinEdge mode. */
-function waitPinEdgeForMode(mode: "interrupt" | "polling" | "stub"): string {
+function waitPinEdgeForMode(mode: "interrupt" | "polling" | "stub", strategy?: import("./platform-strategy.js").PlatformStrategy): string {
   if (mode === "interrupt") {
     // The strategy/ISR layer provides the symbol; emit nothing here.
     return "// __cuttlefish_wait_pin_edge is provided by the strategy (interrupt mode).";
@@ -233,14 +234,14 @@ function waitPinEdgeForMode(mode: "interrupt" | "polling" | "stub"): string {
     "  int idleState = (mode == RISING) ? LOW : HIGH;",
     "  unsigned long start = millis();",
     "  // Phase 1: wait for the pin to be in the idle state (the \"before\" level)",
-    "  while (digitalRead(pin) != idleState) {",
+    `  while (${strategy?.readDigitalPin?.("pin") ?? "digitalRead(pin)"} != idleState) {`,
     "    if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) return;",
-    "    delay(1);",
+    `    ${strategy?.delayMs?.("1") ?? "delay(1)"};`,
     "  }",
     "  // Phase 2: wait for the transition to the target state (the actual edge)",
-    "  while (digitalRead(pin) != targetState) {",
+    `  while (${strategy?.readDigitalPin?.("pin") ?? "digitalRead(pin)"} != targetState) {`,
     "    if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) return;",
-    "    delay(1);",
+    `    ${strategy?.delayMs?.("1") ?? "delay(1)"};`,
     "  }",
     "}",
   ].join("\n");
