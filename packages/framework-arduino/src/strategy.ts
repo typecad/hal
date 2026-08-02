@@ -1351,6 +1351,60 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
   // ── HAL Operation Resolution ────────────────────────────────────────────
 
+  // ── Atomic HAL primitives ────────────────────────────────────────────────
+  // Cuttlefish calls these instead of emitting Wiring/Arduino tokens by name.
+  // The returned snippets are the canonical Arduino core forms.
+
+  readDigitalPin(pin: string): string {
+    return `digitalRead(${pin})`;
+  }
+  readAnalogPin(pin: string): string {
+    return `analogRead(${pin})`;
+  }
+  writeDigitalPin(pin: string, val: string): string {
+    return `digitalWrite(${pin}, ${val})`;
+  }
+  setPinMode(pin: string, mode: string): string {
+    return `pinMode(${pin}, ${mode})`;
+  }
+  delayMs(ms: string): string {
+    return `delay(${ms})`;
+  }
+  delayMicroseconds(us: string): string {
+    return `delayMicroseconds(${us})`;
+  }
+
+  private static readonly _HAL_CALL_NAMES: ReadonlySet<string> = new Set([
+    // GPIO
+    "digitalWrite", "digitalRead", "analogWrite", "analogRead", "pinMode",
+    // Serial
+    "Serial", "println", "print", "read", "write",
+    // Audio
+    "tone", "noTone",
+    // Timing
+    "millis", "micros", "delay", "delayMicroseconds",
+    // Interrupts
+    "attachInterrupt", "detachInterrupt",
+    // SPI / Shift
+    "shiftOut", "shiftIn", "pulseIn",
+    // HAL event tokens (from Button, etc.)
+    "pressed", "released", "input",
+  ]);
+
+  halCallNames(): ReadonlySet<string> {
+    return ArduinoStrategy._HAL_CALL_NAMES;
+  }
+  isHalCall(name: string): boolean {
+    return ArduinoStrategy._HAL_CALL_NAMES.has(name);
+  }
+
+  private static readonly _ANALOG_READ_NAMES: ReadonlySet<string> = new Set([
+    "analogRead",
+  ]);
+  analogReadCallNames(): ReadonlySet<string> {
+    return ArduinoStrategy._ANALOG_READ_NAMES;
+  }
+
   resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {
     switch (op.operation) {
       // GPIO
