@@ -57,16 +57,16 @@ function prefixOperatorText(operator: ts.SyntaxKind): string {
  * keeps `this` out of the emitted free function. Returns null if the method
  * is not a recognized inlinable getter.
  */
-function inlineThisGetterCall(methodName: string, pin: string): string | null {
+function inlineThisGetterCall(methodName: string, pin: string, strategy: import("../../api/shared/index.js").PlatformStrategy | null): string | null {
   switch (methodName) {
     case "read":
-      return `digitalRead(${pin})`;
+      return strategy?.readDigitalPin?.(pin) ?? `digitalRead(${pin})`;
     case "readAnalog":
-      return `analogRead(${pin})`;
+      return strategy?.readAnalogPin?.(pin) ?? `analogRead(${pin})`;
     case "isHigh":
-      return `digitalRead(${pin})`;
+      return strategy?.readDigitalPin?.(pin) ?? `digitalRead(${pin})`;
     case "isLow":
-      return `(!digitalRead(${pin}))`;
+      return strategy?.readDigitalPin ? `(!${strategy.readDigitalPin(pin)})` : `(!digitalRead(${pin}))`;
     default:
       return null;
   }
@@ -206,7 +206,7 @@ export function resolveExpressionText(
         const methodName = expr.expression.name.text;
         const pin = instance.fieldValues.get("_pin") ?? instance.fieldValues.get("pin");
         if (pin !== undefined) {
-          const inlined = inlineThisGetterCall(methodName, pin);
+          const inlined = inlineThisGetterCall(methodName, pin, getContext().activeStrategy);
           if (inlined !== null) return inlined;
         }
       }
