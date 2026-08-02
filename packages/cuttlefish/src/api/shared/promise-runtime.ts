@@ -24,6 +24,7 @@
 export function generatePromiseRuntime(
   queueCapacity: number,
   includeWaitForPinEdge: boolean = false,
+  strategy?: import("./platform-strategy.js").PlatformStrategy,
 ): string {
   const waitForPinEdge = includeWaitForPinEdge ? `
   // HAL-level wait for pin edge — polling-based implementation.
@@ -38,13 +39,13 @@ export function generatePromiseRuntime(
       unsigned long start = millis();
       // Phase 2 poller: waits for the pin to reach the target state (the edge).
       auto pollTarget = [pin, targetState, timeout, start, resolve]() {
-        if (digitalRead(pin) == targetState) {
+        if (${strategy?.readDigitalPin?.("pin") ?? "digitalRead(pin)"} == targetState) {
           resolve(nullptr);
         } else if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) {
           resolve(nullptr);
         } else {
           enqueueMicrotask([pin, targetState, timeout, start, resolve]() {
-            if (digitalRead(pin) == targetState) {
+            if (${strategy?.readDigitalPin?.("pin") ?? "digitalRead(pin)"} == targetState) {
               resolve(nullptr);
             } else if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) {
               resolve(nullptr);
@@ -56,7 +57,7 @@ export function generatePromiseRuntime(
       };
       // Phase 1: wait for idle state before watching for the edge.
       enqueueMicrotask([pin, idleState, timeout, start, resolve, pollTarget]() {
-        if (digitalRead(pin) == idleState) {
+        if (${strategy?.readDigitalPin?.("pin") ?? "digitalRead(pin)"} == idleState) {
           pollTarget();
         } else if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) {
           resolve(nullptr);

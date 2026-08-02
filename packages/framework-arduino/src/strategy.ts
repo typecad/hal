@@ -745,7 +745,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
           domain: "arduino",
           requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
           forwardDeclarations: [],
-          helperStructs: [generatePromiseRuntime(queueCapacity, true)],
+          helperStructs: [generatePromiseRuntime(queueCapacity, true, this)],
           helperFunctions: [],
           shimMacros: [],
           dependencies: [],
