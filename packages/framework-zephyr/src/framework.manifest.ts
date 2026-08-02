@@ -50,8 +50,8 @@ export default defineFrameworkManifest({
   profile: {
     // Informational list of supported board targets. The manifest validator
     // never iterates this; chipForTarget (src/chips/index.ts) is the real
-    // resolver. ESP32-S3 added alongside the original nRF52840 MVP target.
-    targets: ['xiao_ble', 'esp32s3_devkitc'],
+    // resolver. ESP32-S3 + plain ESP32 added alongside the nRF52840 MVP target.
+    targets: ['xiao_ble', 'esp32s3_devkitc', 'esp32_devkitc'],
     forcedIncludes: ['<zephyr/kernel.h>', '<zephyr/drivers/gpio.h>', '<cstdint>'],
     symbolAliases: {},
   },
@@ -218,10 +218,11 @@ export default defineFrameworkManifest({
         'wifi.scan_done': 'supported', 'wifi.scan_count': 'supported',
         'wifi.scan_ssid': 'supported', 'wifi.scan_rssi': 'supported',
         'wifi.scan_encryption': 'supported', 'wifi.scan_channel': 'supported',
-        // Config (1) — hostname. (set_tx_power unsupported: no net_mgmt request
-        // constant in this Zephyr version.)
+        // Config (1) — hostname. (set_tx_power not lowered: the Zephyr esp32
+        // driver owns the radio, and the compile-time PHY ceiling isn't a Zephyr
+        // Kconfig symbol — zephyr#45580. Default TX power only.)
         'wifi.set_hostname': 'supported',
-        // Out of scope (16) — each genuinely not lowered (resolver returns undefined).
+        // Out of scope (17) — each genuinely not lowered (resolver returns undefined).
         'wifi.ap_start': 'unsupported', 'wifi.ap_stop': 'unsupported',
         'wifi.ap_client_count': 'unsupported', 'wifi.ap_ip': 'unsupported',
         'wifi.ap_set_channel': 'unsupported', 'wifi.ap_set_hidden': 'unsupported',

@@ -455,14 +455,14 @@ export class ZephyrStrategy implements PlatformStrategy {
     // ── WiFi target validity ────────────────────────────────────────────────
     // WiFi ops require a chip with a WiFi radio. The ESP32-S3 descriptor sets
     // wifi.supported; the XIAO nRF52840 omits it (no radio). Flag wifi usage on
-    // a radioless chip so the user gets a clear "use esp32s3_devkitc" message
+    // a radioless chip so the user gets a clear "use an ESP32 target" message
     // instead of an opaque link/DT failure.
     if (usesWifiOps && !chip.wifi?.supported) {
       diags.push({
         severity: 'error',
         code: 'zephyr-wifi-unavailable-on-target',
         message: `WiFi ops are used but ${chip.id} has no WiFi radio.`,
-        hint: `Use the esp32s3_devkitc target (the ESP32-S3 has a 2.4GHz WiFi radio).`,
+        hint: `Use an esp32s3_devkitc or esp32_devkitc target (Espressif ESP32 variants have a 2.4GHz WiFi radio).`,
         source: program.fileName,
       });
     }
@@ -528,6 +528,7 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   normalizeCppType(typeName: string): string {
     if (typeName === 'auto') return 'auto';
+    if (typeName === 'std::string') return 'const char*';
     return typeName;
   }
 
@@ -624,10 +625,15 @@ export class ZephyrStrategy implements PlatformStrategy {
   transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
     const semi = forHeader ? '' : ';';
     const empty = !renderedArgs || renderedArgs.trim() === '';
-    // printk is the always-available Zephyr console (no CONFIG_CONSOLE dependency).
     const tag = method === 'error' ? '[ERROR] ' : method === 'warn' ? '[WARN] ' : '';
     if (empty) return `printk("%s\\n", "${tag}")${semi}`;
-    return `printk("%s%s\\n", "${tag}", (${renderedArgs}))${semi}`;
+    const parts = renderedArgs.split(' << ');
+    if (parts.length === 1) {
+      return `printk("%s%s\\n", "${tag}", (${renderedArgs}))${semi}`;
+    }
+    const fmt = '%s' + '%s'.repeat(parts.length) + '\\n';
+    const args = [`"${tag}"`, ...parts].join(', ');
+    return `printk("${fmt}", ${args})${semi}`;
   }
 
   transformConsoleExpression(_method: string, _renderedArgs: string): string | undefined {
@@ -970,6 +976,9 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (boardId === 'esp32s3_devkitc' || boardId.startsWith('esp32s3')) {
       return 'gdb';
     }
+    // The plain ESP32 (esp32_devkitc) intentionally stays on 'printf': unlike
+    // the S3 it has NO built-in USB-JTAG, so gdb needs an external ESP-PROG
+    // probe + a different OpenOCD cfg/toolchain dir (deferred). Falls through.
     return 'printf';
   }
 

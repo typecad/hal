@@ -608,6 +608,7 @@ async function main(): Promise<void> {
               extraFlags: config?.outputExtraFlags,
               defines: config?.outputDefines,
               frameworkConfig: config?.frameworkConfig,
+              zephyrConfig: config?.zephyrConfig,
               debug: options.debug,
             };
             ui.printCompiling(buildTarget ?? "native");
@@ -709,6 +710,7 @@ async function main(): Promise<void> {
                   extraFlags: config?.outputExtraFlags,
                   defines: config?.outputDefines,
                   frameworkConfig: config?.frameworkConfig,
+                  zephyrConfig: config?.zephyrConfig,
                   debug: options.debug,
                 };
                 ui.printCompiling(buildTarget ?? "native");
@@ -817,6 +819,7 @@ async function main(): Promise<void> {
       extraFlags: config?.outputExtraFlags,
       defines: config?.outputDefines,
       frameworkConfig: config?.frameworkConfig,
+      zephyrConfig: config?.zephyrConfig,
       debug: options.debug,
     };
 
@@ -874,8 +877,10 @@ async function main(): Promise<void> {
     }
 
     if (options.monitor) {
-      // --monitor (blocks until Ctrl+C)
-      ui.printMonitoring(port, options.baud);
+      // --monitor (blocks until Ctrl+C). Show the resolved baud (config ?? --baud)
+      // in the banner — toolchainOpts.baud is built the same way, so what the
+      // user sees is what the framework monitor opens the port at.
+      ui.printMonitoring(port, toolchainOpts.baud ?? 115200);
       monitorDevice(toolchainOpts);
       return;
     }

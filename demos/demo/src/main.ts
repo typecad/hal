@@ -1,10 +1,15 @@
-import { GPIO13 } from '@typecad/board';
-import { delay } from '@typecad/hal';
+// 01 — minimal: connect and print the acquired IP.
+// === EDIT THESE BEFORE FLASHING ===
+const WIFI_SSID = "Skynet";
+const WIFI_PASSWORD = "justin04";
+// ==================================
 
-const led = GPIO13.asOutput();
-let cnt = 0;
+import { WiFi, delay } from '@typecad/hal';
 
-setInterval(() => {
-  led.toggle();
-  cnt++;
-}, 500)
+console.log("Starting........")
+WiFi.connect(WIFI_SSID, WIFI_PASSWORD);
+console.log(WiFi.localIP());
+
+while (true) {
+  delay(1000);
+}

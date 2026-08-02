@@ -35,7 +35,33 @@ describe("--autosar CLI flag parsing", () => {
     const opts = buildOpts(["node", "cuttlefish", "build", "x.ts"]);
     expect(opts.autosar).toBeUndefined();
   });
+});
 
+describe("--baud CLI flag parsing", () => {
+  function buildOpts(argv: string[]): CommandLineOptions {
+    const opts = parseCommandLine(argv);
+    if (typeof opts === "object" && "emitMode" in opts) {
+      return opts as CommandLineOptions;
+    }
+    throw new Error("not a build options object");
+  }
+
+  it("is undefined when --baud is absent (so config.console.baudRate applies)", () => {
+    // Regression: parsePipelineCommand used to default --baud to 9600, which
+    // shadowed config.console.baudRate at every `options.baud ?? config` call
+    // site — the monitor then ignored the configured baud. Undefined lets the
+    // consumer fall through to the config.
+    const opts = buildOpts(["node", "cuttlefish", "build", "x.ts"]);
+    expect(opts.baud).toBeUndefined();
+  });
+
+  it("parses an explicit --baud value", () => {
+    const opts = buildOpts(["node", "cuttlefish", "build", "x.ts", "--baud", "115200"]);
+    expect(opts.baud).toBe(115200);
+  });
+});
+
+describe("--autosar error handling", () => {
   it("rejects an unknown value with a helpful error", () => {
     expect(() =>
       parseCommandLine(["node", "cuttlefish", "build", "x.ts", "--autosar=garbage"]),

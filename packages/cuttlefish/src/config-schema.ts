@@ -42,6 +42,13 @@ const ToolchainConfig = z.object({
   frameworkOptions: z.record(z.string(), z.unknown()).optional(),
 }).strict();
 
+/** Schema for the `zephyr` section. */
+const ZephyrConfig = z.object({
+  kconfig: z.record(z.string(), z.string()).optional(),
+  cmakeArgs: z.array(z.string()).optional(),
+  runner: z.string().optional(),
+}).strict();
+
 /**
  * Schema for the full CuttlefishConfig shape.
  *
@@ -62,6 +69,7 @@ export const CuttlefishConfigSchema = z.object({
   toolchain: ToolchainConfig.optional(),
   console: ConsoleConfig.optional(),
   native: z.record(z.string(), z.unknown()).optional(),
+  zephyr: ZephyrConfig.optional(),
 }).strict().refine(data => !(data.board && data.contract), {
   message: "Specifying both 'board' and 'contract' is not allowed. Choose one.",
   path: ['board'],

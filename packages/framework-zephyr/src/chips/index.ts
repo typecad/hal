@@ -10,8 +10,9 @@
 import type { ZephyrChipDescriptor } from './types.js';
 import { XIAO_BLE } from './xiao-ble.js';
 import { ESP32S3_DEVKITC } from './esp32s3.js';
+import { ESP32_DEVKITC } from './esp32.js';
 
-export { XIAO_BLE, ESP32S3_DEVKITC };
+export { XIAO_BLE, ESP32S3_DEVKITC, ESP32_DEVKITC };
 export type { ZephyrChipDescriptor, ZephyrGpioDtSpec } from './types.js';
 
 /**
@@ -33,8 +34,8 @@ export function getActiveChip(): ZephyrChipDescriptor {
 /**
  * Resolve a chip descriptor from the Zephyr board target string
  * (frameworkData.buildTarget / frameworkData.target). Accepts the bare board
- * id ('xiao_ble', 'esp32s3_devkitc') or a board/qualifier path
- * ('esp32s3_devkitc/esp32s3/procpu').
+ * id ('xiao_ble', 'esp32s3_devkitc', 'esp32_devkitc') or a board/qualifier
+ * path ('esp32s3_devkitc/esp32s3/procpu', 'esp32_devkitc/esp32/procpu').
  */
 export function chipForTarget(target?: string): ZephyrChipDescriptor {
   const t = (target ?? '').trim().toLowerCase();
@@ -44,6 +45,8 @@ export function chipForTarget(target?: string): ZephyrChipDescriptor {
       return XIAO_BLE;
     case 'esp32s3_devkitc':
       return ESP32S3_DEVKITC;
+    case 'esp32_devkitc':
+      return ESP32_DEVKITC;
     case '':
     default:
       return DEFAULT_CHIP;

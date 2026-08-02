@@ -35,6 +35,27 @@ interface CuttlefishOutputConfig {
 }
 
 /**
+ * Zephyr-specific configuration.
+ *
+ * When `framework` is `'@typecad/framework-zephyr'`, this section controls
+ * Kconfig symbols merged into prj.conf, extra CMake arguments forwarded to
+ * `west build`, and the flash runner override.
+ */
+export interface CuttlefishZephyrConfig {
+  /**
+   * Additional Kconfig symbols merged into the generated prj.conf.
+   *
+   * Example:
+   *   kconfig: { CONFIG_ESP32_USE_UNSUPPORTED_REVISION: 'y' }
+   */
+  kconfig?: Record<string, string>;
+  /** Extra arguments forwarded to `west build`. */
+  cmakeArgs?: string[];
+  /** Override the west flash runner (e.g. 'nrfjprog', 'jlink'). */
+  runner?: string;
+}
+
+/**
  * Root configuration object exported from `cuttlefish.config.ts`.
  */
 export interface CuttlefishConfig {
@@ -107,6 +128,12 @@ export interface CuttlefishConfig {
    * display: { profile: 'ili9341-spi', cs: 5, dc: 21, rst: 22 }
    */
   display?: DisplayConfig;
+
+  /**
+   * Zephyr-specific configuration. Only used when the framework is
+   * '@typecad/framework-zephyr'.
+   */
+  zephyr?: CuttlefishZephyrConfig;
 }
 
 /**

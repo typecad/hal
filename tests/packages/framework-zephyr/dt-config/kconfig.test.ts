@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { resolveKconfigFragments } from '../../../../packages/framework-zephyr/src/dt-config/kconfig';
+import { scaffoldZephyrProject } from '../../../../packages/framework-zephyr/src/toolchain/scaffold';
 
 describe('resolveKconfigFragments', () => {
   it('always includes GPIO + core C++ symbols', () => {
@@ -57,6 +61,67 @@ describe('resolveKconfigFragments', () => {
     expect(m.get('CONFIG_NET_CONNECTION_MANAGER')).toBe('y');
     expect(m.get('CONFIG_NET_MGMT_EVENT')).toBe('y');
     expect(m.get('CONFIG_NET_DHCPV4')).toBe('y');
-    expect(m.get('CONFIG_NET_CONFIG_SETTINGS')).toBe('y');
+    // NOT NET_CONFIG_SETTINGS: its boot-time net_config_init blocks ~30s
+    // (NET_CONFIG_INIT_TIMEOUT) waiting for an iface the shim brings up itself,
+    // and dual-managing that iface crashes the driver.
+    expect(m.has('CONFIG_NET_CONFIG_SETTINGS')).toBe(false);
+    // No TX power Kconfig symbol: ESP_PHY_MAX_WIFI_TX_POWER lives in the
+    // ESP-IDF components/esp_phy/Kconfig, which the Zephyr module integration
+    // does not source — assigning it would abort the build. wifi.set_tx_power
+    // programs the radio at runtime via esp_wifi_set_max_tx_power instead.
+    expect(m.has('CONFIG_ESP_PHY_MAX_WIFI_TX_POWER')).toBe(false);
+    expect(m.has('CONFIG_ESP32_PHY_MAX_WIFI_TX_POWER')).toBe(false);
+    // Networking stack sizes mirror the official Zephyr WiFi samples
+    // (samples/net/wifi/*). The defaults are too small (NET_MGMT_EVENT_STACK_SIZE
+    // is 768 on non-x86) and the WiFi connect event handlers run on that stack —
+    // overflowing it freezes the chip mid-connect with no panic dump.
+    expect(m.get('CONFIG_NET_MGMT_EVENT_STACK_SIZE')).toBe('4096');
+    expect(m.get('CONFIG_NET_TX_STACK_SIZE')).toBe('2048');
+    expect(m.get('CONFIG_NET_RX_STACK_SIZE')).toBe('2048');
+    expect(m.get('CONFIG_MAIN_STACK_SIZE')).toBe('5200');
+  });
+
+  it('keeps the default MAIN_STACK_SIZE (4096) when WiFi is not used', () => {
+    const m = resolveKconfigFragments({ usesAdc: true }, false);
+    expect(m.get('CONFIG_MAIN_STACK_SIZE')).toBe('4096');
+    // Non-WiFi builds set no networking stack sizes.
+    expect(m.has('CONFIG_NET_MGMT_EVENT_STACK_SIZE')).toBe(false);
+  });
+});
+
+// Regression: the WiFi shim emits a `tx_power_dbm` identifier. The scaffold's
+// usage scan must NOT read the `power_` substring inside it as power-HAL usage
+// and enable CONFIG_PM — on the ESP32-S3 that spins the PM soft-off retry loop
+// forever and freezes a WiFi-only program.
+describe('scaffoldZephyrProject — usage-scan boundary', () => {
+  it('does NOT enable CONFIG_PM for a WiFi-only program (tx_power_dbm false positive)', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zephyr-wifi-power-fp-'));
+    mkdirSync(join(dir, 'src'), { recursive: true });
+    // Mirrors the real WiFi emit: net_mgmt + a tx_power_dbm field, no pm_/k_sleep.
+    writeFileSync(join(dir, 'src', 'main.cpp'),
+      'int tx_power_dbm = -1; void f(){ net_mgmt(0,0,0,0); }\n');
+    try {
+      scaffoldZephyrProject(dir, false);
+      const prj = readFileSync(join(dir, 'prj.conf'), 'utf8');
+      expect(prj).toContain('CONFIG_WIFI=y');     // WiFi IS used
+      expect(prj).not.toContain('CONFIG_PM=y');   // power is NOT
+      expect(prj).not.toContain('CONFIG_PM_DEVICE=y');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('DOES enable CONFIG_PM when the power HAL (pm_/k_sleep) is actually used', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zephyr-power-real-'));
+    mkdirSync(join(dir, 'src'), { recursive: true });
+    writeFileSync(join(dir, 'src', 'main.cpp'),
+      'void f(){ k_sleep(0); pm_state_force(0,0); }\n');
+    try {
+      scaffoldZephyrProject(dir, false);
+      const prj = readFileSync(join(dir, 'prj.conf'), 'utf8');
+      expect(prj).toContain('CONFIG_PM=y');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -157,8 +157,10 @@ export interface CommandLineOptions {
   monitor: boolean;
   /** Serial port for upload and monitor (e.g. COM4 or /dev/ttyACM0) */
   port?: string;
-  /** Baud rate for monitor (default: 9600) */
-  baud: number;
+  /** Baud rate for monitor. Undefined when --baud is absent so the consumer
+   *  can fall back to config.console.baudRate (the framework monitor default
+   *  applies only when neither is set). */
+  baud?: number;
   platformContext?: PlatformContext;
   mapFile?: string;
   cppFile?: string;
