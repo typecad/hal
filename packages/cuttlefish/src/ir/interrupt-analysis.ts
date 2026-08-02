@@ -16,21 +16,13 @@ export { walkNestedStatements as scanNestedStatements } from './utils/walk-ir.js
 export interface IsrUnsafeOp { reason: string; severity: 'warning' | 'info'; }
 
 /**
- * Default ISR-unsafe operations used when no platform-specific map is provided.
- * Platforms should supply their own list via PlatformStrategy.isrUnsafeOperations().
+ * Fallback ISR-unsafe operations used when no platform-specific map is provided.
+ * Empty by design — the Wiring-derived specifics (delay, Serial.*, I2C*, SPI*)
+ * live in ArduinoStrategy.isrUnsafeOperations(). A generic target has no known
+ * ISR-unsafe surface. The orchestrator passes the loaded framework's map; this
+ * default only applies when none is supplied.
  */
-const DEFAULT_ISR_UNSAFE_OPERATIONS: Map<string, IsrUnsafeOp> = new Map([
-  ['delay', { reason: 'delay() blocks the CPU and should not be used in interrupt context', severity: 'warning' }],
-  ['delayMicroseconds', { reason: 'delayMicroseconds() blocks and should be avoided in ISRs', severity: 'warning' }],
-  ['Serial.print', { reason: 'Serial.print() may not work correctly in interrupt context', severity: 'info' }],
-  ['Serial.println', { reason: 'Serial.println() may not work correctly in interrupt context', severity: 'info' }],
-  ['Serial.write', { reason: 'Serial.write() may not work correctly in interrupt context', severity: 'info' }],
-  ['Serial.read', { reason: 'Serial.read() may not work correctly in interrupt context', severity: 'info' }],
-  ['I2C0', { reason: 'I2C operations can cause lockups in interrupt context', severity: 'warning' }],
-  ['I2C1', { reason: 'I2C operations can cause lockups in interrupt context', severity: 'warning' }],
-  ['SPI0', { reason: 'SPI operations may cause issues in interrupt context', severity: 'info' }],
-  ['SPI1', { reason: 'SPI operations may cause issues in interrupt context', severity: 'info' }],
-]);
+const DEFAULT_ISR_UNSAFE_OPERATIONS: Map<string, IsrUnsafeOp> = new Map();
 
 /**
  * Track interrupt handlers attached to pins.

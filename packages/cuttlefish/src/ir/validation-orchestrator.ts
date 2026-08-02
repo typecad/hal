@@ -37,7 +37,7 @@ export function runProgramValidations(program: ProgramIR, strategy?: PlatformStr
   diagnostics.push(...validatePWMTimerSharing(peripheralUsage, program.boardConstants, program.fileName));
   diagnostics.push(...validateTimer0PWMTimingConflict(peripheralUsage, program.boardConstants, program.fileName));
   diagnostics.push(...validatePulldownSupport(peripheralUsage, program.boardConstants, program.fileName));
-  diagnostics.push(...analyzeInterruptSafety(program, peripheralUsage));
+  diagnostics.push(...analyzeInterruptSafety(program, peripheralUsage, resolvedStrategy.isrUnsafeOperations?.()));
   inferVolatileForIsrSharedVars(program, diagnostics);
   detectReentrancyRisk(program, diagnostics);
   // Worker isolation: bus access in workers is a hard error; worker-shared
