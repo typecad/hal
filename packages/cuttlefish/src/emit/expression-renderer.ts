@@ -97,7 +97,9 @@ export class ExpressionRenderer {
   private readonly stringEnumNames: Set<string>;
   private readonly largeEnumNames: Set<string>;
   private readonly knownFunctionReturnTypes?: Map<string, string>;
-  private readonly knownVariableTypes?: Map<string, KnownVariableInfo>;
+  // Mutable: render() temporarily installs a per-scope map (function params)
+  // for the duration of a call so recursive renders + renderIdentifier see it.
+  private knownVariableTypes?: Map<string, KnownVariableInfo>;
   private readonly pointerVarTypes?: Map<string, string>;
   private readonly globalPointerVarTypes?: Map<string, string>;
   private readonly stringVarNames?: Set<string>;
@@ -183,7 +185,20 @@ export class ExpressionRenderer {
     if (!expr || typeof expr !== 'object' || !expr.kind) {
       return "/* invalid expression */";
     }
-    
+
+    // When a per-scope knownVariableTypes is passed (e.g. a function's child
+    // emission scope carrying its parameters), install it on the instance for
+    // the duration of this render so every recursive render() call and
+    // renderIdentifier() reads the merged scope (globals + params). Without
+    // this, recursive paths that don't forward knownVariableTypes (ternary
+    // branches, call args, array elements, …) would resolve identifiers
+    // against only the top-level scope, missing function parameters — which
+    // breaks reserved-name escaping for params like `min`/`max` on Arduino.
+    const prevKnownVariableTypes = this.knownVariableTypes;
+    if (knownVariableTypes) {
+      this.knownVariableTypes = knownVariableTypes;
+    }
+
     let rendered: string;
     switch (expr.kind) {
       case "number": {
@@ -204,7 +219,7 @@ export class ExpressionRenderer {
         rendered = expr.value ? "true" : "false";
         break;
       case "identifier":
-        rendered = this.renderIdentifier(expr.value);
+        rendered = this.renderIdentifier(expr.value, knownVariableTypes);
         break;
       case "raw":
         rendered = this.renderRaw(expr.value, exprTransformer);
@@ -311,10 +326,11 @@ export class ExpressionRenderer {
         );
       }
     }
+    this.knownVariableTypes = prevKnownVariableTypes;
     return normalizeRawExpression(rendered, this.strategy, this.classNameMap);
   }
 
-  private renderIdentifier(value: string): string {
+  private renderIdentifier(value: string, scopeKnownVariableTypes?: Map<string, KnownVariableInfo>): string {
     const nullVal = this.strategy.nullValue();
     // expression-to-ir lowers the TS `null` literal to the identifier sentinel
     // "nullptr" and `undefined` to "CUTTLEFISH_UNDEFINED". Both must route
@@ -330,14 +346,19 @@ export class ExpressionRenderer {
     if (this.strategy.passthroughMacroNames().has(value)) {
       return value;
     }
-    // Platform-reserved names (e.g. Arduino `Serial`) are globals provided by
-    // the framework headers. Escaping them would break references to those
-    // globals. Only escape if the name is a user-declared variable that would
-    // collide with the platform global — declaration sites already handle
-    // escaping for user vars separately.
+    // Platform-reserved names (e.g. Arduino `Serial`, or the `min`/`max` math
+    // macros) are globals/macros provided by the framework headers. Escaping
+    // them would break references to those globals — UNLESS the name is a
+    // user-declared variable/parameter that shadows and would collide. Check
+    // both the instance field (globals/locals seen so far) AND the per-scope
+    // map passed by the caller (function parameters, which live in the child
+    // emission scope and aren't on the instance field). Declaration sites
+    // already escape user vars (renderParameters → renderTypedName), so the
+    // body references must escape to match.
     const reservedNames = this.strategy.reservedNames();
     if (reservedNames.has(value)) {
       const isUserVar = (this.knownVariableTypes !== undefined && this.knownVariableTypes.has(value)) ||
+        (scopeKnownVariableTypes !== undefined && scopeKnownVariableTypes.has(value)) ||
         (this.pointerVarTypes !== undefined && this.pointerVarTypes.has(value)) ||
         (this.globalPointerVarTypes !== undefined && this.globalPointerVarTypes.has(value)) ||
         (this.stringVarNames !== undefined && this.stringVarNames.has(value));
