@@ -251,7 +251,12 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
         if (resolved) cppType = strategy.normalizeCppType(resolved);
       }
       const isConst = statement.storage === "const";
-      const constPrefix = isConst ? "const " : "";
+      // A const-qualified top-level variable whose cppType already begins with
+      // `const` (e.g. a string-literal global lowered as `const char*`) would
+      // otherwise emit `extern const const char* X;` — a duplicate-const error.
+      // Don't prepend the storage qualifier when the type already carries it.
+      const typeAlreadyConst = cppType.trimStart().startsWith("const");
+      const constPrefix = isConst && !typeAlreadyConst ? "const " : "";
       const varName = escapeCppKeyword(statement.name, platformReservedNames);
       // Array-typed top-level consts (e.g. `export const ARR: T[] = [...]`)
       // lower with cppType "auto" and a `{ kind: "array", elementType }`

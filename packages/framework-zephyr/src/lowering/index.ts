@@ -3,10 +3,10 @@
 //
 // Routes a HALOpIR to the per-category lowering module by category prefix
 // (e.g. 'gpio.write' → lowerGpio). Returns undefined for categories the
-// framework does not lower (wifi/http/display/board/preferences/random/fs/
-// mdns/mqtt/ota/rmt/dac/hwtimer/capacitive/temp/espnow/crypto/i2s/twai/usb/
-// eth/pcnt/mcpwm — see the manifest), so the transpiler falls back and the
-// manifest validator cross-checks the unsupported categories.
+// framework does not lower (display/board/preferences/random/fs/mdns/mqtt/
+// ota/rmt/dac/hwtimer/capacitive/temp/espnow/crypto/i2s/twai/usb/eth/pcnt/
+// mcpwm — see the manifest), so the transpiler falls back and the manifest
+// validator cross-checks the unsupported categories.
 //
 // Prefix dispatch (matching framework-esp32's lowerHalOp) keeps this resilient:
 // a new op added to a category's lowering fn is picked up here automatically,
@@ -32,11 +32,12 @@ import { lowerPulseOrShift } from './pulse.js';
 import { lowerBle } from './ble.js';
 import { lowerWorker } from './worker.js';
 import { lowerWifi } from './wifi.js';
+import { lowerHttp } from './http.js';
 
 export {
   lowerGpio, lowerTiming, lowerAdc, lowerPwm, lowerI2c, lowerSpi, lowerUart,
   lowerInterrupt, lowerWdt, lowerPower, lowerTone, lowerPulseOrShift, lowerBle,
-  lowerWifi,
+  lowerWifi, lowerHttp,
 };
 
 /**
@@ -65,9 +66,10 @@ export function lowerHalOp(
   if (op.operation.startsWith('ble.'))        return lowerBle(op);
   if (op.operation.startsWith('worker.'))     return lowerWorker(op);
   if (op.operation.startsWith('wifi.'))       return lowerWifi(op);
+  if (op.operation.startsWith('http.'))       return lowerHttp(op);
 
-  // raw / snprintf.emit / display.* / board.* / wifi.* / http.* / ... — not
-  // lowered by this framework. Return undefined so the transpiler falls back
-  // and the manifest validator confirms the unsupported declaration.
+  // raw / snprintf.emit / display.* / board.* / ... — not lowered by this
+  // framework. Return undefined so the transpiler falls back and the manifest
+  // validator confirms the unsupported declaration.
   return undefined;
 }

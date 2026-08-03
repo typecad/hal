@@ -19,6 +19,7 @@ export interface KconfigUsage {
   usesDisplay?: boolean;
   usesPower?: boolean;
   usesWifi?: boolean;
+  usesHttp?: boolean;
 }
 
 /**
@@ -86,6 +87,64 @@ export function resolveKconfigFragments(
     // Zephyr module integration does NOT source — assigning it here would abort
     // the build ("undefined symbol").
   }
+  if (usage.usesHttp) {
+    // HTTP/S rides on the networking stack. The shim does its own
+    // socket/getaddrinfo/connect, so it needs the BSD socket layer + POSIX
+    // DNS surface + the http client lib, plus the TLS sockopt layer (which
+    // selects mbedTLS) and the DNS resolver. HTTP needs the same IP base as
+    // WiFi, so this emits the networking primitives even when usesWifi is
+    // false — an http-only program still has to reach the internet. Map.set
+    // is idempotent, so overlaps with the wifi block are harmless.
+    m.set('CONFIG_NETWORKING', 'y');
+    m.set('CONFIG_NET_IPV4', 'y');
+    m.set('CONFIG_NET_DHCPV4', 'y');
+    m.set('CONFIG_NET_TCP', 'y');            // http_client_req needs a TCP socket
+    // NET_MAX_CONTEXTS caps the network 5-tuple (socket) pool — the default 6 is
+    // exhausted after a handful of sequential HTTP requests even when each is
+    // closed (closed TCP contexts linger in TIME_WAIT), and socket() then returns
+    // -EPERM. The hardware CRUD harness makes ~17 sequential requests, so raise
+    // this well above the default.
+    m.set('CONFIG_NET_MAX_CONTEXTS', '16');
+    // NET_MAX_CONN is the connection-registry pool (default 8 with v4+v6), a
+    // *separate* limit from NET_MAX_CONTEXTS. Closed TCP entries linger briefly
+    // in the registry, so rapid sequential HTTP requests exhaust the default and
+    // connect() then returns -EPERM. Pair it with NET_MAX_CONTEXTS so both the
+    // socket (5-tuple) and connection-registry pools have headroom.
+    m.set('CONFIG_NET_MAX_CONN', '16');
+    // ZVFS_OPEN_MAX must be set above 0 or socket() returns -EPERM (errno 1): the
+    // fd table is allocated to exactly ZVFS_OPEN_MAX entries, and the default 0
+    // (even with the ZVFS_OPEN_ADD_SIZE_* "min" contributors) yields zero usable
+    // descriptors. HTTP tests open/close a socket per request; give headroom over
+    // the per-subsystem contributors (NET=6, POSIX=3).
+    m.set('CONFIG_ZVFS_OPEN_MAX', '16');
+    // NET_SOCKETS is the user-facing switch for the BSD socket API + ZVFS. The
+    // shim uses bare POSIX names (connect/socket/close/getaddrinfo/freeaddrinfo)
+    // rather than the zsock_ forms; those bare names resolve under CONFIG_POSIX_API
+    // (the official samples/net/sockets/http_client sample sets exactly this).
+    // Without it, <zephyr/posix/unistd.h> gates `int close(int)` behind
+    // #ifdef CONFIG_POSIX_API and the build fails with "'close' was not declared".
+    m.set('CONFIG_NET_SOCKETS', 'y');
+    m.set('CONFIG_POSIX_API', 'y');
+    m.set('CONFIG_DNS_RESOLVER', 'y');       // getaddrinfo for hostnames
+    m.set('CONFIG_DNS_SERVER_IP_ADDRESSES', 'y');
+    m.set('CONFIG_HTTP_CLIENT', 'y');        // <zephyr/net/http/client.h> + http_client_req
+    // NOTE: HTTPS (CONFIG_NET_SOCKETS_SOCKOPT_TLS + CONFIG_TLS_CREDENTIALS) is
+    // intentionally NOT enabled by default. It selects mbedTLS, whose ssl layer
+    // (mbedtls_ssl_*) needs a full mbedTLS user-config symbol matrix to link —
+    // none of the in-tree socket samples set SOCKOPT_TLS via prj.conf. The shim
+    // keeps the full TLS code path (gated on scheme=="https"), so HTTPS lowering
+    // is structurally complete, but plain-HTTP programs (the common case, and
+    // what tests/hardware/http-client.test.ts exercises) don't pay the link
+    // cost. Enable these explicitly in a per-program kconfig override (e.g. via
+    // cuttlefish.config.ts zephyr.kconfig) when wiring a working HTTPS target.
+    // The http client stack sizes mirror the wifi bumps (NET_*_STACK_SIZE).
+    m.set('CONFIG_NET_MGMT_EVENT_STACK_SIZE', '4096');
+    m.set('CONFIG_NET_TX_STACK_SIZE', '2048');
+    m.set('CONFIG_NET_RX_STACK_SIZE', '2048');
+    // The http client path is stack-hungry; bump main stack. If wifi already
+    // bumped it to 5200 we keep the larger value (set once below).
+    if (!usage.usesWifi) m.set('CONFIG_MAIN_STACK_SIZE', '5200');
+  }
   if (usage.usesBle) {
     m.set('CONFIG_BT', 'y');
     m.set('CONFIG_BT_PERIPHERAL', 'y');
@@ -107,8 +166,9 @@ export function resolveKconfigFragments(
   m.set('CONFIG_STD_CPP14', 'y');
 
   // Main thread stack. WiFi already bumps this to 5200 (esp_wifi device init
-  // is stack-hungry); don't overwrite that with the default 4096 here.
-  if (!usage.usesWifi) {
+  // is stack-hungry); HTTP/TLS also bumps it (the mbedTLS handshake is stack-
+  // hungry). Don't overwrite either with the default 4096 here.
+  if (!usage.usesWifi && !usage.usesHttp) {
     m.set('CONFIG_MAIN_STACK_SIZE', '4096');
   }
 

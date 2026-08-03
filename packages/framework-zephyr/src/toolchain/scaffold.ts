@@ -96,6 +96,11 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     // with tx_power_dbm — removed.
     usesPower: uses('pm_') || uses('k_sleep') || uses('PM_STATE_'),
     usesWifi: uses('wifi_') || uses('net_mgmt') || uses('conn_mgr'),
+    // HTTP: the __tc_http_* shim + http_client_req + getaddrinfo. The '_'-anchored
+    // 'http_' token matches __tc_http_* and http_client_req (the core HTTP lib
+    // symbol), mirroring how wifi_ detects the wifi shim. An http-only program
+    // still pulls the networking stack even without usesWifi.
+    usesHttp: uses('http_') || uses('__tc_http') || uses('http_client_req'),
   };
 
   let changed = false;

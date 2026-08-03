@@ -13,6 +13,7 @@ import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext, Compli
 import type { PlatformStrategy } from "../packages/cuttlefish/src/api/shared/platform-strategy";
 import { ArduinoStrategy } from "../packages/framework-arduino/src";
 import { NativeStrategy } from "../packages/framework-native/src";
+import { ZephyrStrategy } from "../packages/framework-zephyr/src/strategy";
 import { expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
@@ -147,6 +148,28 @@ export function transpileESP32(tsCode: string): TranspileResult {
 
 export function transpileNative(tsCode: string): TranspileResult {
   return transpile(tsCode, { target: "native" });
+}
+
+// Drive the Zephyr strategy's HAL lowering (resolveHALOperation) end-to-end.
+// The http.* / wifi.* ops lower via the strategy, which the plain transpile()
+// target-based resolution does not activate (zephyr is not a default-strategy
+// target in tests). Instantiating ZephyrStrategy and passing it as `strategy`
+// routes semantic-op resolution through it. Mirrors how the deleted
+// transpileEsp32Strategy worked relative to Esp32Strategy. Lazily built so the
+// strategy's profile caches are reused across tests.
+//
+// Targets esp32s3_devkitc: HTTP/WiFi need a networked chip, and
+// profileDiagnostics flags their use on a radioless target (xiao_ble). Setting
+// the target here means the "compiles cleanly" assertion in the http harness
+// sees no zephyr-http-unavailable-on-target diagnostic.
+let _zephyrStrategy: ZephyrStrategy | undefined;
+export function transpileZephyrStrategy(tsCode: string): TranspileResult {
+  if (!_zephyrStrategy) _zephyrStrategy = new ZephyrStrategy();
+  return transpile(tsCode, {
+    strategy: _zephyrStrategy,
+    target: "zephyr",
+    platformContext: { frameworkData: { target: "esp32s3_devkitc" } } as any,
+  });
 }
 
 /**

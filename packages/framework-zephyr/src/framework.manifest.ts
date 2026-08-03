@@ -3,10 +3,10 @@
 //
 // Coverage reflects actual resolveHALOperation / lowerHalOp + resolveDisplayOp
 // behavior. GPIO, PWM, ADC, I2C, SPI, UART, interrupts, tone, power, pulse,
-// shift, WDT, BLE, and timing are lowered; display is lowered via the generic
-// <zephyr/drivers/display.h> GFX runtime. WiFi/HTTP/board are honestly
-// unsupported (nRF52840 has no WiFi; board-specific lowering deferred). The
-// manifest validator probes every declared op against the resolver: a
+// shift, WDT, BLE, timing, WiFi, and HTTP/S are lowered; display is lowered
+// via the generic <zephyr/drivers/display.h> GFX runtime. WiFi/HTTP require an
+// ESP32 target (nRF52840 has no radio); board-specific lowering is deferred.
+// The manifest validator probes every declared op against the resolver: a
 // 'supported' op must lower, an 'unsupported' op must return undefined.
 // ---------------------------------------------------------------------------
 
@@ -239,9 +239,23 @@ export default defineFrameworkManifest({
       },
     },
     http: {
-      supported: false,
-      unsupportedReason: 'HTTP lowering deferred (requires networking stack).',
-      ops: unsupportedOps('http.'),
+      supported: true,
+      partialCoverage: false,
+      // HTTP/S client over Zephyr BSD sockets + http_client_req (TLS via
+      // mbedTLS / NET_SOCKETS_SOCKOPT_TLS). The __tc_http shim owns url parse,
+      // DNS (getaddrinfo), socket/TLS connect, and body accumulation. Requires
+      // a networked target (ESP32 WiFi); profileDiagnostics flags usage on a
+      // radioless chip as 'zephyr-http-unavailable-on-target'.
+      ops: {
+        'http.begin': 'supported', 'http.reset': 'supported',
+        'http.set_header': 'supported', 'http.set_timeout': 'supported',
+        'http.set_max_body': 'supported', 'http.set_body': 'supported',
+        'http.set_insecure': 'supported', 'http.set_ca_cert': 'supported',
+        'http.send': 'supported', 'http.send_start': 'supported',
+        'http.done': 'supported', 'http.status': 'supported',
+        'http.ok': 'supported', 'http.body': 'supported',
+        'http.content_length': 'supported', 'http.response_header': 'supported',
+      },
     },
     display: {
       supported: true,
@@ -458,8 +472,8 @@ export default defineFrameworkManifest({
     // pure string-snapshot tests (no hardware); they are the safety net that
     // catches regressions like silent pull-resistor / interrupt no-ops.
     halResolutionTests: [
-      'adc', 'ble', 'dac', 'gpio', 'i2c', 'interrupts', 'power', 'pulse',
-      'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt', 'worker',
+      'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'power',
+      'pulse', 'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt', 'worker',
     ],
   },
 });

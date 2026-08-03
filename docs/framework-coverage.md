@@ -7,8 +7,8 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 
 | Framework | HAL cats supported | HAL cats partial | HAL cats unsupported | Toolchain | Last validated |
 |---|---|---|---|---|---|
-| framework-arduino (canonical) | 12/18 | 4 | 2 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-01 |
-| framework-zephyr | 9/18 | 5 | 4 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-01 |
+| framework-arduino (canonical) | 12/18 | 4 | 2 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-03 |
+| framework-zephyr | 10/18 | 6 | 2 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-03 |
 
 ## framework-arduino
 
@@ -68,8 +68,8 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | shift | supported | — |
 | board | unsupported | Board-specific lowering deferred. |
 | wdt | supported | — |
-| wifi | unsupported | No WiFi lowering implemented (nRF52840 has no WiFi; ESP32 WiFi not yet wired). |
-| http | unsupported | HTTP lowering deferred (requires networking stack). |
+| wifi | partial | AP mode, credential persistence, static IP, and event callbacks not yet lowered. |
+| http | supported | — |
 | display | supported | — |
 
 ## Cross-framework gaps
@@ -91,6 +91,6 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | shift | ✓ | ✓ |
 | board | ✓ | ✗ (board-specific lowering deferred) |
 | wdt | ✓ | ✓ |
-| wifi | ✗ (arduino core has no wifi hal) | ✗ (no wifi lowering implemented (nrf52840 has no wifi) |
-| http | ✗ (arduino core has no http client hal) | ✗ (http lowering deferred (requires networking stack)) |
+| wifi | ✗ (arduino core has no wifi hal) | ◐ partial |
+| http | ✗ (arduino core has no http client hal) | ✓ |
 | display | ◐ partial | ✓ |

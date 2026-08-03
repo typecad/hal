@@ -34,7 +34,10 @@ import { WiFi, Http } from '@typecad/hal';
 
 WiFi.connect(WIFI_SSID, WIFI_PASSWORD, 30000);
 
-// ── Verb lowering: each method maps to the right HTTP_METHOD_* ──────
+// ── Verb lowering: each method maps to the framework's HTTP verb enum ──
+// (esp_http_client: HTTP_METHOD_*; Zephyr http parser: HTTP_*). The test
+// itself is framework-neutral — it only calls @typecad/hal verbs — so it runs
+// unchanged once cuttlefish.config.ts points at a given framework.
 
 describe('HTTP client — verb lowering')
   .it('GET lowers correctly')

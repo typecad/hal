@@ -46,6 +46,7 @@ import { interruptInitLines } from './lowering/interrupts.js';
 import { wdtInitLines } from './lowering/wdt.js';
 import { bleInitLines } from './lowering/ble.js';
 import { wifiInitLines } from './lowering/wifi.js';
+import { httpInitLines } from './lowering/http.js';
 import { generateZephyrInitCode, generateZephyrBreakpointCode, generateZephyrLogpointCode } from './debug-codegen.js';
 import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
 import { buildTimerPolyfill } from './async/timer-polyfill.js';
@@ -137,6 +138,16 @@ export class ZephyrStrategy implements PlatformStrategy {
       '<zephyr/net/net_mgmt.h>', '<zephyr/net/wifi_mgmt.h>',
       '<zephyr/net/net_if.h>', '<zephyr/net/net_ip.h>',
       '<zephyr/net/conn_mgr_connectivity.h>', '<zephyr/net/conn_mgr_monitor.h>',
+    );
+    // HTTP/S client: Zephyr's http_client_req runs over a pre-connected socket,
+    // so the shim pulls in the BSD socket + POSIX DNS surfaces alongside the
+    // http client/parser headers. TLS sec tags need tls_credentials; <cstring>
+    // /<cstdlib> back the shim's memcpy/strlen/new-nothrow usage (the core
+    // shim only includes <cstdio>/<cstdint>).
+    if (uses('usesHttp')) inc.push(
+      '<zephyr/net/socket.h>', '<zephyr/net/http/client.h>',
+      '<zephyr/net/http/parser.h>', '<zephyr/net/tls_credentials.h>',
+      '<zephyr/posix/sys/socket.h>', '<cstring>', '<cstdlib>',
     );
     // std::string — Zephyr has no umbrella header that transitively pulls in
     // <string> (unlike framework-arduino's <Arduino.h>), so a program that
@@ -266,6 +277,7 @@ export class ZephyrStrategy implements PlatformStrategy {
       lines.push(rt.helpers);
     }
     if (uses('usesWifi')) lines.push(...wifiInitLines());
+    if (uses('usesHttp')) lines.push(...httpInitLines());
 
     lines.push('#endif // CUTTLEFISH_SHIM_DEFINED');
 
@@ -373,6 +385,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     const adcReadPins = new Set<number>();
     const interruptPins = new Set<number>();
     let usesWifiOps = false;
+    let usesHttpOps = false;
     const visit = (node: any): void => {
       if (node && typeof node === 'object') {
         if (node.operation && typeof node.operation === 'object') {
@@ -392,6 +405,9 @@ export class ZephyrStrategy implements PlatformStrategy {
           }
           if (typeof op.operation === 'string' && op.operation.startsWith('wifi.')) {
             usesWifiOps = true;
+          }
+          if (typeof op.operation === 'string' && op.operation.startsWith('http.')) {
+            usesHttpOps = true;
           }
         }
         for (const k of Object.keys(node)) {
@@ -456,6 +472,24 @@ export class ZephyrStrategy implements PlatformStrategy {
         code: 'zephyr-wifi-unavailable-on-target',
         message: `WiFi ops are used but ${chip.id} has no WiFi radio.`,
         hint: `Use an esp32s3_devkitc or esp32_devkitc target (Espressif ESP32 variants have a 2.4GHz WiFi radio).`,
+        source: program.fileName,
+      });
+    }
+
+    // ── HTTP target validity ──────────────────────────────────────────────
+    // HTTP needs a network transport. On Zephyr the only networked target is
+    // the ESP32 (WiFi) — the nRF52840 has neither WiFi nor Ethernet wired in
+    // its chip descriptor, so the shim's socket/connect calls would fail at
+    // runtime. Flag http usage on a chip without a network radio so the user
+    // gets a clear "use an ESP32 target" message instead of an opaque link or
+    // runtime failure. (HTTP rides over WiFi here; an Ethernet target would
+    // set wifi.supported via a different transport flag if/when added.)
+    if (usesHttpOps && !chip.wifi?.supported) {
+      diags.push({
+        severity: 'error',
+        code: 'zephyr-http-unavailable-on-target',
+        message: `HTTP ops are used but ${chip.id} has no network stack available.`,
+        hint: `Use an esp32s3_devkitc or esp32_devkitc target (HTTP needs a network transport; the ESP32 WiFi radio provides it).`,
         source: program.fileName,
       });
     }
