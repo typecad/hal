@@ -33,11 +33,12 @@ import { lowerBle } from './ble.js';
 import { lowerWorker } from './worker.js';
 import { lowerWifi } from './wifi.js';
 import { lowerHttp } from './http.js';
+import { lowerMqtt } from './mqtt.js';
 
 export {
   lowerGpio, lowerTiming, lowerAdc, lowerPwm, lowerI2c, lowerSpi, lowerUart,
   lowerInterrupt, lowerWdt, lowerPower, lowerTone, lowerPulseOrShift, lowerBle,
-  lowerWifi, lowerHttp,
+  lowerWifi, lowerHttp, lowerMqtt,
 };
 
 /**
@@ -67,6 +68,7 @@ export function lowerHalOp(
   if (op.operation.startsWith('worker.'))     return lowerWorker(op);
   if (op.operation.startsWith('wifi.'))       return lowerWifi(op);
   if (op.operation.startsWith('http.'))       return lowerHttp(op);
+  if (op.operation.startsWith('mqtt.'))       return lowerMqtt(op);
 
   // raw / snprintf.emit / display.* / board.* / ... — not lowered by this
   // framework. Return undefined so the transpiler falls back and the manifest

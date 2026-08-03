@@ -47,6 +47,7 @@ import { wdtInitLines } from './lowering/wdt.js';
 import { bleInitLines } from './lowering/ble.js';
 import { wifiInitLines } from './lowering/wifi.js';
 import { httpInitLines } from './lowering/http.js';
+import { mqttInitLines } from './lowering/mqtt.js';
 import { generateZephyrInitCode, generateZephyrBreakpointCode, generateZephyrLogpointCode } from './debug-codegen.js';
 import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
 import { buildTimerPolyfill } from './async/timer-polyfill.js';
@@ -148,6 +149,14 @@ export class ZephyrStrategy implements PlatformStrategy {
       '<zephyr/net/socket.h>', '<zephyr/net/http/client.h>',
       '<zephyr/net/http/parser.h>', '<zephyr/net/tls_credentials.h>',
       '<zephyr/posix/sys/socket.h>', '<cstring>', '<cstdlib>',
+    );
+    // MQTT client: <zephyr/net/mqtt.h> for mqtt_connect/publish/subscribe, plus
+    // <zephyr/net/socket.h> for the zsock_* poll/getaddrinfo API the shim's poll
+    // thread uses, and <zephyr/net/tls_credentials.h> for the mqtts:// path
+    // (mqtt_sec_config). <cstring> backs the shim's memcpy/strlen.
+    if (uses('usesMqtt')) inc.push(
+      '<zephyr/net/mqtt.h>', '<zephyr/net/socket.h>',
+      '<zephyr/net/tls_credentials.h>', '<cstring>',
     );
     // std::string — Zephyr has no umbrella header that transitively pulls in
     // <string> (unlike framework-arduino's <Arduino.h>), so a program that
@@ -278,6 +287,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     }
     if (uses('usesWifi')) lines.push(...wifiInitLines());
     if (uses('usesHttp')) lines.push(...httpInitLines());
+    if (uses('usesMqtt')) lines.push(...mqttInitLines());
 
     lines.push('#endif // CUTTLEFISH_SHIM_DEFINED');
 
@@ -386,6 +396,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     const interruptPins = new Set<number>();
     let usesWifiOps = false;
     let usesHttpOps = false;
+    let usesMqttOps = false;
     const visit = (node: any): void => {
       if (node && typeof node === 'object') {
         if (node.operation && typeof node.operation === 'object') {
@@ -408,6 +419,9 @@ export class ZephyrStrategy implements PlatformStrategy {
           }
           if (typeof op.operation === 'string' && op.operation.startsWith('http.')) {
             usesHttpOps = true;
+          }
+          if (typeof op.operation === 'string' && op.operation.startsWith('mqtt.')) {
+            usesMqttOps = true;
           }
         }
         for (const k of Object.keys(node)) {
@@ -490,6 +504,19 @@ export class ZephyrStrategy implements PlatformStrategy {
         code: 'zephyr-http-unavailable-on-target',
         message: `HTTP ops are used but ${chip.id} has no network stack available.`,
         hint: `Use an esp32s3_devkitc or esp32_devkitc target (HTTP needs a network transport; the ESP32 WiFi radio provides it).`,
+        source: program.fileName,
+      });
+    }
+
+    // ── MQTT target validity ─────────────────────────────────────────────
+    // Same constraint as HTTP: MQTT needs a network transport to reach a broker.
+    // Flag mqtt usage on a radioless chip so the user picks a networked target.
+    if (usesMqttOps && !chip.wifi?.supported) {
+      diags.push({
+        severity: 'error',
+        code: 'zephyr-mqtt-unavailable-on-target',
+        message: `MQTT ops are used but ${chip.id} has no network stack available.`,
+        hint: `Use an esp32s3_devkitc or esp32_devkitc target (MQTT needs a network transport; the ESP32 WiFi radio provides it).`,
         source: program.fileName,
       });
     }

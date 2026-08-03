@@ -18,9 +18,13 @@
 
 import { createServer as createHttpServer, IncomingMessage, ServerResponse } from 'node:http';
 import { createServer as createHttpsServer } from 'node:https';
+import { createServer as createNetServer } from 'node:net';
+import { connect as netConnect } from 'node:net';
+import { createServer as createTlsServer } from 'node:tls';
 import { readFileSync } from 'node:fs';
 import { resolve as resolvePath, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import Aedes from 'aedes';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CERTS_DIR = resolvePath(__dirname, 'certs');
@@ -266,6 +270,66 @@ export function createHttpsTestServer(port = 8443): Promise<TestServer> {
 		const key = readFileSync(resolvePath(CERTS_DIR, 'server.key'));
 		const cert = readFileSync(resolvePath(CERTS_DIR, 'server.crt'));
 		const server = createHttpsServer({ key, cert }, requestHandler);
+		server.on('error', reject);
+		server.listen(port, '0.0.0.0', () => {
+			resolve({
+				port,
+				close: () => new Promise<void>((r) => server.close(() => r())),
+			});
+		});
+	});
+}
+
+// ── MQTT broker ─────────────────────────────────────────────────────────
+// A pure-JS MQTT broker (aedes) the on-metal mqtt-client test connects to,
+// over plain MQTT (1883) and MQTT-over-TLS (8883, same cert pair as the HTTPS
+// server). Like the HTTP server, aedes is a LAN-only test fixture — no auth.
+// Both listeners share one aedes instance so a plain client and a TLS client
+// can exchange messages on the same topic.
+
+/** A shared aedes broker instance backing both the plain and TLS listeners. */
+let _aedes: ReturnType<typeof Aedes> | undefined;
+function aedesBroker(): ReturnType<typeof Aedes> {
+	if (!_aedes) {
+		_aedes = Aedes({ id: 'typecad-test-broker' });
+		_aedes.on('client', (c: { id?: string }) => console.log(`mqtt: client connected ${c.id}`));
+		_aedes.on('clientDisconnect', (c: { id?: string }) => console.log(`mqtt: client disconnected ${c.id}`));
+		_aedes.on('subscribe', (subs: unknown, client: { id?: string }) =>
+			console.log(`mqtt: subscribe from ${client?.id}`));
+		_aedes.on('publish', (pkt: { topic?: string }) => console.log(`mqtt: publish to ${pkt.topic}`));
+	}
+	return _aedes;
+}
+
+/**
+ * Start the plain MQTT broker (mqtt://) on the given port. Resolves once
+ * listening.
+ */
+export function createMqttBroker(port = 1883): Promise<TestServer> {
+	return new Promise((resolve, reject) => {
+		const broker = aedesBroker();
+		const server = createNetServer(broker.handle.bind(broker));
+		server.on('error', reject);
+		server.listen(port, '0.0.0.0', () => {
+			resolve({
+				port,
+				close: () => new Promise<void>((r) => server.close(() => r())),
+			});
+		});
+	});
+}
+
+/**
+ * Start the MQTT-over-TLS broker (mqtts://) on the given port, using the same
+ * self-signed cert pair as the HTTPS server (ca.crt signs server.crt, which
+ * the firmware pins). Resolves once listening.
+ */
+export function createMqttTlsBroker(port = 8883): Promise<TestServer> {
+	return new Promise((resolve, reject) => {
+		const key = readFileSync(resolvePath(CERTS_DIR, 'server.key'));
+		const cert = readFileSync(resolvePath(CERTS_DIR, 'server.crt'));
+		const broker = aedesBroker();
+		const server = createTlsServer({ key, cert }, broker.handle.bind(broker));
 		server.on('error', reject);
 		server.listen(port, '0.0.0.0', () => {
 			resolve({

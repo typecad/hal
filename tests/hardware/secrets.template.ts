@@ -18,3 +18,7 @@ export const TEST_HOST = '192.168.1.100';
 export const TEST_PORT = 8080;
 /** Port the local HTTPS (TLS) test server listens on. */
 export const TEST_HTTPS_PORT = 8443;
+/** Port the local plaintext MQTT broker listens on. */
+export const TEST_MQTT_PORT = 1883;
+/** Port the local MQTT-over-TLS broker listens on. */
+export const TEST_MQTT_TLS_PORT = 8883;

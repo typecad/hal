@@ -3,8 +3,9 @@
 //
 // Coverage reflects actual resolveHALOperation / lowerHalOp + resolveDisplayOp
 // behavior. GPIO, PWM, ADC, I2C, SPI, UART, interrupts, tone, power, pulse,
-// shift, WDT, BLE, timing, WiFi, and HTTP/S are lowered; display is lowered
-// via the generic <zephyr/drivers/display.h> GFX runtime. WiFi/HTTP require an
+// shift, WDT, BLE, timing, WiFi, HTTP/S, and MQTT are lowered; display is
+// lowered via the generic <zephyr/drivers/display.h> GFX runtime. WiFi/HTTP/
+// MQTT require an
 // ESP32 target (nRF52840 has no radio); board-specific lowering is deferred.
 // The manifest validator probes every declared op against the resolver: a
 // 'supported' op must lower, an 'unsupported' op must return undefined.
@@ -333,10 +334,20 @@ export default defineFrameworkManifest({
       ops: unsupportedOps('mdns.'),
     },
     mqtt: {
-      supported: false,
-      unsupportedReason: 'No MQTT lowering on Zephyr (requires networking stack).',
+      supported: true,
       partialCoverage: false,
-      ops: unsupportedOps('mqtt.'),
+      // MQTT 3.1.1 client over Zephyr <zephyr/net/mqtt.h> (mqtts:// TLS via
+      // MQTT_TRANSPORT_SECURE + the shared mbedTLS matrix, encryption only — the
+      // HAL surface has no CA-pinning op, so peer verify is NONE). The __tc_mqtt
+      // shim resolves the broker, runs the mqtt_input/mqtt_live poll loop on a
+      // background k_thread, and dispatches incoming PUBLISHes to the user's
+      // onMessage callback. Requires a networked target (ESP32 WiFi);
+      // profileDiagnostics flags usage on a radioless chip.
+      ops: {
+        'mqtt.connect': 'supported', 'mqtt.on_message': 'supported',
+        'mqtt.subscribe': 'supported', 'mqtt.publish': 'supported',
+        'mqtt.connected': 'supported', 'mqtt.disconnect': 'supported',
+      },
     },
     ota: {
       supported: false,
@@ -472,8 +483,8 @@ export default defineFrameworkManifest({
     // pure string-snapshot tests (no hardware); they are the safety net that
     // catches regressions like silent pull-resistor / interrupt no-ops.
     halResolutionTests: [
-      'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'power',
-      'pulse', 'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt', 'worker',
+      'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'mqtt',
+      'power', 'pulse', 'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt', 'worker',
     ],
   },
 });

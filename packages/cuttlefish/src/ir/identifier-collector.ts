@@ -471,6 +471,22 @@ function collectHALOpIdentifiers(op: HALOpIR): Set<string> {
       // handler is a resolved C++ function name (e.g. "myIsr" or a placeholder)
       identifiers.add(op.handler);
       break;
+    case "mqtt.on_message":
+      // handler is the user's onMessage callback name (callback() resolves it to
+      // a string). Without this the tree-shaker drops the function declaration —
+      // the mqtt.on_message op only carries the name, so the function has no
+      // other reference and looks unreachable. Same shape as interrupt.attach.
+      identifiers.add(op.handler);
+      break;
+    case "wifi.on_event":
+      identifiers.add(op.handler);
+      break;
+    case "ble.on_read":
+    case "ble.on_write":
+    case "ble.on_connect":
+    case "ble.on_disconnect":
+      identifiers.add(op.handler);
+      break;
     case "raw": {
       // Raw C++ code may reference user-defined identifiers
       const matches = op.code.match(/[A-Za-z_][A-Za-z0-9_]*/g);
@@ -483,11 +499,12 @@ function collectHALOpIdentifiers(op: HALOpIR): Set<string> {
     }
     // Other HAL ops have only numeric/literal fields — no identifier references
   }
-  // wifi.* / http.* ops carry resolved C++ expression texts in their string
-  // fields (e.g. wifi.connect ssid: `WIFI_SSID` — a top-level const, or a
-  // quoted literal). Scan every string field for identifiers so referenced
+  // wifi.* / http.* / mqtt.* ops carry resolved C++ expression texts in their
+  // string fields (e.g. wifi.connect ssid: `WIFI_SSID` — a top-level const, or
+  // a quoted literal). Scan every string field for identifiers so referenced
   // globals survive tree-shaking; quoted literals are skipped.
-  if (op.operation.startsWith("wifi.") || op.operation.startsWith("http.")) {
+  if (op.operation.startsWith("wifi.") || op.operation.startsWith("http.")
+      || op.operation.startsWith("mqtt.")) {
     for (const value of Object.values(op)) {
       if (typeof value !== "string" || value === op.operation) continue;
       if (/^".*"$/.test(value.trim())) continue;

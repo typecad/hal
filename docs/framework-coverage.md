@@ -3,12 +3,12 @@
 Auto-generated from per-package `framework.manifest.ts` files.
 Do not edit directly; run `npm run render:framework-coverage` to regenerate.
 
-Counts are out of 18 HAL categories (raw passthrough tracked separately).
+Counts are out of 19 HAL categories (raw passthrough tracked separately).
 
 | Framework | HAL cats supported | HAL cats partial | HAL cats unsupported | Toolchain | Last validated |
 |---|---|---|---|---|---|
-| framework-arduino (canonical) | 12/18 | 4 | 2 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-03 |
-| framework-zephyr | 10/18 | 6 | 2 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-03 |
+| framework-arduino (canonical) | 12/19 | 4 | 3 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-03 |
+| framework-zephyr | 11/19 | 6 | 2 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-03 |
 
 ## framework-arduino
 
@@ -39,6 +39,7 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | wdt | supported | — |
 | wifi | unsupported | Arduino core has no WiFi HAL. ESP32 WiFi lives in framework-esp32. |
 | http | unsupported | Arduino core has no HTTP client HAL. ESP32 HTTP lives in framework-esp32. |
+| mqtt | unsupported | No MQTT lowering in the Arduino core (requires networking stack). |
 | display | partial | — |
 
 ## framework-zephyr
@@ -70,6 +71,7 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | wdt | supported | — |
 | wifi | partial | AP mode, credential persistence, static IP, and event callbacks not yet lowered. |
 | http | supported | — |
+| mqtt | supported | — |
 | display | supported | — |
 
 ## Cross-framework gaps
@@ -93,4 +95,5 @@ Counts are out of 18 HAL categories (raw passthrough tracked separately).
 | wdt | ✓ | ✓ |
 | wifi | ✗ (arduino core has no wifi hal) | ◐ partial |
 | http | ✗ (arduino core has no http client hal) | ✓ |
+| mqtt | ✗ (no mqtt lowering in the arduino core (requires networking stack)) | ✓ |
 | display | ◐ partial | ✓ |

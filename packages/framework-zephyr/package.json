@@ -29,7 +29,9 @@
     "test:hw:gpio": "npm exec -- cuttlefish-test tests/40-gpio.test.ts",
     "test:hw:timers": "npm exec -- cuttlefish-test tests/42-timers.test.ts",
     "test:http": "tsx ../../tests/hardware/start-server.ts",
-    "test:hw:http": "cd ../../tests/hardware && npm exec -- cuttlefish-test http-client.test.ts"
+    "test:hw:http": "cd ../../tests/hardware && npm exec -- cuttlefish-test http-client.test.ts",
+    "test:mqtt": "tsx ../../tests/hardware/start-server.ts",
+    "test:hw:mqtt": "cd ../../tests/hardware && npm exec -- cuttlefish-test mqtt-client.test.ts"
   },
   "dependencies": {
     "@typecad/cuttlefish": "1.0.0-alpha.7"

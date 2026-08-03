@@ -27,7 +27,7 @@ import { z } from 'zod';
 const HAL_CATEGORIES = [
   'gpio', 'pwm', 'adc', 'dac', 'interrupts', 'tone', 'timing', 'power',
   'i2c', 'spi', 'uart', 'pulse', 'shift', 'board', 'wdt', 'wifi', 'http',
-  'display',
+  'mqtt', 'display',
 ] as const;
 
 export type HalCategory = typeof HAL_CATEGORIES[number];

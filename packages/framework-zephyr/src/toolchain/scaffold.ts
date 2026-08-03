@@ -101,6 +101,8 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     // symbol), mirroring how wifi_ detects the wifi shim. An http-only program
     // still pulls the networking stack even without usesWifi.
     usesHttp: uses('http_') || uses('__tc_http') || uses('http_client_req'),
+    // MQTT: the __tc_mqtt_* shim + mqtt_connect/mqtt_publish/mqtt_subscribe.
+    usesMqtt: uses('mqtt_') || uses('__tc_mqtt') || uses('mqtt_connect'),
   };
 
   let changed = false;

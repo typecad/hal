@@ -20,6 +20,7 @@ export interface KconfigUsage {
   usesPower?: boolean;
   usesWifi?: boolean;
   usesHttp?: boolean;
+  usesMqtt?: boolean;
 }
 
 /**
@@ -164,6 +165,39 @@ export function resolveKconfigFragments(
     m.set('CONFIG_NET_RX_STACK_SIZE', '2048');
     if (!usage.usesWifi) m.set('CONFIG_MAIN_STACK_SIZE', '5200');
   }
+  if (usage.usesMqtt) {
+    // MQTT rides on the networking stack. CONFIG_MQTT_LIB selects NET_SOCKETS;
+    // the shim getaddrinfo-resolves the broker and runs its own poll k_thread.
+    // CONFIG_MQTT_LIB_TLS enables MQTT_TRANSPORT_SECURE + mqtt_sec_config; the
+    // mbedTLS matrix is the same one HTTP uses (it's idempotent via Map.set).
+    m.set('CONFIG_NETWORKING', 'y');
+    m.set('CONFIG_NET_IPV4', 'y');
+    m.set('CONFIG_NET_DHCPV4', 'y');
+    m.set('CONFIG_NET_TCP', 'y');
+    m.set('CONFIG_NET_SOCKETS', 'y');
+    m.set('CONFIG_MQTT_LIB', 'y');
+    m.set('CONFIG_MQTT_LIB_TLS', 'y');
+    // NET_MAX_CONTEXTS / NET_MAX_CONN: same exhaustion risk as HTTP — sequential
+    // connections linger after close. Give the broker session + headroom.
+    m.set('CONFIG_NET_MAX_CONTEXTS', '16');
+    m.set('CONFIG_NET_MAX_CONN', '16');
+    m.set('CONFIG_ZVFS_OPEN_MAX', '16');
+    // mbedTLS matrix for mqtts:// (mirrors the HTTP block; overlaps are harmless).
+    m.set('CONFIG_NET_SOCKETS_SOCKOPT_TLS', 'y');
+    m.set('CONFIG_TLS_CREDENTIALS', 'y');
+    m.set('CONFIG_MBEDTLS', 'y');
+    m.set('CONFIG_MBEDTLS_BUILTIN', 'y');
+    m.set('CONFIG_MBEDTLS_CIPHERSUITE_TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256', 'y');
+    m.set('CONFIG_MBEDTLS_ENABLE_HEAP', 'y');
+    m.set('CONFIG_MBEDTLS_HEAP_SIZE', '65000');
+    m.set('CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN', '16384');
+    m.set('CONFIG_MBEDTLS_PEM_CERTIFICATE_FORMAT', 'y');
+    m.set('CONFIG_PSA_CRYPTO', 'y');
+    m.set('CONFIG_REQUIRES_FULL_LIBC', 'y');
+    m.set('CONFIG_NET_TX_STACK_SIZE', '2048');
+    m.set('CONFIG_NET_RX_STACK_SIZE', '2048');
+    if (!usage.usesWifi && !usage.usesHttp) m.set('CONFIG_MAIN_STACK_SIZE', '5200');
+  }
   if (usage.usesBle) {
     m.set('CONFIG_BT', 'y');
     m.set('CONFIG_BT_PERIPHERAL', 'y');
@@ -185,9 +219,9 @@ export function resolveKconfigFragments(
   m.set('CONFIG_STD_CPP14', 'y');
 
   // Main thread stack. WiFi already bumps this to 5200 (esp_wifi device init
-  // is stack-hungry); HTTP/TLS also bumps it (the mbedTLS handshake is stack-
-  // hungry). Don't overwrite either with the default 4096 here.
-  if (!usage.usesWifi && !usage.usesHttp) {
+  // is stack-hungry); HTTP/MQTT + TLS also bump it (the mbedTLS handshake is
+  // stack-hungry). Don't overwrite any of those with the default 4096 here.
+  if (!usage.usesWifi && !usage.usesHttp && !usage.usesMqtt) {
     m.set('CONFIG_MAIN_STACK_SIZE', '4096');
   }
 
