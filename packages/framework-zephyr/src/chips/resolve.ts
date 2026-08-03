@@ -1,0 +1,146 @@
+// ---------------------------------------------------------------------------
+// Derive ZephyrChipDescriptor from board/MCU package constants
+//
+// The board constants resolver extracts flat dot-path scalars from the board
+// and MCU definition files. This utility reconstructs the structured
+// ZephyrChipDescriptor from those flat keys, merging SoC-level defaults
+// (from the MCU package's zephyr field) with board-level overrides (from the
+// board package's zephyr field).
+//
+// When a board package carries Zephyr config, this path replaces the
+// hardcoded chip descriptor registry. When it doesn't (legacy), chipForTarget
+// still works as the fallback.
+// ---------------------------------------------------------------------------
+
+import type { BoardConstants } from '@typecad/cuttlefish/api/shared';
+import type {
+  ZephyrChipDescriptor,
+  ZephyrGpioDtSpec,
+  ZephyrGpioController,
+  ZephyrBusController,
+  ZephyrPwmSpec,
+  ZephyrInterruptPin,
+  ZephyrAdcChannel,
+} from './types.js';
+
+/** Collect an indexed array of objects reconstructed from flat dot-path keys. */
+function collectIndexed<T>(
+  bc: BoardConstants,
+  prefix: string,
+  build: (bc: BoardConstants, index: number) => T | null,
+): T[] {
+  const result: T[] = [];
+  for (let i = 0; i < 256; i++) {
+    const checkKey = `${prefix}.${i}`;
+    let hasAny = false;
+    for (const [k] of bc) {
+      if (k.startsWith(checkKey)) { hasAny = true; break; }
+    }
+    if (!hasAny) break;
+    const item = build(bc, i);
+    if (item) result.push(item);
+  }
+  return result;
+}
+
+function collectBusControllers(
+  bc: BoardConstants,
+  prefix: string,
+): ZephyrBusController[] {
+  return collectIndexed<ZephyrBusController>(bc, prefix, (m, i) => {
+    const nodeLabel = m.get(`${prefix}.${i}.nodeLabel`) as string;
+    return nodeLabel ? { nodeLabel } : null;
+  });
+}
+
+/**
+ * Try to derive a ZephyrChipDescriptor from board/MCU package constants.
+ *
+ * Returns null when no zephyr info is available in the board constants
+ * (the caller should fall back to the hardcoded chipForTarget registry).
+ */
+export function resolveChipFromBoard(
+  bc: BoardConstants | undefined,
+): ZephyrChipDescriptor | null {
+  if (!bc) return null;
+
+  const boardTarget = bc.get('build.frameworks.zephyr') as string | undefined;
+  if (!boardTarget) return null;
+
+  const zGpioController = bc.get('zephyr.gpioController') as string | undefined;
+  const soc = (bc.get('mcu.id') as string) ?? '';
+
+  // ── Build mutable sub-objects, then construct the final descriptor ──────
+
+  const gc = collectIndexed<ZephyrGpioController>(bc, 'zephyr.gpioControllers', (m, i) => {
+    const nodelabel = m.get(`zephyr.gpioControllers.${i}.nodelabel`) as string;
+    const minPin = m.get(`zephyr.gpioControllers.${i}.minPin`) as number;
+    const maxPin = m.get(`zephyr.gpioControllers.${i}.maxPin`) as number;
+    if (nodelabel != null && minPin != null && maxPin != null) {
+      return { nodelabel, minPin, maxPin };
+    }
+    return null;
+  });
+
+  const dtSpecs = collectIndexed<ZephyrGpioDtSpec>(bc, 'zephyr.gpio.dtSpecs', (m, i) => {
+    const pin = m.get(`zephyr.gpio.dtSpecs.${i}.pin`) as number;
+    const dtSpec = m.get(`zephyr.gpio.dtSpecs.${i}.dtSpec`) as string;
+    if (pin != null && dtSpec) return { pin, dtSpec };
+    return null;
+  });
+
+  const intPins = collectIndexed<ZephyrInterruptPin>(bc, 'zephyr.gpio.interruptPins', (m, i) => {
+    const pin = m.get(`zephyr.gpio.interruptPins.${i}.pin`) as number;
+    const dtSpec = m.get(`zephyr.gpio.interruptPins.${i}.dtSpec`) as string;
+    if (pin != null && dtSpec) return { pin, dtSpec };
+    return null;
+  });
+
+  const i2cControllers = collectBusControllers(bc, 'zephyr.i2c.controllers');
+  const spiControllers = collectBusControllers(bc, 'zephyr.spi.controllers');
+  const uartControllers = collectBusControllers(bc, 'zephyr.uart.controllers');
+
+  const pwmSpecs = collectIndexed<ZephyrPwmSpec>(bc, 'zephyr.pwm.specs', (m, i) => {
+    const pin = m.get(`zephyr.pwm.specs.${i}.pin`) as number;
+    const dtSpec = m.get(`zephyr.pwm.specs.${i}.dtSpec`) as string;
+    if (pin != null && dtSpec) return { pin, dtSpec };
+    return null;
+  });
+
+  const adcNodeLabel = bc.get('zephyr.adc.nodeLabel') as string | undefined;
+  const adcResolution = bc.get('zephyr.adc.resolution') as number | undefined;
+  const adcVref = bc.get('zephyr.adc.vrefMv') as number | undefined;
+  const adcChannels = collectIndexed<ZephyrAdcChannel>(bc, 'zephyr.adc.channels', (m, i) => {
+    const pin = m.get(`zephyr.adc.channels.${i}.pin`) as number;
+    const channel = m.get(`zephyr.adc.channels.${i}.channel`) as number;
+    if (pin != null && channel != null) return { pin, channel };
+    return null;
+  });
+
+  const wdtNodeLabel = bc.get('zephyr.wdt.nodeLabel') as string | undefined;
+  const wifiSupported = bc.get('zephyr.wifi.supported') as boolean | undefined;
+
+  // ── Construct the final readonly descriptor ─────────────────────────────
+
+  const gpio: ZephyrChipDescriptor['gpio'] = {
+    dtSpecs,
+    ...(intPins.length > 0 ? { interruptPins: intPins } : {}),
+  };
+
+  return {
+    id: boardTarget,
+    soc,
+    gpioController: zGpioController ?? 'gpio0',
+    ...(gc.length > 0 ? { gpioControllers: gc } : {}),
+    gpio,
+    ...(i2cControllers.length > 0 ? { i2c: { controllers: i2cControllers } } : {}),
+    ...(spiControllers.length > 0 ? { spi: { controllers: spiControllers } } : {}),
+    ...(uartControllers.length > 0 ? { uart: { controllers: uartControllers } } : {}),
+    ...(pwmSpecs.length > 0 ? { pwm: { specs: pwmSpecs } } : {}),
+    ...(adcNodeLabel || adcResolution != null || adcVref != null || adcChannels.length > 0
+      ? { adc: { nodeLabel: adcNodeLabel ?? 'adc', resolution: adcResolution ?? 12, vrefMv: adcVref ?? 3000, channels: adcChannels } }
+      : {}),
+    ...(wdtNodeLabel ? { wdt: { nodeLabel: wdtNodeLabel } } : {}),
+    ...(wifiSupported ? { wifi: { supported: true as const } } : {}),
+  };
+}
