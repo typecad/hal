@@ -59,10 +59,12 @@ export default {
 
 The manifest (`src/framework.manifest.ts`) is the honest, complete record of
 what lowers. Fully supported: **gpio, pwm, adc, i2c, spi, uart, wdt, ble,
-shift**. Partial (some ops lower, some are deferred stubs): **timing, power,
+shift, board constants** (Board.definition.* / Pins.definition.* folding),
+**random** (xorshift32 PRNG seeded from the Zephyr entropy tap).
+Partial (some ops lower, some are deferred stubs): **timing, power,
 interrupts, tone, pulse**. Unsupported for this target: **wifi** (nRF52840 has
 no WiFi), **http** (no networking stack lowered), **display** (deferred),
-**dac** (no DAC on nRF52840), **board** (deferred).
+**dac** (no DAC on nRF52840).
 
 Run `npm test` (the manifest validator) to confirm the declared coverage matches
 the actual lowering behavior.

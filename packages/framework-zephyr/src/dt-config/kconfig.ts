@@ -22,6 +22,7 @@ export interface KconfigUsage {
   usesHttp?: boolean;
   usesMqtt?: boolean;
   usesPreferences?: boolean;
+  usesRandom?: boolean;
 }
 
 /**
@@ -219,6 +220,17 @@ export function resolveKconfigFragments(
   }
   // usesUart: the board enables the console UART by default; the overlay (not
   // Kconfig) is where a UART node would be enabled, so no symbol here.
+  // Random: <zephyr/random/random.h> sys_rand_get is backed by the random
+  // generator subsystem. CONFIG_RANDOM_GENERATOR is the umbrella that selects a
+  // working backend for the board (nRF52840 → hardware RNG via the entropy
+  // driver; QEMU/host → the test generator). CONFIG_ENTROPY_GENERATOR is its
+  // hard dependency on hardware targets. Both default on for most boards, but
+  // setting them explicitly keeps the symbol set honest and survives a board
+  // whose defconfig leaves them off.
+  if (usage.usesRandom) {
+    m.set('CONFIG_ENTROPY_GENERATOR', 'y');
+    m.set('CONFIG_RANDOM_GENERATOR', 'y');
+  }
 
   // System workqueue — bumped for worker-offload AND timer callbacks. The
   // workqueue itself is unconditionally built (no CONFIG_SYSTEM_WORKQUEUE symbol

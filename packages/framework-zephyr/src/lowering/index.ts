@@ -3,10 +3,11 @@
 //
 // Routes a HALOpIR to the per-category lowering module by category prefix
 // (e.g. 'gpio.write' → lowerGpio). Returns undefined for categories the
-// framework does not lower (display/board/random/fs/mdns/ota/rmt/dac/
+// framework does not lower (display/fs/mdns/ota/rmt/dac/
 // hwtimer/capacitive/temp/espnow/crypto/i2s/twai/usb/eth/pcnt/mcpwm — see
 // the manifest), so the transpiler falls back and the manifest validator
-// cross-checks the unsupported categories.
+// cross-checks the unsupported categories. (board.* is registered below but is
+// a dead-letter — its values are constant-folded at IR-build time.)
 //
 // Prefix dispatch (matching framework-esp32's lowerHalOp) keeps this resilient:
 // a new op added to a category's lowering fn is picked up here automatically,
@@ -35,11 +36,13 @@ import { lowerWifi } from './wifi.js';
 import { lowerHttp } from './http.js';
 import { lowerMqtt } from './mqtt.js';
 import { lowerPreferences } from './preferences.js';
+import { lowerBoard } from './board.js';
+import { lowerRandom } from './random.js';
 
 export {
   lowerGpio, lowerTiming, lowerAdc, lowerPwm, lowerI2c, lowerSpi, lowerUart,
   lowerInterrupt, lowerWdt, lowerPower, lowerTone, lowerPulseOrShift, lowerBle,
-  lowerWifi, lowerHttp, lowerMqtt, lowerPreferences,
+  lowerWifi, lowerHttp, lowerMqtt, lowerPreferences, lowerBoard, lowerRandom,
 };
 
 /**
@@ -71,8 +74,12 @@ export function lowerHalOp(
   if (op.operation.startsWith('http.'))       return lowerHttp(op);
   if (op.operation.startsWith('mqtt.'))       return lowerMqtt(op);
   if (op.operation.startsWith('preferences.')) return lowerPreferences(op);
+  // board.resolve is constant-folded at IR-build time; lowerBoard is the
+  // dead-letter reached only on an unresolvable path.
+  if (op.operation.startsWith('board.')) return lowerBoard(op);
+  if (op.operation.startsWith('random.')) return lowerRandom(op);
 
-  // raw / snprintf.emit / display.* / board.* / ... — not lowered by this
+  // raw / snprintf.emit / display.* / ... — not lowered by this
   // framework. Return undefined so the transpiler falls back and the manifest
   // validator confirms the unsupported declaration.
   return undefined;

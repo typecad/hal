@@ -108,6 +108,8 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     // `settings_` symbols; __tc_prefs catches the typed accessors (put_int etc.
     // template into __tc_prefs_put<...>, which keeps the __tc_prefs token).
     usesPreferences: uses('settings_') || uses('__tc_prefs'),
+    // Random: the __tc_rand_* shim + the sys_rand_get entropy tap it seeds from.
+    usesRandom: uses('__tc_rand') || uses('sys_rand_get'),
   };
 
   let changed = false;

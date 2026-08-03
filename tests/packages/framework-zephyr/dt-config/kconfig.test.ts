@@ -87,6 +87,18 @@ describe('resolveKconfigFragments', () => {
     // Non-WiFi builds set no networking stack sizes.
     expect(m.has('CONFIG_NET_MGMT_EVENT_STACK_SIZE')).toBe(false);
   });
+
+  it('enables the random + entropy generators when usesRandom', () => {
+    const m = resolveKconfigFragments({ usesRandom: true }, false);
+    expect(m.get('CONFIG_ENTROPY_GENERATOR')).toBe('y');
+    expect(m.get('CONFIG_RANDOM_GENERATOR')).toBe('y');
+  });
+
+  it('does NOT enable random symbols when usesRandom is absent', () => {
+    const m = resolveKconfigFragments({ usesAdc: true }, false);
+    expect(m.has('CONFIG_RANDOM_GENERATOR')).toBe(false);
+    expect(m.has('CONFIG_ENTROPY_GENERATOR')).toBe(false);
+  });
 });
 
 // Regression: the WiFi shim emits a `tx_power_dbm` identifier. The scaffold's

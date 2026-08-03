@@ -3,10 +3,9 @@
 //
 // Coverage reflects actual resolveHALOperation / lowerHalOp + resolveDisplayOp
 // behavior. GPIO, PWM, ADC, I2C, SPI, UART, interrupts, tone, power, pulse,
-// shift, WDT, BLE, timing, WiFi, HTTP/S, and MQTT are lowered; display is
-// lowered via the generic <zephyr/drivers/display.h> GFX runtime. WiFi/HTTP/
-// MQTT require an
-// ESP32 target (nRF52840 has no radio); board-specific lowering is deferred.
+// shift, WDT, BLE, timing, WiFi, HTTP/S, MQTT, board constants, and random
+// are lowered; display is lowered via the generic <zephyr/drivers/display.h>
+// GFX runtime. WiFi/HTTP/MQTT require an ESP32 target (nRF52840 has no radio).
 // The manifest validator probes every declared op against the resolver: a
 // 'supported' op must lower, an 'unsupported' op must return undefined.
 // ---------------------------------------------------------------------------
@@ -188,9 +187,17 @@ export default defineFrameworkManifest({
       ops: { 'shift.out': 'supported', 'shift.in': 'supported' },
     },
     board: {
-      supported: false,
-      unsupportedReason: 'Board-specific lowering deferred.',
-      ops: { 'board.resolve': 'unsupported' },
+      // Board constant resolution. Board.definition.<path> /
+      // Pins.definition.<path> property accesses are folded by
+      // ZephyrStrategy.renderBoardDefinitionAccess against the loaded
+      // board/MCU constants — the same mechanism framework-arduino uses. The
+      // lone HAL op (board.resolve) is constant-folded at IR-build time
+      // (expression-to-ir.ts / hal-emitter.ts), so it only reaches the
+      // resolver as a dead-letter; 'probe-inconclusive' reflects that the
+      // minimal validator probe carries no path/board constants to resolve.
+      supported: true,
+      partialCoverage: false,
+      ops: { 'board.resolve': 'probe-inconclusive' },
     },
     wdt: {
       supported: true,
@@ -351,10 +358,16 @@ export default defineFrameworkManifest({
       },
     },
     random: {
-      supported: false,
-      unsupportedReason: 'No random lowering on Zephyr (use sys_rand_get directly via rawCpp() if needed).',
+      // <zephyr/random/random.h> sys_rand_get seeds a userspace xorshift32
+      // PRNG (__tc_rand_*); random.seed re-seeds it deterministically (matching
+      // Arduino randomSeed). random.int → [0, 2^31-1], random.range → [min,max-1].
+      supported: true,
       partialCoverage: false,
-      ops: unsupportedOps('random.'),
+      ops: {
+        'random.int': 'supported',
+        'random.range': 'supported',
+        'random.seed': 'supported',
+      },
     },
     fs: {
       supported: false,
@@ -518,9 +531,9 @@ export default defineFrameworkManifest({
     // pure string-snapshot tests (no hardware); they are the safety net that
     // catches regressions like silent pull-resistor / interrupt no-ops.
     halResolutionTests: [
-      'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'mqtt',
-      'power', 'preferences', 'pulse', 'pwm', 'spi', 'timing', 'tone', 'uart',
-      'wdt', 'worker',
+      'adc', 'ble', 'board', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'mqtt',
+      'power', 'preferences', 'pulse', 'pwm', 'random', 'spi', 'timing', 'tone',
+      'uart', 'wdt', 'worker',
     ],
   },
 });

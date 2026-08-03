@@ -49,6 +49,7 @@ import { wifiInitLines } from './lowering/wifi.js';
 import { httpInitLines } from './lowering/http.js';
 import { mqttInitLines } from './lowering/mqtt.js';
 import { preferencesInitLines } from './lowering/preferences.js';
+import { randomInitLines } from './lowering/random.js';
 import { generateZephyrInitCode, generateZephyrBreakpointCode, generateZephyrLogpointCode } from './debug-codegen.js';
 import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
 import { buildTimerPolyfill } from './async/timer-polyfill.js';
@@ -136,6 +137,10 @@ export class ZephyrStrategy implements PlatformStrategy {
     // this include. When ctx.analysis is absent (capability query), uses()
     // defaults to true so a real build never strips it.
     if (uses('usesDisplay')) inc.push('<zephyr/drivers/display.h>');
+    // Random: <zephyr/random/random.h> for sys_rand_get (the entropy tap that
+    // seeds the __tc_rand_* xorshift32 PRNG). The shim block re-includes it, but
+    // force it here too so a split-TU emit still has the symbol available.
+    if (uses('usesRandom')) inc.push('<zephyr/random/random.h>');
     if (uses('usesWifi')) inc.push(
       '<zephyr/net/net_mgmt.h>', '<zephyr/net/wifi_mgmt.h>',
       '<zephyr/net/net_if.h>', '<zephyr/net/net_ip.h>',
@@ -297,6 +302,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesHttp')) lines.push(...httpInitLines());
     if (uses('usesMqtt')) lines.push(...mqttInitLines());
     if (uses('usesPreferences')) lines.push(...preferencesInitLines());
+    if (uses('usesRandom')) lines.push(...randomInitLines());
 
     lines.push('#endif // CUTTLEFISH_SHIM_DEFINED');
 
@@ -663,8 +669,23 @@ export class ZephyrStrategy implements PlatformStrategy {
     return undefined;
   }
 
-  renderBoardDefinitionAccess(): string | undefined {
-    return undefined;
+  renderBoardDefinitionAccess(
+    chain: string[],
+    boardConstants?: BoardConstants,
+  ): string | undefined {
+    // Fold Board.definition.<path> / Pins.definition.<path> into the literal
+    // board-constant value, mirroring framework-arduino. The renderer calls
+    // this (expression-renderer.ts) with the populated boardConstants from the
+    // loaded board/MCU package, so a known path resolves to its scalar value.
+    // `board.resolve` HAL ops, by contrast, are constant-folded earlier at
+    // IR-build time and never reach here; see lowering/board.ts.
+    if (chain.length < 3) return undefined;
+    if (chain[0] !== 'Board' && chain[0] !== 'Pins') return undefined;
+    if (chain[1] !== 'definition') return undefined;
+    if (!boardConstants) return undefined;
+    const path = chain.slice(2).join('.');
+    const val = boardConstants.get(path);
+    return val !== undefined ? String(val) : undefined;
   }
 
   // ── Statement rendering ─────────────────────────────────────────────────
