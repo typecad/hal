@@ -1,19 +1,29 @@
-// Local HTTP test server for the @typecad/hal HTTP client hardware tests.
+// Local HTTP/HTTPS test server for the @typecad/hal HTTP client hardware tests.
 //
-// Serves three routes the firmware test client hits over plain HTTP on the
-// local network:
+// Serves the same routes over both plain HTTP and HTTPS (TLS) on the local
+// network, so the firmware test client can exercise both transports:
 //   /echo            GET/POST/PUT/DELETE/PATCH/HEAD/OPTIONS — echoes method + body
 //   /status/[code]   GET — returns the requested HTTP status code
 //   /headers         GET — echoes request headers
+//   /items           GET/POST/PUT/DELETE/PATCH — stateful CRUD (in-memory store)
 //
-// No auth: this is a LAN-only server for testing your own firmware. Don't
-// expose it to the internet. start-server.ts launches it on 0.0.0.0 so the
-// ESP32 can reach it from elsewhere on the network.
+// The HTTPS listener uses the self-signed cert in ./certs (signed by ca.crt,
+// which the firmware pins via Http...caCert()). No auth: this is a LAN-only
+// server for testing your own firmware. Don't expose it to the internet.
+// start-server.ts launches both listeners on 0.0.0.0 so the ESP32 can reach
+// them from elsewhere on the network.
 //
-// This file is importable: `import { createTestServer } from './server'`.
+// This file is importable: `import { createTestServer, createHttpsTestServer } from './server'`.
 // Run directly with `npm run test:http` (which calls start-server.ts).
 
-import { createServer, IncomingMessage, ServerResponse } from 'node:http';
+import { createServer as createHttpServer, IncomingMessage, ServerResponse } from 'node:http';
+import { createServer as createHttpsServer } from 'node:https';
+import { readFileSync } from 'node:fs';
+import { resolve as resolvePath, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const CERTS_DIR = resolvePath(__dirname, 'certs');
 
 export interface TestServer {
 	port: number;
@@ -209,26 +219,53 @@ async function route(req: IncomingMessage, res: ServerResponse): Promise<boolean
 }
 
 /**
- * Create and start the test server. Resolves once listening. Logs each
- * request to stdout so you can watch the firmware hit the endpoints.
+ * Shared request handler for the HTTP and HTTPS listeners. Routes the request,
+ * logs each one, and returns a 404/500 on miss/error. Identical behavior over
+ * both transports — only the TLS handshake differs.
+ */
+function requestHandler(req: IncomingMessage, res: ServerResponse): void {
+	const started = Date.now();
+	const method = req.method ?? 'GET';
+	const url = req.url ?? '/';
+	(async () => {
+		try {
+			const handled = await route(req, res);
+			if (!handled) {
+				sendJson(res, 404, { error: 'not found', path: url });
+			}
+		} catch (err) {
+			sendJson(res, 500, { error: String(err) });
+		}
+		console.log(`${method} ${url} ${res.statusCode} ${Date.now() - started}ms`);
+	})();
+}
+
+/**
+ * Create and start the plaintext HTTP test server. Resolves once listening.
  */
 export function createTestServer(port = 8080): Promise<TestServer> {
 	return new Promise((resolve, reject) => {
-		const server = createServer(async (req, res) => {
-			const started = Date.now();
-			const method = req.method ?? 'GET';
-			const url = req.url ?? '/';
-			try {
-				const handled = await route(req, res);
-				if (!handled) {
-					sendJson(res, 404, { error: 'not found', path: url });
-				}
-			} catch (err) {
-				sendJson(res, 500, { error: String(err) });
-			}
-			console.log(`${method} ${url} ${res.statusCode} ${Date.now() - started}ms`);
+		const server = createHttpServer(requestHandler);
+		server.on('error', reject);
+		server.listen(port, '0.0.0.0', () => {
+			resolve({
+				port,
+				close: () => new Promise<void>((r) => server.close(() => r())),
+			});
 		});
+	});
+}
 
+/**
+ * Create and start the HTTPS (TLS) test server, serving the same routes over a
+ * TLS 1.2+ listener. Uses the self-signed cert pair in ./certs (signed by
+ * ca.crt, which the firmware pins). Resolves once listening.
+ */
+export function createHttpsTestServer(port = 8443): Promise<TestServer> {
+	return new Promise((resolve, reject) => {
+		const key = readFileSync(resolvePath(CERTS_DIR, 'server.key'));
+		const cert = readFileSync(resolvePath(CERTS_DIR, 'server.crt'));
+		const server = createHttpsServer({ key, cert }, requestHandler);
 		server.on('error', reject);
 		server.listen(port, '0.0.0.0', () => {
 			resolve({

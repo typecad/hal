@@ -128,21 +128,40 @@ export function resolveKconfigFragments(
     m.set('CONFIG_DNS_RESOLVER', 'y');       // getaddrinfo for hostnames
     m.set('CONFIG_DNS_SERVER_IP_ADDRESSES', 'y');
     m.set('CONFIG_HTTP_CLIENT', 'y');        // <zephyr/net/http/client.h> + http_client_req
-    // NOTE: HTTPS (CONFIG_NET_SOCKETS_SOCKOPT_TLS + CONFIG_TLS_CREDENTIALS) is
-    // intentionally NOT enabled by default. It selects mbedTLS, whose ssl layer
-    // (mbedtls_ssl_*) needs a full mbedTLS user-config symbol matrix to link —
-    // none of the in-tree socket samples set SOCKOPT_TLS via prj.conf. The shim
-    // keeps the full TLS code path (gated on scheme=="https"), so HTTPS lowering
-    // is structurally complete, but plain-HTTP programs (the common case, and
-    // what tests/hardware/http-client.test.ts exercises) don't pay the link
-    // cost. Enable these explicitly in a per-program kconfig override (e.g. via
-    // cuttlefish.config.ts zephyr.kconfig) when wiring a working HTTPS target.
-    // The http client stack sizes mirror the wifi bumps (NET_*_STACK_SIZE).
+    // HTTPS via Zephyr socket TLS (IPPROTO_TLS_1_2 + SOL_TLS sockopts, driven by
+    // the shim's __tc_http_open_socket https branch). NET_SOCKETS_SOCKOPT_TLS
+    // selects mbedTLS, but its ssl layer (mbedtls_ssl_*) needs the rest of this
+    // matrix to actually link + a working TLS 1.2 protocol + key exchange.
+    m.set('CONFIG_NET_SOCKETS_SOCKOPT_TLS', 'y');
+    m.set('CONFIG_TLS_CREDENTIALS', 'y');    // tls_credential_add for caCert()
+    m.set('CONFIG_MBEDTLS', 'y');
+    m.set('CONFIG_MBEDTLS_BUILTIN', 'y');
+    // Enable TLS 1.2 via a single ciphersuite rather than the broad
+    // SSL_PROTO_TLS1_2 + KEY_EXCHANGE_ALL_ENABLED (the latter selects KEXes whose
+    // PSA_WANT_* deps are unsatisfied → Kconfig abort) or a bare
+    // SSL_PROTO_TLS1_2 (no key exchange → check_config.h "no key exchange
+    // methods defined"). A ciphersuite is the proven path the in-tree HTTPS
+    // samples use (samples/net/prometheus): it transitively selects
+    // MBEDTLS_SSL_PROTO_TLS1_2 + its one key exchange + every PSA_WANT_* key/alg
+    // that key exchange needs, with no dangling deps. ECDHE_RSA matches the test
+    // server's RSA cert (rsa:2048) and is widely offered; add more ciphersuites
+    // here to broaden server compatibility.
+    m.set('CONFIG_MBEDTLS_CIPHERSUITE_TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256', 'y');
+    // Handshake/protocol buffers allocate from the mbedTLS heap; MBEDTLS_HEAP_SIZE
+    // must hold ~2x MBEDTLS_SSL_MAX_CONTENT_LEN plus working state. 65000 fits on
+    // the ESP32; mbedTLS requires the full libc and PEM (not DER) cert format.
+    m.set('CONFIG_MBEDTLS_ENABLE_HEAP', 'y');
+    m.set('CONFIG_MBEDTLS_HEAP_SIZE', '65000');
+    m.set('CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN', '16384');
+    m.set('CONFIG_MBEDTLS_PEM_CERTIFICATE_FORMAT', 'y');
+    m.set('CONFIG_PSA_CRYPTO', 'y');
+    m.set('CONFIG_REQUIRES_FULL_LIBC', 'y');
+    // The http client + TLS handshake are stack-hungry; mirror the wifi bumps
+    // (NET_*_STACK_SIZE) and keep the larger main-stack value (TLS handshake
+    // overflows the default main stack).
     m.set('CONFIG_NET_MGMT_EVENT_STACK_SIZE', '4096');
     m.set('CONFIG_NET_TX_STACK_SIZE', '2048');
     m.set('CONFIG_NET_RX_STACK_SIZE', '2048');
-    // The http client path is stack-hungry; bump main stack. If wifi already
-    // bumped it to 5200 we keep the larger value (set once below).
     if (!usage.usesWifi) m.set('CONFIG_MAIN_STACK_SIZE', '5200');
   }
   if (usage.usesBle) {

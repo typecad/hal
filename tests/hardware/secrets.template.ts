@@ -14,5 +14,7 @@ export const WIFI_PASSWORD = 'EDIT_ME';
 
 /** Host IP the ESP32 will connect to (your machine's LAN IP). */
 export const TEST_HOST = '192.168.1.100';
-/** Port the local test server listens on. */
+/** Port the local plaintext HTTP test server listens on. */
 export const TEST_PORT = 8080;
+/** Port the local HTTPS (TLS) test server listens on. */
+export const TEST_HTTPS_PORT = 8443;
