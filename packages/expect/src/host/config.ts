@@ -70,6 +70,7 @@ export function loadConfig(
     board: test.board ?? raw.board ?? '@typecad/board-arduino-uno',
     target: raw.target ?? 'avr',
     framework: raw.framework,
+    toolchainType: raw.toolchain?.type === 'west' ? 'west' : 'arduino-cli',
     projectRoot,
   };
 }
@@ -99,6 +100,7 @@ export interface RawConfig {
   board?: string;
   frameworkData?: { buildTarget?: string };
   framework?: string;
+  toolchain?: { type?: string };
   test?: Partial<TestConfig>;
   output?: {
     framework?: string;
@@ -160,6 +162,16 @@ function extractConfigProperties(obj: ts.ObjectLiteralExpression, out: RawConfig
         break;
       case 'framework':
         if (ts.isStringLiteral(prop.initializer)) out.framework = prop.initializer.text;
+        break;
+      case 'toolchain':
+        if (ts.isObjectLiteralExpression(prop.initializer)) {
+          out.toolchain = {};
+          for (const tProp of prop.initializer.properties) {
+            if (ts.isPropertyAssignment(tProp) && tProp.name.getText() === 'type' && ts.isStringLiteral(tProp.initializer)) {
+              out.toolchain.type = tProp.initializer.text;
+            }
+          }
+        }
         break;
       case 'test':
         if (ts.isObjectLiteralExpression(prop.initializer)) {

@@ -102,7 +102,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // true so nothing is stripped — mirrors framework-esp32's forcedIncludes.
     const a = (ctx as any)?.analysis;
     const uses = (f: string): boolean => (a ? !!a[f] : true);
-    const inc: string[] = ['<zephyr/kernel.h>', '<zephyr/drivers/gpio.h>', '<cstdint>'];
+    const inc: string[] = ['<zephyr/kernel.h>', '<zephyr/drivers/gpio.h>', '<cstdio>', '<cstdint>'];
     if (uses('usesI2C')) inc.push('<zephyr/drivers/i2c.h>');
     if (uses('usesSPI')) inc.push('<zephyr/drivers/spi.h>');
     if (uses('usesUart')) inc.push('<zephyr/drivers/uart.h>');
@@ -204,6 +204,13 @@ export class ZephyrStrategy implements PlatformStrategy {
       '#ifndef PROGMEM', '#define PROGMEM', '#endif',
       'inline long map(long x, long in_min, long in_max, long out_min, long out_max) { return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min; }',
       'inline long constrain(long x, long a, long b) { return x < a ? a : (x > b ? b : x); }',
+      // Test-runner console helpers: @typecad/expect's Zephyr shim calls these
+      // for protocol output. Overloaded for string (const char*) and numeric
+      // (double) so the same call site works for markers and test values.
+      'inline void __tc_print(const char* s) { printf("%s", s); }',
+      'inline void __tc_print(double v) { printf("%g", v); }',
+      'inline void __tc_println(const char* s) { printf("%s\\n", s); }',
+      'inline void __tc_println(double v) { printf("%g\\n", v); }',
     ];
 
     // Devicetree specs for every board-defined GPIO pin. Emitted unconditionally

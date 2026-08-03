@@ -9,7 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ResolvedConfig, RunResult, FileResult } from './types.js';
 import { findTestFiles } from './finder.js';
-import { preprocess, serialShim } from './preprocessor.js';
+import { preprocess, serialShim, zephyrShim } from './preprocessor.js';
 import { transpileTestFile, compileSketch, uploadSketch } from './compiler.js';
 import { readSerialOutput } from './serial.js';
 import { parseProtocolLines } from './parser.js';
@@ -107,7 +107,7 @@ async function processTestFile(
   try {
     preprocessed = preprocess(source, path.basename(filePath), {
       isAvr: config.target === 'avr' || config.target === 'megaavr',
-      shim: serialShim,
+      shim: config.toolchainType === 'west' ? zephyrShim : serialShim,
     });
   } catch (e) {
     return errorResult(filePath, `Preprocessing failed: ${(e as Error).message}`, startTime);
@@ -120,25 +120,27 @@ async function processTestFile(
     filePath,
     config.projectRoot,
     config.buildTarget,
+    config.toolchainType,
   );
   if (!transpileResult.success) {
     return errorResult(filePath, transpileResult.error ?? 'Transpilation failed', startTime);
   }
 
-  // Step 3: Compile via arduino-cli
+  // Step 3: Compile via the configured toolchain (arduino-cli or west)
   console.log(`  ${DIM}compiling...${RESET}`);
-  const compileResult = compileSketch(transpileResult.sketchDir, config.buildTarget, config.framework);
+  const compileResult = compileSketch(transpileResult.sketchDir, config.buildTarget, config.framework, config.toolchainType);
   if (!compileResult.success) {
     return errorResult(filePath, compileResult.error ?? 'Compilation failed', startTime);
   }
 
-  // Step 4: Upload via arduino-cli
+  // Step 4: Upload via the configured toolchain
   console.log(`  ${DIM}uploading to ${config.test.port}...${RESET}`);
   const uploadResult = uploadSketch(
     transpileResult.sketchDir,
     config.buildTarget,
     config.test.port,
     config.framework,
+    config.toolchainType,
   );
   if (!uploadResult.success) {
     return errorResult(filePath, uploadResult.error ?? 'Upload failed', startTime);

@@ -137,6 +137,11 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     '# Driver symbols are usage-gated on the emitted source — only peripherals',
     '# the program references are enabled.',
     '',
+    '# Route printf/stdout to the console UART (needed by the @typecad/expect',
+    '# test runner protocol, which uses printf via __tc_print/__tc_println).',
+    'CONFIG_STDOUT_CONSOLE=y',
+    'CONFIG_PRINTK=y',
+    '',
   ];
   // Emit a section header before the BT block when present.
   let btHeaderEmitted = false;

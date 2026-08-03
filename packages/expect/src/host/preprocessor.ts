@@ -54,6 +54,18 @@ export const serialShim: OutputShim = {
   delay: 'delay(1000)',
 };
 
+/**
+ * Zephyr shim: uses overloaded __tc_print/__tc_println helpers that handle
+ * both string and numeric (double) output via printf. The Zephyr strategy's
+ * shimLines emits these helper definitions. k_msleep replaces delay().
+ */
+export const zephyrShim: OutputShim = {
+  begin: '',  // Zephyr console auto-initializes via DT; no explicit begin needed
+  print: (e) => `__tc_print(${e})`,
+  println: (e) => `__tc_println(${e})`,
+  delay: 'k_msleep(1000)',
+};
+
 export interface PreprocessorOptions {
   /** Wrap string literals in Arduino F() macro to save SRAM on AVR. */
   isAvr?: boolean;

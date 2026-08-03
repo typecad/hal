@@ -168,6 +168,8 @@ export interface ResolvedConfig {
   target: string;
   /** Framework package name, e.g. "@typecad/framework-avr". */
   framework?: string;
+  /** Toolchain type from config: 'arduino-cli' (default) or 'west' (Zephyr). */
+  toolchainType: 'arduino-cli' | 'west';
   /** Absolute path to project root. */
   projectRoot: string;
 }
