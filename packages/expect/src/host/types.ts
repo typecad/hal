@@ -170,6 +170,8 @@ export interface ResolvedConfig {
   framework?: string;
   /** Toolchain type from config: 'arduino-cli' (default) or 'west' (Zephyr). */
   toolchainType: 'arduino-cli' | 'west';
+  /** Zephyr-specific config (kconfig, etc.) from cuttlefish.config.ts. */
+  zephyrConfig?: Record<string, unknown>;
   /** Absolute path to project root. */
   projectRoot: string;
 }

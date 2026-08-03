@@ -133,9 +133,9 @@ export function transpileTestFile(
 /**
  * Compile the sketch/project via the configured toolchain (arduino-cli or west).
  */
-export function compileSketch(sketchDir: string, buildTarget: string, framework?: string, toolchainType: 'arduino-cli' | 'west' = 'arduino-cli'): CompileResult {
+export function compileSketch(sketchDir: string, buildTarget: string, framework?: string, toolchainType: 'arduino-cli' | 'west' = 'arduino-cli', zephyrConfig?: Record<string, unknown>): CompileResult {
   if (toolchainType === 'west') {
-    return compileWestProject(sketchDir, buildTarget);
+    return compileWestProject(sketchDir, buildTarget, zephyrConfig);
   }
   return compileArduinoSketch(sketchDir, buildTarget);
 }
@@ -176,6 +176,7 @@ export function uploadSketch(
   port: string,
   framework?: string,
   toolchainType: 'arduino-cli' | 'west' = 'arduino-cli',
+  zephyrConfig?: Record<string, unknown>,
 ): UploadResult {
   if (toolchainType === 'west') {
     return uploadWestProject(sketchDir, buildTarget, port);
@@ -222,7 +223,7 @@ function uploadArduinoSketch(
  * and the board target. We call it via dynamic import to avoid a hard
  * dependency on framework-zephyr (the Arduino path doesn't need it).
  */
-function compileWestProject(sketchDir: string, buildTarget: string): CompileResult {
+function compileWestProject(sketchDir: string, buildTarget: string, zephyrConfig?: Record<string, unknown>): CompileResult {
   // sketchDir for Zephyr is the project root containing src/, app/, build/.
   // The transpiler emits src/src.cpp; the west project root is the parent of src/.
   const srcDir = path.join(sketchDir, 'src');
@@ -244,6 +245,7 @@ function compileWestProject(sketchDir: string, buildTarget: string): CompileResu
       outputDir,
       sourcePath,
       buildTarget,
+      zephyrConfig,
     });
     return {
       success: result.success,

@@ -26,6 +26,12 @@ const config: CuttlefishConfig = {
     type: 'west',
   },
 
+  console: { baudRate: 115200 },
+
+  zephyr: {
+    kconfig: { 'CONFIG_ESP32_USE_UNSUPPORTED_REVISION': 'y' },
+  },
+
   test: {
     // Update port to your board's serial device before running test:hw.
     port: 'COM9',

@@ -71,6 +71,7 @@ export function loadConfig(
     target: raw.target ?? 'avr',
     framework: raw.framework,
     toolchainType: raw.toolchain?.type === 'west' ? 'west' : 'arduino-cli',
+    zephyrConfig: raw.zephyr,
     projectRoot,
   };
 }
@@ -101,6 +102,7 @@ export interface RawConfig {
   frameworkData?: { buildTarget?: string };
   framework?: string;
   toolchain?: { type?: string };
+  zephyr?: Record<string, unknown>;
   test?: Partial<TestConfig>;
   output?: {
     framework?: string;
@@ -169,6 +171,30 @@ function extractConfigProperties(obj: ts.ObjectLiteralExpression, out: RawConfig
           for (const tProp of prop.initializer.properties) {
             if (ts.isPropertyAssignment(tProp) && tProp.name.getText() === 'type' && ts.isStringLiteral(tProp.initializer)) {
               out.toolchain.type = tProp.initializer.text;
+            }
+          }
+        }
+        break;
+      case 'zephyr':
+        // Parse the zephyr section (kconfig, runner, cmakeArgs) as a generic
+        // object so it can be passed through to the Zephyr toolchain.
+        if (ts.isObjectLiteralExpression(prop.initializer)) {
+          out.zephyr = {};
+          for (const zProp of prop.initializer.properties) {
+            if (ts.isPropertyAssignment(zProp)) {
+              const key = zProp.name.getText();
+              if (ts.isObjectLiteralExpression(zProp.initializer)) {
+                // kconfig: { 'CONFIG_X': 'y' }
+                const sub: Record<string, string> = {};
+                for (const subProp of zProp.initializer.properties) {
+                  if (ts.isPropertyAssignment(subProp) && ts.isStringLiteral(subProp.initializer)) {
+                    sub[subProp.name.getText().replace(/['"]/g, '')] = subProp.initializer.text;
+                  }
+                }
+                (out.zephyr as Record<string, unknown>)[key] = sub;
+              } else if (ts.isStringLiteral(zProp.initializer)) {
+                (out.zephyr as Record<string, unknown>)[key] = zProp.initializer.text;
+              }
             }
           }
         }
