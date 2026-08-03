@@ -58,6 +58,22 @@ describe('wifi init shim', () => {
     expect(shim).not.toContain('esp_wifi_start(');
     expect(shim).not.toContain('tx_power_dbm');
   });
+
+  it('emits power-save + AP-mode + wait helpers', () => {
+    // set_power_save → real net_mgmt PS_CONFIG request.
+    expect(shim).toContain('__tc_wifi_set_power_save');
+    expect(shim).toContain('NET_REQUEST_WIFI_PS_CONFIG');
+    expect(shim).toContain('WIFI_PS_ENABLED');
+    expect(shim).toContain('WIFI_PS_DISABLED');
+    // waits → block on the connected flag.
+    expect(shim).toContain('__tc_wifi_wait_connected');
+    expect(shim).toContain('__tc_wifi_wait_disconnected');
+    // AP mode → net_mgmt AP_ENABLE/AP_DISABLE.
+    expect(shim).toContain('__tc_wifi_ap_start');
+    expect(shim).toContain('__tc_wifi_ap_stop');
+    expect(shim).toContain('NET_REQUEST_WIFI_AP_ENABLE');
+    expect(shim).toContain('NET_REQUEST_WIFI_AP_DISABLE');
+  });
 });
 
 describe('wifi lowering — connection ops', () => {
@@ -114,6 +130,13 @@ describe('wifi lowering — config ops', () => {
     expect(lowerWifi({ operation: 'wifi.set_hostname', name: '"dev"' } as any))
       .toEqual({ code: '__tc_wifi_set_hostname("dev");' });
   });
+  it('set_power_save → NET_REQUEST_WIFI_PS_CONFIG', () => {
+    // HAL modes "default" (on) / "none" (off); passed through verbatim.
+    expect(lowerWifi({ operation: 'wifi.set_power_save', mode: '"default"' } as any))
+      .toEqual({ code: '__tc_wifi_set_power_save("default");' });
+    expect(lowerWifi({ operation: 'wifi.set_power_save', mode: '"none"' } as any))
+      .toEqual({ code: '__tc_wifi_set_power_save("none");' });
+  });
   it('on_event disconnect → assigns on_disconnect callback', () => {
     expect(lowerWifi({ operation: 'wifi.on_event', event: 'disconnect', handler: 'onLinkLost' } as any))
       .toEqual({ code: '__tc_wifi.on_disconnect = onLinkLost;' });
@@ -124,18 +147,40 @@ describe('wifi lowering — config ops', () => {
   });
 });
 
+describe('wifi lowering — waits + AP mode', () => {
+  it('wait_connected → blocks on the L4 flag with a timeout', () => {
+    expect(lowerWifi({ operation: 'wifi.wait_connected', timeoutMs: 5000 } as any))
+      .toEqual({ code: '__tc_wifi_wait_connected(5000);' });
+    // Default timeout when none given.
+    expect(lowerWifi({ operation: 'wifi.wait_connected' } as any))
+      .toEqual({ code: '__tc_wifi_wait_connected(15000);' });
+  });
+  it('wait_disconnected → blocks until the L4 flag clears', () => {
+    expect(lowerWifi({ operation: 'wifi.wait_disconnected' } as any))
+      .toEqual({ code: '__tc_wifi_wait_disconnected();' });
+  });
+  it('ap_start → ap_enable with ssid/password/channel', () => {
+    expect(lowerWifi({ operation: 'wifi.ap_start', ssid: '"hotspot"', password: '"pw"', channel: 6 } as any))
+      .toEqual({ code: '__tc_wifi_ap_start("hotspot", "pw", 6);' });
+    // No password → nullptr; no channel → 0 (shim treats as WIFI_CHANNEL_ANY).
+    expect(lowerWifi({ operation: 'wifi.ap_start', ssid: '"open"' } as any))
+      .toEqual({ code: '__tc_wifi_ap_start("open", nullptr, 0);' });
+  });
+  it('ap_stop → ap_disable', () => {
+    expect(lowerWifi({ operation: 'wifi.ap_stop' } as any))
+      .toEqual({ code: '__tc_wifi_ap_stop();' });
+  });
+});
+
 describe('wifi lowering — out-of-scope ops return undefined', () => {
-  // These are declared unsupported in the manifest; the resolver must NOT lower
-  // them (the validator probes this). No AP mode, no credentials, no waits
-  // (cuttlefish's async split builds waits from the in-scope connect ops), no
-  // deferred config ops.
+  // These are declared unsupported in the manifest (no Zephyr/driver hook); the
+  // resolver must NOT lower them (the validator probes this). See the manifest's
+  // per-op reasons. (ap_start/ap_stop/set_power_save/wait_* are now supported.)
   const unsupported = [
-    'wifi.ap_start', 'wifi.ap_stop', 'wifi.ap_client_count', 'wifi.ap_ip',
+    'wifi.ap_client_count', 'wifi.ap_ip',
     'wifi.ap_set_channel', 'wifi.ap_set_hidden', 'wifi.ap_set_max_clients',
     'wifi.save_credentials', 'wifi.connect_saved', 'wifi.clear_credentials',
-    'wifi.wait_connected', 'wifi.wait_disconnected',
-    'wifi.set_power_save', 'wifi.set_static_ip', 'wifi.set_auto_reconnect',
-    'wifi.set_tx_power',
+    'wifi.set_static_ip', 'wifi.set_auto_reconnect', 'wifi.set_tx_power',
   ];
   for (const op of unsupported) {
     it(`${op} → undefined`, () => {

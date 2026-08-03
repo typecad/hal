@@ -288,6 +288,82 @@ export function wifiInitLines(): string[] {
     `    (void)name;`,
     `    (void)__tc_wifi;`,
     `}`,
+    ``,
+    `// ── power save (NET_REQUEST_WIFI_PS_CONFIG) ─────────────────────────────`,
+    `// wifi.set_power_save: HAL modes are "default" (enabled) / "none" (disabled).`,
+    `// The Zephyr esp32 driver implements esp32_wifi_set_power_save, so this is a`,
+    `// real net_mgmt request — not a no-op like set_hostname above.`,
+    `static void __tc_wifi_set_power_save(const char* mode) {`,
+    `    __tc_wifi_ensure_init();`,
+    `    if (__tc_wifi.iface == nullptr) return;`,
+    `    struct wifi_ps_params ps = { 0 };`,
+    `    ps.type = WIFI_PS_PARAM_TYPE_ENABLED;`,
+    `    // HAL mode "default" → power save on; "none" → off. (The full HAL surface`,
+    `    // only exposes those two; deeper ps_mode/wakeup tuning isn't exposed.)`,
+    `    bool on = (mode != nullptr && strcmp(mode, "none") != 0);`,
+    `    ps.enabled = on ? WIFI_PS_ENABLED : WIFI_PS_DISABLED;`,
+    `    (void)net_mgmt(NET_REQUEST_WIFI_PS_CONFIG, __tc_wifi.iface,`,
+    `                   &ps, sizeof(ps));`,
+    `}`,
+    ``,
+    `// ── waits (block on the L4 connectivity flag) ───────────────────────────`,
+    `// wifi.wait_connected / wait_disconnected: poll __tc_wifi.connected (set by`,
+    `// the L4 net_mgmt handler) with a deadline. Same blocking pattern as`,
+    `// __tc_wifi_connect.`,
+    `static void __tc_wifi_wait_connected(int32_t timeout_ms) {`,
+    `    __tc_wifi_ensure_init();`,
+    `    int32_t waited = 0;`,
+    `    while (!__tc_wifi.connected && waited < timeout_ms) { k_msleep(100); waited += 100; }`,
+    `}`,
+    ``,
+    `static void __tc_wifi_wait_disconnected(void) {`,
+    `    __tc_wifi_ensure_init();`,
+    `    // No timeout in the HAL surface — block until the L4 handler clears the flag.`,
+    `    while (__tc_wifi.connected) { k_msleep(100); }`,
+    `}`,
+    ``,
+    `// ── AP mode (NET_REQUEST_WIFI_AP_ENABLE / DISABLE) ──────────────────────`,
+    `// wifi.ap_start / ap_stop: bring the iface up as an AP. The esp32 driver's`,
+    `// ap_enable takes the same struct as connect (ssid/psk/channel/security).`,
+    `// hidden/maxClients/channel-after-start have no driver hook (see manifest) —`,
+    `// only ssid/password/channel at start are honored.`,
+    `static struct wifi_connect_req_params __tc_wifi_ap_params;`,
+    `static uint8_t __tc_wifi_ap_ssid_buf[33];`,
+    `static uint8_t __tc_wifi_ap_psk_buf[64];`,
+    `static void __tc_wifi_ap_start(const char* ssid, const char* password,`,
+    `                               int32_t channel) {`,
+    `    __tc_wifi_ensure_init();`,
+    `    if (__tc_wifi.iface == nullptr) return;`,
+    `    net_if_up(__tc_wifi.iface);`,
+    `    uint32_t ssid_len = strlen(ssid);`,
+    `    if (ssid_len > 32U) ssid_len = 32U;`,
+    `    for (uint32_t b = 0U; b < ssid_len; b++) { __tc_wifi_ap_ssid_buf[b] = static_cast<uint8_t>(ssid[b]); }`,
+    `    __tc_wifi_ap_params.ssid = __tc_wifi_ap_ssid_buf;`,
+    `    __tc_wifi_ap_params.ssid_length = static_cast<uint8_t>(ssid_len);`,
+    `    if (password != nullptr) {`,
+    `        uint32_t pw_len = strlen(password);`,
+    `        if (pw_len > 63U) pw_len = 63U;`,
+    `        for (uint32_t b = 0U; b < pw_len; b++) { __tc_wifi_ap_psk_buf[b] = static_cast<uint8_t>(password[b]); }`,
+    `        __tc_wifi_ap_params.psk = __tc_wifi_ap_psk_buf;`,
+    `        __tc_wifi_ap_params.psk_length = static_cast<uint8_t>(pw_len);`,
+    `        __tc_wifi_ap_params.security = WIFI_SECURITY_TYPE_PSK;`,
+    `    } else {`,
+    `        __tc_wifi_ap_params.psk_length = 0U;`,
+    `        __tc_wifi_ap_params.security = WIFI_SECURITY_TYPE_NONE;`,
+    `    }`,
+    `    __tc_wifi_ap_params.channel = (channel > 0) ? static_cast<uint8_t>(channel) : WIFI_CHANNEL_ANY;`,
+    `    __tc_wifi_ap_params.band = WIFI_FREQ_BAND_2_4_GHZ;`,
+    `    (void)net_mgmt(NET_REQUEST_WIFI_AP_ENABLE, __tc_wifi.iface,`,
+    `                   &__tc_wifi_ap_params, sizeof(__tc_wifi_ap_params));`,
+    `    printk("tc-wifi: AP started (%s)\\n", ssid);`,
+    `}`,
+    ``,
+    `static void __tc_wifi_ap_stop(void) {`,
+    `    __tc_wifi_ensure_init();`,
+    `    if (__tc_wifi.iface == nullptr) return;`,
+    `    (void)net_mgmt(NET_REQUEST_WIFI_AP_DISABLE, __tc_wifi.iface, nullptr, 0);`,
+    `    printk("tc-wifi: AP stopped\\n");`,
+    `}`,
     `// CUTTLEFISH_WIFI_CONFIG_END`,
     ``,
     `// CUTTLEFISH_WIFI_END`,
@@ -341,6 +417,9 @@ export function lowerWifi(op: HALOpIR): { code?: string; expression?: string } |
     // ── Config ──
     case 'wifi.set_hostname':
       return { code: `__tc_wifi_set_hostname(${s(o.name)});` };
+    case 'wifi.set_power_save':
+      // HAL modes are "default" (on) / "none" (off) — see the shim's note.
+      return { code: `__tc_wifi_set_power_save(${s(o.mode)});` };
     case 'wifi.on_event': {
       // Event callbacks (wifi.on_event). 'disconnect' and 'connect' are supported.
       if (o.event === 'disconnect') {
@@ -351,12 +430,23 @@ export function lowerWifi(op: HALOpIR): { code?: string; expression?: string } |
       }
       return undefined;
     }
+    // ── Waits (block on the L4 connectivity flag) ──
+    case 'wifi.wait_connected':
+      return { code: `__tc_wifi_wait_connected(${s(o.timeoutMs ?? 15000)});` };
+    case 'wifi.wait_disconnected':
+      return { code: `__tc_wifi_wait_disconnected();` };
+    // ── AP mode (esp32 driver: ap_enable/ap_disable wired; only ssid/psk/channel
+    //    honored — hidden/maxClients have no driver hook). ──
+    case 'wifi.ap_start':
+      return { code: `__tc_wifi_ap_start(${s(o.ssid)}, ${o.password != null ? s(o.password) : 'nullptr'}, ${s(o.channel ?? 0)});` };
+    case 'wifi.ap_stop':
+      return { code: `__tc_wifi_ap_stop();` };
     default:
-      // Out-of-scope (AP, credentials, waits, power-save, set_tx_power, deferred
-      // config): return undefined so the resolver falls back and the manifest's
+      // Out of scope (genuinely not lowered): ap_client_count/ap_ip/ap_set_*,
+      // credentials (save/connect_saved/clear), set_static_ip, set_auto_reconnect,
+      // set_tx_power. Each has no driver/Kconfig hook on Zephyr — see the manifest's
+      // per-op reasons. Return undefined so the resolver falls back and the
       // 'unsupported' declaration is honest (the validator probes these).
-      // set_tx_power: removed — see the config-section note above (driver/radio
-      // ownership + no Kconfig PHY ceiling in Zephyr, zephyr#45580).
       return undefined;
   }
 }

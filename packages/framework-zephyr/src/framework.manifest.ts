@@ -207,35 +207,53 @@ export default defineFrameworkManifest({
     wifi: {
       supported: true,
       partialCoverage: true,
-      unsupportedReason: 'AP mode, credential persistence, static IP, and event callbacks not yet lowered.',
+      // Unsupported surface: AP client enumeration/IP/per-station-config have no
+      // driver hook; credentials need a custom settings-subsystem layer; static IP
+      // / auto-reconnect / tx-power aren't wifi-shaped or aren't exposed by the
+      // esp32 Zephyr driver. See per-op reasons.
+      unsupportedReason: 'AP client enumeration/IP/per-station config, credential persistence, static IP, auto-reconnect, and tx-power have no Zephyr lowering (no driver/Kconfig hook).',
       ops: {
-        // Connection (8) — conn_mgr_if_connect/disconnect + L4 connectivity state.
+        // Connection (8) — net_mgmt connect/disconnect + L4 connectivity state.
         'wifi.connect': 'supported', 'wifi.connect_start': 'supported',
         'wifi.disconnect': 'supported', 'wifi.status': 'supported',
         'wifi.is_connected': 'supported', 'wifi.local_ip': 'supported',
         'wifi.rssi': 'supported', 'wifi.mac': 'supported',
+        // Waits (2) — block on the L4 connected flag (k_msleep poll).
+        'wifi.wait_connected': 'supported', 'wifi.wait_disconnected': 'supported',
         // Scan (8) — net_mgmt NET_REQUEST_WIFI_SCAN + result pool.
         'wifi.scan': 'supported', 'wifi.scan_start': 'supported',
         'wifi.scan_done': 'supported', 'wifi.scan_count': 'supported',
         'wifi.scan_ssid': 'supported', 'wifi.scan_rssi': 'supported',
         'wifi.scan_encryption': 'supported', 'wifi.scan_channel': 'supported',
-        // Config (1) — hostname. (set_tx_power not lowered: the Zephyr esp32
-        // driver owns the radio, and the compile-time PHY ceiling isn't a Zephyr
-        // Kconfig symbol — zephyr#45580. Default TX power only.)
-        'wifi.set_hostname': 'supported',
-        // Out of scope (17) — each genuinely not lowered (resolver returns undefined).
-        'wifi.ap_start': 'unsupported', 'wifi.ap_stop': 'unsupported',
-        'wifi.ap_client_count': 'unsupported', 'wifi.ap_ip': 'unsupported',
-        'wifi.ap_set_channel': 'unsupported', 'wifi.ap_set_hidden': 'unsupported',
-        'wifi.ap_set_max_clients': 'unsupported',
-        'wifi.save_credentials': 'unsupported', 'wifi.connect_saved': 'unsupported',
-        'wifi.clear_credentials': 'unsupported',
-        'wifi.wait_connected': 'unsupported', 'wifi.wait_disconnected': 'unsupported',
-        'wifi.set_power_save': 'unsupported', 'wifi.set_static_ip': 'unsupported',
-        'wifi.set_auto_reconnect': 'unsupported',
+        // AP mode (2 of 7) — esp32 driver wires ap_enable/ap_disable. Only
+        // ssid/password/channel are honored; the rest of the AP surface has no
+        // driver hook (config_params isn't wired, max_clients hardcodes 5).
+        'wifi.ap_start': 'supported', 'wifi.ap_stop': 'supported',
+        // Config (2) — hostname (best-effort no-op) + power save (real net_mgmt).
+        'wifi.set_hostname': 'supported', 'wifi.set_power_save': 'supported',
         // on_event: 'disconnect' (NET_EVENT_L4_DISCONNECTED) + 'connect'
         // (NET_EVENT_IPV4_ADDR_ADD) are lowered.
         'wifi.on_event': 'supported',
+        // ── Genuinely unsupported (no Zephyr/driver hook) ───────────────────
+        // ap_client_count: no API to enumerate connected AP stations.
+        // ap_ip: set via net_if, not wifi net_mgmt.
+        // ap_set_channel: channel set at ap_start; driver doesn't wire ap_config_params.
+        // ap_set_hidden: esp32 ap_enable config has no ssid_hidden field.
+        // ap_set_max_clients: driver hardcodes max_connection to 5; config_params unwired.
+        // save_credentials/connect_saved/clear_credentials: no wifi-credentials API in
+        //   Zephyr (would need a custom settings-subsystem layer).
+        // set_static_ip: a net_if operation, not a wifi net_mgmt request.
+        // set_auto_reconnect: esp32 driver doesn't expose esp_wifi_set_auto_connect.
+        // set_tx_power: driver owns the radio; the PHY ceiling isn't a Zephyr Kconfig (zephyr#45580).
+        'wifi.ap_client_count': 'unsupported',
+        'wifi.ap_ip': 'unsupported',
+        'wifi.ap_set_channel': 'unsupported',
+        'wifi.ap_set_hidden': 'unsupported',
+        'wifi.ap_set_max_clients': 'unsupported',
+        'wifi.save_credentials': 'unsupported', 'wifi.connect_saved': 'unsupported',
+        'wifi.clear_credentials': 'unsupported',
+        'wifi.set_static_ip': 'unsupported',
+        'wifi.set_auto_reconnect': 'unsupported',
         'wifi.set_tx_power': 'unsupported',
       },
     },

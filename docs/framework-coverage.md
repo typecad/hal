@@ -69,7 +69,7 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 | shift | supported | — |
 | board | unsupported | Board-specific lowering deferred. |
 | wdt | supported | — |
-| wifi | partial | AP mode, credential persistence, static IP, and event callbacks not yet lowered. |
+| wifi | partial | AP client enumeration/IP/per-station config, credential persistence, static IP, auto-reconnect, and tx-power have no Zephyr lowering (no driver/Kconfig hook). |
 | http | supported | — |
 | mqtt | supported | — |
 | display | supported | — |
