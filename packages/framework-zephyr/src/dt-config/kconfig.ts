@@ -21,6 +21,7 @@ export interface KconfigUsage {
   usesWifi?: boolean;
   usesHttp?: boolean;
   usesMqtt?: boolean;
+  usesPreferences?: boolean;
 }
 
 /**
@@ -202,6 +203,19 @@ export function resolveKconfigFragments(
     m.set('CONFIG_BT', 'y');
     m.set('CONFIG_BT_PERIPHERAL', 'y');
     m.set('CONFIG_BT_GATT_DYNAMIC_DB', 'y');
+  }
+  // Preferences: ZMS-backed settings. CONFIG_SETTINGS_ZMS depends on ZMS +
+  // FLASH_MAP (it does NOT select them), so all three must be set explicitly.
+  // The backend locates the storage_partition fixed-partition automatically
+  // (or the /chosen zephyr,settings-partition — see dt-config/overlay.ts); no
+  // partition macro is needed in the shim. ZMS is preferred over NVS per the
+  // Zephyr docs ("as of 4.1 the recommended backend is NVS or ZMS").
+  if (usage.usesPreferences) {
+    m.set('CONFIG_FLASH', 'y');
+    m.set('CONFIG_FLASH_MAP', 'y');
+    m.set('CONFIG_ZMS', 'y');
+    m.set('CONFIG_SETTINGS', 'y');
+    m.set('CONFIG_SETTINGS_ZMS', 'y');
   }
   // usesUart: the board enables the console UART by default; the overlay (not
   // Kconfig) is where a UART node would be enabled, so no symbol here.

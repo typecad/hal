@@ -49,5 +49,21 @@ export function generateOverlay(
   }
   if (display) block(display.dtLabel);
 
+  // Preferences (ZMS settings backend): point the settings subsystem at the
+  // board's storage_partition. The backend looks for /chosen
+  // zephyr,settings-partition first, then falls back to a fixed-partition
+  // labeled storage_partition — most Zephyr boards define that label, so this
+  // chosen entry makes the lookup explicit and survives boards that name the
+  // partition differently. It only adds a /chosen pointer (never redeclares
+  // the partition node — west errors if a node is multiply-defined).
+  if (usage.usesPreferences) {
+    lines.push('/ {');
+    lines.push('    chosen {');
+    lines.push('        zephyr,settings-partition = &storage_partition;');
+    lines.push('    };');
+    lines.push('};');
+    lines.push('');
+  }
+
   return lines.join('\n');
 }

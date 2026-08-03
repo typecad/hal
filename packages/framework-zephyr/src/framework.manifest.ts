@@ -328,10 +328,27 @@ export default defineFrameworkManifest({
       ops: { 'snprintf.emit': 'unsupported' },
     },
     preferences: {
-      supported: false,
-      unsupportedReason: 'No NVS/Preferences lowering on Zephyr (Zephyr has settings subsystem; not wired).',
+      // ZMS-backed Zephyr settings. The HAL ESP32-NVS session model (begin/end
+      // + typed put/get) is modeled on top of Zephyr's flat settings key-space:
+      // begin(ns) records a "tc/<ns>/" prefix; put/get operate on an in-RAM
+      // cache populated once at boot by settings_load()'s h_set callback;
+      // writes mirror to flash via settings_save_one/settings_delete. The ZMS
+      // backend auto-locates the storage_partition fixed-partition (or the
+      // /chosen zephyr,settings-partition node — see dt-config/overlay.ts).
+      // begin/end are no-ops beyond prefix bookkeeping: Zephyr settings has no
+      // session/namespace, but keeping the ops preserves portability with the
+      // ESP32 NVS model and leaves a hook for a future session-needing backend.
+      supported: true,
       partialCoverage: false,
-      ops: unsupportedOps('preferences.'),
+      ops: {
+        'preferences.begin': 'supported', 'preferences.end': 'supported',
+        'preferences.clear': 'supported', 'preferences.remove': 'supported',
+        'preferences.put_int': 'supported', 'preferences.get_int': 'supported',
+        'preferences.put_uint': 'supported', 'preferences.get_uint': 'supported',
+        'preferences.put_bool': 'supported', 'preferences.get_bool': 'supported',
+        'preferences.put_float': 'supported', 'preferences.get_float': 'supported',
+        'preferences.put_string': 'supported', 'preferences.get_string': 'supported',
+      },
     },
     random: {
       supported: false,
@@ -481,7 +498,7 @@ export default defineFrameworkManifest({
     },
   },
 
-  ambientTypes: [],
+  ambientTypes: ['Preferences'],
 
   conformance: {
     // Hardware-test groups — each entry is backed by a tests/<group>.test.ts
@@ -502,7 +519,8 @@ export default defineFrameworkManifest({
     // catches regressions like silent pull-resistor / interrupt no-ops.
     halResolutionTests: [
       'adc', 'ble', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'mqtt',
-      'power', 'pulse', 'pwm', 'spi', 'timing', 'tone', 'uart', 'wdt', 'worker',
+      'power', 'preferences', 'pulse', 'pwm', 'spi', 'timing', 'tone', 'uart',
+      'wdt', 'worker',
     ],
   },
 });

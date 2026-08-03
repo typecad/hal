@@ -13,7 +13,8 @@
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "test:hw": "npm exec -- cuttlefish-test",
-    "test:hw:basics": "npm exec -- cuttlefish-test tests/01-gpio.test.ts"
+    "test:hw:basics": "npm exec -- cuttlefish-test tests/01-gpio.test.ts",
+    "test:hw:preferences": "npm exec -- cuttlefish-test tests/14-preferences.test.ts"
   },
   "license": "MIT",
   "publishConfig": {

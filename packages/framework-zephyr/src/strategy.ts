@@ -48,6 +48,7 @@ import { bleInitLines } from './lowering/ble.js';
 import { wifiInitLines } from './lowering/wifi.js';
 import { httpInitLines } from './lowering/http.js';
 import { mqttInitLines } from './lowering/mqtt.js';
+import { preferencesInitLines } from './lowering/preferences.js';
 import { generateZephyrInitCode, generateZephyrBreakpointCode, generateZephyrLogpointCode } from './debug-codegen.js';
 import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
 import { buildTimerPolyfill } from './async/timer-polyfill.js';
@@ -157,6 +158,13 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesMqtt')) inc.push(
       '<zephyr/net/mqtt.h>', '<zephyr/net/socket.h>',
       '<zephyr/net/tls_credentials.h>', '<cstring>',
+    );
+    // Preferences: Zephyr settings subsystem (ZMS backend) — settings_load/
+    // settings_save_one/settings_delete + the SETTINGS_STATIC_HANDLER_DEFINE
+    // macro. <cstring> backs the shim's memcpy/memmove/strncpy/strncmp (the
+    // core shim only includes <cstdio>/<cstdint>). <errno.h> for ENOENT in h_get.
+    if (uses('usesPreferences')) inc.push(
+      '<zephyr/settings/settings.h>', '<cstring>', '<errno.h>',
     );
     // std::string — Zephyr has no umbrella header that transitively pulls in
     // <string> (unlike framework-arduino's <Arduino.h>), so a program that
@@ -288,6 +296,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesWifi')) lines.push(...wifiInitLines());
     if (uses('usesHttp')) lines.push(...httpInitLines());
     if (uses('usesMqtt')) lines.push(...mqttInitLines());
+    if (uses('usesPreferences')) lines.push(...preferencesInitLines());
 
     lines.push('#endif // CUTTLEFISH_SHIM_DEFINED');
 
@@ -721,7 +730,35 @@ export class ZephyrStrategy implements PlatformStrategy {
   }
 
   ambientTypeDeclarations(): string[] {
-    return [];
+    // Preferences is the only HAL surface the framework lowers that is used as
+    // a bare global (the HAL Preferences class is exported, but the canonical
+    // usage — and the hal/tests/14-preferences hardware suite — references it
+    // as an unqualified `Preferences.*`). Declaring it ambient lets those
+    // programs type-check and resolve to the preferences.* ops the lowering
+    // in src/lowering/preferences.ts handles (ZMS-backed settings). Mirrors
+    // framework-arduino's ambient Preferences declaration.
+    return [
+      "",
+      "  // Persistent key/value store (ZMS-backed Zephyr settings — see",
+      "  // src/lowering/preferences.ts). begin/end carry the namespace prefix;",
+      "  // typed put/get round-trip through an in-RAM cache + settings_save_one.",
+      "  const Preferences: {",
+      "    begin(name: string, readOnly?: boolean): void;",
+      "    end(): void;",
+      "    clear(): void;",
+      "    putInt(key: string, value: number): void;",
+      "    getInt(key: string, defaultValue: number): number;",
+      "    putUInt(key: string, value: number): void;",
+      "    getUInt(key: string, defaultValue: number): number;",
+      "    putBool(key: string, value: boolean): void;",
+      "    getBool(key: string, defaultValue: boolean): boolean;",
+      "    putFloat(key: string, value: number): void;",
+      "    getFloat(key: string, defaultValue: number): number;",
+      "    putString(key: string, value: string): void;",
+      "    getString(key: string, defaultValue: string): string;",
+      "    remove(key: string): void;",
+      "  };",
+    ];
   }
 
   // ── Includes ────────────────────────────────────────────────────────────

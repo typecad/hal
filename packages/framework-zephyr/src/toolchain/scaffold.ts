@@ -103,6 +103,11 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     usesHttp: uses('http_') || uses('__tc_http') || uses('http_client_req'),
     // MQTT: the __tc_mqtt_* shim + mqtt_connect/mqtt_publish/mqtt_subscribe.
     usesMqtt: uses('mqtt_') || uses('__tc_mqtt') || uses('mqtt_connect'),
+    // Preferences: the __tc_prefs_* shim + the settings_* API the shim calls.
+    // settings_load/save_one/delete + SETTINGS_STATIC_HANDLER_DEFINE all emit
+    // `settings_` symbols; __tc_prefs catches the typed accessors (put_int etc.
+    // template into __tc_prefs_put<...>, which keeps the __tc_prefs token).
+    usesPreferences: uses('settings_') || uses('__tc_prefs'),
   };
 
   let changed = false;
