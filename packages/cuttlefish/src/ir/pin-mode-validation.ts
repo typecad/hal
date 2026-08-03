@@ -8,6 +8,7 @@
 import type { ProgramIR, StatementIR, ExpressionIR } from '../api/index.js';
 import type { Diagnostic } from '../types.js';
 import { scanNestedStatements } from './interrupt-analysis.js';
+import { hasLoadedFramework, getLoadedFramework } from '../framework-registry.js';
 
 /** Methods that configure pin mode. */
 const MODE_SET_METHODS = new Set([
@@ -20,7 +21,7 @@ const READ_METHODS = new Set([
   'read', 'isHigh', 'isLow', 'readAnalog', 'readVoltage',
 ]);
 
-/** Write operations that implicitly set OUTPUT mode on Arduino. */
+/** Write operations that implicitly set OUTPUT mode on Wiring-derived frameworks. */
 const WRITE_METHODS = new Set([
   'write', 'high', 'low', 'toggle', 'pulse', 'pwm', 'tone',
 ]);
@@ -34,8 +35,8 @@ const PIN_RECEIVER_KINDS = new Set([
  * Validate that GPIO I/O operations are preceded by mode configuration.
  *
  * - Read without prior mode → **warning** (undefined behavior on floating pin)
- * - Write without prior mode → **info** (Arduino implicitly sets OUTPUT, but
- *   explicit configuration is recommended)
+ * - Write without prior mode → **info** (Wiring-derived frameworks implicitly
+ *   set OUTPUT, but explicit configuration is recommended)
  */
 export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
@@ -74,7 +75,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
       diagnostics.push({
         severity: 'info',
         message: `Pin '${receiver}' written via '${method}()' without explicit mode configuration. ` +
-                 `Arduino implicitly sets OUTPUT, but explicit ${receiver}.asOutput() is recommended.`,
+                 `The target framework implicitly sets OUTPUT, but explicit ${receiver}.asOutput() is recommended.`,
         filePath: program.fileName,
         code: 'pin-mode-not-set',
         source: 'pin-mode-validation',
@@ -117,7 +118,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
       diagnostics.push({
         severity: 'info',
         message: `Pin ${op.pin} written without explicit mode configuration. ` +
-                 `Arduino implicitly sets OUTPUT, but explicit asOutput() is recommended.`,
+                 `The target framework implicitly sets OUTPUT, but explicit asOutput() is recommended.`,
         filePath: program.fileName,
         code: 'pin-mode-not-set',
         source: 'pin-mode-validation',
@@ -155,21 +156,40 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
     // Raw nodes: after full HAL resolution, some pin ops land as their C++ text
     // (e.g. `digitalRead(2)`, `digitalWrite(2, 1)`) rather than structured
     // hal-expr nodes. Extract the pin number and apply the same mode check.
-    // This mirrors how peripheral-usage.ts detects gpio via emitted text.
+    // Detect GPIO ops in lowered raw C++ text. Build the read/write name
+    // patterns from the loaded framework's HAL vocabulary (halCallNames),
+    // classifying names containing "Read" as reads and "Write" as writes (the
+    // Wiring-derived convention). Seed with digitalRead/digitalWrite as the
+    // canonical Wiring forms so the validator works even when no framework is
+    // loaded. Non-Wiring frameworks that emit other call forms register them
+    // via halCallNames; this loop picks them up.
     if (e.kind === 'raw' && typeof e.value === 'string') {
-      const readMatch = e.value.match(/digitalRead\((\d+)\)/);
-      const writeMatch = e.value.match(/digitalWrite\((\d+)/);
-      const toggleMatch = e.value.match(/digitalWrite\((\d+),\s*digitalRead/);
-      const pin = readMatch ? parseInt(readMatch[1], 10)
-        : writeMatch ? parseInt(writeMatch[1], 10)
-        : null;
-      if (pin !== null) {
-        const op = toggleMatch
-          ? { operation: 'gpio.toggle', pin }
-          : readMatch ? { operation: 'gpio.read', pin }
-          : { operation: 'gpio.write', pin };
-        checkGpioHalOp(op);
+      const frameworkHalNames = hasLoadedFramework()
+        ? getLoadedFramework().strategy.halCallNames?.()
+        : undefined;
+      const halNames = frameworkHalNames ?? new Set<string>(['digitalRead', 'digitalWrite']);
+      const readNames = [...halNames].filter(n => /read/i.test(n));
+      const writeNames = [...halNames].filter(n => /write/i.test(n));
+      let pin: number | null = null;
+      let op: { operation: string; pin: number } | null = null;
+      for (const rn of readNames) {
+        const esc = rn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const m = e.value.match(new RegExp(`${esc}\\((\\d+)\\)`));
+        if (m) { pin = parseInt(m[1], 10); op = { operation: 'gpio.read', pin }; break; }
       }
+      if (!op) {
+        for (const wn of writeNames) {
+          const esc = wn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const m = e.value.match(new RegExp(`${esc}\\((\\d+)`));
+          if (m) { pin = parseInt(m[1], 10); op = { operation: 'gpio.write', pin }; break; }
+        }
+      }
+      // toggle: a write call whose second arg is a read call on the same pin.
+      if (!op) {
+        const tm = e.value.match(/\((\d+),\s*\w*[Rr]ead/);
+        if (tm) { op = { operation: 'gpio.toggle', pin: parseInt(tm[1], 10) }; }
+      }
+      if (op) checkGpioHalOp(op);
     }
 
     // Recurse into nested expressions

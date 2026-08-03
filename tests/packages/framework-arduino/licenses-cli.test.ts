@@ -4,7 +4,7 @@ import {
   __setLicensesRunnerForTest,
   __setProjectConfigForTest,
   __setConfigDumpForTest,
-} from "../../../packages/cuttlefish/src/licenses";
+} from "../../../packages/framework-arduino/src/licenses";
 
 // The presenter lives in licenses.ts (not cli.ts) so it is importable from
 // tests without tripping cli.ts's shebang or top-level main() call.

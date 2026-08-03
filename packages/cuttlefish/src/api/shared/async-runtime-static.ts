@@ -45,7 +45,12 @@
 export function generateStaticAsyncRuntime(
   capacity: number,
   waitForPinEdge: "interrupt" | "polling" | "stub" = "polling",
+  strategy?: import("./platform-strategy.js").PlatformStrategy,
 ): string {
+  // The current-time expression (millis() on Wiring-derived frameworks,
+  // std::chrono on generic). Falling back to millis() preserves the historical
+  // behavior when no strategy is supplied.
+  const now = strategy?.currentTimeMillis?.() ?? "millis()";
   return `
 // TypeCAD static (heap-free) async runtime — for targets without <vector>.
 namespace typecad_async_static {
@@ -82,7 +87,7 @@ public:
       if (!_timers[i].active) {
         _timers[i].active = true;
         _timers[i].repeat = false;
-        _timers[i].deadline = millis() + ms;
+        _timers[i].deadline = ${now} + ms;
         _timers[i].periodMs = 0;
         return true;
       }
@@ -98,7 +103,7 @@ public:
       if (!_timers[i].active) {
         _timers[i].active = true;
         _timers[i].repeat = true;
-        _timers[i].deadline = millis() + ms;
+        _timers[i].deadline = ${now} + ms;
         _timers[i].periodMs = ms;
         return true;
       }
@@ -124,7 +129,7 @@ public:
   // Advance the runtime: expire due timers and run ready tasks. Called from
   // cuttlefish_pump_microtasks(), which the transpiler injects into loop().
   void pump() {
-    const unsigned long now = millis();
+    const unsigned long now = ${now};
     // Timers: one-shot slots deactivate on expiry; periodic slots re-arm.
     for (int i = 0; i < CAP; ++i) {
       if (_timers[i].active) {
@@ -195,12 +200,12 @@ inline void cuttlefish_pump_microtasks() {
 
 // HAL-level wait for pin edge. The body depends on the strategy's
 // waitForPinEdge mode — see generateStaticAsyncRuntime()'s doc comment.
-${waitPinEdgeForMode(waitForPinEdge)}
+${waitPinEdgeForMode(waitForPinEdge, strategy, now)}
 `;
 }
 
 /** Emit `__cuttlefish_wait_pin_edge` per the strategy's waitForPinEdge mode. */
-function waitPinEdgeForMode(mode: "interrupt" | "polling" | "stub"): string {
+function waitPinEdgeForMode(mode: "interrupt" | "polling" | "stub", strategy?: import("./platform-strategy.js").PlatformStrategy, now: string = "millis()"): string {
   if (mode === "interrupt") {
     // The strategy/ISR layer provides the symbol; emit nothing here.
     return "// __cuttlefish_wait_pin_edge is provided by the strategy (interrupt mode).";
@@ -231,16 +236,16 @@ function waitPinEdgeForMode(mode: "interrupt" | "polling" | "stub"): string {
     "inline void __cuttlefish_wait_pin_edge(int pin, int mode, long timeout) {",
     "  int targetState = (mode == RISING) ? HIGH : LOW;",
     "  int idleState = (mode == RISING) ? LOW : HIGH;",
-    "  unsigned long start = millis();",
+    `  unsigned long start = ${now};`,
     "  // Phase 1: wait for the pin to be in the idle state (the \"before\" level)",
-    "  while (digitalRead(pin) != idleState) {",
-    "    if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) return;",
-    "    delay(1);",
+    `  while (${strategy?.readDigitalPin?.("pin") ?? "digitalRead(pin)"} != idleState) {`,
+    `    if (timeout >= 0 && (${now} - start >= static_cast<unsigned long>(timeout))) return;`,
+    `    ${strategy?.delayMs?.("1") ?? "delay(1)"};`,
     "  }",
     "  // Phase 2: wait for the transition to the target state (the actual edge)",
-    "  while (digitalRead(pin) != targetState) {",
-    "    if (timeout >= 0 && (millis() - start >= static_cast<unsigned long>(timeout))) return;",
-    "    delay(1);",
+    `  while (${strategy?.readDigitalPin?.("pin") ?? "digitalRead(pin)"} != targetState) {`,
+    `    if (timeout >= 0 && (${now} - start >= static_cast<unsigned long>(timeout))) return;`,
+    `    ${strategy?.delayMs?.("1") ?? "delay(1)"};`,
     "  }",
     "}",
   ].join("\n");

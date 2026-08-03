@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { generateDisplayAdapter } from "../../../packages/cuttlefish/src/api/shared/display-adapter";
 import { deriveCapabilities } from "../../../packages/cuttlefish/src/api/shared/display-capabilities";
+import { ArduinoStrategy } from "../../../packages/framework-arduino/src";
+
+// The Adafruit SSD1309 adapter is strategy-owned (lives in framework-arduino),
+// so the test passes an ArduinoStrategy to route to it.
+const arduino = new ArduinoStrategy();
 
 describe("SSD1309 OLED display adapter", () => {
   const a = generateDisplayAdapter({
@@ -16,7 +21,7 @@ describe("SSD1309 OLED display adapter", () => {
     _mountBus: "I2C",
     _mountAddress: 0x3C,
     _mountReset: -1,
-  } as any);
+  } as any, arduino);
 
   it("includes Adafruit_SSD1306 + Wire", () => {
     expect(a.includes).toContain("#include <Adafruit_SSD1306.h>");

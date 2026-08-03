@@ -63,6 +63,8 @@ export function loadFrameworkPackage(
       } : undefined,
       classNameMapBuilder: typeof mod.buildClassNameMap === "function" ? mod.buildClassNameMap : undefined,
       libDeclGenerator: typeof mod.tryGenerateLibDecl === "function" ? mod.tryGenerateLibDecl : undefined,
+      doctor: typeof mod.doctor === "function" ? mod.doctor : undefined,
+      licenses: typeof mod.licenses === "function" ? mod.licenses : undefined,
     };
     setLoadedFramework(framework);
     registerPlatformStrategy(strategy);

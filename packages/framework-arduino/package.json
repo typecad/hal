@@ -22,6 +22,10 @@
       "types": "./dist/displays/ili9341-spi.d.ts",
       "default": "./dist/displays/ili9341-spi.js"
     },
+    "./displays/psram": {
+      "types": "./dist/displays/psram.d.ts",
+      "default": "./dist/displays/psram.js"
+    },
     "./framework.manifest": {
       "types": "./dist/framework.manifest.d.ts",
       "default": "./dist/framework.manifest.js"

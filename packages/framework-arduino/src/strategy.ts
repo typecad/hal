@@ -25,6 +25,9 @@ import { programUsesSafety } from "@typecad/cuttlefish/api";
 import { generateSerialInitCode, generateBreakpointCode, generateLogpointCode } from "./debug-codegen.js";
 import { resolveArduinoProfile } from "./profile.js";
 import { resolveILI9341Op, ILI9341Context } from "./graphics/ili9341.js";
+import { ADAFRUIT_ADAPTERS } from "./displays/adafruit-adapters.js";
+import { buildTargetHasPsram } from "./displays/psram.js";
+import { generateArduinoTouchAdapter } from "./displays/touch-adapters-codegen.js";
 
 /**
  * Arduino-specific platform context.
@@ -745,7 +748,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
           domain: "arduino",
           requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
           forwardDeclarations: [],
-          helperStructs: [generatePromiseRuntime(queueCapacity, true)],
+          helperStructs: [generatePromiseRuntime(queueCapacity, true, this)],
           helperFunctions: [],
           shimMacros: [],
           dependencies: [],
@@ -762,7 +765,7 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
           domain: "arduino",
           requiredIncludes: [],
           forwardDeclarations: [],
-          helperStructs: [generateStaticAsyncRuntime(8, this.getAsyncRuntimeConfig().waitForPinEdge)],
+          helperStructs: [generateStaticAsyncRuntime(8, this.getAsyncRuntimeConfig().waitForPinEdge, this)],
           helperFunctions: [],
           shimMacros: [],
           dependencies: [],
@@ -1351,6 +1354,67 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
 
   // ── HAL Operation Resolution ────────────────────────────────────────────
 
+  // ── Atomic HAL primitives ────────────────────────────────────────────────
+  // Cuttlefish calls these instead of emitting Wiring/Arduino tokens by name.
+  // The returned snippets are the canonical Arduino core forms.
+
+  readDigitalPin(pin: string): string {
+    return `digitalRead(${pin})`;
+  }
+  readAnalogPin(pin: string): string {
+    return `analogRead(${pin})`;
+  }
+  writeDigitalPin(pin: string, val: string): string {
+    return `digitalWrite(${pin}, ${val})`;
+  }
+  setPinMode(pin: string, mode: string): string {
+    return `pinMode(${pin}, ${mode})`;
+  }
+  delayMs(ms: string): string {
+    return `delay(${ms})`;
+  }
+  delayMicroseconds(us: string): string {
+    return `delayMicroseconds(${us})`;
+  }
+
+  private static readonly _HAL_CALL_NAMES: ReadonlySet<string> = new Set([
+    // GPIO
+    "digitalWrite", "digitalRead", "analogWrite", "analogRead", "pinMode",
+    // Serial
+    "Serial", "println", "print", "read", "write",
+    // Audio
+    "tone", "noTone",
+    // Timing
+    "millis", "micros", "delay", "delayMicroseconds",
+    // Interrupts
+    "attachInterrupt", "detachInterrupt",
+    // SPI / Shift
+    "shiftOut", "shiftIn", "pulseIn",
+    // HAL event tokens (from Button, etc.)
+    "pressed", "released", "input",
+  ]);
+
+  halCallNames(): ReadonlySet<string> {
+    return ArduinoStrategy._HAL_CALL_NAMES;
+  }
+  isHalCall(name: string): boolean {
+    return ArduinoStrategy._HAL_CALL_NAMES.has(name);
+  }
+
+  private static readonly _ANALOG_READ_NAMES: ReadonlySet<string> = new Set([
+    "analogRead",
+  ]);
+  analogReadCallNames(): ReadonlySet<string> {
+    return ArduinoStrategy._ANALOG_READ_NAMES;
+  }
+
+  derivesPsramFromBuildTarget(buildTarget: string): boolean {
+    // Delegates to the FQBN parser in displays/psram.ts (e.g. an ESP32 FQBN
+    // with a PSRAM=opi option). Keeps the framework-specific FQBN parsing out
+    // of cuttlefish.
+    return buildTargetHasPsram(buildTarget);
+  }
+
   resolveHALOperation(op: HALOpIR): { code?: string; expression?: string } | undefined {
     switch (op.operation) {
       // GPIO
@@ -1754,25 +1818,30 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
   }
 
   /**
-   * Arduino uses the built-in Adafruit adapter registry — does NOT provide
-   * its own. Native strategies (AVR, ESP32) override this to return true and
-   * implement resolveDisplayAdapter to emit framework-native driver code.
+   * Arduino owns the Adafruit_GFX-based display adapters (ili9341, st7796,
+   * ssd1309). They live in this package so cuttlefish carries no Adafruit/
+   * Wiring-specific display knowledge. resolveDisplayAdapter dispatches
+   * through the ADAFRUIT_ADAPTERS registry by driver name.
    */
-  providesDisplayAdapter(): boolean { return false; }
+  providesDisplayAdapter(): boolean { return true; }
 
-  resolveDisplayAdapter(_display: ResolvedDisplay): DisplayAdapterCode | undefined {
-    return undefined;  // defer to the Adafruit registry
+  resolveDisplayAdapter(display: ResolvedDisplay): DisplayAdapterCode | undefined {
+    const gen = ADAFRUIT_ADAPTERS.get(display.driver);
+    return gen ? gen(display) : undefined;
   }
 
   /**
-   * Arduino uses the built-in touch library switch — does NOT provide its own
-   * native touch adapter. Native strategies (ESP32) override this to return
-   * true and implement resolveTouchAdapter for framework-native I2C/SPI touch.
+   * Arduino owns the Adafruit/Arduino-ecosystem touch-library adapters
+   * (XPT2046_Touchscreen, Adafruit_TouchScreen, Adafruit_STMPE610, FT6336U).
+   * They live in this package (src/displays/touch-adapters-codegen.ts) so
+   * cuttlefish carries no Arduino/Wiring-specific touch-library knowledge.
+   * resolveTouchAdapter dispatches through generateArduinoTouchAdapter by
+   * library name. The generic/native touch path (sdl) stays in cuttlefish.
    */
-  providesTouchAdapter(): boolean { return false; }
+  providesTouchAdapter(): boolean { return true; }
 
-  resolveTouchAdapter(_touch: TouchProfile): TouchAdapterCodegen | undefined {
-    return undefined;  // defer to the built-in library switch
+  resolveTouchAdapter(touch: TouchProfile): TouchAdapterCodegen | undefined {
+    return generateArduinoTouchAdapter(touch);
   }
 
   supportedDisplayDrivers(): ReadonlySet<string> {

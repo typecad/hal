@@ -23,8 +23,6 @@ import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCom
 import { runPreviewServer } from "./preview/server.js";
 import * as ui from "./utils/ui.js";
 import chalk from "chalk";
-import { checkArduinoEnv } from "@typecad/arduino-cli";
-import { runLicensesPresenter } from "./licenses.js";
 
 function hasFatalDiagnostics(result: GeneratedOutputs): boolean {
   return result.diagnostics.some((diagnostic) => diagnostic.severity === "error");
@@ -52,12 +50,19 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       );
     }
 
-    const framework: string = options.framework ?? target.framework;
-    const frameworkPackage = target.isNative
-      ? target.frameworkPackage
-      : framework === 'arduino'
-        ? '@typecad/framework-arduino'
-        : `@typecad/framework-${framework}`;
+    const framework: string | undefined = options.framework ?? target.framework;
+    const frameworkPackage = target.frameworkPackage
+      ?? (framework ? `@typecad/framework-${framework}` : undefined);
+    if (!frameworkPackage) {
+      throw new Error(
+        `No framework package resolved for target '${target.id}'. ` +
+        `Pass --framework <name> or install a @typecad/framework-* package.`,
+      );
+    }
+    // Derive the short framework id from the package name (e.g.
+    // @typecad/framework-arduino → arduino) when neither the option nor the
+    // target supplied one. KNOWN_TARGETS embedded boards no longer hardcode it.
+    const frameworkId = framework ?? frameworkPackage.replace(/^@typecad\/framework-/, '');
 
     const projectName = options.projectName || 'my-project';
 
@@ -69,7 +74,7 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       architecture: target.architecture,
       boardPackage: target.boardPackage,
       frameworkPackage,
-      framework,
+      framework: frameworkId,
       buildTarget: target.buildTarget,
       mcu: target.mcu,
       baudRate: target.isNative ? undefined : (options.baud ?? 9600),
@@ -134,63 +139,6 @@ async function handleBoardAdd(options: BoardAddCommandOptions): Promise<void> {
   console.log(generateFrameworkChecklist(spec));
 }
 
-/**
- * `cuttlefish doctor` — verify arduino-cli is installed and the board's core
- * (derived from the FQBN in cuttlefish.config.ts) is present. Exits 0 if the
- * environment is OK, non-zero otherwise. Reuses checkArduinoEnv so the
- * detection logic is shared with the build/test gates.
- */
-function runDoctor(): void {
-  ui.printHeader();
-  ui.printStep("Checking arduino-cli environment...");
-
-  const config = loadCuttlefishConfig(process.cwd());
-  const fqbn = config?.buildTarget;
-
-  const result = checkArduinoEnv(fqbn);
-  const check = result.check;
-
-  // arduino-cli presence line
-  if (check.arduinoCliInstalled) {
-    ui.printInfo(`arduino-cli .... ${check.arduinoCliVersion ?? "unknown"}  ✓`);
-  } else if (!result.ok && result.reason === "arduino-cli-not-found") {
-    ui.printError(`arduino-cli .... NOT FOUND on PATH`);
-  } else {
-    ui.printError(`arduino-cli .... found but unresponsive`);
-  }
-
-  // core presence line (only meaningful if we have an FQBN)
-  if (fqbn) {
-    if (check.requiredCore) {
-      const status = check.requiredCoreInstalled ? "installed ✓" : "NOT installed ✗";
-      const line = `${check.requiredCore} ....... ${status}`;
-      if (check.requiredCoreInstalled) {
-        ui.printInfo(line);
-      } else {
-        ui.printError(line);
-        ui.printInfo(`  → run: arduino-cli core install ${check.requiredCore}`);
-      }
-    }
-  } else {
-    ui.printInfo("(no buildTarget in cuttlefish.config.ts — skipping core check)");
-  }
-
-  // Exit code
-  if (result.ok) {
-    ui.printSuccess("Environment OK");
-    return; // exitCode stays unset => 0
-  }
-  if (!result.ok) {
-    for (const line of result.messages) ui.printInfo(line);
-    process.exitCode = 1;
-  }
-}
-
-/**
- * `cuttlefish licenses` dispatch — the presenter lives in licenses.ts so it is
- * unit-testable without importing this binary entry module (cli.ts has a
- * shebang and runs main() at import time). See runLicensesPresenter.
- */
 
 async function main(): Promise<void> {
   try {
@@ -255,13 +203,35 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (options.command === "doctor") {
-      runDoctor();
-      return;
-    }
-
-    if (options.command === "licenses") {
-      runLicensesPresenter(options.strict ?? false, options.all ?? false);
+    if (options.command === "doctor" || options.command === "licenses") {
+      // These commands run standalone (often before a build), so the framework
+      // isn't loaded yet. Load it from the config's framework field so the
+      // framework-supplied doctor/licenses handlers are available.
+      if (!hasLoadedFramework()) {
+        const config = loadCuttlefishConfig(process.cwd());
+        if (config?.framework) {
+          try {
+            loadFrameworkPackage(config.framework, process.cwd());
+          } catch {
+            // Framework package not resolvable — fall through to the
+            // no-support message below rather than crashing the command.
+          }
+        }
+      }
+      const fw = hasLoadedFramework() ? getLoadedFramework() : undefined;
+      if (options.command === "doctor") {
+        if (!fw?.doctor) {
+          ui.printInfo("This framework provides no doctor support.");
+          return;
+        }
+        fw.doctor();
+        return;
+      }
+      if (!fw?.licenses) {
+        ui.printInfo("This framework provides no licenses support.");
+        return;
+      }
+      fw.licenses(options.strict ?? false, options.all ?? false);
       return;
     }
 

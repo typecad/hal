@@ -254,11 +254,14 @@ export function inferSnprintfArg(
             return { format: "%d", arg: renderExpression(expr), estimatedLength: 12, preludeLines: [] };
           }
         }
-        const arduinoIntFunctions = new Set([
-          "digitalRead", "analogRead", "pulseIn", "pulseInLong",
-          "Wire_available", "Serial_available",
+        const halIntFunctions = new Set([
+          ...(strategy?.halCallNames?.() ?? new Set<string>()),
+          // pulseIn/pulseInLong and the Wire_available/Serial_available forms
+          // are framework-specific suffix conventions; frameworks may add them
+          // to halCallNames. Kept as a fallback here until all frameworks do.
+          "pulseIn", "pulseInLong", "Wire_available", "Serial_available",
         ]);
-        if (arduinoIntFunctions.has(funcName)) {
+        if (halIntFunctions.has(funcName)) {
           return { format: "%d", arg: renderExpression(expr), estimatedLength: 12, preludeLines: [] };
         }
       }

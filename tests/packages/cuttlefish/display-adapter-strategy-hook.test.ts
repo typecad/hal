@@ -40,18 +40,18 @@ describe("generateDisplayAdapter strategy hook", () => {
     expect(a.functions).toBe("// NATIVE FN");
   });
 
-  it("falls back to Adafruit registry when providesDisplayAdapter() is false", () => {
-    const a = generateDisplayAdapter(base, fallbackStrategy);
-    expect(a.includes).toContain("Adafruit_ILI9341");
+  it("throws when the strategy opts out and no built-in adapter exists for the driver", () => {
+    // After decoupling, Adafruit adapters are strategy-owned (framework-arduino).
+    // A strategy that opts out + a driver with no built-in generic adapter is an
+    // error, not a silent Adafruit fallback.
+    expect(() => generateDisplayAdapter(base, fallbackStrategy)).toThrow(/No display adapter/);
   });
 
-  it("falls back to Adafruit registry when no strategy is passed", () => {
-    const a = generateDisplayAdapter(base);
-    expect(a.includes).toContain("Adafruit_ILI9341");
+  it("throws when no strategy is passed and the driver has no built-in adapter", () => {
+    expect(() => generateDisplayAdapter(base)).toThrow(/No display adapter/);
   });
 
-  it("falls back when strategy is passed but has no hook", () => {
-    const a = generateDisplayAdapter(base, noHookStrategy);
-    expect(a.includes).toContain("Adafruit_ILI9341");
+  it("throws when strategy has no hook and the driver has no built-in adapter", () => {
+    expect(() => generateDisplayAdapter(base, noHookStrategy)).toThrow(/No display adapter/);
   });
 });

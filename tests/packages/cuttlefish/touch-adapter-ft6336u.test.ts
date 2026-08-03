@@ -1,6 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { generateTouchAdapter } from "../../../packages/cuttlefish/src/api/shared/display-profile";
+import { generateArduinoTouchAdapter } from "../../../packages/framework-arduino/src/displays/touch-adapters-codegen";
 
+// FT6336U (and the other Arduino-ecosystem touch libraries) moved from
+// cuttlefish's generateTouchAdapter to @typecad/framework-arduino's
+// generateArduinoTouchAdapter. ArduinoStrategy.providesTouchAdapter() returns
+// true and resolveTouchAdapter() dispatches to it; cuttlefish keeps only the
+// framework-agnostic `sdl` path. These tests exercise the framework-owned
+// FT6336U codegen directly.
 describe("FT6336U touch adapter", () => {
   const touch = {
     library: "FT6336U" as const,
@@ -10,7 +16,7 @@ describe("FT6336U touch adapter", () => {
     calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 },
   };
 
-  const t = generateTouchAdapter(touch as any);
+  const t = generateArduinoTouchAdapter(touch as any)!;
 
   it("includes Wire + RAK14014_FT6336U", () => {
     expect(t.includes).toContain("#include <Wire.h>");
@@ -49,32 +55,32 @@ describe("FT6336U touch adapter", () => {
   });
 
   it("omits the reset sequence when resetPin is absent", () => {
-    const noReset = generateTouchAdapter({
+    const noReset = generateArduinoTouchAdapter({
       library: "FT6336U",
       i2cAddress: 0x38,
       calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 },
-    } as any);
+    } as any)!;
     expect(noReset.functions).not.toContain("pinMode(4, OUTPUT);");
     expect(noReset.functions).not.toContain("digitalWrite(4, LOW);");
     expect(noReset.functions).toMatch(/__tc_touch\.begin\(Wire,\s*0x38\)/);
   });
 
   it("defaults i2cAddress to 0x38 when unset", () => {
-    const defaulted = generateTouchAdapter({
+    const defaulted = generateArduinoTouchAdapter({
       library: "FT6336U",
       calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 },
-    } as any);
+    } as any)!;
     expect(defaulted.declaration).toMatch(/FT6336U\s+__tc_touch\s*\(\s*0x38\s*\)/);
     expect(defaulted.functions).toMatch(/__tc_touch\.begin\(Wire,\s*0x38\)/);
   });
 
   it("uses an explicit I2C frequency when provided", () => {
-    const fast = generateTouchAdapter({
+    const fast = generateArduinoTouchAdapter({
       library: "FT6336U",
       i2cAddress: 0x38,
       i2cFrequency: 1000000,
       calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 },
-    } as any);
+    } as any)!;
 
     expect(fast.functions).toContain("Wire.setClock(1000000);");
   });

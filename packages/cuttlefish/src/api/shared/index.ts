@@ -135,7 +135,8 @@ export { effectiveDisplaySize, normalizeDisplayRotation, resolveDisplayProfile, 
 export { GLCDFONT_BYTES, renderGlcdfontArray } from './glcdfont.js';
 
 // Display adapter generator types. Consumed by strategy.resolveDisplayAdapter
-// implementations (AVR, ESP32) and the Adafruit registry.
+// implementations (framework-arduino owns the Adafruit_GFX drivers, etc.) and
+// cuttlefish's generic built-in adapter registry (SDL native).
 export type { DisplayAdapterCode, DisplayAdapterGenerator } from './display-adapter.js';
 
 // Native display-op resolver — lowers display.* HAL ops into calls against

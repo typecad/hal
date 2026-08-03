@@ -605,6 +605,84 @@ export interface PlatformHALStrategy {
    * Default true (preserves existing behavior for hardware strategies).
    */
   modelsGpio?(): boolean;
+
+  // ── Atomic GPIO/timing primitives ───────────────────────────────────────
+  // Cuttlefish asks the framework how to read/write a pin or delay. Returning
+  // a C++ snippet string lets each framework speak its own HAL vocabulary;
+  // cuttlefish never emits a Wiring/Arduino token by name. Composite
+  // multi-statement sequences (display reset, I2C touch init) live with the
+  // display drivers in the framework package, so cuttlefish only needs these
+  // atomic operations.
+
+  /**
+   * C++ expression that reads the digital level of a pin (HIGH/LOW).
+   * ArduinoStrategy returns `digitalRead(${pin})`. GenericStrategy returns a
+   * documented no-op stub (no GPIO on host).
+   */
+  readDigitalPin?(pin: string): string;
+
+  /**
+   * C++ expression that reads a raw analog value from an ADC pin.
+   * ArduinoStrategy returns `analogRead(${pin})`. GenericStrategy stubs.
+   */
+  readAnalogPin?(pin: string): string;
+
+  /**
+   * C++ statement that writes a digital level to a pin.
+   * ArduinoStrategy returns `digitalWrite(${pin}, ${val})`. Cuttlefish does not
+   * call this in the current emit path (display reset moves to the framework),
+   * but it is part of the atomic surface for completeness/future use.
+   */
+  writeDigitalPin?(pin: string, val: string): string;
+
+  /**
+   * C++ statement that configures a pin's mode.
+   * ArduinoStrategy returns `pinMode(${pin}, ${mode})`.
+   */
+  setPinMode?(pin: string, mode: string): string;
+
+  /**
+   * C++ statement that blocks for a number of milliseconds.
+   * ArduinoStrategy returns `delay(${ms})`.
+   */
+  delayMs?(ms: string): string;
+
+  /**
+   * C++ statement that blocks for a number of microseconds.
+   * ArduinoStrategy returns `delayMicroseconds(${us})`.
+   */
+  delayMicroseconds?(us: string): string;
+
+  // ── HAL vocabulary introspection ─────────────────────────────────────────
+  // Used by validators (adc-range-validation, pin-mode-validation) and
+  // diagnostics (mermaid-builder, snprintf-helpers) that today hardcode the
+  // Arduino HAL surface. GenericStrategy returns empty Sets.
+
+  /**
+   * The full set of HAL call names this framework's emitted code may contain
+   * (digitalRead, analogRead, Serial, tone, millis, …). Used to recognize HAL
+   * calls in rendered C++ text where no structured HAL-IR node is available.
+   */
+  halCallNames?(): ReadonlySet<string>;
+
+  /** Membership test against {@link halCallNames}. Default false on generic. */
+  isHalCall?(name: string): boolean;
+
+  /**
+   * The subset of {@link halCallNames} that return an analog-read integer
+   * value (e.g. analogRead). Used by adc-range-validation to detect ADC reads
+   * in lowered raw text.
+   */
+  analogReadCallNames?(): ReadonlySet<string>;
+
+  /**
+   * Whether the framework's build-target string indicates PSRAM is available
+   * (e.g. an Arduino FQBN with a PSRAM= option). Frameworks that encode PSRAM
+   * in their build target implement this so cuttlefish can derive the
+   * scroll-canvas-memory budget without parsing framework-specific strings.
+   * Returns false when the framework doesn't encode PSRAM in the build target.
+   */
+  derivesPsramFromBuildTarget?(buildTarget: string): boolean;
 }
 
 /**

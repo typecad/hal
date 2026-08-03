@@ -204,8 +204,11 @@ describe("init-templates", () => {
         boardDisplayName: s3Target!.displayName,
         architecture: s3Target!.architecture!,
         boardPackage: s3Target!.boardPackage!,
-        frameworkPackage: s3Target!.frameworkPackage,
-        framework: s3Target!.framework,
+        // KNOWN_TARGETS board entries no longer hardcode a framework (the
+        // scaffold wizard discovers it). Supply Arduino explicitly here, as a
+        // real scaffold would after the wizard picks it.
+        frameworkPackage: '@typecad/framework-arduino',
+        framework: 'arduino',
         buildTarget: s3Target!.buildTarget!,
         mcu: s3Target!.mcu!,
         baudRate: 115200,

@@ -106,12 +106,15 @@ export interface ResolvedDisplay extends DisplayProfile {
   _mountBus: string;
   _mountAddress: number;
   _mountReset: number;
-  /** Arduino FQBN (e.g. "esp32:esp32:esp32s3:PSRAM=opi"), used to derive PSRAM
-   *  availability for the scroll-canvas-memory budget. Optional. */
+  /** Framework build target string (e.g. an Arduino FQBN like
+   *  "esp32:esp32:esp32s3:PSRAM=opi" or an IDF target). Carried through for
+   *  framework-side toolchain/compile use; cuttlefish itself does not parse it.
+   *  Optional. */
   _buildTarget?: string;
-  /** Explicit PSRAM flag from frameworkData.psram (IDF path). When true, the
-   *  scroll-canvas-memory diagnostic uses the PSRAM budget instead of the
-   *  SRAM default. Falls back to buildTargetHasPsram(_buildTarget) when unset. */
+  /** Framework-supplied PSRAM flag. When true, the scroll-canvas-memory
+   *  diagnostic uses the PSRAM budget instead of the SRAM default. The
+   *  framework is responsible for deriving this from its build-target format
+   *  (e.g. an Arduino FQBN PSRAM= option) before transpile. */
   _psram?: boolean;
 }
 
@@ -264,24 +267,11 @@ export const DEFAULT_SCROLL_CANVAS_BUDGET_BYTES = 88000;
  *  warnings for canvases the runtime allocates without issue. */
 export const PSRAM_SCROLL_CANVAS_BUDGET_BYTES = 2_000_000;
 
-/** Detect PSRAM from an Arduino FQBN buildTarget (e.g. "esp32:esp32:esp32s3:PSRAM=opi").
- *  Returns true for any PSRAM=<value> option whose value indicates PSRAM is
- *  enabled (opi, io, qspi, enabled, true). Returns false when absent or set
- *  to a disabled-looking value (disabled, false, none). */
-export function buildTargetHasPsram(buildTarget: string | undefined): boolean {
-  if (!buildTarget) return false;
-  const opts = buildTarget.split(":");
-  for (const opt of opts) {
-    const eq = opt.indexOf("=");
-    if (eq < 0) continue;
-    const key = opt.slice(0, eq).trim().toLowerCase();
-    const val = opt.slice(eq + 1).trim().toLowerCase();
-    if (key !== "psram") continue;
-    // Any explicit PSRAM option except an explicit disabled value means PSRAM.
-    return !["disabled", "false", "none", "no", "0"].includes(val);
-  }
-  return false;
-}
+// NOTE: PSRAM detection from an Arduino FQBN buildTarget (e.g.
+// "esp32:esp32:esp32s3:PSRAM=opi") moved to @typecad/framework-arduino
+// (src/displays/psram.ts → buildTargetHasPsram). The framework resolves PSRAM
+// availability and reports it through the generic `psram` flag below; cuttlefish
+// no longer parses Arduino-specific FQBN strings.
 
 /**
  * Resolve scroll config from a display profile. Declared overrides win;
@@ -294,7 +284,7 @@ export function resolveScrollConfig(
     touch?: TouchProfile | false;
     scroll?: ScrollConfig;
   },
-  ctx?: { buildTarget?: string; psram?: boolean },
+  ctx?: { psram?: boolean },
 ): ResolvedScrollConfig {
   const s = display.scroll ?? {};
   const lib =
@@ -308,11 +298,12 @@ export function resolveScrollConfig(
         ? "capacitive"
         : "none";
   // PSRAM-aware canvas budget: an explicit override always wins; otherwise use
-  // the PSRAM budget when the target opts into PSRAM — either via an explicit
-  // frameworkData.psram flag (IDF path) or an Arduino FQBN PSRAM= option — so
-  // the scroll-canvas-memory diagnostic doesn't emit stale warnings for canvases
+  // the PSRAM budget when the framework-supplied psram flag is set, so the
+  // scroll-canvas-memory diagnostic doesn't emit stale warnings for canvases
   // the runtime allocates in external RAM without issue. Else the SRAM default.
-  const psramBudget = ctx?.psram === true || buildTargetHasPsram(ctx?.buildTarget);
+  // (The framework is responsible for converting its build-target format — e.g.
+  // an Arduino FQBN PSRAM= option — into this boolean flag before calling.)
+  const psramBudget = ctx?.psram === true;
   const budgetDefault = psramBudget
     ? PSRAM_SCROLL_CANVAS_BUDGET_BYTES
     : DEFAULT_SCROLL_CANVAS_BUDGET_BYTES;
@@ -418,13 +409,18 @@ export interface TouchAdapterCodegen {
 
 /** Generate C++ code for a built-in touch library adapter.
  *
- *  Strategy-owned touch adapters (ESP32 native) take precedence: when the
- *  strategy's `providesTouchAdapter()` returns true and `resolveTouchAdapter`
- *  returns non-null, that codegen wins. Otherwise falls through to the
- *  built-in library switch below (the Arduino path, unchanged).
+ *  Strategy-owned touch adapters take precedence: when the strategy's
+ *  `providesTouchAdapter()` returns true and `resolveTouchAdapter` returns
+ *  non-null, that codegen wins. The Arduino-ecosystem libraries
+ *  (XPT2046_Touchscreen, Adafruit_TouchScreen, Adafruit_STMPE610, FT6336U)
+ *  are strategy-owned — they live in @typecad/framework-arduino
+ *  (src/displays/touch-adapters-codegen.ts) and ArduinoStrategy dispatches to
+ *  them. Cuttlefish keeps only the framework-agnostic `sdl` path here.
  *
- *  Passing `undefined` for the strategy (or a strategy that doesn't provide
- *  touch adapters) keeps the historical behavior — the Arduino library switch.
+ *  Passing `undefined` for the strategy (or a strategy whose
+ *  resolveTouchAdapter returns undefined for the given library) falls through
+ *  to the `sdl` branch below; any other library without a strategy-provided
+ *  adapter throws.
  */
 export function generateTouchAdapter(
   touch: TouchProfile,
@@ -436,128 +432,6 @@ export function generateTouchAdapter(
   if (strategy?.providesTouchAdapter?.() && strategy.resolveTouchAdapter) {
     const code = strategy.resolveTouchAdapter(touch);
     if (code) return code;
-  }
-  const cs = touch.cs ?? 0;
-  const irq = touch.irq;
-
-  if (touch.library === "XPT2046_Touchscreen") {
-    return {
-      includes: ["#include <XPT2046_Touchscreen.h>"],
-      declaration: `XPT2046_Touchscreen __tc_touch(${cs}${irq ? `, ${irq}` : ""});`,
-      functions: [
-        `static inline void touch_init() { __tc_touch.begin(); }`,
-        `static inline bool touch_isTouched() { return __tc_touch.touched(); }`,
-        `static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {`,
-        `  TS_Point __tp = __tc_touch.getPoint();`,
-        `  if (x) *x = static_cast<int16_t>(__tp.x);`,
-        `  if (y) *y = static_cast<int16_t>(__tp.y);`,
-        `  if (z) *z = static_cast<int16_t>(__tp.z);`,
-        `}`,
-      ].join("\n"),
-    };
-  }
-
-  if (touch.library === "Adafruit_TouchScreen" && touch.analogPins) {
-    const a = touch.analogPins;
-    return {
-      includes: ["#include <TouchScreen.h>"],
-      declaration: `TouchScreen __tc_touch = TouchScreen(${a.xp}, ${a.yp}, ${a.xm}, ${a.ym}, ${a.rx});`,
-      functions: [
-        `static inline void touch_init() {}`,
-        `static inline bool touch_isTouched() { return __tc_touch.isTouching(); }`,
-        `static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {`,
-        `  TS_Point __tp = __tc_touch.getPoint();`,
-        `  if (x) *x = static_cast<int16_t>(__tp.x);`,
-        `  if (y) *y = static_cast<int16_t>(__tp.y);`,
-        `  if (z) *z = static_cast<int16_t>(__tp.z);`,
-        `}`,
-      ].join("\n"),
-    };
-  }
-
-  if (touch.library === "Adafruit_STMPE610") {
-    return {
-      includes: ["#include <Adafruit_STMPE610.h>"],
-      declaration: `Adafruit_STMPE610 __tc_touch(${cs});`,
-      functions: [
-        `static inline void touch_init() { __tc_touch.begin(); }`,
-        `static inline bool touch_isTouched() { return __tc_touch.touched() && !__tc_touch.bufferEmpty(); }`,
-        `static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {`,
-        `  TS_Point __tp = __tc_touch.getPoint();`,
-        `  if (x) *x = static_cast<int16_t>(__tp.x);`,
-        `  if (y) *y = static_cast<int16_t>(__tp.y);`,
-        `  if (z) *z = static_cast<int16_t>(__tp.z);`,
-        `}`,
-      ].join("\n"),
-    };
-  }
-
-  if (touch.library === "FT6336U") {
-    const addr = touch.i2cAddress ?? 0x38;
-    // I2C addresses are conventional in hex in Arduino code.
-    const addrHex = "0x" + addr.toString(16).toUpperCase();
-    const i2cFrequency = touch.i2cFrequency ?? 400000;
-    const reset = touch.resetPin;
-    const resetLines = reset
-      ? [
-          `  pinMode(${reset}, OUTPUT);`,
-          `  digitalWrite(${reset}, LOW);`,
-          `  delay(10);`,
-          `  digitalWrite(${reset}, HIGH);`,
-          `  delay(500);`,
-        ].join("\n")
-      : ``;
-    return {
-      includes: ["#include <Wire.h>", "#include <RAK14014_FT6336U.h>"],
-      declaration: [
-        `FT6336U __tc_touch(${addrHex});`,
-        `static int16_t __tc_touch_cached_x = 0;`,
-        `static int16_t __tc_touch_cached_y = 0;`,
-        `static int16_t __tc_touch_cached_z = 0;`,
-        `static uint8_t __tc_touch_cached_valid = 0;`,
-      ].join("\n"),
-      functions: [
-        `static inline uint8_t __tc_ft6336u_read_block(uint8_t reg, uint8_t* buf, uint8_t len) {`,
-        `  Wire.beginTransmission(${addrHex});`,
-        `  Wire.write(reg);`,
-        `  if (Wire.endTransmission(false) != 0) return 0;`,
-        `  uint8_t got = Wire.requestFrom(static_cast<uint8_t>(${addrHex}), len);`,
-        `  if (got < len) return 0;`,
-        `  for (uint8_t i = 0; i < len; i++) {`,
-        `    if (!Wire.available()) return 0;`,
-        `    buf[i] = Wire.read();`,
-        `  }`,
-        `  return 1;`,
-        `}`,
-        `static inline void touch_init() {`,
-        resetLines,
-        `  __tc_touch.begin(Wire, ${addrHex});`,
-        `  Wire.setClock(${i2cFrequency});`,
-        `}`,
-        `static inline bool touch_isTouched() {`,
-        `  uint8_t buf[5] = {0, 0, 0, 0, 0};`,
-        `  __tc_touch_cached_valid = 0;`,
-        `  __tc_touch_cached_z = 0;`,
-        `  if (!__tc_ft6336u_read_block(0x02, buf, 5)) return false;`,
-        `  uint8_t count = buf[0] & 0x0F;`,
-        `  if (count == 0) return false;`,
-        `  __tc_touch_cached_x = static_cast<int16_t>((static_cast<uint16_t>(buf[1] & 0x0F) << 8) | buf[2]);`,
-        `  __tc_touch_cached_y = static_cast<int16_t>((static_cast<uint16_t>(buf[3] & 0x0F) << 8) | buf[4]);`,
-        `  __tc_touch_cached_z = 255;`,
-        `  __tc_touch_cached_valid = 1;`,
-        `  return true;`,
-        `}`,
-        `static inline void touch_readRaw(int16_t* x, int16_t* y, int16_t* z) {`,
-        `  if (!__tc_touch_cached_valid) {`,
-        `    (void)touch_isTouched();`,
-        `  }`,
-        `  if (x) *x = __tc_touch_cached_x;`,
-        `  if (y) *y = __tc_touch_cached_y;`,
-        `  if (z) *z = __tc_touch_cached_z;`,
-        `  __tc_touch_cached_valid = 0;`,
-        `}`,
-      ].join("\n"),
-    };
   }
 
   if (touch.library === "sdl") {
@@ -598,8 +472,11 @@ export function generateTouchAdapter(
   }
 
   throw new Error(
-    `Unknown touch library "${touch.library}". ` +
-    `Use { adapter: './path' } for custom touch adapters, or one of: ` +
-    `XPT2046_Touchscreen, Adafruit_TouchScreen, Adafruit_STMPE610, FT6336U, sdl.`,
+    `No touch adapter for library "${touch.library}". ` +
+    `The built-in Arduino touch libraries (XPT2046_Touchscreen, Adafruit_TouchScreen, ` +
+    `Adafruit_STMPE610, FT6336U) are provided by @typecad/framework-arduino — pass the ` +
+    `ArduinoStrategy (or another framework strategy that provides touch adapters) so its ` +
+    `resolveTouchAdapter can dispatch to them. Otherwise use the framework-agnostic ` +
+    `"sdl" library, or { adapter: './path' } for a custom touch adapter.`,
   );
 }

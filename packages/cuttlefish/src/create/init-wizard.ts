@@ -118,20 +118,44 @@ export async function runInitWizard(
 
     const target = KNOWN_TARGETS.find((t: KnownTarget) => t.id === targetId)!;
 
-    // 3. Framework (only for embedded targets)
+    // 3. Framework (only for embedded targets). Discover installed
+    // @typecad/framework-* packages rather than hardcoding a single option, so
+    // the wizard reflects whichever frameworks the user has installed.
     let framework = target.framework;
     let frameworkPackage = target.frameworkPackage;
 
     if (!target.isNative) {
-      const frameworkOptions: Array<{ label: string; value: string; pkg: string }> = [
-        { label: "Arduino (digitalWrite, Wire, SPI)", value: 'arduino', pkg: '@typecad/framework-arduino' },
+      // Candidate framework families and their user-facing labels. The wizard
+      // shows whichever are installed (resolvable) in the user's project.
+      const frameworkCandidates: Array<{ value: string; label: string }> = [
+        { value: 'arduino', label: 'Arduino (digitalWrite, Wire, SPI)' },
+        { value: 'zephyr', label: 'Zephyr RTOS' },
+        { value: 'esp-idf', label: 'ESP-IDF' },
       ];
+      const frameworkOptions: Array<{ label: string; value: string; pkg: string }> = [];
+      for (const candidate of frameworkCandidates) {
+        const pkg = `@typecad/framework-${candidate.value}`;
+        try {
+          require.resolve(`${pkg}/package.json`, { paths: [process.cwd()] });
+          frameworkOptions.push({ label: candidate.label, value: candidate.value, pkg });
+        } catch {
+          // framework not installed; skip
+        }
+      }
 
       if (partialOptions?.framework) {
         const match = frameworkOptions.find(f => f.value === partialOptions.framework);
         framework = match?.value ?? partialOptions.framework;
         frameworkPackage = match?.pkg ?? `@typecad/framework-${partialOptions.framework}`;
         console.log(`${chalk.cyan("?")} Framework: ${chalk.white(framework)}`);
+      } else if (frameworkOptions.length === 0) {
+        // No framework installed and none requested via --framework: abort
+        // rather than produce a broken scaffold with an empty framework field
+        // (which would generate invalid package.json + cuttlefish.config.ts).
+        throw new Error(
+          "No @typecad/framework-* packages found in this project. " +
+          "Install one before scaffolding, e.g.: npm i @typecad/framework-arduino",
+        );
       } else if (frameworkOptions.length === 1) {
         framework = frameworkOptions[0].value;
         frameworkPackage = frameworkOptions[0].pkg;
@@ -179,8 +203,8 @@ export async function runInitWizard(
       isNative: target.isNative,
       architecture: target.architecture,
       boardPackage: target.boardPackage,
-      frameworkPackage,
-      framework,
+      frameworkPackage: frameworkPackage ?? '',
+      framework: framework ?? '',
       buildTarget: target.buildTarget,
       mcu: target.mcu,
       baudRate,

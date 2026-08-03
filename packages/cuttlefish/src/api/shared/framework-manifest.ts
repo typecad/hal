@@ -112,6 +112,16 @@ const LibraryResolutionSchema = z.object({
   reexportedFrom: z.string().optional(),
 });
 
+/**
+ * Capability block for an optional subcommand the framework may own (e.g.
+ * `cuttlefish doctor`, `cuttlefish licenses`). The manifest only declares
+ * availability; the framework's runtime `doctor` / `licenses` exports provide
+ * the implementation, and cuttlefish dispatches to them when present.
+ */
+const SubcommandCapabilitySchema = z.object({
+  available: z.boolean(),
+});
+
 const StdLibSupportSchema = z.object({
   hasVector: z.boolean(),
   hasString: z.boolean(),
@@ -156,6 +166,11 @@ export const FrameworkManifestSchema = z.object({
   typeEmission: TypeEmissionSchema,
   ambientTypes: z.array(z.string()),
   conformance: ConformanceSchema,
+  // Optional subcommand capabilities owned by the framework. When declared
+  // `{ available: true }`, the framework exports matching `doctor` / `licenses`
+  // functions that cuttlefish dispatches the corresponding CLI subcommands to.
+  doctor: SubcommandCapabilitySchema.optional(),
+  licenses: SubcommandCapabilitySchema.optional(),
 });
 
 export type FrameworkManifest = z.infer<typeof FrameworkManifestSchema>;

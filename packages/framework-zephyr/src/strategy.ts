@@ -33,6 +33,7 @@ import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
 import { buildWorkerRuntimePolyfill } from '@typecad/cuttlefish/api/shared';
 import { programUsesSafety } from '@typecad/cuttlefish/api';
 import { chipForTarget, setActiveChip, getActiveChip } from './chips/index.js';
+import { resolveChipFromBoard } from './chips/resolve.js';
 import { emitGpioDevDispatcher } from './chips/controllers.js';
 import { lowerHalOp } from './lowering/index.js';
 import { buildZephyrWorkerBacking } from './lowering/worker-backing.js';
@@ -60,9 +61,21 @@ export class ZephyrStrategy implements PlatformStrategy {
   /**
    * Resolve + cache the active chip from the platform context. Called lazily
    * by the methods that need the descriptor (shimLines, resolveHALOperation
-   * via lowerHalOp). Mirrors how framework-esp32 threads targetFromContext.
+   * via lowerHalOp).
+   *
+   * Tries to derive the chip descriptor from the board/MCU package's zephyr
+   * fields (via boardConstants) first. Falls back to the hardcoded
+   * chipForTarget registry for boards that haven't shipped zephyr config yet.
    */
-  private resolveChip(ctx?: PlatformContext) {
+  private resolveChip(ctx?: PlatformContext, program?: ProgramIR) {
+    // 1. Try board/MCU package constants (new path)
+    const fromBoard = resolveChipFromBoard(program?.boardConstants);
+    if (fromBoard) {
+      setActiveChip(fromBoard);
+      return fromBoard;
+    }
+
+    // 2. Fall back to frameworkData.buildTarget → hardcoded registry
     const fd = ctx?.frameworkData as Record<string, unknown> | undefined;
     const target =
       (fd?.target as string | undefined) ??
@@ -174,7 +187,7 @@ export class ZephyrStrategy implements PlatformStrategy {
   }
 
   shimLines(program?: ProgramIR, ctx?: PlatformContext): string[] {
-    const chip = this.resolveChip(ctx);
+    const chip = this.resolveChip(ctx, program);
     const isPrintf = this.resolveDebugMode(ctx) === 'printf';
     const lines: string[] = [
       '// cuttlefish runtime shim. Wrapped in a single include guard so the',
@@ -348,7 +361,7 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   profileDiagnostics(program?: ProgramIR, ctx?: PlatformContext): Diagnostic[] {
     if (!program) return [];
-    const chip = this.resolveChip(ctx);
+    const chip = this.resolveChip(ctx, program);
     const a = (ctx as any)?.analysis ?? {};
     const diags: Diagnostic[] = [];
 
@@ -887,6 +900,48 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   modelsGpio(): boolean {
     return true;
+  }
+
+  // ── Atomic HAL primitives ─────────────────────────────────────────────────
+  // Zephyr lowers GPIO through devicetree specs and its own __tc_gpio_* helpers
+  // (defined in shimLines via gpio_pin_get_raw / gpio_pin_set_raw). Cuttlefish
+  // asks these instead of emitting Wiring tokens by name. The async polling
+  // path is gated to 'stub' on Zephyr (waitForPinEdge), so delayMs is unlikely
+  // to be called here, but a busy-wait form is provided for completeness.
+  readDigitalPin(pin: string): string {
+    return `__tc_gpio_read(${pin})`;
+  }
+  readAnalogPin(pin: string): string {
+    // Zephyr ADC is lowered through its own shim; this stub keeps cuttlefish
+    // from emitting a Wiring analogRead token. Update if a __tc_adc_read helper
+    // is introduced.
+    return `/* adc lowering via zephyr shim */ 0`;
+  }
+  writeDigitalPin(pin: string, val: string): string {
+    return `__tc_gpio_write(${pin}, ${val})`;
+  }
+  setPinMode(_pin: string, _mode: string): string {
+    // Zephyr configures pin direction via devicetree, not a runtime pinMode.
+    return `/* pin mode configured via devicetree */`;
+  }
+  delayMs(ms: string): string {
+    return `k_msleep(${ms})`;
+  }
+  delayMicroseconds(us: string): string {
+    return `__tc_delay_us(${us})`;
+  }
+  halCallNames(): ReadonlySet<string> {
+    // Zephyr's HAL surface uses __tc_ prefixed helpers + the Zephyr API.
+    return new Set<string>([
+      "__tc_gpio_read", "__tc_gpio_write", "__tc_delay_us",
+      "gpio_pin_get_raw", "gpio_pin_set_raw", "k_msleep", "k_busy_wait",
+    ]);
+  }
+  isHalCall(name: string): boolean {
+    return this.halCallNames().has(name);
+  }
+  analogReadCallNames(): ReadonlySet<string> {
+    return new Set<string>();
   }
 
   // ── RTOS ─────────────────────────────────────────────────────────────────

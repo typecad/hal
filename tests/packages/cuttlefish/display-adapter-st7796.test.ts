@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { generateDisplayAdapter } from "../../../packages/cuttlefish/src/api/shared/display-adapter";
+import type { ResolvedDisplay } from "../../../packages/cuttlefish/src/api/shared/display-profile";
+import { ArduinoStrategy } from "../../../packages/framework-arduino/src";
+
+// The Adafruit ST7796S adapter is strategy-owned (lives in framework-arduino).
+const arduino = new ArduinoStrategy();
+const gen = (d: ResolvedDisplay) => generateDisplayAdapter(d, arduino);
 
 describe("ST7796S display adapter", () => {
   const base = {
@@ -17,7 +23,7 @@ describe("ST7796S display adapter", () => {
     _mountReset: -1,
   };
 
-  const a = generateDisplayAdapter(base as any);
+  const a = gen(base as any);
 
   it("includes Adafruit_ST7796S (not Adafruit_ST7796)", () => {
     expect(a.includes).toContain("#include <Adafruit_ST7796S.h>");
@@ -46,7 +52,7 @@ describe("ST7796S display adapter", () => {
   });
 
   it("can force ST7796 panel inversion off after init", () => {
-    const noInvert = generateDisplayAdapter({
+    const noInvert = gen({
       ...base,
       invertDisplay: false,
     } as any);
@@ -63,7 +69,7 @@ describe("ST7796S display adapter", () => {
   });
 
   it("can force ST7796 panel inversion on when requested", () => {
-    const invert = generateDisplayAdapter({
+    const invert = gen({
       ...base,
       invertDisplay: true,
     } as any);
@@ -72,7 +78,7 @@ describe("ST7796S display adapter", () => {
   });
 
   it("can select BGR panel color order", () => {
-    const bgr = generateDisplayAdapter({
+    const bgr = gen({
       ...base,
       colorOrder: "bgr",
     } as any);
@@ -122,15 +128,15 @@ describe("ST7796S display adapter", () => {
 
   it("throws a clear error when rgb666 is requested (library hardcodes 565)", () => {
     expect(() =>
-      generateDisplayAdapter({ ...base, colorFormat: "rgb666" } as any),
+      gen({ ...base, colorFormat: "rgb666" } as any),
     ).toThrow(/rgb666/i);
     expect(() =>
-      generateDisplayAdapter({ ...base, colorFormat: "rgb666" } as any),
+      gen({ ...base, colorFormat: "rgb666" } as any),
     ).toThrow(/Adafruit_ST7796S/i);
   });
 
   it("omits the explicit setSPISpeed(freq) call when spiFrequency is unset", () => {
-    const noFreq = generateDisplayAdapter({
+    const noFreq = gen({
       ...base,
       spiFrequency: undefined,
     } as any);

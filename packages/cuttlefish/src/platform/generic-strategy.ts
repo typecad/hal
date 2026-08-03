@@ -356,4 +356,38 @@ export class GenericStrategy implements PlatformStrategy {
       nodeStorage: "flash",
     };
   }
+
+  // ── HAL (generic fallback) ──────────────────────────────────────────────
+  // The generic/host target has no GPIO or timing hardware. These return
+  // documented no-op stubs so emit stays deterministic rather than throwing
+  // mid-codegen. Host tests that exercise pin-polling paths use a mock
+  // PlatformStrategy (see tests/packages/cuttlefish/async-runtime-static.test.ts).
+
+  readDigitalPin(_pin: string): string {
+    return "/* gpio unavailable on generic target */ 0";
+  }
+  readAnalogPin(_pin: string): string {
+    return "/* adc unavailable on generic target */ 0";
+  }
+  writeDigitalPin(_pin: string, _val: string): string {
+    return "/* gpio unavailable on generic target */";
+  }
+  setPinMode(_pin: string, _mode: string): string {
+    return "/* gpio unavailable on generic target */";
+  }
+  delayMs(_ms: string): string {
+    return "/* delay unavailable on generic target */";
+  }
+  delayMicroseconds(_us: string): string {
+    return "/* delay unavailable on generic target */";
+  }
+  halCallNames(): ReadonlySet<string> {
+    return new Set<string>();
+  }
+  isHalCall(_name: string): boolean {
+    return false;
+  }
+  analogReadCallNames(): ReadonlySet<string> {
+    return new Set<string>();
+  }
 }

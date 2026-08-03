@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { generateDisplayAdapter } from "../../../packages/cuttlefish/src/api/shared/display-adapter";
 import type { ResolvedDisplay } from "@typecad/cuttlefish/stores/display-profile-store";
+import { ArduinoStrategy } from "../../../packages/framework-arduino/src";
+
+// The eink-mono (SSD1680) adapter is strategy-owned (lives in framework-arduino).
+const arduino = new ArduinoStrategy();
 
 describe("eink-mono (SSD1680-class) adapter", () => {
   const profile = {
@@ -10,16 +14,16 @@ describe("eink-mono (SSD1680-class) adapter", () => {
   } as ResolvedDisplay;
 
   it("is registered for driver 'ssd1680'", () => {
-    expect(() => generateDisplayAdapter(profile)).not.toThrow();
+    expect(() => generateDisplayAdapter(profile, arduino)).not.toThrow();
   });
 
   it("emits a partial-refresh entry point", () => {
-    const gen = generateDisplayAdapter(profile);
+    const gen = generateDisplayAdapter(profile, arduino);
     expect(gen.functions).toMatch(/display_partial_refresh\(/);
   });
 
   it("init does NOT call fillScreen (no flash on e-ink)", () => {
-    const gen = generateDisplayAdapter(profile);
+    const gen = generateDisplayAdapter(profile, arduino);
     // The display_fillScreen helper may exist (the runtime's gated clear calls
     // it, suppressed on deferred refresh), but display_init itself must not
     // clear — a full clear flashes on e-ink.
@@ -29,7 +33,7 @@ describe("eink-mono (SSD1680-class) adapter", () => {
   });
 
   it("targets an e-ink library (EPD/EPaper/GxEPD)", () => {
-    const gen = generateDisplayAdapter(profile);
+    const gen = generateDisplayAdapter(profile, arduino);
     expect(gen.includes).toMatch(/EPD|EPaper|epaper|GxEPD/i);
   });
 });

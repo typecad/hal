@@ -33,6 +33,17 @@ export interface LoadedFramework {
 
   /** Framework library .d.ts declaration generation */
   libDeclGenerator?: (modulePath: string, file: string) => string | undefined;
+
+  /**
+   * Optional subcommand presenters owned by the framework. Cuttlefish dispatches
+   * `cuttlefish doctor` / `cuttlefish licenses` to these when the loaded
+   * framework provides them; otherwise it prints a no-support message. Each
+   * framework decides what (if anything) these do — e.g. framework-arduino
+   * checks arduino-cli + board core (doctor) and scans Arduino library licenses
+   * (licenses).
+   */
+  doctor?: () => void;
+  licenses?: (strict: boolean, all: boolean) => void;
 }
 
 /**
