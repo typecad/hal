@@ -28,7 +28,7 @@ import { westSpawn, buildEnv } from './west-spawn.js';
 import { discoverWest } from './west-discover.js';
 import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
 import { ZephyrStrategy } from '../strategy.js';
-import { generateOverlay, type DisplayWiring } from '../dt-config/overlay.js';
+import { generateOverlay, type DisplayWiring, type TouchWiring } from '../dt-config/overlay.js';
 import { chipForTarget } from '../chips/index.js';
 import { DEFAULT_ZEPHYR_DISPLAY_PROFILE } from '../display/profiles.js';
 
@@ -176,6 +176,18 @@ export const Toolchain = {
             sck: typeof spiPins?.sck === 'number' ? spiPins.sck : undefined,
             mosi: typeof spiPins?.mosi === 'number' ? spiPins.mosi : undefined,
             miso: typeof spiPins?.miso === 'number' ? spiPins.miso : undefined,
+            backlightPin: typeof dispCfg.backlightPin === 'number' ? dispCfg.backlightPin : undefined,
+          }
+        : undefined;
+      // Extract touch pin wiring (irq/resetPin/sda/scl) from the config
+      // display.touch section so the DT overlay wires the I2C bus + touch node.
+      const touchCfg = dispCfg?.touch as Record<string, unknown> | undefined;
+      const touchWiring: TouchWiring | undefined = touchCfg
+        ? {
+            irq: typeof touchCfg.irq === 'number' ? touchCfg.irq : undefined,
+            resetPin: typeof touchCfg.resetPin === 'number' ? touchCfg.resetPin : undefined,
+            sda: typeof touchCfg.sda === 'number' ? touchCfg.sda : undefined,
+            scl: typeof touchCfg.scl === 'number' ? touchCfg.scl : undefined,
           }
         : undefined;
       const overlay = generateOverlay(chip, {
@@ -184,7 +196,7 @@ export const Toolchain = {
         usesUart: uses('uart_'),
         usesDisplay,
         usesTouch: uses('ft6336u') || uses('touch_'),
-      }, displayProfile, wiring);
+      }, displayProfile, wiring, touchWiring);
       const overlayDir = join(projectRoot, 'boards');
       mkdirSync(overlayDir, { recursive: true });
       // Write the board-specific overlay (the one west loads). Zephyr looks for

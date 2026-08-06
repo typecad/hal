@@ -117,7 +117,28 @@ export const RULES: readonly RuleEntry[] = [
     ],
   },
   { id: "A18-5-10", title: "No malloc/calloc/realloc", severity: "required", category: "C",
-    detect: /\b(malloc|calloc|realloc)\s*\(/, enabled: true },
+    detect: /\b(malloc|calloc|realloc)\s*\(/, enabled: true,
+    knownPatterns: [
+      {
+        // Offscreen canvas allocation (CuttlefishCanvas16/CuttlefishCanvasMono
+        // object + pixel buffer). On targets built with
+        // CONFIG_REQUIRES_FULL_LIBCPP but without CONFIG_CPP_EXCEPTIONS (e.g.
+        // Zephyr ESP32 display builds), C++ `operator new` throws
+        // std::bad_alloc on OOM, and the `new (std::nothrow)` wrapper's
+        // internal catch cannot unwind without the EH runtime — it falls
+        // through to std::terminate → abort on the first allocation failure.
+        // malloc returns NULL on OOM with no exception path, which the
+        // runtime's existing canvas-null-checks degrade gracefully. This is
+        // the canonical category-C "platform library constraint" deviation:
+        // the alternative (operator new) is the very thing that crashes. The
+        // object is placement-constructed on the malloc'd memory and freed via
+        // an explicit dtor + free, so the vtable/lifetime are correct.
+        detect: /malloc\s*\(/,
+        justification: "Canvas object/buffer allocation on full-libcpp-without-exceptions targets; malloc avoids the operator-new std::bad_alloc → std::terminate → abort path. OOM returns NULL and the runtime degrades gracefully.",
+        kind: "ts-literal",
+      },
+    ],
+  },
   { id: "A27-0-4", title: "No function returning std::move of local", severity: "required", category: "C",
     detect: /return\s+std::move\s*\(/, enabled: true },
   { id: "M5-2-9", title: "No copy of volatile std::atomic", severity: "required", category: "C", enabled: true },

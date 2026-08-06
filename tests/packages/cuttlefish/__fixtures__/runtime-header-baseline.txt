@@ -1594,7 +1594,10 @@ static inline void ui_mark_subtree_dirty_local(uint16_t scrollNode) {
 
 // Mode C strip-only: direct-partial scroll when no viewport canvas fits and the
 // scroll delta is small. Fills only the exposed strip on the display, then marks
-// visible descendants dirty for direct draw — never clears the whole viewport.
+// only the descendants that intersect that strip dirty for direct draw — mirroring
+// the Mode B canvas repair path. Never clears the whole viewport, and never marks
+// the whole subtree dirty (AGENTS.md: keep scroll drag invalidation small — a
+// 1-pixel drag must not repaint every visible child).
 static inline void ui_scroll_direct_prepare(uint16_t s, int16_t* outVX, int16_t* outVY) {
   int16_t vw = __ui_nodes[s].box.w;
   int16_t vh = __ui_nodes[s].box.h;
@@ -1605,16 +1608,29 @@ static inline void ui_scroll_direct_prepare(uint16_t s, int16_t* outVX, int16_t*
   int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
   int16_t stripY = deltaY > 0 ? static_cast<int16_t>(vh - absDelta) : 0;
   ui_display_fill_rect(vox, static_cast<int16_t>(voy + stripY), vw, absDelta, scrollBg);
+  // Only descendants whose paint rect intersects the exposed strip need
+  // repainting; the rest keep their last-painted pixels (the strip background
+  // fill already covered the vacated band). Clear stale dirty flags on the
+  // others so a flag set by a prior frame (or a sibling promotion) doesn't
+  // trigger a needless repaint.
+  UIRect exposed = { vox, static_cast<int16_t>(voy + stripY), vw, absDelta };
   for (uint16_t c = s + 1; c < __ui_nodes[s].subtreeEnd; c++) {
     if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) {
       __ui_nodes[c].dirty = 0;
       continue;
     }
-    __ui_nodes[c].dirty = 1;
-    if (__ui_nodes[c].kind == NODE_PROGRESS || __ui_nodes[c].kind == NODE_RANGE) {
-      __ui_nodes[c].lastTextWidth = -1;
+    UIRect cr;
+    ui_node_current_paint_rect(c, &cr);
+    if (cr.w > 0 && cr.h > 0 &&
+        ui_rects_intersect(cr.x, cr.y, cr.w, cr.h, exposed.x, exposed.y, exposed.w, exposed.h)) {
+      __ui_nodes[c].dirty = 1;
+      if (__ui_nodes[c].kind == NODE_PROGRESS || __ui_nodes[c].kind == NODE_RANGE) {
+        __ui_nodes[c].lastTextWidth = -1;
+      }
+      __ui_nodes[c].lastTextHeight = 0;
+    } else {
+      __ui_nodes[c].dirty = 0;
     }
-    __ui_nodes[c].lastTextHeight = 0;
   }
   __ui_nodes[s].dirty = 0;
   if (outVX) *outVX = vox;
@@ -2014,11 +2030,17 @@ static inline void ui_clear_press_offset_area(uint16_t nodeIdx, int16_t baseX, i
 
 // Generated-font / AA text and images draw per-pixel when sent straight to SPI.
 // Prefer the RAM paint canvas for these kinds (within the pixel budget).
+// NOTE: ALL NODE_TEXT is treated as pixel-heavy. Even the classic GFX bitmap
+// font renders via drawPixel per font pixel, and on an SPI TFT each drawPixel
+// is a full set_window+RAMWR SPI transaction (~30us) — a single 460x8 text band
+// costs >100ms direct-drawn. Forcing every text node through the paint canvas
+// turns that into one RAM render + one SPI push (~3ms). AA/generated-font text
+// additionally requires getPixel readback for coverage blending, which is only
+// correct against a RAM target.
 static inline uint8_t ui_pixel_heavy_node(uint16_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return 0;
   if (__ui_nodes[nodeIdx].kind == NODE_IMG) return 1;
-  if (__ui_nodes[nodeIdx].kind == NODE_TEXT &&
-      (__ui_nodes[nodeIdx].fontFace || __ui_nodes[nodeIdx].fontAntialias)) return 1;
+  if (__ui_nodes[nodeIdx].kind == NODE_TEXT) return 1;
   return 0;
 }
 
@@ -2920,10 +2942,17 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
           ui_apply_scroll_delta(__ui_scroll_node, dy);
           __ui_drag_start_y = ty;
 #if UI_SCROLL_DEBUG
+#if defined(ESP32) && defined(ARDUINO)
           Serial.printf("scroll dy=%d sy=%d ov=%d virt=%d\n",
             dy, __ui_nodes[__ui_scroll_node].scrollY,
             __ui_nodes[__ui_scroll_node].overscrollPx,
             static_cast<int>(__ui_nodes[__ui_scroll_node].virtualized));
+#else
+          printk("scroll dy=%d sy=%d ov=%d virt=%d\n",
+            dy, __ui_nodes[__ui_scroll_node].scrollY,
+            __ui_nodes[__ui_scroll_node].overscrollPx,
+            static_cast<int>(__ui_nodes[__ui_scroll_node].virtualized));
+#endif
 #endif
         }
       }
@@ -4306,6 +4335,15 @@ static inline void ui_tick(uint16_t deltaMs) {
   int16_t bufferedScrollRepaintY = 0;
   int16_t bufferedScrollRepaintH = 0;
   uint8_t bufferedScrollDirectStrip = 0;
+  // When the scroll canvas won't fit (viewport exceeds the compile-time budget),
+  // fall back to direct-drawing the in-viewport subtree to the display. This is
+  // the "no canvas available" path: the children are clipped to the viewport
+  // (ui_is_rect_clipped_by_scroll at the main draw pass) and painted directly,
+  // one time on screen-enter, rather than freezing the render loop. The tradeoff
+  // is a possible one-time flash on screen-enter, which is strictly better than
+  // a blank/frozen screen (the previous behavior left the scroll owner dirty
+  // forever and the main loop pegged).
+  uint8_t bufferedScrollDirectFull = 0;
   for (uint16_t oi = 0; ; oi++) {
     uint16_t s;
     if (__ui_scroll_owners) {
@@ -4391,21 +4429,42 @@ static inline void ui_tick(uint16_t deltaMs) {
       __ui_nodes[s].dirty = 0;
     } else {
       // Canvas won't fit. Mode C strip-only for small in-viewport deltas; otherwise
-      // graceful skip (keep last frame, retry next tick). Never direct-draw a full
-      // scroll subtree to the display — that clears the live viewport and flashes.
+      // fall back to direct-drawing the in-viewport subtree (no canvas available).
       int16_t deltaY = __ui_nodes[s].scrollY - __ui_nodes[s].lastPaintedScrollY;
       int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
       uint32_t scrollNeed = static_cast<uint32_t>(vw > 0 ? vw : 0) * static_cast<uint32_t>(vh > 0 ? vh : 0) * 2u;
-      if (absDelta > 0 && absDelta < vh) {
-        bufferedScrollNode = static_cast<int16_t>(s);
-        bufferedScrollDirectStrip = 1;
-        ui_warn_scroll_memory(static_cast<uint16_t>(s), 2);
-        ui_scroll_direct_prepare(s, &bufferedScrollVX, &bufferedScrollVY);
-        break;
-      }
+      // No canvas available. The ST7796S (like most SPI TFTs) has no read-back,
+      // so there is no way to shift already-painted pixels on the panel itself —
+      // the strip path (fill the exposed band + repaint only strip-intersecting
+      // children) leaves the rest of the content frozen in its old position, so
+      // a drag visually "stacks" nodes on top of each other. Without a RAM canvas
+      // to memmove, the only correct option is a full in-viewport subtree repaint
+      // each drag frame (direct-full). With DMA + per-node paint canvases this is
+      // affordable (~3ms/text node, ~15 nodes ≈ 45ms ≈ 22fps). The strip path is
+      // only reachable when a real canvas exists (Mode B), where ui_shift_container_canvas
+      // memmoves the cached pixels first.
       ui_warn_scroll_memory(static_cast<uint16_t>(s), scrollNeed > static_cast<uint32_t>(UI_SCROLL_CANVAS_BUDGET_BYTES) ? 1 : 0);
       if (__ui_scroll_canvas_ok) __ui_scroll_canvas_ok[s] = 0;
-      continue;
+      bufferedScrollNode = static_cast<int16_t>(s);
+      bufferedScrollVX = vox;
+      bufferedScrollVY = voy;
+      bufferedScrollDirectFull = 1;
+      // Mark the whole visible subtree dirty so every in-viewport child repaints
+      // at its new scrolled position this frame (direct-full repaints all of them,
+      // not just a strip band).
+      for (uint16_t c = s + 1; c < __ui_nodes[s].subtreeEnd; c++) {
+        if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) {
+          __ui_nodes[c].dirty = 0;
+          continue;
+        }
+        __ui_nodes[c].dirty = 1;
+        if (__ui_nodes[c].kind == NODE_PROGRESS || __ui_nodes[c].kind == NODE_RANGE) {
+          __ui_nodes[c].lastTextWidth = -1;
+        }
+        __ui_nodes[c].lastTextHeight = 0;
+      }
+      __ui_nodes[s].dirty = 0;
+      break;
     }
     // Only one scroll container per frame (the canvas is reused for subsequent
     // ones in the next dirty frame). This matches the original design.
@@ -4453,13 +4512,15 @@ static inline void ui_tick(uint16_t deltaMs) {
     }
 
     // Defer direct display draws for overflow scroll subtrees not composited this
-    // frame (Mode B canvas or Mode C strip). Drawing them directly clears the live
-    // viewport and produces sequential flashes (AGENTS.md).
+    // frame (Mode B canvas, Mode C strip, or direct-full fallback). Drawing them
+    // directly clears the live viewport and produces sequential flashes (AGENTS.md)
+    // — except in direct-full mode, where there is no canvas and direct draw is
+    // the only way to show content.
     {
       int16_t scrollComp = ui_overflow_scroll_compositor(static_cast<uint16_t>(i));
       if (scrollComp >= 0) {
         uint8_t compositing = scrollComp == bufferedScrollNode &&
-          (bufferedScrollCanvas || bufferedScrollDirectStrip);
+          (bufferedScrollCanvas || bufferedScrollDirectStrip || bufferedScrollDirectFull);
         if (!compositing) {
           if (static_cast<uint16_t>(i) == static_cast<uint16_t>(scrollComp)) break;
           __ui_nodes[i].dirty = 0;
@@ -4468,8 +4529,9 @@ static inline void ui_tick(uint16_t deltaMs) {
       }
     }
 
-    // Mode C strip: scroll owner is not drawn directly (would fill the viewport).
-    if (bufferedScrollDirectStrip && bufferedScrollNode >= 0 &&
+    // Mode C strip / direct-full: scroll owner is not drawn directly (would fill
+    // the viewport); its children are drawn directly below.
+    if ((bufferedScrollDirectStrip || bufferedScrollDirectFull) && bufferedScrollNode >= 0 &&
         static_cast<uint16_t>(i) == static_cast<uint16_t>(bufferedScrollNode)) {
       __ui_nodes[i].dirty = 0;
       continue;
@@ -4487,8 +4549,16 @@ static inline void ui_tick(uint16_t deltaMs) {
       bufferedScrollRepaintCanvas = nullptr;
     }
 
-    // Redirect to the scroll canvas if this node is inside the buffered container.
-    uint8_t drawingBufferedScroll = bufferedScrollNode >= 0 && i > bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd;
+    // Redirect to the scroll canvas if this node is inside the buffered container
+    // AND a real canvas is active this frame (Mode B only). Direct-strip and
+    // direct-full have no canvas — their children must draw to the display target
+    // (and thus qualify for the per-node paint-canvas optimization), not redirect
+    // to a null scroll canvas. Without this, a strip-drag frame sets
+    // drawingBufferedScroll=1, which skips the paint canvas and forces the
+    // repainting children to direct-draw per-pixel to SPI (~100ms/text node).
+    uint8_t drawingBufferedScroll = !bufferedScrollDirectFull && !bufferedScrollDirectStrip &&
+      (bufferedScrollCanvas != nullptr) && bufferedScrollNode >= 0 &&
+      i > bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd;
     int16_t origBoxX = __ui_nodes[i].box.x;
     int16_t origBoxY = __ui_nodes[i].box.y;
     if (drawingBufferedScroll) {
@@ -4542,18 +4612,24 @@ static inline void ui_tick(uint16_t deltaMs) {
       int16_t faceW = __ui_nodes[i].box.w;
       int16_t faceH = __ui_nodes[i].box.h;
       CuttlefishCanvas16* scrollDrawCanvas = bufferedScrollRepaintCanvas ? bufferedScrollRepaintCanvas : bufferedScrollCanvas;
-      int16_t scrollDrawW = display_canvasWidth(scrollDrawCanvas);
-      int16_t scrollDrawH = display_canvasHeight(scrollDrawCanvas);
-      if (bufferedScrollRepaintCanvas) {
-        scrollDrawW = __ui_nodes[bufferedScrollNode].box.w;
-        scrollDrawH = bufferedScrollRepaintH;
-      }
-      if (faceY + faceH <= 0 || faceY >= scrollDrawH ||
-          faceX + faceW <= 0 || faceX >= scrollDrawW) {
-        __ui_nodes[i].box.x = origBoxX;
-        __ui_nodes[i].box.y = origBoxY;
-        __ui_nodes[i].dirty = 0;
-        continue;
+      // Guard against a null canvas (the subtree was flagged drawingBufferedScroll
+      // but no canvas is available this frame — e.g. a second scroll owner whose
+      // canvas couldn't allocate). Skip the canvas-local clip and draw the node
+      // to the display target; the scroll-viewport clip below still bounds it.
+      if (scrollDrawCanvas) {
+        int16_t scrollDrawW = display_canvasWidth(scrollDrawCanvas);
+        int16_t scrollDrawH = display_canvasHeight(scrollDrawCanvas);
+        if (bufferedScrollRepaintCanvas) {
+          scrollDrawW = __ui_nodes[bufferedScrollNode].box.w;
+          scrollDrawH = bufferedScrollRepaintH;
+        }
+        if (faceY + faceH <= 0 || faceY >= scrollDrawH ||
+            faceX + faceW <= 0 || faceX >= scrollDrawW) {
+          __ui_nodes[i].box.x = origBoxX;
+          __ui_nodes[i].box.y = origBoxY;
+          __ui_nodes[i].dirty = 0;
+          continue;
+        }
       }
     } else if (ui_is_rect_clipped_by_scroll(i, drawX, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h)) {
       __ui_nodes[i].box.x = origBoxX;
@@ -5307,7 +5383,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     ui_push_buffered_scroll_canvas(bufferedScrollCanvas, bufferedScrollRepaintCanvas,
       bufferedScrollNode, bufferedScrollVX, bufferedScrollVY,
       bufferedScrollRepaintY, bufferedScrollRepaintH, __ui_draw_target);
-  } else if (bufferedScrollNode >= 0 && bufferedScrollDirectStrip) {
+  } else if (bufferedScrollNode >= 0 && (bufferedScrollDirectStrip || bufferedScrollDirectFull)) {
     ui_draw_scrollbar_direct(bufferedScrollNode, bufferedScrollVX, bufferedScrollVY);
     __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;
   }
@@ -5330,6 +5406,7 @@ static inline void ui_tick(uint16_t deltaMs) {
 // then pushed to the display. The ILI9341 has no efficient SPI read-back, so
 // all blending happens in RAM.
 #ifdef UI_AA
+#include <math.h>  // fabs, floor, ceil, sqrtf for AA coverage math
 
 // Get (or allocate) a canvas sized to the element being drawn.
 static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, UI_COLOR_T bg) {

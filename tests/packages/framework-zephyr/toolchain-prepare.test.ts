@@ -15,7 +15,9 @@ describe('Toolchain.prepare writes the DT overlay', () => {
     mkdirSync(srcDir, { recursive: true });
     writeFileSync(join(srcDir, 'main.cpp'), 'int main(){ i2c_transfer(); return 0; }');
     Toolchain.prepare(dir, join(srcDir, 'main.cpp'));
-    const overlayPath = join(dir, 'app', 'boards', 'xiao_ble.overlay');
+    // prepare() writes the board overlay to <projectRoot>/boards/<boardId>.overlay
+    // (boardId is the bare board id before any hardware-qualifier suffix).
+    const overlayPath = join(dir, 'boards', 'xiao_ble.overlay');
     expect(existsSync(overlayPath)).toBe(true);
     const txt = readFileSync(overlayPath, 'utf8');
     expect(txt).toContain('&i2c1');
@@ -27,8 +29,12 @@ describe('Toolchain.prepare writes the DT overlay', () => {
     mkdirSync(srcDir, { recursive: true });
     writeFileSync(join(srcDir, 'main.cpp'), 'int main(){ display_init(); display_fill_rect(); return 0; }');
     Toolchain.prepare(dir, join(srcDir, 'main.cpp'));
-    const txt = readFileSync(join(dir, 'app', 'boards', 'xiao_ble.overlay'), 'utf8');
-    expect(txt).toContain('&display0');
+    const txt = readFileSync(join(dir, 'boards', 'xiao_ble.overlay'), 'utf8');
+    // The display node is emitted as a full / { mipi-dbi { display0: display@0 } }
+    // definition (boards have no display node to enable with &display0), so assert
+    // on the label + compatible.
+    expect(txt).toContain('display0: display@0');
+    expect(txt).toContain('compatible = "sitronix,st7796s"');
   });
 
   it('omits the display node when the program does not use the display', () => {
@@ -36,7 +42,7 @@ describe('Toolchain.prepare writes the DT overlay', () => {
     mkdirSync(srcDir, { recursive: true });
     writeFileSync(join(srcDir, 'main.cpp'), 'int main(){ gpio_pin_set(); return 0; }');
     Toolchain.prepare(dir, join(srcDir, 'main.cpp'));
-    const txt = readFileSync(join(dir, 'app', 'boards', 'xiao_ble.overlay'), 'utf8');
-    expect(txt).not.toContain('&display0');
+    const txt = readFileSync(join(dir, 'boards', 'xiao_ble.overlay'), 'utf8');
+    expect(txt).not.toContain('display0: display@0');
   });
 });

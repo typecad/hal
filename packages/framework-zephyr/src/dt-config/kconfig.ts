@@ -51,9 +51,20 @@ export function resolveKconfigFragments(
   if (usage.usesWdt) m.set('CONFIG_WATCHDOG', 'y');
   if (usage.usesDisplay) {
     m.set('CONFIG_DISPLAY', 'y');
-    m.set('CONFIG_SPI', 'y');           // MIPI DBI SPI bridge + display bus
-    m.set('CONFIG_MIPI_DBI', 'y');      // MIPI DBI subsystem (ST7796S/ILI9341)
-    m.set('CONFIG_ST7796S', 'y');       // ST7796S display driver
+    m.set('CONFIG_SPI', 'y');
+    m.set('CONFIG_MIPI_DBI', 'y');
+    // Enable GDMA so the ESP32 SPI driver uses DMA for panel transfers instead
+    // of PIO through the 64-byte hardware FIFO. Without DMA a full 480x320 fill
+    // takes ~110ms (effectively ~4MHz); with DMA the same transfer runs at the
+    // configured SPI clock (~80MHz) and drops into the low tens of ms. The
+    // display overlay pairs this with dma-enabled + dmas on the spi2 node.
+    m.set('CONFIG_DMA', 'y');
+    // Disable the MIPI DBI SPI bridge + ST7796S drivers. The display adapter
+    // drives the panel directly via spi_write. Binding these drivers would
+    // allocate a tearing-effect GPIO interrupt that conflicts with the SPI/I2C
+    // driver interrupts — the VECDESC_FL_SHARED assertion crashes on touch.
+    m.set('CONFIG_MIPI_DBI_SPI', 'n');
+    m.set('CONFIG_ST7796S', 'n');
   }
   if (usage.usesTouch) {
     m.set('CONFIG_I2C', 'y');           // FT6336U touch on I2C
@@ -256,9 +267,18 @@ export function resolveKconfigFragments(
 
   // Main thread stack. WiFi already bumps this to 5200 (esp_wifi device init
   // is stack-hungry); HTTP/MQTT + TLS also bump it (the mbedTLS handshake is
-  // stack-hungry). Don't overwrite any of those with the default 4096 here.
+  // stack-hungry). The UI runtime (ui_tick) renders a large node tree with AA
+  // text + canvas compositing per frame, so 4096 is marginal headroom and we
+  // bump to 8192 for displays. NOTE: a Zephyr panic dump that prints
+  // `EXCCAUSE 63` is NOT necessarily a stack overflow — on the Zephyr Xtensa
+  // port EXCCAUSE 63 is the reserved software-exception used for k_oops/abort,
+  // and the ESP32 port reaches it via abort() in intc_esp32.c (the
+  // esp_intr_noniram_disable/enable unbalanced-flag guards). Resolve the dump's
+  // PC against the .elf (xtensa_arch_except → abort) before treating it as a
+  // stack overflow; 8192 is kept here because deep ui_tick call nesting still
+  // wants the headroom.
   if (!usage.usesWifi && !usage.usesHttp && !usage.usesMqtt) {
-    m.set('CONFIG_MAIN_STACK_SIZE', '4096');
+    m.set('CONFIG_MAIN_STACK_SIZE', usage.usesDisplay ? '8192' : '4096');
   }
 
   if (debug) {

@@ -44,6 +44,10 @@ export interface TouchProfile {
   /** Reset pin for touch controllers requiring a hardware-reset sequence
    *  before begin() (FT6336U on boards with a reset GPIO tied to the chip). */
   resetPin?: number;
+  /** I2C SDA pin (Zephyr: used to configure the I2C bus pinctrl in the DT overlay). */
+  sda?: number;
+  /** I2C SCL pin (Zephyr: used to configure the I2C bus pinctrl in the DT overlay). */
+  scl?: number;
 
   /** Raw ADC calibration — maps touch controller raw values to display pixels. */
   calibration: { xMin: number; xMax: number; yMin: number; yMax: number };
@@ -131,7 +135,13 @@ export interface DisplayConfig {
   displayClass?: "tft" | "eink" | "oled";
   capabilities?: DisplayCapabilities;
   rotation?: number;
+  /** Arduino framework: GPIO pin driving the panel backlight (set high at init). */
   backlight?: number;
+  /** Zephyr framework: GPIO pin driving the panel backlight. When set, the
+   *  framework emits a gpio-leds DT node + `backlight` alias so the display
+   *  adapter drives it high at init. Omit when the backlight is hardwired to
+   *  power (e.g. tied to 3.3V) — no node or alias is emitted in that case. */
+  backlightPin?: number;
   spiFrequency?: number;
   spiPins?: { mosi: number; sck: number; miso: number };
   /** Pixel color channel order expected by the panel module. Default: rgb. */

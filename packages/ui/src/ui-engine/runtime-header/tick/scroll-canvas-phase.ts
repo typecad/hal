@@ -9,7 +9,7 @@ export function emitTickScrollCanvasPhase(): string {
     ui_push_buffered_scroll_canvas(bufferedScrollCanvas, bufferedScrollRepaintCanvas,
       bufferedScrollNode, bufferedScrollVX, bufferedScrollVY,
       bufferedScrollRepaintY, bufferedScrollRepaintH, __ui_draw_target);
-  } else if (bufferedScrollNode >= 0 && bufferedScrollDirectStrip) {
+  } else if (bufferedScrollNode >= 0 && (bufferedScrollDirectStrip || bufferedScrollDirectFull)) {
     ui_draw_scrollbar_direct(bufferedScrollNode, bufferedScrollVX, bufferedScrollVY);
     __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;`;
 }

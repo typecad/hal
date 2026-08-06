@@ -449,7 +449,12 @@ CuttlefishCanvas16::CuttlefishCanvas16(int16_t w, int16_t h)
     buffer_(nullptr), canvas_w_(w), canvas_h_(h) {
   if ((w > 0) && (h > 0)) {
     size_t bytes = static_cast<size_t>(w) * static_cast<size_t>(h) * sizeof(uint16_t);
-    buffer_ = new (std::nothrow) uint16_t[static_cast<size_t>(w) * static_cast<size_t>(h)];
+    // malloc (not new): on targets with CONFIG_REQUIRES_FULL_LIBCPP but without
+    // CONFIG_CPP_EXCEPTIONS, operator new throws std::bad_alloc on OOM and the
+    // nothrow wrapper's internal catch can't unwind → std::terminate → abort.
+    // malloc returns NULL on failure with no exception path, which is exactly
+    // what the canvas-failure self-heal logic expects.
+    buffer_ = static_cast<uint16_t*>(malloc(bytes));
     if (buffer_) memset(buffer_, 0, bytes);
   }
 }
@@ -489,7 +494,7 @@ CuttlefishCanvasMono::CuttlefishCanvasMono(int16_t w, int16_t h)
   if ((w > 0) && (h > 0)) {
     size_t row_bytes = (static_cast<size_t>(w) + 7u) / 8u;
     size_t bytes = row_bytes * static_cast<size_t>(h);
-    buffer_ = new (std::nothrow) uint8_t[row_bytes * static_cast<size_t>(h)];
+    buffer_ = static_cast<uint8_t*>(malloc(bytes));
     if (buffer_) memset(buffer_, 0, bytes);
   }
 }

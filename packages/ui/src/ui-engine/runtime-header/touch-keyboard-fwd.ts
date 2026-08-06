@@ -376,10 +376,17 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
           ui_apply_scroll_delta(__ui_scroll_node, dy);
           __ui_drag_start_y = ty;
 #if UI_SCROLL_DEBUG
+#if defined(ESP32) && defined(ARDUINO)
           Serial.printf("scroll dy=%d sy=%d ov=%d virt=%d\\n",
             dy, __ui_nodes[__ui_scroll_node].scrollY,
             __ui_nodes[__ui_scroll_node].overscrollPx,
             static_cast<int>(__ui_nodes[__ui_scroll_node].virtualized));
+#else
+          printk("scroll dy=%d sy=%d ov=%d virt=%d\\n",
+            dy, __ui_nodes[__ui_scroll_node].scrollY,
+            __ui_nodes[__ui_scroll_node].overscrollPx,
+            static_cast<int>(__ui_nodes[__ui_scroll_node].virtualized));
+#endif
 #endif
         }
       }

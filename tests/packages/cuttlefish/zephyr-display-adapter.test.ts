@@ -31,8 +31,13 @@ describe("Zephyr UI display adapter", () => {
   });
 
   describe("declaration", () => {
-    it("resolves the display device via DEVICE_DT_GET(DT_NODELABEL)", () => {
-      expect(adapter.declaration).toMatch(/DEVICE_DT_GET\(DT_NODELABEL\(display0\)\)/);
+    it("defines __tc_display_dev as a constant to avoid the ST7796S driver binding", () => {
+      // The direct-drive adapter drives the panel via spi_write and deliberately
+      // does NOT resolve a Zephyr display device — binding the ST7796S driver
+      // allocates a tearing-effect GPIO interrupt that conflicts with the SPI/I2C
+      // interrupts. __tc_display_dev is a constant (1) instead of DEVICE_DT_GET.
+      expect(adapter.declaration).toMatch(/#define\s+__tc_display_dev\s+1/);
+      expect(adapter.declaration).not.toMatch(/DEVICE_DT_GET\(DT_NODELABEL\(display0\)\)/);
     });
 
     it("declares a one-row 18-bit wire-format scratch buffer", () => {

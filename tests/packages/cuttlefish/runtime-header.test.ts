@@ -350,7 +350,11 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_pixel_heavy_node");
     expect(header).toMatch(/ui_pixel_heavy_node\(nodeIdx\)\) return 1/);
     expect(header).toMatch(/NODE_IMG\) return 1/);
-    expect(header).toMatch(/fontFace \|\| __ui_nodes\[nodeIdx\]\.fontAntialias\)/);
+    // All NODE_TEXT is pixel-heavy: even the classic bitmap font renders via
+    // drawPixel per font pixel, which is a full SPI transaction per pixel on an
+    // SPI TFT. Forcing every text node through the paint canvas turns that into
+    // one RAM render + one push.
+    expect(header).toMatch(/NODE_TEXT\) return 1/);
     expect(header).toMatch(/!drawingBufferedScroll && !__ui_fb && ui_should_buffer_paint/);
     expect(header).not.toMatch(/bufferedScrollNode < 0 && ui_should_buffer_paint/);
   });
@@ -413,7 +417,10 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("ui_warn_scroll_memory");
     expect(header).toContain("__ui_scroll_mem_warned");
     expect(header).toContain("__ui_scroll_node_id");
-    expect(header).toMatch(/ui_warn_scroll_memory\(static_cast<uint16_t>\(s\), 2\)/);
+    // The no-canvas dispatch warns with reason 1 (viewport exceeds budget) or 0
+    // (alloc failed). The strip-only reason 2 path is dead in the no-canvas
+    // dispatch (drags take direct-full), so only the budget-comparison call remains.
+    expect(header).toMatch(/ui_warn_scroll_memory\(static_cast<uint16_t>\(s\), scrollNeed > static_cast<uint32_t>\(UI_SCROLL_CANVAS_BUDGET_BYTES\) \? 1 : 0\)/);
     expect(header).toMatch(/Serial\.printf\([\s\S]*cuttlefish.*WARNING/);
     expect(header).toMatch(/ESP\.getFreeHeap\(\)/);
     expect(header).toMatch(/ESP\.getMaxAllocHeap\(\)/);
@@ -613,25 +620,32 @@ describe("C++ reactive runtime header", () => {
 
   it("keeps the buffered scroll owner out of the direct display draw pass", () => {
     // Mode B: the scroll owner is represented by the viewport canvas.
-    // Mode C strip: the scroll owner must not draw directly (would fill the viewport).
+    // Mode C strip / direct-full: the scroll owner must not draw directly
+    // (would fill the viewport); its children are drawn below.
     // Non-composited overflow scroll containers defer entirely until Mode B.
     expect(header).toMatch(/if \(bufferedScrollCanvas\) \{[\s\S]*__ui_nodes\[s\]\.dirty = 0;[\s\S]*\} else \{/);
-    expect(header).toMatch(/bufferedScrollDirectStrip && bufferedScrollNode >= 0 &&[\s\S]*continue;/);
+    expect(header).toMatch(/\(bufferedScrollDirectStrip \|\| bufferedScrollDirectFull\) && bufferedScrollNode >= 0 &&[\s\S]*continue;/);
     expect(header).toContain("ui_overflow_scroll_compositor");
-    expect(header).toMatch(/uint8_t drawingBufferedScroll = bufferedScrollNode >= 0 && i > bufferedScrollNode/);
+    // drawingBufferedScroll is only true in genuine Mode B (a real canvas is
+    // active). Direct-strip and direct-full have no canvas, so their children
+    // draw to the display target and qualify for the per-node paint canvas.
+    expect(header).toMatch(/uint8_t drawingBufferedScroll = !bufferedScrollDirectFull && !bufferedScrollDirectStrip &&[\s\S]*\(bufferedScrollCanvas != nullptr\)[\s\S]*i > bufferedScrollNode/);
   });
 
   it("uses Mode C strip blit when viewport canvas won't allocate", () => {
-    // When Mode B canvas allocation fails (fragmented heap / no PSRAM), small
-    // scroll deltas may use Mode C strip fill. Full repaints gracefully skip —
-    // never direct-draw an entire scroll subtree to the display (AGENTS.md).
+    // When Mode B canvas allocation fails (no PSRAM), the no-canvas dispatch
+    // takes direct-full for every frame: the ST7796S has no read-back so the
+    // strip path can't shift on-panel pixels (it left content frozen/stacking).
+    // direct-full repaints the whole visible subtree at its new position each
+    // frame. The ui_scroll_direct_prepare helper is still emitted (legacy) but
+    // the dispatch no longer calls it.
     expect(header).toContain("ui_scroll_direct_prepare");
     expect(header).toContain("ui_draw_scrollbar_direct");
     expect(header).toContain("ui_overflow_scroll_compositor");
     expect(header).toMatch(/bufferedScrollCanvas = ui_get_container_canvas\(vw, vh\)/);
-    expect(header).toMatch(/absDelta > 0 && absDelta < vh[\s\S]*bufferedScrollDirectStrip = 1[\s\S]*ui_scroll_direct_prepare/);
-    expect(header).toMatch(/if \(__ui_scroll_canvas_ok\) __ui_scroll_canvas_ok\[s\] = 0;[\s\S]*continue;/);
-    expect(header).toMatch(/} else if \(bufferedScrollNode >= 0 && bufferedScrollDirectStrip\) \{[\s\S]*ui_draw_scrollbar_direct/);
+    // The no-canvas branch: mark the visible subtree dirty + direct-full.
+    expect(header).toMatch(/if \(__ui_scroll_canvas_ok\) __ui_scroll_canvas_ok\[s\] = 0;[\s\S]*bufferedScrollDirectFull = 1/);
+    expect(header).toMatch(/} else if \(bufferedScrollNode >= 0 && \(bufferedScrollDirectStrip \|\| bufferedScrollDirectFull\)\) \{[\s\S]*ui_draw_scrollbar_direct/);
   });
 
   it("defers non-composited overflow scroll subtrees from the direct display pass", () => {
@@ -646,6 +660,12 @@ describe("C++ reactive runtime header", () => {
     expect(body).toMatch(/ui_display_fill_rect\(vox,[\s\S]*absDelta, scrollBg\)/);
     expect(body).not.toMatch(/ui_mark_subtree_dirty_local/);
     expect(body).not.toMatch(/ui_display_fill_rect\(vox, voy, vw, vh/);
+    // Mode C must only mark descendants that intersect the exposed strip dirty
+    // (AGENTS.md: keep scroll drag invalidation small). A drag that exposes a
+    // small band must not repaint the whole visible subtree — gate the dirty
+    // flag on ui_rects_intersect against the exposed rect, like Mode B does.
+    expect(body).toMatch(/UIRect exposed = \{ vox,[\s\S]*stripY[\s\S]*absDelta \}/);
+    expect(body).toMatch(/ui_node_current_paint_rect\(c, &cr\)[\s\S]*ui_rects_intersect\(/);
   });
 
   it("pushes buffered scroll canvases before later outside layers can be repaired", () => {

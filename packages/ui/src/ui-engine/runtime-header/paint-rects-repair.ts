@@ -137,11 +137,17 @@ static inline void ui_clear_press_offset_area(uint16_t nodeIdx, int16_t baseX, i
 
 // Generated-font / AA text and images draw per-pixel when sent straight to SPI.
 // Prefer the RAM paint canvas for these kinds (within the pixel budget).
+// NOTE: ALL NODE_TEXT is treated as pixel-heavy. Even the classic GFX bitmap
+// font renders via drawPixel per font pixel, and on an SPI TFT each drawPixel
+// is a full set_window+RAMWR SPI transaction (~30us) — a single 460x8 text band
+// costs >100ms direct-drawn. Forcing every text node through the paint canvas
+// turns that into one RAM render + one SPI push (~3ms). AA/generated-font text
+// additionally requires getPixel readback for coverage blending, which is only
+// correct against a RAM target.
 static inline uint8_t ui_pixel_heavy_node(uint16_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return 0;
   if (__ui_nodes[nodeIdx].kind == NODE_IMG) return 1;
-  if (__ui_nodes[nodeIdx].kind == NODE_TEXT &&
-      (__ui_nodes[nodeIdx].fontFace || __ui_nodes[nodeIdx].fontAntialias)) return 1;
+  if (__ui_nodes[nodeIdx].kind == NODE_TEXT) return 1;
   return 0;
 }
 

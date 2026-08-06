@@ -64,7 +64,10 @@ static inline void ui_mark_subtree_dirty_local(uint16_t scrollNode) {
 
 // Mode C strip-only: direct-partial scroll when no viewport canvas fits and the
 // scroll delta is small. Fills only the exposed strip on the display, then marks
-// visible descendants dirty for direct draw — never clears the whole viewport.
+// only the descendants that intersect that strip dirty for direct draw — mirroring
+// the Mode B canvas repair path. Never clears the whole viewport, and never marks
+// the whole subtree dirty (AGENTS.md: keep scroll drag invalidation small — a
+// 1-pixel drag must not repaint every visible child).
 static inline void ui_scroll_direct_prepare(uint16_t s, int16_t* outVX, int16_t* outVY) {
   int16_t vw = __ui_nodes[s].box.w;
   int16_t vh = __ui_nodes[s].box.h;
@@ -75,16 +78,29 @@ static inline void ui_scroll_direct_prepare(uint16_t s, int16_t* outVX, int16_t*
   int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
   int16_t stripY = deltaY > 0 ? static_cast<int16_t>(vh - absDelta) : 0;
   ui_display_fill_rect(vox, static_cast<int16_t>(voy + stripY), vw, absDelta, scrollBg);
+  // Only descendants whose paint rect intersects the exposed strip need
+  // repainting; the rest keep their last-painted pixels (the strip background
+  // fill already covered the vacated band). Clear stale dirty flags on the
+  // others so a flag set by a prior frame (or a sibling promotion) doesn't
+  // trigger a needless repaint.
+  UIRect exposed = { vox, static_cast<int16_t>(voy + stripY), vw, absDelta };
   for (uint16_t c = s + 1; c < __ui_nodes[s].subtreeEnd; c++) {
     if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) {
       __ui_nodes[c].dirty = 0;
       continue;
     }
-    __ui_nodes[c].dirty = 1;
-    if (__ui_nodes[c].kind == NODE_PROGRESS || __ui_nodes[c].kind == NODE_RANGE) {
-      __ui_nodes[c].lastTextWidth = -1;
+    UIRect cr;
+    ui_node_current_paint_rect(c, &cr);
+    if (cr.w > 0 && cr.h > 0 &&
+        ui_rects_intersect(cr.x, cr.y, cr.w, cr.h, exposed.x, exposed.y, exposed.w, exposed.h)) {
+      __ui_nodes[c].dirty = 1;
+      if (__ui_nodes[c].kind == NODE_PROGRESS || __ui_nodes[c].kind == NODE_RANGE) {
+        __ui_nodes[c].lastTextWidth = -1;
+      }
+      __ui_nodes[c].lastTextHeight = 0;
+    } else {
+      __ui_nodes[c].dirty = 0;
     }
-    __ui_nodes[c].lastTextHeight = 0;
   }
   __ui_nodes[s].dirty = 0;
   if (outVX) *outVX = vox;

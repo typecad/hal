@@ -52,7 +52,12 @@ export function zephyrUiDisplayAdapter(profile: ZephyrDisplayProfile): DisplayAd
 
   const declaration = [
     `// CUTTLEFISH_DISPLAY_BEGIN`,
-    `static const struct device* __tc_display_dev = DEVICE_DT_GET(DT_NODELABEL(${dtLabel}));`,
+    // The display0 DT node carries frequency/dimensions for DT_PROP reads, but
+    // the panel is driven directly via spi_write — no Zephyr display device is
+    // needed. Using a constant 1 avoids the ST7796S driver binding (which
+    // allocates a tearing-effect GPIO interrupt that conflicts with the SPI/I2C
+    // interrupts — the VECDESC_FL_SHARED assertion crash on the 3rd frame).
+    `#define __tc_display_dev 1`,
     `// One-row scratch buffer in 18-bit (666) wire format: maxDim px x 3 bytes.`,
     `// Reused across fillRect/draw calls — never per-frame (AGENTS.md: no`,
     `// per-frame heap allocation). The panel is driven in 18-bit mode (COLMOD`,
@@ -60,6 +65,19 @@ export function zephyrUiDisplayAdapter(profile: ZephyrDisplayProfile): DisplayAd
     `// with calibration bands), while 18-bit mode routes every channel`,
     `// correctly with plain (R,G,B) byte order.`,
     `static uint8_t __tc_display_row3[${maxDim} * 3];`,
+    `// Multi-row block buffer for solid fills (8 rows of maxDim px in 18-bit).`,
+    `// fillRect fills this once with the color, then sends the whole rect in a`,
+    `// few large spi_write chunks instead of one spi_write per row — a full`,
+    `// 480x320 clear went from ~320 syscalls (~110ms) to ~40 (~15ms). Reused,`,
+    `// not per-frame (AGENTS.md).`,
+    `#define __TC_FILL_ROWS 8`,
+    `static uint8_t __tc_display_block3[${maxDim} * 3 * __TC_FILL_ROWS];`,
+    `// startWrite/endWrite batching depth. When > 0 the panel CS is held asserted`,
+    `// (low) across multiple primitives — DC still toggles mid-burst, but CS does`,
+    `// not, matching the Adafruit ST77xx protocol and avoiding one full CS-toggle`,
+    `// SPI transaction per primitive. The runtime brackets whole canvas pushes`,
+    `// and per-node repaints in display_startWrite/endWrite pairs.`,
+    `static uint8_t __tc_pnl_write_depth = 0;`,
     `// Stashed address window from the last setAddrWindow call. The runtime`,
     `// calls setAddrWindow + writePixels as a matched pair, so we stash the rect`,
     `// here and consume it in writePixels.`,
@@ -72,9 +90,13 @@ export function zephyrUiDisplayAdapter(profile: ZephyrDisplayProfile): DisplayAd
 
   // Backlight: drive it as a raw GPIO output. The DT alias points at a
   // gpio-leds node whose 'gpios' property is a phandle to the GPIO controller
-  // + pin. GPIO_DT_SPEC_GET resolves that phandle into a gpio_dt_spec.
+  // + pin. GPIO_DT_SPEC_GET resolves that phandle into a gpio_dt_spec. The
+  // overlay only emits this alias when a backlight GPIO is configured, so guard
+  // with DT_HAS_ALIAS (the safe primitive for an alias that may be absent —
+  // DT_NODE_HAS_STATUS(DT_ALIAS(...)) is version-dependent when the alias is
+  // missing and can fail the build).
   const blInit = backlightAlias
-    ? `#if DT_NODE_HAS_STATUS(DT_ALIAS(${backlightAlias}), okay)\n    const struct gpio_dt_spec __bl = GPIO_DT_SPEC_GET(DT_ALIAS(${backlightAlias}), gpios);\n    if (device_is_ready(__bl.port)) { gpio_pin_configure_dt(&__bl, GPIO_OUTPUT_ACTIVE); }\n#endif`
+    ? `#if DT_HAS_ALIAS(${backlightAlias})\n    const struct gpio_dt_spec __bl = GPIO_DT_SPEC_GET(DT_ALIAS(${backlightAlias}), gpios);\n    if (device_is_ready(__bl.port)) { gpio_pin_configure_dt(&__bl, GPIO_OUTPUT_ACTIVE); }\n#endif`
     : '';
 
   const functions = `
@@ -95,12 +117,21 @@ static struct spi_config __tc_pnl_cfg8 = {
   .slave = 0,
 };
 
-// Write one command byte (DC low) + its parameters (DC high), CS held low
-// across the whole burst.
+// Assert CS (active=low) unless a startWrite/endWrite batch already holds it.
+static inline void __tc_pnl_cs_assert(void) {
+  if (__tc_pnl_write_depth == 0U) { gpio_pin_set_dt(&__tc_pnl_cs, 1); }
+}
+// Deassert CS unless a startWrite/endWrite batch is still holding it.
+static inline void __tc_pnl_cs_release(void) {
+  if (__tc_pnl_write_depth == 0U) { gpio_pin_set_dt(&__tc_pnl_cs, 0); }
+}
+
+// Write one command byte (DC low) + its parameters (DC high). CS is asserted
+// for the burst unless an outer startWrite is already holding it.
 static void __tc_pnl_cmd(uint8_t cmd, const uint8_t* data, uint16_t len) {
   struct spi_buf __bc = { &cmd, 1 };
   struct spi_buf_set __sc = { &__bc, 1 };
-  gpio_pin_set_dt(&__tc_pnl_cs, 1);
+  __tc_pnl_cs_assert();
   gpio_pin_set_dt(&__tc_pnl_dc, 0);
   (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__sc);
   if (len > 0) {
@@ -109,7 +140,7 @@ static void __tc_pnl_cmd(uint8_t cmd, const uint8_t* data, uint16_t len) {
     gpio_pin_set_dt(&__tc_pnl_dc, 1);
     (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__sd);
   }
-  gpio_pin_set_dt(&__tc_pnl_cs, 0);
+  __tc_pnl_cs_release();
 }
 
 // Open a RAMWR burst: CS low, RAMWR command, DC high for the pixel data.
@@ -117,13 +148,13 @@ static void __tc_pnl_ramwr_begin(void) {
   uint8_t __ramwr = 0x2C;
   struct spi_buf __bc = { &__ramwr, 1 };
   struct spi_buf_set __sc = { &__bc, 1 };
-  gpio_pin_set_dt(&__tc_pnl_cs, 1);
+  __tc_pnl_cs_assert();
   gpio_pin_set_dt(&__tc_pnl_dc, 0);
   (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__sc);
   gpio_pin_set_dt(&__tc_pnl_dc, 1);
 }
 
-static void __tc_pnl_ramwr_end(void) { gpio_pin_set_dt(&__tc_pnl_cs, 0); }
+static void __tc_pnl_ramwr_end(void) { __tc_pnl_cs_release(); }
 
 // Pack count rgb565 pixels into the row3 scratch buffer as 18-bit (666) wire
 // format: (r<<3, g<<2, b<<3) — R,G,B byte order, verified correct on this
@@ -169,10 +200,23 @@ static void __tc_pnl_set_window(int16_t x, int16_t y, int16_t winW, int16_t winH
 }
 
 // ── Panel-ops consumed by CuttlefishGFX ─────────────────────────────────
-// startWrite/endWrite are no-ops: each op below is already one CS-asserted
-// transaction, matching the reference-counted Adafruit start/endWrite usage.
-static void __tc_op_startWrite(void* /*ctx*/) { (void)0; }
-static void __tc_op_endWrite(void* /*ctx*/) { (void)0; }
+// startWrite/endWrite batch multiple primitives under one CS-asserted burst
+// (Adafruit ST77xx protocol: CS held low across the burst, DC toggles
+// mid-burst). A depth counter supports nested startWrite calls — the runtime
+// sometimes wraps a canvas push inside an outer transaction. Only the
+// outermost startWrite asserts CS and the outermost endWrite releases it;
+// inner ones just bump the depth. This collapses per-primitive CS-toggle
+// overhead (one transaction per burst instead of one per rect/glyph row).
+static void __tc_op_startWrite(void* /*ctx*/) {
+  if (__tc_pnl_write_depth == 0U) { gpio_pin_set_dt(&__tc_pnl_cs, 1); }
+  __tc_pnl_write_depth++;
+}
+static void __tc_op_endWrite(void* /*ctx*/) {
+  if (__tc_pnl_write_depth > 0U) {
+    __tc_pnl_write_depth--;
+    if (__tc_pnl_write_depth == 0U) { gpio_pin_set_dt(&__tc_pnl_cs, 0); }
+  }
+}
 
 // Stash the target rect. The runtime always follows this with writePixels
 // delivering exactly (w*h) pixels for this rect, OR fillRect/writePixel which
@@ -205,22 +249,37 @@ static void __tc_op_writePixel(void* /*ctx*/, int16_t x, int16_t y, uint16_t c) 
 // Fill a rect row-by-row using the one-row 18-bit scratch buffer. This is the
 // hot path for background clears and large fills; building the color into the
 // reused buffer and writing each row keeps memory bounded.
+// Fill a rect with a solid color. The 18-bit row is tiled into the block buffer
+// (__TC_FILL_ROWS rows), then the whole rect is sent in multi-row spi_write
+// chunks. A full 480x320 clear is ~40 writes instead of ~320, dropping it from
+// ~110ms to ~15ms — the ESP32 SPI driver's per-transaction overhead (not SPI
+// bandwidth) is the binding cost, so fewer/larger writes win. Scatter-gather
+// descriptor lists tested slower (the driver walks each descriptor), so this
+// uses one contiguous buffer per write.
 static void __tc_op_fillRect(void* /*ctx*/, int16_t x, int16_t y, int16_t rw, int16_t rh, uint16_t c) {
   if (rw <= 0 || rh <= 0) return;
   uint8_t __b0 = static_cast<uint8_t>((c >> 8) & 0xF8u);
   uint8_t __b1 = static_cast<uint8_t>((c >> 3) & 0xFCu);
   uint8_t __b2 = static_cast<uint8_t>((c << 3) & 0xF8u);
+  // Build one 18-bit row, then tile it into the block buffer.
   for (int16_t i = 0; i < rw; i++) {
     __tc_display_row3[i * 3] = __b0;
     __tc_display_row3[i * 3 + 1] = __b1;
     __tc_display_row3[i * 3 + 2] = __b2;
   }
+  size_t rowBytes = static_cast<size_t>(rw) * 3U;
+  for (int16_t r = 0; r < __TC_FILL_ROWS; r++) {
+    memcpy(&__tc_display_block3[static_cast<size_t>(r) * rowBytes], __tc_display_row3, rowBytes);
+  }
   __tc_pnl_set_window(x, y, rw, rh);
   __tc_pnl_ramwr_begin();
-  struct spi_buf __bd = { __tc_display_row3, static_cast<size_t>(rw) * 3U };
-  struct spi_buf_set __sd = { &__bd, 1 };
-  for (int16_t row = 0; row < rh; row++) {
+  int16_t remaining = rh;
+  while (remaining > 0) {
+    int16_t chunk = (remaining > __TC_FILL_ROWS) ? __TC_FILL_ROWS : remaining;
+    struct spi_buf __bd = { __tc_display_block3, static_cast<size_t>(chunk) * rowBytes };
+    struct spi_buf_set __sd = { &__bd, 1 };
     (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__sd);
+    remaining -= chunk;
   }
   __tc_pnl_ramwr_end();
 }
@@ -287,10 +346,6 @@ static const struct __tc_pnl_init_cmd __tc_pnl_init_seq[] = {
 
 // ── display_init (called from setup) ────────────────────────────────────
 static inline void display_init() {
-  if (!device_is_ready(__tc_display_dev)) {
-    printk("TC_DISPLAY: st7796s device not ready, hanging\\n");
-    for (;;) { k_msleep(1000); }
-  }
   printk("TC_DISPLAY: device ready\\n");
 ${blInit}
   gpio_pin_configure_dt(&__tc_pnl_cs, GPIO_OUTPUT);
@@ -328,8 +383,18 @@ static inline void display_writePixels(uint16_t* pixels, uint32_t count) {
 }
 
 // ── Canvas lifecycle + accessors (offscreen rgb565 compositing) ──────────
+// Allocate the canvas object via malloc + placement-new (not operator new).
+// Under CONFIG_REQUIRES_FULL_LIBCPP without CONFIG_CPP_EXCEPTIONS, operator new
+// throws std::bad_alloc on OOM and the nothrow wrapper's internal catch cannot
+// unwind (no EH runtime) → std::terminate → abort. malloc returns NULL on
+// failure with no exception path; placement-new then constructs the object in
+// place (vtable included). display_deleteCanvas mirrors with an explicit dtor
+// + free. The runtime's callers already null-check the return, so an OOM
+// degrades gracefully instead of aborting.
 static inline CuttlefishCanvas16* display_createCanvas(int16_t cw, int16_t ch) {
-  return new CuttlefishCanvas16(cw, ch);
+  void* mem = malloc(sizeof(CuttlefishCanvas16));
+  if (!mem) return nullptr;
+  return new (mem) CuttlefishCanvas16(cw, ch);
 }
 static inline CuttlefishCanvas16* display_createCanvasPsram(int16_t cw, int16_t ch) {
   // PSRAM allocation not yet implemented for Zephyr. The runtime's
@@ -337,7 +402,11 @@ static inline CuttlefishCanvas16* display_createCanvasPsram(int16_t cw, int16_t 
   (void)cw; (void)ch;
   return nullptr;
 }
-static inline void display_deleteCanvas(CuttlefishCanvas16* canvas) { delete canvas; }
+static inline void display_deleteCanvas(CuttlefishCanvas16* canvas) {
+  if (!canvas) return;
+  canvas->~CuttlefishCanvas16();
+  free(canvas);
+}
 static inline int16_t display_canvasWidth(CuttlefishCanvas16* c) { return c->width(); }
 static inline int16_t display_canvasHeight(CuttlefishCanvas16* c) { return c->height(); }
 static inline uint16_t* display_canvasBuffer(CuttlefishCanvas16* c) { return c->getBuffer(); }

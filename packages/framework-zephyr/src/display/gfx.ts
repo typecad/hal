@@ -99,8 +99,12 @@ export function buildDisplayRuntime(profile: ZephyrDisplayProfile): DisplayRunti
     '// CUTTLEFISH_DISPLAY_END',
   ];
 
+  // Backlight is optional: the overlay emits the DT alias only when a backlight
+  // GPIO is configured. Guard with DT_HAS_ALIAS so this compiles whether or not
+  // the alias exists (DT_NODE_HAS_STATUS(DT_ALIAS(...)) is version-dependent
+  // when the alias is missing).
   const blInit = profile.backlight
-    ? `    const struct device* __bl = DEVICE_DT_GET(DT_ALIAS(${profile.backlight}));\n    gpio_pin_configure(__bl, 0, GPIO_OUTPUT); gpio_pin_set(__bl, 0, 1);`
+    ? `#if DT_HAS_ALIAS(${profile.backlight})\n    const struct device* __bl = DEVICE_DT_GET(DT_ALIAS(${profile.backlight}));\n    gpio_pin_configure(__bl, 0, GPIO_OUTPUT); gpio_pin_set(__bl, 0, 1);\n#endif`
     : '';
 
   const helpers = `
