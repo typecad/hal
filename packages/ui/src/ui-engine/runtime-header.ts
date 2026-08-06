@@ -36,6 +36,7 @@ import { emitTouchKeyboardFwd } from "./runtime-header/touch-keyboard-fwd.js";
 import { emitBlendBodies } from "./runtime-header/blend-bodies.js";
 import { emitTextRendering } from "./runtime-header/text-rendering.js";
 import { emitNodeDecoration } from "./runtime-header/node-decoration.js";
+import { emitNodeDrawBody } from "./runtime-header/node-draw-body.js";
 import { emitTickMotionHelpers } from "./runtime-header/tick-motion-helpers.js";
 import { emitTick } from "./runtime-header/tick.js";
 import { emitAntialiasing } from "./runtime-header/antialiasing.js";
@@ -76,6 +77,7 @@ export function emitRuntimeHeader(opts?: EmitRuntimeHeaderOptions): string {
     emitBlendBodies(),
     emitTextRendering(),
     emitNodeDecoration(),
+    emitNodeDrawBody(),
     emitTickMotionHelpers(),
     emitTick(),
     emitAntialiasing(),

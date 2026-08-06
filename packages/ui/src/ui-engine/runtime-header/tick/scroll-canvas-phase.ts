@@ -9,6 +9,16 @@ export function emitTickScrollCanvasPhase(): string {
     ui_push_buffered_scroll_canvas(bufferedScrollCanvas, bufferedScrollRepaintCanvas,
       bufferedScrollNode, bufferedScrollVX, bufferedScrollVY,
       bufferedScrollRepaintY, bufferedScrollRepaintH, __ui_draw_target);
+  } else if (bufferedScrollNode >= 0 && bufferedScrollBands) {
+    // Band render fallback: the main loop didn't trigger it at the owner's
+    // z-slot (e.g. the owner was filtered out after dispatch). Render now so
+    // the subtree is never left unpainted. On failure, fall back to direct-full
+    // semantics (scrollbar + lastPaintedScrollY update only — children were
+    // cleared in dispatch and won't redraw this frame).
+    if (!ui_render_scroll_bands(static_cast<uint16_t>(bufferedScrollNode))) {
+      ui_draw_scrollbar_direct(bufferedScrollNode, bufferedScrollVX, bufferedScrollVY);
+    }
+    __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;
   } else if (bufferedScrollNode >= 0 && (bufferedScrollDirectStrip || bufferedScrollDirectFull)) {
     ui_draw_scrollbar_direct(bufferedScrollNode, bufferedScrollVX, bufferedScrollVY);
     __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;`;

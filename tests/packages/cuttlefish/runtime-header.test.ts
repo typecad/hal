@@ -1161,4 +1161,48 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
     expect(header).toMatch(/0x7F7F7F/);
     expect(header).toContain("UI_DIM_MASK");
   });
+  it("extracts the per-node kind switch into ui_draw_node_body (reusable by the band renderer)", () => {
+    // The kind switch is callable from both the main draw loop and the band
+    // renderer. The ctx carries the shared draw state; NODE_LIST returns 1
+    // (handled) so the caller skips its post-switch epilogue — preserving the
+    // old inline 'continue;' semantics.
+    expect(header).toMatch(/static inline uint8_t ui_draw_node_body\(int16_t i, const UINodeDrawCtx\* ctx\)/);
+    expect(header).toMatch(/struct UINodeDrawCtx \{[\s\S]*?int16_t drawY;[\s\S]*?const char\* displayText;[\s\S]*?uint8_t drawingBufferedScroll;[\s\S]*?CuttlefishDisplayTarget\* drawTarget;[\s\S]*?int16_t origBoxX;[\s\S]*?int16_t origBoxY;/);
+    // The main loop fills the ctx and delegates, branching on the return value.
+    expect(header).toMatch(/UINodeDrawCtx __ui_ctx;[\s\S]*?__ui_ctx\.drawY = drawY;[\s\S]*?if \(ui_draw_node_body\(i, &__ui_ctx\)\) \{[\s\S]*?continue;/);
+    // NODE_LIST still owns its canvas push / decoration / coord restore and now
+    // signals completion via return 1 (not continue;).
+    expect(header).toMatch(/case NODE_LIST:[\s\S]*ui_display_set_target\(__ui_draw_target\);[\s\S]*__ui_nodes\[i\]\.box\.x = origBoxX;[\s\S]*__ui_nodes\[i\]\.box\.y = origBoxY;[\s\S]*return 1;.*list handled/);
+  });
+  it("renders tear-free scroll bands when no viewport canvas fits (no PSRAM)", () => {
+    // The band renderer composes the subtree into a short band canvas and pushes
+    // one band at a time, so each band completes before it touches the panel.
+    expect(header).toMatch(/#ifndef UI_STRIP_BAND_HEIGHT[\s\S]*#define UI_STRIP_BAND_HEIGHT 16/);
+    expect(header).toMatch(/static inline uint8_t ui_render_scroll_bands\(uint16_t s\)/);
+    // Band canvas is persistent (released on navigation, like the other slots).
+    expect(header).toMatch(/display_deleteCanvas\(__ui_band_canvas\);.*__ui_band_canvas = nullptr/);
+    // The canvas-fail dispatch defers the band render to a flag (NOT an immediate
+    // paint) — the bands must render at the scroll owner's z-order slot so the
+    // screen background fill (lower source order) doesn't draw over them.
+    expect(header).toMatch(/bufferedScrollBands = 1;[\s\S]*for \(uint16_t c = s \+ 1; c < __ui_nodes\[s\]\.subtreeEnd/);
+    // The main draw loop triggers the band render at the owner's z-slot, falling
+    // back to direct-full only if the band canvas can't allocate.
+    expect(header).toMatch(/if \(bufferedScrollBands && bufferedScrollNode >= 0 &&[\s\S]*ui_render_scroll_bands\(static_cast<uint16_t>\(bufferedScrollNode\)\)[\s\S]*bufferedScrollDirectFull = 1/);
+    // Phase 2b fallback renders pending bands if the main loop never hit the slot.
+    expect(header).toMatch(/bufferedScrollBands\)[\s\S]*ui_render_scroll_bands\(static_cast<uint16_t>\(bufferedScrollNode\)\)/);
+    // Each band pushes the FULL viewport width in one SPI transaction (w == stride,
+    // the single-write fast path). The scrollbar slice is composited into each
+    // band's gutter before the push — so it's part of the atomic band push, not a
+    // separate erase/redraw cycle that would flash it during scroll. The band
+    // function does NOT call ui_draw_scrollbar_direct (that would reintroduce the
+    // erase/redraw flash); it composites the slice itself. Bound the function by
+    // its signature to the end of its emitted slice (the closing backtick).
+    const bandFnStart = header.indexOf("static inline uint8_t ui_render_scroll_bands");
+    const bandFn = header.slice(bandFnStart, header.length);
+    expect(bandFn).toMatch(/display_canvasFillRect\(band, contentW,[\s\S]*sbTrackCol\)[\s\S]*ui_push_canvas_rect\(band, vox, static_cast<int16_t>\(voy \+ bandTop\), vw, thisH\)/);
+    // The band function ends with "return 1;" then "return 0;" — neither path
+    // calls ui_draw_scrollbar_direct (the slice is composited inline instead).
+    const bandFnBody = bandFn.slice(0, bandFn.indexOf("return 0;"));
+    expect(bandFnBody).not.toMatch(/ui_draw_scrollbar_direct/);
+  });
 });

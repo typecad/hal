@@ -97,6 +97,12 @@ export function emitTickDirtyDrawPhase(): string {
   // a blank/frozen screen (the previous behavior left the scroll owner dirty
   // forever and the main loop pegged).
   uint8_t bufferedScrollDirectFull = 0;
+  // Band renderer pending: like bufferedScrollDirectFull but the actual paint
+  // is deferred to the scroll owner's z-order slot in the main draw loop. The
+  // band composites the whole subtree at once, so it must paint AFTER lower-z
+  // nodes (e.g. the screen background fill) but BEFORE higher-z ones (header).
+  // Painting it here (before the main loop) lets the bg fill overwrite it.
+  uint8_t bufferedScrollBands = 0;
   for (uint16_t oi = 0; ; oi++) {
     uint16_t s;
     if (__ui_scroll_owners) {
@@ -181,11 +187,34 @@ export function emitTickDirtyDrawPhase(): string {
       // visibly flash before the canvas is pushed.
       __ui_nodes[s].dirty = 0;
     } else {
-      // Canvas won't fit. Mode C strip-only for small in-viewport deltas; otherwise
-      // fall back to direct-drawing the in-viewport subtree (no canvas available).
+      // Canvas won't fit (no PSRAM / over budget). The band renderer composes the
+      // whole visible subtree into a short horizontal band canvas (vw ×
+      // UI_STRIP_BAND_HEIGHT) and pushes one band at a time, so each band
+      // completes before it touches the panel — tear-free, with ~10KB of SRAM
+      // regardless of program size. Falls back to direct-full (per-child direct
+      // SPI draws, which tear) only when the band canvas itself can't allocate.
       int16_t deltaY = __ui_nodes[s].scrollY - __ui_nodes[s].lastPaintedScrollY;
       int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
       uint32_t scrollNeed = static_cast<uint32_t>(vw > 0 ? vw : 0) * static_cast<uint32_t>(vh > 0 ? vh : 0) * 2u;
+      (void)deltaY; (void)absDelta;
+      ui_warn_scroll_memory(static_cast<uint16_t>(s), scrollNeed > static_cast<uint32_t>(UI_SCROLL_CANVAS_BUDGET_BYTES) ? 1 : 0);
+      if (__ui_scroll_canvas_ok) __ui_scroll_canvas_ok[s] = 0;
+      // Defer the band render to the scroll owner's z-order slot in the main
+      // draw loop (see bufferedScrollBands handling below). Painting here would
+      // let lower-z nodes (screen bg fill) draw over the bands afterward. The
+      // owner stays dirty so the main loop reaches its z-slot and triggers the
+      // render; the band code clears it once painted. The subtree children are
+      // cleared now so the main loop never draws them directly — the band path
+      // is the sole renderer for the subtree this frame.
+      bufferedScrollNode = static_cast<int16_t>(s);
+      bufferedScrollVX = vox;
+      bufferedScrollVY = voy;
+      bufferedScrollBands = 1;
+      for (uint16_t c = s + 1; c < __ui_nodes[s].subtreeEnd; c++) {
+        __ui_nodes[c].dirty = 0;
+      }
+      break;
+      // Band canvas allocation failed — direct-full is the last-resort fallback.
       // No canvas available. The ST7796S (like most SPI TFTs) has no read-back,
       // so there is no way to shift already-painted pixels on the panel itself —
       // the strip path (fill the exposed band + repaint only strip-intersecting
@@ -196,8 +225,6 @@ export function emitTickDirtyDrawPhase(): string {
       // affordable (~3ms/text node, ~15 nodes ≈ 45ms ≈ 22fps). The strip path is
       // only reachable when a real canvas exists (Mode B), where ui_shift_container_canvas
       // memmoves the cached pixels first.
-      ui_warn_scroll_memory(static_cast<uint16_t>(s), scrollNeed > static_cast<uint32_t>(UI_SCROLL_CANVAS_BUDGET_BYTES) ? 1 : 0);
-      if (__ui_scroll_canvas_ok) __ui_scroll_canvas_ok[s] = 0;
       bufferedScrollNode = static_cast<int16_t>(s);
       bufferedScrollVX = vox;
       bufferedScrollVY = voy;
@@ -265,20 +292,55 @@ export function emitTickDirtyDrawPhase(): string {
     }
 
     // Defer direct display draws for overflow scroll subtrees not composited this
-    // frame (Mode B canvas, Mode C strip, or direct-full fallback). Drawing them
-    // directly clears the live viewport and produces sequential flashes (AGENTS.md)
-    // — except in direct-full mode, where there is no canvas and direct draw is
-    // the only way to show content.
+    // frame (Mode B canvas, Mode C strip, direct-full fallback, or band render).
+    // Drawing them directly clears the live viewport and produces sequential
+    // flashes (AGENTS.md) — except in direct-full mode, where there is no canvas
+    // and direct draw is the only way to show content.
     {
       int16_t scrollComp = ui_overflow_scroll_compositor(static_cast<uint16_t>(i));
       if (scrollComp >= 0) {
         uint8_t compositing = scrollComp == bufferedScrollNode &&
-          (bufferedScrollCanvas || bufferedScrollDirectStrip || bufferedScrollDirectFull);
+          (bufferedScrollCanvas || bufferedScrollDirectStrip || bufferedScrollDirectFull || bufferedScrollBands);
         if (!compositing) {
           if (static_cast<uint16_t>(i) == static_cast<uint16_t>(scrollComp)) break;
           __ui_nodes[i].dirty = 0;
           continue;
         }
+      }
+    }
+
+    // Band renderer: paint the whole subtree at the scroll owner's z-order slot.
+    // This must run AFTER lower-z nodes (e.g. the screen background fill, which
+    // has lower source order) have been drawn, so they don't overwrite the bands.
+    // When the main loop reaches the scroll owner itself, render the bands now
+    // (its z-position), mark the owner handled, and continue.
+    if (bufferedScrollBands && bufferedScrollNode >= 0 &&
+        static_cast<uint16_t>(i) == static_cast<uint16_t>(bufferedScrollNode)) {
+      if (ui_render_scroll_bands(static_cast<uint16_t>(bufferedScrollNode))) {
+        bufferedScrollBands = 0;
+        bufferedScrollNode = -1;
+        __ui_nodes[i].dirty = 0;
+        continue;
+      }
+      // Band canvas allocation failed — fall through to direct-full below.
+      bufferedScrollBands = 0;
+      bufferedScrollDirectFull = 1;
+    }
+
+    // Band renderer early-push: if we're about to draw a node that comes AFTER
+    // the scroll owner in draw order (e.g. a header with higher source order)
+    // and the bands haven't rendered yet, render them first so they land below
+    // that higher-z node. Mirrors the Mode B canvas early-push below.
+    if (bufferedScrollBands && bufferedScrollNode >= 0 &&
+        !(i > bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd) &&
+        ui_node_draws_before(static_cast<uint16_t>(bufferedScrollNode), static_cast<uint16_t>(i))) {
+      if (ui_render_scroll_bands(static_cast<uint16_t>(bufferedScrollNode))) {
+        bufferedScrollBands = 0;
+        bufferedScrollNode = -1;
+      } else {
+        // Band alloc failed — fall back to direct-full for the rest of this frame.
+        bufferedScrollBands = 0;
+        bufferedScrollDirectFull = 1;
       }
     }
 
@@ -443,666 +505,30 @@ export function emitTickDirtyDrawPhase(): string {
       bColor = ui_blend(bColor, backdrop, __ui_nodes[i].opacity);
       fillBg = ui_blend(__ui_nodes[i].bg, backdrop, __ui_nodes[i].opacity);
     }
-    switch (__ui_nodes[i].kind) {
-      case NODE_FILL:
-        if (__ui_nodes[i].gradientEnabled > 0) {
-          ui_draw_gradient_fill(i, drawY);
-        } else if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg) {
-          int16_t fillW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          int16_t fillH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, __ui_nodes[i].borderRadius, fillBg);
-        } else if (__ui_nodes[i].hasBg) {
-          int16_t fillW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          int16_t fillH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, fillBg);
-        }
-        ui_draw_shadow(i, drawY, 1);
-        if (__ui_nodes[i].borderStyle != 0) {
-          UI_COLOR_T bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
-          int16_t borderW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          int16_t borderH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          ui_draw_rect_outline(__ui_nodes[i].box.x, drawY, borderW, borderH,
-            __ui_nodes[i].borderRadius, __ui_nodes[i].borderStyle, __ui_nodes[i].borderWidth, bColor);
-        }
-        break;
-      case NODE_TEXT:
-        {
-          int16_t insetL = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingLeft);
-          int16_t insetR = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingRight);
-          int16_t insetT = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingTop);
-          int16_t textX = __ui_nodes[i].box.x + insetL;
-          int16_t textY = drawY + insetT;
-          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
-          if (textW < 1) textW = 1;
-          uint8_t textBoxPainted = 0;
-          if (__ui_nodes[i].gradientEnabled > 0) {
-            ui_draw_gradient_fill(i, drawY);
-            textBoxPainted = 1;
-          } else if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg) {
-            ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY,
-              __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, fillBg);
-            textBoxPainted = 1;
-          } else if (__ui_nodes[i].hasBg) {
-            ui_display_fill_rect(__ui_nodes[i].box.x, drawY,
-              __ui_nodes[i].box.w, __ui_nodes[i].box.h, fillBg);
-            textBoxPainted = 1;
-          }
-          {
-            uint16_t clearW = __ui_nodes[i].box.w;
-            int16_t paintedTextW = static_cast<int16_t>(__ui_nodes[i].lastTextWidth) + insetL + insetR;
-            if (__ui_nodes[i].lastTextWidth > 0 && paintedTextW > static_cast<int16_t>(clearW)) {
-              clearW = static_cast<uint16_t>(paintedTextW);
-            }
-            uint16_t paddedTw = static_cast<uint16_t>(static_cast<int16_t>(tw) + insetL + insetR);
-            if (paddedTw > clearW) clearW = paddedTw;
-            // overflow:hidden/scroll: never clear past the node's own box. A nowrap
-            // line wider than its box would otherwise erase the parent's border.
-            if (__ui_nodes[i].scrollable) clearW = __ui_nodes[i].box.w;
-            uint16_t clearH = __ui_nodes[i].box.h;
-            int16_t paintedTextH = static_cast<int16_t>(__ui_nodes[i].lastTextHeight) + insetT + static_cast<int16_t>(__ui_nodes[i].paddingBottom) + static_cast<int16_t>(__ui_nodes[i].borderWidth);
-            if (__ui_nodes[i].lastTextHeight > 0 && paintedTextH > static_cast<int16_t>(clearH)) {
-              clearH = static_cast<uint16_t>(paintedTextH);
-            }
-            uint16_t paddedTh = static_cast<uint16_t>(static_cast<int16_t>(th) + insetT + static_cast<int16_t>(__ui_nodes[i].paddingBottom) + static_cast<int16_t>(__ui_nodes[i].borderWidth));
-            if (paddedTh > clearH) clearH = paddedTh;
-            // Dynamic transparent text still needs a clear, otherwise old glyph
-            // pixels accumulate when only this text node is dirty.
-            UI_COLOR_T clearCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-            // Blend the clear toward the backdrop by opacity so a translucent text
-            // node (inherited from an opacity:<1 parent) doesn't repaint a solid
-            // block of its parent's fill around the glyphs.
-            if (__ui_nodes[i].opacity < 100) {
-              clearCol = ui_blend(clearCol, ui_parent_clear_color(i), __ui_nodes[i].opacity);
-            }
-            if (!textBoxPainted) {
-              ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH, clearCol);
-            }
-            __ui_nodes[i].lastTextWidth = tw;
-            __ui_nodes[i].lastTextHeight = th;
-          }
-          ui_draw_shadow(i, drawY, 1);
-          if (__ui_nodes[i].borderStyle != 0) {
-            ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
-          }
-          // Rich-text (inline runs): draw from precomputed geometry instead of the
-          // single-string wrapped path. Geometry is baked at transpile time; the
-          // runtime does not re-wrap.
-          if (__ui_nodes[i].runCount > 0) {
-          UI_COLOR_T richTextBg;
-          if (__ui_nodes[i].opacity < 100) {
-            uint16_t p = __ui_nodes[i].parent;
-            UI_COLOR_T source = (p != UI_NO_PARENT && __ui_nodes[p].hasBg) ? __ui_nodes[p].bg
-                          : (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
-            richTextBg = ui_blend(source, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
-          } else {
-            richTextBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
-          }
-          if (__ui_nodes[i].textShadowCount > 0) {
-            UI_COLOR_T tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-            uint32_t tsCol = ui_blend(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
-            // Shadow pass: draw the rich block in the shadow color at the offset.
-            // (Per-segment shadow color is approximated by drawing the whole
-            // block once in tsCol.)
-            ui_draw_rich_text(i,
-              textX + __ui_nodes[i].textShadowOffsetX,
-              textY + __ui_nodes[i].textShadowOffsetY,
-              tsClear, __ui_nodes[i].fontAntialias, 1, tsCol, static_cast<uint16_t>(textW));
-          }
-          ui_draw_rich_text(i, textX, textY, richTextBg, __ui_nodes[i].fontAntialias, 0, 0, static_cast<uint16_t>(textW));
-          break;
-        }
-        {
-          // Text shadow: draw the text in the shadow color at the offset first.
-          UI_COLOR_T tsClear = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-          if (__ui_nodes[i].textShadowCount > 0) {
-            uint32_t tsCol = ui_blend(__ui_nodes[i].textShadowColor, tsClear, __ui_nodes[i].textShadowAlpha);
-            ui_draw_wrapped_text(displayText,
-              textX + __ui_nodes[i].textShadowOffsetX,
-              textY + __ui_nodes[i].textShadowOffsetY,
-              static_cast<uint16_t>(textW), tsCol, tsCol, ts, __ui_nodes[i].fontAntialias,
-              __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight,
-              __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, 0, __ui_nodes[i].textOverflow);
-          }
-          // Use the parent's clear color as the text background when the node
-          // has no own background. This makes Adafruit_GFX's opaque glyph-cell
-          // fill blend with the parent (instead of drawing solid fg blocks that
-          // overlap adjacent lines/elements). For AA text, fg != bg so the
-          // edge-detection path still runs correctly.
-          // Glyph-cell background. For a translucent text node sitting on a
-          // filled translucent parent, the glyph cells must match the parent's
-          // blended fill: blend565(parent.bg, backdrop, opacity). The node's own
-          // clearColor carries the backdrop (set by flatten), and opacity has
-          // already inherited from the parent. Use the parent's raw bg as the
-          // source so the glyph cells reproduce the parent's translucent fill.
-          UI_COLOR_T textBg;
-          if (__ui_nodes[i].opacity < 100) {
-            uint16_t p = __ui_nodes[i].parent;
-            UI_COLOR_T source = (p != UI_NO_PARENT && __ui_nodes[p].hasBg) ? __ui_nodes[p].bg
-                          : (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
-            textBg = ui_blend(source, __ui_nodes[i].clearColor, __ui_nodes[i].opacity);
-          } else {
-            textBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : ui_parent_clear_color(i);
-          }
-          ui_draw_wrapped_text(displayText, textX, textY, static_cast<uint16_t>(textW),
-            __ui_nodes[i].fg, textBg, ts, __ui_nodes[i].fontAntialias,
-            __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing, __ui_nodes[i].lineHeight,
-            __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
-          }
-        }
-        break;
-      case NODE_BUTTON:
-        if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
-          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
-        else if (__ui_nodes[i].hasBg)
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
-        ui_draw_shadow(i, drawY, 1);
-        if (__ui_nodes[i].borderStyle != 0) {
-          ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
-        }
-        {
-          int16_t insetL = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingLeft);
-          int16_t insetR = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingRight);
-          int16_t insetT = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingTop);
-          int16_t insetB = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingBottom);
-          int16_t textX = __ui_nodes[i].box.x + insetL;
-          int16_t textY = drawY + insetT;
-          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
-          int16_t textH = static_cast<int16_t>(__ui_nodes[i].box.h) - insetT - insetB;
-          if (textW < 1) textW = 1;
-          if (textH < 1) textH = static_cast<int16_t>(th);
-          ui_draw_wrapped_text(displayText,
-            textX,
-            textY + (textH - static_cast<int16_t>(th)) / 2,
-            static_cast<uint16_t>(textW),
-            __ui_nodes[i].fg,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
-            ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
-            __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
-        }
-        break;
-      case NODE_CHECK:
-        {
-          uint16_t clearW = __ui_nodes[i].box.w;
-          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > static_cast<int16_t>(clearW)) {
-            clearW = static_cast<uint16_t>(__ui_nodes[i].lastTextWidth);
-          }
-          if (paintTextW > clearW) clearW = paintTextW;
-          uint16_t clearH = __ui_nodes[i].box.h;
-          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > static_cast<int16_t>(clearH)) {
-            clearH = static_cast<uint16_t>(__ui_nodes[i].lastTextHeight);
-          }
-          if (paintTextH > clearH) clearH = paintTextH;
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
-          __ui_nodes[i].lastTextWidth = paintTextW;
-          __ui_nodes[i].lastTextHeight = paintTextH;
-        }
-        {
-          int16_t cbX = __ui_nodes[i].box.x;
-          int16_t cbY = drawY;
-          if (__ui_nodes[i].value) {
-            ui_display_fill_rect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
-            UI_COLOR_T inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-#ifdef UI_AA
-            {
-              // Draw the checkmark to a 16×16 AA canvas for smooth diagonals.
-              CuttlefishCanvas16* c = ui_aa_begin(16, 16, __ui_nodes[i].fg);
-              // First stroke: down-left (3,8 → 7,12)
-              ui_aa_line(c, 4.0f, 8.0f, 7.0f, 12.0f, inv);
-              ui_aa_line(c, 5.0f, 8.0f, 8.0f, 12.0f, inv);
-              // Second stroke: up-right (7,11 → 13,4)
-              ui_aa_line(c, 7.0f, 11.0f, 13.0f, 4.0f, inv);
-              ui_aa_line(c, 8.0f, 11.0f, 14.0f, 4.0f, inv);
-              ui_aa_push(c, cbX, cbY);
-            }
-#else
-            ui_display_draw_line(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
-            ui_display_draw_line(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
-            ui_display_draw_line(cbX + 3, cbY + 9, cbX + 7, cbY + 13, inv);
-            ui_display_draw_line(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
-            ui_display_draw_line(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
-            ui_display_draw_line(cbX + 7, cbY + 13, cbX + 13, cbY + 5, inv);
-#endif
-          } else {
-            ui_display_draw_rect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
-          }
-        }
-        ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY, textMaxW,
-          __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
-          ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
-          __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
-        break;
-      case NODE_RADIO:
-        {
-          uint16_t clearW = __ui_nodes[i].box.w;
-          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > static_cast<int16_t>(clearW)) {
-            clearW = static_cast<uint16_t>(__ui_nodes[i].lastTextWidth);
-          }
-          if (paintTextW > clearW) clearW = paintTextW;
-          uint16_t clearH = __ui_nodes[i].box.h;
-          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > static_cast<int16_t>(clearH)) {
-            clearH = static_cast<uint16_t>(__ui_nodes[i].lastTextHeight);
-          }
-          if (paintTextH > clearH) clearH = paintTextH;
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
-          __ui_nodes[i].lastTextWidth = paintTextW;
-          __ui_nodes[i].lastTextHeight = paintTextH;
-          int16_t cbX = __ui_nodes[i].box.x;
-          int16_t cbY = drawY;
-#ifdef UI_AA
-          {
-            // Render the radio circle to a 16×16 AA canvas, then push.
-            UI_COLOR_T radioBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-            CuttlefishCanvas16* c = ui_aa_begin(16, 16, radioBg);
-            if (__ui_nodes[i].value) {
-              ui_aa_fill_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
-              ui_aa_fill_circle(c, 8, 8, 3.0f, radioBg);
-            } else {
-              ui_aa_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
-            }
-            ui_aa_push(c, cbX, cbY);
-          }
-#else
-          if (__ui_nodes[i].value) {
-            ui_display_fill_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
-            ui_display_fill_circle(cbX + 8, cbY + 8, 3, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
-          } else {
-            ui_display_draw_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
-          }
-#endif
-        }
-        ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY, textMaxW,
-          __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
-          ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
-          __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
-        break;
-      case NODE_PROGRESS:
-        // Progress bar: outline track + filled portion based on .value (0-100).
-        // Incremental redraw — only draws/clears the delta to avoid flashing.
-        {
-          int16_t bx = __ui_nodes[i].box.x;
-          int16_t by = drawY;
-          int16_t bw = __ui_nodes[i].box.w;
-          int16_t bh = __ui_nodes[i].box.h;
-          UI_COLOR_T bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-          UI_COLOR_T fgCol = __ui_nodes[i].fg;
-
-          // On first draw (lastTextWidth < 0), draw everything.
-          // Otherwise incremental: only update the changed portion.
-          uint8_t pct = constrain(__ui_nodes[i].value, 0, 100);
-          int16_t fillW = (static_cast<int32_t>(bw - 2) * pct) / 100;
-          int16_t prevW = __ui_nodes[i].lastTextWidth; // reused as previous fill width
-
-          if (prevW < 0) {
-            // Full redraw: outline + background + fill
-            ui_display_draw_rect(bx, by, bw, bh, fgCol);
-            ui_display_fill_rect(bx + 1, by + 1, bw - 2, bh - 2, bgCol);
-            if (fillW > 0) {
-              ui_display_fill_rect(bx + 1, by + 1, fillW, bh - 2, fgCol);
-            }
-          } else if (fillW > prevW) {
-            // Value increased: draw new fill segment on top (no clear needed)
-            ui_display_fill_rect(bx + 1 + prevW, by + 1, fillW - prevW, bh - 2, fgCol);
-          } else if (fillW < prevW) {
-            // Value decreased: clear the removed portion
-            ui_display_fill_rect(bx + 1 + fillW, by + 1, prevW - fillW, bh - 2, bgCol);
-          }
-          // Remember current fill width for next incremental update
-          __ui_nodes[i].lastTextWidth = fillW;
-        }
-        break;
-      case NODE_RANGE:
-        // Range slider: horizontal track + draggable thumb.
-        // Incremental redraw (like NODE_PROGRESS): lastTextWidth holds the
-        // previous fill width. We erase the delta region between old and new
-        // thumb positions with the background, then redraw the track portion
-        // and the new thumb — so dragging backward doesn't leave ghost thumbs.
-        {
-          int16_t bx = __ui_nodes[i].box.x;
-          int16_t by = drawY;
-          int16_t bw = __ui_nodes[i].box.w;
-          int16_t bh = __ui_nodes[i].box.h;
-          UI_COLOR_T fgCol = __ui_nodes[i].fg;
-          UI_COLOR_T bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-          UI_COLOR_T dimFg = (UI_COLOR_T)((fgCol >> 1) & UI_DIM_MASK);
-
-          int16_t trackY = by + bh / 2;
-          int16_t rMin = __ui_nodes[i].rangeMin;
-          int16_t rMax = __ui_nodes[i].rangeMax;
-          int16_t range = rMax - rMin;
-          if (range <= 0) range = 100;
-          int16_t pct = constrain(__ui_nodes[i].value, rMin, rMax) - rMin;
-          int16_t fillW = (static_cast<int32_t>(bw - 8) * pct) / range;
-          // lastTextWidth carries the previous fill width, or -1 if this node
-          // has never been drawn (fillW=0 at value=min is a valid thumb pos).
-          int16_t prevFillW = __ui_nodes[i].lastTextWidth;
-          int16_t newThumbX = bx + 4 + fillW - 3;
-
-          if (prevFillW < 0) {
-            // First draw: redraw the whole track + fill from scratch.
-            ui_display_draw_fast_hline(bx, trackY, bw, dimFg);
-            ui_display_draw_fast_hline(bx + 4, trackY, fillW, fgCol);
-          } else {
-            // Incremental: wipe the strip between the old and new thumb
-            // positions (whichever extends further on each side), then restore
-            // the track line. This is symmetric — old thumbs disappear whether
-            // the drag moves forward or backward.
-            int16_t prevThumbX = bx + 4 + prevFillW - 3;
-            int16_t left = prevThumbX < newThumbX ? prevThumbX : newThumbX;
-            int16_t right = prevThumbX + 6 > newThumbX + 6 ? prevThumbX + 6 : newThumbX + 6;
-            if (left < bx) left = bx;
-            if (right > bx + bw) right = bx + bw;
-            // Erase the thumb band (10px tall) to background.
-            ui_display_fill_rect(left, trackY - 5, right - left, 10, bgCol);
-            // Restore the track line over the wiped strip: bright up to the
-            // current fill end, dim beyond it.
-            int16_t fillEnd = bx + 4 + fillW;
-            if (right <= fillEnd) {
-              ui_display_draw_fast_hline(left, trackY, right - left, fgCol);
-            } else if (left >= fillEnd) {
-              ui_display_draw_fast_hline(left, trackY, right - left, dimFg);
-            } else {
-              ui_display_draw_fast_hline(left, trackY, fillEnd - left, fgCol);
-              ui_display_draw_fast_hline(fillEnd, trackY, right - fillEnd, dimFg);
-            }
-          }
-
-          // Thumb: small filled rectangle at the current position.
-          if (newThumbX < bx + 1) newThumbX = bx + 1;
-          if (newThumbX > bx + bw - 7) newThumbX = bx + bw - 7;
-          ui_display_fill_rect(newThumbX, trackY - 5, 6, 10, fgCol);
-
-          // Remember current fill width for the next incremental update.
-          __ui_nodes[i].lastTextWidth = fillW;
-        }
-        break;
-      case NODE_INPUT:
-        // Input field: bordered rect + current text (or placeholder), clipped to box width.
-        {
-          int16_t bx = __ui_nodes[i].box.x;
-          int16_t by = drawY;
-          int16_t bw = __ui_nodes[i].box.w;
-          int16_t bh = __ui_nodes[i].box.h;
-          UI_COLOR_T fgCol = __ui_nodes[i].fg;
-          UI_COLOR_T bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
-          if (__ui_nodes[i].borderRadius > 0) {
-            ui_display_fill_round_rect(bx, by, bw, bh, __ui_nodes[i].borderRadius, bgCol);
-          } else {
-            ui_display_fill_rect(bx, by, bw, bh, bgCol);
-          }
-          UI_COLOR_T inputBorder = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : fgCol;
-          uint8_t inputBorderStyle = __ui_nodes[i].borderStyle ? __ui_nodes[i].borderStyle : 1;
-          uint8_t inputBorderWidth = __ui_nodes[i].borderWidth ? __ui_nodes[i].borderWidth : 1;
-          ui_draw_rect_outline(bx, by, bw, bh, __ui_nodes[i].borderRadius, inputBorderStyle, inputBorderWidth, inputBorder);
-          // Show typed text (textBuffer) in fg color, or placeholder (.text)
-          // dimmed gray when the buffer is empty.
-          UI_COLOR_T textCol = fgCol;
-          const char* disp = (__ui_nodes[i].textBuffer[0] != 0)
-            ? __ui_nodes[i].textBuffer
-            : (__ui_nodes[i].text ? __ui_nodes[i].text : "");
-#if defined(UI_HIDE_OSK)
-          // Desktop target: when this input is the active edit target, suppress
-          // the placeholder. The editing buffer is loaded from the (likely empty)
-          // textBuffer on focus, so without this the placeholder ("enter name")
-          // would render with the caret at its end. Hide it so the caret shows
-          // on a clean field at position 0 until the user types.
-          if (__ui_kb_visible && static_cast<int16_t>(__ui_kb_target) == static_cast<int16_t>(i) && __ui_nodes[i].textBuffer[0] == 0) {
-            disp = "";
-          }
-#endif
-          if (__ui_nodes[i].textBuffer[0] == 0) {
-#if UI_COLOR_DEPTH == 888
-            textCol = 0x848484;
-#else
-            textCol = 0x8410;
-#endif
-          }
-          // Note: the actual text draw is via ui_draw_text (which uses __ui_gfx).
-          // The setCursor/setTextColor/setTextSize below are legacy — ui_draw_text
-          // handles its own cursor/colors. Keep them on __ui_gfx for consistency
-          // (in case __ui_gfx is the scroll canvas, not __tc_display).
-          ui_display_set_cursor(bx + 4, by + (bh - ts * 8) / 2);
-          ui_display_set_text_color(textCol, bgCol);
-          ui_display_set_text_size(ts);
-          // Clip: at textSize ts, each char is ts*6px advance. Only print chars
-          // that fit within the box (bw - 8px margin), so text never overflows
-          // the border or wraps to the next line.
-          int16_t maxChars = (bw - 8) / (ts * 6);
-          if (maxChars < 0) maxChars = 0;
-          int16_t len = static_cast<int16_t>(strlen(disp));
-          if (len > maxChars) len = maxChars;
-          if (len > UI_TEXT_BUF) len = UI_TEXT_BUF;
-          char clipped[UI_TEXT_BUF + 1];
-          for (int16_t c = 0; c < len; c++) {
-            clipped[c] = disp[c];
-          }
-          clipped[len] = 0;
-          ui_draw_text(clipped, bx + 4, by + (bh - ui_text_height(ts, __ui_nodes[i].fontFace)) / 2,
-            textCol, bgCol, ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
-#if defined(UI_HIDE_OSK)
-          // Desktop target: with no OSK grid there's no focus indicator. Draw a
-          // blinking caret at the end of the typed text on the active edit target
-          // so the user sees which field they're editing. Blink ~3×/sec via the
-          // top bits of __ui_kb_blink (mask 0x20 toggles every 32 ticks ≈ 530ms).
-          if (__ui_kb_visible && static_cast<int16_t>(__ui_kb_target) == static_cast<int16_t>(i) && (__ui_kb_blink & 0x20)) {
-            uint16_t caretW = ui_text_width(clipped, ts, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
-            int16_t caretX = bx + 4 + static_cast<int16_t>(caretW);
-            int16_t caretYTop = by + (bh - ts * 8) / 2;
-            // fgCol (not textCol): the placeholder-dimming path sets textCol to
-            // gray, which would make the caret nearly invisible on a focused
-            // empty field. The caret should always be the input's foreground.
-            ui_display_fill_rect(caretX, caretYTop, static_cast<int16_t>(ts > 1 ? 2 : 1), static_cast<int16_t>(ts * 8), fgCol);
-          }
-#endif
-        }
-        break;
-      case NODE_IMG:
-        {
-          UI_COLOR_T imgBg = __ui_nodes[i].hasBg ? fillBg : __ui_nodes[i].clearColor;
-          int16_t fillW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          int16_t fillH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, fillW, fillH, imgBg);
-        }
-        if (__ui_nodes[i].imgDataId < __ui_image_count) {
-          const UIImage* img = &__ui_images[__ui_nodes[i].imgDataId];
-          int16_t targetW = __ui_nodes[i].box.w;
-          int16_t targetH = __ui_nodes[i].box.h;
-          ui_draw_image_with_fit(img, __ui_nodes[i].box.x, drawY, __ui_nodes[i].rotateDeg, __ui_nodes[i].objectFit, targetW, targetH);
-        }
-        if (__ui_nodes[i].borderStyle != 0) {
-          int16_t borderW = ui_rotated_face_w(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          int16_t borderH = ui_rotated_face_h(i, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
-          ui_draw_rect_outline(__ui_nodes[i].box.x, drawY, borderW, borderH,
-            __ui_nodes[i].borderRadius, __ui_nodes[i].borderStyle, __ui_nodes[i].borderWidth, bColor);
-        }
-        break;
-      case NODE_CANVAS: {
-        // Find this node's draw callback.
-        void (*__ui_canvas_fn)(CuttlefishCanvas16*) = nullptr;
-        for (uint16_t b = 0; b < __ui_canvas_binding_count; b++) {
-          if (__ui_canvas_bindings[b].node == i) { __ui_canvas_fn = __ui_canvas_bindings[b].fn; break; }
-        }
-        if (__ui_canvas_fn) {
-          int16_t __ui_cw = __ui_nodes[i].canvasW;
-          int16_t __ui_ch = __ui_nodes[i].canvasH;
-          if (__ui_cw > 0 && __ui_ch > 0) {
-            uint8_t __ui_canvas_drawn = 0;
-            if (ui_display_is_default_target()) {
-              // Cache a canvas sized to the buffer for direct hardware draws so
-              // the callback's many primitives push as one bitmap. When the
-              // active target is already a memory canvas (scroll/repair/full
-              // framebuffer), skip the nested allocation and draw directly below.
-              // A canvas can construct but fail its internal pixel-buffer malloc
-              // (non-null canvas, null buffer). Treat that as "no canvas" so a
-              // transient malloc failure self-heals instead of blanking the node.
-              if (!__ui_node_canvas || !display_canvasBuffer(__ui_node_canvas) ||
-                  display_canvasWidth(__ui_node_canvas) != __ui_cw || display_canvasHeight(__ui_node_canvas) != __ui_ch) {
-                display_deleteCanvas(__ui_node_canvas);
-                __ui_node_canvas = display_createCanvas(__ui_cw, __ui_ch);
-              }
-              CuttlefishCanvas16* __ui_lc = __ui_node_canvas;
-              if (__ui_lc && display_canvasBuffer(__ui_lc)) {
-                display_canvasFillScreen(__ui_lc, __ui_nodes[i].clearColor);
-                CuttlefishDisplayTarget* __ui_prev_target = ui_display_get_target();
-                ui_display_set_target((CuttlefishDisplayTarget*)__ui_lc);
-                __ui_canvas_fn(__ui_lc);
-                ui_display_set_target(__ui_prev_target);
-                ui_draw_canvas_rect(__ui_lc, __ui_nodes[i].box.x, drawY, __ui_cw, __ui_ch);
-                __ui_canvas_drawn = 1;
-              }
-            }
-            if (!__ui_canvas_drawn) {
-              UI_COLOR_T __ui_canvas_bg = __ui_nodes[i].hasBg ? fillBg : __ui_nodes[i].clearColor;
-              ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_canvas_bg);
-              int16_t __ui_prev_off_x = __ui_draw_off_x;
-              int16_t __ui_prev_off_y = __ui_draw_off_y;
-              int16_t __ui_prev_canvas_w = __ui_canvas_fallback_w;
-              int16_t __ui_prev_canvas_h = __ui_canvas_fallback_h;
-              __ui_canvas_fallback_w = __ui_cw;
-              __ui_canvas_fallback_h = __ui_ch;
-              __ui_draw_off_x = static_cast<int16_t>(__ui_prev_off_x + __ui_nodes[i].box.x);
-              __ui_draw_off_y = static_cast<int16_t>(__ui_prev_off_y + drawY);
-              __ui_canvas_fn(nullptr);
-              __ui_draw_off_x = __ui_prev_off_x;
-              __ui_draw_off_y = __ui_prev_off_y;
-              __ui_canvas_fallback_w = __ui_prev_canvas_w;
-              __ui_canvas_fallback_h = __ui_prev_canvas_h;
-            }
-          }
-        }
-        break;
-      }
-      case NODE_LIST: {
-        // Virtualized list: state lives on the node now (listCountFn/listItemFn/
-        // listCount/scrollY/contentHeight/listItemHeight), not in a side table.
-        if (!__ui_nodes[i].listItemFn) break;
-        int16_t bx = __ui_nodes[i].box.x;
-        int16_t by = drawY;
-        int16_t bw = __ui_nodes[i].box.w;
-        int16_t bh = __ui_nodes[i].box.h;
-        uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
-        uint16_t itemCount = __ui_nodes[i].listCount;
-        int16_t listScrollY = __ui_nodes[i].scrollY;
-        int16_t listContentH = __ui_nodes[i].contentHeight;
-        UI_COLOR_T clearCol = __ui_nodes[i].clearColor;
-        uint8_t listFullRepaint = 0;
-        // Render to a viewport-sized canvas so edge glyphs are naturally clipped.
-        // Treat a null buffer (failed internal malloc) as "no canvas" and retry —
-        // see __ui_node_canvas for the zombie-caching rationale.
-        // __ui_list_canvas is file-scoped so ui_release_canvas_state() can free it.
-        if (!__ui_list_canvas || !display_canvasBuffer(__ui_list_canvas) ||
-            display_canvasWidth(__ui_list_canvas) != bw || display_canvasHeight(__ui_list_canvas) != bh) {
-          display_deleteCanvas(__ui_list_canvas);
-          __ui_list_canvas_node = -1;
-          __ui_list_canvas = display_createCanvas(bw, bh);
-          listFullRepaint = 1;
-        }
-        CuttlefishCanvas16* lc = __ui_list_canvas;
-        if (!lc || !display_canvasBuffer(lc)) {
-          break;
-        }
-        if (__ui_list_canvas_node != static_cast<int16_t>(i)) listFullRepaint = 1;
-        int16_t repaintY = 0;
-        int16_t repaintH = bh;
-        int16_t deltaY = listScrollY - __ui_nodes[i].lastPaintedScrollY;
-        int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
-        uint8_t canShiftList = (!listFullRepaint && deltaY != 0 && absDelta < bh);
-        if (canShiftList) {
-          ui_shift_container_canvas(lc, deltaY, clearCol, &repaintY, &repaintH);
-        } else {
-          display_canvasFillScreen(lc, clearCol);
-          repaintY = 0;
-          repaintH = bh;
-        }
-        // GFXcanvas text has no clipping. For shift-and-repair frames, draw row
-        // text into a strip-sized repair canvas first, then blit only that strip
-        // into the shifted list canvas. This prevents a 1-5px repair from
-        // repainting full glyphs across pixels that were already shifted.
-        CuttlefishCanvas16* listTextCanvas = lc;
-        int16_t listTextOffsetY = 0;
-        uint8_t drawingListRepair = 0;
-        if (canShiftList && repaintH > 0 && repaintH < bh) {
-          CuttlefishCanvas16* rc = ui_get_repair_canvas(bw, repaintH);
-          if (rc) {
-            display_canvasFillScreen(rc, clearCol);
-            listTextCanvas = rc;
-            listTextOffsetY = repaintY;
-            drawingListRepair = 1;
-          } else {
-            display_canvasFillScreen(lc, clearCol);
-            repaintY = 0;
-            repaintH = bh;
-            canShiftList = 0;
-          }
-        }
-        // Compute visible range for the repainted strip. Previously-rendered
-        // pixels are shifted in-place; only the exposed band needs new rows.
-        uint16_t first = (listScrollY + repaintY) / ih;
-        uint16_t last = (listScrollY + repaintY + repaintH - 1) / ih + 1;
-        if (itemCount > 0 && last >= itemCount) last = itemCount - 1;
-        // Draw each visible item (canvas-local coords: 0,0 = viewport top).
-        char listBuf[UI_TEXT_BUF + 1];
-        display_targetSetTextWrap((CuttlefishDisplayTarget*)listTextCanvas, false);
-        if (itemCount > 0 && repaintH > 0) {
-          for (uint16_t idx = first; idx <= last; idx++) {
-            int16_t itemY = static_cast<int16_t>(idx * ih) - listScrollY - listTextOffsetY;
-            __ui_nodes[i].listItemFn(idx, listBuf, UI_TEXT_BUF + 1);
-            listBuf[UI_TEXT_BUF] = 0;
-            display_targetSetCursor((CuttlefishDisplayTarget*)listTextCanvas, 4, itemY + (ih - 16) / 2);
-            display_targetSetTextColor((CuttlefishDisplayTarget*)listTextCanvas, __ui_nodes[i].fg);
-            display_targetSetTextSize((CuttlefishDisplayTarget*)listTextCanvas, 2);
-            display_targetPrint((CuttlefishDisplayTarget*)listTextCanvas, listBuf);
-          }
-        }
-        if (drawingListRepair) {
-          CuttlefishDisplayTarget* prevTarget = ui_display_get_target();
-          ui_display_set_target((CuttlefishDisplayTarget*)lc);
-          ui_draw_canvas_rect(listTextCanvas, 0, repaintY, bw, repaintH);
-          ui_display_set_target(prevTarget);
-        }
-        // Scrollbar (canvas-local coords).
-        if (listContentH > bh) {
-          int16_t tx = bw - 4;
-          uint16_t thumbH = static_cast<uint32_t>(bh) * bh / listContentH;
-          if (thumbH < 8) thumbH = 8;
-          int16_t maxScroll = listContentH - bh;
-          uint16_t thumbY = maxScroll > 0 ? static_cast<uint32_t>(bh - thumbH) * listScrollY / maxScroll : 0;
-          UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[i].fg >> 1) & UI_DIM_MASK);
-          display_canvasFillRect(lc, tx, 0, 3, bh, dimFg);
-          display_canvasFillRect(lc, tx, thumbY, 3, thumbH, __ui_nodes[i].fg);
-        }
-        // Outset shadows are static decoration. Redrawing the hard shadow
-        // directly to the panel before every small scroll-frame creates a
-        // visible shadow-then-content intermediate state on SPI TFTs. Keep it
-        // for full list repaints, but skip it for shift-and-repair scrolls.
-        if (!drawingBufferedScroll && !__ui_fb && !canShiftList) {
-          ui_draw_shadow(i, by, 0);
-        }
-        // Standalone lists push directly. Lists inside a buffered scroll
-        // container must composite into that scroll canvas; their box has
-        // already been translated to canvas-local coordinates.
-        if (drawingBufferedScroll) {
-          ui_draw_canvas_rect(lc, bx, by, bw, bh);
-        } else {
-          ui_push_canvas_rect(lc, bx, by, bw, bh);
-        }
-        // Draw static decoration after the scrollable pixels are composited.
-        // Keeping border rows out of __ui_list_canvas prevents the cached
-        // shift step from dragging top/bottom border pixels through the list.
-        ui_draw_shadow(i, by, 1);
-        if (__ui_nodes[i].borderStyle != 0) {
-          ui_draw_node_border(i, bx, by, bColor);
-        }
-        ui_draw_node_outline(i, bx, by);
-        __ui_list_canvas_node = static_cast<int16_t>(i);
-        __ui_nodes[i].lastPaintedScrollY = listScrollY;
-        __ui_nodes[i].dirty = 0;
-        ui_display_set_target(__ui_draw_target);
-        __ui_nodes[i].box.x = origBoxX;
-        __ui_nodes[i].box.y = origBoxY;
-        continue;  // list handled canvas push, decoration, and coordinate restore
-      }
+    // ── Per-kind draw dispatch ─────────────────────────────────────────────
+    // The kind switch lives in ui_draw_node_body (node-draw-body slice) so the
+    // strip/band renderer can reuse it. The ctx carries the draw state both
+    // paths share; the list case may return 1 (it handled canvas push,
+    // decoration, coord restore, and dirty-clear itself) in which case this
+    // node is done — skip the post-switch epilogue exactly as the old inline
+    // 'continue;' did.
+    UINodeDrawCtx __ui_ctx;
+    __ui_ctx.drawY = drawY;
+    __ui_ctx.bColor = bColor;
+    __ui_ctx.fillBg = fillBg;
+    __ui_ctx.ts = ts;
+    __ui_ctx.textMaxW = textMaxW;
+    __ui_ctx.tw = tw;
+    __ui_ctx.th = th;
+    __ui_ctx.paintTextW = paintTextW;
+    __ui_ctx.paintTextH = paintTextH;
+    __ui_ctx.displayText = displayText;
+    __ui_ctx.drawingBufferedScroll = drawingBufferedScroll;
+    __ui_ctx.drawTarget = __ui_draw_target;
+    __ui_ctx.origBoxX = origBoxX;
+    __ui_ctx.origBoxY = origBoxY;
+    if (ui_draw_node_body(i, &__ui_ctx)) {
+      continue;
     }
     if (__ui_nodes[i].kind == NODE_FILL && ui_rotation_quadrant(__ui_nodes[i].rotateDeg) != 0 &&
         __ui_nodes[i].outlineStyle != 0 && __ui_nodes[i].outlineWidth > 0) {

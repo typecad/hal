@@ -10,6 +10,7 @@ static inline void ui_release_canvas_state() {
   __ui_list_canvas_node = -1;
   display_deleteCanvas(__ui_node_canvas);      __ui_node_canvas = nullptr;
   display_deleteCanvas(__ui_repair_canvas);    __ui_repair_canvas = nullptr;
+  display_deleteCanvas(__ui_band_canvas);      __ui_band_canvas = nullptr;
   display_deleteCanvas(__ui_kb_canvas);        __ui_kb_canvas = nullptr;
 }
 

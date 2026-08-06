@@ -131,6 +131,7 @@ static CuttlefishCanvas16* __ui_list_canvas = nullptr;       // virtualized <lis
 static int16_t __ui_list_canvas_node = -1;                   // node currently represented by __ui_list_canvas
 static CuttlefishCanvas16* __ui_node_canvas = nullptr;       // <canvas> element offscreen
 static CuttlefishCanvas16* __ui_repair_canvas = nullptr;     // buffered-paint / exposed-strip
+static CuttlefishCanvas16* __ui_band_canvas = nullptr;       // band renderer (no-PSRAM scroll)
 static CuttlefishCanvas16* __ui_kb_canvas = nullptr;         // on-screen keyboard overlay
 static int16_t __ui_canvas_fallback_w = 0;                   // dimensions for direct <canvas> fallback
 static int16_t __ui_canvas_fallback_h = 0;

@@ -73,6 +73,14 @@ export function emitTypesDefines(): string {
 #ifndef UI_SCROLL_CANVAS_BUDGET_BYTES
 #define UI_SCROLL_CANVAS_BUDGET_BYTES 88000
 #endif
+// Band renderer: height (px) of the horizontal band canvas used to composite
+// scroll subtrees tear-free when no viewport canvas fits (no PSRAM / over
+// budget). Each band is vw × UI_STRIP_BAND_HEIGHT (~10KB at RGB565 for a
+// 320px viewport), so it fits internal SRAM regardless of program size. The
+// whole visible subtree is rendered band-by-band, one SPI push per band.
+#ifndef UI_STRIP_BAND_HEIGHT
+#define UI_STRIP_BAND_HEIGHT 16
+#endif
 #if defined(ESP32) || defined(ESP8266)
 #include <Esp.h>
 #endif
