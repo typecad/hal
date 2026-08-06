@@ -69,6 +69,10 @@ static inline void ui_push_buffered_scroll_canvas(CuttlefishCanvas16* bufferedSc
   int16_t tx = vw - 4;
   uint16_t thumbH = static_cast<uint32_t>(vh) * vh / __ui_nodes[si].contentHeight;
   if (thumbH < 8) thumbH = 8;
+  // Clamp to vh so (vh - thumbH) below can't underflow on a degenerate sub-8px
+  // viewport (which would cast a negative value to a huge uint32_t and place the
+  // thumb off-screen). Matches the guard in ui_render_scroll_bands.
+  if (thumbH > static_cast<uint16_t>(vh)) thumbH = static_cast<uint16_t>(vh);
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
   uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
@@ -94,6 +98,10 @@ static inline void ui_draw_scrollbar_direct(int16_t si, int16_t vox, int16_t voy
   int16_t tx = vox + vw - 4;
   uint16_t thumbH = static_cast<uint32_t>(vh) * vh / __ui_nodes[si].contentHeight;
   if (thumbH < 8) thumbH = 8;
+  // Clamp to vh so (vh - thumbH) below can't underflow on a degenerate sub-8px
+  // viewport (which would cast a negative value to a huge uint32_t and place the
+  // thumb off-screen). Matches the guard in ui_render_scroll_bands.
+  if (thumbH > static_cast<uint16_t>(vh)) thumbH = static_cast<uint16_t>(vh);
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
   uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);

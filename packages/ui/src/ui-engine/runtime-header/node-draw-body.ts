@@ -874,15 +874,24 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
       ctx.drawTarget = prevTarget;
       ctx.origBoxX = origBoxX;
       ctx.origBoxY = origBoxY;
-      // Reset incremental-paint caches so a freshly cleared band repaints from
-      // scratch (lastTextWidth/Height carry across frames for the main loop's
-      // incremental NODE_TEXT/NODE_PROGRESS/NODE_RANGE redraws; in a band the
-      // node paints onto a blank canvas every band, so prior extents are bogus).
+      // The band draws onto a freshly cleared canvas every band, so the node's
+      // incremental-paint caches (lastTextWidth/lastTextHeight, which carry
+      // across frames for the main loop's NODE_TEXT/NODE_PROGRESS/NODE_RANGE
+      // incremental redraws) are bogus here — reset to force a full repaint into
+      // the blank band. Save/restore them around the draw so the band path is
+      // transient: it must not corrupt the persistent incremental-redraw state
+      // the main loop relies on if this container later transitions to canvas
+      // mode (the values are also stale across the multiple bands a tall node
+      // spans, so restoring the pre-band value keeps things consistent).
+      int16_t savedLastTextW = __ui_nodes[c].lastTextWidth;
+      uint16_t savedLastTextH = __ui_nodes[c].lastTextHeight;
       if (__ui_nodes[c].kind == NODE_PROGRESS || __ui_nodes[c].kind == NODE_RANGE) {
         __ui_nodes[c].lastTextWidth = -1;
       }
       __ui_nodes[c].lastTextHeight = 0;
       ui_draw_node_body(static_cast<int16_t>(c), &ctx);
+      __ui_nodes[c].lastTextWidth = savedLastTextW;
+      __ui_nodes[c].lastTextHeight = savedLastTextH;
       __ui_nodes[c].box.x = origBoxX;
       __ui_nodes[c].box.y = origBoxY;
     }

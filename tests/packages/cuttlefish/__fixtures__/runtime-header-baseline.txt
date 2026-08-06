@@ -1510,6 +1510,10 @@ static inline void ui_push_buffered_scroll_canvas(CuttlefishCanvas16* bufferedSc
   int16_t tx = vw - 4;
   uint16_t thumbH = static_cast<uint32_t>(vh) * vh / __ui_nodes[si].contentHeight;
   if (thumbH < 8) thumbH = 8;
+  // Clamp to vh so (vh - thumbH) below can't underflow on a degenerate sub-8px
+  // viewport (which would cast a negative value to a huge uint32_t and place the
+  // thumb off-screen). Matches the guard in ui_render_scroll_bands.
+  if (thumbH > static_cast<uint16_t>(vh)) thumbH = static_cast<uint16_t>(vh);
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
   uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
@@ -1535,6 +1539,10 @@ static inline void ui_draw_scrollbar_direct(int16_t si, int16_t vox, int16_t voy
   int16_t tx = vox + vw - 4;
   uint16_t thumbH = static_cast<uint32_t>(vh) * vh / __ui_nodes[si].contentHeight;
   if (thumbH < 8) thumbH = 8;
+  // Clamp to vh so (vh - thumbH) below can't underflow on a degenerate sub-8px
+  // viewport (which would cast a negative value to a huge uint32_t and place the
+  // thumb off-screen). Matches the guard in ui_render_scroll_bands.
+  if (thumbH > static_cast<uint16_t>(vh)) thumbH = static_cast<uint16_t>(vh);
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
   uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
@@ -4788,15 +4796,24 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
       ctx.drawTarget = prevTarget;
       ctx.origBoxX = origBoxX;
       ctx.origBoxY = origBoxY;
-      // Reset incremental-paint caches so a freshly cleared band repaints from
-      // scratch (lastTextWidth/Height carry across frames for the main loop's
-      // incremental NODE_TEXT/NODE_PROGRESS/NODE_RANGE redraws; in a band the
-      // node paints onto a blank canvas every band, so prior extents are bogus).
+      // The band draws onto a freshly cleared canvas every band, so the node's
+      // incremental-paint caches (lastTextWidth/lastTextHeight, which carry
+      // across frames for the main loop's NODE_TEXT/NODE_PROGRESS/NODE_RANGE
+      // incremental redraws) are bogus here — reset to force a full repaint into
+      // the blank band. Save/restore them around the draw so the band path is
+      // transient: it must not corrupt the persistent incremental-redraw state
+      // the main loop relies on if this container later transitions to canvas
+      // mode (the values are also stale across the multiple bands a tall node
+      // spans, so restoring the pre-band value keeps things consistent).
+      int16_t savedLastTextW = __ui_nodes[c].lastTextWidth;
+      uint16_t savedLastTextH = __ui_nodes[c].lastTextHeight;
       if (__ui_nodes[c].kind == NODE_PROGRESS || __ui_nodes[c].kind == NODE_RANGE) {
         __ui_nodes[c].lastTextWidth = -1;
       }
       __ui_nodes[c].lastTextHeight = 0;
       ui_draw_node_body(static_cast<int16_t>(c), &ctx);
+      __ui_nodes[c].lastTextWidth = savedLastTextW;
+      __ui_nodes[c].lastTextHeight = savedLastTextH;
       __ui_nodes[c].box.x = origBoxX;
       __ui_nodes[c].box.y = origBoxY;
     }
@@ -5720,13 +5737,14 @@ static inline void ui_tick(uint16_t deltaMs) {
   } else if (bufferedScrollNode >= 0 && bufferedScrollBands) {
     // Band render fallback: the main loop didn't trigger it at the owner's
     // z-slot (e.g. the owner was filtered out after dispatch). Render now so
-    // the subtree is never left unpainted. On failure, fall back to direct-full
-    // semantics (scrollbar + lastPaintedScrollY update only — children were
-    // cleared in dispatch and won't redraw this frame).
+    // the subtree is never left unpainted. ui_render_scroll_bands sets
+    // lastPaintedScrollY itself on success; only the failure fallback (band
+    // canvas wouldn't allocate) needs to record the scrollY here so the next
+    // frame's delta is correct.
     if (!ui_render_scroll_bands(static_cast<uint16_t>(bufferedScrollNode))) {
       ui_draw_scrollbar_direct(bufferedScrollNode, bufferedScrollVX, bufferedScrollVY);
+      __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;
     }
-    __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;
   } else if (bufferedScrollNode >= 0 && (bufferedScrollDirectStrip || bufferedScrollDirectFull)) {
     ui_draw_scrollbar_direct(bufferedScrollNode, bufferedScrollVX, bufferedScrollVY);
     __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;
