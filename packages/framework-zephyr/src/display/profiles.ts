@@ -12,8 +12,13 @@ export interface ZephyrDisplayProfile {
   readonly driver: string;
   /** Devicetree nodelabel, e.g. 'display0'. Emitted as DT_NODELABEL(<dtLabel>). */
   readonly dtLabel: string;
+  /** Effective (screen-space) dimensions after rotation. */
   readonly width: number;
   readonly height: number;
+  /** Native panel dimensions before rotation, when they differ from the
+   *  effective size (e.g. a 320x480 panel mounted landscape = 480x320). */
+  readonly nativeWidth?: number;
+  readonly nativeHeight?: number;
   readonly colorFormat: 'rgb565' | 'mono';
   /** Applied via display_set_orientation (0/90/180/270). */
   readonly rotation?: number;
@@ -33,6 +38,22 @@ export const ZEPHYR_DISPLAY_PROFILES: Record<string, ZephyrDisplayProfile> = {
     height: 240,
     colorFormat: 'rgb565',
     rotation: 90,
+    backlight: 'backlight',
+  },
+  'st7796-zephyr': {
+    // ST7796S SPI TFT, 320x480 RGB565 mounted landscape (effective 480x320).
+    // Same DT nodelabel convention as the ILI9341 — the board's devicetree
+    // carries the `display0` node bound to the ST7796 driver; the overlay
+    // enables it via status="okay". Effective dims match the Arduino
+    // st7796-spi profile (480x320 landscape, rotation 1).
+    driver: 'st7796-zephyr',
+    dtLabel: 'display0',
+    width: 480,
+    height: 320,
+    nativeWidth: 320,
+    nativeHeight: 480,
+    colorFormat: 'rgb565',
+    rotation: 1,
     backlight: 'backlight',
   },
 };

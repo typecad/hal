@@ -211,12 +211,21 @@ export function emitUIRuntime(ctx: EmitterContext): void {
         ? "#define UI_COLOR_DEPTH 888\n#define UI_COLOR_T uint32_t\n#define UI_DIM_MASK 0x7F7F7Fu"
         : "#define UI_COLOR_DEPTH 565\n#define UI_COLOR_T uint16_t\n#define UI_DIM_MASK 0x7BEFu",
     );
-    // Native display adapters (AVR, ESP32) instantiate CuttlefishGFX by value
-    // in their declaration block. The class MUST be defined before that —
-    // emit the cuttlefish-gfx slice here, between the color preamble and the
-    // adapter declaration. Arduino path (Adafruit) returns "" from the slice.
-    const nativeDisplayActive = ctx.strategy?.providesDisplayAdapter?.() ?? false;
-    if (nativeDisplayActive) {
+    // The native CuttlefishGFX/CuttlefishCanvas16 class slice is emitted ONLY
+    // for adapters that instantiate CuttlefishGFX by value (the planned
+    // framework-avr/framework-esp32 native panel drivers). Adapters that alias
+    // the token via macro — the Adafruit path (`#define CuttlefishCanvas16
+    // GFXcanvas16`) and the SDL path (`#define CuttlefishCanvas16 SdlGfxCanvas`)
+    // — own the canvas type; emitting the class slice alongside the macro makes
+    // `class CuttlefishCanvas16` macro-expand into a redefinition of Adafruit's
+    // GFXcanvas16. Detect the macro-alias path from the adapter's own includes
+    // and suppress the slice there. The previous gate reused
+    // providesDisplayAdapter(), which merely means "the strategy owns its
+    // adapters" (true for Arduino/Adafruit) and is unrelated to whether the
+    // native GFX class is wanted — it wrongly emitted the slice on every
+    // Arduino build, breaking compilation.
+    const macroAliasesCanvas16 = /^\s*#\s*define\s+CuttlefishCanvas16\b/m.test(adapter.includes);
+    if (!macroAliasesCanvas16) {
       ctx.sourceLines.push(ui.emitCuttlefishGfx(true));
     }
     ctx.sourceLines.push(adapter.declaration);

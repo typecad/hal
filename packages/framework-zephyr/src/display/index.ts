@@ -14,6 +14,13 @@
 import type { DisplayHALOp } from '@typecad/cuttlefish/api/shared';
 import { DEFAULT_ZEPHYR_DISPLAY_PROFILE, type ZephyrDisplayProfile } from './profiles.js';
 
+// Re-export the UI display/touch adapters + profile registry so the strategy
+// and consumers can reach them from the package barrel.
+export { zephyrUiDisplayAdapter, zephyrDisplayAdapterGenerator } from './ui-adapter.js';
+export { zephyrTouchAdapter } from './touch-adapter.js';
+export { ZEPHYR_DISPLAY_PROFILES, DEFAULT_ZEPHYR_DISPLAY_PROFILE } from './profiles.js';
+export type { ZephyrDisplayProfile } from './profiles.js';
+
 export interface DisplayState {
   initialized: boolean;
   profile: ZephyrDisplayProfile;

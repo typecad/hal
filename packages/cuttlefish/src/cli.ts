@@ -579,6 +579,7 @@ async function main(): Promise<void> {
               defines: config?.outputDefines,
               frameworkConfig: config?.frameworkConfig,
               zephyrConfig: config?.zephyrConfig,
+              display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,
               debug: options.debug,
             };
             ui.printCompiling(buildTarget ?? "native");
@@ -681,6 +682,7 @@ async function main(): Promise<void> {
                   defines: config?.outputDefines,
                   frameworkConfig: config?.frameworkConfig,
                   zephyrConfig: config?.zephyrConfig,
+              display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,
                   debug: options.debug,
                 };
                 ui.printCompiling(buildTarget ?? "native");
@@ -790,6 +792,7 @@ async function main(): Promise<void> {
       defines: config?.outputDefines,
       frameworkConfig: config?.frameworkConfig,
       zephyrConfig: config?.zephyrConfig,
+              display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,
       debug: options.debug,
     };
 

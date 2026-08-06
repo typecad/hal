@@ -28,6 +28,11 @@ import type {
   GraphicsCapacity,
   HALOpIR,
   DisplayHALOp,
+  ResolvedDisplay,
+  DisplayAdapterCode,
+  DisplayProfile,
+  TouchProfile,
+  TouchAdapterCodegen,
 } from '@typecad/cuttlefish/api/shared';
 import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
 import { buildWorkerRuntimePolyfill } from '@typecad/cuttlefish/api/shared';
@@ -56,6 +61,8 @@ import { buildTimerPolyfill } from './async/timer-polyfill.js';
 import { resolveZephyrDisplayOp, newDisplayState, type DisplayState } from './display/index.js';
 import { buildDisplayRuntime } from './display/gfx.js';
 import { ZEPHYR_DISPLAY_PROFILES } from './display/profiles.js';
+import { zephyrDisplayAdapterGenerator } from './display/ui-adapter.js';
+import { zephyrTouchAdapter } from './display/touch-adapter.js';
 
 export class ZephyrStrategy implements PlatformStrategy {
   readonly id = 'zephyr';
@@ -288,11 +295,16 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesInterrupts')) lines.push(...interruptInitLines(chip));
     if (uses('usesWDT') && chip.wdt) lines.push(...wdtInitLines(chip));
     if (uses('usesBle')) lines.push(...bleInitLines());
-    // Display runtime: gated on the analyzer's usesDisplay flag (set by
-    // display.* hal-ops). Must emit here in the setup phase — resolveDisplayOp
-    // (which seeds _displayState) runs later during op lowering, so we cannot
-    // key off _displayState.initialized at shimLines time.
-    if (uses('usesDisplay')) {
+    // Display runtime (minimal rect/text renderer): gated on the analyzer's
+    // usesDisplay flag (set by display.* hal-ops). This is the DIRECT-call
+    // display path (user code calling screen.display.fillRect etc.). It is
+    // SUPPRESSED when the UI display adapter is active — the adapter seam
+    // (providesDisplayAdapter/resolveDisplayAdapter) emits its own display_*
+    // runtime that drives the UI rendering pipeline via CuttlefishGFX, and the
+    // two define the same symbols (display_init, __tc_display_line) so emitting
+    // both causes redefinition errors. The adapter is active for the
+    // strategy-owned drivers (ili9341-zephyr, st7796-zephyr).
+    if (uses('usesDisplay') && !this.providesDisplayAdapter()) {
       const rt = buildDisplayRuntime(this._displayState.profile);
       lines.push(...rt.stateLines);
       lines.push(rt.fontTable);
@@ -951,7 +963,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // timer_methods: k_timer/k_work pool for setInterval/setTimeout (gated on
     //   timerCallCount at emit time in generateNativePolyfills).
     // async_runtime: heap-free static Promise/microtask runtime (no STL needed).
-    return new Set<string>(['cuttlefish_halt', 'timer_methods', 'async_runtime']);
+    return new Set<string>(['cuttlefish_halt', 'wiring_compat', 'timer_methods', 'async_runtime']);
   }
 
   generateNativePolyfills(program?: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
@@ -967,6 +979,38 @@ export class ZephyrStrategy implements PlatformStrategy {
           '[[noreturn]] inline void cuttlefish_halt() { for (;;) { k_msleep(1000); } }',
         ],
         shimMacros: [],
+        dependencies: [],
+      },
+      {
+        // Wiring-compatibility shims for symbols the UI runtime header
+        // references unconditionally (e.g. init-press-input.ts polls pin
+        // watchers via digitalRead/HIGH/LOW even when none are configured —
+        // the loop body is dead but must compile). Zephyr lowers GPIO through
+        // its __tc_gpio_* helpers (defined in shimLines); these macros route
+        // the Wiring tokens to them.
+        kind: 'polyfill',
+        id: 'wiring_compat',
+        domain: 'standard' as const,
+        requiredIncludes: [],
+        forwardDeclarations: [
+          // Forward-declared so the digitalRead macro (below) can reference it
+          // before the shim block defines the body. The shim emits the full
+          // definition via gpio_pin_get_raw.
+          'int __tc_gpio_read(int pin);',
+        ],
+        helperStructs: [],
+        helperFunctions: [],
+        shimMacros: [
+          '#ifndef HIGH',
+          '#define HIGH 1',
+          '#endif',
+          '#ifndef LOW',
+          '#define LOW 0',
+          '#endif',
+          '#ifndef digitalRead',
+          '#define digitalRead(pin) __tc_gpio_read(pin)',
+          '#endif',
+        ],
         dependencies: [],
       },
     ];
@@ -1103,6 +1147,48 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   supportedDisplayDrivers(): ReadonlySet<string> {
     return new Set<string>(Object.keys(ZEPHYR_DISPLAY_PROFILES));
+  }
+
+  // ── Strategy-owned display/touch adapter seam ────────────────────────────
+  // Zephyr owns its display + touch adapters: the UI display adapter bridges
+  // the in-tree CuttlefishGFX class to Zephyr's display_write() API (see
+  // src/display/ui-adapter.ts), and the FT6336U touch adapter drives the I2C
+  // controller via Zephyr's i2c API (src/display/touch-adapter.ts). Both live
+  // in this package so cuttlefish carries no Zephyr/Wiring-specific display or
+  // touch knowledge. Mirrors ArduinoStrategy's provides*/resolve* pattern.
+
+  providesDisplayAdapter(): boolean { return true; }
+
+  resolveDisplayAdapter(display: ResolvedDisplay): DisplayAdapterCode | undefined {
+    const code = zephyrDisplayAdapterGenerator(display);
+    return code ?? undefined;
+  }
+
+  providesTouchAdapter(): boolean { return true; }
+
+  resolveTouchAdapter(touch: TouchProfile): TouchAdapterCodegen | undefined {
+    return zephyrTouchAdapter(touch);
+  }
+
+  // Named display-profile registry: maps config `profile` values (e.g.
+  // "st7796-zephyr") to the shared DisplayProfile shape so transpile.ts can
+  // resolve them per-framework. The Zephyr profiles are DT-binding descriptors;
+  // they're mapped to the shared shape (driver/width/height/colorFormat/
+  // rotation) the profile resolver expects.
+  getProfileRegistry(): Map<string, DisplayProfile> {
+    const m = new Map<string, DisplayProfile>();
+    for (const [name, p] of Object.entries(ZEPHYR_DISPLAY_PROFILES)) {
+      m.set(name, {
+        driver: p.driver,
+        width: p.width,
+        height: p.height,
+        nativeWidth: p.nativeWidth,
+        nativeHeight: p.nativeHeight,
+        colorFormat: p.colorFormat,
+        rotation: p.rotation ?? 1,
+      });
+    }
+    return m;
   }
 
   colorFormat(): 'rgb565' | 'rgb666' | 'rgb888' | 'mono' {

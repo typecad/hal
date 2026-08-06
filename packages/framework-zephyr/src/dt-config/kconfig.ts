@@ -23,6 +23,8 @@ export interface KconfigUsage {
   usesMqtt?: boolean;
   usesPreferences?: boolean;
   usesRandom?: boolean;
+  /** Touch controller referenced (UI touch adapter emits DT_NODELABEL(ft6336u)). */
+  usesTouch?: boolean;
 }
 
 /**
@@ -47,7 +49,15 @@ export function resolveKconfigFragments(
   if (usage.usesI2c) m.set('CONFIG_I2C', 'y');
   if (usage.usesSpi) m.set('CONFIG_SPI', 'y');
   if (usage.usesWdt) m.set('CONFIG_WATCHDOG', 'y');
-  if (usage.usesDisplay) m.set('CONFIG_DISPLAY', 'y');
+  if (usage.usesDisplay) {
+    m.set('CONFIG_DISPLAY', 'y');
+    m.set('CONFIG_SPI', 'y');           // MIPI DBI SPI bridge + display bus
+    m.set('CONFIG_MIPI_DBI', 'y');      // MIPI DBI subsystem (ST7796S/ILI9341)
+    m.set('CONFIG_ST7796S', 'y');       // ST7796S display driver
+  }
+  if (usage.usesTouch) {
+    m.set('CONFIG_I2C', 'y');           // FT6336U touch on I2C
+  }
   // deep_sleep_pin wake needs PM + PM_DEVICE.
   if (usage.usesPower) {
     m.set('CONFIG_PM', 'y');

@@ -90,7 +90,8 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     usesUart: uses('uart_'),
     usesWdt: uses('wdt_'),
     usesBle: uses('bt_') || uses('bt_gatt') || uses('bt_le_'),
-    usesDisplay: uses('display_write') || uses('display_init') || uses('display_fill_rect'),
+    usesDisplay: uses('display_write') || uses('display_init') || uses('display_fill_rect') || uses('__tc_display_dev') || uses('CuttlefishDisplayTarget'),
+    usesTouch: uses('ft6336u') || uses('touch_'),
     // Power tokens: k_sleep + pm_state_force / PM_STATE_* (what power.ts emits).
     // The old `power_` token matched nothing the power HAL emits and collides
     // with tx_power_dbm — removed.

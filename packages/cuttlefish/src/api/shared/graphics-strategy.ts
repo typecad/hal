@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import type { DisplayHALOp } from "./display-op-ir.js";
-import type { ResolvedDisplay, TouchProfile, TouchAdapterCodegen } from "./display-profile.js";
+import type { DisplayProfile, ResolvedDisplay, TouchProfile, TouchAdapterCodegen } from "./display-profile.js";
 import type { DisplayAdapterCode } from "./display-adapter.js";
 
 export interface GraphicsCapacity {
@@ -58,6 +58,15 @@ export interface PlatformGraphicsStrategy {
    * surface a clear compile-time error instead of emitting incompatible code.
    */
   resolveTouchAdapter?(touch: TouchProfile): TouchAdapterCodegen | undefined;
+
+  /**
+   * Optional hook returning this framework's named display-profile registry
+   * (profile name → DisplayProfile). When present, transpile.ts consults it to
+   * resolve `display.profile` config values instead of dynamically importing a
+   * framework module — so profile names resolve correctly per-framework.
+   * Returns undefined to fall back to the legacy dynamic-import path.
+   */
+  getProfileRegistry?(): Map<string, DisplayProfile>;
 
   /** Display driver ids this framework provides (e.g. new Set(["ili9341"])). */
   supportedDisplayDrivers(): ReadonlySet<string>;

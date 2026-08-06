@@ -287,7 +287,7 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       unsupportedReason: undefined,
-      drivers: ['ili9341-zephyr'],
+      drivers: ['ili9341-zephyr', 'st7796-zephyr'],
       colorFormat: 'rgb565',
       ops: {
         'display.init': 'supported',
@@ -416,9 +416,15 @@ export default defineFrameworkManifest({
       ops: unsupportedOps('hwtimer.'),
     },
     capacitive: {
+      // FT6336U capacitive touch is handled via the strategy-owned touch adapter
+      // (src/display/touch-adapter.ts → touch_init/touch_isTouched/touch_readRaw),
+      // NOT via a HAL op lowering. The manifest marks it unsupported here (no
+      // resolveHALOperation path for capacitive.read); the touch adapter provides
+      // the integration. partialCoverage reflects that it works on targets with
+      // the FT6336U DT node (ESP32), not on the bare nRF52840.
       supported: false,
-      unsupportedReason: 'No capacitive-touch lowering on Zephyr (no such peripheral on nRF52840).',
-      partialCoverage: false,
+      unsupportedReason: 'Capacitive touch is handled via the strategy touch adapter (FT6336U I2C), not a HAL op. Requires the ft6336u DT node.',
+      partialCoverage: true,
       ops: { 'capacitive.read': 'unsupported' },
     },
     i2s: {

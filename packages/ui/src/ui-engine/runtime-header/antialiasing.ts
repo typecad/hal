@@ -12,6 +12,7 @@ export function emitAntialiasing(): string {
 // then pushed to the display. The ILI9341 has no efficient SPI read-back, so
 // all blending happens in RAM.
 #ifdef UI_AA
+#include <math.h>  // fabs, floor, ceil, sqrtf for AA coverage math
 
 // Get (or allocate) a canvas sized to the element being drawn.
 static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, UI_COLOR_T bg) {

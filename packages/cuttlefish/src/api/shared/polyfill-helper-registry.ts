@@ -112,6 +112,7 @@ export function filterPolyfillHelpers(
   })).filter(polyfill =>
     polyfill.helperFunctions.length > 0 ||
     polyfill.forwardDeclarations.length > 0 ||
-    polyfill.helperStructs.length > 0
+    polyfill.helperStructs.length > 0 ||
+    polyfill.shimMacros.length > 0
   );
 }

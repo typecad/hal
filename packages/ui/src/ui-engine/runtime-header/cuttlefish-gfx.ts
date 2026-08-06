@@ -1,8 +1,9 @@
 // ---------------------------------------------------------------------------
 // Slice of the C++ runtime header. Defines the CuttlefishGFX class — the
-// shared geometry/canvas/text base used by native (non-Arduino) display
-// adapters. Emitted ONLY when a native adapter is active; Arduino paths use
-// Adafruit_GFX directly and never see this code.
+// shared geometry/canvas/text base used by native display adapters that
+// instantiate CuttlefishGFX by value. NOT emitted on macro-alias paths
+// (Adafruit `CuttlefishCanvas16==GFXcanvas16`, SDL
+// `CuttlefishCanvas16==SdlGfxCanvas`), which own the canvas type.
 //
 // ──── BSD-3-Clause attribution ────────────────────────────────────────────
 // The geometry algorithm implementations emitted by this slice (drawLine,
@@ -56,13 +57,16 @@ export function emitCuttlefishGfx(active: boolean): string {
 
   return `
 // ── CuttlefishGFX (native display GFX base) ────────────────────────────────
-// Emitted only when strategy.providesDisplayAdapter() is true.
+// Emitted only for native adapters that instantiate CuttlefishGFX by value;
+// suppressed on macro-alias paths (Adafruit CuttlefishCanvas16==GFXcanvas16,
+// SDL CuttlefishCanvas16==SdlGfxCanvas). Gated in ui-emitter.ts.
 #ifndef CUTTLEFISH_GFX_DEFINED
 #define CUTTLEFISH_GFX_DEFINED
 
 #include <stdint.h>
 #include <cstdlib>
 #include <cstring>
+#include <new>  // std::nothrow for canvas buffer allocation
 
 // ── Panel-ops interface ────────────────────────────────────────────────────
 // Each native adapter fills a CuttlefishPanelOps with function pointers that

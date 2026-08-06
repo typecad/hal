@@ -63,6 +63,11 @@ export interface ToolchainOptions {
    */
   zephyrConfig?: Record<string, unknown>;
   /**
+   * Display config from `cuttlefish.config.ts` (the `display` section).
+   * Frameworks use cs/dc/rst/spiFrequency to generate devicetree wiring.
+   */
+  display?: Record<string, unknown>;
+  /**
    * True when `--debug` is active. Frameworks read this to generate debug
    * artifacts (e.g. VS Code launch configs, debug Kconfig symbols) and to
    * select their debug mode (gdb vs printf) via PlatformDebugStrategy.

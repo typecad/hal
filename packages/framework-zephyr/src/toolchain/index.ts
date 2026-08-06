@@ -20,7 +20,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, join } from 'node:path';
-import { readdirSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import type { ToolchainOptions, CompileResult, UploadResult } from '@typecad/cuttlefish/api/shared';
 import { parseCompileErrors } from '@typecad/cuttlefish/api/shared';
 import { scaffoldZephyrProject, writeIfChanged } from './scaffold.js';
@@ -28,7 +28,7 @@ import { westSpawn, buildEnv } from './west-spawn.js';
 import { discoverWest } from './west-discover.js';
 import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
 import { ZephyrStrategy } from '../strategy.js';
-import { generateOverlay } from '../dt-config/overlay.js';
+import { generateOverlay, type DisplayWiring } from '../dt-config/overlay.js';
 import { chipForTarget } from '../chips/index.js';
 import { DEFAULT_ZEPHYR_DISPLAY_PROFILE } from '../display/profiles.js';
 
@@ -92,19 +92,26 @@ export const Toolchain = {
       }
     } catch { /* src may not exist yet on first prepare */ }
     const uses = (t: string): boolean => src.includes(t);
-    const usesDisplay = uses('display_write') || uses('display_init') || uses('display_fill_rect');
-    // When the program uses the display, resolve a profile so the overlay
-    // enables the display DT node (&display0). For now the default profile is
-    // the only one registered; thread frameworkData.display through here when a
-    // board carries more than one display binding.
+    // Display usage tokens: the minimal GFX runtime (display_write/_fill_rect)
+    // and the UI display adapter (display_init / __tc_display_dev /
+    // DEVICE_DT_GET on the display nodelabel). Both paths need the DT overlay
+    // to enable the display node.
+    const usesDisplay = uses('display_write') || uses('display_init')
+      || uses('display_fill_rect') || uses('__tc_display_dev')
+      || uses('CuttlefishDisplayTarget');
+    // Both registered Zephyr display profiles use dtLabel 'display0', so the
+    // default profile's overlay block (&display0 { status="okay" }) is correct
+    // for either driver. Thread a non-default profile here only if a future
+    // board carries a display node under a different nodelabel.
     const displayProfile = usesDisplay ? DEFAULT_ZEPHYR_DISPLAY_PROFILE : undefined;
     const overlay = generateOverlay(chip, {
       usesI2c: uses('i2c_'),
       usesSpi: uses('spi_'),
       usesUart: uses('uart_'),
       usesDisplay,
+      usesTouch: uses('ft6336u') || uses('touch_'),
     }, displayProfile);
-    const overlayDir = join(projectRoot, 'app', 'boards');
+    const overlayDir = join(projectRoot, 'boards');
     mkdirSync(overlayDir, { recursive: true });
     writeIfChanged(join(overlayDir, `${board}.overlay`), overlay);
   },
@@ -118,23 +125,111 @@ export const Toolchain = {
     const userKconfig = zc?.kconfig as Record<string, string> | undefined;
     const configChanged = scaffoldZephyrProject(projectRoot, isGdbDebug, userKconfig);
 
+    // Regenerate the DT overlay for the ACTUAL target board. prepare() writes
+    // it for the default board (the real target is unknown until compile), so
+    // the <default>.overlay it wrote does not match `west build -b <board>`.
+    // Zephyr auto-detects boards/<board>.overlay under APPLICATION_CONFIG_DIR.
+    try {
+      const chip = chipForTarget(board);
+      const srcDir = join(projectRoot, 'src');
+      let src = '';
+      try {
+        for (const name of readdirSync(srcDir)) {
+          if (name.endsWith('.cpp') || name.endsWith('.c')) {
+            src += readFileSync(join(srcDir, name), 'utf-8');
+          }
+        }
+      } catch { /* src may not exist */ }
+      const uses = (t: string): boolean => src.includes(t);
+      const usesDisplay = uses('display_write') || uses('display_init')
+        || uses('display_fill_rect') || uses('__tc_display_dev')
+        || uses('CuttlefishDisplayTarget');
+      // Derive the display dimensions from the emitted adapter code
+      // (display_width/height return the profile's w/h). This ensures the DT
+      // overlay's width/height match the panel the adapter targets, not the
+      // default profile — critical for drivers like ST7796S that initialize
+      // the panel geometry from the DT node.
+      let displayProfile = usesDisplay ? DEFAULT_ZEPHYR_DISPLAY_PROFILE : undefined;
+      if (usesDisplay) {
+        const wMatch = src.match(/display_width\(\)\s*\{\s*return\s+(\d+)\s*;\s*\}/);
+        const hMatch = src.match(/display_height\(\)\s*\{\s*return\s+(\d+)\s*;\s*\}/);
+        if (wMatch && hMatch) {
+          displayProfile = {
+            ...DEFAULT_ZEPHYR_DISPLAY_PROFILE,
+            width: parseInt(wMatch[1], 10),
+            height: parseInt(hMatch[1], 10),
+          };
+        }
+      }
+      // Extract display pin wiring (cs/dc/rst/spiFrequency/spiPins) from the
+      // config display section so the DT overlay wires the MIPI DBI bridge to
+      // the correct GPIOs + SPI bus pins.
+      const dispCfg = o.display as Record<string, unknown> | undefined;
+      const spiPins = (dispCfg?.spiPins ?? undefined) as
+        { sck?: unknown; mosi?: unknown; miso?: unknown } | undefined;
+      const wiring: DisplayWiring | undefined = dispCfg
+        ? {
+            cs: typeof dispCfg.cs === 'number' ? dispCfg.cs : undefined,
+            dc: typeof dispCfg.dc === 'number' ? dispCfg.dc : undefined,
+            rst: typeof dispCfg.rst === 'number' ? dispCfg.rst : undefined,
+            spiFrequency: typeof dispCfg.spiFrequency === 'number' ? dispCfg.spiFrequency : undefined,
+            sck: typeof spiPins?.sck === 'number' ? spiPins.sck : undefined,
+            mosi: typeof spiPins?.mosi === 'number' ? spiPins.mosi : undefined,
+            miso: typeof spiPins?.miso === 'number' ? spiPins.miso : undefined,
+          }
+        : undefined;
+      const overlay = generateOverlay(chip, {
+        usesI2c: uses('i2c_'),
+        usesSpi: uses('spi_'),
+        usesUart: uses('uart_'),
+        usesDisplay,
+        usesTouch: uses('ft6336u') || uses('touch_'),
+      }, displayProfile, wiring);
+      const overlayDir = join(projectRoot, 'boards');
+      mkdirSync(overlayDir, { recursive: true });
+      // Write the board-specific overlay (the one west loads). Zephyr looks for
+      // boards/<board_id>.overlay under APPLICATION_CONFIG_DIR — use the bare
+      // board id (before any hardware-qualifier suffix, e.g. 'esp32_devkitc'
+      // not the full 'esp32_devkitc/esp32/procpu' target string).
+      const boardId = board.split('/')[0];
+      writeIfChanged(join(overlayDir, `${boardId}.overlay`), overlay);
+    } catch { /* best-effort overlay regen; the build surfaces DT errors */ }
+
     // Use a stable build dir so incremental builds reuse the Ninja graph.
     // west defaults to <projectRoot>/build.
     const buildDir = join(projectRoot, 'build');
 
-    // When prj.conf, CMakeLists.txt, or the DT overlay changed, nuke the build
-    // directory so CMake reconfigures from scratch. Without this, stale Ninja
-    // dependency graphs in the build/ cache can produce `ninja: error:
-    // dependency cycle` when Kconfig symbols and generated headers diverge.
-    if (configChanged) {
+    // Nuke the build dir whenever a previous build exists. Zephyr's gen_offset
+    // flow (offsets.h is generated FROM offsets.c.obj, while gen_offset.h makes
+    // offsets.c include offsets.h) leaves a permanent `offsets.h ->
+    // offsets.c.obj -> offsets.h` cycle in the .ninja_deps log after the first
+    // incremental pass — ninja then fails every later build with `dependency
+    // cycle` even when nothing changed. This is a known Zephyr-on-Windows
+    // issue; the reliable fix is a pristine build dir per build. Also nukes
+    // when prj.conf/CMakeLists/overlay changed, so Kconfig symbols and
+    // generated headers never diverge from a cached graph.
+    if (configChanged || existsSync(join(buildDir, 'zephyr', 'zephyr.bin'))) {
       try { rmSync(buildDir, { recursive: true, force: true }); } catch { /* may not exist */ }
     }
 
     const buildArgs = ['build', '-b', board, '-d', buildDir, projectRoot];
+    // Explicitly pass the generated DT overlay. Zephyr's auto-detection of
+    // boards/<board>.overlay fails for hardware-qualified targets (e.g.
+    // esp32_devkitc/esp32/procpu) because the FILE_SUFFIX matching doesn't
+    // resolve — passing -DDTC_OVERLAY_FILE forces it unconditionally.
+    const boardId = board.split('/')[0];
+    const overlayPath = join(projectRoot, 'boards', `${boardId}.overlay`);
+    try {
+      if (readFileSync(overlayPath, 'utf-8').length > 0) {
+        // CMake parses backslashes as escapes — use forward slashes so the
+        // Windows path survives the -D argument intact.
+        buildArgs.push('--', `-DDTC_OVERLAY_FILE=${overlayPath.replace(/\\/g, '/')}`);
+      }
+    } catch { /* no overlay — let Zephyr auto-detect or build without one */ }
     // Append user cmake args from cuttlefish.config.ts zephyr.cmakeArgs.
     const userCmakeArgs = zc?.cmakeArgs as string[] | undefined;
     if (userCmakeArgs && userCmakeArgs.length > 0) {
-      buildArgs.push('--');
+      if (!buildArgs.includes('--')) buildArgs.push('--');
       buildArgs.push(...userCmakeArgs);
     }
     const inv = westSpawn(

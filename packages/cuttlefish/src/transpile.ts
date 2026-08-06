@@ -347,40 +347,41 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   const configDisplay = (options as any).display;
   if (configDisplay) {
     const { resolveDisplayProfile } = await import("./api/shared/display-profile.js");
-    try {
-      // Load built-in profiles from the framework package via its exported path
-      const registry = new Map();
-      if (options.frameworkPackage) {
-        // Built-in display profiles live in the framework's displays/ili9341-spi
-        // module. Each framework owns its canonical profile definitions; there is
-        // no cross-framework fallback. If a framework ships no profile registry,
-        // resolveDisplayProfile throws a clear "unknown profile" error.
-        const profileMod = await import(options.frameworkPackage + "/displays/ili9341-spi").catch(() => null);
-        if (profileMod?.BUILT_IN_PROFILES) {
-          for (const [k, v] of Object.entries(profileMod.BUILT_IN_PROFILES)) {
-            registry.set(k, v as any);
-          }
+    // Build the named-profile registry. Prefer the strategy's hook (per-framework
+    // canonical profiles — Arduino returns its BUILT_IN_PROFILES, Zephyr returns
+    // its DT-binding profiles). Fall back to the legacy dynamic import of the
+    // framework's displays/ili9341-spi module when the strategy provides none.
+    // The registry maps a config `profile` name (e.g. "st7796-zephyr") to its
+    // DisplayProfile; an empty registry makes resolveDisplayProfile fall back to
+    // the bare default driver (config.driver ?? "ili9341") when no profile name
+    // is set, or throw "Unknown display profile" when one is.
+    let registry: Map<string, any> = new Map();
+    if (strategy.getProfileRegistry) {
+      registry = strategy.getProfileRegistry();
+    } else if (options.frameworkPackage) {
+      const profileMod = await import(options.frameworkPackage + "/displays/ili9341-spi").catch(() => null);
+      if (profileMod?.BUILT_IN_PROFILES) {
+        for (const [k, v] of Object.entries(profileMod.BUILT_IN_PROFILES)) {
+          registry.set(k, v as any);
         }
       }
-      const resolved = resolveDisplayProfile(configDisplay, registry);
-      const buildTarget = (options.platformContext?.frameworkData?.buildTarget as string | undefined);
-      const psramRaw = (options.platformContext?.frameworkData as any)?.psram;
-      // PSRAM flag for the scroll-canvas-memory budget. Two sources, OR'd:
-      //  1. frameworkData.psram — explicit framework-supplied flag (e.g. the
-      //     IDF/native path sets it directly; Arduino config sets it from
-      //     frameworkConfig.psram as 'opi'/'quad').
-      //  2. The framework's build-target-derived PSRAM (e.g. an Arduino FQBN
-      //     with a PSRAM= option) — asked of the loaded strategy via
-      //     derivesPsramFromBuildTarget so cuttlefish never parses
-      //     framework-specific FQBN strings itself.
-      const fqbnPsram = buildTarget
-        ? (strategy.derivesPsramFromBuildTarget?.(buildTarget) ?? false)
-        : false;
-      const psram = psramRaw === 'opi' || psramRaw === 'quad' || fqbnPsram;
-      setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus, address: resolved.address, reset: resolved.reset, buildTarget, psram });
-    } catch {
-      // Fall back to default profile — not fatal
     }
+    const resolved = resolveDisplayProfile(configDisplay, registry);
+    const buildTarget = (options.platformContext?.frameworkData?.buildTarget as string | undefined);
+    const psramRaw = (options.platformContext?.frameworkData as any)?.psram;
+    // PSRAM flag for the scroll-canvas-memory budget. Two sources, OR'd:
+    //  1. frameworkData.psram — explicit framework-supplied flag (e.g. the
+    //     IDF/native path sets it directly; Arduino config sets it from
+    //     frameworkConfig.psram as 'opi'/'quad').
+    //  2. The framework's build-target-derived PSRAM (e.g. an Arduino FQBN
+    //     with a PSRAM= option) — asked of the loaded strategy via
+    //     derivesPsramFromBuildTarget so cuttlefish never parses
+    //     framework-specific FQBN strings itself.
+    const fqbnPsram = buildTarget
+      ? (strategy.derivesPsramFromBuildTarget?.(buildTarget) ?? false)
+      : false;
+    const psram = psramRaw === 'opi' || psramRaw === 'quad' || fqbnPsram;
+    setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus, address: resolved.address, reset: resolved.reset, buildTarget, psram });
     // Apply theme CSS override if specified.
     if (configDisplay.themeCss) {
       setThemeCss(configDisplay.themeCss);

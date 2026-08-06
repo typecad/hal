@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { emitCuttlefishGfx } from "../../../packages/ui/src/ui-engine/runtime-header/cuttlefish-gfx";
+import { generateDisplayAdapter } from "../../../packages/cuttlefish/src/api/shared/display-adapter";
+import { ArduinoStrategy } from "../../../packages/framework-arduino/src";
 
 describe("emitCuttlefishGfx slice", () => {
   it("returns empty string when native adapter is not active (Arduino path)", () => {
@@ -133,6 +135,47 @@ describe("emitCuttlefishGfx slice", () => {
 
       const fillRectImpl = h.match(/void\s+CuttlefishGFX::fillRect[\s\S]*?\{[\s\S]*?\}/)![0];
       expect(fillRectImpl).toMatch(/if\s*\(\s*ops_\s*&&\s*ops_->fillRect\s*\)/);
+    });
+  });
+
+  // Regression: the CuttlefishGFX/CuttlefishCanvas16 class slice must NOT be
+  // emitted alongside an adapter that macro-aliases CuttlefishCanvas16. The
+  // Adafruit path aliases it to Adafruit's GFXcanvas16; emitting the native
+  // class makes `class CuttlefishCanvas16` macro-expand into a redefinition of
+  // GFXcanvas16 (redefinition error, buffer_/canvas_w_/canvas_h_ not declared).
+  // The emitter gates the slice on this macro-alias property — this test guards
+  // that every macro-alias adapter actually carries the macro, so the gate
+  // suppresses the slice for them. Do NOT revert the gate to
+  // providesDisplayAdapter(): that returns true on the Adafruit/Arduino path
+  // precisely because Arduino OWNS the Adafruit adapters, unrelated to whether
+  // the native GFX class is wanted.
+  describe("slice suppression on macro-alias adapter paths", () => {
+    const macroAliasRe = /^\s*#\s*define\s+CuttlefishCanvas16\b/m;
+
+    it("every Adafruit adapter (ArduinoStrategy) macro-aliases CuttlefishCanvas16", () => {
+      const arduino = new ArduinoStrategy();
+      const profiles = [
+        { driver: "ili9341", width: 240, height: 320, colorFormat: "rgb565", _mountCs: 10, _mountDc: 9, _mountRst: 8 },
+        { driver: "st7796", width: 320, height: 480, colorFormat: "rgb565", _mountCs: 5, _mountDc: 17, _mountRst: 16 },
+        { driver: "ssd1309", width: 128, height: 64, colorFormat: "mono", _mountBus: "I2C", _mountAddress: 0x3C },
+      ];
+      for (const p of profiles) {
+        const adapter = generateDisplayAdapter({ ...p } as any, arduino);
+        expect(
+          macroAliasRe.test(adapter.includes),
+          `${p.driver} adapter must define the CuttlefishCanvas16 macro so the native GFX slice is suppressed`,
+        ).toBe(true);
+      }
+    });
+
+    it("the SDL adapter macro-aliases CuttlefishCanvas16", () => {
+      const adapter = generateDisplayAdapter({
+        driver: "sdl",
+        width: 320,
+        height: 240,
+        colorFormat: "rgb888",
+      } as any);
+      expect(macroAliasRe.test(adapter.includes)).toBe(true);
     });
   });
 });
