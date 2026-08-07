@@ -128,7 +128,7 @@ export type { PlatformGraphicsStrategy, GraphicsCapacity } from './graphics-stra
 
 // Display profiles (declarative hardware description)
 export type { DisplayProfile, DisplayConfig, DisplaySize, TouchProfile, TouchLibrary, TouchAdapterCodegen, ResolvedDisplay } from './display-profile.js';
-export { effectiveDisplaySize, normalizeDisplayRotation, resolveDisplayProfile, resolveScrollConfig, DEFAULT_SCROLL_CANVAS_BUDGET_BYTES } from './display-profile.js';
+export { effectiveDisplaySize, normalizeDisplayRotation, resolveDisplayProfile, resolveScrollConfig } from './display-profile.js';
 
 // Shared 5x7 glcdfont table (Adafruit public-domain source). Consumed by
 // the SDL preview adapter and the native CuttlefishGFX runtime-header slice.

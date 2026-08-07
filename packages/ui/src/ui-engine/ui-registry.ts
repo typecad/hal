@@ -28,7 +28,6 @@ import { selectEngine } from "./select-engine.js";
 import { measure, measureWithFonts, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "./ui-lowering.js";
 import { getDisplayProfile } from "@typecad/cuttlefish/stores/display-profile-store";
-import { resolveScrollConfig } from "@typecad/cuttlefish/api/shared";
 import { buildUIFontAssets } from "./font-assets.js";
 import type { UIFontAssetModel } from "./font-assets.js";
 import { emitImageTables, loadImageAssets } from "./image-assets.js";
@@ -220,13 +219,7 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
 
   const imageAssets = loadImageAssets(allStyled.length > 0 ? allStyled : [mod.styled], path.dirname(abs));
 
-  const _p = getDisplayProfile() as any;
-  const scrollBudget = resolveScrollConfig(_p, { buildTarget: _p._buildTarget, psram: _p._psram } as any).scrollCanvasBudgetBytes;
-  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets, scrollBudget);
-
-  for (const d of result.scrollMemoryDiagnostics) {
-    mod.mountDiagnostics.push({ ...d, source: d.source ?? path.basename(mod.htmlPath) });
-  }
+  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets);
 
   // Layout diagnostics: viewport-overflow (node bottom past the viewport) and
   // text-overflow (node right edge past its parent). Both reference the node by

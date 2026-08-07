@@ -321,7 +321,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   //     header so its #ifndef guards adopt them. Source of truth:
   //     resolveScrollConfig(profile.scroll). Defaults derive from the declared
   //     touch hardware, so the demo (XPT2046) gets resistive+full with no config.
-  const scroll = resolveScrollConfig(profile, { psram: (profile as any)._psram });
+  const scroll = resolveScrollConfig(profile);
   ctx.sourceLines.push(
     `#define UI_SCROLL_MAX_OVERSCROLL ${scroll.maxOverscroll}`,
     `#define UI_SCROLL_STIFFNESS_X10 ${Math.round(scroll.stiffness * 10)}`,
@@ -332,7 +332,6 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     `#define UI_SCROLL_INPUT_TIER_NONE ${scroll.inputTier === "none" ? 1 : 0}`,
     `#define UI_SCROLL_RENDER_TIER_FULL ${scroll.renderTier === "full" ? 1 : 0}`,
     `#define UI_SCROLL_RENDER_TIER_CONSTRAINED ${scroll.renderTier === "constrained" ? 1 : 0}`,
-    `#define UI_SCROLL_CANVAS_BUDGET_BYTES ${scroll.scrollCanvasBudgetBytes}`,
     ...(scroll.debug ? [`#define UI_SCROLL_DEBUG 1`] : []),
   );
   // Forward-declare __ui_kb_set_onchange before the runtime header: the

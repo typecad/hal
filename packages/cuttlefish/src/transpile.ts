@@ -368,20 +368,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
     const resolved = resolveDisplayProfile(configDisplay, registry);
     const buildTarget = (options.platformContext?.frameworkData?.buildTarget as string | undefined);
-    const psramRaw = (options.platformContext?.frameworkData as any)?.psram;
-    // PSRAM flag for the scroll-canvas-memory budget. Two sources, OR'd:
-    //  1. frameworkData.psram — explicit framework-supplied flag (e.g. the
-    //     IDF/native path sets it directly; Arduino config sets it from
-    //     frameworkConfig.psram as 'opi'/'quad').
-    //  2. The framework's build-target-derived PSRAM (e.g. an Arduino FQBN
-    //     with a PSRAM= option) — asked of the loaded strategy via
-    //     derivesPsramFromBuildTarget so cuttlefish never parses
-    //     framework-specific FQBN strings itself.
-    const fqbnPsram = buildTarget
-      ? (strategy.derivesPsramFromBuildTarget?.(buildTarget) ?? false)
-      : false;
-    const psram = psramRaw === 'opi' || psramRaw === 'quad' || fqbnPsram;
-    setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus, address: resolved.address, reset: resolved.reset, buildTarget, psram });
+    setDisplayProfile(resolved.profile, { cs: resolved.cs, dc: resolved.dc, rst: resolved.rst, bus: resolved.bus, address: resolved.address, reset: resolved.reset, buildTarget });
     // Apply theme CSS override if specified.
     if (configDisplay.themeCss) {
       setThemeCss(configDisplay.themeCss);

@@ -27,7 +27,6 @@ export interface LoweredUI {
   screenCount: number;
   imageTables: string;
   keyframeTables: string;
-  scrollMemoryDiagnostics: Diagnostic[];
   diagnostics: Diagnostic[];
 }
 
@@ -109,9 +108,6 @@ export interface TranspilerUIHook {
 
   // ── Type declaration generation ─────────────────────────────────────────
   generateProjectUITypeDeclarations(projectRoot: string): { written: string[]; errors: Array<{ filePath: string; error: Error }> };
-
-  // ── Scroll memory diagnostics ───────────────────────────────────────────
-  analyzeScrollMemory(styled: unknown, budget: number): Diagnostic[];
 }
 
 // ── Module-level hook state ────────────────────────────────────────────────

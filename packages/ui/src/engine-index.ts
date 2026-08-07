@@ -21,7 +21,6 @@ import { resolveColor, resolveColorInternal } from "./ui-engine/color.js";
 import { emitRuntimeHeader } from "./ui-engine/runtime-header.js";
 import { emitCuttlefishGfx } from "./ui-engine/runtime-header/cuttlefish-gfx.js";
 import { splitUiFile } from "./ui-engine/ui-file-splitter.js";
-import { analyzeScrollMemory } from "./ui-engine/scroll-memory-diagnostics.js";
 
 export type { TranspilerUIHook };
 
@@ -48,6 +47,5 @@ export function registerTranspilerUI(): TranspilerUIHook {
     emitCuttlefishGfx,
     splitUiFile,
     generateProjectUITypeDeclarations,
-    analyzeScrollMemory,
   };
 }

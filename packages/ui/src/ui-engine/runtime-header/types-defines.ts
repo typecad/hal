@@ -70,9 +70,6 @@ export function emitTypesDefines(): string {
 #ifndef UI_SCROLL_DEBUG
 #define UI_SCROLL_DEBUG 0
 #endif
-#ifndef UI_SCROLL_CANVAS_BUDGET_BYTES
-#define UI_SCROLL_CANVAS_BUDGET_BYTES 88000
-#endif
 // Band renderer: height (px) of the horizontal band canvas used to composite
 // scroll subtrees tear-free when no viewport canvas fits (no PSRAM / over
 // budget). Each band is vw × UI_STRIP_BAND_HEIGHT (~10KB at RGB565 for a

@@ -174,7 +174,7 @@ static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_
   return 1;
 }
 
-static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCanvas16* canvas, int16_t canvasX, int16_t canvasY) {
+static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCanvas16* canvas, int16_t canvasX, int16_t canvasY, int16_t bandTop) {
   if (!canvas || !display_canvasBuffer(canvas)) return;
   uint16_t p = __ui_nodes[nodeIdx].parent;
   if (p == UI_NO_PARENT || p >= __ui_node_count) {
@@ -198,7 +198,11 @@ static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCan
   CuttlefishDisplayTarget* previousGfx = ui_display_get_target();
   ui_display_set_target(canvas);
   __ui_nodes[p].box.x = parentDrawX - canvasX;
-  int16_t localY = parentDrawY - canvasY;
+  // Shift the parent's draw Y up by bandTop so the band canvas shows the
+  // correct slice of the parent fill/border for this band's Y range. bandTop=0
+  // (the main-loop caller) is a no-op shift. canvasY already carries the paint
+  // rect's display-space origin; bandTop further offsets within the rect.
+  int16_t localY = parentDrawY - canvasY - bandTop;
 
   // Parent fill color: blended toward the parent's backdrop when the parent is
   // translucent (matching the main NODE_FILL draw, which uses fillBg). Without
@@ -232,7 +236,7 @@ static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx,
   if (static_cast<uint32_t>(r->w) * static_cast<uint32_t>(r->h) > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
   CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(r->w, r->h);
   if (!repairCanvas) return 0;
-  ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, r->x, r->y);
+  ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, r->x, r->y, 0);
   ui_display_use_default_target();
   ui_push_canvas_rect(repairCanvas, r->x, r->y, r->w, r->h);
   return 1;
@@ -467,7 +471,7 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(repair.w, repair.h);
   if (!repairCanvas) return 0;
 
-  ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, repair.x, repair.y);
+  ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, repair.x, repair.y, 0);
   CuttlefishDisplayTarget* previousGfx = ui_display_get_target();
   ui_display_set_target(repairCanvas);
   UI_COLOR_T fillBg = __ui_nodes[nodeIdx].bg;

@@ -406,46 +406,10 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("#ifndef UI_SCROLL_EDGE_SNAP_PX");
     expect(header).toContain("#ifndef UI_SCROLL_DRAG_SCALE_X10");
     expect(header).toContain("#ifndef UI_SCROLL_SETTLE_MS");
-    expect(header).toContain("#ifndef UI_SCROLL_CANVAS_BUDGET_BYTES");
     expect(header).toContain("UI_SCROLL_INPUT_TIER_");
     expect(header).toContain("UI_SCROLL_RENDER_TIER_");
     expect(header).toContain("UI_SCROLL_HAS_TOUCH");
     expect(header).toContain("UI_SCROLL_ELASTIC");
-  });
-
-  it("warns once on-device when scroll canvas memory is constrained", () => {
-    expect(header).toContain("ui_warn_scroll_memory");
-    expect(header).toContain("__ui_scroll_mem_warned");
-    expect(header).toContain("__ui_scroll_node_id");
-    // The no-canvas dispatch warns with reason 1 (viewport exceeds budget) or 0
-    // (alloc failed). The strip-only reason 2 path is dead in the no-canvas
-    // dispatch (drags take direct-full), so only the budget-comparison call remains.
-    expect(header).toMatch(/ui_warn_scroll_memory\(static_cast<uint16_t>\(s\), scrollNeed > static_cast<uint32_t>\(UI_SCROLL_CANVAS_BUDGET_BYTES\) \? 1 : 0\)/);
-    // The on-device note (not a warning — the band renderer keeps scroll tear-free)
-    // is emitted via Serial.printf on ESP32, naming the band-renderer fallback.
-    expect(header).toMatch(/Serial\.printf\([\s\S]*cuttlefish[\s\S]*band renderer/);
-    expect(header).toMatch(/ESP\.getFreeHeap\(\)/);
-    expect(header).toMatch(/ESP\.getMaxAllocHeap\(\)/);
-  });
-
-  it("uses printf (not Arduino-only Serial) in the non-ESP32 #else branch so the SDL native target compiles", () => {
-    // The warning's #if defined(ESP32)/#elif defined(ESP8266) branches use
-    // Serial.printf (Arduino core). The #else branch fires on the SDL native
-    // target, which has no Serial — it must use standard-C printf instead, or
-    // every native UI compile fails with "'Serial' was not declared in this scope".
-    const elseIdx = header.indexOf("#else");
-    const endifIdx = header.indexOf("#endif", elseIdx);
-    expect(elseIdx).toBeGreaterThanOrEqual(0);
-    expect(endifIdx).toBeGreaterThan(elseIdx);
-    // Find the #else that immediately follows the ESP8266 branch (the third
-    // platform block in ui_warn_scroll_memory). Search for the Serial.printf
-    // inside an #else within the warning function.
-    const warnIdx = header.indexOf("ui_warn_scroll_memory");
-    const warnBlock = header.slice(warnIdx, header.indexOf("}", header.indexOf("#endif", warnIdx)) + 1);
-    const elseMatch = warnBlock.match(/#else\s*\n[\s\S]*?#endif/);
-    expect(elseMatch).not.toBeNull();
-    expect(elseMatch![0]).not.toContain("Serial.");
-    expect(elseMatch![0]).toMatch(/printf\s*\(/);
   });
 
   it("hides the on-screen keyboard draw block when UI_HIDE_OSK is defined (desktop targets)", () => {
@@ -807,7 +771,7 @@ describe("C++ reactive runtime header", () => {
   it("seeds buffered child repaints with rounded parent decoration", () => {
     expect(header).toContain("ui_seed_paint_canvas_for_node");
     expect(header).toMatch(/ui_seed_paint_canvas_for_node[\s\S]*fillRoundRect/);
-    expect(header).toMatch(/ui_seed_paint_canvas_for_node\(i,\s*paintCanvas,\s*paintCanvasX,\s*paintCanvasY\)/);
+    expect(header).toMatch(/ui_seed_paint_canvas_for_node\(i,\s*paintCanvas,\s*paintCanvasX,\s*paintCanvasY,\s*0\)/);
     expect(header).not.toMatch(/paintCanvas->fillScreen\(ui_parent_clear_color\(i\)\)/);
   });
 

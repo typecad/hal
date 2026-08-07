@@ -17,8 +17,6 @@ static int16_t __ui_scroll_node = -1;            // owning scroll container (int
 // frozen-but-not-torn rather than allowed to scroll with unclipped children.
 // Sized at runtime via __ui_node_count; defaults to all-zero (lock until proven).
 static uint8_t* __ui_scroll_canvas_ok = nullptr;
-// One-shot scroll memory warnings (indexed by node).
-static uint8_t* __ui_scroll_mem_warned = nullptr;
 // Precomputed draw order (lower z-index first, then source index). Built once in
 // ui_init; zIndex is static after mount so this stays valid for the app lifetime.
 static uint16_t* __ui_draw_order = nullptr;

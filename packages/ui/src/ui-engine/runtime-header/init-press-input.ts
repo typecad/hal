@@ -15,9 +15,6 @@ static inline void ui_init(void) {
   if (!__ui_scroll_canvas_ok && __ui_node_count > 0) {
     __ui_scroll_canvas_ok = new (std::nothrow) uint8_t[__ui_node_count]();
   }
-  if (!__ui_scroll_mem_warned && __ui_node_count > 0) {
-    __ui_scroll_mem_warned = new (std::nothrow) uint8_t[__ui_node_count]();
-  }
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
     __ui_nodes[i].lastTextHeight = 0;

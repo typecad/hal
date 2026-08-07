@@ -107,6 +107,10 @@ static inline void ui_aa_fill_circle(CuttlefishCanvas16* c, int16_t cx, int16_t 
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx, UIRect* r);
 static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* paintRect);
 static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect* oldRect);
+// Band renderers (defined in node-draw-body; forward-declared so the NODE_LIST
+// case can fall back to ui_render_list_bands before its definition site).
+static inline uint8_t ui_render_node_bands(uint16_t nodeIdx, int16_t prX, int16_t prY, int16_t prW, int16_t prH);
+static inline uint8_t ui_render_list_bands(uint16_t i);
 static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, UI_COLOR_T color);
 static inline void ui_draw_node_outline(uint16_t i, int16_t drawX, int16_t drawY);
 static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY);

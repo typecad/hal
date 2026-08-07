@@ -250,6 +250,10 @@ screen {
 #homeHeader {
   flex-direction: column;
   align-items: center;
+  /* <body> is a flex column with no align-items, so a fixed-width child would
+     sit at the left edge. Center the header horizontally in the screen to
+     match how .scrollBody centers its children (#homeNav, etc.). */
+  align-self: center;
   gap: 2px;
   width: 280px;
   border: 1px solid var(--border);

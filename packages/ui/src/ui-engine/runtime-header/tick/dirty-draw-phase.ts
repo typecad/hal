@@ -193,11 +193,6 @@ export function emitTickDirtyDrawPhase(): string {
       // completes before it touches the panel — tear-free, with ~10KB of SRAM
       // regardless of program size. Falls back to direct-full (per-child direct
       // SPI draws, which tear) only when the band canvas itself can't allocate.
-      int16_t deltaY = __ui_nodes[s].scrollY - __ui_nodes[s].lastPaintedScrollY;
-      int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
-      uint32_t scrollNeed = static_cast<uint32_t>(vw > 0 ? vw : 0) * static_cast<uint32_t>(vh > 0 ? vh : 0) * 2u;
-      (void)deltaY; (void)absDelta;
-      ui_warn_scroll_memory(static_cast<uint16_t>(s), scrollNeed > static_cast<uint32_t>(UI_SCROLL_CANVAS_BUDGET_BYTES) ? 1 : 0);
       if (__ui_scroll_canvas_ok) __ui_scroll_canvas_ok[s] = 0;
       // Defer the band render to the scroll owner's z-order slot in the main
       // draw loop (see bufferedScrollBands handling below). Painting here would
@@ -461,12 +456,13 @@ export function emitTickDirtyDrawPhase(): string {
     int16_t paintCanvasH = paintRect.h;
     // RAM-composite pixel-heavy nodes before SPI push. Skip when already drawing
     // into a scroll canvas or a full-screen framebuffer (both are RAM targets).
-    if (!drawingBufferedScroll && !__ui_fb && ui_should_buffer_paint(i, paintCanvasW, paintCanvasH)) {
+    uint8_t wantedBuffer = !drawingBufferedScroll && !__ui_fb && ui_should_buffer_paint(i, paintCanvasW, paintCanvasH);
+    if (wantedBuffer) {
       paintCanvas = ui_get_repair_canvas(paintCanvasW, paintCanvasH);
       if (paintCanvas) {
         drawingPaintCanvas = 1;
         ui_display_set_target(paintCanvas);
-        ui_seed_paint_canvas_for_node(i, paintCanvas, paintCanvasX, paintCanvasY);
+        ui_seed_paint_canvas_for_node(i, paintCanvas, paintCanvasX, paintCanvasY, 0);
         baseDrawX -= paintCanvasX;
         baseDrawY -= paintCanvasY;
         drawX -= paintCanvasX;
@@ -477,6 +473,23 @@ export function emitTickDirtyDrawPhase(): string {
       }
     }
     if (!drawingPaintCanvas) {
+      // Buffering was wanted but the node-sized repair canvas wouldn't allocate
+      // (a full-width button's ~29KB paint rect is too big for no-PSRAM SRAM).
+      // Fall back to the band renderer: composite the node into the ~10KB band
+      // canvas one horizontal strip at a time, pushing each band tear-free —
+      // same architecture as the scroll band renderer. Avoids the direct
+      // clear→redraw-to-SPI that visibly flashes on press/scroll. Only engages
+      // on the alloc-failure path; small nodes still use the fast paint canvas.
+      if (wantedBuffer && ui_render_node_bands(static_cast<uint16_t>(i), paintCanvasX, paintCanvasY, paintCanvasW, paintCanvasH)) {
+        if (!drawingBufferedScroll) {
+          ui_invalidate_scroll_canvas_for_node(i);
+        }
+        __ui_nodes[i].box.x = origBoxX;
+        __ui_nodes[i].box.y = origBoxY;
+        __ui_nodes[i].dirty = 0;
+        ui_refresh_add_rect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
+        continue;
+      }
       ui_clear_press_offset_area(i, baseDrawX, baseDrawY, drawX, drawY, paintTextW, paintTextH);
     }
     uint8_t skipListOutsetShadow =

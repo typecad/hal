@@ -115,11 +115,6 @@ export interface ResolvedDisplay extends DisplayProfile {
    *  framework-side toolchain/compile use; cuttlefish itself does not parse it.
    *  Optional. */
   _buildTarget?: string;
-  /** Framework-supplied PSRAM flag. When true, the scroll-canvas-memory
-   *  diagnostic uses the PSRAM budget instead of the SRAM default. The
-   *  framework is responsible for deriving this from its build-target format
-   *  (e.g. an Arduino FQBN PSRAM= option) before transpile. */
-  _psram?: boolean;
 }
 
 export interface DisplayConfig {
@@ -241,9 +236,6 @@ export interface ScrollConfig {
   /** Emit per-frame scroll/canvas telemetry over Serial (UI_SCROLL_DEBUG). Off by
    *  default — enable temporarily to diagnose scroll/canvas draw skips on-device. */
   debug?: boolean;
-  /** Max RGB565 scroll viewport canvas size (w×h×2 bytes) assumed to fit in heap
-   *  for Mode B smooth scrolling on the target. Default ~88 KB (ESP32 no PSRAM). */
-  scrollCanvasBudgetBytes?: number;
 }
 
 /** Fully-resolved scroll config — every field populated, ready for emit. */
@@ -257,7 +249,6 @@ export interface ResolvedScrollConfig {
   inputSmoothing: number;
   overrideProbes: boolean;
   debug: boolean;
-  scrollCanvasBudgetBytes: number;
 }
 
 /** Touch libraries treated as resistive (noisy, low-sample-rate) panels. */
@@ -265,23 +256,6 @@ const RESISTIVE_TOUCH_LIBS: ReadonlySet<string> = new Set([
   "XPT2046_Touchscreen",
   "Adafruit_TouchScreen",
 ]);
-
-/** Default RGB565 scroll viewport canvas budget (~88 KB, ESP32-class SRAM). */
-export const DEFAULT_SCROLL_CANVAS_BUDGET_BYTES = 88000;
-
-/** PSRAM scroll canvas budget (~2 MB). ESP32-S3 with OPI/QSPI PSRAM exposes
- *  ~8 MB external RAM; a full-width scroll viewport canvas (e.g. 460×266×2 ≈
- *  239 KB) is trivial there, so the transpile-time scroll-canvas-memory
- *  diagnostic should use a PSRAM-appropriate budget rather than the no-PSRAM
- *  SRAM default — otherwise every PSRAM target emits stale "exceeds budget"
- *  warnings for canvases the runtime allocates without issue. */
-export const PSRAM_SCROLL_CANVAS_BUDGET_BYTES = 2_000_000;
-
-// NOTE: PSRAM detection from an Arduino FQBN buildTarget (e.g.
-// "esp32:esp32:esp32s3:PSRAM=opi") moved to @typecad/framework-arduino
-// (src/displays/psram.ts → buildTargetHasPsram). The framework resolves PSRAM
-// availability and reports it through the generic `psram` flag below; cuttlefish
-// no longer parses Arduino-specific FQBN strings.
 
 /**
  * Resolve scroll config from a display profile. Declared overrides win;
@@ -294,7 +268,6 @@ export function resolveScrollConfig(
     touch?: TouchProfile | false;
     scroll?: ScrollConfig;
   },
-  ctx?: { psram?: boolean },
 ): ResolvedScrollConfig {
   const s = display.scroll ?? {};
   const lib =
@@ -307,16 +280,6 @@ export function resolveScrollConfig(
       : display.touch
         ? "capacitive"
         : "none";
-  // PSRAM-aware canvas budget: an explicit override always wins; otherwise use
-  // the PSRAM budget when the framework-supplied psram flag is set, so the
-  // scroll-canvas-memory diagnostic doesn't emit stale warnings for canvases
-  // the runtime allocates in external RAM without issue. Else the SRAM default.
-  // (The framework is responsible for converting its build-target format — e.g.
-  // an Arduino FQBN PSRAM= option — into this boolean flag before calling.)
-  const psramBudget = ctx?.psram === true;
-  const budgetDefault = psramBudget
-    ? PSRAM_SCROLL_CANVAS_BUDGET_BYTES
-    : DEFAULT_SCROLL_CANVAS_BUDGET_BYTES;
   return {
     inputTier: s.inputTier ?? derivedInput,
     renderTier: s.renderTier ?? "full",
@@ -327,7 +290,6 @@ export function resolveScrollConfig(
     inputSmoothing: s.inputSmoothing ?? 0.3,
     overrideProbes: s.overrideProbes ?? true,
     debug: s.debug ?? false,
-    scrollCanvasBudgetBytes: s.scrollCanvasBudgetBytes ?? budgetDefault,
   };
 }
 

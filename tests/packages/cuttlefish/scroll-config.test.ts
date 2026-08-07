@@ -69,11 +69,4 @@ describe("resolveScrollConfig", () => {
       resolveScrollConfig({ touch: { library: "Adafruit_TouchScreen" } as TouchProfile }).inputTier,
     ).toBe("resistive");
   });
-
-  it("defaults scrollCanvasBudgetBytes to 88000 and accepts overrides", () => {
-    expect(resolveScrollConfig({}).scrollCanvasBudgetBytes).toBe(88000);
-    expect(
-      resolveScrollConfig({ scroll: { scrollCanvasBudgetBytes: 120000 } }).scrollCanvasBudgetBytes,
-    ).toBe(120000);
-  });
 });

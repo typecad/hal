@@ -66,9 +66,6 @@
 #ifndef UI_SCROLL_DEBUG
 #define UI_SCROLL_DEBUG 0
 #endif
-#ifndef UI_SCROLL_CANVAS_BUDGET_BYTES
-#define UI_SCROLL_CANVAS_BUDGET_BYTES 88000
-#endif
 // Band renderer: height (px) of the horizontal band canvas used to composite
 // scroll subtrees tear-free when no viewport canvas fits (no PSRAM / over
 // budget). Each band is vw × UI_STRIP_BAND_HEIGHT (~10KB at RGB565 for a
@@ -457,8 +454,6 @@ static int16_t __ui_scroll_node = -1;            // owning scroll container (int
 // frozen-but-not-torn rather than allowed to scroll with unclipped children.
 // Sized at runtime via __ui_node_count; defaults to all-zero (lock until proven).
 static uint8_t* __ui_scroll_canvas_ok = nullptr;
-// One-shot scroll memory warnings (indexed by node).
-static uint8_t* __ui_scroll_mem_warned = nullptr;
 // Precomputed draw order (lower z-index first, then source index). Built once in
 // ui_init; zIndex is static after mount so this stays valid for the app lifetime.
 static uint16_t* __ui_draw_order = nullptr;
@@ -711,6 +706,10 @@ static inline void ui_aa_fill_circle(CuttlefishCanvas16* c, int16_t cx, int16_t 
 static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx, UIRect* r);
 static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* paintRect);
 static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect* oldRect);
+// Band renderers (defined in node-draw-body; forward-declared so the NODE_LIST
+// case can fall back to ui_render_list_bands before its definition site).
+static inline uint8_t ui_render_node_bands(uint16_t nodeIdx, int16_t prX, int16_t prY, int16_t prW, int16_t prH);
+static inline uint8_t ui_render_list_bands(uint16_t i);
 static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, UI_COLOR_T color);
 static inline void ui_draw_node_outline(uint16_t i, int16_t drawX, int16_t drawY);
 static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY);
@@ -783,58 +782,6 @@ static inline CuttlefishCanvas16* ui_get_container_canvas(int16_t w, int16_t h) 
   }
   return (__ui_container_canvas && display_canvasBuffer(__ui_container_canvas))
     ? __ui_container_canvas : nullptr;
-}
-
-// Defined after the node table by UI lowering (scroll overflow nodes with ids).
-static inline const char* __ui_scroll_node_id(uint16_t idx);
-
-// Emit a one-time Serial note when a scroll container's smooth-scroll canvas
-// won't fit, so the band renderer (tear-free, ~10KB band canvas) is active
-// instead of the cheaper Mode B shift-and-repair path. reason: 0=canvas alloc
-// failed, 1=viewport exceeds budget, 2=Mode C strip fallback (reduced accuracy).
-static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
-  if (nodeIdx >= __ui_node_count) return;
-  if (!__ui_scroll_mem_warned) return;
-  if (__ui_scroll_mem_warned[nodeIdx]) return;
-  __ui_scroll_mem_warned[nodeIdx] = 1;
-
-  int16_t vw = __ui_nodes[nodeIdx].box.w;
-  int16_t vh = __ui_nodes[nodeIdx].box.h;
-  uint32_t need = static_cast<uint32_t>(vw > 0 ? vw : 0) * static_cast<uint32_t>(vh > 0 ? vh : 0) * 2u;
-  const char* id = __ui_scroll_node_id(nodeIdx);
-  const char* label = (id && id[0]) ? id : "scroll viewport";
-  const char* reasonText = "scroll canvas allocation failed";
-  if (reason == 1) reasonText = "scroll viewport exceeds compile-time canvas budget";
-  else if (reason == 2) reasonText = "using Mode C strip fallback (smooth scroll canvas unavailable)";
-
-#if defined(ESP32) && defined(ARDUINO)
-  uint32_t freeHeap = ESP.getFreeHeap();
-  uint32_t maxAlloc = ESP.getMaxAllocHeap();
-  Serial.printf(
-    "[cuttlefish] NOTE: #%s (%dx%d) needs %lu bytes for the smooth Mode B scroll path — %s. "
-    "Using the band renderer (tear-free, ~10KB band canvas) instead. "
-    "heap free=%lu max_alloc=%lu budget=%d. "
-    "To restore Mode B: shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\n",
-    label, vw, vh, static_cast<unsigned long>(need), reasonText,
-    static_cast<unsigned long>(freeHeap), static_cast<unsigned long>(maxAlloc), UI_SCROLL_CANVAS_BUDGET_BYTES);
-#elif defined(ESP8266) && defined(ARDUINO)
-  uint32_t freeHeap = ESP.getFreeHeap();
-  Serial.printf(
-    "[cuttlefish] NOTE: #%s (%dx%d) needs %lu bytes for the smooth Mode B scroll path — %s. "
-    "Using the band renderer (tear-free, ~10KB band canvas) instead. "
-    "heap free=%lu budget=%d. "
-    "To restore Mode B: shrink the scroll viewport in CSS, trim fonts/images, or reduce UI footprint.\n",
-    label, vw, vh, static_cast<unsigned long>(need), reasonText,
-    static_cast<unsigned long>(freeHeap), UI_SCROLL_CANVAS_BUDGET_BYTES);
-#else
-  // Non-Arduino target (e.g. SDL native): no Serial, so use standard-C printf.
-  // The native framework forces <cstdio> so printf is available here.
-  printf(
-    "[cuttlefish] NOTE: #%s (%dx%d) needs %lu bytes for the smooth Mode B scroll path — %s. "
-    "Using the band renderer (tear-free, ~10KB band canvas) instead. "
-    "budget=%d. To restore Mode B: shrink the scroll viewport in CSS or trim UI assets.\n",
-    label, vw, vh, static_cast<unsigned long>(need), reasonText, UI_SCROLL_CANVAS_BUDGET_BYTES);
-#endif
 }
 
 // Shift the canvas buffer vertically by deltaY (cheap memmove of existing
@@ -2089,7 +2036,7 @@ static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_
   return 1;
 }
 
-static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCanvas16* canvas, int16_t canvasX, int16_t canvasY) {
+static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCanvas16* canvas, int16_t canvasX, int16_t canvasY, int16_t bandTop) {
   if (!canvas || !display_canvasBuffer(canvas)) return;
   uint16_t p = __ui_nodes[nodeIdx].parent;
   if (p == UI_NO_PARENT || p >= __ui_node_count) {
@@ -2113,7 +2060,11 @@ static inline void ui_seed_paint_canvas_for_node(uint16_t nodeIdx, CuttlefishCan
   CuttlefishDisplayTarget* previousGfx = ui_display_get_target();
   ui_display_set_target(canvas);
   __ui_nodes[p].box.x = parentDrawX - canvasX;
-  int16_t localY = parentDrawY - canvasY;
+  // Shift the parent's draw Y up by bandTop so the band canvas shows the
+  // correct slice of the parent fill/border for this band's Y range. bandTop=0
+  // (the main-loop caller) is a no-op shift. canvasY already carries the paint
+  // rect's display-space origin; bandTop further offsets within the rect.
+  int16_t localY = parentDrawY - canvasY - bandTop;
 
   // Parent fill color: blended toward the parent's backdrop when the parent is
   // translucent (matching the main NODE_FILL draw, which uses fillBg). Without
@@ -2147,7 +2098,7 @@ static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx,
   if (static_cast<uint32_t>(r->w) * static_cast<uint32_t>(r->h) > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
   CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(r->w, r->h);
   if (!repairCanvas) return 0;
-  ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, r->x, r->y);
+  ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, r->x, r->y, 0);
   ui_display_use_default_target();
   ui_push_canvas_rect(repairCanvas, r->x, r->y, r->w, r->h);
   return 1;
@@ -2382,7 +2333,7 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(repair.w, repair.h);
   if (!repairCanvas) return 0;
 
-  ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, repair.x, repair.y);
+  ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, repair.x, repair.y, 0);
   CuttlefishDisplayTarget* previousGfx = ui_display_get_target();
   ui_display_set_target(repairCanvas);
   UI_COLOR_T fillBg = __ui_nodes[nodeIdx].bg;
@@ -2483,9 +2434,6 @@ static inline void ui_init(void) {
   // canvas fits.
   if (!__ui_scroll_canvas_ok && __ui_node_count > 0) {
     __ui_scroll_canvas_ok = new (std::nothrow) uint8_t[__ui_node_count]();
-  }
-  if (!__ui_scroll_mem_warned && __ui_node_count > 0) {
-    __ui_scroll_mem_warned = new (std::nothrow) uint8_t[__ui_node_count]();
   }
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
@@ -4613,11 +4561,20 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
             display_canvasWidth(__ui_list_canvas) != bw || display_canvasHeight(__ui_list_canvas) != bh) {
           display_deleteCanvas(__ui_list_canvas);
           __ui_list_canvas_node = -1;
-          __ui_list_canvas = display_createCanvas(bw, bh);
+          __ui_list_canvas = ui_create_canvas_best(bw, bh);
           listFullRepaint = 1;
         }
         CuttlefishCanvas16* lc = __ui_list_canvas;
         if (!lc || !display_canvasBuffer(lc)) {
+          // Viewport canvas won't allocate (no PSRAM / over SRAM budget on a
+          // full-width list). Fall back to the band renderer: composite the
+          // visible rows into the ~10KB band canvas strip-by-strip, pushing
+          // each band tear-free. Mirrors the generic scroll path's Mode B →
+          // ui_render_scroll_bands fallback. If even the band canvas fails,
+          // give up (render nothing) — same as the old break.
+          if (ui_render_list_bands(static_cast<uint16_t>(i))) {
+            return 1;  // band path handled push + decoration + dirty-clear
+          }
           break;
         }
         if (__ui_list_canvas_node != static_cast<int16_t>(i)) listFullRepaint = 1;
@@ -4925,6 +4882,271 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
   for (uint16_t c = s + 1; c < subtreeEnd; c++) {
     __ui_nodes[c].dirty = 0;
   }
+  return 1;
+}
+
+// ── Per-node band renderer ────────────────────────────────────────────────
+// Tear-free single-node repaint when the full node-sized repair canvas won't
+// allocate (e.g. a full-width button on a no-PSRAM target: a 284×52 paint rect
+// is ~29KB, too big for internal SRAM, so ui_get_repair_canvas returns null and
+// the repaint would otherwise fall back to direct clear→redraw-to-SPI, which
+// flashes). Mirrors ui_render_scroll_bands but composites a SINGLE node over
+// its paint rect, reusing the persistent __ui_band_canvas (~10KB at
+// UI_STRIP_BAND_HEIGHT, proven to allocate on no-PSRAM targets). Each band is
+// seeded with the parent backdrop, the node's shadow+body+outline composited
+// into it, then pushed — one transaction per band — so nothing reaches the
+// panel until the band is complete (no tearing). Returns 1 if the band canvas
+// allocated and the node was rendered; 0 if even the band canvas can't
+// allocate (caller falls back to the direct-draw path).
+//
+// prX/prY/prW/prH = the node's paint rect in DISPLAY coords (the union of
+// rest-shadow + pressed-face + outline, as computed by ui_node_paint_rect).
+static inline uint8_t ui_render_node_bands(uint16_t i, int16_t prX, int16_t prY, int16_t prW, int16_t prH) {
+  if (i >= __ui_node_count || prW <= 0 || prH <= 0) return 0;
+  // Band canvas: reuse the scroll-band slot, reallocating when the width
+  // changes so display_canvasWidth == prW == stride (ui_push_canvas_rect's
+  // single-write fast path requires w == stride — a sub-width push takes a
+  // row-by-row path some ST7796S drivers mishandle).
+  if (!__ui_band_canvas || !display_canvasBuffer(__ui_band_canvas) ||
+      display_canvasWidth(__ui_band_canvas) != prW) {
+    display_deleteCanvas(__ui_band_canvas);
+    __ui_band_canvas = ui_create_canvas_best(prW, UI_STRIP_BAND_HEIGHT);
+  }
+  CuttlefishCanvas16* band = __ui_band_canvas;
+  if (!band || !display_canvasBuffer(band)) return 0;
+  int16_t bandH = display_canvasHeight(band);
+
+  // Display-space draw coords for the node (untranslated — band-local offsets
+  // are applied per band below). baseDraw excludes the pressed offset; draw
+  // includes it (a pressed button's face sits 3px below its shadow).
+  int16_t dispBaseDrawX = ui_base_draw_x_for_node(i);
+  int16_t dispBaseDrawY = ui_base_draw_y_for_node(i);
+  int16_t dispDrawX = ui_draw_x_for_node(i);
+  int16_t dispDrawY = ui_draw_y_for_node(i);
+  int16_t origBoxX = __ui_nodes[i].box.x;
+  int16_t origBoxY = __ui_nodes[i].box.y;
+
+  // Per-kind draw metrics (same as the main loop / scroll band path).
+  uint8_t ts = __ui_nodes[i].textSize ? __ui_nodes[i].textSize : 2;
+  uint16_t textMaxW = ui_node_text_max_width(i);
+  uint16_t tw = 0;
+  uint16_t th = 0;
+  ui_node_text_layout_metrics(i, textMaxW, &tw, &th);
+  uint16_t paintTextW = tw;
+  uint16_t paintTextH = th;
+  if (__ui_nodes[i].kind == NODE_TEXT || __ui_nodes[i].kind == NODE_SELECT) {
+    uint16_t hInset = static_cast<uint16_t>(__ui_nodes[i].paddingLeft) + static_cast<uint16_t>(__ui_nodes[i].paddingRight) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
+    uint16_t vInset = static_cast<uint16_t>(__ui_nodes[i].paddingTop) + static_cast<uint16_t>(__ui_nodes[i].paddingBottom) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
+    paintTextW = static_cast<uint16_t>(tw + hInset);
+    paintTextH = static_cast<uint16_t>(th + vInset);
+  }
+  if (__ui_nodes[i].kind == NODE_CHECK || __ui_nodes[i].kind == NODE_RADIO) {
+    paintTextW = static_cast<uint16_t>(tw + 22);
+    if (paintTextH < 16) paintTextH = 16;
+  }
+  const char* displayText = __ui_nodes[i].hasTextBinding
+    ? __ui_nodes[i].textBuffer
+    : __ui_nodes[i].text;
+  UI_COLOR_T bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
+  UI_COLOR_T fillBg = __ui_nodes[i].bg;
+  if (__ui_nodes[i].opacity < 100) {
+    UI_COLOR_T backdrop = ui_parent_clear_color(i);
+    bColor = ui_blend(bColor, backdrop, __ui_nodes[i].opacity);
+    fillBg = ui_blend(__ui_nodes[i].bg, backdrop, __ui_nodes[i].opacity);
+  }
+
+  CuttlefishDisplayTarget* prevTarget = ui_display_get_target();
+  // Top→bottom bands over the paint rect.
+  for (int16_t bandTop = 0; bandTop < prH; bandTop += bandH) {
+    int16_t bandBot = bandTop + bandH;
+    if (bandBot > prH) bandBot = prH;
+    int16_t thisH = static_cast<int16_t>(bandBot - bandTop);
+    // Seed the band with the parent backdrop at this band's Y slice. The seed
+    // fills the whole band; bandTop shifts the parent fill rect so its rows
+    // land in [0, thisH) of the canvas.
+    ui_seed_paint_canvas_for_node(i, band, prX, prY + bandTop, bandTop);
+    ui_display_set_target(band);
+    // Band-local coords: subtract the paint-rect origin and the band's top row.
+    int16_t baseDrawX = static_cast<int16_t>(dispBaseDrawX - prX);
+    int16_t baseDrawY = static_cast<int16_t>(dispBaseDrawY - prY - bandTop);
+    int16_t drawX = static_cast<int16_t>(dispDrawX - prX);
+    int16_t drawY = static_cast<int16_t>(dispDrawY - prY - bandTop);
+    // Outset shadow at the rest position (baseDraw), under the face. Mirrors
+    // the main loop's pre-body shadow draw. Lists skip the outset shadow in
+    // the main loop (their shadow is drawn elsewhere); match that here.
+    uint8_t skipListOutsetShadow = (__ui_nodes[i].kind == NODE_LIST);
+    if (!skipListOutsetShadow) {
+      __ui_nodes[i].box.x = baseDrawX;
+      ui_draw_shadow(i, baseDrawY, 0);
+    }
+    __ui_nodes[i].box.x = drawX;
+    UINodeDrawCtx ctx;
+    ctx.drawY = drawY;
+    ctx.bColor = bColor;
+    ctx.fillBg = fillBg;
+    ctx.ts = ts;
+    ctx.textMaxW = textMaxW;
+    ctx.tw = tw;
+    ctx.th = th;
+    ctx.paintTextW = paintTextW;
+    ctx.paintTextH = paintTextH;
+    ctx.displayText = displayText;
+    ctx.drawingBufferedScroll = 0;
+    ctx.drawTarget = prevTarget;
+    ctx.origBoxX = origBoxX;
+    ctx.origBoxY = origBoxY;
+    // Each band starts on a freshly seeded canvas, so the persistent
+    // incremental-paint caches (lastTextWidth/Height) are invalid mid-band.
+    // Save/restore so the band path is transient (see ui_render_scroll_bands).
+    int16_t savedLastTextW = __ui_nodes[i].lastTextWidth;
+    uint16_t savedLastTextH = __ui_nodes[i].lastTextHeight;
+    if (__ui_nodes[i].kind == NODE_PROGRESS || __ui_nodes[i].kind == NODE_RANGE) {
+      __ui_nodes[i].lastTextWidth = -1;
+    }
+    __ui_nodes[i].lastTextHeight = 0;
+    if (!ui_draw_node_body(static_cast<int16_t>(i), &ctx)) {
+      ui_draw_node_outline(i, __ui_nodes[i].box.x, drawY);
+    }
+    __ui_nodes[i].lastTextWidth = savedLastTextW;
+    __ui_nodes[i].lastTextHeight = savedLastTextH;
+    __ui_nodes[i].box.x = origBoxX;
+    __ui_nodes[i].box.y = origBoxY;
+    ui_display_set_target(prevTarget);
+    // Push the full paint-rect width (== stride) in one transaction: each band
+    // is complete before it touches the panel, eliminating the press flash.
+    ui_push_canvas_rect(band, prX, static_cast<int16_t>(prY + bandTop), prW, thisH);
+  }
+  return 1;
+}
+
+// ── List band renderer ────────────────────────────────────────────────────
+// Tear-free <list> rendering when the viewport-sized list canvas won't allocate
+// (a full-width list viewport is ~29KB+, too big for no-PSRAM SRAM, so the
+// shift-and-repair cache can't be built and the list would otherwise render
+// nothing). Mirrors ui_render_scroll_bands but composites the list's OWN
+// virtualized rows (via listItemFn) instead of a subtree walk. Reuses the
+// persistent __ui_band_canvas (~10KB at UI_STRIP_BAND_HEIGHT); each band is
+// fully rendered — content rows + scrollbar slice — before its single SPI
+// push, so the panel never shows a half-drawn frame. Returns 1 if the band
+// canvas allocated and the list was rendered+pushed+decorated; 0 if even the
+// band canvas can't allocate (caller renders nothing).
+//
+// Shift-and-repair is impossible without the viewport cache, so every repaint
+// re-renders all visible rows. For a typical ~10-20 row text list this is
+// affordable; lastPaintedScrollY is still updated so a later transition to
+// canvas mode (memory frees) starts correctly.
+static inline uint8_t ui_render_list_bands(uint16_t i) {
+  if (i >= __ui_node_count) return 0;
+  if (!__ui_nodes[i].listItemFn) return 0;
+  int16_t bx = __ui_nodes[i].box.x;
+  int16_t by = ui_draw_y_for_node(i);
+  int16_t bw = __ui_nodes[i].box.w;
+  int16_t bh = __ui_nodes[i].box.h;
+  if (bw <= 0 || bh <= 0) return 0;
+  uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
+  uint16_t itemCount = __ui_nodes[i].listCount;
+  int16_t listScrollY = __ui_nodes[i].scrollY;
+  int16_t listContentH = __ui_nodes[i].contentHeight;
+  UI_COLOR_T clearCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+  int16_t origBoxX = __ui_nodes[i].box.x;
+  int16_t origBoxY = __ui_nodes[i].box.y;
+
+  // Reuse the band canvas, reallocating when the width changes so stride == bw
+  // (ui_push_canvas_rect's single-write fast path requires w == stride — a
+  // sub-width push takes a row-by-row path some ST7796S drivers mishandle).
+  if (!__ui_band_canvas || !display_canvasBuffer(__ui_band_canvas) ||
+      display_canvasWidth(__ui_band_canvas) != bw) {
+    display_deleteCanvas(__ui_band_canvas);
+    __ui_band_canvas = ui_create_canvas_best(bw, UI_STRIP_BAND_HEIGHT);
+  }
+  CuttlefishCanvas16* band = __ui_band_canvas;
+  if (!band || !display_canvasBuffer(band)) return 0;
+  int16_t bandH = display_canvasHeight(band);
+
+  // Scrollbar geometry (viewport coords), same as the cached-canvas list path.
+  // Track spans [0, bh); thumb spans [thumbY, thumbY + thumbH). 3px wide at
+  // canvas-x (bw - 4). Composited per band so the full-width push is atomic.
+  int16_t contentW = bw > 4 ? static_cast<int16_t>(bw - 4) : bw;
+  uint8_t sbVisible = (listContentH > bh) ? 1 : 0;
+  uint16_t sbThumbH = 0;
+  uint16_t sbThumbY = 0;
+  UI_COLOR_T sbTrackCol = (UI_COLOR_T)((__ui_nodes[i].fg >> 1) & UI_DIM_MASK);
+  UI_COLOR_T sbThumbCol = __ui_nodes[i].fg;
+  if (sbVisible) {
+    sbThumbH = static_cast<uint32_t>(bh) * bh / listContentH;
+    if (sbThumbH < 8) sbThumbH = 8;
+    if (sbThumbH > static_cast<uint16_t>(bh)) sbThumbH = static_cast<uint16_t>(bh);
+    int16_t maxScroll = listContentH - bh;
+    sbThumbY = maxScroll > 0 ? static_cast<uint32_t>(bh - sbThumbH) * listScrollY / maxScroll : 0;
+  }
+
+  char listBuf[UI_TEXT_BUF + 1];
+  CuttlefishDisplayTarget* prevTarget = ui_display_get_target();
+  // Top→bottom bands over the list viewport.
+  for (int16_t bandTop = 0; bandTop < bh; bandTop += bandH) {
+    int16_t bandBot = bandTop + bandH;
+    if (bandBot > bh) bandBot = bh;
+    int16_t thisH = static_cast<int16_t>(bandBot - bandTop);
+    // Seed content area with the list bg; the gutter is filled by the
+    // scrollbar composite below (or cleared to bg when no scrollbar).
+    display_canvasFillRect(band, 0, 0, contentW, bandH, clearCol);
+    if (!sbVisible) {
+      display_canvasFillRect(band, contentW, 0, bw - contentW, bandH, clearCol);
+    }
+    // Draw visible items whose row intersects this band (canvas-local Y).
+    display_targetSetTextWrap((CuttlefishDisplayTarget*)band, false);
+    if (itemCount > 0) {
+      // First/last item index whose [idx*ih - listScrollY, +ih) overlaps the
+      // band's viewport-Y range [bandTop, bandBot).
+      uint16_t first = static_cast<uint16_t>((listScrollY + bandTop) / ih);
+      int32_t lastSigned = (static_cast<int32_t>(listScrollY) + bandBot - 1) / ih;
+      uint16_t last = lastSigned < 0 ? 0 : static_cast<uint16_t>(lastSigned);
+      if (itemCount > 0 && last >= itemCount) last = itemCount - 1;
+      for (uint16_t idx = first; idx <= last; idx++) {
+        int16_t itemY = static_cast<int16_t>(idx * ih) - listScrollY - bandTop;
+        // Cull rows fully outside this band (the first/last estimate can be
+        // off by one at the edges).
+        if (itemY + static_cast<int16_t>(ih) <= 0) continue;
+        if (itemY >= thisH) continue;
+        __ui_nodes[i].listItemFn(idx, listBuf, UI_TEXT_BUF + 1);
+        listBuf[UI_TEXT_BUF] = 0;
+        display_targetSetCursor((CuttlefishDisplayTarget*)band, 4, itemY + static_cast<int16_t>(ih - 16) / 2);
+        display_targetSetTextColor((CuttlefishDisplayTarget*)band, __ui_nodes[i].fg);
+        display_targetSetTextSize((CuttlefishDisplayTarget*)band, 2);
+        display_targetPrint((CuttlefishDisplayTarget*)band, listBuf);
+      }
+    }
+    // Composite this band's scrollbar slice into the gutter (atomic full-width
+    // push — no separate erase/redraw cycle, no scrollbar flash).
+    if (sbVisible) {
+      display_canvasFillRect(band, contentW, 0, 3, thisH, sbTrackCol);
+      int16_t thumbTop = static_cast<int16_t>(sbThumbY);
+      int16_t thumbBot = static_cast<int16_t>(sbThumbY + sbThumbH);
+      int16_t ovTop = thumbTop > bandTop ? thumbTop : bandTop;
+      int16_t ovBot = thumbBot < bandBot ? thumbBot : bandBot;
+      if (ovBot > ovTop) {
+        display_canvasFillRect(band, contentW, static_cast<int16_t>(ovTop - bandTop), 3, static_cast<int16_t>(ovBot - ovTop), sbThumbCol);
+      }
+    }
+    (void)prevTarget;  // target is the display; band canvas is written via display_target* + canvasFillRect directly
+    ui_push_canvas_rect(band, bx, static_cast<int16_t>(by + bandTop), bw, thisH);
+  }
+  // Static decoration on top of the composited content (same order as the
+  // cached-canvas list path: outset shadow, border, outline).
+  if (!__ui_fb) {
+    ui_draw_shadow(i, by, 0);
+  }
+  ui_draw_shadow(i, by, 1);
+  if (__ui_nodes[i].borderStyle != 0) {
+    UI_COLOR_T bColor = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
+    ui_draw_node_border(i, bx, by, bColor);
+  }
+  ui_draw_node_outline(i, bx, by);
+  __ui_list_canvas_node = static_cast<int16_t>(i);
+  __ui_nodes[i].lastPaintedScrollY = listScrollY;
+  __ui_nodes[i].dirty = 0;
+  __ui_nodes[i].box.x = origBoxX;
+  __ui_nodes[i].box.y = origBoxY;
   return 1;
 }
 
@@ -5442,11 +5664,6 @@ static inline void ui_tick(uint16_t deltaMs) {
       // completes before it touches the panel — tear-free, with ~10KB of SRAM
       // regardless of program size. Falls back to direct-full (per-child direct
       // SPI draws, which tear) only when the band canvas itself can't allocate.
-      int16_t deltaY = __ui_nodes[s].scrollY - __ui_nodes[s].lastPaintedScrollY;
-      int16_t absDelta = deltaY < 0 ? -deltaY : deltaY;
-      uint32_t scrollNeed = static_cast<uint32_t>(vw > 0 ? vw : 0) * static_cast<uint32_t>(vh > 0 ? vh : 0) * 2u;
-      (void)deltaY; (void)absDelta;
-      ui_warn_scroll_memory(static_cast<uint16_t>(s), scrollNeed > static_cast<uint32_t>(UI_SCROLL_CANVAS_BUDGET_BYTES) ? 1 : 0);
       if (__ui_scroll_canvas_ok) __ui_scroll_canvas_ok[s] = 0;
       // Defer the band render to the scroll owner's z-order slot in the main
       // draw loop (see bufferedScrollBands handling below). Painting here would
@@ -5710,12 +5927,13 @@ static inline void ui_tick(uint16_t deltaMs) {
     int16_t paintCanvasH = paintRect.h;
     // RAM-composite pixel-heavy nodes before SPI push. Skip when already drawing
     // into a scroll canvas or a full-screen framebuffer (both are RAM targets).
-    if (!drawingBufferedScroll && !__ui_fb && ui_should_buffer_paint(i, paintCanvasW, paintCanvasH)) {
+    uint8_t wantedBuffer = !drawingBufferedScroll && !__ui_fb && ui_should_buffer_paint(i, paintCanvasW, paintCanvasH);
+    if (wantedBuffer) {
       paintCanvas = ui_get_repair_canvas(paintCanvasW, paintCanvasH);
       if (paintCanvas) {
         drawingPaintCanvas = 1;
         ui_display_set_target(paintCanvas);
-        ui_seed_paint_canvas_for_node(i, paintCanvas, paintCanvasX, paintCanvasY);
+        ui_seed_paint_canvas_for_node(i, paintCanvas, paintCanvasX, paintCanvasY, 0);
         baseDrawX -= paintCanvasX;
         baseDrawY -= paintCanvasY;
         drawX -= paintCanvasX;
@@ -5726,6 +5944,23 @@ static inline void ui_tick(uint16_t deltaMs) {
       }
     }
     if (!drawingPaintCanvas) {
+      // Buffering was wanted but the node-sized repair canvas wouldn't allocate
+      // (a full-width button's ~29KB paint rect is too big for no-PSRAM SRAM).
+      // Fall back to the band renderer: composite the node into the ~10KB band
+      // canvas one horizontal strip at a time, pushing each band tear-free —
+      // same architecture as the scroll band renderer. Avoids the direct
+      // clear→redraw-to-SPI that visibly flashes on press/scroll. Only engages
+      // on the alloc-failure path; small nodes still use the fast paint canvas.
+      if (wantedBuffer && ui_render_node_bands(static_cast<uint16_t>(i), paintCanvasX, paintCanvasY, paintCanvasW, paintCanvasH)) {
+        if (!drawingBufferedScroll) {
+          ui_invalidate_scroll_canvas_for_node(i);
+        }
+        __ui_nodes[i].box.x = origBoxX;
+        __ui_nodes[i].box.y = origBoxY;
+        __ui_nodes[i].dirty = 0;
+        ui_refresh_add_rect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
+        continue;
+      }
       ui_clear_press_offset_area(i, baseDrawX, baseDrawY, drawX, drawY, paintTextW, paintTextH);
     }
     uint8_t skipListOutsetShadow =
