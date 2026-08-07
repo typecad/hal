@@ -64,11 +64,23 @@ static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x
   float dx = x1 - x0, dy = y1 - y0;
   float gradient = (dx == 0) ? 1.0f : dy / dx;
 
-  int16_t xpx1 = round_f(x0);
-  float xend = x0 + 0.5f * (xpx1 - x0) * (xpx1 - x0 < 0 ? -1 : 0); // simplified
-  float intery = y0 + gradient * (xpx1 - x0);
+  // Handle first endpoint.
+  float xend = static_cast<float>(round_f(x0));
+  float yend = y0 + gradient * (xend - x0);
+  float xgap = rfpart(x0);
+  int16_t xpx1 = static_cast<int16_t>(xend);
+  int16_t ypx1 = ipart(yend);
+  if (steep) {
+    ui_aa_pixel(c, ypx1, xpx1, color, static_cast<uint8_t>(rfpart(yend) * xgap * 255));
+    ui_aa_pixel(c, ypx1 + 1, xpx1, color, static_cast<uint8_t>(fpart(yend) * xgap * 255));
+  } else {
+    ui_aa_pixel(c, xpx1, ypx1, color, static_cast<uint8_t>(rfpart(yend) * xgap * 255));
+    ui_aa_pixel(c, xpx1, ypx1 + 1, color, static_cast<uint8_t>(fpart(yend) * xgap * 255));
+  }
+  float intery = yend + gradient;
 
-  for (int16_t x = xpx1; x <= ipart(x1); x++) {
+  // Main loop.
+  for (int16_t x = xpx1 + 1; x <= static_cast<int16_t>(round_f(x1)) - 1; x++) {
     if (steep) {
       ui_aa_pixel(c, ipart(intery), x, color, static_cast<uint8_t>(rfpart(intery) * 255));
       ui_aa_pixel(c, ipart(intery) + 1, x, color, static_cast<uint8_t>(fpart(intery) * 255));

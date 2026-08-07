@@ -461,7 +461,24 @@ export function emitTickDirtyDrawPhase(): string {
         ui_refresh_add_rect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
         continue;
       }
-      ui_clear_press_offset_area(i, baseDrawX, baseDrawY, drawX, drawY, paintTextW, paintTextH);
+      // Band canvas also failed — last resort: retry the repair canvas (it
+      // might fit when the band canvas is contended) before falling to the
+      // flashing direct clear→redraw-to-SPI.
+      if (wantedBuffer && preferBand) {
+        paintCanvas = ui_get_repair_canvas(paintCanvasW, paintCanvasH);
+        if (paintCanvas) {
+          drawingPaintCanvas = 1;
+          ui_display_set_target(paintCanvas);
+          ui_seed_paint_canvas_for_node(i, paintCanvas, paintCanvasX, paintCanvasY, 0);
+          baseDrawX -= paintCanvasX;
+          baseDrawY -= paintCanvasY;
+          drawX -= paintCanvasX;
+          drawY -= paintCanvasY;
+        }
+      }
+      if (!drawingPaintCanvas) {
+        ui_clear_press_offset_area(i, baseDrawX, baseDrawY, drawX, drawY, paintTextW, paintTextH);
+      }
     }
     uint8_t skipListOutsetShadow =
       (__ui_nodes[i].kind == NODE_LIST && !drawingBufferedScroll && !__ui_fb);

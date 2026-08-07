@@ -784,15 +784,18 @@ static inline CuttlefishCanvas16* ui_create_canvas_best(int16_t w, int16_t h) {
 }
 
 static inline CuttlefishCanvas16* ui_get_container_canvas(int16_t w, int16_t h) {
-  if (w <= 0 || h <= 0) return nullptr;
-  if (!__ui_container_canvas ||
-      display_canvasWidth(__ui_container_canvas) != w ||
-      display_canvasHeight(__ui_container_canvas) != h) {
-    display_deleteCanvas(__ui_container_canvas);
-    __ui_container_canvas = ui_create_canvas_best(w, h);
-  }
-  return (__ui_container_canvas && display_canvasBuffer(__ui_container_canvas))
-    ? __ui_container_canvas : nullptr;
+  // Intentionally returns nullptr: scroll containers always use the band
+  // renderer (ui_render_scroll_bands), not the Mode B viewport canvas.
+  // Mode B holds the whole viewport in one large canvas and pushes it in a
+  // single transaction every frame — on SPI TFTs that full-viewport push
+  // (especially from PSRAM) visibly flashes on child state changes like a
+  // button press. The band renderer composites into a small ~10KB SRAM canvas
+  // strip-by-strip, pushing each band only after it's complete — tear-free and
+  // flash-free regardless of target memory. PSRAM still benefits the other
+  // canvases (list, keyboard, repair); only the scroll viewport deliberately
+  // bypasses it for visual quality.
+  (void)w; (void)h;
+  return nullptr;
 }
 
 // Shift the canvas buffer vertically by deltaY (cheap memmove of existing
@@ -4797,16 +4800,17 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
       // loop's drawingBufferedScroll setup: subtract the viewport origin and the
       // band's top row. ui_draw_y_for_node then re-derives the band-local Y
       // (document Y - scrollY - voy - bandTop) = (screenY - voy - bandTop). The
-      // box.x translate below is read by ui_base_draw_x_for_node (which adds
-      // transformOffsetX), so it must be set before computing baseDrawX; the
-      // body then needs box.x = baseDrawX (the main loop does the same).
+      // box.x translate below is read by ui_draw_x_for_node (which adds
+      // transformOffsetX + pressedOffsetX), so it must be set before computing
+      // drawX; the body needs box.x = drawX (including the pressed offset,
+      // matching the main loop and ui_render_node_bands).
       int16_t origBoxX = __ui_nodes[c].box.x;
       int16_t origBoxY = __ui_nodes[c].box.y;
       __ui_nodes[c].box.x = static_cast<int16_t>(origBoxX - vox);
       __ui_nodes[c].box.y = static_cast<int16_t>(origBoxY - voy - bandTop);
-      int16_t baseDrawX = ui_base_draw_x_for_node(c);
+      int16_t drawX = ui_draw_x_for_node(c);
       int16_t drawY = ui_draw_y_for_node(c);
-      __ui_nodes[c].box.x = baseDrawX;
+      __ui_nodes[c].box.x = drawX;
       uint8_t ts = __ui_nodes[c].textSize ? __ui_nodes[c].textSize : 2;
       uint16_t textMaxW = ui_node_text_max_width(c);
       uint16_t tw = 0;
@@ -5087,7 +5091,6 @@ static inline uint8_t ui_render_list_bands(uint16_t i) {
   }
 
   char listBuf[UI_TEXT_BUF + 1];
-  CuttlefishDisplayTarget* prevTarget = ui_display_get_target();
   // Top→bottom bands over the list viewport.
   for (int16_t bandTop = 0; bandTop < bh; bandTop += bandH) {
     int16_t bandBot = bandTop + bandH;
@@ -5134,7 +5137,6 @@ static inline uint8_t ui_render_list_bands(uint16_t i) {
         display_canvasFillRect(band, contentW, static_cast<int16_t>(ovTop - bandTop), 3, static_cast<int16_t>(ovBot - ovTop), sbThumbCol);
       }
     }
-    (void)prevTarget;  // target is the display; band canvas is written via display_target* + canvasFillRect directly
     ui_push_canvas_rect(band, bx, static_cast<int16_t>(by + bandTop), bw, thisH);
   }
   // Static decoration on top of the composited content (same order as the
@@ -5938,7 +5940,24 @@ static inline void ui_tick(uint16_t deltaMs) {
         ui_refresh_add_rect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
         continue;
       }
-      ui_clear_press_offset_area(i, baseDrawX, baseDrawY, drawX, drawY, paintTextW, paintTextH);
+      // Band canvas also failed — last resort: retry the repair canvas (it
+      // might fit when the band canvas is contended) before falling to the
+      // flashing direct clear→redraw-to-SPI.
+      if (wantedBuffer && preferBand) {
+        paintCanvas = ui_get_repair_canvas(paintCanvasW, paintCanvasH);
+        if (paintCanvas) {
+          drawingPaintCanvas = 1;
+          ui_display_set_target(paintCanvas);
+          ui_seed_paint_canvas_for_node(i, paintCanvas, paintCanvasX, paintCanvasY, 0);
+          baseDrawX -= paintCanvasX;
+          baseDrawY -= paintCanvasY;
+          drawX -= paintCanvasX;
+          drawY -= paintCanvasY;
+        }
+      }
+      if (!drawingPaintCanvas) {
+        ui_clear_press_offset_area(i, baseDrawX, baseDrawY, drawX, drawY, paintTextW, paintTextH);
+      }
     }
     uint8_t skipListOutsetShadow =
       (__ui_nodes[i].kind == NODE_LIST && !drawingBufferedScroll && !__ui_fb);
@@ -6109,11 +6128,23 @@ static inline void ui_aa_line(CuttlefishCanvas16* c, float x0, float y0, float x
   float dx = x1 - x0, dy = y1 - y0;
   float gradient = (dx == 0) ? 1.0f : dy / dx;
 
-  int16_t xpx1 = round_f(x0);
-  float xend = x0 + 0.5f * (xpx1 - x0) * (xpx1 - x0 < 0 ? -1 : 0); // simplified
-  float intery = y0 + gradient * (xpx1 - x0);
+  // Handle first endpoint.
+  float xend = static_cast<float>(round_f(x0));
+  float yend = y0 + gradient * (xend - x0);
+  float xgap = rfpart(x0);
+  int16_t xpx1 = static_cast<int16_t>(xend);
+  int16_t ypx1 = ipart(yend);
+  if (steep) {
+    ui_aa_pixel(c, ypx1, xpx1, color, static_cast<uint8_t>(rfpart(yend) * xgap * 255));
+    ui_aa_pixel(c, ypx1 + 1, xpx1, color, static_cast<uint8_t>(fpart(yend) * xgap * 255));
+  } else {
+    ui_aa_pixel(c, xpx1, ypx1, color, static_cast<uint8_t>(rfpart(yend) * xgap * 255));
+    ui_aa_pixel(c, xpx1, ypx1 + 1, color, static_cast<uint8_t>(fpart(yend) * xgap * 255));
+  }
+  float intery = yend + gradient;
 
-  for (int16_t x = xpx1; x <= ipart(x1); x++) {
+  // Main loop.
+  for (int16_t x = xpx1 + 1; x <= static_cast<int16_t>(round_f(x1)) - 1; x++) {
     if (steep) {
       ui_aa_pixel(c, ipart(intery), x, color, static_cast<uint8_t>(rfpart(intery) * 255));
       ui_aa_pixel(c, ipart(intery) + 1, x, color, static_cast<uint8_t>(fpart(intery) * 255));

@@ -157,8 +157,11 @@ class CuttlefishGFX {
 // display_deleteCanvas (the runtime reuses persistent canvas slots — see
 // AGENTS.md: __ui_container_canvas, __ui_repair_canvas, __ui_list_canvas,
 // __ui_node_canvas).
-class CuttlefishCanvas16 : public CuttlefishGFX {
+class CuttlefishCanvas16 final : public CuttlefishGFX {
  public:
+  // Noncopyable (owns a heap buffer; a value-copy would double-free).
+  CuttlefishCanvas16(const CuttlefishCanvas16&) = delete;
+  CuttlefishCanvas16& operator=(const CuttlefishCanvas16&) = delete;
   // Owns its buffer: mallocs w*h*2 bytes and frees it in the dtor.
   CuttlefishCanvas16(int16_t w, int16_t h);
   // Adopts an externally-allocated buffer (e.g. PSRAM via display_createCanvasPsram).
@@ -190,8 +193,10 @@ class CuttlefishCanvas16 : public CuttlefishGFX {
 // ── 1-bit mono canvas (SSD1309/SSD1680 backing stores) ──────────────────────
 // Mirrors Adafruit_GFXcanvasMono. (w+7)/8 bytes per row. The buffer is the
 // panel backing store on SSD1309 — flush via display_partial_refresh.
-class CuttlefishCanvasMono : public CuttlefishGFX {
+class CuttlefishCanvasMono final : public CuttlefishGFX {
  public:
+  CuttlefishCanvasMono(const CuttlefishCanvasMono&) = delete;
+  CuttlefishCanvasMono& operator=(const CuttlefishCanvasMono&) = delete;
   CuttlefishCanvasMono(int16_t w, int16_t h);
   virtual ~CuttlefishCanvasMono();
   virtual void drawPixel(int16_t x, int16_t y, uint16_t color);

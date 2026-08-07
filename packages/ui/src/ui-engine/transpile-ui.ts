@@ -14,7 +14,7 @@ import { parseHtml } from "./html-parser.js";
 import { parseCss, parseFontFaces, parseKeyframes } from "./css-parser.js";
 import { resolveStyles } from "./style-resolver.js";
 import { selectEngine } from "./select-engine.js";
-import { measure, Box } from "./layout-engine.js";
+import { measureWithFonts, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "./ui-lowering.js";
 import { buildUIFontAssets } from "./font-assets.js";
 import { buildKeyframeSets } from "./keyframes.js";
@@ -37,7 +37,7 @@ export function transpileUI(html: string, css: string, opts: TranspileUIOptions)
   // Select layout engine: Yoga for flexbox, BlockLayout as fallback.
   const engine = selectEngine(styled);
   const viewport: Box = { x: 0, y: 0, w: opts.viewport.width, h: opts.viewport.height };
-  const boxes = engine.arrange(styled, viewport, measure);
+  const boxes = engine.arrange(styled, viewport, measureWithFonts(fontAssets));
 
   const keyframeSets = buildKeyframeSets(rawKeyframes, opts.colorFormat);
 

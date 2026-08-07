@@ -32,15 +32,18 @@ static inline CuttlefishCanvas16* ui_create_canvas_best(int16_t w, int16_t h) {
 }
 
 static inline CuttlefishCanvas16* ui_get_container_canvas(int16_t w, int16_t h) {
-  if (w <= 0 || h <= 0) return nullptr;
-  if (!__ui_container_canvas ||
-      display_canvasWidth(__ui_container_canvas) != w ||
-      display_canvasHeight(__ui_container_canvas) != h) {
-    display_deleteCanvas(__ui_container_canvas);
-    __ui_container_canvas = ui_create_canvas_best(w, h);
-  }
-  return (__ui_container_canvas && display_canvasBuffer(__ui_container_canvas))
-    ? __ui_container_canvas : nullptr;
+  // Intentionally returns nullptr: scroll containers always use the band
+  // renderer (ui_render_scroll_bands), not the Mode B viewport canvas.
+  // Mode B holds the whole viewport in one large canvas and pushes it in a
+  // single transaction every frame — on SPI TFTs that full-viewport push
+  // (especially from PSRAM) visibly flashes on child state changes like a
+  // button press. The band renderer composites into a small ~10KB SRAM canvas
+  // strip-by-strip, pushing each band only after it's complete — tear-free and
+  // flash-free regardless of target memory. PSRAM still benefits the other
+  // canvases (list, keyboard, repair); only the scroll viewport deliberately
+  // bypasses it for visual quality.
+  (void)w; (void)h;
+  return nullptr;
 }
 
 // Shift the canvas buffer vertically by deltaY (cheap memmove of existing

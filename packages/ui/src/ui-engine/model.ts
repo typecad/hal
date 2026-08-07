@@ -4,7 +4,7 @@ import { deriveCapabilities } from "@typecad/cuttlefish/api/shared";
 import { resolveColorInternal } from "./color.js";
 import { parseAnimation, type CSSProperty } from "./css-parser.js";
 import type { UIFontAssetModel } from "./font-assets.js";
-import { selectFontAssetForStyle, assetTextWidth } from "./font-assets.js";
+import { selectFontAssetForStyle, assetTextWidth, assetLineHeight } from "./font-assets.js";
 import type { UIImageAsset } from "./image-assets.js";
 import { isDisplayNone, type Box } from "./layout-engine.js";
 import type { StyledNode } from "./style-resolver.js";
@@ -954,6 +954,7 @@ export function lowerUIToModel(
         const rs = runStyleOf(r);
         const rTextSize = textSizeOf(rs);
         const rLetterSpacing = letterSpacingOf(rs);
+        const rAssetH = assetLineHeight(rs, fontAssets);
         return {
           text: applyTextTransform(r.text, rs) ?? "",
           hardBreak: r.hardBreak,
@@ -961,8 +962,11 @@ export function lowerUIToModel(
           // flat 6*textSize + letterSpacing per-char default-font advance.
           measureText: (s: string) =>
             assetTextWidth(s, rs, fontAssets) ?? textWidthOfDefault(s, rTextSize, rLetterSpacing),
-          height: 8 * rTextSize,
-          ascent: 7 * rTextSize,
+          // Asset lineHeight when the run has a custom font, else 8*textSize.
+          // Must match layout-engine.ts's rich-run height (so the baked
+          // runLines geometry matches the measured box).
+          height: rAssetH ?? (8 * rTextSize),
+          ascent: rAssetH ?? (7 * rTextSize),
         };
       });
       const layout = layoutRuns(layoutInput, { maxWidth: box.w, whiteSpace: node.style.whiteSpace });

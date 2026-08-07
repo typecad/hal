@@ -167,7 +167,8 @@ export function assetTextWidth(text: string, style: CSSProperty, fontAssets: UIF
  *  textHeight(size, fontFace) = asset.lineHeight ?? gfx.textHeight(size). */
 export function assetLineHeight(style: CSSProperty, fontAssets: UIFontAssetModel[]): number | undefined {
   const asset = selectFontAssetForStyle(fontAssets, style);
-  return asset ? asset.lineHeight : undefined;
+  if (!asset || asset.lineHeight <= 0) return undefined;
+  return asset.lineHeight;
 }
 
 export function buildUIFontAssets(

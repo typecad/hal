@@ -911,16 +911,17 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
       // loop's drawingBufferedScroll setup: subtract the viewport origin and the
       // band's top row. ui_draw_y_for_node then re-derives the band-local Y
       // (document Y - scrollY - voy - bandTop) = (screenY - voy - bandTop). The
-      // box.x translate below is read by ui_base_draw_x_for_node (which adds
-      // transformOffsetX), so it must be set before computing baseDrawX; the
-      // body then needs box.x = baseDrawX (the main loop does the same).
+      // box.x translate below is read by ui_draw_x_for_node (which adds
+      // transformOffsetX + pressedOffsetX), so it must be set before computing
+      // drawX; the body needs box.x = drawX (including the pressed offset,
+      // matching the main loop and ui_render_node_bands).
       int16_t origBoxX = __ui_nodes[c].box.x;
       int16_t origBoxY = __ui_nodes[c].box.y;
       __ui_nodes[c].box.x = static_cast<int16_t>(origBoxX - vox);
       __ui_nodes[c].box.y = static_cast<int16_t>(origBoxY - voy - bandTop);
-      int16_t baseDrawX = ui_base_draw_x_for_node(c);
+      int16_t drawX = ui_draw_x_for_node(c);
       int16_t drawY = ui_draw_y_for_node(c);
-      __ui_nodes[c].box.x = baseDrawX;
+      __ui_nodes[c].box.x = drawX;
       uint8_t ts = __ui_nodes[c].textSize ? __ui_nodes[c].textSize : 2;
       uint16_t textMaxW = ui_node_text_max_width(c);
       uint16_t tw = 0;
@@ -1201,7 +1202,6 @@ static inline uint8_t ui_render_list_bands(uint16_t i) {
   }
 
   char listBuf[UI_TEXT_BUF + 1];
-  CuttlefishDisplayTarget* prevTarget = ui_display_get_target();
   // Top→bottom bands over the list viewport.
   for (int16_t bandTop = 0; bandTop < bh; bandTop += bandH) {
     int16_t bandBot = bandTop + bandH;
@@ -1248,7 +1248,6 @@ static inline uint8_t ui_render_list_bands(uint16_t i) {
         display_canvasFillRect(band, contentW, static_cast<int16_t>(ovTop - bandTop), 3, static_cast<int16_t>(ovBot - ovTop), sbThumbCol);
       }
     }
-    (void)prevTarget;  // target is the display; band canvas is written via display_target* + canvasFillRect directly
     ui_push_canvas_rect(band, bx, static_cast<int16_t>(by + bandTop), bw, thisH);
   }
   // Static decoration on top of the composited content (same order as the

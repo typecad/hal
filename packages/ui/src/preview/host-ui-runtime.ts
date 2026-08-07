@@ -1283,14 +1283,20 @@ export class PreviewUIRuntime {
     }
     const metrics = this.textLayout(node, displayText, textMaxW, ts);
     const insets = (node.kind === "text" || node.kind === "select") ? this.textInsets(node) : { left: 0, right: 0, top: 0, bottom: 0 };
+    let clearW = metrics.width + insets.left + insets.right;
+    let clearH = metrics.height + insets.top + insets.bottom;
+    if (node.kind === "check" || node.kind === "radio") {
+      clearW += 22;
+      if (clearH < 16) clearH = 16;
+    }
     const rect = this.nodePaintRect(
       node,
       this.baseDrawXForNode(node.index),
       this.baseDrawYForNode(node.index),
       this.drawXForNode(node.index),
       this.drawYForNode(node.index),
-      metrics.width + insets.left + insets.right,
-      metrics.height + insets.top + insets.bottom,
+      clearW,
+      clearH,
     );
     this.clearNodePaintRect(node, rect);
   }
@@ -2828,7 +2834,7 @@ export class PreviewUIRuntime {
       node.value = node.value > 0 ? 0 : 1;
       this.markDirty(nodeIndex);
     } else if (node.tag === "select") {
-      const count = Math.max(node.options?.length ?? 0, 2);
+      const count = Math.max(node.options?.length ?? 0, 1);
       node.value = (node.value + 1) % count;
       this.markDirty(nodeIndex);
     } else if (node.tag === "radio") {
