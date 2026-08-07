@@ -3,7 +3,7 @@
 // See docs/superpowers/specs/2026-07-12-split-runtime-header-design.md.
 export function emitStructs(): string {
   return `
-enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT, NODE_IMG, NODE_LIST, NODE_CANVAS };
+enum UINodeKind { NODE_FILL, NODE_TEXT, NODE_BUTTON, NODE_CHECK, NODE_RADIO, NODE_PROGRESS, NODE_RANGE, NODE_INPUT, NODE_IMG, NODE_LIST, NODE_CANVAS, NODE_SELECT };
 enum UIProperty { PROP_BG, PROP_FG, PROP_TEXT, PROP_VISIBLE, PROP_BORDER_COLOR, PROP_VALUE };
 
 struct UIRect { int16_t x, y, w, h; };

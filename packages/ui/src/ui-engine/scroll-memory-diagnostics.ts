@@ -1,7 +1,11 @@
 // Compile-time scroll viewport memory analysis. Overflow scroll containers
-// need a viewport-sized RGB565 canvas (~w×h×2 bytes) for smooth Mode B
-// scrolling; when that exceeds the device budget, runtime falls back to
-// Mode C strip scroll or freezes until memory is available.
+// need a viewport-sized RGB565 canvas (~w×h×2 bytes) for the smooth Mode B
+// shift-and-repair path. When that exceeds the device budget the runtime
+// degrades to the band renderer, which composes the subtree into a short
+// horizontal band canvas (~vw × UI_STRIP_BAND_HEIGHT ≈ 10KB) and pushes one
+// band at a time — tear-free and bounded regardless of program size. Direct
+// per-node draws (which can tear on SPI TFTs) happen only if the band canvas
+// itself fails to allocate.
 
 import type { Diagnostic } from "@typecad/cuttlefish/api/shared";
 import type { UINodeModel } from "./model.js";
@@ -50,10 +54,10 @@ function minimizationHint(issue: ScrollMemoryIssue): string {
   const maxHAtWidth = issue.width > 0 ? Math.floor(maxArea / issue.width) : 0;
   const maxWAtHeight = issue.height > 0 ? Math.floor(maxArea / issue.height) : 0;
   return [
-    `Reduce the scroll viewport in CSS (e.g. height ≤ ${maxHAtWidth}px at ${issue.width}px width, or width ≤ ${maxWAtHeight}px at ${issue.height}px height).`,
-    "Trim fonts, images, or inactive screens to free heap for canvas allocation.",
-    "Use PSRAM or a board with more SRAM if you need a larger scroll viewport.",
-    "Adjust display.scroll.scrollCanvasBudgetBytes in cuttlefish.config.ts only if your target has more headroom (runtime allocation may still fail).",
+    "This is advisory only: the band renderer keeps scrolling tear-free on a ~10KB band canvas, so no action is required to ship.",
+    "To restore the cheaper Mode B shift-and-repair path: reduce the scroll viewport in CSS " +
+      `(e.g. height ≤ ${maxHAtWidth}px at ${issue.width}px width, or width ≤ ${maxWAtHeight}px at ${issue.height}px height), ` +
+      "trim fonts/images/inactive screens, use PSRAM, or raise display.scroll.scrollCanvasBudgetBytes if the target has the headroom (runtime allocation may still fail).",
   ].join("\n");
 }
 
@@ -69,10 +73,11 @@ export function analyzeScrollMemory(
       code: "scroll-canvas-memory",
       message:
         `Scroll viewport ${label} (${issue.width}×${issue.height}px) needs ${issue.canvasBytes} bytes ` +
-        `(${formatKb(issue.canvasBytes)}) for accurate smooth scrolling, exceeding the ` +
+        `(${formatKb(issue.canvasBytes)}) for the smooth Mode B shift-and-repair path, exceeding the ` +
         `${issue.budgetBytes}-byte budget (~${formatKb(issue.budgetBytes)}). ` +
-        "Rendering will fall back to Mode C strip scroll or freeze updates until memory is available — " +
-        "scrolling may tear, stutter, or skip frames.",
+        "Rendering falls back to the band renderer (composes the subtree into a ~10KB band canvas, " +
+        "one push per band — tear-free); only if the band canvas itself cannot allocate does it " +
+        "degrade to per-node direct draws, which can tear on SPI TFTs.",
       hint: minimizationHint(issue),
     };
   });

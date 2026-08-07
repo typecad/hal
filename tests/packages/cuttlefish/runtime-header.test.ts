@@ -421,7 +421,9 @@ describe("C++ reactive runtime header", () => {
     // (alloc failed). The strip-only reason 2 path is dead in the no-canvas
     // dispatch (drags take direct-full), so only the budget-comparison call remains.
     expect(header).toMatch(/ui_warn_scroll_memory\(static_cast<uint16_t>\(s\), scrollNeed > static_cast<uint32_t>\(UI_SCROLL_CANVAS_BUDGET_BYTES\) \? 1 : 0\)/);
-    expect(header).toMatch(/Serial\.printf\([\s\S]*cuttlefish.*WARNING/);
+    // The on-device note (not a warning — the band renderer keeps scroll tear-free)
+    // is emitted via Serial.printf on ESP32, naming the band-renderer fallback.
+    expect(header).toMatch(/Serial\.printf\([\s\S]*cuttlefish[\s\S]*band renderer/);
     expect(header).toMatch(/ESP\.getFreeHeap\(\)/);
     expect(header).toMatch(/ESP\.getMaxAllocHeap\(\)/);
   });

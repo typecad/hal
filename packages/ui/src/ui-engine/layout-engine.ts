@@ -14,7 +14,7 @@
 import { StyledNode } from "./style-resolver.js";
 import { layoutText } from "./text-layout.js";
 import { layoutRuns } from "./rich-layout.js";
-import { assetTextWidth } from "./font-assets.js";
+import { assetTextWidth, assetLineHeight } from "./font-assets.js";
 import type { UIFontAssetModel } from "./font-assets.js";
 
 export interface Box { x: number; y: number; w: number; h: number; }
@@ -135,12 +135,16 @@ export function measure(node: StyledNode, availableWidth?: number, fontAssets: U
       const rs = { ...node.style, ...r.style } as typeof node.style;
       const rTs = gfxTextSizeOf({ ...node, style: rs });
       const rAdvance = 6 * rTs + letterSpacingOf({ ...node, style: rs });
+      // Run glyph height: prefer the asset's lineHeight for custom fonts (see
+      // charH below); fall back to the 8*rTs GFX bitmap default.
+      const rAssetH = assetLineHeight(rs, fontAssets);
+      const rHeight = rAssetH ?? (8 * rTs);
       return {
         text: applyTextTransform(r.text, { ...node, style: rs }),
         hardBreak: r.hardBreak,
         measureText: (s: string) => assetTextWidth(s, rs, fontAssets) ?? textWidthOf(s, rAdvance),
-        height: 8 * rTs,
-        ascent: 7 * rTs,
+        height: rHeight,
+        ascent: rAssetH ?? (7 * rTs),
       };
     });
     const layout = layoutRuns(layoutInput, { maxWidth: availableWidth, whiteSpace: node.style.whiteSpace });
@@ -149,7 +153,13 @@ export function measure(node: StyledNode, availableWidth?: number, fontAssets: U
   // Per-node text size (from font-size + font-weight CSS).
   const ts = gfxTextSizeOf(node);
   const advance = 6 * ts + letterSpacingOf(node);
-  const charH = 8 * ts;
+  // Glyph-cell height: the runtime draws a custom @font-face at its real
+  // lineHeight (ui_asset_text_height → face->lineHeight), NOT the 8*ts GFX
+  // bitmap default. Use the asset's lineHeight when one matches so the box
+  // matches the drawn height (otherwise bold @font-face titles overflow their
+  // header). Falls back to 8*ts for the default font. Mirrors the preview.
+  const assetH = assetLineHeight(node.style, fontAssets);
+  const charH = assetH ?? (8 * ts);
   // For interpolation text (e.g. "taps: {count}"), strip the braces so layout
   // measures "taps: count" — closer to the resolved runtime width than the
   // literal "{count}". The braces are an authoring delimiter, not rendered.

@@ -239,6 +239,58 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         }
         break;
+      case NODE_SELECT:
+        // <select>: a bordered, optionally rounded box with its current option
+        // text drawn VERTICALLY CENTERED (unlike NODE_TEXT, which top-aligns).
+        // Mirrors NODE_BUTTON's centering so the label sits mid-box when the
+        // control is enlarged for touch (min-height). The label is dynamic
+        // (auto-bound to the selected option's text), so clear the previous
+        // text rect before redrawing, like NODE_CHECK does.
+        {
+          uint16_t clearW = __ui_nodes[i].box.w;
+          if (__ui_nodes[i].lastTextWidth > 0 && __ui_nodes[i].lastTextWidth > static_cast<int16_t>(clearW)) {
+            clearW = static_cast<uint16_t>(__ui_nodes[i].lastTextWidth);
+          }
+          if (paintTextW > clearW) clearW = paintTextW;
+          uint16_t clearH = __ui_nodes[i].box.h;
+          if (__ui_nodes[i].lastTextHeight > 0 && __ui_nodes[i].lastTextHeight > static_cast<int16_t>(clearH)) {
+            clearH = static_cast<uint16_t>(__ui_nodes[i].lastTextHeight);
+          }
+          if (paintTextH > clearH) clearH = paintTextH;
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
+            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+          __ui_nodes[i].lastTextWidth = paintTextW;
+          __ui_nodes[i].lastTextHeight = paintTextH;
+        }
+        if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
+          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
+        else if (__ui_nodes[i].hasBg)
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+        ui_draw_shadow(i, drawY, 1);
+        if (__ui_nodes[i].borderStyle != 0) {
+          ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
+        }
+        {
+          int16_t insetL = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingLeft);
+          int16_t insetR = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingRight);
+          int16_t insetT = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingTop);
+          int16_t insetB = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingBottom);
+          int16_t textX = __ui_nodes[i].box.x + insetL;
+          int16_t textY = drawY + insetT;
+          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
+          int16_t textH = static_cast<int16_t>(__ui_nodes[i].box.h) - insetT - insetB;
+          if (textW < 1) textW = 1;
+          if (textH < 1) textH = static_cast<int16_t>(th);
+          ui_draw_wrapped_text(displayText,
+            textX,
+            textY + (textH - static_cast<int16_t>(th)) / 2,
+            static_cast<uint16_t>(textW),
+            __ui_nodes[i].fg,
+            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
+            __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
+        }
+        break;
       case NODE_CHECK:
         {
           uint16_t clearW = __ui_nodes[i].box.w;
@@ -258,7 +310,12 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
         }
         {
           int16_t cbX = __ui_nodes[i].box.x;
-          int16_t cbY = drawY;
+          // Vertically center the 16px indicator within the box so a tall
+          // (touch-friendly) checkbox doesn't pin the indicator to the top.
+          // (box.h - 16) / 2 is 0 for the default 16px-tall box, so existing
+          // checkboxes render byte-identically.
+          int16_t cbY = drawY + (static_cast<int16_t>(__ui_nodes[i].box.h) - 16) / 2;
+          if (cbY < drawY) cbY = drawY;
           if (__ui_nodes[i].value) {
             ui_display_fill_rect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
             UI_COLOR_T inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
@@ -286,10 +343,18 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
             ui_display_draw_rect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
           }
         }
-        ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY, textMaxW,
-          __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
-          ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
-          __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
+        // Center the label on the same baseline as the indicator: apply the
+        // indicator's vertical offset to the text origin too, so a tall box
+        // keeps the indicator + label aligned as a row rather than straddling
+        // the box top/bottom.
+        {
+          int16_t checkOff = (static_cast<int16_t>(__ui_nodes[i].box.h) - 16) / 2;
+          if (checkOff < 0) checkOff = 0;
+          ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY + checkOff, textMaxW,
+            __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
+            __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
+        }
         break;
       case NODE_RADIO:
         {
@@ -308,7 +373,9 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           __ui_nodes[i].lastTextWidth = paintTextW;
           __ui_nodes[i].lastTextHeight = paintTextH;
           int16_t cbX = __ui_nodes[i].box.x;
-          int16_t cbY = drawY;
+          // Vertically center the 16px indicator within the box (see NODE_CHECK).
+          int16_t cbY = drawY + (static_cast<int16_t>(__ui_nodes[i].box.h) - 16) / 2;
+          if (cbY < drawY) cbY = drawY;
 #ifdef UI_AA
           {
             // Render the radio circle to a 16×16 AA canvas, then push.
@@ -331,10 +398,15 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           }
 #endif
         }
-        ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY, textMaxW,
-          __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
-          ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
-          __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
+        // Center the label on the same baseline as the indicator (see NODE_CHECK).
+        {
+          int16_t radioOff = (static_cast<int16_t>(__ui_nodes[i].box.h) - 16) / 2;
+          if (radioOff < 0) radioOff = 0;
+          ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY + radioOff, textMaxW,
+            __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
+            __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
+        }
         break;
       case NODE_PROGRESS:
         // Progress bar: outline track + filled portion based on .value (0-100).
@@ -839,7 +911,7 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
       ui_node_text_layout_metrics(c, textMaxW, &tw, &th);
       uint16_t paintTextW = tw;
       uint16_t paintTextH = th;
-      if (__ui_nodes[c].kind == NODE_TEXT) {
+      if (__ui_nodes[c].kind == NODE_TEXT || __ui_nodes[c].kind == NODE_SELECT) {
         uint16_t hInset = static_cast<uint16_t>(__ui_nodes[c].paddingLeft) + static_cast<uint16_t>(__ui_nodes[c].paddingRight) + static_cast<uint16_t>(__ui_nodes[c].borderWidth) * 2;
         uint16_t vInset = static_cast<uint16_t>(__ui_nodes[c].paddingTop) + static_cast<uint16_t>(__ui_nodes[c].paddingBottom) + static_cast<uint16_t>(__ui_nodes[c].borderWidth) * 2;
         paintTextW = static_cast<uint16_t>(tw + hInset);

@@ -401,7 +401,7 @@ export function emitTickDirtyDrawPhase(): string {
     ui_node_text_layout_metrics(i, textMaxW, &tw, &th);
     uint16_t paintTextW = tw;
     uint16_t paintTextH = th;
-    if (__ui_nodes[i].kind == NODE_TEXT) {
+    if (__ui_nodes[i].kind == NODE_TEXT || __ui_nodes[i].kind == NODE_SELECT) {
       uint16_t hInset = static_cast<uint16_t>(__ui_nodes[i].paddingLeft) + static_cast<uint16_t>(__ui_nodes[i].paddingRight) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
       uint16_t vInset = static_cast<uint16_t>(__ui_nodes[i].paddingTop) + static_cast<uint16_t>(__ui_nodes[i].paddingBottom) + static_cast<uint16_t>(__ui_nodes[i].borderWidth) * 2;
       paintTextW = static_cast<uint16_t>(tw + hInset);

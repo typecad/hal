@@ -91,7 +91,9 @@ describe("analyzeScrollMemory", () => {
     expect(diags[0].message).toContain("#detailScroll");
     expect(diags[0].message).toContain("290×200px");
     expect(diags[0].message).toContain("116000");
-    expect(diags[0].hint).toContain("Reduce the scroll viewport in CSS");
+    expect(diags[0].message).toContain("band renderer");
+    expect(diags[0].hint).toContain("advisory only");
+    expect(diags[0].hint).toContain("reduce the scroll viewport in CSS");
   });
 
   it("ignores non-overflow and in-budget scroll containers", () => {

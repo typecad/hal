@@ -300,7 +300,7 @@ static inline uint32_t ui_text_layout_cache_key(uint16_t nodeIdx, uint16_t textM
 static inline uint16_t ui_node_text_max_width(uint16_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return 0;
   uint16_t textMaxW = __ui_nodes[nodeIdx].box.w;
-  if (__ui_nodes[nodeIdx].kind == NODE_TEXT || __ui_nodes[nodeIdx].kind == NODE_BUTTON) {
+  if (__ui_nodes[nodeIdx].kind == NODE_TEXT || __ui_nodes[nodeIdx].kind == NODE_BUTTON || __ui_nodes[nodeIdx].kind == NODE_SELECT) {
     uint16_t hInset = static_cast<uint16_t>(__ui_nodes[nodeIdx].paddingLeft) + static_cast<uint16_t>(__ui_nodes[nodeIdx].paddingRight) +
       static_cast<uint16_t>(__ui_nodes[nodeIdx].borderWidth) * 2;
     textMaxW = __ui_nodes[nodeIdx].box.w > hInset ? static_cast<uint16_t>(__ui_nodes[nodeIdx].box.w - hInset) : 0;

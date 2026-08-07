@@ -234,6 +234,7 @@ function cppKind(kind: UINodeModel["kind"]): string {
     case "img": return "NODE_IMG";
     case "list": return "NODE_LIST";
     case "canvas": return "NODE_CANVAS";
+    case "select": return "NODE_SELECT";
     case "text": return "NODE_TEXT";
   }
 }

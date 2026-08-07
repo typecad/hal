@@ -46,9 +46,10 @@ static inline CuttlefishCanvas16* ui_get_container_canvas(int16_t w, int16_t h) 
 // Defined after the node table by UI lowering (scroll overflow nodes with ids).
 static inline const char* __ui_scroll_node_id(uint16_t idx);
 
-// Emit a one-time Serial warning when scroll rendering cannot be accurate due
-// to heap limits. reason: 0=canvas alloc failed, 1=viewport exceeds budget,
-// 2=Mode C strip fallback (reduced accuracy).
+// Emit a one-time Serial note when a scroll container's smooth-scroll canvas
+// won't fit, so the band renderer (tear-free, ~10KB band canvas) is active
+// instead of the cheaper Mode B shift-and-repair path. reason: 0=canvas alloc
+// failed, 1=viewport exceeds budget, 2=Mode C strip fallback (reduced accuracy).
 static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
   if (nodeIdx >= __ui_node_count) return;
   if (!__ui_scroll_mem_warned) return;
@@ -68,25 +69,28 @@ static inline void ui_warn_scroll_memory(uint16_t nodeIdx, uint8_t reason) {
   uint32_t freeHeap = ESP.getFreeHeap();
   uint32_t maxAlloc = ESP.getMaxAllocHeap();
   Serial.printf(
-    "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
+    "[cuttlefish] NOTE: #%s (%dx%d) needs %lu bytes for the smooth Mode B scroll path — %s. "
+    "Using the band renderer (tear-free, ~10KB band canvas) instead. "
     "heap free=%lu max_alloc=%lu budget=%d. "
-    "Shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\\n",
+    "To restore Mode B: shrink the scroll viewport in CSS, trim fonts/images, or use PSRAM.\\n",
     label, vw, vh, static_cast<unsigned long>(need), reasonText,
     static_cast<unsigned long>(freeHeap), static_cast<unsigned long>(maxAlloc), UI_SCROLL_CANVAS_BUDGET_BYTES);
 #elif defined(ESP8266) && defined(ARDUINO)
   uint32_t freeHeap = ESP.getFreeHeap();
   Serial.printf(
-    "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
+    "[cuttlefish] NOTE: #%s (%dx%d) needs %lu bytes for the smooth Mode B scroll path — %s. "
+    "Using the band renderer (tear-free, ~10KB band canvas) instead. "
     "heap free=%lu budget=%d. "
-    "Shrink the scroll viewport in CSS, trim fonts/images, or reduce UI footprint.\\n",
+    "To restore Mode B: shrink the scroll viewport in CSS, trim fonts/images, or reduce UI footprint.\\n",
     label, vw, vh, static_cast<unsigned long>(need), reasonText,
     static_cast<unsigned long>(freeHeap), UI_SCROLL_CANVAS_BUDGET_BYTES);
 #else
   // Non-Arduino target (e.g. SDL native): no Serial, so use standard-C printf.
   // The native framework forces <cstdio> so printf is available here.
   printf(
-    "[cuttlefish] WARNING: #%s (%dx%d) needs %lu bytes for accurate scroll — %s. "
-    "budget=%d. Shrink the scroll viewport in CSS or trim UI assets.\\n",
+    "[cuttlefish] NOTE: #%s (%dx%d) needs %lu bytes for the smooth Mode B scroll path — %s. "
+    "Using the band renderer (tear-free, ~10KB band canvas) instead. "
+    "budget=%d. To restore Mode B: shrink the scroll viewport in CSS or trim UI assets.\\n",
     label, vw, vh, static_cast<unsigned long>(need), reasonText, UI_SCROLL_CANVAS_BUDGET_BYTES);
 #endif
 }

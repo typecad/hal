@@ -21,7 +21,7 @@ export {
   timingFunctionCode,
 } from "./easing.js";
 
-export type UINodeKindModel = "fill" | "text" | "button" | "check" | "radio" | "progress" | "range" | "input" | "img" | "list" | "canvas";
+export type UINodeKindModel = "fill" | "text" | "button" | "check" | "radio" | "progress" | "range" | "input" | "img" | "list" | "canvas" | "select";
 export type UIPropertyModel = "background" | "color" | "text" | "visible" | "borderColor";
 
 export interface UINodeModel {
@@ -264,6 +264,7 @@ function nodeKind(tag: string): UINodeKindModel {
   if (tag === "img") return "img";
   if (tag === "list") return "list";
   if (tag === "canvas") return "canvas";
+  if (tag === "select") return "select";
   return "text";
 }
 

@@ -1121,7 +1121,7 @@ export class PreviewUIRuntime {
     const shadow = this.shadowExtents(node);
     let faceW = node.box.w;
     let faceH = node.box.h;
-    if (node.kind === "text" || node.kind === "check" || node.kind === "radio") {
+    if (node.kind === "text" || node.kind === "check" || node.kind === "radio" || node.kind === "select") {
       if (node.lastTextWidth > faceW) faceW = node.lastTextWidth;
       if ((node.lastTextHeight ?? 0) > faceH) faceH = node.lastTextHeight;
       if (textW > faceW) faceW = textW;
@@ -1147,7 +1147,7 @@ export class PreviewUIRuntime {
     const displayText = node.hasTextBinding ? node.textBuffer : node.text;
     const ts = this.nodeTextSize(node);
     let textMaxW = node.box.w;
-    if (node.kind === "text" || node.kind === "button") {
+    if (node.kind === "text" || node.kind === "button" || node.kind === "select") {
       const insets = this.textInsets(node);
       textMaxW = Math.max(0, node.box.w - insets.left - insets.right);
     }
@@ -1157,7 +1157,7 @@ export class PreviewUIRuntime {
     const metrics = this.textLayout(node, displayText, textMaxW, ts);
     let paintTextW = metrics.width;
     let paintTextH = metrics.height;
-    if (node.kind === "text") {
+    if (node.kind === "text" || node.kind === "select") {
       const insets = this.textInsets(node);
       paintTextW += insets.left + insets.right;
       paintTextH += insets.top + insets.bottom;
@@ -1277,12 +1277,12 @@ export class PreviewUIRuntime {
     const displayText = node.hasTextBinding ? node.textBuffer : node.text;
     const ts = this.nodeTextSize(node);
     let textMaxW = node.box.w;
-    if (node.kind === "text" || node.kind === "button") {
+    if (node.kind === "text" || node.kind === "button" || node.kind === "select") {
       const insets = this.textInsets(node);
       textMaxW = Math.max(0, node.box.w - insets.left - insets.right);
     }
     const metrics = this.textLayout(node, displayText, textMaxW, ts);
-    const insets = node.kind === "text" ? this.textInsets(node) : { left: 0, right: 0, top: 0, bottom: 0 };
+    const insets = (node.kind === "text" || node.kind === "select") ? this.textInsets(node) : { left: 0, right: 0, top: 0, bottom: 0 };
     const rect = this.nodePaintRect(
       node,
       this.baseDrawXForNode(node.index),
@@ -1879,6 +1879,9 @@ export class PreviewUIRuntime {
           case "button":
             this.drawButtonNode(node, displayText, bColor, fillBg, drawY, ts);
             break;
+          case "select":
+            this.drawSelectNode(node, displayText, bColor, fillBg, drawY, ts);
+            break;
           case "check":
             this.drawCheckNode(node, displayText, drawY, ts);
             break;
@@ -2343,6 +2346,35 @@ export class PreviewUIRuntime {
     this.drawTextLines(node, displayText, textX, top, textW, ts, node.fg, glyphBg, node.textAlign);
   }
 
+  // <select>: bordered box with its current option text VERTICALLY CENTERED
+  // (unlike drawTextNode, which top-aligns). Mirrors the C++ NODE_SELECT case
+  // so preview and device agree. The label is dynamic (auto-bound to the
+  // selected option), so clear the previous text rect before redrawing.
+  private drawSelectNode(node: MutableNode, displayText: string | undefined, bColor: number, fillBg: number, drawY: number, ts: number): void {
+    const insets = this.textInsets(node);
+    const contentW = Math.max(1, node.box.w - insets.left - insets.right);
+    const layout = this.textLayout(node, displayText, contentW, ts);
+    const clearW = Math.max(node.box.w, node.lastTextWidth ?? 0, layout.width + insets.left + insets.right);
+    const clearH = Math.max(node.box.h, node.lastTextHeight ?? 0, layout.height + insets.top + insets.bottom);
+    const clearCol = node.hasBg ? node.bg : node.clearColor;
+    this.gfx.fillRect(node.box.x, drawY, clearW, clearH, clearCol);
+    node.lastTextWidth = layout.width;
+    node.lastTextHeight = layout.height;
+
+    if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, fillBg);
+    else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, fillBg);
+    this.drawNodeShadow(node, drawY, true);
+    if (node.borderStyle) this.drawNodeBorder(node, node.box.x, drawY, bColor);
+
+    const textX = node.box.x + insets.left;
+    const textY = drawY + insets.top;
+    const textW = Math.max(1, node.box.w - insets.left - insets.right);
+    const textH = Math.max(1, node.box.h - insets.top - insets.bottom);
+    const top = textY + Math.trunc((textH - layout.height) / 2);
+    const glyphBg = node.opacity < 100 ? blendRuntime(node.bg, this.parentClearColor(node), node.opacity) : (node.hasBg ? node.bg : node.clearColor);
+    this.drawTextLines(node, displayText, textX, top, textW, ts, node.fg, glyphBg, node.textAlign);
+  }
+
   private drawCheckNode(node: MutableNode, displayText: string | undefined, drawY: number, ts: number): void {
     const layout = this.textLayout(node, displayText, Math.max(0, node.box.w - 22), ts);
     const clearW = Math.max(node.box.w, node.lastTextWidth);
@@ -2352,7 +2384,11 @@ export class PreviewUIRuntime {
     node.lastTextHeight = Math.max(layout.height, 16);
 
     const cbX = node.box.x;
-    const cbY = drawY;
+    // Vertically center the 16px indicator within the box so a tall
+    // (touch-friendly) checkbox doesn't pin the indicator to the top.
+    // (box.h - 16) / 2 is 0 for the default 16px-tall box.
+    const checkOff = Math.max(0, ((node.box.h - 16) / 2) | 0);
+    const cbY = drawY + checkOff;
     if (node.value) {
       this.gfx.fillRect(cbX, cbY, 16, 16, node.fg);
       const inv = node.hasBg ? node.bg : node.clearColor;
@@ -2365,7 +2401,7 @@ export class PreviewUIRuntime {
     } else {
       this.gfx.drawRect(cbX, cbY, 16, 16, node.fg);
     }
-    this.drawTextLines(node, displayText, node.box.x + 22, drawY, Math.max(0, node.box.w - 22), ts, node.fg, node.hasBg ? node.bg : node.clearColor, 0);
+    this.drawTextLines(node, displayText, node.box.x + 22, drawY + checkOff, Math.max(0, node.box.w - 22), ts, node.fg, node.hasBg ? node.bg : node.clearColor, 0);
   }
 
   private drawRadioNode(node: MutableNode, displayText: string | undefined, drawY: number, ts: number): void {
@@ -2377,14 +2413,16 @@ export class PreviewUIRuntime {
     node.lastTextHeight = Math.max(layout.height, 16);
 
     const cbX = node.box.x;
-    const cbY = drawY;
+    // Vertically center the 16px indicator within the box (see drawCheckNode).
+    const radioOff = Math.max(0, ((node.box.h - 16) / 2) | 0);
+    const cbY = drawY + radioOff;
     if (node.value) {
       this.gfx.fillCircle(cbX + 8, cbY + 8, 7, node.fg);
       this.gfx.fillCircle(cbX + 8, cbY + 8, 3, node.hasBg ? node.bg : node.clearColor);
     } else {
       this.gfx.drawCircle(cbX + 8, cbY + 8, 7, node.fg);
     }
-    this.drawTextLines(node, displayText, node.box.x + 22, drawY, Math.max(0, node.box.w - 22), ts, node.fg, node.hasBg ? node.bg : node.clearColor, 0);
+    this.drawTextLines(node, displayText, node.box.x + 22, drawY + radioOff, Math.max(0, node.box.w - 22), ts, node.fg, node.hasBg ? node.bg : node.clearColor, 0);
   }
 
   private drawProgressNode(node: MutableNode, drawY: number): void {

@@ -9,7 +9,7 @@ static inline void ui_node_paint_rect(uint16_t nodeIdx, int16_t baseX, int16_t b
 
   int16_t faceW = __ui_nodes[nodeIdx].box.w;
   int16_t faceH = __ui_nodes[nodeIdx].box.h;
-  if (__ui_nodes[nodeIdx].kind == NODE_TEXT || __ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO) {
+  if (__ui_nodes[nodeIdx].kind == NODE_TEXT || __ui_nodes[nodeIdx].kind == NODE_CHECK || __ui_nodes[nodeIdx].kind == NODE_RADIO || __ui_nodes[nodeIdx].kind == NODE_SELECT) {
     if (__ui_nodes[nodeIdx].lastTextWidth > faceW) faceW = __ui_nodes[nodeIdx].lastTextWidth;
     if (__ui_nodes[nodeIdx].lastTextHeight > faceH) faceH = __ui_nodes[nodeIdx].lastTextHeight;
     if (static_cast<int16_t>(textW) > faceW) faceW = static_cast<int16_t>(textW);
@@ -148,6 +148,7 @@ static inline uint8_t ui_pixel_heavy_node(uint16_t nodeIdx) {
   if (nodeIdx >= __ui_node_count) return 0;
   if (__ui_nodes[nodeIdx].kind == NODE_IMG) return 1;
   if (__ui_nodes[nodeIdx].kind == NODE_TEXT) return 1;
+  if (__ui_nodes[nodeIdx].kind == NODE_SELECT) return 1;
   return 0;
 }
 

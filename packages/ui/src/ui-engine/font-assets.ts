@@ -158,6 +158,18 @@ export function assetTextWidth(text: string, style: CSSProperty, fontAssets: UIF
   return w;
 }
 
+/** The line height the runtime will render a custom-font node at
+ *  (ui_asset_text_height → face->lineHeight), or undefined when the node uses
+ *  the default font. Layout must use this for the glyph-cell height instead of
+ *  the 8*ts GFX bitmap default, otherwise the laid-out box is shorter than the
+ *  drawn glyphs and the text overflows its container (e.g. a bold @font-face
+ *  title spilling past its header's padded box). Mirrors the preview's
+ *  textHeight(size, fontFace) = asset.lineHeight ?? gfx.textHeight(size). */
+export function assetLineHeight(style: CSSProperty, fontAssets: UIFontAssetModel[]): number | undefined {
+  const asset = selectFontAssetForStyle(fontAssets, style);
+  return asset ? asset.lineHeight : undefined;
+}
+
 export function buildUIFontAssets(
   root: StyledNode,
   fontFaces: CSSFontFace[],
