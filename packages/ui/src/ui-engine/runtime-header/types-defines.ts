@@ -18,6 +18,17 @@ export function emitTypesDefines(): string {
 #ifndef UI_MAX_BUFFERED_PAINT_PIXELS
 #define UI_MAX_BUFFERED_PAINT_PIXELS 20000
 #endif
+// Above this many pixels, prefer the band renderer (small ~10KB SRAM canvas,
+// strip-at-a-time) over the repair canvas even when the repair canvas could
+// allocate (e.g. in PSRAM). A large repair canvas (a full-width button is
+// ~15-30KB) has higher alloc/seed/push latency than banding — the per-band
+// push is smaller and the band canvas lives in fast internal SRAM. Set below
+// UI_MAX_BUFFERED_PAINT_PIXELS so large rects band while small repaints keep
+// the fast single-canvas composite. Tune per target; 0 = always prefer the
+// repair canvas when it allocates (the pre-PSRAM behavior).
+#ifndef UI_BAND_PREFER_PIXELS
+#define UI_BAND_PREFER_PIXELS 8000
+#endif
 #ifndef UI_USE_FULL_FRAMEBUFFER
 #define UI_USE_FULL_FRAMEBUFFER 0
 #endif

@@ -422,7 +422,14 @@ export function emitTickDirtyDrawPhase(): string {
     // RAM-composite pixel-heavy nodes before SPI push. Skip when already drawing
     // into a scroll canvas or a full-screen framebuffer (both are RAM targets).
     uint8_t wantedBuffer = !drawingBufferedScroll && !__ui_fb && ui_should_buffer_paint(i, paintCanvasW, paintCanvasH);
-    if (wantedBuffer) {
+    // Large paint rects prefer the band renderer (small ~10KB SRAM canvas,
+    // strip-at-a-time) over the repair canvas even when the repair canvas could
+    // allocate (e.g. in PSRAM). A large repair canvas has higher alloc/seed/push
+    // latency than banding, which shows as a press/scroll flash; the band canvas
+    // lives in fast internal SRAM and pushes smaller per-band transactions.
+    uint8_t preferBand = wantedBuffer && (UI_BAND_PREFER_PIXELS > 0) &&
+      (static_cast<uint32_t>(paintCanvasW) * static_cast<uint32_t>(paintCanvasH) > static_cast<uint32_t>(UI_BAND_PREFER_PIXELS));
+    if (wantedBuffer && !preferBand) {
       paintCanvas = ui_get_repair_canvas(paintCanvasW, paintCanvasH);
       if (paintCanvas) {
         drawingPaintCanvas = 1;
@@ -438,13 +445,12 @@ export function emitTickDirtyDrawPhase(): string {
       }
     }
     if (!drawingPaintCanvas) {
-      // Buffering was wanted but the node-sized repair canvas wouldn't allocate
-      // (a full-width button's ~29KB paint rect is too big for no-PSRAM SRAM).
-      // Fall back to the band renderer: composite the node into the ~10KB band
-      // canvas one horizontal strip at a time, pushing each band tear-free —
-      // same architecture as the scroll band renderer. Avoids the direct
-      // clear→redraw-to-SPI that visibly flashes on press/scroll. Only engages
-      // on the alloc-failure path; small nodes still use the fast paint canvas.
+      // No repair canvas this frame — either the paint rect is large enough to
+      // prefer the band renderer (preferBand: lower-latency than a big PSRAM
+      // repair canvas), or the repair canvas wouldn't allocate (over budget /
+      // heap fragmentation). Composite the node into the ~10KB band canvas one
+      // horizontal strip at a time, pushing each band tear-free. Avoids the
+      // direct clear→redraw-to-SPI that visibly flashes on press/scroll.
       if (wantedBuffer && ui_render_node_bands(static_cast<uint16_t>(i), paintCanvasX, paintCanvasY, paintCanvasW, paintCanvasH)) {
         if (!drawingBufferedScroll) {
           ui_invalidate_scroll_canvas_for_node(i);
