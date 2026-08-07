@@ -59,7 +59,7 @@ function readEmittedSources(srcDir: string): string {
  *
  * Idempotent. Mirrors scaffoldEspIdfProject's writeIfChanged discipline.
  */
-export function scaffoldZephyrProject(projectRoot: string, debug = false, userKconfig?: Record<string, string>): boolean {
+export function scaffoldZephyrProject(projectRoot: string, debug = false, userKconfig?: Record<string, string>, psram?: 'opi' | 'quad'): boolean {
   const srcDir = join(projectRoot, 'src');
   if (!existsSync(srcDir)) mkdirSync(srcDir, { recursive: true });
 
@@ -111,6 +111,7 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     usesPreferences: uses('settings_') || uses('__tc_prefs'),
     // Random: the __tc_rand_* shim + the sys_rand_get entropy tap it seeds from.
     usesRandom: uses('__tc_rand') || uses('sys_rand_get'),
+    psram,
   };
 
   let changed = false;
@@ -130,7 +131,9 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     'file(GLOB app_sources src/*.cpp src/*.c)',
     '',
     'target_sources(app PRIVATE ${app_sources})',
-    '',
+    // When PSRAM is configured, define BOARD_HAS_PSRAM so the UI runtime's
+    // PSRAM canvas allocator (ui_create_canvas_best) is compiled in.
+    ...(psram ? ['', '# PSRAM enabled: activate the runtime PSRAM canvas paths.', 'target_compile_definitions(app PRIVATE BOARD_HAS_PSRAM)', ''] : ['']),
   ].join('\n');
   if (writeIfChanged(join(projectRoot, 'CMakeLists.txt'), cmakeLists)) changed = true;
 

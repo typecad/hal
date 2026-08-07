@@ -396,10 +396,40 @@ static inline CuttlefishCanvas16* display_createCanvas(int16_t cw, int16_t ch) {
   if (!mem) return nullptr;
   return new (mem) CuttlefishCanvas16(cw, ch);
 }
+// psramFound() shim: the Arduino ESP32 core provides this, but Zephyr does not.
+// Under BOARD_HAS_PSRAM the ESP heap serves PSRAM, so report it as present. The
+// runtime's ui_create_canvas_best calls this under #if defined(BOARD_HAS_PSRAM).
+#if defined(BOARD_HAS_PSRAM) && !defined(psramFound)
+#include <esp_heap_caps.h>
+static inline bool psramFound() {
+  // Compile-time truth: if BOARD_HAS_PSRAM is defined, the build targets a
+  // PSRAM board. (A runtime heap-cap probe could refine this, but the define
+  // is only emitted when PSRAM is configured, so trust it.)
+  return true;
+}
+#endif
 static inline CuttlefishCanvas16* display_createCanvasPsram(int16_t cw, int16_t ch) {
-  // PSRAM allocation not yet implemented for Zephyr. The runtime's
-  // ui_create_canvas_best falls back to display_createCanvas (SRAM).
+  // Allocate the pixel buffer in PSRAM (large: w*h*2 bytes) and the small
+  // canvas object in SRAM. The canvas takes ownership of the PSRAM buffer and
+  // frees it via free() in its dtor (the ESP unified heap accepts free() for
+  // PSRAM-allocated memory). Returns nullptr if PSRAM isn't available or the
+  // allocation fails — ui_create_canvas_best then falls back to SRAM/bands.
+#if defined(BOARD_HAS_PSRAM)
+  if ((cw > 0) && (ch > 0)) {
+    size_t bytes = static_cast<size_t>(cw) * static_cast<size_t>(ch) * sizeof(uint16_t);
+    uint16_t* psramBuf = static_cast<uint16_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM));
+    if (psramBuf) {
+      void* mem = malloc(sizeof(CuttlefishCanvas16));
+      if (mem) {
+        // takeOwnership=1: the dtor frees psramBuf via free().
+        return new (mem) CuttlefishCanvas16(cw, ch, psramBuf, 1);
+      }
+      heap_caps_free(psramBuf);
+    }
+  }
+#else
   (void)cw; (void)ch;
+#endif
   return nullptr;
 }
 static inline void display_deleteCanvas(CuttlefishCanvas16* canvas) {

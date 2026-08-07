@@ -25,6 +25,9 @@ export interface KconfigUsage {
   usesRandom?: boolean;
   /** Touch controller referenced (UI touch adapter emits DT_NODELABEL(ft6336u)). */
   usesTouch?: boolean;
+  /** PSRAM type ('opi' | 'quad') when the target board has PSRAM. Emits the
+   *  CONFIG_SPIRAM symbols so the ESP heap serves PSRAM for canvas allocations. */
+  psram?: 'opi' | 'quad';
 }
 
 /**
@@ -68,6 +71,16 @@ export function resolveKconfigFragments(
   }
   if (usage.usesTouch) {
     m.set('CONFIG_I2C', 'y');           // FT6336U touch on I2C
+  }
+  // PSRAM: enable the ESP SPIRAM driver + route malloc/heap to external RAM so
+  // large canvas allocations (scroll viewports, lists) can use PSRAM instead of
+  // failing in internal SRAM. The ESP32-S3 SoC dtsi already carries the psram0
+  // DT node; CONFIG_SPIRAM enables the driver, and the TRY_ALLOCATE/MALLOC_HEAP
+  // symbols let the unified heap serve PSRAM for heap_caps_malloc(MALLOC_CAP_SPIRAM).
+  if (usage.psram) {
+    m.set('CONFIG_SPIRAM', 'y');
+    m.set('CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP', 'y');
+    m.set('CONFIG_SPIRAM_BOOT_INIT', 'y');
   }
   // deep_sleep_pin wake needs PM + PM_DEVICE.
   if (usage.usesPower) {

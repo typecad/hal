@@ -123,7 +123,7 @@ export const Toolchain = {
     const isGdbDebug = o.debug === true && debugMode === 'gdb';
     const zc = o.zephyrConfig as Record<string, unknown> | undefined;
     const userKconfig = zc?.kconfig as Record<string, string> | undefined;
-    const configChanged = scaffoldZephyrProject(projectRoot, isGdbDebug, userKconfig);
+    const configChanged = scaffoldZephyrProject(projectRoot, isGdbDebug, userKconfig, o.psram);
 
     // Regenerate the DT overlay for the ACTUAL target board. prepare() writes
     // it for the default board (the real target is unknown until compile), so

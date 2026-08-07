@@ -11,6 +11,9 @@ import { z } from 'zod';
 /** Optimization levels accepted by the output.optimize field. */
 const OptimizationLevel = z.enum(['none', 'size', 'speed', 'balanced']);
 
+/** PSRAM types accepted by the top-level `psram` field (ESP32 PSRAM variants). */
+const PsramType = z.enum(['opi', 'quad']);
+
 /** Schema for the `output` section. */
 const OutputConfig = z.object({
   framework: z.string().min(1).optional(),
@@ -61,6 +64,11 @@ export const CuttlefishConfigSchema = z.object({
   board: z.string().optional(),
   contract: z.string().optional(),
   framework: z.string().optional(),
+  /** ESP32 PSRAM type. When set, the framework emits the PSRAM-enabling
+   *  Kconfig/define so canvas allocations prefer external RAM (large scroll
+   *  viewports/lists stop failing on PSRAM targets). No effect on boards
+   *  without PSRAM (the runtime falls back to SRAM then the band renderer). */
+  psram: PsramType.optional(),
   output: OutputConfig.optional(),
   frameworkData: z.record(z.string(), z.unknown()).optional(),
   include: z.array(z.string()).optional(),

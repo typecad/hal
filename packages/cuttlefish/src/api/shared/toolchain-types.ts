@@ -53,6 +53,8 @@ export interface ToolchainOptions {
   optimize?: string;
   extraFlags?: string[];
   defines?: Record<string, string>;
+  /** ESP32 PSRAM type ('opi' | 'quad') when the target board has PSRAM. */
+  psram?: 'opi' | 'quad';
   /**
    * Framework-specific config from `cuttlefish.config.ts`.
    * Each framework casts this to its own typed interface.

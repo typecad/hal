@@ -159,7 +159,13 @@ class CuttlefishGFX {
 // __ui_node_canvas).
 class CuttlefishCanvas16 : public CuttlefishGFX {
  public:
+  // Owns its buffer: mallocs w*h*2 bytes and frees it in the dtor.
   CuttlefishCanvas16(int16_t w, int16_t h);
+  // Adopts an externally-allocated buffer (e.g. PSRAM via display_createCanvasPsram).
+  // If takeOwnership is true, the dtor frees the buffer with free() (works for both
+  // SRAM malloc and the ESP unified heap, which includes PSRAM). If false, the
+  // caller owns the buffer's lifetime.
+  CuttlefishCanvas16(int16_t w, int16_t h, uint16_t* externalBuffer, uint8_t takeOwnership = 0);
   virtual ~CuttlefishCanvas16();
   virtual void drawPixel(int16_t x, int16_t y, uint16_t color);
   virtual void fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color);
@@ -178,6 +184,7 @@ class CuttlefishCanvas16 : public CuttlefishGFX {
  private:
   uint16_t* buffer_;
   int16_t canvas_w_, canvas_h_;
+  uint8_t owns_buffer_;  // 1 = dtor frees buffer_ (malloc'd), 0 = externally owned
 };
 
 // ── 1-bit mono canvas (SSD1309/SSD1680 backing stores) ──────────────────────
@@ -446,7 +453,7 @@ void CuttlefishGFX::write(uint8_t c) {
 
 CuttlefishCanvas16::CuttlefishCanvas16(int16_t w, int16_t h)
   : CuttlefishGFX(nullptr, nullptr),
-    buffer_(nullptr), canvas_w_(w), canvas_h_(h) {
+    buffer_(nullptr), canvas_w_(w), canvas_h_(h), owns_buffer_(1) {
   if ((w > 0) && (h > 0)) {
     size_t bytes = static_cast<size_t>(w) * static_cast<size_t>(h) * sizeof(uint16_t);
     // malloc (not new): on targets with CONFIG_REQUIRES_FULL_LIBCPP but without
@@ -459,8 +466,17 @@ CuttlefishCanvas16::CuttlefishCanvas16(int16_t w, int16_t h)
   }
 }
 
+CuttlefishCanvas16::CuttlefishCanvas16(int16_t w, int16_t h, uint16_t* externalBuffer, uint8_t takeOwnership)
+  : CuttlefishGFX(nullptr, nullptr),
+    buffer_(externalBuffer), canvas_w_(w), canvas_h_(h), owns_buffer_(takeOwnership) {
+  // Zero the buffer so the canvas starts clean whether or not we own it.
+  if (externalBuffer && (w > 0) && (h > 0)) {
+    memset(externalBuffer, 0, static_cast<size_t>(w) * static_cast<size_t>(h) * sizeof(uint16_t));
+  }
+}
+
 CuttlefishCanvas16::~CuttlefishCanvas16() {
-  if (buffer_) free(buffer_);
+  if (buffer_ && owns_buffer_) free(buffer_);
 }
 
 void CuttlefishCanvas16::drawPixel(int16_t x, int16_t y, uint16_t color) {

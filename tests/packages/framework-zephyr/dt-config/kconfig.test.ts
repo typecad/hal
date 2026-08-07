@@ -137,3 +137,39 @@ describe('scaffoldZephyrProject — usage-scan boundary', () => {
     }
   });
 });
+
+describe('PSRAM (CONFIG_SPIRAM) emission', () => {
+  it('emits CONFIG_SPIRAM symbols when psram is set', () => {
+    const m = resolveKconfigFragments({ psram: 'opi' }, false);
+    expect(m.get('CONFIG_SPIRAM')).toBe('y');
+    expect(m.get('CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP')).toBe('y');
+    expect(m.get('CONFIG_SPIRAM_BOOT_INIT')).toBe('y');
+  });
+
+  it('omits CONFIG_SPIRAM when psram is unset', () => {
+    const m = resolveKconfigFragments({}, false);
+    expect(m.get('CONFIG_SPIRAM')).toBeUndefined();
+  });
+
+  it('adds target_compile_definitions(BOARD_HAS_PSRAM) to CMakeLists when psram is set', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zephyr-psram-'));
+    try {
+      scaffoldZephyrProject(dir, false, undefined, 'opi');
+      const cmake = readFileSync(join(dir, 'CMakeLists.txt'), 'utf8');
+      expect(cmake).toContain('target_compile_definitions(app PRIVATE BOARD_HAS_PSRAM)');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('does NOT add BOARD_HAS_PSRAM when psram is unset', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zephyr-nopsram-'));
+    try {
+      scaffoldZephyrProject(dir, false);
+      const cmake = readFileSync(join(dir, 'CMakeLists.txt'), 'utf8');
+      expect(cmake).not.toContain('BOARD_HAS_PSRAM');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

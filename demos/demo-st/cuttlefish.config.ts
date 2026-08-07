@@ -7,6 +7,9 @@ const config: CuttlefishConfig = {
   board: '@typecad/board-esp32s3',
   framework: '@typecad/framework-zephyr',
   frameworkData: { buildTarget: 'esp32s3_devkitc/esp32s3/procpu' },
+  // ESP32-S3 devkitc has no on-board PSRAM. Uncomment on a PSRAM board
+  // (e.g. ESP32-S3-WROOM-1-N8R8) to route large canvas allocations (scroll
+  // viewports, lists) to external RAM instead of the SRAM band-renderer path.
   // psram: 'opi',
   toolchain: { type: 'west' },
   console: { baudRate: 115200, port: 'COM12' },

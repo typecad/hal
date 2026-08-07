@@ -37,6 +37,31 @@ function displayConfigForTranspile<T extends { configPath: string; display?: obj
   return display;
 }
 
+/**
+ * Apply the PSRAM config to the Arduino build: append the `PSRAM={opi|quad}`
+ * menu option to the FQBN (so the Arduino core's psramFound()/ps_malloc work
+ * at runtime — they're gated on the board menu option, not just the define)
+ * and add `-DBOARD_HAS_PSRAM` to the defines (so the framework's PSRAM canvas
+ * allocator is compiled in). No-op when psram is unset or the target isn't an
+ * Arduino FQBN (the PSRAM= option is Arduino-core-specific).
+ */
+function applyPsramToArduinoBuild(
+  buildTarget: string | undefined,
+  defines: Record<string, string> | undefined,
+  psram: 'opi' | 'quad' | undefined,
+): { buildTarget: string | undefined; defines: Record<string, string> } {
+  if (!psram || !buildTarget || !buildTarget.includes(':')) {
+    return { buildTarget, defines: defines ?? {} };
+  }
+  // Arduino FQBN config options follow the board:option as `key=value` pairs.
+  // Append PSRAM= if not already present (don't clobber an explicit override).
+  const psramOpt = `PSRAM=${psram}`;
+  const adjustedTarget = buildTarget.includes('PSRAM=') ? buildTarget : `${buildTarget}:${psramOpt}`;
+  const adjustedDefines = { ...(defines ?? {}) };
+  if (!('BOARD_HAS_PSRAM' in adjustedDefines)) adjustedDefines.BOARD_HAS_PSRAM = '';
+  return { buildTarget: adjustedTarget, defines: adjustedDefines };
+}
+
 async function handleCreate(options: CreateCommandOptions): Promise<void> {
   const targetId = options.target ?? options.board;
   const hasTarget = !!targetId;
@@ -466,6 +491,9 @@ async function main(): Promise<void> {
           architecture: configBuildTarget.split(":")?.[1]?.toLowerCase(),
           frameworkData: {
             buildTarget: configBuildTarget,
+            // Thread the PSRAM type through to the framework so it can emit the
+            // PSRAM-enabling Kconfig (Zephyr) / define + FQBN option (Arduino).
+            ...(config.psram ? { psram: config.psram } : {}),
           },
         };
       }
@@ -563,7 +591,8 @@ async function main(): Promise<void> {
 
           // Initial compile + upload if flags are set
           if (options.compile) {
-            const buildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
+            const baseBuildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
+            const { buildTarget, defines: psramDefines } = applyPsramToArduinoBuild(baseBuildTarget, config?.outputDefines, config?.psram);
             const watchOpts = {
               outputDir: path.dirname(result.sourcePath),
               sourcePath: result.sourcePath,
@@ -572,7 +601,8 @@ async function main(): Promise<void> {
               baud: options.baud ?? config?.console?.baudRate,
               optimize: config?.outputOptimize,
               extraFlags: config?.outputExtraFlags,
-              defines: config?.outputDefines,
+              defines: psramDefines,
+              psram: config?.psram,
               frameworkConfig: config?.frameworkConfig,
               zephyrConfig: config?.zephyrConfig,
               display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,
@@ -666,7 +696,8 @@ async function main(): Promise<void> {
               ui.printSuccess();
 
               if (options.compile) {
-                const buildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
+                const baseBuildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
+                const { buildTarget, defines: psramDefines } = applyPsramToArduinoBuild(baseBuildTarget, config?.outputDefines, config?.psram);
                 const rebuildOpts = {
                   outputDir: path.dirname(rebuildResult.sourcePath),
                   sourcePath: rebuildResult.sourcePath,
@@ -675,7 +706,8 @@ async function main(): Promise<void> {
                   baud: options.baud ?? config?.console?.baudRate,
                   optimize: config?.outputOptimize,
                   extraFlags: config?.outputExtraFlags,
-                  defines: config?.outputDefines,
+                  defines: psramDefines,
+                  psram: config?.psram,
                   frameworkConfig: config?.frameworkConfig,
                   zephyrConfig: config?.zephyrConfig,
               display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,
@@ -776,7 +808,8 @@ async function main(): Promise<void> {
     }
 
     // --compile (delegates to the active framework's toolchain)
-    const buildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
+    const baseBuildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
+    const { buildTarget, defines: psramDefines } = applyPsramToArduinoBuild(baseBuildTarget, config?.outputDefines, config?.psram);
     const toolchainOpts = {
       outputDir: path.dirname(result.sourcePath),
       sourcePath: result.sourcePath,
@@ -785,7 +818,8 @@ async function main(): Promise<void> {
       baud: options.baud ?? config?.console?.baudRate,
       optimize: config?.outputOptimize,
       extraFlags: config?.outputExtraFlags,
-      defines: config?.outputDefines,
+      defines: psramDefines,
+      psram: config?.psram,
       frameworkConfig: config?.frameworkConfig,
       zephyrConfig: config?.zephyrConfig,
               display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,

@@ -42,6 +42,8 @@ export interface ResolvedCuttlefishConfig {
    * '@typecad/framework-native', or a custom path.
    */
   framework?: string;
+  /** ESP32 PSRAM type ('opi' | 'quad') when the target board has PSRAM. */
+  psram?: 'opi' | 'quad';
   /** Entry point TypeScript file (relative to config file directory). */
   entry?: string;
   /** Path to the config file that was loaded. */
@@ -366,6 +368,9 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   const framework = flat.get("framework");
   if (typeof framework === "string") resolved.framework = framework;
 
+  const psram = flat.get("psram");
+  if (psram === "opi" || psram === "quad") resolved.psram = psram;
+
   const outputFramework = flat.get("output.framework");
   if (typeof outputFramework === "string") resolved.outputFramework = outputFramework;
 
@@ -422,6 +427,7 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   if (resolved.contract) structuredForValidation.contract = resolved.contract;
   if (resolved.entry) structuredForValidation.entry = resolved.entry;
   if (resolved.framework) structuredForValidation.framework = resolved.framework;
+  if (resolved.psram) structuredForValidation.psram = resolved.psram;
   if (resolved.outputFramework || resolved.outputOptimize || resolved.outputOutDir || resolved.outputExtraFlags || resolved.outputDefines) {
     structuredForValidation.output = {
       ...(resolved.outputFramework ? { framework: resolved.outputFramework } : {}),
