@@ -822,6 +822,20 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
 // Returns 1 when the subtree was rendered and pushed (the caller must skip the
 // normal direct-full child repaint). Returns 0 when the band canvas could not
 // be allocated (caller falls back to direct-full).
+// Shared band-canvas alloc helper. The three band renderers reuse the
+// persistent __ui_band_canvas, reallocating only when the width changes so
+// display_canvasWidth == w == stride (ui_push_canvas_rect's single-write fast
+// path requires w == stride — a sub-width push takes a row-by-row path some
+// ST7796S drivers mishandle). Returns the canvas (with a valid buffer) or null.
+static inline CuttlefishCanvas16* ui_band_canvas_for_width(int16_t w) {
+  if (!__ui_band_canvas || !display_canvasBuffer(__ui_band_canvas) ||
+      display_canvasWidth(__ui_band_canvas) != w) {
+    display_deleteCanvas(__ui_band_canvas);
+    __ui_band_canvas = ui_create_canvas_best(w, UI_STRIP_BAND_HEIGHT);
+  }
+  CuttlefishCanvas16* band = __ui_band_canvas;
+  return (band && display_canvasBuffer(band)) ? band : nullptr;
+}
 static inline uint8_t ui_render_scroll_bands(uint16_t s) {
   if (s >= __ui_node_count) return 0;
   int16_t vw = __ui_nodes[s].box.w;
@@ -830,17 +844,11 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
   int16_t vox = __ui_nodes[s].box.x;
   int16_t voy = __ui_nodes[s].box.y;
   UI_COLOR_T scrollBg = __ui_nodes[s].hasBg ? __ui_nodes[s].bg : __ui_nodes[s].clearColor;
-  // One persistent band canvas, reused across bands and frames. Reallocated
-  // only when the viewport width changes (a real size change). A reused wider
-  // canvas would keep its old stride and corrupt the pushed pixels, so match
-  // width exactly (ui_push_canvas_rect keys off the canvas stride).
-  if (!__ui_band_canvas || !display_canvasBuffer(__ui_band_canvas) ||
-      display_canvasWidth(__ui_band_canvas) != vw) {
-    display_deleteCanvas(__ui_band_canvas);
-    __ui_band_canvas = ui_create_canvas_best(vw, UI_STRIP_BAND_HEIGHT);
-  }
-  CuttlefishCanvas16* band = __ui_band_canvas;
-  if (!band || !display_canvasBuffer(band)) return 0;
+  // One persistent band canvas, reused across bands and frames, reallocated
+  // only when the viewport width changes (so stride == vw for the single-write
+  // push fast path). See ui_band_canvas_for_width.
+  CuttlefishCanvas16* band = ui_band_canvas_for_width(vw);
+  if (!band) return 0;
   int16_t bandH = display_canvasHeight(band);
   // Source-order traversal of the subtree is the documented paint order for
   // nodes outside a scroll canvas (lower zIndex first, then source order — the
@@ -1028,17 +1036,10 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
 // rest-shadow + pressed-face + outline, as computed by ui_node_paint_rect).
 static inline uint8_t ui_render_node_bands(uint16_t i, int16_t prX, int16_t prY, int16_t prW, int16_t prH) {
   if (i >= __ui_node_count || prW <= 0 || prH <= 0) return 0;
-  // Band canvas: reuse the scroll-band slot, reallocating when the width
-  // changes so display_canvasWidth == prW == stride (ui_push_canvas_rect's
-  // single-write fast path requires w == stride — a sub-width push takes a
-  // row-by-row path some ST7796S drivers mishandle).
-  if (!__ui_band_canvas || !display_canvasBuffer(__ui_band_canvas) ||
-      display_canvasWidth(__ui_band_canvas) != prW) {
-    display_deleteCanvas(__ui_band_canvas);
-    __ui_band_canvas = ui_create_canvas_best(prW, UI_STRIP_BAND_HEIGHT);
-  }
-  CuttlefishCanvas16* band = __ui_band_canvas;
-  if (!band || !display_canvasBuffer(band)) return 0;
+  // Band canvas: reuse the persistent slot, reallocated to prW width (so stride
+  // == prW for the single-write push fast path). See ui_band_canvas_for_width.
+  CuttlefishCanvas16* band = ui_band_canvas_for_width(prW);
+  if (!band) return 0;
   int16_t bandH = display_canvasHeight(band);
 
   // Display-space draw coords for the node (untranslated — band-local offsets
@@ -1176,16 +1177,10 @@ static inline uint8_t ui_render_list_bands(uint16_t i) {
   int16_t origBoxX = __ui_nodes[i].box.x;
   int16_t origBoxY = __ui_nodes[i].box.y;
 
-  // Reuse the band canvas, reallocating when the width changes so stride == bw
-  // (ui_push_canvas_rect's single-write fast path requires w == stride — a
-  // sub-width push takes a row-by-row path some ST7796S drivers mishandle).
-  if (!__ui_band_canvas || !display_canvasBuffer(__ui_band_canvas) ||
-      display_canvasWidth(__ui_band_canvas) != bw) {
-    display_deleteCanvas(__ui_band_canvas);
-    __ui_band_canvas = ui_create_canvas_best(bw, UI_STRIP_BAND_HEIGHT);
-  }
-  CuttlefishCanvas16* band = __ui_band_canvas;
-  if (!band || !display_canvasBuffer(band)) return 0;
+  // Reuse the persistent band canvas, reallocated to bw width (so stride == bw
+  // for the single-write push fast path). See ui_band_canvas_for_width.
+  CuttlefishCanvas16* band = ui_band_canvas_for_width(bw);
+  if (!band) return 0;
   int16_t bandH = display_canvasHeight(band);
 
   // Scrollbar geometry (viewport coords), same as the cached-canvas list path.

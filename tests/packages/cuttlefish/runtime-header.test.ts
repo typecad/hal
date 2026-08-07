@@ -586,32 +586,30 @@ describe("C++ reactive runtime header", () => {
 
   it("keeps the buffered scroll owner out of the direct display draw pass", () => {
     // Mode B: the scroll owner is represented by the viewport canvas.
-    // Mode C strip / direct-full: the scroll owner must not draw directly
-    // (would fill the viewport); its children are drawn below.
+    // Direct-full: the scroll owner must not draw directly (would fill the
+    // viewport); its children are drawn below.
     // Non-composited overflow scroll containers defer entirely until Mode B.
     expect(header).toMatch(/if \(bufferedScrollCanvas\) \{[\s\S]*__ui_nodes\[s\]\.dirty = 0;[\s\S]*\} else \{/);
-    expect(header).toMatch(/\(bufferedScrollDirectStrip \|\| bufferedScrollDirectFull\) && bufferedScrollNode >= 0 &&[\s\S]*continue;/);
+    expect(header).toMatch(/bufferedScrollDirectFull && bufferedScrollNode >= 0 &&[\s\S]*continue;/);
     expect(header).toContain("ui_overflow_scroll_compositor");
     // drawingBufferedScroll is only true in genuine Mode B (a real canvas is
-    // active). Direct-strip and direct-full have no canvas, so their children
-    // draw to the display target and qualify for the per-node paint canvas.
-    expect(header).toMatch(/uint8_t drawingBufferedScroll = !bufferedScrollDirectFull && !bufferedScrollDirectStrip &&[\s\S]*\(bufferedScrollCanvas != nullptr\)[\s\S]*i > bufferedScrollNode/);
+    // active). Direct-full has no canvas, so its children draw to the display
+    // target and qualify for the per-node paint canvas.
+    expect(header).toMatch(/uint8_t drawingBufferedScroll = !bufferedScrollDirectFull &&[\s\S]*\(bufferedScrollCanvas != nullptr\)[\s\S]*i > bufferedScrollNode/);
   });
 
-  it("uses Mode C strip blit when viewport canvas won't allocate", () => {
+  it("falls back to the band renderer when viewport canvas won't allocate", () => {
     // When Mode B canvas allocation fails (no PSRAM), the no-canvas dispatch
-    // takes direct-full for every frame: the ST7796S has no read-back so the
-    // strip path can't shift on-panel pixels (it left content frozen/stacking).
-    // direct-full repaints the whole visible subtree at its new position each
-    // frame. The ui_scroll_direct_prepare helper is still emitted (legacy) but
-    // the dispatch no longer calls it.
-    expect(header).toContain("ui_scroll_direct_prepare");
+    // defers to the band renderer (bufferedScrollBands): it composites the
+    // whole visible subtree into a ~10KB band canvas strip-by-strip and pushes
+    // one band at a time at the owner's z-order slot. Direct-full remains only
+    // as the band-canvas-failure fallback (rare).
     expect(header).toContain("ui_draw_scrollbar_direct");
     expect(header).toContain("ui_overflow_scroll_compositor");
     expect(header).toMatch(/bufferedScrollCanvas = ui_get_container_canvas\(vw, vh\)/);
-    // The no-canvas branch: mark the visible subtree dirty + direct-full.
-    expect(header).toMatch(/if \(__ui_scroll_canvas_ok\) __ui_scroll_canvas_ok\[s\] = 0;[\s\S]*bufferedScrollDirectFull = 1/);
-    expect(header).toMatch(/} else if \(bufferedScrollNode >= 0 && \(bufferedScrollDirectStrip \|\| bufferedScrollDirectFull\)\) \{[\s\S]*ui_draw_scrollbar_direct/);
+    // The no-canvas branch: mark the canvas-unavailable flag + defer to bands.
+    expect(header).toMatch(/if \(__ui_scroll_canvas_ok\) __ui_scroll_canvas_ok\[s\] = 0;[\s\S]*bufferedScrollBands = 1/);
+    expect(header).toMatch(/} else if \(bufferedScrollNode >= 0 && bufferedScrollDirectFull\) \{[\s\S]*ui_draw_scrollbar_direct/);
   });
 
   it("defers non-composited overflow scroll subtrees from the direct display pass", () => {

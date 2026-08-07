@@ -87,15 +87,11 @@ export function emitTickDirtyDrawPhase(): string {
   CuttlefishCanvas16* bufferedScrollRepaintCanvas = nullptr;
   int16_t bufferedScrollRepaintY = 0;
   int16_t bufferedScrollRepaintH = 0;
-  uint8_t bufferedScrollDirectStrip = 0;
-  // When the scroll canvas won't fit (viewport exceeds the compile-time budget),
-  // fall back to direct-drawing the in-viewport subtree to the display. This is
-  // the "no canvas available" path: the children are clipped to the viewport
-  // (ui_is_rect_clipped_by_scroll at the main draw pass) and painted directly,
-  // one time on screen-enter, rather than freezing the render loop. The tradeoff
-  // is a possible one-time flash on screen-enter, which is strictly better than
-  // a blank/frozen screen (the previous behavior left the scroll owner dirty
-  // forever and the main loop pegged).
+  // When the scroll canvas won't fit, fall back to direct-drawing the in-viewport
+  // subtree to the display (the "no canvas available" path: children are clipped
+  // to the viewport and painted directly, one time on screen-enter, rather than
+  // freezing the render loop). Reached only as the band-canvas-failure fallback
+  // (rare); the band renderer is the normal no-canvas path.
   uint8_t bufferedScrollDirectFull = 0;
   // Band renderer pending: like bufferedScrollDirectFull but the actual paint
   // is deferred to the scroll owner's z-order slot in the main draw loop. The
@@ -209,37 +205,6 @@ export function emitTickDirtyDrawPhase(): string {
         __ui_nodes[c].dirty = 0;
       }
       break;
-      // Band canvas allocation failed — direct-full is the last-resort fallback.
-      // No canvas available. The ST7796S (like most SPI TFTs) has no read-back,
-      // so there is no way to shift already-painted pixels on the panel itself —
-      // the strip path (fill the exposed band + repaint only strip-intersecting
-      // children) leaves the rest of the content frozen in its old position, so
-      // a drag visually "stacks" nodes on top of each other. Without a RAM canvas
-      // to memmove, the only correct option is a full in-viewport subtree repaint
-      // each drag frame (direct-full). With DMA + per-node paint canvases this is
-      // affordable (~3ms/text node, ~15 nodes ≈ 45ms ≈ 22fps). The strip path is
-      // only reachable when a real canvas exists (Mode B), where ui_shift_container_canvas
-      // memmoves the cached pixels first.
-      bufferedScrollNode = static_cast<int16_t>(s);
-      bufferedScrollVX = vox;
-      bufferedScrollVY = voy;
-      bufferedScrollDirectFull = 1;
-      // Mark the whole visible subtree dirty so every in-viewport child repaints
-      // at its new scrolled position this frame (direct-full repaints all of them,
-      // not just a strip band).
-      for (uint16_t c = s + 1; c < __ui_nodes[s].subtreeEnd; c++) {
-        if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) {
-          __ui_nodes[c].dirty = 0;
-          continue;
-        }
-        __ui_nodes[c].dirty = 1;
-        if (__ui_nodes[c].kind == NODE_PROGRESS || __ui_nodes[c].kind == NODE_RANGE) {
-          __ui_nodes[c].lastTextWidth = -1;
-        }
-        __ui_nodes[c].lastTextHeight = 0;
-      }
-      __ui_nodes[s].dirty = 0;
-      break;
     }
     // Only one scroll container per frame (the canvas is reused for subsequent
     // ones in the next dirty frame). This matches the original design.
@@ -295,7 +260,7 @@ export function emitTickDirtyDrawPhase(): string {
       int16_t scrollComp = ui_overflow_scroll_compositor(static_cast<uint16_t>(i));
       if (scrollComp >= 0) {
         uint8_t compositing = scrollComp == bufferedScrollNode &&
-          (bufferedScrollCanvas || bufferedScrollDirectStrip || bufferedScrollDirectFull || bufferedScrollBands);
+          (bufferedScrollCanvas || bufferedScrollDirectFull || bufferedScrollBands);
         if (!compositing) {
           if (static_cast<uint16_t>(i) == static_cast<uint16_t>(scrollComp)) break;
           __ui_nodes[i].dirty = 0;
@@ -341,7 +306,7 @@ export function emitTickDirtyDrawPhase(): string {
 
     // Mode C strip / direct-full: scroll owner is not drawn directly (would fill
     // the viewport); its children are drawn directly below.
-    if ((bufferedScrollDirectStrip || bufferedScrollDirectFull) && bufferedScrollNode >= 0 &&
+    if (bufferedScrollDirectFull && bufferedScrollNode >= 0 &&
         static_cast<uint16_t>(i) == static_cast<uint16_t>(bufferedScrollNode)) {
       __ui_nodes[i].dirty = 0;
       continue;
@@ -366,7 +331,7 @@ export function emitTickDirtyDrawPhase(): string {
     // to a null scroll canvas. Without this, a strip-drag frame sets
     // drawingBufferedScroll=1, which skips the paint canvas and forces the
     // repainting children to direct-draw per-pixel to SPI (~100ms/text node).
-    uint8_t drawingBufferedScroll = !bufferedScrollDirectFull && !bufferedScrollDirectStrip &&
+    uint8_t drawingBufferedScroll = !bufferedScrollDirectFull &&
       (bufferedScrollCanvas != nullptr) && bufferedScrollNode >= 0 &&
       i > bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd;
     int16_t origBoxX = __ui_nodes[i].box.x;
