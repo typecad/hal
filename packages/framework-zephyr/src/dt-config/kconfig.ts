@@ -74,13 +74,18 @@ export function resolveKconfigFragments(
   }
   // PSRAM: enable the ESP SPIRAM driver + route malloc/heap to external RAM so
   // large canvas allocations (scroll viewports, lists) can use PSRAM instead of
-  // failing in internal SRAM. The ESP32-S3 SoC dtsi already carries the psram0
-  // DT node; CONFIG_SPIRAM enables the driver, and the TRY_ALLOCATE/MALLOC_HEAP
-  // symbols let the unified heap serve PSRAM for heap_caps_malloc(MALLOC_CAP_SPIRAM).
+  // failing in internal SRAM. Zephyr's ESP32 PSRAM support uses CONFIG_ESP_SPIRAM
+  // (not CONFIG_SPIRAM — that's an ESP-IDF symbol). The mode choice selects the
+  // PSRAM type: OCT for OPI (ESP32-S3), QUAD for quad-spi. CONFIG_ESP_SPIRAM
+  // selects SHARED_MULTI_HEAP automatically, which routes heap_caps_malloc to
+  // PSRAM. The SoC dtsi already carries the psram0 DT node.
   if (usage.psram) {
-    m.set('CONFIG_SPIRAM', 'y');
-    m.set('CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP', 'y');
-    m.set('CONFIG_SPIRAM_BOOT_INIT', 'y');
+    m.set('CONFIG_ESP_SPIRAM', 'y');
+    if (usage.psram === 'opi') {
+      m.set('CONFIG_SPIRAM_MODE_OCT', 'y');
+    } else {
+      m.set('CONFIG_SPIRAM_MODE_QUAD', 'y');
+    }
   }
   // deep_sleep_pin wake needs PM + PM_DEVICE.
   if (usage.usesPower) {

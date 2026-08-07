@@ -138,17 +138,24 @@ describe('scaffoldZephyrProject — usage-scan boundary', () => {
   });
 });
 
-describe('PSRAM (CONFIG_SPIRAM) emission', () => {
-  it('emits CONFIG_SPIRAM symbols when psram is set', () => {
+describe('PSRAM (CONFIG_ESP_SPIRAM) emission', () => {
+  it('emits CONFIG_ESP_SPIRAM + SPIRAM_MODE_OCT when psram is opi', () => {
     const m = resolveKconfigFragments({ psram: 'opi' }, false);
-    expect(m.get('CONFIG_SPIRAM')).toBe('y');
-    expect(m.get('CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP')).toBe('y');
-    expect(m.get('CONFIG_SPIRAM_BOOT_INIT')).toBe('y');
+    expect(m.get('CONFIG_ESP_SPIRAM')).toBe('y');
+    expect(m.get('CONFIG_SPIRAM_MODE_OCT')).toBe('y');
+    expect(m.get('CONFIG_SPIRAM_MODE_QUAD')).toBeUndefined();
   });
 
-  it('omits CONFIG_SPIRAM when psram is unset', () => {
+  it('emits CONFIG_ESP_SPIRAM + SPIRAM_MODE_QUAD when psram is quad', () => {
+    const m = resolveKconfigFragments({ psram: 'quad' }, false);
+    expect(m.get('CONFIG_ESP_SPIRAM')).toBe('y');
+    expect(m.get('CONFIG_SPIRAM_MODE_QUAD')).toBe('y');
+    expect(m.get('CONFIG_SPIRAM_MODE_OCT')).toBeUndefined();
+  });
+
+  it('omits CONFIG_ESP_SPIRAM when psram is unset', () => {
     const m = resolveKconfigFragments({}, false);
-    expect(m.get('CONFIG_SPIRAM')).toBeUndefined();
+    expect(m.get('CONFIG_ESP_SPIRAM')).toBeUndefined();
   });
 
   it('adds target_compile_definitions(BOARD_HAS_PSRAM) to CMakeLists when psram is set', () => {

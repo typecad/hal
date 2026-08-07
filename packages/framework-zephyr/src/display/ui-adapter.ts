@@ -400,31 +400,34 @@ static inline CuttlefishCanvas16* display_createCanvas(int16_t cw, int16_t ch) {
 // Under BOARD_HAS_PSRAM the ESP heap serves PSRAM, so report it as present. The
 // runtime's ui_create_canvas_best calls this under #if defined(BOARD_HAS_PSRAM).
 #if defined(BOARD_HAS_PSRAM) && !defined(psramFound)
-#include <esp_heap_caps.h>
+#include <zephyr/multi_heap/shared_multi_heap.h>
 static inline bool psramFound() {
   // Compile-time truth: if BOARD_HAS_PSRAM is defined, the build targets a
-  // PSRAM board. (A runtime heap-cap probe could refine this, but the define
-  // is only emitted when PSRAM is configured, so trust it.)
+  // PSRAM board with CONFIG_ESP_SPIRAM enabled (the framework emits both).
   return true;
+}
+// Allocate from PSRAM via Zephyr's shared multi-heap (the ESP32 SoC code
+// registers PSRAM as an SMH_REG_ATTR_EXTERNAL region at boot).
+static inline void* ui_psram_malloc(size_t bytes) {
+  return shared_multi_heap_alloc(SMH_REG_ATTR_EXTERNAL, bytes);
 }
 #endif
 static inline CuttlefishCanvas16* display_createCanvasPsram(int16_t cw, int16_t ch) {
   // Allocate the pixel buffer in PSRAM (large: w*h*2 bytes) and the small
   // canvas object in SRAM. The canvas takes ownership of the PSRAM buffer and
-  // frees it via free() in its dtor (the ESP unified heap accepts free() for
-  // PSRAM-allocated memory). Returns nullptr if PSRAM isn't available or the
-  // allocation fails — ui_create_canvas_best then falls back to SRAM/bands.
+  // frees it via free() in its dtor (the SMH allocator's free is compatible
+  // with the standard k_free/free path). Returns nullptr if PSRAM isn't
+  // available or the allocation fails — ui_create_canvas_best falls back.
 #if defined(BOARD_HAS_PSRAM)
   if ((cw > 0) && (ch > 0)) {
     size_t bytes = static_cast<size_t>(cw) * static_cast<size_t>(ch) * sizeof(uint16_t);
-    uint16_t* psramBuf = static_cast<uint16_t*>(heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM));
+    uint16_t* psramBuf = static_cast<uint16_t*>(ui_psram_malloc(bytes));
     if (psramBuf) {
       void* mem = malloc(sizeof(CuttlefishCanvas16));
       if (mem) {
-        // takeOwnership=1: the dtor frees psramBuf via free().
         return new (mem) CuttlefishCanvas16(cw, ch, psramBuf, 1);
       }
-      heap_caps_free(psramBuf);
+      free(psramBuf);
     }
   }
 #else

@@ -112,7 +112,7 @@ function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): 
         nodeIndex,
         property: "text",
         fnName: `__ui_bindtext_${nodeIndex}`,
-        cppBody: `snprintf(buf, size, "%s", ${sig});`,
+        cppBody: `snprintf(buf, static_cast<size_t>(size), "%s", ${sig});`,
       });
       // Write: keyboard commit → signal.set(text).
       recordInputBinding({
@@ -191,12 +191,14 @@ function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): 
       callbackBody: `__ui_nodes[${nodeIndex}].value = (__ui_nodes[${nodeIndex}].value + 1) % ${count};`,
     });
 
-    // Auto-bind text to show the current option via snprintf if/else chain
+    // Auto-bind text to show the current option via snprintf if/else chain.
+    // Cast size to size_t to satisfy -Wformat (snprintf's n param is size_t;
+    // the textFn signature uses uint8_t).
     const branches = options.map((opt, i) => {
-      if (i === 0) return `if (__ui_nodes[${nodeIndex}].value == 0) { snprintf(buf, size, "%s", "${opt}"); }`;
-      return `else if (__ui_nodes[${nodeIndex}].value == ${i}) { snprintf(buf, size, "%s", "${opt}"); }`;
+      if (i === 0) return `if (__ui_nodes[${nodeIndex}].value == 0) { snprintf(buf, static_cast<size_t>(size), "%s", "${opt}"); }`;
+      return `else if (__ui_nodes[${nodeIndex}].value == ${i}) { snprintf(buf, static_cast<size_t>(size), "%s", "${opt}"); }`;
     }).join(" ");
-    const elseBranch = `else { snprintf(buf, size, "%s", "${options[0] || ""}"); }`;
+    const elseBranch = `else { snprintf(buf, static_cast<size_t>(size), "%s", "${options[0] || ""}"); }`;
 
     recordBinding({
       nodeIndex,
