@@ -338,11 +338,14 @@ static inline void ui_kb_draw() {
   if (kw <= 0 || kh <= 0) return;
   // (Re)allocate the keyboard canvas to exact size (see repair-canvas comment
   // — stride mismatch corrupts the push when reusing a differently-sized canvas).
+  // ui_create_canvas_best prefers PSRAM when available (a full-width keyboard
+  // canvas can be ~30KB, too big for no-PSRAM internal SRAM) and falls back to
+  // SRAM — same policy as the list/scroll viewport canvases.
   if (!__ui_kb_canvas || !display_canvasBuffer(__ui_kb_canvas) ||
       display_canvasWidth(__ui_kb_canvas) != kw ||
       display_canvasHeight(__ui_kb_canvas) != kh) {
     display_deleteCanvas(__ui_kb_canvas);
-    __ui_kb_canvas = display_createCanvas(kw, kh);
+    __ui_kb_canvas = ui_create_canvas_best(kw, kh);
   }
   if (!__ui_kb_canvas || !display_canvasBuffer(__ui_kb_canvas)) {
     // Canvas alloc failed — fall back to direct draw (slow but correct).
