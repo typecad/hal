@@ -196,6 +196,7 @@ export const Toolchain = {
         usesUart: uses('uart_'),
         usesDisplay,
         usesTouch: uses('ft6336u') || uses('touch_'),
+        psram: o.psram,
       }, displayProfile, wiring, touchWiring);
       const overlayDir = join(projectRoot, 'boards');
       mkdirSync(overlayDir, { recursive: true });

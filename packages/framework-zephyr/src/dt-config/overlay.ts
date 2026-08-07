@@ -117,6 +117,18 @@ export function generateOverlay(
     lines.push('');
   }
 
+  // PSRAM: enable the psram0 DT node with the correct size. The devkitc board
+  // DT defaults to a no-PSRAM module variant (e.g. wroom_n8); a PSRAM-capable
+  // module (N16R8, N8R8) needs the node enabled + sized so the linker maps
+  // .ext_ram sections into the real PSRAM. OPI on ESP32-S3 = 8MB octal PSRAM.
+  if (usage.psram) {
+    lines.push('&psram0 {');
+    lines.push('    status = "okay";');
+    lines.push('    size = <(DT_SIZE_M(8))>;');
+    lines.push('};');
+    lines.push('');
+  }
+
   return lines.join('\n');
 }
 
