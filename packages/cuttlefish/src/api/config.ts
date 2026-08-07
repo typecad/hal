@@ -87,6 +87,14 @@ export interface CuttlefishConfig {
    */
   framework?: string;
 
+  /**
+   * ESP32 PSRAM type. When set, the framework emits the PSRAM-enabling
+   * Kconfig (Zephyr) / define + FQBN option (Arduino) so large canvas
+   * allocations (scroll viewports, lists) prefer external RAM. No effect
+   * on boards without PSRAM.
+   */
+  psram?: 'opi' | 'quad';
+
   /** Output / build options. */
   output?: CuttlefishOutputConfig;
 
