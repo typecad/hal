@@ -15,6 +15,9 @@ static inline void ui_init(void) {
   if (!__ui_scroll_canvas_ok && __ui_node_count > 0) {
     __ui_scroll_canvas_ok = new (std::nothrow) uint8_t[__ui_node_count]();
   }
+  if (!__ui_scroll_render_locked && __ui_node_count > 0) {
+    __ui_scroll_render_locked = new (std::nothrow) uint8_t[__ui_node_count]();
+  }
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
     __ui_nodes[i].lastTextHeight = 0;
@@ -29,6 +32,11 @@ static inline void ui_init(void) {
       __ui_nodes[n].hasTextBinding = 1;
       strncpy(__ui_nodes[n].textBuffer, __ui_nodes[n].text ? __ui_nodes[n].text : "", UI_TEXT_BUF);
       __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
+    } else if (__ui_bindings[i].fn) {
+      // Prime numeric binding caches once at setup; the first tick can then skip
+      // redundant assignments and dirty propagation when values are unchanged.
+      __ui_bindings[i].lastValue = __ui_bindings[i].fn();
+      __ui_bindings[i].initialized = 1;
     }
   }
   // Seed virtualized-list runtime state. The fn pointers can't be baked into
@@ -58,6 +66,9 @@ static inline void ui_init(void) {
   ui_build_draw_order();
   ui_build_scroll_owner_table();
   ui_refresh_active_screen_bg_node();
+  if (!__ui_scroll_candidates && __ui_node_count > 0) {
+    __ui_scroll_candidates = new (std::nothrow) UIScrollPaintCandidate[__ui_node_count];
+  }
 }
 
 // Debounce: ignore press/release events within 50ms of the last edge.

@@ -249,7 +249,7 @@ struct UITransition {
   uint32_t pressedTarget;
   uint32_t baseTarget;
   // runtime
-  uint16_t elapsed;
+  uint32_t elapsed;
   uint32_t prevValue;
   uint32_t targetValue;
   uint8_t  active;
@@ -259,6 +259,8 @@ struct UIBinding {
   UIProperty prop;
   uint32_t (*fn)(void);       // for color/numeric bindings
   void (*textFn)(char* buf, uint8_t size); // for text bindings (PROP_TEXT): fills buf
+  uint32_t lastValue;         // numeric binding cache; avoids redundant dirty work
+  uint8_t initialized;        // first evaluation establishes the baseline
 };
 
 // Color lerp for transitions (rgb565). For mono, this collapses to a snap.
@@ -471,9 +473,21 @@ static uint8_t* __ui_scroll_canvas_ok = nullptr;
 // Precomputed draw order (lower z-index first, then source index). Built once in
 // ui_init; zIndex is static after mount so this stays valid for the app lifetime.
 static uint16_t* __ui_draw_order = nullptr;
-// Non-virtualized scroll-container node indices (built once in ui_init).
+// Scroll-container node indices (built once in ui_init). Includes lists for
+// hit-testing; the generic scroll compositor filters virtualized lists out.
 static uint16_t* __ui_scroll_owners = nullptr;
 static uint16_t __ui_scroll_owner_count = 0;
+// Set when neither a viewport nor a band canvas can be allocated. The current
+// pixels are retained and future drag deltas are rejected rather than exposing
+// a direct per-primitive SPI fallback (which tears).
+static uint8_t* __ui_scroll_render_locked = nullptr;
+struct UIScrollPaintCandidate {
+  uint16_t node;
+  int16_t screenY;
+  int16_t faceH;
+};
+static UIScrollPaintCandidate* __ui_scroll_candidates = nullptr;
+static uint16_t __ui_scroll_candidate_count = 0;
 // First NODE_FILL on the active screen (for framebuffer bg seed).
 static uint16_t __ui_active_screen_bg_node = 0xFFFF;
 static uint32_t __ui_settle_start_ms = 0;        // when the active settle animation began
@@ -628,9 +642,17 @@ extern const uint16_t __ui_input_binding_count;
 static inline void ui_release_canvas_state();
 static inline void ui_set_pressed(uint16_t nodeIdx, uint8_t pressed);
 static inline void ui_refresh_active_screen_bg_node();
+static inline CuttlefishCanvas16* ui_get_framebuffer();
+// Set when the next frame must be composed from the active screen background;
+// declared before ui_navigate because navigation can request that composition.
+static uint8_t __ui_fb_needs_compose = 1;
 
 // Navigate to a screen by index. Marks the new screen's nodes dirty, releases
-// persistent canvas state, and optionally clears the display.
+// persistent canvas state, and requests a complete off-screen composition when
+// the full-frame path is available. The physical panel is never cleared here on
+// that path: navigation must not expose an intermediate frame while the next
+// frame is built. Without a full-frame buffer, the fallback remains best-effort;
+// no-TE TFT hardware cannot provide a strict tear-free guarantee.
 static inline void ui_navigate(uint8_t screenIdx) {
   if (screenIdx >= __ui_screen_count || screenIdx == __ui_active_screen) return;
   __ui_active_screen = screenIdx;
@@ -653,24 +675,23 @@ static inline void ui_navigate(uint8_t screenIdx) {
   // resident and fragments the heap, so the new screen's buffer can't get a
   // contiguous block (the "works first, then blanks until reset" symptom).
   ui_release_canvas_state();
-  // Clear the entire display so old screen content doesn't show. On deferred-
-  // refresh panels (e-ink) a full clear flashes, so skip it — the all-nodes-
-  // dirty marking below drives a full repaint via partial refresh instead.
+  // A framebuffer-capable target keeps the old frame visible until the new one
+  // is complete. Targets without enough memory retain the legacy clear fallback
+  // so stale pixels from the old screen cannot remain; this constrained path is
+  // best-effort because the panel has no TE/vblank synchronization.
+  if (ui_get_framebuffer()) {
+    __ui_fb_needs_compose = 1;
+  } else {
 #ifndef UI_REFRESH_DEFERRED
-  // Clear the display to the NEW screen's background color (not black) so the
-  // gap between this clear and the first frame's compose+push matches the new
-  // screen's bg — invisible instead of a black flash. The first frame fully
-  // repaints all nodes, so the clear just fills gaps.
-  {
-    uint16_t navBg = 0x0000;
+    UI_COLOR_T navBg = (UI_COLOR_T)0;
     if (__ui_active_screen_bg_node < __ui_node_count) {
       navBg = __ui_nodes[__ui_active_screen_bg_node].hasBg
         ? __ui_nodes[__ui_active_screen_bg_node].bg
         : __ui_nodes[__ui_active_screen_bg_node].clearColor;
     }
     display_fillScreen(navBg);
-  }
 #endif
+  }
   // Mark all nodes dirty so the new screen fully redraws.
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
@@ -708,6 +729,7 @@ static inline uint8_t ui_subtree_current_paint_rect(uint16_t nodeIdx, UIRect* ou
 static inline void ui_mark_overlapping_higher_layers_dirty(uint16_t nodeIdx);
 static inline void ui_mark_overlapping_higher_layers_dirty_for_rect(uint16_t nodeIdx, const UIRect* r);
 static inline void ui_mark_scroll_view_dirty(uint16_t scrollNode);
+static inline UI_COLOR_T ui_parent_clear_color(uint16_t nodeIdx);
 static inline void ui_release_canvas_state();
 static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible);
 static inline void ui_invalidate_scroll_canvas_for_node(uint16_t nodeIdx);
@@ -749,6 +771,10 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
                                          int16_t drawW, int16_t drawH);
 
 static CuttlefishDisplayTarget* __ui_gfx = display_defaultTarget();
+// Full-frame composition is required for the first frame and after navigation.
+// Once composed, subsequent dirty updates can safely modify the retained
+// framebuffer without rebuilding unchanged nodes. The flags are declared
+// before ui_navigate above because navigation sets the compose request.
 // Persistent canvas slots, all freed on screen change (ui_navigate) so each
 // screen starts with a clean heap. Without this, the first screen's canvas
 // buffer stays resident and fragments the heap, so a later screen's buffer
@@ -1045,6 +1071,7 @@ static inline int16_t ui_scroll_overscroll_for(int16_t d) {
 // itself never leaves [0, maxScroll] so the committed position stays valid.
 static inline uint8_t ui_apply_scroll_delta(int16_t node, int16_t dy) {
   if (node < 0 || dy == 0) return 0;
+  if (__ui_scroll_render_locked && __ui_scroll_render_locked[node]) return 0;
   int16_t sy = __ui_nodes[node].scrollY;
   int16_t maxS = ui_scroll_max(node);
   int16_t nextY = sy - dy;
@@ -1115,7 +1142,7 @@ static inline uint8_t ui_scroll_release(int16_t node) {
 
 // Advance the settle animation for a node (called from ui_tick). Ease-out over
 // UI_SCROLL_SETTLE_MS, terminating at the boundary. Bounded — always ends.
-static inline void ui_scroll_advance_settle(uint8_t node, uint16_t deltaMs) {
+static inline void ui_scroll_advance_settle(uint16_t node, uint16_t deltaMs) {
   (void)deltaMs;
   if (node >= __ui_node_count || !__ui_nodes[node].settling) return;
   uint32_t elapsed = millis() - __ui_settle_start_ms;
@@ -1143,10 +1170,11 @@ static inline void ui_scroll_advance_settle(uint8_t node, uint16_t deltaMs) {
   ui_mark_scroll_view_dirty(node);
 }
 
-// ── Full-screen framebuffer (opt-in PSRAM perf experiment) ───────────────────
-// Disabled by default: pushing a full 320×240 frame for a tiny dirty button can
-// look like a global brightness flash on SPI TFTs. Enable only when a target
-// has enough PSRAM and a full-frame repaint is preferable to partial updates.
+// ── Full-screen framebuffer (opt-in PSRAM composition path) ──────────────────
+// Composes a complete frame off-screen so navigation and dirty-node updates do
+// not expose intermediate clears/primitive writes. The panel still receives a
+// sequential SPI transfer; without a TE/vblank signal this is a strong tearing
+// reduction, not a strict hardware-level tear-free guarantee.
 static CuttlefishCanvas16* __ui_fb = nullptr;
 static uint8_t __ui_fb_tried = 0;  // 0 = not yet attempted, 1 = alloc attempted
 
@@ -1764,13 +1792,13 @@ static inline void ui_build_draw_order() {
   }
 }
 
-// Index generic (non-list) scroll containers once so scroll prep doesn't scan
-// every node each frame.
+// Index scroll containers once so touch/wheel ownership doesn't scan unrelated
+// nodes each frame.
 static inline void ui_build_scroll_owner_table() {
   if (__ui_scroll_owners || __ui_node_count == 0) return;
   uint16_t count = 0;
   for (uint16_t i = 0; i < __ui_node_count; i++) {
-    if (__ui_nodes[i].scrollable && !__ui_nodes[i].virtualized) count++;
+    if (__ui_nodes[i].scrollable) count++;
   }
   __ui_scroll_owner_count = count;
   if (!count) return;
@@ -1781,7 +1809,7 @@ static inline void ui_build_scroll_owner_table() {
   }
   uint16_t w = 0;
   for (uint16_t i = 0; i < __ui_node_count; i++) {
-    if (__ui_nodes[i].scrollable && !__ui_nodes[i].virtualized) {
+    if (__ui_nodes[i].scrollable) {
       __ui_scroll_owners[w++] = i;
     }
   }
@@ -1858,24 +1886,54 @@ static inline int16_t ui_draw_y_for_node(uint16_t nodeIdx) {
 // misses. Returns the topmost such node by draw order, or -1 if none.
 static inline int16_t ui_scroll_node_at(int16_t tx, int16_t ty) {
   int16_t bestScroll = -1;
-  for (uint16_t i = 0; i < __ui_node_count; i++) {
-    if (!__ui_nodes[i].scrollable || !ui_is_effectively_visible(i)) continue;
-    if (__ui_nodes[i].screenId != __ui_active_screen) continue;
-    if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
-    int16_t drawX = ui_draw_x_for_node(static_cast<uint16_t>(i));
-    int16_t drawY = ui_draw_y_for_node(static_cast<uint16_t>(i));
-    if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
-        ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
-      if (bestScroll < 0 || ui_node_draws_before(static_cast<uint16_t>(bestScroll), i)) bestScroll = static_cast<int16_t>(i);
+  if (__ui_scroll_owners) {
+    for (uint16_t oi = 0; oi < __ui_scroll_owner_count; oi++) {
+      uint16_t i = __ui_scroll_owners[oi];
+      if (!ui_is_effectively_visible(i)) continue;
+      if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+      if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
+      int16_t drawX = ui_draw_x_for_node(i);
+      int16_t drawY = ui_draw_y_for_node(i);
+      if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
+          ty >= drawY && ty < drawY + __ui_nodes[i].box.h &&
+          (bestScroll < 0 || ui_node_draws_before(static_cast<uint16_t>(bestScroll), i))) {
+        bestScroll = static_cast<int16_t>(i);
+      }
+    }
+  } else {
+    for (uint16_t i = 0; i < __ui_node_count; i++) {
+      if (!__ui_nodes[i].scrollable || !ui_is_effectively_visible(i)) continue;
+      if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+      if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
+      int16_t drawX = ui_draw_x_for_node(i);
+      int16_t drawY = ui_draw_y_for_node(i);
+      if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
+          ty >= drawY && ty < drawY + __ui_nodes[i].box.h &&
+          (bestScroll < 0 || ui_node_draws_before(static_cast<uint16_t>(bestScroll), i))) {
+        bestScroll = static_cast<int16_t>(i);
+      }
     }
   }
   return bestScroll;
 }
 
+// Resolve the actual backdrop for a node by walking painted ancestors. A direct
+// parent may be transparent; using its clearColor there can blend against the
+// wrong layer when siblings or an opaque grandparent are behind the node.
 static inline UI_COLOR_T ui_parent_clear_color(uint16_t nodeIdx) {
   uint16_t p = __ui_nodes[nodeIdx].parent;
-  if (p != UI_NO_PARENT && p < __ui_node_count) {
-    return __ui_nodes[p].hasBg ? __ui_nodes[p].bg : __ui_nodes[p].clearColor;
+  while (p != UI_NO_PARENT && p < __ui_node_count) {
+    if (__ui_nodes[p].hasBg) {
+      UI_COLOR_T backdrop = __ui_nodes[p].bg;
+      if (__ui_nodes[p].opacity < 100) {
+        uint16_t pp = __ui_nodes[p].parent;
+        UI_COLOR_T under = __ui_nodes[p].clearColor;
+        if (pp != UI_NO_PARENT && pp < __ui_node_count) under = ui_parent_clear_color(p);
+        backdrop = ui_blend(backdrop, under, __ui_nodes[p].opacity);
+      }
+      return backdrop;
+    }
+    p = __ui_nodes[p].parent;
   }
   return __ui_nodes[nodeIdx].clearColor;
 }
@@ -2477,6 +2535,9 @@ static inline void ui_init(void) {
   if (!__ui_scroll_canvas_ok && __ui_node_count > 0) {
     __ui_scroll_canvas_ok = new (std::nothrow) uint8_t[__ui_node_count]();
   }
+  if (!__ui_scroll_render_locked && __ui_node_count > 0) {
+    __ui_scroll_render_locked = new (std::nothrow) uint8_t[__ui_node_count]();
+  }
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
     __ui_nodes[i].lastTextHeight = 0;
@@ -2491,6 +2552,11 @@ static inline void ui_init(void) {
       __ui_nodes[n].hasTextBinding = 1;
       strncpy(__ui_nodes[n].textBuffer, __ui_nodes[n].text ? __ui_nodes[n].text : "", UI_TEXT_BUF);
       __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\0';
+    } else if (__ui_bindings[i].fn) {
+      // Prime numeric binding caches once at setup; the first tick can then skip
+      // redundant assignments and dirty propagation when values are unchanged.
+      __ui_bindings[i].lastValue = __ui_bindings[i].fn();
+      __ui_bindings[i].initialized = 1;
     }
   }
   // Seed virtualized-list runtime state. The fn pointers can't be baked into
@@ -2520,6 +2586,9 @@ static inline void ui_init(void) {
   ui_build_draw_order();
   ui_build_scroll_owner_table();
   ui_refresh_active_screen_bg_node();
+  if (!__ui_scroll_candidates && __ui_node_count > 0) {
+    __ui_scroll_candidates = new (std::nothrow) UIScrollPaintCandidate[__ui_node_count];
+  }
 }
 
 // Debounce: ignore press/release events within 50ms of the last edge.
@@ -2744,20 +2813,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   // One owner per gesture; the double-delta bug class (node in both a container
   // and a list) is gone because there's no second mechanism.
 #if UI_SCROLL_HAS_TOUCH
-  int16_t bestScroll = -1;
-  for (uint16_t i = 0; i < __ui_node_count; i++) {
-    if (!__ui_nodes[i].scrollable || !ui_is_effectively_visible(i)) continue;
-    if (__ui_nodes[i].screenId != __ui_active_screen) continue;
-    // Only scrollable if content overflows the viewport.
-    if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
-    int16_t drawX = ui_draw_x_for_node(static_cast<uint16_t>(i));
-    int16_t drawY = ui_draw_y_for_node(static_cast<uint16_t>(i));
-    if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
-        ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
-      if (bestScroll < 0 || ui_node_draws_before(bestScroll, i)) bestScroll = i;
-    }
-  }
-  __ui_scroll_node = bestScroll;
+  __ui_scroll_node = ui_scroll_node_at(tx, ty);
 #else
   (void)tx; (void)ty;
 #endif
@@ -3581,12 +3637,17 @@ static inline void ui_truncate_ellipsis(char* buf, uint8_t bufSize, uint16_t max
   uint16_t dotsW = static_cast<uint16_t>(3) * ui_text_codepoint_advance(static_cast<uint16_t>('.'), ts, fontFace, letterSpacing);
   int16_t budget = static_cast<int16_t>(maxWidth) - static_cast<int16_t>(dotsW);
   if (budget <= 0) { if (bufSize > 3) { buf[0]='.'; buf[1]='.'; buf[2]='.'; buf[3]=0; } return; }
-  // Trim trailing chars until the prefix fits the budget.
+  // Measure once, then remove one UTF-8 codepoint at a time from the end.
+  // The previous prefix-- loop rescanned the whole prefix on every iteration
+  // (O(n²)); this keeps truncation linear for long bound strings.
   uint8_t prefix = len;
-  while (prefix > 0) {
-    uint16_t w = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
-    if (static_cast<int16_t>(w) <= budget) break;
-    prefix--;
+  uint16_t prefixW = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
+  while (prefix > 0 && static_cast<int16_t>(prefixW) > budget) {
+    uint8_t cut = static_cast<uint8_t>(prefix - 1);
+    while (cut > 0 && (static_cast<uint8_t>(buf[cut]) & 0xC0) == 0x80) cut--;
+    uint16_t removed = ui_text_span_width(buf + cut, buf + prefix, ts, fontFace, letterSpacing);
+    prefixW = prefixW > removed ? static_cast<uint16_t>(prefixW - removed) : 0;
+    prefix = cut;
   }
   if (prefix + 3 < bufSize) {
     buf[prefix] = '.'; buf[prefix+1] = '.'; buf[prefix+2] = '.'; buf[prefix+3] = 0;
@@ -3602,10 +3663,13 @@ static inline void ui_truncate_clip(char* buf, uint8_t bufSize, uint16_t maxWidt
   if (!buf || bufSize == 0) return;
   uint8_t len = static_cast<uint8_t>(strlen(buf));
   uint8_t prefix = len;
-  while (prefix > 0) {
-    uint16_t w = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
-    if (static_cast<int16_t>(w) <= static_cast<int16_t>(maxWidth)) break;
-    prefix--;
+  uint16_t prefixW = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
+  while (prefix > 0 && static_cast<int16_t>(prefixW) > static_cast<int16_t>(maxWidth)) {
+    uint8_t cut = static_cast<uint8_t>(prefix - 1);
+    while (cut > 0 && (static_cast<uint8_t>(buf[cut]) & 0xC0) == 0x80) cut--;
+    uint16_t removed = ui_text_span_width(buf + cut, buf + prefix, ts, fontFace, letterSpacing);
+    prefixW = prefixW > removed ? static_cast<uint16_t>(prefixW - removed) : 0;
+    prefix = cut;
   }
   if (prefix < bufSize) buf[prefix] = 0;
 }
@@ -4128,9 +4192,9 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
         break;
       case NODE_BUTTON:
         if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
-          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
+          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, fillBg);
         else if (__ui_nodes[i].hasBg)
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, fillBg);
         ui_draw_shadow(i, drawY, 1);
         if (__ui_nodes[i].borderStyle != 0) {
           ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
@@ -4151,7 +4215,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
             textY + (textH - static_cast<int16_t>(th)) / 2,
             static_cast<uint16_t>(textW),
             __ui_nodes[i].fg,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         }
@@ -4175,14 +4239,14 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           }
           if (paintTextH > clearH) clearH = paintTextH;
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+            __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i));
           __ui_nodes[i].lastTextWidth = paintTextW;
           __ui_nodes[i].lastTextHeight = paintTextH;
         }
         if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
-          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
+          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, fillBg);
         else if (__ui_nodes[i].hasBg)
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, fillBg);
         ui_draw_shadow(i, drawY, 1);
         if (__ui_nodes[i].borderStyle != 0) {
           ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
@@ -4203,7 +4267,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
             textY + (textH - static_cast<int16_t>(th)) / 2,
             static_cast<uint16_t>(textW),
             __ui_nodes[i].fg,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         }
@@ -4221,7 +4285,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           }
           if (paintTextH > clearH) clearH = paintTextH;
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+            __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i));
           __ui_nodes[i].lastTextWidth = paintTextW;
           __ui_nodes[i].lastTextHeight = paintTextH;
         }
@@ -4241,12 +4305,19 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
               // Draw the checkmark to a 16×16 AA canvas for smooth diagonals.
               CuttlefishCanvas16* c = ui_aa_begin(16, 16, __ui_nodes[i].fg);
               // First stroke: down-left (3,8 → 7,12)
-              ui_aa_line(c, 4.0f, 8.0f, 7.0f, 12.0f, inv);
-              ui_aa_line(c, 5.0f, 8.0f, 8.0f, 12.0f, inv);
-              // Second stroke: up-right (7,11 → 13,4)
-              ui_aa_line(c, 7.0f, 11.0f, 13.0f, 4.0f, inv);
-              ui_aa_line(c, 8.0f, 11.0f, 14.0f, 4.0f, inv);
-              ui_aa_push(c, cbX, cbY);
+              if (c) {
+                ui_aa_line(c, 4.0f, 8.0f, 7.0f, 12.0f, inv);
+                ui_aa_line(c, 5.0f, 8.0f, 8.0f, 12.0f, inv);
+                // Second stroke: up-right (7,11 → 13,4)
+                ui_aa_line(c, 7.0f, 11.0f, 13.0f, 4.0f, inv);
+                ui_aa_line(c, 8.0f, 11.0f, 14.0f, 4.0f, inv);
+                ui_aa_push(c, cbX, cbY);
+              } else {
+                ui_display_draw_line(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
+                ui_display_draw_line(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
+                ui_display_draw_line(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
+                ui_display_draw_line(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
+              }
             }
 #else
             ui_display_draw_line(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
@@ -4268,7 +4339,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           int16_t checkOff = (static_cast<int16_t>(__ui_nodes[i].box.h) - 16) / 2;
           if (checkOff < 0) checkOff = 0;
           ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY + checkOff, textMaxW,
-            __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            __ui_nodes[i].fg, __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         }
@@ -4286,7 +4357,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           }
           if (paintTextH > clearH) clearH = paintTextH;
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+            __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i));
           __ui_nodes[i].lastTextWidth = paintTextW;
           __ui_nodes[i].lastTextHeight = paintTextH;
           int16_t cbX = __ui_nodes[i].box.x;
@@ -4298,13 +4369,20 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
             // Render the radio circle to a 16×16 AA canvas, then push.
             UI_COLOR_T radioBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
             CuttlefishCanvas16* c = ui_aa_begin(16, 16, radioBg);
-            if (__ui_nodes[i].value) {
-              ui_aa_fill_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
-              ui_aa_fill_circle(c, 8, 8, 3.0f, radioBg);
+            if (c) {
+              if (__ui_nodes[i].value) {
+                ui_aa_fill_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
+                ui_aa_fill_circle(c, 8, 8, 3.0f, radioBg);
+              } else {
+                ui_aa_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
+              }
+              ui_aa_push(c, cbX, cbY);
+            } else if (__ui_nodes[i].value) {
+              ui_display_fill_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+              ui_display_fill_circle(cbX + 8, cbY + 8, 3, radioBg);
             } else {
-              ui_aa_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
+              ui_display_draw_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
             }
-            ui_aa_push(c, cbX, cbY);
           }
 #else
           if (__ui_nodes[i].value) {
@@ -4320,7 +4398,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           int16_t radioOff = (static_cast<int16_t>(__ui_nodes[i].box.h) - 16) / 2;
           if (radioOff < 0) radioOff = 0;
           ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY + radioOff, textMaxW,
-            __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            __ui_nodes[i].fg, __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         }
@@ -4767,10 +4845,10 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
   CuttlefishCanvas16* band = ui_band_canvas_for_width(vw);
   if (!band) return 0;
   int16_t bandH = display_canvasHeight(band);
-  // Source-order traversal of the subtree is the documented paint order for
-  // nodes outside a scroll canvas (lower zIndex first, then source order — the
-  // __ui_draw_order pass is only consulted by the main loop). The subtree range
-  // is contiguous, so a source-order walk already respects draw order.
+  // Build a compact list of descendants that can intersect the viewport once per
+  // scroll repaint. The old nested band×subtree walk repeated visibility, screen,
+  // and Y culling for every band; the candidate list keeps that work O(subtree)
+  // and each band only visits rows that can actually contribute pixels.
   uint16_t subtreeEnd = __ui_nodes[s].subtreeEnd;
   if (subtreeEnd > __ui_node_count) subtreeEnd = __ui_node_count;
   // The scrollbar occupies the rightmost 4px gutter (tx = vw - 4, 3px wide).
@@ -4803,6 +4881,16 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
     sbThumbY = maxScroll > 0 ? static_cast<uint32_t>(vh - sbThumbH) * __ui_nodes[s].scrollY / maxScroll : 0;
   }
   CuttlefishDisplayTarget* prevTarget = ui_display_get_target();
+  if (!__ui_scroll_candidates) return 0;
+  __ui_scroll_candidate_count = 0;
+  for (uint16_t c = s + 1; c < subtreeEnd && __ui_scroll_candidate_count < __ui_node_count; c++) {
+    if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) continue;
+    UIScrollPaintCandidate& candidate = __ui_scroll_candidates[__ui_scroll_candidate_count++];
+    candidate.node = c;
+    candidate.screenY = ui_draw_y_for_node(c);
+    candidate.faceH = __ui_nodes[c].box.h;
+  }
+
   // Top→bottom bands over the viewport.
   for (int16_t bandTop = 0; bandTop < vh; bandTop += bandH) {
     int16_t bandBot = bandTop + bandH;
@@ -4810,15 +4898,10 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
     int16_t thisH = static_cast<int16_t>(bandBot - bandTop);
     display_canvasFillRect(band, 0, 0, contentW, bandH, scrollBg);
     ui_display_set_target(band);
-    for (uint16_t c = s + 1; c < subtreeEnd; c++) {
-      if (!ui_is_effectively_visible(c)) continue;
-      if (__ui_nodes[c].screenId != __ui_active_screen) continue;
-      // Screen-space face Y (layout Y - scrollY, via the same helper the main
-      // loop uses). box.y is the document/layout position; scrollY is applied
-      // at draw time by ui_draw_y_for_node, so we must cull on the SCREEN rect,
-      // not the document rect.
-      int16_t screenY = ui_draw_y_for_node(c);
-      int16_t faceH = __ui_nodes[c].box.h;
+    for (uint16_t candidateIdx = 0; candidateIdx < __ui_scroll_candidate_count; candidateIdx++) {
+      uint16_t c = __ui_scroll_candidates[candidateIdx].node;
+      int16_t screenY = __ui_scroll_candidates[candidateIdx].screenY;
+      int16_t faceH = __ui_scroll_candidates[candidateIdx].faceH;
       // Cull nodes whose face does not intersect this band's Y range before
       // doing any expensive per-node work (AGENTS.md: clip before the inner
       // loop). A node fully above or below the band contributes no pixels.
@@ -5225,14 +5308,20 @@ static inline void ui_tick(uint16_t deltaMs) {
   // current property value, mark dirty if changed.
   for (uint16_t i = 0; i < __ui_binding_count; i++) {
     if (__ui_bindings[i].prop == PROP_TEXT && __ui_bindings[i].textFn) {
-      // Text binding: fill the node's buffer, compare content, mark dirty if changed.
+      // Text callbacks are necessarily evaluated to detect changes (the callback
+      // may format a signal or read external state), but avoid a stack-sized old
+      // copy: compare the generated value against the node buffer after writing.
+      // The callback contract is fill-style and must be deterministic for the same
+      // inputs; the temporary buffer keeps a change from destroying the old text.
       uint16_t n = __ui_bindings[i].node;
-      char oldBuf[UI_TEXT_BUF + 1];
-      strncpy(oldBuf, __ui_nodes[n].textBuffer, UI_TEXT_BUF);
-      oldBuf[UI_TEXT_BUF] = '\0';
-      __ui_bindings[i].textFn(__ui_nodes[n].textBuffer, UI_TEXT_BUF + 1);
-      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\0';
-      if (strcmp(oldBuf, __ui_nodes[n].textBuffer) != 0) {
+      if (n >= __ui_node_count) continue;
+      char nextBuf[UI_TEXT_BUF + 1];
+      nextBuf[0] = '\0';
+      __ui_bindings[i].textFn(nextBuf, UI_TEXT_BUF + 1);
+      nextBuf[UI_TEXT_BUF] = '\0';
+      if (strcmp(nextBuf, __ui_nodes[n].textBuffer) != 0) {
+        strncpy(__ui_nodes[n].textBuffer, nextBuf, UI_TEXT_BUF);
+        __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\0';
         ui_invalidate_text_layout_cache(n);
         ui_mark_dirty(n);
       }
@@ -5256,6 +5345,11 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         continue;
       }
+      // Cache numeric binding results. The first sample establishes the baseline;
+      // subsequent identical values return immediately without touching node state.
+      if (__ui_bindings[i].initialized && newVal == __ui_bindings[i].lastValue) continue;
+      __ui_bindings[i].lastValue = newVal;
+      __ui_bindings[i].initialized = 1;
       uint32_t* target = (__ui_bindings[i].prop == PROP_BG) ? &__ui_nodes[__ui_bindings[i].node].bg
                     : (__ui_bindings[i].prop == PROP_FG) ? &__ui_nodes[__ui_bindings[i].node].fg
                     : (__ui_bindings[i].prop == PROP_BORDER_COLOR) ? &__ui_nodes[__ui_bindings[i].node].borderColor
@@ -5278,6 +5372,10 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     if (__ui_nodes[i].virtualized && __ui_nodes[i].listCountFn) {
       uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
+      // Keep the callback result as the list's invalidation token. The callback
+      // is still evaluated because it is the public list-count source, but an
+      // unchanged token avoids layout/dirty work and preserves the retained
+      // viewport canvas.
       uint16_t newCount = __ui_nodes[i].listCountFn();
       if (newCount != __ui_nodes[i].listCount) {
         __ui_nodes[i].listCount = newCount;
@@ -5297,6 +5395,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint16_t i = 0; i < __ui_input_binding_count; i++) {
     if (!__ui_input_bindings[i].cb) continue;
     uint16_t n = __ui_input_bindings[i].node;
+    if (n >= __ui_node_count) continue;
     const char* cur = __ui_nodes[n].textBuffer;
     if (strcmp(cur, __ui_input_bindings[i].lastSeen) != 0) {
       strncpy(__ui_input_bindings[i].lastSeen, cur, UI_TEXT_BUF);
@@ -5310,7 +5409,8 @@ static inline void ui_tick(uint16_t deltaMs) {
     __ui_trans[i].elapsed += deltaMs;
     uint16_t k = __ui_trans[i].durationMs == 0
       ? 100
-      : static_cast<uint16_t>(static_cast<uint32_t>(__ui_trans[i].elapsed) * 100 / __ui_trans[i].durationMs);
+      : static_cast<uint16_t>(static_cast<uint32_t>(__ui_trans[i].elapsed > __ui_trans[i].durationMs
+          ? __ui_trans[i].durationMs : __ui_trans[i].elapsed) * 100 / __ui_trans[i].durationMs);
     if (__ui_trans[i].durationMs > 0 && __ui_trans[i].durationMs <= UI_TRANSITION_SNAP_MS) k = 100;
     uint32_t v = UI_LERP_COLOR(__ui_trans[i].prevValue, __ui_trans[i].targetValue, static_cast<uint8_t>(k));
     if (__ui_trans[i].prop == PROP_FG) {
@@ -5351,7 +5451,13 @@ static inline void ui_tick(uint16_t deltaMs) {
     // Check iteration limit (finite).
     uint8_t completing = 0;
     if (__ui_anims[i].iterations > 0) {
+      // Saturate the multiplication so a long duration × iteration count
+      // cannot wrap and complete immediately after ~49 days of uptime.
       uint32_t totalDuration = static_cast<uint32_t>(__ui_anims[i].iterations) * static_cast<uint32_t>(__ui_anims[i].durationMs);
+      if (__ui_anims[i].durationMs != 0 &&
+          static_cast<uint32_t>(__ui_anims[i].iterations) > 0xFFFFFFFFUL / static_cast<uint32_t>(__ui_anims[i].durationMs)) {
+        totalDuration = 0xFFFFFFFFUL;
+      }
       if (elapsedNoDelay >= totalDuration) {
         elapsedNoDelay = totalDuration;
         completing = 1;
@@ -5583,6 +5689,44 @@ static inline void ui_tick(uint16_t deltaMs) {
     return;
   }
 #endif
+  // Select and seed the framebuffer before scroll compositors run. Band/list
+  // renderers can then composite into this same off-screen target instead of
+  // pushing their bands to the live panel before the main draw pass starts.
+  // This prevents intermediate software-rendering seams; the final SPI transfer
+  // remains sequential on panels without TE/vblank synchronization.
+  CuttlefishCanvas16* __ui_fb = ui_get_framebuffer();
+  CuttlefishDisplayTarget* __ui_draw_target = __ui_fb ? (CuttlefishDisplayTarget*)__ui_fb : display_defaultTarget();
+  // A retained framebuffer only needs an SPI transfer when composition changed.
+  // Avoid pushing a full frame on idle ticks; this is the main steady-state cost
+  // of the PSRAM path on otherwise static screens.
+  uint8_t __ui_fb_frame_dirty = 0;
+  if (__ui_fb && __ui_fb_needs_compose) {
+    UI_COLOR_T fbBg = (UI_COLOR_T)0;
+    if (__ui_active_screen_bg_node < __ui_node_count) {
+      fbBg = __ui_nodes[__ui_active_screen_bg_node].hasBg
+        ? __ui_nodes[__ui_active_screen_bg_node].bg
+        : __ui_nodes[__ui_active_screen_bg_node].clearColor;
+    }
+    display_canvasFillScreen(__ui_fb, fbBg);
+    // A retained framebuffer cannot reuse the previous screen's pixels. Mark
+    // every node on the active screen dirty for one coherent composition.
+    for (uint16_t f = 0; f < __ui_node_count; f++) {
+      if (__ui_nodes[f].screenId == __ui_active_screen) {
+        __ui_nodes[f].dirty = 1;
+        __ui_nodes[f].lastTextHeight = 0;
+        __ui_nodes[f].layoutCacheKey = 0;
+        if (__ui_nodes[f].kind == NODE_PROGRESS || __ui_nodes[f].kind == NODE_RANGE) __ui_nodes[f].lastTextWidth = -1;
+        else __ui_nodes[f].lastTextWidth = 0;
+      }
+    }
+    __ui_fb_needs_compose = 0;
+    __ui_fb_frame_dirty = 1;
+  }
+
+  if (__ui_scroll_render_locked) {
+    for (uint16_t lock = 0; lock < __ui_node_count; lock++) __ui_scroll_render_locked[lock] = 0;
+  }
+
   // Process each dirty scroll container (Mode B shift-and-repair). A scroll
   // delta shifts existing canvas pixels by the delta and repaints only the
   // newly-exposed strip; a full invalidation (or no canvas) redraws the subtree.
@@ -5594,11 +5738,9 @@ static inline void ui_tick(uint16_t deltaMs) {
   CuttlefishCanvas16* bufferedScrollRepaintCanvas = nullptr;
   int16_t bufferedScrollRepaintY = 0;
   int16_t bufferedScrollRepaintH = 0;
-  // When the scroll canvas won't fit, fall back to direct-drawing the in-viewport
-  // subtree to the display (the "no canvas available" path: children are clipped
-  // to the viewport and painted directly, one time on screen-enter, rather than
-  // freezing the render loop). Reached only as the band-canvas-failure fallback
-  // (rare); the band renderer is the normal no-canvas path.
+  // Kept as a compatibility flag for the old compositor state machine. It is
+  // never enabled: direct per-node SPI drawing is a visible tearing path, so a
+  // missing canvas freezes the affected viewport instead.
   uint8_t bufferedScrollDirectFull = 0;
   // Band renderer pending: like bufferedScrollDirectFull but the actual paint
   // is deferred to the scroll owner's z-order slot in the main draw loop. The
@@ -5620,6 +5762,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (__ui_nodes[s].screenId != __ui_active_screen) continue;
     if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
     if (!__ui_nodes[s].dirty) continue;
+    if (__ui_fb) __ui_fb_frame_dirty = 1;
 
     int16_t vw = __ui_nodes[s].box.w;
     int16_t vh = __ui_nodes[s].box.h;
@@ -5694,8 +5837,8 @@ static inline void ui_tick(uint16_t deltaMs) {
       // whole visible subtree into a short horizontal band canvas (vw ×
       // UI_STRIP_BAND_HEIGHT) and pushes one band at a time, so each band
       // completes before it touches the panel — tear-free, with ~10KB of SRAM
-      // regardless of program size. Falls back to direct-full (per-child direct
-      // SPI draws, which tear) only when the band canvas itself can't allocate.
+      // regardless of program size. If the band canvas also cannot allocate,
+      // the viewport is retained rather than using direct per-node SPI draws.
       if (__ui_scroll_canvas_ok) __ui_scroll_canvas_ok[s] = 0;
       // Defer the band render to the scroll owner's z-order slot in the main
       // draw loop (see bufferedScrollBands handling below). Painting here would
@@ -5712,29 +5855,13 @@ static inline void ui_tick(uint16_t deltaMs) {
         __ui_nodes[c].dirty = 0;
       }
       break;
-    }
-    // Only one scroll container per frame (the canvas is reused for subsequent
-    // ones in the next dirty frame). This matches the original design.
-    break;
-  }
-  // ── Framebuffer target selection ──────────────────────────────────────────
-  // When a full-screen framebuffer is available (ESP32 + PSRAM), redirect the
-  // entire dirty-node draw pass into it and push once at the end. Otherwise
-  // __ui_draw_target == display_defaultTarget() and draws go straight to the display
-  // (byte-identical to the pre-framebuffer path).
-  CuttlefishCanvas16* __ui_fb = ui_get_framebuffer();
-  CuttlefishDisplayTarget* __ui_draw_target = __ui_fb ? (CuttlefishDisplayTarget*)__ui_fb : display_defaultTarget();
-  if (__ui_fb) {
-    // Seed the framebuffer with the active screen's background so cleared/
-    // transparent regions resolve correctly, then draw dirty nodes on top.
-    uint16_t fbBg = 0x0000;
-    if (__ui_active_screen_bg_node < __ui_node_count) {
-      fbBg = __ui_nodes[__ui_active_screen_bg_node].hasBg
-        ? __ui_nodes[__ui_active_screen_bg_node].bg
-        : __ui_nodes[__ui_active_screen_bg_node].clearColor;
-    }
-    display_canvasFillScreen(__ui_fb, fbBg);
-  }
+    }  // Only one scroll container per frame (the canvas is reused for subsequent
+  // ones in the next dirty frame). This matches the original design.
+  break;
+}
+  // The framebuffer target was selected and seeded before scroll compositors;
+  // the stacking draw pass below uses the same __ui_draw_target. The retained
+  // single buffer is a composition surface, not a synchronized panel swap.
 
   // Draw dirty nodes in stacking order: lower z-index first, then source order.
   // __ui_draw_order is built once in ui_init so each frame is O(N).
@@ -5743,6 +5870,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (__ui_draw_order) {
       i = static_cast<int16_t>(__ui_draw_order[__ui_draw_pass++]);
       if (!__ui_nodes[i].dirty) continue;
+      if (__ui_fb) __ui_fb_frame_dirty = 1;
       if (!ui_is_effectively_visible(i)) { __ui_nodes[i].dirty = 0; continue; }
       if (__ui_nodes[i].screenId != __ui_active_screen) { __ui_nodes[i].dirty = 0; continue; }
     } else {
@@ -5750,6 +5878,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       i = -1;
       for (uint16_t candidate = 0; candidate < __ui_node_count; candidate++) {
         if (!__ui_nodes[candidate].dirty) continue;
+        if (__ui_fb) __ui_fb_frame_dirty = 1;
         if (!ui_is_effectively_visible(candidate)) { __ui_nodes[candidate].dirty = 0; continue; }
         if (__ui_nodes[candidate].screenId != __ui_active_screen) { __ui_nodes[candidate].dirty = 0; continue; }
         if (i < 0 || ui_node_draws_before(candidate, static_cast<uint16_t>(i))) i = static_cast<int16_t>(candidate);
@@ -5789,12 +5918,14 @@ static inline void ui_tick(uint16_t deltaMs) {
         __ui_nodes[i].dirty = 0;
         continue;
       }
-      // Band canvas allocation failed — fall through to direct-full below.
+      // Band canvas allocation failed. Retain the existing viewport pixels rather
+      // than falling back to direct-full SPI primitives; direct-full is the
+      // tearing path this compositor is designed to prevent.
       bufferedScrollBands = 0;
-      bufferedScrollDirectFull = 1;
-    }
-
-    // Band renderer early-push: if we're about to draw a node that comes AFTER
+      if (__ui_scroll_render_locked) __ui_scroll_render_locked[static_cast<uint16_t>(bufferedScrollNode)] = 1;
+      __ui_nodes[static_cast<uint16_t>(bufferedScrollNode)].dirty = 0;
+      bufferedScrollNode = -1;
+    }    // Band renderer early-push: if we're about to draw a node that comes AFTER
     // the scroll owner in draw order (e.g. a header with higher source order)
     // and the bands haven't rendered yet, render them first so they land below
     // that higher-z node. Mirrors the Mode B canvas early-push below.
@@ -5805,9 +5936,12 @@ static inline void ui_tick(uint16_t deltaMs) {
         bufferedScrollBands = 0;
         bufferedScrollNode = -1;
       } else {
-        // Band alloc failed — fall back to direct-full for the rest of this frame.
+        // Band alloc failed — retain the previous viewport rather than exposing
+        // a direct-full per-primitive SPI repaint.
         bufferedScrollBands = 0;
-        bufferedScrollDirectFull = 1;
+        if (__ui_scroll_render_locked) __ui_scroll_render_locked[static_cast<uint16_t>(bufferedScrollNode)] = 1;
+        __ui_nodes[static_cast<uint16_t>(bufferedScrollNode)].dirty = 0;
+        bufferedScrollNode = -1;
       }
     }
 
@@ -5969,8 +6103,9 @@ static inline void ui_tick(uint16_t deltaMs) {
         continue;
       }
       // Band canvas also failed — last resort: retry the repair canvas (it
-      // might fit when the band canvas is contended) before falling to the
-      // flashing direct clear→redraw-to-SPI.
+      // might fit when the band canvas is contended). If both allocations fail,
+      // lock this scroll owner for the frame and retain its previous pixels;
+      // never fall through to direct primitive SPI draws, which visibly tear.
       if (wantedBuffer && preferBand) {
         paintCanvas = ui_get_repair_canvas(paintCanvasW, paintCanvasH);
         if (paintCanvas) {
@@ -5984,6 +6119,14 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
       }
       if (!drawingPaintCanvas) {
+        if (wantedBuffer && preferBand && __ui_scroll_render_locked &&
+            __ui_nodes[i].scrollable) {
+          __ui_scroll_render_locked[i] = 1;
+          __ui_nodes[i].dirty = 0;
+          __ui_nodes[i].box.x = origBoxX;
+          __ui_nodes[i].box.y = origBoxY;
+          continue;
+        }
         ui_clear_press_offset_area(i, baseDrawX, baseDrawY, drawX, drawY, paintTextW, paintTextH);
       }
     }
@@ -6078,17 +6221,22 @@ static inline void ui_tick(uint16_t deltaMs) {
     // canvas wouldn't allocate) needs to record the scrollY here so the next
     // frame's delta is correct.
     if (!ui_render_scroll_bands(static_cast<uint16_t>(bufferedScrollNode))) {
-      ui_draw_scrollbar_direct(bufferedScrollNode, bufferedScrollVX, bufferedScrollVY);
-      __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;
+      // No band canvas means there is no coherent frame to submit. Retain the
+      // previous viewport rather than drawing the scrollbar/direct subtree to
+      // the live SPI target, which would reintroduce tearing.
+      if (__ui_scroll_render_locked) __ui_scroll_render_locked[static_cast<uint16_t>(bufferedScrollNode)] = 1;
+      __ui_nodes[bufferedScrollNode].dirty = 0;
     }
   } else if (bufferedScrollNode >= 0 && bufferedScrollDirectFull) {
-    ui_draw_scrollbar_direct(bufferedScrollNode, bufferedScrollVX, bufferedScrollVY);
-    __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;
+    // The direct-full path is intentionally disabled for tear-sensitive scroll
+    // rendering. Keep the retained pixels when no compositor is available.
+    if (__ui_scroll_render_locked) __ui_scroll_render_locked[static_cast<uint16_t>(bufferedScrollNode)] = 1;
+    __ui_nodes[bufferedScrollNode].dirty = 0;
   }
   // ── Framebuffer bulk push ────────────────────────────────────────────────
   // When a framebuffer was used this frame, flush it to the display in a single
   // SPI transaction and restore the direct-draw target. No-op without one.
-  if (__ui_fb) {
+  if (__ui_fb && __ui_fb_frame_dirty) {
     ui_push_framebuffer();
   }
   ui_display_use_default_target();
@@ -6106,9 +6254,16 @@ static inline void ui_tick(uint16_t deltaMs) {
 #ifdef UI_AA
 #include <math.h>  // fabs, floor, ceil, sqrtf for AA coverage math
 
+// AA is only useful on RAM-backed targets. Direct SPI targets have no safe
+// read/modify/write surface for coverage blending; callers still get the
+// regular primitive path instead of an allocation plus many tiny pushes.
+static inline uint8_t ui_aa_target_is_ram() {
+  return !ui_display_is_default_target();
+}
+
 // Get (or allocate) a canvas sized to the element being drawn.
 static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, UI_COLOR_T bg) {
-  if (w <= 0 || h <= 0) return nullptr;
+  if (w <= 0 || h <= 0 || !ui_aa_target_is_ram()) return nullptr;
   if (!__ui_aa_canvas || display_canvasWidth(__ui_aa_canvas) < w || display_canvasHeight(__ui_aa_canvas) < h) {
     display_deleteCanvas(__ui_aa_canvas);
     __ui_aa_canvas = display_createCanvas(w > 0 ? w : 1, h > 0 ? h : 1);

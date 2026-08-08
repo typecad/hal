@@ -189,17 +189,25 @@ describe("C++ reactive runtime header", () => {
     // The runtime-header default (no-op stubs) applies.
   });
 
-  it("framebuffer mode seeds the canvas background (mark-all-dirty reverted)", () => {
-    // The framebuffer mark-all-dirty block was a workaround for the
-    // framebuffer's 'repaint everything' model that broke the dirty-gated
-    // scroll-canvas composite. It is reverted: the framebuffer seeds the
-    // background and draws only dirty nodes (the same model as direct-draw).
-    // The framebuffer + scroll composition is tracked as a separate effort;
-    // SPI-write batching (UI_BATCH_SPI_WRITES) is the recommended tearing fix.
-    const fbBlock = header.match(/if\s*\(__ui_fb\)\s*\{[\s\S]*?display_canvasFillScreen\(__ui_fb, fbBg\);[\s\S]*?\}/)?.[0] ?? "";
-    expect(fbBlock).not.toBe("");
-    // The mark-all-dirty loop must NOT be present.
-    expect(fbBlock).not.toMatch(/for\s*\(\s*uint16_t\s+f\s*=\s*0[\s\S]*?__ui_nodes\[f\]\.dirty\s*=\s*1/);
+  it("rebuilds the retained framebuffer after navigation", () => {
+    // Navigation must not clear the physical TFT before the next frame is ready.
+    // Instead it requests a background seed + active-screen full repaint, then
+    // the flush phase submits that composed frame in one bulk transfer.
+    expect(header).toContain("__ui_fb_needs_compose = 1;");
+    expect(header).toMatch(/if\s*\(__ui_fb && __ui_fb_needs_compose\)[\s\S]*display_canvasFillScreen\(__ui_fb, fbBg\);/);
+    expect(header).toMatch(/__ui_fb_needs_compose\s*=\s*0;/);
+    expect(header).toMatch(/ui_get_framebuffer\(\)[\s\S]*ui_refresh_active_screen_bg_node[\s\S]*__ui_fb_needs_compose/);
+    expect(header).toContain("display_fillScreen(navBg)");
+    expect(header).toMatch(/static inline void ui_navigate[\s\S]*ui_get_framebuffer\(\)[\s\S]*display_fillScreen\(navBg\)/);
+  });
+
+  it("selects the framebuffer before scroll compositing so bands can stay off-screen", () => {
+    const fbSelect = header.indexOf("CuttlefishCanvas16* __ui_fb = ui_get_framebuffer();");
+    const scrollLoop = header.indexOf("Process each dirty scroll container");
+    expect(fbSelect).toBeGreaterThan(-1);
+    expect(scrollLoop).toBeGreaterThan(-1);
+    expect(fbSelect).toBeLessThan(scrollLoop);
+    expect(header).toMatch(/ui_push_canvas_rect[\s\S]*if \(__ui_fb\)[\s\S]*ui_display_draw_rgb_bitmap/);
   });
 
   it("snaps very short color transitions to avoid repeated hardware redraws", () => {
@@ -223,12 +231,13 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_init[\s\S]*textBuffer\[UI_TEXT_BUF\]\s*=\s*'\\0'/);
   });
 
-  it("ui_tick text-binding dispatch compares by content (strcmp), not pointer", () => {
-    // Must: save oldBuf, call textFn(buf,size), strcmp to decide dirty.
-    expect(header).toMatch(/char\s+oldBuf\[UI_TEXT_BUF\s*\+\s*1\]/);
-    expect(header).toMatch(/strncpy\(\s*oldBuf,\s*__ui_nodes\[.*?\]\.textBuffer,\s*UI_TEXT_BUF\s*\)/);
-    expect(header).toMatch(/textFn\(\s*__ui_nodes\[.*?\]\.textBuffer,\s*UI_TEXT_BUF\s*\+\s*1\s*\)/);
-    expect(header).toMatch(/strcmp\(\s*oldBuf,\s*__ui_nodes\[.*?\]\.textBuffer\s*\)\s*!=\s*0/);
+  it("ui_tick text-binding dispatch compares by content without overwriting the old value", () => {
+    // Generate into a bounded temporary, compare against the node buffer, and
+    // copy only when changed so a callback cannot destroy the old value first.
+    expect(header).toMatch(/char\s+nextBuf\[UI_TEXT_BUF\s*\+\s*1\]/);
+    expect(header).toMatch(/textFn\(\s*nextBuf,\s*UI_TEXT_BUF\s*\+\s*1\s*\)/);
+    expect(header).toMatch(/strcmp\(\s*nextBuf,\s*__ui_nodes\[.*?\]\.textBuffer\s*\)\s*!=\s*0/);
+    expect(header).toMatch(/strncpy\(\s*__ui_nodes\[.*?\]\.textBuffer,\s*nextBuf,\s*UI_TEXT_BUF\s*\)/);
   });
 
   it("draw dispatch selects displayText by hasTextBinding (textBuffer vs text)", () => {
@@ -606,10 +615,11 @@ describe("C++ reactive runtime header", () => {
     // as the band-canvas-failure fallback (rare).
     expect(header).toContain("ui_draw_scrollbar_direct");
     expect(header).toContain("ui_overflow_scroll_compositor");
+    expect(header).toContain("Retain the existing viewport pixels");
     expect(header).toMatch(/bufferedScrollCanvas = ui_get_container_canvas\(vw, vh\)/);
     // The no-canvas branch: mark the canvas-unavailable flag + defer to bands.
     expect(header).toMatch(/if \(__ui_scroll_canvas_ok\) __ui_scroll_canvas_ok\[s\] = 0;[\s\S]*bufferedScrollBands = 1/);
-    expect(header).toMatch(/} else if \(bufferedScrollNode >= 0 && bufferedScrollDirectFull\) \{[\s\S]*ui_draw_scrollbar_direct/);
+    expect(header).toMatch(/} else if \(bufferedScrollNode >= 0 && bufferedScrollDirectFull\) \{[\s\S]*__ui_scroll_render_locked/);
   });
 
   it("defers non-composited overflow scroll subtrees from the direct display pass", () => {
@@ -1085,8 +1095,9 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
     // UI_NO_PARENT is a node-index sentinel that happens to equal 565 white;
     // it must stay 0xFFFF, not become 0xFFFFFF (it's compared to node indices).
     expect(header).toMatch(/UI_NO_PARENT\s+0xFFFF/);
-    // The runtime's navigation clear fills with the screen background color.
-    expect(header).toMatch(/display_fillScreen\(navBg\)/);
+    // Navigation skips the live clear only when a framebuffer is available;
+    // constrained-memory targets retain the stale-screen cleanup fallback.
+    expect(header).toContain("display_fillScreen(navBg)");
   });
 
   it("defines UI_COLOR_T as uint32_t under 888 and uint16_t otherwise", () => {
@@ -1151,7 +1162,7 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
     expect(header).toMatch(/bufferedScrollBands = 1;[\s\S]*for \(uint16_t c = s \+ 1; c < __ui_nodes\[s\]\.subtreeEnd/);
     // The main draw loop triggers the band render at the owner's z-slot, falling
     // back to direct-full only if the band canvas can't allocate.
-    expect(header).toMatch(/if \(bufferedScrollBands && bufferedScrollNode >= 0 &&[\s\S]*ui_render_scroll_bands\(static_cast<uint16_t>\(bufferedScrollNode\)\)[\s\S]*bufferedScrollDirectFull = 1/);
+    expect(header).toMatch(/if \(bufferedScrollBands && bufferedScrollNode >= 0 &&[\s\S]*ui_render_scroll_bands\(static_cast<uint16_t>\(bufferedScrollNode\)\)[\s\S]*bufferedScrollNode = -1/);
     // Phase 2b fallback renders pending bands if the main loop never hit the slot.
     expect(header).toMatch(/bufferedScrollBands\)[\s\S]*ui_render_scroll_bands\(static_cast<uint16_t>\(bufferedScrollNode\)\)/);
     // Each band pushes the FULL viewport width in one SPI transaction (w == stride,

@@ -211,9 +211,9 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
         break;
       case NODE_BUTTON:
         if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
-          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
+          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, fillBg);
         else if (__ui_nodes[i].hasBg)
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, fillBg);
         ui_draw_shadow(i, drawY, 1);
         if (__ui_nodes[i].borderStyle != 0) {
           ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
@@ -234,7 +234,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
             textY + (textH - static_cast<int16_t>(th)) / 2,
             static_cast<uint16_t>(textW),
             __ui_nodes[i].fg,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         }
@@ -258,14 +258,14 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           }
           if (paintTextH > clearH) clearH = paintTextH;
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+            __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i));
           __ui_nodes[i].lastTextWidth = paintTextW;
           __ui_nodes[i].lastTextHeight = paintTextH;
         }
         if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
-          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, __ui_nodes[i].bg);
+          ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, fillBg);
         else if (__ui_nodes[i].hasBg)
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].bg);
+          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, fillBg);
         ui_draw_shadow(i, drawY, 1);
         if (__ui_nodes[i].borderStyle != 0) {
           ui_draw_node_border(i, __ui_nodes[i].box.x, drawY, bColor);
@@ -286,7 +286,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
             textY + (textH - static_cast<int16_t>(th)) / 2,
             static_cast<uint16_t>(textW),
             __ui_nodes[i].fg,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         }
@@ -304,7 +304,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           }
           if (paintTextH > clearH) clearH = paintTextH;
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+            __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i));
           __ui_nodes[i].lastTextWidth = paintTextW;
           __ui_nodes[i].lastTextHeight = paintTextH;
         }
@@ -324,12 +324,19 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
               // Draw the checkmark to a 16×16 AA canvas for smooth diagonals.
               CuttlefishCanvas16* c = ui_aa_begin(16, 16, __ui_nodes[i].fg);
               // First stroke: down-left (3,8 → 7,12)
-              ui_aa_line(c, 4.0f, 8.0f, 7.0f, 12.0f, inv);
-              ui_aa_line(c, 5.0f, 8.0f, 8.0f, 12.0f, inv);
-              // Second stroke: up-right (7,11 → 13,4)
-              ui_aa_line(c, 7.0f, 11.0f, 13.0f, 4.0f, inv);
-              ui_aa_line(c, 8.0f, 11.0f, 14.0f, 4.0f, inv);
-              ui_aa_push(c, cbX, cbY);
+              if (c) {
+                ui_aa_line(c, 4.0f, 8.0f, 7.0f, 12.0f, inv);
+                ui_aa_line(c, 5.0f, 8.0f, 8.0f, 12.0f, inv);
+                // Second stroke: up-right (7,11 → 13,4)
+                ui_aa_line(c, 7.0f, 11.0f, 13.0f, 4.0f, inv);
+                ui_aa_line(c, 8.0f, 11.0f, 14.0f, 4.0f, inv);
+                ui_aa_push(c, cbX, cbY);
+              } else {
+                ui_display_draw_line(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
+                ui_display_draw_line(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
+                ui_display_draw_line(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
+                ui_display_draw_line(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
+              }
             }
 #else
             ui_display_draw_line(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
@@ -351,7 +358,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           int16_t checkOff = (static_cast<int16_t>(__ui_nodes[i].box.h) - 16) / 2;
           if (checkOff < 0) checkOff = 0;
           ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY + checkOff, textMaxW,
-            __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            __ui_nodes[i].fg, __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         }
@@ -369,7 +376,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           }
           if (paintTextH > clearH) clearH = paintTextH;
           ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
-            __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
+            __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i));
           __ui_nodes[i].lastTextWidth = paintTextW;
           __ui_nodes[i].lastTextHeight = paintTextH;
           int16_t cbX = __ui_nodes[i].box.x;
@@ -381,13 +388,20 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
             // Render the radio circle to a 16×16 AA canvas, then push.
             UI_COLOR_T radioBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
             CuttlefishCanvas16* c = ui_aa_begin(16, 16, radioBg);
-            if (__ui_nodes[i].value) {
-              ui_aa_fill_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
-              ui_aa_fill_circle(c, 8, 8, 3.0f, radioBg);
+            if (c) {
+              if (__ui_nodes[i].value) {
+                ui_aa_fill_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
+                ui_aa_fill_circle(c, 8, 8, 3.0f, radioBg);
+              } else {
+                ui_aa_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
+              }
+              ui_aa_push(c, cbX, cbY);
+            } else if (__ui_nodes[i].value) {
+              ui_display_fill_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+              ui_display_fill_circle(cbX + 8, cbY + 8, 3, radioBg);
             } else {
-              ui_aa_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
+              ui_display_draw_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
             }
-            ui_aa_push(c, cbX, cbY);
           }
 #else
           if (__ui_nodes[i].value) {
@@ -403,7 +417,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           int16_t radioOff = (static_cast<int16_t>(__ui_nodes[i].box.h) - 16) / 2;
           if (radioOff < 0) radioOff = 0;
           ui_draw_wrapped_text(displayText, __ui_nodes[i].box.x + 22, drawY + radioOff, textMaxW,
-            __ui_nodes[i].fg, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor,
+            __ui_nodes[i].fg, __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, 0, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
         }
@@ -850,10 +864,10 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
   CuttlefishCanvas16* band = ui_band_canvas_for_width(vw);
   if (!band) return 0;
   int16_t bandH = display_canvasHeight(band);
-  // Source-order traversal of the subtree is the documented paint order for
-  // nodes outside a scroll canvas (lower zIndex first, then source order — the
-  // __ui_draw_order pass is only consulted by the main loop). The subtree range
-  // is contiguous, so a source-order walk already respects draw order.
+  // Build a compact list of descendants that can intersect the viewport once per
+  // scroll repaint. The old nested band×subtree walk repeated visibility, screen,
+  // and Y culling for every band; the candidate list keeps that work O(subtree)
+  // and each band only visits rows that can actually contribute pixels.
   uint16_t subtreeEnd = __ui_nodes[s].subtreeEnd;
   if (subtreeEnd > __ui_node_count) subtreeEnd = __ui_node_count;
   // The scrollbar occupies the rightmost 4px gutter (tx = vw - 4, 3px wide).
@@ -886,6 +900,16 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
     sbThumbY = maxScroll > 0 ? static_cast<uint32_t>(vh - sbThumbH) * __ui_nodes[s].scrollY / maxScroll : 0;
   }
   CuttlefishDisplayTarget* prevTarget = ui_display_get_target();
+  if (!__ui_scroll_candidates) return 0;
+  __ui_scroll_candidate_count = 0;
+  for (uint16_t c = s + 1; c < subtreeEnd && __ui_scroll_candidate_count < __ui_node_count; c++) {
+    if (!ui_is_effectively_visible(c) || __ui_nodes[c].screenId != __ui_active_screen) continue;
+    UIScrollPaintCandidate& candidate = __ui_scroll_candidates[__ui_scroll_candidate_count++];
+    candidate.node = c;
+    candidate.screenY = ui_draw_y_for_node(c);
+    candidate.faceH = __ui_nodes[c].box.h;
+  }
+
   // Top→bottom bands over the viewport.
   for (int16_t bandTop = 0; bandTop < vh; bandTop += bandH) {
     int16_t bandBot = bandTop + bandH;
@@ -893,15 +917,10 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
     int16_t thisH = static_cast<int16_t>(bandBot - bandTop);
     display_canvasFillRect(band, 0, 0, contentW, bandH, scrollBg);
     ui_display_set_target(band);
-    for (uint16_t c = s + 1; c < subtreeEnd; c++) {
-      if (!ui_is_effectively_visible(c)) continue;
-      if (__ui_nodes[c].screenId != __ui_active_screen) continue;
-      // Screen-space face Y (layout Y - scrollY, via the same helper the main
-      // loop uses). box.y is the document/layout position; scrollY is applied
-      // at draw time by ui_draw_y_for_node, so we must cull on the SCREEN rect,
-      // not the document rect.
-      int16_t screenY = ui_draw_y_for_node(c);
-      int16_t faceH = __ui_nodes[c].box.h;
+    for (uint16_t candidateIdx = 0; candidateIdx < __ui_scroll_candidate_count; candidateIdx++) {
+      uint16_t c = __ui_scroll_candidates[candidateIdx].node;
+      int16_t screenY = __ui_scroll_candidates[candidateIdx].screenY;
+      int16_t faceH = __ui_scroll_candidates[candidateIdx].faceH;
       // Cull nodes whose face does not intersect this band's Y range before
       // doing any expensive per-node work (AGENTS.md: clip before the inner
       // loop). A node fully above or below the band contributes no pixels.

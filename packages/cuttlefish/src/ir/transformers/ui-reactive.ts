@@ -54,9 +54,9 @@ function propEnum(property: string): string {
 export function emitBindingEntry(spec: BindingSpec): string {
   // Text bindings wire to textFn (void fill-style); color bindings wire to fn.
   if (spec.property === "text") {
-    return `  { .node=${spec.nodeIndex}, .prop=${propEnum(spec.property)}, .fn=nullptr, .textFn=${spec.fnName} },`;
+    return `  { .node=${spec.nodeIndex}, .prop=${propEnum(spec.property)}, .fn=nullptr, .textFn=${spec.fnName}, .lastValue=0, .initialized=0 },`;
   }
-  return `  { .node=${spec.nodeIndex}, .prop=${propEnum(spec.property)}, .fn=${spec.fnName}, .textFn=nullptr },`;
+  return `  { .node=${spec.nodeIndex}, .prop=${propEnum(spec.property)}, .fn=${spec.fnName}, .textFn=nullptr, .lastValue=0, .initialized=0 },`;
 }
 
 /** Emit a full binding table from a list of specs. */

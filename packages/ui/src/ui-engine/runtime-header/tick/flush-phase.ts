@@ -7,7 +7,7 @@ export function emitTickFlushPhase(): string {
   // ── Framebuffer bulk push ────────────────────────────────────────────────
   // When a framebuffer was used this frame, flush it to the display in a single
   // SPI transaction and restore the direct-draw target. No-op without one.
-  if (__ui_fb) {
+  if (__ui_fb && __ui_fb_frame_dirty) {
     ui_push_framebuffer();
   }
   ui_display_use_default_target();

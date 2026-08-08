@@ -3,10 +3,11 @@
 // See docs/superpowers/specs/2026-07-12-split-runtime-header-design.md.
 export function emitImageDrawing(): string {
   return `
-// ── Full-screen framebuffer (opt-in PSRAM perf experiment) ───────────────────
-// Disabled by default: pushing a full 320×240 frame for a tiny dirty button can
-// look like a global brightness flash on SPI TFTs. Enable only when a target
-// has enough PSRAM and a full-frame repaint is preferable to partial updates.
+// ── Full-screen framebuffer (opt-in PSRAM composition path) ──────────────────
+// Composes a complete frame off-screen so navigation and dirty-node updates do
+// not expose intermediate clears/primitive writes. The panel still receives a
+// sequential SPI transfer; without a TE/vblank signal this is a strong tearing
+// reduction, not a strict hardware-level tear-free guarantee.
 static CuttlefishCanvas16* __ui_fb = nullptr;
 static uint8_t __ui_fb_tried = 0;  // 0 = not yet attempted, 1 = alloc attempted
 

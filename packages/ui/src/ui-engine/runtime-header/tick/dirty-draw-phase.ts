@@ -76,6 +76,44 @@ export function emitTickDirtyDrawPhase(): string {
     return;
   }
 #endif
+  // Select and seed the framebuffer before scroll compositors run. Band/list
+  // renderers can then composite into this same off-screen target instead of
+  // pushing their bands to the live panel before the main draw pass starts.
+  // This prevents intermediate software-rendering seams; the final SPI transfer
+  // remains sequential on panels without TE/vblank synchronization.
+  CuttlefishCanvas16* __ui_fb = ui_get_framebuffer();
+  CuttlefishDisplayTarget* __ui_draw_target = __ui_fb ? (CuttlefishDisplayTarget*)__ui_fb : display_defaultTarget();
+  // A retained framebuffer only needs an SPI transfer when composition changed.
+  // Avoid pushing a full frame on idle ticks; this is the main steady-state cost
+  // of the PSRAM path on otherwise static screens.
+  uint8_t __ui_fb_frame_dirty = 0;
+  if (__ui_fb && __ui_fb_needs_compose) {
+    UI_COLOR_T fbBg = (UI_COLOR_T)0;
+    if (__ui_active_screen_bg_node < __ui_node_count) {
+      fbBg = __ui_nodes[__ui_active_screen_bg_node].hasBg
+        ? __ui_nodes[__ui_active_screen_bg_node].bg
+        : __ui_nodes[__ui_active_screen_bg_node].clearColor;
+    }
+    display_canvasFillScreen(__ui_fb, fbBg);
+    // A retained framebuffer cannot reuse the previous screen's pixels. Mark
+    // every node on the active screen dirty for one coherent composition.
+    for (uint16_t f = 0; f < __ui_node_count; f++) {
+      if (__ui_nodes[f].screenId == __ui_active_screen) {
+        __ui_nodes[f].dirty = 1;
+        __ui_nodes[f].lastTextHeight = 0;
+        __ui_nodes[f].layoutCacheKey = 0;
+        if (__ui_nodes[f].kind == NODE_PROGRESS || __ui_nodes[f].kind == NODE_RANGE) __ui_nodes[f].lastTextWidth = -1;
+        else __ui_nodes[f].lastTextWidth = 0;
+      }
+    }
+    __ui_fb_needs_compose = 0;
+    __ui_fb_frame_dirty = 1;
+  }
+
+  if (__ui_scroll_render_locked) {
+    for (uint16_t lock = 0; lock < __ui_node_count; lock++) __ui_scroll_render_locked[lock] = 0;
+  }
+
   // Process each dirty scroll container (Mode B shift-and-repair). A scroll
   // delta shifts existing canvas pixels by the delta and repaints only the
   // newly-exposed strip; a full invalidation (or no canvas) redraws the subtree.
@@ -87,11 +125,9 @@ export function emitTickDirtyDrawPhase(): string {
   CuttlefishCanvas16* bufferedScrollRepaintCanvas = nullptr;
   int16_t bufferedScrollRepaintY = 0;
   int16_t bufferedScrollRepaintH = 0;
-  // When the scroll canvas won't fit, fall back to direct-drawing the in-viewport
-  // subtree to the display (the "no canvas available" path: children are clipped
-  // to the viewport and painted directly, one time on screen-enter, rather than
-  // freezing the render loop). Reached only as the band-canvas-failure fallback
-  // (rare); the band renderer is the normal no-canvas path.
+  // Kept as a compatibility flag for the old compositor state machine. It is
+  // never enabled: direct per-node SPI drawing is a visible tearing path, so a
+  // missing canvas freezes the affected viewport instead.
   uint8_t bufferedScrollDirectFull = 0;
   // Band renderer pending: like bufferedScrollDirectFull but the actual paint
   // is deferred to the scroll owner's z-order slot in the main draw loop. The
@@ -113,6 +149,7 @@ export function emitTickDirtyDrawPhase(): string {
     if (__ui_nodes[s].screenId != __ui_active_screen) continue;
     if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
     if (!__ui_nodes[s].dirty) continue;
+    if (__ui_fb) __ui_fb_frame_dirty = 1;
 
     int16_t vw = __ui_nodes[s].box.w;
     int16_t vh = __ui_nodes[s].box.h;
@@ -187,8 +224,8 @@ export function emitTickDirtyDrawPhase(): string {
       // whole visible subtree into a short horizontal band canvas (vw ×
       // UI_STRIP_BAND_HEIGHT) and pushes one band at a time, so each band
       // completes before it touches the panel — tear-free, with ~10KB of SRAM
-      // regardless of program size. Falls back to direct-full (per-child direct
-      // SPI draws, which tear) only when the band canvas itself can't allocate.
+      // regardless of program size. If the band canvas also cannot allocate,
+      // the viewport is retained rather than using direct per-node SPI draws.
       if (__ui_scroll_canvas_ok) __ui_scroll_canvas_ok[s] = 0;
       // Defer the band render to the scroll owner's z-order slot in the main
       // draw loop (see bufferedScrollBands handling below). Painting here would
@@ -205,29 +242,13 @@ export function emitTickDirtyDrawPhase(): string {
         __ui_nodes[c].dirty = 0;
       }
       break;
-    }
-    // Only one scroll container per frame (the canvas is reused for subsequent
-    // ones in the next dirty frame). This matches the original design.
-    break;
-  }
-  // ── Framebuffer target selection ──────────────────────────────────────────
-  // When a full-screen framebuffer is available (ESP32 + PSRAM), redirect the
-  // entire dirty-node draw pass into it and push once at the end. Otherwise
-  // __ui_draw_target == display_defaultTarget() and draws go straight to the display
-  // (byte-identical to the pre-framebuffer path).
-  CuttlefishCanvas16* __ui_fb = ui_get_framebuffer();
-  CuttlefishDisplayTarget* __ui_draw_target = __ui_fb ? (CuttlefishDisplayTarget*)__ui_fb : display_defaultTarget();
-  if (__ui_fb) {
-    // Seed the framebuffer with the active screen's background so cleared/
-    // transparent regions resolve correctly, then draw dirty nodes on top.
-    uint16_t fbBg = 0x0000;
-    if (__ui_active_screen_bg_node < __ui_node_count) {
-      fbBg = __ui_nodes[__ui_active_screen_bg_node].hasBg
-        ? __ui_nodes[__ui_active_screen_bg_node].bg
-        : __ui_nodes[__ui_active_screen_bg_node].clearColor;
-    }
-    display_canvasFillScreen(__ui_fb, fbBg);
-  }
+    }  // Only one scroll container per frame (the canvas is reused for subsequent
+  // ones in the next dirty frame). This matches the original design.
+  break;
+}
+  // The framebuffer target was selected and seeded before scroll compositors;
+  // the stacking draw pass below uses the same __ui_draw_target. The retained
+  // single buffer is a composition surface, not a synchronized panel swap.
 
   // Draw dirty nodes in stacking order: lower z-index first, then source order.
   // __ui_draw_order is built once in ui_init so each frame is O(N).
@@ -236,6 +257,7 @@ export function emitTickDirtyDrawPhase(): string {
     if (__ui_draw_order) {
       i = static_cast<int16_t>(__ui_draw_order[__ui_draw_pass++]);
       if (!__ui_nodes[i].dirty) continue;
+      if (__ui_fb) __ui_fb_frame_dirty = 1;
       if (!ui_is_effectively_visible(i)) { __ui_nodes[i].dirty = 0; continue; }
       if (__ui_nodes[i].screenId != __ui_active_screen) { __ui_nodes[i].dirty = 0; continue; }
     } else {
@@ -243,6 +265,7 @@ export function emitTickDirtyDrawPhase(): string {
       i = -1;
       for (uint16_t candidate = 0; candidate < __ui_node_count; candidate++) {
         if (!__ui_nodes[candidate].dirty) continue;
+        if (__ui_fb) __ui_fb_frame_dirty = 1;
         if (!ui_is_effectively_visible(candidate)) { __ui_nodes[candidate].dirty = 0; continue; }
         if (__ui_nodes[candidate].screenId != __ui_active_screen) { __ui_nodes[candidate].dirty = 0; continue; }
         if (i < 0 || ui_node_draws_before(candidate, static_cast<uint16_t>(i))) i = static_cast<int16_t>(candidate);
@@ -282,12 +305,14 @@ export function emitTickDirtyDrawPhase(): string {
         __ui_nodes[i].dirty = 0;
         continue;
       }
-      // Band canvas allocation failed — fall through to direct-full below.
+      // Band canvas allocation failed. Retain the existing viewport pixels rather
+      // than falling back to direct-full SPI primitives; direct-full is the
+      // tearing path this compositor is designed to prevent.
       bufferedScrollBands = 0;
-      bufferedScrollDirectFull = 1;
-    }
-
-    // Band renderer early-push: if we're about to draw a node that comes AFTER
+      if (__ui_scroll_render_locked) __ui_scroll_render_locked[static_cast<uint16_t>(bufferedScrollNode)] = 1;
+      __ui_nodes[static_cast<uint16_t>(bufferedScrollNode)].dirty = 0;
+      bufferedScrollNode = -1;
+    }    // Band renderer early-push: if we're about to draw a node that comes AFTER
     // the scroll owner in draw order (e.g. a header with higher source order)
     // and the bands haven't rendered yet, render them first so they land below
     // that higher-z node. Mirrors the Mode B canvas early-push below.
@@ -298,9 +323,12 @@ export function emitTickDirtyDrawPhase(): string {
         bufferedScrollBands = 0;
         bufferedScrollNode = -1;
       } else {
-        // Band alloc failed — fall back to direct-full for the rest of this frame.
+        // Band alloc failed — retain the previous viewport rather than exposing
+        // a direct-full per-primitive SPI repaint.
         bufferedScrollBands = 0;
-        bufferedScrollDirectFull = 1;
+        if (__ui_scroll_render_locked) __ui_scroll_render_locked[static_cast<uint16_t>(bufferedScrollNode)] = 1;
+        __ui_nodes[static_cast<uint16_t>(bufferedScrollNode)].dirty = 0;
+        bufferedScrollNode = -1;
       }
     }
 
@@ -462,8 +490,9 @@ export function emitTickDirtyDrawPhase(): string {
         continue;
       }
       // Band canvas also failed — last resort: retry the repair canvas (it
-      // might fit when the band canvas is contended) before falling to the
-      // flashing direct clear→redraw-to-SPI.
+      // might fit when the band canvas is contended). If both allocations fail,
+      // lock this scroll owner for the frame and retain its previous pixels;
+      // never fall through to direct primitive SPI draws, which visibly tear.
       if (wantedBuffer && preferBand) {
         paintCanvas = ui_get_repair_canvas(paintCanvasW, paintCanvasH);
         if (paintCanvas) {
@@ -477,6 +506,14 @@ export function emitTickDirtyDrawPhase(): string {
         }
       }
       if (!drawingPaintCanvas) {
+        if (wantedBuffer && preferBand && __ui_scroll_render_locked &&
+            __ui_nodes[i].scrollable) {
+          __ui_scroll_render_locked[i] = 1;
+          __ui_nodes[i].dirty = 0;
+          __ui_nodes[i].box.x = origBoxX;
+          __ui_nodes[i].box.y = origBoxY;
+          continue;
+        }
         ui_clear_press_offset_area(i, baseDrawX, baseDrawY, drawX, drawY, paintTextW, paintTextH);
       }
     }

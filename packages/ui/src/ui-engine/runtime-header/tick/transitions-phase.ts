@@ -10,7 +10,8 @@ export function emitTickTransitionsPhase(): string {
     __ui_trans[i].elapsed += deltaMs;
     uint16_t k = __ui_trans[i].durationMs == 0
       ? 100
-      : static_cast<uint16_t>(static_cast<uint32_t>(__ui_trans[i].elapsed) * 100 / __ui_trans[i].durationMs);
+      : static_cast<uint16_t>(static_cast<uint32_t>(__ui_trans[i].elapsed > __ui_trans[i].durationMs
+          ? __ui_trans[i].durationMs : __ui_trans[i].elapsed) * 100 / __ui_trans[i].durationMs);
     if (__ui_trans[i].durationMs > 0 && __ui_trans[i].durationMs <= UI_TRANSITION_SNAP_MS) k = 100;
     uint32_t v = UI_LERP_COLOR(__ui_trans[i].prevValue, __ui_trans[i].targetValue, static_cast<uint8_t>(k));
     if (__ui_trans[i].prop == PROP_FG) {
@@ -51,7 +52,13 @@ export function emitTickTransitionsPhase(): string {
     // Check iteration limit (finite).
     uint8_t completing = 0;
     if (__ui_anims[i].iterations > 0) {
+      // Saturate the multiplication so a long duration × iteration count
+      // cannot wrap and complete immediately after ~49 days of uptime.
       uint32_t totalDuration = static_cast<uint32_t>(__ui_anims[i].iterations) * static_cast<uint32_t>(__ui_anims[i].durationMs);
+      if (__ui_anims[i].durationMs != 0 &&
+          static_cast<uint32_t>(__ui_anims[i].iterations) > 0xFFFFFFFFUL / static_cast<uint32_t>(__ui_anims[i].durationMs)) {
+        totalDuration = 0xFFFFFFFFUL;
+      }
       if (elapsedNoDelay >= totalDuration) {
         elapsedNoDelay = totalDuration;
         completing = 1;

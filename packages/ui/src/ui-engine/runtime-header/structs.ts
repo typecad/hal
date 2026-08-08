@@ -160,7 +160,7 @@ struct UITransition {
   uint32_t pressedTarget;
   uint32_t baseTarget;
   // runtime
-  uint16_t elapsed;
+  uint32_t elapsed;
   uint32_t prevValue;
   uint32_t targetValue;
   uint8_t  active;
@@ -170,6 +170,8 @@ struct UIBinding {
   UIProperty prop;
   uint32_t (*fn)(void);       // for color/numeric bindings
   void (*textFn)(char* buf, uint8_t size); // for text bindings (PROP_TEXT): fills buf
+  uint32_t lastValue;         // numeric binding cache; avoids redundant dirty work
+  uint8_t initialized;        // first evaluation establishes the baseline
 };
 
 // Color lerp for transitions (rgb565). For mono, this collapses to a snap.

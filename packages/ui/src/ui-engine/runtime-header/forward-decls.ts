@@ -15,9 +15,17 @@ export function emitForwardDecls(): string {
 static inline void ui_release_canvas_state();
 static inline void ui_set_pressed(uint16_t nodeIdx, uint8_t pressed);
 static inline void ui_refresh_active_screen_bg_node();
+static inline CuttlefishCanvas16* ui_get_framebuffer();
+// Set when the next frame must be composed from the active screen background;
+// declared before ui_navigate because navigation can request that composition.
+static uint8_t __ui_fb_needs_compose = 1;
 
 // Navigate to a screen by index. Marks the new screen's nodes dirty, releases
-// persistent canvas state, and optionally clears the display.
+// persistent canvas state, and requests a complete off-screen composition when
+// the full-frame path is available. The physical panel is never cleared here on
+// that path: navigation must not expose an intermediate frame while the next
+// frame is built. Without a full-frame buffer, the fallback remains best-effort;
+// no-TE TFT hardware cannot provide a strict tear-free guarantee.
 static inline void ui_navigate(uint8_t screenIdx) {
   if (screenIdx >= __ui_screen_count || screenIdx == __ui_active_screen) return;
   __ui_active_screen = screenIdx;
@@ -40,24 +48,23 @@ static inline void ui_navigate(uint8_t screenIdx) {
   // resident and fragments the heap, so the new screen's buffer can't get a
   // contiguous block (the "works first, then blanks until reset" symptom).
   ui_release_canvas_state();
-  // Clear the entire display so old screen content doesn't show. On deferred-
-  // refresh panels (e-ink) a full clear flashes, so skip it — the all-nodes-
-  // dirty marking below drives a full repaint via partial refresh instead.
+  // A framebuffer-capable target keeps the old frame visible until the new one
+  // is complete. Targets without enough memory retain the legacy clear fallback
+  // so stale pixels from the old screen cannot remain; this constrained path is
+  // best-effort because the panel has no TE/vblank synchronization.
+  if (ui_get_framebuffer()) {
+    __ui_fb_needs_compose = 1;
+  } else {
 #ifndef UI_REFRESH_DEFERRED
-  // Clear the display to the NEW screen's background color (not black) so the
-  // gap between this clear and the first frame's compose+push matches the new
-  // screen's bg — invisible instead of a black flash. The first frame fully
-  // repaints all nodes, so the clear just fills gaps.
-  {
-    uint16_t navBg = 0x0000;
+    UI_COLOR_T navBg = (UI_COLOR_T)0;
     if (__ui_active_screen_bg_node < __ui_node_count) {
       navBg = __ui_nodes[__ui_active_screen_bg_node].hasBg
         ? __ui_nodes[__ui_active_screen_bg_node].bg
         : __ui_nodes[__ui_active_screen_bg_node].clearColor;
     }
     display_fillScreen(navBg);
-  }
 #endif
+  }
   // Mark all nodes dirty so the new screen fully redraws.
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     __ui_nodes[i].dirty = 1;
@@ -95,6 +102,7 @@ static inline uint8_t ui_subtree_current_paint_rect(uint16_t nodeIdx, UIRect* ou
 static inline void ui_mark_overlapping_higher_layers_dirty(uint16_t nodeIdx);
 static inline void ui_mark_overlapping_higher_layers_dirty_for_rect(uint16_t nodeIdx, const UIRect* r);
 static inline void ui_mark_scroll_view_dirty(uint16_t scrollNode);
+static inline UI_COLOR_T ui_parent_clear_color(uint16_t nodeIdx);
 static inline void ui_release_canvas_state();
 static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible);
 static inline void ui_invalidate_scroll_canvas_for_node(uint16_t nodeIdx);
@@ -136,6 +144,10 @@ static inline void ui_draw_scaled_image(const UIImage* img, int16_t x, int16_t y
                                          int16_t drawW, int16_t drawH);
 
 static CuttlefishDisplayTarget* __ui_gfx = display_defaultTarget();
+// Full-frame composition is required for the first frame and after navigation.
+// Once composed, subsequent dirty updates can safely modify the retained
+// framebuffer without rebuilding unchanged nodes. The flags are declared
+// before ui_navigate above because navigation sets the compose request.
 // Persistent canvas slots, all freed on screen change (ui_navigate) so each
 // screen starts with a clean heap. Without this, the first screen's canvas
 // buffer stays resident and fragments the heap, so a later screen's buffer

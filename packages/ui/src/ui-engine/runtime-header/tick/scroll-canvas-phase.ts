@@ -17,10 +17,15 @@ export function emitTickScrollCanvasPhase(): string {
     // canvas wouldn't allocate) needs to record the scrollY here so the next
     // frame's delta is correct.
     if (!ui_render_scroll_bands(static_cast<uint16_t>(bufferedScrollNode))) {
-      ui_draw_scrollbar_direct(bufferedScrollNode, bufferedScrollVX, bufferedScrollVY);
-      __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;
+      // No band canvas means there is no coherent frame to submit. Retain the
+      // previous viewport rather than drawing the scrollbar/direct subtree to
+      // the live SPI target, which would reintroduce tearing.
+      if (__ui_scroll_render_locked) __ui_scroll_render_locked[static_cast<uint16_t>(bufferedScrollNode)] = 1;
+      __ui_nodes[bufferedScrollNode].dirty = 0;
     }
   } else if (bufferedScrollNode >= 0 && bufferedScrollDirectFull) {
-    ui_draw_scrollbar_direct(bufferedScrollNode, bufferedScrollVX, bufferedScrollVY);
-    __ui_nodes[bufferedScrollNode].lastPaintedScrollY = __ui_nodes[bufferedScrollNode].scrollY;`;
+    // The direct-full path is intentionally disabled for tear-sensitive scroll
+    // rendering. Keep the retained pixels when no compositor is available.
+    if (__ui_scroll_render_locked) __ui_scroll_render_locked[static_cast<uint16_t>(bufferedScrollNode)] = 1;
+    __ui_nodes[bufferedScrollNode].dirty = 0;`;
 }

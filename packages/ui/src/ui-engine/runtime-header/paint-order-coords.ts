@@ -44,13 +44,13 @@ static inline void ui_build_draw_order() {
   }
 }
 
-// Index generic (non-list) scroll containers once so scroll prep doesn't scan
-// every node each frame.
+// Index scroll containers once so touch/wheel ownership doesn't scan unrelated
+// nodes each frame.
 static inline void ui_build_scroll_owner_table() {
   if (__ui_scroll_owners || __ui_node_count == 0) return;
   uint16_t count = 0;
   for (uint16_t i = 0; i < __ui_node_count; i++) {
-    if (__ui_nodes[i].scrollable && !__ui_nodes[i].virtualized) count++;
+    if (__ui_nodes[i].scrollable) count++;
   }
   __ui_scroll_owner_count = count;
   if (!count) return;
@@ -61,7 +61,7 @@ static inline void ui_build_scroll_owner_table() {
   }
   uint16_t w = 0;
   for (uint16_t i = 0; i < __ui_node_count; i++) {
-    if (__ui_nodes[i].scrollable && !__ui_nodes[i].virtualized) {
+    if (__ui_nodes[i].scrollable) {
       __ui_scroll_owners[w++] = i;
     }
   }
@@ -138,24 +138,54 @@ static inline int16_t ui_draw_y_for_node(uint16_t nodeIdx) {
 // misses. Returns the topmost such node by draw order, or -1 if none.
 static inline int16_t ui_scroll_node_at(int16_t tx, int16_t ty) {
   int16_t bestScroll = -1;
-  for (uint16_t i = 0; i < __ui_node_count; i++) {
-    if (!__ui_nodes[i].scrollable || !ui_is_effectively_visible(i)) continue;
-    if (__ui_nodes[i].screenId != __ui_active_screen) continue;
-    if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
-    int16_t drawX = ui_draw_x_for_node(static_cast<uint16_t>(i));
-    int16_t drawY = ui_draw_y_for_node(static_cast<uint16_t>(i));
-    if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
-        ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
-      if (bestScroll < 0 || ui_node_draws_before(static_cast<uint16_t>(bestScroll), i)) bestScroll = static_cast<int16_t>(i);
+  if (__ui_scroll_owners) {
+    for (uint16_t oi = 0; oi < __ui_scroll_owner_count; oi++) {
+      uint16_t i = __ui_scroll_owners[oi];
+      if (!ui_is_effectively_visible(i)) continue;
+      if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+      if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
+      int16_t drawX = ui_draw_x_for_node(i);
+      int16_t drawY = ui_draw_y_for_node(i);
+      if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
+          ty >= drawY && ty < drawY + __ui_nodes[i].box.h &&
+          (bestScroll < 0 || ui_node_draws_before(static_cast<uint16_t>(bestScroll), i))) {
+        bestScroll = static_cast<int16_t>(i);
+      }
+    }
+  } else {
+    for (uint16_t i = 0; i < __ui_node_count; i++) {
+      if (!__ui_nodes[i].scrollable || !ui_is_effectively_visible(i)) continue;
+      if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+      if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
+      int16_t drawX = ui_draw_x_for_node(i);
+      int16_t drawY = ui_draw_y_for_node(i);
+      if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
+          ty >= drawY && ty < drawY + __ui_nodes[i].box.h &&
+          (bestScroll < 0 || ui_node_draws_before(static_cast<uint16_t>(bestScroll), i))) {
+        bestScroll = static_cast<int16_t>(i);
+      }
     }
   }
   return bestScroll;
 }
 
+// Resolve the actual backdrop for a node by walking painted ancestors. A direct
+// parent may be transparent; using its clearColor there can blend against the
+// wrong layer when siblings or an opaque grandparent are behind the node.
 static inline UI_COLOR_T ui_parent_clear_color(uint16_t nodeIdx) {
   uint16_t p = __ui_nodes[nodeIdx].parent;
-  if (p != UI_NO_PARENT && p < __ui_node_count) {
-    return __ui_nodes[p].hasBg ? __ui_nodes[p].bg : __ui_nodes[p].clearColor;
+  while (p != UI_NO_PARENT && p < __ui_node_count) {
+    if (__ui_nodes[p].hasBg) {
+      UI_COLOR_T backdrop = __ui_nodes[p].bg;
+      if (__ui_nodes[p].opacity < 100) {
+        uint16_t pp = __ui_nodes[p].parent;
+        UI_COLOR_T under = __ui_nodes[p].clearColor;
+        if (pp != UI_NO_PARENT && pp < __ui_node_count) under = ui_parent_clear_color(p);
+        backdrop = ui_blend(backdrop, under, __ui_nodes[p].opacity);
+      }
+      return backdrop;
+    }
+    p = __ui_nodes[p].parent;
   }
   return __ui_nodes[nodeIdx].clearColor;
 }

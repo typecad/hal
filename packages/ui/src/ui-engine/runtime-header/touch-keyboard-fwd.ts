@@ -165,20 +165,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   // One owner per gesture; the double-delta bug class (node in both a container
   // and a list) is gone because there's no second mechanism.
 #if UI_SCROLL_HAS_TOUCH
-  int16_t bestScroll = -1;
-  for (uint16_t i = 0; i < __ui_node_count; i++) {
-    if (!__ui_nodes[i].scrollable || !ui_is_effectively_visible(i)) continue;
-    if (__ui_nodes[i].screenId != __ui_active_screen) continue;
-    // Only scrollable if content overflows the viewport.
-    if (__ui_nodes[i].contentHeight <= __ui_nodes[i].box.h) continue;
-    int16_t drawX = ui_draw_x_for_node(static_cast<uint16_t>(i));
-    int16_t drawY = ui_draw_y_for_node(static_cast<uint16_t>(i));
-    if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
-        ty >= drawY && ty < drawY + __ui_nodes[i].box.h) {
-      if (bestScroll < 0 || ui_node_draws_before(bestScroll, i)) bestScroll = i;
-    }
-  }
-  __ui_scroll_node = bestScroll;
+  __ui_scroll_node = ui_scroll_node_at(tx, ty);
 #else
   (void)tx; (void)ty;
 #endif

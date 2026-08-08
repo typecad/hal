@@ -559,12 +559,17 @@ static inline void ui_truncate_ellipsis(char* buf, uint8_t bufSize, uint16_t max
   uint16_t dotsW = static_cast<uint16_t>(3) * ui_text_codepoint_advance(static_cast<uint16_t>('.'), ts, fontFace, letterSpacing);
   int16_t budget = static_cast<int16_t>(maxWidth) - static_cast<int16_t>(dotsW);
   if (budget <= 0) { if (bufSize > 3) { buf[0]='.'; buf[1]='.'; buf[2]='.'; buf[3]=0; } return; }
-  // Trim trailing chars until the prefix fits the budget.
+  // Measure once, then remove one UTF-8 codepoint at a time from the end.
+  // The previous prefix-- loop rescanned the whole prefix on every iteration
+  // (O(n²)); this keeps truncation linear for long bound strings.
   uint8_t prefix = len;
-  while (prefix > 0) {
-    uint16_t w = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
-    if (static_cast<int16_t>(w) <= budget) break;
-    prefix--;
+  uint16_t prefixW = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
+  while (prefix > 0 && static_cast<int16_t>(prefixW) > budget) {
+    uint8_t cut = static_cast<uint8_t>(prefix - 1);
+    while (cut > 0 && (static_cast<uint8_t>(buf[cut]) & 0xC0) == 0x80) cut--;
+    uint16_t removed = ui_text_span_width(buf + cut, buf + prefix, ts, fontFace, letterSpacing);
+    prefixW = prefixW > removed ? static_cast<uint16_t>(prefixW - removed) : 0;
+    prefix = cut;
   }
   if (prefix + 3 < bufSize) {
     buf[prefix] = '.'; buf[prefix+1] = '.'; buf[prefix+2] = '.'; buf[prefix+3] = 0;
@@ -580,10 +585,13 @@ static inline void ui_truncate_clip(char* buf, uint8_t bufSize, uint16_t maxWidt
   if (!buf || bufSize == 0) return;
   uint8_t len = static_cast<uint8_t>(strlen(buf));
   uint8_t prefix = len;
-  while (prefix > 0) {
-    uint16_t w = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
-    if (static_cast<int16_t>(w) <= static_cast<int16_t>(maxWidth)) break;
-    prefix--;
+  uint16_t prefixW = ui_text_span_width(buf, buf + prefix, ts, fontFace, letterSpacing);
+  while (prefix > 0 && static_cast<int16_t>(prefixW) > static_cast<int16_t>(maxWidth)) {
+    uint8_t cut = static_cast<uint8_t>(prefix - 1);
+    while (cut > 0 && (static_cast<uint8_t>(buf[cut]) & 0xC0) == 0x80) cut--;
+    uint16_t removed = ui_text_span_width(buf + cut, buf + prefix, ts, fontFace, letterSpacing);
+    prefixW = prefixW > removed ? static_cast<uint16_t>(prefixW - removed) : 0;
+    prefix = cut;
   }
   if (prefix < bufSize) buf[prefix] = 0;
 }

@@ -20,9 +20,21 @@ static uint8_t* __ui_scroll_canvas_ok = nullptr;
 // Precomputed draw order (lower z-index first, then source index). Built once in
 // ui_init; zIndex is static after mount so this stays valid for the app lifetime.
 static uint16_t* __ui_draw_order = nullptr;
-// Non-virtualized scroll-container node indices (built once in ui_init).
+// Scroll-container node indices (built once in ui_init). Includes lists for
+// hit-testing; the generic scroll compositor filters virtualized lists out.
 static uint16_t* __ui_scroll_owners = nullptr;
 static uint16_t __ui_scroll_owner_count = 0;
+// Set when neither a viewport nor a band canvas can be allocated. The current
+// pixels are retained and future drag deltas are rejected rather than exposing
+// a direct per-primitive SPI fallback (which tears).
+static uint8_t* __ui_scroll_render_locked = nullptr;
+struct UIScrollPaintCandidate {
+  uint16_t node;
+  int16_t screenY;
+  int16_t faceH;
+};
+static UIScrollPaintCandidate* __ui_scroll_candidates = nullptr;
+static uint16_t __ui_scroll_candidate_count = 0;
 // First NODE_FILL on the active screen (for framebuffer bg seed).
 static uint16_t __ui_active_screen_bg_node = 0xFFFF;
 static uint32_t __ui_settle_start_ms = 0;        // when the active settle animation began

@@ -22,14 +22,20 @@ static inline void ui_tick(uint16_t deltaMs) {
   // current property value, mark dirty if changed.
   for (uint16_t i = 0; i < __ui_binding_count; i++) {
     if (__ui_bindings[i].prop == PROP_TEXT && __ui_bindings[i].textFn) {
-      // Text binding: fill the node's buffer, compare content, mark dirty if changed.
+      // Text callbacks are necessarily evaluated to detect changes (the callback
+      // may format a signal or read external state), but avoid a stack-sized old
+      // copy: compare the generated value against the node buffer after writing.
+      // The callback contract is fill-style and must be deterministic for the same
+      // inputs; the temporary buffer keeps a change from destroying the old text.
       uint16_t n = __ui_bindings[i].node;
-      char oldBuf[UI_TEXT_BUF + 1];
-      strncpy(oldBuf, __ui_nodes[n].textBuffer, UI_TEXT_BUF);
-      oldBuf[UI_TEXT_BUF] = '\\0';
-      __ui_bindings[i].textFn(__ui_nodes[n].textBuffer, UI_TEXT_BUF + 1);
-      __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
-      if (strcmp(oldBuf, __ui_nodes[n].textBuffer) != 0) {
+      if (n >= __ui_node_count) continue;
+      char nextBuf[UI_TEXT_BUF + 1];
+      nextBuf[0] = '\\0';
+      __ui_bindings[i].textFn(nextBuf, UI_TEXT_BUF + 1);
+      nextBuf[UI_TEXT_BUF] = '\\0';
+      if (strcmp(nextBuf, __ui_nodes[n].textBuffer) != 0) {
+        strncpy(__ui_nodes[n].textBuffer, nextBuf, UI_TEXT_BUF);
+        __ui_nodes[n].textBuffer[UI_TEXT_BUF] = '\\0';
         ui_invalidate_text_layout_cache(n);
         ui_mark_dirty(n);
       }
@@ -53,6 +59,11 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
         continue;
       }
+      // Cache numeric binding results. The first sample establishes the baseline;
+      // subsequent identical values return immediately without touching node state.
+      if (__ui_bindings[i].initialized && newVal == __ui_bindings[i].lastValue) continue;
+      __ui_bindings[i].lastValue = newVal;
+      __ui_bindings[i].initialized = 1;
       uint32_t* target = (__ui_bindings[i].prop == PROP_BG) ? &__ui_nodes[__ui_bindings[i].node].bg
                     : (__ui_bindings[i].prop == PROP_FG) ? &__ui_nodes[__ui_bindings[i].node].fg
                     : (__ui_bindings[i].prop == PROP_BORDER_COLOR) ? &__ui_nodes[__ui_bindings[i].node].borderColor
@@ -75,6 +86,10 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     if (__ui_nodes[i].virtualized && __ui_nodes[i].listCountFn) {
       uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
+      // Keep the callback result as the list's invalidation token. The callback
+      // is still evaluated because it is the public list-count source, but an
+      // unchanged token avoids layout/dirty work and preserves the retained
+      // viewport canvas.
       uint16_t newCount = __ui_nodes[i].listCountFn();
       if (newCount != __ui_nodes[i].listCount) {
         __ui_nodes[i].listCount = newCount;
@@ -94,6 +109,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   for (uint16_t i = 0; i < __ui_input_binding_count; i++) {
     if (!__ui_input_bindings[i].cb) continue;
     uint16_t n = __ui_input_bindings[i].node;
+    if (n >= __ui_node_count) continue;
     const char* cur = __ui_nodes[n].textBuffer;
     if (strcmp(cur, __ui_input_bindings[i].lastSeen) != 0) {
       strncpy(__ui_input_bindings[i].lastSeen, cur, UI_TEXT_BUF);

@@ -56,6 +56,7 @@ static inline int16_t ui_scroll_overscroll_for(int16_t d) {
 // itself never leaves [0, maxScroll] so the committed position stays valid.
 static inline uint8_t ui_apply_scroll_delta(int16_t node, int16_t dy) {
   if (node < 0 || dy == 0) return 0;
+  if (__ui_scroll_render_locked && __ui_scroll_render_locked[node]) return 0;
   int16_t sy = __ui_nodes[node].scrollY;
   int16_t maxS = ui_scroll_max(node);
   int16_t nextY = sy - dy;
@@ -126,7 +127,7 @@ static inline uint8_t ui_scroll_release(int16_t node) {
 
 // Advance the settle animation for a node (called from ui_tick). Ease-out over
 // UI_SCROLL_SETTLE_MS, terminating at the boundary. Bounded — always ends.
-static inline void ui_scroll_advance_settle(uint8_t node, uint16_t deltaMs) {
+static inline void ui_scroll_advance_settle(uint16_t node, uint16_t deltaMs) {
   (void)deltaMs;
   if (node >= __ui_node_count || !__ui_nodes[node].settling) return;
   uint32_t elapsed = millis() - __ui_settle_start_ms;

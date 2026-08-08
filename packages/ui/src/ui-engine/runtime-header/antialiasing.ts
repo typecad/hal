@@ -14,9 +14,16 @@ export function emitAntialiasing(): string {
 #ifdef UI_AA
 #include <math.h>  // fabs, floor, ceil, sqrtf for AA coverage math
 
+// AA is only useful on RAM-backed targets. Direct SPI targets have no safe
+// read/modify/write surface for coverage blending; callers still get the
+// regular primitive path instead of an allocation plus many tiny pushes.
+static inline uint8_t ui_aa_target_is_ram() {
+  return !ui_display_is_default_target();
+}
+
 // Get (or allocate) a canvas sized to the element being drawn.
 static inline CuttlefishCanvas16* ui_aa_begin(int16_t w, int16_t h, UI_COLOR_T bg) {
-  if (w <= 0 || h <= 0) return nullptr;
+  if (w <= 0 || h <= 0 || !ui_aa_target_is_ram()) return nullptr;
   if (!__ui_aa_canvas || display_canvasWidth(__ui_aa_canvas) < w || display_canvasHeight(__ui_aa_canvas) < h) {
     display_deleteCanvas(__ui_aa_canvas);
     __ui_aa_canvas = display_createCanvas(w > 0 ? w : 1, h > 0 ? h : 1);
