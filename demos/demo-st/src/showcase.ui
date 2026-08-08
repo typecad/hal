@@ -124,6 +124,7 @@
 }
 
 screen {
+  color: var(--foreground);
   background: var(--background);
   gap: 8px;
   padding: 10px;
