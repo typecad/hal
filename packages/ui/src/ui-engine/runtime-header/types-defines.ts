@@ -83,11 +83,14 @@ export function emitTypesDefines(): string {
 #endif
 // Band renderer: height (px) of the horizontal band canvas used to composite
 // scroll subtrees tear-free when no viewport canvas fits (no PSRAM / over
-// budget). Each band is vw × UI_STRIP_BAND_HEIGHT (~10KB at RGB565 for a
-// 320px viewport), so it fits internal SRAM regardless of program size. The
-// whole visible subtree is rendered band-by-band, one SPI push per band.
+// budget). Each band is vw × UI_STRIP_BAND_HEIGHT. Must be tall enough that a
+// single line of AA text (glyph height ~lineHeight, typically 16-22px at ts=2)
+// fits within one band — if a glyph straddles a band boundary, its anti-
+// aliased edge pixels blend toward the wrong bg in the adjacent band, visible
+// as a clipped/faded text bottom. 32 ensures most fonts fit; at 480px wide
+// that's ~30KB (fits SRAM on most ESP32 targets).
 #ifndef UI_STRIP_BAND_HEIGHT
-#define UI_STRIP_BAND_HEIGHT 16
+#define UI_STRIP_BAND_HEIGHT 32
 #endif
 #if defined(ESP32) || defined(ESP8266)
 #include <Esp.h>

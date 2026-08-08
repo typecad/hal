@@ -31,9 +31,9 @@
   }
 
   ui.bind(screen.featureStatus, 'text', () => screen.formCheck1.value ? 'feature: enabled' : 'feature: disabled');
-  ui.bind(screen.featureLamp, 'background', () => screen.formCheck1.value ? '#29d391' : '#4b5563');
+  ui.bind(screen.featureLamp, 'background', () => screen.formCheck1.value ? '#e2e8f0' : '#475569');
   ui.bind(screen.modeStatus, 'text', () => screen.formSelect1.value == 0 ? 'mode: alpha' : screen.formSelect1.value == 1 ? 'mode: beta' : 'mode: gamma');
-  ui.bind(screen.modeAccent, 'background', () => screen.formSelect1.value == 0 ? '#38bdf8' : screen.formSelect1.value == 1 ? '#f6c84c' : '#b985ff');
+  ui.bind(screen.modeAccent, 'background', () => screen.formSelect1.value == 0 ? '#94a3b8' : screen.formSelect1.value == 1 ? '#cbd5e1' : '#64748b');
   ui.bind(screen.radioStatus, 'text', () => screen.formRadio2.value ? 'speed: fast' : 'speed: calm');
   ui.bind(screen.volumeStatus, 'text', () => `volume: ${screen.formRange1.value}`);
   ui.bind(screen.formProg, 'value', () => screen.formRange1.value * 10);
@@ -49,16 +49,16 @@
 
   // ── Media screen: canvas drawing every primitive once ─────────────────────
   ui.drawCanvas(screen.demoCanvas, (ctx) => {
-    ctx.fillScreen('#0a0a1a');
-    ctx.fillRect(8, 8, 40, 24, '#1a3a5c');
-    ctx.rect(8, 8, 40, 24, '#3399ff');
-    ctx.fillRoundRect(56, 8, 40, 24, 6, '#1a6b3c');
-    ctx.roundRect(56, 8, 40, 24, 6, '#4ade80');
-    ctx.fillCircle(120, 20, 14, '#5c1a1a');
-    ctx.circle(120, 20, 14, '#ff5577');
-    ctx.line(150, 6, 190, 40, '#ffff33');
-    ctx.hline(8, 48, 180, '#2a4a6a');
-    ctx.vline(196, 8, 40, '#2a4a6a');
+    ctx.fillScreen('#1a1a1a');
+    ctx.fillRect(8, 8, 40, 24, '#333333');
+    ctx.rect(8, 8, 40, 24, '#888888');
+    ctx.fillRoundRect(56, 8, 40, 24, 6, '#444444');
+    ctx.roundRect(56, 8, 40, 24, 6, '#aaaaaa');
+    ctx.fillCircle(120, 20, 14, '#333333');
+    ctx.circle(120, 20, 14, '#cccccc');
+    ctx.line(150, 6, 190, 40, '#ffffff');
+    ctx.hline(8, 48, 180, '#555555');
+    ctx.vline(196, 8, 40, '#555555');
     ctx.drawPixel(10, 70, '#ffffff');
     ctx.drawPixel(14, 72, '#ffffff');
     ctx.drawPixel(18, 70, '#ffffff');
@@ -74,15 +74,6 @@
 </script>
 
 <style>
-/* ---------------------------------------------------------------------------
-   showcase.neobrutalism.css — NeoBrutalism theme for the capability showcase.
-
-   Because display.themeCss replaces the sibling .ui.css entirely, this single
-   file holds everything: @font-face, the :root/.dark token palette, @keyframes,
-   and every element rule. Select the dark palette via themeClass:'dark' in
-   cuttlefish.config.ts.
-   ----------------------------------------------------------------------- */
-
 @font-face {
   font-family: "ColibriDemo";
   src: url("DejaVuSans.ttf");
@@ -97,111 +88,41 @@
   font-style: normal;
 }
 
-@font-face {
-  font-family: "ColibriDemo";
-  src: url("DejaVuSans-Oblique.ttf");
-  font-weight: 400;
-  font-style: italic;
-}
-
-@font-face {
-  font-family: "ColibriDemo";
-  src: url("DejaVuSans-Oblique.ttf");
-  font-weight: 300;
-  font-style: italic;
-}
-
-@font-face {
-  font-family: "ColibriDemo";
-  src: url("DejaVuSans-ExtraLight.ttf");
-  font-weight: 300;
-  font-style: normal;
-}
-
-/* ── Light theme (default :root) ── */
+/* ── Color tokens (grayscale dark, oklch→hex) ── */
 :root {
-  --background: #f7f3e8;
-  --foreground: #15171a;
-  --card: #fffaf0;
-  --card-foreground: #15171a;
-  --popover: #fffaf0;
-  --popover-foreground: #15171a;
-  --primary: #ef5b3f;
-  --primary-foreground: #ffffff;
-  --secondary: #f6c84c;
-  --secondary-foreground: #15171a;
-  --muted: #e8e0d0;
-  --muted-foreground: #596168;
-  --accent: #1f9f9a;
-  --accent-foreground: #071012;
-  --destructive: #15171a;
-  --destructive-foreground: #ffffff;
-  --border: #15171a;
-  --input: #15171a;
-  --ring: #ef5b3f;
-  --chart-1: #ef5b3f;
-  --chart-2: #f6c84c;
-  --chart-3: #38bdf8;
-  --chart-4: #29d391;
-  --chart-5: #9f7aea;
-  --sidebar: #ebe4d7;
-  --sidebar-foreground: #15171a;
-  --sidebar-primary: #ef5b3f;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1f9f9a;
-  --sidebar-accent-foreground: #071012;
-  --sidebar-border: #15171a;
-  --sidebar-ring: #ef5b3f;
-  --radius: 6px;
-  --shadow: 3px 3px 0px 0px hsl(210 10% 8% / 1.00);
+  --background: #1f1f1f;
+  --foreground: #f5f5f5;
+  --card: #292929;
+  --card-foreground: #f5f5f5;
+  --primary: #f5f5f5;
+  --primary-foreground: #242424;
+  --secondary: #383838;
+  --secondary-foreground: #f0f0f0;
+  --muted: #424242;
+  --muted-foreground: #b3b3b3;
+  --accent: #4d4d4d;
+  --accent-foreground: #f5f5f5;
+  --destructive: #c95555;
+  --destructive-foreground: #f5f5f5;
+  --border: #484848;
+  --input: #383838;
+  --ring: #d4926a;
+  --chart-1: #d4926a;
+  --chart-2: #7eb89a;
+  --chart-3: #c8c07a;
+  --chart-4: #b38ed4;
+  --chart-5: #d4857a;
+  --radius: 0px;
 }
 
-/* ── Dark theme (.dark) — select via themeClass: 'dark' ── */
-.dark {
-  --background: #111418;
-  --foreground: #f7f3e8;
-  --card: #1c2228;
-  --card-foreground: #f7f3e8;
-  --popover: #1c2228;
-  --popover-foreground: #f7f3e8;
-  --primary: #ff765c;
-  --primary-foreground: #111418;
-  --secondary: #f6c84c;
-  --secondary-foreground: #111418;
-  --muted: #29313a;
-  --muted-foreground: #b9c3c8;
-  --accent: #43d2c8;
-  --accent-foreground: #071012;
-  --destructive: #f7f3e8;
-  --destructive-foreground: #111418;
-  --border: #f6c84c;
-  --input: #f6c84c;
-  --ring: #ff765c;
-  --chart-1: #ff765c;
-  --chart-2: #f6c84c;
-  --chart-3: #38bdf8;
-  --chart-4: #29d391;
-  --chart-5: #b985ff;
-  --sidebar: #151a1f;
-  --sidebar-foreground: #f7f3e8;
-  --sidebar-primary: #ff765c;
-  --sidebar-primary-foreground: #111418;
-  --sidebar-accent: #43d2c8;
-  --sidebar-accent-foreground: #071012;
-  --sidebar-border: #f6c84c;
-  --sidebar-ring: #ff765c;
-  --radius: 6px;
-  --shadow: 3px 3px 0px 0px hsl(0 0% 0% / 1.00);
-}
-
-/* ── Shared screen scaffolding ── */
+/* ── Screen scaffold ── */
 screen {
   background: var(--background);
   gap: 8px;
   padding: 10px;
 }
 
-/* Scrollable main column (UA gives body display:flex column flex:1). */
+/* ── Scrollable body ── */
 .scrollBody {
   overflow: scroll;
   flex: 1;
@@ -210,7 +131,7 @@ screen {
   background: var(--background);
 }
 
-/* Shared content-screen header: Back link + title. */
+/* ── Cards / panels ── */
 .screenHeader {
   flex-direction: row;
   align-items: center;
@@ -219,11 +140,12 @@ screen {
   background: var(--card);
   padding: 8px 10px;
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
 }
+
 .backLink {
   font-size: 16px;
 }
+
 .screenTitle {
   color: var(--foreground);
   font-family: "ColibriDemo";
@@ -231,406 +153,55 @@ screen {
   font-weight: bold;
 }
 
-/* Shared section caption (used across showcase screens). Non-bold: the UA
-   stylesheet makes h3 bold, but the runtime bumps textSize for bold text
-   (roughly doubling per-char advance), which would wrap multi-word captions
-   like "width / height / min / max" to 3 lines and overlap the next element.
-   Normal weight keeps them on one line. */
+/* ── Headings & text ── */
+h1 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 24px; font-weight: bold; }
+h2 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 20px; font-weight: bold; }
+h3 { color: var(--muted-foreground); font-size: 14px; font-weight: normal; }
+p  { color: var(--muted-foreground); font-size: 14px; }
+
 .demoLabel {
   color: var(--muted-foreground);
   font-size: 14px;
   font-weight: normal;
 }
-.demoCap {
-  color: var(--muted-foreground);
-  font-size: 13px;
+
+/* ── Links ── */
+a {
+  color: var(--primary);
 }
 
-/* ── Home ── */
-#homeHeader {
-  flex-direction: column;
-  align-items: center;
-  /* <body> is a flex column with no align-items, so a fixed-width child would
-     sit at the left edge. Center the header horizontally in the screen to
-     match how .scrollBody centers its children (#homeNav, etc.). */
-  align-self: center;
-  gap: 2px;
-  width: 280px;
-  border: 1px solid var(--border);
-  background: var(--card);
-  padding: 8px;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-#homeTitle {
-  color: var(--foreground);
-  font-family: "ColibriDemo";
-  font-size: 24px;
-  font-weight: bold;
-  text-align: center;
-}
-#homeSubtitle {
-  color: var(--muted-foreground);
-  font-size: 14px;
-  text-align: center;
-}
-#homeNav {
-  align-items: stretch;
-  gap: 6px;
-  width: 280px;
-}
-#homeNav button {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  min-height: 48px;
-  color: var(--accent);
-  font-size: 18px;
-  text-align: left;
-  background: var(--card);
-  border: 1px solid var(--border);
-  padding: 6px 10px;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-#homeFooter {
-  padding: 2px 0;
-}
-#homeHint {
-  color: var(--muted-foreground);
-  font-size: 12px;
-  text-align: center;
-}
-#homeNativeText {
-  color: var(--muted-foreground);
-  font-size: 11px;
-  text-align: center;
-}
-
-/* ── Typography screen ── */
-#typeHeadings, #typeStyle, #typeSpacing, #typeWrap, #typeFont {
-  align-items: flex-start;
-  gap: 4px;
-  width: 280px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  padding: 8px;
-  box-shadow: var(--shadow);
-}
-.demoH1 { color: var(--primary); font-family: "ColibriDemo"; font-size: 30px; }
-/* Rich-text (inline flow) screen: paragraphs carry mixed inline runs; the
-   inline <a> runs get the accent color so links are visible mid-sentence. */
-#richMixed, #richBreak, #richNested {
-  align-items: flex-start;
-  gap: 4px;
-  width: 280px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  padding: 8px;
-  box-shadow: var(--shadow);
-}
-#richtext a { color: var(--accent); text-decoration: underline; }
-#richtext p { color: var(--foreground); font-size: 16px; }
-/* H2–H6 are non-bold so each lands in its own text-size bucket: the runtime
-   bumps textSize for bold text AND only has 4 buckets, so keeping every
-   heading bold would collapse several into one rendered size. */
-.demoH2 { color: var(--accent); font-family: "ColibriDemo"; font-size: 24px; font-weight: normal; }
-.demoH3 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 20px; font-weight: normal; }
-.demoH4 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 14px; }
-.demoH5 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 12px; }
-.demoH6 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 12px; font-style: italic; }
-.tBold { color: var(--foreground); font-weight: bold; font-size: 16px; }
-.tItalic { color: var(--foreground); font-family: "ColibriDemo"; font-size: 16px; }
-.tUnderline { color: var(--accent); font-size: 16px; }
-.tUpper { color: var(--secondary-foreground); background: var(--secondary); font-size: 16px; }
-.tCenter { color: var(--foreground); font-size: 16px; width: 260px; }
-.tShadow { color: var(--foreground); font-size: 16px; }
-/* text-overflow demo: identical overflowing text in a 120px box. Ellipsis
-   appends '...', clip cuts hard. Both need white-space:nowrap + overflow:hidden. */
-.tEllipsis { color: var(--foreground); background: var(--chart-4); font-size: 16px; }
-.tClip { color: var(--foreground); background: var(--chart-1); font-size: 16px; }
-.tLeading { color: var(--foreground); font-size: 14px; }
-.tTracking { color: var(--foreground); font-size: 14px; }
-.tNowrap { color: var(--destructive); font-size: 14px; }
-.tPreLine { color: var(--chart-3); font-size: 14px; }
-.tCustom { color: var(--foreground); }
-.tSmooth { color: var(--foreground); }
-.tBitmap { color: var(--muted-foreground); }
-#typeArticle {
-  align-items: center;
-  width: 280px;
-  background: var(--muted);
-  border: 1px solid var(--border);
-  padding: 8px;
-}
-#typeAside {
-  align-items: center;
-  width: 280px;
-  background: var(--muted);
-  border: 1px solid var(--border);
-  padding: 8px;
-}
-.tAside { color: var(--muted-foreground); font-size: 13px; text-align: center; }
-
-/* ── Box & Sizing screen ── */
-#boxSize, #boxPadMargin, #boxBorder, #boxShadowSec, #boxAspect {
-  align-items: center;
-  gap: 6px;
-  width: 280px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  padding: 8px;
-  box-shadow: var(--shadow);
-}
-#boxFixed { width: 160px; height: 30px; background: var(--chart-1); }
-/* Label spans inside the box-demo divs. text-align doesn't inherit from the
-   parent div in this model, so the span must center its own text. */
-.boxLabel { text-align: center; }
-#boxMin { background: var(--chart-3); }
-#boxPadded { width: 160px; background: var(--secondary); border: 1px solid var(--border); padding: 12px 20px; color: var(--secondary-foreground); font-size: 14px; text-align: center; }
-#boxMargin { width: 160px; min-height: 24px; background: var(--chart-4); margin: 16px; color: var(--foreground); font-size: 14px; text-align: center; }
-#boxBordered { width: 160px; min-height: 24px; background: var(--card); border: 2px solid var(--foreground); color: var(--foreground); font-size: 14px; text-align: center; padding: 4px; }
-#boxRadius { width: 160px; min-height: 24px; background: var(--accent); border-radius: 10px; color: var(--accent-foreground); font-size: 14px; text-align: center; padding: 4px; }
-/* Per-side border: documented best-effort — runtime draws uniform borders. */
-#boxPerSide { width: 160px; min-height: 24px; background: var(--muted); border-left: 4px solid var(--primary); border-top: 2px solid var(--chart-3); color: var(--foreground); font-size: 13px; text-align: center; padding: 4px; }
-#boxShadowed { width: 160px; background: var(--primary); box-shadow: 4px 4px 0 var(--foreground); color: var(--primary-foreground); font-size: 14px; text-align: center; padding: 4px; }
-#boxOutlined { width: 160px; background: var(--card); outline: 2px solid var(--chart-5); color: var(--foreground); font-size: 14px; text-align: center; padding: 4px; }
-#boxAspectWide { width: 200px; aspect-ratio: 16 / 9; background: var(--secondary); border: 1px solid var(--border); justify-content: center; align-items: center; }
-#boxAspectSquare { height: 60px; aspect-ratio: 1 / 1; background: var(--chart-4); border: 1px solid var(--border); justify-content: center; align-items: center; }
-.aspectLabel { color: var(--foreground); font-size: 14px; text-align: center; }
-
-/* ── Position & Layers screen ── */
-#layerDemo, #visibilityDemo, #opacityDemo {
-  align-items: center;
-  gap: 6px;
-  width: 280px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  padding: 8px;
-  box-shadow: var(--shadow);
-}
-#layerStage { position: relative; width: 220px; height: 70px; background: var(--muted); border: 1px solid var(--border); }
-#layerBack { position: absolute; left: 16px; top: 12px; width: 120px; height: 40px; background: var(--secondary); border: 1px solid var(--border); z-index: 1; justify-content: center; align-items: center; }
-#layerFront { position: absolute; left: 70px; top: 26px; width: 120px; height: 40px; background: var(--chart-3); border: 1px solid var(--foreground); z-index: 2; justify-content: center; align-items: center; }
-#layerCorner { position: absolute; right: 4px; bottom: 4px; width: 70px; height: 22px; background: var(--chart-5); border: 1px solid var(--foreground); z-index: 3; justify-content: center; align-items: center; }
-.layerTag { color: var(--foreground); font-size: 13px; text-align: center; }
-#visStack { gap: 2px; width: 220px; background: var(--border); padding: 1px; }
-#visBefore, #visAfter1, #visBefore2, #visAfter2, #visBefore3, #visAfter3,
-#visHiddenAttr, #visDisplayNone, #visCollapsed { width: 220px; height: 24px; justify-content: center; align-items: center; }
-#visBefore, #visAfter1, #visBefore2, #visAfter2, #visBefore3, #visAfter3 { background: var(--chart-4); }
-#visHiddenAttr { background: var(--destructive); }
-#visDisplayNone { background: var(--destructive); display: none; }
-#visCollapsed { background: var(--destructive); }
-.visCaption { color: #333333; font-size: 12px; text-align: center; width: 220px; margin-top: 4px; }
-.visText { color: var(--foreground); font-size: 13px; text-align: center; }
-#opacityRow { flex-direction: row; gap: 10px; align-items: center; }
-.opaqChip { width: 50px; height: 36px; background: var(--primary); color: var(--primary-foreground); font-size: 13px; text-align: center; justify-content: center; align-items: center; }
-
-/* ── Flexbox screen ── */
-#flexJustify, #flexAlign, #flexGrow, #flexOrder {
-  align-items: flex-start;
-  gap: 6px;
-  width: 280px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  padding: 8px;
-  box-shadow: var(--shadow);
-}
-.flexRow { display: flex; flex-direction: row; width: 260px; background: var(--muted); padding: 4px; border: 1px solid var(--border); }
-.flexStart { justify-content: flex-start; gap: 4px; }
-.flexCenter { justify-content: center; column-gap: 12px; }
-.flexBetween { justify-content: space-between; row-gap: 4px; }
-.alignRow { align-items: center; gap: 10px; height: 50px; }
-.growRow { align-items: center; gap: 4px; }
-.wrapRow { flex-wrap: wrap; gap: 4px; }
-.shrinkRow { align-content: center; gap: 2px; }
-.shrink1 { flex-shrink: 1; }
-.shrink0 { flex-shrink: 0; }
-.chip { width: 28px; height: 24px; background: var(--chart-3); justify-content: center; align-items: center; }
-.chipTall { width: 28px; height: 40px; background: var(--chart-4); justify-content: center; align-items: center; }
-/* Label inside a flex chip. Properties don't inherit in this model, so the
-   span carries its own color/font-size; justify-content/align-items on the
-   .chip/.chipTall parent centers it. */
-.chipLabel { color: var(--foreground); font-size: 13px; }
-.grow1 { flex-grow: 1; }
-.grow2 { flex-grow: 2; }
-.grow0 { flex-grow: 0; flex-basis: 40px; }
-.ord1 { order: 1; }
-.ord2 { order: 2; }
-.ord3 { order: 3; }
-
-/* ── Transforms screen — keyframes + transform/animation rules ── */
-@keyframes pulse {
-  0%   { background: var(--chart-4); }
-  50%  { background: var(--secondary); }
-  100% { background: var(--chart-4); }
-}
-@keyframes slideXY {
-  0%, 100% { transform: translate(0px, 0px); background: var(--chart-1); }
-  50% { transform: translate(52px, 4px); background: var(--chart-4); }
-}
-@keyframes growMove {
-  0%, 100% { transform: translate(0%, 0px) scale(1); background: var(--chart-1); }
-  50% { transform: translate(250%, 2px) scale(2.8, 1.6); background: var(--chart-5); }
-}
-@keyframes originScale {
-  0%, 100% { transform: translate(4px, 2px) scale(1); background: var(--chart-1); }
-  50% { transform: translate(4px, 2px) scale(2); background: var(--chart-4); }
-}
-@keyframes originScaleCenter {
-  0%, 100% { transform: translate(40px, 2px) scale(1); background: var(--chart-1); }
-  50% { transform: translate(40px, 2px) scale(2); background: var(--chart-4); }
-}
-@keyframes quarterTurn {
-  0%, 24% { transform: translate(38px, 3px) rotate(0deg); background: var(--chart-5); }
-  25%, 49% { transform: translate(38px, 3px) rotate(90deg); background: var(--chart-1); }
-  50%, 74% { transform: translate(38px, 3px) rotate(180deg); background: var(--chart-4); }
-  75%, 100% { transform: translate(38px, 3px) rotate(270deg); background: var(--secondary); }
-}
-
-#transformDemo, #transitionDemo {
-  align-items: center;
-  gap: 4px;
-  width: 280px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  padding: 8px;
-  box-shadow: var(--shadow);
-}
-.track { width: 88px; height: 28px; background: var(--muted); border: 1px solid var(--border); }
-#dotTranslate { width: 18px; height: 18px; background: var(--chart-1); animation: slideXY 1800ms infinite; animation-timing-function: ease-in-out; }
-#dotScale { width: 10px; height: 10px; background: var(--chart-1); transform-origin: left top; animation: growMove 1800ms infinite; animation-timing-function: ease-in-out; }
-#dotOrigin { width: 8px; height: 8px; background: var(--chart-1); transform-origin: center; animation: originScaleCenter 1600ms infinite; animation-timing-function: ease-in-out; }
-#dotRotate { width: 12px; height: 20px; background: var(--chart-5); transform-origin: center; animation: quarterTurn 2000ms infinite; }
-/* Same effect as `animation: pulse 1200ms infinite` but via longhands,
-   exercising animation-name/-duration/-iteration-count/-delay separately. */
-#dotPulse {
-  width: 16px;
-  height: 16px;
-  background: var(--chart-4);
-  animation-name: pulse;
-  animation-duration: 1200ms;
-  animation-iteration-count: infinite;
-  animation-delay: 0ms;
-}
-/* Press-down effect (copied from native_demo): a solid vertical box-shadow
-   acts as a 3D lip; :pressed drops the shadow to zero and translates the box
-   down by the same amount, so the button looks like it sinks flush on tap.
-   The 48px min-height + generous padding give a comfortable touch target. */
-#transitionBtn {
+/* ── Buttons ── */
+button {
   background: var(--primary);
   color: var(--primary-foreground);
+  font-family: "ColibriDemo";
   font-size: 18px;
   border: 1px solid var(--border);
-  box-shadow: 0 3px 0 #0b0d10;
+  border-radius: var(--radius);
   padding: 10px 16px;
   min-height: 48px;
-  transition: background 120ms;
-  transform: translate(0, 0);
-}
-#transitionBtn:pressed {
-  background: var(--accent);
-  color: var(--accent-foreground);
-  transform: translate(0, 3px);
-  box-shadow: 0 0 0 #0b0d10;
-}
-
-/* ── Forms screen ── */
-#forms .scrollBody {
-  gap: 9px;
-}
-.formPanel {
-  align-items: stretch;
-  gap: 7px;
-  width: 280px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 8px;
-  box-shadow: var(--shadow);
-}
-.formPanel .demoLabel {
-  color: var(--secondary);
-  font-size: 13px;
-}
-.formRow {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 250px;
-}
-.formStack {
-  align-items: flex-start;
-  gap: 5px;
-}
-.formStatus {
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-.formPill {
-  color: var(--foreground);
-  background: var(--muted);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 3px 7px;
-  font-size: 13px;
-}
-#formHero {
-  background: var(--muted);
-}
-#formHeroTitle {
-  color: var(--foreground);
-  font-size: 18px;
-  font-weight: bold;
-}
-#formHeroCopy {
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-#formBtn {
-  background: var(--primary);
-  color: var(--primary-foreground);
-  font-size: 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  box-shadow: 0 3px 0 #0b0d10;
-  padding: 10px 18px;
-  min-height: 48px;
+  text-align: center;
   transition: background 100ms;
   transform: translate(0, 0);
 }
-#formBtn:pressed {
+
+button:pressed {
   background: var(--accent);
   color: var(--accent-foreground);
-  transform: translate(0, 3px);
-  box-shadow: 0 0 0 #0b0d10;
 }
-#formBtnCount {
+
+/* ── Inputs ── */
+input {
   color: var(--foreground);
-  font-size: 13px;
-  width: 120px;
-  padding: 3px 5px;
-  text-align: center;
-  white-space: nowrap;
-}
-/* min-height/min-width grow the tappable box without padding, which would
-   shift the indicator: check/radio draw the 16px indicator pinned to the box
-   top-left (not padding-aware), so the extra hit area extends below the label. */
-#formCheck1 {
-  color: var(--foreground);
-  font-size: 18px;
-  min-height: 48px;
-  min-width: 200px;
-}
-#featureLamp, #modeAccent {
-  width: 18px;
-  height: 18px;
   background: var(--muted);
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius);
+  padding: 8px;
+  width: 200px;
 }
-#formSelect1 {
+
+/* ── Select ── */
+select {
   color: var(--accent);
   background: var(--muted);
   border: 1px solid var(--border);
@@ -640,103 +211,53 @@ screen {
   min-height: 48px;
   text-decoration: underline;
 }
-#radioChoices {
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
-}
-/* Like the checkbox, min-height/min-width enlarge the hit box without padding
-   (the radio indicator is pinned to the box top-left, not padding-aware). */
-#formRadio1, #formRadio2 {
+
+/* ── Checkbox / Radio ── */
+check, radio {
   color: var(--foreground);
   font-size: 18px;
   min-height: 48px;
-  min-width: 90px;
 }
-#formProg {
-  color: var(--chart-4);
-  width: 190px;
-}
-#formRange label, #formInput label {
-  color: var(--muted-foreground);
-  font-size: 13px;
-  align-self: flex-start;
-}
-/* A taller slider is easier to drag: the track is drawn vertically centered
-   (trackY = box.y + box.h/2), so extra height adds touch room above/below it. */
-#formRange1 {
-  color: var(--chart-1);
-  width: 205px;
+
+/* ── Range / Progress ── */
+range {
   height: 40px;
 }
-#formName, #formAge {
-  color: var(--foreground);
-  background: #12161b;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  width: 205px;
-  padding: 4px;
+progress {
+  height: 12px;
 }
-#formDisabledBtn {
-  background: var(--muted);
-  color: var(--muted-foreground);
-  font-size: 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 10px 18px;
-  min-height: 48px;
-}
-#formDisabledBtn:disabled { opacity: 0.5; }
 
-/* ── Images & Canvas screen ── */
-#imgFit, #imgTransform, #canvasDemo {
-  align-items: center;
-  gap: 6px;
-  width: 280px;
+/* ── List ── */
+list {
+  overflow: scroll;
+  flex-grow: 1;
   background: var(--card);
   border: 1px solid var(--border);
-  padding: 8px;
-  box-shadow: var(--shadow);
-}
-.imgRow { flex-direction: row; align-items: center; gap: 10px; width: 200px; }
-.imgLabel { width: 60px; color: var(--muted-foreground); font-size: 13px; }
-#imgContain, #imgCover, #imgFill { background: var(--card); border: 1px solid var(--border); }
-#imgLogo { background: var(--card); border: 1px solid var(--border); }
-#demoCanvas { background: #0a0a1a; border: 1px solid var(--border); }
-
-/* ── Lists screen ── */
-#demoList {
-  color: #ffffff;
-  width: 280px;
-  background: #333333;
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  margin: 8px 0;
+  border-radius: var(--radius);
 }
 
-/* ── Keyboard screen + custom keyboard template ── */
-#keyboard .scrollBody { align-items: stretch; }
-#keyboard label { color: var(--muted-foreground); font-size: 14px; }
-#kbInput { color: #ffffff; background: #333333; border: 1px solid var(--border); width: 240px; }
-.ui-key { background: var(--card); color: var(--foreground); border: 1px solid var(--border); }
-.ui-key-ok { background: var(--chart-4); color: var(--foreground); }
-.ui-key-del { background: var(--destructive); color: var(--destructive-foreground); }
-.ui-key-page { background: var(--accent); color: var(--accent-foreground); }
-.ui-keyboard { background: var(--muted); }
-
-/* ── Cross-screen nav links (UA underlines <a>) ── */
-a {
-  color: var(--accent);
-}
-
-/* Inline style block from the original .ui.html */
-#typeView {
-  align-items: center;
-  width: 280px;
+/* ── Keyboard ── */
+.ui-key {
   background: var(--secondary);
+  color: var(--secondary-foreground);
   border: 1px solid var(--border);
-  padding: 8px;
 }
+.ui-key-ok {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.ui-key-del {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+.ui-key-page {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.ui-keyboard {
+  background: var(--card);
+}
+
 </style>
 
 <!-- ── Home ─────────────────────────────────────────────────────────────── -->
@@ -790,7 +311,7 @@ a {
         <p class="tUpper" style="text-transform: uppercase">lowercase source</p>
         <p class="tCenter" style="text-align: center">centered text</p>
         <p class="tShadow" style="text-shadow: 1px 1px 1px rgba(255,255,255,0.6)">drop shadow</p>
-        <p class="tShorthand" style="font: bold 18px 'ColibriDemo'; background-color: #3399ff; color: #000000">font shorthand</p>
+        <p class="tShorthand" style="font: bold 18px 'ColibriDemo'; background-color: #888888; color: #000000">font shorthand</p>
         <p class="tEllipsis" style="text-overflow: ellipsis; white-space: nowrap; width: 120px; overflow: hidden">ellipsis shows trailing dots here</p>
         <p class="tClip" style="text-overflow: clip; white-space: nowrap; width: 120px; overflow: hidden">clip cuts the overflowed text</p>
       </section>
@@ -831,7 +352,7 @@ a {
       <section id="richMixed">
         <!-- Mixed inline content flows on shared wrapped lines with per-run
              style: bold, italic, underline, color, and a tappable link. -->
-        <p style="padding:8px; width:200px; font-smoothing: antialiased">This is a <b>rich text</b> paragraph with <i>italic</i>, <u>underline</u>, and a <a href="#home">link home</a>. It wraps across lines with <span style="color:#ff6666">colored</span> runs and a <span style="font-size:22px">bigger</span> word on the same line.</p>
+        <p style="padding:8px; width:200px; font-smoothing: antialiased">This is a <b>rich text</b> paragraph with <i>italic</i>, <u>underline</u>, and a <a href="#home">link home</a>. It wraps across lines with <span style="color:#cccccc">colored</span> runs and a <span style="font-size:22px">bigger</span> word on the same line.</p>
       </section>
       <section id="richBreak">
         <p style="padding:8px; width:200px; font-smoothing: antialiased">Line one.<br/>Line two after a hard break.<br/><br/>After a blank line.</p>
@@ -855,8 +376,8 @@ a {
         <h3 class="demoLabel">width / height</h3>
         <div id="boxFixed"></div>
         <div id="boxMin" style="min-width: 120px; min-height: 24px"></div>
-        <div id="boxMax" style="width: 140px; height: 50px; max-width: 90px; max-height: 30px; background: #cc33cc"></div>
-        <div id="boxSizing" style="box-sizing: content-box; width: 100px; height: 24px; border: 4px solid #ff6666; background: #ffff33"><span class="boxLabel" style="white-space: nowrap">box-size</span></div>
+        <div id="boxMax" style="width: 140px; height: 50px; max-width: 90px; max-height: 30px; background: #aaaaaa"></div>
+        <div id="boxSizing" style="box-sizing: content-box; width: 100px; height: 24px; border: 4px solid #cccccc; background: #666666"><span class="boxLabel" style="white-space: nowrap">box-size</span></div>
       </section>
       <section id="boxPadMargin">
         <h3 class="demoLabel">padding / margin</h3>

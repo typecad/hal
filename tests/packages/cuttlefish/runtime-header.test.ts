@@ -1085,8 +1085,8 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
     // UI_NO_PARENT is a node-index sentinel that happens to equal 565 white;
     // it must stay 0xFFFF, not become 0xFFFFFF (it's compared to node indices).
     expect(header).toMatch(/UI_NO_PARENT\s+0xFFFF/);
-    // The runtime's full-screen clear still uses the 565 black literal.
-    expect(header).toMatch(/display_fillScreen\(0x0000\)/);
+    // The runtime's navigation clear fills with the screen background color.
+    expect(header).toMatch(/display_fillScreen\(navBg\)/);
   });
 
   it("defines UI_COLOR_T as uint32_t under 888 and uint16_t otherwise", () => {
@@ -1141,7 +1141,7 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
   it("renders tear-free scroll bands when no viewport canvas fits (no PSRAM)", () => {
     // The band renderer composes the subtree into a short band canvas and pushes
     // one band at a time, so each band completes before it touches the panel.
-    expect(header).toMatch(/#ifndef UI_STRIP_BAND_HEIGHT[\s\S]*#define UI_STRIP_BAND_HEIGHT 16/);
+    expect(header).toMatch(/#ifndef UI_STRIP_BAND_HEIGHT[\s\S]*#define UI_STRIP_BAND_HEIGHT 32/);
     expect(header).toMatch(/static inline uint8_t ui_render_scroll_bands\(uint16_t s\)/);
     // Band canvas is persistent (released on navigation, like the other slots).
     expect(header).toMatch(/display_deleteCanvas\(__ui_band_canvas\);.*__ui_band_canvas = nullptr/);

@@ -24,7 +24,18 @@ static inline CuttlefishCanvas16* ui_create_canvas_best(int16_t w, int16_t h) {
 #if defined(ESP32) && defined(BOARD_HAS_PSRAM)
   if (psramFound()) {
     CuttlefishCanvas16* c = display_createCanvasPsram(w, h);
-    if (c && display_canvasBuffer(c)) return c;
+    if (c && display_canvasBuffer(c)) {
+      static uint8_t psram_logged = 0;
+      if (!psram_logged) {
+        psram_logged = 1;
+#if defined(ESP32) && defined(ARDUINO)
+        Serial.printf("[psram] canvas %dx%d allocated in PSRAM (free=%u)\n", w, h, ESP.getFreePsram());
+#else
+        printf("[psram] canvas %dx%d allocated in PSRAM\n", w, h);
+#endif
+      }
+      return c;
+    }
     // PSRAM allocation failed (rare — fragmented PSRAM) → fall through to SRAM.
   }
 #endif

@@ -10,7 +10,7 @@ const config: CuttlefishConfig = {
   // ESP32-S3 devkitc has no on-board PSRAM. Uncomment on a PSRAM board
   // (e.g. ESP32-S3-WROOM-1-N8R8) to route large canvas allocations (scroll
   // viewports, lists) to external RAM instead of the SRAM band-renderer path.
-  // psram: 'opi',
+  psram: 'opi',
   toolchain: { type: 'west' },
   console: { baudRate: 115200, port: 'COM12' },
   display: {
@@ -25,7 +25,7 @@ const config: CuttlefishConfig = {
     rst: 16,
     spiFrequency: 80000000,
     antialias: true,
-    // themeCss: './src/showcase.neobrutalism.css',
+    themeCss: './src/theme.dark.css',
     themeClass: 'dark',
     scroll: {
       dragScale: 1.0,

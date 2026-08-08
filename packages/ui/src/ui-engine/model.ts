@@ -1034,7 +1034,7 @@ export function lowerUIToModel(
       hasBg,
       textAlign: textAlign(node.style),
       textSize,
-      lineHeight: lineHeightOf(node.style, textSize),
+      lineHeight: assetLineHeight(node.style, fontAssets) ?? lineHeightOf(node.style, textSize),
       letterSpacing: letterSpacingOf(node.style),
       fontAntialias: fontAntialiasOf(node.style, display),
       fontFace: fontFaceOf(node.style, fontAssets),

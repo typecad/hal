@@ -44,7 +44,19 @@ static inline void ui_navigate(uint8_t screenIdx) {
   // refresh panels (e-ink) a full clear flashes, so skip it — the all-nodes-
   // dirty marking below drives a full repaint via partial refresh instead.
 #ifndef UI_REFRESH_DEFERRED
-  display_fillScreen(0x0000);
+  // Clear the display to the NEW screen's background color (not black) so the
+  // gap between this clear and the first frame's compose+push matches the new
+  // screen's bg — invisible instead of a black flash. The first frame fully
+  // repaints all nodes, so the clear just fills gaps.
+  {
+    uint16_t navBg = 0x0000;
+    if (__ui_active_screen_bg_node < __ui_node_count) {
+      navBg = __ui_nodes[__ui_active_screen_bg_node].hasBg
+        ? __ui_nodes[__ui_active_screen_bg_node].bg
+        : __ui_nodes[__ui_active_screen_bg_node].clearColor;
+    }
+    display_fillScreen(navBg);
+  }
 #endif
   // Mark all nodes dirty so the new screen fully redraws.
   for (uint16_t i = 0; i < __ui_node_count; i++) {

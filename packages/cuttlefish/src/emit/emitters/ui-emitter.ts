@@ -333,6 +333,12 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     `#define UI_SCROLL_RENDER_TIER_FULL ${scroll.renderTier === "full" ? 1 : 0}`,
     `#define UI_SCROLL_RENDER_TIER_CONSTRAINED ${scroll.renderTier === "constrained" ? 1 : 0}`,
     ...(scroll.debug ? [`#define UI_SCROLL_DEBUG 1`] : []),
+    // Enable the full-screen PSRAM framebuffer when BOARD_HAS_PSRAM is defined
+    // (emitted by the framework when psram is configured). The framebuffer
+    // composes the entire frame in PSRAM and pushes it in one bulk SPI
+    // transaction — eliminating per-element tearing on SPI TFTs. Without PSRAM
+    // the runtime falls back to direct/band rendering (the define is ignored).
+    `#define UI_USE_FULL_FRAMEBUFFER 1`,
   );
   // Forward-declare __ui_kb_set_onchange before the runtime header: the
   // header's keyboard-open function calls it, but the definition is emitted
