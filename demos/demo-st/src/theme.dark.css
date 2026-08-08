@@ -1,0 +1,146 @@
+/* ---------------------------------------------------------------------------
+   theme.dark.css — minimal dark theme for cuttlefish UI
+
+   Only design choices: color tokens, border-radius, element colors.
+   Structural defaults (scroll, touch sizing, flex layout) are in the UA
+   stylesheet — this file adds only the visual layer.
+   ----------------------------------------------------------------------- */
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("DejaVuSans.ttf");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("DejaVuSans-Bold.ttf");
+  font-weight: 700;
+  font-style: normal;
+}
+
+:root {
+  --background: #0f172a;
+  --foreground: #e2e8f0;
+  --card: #1e293b;
+  --card-foreground: #e2e8f0;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #334155;
+  --secondary-foreground: #e2e8f0;
+  --muted: #1e293b;
+  --muted-foreground: #94a3b8;
+  --accent: #14b8a6;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #334155;
+  --input: #334155;
+  --ring: #3b82f6;
+  --radius: 6px;
+}
+
+screen {
+  background: var(--background);
+  gap: 8px;
+  padding: 10px;
+}
+
+.scrollBody {
+  background: var(--background);
+}
+
+.screenHeader {
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 8px 10px;
+  border-radius: var(--radius);
+}
+
+.backLink {
+  font-size: 16px;
+}
+
+.screenTitle {
+  color: var(--foreground);
+  font-family: "ColibriDemo";
+  font-size: 20px;
+  font-weight: bold;
+}
+
+h1 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 24px; font-weight: bold; }
+h2 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 20px; font-weight: bold; }
+h3 { color: var(--muted-foreground); font-size: 14px; }
+p  { color: var(--muted-foreground); font-size: 14px; }
+
+.demoLabel {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+
+a {
+  color: var(--primary);
+}
+
+button {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-family: "ColibriDemo";
+  font-size: 18px;
+  border-color: var(--border);
+  border-radius: var(--radius);
+}
+
+button:pressed {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+input {
+  color: var(--foreground);
+  background: var(--muted);
+  border-color: var(--border);
+  border-radius: var(--radius);
+}
+
+select {
+  color: var(--accent);
+  background: var(--muted);
+  border-color: var(--border);
+  border-radius: var(--radius);
+  font-size: 18px;
+  text-decoration: underline;
+}
+
+check, radio {
+  color: var(--foreground);
+  font-size: 18px;
+}
+
+list {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.ui-key {
+  background: var(--secondary);
+  color: var(--secondary-foreground);
+  border-color: var(--border);
+}
+.ui-key-ok {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.ui-key-del {
+  background: var(--destructive);
+  color: var(--destructive-foreground);
+}
+.ui-key-page {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.ui-keyboard {
+  background: var(--card);
+}
