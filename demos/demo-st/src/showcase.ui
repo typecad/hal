@@ -163,20 +163,13 @@ screen {
   padding: 10px;
 }
 
-/* Scrollable main column (UA gives body display:flex column flex:1). */
+/* scrollBody layout + screenHeader flex-direction are in the UA stylesheet. */
+/* Only design-choice overrides here: colors, borders, shadows. */
 .scrollBody {
-  overflow: scroll;
-  flex: 1;
-  align-items: center;
-  gap: 10px;
   background: var(--background);
 }
 
-/* Shared content-screen header: Back link + title. */
 .screenHeader {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
   border: 1px solid var(--border);
   background: var(--card);
   padding: 8px 10px;
@@ -193,15 +186,10 @@ screen {
   font-weight: bold;
 }
 
-/* Shared section caption (used across showcase screens). Non-bold: the UA
-   stylesheet makes h3 bold, but the runtime bumps textSize for bold text
-   (roughly doubling per-char advance), which would wrap multi-word captions
-   like "width / height / min / max" to 3 lines and overlap the next element.
-   Normal weight keeps them on one line. */
+/* Section captions — color only (h3 font-weight:normal is now UA default). */
 .demoLabel {
   color: var(--muted-foreground);
   font-size: 14px;
-  font-weight: normal;
 }
 .demoCap {
   color: var(--muted-foreground);
@@ -680,7 +668,8 @@ screen {
 #keyboard .scrollBody { align-items: stretch; }
 #keyboard label { color: var(--muted-foreground); font-size: 14px; }
 #kbInput { color: #ffffff; background: #333333; border: 1px solid var(--border); width: 240px; }
-.ui-key { background: var(--card); color: var(--foreground); border: 1px solid var(--border); }
+/* Keyboard colors (border:1px solid is now UA default). */
+.ui-key { background: var(--card); color: var(--foreground); border-color: var(--border); }
 .ui-key-ok { background: var(--chart-4); color: var(--foreground); }
 .ui-key-del { background: var(--destructive); color: var(--destructive-foreground); }
 .ui-key-page { background: var(--accent); color: var(--accent-foreground); }
