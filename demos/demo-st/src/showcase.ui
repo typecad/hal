@@ -729,11 +729,10 @@ screen {
 
 /* ── Lists screen ── */
 #demoList {
-  color: var(--foreground);
+  color: #ffffff;
   width: 280px;
-  background: var(--muted);
-  border: 2px solid var(--foreground);
-  box-shadow: var(--shadow);
+  background: #333333;
+  border: 2px solid #000000;
   margin: 8px 0;
 }
 
