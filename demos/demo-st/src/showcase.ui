@@ -101,8 +101,8 @@
   --secondary-foreground: #303030;
   --muted: #f0f0eb;
   --muted-foreground: #737373;
-  --accent: #ebebe5;
-  --accent-foreground: #303030;
+  --accent: #6a6a6a;
+  --accent-foreground: #ffffff;
   --destructive: #c95555;
   --destructive-foreground: #ffffff;
   --border: #d4d4d0;
@@ -243,11 +243,15 @@ screen {
   padding: 10px;
 }
 
-/* Scroll containers use --scrollbar for their fg so the scrollbar thumb
-   (derived from fg) is a visible medium gray, not the near-black --foreground. */
-.scrollBody {
-  color: var(--scrollbar);
-}
+/* Scroll containers use --scrollbar for their scrollbar thumb/track color
+   (derived from fg). DO NOT set color here — it would be inherited by all
+   child text, making it gray. The scrollbar reads the scroll owner's fg
+   directly, not via CSS inheritance. Instead, set fg via the background
+   property's complementary color on the node (the runtime derives scrollbar
+   color from the scroll owner's fg field). A medium-gray border-color hack
+   doesn't work either; the scrollbar color must be set on the node itself.
+   For now, leave scrollBody color unset — it inherits --foreground from
+   screen, and the scrollbar will be dark (correct for light themes). */
 
 .backLink {
   font-size: 16px;
@@ -303,7 +307,7 @@ screen {
   flex-direction: row;
   align-items: center;
   min-height: 48px;
-  color: var(--accent);
+  color: var(--foreground);
   font-size: 18px;
   text-align: left;
   background: var(--card);
