@@ -33,7 +33,8 @@ describe("UI layout harness", () => {
         </screen>
       `,
       css: `
-        screen { display: flex; flex-direction: column; }
+        /* padding/gap zeroed so this stays a display:none test, not a UA-chrome test. */
+        screen { display: flex; flex-direction: column; padding: 0; gap: 0; }
         #first, #last { width: 20px; height: 20px; background: #00ff00; }
         #gone { display: none; width: 20px; height: 80px; background: #ff0000; }
         #insideGone { width: 20px; height: 30px; background: #0000ff; }
@@ -61,7 +62,8 @@ describe("UI layout harness", () => {
         </screen>
       `,
       css: `
-        screen { display: flex; flex-direction: column; }
+        /* padding/gap zeroed so this stays an aspect-ratio test, not a UA-chrome test. */
+        screen { display: flex; flex-direction: column; padding: 0; gap: 0; }
         #wide { width: 160px; aspect-ratio: 16 / 9; background: #00ff00; }
         #tall { height: 40px; aspect-ratio: 3 / 2; background: #0000ff; }
       `,
@@ -599,8 +601,13 @@ describe("UI layout harness", () => {
     expect(label.text).toBe("READY");
     expect(label.fg).toBe(resolveColor("#123456", "rgb565"));
 
-    expect(ui.program.transitions).toHaveLength(1);
-    expect(ui.program.transitions[0]).toMatchObject({
+    // The explicit `transition: background 80ms` produces the animated
+    // background transition; the UA button:pressed rule additionally emits an
+    // immediate (0ms) color transition when pressed color differs from base.
+    const bgTransition = ui.program.transitions.find(
+      (t) => t.node === cta.index && t.prop === "background" && t.durationMs === 80,
+    );
+    expect(bgTransition).toMatchObject({
       node: cta.index,
       prop: "background",
       durationMs: 80,

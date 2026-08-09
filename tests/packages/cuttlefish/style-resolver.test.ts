@@ -65,7 +65,9 @@ describe("style resolver", () => {
       `[type="number"] { border-color: #ff0000; }`,
     );
     expect(styled.children[0].style.borderColor).toBe("#ff0000");
-    expect(styled.children[1].style.borderColor).toBeUndefined();
+    // #b must NOT match (UA gives inputs a default border color, so assert the
+    // selector's color did not apply rather than pinning the UA fallback).
+    expect(styled.children[1].style.borderColor).not.toBe("#ff0000");
   });
 
   it("child combinator only matches direct children", () => {
@@ -112,8 +114,9 @@ describe("style resolver", () => {
       `<screen><button id="a" class="active">x</button><button id="b">y</button></screen>`,
       `button:not(.active) { color: #ff0000; }`,
     );
-    // #a has .active → excluded. #b lacks it → matched.
-    expect(styled.children[0].style.color).toBeUndefined();
+    // #a has .active → excluded. #b lacks it → matched. (UA gives buttons a
+    // default color, so assert the rule's color rather than undefined.)
+    expect(styled.children[0].style.color).not.toBe("#ff0000");
     expect(styled.children[1].style.color).toBe("#ff0000");
   });
 
@@ -124,7 +127,9 @@ describe("style resolver", () => {
       `.first + text { color: #00ff00; }`,
     );
     expect(styled.children[1].style.color).toBe("#00ff00"); // #adj
-    expect(styled.children[2].style.color).toBeUndefined(); // #far
+    // #far must NOT match. (UA screen color inherits into #far, so assert the
+    // rule's color did not apply rather than pinning a UA value.)
+    expect(styled.children[2].style.color).not.toBe("#00ff00"); // #far
   });
 
   it("general sibling combinator (~) matches any following sibling", () => {

@@ -20,7 +20,7 @@ import path from "node:path";
 import { parseHtml, parseHtmlWithKeyboards, extractStyleBlocks } from "./html-parser.js";
 import type { KeyboardTemplate } from "./html-parser.js";
 import { getThemeCss } from "@typecad/cuttlefish/stores/theme-store";
-import { parseCss, parseFontFaces, parseKeyframes } from "./css-parser.js";
+import { parseCss, parseFontFaces, parseKeyframes, resetRegisteredThemeVars } from "./css-parser.js";
 import type { CSSFontFace, CSSRule, KeyframeSet } from "./css-parser.js";
 import { resolveStyles, StyledNode } from "./style-resolver.js";
 import { buildKeyframeSets } from "./keyframes.js";
@@ -95,6 +95,10 @@ export function resetUIRegistry(): void {
   modules.clear();
   lowered.clear();
   entryHasUIFlag = false;
+  // Drop the registered theme variables too, so a fresh transpile run (or a
+  // different project in the same process) doesn't inherit the previous
+  // project's palette in the UA stylesheet's var() resolution.
+  resetRegisteredThemeVars();
 }
 
 /** Load a `.ui.html` module: parse HTML + sibling `.ui.css`, resolve styles, cache. */

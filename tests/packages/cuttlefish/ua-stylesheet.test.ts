@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseHtml } from "@typecad/ui/ui-engine/html-parser";
+import { parseCss, resetRegisteredThemeVars } from "@typecad/ui/ui-engine/css-parser";
 import { resolveStyles } from "@typecad/ui/ui-engine/style-resolver";
 
 // The UA (User-Agent) stylesheet gives elements sensible built-in behavior
@@ -27,5 +28,30 @@ describe("UA stylesheet defaults", () => {
     const html = `<screen><a id="link" href="#x">link</a></screen>`;
     const styled = resolveStyles(parseHtml(html), []);
     expect(styled.children[0].style.textDecoration).toBe("underline");
+  });
+
+  it("resolves its var() tokens against the user CSS theme variables", () => {
+    // The UA stylesheet is parsed standalone (no :root of its own), so its
+    // var(--x) references must resolve against the variables the user CSS
+    // registered — a theme palette alone should re-theme the whole app.
+    const html = `<screen><button id="btn">Go</button></screen>`;
+    const rules = parseCss(`:root { --primary: #ff00aa; --primary-foreground: #000000; --radius: 10px; }`);
+    const styled = resolveStyles(parseHtml(html), rules);
+    const btn = styled.children[0];
+    expect(btn.style.background).toBe("#ff00aa");
+    expect(btn.style.color).toBe("#000000");
+    expect(btn.style.borderRadius).toBe("10px");
+  });
+
+  it("falls back to a default when a token is not defined by the theme", () => {
+    // Projects that don't define every token still get sensible UA defaults.
+    // Reset the cross-source registry so the previous test's palette doesn't
+    // leak into this one (the registry is process-global by design).
+    resetRegisteredThemeVars();
+    const html = `<screen><button id="btn">Go</button></screen>`;
+    const styled = resolveStyles(parseHtml(html), []);
+    const btn = styled.children[0];
+    expect(btn.style.background).toBe("#2563eb");
+    expect(btn.style.borderRadius).toBe("0px");
   });
 });

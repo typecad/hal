@@ -767,6 +767,62 @@ variable scope within it.
 
 The `.ui.html` file defines the structure (elements, IDs, layout); the CSS file defines the appearance (colors, fonts, borders, shadows). Swap either in config without touching the HTML.
 
+#### The UA stylesheet provides the app chrome
+
+The user-agent stylesheet owns the generic UI chrome every screen-based app
+needs — screen scaffolding, the header bar (`.screenHeader` / `.backLink` /
+`.screenTitle`), section captions (`.demoLabel` / `.demoCap`), buttons,
+inputs, selects, lists, and the on-screen keyboard. It expresses every visual
+choice through `var()` tokens with fallbacks:
+
+```css
+/* UA stylesheet (built in) */
+screen       { background: var(--background, #ffffff); gap: 8px; padding: 10px; }
+.screenHeader { background: var(--card, #ffffff); border: 1px solid var(--border, #d4d4d0);
+                border-radius: var(--radius, 0px); box-shadow: var(--shadow, none); }
+button       { background: var(--primary, #2563eb); color: var(--primary-foreground, #ffffff);
+                border-radius: var(--radius, 0px); }
+```
+
+So a theme is **just a variable palette** — no per-project element CSS is
+required. Define the tokens once and every element follows:
+
+```css
+:root {
+  --background: #f7f3e8;
+  --foreground: #15171a;
+  --primary: #ef5b3f;
+  --card: #fffaf0;
+  --border: #15171a;
+  --radius: 6px;
+  --shadow: 3px 3px 0px 0px #000;
+  --font-family: "ColibriDemo";
+}
+```
+
+Tokens you don't define fall back to neutral defaults; a project only writes
+CSS for layout that differs from the defaults. See `demos/demo-st/src/
+showcase.ui` and the `theme.*.css` files there for a worked example.
+
+The UA also ships higher-level chrome primitives so common layouts need no
+per-project CSS at all:
+
+- `.card` — the standard content panel (background/border/padding/shadow via
+tokens, `width: var(--content-width, auto)`).
+- `nav` / `nav button` — a home/landing menu column of full-width buttons
+(accent text on card background, left-aligned).
+- `.press` — a 3D press-down button: a solid vertical lip
+(`box-shadow: 0 3px 0 var(--btn-lip, #0b0d10)`) that flattens and drops the
+button flush on `:pressed`.
+- `.formRow` / `.formStack` / `.formPanel` / `.formPill` / `.formStatus` —
+standard form scaffolding.
+
+Set `--content-width` once (e.g. `280px`) instead of repeating a width on
+every section; set `--btn-lip` to re-theme the press shadow. One caveat:
+rules apply source-order last-wins with no specificity, so a derived rule
+(e.g. `nav button`) must come after the element default it refines (`button`)
+— the UA file is ordered accordingly.
+
 ### Unsupported (and why)
 - `display: grid` — needs a GridLayoutEngine
 - Full inline rich text — basic wrapping, `line-height`, `white-space`, and `<br>` are supported; mixed inline spans are not
