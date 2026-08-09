@@ -131,6 +131,7 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
 // case can fall back to ui_render_list_bands before its definition site).
 static inline uint8_t ui_render_node_bands(uint16_t nodeIdx, int16_t prX, int16_t prY, int16_t prW, int16_t prH);
 static inline uint8_t ui_render_list_bands(uint16_t i);
+static inline uint8_t ui_render_list_direct(uint16_t i);
 static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, UI_COLOR_T color);
 static inline void ui_draw_node_outline(uint16_t i, int16_t drawX, int16_t drawY);
 static inline void ui_draw_gradient_fill(uint16_t i, int16_t drawY);

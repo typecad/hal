@@ -681,6 +681,18 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
       case NODE_LIST: {
         // Virtualized list: state lives on the node now (listCountFn/listItemFn/
         // listCount/scrollY/contentHeight/listItemHeight), not in a side table.
+        // Resolve lazily as a safety net for targets whose startup path runs
+        // before the generated binding table has been copied onto the node.
+        if (!__ui_nodes[i].listItemFn) {
+          for (uint16_t b = 0; b < __ui_list_binding_count; b++) {
+            if (__ui_list_bindings[b].node == static_cast<uint16_t>(i)) {
+              __ui_nodes[i].listCountFn = __ui_list_bindings[b].countFn;
+              __ui_nodes[i].listItemFn = __ui_list_bindings[b].itemFn;
+              __ui_nodes[i].listTapFn = __ui_list_bindings[b].tapFn;
+              break;
+            }
+          }
+        }
         if (!__ui_nodes[i].listItemFn) break;
         int16_t bx = __ui_nodes[i].box.x;
         int16_t by = drawY;
@@ -692,6 +704,19 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
         int16_t listContentH = __ui_nodes[i].contentHeight;
         UI_COLOR_T clearCol = __ui_nodes[i].clearColor;
         uint8_t listFullRepaint = 0;
+#if defined(CUTTLEFISH_GFX_DEFINED)
+        // The native Cuttlefish panel's print()/drawChar() path is the most
+        // reliable direct-panel text path. Avoid a large list canvas on this
+        // target: it can be allocated successfully while its RGB565 blit path
+        // drops glyphs, leaving only the list background and scrollbar visible.
+        // ui_render_list_direct keeps the full repaint in one panel transaction.
+        if (!drawingBufferedScroll && !__ui_fb &&
+            ui_render_list_direct(static_cast<uint16_t>(i))) {
+          __ui_nodes[i].box.x = origBoxX;
+          __ui_nodes[i].box.y = origBoxY;
+          return 1;
+        }
+#endif
         // Render to a viewport-sized canvas so edge glyphs are naturally clipped.
         // Treat a null buffer (failed internal malloc) as "no canvas" and retry —
         // see __ui_node_canvas for the zombie-caching rationale.
@@ -713,6 +738,16 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
           // give up (render nothing) — same as the old break.
           if (ui_render_list_bands(static_cast<uint16_t>(i))) {
             return 1;  // band path handled push + decoration + dirty-clear
+          }
+          // Last-resort visible fallback: if even the small band canvas cannot
+          // allocate, draw the fully visible rows in one target transaction
+          // rather than leaving a black/empty list. This path is only reached
+          // under extreme memory pressure; normal renders remain atomic canvas
+          // pushes.
+          if (ui_render_list_direct(static_cast<uint16_t>(i))) {
+            __ui_nodes[i].box.x = origBoxX;
+            __ui_nodes[i].box.y = origBoxY;
+            return 1;
           }
           break;
         }
@@ -768,8 +803,11 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
             int16_t __ui_saved_off_y2 = __ui_draw_off_y;
             __ui_draw_off_x = 0;
             __ui_draw_off_y = 0;
-            ui_draw_text(listBuf, 4, itemY + static_cast<int16_t>(ih - 16) / 2,
-              __ui_nodes[i].fg, clearCol, 2, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
+            // Keep classic list glyphs in the canvas pixel buffer. Native
+            // CuttlefishGFX text can disappear when copied from a canvas to
+            // the panel, while the explicit glyph path remains compositable.
+            ui_draw_list_text(listBuf, 4, itemY + static_cast<int16_t>(ih - 16) / 2,
+              __ui_nodes[i].fg, clearCol, 2, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
             __ui_draw_off_x = __ui_saved_off_x2;
             __ui_draw_off_y = __ui_saved_off_y2;
             ui_display_set_target(listPrevTarget);
@@ -1261,8 +1299,11 @@ static inline uint8_t ui_render_list_bands(uint16_t i) {
         int16_t __ui_saved_off_y = __ui_draw_off_y;
         __ui_draw_off_x = 0;
         __ui_draw_off_y = 0;
-        ui_draw_text(listBuf, 4, itemY + static_cast<int16_t>(ih - 16) / 2,
-          __ui_nodes[i].fg, clearCol, 2, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
+        // Keep classic list glyphs in the canvas pixel buffer. Native
+        // CuttlefishGFX text can disappear when copied from a canvas to
+        // the panel, while the explicit glyph path remains compositable.
+        ui_draw_list_text(listBuf, 4, itemY + static_cast<int16_t>(ih - 16) / 2,
+          __ui_nodes[i].fg, clearCol, 2, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
         __ui_draw_off_x = __ui_saved_off_x;
         __ui_draw_off_y = __ui_saved_off_y;
         ui_display_set_target(listBandPrevTarget);
@@ -1298,6 +1339,70 @@ static inline uint8_t ui_render_list_bands(uint16_t i) {
   __ui_nodes[i].dirty = 0;
   __ui_nodes[i].box.x = origBoxX;
   __ui_nodes[i].box.y = origBoxY;
+  return 1;
+}
+
+// Last-resort list renderer used only when neither the viewport canvas nor the
+// bounded band canvas can allocate. It keeps the list usable under severe heap
+// pressure; normal paths remain canvas-composited and tear-resistant.
+static inline uint8_t ui_render_list_direct(uint16_t i) {
+  if (i >= __ui_node_count || !__ui_nodes[i].listItemFn) return 0;
+  int16_t bx = __ui_nodes[i].box.x;
+  int16_t by = ui_draw_y_for_node(i);
+  int16_t bw = __ui_nodes[i].box.w;
+  int16_t bh = __ui_nodes[i].box.h;
+  if (bw <= 0 || bh <= 0) return 0;
+  uint16_t ih = __ui_nodes[i].listItemHeight > 0 ? __ui_nodes[i].listItemHeight : 24;
+  uint16_t count = __ui_nodes[i].listCount;
+  int16_t scrollY = __ui_nodes[i].scrollY;
+  UI_COLOR_T bg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+  CuttlefishDisplayTarget* target = ui_display_get_target();
+  ui_display_set_target(target);
+  // This fallback is used only when no framebuffer is active. Keep the fill,
+  // native text, and scrollbar in one panel transaction so the visible fallback
+  // remains coherent on SPI TFTs even though it does not use a canvas.
+  if (!__ui_fb) display_startWrite();
+  ui_display_fill_rect(bx, by, bw, bh, bg);
+  char buf[UI_TEXT_BUF + 1];
+  uint16_t first = static_cast<uint16_t>((scrollY + 15) / ih);
+  int16_t lastY = static_cast<int16_t>(scrollY + bh - 16);
+  uint16_t last = lastY >= 0 ? static_cast<uint16_t>(lastY / ih) : 0;
+  if (count > 0 && last >= count) last = count - 1;
+  if (count > 0 && first < count && first <= last) {
+    for (uint16_t idx = first; idx <= last; idx++) {
+      int16_t itemY = static_cast<int16_t>(idx * ih) - scrollY;
+      __ui_nodes[i].listItemFn(idx, buf, UI_TEXT_BUF + 1);
+      buf[UI_TEXT_BUF] = 0;
+      int16_t savedX = __ui_draw_off_x;
+      int16_t savedY = __ui_draw_off_y;
+      __ui_draw_off_x = 0;
+      __ui_draw_off_y = 0;
+      ui_draw_list_text_direct(buf, bx + 4, by + itemY + static_cast<int16_t>(ih - 16) / 2,
+        __ui_nodes[i].fg, bg, 2, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
+      __ui_draw_off_x = savedX;
+      __ui_draw_off_y = savedY;
+    }
+  }
+  if (__ui_nodes[i].contentHeight > bh) {
+    int16_t tx = bx + bw - 4;
+    uint16_t thumbH = static_cast<uint32_t>(bh) * bh / __ui_nodes[i].contentHeight;
+    if (thumbH < 8) thumbH = 8;
+    if (thumbH > static_cast<uint16_t>(bh)) thumbH = static_cast<uint16_t>(bh);
+    int16_t maxScroll = __ui_nodes[i].contentHeight - bh;
+    uint16_t thumbY = maxScroll > 0 ? static_cast<uint32_t>(bh - thumbH) * scrollY / maxScroll : 0;
+    UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[i].fg >> 1) & UI_DIM_MASK);
+    ui_display_fill_rect(tx, by, 3, bh, dimFg);
+    ui_display_fill_rect(tx, static_cast<int16_t>(by + thumbY), 3, thumbH, __ui_nodes[i].fg);
+  }
+  if (!__ui_fb) display_endWrite();
+  ui_draw_shadow(i, by, 1);
+  if (__ui_nodes[i].borderStyle != 0) {
+    UI_COLOR_T border = __ui_nodes[i].borderColor ? __ui_nodes[i].borderColor : __ui_nodes[i].fg;
+    ui_draw_node_border(i, bx, by, border);
+  }
+  ui_draw_node_outline(i, bx, by);
+  __ui_nodes[i].lastPaintedScrollY = scrollY;
+  __ui_nodes[i].dirty = 0;
   return 1;
 }
 `;

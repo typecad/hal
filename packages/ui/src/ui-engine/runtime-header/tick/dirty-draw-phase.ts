@@ -148,7 +148,12 @@ export function emitTickDirtyDrawPhase(): string {
     if (!ui_is_effectively_visible(s)) continue;
     if (__ui_nodes[s].screenId != __ui_active_screen) continue;
     if (__ui_nodes[s].contentHeight <= __ui_nodes[s].box.h) continue;
-    if (!__ui_nodes[s].dirty) continue;
+      if (!__ui_nodes[s].dirty) continue;
+      // Virtualized lists manage their own rendering (NODE_LIST case in
+      // ui_draw_node_body). Skip them in the scroll dispatch — the band
+      // renderer walks their subtree (which is empty for virtualized lists),
+      // leaving the list node itself unpainted.
+      if (__ui_nodes[s].virtualized) continue;
     if (__ui_fb) __ui_fb_frame_dirty = 1;
 
     int16_t vw = __ui_nodes[s].box.w;

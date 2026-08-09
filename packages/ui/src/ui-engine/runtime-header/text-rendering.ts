@@ -548,6 +548,59 @@ static inline void ui_draw_text(const char* text, int16_t x, int16_t y, UI_COLOR
 }
 #endif
 
+// Draw classic list rows without routing through CuttlefishGFX::print(). The
+// Zephyr native target uses CuttlefishGFX for both the panel and RGB565 canvas;
+// its virtual text path is reliable on the panel but can be lost when the
+// canvas is later copied to the panel. Writing the same 5x7 glyphs through the
+// normal pixel/fill shims keeps the row pixels in the canvas buffer and works
+// for both cached-list and band-list rendering. Other adapters retain the
+// existing ui_draw_text fallback because they provide their own canvas text
+// implementation.
+static inline void ui_draw_list_text(const char* text, int16_t x, int16_t y,
+                                      UI_COLOR_T fg, UI_COLOR_T bg, uint8_t ts,
+                                      uint8_t fontFace, int8_t letterSpacing) {
+#if defined(CUTTLEFISH_GFX_DEFINED)
+  if (fontFace == 0) {
+    if (!text) text = "";
+    if (ts == 0) ts = 2;
+    int16_t cx = x;
+    for (const unsigned char* p = (const unsigned char*)text; *p; p++) {
+      uint8_t ch = *p;
+      // CuttlefishGFX's classic font is the full 256-glyph Adafruit table.
+      for (uint8_t col = 0; col < 5; col++) {
+        uint8_t bits = cuttlefish_glcdfont[static_cast<uint16_t>(ch) * 5u + col];
+        for (uint8_t row = 0; row < 7; row++) {
+          if (bits & static_cast<uint8_t>(1u << row)) {
+            ui_display_fill_rect(static_cast<int16_t>(cx + static_cast<int16_t>(col) * ts),
+              static_cast<int16_t>(y + static_cast<int16_t>(row) * ts), ts, ts, fg);
+          }
+        }
+      }
+      // Match the classic GFX advance: five columns plus one blank column.
+      cx = static_cast<int16_t>(cx + static_cast<int16_t>(ts) * 6 + letterSpacing);
+    }
+    return;
+  }
+#endif
+  ui_draw_text(text, x, y, fg, bg, ts, 0, fontFace, letterSpacing);
+}
+
+// Direct-panel list fallback. CuttlefishGFX's bitmap glyph path above is
+// intentionally used for RAM canvases, but a few native panel adapters only
+// commit their text state correctly through print()/drawChar(). Use that
+// established path when the list is painted straight to the panel; the caller
+// keeps the whole list inside one write transaction, so this does not expose a
+// partially composed row set.
+static inline void ui_draw_list_text_direct(const char* text, int16_t x, int16_t y,
+                                             UI_COLOR_T fg, UI_COLOR_T bg, uint8_t ts,
+                                             uint8_t fontFace, int8_t letterSpacing) {
+  if (fontFace == 0) {
+    ui_draw_bitmap_text(text, x, y, fg, bg, ts, letterSpacing);
+  } else {
+    ui_draw_text(text, x, y, fg, bg, ts, 0, fontFace, letterSpacing);
+  }
+}
+
 /** Truncate a NUL-terminated buffer in place to fit within maxWidth (px) and
  *  append "...". Used by text-overflow: ellipsis. Adafruit_GFX has no ellipsis
  *  glyph, so three ASCII dots approximate it. */

@@ -689,7 +689,16 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*deltaY\s*=\s*listScrollY\s*-\s*__ui_nodes\[i\]\.lastPaintedScrollY/);
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*canShiftList[\s\S]*ui_shift_container_canvas\(lc,\s*deltaY,\s*clearCol,\s*&repaintY,\s*&repaintH\)/);
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*ui_get_repair_canvas\(bw,\s*repaintH\)[\s\S]*listTextOffsetY\s*=\s*repaintY/);
-    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*display_targetPrint\(\(CuttlefishDisplayTarget\*\)listTextCanvas,\s*listBuf\)[\s\S]*ui_draw_canvas_rect\(listTextCanvas,\s*0,\s*repaintY,\s*bw,\s*repaintH\)/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*ui_draw_list_text\(listBuf,[\s\S]*clearCol,\s*2,\s*__ui_nodes\[i\]\.fontFace/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*__ui_draw_off_x\s*=\s*0;[\s\S]*__ui_draw_off_y\s*=\s*0;[\s\S]*ui_draw_list_text\(listBuf/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*ui_draw_canvas_rect\(listTextCanvas,\s*0,\s*repaintY,\s*bw,\s*repaintH\)/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*ui_render_list_bands\(static_cast<uint16_t>\(i\)\)[\s\S]*ui_render_list_direct\(static_cast<uint16_t>\(i\)\)/);
+    expect(header).toMatch(/ui_render_list_direct\(uint16_t i\)[\s\S]*ui_display_fill_rect\(bx, by, bw, bh, bg\)[\s\S]*ui_draw_list_text_direct/);
+    expect(header).toMatch(/ui_draw_list_text[\s\S]*CUTTLEFISH_GFX_DEFINED[\s\S]*cuttlefish_glcdfont[\s\S]*ui_display_fill_rect/);
+    expect(header).toMatch(/ui_draw_list_text_direct[\s\S]*ui_draw_bitmap_text/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*!drawingBufferedScroll && !__ui_fb[\s\S]*ui_render_list_direct\(static_cast<uint16_t>\(i\)\)[\s\S]*__ui_nodes\[i\]\.box\.x\s*=\s*origBoxX[\s\S]*__ui_nodes\[i\]\.box\.y\s*=\s*origBoxY/);
+    expect(header).toMatch(/ui_render_list_direct[\s\S]*if \(!__ui_fb\) display_startWrite\(\)[\s\S]*if \(!__ui_fb\) display_endWrite\(\)/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*ui_draw_list_text\(listBuf/);
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*uint16_t first\s*=\s*\(listScrollY \+ repaintY\) \/ ih/);
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*__ui_nodes\[i\]\.lastPaintedScrollY\s*=\s*listScrollY/);
     expect(header).toMatch(/newCount != __ui_nodes\[i\]\.listCount[\s\S]*lastPaintedScrollY\s*=\s*__ui_nodes\[i\]\.scrollY\s*-/);
