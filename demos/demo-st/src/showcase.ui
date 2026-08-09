@@ -44,7 +44,7 @@
     screen.demoList,
     () => 40,
     (i: number) => `Item ${i + 1}`,
-    (i: number) => { console.log('tapped:', i); },
+    (i: number) => { console.log('tapped: ' + i); },
   );
 
   // ── Media screen: canvas drawing every primitive once ─────────────────────
@@ -164,7 +164,7 @@
     screen.demoList,
     () => 40,
     (i: number) => `Item ${i + 1}`,
-    (i: number) => { console.log('tapped:', i); },
+    (i: number) => { console.log('tapped: ' + i); },
   );
 
   // ── Media screen: canvas drawing every primitive once ─────────────────────

@@ -260,11 +260,6 @@ export function emitTickDirtyDrawPhase(): string {
       if (__ui_fb) __ui_fb_frame_dirty = 1;
       if (!ui_is_effectively_visible(i)) { __ui_nodes[i].dirty = 0; continue; }
       if (__ui_nodes[i].screenId != __ui_active_screen) { __ui_nodes[i].dirty = 0; continue; }
-#if defined(ESP32) && defined(ARDUINO)
-      if (__ui_nodes[i].kind == NODE_LIST) { static uint8_t lp2=0; if(!lp2){lp2=1; Serial.printf("[draw-probe] LIST node %u reached draw, dirty=1, listItemFn=%u\\n",(unsigned)i,(unsigned)(__ui_nodes[i].listItemFn!=nullptr));} }
-#else
-      if (__ui_nodes[i].kind == NODE_LIST) { static uint8_t lp2=0; if(!lp2){lp2=1; printf("[draw-probe] LIST node %u reached draw, dirty=1, listItemFn=%u\\n",(unsigned)i,(unsigned)(__ui_nodes[i].listItemFn!=nullptr));} }
-#endif
     } else {
       // malloc failed at startup: preserve correct z-order via selection sort.
       i = -1;
