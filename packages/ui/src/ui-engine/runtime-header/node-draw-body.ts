@@ -704,19 +704,6 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
         int16_t listContentH = __ui_nodes[i].contentHeight;
         UI_COLOR_T clearCol = __ui_nodes[i].clearColor;
         uint8_t listFullRepaint = 0;
-#if defined(CUTTLEFISH_GFX_DEFINED)
-        // The native Cuttlefish panel's print()/drawChar() path is the most
-        // reliable direct-panel text path. Avoid a large list canvas on this
-        // target: it can be allocated successfully while its RGB565 blit path
-        // drops glyphs, leaving only the list background and scrollbar visible.
-        // ui_render_list_direct keeps the full repaint in one panel transaction.
-        if (!drawingBufferedScroll && !__ui_fb &&
-            ui_render_list_direct(static_cast<uint16_t>(i))) {
-          __ui_nodes[i].box.x = origBoxX;
-          __ui_nodes[i].box.y = origBoxY;
-          return 1;
-        }
-#endif
         // Render to a viewport-sized canvas so edge glyphs are naturally clipped.
         // Treat a null buffer (failed internal malloc) as "no canvas" and retry —
         // see __ui_node_canvas for the zombie-caching rationale.
