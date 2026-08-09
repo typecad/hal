@@ -10,7 +10,7 @@ const config: CuttlefishConfig = {
   // ESP32-S3 N16R8 has PSRAM. Uncomment to route large canvas allocations
   // (scroll viewports, lists) to external RAM instead of the SRAM
   // band-renderer path. Also enables the full-screen PSRAM framebuffer.
-  // psram: 'opi',
+  psram: 'opi',
   toolchain: { type: 'west' },
   console: { baudRate: 115200, port: 'COM12' },
   display: {
