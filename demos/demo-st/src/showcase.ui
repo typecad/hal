@@ -447,7 +447,7 @@ screen {
 .visCaption { color: #333333; font-size: 12px; text-align: center; width: 220px; margin-top: 4px; }
 .visText { color: var(--foreground); font-size: 13px; text-align: center; }
 #opacityRow { flex-direction: row; gap: 10px; align-items: center; }
-.opaqChip { width: 50px; height: 36px; background: var(--primary); color: var(--primary-foreground); font-size: 13px; text-align: center; justify-content: center; align-items: center; }
+.opaqChip { width: 50px; height: 36px; background: var(--primary); color: #000000; font-size: 13px; text-align: center; justify-content: center; align-items: center; }
 
 /* ── Flexbox screen ── */
 #flexJustify, #flexAlign, #flexGrow, #flexOrder {
