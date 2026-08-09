@@ -83,6 +83,7 @@ export function emitTickDirtyDrawPhase(): string {
   // remains sequential on panels without TE/vblank synchronization.
   CuttlefishCanvas16* __ui_fb = ui_get_framebuffer();
   CuttlefishDisplayTarget* __ui_draw_target = __ui_fb ? (CuttlefishDisplayTarget*)__ui_fb : display_defaultTarget();
+  ui_fb_begin_frame();
   // A retained framebuffer only needs an SPI transfer when composition changed.
   // Avoid pushing a full frame on idle ticks; this is the main steady-state cost
   // of the PSRAM path on otherwise static screens.
@@ -95,6 +96,7 @@ export function emitTickDirtyDrawPhase(): string {
         : __ui_nodes[__ui_active_screen_bg_node].clearColor;
     }
     display_canvasFillScreen(__ui_fb, fbBg);
+    ui_fb_add_rect(0, 0, display_width(), display_height());
     // A retained framebuffer cannot reuse the previous screen's pixels. Mark
     // every node on the active screen dirty for one coherent composition.
     for (uint16_t f = 0; f < __ui_node_count; f++) {
@@ -129,6 +131,10 @@ export function emitTickDirtyDrawPhase(): string {
   // never enabled: direct per-node SPI drawing is a visible tearing path, so a
   // missing canvas freezes the affected viewport instead.
   uint8_t bufferedScrollDirectFull = 0;
+  // Local retained-canvas repair: dirty descendants draw directly into the
+  // full-frame framebuffer while the existing scroll canvas is invalidated for
+  // the next actual scroll. This avoids copying an unchanged viewport.
+  uint8_t bufferedScrollLocalRepair = 0;
   // Band renderer pending: like bufferedScrollDirectFull but the actual paint
   // is deferred to the scroll owner's z-order slot in the main draw loop. The
   // band composites the whole subtree at once, so it must paint AFTER lower-z
@@ -154,6 +160,10 @@ export function emitTickDirtyDrawPhase(): string {
       // renderer walks their subtree (which is empty for virtualized lists),
       // leaving the list node itself unpainted.
       if (__ui_nodes[s].virtualized) continue;
+    // The retained framebuffer only needs the full viewport for actual scroll
+    // movement or the first composition. A local child update is repaired in
+    // the existing scroll canvas and contributes its own paint rect later;
+    // pushing the whole viewport here is the Forms-screen flash.
     if (__ui_fb) __ui_fb_frame_dirty = 1;
 
     int16_t vw = __ui_nodes[s].box.w;
@@ -212,13 +222,38 @@ export function emitTickDirtyDrawPhase(): string {
         }
       }
       if (!canShift) {
-        for (uint16_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
-          __ui_nodes[c].dirty = 1;
-          if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
-          else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
-          __ui_nodes[c].lastTextHeight = 0;
+        // A zero-delta dirty scroll owner is usually a local child update (a
+        // form binding, button transition, or animation). Keep the retained
+        // canvas and its existing pixels in that case; the dirty descendants
+        // will redraw in place and the final framebuffer union stays local.
+        uint8_t localRepair = __ui_fb && deltaY == 0 &&
+          __ui_nodes[s].lastPaintedScrollY == __ui_nodes[s].scrollY &&
+          ui_scroll_subtree_has_dirty(s);
+        if (localRepair) {
+          // The framebuffer is already the authoritative composition surface for
+          // this zero-delta update. Let dirty descendants draw there directly;
+          // invalidate the retained scroll canvas after each child draw so it is
+          // rebuilt before the next scroll gesture.
+          bufferedScrollLocalRepair = 1;
+          bufferedScrollCanvas = nullptr;
+          bufferedScrollRepaintCanvas = nullptr;
+        } else {
+          // Initial composition, a large jump, or an owner-only invalidation:
+          // seed the whole viewport and repaint its complete stacking subtree.
+          for (uint16_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
+            __ui_nodes[c].dirty = 1;
+            if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
+            else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
+            __ui_nodes[c].lastTextHeight = 0;
+          }
+          display_canvasFillScreen(bufferedScrollCanvas, scrollBg);
+          if (__ui_fb) ui_fb_add_rect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
+            __ui_nodes[s].box.w, __ui_nodes[s].box.h);
         }
-        display_canvasFillScreen(bufferedScrollCanvas, scrollBg);
+      } else if (__ui_fb) {
+        // Shift-and-repair changes the entire viewport's visible mapping.
+        ui_fb_add_rect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
+          __ui_nodes[s].box.w, __ui_nodes[s].box.h);
       }
       // The scroll owner is represented by bufferedScrollCanvas this frame.
       // Drawing it directly first clears the live display and makes scrolling
@@ -288,7 +323,7 @@ export function emitTickDirtyDrawPhase(): string {
       int16_t scrollComp = ui_overflow_scroll_compositor(static_cast<uint16_t>(i));
       if (scrollComp >= 0) {
         uint8_t compositing = scrollComp == bufferedScrollNode &&
-          (bufferedScrollCanvas || bufferedScrollDirectFull || bufferedScrollBands);
+          (bufferedScrollCanvas || bufferedScrollDirectFull || bufferedScrollBands || bufferedScrollLocalRepair);
         if (!compositing) {
           if (static_cast<uint16_t>(i) == static_cast<uint16_t>(scrollComp)) break;
           __ui_nodes[i].dirty = 0;
@@ -339,7 +374,7 @@ export function emitTickDirtyDrawPhase(): string {
 
     // Mode C strip / direct-full: scroll owner is not drawn directly (would fill
     // the viewport); its children are drawn directly below.
-    if (bufferedScrollDirectFull && bufferedScrollNode >= 0 &&
+    if ((bufferedScrollDirectFull || bufferedScrollLocalRepair) && bufferedScrollNode >= 0 &&
         static_cast<uint16_t>(i) == static_cast<uint16_t>(bufferedScrollNode)) {
       __ui_nodes[i].dirty = 0;
       continue;
@@ -598,5 +633,6 @@ export function emitTickDirtyDrawPhase(): string {
     // Report this node's bounding box to the deferred-refresh accumulator. Phase
     // 4 uses the box as the dirty rect (a safe over-estimate); Phase 5 tightens
     // to the actual paint rect. No-op on TFT (compiles to nothing).
+    if (__ui_fb) ui_fb_add_rect(paintRect.x, paintRect.y, paintRect.w, paintRect.h);
     ui_refresh_add_rect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h);`;
 }

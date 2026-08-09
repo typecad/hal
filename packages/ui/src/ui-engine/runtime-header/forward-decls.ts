@@ -70,6 +70,12 @@ static inline void ui_navigate(uint8_t screenIdx) {
     __ui_nodes[i].dirty = 1;
     __ui_nodes[i].lastTextHeight = 0;
     __ui_nodes[i].layoutCacheKey = 0;
+    if (__ui_nodes[i].scrollable) {
+      // The next screen needs a complete scroll-canvas seed; subsequent local
+      // child updates can use retained-canvas repairs.
+      __ui_nodes[i].lastPaintedScrollY = static_cast<int16_t>(
+        __ui_nodes[i].scrollY - (__ui_nodes[i].box.h > 0 ? __ui_nodes[i].box.h : 1));
+    }
     if (__ui_nodes[i].kind == NODE_PROGRESS || __ui_nodes[i].kind == NODE_RANGE) __ui_nodes[i].lastTextWidth = -1;
     else __ui_nodes[i].lastTextWidth = 0;
   }

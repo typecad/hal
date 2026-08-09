@@ -22,6 +22,13 @@ static inline void ui_init(void) {
     __ui_nodes[i].dirty = 1;
     __ui_nodes[i].lastTextHeight = 0;
     __ui_nodes[i].layoutCacheKey = 0;
+    if (__ui_nodes[i].scrollable) {
+      // Force the first scroll-canvas composition to seed every pixel. After
+      // that, a dirty child can be repaired in place without repainting the
+      // entire viewport.
+      __ui_nodes[i].lastPaintedScrollY = static_cast<int16_t>(
+        __ui_nodes[i].scrollY - (__ui_nodes[i].box.h > 0 ? __ui_nodes[i].box.h : 1));
+    }
     if (__ui_nodes[i].kind == NODE_PROGRESS || __ui_nodes[i].kind == NODE_RANGE) {
       __ui_nodes[i].lastTextWidth = -1;
     }

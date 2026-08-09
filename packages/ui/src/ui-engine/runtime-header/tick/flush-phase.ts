@@ -5,9 +5,13 @@ export function emitTickFlushPhase(): string {
   return `
   }
   // ── Framebuffer bulk push ────────────────────────────────────────────────
-  // When a framebuffer was used this frame, flush it to the display in a single
-  // SPI transaction and restore the direct-draw target. No-op without one.
-  if (__ui_fb && __ui_fb_frame_dirty) {
+  // When a framebuffer was used this frame, publish only its changed bounds.
+  // Local touch updates therefore avoid a full-screen SPI burst (which appears
+  // as a brightness dip on panels without a synchronized frame latch).
+  // Repairs performed before the dirty-node pass (for example transform
+  // geometry cleanup) may update the retained buffer without leaving a node
+  // dirty. The dirty-bounds accumulator is the authoritative publish signal.
+  if (__ui_fb && (__ui_fb_frame_dirty || __ui_fb_dirty)) {
     ui_push_framebuffer();
   }
   ui_display_use_default_target();

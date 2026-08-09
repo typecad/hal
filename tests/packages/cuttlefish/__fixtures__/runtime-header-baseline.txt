@@ -697,6 +697,12 @@ static inline void ui_navigate(uint8_t screenIdx) {
     __ui_nodes[i].dirty = 1;
     __ui_nodes[i].lastTextHeight = 0;
     __ui_nodes[i].layoutCacheKey = 0;
+    if (__ui_nodes[i].scrollable) {
+      // The next screen needs a complete scroll-canvas seed; subsequent local
+      // child updates can use retained-canvas repairs.
+      __ui_nodes[i].lastPaintedScrollY = static_cast<int16_t>(
+        __ui_nodes[i].scrollY - (__ui_nodes[i].box.h > 0 ? __ui_nodes[i].box.h : 1));
+    }
     if (__ui_nodes[i].kind == NODE_PROGRESS || __ui_nodes[i].kind == NODE_RANGE) __ui_nodes[i].lastTextWidth = -1;
     else __ui_nodes[i].lastTextWidth = 0;
   }
@@ -1178,6 +1184,47 @@ static inline void ui_scroll_advance_settle(uint16_t node, uint16_t deltaMs) {
 // reduction, not a strict hardware-level tear-free guarantee.
 static CuttlefishCanvas16* __ui_fb = nullptr;
 static uint8_t __ui_fb_tried = 0;  // 0 = not yet attempted, 1 = alloc attempted
+// Dirty bounds for the retained framebuffer. A local touch update should not
+// retransmit the entire panel: the full-frame burst is long enough to look like
+// a brightness dip on SPI TFTs even though the framebuffer itself is coherent.
+static uint8_t __ui_fb_dirty = 0;
+static int16_t __ui_fb_dirty_x0 = 0;
+static int16_t __ui_fb_dirty_y0 = 0;
+static int16_t __ui_fb_dirty_x1 = 0;
+static int16_t __ui_fb_dirty_y1 = 0;
+
+static inline void ui_fb_begin_frame() {
+  __ui_fb_dirty = 0;
+  __ui_fb_dirty_x0 = display_width();
+  __ui_fb_dirty_y0 = display_height();
+  __ui_fb_dirty_x1 = 0;
+  __ui_fb_dirty_y1 = 0;
+}
+
+static inline void ui_fb_add_rect(int16_t x, int16_t y, int16_t w, int16_t h) {
+  if (w <= 0 || h <= 0) return;
+  int16_t x0 = x < 0 ? 0 : x;
+  int16_t y0 = y < 0 ? 0 : y;
+  int16_t x1 = x + w;
+  int16_t y1 = y + h;
+  int16_t dw = display_width();
+  int16_t dh = display_height();
+  if (x1 > dw) x1 = dw;
+  if (y1 > dh) y1 = dh;
+  if (x0 >= x1 || y0 >= y1) return;
+  if (!__ui_fb_dirty) {
+    __ui_fb_dirty_x0 = x0;
+    __ui_fb_dirty_y0 = y0;
+    __ui_fb_dirty_x1 = x1;
+    __ui_fb_dirty_y1 = y1;
+    __ui_fb_dirty = 1;
+    return;
+  }
+  if (x0 < __ui_fb_dirty_x0) __ui_fb_dirty_x0 = x0;
+  if (y0 < __ui_fb_dirty_y0) __ui_fb_dirty_y0 = y0;
+  if (x1 > __ui_fb_dirty_x1) __ui_fb_dirty_x1 = x1;
+  if (y1 > __ui_fb_dirty_y1) __ui_fb_dirty_y1 = y1;
+}
 
 // Get the framebuffer, allocating once (in PSRAM when available). Returns null
 // when PSRAM is absent or the allocation failed — callers fall back to direct.
@@ -1200,14 +1247,42 @@ static inline CuttlefishCanvas16* ui_get_framebuffer() {
   return __ui_fb;
 }
 
-// Push the entire framebuffer to the display in one bulk SPI transaction.
+// Push only the changed framebuffer bounds. Rows are sent separately when the
+// dirty union is narrower than the framebuffer because the source canvas has a
+// wider stride than the panel window. Each row is complete before it reaches
+// the panel, and the display adapter can synchronize each window to scanline.
 static inline void ui_push_framebuffer() {
-  if (!__ui_fb || !display_canvasBuffer(__ui_fb)) return;
-  int16_t w = display_canvasWidth(__ui_fb);
-  int16_t h = display_canvasHeight(__ui_fb);
+  if (!__ui_fb || !display_canvasBuffer(__ui_fb) || !__ui_fb_dirty) return;
+  int16_t fw = display_canvasWidth(__ui_fb);
+  int16_t fh = display_canvasHeight(__ui_fb);
+  int16_t x = __ui_fb_dirty_x0;
+  int16_t y = __ui_fb_dirty_y0;
+  int16_t w = static_cast<int16_t>(__ui_fb_dirty_x1 - x);
+  int16_t h = static_cast<int16_t>(__ui_fb_dirty_y1 - y);
+  if (x < 0 || y < 0 || w <= 0 || h <= 0 || x >= fw || y >= fh) return;
+  if (x + w > fw) w = static_cast<int16_t>(fw - x);
+  if (y + h > fh) h = static_cast<int16_t>(fh - y);
+  // Use the panel's native bulk-pixel path, not drawRGBBitmap(). The native
+  // CuttlefishGFX implementation of drawRGBBitmap is intentionally generic and
+  // emits one writePixel transaction per pixel; using it for a retained-frame
+  // flush turns a small local update into hundreds of visible SPI flashes.
+  UI_COLOR_T* pixels = display_canvasBuffer(__ui_fb);
   display_startWrite();
-  display_setAddrWindow(0, 0, w, h);
-  display_writePixels(display_canvasBuffer(__ui_fb), static_cast<uint32_t>(w) * h);
+  if (x == 0 && w == fw) {
+    // Full-width rows are contiguous and can use one bulk write.
+    display_setAddrWindow(x, y, w, h);
+    display_writePixels(pixels + static_cast<int32_t>(y) * fw,
+      static_cast<uint32_t>(w) * h);
+  } else {
+    // Narrow dirty bounds require one row at a time because the source stride
+    // is fw while each destination window is only w pixels wide.
+    for (int16_t row = 0; row < h; row++) {
+      display_setAddrWindow(x, static_cast<int16_t>(y + row), w, 1);
+      display_writePixels(
+        pixels + static_cast<int32_t>(y + row) * fw + x,
+        static_cast<uint32_t>(w));
+    }
+  }
   display_endWrite();
 }
 
@@ -1476,6 +1551,10 @@ static inline void ui_push_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, in
   // via __ui_gfx (so the single bulk push at frame end captures everything).
   // Otherwise write straight to the display in one SPI transaction.
   if (__ui_fb) {
+    // The framebuffer is the composition target. Track this publish so a
+    // geometry repair or scroll-canvas repair that does not leave a node dirty
+    // still reaches the panel during the frame-end flush.
+    ui_fb_add_rect(x, y, w, h);
     if (w == stride) {
       ui_display_draw_rgb_bitmap(x, y, pixels, w, h);
       return;
@@ -2200,8 +2279,13 @@ static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx,
   CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(r->w, r->h);
   if (!repairCanvas) return 0;
   ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, r->x, r->y, 0);
-  ui_display_use_default_target();
+  // During a retained-framebuffer tick, publish the repair into the RAM
+  // composition surface. Sending it to the live panel here creates the visible
+  // erase/redraw flash seen on animated transforms.
+  if (__ui_fb) ui_display_set_target((CuttlefishDisplayTarget*)__ui_fb);
+  else ui_display_use_default_target();
   ui_push_canvas_rect(repairCanvas, r->x, r->y, r->w, r->h);
+  ui_display_use_default_target();
   return 1;
 }
 
@@ -2349,7 +2433,8 @@ static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* pain
   if (nodeIdx >= __ui_node_count || !paintRect || paintRect->w <= 0 || paintRect->h <= 0) return;
   int16_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
   UIRect r = *paintRect;
-  ui_display_use_default_target();
+  if (__ui_fb) ui_display_set_target((CuttlefishDisplayTarget*)__ui_fb);
+  else ui_display_use_default_target();
   if (scrollParent >= 0) {
     UIRect clip = {
       __ui_nodes[scrollParent].box.x,
@@ -2447,8 +2532,12 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   int16_t fillH = ui_rotated_face_h(nodeIdx, __ui_nodes[nodeIdx].box.w, __ui_nodes[nodeIdx].box.h);
   ui_display_fill_rect(drawX, drawY, fillW, fillH, fillBg);
   ui_display_set_target(previousGfx);
-  ui_display_use_default_target();
+  // Keep geometry repair off the physical panel when a retained framebuffer is
+  // active; the final dirty-bounds publish will send the old+new union once.
+  if (__ui_fb) ui_display_set_target((CuttlefishDisplayTarget*)__ui_fb);
+  else ui_display_use_default_target();
   ui_push_canvas_rect(repairCanvas, repair.x, repair.y, repair.w, repair.h);
+  ui_display_use_default_target();
   if (scrollParent >= 0) ui_invalidate_scroll_canvas_for_node(nodeIdx);
   ui_mark_overlapping_higher_layers_dirty_for_rect(nodeIdx, &repair);
   return 1;
@@ -2543,6 +2632,13 @@ static inline void ui_init(void) {
     __ui_nodes[i].dirty = 1;
     __ui_nodes[i].lastTextHeight = 0;
     __ui_nodes[i].layoutCacheKey = 0;
+    if (__ui_nodes[i].scrollable) {
+      // Force the first scroll-canvas composition to seed every pixel. After
+      // that, a dirty child can be repaired in place without repainting the
+      // entire viewport.
+      __ui_nodes[i].lastPaintedScrollY = static_cast<int16_t>(
+        __ui_nodes[i].scrollY - (__ui_nodes[i].box.h > 0 ? __ui_nodes[i].box.h : 1));
+    }
     if (__ui_nodes[i].kind == NODE_PROGRESS || __ui_nodes[i].kind == NODE_RANGE) {
       __ui_nodes[i].lastTextWidth = -1;
     }
@@ -2819,10 +2915,8 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   (void)tx; (void)ty;
 #endif
   if (node >= 0) {
-    uint8_t handledTouchTarget = 0;
     if (__ui_nodes[node].kind == NODE_BUTTON) {
       ui_set_pressed(static_cast<uint16_t>(node), 1);
-      handledTouchTarget = 1;
     }
     // Track range nodes for horizontal drag
     if (__ui_nodes[node].kind == NODE_RANGE) {
@@ -2844,11 +2938,13 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
         __ui_nodes[node].value = nextVal;
         ui_mark_dirty(node);
       }
-      handledTouchTarget = 1;
     }
-    uint8_t touchStartsScrollableView =
-      (__ui_scroll_node >= 0 && node == __ui_scroll_node);
-    if (!handledTouchTarget && !touchStartsScrollableView) ui_mark_dirty(node);
+    // Only controls with a visual state change need a dirty repaint on touch-down:
+    // buttons were marked by ui_set_pressed() above and ranges were marked when
+    // their value changed. Links, inputs, checks, radios, selects, and list
+    // containers do not have a pressed state; repainting them here is redundant
+    // and can expose a clear/redraw flash on direct SPI targets. They repaint
+    // after the click/value change (or when scrolling actually begins).
   }
 }
 
@@ -2891,7 +2987,15 @@ static void ui_touch_up() {
       }
     }
     ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
-    ui_mark_dirty(clickedNode);
+    // Built-in check/radio/select handlers mutate the node value during click
+    // dispatch and need one repaint. Buttons are already dirty from releasing
+    // :pressed; links, lists, inputs, and ordinary callbacks are either handled
+    // by navigation/keyboard state or observed by bindings on the next tick.
+    if (__ui_nodes[clickedNode].kind == NODE_CHECK ||
+        __ui_nodes[clickedNode].kind == NODE_RADIO ||
+        __ui_nodes[clickedNode].kind == NODE_SELECT) {
+      ui_mark_dirty(static_cast<uint16_t>(clickedNode));
+    }
   }
   // Release the pressed button's :pressed state unconditionally — even when a
   // drag/scroll hijacked the gesture (the click above is correctly gated on
@@ -4878,6 +4982,12 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
         __ui_list_canvas_node = static_cast<int16_t>(i);
         __ui_nodes[i].lastPaintedScrollY = listScrollY;
         __ui_nodes[i].dirty = 0;
+        if (__ui_fb) {
+          UIRect listPaintRect;
+          ui_node_paint_rect(i, origBoxX, origBoxY, origBoxX, origBoxY,
+            static_cast<uint16_t>(bw), static_cast<uint16_t>(bh), &listPaintRect);
+          ui_fb_add_rect(listPaintRect.x, listPaintRect.y, listPaintRect.w, listPaintRect.h);
+        }
         ui_display_set_target(__ui_draw_target);
         __ui_nodes[i].box.x = origBoxX;
         __ui_nodes[i].box.y = origBoxY;
@@ -5451,6 +5561,9 @@ static inline uint8_t ui_keyframe_set_has_scroll_sensitive_geometry(uint8_t setI
 static inline void ui_tick(uint16_t deltaMs) {
   // Touch poll — runs if touch is configured (defined by the emit layer)
   ui_poll_touch();
+  // Allocate the retained framebuffer before transitions run. Geometry repair
+  // must clear old animation footprints into RAM, not directly onto the panel.
+  (void)ui_get_framebuffer();
   // ⓪' Poll GPIO inputs
   ui_poll_inputs();
 #if defined(UI_HIDE_OSK)
@@ -5855,6 +5968,7 @@ static inline void ui_tick(uint16_t deltaMs) {
   // remains sequential on panels without TE/vblank synchronization.
   CuttlefishCanvas16* __ui_fb = ui_get_framebuffer();
   CuttlefishDisplayTarget* __ui_draw_target = __ui_fb ? (CuttlefishDisplayTarget*)__ui_fb : display_defaultTarget();
+  ui_fb_begin_frame();
   // A retained framebuffer only needs an SPI transfer when composition changed.
   // Avoid pushing a full frame on idle ticks; this is the main steady-state cost
   // of the PSRAM path on otherwise static screens.
@@ -5867,6 +5981,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         : __ui_nodes[__ui_active_screen_bg_node].clearColor;
     }
     display_canvasFillScreen(__ui_fb, fbBg);
+    ui_fb_add_rect(0, 0, display_width(), display_height());
     // A retained framebuffer cannot reuse the previous screen's pixels. Mark
     // every node on the active screen dirty for one coherent composition.
     for (uint16_t f = 0; f < __ui_node_count; f++) {
@@ -5901,6 +6016,10 @@ static inline void ui_tick(uint16_t deltaMs) {
   // never enabled: direct per-node SPI drawing is a visible tearing path, so a
   // missing canvas freezes the affected viewport instead.
   uint8_t bufferedScrollDirectFull = 0;
+  // Local retained-canvas repair: dirty descendants draw directly into the
+  // full-frame framebuffer while the existing scroll canvas is invalidated for
+  // the next actual scroll. This avoids copying an unchanged viewport.
+  uint8_t bufferedScrollLocalRepair = 0;
   // Band renderer pending: like bufferedScrollDirectFull but the actual paint
   // is deferred to the scroll owner's z-order slot in the main draw loop. The
   // band composites the whole subtree at once, so it must paint AFTER lower-z
@@ -5926,6 +6045,10 @@ static inline void ui_tick(uint16_t deltaMs) {
       // renderer walks their subtree (which is empty for virtualized lists),
       // leaving the list node itself unpainted.
       if (__ui_nodes[s].virtualized) continue;
+    // The retained framebuffer only needs the full viewport for actual scroll
+    // movement or the first composition. A local child update is repaired in
+    // the existing scroll canvas and contributes its own paint rect later;
+    // pushing the whole viewport here is the Forms-screen flash.
     if (__ui_fb) __ui_fb_frame_dirty = 1;
 
     int16_t vw = __ui_nodes[s].box.w;
@@ -5984,13 +6107,38 @@ static inline void ui_tick(uint16_t deltaMs) {
         }
       }
       if (!canShift) {
-        for (uint16_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
-          __ui_nodes[c].dirty = 1;
-          if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
-          else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
-          __ui_nodes[c].lastTextHeight = 0;
+        // A zero-delta dirty scroll owner is usually a local child update (a
+        // form binding, button transition, or animation). Keep the retained
+        // canvas and its existing pixels in that case; the dirty descendants
+        // will redraw in place and the final framebuffer union stays local.
+        uint8_t localRepair = __ui_fb && deltaY == 0 &&
+          __ui_nodes[s].lastPaintedScrollY == __ui_nodes[s].scrollY &&
+          ui_scroll_subtree_has_dirty(s);
+        if (localRepair) {
+          // The framebuffer is already the authoritative composition surface for
+          // this zero-delta update. Let dirty descendants draw there directly;
+          // invalidate the retained scroll canvas after each child draw so it is
+          // rebuilt before the next scroll gesture.
+          bufferedScrollLocalRepair = 1;
+          bufferedScrollCanvas = nullptr;
+          bufferedScrollRepaintCanvas = nullptr;
+        } else {
+          // Initial composition, a large jump, or an owner-only invalidation:
+          // seed the whole viewport and repaint its complete stacking subtree.
+          for (uint16_t c = s; c < __ui_nodes[s].subtreeEnd; c++) {
+            __ui_nodes[c].dirty = 1;
+            if (__ui_nodes[c].kind == NODE_PROGRESS) __ui_nodes[c].lastTextWidth = -1;
+            else if (__ui_nodes[c].kind == NODE_RANGE) __ui_nodes[c].lastTextWidth = -1;
+            __ui_nodes[c].lastTextHeight = 0;
+          }
+          display_canvasFillScreen(bufferedScrollCanvas, scrollBg);
+          if (__ui_fb) ui_fb_add_rect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
+            __ui_nodes[s].box.w, __ui_nodes[s].box.h);
         }
-        display_canvasFillScreen(bufferedScrollCanvas, scrollBg);
+      } else if (__ui_fb) {
+        // Shift-and-repair changes the entire viewport's visible mapping.
+        ui_fb_add_rect(__ui_nodes[s].box.x, __ui_nodes[s].box.y,
+          __ui_nodes[s].box.w, __ui_nodes[s].box.h);
       }
       // The scroll owner is represented by bufferedScrollCanvas this frame.
       // Drawing it directly first clears the live display and makes scrolling
@@ -6060,7 +6208,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       int16_t scrollComp = ui_overflow_scroll_compositor(static_cast<uint16_t>(i));
       if (scrollComp >= 0) {
         uint8_t compositing = scrollComp == bufferedScrollNode &&
-          (bufferedScrollCanvas || bufferedScrollDirectFull || bufferedScrollBands);
+          (bufferedScrollCanvas || bufferedScrollDirectFull || bufferedScrollBands || bufferedScrollLocalRepair);
         if (!compositing) {
           if (static_cast<uint16_t>(i) == static_cast<uint16_t>(scrollComp)) break;
           __ui_nodes[i].dirty = 0;
@@ -6111,7 +6259,7 @@ static inline void ui_tick(uint16_t deltaMs) {
 
     // Mode C strip / direct-full: scroll owner is not drawn directly (would fill
     // the viewport); its children are drawn directly below.
-    if (bufferedScrollDirectFull && bufferedScrollNode >= 0 &&
+    if ((bufferedScrollDirectFull || bufferedScrollLocalRepair) && bufferedScrollNode >= 0 &&
         static_cast<uint16_t>(i) == static_cast<uint16_t>(bufferedScrollNode)) {
       __ui_nodes[i].dirty = 0;
       continue;
@@ -6370,6 +6518,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     // Report this node's bounding box to the deferred-refresh accumulator. Phase
     // 4 uses the box as the dirty rect (a safe over-estimate); Phase 5 tightens
     // to the actual paint rect. No-op on TFT (compiles to nothing).
+    if (__ui_fb) ui_fb_add_rect(paintRect.x, paintRect.y, paintRect.w, paintRect.h);
     ui_refresh_add_rect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
   }
   // ②b Draw scrollbar + push canvas for the buffered scroll container.
@@ -6398,9 +6547,13 @@ static inline void ui_tick(uint16_t deltaMs) {
     __ui_nodes[bufferedScrollNode].dirty = 0;
   }
   // ── Framebuffer bulk push ────────────────────────────────────────────────
-  // When a framebuffer was used this frame, flush it to the display in a single
-  // SPI transaction and restore the direct-draw target. No-op without one.
-  if (__ui_fb && __ui_fb_frame_dirty) {
+  // When a framebuffer was used this frame, publish only its changed bounds.
+  // Local touch updates therefore avoid a full-screen SPI burst (which appears
+  // as a brightness dip on panels without a synchronized frame latch).
+  // Repairs performed before the dirty-node pass (for example transform
+  // geometry cleanup) may update the retained buffer without leaving a node
+  // dirty. The dirty-bounds accumulator is the authoritative publish signal.
+  if (__ui_fb && (__ui_fb_frame_dirty || __ui_fb_dirty)) {
     ui_push_framebuffer();
   }
   ui_display_use_default_target();

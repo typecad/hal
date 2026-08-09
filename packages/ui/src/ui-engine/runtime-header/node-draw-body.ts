@@ -843,6 +843,12 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
         __ui_list_canvas_node = static_cast<int16_t>(i);
         __ui_nodes[i].lastPaintedScrollY = listScrollY;
         __ui_nodes[i].dirty = 0;
+        if (__ui_fb) {
+          UIRect listPaintRect;
+          ui_node_paint_rect(i, origBoxX, origBoxY, origBoxX, origBoxY,
+            static_cast<uint16_t>(bw), static_cast<uint16_t>(bh), &listPaintRect);
+          ui_fb_add_rect(listPaintRect.x, listPaintRect.y, listPaintRect.w, listPaintRect.h);
+        }
         ui_display_set_target(__ui_draw_target);
         __ui_nodes[i].box.x = origBoxX;
         __ui_nodes[i].box.y = origBoxY;

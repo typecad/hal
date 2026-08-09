@@ -6,6 +6,9 @@ export function emitTickBindingsPhase(): string {
 static inline void ui_tick(uint16_t deltaMs) {
   // Touch poll — runs if touch is configured (defined by the emit layer)
   ui_poll_touch();
+  // Allocate the retained framebuffer before transitions run. Geometry repair
+  // must clear old animation footprints into RAM, not directly onto the panel.
+  (void)ui_get_framebuffer();
   // ⓪' Poll GPIO inputs
   ui_poll_inputs();
 #if defined(UI_HIDE_OSK)

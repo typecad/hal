@@ -170,10 +170,8 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   (void)tx; (void)ty;
 #endif
   if (node >= 0) {
-    uint8_t handledTouchTarget = 0;
     if (__ui_nodes[node].kind == NODE_BUTTON) {
       ui_set_pressed(static_cast<uint16_t>(node), 1);
-      handledTouchTarget = 1;
     }
     // Track range nodes for horizontal drag
     if (__ui_nodes[node].kind == NODE_RANGE) {
@@ -195,11 +193,13 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
         __ui_nodes[node].value = nextVal;
         ui_mark_dirty(node);
       }
-      handledTouchTarget = 1;
     }
-    uint8_t touchStartsScrollableView =
-      (__ui_scroll_node >= 0 && node == __ui_scroll_node);
-    if (!handledTouchTarget && !touchStartsScrollableView) ui_mark_dirty(node);
+    // Only controls with a visual state change need a dirty repaint on touch-down:
+    // buttons were marked by ui_set_pressed() above and ranges were marked when
+    // their value changed. Links, inputs, checks, radios, selects, and list
+    // containers do not have a pressed state; repainting them here is redundant
+    // and can expose a clear/redraw flash on direct SPI targets. They repaint
+    // after the click/value change (or when scrolling actually begins).
   }
 }
 
@@ -242,7 +242,15 @@ static void ui_touch_up() {
       }
     }
     ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
-    ui_mark_dirty(clickedNode);
+    // Built-in check/radio/select handlers mutate the node value during click
+    // dispatch and need one repaint. Buttons are already dirty from releasing
+    // :pressed; links, lists, inputs, and ordinary callbacks are either handled
+    // by navigation/keyboard state or observed by bindings on the next tick.
+    if (__ui_nodes[clickedNode].kind == NODE_CHECK ||
+        __ui_nodes[clickedNode].kind == NODE_RADIO ||
+        __ui_nodes[clickedNode].kind == NODE_SELECT) {
+      ui_mark_dirty(static_cast<uint16_t>(clickedNode));
+    }
   }
   // Release the pressed button's :pressed state unconditionally — even when a
   // drag/scroll hijacked the gesture (the click above is correctly gated on

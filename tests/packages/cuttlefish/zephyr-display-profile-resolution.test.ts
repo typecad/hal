@@ -36,6 +36,19 @@ describe("Zephyr display profile resolution via getProfileRegistry", () => {
     expect(resolved.profile.height).toBe(320);
   });
 
+  it("preserves explicit scanline synchronization opt-in through profile resolution", () => {
+    const resolved = resolveDisplayProfile(
+      {
+        profile: "st7796-zephyr",
+        scanlineSync: true,
+        spiPins: { mosi: 11, sck: 12, miso: 13 },
+      },
+      registry,
+    );
+    expect(resolved.profile.scanlineSync).toBe(true);
+    expect(resolved.profile.spiPins?.miso).toBe(13);
+  });
+
   it("resolveDisplayProfile THROWS on an unknown profile (not silently swallowed)", () => {
     // This is the critical regression: before the fix, the bare catch {} in
     // transpile.ts swallowed this error and fell back to the default driver,

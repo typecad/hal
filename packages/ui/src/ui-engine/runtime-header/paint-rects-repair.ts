@@ -237,8 +237,13 @@ static inline uint8_t ui_repair_current_node_paint_with_parent(uint16_t nodeIdx,
   CuttlefishCanvas16* repairCanvas = ui_get_repair_canvas(r->w, r->h);
   if (!repairCanvas) return 0;
   ui_seed_paint_canvas_for_node(nodeIdx, repairCanvas, r->x, r->y, 0);
-  ui_display_use_default_target();
+  // During a retained-framebuffer tick, publish the repair into the RAM
+  // composition surface. Sending it to the live panel here creates the visible
+  // erase/redraw flash seen on animated transforms.
+  if (__ui_fb) ui_display_set_target((CuttlefishDisplayTarget*)__ui_fb);
+  else ui_display_use_default_target();
   ui_push_canvas_rect(repairCanvas, r->x, r->y, r->w, r->h);
+  ui_display_use_default_target();
   return 1;
 }
 
@@ -386,7 +391,8 @@ static inline void ui_clear_node_paint_rect(uint16_t nodeIdx, const UIRect* pain
   if (nodeIdx >= __ui_node_count || !paintRect || paintRect->w <= 0 || paintRect->h <= 0) return;
   int16_t scrollParent = ui_scroll_ancestor_for_node(nodeIdx);
   UIRect r = *paintRect;
-  ui_display_use_default_target();
+  if (__ui_fb) ui_display_set_target((CuttlefishDisplayTarget*)__ui_fb);
+  else ui_display_use_default_target();
   if (scrollParent >= 0) {
     UIRect clip = {
       __ui_nodes[scrollParent].box.x,
@@ -484,8 +490,12 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   int16_t fillH = ui_rotated_face_h(nodeIdx, __ui_nodes[nodeIdx].box.w, __ui_nodes[nodeIdx].box.h);
   ui_display_fill_rect(drawX, drawY, fillW, fillH, fillBg);
   ui_display_set_target(previousGfx);
-  ui_display_use_default_target();
+  // Keep geometry repair off the physical panel when a retained framebuffer is
+  // active; the final dirty-bounds publish will send the old+new union once.
+  if (__ui_fb) ui_display_set_target((CuttlefishDisplayTarget*)__ui_fb);
+  else ui_display_use_default_target();
   ui_push_canvas_rect(repairCanvas, repair.x, repair.y, repair.w, repair.h);
+  ui_display_use_default_target();
   if (scrollParent >= 0) ui_invalidate_scroll_canvas_for_node(nodeIdx);
   ui_mark_overlapping_higher_layers_dirty_for_rect(nodeIdx, &repair);
   return 1;

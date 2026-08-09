@@ -10,6 +10,47 @@ export function emitImageDrawing(): string {
 // reduction, not a strict hardware-level tear-free guarantee.
 static CuttlefishCanvas16* __ui_fb = nullptr;
 static uint8_t __ui_fb_tried = 0;  // 0 = not yet attempted, 1 = alloc attempted
+// Dirty bounds for the retained framebuffer. A local touch update should not
+// retransmit the entire panel: the full-frame burst is long enough to look like
+// a brightness dip on SPI TFTs even though the framebuffer itself is coherent.
+static uint8_t __ui_fb_dirty = 0;
+static int16_t __ui_fb_dirty_x0 = 0;
+static int16_t __ui_fb_dirty_y0 = 0;
+static int16_t __ui_fb_dirty_x1 = 0;
+static int16_t __ui_fb_dirty_y1 = 0;
+
+static inline void ui_fb_begin_frame() {
+  __ui_fb_dirty = 0;
+  __ui_fb_dirty_x0 = display_width();
+  __ui_fb_dirty_y0 = display_height();
+  __ui_fb_dirty_x1 = 0;
+  __ui_fb_dirty_y1 = 0;
+}
+
+static inline void ui_fb_add_rect(int16_t x, int16_t y, int16_t w, int16_t h) {
+  if (w <= 0 || h <= 0) return;
+  int16_t x0 = x < 0 ? 0 : x;
+  int16_t y0 = y < 0 ? 0 : y;
+  int16_t x1 = x + w;
+  int16_t y1 = y + h;
+  int16_t dw = display_width();
+  int16_t dh = display_height();
+  if (x1 > dw) x1 = dw;
+  if (y1 > dh) y1 = dh;
+  if (x0 >= x1 || y0 >= y1) return;
+  if (!__ui_fb_dirty) {
+    __ui_fb_dirty_x0 = x0;
+    __ui_fb_dirty_y0 = y0;
+    __ui_fb_dirty_x1 = x1;
+    __ui_fb_dirty_y1 = y1;
+    __ui_fb_dirty = 1;
+    return;
+  }
+  if (x0 < __ui_fb_dirty_x0) __ui_fb_dirty_x0 = x0;
+  if (y0 < __ui_fb_dirty_y0) __ui_fb_dirty_y0 = y0;
+  if (x1 > __ui_fb_dirty_x1) __ui_fb_dirty_x1 = x1;
+  if (y1 > __ui_fb_dirty_y1) __ui_fb_dirty_y1 = y1;
+}
 
 // Get the framebuffer, allocating once (in PSRAM when available). Returns null
 // when PSRAM is absent or the allocation failed — callers fall back to direct.
@@ -32,14 +73,42 @@ static inline CuttlefishCanvas16* ui_get_framebuffer() {
   return __ui_fb;
 }
 
-// Push the entire framebuffer to the display in one bulk SPI transaction.
+// Push only the changed framebuffer bounds. Rows are sent separately when the
+// dirty union is narrower than the framebuffer because the source canvas has a
+// wider stride than the panel window. Each row is complete before it reaches
+// the panel, and the display adapter can synchronize each window to scanline.
 static inline void ui_push_framebuffer() {
-  if (!__ui_fb || !display_canvasBuffer(__ui_fb)) return;
-  int16_t w = display_canvasWidth(__ui_fb);
-  int16_t h = display_canvasHeight(__ui_fb);
+  if (!__ui_fb || !display_canvasBuffer(__ui_fb) || !__ui_fb_dirty) return;
+  int16_t fw = display_canvasWidth(__ui_fb);
+  int16_t fh = display_canvasHeight(__ui_fb);
+  int16_t x = __ui_fb_dirty_x0;
+  int16_t y = __ui_fb_dirty_y0;
+  int16_t w = static_cast<int16_t>(__ui_fb_dirty_x1 - x);
+  int16_t h = static_cast<int16_t>(__ui_fb_dirty_y1 - y);
+  if (x < 0 || y < 0 || w <= 0 || h <= 0 || x >= fw || y >= fh) return;
+  if (x + w > fw) w = static_cast<int16_t>(fw - x);
+  if (y + h > fh) h = static_cast<int16_t>(fh - y);
+  // Use the panel's native bulk-pixel path, not drawRGBBitmap(). The native
+  // CuttlefishGFX implementation of drawRGBBitmap is intentionally generic and
+  // emits one writePixel transaction per pixel; using it for a retained-frame
+  // flush turns a small local update into hundreds of visible SPI flashes.
+  UI_COLOR_T* pixels = display_canvasBuffer(__ui_fb);
   display_startWrite();
-  display_setAddrWindow(0, 0, w, h);
-  display_writePixels(display_canvasBuffer(__ui_fb), static_cast<uint32_t>(w) * h);
+  if (x == 0 && w == fw) {
+    // Full-width rows are contiguous and can use one bulk write.
+    display_setAddrWindow(x, y, w, h);
+    display_writePixels(pixels + static_cast<int32_t>(y) * fw,
+      static_cast<uint32_t>(w) * h);
+  } else {
+    // Narrow dirty bounds require one row at a time because the source stride
+    // is fw while each destination window is only w pixels wide.
+    for (int16_t row = 0; row < h; row++) {
+      display_setAddrWindow(x, static_cast<int16_t>(y + row), w, 1);
+      display_writePixels(
+        pixels + static_cast<int32_t>(y + row) * fw + x,
+        static_cast<uint32_t>(w));
+    }
+  }
   display_endWrite();
 }
 

@@ -28,6 +28,12 @@ describe("Zephyr UI display adapter", () => {
       expect(adapter.includes).toContain("<zephyr/drivers/display.h>");
       expect(adapter.includes).toContain("<zephyr/kernel.h>");
     });
+
+    it("keeps scanline synchronization disabled for the default ST7796S path", () => {
+      // SDO is present on some modules but GET_SCANLINE has been observed to
+      // stop scanning on ST7796S boards. It must never activate implicitly.
+      expect(adapter.declaration).toContain("__tc_pnl_scanline_sync = false");
+    });
   });
 
   describe("declaration", () => {
@@ -76,6 +82,20 @@ describe("Zephyr UI display adapter", () => {
       expect(adapter.functions).toContain("(c >> 8) & 0xF8u");
       expect(adapter.functions).toContain("(c << 3) & 0xF8u");
     });
+
+    it("emits bounded GET_SCANLINE dirty-rectangle sync only when explicitly enabled with MISO", () => {
+      const synced = zephyrUiDisplayAdapter(profile, { scanlineSync: true, miso: 13 });
+      expect(synced.declaration).toContain("__tc_pnl_scanline_sync = true");
+      expect(synced.functions).toContain("static uint16_t __tc_pnl_read_scanline");
+      expect(synced.functions).toContain("spi_transceive");
+      expect(synced.functions).toContain("__tc_pnl_wait_for_safe_rect");
+      expect(synced.functions).toContain("+ 20U");
+    });
+
+    it("does not activate scanline sync when MISO is omitted", () => {
+      const noMiso = zephyrUiDisplayAdapter(profile, { scanlineSync: true });
+      expect(noMiso.declaration).toContain("__tc_pnl_scanline_sync = false");
+    });
   });
 
   describe("functions — full adapter surface", () => {
@@ -123,6 +143,16 @@ describe("Zephyr UI display adapter", () => {
       } as any);
       expect(code).toBeDefined();
       expect(code!.functions).toContain("display_init");
+    });
+
+    it("passes explicit scanline opt-in and MISO wiring through the strategy seam", () => {
+      const code = strat.resolveDisplayAdapter({
+        driver: "st7796-zephyr",
+        width: 480, height: 320, colorFormat: "rgb565", rotation: 1,
+        scanlineSync: true,
+        spiPins: { mosi: 11, sck: 12, miso: 13 },
+      } as any);
+      expect(code?.declaration).toContain("__tc_pnl_scanline_sync = true");
     });
 
     it("resolveDisplayAdapter returns undefined for unknown drivers", () => {

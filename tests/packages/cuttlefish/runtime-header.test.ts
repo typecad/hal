@@ -572,12 +572,54 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_scroll_advance_settle\(i,\s*deltaMs\)/);
   });
 
-  it("keeps range gestures out of the scroll drag path", () => {
-    expect(header).toMatch(/if \(__ui_nodes\[node\]\.kind == NODE_RANGE\) \{[\s\S]*__ui_range_node = node;[\s\S]*__ui_scroll_node = -1;[\s\S]*handledTouchTarget = 1;/);
+  it("keeps range gestures out of the scroll drag path and avoids generic touch redraws", () => {
+    const touchDown = header.match(/static void ui_touch_down[\s\S]*?static void ui_touch_up/)?.[0] ?? "";
+    expect(touchDown).toMatch(/if \(__ui_nodes\[node\]\.kind == NODE_RANGE\) \{[\s\S]*__ui_range_node = node;[\s\S]*__ui_scroll_node = -1;/);
     expect(header).toMatch(/if \(__ui_range_node < 0 && !__ui_is_dragging && __ui_scroll_node >= 0\)/);
     expect(header).toMatch(/if \(__ui_range_node < 0 && __ui_is_dragging && __ui_scroll_node >= 0\)/);
-    expect(header).toMatch(/touchStartsScrollableView\s*=[\s\S]*__ui_scroll_node >= 0 && node == __ui_scroll_node/);
-    expect(header).toMatch(/if \(!handledTouchTarget && !touchStartsScrollableView\) ui_mark_dirty\(node\);/);
+    expect(touchDown).toMatch(/kind == NODE_BUTTON\)\s*\{[\s\S]*ui_set_pressed\(static_cast<uint16_t>\(node\), 1\)/);
+    // Non-mutating touch-downs must not trigger a redundant clear/redraw.
+    expect(touchDown).not.toContain("handledTouchTarget");
+    const touchDownVisualComment = touchDown.match(/Only controls with a visual state change[\s\S]*?\n  \}/)?.[0] ?? "";
+    expect(touchDownVisualComment).not.toContain("ui_mark_dirty(node);");
+
+    const touchUp = header.match(/static void ui_touch_up[\s\S]*?static inline void ui_handle_touch/)?.[0] ?? "";
+    expect(touchUp).toMatch(/kind == NODE_CHECK[\s\S]*kind == NODE_RADIO[\s\S]*kind == NODE_SELECT[\s\S]*ui_mark_dirty/);
+    expect(touchUp).toMatch(/Buttons are already dirty from releasing/);
+    expect(touchUp).not.toMatch(/ui_dispatch\(__ui_release_handlers[\s\S]*ui_mark_dirty\(clickedNode\);/);
+  });
+
+  it("publishes only changed retained-framebuffer bounds after local repaints", () => {
+    expect(header).toContain("__ui_fb_dirty_x0");
+    expect(header).toContain("ui_fb_begin_frame();");
+    expect(header).toContain("ui_fb_add_rect(paintRect.x, paintRect.y, paintRect.w, paintRect.h)");
+    const framebufferPush = header.match(/static inline void ui_push_framebuffer[\s\S]*?\n}\n\nstatic inline uint8_t ui_rotation_quadrant/)?.[0] ?? "";
+    expect(framebufferPush).toContain("display_startWrite();");
+    expect(framebufferPush).toContain("display_writePixels");
+    expect(framebufferPush).not.toContain("ui_display_draw_rgb_bitmap");
+    expect(header).toContain("wider stride than the panel window");
+    expect(header).toMatch(/if \(__ui_fb\) \{[\s\S]*ui_fb_add_rect\(x, y, w, h\)/);
+  });
+
+  it("repairs local scroll-child updates without repainting the whole viewport", () => {
+    // Form bindings and animated children live inside scrollBody. A zero-delta
+    // invalidation should retain the viewport canvas and draw only dirty children;
+    // full viewport repainting was the source of whole-screen flashes.
+    expect(header).toMatch(/uint8_t localRepair = __ui_fb && deltaY == 0/);
+    expect(header).toMatch(/localRepair[\s\S]*ui_scroll_subtree_has_dirty\(s\)/);
+    expect(header).toMatch(/if \(localRepair\) \{[\s\S]*bufferedScrollLocalRepair = 1;[\s\S]*bufferedScrollCanvas = nullptr/);
+    expect(header).toMatch(/else \{[\s\S]*display_canvasFillScreen\(bufferedScrollCanvas, scrollBg\)/);
+    expect(header).toMatch(/else if \(__ui_fb\) \{[\s\S]*ui_fb_add_rect\(__ui_nodes\[s\]\.box\.x/);
+    expect(header).toMatch(/__ui_nodes\[i\]\.lastPaintedScrollY[\s\S]*__ui_nodes\[i\]\.box\.h/);
+    expect(header).toMatch(/bufferedScrollCanvas \|\| bufferedScrollDirectFull \|\| bufferedScrollBands \|\| bufferedScrollLocalRepair/);
+  });
+
+  it("routes animation geometry repair into the retained framebuffer", () => {
+    // Transform animation cleanup must never clear the live panel between frames.
+    expect(header).toMatch(/\(void\)ui_get_framebuffer\(\);[\s\S]*① Advance transitions/);
+    expect(header).toMatch(/ui_repair_current_node_paint_with_parent[\s\S]*if \(__ui_fb\) ui_display_set_target\(\(CuttlefishDisplayTarget\*\)__ui_fb\)/);
+    expect(header).toMatch(/ui_try_repair_geometry_fill[\s\S]*Keep geometry repair off the physical panel/);
+    expect(header).toMatch(/if \(__ui_fb && \(__ui_fb_frame_dirty \|\| __ui_fb_dirty\)\)/);
   });
 
   it("renders scroll containers via a per-container shift-and-repair canvas (Mode B)", () => {
@@ -599,7 +641,7 @@ describe("C++ reactive runtime header", () => {
     // viewport); its children are drawn below.
     // Non-composited overflow scroll containers defer entirely until Mode B.
     expect(header).toMatch(/if \(bufferedScrollCanvas\) \{[\s\S]*__ui_nodes\[s\]\.dirty = 0;[\s\S]*\} else \{/);
-    expect(header).toMatch(/bufferedScrollDirectFull && bufferedScrollNode >= 0 &&[\s\S]*continue;/);
+    expect(header).toMatch(/\(bufferedScrollDirectFull \|\| bufferedScrollLocalRepair\) && bufferedScrollNode >= 0 &&[\s\S]*continue;/);
     expect(header).toContain("ui_overflow_scroll_compositor");
     // drawingBufferedScroll is only true in genuine Mode B (a real canvas is
     // active). Direct-full has no canvas, so its children draw to the display
@@ -696,7 +738,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_render_list_direct\(uint16_t i\)[\s\S]*ui_display_fill_rect\(bx, by, bw, bh, bg\)[\s\S]*ui_draw_list_text_direct/);
     expect(header).toMatch(/ui_draw_list_text[\s\S]*CUTTLEFISH_GFX_DEFINED[\s\S]*cuttlefish_glcdfont[\s\S]*ui_display_fill_rect/);
     expect(header).toMatch(/ui_draw_list_text_direct[\s\S]*ui_draw_bitmap_text/);
-    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*!drawingBufferedScroll && !__ui_fb[\s\S]*ui_render_list_direct\(static_cast<uint16_t>\(i\)\)[\s\S]*__ui_nodes\[i\]\.box\.x\s*=\s*origBoxX[\s\S]*__ui_nodes\[i\]\.box\.y\s*=\s*origBoxY/);
+    expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*ui_render_list_direct\(static_cast<uint16_t>\(i\)\)[\s\S]*__ui_nodes\[i\]\.box\.x\s*=\s*origBoxX[\s\S]*__ui_nodes\[i\]\.box\.y\s*=\s*origBoxY/);
     expect(header).toMatch(/ui_render_list_direct[\s\S]*if \(!__ui_fb\) display_startWrite\(\)[\s\S]*if \(!__ui_fb\) display_endWrite\(\)/);
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*ui_draw_list_text\(listBuf/);
     expect(header).toMatch(/case\s+NODE_LIST:[\s\S]*uint16_t first\s*=\s*\(listScrollY \+ repaintY\) \/ ih/);

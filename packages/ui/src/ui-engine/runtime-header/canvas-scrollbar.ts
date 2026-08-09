@@ -13,6 +13,10 @@ static inline void ui_push_canvas_rect(CuttlefishCanvas16* canvas, int16_t x, in
   // via __ui_gfx (so the single bulk push at frame end captures everything).
   // Otherwise write straight to the display in one SPI transaction.
   if (__ui_fb) {
+    // The framebuffer is the composition target. Track this publish so a
+    // geometry repair or scroll-canvas repair that does not leave a node dirty
+    // still reaches the panel during the frame-end flush.
+    ui_fb_add_rect(x, y, w, h);
     if (w == stride) {
       ui_display_draw_rgb_bitmap(x, y, pixels, w, h);
       return;

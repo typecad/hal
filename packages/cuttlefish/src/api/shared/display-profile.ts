@@ -79,6 +79,13 @@ export interface DisplayProfile {
   /** Optional explicit display inversion override. Some controller libraries
    *  use panel-specific defaults that do not match every module. */
   invertDisplay?: boolean;
+  /**
+   * Experimental dirty-rectangle synchronization using the controller's
+   * GET_SCANLINE (0x45) readback command. This is opt-in: many ST7796S
+   * modules expose SDO but return unreliable data or stop scanning when 0x45
+   * is read, so a missing/unsafe readback path must not affect normal drawing.
+   */
+  scanlineSync?: boolean;
   touch?: TouchProfile;
   /** Enable antialiased rendering for circles, lines, rounded corners, and text
    *  unless a node opts out with font-smoothing:none.
@@ -143,6 +150,12 @@ export interface DisplayConfig {
   colorOrder?: "rgb" | "bgr";
   /** Optional explicit display inversion override. */
   invertDisplay?: boolean;
+  /**
+   * Opt in to experimental GET_SCANLINE (0x45) dirty-rectangle synchronization
+   * on adapters that have a verified controller readback path. Disabled by
+   * default because some ST7796S modules misbehave when this command is read.
+   */
+  scanlineSync?: boolean;
   touch?: TouchProfile | false;
   cs?: number;
   dc?: number;
@@ -345,6 +358,7 @@ export function resolveDisplayProfile(
   if (config.spiPins !== undefined) base.spiPins = config.spiPins;
   if (config.colorOrder !== undefined) base.colorOrder = config.colorOrder;
   if (config.invertDisplay !== undefined) base.invertDisplay = config.invertDisplay;
+  if (config.scanlineSync !== undefined) base.scanlineSync = config.scanlineSync;
   if (config.touch === false) base.touch = undefined;
   else if (config.touch !== undefined) base.touch = config.touch;
   if (config.antialias !== undefined) base.antialias = config.antialias;

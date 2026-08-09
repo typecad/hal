@@ -32,12 +32,27 @@ import type { ZephyrDisplayProfile } from "./profiles.js";
  * display_ / display_target_ / display_canvas_ surface the UI runtime expects,
  * driving the panel directly via SPI (CS held across command+data).
  */
-export function zephyrUiDisplayAdapter(profile: ZephyrDisplayProfile): DisplayAdapterCode {
+export interface ZephyrDisplayReadbackOptions {
+  /** Enable the controller GET_SCANLINE dirty-rectangle experiment. */
+  scanlineSync?: boolean;
+  /** MISO/SDO GPIO; readback is disabled when it is not explicitly wired. */
+  miso?: number;
+}
+
+export function zephyrUiDisplayAdapter(
+  profile: ZephyrDisplayProfile,
+  readback: ZephyrDisplayReadbackOptions = {},
+): DisplayAdapterCode {
   const w = profile.width;
   const h = profile.height;
   const maxDim = Math.max(w, h);
   const dtLabel = profile.dtLabel;
   const backlightAlias = profile.backlight;
+  // Never infer readback from a board's default pinmux. SDO/MISO may be left
+  // floating or shared with another device, and ST7796S modules are known to
+  // react badly to GSCAN reads. Both an explicit opt-in and an explicit MISO
+  // pin are required before emitting an active synchronization path.
+  const scanlineSync = readback.scanlineSync === true && readback.miso !== undefined;
 
   const includes = [
     `// --- Zephyr UI display adapter (${profile.driver}) ---`,
@@ -78,6 +93,10 @@ export function zephyrUiDisplayAdapter(profile: ZephyrDisplayProfile): DisplayAd
     `// SPI transaction per primitive. The runtime brackets whole canvas pushes`,
     `// and per-node repaints in display_startWrite/endWrite pairs.`,
     `static uint8_t __tc_pnl_write_depth = 0;`,
+    `// Scanline readback is deliberately opt-in. A verified SDO/MISO wire and`,
+    `// controller-specific validation are required; otherwise the display stays`,
+    `// on the existing retained/composited path with no extra SPI reads.`,
+    `static const bool __tc_pnl_scanline_sync = ${scanlineSync ? 'true' : 'false'};`,
     `// Stashed address window from the last setAddrWindow call. The runtime`,
     `// calls setAddrWindow + writePixels as a matched pair, so we stash the rect`,
     `// here and consume it in writePixels.`,
@@ -156,6 +175,52 @@ static void __tc_pnl_ramwr_begin(void) {
 
 static void __tc_pnl_ramwr_end(void) { __tc_pnl_cs_release(); }
 
+// Read ST7796S/ILI9341 GET_SCANLINE (0x45). These controllers return one
+// dummy byte followed by the 16-bit scanline. Some modules do not implement
+// readback correctly; 0xFFFF means "unknown" and disables waiting for that
+// update rather than stalling or corrupting the frame.
+static uint16_t __tc_pnl_read_scanline(void) {
+  if (!__tc_pnl_scanline_sync) return 0xFFFFu;
+  uint8_t __cmd = 0x45;
+  uint8_t __tx[3] = {0, 0, 0};
+  uint8_t __rx[3] = {0, 0, 0};
+  struct spi_buf __bc = { &__cmd, 1 };
+  struct spi_buf_set __sc = { &__bc, 1 };
+  struct spi_buf __bt = { __tx, sizeof(__tx) };
+  struct spi_buf __br = { __rx, sizeof(__rx) };
+  struct spi_buf_set __st = { &__bt, 1 };
+  struct spi_buf_set __sr = { &__br, 1 };
+  __tc_pnl_cs_assert();
+  gpio_pin_set_dt(&__tc_pnl_dc, 0);
+  int __cmd_err = spi_write(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__sc);
+  int __read_err = 0;
+  if (__cmd_err == 0) {
+    gpio_pin_set_dt(&__tc_pnl_dc, 1);
+    __read_err = spi_transceive(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__st, &__sr);
+  }
+  __tc_pnl_cs_release();
+  if (__cmd_err != 0 || __read_err != 0) return 0xFFFFu;
+  uint16_t __line = static_cast<uint16_t>((static_cast<uint16_t>(__rx[1]) << 8) | __rx[2]);
+  return (__line < ${h}) ? __line : 0xFFFFu;
+}
+
+// Wait until the panel has scanned past a dirty rectangle. This is intentionally
+// bounded: a broken/floating SDO must never hang the UI loop. Full-height writes
+// have no safe post-rectangle interval, so they retain the normal single-burst
+// behavior; the caller's framebuffer still prevents intermediate software frames.
+static void __tc_pnl_wait_for_safe_rect(int16_t y, int16_t rh) {
+  if (!__tc_pnl_scanline_sync || rh < 8 || y < 0) return;
+  int16_t __last = static_cast<int16_t>(y + rh - 1);
+  if (__last >= static_cast<int16_t>(${h} - 2)) return;
+  uint32_t __deadline = k_uptime_get_32() + 20U;
+  for (;;) {
+    uint16_t __line = __tc_pnl_read_scanline();
+    if (__line == 0xFFFFu || (__line > static_cast<uint16_t>(__last + 2) && __line < static_cast<uint16_t>(${h} - 2))) return;
+    if (static_cast<int32_t>(k_uptime_get_32() - __deadline) >= 0) return;
+    k_msleep(0);
+  }
+}
+
 // Pack count rgb565 pixels into the row3 scratch buffer as 18-bit (666) wire
 // format: (r<<3, g<<2, b<<3) — R,G,B byte order, verified correct on this
 // panel in 18-bit mode. The caller then streams the buffer with the 8-bit
@@ -187,6 +252,7 @@ static void __tc_pnl_pixels666(const uint16_t* px, uint32_t count) {
 // space; the panel's MADCTL (rotation 1: MV) maps them onto the native
 // 320x480 raster, so CASET/RASET take the UI x/y ranges directly.
 static void __tc_pnl_set_window(int16_t x, int16_t y, int16_t winW, int16_t winH) {
+  __tc_pnl_wait_for_safe_rect(y, winH);
   uint16_t __x0 = static_cast<uint16_t>(x);
   uint16_t __x1 = static_cast<uint16_t>(x + winW - 1);
   uint16_t __y0 = static_cast<uint16_t>(y);
@@ -485,5 +551,8 @@ static inline void display_targetPrint(CuttlefishDisplayTarget* t, const char* s
 export const zephyrDisplayAdapterGenerator: DisplayAdapterGenerator = (display) => {
   const profile = ZEPHYR_DISPLAY_PROFILES[display.driver];
   if (!profile) return undefined as unknown as DisplayAdapterCode;
-  return zephyrUiDisplayAdapter(profile);
+  return zephyrUiDisplayAdapter(profile, {
+    scanlineSync: display.scanlineSync,
+    miso: display.spiPins?.miso,
+  });
 };

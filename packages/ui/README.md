@@ -1123,6 +1123,12 @@ display: {
   rst: 22,
   backlight: 17,       // optional — pin number for backlight
 
+  // Experimental and opt-in: use only after verifying the controller's
+  // GET_SCANLINE (0x45) readback and wiring SDO/MISO in spiPins. Some ST7796S
+  // modules stop scanning when this command is read, so the default is off.
+  // scanlineSync: true,
+  // spiPins: { mosi: 11, sck: 12, miso: 13 },
+
   // Antialiasing (optional)
   antialias: true,       // smooths shapes and text; text can opt out with font-smoothing:none
 
