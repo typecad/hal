@@ -9,9 +9,15 @@ import { parseCss } from "./css-parser.js";
 import type { CSSRule } from "./css-parser.js";
 
 const UA_CSS = `
+/* Browser-like light defaults: dark text on a near-white background.
+   A dark theme overrides these via user CSS (e.g. screen { color: #f0f0f0;
+   background: #1a1a1a }). Without these, screen fg defaults to white
+   (0xFFFF at the model level), making text invisible on light backgrounds. */
 screen {
   display: flex;
   flex-direction: column;
+  color: #1a1a1a;
+  background: #ffffff;
 }
 body {
   display: flex;
