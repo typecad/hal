@@ -764,8 +764,14 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
             __ui_nodes[i].listItemFn(idx, listBuf, UI_TEXT_BUF + 1);
             listBuf[UI_TEXT_BUF] = 0;
             ui_display_set_target((CuttlefishDisplayTarget*)listTextCanvas);
+            int16_t __ui_saved_off_x2 = __ui_draw_off_x;
+            int16_t __ui_saved_off_y2 = __ui_draw_off_y;
+            __ui_draw_off_x = 0;
+            __ui_draw_off_y = 0;
             ui_draw_text(listBuf, 4, itemY + static_cast<int16_t>(ih - 16) / 2,
               __ui_nodes[i].fg, clearCol, 2, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
+            __ui_draw_off_x = __ui_saved_off_x2;
+            __ui_draw_off_y = __ui_saved_off_y2;
             ui_display_set_target(listPrevTarget);
           }
         }
@@ -1251,8 +1257,14 @@ static inline uint8_t ui_render_list_bands(uint16_t i) {
         __ui_nodes[i].listItemFn(idx, listBuf, UI_TEXT_BUF + 1);
         listBuf[UI_TEXT_BUF] = 0;
         ui_display_set_target(band);
+        int16_t __ui_saved_off_x = __ui_draw_off_x;
+        int16_t __ui_saved_off_y = __ui_draw_off_y;
+        __ui_draw_off_x = 0;
+        __ui_draw_off_y = 0;
         ui_draw_text(listBuf, 4, itemY + static_cast<int16_t>(ih - 16) / 2,
           __ui_nodes[i].fg, clearCol, 2, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing);
+        __ui_draw_off_x = __ui_saved_off_x;
+        __ui_draw_off_y = __ui_saved_off_y;
         ui_display_set_target(listBandPrevTarget);
       }
     }
