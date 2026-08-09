@@ -75,14 +75,6 @@
 
 <style>
 
-/* ---------------------------------------------------------------------------
-   theme.light.css — minimal light theme for cuttlefish UI
-
-   Only design choices: color tokens, border-radius, box-shadow.
-   Structural defaults (scroll, touch sizing, flex layout) are in the UA
-   stylesheet — this file adds only the visual layer.
-   ----------------------------------------------------------------------- */
-
 @font-face {
   font-family: "ColibriDemo";
   src: url("DejaVuSans.ttf");
@@ -97,6 +89,7 @@
   font-style: normal;
 }
 
+/* ── Color tokens (light grayscale) ── */
 :root {
   --background: #fafaf7;
   --foreground: #252525;
@@ -121,8 +114,128 @@
   --chart-4: #c8c07a;
   --chart-5: #b38e7a;
   --radius: 0px;
+  --shadow: 2px 2px 0 #000000;
+  --scrollbar: #999999;
 }
 
+ lang="ts">
+  // showcase.ui — cuttlefish UI capability showcase (single-file component).
+  // Combines script, styles, and template in one file. The transpiler splits
+  // these into the three streams (TS/CSS/HTML) it already handles.
+
+  import { ui } from '@typecad/ui';
+
+  ui.mount(screen);
+
+  // ── Forms screen: Svelte-like reactive state ───────────────────────────────
+  // The button and input callbacks are declared here, while the template owns
+  // the event attributes and interpolation sites. The rest of the form controls
+  // use their element state directly through ui.bind() so every input has a
+  // visible reactive effect.
+  export const count = ui.signal(0);
+  export const nameCommits = ui.signal(0);
+  export const ageCommits = ui.signal(0);
+
+  export function incrementTaps() {
+    count.set(count() + 1);
+  }
+
+  export function captureName() {
+    nameCommits.set(nameCommits() + 1);
+    console.log('name:', screen.formName.text);
+  }
+
+  export function captureAge() {
+    ageCommits.set(ageCommits() + 1);
+    console.log('age:', screen.formAge.text);
+  }
+
+  ui.bind(screen.featureStatus, 'text', () => screen.formCheck1.value ? 'feature: enabled' : 'feature: disabled');
+  ui.bind(screen.featureLamp, 'background', () => screen.formCheck1.value ? '#999999' : '#4b5563');
+  ui.bind(screen.modeStatus, 'text', () => screen.formSelect1.value == 0 ? 'mode: alpha' : screen.formSelect1.value == 1 ? 'mode: beta' : 'mode: gamma');
+  ui.bind(screen.modeAccent, 'background', () => screen.formSelect1.value == 0 ? '#888888' : screen.formSelect1.value == 1 ? '#aaaaaa' : '#777777');
+  ui.bind(screen.radioStatus, 'text', () => screen.formRadio2.value ? 'speed: fast' : 'speed: calm');
+  ui.bind(screen.volumeStatus, 'text', () => `volume: ${screen.formRange1.value}`);
+  ui.bind(screen.formProg, 'value', () => screen.formRange1.value * 10);
+  ui.bind(screen.formProgressCaption, 'text', () => `meter: ${screen.formRange1.value * 10}%`);
+
+  // ── Lists screen: virtualized list ─────────────────────────────────────────
+  ui.bindList(
+    screen.demoList,
+    () => 40,
+    (i: number) => `Item ${i + 1}`,
+    (i: number) => { console.log('tapped:', i); },
+  );
+
+  // ── Media screen: canvas drawing every primitive once ─────────────────────
+  ui.drawCanvas(screen.demoCanvas, (ctx) => {
+    ctx.fillScreen('#1a1a1a');
+    ctx.fillRect(8, 8, 40, 24, '#333333');
+    ctx.rect(8, 8, 40, 24, '#888888');
+    ctx.fillRoundRect(56, 8, 40, 24, 6, '#444444');
+    ctx.roundRect(56, 8, 40, 24, 6, '#aaaaaa');
+    ctx.fillCircle(120, 20, 14, '#333333');
+    ctx.circle(120, 20, 14, '#cccccc');
+    ctx.line(150, 6, 190, 40, '#ffffff');
+    ctx.hline(8, 48, 180, '#555555');
+    ctx.vline(196, 8, 40, '#555555');
+    ctx.drawPixel(10, 70, '#ffffff');
+    ctx.drawPixel(14, 72, '#ffffff');
+    ctx.drawPixel(18, 70, '#ffffff');
+    ctx.drawPixel(22, 74, '#ffffff');
+    ctx.drawPixel(26, 70, '#ffffff');
+    ctx.text(8, 100, 'canvas primitives', '#cccccc');
+  });
+
+  // ── Keyboard screen: input opens the custom keyboard ───────────────────────
+  screen.kbInput.onChange(() => {
+    console.log('message:', screen.kbInput.text);
+  });
+</script>
+
+<style>
+
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("DejaVuSans.ttf");
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("DejaVuSans-Bold.ttf");
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("DejaVuSans-Oblique.ttf");
+  font-weight: 400;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("DejaVuSans-Oblique.ttf");
+  font-weight: 300;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: "ColibriDemo";
+  src: url("DejaVuSans-ExtraLight.ttf");
+  font-weight: 300;
+  font-style: normal;
+}
+
+
+
+
+
+/* ── Shared screen scaffolding ── */
 screen {
   color: var(--foreground);
   background: var(--background);
@@ -130,21 +243,15 @@ screen {
   padding: 10px;
 }
 
+/* Scroll containers use --scrollbar for their fg so the scrollbar thumb
+   (derived from fg) is a visible medium gray, not the near-black --foreground. */
 .scrollBody {
-  background: var(--background);
-}
-
-.screenHeader {
-  border: 1px solid var(--border);
-  background: var(--card);
-  padding: 8px 10px;
-  border-radius: var(--radius);
+  color: var(--scrollbar);
 }
 
 .backLink {
   font-size: 16px;
 }
-
 .screenTitle {
   color: var(--foreground);
   font-family: "ColibriDemo";
@@ -152,83 +259,503 @@ screen {
   font-weight: bold;
 }
 
-h1 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 24px; font-weight: bold; }
-h2 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 20px; font-weight: bold; }
-h3 { color: var(--muted-foreground); font-size: 14px; }
-p  { color: var(--muted-foreground); font-size: 14px; }
 
-.demoLabel {
+.demoCap {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* ── Home ── */
+#homeHeader {
+  flex-direction: column;
+  align-items: center;
+  /* <body> is a flex column with no align-items, so a fixed-width child would
+     sit at the left edge. Center the header horizontally in the screen to
+     match how .scrollBody centers its children (#homeNav, etc.). */
+  align-self: center;
+  gap: 2px;
+  width: 280px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 8px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+#homeTitle {
+  color: var(--foreground);
+  font-family: "ColibriDemo";
+  font-size: 24px;
+  font-weight: bold;
+  text-align: center;
+}
+#homeSubtitle {
   color: var(--muted-foreground);
   font-size: 14px;
+  text-align: center;
+}
+#homeNav {
+  align-items: stretch;
+  gap: 6px;
+  width: 280px;
+}
+#homeNav button {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  min-height: 48px;
+  color: var(--accent);
+  font-size: 18px;
+  text-align: left;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+#homeFooter {
+  padding: 2px 0;
+}
+#homeHint {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-align: center;
+}
+#homeNativeText {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-align: center;
 }
 
-a {
-  color: var(--primary);
+/* ── Typography screen ── */
+#typeHeadings, #typeStyle, #typeSpacing, #typeWrap, #typeFont {
+  align-items: flex-start;
+  gap: 4px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.demoH1 { color: var(--primary); font-family: "ColibriDemo"; font-size: 30px; }
+/* Rich-text (inline flow) screen: paragraphs carry mixed inline runs; the
+   inline <a> runs get the accent color so links are visible mid-sentence. */
+#richMixed, #richBreak, #richNested {
+  align-items: flex-start;
+  gap: 4px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+#richtext a { color: var(--accent); text-decoration: underline; }
+#richtext p { color: var(--foreground); font-size: 16px; }
+/* H2–H6 are non-bold so each lands in its own text-size bucket: the runtime
+   bumps textSize for bold text AND only has 4 buckets, so keeping every
+   heading bold would collapse several into one rendered size. */
+.demoH2 { color: var(--accent); font-family: "ColibriDemo"; font-size: 24px; font-weight: normal; }
+.demoH3 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 20px; font-weight: normal; }
+.demoH4 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 14px; }
+.demoH5 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 12px; }
+.demoH6 { color: var(--muted-foreground); font-family: "ColibriDemo"; font-weight: normal; font-size: 12px; font-style: italic; }
+.tBold { color: var(--foreground); font-weight: bold; font-size: 16px; }
+.tItalic { color: var(--foreground); font-family: "ColibriDemo"; font-size: 16px; }
+.tUnderline { color: var(--accent); font-size: 16px; }
+.tUpper { color: var(--secondary-foreground); background: var(--secondary); font-size: 16px; }
+.tCenter { color: var(--foreground); font-size: 16px; width: 260px; }
+.tShadow { color: var(--foreground); font-size: 16px; }
+/* text-overflow demo: identical overflowing text in a 120px box. Ellipsis
+   appends '...', clip cuts hard. Both need white-space:nowrap + overflow:hidden. */
+.tEllipsis { color: var(--foreground); background: var(--chart-4); font-size: 16px; }
+.tClip { color: var(--foreground); background: var(--chart-1); font-size: 16px; }
+.tLeading { color: var(--foreground); font-size: 14px; }
+.tTracking { color: var(--foreground); font-size: 14px; }
+.tNowrap { color: var(--destructive); font-size: 14px; }
+.tPreLine { color: var(--chart-3); font-size: 14px; }
+.tCustom { color: var(--foreground); }
+.tSmooth { color: var(--foreground); }
+.tBitmap { color: var(--muted-foreground); }
+#typeArticle {
+  align-items: center;
+  width: 280px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+#typeAside {
+  align-items: center;
+  width: 280px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  padding: 8px;
+}
+.tAside { color: var(--muted-foreground); font-size: 13px; text-align: center; }
+
+/* ── Box & Sizing screen ── */
+#boxSize, #boxPadMargin, #boxBorder, #boxShadowSec, #boxAspect {
+  align-items: center;
+  gap: 6px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+#boxFixed { width: 160px; height: 30px; background: var(--chart-1); }
+/* Label spans inside the box-demo divs. text-align doesn't inherit from the
+   parent div in this model, so the span must center its own text. */
+.boxLabel { text-align: center; }
+#boxMin { background: var(--chart-3); }
+#boxPadded { width: 160px; background: var(--secondary); border: 1px solid var(--border); padding: 12px 20px; color: var(--secondary-foreground); font-size: 14px; text-align: center; }
+#boxMargin { width: 160px; min-height: 24px; background: var(--chart-4); margin: 16px; color: var(--foreground); font-size: 14px; text-align: center; }
+#boxBordered { width: 160px; min-height: 24px; background: var(--card); border: 2px solid var(--foreground); color: var(--foreground); font-size: 14px; text-align: center; padding: 4px; }
+#boxRadius { width: 160px; min-height: 24px; background: var(--accent); border-radius: 10px; color: var(--accent-foreground); font-size: 14px; text-align: center; padding: 4px; }
+/* Per-side border: documented best-effort — runtime draws uniform borders. */
+#boxPerSide { width: 160px; min-height: 24px; background: var(--muted); border-left: 4px solid var(--primary); border-top: 2px solid var(--chart-3); color: var(--foreground); font-size: 13px; text-align: center; padding: 4px; }
+#boxShadowed { width: 160px; background: var(--primary); box-shadow: 4px 4px 0 var(--foreground); color: var(--primary-foreground); font-size: 14px; text-align: center; padding: 4px; }
+#boxOutlined { width: 160px; background: var(--card); outline: 2px solid var(--chart-5); color: var(--foreground); font-size: 14px; text-align: center; padding: 4px; }
+#boxAspectWide { width: 200px; aspect-ratio: 16 / 9; background: var(--secondary); border: 1px solid var(--border); justify-content: center; align-items: center; }
+#boxAspectSquare { height: 60px; aspect-ratio: 1 / 1; background: var(--chart-4); border: 1px solid var(--border); justify-content: center; align-items: center; }
+.aspectLabel { color: var(--foreground); font-size: 14px; text-align: center; }
+
+/* ── Position & Layers screen ── */
+#layerDemo, #visibilityDemo, #opacityDemo {
+  align-items: center;
+  gap: 6px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+#layerStage { position: relative; width: 220px; height: 70px; background: var(--muted); border: 1px solid var(--border); }
+#layerBack { position: absolute; left: 16px; top: 12px; width: 120px; height: 40px; background: var(--secondary); border: 1px solid var(--border); z-index: 1; justify-content: center; align-items: center; }
+#layerFront { position: absolute; left: 70px; top: 26px; width: 120px; height: 40px; background: var(--chart-3); border: 1px solid var(--foreground); z-index: 2; justify-content: center; align-items: center; }
+#layerCorner { position: absolute; right: 4px; bottom: 4px; width: 70px; height: 22px; background: var(--chart-5); border: 1px solid var(--foreground); z-index: 3; justify-content: center; align-items: center; }
+.layerTag { color: var(--foreground); font-size: 13px; text-align: center; }
+#visStack { gap: 2px; width: 220px; background: var(--border); padding: 1px; }
+#visBefore, #visAfter1, #visBefore2, #visAfter2, #visBefore3, #visAfter3,
+#visHiddenAttr, #visDisplayNone, #visCollapsed { width: 220px; height: 24px; justify-content: center; align-items: center; }
+#visBefore, #visAfter1, #visBefore2, #visAfter2, #visBefore3, #visAfter3 { background: var(--chart-4); }
+#visHiddenAttr { background: var(--destructive); }
+#visDisplayNone { background: var(--destructive); display: none; }
+#visCollapsed { background: var(--destructive); }
+.visCaption { color: #333333; font-size: 12px; text-align: center; width: 220px; margin-top: 4px; }
+.visText { color: var(--foreground); font-size: 13px; text-align: center; }
+#opacityRow { flex-direction: row; gap: 10px; align-items: center; }
+.opaqChip { width: 50px; height: 36px; background: var(--primary); color: var(--primary-foreground); font-size: 13px; text-align: center; justify-content: center; align-items: center; }
+
+/* ── Flexbox screen ── */
+#flexJustify, #flexAlign, #flexGrow, #flexOrder {
+  align-items: flex-start;
+  gap: 6px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.flexRow { display: flex; flex-direction: row; width: 260px; background: var(--muted); padding: 4px; border: 1px solid var(--border); }
+.flexStart { justify-content: flex-start; gap: 4px; }
+.flexCenter { justify-content: center; column-gap: 12px; }
+.flexBetween { justify-content: space-between; row-gap: 4px; }
+.alignRow { align-items: center; gap: 10px; height: 50px; }
+.growRow { align-items: center; gap: 4px; }
+.wrapRow { flex-wrap: wrap; gap: 4px; }
+.shrinkRow { align-content: center; gap: 2px; }
+.shrink1 { flex-shrink: 1; }
+.shrink0 { flex-shrink: 0; }
+.chip { width: 28px; height: 24px; background: var(--chart-3); justify-content: center; align-items: center; }
+.chipTall { width: 28px; height: 40px; background: var(--chart-4); justify-content: center; align-items: center; }
+/* Label inside a flex chip. Properties don't inherit in this model, so the
+   span carries its own color/font-size; justify-content/align-items on the
+   .chip/.chipTall parent centers it. */
+.chipLabel { color: var(--foreground); font-size: 13px; }
+.grow1 { flex-grow: 1; }
+.grow2 { flex-grow: 2; }
+.grow0 { flex-grow: 0; flex-basis: 40px; }
+.ord1 { order: 1; }
+.ord2 { order: 2; }
+.ord3 { order: 3; }
+
+/* ── Transforms screen — keyframes + transform/animation rules ── */
+@keyframes pulse {
+  0%   { background: var(--chart-4); }
+  50%  { background: var(--secondary); }
+  100% { background: var(--chart-4); }
+}
+@keyframes slideXY {
+  0%, 100% { transform: translate(0px, 0px); background: var(--chart-1); }
+  50% { transform: translate(52px, 4px); background: var(--chart-4); }
+}
+@keyframes growMove {
+  0%, 100% { transform: translate(0%, 0px) scale(1); background: var(--chart-1); }
+  50% { transform: translate(250%, 2px) scale(2.8, 1.6); background: var(--chart-5); }
+}
+@keyframes originScale {
+  0%, 100% { transform: translate(4px, 2px) scale(1); background: var(--chart-1); }
+  50% { transform: translate(4px, 2px) scale(2); background: var(--chart-4); }
+}
+@keyframes originScaleCenter {
+  0%, 100% { transform: translate(40px, 2px) scale(1); background: var(--chart-1); }
+  50% { transform: translate(40px, 2px) scale(2); background: var(--chart-4); }
+}
+@keyframes quarterTurn {
+  0%, 24% { transform: translate(38px, 3px) rotate(0deg); background: var(--chart-5); }
+  25%, 49% { transform: translate(38px, 3px) rotate(90deg); background: var(--chart-1); }
+  50%, 74% { transform: translate(38px, 3px) rotate(180deg); background: var(--chart-4); }
+  75%, 100% { transform: translate(38px, 3px) rotate(270deg); background: var(--secondary); }
 }
 
-button {
+#transformDemo, #transitionDemo {
+  align-items: center;
+  gap: 4px;
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.track { width: 88px; height: 28px; background: var(--muted); border: 1px solid var(--border); }
+#dotTranslate { width: 18px; height: 18px; background: var(--chart-1); animation: slideXY 1800ms infinite; animation-timing-function: ease-in-out; }
+#dotScale { width: 10px; height: 10px; background: var(--chart-1); transform-origin: left top; animation: growMove 1800ms infinite; animation-timing-function: ease-in-out; }
+#dotOrigin { width: 8px; height: 8px; background: var(--chart-1); transform-origin: center; animation: originScaleCenter 1600ms infinite; animation-timing-function: ease-in-out; }
+#dotRotate { width: 12px; height: 20px; background: var(--chart-5); transform-origin: center; animation: quarterTurn 2000ms infinite; }
+/* Same effect as `animation: pulse 1200ms infinite` but via longhands,
+   exercising animation-name/-duration/-iteration-count/-delay separately. */
+#dotPulse {
+  width: 16px;
+  height: 16px;
+  background: var(--chart-4);
+  animation-name: pulse;
+  animation-duration: 1200ms;
+  animation-iteration-count: infinite;
+  animation-delay: 0ms;
+}
+/* Press-down effect (copied from native_demo): a solid vertical box-shadow
+   acts as a 3D lip; :pressed drops the shadow to zero and translates the box
+   down by the same amount, so the button looks like it sinks flush on tap.
+   The 48px min-height + generous padding give a comfortable touch target. */
+#transitionBtn {
   background: var(--primary);
   color: var(--primary-foreground);
-  font-family: "ColibriDemo";
   font-size: 18px;
-  border-color: var(--border);
-  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  box-shadow: 0 3px 0 #000000;
+  padding: 10px 16px;
+  min-height: 48px;
+  transition: background 120ms;
+  transform: translate(0, 0);
 }
-
-button:pressed {
+#transitionBtn:pressed {
   background: var(--accent);
   color: var(--accent-foreground);
+  transform: translate(0, 3px);
+  box-shadow: 0 0 0 #000000;
 }
 
-input {
-  color: var(--foreground);
-  background: var(--card);
-  border-color: var(--border);
-  border-radius: var(--radius);
+/* ── Forms screen ── */
+#forms .scrollBody {
+  gap: 9px;
 }
-
-select {
-  color: var(--primary);
-  background: var(--muted);
-  border-color: var(--border);
-  border-radius: var(--radius);
-  font-size: 18px;
-  text-decoration: underline;
-}
-
-check, radio {
-  color: var(--foreground);
-  font-size: 18px;
-}
-
-list {
+.formPanel {
+  align-items: stretch;
+  gap: 7px;
+  width: 280px;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  padding: 8px;
+  box-shadow: var(--shadow);
 }
-
-.ui-key {
-  background: var(--secondary);
-  color: var(--secondary-foreground);
-  border-color: var(--border);
+.formPanel .demoLabel {
+  color: var(--secondary);
+  font-size: 13px;
 }
-.ui-key-ok {
+.formRow {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 250px;
+}
+.formStack {
+  align-items: flex-start;
+  gap: 5px;
+}
+.formStatus {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.formPill {
+  color: var(--foreground);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 7px;
+  font-size: 13px;
+}
+#formHero {
+  background: var(--muted);
+}
+#formHeroTitle {
+  color: var(--foreground);
+  font-size: 18px;
+  font-weight: bold;
+}
+#formHeroCopy {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+#formBtn {
   background: var(--primary);
   color: var(--primary-foreground);
+  font-size: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 3px 0 #000000;
+  padding: 10px 18px;
+  min-height: 48px;
+  transition: background 100ms;
+  transform: translate(0, 0);
 }
-.ui-key-del {
-  background: var(--destructive);
-  color: var(--destructive-foreground);
-}
-.ui-key-page {
+#formBtn:pressed {
   background: var(--accent);
   color: var(--accent-foreground);
+  transform: translate(0, 3px);
+  box-shadow: 0 0 0 #000000;
 }
-.ui-keyboard {
+#formBtnCount {
+  color: var(--foreground);
+  font-size: 13px;
+  width: 120px;
+  padding: 3px 5px;
+  text-align: center;
+  white-space: nowrap;
+}
+/* min-height/min-width grow the tappable box without padding, which would
+   shift the indicator: check/radio draw the 16px indicator pinned to the box
+   top-left (not padding-aware), so the extra hit area extends below the label. */
+#formCheck1 {
+  color: var(--foreground);
+  font-size: 18px;
+  min-height: 48px;
+  min-width: 200px;
+}
+#featureLamp, #modeAccent {
+  width: 18px;
+  height: 18px;
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+#formSelect1 {
+  color: var(--accent);
+  background: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 18px;
+  padding: 10px 12px;
+  min-height: 48px;
+  text-decoration: underline;
+}
+#radioChoices {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+/* Like the checkbox, min-height/min-width enlarge the hit box without padding
+   (the radio indicator is pinned to the box top-left, not padding-aware). */
+#formRadio1, #formRadio2 {
+  color: var(--foreground);
+  font-size: 18px;
+  min-height: 48px;
+  min-width: 90px;
+}
+#formProg {
+  color: var(--chart-4);
+  width: 190px;
+}
+#formRange label, #formInput label {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  align-self: flex-start;
+}
+/* A taller slider is easier to drag: the track is drawn vertically centered
+   (trackY = box.y + box.h/2), so extra height adds touch room above/below it. */
+#formRange1 {
+  color: var(--chart-1);
+  width: 205px;
+  height: 40px;
+}
+#formName, #formAge {
+  color: var(--foreground);
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 205px;
+  padding: 4px;
+}
+#formDisabledBtn {
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 18px;
+  min-height: 48px;
+}
+#formDisabledBtn:disabled { opacity: 0.5; }
+
+/* ── Images & Canvas screen ── */
+#imgFit, #imgTransform, #canvasDemo {
+  align-items: center;
+  gap: 6px;
+  width: 280px;
   background: var(--card);
+  border: 1px solid var(--border);
+  padding: 8px;
+  box-shadow: var(--shadow);
+}
+.imgRow { flex-direction: row; align-items: center; gap: 10px; width: 200px; }
+.imgLabel { width: 60px; color: var(--muted-foreground); font-size: 13px; }
+#imgContain, #imgCover, #imgFill { background: var(--card); border: 1px solid var(--border); }
+#imgLogo { background: var(--card); border: 1px solid var(--border); }
+#demoCanvas { background: #1a1a1a; border: 1px solid var(--border); }
+
+/* ── Lists screen ── */
+#demoList {
+  color: var(--foreground);
+  width: 280px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  margin: 8px 0;
 }
 
+/* ── Keyboard screen + custom keyboard template ── */
+#keyboard .scrollBody { align-items: stretch; }
+#keyboard label { color: var(--muted-foreground); font-size: 14px; }
+#kbInput { color: #ffffff; background: #333333; border: 1px solid var(--border); width: 240px; }
+.ui-key { background: var(--card); color: var(--foreground); border-color: var(--border); }
+.ui-key-ok { background: var(--chart-4); color: var(--foreground); }
+.ui-key-del { background: var(--destructive); color: var(--destructive-foreground); }
+.ui-key-page { background: var(--accent); color: var(--accent-foreground); }
+.ui-keyboard { background: var(--muted); }
 
+/* ── Cross-screen nav links (UA underlines <a>) ── */
+a {
+  color: var(--accent);
+}
+
+/* Inline style block from the original .ui.html */
+#typeView {
+  align-items: center;
+  width: 280px;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  padding: 8px;
+}
 </style>
 
 <!-- ── Home ─────────────────────────────────────────────────────────────── -->
