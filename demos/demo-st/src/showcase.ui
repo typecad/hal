@@ -1139,10 +1139,8 @@ a {
       <a class="backLink" href="#home">&lt; Back</a>
       <h2 class="screenTitle">Lists</h2>
     </header>
-    <main class="scrollBody">
-      <h3 class="demoLabel">virtualized list (drag to scroll)</h3>
-      <list id="demoList" item-height="22"></list>
-    </main>
+    <h3 class="demoLabel" style="padding: 4px 10px;">virtualized list (drag to scroll)</h3>
+    <list id="demoList" item-height="22"></list>
   </body>
 </screen>
 

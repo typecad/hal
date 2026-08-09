@@ -681,7 +681,25 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
       case NODE_LIST: {
         // Virtualized list: state lives on the node now (listCountFn/listItemFn/
         // listCount/scrollY/contentHeight/listItemHeight), not in a side table.
-        if (!__ui_nodes[i].listItemFn) break;
+        if (!__ui_nodes[i].listItemFn) {
+#if defined(ESP32) && defined(ARDUINO)
+          Serial.printf("[list-probe] node %u listItemFn=null count=%u virt=%u\\n", (unsigned)i, (unsigned)__ui_nodes[i].listCount, (unsigned)__ui_nodes[i].virtualized);
+#else
+          printf("[list-probe] node %u listItemFn=null count=%u virt=%u\\n", (unsigned)i, (unsigned)__ui_nodes[i].listCount, (unsigned)__ui_nodes[i].virtualized);
+#endif
+          break;
+        }
+#if defined(ESP32) && defined(ARDUINO)
+        if (__ui_nodes[i].listCount > 0) {
+          static uint8_t lp = 0;
+          if (!lp) { lp = 1; Serial.printf("[list-probe] node %u count=%u h=%d itemH=%u\\n", (unsigned)i, (unsigned)__ui_nodes[i].listCount, (int)__ui_nodes[i].box.h, (unsigned)__ui_nodes[i].listItemHeight); }
+        }
+#else
+        if (__ui_nodes[i].listCount > 0) {
+          static uint8_t lp = 0;
+          if (!lp) { lp = 1; printf("[list-probe] node %u count=%u h=%d itemH=%u\\n", (unsigned)i, (unsigned)__ui_nodes[i].listCount, (int)__ui_nodes[i].box.h, (unsigned)__ui_nodes[i].listItemHeight); }
+        }
+#endif
         int16_t bx = __ui_nodes[i].box.x;
         int16_t by = drawY;
         int16_t bw = __ui_nodes[i].box.w;

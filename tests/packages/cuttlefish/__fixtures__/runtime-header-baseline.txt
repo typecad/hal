@@ -4662,7 +4662,25 @@ static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
       case NODE_LIST: {
         // Virtualized list: state lives on the node now (listCountFn/listItemFn/
         // listCount/scrollY/contentHeight/listItemHeight), not in a side table.
-        if (!__ui_nodes[i].listItemFn) break;
+        if (!__ui_nodes[i].listItemFn) {
+#if defined(ESP32) && defined(ARDUINO)
+          Serial.printf("[list-probe] node %u listItemFn=null count=%u virt=%u\n", (unsigned)i, (unsigned)__ui_nodes[i].listCount, (unsigned)__ui_nodes[i].virtualized);
+#else
+          printf("[list-probe] node %u listItemFn=null count=%u virt=%u\n", (unsigned)i, (unsigned)__ui_nodes[i].listCount, (unsigned)__ui_nodes[i].virtualized);
+#endif
+          break;
+        }
+#if defined(ESP32) && defined(ARDUINO)
+        if (__ui_nodes[i].listCount > 0) {
+          static uint8_t lp = 0;
+          if (!lp) { lp = 1; Serial.printf("[list-probe] node %u count=%u h=%d itemH=%u\n", (unsigned)i, (unsigned)__ui_nodes[i].listCount, (int)__ui_nodes[i].box.h, (unsigned)__ui_nodes[i].listItemHeight); }
+        }
+#else
+        if (__ui_nodes[i].listCount > 0) {
+          static uint8_t lp = 0;
+          if (!lp) { lp = 1; printf("[list-probe] node %u count=%u h=%d itemH=%u\n", (unsigned)i, (unsigned)__ui_nodes[i].listCount, (int)__ui_nodes[i].box.h, (unsigned)__ui_nodes[i].listItemHeight); }
+        }
+#endif
         int16_t bx = __ui_nodes[i].box.x;
         int16_t by = drawY;
         int16_t bw = __ui_nodes[i].box.w;
@@ -5873,6 +5891,11 @@ static inline void ui_tick(uint16_t deltaMs) {
       if (__ui_fb) __ui_fb_frame_dirty = 1;
       if (!ui_is_effectively_visible(i)) { __ui_nodes[i].dirty = 0; continue; }
       if (__ui_nodes[i].screenId != __ui_active_screen) { __ui_nodes[i].dirty = 0; continue; }
+#if defined(ESP32) && defined(ARDUINO)
+      if (__ui_nodes[i].kind == NODE_LIST) { static uint8_t lp2=0; if(!lp2){lp2=1; Serial.printf("[draw-probe] LIST node %u reached draw, dirty=1, listItemFn=%u\n",(unsigned)i,(unsigned)(__ui_nodes[i].listItemFn!=nullptr));} }
+#else
+      if (__ui_nodes[i].kind == NODE_LIST) { static uint8_t lp2=0; if(!lp2){lp2=1; printf("[draw-probe] LIST node %u reached draw, dirty=1, listItemFn=%u\n",(unsigned)i,(unsigned)(__ui_nodes[i].listItemFn!=nullptr));} }
+#endif
     } else {
       // malloc failed at startup: preserve correct z-order via selection sort.
       i = -1;
