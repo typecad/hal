@@ -53,6 +53,7 @@ export function transpileTestFile(
   projectRoot: string,
   buildTarget: string,
   toolchainType: 'arduino-cli' | 'west' = 'arduino-cli',
+  configPath?: string,
 ): CompileResult {
   // Create a build directory for this test file. Per-file directories are
   // used — arduino-cli compile has no incremental benefit from a shared dir.
@@ -76,10 +77,19 @@ export function transpileTestFile(
   // Invoke the cuttlefish transpiler
   // We call it as a CLI command rather than importing to avoid coupling
   const cuttlefishCmd = resolveCuttlefishCmd(projectRoot);
-  const useBuildMode = hasRelativeImports(rewrittenSource);
+  // Use build mode (run `cuttlefish build` from a build dir that holds its own
+  // generated cuttlefish.config.ts) when the test source has relative imports
+  // OR when an explicit configPath was passed. The latter matters because
+  // direct-file mode discovers cuttlefish.config.ts from cwd (projectRoot),
+  // which is the DEFAULT config — so a project with several target-specific
+  // configs (e.g. tests/hardware/cuttlefish.config.ts vs ble-demo.config.ts)
+  // would always transpile against the default. Build mode writes a config
+  // derived from the chosen configPath into the build dir, so the right
+  // board/MCU/target is used.
+  const useBuildMode = hasRelativeImports(rewrittenSource) || !!configPath;
 
   if (useBuildMode) {
-    writeBuildConfig(buildDir, projectRoot, path.basename(tsPath), buildTarget);
+    writeBuildConfig(buildDir, projectRoot, path.basename(tsPath), buildTarget, configPath);
   }
 
   const result = spawnSync(
@@ -179,7 +189,7 @@ export function uploadSketch(
   zephyrConfig?: Record<string, unknown>,
 ): UploadResult {
   if (toolchainType === 'west') {
-    return uploadWestProject(sketchDir, buildTarget, port);
+    return uploadWestProject(sketchDir, buildTarget, port, zephyrConfig);
   }
   return uploadArduinoSketch(sketchDir, buildTarget, port);
 }
@@ -263,7 +273,7 @@ function compileWestProject(sketchDir: string, buildTarget: string, zephyrConfig
  * Upload (flash) a Zephyr project via `west flash`. For ESP32 boards, west
  * uses the esptool runner; for nRF boards, nrfjprog. The port is forwarded.
  */
-function uploadWestProject(sketchDir: string, buildTarget: string, port: string): UploadResult {
+function uploadWestProject(sketchDir: string, buildTarget: string, port: string, zephyrConfig?: Record<string, unknown>): UploadResult {
   const srcDir = path.join(sketchDir, 'src');
   const projectRoot = fs.existsSync(srcDir) ? sketchDir : path.dirname(sketchDir);
   const sourcePath = fs.existsSync(path.join(srcDir, 'src.cpp'))
@@ -282,6 +292,7 @@ function uploadWestProject(sketchDir: string, buildTarget: string, port: string)
       sourcePath,
       buildTarget,
       port,
+      zephyrConfig,
     });
     return {
       success: result.success,
@@ -413,8 +424,14 @@ function rewriteRelativeImports(source: string, originalFilePath: string, buildD
   });
 }
 
-function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: string, buildTarget: string): void {
-  const baseConfigPath = path.join(projectRoot, 'cuttlefish.config.ts');
+function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: string, buildTarget: string, configPath?: string): void {
+  // Resolve the source config: an explicit --config path wins; otherwise fall
+  // back to cuttlefish.config.ts in the project root. The transpile runs from
+  // buildDir, so we inline the scalar fields the cuttlefish transpiler needs
+  // (target/board/mcu/framework/buildTarget/toolchain/zephyr) into a generated
+  // cuttlefish.config.ts there — the config loader can't evaluate spreads or
+  // relative imports, and discovery from buildDir would find no config.
+  const baseConfigPath = configPath ?? path.join(projectRoot, 'cuttlefish.config.ts');
   const buildConfigPath = path.join(buildDir, 'cuttlefish.config.ts');
 
   if (fs.existsSync(baseConfigPath)) {
@@ -429,8 +446,10 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
     ];
     if (baseValues.target) lines.push(`  target: '${baseValues.target}',`);
     if (baseValues.board) lines.push(`  board: '${baseValues.board}',`);
+    if (baseValues.mcu) lines.push(`  mcu: '${baseValues.mcu}',`);
     if (baseValues.framework) lines.push(`  framework: '${baseValues.framework}',`);
     if (baseValues.frameworkData?.buildTarget) lines.push(`  frameworkData: { buildTarget: '${baseValues.frameworkData.buildTarget}' },`);
+    if (baseValues.toolchain?.type) lines.push(`  toolchain: { type: '${baseValues.toolchain.type}' },`);
 
     lines.push('  output: {');
     if (baseValues.output?.framework) lines.push(`    framework: '${baseValues.output?.framework}',`);
@@ -442,6 +461,17 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
       lines.push('  console: {');
       lines.push(`    baudRate: ${baseValues.console?.baudRate},`);
       lines.push('  },');
+    }
+
+    // Pass the zephyr section (kconfig, runner) through verbatim — the Zephyr
+    // toolchain reads runner from it (e.g. zephyr.runner: 'uf2'). Serialize the
+    // parsed object as a minimal object literal (string values only; sufficient
+    // for the scalar fields the toolchain reads).
+    if (baseValues.zephyr && Object.keys(baseValues.zephyr).length > 0) {
+      const parts = Object.entries(baseValues.zephyr)
+        .map(([k, v]) => `${k}: ${JSON.stringify(v)}`)
+        .join(', ');
+      lines.push(`  zephyr: { ${parts} },`);
     }
 
     lines.push('};');

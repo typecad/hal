@@ -73,9 +73,6 @@
   //   -> look for "ESP32C6 Dev Module    esp32:esp32:esp32c6"
   "fqbn": "esp32:esp32:esp32c6",
 
-  // PlatformIO target id (e.g. "esp32c6"). Used in build.frameworks.platformio.
-  "platformioTarget": "esp32c6",
-
   // The ARDUINO_* build define for this board (e.g. "ARDUINO_ESP32C6_DEV").
   // Check the core's boards.txt for the exact define name.
   "arduinoDefine": "ARDUINO_ESP32C6_DEV",

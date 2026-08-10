@@ -19,14 +19,15 @@ export const XIAO_BLE: ZephyrChipDescriptor = {
       { pin: 30, dtSpec: 'led1' },  // Green (P0.30)
       { pin: 6, dtSpec: 'led2' },   // Blue  (P0.06)
     ],
-    // User button — the XIAO nRF52840 exposes the user button as DT alias
-    // `sw0` (P0.04), active-low with a pull-up enabled in the board DTS. The
-    // @typecad/board package's BUTTON pin resolves to Pin(4) == P0.04. Without
-    // this entry every interrupt.attach emitted only a comment (bug B2):
-    // interrupts were declared supported but wired to nothing.
-    interruptPins: [
-      { pin: 4, dtSpec: 'sw0' },  // User button (P0.04)
-    ],
+    // The XIAO nRF52840 has a user button on P0.04, but mainline Zephyr's
+    // xiao_ble board (verified against Zephyr 4.3.99) does NOT expose it as a
+    // DT `sw0` alias — there is no gpio-keys node in xiao_ble.dts. Emitting
+    // GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios) therefore fails to compile
+    // ('DT_N_ALIAS_sw0_... was not declared'). Until a button node + alias is
+    // added (via an overlay or an upstream board update), interruptPins stays
+    // empty: attachInterrupt on this board lowers to the no-DT-spec comment
+    // fallback rather than a hard compile error.
+    interruptPins: [],
   },
   // The XIAO connector wiring (from seeed_xiao_connector.dtsi + xiao_ble-pinctrl.dtsi):
   //   xiao_i2c     → i2c1  (SDA P0.04/D4, SCL P0.05/D5)

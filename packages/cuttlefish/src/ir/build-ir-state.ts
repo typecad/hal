@@ -96,6 +96,12 @@ export class CompilationContext {
   floatVariables = new Set<string>();
   snprintfCounter = 0;
   callbackPlaceholderCounter = 0;
+  // BLE characteristic index counter — persists across separate Ble.server()
+  // calls so a multi-characteristic server (one server() per char, the common
+  // ble-demo pattern) gets unique sequential indices instead of every char
+  // clobbering slot 0. Read by the server()/characteristic() resolver branches
+  // in hal-parser.ts. Reset per file in hal-emitter.ts with the other counters.
+  bleCharCounter = 0;
   activeStrategy: PlatformStrategy | null = null;
 
   restParamFunctions = new Map<string, string>();
@@ -302,6 +308,14 @@ export function setCurrentBoardConstants(v: BoardConstants | undefined) {
         pinAliasMap.set(name, num);
         mcuPinForwardMap.set(name, num);
         mcuPinReverseMap.set(num, name);
+        // Register an identifier-safe variant so that pins whose canonical
+        // name is not a legal JS identifier (e.g. nRF52840 "P0.28") can be
+        // imported under their underscore form (P0_28). See "Pin Naming
+        // Conventions" in the root AGENTS.md.
+        const identName = name.replace(/[.\s-]/g, "_");
+        if (identName !== name) {
+          pinAliasMap.set(identName, num);
+        }
       }
     }
   }

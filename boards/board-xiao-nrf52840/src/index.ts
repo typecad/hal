@@ -45,6 +45,57 @@ export const XiaoNRF52840: BoardDefinition = {
     },
     defines: {},
   },
+
+  // ----- @typecad/framework-zephyr chip data -------------------------------
+  // Carried into the flattened board constants under `zephyr.*` and
+  // reconstructed into a ZephyrChipDescriptor by framework-zephyr's
+  // resolveChipFromBoard(). This is the source the GPIO lowering reads: pins
+  // listed in gpio.dtSpecs lower through gpio_pin_*_dt() (honoring the DT
+  // polarity flag, so the active-low LEDs are correct), while pins without a
+  // dtSpec fall back to the raw gpio0 controller path.
+  //
+  // Plain object/array literals only — `as const` on nested values defeats the
+  // board-constants flattener. Mirrors framework-zephyr's hardcoded XIAO_BLE
+  // descriptor (src/chips/xiao-ble.ts), verified against xiao_ble_common.dtsi.
+  zephyr: {
+    gpioController: 'gpio0',
+    gpio: {
+      // Onboard RGB LEDs — active-low (GPIO_ACTIVE_LOW in xiao_ble_common.dtsi).
+      dtSpecs: [
+        { pin: 26, dtSpec: 'led0' },  // Red   (P0.26)
+        { pin: 30, dtSpec: 'led1' },  // Green (P0.30)
+        { pin: 6, dtSpec: 'led2' },   // Blue  (P0.06)
+      ],
+      // The XIAO nRF52840 user button is on P0.04, but mainline Zephyr's
+      // xiao_ble board does NOT expose it as a `sw0` DT alias (no gpio-keys
+      // node in Zephyr ≤4.3.99). Leaving interruptPins non-empty would emit
+      // GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios) and fail to compile. See the
+      // matching note in framework-zephyr src/chips/xiao-ble.ts.
+      interruptPins: [],
+    },
+    // XIAO connector wiring (seeed_xiao_connector.dtsi + xiao_ble-pinctrl.dtsi).
+    i2c:  { controllers: [{ nodeLabel: 'i2c1' }] },
+    spi:  { controllers: [{ nodeLabel: 'spi2' }] },
+    uart: { controllers: [{ nodeLabel: 'uart0' }] },
+    pwm: {
+      // pwm-led0 drives the board PWM LED (PWM_OUT0 on P0.17, inverted).
+      specs: [{ pin: 17, dtSpec: 'pwm-led0' }],
+    },
+    adc: {
+      // SAADC node is `adc`; XIAO D0–D3 = AIN0–AIN3 (P0.02/P0.03/P0.28/P0.29).
+      // Internal VREF ~0.6V with VDD/4 gain ⇒ 3000mV.
+      nodeLabel: 'adc',
+      resolution: 12,
+      vrefMv: 3000,
+      channels: [
+        { pin: 2, channel: 0 },   // P0.02 / D0 / AIN0
+        { pin: 3, channel: 1 },   // P0.03 / D1 / AIN1
+        { pin: 28, channel: 2 },  // P0.28 / D2 / AIN2
+        { pin: 29, channel: 3 },  // P0.29 / D3 / AIN3
+      ],
+    },
+    wdt: { nodeLabel: 'wdt0' },
+  },
 };
 
 export default XiaoNRF52840;

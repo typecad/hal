@@ -54,6 +54,12 @@ export async function run(config: ResolvedConfig): Promise<number> {
     const result = await processTestFile(filePath, config);
     fileResults.push(result);
     reportFileResult(result, { verbose: config.test.verbose });
+    // --bail: stop after the first file that fails to compile/upload or has a
+    // failing test (skipped/compiled files don't count as failures).
+    if (config.bail && (result.error || (result.describes.length > 0 && !result.passed))) {
+      console.log(`${YELLOW}--bail: stopping after first failure${RESET}`);
+      break;
+    }
   }
 
   // 3. Aggregate results
@@ -94,8 +100,8 @@ async function processTestFile(
 
   // Validate port only for files that will actually compile/upload. This lets
   // target-incompatible files be skipped without requiring hardware to be
-  // connected.
-  if (!config.test.port) {
+  // connected, and lets --dry-run run without any port (it stops after compile).
+  if (!config.test.port && !config.dryRun) {
     return errorResult(filePath, 'No serial port specified. Use --port <port> or set test.port in cuttlefish.config.ts', startTime);
   }
 
@@ -121,6 +127,7 @@ async function processTestFile(
     config.projectRoot,
     config.buildTarget,
     config.toolchainType,
+    config.configPath,
   );
   if (!transpileResult.success) {
     return errorResult(filePath, transpileResult.error ?? 'Transpilation failed', startTime);
@@ -133,6 +140,14 @@ async function processTestFile(
     return errorResult(filePath, compileResult.error ?? 'Compilation failed', startTime);
   }
 
+  // --dry-run: stop after a successful compile. Skips upload + serial read so
+  // the pipeline can be verified without hardware attached.
+  if (config.dryRun) {
+    const durationMs = Date.now() - startTime;
+    console.log(`  ${DIM}compiled (dry-run, skipping upload and tests)${RESET}`);
+    return { filePath: relativePath, describes: [], passed: true, durationMs, debugOutput: [], compiled: true };
+  }
+
   // Step 4: Upload via the configured toolchain
   console.log(`  ${DIM}uploading to ${config.test.port}...${RESET}`);
   const uploadResult = uploadSketch(
@@ -141,6 +156,7 @@ async function processTestFile(
     config.test.port,
     config.framework,
     config.toolchainType,
+    config.zephyrConfig,
   );
   if (!uploadResult.success) {
     return errorResult(filePath, uploadResult.error ?? 'Upload failed', startTime);

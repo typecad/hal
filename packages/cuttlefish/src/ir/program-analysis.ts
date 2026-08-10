@@ -166,6 +166,18 @@ function analyzeExpression(
           }
         }
       }
+      // Timer polyfill sizing — Timing.setInterval/Timing.setTimeout in
+      // expression position (e.g. `const id = Timing.setInterval(...)`) lower to
+      // a raw expression whose value contains `__tc_setInterval(...)`. The
+      // callee-based counter in the "call" case only fires for bare timer
+      // calls; without this the timer_methods polyfill is gated off and the
+      // link fails: "'__tc_setInterval' was not declared in this scope".
+      {
+        const intervals = expr.value.match(/__tc_setInterval\s*\(/g);
+        if (intervals) result.timerCallCount += intervals.length;
+        const timeouts = expr.value.match(/__tc_setTimeout\s*\(/g);
+        if (timeouts) result.timerCallCount += timeouts.length;
+      }
       if (/\bString\s*\(/.test(expr.value)) {
         result.usesStringConversion = true;
       }
@@ -564,6 +576,25 @@ function analyzeStatement(
           }
         }
       }
+      // Timer polyfill sizing for __EMIT__ statements (callee "__EMIT__"):
+      // Timing.setInterval/Timing.setTimeout can lower to an __EMIT__ call whose
+      // single string arg is the raw C++ payload, e.g.
+      // `return __tc_setInterval(<cb>, 500)`. The callee-based timer counter
+      // above only fires for bare setInterval/__tc_setInterval calls, so without
+      // this the timer_methods polyfill is gated off and the link fails:
+      // "'__tc_setInterval' was not declared in this scope". Count call sites
+      // embedded in the raw payload. (The hal-op raw-code path has a parallel
+      // counter below.)
+      if (statement.callee === "__EMIT__") {
+        for (const arg of statement.args) {
+          if (arg && arg.kind === "string" && typeof arg.value === "string") {
+            const matches = arg.value.match(/__tc_setInterval\s*\(/g);
+            if (matches) result.timerCallCount += matches.length;
+            const timeouts = arg.value.match(/__tc_setTimeout\s*\(/g);
+            if (timeouts) result.timerCallCount += timeouts.length;
+          }
+        }
+      }
       for (const arg of statement.args) {
         analyzeExpression(arg, result, strategy);
       }
@@ -784,6 +815,21 @@ function analyzeStatement(
           result.usesTiming = true;
           result.usesMillis = true;
         }
+        // Timer polyfill sizing — `Timing.setInterval(...)` / `Timing.setTimeout(...)`
+        // are resolved by the HAL method resolver, which reads TimingClass's
+        // rawCpp body and emits a raw hal-op whose code is e.g.
+        // `return __tc_setInterval(<cb>, 500)`. The callee-based counter below
+        // (statement.callee === "__tc_setInterval") never fires for these — the
+        // statement is a hal-op, not a bare timer call — so without counting
+        // here the timer_methods polyfill is gated off (timerCallCount == 0)
+        // and the link fails: "'__tc_setInterval' was not declared in this
+        // scope". Count each __tc_setInterval/__tc_setTimeout call site in the
+        // raw code. The optional `return ` prefix is emitted by value-returning
+        // HAL methods (statement context), so match with or without it.
+        const intervalSites = code.match(/__tc_setInterval\s*\(/g);
+        if (intervalSites) result.timerCallCount += intervalSites.length;
+        const timeoutSites = code.match(/__tc_setTimeout\s*\(/g);
+        if (timeoutSites) result.timerCallCount += timeoutSites.length;
         // Native AVR peripheral usage inside raw hal-op code (e.g. the
         // EEPROM namespace lowers to `EEPROM.write(...)` in a raw hal-op;
         // Serial/SPI/Wire may appear as lowered library calls too).

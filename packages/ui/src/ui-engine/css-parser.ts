@@ -244,39 +244,7 @@ function evalMediaCondition(prelude: string): boolean | null {
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// Cross-source variable registry. The UA stylesheet is parsed standalone (no
-// :root of its own), so its var(--x) references cannot resolve at parse time.
-// Instead, the most recently parsed user CSS registers its effective variable
-// map (:root + active theme-class overrides) here, and the UA rules resolve
-// against it (with per-token fallbacks) when they are read by the resolver.
-// ---------------------------------------------------------------------------
-let registeredThemeVars: Record<string, string> = {};
-let registeredThemeVarsVersion = 0;
-
-/** The effective theme variables from the most recent user-CSS parse. */
-export function getRegisteredThemeVars(): Record<string, string> {
-  return registeredThemeVars;
-}
-
-/** Bumped whenever registeredThemeVars changes, so callers can cache cheaply. */
-export function getRegisteredThemeVarsVersion(): number {
-  return registeredThemeVarsVersion;
-}
-
-/** Clear the registered theme variables (test-session resets). After this,
- *  UA var() tokens resolve to their fallbacks until the next user-CSS parse. */
-export function resetRegisteredThemeVars(): void {
-  registeredThemeVars = {};
-  registeredThemeVarsVersion++;
-}
-
-/** Parse CSS into rules. By default var(--x[, fallback]) references are
- *  resolved against the source's own :root/theme-class variables. Pass
- *  { resolveVars: false } to keep var() references literal — used by the UA
- *  stylesheet, which resolves them later against the user CSS's variables. */
-export function parseCss(src: string, diagnostics?: Diagnostic[], opts?: { resolveVars?: boolean }): CSSRule[] {
-  const resolveVars = opts?.resolveVars !== false;
+export function parseCss(src: string, diagnostics?: Diagnostic[]): CSSRule[] {
   // Strip CSS comments before parsing (they may contain { or }).
   const withoutComments = stripKeyframes(src.replace(/\/\*[\s\S]*?\*\//g, ""));
   const rules: CSSRule[] = [];
@@ -397,22 +365,11 @@ export function parseCss(src: string, diagnostics?: Diagnostic[], opts?: { resol
     Object.assign(effectiveVars, scopedVars[themeClass]);
   }
 
-  // Substitute var(--name) references in all property values. This runs
-  // unconditionally (even with an empty variable map) so that var(--x, fb)
-  // fallbacks still resolve — a source with no :root may still reference
-  // variables with defaults.
-  if (resolveVars) {
+  // Substitute var(--name) references in all property values.
+  if (Object.keys(effectiveVars).length > 0) {
     for (const rule of rules) {
       substituteVars(rule.properties, effectiveVars);
     }
-  }
-
-  // Register the effective map for the cross-source UA substitution. Only
-  // when the source actually declared variables — parsing the UA stylesheet
-  // itself (which has none) must not clear the registry.
-  if (Object.keys(effectiveVars).length > 0) {
-    registeredThemeVars = effectiveVars;
-    registeredThemeVarsVersion++;
   }
 
   return rules;
@@ -452,27 +409,12 @@ export function parseFontFaces(src: string): CSSFontFace[] {
   return faces;
 }
 
-/** Match var(--name) and var(--name, fallback). The fallback may contain a
- *  single level of parentheses (rgb()/hsl()/calc()), which is enough for the
- *  values used in practice. Nested var() inside a fallback is not supported. */
-const VAR_REF_RE = /var\(\s*(--[\w-]+)\s*(?:,\s*((?:[^()]|\([^)]*\))*)\s*)?\)/g;
-
-/** Resolve one value's var(--name[, fallback]) references. An undefined
- *  variable resolves to its fallback when present, else to "". */
-function substituteVarValue(value: string, variables: Record<string, string>): string {
-  return value.replace(VAR_REF_RE, (_m, name: string, fallback?: string) => {
-    const v = variables[name];
-    if (v !== undefined) return v;
-    return fallback !== undefined ? fallback.trim() : "";
-  });
-}
-
-/** Replace var(--name[, fallback]) in all string-valued CSS properties. */
+/** Replace var(--name) in all string-valued CSS properties. */
 function substituteVars(props: CSSProperty, variables: Record<string, string>): void {
   for (const key of Object.keys(props) as (keyof CSSProperty)[]) {
     const val = props[key];
     if (typeof val === "string" && (val.includes("var(") || val.includes("calc("))) {
-      let resolved = substituteVarValue(val, variables);
+      let resolved = val.replace(/var\(\s*(--[\w-]+)\s*\)/g, (_, name) => variables[name] ?? "");
       // After var substitution, evaluate any calc(...) expressions.
       resolved = resolveCalc(resolved);
       (props[key] as string) = resolved;
@@ -480,16 +422,6 @@ function substituteVars(props: CSSProperty, variables: Record<string, string>): 
       // TransitionDecl — no var() in its fields, skip
     }
   }
-}
-
-/** Substitute var(--name[, fallback]) references in a rule list, in place.
- *  Used by the UA stylesheet to resolve its tokens against the theme
- *  variables registered by the user CSS parse (see getRegisteredThemeVars). */
-export function substituteVarsInRules(rules: CSSRule[], variables: Record<string, string>): CSSRule[] {
-  for (const rule of rules) {
-    substituteVars(rule.properties, variables);
-  }
-  return rules;
 }
 
 /** Evaluate calc(...) expressions in a value string. Handles + - * / on

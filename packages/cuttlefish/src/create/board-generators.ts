@@ -587,7 +587,6 @@ export function genBoardIndex(spec: BoardSpec): string {
   // Build config
   lines.push(`  build: {`);
   lines.push(`    frameworks: {`);
-  lines.push(`      platformio: '${spec.platformioTarget}',`);
   lines.push(`      arduino: '${spec.fqbn}',`);
   lines.push(`    },`);
   lines.push(`    defines: {`);

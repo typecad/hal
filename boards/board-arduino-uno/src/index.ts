@@ -46,7 +46,6 @@ export const ArduinoUno: BoardDefinition = {
   // ----- Build config ------------------------------------------------------
   build: {
     frameworks: {
-      platformio: 'uno',
       arduino: 'arduino:avr:uno',
     },
     defines: {

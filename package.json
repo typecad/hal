@@ -47,10 +47,14 @@
     "test:hw:basics": "npm run test:hw:basics --workspace @typecad/framework-arduino",
     "test:http": "tsx tests/hardware/start-server.ts",
     "test:hw:http": "cd tests/hardware && npm exec -- cuttlefish-test http-client.test.ts --port COM10",
+    "test:ble": "tsx tests/hardware/ble-client.ts",
+    "test:hw:ble": "cd tests/hardware && npm exec -- cuttlefish-test --config ble-demo.config.ts ble-peripheral.test.ts --port COM14",
     "changeset": "changeset",
     "version": "changeset version"
   },
   "devDependencies": {
+    "@abandonware/bluetooth-hci-socket": "^0.5.3-12",
+    "@abandonware/noble": "^1.9.2-26",
     "@changesets/cli": "^2.31.0",
     "@types/css-tree": "^2.3.11",
     "@typescript-eslint/eslint-plugin": "^8.61.0",

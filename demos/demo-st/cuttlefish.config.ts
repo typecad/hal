@@ -25,6 +25,7 @@ const config: CuttlefishConfig = {
     rst: 16,
     spiFrequency: 80000000,
     antialias: true,
+    // themeClass: 'light',
     scroll: {
       dragScale: 1.0,
     },

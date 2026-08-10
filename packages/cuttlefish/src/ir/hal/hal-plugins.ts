@@ -1,7 +1,7 @@
 ﻿import ts from "typescript";
 import { HALOpIR } from "../../api/index.js";
 import { HALInstance } from "./hal-parser.js";
-import { getCurrentBoardConstants, halInstances } from "../build-ir-state.js";
+import { getCurrentBoardConstants, halInstances, getContext } from "../build-ir-state.js";
 import { resolveExpressionText, extractAndRegisterCallbacks } from "./hal-emitter.js";
 import { renderExprAsText } from "../render-expr.js";
 import type { ExpressionIR } from "../../api/index.js";
@@ -807,7 +807,18 @@ export function tryResolveSemanticCall(
       return { operation: "ble.add_service", uuid: quoteNonIdentifier(uuid) };
     }
     case "bleAddChar": {
-      const index = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      // The characteristic index is assigned HERE from a per-file counter, not
+      // resolved from `this._charCount`. resolveHALReceiver re-resolves the
+      // receiver (Ble.server(name)) freshly for each chain level when emitting,
+      // so a value stamped onto the instance field in the resolver would be
+      // dropped — leaving every characteristic on slot 0, clobbering the
+      // previous on_read/on_write handler. Consuming the counter at the single
+      // emit site (this plugin, called once per characteristic in declaration
+      // order) makes indices sequential (0,1,2,…) and stable. The counter is
+      // per-file (reset in resetHALResolver). onRead/onWrite/onConnect don't
+      // need a compile-time index — the C++ shim keys them off
+      // __tc_ble.current_char, which __tc_ble_add_char sets at runtime from
+      // this index.
       const uuid = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const type = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       const perms = resolveNumericOrExpression(args, 3, instance, paramNames, callArgTexts, paramDefaults);
@@ -824,7 +835,7 @@ export function tryResolveSemanticCall(
       const resolvedPerms = resolveBlePermExpr(perms);
       return {
         operation: "ble.add_char",
-        index: index ?? 0,
+        index: getContext().bleCharCounter++,
         uuid: quoteNonIdentifier(uuid),
         type: resolvedType,
         perms: resolvedPerms,

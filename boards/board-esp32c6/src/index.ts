@@ -39,7 +39,6 @@ export const ESP32C6Board: BoardDefinition = {
 
   build: {
     frameworks: {
-      platformio: 'esp32c6',
       arduino: 'esp32:esp32:esp32c6',
     },
     defines: {

@@ -66,6 +66,107 @@ const BUILD_TIMEOUT_MS = 600_000;
 const FLASH_TIMEOUT_MS = 120_000;
 
 /**
+ * Build the `west flash` argument list for a board.
+ *
+ * Runner selection: each board's board.cmake declares a sensible default flash
+ * runner for its hardware (xiao_ble → nrfutil, esp32* → esptool), and `west
+ * flash` resolves it automatically. The framework only intervenes where the
+ * board default needs an argument it can't infer:
+ *   - An explicit `zephyr.runner` (from cuttlefish.config.ts) always wins.
+ *   - ESP32 boards forward the port via `--esp-device` (esptool reads the
+ *     device from it); board.cmake still picks the runner.
+ *   - Every other board trusts the board.cmake default. Previously this forced
+ *     `--runner nrfjprog` for every non-ESP32 target, which broke boards whose
+ *     default is not nrfjprog (xiao_ble defaults to nrfutil) and required
+ *     Nordic J-Link tools that a USB-bootloader board does not have.
+ *
+ * Exported (pure) so the runner-selection contract is unit-testable without
+ * spawning west.
+ */
+export function buildFlashArgs(
+  buildDir: string,
+  board: string,
+  userRunner: string | undefined,
+  port: string | undefined,
+): string[] {
+  const args = ['flash', '-d', buildDir];
+  if (userRunner) {
+    args.push('--runner', userRunner);
+  }
+  if (port && board.startsWith('esp32')) {
+    args.push('--esp-device', port);
+  }
+  return args;
+}
+
+/**
+ * Classify a `west flash` result as success/failure.
+ *
+ * west's exit status is authoritative except for one known race in the uf2
+ * runner on Windows: the UF2 bootloader reboots to run new firmware the instant
+ * the file copy completes, unmounting the USB-MSC drive before `shutil.copy`'s
+ * trailing `copymode`/chmod runs. That raises `OSError: [WinError 433] A
+ * device which does not exist was specified` and makes west exit non-zero —
+ * even though the firmware copied and flashed correctly (the LED blinks).
+ *
+ * The copy starting is logged ("Copying UF2 file to '<drive>'"); WinError 433
+ * during `copymode` after that point proves the data write finished and the
+ * drive only vanished on the metadata step. Treat that exact signature as
+ * success so the upload isn't reported as a failure. Genuine uf2 failures
+ * (no partition found, write errors before the copy) still surface as failures.
+ *
+ * Exported (pure) so the classification is unit-testable without spawning west.
+ */
+export function classifyUploadResult(
+  runner: string | undefined,
+  status: number | null,
+  output: string,
+): boolean {
+  if (status === 0) return true;
+  if (isUf2DriveVanishRace(output)) return runner === 'uf2';
+  return false;
+}
+
+/**
+ * Whether `output` carries the benign UF2 copymode/WinError-433 race signature
+ * (see classifyUploadResult). Centralized so classify + cleanse share one match.
+ */
+function isUf2DriveVanishRace(output: string): boolean {
+  return /Copying UF2 file to/.test(output)
+    && /WinError 433/.test(output)
+    && /copymode/.test(output);
+}
+
+/**
+ * Cleanse the `west flash` output shown to the user.
+ *
+ * When classifyUploadResult has decided a non-zero west exit was the benign UF2
+ * race (firmware copied, drive unmounted on the trailing chmod), the raw output
+ * is a wall of Python traceback that reads like a hard failure. Drop everything
+ * after the "Copying UF2 file to" line — i.e. the entire traceback — so a
+ * successful flash reads as a success (the framework's ✓ Done follows). Non-race
+ * output is returned untouched; genuine errors stay fully visible for diagnosis.
+ *
+ * Exported (pure) so the cleansing is unit-testable without spawning west.
+ */
+export function cleanseUploadOutput(
+  runner: string | undefined,
+  status: number | null,
+  output: string,
+): string {
+  if (status === 0) return output;
+  if (runner === 'uf2' && isUf2DriveVanishRace(output)) {
+    // Keep everything west printed up to and including "Copying UF2 file to",
+    // then stop — everything after that is the drive-vanish traceback.
+    const upto = output.match(/[\s\S]*Copying UF2 file to[^\n]*/);
+    const head = upto ? upto[0] : '-- west flash: using runner uf2';
+    return head;
+  }
+  return output;
+}
+
+
+/**
  * FrameworkToolchain for Zephyr. Spec §3.5 (mirror of the ESP-IDF toolchain).
  * The target board is carried via frameworkData.buildTarget; scaffolding
  * happens at compile time when the target is known.
@@ -291,29 +392,8 @@ export const Toolchain = {
     const buildDir = join(projectRoot, 'build');
     const board = targetFromOptions(o);
     const zc = o.zephyrConfig as Record<string, unknown> | undefined;
-    const args = ['flash', '-d', buildDir];
-
-    // User-configured runner from cuttlefish.config.ts zephyr.runner.
-    // When set it overrides the auto-detected runner below.
-    const userRunner = zc?.runner as string | undefined;
-    if (userRunner) {
-      args.push('--runner', userRunner);
-    }
-
-    // Flash runner is target-specific. nRF boards (xiao_ble) flash over J-Link
-    // via nrfjprog; Espressif boards (esp32s3_devkitc / esp32*) flash over USB
-    // via the esptool runner that the board's board.cmake selects by default.
-    // Forcing --runner nrfjprog unconditionally broke ESP flashing.
-    if (o.port) {
-      if (board.startsWith('esp32')) {
-        // esptool reads the device from --esp-device. Let board.cmake pick the
-        // runner; just forward the port so COM5 (etc.) flashes the right device.
-        args.push('--esp-device', o.port);
-      } else if (!userRunner) {
-        // Only auto-set to nrfjprog if the user hasn't already specified one.
-        args.push('--runner', 'nrfjprog'); // nRF52840 flashes via J-Link/nrfjprog
-      }
-    }
+    const runner = zc?.runner as string | undefined;
+    const args = buildFlashArgs(buildDir, board, runner, o.port);
 
     const inv = westSpawn(args, {
       cwd: projectRoot,
@@ -324,9 +404,10 @@ export const Toolchain = {
 
     const fstdout = typeof result.stdout === 'string' ? result.stdout : (result.stdout?.toString() ?? '');
     const fstderr = typeof result.stderr === 'string' ? result.stderr : (result.stderr?.toString() ?? '');
+    const raw = fstdout + fstderr;
     return {
-      success: result.status === 0,
-      output: fstdout + fstderr,
+      success: classifyUploadResult(runner, result.status, raw),
+      output: cleanseUploadOutput(runner, result.status, raw),
     };
   },
 

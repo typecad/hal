@@ -118,7 +118,6 @@ export const BoardSpecSchema = z.object({
   // Build
   clockSpeed: z.number().int(),
   fqbn: z.string().min(1),
-  platformioTarget: z.string().min(1),
   arduinoDefine: z.string().min(1),
 
   // Memory (module-level; silicon memory is derived)

@@ -27,7 +27,10 @@ describe('ble init shim', () => {
     // the read dispatcher must cast via reinterpret_cast, not C-style fn casts.
     expect(shim).toContain('reinterpret_cast<const char*(*)(void)>');
     expect(shim).toContain('reinterpret_cast<double(*)(void)>');
-    expect(shim).toContain('reinterpret_cast<int(*)(void)>');
+    // Numeric read handlers are invoked through a double-returning pointer:
+    // hoisted callbacks return double (TS number -> C++ double), and calling
+    // them through an int-returning pointer is UB (ARM r0:r1 low word = 0).
+    expect(shim).not.toContain('reinterpret_cast<int(*)(void)>');
   });
 });
 

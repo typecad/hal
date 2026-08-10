@@ -1,22 +1,18 @@
 /* ---------------------------------------------------------------------------
    theme.neobrutalism.css — NeoBrutalism theme for cuttlefish UI
 
-   Bold borders, hard shadows, bright accent colors. Pair with:
-     display: { themeCss: './src/theme.neobrutalism.css', themeClass: 'dark' }
-   or omit themeClass for the light variant.
-
-   Only design choices: color tokens, border-radius, box-shadow, element
-   colors/fonts. Structural defaults (scroll, touch sizing, flex layout)
-   are in the UA stylesheet.
+   Variables only. The generic app chrome (screen scaffolding, header bar,
+   section captions, buttons, inputs, lists, keyboard) comes from the UA
+   stylesheet, which consumes these tokens — so editing this palette re-themes
+   the whole app without any element CSS. Select via display.themeCss
+   (and themeClass for the .dark scope).
    ----------------------------------------------------------------------- */
-
 @font-face {
   font-family: "ColibriDemo";
   src: url("DejaVuSans.ttf");
   font-weight: 400;
   font-style: normal;
 }
-
 @font-face {
   font-family: "ColibriDemo";
   src: url("DejaVuSans-Bold.ttf");
@@ -30,6 +26,8 @@
   --foreground: #15171a;
   --card: #fffaf0;
   --card-foreground: #15171a;
+  --popover: #fffaf0;
+  --popover-foreground: #15171a;
   --primary: #ef5b3f;
   --primary-foreground: #ffffff;
   --secondary: #f6c84c;
@@ -50,6 +48,7 @@
   --chart-5: #9f7aea;
   --radius: 6px;
   --shadow: 3px 3px 0px 0px hsl(210 10% 8% / 1.00);
+  --font-family: "ColibriDemo";
 }
 
 /* ── Dark theme (.dark) — select via themeClass: 'dark' ── */
@@ -58,6 +57,8 @@
   --foreground: #f7f3e8;
   --card: #1c2228;
   --card-foreground: #f7f3e8;
+  --popover: #1c2228;
+  --popover-foreground: #f7f3e8;
   --primary: #ff765c;
   --primary-foreground: #111418;
   --secondary: #f6c84c;
@@ -78,119 +79,5 @@
   --chart-5: #b985ff;
   --radius: 6px;
   --shadow: 3px 3px 0px 0px hsl(0 0% 0% / 1.00);
-}
-
-/* ── Screen + scaffolding ── */
-screen {
-  background: var(--background);
-  gap: 8px;
-  padding: 10px;
-}
-
-.scrollBody {
-  background: var(--background);
-}
-
-.screenHeader {
-  border: 1px solid var(--border);
-  background: var(--card);
-  padding: 8px 10px;
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
-.backLink {
-  font-size: 16px;
-}
-
-.screenTitle {
-  color: var(--foreground);
-  font-family: "ColibriDemo";
-  font-size: 20px;
-  font-weight: bold;
-}
-
-/* ── Headings & text ── */
-h1 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 24px; font-weight: bold; }
-h2 { color: var(--foreground); font-family: "ColibriDemo"; font-size: 20px; font-weight: bold; }
-h3 { color: var(--muted-foreground); font-size: 14px; }
-p  { color: var(--muted-foreground); font-size: 14px; }
-
-.demoLabel {
-  color: var(--muted-foreground);
-  font-size: 14px;
-}
-.demoCap {
-  color: var(--muted-foreground);
-  font-size: 13px;
-}
-
-/* ── Links ── */
-a {
-  color: var(--accent);
-}
-
-/* ── Buttons ── */
-button {
-  background: var(--card);
-  color: var(--accent);
-  font-family: "ColibriDemo";
-  font-size: 18px;
-  text-align: left;
-  border-color: var(--border);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-
-/* ── Inputs ── */
-input {
-  color: var(--foreground);
-  background: var(--card);
-  border-color: var(--border);
-  border-radius: var(--radius);
-}
-
-/* ── Select ── */
-select {
-  color: var(--accent);
-  background: var(--muted);
-  border-color: var(--border);
-  border-radius: var(--radius);
-  font-size: 18px;
-  text-decoration: underline;
-}
-
-/* ── Checkbox / Radio ── */
-check, radio {
-  color: var(--foreground);
-  font-size: 18px;
-}
-
-/* ── List ── */
-list {
-  background: var(--card);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-}
-
-/* ── Keyboard ── */
-.ui-key {
-  background: var(--card);
-  color: var(--foreground);
-  border-color: var(--border);
-}
-.ui-key-ok {
-  background: var(--chart-4);
-  color: var(--foreground);
-}
-.ui-key-del {
-  background: var(--destructive);
-  color: var(--destructive-foreground);
-}
-.ui-key-page {
-  background: var(--accent);
-  color: var(--accent-foreground);
-}
-.ui-keyboard {
-  background: var(--muted);
+  --font-family: "ColibriDemo";
 }

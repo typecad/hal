@@ -49,7 +49,6 @@ export const ESP32C3Board: BoardDefinition = {
   // ----- Build config ------------------------------------------------------
   build: {
     frameworks: {
-      platformio: 'esp32c3',
       arduino: 'esp32:esp32:esp32c3',
     },
     defines: {

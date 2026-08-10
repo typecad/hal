@@ -40,7 +40,6 @@ export const RP2350Board: BoardDefinition = {
 
   build: {
     frameworks: {
-      platformio: 'rp2350',
       arduino: 'rp2040:rp2040:rpipico2',
     },
     defines: {

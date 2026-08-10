@@ -102,6 +102,12 @@ function reportFile(file: FileResult, verbose: boolean): void {
     return;
   }
 
+  if (file.compiled) {
+    console.log(` ${PASS_ICON} ${BOLD}${file.filePath}${RESET} ${GREEN}(compiled, dry-run)${RESET}`);
+    console.log();
+    return;
+  }
+
   for (const desc of file.describes) {
     reportDescribe(desc, verbose);
   }

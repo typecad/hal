@@ -414,3 +414,74 @@ describe("getReachableSymbols", () => {
     expect(reachable.has("c")).toBe(true);
   });
 });
+
+// Regression: a free function referenced ONLY from inside a HAL-registered
+// callback (e.g. `Ble.server('x').characteristic(...).onRead(() => readTemp())`)
+// was tree-shaken as unreachable, then g++ reported "'readTemp' was not
+// declared in this scope". Registered callbacks ride in
+// `program.registeredCallbacks` (not topLevelStatements); their body
+// identifiers must contribute to the call graph's __top_level__ deps so the
+// functions they call survive tree-shaking. Mirrors the same bug class as
+// demo #22 Finding B (paren) / demo #28 Finding C (raw), but for the
+// registered-callback path which the top-level scan never walked.
+describe("registered HAL callbacks", () => {
+  it("includes identifiers referenced inside a registered callback body in __top_level__ deps", () => {
+    // `readTemp` is a free function whose ONLY reference is inside the callback
+    // passed to a HAL onRead() registration. The HAL resolver replaces that
+    // callback argument with a placeholder and stores the callback IR in
+    // program.registeredCallbacks (the top-level statement then carries only
+    // the placeholder name, not `readTemp`).
+    const source = `
+      function readTemp(): number { return 2180; }
+    `;
+    const programIR = buildProgramIR("test.ts", source);
+    // Simulate the HAL resolver: register the callback exactly as it would.
+    programIR.registeredCallbacks = [
+      {
+        placeholderName: "__CALLBACK_0__",
+        callbackIR: {
+          kind: "callback",
+          params: [],
+          statements: [
+            { kind: "return", sourceSpan: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 0, startOffset: 0, endOffset: 0 }, value: { kind: "identifier", value: "readTemp", sourceSpan: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 0, startOffset: 0, endOffset: 0 } } },
+          ],
+          sourceSpan: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 0, startOffset: 0, endOffset: 0 },
+        },
+      },
+    ];
+
+    const callGraph = buildCallGraph(programIR);
+
+    // __top_level__ must now depend on readTemp (via the registered callback body).
+    expect(callGraph.nodes.get("__top_level__")!.dependencies.has("readTemp")).toBe(true);
+    expect(callGraph.referencedBy.get("readTemp")!.has("__top_level__")).toBe(true);
+  });
+
+  it("keeps a free function reachable when it is called only from a registered callback", () => {
+    const source = `
+      function readTemp(): number { return 2180; }
+    `;
+    const programIR = buildProgramIR("test.ts", source);
+    programIR.registeredCallbacks = [
+      {
+        placeholderName: "__CALLBACK_0__",
+        callbackIR: {
+          kind: "callback",
+          params: [],
+          statements: [
+            { kind: "return", sourceSpan: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 0, startOffset: 0, endOffset: 0 }, value: { kind: "identifier", value: "readTemp", sourceSpan: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 0, startOffset: 0, endOffset: 0 } } },
+          ],
+          sourceSpan: { startLine: 1, startColumn: 0, endLine: 1, endColumn: 0, startOffset: 0, endOffset: 0 },
+        },
+      },
+    ];
+
+    const reachability = analyzeReachability(programIR, buildCallGraph(programIR), { target: "generic" });
+
+    expect(reachability.reachableFunctions.has("readTemp")).toBe(true);
+
+    // filterProgramIR must NOT drop readTemp from the output.
+    const filtered = filterProgramIR(programIR, reachability);
+    expect(filtered.functions.some((fn) => fn.originalName === "readTemp")).toBe(true);
+  });
+});

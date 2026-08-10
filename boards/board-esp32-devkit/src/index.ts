@@ -44,7 +44,6 @@ export const ESP32DevKit: BoardDefinition = {
   // ----- Build config ------------------------------------------------------
   build: {
     frameworks: {
-      platformio: 'esp32dev',
       arduino: 'esp32:esp32:esp32',
     },
     defines: {

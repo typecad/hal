@@ -205,6 +205,23 @@ export function buildCallGraph(program: ProgramIR): CallGraph {
     }
   }
 
+  // Registered callbacks from the HAL resolver (e.g. the arrow function passed
+  // to `Ble.characteristic(...).onRead(() => readTemp())`) are NOT present in
+  // top-level statements — they ride in `program.registeredCallbacks` and are
+  // later hoisted to file-scope `*_isr_*` functions by top-level-prep. The
+  // placeholder name (`__CALLBACK_N__`) is what surfaces in top-level deps,
+  // not the identifiers the callback body references (e.g. a free function
+  // like `readTemp`). Without this scan those references are invisible to the
+  // call graph: the function survives the hoist (its call sits inside the
+  // emitted ISR) but is tree-shaken as unreachable, and g++ later reports it
+  // "not declared in this scope". Attach their body identifiers to
+  // __top_level__ since the callbacks execute from the top-level entry path.
+  for (const rc of (program.registeredCallbacks ?? [])) {
+    for (const id of collectExpressionIdentifiers(rc.callbackIR)) {
+      topLevelDependencies.add(id);
+    }
+  }
+
   nodes.set("__top_level__", {
     name: "__top_level__",
     kind: "variable",

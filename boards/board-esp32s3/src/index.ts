@@ -54,7 +54,6 @@ export const ESP32S3Board: BoardDefinition = {
   // ----- Build config ------------------------------------------------------
   build: {
     frameworks: {
-      platformio: 'esp32s3',
       arduino: 'esp32:esp32:esp32s3',
     },
     defines: {

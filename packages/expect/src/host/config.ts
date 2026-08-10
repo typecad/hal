@@ -38,8 +38,13 @@ const DEFAULT_TEST_CONFIG: TestConfig = {
 export function loadConfig(
   projectRoot: string,
   overrides: Partial<TestConfig> = {},
+  explicitConfigPath?: string,
 ): ResolvedConfig {
-  const configPath = findConfigFile(projectRoot);
+  // An explicit --config path wins; otherwise discover cuttlefish.config.ts in
+  // the project root. The explicit path lets a project hold several configs
+  // (e.g. one per target board) and select one at run time instead of keeping
+  // a single cuttlefish.config.ts as the only entry.
+  const configPath = explicitConfigPath ?? findConfigFile(projectRoot);
   if (!configPath) {
     throw new Error(
       `No cuttlefish.config.ts found in ${projectRoot}. ` +
@@ -73,6 +78,10 @@ export function loadConfig(
     toolchainType: raw.toolchain?.type === 'west' ? 'west' : 'arduino-cli',
     zephyrConfig: raw.zephyr,
     projectRoot,
+    // The config file these values came from. writeBuildConfig re-reads it to
+    // extract board/MCU for the transpile, so it must point at the same file
+    // loadConfig parsed (not always the default cuttlefish.config.ts).
+    configPath,
   };
 }
 
@@ -99,6 +108,7 @@ function findConfigFile(projectRoot: string): string | undefined {
 export interface RawConfig {
   target?: string;
   board?: string;
+  mcu?: string;
   frameworkData?: { buildTarget?: string };
   framework?: string;
   toolchain?: { type?: string };
@@ -151,6 +161,9 @@ function extractConfigProperties(obj: ts.ObjectLiteralExpression, out: RawConfig
         break;
       case 'board':
         if (ts.isStringLiteral(prop.initializer)) out.board = prop.initializer.text;
+        break;
+      case 'mcu':
+        if (ts.isStringLiteral(prop.initializer)) out.mcu = prop.initializer.text;
         break;
       case 'frameworkData':
         if (ts.isObjectLiteralExpression(prop.initializer)) {

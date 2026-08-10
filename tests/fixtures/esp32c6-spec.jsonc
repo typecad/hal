@@ -8,7 +8,6 @@
   "description": "Generic ESP32-C6 devboard (vendor-agnostic). Single-core RISC-V (RV32IMAC) @ 160 MHz with Wi-Fi 6 (802.11ax) + BLE 5.3 and native USB Serial/JTAG + USB-OTG. 30 GPIO; no PSRAM support.",
   "clockSpeed": 160000000,
   "fqbn": "esp32:esp32:esp32c6",
-  "platformioTarget": "esp32c6",
   "arduinoDefine": "ARDUINO_ESP32C6_DEV",
   "moduleFlash": 4194304,
   "externalRam": null,

@@ -304,6 +304,22 @@ export interface BoardDefinition {
   /** Build configuration (overrides/extends MCU build). */
   build: BuildConfig;
 
+  /**
+   * Optional @typecad/framework-zephyr chip data for this board.
+   *
+   * Opaque (`Record<string, unknown>`) here so the core schema does not import
+   * framework-zephyr's typed descriptor. framework-zephyr reads the flattened
+   * board constants under `zephyr.*` to reconstruct its `ZephyrChipDescriptor`
+   * — e.g. `zephyr.gpio.dtSpecs` maps GPIO pins to devicetree aliases (`led0`,
+   * `sw0`), so the GPIO lowering emits `gpio_pin_*_dt()` (polarity-correct via
+   * the DT's `GPIO_ACTIVE_LOW` flag) instead of the raw-controller fallback.
+   *
+   * Only literal object/array data is honored (the board-constants flattener
+   * walks it recursively); `as const` on nested values defeats the walker, so
+   * nested objects/arrays must be plain literals.
+   */
+  zephyr?: Record<string, unknown>;
+
   /** Related board variants. */
   variants?: string[];
 }

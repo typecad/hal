@@ -2,24 +2,30 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
 const config: CuttlefishConfig = {
   entry: './src/main.ts',
-  // Target is the plain ESP32 on the Zephyr RTOS. The board target is the
-  // esp32_devkitc Zephyr board (boards/espressif/esp32_devkitc). Zephyr 4.x
-  // requires a board qualifier for this board — /esp32/procpu is the
-  // application core (where the cuttlefish main()/loop() bridge runs). The chip
-  // resolver strips the qualifier to the board id (esp32_devkitc).
+  // Target is the Seeed Studio XIAO nRF52840 on the Zephyr RTOS. The board
+  // target is xiao_ble (boards/seeed/xiao_ble) — a single-core Cortex-M4F, so
+  // no board qualifier is needed (unlike the ESP32 procpu/appcpu split).
   //
-  // GPIO is lowered through devicetree: pins 0–31 against the gpio0 controller,
-  // pins 32–39 against gpio1 (the SoC splits GPIO across two DT nodes), with a
-  // devicetree-spec path for the BOOT button (sw0 alias).
-  target: 'esp32',
-  mcu: '@typecad/mcu-esp32',
-  board: '@typecad/board-esp32-devkit',
+  // GPIO is lowered through devicetree: all pins resolve against the gpio0
+  // controller. The onboard user LED (P0.26) is exposed as the DT alias `led0`
+  // and is active-low (GPIO_ACTIVE_LOW in xiao_ble_common.dtsi), so .high() =
+  // LED on. The user button (P0.04) is the `sw0` alias.
+  target: 'nrf52',
+  mcu: '@typecad/mcu-nrf52840',
+  board: '@typecad/board-xiao-nrf52840',
   framework: '@typecad/framework-zephyr',
-  frameworkData: { buildTarget: 'esp32_devkitc/esp32/procpu' },
+  frameworkData: { buildTarget: 'xiao_ble' },
+  output: {
+    outDir: './out',
+  },
   toolchain: { type: 'west' },
-  console: { baudRate: 115200, port: 'COM9' },
+  // The XIAO nRF52840 ships with a UF2 USB bootloader (no J-Link probe). When
+  // the board is in UF2 mode it mounts as a USB-MSC drive and exposes no debug
+  // interface, so nrfutil/jlink can't see it. The uf2 runner copies the built
+  // zephyr.uf2 onto that drive — no extra tools, no probe. Put the board into
+  // UF2 mode (double-tap reset) before `npm run upload`.
   zephyr: {
-    kconfig: { 'CONFIG_ESP32_USE_UNSUPPORTED_REVISION': 'y' },
+    runner: 'uf2',
   },
 };
 

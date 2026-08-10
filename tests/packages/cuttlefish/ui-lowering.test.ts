@@ -239,8 +239,6 @@ describe("ui lowering", () => {
   it("emits keyframe stop tables and animation rows", () => {
     const html = `<screen><view id="pulse"></view></screen>`;
     const css = `
-      /* Zero the UA screen padding so the stretch width equals the viewport. */
-      screen { padding: 0; }
       @keyframes pulse {
         0%, 100% { background: #1a6b3c; opacity: 1; transform: translate(0px, 0px); width: 20px; height: 20px; }
         50% { background: #4ade80; opacity: 0.5; color: white; transform: translate(12px, -4px) translateX(50%) scale(1.5, 0.5) rotate(90deg); left: 3px; top: 1px; width: 28px; height: 16px; }

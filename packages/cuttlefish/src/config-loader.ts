@@ -30,7 +30,7 @@ export interface ResolvedCuttlefishConfig {
   contract?: string;
   /** Build target identifier (e.g. FQBN for Arduino CLI). */
   buildTarget?: string;
-  /** Output framework (e.g. 'arduino', 'platformio'). */
+  /** Output framework (e.g. 'arduino'). */
   outputFramework?: string;
   /** Optimization level. */
   outputOptimize?: string;

@@ -42,7 +42,13 @@ export function bleInitLines(): string[] {
     `typedef int  (*__tc_ble_read_int_cb_t)(void);`,
     `typedef double (*__tc_ble_read_dbl_cb_t)(void);`,
     `typedef const char* (*__tc_ble_read_str_cb_t)(void);`,
-    `typedef void (*__tc_ble_write_cb_t)(int value);`,
+    // The write callback takes double, not int: hoisted TS handlers have
+    // signature (value: number) => void, and the transpiler maps `number` to
+    // double. Typing the slot as (int) and assigning a (double) handler is the
+    // inverse of the double-vs-int UB called out for read handlers below (an
+    // int passed in r0 is read as a double across r0:r1). cb_val (int) promotes
+    // to double at the call — clean, no precision loss for GATT-scale values.
+    `typedef void (*__tc_ble_write_cb_t)(double value);`,
     `typedef void (*__tc_ble_event_cb_t)(void);`,
     ``,
     `// Deferred characteristic definition (populated before __tc_ble_server_begin).`,
@@ -146,17 +152,21 @@ export function bleInitLines(): string[] {
     `        float f = static_cast<float>(d);`,
     `        return bt_gatt_attr_read(conn, attr, buf, len, offset, &f, sizeof(f));`,
     `    } else if (t && strcmp(t, "uint32") == 0) {`,
-    `        int v = reinterpret_cast<int(*)(void)>(__tc_ble.on_read[idx])();`,
-    `        uint32_t u = static_cast<uint32_t>(v);`,
+    `        // Hoisted read callbacks return double (TS number -> C++ double).`,
+    `        // Calling a double-returning fn through an int-returning pointer is`,
+    `        // UB: on ARM the low word of the double in r0:r1 is 0 for small`,
+    `        // temperatures, so every read came back 0 (nRF Connect: 0.0C).`,
+    `        double dv = reinterpret_cast<double(*)(void)>(__tc_ble.on_read[idx])();`,
+    `        uint32_t u = static_cast<uint32_t>(dv);`,
     `        return bt_gatt_attr_read(conn, attr, buf, len, offset, &u, sizeof(u));`,
     `    } else if (t && strcmp(t, "boolean") == 0) {`,
-    `        int v = reinterpret_cast<int(*)(void)>(__tc_ble.on_read[idx])();`,
-    `        uint8_t b = v ? 1 : 0;`,
+    `        double dv = reinterpret_cast<double(*)(void)>(__tc_ble.on_read[idx])();`,
+    `        uint8_t b = dv != 0 ? 1 : 0;`,
     `        return bt_gatt_attr_read(conn, attr, buf, len, offset, &b, sizeof(b));`,
     `    }`,
     `    // uint8/16, int8/16/32 → int16 default.`,
-    `    int v = reinterpret_cast<int(*)(void)>(__tc_ble.on_read[idx])();`,
-    `    int16_t s16 = static_cast<int16_t>(v);`,
+    `    double dv = reinterpret_cast<double(*)(void)>(__tc_ble.on_read[idx])();`,
+    `    int16_t s16 = static_cast<int16_t>(dv);`,
     `    return bt_gatt_attr_read(conn, attr, buf, len, offset, &s16, sizeof(s16));`,
     `}`,
     ``,

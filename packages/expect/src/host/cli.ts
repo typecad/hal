@@ -39,6 +39,9 @@ interface CLIArgs {
   exclude?: string[];
   verbose?: boolean;
   help?: boolean;
+  config?: string;
+  dryRun?: boolean;
+  bail?: boolean;
 }
 
 function parseArgs(argv: string[]): CLIArgs {
@@ -49,6 +52,9 @@ function parseArgs(argv: string[]): CLIArgs {
     const arg = args[i];
 
     switch (arg) {
+      case '--config':
+        result.config = args[++i];
+        break;
       case '--port':
       case '-p':
         result.port = args[++i];
@@ -94,6 +100,12 @@ function parseArgs(argv: string[]): CLIArgs {
       case '--verbose':
       case '-v':
         result.verbose = true;
+        break;
+      case '--dry-run':
+        result.dryRun = true;
+        break;
+      case '--bail':
+        result.bail = true;
         break;
       case '--help':
       case '-h':
@@ -190,11 +202,18 @@ async function main(): Promise<void> {
   // Load config
   let config;
   try {
-    config = loadConfig(projectRoot, overrides);
+    const configPath = args.config
+      ? (path.isAbsolute(args.config) ? args.config : path.resolve(projectRoot, args.config))
+      : undefined;
+    config = loadConfig(projectRoot, overrides, configPath);
   } catch (e) {
     console.error(`\x1b[31m${(e as Error).message}\x1b[0m`);
     process.exit(2);
   }
+
+  // CLI mode flags (not config-file settings).
+  config.dryRun = args.dryRun;
+  config.bail = args.bail;
 
   // Run tests
   const exitCode = await run(config);

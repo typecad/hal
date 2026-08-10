@@ -716,6 +716,10 @@ export function resetHALResolver(): void {
   floatVariables.clear();
   getContext().callbackPlaceholderCounter = 0;
   getContext().snprintfCounter = 0;
+  // Reset the BLE characteristic counter so each file's GATT table starts at
+  // index 0. Without this, a second transpile in one process would continue
+  // from the previous file's counter and emit offset indices.
+  getContext().bleCharCounter = 0;
 }
 
 /** Resolve a hal-expr IR node to its C++ text using the active strategy. */

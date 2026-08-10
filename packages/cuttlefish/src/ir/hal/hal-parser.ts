@@ -415,12 +415,16 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
 
         // Specialized handling for BLE factory chaining
         // (Ble.server(name).characteristic(uuid,type,perms).onRead(handler)):
-        // server() creates a BleServer with _name, _charCount from a global
-        // counter (persists across separate server() calls so multi-char
-        // servers get unique indices), _svcCount=1.
-        // characteristic() reads _charCount for the add_char call,
-        // then sets _lastChar=_charCount and increments _charCount so the next
-        // characteristic gets the next slot. onRead/onWrite read _lastChar.
+        // server() creates a BleServer. The characteristic index is taken from a
+        // per-file counter (bleCharCounter on CompilationContext) that persists
+        // across separate server() calls so a multi-characteristic server — the
+        // common ble-demo pattern of one Ble.server(name).characteristic(...) per
+        // char — gets unique sequential indices (0,1,2,…) instead of every char
+        // landing on slot 0 and clobbering the previous on_read/on_write handler.
+        // characteristic() reads the current counter for the add_char call and
+        // posts-increments it so the next characteristic gets the next slot.
+        // onRead/onWrite/onNotify carry _lastChar (the slot characteristic() just
+        // reserved). The counter resets per file in hal-emitter.ts.
         if (innerInstance.className === "BleClass" && methodName === "server" && receiver.arguments.length > 0) {
           const nameText = httpUrlArgText(receiver.arguments[0]);
           if (nameText) {
@@ -431,9 +435,12 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
           }
         }
         if (innerInstance.className === "BleServer" && methodName === "characteristic") {
-          // characteristic(uuid, type, perms) returns this (BleServer).
-          // The C++ shim auto-assigns the char index at runtime via
-          // __tc_ble.current_char, so the resolver doesn't need to track indices.
+          // characteristic(uuid, type, perms) returns this (BleServer). The
+          // characteristic index is assigned centrally in the bleAddChar plugin
+          // (hal-plugins.ts) from a per-file counter — see the note there for
+          // why this can't be done via instance fieldValues (resolveHALReceiver
+          // re-resolves the receiver for each chain level and would drop a
+          // value stamped here).
           return innerInstance;
         }
         if (innerInstance.className === "BleServer" && methodName === "service") {

@@ -110,6 +110,8 @@ export interface FileResult {
   skipReason?: string;
   /** If the file didn't compile or upload. */
   error?: string;
+  /** True under --dry-run: the file compiled but was not uploaded/run. */
+  compiled?: boolean;
 }
 
 /**
@@ -174,4 +176,10 @@ export interface ResolvedConfig {
   zephyrConfig?: Record<string, unknown>;
   /** Absolute path to project root. */
   projectRoot: string;
+  /** Absolute path to the cuttlefish config file these values were read from. */
+  configPath: string;
+  /** --dry-run: compile every file but skip upload and test execution. */
+  dryRun?: boolean;
+  /** --bail: stop after the first failing test file. */
+  bail?: boolean;
 }

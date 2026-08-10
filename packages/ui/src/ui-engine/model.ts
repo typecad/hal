@@ -661,7 +661,7 @@ function parseBoxShadow(style: CSSProperty, format: ColorFormat): ShadowSpec[] {
     // Split into a numbers zone (offset/blur) and a color zone. The color
     // zone starts at the first # hex, rgb(, rgba(, or color name. css-tree
     // may strip spaces between values, so we can't rely on whitespace split.
-    const colorStart = part.search(/#|rgba?\(|hsla?\(|\b(?:black|white|red|green|blue|gray|grey|yellow|orange|purple|pink|cyan|magenta|silver|gold|brown|tan|navy|teal|maroon|lime|olive|aqua|fuchsia|transparent)\b/i);
+    const colorStart = part.search(/#|rgba?\(|\b(?:black|white|red|green|blue|gray|grey|yellow|orange|purple|pink|cyan|magenta|silver|gold|brown|tan|navy|teal|maroon|lime|olive|aqua|fuchsia|transparent)\b/i);
     const numZone = colorStart >= 0 ? part.slice(0, colorStart) : part;
     const colorZone = colorStart >= 0 ? part.slice(colorStart) : "";
 
