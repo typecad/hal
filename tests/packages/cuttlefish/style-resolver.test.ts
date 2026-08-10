@@ -108,23 +108,29 @@ describe("style resolver", () => {
   });
 
   it(":not() excludes matching elements", () => {
+    // Uses `background` (not `color`) because color inherits from the UA `screen`
+    // default — a `color` assertion would be filled in by inheritance and mask
+    // whether the selector actually matched. `background` does not inherit, so it
+    // isolates the :not() exclusion under test.
     const styled = resolve(
       `<screen><button id="a" class="active">x</button><button id="b">y</button></screen>`,
-      `button:not(.active) { color: #ff0000; }`,
+      `button:not(.active) { background: #ff0000; }`,
     );
     // #a has .active → excluded. #b lacks it → matched.
-    expect(styled.children[0].style.color).toBeUndefined();
-    expect(styled.children[1].style.color).toBe("#ff0000");
+    expect(styled.children[0].style.background).toBeUndefined();
+    expect(styled.children[1].style.background).toBe("#ff0000");
   });
 
   it("adjacent sibling combinator (+) matches only the immediate next sibling", () => {
     // .first + text → the text immediately after .first matches; a later text does not.
+    // Uses `background` (not `color`) for the same inheritance-isolation reason as
+    // the :not() test above and the child-combinator test below.
     const styled = resolve(
       `<screen><view class="first"></view><text id="adj">a</text><text id="far">b</text></screen>`,
-      `.first + text { color: #00ff00; }`,
+      `.first + text { background: #00ff00; }`,
     );
-    expect(styled.children[1].style.color).toBe("#00ff00"); // #adj
-    expect(styled.children[2].style.color).toBeUndefined(); // #far
+    expect(styled.children[1].style.background).toBe("#00ff00"); // #adj
+    expect(styled.children[2].style.background).toBeUndefined(); // #far
   });
 
   it("general sibling combinator (~) matches any following sibling", () => {

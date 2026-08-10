@@ -1,58 +1,67 @@
 // ---------------------------------------------------------------------------
 // @typecad/mcu-rp2350 — Datasheet pin definitions
+//
+// Each pin is a Pin instance from @typecad/hal. Pin names use the Raspberry Pi
+// GP<number> form matching the RP2350 datasheet and the Pico 2 silkscreen.
 // 48 GPIO (GP0-GP47). All GPIOs are bidirectional. No DAC. No wireless.
+//
+// The preferred way to refer to a pin is its GP form (GP0, GP1, …) because that
+// is the notation printed in the datasheet and on a schematic — see "Pin Naming
+// Conventions" in the root AGENTS.md. Each pin is constructed via
+// Pin.fromPort("GPN") so the port string is the pin's canonical identity; the
+// transpiler resolves it to the framework pin number via the MCU manifest.
 // ---------------------------------------------------------------------------
 
 import { Pin } from '@typecad/hal';
 
-export const GP0 = new Pin(0);
-export const GP1 = new Pin(1);
-export const GP2 = new Pin(2);
-export const GP3 = new Pin(3);
-export const GP4 = new Pin(4);
-export const GP5 = new Pin(5);
-export const GP6 = new Pin(6);
-export const GP7 = new Pin(7);
-export const GP8 = new Pin(8);
-export const GP9 = new Pin(9);
-export const GP10 = new Pin(10);
-export const GP11 = new Pin(11);
-export const GP12 = new Pin(12);
-export const GP13 = new Pin(13);
-export const GP14 = new Pin(14);
-export const GP15 = new Pin(15);
-export const GP16 = new Pin(16);
-export const GP17 = new Pin(17);
-export const GP18 = new Pin(18);
-export const GP19 = new Pin(19);
-export const GP20 = new Pin(20);
-export const GP21 = new Pin(21);
-export const GP22 = new Pin(22);
-export const GP23 = new Pin(23);
-export const GP24 = new Pin(24);
-export const GP25 = new Pin(25);
-export const GP26 = new Pin(26);
-export const GP27 = new Pin(27);
-export const GP28 = new Pin(28);
-export const GP29 = new Pin(29);
-export const GP30 = new Pin(30);
-export const GP31 = new Pin(31);
-export const GP32 = new Pin(32);
-export const GP33 = new Pin(33);
-export const GP34 = new Pin(34);
-export const GP35 = new Pin(35);
-export const GP36 = new Pin(36);
-export const GP37 = new Pin(37);
-export const GP38 = new Pin(38);
-export const GP39 = new Pin(39);
-export const GP40 = new Pin(40);
-export const GP41 = new Pin(41);
-export const GP42 = new Pin(42);
-export const GP43 = new Pin(43);
-export const GP44 = new Pin(44);
-export const GP45 = new Pin(45);
-export const GP46 = new Pin(46);
-export const GP47 = new Pin(47);
+export const GP0 = Pin.fromPort('GP0');
+export const GP1 = Pin.fromPort('GP1');
+export const GP2 = Pin.fromPort('GP2');
+export const GP3 = Pin.fromPort('GP3');
+export const GP4 = Pin.fromPort('GP4');
+export const GP5 = Pin.fromPort('GP5');
+export const GP6 = Pin.fromPort('GP6');
+export const GP7 = Pin.fromPort('GP7');
+export const GP8 = Pin.fromPort('GP8');
+export const GP9 = Pin.fromPort('GP9');
+export const GP10 = Pin.fromPort('GP10');
+export const GP11 = Pin.fromPort('GP11');
+export const GP12 = Pin.fromPort('GP12');
+export const GP13 = Pin.fromPort('GP13');
+export const GP14 = Pin.fromPort('GP14');
+export const GP15 = Pin.fromPort('GP15');
+export const GP16 = Pin.fromPort('GP16');
+export const GP17 = Pin.fromPort('GP17');
+export const GP18 = Pin.fromPort('GP18');
+export const GP19 = Pin.fromPort('GP19');
+export const GP20 = Pin.fromPort('GP20');
+export const GP21 = Pin.fromPort('GP21');
+export const GP22 = Pin.fromPort('GP22');
+export const GP23 = Pin.fromPort('GP23');
+export const GP24 = Pin.fromPort('GP24');
+export const GP25 = Pin.fromPort('GP25');
+export const GP26 = Pin.fromPort('GP26');
+export const GP27 = Pin.fromPort('GP27');
+export const GP28 = Pin.fromPort('GP28');
+export const GP29 = Pin.fromPort('GP29');
+export const GP30 = Pin.fromPort('GP30');
+export const GP31 = Pin.fromPort('GP31');
+export const GP32 = Pin.fromPort('GP32');
+export const GP33 = Pin.fromPort('GP33');
+export const GP34 = Pin.fromPort('GP34');
+export const GP35 = Pin.fromPort('GP35');
+export const GP36 = Pin.fromPort('GP36');
+export const GP37 = Pin.fromPort('GP37');
+export const GP38 = Pin.fromPort('GP38');
+export const GP39 = Pin.fromPort('GP39');
+export const GP40 = Pin.fromPort('GP40');
+export const GP41 = Pin.fromPort('GP41');
+export const GP42 = Pin.fromPort('GP42');
+export const GP43 = Pin.fromPort('GP43');
+export const GP44 = Pin.fromPort('GP44');
+export const GP45 = Pin.fromPort('GP45');
+export const GP46 = Pin.fromPort('GP46');
+export const GP47 = Pin.fromPort('GP47');
 
 // Bus aliases (match earlephilhower core defaults — same as RP2040)
 export const SDA = GP4;

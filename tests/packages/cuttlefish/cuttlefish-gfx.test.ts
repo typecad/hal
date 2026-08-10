@@ -48,8 +48,9 @@ describe("emitCuttlefishGfx slice", () => {
     });
 
     it("declares CuttlefishCanvas16 and CuttlefishCanvasMono subclasses", () => {
-      expect(h).toMatch(/class\s+CuttlefishCanvas16\s*:\s*public\s+CuttlefishGFX/);
-      expect(h).toMatch(/class\s+CuttlefishCanvasMono\s*:\s*public\s+CuttlefishGFX/);
+      // `(?:\s+final)?` allows the AUTOSAR leaf-class `final` stamp.
+      expect(h).toMatch(/class\s+CuttlefishCanvas16(?:\s+final)?\s*:\s*public\s+CuttlefishGFX/);
+      expect(h).toMatch(/class\s+CuttlefishCanvasMono(?:\s+final)?\s*:\s*public\s+CuttlefishGFX/);
       expect(h).toMatch(/getBuffer/);
     });
 
@@ -101,14 +102,16 @@ describe("emitCuttlefishGfx slice", () => {
     });
 
     it("CuttlefishCanvas16 overrides width()/height()", () => {
-      const canvasMatch = h.match(/class\s+CuttlefishCanvas16\s*:\s*public\s+CuttlefishGFX\s*\{([\s\S]*?)\};/);
+      // `(?:\s+final)?` allows the AUTOSAR leaf-class `final` stamp.
+      const canvasMatch = h.match(/class\s+CuttlefishCanvas16(?:\s+final)?\s*:\s*public\s+CuttlefishGFX\s*\{([\s\S]*?)\};/);
       expect(canvasMatch).not.toBeNull();
       expect(canvasMatch![1]).toMatch(/virtual\s+int16_t\s+width\(\)\s*const\s*\{[^}]*canvas_w_/);
       expect(canvasMatch![1]).toMatch(/virtual\s+int16_t\s+height\(\)\s*const\s*\{[^}]*canvas_h_/);
     });
 
     it("CuttlefishCanvasMono overrides width()/height()", () => {
-      const canvasMatch = h.match(/class\s+CuttlefishCanvasMono\s*:\s*public\s+CuttlefishGFX\s*\{([\s\S]*?)\};/);
+      // `(?:\s+final)?` allows the AUTOSAR leaf-class `final` stamp.
+      const canvasMatch = h.match(/class\s+CuttlefishCanvasMono(?:\s+final)?\s*:\s*public\s+CuttlefishGFX\s*\{([\s\S]*?)\};/);
       expect(canvasMatch).not.toBeNull();
       expect(canvasMatch![1]).toMatch(/virtual\s+int16_t\s+width\(\)\s*const\s*\{[^}]*canvas_w_/);
       expect(canvasMatch![1]).toMatch(/virtual\s+int16_t\s+height\(\)\s*const\s*\{[^}]*canvas_h_/);

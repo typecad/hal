@@ -16,7 +16,7 @@ import { I2C0, SPI0, UART0, UART1 } from '@typecad/mcu-esp32c3';
 import * as boardIndex from './index.js';
 
 export const Board = {
-  get definition() { return boardIndex.ESP32C3Board; },
+  get definition(): BoardDefinition { return boardIndex.ESP32C3Board; },
 
   // Common digital pins (strapping/USB pins omitted from the convenience namespace)
   D2, D3, D4, D5, D6, D7, D8, D9, D10,

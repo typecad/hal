@@ -169,10 +169,13 @@ describe("flex order reorders children", () => {
 
   it("input does not impose a UA min-height of 20px", () => {
     // With the UA min-height removed, an input with explicit height:14px
-    // should measure 14px tall, not the UA-forced 20px.
+    // should measure 14px tall, not the UA-forced 20px. Padding is zeroed on
+    // the input so the border-box height equals the explicit content height
+    // (the UA input rule sets padding:8px, which would otherwise inflate the
+    // computed box and conflate padding with the min-height behavior under test).
     const styled = resolveStyles(
       parseHtml(`<screen><input id="i"></input></screen>`),
-      parseCss(`screen{width:100px;height:50px;padding:0} input{height:14px;font-size:8px}`),
+      parseCss(`screen{width:100px;height:50px;padding:0} input{height:14px;padding:0;font-size:8px}`),
     );
     const engine = selectEngine(styled);
     const boxes = engine.arrange(styled, { x: 0, y: 0, w: 100, h: 50 }, (n, aw) => measure(n, aw));

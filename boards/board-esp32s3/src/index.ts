@@ -55,12 +55,50 @@ export const ESP32S3Board: BoardDefinition = {
   build: {
     frameworks: {
       arduino: 'esp32:esp32:esp32s3',
+      // The Zephyr board target for `west build -b <target>`.
+      zephyr: 'esp32s3_devkitc',
     },
     defines: {
       F_CPU:              '240000000UL',
       ARDUINO:            ARDUINO_CORE_VERSION,
       ARDUINO_ESP32S3_DEV: '1',
     },
+  },
+
+  // ----- @typecad/framework-zephyr chip data -------------------------------
+  // Carried into the flattened board constants under `zephyr.*` and
+  // reconstructed into a ZephyrChipDescriptor by framework-zephyr's
+  // resolveChipFromBoard(). Mirrors framework-zephyr's hardcoded
+  // ESP32S3_DEVKITC descriptor (src/chips/esp32s3.ts), verified against
+  // esp32s3_devkitc_procpu.dts.
+  //
+  // GPIO is split across two devicetree controllers — gpio0 (pins 0–31) and
+  // gpio1 (pins 32–48) — so the runtime pin→controller routing is carried here
+  // (a compile-time DT macro cannot reach it). UART/I2C/SPI/wdt nodelabels are
+  // resolved by Zephyr's own devicetree at compile time, not hand-copied. The
+  // onboard RGB LED is a WS2812 on GPIO38 (not a plain GPIO), so it is not
+  // listed here — same as the framework descriptor.
+  zephyr: {
+    gpioController: 'gpio0',
+    gpioControllers: [
+      { nodelabel: 'gpio0', minPin: 0, maxPin: 31 },
+      { nodelabel: 'gpio1', minPin: 32, maxPin: 48 },
+    ],
+    gpio: {
+      // The BOOT button (GPIO0) is the board's only DT-aliased GPIO. Listed so a
+      // program reading/interrupting pin 0 goes through the polarity-correct
+      // devicetree-spec path (GPIO_ACTIVE_LOW honored by the DT flags). Every
+      // other GPIO pin uses the raw-controller path against its owning controller.
+      dtSpecs: [
+        { pin: 0, dtSpec: 'sw0' },  // BOOT button (GPIO0)
+      ],
+      interruptPins: [
+        { pin: 0, dtSpec: 'sw0' },  // BOOT button (GPIO0)
+      ],
+    },
+    // The ESP32-S3 has a 2.4GHz radio; conn_mgr + the esp32 wifi driver
+    // (CONFIG_WIFI_ESP32) provide connectivity. Omitted on radioless targets.
+    wifi: { supported: true },
   },
 };
 

@@ -12,10 +12,10 @@ import {
 } from './pins.js';
 
 import { I2C0, I2C1, SPI0, SPI1, UART0, UART1 } from '@typecad/mcu-rp2350';
-import { RP2350Board } from './index.js';
+import * as boardIndex from './index.js';
 
 export const Board = {
-  definition: RP2350Board,
+  get definition(): BoardDefinition { return boardIndex.RP2350Board; },
 
   D2, D3, D4, D5, D6, D7, D8, D9, D10,
   D12, D13, D14, D15, D16, D17, D18, D19, D20, D21, D22, D23,

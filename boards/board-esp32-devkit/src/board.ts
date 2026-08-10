@@ -26,7 +26,7 @@ import { I2C0, I2C1, SPI0, SPI1, UART0, UART2 } from '@typecad/mcu-esp32';
 import * as boardIndex from './index.js';
 
 export const Board = {
-  get definition() { return boardIndex.ESP32DevKit; },
+  get definition(): BoardDefinition { return boardIndex.ESP32DevKit; },
 
   // Output-capable GPIOs
   D0, D1, D2, D3, D4, D5,

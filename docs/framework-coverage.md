@@ -7,8 +7,8 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 
 | Framework | HAL cats supported | HAL cats partial | HAL cats unsupported | Toolchain | Last validated |
 |---|---|---|---|---|---|
-| framework-arduino (canonical) | 12/19 | 4 | 3 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-03 |
-| framework-zephyr | 11/19 | 6 | 2 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-03 |
+| framework-arduino (canonical) | 12/19 | 4 | 3 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-10 |
+| framework-zephyr | 12/19 | 6 | 1 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-10 |
 
 ## framework-arduino
 
@@ -67,7 +67,7 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 | uart | partial | — |
 | pulse | partial | — |
 | shift | supported | — |
-| board | unsupported | Board-specific lowering deferred. |
+| board | supported | — |
 | wdt | supported | — |
 | wifi | partial | AP client enumeration/IP/per-station config, credential persistence, static IP, auto-reconnect, and tx-power have no Zephyr lowering (no driver/Kconfig hook). |
 | http | supported | — |
@@ -91,7 +91,7 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 | uart | ◐ partial | ◐ partial |
 | pulse | ✓ | ◐ partial |
 | shift | ✓ | ✓ |
-| board | ✓ | ✗ (board-specific lowering deferred) |
+| board | ✓ | ✓ |
 | wdt | ✓ | ✓ |
 | wifi | ✗ (arduino core has no wifi hal) | ◐ partial |
 | http | ✗ (arduino core has no http client hal) | ✓ |

@@ -1,18 +1,13 @@
 {
   "name": "@typecad/board-rp2350",
   "version": "1.0.0-alpha.7",
-  "description": "TypeCAD RP2350 (Raspberry Pi Pico 2) board definition",
+  "description": "TypeCAD RP2350 (Raspberry Pi Pico 2) board definition with typed pins and peripherals",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
-  },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsc",
@@ -26,5 +21,40 @@
   "license": "MIT",
   "publishConfig": {
     "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justind000/typecode.git",
+    "directory": "boards/board-rp2350"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/boards/board-rp2350",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "board",
+    "cpp",
+    "cuttlefish",
+    "embedded",
+    "firmware",
+    "microcontroller",
+    "pico-2",
+    "pins",
+    "raspberry-pi",
+    "rp2350",
+    "typecad",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   }
 }

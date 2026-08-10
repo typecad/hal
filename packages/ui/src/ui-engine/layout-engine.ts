@@ -209,10 +209,13 @@ export function measure(node: StyledNode, availableWidth?: number, fontAssets: U
     return { w: 200, h: 20 };
   }
   if (node.tag === "input") {
-    // Input field: sized to the placeholder or a default width, 20px tall.
+    // Input field: sized to the placeholder or a default width. Height defaults
+    // to 20px but an explicit `height` style overrides it (the UA input rule no
+    // longer forces a min-height, so the author's height wins).
     const text = node.placeholder ?? "";
     const textW = text.length > 0 ? text.length * GFX_ADVANCE_PER_CHAR : 120;
-    return { w: Math.max(textW + 16, 120), h: 20 };
+    const explicitH = node.style.height ? parseInt(String(node.style.height), 10) : NaN;
+    return { w: Math.max(textW + 16, 120), h: Number.isNaN(explicitH) ? 20 : explicitH };
   }
   if (node.tag === "img") {
     return { w: (node as any).imgWidth ?? 32, h: (node as any).imgHeight ?? 32 };
