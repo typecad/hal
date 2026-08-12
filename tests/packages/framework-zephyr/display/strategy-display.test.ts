@@ -47,12 +47,18 @@ describe('ZephyrStrategy display wiring', () => {
     expect(inc).not.toContain('<zephyr/drivers/display.h>');
   });
 
-  it('shimLines emits the display runtime when the program uses display', () => {
+  it('shimLines omits the direct display runtime — the strategy provides its own display adapter', () => {
+    // providesDisplayAdapter() is always true: the adapter (resolveDisplayAdapter)
+    // emits the display_* runtime (display_init, __tc_display_line, …) for the
+    // strategy-owned drivers (ili9341-zephyr, st7796-zephyr). shimLines must NOT
+    // also emit the direct-call runtime — the two define the same symbols and
+    // would collide at link time. (buildDisplayRuntime is covered directly in
+    // display/gfx.test.ts; the adapter in zephyr-display-adapter.test.ts.)
+    expect(s.providesDisplayAdapter()).toBe(true);
     const lines = s.shimLines(programWithDisplay, { frameworkData: {}, analysis: { usesDisplay: true } } as any);
     const joined = lines.join('\n');
-    expect(joined).toContain('CUTTLEFISH_DISPLAY_BEGIN');
-    expect(joined).toContain('__tc_display_line');
-    expect(joined).toContain('display_fill_rect');
+    expect(joined).not.toContain('CUTTLEFISH_DISPLAY_BEGIN');
+    expect(joined).not.toContain('__tc_display_line');
   });
 
   it('shimLines omits the display runtime when the program has no display', () => {

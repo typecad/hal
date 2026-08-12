@@ -7,8 +7,8 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 
 | Framework | HAL cats supported | HAL cats partial | HAL cats unsupported | Toolchain | Last validated |
 |---|---|---|---|---|---|
-| framework-arduino (canonical) | 12/19 | 4 | 3 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-10 |
-| framework-zephyr | 12/19 | 6 | 1 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-10 |
+| framework-arduino (canonical) | 12/19 | 4 | 3 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-12 |
+| framework-zephyr | 12/19 | 6 | 1 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-12 |
 
 ## framework-arduino
 
