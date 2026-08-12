@@ -3,9 +3,10 @@ import path from "node:path";
 import fs from "node:fs";
 import { parseCommandLine, printHelp } from "./utils/cli.js";
 import type { GeneratedOutputs } from "./types.js";
-import type { CreateCommandOptions, BoardAddCommandOptions } from "./types.js";
+import type { CreateCommandOptions, BoardAddCommandOptions, InstallCommandOptions } from "./types.js";
 import { scaffoldProject, printInitNextSteps, KNOWN_TARGETS } from "./create/index.js";
 import { runInitWizard } from "./create/index.js";
+import { handleInstall } from "./install/index.js";
 import { generateLibraryDefinitions, transpileFile } from "./transpile.js";
 import { generateDecl, generateDeclsForDirectory, generateComponentDeclsForProject } from "./libdef/cpp-to-decl.js";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map.js";
@@ -181,6 +182,11 @@ async function main(): Promise<void> {
 
     if (options.command === "board-add") {
       await handleBoardAdd(options);
+      return;
+    }
+
+    if (options.command === "install") {
+      await handleInstall(options as InstallCommandOptions);
       return;
     }
 

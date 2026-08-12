@@ -154,7 +154,7 @@ export async function runInitWizard(
         // (which would generate invalid package.json + cuttlefish.config.ts).
         throw new Error(
           "No @typecad/framework-* packages found in this project. " +
-          "Install one before scaffolding, e.g.: npm i @typecad/framework-arduino",
+          "Run 'cuttlefish install' to add one (e.g. 'cuttlefish install arduino').",
         );
       } else if (frameworkOptions.length === 1) {
         framework = frameworkOptions[0].value;

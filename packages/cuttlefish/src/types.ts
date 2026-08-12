@@ -256,3 +256,13 @@ export interface BoardAddCommandOptions {
   specPath: string;
   force?: boolean;
 }
+
+export interface InstallCommandOptions {
+  command: "install";
+  /** Framework id to install directly (e.g. "arduino"), skipping the prompts. */
+  framework?: string;
+  /** Board/target id to narrow framework choices (e.g. "esp32-devkit"). */
+  board?: string;
+  /** Resolve and print the package-manager command without running it. */
+  dryRun?: boolean;
+}

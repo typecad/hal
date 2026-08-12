@@ -1,5 +1,5 @@
 ﻿import path from "node:path";
-import { CommandLineOptions, CreateCommandOptions, BoardAddCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
+import { CommandLineOptions, CreateCommandOptions, BoardAddCommandOptions, InstallCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
 
 import chalk from "chalk";
 
@@ -15,6 +15,7 @@ export function printHelp(): void {
   console.log();
   console.log(`  cuttlefish <input.ts> [options]`);
   console.log(`  cuttlefish create [name] [options]`);
+  console.log(`  cuttlefish install [framework] [--board id]  Install a @typecad/framework-* package (asks board, then narrows frameworks)`);
   console.log(`  cuttlefish build [options]`);
   console.log(`  cuttlefish preview [--config <path>] [--port <port>]`);
   console.log(`  cuttlefish gen-libdefs <input.ts>`);
@@ -353,7 +354,7 @@ function parsePipelineCommand(
   };
 }
 
-export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | BoardAddCommandOptions | "help" {
+export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | BoardAddCommandOptions | InstallCommandOptions | "help" {
   const firstArg = argv[2];
 
   if (!firstArg || firstArg === "--help" || firstArg === "-h") {
@@ -382,6 +383,24 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       framework,
       noSketch,
       outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
+    };
+  }
+
+  // install subcommand — install a @typecad/framework-* package. A framework id
+  // may be passed positionally (`cuttlefish install arduino`) or via --framework;
+  // --board narrows the interactive framework prompt to that board's options.
+  if (firstArg === "install") {
+    const secondArg = argv[3];
+    const positionalFramework = secondArg && !secondArg.startsWith("-") ? secondArg : undefined;
+    const framework = positionalFramework ?? readFirstFlagValue(argv, ["--framework", "-f"]);
+    const board = readFirstFlagValue(argv, ["--board", "-b"]);
+    const dryRun = argv.includes("--dry-run");
+
+    return {
+      command: "install",
+      framework,
+      board,
+      dryRun,
     };
   }
 
