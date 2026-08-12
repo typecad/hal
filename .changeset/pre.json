@@ -32,6 +32,8 @@
     "@typecad/zephyr-installer": "1.0.0-alpha.7"
   },
   "changesets": [
+    "cuttlefish-install-command",
+    "zephyr-installer-posix-write-activation",
     "zephyr-installer"
   ]
 }

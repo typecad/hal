@@ -1,5 +1,25 @@
 # @typecad/cuttlefish
 
+## 1.0.0-alpha.9
+
+### Minor Changes
+
+- a27476a: ## New `cuttlefish install` command
+
+  Adds a `cuttlefish install [framework] [--board id] [--dry-run]` subcommand that
+  installs a `@typecad/framework-*` package into the current project. It asks
+  which board to target, narrows the framework choices to the ones compatible
+  with that board (arduino / zephyr / native), detects the package manager
+  (npm / yarn / pnpm) from the lockfile, and runs the install — or prints the
+  resolved command with `--dry-run` for CI / scripting. The init wizard's
+  "no framework found" error now points users at `cuttlefish install` instead of
+  a manual `npm i`.
+
+### Patch Changes
+
+- @typecad/safety@1.0.0-alpha.9
+- @typecad/ui@1.0.0-alpha.9
+
 ## 1.0.0-alpha.8
 
 ### Patch Changes
