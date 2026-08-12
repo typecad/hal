@@ -54,11 +54,14 @@ set "TYPECAD_ZEPHYR_BASE=$zb"
 set "TYPECAD_ZEPHYR_SDK_INSTALL_DIR=$ZEPHYR_SDK_INSTALL_DIR"
 EOF
 
-  # PowerShell — dot-sourced by activate.d/zephyr.ps1
+  # PowerShell — dot-sourced by activate.d/zephyr.ps1.
+  # NB: backslash-escape the $ in $env: (\$env:) — in an UNQUOTED heredoc a
+  # backtick is command substitution, not an escape, so `` `$env `` would try to
+  # expand the unbound `env` under `set -u` and abort. \$ produces a literal $.
   cat > "$ENV_PREFIX/etc/conda/env-vars.ps1" <<EOF
 # Resolved by the typeCAD Zephyr installer. Dot-sourced by etc/conda/activate.d/zephyr.ps1.
-`$env:TYPECAD_ZEPHYR_BASE = "$zb"
-`$env:TYPECAD_ZEPHYR_SDK_INSTALL_DIR = "$ZEPHYR_SDK_INSTALL_DIR"
+\$env:TYPECAD_ZEPHYR_BASE = "$zb"
+\$env:TYPECAD_ZEPHYR_SDK_INSTALL_DIR = "$ZEPHYR_SDK_INSTALL_DIR"
 EOF
 
   # Static hooks (shell-agnostic; they only read env-vars.*).
