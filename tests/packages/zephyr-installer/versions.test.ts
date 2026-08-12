@@ -63,6 +63,18 @@ describe('zephyr-installer versions.env', () => {
     }
   });
 
+  it('pins SHA256 for platforms already exercised by a real install', () => {
+    // linux-x86_64 + windows-x86_64 were computed by the installer against the
+    // official SDK bundle and pinned, so verification is enforced (not warned).
+    // Hardcoded so a typo or accidental TODO-reset in versions.env is caught.
+    expect(v.SHA256_linux_x86_64).toBe(
+      '83f2f327dba2d6cf2440f22f2f501041544d7f34ef8b878ecd83f4513d1116b6',
+    );
+    expect(v.SHA256_windows_x86_64).toBe(
+      '51d550eb2c22c1679b9ac1116e2f5c45376b0d36f1bfcf2a1f1cea29d9384ecd',
+    );
+  });
+
   it('constructs a well-formed bundle URL for each platform', () => {
     const extByPlat: Record<string, string> = {
       'linux-x86_64': 'tar.xz',
