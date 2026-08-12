@@ -1,0 +1,32 @@
+# ---------------------------------------------------------------------------
+# typeCAD Zephyr installer — host build tools (conda-forge), cross-platform base.
+#
+# This file lists ONLY packages that exist on conda-forge for every platform
+# (linux-64, linux-aarch64, osx-64, osx-arm64, win-64). Platform-limited tools
+# are NOT listed here because micromamba's solver does not honor environment.yml
+# line selectors (e.g. `# [not win]`) — they are added by a follow-up
+# `micromamba install` in the install scripts instead:
+#
+#   install.sh  →  dtc, openocd   (POSIX only; conda-forge has no win-64 builds)
+#   install.ps1 →  7zip            (Windows only; needed to extract the .7z SDK)
+#
+# The cross-compilers themselves come from the official Zephyr SDK bundle,
+# fetched separately by the install scripts — not from conda.
+#
+# Create with:  micromamba create -y -f environment.yml -n zephyr
+# ---------------------------------------------------------------------------
+name: zephyr
+channels:
+  - conda-forge
+dependencies:
+  # Python + west (Zephyr's build orchestrator).
+  - python=3.12
+  - west>=1.2
+  # Core build tools Zephyr's CMake expects on the host (all available cross-platform).
+  - cmake>=3.20
+  - ninja
+  - gperf
+  # Python helpers west/CMake invoke.
+  - pyelftools
+  - packaging
+  - pip
