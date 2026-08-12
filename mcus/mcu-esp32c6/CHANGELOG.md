@@ -1,5 +1,12 @@
 # @typecad/mcu-esp32c6
 
+## 1.0.0-alpha.8
+
+### Patch Changes
+
+- @typecad/cuttlefish@1.0.0-alpha.8
+- @typecad/hal@1.0.0-alpha.8
+
 ## 1.0.0-alpha.7
 
 ### Patch Changes

@@ -1,0 +1,52 @@
+{
+  "name": "@typecad/zephyr-installer",
+  "version": "1.0.0-alpha.8",
+  "description": "Cross-platform Zephyr toolchain installer — micromamba env + official Zephyr SDK + vanilla west workspace",
+  "type": "module",
+  "bin": {
+    "typecad-zephyr-install": "install.mjs"
+  },
+  "files": [
+    "install.mjs",
+    "install.sh",
+    "install.ps1",
+    "environment.yml",
+    "versions.env",
+    "lib",
+    "etc",
+    "templates"
+  ],
+  "scripts": {
+    "test": "vitest run --root ../.. tests/packages/zephyr-installer/",
+    "setup": "node install.mjs",
+    "dry-run": "node install.mjs --dry-run"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justind000/typecode.git",
+    "directory": "packages/zephyr-installer"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/packages/zephyr-installer",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "conda",
+    "cuttlefish",
+    "embedded",
+    "installer",
+    "micromamba",
+    "rtos",
+    "sdk",
+    "typecad",
+    "zephyr"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "typecad0"
+}

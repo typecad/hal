@@ -1,6 +1,6 @@
 {
   "name": "@typecad/safety",
-  "version": "1.0.0-alpha.7",
+  "version": "1.0.0-alpha.8",
   "description": "TypeCAD safety mechanisms — verified GPIO reads, fault reporting",
   "type": "module",
   "main": "./dist/index.js",
@@ -25,12 +25,12 @@
     "src"
   ],
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.7",
-    "@typecad/hal": "1.0.0-alpha.7"
+    "@typecad/cuttlefish": "1.0.0-alpha.8",
+    "@typecad/hal": "1.0.0-alpha.8"
   },
   "peerDependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.7",
-    "@typecad/hal": "1.0.0-alpha.7"
+    "@typecad/cuttlefish": "1.0.0-alpha.8",
+    "@typecad/hal": "1.0.0-alpha.8"
   },
   "scripts": {
     "build": "tsc",

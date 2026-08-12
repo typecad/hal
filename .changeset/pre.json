@@ -23,11 +23,15 @@
     "@typecad/board-esp32c6": "0.0.0",
     "@typecad/board-rp2040": "0.0.0",
     "@typecad/board-rp2350": "0.0.0",
-    "@typecad/arduino-cli": "1.0.0-alpha.3"
+    "@typecad/arduino-cli": "1.0.0-alpha.3",
+    "@typecad/board-xiao-nrf52840": "1.0.0-alpha.7",
+    "@typecad/mcu-nrf52840": "1.0.0-alpha.7",
+    "@typecad/framework-zephyr": "1.0.0-alpha.7",
+    "@typecad/safety": "1.0.0-alpha.7",
+    "vscode-typecad-debug": "0.2.0",
+    "@typecad/zephyr-installer": "1.0.0-alpha.7"
   },
   "changesets": [
-    "align-arduino-cli",
-    "licenses-command",
-    "optional-ui-hook-guard"
+    "zephyr-installer"
   ]
 }

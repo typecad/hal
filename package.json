@@ -17,6 +17,7 @@
     "packages/framework-arduino",
     "packages/framework-native",
     "packages/framework-zephyr",
+    "packages/zephyr-installer",
     "boards/board-arduino-uno",
     "boards/board-esp32-devkit",
     "boards/board-esp32s3",
