@@ -30,6 +30,7 @@ import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
 import { ZephyrStrategy } from '../strategy.js';
 import { generateOverlay, type DisplayWiring, type TouchWiring } from '../dt-config/overlay.js';
 import { chipForTarget } from '../chips/index.js';
+import { detectZephyrVersion, checkZephyrCompat, resolveBoardTarget } from './compat.js';
 import { DEFAULT_ZEPHYR_DISPLAY_PROFILE } from '../display/profiles.js';
 
 /** Default board target — the framework's MVP canonical board. */
@@ -219,7 +220,29 @@ export const Toolchain = {
 
   compile(o: ToolchainOptions): CompileResult {
     const projectRoot = projectRootFromOptions(o);
-    const board = targetFromOptions(o);
+    const rawBoard = targetFromOptions(o);
+
+    // Fail fast on an incompatible Zephyr (clear message vs. a cryptic west/
+    // CMake board error), then normalize the board target for the installed
+    // version — Zephyr 4.3+ rejects bare multi-core board names, so a stale
+    // config (esp32s3_devkitc) is rewritten to the qualified form
+    // (esp32s3_devkitc/esp32s3/procpu). See toolchain/compat.ts.
+    const zephyrVersion = detectZephyrVersion();
+    const compat = checkZephyrCompat(zephyrVersion);
+    if (compat.status === 'out-of-range') {
+      throw new Error(
+        `Zephyr ${zephyrVersion} is outside the supported range (${compat.range}) for @typecad/framework-zephyr. ` +
+        `Set ZEPHYR_BASE to a compatible Zephyr checkout, or install one via '@typecad/zephyr-installer'.`,
+      );
+    }
+    if (compat.status === 'undetectable') {
+      console.warn(
+        `! Could not detect the installed Zephyr version (is ZEPHYR_BASE set?). ` +
+        `Skipping compat check; declared range is ${compat.range}.`,
+      );
+    }
+    const board = resolveBoardTarget(rawBoard, zephyrVersion);
+
     const debugMode = new ZephyrStrategy().debugMode(board);
     const isGdbDebug = o.debug === true && debugMode === 'gdb';
     const zc = o.zephyrConfig as Record<string, unknown> | undefined;

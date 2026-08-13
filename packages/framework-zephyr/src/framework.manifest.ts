@@ -542,4 +542,17 @@ export default defineFrameworkManifest({
       'uart', 'wdt', 'worker',
     ],
   },
+
+  // Declared compatibility range for the installed Zephyr RTOS. The framework's
+  // build-time version check (toolchain/compat.ts) reads this and fails fast
+  // with a clear message when the user's Zephyr is outside the range, instead
+  // of letting west/CMake surface a cryptic board-target error (the class of
+  // breakage behind the HWMv2 qualifier requirement in Zephyr 4.3+).
+  compat: {
+    zephyr: '>=4.3 <5.0',
+  },
+
+  // `cuttlefish doctor` prints the detected Zephyr version + compat result and
+  // previews how the configured board target resolves for that version.
+  doctor: { available: true },
 });
