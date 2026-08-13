@@ -106,4 +106,15 @@ describe('zephyr-installer install scripts', () => {
     expect(installPs1).toContain('requirements-base.txt');
     expect(installPs1).toContain('pip install -r');
   });
+
+  it('environment.yml pins cmake <4 (Zephyr 4.3.x is incompatible with CMake 4.x)', () => {
+    const env = readFileSync(join(installerDir, 'environment.yml'), 'utf8');
+    const cmakeLine = env.split(/\r?\n/).find((l) => l.trim().startsWith('- cmake'));
+    expect(cmakeLine, 'environment.yml must declare a cmake dependency').toBeTruthy();
+    // CMake 4.x rejects an unquoted ${VAR} in an if() that Zephyr 4.3.x uses
+    // (FindZephyr-sdk.cmake:57); CMake 3.x handles the empty expansion. Conda
+    // must resolve a 3.x — without the upper bound it pulls 4.4.x and builds fail.
+    expect(cmakeLine).toMatch(/<\s*4/);
+    expect(cmakeLine).toMatch(/>=\s*3\.20/);
+  });
 });

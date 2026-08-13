@@ -23,7 +23,11 @@ dependencies:
   - python=3.12
   - west>=1.2
   # Core build tools Zephyr's CMake expects on the host (all available cross-platform).
-  - cmake>=3.20
+  # cmake pinned <4: Zephyr 4.3.x's FindZephyr-sdk.cmake uses an unquoted
+  # ${VAR} in an if() that CMake 4.x rejects ("Unknown arguments specified"),
+  # while CMake 3.x handles the empty expansion. Loosen once a Zephyr rev that
+  # supports CMake 4.x is pinned in versions.env.
+  - cmake>=3.20,<4
   - ninja
   - gperf
   # Python helpers west/CMake invoke.
