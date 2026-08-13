@@ -121,6 +121,21 @@ export function westSpawn(
   // an explicit shell changes arg-quoting semantics on Windows.
   const { shell: _drop, ...optsWithoutShell } = baseOptions as any;
 
+  if (install.mode === 'micromamba' && install.micromambaExe) {
+    // `micromamba run -n <env> west …` sets up the env's full PATH
+    // (cmake/ninja/dtc) and runs the activation hook (ZEPHYR_BASE /
+    // ZEPHYR_SDK_INSTALL_DIR), so cuttlefish builds work WITHOUT the user
+    // activating the env. Inject MAMBA_ROOT_PREFIX so micromamba finds envs.
+    const mmEnv = { ...env };
+    if (install.mambaRootPrefix) mmEnv.MAMBA_ROOT_PREFIX = install.mambaRootPrefix;
+    return {
+      command: install.micromambaExe,
+      args: ['run', '-n', install.envName ?? 'zephyr', 'west', ...westArgs],
+      options: { ...optsWithoutShell, env: mmEnv },
+      install,
+    };
+  }
+
   if (install.mode === 'launcher' && install.westExecutable) {
     return {
       command: install.westExecutable,

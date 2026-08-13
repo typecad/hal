@@ -16,6 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import manifest from '../framework.manifest.js';
+import { discoverWest } from './west-discover.js';
 
 // ── minimal semver ──────────────────────────────────────────────────────────
 
@@ -72,7 +73,15 @@ export function satisfiesRange(version: string, range: string): boolean {
  * and a bare "4.3.99".
  */
 export function detectZephyrVersion(): string | undefined {
-  const base = process.env.ZEPHYR_BASE;
+  let base = process.env.ZEPHYR_BASE;
+  if (!base) {
+    // Fall back to the discovered west install's zephyrBase — covers the
+    // micromamba env from @typecad/zephyr-installer WITHOUT activation.
+    // (micromamba run sets ZEPHYR_BASE only inside the west subprocess; this
+    // makes the compat check work in the parent cuttlefish process too.)
+    const install = discoverWest();
+    base = install?.zephyrBase;
+  }
   if (!base) return undefined;
   let content: string;
   try {

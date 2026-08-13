@@ -1,7 +1,15 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+
+// Mock discoverWest so detectZephyrVersion tests are isolated from the host's
+// real installs (micromamba env, system python, etc.). Without this, the
+// fallback in detectZephyrVersion finds a real env and the "returns undefined"
+// assertion becomes machine-dependent.
+vi.mock("../../../packages/framework-zephyr/src/toolchain/west-discover.js", () => ({
+  discoverWest: () => null,
+}));
 
 import {
   parseVersion,

@@ -1,7 +1,11 @@
 import { describe, expect, it, beforeEach } from 'vitest';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
 import {
   discoverWest,
   resetWestDiscoveryCache,
+  discoverFromMicromamba,
   discoverFromWellKnown,
   wellKnownWorkspaces,
   isZephyrBase,
@@ -42,11 +46,14 @@ describe('framework-zephyr west discovery', () => {
     }).not.toThrow();
     // When an install IS found, it must carry the fields westSpawn needs.
     if (install!) {
-      expect(install.mode === 'launcher' || install.mode === 'module').toBe(true);
+      expect(['launcher', 'module', 'micromamba']).toContain(install.mode);
       if (install.mode === 'launcher') {
         expect(install.westExecutable).toBeTruthy();
-      } else {
+      } else if (install.mode === 'module') {
         expect(install.pythonExecutable).toBeTruthy();
+      } else if (install.mode === 'micromamba') {
+        expect(install.micromambaExe).toBeTruthy();
+        expect(install.envName).toBeTruthy();
       }
     }
   });
@@ -76,5 +83,60 @@ describe('framework-zephyr west discovery', () => {
         expect(invocation.args[1]).toBe('west');
       }
     }
+  });
+
+  describe('discoverFromMicromamba (the @typecad/zephyr-installer env)', () => {
+    const IS_WIN = process.platform === 'win32';
+
+    it('finds the installer env via MAMBA_ROOT_PREFIX (file-check, no spawn)', () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'tc-mm-'));
+      const savedRoot = process.env.MAMBA_ROOT_PREFIX;
+      try {
+        process.env.MAMBA_ROOT_PREFIX = tmp;
+        // No micromamba binary yet → null.
+        expect(discoverFromMicromamba('zephyr')).toBeNull();
+
+        // Lay out the micromamba binary + env west exactly as the installer does.
+        const mmExe = IS_WIN
+          ? join(tmp, 'Library', 'bin', 'micromamba.exe')
+          : join(tmp, 'bin', 'micromamba');
+        const westExe = IS_WIN
+          ? join(tmp, 'envs', 'zephyr', 'Scripts', 'west.exe')
+          : join(tmp, 'envs', 'zephyr', 'bin', 'west');
+        mkdirSync(dirname(mmExe), { recursive: true });
+        writeFileSync(mmExe, '');
+        mkdirSync(dirname(westExe), { recursive: true });
+        writeFileSync(westExe, '');
+
+        const install = discoverFromMicromamba('zephyr');
+        expect(install).not.toBeNull();
+        expect(install!.mode).toBe('micromamba');
+        expect(install!.micromambaExe).toBe(mmExe);
+        expect(install!.envName).toBe('zephyr');
+        expect(install!.mambaRootPrefix).toBe(tmp);
+        expect(install!.source).toBe('micromamba');
+      } finally {
+        process.env.MAMBA_ROOT_PREFIX = savedRoot;
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it('returns null when the env dir exists but has no west binary', () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'tc-mm-'));
+      const savedRoot = process.env.MAMBA_ROOT_PREFIX;
+      try {
+        process.env.MAMBA_ROOT_PREFIX = tmp;
+        const mmExe = IS_WIN
+          ? join(tmp, 'Library', 'bin', 'micromamba.exe')
+          : join(tmp, 'bin', 'micromamba');
+        mkdirSync(dirname(mmExe), { recursive: true });
+        writeFileSync(mmExe, '');
+        mkdirSync(join(tmp, 'envs', 'zephyr'), { recursive: true }); // env present, west absent
+        expect(discoverFromMicromamba('zephyr')).toBeNull();
+      } finally {
+        process.env.MAMBA_ROOT_PREFIX = savedRoot;
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    });
   });
 });

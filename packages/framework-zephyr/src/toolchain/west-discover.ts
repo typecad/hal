@@ -10,15 +10,17 @@
 // Discovery cascade (first usable wins):
 //   1. `west` already on PATH (env already activated / global install).
 //   2. $ZEPHYR_BASE venv: ${ZEPHYR_BASE}/../.venv/<python> -m west.
-//   3. Well-known workspace layouts: ~/zephyrproject/.venv, /opt/zephyrproject/.
+//   3. micromamba env from @typecad/zephyr-installer (invoked via `micromamba run`,
+//      so cuttlefish builds work with NO manual activation).
+//   4. Well-known workspace layouts: ~/zephyrproject/.venv, /opt/zephyrproject/.
 //      venv, etc.
-//   4. System pythons (`python`, `python3`, `py`) via `-m west`.
+//   5. System pythons (`python`, `python3`, `py`) via `-m west`.
 //
 // Leaner than the ESP-IDF equivalent: west needs no env sourcing (no 15s
 // export.sh) — only the right interpreter + ZEPHYR_BASE.
 // ---------------------------------------------------------------------------
 
-import { existsSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { spawnSync } from 'node:child_process';
@@ -65,15 +67,21 @@ function westOnPath(cmd: string): boolean {
  * `pythonExecutable -m west`.
  */
 export interface WestInstall {
-  mode: 'launcher' | 'module';
+  mode: 'launcher' | 'module' | 'micromamba';
   /** Absolute path to a `west` launcher (mode 'launcher') or undefined. */
   westExecutable?: string;
   /** Absolute path to a Python interpreter with west installed (mode 'module'). */
   pythonExecutable?: string;
   /** Absolute path to the Zephyr SDK root (for $ZEPHYR_BASE), if found. */
   zephyrBase?: string;
+  /** mode 'micromamba': path to the micromamba binary (for `micromamba run -n …`). */
+  micromambaExe?: string;
+  /** mode 'micromamba': the conda env name (default 'zephyr'). */
+  envName?: string;
+  /** mode 'micromamba': MAMBA_ROOT_PREFIX, injected so micromamba finds its envs. */
+  mambaRootPrefix?: string;
   /** Which discovery strategy found this install. */
-  source: 'path' | 'zephyr-base-venv' | 'well-known' | 'system-python';
+  source: 'path' | 'zephyr-base-venv' | 'well-known' | 'system-python' | 'micromamba';
 }
 
 /** True if `dir` looks like a Zephyr SDK root: has CMakeLists.txt and the
@@ -128,7 +136,77 @@ export function discoverFromZephyrBase(): WestInstall | null {
   };
 }
 
-// ── Strategy 3: well-known workspace layouts ───────────────────────────────
+// ── Strategy 3: micromamba env (the @typecad/zephyr-installer install) ─────
+
+// Locate the micromamba binary + root prefix. The installer downloads
+// micromamba to $MAMBA_ROOT_PREFIX/bin (POSIX) or Library/bin (Windows); the
+// root defaults to ~/micromamba. Returns null if the binary isn't present
+// (the installer hasn't run on this machine).
+function findMicromamba(): { exe: string; rootPrefix: string } | null {
+  const root = process.env.MAMBA_ROOT_PREFIX || join(homedir(), 'micromamba');
+  const exe = IS_WIN
+    ? join(root, 'Library', 'bin', 'micromamba.exe')
+    : join(root, 'bin', 'micromamba');
+  return existsSync(exe) ? { exe, rootPrefix: root } : null;
+}
+
+/**
+ * The micromamba env created by `@typecad/zephyr-installer`. The env's west
+ * lives at envs/<name>/bin/west (POSIX) or Scripts/west.exe (Windows). Found
+ * installs are invoked via `micromamba run -n <name> west …` (see
+ * west-spawn.ts), which sets up the env's full PATH (cmake/ninja/dtc) AND runs
+ * the activation hook (ZEPHYR_BASE / ZEPHYR_SDK_INSTALL_DIR) — so cuttlefish
+ * builds work with NO manual `micromamba activate`. This is what makes a fresh
+ * `cuttlefish build` succeed in any project without the user activating.
+ *
+ * Env name defaults to "zephyr"; override via TYPECAD_ZEPHYR_ENV. File-check
+ * based (no spawn) so it's cheap to run on every cuttlefish invocation.
+ */
+/** Read a TYPECAD_ZEPHYR_* value from the installer-written env-vars file in
+ *  a micromamba env. Handles .sh (export VAR="val"), .bat (set "VAR=val"),
+ *  and .ps1 ($env:VAR = "val"). Returns undefined if absent/unreadable. */
+function readMicromambaEnvVar(envDir: string, varName: string): string | undefined {
+  const candidates = IS_WIN
+    ? [join(envDir, 'etc', 'conda', 'env-vars.ps1'), join(envDir, 'etc', 'conda', 'env-vars.bat')]
+    : [join(envDir, 'etc', 'conda', 'env-vars.sh')];
+  for (const f of candidates) {
+    if (!existsSync(f)) continue;
+    try {
+      const text = readFileSync(f, 'utf8');
+      // .sh/.ps1: VAR = "value" (quoted value after =).
+      let m = text.match(new RegExp(`${varName}\\s*=\\s*"([^"]+)"`));
+      if (m) return m[1];
+      // .bat: set "VAR=value" (value after VAR= inside quotes).
+      m = text.match(new RegExp(`${varName}=([^"\\r\\n]+)"`));
+      if (m) return m[1].trim();
+    } catch { /* ignore unreadable */ }
+  }
+  return undefined;
+}
+
+export function discoverFromMicromamba(
+  envName: string = process.env.TYPECAD_ZEPHYR_ENV || 'zephyr',
+): WestInstall | null {
+  const mm = findMicromamba();
+  if (!mm) return null;
+  const envDir = join(mm.rootPrefix, 'envs', envName);
+  const westExe = join(envDir, IS_WIN ? 'Scripts' : 'bin', IS_WIN ? 'west.exe' : 'west');
+  if (!existsSync(envDir) || !existsSync(westExe)) return null;
+  // Read ZEPHYR_BASE from the installer's env-vars so the compat check (and
+  // anything else in the cuttlefish process) can detect the Zephyr version
+  // WITHOUT activation — micromamba run sets it only inside the west subprocess.
+  const zb = readMicromambaEnvVar(envDir, 'TYPECAD_ZEPHYR_BASE');
+  return {
+    mode: 'micromamba',
+    micromambaExe: mm.exe,
+    envName,
+    mambaRootPrefix: mm.rootPrefix,
+    zephyrBase: zb && isZephyrBase(zb) ? zb : undefined,
+    source: 'micromamba',
+  };
+}
+
+// ── Strategy 4: well-known workspace layouts ───────────────────────────────
 
 /** Candidate Zephyr workspace directories. Each may contain both `.venv/`
  *  and `zephyr/` (the SDK). Exported for test injection. */
@@ -169,7 +247,7 @@ export function discoverFromWellKnown(
   return null;
 }
 
-// ── Strategy 4: system pythons via `-m west` ────────────────────────────────
+// ── Strategy 5: system pythons via `-m west` ────────────────────────────────
 
 /** Candidate system Python interpreters to probe with `-m west`. */
 export function systemPythons(): string[] {
@@ -205,7 +283,8 @@ export function resetWestDiscoveryCache(): void {
  * Try each discovery strategy in order. The first usable install wins.
  * Result is memoized for the process lifetime (west installs don't move).
  *
- * Order: PATH → $ZEPHYR_BASE venv → well-known workspaces → system pythons.
+ * Order: PATH → $ZEPHYR_BASE venv → micromamba env → well-known workspaces →
+ * system pythons.
  * Returns null when no usable west install is found.
  */
 export function discoverWest(): WestInstall | null {
@@ -213,6 +292,7 @@ export function discoverWest(): WestInstall | null {
   const strategies: Array<() => WestInstall | null> = [
     discoverFromPath,
     discoverFromZephyrBase,
+    discoverFromMicromamba,
     discoverFromWellKnown,
     discoverFromSystemPython,
   ];
