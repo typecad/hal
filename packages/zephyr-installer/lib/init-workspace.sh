@@ -44,5 +44,14 @@ init_workspace() {
   "$MAMBA" run -n "$ENV_NAME" west update \
     || { echo "init-workspace: west update failed" >&2; return 1; }
 
+  # Install Zephyr's pinned Python build deps (jsonschema, pykwalify, PyYAML,
+  # intelhex, canopen, ...) into the env. CMake checks for these and the build
+  # fails with e.g. "Missing jsonschema dependency" without them. Letting
+  # Zephyr's own requirements file drive this avoids chasing deps one-by-one
+  # and tracks the pinned Zephyr revision.
+  echo "init-workspace: installing Zephyr Python requirements (requirements-base.txt)..."
+  "$MAMBA" run -n "$ENV_NAME" pip install -r "$WORKSPACE_DIR/zephyr/scripts/requirements-base.txt" \
+    || { echo "init-workspace: pip install requirements failed" >&2; return 1; }
+
   echo "init-workspace: done — ZEPHYR_BASE=$WORKSPACE_DIR/zephyr"
 }

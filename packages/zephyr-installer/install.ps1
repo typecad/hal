@@ -263,6 +263,11 @@ if (-not $NoWorkspace) {
   }
   Write-Host "init-workspace: running west update (fetches zephyr + modules)..."
   Invoke-Native { & $MambaExe run -n $ENV_NAME west update } "west update"
+  # Install Zephyr's pinned Python build deps (jsonschema, pykwalify, ...). CMake
+  # checks for these and the build fails with "Missing jsonschema dependency"
+  # without them; letting Zephyr's requirements file drive it tracks the revision.
+  Write-Host "init-workspace: installing Zephyr Python requirements (requirements-base.txt)..."
+  Invoke-Native { & $MambaExe run -n $ENV_NAME pip install -r "$zb\scripts\requirements-base.txt" } "pip install zephyr requirements"
   Write-Host "init-workspace: done - ZEPHYR_BASE=$zb"
 } else {
   Write-Host "install: -NoWorkspace - skipping west init/update"

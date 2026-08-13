@@ -92,3 +92,18 @@ describe('zephyr-installer versions.env', () => {
     }
   });
 });
+
+describe('zephyr-installer install scripts', () => {
+  const installerDir = join(repoRoot, 'packages/zephyr-installer');
+
+  it('install Zephyr Python build requirements (jsonschema, pykwalify, ...) after west update', () => {
+    // Without this, `west build` fails at CMake configure with
+    // "Missing jsonschema dependency". Both native installers must wire it.
+    const initSh = readFileSync(join(installerDir, 'lib/init-workspace.sh'), 'utf8');
+    const installPs1 = readFileSync(join(installerDir, 'install.ps1'), 'utf8');
+    expect(initSh).toContain('requirements-base.txt');
+    expect(initSh).toContain('pip install -r');
+    expect(installPs1).toContain('requirements-base.txt');
+    expect(installPs1).toContain('pip install -r');
+  });
+});
