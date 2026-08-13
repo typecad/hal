@@ -36,7 +36,9 @@ import type {
 } from '@typecad/cuttlefish/api/shared';
 import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
 import { buildWorkerRuntimePolyfill } from '@typecad/cuttlefish/api/shared';
+import { applyStringMethodRewrites } from '@typecad/cuttlefish/api/shared';
 import { programUsesSafety } from '@typecad/cuttlefish/api';
+import { entryHasUI } from '@typecad/cuttlefish/ui-hook';
 import { chipForTarget, setActiveChip, getActiveChip } from './chips/index.js';
 import { resolveChipFromBoard } from './chips/resolve.js';
 import { emitGpioDevDispatcher } from './chips/controllers.js';
@@ -44,6 +46,9 @@ import { lowerHalOp } from './lowering/index.js';
 import { buildZephyrWorkerBacking } from './lowering/worker-backing.js';
 import { adcInitLines } from './lowering/adc.js';
 import { pwmInitLines } from './lowering/pwm.js';
+import { dacInitLines } from './lowering/dac.js';
+import { fsInitLines } from './lowering/fs.js';
+import { hwtimerInitLines } from './lowering/hwtimer.js';
 import { i2cInitLines } from './lowering/i2c.js';
 import { spiInitLines } from './lowering/spi.js';
 import { uartInitLines } from './lowering/uart.js';
@@ -137,6 +142,13 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (isPrintf && !inc.includes('<zephyr/drivers/uart.h>')) inc.push('<zephyr/drivers/uart.h>');
     if (uses('usesADC')) inc.push('<zephyr/drivers/adc.h>');
     if (uses('usesPWM')) inc.push('<zephyr/drivers/pwm.h>');
+    if (uses('usesDAC')) inc.push('<zephyr/drivers/dac.h>');
+    // Filesystem: littlefs on the storage partition. <cstring> backs the
+    // shim's strlen; the storage/flash_map + fs/littlefs headers carry the
+    // FIXED_PARTITION_ID macro + FS_LITTLEFS_DECLARE_DEFAULT_CONFIG the shim uses.
+    if (uses('usesFS')) inc.push('<zephyr/fs/fs.h>', '<zephyr/fs/littlefs.h>', '<zephyr/storage/flash_map.h>', '<cstring>');
+    // Hardware timers via the counter driver.
+    if (uses('usesHwtimer')) inc.push('<zephyr/drivers/counter.h>');
     if (uses('usesWDT')) inc.push('<zephyr/drivers/watchdog.h>');
     if (uses('usesPower')) inc.push('<zephyr/pm/pm.h>', '<zephyr/pm/state.h>', '<zephyr/pm/policy.h>');
     // BLE: the bt_* GATT API + the flat-string headers the shim uses. <string>
@@ -300,19 +312,23 @@ export class ZephyrStrategy implements PlatformStrategy {
     }
     if (uses('usesADC') && chip.adc) lines.push(...adcInitLines(chip));
     if (uses('usesPWM') && chip.pwm) lines.push(...pwmInitLines(chip));
+    if (uses('usesDAC') && chip.dac) lines.push(...dacInitLines(chip));
+    if (uses('usesHwtimer') && chip.hwtimer) lines.push(...hwtimerInitLines(chip));
     if (uses('usesInterrupts')) lines.push(...interruptInitLines(chip));
     if (uses('usesWDT') && chip.wdt) lines.push(...wdtInitLines(chip));
     if (uses('usesBle')) lines.push(...bleInitLines());
-    // Display runtime (minimal rect/text renderer): gated on the analyzer's
-    // usesDisplay flag (set by display.* hal-ops). This is the DIRECT-call
-    // display path (user code calling screen.display.fillRect etc.). It is
-    // SUPPRESSED when the UI display adapter is active — the adapter seam
-    // (providesDisplayAdapter/resolveDisplayAdapter) emits its own display_*
-    // runtime that drives the UI rendering pipeline via CuttlefishGFX, and the
-    // two define the same symbols (display_init, __tc_display_line) so emitting
-    // both causes redefinition errors. The adapter is active for the
-    // strategy-owned drivers (ili9341-zephyr, st7796-zephyr).
-    if (uses('usesDisplay') && !this.providesDisplayAdapter()) {
+    // Display runtime (rect/text renderer): the DIRECT-call display path (user
+    // code calling screen.display.fillRect etc., no @typecad/ui). Emitted only
+    // when the program uses display.* but is NOT a UI program — the UI display
+    // adapter (emitted by cuttlefish's emitUIRuntime, solely under entryHasUI())
+    // defines the same display_init symbol, so emitting both would collide.
+    // `providesDisplayAdapter()` is a static capability (always true here) and
+    // does NOT track whether the adapter is actually emitted for THIS build, so
+    // the per-program UI signal (entryHasUI) is the correct gate. Without this,
+    // a direct display.* program has no definition for display_init/
+    // display_fill_rect/draw_rect/draw_text/flush (the gfx runtime was
+    // previously dead code).
+    if (uses('usesDisplay') && !entryHasUI()) {
       const rt = buildDisplayRuntime(this._displayState.profile);
       lines.push(...rt.stateLines);
       lines.push(rt.fontTable);
@@ -322,6 +338,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesHttp')) lines.push(...httpInitLines());
     if (uses('usesMqtt')) lines.push(...mqttInitLines());
     if (uses('usesPreferences')) lines.push(...preferencesInitLines());
+    if (uses('usesFS')) lines.push(...fsInitLines());
     if (uses('usesRandom')) lines.push(...randomInitLines());
 
     lines.push('#endif // CUTTLEFISH_SHIM_DEFINED');
@@ -429,6 +446,8 @@ export class ZephyrStrategy implements PlatformStrategy {
     const outputPins = new Set<number>();
     const adcReadPins = new Set<number>();
     const interruptPins = new Set<number>();
+    const dacPins = new Set<number>();
+    const hwtimerInstances = new Set<number>();
     let usesWifiOps = false;
     let usesHttpOps = false;
     let usesMqttOps = false;
@@ -448,6 +467,15 @@ export class ZephyrStrategy implements PlatformStrategy {
           }
           if (op.operation === 'interrupt.attach' && typeof op.pin === 'number') {
             interruptPins.add(op.pin);
+          }
+          if (op.operation === 'dac.write' && typeof op.pin === 'number') {
+            dacPins.add(op.pin);
+          }
+          if (typeof op.operation === 'string' && op.operation.startsWith('hwtimer.')) {
+            const inst = typeof op.instance === 'number'
+              ? op.instance
+              : parseInt(String(op.instance), 10);
+            if (!isNaN(inst)) hwtimerInstances.add(inst);
           }
           if (typeof op.operation === 'string' && op.operation.startsWith('wifi.')) {
             usesWifiOps = true;
@@ -507,6 +535,56 @@ export class ZephyrStrategy implements PlatformStrategy {
             : `This target declares no interrupt pins in its chip descriptor; interrupts are not available.`,
           source: program.fileName,
         });
+      }
+    }
+
+    // ── DAC pin validity ────────────────────────────────────────────────────
+    // dac.write resolves a HAL pin to a channel via the chip descriptor's
+    // dac.channels map. A pin not in that map lowers to a comment (silent
+    // no-op), and a chip without a `dac` entry (nRF52840, ESP32-S3) has no DAC
+    // at all. Flag either case so the user gets a clear message instead of a
+    // pin that silently does nothing.
+    if (dacPins.size > 0) {
+      const dacChannels = new Set((chip.dac?.channels ?? []).map((c) => c.pin));
+      for (const pin of dacPins) {
+        if (!dacChannels.has(pin)) {
+          diags.push({
+            severity: 'error',
+            code: 'zephyr-dac-pin-unavailable',
+            message: `GPIO ${pin} is not a DAC channel on ${chip.id} and cannot be driven with dac.write.`,
+            hint: dacChannels.size > 0
+              ? `Use a DAC-capable pin. On ${chip.id}: ${[...dacChannels].sort((x, y) => x - y).join(', ')}.`
+              : `${chip.id} has no DAC. Use an esp32_devkitc target (ESP32 DAC on GPIO25/26).`,
+            source: program.fileName,
+          });
+        }
+      }
+    }
+
+    // ── Hardware-timer instance validity ────────────────────────────────────
+    // hwtimer.* resolves the instance index to a counter device via the chip
+    // descriptor's hwtimer.controllers. A chip without that entry (or an
+    // out-of-range instance) lowers to a comment — flag it so the user knows
+    // the timer will never fire.
+    if (hwtimerInstances.size > 0) {
+      const controllerCount = chip.hwtimer?.controllers.length ?? 0;
+      for (const inst of hwtimerInstances) {
+        if (controllerCount === 0) {
+          diags.push({
+            severity: 'error',
+            code: 'zephyr-hwtimer-unavailable',
+            message: `Hardware timer instance ${inst} is used but ${chip.id} exposes no free counter device.`,
+            hint: `${chip.id} declares no hwtimer.controllers. Use a target with a free counter (e.g. nRF RTC1).`,
+            source: program.fileName,
+          });
+        } else if (inst < 0 || inst >= controllerCount) {
+          diags.push({
+            severity: 'error',
+            code: 'zephyr-hwtimer-instance-out-of-range',
+            message: `Hardware timer instance ${inst} is out of range on ${chip.id} (0..${controllerCount - 1}).`,
+            source: program.fileName,
+          });
+        }
       }
     }
 
@@ -656,6 +734,18 @@ export class ZephyrStrategy implements PlatformStrategy {
       v = v.replace(/\bundefined\b/g, 'CUTTLEFISH_UNDEFINED');
       v = v.replace(/\bnull\b/g, 'CUTTLEFISH_UNDEFINED');
     }
+    // String-method lowering is shared across targets (see string-method-
+    // registry). Zephyr's strings are const char*, so the __tc_* helpers this
+    // rewrites to (defined by the string_methods polyfill) take const char*.
+    // includes/startsWith lower to inline strstr/strncmp (matching framework-
+    // arduino); everything else → a __tc_* helper call.
+    v = applyStringMethodRewrites(v, {
+      wrapReceiverFor: new Set(['indexOf']),
+      special: {
+        includes: (recv, args) => `(strstr(${recv}, ${args[0]}) != NULL)`,
+        startsWith: (recv, args) => `(strncmp(${recv}, ${args[0]}, strlen(${args[0]})) == 0)`,
+      },
+    });
     return v;
   }
 
@@ -962,16 +1052,23 @@ export class ZephyrStrategy implements PlatformStrategy {
   }
 
   // ── Polyfills ───────────────────────────────────────────────────────────
-  // No native polyfills for the MVP — the shared runtime's string/array
-  // polyfills are pulled in when a program uses them. cuttlefish_halt is the
-  // one symbol the runtime header may reference; supply it as a halt loop.
+  // Zephyr is a no-STL target (hasVector/hasString = false), so array/string
+  // literals lower to __tc_StaticArray / const char* and string methods lower
+  // to __tc_* helpers — both need STL-free definitions emitted here (there is
+  // no shared-runtime fallback; the pipeline sources 100% of polyfills from
+  // generateNativePolyfills). Mirrors framework-arduino's AVR polyfills.
 
   nativePolyfills(): Set<string> {
     // cuttlefish_halt: always (the runtime header may reference it).
+    // string_methods / static_array: STL-free array + string helpers a no-STL
+    //   target needs (mutated/struct array literals + any string method).
     // timer_methods: k_timer/k_work pool for setInterval/setTimeout (gated on
     //   timerCallCount at emit time in generateNativePolyfills).
     // async_runtime: heap-free static Promise/microtask runtime (no STL needed).
-    return new Set<string>(['cuttlefish_halt', 'wiring_compat', 'timer_methods', 'async_runtime']);
+    return new Set<string>([
+      'cuttlefish_halt', 'wiring_compat', 'string_methods', 'static_array',
+      'timer_methods', 'async_runtime',
+    ]);
   }
 
   generateNativePolyfills(program?: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
@@ -1019,6 +1116,75 @@ export class ZephyrStrategy implements PlatformStrategy {
           '#define digitalRead(pin) __tc_gpio_read(pin)',
           '#endif',
         ],
+        dependencies: [],
+      },
+      {
+        // STL-free string-method polyfills. String methods (.toUpperCase(),
+        // .includes(), .substring(), …) lower at IR level to __tc_* helpers for
+        // every target; this supplies their definitions. Minimal-libc friendly:
+        // only <cstring> primitives (no <cctype> — case conversion is inline
+        // ASCII so the polyfill is self-contained). Mirrors framework-arduino.
+        kind: 'polyfill',
+        id: 'string_methods',
+        domain: 'embedded' as const,
+        requiredIncludes: ['<cstring>'],
+        forwardDeclarations: [],
+        helperStructs: [],
+        helperFunctions: [`
+// TypeCAD string method polyfills (Zephyr, minimal-libc).
+#ifndef CUTTLEFISH_STR_BUF_SIZE
+#define CUTTLEFISH_STR_BUF_SIZE 64
+#endif
+bool __tc_endsWith(const char* s, const char* suffix) { int sl = strlen(s), tl = strlen(suffix); return sl >= tl && strcmp(s + sl - tl, suffix) == 0; }
+const char* __tc_toUpperCase(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) { if (*p >= 'a' && *p <= 'z') { *p = static_cast<char>(*p - 32); } } return b; }
+const char* __tc_toLowerCase(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; for (char* p = b; *p; p++) { if (*p >= 'A' && *p <= 'Z') { *p = static_cast<char>(*p + 32); } } return b; }
+const char* __tc_trim(const char* s) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; while (*s == ' ' || *s == '\\t' || *s == '\\n' || *s == '\\r') s++; int len = strlen(s); while (len > 0 && (s[len-1] == ' ' || s[len-1] == '\\t' || s[len-1] == '\\n' || s[len-1] == '\\r')) len--; int cplen = len < CUTTLEFISH_STR_BUF_SIZE - 1 ? len : CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s, cplen); b[cplen] = '\\0'; return b; }
+const char* __tc_substring2(const char* s, int start, int end) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; int slen = strlen(s); if (start < 0) start = 0; if (end > slen) end = slen; if (end < start) end = start; int len = end - start; if (len >= CUTTLEFISH_STR_BUF_SIZE) len = CUTTLEFISH_STR_BUF_SIZE - 1; strncpy(b, s + start, len); b[len] = '\\0'; return b; }
+const char* __tc_substring1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
+const char* __tc_slice2(const char* s, int start, int end) { return __tc_substring2(s, start, end); }
+const char* __tc_slice1(const char* s, int start) { return __tc_substring2(s, start, strlen(s)); }
+const char* __tc_replace(const char* s, const char* old, const char* repl) { static char buf[2][CUTTLEFISH_STR_BUF_SIZE]; static uint8_t slot = 0; slot ^= 1; char* b = buf[slot]; const char* pos = strstr(s, old); if (!pos) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } int beforeLen = static_cast<int>(pos - s); int oldLen = static_cast<int>(strlen(old)); int replLen = static_cast<int>(strlen(repl)); if (beforeLen + replLen + static_cast<int>(strlen(pos + oldLen)) >= CUTTLEFISH_STR_BUF_SIZE) { strncpy(b, s, CUTTLEFISH_STR_BUF_SIZE - 1); b[CUTTLEFISH_STR_BUF_SIZE - 1] = '\\0'; return b; } memcpy(b, s, beforeLen); memcpy(b + beforeLen, repl, replLen); strcpy(b + beforeLen + replLen, pos + oldLen); return b; }
+const char* __tc_charAt(const char* s, int idx) { static char buf[2][2]; static uint8_t slot = 0; slot ^= 1; buf[slot][0] = s[idx]; buf[slot][1] = '\\0'; return buf[slot]; }
+int __tc_charCodeAt(const char* s, int idx) { return static_cast<int>(static_cast<unsigned char>(s[idx])); }
+int __tc_indexOf(const char* s, const char* needle) { const char* p = strstr(s, needle); return p ? static_cast<int>(p - s) : -1; }
+`],
+        shimMacros: [],
+        dependencies: [],
+      },
+      {
+        // STL-free fixed-size array wrapper. Mutated/struct-element array
+        // literals and array methods (.push/.pop/.map/.filter) lower to
+        // __tc_StaticArray<T,N>; this supplies the template. Idempotent guard
+        // so a redefinition is a no-op. Mirrors framework-arduino.
+        kind: 'polyfill',
+        id: 'static_array',
+        domain: 'embedded' as const,
+        requiredIncludes: [],
+        forwardDeclarations: [],
+        helperStructs: [],
+        helperFunctions: [`
+#ifndef __TC_STATIC_ARRAY_DEFINED
+#define __TC_STATIC_ARRAY_DEFINED
+template<typename T, int N>
+struct __tc_StaticArray {
+    T data[N];
+    int _size;
+    __tc_StaticArray() : _size(0) {}
+    int length() const { return _size; }
+    int size() const { return _size; }
+    void push(T val) { if (_size < N) data[_size++] = val; }
+    T pop() { return (_size > 0) ? data[--_size] : T(); }
+    int indexOf(T val) const { for (int i = 0; i < _size; i++) if (data[i] == val) return i; return -1; }
+    T& operator[](int i) { return data[i]; }
+    const T& operator[](int i) const { return data[i]; }
+    T* begin() { return &data[0]; }
+    T* end() { return &data[_size]; }
+    const T* begin() const { return &data[0]; }
+    const T* end() const { return &data[_size]; }
+};
+#endif
+`],
+        shimMacros: [],
         dependencies: [],
       },
     ];

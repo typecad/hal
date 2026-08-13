@@ -8,7 +8,7 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 | Framework | HAL cats supported | HAL cats partial | HAL cats unsupported | Toolchain | Last validated |
 |---|---|---|---|---|---|
 | framework-arduino (canonical) | 12/19 | 4 | 3 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-13 |
-| framework-zephyr | 12/19 | 6 | 1 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-13 |
+| framework-zephyr | 12/19 | 7 | 0 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-13 |
 
 ## framework-arduino
 
@@ -57,7 +57,7 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 | gpio | supported | — |
 | pwm | supported | — |
 | adc | supported | — |
-| dac | unsupported | No DAC lowering implemented in the framework (not applicable on nRF52840; ESP32 variants with DAC not yet wired). |
+| dac | partial | — |
 | interrupts | partial | — |
 | tone | partial | — |
 | timing | supported | — |
@@ -81,7 +81,7 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 | gpio | ✓ | ✓ |
 | pwm | ✓ | ✓ |
 | adc | ✓ | ✓ |
-| dac | ✓ | ✗ (no dac lowering implemented in the framework (not applicable on nrf52840) |
+| dac | ✓ | ◐ partial |
 | interrupts | ✓ | ◐ partial |
 | tone | ✓ | ◐ partial |
 | timing | ◐ partial | ✓ |

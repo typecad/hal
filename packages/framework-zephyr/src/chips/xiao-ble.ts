@@ -61,4 +61,10 @@ export const XIAO_BLE: ZephyrChipDescriptor = {
     ],
   },
   wdt: { nodeLabel: 'wdt0' },
+  // Hardware timer: nRF RTC1 is the free counter (RTC0 is kernel-owned by the
+  // softdevice/clock driver). The hwtimer lowering drives it as a Zephyr
+  // counter device (counter_start/stop + a top-value alarm for set_frequency).
+  // Verified against the nRF52840 SoC dtsi (rtc0/rtc1 nodes). The kernel uses
+  // RTC0 for the system tick; RTC1 is available for application use.
+  hwtimer: { controllers: [{ nodeLabel: 'rtc1' }] },
 };

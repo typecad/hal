@@ -102,6 +102,19 @@ export interface ZephyrAdcChannel {
 }
 
 /**
+ * A DAC channel: which DAC output a given HAL pin maps to. The lowering emits
+ * `dac_channel_setup` + `dac_write_value` against the DAC device node.
+ */
+export interface ZephyrDacChannel {
+  /** GPIO number (matches the HAL op `pin` field). */
+  readonly pin: number;
+  /** DAC channel index (ESP32: GPIO25 → 1, GPIO26 → 2). */
+  readonly channel: number;
+  /** DAC resolution in bits (ESP32 DAC is 8-bit). */
+  readonly resolution: number;
+}
+
+/**
  * Pure-data descriptor for a Zephyr board + its SoC's peripheral layout.
  */
 export interface ZephyrChipDescriptor {
@@ -151,8 +164,24 @@ export interface ZephyrChipDescriptor {
     /** ADC resolution in bits. */
     readonly resolution: number;
   };
+  /**
+   * DAC: the DAC device node label + the pin→channel map. Present only on chips
+   * with a DAC (ESP32 has 2 channels on GPIO25/26; ESP32-S3 and nRF52840 have
+   * none). Read by profileDiagnostics to flag dac.* usage on chips without it.
+   */
+  readonly dac?: {
+    readonly device: string;
+    readonly channels: readonly ZephyrDacChannel[];
+  };
   /** Watchdog node label, e.g. 'wdt0'. */
   readonly wdt?: { readonly nodeLabel: string };
+  /**
+   * Hardware timers exposed as Zephyr counter devices. `instance` (the HAL
+   * hwtimer.* op's instance index) maps to `controllers[instance].nodeLabel`.
+   * Omit on chips whose counter nodes are kernel-owned or unavailable; the
+   * lowering then lowers to a comment and profileDiagnostics flags usage.
+   */
+  readonly hwtimer?: { readonly controllers: readonly ZephyrBusController[] };
   /**
    * WiFi capability marker. Present only on chips with a WiFi radio (ESP32-S3).
    * Read by profileDiagnostics to flag wifi.* usage on chips without a radio.

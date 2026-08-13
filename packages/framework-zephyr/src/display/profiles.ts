@@ -56,6 +56,19 @@ export const ZEPHYR_DISPLAY_PROFILES: Record<string, ZephyrDisplayProfile> = {
     rotation: 1,
     backlight: 'backlight',
   },
+  'ssd1306-zephyr': {
+    // Monochrome OLED (SSD1306-class, 128x64, 1bpp). Driven through Zephyr's
+    // generic display API (the ssd1306 driver + a DT display node). The GFX
+    // runtime (gfx.ts mono branch) keeps a full page-framebuffer and pushes it
+    // on display_flush — the standard model for page-buffered OLEDs. Direct
+    // display.* ops only (no @typecad/ui CuttlefishGFX rendering on mono).
+    driver: 'ssd1306-zephyr',
+    dtLabel: 'display0',
+    width: 128,
+    height: 64,
+    colorFormat: 'mono',
+    rotation: 0,
+  },
 };
 
 /** The default profile used when resolveDisplayOp is probed without a display.init. */

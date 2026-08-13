@@ -1,7 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
 import {
-  identifySpdx,
-  classifyRisk,
   scanLicenses,
   coerceLibList,
   resolveProjectHeaders,
@@ -13,110 +11,9 @@ import {
   type ScanOptions,
 } from "../../../packages/framework-arduino/src/licenses";
 
-describe("identifySpdx — alias matching (short library.properties values)", () => {
-  it("matches canonical SPDX IDs", () => {
-    expect(identifySpdx("MIT")).toBe("MIT");
-    expect(identifySpdx("Apache-2.0")).toBe("Apache-2.0");
-    expect(identifySpdx("BSD-3-Clause")).toBe("BSD-3-Clause");
-    expect(identifySpdx("GPL-3.0")).toBe("GPL-3.0");
-    expect(identifySpdx("LGPL-2.1")).toBe("LGPL-2.1");
-  });
-
-  it("matches common aliases case-insensitively", () => {
-    expect(identifySpdx("apache 2.0")).toBe("Apache-2.0");
-    expect(identifySpdx("BSD")).toBe("BSD-3-Clause");
-    expect(identifySpdx("GPLv3")).toBe("GPL-3.0");
-  });
-
-  it("matches Creative Commons SPDX IDs and aliases", () => {
-    expect(identifySpdx("CC-BY-4.0")).toBe("CC-BY-4.0");
-    expect(identifySpdx("CC-BY-SA-4.0")).toBe("CC-BY-SA-4.0");
-    expect(identifySpdx("CC-BY-NC-4.0")).toBe("CC-BY-NC-4.0");
-    expect(identifySpdx("Creative Commons Attribution 4.0")).toBe("CC-BY-4.0");
-    expect(identifySpdx("cc by-sa 4.0")).toBe("CC-BY-SA-4.0");
-  });
-
-  it("matches SPDX -only / -or-later suffixes (used by SPDX-License-Identifier markers)", () => {
-    expect(identifySpdx("SPDX-License-Identifier: GPL-3.0-only")).toBe("GPL-3.0");
-    expect(identifySpdx("SPDX-License-Identifier: GPL-3.0-or-later")).toBe("GPL-3.0");
-    expect(identifySpdx("SPDX-License-Identifier: GPL-2.0-only")).toBe("GPL-2.0");
-    expect(identifySpdx("SPDX-License-Identifier: LGPL-2.1-or-later")).toBe("LGPL-2.1");
-    expect(identifySpdx("SPDX-License-Identifier: LGPL-3.0-only")).toBe("LGPL-3.0");
-    expect(identifySpdx("SPDX-License-Identifier: AGPL-3.0-or-later")).toBe("AGPL-3.0");
-  });
-
-  it("returns undefined for an unrecognized string", () => {
-    expect(identifySpdx("some-custom-license")).toBeUndefined();
-  });
-});
-
-describe("identifySpdx — full LICENSE file content", () => {
-  it("honors an SPDX-License-Identifier marker when present", () => {
-    const text = "SPDX-License-Identifier: LGPL-2.1\n\nSome header text.";
-    expect(identifySpdx(text)).toBe("LGPL-2.1");
-  });
-
-  it("matches the MIT marker phrase in a full license body", () => {
-    const text =
-      "The MIT License (MIT)\n\n" +
-      "Permission is hereby granted, free of charge, to any person obtaining a copy of this software";
-    expect(identifySpdx(text)).toBe("MIT");
-  });
-
-  it("matches BSD-3 via the 'neither the name' body clause", () => {
-    const text =
-      "Redistribution and use in source and binary forms, with or without modification,\n" +
-      "are permitted provided that the following conditions are met:\n" +
-      "Redistributions of source code must retain the above copyright notice.\n" +
-      "Redistributions in binary form must reproduce the above copyright notice.\n" +
-      "Neither the name of the copyright holder nor the names of its contributors may be used";
-    expect(identifySpdx(text)).toBe("BSD-3-Clause");
-  });
-
-  it("returns undefined for a license body that matches nothing", () => {
-    expect(identifySpdx("This is some weird proprietary text with no known markers.")).toBeUndefined();
-  });
-
-  it("identifies a Creative Commons CC-BY-4.0 LICENSE file body", () => {
-    const text =
-      "Creative Commons Attribution 4.0 International License\n" +
-      "By exercising the Licensed Rights, You accept and agree to the terms.\n" +
-      "Section 1 – Definitions.\n" +
-      "Section 2 – Scope.";
-    expect(identifySpdx(text)).toBe("CC-BY-4.0");
-  });
-});
-
-describe("classifyRisk", () => {
-  it("classifies permissive licenses", () => {
-    expect(classifyRisk("MIT")).toBe("permissive");
-    expect(classifyRisk("BSD-3-Clause")).toBe("permissive");
-    expect(classifyRisk("Apache-2.0")).toBe("permissive");
-  });
-
-  it("classifies weak copyleft", () => {
-    expect(classifyRisk("LGPL-2.1")).toBe("weak-copyleft");
-    expect(classifyRisk("LGPL-3.0")).toBe("weak-copyleft");
-  });
-
-  it("classifies strong copyleft", () => {
-    expect(classifyRisk("GPL-2.0")).toBe("strong-copyleft");
-    expect(classifyRisk("GPL-3.0")).toBe("strong-copyleft");
-    expect(classifyRisk("AGPL-3.0")).toBe("strong-copyleft");
-  });
-
-  it("classifies Creative Commons licenses", () => {
-    expect(classifyRisk("CC-BY-4.0")).toBe("permissive");
-    // CC-BY-SA is share-alike (the CC analog of copyleft).
-    expect(classifyRisk("CC-BY-SA-4.0")).toBe("strong-copyleft");
-    // CC-BY-NC's non-commercial restriction is a red flag for commercial firmware.
-    expect(classifyRisk("CC-BY-NC-4.0")).toBe("strong-copyleft");
-  });
-
-  it("returns unknown for unrecognized ids", () => {
-    expect(classifyRisk("Made-Up-License")).toBe("unknown");
-  });
-});
+// NOTE: identifySpdx / classifyRisk now live in the shared cuttlefish core and
+// are covered by tests/packages/cuttlefish/spdx-licenses.test.ts. This file
+// covers the Arduino-specific enumeration + project-scope resolution only.
 
 // ---- scanLicenses fixtures ----
 

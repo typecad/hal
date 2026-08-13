@@ -113,9 +113,13 @@ export default defineFrameworkManifest({
       },
     },
     dac: {
-      supported: false,
-      unsupportedReason: 'No DAC lowering implemented in the framework (not applicable on nRF52840; ESP32 variants with DAC not yet wired).',
-      ops: { 'dac.write': 'unsupported' },
+      // ESP32 DAC (2× 8-bit channels on GPIO25/26) via the Zephyr DAC driver
+      // (dac_channel_setup + dac_write_value). nRF52840 / ESP32-S3 have no DAC;
+      // usage there lowers to a comment and profileDiagnostics flags it
+      // (zephyr-dac-pin-unavailable).
+      supported: true,
+      partialCoverage: true,
+      ops: { 'dac.write': 'supported' },
     },
     interrupts: {
       supported: true,
@@ -287,7 +291,7 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       unsupportedReason: undefined,
-      drivers: ['ili9341-zephyr', 'st7796-zephyr'],
+      drivers: ['ili9341-zephyr', 'st7796-zephyr', 'ssd1306-zephyr'],
       colorFormat: 'rgb565',
       ops: {
         'display.init': 'supported',
@@ -370,10 +374,17 @@ export default defineFrameworkManifest({
       },
     },
     fs: {
-      supported: false,
-      unsupportedReason: 'No filesystem lowering on Zephyr (Zephyr has its own FS API; not wired).',
+      // littlefs on the board's storage_partition, via <zephyr/fs/fs.h>. The
+      // shim mounts at /lfs lazily (formats on first use) and the HAL paths are
+      // treated as paths within the filesystem. Requires CONFIG_FILE_SYSTEM +
+      // CONFIG_FILE_SYSTEM_LITTLEFS (emitted by the scaffold when fs.* is used)
+      // and the storage_partition node.
+      supported: true,
       partialCoverage: false,
-      ops: unsupportedOps('fs.'),
+      ops: {
+        'fs.begin': 'supported', 'fs.read_text': 'supported', 'fs.write_text': 'supported',
+        'fs.exists': 'supported', 'fs.remove': 'supported',
+      },
     },
     mdns: {
       supported: false,
@@ -410,10 +421,17 @@ export default defineFrameworkManifest({
       ops: { 'temp.read': 'unsupported' },
     },
     hwtimer: {
-      supported: false,
-      unsupportedReason: 'No hardware-timer lowering on Zephyr (timers are handled via the k_timer polyfill, not hwtimer.*).',
-      partialCoverage: false,
-      ops: unsupportedOps('hwtimer.'),
+      // Hardware timers via the Zephyr counter driver (<zephyr/drivers/counter.h>).
+      // set_frequency → top value (counter_freq/hz) + on_overflow callback;
+      // start arms both; stop halts. A chip declares its free counters
+      // (e.g. nRF RTC1; RTC0 is kernel-owned). This is distinct from the JS
+      // setInterval/setTimeout k_timer polyfill, which is unaffected.
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        'hwtimer.set_frequency': 'supported', 'hwtimer.on_overflow': 'supported',
+        'hwtimer.start': 'supported', 'hwtimer.stop': 'supported',
+      },
     },
     capacitive: {
       // FT6336U capacitive touch is handled via the strategy-owned touch adapter
@@ -481,6 +499,8 @@ export default defineFrameworkManifest({
   polyfills: {
     emitted: [
       { id: 'cuttlefish_halt', domain: 'standard', notes: 'Mapped to a k_msleep halt loop (exceptions disabled)' },
+      { id: 'string_methods', domain: 'embedded', notes: 'STL-free __tc_* string helpers (const char*, inline ASCII case conv, <cstring> only)' },
+      { id: 'static_array', domain: 'embedded', notes: 'STL-free __tc_StaticArray<T,N> wrapper for no-<vector> mutated/struct array literals' },
       { id: 'timer_methods', domain: 'embedded', notes: 'k_timer + k_work pool (system workqueue); callbacks run in thread context' },
       { id: 'async_runtime', domain: 'embedded', notes: 'Heap-free static Promise/microtask runtime (generateStaticAsyncRuntime), pumped in loop()' },
     ],
@@ -537,9 +557,9 @@ export default defineFrameworkManifest({
     // pure string-snapshot tests (no hardware); they are the safety net that
     // catches regressions like silent pull-resistor / interrupt no-ops.
     halResolutionTests: [
-      'adc', 'ble', 'board', 'dac', 'gpio', 'http', 'i2c', 'interrupts', 'mqtt',
-      'power', 'preferences', 'pulse', 'pwm', 'random', 'spi', 'timing', 'tone',
-      'uart', 'wdt', 'worker',
+      'adc', 'ble', 'board', 'dac', 'fs', 'gpio', 'http', 'hwtimer', 'i2c',
+      'interrupts', 'mqtt', 'power', 'preferences', 'pulse', 'pwm', 'random',
+      'spi', 'timing', 'tone', 'uart', 'wdt', 'worker',
     ],
   },
 
@@ -555,4 +575,8 @@ export default defineFrameworkManifest({
   // `cuttlefish doctor` prints the detected Zephyr version + compat result and
   // previews how the configured board target resolves for that version.
   doctor: { available: true },
+
+  // `cuttlefish licenses` enumerates the Zephyr kernel + west manifest projects
+  // and resolves each one's SPDX license (mirrors framework-arduino).
+  licenses: { available: true },
 });

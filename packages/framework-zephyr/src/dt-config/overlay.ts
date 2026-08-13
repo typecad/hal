@@ -84,6 +84,11 @@ export function generateOverlay(
   if (usage.usesUart && chip.uart) {
     for (const c of chip.uart.controllers) block(c.nodeLabel);
   }
+  // DAC: enable the chip's DAC device node when the program uses dac.*. The
+  // lowering references DEVICE_DT_GET(DT_NODELABEL(<dac.device>)).
+  if (usage.usesDac && chip.dac) {
+    block(chip.dac.device);
+  }
   if (display) {
     // Emit a full display DT node definition. Boards like the ESP32 devkit
     // have no display node in their base DT, so a bare `&display0 { status }`

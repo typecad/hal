@@ -1,40 +1,46 @@
 // ---------------------------------------------------------------------------
 // @typecad/framework-arduino — Arduino library license scanner
 //
-// Pure detection core for the `cuttlefish licenses` subcommand. Enumerates
-// installed Arduino libraries, resolves each library's SPDX license from
-// library.properties and/or the LICENSE file, classifies copyleft risk, and
-// returns a sorted list. Never throws. The presenter (runLicensesPresenter)
-// renders the result and sets process.exitCode.
+// Arduino-specific enumeration + presenter for the `cuttlefish licenses`
+// subcommand. The framework-agnostic SPDX detection engine, LICENSE-file /
+// source-header resolution, and copyleft classification live in the shared
+// cuttlefish core (`@typecad/cuttlefish/api/shared`); this module owns only
+// the Arduino pieces: `arduino-cli lib list` enumeration, project-scope header
+// → library resolution, the board-core layout, and the CLI presenter.
 //
 // This module used to live in @typecad/cuttlefish (Phase 5 decoupling). It was
-// moved here because it is Arduino-specific (it shells out to `arduino-cli`
-// and reads Arduino core/library layout). Cuttlefish now dispatches the
-// `licenses` command through the loaded framework's `licenses` export.
+// moved here because the enumeration is Arduino-specific (it shells out to
+// `arduino-cli` and reads Arduino core/library layout). Cuttlefish now
+// dispatches the `licenses` command through the loaded framework's `licenses`
+// export.
 // ---------------------------------------------------------------------------
 
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+import * as ui from "@typecad/cuttlefish/utils/ui";
+import { loadCuttlefishConfig } from "@typecad/cuttlefish/config-loader";
+import { checkArduinoEnv, deriveRequiredCore } from "@typecad/arduino-cli";
+import {
+  resolveLibraryLicense as resolveLibraryLicenseShared,
+  RISK_RANK,
+  riskBracket,
+  statusMark,
+  countByRisk,
+  type LibraryLicenseEntry,
+  type ReadFile,
+  type ReadDir,
+} from "@typecad/cuttlefish/api/shared";
+
 // ---------------------------------------------------------------------------
-// Public types
+// Public types (SPDX core re-exported from the shared cuttlefish core)
 // ---------------------------------------------------------------------------
 
-export type CopyleftRisk =
-  | "permissive"
-  | "weak-copyleft"
-  | "strong-copyleft"
-  | "unknown";
-
-export type LicenseSource = "library.properties" | "license-file" | "source-header" | "none";
-
-export interface LibraryLicenseEntry {
-  name: string;
-  version: string | undefined;
-  /** install_dir as reported by arduino-cli lib list. */
-  path: string;
-  /** Normalized SPDX ID (e.g. "BSD-3-Clause"); undefined if not determined. */
-  spdx: string | undefined;
-  risk: CopyleftRisk;
-  source: LicenseSource;
-}
+// Re-export the detection functions + types so existing callers and tests that
+// import them from this module keep working (the canonical home is now the
+// shared core).
+export { identifySpdx, classifyRisk } from "@typecad/cuttlefish/api/shared";
+export type { CopyleftRisk, LicenseSource, LibraryLicenseEntry } from "@typecad/cuttlefish/api/shared";
 
 export type ScanOutcome =
   | { ok: true; libraries: LibraryLicenseEntry[] }
@@ -387,224 +393,8 @@ export function joinHeadersToLibraries(
 }
 
 // ---------------------------------------------------------------------------
-// Static SPDX table
-// ---------------------------------------------------------------------------
-
-interface SpdxEntry {
-  id: string;
-  aliases: string[]; // exact-match candidates (lowercased on use)
-  risk: CopyleftRisk;
-  /** Substrings, ALL of which must appear in the normalized license text. */
-  markers: string[];
-  /**
-   * Short-form phrases for sparse source-header comments where the full license
-   * text is absent (e.g. Adafruit's "BSD license, all text here must be
-   * included"). ANY one match is sufficient. Lower-cased on use.
-   */
-  shortMarkers: string[];
-}
-
-const SPDX_TABLE: SpdxEntry[] = [
-  {
-    id: "MIT",
-    risk: "permissive",
-    aliases: ["MIT", "MIT-0", "Expat"],
-    markers: ["permission is hereby granted, free of charge"],
-    shortMarkers: ["mit licence", "mit license"],
-  },
-  {
-    id: "BSD-3-Clause",
-    risk: "permissive",
-    aliases: ["BSD-3", "BSD-3-Clause", "BSD", "New BSD"],
-    markers: [
-      "redistribution and use in source and binary forms",
-      "neither the name",
-    ],
-    // Adafruit's header convention: "BSD license, all text here/above must be
-    // included in any redistribution." Adafruit declares these as BSD-3.
-    shortMarkers: ["bsd license, all text", "bsd license. all text"],
-  },
-  {
-    id: "BSD-2-Clause",
-    risk: "permissive",
-    aliases: ["BSD-2", "BSD-2-Clause", "FreeBSD"],
-    markers: [
-      "redistribution and use in source and binary forms",
-      "redistributions of source code must retain the above copyright notice",
-    ],
-    shortMarkers: [],
-  },
-  {
-    id: "Apache-2.0",
-    risk: "permissive",
-    aliases: ["Apache-2.0", "Apache 2.0", "Apache-2", "ASL-2.0"],
-    markers: ["apache license", "version 2.0"],
-    // ArduinoHttpClient header: "Released under Apache License, version 2.0"
-    shortMarkers: ["apache license, version 2.0", "under apache license"],
-  },
-  {
-    id: "LGPL-2.1",
-    risk: "weak-copyleft",
-    aliases: ["LGPL-2.1", "LGPL-2.1-only", "LGPL-2.1-or-later", "Lesser GPL 2.1"],
-    markers: ["gnu lesser general public license", "version 2.1"],
-    // ESP32Servo header: "GNU Lesser General Public ... version 2.1"
-    shortMarkers: ["gnu lesser general public", "version 2.1"],
-  },
-  {
-    id: "LGPL-3.0",
-    risk: "weak-copyleft",
-    aliases: ["LGPL-3.0", "LGPL-3", "LGPL-3.0-only", "LGPL-3.0-or-later"],
-    markers: ["gnu lesser general public license", "version 3"],
-    shortMarkers: [],
-  },
-  {
-    id: "GPL-2.0",
-    risk: "strong-copyleft",
-    aliases: ["GPL-2.0", "GPL-2", "GPLv2", "GPL-2.0-only", "GPL-2.0-or-later"],
-    markers: ["gnu general public license", "version 2"],
-    shortMarkers: [],
-  },
-  {
-    id: "GPL-3.0",
-    risk: "strong-copyleft",
-    aliases: ["GPL-3.0", "GPL-3", "GPLv3", "GPL-3.0-only", "GPL-3.0-or-later"],
-    markers: ["gnu general public license", "version 3"],
-    shortMarkers: [],
-  },
-  {
-    id: "AGPL-3.0",
-    risk: "strong-copyleft",
-    aliases: ["AGPL-3.0", "AGPL-3", "Affero GPL 3", "AGPL-3.0-only", "AGPL-3.0-or-later"],
-    markers: ["gnu affero general public license"],
-    shortMarkers: [],
-  },
-  {
-    id: "Unlicense",
-    risk: "permissive",
-    aliases: ["Unlicense", "The Unlicense"],
-    markers: [
-      "this is free and unencumbered software released into the public domain",
-    ],
-    shortMarkers: [],
-  },
-  {
-    id: "CC-BY-4.0",
-    risk: "permissive",
-    aliases: ["CC-BY-4.0", "Creative Commons Attribution 4.0", "cc by 4.0"],
-    markers: ["creative commons attribution 4.0"],
-    shortMarkers: [],
-  },
-  {
-    id: "CC-BY-SA-4.0",
-    risk: "strong-copyleft",
-    aliases: [
-      "CC-BY-SA-4.0",
-      "Creative Commons Attribution-ShareAlike 4.0",
-      "cc by-sa 4.0",
-    ],
-    markers: ["creative commons attribution-sharealike 4.0"],
-    shortMarkers: [],
-  },
-  {
-    id: "CC-BY-NC-4.0",
-    risk: "strong-copyleft",
-    aliases: [
-      "CC-BY-NC-4.0",
-      "Creative Commons Attribution-NonCommercial 4.0",
-      "cc by-nc 4.0",
-    ],
-    markers: ["creative commons attribution-noncommercial 4.0"],
-    shortMarkers: [],
-  },
-];
-
-// ---------------------------------------------------------------------------
-// Pure SPDX detection
-// ---------------------------------------------------------------------------
-
-/**
- * Normalize license input text for matching: trim, lowercase, strip surrounding
- * quotes/whitespace.
- */
-function normalize(input: string): string {
-  return input.trim().toLowerCase().replace(/^["']|["']$/g, "");
-}
-
-/**
- * Resolve a raw license input (either the short `library.properties` `license=`
- * value, the full text of a LICENSE file, or a source-file header comment) to a
- * canonical SPDX ID.
- *
- * Matching priority:
- *   1. SPDX-License-Identifier: <id> marker (authoritative when present)
- *   2. exact alias match (suits the short properties value)
- *   3. substring markers match, ALL markers required (suits full LICENSE text)
- *   4. shortMarkers match, ANY one sufficient (suits sparse header comments
- *      like Adafruit's "BSD license, all text here must be included")
- *
- * Returns the SPDX ID string, or undefined if nothing matched.
- */
-export function identifySpdx(input: string): string | undefined {
-  const norm = normalize(input);
-
-  // 1. SPDX-License-Identifier marker — extract the id and alias-match it.
-  //    Aliases are stored in their canonical case; compare lowercased.
-  const marker = norm.match(/spdx-license-identifier:\s*([^\s\n]+)/);
-  if (marker) {
-    const id = marker[1].toLowerCase();
-    for (const entry of SPDX_TABLE) {
-      if (entry.aliases.some((a) => a.toLowerCase() === id)) {
-        return entry.id;
-      }
-    }
-  }
-
-  // 2. exact alias match (case-insensitive; `norm` is already lowercased).
-  for (const entry of SPDX_TABLE) {
-    if (entry.aliases.some((a) => a.toLowerCase() === norm)) {
-      return entry.id;
-    }
-  }
-
-  // 3. substring markers — every marker phrase must appear.
-  //    BSD-3 is listed before BSD-2 so its superset clauses (which contain
-  //    "neither the name") win over BSD-2's subset.
-  for (const entry of SPDX_TABLE) {
-    if (entry.markers.every((m) => norm.includes(m))) {
-      return entry.id;
-    }
-  }
-
-  // 4. shortMarkers — ANY one match is sufficient. Used for sparse header
-  //    comments where the full license text is absent.
-  for (const entry of SPDX_TABLE) {
-    if (entry.shortMarkers.some((m) => norm.includes(m))) {
-      return entry.id;
-    }
-  }
-
-  return undefined;
-}
-
-/**
- * Classify the copyleft risk of a known SPDX ID. Returns "unknown" for
- * unrecognized ids.
- */
-export function classifyRisk(spdx: string): CopyleftRisk {
-  const entry = SPDX_TABLE.find((e) => e.id === spdx || e.aliases.includes(spdx));
-  return entry ? entry.risk : "unknown";
-}
-
-// ---------------------------------------------------------------------------
 // Arduino library enumeration (via arduino-cli)
 // ---------------------------------------------------------------------------
-
-import { spawnSync } from "node:child_process";
-import fs from "node:fs";
-import path from "node:path";
-import * as ui from "@typecad/cuttlefish/utils/ui";
-import { loadCuttlefishConfig } from "@typecad/cuttlefish/config-loader";
-import { checkArduinoEnv, deriveRequiredCore } from "@typecad/arduino-cli";
 
 /** Raw library entry as it appears in `arduino-cli lib list --format json`. */
 export interface RawArduinoLibrary {
@@ -619,22 +409,6 @@ interface WrappedLibList {
 }
 
 /**
- * Candidate LICENSE filenames checked case-insensitively. Includes the British
- * "LICENCE" spelling (e.g. lvgl ships LICENCE.txt).
- */
-const LICENSE_FILENAMES = [
-  "LICENSE",
-  "LICENSE.md",
-  "LICENSE.txt",
-  "LICENSE.markdown",
-  "LICENCE",
-  "LICENCE.md",
-  "LICENCE.txt",
-  "COPYING",
-  "COPYING.txt",
-];
-
-/**
  * Subdirectories that commonly hold an Arduino library's license file or source
  * headers when the root has neither. Arduino's own libraries (Ethernet,
  * ArduinoHttpClient, ESP32Servo) keep sources under `src/`.
@@ -643,11 +417,12 @@ const LICENSE_SUBDIRS = ["src"];
 
 /**
  * Read library.properties from a directory and return its `license=` value
- * (raw, untrimmed) if present.
+ * (raw, untrimmed) if present. Wired into the shared resolver as the manifest
+ * reader; the manifest-source label is `"library.properties"` for Arduino parity.
  */
 function readPropertiesLicense(
   installDir: string,
-  readFile: (p: string) => string | undefined,
+  readFile: ReadFile,
 ): string | undefined {
   const text = readFile(path.join(installDir, "library.properties"));
   if (!text) return undefined;
@@ -659,189 +434,26 @@ function readPropertiesLicense(
 }
 
 /**
- * Read the first LICENSE/COPYING file found in a directory and return its text.
- * Checks the directory itself only (no recursion).
- */
-function readLicenseFileIn(
-  dir: string,
-  readFile: (p: string) => string | undefined,
-  readdir: (d: string) => string[],
-): string | undefined {
-  const entries = new Set(readdir(dir).map((e) => e.toLowerCase()));
-  for (const candidate of LICENSE_FILENAMES) {
-    if (entries.has(candidate.toLowerCase())) {
-      return readFile(path.join(dir, candidate));
-    }
-  }
-  return undefined;
-}
-
-/**
- * Read the first LICENSE/COPYING file found in installDir or one of its common
- * subdirectories (e.g. `src/`, where Arduino's own libraries keep it).
- */
-function readLicenseFile(
-  installDir: string,
-  readFile: (p: string) => string | undefined,
-  readdir: (d: string) => string[],
-): string | undefined {
-  return (
-    readLicenseFileIn(installDir, readFile, readdir) ??
-    ((): string | undefined => {
-      for (const sub of LICENSE_SUBDIRS) {
-        const text = readLicenseFileIn(path.join(installDir, sub), readFile, readdir);
-        if (text) return text;
-      }
-      return undefined;
-    })()
-  );
-}
-
-/**
- * Extensions whose header comments may carry a license notice (Adafruit and
- * many Arduino libs embed the license at the top of the primary source file
- * rather than in a standalone LICENSE file).
- */
-const HEADER_EXTENSIONS = [".h", ".hpp", ".cpp", ".c"];
-
-/**
- * Read the leading header comment of each candidate source file in installDir
- * (and `src/`) and concatenate them, so the SPDX matcher can look for license
- * phrases. The license notice usually lives in the file named after the
- * library itself, so such files are scanned first; then a cap of further
- * headers/sources is scanned to keep this cheap.
- */
-function readSourceHeaders(
-  libName: string,
-  installDir: string,
-  readFile: (p: string) => string | undefined,
-  readdir: (d: string) => string[],
-): string | undefined {
-  const dirs = [installDir, ...LICENSE_SUBDIRS.map((s) => path.join(installDir, s))];
-  // Normalize the library name into the stem its source files likely use:
-  // "Adafruit seesaw Library" -> "adafruit_seesaw".
-  const stem = libName.toLowerCase().replace(/\s+library$/, "").replace(/\s+/g, "_");
-  const chunks: string[] = [];
-  for (const dir of dirs) {
-    let entries: string[];
-    try {
-      entries = readdir(dir);
-    } catch {
-      continue;
-    }
-    const sources = entries
-      .filter((e) => HEADER_EXTENSIONS.some((ext) => e.toLowerCase().endsWith(ext)))
-      // Files whose basename starts with the library stem go first — that is
-      // where the license header conventionally lives.
-      .sort((a, b) => {
-        const aMatch = Number(a.toLowerCase().startsWith(stem));
-        const bMatch = Number(b.toLowerCase().startsWith(stem));
-        return bMatch - aMatch;
-      })
-      .slice(0, 6);
-    for (const src of sources) {
-      const text = readFile(path.join(dir, src));
-      if (text) {
-        // Take a generous leading window. Most licenses sit in the first few
-        // lines, but some .cpp files place the notice after a long copyright
-        // preamble (e.g. OneWire.cpp at ~line 99), so 120 lines covers it
-        // without reading whole large files.
-        chunks.push(text.split(/\r?\n/).slice(0, 120).join("\n"));
-      }
-    }
-  }
-  return chunks.length > 0 ? chunks.join("\n") : undefined;
-}
-
-/**
- * Resolve a single library's license. Priority: library.properties → LICENSE
- * file → none.
+ * Resolve a single Arduino library's license via the shared core. Priority
+ * (owned by the shared resolver): library.properties → LICENSE file →
+ * source-file header comments → none. Maps the arduino-cli `install_dir` shape
+ * to the neutral `installDir` the shared resolver expects.
  */
 function resolveLibraryLicense(
   lib: RawArduinoLibrary,
-  readFile: (p: string) => string | undefined,
-  readdir: (d: string) => string[],
+  readFile: ReadFile,
+  readdir: ReadDir,
 ): LibraryLicenseEntry {
-  const installDir = lib.install_dir ?? "";
-
-  // 1. library.properties
-  const propsLicense = readPropertiesLicense(installDir, readFile);
-  if (propsLicense) {
-    const spdx = identifySpdx(propsLicense);
-    if (spdx) {
-      return {
-        name: lib.name,
-        version: lib.version,
-        path: installDir,
-        spdx,
-        risk: classifyRisk(spdx),
-        source: "library.properties",
-      };
-    }
-  }
-
-  // 2. LICENSE file (root or src/)
-  const fileText = readLicenseFile(installDir, readFile, readdir);
-  if (fileText) {
-    const spdx = identifySpdx(fileText);
-    if (spdx) {
-      return {
-        name: lib.name,
-        version: lib.version,
-        path: installDir,
-        spdx,
-        risk: classifyRisk(spdx),
-        source: "license-file",
-      };
-    }
-  }
-
-  // 3. source-file header comments (Adafruit/Arduino pattern: license notice
-  //    embedded at the top of the primary .h/.cpp, no standalone LICENSE file).
-  const headerText = readSourceHeaders(lib.name, installDir, readFile, readdir);
-  if (headerText) {
-    const spdx = identifySpdx(headerText);
-    if (spdx) {
-      return {
-        name: lib.name,
-        version: lib.version,
-        path: installDir,
-        spdx,
-        risk: classifyRisk(spdx),
-        source: "source-header",
-      };
-    }
-  }
-
-  // 4. unknown
-  return {
-    name: lib.name,
-    version: lib.version,
-    path: installDir,
-    spdx: undefined,
-    risk: "unknown",
-    source: "none",
-  };
-}
-
-const RISK_RANK: Record<CopyleftRisk, number> = {
-  "strong-copyleft": 0,
-  "weak-copyleft": 1,
-  permissive: 2,
-  unknown: 3,
-};
-
-/**
- * Options for `scanLicenses`. Production calls omit this object entirely; tests
- * inject `fakeLibList` and `fakeReadFile` to avoid spawning and disk I/O.
- */
-export interface ScanOptions {
-  /** Override the `arduino-cli lib list` call. Return null to simulate spawn failure. */
-  fakeLibList?: () => RawArduinoLibrary[] | null;
-  /** Override disk reads of library.properties and LICENSE files. */
-  fakeReadFile?: (p: string) => string | undefined;
-  /** Override directory listings. */
-  fakeReaddir?: (d: string) => string[];
+  return resolveLibraryLicenseShared(
+    { name: lib.name, version: lib.version, installDir: lib.install_dir },
+    readFile,
+    readdir,
+    {
+      subdirs: LICENSE_SUBDIRS,
+      readManifestLicense: readPropertiesLicense,
+      manifestSourceLabel: "library.properties",
+    },
+  );
 }
 
 /**
@@ -897,6 +509,19 @@ let testRunner: LicensesRunner | undefined;
 /** @internal Test-only override of the default runner. */
 export function __setLicensesRunnerForTest(runner: LicensesRunner | undefined): void {
   testRunner = runner;
+}
+
+/**
+ * Options for `scanLicenses`. Production calls omit this object entirely; tests
+ * inject `fakeLibList` and `fakeReadFile` to avoid spawning and disk I/O.
+ */
+export interface ScanOptions {
+  /** Override the `arduino-cli lib list` call. Return null to simulate spawn failure. */
+  fakeLibList?: () => RawArduinoLibrary[] | null;
+  /** Override disk reads of library.properties and LICENSE files. */
+  fakeReadFile?: (p: string) => string | undefined;
+  /** Override directory listings. */
+  fakeReaddir?: (d: string) => string[];
 }
 
 /**
@@ -1130,25 +755,6 @@ function renderAllLicenses(result: ScanOutcome, strict: boolean): void {
   }
 }
 
-// Small helpers used by both scopes.
-function riskBracket(risk: CopyleftRisk): string {
-  if (risk === "strong-copyleft") return "  [COPYLEFT]";
-  if (risk === "weak-copyleft") return "  [weak copyleft]";
-  return "";
-}
-function statusMark(risk: CopyleftRisk): string {
-  return risk === "permissive" ? "  ✓" : "";
-}
-function countByRisk(libs: LibraryLicenseEntry[]): Record<CopyleftRisk, number> {
-  const counts: Record<CopyleftRisk, number> = {
-    permissive: 0,
-    "weak-copyleft": 0,
-    "strong-copyleft": 0,
-    unknown: 0,
-  };
-  for (const l of libs) counts[l.risk] += 1;
-  return counts;
-}
 function relFromCwd(p: string): string {
   return path.relative(process.cwd(), p) || p;
 }

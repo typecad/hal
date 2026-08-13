@@ -250,3 +250,30 @@ export type {
   ManifestValidationError,
   ManifestValidationWarning,
 } from './validate-framework-manifest.js';
+
+// Shared SPDX license-detection core (consumed by each framework's `licenses`
+// presenter — framework-arduino, framework-zephyr, …).
+export type {
+  CopyleftRisk,
+  LicenseSource,
+  LibraryLicenseEntry,
+  DiscoveredDependency,
+  ReadFile,
+  ReadDir,
+  ResolveLicenseOptions,
+} from './spdx-licenses.js';
+export {
+  SPDX_TABLE,
+  RISK_RANK,
+  LICENSE_FILENAMES,
+  normalize,
+  identifySpdx,
+  classifyRisk,
+  readLicenseFileIn,
+  readLicenseFile,
+  readSourceHeaders,
+  resolveLibraryLicense,
+  riskBracket,
+  statusMark,
+  countByRisk,
+} from './spdx-licenses.js';

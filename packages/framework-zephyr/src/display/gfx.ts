@@ -86,18 +86,23 @@ function fontTableCpp(): string {
 }
 
 /**
- * Build the display runtime C++ for a profile. The line buffer is one row
- * (width pixels × 2 bytes rgb565); fill_rect/draw_rect/draw_text compute into
- * it row-by-row and display_write each row. No full framebuffer.
+ * Build the display runtime C++ for a profile.
+ *
+ * Two rendering models, selected by `profile.colorFormat`:
+ *  - `'rgb565'` (TFT): a one-row line buffer (no full framebuffer — see
+ *    AGENTS.md rendering guardrails); fill_rect/draw_rect/draw_text stream
+ *    each row via display_write.
+ *  - `'mono'` (OLED, e.g. SSD1306): a full framebuffer — the standard model
+ *    for page-buffered monochrome panels (the AGENTS.md "no full framebuffer"
+ *    guardrail targets RGB SPI TFTs, not mono OLEDs). draw ops set bits;
+ *    display_flush pushes the whole framebuffer. The MONO01 packing is
+ *    horizontal, MSB-first (Zephyr convention): byte = (y*rowBytes)+(x>>3),
+ *    bit = 0x80>>(x&7).
  */
 export function buildDisplayRuntime(profile: ZephyrDisplayProfile): DisplayRuntimeResult {
   const w = profile.width;
-  const stateLines: string[] = [
-    '// CUTTLEFISH_DISPLAY_BEGIN',
-    `static const struct device* __tc_display = DEVICE_DT_GET(DT_NODELABEL(${profile.dtLabel}));`,
-    `static uint16_t __tc_display_line[${w}];  // one-row line buffer (rgb565)`,
-    '// CUTTLEFISH_DISPLAY_END',
-  ];
+  const h = profile.height;
+  const isMono = profile.colorFormat === 'mono';
 
   // Backlight is optional: the overlay emits the DT alias only when a backlight
   // GPIO is configured. Guard with DT_HAS_ALIAS so this compiles whether or not
@@ -107,7 +112,127 @@ export function buildDisplayRuntime(profile: ZephyrDisplayProfile): DisplayRunti
     ? `#if DT_HAS_ALIAS(${profile.backlight})\n    const struct device* __bl = DEVICE_DT_GET(DT_ALIAS(${profile.backlight}));\n    gpio_pin_configure(__bl, 0, GPIO_OUTPUT); gpio_pin_set(__bl, 0, 1);\n#endif`
     : '';
 
-  const helpers = `
+  const stateLines = isMono
+    ? [
+        '// CUTTLEFISH_DISPLAY_BEGIN',
+        `static const struct device* __tc_display = DEVICE_DT_GET(DT_NODELABEL(${profile.dtLabel}));`,
+        `// Mono framebuffer (Zephyr MONO01: horizontal, MSB-first). ${(w + 7) >> 3} bytes/row x ${h} rows.`,
+        `static uint8_t __tc_display_fb[((${w} * ${h}) + 7) / 8];`,
+        '// CUTTLEFISH_DISPLAY_END',
+      ]
+    : [
+        '// CUTTLEFISH_DISPLAY_BEGIN',
+        `static const struct device* __tc_display = DEVICE_DT_GET(DT_NODELABEL(${profile.dtLabel}));`,
+        `static uint16_t __tc_display_line[${w}];  // one-row line buffer (rgb565)`,
+        '// CUTTLEFISH_DISPLAY_END',
+      ];
+
+  const helpers = isMono
+    ? monoHelpers(w, h, blInit)
+    : rgb565Helpers(w, blInit);
+
+  const fontTable = fontTableCpp();
+
+  return {
+    includes: ['<zephyr/drivers/display.h>'],
+    stateLines,
+    helpers,
+    fontTable,
+  };
+}
+
+/**
+ * Mono (OLED) helpers: a full framebuffer + bit-packing. SSD1306-class panels
+ * are page-buffered, so draw ops set bits in the framebuffer and display_flush
+ * pushes the whole buffer. color != 0 ⇒ lit.
+ */
+function monoHelpers(w: number, h: number, blInit: string): string {
+  const rowBytes = (w + 7) >> 3; // bytes per row (w is byte-aligned for 128-wide panels)
+  return `
+// MONO01 pixel packing: byte = (y * ${rowBytes}) + (x >> 3), bit = 0x80 >> (x & 7).
+static inline void __tc_set_pixel(uint16_t x, uint16_t y, uint8_t on) {
+    if ((x >= ${w}U) || (y >= ${h}U)) { return; }
+    uint16_t idx = static_cast<uint16_t>((static_cast<uint32_t>(y) * ${rowBytes}U) + (x >> 3));
+    uint8_t mask = static_cast<uint8_t>(0x80U >> (x & 7U));
+    if (on != 0U) {
+        __tc_display_fb[idx] = static_cast<uint8_t>(__tc_display_fb[idx] | mask);
+    } else {
+        __tc_display_fb[idx] = static_cast<uint8_t>(__tc_display_fb[idx] & static_cast<uint8_t>(~mask));
+    }
+}
+
+static inline void display_init(void) {
+    if (!device_is_ready(__tc_display)) { for (;;) { k_msleep(1000); } }
+${blInit}
+    for (uint16_t i = 0; i < static_cast<uint16_t>(sizeof(__tc_display_fb)); i++) { __tc_display_fb[i] = 0U; }
+    display_blanking_off(__tc_display);
+}
+
+static inline void display_fill_rect(uint16_t x, uint16_t y, uint16_t rw, uint16_t rh, uint16_t color) {
+    uint8_t on = (color != 0U) ? 1U : 0U;
+    for (uint16_t row = 0; row < rh; row++) {
+        for (uint16_t i = 0; i < rw; i++) {
+            __tc_set_pixel(static_cast<uint16_t>(x + i), static_cast<uint16_t>(y + row), on);
+        }
+    }
+}
+
+static inline void display_draw_rect(uint16_t x, uint16_t y, uint16_t rw, uint16_t rh, uint16_t color) {
+    uint8_t on = (color != 0U) ? 1U : 0U;
+    for (uint16_t i = 0; i < rw; i++) {
+        __tc_set_pixel(static_cast<uint16_t>(x + i), y, on);
+        __tc_set_pixel(static_cast<uint16_t>(x + i), static_cast<uint16_t>(y + rh - 1U), on);
+    }
+    for (uint16_t row = 1U; row < rh - 1U; row++) {
+        __tc_set_pixel(x, static_cast<uint16_t>(y + row), on);
+        __tc_set_pixel(static_cast<uint16_t>(x + rw - 1U), static_cast<uint16_t>(y + row), on);
+    }
+}
+
+static inline void display_draw_text(uint16_t x, uint16_t y, const char* text, uint16_t color) {
+    uint8_t on = (color != 0U) ? 1U : 0U;
+    uint16_t cx = x;
+    for (const char* p = text; *p != 0; p++) {
+        uint8_t uc = static_cast<uint8_t>(*p);
+        if (uc >= 128U) { uc = static_cast<uint8_t>(' '); }
+        const uint8_t* glyph = &__tc_font5x7[uc][0];
+        if (uc >= static_cast<uint8_t>('a') && uc <= static_cast<uint8_t>('z')) {
+            glyph = &__tc_font5x7[uc - 32U][0];
+        } else if (uc < static_cast<uint8_t>('0')
+                   || (uc > static_cast<uint8_t>('9') && uc < static_cast<uint8_t>('A'))
+                   || uc > static_cast<uint8_t>('Z')) {
+            glyph = &__tc_font5x7[static_cast<uint8_t>(' ')][0];
+        }
+        for (uint16_t col = 0; col < 5U; col++) {
+            uint8_t bits = glyph[col];
+            for (uint16_t row = 0; row < 7U; row++) {
+                if ((bits & static_cast<uint8_t>(1U << row)) != 0U) {
+                    __tc_set_pixel(static_cast<uint16_t>(cx + col), static_cast<uint16_t>(y + row), on);
+                }
+            }
+        }
+        cx = static_cast<uint16_t>(cx + 6U);
+    }
+}
+
+static inline void display_flush(void) {
+    struct display_buffer_descriptor __desc;
+    __desc.buf_size = sizeof(__tc_display_fb);   // ${rowBytes} * ${h} bytes
+    __desc.width = ${w}U;
+    __desc.height = ${h}U;
+    __desc.pitch = ${rowBytes}U;                  // bytes per row
+    __desc.frame_incomplete = false;
+    (void)display_write(__tc_display, 0, 0, &__desc, __tc_display_fb);
+}
+`;
+}
+
+/**
+ * RGB565 (TFT) helpers: a one-row line buffer; each op streams rows via
+ * display_write. No full framebuffer (AGENTS.md rendering guardrails).
+ */
+function rgb565Helpers(w: number, blInit: string): string {
+  return `
 // Write a single row of \`rw\` rgb565 pixels at (x,y). Builds the
 // display_buffer_descriptor the Zephyr display_write API requires (rgb565 =
 // 2 bytes/pixel) and pushes the one-row line buffer.
@@ -178,13 +303,4 @@ static inline void display_flush(void) {
     // No-op: writes are immediate via display_write; there is no framebuffer to push.
 }
 `;
-
-  const fontTable = fontTableCpp();
-
-  return {
-    includes: ['<zephyr/drivers/display.h>'],
-    stateLines,
-    helpers,
-    fontTable,
-  };
 }

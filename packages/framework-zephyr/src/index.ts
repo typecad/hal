@@ -16,6 +16,12 @@ export { Toolchain } from './toolchain/index.js';
 // mod.doctor (see framework-package.ts).
 export { runDoctor as doctor } from './doctor.js';
 
+// `cuttlefish licenses` — enumerate the Zephyr kernel + west manifest projects
+// and resolve each one's SPDX license. Re-exported under the dispatcher-facing
+// alias `licenses` so the loader picks it up as mod.licenses (see
+// framework-package.ts). Mirrors framework-arduino's presenter.
+export { runLicensesPresenter as licenses } from './licenses.js';
+
 // Chip descriptor registry (for downstream tooling / additional boards).
 export {
   chipForTarget,

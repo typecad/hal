@@ -27,8 +27,11 @@ describe('ZephyrStrategy display wiring', () => {
     expect(s.resolveDisplayOp({ operation: 'display.flush' } as any)?.code).toContain('display_flush');
   });
 
-  it('supportedDisplayDrivers lists the registry driver ids', () => {
-    expect([...s.supportedDisplayDrivers()]).toContain('ili9341-zephyr');
+  it('supportedDisplayDrivers lists the registry driver ids (incl. OLED)', () => {
+    const drivers = [...s.supportedDisplayDrivers()];
+    expect(drivers).toContain('ili9341-zephyr');
+    expect(drivers).toContain('st7796-zephyr');
+    expect(drivers).toContain('ssd1306-zephyr');
   });
 
   it('graphicsCapacity is non-zero (Arduino parity)', () => {
@@ -47,18 +50,30 @@ describe('ZephyrStrategy display wiring', () => {
     expect(inc).not.toContain('<zephyr/drivers/display.h>');
   });
 
-  it('shimLines omits the direct display runtime — the strategy provides its own display adapter', () => {
-    // providesDisplayAdapter() is always true: the adapter (resolveDisplayAdapter)
-    // emits the display_* runtime (display_init, __tc_display_line, …) for the
-    // strategy-owned drivers (ili9341-zephyr, st7796-zephyr). shimLines must NOT
-    // also emit the direct-call runtime — the two define the same symbols and
-    // would collide at link time. (buildDisplayRuntime is covered directly in
-    // display/gfx.test.ts; the adapter in zephyr-display-adapter.test.ts.)
-    expect(s.providesDisplayAdapter()).toBe(true);
+  it('shimLines EMITS the direct display runtime for a non-UI display program', () => {
+    // Gating is `usesDisplay && !entryHasUI()`: a program that uses display.*
+    // directly (no @typecad/ui) has no UI adapter emitted (the adapter is built
+    // only under entryHasUI(), in cuttlefish's emitUIRuntime), so shimLines must
+    // supply the display_* definitions itself. entryHasUI() is false in unit
+    // tests (@typecad/ui is never loaded), so the runtime is emitted here.
+    expect(s.providesDisplayAdapter()).toBe(true); // static capability (always true)
     const lines = s.shimLines(programWithDisplay, { frameworkData: {}, analysis: { usesDisplay: true } } as any);
     const joined = lines.join('\n');
-    expect(joined).not.toContain('CUTTLEFISH_DISPLAY_BEGIN');
-    expect(joined).not.toContain('__tc_display_line');
+    expect(joined).toContain('CUTTLEFISH_DISPLAY_BEGIN');
+    expect(joined).toContain('display_init');
+    // Default profile is ili9341 (rgb565) → one-row line buffer.
+    expect(joined).toContain('__tc_display_line');
+  });
+
+  it('resolveDisplayAdapter provides a TFT adapter but DECLINES mono (OLED)', () => {
+    // The UI adapter is RGB565/SPI (TFT) only. Mono OLEDs use the direct
+    // display.* GFX runtime; there is no CuttlefishGFX UI path for mono.
+    const tft = s.resolveDisplayAdapter({ driver: 'ili9341-zephyr' } as any);
+    expect(tft).toBeDefined();
+    const mono = s.resolveDisplayAdapter({ driver: 'ssd1306-zephyr' } as any);
+    expect(mono).toBeUndefined();
+    // An unknown driver is also declined.
+    expect(s.resolveDisplayAdapter({ driver: 'nope' } as any)).toBeUndefined();
   });
 
   it('shimLines omits the display runtime when the program has no display', () => {

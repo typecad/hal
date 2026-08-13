@@ -85,6 +85,9 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
   const usage: KconfigUsage = {
     usesAdc: uses('adc_'),
     usesPwm: uses('pwm_'),
+    usesDac: uses('dac_') || uses('__tc_dac'),
+    usesFS: uses('__tc_fs'),
+    usesHwtimer: uses('counter_') || uses('__tc_hw'),
     usesI2c: uses('i2c_'),
     usesSpi: uses('spi_'),
     usesUart: uses('uart_'),

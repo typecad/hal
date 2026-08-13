@@ -59,4 +59,16 @@ export const ESP32_DEVKITC: ZephyrChipDescriptor = {
   // the ESP32 is AMP (dual-image procpu/appcpu), not SMP, by default — so the
   // dependency is satisfied. Omitted on radioless targets.
   wifi: { supported: true },
+  // DAC: the ESP32 has two 8-bit DAC channels on GPIO25 (channel 1) and GPIO26
+  // (channel 2). The Zephyr esp32 DAC driver (drivers/dac/dac_esp32.c) exposes
+  // them via the `dac0` node; the lowering emits dac_channel_setup +
+  // dac_write_value against DEVICE_DT_GET(DT_NODELABEL(dac0)). The overlay
+  // enables the node when the program uses dac.*. ESP32-S3 has no DAC.
+  dac: {
+    device: 'dac0',
+    channels: [
+      { pin: 25, channel: 1, resolution: 8 },
+      { pin: 26, channel: 2, resolution: 8 },
+    ],
+  },
 };

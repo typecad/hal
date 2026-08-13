@@ -551,6 +551,11 @@ static inline void display_targetPrint(CuttlefishDisplayTarget* t, const char* s
 export const zephyrDisplayAdapterGenerator: DisplayAdapterGenerator = (display) => {
   const profile = ZEPHYR_DISPLAY_PROFILES[display.driver];
   if (!profile) return undefined as unknown as DisplayAdapterCode;
+  // The UI adapter is RGB565/SPI (TFT) only. Monochrome panels (OLED) use the
+  // direct display.* GFX runtime (gfx.ts mono branch) — there is no
+  // CuttlefishGFX UI rendering path for mono. Decline so cuttlefish does not
+  // emit an incompatible RGB565 adapter for a mono profile.
+  if (profile.colorFormat === 'mono') return undefined as unknown as DisplayAdapterCode;
   return zephyrUiDisplayAdapter(profile, {
     scanlineSync: display.scanlineSync,
     miso: display.spiPins?.miso,

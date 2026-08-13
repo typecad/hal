@@ -11,6 +11,9 @@
 export interface KconfigUsage {
   usesAdc?: boolean;
   usesPwm?: boolean;
+  usesDac?: boolean;
+  usesFS?: boolean;
+  usesHwtimer?: boolean;
   usesI2c?: boolean;
   usesSpi?: boolean;
   usesUart?: boolean;
@@ -49,9 +52,12 @@ export function resolveKconfigFragments(
 
   if (usage.usesAdc) m.set('CONFIG_ADC', 'y');
   if (usage.usesPwm) m.set('CONFIG_PWM', 'y');
+  if (usage.usesDac) m.set('CONFIG_DAC', 'y');
   if (usage.usesI2c) m.set('CONFIG_I2C', 'y');
   if (usage.usesSpi) m.set('CONFIG_SPI', 'y');
   if (usage.usesWdt) m.set('CONFIG_WATCHDOG', 'y');
+  // Hardware timers via the counter driver.
+  if (usage.usesHwtimer) m.set('CONFIG_COUNTER', 'y');
   if (usage.usesDisplay) {
     m.set('CONFIG_DISPLAY', 'y');
     m.set('CONFIG_SPI', 'y');
@@ -256,6 +262,19 @@ export function resolveKconfigFragments(
     m.set('CONFIG_ZMS', 'y');
     m.set('CONFIG_SETTINGS', 'y');
     m.set('CONFIG_SETTINGS_ZMS', 'y');
+  }
+  // Filesystem: littlefs on the storage partition. CONFIG_FILE_SYSTEM_LITTLEFS
+  // selects the littlefs backend but NOT FLASH/FLASH_MAP (the partition lookup
+  // needs them), so all three are set explicitly — same shape as the
+  // preferences/ZMS block. The overlay points the storage_partition at the FS
+  // (see dt-config/overlay.ts). NOTE: a program using BOTH fs.* and
+  // preferences.* shares the one storage_partition between littlefs and ZMS —
+  // dedicate separate partitions if both are needed (the manifest flags this).
+  if (usage.usesFS) {
+    m.set('CONFIG_FLASH', 'y');
+    m.set('CONFIG_FLASH_MAP', 'y');
+    m.set('CONFIG_FILE_SYSTEM', 'y');
+    m.set('CONFIG_FILE_SYSTEM_LITTLEFS', 'y');
   }
   // usesUart: the board enables the console UART by default; the overlay (not
   // Kconfig) is where a UART node would be enabled, so no symbol here.

@@ -442,8 +442,9 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
     };
   }
 
-  // licenses subcommand — scan installed Arduino libraries for SPDX licenses
-  if (firstArg === "licenses") {
+  // licenses subcommand — scan the project's dependencies for SPDX licenses.
+  // Accept `license` (singular) as an alias so both spellings work.
+  if (firstArg === "licenses" || firstArg === "license") {
     return {
       command: "licenses",
       strict: argv.includes("--strict"),

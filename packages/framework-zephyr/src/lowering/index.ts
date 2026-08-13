@@ -3,8 +3,8 @@
 //
 // Routes a HALOpIR to the per-category lowering module by category prefix
 // (e.g. 'gpio.write' → lowerGpio). Returns undefined for categories the
-// framework does not lower (display/fs/mdns/ota/rmt/dac/
-// hwtimer/capacitive/temp/espnow/crypto/i2s/twai/usb/eth/pcnt/mcpwm — see
+// framework does not lower (display/mdns/ota/rmt/
+// capacitive/temp/espnow/crypto/i2s/twai/usb/eth/pcnt/mcpwm — see
 // the manifest), so the transpiler falls back and the manifest validator
 // cross-checks the unsupported categories. (board.* is registered below but is
 // a dead-letter — its values are constant-folded at IR-build time.)
@@ -38,11 +38,15 @@ import { lowerMqtt } from './mqtt.js';
 import { lowerPreferences } from './preferences.js';
 import { lowerBoard } from './board.js';
 import { lowerRandom } from './random.js';
+import { lowerDac } from './dac.js';
+import { lowerFs } from './fs.js';
+import { lowerHwtimer } from './hwtimer.js';
 
 export {
   lowerGpio, lowerTiming, lowerAdc, lowerPwm, lowerI2c, lowerSpi, lowerUart,
   lowerInterrupt, lowerWdt, lowerPower, lowerTone, lowerPulseOrShift, lowerBle,
   lowerWifi, lowerHttp, lowerMqtt, lowerPreferences, lowerBoard, lowerRandom,
+  lowerDac, lowerFs, lowerHwtimer,
 };
 
 /**
@@ -58,11 +62,13 @@ export function lowerHalOp(
   if (op.operation.startsWith('timing.'))     return lowerTiming(op);
   if (op.operation.startsWith('adc.'))        return lowerAdc(op, chip);
   if (op.operation.startsWith('pwm.'))        return lowerPwm(op, chip);
+  if (op.operation.startsWith('dac.'))        return lowerDac(op, chip);
   if (op.operation.startsWith('i2c.'))        return lowerI2c(op, chip);
   if (op.operation.startsWith('spi.'))        return lowerSpi(op, chip);
   if (op.operation.startsWith('uart.'))       return lowerUart(op);
   if (op.operation.startsWith('interrupt.'))  return lowerInterrupt(op, chip);
   if (op.operation.startsWith('wdt.'))        return lowerWdt(op);
+  if (op.operation.startsWith('hwtimer.'))    return lowerHwtimer(op, chip);
   if (op.operation.startsWith('power.'))      return lowerPower(op);
   if (op.operation.startsWith('tone.'))       return lowerTone(op, chip);
   // pulse.* and shift.* share a bit-bang lowering module.
@@ -74,6 +80,7 @@ export function lowerHalOp(
   if (op.operation.startsWith('http.'))       return lowerHttp(op);
   if (op.operation.startsWith('mqtt.'))       return lowerMqtt(op);
   if (op.operation.startsWith('preferences.')) return lowerPreferences(op);
+  if (op.operation.startsWith('fs.'))         return lowerFs(op);
   // board.resolve is constant-folded at IR-build time; lowerBoard is the
   // dead-letter reached only on an unresolvable path.
   if (op.operation.startsWith('board.')) return lowerBoard(op);
