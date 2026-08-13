@@ -117,4 +117,16 @@ describe('zephyr-installer install scripts', () => {
     expect(cmakeLine).toMatch(/<\s*4/);
     expect(cmakeLine).toMatch(/>=\s*3\.20/);
   });
+
+  it('install per-module requirements.txt (esptool for ESP32, etc.) — build-relevant locations only', () => {
+    // Without this, board-specific build steps fall back to system tools (e.g. an
+    // old esptool) and fail. Target HAL scripts/zephyr + lib codegen, NOT a
+    // recursive find that would also pull docs/test/harness/example requirements.
+    const initSh = readFileSync(join(installerDir, 'lib/init-workspace.sh'), 'utf8');
+    const installPs1 = readFileSync(join(installerDir, 'install.ps1'), 'utf8');
+    expect(initSh).toContain('modules/hal/');
+    expect(initSh).toContain('requirements.txt');
+    expect(installPs1).toContain('modules/hal/');
+    expect(installPs1).toContain('requirements.txt');
+  });
 });

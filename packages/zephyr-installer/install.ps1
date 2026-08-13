@@ -268,6 +268,23 @@ if (-not $NoWorkspace) {
   # without them; letting Zephyr's requirements file drive it tracks the revision.
   Write-Host "init-workspace: installing Zephyr Python requirements (requirements-base.txt)..."
   Invoke-Native { & $MambaExe run -n $ENV_NAME pip install -r "$zb\scripts\requirements-base.txt" } "pip install zephyr requirements"
+  # Build-relevant per-module Python requirements ONLY (not docs/test/harness).
+  # HAL scripts/zephyr dirs (esptool for espressif, vendor tools) + top-level lib
+  # codegen (nanopb, zcbor). Board support is universal (west fetched every
+  # module, SDK ships every cross-toolchain); these are the few build extras.
+  Write-Host "init-workspace: installing per-module Python requirements (build tooling only)..."
+  $patterns = @(
+    (Join-Path $env:WORKSPACE_DIR 'modules/hal/*/scripts/requirements.txt'),
+    (Join-Path $env:WORKSPACE_DIR 'modules/hal/*/zephyr/requirements.txt'),
+    (Join-Path $env:WORKSPACE_DIR 'modules/lib/*/requirements.txt'),
+    (Join-Path $env:WORKSPACE_DIR 'modules/lib/*/scripts/requirements.txt')
+  )
+  foreach ($pat in $patterns) {
+    foreach ($req in Get-Item -Path $pat -ErrorAction SilentlyContinue) {
+      & $MambaExe run -n $ENV_NAME pip install -r $req.FullName 2>&1 | Out-Null
+      if ($LASTEXITCODE -ne 0) { Write-Warning "init-workspace:   module requirements failed: $($req.FullName)" }
+    }
+  }
   Write-Host "init-workspace: done - ZEPHYR_BASE=$zb"
 } else {
   Write-Host "install: -NoWorkspace - skipping west init/update"

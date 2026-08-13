@@ -53,5 +53,26 @@ init_workspace() {
   "$MAMBA" run -n "$ENV_NAME" pip install -r "$WORKSPACE_DIR/zephyr/scripts/requirements-base.txt" \
     || { echo "init-workspace: pip install requirements failed" >&2; return 1; }
 
+  # Build-relevant per-module Python requirements ONLY. A bare `find -name
+  # requirements.txt` would also pull docs/test/harness/example requirements
+  # (mbedtls docs, openthread harness, cmsis tests, lvgl docs, tf-m tools) — heavy
+  # and conflict-prone. Restrict to locations holding actual build tooling: HAL
+  # scripts/zephyr dirs (esptool for espressif, vendor flash/script tools) and
+  # top-level lib codegen (nanopb, zcbor). Board support itself is universal —
+  # west fetched every module and the SDK ships every cross-toolchain — so these
+  # are the few extras a build needs beyond requirements-base.txt.
+  echo "init-workspace: installing per-module Python requirements (build tooling only)..."
+  for req in \
+    "$WORKSPACE_DIR"/modules/hal/*/scripts/requirements.txt \
+    "$WORKSPACE_DIR"/modules/hal/*/zephyr/requirements.txt \
+    "$WORKSPACE_DIR"/modules/lib/*/requirements.txt \
+    "$WORKSPACE_DIR"/modules/lib/*/scripts/requirements.txt
+  do
+    [ -f "$req" ] || continue
+    echo "init-workspace:   module requirements: ${req#"$WORKSPACE_DIR"/}"
+    "$MAMBA" run -n "$ENV_NAME" pip install -r "$req" >/dev/null 2>&1 \
+      || echo "init-workspace:   WARNING: module requirements install failed: $req" >&2
+  done
+
   echo "init-workspace: done — ZEPHYR_BASE=$WORKSPACE_DIR/zephyr"
 }
