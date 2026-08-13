@@ -109,6 +109,30 @@ describe("init-templates", () => {
       expect(parsed.devDependencies['@typecad/simulator']).toBeUndefined();
     });
 
+    it("includes @typecad/hal for every target (transpiler loads it unconditionally)", () => {
+      // Regression: the transpiler warms @typecad/hal on EVERY build
+      // (loadHALModules in transpile.ts), and resolveHALSourceDir() throws
+      // "Could not resolve @typecad/hal/src/" if the package is missing. Native
+      // projects have no board package and @typecad/framework-native does not
+      // declare HAL transitively, so without an explicit dep the first
+      // `cuttlefish build` after `cuttlefish create` fails. Embedded targets
+      // already pulled it in via framework-arduino + board packages, but the
+      // scaffold lists it directly so every target is covered.
+      const nativeOptions: InitProjectOptions = {
+        projectName: 'native-project',
+        targetId: 'native',
+        targetDisplayName: 'Native Desktop',
+        isNative: true,
+        frameworkPackage: '@typecad/framework-native',
+        framework: 'native',
+        includeSketch: true,
+      };
+      for (const opts of [ARDUINO_UNO_OPTIONS, nativeOptions]) {
+        const parsed = JSON.parse(generateProjectPackageJson(opts));
+        expect(parsed.dependencies['@typecad/hal']).toBe('^1.0.0-alpha.3');
+      }
+    });
+
     it("adds dev/gen-decls/gen-libdefs scripts to every target", () => {
       // These developer-utility scripts are target-agnostic (no hardware, no
       // extra deps): watch mode for the edit→transpile loop, and the two
@@ -159,6 +183,29 @@ describe("init-templates", () => {
       expect(parsed.compilerOptions.lib).toBeDefined();
       expect(parsed.compilerOptions.lib).not.toContain('dom');
       expect(parsed.compilerOptions.lib).toContain('ES2022');
+    });
+
+    it("includes the cuttlefish-env.d.ts global declarations for every target", () => {
+      // Regression: the env .d.ts declares the `console` global (plus
+      // SafeVariable, timers, cstdint aliases, ...) so projects do not need
+      // "dom" in lib to type console.log. It is generated for ALL targets, so it
+      // must appear in tsconfig#include for both native and embedded — otherwise
+      // VSCode's TS server never loads it and reports "Cannot find name
+      // 'console'" on every console call. Native projects were previously left
+      // out because the include entry was gated on boardPackage being set.
+      const nativeOptions: InitProjectOptions = {
+        projectName: 'native-project',
+        targetId: 'native',
+        targetDisplayName: 'Native Desktop',
+        isNative: true,
+        frameworkPackage: '@typecad/framework-native',
+        framework: 'native',
+        includeSketch: true,
+      };
+      for (const opts of [ARDUINO_UNO_OPTIONS, nativeOptions]) {
+        const parsed = JSON.parse(generateProjectTsconfig(opts));
+        expect(parsed.include).toContain('.cuttlefish/cuttlefish-env.d.ts');
+      }
     });
 
     it("does NOT enable noUncheckedIndexedAccess (dense-array target)", () => {

@@ -22,8 +22,12 @@ type OptimizationLevel = 'none' | 'size' | 'speed' | 'balanced';
  * Output section — controls how generated C++ is laid out.
  */
 interface CuttlefishOutputConfig {
-  /** Target build framework. */
-  framework: OutputFramework;
+  /**
+   * Target build framework. Optional — the top-level `framework` field is the
+   * primary source; this mirrors it for the output section and is rarely set.
+   * Matches the optional Zod `output.framework` in config-schema.ts.
+   */
+  framework?: OutputFramework;
   /** Optimization level. */
   optimize?: OptimizationLevel;
   /** Directory to write generated files into (relative to project root). */

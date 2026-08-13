@@ -22,8 +22,16 @@ export interface InitProjectOptions {
 export function generateProjectPackageJson(options: InitProjectOptions): string {
   const { projectName, frameworkPackage, boardPackage } = options;
 
+  // @typecad/hal is needed by every build, not just embedded ones: the
+  // transpiler unconditionally warms the HAL source modules (loadHALModules in
+  // transpile.ts), and resolveHALSourceDir() throws "Could not resolve
+  // @typecad/hal/src/" if the package is absent. Embedded targets pull it in
+  // transitively (@typecad/framework-arduino + board packages depend on it),
+  // but native targets have no board package and @typecad/framework-native does
+  // not declare it, so HAL must be an explicit direct dependency here.
   const deps: Record<string, string> = {
     "@typecad/cuttlefish": "^1.0.0-alpha.3",
+    "@typecad/hal": "^1.0.0-alpha.3",
     [frameworkPackage]: "^1.0.0-alpha.3",
   };
   if (boardPackage) {
@@ -148,7 +156,7 @@ export function generateProjectTsconfig(options: InitProjectOptions): string {
     "allowImportingTsExtensions": true,
     "rootDirs": ["src", "types"]${paths}
   },
-  "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish.config.ts"${options.boardPackage ? ', ".cuttlefish/cuttlefish-env.d.ts"' : ''}${options.isNative ? '' : ', "sim/**/*.ts"'}]
+  "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish.config.ts", ".cuttlefish/cuttlefish-env.d.ts"${options.isNative ? '' : ', "sim/**/*.ts"'}]
 }
 `;
 }
