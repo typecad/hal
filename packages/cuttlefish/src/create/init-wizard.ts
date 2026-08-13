@@ -3,6 +3,7 @@ import { stdin as input, stdout as output } from "node:process";
 import chalk from "chalk";
 import type { InitProjectOptions } from "./init-templates.js";
 import { KNOWN_TARGETS, type KnownTarget } from "./init-scaffold.js";
+import { frameworksForTarget, frameworkCatalogEntry, FRAMEWORK_CATALOG, frameworkTargetProfile } from "./framework-catalog.js";
 
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
 
@@ -118,55 +119,48 @@ export async function runInitWizard(
 
     const target = KNOWN_TARGETS.find((t: KnownTarget) => t.id === targetId)!;
 
-    // 3. Framework (only for embedded targets). Discover installed
-    // @typecad/framework-* packages rather than hardcoding a single option, so
-    // the wizard reflects whichever frameworks the user has installed.
+    // 3. Framework. Narrow to the frameworks compatible with the selected board
+    // (see framework-catalog), then let the user pick. The chosen package is
+    // installed into the new project by `cuttlefish create`, so we offer every
+    // compatible framework regardless of what is currently installed — no
+    // require.resolve discovery (which also avoided an ESM `require` pitfall
+    // where the lookup always failed and made the wizard dead-end).
     let framework = target.framework;
     let frameworkPackage = target.frameworkPackage;
 
-    if (!target.isNative) {
-      // Candidate framework families and their user-facing labels. The wizard
-      // shows whichever are installed (resolvable) in the user's project.
-      const frameworkCandidates: Array<{ value: string; label: string }> = [
-        { value: 'arduino', label: 'Arduino (digitalWrite, Wire, SPI)' },
-        { value: 'zephyr', label: 'Zephyr RTOS' },
-        { value: 'esp-idf', label: 'ESP-IDF' },
-      ];
-      const frameworkOptions: Array<{ label: string; value: string; pkg: string }> = [];
-      for (const candidate of frameworkCandidates) {
-        const pkg = `@typecad/framework-${candidate.value}`;
-        try {
-          require.resolve(`${pkg}/package.json`, { paths: [process.cwd()] });
-          frameworkOptions.push({ label: candidate.label, value: candidate.value, pkg });
-        } catch {
-          // framework not installed; skip
-        }
-      }
-
-      if (partialOptions?.framework) {
-        const match = frameworkOptions.find(f => f.value === partialOptions.framework);
-        framework = match?.value ?? partialOptions.framework;
-        frameworkPackage = match?.pkg ?? `@typecad/framework-${partialOptions.framework}`;
-        console.log(`${chalk.cyan("?")} Framework: ${chalk.white(framework)}`);
-      } else if (frameworkOptions.length === 0) {
-        // No framework installed and none requested via --framework: abort
-        // rather than produce a broken scaffold with an empty framework field
-        // (which would generate invalid package.json + cuttlefish.config.ts).
-        throw new Error(
-          "No @typecad/framework-* packages found in this project. " +
-          "Run 'cuttlefish install' to add one (e.g. 'cuttlefish install arduino').",
-        );
-      } else if (frameworkOptions.length === 1) {
-        framework = frameworkOptions[0].value;
-        frameworkPackage = frameworkOptions[0].pkg;
-        console.log(`${chalk.cyan("?")} Framework: ${chalk.white(frameworkOptions[0].label)}`);
-      } else {
-        const selected = await promptSelect(rl, "Framework", frameworkOptions.map(f => ({ label: f.label, value: f.value })));
-        const match = frameworkOptions.find(f => f.value === selected)!;
-        framework = match.value;
-        frameworkPackage = match.pkg;
-      }
+    const compatible = frameworksForTarget(target).filter((f) => f.installable);
+    if (compatible.length === 0) {
+      // Defensive: every known target maps to at least one framework in the catalog.
+      throw new Error(`No installable frameworks are compatible with target '${target.id}'.`);
     }
+
+    if (partialOptions?.framework) {
+      const requested = frameworkCatalogEntry(partialOptions.framework);
+      if (!requested) {
+        const available = FRAMEWORK_CATALOG.filter((f) => f.installable).map((f) => f.id).join(", ");
+        throw new Error(`Unknown framework '${partialOptions.framework}'. Available: ${available}`);
+      }
+      framework = requested.id;
+      frameworkPackage = requested.packageName;
+      console.log(`${chalk.cyan("?")} Framework: ${chalk.white(requested.label)}`);
+    } else if (compatible.length === 1) {
+      framework = compatible[0]!.id;
+      frameworkPackage = compatible[0]!.packageName;
+      console.log(`${chalk.cyan("?")} Framework: ${chalk.white(compatible[0]!.label)}`);
+    } else {
+      const selected = await promptSelect(
+        rl,
+        "Framework",
+        compatible.map((f) => ({ label: f.label, value: f.id })),
+      );
+      const match = compatible.find((f) => f.id === selected)!;
+      framework = match.id;
+      frameworkPackage = match.packageName;
+    }
+
+    // Resolve the framework-specific build target + toolchain (e.g. a Zephyr
+    // board id + 'west' vs the Arduino FQBN + 'arduino-cli'). See framework-catalog.
+    const profile = frameworkTargetProfile(target, framework);
 
     // 4. Baud rate (only for embedded)
     let baudRate: number | undefined;
@@ -205,7 +199,8 @@ export async function runInitWizard(
       boardPackage: target.boardPackage,
       frameworkPackage: frameworkPackage ?? '',
       framework: framework ?? '',
-      buildTarget: target.buildTarget,
+      buildTarget: profile.buildTarget ?? target.buildTarget,
+      ...(profile.toolchainType ? { toolchainType: profile.toolchainType } : {}),
       mcu: target.mcu,
       baudRate,
       includeSketch,

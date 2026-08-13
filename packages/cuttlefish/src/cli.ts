@@ -3,10 +3,11 @@ import path from "node:path";
 import fs from "node:fs";
 import { parseCommandLine, printHelp } from "./utils/cli.js";
 import type { GeneratedOutputs } from "./types.js";
-import type { CreateCommandOptions, BoardAddCommandOptions, InstallCommandOptions } from "./types.js";
-import { scaffoldProject, printInitNextSteps, KNOWN_TARGETS } from "./create/index.js";
+import type { CreateCommandOptions, BoardAddCommandOptions } from "./types.js";
+import type { ScaffoldProjectResult } from "./create/index.js";
+import { scaffoldProject, printInitNextSteps, KNOWN_TARGETS, frameworksForTarget, frameworkCatalogEntry, FRAMEWORK_CATALOG, frameworkTargetProfile } from "./create/index.js";
 import { runInitWizard } from "./create/index.js";
-import { handleInstall } from "./install/index.js";
+import { installProjectDependencies } from "./create/install-deps.js";
 import { generateLibraryDefinitions, transpileFile } from "./transpile.js";
 import { generateDecl, generateDeclsForDirectory, generateComponentDeclsForProject } from "./libdef/cpp-to-decl.js";
 import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map.js";
@@ -76,21 +77,37 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       );
     }
 
-    const framework: string | undefined = options.framework ?? target.framework;
-    const frameworkPackage = target.frameworkPackage
-      ?? (framework ? `@typecad/framework-${framework}` : undefined);
-    if (!frameworkPackage) {
-      throw new Error(
-        `No framework package resolved for target '${target.id}'. ` +
-        `Pass --framework <name> or install a @typecad/framework-* package.`,
-      );
+    // Resolve the framework. --framework wins; otherwise narrow via the catalog
+    // for the chosen board and auto-pick when exactly one is compatible.
+    let frameworkId: string;
+    let frameworkPackage: string;
+    if (options.framework) {
+      const requested = frameworkCatalogEntry(options.framework);
+      if (!requested) {
+        const available = FRAMEWORK_CATALOG.filter(f => f.installable).map(f => f.id).join(", ");
+        throw new Error(`Unknown framework '${options.framework}'. Available: ${available}`);
+      }
+      frameworkId = requested.id;
+      frameworkPackage = requested.packageName;
+    } else {
+      const compatible = frameworksForTarget(target).filter(f => f.installable);
+      if (compatible.length === 1) {
+        frameworkId = compatible[0]!.id;
+        frameworkPackage = compatible[0]!.packageName;
+      } else {
+        const list = compatible.map(f => f.id).join(", ");
+        throw new Error(
+          `Target '${target.id}' is compatible with multiple frameworks (${list}). ` +
+          `Pass --framework <id> to choose one.`,
+        );
+      }
     }
-    // Derive the short framework id from the package name (e.g.
-    // @typecad/framework-arduino → arduino) when neither the option nor the
-    // target supplied one. KNOWN_TARGETS embedded boards no longer hardcode it.
-    const frameworkId = framework ?? frameworkPackage.replace(/^@typecad\/framework-/, '');
 
     const projectName = options.projectName || 'my-project';
+
+    // Framework-specific build target + toolchain (Zephyr board id + 'west' vs
+    // the Arduino FQBN + 'arduino-cli').
+    const profile = frameworkTargetProfile(target, frameworkId);
 
     const result = scaffoldProject({
       projectName,
@@ -101,7 +118,8 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       boardPackage: target.boardPackage,
       frameworkPackage,
       framework: frameworkId,
-      buildTarget: target.buildTarget,
+      buildTarget: profile.buildTarget ?? target.buildTarget,
+      ...(profile.toolchainType ? { toolchainType: profile.toolchainType } : {}),
       mcu: target.mcu,
       baudRate: target.isNative ? undefined : (options.baud ?? 9600),
       includeSketch: !options.noSketch,
@@ -110,13 +128,7 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
         : {}),
     }, options.outDir);
 
-    console.log(`\n${chalk.green("✓")} Created project files:`);
-    for (const file of result.createdFiles) {
-      const relative = path.relative(process.cwd(), file);
-      console.log(`  ${chalk.dim(relative || file)}`);
-    }
-
-    printInitNextSteps(result.options, result.outDir);
+    finalizeCreate(result, options);
   } else {
     const wizardResult = await runInitWizard({
       projectName: options.projectName,
@@ -133,14 +145,39 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
 
     const result = scaffoldProject(wizardResult, options.outDir);
 
-    console.log(`\n${chalk.green("✓")} Created project files:`);
-    for (const file of result.createdFiles) {
-      const relative = path.relative(process.cwd(), file);
-      console.log(`  ${chalk.dim(relative || file)}`);
-    }
-
-    printInitNextSteps(result.options, result.outDir);
+    finalizeCreate(result, options);
   }
+}
+
+/**
+ * Shared tail of `cuttlefish create`: list the created files, install the new
+ * project's dependencies (so it's ready to build with no extra step — skipped
+ * via --no-install), and print the next-steps. A failed install is non-fatal:
+ * the scaffold itself is valid, so we warn and point at the manual command
+ * rather than undoing anything.
+ */
+function finalizeCreate(result: ScaffoldProjectResult, options: CreateCommandOptions): void {
+  console.log(`\n${chalk.green("✓")} Created project files:`);
+  for (const file of result.createdFiles) {
+    const relative = path.relative(process.cwd(), file);
+    console.log(`  ${chalk.dim(relative || file)}`);
+  }
+
+  let installed = false;
+  if (!options.noInstall) {
+    try {
+      const { pm } = installProjectDependencies({ projectDir: result.outDir });
+      installed = true;
+      console.log(`\n${chalk.green("✓")} Installed dependencies via ${pm}.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const relativeDir = path.relative(process.cwd(), result.outDir) || '.';
+      console.log(`\n${chalk.yellow("!")} Could not install dependencies automatically: ${message}`);
+      console.log(chalk.dim(`  Run '${chalk.white("npm install")}' manually in ${relativeDir} when ready.`));
+    }
+  }
+
+  printInitNextSteps(result.options, result.outDir, { installed });
 }
 
 async function handleBoardAdd(options: BoardAddCommandOptions): Promise<void> {
@@ -182,11 +219,6 @@ async function main(): Promise<void> {
 
     if (options.command === "board-add") {
       await handleBoardAdd(options);
-      return;
-    }
-
-    if (options.command === "install") {
-      await handleInstall(options as InstallCommandOptions);
       return;
     }
 

@@ -122,6 +122,17 @@ const SubcommandCapabilitySchema = z.object({
   available: z.boolean(),
 });
 
+// Declared compatibility ranges for the framework's external dependencies
+// (the toolchain it drives). Optional metadata — not a coverage claim, so the
+// manifest validator does not cross-check it. Consumers read it to fail fast
+// with a clear message when, e.g., the installed Zephyr is outside the range
+// the framework was built/tested against. Ranges are simple comparators
+// ('>=4.3 <5.0') parsed by the framework's own version check.
+const CompatSchema = z.object({
+  /** Supported Zephyr RTOS version range (framework-zephyr). */
+  zephyr: z.string().optional(),
+});
+
 const StdLibSupportSchema = z.object({
   hasVector: z.boolean(),
   hasString: z.boolean(),
@@ -171,6 +182,7 @@ export const FrameworkManifestSchema = z.object({
   // functions that cuttlefish dispatches the corresponding CLI subcommands to.
   doctor: SubcommandCapabilitySchema.optional(),
   licenses: SubcommandCapabilitySchema.optional(),
+  compat: CompatSchema.optional(),
 });
 
 export type FrameworkManifest = z.infer<typeof FrameworkManifestSchema>;

@@ -217,7 +217,11 @@ export function scaffoldProject(
   return { createdFiles, outDir: resolvedOutDir, options };
 }
 
-export function printInitNextSteps(options: InitProjectOptions, outDir: string): void {
+export function printInitNextSteps(
+  options: InitProjectOptions,
+  outDir: string,
+  opts: { installed?: boolean } = {},
+): void {
   const relativeDir = path.relative(process.cwd(), outDir) || '.';
 
   console.log();
@@ -225,7 +229,10 @@ export function printInitNextSteps(options: InitProjectOptions, outDir: string):
   console.log();
   console.log(chalk.bold.white("Next steps:"));
   console.log(chalk.dim(`  cd ${relativeDir}`));
-  console.log(chalk.dim(`  npm install`));
+  // When create already installed dependencies, don't tell the user to do it again.
+  if (!opts.installed) {
+    console.log(chalk.dim(`  npm install`));
+  }
   console.log(`  ${chalk.cyan("npm run compile")}`);
 
   if (!options.isNative) {

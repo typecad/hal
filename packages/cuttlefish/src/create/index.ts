@@ -1,5 +1,9 @@
 export { scaffoldProject, normalizeProjectName, KNOWN_TARGETS, KNOWN_BOARDS, registerKnownTarget, printInitNextSteps } from './init-scaffold.js';
 export type { KnownTarget, KnownBoard, ScaffoldProjectResult } from './init-scaffold.js';
+export { FRAMEWORK_CATALOG, frameworksForTarget, frameworkCatalogEntry, detectPackageManager, frameworkTargetProfile } from './framework-catalog.js';
+export type { FrameworkCatalogEntry, BoardLike, PackageManager, FrameworkTargetProfile, TargetProfileInput } from './framework-catalog.js';
+export { installProjectDependencies, __setProjectInstallRunnerForTest } from './install-deps.js';
+export type { ProjectInstallResult } from './install-deps.js';
 export {
   generateProjectPackageJson,
   generateProjectTsconfig,

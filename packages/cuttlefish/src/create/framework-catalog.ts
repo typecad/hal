@@ -1,4 +1,4 @@
-// Framework catalog + board→framework compatibility for `cuttlefish install`.
+// Framework catalog + board→framework compatibility for the create wizard.
 //
 // A "framework" is a `@typecad/framework-<id>` npm package. This module is the
 // single source of truth for which frameworks exist as installable packages and
@@ -15,12 +15,12 @@ export interface FrameworkCatalogEntry {
   id: string;
   /** Full npm package name, e.g. "@typecad/framework-arduino". */
   packageName: string;
-  /** Human-readable label shown in the install prompt. */
+  /** Human-readable label shown in the create prompt. */
   label: string;
   /**
    * Whether a real package exists on the registry. Used to filter the prompt:
    * "esp-idf" is a known family with no published package yet, so it must not
-   * be offered for install (it would fail at the package-manager step).
+   * be offered (it would fail at the package-manager step).
    */
   installable: boolean;
 }
@@ -37,7 +37,7 @@ export const FRAMEWORK_CATALOG: readonly FrameworkCatalogEntry[] = [
 ];
 
 /** Structural shape we need from a board/target. Keeps this module decoupled
- *  from the create/ module's KnownTarget (and trivially testable with literals). */
+ *  from the KnownTarget type (and trivially testable with literals). */
 export interface BoardLike {
   isNative?: boolean;
   architecture?: string;
@@ -70,6 +70,71 @@ const FALLBACK_FRAMEWORKS: readonly string[] = ["arduino"];
 /** Look up a catalog entry by framework id (e.g. "arduino"). */
 export function frameworkCatalogEntry(id: string): FrameworkCatalogEntry | undefined {
   return FRAMEWORK_CATALOG.find((f) => f.id === id);
+}
+
+// ── framework-specific build target + toolchain ─────────────────────────────
+// A board's buildTarget string is NOT framework-independent: Arduino uses an
+// FQBN (e.g. 'esp32:esp32:esp32s3') while Zephyr uses a board id for
+// `west build -b` (e.g. 'esp32s3_devkitc'). The scaffold must pick the right
+// one for the chosen framework, and the matching toolchain backend
+// ('arduino-cli' vs 'west'). Source for Zephyr board ids: framework-zephyr's
+// chip registry (src/chips/index.ts) + the demo configs.
+
+const FRAMEWORK_TOOLCHAIN: Record<string, string> = {
+  arduino: "arduino-cli",
+  zephyr: "west",
+  // native has no toolchain (the native config path writes neither field).
+};
+
+/**
+ * Zephyr board target for each cuttlefish board id that supports Zephyr. These
+ * are the full qualified targets passed to `west build -b <target>` (framework-
+ * zephyr's chipForTarget splits on '/' and takes the board id, so the qualified
+ * form resolves correctly there too). Zephyr 4.3+ REQUIRES the qualifier for
+ * multi-core ESP32 boards — the bare id (e.g. 'esp32s3_devkitc') is rejected
+ * with "Board qualifiers ... not found". procpu is the main application core.
+ */
+const ZEPHYR_BOARD_IDS: Record<string, string> = {
+  "esp32-devkit": "esp32_devkitc/esp32/procpu",
+  esp32s3: "esp32s3_devkitc/esp32s3/procpu",
+  // xiao_ble isn't currently a KNOWN_TARGETS entry, but keep the descriptor
+  // correct for completeness: nRF52840 (single core), base (non-sense) variant.
+  "xiao-nrf52840": "xiao_ble/nrf52840",
+};
+
+export interface FrameworkTargetProfile {
+  /** Framework-specific build target (FQBN for Arduino, board id for Zephyr). */
+  buildTarget?: string;
+  /** Toolchain backend the framework's compile/upload expects. */
+  toolchainType?: string;
+}
+
+export interface TargetProfileInput {
+  id: string;
+  isNative?: boolean;
+  /** The board's Arduino FQBN, as currently stored on KnownTarget. */
+  buildTarget?: string;
+}
+
+/**
+ * Resolve the framework-specific buildTarget + toolchain type for a
+ * (board, framework) pair. Arduino reuses the board's FQBN; Zephyr maps to the
+ * Zephyr board id; native returns an empty profile (the native config writes
+ * neither field).
+ */
+export function frameworkTargetProfile(
+  target: TargetProfileInput,
+  frameworkId: string,
+): FrameworkTargetProfile {
+  if (target.isNative) {
+    return {};
+  }
+  const toolchainType = FRAMEWORK_TOOLCHAIN[frameworkId];
+  if (frameworkId === "zephyr") {
+    return { buildTarget: ZEPHYR_BOARD_IDS[target.id], toolchainType };
+  }
+  // Arduino (and any unlisted framework) → use the board's FQBN.
+  return { buildTarget: target.buildTarget, toolchainType };
 }
 
 /**
@@ -117,23 +182,4 @@ export function detectPackageManager(cwd: string): PackageManager {
   if (fs.existsSync(path.join(cwd, "yarn.lock"))) return "yarn";
   // package-lock.json implies npm; absence also defaults to npm.
   return "npm";
-}
-
-/**
- * Build the package-manager invocation that installs `packageName` into the
- * current project (project-local, never global — per the install command spec).
- */
-export function buildInstallCommand(
-  pm: PackageManager,
-  packageName: string,
-): { bin: string; args: string[] } {
-  switch (pm) {
-    case "pnpm":
-      return { bin: "pnpm", args: ["add", packageName] };
-    case "yarn":
-      return { bin: "yarn", args: ["add", packageName] };
-    case "npm":
-    default:
-      return { bin: "npm", args: ["install", packageName] };
-  }
 }

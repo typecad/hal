@@ -102,7 +102,9 @@ export function printMonitoring(port: string, baud: number): void {
  * Print success message
  */
 export function printSuccess(message: string = "Done"): void {
-  console.log(chalk.green(`${ICON_SUCCESS} ${message}`));
+  // Cyan (not green) so the completion marker matches the cyan step indicators
+  // (⇉ Compiling / Uploading / Transpiling). The ✓ icon conveys success.
+  console.log(chalk.cyan(`${ICON_SUCCESS} ${message}`));
 }
 
 /**
