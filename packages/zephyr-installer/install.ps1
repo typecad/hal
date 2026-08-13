@@ -254,9 +254,15 @@ if (-not $NoSdk) {
 # --- 5. west workspace ------------------------------------------------------
 if (-not $NoWorkspace) {
   Write-Host "init-workspace: west init $env:WORKSPACE_DIR"
-  if (Test-Path (Join-Path $env:WORKSPACE_DIR '.west')) {
+  $westDir = Join-Path $env:WORKSPACE_DIR '.west'
+  $westConfig = Join-Path $westDir 'config'
+  if ((Test-Path $westDir) -and (Test-Path $westConfig)) {
     Write-Host "init-workspace: already initialized - running west update only"
   } else {
+    if (Test-Path $westDir) {
+      Write-Host "init-workspace: .west exists but its config is missing (interrupted init?) - re-initializing"
+      Remove-Item -Recurse -Force $westDir
+    }
     $parent = Split-Path -Parent $env:WORKSPACE_DIR
     New-Item -ItemType Directory -Force -Path $parent | Out-Null
     Invoke-Native { & $MambaExe run -n $ENV_NAME west init -m $ZEPHYR_MANIFEST_URL --mr $ZEPHYR_MANIFEST_REV $env:WORKSPACE_DIR } "west init"

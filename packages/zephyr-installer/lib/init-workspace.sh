@@ -31,9 +31,13 @@ init_workspace() {
   fi
 
   export MAMBA_ROOT_PREFIX
-  if [ -d "$WORKSPACE_DIR/.west" ]; then
+  if [ -d "$WORKSPACE_DIR/.west" ] && [ -f "$WORKSPACE_DIR/.west/config" ]; then
     echo "init-workspace: $WORKSPACE_DIR already initialized — running west update only"
   else
+    if [ -d "$WORKSPACE_DIR/.west" ]; then
+      echo "init-workspace: $WORKSPACE_DIR/.west exists but its config is missing (interrupted init?) — re-initializing"
+      rm -rf "$WORKSPACE_DIR/.west"
+    fi
     mkdir -p "$(dirname "$WORKSPACE_DIR")"
     "$MAMBA" run -n "$ENV_NAME" west init -m "$ZEPHYR_MANIFEST_URL" --mr "$ZEPHYR_MANIFEST_REV" "$WORKSPACE_DIR" \
       || { echo "init-workspace: west init failed" >&2; return 1; }

@@ -21,7 +21,7 @@
 import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
@@ -139,8 +139,13 @@ function runWithFallback(exes, args) {
 }
 
 // Only dispatch when invoked directly as `node install.mjs` / via the bin, not
-// when imported (the test suite imports translateToPwsh / buildSummary).
-const invokedDirectly = fileURLToPath(import.meta.url) === resolve(process.argv[1] || '');
+// when imported (the test suite imports translateToPwsh / buildSummary). Resolve
+// symlinks on both sides: npx and global installs run the bin through a symlink,
+// and path.resolve alone doesn't follow it — without realpathSync the guard
+// evaluates false and the script exits without dispatching (npx "does nothing").
+const realPath = (p) => { try { return realpathSync(p); } catch { return ''; } };
+const invokedDirectly =
+  !!process.argv[1] && realPath(fileURLToPath(import.meta.url)) === realPath(process.argv[1]);
 
 if (invokedDirectly) {
   const rawArgs = process.argv.slice(2);
@@ -162,9 +167,10 @@ if (invokedDirectly) {
             rl.close();
           }
         } else {
-          // Non-interactive stdin (CI/pipe): don't hang. Require --yes to affirm.
-          output.write('Non-interactive stdin with no --yes — aborting. Re-run with --yes to proceed.\n');
-          process.exit(1);
+          // Non-interactive stdin (some npx invocations, pipes, CI): can't
+          // prompt, so proceed — the user invoked us explicitly. (--yes is the
+          // explicit no-prompt flag.) Avoids `npx @typecad/...` aborting when
+          // npx doesn't forward a TTY.
         }
       }
     }
