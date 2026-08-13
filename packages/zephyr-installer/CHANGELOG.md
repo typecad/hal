@@ -1,5 +1,101 @@
 # @typecad/zephyr-installer
 
+## 1.0.0-alpha.10
+
+### Patch Changes
+
+- 63433ea: ## Pin cmake <4 (Zephyr 4.3.x is incompatible with CMake 4.x)
+
+  Fresh installs resolved `cmake 4.4.x` (the `cmake>=3.20` constraint had no
+  upper bound), and `west build` then failed at CMake configure:
+
+  ```
+  CMake Error at .../cmake/modules/FindZephyr-sdk.cmake:57 (if):
+    if given arguments:
+      "(" "zephyr" "STREQUAL" ")" "OR" ...
+    Unknown arguments specified
+  ```
+
+  Zephyr 4.3.x's `FindZephyr-sdk.cmake` uses an **unquoted** `${ZEPHYR_TOOLCHAIN_VARIANT}`
+  in an `if()`. When that variable is undefined it expands to nothing; CMake **3.x**
+  treats the empty expansion leniently (as an empty string), but CMake **4.x**
+  rejects it as an unknown argument. Zephyr 4.3.x predates CMake 4.x.
+
+  `environment.yml` now constrains `cmake>=3.20,<4` so conda resolves a 3.x
+  (currently 3.31.x). Loosen once a Zephyr revision that supports CMake 4.x is
+  pinned in `versions.env`. Guarded by a test asserting the upper bound is present.
+
+- 69c0f79: ## Install per-module Python requirements (esptool for ESP32, etc.)
+
+  After `requirements-base.txt`, the installer now also installs the
+  **build-relevant** module `requirements.txt` files — HAL `scripts/`/`zephyr/`
+  dirs (esptool for espressif, vendor flash/script tools for atmel/stm32/silabs/
+  etc.) and top-level lib codegen (nanopb, zcbor). It deliberately does NOT do a
+  recursive find of every `requirements.txt`, which would also pull
+  docs/test/harness/example requirements (mbedtls docs, openthread test harness,
+  cmsis tests, lvgl docs, tf-m tools) — heavy and conflict-prone.
+
+  Without this, board-specific tooling was missing from the env. For ESP32 the
+  post-link image step ran a stale **system** `esptool` (the env had none) which
+  rejected Zephyr's invocation:
+
+  ```
+  esptool: error: unrecognized arguments: --flash-mode --flash-freq 80m --flash-size 8MB
+  ```
+
+  The espressif HAL pins `esptool>=5.0.2` in its own `requirements.txt`; installing
+  the per-module requirements puts a matching `esptool` (5.x) in the env, where the
+  activated `Scripts/` shadows the system one. Each module requirements file is
+  installed warn-and-continue so one bad pin can't abort the whole install.
+
+  Board support itself is universal — `west update` fetches every module and the
+  SDK full bundle ships every cross-toolchain (arm, riscv, xtensa, …) — so rp2040,
+  samd, nrf, stm32, etc. build with just the base env; only a few modules add
+  Python tools (esptool), which this step covers.
+
+  Mirrored in `install.sh` and `install.ps1`; guarded by a regression test
+  asserting both target `modules/hal/` (not a recursive find).
+
+- 3aaec5f: ## Pin SHA256 for the linux-x86_64 + windows-x86_64 SDK bundles
+
+  `versions.env` shipped with every `SHA256_*` set to `TODO`, so `fetch-sdk`
+  skipped verification with a warning. Pinned the two bundles exercised by real
+  installs (each computed by the installer against the official Zephyr SDK 0.17.4
+  release bundle):
+
+  - `linux-x86_64`: `83f2f327…3d1116b6`
+  - `windows-x86_64`: `51d550eb…d9384ecd`
+
+  Verification is now enforced on those platforms — a mismatch aborts the install
+  instead of continuing. The other three (`linux-aarch64`, `macos-x86_64`,
+  `macos-aarch64`) remain `TODO` until a real install on each platform computes
+  and pins them (the installer prints the computed hash on first download).
+
+  Also adds a regression test that locks the two pinned values so a typo or
+  accidental `TODO`-reset in `versions.env` is caught.
+
+- e540f4e: ## Install Zephyr's Python build requirements into the env
+
+  After `west update`, the installer now runs
+  `pip install -r $ZEPHYR_BASE/scripts/requirements-base.txt` into the `zephyr`
+  conda env. Without this, `west build` failed at CMake configure:
+
+  ```
+  CMake Error at .../zephyr_module.cmake:73 (message):
+    Missing jsonschema dependency
+  ```
+
+  `environment.yml` only carried `pyelftools` + `packaging`; Zephyr additionally
+  requires `jsonschema`, `pykwalify`, `PyYAML`, `intelhex`, `canopen`, `patool`,
+  `psutil`, `pyserial`, `requests`, `semver`, `tqdm`, `reuse`, `anytree`, and
+  `windows-curses` (Windows). Letting Zephyr's own pinned requirements file drive
+  the install tracks the Zephyr revision and avoids maintaining a separate list
+  that goes stale or misses deps.
+
+  Mirrored in `install.sh` (POSIX) and `install.ps1` (Windows), fail-fast on a
+  pip failure. Guarded by a regression test asserting both scripts wire
+  `requirements-base.txt`.
+
 ## 1.0.0-alpha.9
 
 ### Patch Changes

@@ -1,6 +1,6 @@
 {
   "name": "@typecad/mcu-nrf52840",
-  "version": "1.0.0-alpha.9",
+  "version": "1.0.0-alpha.10",
   "description": "TypeCAD MCU definition for Nordic nRF52840 — datasheet pins, peripheral capabilities, and HAL instances",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,8 +14,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.9",
-    "@typecad/hal": "1.0.0-alpha.9"
+    "@typecad/cuttlefish": "1.0.0-alpha.10",
+    "@typecad/hal": "1.0.0-alpha.10"
   },
   "license": "MIT",
   "publishConfig": {

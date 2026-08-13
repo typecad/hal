@@ -32,8 +32,11 @@
     "@typecad/zephyr-installer": "1.0.0-alpha.7"
   },
   "changesets": [
-    "cuttlefish-install-command",
-    "zephyr-installer-posix-write-activation",
-    "zephyr-installer"
+    "cuttlefish-create-install-rework",
+    "framework-zephyr-doctor-compat",
+    "zephyr-installer-cmake-pin",
+    "zephyr-installer-module-requirements",
+    "zephyr-installer-pin-sdk-sha256",
+    "zephyr-installer-zephyr-requirements"
   ]
 }
