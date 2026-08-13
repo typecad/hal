@@ -1,6 +1,6 @@
 {
   "name": "@typecad/zephyr-installer",
-  "version": "1.0.0-alpha.10",
+  "version": "1.0.0-alpha.11",
   "description": "Cross-platform Zephyr toolchain installer — micromamba env + official Zephyr SDK + vanilla west workspace",
   "type": "module",
   "bin": {

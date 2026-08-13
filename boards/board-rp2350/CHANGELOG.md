@@ -1,5 +1,14 @@
 # @typecad/board-rp2350
 
+## 1.0.0-alpha.11
+
+### Patch Changes
+
+- Updated dependencies [46f25f2]
+  - @typecad/cuttlefish@1.0.0-alpha.11
+  - @typecad/mcu-rp2350@1.0.0-alpha.11
+  - @typecad/hal@1.0.0-alpha.11
+
 ## 1.0.0-alpha.10
 
 ### Patch Changes

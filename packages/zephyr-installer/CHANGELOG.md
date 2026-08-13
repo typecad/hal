@@ -1,5 +1,42 @@
 # @typecad/zephyr-installer
 
+## 1.0.0-alpha.11
+
+### Patch Changes
+
+- 66f04cf: ## Fix: recover from a broken `.west/` (missing config) instead of failing west update
+
+  `init-workspace` checked only for `.west/` and skipped `west init` when present. But a
+  workspace can have `.west/` without `.west/config` (interrupted/partial init), which
+  makes `west update` fail:
+
+  ```
+  west.configuration.MalformedConfig: local configuration file not found
+  ```
+
+  Now requires BOTH `.west/` and `.west/config`; if `.west/` exists without its config,
+  it removes the partial `.west/` and re-initializes. The cloned `zephyr/` and `modules/`
+  are preserved — `west update` re-syncs them, so there's no full re-clone. Mirrored in
+  `install.sh` and `install.ps1`.
+
+- 66f04cf: ## Fix: `npx @typecad/zephyr-installer` did nothing (symlinked-bin guard)
+
+  The entry-point guard compared `import.meta.url` to `path.resolve(process.argv[1])`,
+  but `path.resolve` does NOT follow symlinks. npx (and global installs) run the bin
+  through a symlink (`node_modules/.bin/zephyr-installer` → `…/install.mjs`), so the
+  guard evaluated false and `install.mjs` exited without dispatching — `npx …` produced
+  no output. Running `node …/install.mjs` directly worked because that path isn't a
+  symlink.
+
+  Fixed by resolving symlinks on both sides (`realpathSync`) before comparing — the
+  canonical "is main module" check that survives symlinked bins.
+
+  Also: the confirmation gate's non-interactive path now PROCEEDS instead of aborting.
+  Some npx invocations don't forward a TTY for stdin; the old behavior aborted there
+  ("Non-interactive stdin with no --yes — aborting"). It now proceeds (the user invoked
+  it explicitly; `--yes` remains the explicit no-prompt flag), so `npx` works whether or
+  not it forwards a TTY.
+
 ## 1.0.0-alpha.10
 
 ### Patch Changes

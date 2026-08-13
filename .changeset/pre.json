@@ -32,11 +32,10 @@
     "@typecad/zephyr-installer": "1.0.0-alpha.7"
   },
   "changesets": [
-    "cuttlefish-create-install-rework",
-    "framework-zephyr-doctor-compat",
-    "zephyr-installer-cmake-pin",
-    "zephyr-installer-module-requirements",
-    "zephyr-installer-pin-sdk-sha256",
-    "zephyr-installer-zephyr-requirements"
+    "framework-zephyr-arduino-parity",
+    "framework-zephyr-doctor-parity",
+    "framework-zephyr-micromamba-discovery",
+    "zephyr-installer-broken-workspace",
+    "zephyr-installer-npx-symlink"
   ]
 }

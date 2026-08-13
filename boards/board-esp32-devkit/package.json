@@ -1,6 +1,6 @@
 {
   "name": "@typecad/board-esp32-devkit",
-  "version": "1.0.0-alpha.10",
+  "version": "1.0.0-alpha.11",
   "description": "TypeCAD ESP32 DevKit (WROOM-32) board definition with typed pins and peripherals",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,9 +14,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.10",
-    "@typecad/hal": "1.0.0-alpha.10",
-    "@typecad/mcu-esp32": "1.0.0-alpha.10"
+    "@typecad/cuttlefish": "1.0.0-alpha.11",
+    "@typecad/hal": "1.0.0-alpha.11",
+    "@typecad/mcu-esp32": "1.0.0-alpha.11"
   },
   "license": "MIT",
   "publishConfig": {

@@ -1,6 +1,6 @@
 {
   "name": "@typecad/framework-native",
-  "version": "1.0.0-alpha.10",
+  "version": "1.0.0-alpha.11",
   "description": "TypeCAD framework package for native C++ code generation (Windows/Linux executables)",
   "type": "module",
   "main": "./dist/index.js",
@@ -26,11 +26,11 @@
     "test:watch": "vitest --config vitest.config.ts"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.10",
-    "@typecad/hal": "1.0.0-alpha.10"
+    "@typecad/cuttlefish": "1.0.0-alpha.11",
+    "@typecad/hal": "1.0.0-alpha.11"
   },
   "devDependencies": {
-    "@typecad/expect": "1.0.0-alpha.10",
+    "@typecad/expect": "1.0.0-alpha.11",
     "typescript": "^5.7.3"
   },
   "license": "MIT",
