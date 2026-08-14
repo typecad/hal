@@ -248,7 +248,8 @@ Flags:
   (none)            Interactive: platform checklist → summary → Enter → install.
   --platforms IDS   Non-interactive: comma-separated group ids or 'all'.
   --modify          Re-present the checklist on an existing install to
-                    add/remove platforms. SDK-only (skips env/workspace).
+                    add/remove platforms. Deselected toolchains are DELETED
+                    from disk. SDK-only (skips env/workspace).
   --yes, -y         Skip the confirmation prompt (CI / scripting).
   --dry-run         Print the resolved plan (URLs, paths, versions) and exit.
   --no-sdk          Skip the Zephyr SDK download (env + workspace only).
@@ -312,6 +313,28 @@ if (invokedDirectly) {
   if (modify) forwarded.push('--no-workspace');
 
   (async () => {
+    // --modify: warn before any destructive change (deselected toolchains are
+    // deleted from disk). The user must acknowledge before the checklist runs.
+    if (modify && !dryRun && !yes) {
+      output.write(
+        [
+          '',
+          'WARNING: --modify will DELETE the toolchain directories of any',
+          'platform you deselect. Re-adding a removed platform later requires',
+          're-downloading it (~100-300 MB per group).',
+          '',
+        ].join('\n'),
+      );
+      if (input.isTTY) {
+        const rl = readline.createInterface({ input, output });
+        try {
+          await rl.question('Press Enter to continue (Ctrl+C to cancel): ');
+        } finally {
+          rl.close();
+        }
+      }
+    }
+
     // Resolve the platform selection (interactive checklist unless given).
     if (platforms === null && !dryRun) {
       if (input.isTTY) {
