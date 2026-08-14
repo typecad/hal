@@ -223,6 +223,56 @@ function runWithFallback(exes, args) {
   });
 }
 
+// Render the --help text. Shows flags, platform groups, and examples.
+// Exported so tests can assert on the content.
+export function buildHelp(v = loadVersionsEnv()) {
+  const catalog = platformCatalog(v);
+  const groups = catalog
+    .map((g, i) => `  ${String(i + 1).padStart(2)}. ${g.label.padEnd(48)} ${g.size}`)
+    .join('\n');
+  return `
+typeCAD Zephyr installer — cross-platform Zephyr toolchain setup via micromamba.
+
+Usage:
+  npx @typecad/zephyr-installer [flags]
+
+Installs: micromamba + conda env (west, cmake, ninja, dtc, gperf) + the Zephyr
+SDK (selective toolchains or full bundle) + a vanilla west workspace
+(${v.ZEPHYR_MANIFEST_URL || 'zephyr.git'} @ ${v.ZEPHYR_MANIFEST_REV || 'pinned'}).
+
+Platform groups (interactive checklist, or --platforms <ids>):
+${groups}
+  all. Full bundle (~1.5 GB download, ~11 GB extracted)
+
+Flags:
+  (none)            Interactive: platform checklist → summary → Enter → install.
+  --platforms IDS   Non-interactive: comma-separated group ids or 'all'.
+  --modify          Re-present the checklist on an existing install to
+                    add/remove platforms. SDK-only (skips env/workspace).
+  --yes, -y         Skip the confirmation prompt (CI / scripting).
+  --dry-run         Print the resolved plan (URLs, paths, versions) and exit.
+  --no-sdk          Skip the Zephyr SDK download (env + workspace only).
+  --no-workspace    Skip west init/update (env + SDK only).
+  --env-name NAME   Override the conda env name (default: ${v.ENV_NAME || 'zephyr'}).
+  --sdk-version V   Override the Zephyr SDK version (default: ${v.ZEPHYR_SDK_VERSION || 'pinned'}).
+  -h, --help        Show this help.
+
+Environment overrides:
+  MAMBA_ROOT_PREFIX   micromamba root (default: ~/micromamba)
+  WORKSPACE_DIR       west workspace (default: ~/zephyrproject)
+  SDK_INSTALL_PARENT  where the SDK extracts (default: $MAMBA_ROOT_PREFIX/zephyr-sdk)
+
+Examples:
+  npx @typecad/zephyr-installer                       # interactive (checklist)
+  npx @typecad/zephyr-installer --platforms arm       # ARM Cortex-M only (~150 MB)
+  npx @typecad/zephyr-installer --platforms arm,esp32 # ARM + ESP32 (~450 MB)
+  npx @typecad/zephyr-installer --platforms all       # full bundle (~1.5 GB)
+  npx @typecad/zephyr-installer --modify              # add/remove platforms later
+  npx @typecad/zephyr-installer --dry-run             # preview the plan
+  node install.mjs --help                             # same, from a repo checkout
+`.trimStart();
+}
+
 // Only dispatch when invoked directly as `node install.mjs` / via the bin, not
 // when imported (the test suite imports translateToPwsh / buildSummary). Resolve
 // symlinks on both sides: npx and global installs run the bin through a symlink,
@@ -234,6 +284,11 @@ const invokedDirectly =
 
 if (invokedDirectly) {
   const rawArgs = process.argv.slice(2);
+  // --help / -h: print + exit before any prompting or dispatch.
+  if (rawArgs.includes('--help') || rawArgs.includes('-h')) {
+    output.write(buildHelp());
+    process.exit(0);
+  }
   const dryRun = rawArgs.includes('--dry-run');
   const yes = rawArgs.includes('--yes') || rawArgs.includes('-y');
   const modify = rawArgs.includes('--modify') || rawArgs.includes('-m');

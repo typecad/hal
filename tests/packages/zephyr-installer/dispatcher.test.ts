@@ -17,6 +17,7 @@ const pkgDir = join(repoRoot, 'packages/zephyr-installer');
 import {
   translateToPwsh,
   buildSummary,
+  buildHelp,
   detectPlatform,
   loadVersionsEnv,
   platformCatalog,
@@ -90,6 +91,38 @@ describe('install.mjs platform selection', () => {
     const sel = buildSummary(v, p, 'zephyr', 'arm,esp32');
     expect(sel).toContain('arm,esp32');
     expect(sel).not.toContain('~1.5 GB download, ~11 GB extracted');
+  });
+
+  it('buildHelp documents every flag, the platform groups, and examples', () => {
+    const help = buildHelp();
+    // Flags the dispatcher itself consumes or forwards.
+    expect(help).toContain('--platforms');
+    expect(help).toContain('--modify');
+    expect(help).toContain('--yes');
+    expect(help).toContain('--dry-run');
+    expect(help).toContain('--no-sdk');
+    expect(help).toContain('--no-workspace');
+    expect(help).toContain('--env-name');
+    expect(help).toContain('--sdk-version');
+    expect(help).toContain('--help');
+    // Platform groups from the catalog are listed with sizes.
+    expect(help).toContain('ARM Cortex-M');
+    expect(help).toContain('~150 MB');
+    expect(help).toContain('ESP32');
+    // Examples show the primary npx form.
+    expect(help).toContain('npx @typecad/zephyr-installer');
+    expect(help).toContain('--platforms arm,esp32');
+  });
+
+  it('--help / -h prints help and exits 0 before any dispatch', () => {
+    for (const flag of ['--help', '-h']) {
+      const r = spawnSync('node', ['install.mjs', flag], { encoding: 'utf8', cwd: pkgDir });
+      expect(r.status, `install.mjs ${flag} should exit 0`).toBe(0);
+      expect(r.stdout).toContain('Platform groups');
+      expect(r.stdout).toContain('Usage:');
+      // Help must not trigger a dispatch (no [plan] output from a native script).
+      expect(r.stdout).not.toContain('[plan]');
+    }
   });
 });
 
