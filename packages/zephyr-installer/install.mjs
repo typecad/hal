@@ -19,9 +19,9 @@
 // dispatch + prompt only run when this file is the node entry point.
 // ---------------------------------------------------------------------------
 import { spawn } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFileSync, realpathSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
@@ -250,6 +250,9 @@ Flags:
   --modify          Re-present the checklist on an existing install to
                     add/remove platforms. Deselected toolchains are DELETED
                     from disk. SDK-only (skips env/workspace).
+  --delete          UNINSTALL everything: conda env, Zephyr SDK, west
+                    workspace (+ micromamba itself if no other envs exist).
+                    Requires typing 'yes' to confirm (or --yes).
   --yes, -y         Skip the confirmation prompt (CI / scripting).
   --dry-run         Print the resolved plan (URLs, paths, versions) and exit.
   --no-sdk          Skip the Zephyr SDK download (env + workspace only).
@@ -269,9 +272,124 @@ Examples:
   npx @typecad/zephyr-installer --platforms arm,esp32 # ARM + ESP32 (~450 MB)
   npx @typecad/zephyr-installer --platforms all       # full bundle (~1.5 GB)
   npx @typecad/zephyr-installer --modify              # add/remove platforms later
+  npx @typecad/zephyr-installer --delete              # uninstall everything (confirms)
   npx @typecad/zephyr-installer --dry-run             # preview the plan
   node install.mjs --help                             # same, from a repo checkout
 `.trimStart();
+}
+
+// --- --delete: uninstall everything the installer created -------------------
+
+// Recursively sum bytes on disk for a path (best-effort; 0 on any error).
+function dirSize(p) {
+  let total = 0;
+  const walk = (d) => {
+    let entries;
+    try { entries = readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entries) {
+      const full = join(d, e.name);
+      try {
+        if (e.isDirectory()) walk(full);
+        else total += statSync(full).size;
+      } catch { /* unreadable entry — skip */ }
+    }
+  };
+  try { walk(p); } catch { /* unreadable root */ }
+  return total;
+}
+
+function humanSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+// Resolve the installation layout the same way install.sh/install.ps1 do.
+export function resolveInstallPaths(envName = 'zephyr') {
+  const mambaRoot = process.env.MAMBA_ROOT_PREFIX || join(homedir(), 'micromamba');
+  return {
+    mambaRoot,
+    env: join(mambaRoot, 'envs', envName),
+    sdkParent: process.env.SDK_INSTALL_PARENT || join(mambaRoot, 'zephyr-sdk'),
+    workspace: process.env.WORKSPACE_DIR || join(homedir(), 'zephyrproject'),
+  };
+}
+
+// Build the --delete confirmation summary: every path that WILL be removed,
+// with its on-disk size. Pure — exported for unit tests.
+export function buildDeleteSummary(paths = resolveInstallPaths()) {
+  const items = [
+    ['conda env', paths.env],
+    ['Zephyr SDK', paths.sdkParent],
+    ['west workspace', paths.workspace],
+  ];
+  const lines = [
+    '',
+    'typeCAD Zephyr installer — DELETE installation',
+    '==============================================',
+    '',
+    'This permanently removes everything the installer created:',
+    '',
+  ];
+  for (const [label, p] of items) {
+    if (existsSync(p)) {
+      lines.push(`  ${label.padEnd(16)} ${p}  (${humanSize(dirSize(p))})`);
+    } else {
+      lines.push(`  ${label.padEnd(16)} ${p}  (not present — skipped)`);
+    }
+  }
+  // micromamba itself: only removable when no other envs exist.
+  const otherEnvs = existsSync(paths.env)
+    ? readdirSync(join(paths.mambaRoot, 'envs'), { withFileTypes: true })
+        .filter((e) => e.isDirectory() && e.name !== basename(paths.env))
+        .map((e) => e.name)
+    : [];
+  lines.push('');
+  if (otherEnvs.length === 0 && existsSync(paths.mambaRoot)) {
+    lines.push(`  micromamba root  ${paths.mambaRoot}  (${humanSize(dirSize(paths.mambaRoot))})`);
+    lines.push('  (micromamba itself — removed because it has no other envs)');
+  } else if (otherEnvs.length > 0) {
+    lines.push(`  micromamba root  ${paths.mambaRoot}  — KEPT (other envs present: ${otherEnvs.join(', ')})`);
+  }
+  lines.push('');
+  lines.push('The shell-profile hook (micromamba shell init) is NOT edited automatically;');
+  lines.push('remove its block from ~/.bashrc / your PowerShell $PROFILE if desired.');
+  lines.push('');
+  lines.push("Type 'yes' to DELETE these directories, anything else to cancel: ");
+  return lines.join('\n');
+}
+
+// Perform the deletion. Returns per-item results for reporting.
+export function performDelete(paths = resolveInstallPaths()) {
+  const envName = basename(paths.env);
+  const targets = [
+    ['conda env', paths.env],
+    ['Zephyr SDK', paths.sdkParent],
+    ['west workspace', paths.workspace],
+  ];
+  // micromamba root only when no other envs remain after removing ours.
+  const otherEnvs = existsSync(join(paths.mambaRoot, 'envs'))
+    ? readdirSync(join(paths.mambaRoot, 'envs'), { withFileTypes: true })
+        .filter((e) => e.isDirectory() && e.name !== envName)
+    : [];
+  if (otherEnvs.length === 0 && existsSync(paths.mambaRoot)) {
+    targets.push(['micromamba root', paths.mambaRoot]);
+  }
+  const results = [];
+  for (const [label, p] of targets) {
+    if (!existsSync(p)) {
+      results.push({ label, path: p, removed: false, note: 'not present' });
+      continue;
+    }
+    try {
+      rmSync(p, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+      results.push({ label, path: p, removed: !existsSync(p) });
+    } catch (err) {
+      results.push({ label, path: p, removed: false, note: err.message });
+    }
+  }
+  return results;
 }
 
 // Only dispatch when invoked directly as `node install.mjs` / via the bin, not
@@ -293,6 +411,8 @@ if (invokedDirectly) {
   const dryRun = rawArgs.includes('--dry-run');
   const yes = rawArgs.includes('--yes') || rawArgs.includes('-y');
   const modify = rawArgs.includes('--modify') || rawArgs.includes('-m');
+  const del = rawArgs.includes('--delete') || rawArgs.includes('-d');
+
   // --platforms <sel> (non-interactive selection) — read + strip here so the
   // checklist doesn't prompt when it's given.
   let platforms = null;
@@ -313,6 +433,37 @@ if (invokedDirectly) {
   if (modify) forwarded.push('--no-workspace');
 
   (async () => {
+    // --delete: confirm + remove everything, entirely in Node (no dispatch to
+    // the native installers — nothing to install). Requires an explicit typed
+    // 'yes' (or --yes for scripting); non-TTY without --yes aborts (destructive
+    // default-deny, unlike install's proceed-on-non-TTY).
+    if (del) {
+      const summary = buildDeleteSummary();
+      output.write(summary);
+      let confirmed = yes;
+      if (!yes) {
+        if (input.isTTY) {
+          const rl = readline.createInterface({ input, output });
+          try { confirmed = (await rl.question('')).trim().toLowerCase() === 'yes'; }
+          finally { rl.close(); }
+        } else {
+          output.write('--delete is destructive and stdin is not interactive. Re-run with --yes to proceed.\n');
+          process.exit(1);
+        }
+      }
+      if (!confirmed) {
+        output.write('Cancelled — nothing was deleted.\n');
+        process.exit(0);
+      }
+      const results = performDelete();
+      for (const r of results) {
+        if (r.removed) output.write(`  deleted  ${r.label.padEnd(16)} ${r.path}\n`);
+        else output.write(`  skipped  ${r.label.padEnd(16)} ${r.path}${r.note ? ` (${r.note})` : ' (not present)'}\n`);
+      }
+      output.write('\nUninstall complete. (Shell-profile hook left in place — see note above.)\n');
+      process.exit(0);
+    }
+
     // --modify: warn before any destructive change (deselected toolchains are
     // deleted from disk). The user must acknowledge before the checklist runs.
     if (modify && !dryRun && !yes) {

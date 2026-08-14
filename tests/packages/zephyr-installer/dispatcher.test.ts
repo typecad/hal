@@ -18,6 +18,8 @@ import {
   translateToPwsh,
   buildSummary,
   buildHelp,
+  buildDeleteSummary,
+  resolveInstallPaths,
   detectPlatform,
   loadVersionsEnv,
   platformCatalog,
@@ -123,6 +125,54 @@ describe('install.mjs platform selection', () => {
       // Help must not trigger a dispatch (no [plan] output from a native script).
       expect(r.stdout).not.toContain('[plan]');
     }
+  });
+
+  it('buildDeleteSummary lists every install path and requires a typed yes', () => {
+    const summary = buildDeleteSummary();
+    const paths = resolveInstallPaths();
+    expect(summary).toContain('conda env');
+    expect(summary).toContain(paths.env.split('\\').pop()! || paths.env);
+    expect(summary).toContain('Zephyr SDK');
+    expect(summary).toContain('west workspace');
+    expect(summary).toContain("Type 'yes' to DELETE");
+    // The shell-profile hook is explicitly noted as NOT auto-edited.
+    expect(summary).toContain('NOT edited automatically');
+  });
+
+  it('--delete without --yes on non-interactive stdin aborts (destructive default-deny)', () => {
+    // Point at temp paths so the size walk doesn't stat the real multi-GB SDK.
+    const tmp = spawnSync('node', ['-e', 'console.log(require("node:fs").mkdtempSync(require("node:os").tmpdir() + "/tc-del2-"))'], { encoding: 'utf8' });
+    const tmpDir = tmp.stdout.trim();
+    const r = spawnSync(
+      'node',
+      ['install.mjs', '--delete'],
+      {
+        encoding: 'utf8',
+        cwd: pkgDir,
+        input: 'yes\n', // piped answer must NOT count: no TTY → refuse
+        env: { ...process.env, MAMBA_ROOT_PREFIX: `${tmpDir}/mm`, WORKSPACE_DIR: `${tmpDir}/ws` },
+      },
+    );
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain('Re-run with --yes');
+    // Crucially: nothing was deleted (no per-item 'deleted' result lines).
+    expect(r.stdout).not.toMatch(/\n {2}deleted {2}/);
+    spawnSync('node', ['-e', `require("node:fs").rmSync("${tmpDir.replace(/\\/g, '/')}", {recursive:true, force:true})`]);
+  });
+
+  it('--delete on a non-existent install reports not-present and exits 0 with --yes', () => {
+    // Point at an empty temp prefix so the real install is never at risk.
+    const tmp = spawnSync('node', ['-e', 'console.log(require("node:fs").mkdtempSync(require("node:os").tmpdir() + "/tc-del-"))'], { encoding: 'utf8' });
+    const tmpDir = tmp.stdout.trim();
+    const r = spawnSync(
+      'node',
+      ['install.mjs', '--delete', '--yes'],
+      { encoding: 'utf8', cwd: pkgDir, env: { ...process.env, MAMBA_ROOT_PREFIX: `${tmpDir}/mm`, WORKSPACE_DIR: `${tmpDir}/ws` } },
+    );
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('not present');
+    expect(r.stdout).toContain('Uninstall complete');
+    spawnSync('node', ['-e', `require("node:fs").rmSync("${tmpDir.replace(/\\/g, '/')}", {recursive:true, force:true})`]);
   });
 });
 
