@@ -16,7 +16,10 @@ function parseEnv(path: string): Record<string, string> {
     if (!line || line.startsWith('#')) continue;
     const idx = line.indexOf('=');
     if (idx <= 0) continue;
-    vars[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+    let val = line.slice(idx + 1).trim();
+    // Strip optional surrounding double quotes (multi-word PLATFORM_* values).
+    if (val.startsWith('"') && val.endsWith('"') && val.length >= 2) val = val.slice(1, -1);
+    vars[line.slice(0, idx).trim()] = val;
   }
   return vars;
 }
@@ -95,6 +98,7 @@ describe('zephyr-installer versions.env', () => {
 
 describe('zephyr-installer install scripts', () => {
   const installerDir = join(repoRoot, 'packages/zephyr-installer');
+  const v = parseEnv(versionsPath);
 
   it('install Zephyr Python build requirements (jsonschema, pykwalify, ...) after west update', () => {
     // Without this, `west build` fails at CMake configure with
@@ -128,5 +132,45 @@ describe('zephyr-installer install scripts', () => {
     expect(initSh).toContain('requirements.txt');
     expect(installPs1).toContain('modules/hal/');
     expect(installPs1).toContain('requirements.txt');
+  });
+
+  it('declares platform groups with toolchains, labels, and sizes (selective install)', () => {
+    // Each PLATFORM_<id> must have matching _LABEL and _SIZE entries, and at
+    // least one valid toolchain target. Values are quoted (shell-sourceable).
+    const groups = Object.keys(v)
+      .map((k) => k.match(/^PLATFORM_([a-z0-9]+)$/)?.[1])
+      .filter(Boolean) as string[];
+    expect(groups.length).toBeGreaterThanOrEqual(4);
+    for (const id of groups) {
+      expect(v[`PLATFORM_${id}`], `PLATFORM_${id} must list toolchains`).toBeTruthy();
+      expect(v[`PLATFORM_${id}_LABEL`], `missing LABEL for ${id}`).toBeTruthy();
+      expect(v[`PLATFORM_${id}_SIZE`], `missing SIZE for ${id}`).toBeTruthy();
+      // Toolchain targets end in -zephyr-eabi or -zephyr-elf (xtensa variants
+      // have a longer prefix like xtensa-espressif_esp32_zephyr-elf).
+      const targets = v[`PLATFORM_${id}`]!.split(/\s+/);
+      for (const t of targets) {
+        expect(t).toMatch(/[-_]zephyr-(eabi|elf)$/);
+      }
+    }
+  });
+
+  it('arm and esp32 groups are present with the expected toolchains', () => {
+    // The two most common groups; guard against accidental removal/renaming.
+    expect(v.PLATFORM_arm).toBe('arm-zephyr-eabi');
+    expect(v.PLATFORM_esp32).toContain('xtensa-espressif_esp32s3_zephyr-elf');
+  });
+
+  it('both native installers parse --platforms and support selective SDK mode', () => {
+    const installSh = readFileSync(join(installerDir, 'install.sh'), 'utf8');
+    const installPs1 = readFileSync(join(installerDir, 'install.ps1'), 'utf8');
+    const fetchSdk = readFileSync(join(installerDir, 'lib/fetch-sdk.sh'), 'utf8');
+    expect(installSh).toContain('--platforms');
+    expect(installSh).toContain('PLATFORMS');
+    expect(installPs1).toContain('[string]$Platforms');
+    expect(installPs1).toContain('minimal');
+    expect(fetchSdk).toContain('minimal');
+    // Idempotency per-toolchain (so --modify can add without re-downloading all).
+    expect(fetchSdk).toContain('.typecad-platforms');
+    expect(installPs1).toContain('.typecad-platforms');
   });
 });

@@ -39,8 +39,10 @@ export function translateToPwsh(args) {
       case '--dry-run':      out.push('-DryRun'); break;
       case '--no-sdk':       out.push('-NoSdk'); break;
       case '--no-workspace': out.push('-NoWorkspace'); break;
+      case '--modify':       out.push('-Modify'); break;
       case '--env-name':     out.push('-EnvName', args[++i]); break;
       case '--sdk-version':  out.push('-SdkVersion', args[++i]); break;
+      case '--platforms':    out.push('-Platforms', args[++i]); break;
       default:               out.push(args[i]);
     }
   }
@@ -49,7 +51,8 @@ export function translateToPwsh(args) {
 
 // --- confirmation-gate helpers ---------------------------------------------
 
-// Parse versions.env (KEY=value, # comments) into an object.
+// Parse versions.env (KEY=value, # comments) into an object. Strips optional
+// double quotes around values (needed for multi-word values like PLATFORM_esp32).
 export function loadVersionsEnv(dir = here) {
   const v = {};
   const text = readFileSync(join(dir, 'versions.env'), 'utf8');
@@ -57,7 +60,11 @@ export function loadVersionsEnv(dir = here) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
     const idx = line.indexOf('=');
-    if (idx > 0) v[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+    if (idx > 0) {
+      let val = line.slice(idx + 1).trim();
+      if (val.startsWith('"') && val.endsWith('"') && val.length >= 2) val = val.slice(1, -1);
+      v[line.slice(0, idx).trim()] = val;
+    }
   }
   return v;
 }
@@ -78,14 +85,18 @@ export function detectPlatform() {
 }
 
 // Pure: build the pre-install summary string. Exported so it's unit-testable
-// without running the installer.
-export function buildSummary(v, p, envName) {
+// without running the installer. `platforms` is the selection string ('all' or
+// comma-separated group ids) used to size the SDK download line.
+export function buildSummary(v, p, envName, platforms = 'all') {
   const home = homedir();
   const mambaRoot = process.env.MAMBA_ROOT_PREFIX || join(home, 'micromamba');
   const workspace = process.env.WORKSPACE_DIR || join(home, 'zephyrproject');
   const sdkVer = v.ZEPHYR_SDK_VERSION || '<pinned>';
   const rev = v.ZEPHYR_MANIFEST_REV || '<pinned>';
   const bundle = `zephyr-sdk-${sdkVer}_${p.sdk}.${p.ext}`;
+  const sdkLine = platforms === 'all'
+    ? `  3. Fetch + extract the Zephyr SDK ${sdkVer} — ${bundle} (~1.5 GB download, ~11 GB extracted).`
+    : `  3. Fetch + extract the Zephyr SDK ${sdkVer} (minimal + selected toolchains — platforms: ${platforms}).`;
   return [
     '',
     'typeCAD Zephyr installer',
@@ -96,8 +107,7 @@ export function buildSummary(v, p, envName) {
     '',
     `  1. Download the micromamba static binary (${p.mamba}).`,
     `  2. Create the '${envName}' conda env (west, cmake, ninja, gperf, ...).`,
-    `  3. Fetch + extract the Zephyr SDK ${sdkVer} — ${bundle}`,
-    '     (~1.5 GB download, ~11 GB extracted).',
+    sdkLine,
     `  4. Run 'west init' (--mr ${rev}) + 'west update' for a vanilla Zephyr workspace.`,
     '',
     'Locations (defaults; override via MAMBA_ROOT_PREFIX / WORKSPACE_DIR / SDK_INSTALL_PARENT):',
@@ -116,6 +126,81 @@ export function buildSummary(v, p, envName) {
 function envNameFromArgs(args) {
   const i = args.indexOf('--env-name');
   return i >= 0 && i + 1 < args.length ? args[i + 1] : 'zephyr';
+}
+
+// --- platform checklist ------------------------------------------------------
+
+// The platform groups from versions.env (PLATFORM_<id>, PLATFORM_<id>_LABEL,
+// PLATFORM_<id>_SIZE). Returns [{id, label, size, toolchains}].
+export function platformCatalog(v = loadVersionsEnv()) {
+  const groups = [];
+  for (const key of Object.keys(v)) {
+    const m = key.match(/^PLATFORM_([a-z0-9]+)$/);
+    if (!m) continue;
+    const id = m[1];
+    groups.push({
+      id,
+      label: v[`PLATFORM_${id}_LABEL`] || id,
+      size: v[`PLATFORM_${id}_SIZE`] || '',
+      toolchains: (v[key] || '').split(/\s+/).filter(Boolean),
+    });
+  }
+  return groups;
+}
+
+// Parse the user's checklist answer ('1 2', '1,2', 'all', 'arm esp32') into a
+// normalized comma-separated group-id string ('arm,esp32') or 'all'.
+// Numbers index into catalog (1-based); names must match group ids.
+export function parsePlatformSelection(answer, catalog = platformCatalog()) {
+  const trimmed = (answer || '').trim().toLowerCase();
+  if (!trimmed || trimmed === 'all' || trimmed === 'a') return 'all';
+  const picked = new Set();
+  for (const tok of trimmed.split(/[\s,]+/).filter(Boolean)) {
+    if (/^\d+$/.test(tok)) {
+      const idx = Number(tok) - 1;
+      if (idx >= 0 && idx < catalog.length) picked.add(catalog[idx].id);
+      else throw new Error(`invalid platform number: ${tok} (choose 1-${catalog.length} or 'all')`);
+    } else {
+      const grp = catalog.find((g) => g.id === tok);
+      if (!grp) throw new Error(`unknown platform: ${tok} (choose a number, a group id, or 'all')`);
+      picked.add(grp.id);
+    }
+  }
+  if (picked.size === 0) return 'all';
+  return [...picked].join(',');
+}
+
+// Render the checklist text. `installedToolchains` (array of toolchain target
+// dir names found under the SDK root) marks groups already installed.
+export function buildChecklist(catalog = platformCatalog(), installedToolchains = []) {
+  const inst = new Set(installedToolchains);
+  const lines = ['', 'Select platform toolchains to install:', ''];
+  catalog.forEach((g, i) => {
+    const allIn = g.toolchains.length > 0 && g.toolchains.every((t) => inst.has(t));
+    const someIn = g.toolchains.some((t) => inst.has(t));
+    const mark = allIn ? '[x]' : someIn ? '[~]' : '[ ]';
+    const instTag = allIn ? '  installed' : someIn ? '  partial' : '';
+    const size = g.size ? `  ${g.size}` : '';
+    lines.push(`  [${i + 1}] ${g.label.padEnd(48)}${size}${instTag}`);
+  });
+  lines.push('  [a] All (full bundle, ~1.5 GB download / ~11 GB extracted)');
+  lines.push('');
+  lines.push("Enter selection (e.g. '1 2', 'arm,esp32', or 'all'): ");
+  return lines.join('\n');
+}
+
+// Interactive checklist: print, read one line, parse. Returns the normalized
+// selection string ('all' or comma-separated group ids).
+export async function platformChecklist(installedToolchains = []) {
+  const catalog = platformCatalog();
+  output.write(buildChecklist(catalog, installedToolchains));
+  const rl = readline.createInterface({ input, output });
+  try {
+    const answer = await rl.question('');
+    return parsePlatformSelection(answer, catalog);
+  } finally {
+    rl.close();
+  }
 }
 
 // Try each candidate executable in order; advance on ENOENT so the caller can
@@ -151,13 +236,54 @@ if (invokedDirectly) {
   const rawArgs = process.argv.slice(2);
   const dryRun = rawArgs.includes('--dry-run');
   const yes = rawArgs.includes('--yes') || rawArgs.includes('-y');
-  // --yes / -y are consumed here (the native scripts don't know them); everything
+  const modify = rawArgs.includes('--modify') || rawArgs.includes('-m');
+  // --platforms <sel> (non-interactive selection) — read + strip here so the
+  // checklist doesn't prompt when it's given.
+  let platforms = null;
+  {
+    const i = rawArgs.indexOf('--platforms');
+    if (i >= 0 && i + 1 < rawArgs.length) platforms = rawArgs[i + 1];
+  }
+  // --yes / -y / --modify / -m / --platforms <v> are consumed here; everything
   // else (--dry-run, --no-sdk, --env-name, ...) is forwarded.
-  const forwarded = rawArgs.filter((a) => a !== '--yes' && a !== '-y');
+  const forwarded = rawArgs.filter(
+    (a, i) =>
+      a !== '--yes' && a !== '-y' && a !== '--modify' && a !== '-m' &&
+      a !== '--platforms' && rawArgs[i - 1] !== '--platforms',
+  );
+  // Re-add the resolved platforms as a flag the native scripts understand.
+  if (platforms) forwarded.push('--platforms', platforms);
+  // --modify skips the env + workspace steps; only the SDK platform step runs.
+  if (modify) forwarded.push('--no-workspace');
 
   (async () => {
+    // Resolve the platform selection (interactive checklist unless given).
+    if (platforms === null && !dryRun) {
+      if (input.isTTY) {
+        try {
+          platforms = await platformChecklist([]);
+        } catch (err) {
+          console.error(`typecad-zephyr-install: ${err.message}`);
+          process.exit(1);
+        }
+        // Replace any previously forwarded --platforms with the resolved value.
+        const pi = forwarded.lastIndexOf('--platforms');
+        if (pi >= 0) forwarded.splice(pi, 2);
+        forwarded.push('--platforms', platforms);
+      } else {
+        // Non-interactive with no --platforms: default to 'all' (full bundle,
+        // current behavior) so npx/CI invocations don't hang.
+        platforms = 'all';
+        forwarded.push('--platforms', 'all');
+      }
+    } else if (platforms === null) {
+      // --dry-run without --platforms: forward without a selection; the native
+      // dry-run prints both modes.
+      platforms = 'all';
+    }
+
     if (!dryRun) {
-      output.write(buildSummary(loadVersionsEnv(), detectPlatform(), envNameFromArgs(rawArgs)));
+      output.write(buildSummary(loadVersionsEnv(), detectPlatform(), envNameFromArgs(rawArgs), platforms));
       if (!yes) {
         if (input.isTTY) {
           const rl = readline.createInterface({ input, output });

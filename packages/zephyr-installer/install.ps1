@@ -23,8 +23,10 @@ param(
   [switch]$DryRun,
   [switch]$NoSdk,
   [switch]$NoWorkspace,
+  [switch]$Modify,
   [string]$EnvName,
-  [string]$SdkVersion
+  [string]$SdkVersion,
+  [string]$Platforms
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,6 +55,11 @@ function Load-VersionsEnv {
       if ($idx -gt 0) {
         $key = $line.Substring(0, $idx).Trim()
         $val = $line.Substring($idx + 1).Trim()
+        # Strip optional surrounding double quotes (multi-word values like
+        # PLATFORM_esp32 carry a space-separated toolchain list).
+        if ($val.StartsWith('"') -and $val.EndsWith('"') -and $val.Length -ge 2) {
+          $val = $val.Substring(1, $val.Length - 2)
+        }
         Set-Variable -Name $key -Value $val -Scope Script
       }
     }
@@ -109,6 +116,7 @@ Write-Host "[plan]   env name:          $ENV_NAME"
 Write-Host "[plan]   conda subdir:      $MambaPlat"
 Write-Host "[plan]   sdk platform:      $SdkPlat"
 Write-Host "[plan]   sdk version:       $ZEPHYR_SDK_VERSION"
+Write-Host "[plan]   platforms:         $(if ($Platforms) { $Platforms } else { 'all' })"
 Write-Host "[plan]   sdk bundle:        $bundle"
 Write-Host "[plan]   sdk bundle url:    $SDK_RELEASE_BASE/v$ZEPHYR_SDK_VERSION/$bundle"
 Write-Host "[plan]   micromamba url:    $MICROMAMBA_BASE/$MambaPlat/latest"
@@ -213,46 +221,124 @@ Write-Host "write-activation: done"
 
 # --- 4. Zephyr SDK (.7z) ----------------------------------------------------
 if (-not $NoSdk) {
-  # Idempotent: the SDK full bundle ships a top-level `sdk_version` file once
-  # extracted, so its presence means the SDK is already in place. Lets a re-run
-  # skip a multi-GB re-download (e.g. after moving the SDK aside to fix a
-  # polluted env prefix).
-  if (Test-Path (Join-Path $ZephyrSdkInstallDir 'sdk_version')) {
-    Write-Host "fetch-sdk: already present at $ZephyrSdkInstallDir - skipping download"
-  } else {
-    $url = "$SDK_RELEASE_BASE/v$ZEPHYR_SDK_VERSION/$bundle"
-    Write-Host "fetch-sdk: downloading $bundle from $url"
-    New-Item -ItemType Directory -Force -Path $env:SDK_INSTALL_PARENT | Out-Null
-    $archive = Join-Path $env:SDK_INSTALL_PARENT $bundle
-    Download-File -Url $url -OutFile $archive
-    # Verify (skip when TODO).
-    $checksumVar = 'SHA256_' + ($SdkPlat -replace '-', '_')
-    $expected = (Get-Variable -Name $checksumVar -ErrorAction SilentlyContinue).Value
-    $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
-    if (-not $expected -or $expected -eq 'TODO') {
-      Write-Warning "fetch-sdk: SHA256 not pinned (TODO in versions.env); computed: $actual"
-    } elseif ($actual -ne $expected.ToLower()) {
-      throw "fetch-sdk: SHA256 mismatch (expected $expected, got $actual)"
+  # Locate 7z once (used by both full-bundle and selective paths).
+  # Normalize to the executable path: Get-ChildItem yields a FileInfo (.FullName),
+  # Get-Command yields a CommandInfo (.Source) - only one of which is populated.
+  $sevenz = Get-ChildItem -Path $EnvPrefix -Recurse -Filter '7z.exe' -ErrorAction SilentlyContinue `
+            | Select-Object -First 1 -ExpandProperty FullName
+  if (-not $sevenz) { $found = Get-Command 7z -ErrorAction SilentlyContinue; if ($found) { $sevenz = $found.Source } }
+  if (-not $sevenz) { $sevenz = $null }  # only fatal when extraction is needed
+
+  $sel = if ($Platforms) { $Platforms } else { 'all' }
+  Write-Host "fetch-sdk: platform selection: $sel"
+
+  if ($sel -eq 'all') {
+    # ── FULL BUNDLE (current behavior) ──────────────────────────────────────
+    # Idempotent: the SDK full bundle ships a top-level `sdk_version` file once
+    # extracted, so its presence means the SDK is already in place.
+    if (Test-Path (Join-Path $ZephyrSdkInstallDir 'sdk_version')) {
+      Write-Host "fetch-sdk: already present at $ZephyrSdkInstallDir - skipping download"
     } else {
-      Write-Host "fetch-sdk: sha256 OK ($actual)"
+      $url = "$SDK_RELEASE_BASE/v$ZEPHYR_SDK_VERSION/$bundle"
+      Write-Host "fetch-sdk: downloading full bundle $bundle from $url"
+      New-Item -ItemType Directory -Force -Path $env:SDK_INSTALL_PARENT | Out-Null
+      $archive = Join-Path $env:SDK_INSTALL_PARENT $bundle
+      Download-File -Url $url -OutFile $archive
+      # Verify (skip when TODO).
+      $checksumVar = 'SHA256_' + ($SdkPlat -replace '-', '_')
+      $expected = (Get-Variable -Name $checksumVar -ErrorAction SilentlyContinue).Value
+      $actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLower()
+      if (-not $expected -or $expected -eq 'TODO') {
+        Write-Warning "fetch-sdk: SHA256 not pinned (TODO in versions.env); computed: $actual"
+      } elseif ($actual -ne $expected.ToLower()) {
+        throw "fetch-sdk: SHA256 mismatch (expected $expected, got $actual)"
+      } else {
+        Write-Host "fetch-sdk: sha256 OK ($actual)"
+      }
+      if (-not $sevenz) { throw "fetch-sdk: 7z.exe not found in env or on PATH" }
+      Invoke-Native { & $sevenz x -y "-o$env:SDK_INSTALL_PARENT" $archive } "fetch-sdk 7z extract"
+      Remove-Item $archive -Force
+      Write-Host "fetch-sdk: done - $ZephyrSdkInstallDir"
     }
-    # Extract with the env's 7z (environment.yml installs it for [win]).
-    # Normalize to the executable path: Get-ChildItem yields a FileInfo (.FullName),
-    # Get-Command yields a CommandInfo (.Source) - only one of which is populated.
-    $sevenz = Get-ChildItem -Path $EnvPrefix -Recurse -Filter '7z.exe' -ErrorAction SilentlyContinue `
-              | Select-Object -First 1 -ExpandProperty FullName
-    if (-not $sevenz) { $found = Get-Command 7z -ErrorAction SilentlyContinue; if ($found) { $sevenz = $found.Source } }
-    if (-not $sevenz) { throw "fetch-sdk: 7z.exe not found in env or on PATH" }
-    Invoke-Native { & $sevenz x -y "-o$env:SDK_INSTALL_PARENT" $archive } "fetch-sdk 7z extract"
-    Remove-Item $archive -Force
-    Write-Host "fetch-sdk: done - $ZephyrSdkInstallDir"
+  } else {
+    # ── SELECTIVE: minimal bundle + individual toolchains ───────────────────
+    $minimal = "zephyr-sdk-$ZEPHYR_SDK_VERSION`_$SdkPlat`_minimal.$ArchiveExt"
+    $minimalUrl = "$SDK_RELEASE_BASE/v$ZEPHYR_SDK_VERSION/$minimal"
+
+    if ($DryRun) {
+      Write-Host "fetch-sdk: [DRY-RUN] would download minimal $minimalUrl (~10 MB)"
+      Write-Host "fetch-sdk: [DRY-RUN] selected platforms: $sel"
+      foreach ($grp in $sel.Split(',')) {
+        $tv = (Get-Variable -Name "PLATFORM_$grp" -ErrorAction SilentlyContinue).Value
+        Write-Host "fetch-sdk: [DRY-RUN]   ${grp}: $tv"
+      }
+    } else {
+      New-Item -ItemType Directory -Force -Path $env:SDK_INSTALL_PARENT | Out-Null
+
+      # 1. Minimal bundle (cmake/ + sdk_version — ~10 MB).
+      if (Test-Path (Join-Path $ZephyrSdkInstallDir 'sdk_version')) {
+        Write-Host "fetch-sdk: SDK base already present - skipping minimal bundle"
+      } else {
+        Write-Host "fetch-sdk: downloading minimal bundle (~10 MB)"
+        $minArchive = Join-Path $env:SDK_INSTALL_PARENT $minimal
+        Download-File -Url $minimalUrl -OutFile $minArchive
+        if (-not $sevenz) { throw "fetch-sdk: 7z.exe not found in env or on PATH" }
+        Invoke-Native { & $sevenz x -y "-o$env:SDK_INSTALL_PARENT" $minArchive } "fetch-sdk minimal extract"
+        Remove-Item $minArchive -Force
+      }
+
+      # 2. Individual toolchains per selected platform group.
+      foreach ($grp in $sel.Split(',')) {
+        $targets = (Get-Variable -Name "PLATFORM_$grp" -ErrorAction SilentlyContinue).Value
+        if (-not $targets) {
+          Write-Warning "fetch-sdk: unknown platform group '$grp' (no PLATFORM_$grp in versions.env); skipping"
+          continue
+        }
+        Write-Host "fetch-sdk: platform '${grp}':"
+        foreach ($target in $targets.Split(' ')) {
+          if (-not $target) { continue }
+          if (Test-Path (Join-Path $ZephyrSdkInstallDir $target)) {
+            Write-Host "fetch-sdk:   $target - already installed, skipping"
+            continue
+          }
+          $tcBundle = "toolchain_${SdkPlat}_${target}.${ArchiveExt}"
+          $tcUrl = "$SDK_RELEASE_BASE/v$ZEPHYR_SDK_VERSION/$tcBundle"
+          Write-Host "fetch-sdk:   $target - downloading $tcBundle"
+          $tcArchive = Join-Path $env:SDK_INSTALL_PARENT $tcBundle
+          Download-File -Url $tcUrl -OutFile $tcArchive
+          if (-not $sevenz) { throw "fetch-sdk: 7z.exe not found in env or on PATH" }
+          Invoke-Native { & $sevenz x -y "-o$ZephyrSdkInstallDir" $tcArchive } "fetch-sdk $target extract"
+          Remove-Item $tcArchive -Force
+        }
+      }
+
+      # 3. Remove toolchains installed but NOT in the new selection (--modify removal).
+      $selectedTargets = @()
+      foreach ($grp in $sel.Split(',')) {
+        $t = (Get-Variable -Name "PLATFORM_$grp" -ErrorAction SilentlyContinue).Value
+        if ($t) { $selectedTargets += $t.Split(' ') }
+      }
+      Get-ChildItem -Path $ZephyrSdkInstallDir -Directory -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^(xtensa-)?.*-zephyr-(eabi|elf)$' } |
+        ForEach-Object {
+          if ($selectedTargets -notcontains $_.Name) {
+            Write-Host "fetch-sdk: removing deselected toolchain: $($_.Name)"
+            Remove-Item -Recurse -Force $_.FullName
+          }
+        }
+
+      # 4. Persist the selection.
+      Set-Content -Path (Join-Path $ZephyrSdkInstallDir '.typecad-platforms') -Value $sel
+      Write-Host "fetch-sdk: done - $ZephyrSdkInstallDir (platforms: $sel)"
+    }
   }
 } else {
   Write-Host "install: -NoSdk - skipping Zephyr SDK download"
 }
 
 # --- 5. west workspace ------------------------------------------------------
-if (-not $NoWorkspace) {
+if ($Modify) { Write-Host "install: -Modify - skipping west workspace" }
+elseif (-not $NoWorkspace) {
   Write-Host "init-workspace: west init $env:WORKSPACE_DIR"
   $westDir = Join-Path $env:WORKSPACE_DIR '.west'
   $westConfig = Join-Path $westDir 'config'

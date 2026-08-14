@@ -2,3 +2,12 @@
 # emitRuntimeHeader() normalizes the TS template literal to LF, so the fixture
 # is LF-only; force git to preserve LF (never convert to CRLF on checkout).
 tests/packages/cuttlefish/__fixtures__/runtime-header-baseline.txt text eol=lf
+
+# Shell scripts and bash-sourced config MUST be LF-only. CRLF makes bash fail
+# on Linux/macOS with "$'\r': command not found". This overrides
+# core.autocrlf=true on Windows checkouts — the files stay LF in the repo and
+# on disk everywhere.
+*.sh text eol=lf
+*.mjs text eol=lf
+*.env text eol=lf
+environment.yml text eol=lf

@@ -19,6 +19,9 @@ import {
   buildSummary,
   detectPlatform,
   loadVersionsEnv,
+  platformCatalog,
+  parsePlatformSelection,
+  buildChecklist,
 } from '../../../packages/zephyr-installer/install.mjs';
 
 describe('install.mjs flag translation (POSIX → PowerShell)', () => {
@@ -26,15 +29,67 @@ describe('install.mjs flag translation (POSIX → PowerShell)', () => {
     expect(translateToPwsh(['--dry-run'])).toEqual(['-DryRun']);
     expect(translateToPwsh(['--no-sdk'])).toEqual(['-NoSdk']);
     expect(translateToPwsh(['--no-workspace'])).toEqual(['-NoWorkspace']);
+    expect(translateToPwsh(['--modify'])).toEqual(['-Modify']);
   });
 
-  it('consumes the value for --env-name / --sdk-version', () => {
+  it('consumes the value for --env-name / --sdk-version / --platforms', () => {
     expect(translateToPwsh(['--env-name', 'foo'])).toEqual(['-EnvName', 'foo']);
     expect(translateToPwsh(['--sdk-version', '1.0.1'])).toEqual(['-SdkVersion', '1.0.1']);
+    expect(translateToPwsh(['--platforms', 'arm,esp32'])).toEqual(['-Platforms', 'arm,esp32']);
   });
 
   it('passes unknown flags through verbatim', () => {
     expect(translateToPwsh(['--verbose', 'positional'])).toEqual(['--verbose', 'positional']);
+  });
+});
+
+describe('install.mjs platform selection', () => {
+  const catalog = platformCatalog();
+
+  it('builds a catalog from versions.env with ids, labels, sizes, toolchains', () => {
+    expect(catalog.length).toBeGreaterThanOrEqual(4);
+    const ids = catalog.map((g) => g.id);
+    expect(ids).toContain('arm');
+    expect(ids).toContain('esp32');
+    for (const g of catalog) {
+      expect(g.label).toBeTruthy();
+      expect(g.toolchains.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('parses numeric, named, comma-separated, and "all" selections', () => {
+    expect(parsePlatformSelection('1 2', catalog)).toBe('arm,esp32');
+    expect(parsePlatformSelection('1,2', catalog)).toBe('arm,esp32');
+    expect(parsePlatformSelection('arm,esp32', catalog)).toBe('arm,esp32');
+    expect(parsePlatformSelection('all')).toBe('all');
+    expect(parsePlatformSelection('a')).toBe('all');
+    expect(parsePlatformSelection('')).toBe('all');
+  });
+
+  it('rejects out-of-range numbers and unknown names', () => {
+    expect(() => parsePlatformSelection('99', catalog)).toThrow(/invalid platform number/);
+    expect(() => parsePlatformSelection('bogus', catalog)).toThrow(/unknown platform/);
+  });
+
+  it('renders the checklist with installed markers', () => {
+    const text = buildChecklist(catalog, ['arm-zephyr-eabi']);
+    expect(text).toContain('ARM Cortex-M');
+    expect(text).toContain('ESP32');
+    expect(text).toContain('installed');
+    expect(text).toContain('[a] All');
+    // Groups not installed don't get the 'installed' tag on their line.
+    const esp32Line = text.split('\n').find((l) => l.includes('ESP32'))!;
+    expect(esp32Line).not.toContain('installed');
+  });
+
+  it('buildSummary reflects the platform selection (all vs selective)', () => {
+    const v = loadVersionsEnv();
+    const p = detectPlatform();
+    const all = buildSummary(v, p, 'zephyr', 'all');
+    expect(all).toContain('~1.5 GB');
+    const sel = buildSummary(v, p, 'zephyr', 'arm,esp32');
+    expect(sel).toContain('arm,esp32');
+    expect(sel).not.toContain('~1.5 GB download, ~11 GB extracted');
   });
 });
 

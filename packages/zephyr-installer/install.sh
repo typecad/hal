@@ -34,6 +34,7 @@ DO_SDK=1
 DO_WORKSPACE=1
 ENV_NAME_OVERRIDE=""
 SDK_VERSION_OVERRIDE=""
+PLATFORMS=""
 
 usage() {
   cat <<'EOF'
@@ -43,6 +44,10 @@ Usage: bash install.sh [options]
                    Downloads/creates nothing.
   --no-sdk         Skip the Zephyr SDK download (env + workspace only).
   --no-workspace   Skip west init/update (env + SDK only).
+  --modify         SDK platforms only: re-run selection, add/remove toolchains.
+                   Implies --no-workspace (env/workspace untouched).
+  --platforms SEL  Comma-separated platform groups (arm,esp32,riscv,x86,aarch64)
+                   or 'all' for the full bundle. Default: all.
   --env-name NAME  Override the conda env name (default: zephyr).
   --sdk-version V  Override the Zephyr SDK version (default: pinned in versions.env).
   -h, --help       Show this help.
@@ -59,6 +64,8 @@ while [ $# -gt 0 ]; do
     --dry-run)        DRY_RUN=1 ;;
     --no-sdk)         DO_SDK=0 ;;
     --no-workspace)   DO_WORKSPACE=0 ;;
+    --modify|-m)      DO_WORKSPACE=0 ;;
+    --platforms)      PLATFORMS="${2:?--platforms needs a value}"; shift ;;
     --env-name)       ENV_NAME_OVERRIDE="${2:?--env-name needs a value}"; shift ;;
     --sdk-version)    SDK_VERSION_OVERRIDE="${2:?--sdk-version needs a value}"; shift ;;
     -h|--help)        usage; exit 0 ;;
@@ -66,6 +73,8 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+: "${PLATFORMS:=all}"
 
 # --- load pinned versions + library functions -------------------------------
 # shellcheck source=versions.env
@@ -110,6 +119,7 @@ print_plan() {
   echo "[plan]   conda subdir:      $MAMBA_PLAT"
   echo "[plan]   sdk platform:      $SDK_PLAT"
   echo "[plan]   sdk version:       $ZEPHYR_SDK_VERSION"
+  echo "[plan]   platforms:         $PLATFORMS"
   echo "[plan]   sdk bundle:        $bundle"
   echo "[plan]   sdk bundle url:    $SDK_RELEASE_BASE/v$ZEPHYR_SDK_VERSION/$bundle"
   echo "[plan]   micromamba url:    $MICROMAMBA_BASE/$MAMBA_PLAT/latest"
