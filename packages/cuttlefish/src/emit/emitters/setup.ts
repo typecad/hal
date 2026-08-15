@@ -319,6 +319,15 @@ export function buildEmitterContext(
     if (!programAnalysis.usesNativeTiming && entryHasUI()) {
       programAnalysis.usesNativeTiming = true;
     }
+    // The UI runtime header calls constrain() in the progress/range node draw
+    // and touch-slider paths (injected by the emitter, not present in user
+    // source), so a mounted UI needs the constrain polyfill even when
+    // usesConstrain is false. OR entryHasUI() into the flag the native
+    // strategy reads when gating the constrain helper, mirroring the
+    // usesNativeTiming handling above.
+    if (!programAnalysis.usesConstrain && entryHasUI()) {
+      programAnalysis.usesConstrain = true;
+    }
     options.platformContext.analysis = programAnalysis;
     if (!options.platformContext.architecture && program.boardConstants) {
       options.platformContext.architecture = program.boardConstants.get("architecture") as string;
@@ -429,8 +438,12 @@ export function buildEmitterContext(
     }
     // The UI runtime's per-frame tick uses millis() (injected by the emitter,
     // not authored in user source), so keep the millis() shim when a UI is
-    // mounted even if the source-level analysis didn't flag usesMillis.
-    if (!programAnalysis.usesMillis && !entryHasUI()) {
+    // mounted even if the source-level analysis didn't flag usesMillis. The
+    // async runtime and the setInterval/setTimeout scheduler also poll
+    // millis() without any user-source millis() call (Async.sleep lowers to a
+    // raw hal-op the timing scanners can't see) — mirror the usesNativeTiming
+    // derivation and keep the shim for those hidden consumers too.
+    if (!programAnalysis.usesMillis && !programAnalysis.hasAsync && programAnalysis.timerCallCount === 0 && !entryHasUI()) {
       shimLines = shimLines.filter(l => !l.includes('millis()'));
     }
     // Strip the nullish helper FUNCTIONS (not the CUTTLEFISH_UNDEFINED macro)

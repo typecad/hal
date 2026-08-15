@@ -289,8 +289,13 @@ export default defineFrameworkManifest({
     },
     display: {
       supported: true,
-      partialCoverage: false,
-      unsupportedReason: undefined,
+      partialCoverage: true,
+      // Partial: mono profiles (ssd1306-zephyr) drive display.* ops via the
+      // direct GFX runtime only — no CuttlefishGFX UI rendering path. The
+      // ILI9341 UI adapter shares the ST7796S direct-drive transport with a
+      // per-controller init table (16-bit RGB565 wire format); hardware-tuned
+      // on ST7796S only. E-ink panels are out of scope at this time.
+      unsupportedReason: 'Mono panels (ssd1306) are direct-op only (no UI rendering); ili9341 UI path is ported but not yet hardware-verified; e-ink is out of scope at this time.',
       drivers: ['ili9341-zephyr', 'st7796-zephyr', 'ssd1306-zephyr'],
       colorFormat: 'rgb565',
       ops: {
@@ -499,6 +504,7 @@ export default defineFrameworkManifest({
   polyfills: {
     emitted: [
       { id: 'cuttlefish_halt', domain: 'standard', notes: 'Mapped to a k_msleep halt loop (exceptions disabled)' },
+      { id: 'wiring_compat', domain: 'standard', notes: 'HIGH/LOW/digitalRead/etc. macros routing Wiring tokens (referenced unconditionally by the UI runtime header) to the __tc_gpio_* helpers' },
       { id: 'string_methods', domain: 'embedded', notes: 'STL-free __tc_* string helpers (const char*, inline ASCII case conv, <cstring> only)' },
       { id: 'static_array', domain: 'embedded', notes: 'STL-free __tc_StaticArray<T,N> wrapper for no-<vector> mutated/struct array literals' },
       { id: 'timer_methods', domain: 'embedded', notes: 'k_timer + k_work pool (system workqueue); callbacks run in thread context' },
@@ -509,7 +515,7 @@ export default defineFrameworkManifest({
 
   toolchain: {
     backend: 'west',
-    operations: { prepare: true, compile: true, upload: true, monitor: true },
+    operations: { prepare: true, compile: true, upload: true, monitor: true, debug: true },
   },
 
   libraryResolution: {

@@ -69,21 +69,9 @@ const transpilerRules = [
     message:
       "[transpiler] The 'in' operator on non-map types is approximated in C++. Use a Map and its .has() method.",
   },
-  {
-    selector: "ArrowFunctionExpression[async=true]",
-    message:
-      "[transpiler] Async functions are approximated with a stub; semantics differ in C++.",
-  },
-  {
-    selector: "FunctionDeclaration[async=true]",
-    message:
-      "[transpiler] Async functions are approximated with a stub; semantics differ in C++.",
-  },
-  {
-    selector: "FunctionExpression[async=true]",
-    message:
-      "[transpiler] Async functions are approximated with a stub; semantics differ in C++.",
-  },
+  // Note: async/await is fully supported (lowered to a cooperative state
+  // machine) — the stale async selectors that used to sit here were false
+  // positives and were removed.
 ];
 
 export default [

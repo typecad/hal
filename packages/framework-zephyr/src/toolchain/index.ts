@@ -206,12 +206,17 @@ export const Toolchain = {
     // for either driver. Thread a non-default profile here only if a future
     // board carries a display node under a different nodelabel.
     const displayProfile = usesDisplay ? DEFAULT_ZEPHYR_DISPLAY_PROFILE : undefined;
+    // Touch controller kind comes from which DT nodelabel the emitted adapter
+    // references (FT6336U on I2C, XPT2046 on the display's SPI bus).
+    const usesTouch = uses('ft6336u') || uses('touch_');
+    const usesXpt = uses('xpt2046');
     const overlay = generateOverlay(chip, {
       usesI2c: uses('i2c_'),
       usesSpi: uses('spi_'),
       usesUart: uses('uart_'),
       usesDisplay,
-      usesTouch: uses('ft6336u') || uses('touch_'),
+      usesTouch: usesTouch || usesXpt,
+      touchController: usesXpt ? 'xpt2046' : 'ft6336u',
     }, displayProfile);
     const overlayDir = join(projectRoot, 'boards');
     mkdirSync(overlayDir, { recursive: true });
@@ -303,23 +308,49 @@ export const Toolchain = {
             backlightPin: typeof dispCfg.backlightPin === 'number' ? dispCfg.backlightPin : undefined,
           }
         : undefined;
-      // Extract touch pin wiring (irq/resetPin/sda/scl) from the config
-      // display.touch section so the DT overlay wires the I2C bus + touch node.
+      // Extract touch pin wiring from the config display.touch section so the
+      // DT overlay wires the bus + touch node. I2C (FT6336U) carries
+      // irq/resetPin/sda/scl; SPI (XPT2046) carries irq/cs + the calibration
+      // range the xptek,xpt2046 binding requires.
       const touchCfg = dispCfg?.touch as Record<string, unknown> | undefined;
-      const touchWiring: TouchWiring | undefined = touchCfg
+      const isXpt = touchCfg?.library === 'XPT2046_Touchscreen';
+      const touchCal = touchCfg?.calibration as
+        { xMin?: unknown; xMax?: unknown; yMin?: unknown; yMax?: unknown } | undefined;
+      const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
+      let touchWiring: TouchWiring | undefined = touchCfg
         ? {
-            irq: typeof touchCfg.irq === 'number' ? touchCfg.irq : undefined,
-            resetPin: typeof touchCfg.resetPin === 'number' ? touchCfg.resetPin : undefined,
-            sda: typeof touchCfg.sda === 'number' ? touchCfg.sda : undefined,
-            scl: typeof touchCfg.scl === 'number' ? touchCfg.scl : undefined,
+            controller: isXpt ? 'xpt2046' : 'ft6336u',
+            irq: num(touchCfg.irq),
+            resetPin: num(touchCfg.resetPin),
+            sda: num(touchCfg.sda),
+            scl: num(touchCfg.scl),
+            cs: num(touchCfg.cs),
+            calibration: touchCal
+              ? {
+                  xMin: num(touchCal.xMin) ?? 0,
+                  xMax: num(touchCal.xMax) ?? 4095,
+                  yMin: num(touchCal.yMin) ?? 0,
+                  yMax: num(touchCal.yMax) ?? 4095,
+                }
+              : undefined,
+            minPressure: num(touchCfg.minPressure),
           }
         : undefined;
+      // Touch controller kind for Kconfig (bus driver selection) and the DT
+      // node shape: from the config when available, else from the DT nodelabel
+      // the emitted adapter references. Forced onto touchWiring so a source
+      // scan match without a config section still emits the right node.
+      const usesXpt = isXpt || uses('xpt2046');
+      if (usesXpt) {
+        touchWiring = { controller: 'xpt2046', ...(touchWiring ?? {}) };
+      }
       const overlay = generateOverlay(chip, {
         usesI2c: uses('i2c_'),
         usesSpi: uses('spi_'),
         usesUart: uses('uart_'),
         usesDisplay,
-        usesTouch: uses('ft6336u') || uses('touch_'),
+        usesTouch: uses('ft6336u') || uses('touch_') || usesXpt,
+        touchController: usesXpt ? 'xpt2046' : 'ft6336u',
         psram: o.psram,
       }, displayProfile, wiring, touchWiring);
       const overlayDir = join(projectRoot, 'boards');

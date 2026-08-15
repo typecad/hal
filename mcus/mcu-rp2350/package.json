@@ -1,6 +1,6 @@
 {
   "name": "@typecad/mcu-rp2350",
-  "version": "1.0.0-alpha.11",
+  "version": "1.0.0-alpha.12",
   "description": "TypeCAD MCU definition for RP2350 — datasheet pins, peripheral capabilities, and HAL instances",
   "type": "module",
   "main": "./dist/index.js",
@@ -12,18 +12,47 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "src"
   ],
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.11",
-    "@typecad/hal": "1.0.0-alpha.11"
+    "@typecad/cuttlefish": "1.0.0-alpha.12",
+    "@typecad/hal": "1.0.0-alpha.12"
   },
   "license": "MIT",
   "publishConfig": {
     "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justind000/typecode.git",
+    "directory": "mcus/mcu-rp2350"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/mcus/mcu-rp2350",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "arduino",
+    "cpp",
+    "cuttlefish",
+    "embedded",
+    "firmware",
+    "mcu",
+    "microcontroller",
+    "peripherals",
+    "pins",
+    "raspberry-pi",
+    "rp2350",
+    "silicon",
+    "typecad",
+    "typescript"
+  ],
+  "engines": {
+    "node": ">=18"
   }
 }

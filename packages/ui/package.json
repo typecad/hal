@@ -1,10 +1,13 @@
 {
   "name": "@typecad/ui",
-  "version": "1.0.0-alpha.11",
+  "version": "1.0.0-alpha.12",
   "description": "TypeCAD UI authoring library — HTML/CSS-driven graphics for microcontrollers",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "typecad-ui": "dist/cli.js"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -25,6 +28,10 @@
     "./preview/*": {
       "types": "./dist/preview/*.d.ts",
       "default": "./dist/preview/*.js"
+    },
+    "./wizard": {
+      "types": "./dist/wizard/index.d.ts",
+      "default": "./dist/wizard/index.js"
     }
   },
   "sideEffects": false,
@@ -32,13 +39,13 @@
     "dist",
     "src"
   ],
-  "peerDependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.11"
-  },
   "dependencies": {
+    "@typecad/cuttlefish": "1.0.0-alpha.12",
+    "chalk": "^4.1.2",
     "css-tree": "^3.2.1",
     "linkedom": "^0.18.12",
     "opentype.js": "^2.0.0",
+    "typescript": "^5.7.3",
     "yoga-layout": "^3.2.1"
   },
   "scripts": {

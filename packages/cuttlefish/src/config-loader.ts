@@ -15,6 +15,14 @@ import { safeValidateConfig } from "./config-schema.js";
 /** The filename we search for when walking up directories. */
 const CONFIG_FILENAME = "cuttlefish.config.ts";
 
+/** Top-level keys recognized by CuttlefishConfigSchema — used to warn about
+ *  misspelled keys that the AST extraction would otherwise drop silently. */
+const KNOWN_TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
+  "entry", "target", "mcu", "board", "contract", "framework", "psram",
+  "output", "frameworkData", "include", "exclude", "test", "toolchain",
+  "console", "native", "zephyr", "display",
+]);
+
 /**
  * Resolved configuration values extracted from `cuttlefish.config.ts`.
  * Only the fields relevant to the transpiler are included — complex
@@ -87,12 +95,30 @@ export function findConfigFile(startDir: string): string | undefined {
 // AST helpers — extract scalar values from a TS object literal
 // ---------------------------------------------------------------------------
 
+/**
+ * Warn about config values the AST-only parser cannot evaluate. The loader
+ * deliberately never runs user code (no ts-node / dynamic import), so only
+ * inline literals survive extraction; without these warnings a value like
+ * `libraries: sdlLibraries` (an identifier) used to vanish silently and
+ * surface later as an opaque link error.
+ */
+export type ConfigDropWarning = (message: string) => void;
+
 function unwrapTypeCast(node: ts.Expression): ts.Expression {
   let curr = node;
-  while (ts.isAsExpression(curr) || ts.isTypeAssertionExpression(curr)) {
-    curr = curr.expression;
+  for (;;) {
+    if (ts.isAsExpression(curr) || ts.isTypeAssertionExpression(curr) || ts.isParenthesizedExpression(curr)) {
+      curr = curr.expression;
+      continue;
+    }
+    // satisfies is TS ≥4.9 — guard for older typings, then cast for .expression.
+    const isSatisfies = (ts as any).isSatisfiesExpression as ((n: ts.Node) => boolean) | undefined;
+    if (typeof isSatisfies === "function" && isSatisfies(curr)) {
+      curr = (curr as ts.SatisfiesExpression).expression;
+      continue;
+    }
+    return curr;
   }
-  return curr;
 }
 
 function getStringLiteral(node: ts.Expression): string | undefined {
@@ -111,22 +137,57 @@ function getScalarValue(node: ts.Expression): string | number | boolean | undefi
   if (ts.isNumericLiteral(unwrapped)) {
     return Number(unwrapped.text);
   }
+  // Negative (and explicitly positive) number literals parse as
+  // PrefixUnaryExpression — `reset: -1` used to be silently dropped.
+  if (ts.isPrefixUnaryExpression(unwrapped)
+    && (unwrapped.operator === ts.SyntaxKind.MinusToken || unwrapped.operator === ts.SyntaxKind.PlusToken)
+    && ts.isNumericLiteral(unwrapped.operand)) {
+    const magnitude = Number(unwrapped.operand.text);
+    return unwrapped.operator === ts.SyntaxKind.MinusToken ? -magnitude : magnitude;
+  }
   if (unwrapped.kind === ts.SyntaxKind.TrueKeyword) return true;
   if (unwrapped.kind === ts.SyntaxKind.FalseKeyword) return false;
   return undefined;
+}
+
+/** True for `null` / `undefined` literals — inline literals, but not values
+ *  the config shape supports; callers warn with an accurate message instead
+ *  of the "variables/ternaries" text. */
+function isNullishLiteral(node: ts.Expression): boolean {
+  const kind = unwrapTypeCast(node).kind;
+  return kind === ts.SyntaxKind.NullKeyword || kind === ts.SyntaxKind.UndefinedKeyword;
 }
 
 /**
  * Walk an object literal and collect all scalar (string / number / boolean)
  * property values into a flat dot-path map — exactly like board-resolver.ts.
  */
+/** Property key text for Identifier/StringLiteral names, else undefined
+ *  (SpreadAssignment has no name; computed keys are not static text). */
+function propertyKeyName(prop: ts.ObjectLiteralElement): string | undefined {
+  const name = (prop as any).name as ts.PropertyName | undefined;
+  if (!name) return undefined;
+  return ts.isIdentifier(name) || ts.isStringLiteral(name) ? name.text : undefined;
+}
+
+function describePropertyKey(prop: ts.ObjectLiteralElement): string {
+  return propertyKeyName(prop) ?? "<unnamed>";
+}
+
 function walkObjectLiteral(
   obj: ts.ObjectLiteralExpression,
   prefix: string,
   out: Map<string, string | number | boolean>,
+  warn?: ConfigDropWarning,
 ): void {
   for (const prop of obj.properties) {
-    if (!ts.isPropertyAssignment(prop)) continue;
+    if (!ts.isPropertyAssignment(prop)) {
+      if (warn) {
+        const label = prefix ? `${prefix}.${describePropertyKey(prop)}` : describePropertyKey(prop);
+        warn(`'${label}' uses ${ts.SyntaxKind[prop.kind]} syntax (shorthand/spread/method) — only property assignments are supported, ignored.`);
+      }
+      continue;
+    }
     const key = ts.isIdentifier(prop.name)
       ? prop.name.text
       : ts.isStringLiteral(prop.name)
@@ -137,11 +198,22 @@ function walkObjectLiteral(
     const fullKey = prefix ? `${prefix}.${key}` : key;
 
     if (ts.isObjectLiteralExpression(prop.initializer)) {
-      walkObjectLiteral(prop.initializer, fullKey, out);
+      walkObjectLiteral(prop.initializer, fullKey, out, warn);
+    } else if (ts.isArrayLiteralExpression(prop.initializer)) {
+      // Arrays are extracted by the dedicated array extractors
+      // (output.extraFlags, zephyr.cmakeArgs, native.libraries, …), not the
+      // flat scalar walk — skip here without warning.
     } else {
       const value = getScalarValue(prop.initializer);
       if (value !== undefined) {
         out.set(fullKey, value);
+      } else if (warn) {
+        // Message text must stay byte-identical to extractObjectAsRecord's —
+        // sections walked by both (native, display) rely on the warn-site
+        // dedup to print one warning per dropped value, not two.
+        warn(isNullishLiteral(prop.initializer)
+          ? `'${fullKey}' is a null/undefined literal — not a supported config value, ignored.`
+          : `'${fullKey}' is not an inline literal (variables, ternaries, and template substitutions are not evaluated) — ignored.`);
       }
     }
   }
@@ -187,22 +259,23 @@ function navigateToObjectProperty(
 function extractStringArray(
   obj: ts.ObjectLiteralExpression,
   path: string[],
+  warn?: ConfigDropWarning,
 ): string[] | undefined {
+  const label = path.join(".");
   const leaf = navigateToObjectProperty(obj, path);
-  if (!leaf || !ts.isArrayLiteralExpression(leaf)) return undefined;
-  const result: string[] = [];
-  for (const elem of leaf.elements) {
-    const s = getStringLiteral(elem);
-    if (s === undefined) return undefined;
-    result.push(s);
+  if (!leaf || !ts.isArrayLiteralExpression(leaf)) {
+    if (leaf && warn) warn(`'${label}' is not an inline array literal — ignored.`);
+    return undefined;
   }
-  return result;
+  return extractStringArrayFromArrayLiteral(leaf, warn, label);
 }
 
 function extractStringRecord(
   obj: ts.ObjectLiteralExpression,
   path: string[],
+  warn?: ConfigDropWarning,
 ): Record<string, string> | undefined {
+  const label = path.join(".");
   const leaf = navigateToObjectProperty(obj, path);
   if (!leaf || !ts.isObjectLiteralExpression(leaf)) return undefined;
   const result: Record<string, string> = {};
@@ -215,7 +288,10 @@ function extractStringRecord(
         : undefined;
     if (!key) continue;
     const value = getStringLiteral(prop.initializer);
-    if (value === undefined) return undefined;
+    if (value === undefined) {
+      if (warn) warn(`'${label}.${key}' is not a string literal — the whole record is ignored.`);
+      return undefined;
+    }
     result[key] = value;
   }
   if (Object.keys(result).length === 0) return undefined;
@@ -226,35 +302,62 @@ function extractStringRecord(
  * Recursively extract an object literal as Record<string, unknown>.
  * Handles strings, numbers, booleans, string arrays, and nested objects.
  */
-function extractObjectAsRecord(obj: ts.ObjectLiteralExpression): Record<string, unknown> {
+function extractObjectAsRecord(
+  obj: ts.ObjectLiteralExpression,
+  warn?: ConfigDropWarning,
+  prefix = "",
+): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   for (const prop of obj.properties) {
-    if (!ts.isPropertyAssignment(prop)) continue;
+    if (!ts.isPropertyAssignment(prop)) {
+      if (warn) {
+        // Byte-identical to walkObjectLiteral's message for the same property
+        // so the warn-site dedup collapses the double walk into one warning.
+        const label = prefix ? `${prefix}.${describePropertyKey(prop)}` : describePropertyKey(prop);
+        warn(`'${label}' uses ${ts.SyntaxKind[prop.kind]} syntax (shorthand/spread/method) — only property assignments are supported, ignored.`);
+      }
+      continue;
+    }
     const key = ts.isIdentifier(prop.name)
       ? prop.name.text
       : ts.isStringLiteral(prop.name)
         ? prop.name.text
         : undefined;
     if (!key) continue;
+    const fullKey = prefix ? `${prefix}.${key}` : key;
     const init = prop.initializer;
     if (ts.isObjectLiteralExpression(init)) {
-      result[key] = extractObjectAsRecord(init);
+      result[key] = extractObjectAsRecord(init, warn, fullKey);
     } else if (ts.isArrayLiteralExpression(init)) {
-      const arr = extractStringArrayFromArrayLiteral(init);
+      const arr = extractStringArrayFromArrayLiteral(init, warn, fullKey);
       if (arr) result[key] = arr;
     } else {
       const scalar = getScalarValue(init);
-      if (scalar !== undefined) result[key] = scalar;
+      if (scalar !== undefined) {
+        result[key] = scalar;
+      } else if (warn) {
+        // Keep byte-identical to walkObjectLiteral's message (see above).
+        warn(isNullishLiteral(init)
+          ? `'${fullKey}' is a null/undefined literal — not a supported config value, ignored.`
+          : `'${fullKey}' is not an inline literal (variables, ternaries, and template substitutions are not evaluated) — ignored.`);
+      }
     }
   }
   return result;
 }
 
-function extractStringArrayFromArrayLiteral(node: ts.ArrayLiteralExpression): string[] | undefined {
+function extractStringArrayFromArrayLiteral(
+  node: ts.ArrayLiteralExpression,
+  warn?: ConfigDropWarning,
+  label = "array",
+): string[] | undefined {
   const result: string[] = [];
   for (const elem of node.elements) {
     const s = getStringLiteral(elem);
-    if (s === undefined) return undefined;
+    if (s === undefined) {
+      if (warn) warn(`'${label}' has a non-string-literal element — the whole array is ignored.`);
+      return undefined;
+    }
     result.push(s);
   }
   return result;
@@ -266,6 +369,7 @@ function extractStringArrayFromArrayLiteral(node: ts.ArrayLiteralExpression): st
 function extractFrameworkSection(
   obj: ts.ObjectLiteralExpression,
   sectionName: string,
+  warn?: ConfigDropWarning,
 ): Record<string, unknown> | undefined {
   for (const prop of obj.properties) {
     if (!ts.isPropertyAssignment(prop)) continue;
@@ -275,8 +379,11 @@ function extractFrameworkSection(
         ? prop.name.text
         : undefined;
     if (key !== sectionName) continue;
-    if (!ts.isObjectLiteralExpression(prop.initializer)) return undefined;
-    return extractObjectAsRecord(prop.initializer);
+    if (!ts.isObjectLiteralExpression(prop.initializer)) {
+      if (warn) warn(`'${sectionName}' section is not an inline object literal — ignored.`);
+      return undefined;
+    }
+    return extractObjectAsRecord(prop.initializer, warn, sectionName);
   }
   return undefined;
 }
@@ -317,10 +424,13 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
 
     // export default config;  (ExportAssignment with an identifier)
     if (ts.isExportAssignment(stmt) && !stmt.isExportEquals) {
-      if (ts.isIdentifier(stmt.expression)) {
-        defaultExportName = stmt.expression.text;
-      } else if (ts.isObjectLiteralExpression(stmt.expression)) {
-        inlineDefaultObject = stmt.expression;
+      // Unwrap `export default { ... } satisfies CuttlefishConfig` /
+      // `as const` / parenthesized forms down to the underlying expression.
+      const expr = unwrapTypeCast(stmt.expression);
+      if (ts.isIdentifier(expr)) {
+        defaultExportName = expr.text;
+      } else if (ts.isObjectLiteralExpression(expr)) {
+        inlineDefaultObject = expr;
       }
     }
   }
@@ -330,8 +440,14 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
 
   if (!configObject && defaultExportName) {
     const decl = variableDecls.get(defaultExportName);
-    if (decl?.initializer && ts.isObjectLiteralExpression(decl.initializer)) {
-      configObject = decl.initializer;
+    if (decl?.initializer) {
+      // `const config = { ... } satisfies CuttlefishConfig` parses the
+      // initializer as a SatisfiesExpression — unwrap to the object literal
+      // so the whole config isn't silently ignored.
+      const init = unwrapTypeCast(decl.initializer);
+      if (ts.isObjectLiteralExpression(init)) {
+        configObject = init;
+      }
     }
   }
 
@@ -339,9 +455,32 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
     return undefined;
   }
 
+  // Collect drop warnings (values the AST-only parser can't evaluate) and
+  // print them once after parsing — silent drops here used to surface much
+  // later as missing -l flags / reverted defaults with no diagnostic.
+  const dropWarnings: string[] = [];
+  const seenWarnings = new Set<string>();
+  const warn: ConfigDropWarning = (message) => {
+    const line = `${path.basename(configPath)}: ${message}`;
+    if (!seenWarnings.has(line)) {
+      seenWarnings.add(line);
+      dropWarnings.push(line);
+    }
+  };
+
+  // Typos in top-level keys (e.g. `output.optmize`) were dropped before
+  // schema validation, so the strict schema never saw them — check the raw
+  // source keys against the known set directly.
+  for (const prop of configObject.properties) {
+    const key = propertyKeyName(prop);
+    if (key && !KNOWN_TOP_LEVEL_KEYS.has(key)) {
+      warn(`unknown top-level key '${key}' — misspelled or unsupported.`);
+    }
+  }
+
   // Walk the object literal into a flat map.
   const flat = new Map<string, string | number | boolean>();
-  walkObjectLiteral(configObject, "", flat);
+  walkObjectLiteral(configObject, "", flat, warn);
 
   // Map flat keys to the resolved config shape.
   const resolved: ResolvedCuttlefishConfig = { configPath };
@@ -369,7 +508,11 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   if (typeof framework === "string") resolved.framework = framework;
 
   const psram = flat.get("psram");
-  if (psram === "opi" || psram === "quad") resolved.psram = psram;
+  if (typeof psram === "string") {
+    // Assign any string (including "") so the schema's PsramType enum rejects
+    // typos ('octal') with a validation error instead of silently dropping it.
+    resolved.psram = psram as "opi" | "quad";
+  }
 
   const outputFramework = flat.get("output.framework");
   if (typeof outputFramework === "string") resolved.outputFramework = outputFramework;
@@ -391,20 +534,20 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   }
 
   // Extract structured fields that the flat walker cannot handle.
-  const outputExtraFlags = extractStringArray(configObject, ["output", "extraFlags"]);
+  const outputExtraFlags = extractStringArray(configObject, ["output", "extraFlags"], warn);
   if (outputExtraFlags) resolved.outputExtraFlags = outputExtraFlags;
 
-  const outputDefines = extractStringRecord(configObject, ["output", "defines"]);
+  const outputDefines = extractStringRecord(configObject, ["output", "defines"], warn);
   if (outputDefines) resolved.outputDefines = outputDefines;
 
-  const nativeSection = extractFrameworkSection(configObject, "native");
+  const nativeSection = extractFrameworkSection(configObject, "native", warn);
   if (nativeSection) {
     resolved.frameworkConfig = nativeSection;
   }
 
   // Parse zephyr-specific config section.
-  const zephyrKconfig = extractStringRecord(configObject, ["zephyr", "kconfig"]);
-  const zephyrCmakeArgs = extractStringArray(configObject, ["zephyr", "cmakeArgs"]);
+  const zephyrKconfig = extractStringRecord(configObject, ["zephyr", "kconfig"], warn);
+  const zephyrCmakeArgs = extractStringArray(configObject, ["zephyr", "cmakeArgs"], warn);
   const zephyrRunner = flat.get("zephyr.runner");
   if (zephyrKconfig || zephyrCmakeArgs || typeof zephyrRunner === "string") {
     resolved.zephyrConfig = {
@@ -415,8 +558,11 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   }
 
   // Parse display profile config (nested object with profile name, wiring, touch)
-  const displaySection = extractFrameworkSection(configObject, "display");
-  if (displaySection) (resolved as any).display = displaySection;
+  const displaySection = extractFrameworkSection(configObject, "display", warn);
+  // extractObjectAsRecord walks literals into a loose record; the shape is
+  // checked downstream (schema passthrough + display-profile resolution), so
+  // bridge it to the declared DisplayConfig type at this single boundary.
+  if (displaySection) resolved.display = displaySection as ResolvedCuttlefishConfig["display"];
 
   // Validate the parsed config against the Zod schema.
   // Reconstruct a structured object from the flat-map extraction for validation.
@@ -427,7 +573,9 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   if (resolved.contract) structuredForValidation.contract = resolved.contract;
   if (resolved.entry) structuredForValidation.entry = resolved.entry;
   if (resolved.framework) structuredForValidation.framework = resolved.framework;
-  if (resolved.psram) structuredForValidation.psram = resolved.psram;
+  // `!== undefined` (not truthiness) so an empty-string psram reaches the
+  // PsramType enum and fails validation instead of vanishing.
+  if (resolved.psram !== undefined) structuredForValidation.psram = resolved.psram;
   if (resolved.outputFramework || resolved.outputOptimize || resolved.outputOutDir || resolved.outputExtraFlags || resolved.outputDefines) {
     structuredForValidation.output = {
       ...(resolved.outputFramework ? { framework: resolved.outputFramework } : {}),
@@ -439,6 +587,8 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   }
   if (resolved.console) structuredForValidation.console = resolved.console;
   if (resolved.zephyrConfig) structuredForValidation.zephyr = resolved.zephyrConfig;
+  if (resolved.frameworkConfig) structuredForValidation.native = resolved.frameworkConfig;
+  if (resolved.display) structuredForValidation.display = resolved.display;
   if (resolved.buildTarget) {
     structuredForValidation.frameworkData = { buildTarget: resolved.buildTarget };
   }
@@ -447,6 +597,13 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   if (!validation.success) {
     const errorMsg = validation.errors.map(e => `  - ${e}`).join("\n");
     throw new Error(`Configuration validation failed for ${configPath}:\n${errorMsg}`);
+  }
+
+  if (dropWarnings.length > 0) {
+    console.warn(`⚠ ${configPath}: some values were ignored (the parser only evaluates inline literals):`);
+    for (const w of dropWarnings) {
+      console.warn(`  ${w}`);
+    }
   }
 
   return resolved;
@@ -508,6 +665,23 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
     "  type Shared<T = unknown> = T;",
     "  type Mutable<T = unknown> = T;",
     "",
+    "  // SafeVariable: SEU-resistant storage. The transpiler lowers SafeVariable<number>",
+    "  // to a C++ template with inverted-redundancy storage. Declared as an interface",
+    "  // (not a type alias) so the TS type checker recognizes method calls.",
+    "  // Arithmetic T only (integral or floating-point); string is rejected by a",
+    "  // static_assert in the emitted C++ template.",
+    "  interface SafeVariable<T = number> { set(value: T): void; get(): T; valid(): boolean; hasFault(): boolean; }",
+    "  // SafeInt: chainable bounds-checked signed-integer arithmetic. The transpiler",
+    "  // lowers SafeInt<number> to SafeInt<int32_t> (a C++ template with sticky-fault",
+    "  // overflow detection). Signed integer T only — unsigned/bool/float/string are",
+    "  // rejected by a static_assert in the emitted C++ template.",
+    "  interface SafeInt<T = number> {",
+    "    add(delta: T): SafeInt<T>; sub(delta: T): SafeInt<T>;",
+    "    mul(factor: T): SafeInt<T>; divide(d: T): SafeInt<T>; mod(d: T): SafeInt<T>;",
+    "    negate(): SafeInt<T>; absValue(): SafeInt<T>;",
+    "    get(): T; hasFault(): boolean; valid(): boolean; reset(newValue: T): void;",
+    "  }",
+    "",
     "  // C-style explicit number types recognized by the transpiler",
     "  type uint8_t = number;",
     "  type int8_t = number;",
@@ -548,9 +722,9 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
     "",
     "declare module '@typecad/board' {",
     `  ${boardExport}`,
-    "  export type Owned<T = any> = T;",
-    "  export type Shared<T = any> = T;",
-    "  export type Mutable<T = any> = T;",
+    "  export type Owned<T = unknown> = T;",
+    "  export type Shared<T = unknown> = T;",
+    "  export type Mutable<T = unknown> = T;",
     "}",
     "",
     "export {};",

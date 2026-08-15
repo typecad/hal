@@ -218,7 +218,7 @@ export class GenericStrategy implements PlatformStrategy {
 
   generateNativePolyfills(program: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
     const helpers: RuntimePolyfillIR[] = [];
-    const asyncRuntime = buildAsyncRuntimePolyfill(program, ctx, "generic", this.asyncQueueCapacity());
+    const asyncRuntime = buildAsyncRuntimePolyfill(program, ctx, "generic", this.asyncQueueCapacity(), this);
     if (asyncRuntime) helpers.push(asyncRuntime);
     return helpers;
   }

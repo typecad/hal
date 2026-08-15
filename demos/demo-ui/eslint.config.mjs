@@ -140,28 +140,10 @@ const transpilerRules = [
     message:
       "[transpiler] .then() on a Promise is not supported (no promise runtime). Use synchronous return values or callbacks.",
   },
-  // §2.6 🟡 — async/await/generators are parse-compatible but cannot produce
+  // §2.6 🟡 — generators are parse-compatible but cannot produce
   // correct firmware behavior; treat as unsupported to avoid silent surprises.
-  {
-    selector: "FunctionDeclaration[async=true]",
-    message:
-      "[transpiler] async functions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous function.",
-  },
-  {
-    selector: "FunctionExpression[async=true]",
-    message:
-      "[transpiler] async function expressions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous function.",
-  },
-  {
-    selector: "ArrowFunctionExpression[async=true]",
-    message:
-      "[transpiler] async arrow functions are recognized for parse-compatibility but cannot produce correct embedded behavior (no event loop). Use a synchronous arrow function.",
-  },
-  {
-    selector: "AwaitExpression",
-    message:
-      "[transpiler] await is stripped to an inline expression — semantics are approximate and there is no event loop on bare metal. Avoid in firmware.",
-  },
+  // (async/await is fully supported — lowered to a cooperative state machine;
+  // the stale async selectors that used to sit here were false positives.)
   {
     selector: "FunctionDeclaration[generator=true]",
     message:
@@ -269,12 +251,18 @@ const transpilerRules = [
   // .bind/.call/.apply — rebind `this` at call time. The transpiler models
   // `this` as a fixed C++ this-> pointer (§4.2); rebinding has no lowering.
   // Exception: ui.bind is a recognized UI authoring call (intercepted by the
-  // transpiler's call-lowering), not Function.prototype.bind. The :not() guard
-  // exempts it without a function filter, which ESLint cannot serialize across
-  // the worker boundary (the function form aborts config loading).
+  // transpiler's call-lowering), not Function.prototype.bind — only `bind` is
+  // exempted (ui.call/ui.apply are not UI APIs; the build prescan flags them,
+  // so the editor does too).
   {
     selector:
-      "CallExpression > MemberExpression.callee[property.name=/^(bind|call|apply)$/]:not([object.name='ui'])",
+      "CallExpression > MemberExpression.callee[property.name='bind']:not([object.name='ui'])",
+    message:
+      "[transpiler] .bind/.call/.apply rebind `this` at call time, which has no C++ lowering (this is a fixed pointer). Call the function/method directly.",
+  },
+  {
+    selector:
+      "CallExpression > MemberExpression.callee[property.name=/^(call|apply)$/]",
     message:
       "[transpiler] .bind/.call/.apply rebind `this` at call time, which has no C++ lowering (this is a fixed pointer). Call the function/method directly.",
   },

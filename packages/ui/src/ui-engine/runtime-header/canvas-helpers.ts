@@ -29,9 +29,9 @@ static inline CuttlefishCanvas16* ui_create_canvas_best(int16_t w, int16_t h) {
       if (!psram_logged) {
         psram_logged = 1;
 #if defined(ESP32) && defined(ARDUINO)
-        Serial.printf("[psram] canvas %dx%d allocated in PSRAM (free=%u)\n", w, h, ESP.getFreePsram());
+        Serial.printf("[psram] canvas %dx%d allocated in PSRAM (free=%u)\\n", w, h, ESP.getFreePsram());
 #else
-        printf("[psram] canvas %dx%d allocated in PSRAM\n", w, h);
+        printf("[psram] canvas %dx%d allocated in PSRAM\\n", w, h);
 #endif
       }
       return c;

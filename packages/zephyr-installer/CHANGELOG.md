@@ -1,5 +1,117 @@
 # @typecad/zephyr-installer
 
+## 1.0.0-alpha.12
+
+### Minor Changes
+
+- 7e8cccd: ## `--delete`: uninstall everything after explicit confirmation
+
+  ```sh
+  npx @typecad/zephyr-installer --delete    # shows what will be removed, asks 'yes'
+  ```
+
+  Removes everything the installer created:
+
+  - the conda env (`$MAMBA_ROOT_PREFIX/envs/<name>`)
+  - the Zephyr SDK (`$MAMBA_ROOT_PREFIX/zephyr-sdk/`)
+  - the west workspace (`~/zephyrproject`)
+  - micromamba itself (`$MAMBA_ROOT_PREFIX`) — **only when no other conda envs
+    exist**; otherwise the root is kept and the other envs are named in the summary
+
+  Safety model (destructive ops default-deny):
+
+  - Shows the exact paths **with on-disk sizes** before anything is touched.
+  - Requires typing `yes` exactly (Enter/cancel aborts with nothing deleted).
+  - Non-interactive stdin without `--yes` **refuses** (unlike install/modify,
+    which proceed) — `--delete --yes` is the explicit scripting form.
+  - The shell-profile hook from `micromamba shell init` is deliberately NOT
+    edited automatically; the summary names the file to trim by hand.
+  - Per-item results report `deleted`/`skipped` (locked files skip with the OS
+    error instead of aborting the rest).
+
+- 4824892: ## Selective platform installation + `--modify` reconfiguration
+
+  A full install downloads the 1.5 GB SDK bundle (all 25+ toolchains). Most users
+  need one or two platforms. The installer now downloads the ~10 MB minimal bundle
+  (cmake config + sdk_version) plus only the selected toolchains:
+
+  ```sh
+  npx @typecad/zephyr-installer              # interactive platform checklist
+  npx @typecad/zephyr-installer --modify     # add/remove platforms later
+  npx @typecad/zephyr-installer --platforms arm,esp32   # non-interactive
+  npx @typecad/zephyr-installer --platforms all          # full bundle (previous behavior)
+  ```
+
+  ### Platform groups
+
+  | Group        | Toolchain(s)                                | Covers                   | ~Download |
+  | ------------ | ------------------------------------------- | ------------------------ | --------- |
+  | ARM Cortex-M | `arm-zephyr-eabi`                           | nRF, RP2040, STM32, SAMD | ~150 MB   |
+  | ESP32        | `xtensa-espressif_esp32{,s2,s3}_zephyr-elf` | ESP32/S2/S3              | ~300 MB   |
+  | RISC-V       | `riscv64-zephyr-elf`                        | ESP32-C3/C6              | ~120 MB   |
+  | x86          | `x86_64-zephyr-elf`                         | native_sim               | ~100 MB   |
+  | aarch64      | `aarch64-zephyr-elf`                        | ARM64 boards             | ~100 MB   |
+  | All          | (full bundle)                               | everything               | ~1.5 GB   |
+
+  ### Interactive checklist
+
+  ```
+  Select platform toolchains to install:
+
+    [1] ARM Cortex-M (nRF, RP2040, STM32, SAMD, ...)      ~150 MB  installed
+    [2] ESP32 / ESP32-S2 / ESP32-S3 (Xtensa)              ~300 MB
+    [3] RISC-V (ESP32-C3/C6, generic RISC-V)              ~120 MB
+    [4] x86 / native_sim                                  ~100 MB
+    [a] All (full bundle, ~1.5 GB download / ~11 GB extracted)
+
+  Enter selection (e.g. '1 2', 'arm,esp32', or 'all'):
+  ```
+
+  ### `--modify` (reconfigure an existing install)
+
+  Re-runs the checklist with installed toolchains marked, then applies the delta:
+  new selections download (idempotent per-toolchain), deselections delete their
+  toolchain dirs. Skips the env/workspace steps — SDK platforms only. The
+  selection persists in `$SDK_INSTALL_DIR/.typecad-platforms`.
+
+  ### Line-ending safety
+
+  `.gitattributes` now forces `*.sh`/`*.mjs`/`*.env`/`environment.yml` to LF-only
+  (`text eol=lf`), preventing CRLF conversion on Windows checkouts that would
+  break bash on Linux with `$'\r': command not found`.
+
+### Patch Changes
+
+- ## Upgrade to Zephyr SDK 1.0.1 (Zephyr 4.4-compatible)
+
+  Zephyr 4.4 requires the SDK 1.0.x line, which renamed its artifacts — installing
+  1.0.x with the old names (or 0.17.4 against Zephyr 4.4) produced build errors.
+
+  - `versions.env`: `ZEPHYR_SDK_VERSION=1.0.1` + `ZEPHYR_SDK_BUNDLE_SUFFIX=_gnu`
+    (1.0.x dropped "full" bundles; `_gnu` = all GNU toolchains + host tools).
+  - **Full-bundle names** append the suffix everywhere (`install.sh`,
+    `install.ps1`, `install.mjs` summary):
+    `zephyr-sdk-1.0.1_<plat>_gnu.<ext>`.
+  - **Selective-install toolchain tarballs use the flavor infix** — 1.0.x names
+    them `toolchain_gnu_<plat>_<target>.<ext>` (0.17.x had no infix). Without
+    this, every `--platforms`/`--modify` download would 404. The minimal bundle
+    name is unchanged (`_minimal`, no flavor).
+  - Fresh SHA256s from the release's official `sha256.sum` for linux-x86_64,
+    linux-aarch64, macos-aarch64, and windows-x86_64 — verification is now
+    enforced on all four.
+  - **macOS Intel (`macos-x86_64`) has no 1.0.x build** — `SHA256_macos_x86_64`
+    is the explicit `NONE` sentinel and `fetch-sdk` fails fast with guidance
+    (use an ARM Mac, or `--sdk-version 0.17.4` for the Zephyr 4.3.x line).
+  - ESP32 note: the xtensa-espressif toolchains are **individual 1.0.x assets**
+    (`toolchain_gnu_<plat>_xtensa-espressif_esp32s3_zephyr-elf.tar.xz`, verified
+    in `sha256.sum`) so `--platforms esp32` works; the `_gnu` bundle itself may
+    not preinstall them, in which case Zephyr's espressif HAL fetches them during
+    the first ESP32 build.
+
+  All artifact URLs HEAD-checked against the v1.0.1 release (bundle, minimal,
+  and toolchain tarballs → 200). Tests updated: new hashes pinned, `_gnu` bundle
+  name asserted across entry points, toolchain-infix wiring guarded.
+
 ## 1.0.0-alpha.11
 
 ### Patch Changes

@@ -16,6 +16,7 @@
 // ---------------------------------------------------------------------------
 
 import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
+
 const config: CuttlefishConfig = {
   entry: './src/showcase.ui',
   framework: '@typecad/framework-native',
@@ -24,15 +25,17 @@ const config: CuttlefishConfig = {
     outDir: './out',
   },
   // Native compile options — passed to g++/clang++ by NativeToolchain.
-  // Link flags: Windows/MSYS2 ucrt64 needs -lmingw32 -lSDL2main -lSDL2 (the
-  // SDL_MAIN_HANDLED define + SDL_SetMainReady in display_init handle the
-  // entry-point glue). Linux/macOS can use just ['SDL2'].
+  // SDL2 link libraries (-lmingw32 -lSDL2main -lSDL2 on Windows/MSYS2,
+  // -lSDL2 elsewhere) are auto-provided by the toolchain when the `sdl`
+  // display driver is active (see framework-native native-compile.ts), so the
+  // config stays portable across Windows/Linux/macOS without a
+  // platform-specific libraries array.
   native: {
     cxxStandard: 'c++17',
-    libraries: ['mingw32', 'SDL2main', 'SDL2'],
     // Link dynamically against the SDL2 DLL (installed via MSYS2 ucrt64) to
     // avoid pulling in the full set of Windows system libs that static SDL2
-    // requires (-lole32 -lwinmm -lgdi32 …).
+    // requires (-lole32 -lwinmm -lgdi32 …). staticLink defaults to false on
+    // Linux/macOS, so this is a Windows-only consideration.
     staticLink: false,
     // The UI runtime emits some -Warray-bounds/-Wunused warnings that GCC -O2
     // promotes; suppress for the demo (the manual g++ build confirms the code

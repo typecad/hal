@@ -130,8 +130,10 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     '',
     'project(zephyr_app)',
     '',
-    '# Collect cuttlefish-emitted sources.',
-    'file(GLOB app_sources src/*.cpp src/*.c)',
+    '# Collect cuttlefish-emitted sources. CONFIGURE_DEPENDS makes CMake re-',
+    '# check the glob when the source set changes (e.g. the transpiler removes',
+    '# a stale entry), instead of linking a file list from the last configure.',
+    'file(GLOB app_sources CONFIGURE_DEPENDS src/*.cpp src/*.c)',
     '',
     'target_sources(app PRIVATE ${app_sources})',
     // When PSRAM is configured, define BOARD_HAS_PSRAM so the UI runtime's

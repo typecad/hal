@@ -13,6 +13,26 @@ npm install --save-dev @typecad/cuttlefish
 
 `@typecad/ui` is compile-time only — none of its code is shipped to the device. The transpiler intercepts `ui.mount` / `ui.signal` / `ui.bind` / ... calls and lowers them to device variables and binding-table entries, so the package can be safely kept in `dependencies`.
 
+### Integration wizard
+
+Integrating a display is the one step with real hardware decisions — which panel, which bus, which pins, whether there's touch and how it connects. Run the wizard from your project directory:
+
+```bash
+npx @typecad/ui --config
+```
+
+It asks:
+
+1. **Display** — a built-in profile (ILI9341 320×240 SPI TFT, ST7796S 320×480 SPI TFT, SSD1309 128×64 I2C OLED), the desktop SDL simulator, or a fully custom driver.
+2. **Bus wiring** — SPI pins (CS/DC/RST/backlight, frequency in MHz, optional SCK/MOSI/MISO override) or the I2C address. Defaults match the framework profiles and the repo's demo wiring (ESP32 VSPI), and any existing `display` section in your config pre-fills the answers.
+3. **Orientation & rendering** — rotation and antialiasing, with advanced color-order/inversion options behind a confirm.
+4. **Touch** — none, resistive (XPT2046, STMPE610, 4-wire analog), capacitive (FT6336U, GT911, CST816S), or a custom adapter file — each with its pins, address, and a sensible default calibration.
+5. **Theme** — optional `themeCss` / `themeClass`.
+
+After a summary preview and confirmation, the wizard splices only the `display` section into `cuttlefish.config.ts` — every other section (and its comments) is preserved byte-for-byte, unmanaged display keys like `scroll` are carried over, and the result is syntax-checked before anything is written. If your config's `entry` points at a `.ui` file that doesn't exist yet, it offers to generate a starter screen, and it prints the exact `arduino-cli lib install ...`, preview, compile, and flash commands as next steps.
+
+If there is no `cuttlefish.config.ts` yet, create the project first with `npx @typecad/cuttlefish init`, then re-run the wizard.
+
 ## Project layout
 
 A TypeCAD UI project has one **entry** — the file you point `cuttlefish.config.ts` at. The entry can be either a `.ui` single-file component or a plain `.ts` module. Both intermix freely with regular cuttlefish TypeScript (HAL pin reads, `setInterval`, `console.log`, your own `.ts` modules) — the `<script>` block of a `.ui` file and a standalone `.ts` file are lowered by the same pipeline.
@@ -217,7 +237,7 @@ The fastest path is a single `.ui` file with markup, styling, and behavior toget
 </screen>
 ```
 
-Display hardware and wiring live in `cuttlefish.config.ts` under `display`, so the UI source stays focused on UI behavior.
+Display hardware and wiring live in `cuttlefish.config.ts` under `display`, so the UI source stays focused on UI behavior. Run `npx @typecad/ui --config` to generate that section interactively (see [Integration wizard](#integration-wizard)) — the result looks like the `display` line below.
 
 ### 2. Point the entry at the `.ui` file
 

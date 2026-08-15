@@ -507,6 +507,12 @@ async function main(): Promise<void> {
     let effectiveFrameworkPackage = options.frameworkPackage;
     let effectiveMcuPackage: string | undefined;
     let effectivePort = options.port;
+    // CUTTLEFISH_PORT env var sits between the CLI flag and the config file
+    // (flag > env > config), so cross-platform uploads don't need a
+    // Windows-specific COM port baked into package.json scripts.
+    if (!effectivePort && process.env.CUTTLEFISH_PORT) {
+      effectivePort = process.env.CUTTLEFISH_PORT;
+    }
 
     if (config) {
       if (config.mcu) {

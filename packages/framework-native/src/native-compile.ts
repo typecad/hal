@@ -70,6 +70,37 @@ function warningFlags(level?: string): string[] {
   }
 }
 
+/**
+ * Resolve the -l link libraries for a native build.
+ *
+ * The SDL display driver (#include <SDL2/SDL.h>) requires core SDL2 at link
+ * time on every platform; Windows/MSYS2 additionally needs -lmingw32 and
+ * -lSDL2main for the Win32 GUI entry-point glue (the SDL_MAIN_HANDLED define
+ * + SDL_SetMainReady() in display_init). Because the cuttlefish config loader
+ * is AST-only (it cannot evaluate process.platform conditionals), these libs
+ * are auto-provided here when the `sdl` display driver is active, so a single
+ * config links on both Windows and Linux without a platform-specific
+ * `native.libraries` array. User-supplied libraries are appended (deduped).
+ */
+export function resolveLinkLibraries(
+  display: Record<string, unknown> | undefined,
+  userLibs: string[],
+): string[] {
+  const libs: string[] = [];
+  if (display?.driver === "sdl") {
+    if (process.platform === "win32") {
+      // mingw32 (WinMain CRT glue) → SDL2main (SDL_main) → SDL2 (core).
+      libs.push("mingw32", "SDL2main", "SDL2");
+    } else {
+      libs.push("SDL2");
+    }
+  }
+  for (const lib of userLibs) {
+    if (!libs.includes(lib)) libs.push(lib);
+  }
+  return libs;
+}
+
 export const NativeToolchain = {
   compile(options: ToolchainOptions): CompileResult {
     const nativeConfig = (options.frameworkConfig ?? {}) as NativeCompileConfig;
@@ -129,8 +160,14 @@ export const NativeToolchain = {
       }
     }
 
-    // Build args: flags + source + output, then -l flags last (GCC ordering)
-    const linkLibs = nativeConfig.libraries?.map(lib => `-l${lib}`) ?? [];
+    // Build args: flags + source + output, then -l flags last (GCC ordering).
+    // SDL2 link libs are auto-provided when the `sdl` display driver is active
+    // (see resolveLinkLibraries) — the AST config loader can't evaluate
+    // platform conditionals, so this keeps a single config portable across
+    // Windows/Linux/macOS. User-supplied native.libraries are merged in.
+    const linkLibs = resolveLinkLibraries(options.display, nativeConfig.libraries ?? []).map(
+      (lib) => `-l${lib}`,
+    );
     const args = [...flags, ...cppFiles, "-o", exeFile, ...linkLibs];
 
     const result = spawnSync(compiler, args, {

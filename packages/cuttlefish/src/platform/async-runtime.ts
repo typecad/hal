@@ -12,6 +12,7 @@ export function buildAsyncRuntimePolyfill(
   ctx: PlatformContext | undefined,
   target: string,
   queueCapacity?: number,
+  strategy?: import("../api/shared/platform-strategy.js").PlatformStrategy,
 ): RuntimePolyfillIR | null {
   const hasAsync = program.functions.some(fn => fn.isAsync);
   if (!hasAsync) return null;
@@ -20,13 +21,22 @@ export function buildAsyncRuntimePolyfill(
   const stdlib = getStdLibSupport(architecture);
   if (!stdlib.hasVector || !stdlib.hasString) return null;
 
+  // Pass the strategy through so the runtime's now-expression matches the
+  // target (generic bakes a std::chrono expression via currentTimeMillis()
+  // instead of a millis() token the generic target never defines). When the
+  // expression uses std::chrono, the polyfill must carry <chrono> itself —
+  // the generic strategy's forcedIncludes are empty by design.
+  const now = strategy?.currentTimeMillis?.() ?? "millis()";
+  const requiredIncludes = ["<functional>", "<vector>", "<utility>", "<string>"];
+  if (now.includes("std::chrono")) requiredIncludes.push("<chrono>");
+
   return {
     kind: "polyfill",
     id: "async_runtime",
     domain: "standard",
-    requiredIncludes: ["<functional>", "<vector>", "<utility>", "<string>"],
+    requiredIncludes,
     forwardDeclarations: [],
-    helperStructs: [generatePromiseRuntime(queueCapacity ?? 256)],
+    helperStructs: [generatePromiseRuntime(queueCapacity ?? 256, false, strategy)],
     helperFunctions: [],
     shimMacros: [],
     dependencies: [],

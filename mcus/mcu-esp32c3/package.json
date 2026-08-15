@@ -1,6 +1,6 @@
 {
   "name": "@typecad/mcu-esp32c3",
-  "version": "1.0.0-alpha.11",
+  "version": "1.0.0-alpha.12",
   "description": "TypeCAD MCU definition for ESP32-C3 — datasheet pins, peripheral capabilities, and HAL instances",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,8 +14,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.11",
-    "@typecad/hal": "1.0.0-alpha.11"
+    "@typecad/cuttlefish": "1.0.0-alpha.12",
+    "@typecad/hal": "1.0.0-alpha.12"
   },
   "license": "MIT",
   "publishConfig": {

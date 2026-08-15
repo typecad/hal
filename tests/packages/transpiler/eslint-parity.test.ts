@@ -51,6 +51,27 @@ describe("LINT_RULES ↔ generateEslintConfig parity", () => {
     }
   });
 
+  it("exempts ui.bind from the .bind restriction (and only ui.bind)", () => {
+    // ui.bind is the UI framework's compile-time signal-binding API, not
+    // Function.prototype.bind. The exemption must live in the selector itself
+    // (generateEslintConfig drops the `filter` field), so the generated config
+    // must carry :not([object.name='ui']) — otherwise every ui.bind(...) call
+    // is a false-positive error. Regression guard for the alpha.11 false-positive.
+    const bindRule = LINT_RULES.find((r) =>
+      r.selector.includes("property.name='bind']"),
+    );
+    expect(bindRule, "bind rule should exist in LINT_RULES").toBeTruthy();
+    expect(bindRule!.selector).toContain(":not([object.name='ui'])");
+    // ui.call/ui.apply are NOT UI APIs — the build prescan flags them, so the
+    // editor selector must not exempt the `ui` receiver for them either.
+    const callApplyRule = LINT_RULES.find((r) =>
+      r.selector.includes("property.name=/^(call|apply)$/]"),
+    );
+    expect(callApplyRule, ".call/.apply rule should exist in LINT_RULES").toBeTruthy();
+    expect(callApplyRule!.selector).not.toContain(":not(");
+    expect(config).toContain(":not([object.name='ui'])");
+  });
+
   it("does not contain the old hand-maintained header comment", () => {
     // Guards against a revert that re-introduces the dual-maintained literal.
     expect(config).not.toContain("no-restricted-syntax selectors sourced from SUPPORT_MATRIX");
@@ -88,7 +109,7 @@ describe("feature-registry kind coverage", () => {
         r.selector.includes(
           {
             [ts.SyntaxKind.RegularExpressionLiteral as number]: "[regex]",
-            [ts.SyntaxKind.BigIntLiteral as number]: "[bigInt=true]",
+            [ts.SyntaxKind.BigIntLiteral as number]: "[bigint]",
             [ts.SyntaxKind.TemplateLiteralType as number]: "TSTemplateLiteralType",
           }[k as number] ?? "<<<unknown>>>",
         ),

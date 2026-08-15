@@ -1,5 +1,15 @@
 # @typecad/board-rp2040
 
+## 1.0.0-alpha.12
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+  - @typecad/mcu-rp2040@1.0.0-alpha.12
+  - @typecad/cuttlefish@1.0.0-alpha.12
+  - @typecad/hal@1.0.0-alpha.12
+
 ## 1.0.0-alpha.11
 
 ### Patch Changes

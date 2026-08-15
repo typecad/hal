@@ -80,6 +80,7 @@ describe('website examples transpile cleanly against the HAL', () => {
 			it(`${entry} transpiles with no errors`, () => {
 				const source = fs.readFileSync(entryPath, 'utf-8');
 				const result = transpile(source, {
+					fileName: entryPath,
 					target: targetForFramework(config?.framework),
 					boardPackage: config?.board,
 					platformContext: config?.buildTarget

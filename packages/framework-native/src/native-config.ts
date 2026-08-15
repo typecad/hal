@@ -32,7 +32,14 @@ export interface NativeCompileConfig {
   includePaths?: string[];
   /** Library search directories (-L flags). */
   libraryPaths?: string[];
-  /** Libraries to link (-l flags, without the 'lib' prefix). */
+  /**
+   * Libraries to link (-l flags, without the 'lib' prefix).
+   *
+   * Note: when the `sdl` display driver is active, SDL2 link libraries are
+   * auto-provided per platform by NativeToolchain (-lmingw32 -lSDL2main -lSDL2
+   * on Windows, -lSDL2 elsewhere); this field is for additional user libraries
+   * and is appended (deduped) after the auto-provided set.
+   */
   libraries?: string[];
   /** Warning level: 'none', 'basic', 'all', 'extra', 'error'. Default: 'basic'. */
   warnings?: string;

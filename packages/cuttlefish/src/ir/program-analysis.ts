@@ -66,6 +66,10 @@ export interface ProgramAnalysisResult {
    *  __tc_TimerRuntime::MAX_TIMERS to the observed count (floor 1) rather than
    *  a blind constant, so a one-timer program links one slot, not eight. */
   timerCallCount: number;
+  /** True when any function is declared `async` — the async runtime polls
+   *  millis() every pump even when no timing call appears in user source
+   *  (Async.sleep lowers to a raw hal-op the text scanners can't see). */
+  hasAsync: boolean;
   /** ESP32 peripheral usage — framework-esp32 gates its IDF driver blocks and
    *  forced includes on these. Detected from HAL-op operation names, the same
    *  way usesUart/usesSPI/usesI2C are. Other frameworks have no CUTTLEFISH_*
@@ -117,8 +121,6 @@ export interface ProgramAnalysisResult {
   /** Worker offload usage. Detected from worker.* ops. Frameworks gate the
    *  worker_runtime polyfill (and its per-framework backing) on this. */
   usesWorker: boolean;
-  /** Native/desktop: std::chrono / steady_clock usage (gates <chrono>). */
-  usesChrono: boolean;
   /** Native/desktop: std::set usage (gates <set>). */
   usesSet: boolean;
   /** Native/desktop: std::algorithm usage (std::sort/find/transform etc., gates <algorithm>). */
@@ -141,7 +143,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesChrono' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -202,9 +204,6 @@ function analyzeExpression(
       }
       if (expr.value.includes('__tc_str_ptr')) {
         result.usesStrPtr = true;
-      }
-      if (/std::chrono|steady_clock/.test(expr.value)) {
-        result.usesChrono = true;
       }
       if (/std::set\s*</.test(expr.value)) {
         result.usesSet = true;
@@ -938,7 +937,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesHwtimer: false,
     usesCapacitive: false,
     usesWorker: false,
-    usesChrono: false,
+    hasAsync: false,
     usesSet: false,
     usesAlgorithm: false,
     usesCstdio: false,
@@ -1105,6 +1104,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
   // consume site. Without this gate, every AVR program pulled in the Timer0
   // ISR even when it never uses timing.
   const hasAsync = program.functions.some(fn => fn.isAsync);
+  result.hasAsync = hasAsync;
   result.usesNativeTiming = result.usesMillis
     || result.usesTiming
     || result.timerCallCount > 0

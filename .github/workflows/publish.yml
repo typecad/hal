@@ -16,7 +16,10 @@ jobs:
           node-version: 22
           registry-url: 'https://registry.npmjs.org'
       - run: npm install
-      - run: npm run build --workspaces
+      # Topological build (scripts/build-workspaces.mjs) — `npm run build
+      # --workspaces` runs in package.json listing order, where cuttlefish
+      # builds before arduino-cli/framework-arduino dist/ exists (TS2307).
+      - run: npm run build
       - run: npx changeset publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

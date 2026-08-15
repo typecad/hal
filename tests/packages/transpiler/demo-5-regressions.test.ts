@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
-import { expectCppContains, transpile, transpileNative } from './setup';
+import { expectCppContains, transpile, transpileNative } from '../../setup';
 
 // ── Bitwise operators on enum-class operands (SUPPORT_MATRIX §5.1) ──────────
 //

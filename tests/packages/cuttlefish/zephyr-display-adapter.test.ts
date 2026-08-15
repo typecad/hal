@@ -208,11 +208,19 @@ describe("Zephyr FT6336U touch adapter", () => {
     expect(code.declaration).toMatch(/I2C_DT_SPEC_GET\(DT_NODELABEL\(ft6336u\)\)/);
   });
 
-  it("returns undefined for non-FT6336U libraries", () => {
+  it("returns undefined for libraries the framework does not handle", () => {
     const code = zephyrTouchAdapter({
-      library: "XPT2046_Touchscreen",
+      library: "GT911",
       calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 },
     } as any);
     expect(code).toBeUndefined();
+  });
+
+  it("returns an SPI adapter for XPT2046 resistive touch", () => {
+    const code = zephyrTouchAdapter({
+      library: "XPT2046_Touchscreen",
+      calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 },
+    } as any)!;
+    expect(code.declaration).toMatch(/SPI_DT_SPEC_GET\(DT_NODELABEL\(xpt2046\)/);
   });
 });

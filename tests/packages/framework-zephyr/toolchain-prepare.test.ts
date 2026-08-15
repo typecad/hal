@@ -32,9 +32,10 @@ describe('Toolchain.prepare writes the DT overlay', () => {
     const txt = readFileSync(join(dir, 'boards', 'xiao_ble.overlay'), 'utf8');
     // The display node is emitted as a full / { mipi-dbi { display0: display@0 } }
     // definition (boards have no display node to enable with &display0), so assert
-    // on the label + compatible.
+    // on the label + compatible. The default profile is the ILI9341, so the
+    // compatible follows its controller.
     expect(txt).toContain('display0: display@0');
-    expect(txt).toContain('compatible = "sitronix,st7796s"');
+    expect(txt).toContain('compatible = "ilitek,ili9341"');
   });
 
   it('omits the display node when the program does not use the display', () => {

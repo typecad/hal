@@ -44,9 +44,10 @@ export interface LintRule {
   source: "kind" | "context";
   // Optional: a JS filter function (as a string for serialization) that
   // returns false to suppress the diagnostic for a given AST node. Used when
-  // the selector alone can't express the exemption (e.g. ui.bind is exempt
-  // from the .bind/.call/.apply rule). Applied in hand-edited eslint configs;
-  // the generated no-restricted-syntax template drops this field.
+  // a selector genuinely can't express the exemption. Applied in hand-edited
+  // eslint configs; generateEslintConfig() drops this field when rendering
+  // no-restricted-syntax, so prefer expressing exemptions inline in the
+  // selector (as the .bind/.call/.apply rule does via :not([object.name='ui'])).
   filter?: string;
 }
 
@@ -184,7 +185,10 @@ add(ts.SyntaxKind.BigIntLiteral, {
   hint: "Use a number literal with an explicit fixed-width type annotation.",
   code: "TS2CPP_NO_EQUIVALENT",
   eslint: {
-    selector: "Literal[bigInt=true]",
+    // The parser emits the attribute as lowercase `bigint` (a string); the
+    // previous [bigInt=true] form matched nothing, so the editor never
+    // flagged what the build-time prescan did.
+    selector: "Literal[bigint]",
     message: "[transpiler] BigInt literals are not supported (no C++ equivalent for embedded targets). Use a number literal with an explicit fixed-width type.",
   },
 });
@@ -304,7 +308,10 @@ const CONTEXT_LINT_RULES: ReadonlyArray<LintRule> = [
     source: "context",
   },
   {
-    selector: "TSTypeOperator[type='keyof']",
+    // The parser names the attribute `operator`, not `type` — the previous
+    // [type='keyof'] form matched nothing, so the editor never flagged what
+    // the build-time prescan did.
+    selector: "TSTypeOperator[operator='keyof']",
     message: "[transpiler] the keyof operator is not supported (no C++ equivalent). Use a string union or a switch over field names.",
     source: "context",
   },
@@ -399,12 +406,22 @@ const CONTEXT_LINT_RULES: ReadonlyArray<LintRule> = [
     source: "context",
   },
   {
-    selector: "CallExpression > MemberExpression.callee[property.name=/^(bind|call|apply)$/]",
+    // ui.bind is a recognized UI authoring call (intercepted by the
+    // transpiler's call-lowering), not Function.prototype.bind — the :not()
+    // guard exempts the `ui` receiver so the editor selector matches the
+    // build-time prescan (checkContextSensitive exempts exactly ui.bind).
+    // The exemption lives in the selector because generateEslintConfig()
+    // drops non-selector fields when rendering no-restricted-syntax. Only
+    // `bind` is exempted — ui.call/ui.apply are not UI APIs and the prescan
+    // flags them, so the editor does too.
+    selector: "CallExpression > MemberExpression.callee[property.name='bind']:not([object.name='ui'])",
     message: "[transpiler] .bind/.call/.apply rebind `this` at call time, which has no C++ lowering (this is a fixed pointer). Call the function/method directly.",
     source: "context",
-    // ui.bind is a recognized UI authoring call (intercepted by the
-    // transpiler's call-lowering), not Function.prototype.bind.
-    filter: "(node) => { const o = node.callee.object; return !(o && o.type === 'Identifier' && o.name === 'ui'); }",
+  },
+  {
+    selector: "CallExpression > MemberExpression.callee[property.name=/^(call|apply)$/]",
+    message: "[transpiler] .bind/.call/.apply rebind `this` at call time, which has no C++ lowering (this is a fixed pointer). Call the function/method directly.",
+    source: "context",
   },
   {
     selector: "NewExpression[callee.name='Function']",

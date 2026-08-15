@@ -7,8 +7,8 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 
 | Framework | HAL cats supported | HAL cats partial | HAL cats unsupported | Toolchain | Last validated |
 |---|---|---|---|---|---|
-| framework-arduino (canonical) | 12/19 | 4 | 3 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-13 |
-| framework-zephyr | 12/19 | 7 | 0 | west (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-13 |
+| framework-arduino (canonical) | 12/19 | 4 | 3 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-15 |
+| framework-zephyr | 11/19 | 8 | 0 | west (prepare ✓ compile ✓ upload ✓ monitor ✓ debug ✓) | 2026-08-15 |
 
 ## framework-arduino
 
@@ -37,8 +37,8 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 | shift | supported | — |
 | board | supported | — |
 | wdt | supported | — |
-| wifi | unsupported | Arduino core has no WiFi HAL. ESP32 WiFi lives in framework-esp32. |
-| http | unsupported | Arduino core has no HTTP client HAL. ESP32 HTTP lives in framework-esp32. |
+| wifi | unsupported | Arduino core has no WiFi HAL. On ESP32 targets, @typecad/hal lowers WiFi natively via ESP-IDF (esp_wifi), independent of this framework. |
+| http | unsupported | Arduino core has no HTTP client HAL. On ESP32 targets, @typecad/hal lowers HTTP over its native WiFi stack, independent of this framework. |
 | mqtt | unsupported | No MQTT lowering in the Arduino core (requires networking stack). |
 | display | partial | — |
 
@@ -48,7 +48,7 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 
 **Implements:** from-scratch
 **Entrypoint:** `setup` + `loop` wrapped in `main` bridge
-**Toolchain:** west (prepare ✓ compile ✓ upload ✓ monitor ✓)
+**Toolchain:** west (prepare ✓ compile ✓ upload ✓ monitor ✓ debug ✓)
 
 ### HAL categories
 
@@ -72,7 +72,7 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 | wifi | partial | AP client enumeration/IP/per-station config, credential persistence, static IP, auto-reconnect, and tx-power have no Zephyr lowering (no driver/Kconfig hook). |
 | http | supported | — |
 | mqtt | supported | — |
-| display | supported | — |
+| display | partial | Mono panels (ssd1306) are direct-op only (no UI rendering); ili9341 UI path is ported but not yet hardware-verified; e-ink is out of scope at this time. |
 
 ## Cross-framework gaps
 
@@ -96,4 +96,4 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 | wifi | ✗ (arduino core has no wifi hal) | ◐ partial |
 | http | ✗ (arduino core has no http client hal) | ✓ |
 | mqtt | ✗ (no mqtt lowering in the arduino core (requires networking stack)) | ✓ |
-| display | ◐ partial | ✓ |
+| display | ◐ partial | ◐ partial |

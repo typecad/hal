@@ -393,7 +393,9 @@ export function lowerBle(op: HALOpIR): { code?: string; expression?: string } {
     case 'ble.on_read':
       // Store the typed read handler as void*; __tc_ble_attr_read casts it back
       // to the right signature based on the char's type field. reinterpret_cast
-      // (not a C-style cast) keeps this AUTOSAR-compliant under --autosar=strict.
+      // (not a C-style cast) avoids M5-0-7, but M5-0-10 still flags it — the
+      // whole type-erased table is covered by a knownPatterns deviation on
+      // that rule (see rules.ts, "BLE type-erased callback table").
       return { code: `__tc_ble.on_read[__tc_ble.current_char] = reinterpret_cast<void*>(${s(o.handler)});` };
     case 'ble.on_write':
       return { code: `__tc_ble.on_write[__tc_ble.current_char] = (${s(o.handler)});` };

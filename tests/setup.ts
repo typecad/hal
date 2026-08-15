@@ -9,6 +9,7 @@ import {
 } from "../packages/cuttlefish/src/testing";
 import { setActiveStrategy } from "../packages/cuttlefish/src/ir/hal-resolver";
 import { hasSafetyHook, requireSafetyHook } from "../packages/cuttlefish/src/safety-hook";
+import { hasUIHook, requireUIHook } from "../packages/cuttlefish/src/ui-hook";
 import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext, ComplianceMode } from "../packages/cuttlefish/src/types";
 import type { PlatformStrategy } from "../packages/cuttlefish/src/api/shared/platform-strategy";
 import { ArduinoStrategy } from "../packages/framework-arduino/src";
@@ -52,6 +53,12 @@ export interface TranspileOptions {
   strategy?: PlatformStrategy;
   /** AUTOSAR C++14 compliance mode for this transpile. Default "off". */
   autosar?: ComplianceMode;
+  /**
+   * Optional real path for the entry file. When provided, relative imports
+   * (e.g. `./counter.ui.html`) resolve against this file's directory instead
+   * of a synthetic name, matching how transpile.ts resolves user projects.
+   */
+  fileName?: string;
 }
 
 let testCounter = 0;
@@ -70,9 +77,11 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
 
   // clearAllProfileCaches() is removed to allow strategy-level caching across tests
 
-  // Use unique filename based on caller info + counter to ensure isolation
+  // Use unique filename based on caller info + counter to ensure isolation,
+  // unless the caller supplied a real entry path (needed for relative
+  // .ui.html / cross-file import resolution).
   const uniqueId = `test_${process.pid}_${testCounter++}_${Date.now()}`;
-  const fileName = `${uniqueId}.ts`;
+  const fileName = options.fileName ?? `${uniqueId}.ts`;
 
   // For Arduino target, use a unique output directory to avoid filename collisions
   // since Arduino uses the directory name as the .ino filename
@@ -81,6 +90,16 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
     : testOutDir;
   if (target === "arduino" && !fs.existsSync(uniqueOutDir)) {
     fs.mkdirSync(uniqueOutDir, { recursive: true });
+  }
+
+  // transpile.ts's import-graph build loads relative .ui.html modules into
+  // the UI registry before IR building; direct buildProgramIR callers must
+  // warm the registry themselves or ui.mount() lowering throws.
+  if (options.fileName && hasUIHook()) {
+    for (const m of tsCode.matchAll(/from\s+['"]([^'"]*\.ui\.html)['"]/g)) {
+      if (!m[1].startsWith(".")) continue;
+      requireUIHook().loadUIModule(path.resolve(path.dirname(options.fileName), m[1]));
+    }
   }
 
   const programIR = buildProgramIR(fileName, tsCode, boardPackage);

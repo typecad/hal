@@ -17,10 +17,11 @@ required, as for any `@typecad/framework-native` build).
 | macOS | `brew install sdl2` (and a compiler via Xcode command-line tools) |
 | Windows | Install [MSYS2](https://www.msys2.org/), then in the **ucrt64** shell: `pacman -S mingw-w64-ucrt-x86_64-SDL2 mingw-w64-ucrt-x86_64-gcc`. Ensure `C:\msys64\ucrt64\bin` is on `PATH`. |
 
-> **Windows link note:** the config links with `-lSDL2`. If the linker reports
-> unresolved `WinMain`/`SDL_main` symbols, expand the `native.libraries` array
-> in `cuttlefish.config.ts` to `["mingw32", "SDL2main", "SDL2"]` and add
-> `libraryPaths: ["C:\\msys64\\ucrt64\\lib"]`. Linux/macOS need only `["SDL2"]`.
+> **SDL2 link libraries are auto-provided.** When the `sdl` display driver is
+> active, the native toolchain adds the platform-appropriate SDL2 link set
+> (`-lmingw32 -lSDL2main -lSDL2` on Windows/MSYS2, `-lSDL2` on Linux/macOS), so
+> the config needs no platform-specific `native.libraries`. The SDL display
+> adapter uses `<SDL2/SDL.h>` exclusively (no SDL_image/_ttf/_mixer).
 
 ## Build & run
 

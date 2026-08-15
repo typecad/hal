@@ -41,7 +41,10 @@ function fmtToolchain(m: FrameworkManifest): string {
   const tail = m.toolchain.reexportedFrom
     ? ` (reexported from ${m.toolchain.reexportedFrom})`
     : '';
-  return `${m.toolchain.backend}${tail} (prepare ${sym(ops.prepare)} compile ${sym(ops.compile)} upload ${sym(ops.upload)} monitor ${sym(ops.monitor)})`;
+  // debug is optional in the schema (older manifests omit it) — show it only
+  // when the framework declares the capability.
+  const debugTail = ops.debug === undefined ? '' : ` debug ${sym(ops.debug)}`;
+  return `${m.toolchain.backend}${tail} (prepare ${sym(ops.prepare)} compile ${sym(ops.compile)} upload ${sym(ops.upload)} monitor ${sym(ops.monitor)}${debugTail})`;
 }
 
 function todayUTC(): string {

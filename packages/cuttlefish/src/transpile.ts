@@ -31,7 +31,7 @@ import { setDisplayProfile, resetDisplayProfile } from "./stores/display-profile
 import { setThemeCss, resetThemeCss, setThemeClass } from "./stores/theme-store.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
 import { Diagnostic, GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types.js";
-import { readText, writeText } from "./utils/fs.js";
+import { readText, writeText, resetWrittenFiles, wasWrittenThisRun } from "./utils/fs.js";
 import { debug as logDebug, info } from "./utils/logger.js";
 import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry.js";
 import type { ClassIR, ProgramIR } from "./api/index.js";
@@ -90,12 +90,50 @@ function loadExpectPreprocessor(): ExpectPreprocessor | undefined {
 }
 
 function cleanOutput(_entryDir: string, outDir: string): void {
-  // Preserved for incremental-build support: writeText now skips writing when
-  // content is identical, so keeping the existing output dir intact lets
-  // downstream build tools (idf.py/ninja, arduino-cli) reuse their build
-  // caches. Stale files from removed source modules are harmless — they're
-  // not referenced by the current entry file and won't be compiled.
-  // The output dir is still created (via writeText → ensureDir) on first run.
+  // The out dir is NOT wiped: writeText skips writing when content is
+  // identical, so keeping it lets downstream build tools (idf.py/ninja,
+  // arduino-cli) reuse their build caches. Stale generated SOURCES are handled
+  // precisely instead — after emission, sweepStaleGeneratedSources() removes
+  // compiled-source files in the out dir that this run did not write (e.g. a
+  // main.cpp left behind by the old emit naming next to the current src.cpp;
+  // Zephyr's CMakeLists globs src/*.cpp, so a leftover compiles into
+  // duplicate-symbol link errors). The output dir is still created (via
+  // writeText → ensureDir) on first run.
+  void outDir;
+  resetWrittenFiles();
+}
+
+const GENERATED_SOURCE_EXTENSIONS = [".cpp", ".cc", ".c", ".h", ".ino"];
+
+/**
+ * Remove stale generated source files from the out dir: compiled-source files
+ * that THIS transpile run did not write. Sweeps only the source layouts the
+ * emit pipeline uses (out dir root, src/, main/) and never recurses — build
+ * trees (e.g. Zephyr's out/build with its own generated .c files) are
+ * untouched, and neither are sidecar JSONs.
+ */
+function sweepStaleGeneratedSources(outDir: string): void {
+  for (const sub of ["", "src", "main"]) {
+    const dir = sub ? path.join(outDir, sub) : outDir;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue; // layout subdir not used by this framework
+    }
+    for (const entry of entries) {
+      if (!entry.isFile()) continue;
+      if (!GENERATED_SOURCE_EXTENSIONS.some((ext) => entry.name.toLowerCase().endsWith(ext))) continue;
+      const full = path.join(dir, entry.name);
+      if (wasWrittenThisRun(full)) continue;
+      try {
+        fs.unlinkSync(full);
+        info(`Removed stale generated source: ${path.relative(process.cwd(), full)}`);
+      } catch {
+        // Locked/read-only file — leave it; best-effort cleanup.
+      }
+    }
+  }
 }
 
   
@@ -962,6 +1000,15 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
   }
   profiler.endTimer("post:flatten");
+
+  // Remove stale generated sources (renamed entries, removed modules) so
+  // downstream globs (Zephyr's CMakeLists src/*.cpp) don't compile leftovers
+  // into duplicate-symbol link errors. Runs after every write of this run,
+  // including the toolchain prepare hook above.
+  profiler.startTimer("post:sweep-stale");
+  sweepStaleGeneratedSources(outDir);
+  profiler.endTimer("post:sweep-stale");
+
   // Profiler session ends (profiling disabled - no report generation)
 
   // ── Generate diagnostics report if enabled ──────────────────────────────

@@ -1192,7 +1192,11 @@ describe("Phase 1 color storage widen (byte-identity)", () => {
     // renderer. The ctx carries the shared draw state; NODE_LIST returns 1
     // (handled) so the caller skips its post-switch epilogue — preserving the
     // old inline 'continue;' semantics.
-    expect(header).toMatch(/static inline uint8_t ui_draw_node_body\(int16_t i, const UINodeDrawCtx\* ctx\)/);
+    // The ctx parameter is const void* (cast back inside) so the Arduino .ino
+    // preprocessor's auto-inserted prototype — placed before the struct
+    // definition — only involves primitive types and stays valid.
+    expect(header).toMatch(/static inline uint8_t ui_draw_node_body\(int16_t i, const void\* rawCtx\)/);
+    expect(header).toMatch(/const UINodeDrawCtx\* ctx = static_cast<const UINodeDrawCtx\*>\(rawCtx\);/);
     expect(header).toMatch(/struct UINodeDrawCtx \{[\s\S]*?int16_t drawY;[\s\S]*?const char\* displayText;[\s\S]*?uint8_t drawingBufferedScroll;[\s\S]*?CuttlefishDisplayTarget\* drawTarget;[\s\S]*?int16_t origBoxX;[\s\S]*?int16_t origBoxY;/);
     // The main loop fills the ctx and delegates, branching on the return value.
     expect(header).toMatch(/UINodeDrawCtx __ui_ctx;[\s\S]*?__ui_ctx\.drawY = drawY;[\s\S]*?if \(ui_draw_node_body\(i, &__ui_ctx\)\) \{[\s\S]*?continue;/);

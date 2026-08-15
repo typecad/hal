@@ -1,5 +1,24 @@
 # @typecad/framework-arduino
 
+## 1.0.0-alpha.12
+
+### Patch Changes
+
+- ## Corrected unsupported reasons for wifi/http
+
+  The manifest's `wifi`/`http` unsupportedReason strings pointed at
+  `framework-esp32`, a package that does not exist. They now state where ESP32
+  networking actually lives: `@typecad/hal` lowers WiFi natively against
+  ESP-IDF (`esp_wifi`) and HTTP over that stack, independent of the Arduino
+  framework manifest. This also flows through to the generated
+  `docs/framework-coverage.md` matrix.
+
+- Updated dependencies
+- Updated dependencies
+  - @typecad/arduino-cli@1.0.0-alpha.12
+  - @typecad/cuttlefish@1.0.0-alpha.12
+  - @typecad/hal@1.0.0-alpha.12
+
 ## 1.0.0-alpha.11
 
 ### Minor Changes
@@ -26,21 +45,19 @@
     non-zero on any strong-copyleft / unknown dependency; a missing west install
     degrades gracefully instead of crashing. Declared `licenses: { available:
 true }` in the Zephyr manifest and exported as the dispatcher-facing
-    `licenses` alias.
-    - **Build-based project scope** — unlike Arduino's installed-library
-      registry, a Zephyr workspace's west manifest carries _every_ vendor HAL and
-      library (most unused by any single project). The default scope therefore
-      reports only the dependencies the firmware actually links, derived from the
-      last `cuttlefish build`'s `compile_commands.json` (a module is listed iff
-      one of its sources was compiled — e.g. an xiao_ble/nRF52840 build links
-      `hal_nordic` + the kernel, not the other ~60 modules). Without a build,
-      only the kernel is shown with a hint to build first; `--all` lists every
-      west module. Module LICENSE files are sought under `zephyr/` and `src/`
-      subdirs too (e.g. `hal_nordic` ships `zephyr/LICENSE.txt` → BSD-3-Clause).
-    - The CLI accepts `cuttlefish license` (singular) as an alias, and the shared
-      resolver now matches lowercase/`.rst` LICENSE files (e.g.
-      trusted-firmware-m's `license.rst`) using their real on-disk name so it
-      works on case-sensitive filesystems.
+    `licenses` alias. - **Build-based project scope** — unlike Arduino's installed-library
+    registry, a Zephyr workspace's west manifest carries _every_ vendor HAL and
+    library (most unused by any single project). The default scope therefore
+    reports only the dependencies the firmware actually links, derived from the
+    last `cuttlefish build`'s `compile_commands.json` (a module is listed iff
+    one of its sources was compiled — e.g. an xiao_ble/nRF52840 build links
+    `hal_nordic` + the kernel, not the other ~60 modules). Without a build,
+    only the kernel is shown with a hint to build first; `--all` lists every
+    west module. Module LICENSE files are sought under `zephyr/` and `src/`
+    subdirs too (e.g. `hal_nordic` ships `zephyr/LICENSE.txt` → BSD-3-Clause). - The CLI accepts `cuttlefish license` (singular) as an alias, and the shared
+    resolver now matches lowercase/`.rst` LICENSE files (e.g.
+    trusted-firmware-m's `license.rst`) using their real on-disk name so it
+    works on case-sensitive filesystems.
 
   ### HAL coverage: `dac`, `fs`, `hwtimer` lowerings
 

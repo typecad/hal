@@ -47,7 +47,16 @@ struct UINodeDrawCtx {
 // Returns 1 when the node fully handled its own canvas push, decoration,
 // coordinate restore, and dirty-clear (NODE_LIST). Returns 0 otherwise, in
 // which case the caller is responsible for the post-switch epilogue.
-static inline uint8_t ui_draw_node_body(int16_t i, const UINodeDrawCtx* ctx) {
+//
+// The ctx parameter is typed const void* (cast back to UINodeDrawCtx* below):
+// the Arduino .ino preprocessor auto-inserts a forward declaration of every
+// function near the top of the sketch, BEFORE this struct is defined, so a
+// struct-typed parameter makes that generated prototype fail to compile
+// ("'UINodeDrawCtx' does not name a type"). Primitive-only parameters keep
+// the auto-generated prototype valid; call sites still pass &ctx, which
+// converts implicitly to const void*.
+static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
+  const UINodeDrawCtx* ctx = static_cast<const UINodeDrawCtx*>(rawCtx);
   int16_t drawY = ctx->drawY;
   UI_COLOR_T bColor = ctx->bColor;
   UI_COLOR_T fillBg = ctx->fillBg;

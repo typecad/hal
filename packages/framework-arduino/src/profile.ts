@@ -258,6 +258,25 @@ function collectUsedIdentifiers(program: ProgramIR): Set<string> {
   for (const fn of program.functions) {
     walkStatements(fn.statements, collectFromStatement);
   }
+  // Class method bodies / constructors / field initializers are part of the
+  // program too — analyzeProgram walks them, and skipping them here meant a
+  // `Preferences.putInt(...)` inside a class method never tripped
+  // needsPreferences, dropping the per-arch shim with a downstream
+  // "'Preferences' was not declared" compile error. Guarded because partial
+  // ProgramIR fixtures (and non-class programs) may omit these fields.
+  for (const cls of program.classes ?? []) {
+    for (const method of cls.methods ?? []) {
+      walkStatements(method.statements ?? [], collectFromStatement);
+    }
+    if (cls.constructor) {
+      walkStatements(cls.constructor.statements ?? [], collectFromStatement);
+    }
+    for (const field of cls.fields ?? []) {
+      if (field.initializer) {
+        collectExpression(field.initializer);
+      }
+    }
+  }
 
   return used;
 }

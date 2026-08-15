@@ -26,8 +26,12 @@ export interface KconfigUsage {
   usesMqtt?: boolean;
   usesPreferences?: boolean;
   usesRandom?: boolean;
-  /** Touch controller referenced (UI touch adapter emits DT_NODELABEL(ft6336u)). */
+  /** Touch controller referenced (UI touch adapter emits DT_NODELABEL(ft6336u)
+   *  or DT_NODELABEL(xpt2046)). Selects the bus driver the node needs. */
   usesTouch?: boolean;
+  /** Which touch controller the program uses — FT6336U rides I2C, XPT2046
+   *  rides the display's SPI bus. Only meaningful with usesTouch. */
+  touchController?: 'ft6336u' | 'xpt2046';
   /** PSRAM type ('opi' | 'quad') when the target board has PSRAM. Emits the
    *  CONFIG_SPIRAM symbols so the ESP heap serves PSRAM for canvas allocations. */
   psram?: 'opi' | 'quad';
@@ -68,15 +72,31 @@ export function resolveKconfigFragments(
     // configured SPI clock (~80MHz) and drops into the low tens of ms. The
     // display overlay pairs this with dma-enabled + dmas on the spi2 node.
     m.set('CONFIG_DMA', 'y');
-    // Disable the MIPI DBI SPI bridge + ST7796S drivers. The display adapter
-    // drives the panel directly via spi_write. Binding these drivers would
-    // allocate a tearing-effect GPIO interrupt that conflicts with the SPI/I2C
-    // driver interrupts — the VECDESC_FL_SHARED assertion crashes on touch.
+    // Disable the MIPI DBI SPI bridge + in-tree panel drivers (ILI9341,
+    // ST7796S). The display adapter drives the panel directly via spi_write.
+    // Binding these drivers would allocate a tearing-effect GPIO interrupt
+    // that conflicts with the SPI/I2C driver interrupts — the
+    // VECDESC_FL_SHARED assertion crashes on touch. ILI9341 matters as much
+    // as the bridge: the driver auto-defaults on from the overlay's
+    // ilitek,ili9341 node and references the (disabled) mipi-dbi-spi
+    // controller's device struct, failing at link time with
+    // "undefined reference to __device_dts_ord_N". (Assign the prompted
+    // ILI9341, not the hidden ILI9XXX — promptless symbols reject prj.conf
+    // assignments.)
     m.set('CONFIG_MIPI_DBI_SPI', 'n');
+    m.set('CONFIG_ILI9341', 'n');
     m.set('CONFIG_ST7796S', 'n');
   }
   if (usage.usesTouch) {
-    m.set('CONFIG_I2C', 'y');           // FT6336U touch on I2C
+    // FT6336U touch is on I2C; the XPT2046 shares the display's SPI bus.
+    // CONFIG_INPUT stays off either way: the adapters drive the controllers
+    // directly, and enabling it would build the in-tree input drivers
+    // (ft5336 / xpt2046) against nodes these adapters already own.
+    if (usage.touchController === 'xpt2046') {
+      m.set('CONFIG_SPI', 'y');
+    } else {
+      m.set('CONFIG_I2C', 'y');
+    }
   }
   // PSRAM: enable the ESP SPIRAM driver + route malloc/heap to external RAM so
   // large canvas allocations (scroll viewports, lists) can use PSRAM instead of

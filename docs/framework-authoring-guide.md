@@ -546,9 +546,8 @@ ST7796S, SSD1309.
 
 ### Emitting pin control
 
-Use `gpio_set_level((gpio_num_t)PIN, 0/1)` on ESP32 and `PORTx |= mask` /
-`PORTx &= ~mask` on AVR (via the `getPinBitMask(pin)` /
-`getPortReg(pin)` helpers in `framework-avr/src/registers.ts`). Do NOT call
+Use plain Arduino-core calls (`digitalWrite`, `SPI.transfer`, `Wire`) or the
+core's direct-register variants where the target demands it. Do NOT call
 strategy-side helpers like `nativeDigitalWrite` from adapter-emit code —
 those are for HAL lowering, not display adapters.
 
@@ -564,18 +563,17 @@ to the validator's probe. `'probe-inconclusive'` is the honest status;
 
 ### Reference implementations
 
-- `packages/framework-avr/src/displays/ssd1309-avr.ts` — AVR + I2C OLED,
-  buffered mode, uses `_twi_*` primitives.
-- `packages/framework-esp32/src/displays/ili9341-esp32.ts` — ESP32 + SPI TFT,
-  direct mode, uses `spi_device_polling_transmit`.
-- `packages/framework-esp32/src/displays/st7796-esp32.ts` — same shape as
-  ILI9341, different init sequence. This is the adapter the hardware
-  verification demo targets.
-- `packages/framework-esp32/src/displays/ssd1309-esp32.ts` — ESP32 + I2C OLED,
-  buffered mode. Note the bypass of `__tc_i2cN_txbuf` (32-byte limit) via
-  direct `i2c_master_transmit` calls.
-- `packages/framework-esp32/src/displays/esp32-spi-display-helpers.ts` —
-  shared transport infrastructure for ESP32 SPI displays.
+- `packages/framework-arduino/src/displays/ssd1309-i2c.ts` — I2C OLED
+  (SSD1309).
+- `packages/framework-arduino/src/displays/ili9341-spi.ts` — SPI TFT
+  (ILI9341).
+- `packages/framework-arduino/src/displays/st7796-spi.ts` — SPI TFT
+  (ST7796), same shape as ILI9341 with a different init sequence.
+- `packages/framework-arduino/src/displays/adafruit-adapters.ts` /
+  `touch-adapters-codegen.ts` — Adafruit GFX-backed display and touch
+  adapters.
+- `packages/framework-zephyr/src/display/` — Zephyr display/touch/UI adapters
+  (`touch-adapter.ts`, `ui-adapter.ts`, `profiles.ts`).
 
 ## Minimum-viable path
 
@@ -585,7 +583,7 @@ If you want the absolute smallest setup to get a new framework passing CI:
    `packages/cuttlefish/src/api/shared/framework-manifest-registry.ts`).
 2. Add `"./framework.manifest"` subpath export to `package.json`.
 3. Add the package to root `package.json` workspaces.
-4. Write `src/framework.manifest.ts` — copy framework-avr's as a template,
+4. Write `src/framework.manifest.ts` — copy framework-native's as a template,
    change `frameworkId` / `packageName` / `displayName` / `description`, then
    fill in each HAL category either `supported: false` (with reason and all
    ops marked `'unsupported'`) or `supported: true` (with op statuses from

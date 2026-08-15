@@ -67,7 +67,7 @@ function runRealProbe(): ArduinoCliProbeData {
   // budget is too tight and produces spurious "unresponsive" results.
   const versionCmd = spawnSync("arduino-cli", ["version"], {
     encoding: "utf8",
-    timeout: 15000,
+    timeout: 30000,
   });
 
   // ENOENT => binary not on PATH at all.
@@ -102,11 +102,12 @@ function runRealProbe(): ArduinoCliProbeData {
   const arduinoCliVersion = versionMatch ? versionMatch[1] : undefined;
 
   // 2. core list probe — installed cores only (no --all flag). `core list`
-  // cold-runs in ~4-5s even unloaded, so the timeout must accommodate load;
-  // this is a once-per-process cached call.
+  // cold-runs in ~4-5s even unloaded, and on a saturated machine (parallel
+  // builds, CI runners, antivirus scans) it can take far longer; this is a
+  // once-per-process cached call, so the budget is deliberately generous.
   const coresCmd = spawnSync("arduino-cli", ["core", "list", "--format", "json"], {
     encoding: "utf8",
-    timeout: 30000,
+    timeout: 90000,
   });
 
   let installedCores: string[] = [];

@@ -24,7 +24,7 @@ import type {
   GraphicsCapacity,
   DisplayHALOp,
 } from '@typecad/cuttlefish/api/shared';
-import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
+import { DEFAULT_STDLIB_SUPPORT, generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
 import { programUsesSafety } from '@typecad/cuttlefish/api';
 import { resolveTerminalPreviewOp } from './graphics/terminal-preview.js';
 
@@ -34,19 +34,20 @@ export class NativeStrategy implements PlatformStrategy {
   // ── Profile ─────────────────────────────────────────────────────────────
 
   forcedIncludes(program: ProgramIR, ctx?: PlatformContext): string[] {
-    // <cstdint> and <cctype> are universal: type-resolution passes int32_t/
-    // uint8_t/etc. through verbatim, and char classification is broadly used.
-    // The remaining headers are gated on usage analysis so a native program
-    // that doesn't touch std::vector / std::chrono / etc. doesn't pull them in.
-    // When ctx.analysis is absent (capability queries, manifest validation),
-    // the gates default open to preserve existing behavior in those paths.
-    const inc: string[] = ['<cctype>', '<cstdint>'];
+    // <cstdint>, <cctype>, and <chrono> are universal: type-resolution passes
+    // int32_t/uint8_t/etc. through verbatim, char classification is broadly
+    // used, and the shim unconditionally emits Date.now()/millis() definitions
+    // that reference std::chrono (see shimLines). The remaining headers are
+    // gated on usage analysis so a native program that doesn't touch
+    // std::vector / etc. doesn't pull them in. When ctx.analysis is absent
+    // (capability queries, manifest validation), the gates default open to
+    // preserve existing behavior in those paths.
+    const inc: string[] = ['<cctype>', '<cstdint>', '<chrono>'];
     const a = (ctx as any)?.analysis;
     const uses = (f: string): boolean => a ? !!a[f] : true;
     if (uses('usesVectorTypes')) inc.push('<vector>');
     if (uses('usesStdMap')) inc.push('<map>');
     if (uses('usesSet')) inc.push('<set>');
-    if (uses('usesChrono')) inc.push('<chrono>');
     if (uses('usesAlgorithm')) inc.push('<algorithm>');
     if (uses('usesCstdio') || uses('hasConsoleCalls')) inc.push('<cstdio>');
     return inc;
@@ -460,8 +461,8 @@ export class NativeStrategy implements PlatformStrategy {
     return new Set(['console', 'string_methods', 'timer_methods', 'array_methods', 'math_methods']);
   }
 
-  generateNativePolyfills(): RuntimePolyfillIR[] {
-    return [
+  generateNativePolyfills(program?: ProgramIR): RuntimePolyfillIR[] {
+    const polyfills: RuntimePolyfillIR[] = [
       {
         kind: 'polyfill',
         id: 'string_methods',
@@ -605,6 +606,25 @@ export class NativeStrategy implements PlatformStrategy {
         dependencies: [],
       },
     ];
+    // Heap-free async runtime, mirroring the Zephyr strategy: the static
+    // runtime needs no STL headers and polls the millis() shim the native
+    // base shim defines unconditionally. Polyfill definitions emit before
+    // shimLines, so forward-declare millis() for the runtime's timer bodies.
+    if (program && program.functions.some((fn: any) => fn && fn.isAsync)) {
+      polyfills.push({
+        kind: 'polyfill',
+        id: 'async_runtime',
+        domain: 'embedded' as const,
+        requiredIncludes: [],
+        forwardDeclarations: ['unsigned long millis();'],
+        helperStructs: [generateStaticAsyncRuntime(8, this.getAsyncRuntimeConfig().waitForPinEdge)],
+        helperFunctions: [],
+        shimMacros: [],
+        dependencies: [],
+        hasPromiseRuntime: true,
+      } as RuntimePolyfillIR);
+    }
+    return polyfills;
   }
 
   // ── Graphics ───────────────────────────────────────────────────────────

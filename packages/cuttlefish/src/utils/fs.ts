@@ -11,10 +11,29 @@ export function readText(filePath: string): string {
   return fs.readFileSync(filePath, "utf8");
 }
 
+// Paths written (or confirmed identical) via writeText since the last
+// resetWrittenFiles() call. The transpiler uses this to sweep stale generated
+// sources from the out dir — files left behind by renamed entries or removed
+// source modules that a downstream glob (e.g. Zephyr's CMakeLists
+// `file(GLOB src/*.cpp)`) would otherwise compile, producing duplicate-symbol
+// link errors.
+const writtenFiles = new Set<string>();
+
+export function resetWrittenFiles(): void {
+  writtenFiles.clear();
+}
+
+export function wasWrittenThisRun(filePath: string): boolean {
+  return writtenFiles.has(path.resolve(filePath));
+}
+
 export function writeText(filePath: string, content: string): void {
   ensureDir(path.dirname(filePath));
+  const resolved = path.resolve(filePath);
   // Skip writing when content is identical — preserves mtime so downstream
   // build tools (idf.py/ninja, arduino-cli, make) can skip recompilation.
+  // The file still counts as "written this run" (it is current output).
+  writtenFiles.add(resolved);
   try {
     if (fs.readFileSync(filePath, "utf8") === content) return;
   } catch {

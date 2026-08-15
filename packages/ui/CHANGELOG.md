@@ -1,5 +1,107 @@
 # @typecad/ui
 
+## 1.0.0-alpha.12
+
+### Patch Changes
+
+- Fixed two emitted-runtime compile errors that broke every Arduino UI build
+  using the PSRAM canvas allocator (e.g. `demo-display`):
+  - `ui_create_canvas_best`'s PSRAM debug `printf` lines emitted a literal
+    newline inside the C++ string literal (the `\n` in the runtime-header
+    slice's template literal was a JS escape, not the two C++ characters) —
+    "missing terminating \" character". Now escaped as `\\n`.
+  - `ui_draw_node_body` took a `const UINodeDrawCtx*` parameter, but the
+    Arduino `.ino` preprocessor auto-inserts a forward declaration of every
+    function near the top of the sketch — before the struct is defined — so
+    the generated prototype failed with "'UINodeDrawCtx' does not name a
+    type". The parameter is now `const void*` (cast back inside), keeping the
+    auto-generated prototype primitive-only and valid.
+
+### Minor Changes
+
+- ## Display integration wizard (`npx @typecad/ui --config`)
+
+  Installing `@typecad/ui` used to leave a gap: integrating a display requires
+  choosing hardware (panel, bus, pins, speed, touch) and writing the
+  `display` section of `cuttlefish.config.ts` by hand. The package now ships a
+  `typecad-ui` bin, so the flow after `npm install @typecad/ui` is:
+
+  ```bash
+  npx @typecad/ui --config
+  ```
+
+  ### What it does
+
+  - **Display selection** with hardware-aware defaults: the built-in profiles
+    (`ili9341-spi`, `st7796-spi`, `ssd1309-i2c`), the desktop SDL simulator, or a
+    fully custom driver (name, bus, resolution, color format).
+  - **Bus wiring questions** — SPI (CS/DC/RST/backlight, frequency in MHz,
+    optional SCK/MOSI/MISO override) or I2C (address, optional reset pin),
+    prefilled from any existing `display` section on re-runs.
+  - **Orientation + rendering** — rotation, antialiasing, and an advanced color
+    branch (color order / inversion). ST7796S keeps the demos' proven `bgr` +
+    non-inverted defaults.
+  - **Touch** — none, resistive (XPT2046 / STMPE610 / 4-wire analog), capacitive
+    (FT6336U / GT911 / CST816S), or a custom adapter file, each with its pins,
+    I2C address/speed, IRQ/reset, and calibration (raw-ADC defaults for
+    resistive, native-panel pixel space for capacitive — matching the demos).
+  - **Theme hooks** — optional `themeCss` / `themeClass`.
+
+  ### How it writes the config
+
+  The `display` section is spliced into `cuttlefish.config.ts` through the
+  TypeScript AST: only that section changes, every other section and its
+  comments survive byte-for-byte, unmanaged display keys (`scroll`,
+  `scanlineSync`, …) are carried over, and the edited file is syntax-checked
+  before anything is written. GPIO collisions between display and touch wiring
+  warn before the write. If the config's `entry` points at a missing `.ui`
+  file, the wizard offers a documented-syntax starter screen, then prints the
+  exact `arduino-cli lib install` (with the real Library Manager names —
+  `RAK14014-FT6336U` for FT6336U, the ST7735/ST7789 fork note for ST7796S),
+  preview, compile, and flash commands.
+
+  No config yet → the wizard points at `npx @typecad/cuttlefish init` first.
+  Non-interactive stdin → a clear error instead of a hang. `--help` / `--version`
+  included; unknown flags exit 2.
+
+  ### Internals
+
+  New `src/wizard/` module (prompts, display/touch catalog, AST config writer,
+  starter template) exported as `@typecad/ui/wizard` for reuse and tests;
+  runtime deps added: `chalk` and `typescript` (both already present via the
+  cuttlefish peer). `tests/packages/ui/integration-wizard.test.ts` covers the
+  catalog, rendering, splice cases (insert / replace / CRLF / comma-and-comment
+  handling), pin-conflict detection, the starter template, and a round-trip
+  through cuttlefish's real `parseConfigFile` proving wizard output loads the
+  same way the build loads it.
+
+### Patch Changes
+
+- ## Standalone-install dependency fixes
+
+  Declared the dependencies each package actually consumes at build/test time,
+  so installs outside the monorepo resolve without relying on hoisting:
+
+  - **`@typecad/expect`** now declares `@typecad/hal` (a hard dependency — the
+    test harness generates `cuttlefish.config.ts` files whose
+    `import type { CuttlefishConfig } from '@typecad/hal'` previously failed to
+    typecheck in standalone installs) and `@typecad/framework-zephyr` as an
+    optional dependency (the `west build`/`west flash` compile path requires it
+    dynamically and degrades gracefully when absent).
+  - **`@typecad/cuttlefish`** now declares `@typecad/expect` as an optional
+    dependency — `transpile.ts` loads its preprocessor and `cli-utils.ts`
+    resolves the `cuttlefish-test` CLI from it, both with existing fallbacks.
+  - **`@typecad/ui`** moved `@typecad/cuttlefish` from peerDependencies to
+    regular dependencies (it is imported throughout `src/`), so installing
+    `@typecad/ui` pulls the transpiler automatically like every other consumer.
+  - **`@typecad/safety`** dropped its duplicate peerDependencies block —
+    `@typecad/cuttlefish` and `@typecad/hal` were declared in both
+    `dependencies` and `peerDependencies`; the regular dependencies (the pattern
+    every other package uses) are kept.
+
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.12
+
 ## 1.0.0-alpha.11
 
 ### Patch Changes

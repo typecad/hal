@@ -302,9 +302,12 @@ export default {
           return "";
         }
         function isContainerVar(node) {
-          if (node.type === "Identifier" && containerVars.has(node.name)) return true;
-          if (node.type === "CallExpression" && node.callee.type === "MemberExpression" && node.callee.property.type === "Identifier" && FUNCTIONAL_METHODS.has(node.callee.property.name)) return true;
-          return false;
+          // Only identifiers with a known container type count. A
+          // CallExpression receiver (e.g. arr.map(f).filter(g)) is the RESULT
+          // of a functional method — on arrays that's another array, which
+          // the transpiler lowers; treating it as a container flagged every
+          // supported method chain as an error.
+          return node.type === "Identifier" && containerVars.has(node.name);
         }
         return {
           VariableDeclarator(node) {

@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
-import { expectCppContains, transpile, transpileNative } from './setup';
+import { expectCppContains, transpile, transpileNative } from '../../setup';
 
 // ── A5: enum-typed struct-field arithmetic (SUPPORT_MATRIX §1.7) ────────────
 //

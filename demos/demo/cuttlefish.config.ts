@@ -18,6 +18,10 @@ const config: CuttlefishConfig = {
   output: {
     outDir: './out',
   },
+  // Upload port for `npm run upload`. Precedence: --port flag >
+  // CUTTLEFISH_PORT env var > this config — Linux/macOS users can set
+  // CUTTLEFISH_PORT=/dev/ttyACM0 instead of editing the file.
+  console: { port: 'COM13' },
   toolchain: { type: 'west' },
   // The XIAO nRF52840 ships with a UF2 USB bootloader (no J-Link probe). When
   // the board is in UF2 mode it mounts as a USB-MSC drive and exposes no debug

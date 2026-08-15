@@ -53,6 +53,11 @@ const config: CuttlefishConfig = {
     baudRate: 9600,
   },
 
+  // Upload port for `npm run upload`. Precedence: --port flag >
+  // CUTTLEFISH_PORT env var > this config — Linux/macOS users can set
+  // CUTTLEFISH_PORT=/dev/ttyACM0 instead of editing the file.
+  console: { port: 'COM3' },
+
   // Display profile — describes the ILI9341's capabilities and wiring.
   display: {
     profile: 'ili9341-spi',
@@ -62,7 +67,7 @@ const config: CuttlefishConfig = {
     backlight: 33,
     spiFrequency: 80000000,
     antialias: true,
-    themeCss: 'C:/typecad/typecode/demo-ui/src/showcase.neobrutalism.css',
+    themeCss: './src/showcase.neobrutalism.css',
     themeClass: 'dark',
     touch: {
       library: 'XPT2046_Touchscreen',

@@ -72,9 +72,12 @@ export interface CuttlefishConfig {
   /**
    * MCU package providing silicon definitions.
    * Example: '@typecad/mcu-atmega328p'
+   *
+   * Optional for native/host targets — a desktop build has no MCU (the
+   * loader generates a boardless `@typecad/board` shim). Embedded targets
+   * should set this (or the deprecated `board`).
    */
-  mcu: string;
-  
+  mcu?: string;
   /**
    * Board package to use. (Deprecated — use mcu + contract instead)
    */

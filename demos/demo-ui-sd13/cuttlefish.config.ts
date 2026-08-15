@@ -33,6 +33,11 @@ const config: CuttlefishConfig = {
     buildTarget: 'esp32:esp32:esp32',
   },
 
+  // Upload port for `npm run upload`. Precedence: --port flag >
+  // CUTTLEFISH_PORT env var > this config — Linux/macOS users can set
+  // CUTTLEFISH_PORT=/dev/ttyACM0 instead of editing the file.
+  console: { port: 'COM3' },
+
   // Output / build options.
   output: {
     framework: 'arduino',

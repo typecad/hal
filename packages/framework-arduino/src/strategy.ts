@@ -1688,30 +1688,6 @@ void __tc_clearTimeout(int id) { __tc_timer_runtime.clear(id); }
       case "raw":
         return { code: op.code };
 
-      // Watchdog timer. The __tc_WDT struct's enable(const char*) overload keeps
-      // a strcmp chain as a fallback for DYNAMIC timeout strings (a runtime
-      // variable). For the common case — a literal preset like "250ms" — fold it
-      // to the matching WDTO_* macro here at transpile time, emitting the exact
-      // wdt_enable(WDTO_250MS) call a hand-written sketch would use. Numeric
-      // timeouts and unrecognized strings pass through unchanged.
-      case "wdt.enable": {
-        const wdtoMap: Record<string, string> = {
-          "15ms": "WDTO_15MS", "30ms": "WDTO_30MS", "60ms": "WDTO_60MS",
-          "120ms": "WDTO_120MS", "250ms": "WDTO_250MS", "500ms": "WDTO_500MS",
-          "1s": "WDTO_1S", "2s": "WDTO_2S", "4s": "WDTO_4S", "8s": "WDTO_8S",
-        };
-        const raw = String(op.timeout);
-        // Strip surrounding quotes the HAL resolver may include for literals.
-        const preset = raw.replace(/^["']|["']$/g, "");
-        const macro = wdtoMap[preset];
-        if (macro) return { code: `wdt_enable(${macro});` };
-        return { code: `wdt_enable(${raw});` };
-      }
-      case "wdt.reset":
-        return { code: `wdt_reset();` };
-      case "wdt.disable":
-        return { code: `wdt_disable();` };
-
       // Random — Arduino core random()/randomSeed(). The HAL Random class
       // (Random.upTo/between/int) used to lower via rawCpp to bare random()
       // calls; it now emits typed random.* ops, so this switch restores the

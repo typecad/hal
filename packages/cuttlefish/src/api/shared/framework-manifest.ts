@@ -100,6 +100,7 @@ const ToolchainCoverageSchema = z.object({
     compile: z.boolean(),
     upload: z.boolean(),
     monitor: z.boolean(),
+    debug: z.boolean().optional(),
   }),
   reexportedFrom: z.string().optional(),
 });

@@ -1,5 +1,52 @@
 # @typecad/cuttlefish
 
+## 1.0.0-alpha.12
+
+### Patch Changes
+
+- Stale generated sources are now swept from the out dir after emission: a
+  compiled-source file (`.cpp`/`.cc`/`.c`/`.h`/`.ino`) in the out dir root,
+  `src/`, or `main/` that the current run did not write is deleted. Leftovers
+  from renamed entries (the old `main.cpp` next to the current `src.cpp`) or
+  removed modules previously survived forever — and Zephyr's CMakeLists globs
+  `src/*.cpp`, so they compiled into duplicate-symbol link errors
+  (`multiple definition of 'setup()'`). Build caches (`out/build` etc.) and
+  sidecar JSONs are untouched.
+
+- `CuttlefishConfig.mcu` is now optional in the public type, matching the
+  runtime schema and loader: native/host targets legitimately omit it (a
+  desktop build has no MCU — the loader generates a boardless
+  `@typecad/board` shim), so configs like the native SDL demo no longer fail
+  typechecking with "Property 'mcu' is missing". Embedded targets should
+  still set `mcu` (or the deprecated `board`).
+
+- ## Standalone-install dependency fixes
+
+  Declared the dependencies each package actually consumes at build/test time,
+  so installs outside the monorepo resolve without relying on hoisting:
+
+  - **`@typecad/expect`** now declares `@typecad/hal` (a hard dependency — the
+    test harness generates `cuttlefish.config.ts` files whose
+    `import type { CuttlefishConfig } from '@typecad/hal'` previously failed to
+    typecheck in standalone installs) and `@typecad/framework-zephyr` as an
+    optional dependency (the `west build`/`west flash` compile path requires it
+    dynamically and degrades gracefully when absent).
+  - **`@typecad/cuttlefish`** now declares `@typecad/expect` as an optional
+    dependency — `transpile.ts` loads its preprocessor and `cli-utils.ts`
+    resolves the `cuttlefish-test` CLI from it, both with existing fallbacks.
+  - **`@typecad/ui`** moved `@typecad/cuttlefish` from peerDependencies to
+    regular dependencies (it is imported throughout `src/`), so installing
+    `@typecad/ui` pulls the transpiler automatically like every other consumer.
+  - **`@typecad/safety`** dropped its duplicate peerDependencies block —
+    `@typecad/cuttlefish` and `@typecad/hal` were declared in both
+    `dependencies` and `peerDependencies`; the regular dependencies (the pattern
+    every other package uses) are kept.
+
+- Updated dependencies
+- Updated dependencies
+  - @typecad/ui@1.0.0-alpha.12
+  - @typecad/safety@1.0.0-alpha.12
+
 ## 1.0.0-alpha.11
 
 ### Minor Changes
@@ -26,21 +73,19 @@
     non-zero on any strong-copyleft / unknown dependency; a missing west install
     degrades gracefully instead of crashing. Declared `licenses: { available:
 true }` in the Zephyr manifest and exported as the dispatcher-facing
-    `licenses` alias.
-    - **Build-based project scope** — unlike Arduino's installed-library
-      registry, a Zephyr workspace's west manifest carries _every_ vendor HAL and
-      library (most unused by any single project). The default scope therefore
-      reports only the dependencies the firmware actually links, derived from the
-      last `cuttlefish build`'s `compile_commands.json` (a module is listed iff
-      one of its sources was compiled — e.g. an xiao_ble/nRF52840 build links
-      `hal_nordic` + the kernel, not the other ~60 modules). Without a build,
-      only the kernel is shown with a hint to build first; `--all` lists every
-      west module. Module LICENSE files are sought under `zephyr/` and `src/`
-      subdirs too (e.g. `hal_nordic` ships `zephyr/LICENSE.txt` → BSD-3-Clause).
-    - The CLI accepts `cuttlefish license` (singular) as an alias, and the shared
-      resolver now matches lowercase/`.rst` LICENSE files (e.g.
-      trusted-firmware-m's `license.rst`) using their real on-disk name so it
-      works on case-sensitive filesystems.
+    `licenses` alias. - **Build-based project scope** — unlike Arduino's installed-library
+    registry, a Zephyr workspace's west manifest carries _every_ vendor HAL and
+    library (most unused by any single project). The default scope therefore
+    reports only the dependencies the firmware actually links, derived from the
+    last `cuttlefish build`'s `compile_commands.json` (a module is listed iff
+    one of its sources was compiled — e.g. an xiao_ble/nRF52840 build links
+    `hal_nordic` + the kernel, not the other ~60 modules). Without a build,
+    only the kernel is shown with a hint to build first; `--all` lists every
+    west module. Module LICENSE files are sought under `zephyr/` and `src/`
+    subdirs too (e.g. `hal_nordic` ships `zephyr/LICENSE.txt` → BSD-3-Clause). - The CLI accepts `cuttlefish license` (singular) as an alias, and the shared
+    resolver now matches lowercase/`.rst` LICENSE files (e.g.
+    trusted-firmware-m's `license.rst`) using their real on-disk name so it
+    works on case-sensitive filesystems.
 
   ### HAL coverage: `dac`, `fs`, `hwtimer` lowerings
 

@@ -3,6 +3,7 @@
 // See docs/superpowers/specs/2026-07-12-split-runtime-header-design.md.
 export function emitTouchKeyboardFwd(): string {
   return `
+#include <cstdlib>  // abs() for drag-distance thresholds (self-sufficient slice)
 // ── Touch hit-testing + click dispatch ─────────────────────────────────────
 // Radio groups for mutual exclusion
 struct UIRadioGroup {

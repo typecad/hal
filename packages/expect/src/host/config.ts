@@ -124,6 +124,61 @@ export interface RawConfig {
   };
 }
 
+/** Unwrap `as const` / `satisfies T` / parenthesized wrappers so initializers
+ *  like `const config = {...} satisfies CuttlefishConfig` still parse. */
+function unwrapExpr(node: ts.Expression): ts.Expression {
+  let curr = node;
+  for (;;) {
+    if (ts.isAsExpression(curr) || ts.isTypeAssertionExpression(curr) || ts.isParenthesizedExpression(curr)) {
+      curr = curr.expression;
+      continue;
+    }
+    // satisfies is TS ≥4.9 — guard for older typings, then cast for .expression.
+    const isSatisfies = (ts as any).isSatisfiesExpression as ((n: ts.Node) => boolean) | undefined;
+    if (typeof isSatisfies === 'function' && isSatisfies(curr)) {
+      curr = (curr as ts.SatisfiesExpression).expression;
+      continue;
+    }
+    return curr;
+  }
+}
+
+/** Property key as plain text — accepts both `target:` and `'target':` forms. */
+function propName(prop: ts.ObjectLiteralElement): string | undefined {
+  const name = (prop as any).name;
+  if (name && (ts.isIdentifier(name) || ts.isStringLiteral(name))) return name.text;
+  return undefined;
+}
+
+/** String-literal (or plain template-literal) text, through as-cast wrappers. */
+function stringLikeText(node: ts.Expression): string | undefined {
+  const curr = unwrapExpr(node);
+  return (ts.isStringLiteral(curr) || ts.isNoSubstitutionTemplateLiteral(curr))
+    ? curr.text
+    : undefined;
+}
+
+/** Numeric literal via Number() so hex (0x38), decimals, and separators parse
+ *  correctly — parseInt(text, 10) silently corrupted hex values to 0. */
+function numericValue(node: ts.Expression): number | undefined {
+  const curr = unwrapExpr(node);
+  if (ts.isNumericLiteral(curr)) return Number(curr.text);
+  if (ts.isPrefixUnaryExpression(curr)
+    && (curr.operator === ts.SyntaxKind.MinusToken || curr.operator === ts.SyntaxKind.PlusToken)
+    && ts.isNumericLiteral(curr.operand)) {
+    const magnitude = Number(curr.operand.text);
+    return curr.operator === ts.SyntaxKind.MinusToken ? -magnitude : magnitude;
+  }
+  return undefined;
+}
+
+function boolValue(node: ts.Expression): boolean | undefined {
+  const curr = unwrapExpr(node);
+  if (curr.kind === ts.SyntaxKind.TrueKeyword) return true;
+  if (curr.kind === ts.SyntaxKind.FalseKeyword) return false;
+  return undefined;
+}
+
 export function parseConfigAST(configPath: string): RawConfig {
   const text = fs.readFileSync(configPath, 'utf8');
   const sf = ts.createSourceFile(configPath, text, ts.ScriptTarget.Latest, true);
@@ -134,15 +189,19 @@ export function parseConfigAST(configPath: string): RawConfig {
     // `const config: CuttlefishConfig = { ... };`
     if (ts.isVariableStatement(stmt)) {
       for (const decl of stmt.declarationList.declarations) {
-        if (decl.initializer && ts.isObjectLiteralExpression(decl.initializer)) {
-          extractConfigProperties(decl.initializer, result);
+        const init = decl.initializer ? unwrapExpr(decl.initializer) : undefined;
+        if (init && ts.isObjectLiteralExpression(init)) {
+          extractConfigProperties(init, result);
         }
       }
     }
 
     // `export default { ... };`
-    if (ts.isExportAssignment(stmt) && ts.isObjectLiteralExpression(stmt.expression)) {
-      extractConfigProperties(stmt.expression, result);
+    if (ts.isExportAssignment(stmt)) {
+      const expr = unwrapExpr(stmt.expression);
+      if (ts.isObjectLiteralExpression(expr)) {
+        extractConfigProperties(expr, result);
+      }
     }
   }
 
@@ -151,82 +210,107 @@ export function parseConfigAST(configPath: string): RawConfig {
 
 function extractConfigProperties(obj: ts.ObjectLiteralExpression, out: RawConfig): void {
   for (const prop of obj.properties) {
-    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
-
-    const name = prop.name.text;
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const name = propName(prop);
+    if (!name) continue;
 
     switch (name) {
-      case 'target':
-        if (ts.isStringLiteral(prop.initializer)) out.target = prop.initializer.text;
+      case 'target': {
+        const v = stringLikeText(prop.initializer);
+        if (v !== undefined) out.target = v;
         break;
-      case 'board':
-        if (ts.isStringLiteral(prop.initializer)) out.board = prop.initializer.text;
+      }
+      case 'board': {
+        const v = stringLikeText(prop.initializer);
+        if (v !== undefined) out.board = v;
         break;
-      case 'mcu':
-        if (ts.isStringLiteral(prop.initializer)) out.mcu = prop.initializer.text;
+      }
+      case 'mcu': {
+        const v = stringLikeText(prop.initializer);
+        if (v !== undefined) out.mcu = v;
         break;
-      case 'frameworkData':
-        if (ts.isObjectLiteralExpression(prop.initializer)) {
+      }
+      case 'frameworkData': {
+        const init = unwrapExpr(prop.initializer);
+        if (ts.isObjectLiteralExpression(init)) {
           out.frameworkData = {};
-          for (const fProp of prop.initializer.properties) {
-            if (ts.isPropertyAssignment(fProp) && ts.isIdentifier(fProp.name) && fProp.name.text === 'buildTarget') {
-              if (ts.isStringLiteral(fProp.initializer)) out.frameworkData.buildTarget = fProp.initializer.text;
+          for (const fProp of init.properties) {
+            if (ts.isPropertyAssignment(fProp) && propName(fProp) === 'buildTarget') {
+              const v = stringLikeText(fProp.initializer);
+              if (v !== undefined) out.frameworkData.buildTarget = v;
             }
           }
         }
         break;
-      case 'framework':
-        if (ts.isStringLiteral(prop.initializer)) out.framework = prop.initializer.text;
+      }
+      case 'framework': {
+        const v = stringLikeText(prop.initializer);
+        if (v !== undefined) out.framework = v;
         break;
-      case 'toolchain':
-        if (ts.isObjectLiteralExpression(prop.initializer)) {
+      }
+      case 'toolchain': {
+        const init = unwrapExpr(prop.initializer);
+        if (ts.isObjectLiteralExpression(init)) {
           out.toolchain = {};
-          for (const tProp of prop.initializer.properties) {
-            if (ts.isPropertyAssignment(tProp) && tProp.name.getText() === 'type' && ts.isStringLiteral(tProp.initializer)) {
-              out.toolchain.type = tProp.initializer.text;
+          for (const tProp of init.properties) {
+            if (ts.isPropertyAssignment(tProp) && propName(tProp) === 'type') {
+              const v = stringLikeText(tProp.initializer);
+              if (v !== undefined) out.toolchain.type = v;
             }
           }
         }
         break;
-      case 'zephyr':
+      }
+      case 'zephyr': {
         // Parse the zephyr section (kconfig, runner, cmakeArgs) as a generic
         // object so it can be passed through to the Zephyr toolchain.
-        if (ts.isObjectLiteralExpression(prop.initializer)) {
+        const init = unwrapExpr(prop.initializer);
+        if (ts.isObjectLiteralExpression(init)) {
           out.zephyr = {};
-          for (const zProp of prop.initializer.properties) {
-            if (ts.isPropertyAssignment(zProp)) {
-              const key = zProp.name.getText();
-              if (ts.isObjectLiteralExpression(zProp.initializer)) {
-                // kconfig: { 'CONFIG_X': 'y' }
-                const sub: Record<string, string> = {};
-                for (const subProp of zProp.initializer.properties) {
-                  if (ts.isPropertyAssignment(subProp) && ts.isStringLiteral(subProp.initializer)) {
-                    sub[subProp.name.getText().replace(/['"]/g, '')] = subProp.initializer.text;
-                  }
-                }
-                (out.zephyr as Record<string, unknown>)[key] = sub;
-              } else if (ts.isStringLiteral(zProp.initializer)) {
-                (out.zephyr as Record<string, unknown>)[key] = zProp.initializer.text;
+          for (const zProp of init.properties) {
+            if (!ts.isPropertyAssignment(zProp)) continue;
+            const key = propName(zProp);
+            if (!key) continue;
+            const zInit = unwrapExpr(zProp.initializer);
+            if (ts.isObjectLiteralExpression(zInit)) {
+              // kconfig: { 'CONFIG_X': 'y' }
+              const sub: Record<string, string> = {};
+              for (const subProp of zInit.properties) {
+                if (!ts.isPropertyAssignment(subProp)) continue;
+                const subKey = propName(subProp);
+                const v = stringLikeText(subProp.initializer);
+                if (subKey !== undefined && v !== undefined) sub[subKey] = v;
               }
+              (out.zephyr as Record<string, unknown>)[key] = sub;
+            } else {
+              const v = stringLikeText(zInit);
+              if (v !== undefined) (out.zephyr as Record<string, unknown>)[key] = v;
             }
           }
         }
         break;
-      case 'test':
-        if (ts.isObjectLiteralExpression(prop.initializer)) {
-          out.test = extractTestConfig(prop.initializer);
+      }
+      case 'test': {
+        const init = unwrapExpr(prop.initializer);
+        if (ts.isObjectLiteralExpression(init)) {
+          out.test = extractTestConfig(init);
         }
         break;
-      case 'output':
-        if (ts.isObjectLiteralExpression(prop.initializer)) {
-          out.output = extractOutputConfig(prop.initializer);
+      }
+      case 'output': {
+        const init = unwrapExpr(prop.initializer);
+        if (ts.isObjectLiteralExpression(init)) {
+          out.output = extractOutputConfig(init);
         }
         break;
-      case 'console':
-        if (ts.isObjectLiteralExpression(prop.initializer)) {
-          out.console = extractConsoleConfig(prop.initializer);
+      }
+      case 'console': {
+        const init = unwrapExpr(prop.initializer);
+        if (ts.isObjectLiteralExpression(init)) {
+          out.console = extractConsoleConfig(init);
         }
         break;
+      }
     }
   }
 }
@@ -235,47 +319,63 @@ function extractTestConfig(obj: ts.ObjectLiteralExpression): Partial<TestConfig>
   const result: Partial<TestConfig> = {};
 
   for (const prop of obj.properties) {
-    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
-
-    const name = prop.name.text;
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const name = propName(prop);
+    if (!name) continue;
 
     switch (name) {
-      case 'port':
-        if (ts.isStringLiteral(prop.initializer)) result.port = prop.initializer.text;
+      case 'port': {
+        const v = stringLikeText(prop.initializer);
+        if (v !== undefined) result.port = v;
         break;
-      case 'baudRate':
-        if (ts.isNumericLiteral(prop.initializer)) result.baudRate = parseInt(prop.initializer.text, 10);
+      }
+      case 'baudRate': {
+        const v = numericValue(prop.initializer);
+        if (v !== undefined) result.baudRate = v;
         break;
-      case 'timeout':
-        if (ts.isNumericLiteral(prop.initializer)) result.timeout = parseInt(prop.initializer.text, 10);
+      }
+      case 'timeout': {
+        const v = numericValue(prop.initializer);
+        if (v !== undefined) result.timeout = v;
         break;
-      case 'serialOpenDelay':
-        if (ts.isNumericLiteral(prop.initializer)) result.serialOpenDelay = parseInt(prop.initializer.text, 10);
+      }
+      case 'serialOpenDelay': {
+        const v = numericValue(prop.initializer);
+        if (v !== undefined) result.serialOpenDelay = v;
         break;
-      case 'buildTarget':
-        if (ts.isStringLiteral(prop.initializer)) result.buildTarget = prop.initializer.text;
+      }
+      case 'buildTarget': {
+        const v = stringLikeText(prop.initializer);
+        if (v !== undefined) result.buildTarget = v;
         break;
-      case 'resetAfterOpen':
-        if (prop.initializer.kind === ts.SyntaxKind.TrueKeyword) result.resetAfterOpen = true;
-        if (prop.initializer.kind === ts.SyntaxKind.FalseKeyword) result.resetAfterOpen = false;
+      }
+      case 'resetAfterOpen': {
+        const v = boolValue(prop.initializer);
+        if (v !== undefined) result.resetAfterOpen = v;
         break;
-      case 'board':
-        if (ts.isStringLiteral(prop.initializer)) result.board = prop.initializer.text;
+      }
+      case 'verbose': {
+        const v = boolValue(prop.initializer);
+        if (v !== undefined) result.verbose = v;
         break;
+      }
+      case 'board': {
+        const v = stringLikeText(prop.initializer);
+        if (v !== undefined) result.board = v;
+        break;
+      }
       case 'include':
-        if (ts.isArrayLiteralExpression(prop.initializer)) {
-          result.include = prop.initializer.elements
-            .filter(ts.isStringLiteral)
-            .map(el => el.text);
+      case 'exclude': {
+        const init = unwrapExpr(prop.initializer);
+        if (ts.isArrayLiteralExpression(init)) {
+          const values = init.elements
+            .map(el => stringLikeText(el))
+            .filter((v): v is string => v !== undefined);
+          if (name === 'include') result.include = values;
+          else result.exclude = values;
         }
         break;
-      case 'exclude':
-        if (ts.isArrayLiteralExpression(prop.initializer)) {
-          result.exclude = prop.initializer.elements
-            .filter(ts.isStringLiteral)
-            .map(el => el.text);
-        }
-        break;
+      }
     }
   }
 
@@ -285,11 +385,14 @@ function extractTestConfig(obj: ts.ObjectLiteralExpression): Partial<TestConfig>
 function extractOutputConfig(obj: ts.ObjectLiteralExpression): NonNullable<RawConfig['output']> {
   const result: NonNullable<RawConfig['output']> = {};
   for (const prop of obj.properties) {
-    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
-    const name = prop.name.text;
-    if (name === 'framework' && ts.isStringLiteral(prop.initializer)) result.framework = prop.initializer.text;
-    if (name === 'optimize' && ts.isStringLiteral(prop.initializer)) result.optimize = prop.initializer.text;
-    if (name === 'outDir' && ts.isStringLiteral(prop.initializer)) result.outDir = prop.initializer.text;
+    if (!ts.isPropertyAssignment(prop)) continue;
+    const name = propName(prop);
+    if (!name) continue;
+    const v = stringLikeText(prop.initializer);
+    if (v === undefined) continue;
+    if (name === 'framework') result.framework = v;
+    if (name === 'optimize') result.optimize = v;
+    if (name === 'outDir') result.outDir = v;
   }
   return result;
 }
@@ -297,9 +400,10 @@ function extractOutputConfig(obj: ts.ObjectLiteralExpression): NonNullable<RawCo
 function extractConsoleConfig(obj: ts.ObjectLiteralExpression): NonNullable<RawConfig['console']> {
   const result: NonNullable<RawConfig['console']> = {};
   for (const prop of obj.properties) {
-    if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
-    if (prop.name.text === 'baudRate' && ts.isNumericLiteral(prop.initializer)) {
-      result.baudRate = parseInt(prop.initializer.text, 10);
+    if (!ts.isPropertyAssignment(prop)) continue;
+    if (propName(prop) === 'baudRate') {
+      const v = numericValue(prop.initializer);
+      if (v !== undefined) result.baudRate = v;
     }
   }
   return result;

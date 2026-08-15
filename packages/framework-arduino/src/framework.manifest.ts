@@ -192,7 +192,7 @@ export default defineFrameworkManifest({
     },
     wifi: {
       supported: false,
-      unsupportedReason: 'Arduino core has no WiFi HAL. ESP32 WiFi lives in framework-esp32.',
+      unsupportedReason: 'Arduino core has no WiFi HAL. On ESP32 targets, @typecad/hal lowers WiFi natively via ESP-IDF (esp_wifi), independent of this framework.',
       partialCoverage: false,
       ops: {
         'wifi.connect': 'unsupported',
@@ -233,7 +233,7 @@ export default defineFrameworkManifest({
     },
     http: {
       supported: false,
-      unsupportedReason: 'Arduino core has no HTTP client HAL. ESP32 HTTP lives in framework-esp32.',
+      unsupportedReason: 'Arduino core has no HTTP client HAL. On ESP32 targets, @typecad/hal lowers HTTP over its native WiFi stack, independent of this framework.',
       partialCoverage: false,
       ops: {
         'http.begin': 'unsupported',
@@ -281,7 +281,7 @@ export default defineFrameworkManifest({
     // ESP32-silicon-specific peripherals. The Arduino core does not provide
     // these on AVR/SAMD/megaAVR targets; they are ESP-IDF-only. Declared
     // unsupported here so the coverage matrix is uniform across frameworks.
-    // (framework-esp32 owns the roadmap for native lowerings.)
+    // (native ESP32 lowerings are owned by @typecad/hal.)
     i2s: {
       supported: false,
       unsupportedReason: 'I2S / digital audio is an ESP32 peripheral, not part of the Arduino core on AVR/SAMD.',
@@ -334,7 +334,7 @@ export default defineFrameworkManifest({
     // These have op-kinds in HAL_OPERATION_KINDS. fs/preferences/hwtimer/
     // snprintf are supported via the Arduino core (FS.h, Preferences, STM32
     // HardwareTimer, snprintf). The rest are genuinely unsupported on the
-    // Arduino core (networking/ESP32-silicon/RTOS categories — framework-esp32
+    // Arduino core (networking/ESP32-silicon/RTOS categories — @typecad/hal
     // owns the native lowerings). Declaring them all keeps the coverage matrix
     // uniform and satisfies the completeness check.
     fs: {

@@ -35,6 +35,20 @@ describe('resolveKconfigFragments', () => {
     expect(m.get('CONFIG_DISPLAY')).toBe('y');
   });
 
+  it('routes touch to the right bus driver per controller', () => {
+    // Default/FT6336U: I2C.
+    const ft = resolveKconfigFragments({ usesTouch: true }, false);
+    expect(ft.get('CONFIG_I2C')).toBe('y');
+    expect(ft.has('CONFIG_SPI')).toBe(false);
+    // XPT2046 rides the display's SPI bus — no I2C needed.
+    const xpt = resolveKconfigFragments({ usesTouch: true, touchController: 'xpt2046' }, false);
+    expect(xpt.get('CONFIG_SPI')).toBe('y');
+    expect(xpt.has('CONFIG_I2C')).toBe(false);
+    // The adapters drive the controllers directly — the in-tree input drivers
+    // must not build against nodes they own.
+    expect(xpt.has('CONFIG_INPUT')).toBe(false);
+  });
+
   it('enables PM when usesPower (deep_sleep_pin wake needs it)', () => {
     const m = resolveKconfigFragments({ usesPower: true }, false);
     expect(m.get('CONFIG_PM')).toBe('y');

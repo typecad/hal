@@ -13,6 +13,7 @@
 
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 import type { ZephyrDisplayProfile } from '../display/profiles.js';
+import { PANEL_CONTROLLER_DEFAULTS, panelControllerFor } from '../display/profiles.js';
 import type { KconfigUsage } from './kconfig.js';
 
 /**
@@ -40,12 +41,24 @@ export interface DisplayWiring {
   backlightPin?: number;
 }
 
-/** Touch wiring from cuttlefish.config.ts (irq/resetPin/sda/scl). */
+/** Touch wiring from cuttlefish.config.ts (irq/resetPin/sda/scl; cs for SPI
+ *  resistive controllers, calibration for the XPT2046 DT binding). */
 export interface TouchWiring {
+  /** Touch controller kind — selects the DT node shape (FT6336U node on I2C0
+   *  vs XPT2046 node on the display's SPI bus). Default 'ft6336u'. */
+  controller?: 'ft6336u' | 'xpt2046';
   irq?: number;
   resetPin?: number;
   sda?: number;
   scl?: number;
+  /** XPT2046 only: SPI CS pin (second cs-gpios entry on the panel's bus). */
+  cs?: number;
+  /** XPT2046 only: raw ADC calibration — feeds the binding's min-x/max-x/
+   *  min-y/max-y (required props). Defaults span the full 12-bit range. */
+  calibration?: { xMin: number; xMax: number; yMin: number; yMax: number };
+  /** XPT2046 only: pen-detect Z1 threshold (binding's z-threshold). Resistive
+   *  panels need a few hundred 12-bit counts; default 400. */
+  minPressure?: number;
 }
 
 export function generateOverlay(
@@ -96,14 +109,23 @@ export function generateOverlay(
     // controller with the panel's compatible string + dimensions. The pin
     // wiring (cs/dc/rst) uses ESP32 GPIO defaults from the demo config; a
     // real board overlay would carry its own binding.
-    emitDisplayNode(lines, display, wiring);
+    // An XPT2046 on the same bus needs its CS as the second cs-gpios entry,
+    // so thread it into the display block (DT assignment replaces the whole
+    // property — both entries must be written together).
+    emitDisplayNode(
+      lines,
+      display,
+      wiring,
+      touch?.controller === 'xpt2046' ? (touch?.cs ?? DEFAULT_XPT2046_CS) : undefined,
+    );
   }
-  // FT6336U touch on I2C — defined when the program uses touch (the UI touch
-  // adapter references DT_NODELABEL(ft6336u)). Same rationale: the bare devkit
-  // has no such node. Gated on usesTouch (not usesI2c/chip.i2c) so it emits
-  // even when the chip descriptor doesn't declare I2C controllers (ESP32).
+  // Touch — FT6336U capacitive on I2C (references DT_NODELABEL(ft6336u)) or
+  // XPT2046 resistive on the display's SPI bus (references
+  // DT_NODELABEL(xpt2046)). Same rationale as the display node: the bare
+  // devkit has no such node. Gated on usesTouch (not usesI2c/chip.i2c) so it
+  // emits even when the chip descriptor doesn't declare bus controllers.
   if (usage.usesTouch) {
-    emitTouchNode(lines, touch);
+    emitTouchNode(lines, touch, display);
   }
 
   // Preferences (ZMS settings backend): point the settings subsystem at the
@@ -138,11 +160,26 @@ export function generateOverlay(
 }
 
 /**
- * Emit a display DT node definition. The node is attached to spi2 (the ESP32's
- * first user SPI controller) via a MIPI DBI SPI bridge. Pin wiring comes from
- * the display config (cs/dc/rst); defaults match the demo-st wiring if absent.
+ * Emit a display DT node definition. The node is attached to the profile's SPI
+ * controller (default spi2, the ESP32's first user SPI controller) via a MIPI
+ * DBI SPI bridge. Pin wiring comes from the display config (cs/dc/rst);
+ * defaults match the demo-st wiring if absent. The compatible string + node
+ * props come from the profile's panel controller (st7796s carries the required
+ * pgc/ngc gamma + madctl; ili9341's binding defaults everything else).
+ *
+ * spiTouchCs: when an XPT2046 SPI touch controller shares the bus, its CS is
+ * appended as the second cs-gpios entry (the touch node uses reg = <1>) — DT
+ * property assignment replaces, so both entries must be written together.
  */
-function emitDisplayNode(lines: string[], display: ZephyrDisplayProfile, wiring?: DisplayWiring): void {
+function emitDisplayNode(
+  lines: string[],
+  display: ZephyrDisplayProfile,
+  wiring?: DisplayWiring,
+  spiTouchCs?: number,
+): void {
+  const bus = display.busLabel ?? 'spi2';
+  const controller = panelControllerFor(display);
+  const compatible = display.dtCompatible ?? PANEL_CONTROLLER_DEFAULTS[controller].dtCompatible;
   const dc = wiring?.dc ?? 17;
   const rst = wiring?.rst ?? 16;
   const cs = wiring?.cs ?? 5;
@@ -163,7 +200,9 @@ function emitDisplayNode(lines: string[], display: ZephyrDisplayProfile, wiring?
   // macros are used instead of the named SPIM2_*_GPIOxx tokens because the
   // bindings header omits GPIOs 22-25 from those lists.
   if (sck !== undefined && mosi !== undefined) {
-    lines.push('&spim2_default {');
+    // 'spi2' → pinctrl group 'spim2_default' (ESP32 SPI-master naming).
+    const pinctrlGroup = bus.replace(/^spi(\d)$/, 'spim$1') + '_default';
+    lines.push(`&${pinctrlGroup} {`);
     lines.push('    group1 {');
     lines.push(`        pinmux = <ESP32_PINMUX(${miso ?? 19}, ESP_FSPIQ_IN, ESP_NOSIG)>,`);
     lines.push(`                 <ESP32_PINMUX(${sck}, ESP_NOSIG, ESP_FSPICLK_OUT)>,`);
@@ -180,9 +219,9 @@ function emitDisplayNode(lines: string[], display: ZephyrDisplayProfile, wiring?
   lines.push('    status = "okay";');
   lines.push('};');
   lines.push('');
-  lines.push('&spi2 {');
+  lines.push(`&${bus} {`);
   lines.push('    status = "okay";');
-  lines.push(`    cs-gpios = <&${gpioController(cs)} ${cs} GPIO_ACTIVE_LOW>;`);
+  lines.push(`    cs-gpios = <&${gpioController(cs)} ${cs} GPIO_ACTIVE_LOW>${spiTouchCs !== undefined ? `, <&${gpioController(spiTouchCs)} ${spiTouchCs} GPIO_ACTIVE_LOW>` : ''};`);
   // Enable GDMA for the SPI2 host. The ESP32 SPI driver uses DMA only when
   // dma-enabled is set AND dmas wires tx/rx channels to the GDMA controller;
   // without it, transfers run PIO through the 64-byte FIFO (~4MHz effective at
@@ -198,25 +237,36 @@ function emitDisplayNode(lines: string[], display: ZephyrDisplayProfile, wiring?
   lines.push('/ {');
   lines.push('    mipi_dbi: mipi-dbi {');
   lines.push('        compatible = "zephyr,mipi-dbi-spi";');
-  lines.push('        spi-dev = <&spi2>;');
+  lines.push(`        spi-dev = <&${bus}>;`);
   lines.push(`        dc-gpios = <&${gpioController(dc)} ${dc} GPIO_ACTIVE_HIGH>;`);
   lines.push(`        reset-gpios = <&${gpioController(rst)} ${rst} GPIO_ACTIVE_LOW>;`);
   lines.push('        write-only;');
   lines.push('        #address-cells = <1>;');
   lines.push('        #size-cells = <0>;');
   lines.push(`        ${display.dtLabel}: display@0 {`);
-  lines.push('            compatible = "sitronix,st7796s";');
+  lines.push(`            compatible = "${compatible}";`);
   lines.push('            reg = <0>;');
-  lines.push(`            mipi-max-frequency = <${freq}>;`);
-  lines.push('            mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";');
+            lines.push(`            mipi-max-frequency = <${freq}>;`);
+            lines.push('            mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";');
+            // Required by the lcd-controller binding (Zephyr 4.x): 0 = RGB565,
+            // matching upstream ILI9341 boards (esp_wrover_kit) and the C++
+            // runtime, which drives these SPI TFTs as RGB565.
+            lines.push('            pixel-format = <0>;');
   lines.push(`            width = <${nativeW}>;`);
   lines.push(`            height = <${nativeH}>;`);
-  // MADCTL: rotation 1 (landscape, MV=1) + BGR bit, matching the adapter's
-  // direct-drive init (0x28). The DT copy keeps the stock driver's init
-  // consistent if it is ever exercised.
-  lines.push('            madctl = <0x28>;');
-  lines.push('            pgc = [f0 09 0b 06 04 2e 46 46 39 13 15 12 15 12];');
-  lines.push('            ngc = [f0 09 0b 06 04 2e 46 46 39 13 15 12 15 12];');
+  if (controller === 'st7796s') {
+    // MADCTL: rotation 1 (landscape, MV=1) + BGR bit, matching the adapter's
+    // direct-drive init (0x28). The DT copy keeps the stock driver's init
+    // consistent if it is ever exercised.
+    lines.push('            madctl = <0x28>;');
+    lines.push('            pgc = [f0 09 0b 06 04 2e 46 46 39 13 15 12 15 12];');
+    lines.push('            ngc = [f0 09 0b 06 04 2e 46 46 39 13 15 12 15 12];');
+  } else {
+    // ILI9341: the ilitek,ili9341 binding carries defaults for every register
+    // (gamma, power, porch) and expresses orientation via `rotation` (degrees)
+    // instead of a raw MADCTL — no panel-specific props are required.
+    lines.push(`            rotation = <${display.rotation ?? 0}>;`);
+  }
   lines.push('        };');
   lines.push('    };');
   lines.push('};');
@@ -243,13 +293,39 @@ function emitDisplayNode(lines: string[], display: ZephyrDisplayProfile, wiring?
   }
 }
 
+/** Default XPT2046 CS/IRQ pins (ESP32-S3 GPIOs clear of the demo-st display
+ *  wiring: 5/17/16/15 and the remuxed SPI pins). Config values override. */
+const DEFAULT_XPT2046_CS = 6;
+const DEFAULT_XPT2046_IRQ = 7;
+
 /**
- * Emit an FT6336U touch DT node on the first I2C controller. The node address
- * is the FT6336U default (0x38). The UI touch adapter references
- * DT_NODELABEL(ft6336u). Pin wiring (irq/resetPin/sda/scl) comes from the
- * touch config; defaults match the demo-st wiring if absent.
+ * Emit the touch DT node for the configured controller.
+ *
+ * FT6336U (capacitive, I2C): node on i2c0 at the FT6336U default address
+ * (0x38); the C++ touch adapter reads it via i2c_write_read_dt.
+ *
+ * XPT2046 (resistive, SPI): node on the display's SPI bus as CS index 1. The
+ * in-tree xptek,xpt2046 binding (drivers/input) is register-matched for the
+ * raw SPI access — CONFIG_INPUT stays off, so the in-tree input driver does
+ * not build and the adapter owns the chip (same pattern as FT6336U reusing
+ * the ft5336 binding). The binding requires int-gpios, touchscreen-size-*,
+ * and min/max calibration props, so defaults are filled for anything the
+ * config omits.
  */
-function emitTouchNode(lines: string[], touch?: TouchWiring): void {
+function emitTouchNode(
+  lines: string[],
+  touch: TouchWiring | undefined,
+  display: ZephyrDisplayProfile | undefined,
+): void {
+  if (touch?.controller === 'xpt2046') {
+    emitXpt2046Node(lines, touch, display);
+    return;
+  }
+  emitFt6336uNode(lines, touch);
+}
+
+/** FT6336U capacitive touch node on the first I2C controller. */
+function emitFt6336uNode(lines: string[], touch?: TouchWiring): void {
   const irq = touch?.irq ?? 15;
   const resetPin = touch?.resetPin;
   const sda = touch?.sda;
@@ -292,6 +368,55 @@ function emitTouchNode(lines: string[], touch?: TouchWiring): void {
   if (resetPin !== undefined) {
     lines.push(`        reset-gpios = <&${gpioController(resetPin)} ${resetPin} GPIO_ACTIVE_LOW>;`);
   }
+  lines.push('    };');
+  lines.push('};');
+  lines.push('');
+}
+
+/** XPT2046 resistive touch node on the display's SPI bus (CS index 1). */
+function emitXpt2046Node(
+  lines: string[],
+  touch: TouchWiring,
+  display: ZephyrDisplayProfile | undefined,
+): void {
+  const bus = display?.busLabel ?? 'spi2';
+  const cs = touch.cs ?? DEFAULT_XPT2046_CS;
+  const irq = touch.irq ?? DEFAULT_XPT2046_IRQ;
+  const cal = touch.calibration;
+  // ESP32-S3 GPIOs 0-31 are on gpio0, 32-48 on gpio1.
+  const gpioController = (pin: number) => pin <= 31 ? 'gpio0' : 'gpio1';
+  const zThreshold = touch.minPressure ?? 400;
+  // touchscreen-size-* describe the panel the touch layer sits on (the display
+  // profile's effective size); a touch-only build falls back to the 12-bit
+  // full-scale range so the binding's required props still resolve.
+  const sizeX = display?.width ?? cal?.xMax ?? 320;
+  const sizeY = display?.height ?? cal?.yMax ?? 240;
+  // The display block already wrote cs-gpios with both entries (its CS at
+  // index 0, the touch CS at index 1). When there is no display block, enable
+  // the bus here with the touch CS as the only entry.
+  if (!display) {
+    lines.push(`&${bus} {`);
+    lines.push('    status = "okay";');
+    lines.push(`    cs-gpios = <&${gpioController(cs)} ${cs} GPIO_ACTIVE_LOW>;`);
+    lines.push('};');
+    lines.push('');
+  }
+  lines.push(`&${bus} {`);
+  lines.push('    xpt2046: xpt2046@1 {');
+  lines.push('        compatible = "xptek,xpt2046";');
+  lines.push('        reg = <1>;');
+  // The XPT2046 datasheet max SPI clock is 2.5MHz — the panel bus may run at
+  // 80MHz, but this node's spi-max-frequency gates only its own transactions
+  // (the adapter's SPI_DT_SPEC picks it up).
+  lines.push('        spi-max-frequency = <2500000>;');
+  lines.push(`        int-gpios = <&${gpioController(irq)} ${irq} GPIO_ACTIVE_LOW>;`);
+  lines.push(`        touchscreen-size-x = <${sizeX}>;`);
+  lines.push(`        touchscreen-size-y = <${sizeY}>;`);
+  lines.push(`        min-x = <${cal?.xMin ?? 0}>;`);
+  lines.push(`        max-x = <${cal?.xMax ?? 4095}>;`);
+  lines.push(`        min-y = <${cal?.yMin ?? 0}>;`);
+  lines.push(`        max-y = <${cal?.yMax ?? 4095}>;`);
+  lines.push(`        z-threshold = <${zThreshold}>;`);
   lines.push('    };');
   lines.push('};');
   lines.push('');

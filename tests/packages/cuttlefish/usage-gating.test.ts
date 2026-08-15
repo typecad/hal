@@ -20,12 +20,11 @@ function analyzeSrc(src: string) {
 }
 
 describe("analyzeProgram new gating flags", () => {
-  it("detects usesChrono/usesSet/usesAlgorithm/usesCstdio flags exist and are boolean", () => {
+  it("detects usesSet/usesAlgorithm/usesCstdio flags exist and are boolean", () => {
     // These fire on lowered raw text (e.g. native-target lowering emits
-    // std::chrono/std::set/std::sort/printf). Their detection is exercised by
+    // std::set/std::sort/printf). Their detection is exercised by
     // the broader native suite; here we confirm the flags exist on the result.
     const a = analyzeSrc(`export function f(): void {}`);
-    expect(typeof a.usesChrono).toBe("boolean");
     expect(typeof a.usesSet).toBe("boolean");
     expect(typeof a.usesAlgorithm).toBe("boolean");
     expect(typeof a.usesCstdio).toBe("boolean");
@@ -73,7 +72,6 @@ describe("analyzeProgram new gating flags", () => {
 
   it("initializes all new flags to false for a trivial program", () => {
     const a = analyzeSrc(`export function f(): void {}`);
-    expect(a.usesChrono).toBe(false);
     expect(a.usesSet).toBe(false);
     expect(a.usesAlgorithm).toBe(false);
     expect(a.usesCstdio).toBe(false);

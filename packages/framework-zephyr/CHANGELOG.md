@@ -1,5 +1,32 @@
 # @typecad/framework-zephyr
 
+## 1.0.0-alpha.12
+
+### Patch Changes
+
+- `discoverFromPath()` now spawns `which west` without a shell on POSIX
+  (shell is kept only for Windows' `where`), matching the pattern the rest of
+  the discovery code already uses. The unconditional `shell: true` with an
+  args array made every Zephyr compile print Node's `DEP0190`
+  DeprecationWarning on Linux/macOS.
+- Fixed three Zephyr build failures affecting display demos (demo-st) and
+  projects rebuilt after the emit naming changed (main.cpp → src.cpp):
+  - The generated display overlay node now sets the `pixel-format` property
+    (`<0>` = RGB565, matching upstream ILI9341 boards) — required by the
+    `lcd-controller` binding in Zephyr 4.x, which previously failed devicetree
+    validation with "'pixel-format' is marked as required".
+  - `CONFIG_ILI9341=n` is now emitted alongside the existing
+    `CONFIG_MIPI_DBI_SPI`/`CONFIG_ST7796S` disables. The in-tree ILI9341
+    driver auto-defaults on from the overlay node and references the disabled
+    mipi-dbi-spi controller's device struct, failing at link time with
+    "undefined reference to `__device_dts_ord_N`". (The hidden `ILI9XXX`
+    symbol cannot be assigned — the prompted `ILI9341` is the right lever.)
+  - The generated CMakeLists.txt glob now uses `CONFIGURE_DEPENDS`, so CMake
+    re-checks the source set when it changes instead of linking a file list
+    from the last configure.
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.12
+
 ## 1.0.0-alpha.11
 
 ### Minor Changes
@@ -26,21 +53,19 @@
     non-zero on any strong-copyleft / unknown dependency; a missing west install
     degrades gracefully instead of crashing. Declared `licenses: { available:
 true }` in the Zephyr manifest and exported as the dispatcher-facing
-    `licenses` alias.
-    - **Build-based project scope** — unlike Arduino's installed-library
-      registry, a Zephyr workspace's west manifest carries _every_ vendor HAL and
-      library (most unused by any single project). The default scope therefore
-      reports only the dependencies the firmware actually links, derived from the
-      last `cuttlefish build`'s `compile_commands.json` (a module is listed iff
-      one of its sources was compiled — e.g. an xiao_ble/nRF52840 build links
-      `hal_nordic` + the kernel, not the other ~60 modules). Without a build,
-      only the kernel is shown with a hint to build first; `--all` lists every
-      west module. Module LICENSE files are sought under `zephyr/` and `src/`
-      subdirs too (e.g. `hal_nordic` ships `zephyr/LICENSE.txt` → BSD-3-Clause).
-    - The CLI accepts `cuttlefish license` (singular) as an alias, and the shared
-      resolver now matches lowercase/`.rst` LICENSE files (e.g.
-      trusted-firmware-m's `license.rst`) using their real on-disk name so it
-      works on case-sensitive filesystems.
+    `licenses` alias. - **Build-based project scope** — unlike Arduino's installed-library
+    registry, a Zephyr workspace's west manifest carries _every_ vendor HAL and
+    library (most unused by any single project). The default scope therefore
+    reports only the dependencies the firmware actually links, derived from the
+    last `cuttlefish build`'s `compile_commands.json` (a module is listed iff
+    one of its sources was compiled — e.g. an xiao_ble/nRF52840 build links
+    `hal_nordic` + the kernel, not the other ~60 modules). Without a build,
+    only the kernel is shown with a hint to build first; `--all` lists every
+    west module. Module LICENSE files are sought under `zephyr/` and `src/`
+    subdirs too (e.g. `hal_nordic` ships `zephyr/LICENSE.txt` → BSD-3-Clause). - The CLI accepts `cuttlefish license` (singular) as an alias, and the shared
+    resolver now matches lowercase/`.rst` LICENSE files (e.g.
+    trusted-firmware-m's `license.rst`) using their real on-disk name so it
+    works on case-sensitive filesystems.
 
   ### HAL coverage: `dac`, `fs`, `hwtimer` lowerings
 

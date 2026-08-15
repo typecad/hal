@@ -26,7 +26,10 @@ try {
 const describeOrSkip = arduinoCliAvailable ? describe : describe.skip;
 
 describeOrSkip("checkArduinoEnv — real arduino-cli (smoke)", () => {
-  it("returns ok and a non-empty installedCores list for a well-formed FQBN", () => {
+  // The probe spawns the real Go binary twice (version + core list); under a
+  // saturated parallel vitest run those spawns can take tens of seconds, so
+  // these tests get a budget well above the suite's 60s default.
+  it("returns ok and a non-empty installedCores list for a well-formed FQBN", { timeout: 240_000 }, () => {
     __invalidateArduinoCliCacheForTest();
     // Use a core very likely to be installed in any Arduino dev setup.
     const result = checkArduinoEnv("arduino:avr:uno");
@@ -38,7 +41,7 @@ describeOrSkip("checkArduinoEnv — real arduino-cli (smoke)", () => {
     }
   });
 
-  it("reports core-not-installed for a deliberately absent Pack:Arch", () => {
+  it("reports core-not-installed for a deliberately absent Pack:Arch", { timeout: 240_000 }, () => {
     __invalidateArduinoCliCacheForTest();
     // zzz:notreal is a syntactically valid Pack:Arch that will never be installed.
     const result = checkArduinoEnv("zzz:notreal:board");

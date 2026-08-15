@@ -77,6 +77,9 @@ export const CuttlefishConfigSchema = z.object({
   toolchain: ToolchainConfig.optional(),
   console: ConsoleConfig.optional(),
   native: z.record(z.string(), z.unknown()).optional(),
+  /** Display profile config (driver, wiring, touch) — loosely typed here so
+   *  the loader's presence/shape extraction round-trips through validation. */
+  display: z.record(z.string(), z.unknown()).optional(),
   zephyr: ZephyrConfig.optional(),
 }).strict().refine(data => !(data.board && data.contract), {
   message: "Specifying both 'board' and 'contract' is not allowed. Choose one.",

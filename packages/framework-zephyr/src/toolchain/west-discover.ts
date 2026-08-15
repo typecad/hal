@@ -97,9 +97,12 @@ export function isZephyrBase(dir: string): boolean {
 // ── Strategy 1: `west` on PATH ──────────────────────────────────────────────
 
 export function discoverFromPath(): WestInstall | null {
+  // shell only on Windows (where.exe resolution through cmd) — an args array
+  // with shell: true triggers Node's DEP0190 deprecation warning on Linux/
+  // macOS, where `which` is a plain executable that needs no shell.
   const which = spawnSync(IS_WIN ? 'where' : 'which', ['west'], {
     encoding: 'utf8',
-    shell: true,
+    shell: IS_WIN,
     windowsHide: true,
   });
   if (which.status !== 0) return null;

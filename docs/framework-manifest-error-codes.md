@@ -54,16 +54,11 @@ discriminator. Op status is one of `supported`, `polyfill`, `stub`,
 
 ### Known strategic violations
 
-Two frameworks currently emit display-related errors because they inherit
-`resolveDisplayOp` from Arduino without overriding it:
-
-- `framework-avr`: declares `display.supported: false`, but inherited resolver lowers `display.init`.
-- `framework-esp32`: declares `display.supported: false` (v1.1 deferral), but inherited resolver lowers `display.init`.
-
-These are acknowledged in `tests/packages/cuttlefish/framework-manifest.test.ts`
-as `KNOWN_STRATEGIC_ERRORS` and tolerated until a separate spec fixes the
-inheritance. The central test fails on any *other* error so new regressions
-surface immediately.
+`KNOWN_STRATEGIC_ERRORS` in `tests/packages/cuttlefish/framework-manifest.test.ts`
+is currently empty — no framework ships with tolerated manifest errors. The
+central test fails on any error so regressions surface immediately. Add an
+entry there only with a documented justification (e.g. a known
+`resolveDisplayOp` inheritance mismatch awaiting a dedicated fix).
 
 ## Polyfills
 
@@ -112,7 +107,7 @@ output by matching `interface|type|class NAME` and `const NAME:` patterns.
 | Code | Trigger | Fix |
 |---|---|---|
 | `conformance/hardware/<group>/file-not-found` | Listed `hardwareTestGroups` entry has no `<packageRoot>/tests/<group>.test.ts` | Remove from list or add the test |
-| `conformance/hal/<name>/file-not-found` | Listed `halResolutionTests` entry has no `<repoTestsDir>/packages/<package-dir-name>/hal-resolution/<name>.test.ts` | Remove from list or add the test. `<package-dir-name>` is the last segment of `packageName` (e.g. `framework-esp32`). |
+| `conformance/hal/<name>/file-not-found` | Listed `halResolutionTests` entry has no `<repoTestsDir>/packages/<package-dir-name>/hal-resolution/<name>.test.ts` | Remove from list or add the test. `<package-dir-name>` is the last segment of `packageName` (e.g. `framework-zephyr`). |
 
 ## Adding a new error code
 

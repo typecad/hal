@@ -16,8 +16,11 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
-      include: ["src/**/*.ts"],
-      exclude: ["src/cli.ts"],
+      include: [
+        "packages/*/src/**/*.ts",
+        "mcus/*/src/**/*.ts",
+        "boards/*/src/**/*.ts",
+      ],
     },
   },
 });

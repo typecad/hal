@@ -23,6 +23,10 @@ const config: CuttlefishConfig = {
   },
   output: { framework: 'arduino', optimize: 'size', outDir: './out' },
   toolchain: { type: 'arduino-cli' },
+  // Upload port for `npm run upload`. Precedence: --port flag >
+  // CUTTLEFISH_PORT env var > this config — Linux/macOS users can set
+  // CUTTLEFISH_PORT=/dev/ttyACM0 instead of editing the file.
+  console: { port: 'COM6' },
   display: {
     profile: 'st7796-spi',
     cs: 5,

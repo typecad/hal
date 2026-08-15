@@ -1,6 +1,6 @@
 {
   "name": "@typecad/framework-arduino",
-  "version": "1.0.0-alpha.11",
+  "version": "1.0.0-alpha.12",
   "description": "TypeCAD framework package for Arduino framework code generation",
   "type": "module",
   "main": "./dist/index.js",
@@ -22,10 +22,6 @@
       "types": "./dist/displays/ili9341-spi.d.ts",
       "default": "./dist/displays/ili9341-spi.js"
     },
-    "./displays/psram": {
-      "types": "./dist/displays/psram.d.ts",
-      "default": "./dist/displays/psram.js"
-    },
     "./framework.manifest": {
       "types": "./dist/framework.manifest.d.ts",
       "default": "./dist/framework.manifest.js"
@@ -44,13 +40,13 @@
     "test:hw:basics": "npm exec -- cuttlefish-test tests/01-basics.test.ts"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.11",
-    "@typecad/hal": "1.0.0-alpha.11",
-    "@typecad/arduino-cli": "1.0.0-alpha.11"
+    "@typecad/cuttlefish": "1.0.0-alpha.12",
+    "@typecad/hal": "1.0.0-alpha.12",
+    "@typecad/arduino-cli": "1.0.0-alpha.12"
   },
   "devDependencies": {
-    "@typecad/expect": "1.0.0-alpha.11",
-    "@typecad/board-esp32-devkit": "1.0.0-alpha.11"
+    "@typecad/expect": "1.0.0-alpha.12",
+    "@typecad/board-esp32-devkit": "1.0.0-alpha.12"
   },
   "license": "MIT",
   "publishConfig": {

@@ -1,5 +1,14 @@
 # @typecad/board-esp32-devkit
 
+## 1.0.0-alpha.12
+
+### Patch Changes
+
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.12
+  - @typecad/hal@1.0.0-alpha.12
+  - @typecad/mcu-esp32@1.0.0-alpha.12
+
 ## 1.0.0-alpha.11
 
 ### Patch Changes

@@ -2,14 +2,23 @@
 // Zephyr UI display adapter for the Cuttlefish UI rendering pipeline.
 //
 // Bridges the in-tree CuttlefishGFX/CuttlefishCanvas16 class (emitted by the
-// runtime header's cuttlefish-gfx slice) to the ST7796S panel. The panel is
+// runtime header's cuttlefish-gfx slice) to an SPI TFT panel. The panel is
 // driven DIRECTLY over the SPI controller with GPIO chip-select, DC and reset
 // pins — NOT through Zephyr's mipi-dbi-spi bridge: that bridge issues separate
 // SPI transactions for the command byte and its parameters (CS deasserts
-// between them), which scrambles this panel's command decoder and leaves it
-// white. Verified on hardware: the direct protocol (CS held low across the
-// command+data burst, DC toggled mid-burst — the Adafruit ST77xx protocol)
-// initializes the panel and renders pixels correctly.
+// between them), which scrambles this panel family's command decoder and
+// leaves it white. Verified on hardware (ST7796S): the direct protocol (CS
+// held low across the command+data burst, DC toggled mid-burst — the Adafruit
+// ST77xx protocol) initializes the panel and renders pixels correctly.
+//
+// Per-controller support lives in two places, keyed off the display profile's
+// `controller` field (see profiles.ts):
+//   - the init command table (byte-for-byte Adafruit sequences)
+//   - the pixel wire format: ST7796S is driven in 18-bit (666) mode (its
+//     16-bit channel routing is crossed on the verified clone panel), ILI9341
+//     in native 16-bit (565) big-endian. The ST7796S path below is frozen
+//     exactly as hardware-verified; the ILI9341 path mirrors it with the
+//     Adafruit ILI9341 init + 565 packing and is not yet hardware-tuned.
 //
 // This is the Zephyr analog of the Adafruit adapters in framework-arduino,
 // using the in-tree native GFX class (no #define CuttlefishCanvas16) driven
@@ -24,7 +33,7 @@
 // ---------------------------------------------------------------------------
 
 import type { DisplayAdapterCode, DisplayAdapterGenerator } from "@typecad/cuttlefish/api/shared";
-import { ZEPHYR_DISPLAY_PROFILES } from "./profiles.js";
+import { ZEPHYR_DISPLAY_PROFILES, panelControllerFor } from "./profiles.js";
 import type { ZephyrDisplayProfile } from "./profiles.js";
 
 /**
@@ -48,6 +57,18 @@ export function zephyrUiDisplayAdapter(
   const maxDim = Math.max(w, h);
   const dtLabel = profile.dtLabel;
   const backlightAlias = profile.backlight;
+  const bus = profile.busLabel ?? 'spi2';
+  const bridge = profile.bridgeLabel ?? 'mipi_dbi';
+  const controller = panelControllerFor(profile);
+  const isIli9341 = controller === 'ili9341';
+  // Bytes per pixel on the wire: 3 (18-bit 666) for ST7796S, 2 (16-bit 565)
+  // for ILI9341. The row/block scratch buffers and pack loops key off this.
+  const bpp = isIli9341 ? 2 : 3;
+  const rowBuf = `__tc_display_row${bpp}`;
+  const blockBuf = `__tc_display_block${bpp}`;
+  const packFn = isIli9341 ? '__tc_pnl_pack565' : '__tc_pnl_pack666';
+  const pixelsFn = isIli9341 ? '__tc_pnl_pixels565' : '__tc_pnl_pixels666';
+  const wireTag = isIli9341 ? '16-bit 565' : '18-bit';
   // Never infer readback from a board's default pinmux. SDO/MISO may be left
   // floating or shared with another device, and ST7796S modules are known to
   // react badly to GSCAN reads. Both an explicit opt-in and an explicit MISO
@@ -65,6 +86,41 @@ export function zephyrUiDisplayAdapter(
     `#include <zephyr/drivers/gpio.h>`,
   ].join("\n");
 
+  // Per-controller scratch-buffer declarations. The ST7796S text is frozen as
+  // hardware-verified; the ILI9341 variant documents its 565 wire format.
+  const bufferDecls = isIli9341
+    ? [
+        `// One-row scratch buffer in 16-bit (565) wire format: maxDim px x 2 bytes.`,
+        `// Reused across fillRect/draw calls — never per-frame (AGENTS.md: no`,
+        `// per-frame heap allocation). The ILI9341 is driven in its native`,
+        `// 16-bit COLMOD (0x55): RGB565 pixels go out big-endian (MSB-first SPI),`,
+        `// the Adafruit ILI9341 convention, with no repacking needed.`,
+        `static uint8_t ${rowBuf}[${maxDim} * 2];`,
+        `// Multi-row block buffer for solid fills (8 rows of maxDim px in 565).`,
+        `// fillRect fills this once with the color, then sends the whole rect in a`,
+        `// few large spi_write chunks instead of one spi_write per row — a full`,
+        `// 480x320 clear went from ~320 syscalls (~110ms) to ~40 (~15ms). Reused,`,
+        `// not per-frame (AGENTS.md).`,
+        `#define __TC_FILL_ROWS 8`,
+        `static uint8_t ${blockBuf}[${maxDim} * 2 * __TC_FILL_ROWS];`,
+      ]
+    : [
+        `// One-row scratch buffer in 18-bit (666) wire format: maxDim px x 3 bytes.`,
+        `// Reused across fillRect/draw calls — never per-frame (AGENTS.md: no`,
+        `// per-frame heap allocation). The panel is driven in 18-bit mode (COLMOD`,
+        `// 0x66): its 16-bit (565) channel routing is crossed (G/B swap, verified`,
+        `// with calibration bands), while 18-bit mode routes every channel`,
+        `// correctly with plain (R,G,B) byte order.`,
+        `static uint8_t ${rowBuf}[${maxDim} * 3];`,
+        `// Multi-row block buffer for solid fills (8 rows of maxDim px in 18-bit).`,
+        `// fillRect fills this once with the color, then sends the whole rect in a`,
+        `// few large spi_write chunks instead of one spi_write per row — a full`,
+        `// 480x320 clear went from ~320 syscalls (~110ms) to ~40 (~15ms). Reused,`,
+        `// not per-frame (AGENTS.md).`,
+        `#define __TC_FILL_ROWS 8`,
+        `static uint8_t ${blockBuf}[${maxDim} * 3 * __TC_FILL_ROWS];`,
+      ];
+
   const declaration = [
     `// CUTTLEFISH_DISPLAY_BEGIN`,
     // The display0 DT node carries frequency/dimensions for DT_PROP reads, but
@@ -73,20 +129,7 @@ export function zephyrUiDisplayAdapter(
     // allocates a tearing-effect GPIO interrupt that conflicts with the SPI/I2C
     // interrupts — the VECDESC_FL_SHARED assertion crash on the 3rd frame).
     `#define __tc_display_dev 1`,
-    `// One-row scratch buffer in 18-bit (666) wire format: maxDim px x 3 bytes.`,
-    `// Reused across fillRect/draw calls — never per-frame (AGENTS.md: no`,
-    `// per-frame heap allocation). The panel is driven in 18-bit mode (COLMOD`,
-    `// 0x66): its 16-bit (565) channel routing is crossed (G/B swap, verified`,
-    `// with calibration bands), while 18-bit mode routes every channel`,
-    `// correctly with plain (R,G,B) byte order.`,
-    `static uint8_t __tc_display_row3[${maxDim} * 3];`,
-    `// Multi-row block buffer for solid fills (8 rows of maxDim px in 18-bit).`,
-    `// fillRect fills this once with the color, then sends the whole rect in a`,
-    `// few large spi_write chunks instead of one spi_write per row — a full`,
-    `// 480x320 clear went from ~320 syscalls (~110ms) to ~40 (~15ms). Reused,`,
-    `// not per-frame (AGENTS.md).`,
-    `#define __TC_FILL_ROWS 8`,
-    `static uint8_t __tc_display_block3[${maxDim} * 3 * __TC_FILL_ROWS];`,
+    ...bufferDecls,
     `// startWrite/endWrite batching depth. When > 0 the panel CS is held asserted`,
     `// (low) across multiple primitives — DC still toggles mid-burst, but CS does`,
     `// not, matching the Adafruit ST77xx protocol and avoiding one full CS-toggle`,
@@ -118,6 +161,233 @@ export function zephyrUiDisplayAdapter(
     ? `#if DT_HAS_ALIAS(${backlightAlias})\n    const struct gpio_dt_spec __bl = GPIO_DT_SPEC_GET(DT_ALIAS(${backlightAlias}), gpios);\n    if (device_is_ready(__bl.port)) { gpio_pin_configure_dt(&__bl, GPIO_OUTPUT_ACTIVE); }\n#endif`
     : '';
 
+  // Per-controller pixel pack/stream helpers. Both share the row-chunked
+  // transport; only the per-pixel wire encoding differs.
+  const pixelHelpers = isIli9341
+    ? `
+// Pack count rgb565 pixels into the row2 scratch buffer as big-endian 16-bit
+// wire bytes (c>>8, c&0xFF) — the ILI9341's native 565 format under COLMOD
+// 0x55. The caller then streams the buffer with the 8-bit config (one row at
+// a time; the buffer holds maxDim pixels).
+static void ${packFn}(const uint16_t* px, uint32_t count) {
+  for (uint32_t i = 0; i < count; i++) {
+    uint16_t c = px[i];
+    ${rowBuf}[i * 2] = static_cast<uint8_t>(c >> 8);
+    ${rowBuf}[i * 2 + 1] = static_cast<uint8_t>(c);
+  }
+}
+
+// Stream count rgb565 pixels to the panel (chunked through the row2 scratch).
+// Caller holds the RAMWR burst.
+static void ${pixelsFn}(const uint16_t* px, uint32_t count) {
+  while (count > 0) {
+    uint32_t __chunk = (count > ${maxDim}) ? ${maxDim} : count;
+    ${packFn}(px, __chunk);
+    struct spi_buf __bd = { ${rowBuf}, static_cast<size_t>(__chunk) * 2U };
+    struct spi_buf_set __sd = { &__bd, 1 };
+    (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(${bus})), &__tc_pnl_cfg8, &__sd);
+    px += __chunk;
+    count -= __chunk;
+  }
+}
+`
+    : `
+// Pack count rgb565 pixels into the row3 scratch buffer as 18-bit (666) wire
+// format: (r<<3, g<<2, b<<3) — R,G,B byte order, verified correct on this
+// panel in 18-bit mode. The caller then streams the buffer with the 8-bit
+// config (one row at a time; the buffer holds maxDim pixels).
+static void ${packFn}(const uint16_t* px, uint32_t count) {
+  for (uint32_t i = 0; i < count; i++) {
+    uint16_t c = px[i];
+    ${rowBuf}[i * 3] = static_cast<uint8_t>((c >> 8) & 0xF8u);
+    ${rowBuf}[i * 3 + 1] = static_cast<uint8_t>((c >> 3) & 0xFCu);
+    ${rowBuf}[i * 3 + 2] = static_cast<uint8_t>((c << 3) & 0xF8u);
+  }
+}
+
+// Stream count rgb565 pixels to the panel (converted to 18-bit, chunked
+// through the row3 scratch). Caller holds the RAMWR burst.
+static void ${pixelsFn}(const uint16_t* px, uint32_t count) {
+  while (count > 0) {
+    uint32_t __chunk = (count > ${maxDim}) ? ${maxDim} : count;
+    ${packFn}(px, __chunk);
+    struct spi_buf __bd = { ${rowBuf}, static_cast<size_t>(__chunk) * 3U };
+    struct spi_buf_set __sd = { &__bd, 1 };
+    (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(${bus})), &__tc_pnl_cfg8, &__sd);
+    px += __chunk;
+    count -= __chunk;
+  }
+}
+`;
+
+  // Per-controller solid-fill. Both tile one built row into the block buffer
+  // and stream it in multi-row chunks; only the color encoding differs.
+  const fillRectFn = isIli9341
+    ? `
+static void __tc_op_fillRect(void* /*ctx*/, int16_t x, int16_t y, int16_t rw, int16_t rh, uint16_t c) {
+  if (rw <= 0 || rh <= 0) return;
+  uint8_t __b0 = static_cast<uint8_t>(c >> 8);
+  uint8_t __b1 = static_cast<uint8_t>(c);
+  // Build one row, then tile it into the block buffer.
+  for (int16_t i = 0; i < rw; i++) {
+    ${rowBuf}[i * 2] = __b0;
+    ${rowBuf}[i * 2 + 1] = __b1;
+  }
+  size_t rowBytes = static_cast<size_t>(rw) * 2U;
+  for (int16_t r = 0; r < __TC_FILL_ROWS; r++) {
+    memcpy(&${blockBuf}[static_cast<size_t>(r) * rowBytes], ${rowBuf}, rowBytes);
+  }
+  __tc_pnl_set_window(x, y, rw, rh);
+  __tc_pnl_ramwr_begin();
+  int16_t remaining = rh;
+  while (remaining > 0) {
+    int16_t chunk = (remaining > __TC_FILL_ROWS) ? __TC_FILL_ROWS : remaining;
+    struct spi_buf __bd = { ${blockBuf}, static_cast<size_t>(chunk) * rowBytes };
+    struct spi_buf_set __sd = { &__bd, 1 };
+    (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(${bus})), &__tc_pnl_cfg8, &__sd);
+    remaining -= chunk;
+  }
+  __tc_pnl_ramwr_end();
+}
+`
+    : `
+// Fill a rect row-by-row using the one-row 18-bit scratch buffer. This is the
+// hot path for background clears and large fills; building the color into the
+// reused buffer and writing each row keeps memory bounded.
+// Fill a rect with a solid color. The 18-bit row is tiled into the block buffer
+// (__TC_FILL_ROWS rows), then the whole rect is sent in multi-row spi_write
+// chunks. A full 480x320 clear is ~40 writes instead of ~320, dropping it from
+// ~110ms to ~15ms — the ESP32 SPI driver's per-transaction overhead (not SPI
+// bandwidth) is the binding cost, so fewer/larger writes win. Scatter-gather
+// descriptor lists tested slower (the driver walks each descriptor), so this
+// uses one contiguous buffer per write.
+static void __tc_op_fillRect(void* /*ctx*/, int16_t x, int16_t y, int16_t rw, int16_t rh, uint16_t c) {
+  if (rw <= 0 || rh <= 0) return;
+  uint8_t __b0 = static_cast<uint8_t>((c >> 8) & 0xF8u);
+  uint8_t __b1 = static_cast<uint8_t>((c >> 3) & 0xFCu);
+  uint8_t __b2 = static_cast<uint8_t>((c << 3) & 0xF8u);
+  // Build one 18-bit row, then tile it into the block buffer.
+  for (int16_t i = 0; i < rw; i++) {
+    ${rowBuf}[i * 3] = __b0;
+    ${rowBuf}[i * 3 + 1] = __b1;
+    ${rowBuf}[i * 3 + 2] = __b2;
+  }
+  size_t rowBytes = static_cast<size_t>(rw) * 3U;
+  for (int16_t r = 0; r < __TC_FILL_ROWS; r++) {
+    memcpy(&${blockBuf}[static_cast<size_t>(r) * rowBytes], ${rowBuf}, rowBytes);
+  }
+  __tc_pnl_set_window(x, y, rw, rh);
+  __tc_pnl_ramwr_begin();
+  int16_t remaining = rh;
+  while (remaining > 0) {
+    int16_t chunk = (remaining > __TC_FILL_ROWS) ? __TC_FILL_ROWS : remaining;
+    struct spi_buf __bd = { ${blockBuf}, static_cast<size_t>(chunk) * rowBytes };
+    struct spi_buf_set __sd = { &__bd, 1 };
+    (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(${bus})), &__tc_pnl_cfg8, &__sd);
+    remaining -= chunk;
+  }
+  __tc_pnl_ramwr_end();
+}
+`;
+
+  // Per-controller init table. Both are byte-for-byte Adafruit sequences
+  // emitted as (cmd, len, data, delay) records walked in display_init.
+  const initBlock = isIli9341
+    ? `
+// ── Panel init ──────────────────────────────────────────────────────────
+// Adafruit ILI9341 init sequence (initILI9341), byte for byte: SWRESET,
+// manufacturer/power/gamma registers, MADCTL 0x28 (MV landscape + BGR, the
+// same convention as the ST7796S path), COLMOD 0x55 (16-bit RGB565 — the
+// native wire format of the pack565 transport), SLPOUT (150ms), DISPON
+// (150ms), INVON. INVON is included because the common ILI9341 SPI modules
+// (2.2"/2.4" TFTs) ship with an inverted panel; the in-tree binding's
+// display-inversion property mirrors this for the stock driver.
+struct __tc_pnl_init_cmd { uint8_t cmd; uint8_t len; const uint8_t* data; uint16_t delay_ms; };
+static const uint8_t __tc_pnl_i1[] = {0x03, 0x80, 0x02};
+static const uint8_t __tc_pnl_i2[] = {0x00, 0xC1, 0x30};
+static const uint8_t __tc_pnl_i3[] = {0x64, 0x03, 0x12, 0x81};
+static const uint8_t __tc_pnl_i4[] = {0x85, 0x00, 0x78};
+static const uint8_t __tc_pnl_i5[] = {0x39, 0x2C, 0x00, 0x34, 0x02};
+static const uint8_t __tc_pnl_i6[] = {0x20};
+static const uint8_t __tc_pnl_i7[] = {0x00, 0x00};
+static const uint8_t __tc_pnl_i8[] = {0x23};
+static const uint8_t __tc_pnl_i9[] = {0x10};
+static const uint8_t __tc_pnl_i10[] = {0x3E, 0x28};
+static const uint8_t __tc_pnl_i11[] = {0x86};
+static const uint8_t __tc_pnl_i12[] = {0x28};
+static const uint8_t __tc_pnl_i13[] = {0x55};
+static const uint8_t __tc_pnl_i14[] = {0x00, 0x18};
+static const uint8_t __tc_pnl_i15[] = {0x08, 0x82, 0x27};
+static const uint8_t __tc_pnl_i16[] = {0x00};
+static const uint8_t __tc_pnl_i17[] = {0x01};
+static const uint8_t __tc_pnl_i18[] = {0x0F, 0x31, 0x2B, 0x0C, 0x0E, 0x08, 0x4E, 0xF1, 0x37, 0x07, 0x10, 0x03, 0x0E, 0x09, 0x00};
+static const uint8_t __tc_pnl_i19[] = {0x00, 0x0E, 0x14, 0x03, 0x11, 0x07, 0x31, 0xC1, 0x48, 0x08, 0x0F, 0x0C, 0x31, 0x36, 0x0F};
+static const struct __tc_pnl_init_cmd __tc_pnl_init_seq[] = {
+  {0x01, 0, NULL, 150},      // SWRESET
+  {0xEF, 3, __tc_pnl_i1, 0},
+  {0xCF, 3, __tc_pnl_i2, 0},
+  {0xED, 4, __tc_pnl_i3, 0},
+  {0xE8, 3, __tc_pnl_i4, 0},
+  {0xCB, 5, __tc_pnl_i5, 0},
+  {0xF7, 1, __tc_pnl_i6, 0},
+  {0xEA, 2, __tc_pnl_i7, 0},
+  {0xC0, 1, __tc_pnl_i8, 0},  // PWCTRL1
+  {0xC1, 1, __tc_pnl_i9, 0},  // PWCTRL2
+  {0xC5, 2, __tc_pnl_i10, 0}, // VMCTRL1
+  {0xC7, 1, __tc_pnl_i11, 0}, // VMCTRL2
+  {0x36, 1, __tc_pnl_i12, 0}, // MADCTL 0x28: MV (landscape) + BGR=1
+  {0x3A, 1, __tc_pnl_i13, 0}, // COLMOD 0x55 (16-bit RGB565)
+  {0xB1, 2, __tc_pnl_i14, 0}, // FRMCTR1
+  {0xB6, 3, __tc_pnl_i15, 0}, // DISCTRL
+  {0xF2, 1, __tc_pnl_i16, 0}, // ENABLE3G off
+  {0x26, 1, __tc_pnl_i17, 0}, // GAMSET gamma curve 1
+  {0xE0, 15, __tc_pnl_i18, 0}, // PGAMCTRL
+  {0xE1, 15, __tc_pnl_i19, 0}, // NGAMCTRL
+  {0x11, 0, NULL, 150},      // SLPOUT (sleep out — 120ms typical)
+  {0x29, 0, NULL, 150},      // DISPON
+  {0x21, 0, NULL, 0},        // INVON (common ILI9341 modules ship inverted)
+};
+`
+    : `
+// ── Panel init ──────────────────────────────────────────────────────────
+// Adafruit ST7796S init sequence (demo-st lib fork), byte for byte: hw reset
+// pulse, SWRESET, manufacturer unlock, VCOM/MADCTL/COLMOD/porch registers,
+// lock, SLPOUT (150ms), DISPON (150ms), INVOFF. MADCTL 0x28 = MV (rotation 1
+// landscape) + BGR=1. BGR=1 makes the controller route data R/B to the
+// B/R subpixels (verified: red data shows blue with BGR=1), which combined
+// with a lossless R/B data swap renders the UI correctly; BGR=0 leaves a
+// half-lossy G/B quirk on this clone controller.
+struct __tc_pnl_init_cmd { uint8_t cmd; uint8_t len; const uint8_t* data; uint16_t delay_ms; };
+static const uint8_t __tc_pnl_i1[] = {0xC3};
+static const uint8_t __tc_pnl_i2[] = {0x96};
+static const uint8_t __tc_pnl_i3[] = {0x1C};
+static const uint8_t __tc_pnl_i4[] = {0x28};
+static const uint8_t __tc_pnl_i5[] = {0x66};
+static const uint8_t __tc_pnl_i6[] = {0x80};
+static const uint8_t __tc_pnl_i7[] = {0x00};
+static const uint8_t __tc_pnl_i8[] = {0x80, 0x02, 0x3B};
+static const uint8_t __tc_pnl_i9[] = {0xC6};
+static const uint8_t __tc_pnl_i10[] = {0x69};
+static const uint8_t __tc_pnl_i11[] = {0x3C};
+static const struct __tc_pnl_init_cmd __tc_pnl_init_seq[] = {
+  {0x01, 0, NULL, 150},      // SWRESET
+  {0xF0, 1, __tc_pnl_i1, 0},  // unlock manufacturer
+  {0xF0, 1, __tc_pnl_i2, 0},
+  {0xC5, 1, __tc_pnl_i3, 0},  // VCOM control
+  {0x36, 1, __tc_pnl_i4, 0},  // MADCTL 0x28: MV (rotation 1) + BGR=1
+  {0x3A, 1, __tc_pnl_i5, 0},  // COLMOD 0x66 (18-bit, 262K) — clean channel routing
+  {0xB0, 1, __tc_pnl_i6, 0},  // interface control
+  {0xB4, 1, __tc_pnl_i7, 0},  // inversion control
+  {0xB6, 3, __tc_pnl_i8, 0},  // display function control
+  {0xB7, 1, __tc_pnl_i9, 0},  // entry mode
+  {0xF0, 1, __tc_pnl_i10, 0}, // lock manufacturer
+  {0xF0, 1, __tc_pnl_i11, 0},
+  {0x11, 0, NULL, 150},      // SLPOUT (sleep out — 120ms typical)
+  {0x29, 0, NULL, 150},      // DISPON
+  {0x20, 0, NULL, 0},        // INVOFF (non-inverted at power-on)
+};
+`;
+
   const functions = `
 // ── Direct panel transport ──────────────────────────────────────────────
 // GPIOs: CS/DC/RST driven manually; CS stays LOW for the whole command+data
@@ -125,11 +395,11 @@ export function zephyrUiDisplayAdapter(
 // Adafruit ST77xx protocol this panel requires. The SPI config carries no CS
 // (cs_is_gpio = false -> the ESP32 driver's hardware CSEL pin is left idle;
 // it is not connected to the panel).
-static const struct gpio_dt_spec __tc_pnl_cs = GPIO_DT_SPEC_GET(DT_NODELABEL(spi2), cs_gpios);
-static const struct gpio_dt_spec __tc_pnl_dc = GPIO_DT_SPEC_GET(DT_NODELABEL(mipi_dbi), dc_gpios);
-static const struct gpio_dt_spec __tc_pnl_rst = GPIO_DT_SPEC_GET(DT_NODELABEL(mipi_dbi), reset_gpios);
+static const struct gpio_dt_spec __tc_pnl_cs = GPIO_DT_SPEC_GET(DT_NODELABEL(${bus}), cs_gpios);
+static const struct gpio_dt_spec __tc_pnl_dc = GPIO_DT_SPEC_GET(DT_NODELABEL(${bridge}), dc_gpios);
+static const struct gpio_dt_spec __tc_pnl_rst = GPIO_DT_SPEC_GET(DT_NODELABEL(${bridge}), reset_gpios);
 
-// 8-bit frames for commands/parameters and 18-bit (3 bytes/pixel) pixel data.
+// 8-bit frames for commands/parameters and ${isIli9341 ? '16-bit (2 bytes/pixel)' : '18-bit (3 bytes/pixel)'} pixel data.
 static struct spi_config __tc_pnl_cfg8 = {
   .frequency = DT_PROP(DT_NODELABEL(${dtLabel}), mipi_max_frequency),
   .operation = SPI_OP_MODE_MASTER | SPI_WORD_SET(8),
@@ -152,12 +422,12 @@ static void __tc_pnl_cmd(uint8_t cmd, const uint8_t* data, uint16_t len) {
   struct spi_buf_set __sc = { &__bc, 1 };
   __tc_pnl_cs_assert();
   gpio_pin_set_dt(&__tc_pnl_dc, 0);
-  (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__sc);
+  (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(${bus})), &__tc_pnl_cfg8, &__sc);
   if (len > 0) {
     struct spi_buf __bd = { const_cast<uint8_t*>(data), len };
     struct spi_buf_set __sd = { &__bd, 1 };
     gpio_pin_set_dt(&__tc_pnl_dc, 1);
-    (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__sd);
+    (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(${bus})), &__tc_pnl_cfg8, &__sd);
   }
   __tc_pnl_cs_release();
 }
@@ -169,7 +439,7 @@ static void __tc_pnl_ramwr_begin(void) {
   struct spi_buf_set __sc = { &__bc, 1 };
   __tc_pnl_cs_assert();
   gpio_pin_set_dt(&__tc_pnl_dc, 0);
-  (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__sc);
+  (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(${bus})), &__tc_pnl_cfg8, &__sc);
   gpio_pin_set_dt(&__tc_pnl_dc, 1);
 }
 
@@ -192,11 +462,11 @@ static uint16_t __tc_pnl_read_scanline(void) {
   struct spi_buf_set __sr = { &__br, 1 };
   __tc_pnl_cs_assert();
   gpio_pin_set_dt(&__tc_pnl_dc, 0);
-  int __cmd_err = spi_write(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__sc);
+  int __cmd_err = spi_write(DEVICE_DT_GET(DT_NODELABEL(${bus})), &__tc_pnl_cfg8, &__sc);
   int __read_err = 0;
   if (__cmd_err == 0) {
     gpio_pin_set_dt(&__tc_pnl_dc, 1);
-    __read_err = spi_transceive(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__st, &__sr);
+    __read_err = spi_transceive(DEVICE_DT_GET(DT_NODELABEL(${bus})), &__tc_pnl_cfg8, &__st, &__sr);
   }
   __tc_pnl_cs_release();
   if (__cmd_err != 0 || __read_err != 0) return 0xFFFFu;
@@ -220,34 +490,7 @@ static void __tc_pnl_wait_for_safe_rect(int16_t y, int16_t rh) {
     k_msleep(0);
   }
 }
-
-// Pack count rgb565 pixels into the row3 scratch buffer as 18-bit (666) wire
-// format: (r<<3, g<<2, b<<3) — R,G,B byte order, verified correct on this
-// panel in 18-bit mode. The caller then streams the buffer with the 8-bit
-// config (one row at a time; the buffer holds maxDim pixels).
-static void __tc_pnl_pack666(const uint16_t* px, uint32_t count) {
-  for (uint32_t i = 0; i < count; i++) {
-    uint16_t c = px[i];
-    __tc_display_row3[i * 3] = static_cast<uint8_t>((c >> 8) & 0xF8u);
-    __tc_display_row3[i * 3 + 1] = static_cast<uint8_t>((c >> 3) & 0xFCu);
-    __tc_display_row3[i * 3 + 2] = static_cast<uint8_t>((c << 3) & 0xF8u);
-  }
-}
-
-// Stream count rgb565 pixels to the panel (converted to 18-bit, chunked
-// through the row3 scratch). Caller holds the RAMWR burst.
-static void __tc_pnl_pixels666(const uint16_t* px, uint32_t count) {
-  while (count > 0) {
-    uint32_t __chunk = (count > ${maxDim}) ? ${maxDim} : count;
-    __tc_pnl_pack666(px, __chunk);
-    struct spi_buf __bd = { __tc_display_row3, static_cast<size_t>(__chunk) * 3U };
-    struct spi_buf_set __sd = { &__bd, 1 };
-    (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__sd);
-    px += __chunk;
-    count -= __chunk;
-  }
-}
-
+${pixelHelpers}
 // Set the address window. Coordinates are in the effective (rotated) UI
 // space; the panel's MADCTL (rotation 1: MV) maps them onto the native
 // 320x480 raster, so CASET/RASET take the UI x/y ranges directly.
@@ -294,12 +537,12 @@ static void __tc_op_setAddrWindow(void* /*ctx*/, int16_t x, int16_t y, int16_t w
 // Push the stashed rect's worth of rgb565 pixels. Called right after
 // setAddrWindow with exactly (aw_w * aw_h) pixels. The caller's buffer is
 // never mutated (scroll canvases persist across frames), so pixels are
-// converted in chunks through the row3 scratch buffer.
+// converted in chunks through the row${bpp} scratch buffer.
 static void __tc_op_writePixels(void* /*ctx*/, const uint16_t* px, uint32_t n) {
   if (n == 0U) return;
   __tc_pnl_set_window(__tc_aw_x, __tc_aw_y, __tc_aw_w, __tc_aw_h);
   __tc_pnl_ramwr_begin();
-  __tc_pnl_pixels666(px, n);
+  ${pixelsFn}(px, n);
   __tc_pnl_ramwr_end();
 }
 
@@ -308,48 +551,10 @@ static void __tc_op_writePixel(void* /*ctx*/, int16_t x, int16_t y, uint16_t c) 
   uint16_t __c = c;
   __tc_pnl_set_window(x, y, 1, 1);
   __tc_pnl_ramwr_begin();
-  __tc_pnl_pixels666(&__c, 1);
+  ${pixelsFn}(&__c, 1);
   __tc_pnl_ramwr_end();
 }
-
-// Fill a rect row-by-row using the one-row 18-bit scratch buffer. This is the
-// hot path for background clears and large fills; building the color into the
-// reused buffer and writing each row keeps memory bounded.
-// Fill a rect with a solid color. The 18-bit row is tiled into the block buffer
-// (__TC_FILL_ROWS rows), then the whole rect is sent in multi-row spi_write
-// chunks. A full 480x320 clear is ~40 writes instead of ~320, dropping it from
-// ~110ms to ~15ms — the ESP32 SPI driver's per-transaction overhead (not SPI
-// bandwidth) is the binding cost, so fewer/larger writes win. Scatter-gather
-// descriptor lists tested slower (the driver walks each descriptor), so this
-// uses one contiguous buffer per write.
-static void __tc_op_fillRect(void* /*ctx*/, int16_t x, int16_t y, int16_t rw, int16_t rh, uint16_t c) {
-  if (rw <= 0 || rh <= 0) return;
-  uint8_t __b0 = static_cast<uint8_t>((c >> 8) & 0xF8u);
-  uint8_t __b1 = static_cast<uint8_t>((c >> 3) & 0xFCu);
-  uint8_t __b2 = static_cast<uint8_t>((c << 3) & 0xF8u);
-  // Build one 18-bit row, then tile it into the block buffer.
-  for (int16_t i = 0; i < rw; i++) {
-    __tc_display_row3[i * 3] = __b0;
-    __tc_display_row3[i * 3 + 1] = __b1;
-    __tc_display_row3[i * 3 + 2] = __b2;
-  }
-  size_t rowBytes = static_cast<size_t>(rw) * 3U;
-  for (int16_t r = 0; r < __TC_FILL_ROWS; r++) {
-    memcpy(&__tc_display_block3[static_cast<size_t>(r) * rowBytes], __tc_display_row3, rowBytes);
-  }
-  __tc_pnl_set_window(x, y, rw, rh);
-  __tc_pnl_ramwr_begin();
-  int16_t remaining = rh;
-  while (remaining > 0) {
-    int16_t chunk = (remaining > __TC_FILL_ROWS) ? __TC_FILL_ROWS : remaining;
-    struct spi_buf __bd = { __tc_display_block3, static_cast<size_t>(chunk) * rowBytes };
-    struct spi_buf_set __sd = { &__bd, 1 };
-    (void)spi_write(DEVICE_DT_GET(DT_NODELABEL(spi2)), &__tc_pnl_cfg8, &__sd);
-    remaining -= chunk;
-  }
-  __tc_pnl_ramwr_end();
-}
-
+${fillRectFn}
 static int16_t __tc_op_width(void* /*ctx*/) { return ${w}; }
 static int16_t __tc_op_height(void* /*ctx*/) { return ${h}; }
 
@@ -371,45 +576,7 @@ const CuttlefishPanelOps __tc_display_ops = {
 
 // The live display target: a CuttlefishGFX driven by the panel-ops vtable.
 CuttlefishGFX __tc_display(&__tc_display_ops, nullptr);
-
-// ── Panel init ──────────────────────────────────────────────────────────
-// Adafruit ST7796S init sequence (demo-st lib fork), byte for byte: hw reset
-// pulse, SWRESET, manufacturer unlock, VCOM/MADCTL/COLMOD/porch registers,
-// lock, SLPOUT (150ms), DISPON (150ms), INVOFF. MADCTL 0x28 = MV (rotation 1
-// landscape) + BGR=1. BGR=1 makes the controller route data R/B to the
-// B/R subpixels (verified: red data shows blue with BGR=1), which combined
-// with a lossless R/B data swap renders the UI correctly; BGR=0 leaves a
-// half-lossy G/B quirk on this clone controller.
-struct __tc_pnl_init_cmd { uint8_t cmd; uint8_t len; const uint8_t* data; uint16_t delay_ms; };
-static const uint8_t __tc_pnl_i1[] = {0xC3};
-static const uint8_t __tc_pnl_i2[] = {0x96};
-static const uint8_t __tc_pnl_i3[] = {0x1C};
-static const uint8_t __tc_pnl_i4[] = {0x28};
-static const uint8_t __tc_pnl_i5[] = {0x66};
-static const uint8_t __tc_pnl_i6[] = {0x80};
-static const uint8_t __tc_pnl_i7[] = {0x00};
-static const uint8_t __tc_pnl_i8[] = {0x80, 0x02, 0x3B};
-static const uint8_t __tc_pnl_i9[] = {0xC6};
-static const uint8_t __tc_pnl_i10[] = {0x69};
-static const uint8_t __tc_pnl_i11[] = {0x3C};
-static const struct __tc_pnl_init_cmd __tc_pnl_init_seq[] = {
-  {0x01, 0, NULL, 150},      // SWRESET
-  {0xF0, 1, __tc_pnl_i1, 0},  // unlock manufacturer
-  {0xF0, 1, __tc_pnl_i2, 0},
-  {0xC5, 1, __tc_pnl_i3, 0},  // VCOM control
-  {0x36, 1, __tc_pnl_i4, 0},  // MADCTL 0x28: MV (rotation 1) + BGR=1
-  {0x3A, 1, __tc_pnl_i5, 0},  // COLMOD 0x66 (18-bit, 262K) — clean channel routing
-  {0xB0, 1, __tc_pnl_i6, 0},  // interface control
-  {0xB4, 1, __tc_pnl_i7, 0},  // inversion control
-  {0xB6, 3, __tc_pnl_i8, 0},  // display function control
-  {0xB7, 1, __tc_pnl_i9, 0},  // entry mode
-  {0xF0, 1, __tc_pnl_i10, 0}, // lock manufacturer
-  {0xF0, 1, __tc_pnl_i11, 0},
-  {0x11, 0, NULL, 150},      // SLPOUT (sleep out — 120ms typical)
-  {0x29, 0, NULL, 150},      // DISPON
-  {0x20, 0, NULL, 0},        // INVOFF (non-inverted at power-on)
-};
-
+${initBlock}
 // ── display_init (called from setup) ────────────────────────────────────
 static inline void display_init() {
   printk("TC_DISPLAY: device ready\\n");
@@ -429,7 +596,7 @@ ${blInit}
     if (__tc_pnl_init_seq[i].delay_ms > 0) k_msleep(__tc_pnl_init_seq[i].delay_ms);
   }
   __tc_op_fillRect(nullptr, 0, 0, ${w}, ${h}, 0x0000);
-  printk("TC_DISPLAY: direct init done (18-bit, black fill)\\n");
+  printk("TC_DISPLAY: direct init done (${wireTag}, black fill)\\n");
 }
 
 static inline void display_fillScreen(UI_COLOR_T color) {
