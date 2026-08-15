@@ -110,7 +110,11 @@ $ZephyrSdkInstallDir = Join-Path $env:SDK_INSTALL_PARENT "zephyr-sdk-$ZEPHYR_SDK
 $MambaExe            = Join-Path $env:MAMBA_ROOT_PREFIX 'Library\bin\micromamba.exe'
 
 # --- plan printer (mirrors install.sh's [plan] tags) ------------------------
-$bundle = "zephyr-sdk-$ZEPHYR_SDK_VERSION`_$SdkPlat.$ArchiveExt"
+# 1.0.x bundle flavor suffix (_gnu); empty for 0.17.x "full" bundles. Individual
+# toolchain tarballs carry the flavor as an infix (toolchain_gnu_<plat>_<target>).
+$SdkSuffix = if ($ZEPHYR_SDK_BUNDLE_SUFFIX) { $ZEPHYR_SDK_BUNDLE_SUFFIX } else { '' }
+$TcInfix = if ($SdkSuffix) { $SdkSuffix.TrimStart('_') + '_' } else { '' }
+$bundle = "zephyr-sdk-$ZEPHYR_SDK_VERSION`_$SdkPlat$SdkSuffix.$ArchiveExt"
 Write-Host "[plan] typeCAD Zephyr installer"
 Write-Host "[plan]   env name:          $ENV_NAME"
 Write-Host "[plan]   conda subdir:      $MambaPlat"
@@ -301,7 +305,7 @@ if (-not $NoSdk) {
             Write-Host "fetch-sdk:   $target - already installed, skipping"
             continue
           }
-          $tcBundle = "toolchain_${SdkPlat}_${target}.${ArchiveExt}"
+          $tcBundle = "toolchain_$TcInfix$($SdkPlat)_$($target).$ArchiveExt"
           $tcUrl = "$SDK_RELEASE_BASE/v$ZEPHYR_SDK_VERSION/$tcBundle"
           Write-Host "fetch-sdk:   $target - downloading $tcBundle"
           $tcArchive = Join-Path $env:SDK_INSTALL_PARENT $tcBundle

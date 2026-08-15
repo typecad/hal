@@ -34,7 +34,7 @@ describe('zephyr-installer install.sh --dry-run', () => {
   itBash('emits a [plan] block with the pinned versions', () => {
     const out = runDryRun();
     expect(out).toContain('[plan] typeCAD Zephyr installer');
-    expect(out).toContain('sdk version:       0.17.4');
+    expect(out).toContain('sdk version:       1.0.1');
     expect(out).toContain('env name:          zephyr');
     expect(out).toContain('manifest rev:      v4.4.2');
     expect(out).toContain('[plan] DRY-RUN');
@@ -61,21 +61,22 @@ describe('zephyr-installer install.sh --dry-run', () => {
     }
     expect(out).toContain(`conda subdir:      ${mambaPlat}`);
     expect(out).toContain(`sdk platform:      ${sdkPlat}`);
-    expect(out).toContain(`zephyr-sdk-0.17.4_${sdkPlat}.${ext}`);
+    // 1.0.x bundle names carry the _gnu flavor suffix.
+    expect(out).toContain(`zephyr-sdk-1.0.1_${sdkPlat}_gnu.${ext}`);
     expect(out).toContain(`micromamba url:    https://micro.mamba.pm/api/micromamba/${mambaPlat}/latest`);
   });
 
   itBash('points the SDK bundle at the pinned sdk-ng release', () => {
     const out = runDryRun();
     expect(out).toContain(
-      'sdk bundle url:    https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v0.17.4/',
+      'sdk bundle url:    https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/',
     );
   });
 
   itBash('resolves ZEPHYR_BASE and the SDK install dir', () => {
     const out = runDryRun();
     expect(out).toMatch(/zephyr base:\s+\S*zephyrproject\/?zephyr/);
-    expect(out).toMatch(/sdk install dir:\s+\S*zephyr-sdk-0\.17\.4/);
+    expect(out).toMatch(/sdk install dir:\s+\S*zephyr-sdk-1\.0\.1/);
     expect(out).toMatch(/env prefix:\s+\S*envs\/zephyr/);
   });
 

@@ -108,14 +108,27 @@ _list_installed_toolchains() {
 fetch_sdk() {
   local sdk="$SDK_INSTALL_PARENT/zephyr-sdk-${ZEPHYR_SDK_VERSION}"
   local platforms="${PLATFORMS:-all}"
+  # 1.0.x bundle flavor suffix (_gnu = all GNU toolchains + host tools); empty
+  # for 0.17.x "full" bundles. Individual toolchain tarballs carry the flavor
+  # as an infix (toolchain_gnu_<plat>_<target>) when set.
+  local suffix="${ZEPHYR_SDK_BUNDLE_SUFFIX:-}"
+  local tc_infix=""
+  [ -n "$suffix" ] && tc_infix="${suffix#_}_"
   echo "fetch-sdk: platform selection: $platforms"
 
   # ── FULL BUNDLE MODE (platforms = "all") ────────────────────────────────────
   if [ "$platforms" = "all" ]; then
-    local bundle="zephyr-sdk-${ZEPHYR_SDK_VERSION}_${SDK_PLAT}.${ARCHIVE_EXT}"
+    local bundle="zephyr-sdk-${ZEPHYR_SDK_VERSION}_${SDK_PLAT}${suffix}.${ARCHIVE_EXT}"
     local url="${SDK_RELEASE_BASE}/v${ZEPHYR_SDK_VERSION}/${bundle}"
     local checksum_var="SHA256_$(echo "$SDK_PLAT" | tr '-' '_')"
     local expected="${!checksum_var:-TODO}"
+
+    if [ "$expected" = "NONE" ]; then
+      echo "fetch-sdk: ERROR — the Zephyr SDK ${ZEPHYR_SDK_VERSION} publishes no build for ${SDK_PLAT}." >&2
+      echo "fetch-sdk:   (macOS Intel has no 1.0.x SDK.) Use an ARM Mac, or pin the older" >&2
+      echo "fetch-sdk:   SDK line: --sdk-version 0.17.4" >&2
+      return 1
+    fi
 
     echo "fetch-sdk: downloading full bundle $bundle"
     echo "fetch-sdk:   url:    $url"
@@ -144,6 +157,13 @@ fetch_sdk() {
   fi
 
   # ── SELECTIVE MODE (minimal bundle + individual toolchains) ─────────────────
+  local sel_checksum="SHA256_$(echo "$SDK_PLAT" | tr '-' '_')"
+  if [ "${!sel_checksum:-TODO}" = "NONE" ]; then
+    echo "fetch-sdk: ERROR — the Zephyr SDK ${ZEPHYR_SDK_VERSION} publishes no build for ${SDK_PLAT}." >&2
+    echo "fetch-sdk:   (macOS Intel has no 1.0.x SDK.) Use an ARM Mac, or pin the older" >&2
+    echo "fetch-sdk:   SDK line: --sdk-version 0.17.4" >&2
+    return 1
+  fi
   local minimal="zephyr-sdk-${ZEPHYR_SDK_VERSION}_${SDK_PLAT}_minimal.${ARCHIVE_EXT}"
   local minimal_url="${SDK_RELEASE_BASE}/v${ZEPHYR_SDK_VERSION}/${minimal}"
 
@@ -190,7 +210,9 @@ fetch_sdk() {
         echo "fetch-sdk:   $target — already installed, skipping"
         continue
       fi
-      local tc_bundle="toolchain_${SDK_PLAT}_${target}.${ARCHIVE_EXT}"
+      # 1.0.x names individual toolchains toolchain_gnu_<plat>_<target>; 0.17.x
+      # used toolchain_<plat>_<target>. tc_infix carries the flavor when set.
+      local tc_bundle="toolchain_${tc_infix}${SDK_PLAT}_${target}.${ARCHIVE_EXT}"
       local tc_url="${SDK_RELEASE_BASE}/v${ZEPHYR_SDK_VERSION}/${tc_bundle}"
       echo "fetch-sdk:   $target — downloading ${tc_bundle}"
       local tc_archive="${SDK_INSTALL_PARENT}/${tc_bundle}"

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,7 +21,6 @@ import {
   buildSummary,
   buildHelp,
   buildDeleteSummary,
-  resolveInstallPaths,
   detectPlatform,
   loadVersionsEnv,
   platformCatalog,
@@ -128,15 +129,28 @@ describe('install.mjs platform selection', () => {
   });
 
   it('buildDeleteSummary lists every install path and requires a typed yes', () => {
-    const summary = buildDeleteSummary();
-    const paths = resolveInstallPaths();
-    expect(summary).toContain('conda env');
-    expect(summary).toContain(paths.env.split('\\').pop()! || paths.env);
-    expect(summary).toContain('Zephyr SDK');
-    expect(summary).toContain('west workspace');
-    expect(summary).toContain("Type 'yes' to DELETE");
-    // The shell-profile hook is explicitly noted as NOT auto-edited.
-    expect(summary).toContain('NOT edited automatically');
+    // Pass hermetic temp paths so the summary's on-disk size walk never stats
+    // the real (multi-GB) SDK/workspace installs — the same isolation the
+    // subprocess --delete tests below enforce via MAMBA_ROOT_PREFIX/WORKSPACE_DIR.
+    const tmp = mkdtempSync(join(tmpdir(), 'tc-del-summary-'));
+    try {
+      const paths = {
+        mambaRoot: join(tmp, 'mm'),
+        env: join(tmp, 'mm', 'envs', 'zephyr'),
+        sdkParent: join(tmp, 'mm', 'zephyr-sdk'),
+        workspace: join(tmp, 'ws'),
+      };
+      const summary = buildDeleteSummary(paths);
+      expect(summary).toContain('conda env');
+      expect(summary).toContain(paths.env.split('\\').pop()! || paths.env);
+      expect(summary).toContain('Zephyr SDK');
+      expect(summary).toContain('west workspace');
+      expect(summary).toContain("Type 'yes' to DELETE");
+      // The shell-profile hook is explicitly noted as NOT auto-edited.
+      expect(summary).toContain('NOT edited automatically');
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
   });
 
   it('--delete without --yes on non-interactive stdin aborts (destructive default-deny)', () => {
@@ -184,7 +198,7 @@ describe('install.mjs end-to-end delegation', () => {
     });
     expect(r.status, `node install.mjs --dry-run failed: ${r.stderr ?? ''}`).toBe(0);
     expect(r.stdout).toContain('[plan] typeCAD Zephyr installer');
-    expect(r.stdout).toContain('sdk version:       0.17.4');
+    expect(r.stdout).toContain('sdk version:       1.0.1');
     expect(r.stdout).toContain('[plan] DRY-RUN');
   });
 
@@ -230,7 +244,7 @@ describe('install.mjs confirmation-gate helpers', () => {
     const summary = buildSummary(v, p, 'zephyr');
     expect(summary).toContain('typeCAD Zephyr installer');
     expect(summary).toContain(v.ZEPHYR_SDK_VERSION);
-    expect(summary).toContain(`zephyr-sdk-${v.ZEPHYR_SDK_VERSION}_${p.sdk}.${p.ext}`);
+    expect(summary).toContain(`zephyr-sdk-${v.ZEPHYR_SDK_VERSION}_${p.sdk}${v.ZEPHYR_SDK_BUNDLE_SUFFIX ?? ''}.${p.ext}`);
     expect(summary).toContain("'zephyr'");
     expect(summary).toContain('west init');
     expect(summary).toContain('ZEPHYR_SDK_INSTALL_DIR');

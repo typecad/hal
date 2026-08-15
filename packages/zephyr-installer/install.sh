@@ -113,7 +113,7 @@ esac
 
 # --- plan printer (greppable: every line tagged [plan]) ---------------------
 print_plan() {
-  local bundle="zephyr-sdk-${ZEPHYR_SDK_VERSION}_${SDK_PLAT}.${ARCHIVE_EXT}"
+  local bundle="zephyr-sdk-${ZEPHYR_SDK_VERSION}_${SDK_PLAT}${ZEPHYR_SDK_BUNDLE_SUFFIX}.${ARCHIVE_EXT}"
   echo "[plan] typeCAD Zephyr installer"
   echo "[plan]   env name:          $ENV_NAME"
   echo "[plan]   conda subdir:      $MAMBA_PLAT"

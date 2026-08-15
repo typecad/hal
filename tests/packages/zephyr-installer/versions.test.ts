@@ -50,7 +50,7 @@ describe('zephyr-installer versions.env', () => {
     expect(v.ENV_NAME).toBe('zephyr');
   });
 
-  it('declares a SHA256 slot (or TODO) for every supported SDK platform', () => {
+  it('declares a SHA256 slot (or TODO/NONE) for every supported SDK platform', () => {
     const platforms = [
       'linux_x86_64',
       'linux_aarch64',
@@ -61,21 +61,43 @@ describe('zephyr-installer versions.env', () => {
     for (const p of platforms) {
       const key = `SHA256_${p}`;
       expect(v[key], `missing ${key} in versions.env`).toBeTruthy();
-      // Either the literal TODO placeholder or a pinned 64-hex sha256.
-      expect(v[key] === 'TODO' || /^[0-9a-f]{64}$/.test(v[key])).toBe(true);
+      // TODO = unpinned; NONE = no build exists for that platform; else 64-hex.
+      expect(v[key] === 'TODO' || v[key] === 'NONE' || /^[0-9a-f]{64}$/.test(v[key])).toBe(true);
     }
   });
 
-  it('pins SHA256 for platforms already exercised by a real install', () => {
-    // linux-x86_64 + windows-x86_64 were computed by the installer against the
-    // official SDK bundle and pinned, so verification is enforced (not warned).
+  it('pins SHA256 (from the release sha256.sum) for every 1.0.x platform', () => {
     // Hardcoded so a typo or accidental TODO-reset in versions.env is caught.
+    // Source: https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v1.0.1/sha256.sum
     expect(v.SHA256_linux_x86_64).toBe(
-      '83f2f327dba2d6cf2440f22f2f501041544d7f34ef8b878ecd83f4513d1116b6',
+      '37a8c5b5569c2b482d39099c65fe3ddac4e43524996c731907e1e9f5818cbba7',
+    );
+    expect(v.SHA256_linux_aarch64).toBe(
+      '6e38018f70af5e90c18cc04c2f8ac5a91c99f5559b25692d1b0de328c3edb88a',
+    );
+    expect(v.SHA256_macos_aarch64).toBe(
+      '3dc6346a5888ebbcee19801bf6271627f04819778fe0ef3c7f3c7528e8f4ef2a',
     );
     expect(v.SHA256_windows_x86_64).toBe(
-      '51d550eb2c22c1679b9ac1116e2f5c45376b0d36f1bfcf2a1f1cea29d9384ecd',
+      '811cb97797ddf6198eea66b030168d12512f605c7e332ea24d2cbe47b769c472',
     );
+    // macOS Intel has no 1.0.x build — the explicit NONE sentinel (fetch fails
+    // with guidance rather than 404-ing mid-download).
+    expect(v.SHA256_macos_x86_64).toBe('NONE');
+  });
+
+  it('declares the 1.0.x bundle flavor suffix so bundle URLs resolve', () => {
+    // 1.0.x dropped "full" bundles; _gnu = all GNU toolchains + host tools.
+    // Individual toolchain tarballs carry the flavor as an infix
+    // (toolchain_gnu_<plat>_<target>). Both native scripts + the JS summary
+    // must append it or every download 404s.
+    expect(v.ZEPHYR_SDK_BUNDLE_SUFFIX).toBe('_gnu');
+    const fetchSdk = readFileSync(join(repoRoot, 'packages/zephyr-installer/lib/fetch-sdk.sh'), 'utf8');
+    expect(fetchSdk).toContain('ZEPHYR_SDK_BUNDLE_SUFFIX');
+    expect(fetchSdk).toContain('toolchain_${tc_infix}');
+    const installPs1 = readFileSync(join(repoRoot, 'packages/zephyr-installer/install.ps1'), 'utf8');
+    expect(installPs1).toContain('$SdkSuffix');
+    expect(installPs1).toContain('toolchain_$TcInfix');
   });
 
   it('constructs a well-formed bundle URL for each platform', () => {
@@ -87,10 +109,10 @@ describe('zephyr-installer versions.env', () => {
       'windows-x86_64': '7z',
     };
     for (const [plat, ext] of Object.entries(extByPlat)) {
-      const bundle = `zephyr-sdk-${v.ZEPHYR_SDK_VERSION}_${plat}.${ext}`;
+      const bundle = `zephyr-sdk-${v.ZEPHYR_SDK_VERSION}_${plat}${v.ZEPHYR_SDK_BUNDLE_SUFFIX ?? ''}.${ext}`;
       const url = `${v.SDK_RELEASE_BASE}/v${v.ZEPHYR_SDK_VERSION}/${bundle}`;
       expect(url).toMatch(
-        /^https:\/\/github\.com\/zephyrproject-rtos\/sdk-ng\/releases\/download\/v[\d.]+\/zephyr-sdk-[\d.]+_[a-z0-9_-]+\.(tar\.xz|7z)$/,
+        /^https:\/\/github\.com\/zephyrproject-rtos\/sdk-ng\/releases\/download\/v[\d.]+\/zephyr-sdk-[\d.]+_[a-z0-9_-]+(_gnu)?\.(tar\.xz|7z)$/,
       );
     }
   });

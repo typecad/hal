@@ -222,9 +222,17 @@ so opening a terminal there auto-activates the env — machine-agnostic activato
 
 All version + URL pinning lives in [`versions.env`](./versions.env):
 
-- `ZEPHYR_SDK_VERSION`, `ZEPHYR_MANIFEST_REV` — bump and re-run to upgrade.
-- `SHA256_<platform>` — per-platform bundle hashes. `TODO` = not yet pinned; the
-  installer prints the computed hash on first download for you to pin.
+- `ZEPHYR_SDK_VERSION` — currently **1.0.1** (the Zephyr 4.4-compatible line;
+  1.0.x dropped "full" bundles — `_gnu` = all GNU toolchains + host tools).
+  Building against Zephyr 4.3.x instead? Use `--sdk-version 0.17.4`.
+- `ZEPHYR_SDK_BUNDLE_SUFFIX` — the bundle flavor (`_gnu` on 1.0.x, empty on
+  0.17.x). Individual toolchain tarballs carry it as an infix
+  (`toolchain_gnu_<plat>_<target>`).
+- `ZEPHYR_MANIFEST_REV` — bump and re-run to upgrade.
+- `SHA256_<platform>` — per-platform bundle hashes from the release's official
+  `sha256.sum`. `TODO` = not yet pinned (the installer prints the computed hash
+  on first download for you to pin); `NONE` = no build exists for that platform
+  (**macOS Intel has no 1.0.x SDK** — the installer fails with guidance there).
 - `PLATFORM_<group>` — the platform-group → toolchain mapping behind the
   checklist and `--platforms`.
 

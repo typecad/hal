@@ -93,7 +93,9 @@ export function buildSummary(v, p, envName, platforms = 'all') {
   const workspace = process.env.WORKSPACE_DIR || join(home, 'zephyrproject');
   const sdkVer = v.ZEPHYR_SDK_VERSION || '<pinned>';
   const rev = v.ZEPHYR_MANIFEST_REV || '<pinned>';
-  const bundle = `zephyr-sdk-${sdkVer}_${p.sdk}.${p.ext}`;
+  // 1.0.x bundles carry a flavor suffix (_gnu); 0.17.x "full" bundles don't.
+  const suffix = v.ZEPHYR_SDK_BUNDLE_SUFFIX || '';
+  const bundle = `zephyr-sdk-${sdkVer}_${p.sdk}${suffix}.${p.ext}`;
   const sdkLine = platforms === 'all'
     ? `  3. Fetch + extract the Zephyr SDK ${sdkVer} — ${bundle} (~1.5 GB download, ~11 GB extracted).`
     : `  3. Fetch + extract the Zephyr SDK ${sdkVer} (minimal + selected toolchains — platforms: ${platforms}).`;
