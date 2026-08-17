@@ -88,8 +88,37 @@ const NAMED_COLORS: Record<string, RGB> = {
   violet: { r: 238, g: 130, b: 238 }, wheat: { r: 245, g: 222, b: 179 },
   white: { r: 255, g: 255, b: 255 }, whitesmoke: { r: 245, g: 245, b: 245 },
   yellow: { r: 255, g: 255, b: 0 }, yellowgreen: { r: 154, g: 205, b: 50 },
-  transparent: { r: 0, g: 0, b: 0 },
 };
+
+/** Is this color fully transparent (the `transparent` keyword, alpha-0 rgba/
+ *  hsla, or #rrggbb00)? Callers treat it as "no fill" rather than black. */
+export function isTransparentColor(input: string): boolean {
+  const s = input.trim().toLowerCase();
+  if (s === "transparent" || s === "none") return true;
+  const rgbaM = /^rgba?\([^)]*,\s*(0(?:\.0+)?)\s*\)$/.exec(s);
+  if (rgbaM) return true;
+  const hslaM = /^hsla?\([^)]*\/\s*(0(?:\.0+)?|0%)\s*\)$/.exec(s);
+  if (hslaM) return true;
+  const hex8M = /^#[0-9a-f]{8}$/.exec(s);
+  if (hex8M) return s.endsWith("00");
+  return false;
+}
+
+/** Does this color carry a partial (non-zero, non-one) alpha that the engine
+ *  will ignore? (No alpha blending on bare metal.) Used for warnings. */
+export function hasIgnoredAlpha(input: string): boolean {
+  const s = input.trim().toLowerCase();
+  const rgbaM = /^rgba?\([^)]*,\s*([\d.]+)\s*\)$/.exec(s);
+  if (rgbaM) return parseFloat(rgbaM[1]) < 1;
+  const hslaM = /^hsla?\([^)]*\/\s*([\d.]+)%?\s*\)$/.exec(s);
+  if (hslaM) return (hslaM[1].endsWith("%") ? parseFloat(hslaM[1]) / 100 : parseFloat(hslaM[1])) < 1;
+  const hex8M = /^#[0-9a-f]{8}$/.exec(s);
+  if (hex8M) {
+    const a = parseInt(s.slice(7, 9), 16) / 255;
+    return a > 0 && a < 1;
+  }
+  return false;
+}
 
 /** Parse any CSS color string to {r,g,b}. Alpha is ignored (no blending). */
 export function parseColor(input: string): RGB {
@@ -144,7 +173,53 @@ export function parseColor(input: string): RGB {
   // Named colors
   if (NAMED_COLORS[s]) return NAMED_COLORS[s];
 
-  throw new Error(`Unsupported color format "${input}" — use #hex, rgb(), hsl(), or a named color`);
+  // transparent resolves to black as a COLOR (e.g. gradient stops); fill
+  // sites check isTransparentColor() first and skip painting entirely.
+  if (s === "transparent") return { r: 0, g: 0, b: 0 };
+
+  // oklch(L C H [/ a]) — CSS Color 4, the dialect of Tailwind v4 era shadcn
+  // themes. Alpha ignored like everywhere else; L accepts % form.
+  const oklchM = /^oklch\(\s*([\d.]+|none)(%)?\s+([\d.]+|none)\s+([\d.]+|none)(?:deg|turn|rad)?(?:\s*\/\s*[\d.%]+)?\s*\)$/i.exec(s);
+  if (oklchM) {
+    const l = oklchM[1] === "none" ? 0 : parseFloat(oklchM[1]) / (oklchM[2] ? 100 : 1);
+    const c = oklchM[3] === "none" ? 0 : parseFloat(oklchM[3]);
+    let h = oklchM[4] === "none" ? 0 : parseFloat(oklchM[4]);
+    if (/turn\b/i.test(s)) h = h * 360;
+    return oklchToRgb(l, c, h);
+  }
+
+  // shadcn theme dialect: bare HSL channel triplets ("222.2 47.4% 11.2%") —
+  // the format stock shadcn themes store in CSS variables, normally consumed
+  // as hsl(var(--x)). The shape (number % number%) is unambiguous with any
+  // valid CSS color, so both dialects work through var() substitution.
+  const tripletM = /^([\d.]+)(?:deg)?\s+([\d.]+)%\s+([\d.]+)%$/.exec(s);
+  if (tripletM) return hslToRgb(parseFloat(tripletM[1]), parseFloat(tripletM[2]), parseFloat(tripletM[3]));
+
+  throw new Error(`Unsupported color format "${input}" — use #hex, rgb(), hsl(), oklch(), or a named color`);
+}
+
+/** Convert oklch (L 0-1, C 0-~0.4, H degrees) to sRGB via OkLab — Björn
+ *  Ottosson's reference matrices, then the sRGB transfer function. Values
+ *  outside the sRGB gamut clamp per channel (compile-time approximation of
+ *  CSS gamut mapping — good enough for opaque 16-bit panel output). */
+function oklchToRgb(l: number, c: number, h: number): RGB {
+  const rad = (h * Math.PI) / 180;
+  const a = c * Math.cos(rad);
+  const b = c * Math.sin(rad);
+  const l_ = l + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = l - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = l - 0.0894841775 * a - 1.2914855480 * b;
+  const L = l_ * l_ * l_;
+  const M = m_ * m_ * m_;
+  const S = s_ * s_ * s_;
+  const lr = 4.0767416621 * L - 3.3077115913 * M + 0.2309699292 * S;
+  const lg = -1.2684380046 * L + 2.6097574011 * M - 0.3413193965 * S;
+  const lb = -0.0041960863 * L - 0.7034186147 * M + 1.7076147010 * S;
+  const gamma = (v: number): number => {
+    const x = Math.min(1, Math.max(0, v));
+    return Math.round(255 * (x <= 0.0031308 ? 12.92 * x : 1.055 * Math.pow(x, 1 / 2.4) - 0.055));
+  };
+  return { r: gamma(lr), g: gamma(lg), b: gamma(lb) };
 }
 
 /** Convert HSL (h: 0-360, s/l: 0-100) to RGB. Standard CSS algorithm. */

@@ -67,6 +67,12 @@ export class HostAdafruitGFX {
   // When true (mono/e-ink target), draw primitives snap color values to black/
   // white by luminance — mirrors the device's UI_MAYBE_SNAP_MONO565 choke-point.
   private monoSnap = false;
+  // Storage depth of values written into the buffer. rgb565 targets store
+  // packed 565 (expanded at the canvas push); rgb888/rgb666 targets store
+  // packed RGB888, with rgb666 quantizing channels to 6 bits at the push
+  // boundary — mirroring the device's panel. Set by PreviewUIRuntime from the
+  // snapshot's colorFormat before the first frame.
+  private storage: "rgb565" | "rgb666" | "rgb888" = "rgb565";
   private textSizeX = 1;
   private textSizeY = 1;
   private wrap = true;
@@ -89,6 +95,11 @@ export class HostAdafruitGFX {
    *  UI_MAYBE_SNAP_MONO565. Uses the same threshold as toMono (0.27). */
   setMonoSnap(on: boolean): void {
     this.monoSnap = on;
+  }
+
+  /** Set the buffer's storage depth (see the `storage` field). */
+  setStorageMode(mode: "rgb565" | "rgb666" | "rgb888"): void {
+    this.storage = mode;
   }
 
   private snap(c: number): number {
@@ -242,7 +253,11 @@ export class HostAdafruitGFX {
     }
     r = Math.min(r, Math.trunc(Math.min(w, h) / 2));
     this.fillRect(x + r, y, w - 2 * r, h, color);
-    const delta = Math.max(0, h - 2 * r - 1);
+    // No max(0, ·) clamp: for a perfect pill (h == 2r) the raw value is -1 and
+    // fillCircleHelper's delta++ turns it into 0, landing the arc lines exactly
+    // on the box. Clamping to 0 first made every arc line one row too tall —
+    // a 1px orphan stub under each corner of pill-shaped badges.
+    const delta = h - 2 * r - 1;
     this.fillCircleHelper(x + w - r - 1, y + r, r, 1, delta, color);
     this.fillCircleHelper(x + r, y + r, r, 2, delta, color);
   }
@@ -566,9 +581,21 @@ export class HostAdafruitGFX {
         out[p] = (c >> 16) & 0xff;
         out[p + 1] = (c >> 8) & 0xff;
         out[p + 2] = c & 0xff;
-      } else {
-        // 565 target: unpack to 888.
+      } else if (this.storage === "rgb565") {
+        // 565 target: buffer holds packed 565 — unpack to 888.
         const { r, g, b } = rgb565ToRgb888(c);
+        out[p] = r;
+        out[p + 1] = g;
+        out[p + 2] = b;
+      } else {
+        // rgb888/rgb666 target: buffer holds packed RGB888. rgb666
+        // quantizes to 6 bits/channel at the push (device panel parity).
+        let r = (c >> 16) & 0xff, g = (c >> 8) & 0xff, b = c & 0xff;
+        if (this.storage === "rgb666") {
+          r = (r & 0xfc) | (r >> 6);
+          g = (g & 0xfc) | (g >> 6);
+          b = (b & 0xfc) | (b >> 6);
+        }
         out[p] = r;
         out[p + 1] = g;
         out[p + 2] = b;

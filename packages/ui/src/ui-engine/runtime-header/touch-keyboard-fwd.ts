@@ -78,6 +78,36 @@ static inline void ui_kb_handle_touch(int16_t tx, int16_t ty);
 static inline void ui_kb_handle_tap(int16_t tx, int16_t ty);
 static inline void ui_kb_key_rect(uint8_t idx, UIRect* out);
 static inline void ui_kb_draw();
+
+// ── Modal <select> option list ────────────────────────────────────────────
+// Tapping a select opens a centered list of its options; tapping a row sets
+// the value, tapping outside dismisses. Mirrors the preview's select modal.
+static int16_t __ui_select_menu = -1;   // node index while open, -1 closed
+static uint8_t __ui_select_menu_dirty = 0; // overlay needs stamping this frame
+static inline void ui_select_menu_open(uint16_t nodeIdx);
+static inline void ui_select_menu_close(uint8_t repaint);
+static inline void ui_select_menu_geom(uint16_t nodeIdx, UIRect* out, int16_t* rowH);
+static inline void ui_select_menu_draw();
+static inline void ui_select_menu_tap(int16_t tx, int16_t ty);
+
+// ── <drawer> slide-in panels ──────────────────────────────────────────────
+// Author-styled absolute panels; the runtime slides the subtree in from the
+// drawer's edge (transform offsets), hides it while closed, and closes on
+// outside taps. Mirrors the preview's drawer implementation.
+#define UI_DRAWER_MAX 4
+static int8_t   __ui_drawer_idx[UI_DRAWER_MAX];    // node index per slot, -1 free
+static uint8_t  __ui_drawer_open[UI_DRAWER_MAX];   // target state (0 closed, 1 open)
+static uint8_t  __ui_drawer_progress[UI_DRAWER_MAX]; // 0 closed .. 1 open
+static uint8_t  __ui_drawer_slots = 0;             // discovered drawers (init scan)
+static int16_t __ui_drawer_last_dx[UI_DRAWER_MAX]; // last applied slide dx (delta bookkeeping)
+static int16_t __ui_drawer_last_dy[UI_DRAWER_MAX]; // last applied slide dy
+static int8_t   __ui_drawer_slot_of(uint16_t nodeIdx);
+static void     ui_drawer_discover();
+static void     ui_drawer_open(uint16_t nodeIdx);
+static void     ui_drawer_close(uint16_t nodeIdx);
+static void     ui_drawer_close_all();
+static void     ui_drawer_apply(uint8_t slot, uint8_t progress);
+static void     ui_drawer_tick(uint32_t deltaMs);
 static inline void ui_kb_draw_key(uint8_t i);
 static inline void ui_kb_draw_text_row();
 static inline void ui_kb_compute_box();
@@ -93,6 +123,7 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     if (!ui_is_effectively_visible(i)) continue;
     if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+    if (__ui_nodes[i].disabled) continue;  // HTML disabled: not a tap target
     int16_t drawX = ui_draw_x_for_node(static_cast<uint16_t>(i));
     int16_t drawY = ui_draw_y_for_node(static_cast<uint16_t>(i));
     if (tx >= drawX && tx < drawX + __ui_nodes[i].box.w &&
@@ -151,6 +182,13 @@ static inline void ui_open_keyboard_for_input(uint16_t nodeIdx) {
 
 // Touch down: called when screen is first touched.
 static void ui_touch_down(int16_t tx, int16_t ty) {
+  // Modal <select> list: record the touch position; tap-up routes to the
+  // option rows. No hit-test/press/scroll while the overlay is open.
+  if (__ui_select_menu >= 0) {
+    __ui_touch_state = 1;
+    __ui_touch_down_time = millis();
+    return;
+  }
   int16_t node = ui_hit_test(tx, ty);
   __ui_touch_node = node;
   __ui_touch_state = 1;
@@ -209,6 +247,27 @@ static void ui_touch_up() {
   // Modal keyboard: route tap-up to the keyboard; swallow normal click logic.
   // (Skipped on UI_HIDE_OSK desktop targets — touches pass through to the app,
   // since the editing session is driven by the real keyboard, not the grid.)
+  // Open drawers close on outside taps (device parity with the preview).
+  {
+    int16_t dx0 = __ui_last_touch_x;
+    int16_t dy0 = __ui_last_touch_y;
+    for (uint8_t s = 0; s < __ui_drawer_slots; s++) {
+      if (__ui_drawer_idx[s] < 0 || !__ui_drawer_open[s] || __ui_drawer_progress[s] < 255) continue;
+      uint16_t di = static_cast<uint16_t>(__ui_drawer_idx[s]);
+      int16_t px = ui_draw_x_for_node(di);
+      int16_t py = ui_draw_y_for_node(di);
+      if (dx0 < px || dx0 >= px + __ui_nodes[di].box.w ||
+          dy0 < py || dy0 >= py + __ui_nodes[di].box.h) {
+        __ui_drawer_open[s] = 0;
+      }
+    }
+  }
+  if (__ui_select_menu >= 0) {
+    ui_select_menu_tap(__ui_last_touch_x, __ui_last_touch_y);
+    __ui_touch_state = 0;
+    __ui_last_touch_time = millis();
+    return;
+  }
 #if !defined(UI_HIDE_OSK)
   if (__ui_kb_visible) {
     ui_kb_handle_tap(__ui_last_touch_x, __ui_last_touch_y);

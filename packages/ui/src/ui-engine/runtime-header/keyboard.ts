@@ -382,5 +382,202 @@ static inline void ui_kb_draw() {
   display_writePixels(display_canvasBuffer(__ui_kb_canvas), static_cast<uint32_t>(kw) * kh);
   display_endWrite();
 }
+
+static inline void ui_select_menu_geom(uint16_t nodeIdx, UIRect* out, int16_t* rowH) {
+  const UINode* n = &__ui_nodes[nodeIdx];
+  int16_t rows = static_cast<int16_t>(n->optionCount);
+  if (rows < 1) rows = 1;
+  *rowH = 22;
+  // Anchor to the select itself: same left edge and width, so the modal
+  // reads as the control's own dropdown (never overhangs toward a scrollbar).
+  // Clamp to the screen for selects that extend past it.
+  int16_t x = n->box.x;
+  if (x < 0) x = 0;
+  int16_t w = n->box.w;
+  if (w < 120) w = 120;
+  if (x + w > static_cast<int16_t>(__ui_display_w)) w = static_cast<int16_t>(__ui_display_w) - x;
+  int16_t h = rows * (*rowH) + 8;
+  int16_t maxH = static_cast<int16_t>(__ui_display_h) * 3 / 5;
+  if (h > maxH) h = maxH;
+  out->x = x;
+  out->y = static_cast<int16_t>((static_cast<int16_t>(__ui_display_h) - h) / 2);
+  out->w = w;
+  out->h = h;
+}
+
+static inline void ui_select_menu_open(uint16_t nodeIdx) {
+  if (__ui_nodes[nodeIdx].kind != NODE_SELECT) return;
+  if (__ui_nodes[nodeIdx].optionCount < 1) return;
+  __ui_select_menu = static_cast<int16_t>(nodeIdx);
+  __ui_select_menu_dirty = 1;
+}
+
+static inline void ui_select_menu_close(uint8_t repaint) {
+  if (__ui_select_menu < 0) return;
+  __ui_select_menu = -1;
+  __ui_select_menu_dirty = 0;
+  if (repaint) {
+    // Erase repaint: the whole active screen redraws beneath the vanished
+    // overlay (same contract as navigate's mark-all-dirty).
+    for (uint16_t i = 0; i < __ui_node_count; i++) {
+      __ui_nodes[i].dirty = 1;
+      __ui_nodes[i].lastTextHeight = 0;
+    }
+  }
+}
+
+static inline void ui_select_menu_draw() {
+  if (__ui_select_menu < 0) return;
+  uint16_t idx = static_cast<uint16_t>(__ui_select_menu);
+  const UINode* n = &__ui_nodes[idx];
+  UIRect g;
+  int16_t rowH;
+  ui_select_menu_geom(idx, &g, &rowH);
+  // Themed panel: the select's own radius/border/bg — the modal reads as
+  // the control's popover, matching the surrounding UI (device parity with
+  // the preview's drawSelectMenu theming).
+  int16_t radius = n->borderRadius > 0 ? n->borderRadius : 6;
+  if (radius > g.w / 2) radius = g.w / 2;
+  if (radius > g.h / 2) radius = g.h / 2;
+  UI_COLOR_T panel = n->hasBg ? n->bg : n->clearColor;
+  UI_COLOR_T borderCol = (n->borderStyle != 0 && n->borderColor != 0) ? n->borderColor : n->fg;
+  display_fill_round_rect(g.x, g.y, g.w, g.h, radius, panel);
+  display_draw_round_rect(g.x, g.y, g.w, g.h, radius, borderCol);
+  char buf[UI_TEXT_BUF + 1];
+  int16_t rowInset = radius / 2; if (rowInset < 2) rowInset = 2;
+  int16_t rowRadius = radius; if (rowRadius > 6) rowRadius = 6;
+  for (uint8_t r = 0; r < n->optionCount; r++) {
+    int16_t ry = g.y + 4 + static_cast<int16_t>(r) * rowH;
+    uint8_t current = (r == static_cast<uint8_t>(n->value));
+    if (current) {
+      display_fill_round_rect(g.x + rowInset, ry, g.w - 2 * rowInset, rowH, rowRadius, n->fg);
+    }
+    buf[0] = 0;
+    if (n->optionTextFn) n->optionTextFn(r, buf, UI_TEXT_BUF + 1);
+    ui_draw_wrapped_text(buf,
+      g.x + 22, ry + (rowH - static_cast<int16_t>(8 * n->textSize)) / 2,
+      static_cast<uint16_t>(g.w - 30),
+      current ? panel : n->fg,
+      panel, n->textSize, n->fontAntialias, n->fontFace, n->letterSpacing,
+      n->lineHeight, n->whiteSpaceMode, 0, 0, 0);
+    if (current) {
+      int16_t cx = g.x + 7;
+      int16_t cy = ry + rowH / 2;
+      display_draw_line(cx, cy, cx + 3, cy + 3, panel);
+      display_draw_line(cx + 3, cy + 3, cx + 8, cy - 4, panel);
+    }
+  }
+  __ui_select_menu_dirty = 0;
+}
+
+static inline void ui_select_menu_tap(int16_t tx, int16_t ty) {
+  if (__ui_select_menu < 0) return;
+  uint16_t idx = static_cast<uint16_t>(__ui_select_menu);
+  UIRect g;
+  int16_t rowH;
+  ui_select_menu_geom(idx, &g, &rowH);
+  if (tx >= g.x && tx < g.x + g.w && ty >= g.y && ty < g.y + g.h) {
+    int16_t row = (ty - g.y - 4) / rowH;
+    if (row >= 0 && row < static_cast<int16_t>(__ui_nodes[idx].optionCount)) {
+      __ui_nodes[idx].value = row;
+      ui_mark_dirty(idx);
+    }
+  }
+  ui_select_menu_close(1);
+}
+
+// ── <drawer> implementation (device twin of the preview drawer) ──────────
+
+static int8_t __ui_drawer_slot_of(uint16_t nodeIdx) {
+  for (uint8_t s = 0; s < __ui_drawer_slots; s++) {
+    if (__ui_drawer_idx[s] == static_cast<int16_t>(nodeIdx)) return static_cast<int8_t>(s);
+  }
+  return -1;
+}
+
+static void ui_drawer_discover() {
+  __ui_drawer_slots = 0;
+  for (uint16_t i = 0; i < __ui_node_count && __ui_drawer_slots < UI_DRAWER_MAX; i++) {
+    if (__ui_nodes[i].drawerSide < 0) continue;
+    uint8_t s = __ui_drawer_slots++;
+    __ui_drawer_idx[s] = static_cast<int8_t>(i);
+    __ui_drawer_open[s] = 0;
+    __ui_drawer_progress[s] = 0;
+    // Seed closed: subtree offsets at full travel (never paints at rest).
+    ui_drawer_apply(s, 0);
+  }
+}
+
+static void ui_drawer_apply(uint8_t slot, uint8_t progress) {
+  if (slot >= __ui_drawer_slots || __ui_drawer_idx[slot] < 0) return;
+  uint16_t di = static_cast<uint16_t>(__ui_drawer_idx[slot]);
+  UINode* d = &__ui_nodes[di];
+  int16_t travel = (d->drawerSide == 2 || d->drawerSide == 3)
+    ? static_cast<int16_t>(d->box.w) : static_cast<int16_t>(d->box.h);
+  int16_t off = static_cast<int16_t>((static_cast<int32_t>(travel) * (255 - progress)) / 255);
+  int16_t dx = d->drawerSide == 2 ? -off : d->drawerSide == 3 ? off : 0;
+  int16_t dy = d->drawerSide == 1 ? -off : d->drawerSide == 0 ? off : 0;
+  d->transformOffsetX = dx;
+  d->transformOffsetY = dy;
+  for (uint16_t i = di + 1; i < d->subtreeEnd; i++) {
+    // Descendants don't inherit transform offsets: their own box coords are
+    // layout-local, so shift their draw origin via transform offsets too.
+    __ui_nodes[i].transformOffsetX += dx - (__ui_drawer_last_dx[slot]);
+    __ui_nodes[i].transformOffsetY += dy - (__ui_drawer_last_dy[slot]);
+  }
+  __ui_drawer_last_dx[slot] = dx;
+  __ui_drawer_last_dy[slot] = dy;
+  __ui_drawer_progress[slot] = progress;
+}
+
+static void ui_drawer_open(uint16_t nodeIdx) {
+  int8_t s = __ui_drawer_slot_of(nodeIdx);
+  if (s < 0) return;
+  __ui_drawer_open[s] = 1;
+}
+
+static void ui_drawer_close(uint16_t nodeIdx) {
+  int8_t s = __ui_drawer_slot_of(nodeIdx);
+  if (s < 0) return;
+  __ui_drawer_open[s] = 0;
+}
+
+static void ui_drawer_close_all() {
+  for (uint8_t s = 0; s < __ui_drawer_slots; s++) __ui_drawer_open[s] = 0;
+}
+
+static void ui_drawer_tick(uint32_t deltaMs) {
+  uint8_t step = static_cast<uint8_t>((deltaMs * 255UL) / 180UL);
+  if (step == 0) step = 1;
+  for (uint8_t s = 0; s < __ui_drawer_slots; s++) {
+    if (__ui_drawer_idx[s] < 0) continue;
+    uint8_t target = __ui_drawer_open[s] ? 255 : 0;
+    uint8_t p = __ui_drawer_progress[s];
+    if (p == target) continue;
+    // Mark the subtree dirty around the offset change so the standard
+    // clear/redraw machinery handles the slide frames — and the whole active
+    // screen besides: the drawer's clear fills with the parent background
+    // only, so everything the drawer COVERED must repaint (same contract as
+    // the select modal's close path; device parity with the preview).
+    uint16_t di = static_cast<uint16_t>(__ui_drawer_idx[s]);
+    uint8_t next = target > p ? (p + step > target ? target : p + step)
+                              : (p < step || p - step < target ? target : p - step);
+    for (uint16_t i = 0; i < __ui_node_count; i++) {
+      if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+      if (i >= di && i < __ui_nodes[di].subtreeEnd) continue;
+      if (next == 0 && !__ui_drawer_open[s]) continue;  // closing to hidden: skip drawer subtree
+      __ui_nodes[i].dirty = 1;
+      __ui_nodes[i].lastTextHeight = 0;
+    }
+    ui_drawer_apply(s, next);
+  }
+}
 `;
 }
+
+// ── Modal <select> option list ────────────────────────────────────────────
+// Device twin of the preview's select modal: tapping a select opens a
+// centered list of its options (capped to ~60% of the panel height); tapping
+// a row sets the value and closes; tapping outside dismisses. The overlay is
+// stamped after the dirty pass every frame while open; closing marks the
+// whole tree dirty for the erase repaint.

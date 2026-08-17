@@ -219,6 +219,11 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
         }
         break;
       case NODE_BUTTON:
+        // HTML disabled: halve the drawn colors (web-like faded control).
+        if (__ui_nodes[i].disabled) {
+          fillBg = (fillBg >> 1) & UI_DIM_MASK;
+          bColor = (bColor >> 1) & UI_DIM_MASK;
+        }
         if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg)
           ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY, __ui_nodes[i].box.w, __ui_nodes[i].box.h, __ui_nodes[i].borderRadius, fillBg);
         else if (__ui_nodes[i].hasBg)
@@ -234,7 +239,9 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           int16_t insetB = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingBottom);
           int16_t textX = __ui_nodes[i].box.x + insetL;
           int16_t textY = drawY + insetT;
-          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
+          // The right end reserves 14px for the dropdown chevron — the label
+          // wraps against the reduced width, never under the chevron.
+          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR - 14;
           int16_t textH = static_cast<int16_t>(__ui_nodes[i].box.h) - insetT - insetB;
           if (textW < 1) textW = 1;
           if (textH < 1) textH = static_cast<int16_t>(th);
@@ -246,6 +253,17 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
             __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
+          // Dropdown chevron: a small solid v at the right end — the
+          // affordance that the control opens/cycles options.
+          {
+            int16_t chX = __ui_nodes[i].box.x + static_cast<int16_t>(__ui_nodes[i].box.w) - insetR - 11;
+            int16_t chY = drawY + (static_cast<int16_t>(__ui_nodes[i].box.h) - 5) / 2;
+            ui_display_fill_rect(chX,     chY,     9, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 1, chY + 1, 7, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 2, chY + 2, 5, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 3, chY + 3, 3, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 4, chY + 4, 1, 1, __ui_nodes[i].fg);
+          }
         }
         break;
       case NODE_SELECT:
@@ -312,20 +330,45 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
             clearH = static_cast<uint16_t>(__ui_nodes[i].lastTextHeight);
           }
           if (paintTextH > clearH) clearH = paintTextH;
-          ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
-            __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i));
+          // border-radius > 0 (kit .switch pills): clear the full text rect to
+          // the backdrop, then paint the rounded box. Mirrors the preview's
+          // drawCheckNode pill path.
+          if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg) {
+            ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
+              ui_parent_clear_color(i));
+            ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY,
+              __ui_nodes[i].box.w, __ui_nodes[i].box.h,
+              __ui_nodes[i].borderRadius, fillBg);
+          } else {
+            ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
+              __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i));
+          }
           __ui_nodes[i].lastTextWidth = paintTextW;
           __ui_nodes[i].lastTextHeight = paintTextH;
         }
         {
-          int16_t cbX = __ui_nodes[i].box.x;
+          // Pills inset the 16px indicator from the left edge so the knob
+          // doesn't touch the rounded end; plain checkboxes keep it flush.
+          // The knob SLIDES with state — left when off, right when on — the
+          // switch affordance (static jump; no travel animation).
+          int16_t knobSlide = __ui_nodes[i].borderRadius > 0
+            ? static_cast<int16_t>(__ui_nodes[i].box.w) - 16 - 6
+            : 0;
+          if (knobSlide < 0) knobSlide = 0;
+          int16_t cbX = __ui_nodes[i].box.x
+            + (__ui_nodes[i].borderRadius > 0 ? 3 : 0)
+            + (__ui_nodes[i].value ? knobSlide : 0);
           // Vertically center the 16px indicator within the box so a tall
           // (touch-friendly) checkbox doesn't pin the indicator to the top.
           // (box.h - 16) / 2 is 0 for the default 16px-tall box, so existing
           // checkboxes render byte-identically.
           int16_t cbY = drawY + (static_cast<int16_t>(__ui_nodes[i].box.h) - 16) / 2;
           if (cbY < drawY) cbY = drawY;
-          if (__ui_nodes[i].value) {
+          if (__ui_nodes[i].value && __ui_nodes[i].borderRadius > 0) {
+            // Switch pill: the knob stays a knob — a solid circle when on, no
+            // checkbox square + checkmark. Same geometry as the radio dot.
+            ui_display_fill_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+          } else if (__ui_nodes[i].value) {
             ui_display_fill_rect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
             UI_COLOR_T inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
 #ifdef UI_AA
@@ -355,6 +398,9 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
             ui_display_draw_line(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
             ui_display_draw_line(cbX + 7, cbY + 13, cbX + 13, cbY + 5, inv);
 #endif
+          } else if (__ui_nodes[i].borderRadius > 0) {
+            // Off-state pill: hollow circular knob outline on the track.
+            ui_display_draw_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
           } else {
             ui_display_draw_rect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
           }
@@ -540,6 +586,11 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           int16_t bh = __ui_nodes[i].box.h;
           UI_COLOR_T fgCol = __ui_nodes[i].fg;
           UI_COLOR_T bgCol = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+          // HTML disabled: halve the drawn colors (web-like faded control).
+          if (__ui_nodes[i].disabled) {
+            fgCol = (fgCol >> 1) & UI_DIM_MASK;
+            bgCol = (bgCol >> 1) & UI_DIM_MASK;
+          }
           if (__ui_nodes[i].borderRadius > 0) {
             ui_display_fill_round_rect(bx, by, bw, bh, __ui_nodes[i].borderRadius, bgCol);
           } else {

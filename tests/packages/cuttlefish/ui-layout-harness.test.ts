@@ -577,7 +577,11 @@ describe("UI layout harness", () => {
 
     expect(ui.styled("root").style.padding).toBe("8px");
     expect(ui.styled("cta").style.color).toBe("#ff0000");
-    expect(ui.styled("label").style.color).toBe("#123456");
+    // Cascade specificity: the #label id rule (1,0,0) beats the later
+    // .panel .muted class rule (0,2,0) for `color`, per browser cascade
+    // rules. Other properties from the class rule still apply.
+    expect(ui.styled("label").style.color).toBe("#222222");
+    expect(ui.styled("label").style.textTransform).toBe("uppercase");
 
     const card = ui.node("card");
     expect(card.bg).toBe(resolveColor("#111111", "rgb565"));
@@ -597,7 +601,8 @@ describe("UI layout harness", () => {
 
     const label = ui.node("label");
     expect(label.text).toBe("READY");
-    expect(label.fg).toBe(resolveColor("#123456", "rgb565"));
+    // Specificity: fg comes from the winning #label id rule (#222222).
+    expect(label.fg).toBe(resolveColor("#222222", "rgb565"));
 
     expect(ui.program.transitions).toHaveLength(1);
     expect(ui.program.transitions[0]).toMatchObject({

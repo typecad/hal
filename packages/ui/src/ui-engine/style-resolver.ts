@@ -2,9 +2,12 @@
 // Style resolver — match CSS rules to element nodes and produce a computed
 // style per node (base state + :pressed state).
 //
-// Walks the tree; for each node, applies every matching rule in source order
-// (cascade: later rules win). :pressed rules populate the separate
-// `style.pressed` object so the runtime can lerp to it on press.
+// Walks the tree; for each node, applies every matching rule in cascade order
+// (UA sheet first, then author rules by specificity, then source order — the
+// rule applied last wins each property, matching browser cascade rules; the
+// inline style attribute always wins over all stylesheet rules).
+// :pressed rules populate the separate `style.pressed` object so the runtime
+// can lerp to it on press.
 // ---------------------------------------------------------------------------
 
 import { UIElementNode } from "./html-parser.js";
@@ -74,7 +77,10 @@ export interface StyledNode {
   canvasW?: number;
   /** Canvas buffer height in pixels (for <canvas>). */
   canvasH?: number;
+  /** HTML presentational attribute: blocks taps/keyboard, dims the draw. */
   disabled?: boolean;
+  /** <drawer side="..."> — the edge the panel slides from (bottom default). */
+  drawerSide?: string;
   /** True when text contains a `{expr}` interpolation; auto-wire synthesizes an
    *  implicit text binding. Propagated from UIElementNode for the auto-wire walk. */
   hasInterpolation?: boolean;
@@ -298,8 +304,44 @@ function flattenInline(
   return runs;
 }
 
+/** CSS specificity as (a, b, c): a = id selectors, b = class/attribute/
+ *  pseudo-class selectors, c = element selectors. :not()'s argument counts
+ *  its own simples (the :not itself adds nothing), per the CSS spec. */
+function specificityOf(sel: CSSSelector): [number, number, number] {
+  let a = 0, b = 0, c = 0;
+  const count = (compounds: SimpleSelector[][]): void => {
+    for (const compound of compounds) {
+      for (const s of compound) {
+        if (s.kind === "id") a++;
+        else if (s.kind === "class" || s.kind === "attribute") b++;
+        else if (s.kind === "element") c++;
+      }
+    }
+  };
+  count(sel.compounds);
+  if (sel.not) count(sel.not);
+  if (sel.pseudo) b++;
+  return [a, b, c];
+}
+
+/** Sort rules into cascade application order: ascending specificity (a, b, c),
+ *  then source order (Array.prototype.sort is stable, so equal-specificity
+ *  rules keep source order and the later one wins). */
+function cascadeOrder(rules: CSSRule[]): CSSRule[] {
+  return rules
+    .map((rule, order) => ({ rule, order, spec: specificityOf(rule.selector) }))
+    .sort((x, y) =>
+      x.spec[0] - y.spec[0] ||
+      x.spec[1] - y.spec[1] ||
+      x.spec[2] - y.spec[2] ||
+      x.order - y.order)
+    .map((e) => e.rule);
+}
+
 export function resolveStyles(root: UIElementNode, rules: CSSRule[], diagnostics?: Diagnostic[]): StyledNode {
-  const allRules = [...getUARules(), ...rules];
+  // Two cascade layers: the UA sheet loses to any author rule regardless of
+  // specificity; author rules cascade by specificity then source order.
+  const allRules = [...cascadeOrder(getUARules()), ...cascadeOrder(rules)];
   return resolveNode(root, allRules, [], diagnostics, undefined);
 }
 

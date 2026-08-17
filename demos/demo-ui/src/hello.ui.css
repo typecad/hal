@@ -4,14 +4,14 @@
 
 @font-face {
   font-family: "ColibriDemo";
-  src: url("DejaVuSans.ttf");
+  src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans.ttf");
   font-weight: 400;
   font-style: normal;
 }
 
 @font-face {
   font-family: "ColibriDemo";
-  src: url("DejaVuSans-Bold.ttf");
+  src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans-Bold.ttf");
   font-weight: 700;
   font-style: normal;
 }

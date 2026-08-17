@@ -111,6 +111,32 @@ describe("UI font asset planning", () => {
     });
   });
 
+  it("packs the fallback charset for <list> nodes (runtime item text)", () => {
+    // List rows come from bindList item expressions at runtime — the static
+    // template carries none of their characters. Without the fallback set a
+    // face built from unrelated static text renders items with blank glyphs
+    // (a subset with '0' but no '1'-'9' draws "Item 10" as "Item  0").
+    setDisplayProfile({ driver: "ili9341", width: 320, height: 240, colorFormat: "rgb565" } as never, {});
+    withFontFiles(["sans.ttf"], (dir) => {
+      const plans = plan(
+        `<screen><text id="label">taps: 0</text><list id="rows" item-height="22"></list></screen>`,
+        `
+          @font-face { font-family: "Sans"; src: url("sans.ttf"); }
+          #label, #rows { font-family: "Sans"; font-size: 16px; }
+        `,
+        dir,
+      );
+      // One shared face: the label's static chars widened by the list's
+      // runtime-text fallback charset.
+      expect(plans).toHaveLength(1);
+      for (const digit of "123456789") {
+        expect(plans[0].chars).toContain(digit);
+      }
+      expect(plans[0].chars).toContain("I");
+      expect(plans[0].subset).toBe("fallback");
+    });
+  });
+
   it("plans transformed text, not the pre-transform source text", () => {
     withFontFiles(["sans.ttf"], (dir) => {
       const plans = plan(

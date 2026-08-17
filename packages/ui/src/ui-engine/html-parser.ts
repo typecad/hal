@@ -62,6 +62,8 @@ export interface UIElementNode {
   
   /** Disabled state */
   disabled?: boolean;
+  /** <drawer side="bottom|top|left|right"> — the edge the panel slides from. */
+  drawerSide?: string;
   children: UIElementNode[];
   /** Ordered inline content sequence (text/element/break items). Present only
    *  for text nodes with mixed inline children; absent for plain-text nodes. */
@@ -115,7 +117,25 @@ export interface ParsedHtml {
   keyboards: KeyboardTemplate[];
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a", "img", "list", "canvas", "br"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a", "img", "list", "canvas", "br", "drawer"]);
+
+/** Document-furniture tags that never render. Skipped silently (unlike unknown
+ *  tags, which fall back to generic containers with a warning). */
+const METADATA_TAGS = new Set(["link", "meta", "title", "head", "script", "source", "track", "col", "colgroup"]);
+
+/** Web elements that cannot work on microcontroller targets (vector graphics,
+ *  media, embedded browsing). Their subtree still renders as generic containers
+ *  — content is never dropped — but the diagnostic says WHY, with the native
+ *  alternative, instead of a generic unknown-tag warning. */
+const UNSUPPORTED_TAGS: Record<string, string> = {
+  svg: "vector graphics have no renderer — draw via <canvas> or export a bitmap for <img>",
+  video: "there is no video pipeline on MCU targets",
+  audio: "there is no audio pipeline on MCU targets",
+  iframe: "there is no browser engine to embed",
+  embed: "there is no plugin/content engine on MCU targets",
+  object: "there is no plugin/content engine on MCU targets",
+  picture: "art-direction source selection is unsupported — a child <img> still renders",
+};
 
 /** HTML tag aliases — common HTML elements remapped to internal primitives.
  *  Semantic block containers -> view; inline/heading text tags -> text.
@@ -124,12 +144,39 @@ const TAG_REMAP: Record<string, string> = {
   // Block-level containers -> view (flexbox/positioning surface)
   body: "view", div: "view", header: "view", footer: "view", nav: "view",
   main: "view", section: "view", article: "view", aside: "view",
+  // Forms are layout-transparent here (no submission model) — the wrapper is
+  // just a container; children render normally.
+  form: "view", fieldset: "view",
+  // Lists: the container is a plain view; <li> gets a marker prefix below.
+  ul: "view", ol: "view", li: "text",
+  // Definition lists: dt = bold term, dd = indented description (UA rules).
+  dl: "view", dt: "text", dd: "text",
+  // Tables: equal-width flex approximation — tr is a row, td/th are stretched
+  // cells (UA rules); thead/tbody/tfoot are plain row groups. Approximation
+  // surfaced via the html-table-approximation diagnostic.
+  table: "view", tr: "view", td: "text", th: "text",
+  thead: "view", tbody: "view", tfoot: "view", caption: "text",
+  // Horizontal rule -> 1px rule (styled by the UA stylesheet).
+  hr: "view",
   // Inline/heading text -> text
-  span: "text", p: "text",
+  span: "text", p: "text", small: "text", output: "text",
   h1: "text", h2: "text", h3: "text", h4: "text", h5: "text", h6: "text",
   // Styling tags -> text (inline; resolver applies bold/italic/underline defaults
   // and absorbs them into the parent's run list).
   b: "text", strong: "text", i: "text", em: "text", u: "text",
+  // Code phrase groups -> text; the UA stylesheet gives them the mono family.
+  code: "text", kbd: "text", samp: "text", pre: "text",
+  // Meter is the same bar primitive as progress (min/max/value).
+  meter: "progress",
+  // Multiline text area -> single-line input (single-line OSK at runtime).
+  textarea: "input",
+};
+
+/** <input type="..."> spellings that remap to the dedicated control tags. */
+const INPUT_TYPE_REMAP: Record<string, string> = {
+  checkbox: "check",
+  radio: "radio",
+  range: "range",
 };
 
 /** Extract <style>...</style> block contents from HTML source.
@@ -236,11 +283,54 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   // <label> and <a> are treated as <text> internally; HTML aliases
   // (div/header/span/p/h1-h6/...) remap to view or text.
   const remapped = TAG_REMAP[tag];
-  const effectiveTag = remapped ? remapped
+  let effectiveTag = remapped ? remapped
     : (tag === "label" || tag === "a") ? "text" : tag;
 
+  // <input type="checkbox|radio|range"> — the spelling web authors type  // reflexively — remaps to the dedicated control tags with identical behavior.
+  // Other non-text types (email, date, ...) have no MCU counterpart: they
+  // normalize to a single-line text input with a warning.
+  if (tag === "input") {
+    const inputType = (el.getAttribute("type") || "text").toLowerCase();
+    const remap = INPUT_TYPE_REMAP[inputType];
+    if (remap) {
+      effectiveTag = remap;
+    } else if (inputType !== "text" && inputType !== "number") {
+      diagnostics?.push({
+        severity: "warning",
+        message: `<input type="${inputType}"> has no embedded equivalent — treated as a single-line text input.`,
+        hint: `Supported types: text, number, checkbox, radio, range.`,
+        code: "html-input-type-unsupported",
+        source: "input",
+      });
+    }
+  }
+
   if (!SUPPORTED_TAGS.has(effectiveTag)) {
-    throw new Error(`Unsupported tag <${tag}> — supported: ${[...SUPPORTED_TAGS].join(", ")}`);
+    // Web behavior: unknown elements are generic boxes (this is why custom
+    // elements work in HTML). Content is NEVER dropped — a text-only leaf
+    // becomes a text node, anything with element children a container.
+    const hasElementChildren = Array.from(el.children).some(
+      (c) => !METADATA_TAGS.has(c.tagName.toLowerCase()),
+    );
+    effectiveTag = hasElementChildren ? "view" : "text";
+    const knownUnsupported = UNSUPPORTED_TAGS[tag];
+    if (knownUnsupported) {
+      diagnostics?.push({
+        severity: "warning",
+        message: `<${tag}> is not supported on microcontroller targets — rendered as a generic container.`,
+        hint: `${knownUnsupported}.`,
+        code: "unsupported-html-tag",
+        source: tag,
+      });
+    } else {
+      diagnostics?.push({
+        severity: "warning",
+        message: `Unknown HTML tag <${tag}> — rendered as a generic ${hasElementChildren ? "container" : "text"} element.`,
+        hint: `Supported tags: ${[...SUPPORTED_TAGS].sort().join(", ")}.`,
+        code: "unknown-html-tag",
+        source: tag,
+      });
+    }
   }
 
   const id = el.getAttribute("id") || undefined;
@@ -252,16 +342,27 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   const checkedAttr = el.hasAttribute("checked");
   const minAttr = el.getAttribute("min") || undefined;
   const maxAttr = el.getAttribute("max") || undefined;
-  const typeAttr = tag === "input"
+  // Text-input specifics only apply to the text/number input (not to
+  // checkbox/radio/range inputs remapped above, and not to <textarea>).
+  const isTextInput = tag === "input" && effectiveTag === "input";
+  if (tag === "textarea") {
+    diagnostics?.push({
+      severity: "warning",
+      message: `<textarea> renders as a single-line <input> (the on-screen keyboard is single-line).`,
+      code: "html-textarea-single-line",
+      source: "textarea",
+    });
+  }
+  const typeAttr = isTextInput
     ? (el.getAttribute("type") === "number" ? "number" : "text")
     : undefined;
-  const placeholderAttr = el.getAttribute("placeholder") || undefined;
+  const placeholderAttr = isTextInput ? (el.getAttribute("placeholder") || undefined) : undefined;
   const maxlengthAttr = el.getAttribute("maxlength");
   // <input> defaults maxlength to 16 when absent or unparseable.
-  const maxlengthNum = tag === "input"
+  const maxlengthNum = isTextInput
     ? (maxlengthAttr ? (parseInt(maxlengthAttr, 10) || 16) : 16)
     : undefined;
-  const keyboardAttr = el.getAttribute("keyboard") || undefined;
+  const keyboardAttr = isTextInput ? (el.getAttribute("keyboard") || undefined) : undefined;
   const hiddenAttr = el.hasAttribute("hidden");
   const inlineStyleAttr = el.getAttribute("style") || undefined;
   const hrefAttr = (tag === "a" || tag === "button") ? (el.getAttribute("href") || undefined) : undefined;
@@ -340,21 +441,25 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
 
   // Text content: only direct text, not children's text.
   let text: string | undefined;
+  // Element children that become nodes: everything except document metadata
+  // (skipped silently) and option/br (consumed by the select/text paths).
+  // Unknown tags are KEPT — their own recursive call renders them as generic
+  // containers, so no subtree is ever dropped for being unrecognized.
   const childElements = Array.from(el.children).filter((c) => {
     const ct = c.tagName.toLowerCase();
-    // Accept native tags and HTML aliases (div/span/p/h1-h6/...) that remap later.
-    const accepted = SUPPORTED_TAGS.has(ct) || TAG_REMAP[ct] !== undefined;
-    if (!accepted && ct !== "option" && ct !== "br" && diagnostics) {
-      diagnostics.push({
-        severity: "warning",
-        message: `Unknown HTML tag <${ct}> — ignored.`,
-        hint: `Supported tags: ${[...SUPPORTED_TAGS].sort().join(", ")}.`,
-        code: "unknown-html-tag",
-        source: ct,
-      });
-    }
-    return accepted && ct !== "option" && ct !== "br";
+    if (METADATA_TAGS.has(ct)) return false;
+    return ct !== "option" && ct !== "br";
   });
+  // Non-empty direct text runs (trimmed). Runs that sit next to element
+  // children become anonymous text children below — the CSS anonymous-box
+  // model: a container's stray text is never silently dropped.
+  const directTextRuns: string[] = [];
+  for (const child of Array.from(el.childNodes)) {
+    if ((child as any).nodeType === 3) {
+      const t = (child.textContent ?? "").trim();
+      if (t) directTextRuns.push(t);
+    }
+  }
 
   // Inline-bearing text nodes collect an ordered inline sequence instead of a
   // single text string. Only effective-tag "text" can be inline-bearing;
@@ -363,6 +468,9 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   if (effectiveTag === "text") {
     inline = collectInlineSequence(el, diagnostics ?? []);
   }
+  // A text tag whose inline collection failed (block child inside <p>/<text>)
+  // keeps its tag — selectors must keep matching it — and its stray text is
+  // preserved as anonymous text children below (the anonymous-block-box model).
 
   // Text content: only direct text, and only when there's no inline sequence
   // (inline content is captured above; the plain-text path is unchanged).
@@ -386,12 +494,102 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
     }
   }
 
-  const remappedFrom = (remapped || tag === "label" || tag === "a") && tag !== effectiveTag ? tag : undefined;
-  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, inline, hasInterpolation, events: hasEvents ? events : undefined, bind: hasBind ? bind : undefined, ref: refAttr, children: [] };
-  for (const child of childElements) {
-    // Inline children are absorbed into `inline`; don't also emit them as nodes.
-    if (inline && INLINE_TAGS.has(child.tagName.toLowerCase())) continue;
-    node.children.push(domToUIElementNode(child, diagnostics));
+  // <table> approximation note: rows are flex rows of equal-width stretched
+  // cells. Visible, not silent — see the UA stylesheet for the styling.
+  if (tag === "table") {
+    diagnostics?.push({
+      severity: "info",
+      message: `<table> renders as equal-width flex columns (tr = row, td/th = cells) — no auto column sizing, colspan, or rowspan.`,
+      hint: `Set explicit widths or flex-grow on cells for custom column sizes.`,
+      code: "html-table-approximation",
+      source: "table",
+    });
   }
+  // colspan/rowspan have no equal-width-flex equivalent — warn when present.
+  if (tag === "td" || tag === "th") {
+    for (const span of ["colspan", "rowspan"]) {
+      if (el.hasAttribute(span)) {
+        diagnostics?.push({
+          severity: "warning",
+          message: `<${tag}> ${span} is not supported — the cell renders as a single equal-width column/row.`,
+          hint: `Split the content across cells, or restructure with a flex row.`,
+          code: "html-table-span-unsupported",
+          source: tag,
+        });
+      }
+    }
+  }
+
+  // <li> list markers: text-only items get a prefix ("• " for <ul>, "N. " for
+  // <ol>) so plain lists read correctly with zero styling. Items with block
+  // children render as containers without a marker (style those yourself).
+  if (tag === "li" && (text || inline)) {
+    const parentTag = (el.parentElement as Element | null)?.tagName?.toLowerCase();
+    let marker = "• ";
+    if (parentTag === "ol") {
+      let n = 0;
+      for (const sib of Array.from(el.parentElement!.children)) {
+        if (sib === el) break;
+        if (sib.tagName.toLowerCase() === "li") n++;
+      }
+      marker = `${n + 1}. `;
+    }
+    if (text) text = marker + text;
+    if (inline) inline = [{ kind: "text", text: marker }, ...inline];
+  }
+
+  const remappedFrom = (remapped || tag === "label" || tag === "a") && tag !== effectiveTag ? tag : undefined;
+  const drawerSideAttr = tag === "drawer" ? (el.getAttribute("side") ?? "bottom").toLowerCase() : undefined;
+  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, drawerSide: drawerSideAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, inline, hasInterpolation, events: hasEvents ? events : undefined, bind: hasBind ? bind : undefined, ref: refAttr, children: [] };
+
+  // Anonymous inline wrap: stray text next to ONLY-inline element children
+  // flows as one text line (CSS anonymous inline boxes) instead of stacking
+  // "Total:" above the <b>3</b> run. Requires stray text to trigger — inline
+  // elements alone keep the legacy stacked behavior (deliberate chip layout).
+  if (!inline && childElements.length > 0 && directTextRuns.length > 0) {
+    const allInline = childElements.every((c) => INLINE_TAGS.has(c.tagName.toLowerCase()));
+    if (allInline) {
+      const seq = collectInlineSequence(el, diagnostics ?? []);
+      if (seq) {
+        node.children.push({
+          tag: "text",
+          classes: [],
+          inline: seq,
+          hasInterpolation: directTextRuns.some((t) => /\{[^{}]+\}/.test(t)),
+          children: [],
+        });
+        return node;
+      }
+    }
+  }
+
+  // Children in document order, interleaving anonymous text children for
+  // stray text runs (never dropped — the CSS anonymous-block-box model).
+  // Inline children already absorbed by an inline[] sequence are skipped.
+  let textBuffer = "";
+  const flushText = (): void => {
+    const t = textBuffer.trim();
+    textBuffer = "";
+    if (!t) return;
+    node.children.push({
+      tag: "text",
+      classes: [],
+      text: t,
+      hasInterpolation: /\{[^{}]+\}/.test(t),
+      children: [],
+    });
+  };
+  for (const child of Array.from(el.childNodes)) {
+    if ((child as any).nodeType === 3) {
+      if (childElements.length > 0 && !inline) textBuffer += child.textContent ?? "";
+      continue;
+    }
+    const childTag = (child as Element).tagName?.toLowerCase();
+    if (!childTag || METADATA_TAGS.has(childTag) || childTag === "option" || childTag === "br") continue;
+    if (inline && INLINE_TAGS.has(childTag)) continue;
+    flushText();
+    node.children.push(domToUIElementNode(child as Element, diagnostics));
+  }
+  flushText();
   return node;
 }

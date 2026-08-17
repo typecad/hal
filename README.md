@@ -263,9 +263,10 @@ This relieves naming pressure — two screens can both have `id="btn"` and they 
 The transpiler resolves a substantial CSS subset at compile time:
 
 - Flexbox layout (justify-content, align-items, flex-grow/shrink/basis, gap, order, wrap)
-- Box model (width, height, padding, margin, border, border-radius, box-sizing)
+- Box model (width, height, padding, margin, border, border-radius; **always border-box**)
+- Percentages (`width: 50%` resolves against the parent) and `margin: 0 auto` centering
 - Typography (font-size, font-weight, font-style, line-height, letter-spacing, text-align, text-decoration, text-overflow, white-space)
-- Colors (hex, rgb(), hsl(), named colors, CSS variables, `var()` with theme classes)
+- Colors (hex, rgb(), hsl(), oklch(), named colors, CSS variables, `var()` with theme classes — including shadcn themes pasted in unmodified: HSL channel triplets and oklch tokens both resolve)
 - Shadows and outlines (box-shadow, outline)
 - Transitions and animations (@keyframes, transition properties)
 - Transforms (translate, scale, rotate, transform-origin)
@@ -281,6 +282,89 @@ CSS variables with theme classes let you switch palettes at build time:
 ```
 
 Set `themeClass: 'dark'` in the display config to activate the dark palette.
+
+### Web compatibility: the same rules, visible differences
+
+The engine follows browser semantics where it can and **tells you** where it can't — every approximation below surfaces as a `css-*` build warning (add `--strict-css` to make them errors):
+
+| You write | What happens |
+| --- | --- |
+| `#id { … }` vs later `.class { … }` | Real cascade specificity: inline style > id > class/attribute > element; source order breaks ties. The UA sheet loses to any author rule. |
+| `width: 50%`, `padding: 1px 2px 3px 4px` | Resolved against the parent / expanded TRBL like a browser. |
+| `margin: 0 auto` | Centers the element in its parent (auto margins). |
+| `background: transparent` | No fill — the parent shows through (not black). |
+| `border: 1px solid` | Border color defaults to `currentColor` (the text color), like browsers. |
+| Unknown tags (custom elements) | Rendered as generic containers with a warning — content is never dropped. `<li>` gets a `•`/`1.` marker. |
+| `<table>` | Equal-width flex approximation: `tr` = row, `td`/`th` = stretched cells, `th` bold + centered. No auto column sizing or colspan (info/warnings emitted). |
+| `<svg>`, `<video>`, `<audio>`, `<iframe>` | Not possible on MCUs — a specific warning says why and points at `<canvas>`/`<img>`; content still renders as containers. |
+| Text next to elements (`<div>Total: <b>3</b></div>`) | Flows as one text line (anonymous boxes), like a browser. |
+| `rgba(..., 0.5)` | Alpha is ignored (no blending on bare metal) — warned. |
+| `display: inline-block` / `grid` | Not supported — elements stack vertically; warned. Use `flex-direction: row` + `gap` for inline flows. |
+| `position: fixed` / `sticky` | Not supported — treated as static; warned. |
+| `box-sizing: content-box` | Ignored — the engine is always border-box; warned. |
+| `font-size: 1.2em` / `120%` | em/rem resolve against a 16px root; % is rejected; warned. |
+| `:hover` | No hover on touch hardware — use `:active`/`:pressed`. |
+
+Two deliberate non-inheritances match embedded reality: `text-decoration` doesn't inherit, and `:focus` is runtime-only (can't match statically).
+
+### Default font and antialiasing
+
+Color displays get bundled **DejaVu Sans** (regular + bold) and **DejaVu Sans Mono** (for `<pre>`/`<code>`/`<kbd>`) `@font-face`s automatically, so text is antialiased and every `font-size` renders at its exact pixel size from the first build — no font sourcing required. Declare your own `@font-face` under any family name (including the bundled ones) to replace them. Monochrome displays keep the built-in bitmap font, where sizes quantize to buckets (1–12/13–20/21–28/29+ px render identically — warned per use).
+
+DejaVu ships under the permissive Bitstream Vera License (see [`packages/ui/assets/fonts/dejavu/LICENSE`](packages/ui/assets/fonts/dejavu/LICENSE)); the unmodified TTFs and that license file must travel together. Devices only ever receive build-time-rasterized glyph subsets, with an attribution comment stamped into the generated font tables.
+
+### Display-anchored defaults
+
+Browser defaults assume a desktop viewport. These UA defaults scale with your display so `h1 > h2 > p` hierarchies survive a 320×240 (or 128×64) screen:
+
+| Display class | Root text | h1 | h2 | Touch-target min-height |
+| --- | --- | --- | --- | --- |
+| ≥480×320 color | 16px | 24px | 20px | 48px |
+| 320×240 color | 14px | 21px | 18px | 42px |
+| ≤160px color | 12px | 18px | 15px | 36px |
+| Monochrome (≥96px tall) | 12px | 28px* | 20px | 32px |
+
+\* snapped to the bitmap font's size buckets — only ~4 distinct sizes exist there.
+
+Headings and paragraphs also carry browser-like vertical margins, and `button`/`input`/`select`/`check`/`radio` get the min-heights above. Override anything with your own CSS; every element keeps web-faithful semantics.
+
+Framework layout classes from the UA sheet (documented, overridable): `.scrollBody` / `.ui-scroll-body` (scrollable centered card column) and `.screenHeader` / `.ui-screen-header` (back-link + title bar).
+
+### shadcn-style component kit
+
+```sh
+cuttlefish add shadcn
+```
+
+Copies a shadcn-style preset into `src/styles/shadcn.css` — **yours to edit**, like shadcn/ui's copy-and-own philosophy. Link it from any stylesheet or `<style>` block:
+
+```css
+@import "./styles/shadcn.css";
+```
+
+The preset provides CSS-variable tokens (`--background`, `--primary`, `--muted-foreground`, `--border`, `--radius`, ...) in light + `.dark` sets (activate dark via `themeClass: 'dark'`), plus class recipes over the native elements:
+
+| shadcn component | Recipe on native elements |
+| --- | --- |
+| Button (+ variants/sizes) | `.btn` `.btn-primary/-secondary/-outline/-ghost/-destructive` `.btn-sm/-lg/-block` on `<button>` |
+| Badge | `.badge` + variants on `<text>` |
+| Card | `.card` + `.card-header/-title/-description/-content/-footer` on `<view>`/`<text>` |
+| Input / Label | `.input` / `.form-label` |
+| Separator | `.separator` on `<hr>` |
+| Alert | `.alert` + `.alert-destructive`, `.alert-title/-description` |
+| Skeleton | `.skeleton` (opacity pulse) |
+| Progress | `.progress` on `<progress>`/`<meter>` |
+| Avatar | `.avatar` on `<img>` |
+| Switch | `.switch` on `<check>` (pill container; indicator is runtime-drawn — best-effort) |
+| Checkbox/Radio/Slider | native `<check>`/`<radio>`/`<range>` directly |
+| Table | `<table>` (UA-styled) |
+| Row (kit utility) | `.row` on `<view>` |
+| Tabs, Dialog, Toast, Accordion, Tooltip | not CSS — need runtime state; deferred (Accordion maps to the planned `details`/`summary`) |
+
+`@import` resolves relative local stylesheets at build time (recursive, cycle-guarded; remote imports still warn). Token values are opaque-tuned for panels without alpha blending. The `demo-ui` showcase has a live "shadcn Kit" screen built this way.
+
+**Pasting a stock shadcn theme works unmodified** — replace the preset's `:root`/`.dark` token blocks with any theme from the shadcn generator or tweakcn. Both dialects resolve at build time: classic HSL channel triplets (`--primary: 222.2 47.4% 11.2%`, consumed as `var(--x)` or `hsl(var(--x))` alike) and Tailwind v4 era `oklch()` tokens (converted to sRGB). Extra tokens stock themes carry (`--ring`, `--chart-*`, `--sidebar-*`) are simply unused. Radius arithmetic like `calc(var(--radius) - 2px)` resolves correctly with rem or px tokens.
+
 
 ### Display-agnostic rendering
 

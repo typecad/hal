@@ -1,5 +1,84 @@
 # @typecad/cuttlefish
 
+## Unreleased
+
+- **Preview debug overlay.** A second canvas stacked over the display draws
+  per-frame debug geometry from the runtime, toggled per mode from the new
+  Debug overlay panel, `?debug=boxes,clips,dirty,inspect`, or the D key
+  (cycles boxes → clips → dirty → off):
+  - **boxes** — every visible node's current draw rect (transform/press/
+    drawer/scroll offsets applied), colored by kind (views cyan, text
+    yellow, interactive magenta, img/canvas orange, lists green);
+    interactive elements with no handler get a red corner mark (the
+    id-less-element trap).
+  - **clips** — scroll viewport rects: dashed outline + faint tint.
+  - **dirty** — flashes whatever the runtime repainted that frame (fades
+    until the next repaint); makes overdraw and missing underlying redraws
+    immediately visible.
+  - **inspect** — taps report the topmost node (id, tag, kind, box,
+    tappability) into Diagnostics instead of interacting; Ctrl-click always
+    inspects without entering the mode.
+  Zero cost while every mode is off (the runtime's capture flag gates the
+  per-tick paint-rect collection). The mode rows are generously-sized click
+  targets (hover-highlighted labels, 14px checkboxes) and a live state line
+  under them shows "overlay: off — check a box or press D" versus the active
+  mode list, so the intentionally-invisible off state is never mistaken for
+  a broken overlay. The overlay canvas is explicitly background-transparent
+  (the page's `canvas { background: #000 }` rule otherwise made it an
+  opaque black sheet hiding the content being inspected) and runs its backing
+  store at CSS-pixel resolution so strokes are 1 CSS px thin — thick
+  logical-pixel strokes buried text under the outlines.
+
+- **Preview reloads the `@typecad/ui` engine per snapshot build.** The server
+  cached the `buildPreviewSnapshot` module graph from its first snapshot
+  build, so engine rebuilds (font planning, layout fixes, theme handling)
+  never reached a running preview — every engine change silently required a
+  server restart, producing repeated "fixed but the preview still shows it"
+  sessions. The module now loads via a cache-busted `file://` URL per
+  snapshot request, matching the config hot-reload behavior.
+
+- **Preview re-reads `cuttlefish.config.ts` on every snapshot build.** The
+  server parsed the config once at startup, so config edits — `themeClass`
+  flips (e.g. the shadcn kit's `light`/`dark` token sets), entry changes,
+  display tweaks — had no effect until the server was restarted. Each
+  `/snapshot.json` request now re-parses the config (a mid-edit file that
+  fails to parse falls back to the last good one), so a page refresh picks
+  up config changes.
+
+- **Preview canvas tolerates non-capturable pointers.** `pointerdown` called
+  `setPointerCapture(event.pointerId)` unguarded; synthetic pointers (CDP /
+  browser automation) have no capturable pointer id, so the call threw
+  `InvalidPointerId` and killed the tap before `runtime.pointerDown` ran.
+  Capture is now best-effort (it only matters for drags that wander off the
+  canvas).
+
+- **Preview module routes now send `Cache-Control: no-store`.** Heuristic
+  browser caching served stale host-runtime/client modules after rebuilds,
+  producing phantom bugs in the preview that were already fixed (and making
+  preview debugging unreliable).
+
+- **Fixed the preview page showing a black canvas** with "Failed to resolve
+  module specifier '@typecad/ui/preview/host-ui-runtime'". The browser client
+  imports the host runtime and its `@typecad/cuttlefish/api/shared`
+  dependency as bare specifiers, which browsers cannot resolve. The preview
+  page now ships an import map: `@typecad/ui/` maps to a new
+  `/__cuttlefish-ui/` route serving that package's dist (with ESM
+  extensionless-path fallbacks), and `api/shared` maps to a browser-safe shim
+  that re-exports only `resolveScrollConfig` (the barrel re-exports node-only
+  modules — fs, zod — that cannot load in a browser).
+- **Fixed `cuttlefish preview` failing at startup** with "UI hook is not
+  registered". The preview server drives the UI engine directly but never
+  loaded it — hook registration only happened inside `transpileFile()`, which
+  preview doesn't run. `runPreviewServer` now loads the engine up front and
+  fails with a clear "requires @typecad/ui" message when the package is
+  absent. (Regression from the preview/engine package split.)
+- **`cuttlefish add <preset>`** — scaffolds copy-and-own assets into a
+  project. First preset: `cuttlefish add shadcn` copies the shadcn-style
+  token + component-recipe stylesheet to `src/styles/shadcn.css` (no-clobber
+  unless `--force`) and prints linking instructions (`@import` in a `.ui.css`
+  or `<style>` block). Presets ship in the package's `assets/` and are never
+  build-time injected — the user owns the file.
+
 ## 1.0.0-alpha.12
 
 ### Patch Changes

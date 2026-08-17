@@ -1,7 +1,7 @@
 import type { DisplayProfile } from "@typecad/cuttlefish/api/shared";
 import { effectiveDisplaySize } from "@typecad/cuttlefish/api/shared";
 import { deriveCapabilities } from "@typecad/cuttlefish/api/shared";
-import { resolveColorInternal } from "./color.js";
+import { resolveColorInternal, isTransparentColor } from "./color.js";
 import { parseAnimation, type CSSProperty } from "./css-parser.js";
 import type { UIFontAssetModel } from "./font-assets.js";
 import { selectFontAssetForStyle, assetTextWidth, assetLineHeight } from "./font-assets.js";
@@ -92,6 +92,10 @@ export interface UINodeModel {
   nowrap: boolean;       // white-space: nowrap (true = no wrapping, the default)
   whiteSpaceMode: 0 | 1 | 2 | 3; // 0=normal, 1=nowrap, 2=pre, 3=pre-line
   visible: boolean;
+  /** HTML disabled attribute: blocks taps/keyboard and dims the control. */
+  disabled: boolean;
+  /** <drawer side>: 0=bottom 1=top 2=left 3=right; -1 = not a drawer. */
+  drawerSide: number;
   opacity: number;       // 0-100
   clearColor: number;
   lastTextWidth: number;
@@ -254,7 +258,7 @@ interface FlatModelSource {
 }
 
 function nodeKind(tag: string): UINodeKindModel {
-  if (tag === "screen" || tag === "view") return "fill";
+  if (tag === "screen" || tag === "view" || tag === "drawer") return "fill";
   if (tag === "button") return "button";
   if (tag === "check") return "check";
   if (tag === "radio") return "radio";
@@ -853,11 +857,13 @@ function flatten(
 ): void {
   const index = cursor.i++;
   const box = boxes[index] ?? { x: 0, y: 0, w: 0, h: 0 };
-  const hasBg = !!node.style.background;
+  // `background: transparent` (or alpha-0) means NO fill — the parent's
+  // background shows through, matching browsers. (It used to paint black.)
+  const bgStr = node.style.background;
+  const bgIsGradient = bgStr !== undefined && bgStr.includes("linear-gradient");
+  const hasBg = bgStr !== undefined && !bgIsGradient ? !isTransparentColor(bgStr) : !!bgStr;
   // If background is a gradient, extract the first color stop as the base
   // clearColor string (avoids resolveColor choking on "linear-gradient(...)").
-  const bgStr = node.style.background;
-  const bgIsGradient = bgStr && bgStr.includes("linear-gradient");
   const bgBaseColor = bgIsGradient ? extractFirstGradientColor(bgStr!) : bgStr;
   const clearColor = hasBg ? bgBaseColor : parentBg;
   const zIndex = Math.max(-32768, Math.min(32767, parentZIndex + zIndexOf(node.style)));
@@ -925,7 +931,10 @@ export function lowerUIToModel(
       ? (grad ? grad.color1 : resolveColorInternal(node.style.background, colorFormat))
       : 0;
     const fg = node.style.color ? resolveColorInternal(node.style.color, colorFormat) : 0xffff;
-    const bColor = node.style.borderColor ? resolveColorInternal(node.style.borderColor, colorFormat) : 0;
+    // Border color defaults to currentColor (the node's resolved text color),
+    // matching browsers — `border: 1px solid` on a white-on-dark theme gets a
+    // white border, not a hardcoded black one.
+    const bColor = node.style.borderColor ? resolveColorInternal(node.style.borderColor, colorFormat) : fg;
     const clear = clearColor ? resolveColorInternal(clearColor, colorFormat) : 0;
     const outline = outlineOf(node.style);
     const outlineColor = outline.color ? resolveColorInternal(outline.color, colorFormat) : fg;
@@ -1101,6 +1110,8 @@ export function lowerUIToModel(
       nowrap: wsMode === 1 || wsMode === 2,
       whiteSpaceMode: wsMode,
       visible: node.style.visibility !== "hidden" && node.style.visibility !== "collapse" && !isDisplayNone(node),
+      disabled: node.disabled === true,
+      drawerSide: node.tag === "drawer" ? ({ bottom: 0, top: 1, left: 2, right: 3 } as Record<string, number>)[node.drawerSide ?? "bottom"] ?? 0 : -1,
       opacity: effectiveOpacity,
       clearColor: clear,
       lastTextWidth: 0,

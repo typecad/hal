@@ -16,6 +16,7 @@ import { StyledNode } from "./style-resolver.js";
 import { Box } from "./layout-engine.js";
 import { lowerUIToModel, type UIProgram, type UINodeModel, type KeyframeSetModel } from "./model.js";
 import { resolveColor } from "./color.js";
+import { defaultFontAttribution } from "./default-font.js";
 import { DEFAULT_ALPHA_KEYBOARD, DEFAULT_NUMBER_KEYBOARD } from "./default-keyboards.js";
 import type { KeyboardTemplate, UIKeyTemplate } from "./html-parser.js";
 import type { CSSRule, CSSProperty } from "./css-parser.js";
@@ -262,7 +263,11 @@ function emitFontTables(model: UIProgram): string {
 
    const lines: string[] = [];
    for (const asset of assets) {
-     lines.push(`// Font ${asset.id}: ${asset.family} ${asset.px}px ${asset.fontWeight} ${asset.fontStyle} ${asset.subset}`);
+     lines.push(`// Font ${asset.id}: ${asset.family} ${asset.px}px ${asset.fontWeight} ${asset.fontStyle} ${asset.subset} (source: ${asset.sourcePath.split(/[\\/]/).pop()})`);
+     // Bundled DejaVu faces carry their license attribution into the binary
+     // (the Bitstream Vera License requires the notice accompany distributions).
+     const attribution = defaultFontAttribution(asset.sourcePath);
+     if (attribution) lines.push(`// ${attribution}`);
      // Alpha data goes in PROGMEM (constants in flash, not RAM) - accessed via pgm_read_byte on AVR
      lines.push(`static const uint8_t __ui_font_${asset.id}_alpha[] PROGMEM = {`);
      lines.push(byteArray(asset.alpha));
@@ -294,6 +299,20 @@ function emitNodeTable(model: UIProgram): string {
   // tap function pointers on-node (no UIListBinding side table at runtime).
   const listBindingByNode = new Map<number, ReturnType<typeof getListBindings>[number]>();
   for (const lb of getListBindings()) listBindingByNode.set(lb.nodeIndex, lb);
+
+  // <select> option tables: one fn per select feeding the node's optionTextFn
+  // (the modal option list reads options through it). Emitted before the node
+  // table so the initializers can reference the names.
+  const optionFnByNode = new Map<number, string>();
+  const optionFns: string[] = [];
+  for (const n of model.nodes) {
+    if (n.kind !== "select" || !n.options || n.options.length === 0) continue;
+    const fnName = `__ui_select_opts_${n.index}`;
+    optionFnByNode.set(n.index, fnName);
+    const cases = n.options.map((o, i) =>
+      `  if (idx == ${i}) { snprintf(buf, size, "%s", ${JSON.stringify(o.text)}); return; }`).join("\n");
+    optionFns.push(`static void ${fnName}(uint8_t idx, char* buf, uint8_t size) {\n${cases}\n  buf[0] = 0;\n}`);
+  }
 
   // Accumulate rich-text run / segment / line parallel arrays across all
   // run-bearing nodes, assigning each a contiguous slice (runStart/richSegStart/
@@ -349,9 +368,12 @@ function emitNodeTable(model: UIProgram): string {
     const richSegStart = rr ? rr.richSegStart : 0;
     const richSegCount = rr ? rr.richSegCount : 0;
     const richLineStart = rr ? rr.richLineStart : 0;
-    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .lineHeight=${n.lineHeight}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderTopWidth=${(n as any).borderTopWidth ?? n.borderWidth}, .borderRightWidth=${(n as any).borderRightWidth ?? n.borderWidth}, .borderBottomWidth=${(n as any).borderBottomWidth ?? n.borderWidth}, .borderLeftWidth=${(n as any).borderLeftWidth ?? n.borderWidth}, .hasPerSideBorder=${(((n as any).borderTopWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderRightWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderBottomWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderLeftWidth ?? n.borderWidth) !== n.borderWidth) ? 1 : 0}, .borderRadius=${n.borderRadius}, .paddingTop=${n.paddingTop ?? 0}, .paddingRight=${n.paddingRight ?? 0}, .paddingBottom=${n.paddingBottom ?? 0}, .paddingLeft=${n.paddingLeft ?? 0}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .zIndex=${n.zIndex}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .rotateDeg=${n.rotateDeg}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline}, .textOverflow=${n.textOverflow ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .whiteSpaceMode=${n.whiteSpaceMode}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .lastTextHeight=0, .layoutCacheKey=0, .layoutMetricsW=0, .layoutMetricsH=0, .scrollable=${n.scrollable ? 1 : 0}, .virtualized=${virtualized}, .scrollY=0, .contentHeight=${n.contentHeight}, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=${listCountFn}, .listItemFn=${listItemFn}, .listTapFn=${listTapFn}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .objectFit=${n.objectFit ?? 1}, .listItemHeight=${(n as any).listItemHeight ?? 0}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .canvasW=${n.canvasW ?? 0}, .canvasH=${n.canvasH ?? 0}, .runCount=${runCount}, .richLineCount=${richLineCount}, .runStart=${runStart}, .richSegStart=${richSegStart}, .richSegCount=${richSegCount}, .richLineStart=${richLineStart}, .dirty=0, .value=${n.value} },`;
+    return `  { .box=${box}, .bg=${hex(n.bg)}, .fg=${hex(n.fg)}, .kind=${cppKind(n.kind)}, .text=${inputText}, .textBuffer={0}, .hasTextBinding=0, .font=${font}, .hasBg=${n.hasBg ? 1 : 0}, .textAlign=${n.textAlign}, .textSize=${n.textSize}, .lineHeight=${n.lineHeight}, .letterSpacing=${n.letterSpacing}, .fontAntialias=${n.fontAntialias ? 1 : 0}, .fontFace=${n.fontFace}, .borderColor=${hex(n.borderColor)}, .borderStyle=${n.borderStyle}, .borderWidth=${n.borderWidth}, .borderTopWidth=${(n as any).borderTopWidth ?? n.borderWidth}, .borderRightWidth=${(n as any).borderRightWidth ?? n.borderWidth}, .borderBottomWidth=${(n as any).borderBottomWidth ?? n.borderWidth}, .borderLeftWidth=${(n as any).borderLeftWidth ?? n.borderWidth}, .hasPerSideBorder=${(((n as any).borderTopWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderRightWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderBottomWidth ?? n.borderWidth) !== n.borderWidth || ((n as any).borderLeftWidth ?? n.borderWidth) !== n.borderWidth) ? 1 : 0}, .borderRadius=${n.borderRadius}, .paddingTop=${n.paddingTop ?? 0}, .paddingRight=${n.paddingRight ?? 0}, .paddingBottom=${n.paddingBottom ?? 0}, .paddingLeft=${n.paddingLeft ?? 0}, .gradientEnabled=${n.gradientEnabled}, .gradientColor1=${hex(n.gradientColor1)}, .gradientColor2=${hex(n.gradientColor2)}, .outlineColor=${hex(n.outlineColor)}, .outlineStyle=${n.outlineStyle}, .outlineWidth=${n.outlineWidth}, .zIndex=${n.zIndex}, .transformOffsetX=${n.transformOffsetX}, .transformOffsetY=${n.transformOffsetY}, .rotateDeg=${n.rotateDeg}, .pressedOffsetX=${n.pressedOffsetX}, .pressedOffsetY=${n.pressedOffsetY}, .shadowCount=${n.shadowCount}, .shadowOffsetX=${shArr(n.shadowOffsetX)}, .shadowOffsetY=${shArr(n.shadowOffsetY)}, .shadowBlur=${shArr(n.shadowBlur)}, .shadowColor={${n.shadowColor.slice(0, 4).map(hex).join(",")}}, .shadowAlpha=${shArr(n.shadowAlpha)}, .shadowInset=${shArr(n.shadowInset.map(v => v ? 1 : 0))}, .textShadowCount=${n.textShadowCount}, .textShadowOffsetX=${n.textShadowOffsetX}, .textShadowOffsetY=${n.textShadowOffsetY}, .textShadowBlur=${n.textShadowBlur}, .textShadowColor=${hex(n.textShadowColor)}, .textShadowAlpha=${n.textShadowAlpha}, .underline=${n.underline}, .textOverflow=${n.textOverflow ? 1 : 0}, .nowrap=${n.nowrap ? 1 : 0}, .whiteSpaceMode=${n.whiteSpaceMode}, .visible=${n.visible ? 1 : 0}, .opacity=${n.opacity}, .clearColor=${hex(n.clearColor)}, .lastTextWidth=${lastTextWidth}, .lastTextHeight=0, .layoutCacheKey=0, .layoutMetricsW=0, .layoutMetricsH=0, .scrollable=${n.scrollable ? 1 : 0}, .virtualized=${virtualized}, .scrollY=0, .contentHeight=${n.contentHeight}, .overscrollPx=0, .settling=0, .lastPaintedScrollY=0, .listCount=0, .listCountFn=${listCountFn}, .listItemFn=${listItemFn}, .listTapFn=${listTapFn}, .parent=${parent}, .subtreeEnd=${n.subtreeEnd}, .screenId=${n.screenId}, .imgDataId=${n.imgDataId ?? 255}, .objectFit=${n.objectFit ?? 1}, .listItemHeight=${(n as any).listItemHeight ?? 0}, .rangeMin=${n.rangeMin}, .rangeMax=${n.rangeMax}, .maxlen=${n.maxlen}, .canvasW=${n.canvasW ?? 0}, .canvasH=${n.canvasH ?? 0}, .runCount=${runCount}, .richLineCount=${richLineCount}, .runStart=${runStart}, .richSegStart=${richSegStart}, .richSegCount=${richSegCount}, .richLineStart=${richLineStart}, .dirty=0, .value=${n.value}, .disabled=${n.disabled ? 1 : 0}, .optionCount=${n.kind === "select" && n.options ? n.options.length : 0}, .optionTextFn=${optionFnByNode.get(n.index) ?? "nullptr"}, .drawerSide=${(n as any).drawerSide ?? -1} },`;
   });
   return [
+    // <select> option tables (must precede __ui_nodes[]: initializers
+    // reference the function names).
+    ...optionFns,
     // Mutable (not const) so ui_tick can update bg/dirty during transitions.
     // AVR would want PROGMEM + a shadow copy; ESP32-class has RAM to spare.
     `UINode __ui_nodes[] = {`,

@@ -462,7 +462,7 @@ describe("C++ reactive runtime header", () => {
     // hidden AND this node is the active edit target, suppress the placeholder
     // so the caret shows on a clean field at position 0.
     const inputDrawIdx = header.indexOf("case NODE_INPUT:");
-    const inputDrawBlock = header.slice(inputDrawIdx, inputDrawIdx + 2000);
+    const inputDrawBlock = header.slice(inputDrawIdx, inputDrawIdx + 2600);
     expect(inputDrawBlock).toMatch(/#if\s+defined\(UI_HIDE_OSK\)[\s\S]*__ui_kb_target[\s\S]*(empty|\"\"|disp)/);
   });
 

@@ -30,6 +30,9 @@ import { lowerUIToCpp, LoweredUI } from "./ui-lowering.js";
 import { getDisplayProfile } from "@typecad/cuttlefish/stores/display-profile-store";
 import { buildUIFontAssets } from "./font-assets.js";
 import type { UIFontAssetModel } from "./font-assets.js";
+import { injectDefaultFontFaces } from "./default-font.js";
+import { cssCompatDiagnostics } from "./compat-report.js";
+import { expandCssImports } from "./css-imports.js";
 import { emitImageTables, loadImageAssets } from "./image-assets.js";
 import type { Diagnostic } from "@typecad/cuttlefish/api/shared";
 import { splitUiFile } from "./ui-file-splitter.js";
@@ -137,11 +140,18 @@ export function loadUIModuleFromText(
   const tree = parsed.tree;
   const allScreens = parsed.screens;
   const keyboards = parsed.keyboards;
-  // Merge <style> blocks from the HTML with the external CSS.
+  // Merge <style> blocks from the HTML with the external CSS, then inline any
+  // local @import statements (shared stylesheets like the shadcn preset).
   const styleBlocks = extractStyleBlocks(htmlText);
-  const fullCss = cssText + "\n" + styleBlocks;
+  const cssBaseDir = path.dirname(cssPathForFonts);
+  const fullCss = expandCssImports(cssText + "\n" + styleBlocks, cssBaseDir);
   const rules = parseCss(fullCss, moduleDiagnostics);
-  const fontFaces = parseFontFaces(fullCss);
+  // Color displays get the bundled DejaVu faces appended (unless the author
+  // registered their own face under the default family) so AA text works out
+  // of the box. The UA sheet points at the same family.
+  let profileColorFormat: string | undefined;
+  try { profileColorFormat = getDisplayProfile().colorFormat; } catch { /* unbound */ }
+  const fontFaces = injectDefaultFontFaces(parseFontFaces(fullCss), profileColorFormat);
   const styled = resolveStyles(tree, rules, moduleDiagnostics);
   const allStyledScreens = allScreens.map(s => resolveStyles(s, rules, moduleDiagnostics));
   const fontRoot: StyledNode = { tag: "screen", classes: [], style: {}, children: allStyledScreens };
@@ -278,6 +288,20 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
     boxIdx += countNodes(screen);
   }
   for (const d of layoutDiags) {
+    result.diagnostics.push(d);
+    mod.mountDiagnostics.push(d);
+  }
+
+  // CSS compatibility report: display-anchored scale summary, ignored alpha,
+  // stock-font quantization, viewport-share sanity. Ordinary diagnostics —
+  // printed with the rest, upgradeable to errors via --strict-css.
+  for (const d of cssCompatDiagnostics(
+    allStyled.length > 0 ? allStyled : [mod.styled],
+    mod.fontAssets,
+    opts.viewport,
+    opts.colorFormat,
+    htmlBase,
+  )) {
     result.diagnostics.push(d);
     mod.mountDiagnostics.push(d);
   }

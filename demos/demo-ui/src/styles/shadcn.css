@@ -1,0 +1,234 @@
+/* ---------------------------------------------------------------------------
+ * shadcn-style component kit for cuttlefish — copy-and-own, like shadcn/ui.
+ *
+ * Added via `cuttlefish add shadcn` (this file lives in YOUR project under
+ * src/styles/). Link it from any stylesheet with:
+ *
+ *   @import "./styles/shadcn.css";
+ *
+ * Everything is CSS variable tokens + class recipes over the native elements
+ * (button/text/view/input/progress/...) — there is no runtime JS, so each
+ * shadcn component maps to markup you already know:
+ *
+ *   Button      <button class="btn btn-primary">Save</button>
+ *               variants: -secondary -outline -ghost -destructive
+ *               sizes: .btn-sm .btn-lg   full width: .btn-block
+ *   Badge       <text class="badge badge-secondary">new</text>
+ *               variants: -default(omit) -destructive -outline
+ *   Card        <view class="card">
+ *                 <view class="card-header">
+ *                   <text class="card-title">Title</text>
+ *                   <text class="card-description">Subtitle</text>
+ *                 </view>
+ *                 <view class="card-content">...</view>
+ *                 <view class="card-footer">...buttons...</view>
+ *               </view>
+ *   Input       <input class="input" placeholder="..."/>
+ *   Label       <label class="form-label">Name</label>
+ *   Row (kit)   <view class="row"> ... </view>   (flex row + gap, for composing)
+ *   Separator   <hr class="separator"/>
+ *   Alert       <view class="alert alert-destructive">
+ *                 <text class="alert-title">...</text>
+ *                 <text class="alert-description">...</text>
+ *               </view>
+ *   Skeleton    <view class="skeleton"/>            (pulse while loading)
+ *   Progress    <progress class="progress" value="40"/>
+ *   Avatar      <img class="avatar" src="face.bmp"/>
+ *   Switch      <check class="switch"/>             (pill container; the
+ *               16px indicator is runtime-drawn at the top-left — best-effort)
+ *   Table       <table> ... </table>                (UA styles apply; see the
+ *               html-table-approximation build note)
+ *
+ * Themes: light tokens are the default; `.dark { ... }` overrides them.
+ * Activate the dark set with `themeClass: 'dark'` in cuttlefish.config.ts's
+ * display block. Token values here are opaque (no alpha blending on bare
+ * metal) and tuned for small TFTs rather than copied from shadcn's defaults.
+ *
+ * PASTING A STOCK shadcn THEME: replace the :root/.dark blocks below with any
+ * theme from the shadcn generator / tweakcn and it works unmodified — both
+ * dialects are supported:
+ *   - classic HSL channel triplets ("--primary: 222.2 47.4% 11.2%") resolve
+ *     through bare var() and hsl(var(--x)) alike;
+ *   - Tailwind v4 era oklch() themes ("--primary: oklch(0.21 0.006 285.885)")
+ *     convert to sRGB at build time.
+ * Extra tokens stock themes carry (--ring, --chart-*, --sidebar-*) are simply
+ * unused here — no need to prune them. One caveat: alpha in any color is
+ * ignored (no blending on bare metal).
+ *
+ * This file is YOURS: edit tokens, prune recipes, rename freely. The build
+ * only reads what you @import.
+ * ------------------------------------------------------------------------- */
+
+:root {
+  --background: #ffffff;
+  --foreground: #09090b;
+  --card: #ffffff;
+  --card-foreground: #09090b;
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --secondary: #f4f4f5;
+  --secondary-foreground: #18181b;
+  --muted: #f4f4f5;
+  --muted-foreground: #71717a;
+  --accent: #f4f4f5;
+  --accent-foreground: #18181b;
+  --destructive: #dc2626;
+  --destructive-foreground: #fafafa;
+  --destructive-background: #fee2e2;
+  --border: #e4e4e7;
+  --input: #e4e4e7;
+  --radius: 8px;
+}
+
+.dark {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --card: #18181b;
+  --card-foreground: #fafafa;
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+  --muted: #27272a;
+  --muted-foreground: #a1a1aa;
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+  --destructive: #ef4444;
+  --destructive-foreground: #09090b;
+  --destructive-background: #451a1a;
+  --border: #27272a;
+  --input: #3f3f46;
+  --radius: 8px;
+}
+
+/* ---- Button ---------------------------------------------------------------- */
+
+.btn {
+  border-radius: var(--radius);
+  padding: 10px 16px;
+  font-weight: bold;
+  transition: background 80ms;
+}
+.btn:pressed { transform: translateY(1px); }
+.btn-primary { background: var(--primary); color: var(--primary-foreground); }
+.btn-secondary { background: var(--secondary); color: var(--secondary-foreground); }
+.btn-outline { background: var(--background); color: var(--foreground); border: 1px solid var(--border); }
+.btn-ghost { color: var(--foreground); }
+.btn-destructive { background: var(--destructive); color: var(--destructive-foreground); }
+.btn-sm { padding: 6px 10px; min-height: 32px; font-size: 12px; }
+.btn-lg { padding: 14px 22px; min-height: 52px; font-size: 18px; }
+.btn-block { align-self: stretch; }
+
+/* ---- Badge ------------------------------------------------------------------ */
+
+.badge {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  text-align: center;
+}
+.badge-secondary { background: var(--secondary); color: var(--secondary-foreground); }
+.badge-destructive { background: var(--destructive); color: var(--destructive-foreground); }
+.badge-outline { background: var(--background); color: var(--foreground); border: 1px solid var(--border); }
+
+/* ---- Layout utility -------------------------------------------------------------
+   Not a shadcn component — a kit convenience for composing recipes. */
+
+.row { flex-direction: row; align-items: center; gap: 8px; }
+
+/* ---- Card ------------------------------------------------------------------- */
+
+.card {
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  gap: 8px;
+  align-self: stretch;
+}
+.card-header { gap: 4px; }
+.card-title { font-size: 18px; font-weight: bold; }
+.card-description { font-size: 14px; color: var(--muted-foreground); }
+.card-content { gap: 8px; }
+.card-footer { flex-direction: row; gap: 8px; }
+
+/* ---- Form controls ----------------------------------------------------------- */
+
+.input {
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+}
+.form-label { color: var(--foreground); font-size: 14px; }
+
+/* Switch: pill container. The 16px indicator is runtime-drawn at the box
+   top-left, so the knob does not slide — this is the best-effort look. */
+.switch {
+  width: 44px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--muted);
+}
+
+/* ---- Separator ---------------------------------------------------------------- */
+
+.separator {
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0;
+}
+
+/* ---- Alert -------------------------------------------------------------------- */
+
+.alert {
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  gap: 4px;
+  align-self: stretch;
+}
+.alert-destructive {
+  background: var(--destructive-background);
+  border: 1px solid var(--destructive);
+  color: var(--destructive);
+}
+.alert-title { font-weight: bold; }
+.alert-description { font-size: 14px; color: var(--muted-foreground); }
+
+/* ---- Skeleton (loading placeholder) --------------------------------------------- */
+
+/* Opacity pulse. If the target display's keyframe support skips opacity,
+   the block still renders as a static muted placeholder. */
+.skeleton {
+  background: var(--muted);
+  border-radius: var(--radius);
+  height: 16px;
+  align-self: stretch;
+  animation: ui-skeleton-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ui-skeleton-pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.55; }
+  100% { opacity: 1; }
+}
+
+/* ---- Progress / Avatar ----------------------------------------------------------- */
+
+.progress {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--secondary);
+  border: 1px solid var(--border);
+  color: var(--primary);
+}
+.avatar {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}

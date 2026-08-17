@@ -11,14 +11,16 @@
 // boxes[] in lockstep with the styled nodes.
 // ---------------------------------------------------------------------------
 
-import { Box, IntrinsicSize, isDisplayNone, LayoutEngine, parseAspectRatio } from "./layout-engine.js";
+import { Box, IntrinsicSize, isDisplayNone, LayoutEngine, parseAspectRatio, cssDimValue, cssSizeValue, dimSet, expandBoxShorthand, CssDim } from "./layout-engine.js";
 import { StyledNode } from "./style-resolver.js";
 import { CSSProperty } from "./css-parser.js";
 import Yoga from "yoga-layout";
 
 /** Parse the first numeric value from a CSS string ("8px", "8px 16px" → 8). */
 /** Parse a single CSS length to device pixels.
- *  rem/em × 16 (root font size), px/bare as-is, decimals supported. */
+ *  rem/em × 16 (root font size), px/bare as-is, decimals supported.
+ *  Percentages and "auto" fold to numbers here — use cssDimValue() for the
+ *  properties (sizes, margins, paddings, insets) where they are meaningful. */
 function cssLength(val: string): number {
   const v = val.trim();
   const remM = /^(-?[\d.]+)rem$/.exec(v);
@@ -32,21 +34,6 @@ function cssLength(val: string): number {
 function cssNum(val: string | undefined): number {
   if (!val) return 0;
   return cssLength(val);
-}
-
-/** Parse horizontal padding from shorthand ("8px 16px" → 16 for left/right). */
-function cssPadH(val: string | undefined): number {
-  if (!val) return 0;
-  const parts = val.trim().split(/\s+/);
-  if (parts.length <= 1) return cssLength(parts[0] ?? "0");
-  return cssLength(parts[1] ?? parts[0]);
-}
-
-/** Parse vertical padding from shorthand ("8px 16px" → 8 for top/bottom). */
-function cssPadV(val: string | undefined): number {
-  if (!val) return 0;
-  const parts = val.trim().split(/\s+/);
-  return cssLength(parts[0] ?? "0");
 }
 
 /** Parse border width from "2px solid #808080" → 2. */
@@ -113,29 +100,36 @@ export class YogaLayoutEngine implements LayoutEngine {
     else if (fd === "column-reverse") yn.setFlexDirection(Yoga.FLEX_DIRECTION_COLUMN_REVERSE);
     else yn.setFlexDirection(Yoga.FLEX_DIRECTION_COLUMN);
 
-    // Padding (all edges from shorthand, using the vertical value for uniformity)
-    const padV = cssPadV(s.padding);
-    const padH = cssPadH(s.padding);
-    if (padV || padH) {
-      yn.setPadding(Yoga.EDGE_TOP, padV);
-      yn.setPadding(Yoga.EDGE_BOTTOM, padV);
-      yn.setPadding(Yoga.EDGE_LEFT, padH);
-      yn.setPadding(Yoga.EDGE_RIGHT, padH);
+    // Padding: full 1-4 value shorthand (TRBL rotation) with % support.
+    // "auto" is not valid padding — fold it to the default 0 via asSize.
+    const asSize = (d: CssDim): number | `${number}%` => (d === "auto" ? 0 : d);
+    const [padT, padR, padB, padL] = expandBoxShorthand(s.padding);
+    if (dimSet(padT)) yn.setPadding(Yoga.EDGE_TOP, asSize(padT));
+    if (dimSet(padR)) yn.setPadding(Yoga.EDGE_RIGHT, asSize(padR));
+    if (dimSet(padB)) yn.setPadding(Yoga.EDGE_BOTTOM, asSize(padB));
+    if (dimSet(padL)) yn.setPadding(Yoga.EDGE_LEFT, asSize(padL));
+    // Scroll containers draw an overlay scrollbar at the right edge (4px
+    // strip: box.x + box.w - 4). Reserve the strip plus a 4px breathing gap
+    // as right padding so stretched children (align-items: stretch selects,
+    // cards) never lay out or paint against/under the scrollbar — browser
+    // behavior for classic scrollbars, which take layout space.
+    if (s.overflow === "scroll") {
+      const basePad = typeof padR === "number" ? padR : 0;
+      yn.setPadding(Yoga.EDGE_RIGHT, basePad + 8);
     }
 
-    // Margin: per-side overrides win over the `margin` shorthand when set.
-    const marginV = cssPadV(s.margin);
-    const marginH = cssPadH(s.margin);
-    const mTop = s.marginTop !== undefined ? cssLength(s.marginTop) : marginV;
-    const mBottom = s.marginBottom !== undefined ? cssLength(s.marginBottom) : marginV;
-    const mLeft = s.marginLeft !== undefined ? cssLength(s.marginLeft) : marginH;
-    const mRight = s.marginRight !== undefined ? cssLength(s.marginRight) : marginH;
-    if (mTop || mBottom || mLeft || mRight) {
-      yn.setMargin(Yoga.EDGE_TOP, mTop);
-      yn.setMargin(Yoga.EDGE_BOTTOM, mBottom);
-      yn.setMargin(Yoga.EDGE_LEFT, mLeft);
-      yn.setMargin(Yoga.EDGE_RIGHT, mRight);
-    }
+    // Margin: per-side longhands win over the `margin` shorthand when set.
+    // Full 1-4 value shorthand expansion; percentages resolve against the
+    // parent, and "auto" margins absorb free space (margin: 0 auto centers).
+    const [mgT, mgR, mgB, mgL] = expandBoxShorthand(s.margin);
+    const mTop: CssDim = s.marginTop !== undefined ? cssDimValue(s.marginTop) : mgT;
+    const mBottom: CssDim = s.marginBottom !== undefined ? cssDimValue(s.marginBottom) : mgB;
+    const mLeft: CssDim = s.marginLeft !== undefined ? cssDimValue(s.marginLeft) : mgL;
+    const mRight: CssDim = s.marginRight !== undefined ? cssDimValue(s.marginRight) : mgR;
+    if (dimSet(mTop)) yn.setMargin(Yoga.EDGE_TOP, mTop);
+    if (dimSet(mBottom)) yn.setMargin(Yoga.EDGE_BOTTOM, mBottom);
+    if (dimSet(mLeft)) yn.setMargin(Yoga.EDGE_LEFT, mLeft);
+    if (dimSet(mRight)) yn.setMargin(Yoga.EDGE_RIGHT, mRight);
 
     // Gap: row-gap / column-gap are applied per-axis. Uniform `gap`
     // (both equal) uses GUTTER_ALL for efficiency; mismatched values
@@ -197,19 +191,18 @@ export class YogaLayoutEngine implements LayoutEngine {
     if (s.flexGrow) yn.setFlexGrow(cssNum(s.flexGrow));
     if (s.flexShrink) yn.setFlexShrink(cssNum(s.flexShrink));
     if (s.flexBasis) {
-      const basis = cssNum(s.flexBasis);
       if (s.flexBasis === "auto") yn.setFlexBasisAuto();
-      else yn.setFlexBasis(basis);
+      else yn.setFlexBasis(cssSizeValue(s.flexBasis));
     }
 
     // Order (Yoga may not expose setOrder in its types, but the runtime has it)
     if (s.order) (yn as any).setOrder?.(cssNum(s.order));
 
-    // Min/max dimensions
-    if (s.minWidth) yn.setMinWidth(cssNum(s.minWidth));
-    if (s.maxWidth) yn.setMaxWidth(cssNum(s.maxWidth));
-    if (s.minHeight) yn.setMinHeight(cssNum(s.minHeight));
-    if (s.maxHeight) yn.setMaxHeight(cssNum(s.maxHeight));
+    // Min/max dimensions (px or % of the parent)
+    if (s.minWidth) yn.setMinWidth(cssSizeValue(s.minWidth));
+    if (s.maxWidth) yn.setMaxWidth(cssSizeValue(s.maxWidth));
+    if (s.minHeight) yn.setMinHeight(cssSizeValue(s.minHeight));
+    if (s.maxHeight) yn.setMaxHeight(cssSizeValue(s.maxHeight));
 
     // Box sizing
     if (s.boxSizing === "border-box") yn.setBoxSizing?.(Yoga.BOX_SIZING_BORDER_BOX);
@@ -222,14 +215,14 @@ export class YogaLayoutEngine implements LayoutEngine {
     if (s.position === "relative") yn.setPositionType(Yoga.POSITION_TYPE_RELATIVE);
     else if (s.position === "absolute") yn.setPositionType(Yoga.POSITION_TYPE_ABSOLUTE);
     else yn.setPositionType(Yoga.POSITION_TYPE_STATIC);
-    if (s.top !== undefined) yn.setPosition(Yoga.EDGE_TOP, cssNum(s.top));
-    if (s.right !== undefined) yn.setPosition(Yoga.EDGE_RIGHT, cssNum(s.right));
-    if (s.bottom !== undefined) yn.setPosition(Yoga.EDGE_BOTTOM, cssNum(s.bottom));
-    if (s.left !== undefined) yn.setPosition(Yoga.EDGE_LEFT, cssNum(s.left));
+    if (s.top !== undefined) yn.setPosition(Yoga.EDGE_TOP, cssSizeValue(s.top));
+    if (s.right !== undefined) yn.setPosition(Yoga.EDGE_RIGHT, cssSizeValue(s.right));
+    if (s.bottom !== undefined) yn.setPosition(Yoga.EDGE_BOTTOM, cssSizeValue(s.bottom));
+    if (s.left !== undefined) yn.setPosition(Yoga.EDGE_LEFT, cssSizeValue(s.left));
 
-    // Width/height (explicit)
-    if (s.width) yn.setWidth(cssNum(s.width));
-    if (s.height) yn.setHeight(cssNum(s.height));
+    // Width/height (explicit; px or % of the parent)
+    if (s.width) yn.setWidth(cssSizeValue(s.width));
+    if (s.height) yn.setHeight(cssSizeValue(s.height));
     const aspectRatio = parseAspectRatio(s.aspectRatio);
     if (aspectRatio !== undefined) yn.setAspectRatio(aspectRatio);
 
@@ -257,7 +250,11 @@ export class YogaLayoutEngine implements LayoutEngine {
     // Leaf nodes with text: let Yoga pass available width into measurement so
     // wrapped text can expand height under constraints.
     if (node.children.length === 0) {
-      const textLike = node.tag === "text" || node.tag === "button" || node.tag === "check" || node.tag === "radio";
+      // select is text-like too: its label is the current option, and the
+      // generic else-branch sizes the width without the UA control padding —
+      // a wider option ("Gamma" vs "Alpha" in a proportional font) then
+      // overflows the box and wraps mid-word.
+      const textLike = node.tag === "text" || node.tag === "button" || node.tag === "check" || node.tag === "radio" || node.tag === "select";
       if (textLike) {
         yn.setMeasureFunc((width: number, widthMode: number) => {
           const hasWidth = widthMode !== Yoga.MEASURE_MODE_UNDEFINED && Number.isFinite(width) && width > 0;
@@ -269,8 +266,9 @@ export class YogaLayoutEngine implements LayoutEngine {
         });
       } else {
         const intrinsic = measureFn(node);
-        const childPadV = cssPadV(s.padding);
-        const childPadH = cssPadH(s.padding);
+        const [padTop, , , padLeft] = expandBoxShorthand(s.padding);
+        const childPadV = typeof padTop === "number" ? padTop : 0;
+        const childPadH = typeof padLeft === "number" ? padLeft : 0;
         const childBorder = cssBorderWidth(s.border);
         if (!s.width && intrinsic.w > 0) {
           yn.setWidth(Math.ceil(intrinsic.w + childPadH * 2 + childBorder * 2));

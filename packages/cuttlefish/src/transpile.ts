@@ -244,6 +244,16 @@ type LocatedDiagnostic = {
   diagnostic: Diagnostic;
 };
 
+/** Under --strict-css, UI CSS-compatibility warnings (code css-*: ignored
+ *  alpha, quantized font sizes, unsupported display/position values, ...) are
+ *  upgraded to errors so the build fails instead of approximating silently. */
+function upgradeStrictCss(d: Diagnostic, strict: boolean | undefined): Diagnostic {
+  if (strict && d.severity === "warning" && typeof d.code === "string" && d.code.startsWith("css-")) {
+    return { ...d, severity: "error" };
+  }
+  return d;
+}
+
 function formatFatalDiagnostics(entries: LocatedDiagnostic[]): string {
   const errors = entries.filter(({ diagnostic }) => diagnostic.severity === "error");
   const lines = [
@@ -533,10 +543,12 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // parser warnings (unknown CSS properties, unknown HTML tags) here so the
   // author sees typos and unsupported features instead of silent drops.
   // Guarded: @typecad/ui is optional, so there may be no UI engine loaded.
+  // --strict-css upgrades the css-* compatibility warnings to errors.
   if (hasUIHook()) {
     for (const mod of requireUIHook().allUIModules()) {
       for (const d of mod.diagnostics) {
-        diagnostics.push({ ...d, filePath: d.filePath ?? path.basename(mod.htmlPath) });
+        const upgraded = upgradeStrictCss(d, options.strictCss);
+        diagnostics.push({ ...upgraded, filePath: d.filePath ?? path.basename(mod.htmlPath) });
       }
     }
   }
@@ -707,10 +719,12 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
 
   // ── UI mount-time warnings (scroll memory budget, etc.) ─────────────────
   // Guarded: @typecad/ui is optional; no engine means no UI modules.
+  // --strict-css upgrades the css-* compatibility warnings to errors.
   if (hasUIHook()) {
     for (const mod of requireUIHook().allUIModules()) {
       for (const d of mod.mountDiagnostics) {
-        diagnostics.push({ ...d, filePath: d.filePath ?? path.basename(mod.htmlPath) });
+        const upgraded = upgradeStrictCss(d, options.strictCss);
+        diagnostics.push({ ...upgraded, filePath: d.filePath ?? path.basename(mod.htmlPath) });
       }
     }
   }

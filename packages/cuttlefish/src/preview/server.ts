@@ -1,10 +1,12 @@
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
 import chalk from "chalk";
 import { findConfigFile, parseConfigFile } from "../config-loader.js";
-import { requireUIHook } from "../ui-hook.js";
+import { requireUIHook, hasUIHook } from "../ui-hook.js";
+import { loadUIEngine } from "../ui/ui-bridge.js";
 
 export interface PreviewServerOptions {
   configPath?: string;
@@ -22,6 +24,13 @@ const HTML = `<!doctype html>
     body { margin: 0; height: 100vh; overflow: hidden; display: grid; grid-template-columns: minmax(360px, 1fr) 280px; }
     main { display: grid; place-items: center; padding: 24px; background: #191d20; }
     canvas { image-rendering: pixelated; width: min(92vw, 960px); max-height: calc(100vh - 48px); aspect-ratio: var(--display-aspect, 4 / 3); background: #000; box-shadow: 0 12px 36px rgba(0,0,0,.35); }
+    #debugOverlay { position: absolute; pointer-events: none; image-rendering: pixelated; background: transparent; }
+    main { position: relative; }
+    #debugModes { display: grid; gap: 2px; }
+    #debugModes label { display: flex; align-items: center; gap: 8px; color: #aab3ba; font-size: 12px; cursor: pointer; padding: 5px 6px; border-radius: 5px; }
+    #debugModes label:hover { background: #232a30; color: #dfe6eb; }
+    #debugModes input[type="checkbox"] { width: 14px; height: 14px; margin: 0; }
+    #debugState { color: #7d8790; font-size: 11px; margin-top: 6px; }
     aside { border-left: 1px solid #2d3338; padding: 18px; display: flex; flex-direction: column; gap: 18px; min-height: 0; }
     aside > section:first-child, aside > section:nth-child(2) { flex-shrink: 0; }  /* Display + GPIO stay visible */
     aside > section:last-child { min-height: 0; display: flex; flex-direction: column; }
@@ -37,6 +46,14 @@ const HTML = `<!doctype html>
       canvas { width: min(94vw, 640px); }
     }
   </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "@typecad/ui/": "/__cuttlefish-ui/",
+        "@typecad/cuttlefish/api/shared": "/__cuttlefish/preview/api-shared-shim.js"
+      }
+    }
+  </script>
 </head>
 <body>
   <main><canvas id="display" width="320" height="240"></canvas></main>
@@ -48,6 +65,17 @@ const HTML = `<!doctype html>
     <section>
       <h1>GPIO</h1>
       <div id="pins"></div>
+    </section>
+    <section>
+      <h1>Debug overlay</h1>
+      <div id="debugModes">
+        <label><input type="checkbox" data-mode="boxes"> boxes (colors by kind)</label>
+        <label><input type="checkbox" data-mode="clips"> scroll clips (dashed)</label>
+        <label><input type="checkbox" data-mode="dirty"> dirty flash (repaints)</label>
+        <label><input type="checkbox" data-mode="inspect"> inspect taps (blocks input)</label>
+      </div>
+      <div id="debugState">overlay: off — check a box or press D</div>
+      <div style="color:#7d8790;font-size:11px;margin-top:4px">D cycles boxes/clips/dirty · Ctrl-click always inspects</div>
     </section>
     <section>
       <h1>Diagnostics</h1>
@@ -63,6 +91,43 @@ function contentType(filePath: string): string {
   if (filePath.endsWith(".json")) return "application/json; charset=utf-8";
   if (filePath.endsWith(".map")) return "application/json; charset=utf-8";
   return "text/plain; charset=utf-8";
+}
+
+/** Serve a file from a dist root, with ESM-specifier fallbacks: extensionless
+ *  paths try +".js" (package-exports style "./preview/host-ui-runtime" →
+ *  host-ui-runtime.js) and bare directories try +"/index.js". */
+function serveFromRoot(res: http.ServerResponse, root: string, relRaw: string): void {
+  const rel = decodeURIComponent(relRaw);
+  const candidates = [rel, `${rel}.js`, `${rel}/index.js`];
+  for (const candidate of candidates) {
+    const filePath = path.resolve(root, candidate);
+    if (!filePath.startsWith(root)) break;  // path traversal — 404 below
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      // no-store: these are compiled dist files that change between builds;
+      // heuristic browser caching serves stale modules after a rebuild and
+      // breaks the preview dev loop (and any debugging of it).
+      res.writeHead(200, { "content-type": contentType(filePath), "cache-control": "no-store" });
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+  }
+  writeText(res, 404, "Not found");
+}
+
+/** Resolve a dependency package's dist directory (served to the browser).
+ *  Resolves through the package's exports map (subpath → dist file) and walks
+ *  up to the enclosing "dist" — packages don't export "./package.json". */
+function packageDistDir(specifier: string): string {
+  const require = createRequire(import.meta.url);
+  const entry = require.resolve(specifier);  // e.g. .../dist/engine.js
+  let dir = path.dirname(entry);
+  for (let i = 0; i < 4 && path.basename(dir) !== "dist"; i++) {
+    dir = path.dirname(dir);
+  }
+  if (path.basename(dir) !== "dist") {
+    throw new Error(`Could not locate the dist directory for ${specifier} (resolved ${entry}).`);
+  }
+  return dir;
 }
 
 function writeText(res: http.ServerResponse, status: number, text: string, type = "text/plain; charset=utf-8"): void {
@@ -128,12 +193,29 @@ async function listen(server: http.Server, preferredPort: number): Promise<numbe
 }
 
 export async function runPreviewServer(options: PreviewServerOptions = {}): Promise<void> {
+  // The preview pipeline drives the UI engine directly (snapshot builds,
+  // type-decl generation) without going through transpileFile(), which is the
+  // only path that lazily registers the hook — so load it here first. Preview
+  // is a UI feature: when the engine is absent, fail with a clear message
+  // instead of the generic "hook is not registered" error.
+  await loadUIEngine();
+  if (!hasUIHook()) {
+    throw new Error(
+      `cuttlefish preview requires the @typecad/ui package — install it in this project (npm install @typecad/ui).`,
+    );
+  }
   const configPath = resolveConfigPath(options.configPath);
   const config = parseConfigFile(configPath);
   if (!config) throw new Error(`Could not parse ${configPath}`);
+  // Snapshots re-read the config on every build (see /snapshot.json below);
+  // this holds the most recent config that parsed, for fallback mid-edit.
+  let lastGoodConfig = config;
   const projectRoot = path.dirname(configPath);
   requireUIHook().generateProjectUITypeDeclarations(projectRoot);
   const distRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+  // The browser client imports the host runtime from @typecad/ui via the
+  // import map — resolve where that package's dist lives on this machine.
+  const uiDistRoot = packageDistDir("@typecad/ui/engine");
   const clients = new Set<http.ServerResponse>();
 
   const server = http.createServer(async (req, res) => {
@@ -145,13 +227,26 @@ export async function runPreviewServer(options: PreviewServerOptions = {}): Prom
       }
       if (url.pathname === "/snapshot.json") {
         requireUIHook().generateProjectUITypeDeclarations(projectRoot);
-        // Routed through a variable (not a string literal) so tsc types this
-        // as `any` and never resolves @typecad/ui's declaration files — see
-        // the comment in ui/ui-bridge.ts for why a literal specifier here
-        // causes TS5055 on rebuilds where dist/ already exists.
-        const buildProgramPath = "@typecad/ui/preview/build-program";
-        const { buildPreviewSnapshot } = await import(buildProgramPath);
-        const snapshot = await buildPreviewSnapshot({ config, projectRoot });
+        // Re-read the config for every snapshot build so edits (themeClass,
+        // entry, display) take effect on page refresh without restarting the
+        // preview server. A config that momentarily fails to parse (mid-edit)
+        // falls back to the last good one — the page keeps working; refresh
+        // again once the edit settles.
+        const latest = parseConfigFile(configPath) ?? lastGoodConfig;
+        lastGoodConfig = latest;
+        // Imported via a computed file:// URL (never a string-literal bare
+        // specifier) so tsc types this as `any` and never resolves
+        // @typecad/ui's declaration files — see the comment in ui/ui-bridge.ts
+        // for why a literal specifier causes TS5055 on rebuilds where dist/
+        // already exists. The ?t= cache-bust forces a fresh ESM load per
+        // snapshot build: without it the server caches the module graph from
+        // startup, and engine rebuilds (font planning, layout fixes, ...)
+        // never take effect until the server restarts — a recurring source of
+        // "fixed but the preview still shows it" confusion. Dev-only cost:
+        // re-evaluating the module graph per snapshot request.
+        const buildProgramUrl = pathToFileURL(path.join(uiDistRoot, "preview", "build-program.js")).href;
+        const { buildPreviewSnapshot } = await import(buildProgramUrl + "?t=" + Date.now());
+        const snapshot = await buildPreviewSnapshot({ config: latest, projectRoot });
         writeText(res, 200, JSON.stringify(snapshot), "application/json; charset=utf-8");
         return;
       }
@@ -166,15 +261,15 @@ export async function runPreviewServer(options: PreviewServerOptions = {}): Prom
         req.on("close", () => clients.delete(res));
         return;
       }
+      if (url.pathname.startsWith("/__cuttlefish-ui/")) {
+        // The @typecad/ui package's dist — the browser client resolves
+        // "@typecad/ui/..." bare specifiers onto this prefix via the import
+        // map (host runtime, gfx, and their relative engine imports).
+        serveFromRoot(res, uiDistRoot, url.pathname.slice("/__cuttlefish-ui/".length));
+        return;
+      }
       if (url.pathname.startsWith("/__cuttlefish/")) {
-        const rel = decodeURIComponent(url.pathname.slice("/__cuttlefish/".length));
-        const filePath = path.resolve(distRoot, rel);
-        if (!filePath.startsWith(distRoot) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-          writeText(res, 404, "Not found");
-          return;
-        }
-        res.writeHead(200, { "content-type": contentType(filePath) });
-        fs.createReadStream(filePath).pipe(res);
+        serveFromRoot(res, distRoot, url.pathname.slice("/__cuttlefish/".length));
         return;
       }
       writeText(res, 404, "Not found");

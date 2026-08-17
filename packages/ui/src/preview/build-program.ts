@@ -2,9 +2,11 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import type { DisplayProfile } from "@typecad/cuttlefish/api/shared";
-import { effectiveDisplaySize, resolveDisplayProfile } from "@typecad/cuttlefish/api/shared";
+import { effectiveDisplaySize, resolveDisplayProfile, GLCDFONT_BYTES } from "@typecad/cuttlefish/api/shared";
 import { ResolvedCuttlefishConfig } from "@typecad/cuttlefish/config-loader";
 import { parseCss, parseFontFaces, parseKeyframes } from "../ui-engine/css-parser.js";
+import { expandCssImports } from "../ui-engine/css-imports.js";
+import { injectDefaultFontFaces } from "../ui-engine/default-font.js";
 import { extractStyleBlocks, parseHtmlWithKeyboards } from "../ui-engine/html-parser.js";
 import { splitUiFile } from "../ui-engine/ui-file-splitter.js";
 import { buildUIFontAssets } from "../ui-engine/font-assets.js";
@@ -87,6 +89,32 @@ function interpolationToExpression(raw: string): string | undefined {
   }
   if (!hasInterp) return undefined;
   return "`" + parts.join("") + "`";
+}
+
+/** Warn about interactive nodes the preview cannot wire because they lack an
+ *  id: on:* handlers, bind:* bindings, and {expr} interpolations all resolve
+ *  their node by id in the preview (the device build auto-wires them without
+ *  one). Without this the element renders but never reacts. */
+function warnUnnamedInteractiveNodes(trees: StyledNode[], diagnostics: PreviewDiagnostic[]): void {
+  const walk = (node: StyledNode): void => {
+    if (!node.id) {
+      const features: string[] = [];
+      if (node.events && Object.keys(node.events).length > 0) features.push(`on:${Object.keys(node.events).join("/on:")}`);
+      if (node.bind && Object.keys(node.bind).length > 0) features.push(`bind:${Object.keys(node.bind).join("/bind:")}`);
+      if (node.hasInterpolation) features.push("{expr} interpolation");
+      // Images key their loaded asset by node id too (image-assets.ts skips
+      // id-less <img src> silently) — warn so empty frames are explainable.
+      if (node.tag === "img" && (node as unknown as { src?: string }).src) features.push("img src");
+      if (features.length > 0) {
+        diagnostics.push({
+          severity: "warning",
+          message: `<${node.tag}> uses ${features.join(", ")} but has no id — the preview loads/wires these by id, so the element renders empty or inert. Add an id, e.g. <${node.tag} id="${node.tag}1"> (the device build behaves the same).`,
+        });
+      }
+    }
+    node.children?.forEach(walk);
+  };
+  trees.forEach(walk);
 }
 
 /** Walk styled trees for {expr} interpolation nodes and synthesize preview text
@@ -195,14 +223,15 @@ async function loadProfileRegistry(frameworkPackage: string | undefined): Promis
   return registry;
 }
 
-function loadFont(projectRoot: string, diagnostics: PreviewDiagnostic[]): number[] {
+/** Load the stock 5x7 GFX font for the preview runtime. A project-local
+ *  Adafruit_GFX copy wins (byte-identical to what the firmware compiles
+ *  against); otherwise fall back to the table bundled in
+ *  @typecad/cuttlefish (api/shared glcdfont.ts) so stock-font text renders
+ *  without a vendored library. */
+export function loadFont(projectRoot: string, diagnostics: PreviewDiagnostic[]): number[] {
   const fontPath = path.join(projectRoot, "lib", "Adafruit_GFX_Library", "glcdfont.c");
   if (!fs.existsSync(fontPath)) {
-    diagnostics.push({
-      severity: "warning",
-      message: `Default GFX font not found at ${fontPath}; text pixels will be blank.`,
-    });
-    return Array.from(new Uint8Array(1280));
+    return GLCDFONT_BYTES.slice(0, 1280);
   }
   const source = fs.readFileSync(fontPath, "utf-8");
   const match = /font\[\]\s+PROGMEM\s*=\s*\{([\s\S]*?)\};/.exec(source);
@@ -626,6 +655,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   let sourceFile: ts.SourceFile;
   let htmlText: string;
   let cssText: string;
+  let cssFileDir: string;     // directory @imports inside cssText resolve from
   let htmlFilePath: string;   // the effective .ui.html path (real or synthetic)
   let uiImports: UIModuleImport[];
 
@@ -640,6 +670,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     sourceFile = ts.createSourceFile(entryFile, scriptWithImport, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     htmlText = parts.html;
     cssText = parts.style;
+    cssFileDir = entryDir;
     uiImports = [{ treeName: "screen", htmlPath: htmlFilePath }];
   } else {
     sourceFile = ts.createSourceFile(entryFile, entrySource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
@@ -658,6 +689,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
     htmlText = fs.readFileSync(firstImport.htmlPath, "utf-8");
     const cssPath = themeCssPath(config.display?.themeCss, firstImport.htmlPath, configDir);
     cssText = fs.existsSync(cssPath) ? fs.readFileSync(cssPath, "utf-8") : "";
+    cssFileDir = path.dirname(cssPath);
   }
 
   const registry = await loadProfileRegistry(config.framework);
@@ -665,7 +697,15 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const profile = resolved.profile;
   const displaySize = effectiveDisplaySize(profile);
   const parsedHtml = parseHtmlWithKeyboards(htmlText);
-  const fullCss = cssText + "\n" + extractStyleBlocks(htmlText);
+  // @import parity with the CLI build (loadUIModuleFromText in ui-registry.ts
+  // expands imports before parsing). Without this, `@import "./styles/shadcn.css"`
+  // in a .ui <style> stays literal in the preview, the kit's tokens never load,
+  // and model lowering rejects the raw var() color strings. The sidecar css and
+  // the html style blocks can live in different directories, so each part
+  // expands against its own base.
+  const fullCss =
+    expandCssImports(cssText, cssFileDir) + "\n" +
+    expandCssImports(extractStyleBlocks(htmlText), path.dirname(htmlFilePath));
   const cssRules = (() => {
     const previousThemeClass = getThemeClass();
     setThemeClass(config.display?.themeClass ?? null);
@@ -675,12 +715,23 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
       setThemeClass(previousThemeClass);
     }
   })();
-  const fontFaces = parseFontFaces(fullCss);
+  // Default-font parity with the CLI build (ui-registry.ts / transpile-ui.ts
+  // both inject the bundled DejaVu faces before planning font assets). Without
+  // this the UA root's font-family: "DejaVu Sans" resolves to no face and the
+  // preview falls back to the smoothed 5x7 — the device renders real AA glyphs.
+  const fontFaces = injectDefaultFontFaces(parseFontFaces(fullCss), profile.colorFormat);
   const rawKeyframes = parseKeyframes(fullCss);
   const styled = resolveStyles(parsedHtml.tree, cssRules);
   const allStyledScreens = parsedHtml.screens.map((screen) => resolveStyles(screen, cssRules));
   const fontRoot: StyledNode = { tag: "screen", classes: [], style: {}, children: allStyledScreens };
-  const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(htmlFilePath));
+  // Script-side ui.bind(..., 'text', ...) targets render runtime strings the
+  // static template can't predict — collect their ids so font planning widens
+  // those faces to the fallback charset (markup {expr} and bind:text are
+  // detected from the tree inside the planner).
+  const dynamicTextIds = new Set<string>();
+  const bindTextRe = /ui\.bind\(\s*screen\.([A-Za-z_$][\w$]*)\s*,\s*["']text["']/g;
+  for (const m of sourceFile.text.matchAll(bindTextRe)) dynamicTextIds.add(m[1]);
+  const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(htmlFilePath), dynamicTextIds);
   const viewport: Box = { x: 0, y: 0, w: displaySize.width, h: displaySize.height };
   const boxes = allStyledScreens.flatMap((screen) => {
     const engine = selectEngine(screen);
@@ -691,6 +742,11 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const program = lowerUIToModel(styled, boxes, profile.colorFormat, profile, fontAssets, allStyledScreens, imageAssets.nodeIdToAssetIndex, keyframeSets, imageAssets.assets);
   const specs = extractAuthorSpecs(sourceFile, uiImports, program.nodes);
   const hrefCallbacks = collectHrefCallbacks(allStyledScreens, program.nodes);
+  // on:*/bind:*/{expr} features resolve their node by id — the device build
+  // auto-wires id-less nodes, but the preview's binding/callback tables key on
+  // id, so an unnamed interactive node is silently inert here. Make that
+  // visible instead of a dead button.
+  warnUnnamedInteractiveNodes(allStyledScreens, diagnostics);
   // {expr} interpolation bindings synthesized from the HTML (mirrors the runtime's
   // auto-wire synthesis). Authors write `taps: {count}` in markup; this collects
   // them so the preview evaluates the template-literal expression each frame.

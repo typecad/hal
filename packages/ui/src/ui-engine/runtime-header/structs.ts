@@ -124,7 +124,11 @@ struct UINode {
   uint16_t richLineStart; // first index into __ui_rich_lines[]
   // runtime slot
   uint8_t dirty;
-  int16_t value;  // unified element state
+  int16_t value;  // unified element
+  uint8_t disabled;  // HTML disabled attr: no taps/keyboard, dimmed draw state
+  uint8_t optionCount;  // <select>: number of options
+  void (*optionTextFn)(uint8_t idx, char* buf, uint8_t size);  // option text by index
+  int8_t drawerSide;  // <drawer>: 0=bottom 1=top 2=left 3=right; -1 = not a drawer
 };
 // Rich-text run: one piece of styled inline text within a node's run list.
 struct UIRichRun {

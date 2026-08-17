@@ -8,15 +8,25 @@
 // handles flexbox layouts.
 // ---------------------------------------------------------------------------
 
-import { Box, IntrinsicSize, isDisplayNone, LayoutEngine, parseAspectRatio } from "./layout-engine.js";
+import { Box, IntrinsicSize, isDisplayNone, LayoutEngine, parseAspectRatio, cssDimValue, expandBoxShorthand } from "./layout-engine.js";
 import { StyledNode } from "./style-resolver.js";
 
-/** Parse a CSS value string ("8px", "8") to a number. */
+/** Parse a CSS value string ("8px", "8") to a number (percent folds to its
+ *  numeric part — block layout has no parent-relative resolution). */
 function cssNum(val: string | number | undefined): number {
   if (val === undefined) return 0;
   if (typeof val === "number") return val;
-  const m = val.match(/(\d+)/);
-  return m ? parseInt(m[1]) : 0;
+  const d = cssDimValue(val);
+  return typeof d === "number" ? d : parseFloat(String(d));
+}
+
+/** Resolve a dimension against a reference size: px passes through, a
+ *  percentage resolves against `total` (0 when unresolvable). */
+function resolveDim(val: string | undefined, total: number): number {
+  const d = cssDimValue(val);
+  if (typeof d === "number") return d;
+  if (typeof d === "string" && d.endsWith("%")) return Math.round((parseFloat(d) * total) / 100);
+  return 0;
 }
 
 export class BlockLayoutEngine implements LayoutEngine {
@@ -42,12 +52,15 @@ export class BlockLayoutEngine implements LayoutEngine {
     out.push(box);
     if (node.children.length === 0) return;
 
-    const pad = cssNum(node.style.padding);
+    // Padding: full 1-4 value TRBL expansion (vertical/horizontal pairs).
+    const [padT, , padB, padL] = expandBoxShorthand(node.style.padding);
+    const padV = (typeof padT === "number" ? padT : 0) + (typeof padB === "number" ? padB : 0);
+    const padH = typeof padL === "number" ? padL * 2 : 0;
     const content: Box = {
-      x: box.x + pad,
-      y: box.y + pad,
-      w: box.w - pad * 2,
-      h: box.h - pad * 2,
+      x: box.x + (typeof padL === "number" ? padL : 0),
+      y: box.y + (typeof padT === "number" ? padT : 0),
+      w: box.w - padH,
+      h: box.h - padV,
     };
     let cursorY = content.y;
 
@@ -67,8 +80,8 @@ export class BlockLayoutEngine implements LayoutEngine {
         ? intrinsic.w + childPad * 2
         : content.w;
       const childH = intrinsic.h > 0 ? intrinsic.h + (isButton ? childPad * 2 : 0) : 16;
-      const explicitW = cssNum(child.style.width);
-      const explicitH = cssNum(child.style.height);
+      const explicitW = resolveDim(child.style.width, content.w);
+      const explicitH = resolveDim(child.style.height, content.h);
       const aspectRatio = parseAspectRatio(child.style.aspectRatio);
       let resolvedW = childW;
       let resolvedH = childH;

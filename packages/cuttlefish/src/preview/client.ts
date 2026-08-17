@@ -31,6 +31,166 @@ let imageData: ImageData | undefined;
 let pendingPointerMove: { x: number; y: number } | undefined;
 let pendingPointerFrame = 0;
 
+// ── Debug overlay ──────────────────────────────────────────────────────────
+// A second canvas stacked exactly over the app canvas; strokes the runtime's
+// per-frame debugInfo() geometry. Zero cost while every mode is off (the
+// runtime capture flag is only set when a mode is on).
+type DebugModes = { boxes: boolean; clips: boolean; dirty: boolean; inspect: boolean };
+let debugModes: DebugModes = { boxes: false, clips: false, dirty: false, inspect: false };
+let debugOverlay: HTMLCanvasElement | undefined;
+let debugCtx: CanvasRenderingContext2D | undefined;
+let dirtyFlashAlpha = 0;
+/** CSS px per logical display px — the overlay backing store runs at this
+ *  resolution so debug strokes are 1 CSS px thin (a 1-logical-px stroke on
+ *  the app canvas's own backing store would upscale 3x thick and bury the
+ *  content under investigation). */
+let debugScale = 1;
+
+// Stroke color per node kind: a screenshot should be self-describing.
+// views cyan · text yellow · interactive magenta · img/canvas orange ·
+// list green · screen transparent (skip; it's the whole panel).
+function debugColor(tag: string, kind: string): string | undefined {
+  if (tag === "screen") return undefined;
+  if (tag === "img" || tag === "canvas") return "#ff9a3c";
+  if (tag === "list") return "#3ddc84";
+  if (["button", "input", "select", "check", "radio", "range", "progress", "drawer"].includes(tag)) return "#ff4fd8";
+  if (kind === "text") return "#ffe14d";
+  return "#3cc8ff";
+}
+
+function applyDebugCapture(): void {
+  runtime?.setDebugCapture?.(debugModes.boxes || debugModes.clips || debugModes.dirty);
+  const state = document.getElementById("debugState");
+  if (state) {
+    const on = (["boxes", "clips", "dirty", "inspect"] as const).filter((m) => debugModes[m]);
+    state.textContent = on.length === 0
+      ? "overlay: off — check a box or press D"
+      : `overlay: ${on.join("+")}`;
+  }
+}
+
+function drawDebugOverlay(width: number, height: number): void {
+  if (!debugOverlay || !debugCtx) return;
+  const ctx = debugCtx;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, debugOverlay.width, debugOverlay.height);
+  ctx.setTransform(debugScale, 0, 0, debugScale, 0, 0);
+  const anyVisual = debugModes.boxes || debugModes.clips || debugModes.dirty;
+  if (!anyVisual || !runtime?.debugInfo) return;
+  const info = runtime.debugInfo();
+  if (debugModes.dirty) {
+    // Flash the regions repainted this frame; fades until the next repaint.
+    dirtyFlashAlpha = Math.min(0.55, dirtyFlashAlpha + 0.35);
+    ctx.fillStyle = `rgba(255, 225, 77, ${dirtyFlashAlpha.toFixed(2)})`;
+    for (const r of info.painted) ctx.fillRect(r.x, r.y, r.w, r.h);
+  } else {
+    dirtyFlashAlpha = 0;
+  }
+  // 1 CSS px regardless of the app canvas's logical upscaling — thicker
+  // strokes bury the content being inspected.
+  ctx.lineWidth = Math.max(1 / debugScale, 0.5);
+  if (debugModes.clips) {
+    // Viewport tint guarantees visibility at any stroke sampling; the dashed
+    // outline marks the exact clip edges.
+    for (const c of info.clips) {
+      ctx.fillStyle = "rgba(61, 220, 132, 0.08)";
+      ctx.fillRect(c.x, c.y, c.w, c.h);
+    }
+    ctx.strokeStyle = "#3ddc84";
+    ctx.setLineDash([3, 2]);
+    for (const c of info.clips) ctx.strokeRect(c.x, c.y, c.w - 1, c.h - 1);
+    ctx.setLineDash([]);
+  }
+  if (debugModes.boxes) {
+    for (const n of info.nodes) {
+      const color = debugColor(n.tag, n.kind);
+      if (!color) continue;
+      ctx.strokeStyle = color;
+      ctx.strokeRect(n.x + 0.5, n.y + 0.5, n.w - 1, n.h - 1);
+      // Untappable interactive elements get a red corner mark — the
+      // id-less-element trap (the preview wires by id).
+      if (!n.tappable && ["button", "input", "select", "check", "radio", "list"].includes(n.tag)) {
+        ctx.strokeStyle = "#ff5252";
+        ctx.beginPath();
+        ctx.moveTo(n.x, n.y);
+        ctx.lineTo(n.x + 6, n.y);
+        ctx.moveTo(n.x, n.y);
+        ctx.lineTo(n.x, n.y + 6);
+        ctx.stroke();
+      }
+    }
+  }
+}
+
+function inspectAt(px: number, py: number, width: number, height: number, report: (msg: string) => void): boolean {
+  if (!runtime?.debugHit) return false;
+  const i = runtime.debugHit(px, py);
+  if (i < 0) {
+    report(`inspect (${px},${py}): empty space`);
+    return true;
+  }
+  const info = runtime.debugInfo();
+  const n = info.nodes.find((x: { i: number }) => x.i === i);
+  if (!n) return false;
+  report(`inspect #${i}${n.id ? ` '${n.id}'` : ""} <${n.tag}> kind=${n.kind} box=${n.x},${n.y} ${n.w}x${n.h} tappable=${n.tappable}`);
+  return true;
+}
+
+function wireDebugControls(
+  canvas: HTMLCanvasElement,
+  width: number,
+  height: number,
+  report: (msg: string) => void,
+  redraw: () => void,
+): void {
+  const modesBox = document.getElementById("debugModes");
+  if (modesBox) {
+    // ?debug=boxes,clips,dirty,inspect seeds the initial state.
+    const params = new URLSearchParams(location.search);
+    const seeded = (params.get("debug") ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+    for (const input of Array.from(modesBox.querySelectorAll<HTMLInputElement>("input[data-mode]"))) {
+      const mode = input.dataset.mode as keyof DebugModes;
+      if (seeded.includes(mode)) debugModes[mode] = true;
+      input.checked = debugModes[mode];
+      input.addEventListener("change", () => {
+        debugModes[mode] = input.checked;
+        applyDebugCapture();
+        redraw();
+      });
+    }
+  }
+  // D cycles boxes → clips → dirty → off (inspect stays manual — it blocks
+  // normal input and shouldn't be cycled into by accident).
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "d" && e.key !== "D") return;
+    const on = debugModes.boxes || debugModes.clips || debugModes.dirty;
+    if (!on) debugModes = { ...debugModes, boxes: true };
+    else if (debugModes.boxes) debugModes = { ...debugModes, boxes: false, clips: true };
+    else if (debugModes.clips) debugModes = { ...debugModes, clips: false, dirty: true };
+    else debugModes = { ...debugModes, dirty: false };
+    for (const input of Array.from((modesBox ?? document).querySelectorAll<HTMLInputElement>("input[data-mode]"))) {
+      const mode = input.dataset.mode as keyof DebugModes;
+      input.checked = debugModes[mode];
+    }
+    applyDebugCapture();
+    redraw();
+  });
+  // Inspect taps: while inspect mode is on, taps report instead of
+  // interacting. Ctrl-click always inspects without entering the mode.
+  const inspectPointer = (event: PointerEvent, force: boolean): boolean => {
+    if (!force && !debugModes.inspect) return false;
+    const p = canvasPoint(canvas, event, width, height);
+    inspectAt(p.x, p.y, width, height, report);
+    return true;
+  };
+  canvas.addEventListener("pointerdown", (event) => {
+    if (inspectPointer(event, event.ctrlKey || event.metaKey)) {
+      event.stopImmediatePropagation();
+      event.preventDefault();
+    }
+  }, true);
+}
+
 function byId<T extends HTMLElement>(id: string): T {
   const el = document.getElementById(id);
   if (!el) throw new Error(`Missing preview element #${id}`);
@@ -50,7 +210,7 @@ function renderDiagnostics(snapshot: PreviewSnapshot, extra: string[] = []): voi
   }));
 }
 
-function canvasPoint(canvas: HTMLCanvasElement, event: PointerEvent, width: number, height: number): { x: number; y: number } {
+function canvasPoint(canvas: HTMLCanvasElement, event: { clientX: number; clientY: number }, width: number, height: number): { x: number; y: number } {
   const rect = canvas.getBoundingClientRect();
   return {
     x: Math.floor(((event.clientX - rect.left) / rect.width) * width),
@@ -104,6 +264,34 @@ async function start(): Promise<void> {
   if (!ctx) throw new Error("2D canvas context unavailable");
   ctx.imageSmoothingEnabled = false;
 
+  // Debug overlay: same backing resolution + CSS as the app canvas, stacked
+  // exactly on top; pointer-events pass through to the app canvas below.
+  debugOverlay?.remove();
+  debugOverlay = document.createElement("canvas");
+  debugOverlay.id = "debugOverlay";
+  debugOverlay.width = snapshot.program.width;
+  debugOverlay.height = snapshot.program.height;
+  canvas.parentElement?.appendChild(debugOverlay);
+  debugCtx = debugOverlay.getContext("2d") ?? undefined;
+  const syncOverlayBox = (): void => {
+    if (!debugOverlay) return;
+    const rect = canvas.getBoundingClientRect();
+    const parent = canvas.parentElement!;
+    const prect = parent.getBoundingClientRect();
+    debugOverlay.style.left = `${rect.left - prect.left}px`;
+    debugOverlay.style.top = `${rect.top - prect.top}px`;
+    debugOverlay.style.width = `${rect.width}px`;
+    debugOverlay.style.height = `${rect.height}px`;
+    // Backing store at CSS-pixel resolution: strokes draw at device-crisp
+    // 1 CSS px regardless of the app canvas's logical upscaling.
+    const dpr = window.devicePixelRatio || 1;
+    debugOverlay.width = Math.max(1, Math.round(rect.width * dpr));
+    debugOverlay.height = Math.max(1, Math.round(rect.height * dpr));
+    debugScale = (rect.width * dpr) / snapshot.program.width;
+  };
+  syncOverlayBox();
+  window.addEventListener("resize", syncOverlayBox);
+
   // Set the canvas CSS aspect-ratio to match the display (e.g. 128:64 for
   // OLED, 320:240 for TFT) so the browser scales it proportionally.
   document.documentElement.style.setProperty("--display-aspect", `${snapshot.program.width} / ${snapshot.program.height}`);
@@ -123,6 +311,7 @@ async function start(): Promise<void> {
       if (!imageData) return;
       imageData.data.set(rgba);
       ctx.putImageData(imageData, 0, 0);
+      drawDebugOverlay(snapshot.program.width, snapshot.program.height);
     },
     onDiagnostics: (message: string) => {
       extraDiagnostics.push(message);
@@ -130,9 +319,29 @@ async function start(): Promise<void> {
     },
   });
 
+  // Mouse wheel scrolls the scroll owner under the cursor — same hit-scan
+  // as a drag (lists, scroll containers). Without this, wheel-scrolling a
+  // canvas preview does nothing.
+  canvas.onwheel = (event) => {
+    if (!runtime) return;
+    event.preventDefault();
+    const p = canvasPoint(canvas, event, snapshot.program.width, snapshot.program.height);
+    // deltaMode: 0 = pixels, 1 = lines, 2 = pages.
+    const scale = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1;
+    runtime.wheel(p.x, p.y, event.deltaY * scale);
+  };
   canvas.onpointerdown = (event) => {
     if (!runtime) return;
-    canvas.setPointerCapture(event.pointerId);
+    // Capture keeps drags flowing when the pointer leaves the canvas, but
+    // synthetic pointers (CDP/browser automation) have no capturable
+    // pointerId — setPointerCapture throws InvalidPointerId for them and
+    // would kill the tap before runtime.pointerDown runs. Losing capture
+    // only degrades off-canvas drags, so swallow the failure.
+    try {
+      canvas.setPointerCapture(event.pointerId);
+    } catch {
+      /* not a capturable pointer — canvas-local move/up still arrive */
+    }
     const p = canvasPoint(canvas, event, snapshot.program.width, snapshot.program.height);
     runtime.pointerDown(p.x, p.y);
   };
@@ -153,6 +362,17 @@ async function start(): Promise<void> {
 
   renderPinControls(snapshot.pinControls);
   renderDiagnostics(snapshot);
+  wireDebugControls(
+    canvas,
+    snapshot.program.width,
+    snapshot.program.height,
+    (message) => {
+      extraDiagnostics.push(message);
+      renderDiagnostics(snapshot, extraDiagnostics);
+    },
+    () => drawDebugOverlay(snapshot.program.width, snapshot.program.height),
+  );
+  applyDebugCapture();
   runtime.start();
 }
 

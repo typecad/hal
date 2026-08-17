@@ -43,6 +43,11 @@ static inline void ui_navigate(uint8_t screenIdx) {
   __ui_touch_node = -1;
   __ui_touch_state = 0;
   __ui_kb_visible = 0;
+  __ui_select_menu = -1;
+  __ui_select_menu_dirty = 0;
+  // Drawers reset closed on navigation (device parity with the preview).
+  ui_drawer_close_all();
+  for (uint8_t s = 0; s < __ui_drawer_slots; s++) ui_drawer_apply(s, 0);
   // Free every persistent canvas so the new screen allocates into a clean,
   // unfragmented heap. Without this, the previous screen's canvas buffer stays
   // resident and fragments the heap, so the new screen's buffer can't get a

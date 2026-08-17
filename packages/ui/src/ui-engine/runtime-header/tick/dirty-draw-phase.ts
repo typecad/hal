@@ -634,5 +634,13 @@ export function emitTickDirtyDrawPhase(): string {
     // 4 uses the box as the dirty rect (a safe over-estimate); Phase 5 tightens
     // to the actual paint rect. No-op on TFT (compiles to nothing).
     if (__ui_fb) ui_fb_add_rect(paintRect.x, paintRect.y, paintRect.w, paintRect.h);
-    ui_refresh_add_rect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h);`;
+    ui_refresh_add_rect(__ui_nodes[i].box.x, __ui_nodes[i].box.y, __ui_nodes[i].box.w, __ui_nodes[i].box.h);
+  }
+
+  // Modal <select> list: stamp the overlay after the dirty pass so tree
+  // redraws never bury it. Drawn every frame while open (a few fill rects);
+  // the close path marks the whole tree dirty for the erase repaint.
+  if (__ui_select_menu >= 0) {
+    ui_select_menu_draw();
+  }`;
 }

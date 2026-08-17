@@ -183,12 +183,14 @@ function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): 
       : (node.text || "").split(",").map(s => s.trim()).filter(Boolean);
     const count = Math.max(options.length, 2);
 
-    // Auto-wire: onClick cycles value 0..count-1
+    // Auto-wire: onClick opens the modal option list (ui_select_menu_open);
+    // tapping a row in the modal sets the value. Preview parity: the preview
+    // runtime opens its own overlay on tap instead of cycling.
     recordClickHandler({
       nodeIndex,
       kind: "click",
       fnName: `__ui_${node.id}_autoclick`,
-      callbackBody: `__ui_nodes[${nodeIndex}].value = (__ui_nodes[${nodeIndex}].value + 1) % ${count};`,
+      callbackBody: `ui_select_menu_open(${nodeIndex});`,
     });
 
     // Auto-bind text to show the current option via snprintf if/else chain.

@@ -8,6 +8,9 @@ export function emitInitPressInput(): string {
 // Also seed each text-bound node's buffer from its flash literal so the first
 // strcmp in ui_tick has a valid baseline (no spurious redraw on frame 1).
 static inline void ui_init(void) {
+  // Discover <drawer> panels and seed them closed (full-travel offsets, so a
+  // closed drawer never paints at its rest position).
+  ui_drawer_discover();
   // Allocate the per-node scroll-canvas-OK flag array (once; __ui_node_count
   // is a compile-time constant known by this point). calloc zeroes it — all
   // containers start locked until the scroll-container loop proves their

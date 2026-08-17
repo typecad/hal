@@ -114,6 +114,8 @@ export interface TranspileOptions {
   autosar?: ComplianceMode;
   /** When true (and autosar is warn/strict), also emit the .autosar-deviations.arxml sidecar. */
   autosarArxml?: boolean;
+  /** Upgrade UI CSS-compatibility warnings (css-* diagnostics) to errors. */
+  strictCss?: boolean;
 }
 
 export interface LibraryDefinitionCondition {
@@ -197,6 +199,8 @@ export interface CommandLineOptions {
   autosar?: ComplianceMode;
   /** When true (and autosar is warn/strict), also emit the .autosar-deviations.arxml sidecar. */
   autosarArxml?: boolean;
+  /** Upgrade UI CSS-compatibility warnings (css-* diagnostics) to errors. */
+  strictCss?: boolean;
   /** Config file for preview command */
   configPath?: string;
   /** Project root (dir of cuttlefish.config.ts); passed to transpileFile for the ESLint gate. */
@@ -206,6 +210,17 @@ export interface CommandLineOptions {
 export interface GenerateLibdefOptions {
   inputFile: string;
   outDir: string;
+}
+
+/** `cuttlefish add <preset>` — scaffold a copy-and-own asset into the project. */
+export interface AddCommandOptions {
+  command: "add";
+  /** Preset id (e.g. "shadcn"). */
+  preset: string;
+  /** Overwrite an existing destination file. */
+  force: boolean;
+  /** Project root (cwd when invoked from the project directory). */
+  projectRoot: string;
 }
 
 export interface GeneratedOutputs {

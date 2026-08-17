@@ -18,6 +18,9 @@ import { measureWithFonts, Box } from "./layout-engine.js";
 import { lowerUIToCpp, LoweredUI } from "./ui-lowering.js";
 import { buildUIFontAssets } from "./font-assets.js";
 import { buildKeyframeSets } from "./keyframes.js";
+import { injectDefaultFontFaces } from "./default-font.js";
+import { cssCompatDiagnostics } from "./compat-report.js";
+import { expandCssImports } from "./css-imports.js";
 
 export interface TranspileUIOptions {
   colorFormat: "rgb565" | "mono";
@@ -28,11 +31,13 @@ export interface TranspileUIOptions {
 
 export function transpileUI(html: string, css: string, opts: TranspileUIOptions): LoweredUI {
   const tree = parseHtml(html);
-  const rules = parseCss(css);
-  const fontFaces = parseFontFaces(css);
-  const rawKeyframes = parseKeyframes(css);
+  const cssBaseDir = path.resolve(opts.assetBaseDir ?? process.cwd());
+  const expandedCss = expandCssImports(css, cssBaseDir);
+  const rules = parseCss(expandedCss);
+  const fontFaces = injectDefaultFontFaces(parseFontFaces(expandedCss), opts.colorFormat);
+  const rawKeyframes = parseKeyframes(expandedCss);
   const styled = resolveStyles(tree, rules);
-  const fontAssets = buildUIFontAssets(styled, fontFaces, path.resolve(opts.assetBaseDir ?? process.cwd()));
+  const fontAssets = buildUIFontAssets(styled, fontFaces, cssBaseDir);
 
   // Select layout engine: Yoga for flexbox, BlockLayout as fallback.
   const engine = selectEngine(styled);
@@ -41,5 +46,7 @@ export function transpileUI(html: string, css: string, opts: TranspileUIOptions)
 
   const keyframeSets = buildKeyframeSets(rawKeyframes, opts.colorFormat);
 
-  return lowerUIToCpp(styled, boxes, opts.colorFormat, opts.storage, [], rules, undefined, fontAssets, [], new Map(), keyframeSets);
+  const result = lowerUIToCpp(styled, boxes, opts.colorFormat, opts.storage, [], rules, undefined, fontAssets, [], new Map(), keyframeSets);
+  result.diagnostics.push(...cssCompatDiagnostics([styled], fontAssets, opts.viewport, opts.colorFormat, "inline"));
+  return result;
 }

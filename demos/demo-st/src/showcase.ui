@@ -89,35 +89,35 @@
 
 @font-face {
   font-family: "ColibriDemo";
-  src: url("DejaVuSans.ttf");
+  src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans.ttf");
   font-weight: 400;
   font-style: normal;
 }
 
 @font-face {
   font-family: "ColibriDemo";
-  src: url("DejaVuSans-Bold.ttf");
+  src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans-Bold.ttf");
   font-weight: 700;
   font-style: normal;
 }
 
 @font-face {
   font-family: "ColibriDemo";
-  src: url("DejaVuSans-Oblique.ttf");
+  src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans-Oblique.ttf");
   font-weight: 400;
   font-style: italic;
 }
 
 @font-face {
   font-family: "ColibriDemo";
-  src: url("DejaVuSans-Oblique.ttf");
+  src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans-Oblique.ttf");
   font-weight: 300;
   font-style: italic;
 }
 
 @font-face {
   font-family: "ColibriDemo";
-  src: url("DejaVuSans-ExtraLight.ttf");
+  src: url("../../../packages/ui/assets/fonts/dejavu/DejaVuSans-ExtraLight.ttf");
   font-weight: 300;
   font-style: normal;
 }
@@ -258,9 +258,9 @@
    inline <a> runs get the accent color so links are visible mid-sentence. */
 #richtext a { color: var(--accent); text-decoration: underline; }
 #richtext p { color: var(--foreground); font-size: 16px; }
-/* H2–H6 are non-bold so each lands in its own text-size bucket: the runtime
-   bumps textSize for bold text AND only has 4 buckets, so keeping every
-   heading bold would collapse several into one rendered size. */
+/* H2–H3 rendered non-bold as a deliberate contrast choice (regular
+   "ColibriDemo" face). @font-face fonts render every px size exactly, so the
+   stock-font 4-bucket quantization no longer forces this. */
 .demoH2 { color: var(--accent); font-size: 24px; font-weight: normal; }
 .demoH3 { color: var(--foreground); font-size: 20px; }
 .demoH4 { color: var(--muted-foreground); font-weight: normal; font-size: 14px; }
@@ -283,8 +283,9 @@
 
 /* ── Box & Sizing screen ── */
 #boxFixed { width: 160px; height: 30px; background: var(--chart-1); }
-/* Label spans inside the box-demo divs. text-align doesn't inherit from the
-   parent div in this model, so the span must center its own text. */
+/* Label spans inside the box-demo divs. text-align inherits from the parent
+   div (a CSS-standard inherited property); restated here so the centering is
+   visible at a glance. */
 .boxLabel { text-align: center; }
 #boxMin { background: var(--chart-3); }
 #boxPadded { width: 160px; background: var(--secondary); border: 1px solid var(--border); padding: 12px 20px; color: var(--secondary-foreground); font-size: 14px; text-align: center; }
@@ -330,9 +331,9 @@
 .shrink0 { flex-shrink: 0; }
 .chip { width: 28px; height: 24px; background: var(--chart-3); justify-content: center; align-items: center; }
 .chipTall { width: 28px; height: 40px; background: var(--chart-4); justify-content: center; align-items: center; }
-/* Label inside a flex chip. Properties don't inherit in this model, so the
-   span carries its own color/font-size; justify-content/align-items on the
-   .chip/.chipTall parent centers it. */
+/* Label inside a flex chip. Inherited text properties (color, font-size)
+   flow down from ancestors; restated here for readability.
+   justify-content/align-items on the .chip/.chipTall parent centers it. */
 .chipLabel { color: var(--foreground); font-size: 13px; }
 .grow1 { flex-grow: 1; }
 .grow2 { flex-grow: 2; }

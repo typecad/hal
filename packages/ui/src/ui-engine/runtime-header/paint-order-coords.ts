@@ -16,6 +16,19 @@ static inline uint8_t ui_is_effectively_visible(uint16_t nodeIdx) {
     if (!__ui_nodes[p].visible) return 0;
     p = __ui_nodes[p].parent;
   }
+  // A fully-closed drawer hides its whole subtree (draw + hit-test gating;
+  // device parity with the preview's insideClosedDrawer).
+  if (__ui_nodes[nodeIdx].drawerSide < 0) {
+    p = __ui_nodes[nodeIdx].parent;
+    while (p != UI_NO_PARENT && p < __ui_node_count) {
+      if (__ui_nodes[p].drawerSide >= 0) {
+        int8_t slot = __ui_drawer_slot_of(p);
+        if (slot < 0 || (!__ui_drawer_open[slot] && __ui_drawer_progress[slot] == 0)) return 0;
+        break;
+      }
+      p = __ui_nodes[p].parent;
+    }
+  }
   return 1;
 }
 

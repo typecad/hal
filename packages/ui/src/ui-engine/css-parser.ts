@@ -442,15 +442,21 @@ function resolveCalc(value: string): string {
 }
 
 /** Evaluate a simple arithmetic expression of lengths to a length string.
- *  Each term may have a unit (px/rem/em/%); the first unit found wins.
- *  Supports + - * /.  e.g. "10px - 4" → "6px". */
+ *  Supports + - * /. rem/em terms normalize to px (×16), so any length
+ *  expression reduces to px: "calc(0.5rem - 2px)" → "6px".
+ *  Percent + length mixes ("calc(50% - 10px)") cannot resolve numerically at
+ *  parse time — those stay as literal calc() text. Unrecognized → as-is. */
 function evalCalcExpr(expr: string): string {
   // Tokenize into numbers-with-units and operators.
   const tokens = expr.match(/(?:[\d.]+(?:rem|em|px|%)?|[-+*/])/g);
   if (!tokens || tokens.length === 0) return `calc(${expr})`;
-  // Determine the dominant unit from the first length token.
-  const unitMatch = expr.match(/(\d)(rem|em|px|%)/);
-  const unit = unitMatch ? unitMatch[2] : "";
+  const hasPercent = /[\d.]+%/.test(expr);
+  const hasLength = /[\d.]+(?:rem|em|px)/.test(expr);
+  if (hasPercent && hasLength) return `calc(${expr})`;
+  // rem/em already fold to px in toNum, so the output unit is determined by
+  // the term kinds — never "the first unit seen" (that produced 6rem from
+  // 0.5rem - 2px).
+  const unit = hasPercent ? "%" : hasLength ? "px" : "";
   // Convert each token to a plain number (rem/em × 16).
   const toNum = (tok: string): number => {
     const remM = /^(-?[\d.]+)rem$/.exec(tok);
@@ -843,9 +849,10 @@ function parseFontShorthand(props: CSSProperty, val: string): void {
   const sizeIndex = parts.findIndex((part) => /^\d+(?:\.\d+)?(?:px|pt|em|rem)?(?:\/.+)?$/.test(part));
   if (sizeIndex < 0) return;
   const beforeSize = parts.slice(0, sizeIndex);
-  const size = parts[sizeIndex].split("/")[0];
+  const [size, lineHeight] = parts[sizeIndex].split("/");
   const family = parts.slice(sizeIndex + 1).join(" ").trim();
   if (size) props.fontSize = size;
+  if (lineHeight) props.lineHeight = lineHeight;
   if (family) props.fontFamily = family;
   for (const part of beforeSize) {
     const lower = part.toLowerCase();
@@ -855,10 +862,15 @@ function parseFontShorthand(props: CSSProperty, val: string): void {
 }
 
 /** Assign a CSS property to the CSSProperty object. Unknown properties emit a warning
- *  (forward-compatible: they are dropped from output, but the author is notified). */
+ *  (forward-compatible: they are dropped from output, but the author is notified).
+ *  Known properties with values the engine can only partially honor also warn —
+ *  a visible approximation beats a silent one. */
 function assignProp(props: CSSProperty, prop: string, val: string, diagnostics?: Diagnostic[]): void {
   const warn = (message: string, hint?: string): void => {
     if (diagnostics) diagnostics.push({ severity: "warning", message, hint, code: "unknown-css-property", source: prop });
+  };
+  const warnValue = (code: string, message: string, hint?: string): void => {
+    if (diagnostics) diagnostics.push({ severity: "warning", message, hint, code, source: prop });
   };
   switch (prop) {
     // Box model
@@ -875,7 +887,12 @@ function assignProp(props: CSSProperty, prop: string, val: string, diagnostics?:
     case "min-height": props.minHeight = val; break;
     case "max-height": props.maxHeight = val; break;
     case "aspect-ratio": props.aspectRatio = val; break;
-    case "box-sizing": props.boxSizing = val; break;
+    case "box-sizing":
+      if (val.trim().toLowerCase() === "content-box") {
+        warnValue("css-box-sizing", `box-sizing: content-box is ignored — the engine always lays out border-box (borders and padding inside width/height).`, `Remove the declaration, or size elements accounting for padding/border.`);
+      }
+      props.boxSizing = val;
+      break;
     case "overflow": props.overflow = val; break;
     // Colors
     case "color": props.color = val; break;
@@ -884,7 +901,21 @@ function assignProp(props: CSSProperty, prop: string, val: string, diagnostics?:
     // Text
     case "font": props.font = val; parseFontShorthand(props, val); break;
     case "font-family": props.fontFamily = val; break;
-    case "font-size": props.fontSize = val; break;
+    case "font-size": {
+      const v = val.trim();
+      if (v.endsWith("%")) {
+        warnValue("css-font-size-unit", `font-size "${val}" — percent sizes are not supported; use px. The declaration is ignored.`, `font-size accepts px (or a bare number, treated as px).`);
+      } else {
+        const em = /^([\d.]+)(em|rem)$/.exec(v);
+        if (em) {
+          props.fontSize = `${Math.round(parseFloat(em[1]) * 16)}px`;
+          warnValue("css-font-size-unit", `font-size "${val}" — em/rem resolve against the root (16px), not the parent; wrote ${props.fontSize}.`, `Use px to size text exactly.`);
+        } else {
+          props.fontSize = val;
+        }
+      }
+      break;
+    }
     case "text-align": props.textAlign = val; break;
     case "text-decoration": props.textDecoration = val; break;
     case "font-weight": props.fontWeight = val; break;
@@ -893,7 +924,12 @@ function assignProp(props: CSSProperty, prop: string, val: string, diagnostics?:
     case "font-smooth":
     case "-webkit-font-smoothing": props.fontSmoothing = val; break;
     case "font-subset": props.fontSubset = val; break;
-    case "line-height": props.lineHeight = val; break;
+    case "line-height":
+      if (/^\d+(?:\.\d+)?$/.test(val.trim())) {
+        warnValue("css-line-height", `line-height "${val}" — unitless multipliers are treated as px, not a multiple of the font size.`, `Write an explicit px value (e.g. line-height: 22px).`);
+      }
+      props.lineHeight = val;
+      break;
     case "letter-spacing": props.letterSpacing = val; break;
     case "white-space": props.whiteSpace = val; break;
     case "text-transform": props.textTransform = val; break;
@@ -907,7 +943,12 @@ function assignProp(props: CSSProperty, prop: string, val: string, diagnostics?:
     case "animation-delay": props.animationDelay = val; break;
     case "animation-timing-function": props.animationTimingFunction = val; break;
     // Flexbox / layout
-    case "display": props.display = val; break;
+    case "display":
+      if (["inline", "inline-block", "inline-flex", "grid", "flow-root", "table"].includes(val.trim().toLowerCase())) {
+        warnValue("css-display", `display: ${val.trim()} is not supported — elements stack vertically like a flex column (children use display:flex semantics).`, `Use the default stacking, or a row container with flex-direction: row + gap for inline flows.`);
+      }
+      props.display = val;
+      break;
     case "flex-direction": props.flexDirection = val; break;
     case "gap": props.gap = val; props.rowGap = val; props.columnGap = val; break;
     case "row-gap": props.rowGap = val; if (!props.columnGap) props.columnGap = val; break;
@@ -922,7 +963,12 @@ function assignProp(props: CSSProperty, prop: string, val: string, diagnostics?:
     case "justify-content": props.justifyContent = val; break;
     case "flex-wrap": props.flexWrap = val; break;
     case "order": props.order = val; break;
-    case "position": props.position = val; break;
+    case "position":
+      if (["fixed", "sticky"].includes(val.trim().toLowerCase())) {
+        warnValue("css-position", `position: ${val.trim()} is not supported — treated as static.`, `Use position: absolute (against the nearest ancestor) or keep flow layout.`);
+      }
+      props.position = val;
+      break;
     case "z-index": props.zIndex = val; break;
     case "top": props.top = val; break;
     case "right": props.right = val; break;
@@ -973,11 +1019,13 @@ function parseFlexShorthand(props: CSSProperty, val: string): void {
   }
 }
 
-/** Parse the `border` shorthand: "2px solid #808080" → width, style, color. */
+/** Parse the `border` shorthand: "2px solid #808080" → width, style, color.
+ *  Width accepts px, bare numbers (unitless = px), and decimals. */
 function parseBorderShorthand(props: CSSProperty, val: string): void {
   const parts = val.trim().split(/\s+/);
   for (const p of parts) {
-    if (/^\d+px$/.test(p)) props.borderWidth = p;
+    const w = /^(\d+(?:\.\d+)?)(?:px)?$/.exec(p);
+    if (w) props.borderWidth = `${w[1]}px`;
     else if (["solid", "dashed", "dotted", "double", "none"].includes(p)) props.borderStyle = p;
     // Color: #hex, rgb()/hsl(), a CSS named color, or a var() reference (the
     // token is substituted later by substituteVars, like other properties).
@@ -996,7 +1044,8 @@ function parsePerSideBorder(props: CSSProperty, prop: string, val: string): void
   const cKey = `border${cap}Color` as keyof CSSProperty;
   const parts = val.trim().split(/\s+/);
   for (const p of parts) {
-    if (/^\d+px$/.test(p)) (props[wKey] as string | undefined) = p;
+    const w = /^(\d+(?:\.\d+)?)(?:px)?$/.exec(p);
+    if (w) (props[wKey] as string | undefined) = `${w[1]}px`;
     else if (["solid", "dashed", "dotted", "double", "none"].includes(p)) (props[sKey] as string | undefined) = p;
     else if (p.startsWith("#") || p.startsWith("rgb") || p.startsWith("hsl") || p.startsWith("var(") || /^[a-z]+$/i.test(p)) (props[cKey] as string | undefined) = p;
   }

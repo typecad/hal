@@ -127,7 +127,20 @@ function findMatchingCloseParen(text: string, openIdx: number): number {
   return -1;
 }
 
-function lerpColor(a: number, b: number, k100: number): number {
+/** Linear color lerp at the ACTIVE depth (module runtimeColorFormat): 888
+ *  targets lerp per 8-bit channel; 565 targets lerp per 5/6-bit channel
+ *  (device parity — the C++ ui_lerp macro switches the same way). Exported
+ *  for tests. */
+export function lerpColor(a: number, b: number, k100: number): number {
+  if (runtimeColorFormat === "rgb666" || runtimeColorFormat === "rgb888") {
+    if (k100 >= 100) return b & 0xffffff;
+    const mix = (shift: number): number => {
+      const av = (a >> shift) & 0xff;
+      const bv = (b >> shift) & 0xff;
+      return (av + Math.trunc(((bv - av) * k100) / 100)) & 0xff;
+    };
+    return (mix(16) << 16) | (mix(8) << 8) | mix(0);
+  }
   if (k100 >= 100) return b & 0xffff;
   const ar = (a >> 11) & 0x1f;
   const ag = (a >> 5) & 0x3f;
@@ -166,6 +179,20 @@ function blendRuntime(fg: number, bg: number, opacity: number): number {
   return (runtimeColorFormat === "rgb666" || runtimeColorFormat === "rgb888")
     ? blendRgb888(fg, bg, opacity)
     : blendRgb565(fg, bg, opacity);
+}
+
+/** Halve a color at the active depth (device parity: UI_DIM_MASK — 0x7BEF on
+ *  565, 0x7F7F7F per channel on 888/666). The 565-only form channel-shifts
+ *  on rgb888 targets. */
+function dimRuntimeColor(c: number): number {
+  return c & ((runtimeColorFormat === "rgb666" || runtimeColorFormat === "rgb888") ? 0x7f7f7f : 0x7bef);
+}
+
+/** Halve a runtime color for HTML-disabled controls — matches the device's
+ *  `(c >> 1) & UI_DIM_MASK` (dimRuntimeColor's bare AND barely changes dark
+ *  565 colors; the shift gives a real fade on both depths). */
+function dimDisabledColor(c: number): number {
+  return (c >> 1) & ((runtimeColorFormat === "rgb666" || runtimeColorFormat === "rgb888") ? 0x7f7f7f : 0x7bef);
 }
 
 function mergeClassRules(classes: string[] | undefined, rules: CSSRule[]): CSSProperty {
@@ -297,6 +324,10 @@ export class PreviewUIRuntime {
   private settleFromScrollY = 0;     // settle start value (edge snap; +toward 0, -toward max)
   private rangeNode = -1;
   private keyboardVisible = false;
+  /** Modal <select> option list: node index while open, -1 when closed. */
+  private selectMenuNode = -1;
+  /** True while the select modal overlay needs (re)stamping this frame. */
+  private selectMenuDirty = false;
   private keyboardDirty: 0 | 1 | 2 = 0;
   private keyboardTarget = -1;
   private keyboardKeys: PreviewKey[] = [];
@@ -346,6 +377,15 @@ export class PreviewUIRuntime {
     // Snap draw colors to black/white for mono/e-ink targets (parity with the
     // device's UI_NATIVE_MONO draw-path snap). No-op for color targets.
     this.gfx.setMonoSnap(snapshot.program.colorFormat === "mono");
+    // Buffer storage depth tracks the target: 565 panels store packed 565,
+    // rgb888 stores packed 888, rgb666 stores 888 and quantizes at the canvas
+    // push. Without this, 888-packed colors render channel-shifted (the
+    // buffer was historically assumed to always hold 565).
+    this.gfx.setStorageMode(
+      snapshot.program.colorFormat === "rgb888" ? "rgb888"
+        : snapshot.program.colorFormat === "rgb666" ? "rgb666"
+          : "rgb565",
+    );
     this.createScreenProxy();
   }
 
@@ -356,7 +396,14 @@ export class PreviewUIRuntime {
     this.seedModuleScope();
     this.applyInitialAssignments();
     this.uiInit();
+    this.seedDrawersClosed();
     this.tick(16);
+    // Device parity: the device's loop() calls ui_tick() every iteration —
+    // that is what advances CSS keyframe animations, transitions, and scroll
+    // settles. The browser has no loop(), so drive the same tick from a ~20ms
+    // poller (the microtask-pump cadence the pin watcher uses). Idle ticks are
+    // cheap: drawDirty() finds nothing and no frame is pushed.
+    this.timers.push(setInterval(() => this.tick(), 20));
     for (const interval of this.intervals) {
       this.timers.push(setInterval(() => {
         this.runBody(interval.body);
@@ -409,15 +456,23 @@ export class PreviewUIRuntime {
     const now = Date.now();
     const delta = deltaMs ?? Math.max(0, now - this.lastTickTime);
     this.lastTickTime = now;
+    if (this.debugCapture) this.debugPaintedRects = [];
     this.evaluateBindings();
     this.advanceTransitions(delta);
     this.advanceAnimations(delta);
+    this.applyDrawers(delta);
     // Advance any in-flight scroll settle animation (bounce-back / edge-snap).
     for (let i = 0; i < this.nodes.length; i++) {
       if (this.nodes[i].settling) this.advanceScrollSettle(i);
     }
-    const changed = this.drawDirty() || this.directFrameChanged;
+    let changed = this.drawDirty() || this.directFrameChanged;
     this.directFrameChanged = false;
+    // Modal <select> list: stamp the overlay whenever the frame beneath it
+    // changed (or it was just opened) so redraws never bury it.
+    if (this.selectMenuNode >= 0 && (changed || this.selectMenuDirty)) {
+      this.drawSelectMenu();
+      changed = true;
+    }
     if (changed) {
       this.onFrame?.(this.gfx.toRgbaBytes());
     }
@@ -437,6 +492,19 @@ export class PreviewUIRuntime {
 
   pointerUp(): void {
     this.handleNoTouch();
+    this.tick();
+  }
+
+  /** Mouse-wheel scroll: a discrete delta applied to the scroll owner under
+   *  (x, y) — the same hit-scan a drag uses, without the gesture state
+   *  machine. Wheel-down (positive deltaPx) shows later content; any
+   *  overscroll from the tick bounces back via the standard settle. */
+  wheel(x: number, y: number, deltaPx: number): void {
+    const owner = this.findScrollNode(x, y);
+    if (owner < 0) return;
+    if (this.applyScrollDelta(owner, -Math.trunc(deltaPx))) {
+      this.releaseScroll(owner);
+    }
     this.tick();
   }
 
@@ -582,6 +650,7 @@ export class PreviewUIRuntime {
   }
 
   private navigate(screenIdx: number): void {
+    this.onDiagnostics?.(`NAV -> screen ${screenIdx}`);
     const next = Math.trunc(Number(screenIdx));
     if (!Number.isFinite(next) || next < 0 || next >= this.screenCount || next === this.activeScreen) return;
     this.activeScreen = next;
@@ -592,6 +661,18 @@ export class PreviewUIRuntime {
       this.keyboardPressedKey = -1;
       this.keyboardBackspaceHeld = false;
     }
+    this.closeSelectMenu(false);
+    this.drawerStates.clear();
+    for (const node of this.nodes) {
+      const n = node as MutableNode & { __drawerDx?: number; __drawerDy?: number };
+      if (n.__drawerDx) n.__drawerDx = 0;
+      if (n.__drawerDy) n.__drawerDy = 0;
+      if ((n as MutableNode & { drawerSide?: number }).drawerSide !== undefined) {
+        n.transformOffsetX = 0;
+        n.transformOffsetY = 0;
+      }
+    }
+    this.seedDrawersClosed();
     this.gfx.fillScreen(0x0000);
     for (const node of this.nodes) {
       node.dirty = true;
@@ -607,6 +688,10 @@ export class PreviewUIRuntime {
       const value = this.evaluateExpression(binding.expression);
       if (binding.property === "text") {
         const text = clampText(value);
+        // A text-bound node draws its buffer (build-time hasTextBinding only
+        // covers auto-wire/interpolation synthesis — ui.bind targets set it
+        // here so the bound string actually renders).
+        node.hasTextBinding = true;
         if (text !== node.textBuffer) {
           node.textBuffer = text;
           this.markDirty(binding.nodeIndex);
@@ -875,13 +960,14 @@ export class PreviewUIRuntime {
   }
 
   private baseDrawXForNode(nodeIndex: number): number {
-    const node = this.nodes[nodeIndex];
-    return node.box.x + (node.transformOffsetX ?? 0);
+    const node = this.nodes[nodeIndex] as MutableNode & { __drawerDx?: number };
+    return node.box.x + (node.transformOffsetX ?? 0) + (node.__drawerDx ?? 0);
   }
 
   private baseDrawYForNode(nodeIndex: number): number {
-    let y = this.nodes[nodeIndex].box.y + (this.nodes[nodeIndex].transformOffsetY ?? 0);
-    let parent = this.nodes[nodeIndex].parentIndex;
+    const node = this.nodes[nodeIndex] as MutableNode & { __drawerDy?: number };
+    let y = node.box.y + (node.transformOffsetY ?? 0) + (node.__drawerDy ?? 0);
+    let parent = node.parentIndex;
     while (parent >= 0 && this.nodes[parent]) {
       if (this.nodes[parent].scrollable) {
         y -= this.nodes[parent].scrollY;
@@ -933,8 +1019,19 @@ export class PreviewUIRuntime {
     const y0 = Math.min(baseY, baseY + oy);
     const x1 = Math.max(baseX + node.box.w, baseX + ox + node.box.w);
     const y1 = Math.max(baseY + node.box.h, baseY + oy + node.box.h);
-    if (this.repairCurrentNodePaintWithParent(node, { x: x0, y: y0, w: x1 - x0, h: y1 - y0 })) return;
-    this.gfx.fillRect(x0, y0, x1 - x0, y1 - y0, this.parentClearColor(node));
+    // Clip to the node's scroll viewport like every other clear path. During
+    // overscroll (rubber-band past the container edge) the box's draw position
+    // sits outside the viewport, and the node's own paint was clipped there —
+    // an unclipped clear/repair here paints parent background over foreign
+    // regions (e.g. the fixed header above the scroll body) and nothing re-
+    // dirties that region afterwards, leaving permanent holes.
+    const rect = this.intersectClipRect(
+      this.scrollClipForNode(node.index),
+      { x: x0, y: y0, w: x1 - x0, h: y1 - y0 },
+    );
+    if (rect.w <= 0 || rect.h <= 0) return;
+    if (this.repairCurrentNodePaintWithParent(node, rect)) return;
+    this.gfx.fillRect(rect.x, rect.y, rect.w, rect.h, this.parentClearColor(node));
   }
 
   private shadowExtents(node: MutableNode): { left: number; top: number; right: number; bottom: number } {
@@ -1428,7 +1525,10 @@ export class PreviewUIRuntime {
     let changed = false;
     for (const node of this.nodes) {
       if (!this.isActiveNode(node)) continue;
-      if (!node.scrollable || !this.isEffectivelyVisible(node) || node.contentHeight <= node.box.h) continue;
+      // Device parity (dirty-draw-phase): generic scroll passes skip
+      // VIRTUALIZED nodes — lists own their full draw (rows + scrollbar)
+      // in drawListNode. Letting this pass clear a list wipes its rows.
+      if (!node.scrollable || node.virtualized || !this.isEffectivelyVisible(node) || node.contentHeight <= node.box.h) continue;
       if (node.dirty) {
         this.markScrollDescendantsDirtyLocal(node.index);
         for (let i = node.index; i < node.subtreeEnd; i++) {
@@ -1447,13 +1547,16 @@ export class PreviewUIRuntime {
     let changed = false;
     for (const node of this.nodes) {
       if (!this.isActiveNode(node)) continue;
-      if (!node.scrollable || !this.isEffectivelyVisible(node) || node.contentHeight <= node.box.h) continue;
+      // Device parity (dirty-draw-phase): virtualized lists draw their own
+      // scrollbar in drawListNode — drawing here too overdrew it with the
+      // old dim and clamped scrollY against the node-level contentHeight.
+      if (!node.scrollable || node.virtualized || !this.isEffectivelyVisible(node) || node.contentHeight <= node.box.h) continue;
       if (!scrollbarDirty.has(node.index)) continue;
       const tx = node.box.x + node.box.w - 4;
       const ty = node.box.y;
       const th = node.box.h;
       node.scrollY = Math.max(0, Math.min(node.scrollY, node.contentHeight - th));
-      const trackColor = (node.fg >> 1) & 0x7bef;
+      const trackColor = dimRuntimeColor(node.fg);
       this.gfx.fillRect(tx, ty, 3, th, trackColor);
       const thumbH = Math.max(8, Math.trunc((th * th) / node.contentHeight));
       const thumbY = ty + Math.trunc(((node.box.h - thumbH) * node.scrollY) / Math.max(1, node.contentHeight - th));
@@ -1829,7 +1932,7 @@ export class PreviewUIRuntime {
       .sort((a, b) => this.compareDrawOrder(a, b));
     for (const node of dirtyNodes) {
       if (!node.dirty) continue;
-      if (!this.isEffectivelyVisible(node)) {
+      if (!this.isEffectivelyVisible(node) || this.insideClosedDrawer(node.index)) {
         node.dirty = false;
         continue;
       }
@@ -1864,8 +1967,15 @@ export class PreviewUIRuntime {
       if (node.opacity < 100) fillBg = blendRuntime(node.bg, this.parentClearColor(node), node.opacity);
 
       this.gfx.withClipRect(scrollClip, () => {
-        node.box.x = baseX;
-        this.drawNodeShadow(node, baseY, false);
+        // Lists draw their outset shadow inside drawListNode, on the
+        // full-repaint path only. The shadow rect spans the element, so
+        // pre-drawing it here would paint over the live viewport pixels the
+        // shift path is about to copy (device parity: the C++ main loop also
+        // skips the outset shadow for lists — see node-draw-body.ts).
+        if (node.kind !== "list") {
+          node.box.x = baseX;
+          this.drawNodeShadow(node, baseY, false);
+        }
         node.box.x = drawX;
         switch (node.kind) {
           case "fill":
@@ -1924,8 +2034,71 @@ export class PreviewUIRuntime {
       changed = true;
       node.box.x = origBoxX;
       node.dirty = false;
+      if (this.debugCapture) {
+        this.debugPaintedRects.push({ x: drawX, y: drawY, w: node.box.w, h: node.box.h });
+      }
     }
     return this.drawScrollbars(scrollbarDirty) || changed;
+  }
+
+  /** Enable/disable per-frame debug geometry capture (the client overlay
+   *  reads it; zero cost while off). */
+  setDebugCapture(on: boolean): void {
+    this.debugCapture = on;
+    if (!on) this.debugPaintedRects = [];
+  }
+
+  /** Current-frame debug geometry for the client overlay: every visible node
+   *  on the active screen at its CURRENT draw position (transform/press/
+   *  drawer/scroll offsets applied), the scroll viewport clips, and the
+   *  regions painted this tick (dirty-flash). Coordinates are logical
+   *  display pixels, matching the app canvas 1:1. */
+  debugInfo(): {
+    nodes: Array<{ i: number; id?: string; tag: string; kind: string; x: number; y: number; w: number; h: number; tappable: boolean }>;
+    clips: Array<{ x: number; y: number; w: number; h: number }>;
+    painted: Array<{ x: number; y: number; w: number; h: number }>;
+  } {
+    const nodes: Array<{ i: number; id?: string; tag: string; kind: string; x: number; y: number; w: number; h: number; tappable: boolean }> = [];
+    for (let i = 0; i < this.nodes.length; i++) {
+      const node = this.nodes[i];
+      if (!this.isActiveNode(node) || !this.isEffectivelyVisible(node)) continue;
+      if (this.insideClosedDrawer(i)) continue;
+      nodes.push({
+        i,
+        id: node.id,
+        tag: node.tag,
+        kind: String(node.kind),
+        x: this.drawXForNode(i),
+        y: this.drawYForNode(i),
+        w: node.box.w,
+        h: node.box.h,
+        tappable: this.hasAnyHandler(i),
+      });
+    }
+    const clips: Array<{ x: number; y: number; w: number; h: number }> = [];
+    for (const node of this.nodes) {
+      if (!this.isActiveNode(node) || !node.scrollable) continue;
+      clips.push({ x: node.box.x, y: node.box.y, w: node.box.w, h: node.box.h });
+    }
+    return { nodes, clips, painted: this.debugPaintedRects.slice() };
+  }
+
+  /** Inspect-on-tap: topmost node (draw order) whose CURRENT draw box
+   *  contains the point — unlike hitTest, containers count too. Returns the
+   *  index, or -1. */
+  debugHit(tx: number, ty: number): number {
+    let best = -1;
+    for (let i = 0; i < this.nodes.length; i++) {
+      const node = this.nodes[i];
+      if (!this.isActiveNode(node) || !this.isEffectivelyVisible(node)) continue;
+      if (this.insideClosedDrawer(i)) continue;
+      const x = this.drawXForNode(i);
+      const y = this.drawYForNode(i);
+      if (tx >= x && tx < x + node.box.w && ty >= y && ty < y + node.box.h) {
+        if (best < 0 || this.drawsBefore(this.nodes[best], node)) best = i;
+      }
+    }
+    return best;
   }
 
   private lineX(node: MutableNode, lineWidth: number, left: number, maxWidth: number, align = node.textAlign): number {
@@ -2207,6 +2380,17 @@ export class PreviewUIRuntime {
     const deltaY = node.scrollY - node.lastPaintedScrollY;
     const absDelta = Math.abs(deltaY);
     const canShift = deltaY !== 0 && absDelta < node.box.h;
+    if (!canShift) {
+      // Full repaint: outset shadow at the rest position first, then the bg
+      // fill covers its interior overlap. Skipped on the shift path — the
+      // shadow rect spans the element and would destroy the pixels about to
+      // be shifted (device parity: ui_draw_shadow(i, by, 0) only when
+      // !canShiftList, before the canvas push).
+      const origX = node.box.x;
+      node.box.x = this.baseDrawXForNode(node.index);
+      this.drawNodeShadow(node, this.baseDrawYForNode(node.index), false);
+      node.box.x = origX;
+    }
     const repaint = canShift
       ? this.shiftListViewport(node, drawY, deltaY, bg)
       : (() => {
@@ -2221,7 +2405,10 @@ export class PreviewUIRuntime {
       const listClip = this.intersectClipRect(scrollClip, { x: node.box.x, y: drawY, w: node.box.w, h: node.box.h });
       this.gfx.withClipRect(listClip, () => {
         const tx = node.box.x + node.box.w - 4;
-        const trackColor = (node.fg >> 1) & 0x7bef;
+        // Halve the track color at the ACTIVE depth (device parity: the
+        // runtime's UI_DIM_MASK is 0x7BEF on 565, 0x7F7F7F on 888 — the old
+        // 565-only mask channel-shifted the track on rgb888 targets).
+        const trackColor = dimRuntimeColor(node.fg);
         this.gfx.fillRect(tx, drawY, 3, node.box.h, trackColor);
         const thumbH = Math.max(8, Math.trunc((node.box.h * node.box.h) / listContentH));
         const maxScroll = Math.max(1, listContentH - node.box.h);
@@ -2333,7 +2520,11 @@ export class PreviewUIRuntime {
       }
     }
   }
-  private drawButtonNode(node: MutableNode, displayText: string | undefined, bColor: number, fillBg: number, drawY: number, ts: number): void {
+  private drawButtonNode(node: MutableNode, displayText: string | undefined, bColorIn: number, fillBgIn: number, drawY: number, ts: number): void {
+    // HTML disabled: halve the drawn colors (web-like faded control;
+    // device parity: NODE_BUTTON does the same).
+    const bColor = node.disabled ? dimDisabledColor(bColorIn) : bColorIn;
+    const fillBg = node.disabled ? dimDisabledColor(fillBgIn) : fillBgIn;
     if (node.borderRadius > 0 && node.hasBg) this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, fillBg);
     else if (node.hasBg) this.gfx.fillRect(node.box.x, drawY, node.box.w, node.box.h, fillBg);
     this.drawNodeShadow(node, drawY, true);
@@ -2358,7 +2549,9 @@ export class PreviewUIRuntime {
   // selected option), so clear the previous text rect before redrawing.
   private drawSelectNode(node: MutableNode, displayText: string | undefined, bColor: number, fillBg: number, drawY: number, ts: number): void {
     const insets = this.textInsets(node);
-    const contentW = Math.max(1, node.box.w - insets.left - insets.right);
+    // The right end reserves 14px for the dropdown chevron — the label wraps
+    // against the reduced width, never under the chevron.
+    const contentW = Math.max(1, node.box.w - insets.left - insets.right - 14);
     const layout = this.textLayout(node, displayText, contentW, ts);
     const clearW = Math.max(node.box.w, node.lastTextWidth ?? 0, layout.width + insets.left + insets.right);
     const clearH = Math.max(node.box.h, node.lastTextHeight ?? 0, layout.height + insets.top + insets.bottom);
@@ -2374,36 +2567,69 @@ export class PreviewUIRuntime {
 
     const textX = node.box.x + insets.left;
     const textY = drawY + insets.top;
-    const textW = Math.max(1, node.box.w - insets.left - insets.right);
+    // Reserve the right end for the dropdown chevron so the label never
+    // collides with it (mirrors NODE_SELECT on device).
+    const textW = Math.max(1, node.box.w - insets.left - insets.right - 14);
     const textH = Math.max(1, node.box.h - insets.top - insets.bottom);
     const top = textY + Math.trunc((textH - layout.height) / 2);
     const glyphBg = node.opacity < 100 ? blendRuntime(node.bg, this.parentClearColor(node), node.opacity) : (node.hasBg ? node.bg : node.clearColor);
     this.drawTextLines(node, displayText, textX, top, textW, ts, node.fg, glyphBg, node.textAlign);
+    // Dropdown chevron: a small solid ▾ at the right end — the affordance
+    // that the control opens/cycles options.
+    const chX = node.box.x + node.box.w - insets.right - 11;
+    const chY = drawY + Math.trunc((node.box.h - 5) / 2);
+    this.gfx.fillRect(chX, chY, 9, 1, node.fg);
+    this.gfx.fillRect(chX + 1, chY + 1, 7, 1, node.fg);
+    this.gfx.fillRect(chX + 2, chY + 2, 5, 1, node.fg);
+    this.gfx.fillRect(chX + 3, chY + 3, 3, 1, node.fg);
+    this.gfx.fillRect(chX + 4, chY + 4, 1, 1, node.fg);
   }
 
   private drawCheckNode(node: MutableNode, displayText: string | undefined, drawY: number, ts: number): void {
     const layout = this.textLayout(node, displayText, Math.max(0, node.box.w - 22), ts);
     const clearW = Math.max(node.box.w, node.lastTextWidth);
     const clearH = Math.max(node.box.h, node.lastTextHeight ?? 0, layout.height);
-    this.gfx.fillRect(node.box.x, drawY, clearW, clearH, node.hasBg ? node.bg : node.clearColor);
+    // border-radius > 0 (kit .switch pills): clear the full text rect to the
+    // backdrop, then paint the rounded box. Device parity: NODE_CHECK does the
+    // same via ui_display_fill_round_rect.
+    if (node.borderRadius > 0 && node.hasBg) {
+      this.gfx.fillRect(node.box.x, drawY, clearW, clearH, this.parentClearColor(node));
+      this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, node.bg);
+    } else {
+      this.gfx.fillRect(node.box.x, drawY, clearW, clearH, node.hasBg ? node.bg : node.clearColor);
+    }
     node.lastTextWidth = 22 + layout.width;
     node.lastTextHeight = Math.max(layout.height, 16);
 
-    const cbX = node.box.x;
+    // Pills inset the 16px indicator from the left edge so the knob doesn't
+    // touch the rounded end; plain checkboxes keep it flush (unchanged look).
+    // The knob SLIDES with state — left when off, right when on — the switch
+    // affordance (static jump; no travel animation).
+    const knobSlide = node.borderRadius > 0 ? Math.max(0, node.box.w - 16 - 6) : 0;
+    const cbX = (node.borderRadius > 0 ? node.box.x + 3 : node.box.x) + (node.value ? knobSlide : 0);
     // Vertically center the 16px indicator within the box so a tall
     // (touch-friendly) checkbox doesn't pin the indicator to the top.
     // (box.h - 16) / 2 is 0 for the default 16px-tall box.
     const checkOff = Math.max(0, ((node.box.h - 16) / 2) | 0);
     const cbY = drawY + checkOff;
     if (node.value) {
-      this.gfx.fillRect(cbX, cbY, 16, 16, node.fg);
-      const inv = node.hasBg ? node.bg : node.clearColor;
-      this.gfx.drawLine(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
-      this.gfx.drawLine(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
-      this.gfx.drawLine(cbX + 3, cbY + 9, cbX + 7, cbY + 13, inv);
-      this.gfx.drawLine(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
-      this.gfx.drawLine(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
-      this.gfx.drawLine(cbX + 7, cbY + 13, cbX + 13, cbY + 5, inv);
+      if (node.borderRadius > 0) {
+        // Switch pill: the knob stays a knob — a solid circle when on, no
+        // checkbox square + checkmark. Same geometry as the radio indicator.
+        this.gfx.fillCircle(cbX + 8, cbY + 8, 7, node.fg);
+      } else {
+        this.gfx.fillRect(cbX, cbY, 16, 16, node.fg);
+        const inv = node.hasBg ? node.bg : node.clearColor;
+        this.gfx.drawLine(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
+        this.gfx.drawLine(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
+        this.gfx.drawLine(cbX + 3, cbY + 9, cbX + 7, cbY + 13, inv);
+        this.gfx.drawLine(cbX + 7, cbY + 12, cbX + 13, cbY + 4, inv);
+        this.gfx.drawLine(cbX + 8, cbY + 12, cbX + 14, cbY + 4, inv);
+        this.gfx.drawLine(cbX + 7, cbY + 13, cbX + 13, cbY + 5, inv);
+      }
+    } else if (node.borderRadius > 0) {
+      // Off-state pill: hollow circular knob outline on the track.
+      this.gfx.drawCircle(cbX + 8, cbY + 8, 7, node.fg);
     } else {
       this.gfx.drawRect(cbX, cbY, 16, 16, node.fg);
     }
@@ -2462,7 +2688,7 @@ export class PreviewUIRuntime {
     const bh = node.box.h;
     const fgCol = node.fg;
     const bgCol = node.hasBg ? node.bg : node.clearColor;
-    const dimFg = (fgCol >> 1) & 0x7bef;
+    const dimFg = dimRuntimeColor(fgCol);
     const trackY = by + Math.trunc(bh / 2);
     const rangeMin = node.rangeMin;
     const rangeMax = node.rangeMax;
@@ -2503,13 +2729,16 @@ export class PreviewUIRuntime {
     const by = drawY;
     const bw = node.box.w;
     const bh = node.box.h;
-    const bgCol = node.hasBg ? node.bg : node.clearColor;
-    const fgCol = node.fg;
-    const border = node.borderColor || fgCol;
+    // HTML disabled: halve the drawn colors (web-like faded control;
+    // device parity: NODE_INPUT does the same).
+    const dis = node.disabled === true;
+    const bgCol = node.hasBg ? (dis ? dimDisabledColor(node.bg) : node.bg) : (dis ? dimDisabledColor(node.clearColor) : node.clearColor);
+    const fgCol = dis ? dimDisabledColor(node.fg) : node.fg;
+    const border = dis ? dimDisabledColor(node.borderColor || node.fg) : (node.borderColor || fgCol);
     const borderStyle = node.borderStyle || 1;
     const borderWidth = node.borderWidth || 1;
     const displayText = node.textBuffer || node.placeholder || node.text || "";
-    const textColor = node.textBuffer ? fgCol : ((fgCol >> 1) & 0x7bef);
+    const textColor = node.textBuffer ? fgCol : dimRuntimeColor(fgCol);
     const ts = this.nodeTextSize(node);
     const clippedText = this.clipTextToWidth(displayText, Math.max(0, bw - 8), ts, node.fontFace, node.letterSpacing);
 
@@ -2525,6 +2754,9 @@ export class PreviewUIRuntime {
       const node = this.nodes[i];
       if (!this.isEffectivelyVisible(node)) continue;
       if (!this.isActiveNode(node)) continue;
+      if (this.insideClosedDrawer(i)) continue;
+      // HTML disabled: not a tap target (device parity: ui_hit_test skips it).
+      if (node.disabled) continue;
       const drawX = this.drawXForNode(i);
       const drawY = this.drawYForNode(i);
       if (tx >= drawX && tx < drawX + node.box.w && ty >= drawY && ty < drawY + node.box.h) {
@@ -2720,6 +2952,16 @@ export class PreviewUIRuntime {
       this.lastTouchTime = now;
       return;
     }
+    // Modal <select> list: route taps to the option rows; swallow normal
+    // hit-testing/scrolling while open (device parity: ui_touch_up).
+    if (this.selectMenuNode >= 0) {
+      if (this.touchState === 0 && now - this.lastTouchTime >= UI_TOUCH_DEBOUNCE_MS) {
+        this.touchState = 1;
+        this.touchDownTime = now;
+      }
+      this.lastTouchTime = now;
+      return;
+    }
 
     if (this.touchState === 0) {
       if (now - this.lastTouchTime < UI_TOUCH_DEBOUNCE_MS) return;
@@ -2791,6 +3033,16 @@ export class PreviewUIRuntime {
       this.lastReleaseTime = now;
       return;
     }
+    if (this.selectMenuNode >= 0) {
+      this.selectMenuHandleTouch(this.lastTouchX, this.lastTouchY);
+      this.touchState = 0;
+      this.touchNode = -1;
+      this.isDragging = false;
+      this.scrollNode = -1;
+      this.rangeNode = -1;
+      this.lastReleaseTime = now;
+      return;
+    }
 
     const elapsed = now - this.touchDownTime;
     const node = this.touchNode;
@@ -2814,6 +3066,19 @@ export class PreviewUIRuntime {
       if (this.nodes[node].kind === "button") this.setPressed(node, false);
       this.markDirty(node);
     }
+    // Open drawers close on outside taps (shadcn drawer behavior). Taps
+    // inside an open drawer hit its controls normally.
+    for (const [idx, state] of this.drawerStates) {
+      if (!state.open || state.progress < 1) continue;
+      const drawer = this.nodes[idx];
+      const dx = this.drawXForNode(idx);
+      const dy = this.drawYForNode(idx);
+      if (this.lastTouchX < dx || this.lastTouchX >= dx + drawer.box.w ||
+          this.lastTouchY < dy || this.lastTouchY >= dy + drawer.box.h) {
+        state.open = false;
+      }
+    }
+
     // Resume any `await ui.onTap()` awaiter. Runs for EVERY completed tap —
     // including empty-space taps (node == -1) and holds released above — so
     // "wake on any touch" works. After the click/release dispatch so onClick
@@ -2834,9 +3099,9 @@ export class PreviewUIRuntime {
       node.value = node.value > 0 ? 0 : 1;
       this.markDirty(nodeIndex);
     } else if (node.tag === "select") {
-      const count = Math.max(node.options?.length ?? 0, 1);
-      node.value = (node.value + 1) % count;
-      this.markDirty(nodeIndex);
+      // Tap opens a modal option list (device parity: ui_select_menu_open);
+      // selecting a row in the modal sets the value.
+      this.openSelectMenu(nodeIndex);
     } else if (node.tag === "radio") {
       for (const candidate of this.nodes) {
         if (!this.isActiveNode(candidate)) continue;
@@ -2858,6 +3123,259 @@ export class PreviewUIRuntime {
       if (custom) return custom;
     }
     return node.inputType === "number" ? DEFAULT_NUMBER_KEYBOARD : DEFAULT_ALPHA_KEYBOARD;
+  }
+
+  // ── <drawer>: slide-in panel modals ─────────────────────────────────────
+  // Drawers are author-styled absolute panels (position/left/top/width/height
+  // in CSS); the runtime slides the subtree in from the configured edge via
+  // per-node transform offsets, hides the subtree while closed, and closes on
+  // outside taps. Sliding mutates offsets + dirties the subtree exactly like
+  // the keyframe transform path, so all existing clear/repair machinery runs.
+
+  /** node index -> { open, progress } for every <drawer>; absent = closed. */
+  private readonly drawerStates = new Map<number, { open: boolean; progress: number }>();
+
+  // ── Debug overlay data (preview-only; the client canvas draws the boxes) ──
+  /** True while the client wants per-frame debug geometry + paint rects. */
+  private debugCapture = false;
+  /** Node paint rects drawn during this tick (cleared at tick start). */
+  private debugPaintedRects: Array<{ x: number; y: number; w: number; h: number }> = [];
+  /** Drawer animation step per tick (~180ms full slide). */
+  private applyDrawers(deltaMs: number): void {
+    for (const [idx, state] of this.drawerStates) {
+      const target = state.open ? 1 : 0;
+      if (state.progress === target) continue;
+      const step = Math.min(1, deltaMs / 180);
+      const next = state.progress + Math.sign(target - state.progress) * Math.min(step, Math.abs(target - state.progress));
+      this.setDrawerProgress(idx, next);
+      if (next === 0 && !state.open) this.drawerStates.delete(idx);
+    }
+  }
+
+  private drawerNodeById(id: string): MutableNode | undefined {
+    return this.nodes.find((n) => ((n as unknown as { drawerSide?: number }).drawerSide ?? -1) >= 0 && n.id === id);
+  }
+
+  private drawerOpen(id: string): void {
+    const node = this.drawerNodeById(id);
+    if (!node) return;
+    if (!this.drawerStates.has(node.index)) {
+      this.drawerStates.set(node.index, { open: true, progress: 0 });
+      this.setDrawerProgress(node.index, 0);
+    } else {
+      this.drawerStates.get(node.index)!.open = true;
+    }
+  }
+
+  private drawerClose(id?: string): void {
+    if (id !== undefined) {
+      const node = this.drawerNodeById(id);
+      if (node) {
+        const st = this.drawerStates.get(node.index);
+        if (st) st.open = false;
+      }
+      return;
+    }
+    for (const st of this.drawerStates.values()) st.open = false;
+  }
+
+  /** Slide extent for a drawer: the panel dimension along its travel axis. */
+  private drawerExtent(node: MutableNode): number {
+    const side = (node as unknown as { drawerSide?: number }).drawerSide ?? 0;
+    return side === 2 || side === 3 ? node.box.w : node.box.h;
+  }
+
+  /** Apply a slide progress to the drawer subtree: offsets shift from the
+   *  edge; the subtree is hidden at 0. Erases the previous frame's region via
+   *  the standard subtree clear + marks descendants dirty (same contract as
+   *  animated transform changes). */
+  private setDrawerProgress(nodeIndex: number, progress: number): void {
+    const state = this.drawerStates.get(nodeIndex);
+    if (!state) return;
+    const node = this.nodes[nodeIndex];
+    const side = (node as unknown as { drawerSide?: number }).drawerSide ?? 0;
+    const travel = Math.round((1 - progress) * this.drawerExtent(node));
+    const dx = side === 2 ? -travel : side === 3 ? travel : 0;
+    const dy = side === 1 ? -travel : side === 0 ? travel : 0;
+    // Erase the subtree's current paint before moving it. The clear fills
+    // with the parent background only — everything the drawer COVERED
+    // (siblings underneath) must repaint too, so mark every active-screen
+    // node outside the drawer subtree dirty. Full-screen redraw per slide
+    // frame is the same contract as the select modal's close path.
+    const rect = this.currentSubtreePaintRect(node);
+    if (rect) this.clearNodePaintRect(node, rect);
+    for (const n of this.nodes) {
+      if (!this.isActiveNode(n) || n.index >= node.index && n.index < node.subtreeEnd) continue;
+      if (this.insideClosedDrawer(n.index)) continue;
+      n.dirty = true;
+    }
+    for (let i = node.index; i < node.subtreeEnd; i++) {
+      const n = this.nodes[i];
+      if (!this.isActiveNode(n)) continue;
+      n.transformOffsetX = i === node.index ? dx : n.transformOffsetX;
+      n.transformOffsetY = i === node.index ? dy : n.transformOffsetY;
+      if (i !== node.index) {
+        // Descendants keep a private offset delta (they don't inherit the
+        // drawer's transformOffset), so store the slide delta per node.
+        (n as unknown as { __drawerDx?: number }).__drawerDx = dx;
+        (n as unknown as { __drawerDy?: number }).__drawerDy = dy;
+      }
+      n.dirty = true;
+    }
+    state.progress = progress;
+    this.directFrameChanged = true;
+  }
+
+  /** True while the node sits inside a fully-closed drawer (skip in draws and
+   *  hit tests). Drawers with no state entry are closed. */
+  private insideClosedDrawer(nodeIndex: number): boolean {
+    for (const [idx, state] of this.drawerStates) {
+      const drawer = this.nodes[idx];
+      if (nodeIndex >= drawer.index && nodeIndex < drawer.subtreeEnd && state.progress === 0 && !state.open) return true;
+    }
+    return this.drawerAncestorClosed(nodeIndex);
+  }
+
+  /** Walk ancestors: any drawer ancestor without an open/animating state. */
+  private drawerAncestorClosed(nodeIndex: number): boolean {
+    let parent = this.nodes[nodeIndex]?.parentIndex ?? -1;
+    while (parent >= 0 && this.nodes[parent]) {
+      const n = this.nodes[parent] as MutableNode & { drawerSide?: number };
+      if ((n.drawerSide ?? -1) >= 0) {
+        const st = this.drawerStates.get(parent);
+        return !st || (!st.open && st.progress === 0);
+      }
+      parent = this.nodes[parent].parentIndex;
+    }
+    return false;
+  }
+
+  /** Apply the closed slide offsets to every drawer subtree (initial seed and
+   *  post-navigate reset) so closed drawers never paint at rest position. */
+  private seedDrawersClosed(): void {
+    for (const n of this.nodes) {
+      const node = n as MutableNode & { drawerSide?: number };
+      if ((node.drawerSide ?? -1) < 0) continue;
+      if (this.drawerStates.has(node.index)) continue;
+      const side = node.drawerSide ?? 0;
+      const travel = this.drawerExtent(node);
+      const dx = side === 2 ? -travel : side === 3 ? travel : 0;
+      const dy = side === 1 ? -travel : side === 0 ? travel : 0;
+      node.transformOffsetX = (node.transformOffsetX ?? 0) + dx;
+      node.transformOffsetY = (node.transformOffsetY ?? 0) + dy;
+      for (let i = node.index + 1; i < node.subtreeEnd; i++) {
+        const d = this.nodes[i] as MutableNode & { __drawerDx?: number; __drawerDy?: number };
+        d.__drawerDx = dx;
+        d.__drawerDy = dy;
+        d.dirty = false;
+      }
+    }
+  }
+
+  /** Shared geometry of the select modal: a centered list panel sized to
+   *  the options (capped to ~60% of the screen height). Rows are option
+   *  text, the current one inverted (fill = select bg, text = inverted). */
+  private selectMenuGeometry(): { x: number; y: number; w: number; rowH: number; rows: number } {
+    const node = this.nodes[this.selectMenuNode];
+    const options = node.options ?? [];
+    const rowH = 22;
+    const rows = options.length;
+    // Anchor to the select itself: same left edge and width, so the modal
+    // reads as the control's own dropdown (never overhangs toward a
+    // scrollbar). Clamp to the screen for selects that extend past it.
+    let x = node.box.x;
+    let w = Math.max(node.box.w, 120);
+    if (x + w > this.gfx.width) w = this.gfx.width - x;
+    if (x < 0) x = 0;
+    const h = Math.min(Math.trunc(this.gfx.height * 0.6), rows * rowH + 8);
+    const y = Math.trunc((this.gfx.height - h) / 2);
+    return { x, y, w, rowH, rows };
+  }
+
+  private openSelectMenu(nodeIndex: number): void {
+    const node = this.nodes[nodeIndex];
+    if (!node.options || node.options.length === 0) return;
+    this.selectMenuNode = nodeIndex;
+    this.selectMenuDirty = true;
+  }
+
+  /** Close the modal. When `repaint`, mark the whole tree dirty so the
+   *  overlay is erased by a full redraw (navigate() clears the screen
+   *  itself, so it passes false). */
+  private closeSelectMenu(repaint: boolean): void {
+    if (this.selectMenuNode < 0) return;
+    this.selectMenuNode = -1;
+    this.selectMenuDirty = false;
+    if (repaint) {
+      for (const node of this.nodes) node.dirty = true;
+    }
+  }
+
+  /** Stamp the modal overlay on top of the current framebuffer. Idempotent
+   *  per frame — the close path full-repaints beneath it. */
+  private drawSelectMenu(): void {
+    if (this.selectMenuNode < 0) return;
+    const node = this.nodes[this.selectMenuNode];
+    if (!node.options || node.options.length === 0) return;
+    const { x, y, w, rowH, rows } = this.selectMenuGeometry();
+    const h = Math.min(Math.trunc(this.gfx.height * 0.6), rows * rowH + 8);
+    // Themed panel: the select's own radius/border/bg — the modal reads as
+    // the control's popover, matching the surrounding UI (shadcn tokens on
+    // the .select class flow through: radius, border color, background).
+    const radius = Math.min(node.borderRadius || 6, Math.trunc(Math.min(w, h) / 2));
+    const panel = this.selectMenuPanelColor();
+    const borderCol = node.borderColor || node.fg;
+    this.gfx.fillRoundRect(x, y, w, h, radius, panel);
+    this.gfx.drawRoundRect(x, y, w, h, radius, borderCol);
+    const ts = this.nodeTextSize(node);
+    const rowInset = Math.max(2, Math.trunc(radius / 2));
+    for (let r = 0; r < rows; r++) {
+      const ry = y + 4 + r * rowH;
+      const current = r === node.value;
+      if (current) {
+        this.gfx.fillRoundRect(x + rowInset, ry, w - 2 * rowInset, rowH, Math.min(radius, 6), node.fg);
+      }
+      const text = clampText(node.options[r]?.text ?? "");
+      const fg = current ? panel : node.fg;
+      this.drawText(text, x + 22, ry + Math.trunc((rowH - 8 * ts) / 2), fg, panel, ts, node.fontAntialias, node.fontFace, 0);
+      if (current) {
+        // Check mark on the current row (panel color on the inverted fill).
+        const cx = x + 7;
+        const cy = ry + Math.trunc(rowH / 2);
+        this.gfx.drawLine(cx, cy, cx + 3, cy + 3, panel);
+        this.gfx.drawLine(cx + 3, cy + 3, cx + 8, cy - 4, panel);
+      }
+    }
+    this.selectMenuDirty = false;
+  }
+
+  /** Panel fill: the select's effective background, falling back to a
+   *  near-black card on unstyled selects. */
+  private selectMenuPanelColor(): number {
+    const node = this.nodes[this.selectMenuNode];
+    return node.hasBg ? node.bg : node.clearColor;
+  }
+
+  /** Route a tap while the modal is open: a row selects + closes; anything
+   *  else just closes (dismiss on outside tap). */
+  private selectMenuHandleTouch(tx: number, ty: number): void {
+    const node = this.nodes[this.selectMenuNode];
+    if (!node.options) {
+      this.closeSelectMenu(true);
+      return;
+    }
+    const { x, y, w, rowH, rows } = this.selectMenuGeometry();
+    const h = Math.min(Math.trunc(this.gfx.height * 0.6), rows * rowH + 8);
+    if (tx >= x && tx < x + w && ty >= y && ty < y + h) {
+      const row = Math.trunc((ty - y - 4) / rowH);
+      if (row >= 0 && row < rows) {
+        node.value = row;
+        node.hasTextBinding = true;
+        node.textBuffer = clampText(node.options[row]?.text ?? "");
+        this.markDirty(node.index);
+      }
+    }
+    this.closeSelectMenu(true);
   }
 
   private keyboardOpen(nodeIndex: number): void {
@@ -3192,13 +3710,71 @@ export class PreviewUIRuntime {
     // Rewrite bare references to module-scoped variables into moduleScope.NAME
     // so reads/writes hit the shared mutable binding (mirrors the device hoisting
     // them to globals). Skip property accesses (foo.bar) so `screen.gauge.value`
-    // etc. are untouched. Identifiers are the exact, finite set of module vars.
+    // etc. are untouched — and skip STRING/TEMPLATE LITERAL CONTENTS: prose like
+    // "taps inside:" inside a template literal contains the identifier `taps`
+    // as a whole word and must not be rewritten (only ${...} segments of
+    // templates are code).
     const names = this.moduleVarNames();
     if (names.length) {
       const alt = names.map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
       const re = new RegExp(`(?<![\\w.$])\\b(${alt})\\b(?!\\s*:)`, "g");
-      out = out.replace(re, "moduleScope.$1");
+      out = this.rewriteOutsideLiterals(out, re);
     }
+    return out;
+  }
+
+  /** Apply `re` to code segments only: skip '..'/".." literal contents, and
+   *  inside `..` templates recurse into ${...} interpolations (their
+   *  expressions are code; the literal text between them is not). */
+  private rewriteOutsideLiterals(text: string, re: RegExp): string {
+    let out = "";
+    let code = "";
+    let i = 0;
+    const flush = () => { out += code.replace(re, "moduleScope.$1"); code = ""; };
+    while (i < text.length) {
+      const ch = text[i];
+      if (ch === "'" || ch === '"') {
+        flush();
+        let j = i + 1;
+        while (j < text.length && text[j] !== ch) {
+          if (text[j] === "\\") j++;
+          j++;
+        }
+        out += text.slice(i, Math.min(j + 1, text.length));
+        i = j + 1;
+        continue;
+      }
+      if (ch === "`") {
+        flush();
+        // Emit the template piece by piece: literal runs verbatim (never
+        // rewritten), ${...} interpolations recursed as code.
+        out += "`";
+        let j = i + 1;
+        while (j < text.length && text[j] !== "`") {
+          if (text[j] === "\\") { out += text.slice(j, j + 2); j += 2; continue; }
+          if (text[j] === "$" && text[j + 1] === "{") {
+            let depth = 1;
+            let k = j + 2;
+            while (k < text.length && depth > 0) {
+              if (text[k] === "{") depth++;
+              else if (text[k] === "}") depth--;
+              k++;
+            }
+            out += "${" + this.rewriteOutsideLiterals(text.slice(j + 2, k - 1), re) + "}";
+            j = k;
+            continue;
+          }
+          out += text[j];
+          j++;
+        }
+        if (j < text.length) out += "`";
+        i = j + 1;
+        continue;
+      }
+      code += ch;
+      i++;
+    }
+    flush();
     return out;
   }
 
@@ -3275,7 +3851,12 @@ export class PreviewUIRuntime {
     }
   }
 
-  private createUiFacade(): { signal<T>(initial: T): (() => T) & { set(next: T): void }; navigate(screenIdx: number): void } {
+  private createUiFacade(): {
+    signal<T>(initial: T): (() => T) & { set(next: T): void };
+    navigate(screenIdx: number): void;
+    window: { setTitle(title: string): void; setIcon(path: string): void };
+    drawer: { open(id: string): void; close(id?: string): void };
+  } {
     return {
       signal<T>(initial: T) {
         let value = initial;
@@ -3284,6 +3865,24 @@ export class PreviewUIRuntime {
         return fn;
       },
       navigate: (screenIdx: number) => this.navigate(screenIdx),
+      // Device parity with the SDL-only ui.window.* lowering
+      // (ui_window_set_title / ui_window_set_icon). In the preview, setTitle
+      // updates the browser tab title when a DOM is present (Node tests have
+      // none); setIcon has no browser equivalent and no-ops, matching the
+      // hardware targets' no-op.
+      window: {
+        setTitle: (title: string): void => {
+          const doc = (globalThis as { document?: { title: string } }).document;
+          if (doc) doc.title = String(title);
+        },
+        setIcon: (_path: string): void => { /* no browser equivalent */ },
+      },
+      // <drawer> controls: open by element id, close by id or all open
+      // drawers. Device parity with ui_drawer_open / ui_drawer_close.
+      drawer: {
+        open: (id: string): void => this.drawerOpen(id),
+        close: (id?: string): void => this.drawerClose(id),
+      },
     };
   }
 }

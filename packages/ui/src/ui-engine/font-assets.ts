@@ -67,7 +67,7 @@ interface Point {
   y: number;
 }
 
-const FALLBACK_CHARS = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,:;!?+-*/=%()[]{}<>_#@&";
+const FALLBACK_CHARS = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,:;!?+-*/=%()[]{}<>_#@&^~$'|";
 const SUPERSAMPLE = 4;
 
 export function normalizeFontFamily(value: string | undefined): string | undefined {
@@ -175,8 +175,9 @@ export function buildUIFontAssets(
   root: StyledNode,
   fontFaces: CSSFontFace[],
   baseDir: string,
+  dynamicNodeIds?: Set<string>,
 ): UIFontAssetModel[] {
-  const plans = planUIFontAssets(root, fontFaces, baseDir);
+  const plans = planUIFontAssets(root, fontFaces, baseDir, dynamicNodeIds);
 
   const parsedFonts = new Map<string, any>();
   const assets: UIFontAssetModel[] = [];
@@ -209,6 +210,7 @@ export function planUIFontAssets(
   root: StyledNode,
   fontFaces: CSSFontFace[],
   baseDir: string,
+  dynamicNodeIds?: Set<string>,
 ): UIFontAssetPlan[] {
   if (fontFaces.length === 0) return [];
 
@@ -216,6 +218,15 @@ export function planUIFontAssets(
   const collect = (node: StyledNode) => {
     const face = selectFontFaceForStyle(fontFaces, node.style);
     if (face) {
+      // Runtime-dynamic text renders strings the static template can't
+      // predict — widen those faces to the fallback charset so bound values
+      // ("Gamma" against a subset planned from authored "mode: alpha") don't
+      // drop glyphs. Dynamic = ui.bind(..., 'text') targets (via
+      // dynamicNodeIds), {expr} interpolations, and bind:text attributes.
+      const dynamicText =
+        (node.id !== undefined && dynamicNodeIds?.has(node.id)) ||
+        node.hasInterpolation === true ||
+        node.bind?.text !== undefined;
       const px = fontPxOf(node.style);
       const sourcePath = resolveFontPath(face.src, baseDir);
       const fontWeight = normalizeFontWeight(face.fontWeight ?? node.style.fontWeight);
@@ -234,7 +245,16 @@ export function planUIFontAssets(
         };
         requests.set(key, request);
       }
-      if (fontSubsetOf(node.style) === "fallback" && request.subset !== "fallback") {
+      if ((fontSubsetOf(node.style) === "fallback" || dynamicText) && request.subset !== "fallback") {
+        request.subset = "fallback";
+        addText(request.chars, FALLBACK_CHARS);
+      }
+      // Virtualized lists render RUNTIME text — item expressions produce
+      // strings the static template can't predict (the same reason `{expr}`
+      // interpolations add digits). Without this the list's face only carries
+      // glyphs from unrelated static text and items render blanks (e.g. a
+      // subset with '0' but no '1'-'9' draws "Item 10" as "Item  0").
+      if (node.tag === "list" && request.subset !== "fallback") {
         request.subset = "fallback";
         addText(request.chars, FALLBACK_CHARS);
       }

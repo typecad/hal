@@ -40,6 +40,57 @@ export function isDisplayNone(node: StyledNode): boolean {
   return node.style.display?.trim().toLowerCase() === "none";
 }
 
+/** A resolved CSS length: device pixels, a percentage of the parent
+ *  (resolved by the layout engine), or the auto keyword (margins). */
+export type CssDim = number | "auto" | `${number}%`;
+
+/** Parse a single CSS length to a layout dimension. px/bare numbers are device
+ *  pixels, rem/em resolve × 16 (root font size), percentages are preserved as
+ *  `${n}%` strings so flexbox can resolve them against the parent, and "auto"
+ *  passes through (auto margins absorb free space — `margin: 0 auto` centers). */
+export function cssDimValue(val: string | undefined): CssDim {
+  const v = (val ?? "").trim();
+  if (!v) return 0;
+  if (/^auto$/i.test(v)) return "auto";
+  const remM = /^(-?[\d.]+)rem$/i.exec(v);
+  if (remM) return Math.round(parseFloat(remM[1]) * 16);
+  const emM = /^(-?[\d.]+)em$/i.exec(v);
+  if (emM) return Math.round(parseFloat(emM[1]) * 16);
+  const pctM = /^(-?[\d.]+)%$/.exec(v);
+  if (pctM) return `${parseFloat(pctM[1])}%` as `${number}%`;
+  const m = /^(-?[\d.]+)(?:px)?$/i.exec(v);
+  return m ? parseFloat(m[1]) : 0;
+}
+
+/** Is this a set (non-default) dimension? Falsy 0 values are skipped when
+ *  applying to layout; percentages and "auto" always apply. */
+export function dimSet(d: CssDim): boolean {
+  return d !== 0;
+}
+
+/** Size- and inset-safe variant of cssDimValue(): Yoga's typings exclude the
+ *  "auto" keyword for sizes/paddings/insets (only margins accept it), so fold
+ *  it to undefined — auto sizing is the engine default anyway. */
+export function cssSizeValue(val: string | undefined): number | `${number}%` | undefined {
+  const d = cssDimValue(val);
+  return d === "auto" ? undefined : d;
+}
+
+/** Expand a 1-4 value CSS box shorthand (padding/margin) to
+ *  [top, right, bottom, left] following the CSS TRBL rotation:
+ *  1 = all, 2 = V H, 3 = T H B, 4 = T R B L. */
+export function expandBoxShorthand(val: string | undefined): [CssDim, CssDim, CssDim, CssDim] {
+  const parts = (val ?? "").trim().split(/\s+/).filter(Boolean);
+  const d = parts.map((p) => cssDimValue(p));
+  if (d.length <= 1) {
+    const v = d[0] ?? 0;
+    return [v, v, v, v];
+  }
+  if (d.length === 2) return [d[0], d[1], d[0], d[1]];
+  if (d.length === 3) return [d[0], d[1], d[2], d[1]];
+  return [d[0], d[1], d[2], d[3]] as [CssDim, CssDim, CssDim, CssDim];
+}
+
 /** Parse CSS aspect-ratio values: "16 / 9", "1/1", or "1.777". */
 export function parseAspectRatio(value: string | undefined): number | undefined {
   const raw = value?.trim().toLowerCase();
@@ -172,12 +223,19 @@ export function measure(node: StyledNode, availableWidth?: number, fontAssets: U
     assetTextWidth(stripInterp(value), node.style, fontAssets) ?? textWidthOf(stripInterp(value), advance);
   if (node.tag === "text" || node.tag === "button" || node.tag === "select") {
     if (node.tag === "select") {
-      // Size to the longest option, not the full comma-separated text
+      // Size to the widest option by RENDERED width, not the full
+      // comma-separated text and not character count — with a proportional
+      // font, equal-length options can differ in width ("Alpha" vs "Gamma"),
+      // and the wider one must fit without wrapping.
       const options = node.options && node.options.length > 0
         ? node.options.map((option) => option.text)
         : (node.text ?? "").split(",").map(s => s.trim()).filter(Boolean);
-      const longest = options.length > 0 ? options.reduce((a, b) => a.length >= b.length ? a : b) : "";
-      return { w: widthOf(applyTextTransform(longest, node)), h: lineHeightOf(node, charH) };
+      const widest = options.length > 0
+        ? options.reduce((a, b) =>
+            widthOf(applyTextTransform(a, node)) >= widthOf(applyTextTransform(b, node)) ? a : b)
+        : "";
+      // +14: the dropdown chevron the runtimes draw at the right end.
+      return { w: widthOf(applyTextTransform(widest, node)) + 14, h: lineHeightOf(node, charH) };
     }
     const text = applyTextTransform(stripInterp(node.text), node);
     const layout = layoutText(text, {

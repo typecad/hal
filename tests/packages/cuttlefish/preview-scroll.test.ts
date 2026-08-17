@@ -128,6 +128,82 @@ function wait(ms: number): Promise<void> {
 }
 
 describe("scroll physics (preview)", () => {
+  it("does not paint press-offset clears outside the scroll viewport during overscroll", async () => {
+    // A button with a pressed-offset (`.btn:pressed { transform: translateY(1px) }`)
+    // inside a scroll body, plus a solid header card above it. Scrolling past
+    // the bottom (wheel overscroll / rubber-band) runs clearPressOffsetArea for
+    // the dirty button while its draw position sits ABOVE the viewport; the
+    // clear used to repair with parent background UNCLIPPED, painting holes
+    // into the header that nothing later re-dirtied.
+    const runtime: any = new PreviewUIRuntime({
+      projectRoot: "",
+      entryFile: "",
+      htmlFile: "",
+      uiTreeNames: ["screen"],
+      program: {
+        width: 100,
+        height: 120,
+        colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", hasBg: true, bg: 0x0000, subtreeEnd: 4, box: { x: 0, y: 0, w: 100, h: 120 } }),
+          // Header card: solid white, entirely outside the scroll viewport.
+          makeNode({ index: 1, tag: "view", kind: "fill", hasBg: true, bg: 0xffff, box: { x: 0, y: 0, w: 100, h: 10 }, parentIndex: 0, subtreeEnd: 2 }),
+          makeNode({
+            index: 2, tag: "view", kind: "fill", box: { x: 0, y: 10, w: 100, h: 100 },
+            hasBg: true, bg: 0x0000, parentIndex: 0, scrollable: true,
+            contentHeight: 300, // viewport 100 → maxScroll 200
+            subtreeEnd: 4,
+          }),
+          makeNode({
+            index: 3, tag: "button", kind: "button", hasBg: true, bg: 0xf800,
+            // At maxScroll (200) the button sits exactly at the viewport top
+            // (drawY 10); ANY overscroll pushes its press-offset clear rect
+            // above the viewport — where the unclipped repair damaged the
+            // header.
+            box: { x: 10, y: 210, w: 60, h: 40 }, parentIndex: 2, subtreeEnd: 4,
+            pressedOffsetY: 1,
+          }),
+        ],
+        transitions: [],
+      },
+      font: new Uint8Array(0),
+      bindings: [],
+      listBindings: [],
+      callbacks: [],
+      initialAssignments: [],
+      intervals: [],
+      pinControls: [],
+      diagnostics: [],
+    } as any);
+    try {
+      runtime.start();
+      await wait(80);
+      const headerBand = (): number => {
+        const b = runtime.gfx.toRgbaBytes();
+        let white = 0;
+        for (let y = 0; y < 10; y++) {
+          for (let x = 0; x < 100; x++) {
+            const i = (y * 100 + x) * 4;
+            if (b[i] === 255 && b[i + 1] === 255 && b[i + 2] === 255) white++;
+          }
+        }
+        return white;
+      };
+      expect(headerBand()).toBe(1000); // header fully painted at rest
+      // Overscroll past the bottom (wheel 1000 > maxScroll 200), let the
+      // rubber-band settle, then hammer it again mid-settle for good measure.
+      runtime.wheel(50, 60, 1000);
+      await wait(300);
+      runtime.tick(33);
+      runtime.wheel(50, 60, 600);
+      await wait(300);
+      runtime.tick(33);
+      expect(headerBand()).toBe(1000); // no holes: clears stayed in the viewport
+    } finally {
+      runtime.stop();
+    }
+  });
+
   it("tracks the finger 1:1 in bounds (drag up scrolls content up)", () => {
     const { runtime, scrollNode } = makeScrollRuntime();
     try {

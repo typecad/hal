@@ -339,8 +339,9 @@ describe("CSS subset parser", () => {
   it("evaluates calc() with multiplication and unit conversion", () => {
     const css = `:root { --r: 0.625rem; } .a { padding: calc(var(--r) * 2); }`;
     const rules = parseCssSrc(css);
-    // 0.625rem = 10px, * 2 = 20
-    expect(rules[0].properties.padding).toBe("20rem");
+    // 0.625rem = 10px, * 2 = 20px (rem/em fold to px — the old first-unit-wins
+    // logic produced "20rem", i.e. 320px).
+    expect(rules[0].properties.padding).toBe("20px");
   });
 
   it("border shorthand captures a var() color (not silently dropped)", () => {

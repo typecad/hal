@@ -1,0 +1,1048 @@
+<script>
+  // app.ui — shadcn component-kit gallery (single-file component).
+  //
+  // Every recipe from `cuttlefish add shadcn` on one device: Button (all
+  // variants/sizes), Badge, Card, Input, Label, Switch, Separator, Alert,
+  // Skeleton, Progress, Avatar, and Table. The kit is copy-and-own CSS —
+  // src/styles/shadcn.css is this project's copy, @imported below. Static
+  // recipes render from markup alone; only the live bits are wired here.
+
+  import { ui } from '@typecad/ui';
+
+  // ── Buttons screen: tap counter drives the badge interpolation ────────────
+  export const taps = ui.signal(0);
+  export function countTap() {
+    taps.set(taps() + 1);
+  }
+
+  // ── Form controls: input echo + switch state ──────────────────────────────
+  ui.bind(screen.nameEcho, 'text', () => `hello, ${screen.demoName.text || 'stranger'}`);
+  ui.bind(screen.switchState, 'text', () => screen.demoSwitch.value ? 'notifications: on' : 'notifications: off');
+
+  // ── Form controls: validation state (shadcn-style) ────────────────────────
+  // Destructive border + hint while the required field is empty; typing or a
+  // non-empty commit clears it. Runtime color swaps are literal hex pinned
+  // to the dark theme (border default = --input, error = --destructive).
+  export const nameInvalid = ui.signal(false);
+  export function validateName() {
+    nameInvalid.set(screen.formValidName.text.trim().length === 0);
+  }
+  screen.formValidName.onChange(() => {
+    validateName();
+  });
+  ui.bind(screen.formValidName, 'borderColor', () => nameInvalid() ? '#ef4444' : '#3f3f46');
+  ui.bind(screen.nameError, 'visible', () => nameInvalid());
+  ui.bind(screen.nameSaved, 'visible', () => !nameInvalid() && screen.formValidName.text.trim().length > 0);
+
+  // ── Form controls: select / checkbox / radio / range echoes ───────────────
+  ui.bind(screen.selectEcho, 'text', () => screen.demoSelect.value == 0 ? 'mode: alpha' : screen.demoSelect.value == 1 ? 'mode: beta' : 'mode: gamma');
+  ui.bind(screen.checkEcho, 'text', () => screen.demoCheck.value ? 'auto-sync: on' : 'auto-sync: off');
+  ui.bind(screen.radioEcho, 'text', () => screen.radioFast.value ? 'speed: fast' : 'speed: calm');
+  ui.bind(screen.rangeEcho, 'text', () => `volume: ${screen.demoRange.value}`);
+
+  // ── Feedback screen: progress 0→100 loop ──────────────────────────────────
+  // Element state (not a local let) so the ownership analyzer sees device
+  // state — same pattern as demo-ui's form progress.
+  screen.demoProgress.value = 0;
+  setInterval(() => {
+    screen.demoProgress.value = (screen.demoProgress.value + 4) % 105;
+  }, 300);
+
+  // ── Lists screen: virtualized list + tap signal ────────────────────────────
+  export const lastRow = ui.signal(0);
+  export function onListTap(i: number) {
+    lastRow.set(i);
+  }
+  ui.bindList(
+    screen.demoList,
+    () => 40,
+    (i: number) => `Row ${i}`,
+    (i: number) => { lastRow.set(i); },
+  );
+
+  // ── Media screen: canvas primitives (flat sequence — lowers cleanly) ───────
+  ui.drawCanvas(screen.demoCanvas, (ctx) => {
+    ctx.fillScreen('#101828');
+    ctx.fillRect(8, 8, 44, 24, '#1a3a5c');
+    ctx.rect(8, 8, 44, 24, '#38bdf8');
+    ctx.fillRoundRect(60, 8, 44, 24, 6, '#166534');
+    ctx.roundRect(60, 8, 44, 24, 6, '#4ade80');
+    ctx.fillCircle(126, 20, 12, '#7f1d1d');
+    ctx.circle(126, 20, 12, '#f87171');
+    ctx.line(150, 6, 190, 38, '#f6c84c');
+    ctx.hline(8, 44, 182, '#334155');
+    ctx.vline(196, 8, 38, '#334155');
+    ctx.drawPixel(10, 52, '#f7f3e8');
+    ctx.drawPixel(14, 54, '#f7f3e8');
+    ctx.drawPixel(18, 52, '#f7f3e8');
+    ctx.text(8, 62, 'canvas primitives', '#94a3b8');
+  });
+
+  // ── Keyboard screen ────────────────────────────────────────────────────────
+  screen.kbInput.onChange(() => {
+    console.log('message:', screen.kbInput.text);
+  });
+
+  // ── State screen: signals drive text, style, and the tab title ─────────────
+  export const clicks = ui.signal(0);
+  export function bump() {
+    clicks.set(clicks() + 1);
+    ui.window.setTitle('gallery: ' + (clicks() + 1) + ' clicks');
+  }
+  export const volume = ui.signal(4);
+
+  // ── Tabs screen: signal-driven pane switching ──────────────────────────────
+  export const activeTab = ui.signal(0);
+  export function showTab0() { activeTab.set(0); }
+  export function showTab1() { activeTab.set(1); }
+  export function showTab2() { activeTab.set(2); }
+  // Panes toggle visibility; layout keeps every pane's box (absolute stack in
+  // a fixed-height region), so switching never re-flows.
+  ui.bind(screen.tabPane0, 'visible', () => activeTab() === 0);
+  ui.bind(screen.tabPane1, 'visible', () => activeTab() === 1);
+  ui.bind(screen.tabPane2, 'visible', () => activeTab() === 2);
+  // Active trigger styling: runtime color swaps are literal hex pinned to the
+  // dark theme (compile-time tokens — same caveat as native_demo accents).
+  ui.bind(screen.tabBtn0, 'background', () => activeTab() === 0 ? '#18181b' : '#09090b');
+  ui.bind(screen.tabBtn0, 'color', () => activeTab() === 0 ? '#fafafa' : '#a1a1aa');
+  ui.bind(screen.tabBtn1, 'background', () => activeTab() === 1 ? '#18181b' : '#09090b');
+  ui.bind(screen.tabBtn1, 'color', () => activeTab() === 1 ? '#fafafa' : '#a1a1aa');
+  ui.bind(screen.tabBtn2, 'background', () => activeTab() === 2 ? '#18181b' : '#09090b');
+  ui.bind(screen.tabBtn2, 'color', () => activeTab() === 2 ? '#fafafa' : '#a1a1aa');
+  // Pane content is live: a control inside a pane drives bound text.
+  ui.bind(screen.tabSliderEcho, 'text', () => 'density: ' + screen.tabSlider.value);
+
+  // ── Accordion screen: single-open collapsible sections ─────────────────────
+  // -1 = all closed. Toggling an open item closes it (shadcn type="single").
+  export const openAcc = ui.signal(-1);
+  export function toggleAcc0() { openAcc.set(openAcc() === 0 ? -1 : 0); }
+  export function toggleAcc1() { openAcc.set(openAcc() === 1 ? -1 : 1); }
+  export function toggleAcc2() { openAcc.set(openAcc() === 2 ? -1 : 2); }
+  ui.bind(screen.accPane0, 'visible', () => openAcc() === 0);
+  ui.bind(screen.accPane1, 'visible', () => openAcc() === 1);
+  ui.bind(screen.accPane2, 'visible', () => openAcc() === 2);
+  // Chevron swaps v/^ (text binding; the ui.bind-text widening gives the
+  // face both glyphs).
+  ui.bind(screen.accChev0, 'text', () => openAcc() === 0 ? '^' : 'v');
+  ui.bind(screen.accChev1, 'text', () => openAcc() === 1 ? '^' : 'v');
+  ui.bind(screen.accChev2, 'text', () => openAcc() === 2 ? '^' : 'v');
+  // Content is live: a check inside item 2 drives bound text.
+  ui.bind(screen.accCheckEcho, 'text', () => openAcc() === 2 && screen.accCheck.value ? 'sync: on' : 'sync: off');
+
+  // ── Drawer screen: programmatic open/close ─────────────────────────────────
+  export function openDrawer() {
+    ui.drawer.open('demoDrawer');
+  }
+  export function closeDrawer() {
+    ui.drawer.close('demoDrawer');
+  }
+  export const drawerTaps = ui.signal(0);
+  export function drawerAction() {
+    drawerTaps.set(drawerTaps() + 1);
+  }
+  ui.bind(screen.demoMeter, 'value', () => volume() * 10);
+  ui.bind(screen.lamp, 'background', () => screen.stateCheck.value ? '#29d391' : '#52525b');
+  export const ticks = ui.signal(0);
+  setInterval(() => {
+    ticks.set(ticks() + 1);
+  }, 1000);
+</script>
+
+<style>
+@import "./styles/shadcn.css";
+/* ---------------------------------------------------------------------------
+   shadcn gallery shell — scaffolding for the demo screens, expressed only
+   through the kit's tokens (no second palette: re-theming shadcn.css
+   restyles the whole app, including this chrome). Select the kit's dark
+   token set via themeClass:'dark' in cuttlefish.config.ts.
+   ----------------------------------------------------------------------- */
+
+screen {
+  background: var(--background);
+  /* Dark themes must set the root text color: the UA default is light-theme
+     dark text (#1a1a1a), and elements without their own color rule (e.g. the
+     switch indicator) inherit it. */
+  color: var(--foreground);
+  gap: 8px;
+  padding: 10px;
+}
+
+/* Scrollable main column (UA gives body display:flex column flex:1). */
+.scrollBody {
+  overflow: scroll;
+  flex: 1;
+  align-items: stretch;
+  gap: 10px;
+  background: var(--background);
+}
+
+/* Content-screen header: back link + title, styled like a flat card bar. */
+.screenHeader {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+.backLink {
+  color: var(--foreground);
+  font-size: 16px;
+}
+.screenTitle {
+  color: var(--foreground);
+  font-size: 20px;
+  font-weight: bold;
+}
+
+/* Section captions. */
+.demoLabel {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+
+/* ── Home ── */
+#homeHeader {
+  align-items: center;
+  gap: 2px;
+  align-self: stretch;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+#homeTitle {
+  color: var(--foreground);
+  font-size: 22px;
+  font-weight: bold;
+}
+#homeSubtitle {
+  color: var(--muted-foreground);
+  font-size: 14px;
+}
+#homeNav {
+  gap: 6px;
+  align-self: stretch;
+}
+/* Nav entries borrow the outline-button look — shadcn sidebar-link feel. */
+#homeNav button {
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+/* ── Buttons screen: variant rows stay inside the column width ── */
+.btnRow {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Form controls: native select styled like the kit's input; muted echo ── */
+.select {
+  background: var(--background);
+  color: var(--foreground);
+  border: 1px solid var(--input);
+  border-radius: var(--radius);
+}
+.controlEcho {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.formStack {
+  gap: 6px;
+  align-self: stretch;
+}
+
+/* ── Feedback screen: avatar row ── */
+.avatarRow {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.avatarName {
+  color: var(--foreground);
+  font-weight: bold;
+}
+.avatarRole {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+/* ── Typography screen ── */
+.typePanel {
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  gap: 6px;
+  align-self: stretch;
+}
+.typePanel pre {
+  background: var(--muted);
+  border-radius: var(--radius);
+  padding: 8px;
+}
+/* code/kbd render in the mono FACE (per-run font); run-level backgrounds
+   and padding are not supported, so no badge chrome here. */
+.uppercase { text-transform: uppercase; }
+.spaced { letter-spacing: 2px; }
+.ellip {
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 180px;
+  color: var(--muted-foreground);
+}
+
+/* ── Rich text ── */
+.richPanel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  align-self: stretch;
+}
+
+/* ── Layout screen: absolute z-index layers ── */
+.layerStack {
+  position: relative;
+  height: 96px;
+  align-self: stretch;
+}
+#layerBack {
+  position: absolute; left: 6px; top: 6px; width: 130px; height: 44px;
+  background: var(--secondary); border: 1px solid var(--border); z-index: 1;
+  justify-content: center; align-items: center;
+}
+#layerMid {
+  position: absolute; left: 60px; top: 22px; width: 130px; height: 44px;
+  background: var(--input); border: 1px solid var(--border); z-index: 2;
+  justify-content: center; align-items: center;
+}
+#layerFront {
+  position: absolute; right: 6px; bottom: 4px; width: 92px; height: 30px;
+  background: var(--destructive); z-index: 3;
+  justify-content: center; align-items: center;
+}
+.hiddenAttr { }
+.goneRow { display: none; }
+.collapseRow { visibility: collapse; }
+.visNote { color: var(--muted-foreground); font-size: 12px; }
+
+/* ── Effects screen ── */
+.fxCard {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  gap: 10px;
+  align-self: stretch;
+}
+.gradA { background: linear-gradient(#38bdf8, #7c3aed); }
+.gradB { background: linear-gradient(#f6c84c, #ef4444); }
+.gradBox { height: 30px; border-radius: var(--radius); }
+.shadowHard { box-shadow: 4px 4px 0px 0px #000000; }
+.shadowSoft { box-shadow: 2px 3px 8px 0px #000000; }
+.shadowInsetDemo { box-shadow: inset 0 2px 8px 0px #000000; background: var(--muted); }
+.fxRow { flex-direction: row; align-items: center; gap: 12px; align-self: stretch; }
+.fxBox {
+  width: 52px; height: 30px;
+  background: var(--primary);
+  border-radius: var(--radius);
+}
+@keyframes gallery-slide {
+  0%, 100% { transform: translate(0px, 0px); }
+  50% { transform: translate(180px, 0px); }
+}
+/* Rotation renders at exact quarter turns (90/180/270 swap w/h; other
+   angles draw unrotated), so hold each quarter for a readable "clock". */
+@keyframes gallery-turn {
+  0%, 20% { transform: rotate(0deg); }
+  25%, 45% { transform: rotate(90deg); }
+  50%, 70% { transform: rotate(180deg); }
+  75%, 95% { transform: rotate(270deg); }
+  100% { transform: rotate(360deg); }
+}
+/* scale() takes a CSS unitless ratio: 1 = 100%, 0.6 = 60%. */
+@keyframes gallery-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.6); }
+}
+@keyframes gallery-color {
+  0%, 100% { background: #7c3aed; }
+  50% { background: #f6c84c; }
+}
+#fxSlide { animation: gallery-slide 2200ms infinite; animation-timing-function: ease-in-out; }
+/* Rotation renders as quarter turns (0/90/180/270 swap w/h) — a non-square
+   shape makes them visible; a square would look frozen. */
+#fxTurn { animation: gallery-turn 1800ms infinite linear; width: 44px; height: 24px; }
+#fxPulse { animation: gallery-pulse 1200ms infinite ease-in-out; }
+#fxColor { animation: gallery-color 1600ms infinite; width: 52px; height: 30px; border-radius: var(--radius); }
+
+/* ── Media screen: img object-fit modes ── */
+.fitRow { flex-direction: row; align-items: center; gap: 10px; }
+.fitLabel { width: 52px; color: var(--muted-foreground); font-size: 13px; }
+.fitFrame {
+  width: 72px; height: 30px;
+  background: var(--card);
+  border: 1px solid var(--border);
+}
+
+/* ── Lists screen ── */
+#lists .scrollBody { align-items: stretch; }
+#demoList {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* ── Keyboard screen ── */
+#keyboard .scrollBody { align-items: stretch; }
+
+/* ── Drawer screen: the panel is author-styled (absolute, edge-anchored);
+   the runtime slides it in/out and hides it while closed. */
+.drawerPanel {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  height: 168px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  gap: 10px;
+  z-index: 10;
+}
+#drawerScreen { position: relative; }
+
+/* ── State screen ── */
+#lamp { width: 18px; height: 18px; border-radius: 999px; background: #52525b; }
+#clockText, #listTapEcho { color: var(--muted-foreground); font-size: 13px; }
+</style>
+
+<!-- ── Home ──────────────────────────────────────────────────────────────── -->
+<screen id="home">
+  <body>
+    <header id="homeHeader">
+      <h1 id="homeTitle">shadcn kit</h1>
+      <p id="homeSubtitle">component gallery — cuttlefish add shadcn</p>
+    </header>
+    <main class="scrollBody">
+      <nav id="homeNav">
+        <button href="#buttons">Button &gt;</button>
+        <button href="#badges">Badge &amp; Separator &gt;</button>
+        <button href="#cards">Card &gt;</button>
+        <button href="#forms">Form Controls &gt;</button>
+        <button href="#alerts">Alert &amp; Skeleton &gt;</button>
+        <button href="#feedback">Progress &amp; Avatar &gt;</button>
+        <button href="#table">Table &gt;</button>
+        <button href="#typography">Typography &gt;</button>
+        <button href="#richtext">Rich Text &gt;</button>
+        <button href="#layout">Layers &amp; Visibility &gt;</button>
+        <button href="#effects">Gradients &amp; Motion &gt;</button>
+        <button href="#media">Images &amp; Canvas &gt;</button>
+        <button href="#lists">Virtualized List &gt;</button>
+        <button href="#keyboard">Keyboard &gt;</button>
+        <button href="#state">State &amp; Bindings &gt;</button>
+        <button href="#drawer">Drawer &gt;</button>
+        <button href="#tabs">Tabs &gt;</button>
+        <button href="#accordion">Accordion &gt;</button>
+      </nav>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Button ────────────────────────────────────────────────────────────── -->
+<screen id="buttons">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Button</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">variants</h3>
+      <view class="btnRow">
+        <button id="btnPrimary" class="btn btn-primary" on:click={countTap}>Primary</button>
+        <button id="btnSecondary" class="btn btn-secondary" on:click={countTap}>Secondary</button>
+      </view>
+      <view class="btnRow">
+        <button id="btnOutline" class="btn btn-outline" on:click={countTap}>Outline</button>
+        <button id="btnGhost" class="btn btn-ghost" on:click={countTap}>Ghost</button>
+      </view>
+      <button id="btnDestructive" class="btn btn-destructive" on:click={countTap}>Destructive</button>
+      <h3 class="demoLabel">sizes</h3>
+      <view class="btnRow">
+        <button id="btnSmall" class="btn btn-primary btn-sm" on:click={countTap}>Small</button>
+        <button id="btnLarge" class="btn btn-primary btn-lg" on:click={countTap}>Large</button>
+      </view>
+      <h3 class="demoLabel">block + live badge</h3>
+      <text id="tapBadge" class="badge">taps: {taps}</text>
+      <button id="btnBlock" class="btn btn-outline btn-block" on:click={countTap}>tap any button</button>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Badge + Separator ─────────────────────────────────────────────────── -->
+<screen id="badges">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Badge &amp; Separator</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">variants</h3>
+      <view class="btnRow">
+        <text class="badge">default</text>
+        <text class="badge badge-secondary">secondary</text>
+      </view>
+      <view class="btnRow">
+        <text class="badge badge-destructive">destructive</text>
+        <text class="badge badge-outline">outline</text>
+      </view>
+      <hr class="separator"/>
+      <h3 class="demoLabel">separator above this label</h3>
+      <h3 class="demoLabel">vertical separators in a row</h3>
+      <view class="btnRow" style="align-self: stretch; height: 44px;">
+        <text class="badge">left</text>
+        <hr class="vseparator"></hr>
+        <text class="badge badge-secondary">middle</text>
+        <hr class="vseparator"></hr>
+        <text class="badge badge-outline">right</text>
+      </view>
+      <view class="card">
+        <text class="card-title">Shipping status</text>
+        <hr class="separator"/>
+        <view class="btnRow">
+          <text class="badge">packed</text>
+          <text class="badge badge-secondary">in transit</text>
+          <text class="badge badge-outline">delivered</text>
+        </view>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Card ──────────────────────────────────────────────────────────────── -->
+<screen id="cards">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Card</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">full anatomy: header / content / footer</h3>
+      <view class="card">
+        <view class="card-header">
+          <text class="card-title">Sensor node</text>
+          <text class="card-description">living room, ESP32-S3</text>
+        </view>
+        <view class="card-content">
+          <text class="card-description">Battery 84% — reporting every 30s.</text>
+        </view>
+        <view class="card-footer">
+          <button class="btn btn-primary btn-sm">Save</button>
+          <button class="btn btn-outline btn-sm">Cancel</button>
+        </view>
+      </view>
+      <h3 class="demoLabel">compact card</h3>
+      <view class="card">
+        <text class="card-title">Quick action</text>
+        <button class="btn btn-secondary btn-block">Run calibration</button>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Form controls: Input / Label / Switch / Select / Checkbox / Radio / Range ── -->
+<screen id="forms">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Form Controls</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">input + label (live echo below)</h3>
+      <label class="form-label">Device name</label>
+      <input id="demoName" class="input" placeholder="living-room-node"></input>
+      <text id="nameEcho" class="card-description">hello, stranger</text>
+      <hr class="separator"/>
+      <h3 class="demoLabel">switch (pill + runtime indicator)</h3>
+      <view class="btnRow">
+        <check id="demoSwitch" class="switch"></check>
+        <text id="switchState" class="card-description">notifications: off</text>
+      </view>
+      <hr class="separator"/>
+      <h3 class="demoLabel">select (tap to open the option list)</h3>
+      <select id="demoSelect" class="select">
+        <option value="a">Alpha</option>
+        <option value="b">Beta</option>
+        <option value="c">Gamma</option>
+      </select>
+      <text id="selectEcho" class="controlEcho">mode: alpha</text>
+      <hr class="separator"/>
+      <h3 class="demoLabel">checkbox</h3>
+      <view class="btnRow">
+        <check id="demoCheck">Auto-sync</check>
+        <text id="checkEcho" class="controlEcho">auto-sync: off</text>
+      </view>
+      <hr class="separator"/>
+      <h3 class="demoLabel">radio group (shared name)</h3>
+      <view class="btnRow">
+        <radio id="radioCalm" name="speed" checked>Calm</radio>
+        <radio id="radioFast" name="speed">Fast</radio>
+      </view>
+      <text id="radioEcho" class="controlEcho">speed: calm</text>
+      <hr class="separator"/>
+      <h3 class="demoLabel">range / slider (drag the thumb)</h3>
+      <view class="formStack">
+        <range id="demoRange" min="0" max="10" value="3"></range>
+        <text id="rangeEcho" class="controlEcho">volume: 3</text>
+      </view>
+      <hr class="separator"/>
+      <h3 class="demoLabel">validation (required field, shadcn-style)</h3>
+      <view class="formStack">
+        <label class="form-label" for="formValidName">Display name</label>
+        <input id="formValidName" class="input" placeholder="required"></input>
+        <text id="nameError" class="field-error">name is required</text>
+        <text id="nameSaved" class="field-success">looks good</text>
+        <button id="formValidSave" class="btn btn-primary btn-sm" on:click={validateName}>Save</button>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Alert + Skeleton ──────────────────────────────────────────────────── -->
+<screen id="alerts">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Alert &amp; Skeleton</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">default alert</h3>
+      <view class="alert">
+        <text class="alert-title">Update available</text>
+        <text class="alert-description">Firmware 1.2.0 is ready to install.</text>
+      </view>
+      <h3 class="demoLabel">destructive alert</h3>
+      <view class="alert alert-destructive">
+        <text class="alert-title">Battery low</text>
+        <text class="alert-description">Replace within 48h — 11% remaining.</text>
+      </view>
+      <h3 class="demoLabel">skeleton (pulse while loading)</h3>
+      <view class="card">
+        <view class="skeleton"/>
+        <view class="skeleton" style="height: 10px;"/>
+        <view class="skeleton" style="height: 10px; width: 60%;"/>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Progress + Avatar ─────────────────────────────────────────────────── -->
+<screen id="feedback">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Progress &amp; Avatar</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">progress (animated)</h3>
+      <progress id="demoProgress" class="progress" value="0"></progress>
+      <hr class="separator"/>
+      <h3 class="demoLabel">avatar (circular crop)</h3>
+      <view class="avatarRow">
+        <img id="demoAvatar" class="avatar" src="avatar.img" style="width: 48px; height: 48px; object-fit: cover;"></img>
+        <view>
+          <text class="avatarName">Ada Lovelace</text>
+          <text class="avatarRole">maintainer</text>
+        </view>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Table ─────────────────────────────────────────────────────────────── -->
+<screen id="table">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Table</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">equal-width flex approximation (UA styles)</h3>
+      <view class="card">
+        <view class="card-header">
+          <text class="card-title">Readings</text>
+          <text class="card-description">last 3 reports</text>
+        </view>
+        <table>
+          <thead>
+            <tr><th>sensor</th><th>value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>temp</td><td>21.4 C</td></tr>
+            <tr><td>humidity</td><td>44 %</td></tr>
+            <tr><td>pressure</td><td>1013 hPa</td></tr>
+          </tbody>
+        </table>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Typography ────────────────────────────────────────────────────────── -->
+<screen id="typography">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Typography</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">headings h1..h6 (UA scale, AA font)</h3>
+      <view class="typePanel">
+        <h1>Heading 1</h1>
+        <h2>Heading 2</h2>
+        <h3>Heading 3</h3>
+        <h4>Heading 4</h4>
+        <h5>Heading 5</h5>
+        <h6>Heading 6</h6>
+      </view>
+      <h3 class="demoLabel">paragraph, small, mono</h3>
+      <view class="typePanel">
+        <p>Body copy at the UA root size with antialiased glyphs.</p>
+        <small>small print for footnotes and captions</small>
+        <pre>const x = 42;
+setup(); loop();</pre>
+        <p>Inline <code>code()</code> and a <kbd>kbd</kbd> key render in the mono face.</p>
+      </view>
+      <h3 class="demoLabel">lists</h3>
+      <view class="typePanel">
+        <ul>
+          <li>unordered item</li>
+          <li>another item</li>
+        </ul>
+        <ol>
+          <li>ordered item</li>
+          <li>second item</li>
+        </ol>
+        <dl>
+          <dt>term</dt>
+          <dd>definition text</dd>
+        </dl>
+      </view>
+      <h3 class="demoLabel">text styles</h3>
+      <view class="typePanel">
+        <text class="uppercase">uppercased text</text>
+        <text class="spaced">letter-spaced</text>
+        <text class="ellip">this long line is clipped with an ellipsis when it overflows the fixed width</text>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Rich text ─────────────────────────────────────────────────────────── -->
+<screen id="richtext">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Rich Text</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">mixed inline runs (bold / italic / underline / link / span)</h3>
+      <view class="richPanel">
+        <p style="width: 270px;">This is a <b>rich text</b> paragraph with <i>italic</i>, <u>underline</u>, and a <a href="#home">link home</a>. It wraps across lines with <span style="color:#f6c84c">colored</span> runs and a <span style="font-size:20px; font-weight: bold;">bigger</span> word on the same line.</p>
+      </view>
+      <h3 class="demoLabel">hard breaks</h3>
+      <view class="richPanel">
+        <p style="width: 270px;">Line one.<br/>Line two after a break.<br/><br/>After a blank line.</p>
+      </view>
+      <h3 class="demoLabel">nested styles</h3>
+      <view class="richPanel">
+        <p style="width: 270px;">Nested <b>bold and <i>both</i></b> styles in one run sequence.</p>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Layers & visibility ───────────────────────────────────────────────── -->
+<screen id="layout">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Layers &amp; Visibility</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">absolute position + z-index (1 &lt; 2 &lt; 3)</h3>
+      <view class="layerStack">
+        <view id="layerBack"><text class="visNote">z1 back</text></view>
+        <view id="layerMid"><text class="visNote">z2 mid</text></view>
+        <view id="layerFront"><text class="visNote">z3 front</text></view>
+      </view>
+      <h3 class="demoLabel">visibility models</h3>
+      <view class="card">
+        <text class="card-description">visible row (default)</text>
+        <text class="goneRow">display: none - gone</text>
+        <text class="visNote" style="height: 18px;">the row above took no space (display:none)</text>
+        <text class="collapseRow">visibility: collapse</text>
+        <text class="visNote">collapse reserves its row (gap above)</text>
+      </view>
+      <view class="card">
+        <text class="card-title">hidden attribute</text>
+        <text class="card-description">a hidden row occupies no space</text>
+        <text hidden>This row is hidden.</text>
+        <text class="card-description">...and rendering continues without a gap.</text>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Gradients & motion ────────────────────────────────────────────────── -->
+<screen id="effects">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Gradients &amp; Motion</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">linear gradients</h3>
+      <view class="fxCard">
+        <view class="gradBox gradA"></view>
+        <view class="gradBox gradB"></view>
+      </view>
+      <h3 class="demoLabel">shadows (hard / soft / inset)</h3>
+      <view class="fxCard">
+        <view class="fxBox shadowHard"></view>
+        <view class="fxBox shadowSoft"></view>
+        <view class="gradBox shadowInsetDemo"></view>
+      </view>
+      <h3 class="demoLabel">css animations (keyframes)</h3>
+      <view class="fxCard">
+        <view id="fxSlide" class="fxBox"></view>
+        <view class="fxRow">
+          <view id="fxTurn" class="fxBox"></view>
+          <view id="fxPulse" class="fxBox"></view>
+          <view id="fxColor"></view>
+        </view>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Images & canvas ───────────────────────────────────────────────────── -->
+<screen id="media">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Images &amp; Canvas</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">img object-fit (frame 72x30, source 32x32)</h3>
+      <view class="card">
+        <view class="fitRow">
+          <text class="fitLabel">contain</text>
+          <img id="imgContain" class="avatar" src="avatar.img" style="width: 72px; height: 30px; object-fit: contain;"></img>
+        </view>
+        <view class="fitRow">
+          <text class="fitLabel">cover</text>
+          <img id="imgCover" class="avatar" src="avatar.img" style="width: 72px; height: 30px; object-fit: cover;"></img>
+        </view>
+        <view class="fitRow">
+          <text class="fitLabel">fill</text>
+          <img id="imgFill" class="avatar" src="avatar.img" style="width: 72px; height: 30px; object-fit: fill;"></img>
+        </view>
+      </view>
+      <h3 class="demoLabel">canvas: every primitive once</h3>
+      <canvas id="demoCanvas" width="204" height="80"></canvas>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Virtualized list ──────────────────────────────────────────────────── -->
+<screen id="lists">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Virtualized List</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">40 rows, tap-aware, drag to scroll</h3>
+      <list id="demoList" item-height="24"></list>
+      <text id="listTapEcho">last tapped: row {lastRow}</text>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Keyboard ──────────────────────────────────────────────────────────── -->
+<screen id="keyboard">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Keyboard</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">tap the field to open the on-screen keyboard</h3>
+      <label class="form-label" for="kbInput">Message</label>
+      <input id="kbInput" class="input" type="text" placeholder="type here" maxlength="32"></input>
+    </main>
+  </body>
+</screen>
+
+<!-- Custom keyboard template (sibling of <screen>). -->
+<keyboard id="kbAlpha" variant="alpha" class="ui-keyboard">
+  <row>
+    <key>q</key><key>w</key><key>e</key><key>r</key><key>t</key><key>y</key><key>u</key><key>i</key><key>o</key><key>p</key>
+  </row>
+  <row>
+    <key>a</key><key>s</key><key>d</key><key>f</key><key>g</key><key>h</key><key>j</key><key>k</key><key>l</key>
+  </row>
+  <row>
+    <key special="1">SHIFT</key><key>z</key><key>x</key><key>c</key><key>v</key><key>b</key><key>n</key><key>m</key><key special="2">DEL</key>
+  </row>
+  <row>
+    <key special="4">123</key><key> </key><key special="3">OK</key>
+  </row>
+</keyboard>
+
+<!-- ── State & bindings ──────────────────────────────────────────────────── -->
+<screen id="state">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">State &amp; Bindings</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">signal + interpolation + window title</h3>
+      <view class="btnRow">
+        <button id="bumpBtn" class="btn btn-primary" on:click={bump}>Bump</button>
+        <text id="clickBadge" class="badge">clicks: {clicks}</text>
+      </view>
+      <h3 class="demoLabel">signal drives style (lamp follows the check)</h3>
+      <view class="btnRow">
+        <check id="stateCheck">Armed</check>
+        <view id="lamp"></view>
+      </view>
+      <h3 class="demoLabel">declarative two-way bind:value (range - signal)</h3>
+      <view class="formStack">
+        <range id="boundRange" min="0" max="10" bind:value={volume}></range>
+        <text id="volEcho" class="controlEcho">volume: {volume}</text>
+      </view>
+      <h3 class="demoLabel">interval + bound text (element state)</h3>
+      <text id="clockText">uptime ticks: {ticks}</text>
+      <h3 class="demoLabel">meter (static gauge; bound to the slider above)</h3>
+      <meter id="demoMeter" value="40"></meter>
+      <h3 class="demoLabel">disabled controls</h3>
+      <view class="formStack">
+        <input id="lockedInput" class="input" placeholder="read only" disabled></input>
+        <button id="lockedBtn" class="btn btn-secondary" disabled>Disabled</button>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Drawer ────────────────────────────────────────────────────────────── -->
+<screen id="drawer">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Drawer</h2>
+    </header>
+    <main id="drawerScreen" class="scrollBody">
+      <h3 class="demoLabel">slide-in panel (side="bottom"), themed, outside-tap closes</h3>
+      <button id="openDrawerBtn" class="btn btn-primary" on:click={openDrawer}>Open drawer</button>
+      <text id="drawerTapEcho" class="controlEcho">taps inside: {drawerTaps}</text>
+      <drawer id="demoDrawer" side="bottom" class="drawerPanel">
+        <text class="card-title">Drawer title</text>
+        <text class="card-description">Content slides in from the bottom edge; the panel is styled like any element (tokens flow through).</text>
+        <view class="btnRow">
+          <button id="drawerActionBtn" class="btn btn-secondary btn-sm" on:click={drawerAction}>Tap me</button>
+          <button id="closeDrawerBtn" class="btn btn-outline btn-sm" on:click={closeDrawer}>Close</button>
+        </view>
+      </drawer>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Tabs ───────────────────────────────────────────────────────────────── -->
+<screen id="tabs">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Tabs</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">signal-driven panes; content stays interactive</h3>
+      <view class="tabs-list">
+        <button id="tabBtn0" class="tabs-trigger" on:click={showTab0}>Account</button>
+        <button id="tabBtn1" class="tabs-trigger" on:click={showTab1}>Display</button>
+        <button id="tabBtn2" class="tabs-trigger" on:click={showTab2}>About</button>
+      </view>
+      <view class="tabs-content-area">
+        <view id="tabPane0" class="tabs-content card">
+          <text class="card-title">Account</text>
+          <label class="form-label" for="tabName">Name</label>
+          <input id="tabName" class="input" placeholder="Ada Lovelace"></input>
+        </view>
+        <view id="tabPane1" class="tabs-content card">
+          <text class="card-title">Display</text>
+          <text class="card-description">Density</text>
+          <range id="tabSlider" min="0" max="10" value="4"></range>
+          <text id="tabSliderEcho" class="controlEcho">density: 4</text>
+        </view>
+        <view id="tabPane2" class="tabs-content card">
+          <text class="card-title">About</text>
+          <text class="card-description">Tabs recipe: absolutely-stacked panes toggled by a signal via ui.bind(x, 'visible', ...). Active trigger styling swaps literal hex colors at runtime.</text>
+          <text class="badge">v1</text>
+        </view>
+      </view>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Accordion ──────────────────────────────────────────────────────────── -->
+<screen id="accordion">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Accordion</h2>
+    </header>
+    <main class="scrollBody">
+      <h3 class="demoLabel">single-open sections; content stays interactive</h3>
+      <view class="accordion">
+        <view class="accordion-item">
+          <view class="accordion-trigger-row">
+            <button id="accTrig0" class="accordion-trigger" on:click={toggleAcc0}>Notifications</button>
+            <text id="accChev0" class="accordion-chevron">v</text>
+          </view>
+          <view id="accPane0" class="accordion-content">
+            <text class="card-description">Choose what this device reports. Sections collapse to one open item at a time.</text>
+          </view>
+        </view>
+        <view class="accordion-item">
+          <view class="accordion-trigger-row">
+            <button id="accTrig1" class="accordion-trigger" on:click={toggleAcc1}>Display</button>
+            <text id="accChev1" class="accordion-chevron">v</text>
+          </view>
+          <view id="accPane1" class="accordion-content">
+            <range id="accRange" min="0" max="10" value="5"></range>
+          </view>
+        </view>
+        <view class="accordion-item">
+          <view class="accordion-trigger-row">
+            <button id="accTrig2" class="accordion-trigger" on:click={toggleAcc2}>Sync</button>
+            <text id="accChev2" class="accordion-chevron">v</text>
+          </view>
+          <view id="accPane2" class="accordion-content">
+            <check id="accCheck">Enable auto-sync</check>
+            <text id="accCheckEcho" class="controlEcho">sync: off</text>
+          </view>
+        </view>
+      </view>
+    </main>
+  </body>
+</screen>

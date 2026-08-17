@@ -46,8 +46,13 @@ describe("html-parser inline integration", () => {
     const tree = parseHtml(`<screen><p id="p">text <view></view></p></screen>`);
     const p = tree.children[0];
     expect(p.inline).toBeUndefined();
-    // The view becomes a child node (block breaks inline flow).
-    expect(p.children.length).toBe(1);
+    // Block child breaks inline flow: the stray text is preserved as an
+    // anonymous text child (CSS anonymous-block-box model — never dropped)
+    // alongside the view child.
+    expect(p.children.length).toBe(2);
+    expect(p.children[0].tag).toBe("text");
+    expect(p.children[0].text).toBe("text");
+    expect(p.children[1].tag).toBe("view");
   });
 
   it("captures href on an <a> item", () => {

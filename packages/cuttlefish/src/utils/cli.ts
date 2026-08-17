@@ -1,5 +1,6 @@
 ﻿import path from "node:path";
-import { CommandLineOptions, CreateCommandOptions, BoardAddCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
+import { CommandLineOptions, CreateCommandOptions, BoardAddCommandOptions, AddCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
+import { listAddPresets } from "../add-preset.js";
 
 import chalk from "chalk";
 
@@ -16,6 +17,8 @@ export function printHelp(): void {
   console.log(`  cuttlefish <input.ts> [options]`);
   console.log(`  cuttlefish create [name] [options]`);
   console.log(`  cuttlefish build [options]`);
+  console.log(`  cuttlefish add <preset> [--force]   Copy a preset asset into src/ (yours to edit):`);
+  console.log(`${listAddPresets()}`);
   console.log(`  cuttlefish preview [--config <path>] [--port <port>]`);
   console.log(`  cuttlefish gen-libdefs <input.ts>`);
   console.log(`  cuttlefish board add <spec.jsonc> [--force]   Generate board + MCU packages from a chip spec`);
@@ -52,6 +55,10 @@ export function printHelp(): void {
   console.log();
   console.log(`  --autosar-arxml         Also write <name>.autosar-deviations.arxml (Artop/DaVinci).`);
   console.log(`                          No-op unless --autosar is warn or strict.`);
+  console.log();
+  console.log(`  --strict-css            Treat UI CSS-compatibility warnings as errors (css-*`);
+  console.log(`                          diagnostics: ignored alpha, quantized font sizes,`);
+  console.log(`                          unsupported display/position values, viewport-hogging sizes).`);
   console.log();
   console.log(chalk.cyan(`BUILD COMMANDS`) + chalk.gray(` (chain in order: --compile → --upload → --monitor)`));
   console.log();
@@ -294,6 +301,11 @@ function parsePipelineCommand(
   // (Artop/DaVinci tooling). No-op unless --autosar is warn or strict.
   const autosarArxml = readBooleanFlag(argv, ["--autosar-arxml"]);
 
+  // --strict-css: upgrade UI CSS-compatibility warnings (css-* diagnostics,
+  // e.g. ignored alpha, quantized font sizes, unsupported display values) to
+  // errors so builds fail instead of silently approximating.
+  const strictCss = readBooleanFlag(argv, ["--strict-css"]);
+
   const emitMode: EmitMode = emitFlag === "cpp" || emitFlag === "split" ? emitFlag : "split";
   const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
   // Accept any target string — the framework package registers its own strategy id.
@@ -350,10 +362,11 @@ function parsePipelineCommand(
     frameworkPackage: frameworkFlag,
     autosar,
     autosarArxml,
+    strictCss,
   };
 }
 
-export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | BoardAddCommandOptions | "help" {
+export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | BoardAddCommandOptions | AddCommandOptions | "help" {
   const firstArg = argv[2];
 
   if (!firstArg || firstArg === "--help" || firstArg === "-h") {
@@ -439,6 +452,21 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       watch: false,
       baud: 9600,
       platformContext: {},
+    };
+  }
+
+  // add subcommand — scaffold a copy-and-own preset asset into the project
+  // (e.g. `cuttlefish add shadcn`). The preset id is the next positional arg.
+  if (firstArg === "add") {
+    const preset = argv[3];
+    if (!preset || preset.startsWith("-")) {
+      throw new Error(`Usage: cuttlefish add <preset> [--force]\nAvailable presets:\n${listAddPresets()}`);
+    }
+    return {
+      command: "add",
+      preset,
+      force: argv.includes("--force"),
+      projectRoot: process.cwd(),
     };
   }
 
