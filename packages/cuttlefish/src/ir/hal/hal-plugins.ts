@@ -6,6 +6,7 @@ import { resolveExpressionText, extractAndRegisterCallbacks } from "./hal-emitte
 import { renderExprAsText } from "../render-expr.js";
 import type { ExpressionIR } from "../../api/index.js";
 import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
+import { notePinSetMode, notePinToggle, notePinWrite, notePinAnalogOutput, resolveTrackedRead } from "../pin-state-tracking.js";
 
 /**
  * Split a comma-joined argument list back into individual arguments, respecting
@@ -392,11 +393,13 @@ export function tryResolveSemanticCall(
       // Try literal resolution first (compile-time 0/1/true/false)
       const numValue = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (numValue !== null) {
+        notePinWrite(pin, numValue);
         return { operation: "gpio.write", port, pin, value: (numValue ? 1 : 0) as 0 | 1 };
       }
       // Fall back to runtime expression (e.g. a variable, negated expression)
       const exprValue = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (exprValue !== null) {
+        notePinWrite(pin, null);
         return { operation: "gpio.write", port, pin, value: exprValue };
       }
       return null;
@@ -404,17 +407,23 @@ export function tryResolveSemanticCall(
     case "gpioRead": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null) return null;
+      const tracked = resolveTrackedRead(pin);
+      if (tracked !== null) {
+        return { operation: "gpio.read", port, pin, trackedValue: tracked };
+      }
       return { operation: "gpio.read", port, pin };
     }
     case "gpioToggle": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null) return null;
+      notePinToggle(pin);
       return { operation: "gpio.toggle", port, pin };
     }
     case "gpioSetMode": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const mode = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null || mode === null) return null;
+      notePinSetMode(pin, mode);
       return { operation: "gpio.set_mode", port, pin, mode };
     }
 
@@ -423,6 +432,7 @@ export function tryResolveSemanticCall(
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const duty = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null || duty === null) return null;
+      notePinAnalogOutput(pin);
       return { operation: "pwm.write", port, pin, duty };
     }
 
@@ -1117,6 +1127,7 @@ export function tryResolveSemanticCall(
       const frequency = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const duration = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null || frequency === null) return null;
+      notePinAnalogOutput(pin);
       return { operation: "tone.play", port, pin, frequency, ...(duration !== null ? { duration } : {}) };
     }
     case "toneStop": {

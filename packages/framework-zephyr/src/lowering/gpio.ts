@@ -136,9 +136,13 @@ function lowerGpioRaw(
     case 'gpio.read':
       return { expression: `gpio_pin_get_raw(${controller}, ${pin})` };
     case 'gpio.toggle':
-      return {
-        code: `gpio_pin_set_raw(${controller}, ${pin}, !gpio_pin_get_raw(${controller}, ${pin}));`,
-      };
+      // Native atomic toggle — never read-modify-write. gpio_pin_get_raw on
+      // a direction-only output reads the input latch, which is undefined on
+      // SoCs that don't latch it. Zephyr's toggle API has no _raw variant —
+      // gpio_pin_toggle is the driver-level atomic toggle, and for pins
+      // configured without GPIO_ACTIVE_LOW the logical level equals the
+      // physical one, so it matches the get_raw/set_raw used elsewhere.
+      return { code: `gpio_pin_toggle(${controller}, ${pin});` };
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +

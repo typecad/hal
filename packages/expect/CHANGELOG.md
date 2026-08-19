@@ -1,5 +1,13 @@
 # @typecad/expect
 
+## Unreleased
+
+- **Dropped `output.optimize` from the config re-emitter.** The hw-test
+  runner's mini config parser read `output.optimize` from
+  `cuttlefish.config.ts` and copied it into the generated test config —
+  dead weight now that the key is removed from cuttlefish (no framework
+  ever consumed it). Old configs carrying the key are simply ignored here.
+
 ## 1.0.0-alpha.12
 
 ### Patch Changes

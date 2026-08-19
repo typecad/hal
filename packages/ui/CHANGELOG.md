@@ -2,6 +2,240 @@
 
 ## Unreleased
 
+- **The shadcn kit is built in.** The kit stylesheet (default zinc-family
+  tokens, light + `.dark`, and every class recipe — buttons, cards, badges,
+  inputs, alerts, skeleton, spinner, tabs, accordion, separator, table, ...)
+  now ships inside `@typecad/ui` (`shadcn-kit.ts`) and is prepended to the
+  CSS chain in BOTH pipelines (the device build's module loader and the
+  preview snapshot builder) ahead of the user's CSS. No scaffolding, no
+  `@import` needed — kit classes on native elements just work, and anything
+  the user writes overrides them by normal cascade order.
+  - **Themes are plain CSS files.** Drop a ui.shadcn.com / tweakcn export
+    anywhere in the project and `@import` it: its `:root`/`.dark` token
+    blocks override the kit defaults (later definitions win, verified for
+    light and dark). No registry, no splicing, no theme directories. Bare
+    module specifiers inside exports (`@import "tailwindcss"`) are dropped
+    silently during import expansion; path-like imports keep the
+    resolve-or-warn behavior.
+  - **Pre-packaged themes ship with the package**: `@typecad/ui/themes/`
+    carries eight adapted from the official shadcn set (zinc, slate, stone,
+    gray, neutral, blue, green, red — light + dark, HSL-triplet dialect).
+    Import by bare package specifier: `@import "@typecad/ui/themes/blue.css"`.
+    Bare specifiers resolve through `node_modules` during import expansion
+    (relative `./…`, `../…`, absolute, and drive-letter paths keep their
+    existing behavior); unresolvable ones (Tailwind scaffolding) drop
+    silently.
+
+- **Self-closing non-void elements no longer nest.** HTML-spec parsers treat
+  `<view .../>` as an OPEN tag (XML-style self-closing is not HTML), so
+  JSX-habit markup silently placed following siblings INSIDE the previous
+  element — the spinner card wrapped its label inside the 22px ring (a
+  1-character-wide, 10-row text strip), and the skeleton demo's three bars
+  nested into one. Both parse entry points now expand self-closing non-void
+  tags to explicit pairs before parsing; void elements (img/hr/input/...)
+  are untouched.
+
+- **Scrollbar tracks cover the full reserved gutter.** Every scrollbar
+  cover (scroll band renderer, list band renderer, Mode B canvas scrollbar,
+  Mode C direct scrollbar) filled only 3px of the 4px gutter, leaving the
+  edge column uncovered — child decorations that poke past the content area
+  (the newly-wired outset shadows, +4px offset with blur) survived there as
+  1px amber ticks inside the scrollbar. Ticks vanished on scroll (canvas
+  recomposition re-seeds full width) and returned on screen entry; screens
+  whose content fits never scrolled, so they kept them permanently. Tracks
+  now fill the full gutter width; thumbs stay 3px.
+
+- **Scroll band renderer draws outset shadows.** `ui_render_scroll_bands` was
+  the one subtree renderer without a `ui_draw_shadow` call (main loop, node
+  bands, and screen bands all had it), so any scroll viewport composited
+  through the band path (viewport canvas won't allocate) lost every shadow —
+  theme `--shadow-*` tokens rendered in the preview but not on device. A
+  renderer-parity emitted-header test now pins the shadow call in all three
+  band renderers.
+
+- **Renderer routing review (Zephyr/direct-SPI targets): every repaint now
+  composites before it touches the panel.** Three fixes from the pass:
+  - `ui_mark_dirty` no longer promotes a fully-contained dirty child inside
+    an overflow scroll viewport to a full-viewport repaint. The child keeps
+    its own dirty flag and the dirty loop's scroll defer lets it repaint
+    through its paint canvas or the band renderer (one atomic push; the
+    retained scroll canvas is invalidated after). The old promotion — added
+    for :pressed buttons — recomposed the whole viewport per dirty tick, so
+    keyframe animations marking children (and their overlapping higher
+    layers, via the geometry-repair overlap hook) at frame rate produced
+    constant full-screen pushes: the transforms screen tearing.
+  - Partially/fully clipped scroll children still defer to the composited
+    canvas (their edge pixels must come from it; drawing directly would
+    paint outside the viewport).
+  - `ui_should_buffer_paint` lost its hard 20000-pixel cap. Oversized paint
+    rects now route to the band renderer via the existing preferBand
+    threshold instead of falling through to direct clear-then-redraw — a
+    452x48 full-width button is 21696px and sat just over the cap, which was
+    the button-press flash.
+
+- **Preview parity for the device runtime's visibility + drawer fixes:**
+  - `border-radius` clamps at 0 on the way into the node model. Kit recipes
+    like `calc(var(--radius) - 2px)` go negative for 0px-radius themes
+    (tweakcn's sharper exports) — the value was emitted into the node table
+    verbatim, tripping uint8 narrowing errors on the device toolchain.
+  - The preview runtime now re-stacks ancestor flow containers when a node's
+    visibility changes (the same flowAxis/flowGap/flowFlags metadata cascade
+    as the device's `ui_reflow_visibility`), so a collapsed accordion pane
+    stops reserving space in the preview render too — including scrollable
+    `contentHeight` recomputation and one full-screen repaint.
+  - The preview's dirty pass classifies dirty nodes against fully-open
+    drawers exactly like the device dirty-draw loop: fully-covered nodes
+    skip their repaint, partial overlaps re-dirty the drawer subtree so it
+    re-stamps on top (a bound text behind an open drawer no longer erases
+    the drawer's buttons).
+
+- **Image conversion: failed decodes memoize, EXIF orientation respected
+  in the size cap.** A file that fails to decode is now cached under its
+  real mtime, so an unchanged file warns once instead of re-attempting on
+  every warm-up; and the fit-to-display comparison uses the post-EXIF-
+  rotation natural size (orientations 5-8 transpose the pipeline output),
+  so portrait photos no longer skip the downscale they need.
+
+- **Preview profile loader consumes the unified `BUILT_IN_PROFILES`
+  interface.** The Zephyr profile mapping no longer lives in the preview
+  builder — framework packages export `BUILT_IN_PROFILES` in the shared
+  `DisplayProfile` shape (Arduino already did; Zephyr now does too) and the
+  loader stays layout-agnostic.
+
+- **Automatic image conversion.** `<img src="…">` now accepts any common
+  image format — PNG, JPEG, GIF, BMP, WebP, AVIF/HEIF, TIFF, SVG, and ICO —
+  decoded to the RGB565 asset form at build time (sharp for raster/SVG,
+  decode-ico for `.ico` frames; the largest frame wins). Nothing to
+  configure: files are identified by magic bytes, not extension.
+  - Images larger than the physical panel downscale to fit (never enlarge),
+  so a phone photo can't emit a multi-megabyte C array.
+  - Alpha flattens onto black; JPEGs auto-orient by EXIF.
+  - An `<img>` without explicit width/height attributes takes the image's
+  natural size for its layout box (converted assets only; raw dumps keep
+  requiring author dimensions).
+  - Legacy raw RGB565 `.img` dumps keep working unchanged; anything that
+  fails to decode warns and falls back to the raw reader.
+  - New dependencies: `sharp`, `decode-ico`.
+
+- **Preview: Zephyr display profiles resolve again.** The preview's profile
+  registry loader only knew the Arduino layout (`BUILT_IN_PROFILES` from
+  `displays/ili9341-spi`); under `@typecad/framework-zephyr` that import
+  fails silently, leaving an empty registry — any `profile:` name (e.g.
+  `st7796-zephyr`) threw "Unknown display profile … Available: (none)" while
+  the CLI build resolved it fine via the strategy's `getProfileRegistry()`.
+  The loader now also reads `ZEPHYR_DISPLAY_PROFILES` from the framework's
+  `display` module and maps entries to the shared `DisplayProfile` shape,
+  mirroring the strategy hook.
+
+- **Visibility reflow (device).** Layout runs at build time (yoga); toggling a
+  node's `visible` flag used to leave its baked box in place, so a collapsed
+  accordion pane still reserved its space — an accordion card rendered at its
+  open-state size and showed empty space when closed (the preview re-layouts
+  every frame and collapses correctly). Each node now carries flow metadata
+  (`flowAxis` column/row, `flowGap`, `flowFlags`: auto height/width,
+  out-of-flow), and `ui_set_visible` triggers `ui_reflow_visibility`: ancestor
+  flow containers re-stack their in-flow children from the first in-flow
+  child's slot (hidden children take no space), content-sized containers
+  re-size, scrollable containers recompute `contentHeight` (scroll offset
+  clamped, canvas reseeded), and the cascade continues upward until a
+  container stops changing. One full active-screen repaint follows — a
+  visibility collapse is a discrete user event, not an animation. Containers
+  that a linear re-stack can't reproduce (flex-wrap, reversed directions,
+  justified content other than flex-start) and out-of-flow (absolute/fixed)
+  children opt out via the metadata. This also fixes the empty reserved space
+  of the form-validation hints and any other `ui.bind(x, 'visible', ...)`
+  recipe on device.
+  - The auto-size flags now account for where a dimension actually comes
+    from: an explicit size, `flex-grow` space, a `flex-basis`, or cross-axis
+    stretch (a child of a row parent stretches its height; of a column
+    parent its width) all mark the dimension parent-derived, not
+    content-sized. The first cut treated every height-less node as
+    content-sized, so the reflow resized a `flex: 1` scroll body to its
+    collapsed content — `contentHeight` met `box.h` and the expanded
+    accordion's bottom pane had nothing left to scroll into.
+
+- **More device render fixes from hardware testing (SPI TFT):**
+  - Dirty nodes under an OPEN drawer no longer paint over the panel. The
+    dirty pass now classifies each dirty node against every fully-open
+    drawer: fully covered by an opaque panel → the repaint is skipped
+    (nothing of it is visible); partially covered → the drawer's subtree is
+    re-dirtied in the same frame so it re-stamps on top (its z sorts it
+    after the covered node). Previously a bound text behind the open drawer
+    (the demo's `taps inside` echo) redrew its clear+text over the panel,
+    erasing the drawer's buttons while they stayed tappable.
+  - The modal `<select>` overlay now stamps only when it or the frame beneath
+    changed. It previously redrew every tick while open, pushing the modal
+    region over SPI continuously — visible as constant refreshing/tearing
+    confined to the modal. A new frame-painted flag re-stamps after any
+    underlying repaint so tree redraws still never bury the overlay.
+  - `<drawer>` slots store their node index in `int16_t` (was `int8_t`).
+    Real apps exceed 127 nodes — the canonical demo's drawer is node 369,
+    which truncated to 113: the slot never matched, `ui.drawer.open/close`
+    were silent no-ops, and the drawer could neither open nor close. This
+    was the root cause of the "stuck open, empty, unclosable" panel.
+  - Closed drawers hide by transform offsets alone (seeded at full travel at
+    init from the build-time layout boxes), matching the preview — which
+    deletes its drawer state once fully closed, so a closed bottom-anchored
+    panel still shows the small "peek" strip its slid position leaves
+    on-screen. The extra closed-drawer visibility gate in
+    `ui_is_effectively_visible` hid that peek and is gone.
+  - Drawer slide frames now compose as tear-free bands instead of marking
+    the whole screen dirty. `ui_render_screen_bands` (a whole-frame sibling
+    of the scroll band renderer) composes the union of the drawer's old and
+    new paint rects into the persistent ~10KB band canvas, one strip at a
+    time, each pushed in a single transaction. The mark-all-dirty slide
+    repainted the entire screen per step with direct per-node clears —
+    visible flashing on no-fb SPI targets, with only ~3 steps fitting in the
+    180ms slide. Falls back to the whole-screen repaint when the band canvas
+    can't allocate or a retained framebuffer composes the frame (its
+    dirty-union push is already tear-free), and invalidates any cached
+    scroll viewport the drawer crossed so the next scroll recomposites.
+  - `ui_try_repair_geometry_fill` accepts rounded fills: `borderRadius` no
+    longer bails the union-bitmap repair, and the repair body draws
+    `fill_round_rect` when a radius is set. Geometry keyframes on rounded
+    boxes (the demo's slide/turn/pulse `.fxBox` shapes) previously fell to
+    the direct clear-then-redraw fallback every frame — the tearing on the
+    keyframes screen. Border/outline/shadow chrome still bails.
+
+- **Device render fixes surfaced on hardware (SPI TFT):**
+  - The dropdown chevron + its 14px label reserve now live only in the
+    `<select>` draw case. A mis-aimed patch had put them in the button case,
+    so every button and nav link rendered a down-chevron and wrapped labels
+    that didn't need to; buttons are back to plain centered text.
+  - `CuttlefishGFX::drawRoundRect`/`fillRoundRect` clamp the radius to half
+    the shorter side and guard degenerate sizes, mirroring the preview's
+    host-gfx (CSS border-radius collapse semantics). Kit pills lower
+    `border-radius:9999px` to `r=255`, which previously overgrew the corner
+    arcs on-device — badges rendered star-shaped (left/right spikes, top and
+    bottom pinched inward) while the preview showed a correct pill. The pill
+    delta (`h - 2r - 1`, unclamped) is unchanged and correct in both runtimes.
+
+- **Device-lowering fixes surfaced by the canonical demo's first full
+  toolchain compile (Zephyr/west, ESP32-S3):**
+  - `ui.drawer.open('<id>')` / `ui.drawer.close('<id>'?)` now lower for the
+    device — the drawer id resolves at build time to the `<drawer>` node
+    index, emitting `ui_drawer_open(N)` / `ui_drawer_close(N)` (or
+    `ui_drawer_close_all()` with no id); unknown ids/methods are build-time
+    errors.
+  - `bind:value` write-backs assign the plain signal variable (signals
+    lower to plain device variables; the emitted `.set()` failed to link).
+  - `screen.<id>.text.length` lowers to `strlen(__ui_nodes[N].textBuffer)`
+    (previously fell to the STL `.size()` default — invalid on the raw char
+    buffer).
+  - The runtime header's modal <select>/<drawer> state + forward
+    declarations moved to the earliest module (ui_navigate, visibility, and
+    ui_init reference them before the defining modules).
+  - The select overlay stamp no longer closes the dirty-draw loop twice
+    (a duplicated `}` broke every statement after it in ui_tick).
+  - Device code uses the target-agnostic `ui_display_*` wrappers in the
+    select/drawer overlay bodies (bare `display_*` don't exist on Zephyr).
+  - `.borderRadius` clamps to uint8 at emit (the `999px` pill syntax
+    narrowed on strict toolchains).
+  - Both default keyboard loaders emit whenever any input exists — the
+    keyboard's 123/ABC page-swap calls both regardless of input types, so
+    text-only projects failed to link (`__ui_kb_load_default_number`
+    undefined).
+
 - **Form validation states (shadcn-style).** `.input-error` (destructive
   input border), `.field-error` (destructive hint), `.field-success` (muted
   hint) join the kit. The runtime-driven flow the demo documents: a signal

@@ -33,7 +33,8 @@ import type { UIFontAssetModel } from "./font-assets.js";
 import { injectDefaultFontFaces } from "./default-font.js";
 import { cssCompatDiagnostics } from "./compat-report.js";
 import { expandCssImports } from "./css-imports.js";
-import { emitImageTables, loadImageAssets } from "./image-assets.js";
+import { SHADCN_KIT_CSS } from "./shadcn-kit.js";
+import { emitImageTables, loadImageAssets, applyDecodedImageSizes } from "./image-assets.js";
 import type { Diagnostic } from "@typecad/cuttlefish/api/shared";
 import { splitUiFile } from "./ui-file-splitter.js";
 
@@ -144,7 +145,9 @@ export function loadUIModuleFromText(
   // local @import statements (shared stylesheets like the shadcn preset).
   const styleBlocks = extractStyleBlocks(htmlText);
   const cssBaseDir = path.dirname(cssPathForFonts);
-  const fullCss = expandCssImports(cssText + "\n" + styleBlocks, cssBaseDir);
+  // Built-in shadcn kit first, user CSS after: user token blocks and recipe
+  // overrides win by cascade order. The kit has no @imports of its own.
+  const fullCss = SHADCN_KIT_CSS + "\n" + expandCssImports(cssText + "\n" + styleBlocks, cssBaseDir);
   const rules = parseCss(fullCss, moduleDiagnostics);
   // Color displays get the bundled DejaVu faces appended (unless the author
   // registered their own face under the default family) so AA text works out
@@ -215,6 +218,11 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
   // Layout all screens (each gets its own Yoga layout pass; boxes concatenated).
   let allBoxes: Box[] = [];
   let allStyled: StyledNode[] = [];
+  // Converted images (<img src="*.png"> etc.) contribute their natural size
+  // to layout when the author gave no explicit width/height — must land
+  // BEFORE arrange. Served from the warm-up cache primed by the transpile
+  // graph collector / preview builder before this module loaded.
+  applyDecodedImageSizes(mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled], path.dirname(abs));
   for (const screen of mod.allStyledScreens.length > 0 ? mod.allStyledScreens : [mod.styled]) {
     const engine = selectEngine(screen);
     const screenBoxes = engine.arrange(screen, viewport, measureWithFonts(mod.fontAssets));

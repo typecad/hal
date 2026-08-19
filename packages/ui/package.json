@@ -25,7 +25,10 @@
       "types": "./dist/ui-engine/*.d.ts",
       "default": "./dist/ui-engine/*.js"
     },
-    "./preview/*": {
+    "./themes/*": {
+    "default": "./themes/*"
+  },
+  "./preview/*": {
       "types": "./dist/preview/*.d.ts",
       "default": "./dist/preview/*.js"
     },
@@ -44,8 +47,10 @@
     "@typecad/cuttlefish": "1.0.0-alpha.12",
     "chalk": "^4.1.2",
     "css-tree": "^3.2.1",
+    "decode-ico": "^0.4.1",
     "linkedom": "^0.18.12",
     "opentype.js": "^2.0.0",
+    "sharp": "^0.35.3",
     "typescript": "^5.7.3",
     "yoga-layout": "^3.2.1"
   },

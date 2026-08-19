@@ -17,6 +17,7 @@
 
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname, relative } from 'node:path';
+import { ZephyrStrategy } from '../strategy.js';
 
 export interface DebugConfigOptions {
   /** Absolute path to the Zephyr project root (contains CMakeLists.txt + src/). */
@@ -34,8 +35,10 @@ export interface DebugConfigOptions {
 }
 
 /**
- * Resolve the GDB binary path for the target from the build cache. Zephyr
- * records ZEPHYR_SDK_INSTALL_DIR in CMakeCache.txt at configure time, and the
+ * Resolve the GDB binary path for the target from the build cache, falling
+ * back to a filesystem scan of known Zephyr SDK locations when no build
+ * exists yet (the create-time starter artifacts path). Zephyr records
+ * ZEPHYR_SDK_INSTALL_DIR in CMakeCache.txt at configure time, and the
  * xtensa GDB lives at <sdk>/xtensa-espressif_esp32s3_zephyr-elf/bin/... (note
  * the Zephyr-SDK naming, distinct from the ESP-IDF xtensa-esp32s3-elf-gdb).
  *
@@ -43,22 +46,92 @@ export interface DebugConfigOptions {
  * omits gdbPath and relies on Cortex-Debug's default resolution).
  */
 export function resolveGdbPath(buildDir: string, target: string): string | undefined {
+  void target; // toolchain dir is esp32s3-specific today; see gdbPathFromSdkRoot
   const cachePath = join(buildDir, 'CMakeCache.txt');
-  if (!existsSync(cachePath)) return undefined;
-  let sdk = '';
-  try {
-    const cache = readFileSync(cachePath, 'utf-8');
-    const m = cache.match(/^ZEPHYR_SDK_INSTALL_DIR:PATH=(.+)$/m);
-    if (m) sdk = m[1].trim();
-  } catch {
-    return undefined;
+  if (existsSync(cachePath)) {
+    try {
+      const cache = readFileSync(cachePath, 'utf-8');
+      const m = cache.match(/^ZEPHYR_SDK_INSTALL_DIR:PATH=(.+)$/m);
+      if (m) {
+        const fromCache = gdbPathFromSdkRoot(m[1].trim());
+        if (fromCache) return fromCache;
+      }
+    } catch {
+      // unreadable cache — fall through to the SDK scan
+    }
   }
-  if (!sdk) return undefined;
-  // The Zephyr SDK toolchain dir is target-specific. For esp32s3 it is
-  // xtensa-espressif_esp32s3_zephyr-elf (verified against zephyr-sdk-0.17.4).
+  // No build dir yet (project just created): probe known SDK locations.
+  for (const sdkRoot of discoverZephyrSdkRoots()) {
+    const p = gdbPathFromSdkRoot(sdkRoot);
+    if (p) return p;
+  }
+  return undefined;
+}
+
+/** The esp32s3 xtensa GDB location inside a Zephyr SDK root (verified against
+ *  zephyr-sdk-0.17.4). Returns a forward-slash absolute path or undefined. */
+export function gdbPathFromSdkRoot(sdkRoot: string): string | undefined {
   const gdbName = 'xtensa-espressif_esp32s3_zephyr-elf-gdb.exe';
-  const gdbPath = join(sdk, 'xtensa-espressif_esp32s3_zephyr-elf', 'bin', gdbName);
+  const gdbPath = join(sdkRoot, 'xtensa-espressif_esp32s3_zephyr-elf', 'bin', gdbName);
   return existsSync(gdbPath) ? gdbPath.replace(/\\/g, '/') : undefined;
+}
+
+/** Compare two dotted version strings numerically (0.17.10 > 0.17.4). */
+function compareSdkVersions(a: string, b: string): number {
+  const segsOf = (v: string): number[] => v.split('.').map((s) => parseInt(s, 10) || 0);
+  const aa = segsOf(a);
+  const bb = segsOf(b);
+  for (let i = 0; i < Math.max(aa.length, bb.length); i++) {
+    const d = (aa[i] ?? 0) - (bb[i] ?? 0);
+    if (d !== 0) return d;
+  }
+  return 0;
+}
+
+/**
+ * Probe the well-known Zephyr SDK install locations, newest version first:
+ *   1. $ZEPHYR_SDK_INSTALL_DIR (the var board.cmake reads)
+ *   2. <MAMBA_ROOT_PREFIX | ~/micromamba>/zephyr-sdk/zephyr-sdk-<ver> — the
+ *      @typecad/zephyr-installer layout
+ *   3. ~/zephyr-sdk-<ver> — the standalone download layout
+ *
+ * Only roots that actually contain the esp32s3 GDB are useful to callers;
+ * this returns candidate roots (gdbPathFromSdkRoot does the existence check)
+ * so tests can inject home/env overrides.
+ */
+export function discoverZephyrSdkRoots(opts?: {
+  home?: string;
+  env?: Record<string, string | undefined>;
+}): string[] {
+  const env = opts?.env ?? process.env;
+  const home = opts?.home ?? (env.USERPROFILE || env.HOME || '');
+  const scanned: string[] = [];
+
+  const versionedDirs = (base: string): string[] => {
+    try {
+      return readdirSync(base)
+        .filter((d) => existsSync(join(base, d)) && d.startsWith('zephyr-sdk-'))
+        .map((d) => join(base, d));
+    } catch {
+      return []; // dir absent
+    }
+  };
+  const mambaRoot = env.MAMBA_ROOT_PREFIX || (home ? join(home, 'micromamba') : '');
+  if (mambaRoot) scanned.push(...versionedDirs(join(mambaRoot, 'zephyr-sdk')));
+  if (home) scanned.push(...versionedDirs(home));
+
+  // Scanned roots newest version first; the env var stays pinned first
+  // (explicit user intent outranks any discovered location).
+  scanned.sort((a, b) => {
+    const va = a.match(/zephyr-sdk-([\d.]+)/)?.[1] ?? '';
+    const vb = b.match(/zephyr-sdk-([\d.]+)/)?.[1] ?? '';
+    return compareSdkVersions(vb, va);
+  });
+  const roots = env.ZEPHYR_SDK_INSTALL_DIR
+    ? [env.ZEPHYR_SDK_INSTALL_DIR, ...scanned]
+    : scanned;
+  // De-duplicate (an env var may repeat a scan hit) preserving order.
+  return roots.filter((r, i) => roots.indexOf(r) === i);
 }
 
 /**
@@ -396,4 +469,54 @@ export function writeDebugConfig(o: DebugConfigOptions): void {
   // cortex-debug so the task is a simple synchronous build step.
   const task = buildTask(o);
   mergeJsonArrayEntry(join(vscodeDir, 'tasks.json'), 'tasks', 'label', task);
+}
+
+/**
+ * The Zephyr app dir a `cuttlefish create` scaffold produces, relative to the
+ * project root: the scaffold fixes entry `./src/main.ts` + outDir `./out`, and
+ * the CLI resolves output.outDir against the ENTRY's directory (cli.ts), so
+ * the emitted app root — and therefore the ELF, build dir, and .cuttlefish/
+ * debug artifacts — always lands at `src/out`. Keep in sync with
+ * generateProjectConfig in @typecad/cuttlefish create/init-templates.ts.
+ */
+const STARTER_SKETCH_REL = 'src/out';
+
+/**
+ * Create-time starter debug artifacts. Called by the cuttlefish `create` flow
+ * (via the package's `writeProjectDebugArtifacts` export) so a fresh project
+ * has a working F5 before any build exists:
+ *
+ * The launch.json's preLaunchTask runs `cuttlefish build --compile --upload
+ * --debug`, which builds + flashes AND rewrites this same launch entry (merged
+ * by name) with the CMakeCache-resolved gdbPath — so the starter files upgrade
+ * themselves on the first debug build.
+ *
+ * No-ops (returns []) for targets without native GDB support (debugMode() !==
+ * 'gdb'); the gdb frame-filter script is skipped (no source map exists yet).
+ *
+ * Returns the workspace-relative paths written, for CLI reporting.
+ */
+export function writeProjectDebugArtifacts(o: {
+  /** Absolute path to the cuttlefish project root (contains cuttlefish.config.ts). */
+  workspaceRoot: string;
+  /** The Zephyr board id from the project config (frameworkData.buildTarget). */
+  buildTarget?: string;
+}): string[] {
+  if (new ZephyrStrategy().debugMode(o.buildTarget) !== 'gdb') return [];
+  const workspaceRoot = resolve(o.workspaceRoot);
+  const projectRoot = join(workspaceRoot, STARTER_SKETCH_REL);
+  writeDebugConfig({
+    projectRoot,
+    workspaceRoot,
+    sketchRel: STARTER_SKETCH_REL,
+    target: o.buildTarget ?? '',
+    // No build dir exists yet — resolveGdbPath falls back to probing known
+    // Zephyr SDK locations so gdbPath is still filled in when possible.
+    buildDir: join(projectRoot, 'build'),
+  });
+  return [
+    '.vscode/launch.json',
+    '.vscode/tasks.json',
+    `${STARTER_SKETCH_REL}/.cuttlefish/openocd.cfg`,
+  ];
 }

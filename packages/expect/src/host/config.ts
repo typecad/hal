@@ -116,7 +116,6 @@ export interface RawConfig {
   test?: Partial<TestConfig>;
   output?: {
     framework?: string;
-    optimize?: string;
     outDir?: string;
   };
   console?: {
@@ -391,7 +390,6 @@ function extractOutputConfig(obj: ts.ObjectLiteralExpression): NonNullable<RawCo
     const v = stringLikeText(prop.initializer);
     if (v === undefined) continue;
     if (name === 'framework') result.framework = v;
-    if (name === 'optimize') result.optimize = v;
     if (name === 'outDir') result.outDir = v;
   }
   return result;

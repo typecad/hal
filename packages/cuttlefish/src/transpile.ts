@@ -27,12 +27,13 @@ import { setUIHook, requireUIHook, hasUIHook } from "./ui-hook.js";
 import { loadUIEngine } from "./ui/ui-bridge.js";
 import { hasSafetyHook, requireSafetyHook } from "./safety-hook.js";
 import { loadSafetyEngine } from "./safety/safety-bridge.js";
-import { setDisplayProfile, resetDisplayProfile } from "./stores/display-profile-store.js";
+import { setDisplayProfile, resetDisplayProfile, getDisplayProfile } from "./stores/display-profile-store.js";
 import { setThemeCss, resetThemeCss, setThemeClass } from "./stores/theme-store.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
 import { Diagnostic, GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types.js";
 import { readText, writeText, resetWrittenFiles, wasWrittenThisRun } from "./utils/fs.js";
 import { debug as logDebug, info } from "./utils/logger.js";
+import { printDebugStrategy } from "./utils/ui.js";
 import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry.js";
 import type { ClassIR, ProgramIR } from "./api/index.js";
 import { buildCallGraph } from "./ir/call-graph.js";
@@ -325,7 +326,11 @@ function loadPlatformStrategy(
     if (hasLoadedFramework()) {
       const { strategy } = getLoadedFramework();
       if (debug) {
-        logDebug(`Loaded FrameworkStrategy from ${frameworkPackage}`, true);
+        // Styled like the other step lines (cyan ⇉) — says what the debug
+        // build is actually doing, in user terms. Falls back to the package
+        // name when the strategy carries no id.
+        const frameworkName = strategy.id || frameworkPackage.replace(/^@typecad\/framework-/, "");
+        printDebugStrategy(frameworkName);
       }
       return strategy;
     }
@@ -433,7 +438,18 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   cleanOutput(entryDir, outDir);
 
   profiler.startTimer("graph:collect");
-  const graphResult = collectTranspileGraph(entryFile, options.boardPackage);
+  // Image-conversion cap: never decode larger than the physical panel —
+  // converted <img> assets downscale to fit (no 24MB C arrays from photos).
+  const imageDecodeMax = await (async () => {
+    try {
+      const { effectiveDisplaySize } = await import("./api/shared/display-profile.js");
+      const size = effectiveDisplaySize(getDisplayProfile());
+      return { maxW: size.width, maxH: size.height };
+    } catch {
+      return {};
+    }
+  })();
+  const graphResult = await collectTranspileGraph(entryFile, options.boardPackage, imageDecodeMax);
   profiler.endTimer("graph:collect");
 
   const transpileFiles = graphResult.files;

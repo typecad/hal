@@ -12,7 +12,7 @@
 import ts from "typescript";
 import { Diagnostic, type SourceSpan } from "../../types.js";
 import { StatementIR, HALOpIR } from "../../api/index.js";
-import { makeSourceSpan } from "../ast-node-utils.js";
+import { makeDiagnostic, makeSourceSpan } from "../ast-node-utils.js";
 import { emitLinesToIR, halOpsToIR } from "./hal-emit-helpers.js";
 import { resolveMount, MountRequest } from "./ui-mount.js";
 import { emitSignalDecl, BindingSpec, ListBindingSpec, recordListBinding, getListBindingsCount, InputBindingSpec, recordInputBinding, getInputBindingsCount, resetInputBindings } from "./ui-reactive.js";
@@ -286,6 +286,69 @@ function matchUIWindowCall(call: ts.CallExpression): string | undefined {
   return call.expression.name.text;
 }
 
+/** Detect `ui.drawer.<method>(...)` — same shape as ui.window. Returns the
+ *  method name ("open" / "close") or undefined. */
+function matchUIDrawerCall(call: ts.CallExpression): string | undefined {
+  if (!ts.isPropertyAccessExpression(call.expression)) return undefined;
+  const inner = call.expression.expression;
+  if (!ts.isPropertyAccessExpression(inner)) return undefined;
+  if (!ts.isIdentifier(inner.expression) || inner.expression.text !== "ui") return undefined;
+  if (!ts.isIdentifier(inner.name) || inner.name.text !== "drawer") return undefined;
+  return call.expression.name.text;
+}
+
+/** Resolve ui.drawer.open('<id>') / ui.drawer.close('<id>' | ).
+ *  The drawer id resolves at BUILD time to the node index of the <drawer>
+ *  element, emitting ui_drawer_open(N) / ui_drawer_close(N) (or close_all
+ *  with no argument) — the preview evaluates the same call dynamically. */
+function resolveDrawerCall(
+  method: string,
+  call: ts.CallExpression,
+  sourceText: string,
+  diagnostics: Diagnostic[],
+): StatementIR {
+  const sourceSpan = makeSourceSpan(call, call.getSourceFile()?.fileName ?? "", sourceText);
+  if (method !== "open" && method !== "close") {
+    diagnostics.push(makeDiagnostic(
+      sourceText, call.pos,
+      `ui.drawer.${method} is not supported — use ui.drawer.open(id) or ui.drawer.close(id?).`,
+      "error", "UI_DRAWER_METHOD",
+    ));
+    return { kind: "block", sourceSpan, body: [] };
+  }
+  const arg = call.arguments[0];
+  const emit = (stmt: string): StatementIR => ({
+    kind: "call",
+    callee: "__EMIT__",
+    args: [{ kind: "string", value: stmt }],
+    sourceSpan,
+  });
+  // close() with no id closes every open drawer.
+  if (method === "close" && arg === undefined) return emit("ui_drawer_close_all();");
+  let idText: string | undefined;
+  if (arg && ts.isStringLiteral(arg)) idText = arg.text;
+  if (idText === undefined) {
+    diagnostics.push(makeDiagnostic(
+      sourceText, call.pos,
+      `ui.drawer.${method} needs a drawer id string literal (e.g. ui.drawer.open('settings')).`,
+      "error", "UI_DRAWER_ID",
+    ));
+    return { kind: "block", sourceSpan, body: [] };
+  }
+  const nodeIdx = resolveElementValue("screen", idText);
+  if (nodeIdx === undefined) {
+    diagnostics.push(makeDiagnostic(
+      sourceText, call.pos,
+      `ui.drawer.${method}('${idText}'): no <drawer id="${idText}"> in the mounted UI tree.`,
+      "error", "UI_DRAWER_UNKNOWN_ID",
+    ));
+    return { kind: "block", sourceSpan, body: [] };
+  }
+  return emit(method === "open"
+    ? `ui_drawer_open(${nodeIdx});`
+    : `ui_drawer_close(${nodeIdx});`);
+}
+
 /** Resolve ui.window.setTitle / ui.window.setIcon. Native SDL only; on hardware
  *  these are silent no-ops (a desktop-only convenience, not an error). */
 function resolveWindowCall(
@@ -435,6 +498,10 @@ export function tryResolveUICall(
   // isUICall only matches ui.<method> (one level), so detect this shape first.
   const windowCall = matchUIWindowCall(call);
   if (windowCall) return resolveWindowCall(windowCall, call, sourceText, diagnostics);
+
+  // ui.drawer.open('id') / ui.drawer.close('id'|) — also a two-level chain.
+  const drawerCall = matchUIDrawerCall(call);
+  if (drawerCall) return resolveDrawerCall(drawerCall, call, sourceText, diagnostics);
 
   if (!isUICall(call)) return null;
 

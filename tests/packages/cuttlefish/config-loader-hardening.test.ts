@@ -57,12 +57,26 @@ describe("parseConfigFile hardening", () => {
 
   it("unwraps `satisfies` on the config variable initializer", () => {
     const file = writeConfig(`
-      const config = { target: 'esp32', output: { optimize: 'speed' } } satisfies Record<string, unknown>;
+      const config = { target: 'esp32', output: { outDir: './gen' } } satisfies Record<string, unknown>;
       export default config;
     `);
     const resolved = parseConfigFile(file);
     expect(resolved?.target).toBe("esp32");
-    expect(resolved?.outputOptimize).toBe("speed");
+    expect(resolved?.outputOutDir).toBe("./gen");
+  });
+
+  it("warns and drops deprecated output.optimize instead of failing validation", () => {
+    const file = writeConfig(`
+      const config = { target: 'esp32', output: { optimize: 'size', outDir: './out' } };
+      export default config;
+    `);
+    // Must not throw (strict schema no longer accepts the key — the loader
+    // drops it before validation) and must tell the user to remove it.
+    const resolved = parseConfigFile(file);
+    expect(resolved?.target).toBe("esp32");
+    expect(resolved?.outputOutDir).toBe("./out");
+    expect((resolved as Record<string, unknown>).outputOptimize).toBeUndefined();
+    expect(warnedWith("'output.optimize' has no effect")).toBe(true);
   });
 
   it("unwraps `as const` / parenthesized on the inline default export", () => {
@@ -167,7 +181,7 @@ describe("parseConfigFile hardening", () => {
       const config = {
         entry: './src/main.ts',
         target: 'esp32',
-        output: { optimize: 'speed', extraFlags: ['-DX=1'] },
+        output: { extraFlags: ['-DX=1'] },
         console: { port: 'COM3', baudRate: 115200 },
         native: { cxxStandard: 'c++17', libraries: ['curl'] },
       };

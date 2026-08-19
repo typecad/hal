@@ -18,7 +18,8 @@ function makeNode(o: Record<string, unknown>): any {
     whiteSpaceMode: 0, visible: true, opacity: 100, clearColor: 0, lastTextWidth: 0,
     lastTextHeight: 0, dirty: false, value: 0, scrollable: false, scrollY: 0, contentHeight: 0,
     overscrollPx: 0, settling: false, lastPaintedScrollY: 0, imgDataId: 255, objectFit: 1,
-    rangeMin: 0, rangeMax: 100, maxlen: 0, parentIndex: -1, subtreeEnd: 1, ...o,
+    rangeMin: 0, rangeMax: 100, maxlen: 0, parentIndex: -1, subtreeEnd: 1,
+    flowAxis: 0, flowGap: 0, flowFlags: 0, ...o,
   };
 }
 
@@ -90,5 +91,51 @@ describe("accordion (single-open, preview)", () => {
     rt.runBody("openAcc = -1;");
     await wait(150); rt.tick(33);
     expect(node("pane1").visible).toBe(false);
+  });
+
+  it("collapses reserved space: closing a pane restacks the flow (device parity)", async () => {
+    // Same tree, plus flow metadata: the screen is a 6px-gap column stack and
+    // the panes are content-sized — what the real build emits for the kit's
+    // accordion markup.
+    const rt: any = new PreviewUIRuntime({
+      projectRoot: "", entryFile: "", htmlFile: "", uiTreeNames: ["screen"],
+      program: {
+        width: 100, height: 120, colorFormat: "rgb565",
+        nodes: [
+          makeNode({ index: 0, tag: "screen", subtreeEnd: 8, box: { x: 0, y: 0, w: 100, h: 120 }, flowAxis: 1, flowGap: 6, scrollable: true, contentHeight: 122 }),
+          makeNode({ index: 1, tag: "button", kind: "button", id: "trig0", text: "A", parentIndex: 0, subtreeEnd: 2, box: { x: 4, y: 4, w: 80, h: 24 } }),
+          makeNode({ index: 2, tag: "view", kind: "fill", id: "pane0", parentIndex: 0, subtreeEnd: 4, box: { x: 4, y: 34, w: 92, h: 30 }, hasBg: true, bg: 0xaaaa, flowAxis: 1, flowFlags: 1 }),
+          makeNode({ index: 3, tag: "text", kind: "text", id: "pane0text", text: "content A", parentIndex: 2, subtreeEnd: 4, box: { x: 10, y: 38, w: 60, h: 12 } }),
+          makeNode({ index: 4, tag: "button", kind: "button", id: "trig1", text: "B", parentIndex: 0, subtreeEnd: 5, box: { x: 4, y: 70, w: 80, h: 24 } }),
+          makeNode({ index: 5, tag: "view", kind: "fill", id: "pane1", parentIndex: 0, subtreeEnd: 7, box: { x: 4, y: 100, w: 92, h: 26 }, hasBg: true, bg: 0xbbbb, flowAxis: 1, flowFlags: 1 }),
+          makeNode({ index: 6, tag: "text", kind: "text", id: "pane1text", text: "content B", parentIndex: 5, subtreeEnd: 7, box: { x: 10, y: 104, w: 60, h: 12 } }),
+          makeNode({ index: 7, tag: "text", kind: "text", id: "chev0", text: "v", parentIndex: 0, subtreeEnd: 8, box: { x: 88, y: 8, w: 16, h: 16 }, flowFlags: 4 }),
+        ],
+        transitions: [],
+      },
+      font: new Uint8Array(0),
+      bindings: [{ nodeId: "pane0", nodeIndex: 2, property: "visible", expression: "openAcc === 0" }],
+      listBindings: [], callbacks: [], initialAssignments: [], intervals: [], pinControls: [], diagnostics: [],
+      moduleVars: [{ name: "openAcc", initializer: "-1" }],
+    } as any);
+    runtimes.push(rt);
+    rt.start();
+    await wait(120);
+    const node = (id: string) => rt.nodes.find((x: any) => x.id === id);
+
+    // Baked layout (pane0 visible): trig1 sits below pane0's 30px + gap.
+    // openAcc starts -1, so pane0 hides on the first tick and the reflow
+    // collapses its reserved space: trig1 and pane1 shift UP by 30+6.
+    expect(node("trig1").box.y).toBe(70 - 36);
+    expect(node("pane1").box.y).toBe(100 - 36);
+    // contentHeight recomputed over visible nodes (last visible bottom = the
+    // shifted pane1 bottom) and clamped to the viewport height.
+    expect(node("chev0").box.y).toBe(8); // nodes above the collapse never move
+
+    // Re-opening restores the baked stack.
+    rt.runBody("openAcc = 0;");
+    await wait(150); rt.tick(33);
+    expect(node("trig1").box.y).toBe(70);
+    expect(node("pane1").box.y).toBe(100);
   });
 });

@@ -57,6 +57,12 @@ export function emitTypesDefines(): string {
 #define UI_SCROLL_DEADBAND_PX 2
 #endif
 // Capability tier flags (emitted per-TU before this header; defaults = full).
+// The default-on check must run BEFORE the per-flag #ifndef defaults below —
+// after them, all three flags are defined 0 and the fallback would redefine
+// UI_SCROLL_INPUT_TIER_RESISTIVE with a different value (ill-formed).
+#if !defined(UI_SCROLL_INPUT_TIER_CAPACITIVE) && !defined(UI_SCROLL_INPUT_TIER_RESISTIVE) && !defined(UI_SCROLL_INPUT_TIER_NONE)
+#define UI_SCROLL_INPUT_TIER_RESISTIVE 1
+#endif
 #ifndef UI_SCROLL_INPUT_TIER_CAPACITIVE
 #define UI_SCROLL_INPUT_TIER_CAPACITIVE 0
 #endif
@@ -71,9 +77,6 @@ export function emitTypesDefines(): string {
 #endif
 #ifndef UI_SCROLL_RENDER_TIER_CONSTRAINED
 #define UI_SCROLL_RENDER_TIER_CONSTRAINED 0
-#endif
-#if (UI_SCROLL_INPUT_TIER_CAPACITIVE + UI_SCROLL_INPUT_TIER_RESISTIVE + UI_SCROLL_INPUT_TIER_NONE) == 0
-#define UI_SCROLL_INPUT_TIER_RESISTIVE 1
 #endif
 #define UI_SCROLL_HAS_TOUCH (UI_SCROLL_INPUT_TIER_CAPACITIVE || UI_SCROLL_INPUT_TIER_RESISTIVE)
 #define UI_SCROLL_ELASTIC (UI_SCROLL_RENDER_TIER_FULL)

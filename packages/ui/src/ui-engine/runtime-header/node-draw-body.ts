@@ -239,9 +239,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           int16_t insetB = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingBottom);
           int16_t textX = __ui_nodes[i].box.x + insetL;
           int16_t textY = drawY + insetT;
-          // The right end reserves 14px for the dropdown chevron — the label
-          // wraps against the reduced width, never under the chevron.
-          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR - 14;
+          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
           int16_t textH = static_cast<int16_t>(__ui_nodes[i].box.h) - insetT - insetB;
           if (textW < 1) textW = 1;
           if (textH < 1) textH = static_cast<int16_t>(th);
@@ -253,17 +251,6 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
             __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
-          // Dropdown chevron: a small solid v at the right end — the
-          // affordance that the control opens/cycles options.
-          {
-            int16_t chX = __ui_nodes[i].box.x + static_cast<int16_t>(__ui_nodes[i].box.w) - insetR - 11;
-            int16_t chY = drawY + (static_cast<int16_t>(__ui_nodes[i].box.h) - 5) / 2;
-            ui_display_fill_rect(chX,     chY,     9, 1, __ui_nodes[i].fg);
-            ui_display_fill_rect(chX + 1, chY + 1, 7, 1, __ui_nodes[i].fg);
-            ui_display_fill_rect(chX + 2, chY + 2, 5, 1, __ui_nodes[i].fg);
-            ui_display_fill_rect(chX + 3, chY + 3, 3, 1, __ui_nodes[i].fg);
-            ui_display_fill_rect(chX + 4, chY + 4, 1, 1, __ui_nodes[i].fg);
-          }
         }
         break;
       case NODE_SELECT:
@@ -304,7 +291,9 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           int16_t insetB = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingBottom);
           int16_t textX = __ui_nodes[i].box.x + insetL;
           int16_t textY = drawY + insetT;
-          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
+          // The right end reserves 14px for the dropdown chevron — the label
+          // wraps against the reduced width, never under the chevron.
+          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR - 14;
           int16_t textH = static_cast<int16_t>(__ui_nodes[i].box.h) - insetT - insetB;
           if (textW < 1) textW = 1;
           if (textH < 1) textH = static_cast<int16_t>(th);
@@ -316,6 +305,17 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
             __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
+          // Dropdown chevron: a small solid v at the right end — the
+          // affordance that the control opens a menu of options.
+          {
+            int16_t chX = __ui_nodes[i].box.x + static_cast<int16_t>(__ui_nodes[i].box.w) - insetR - 11;
+            int16_t chY = drawY + (static_cast<int16_t>(__ui_nodes[i].box.h) - 5) / 2;
+            ui_display_fill_rect(chX,     chY,     9, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 1, chY + 1, 7, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 2, chY + 2, 5, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 3, chY + 3, 3, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 4, chY + 4, 1, 1, __ui_nodes[i].fg);
+          }
         }
         break;
       case NODE_CHECK:
@@ -1037,6 +1037,15 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
       __ui_nodes[c].box.y = static_cast<int16_t>(origBoxY - voy - bandTop);
       int16_t drawX = ui_draw_x_for_node(c);
       int16_t drawY = ui_draw_y_for_node(c);
+      // Outset shadow at the rest position, under the face — parity with the
+      // main dirty loop and ui_render_node_bands. This renderer omitted it,
+      // so band-composited scroll viewports (viewport canvas won't allocate)
+      // lost every shadow: theme --shadow-* tokens rendered in the preview
+      // but not on device. Lists manage their own shadow elsewhere.
+      if (__ui_nodes[c].kind != NODE_LIST) {
+        __ui_nodes[c].box.x = ui_base_draw_x_for_node(c);
+        ui_draw_shadow(c, ui_base_draw_y_for_node(c), 0);
+      }
       __ui_nodes[c].box.x = drawX;
       uint8_t ts = __ui_nodes[c].textSize ? __ui_nodes[c].textSize : 2;
       uint16_t textMaxW = ui_node_text_max_width(c);
@@ -1107,7 +1116,10 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
     // Intersect that with this band's [bandTop, bandBot) range and fill the
     // overlapping canvas-local rows with the thumb color.
     if (sbVisible) {
-      display_canvasFillRect(band, contentW, 0, 3, thisH, sbTrackCol);
+      // Full gutter width (vw - contentW, normally 4px): child decorations
+      // (outset shadows) poke past the content area and would survive as 1px
+      // ticks in any uncovered edge column.
+      display_canvasFillRect(band, contentW, 0, vw - contentW, thisH, sbTrackCol);
       int16_t thumbTop = static_cast<int16_t>(sbThumbY);
       int16_t thumbBot = static_cast<int16_t>(sbThumbY + sbThumbH);
       int16_t ovTop = thumbTop > bandTop ? thumbTop : bandTop;
@@ -1131,6 +1143,137 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
   // caller has already marked the owner non-dirty.
   for (uint16_t c = s + 1; c < subtreeEnd; c++) {
     __ui_nodes[c].dirty = 0;
+  }
+  return 1;
+}
+
+// ── Whole-frame band composition (drawer slide frames) ────────────────────
+// Composes every visible active-screen node in draw order over a display
+// rect, one horizontal band at a time, pushing each band in a single
+// transaction. The drawer slide uses it over the union of the panel's old
+// and new paint rects: a mark-all-dirty slide step instead repainted the
+// whole screen with direct per-node clears (visible flashing on SPI TFTs,
+// and only ~3 steps fit inside the 180ms slide). Returns 0 when the band
+// canvas or draw order is unavailable (caller falls back to mark-all-dirty);
+// a rect fully outside the panel returns 1 (nothing to compose).
+static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw, int16_t rh) {
+  if (rw <= 0 || rh <= 0) return 1;
+  if (!ui_clip_rect_to_display_target(&rx, &ry, &rw, &rh)) return 1;
+  if (!__ui_draw_order || !__ui_scroll_candidates) return 0;
+  CuttlefishCanvas16* band = ui_band_canvas_for_width(rw);
+  if (!band) return 0;
+  int16_t bandH = display_canvasHeight(band);
+  // Seed color: the active screen's background (the screen fill node paints
+  // over it in draw order anyway; the seed keeps uncovered rows defined).
+  UI_COLOR_T screenBg = static_cast<UI_COLOR_T>(0);
+  if (__ui_active_screen_bg_node < __ui_node_count) {
+    screenBg = __ui_nodes[__ui_active_screen_bg_node].hasBg
+      ? __ui_nodes[__ui_active_screen_bg_node].bg
+      : __ui_nodes[__ui_active_screen_bg_node].clearColor;
+  }
+  // Draw-ordered candidate list once per composition (same shape as the
+  // scroll band path); each band then only Y-culls against it.
+  __ui_scroll_candidate_count = 0;
+  for (uint16_t pass = 0; pass < __ui_node_count; pass++) {
+    uint16_t c = __ui_draw_order[pass];
+    if (__ui_nodes[c].screenId != __ui_active_screen) continue;
+    if (!ui_is_effectively_visible(c)) continue;
+    if (__ui_scroll_candidate_count >= __ui_node_count) break;
+    UIScrollPaintCandidate& cand = __ui_scroll_candidates[__ui_scroll_candidate_count++];
+    cand.node = c;
+    cand.screenY = ui_draw_y_for_node(c);
+    cand.faceH = __ui_nodes[c].box.h;
+  }
+  CuttlefishDisplayTarget* prevTarget = ui_display_get_target();
+  for (int16_t bandTop = 0; bandTop < rh; bandTop += bandH) {
+    int16_t bandBot = static_cast<int16_t>(bandTop + bandH);
+    if (bandBot > rh) bandBot = rh;
+    int16_t thisH = static_cast<int16_t>(bandBot - bandTop);
+    display_canvasFillRect(band, 0, 0, rw, thisH, screenBg);
+    ui_display_set_target(band);
+    for (uint16_t ci = 0; ci < __ui_scroll_candidate_count; ci++) {
+      uint16_t c = __ui_scroll_candidates[ci].node;
+      int16_t screenY = __ui_scroll_candidates[ci].screenY;
+      int16_t faceH = __ui_scroll_candidates[ci].faceH;
+      // Clip before the per-node work (AGENTS.md): skip nodes whose face
+      // does not intersect this band's Y range.
+      if (screenY + faceH <= ry + bandTop) continue;
+      if (screenY >= ry + bandBot) continue;
+      int16_t origBoxX = __ui_nodes[c].box.x;
+      int16_t origBoxY = __ui_nodes[c].box.y;
+      __ui_nodes[c].box.x = static_cast<int16_t>(origBoxX - rx);
+      __ui_nodes[c].box.y = static_cast<int16_t>(origBoxY - ry - bandTop);
+      int16_t baseDrawX = ui_base_draw_x_for_node(c);
+      int16_t baseDrawY = ui_base_draw_y_for_node(c);
+      int16_t drawX = ui_draw_x_for_node(c);
+      int16_t drawY = ui_draw_y_for_node(c);
+      // Outset shadow at the rest position, under the face (mirrors the
+      // main loop; lists manage their own shadow elsewhere).
+      if (__ui_nodes[c].kind != NODE_LIST) {
+        __ui_nodes[c].box.x = baseDrawX;
+        ui_draw_shadow(c, baseDrawY, 0);
+      }
+      __ui_nodes[c].box.x = drawX;
+      uint8_t ts = __ui_nodes[c].textSize ? __ui_nodes[c].textSize : 2;
+      uint16_t textMaxW = ui_node_text_max_width(c);
+      uint16_t tw = 0;
+      uint16_t th = 0;
+      ui_node_text_layout_metrics(c, textMaxW, &tw, &th);
+      uint16_t paintTextW = tw;
+      uint16_t paintTextH = th;
+      if (__ui_nodes[c].kind == NODE_TEXT || __ui_nodes[c].kind == NODE_SELECT) {
+        uint16_t hInset = static_cast<uint16_t>(__ui_nodes[c].paddingLeft) + static_cast<uint16_t>(__ui_nodes[c].paddingRight) + static_cast<uint16_t>(__ui_nodes[c].borderWidth) * 2;
+        uint16_t vInset = static_cast<uint16_t>(__ui_nodes[c].paddingTop) + static_cast<uint16_t>(__ui_nodes[c].paddingBottom) + static_cast<uint16_t>(__ui_nodes[c].borderWidth) * 2;
+        paintTextW = static_cast<uint16_t>(tw + hInset);
+        paintTextH = static_cast<uint16_t>(th + vInset);
+      }
+      if (__ui_nodes[c].kind == NODE_CHECK || __ui_nodes[c].kind == NODE_RADIO) {
+        paintTextW = static_cast<uint16_t>(tw + 22);
+        if (paintTextH < 16) paintTextH = 16;
+      }
+      const char* displayText = __ui_nodes[c].hasTextBinding
+        ? __ui_nodes[c].textBuffer
+        : __ui_nodes[c].text;
+      UI_COLOR_T bColor = __ui_nodes[c].borderColor ? __ui_nodes[c].borderColor : __ui_nodes[c].fg;
+      UI_COLOR_T fillBg = __ui_nodes[c].bg;
+      if (__ui_nodes[c].opacity < 100) {
+        UI_COLOR_T backdrop = ui_parent_clear_color(c);
+        bColor = ui_blend(bColor, backdrop, __ui_nodes[c].opacity);
+        fillBg = ui_blend(__ui_nodes[c].bg, backdrop, __ui_nodes[c].opacity);
+      }
+      UINodeDrawCtx ctx;
+      ctx.drawY = drawY;
+      ctx.bColor = bColor;
+      ctx.fillBg = fillBg;
+      ctx.ts = ts;
+      ctx.textMaxW = textMaxW;
+      ctx.tw = tw;
+      ctx.th = th;
+      ctx.paintTextW = paintTextW;
+      ctx.paintTextH = paintTextH;
+      ctx.displayText = displayText;
+      ctx.drawingBufferedScroll = 0;
+      ctx.drawTarget = prevTarget;
+      ctx.origBoxX = origBoxX;
+      ctx.origBoxY = origBoxY;
+      // Each band starts on a freshly seeded canvas, so the persistent
+      // incremental-paint caches (lastTextWidth/Height) are invalid mid-band.
+      // Save/restore so the band path is transient (same contract as
+      // ui_render_scroll_bands / ui_render_node_bands).
+      int16_t savedLastTextW = __ui_nodes[c].lastTextWidth;
+      uint16_t savedLastTextH = __ui_nodes[c].lastTextHeight;
+      if (__ui_nodes[c].kind == NODE_PROGRESS || __ui_nodes[c].kind == NODE_RANGE) {
+        __ui_nodes[c].lastTextWidth = -1;
+      }
+      __ui_nodes[c].lastTextHeight = 0;
+      ui_draw_node_body(static_cast<int16_t>(c), &ctx);
+      __ui_nodes[c].lastTextWidth = savedLastTextW;
+      __ui_nodes[c].lastTextHeight = savedLastTextH;
+      __ui_nodes[c].box.x = origBoxX;
+      __ui_nodes[c].box.y = origBoxY;
+    }
+    ui_display_set_target(prevTarget);
+    ui_push_canvas_rect(band, rx, static_cast<int16_t>(ry + bandTop), rw, thisH);
   }
   return 1;
 }
@@ -1365,7 +1508,9 @@ static inline uint8_t ui_render_list_bands(uint16_t i) {
     // Composite this band's scrollbar slice into the gutter (atomic full-width
     // push — no separate erase/redraw cycle, no scrollbar flash).
     if (sbVisible) {
-      display_canvasFillRect(band, contentW, 0, 3, thisH, sbTrackCol);
+      // Full gutter width (bw - contentW): child decorations poking past the
+      // content area must not survive in an uncovered edge column.
+      display_canvasFillRect(band, contentW, 0, bw - contentW, thisH, sbTrackCol);
       int16_t thumbTop = static_cast<int16_t>(sbThumbY);
       int16_t thumbBot = static_cast<int16_t>(sbThumbY + sbThumbH);
       int16_t ovTop = thumbTop > bandTop ? thumbTop : bandTop;

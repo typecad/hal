@@ -9,7 +9,7 @@ const config: CuttlefishConfig = {
   board: '@typecad/board-arduino-uno',
   framework: '@typecad/framework-arduino',
   frameworkData: { buildTarget: 'arduino:avr:uno' },
-  output: { framework: 'arduino', optimize: 'size', outDir: './out-avr' },
+  output: { framework: 'arduino', outDir: './out-avr' },
   toolchain: { type: 'arduino-cli' },
   // console.port is the serial port for flash + monitor, and is threaded into
   // the generated launch.json/tasks.json for F5 debugging. Change to your

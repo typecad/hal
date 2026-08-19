@@ -1,6 +1,5 @@
 ﻿import path from "node:path";
-import { CommandLineOptions, CreateCommandOptions, BoardAddCommandOptions, AddCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
-import { listAddPresets } from "../add-preset.js";
+import { CommandLineOptions, CreateCommandOptions, BoardAddCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
 
 import chalk from "chalk";
 
@@ -17,8 +16,6 @@ export function printHelp(): void {
   console.log(`  cuttlefish <input.ts> [options]`);
   console.log(`  cuttlefish create [name] [options]`);
   console.log(`  cuttlefish build [options]`);
-  console.log(`  cuttlefish add <preset> [--force]   Copy a preset asset into src/ (yours to edit):`);
-  console.log(`${listAddPresets()}`);
   console.log(`  cuttlefish preview [--config <path>] [--port <port>]`);
   console.log(`  cuttlefish gen-libdefs <input.ts>`);
   console.log(`  cuttlefish board add <spec.jsonc> [--force]   Generate board + MCU packages from a chip spec`);
@@ -366,7 +363,7 @@ function parsePipelineCommand(
   };
 }
 
-export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | BoardAddCommandOptions | AddCommandOptions | "help" {
+export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | BoardAddCommandOptions | "help" {
   const firstArg = argv[2];
 
   if (!firstArg || firstArg === "--help" || firstArg === "-h") {
@@ -452,21 +449,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       watch: false,
       baud: 9600,
       platformContext: {},
-    };
-  }
-
-  // add subcommand — scaffold a copy-and-own preset asset into the project
-  // (e.g. `cuttlefish add shadcn`). The preset id is the next positional arg.
-  if (firstArg === "add") {
-    const preset = argv[3];
-    if (!preset || preset.startsWith("-")) {
-      throw new Error(`Usage: cuttlefish add <preset> [--force]\nAvailable presets:\n${listAddPresets()}`);
-    }
-    return {
-      command: "add",
-      preset,
-      force: argv.includes("--force"),
-      projectRoot: process.cwd(),
     };
   }
 

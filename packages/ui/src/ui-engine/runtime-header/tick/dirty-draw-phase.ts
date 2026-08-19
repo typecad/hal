@@ -88,6 +88,11 @@ export function emitTickDirtyDrawPhase(): string {
   // Avoid pushing a full frame on idle ticks; this is the main steady-state cost
   // of the PSRAM path on otherwise static screens.
   uint8_t __ui_fb_frame_dirty = 0;
+  // Whether any node painted this tick. The select overlay below re-stamps
+  // only when it or the frame beneath changed; an unconditional stamp pushes
+  // the modal region over SPI every frame, which reads as constant
+  // refreshing/tearing on no-TE TFT panels.
+  uint8_t __ui_frame_painted = 0;
   if (__ui_fb && __ui_fb_needs_compose) {
     UI_COLOR_T fbBg = (UI_COLOR_T)0;
     if (__ui_active_screen_bg_node < __ui_node_count) {
@@ -314,6 +319,44 @@ export function emitTickDirtyDrawPhase(): string {
       __ui_draw_pass++;
     }
 
+    // Open-drawer overlap classification: the drawer subtree draws above other
+    // content (z-order + later draw slot). A dirty node underneath would
+    // paint its clear+redraw over the panel's pixels — a bound text behind an
+    // open drawer erases the drawer's buttons on repaint. Fully covered by an
+    // opaque open drawer → none of it is visible; skip the repaint entirely.
+    // Partially covered → re-dirty that drawer's subtree so it re-stamps on
+    // top later in this same pass (its z sorts it after the covered node).
+    if (__ui_drawer_slots > 0) {
+      for (uint8_t dslot = 0; dslot < __ui_drawer_slots; dslot++) {
+        if (__ui_drawer_idx[dslot] < 0) continue;
+        uint16_t droot = static_cast<uint16_t>(__ui_drawer_idx[dslot]);
+        if (static_cast<uint16_t>(i) == droot ||
+            (i > static_cast<int16_t>(droot) && static_cast<uint16_t>(i) < __ui_nodes[droot].subtreeEnd)) continue;
+        if (__ui_drawer_progress[dslot] < 255) continue;  // closed or sliding
+        int16_t dX = ui_draw_x_for_node(droot);
+        int16_t dY = ui_draw_y_for_node(droot);
+        int16_t nX = ui_draw_x_for_node(static_cast<uint16_t>(i));
+        int16_t nY = ui_draw_y_for_node(static_cast<uint16_t>(i));
+        if (!ui_rects_intersect(nX, nY, __ui_nodes[i].box.w, __ui_nodes[i].box.h,
+                                dX, dY, __ui_nodes[droot].box.w, __ui_nodes[droot].box.h)) continue;
+        uint8_t fullyCovered = (nX >= dX && nY >= dY &&
+          nX + __ui_nodes[i].box.w <= dX + __ui_nodes[droot].box.w &&
+          nY + __ui_nodes[i].box.h <= dY + __ui_nodes[droot].box.h) ? 1 : 0;
+        if (fullyCovered && __ui_nodes[droot].hasBg && __ui_nodes[droot].opacity >= 100) {
+          __ui_nodes[i].dirty = 0;
+        } else {
+          __ui_nodes[droot].dirty = 1;
+          __ui_nodes[droot].lastTextHeight = 0;
+          for (uint16_t c = droot + 1; c < __ui_nodes[droot].subtreeEnd; c++) {
+            __ui_nodes[c].dirty = 1;
+            __ui_nodes[c].lastTextHeight = 0;
+          }
+        }
+        break;
+      }
+      if (!__ui_nodes[i].dirty) continue;
+    }
+
     // Defer direct display draws for overflow scroll subtrees not composited this
     // frame (Mode B canvas, Mode C strip, direct-full fallback, or band render).
     // Drawing them directly clears the live viewport and produces sequential
@@ -326,8 +369,20 @@ export function emitTickDirtyDrawPhase(): string {
           (bufferedScrollCanvas || bufferedScrollDirectFull || bufferedScrollBands || bufferedScrollLocalRepair);
         if (!compositing) {
           if (static_cast<uint16_t>(i) == static_cast<uint16_t>(scrollComp)) break;
-          __ui_nodes[i].dirty = 0;
-          continue;
+          // Not composited this frame. A child FULLY inside its scroll
+          // viewport repaints directly through its own buffered paint (paint
+          // canvas or bands — a single atomic push; the epilogue invalidates
+          // the retained scroll canvas so the next scroll recomposes). Only
+          // partially/fully clipped children defer: their edge pixels must
+          // come from the composited canvas, and drawing them directly would
+          // paint outside the viewport.
+          if (ui_is_rect_clipped_by_scroll(static_cast<uint16_t>(i),
+              ui_draw_x_for_node(static_cast<uint16_t>(i)),
+              ui_draw_y_for_node(static_cast<uint16_t>(i)),
+              __ui_nodes[i].box.w, __ui_nodes[i].box.h)) {
+            __ui_nodes[i].dirty = 0;
+            continue;
+          }
         }
       }
     }
@@ -340,6 +395,7 @@ export function emitTickDirtyDrawPhase(): string {
     if (bufferedScrollBands && bufferedScrollNode >= 0 &&
         static_cast<uint16_t>(i) == static_cast<uint16_t>(bufferedScrollNode)) {
       if (ui_render_scroll_bands(static_cast<uint16_t>(bufferedScrollNode))) {
+        __ui_frame_painted = 1;
         bufferedScrollBands = 0;
         bufferedScrollNode = -1;
         __ui_nodes[i].dirty = 0;
@@ -360,6 +416,7 @@ export function emitTickDirtyDrawPhase(): string {
         !(i > bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd) &&
         ui_node_draws_before(static_cast<uint16_t>(bufferedScrollNode), static_cast<uint16_t>(i))) {
       if (ui_render_scroll_bands(static_cast<uint16_t>(bufferedScrollNode))) {
+        __ui_frame_painted = 1;
         bufferedScrollBands = 0;
         bufferedScrollNode = -1;
       } else {
@@ -387,6 +444,7 @@ export function emitTickDirtyDrawPhase(): string {
       ui_push_buffered_scroll_canvas(bufferedScrollCanvas, bufferedScrollRepaintCanvas,
         bufferedScrollNode, bufferedScrollVX, bufferedScrollVY,
         bufferedScrollRepaintY, bufferedScrollRepaintH, __ui_draw_target);
+      __ui_frame_painted = 1;
       bufferedScrollNode = -1;
       bufferedScrollCanvas = nullptr;
       bufferedScrollRepaintCanvas = nullptr;
@@ -520,6 +578,7 @@ export function emitTickDirtyDrawPhase(): string {
       // horizontal strip at a time, pushing each band tear-free. Avoids the
       // direct clear→redraw-to-SPI that visibly flashes on press/scroll.
       if (wantedBuffer && ui_render_node_bands(static_cast<uint16_t>(i), paintCanvasX, paintCanvasY, paintCanvasW, paintCanvasH)) {
+        __ui_frame_painted = 1;
         if (!drawingBufferedScroll) {
           ui_invalidate_scroll_canvas_for_node(i);
         }
@@ -605,6 +664,7 @@ export function emitTickDirtyDrawPhase(): string {
     __ui_ctx.drawTarget = __ui_draw_target;
     __ui_ctx.origBoxX = origBoxX;
     __ui_ctx.origBoxY = origBoxY;
+    __ui_frame_painted = 1;
     if (ui_draw_node_body(i, &__ui_ctx)) {
       continue;
     }
@@ -638,9 +698,10 @@ export function emitTickDirtyDrawPhase(): string {
   }
 
   // Modal <select> list: stamp the overlay after the dirty pass so tree
-  // redraws never bury it. Drawn every frame while open (a few fill rects);
-  // the close path marks the whole tree dirty for the erase repaint.
-  if (__ui_select_menu >= 0) {
+  // redraws never bury it. Stamped only when the overlay itself is dirty
+  // (open) or something painted beneath it this frame; the close path marks
+  // the whole tree dirty for the erase repaint.
+  if (__ui_select_menu >= 0 && (__ui_select_menu_dirty || __ui_frame_painted)) {
     ui_select_menu_draw();
   }`;
 }

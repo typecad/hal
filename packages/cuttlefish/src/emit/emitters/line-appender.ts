@@ -330,6 +330,12 @@ export function appendRenderedStatement(
   }
 
   if (statement.kind === "block") {
+    if (statement.body.length === 0) {
+      // An empty block is a no-op statement — skip it entirely so lowered
+      // top-level statements don't litter setup() with bare { } pairs.
+      emitCommentLines(statement.trailingComments, indent, (line) => appendSourceLine(ctx, line));
+      return;
+    }
     appendSourceLine(ctx, `${indent}{`, { tsSpan: statement.sourceSpan, nodeKind: statement.kind });
     const nestedScope = cloneEmissionScopeState(scopeState);
     for (const nested of statement.body) appendRenderedStatement(ctx, nested, `${indent}  `, nestedScope);

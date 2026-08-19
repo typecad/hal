@@ -50,7 +50,6 @@ export interface ToolchainOptions {
   buildTarget?: string;
   port?: string;
   baud?: number;
-  optimize?: string;
   extraFlags?: string[];
   defines?: Record<string, string>;
   /** ESP32 PSRAM type ('opi' | 'quad') when the target board has PSRAM. */

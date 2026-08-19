@@ -8,6 +8,7 @@ import { type CppTypeIR, parseCppType, renderCppType, isPointer, parsedIsPointer
 import { expressionToIR } from "../expression-to-ir.js";
 import { lowerStatementList, expressionStatementToIR } from "../statement-to-ir.js";
 import { assignmentOperatorToString, updateLocalTypeFromAssignment, extractForInKeys } from "./variables.js";
+import { snapshotPinLevels, restorePinLevels, mergePinLevels, invalidatePinLevels } from "../pin-state-tracking.js";
 
 // Monotonic counter for synthetic for...of destructure loop variables.
 let forOfDestructureCounter = 0;
@@ -231,6 +232,9 @@ export function lowerControlFlowStatement(
   }
 
   if (ts.isWhileStatement(statement)) {
+    // Loop conditions/bodies may evaluate any number of times, so tracked
+    // pin levels from before the loop are not valid inside it.
+    invalidatePinLevels();
     const comments = extractNodeComments(statement, sourceText);
     const bodyStatements = lowerStatementList(
       ts.isBlock(statement.statement) ? statement.statement.statements : [statement.statement],
@@ -255,6 +259,12 @@ export function lowerControlFlowStatement(
   }
 
   if (ts.isIfStatement(statement)) {
+    // Branch merge: the level after the if must be the join of both branch
+    // ends (pins that disagree become unknown). The condition is lowered
+    // after the branches in this function but runs before them at runtime,
+    // so the pre-branch state is restored before the condition is evaluated
+    // and the merge is applied last.
+    const preBranchPinState = snapshotPinLevels();
     const comments = extractNodeComments(statement, sourceText);
     const thenStatements = lowerStatementList(
       ts.isBlock(statement.thenStatement) ? statement.thenStatement.statements : [statement.thenStatement],
@@ -267,6 +277,12 @@ export function lowerControlFlowStatement(
       typeAliases,
       pointerVars,
     );
+    const thenBranchPinState = snapshotPinLevels();
+
+    // Restore the pre-branch state before lowering the else branch and the
+    // condition — both run before the branches at runtime... the condition
+    // before them, the else on the path where the then branch never ran.
+    restorePinLevels(preBranchPinState);
 
     let elseBranch: StatementIR[] | undefined;
     if (statement.elseStatement) {
@@ -282,6 +298,7 @@ export function lowerControlFlowStatement(
         pointerVars,
       );
     }
+    const elseBranchPinState = snapshotPinLevels();
 
     // Evaluate the condition. If it's a bare identifier that resolves to a
     // HAL alias (e.g. `if (bus2)` where bus2 = I2C0.take()), the alias is a
@@ -293,6 +310,11 @@ export function lowerControlFlowStatement(
     } else {
       condition = expressionToIR(statement.expression, sourceText, diagnostics, pointerVars);
     }
+
+    // Join the branch-end states into the live state. With no else branch,
+    // elseBranchPinState equals the pre-branch state, so pins written by the
+    // then branch invalidate unless the write agrees with the prior level.
+    mergePinLevels(thenBranchPinState, elseBranchPinState);
 
     return [{
       kind: "if",
@@ -333,6 +355,9 @@ export function lowerControlFlowStatement(
       }
     }
 
+    // Loop conditions/bodies may evaluate any number of times, so tracked
+    // pin levels from before the loop are not valid inside it.
+    invalidatePinLevels();
     const condition = statement.condition
       ? expressionToIR(statement.condition, sourceText, diagnostics, pointerVars)
       : undefined;
@@ -540,6 +565,9 @@ export function lowerControlFlowStatement(
 
   // Handle do...while loops
   if (ts.isDoStatement(statement)) {
+    // Loop bodies may run more than once; pre-loop pin levels are not valid
+    // inside them.
+    invalidatePinLevels();
     const comments = extractNodeComments(statement, sourceText);
     const bodyStatements = lowerStatementList(
       ts.isBlock(statement.statement) ? statement.statement.statements : [statement.statement],
@@ -565,6 +593,9 @@ export function lowerControlFlowStatement(
 
   // Handle switch statements
   if (ts.isSwitchStatement(statement)) {
+    // Exactly one case runs at runtime, but all are lowered here; pin levels
+    // from case bodies must not leak past the switch.
+    invalidatePinLevels();
     const comments = extractNodeComments(statement, sourceText);
     const cases: Array<{ kind: "case"; sourceSpan: SourceSpan; leadingComments?: string[]; trailingComments?: string[]; value?: ExpressionIR; body: StatementIR[] }> = [];
 

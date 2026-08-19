@@ -130,12 +130,13 @@ function autoWireNode(treeName: string, node: AutoWireNode, nodeIndex: number): 
         fnName: `__ui_bindval_${nodeIndex}`,
         cppExpr: sig,
       });
-      // Write: range drag / check toggle → signal.set(value).
+      // Write: range drag / check toggle → plain assignment (signals lower
+      // to plain device variables; .set() is author-facing syntax only).
       recordClickHandler({
         nodeIndex,
         kind: node.tag === "check" ? "click" : "rangechange",
         fnName: `__ui_bindval_cb_${nodeIndex}`,
-        callbackBody: `${sig}.set(__ui_nodes[${nodeIndex}].value);`,
+        callbackBody: `${sig} = __ui_nodes[${nodeIndex}].value;`,
       });
     }
   }

@@ -99,6 +99,15 @@ directives in the generated C++ and writes `.vscode/launch.json` +
 **F5** in VS Code and the generated config attaches GDB to the chip's
 built-in USB-Serial-JTAG — one USB cable, no external probe.
 
+For Zephyr projects (`@typecad/framework-zephyr` on an esp32s3 board),
+`cuttlefish create` writes the same starter artifacts at project creation —
+`.vscode/launch.json` + `tasks.json` + `src/out/.cuttlefish/openocd.cfg` —
+so F5 works on a fresh project before any build: the preLaunch task runs
+`cuttlefish build --compile --upload --debug`, which builds, flashes, and
+re-merges the launch entry with the build-cache-resolved gdbPath. (The
+starter gdbPath is probed from `$ZEPHYR_SDK_INSTALL_DIR`, the
+zephyr-installer micromamba layout, or `~/zephyr-sdk-*`.)
+
 `launch.json` ships a single **`gdbtarget`** configuration, provided by the
 ESP-IDF VS Code extension. The extension's gdbtarget adapter manages OpenOCD
 itself (via its OpenOCD Manager, reading `idf.openOcdConfigs` from settings).

@@ -1468,6 +1468,7 @@ export class PreviewUIRuntime {
       }
       if (subtreeRect) this.markOverlappingHigherLayersDirtyForRect(nodeIndex, subtreeRect);
       node.visible = false;
+      this.reflowAfterVisibility(nodeIndex);
       return;
     }
 
@@ -1477,6 +1478,145 @@ export class PreviewUIRuntime {
       if (!child || !this.isActiveNode(child) || !this.isEffectivelyVisible(child)) continue;
       child.dirty = true;
       this.markOverlappingHigherLayersDirty(i);
+    }
+    this.reflowAfterVisibility(nodeIndex);
+  }
+
+  // ── Visibility reflow (device parity: ui_reflow_visibility) ─────────────
+  // Layout is baked at build time; toggling visible alone leaves a collapsed
+  // pane's space reserved. Re-stack ancestor flow containers from the baked
+  // flowAxis/flowGap/flowFlags metadata, cascading until a container stops
+  // changing, then repaint the active screen once.
+
+  private subtreeFlowExtent(c: number, axis: number): number {
+    const base = axis === 1 ? this.nodes[c].box.y : this.nodes[c].box.x;
+    let maxEnd = base + (axis === 1 ? this.nodes[c].box.h : this.nodes[c].box.w);
+    const end = Math.min(this.nodes[c].subtreeEnd, this.nodes.length);
+    for (let j = c + 1; j < end; j++) {
+      const rel = (axis === 1 ? this.nodes[j].box.y : this.nodes[j].box.x) - base;
+      if (rel < 0) continue;
+      const jEnd = rel + (axis === 1 ? this.nodes[j].box.h : this.nodes[j].box.w);
+      if (jEnd > maxEnd) maxEnd = jEnd;
+    }
+    return maxEnd - base;
+  }
+
+  private shiftSubtreeMain(c: number, axis: number, delta: number): void {
+    const end = Math.min(this.nodes[c].subtreeEnd, this.nodes.length);
+    for (let j = c; j < end; j++) {
+      if (axis === 1) this.nodes[j].box.y += delta;
+      else this.nodes[j].box.x += delta;
+    }
+  }
+
+  private restackFlowContainer(p: number): boolean {
+    const axis = this.nodes[p].flowAxis === 2 ? 2 : this.nodes[p].flowAxis === 1 ? 1 : 0;
+    if (axis === 0) return false;
+    const gap = this.nodes[p].flowGap ?? 0;
+    let startSlot = 0;
+    let cursor = 0;
+    let sawFlow = false;
+    let sawVisible = false;
+    let changed = false;
+    const end = Math.min(this.nodes[p].subtreeEnd, this.nodes.length);
+    for (let c = p + 1; c < end; c++) {
+      if (this.nodes[c].parentIndex !== p) continue;
+      if (((this.nodes[c].flowFlags ?? 0) & 4) !== 0) continue;
+      const rel = axis === 1
+        ? this.nodes[c].box.y - this.nodes[p].box.y
+        : this.nodes[c].box.x - this.nodes[p].box.x;
+      if (!sawFlow) { startSlot = rel; sawFlow = true; }
+      if (!this.isEffectivelyVisible(this.nodes[c])) continue;
+      if (!sawVisible) { cursor = startSlot; sawVisible = true; }
+      const shift = cursor - rel;
+      if (shift !== 0) {
+        this.shiftSubtreeMain(c, axis, shift);
+        changed = true;
+      }
+      cursor += this.subtreeFlowExtent(c, axis) + gap;
+    }
+    if (!sawVisible) return changed;
+    const autoMain = axis === 1
+      ? ((this.nodes[p].flowFlags ?? 0) & 1)
+      : ((this.nodes[p].flowFlags ?? 0) & 2);
+    if (autoMain) {
+      let newSize = cursor - gap + (axis === 1 ? this.nodes[p].paddingBottom ?? 0 : this.nodes[p].paddingRight ?? 0);
+      if (newSize < 1) newSize = 1;
+      const cur = axis === 1 ? this.nodes[p].box.h : this.nodes[p].box.w;
+      if (newSize !== cur) {
+        if (axis === 1) this.nodes[p].box.h = newSize;
+        else this.nodes[p].box.w = newSize;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  private reflowScrollContent(p: number): void {
+    const node = this.nodes[p];
+    if (!node.scrollable || node.virtualized) return;
+    let maxBottom = node.box.y;
+    const end = Math.min(node.subtreeEnd, this.nodes.length);
+    for (let j = p + 1; j < end; j++) {
+      if (!this.isEffectivelyVisible(this.nodes[j])) continue;
+      const bottom = this.nodes[j].box.y + this.nodes[j].box.h;
+      if (bottom > maxBottom) maxBottom = bottom;
+    }
+    const ch = Math.max(maxBottom - node.box.y, node.box.h);
+    node.contentHeight = ch;
+    const maxScroll = Math.max(0, ch - node.box.h);
+    if (node.scrollY > maxScroll) node.scrollY = maxScroll;
+    node.lastPaintedScrollY = node.scrollY - (node.box.h > 0 ? node.box.h : 1);
+  }
+
+  private reflowAfterVisibility(changedNode: number): void {
+    let p = this.nodes[changedNode]?.parentIndex ?? -1;
+    let anyChange = false;
+    let guard = 0;
+    while (p >= 0 && p < this.nodes.length && guard++ < 64) {
+      const changedHere = this.restackFlowContainer(p);
+      this.reflowScrollContent(p);
+      if (!changedHere) break;
+      anyChange = true;
+      p = this.nodes[p].parentIndex ?? -1;
+    }
+    if (!anyChange) return;
+    for (const node of this.nodes) {
+      if ((node.screenId ?? 0) !== this.activeScreen) continue;
+      node.dirty = true;
+      node.lastTextHeight = 0;
+    }
+  }
+
+  private classifyDirtyAgainstOpenDrawers(): void {
+    for (const [dIdx, dState] of this.drawerStates) {
+      if (!dState.open || dState.progress < 1) continue;
+      const drawer = this.nodes[dIdx];
+      if (!drawer) continue;
+      const dX = this.drawXForNode(dIdx);
+      const dY = this.drawYForNode(dIdx);
+      for (const node of this.nodes) {
+        if (!node.dirty) continue;
+        if (node.index >= dIdx && node.index < drawer.subtreeEnd) continue;
+        if (!this.isActiveNode(node)) continue;
+        const nX = this.drawXForNode(node.index);
+        const nY = this.drawYForNode(node.index);
+        if (nX + node.box.w <= dX || nX >= dX + drawer.box.w ||
+            nY + node.box.h <= dY || nY >= dY + drawer.box.h) continue;
+        const fullyCovered = nX >= dX && nY >= dY &&
+          nX + node.box.w <= dX + drawer.box.w &&
+          nY + node.box.h <= dY + drawer.box.h;
+        if (fullyCovered && drawer.hasBg && drawer.opacity >= 100) {
+          node.dirty = false;
+        } else {
+          drawer.dirty = true;
+          drawer.lastTextHeight = 0;
+          for (let c = dIdx + 1; c < drawer.subtreeEnd && c < this.nodes.length; c++) {
+            this.nodes[c].dirty = true;
+            this.nodes[c].lastTextHeight = 0;
+          }
+        }
+      }
     }
   }
 
@@ -1916,6 +2056,13 @@ export class PreviewUIRuntime {
     for (const node of this.nodes) {
       if (this.isActiveNode(node) && this.isEffectivelyVisible(node) && node.scrollable && node.dirty) scrollbarDirty.add(node.index);
     }
+    // Open-drawer overlap pre-pass (device parity, the dirty-draw loop's
+    // classification): a dirty node under a fully-open opaque drawer paints
+    // its clear+redraw over the panel — a bound text behind the drawer erases
+    // the drawer's buttons. Fully covered -> nothing of it is visible, drop
+    // the dirty flag; partially covered -> re-dirty that drawer's subtree so
+    // it re-stamps on top in this same pass (its z sorts it after).
+    this.classifyDirtyAgainstOpenDrawers();
     const dirtyNodes = this.nodes
       .filter((node) => {
         if (!node.dirty) return false;

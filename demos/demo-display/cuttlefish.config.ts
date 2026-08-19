@@ -21,7 +21,7 @@ const config: CuttlefishConfig = {
     // #if defined(BOARD_HAS_PSRAM)) give them room to render smoothly.
     buildTarget: 'esp32:esp32:esp32s3:PSRAM=opi',
   },
-  output: { framework: 'arduino', optimize: 'size', outDir: './out' },
+  output: { framework: 'arduino', outDir: './out' },
   toolchain: { type: 'arduino-cli' },
   // Upload port for `npm run upload`. Precedence: --port flag >
   // CUTTLEFISH_PORT env var > this config — Linux/macOS users can set

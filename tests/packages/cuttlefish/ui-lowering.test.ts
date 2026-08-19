@@ -46,10 +46,21 @@ describe("ui lowering", () => {
   it("emits a transition table for transition-able properties", () => {
     const out = lower(
       `<screen><button id="btn">x</button></screen>`,
-      `#btn { background: #404040; transition: background 80ms; }`,
+      `#btn { background: #404040; transition: background 80ms; }` +
+        `#btn:pressed { background: #808080; }`,
     );
     expect(out.transitionTable).toContain("UITransition");
     expect(out.transitionTable).toContain("80");
+  });
+
+  it("drops no-op transitions (pressed target equals base)", () => {
+    // A transition with no :pressed override can never change the node's
+    // appearance — the emitter skips the entry instead of bloating the table.
+    const out = lower(
+      `<screen><button id="btn">x</button></screen>`,
+      `#btn { background: #404040; transition: background 80ms; }`,
+    );
+    expect(out.transitionTable).not.toContain("durationMs=80");
   });
 
   it("emits a .ui.d.html.ts with typed id properties", () => {

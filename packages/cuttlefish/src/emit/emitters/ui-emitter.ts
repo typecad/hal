@@ -66,8 +66,14 @@ export function generateTouchPollBody(input: TouchPollInput): string | null {
   const hasNativeSize = profile.nativeWidth !== undefined && profile.nativeHeight !== undefined;
   const nativeWidth = profile.nativeWidth ?? profile.width;
   const nativeHeight = profile.nativeHeight ?? profile.height;
-  const rawMapX = `map(__rawX, ${xMin}, ${xMax}, 0, ${nativeWidth})`;
-  const rawMapY = `map(__rawY, ${yMin}, ${yMax}, 0, ${nativeHeight})`;
+  // Inlined Arduino map() arithmetic, NOT a map() call: the emitted body must
+  // be self-contained. The map/constrain helpers are capability-gated
+  // (usesMap is set by SCRIPT-level map() calls only), so a bare map() here
+  // failed to link on frameworks without a core map() (Zephyr).
+  const mapCall = (raw: string, inMin: number, inMax: number, outMin: number, outMax: number): string =>
+    `((${raw} - ${inMin}) * (${outMax} - ${outMin}) / (${inMax} - ${inMin}) + ${outMin})`;
+  const rawMapX = mapCall("__rawX", xMin, xMax, 0, nativeWidth);
+  const rawMapY = mapCall("__rawY", yMin, yMax, 0, nativeHeight);
   let mapX: string, mapY: string;
   let sdlClamp = false;
   if (library === "sdl") {
@@ -88,14 +94,14 @@ export function generateTouchPollBody(input: TouchPollInput): string | null {
     const invertY = rotation === 1 || rotation === 2;
     if (isLandscape) {
       mapX = invertX
-        ? `map(__rawX, ${xMin}, ${xMax}, ${profile.width}, 0)`
-        : `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.width})`;
+        ? mapCall("__rawX", xMin, xMax, profile.width, 0)
+        : mapCall("__rawX", xMin, xMax, 0, profile.width);
       mapY = invertY
-        ? `map(__rawY, ${yMin}, ${yMax}, ${profile.height}, 0)`
-        : `map(__rawY, ${yMin}, ${yMax}, 0, ${profile.height})`;
+        ? mapCall("__rawY", yMin, yMax, profile.height, 0)
+        : mapCall("__rawY", yMin, yMax, 0, profile.height);
     } else {
-      mapX = `map(__rawY, ${yMin}, ${yMax}, ${profile.width}, 0)`;
-      mapY = `map(__rawX, ${xMin}, ${xMax}, 0, ${profile.height})`;
+      mapX = mapCall("__rawY", yMin, yMax, profile.width, 0);
+      mapY = mapCall("__rawX", xMin, xMax, 0, profile.height);
     }
   } else {
     switch (rotation) {
@@ -380,8 +386,12 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   }
 
   // 3. Signal variables (one per ui.signal / const X = ui.signal).
+  // A3-9-1: signal decls bypass the statement renderer, so apply the
+  // int -> fixed-width substitution here under --autosar.
+  const signalAutosarOn = ctx.compliance.isEnabled() && ctx.compliance.isBanned("A3-9-1");
+  const fixedWidth = signalAutosarOn && ctx.strategy ? ctx.strategy.defaultNumericType(ctx.compliance) : "";
   for (const decl of uiSignalDecls()) {
-    ctx.sourceLines.push(decl);
+    ctx.sourceLines.push(fixedWidth && decl.startsWith("int ") ? `${fixedWidth}${decl.slice(3)}` : decl);
   }
 
   // 4. Binding table (accumulated from ui.bind calls).
@@ -530,16 +540,33 @@ export function emitUIRuntime(ctx: EmitterContext): void {
     return entries.join(", ");
   };
 
+  // Per-table counts: the runtime indexes each table by node, so the safe
+  // bound for dispatch is each table's own highest populated index + 1 — not
+  // the shared click-table size (holds/releases can span fewer nodes).
+  const tableCount = (kind: "click" | "hold" | "release"): number => {
+    const max = touchHandlers
+      .filter(h => h.kind === kind)
+      .reduce((m, h) => Math.max(m, h.nodeIndex), -1);
+    return Math.max(max + 1, 1);
+  };
+
+  // The handler tables are link-time constants (function pointers only) and
+  // are never written at runtime — emit them const so they land in flash
+  // rodata instead of stealing DRAM (~4.5KB on a 380-node demo).
   if (profile.touch) {
-    ctx.sourceLines.push(`void (*__ui_click_handlers[])() = { ${buildTable("click")} };`);
-    ctx.sourceLines.push(`void (*__ui_hold_handlers[])() = { ${buildTable("hold")} };`);
-    ctx.sourceLines.push(`void (*__ui_release_handlers[])() = { ${buildTable("release")} };`);
+    ctx.sourceLines.push(`void (*const __ui_click_handlers[])() = { ${buildTable("click")} };`);
+    ctx.sourceLines.push(`void (*const __ui_hold_handlers[])() = { ${buildTable("hold")} };`);
+    ctx.sourceLines.push(`void (*const __ui_release_handlers[])() = { ${buildTable("release")} };`);
     ctx.sourceLines.push(`const uint16_t __ui_click_handler_count = ${tableSize};`);
+    ctx.sourceLines.push(`const uint16_t __ui_hold_handler_count = ${tableCount("hold")};`);
+    ctx.sourceLines.push(`const uint16_t __ui_release_handler_count = ${tableCount("release")};`);
   } else {
-    ctx.sourceLines.push(`void (*__ui_click_handlers[])() = {};`);
-    ctx.sourceLines.push(`void (*__ui_hold_handlers[])() = {};`);
-    ctx.sourceLines.push(`void (*__ui_release_handlers[])() = {};`);
+    ctx.sourceLines.push(`void (*const __ui_click_handlers[])() = {};`);
+    ctx.sourceLines.push(`void (*const __ui_hold_handlers[])() = {};`);
+    ctx.sourceLines.push(`void (*const __ui_release_handlers[])() = {};`);
     ctx.sourceLines.push(`const uint16_t __ui_click_handler_count = 0;`);
+    ctx.sourceLines.push(`const uint16_t __ui_hold_handler_count = 0;`);
+    ctx.sourceLines.push(`const uint16_t __ui_release_handler_count = 0;`);
   }
 
   // 8b. Input onChange dispatch — assigns __ui_kb_onchange based on __ui_kb_target.

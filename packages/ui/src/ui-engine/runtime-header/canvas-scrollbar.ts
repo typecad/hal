@@ -80,7 +80,10 @@ static inline void ui_push_buffered_scroll_canvas(CuttlefishCanvas16* bufferedSc
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
   uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
-  ui_display_fill_rect(tx, 0, 3, vh, dimFg);
+  // Track covers the FULL reserved gutter (4px) so child decorations that
+  // poke past the content area (e.g. outset shadows, offset up to +6px)
+  // can't leave 1px ticks in the uncovered edge column. Thumb stays 3px.
+  ui_display_fill_rect(tx, 0, 4, vh, dimFg);
   ui_display_fill_rect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
   // Record the scrollY this canvas now reflects, so the next scroll frame can
   // compute its shift delta (Mode B) from scrollY - lastPaintedScrollY.
@@ -109,7 +112,8 @@ static inline void ui_draw_scrollbar_direct(int16_t si, int16_t vox, int16_t voy
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
   uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
-  ui_display_fill_rect(tx, voy, 3, vh, dimFg);
+  // Full 4px gutter track (see the Mode B variant above).
+  ui_display_fill_rect(tx, voy, 4, vh, dimFg);
   ui_display_fill_rect(tx, static_cast<int16_t>(voy + thumbY), 3, thumbH, __ui_nodes[si].fg);
 }
 

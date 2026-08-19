@@ -86,7 +86,11 @@ export function topologicalSortFiles(
  * @param boardPackage  When provided, `@typecad/board` imports resolve to this
  *                      board package (e.g. `'@typecad/board-arduino-uno'`).
  */
-export function collectTranspileGraph(entryFile: string, boardPackage?: string): TranspileGraphResult {
+export async function collectTranspileGraph(
+  entryFile: string,
+  boardPackage?: string,
+  imageDecodeOpts?: { maxW?: number; maxH?: number },
+): Promise<TranspileGraphResult> {
   const ordered: string[] = [];
   const pending: string[] = [path.resolve(entryFile)];
   const visited = new Set<string>();
@@ -126,6 +130,10 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
       const parts = ui.splitUiFile(sourceText);
       // Register the template as a UI module at <file>.ui.html (synthetic path).
       const uiHtmlPath = filePath + ".html";
+      // Prime the image-conversion cache before the (synchronous) module
+      // load — <img src="*.png|jpg|ico|…"> decodes here, and the module's
+      // asset reader + natural-size layout pull from the cache.
+      await ui.warmUpImageDecoding(parts.html, path.dirname(filePath), imageDecodeOpts ?? {});
       ui.loadUIModuleFromText(uiHtmlPath, parts.html, parts.style, filePath);
       uiModules.add(uiHtmlPath);
       // Use the <script> as the TS source for import-graph walking. Inject an
@@ -220,6 +228,8 @@ export function collectTranspileGraph(entryFile: string, boardPackage?: string):
       // .ui.html modules: load into the UI registry, record the path, and don't
       // push onto `pending` (they are never parsed as TypeScript).
       if (resolved?.uiModule) {
+        const uiHtmlText = readText(resolved.sourcePath);
+        await requireUIHook().warmUpImageDecoding(uiHtmlText, path.dirname(resolved.sourcePath), imageDecodeOpts ?? {});
         requireUIHook().loadUIModule(resolved.sourcePath);
         uiModules.add(resolved.sourcePath);
         // Track the dependency edge so topological sort orders the importer

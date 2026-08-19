@@ -453,7 +453,6 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
 
     lines.push('  output: {');
     if (baseValues.output?.framework) lines.push(`    framework: '${baseValues.output?.framework}',`);
-    if (baseValues.output?.optimize) lines.push(`    optimize: '${baseValues.output?.optimize}',`);
     lines.push(`    outDir: './out',`);
     lines.push('  },');
 

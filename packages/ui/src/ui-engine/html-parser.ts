@@ -190,10 +190,23 @@ export function parseHtml(src: string, diagnostics?: Diagnostic[]): UIElementNod
   return parseAllScreens(src, diagnostics)[0];
 }
 
+// HTML-spec parsers treat `<view .../>` as an OPEN tag for non-void elements
+// (XML-style self-closing is not HTML), so JSX-habit markup silently nests:
+// `<view class="a"/><view class="b"/>` puts b INSIDE a. Expand every
+// self-closing non-void tag to an explicit pair before parsing. Void
+// elements (img, hr, input, ...) already parse correctly and are skipped.
+const VOID_TAGS = new Set(["area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"]);
+function expandSelfClosingTags(src: string): string {
+  return src.replace(/<([a-zA-Z][\w-]*)((?:[^>"']|"[^"]*"|'[^']*')*?)\/>/g, (m, tag: string, attrs: string) => {
+    if (VOID_TAGS.has(tag.toLowerCase())) return m;
+    return `<${tag}${attrs}></${tag}>`;
+  });
+}
+
 /** Parse all <screen> roots from HTML. Returns one tree per screen.
  *  Used for multi-screen navigation (<a href="#screenId">). */
 export function parseAllScreens(src: string, diagnostics?: Diagnostic[]): UIElementNode[] {
-  const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  const withoutComments = expandSelfClosingTags(src.replace(/<!--[\s\S]*?-->/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ""));
 
   const wrapped = `<div id="__root__">${withoutComments}</div>`;
   const { document } = parseHTML(wrapped);
@@ -215,7 +228,7 @@ export function parseAllScreens(src: string, diagnostics?: Diagnostic[]): UIElem
 
 /** Parse HTML, returning both the <screen> tree and any <keyboard> templates. */
 export function parseHtmlWithKeyboards(src: string, diagnostics?: Diagnostic[]): ParsedHtml {
-  const withoutComments = src.replace(/<!--[\s\S]*?-->/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "");
+  const withoutComments = expandSelfClosingTags(src.replace(/<!--[\s\S]*?-->/g, "").replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ""));
   const wrapped = `<div id="__root__">${withoutComments}</div>`;
   const { document } = parseHTML(wrapped);
   const root = document.getElementById("__root__");

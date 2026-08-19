@@ -28,7 +28,7 @@ import { westSpawn, buildEnv } from './west-spawn.js';
 import { discoverWest } from './west-discover.js';
 import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
 import { ZephyrStrategy } from '../strategy.js';
-import { generateOverlay, type DisplayWiring, type TouchWiring } from '../dt-config/overlay.js';
+import { generateOverlay, type DisplayWiring, type TouchWiring, type OverlayDiagnostic } from '../dt-config/overlay.js';
 import { chipForTarget } from '../chips/index.js';
 import { detectZephyrVersion, checkZephyrCompat, resolveBoardTarget } from './compat.js';
 import { DEFAULT_ZEPHYR_DISPLAY_PROFILE } from '../display/profiles.js';
@@ -344,6 +344,7 @@ export const Toolchain = {
       if (usesXpt) {
         touchWiring = { controller: 'xpt2046', ...(touchWiring ?? {}) };
       }
+      const overlayDiagnostics: OverlayDiagnostic[] = [];
       const overlay = generateOverlay(chip, {
         usesI2c: uses('i2c_'),
         usesSpi: uses('spi_'),
@@ -352,7 +353,10 @@ export const Toolchain = {
         usesTouch: uses('ft6336u') || uses('touch_') || usesXpt,
         touchController: usesXpt ? 'xpt2046' : 'ft6336u',
         psram: o.psram,
-      }, displayProfile, wiring, touchWiring);
+      }, displayProfile, wiring, touchWiring, overlayDiagnostics);
+      for (const d of overlayDiagnostics) {
+        console.warn(`overlay: ${d.message}`);
+      }
       const overlayDir = join(projectRoot, 'boards');
       mkdirSync(overlayDir, { recursive: true });
       // Write the board-specific overlay (the one west loads). Zephyr looks for

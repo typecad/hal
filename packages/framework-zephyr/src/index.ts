@@ -10,6 +10,12 @@ export { ZephyrStrategy as FrameworkStrategy } from './strategy.js';
 export { ZephyrStrategy } from './strategy.js';
 export { Toolchain } from './toolchain/index.js';
 
+// Create-time starter debug artifacts. The `cuttlefish create` flow reads this
+// optional named export off the loaded framework module (same loader pattern
+// as doctor/licenses) and calls it for freshly scaffolded projects, so F5 in
+// VS Code works before the first build. No-ops for non-GDB targets.
+export { writeProjectDebugArtifacts } from './toolchain/debug-config.js';
+
 // `cuttlefish doctor` — verify the installed Zephyr is reachable + inside the
 // declared compat range, and preview board-target normalization. Re-exported
 // under the dispatcher-facing alias `doctor` so the loader picks it up as

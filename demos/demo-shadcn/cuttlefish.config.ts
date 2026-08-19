@@ -13,40 +13,43 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
 const config: CuttlefishConfig = {
   entry: './src/app.ui',
-  target: 'esp32',
-  mcu: '@typecad/mcu-esp32',
-  board: '@typecad/board-esp32-devkit',
-  framework: '@typecad/framework-arduino',
-  frameworkData: {
-    buildTarget: 'esp32:esp32:esp32',
-  },
-  output: {
-    framework: 'arduino',
-    optimize: 'size',
-    outDir: './out',
-  },
-  toolchain: {
-    type: 'arduino-cli',
-  },
+  target: 'esp32s3',
+  mcu: '@typecad/mcu-esp32s3',
+  board: '@typecad/board-esp32s3',
+  framework: '@typecad/framework-zephyr',
+  frameworkData: { buildTarget: 'esp32s3_devkitc/esp32s3/procpu' },
+  // ESP32-S3 N16R8 has PSRAM. Uncomment to route large canvas allocations
+  // (scroll viewports, lists) to external RAM instead of the SRAM
+  // band-renderer path. Also enables the full-screen PSRAM framebuffer.
+  psram: 'opi',
+  toolchain: { type: 'west' },
   console: {
     baudRate: 9600,
+    port: 'COM12'
   },
-  console: { port: 'COM3' },
   display: {
-    profile: 'ili9341-spi',
+    profile: 'st7796-zephyr',
     cs: 5,
-    dc: 21,
-    rst: 22,
-    backlight: 33,
+    dc: 17,
+    rst: 16,
     spiFrequency: 80000000,
-    antialias: true,
-    themeClass: 'dark',
+    colorOrder: 'bgr',
+    // ST7796S panel power-on default is already non-inverted; sending INVON
+    // (0x21) would bitwise-NOT every pixel (red 0xF800 → cyan 0x07FF, etc.).
+    // Leave inversion off — matches demo-st and the panel's native state.
+    invertDisplay: false,
+    themeClass: 'dark',  // same theme as demo-st for side-by-side comparison
+    // FT6336U touch over Arduino Wire. Pin wiring matches demos/demo-st
+    // exactly so the same hardware setup works for both demos.
     touch: {
-      library: 'XPT2046_Touchscreen',
-      cs: 15,
-      irq: 17,
-      calibration: { xMin: 375, xMax: 3950, yMin: 200, yMax: 3750 },
-      minPressure: 10,
+      library: 'FT6336U',
+      i2cAddress: 0x38,
+      i2cFrequency: 400000,
+      irq: 15,
+      resetPin: 4,
+      sda: 8,
+      scl: 9,
+      calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 },
     },
   },
 };

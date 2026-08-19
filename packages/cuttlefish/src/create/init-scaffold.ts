@@ -220,7 +220,7 @@ export function scaffoldProject(
 export function printInitNextSteps(
   options: InitProjectOptions,
   outDir: string,
-  opts: { installed?: boolean } = {},
+  opts: { installed?: boolean; debugProfile?: boolean } = {},
 ): void {
   const relativeDir = path.relative(process.cwd(), outDir) || '.';
 
@@ -234,6 +234,12 @@ export function printInitNextSteps(
     console.log(chalk.dim(`  npm install`));
   }
   console.log(`  ${chalk.cyan("npm run compile")}`);
+
+  if (opts.debugProfile) {
+    console.log();
+    console.log(chalk.bold.white("To debug (VS Code):"));
+    console.log(`  ${chalk.cyan("open the folder and press F5")} ${chalk.dim("(builds + flashes, then attaches GDB)")}`);
+  }
 
   if (!options.isNative) {
     const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';

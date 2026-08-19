@@ -213,16 +213,6 @@ export interface GenerateLibdefOptions {
 }
 
 /** `cuttlefish add <preset>` — scaffold a copy-and-own asset into the project. */
-export interface AddCommandOptions {
-  command: "add";
-  /** Preset id (e.g. "shadcn"). */
-  preset: string;
-  /** Overwrite an existing destination file. */
-  force: boolean;
-  /** Project root (cwd when invoked from the project directory). */
-  projectRoot: string;
-}
-
 export interface GeneratedOutputs {
   headerPath?: string;
   sourcePath: string;

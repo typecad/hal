@@ -329,8 +329,27 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/r\.x < clip\.x[\s\S]*r\.y \+ r\.h > clip\.y \+ clip\.h[\s\S]*ui_mark_scroll_view_dirty\(p\);\s*return;/);
   });
 
-  it("promotes fully-contained dirty descendants inside overflow scroll to a viewport repaint", () => {
-    expect(header).toMatch(/Fully inside the viewport[\s\S]*ui_mark_scroll_view_dirty\(p\);\s*return;/);
+  it("every subtree renderer draws outset shadows (scroll bands included)", () => {
+    // The scroll band renderer skipped ui_draw_shadow, so band-composited
+    // viewports lost theme shadows on device while the preview showed them.
+    const between = (a: string, b: string): string => {
+      const i = header.indexOf(a);
+      const j = header.indexOf(b, i);
+      return i >= 0 && j > i ? header.slice(i, j) : "";
+    };
+    expect(between("ui_render_scroll_bands(uint16_t s)", "static inline uint8_t ui_render_screen_bands")).toContain("ui_draw_shadow");
+    expect(between("static inline uint8_t ui_render_screen_bands", "static inline uint8_t ui_render_node_bands")).toContain("ui_draw_shadow");
+    expect(between("ui_render_node_bands(uint16_t i,", "static inline uint8_t ui_render_list_bands")).toContain("ui_draw_shadow");
+  });
+
+  it("keeps fully-contained dirty descendants local (buffered direct repaint, no viewport promotion)", () => {
+    // Fully-inside children keep their own dirty flag — the dirty loop's
+    // scroll defer lets them repaint through the paint canvas/bands. The old
+    // promotion recomposed the whole viewport per dirty tick, which keyframe
+    // animations turned into constant full-screen pushes (unusable tearing).
+    expect(header).toMatch(/Fully inside the viewport: leave the CHILD dirty/);
+    // Only partially/fully clipped children defer to the composited canvas.
+    expect(header).toMatch(/Not composited this frame\.[\s\S]*ui_is_rect_clipped_by_scroll/);
   });
 
   it("applies visible bindings by clearing hidden branches and repainting shown subtrees", () => {

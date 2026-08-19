@@ -18,7 +18,7 @@ import { DEFAULT_ZEPHYR_DISPLAY_PROFILE, type ZephyrDisplayProfile } from './pro
 // and consumers can reach them from the package barrel.
 export { zephyrUiDisplayAdapter, zephyrDisplayAdapterGenerator } from './ui-adapter.js';
 export { zephyrTouchAdapter } from './touch-adapter.js';
-export { ZEPHYR_DISPLAY_PROFILES, DEFAULT_ZEPHYR_DISPLAY_PROFILE } from './profiles.js';
+export { ZEPHYR_DISPLAY_PROFILES, DEFAULT_ZEPHYR_DISPLAY_PROFILE, BUILT_IN_PROFILES } from './profiles.js';
 export type { ZephyrDisplayProfile } from './profiles.js';
 
 export interface DisplayState {

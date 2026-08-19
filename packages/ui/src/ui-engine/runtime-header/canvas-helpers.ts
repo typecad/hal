@@ -36,6 +36,9 @@ static inline CuttlefishCanvas16* ui_create_canvas_best(int16_t w, int16_t h) {
       }
       return c;
     }
+    // Object allocated but its pixel buffer failed — free the object before
+    // falling through to SRAM so it isn't leaked.
+    display_deleteCanvas(c);
     // PSRAM allocation failed (rare — fragmented PSRAM) → fall through to SRAM.
   }
 #endif

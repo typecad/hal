@@ -129,6 +129,9 @@ struct UINode {
   uint8_t optionCount;  // <select>: number of options
   void (*optionTextFn)(uint8_t idx, char* buf, uint8_t size);  // option text by index
   int8_t drawerSide;  // <drawer>: 0=bottom 1=top 2=left 3=right; -1 = not a drawer
+  int8_t flowAxis;  // visibility reflow: 0 none, 1 column, 2 row (ui_reflow_visibility)
+  uint8_t flowGap;  // visibility reflow: main-axis gap between in-flow children
+  uint8_t flowFlags;  // bit0 auto height, bit1 auto width, bit2 out-of-flow
 };
 // Rich-text run: one piece of styled inline text within a node's run list.
 struct UIRichRun {

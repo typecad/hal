@@ -62,7 +62,6 @@ describe("config-loader", () => {
           "  frameworkData: { buildTarget: 'arduino:avr:uno' },",
           "  output: {",
           "    framework: 'arduino',",
-          "    optimize: 'size',",
           "    outDir: './out',",
           "  },",
           "};",
@@ -77,7 +76,6 @@ describe("config-loader", () => {
       expect(result!.board).toBe("@typecad/board-arduino-uno");
       expect(result!.buildTarget).toBe("arduino:avr:uno");
       expect(result!.outputFramework).toBe("arduino");
-      expect(result!.outputOptimize).toBe("size");
       expect(result!.outputOutDir).toBe("./out");
       expect(result!.configPath).toBe(configPath);
     });

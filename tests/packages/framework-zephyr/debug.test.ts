@@ -6,8 +6,11 @@ import { describe, it, expect } from 'vitest';
 import { ZephyrStrategy } from '../../../packages/framework-zephyr/src/strategy';
 import {
   writeDebugConfig,
+  writeProjectDebugArtifacts,
   generateGdbScript,
   resolveDebugLocations,
+  discoverZephyrSdkRoots,
+  gdbPathFromSdkRoot,
 } from '../../../packages/framework-zephyr/src/toolchain/debug-config';
 import { scaffoldZephyrProject } from '../../../packages/framework-zephyr/src/toolchain/scaffold';
 import * as fs from 'node:fs';
@@ -300,6 +303,150 @@ describe('resolveDebugLocations', () => {
       expect(path.resolve(workspaceRoot)).toBe(path.resolve(tmp));
       // path.relative(x, x) === '' (same dir); the app dir IS the workspace.
       expect(sketchRel).toBe('');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('writeProjectDebugArtifacts — create-time starter artifacts', () => {
+  it('writes launch.json + tasks.json + openocd.cfg under the starter src/out layout for esp32s3', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-'));
+    try {
+      const written = writeProjectDebugArtifacts({
+        workspaceRoot: tmp,
+        buildTarget: 'esp32s3_devkitc/esp32s3/procpu',
+      });
+      expect(written).toContain('.vscode/launch.json');
+      expect(written).toContain('.vscode/tasks.json');
+      expect(written).toContain('src/out/.cuttlefish/openocd.cfg');
+
+      // All three artifacts exist under the scaffolded src/out app layout.
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      const tasks = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'tasks.json'), 'utf8'));
+      expect(fs.existsSync(path.join(tmp, 'src', 'out', '.cuttlefish', 'openocd.cfg'))).toBe(true);
+
+      // The launch config targets the starter app's ELF + openocd cfg, and its
+      // preLaunchTask pairs with the emitted task label (F5 wiring).
+      const cfg = launch.configurations[0];
+      expect(cfg.name).toBe('TypeCAD Debug (Zephyr, ESP32-S3)');
+      expect(cfg.executable).toBe('${workspaceFolder}/src/out/build/zephyr/zephyr.elf');
+      expect(cfg.configFiles[0]).toBe('${workspaceFolder}/src/out/.cuttlefish/openocd.cfg');
+      const task = tasks.tasks[0];
+      expect(task.label).toBe(cfg.preLaunchTask);
+      expect(task.command).toContain('--debug');
+      // The task runs from the starter app dir, where cuttlefish.config.ts
+      // resolution walks up to the project root.
+      expect(task.options.cwd).toBe('${workspaceFolder}/src/out');
+
+      // No gdb frame-filter script at create time (no source map exists yet).
+      expect(fs.existsSync(path.join(tmp, 'src', 'out', '.cuttlefish', '.cuttlefish-gdb.py'))).toBe(false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('is idempotent — re-running does not duplicate entries', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-idem-'));
+    try {
+      writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'esp32s3_devkitc' });
+      writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'esp32s3_devkitc' });
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      const tasks = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'tasks.json'), 'utf8'));
+      expect(launch.configurations).toHaveLength(1);
+      expect(tasks.tasks).toHaveLength(1);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('no-ops for printf targets and when no target is given', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-printf-'));
+    try {
+      expect(writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'xiao_ble' })).toEqual([]);
+      expect(writeProjectDebugArtifacts({ workspaceRoot: tmp })).toEqual([]);
+      expect(fs.existsSync(path.join(tmp, '.vscode'))).toBe(false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('upgrades cleanly alongside the post-build writer (same entry names)', () => {
+    // The starter artifacts and the post-build writeDebugConfig must merge
+    // into the SAME launch entry / task (by name/label), not duplicate.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-upgrade-'));
+    const appRoot = path.join(tmp, 'src', 'out');
+    try {
+      writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'esp32s3_devkitc' });
+      writeDebugConfig({
+        projectRoot: appRoot,
+        workspaceRoot: tmp,
+        sketchRel: 'src/out',
+        target: 'esp32s3_devkitc',
+        buildDir: path.join(appRoot, 'build'),
+      });
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      const tasks = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'tasks.json'), 'utf8'));
+      expect(launch.configurations).toHaveLength(1);
+      expect(tasks.tasks).toHaveLength(1);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('Zephyr SDK discovery (create-time gdbPath fallback)', () => {
+  const fakeGdb = (sdkRoot: string): void => {
+    const bin = path.join(sdkRoot, 'xtensa-espressif_esp32s3_zephyr-elf', 'bin');
+    fs.mkdirSync(bin, { recursive: true });
+    fs.writeFileSync(path.join(bin, 'xtensa-espressif_esp32s3_zephyr-elf-gdb.exe'), '');
+  };
+
+  it('gdbPathFromSdkRoot resolves only roots containing the esp32s3 gdb', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-sdkroot-'));
+    try {
+      const withGdb = path.join(tmp, 'sdk-a');
+      fakeGdb(withGdb);
+      expect(gdbPathFromSdkRoot(withGdb)).toContain('xtensa-espressif_esp32s3_zephyr-elf-gdb.exe');
+      // Forward slashes — ${workspaceFolder}-style paths that GDB reads must
+      // not carry backslash escapes.
+      expect(gdbPathFromSdkRoot(withGdb)).not.toContain('\\');
+      expect(gdbPathFromSdkRoot(path.join(tmp, 'sdk-empty'))).toBeUndefined();
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('discovers SDK roots newest-version-first from the installer + standalone layouts', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-sdks-'));
+    const home = path.join(tmp, 'home');
+    try {
+      // Installer layout: <home>/micromamba/zephyr-sdk/zephyr-sdk-<ver>
+      const installerBase = path.join(home, 'micromamba', 'zephyr-sdk');
+      fs.mkdirSync(path.join(installerBase, 'zephyr-sdk-0.16.0'), { recursive: true });
+      fs.mkdirSync(path.join(installerBase, 'zephyr-sdk-0.17.10'), { recursive: true });
+      // Standalone layout: <home>/zephyr-sdk-<ver> (numeric compare: 0.17.4 < 0.17.10)
+      fs.mkdirSync(path.join(home, 'zephyr-sdk-0.17.4'), { recursive: true });
+
+      const roots = discoverZephyrSdkRoots({ home, env: {} });
+      const names = roots.map((r) => path.basename(r));
+      expect(names.indexOf('zephyr-sdk-0.17.10')).toBeLessThan(names.indexOf('zephyr-sdk-0.16.0'));
+      expect(names.indexOf('zephyr-sdk-0.17.10')).toBeLessThan(names.indexOf('zephyr-sdk-0.17.4'));
+      expect(roots).toHaveLength(3);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('prefers $ZEPHYR_SDK_INSTALL_DIR over scanned locations', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-sdkenv-'));
+    const home = path.join(tmp, 'home');
+    try {
+      fs.mkdirSync(path.join(home, 'zephyr-sdk-0.17.4'), { recursive: true });
+      const envRoot = path.join(tmp, 'env-sdk');
+      fs.mkdirSync(envRoot, { recursive: true });
+      const roots = discoverZephyrSdkRoots({ home, env: { ZEPHYR_SDK_INSTALL_DIR: envRoot } });
+      expect(roots[0]).toBe(path.resolve(envRoot));
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

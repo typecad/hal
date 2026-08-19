@@ -157,7 +157,11 @@ static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_
   if (__ui_nodes[nodeIdx].kind == NODE_LIST) return 0;
   // <canvas> elements batch via __ui_node_canvas when drawing to the display.
   if (__ui_nodes[nodeIdx].kind == NODE_CANVAS) return 0;
-  if (static_cast<uint32_t>(w) * static_cast<uint32_t>(h) > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
+  // NO hard pixel cap here: oversized paint rects route to the band renderer
+  // via preferBand (UI_BAND_PREFER_PIXELS), and the repair canvas is never
+  // attempted above that threshold either. A cap here pushed just-over-budget
+  // repaints (a 452x48 full-width button is 21696px) onto the direct
+  // clear-then-redraw path — the visible button press flash.
   if (ui_pixel_heavy_node(nodeIdx)) return 1;
   if (__ui_nodes[nodeIdx].kind == NODE_FILL &&
       __ui_nodes[nodeIdx].hasBg &&
@@ -444,8 +448,13 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   if (__ui_nodes[nodeIdx].kind != NODE_FILL) return 0;
   if (!__ui_nodes[nodeIdx].hasBg) return 0;
   if (__ui_nodes[nodeIdx].gradientEnabled != 0) return 0;
-  if (__ui_nodes[nodeIdx].borderRadius != 0 ||
-      __ui_nodes[nodeIdx].borderStyle != 0 ||
+  // borderRadius is NOT a bail-out: rounded fills (pill badges, keyframe
+  // boxes) repair through the same union bitmap — the corner arcs draw into
+  // the seeded backdrop. Rejecting them forced every geometry keyframe on a
+  // rounded box onto the direct clear→redraw fallback, which tears on SPI
+  // TFTs at animation frame rate. Border/outline/shadow chrome still bails:
+  // the repair body below doesn't render it.
+  if (__ui_nodes[nodeIdx].borderStyle != 0 ||
       __ui_nodes[nodeIdx].outlineStyle != 0 ||
       __ui_nodes[nodeIdx].shadowCount != 0) return 0;
 
@@ -488,7 +497,12 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   int16_t drawY = ui_draw_y_for_node(nodeIdx) - repair.y;
   int16_t fillW = ui_rotated_face_w(nodeIdx, __ui_nodes[nodeIdx].box.w, __ui_nodes[nodeIdx].box.h);
   int16_t fillH = ui_rotated_face_h(nodeIdx, __ui_nodes[nodeIdx].box.w, __ui_nodes[nodeIdx].box.h);
-  ui_display_fill_rect(drawX, drawY, fillW, fillH, fillBg);
+  if (__ui_nodes[nodeIdx].borderRadius > 0) {
+    ui_display_fill_round_rect(drawX, drawY, fillW, fillH,
+      __ui_nodes[nodeIdx].borderRadius, fillBg);
+  } else {
+    ui_display_fill_rect(drawX, drawY, fillW, fillH, fillBg);
+  }
   ui_display_set_target(previousGfx);
   // Keep geometry repair off the physical panel when a retained framebuffer is
   // active; the final dirty-bounds publish will send the old+new union once.
@@ -537,6 +551,147 @@ static inline void ui_clear_subtree_current_paint(uint16_t nodeIdx) {
   }
 }
 
+// ── Visibility reflow ──────────────────────────────────────────────────────
+// Layout runs at build time (yoga); a hidden subtree keeps its baked boxes,
+// so toggling the visible flag alone leaves a collapsed pane's space
+// reserved (an accordion card sized for its open state shows empty space
+// when closed). When a node's visibility changes, the runtime re-stacks each
+// ancestor flow container's in-flow children along the emitted axis
+// (flowAxis/flowGap/flowFlags metadata) and re-sizes content-sized
+// containers, cascading upward until a container stops changing. Preview
+// parity: the preview's layout engine excludes hidden nodes from flow on
+// every frame.
+
+// Outer extent of c's subtree along the flow axis, relative to c's own
+// origin. Descendants positioned above c's origin (overlays) don't count.
+static int16_t ui_subtree_flow_extent(uint16_t c, uint8_t axis) {
+  int16_t base = axis == 1 ? __ui_nodes[c].box.y : __ui_nodes[c].box.x;
+  int16_t maxEnd = static_cast<int16_t>(base + (axis == 1 ? __ui_nodes[c].box.h : __ui_nodes[c].box.w));
+  uint16_t end = __ui_nodes[c].subtreeEnd;
+  if (end > __ui_node_count) end = __ui_node_count;
+  for (uint16_t j = c + 1; j < end; j++) {
+    int16_t off = axis == 1 ? __ui_nodes[j].box.y : __ui_nodes[j].box.x;
+    int16_t rel = static_cast<int16_t>(off - base);
+    if (rel < 0) continue;
+    int16_t jEnd = static_cast<int16_t>(rel + (axis == 1 ? __ui_nodes[j].box.h : __ui_nodes[j].box.w));
+    if (jEnd > maxEnd) maxEnd = jEnd;
+  }
+  return static_cast<int16_t>(maxEnd - base);
+}
+
+static void ui_shift_subtree_main(uint16_t c, uint8_t axis, int16_t delta) {
+  uint16_t end = __ui_nodes[c].subtreeEnd;
+  if (end > __ui_node_count) end = __ui_node_count;
+  for (uint16_t j = c; j < end; j++) {
+    if (axis == 1) __ui_nodes[j].box.y = static_cast<int16_t>(__ui_nodes[j].box.y + delta);
+    else __ui_nodes[j].box.x = static_cast<int16_t>(__ui_nodes[j].box.x + delta);
+  }
+}
+
+// Re-stack p's in-flow children from the first in-flow child's slot (hidden
+// children take no space). Returns 1 when a child moved or p's content-sized
+// main dimension changed.
+static uint8_t ui_restack_flow_container(uint16_t p) {
+  if (p >= __ui_node_count) return 0;
+  uint8_t axis = __ui_nodes[p].flowAxis == 2 ? 2U : (__ui_nodes[p].flowAxis == 1 ? 1U : 0U);
+  if (axis == 0) return 0;
+  int16_t gap = static_cast<int16_t>(__ui_nodes[p].flowGap);
+  int16_t startSlot = 0;
+  int16_t cursor = 0;
+  uint8_t sawFlowChild = 0;
+  uint8_t sawVisibleChild = 0;
+  uint8_t changed = 0;
+  uint16_t end = __ui_nodes[p].subtreeEnd;
+  if (end > __ui_node_count) end = __ui_node_count;
+  for (uint16_t c = p + 1; c < end; c++) {
+    if (__ui_nodes[c].parent != p) continue;
+    if ((__ui_nodes[c].flowFlags & 0x4U) != 0U) continue;  // out-of-flow child
+    int16_t rel = axis == 1
+      ? static_cast<int16_t>(__ui_nodes[c].box.y - __ui_nodes[p].box.y)
+      : static_cast<int16_t>(__ui_nodes[c].box.x - __ui_nodes[p].box.x);
+    // The first in-flow child's slot anchors the stack (padding + its
+    // margins); a hidden first child must not drag the anchor down.
+    if (sawFlowChild == 0U) { startSlot = rel; sawFlowChild = 1; }
+    if (!ui_is_effectively_visible(c)) continue;  // collapsed: takes no space
+    if (sawVisibleChild == 0U) { cursor = startSlot; sawVisibleChild = 1; }
+    int16_t shift = static_cast<int16_t>(cursor - rel);
+    if (shift != 0) {
+      ui_shift_subtree_main(c, axis, shift);
+      changed = 1;
+    }
+    cursor = static_cast<int16_t>(cursor + ui_subtree_flow_extent(c, axis) + gap);
+  }
+  if (sawVisibleChild == 0U) return changed;
+  // A content-sized main dimension follows the stack: children's offsets
+  // already include the leading padding; trailing padding completes the box.
+  uint8_t autoMain = axis == 1
+    ? static_cast<uint8_t>(__ui_nodes[p].flowFlags & 0x1U)
+    : static_cast<uint8_t>(__ui_nodes[p].flowFlags & 0x2U);
+  if (autoMain != 0U) {
+    int16_t contentEnd = static_cast<int16_t>(cursor - gap);
+    int16_t padMain = axis == 1
+      ? static_cast<int16_t>(__ui_nodes[p].paddingBottom)
+      : static_cast<int16_t>(__ui_nodes[p].paddingRight);
+    int16_t newSize = static_cast<int16_t>(contentEnd + padMain);
+    if (newSize < 1) newSize = 1;
+    int16_t curSize = axis == 1 ? static_cast<int16_t>(__ui_nodes[p].box.h) : static_cast<int16_t>(__ui_nodes[p].box.w);
+    if (newSize != curSize) {
+      if (axis == 1) __ui_nodes[p].box.h = newSize;
+      else __ui_nodes[p].box.w = newSize;
+      changed = 1;
+    }
+  }
+  return changed;
+}
+
+// Recompute a scrollable container's contentHeight over its visible subtree
+// (mirrors the build-time computation), clamp the scroll offset, and force
+// the next paint to reseed the container canvas.
+static void ui_reflow_scroll_content(uint16_t p) {
+  if (!__ui_nodes[p].scrollable || __ui_nodes[p].virtualized) return;
+  int16_t maxBottom = static_cast<int16_t>(__ui_nodes[p].box.y);
+  uint16_t end = __ui_nodes[p].subtreeEnd;
+  if (end > __ui_node_count) end = __ui_node_count;
+  for (uint16_t j = p + 1; j < end; j++) {
+    if (!ui_is_effectively_visible(j)) continue;
+    int16_t bottom = static_cast<int16_t>(__ui_nodes[j].box.y + __ui_nodes[j].box.h);
+    if (bottom > maxBottom) maxBottom = bottom;
+  }
+  int16_t ch = static_cast<int16_t>(maxBottom - __ui_nodes[p].box.y);
+  if (ch < static_cast<int16_t>(__ui_nodes[p].box.h)) ch = static_cast<int16_t>(__ui_nodes[p].box.h);
+  __ui_nodes[p].contentHeight = ch;
+  int16_t maxScroll = static_cast<int16_t>(ch - __ui_nodes[p].box.h);
+  if (maxScroll < 0) maxScroll = 0;
+  if (__ui_nodes[p].scrollY > maxScroll) __ui_nodes[p].scrollY = maxScroll;
+  __ui_nodes[p].lastPaintedScrollY = static_cast<int16_t>(
+    __ui_nodes[p].scrollY - (__ui_nodes[p].box.h > 0 ? __ui_nodes[p].box.h : 1));
+}
+
+// Called after a node's visible flag changed: re-stack ancestor flow
+// containers bottom-up, then repaint the active screen once.
+static void ui_reflow_visibility(uint16_t changedNode) {
+  if (changedNode >= __ui_node_count) return;
+  uint8_t anyChange = 0;
+  uint16_t p = __ui_nodes[changedNode].parent;
+  uint16_t guard = 0;
+  while (p != UI_NO_PARENT && p < __ui_node_count && guard < 64U) {
+    guard++;
+    uint8_t changedHere = ui_restack_flow_container(p);
+    ui_reflow_scroll_content(p);
+    if (changedHere == 0U) break;  // nothing moved and the size held: ancestors unaffected
+    anyChange = 1;
+    p = __ui_nodes[p].parent;
+  }
+  if (anyChange == 0U) return;
+  // One full active-screen repaint — the same contract as navigation; a
+  // visibility collapse is a discrete user event, not an animation.
+  for (uint16_t i = 0; i < __ui_node_count; i++) {
+    if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+    __ui_nodes[i].dirty = 1;
+    __ui_nodes[i].lastTextHeight = 0;
+  }
+}
+
 static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible) {
   if (nodeIdx >= __ui_node_count) return;
   visible = visible ? 1 : 0;
@@ -557,6 +712,7 @@ static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible) {
     }
     if (hasSubtreeRect) ui_mark_overlapping_higher_layers_dirty_for_rect(nodeIdx, &subtreeRect);
     __ui_nodes[nodeIdx].visible = 0;
+    ui_reflow_visibility(nodeIdx);
     return;
   }
 
@@ -569,6 +725,7 @@ static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible) {
       ui_mark_overlapping_higher_layers_dirty(c);
     }
   }
+  ui_reflow_visibility(nodeIdx);
 }
 `;
 }

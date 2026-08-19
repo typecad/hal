@@ -17,6 +17,8 @@ export {
 } from './init-templates.js';
 export type { InitProjectOptions } from './init-templates.js';
 export { runInitWizard } from './init-wizard.js';
+export { generateFrameworkDebugArtifacts } from './debug-artifacts.js';
+export type { FrameworkDebugArtifactsOptions, FrameworkModuleLoader } from './debug-artifacts.js';
 
 // Board codegen tool (`cuttlefish board add`)
 export { scaffoldBoardPackages } from './board-codegen.js';

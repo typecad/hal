@@ -15,9 +15,6 @@ import type { DisplayConfig } from './shared/display-profile.js';
 /** Build-system / framework the transpiler should target. */
 type OutputFramework = string & {};
 
-/** Optimization strategy. */
-type OptimizationLevel = 'none' | 'size' | 'speed' | 'balanced';
-
 /**
  * Output section — controls how generated C++ is laid out.
  */
@@ -28,8 +25,6 @@ interface CuttlefishOutputConfig {
    * Matches the optional Zod `output.framework` in config-schema.ts.
    */
   framework?: OutputFramework;
-  /** Optimization level. */
-  optimize?: OptimizationLevel;
   /** Directory to write generated files into (relative to project root). */
   outDir?: string;
   /** Additional compiler defines (KEY = value). */

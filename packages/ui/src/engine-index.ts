@@ -21,6 +21,7 @@ import { resolveColor, resolveColorInternal } from "./ui-engine/color.js";
 import { emitRuntimeHeader } from "./ui-engine/runtime-header.js";
 import { emitCuttlefishGfx } from "./ui-engine/runtime-header/cuttlefish-gfx.js";
 import { splitUiFile } from "./ui-engine/ui-file-splitter.js";
+import { warmUpImageDecoding } from "./ui-engine/image-decode.js";
 
 export type { TranspilerUIHook };
 
@@ -46,6 +47,7 @@ export function registerTranspilerUI(): TranspilerUIHook {
     emitRuntimeHeader,
     emitCuttlefishGfx,
     splitUiFile,
+    warmUpImageDecoding,
     generateProjectUITypeDeclarations,
   };
 }

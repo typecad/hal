@@ -347,6 +347,17 @@ void CuttlefishGFX::fillCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t 
 }
 
 void CuttlefishGFX::drawRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
+  if (w <= 0 || h <= 0) return;
+  if (r <= 0) {
+    drawRect(x, y, w, h, color);
+    return;
+  }
+  // CSS border-radius semantics: radii larger than half the shorter side
+  // collapse to a pill/box (the preview host-gfx clamps identically). Kit
+  // styles lower border-radius:9999px to r=255; without this clamp the
+  // corner arcs overgrow the box instead of forming a true pill.
+  const int16_t halfMin = static_cast<int16_t>((w < h ? w : h) / 2);
+  if (r > halfMin) r = halfMin;
   drawFastHLine(x + r,     y,         w - 2 * r, color); // Top
   drawFastHLine(x + r,     y + h - 1, w - 2 * r, color); // Bottom
   drawFastVLine(x,         y + r,     h - 2 * r, color); // Left
@@ -358,7 +369,17 @@ void CuttlefishGFX::drawRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, in
 }
 
 void CuttlefishGFX::fillRoundRect(int16_t x, int16_t y, int16_t w, int16_t h, int16_t r, uint16_t color) {
+  if (w <= 0 || h <= 0) return;
+  if (r <= 0) {
+    fillRect(x, y, w, h, color);
+    return;
+  }
+  const int16_t halfMin = static_cast<int16_t>((w < h ? w : h) / 2);
+  if (r > halfMin) r = halfMin;
   fillRect(x + r, y, w - 2 * r, h, color);
+  // h - 2*r - 1 stays unclamped: for a perfect pill (h == 2r) it is -1 and the
+  // helper's +1+delta lands the arc lines exactly on the box (the preview
+  // host-gfx passes the same unclamped value).
   fillCircleHelper(x + w - r - 1, y + r, r, 1, h - 2 * r - 1, color);
   fillCircleHelper(x + r,         y + r, r, 2, h - 2 * r - 1, color);
 }

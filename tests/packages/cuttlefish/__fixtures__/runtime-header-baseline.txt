@@ -53,6 +53,12 @@
 #define UI_SCROLL_DEADBAND_PX 2
 #endif
 // Capability tier flags (emitted per-TU before this header; defaults = full).
+// The default-on check must run BEFORE the per-flag #ifndef defaults below —
+// after them, all three flags are defined 0 and the fallback would redefine
+// UI_SCROLL_INPUT_TIER_RESISTIVE with a different value (ill-formed).
+#if !defined(UI_SCROLL_INPUT_TIER_CAPACITIVE) && !defined(UI_SCROLL_INPUT_TIER_RESISTIVE) && !defined(UI_SCROLL_INPUT_TIER_NONE)
+#define UI_SCROLL_INPUT_TIER_RESISTIVE 1
+#endif
 #ifndef UI_SCROLL_INPUT_TIER_CAPACITIVE
 #define UI_SCROLL_INPUT_TIER_CAPACITIVE 0
 #endif
@@ -67,9 +73,6 @@
 #endif
 #ifndef UI_SCROLL_RENDER_TIER_CONSTRAINED
 #define UI_SCROLL_RENDER_TIER_CONSTRAINED 0
-#endif
-#if (UI_SCROLL_INPUT_TIER_CAPACITIVE + UI_SCROLL_INPUT_TIER_RESISTIVE + UI_SCROLL_INPUT_TIER_NONE) == 0
-#define UI_SCROLL_INPUT_TIER_RESISTIVE 1
 #endif
 #define UI_SCROLL_HAS_TOUCH (UI_SCROLL_INPUT_TIER_CAPACITIVE || UI_SCROLL_INPUT_TIER_RESISTIVE)
 #define UI_SCROLL_ELASTIC (UI_SCROLL_RENDER_TIER_FULL)
@@ -218,6 +221,9 @@ struct UINode {
   uint8_t optionCount;  // <select>: number of options
   void (*optionTextFn)(uint8_t idx, char* buf, uint8_t size);  // option text by index
   int8_t drawerSide;  // <drawer>: 0=bottom 1=top 2=left 3=right; -1 = not a drawer
+  int8_t flowAxis;  // visibility reflow: 0 none, 1 column, 2 row (ui_reflow_visibility)
+  uint8_t flowGap;  // visibility reflow: main-axis gap between in-flow children
+  uint8_t flowFlags;  // bit0 auto height, bit1 auto width, bit2 out-of-flow
 };
 // Rich-text run: one piece of styled inline text within a node's run list.
 struct UIRichRun {
@@ -497,6 +503,7 @@ static uint16_t __ui_active_screen_bg_node = 0xFFFF;
 static uint32_t __ui_settle_start_ms = 0;        // when the active settle animation began
 static int16_t __ui_settle_from_overscroll = 0;  // settle start value (bounce-back)
 static int16_t __ui_settle_from_scrollY = 0;     // settle start value (edge snap; sign: +toward 0, -toward max)
+static uint16_t __ui_settle_node = 0xFFFF;       // node owning the active settle; only one settles at a time
 static uint8_t __ui_kb_visible = 0;
 
 static uint8_t __ui_active_screen = 0;   // which screen is visible/interactive
@@ -640,6 +647,40 @@ extern const uint16_t __ui_input_binding_count;
 // The UIListBinding table below is still emitted by the lowering for the
 // node-initializer to read at static-init time; the runtime never indexes it.
 
+// ── Modal <select> + <drawer> declarations ────────────────────────────────
+// Declared here (the earliest runtime-header module) because ui_navigate,
+// ui_is_effectively_visible, ui_init, and ui_tick all reference them;
+// definitions live in the touch/keyboard modules below.
+// ── Modal <select> option list ────────────────────────────────────────────
+// Tapping a select opens a centered list of its options; tapping a row sets
+// the value, tapping outside dismisses. Mirrors the preview's select modal.
+static int16_t __ui_select_menu = -1;   // node index while open, -1 closed
+static uint8_t __ui_select_menu_dirty = 0; // overlay needs stamping this frame
+static inline void ui_select_menu_open(uint16_t nodeIdx);
+static inline void ui_select_menu_close(uint8_t repaint);
+static inline void ui_select_menu_geom(uint16_t nodeIdx, UIRect* out, int16_t* rowH);
+static inline void ui_select_menu_draw();
+static inline void ui_select_menu_tap(int16_t tx, int16_t ty);
+
+// ── <drawer> slide-in panels ──────────────────────────────────────────────
+// Author-styled absolute panels; the runtime slides the subtree in from the
+// drawer's edge (transform offsets), hides it while closed, and closes on
+// outside taps. Mirrors the preview's drawer implementation.
+#define UI_DRAWER_MAX 4
+static int16_t  __ui_drawer_idx[UI_DRAWER_MAX];    // node index per slot, -1 free; int16 — node indices exceed 127 in real apps
+static uint8_t  __ui_drawer_open[UI_DRAWER_MAX];   // target state (0 closed, 1 open)
+static uint8_t  __ui_drawer_progress[UI_DRAWER_MAX]; // 0 closed .. 1 open
+static uint8_t  __ui_drawer_slots = 0;             // discovered drawers (init scan)
+static int16_t __ui_drawer_last_dx[UI_DRAWER_MAX]; // last applied slide dx (delta bookkeeping)
+static int16_t __ui_drawer_last_dy[UI_DRAWER_MAX]; // last applied slide dy
+static int8_t   __ui_drawer_slot_of(uint16_t nodeIdx);
+static void     ui_drawer_discover();
+static void     ui_drawer_open(uint16_t nodeIdx);
+static void     ui_drawer_close(uint16_t nodeIdx);
+static void     ui_drawer_close_all();
+static void     ui_drawer_apply(uint8_t slot, uint8_t progress);
+static void     ui_drawer_tick(uint32_t deltaMs);
+
 // Early forward declaration: ui_navigate (below) calls ui_release_canvas_state
 // and ui_set_pressed (defined later) during screen changes. Needed on native
 // (single TU, no Arduino auto-prototyper).
@@ -772,6 +813,7 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
 // Band renderers (defined in node-draw-body; forward-declared so the NODE_LIST
 // case can fall back to ui_render_list_bands before its definition site).
 static inline uint8_t ui_render_node_bands(uint16_t nodeIdx, int16_t prX, int16_t prY, int16_t prW, int16_t prH);
+static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw, int16_t rh);
 static inline uint8_t ui_render_list_bands(uint16_t i);
 static inline uint8_t ui_render_list_direct(uint16_t i);
 static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, UI_COLOR_T color);
@@ -845,6 +887,9 @@ static inline CuttlefishCanvas16* ui_create_canvas_best(int16_t w, int16_t h) {
       }
       return c;
     }
+    // Object allocated but its pixel buffer failed — free the object before
+    // falling through to SRAM so it isn't leaked.
+    display_deleteCanvas(c);
     // PSRAM allocation failed (rare — fragmented PSRAM) → fall through to SRAM.
   }
 #endif
@@ -1127,6 +1172,20 @@ static inline uint8_t ui_apply_scroll_delta(int16_t node, int16_t dy) {
 static inline uint8_t ui_scroll_release(int16_t node) {
   if (node < 0) return 0;
   uint8_t changed = 0;
+  // Only one settle animation owns the shared start state. If another node is
+  // still mid-settle, snap it to its end state so its stale animation can't
+  // consume this release's start values.
+  if (__ui_settle_node != 0xFFFFu && __ui_settle_node != static_cast<uint16_t>(node) &&
+      __ui_settle_node < __ui_node_count && __ui_nodes[__ui_settle_node].settling) {
+    __ui_nodes[__ui_settle_node].overscrollPx = 0;
+    if (__ui_settle_from_scrollY > 0) {
+      __ui_nodes[__ui_settle_node].scrollY = 0;
+    } else if (__ui_settle_from_scrollY < 0) {
+      __ui_nodes[__ui_settle_node].scrollY = ui_scroll_max(static_cast<int16_t>(__ui_settle_node));
+    }
+    __ui_nodes[__ui_settle_node].settling = 0;
+    ui_mark_scroll_view_dirty(__ui_settle_node);
+  }
   if (__ui_nodes[node].overscrollPx != 0) {
     __ui_nodes[node].settling = 1;
     __ui_settle_from_overscroll = __ui_nodes[node].overscrollPx;
@@ -1151,6 +1210,7 @@ static inline uint8_t ui_scroll_release(int16_t node) {
       changed = 1;
     }
   }
+  __ui_settle_node = static_cast<uint16_t>(node);
   return changed;
 }
 
@@ -1159,6 +1219,12 @@ static inline uint8_t ui_scroll_release(int16_t node) {
 static inline void ui_scroll_advance_settle(uint16_t node, uint16_t deltaMs) {
   (void)deltaMs;
   if (node >= __ui_node_count || !__ui_nodes[node].settling) return;
+  // The settle start state belongs to __ui_settle_node only; a settling flag
+  // on any other node is stale (superseded by a newer release) — drop it.
+  if (node != __ui_settle_node) {
+    __ui_nodes[node].settling = 0;
+    return;
+  }
   uint32_t elapsed = millis() - __ui_settle_start_ms;
   uint16_t dur = static_cast<uint16_t>(UI_SCROLL_SETTLE_MS);
   // ease-out: k = 1 - (1 - t)^2, t in [0,1]
@@ -1180,7 +1246,10 @@ static inline void ui_scroll_advance_settle(uint16_t node, uint16_t deltaMs) {
       if (t >= 100) __ui_nodes[node].scrollY = target;
     }
   }
-  if (t >= 100) __ui_nodes[node].settling = 0;
+  if (t >= 100) {
+    __ui_nodes[node].settling = 0;
+    __ui_settle_node = 0xFFFF;
+  }
   ui_mark_scroll_view_dirty(node);
 }
 
@@ -1625,7 +1694,10 @@ static inline void ui_push_buffered_scroll_canvas(CuttlefishCanvas16* bufferedSc
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
   uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
-  ui_display_fill_rect(tx, 0, 3, vh, dimFg);
+  // Track covers the FULL reserved gutter (4px) so child decorations that
+  // poke past the content area (e.g. outset shadows, offset up to +6px)
+  // can't leave 1px ticks in the uncovered edge column. Thumb stays 3px.
+  ui_display_fill_rect(tx, 0, 4, vh, dimFg);
   ui_display_fill_rect(tx, thumbY, 3, thumbH, __ui_nodes[si].fg);
   // Record the scrollY this canvas now reflects, so the next scroll frame can
   // compute its shift delta (Mode B) from scrollY - lastPaintedScrollY.
@@ -1654,7 +1726,8 @@ static inline void ui_draw_scrollbar_direct(int16_t si, int16_t vox, int16_t voy
   int16_t maxScroll = __ui_nodes[si].contentHeight - vh;
   uint16_t thumbY = static_cast<uint32_t>(vh - thumbH) * __ui_nodes[si].scrollY / (maxScroll > 0 ? maxScroll : 1);
   UI_COLOR_T dimFg = (UI_COLOR_T)((__ui_nodes[si].fg >> 1) & UI_DIM_MASK);
-  ui_display_fill_rect(tx, voy, 3, vh, dimFg);
+  // Full 4px gutter track (see the Mode B variant above).
+  ui_display_fill_rect(tx, voy, 4, vh, dimFg);
   ui_display_fill_rect(tx, static_cast<int16_t>(voy + thumbY), 3, thumbH, __ui_nodes[si].fg);
 }
 
@@ -1692,11 +1765,14 @@ static inline void ui_mark_dirty(uint16_t nodeIdx) {
           ui_mark_scroll_view_dirty(p);
           return;
         }
-        // Fully inside the viewport, but overflow scroll content is canvas-
-        // composited. Promote to a scroll repaint — otherwise the defer path
-        // drops the child's dirty flag without drawing (e.g. :pressed buttons).
-        ui_mark_scroll_view_dirty(p);
-        return;
+        // Fully inside the viewport: leave the CHILD dirty. The dirty loop's
+        // scroll defer lets fully-contained children repaint through their own
+        // buffered paint (one atomic push; the retained scroll canvas is
+        // invalidated after the draw). Promoting here recomposed the whole
+        // viewport per dirty tick — fine for a rare :pressed button, but with
+        // keyframe animations marking children (and their overlapping higher
+        // layers) at frame rate it turned every animation frame into a
+        // full-viewport canvas push — constant tearing on no-TE SPI panels.
       }
       p = __ui_nodes[p].parent;
     }
@@ -1851,19 +1927,12 @@ static inline uint8_t ui_is_effectively_visible(uint16_t nodeIdx) {
     if (!__ui_nodes[p].visible) return 0;
     p = __ui_nodes[p].parent;
   }
-  // A fully-closed drawer hides its whole subtree (draw + hit-test gating;
-  // device parity with the preview's insideClosedDrawer).
-  if (__ui_nodes[nodeIdx].drawerSide < 0) {
-    p = __ui_nodes[nodeIdx].parent;
-    while (p != UI_NO_PARENT && p < __ui_node_count) {
-      if (__ui_nodes[p].drawerSide >= 0) {
-        int8_t slot = __ui_drawer_slot_of(p);
-        if (slot < 0 || (!__ui_drawer_open[slot] && __ui_drawer_progress[slot] == 0)) return 0;
-        break;
-      }
-      p = __ui_nodes[p].parent;
-    }
-  }
+  // No closed-drawer gating here: drawers hide by transform offsets alone
+  // (seeded at full travel by ui_drawer_discover), exactly like the preview —
+  // whose drawerStates entry is deleted once fully closed, so a closed panel
+  // still shows whatever its slid position leaves on-screen (the bottom
+  // "peek" of a bottom-anchored drawer). A visibility gate in addition to
+  // the offsets hid that peek and deviated from the preview.
   return 1;
 }
 
@@ -2219,7 +2288,11 @@ static inline uint8_t ui_should_buffer_paint(uint16_t nodeIdx, int16_t w, int16_
   if (__ui_nodes[nodeIdx].kind == NODE_LIST) return 0;
   // <canvas> elements batch via __ui_node_canvas when drawing to the display.
   if (__ui_nodes[nodeIdx].kind == NODE_CANVAS) return 0;
-  if (static_cast<uint32_t>(w) * static_cast<uint32_t>(h) > UI_MAX_BUFFERED_PAINT_PIXELS) return 0;
+  // NO hard pixel cap here: oversized paint rects route to the band renderer
+  // via preferBand (UI_BAND_PREFER_PIXELS), and the repair canvas is never
+  // attempted above that threshold either. A cap here pushed just-over-budget
+  // repaints (a 452x48 full-width button is 21696px) onto the direct
+  // clear-then-redraw path — the visible button press flash.
   if (ui_pixel_heavy_node(nodeIdx)) return 1;
   if (__ui_nodes[nodeIdx].kind == NODE_FILL &&
       __ui_nodes[nodeIdx].hasBg &&
@@ -2506,8 +2579,13 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   if (__ui_nodes[nodeIdx].kind != NODE_FILL) return 0;
   if (!__ui_nodes[nodeIdx].hasBg) return 0;
   if (__ui_nodes[nodeIdx].gradientEnabled != 0) return 0;
-  if (__ui_nodes[nodeIdx].borderRadius != 0 ||
-      __ui_nodes[nodeIdx].borderStyle != 0 ||
+  // borderRadius is NOT a bail-out: rounded fills (pill badges, keyframe
+  // boxes) repair through the same union bitmap — the corner arcs draw into
+  // the seeded backdrop. Rejecting them forced every geometry keyframe on a
+  // rounded box onto the direct clear→redraw fallback, which tears on SPI
+  // TFTs at animation frame rate. Border/outline/shadow chrome still bails:
+  // the repair body below doesn't render it.
+  if (__ui_nodes[nodeIdx].borderStyle != 0 ||
       __ui_nodes[nodeIdx].outlineStyle != 0 ||
       __ui_nodes[nodeIdx].shadowCount != 0) return 0;
 
@@ -2550,7 +2628,12 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
   int16_t drawY = ui_draw_y_for_node(nodeIdx) - repair.y;
   int16_t fillW = ui_rotated_face_w(nodeIdx, __ui_nodes[nodeIdx].box.w, __ui_nodes[nodeIdx].box.h);
   int16_t fillH = ui_rotated_face_h(nodeIdx, __ui_nodes[nodeIdx].box.w, __ui_nodes[nodeIdx].box.h);
-  ui_display_fill_rect(drawX, drawY, fillW, fillH, fillBg);
+  if (__ui_nodes[nodeIdx].borderRadius > 0) {
+    ui_display_fill_round_rect(drawX, drawY, fillW, fillH,
+      __ui_nodes[nodeIdx].borderRadius, fillBg);
+  } else {
+    ui_display_fill_rect(drawX, drawY, fillW, fillH, fillBg);
+  }
   ui_display_set_target(previousGfx);
   // Keep geometry repair off the physical panel when a retained framebuffer is
   // active; the final dirty-bounds publish will send the old+new union once.
@@ -2599,6 +2682,147 @@ static inline void ui_clear_subtree_current_paint(uint16_t nodeIdx) {
   }
 }
 
+// ── Visibility reflow ──────────────────────────────────────────────────────
+// Layout runs at build time (yoga); a hidden subtree keeps its baked boxes,
+// so toggling the visible flag alone leaves a collapsed pane's space
+// reserved (an accordion card sized for its open state shows empty space
+// when closed). When a node's visibility changes, the runtime re-stacks each
+// ancestor flow container's in-flow children along the emitted axis
+// (flowAxis/flowGap/flowFlags metadata) and re-sizes content-sized
+// containers, cascading upward until a container stops changing. Preview
+// parity: the preview's layout engine excludes hidden nodes from flow on
+// every frame.
+
+// Outer extent of c's subtree along the flow axis, relative to c's own
+// origin. Descendants positioned above c's origin (overlays) don't count.
+static int16_t ui_subtree_flow_extent(uint16_t c, uint8_t axis) {
+  int16_t base = axis == 1 ? __ui_nodes[c].box.y : __ui_nodes[c].box.x;
+  int16_t maxEnd = static_cast<int16_t>(base + (axis == 1 ? __ui_nodes[c].box.h : __ui_nodes[c].box.w));
+  uint16_t end = __ui_nodes[c].subtreeEnd;
+  if (end > __ui_node_count) end = __ui_node_count;
+  for (uint16_t j = c + 1; j < end; j++) {
+    int16_t off = axis == 1 ? __ui_nodes[j].box.y : __ui_nodes[j].box.x;
+    int16_t rel = static_cast<int16_t>(off - base);
+    if (rel < 0) continue;
+    int16_t jEnd = static_cast<int16_t>(rel + (axis == 1 ? __ui_nodes[j].box.h : __ui_nodes[j].box.w));
+    if (jEnd > maxEnd) maxEnd = jEnd;
+  }
+  return static_cast<int16_t>(maxEnd - base);
+}
+
+static void ui_shift_subtree_main(uint16_t c, uint8_t axis, int16_t delta) {
+  uint16_t end = __ui_nodes[c].subtreeEnd;
+  if (end > __ui_node_count) end = __ui_node_count;
+  for (uint16_t j = c; j < end; j++) {
+    if (axis == 1) __ui_nodes[j].box.y = static_cast<int16_t>(__ui_nodes[j].box.y + delta);
+    else __ui_nodes[j].box.x = static_cast<int16_t>(__ui_nodes[j].box.x + delta);
+  }
+}
+
+// Re-stack p's in-flow children from the first in-flow child's slot (hidden
+// children take no space). Returns 1 when a child moved or p's content-sized
+// main dimension changed.
+static uint8_t ui_restack_flow_container(uint16_t p) {
+  if (p >= __ui_node_count) return 0;
+  uint8_t axis = __ui_nodes[p].flowAxis == 2 ? 2U : (__ui_nodes[p].flowAxis == 1 ? 1U : 0U);
+  if (axis == 0) return 0;
+  int16_t gap = static_cast<int16_t>(__ui_nodes[p].flowGap);
+  int16_t startSlot = 0;
+  int16_t cursor = 0;
+  uint8_t sawFlowChild = 0;
+  uint8_t sawVisibleChild = 0;
+  uint8_t changed = 0;
+  uint16_t end = __ui_nodes[p].subtreeEnd;
+  if (end > __ui_node_count) end = __ui_node_count;
+  for (uint16_t c = p + 1; c < end; c++) {
+    if (__ui_nodes[c].parent != p) continue;
+    if ((__ui_nodes[c].flowFlags & 0x4U) != 0U) continue;  // out-of-flow child
+    int16_t rel = axis == 1
+      ? static_cast<int16_t>(__ui_nodes[c].box.y - __ui_nodes[p].box.y)
+      : static_cast<int16_t>(__ui_nodes[c].box.x - __ui_nodes[p].box.x);
+    // The first in-flow child's slot anchors the stack (padding + its
+    // margins); a hidden first child must not drag the anchor down.
+    if (sawFlowChild == 0U) { startSlot = rel; sawFlowChild = 1; }
+    if (!ui_is_effectively_visible(c)) continue;  // collapsed: takes no space
+    if (sawVisibleChild == 0U) { cursor = startSlot; sawVisibleChild = 1; }
+    int16_t shift = static_cast<int16_t>(cursor - rel);
+    if (shift != 0) {
+      ui_shift_subtree_main(c, axis, shift);
+      changed = 1;
+    }
+    cursor = static_cast<int16_t>(cursor + ui_subtree_flow_extent(c, axis) + gap);
+  }
+  if (sawVisibleChild == 0U) return changed;
+  // A content-sized main dimension follows the stack: children's offsets
+  // already include the leading padding; trailing padding completes the box.
+  uint8_t autoMain = axis == 1
+    ? static_cast<uint8_t>(__ui_nodes[p].flowFlags & 0x1U)
+    : static_cast<uint8_t>(__ui_nodes[p].flowFlags & 0x2U);
+  if (autoMain != 0U) {
+    int16_t contentEnd = static_cast<int16_t>(cursor - gap);
+    int16_t padMain = axis == 1
+      ? static_cast<int16_t>(__ui_nodes[p].paddingBottom)
+      : static_cast<int16_t>(__ui_nodes[p].paddingRight);
+    int16_t newSize = static_cast<int16_t>(contentEnd + padMain);
+    if (newSize < 1) newSize = 1;
+    int16_t curSize = axis == 1 ? static_cast<int16_t>(__ui_nodes[p].box.h) : static_cast<int16_t>(__ui_nodes[p].box.w);
+    if (newSize != curSize) {
+      if (axis == 1) __ui_nodes[p].box.h = newSize;
+      else __ui_nodes[p].box.w = newSize;
+      changed = 1;
+    }
+  }
+  return changed;
+}
+
+// Recompute a scrollable container's contentHeight over its visible subtree
+// (mirrors the build-time computation), clamp the scroll offset, and force
+// the next paint to reseed the container canvas.
+static void ui_reflow_scroll_content(uint16_t p) {
+  if (!__ui_nodes[p].scrollable || __ui_nodes[p].virtualized) return;
+  int16_t maxBottom = static_cast<int16_t>(__ui_nodes[p].box.y);
+  uint16_t end = __ui_nodes[p].subtreeEnd;
+  if (end > __ui_node_count) end = __ui_node_count;
+  for (uint16_t j = p + 1; j < end; j++) {
+    if (!ui_is_effectively_visible(j)) continue;
+    int16_t bottom = static_cast<int16_t>(__ui_nodes[j].box.y + __ui_nodes[j].box.h);
+    if (bottom > maxBottom) maxBottom = bottom;
+  }
+  int16_t ch = static_cast<int16_t>(maxBottom - __ui_nodes[p].box.y);
+  if (ch < static_cast<int16_t>(__ui_nodes[p].box.h)) ch = static_cast<int16_t>(__ui_nodes[p].box.h);
+  __ui_nodes[p].contentHeight = ch;
+  int16_t maxScroll = static_cast<int16_t>(ch - __ui_nodes[p].box.h);
+  if (maxScroll < 0) maxScroll = 0;
+  if (__ui_nodes[p].scrollY > maxScroll) __ui_nodes[p].scrollY = maxScroll;
+  __ui_nodes[p].lastPaintedScrollY = static_cast<int16_t>(
+    __ui_nodes[p].scrollY - (__ui_nodes[p].box.h > 0 ? __ui_nodes[p].box.h : 1));
+}
+
+// Called after a node's visible flag changed: re-stack ancestor flow
+// containers bottom-up, then repaint the active screen once.
+static void ui_reflow_visibility(uint16_t changedNode) {
+  if (changedNode >= __ui_node_count) return;
+  uint8_t anyChange = 0;
+  uint16_t p = __ui_nodes[changedNode].parent;
+  uint16_t guard = 0;
+  while (p != UI_NO_PARENT && p < __ui_node_count && guard < 64U) {
+    guard++;
+    uint8_t changedHere = ui_restack_flow_container(p);
+    ui_reflow_scroll_content(p);
+    if (changedHere == 0U) break;  // nothing moved and the size held: ancestors unaffected
+    anyChange = 1;
+    p = __ui_nodes[p].parent;
+  }
+  if (anyChange == 0U) return;
+  // One full active-screen repaint — the same contract as navigation; a
+  // visibility collapse is a discrete user event, not an animation.
+  for (uint16_t i = 0; i < __ui_node_count; i++) {
+    if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+    __ui_nodes[i].dirty = 1;
+    __ui_nodes[i].lastTextHeight = 0;
+  }
+}
+
 static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible) {
   if (nodeIdx >= __ui_node_count) return;
   visible = visible ? 1 : 0;
@@ -2619,6 +2843,7 @@ static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible) {
     }
     if (hasSubtreeRect) ui_mark_overlapping_higher_layers_dirty_for_rect(nodeIdx, &subtreeRect);
     __ui_nodes[nodeIdx].visible = 0;
+    ui_reflow_visibility(nodeIdx);
     return;
   }
 
@@ -2631,6 +2856,7 @@ static inline void ui_set_visible(uint16_t nodeIdx, uint8_t visible) {
       ui_mark_overlapping_higher_layers_dirty(c);
     }
   }
+  ui_reflow_visibility(nodeIdx);
 }
 
 // Initial draw: mark all nodes dirty so the first ui_tick renders everything.
@@ -2782,11 +3008,14 @@ extern UIRadioGroup __ui_radio_groups[];
 extern const uint16_t __ui_radio_group_count;
 
 // Forward-declare the click handler type + tables (defined by the emit layer).
-extern void (*__ui_click_handlers[])();
-extern void (*__ui_hold_handlers[])();
-extern void (*__ui_release_handlers[])();
+// The tables are const (flash rodata) — they are never written at runtime.
+extern void (*const __ui_click_handlers[])();
+extern void (*const __ui_hold_handlers[])();
+extern void (*const __ui_release_handlers[])();
 extern void (*__ui_rangechange_handlers[])();
 extern const uint16_t __ui_click_handler_count;
+extern const uint16_t __ui_hold_handler_count;
+extern const uint16_t __ui_release_handler_count;
 extern const uint16_t __ui_rangechange_handler_count;
 
 // Touch state machine: tracks down → hold → up → click lifecycle
@@ -2847,35 +3076,9 @@ static inline void ui_kb_handle_tap(int16_t tx, int16_t ty);
 static inline void ui_kb_key_rect(uint8_t idx, UIRect* out);
 static inline void ui_kb_draw();
 
-// ── Modal <select> option list ────────────────────────────────────────────
-// Tapping a select opens a centered list of its options; tapping a row sets
-// the value, tapping outside dismisses. Mirrors the preview's select modal.
-static int16_t __ui_select_menu = -1;   // node index while open, -1 closed
-static uint8_t __ui_select_menu_dirty = 0; // overlay needs stamping this frame
-static inline void ui_select_menu_open(uint16_t nodeIdx);
-static inline void ui_select_menu_close(uint8_t repaint);
-static inline void ui_select_menu_geom(uint16_t nodeIdx, UIRect* out, int16_t* rowH);
-static inline void ui_select_menu_draw();
-static inline void ui_select_menu_tap(int16_t tx, int16_t ty);
+// Modal <select> + <drawer> declarations live in forward-decls.ts
+// (emit order: ui_navigate/visibility/ui_init reference them before this module).
 
-// ── <drawer> slide-in panels ──────────────────────────────────────────────
-// Author-styled absolute panels; the runtime slides the subtree in from the
-// drawer's edge (transform offsets), hides it while closed, and closes on
-// outside taps. Mirrors the preview's drawer implementation.
-#define UI_DRAWER_MAX 4
-static int8_t   __ui_drawer_idx[UI_DRAWER_MAX];    // node index per slot, -1 free
-static uint8_t  __ui_drawer_open[UI_DRAWER_MAX];   // target state (0 closed, 1 open)
-static uint8_t  __ui_drawer_progress[UI_DRAWER_MAX]; // 0 closed .. 1 open
-static uint8_t  __ui_drawer_slots = 0;             // discovered drawers (init scan)
-static int16_t __ui_drawer_last_dx[UI_DRAWER_MAX]; // last applied slide dx (delta bookkeeping)
-static int16_t __ui_drawer_last_dy[UI_DRAWER_MAX]; // last applied slide dy
-static int8_t   __ui_drawer_slot_of(uint16_t nodeIdx);
-static void     ui_drawer_discover();
-static void     ui_drawer_open(uint16_t nodeIdx);
-static void     ui_drawer_close(uint16_t nodeIdx);
-static void     ui_drawer_close_all();
-static void     ui_drawer_apply(uint8_t slot, uint8_t progress);
-static void     ui_drawer_tick(uint32_t deltaMs);
 static inline void ui_kb_draw_key(uint8_t i);
 static inline void ui_kb_draw_text_row();
 static inline void ui_kb_compute_box();
@@ -2910,8 +3113,9 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
         if (best < 0 || ui_node_draws_before(best, i)) best = i;
         continue;
       }
-      if (i < __ui_click_handler_count &&
-          (__ui_click_handlers[i] || __ui_hold_handlers[i] || __ui_release_handlers[i])) {
+      if ((i < __ui_click_handler_count && __ui_click_handlers[i]) ||
+          (i < __ui_hold_handler_count && __ui_hold_handlers[i]) ||
+          (i < __ui_release_handler_count && __ui_release_handlers[i])) {
         if (best < 0 || ui_node_draws_before(best, i)) best = i;
       }
     }
@@ -2920,7 +3124,7 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
 }
 
 // Dispatch a handler from the given table if registered for the node.
-static void ui_dispatch(void (**table)(), uint16_t count, int16_t node) {
+static void ui_dispatch(void (*const* table)(), uint16_t count, int16_t node) {
   if (node >= 0 && static_cast<uint16_t>(node) < count && table[node]) {
     table[node]();
   }
@@ -3069,7 +3273,7 @@ static void ui_touch_up() {
         if (target >= 0) ui_navigate(static_cast<uint8_t>(target));
       }
     }
-    ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
+    ui_dispatch(__ui_release_handlers, __ui_release_handler_count, __ui_touch_node);
     // Built-in check/radio/select handlers mutate the node value during click
     // dispatch and need one repaint. Buttons are already dirty from releasing
     // :pressed; links, lists, inputs, and ordinary callbacks are either handled
@@ -3217,7 +3421,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
     if (__ui_touch_state == 1 && __ui_touch_node >= 0 && !__ui_is_dragging) {
       if (now - __ui_touch_down_time >= UI_TOUCH_HOLD_MS) {
         __ui_touch_state = 2;
-        ui_dispatch(__ui_hold_handlers, __ui_click_handler_count, __ui_touch_node);
+        ui_dispatch(__ui_hold_handlers, __ui_hold_handler_count, __ui_touch_node);
       }
     }
   }
@@ -4461,9 +4665,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           int16_t insetB = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingBottom);
           int16_t textX = __ui_nodes[i].box.x + insetL;
           int16_t textY = drawY + insetT;
-          // The right end reserves 14px for the dropdown chevron — the label
-          // wraps against the reduced width, never under the chevron.
-          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR - 14;
+          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
           int16_t textH = static_cast<int16_t>(__ui_nodes[i].box.h) - insetT - insetB;
           if (textW < 1) textW = 1;
           if (textH < 1) textH = static_cast<int16_t>(th);
@@ -4475,17 +4677,6 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
             __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
-          // Dropdown chevron: a small solid v at the right end — the
-          // affordance that the control opens/cycles options.
-          {
-            int16_t chX = __ui_nodes[i].box.x + static_cast<int16_t>(__ui_nodes[i].box.w) - insetR - 11;
-            int16_t chY = drawY + (static_cast<int16_t>(__ui_nodes[i].box.h) - 5) / 2;
-            ui_display_fill_rect(chX,     chY,     9, 1, __ui_nodes[i].fg);
-            ui_display_fill_rect(chX + 1, chY + 1, 7, 1, __ui_nodes[i].fg);
-            ui_display_fill_rect(chX + 2, chY + 2, 5, 1, __ui_nodes[i].fg);
-            ui_display_fill_rect(chX + 3, chY + 3, 3, 1, __ui_nodes[i].fg);
-            ui_display_fill_rect(chX + 4, chY + 4, 1, 1, __ui_nodes[i].fg);
-          }
         }
         break;
       case NODE_SELECT:
@@ -4526,7 +4717,9 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           int16_t insetB = static_cast<int16_t>(__ui_nodes[i].borderWidth) + static_cast<int16_t>(__ui_nodes[i].paddingBottom);
           int16_t textX = __ui_nodes[i].box.x + insetL;
           int16_t textY = drawY + insetT;
-          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR;
+          // The right end reserves 14px for the dropdown chevron — the label
+          // wraps against the reduced width, never under the chevron.
+          int16_t textW = static_cast<int16_t>(__ui_nodes[i].box.w) - insetL - insetR - 14;
           int16_t textH = static_cast<int16_t>(__ui_nodes[i].box.h) - insetT - insetB;
           if (textW < 1) textW = 1;
           if (textH < 1) textH = static_cast<int16_t>(th);
@@ -4538,6 +4731,17 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
             __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i),
             ts, __ui_nodes[i].fontAntialias, __ui_nodes[i].fontFace, __ui_nodes[i].letterSpacing,
             __ui_nodes[i].lineHeight, __ui_nodes[i].whiteSpaceMode, __ui_nodes[i].textAlign, __ui_nodes[i].underline, __ui_nodes[i].textOverflow);
+          // Dropdown chevron: a small solid v at the right end — the
+          // affordance that the control opens a menu of options.
+          {
+            int16_t chX = __ui_nodes[i].box.x + static_cast<int16_t>(__ui_nodes[i].box.w) - insetR - 11;
+            int16_t chY = drawY + (static_cast<int16_t>(__ui_nodes[i].box.h) - 5) / 2;
+            ui_display_fill_rect(chX,     chY,     9, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 1, chY + 1, 7, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 2, chY + 2, 5, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 3, chY + 3, 3, 1, __ui_nodes[i].fg);
+            ui_display_fill_rect(chX + 4, chY + 4, 1, 1, __ui_nodes[i].fg);
+          }
         }
         break;
       case NODE_CHECK:
@@ -5259,6 +5463,15 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
       __ui_nodes[c].box.y = static_cast<int16_t>(origBoxY - voy - bandTop);
       int16_t drawX = ui_draw_x_for_node(c);
       int16_t drawY = ui_draw_y_for_node(c);
+      // Outset shadow at the rest position, under the face — parity with the
+      // main dirty loop and ui_render_node_bands. This renderer omitted it,
+      // so band-composited scroll viewports (viewport canvas won't allocate)
+      // lost every shadow: theme --shadow-* tokens rendered in the preview
+      // but not on device. Lists manage their own shadow elsewhere.
+      if (__ui_nodes[c].kind != NODE_LIST) {
+        __ui_nodes[c].box.x = ui_base_draw_x_for_node(c);
+        ui_draw_shadow(c, ui_base_draw_y_for_node(c), 0);
+      }
       __ui_nodes[c].box.x = drawX;
       uint8_t ts = __ui_nodes[c].textSize ? __ui_nodes[c].textSize : 2;
       uint16_t textMaxW = ui_node_text_max_width(c);
@@ -5329,7 +5542,10 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
     // Intersect that with this band's [bandTop, bandBot) range and fill the
     // overlapping canvas-local rows with the thumb color.
     if (sbVisible) {
-      display_canvasFillRect(band, contentW, 0, 3, thisH, sbTrackCol);
+      // Full gutter width (vw - contentW, normally 4px): child decorations
+      // (outset shadows) poke past the content area and would survive as 1px
+      // ticks in any uncovered edge column.
+      display_canvasFillRect(band, contentW, 0, vw - contentW, thisH, sbTrackCol);
       int16_t thumbTop = static_cast<int16_t>(sbThumbY);
       int16_t thumbBot = static_cast<int16_t>(sbThumbY + sbThumbH);
       int16_t ovTop = thumbTop > bandTop ? thumbTop : bandTop;
@@ -5353,6 +5569,137 @@ static inline uint8_t ui_render_scroll_bands(uint16_t s) {
   // caller has already marked the owner non-dirty.
   for (uint16_t c = s + 1; c < subtreeEnd; c++) {
     __ui_nodes[c].dirty = 0;
+  }
+  return 1;
+}
+
+// ── Whole-frame band composition (drawer slide frames) ────────────────────
+// Composes every visible active-screen node in draw order over a display
+// rect, one horizontal band at a time, pushing each band in a single
+// transaction. The drawer slide uses it over the union of the panel's old
+// and new paint rects: a mark-all-dirty slide step instead repainted the
+// whole screen with direct per-node clears (visible flashing on SPI TFTs,
+// and only ~3 steps fit inside the 180ms slide). Returns 0 when the band
+// canvas or draw order is unavailable (caller falls back to mark-all-dirty);
+// a rect fully outside the panel returns 1 (nothing to compose).
+static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw, int16_t rh) {
+  if (rw <= 0 || rh <= 0) return 1;
+  if (!ui_clip_rect_to_display_target(&rx, &ry, &rw, &rh)) return 1;
+  if (!__ui_draw_order || !__ui_scroll_candidates) return 0;
+  CuttlefishCanvas16* band = ui_band_canvas_for_width(rw);
+  if (!band) return 0;
+  int16_t bandH = display_canvasHeight(band);
+  // Seed color: the active screen's background (the screen fill node paints
+  // over it in draw order anyway; the seed keeps uncovered rows defined).
+  UI_COLOR_T screenBg = static_cast<UI_COLOR_T>(0);
+  if (__ui_active_screen_bg_node < __ui_node_count) {
+    screenBg = __ui_nodes[__ui_active_screen_bg_node].hasBg
+      ? __ui_nodes[__ui_active_screen_bg_node].bg
+      : __ui_nodes[__ui_active_screen_bg_node].clearColor;
+  }
+  // Draw-ordered candidate list once per composition (same shape as the
+  // scroll band path); each band then only Y-culls against it.
+  __ui_scroll_candidate_count = 0;
+  for (uint16_t pass = 0; pass < __ui_node_count; pass++) {
+    uint16_t c = __ui_draw_order[pass];
+    if (__ui_nodes[c].screenId != __ui_active_screen) continue;
+    if (!ui_is_effectively_visible(c)) continue;
+    if (__ui_scroll_candidate_count >= __ui_node_count) break;
+    UIScrollPaintCandidate& cand = __ui_scroll_candidates[__ui_scroll_candidate_count++];
+    cand.node = c;
+    cand.screenY = ui_draw_y_for_node(c);
+    cand.faceH = __ui_nodes[c].box.h;
+  }
+  CuttlefishDisplayTarget* prevTarget = ui_display_get_target();
+  for (int16_t bandTop = 0; bandTop < rh; bandTop += bandH) {
+    int16_t bandBot = static_cast<int16_t>(bandTop + bandH);
+    if (bandBot > rh) bandBot = rh;
+    int16_t thisH = static_cast<int16_t>(bandBot - bandTop);
+    display_canvasFillRect(band, 0, 0, rw, thisH, screenBg);
+    ui_display_set_target(band);
+    for (uint16_t ci = 0; ci < __ui_scroll_candidate_count; ci++) {
+      uint16_t c = __ui_scroll_candidates[ci].node;
+      int16_t screenY = __ui_scroll_candidates[ci].screenY;
+      int16_t faceH = __ui_scroll_candidates[ci].faceH;
+      // Clip before the per-node work (AGENTS.md): skip nodes whose face
+      // does not intersect this band's Y range.
+      if (screenY + faceH <= ry + bandTop) continue;
+      if (screenY >= ry + bandBot) continue;
+      int16_t origBoxX = __ui_nodes[c].box.x;
+      int16_t origBoxY = __ui_nodes[c].box.y;
+      __ui_nodes[c].box.x = static_cast<int16_t>(origBoxX - rx);
+      __ui_nodes[c].box.y = static_cast<int16_t>(origBoxY - ry - bandTop);
+      int16_t baseDrawX = ui_base_draw_x_for_node(c);
+      int16_t baseDrawY = ui_base_draw_y_for_node(c);
+      int16_t drawX = ui_draw_x_for_node(c);
+      int16_t drawY = ui_draw_y_for_node(c);
+      // Outset shadow at the rest position, under the face (mirrors the
+      // main loop; lists manage their own shadow elsewhere).
+      if (__ui_nodes[c].kind != NODE_LIST) {
+        __ui_nodes[c].box.x = baseDrawX;
+        ui_draw_shadow(c, baseDrawY, 0);
+      }
+      __ui_nodes[c].box.x = drawX;
+      uint8_t ts = __ui_nodes[c].textSize ? __ui_nodes[c].textSize : 2;
+      uint16_t textMaxW = ui_node_text_max_width(c);
+      uint16_t tw = 0;
+      uint16_t th = 0;
+      ui_node_text_layout_metrics(c, textMaxW, &tw, &th);
+      uint16_t paintTextW = tw;
+      uint16_t paintTextH = th;
+      if (__ui_nodes[c].kind == NODE_TEXT || __ui_nodes[c].kind == NODE_SELECT) {
+        uint16_t hInset = static_cast<uint16_t>(__ui_nodes[c].paddingLeft) + static_cast<uint16_t>(__ui_nodes[c].paddingRight) + static_cast<uint16_t>(__ui_nodes[c].borderWidth) * 2;
+        uint16_t vInset = static_cast<uint16_t>(__ui_nodes[c].paddingTop) + static_cast<uint16_t>(__ui_nodes[c].paddingBottom) + static_cast<uint16_t>(__ui_nodes[c].borderWidth) * 2;
+        paintTextW = static_cast<uint16_t>(tw + hInset);
+        paintTextH = static_cast<uint16_t>(th + vInset);
+      }
+      if (__ui_nodes[c].kind == NODE_CHECK || __ui_nodes[c].kind == NODE_RADIO) {
+        paintTextW = static_cast<uint16_t>(tw + 22);
+        if (paintTextH < 16) paintTextH = 16;
+      }
+      const char* displayText = __ui_nodes[c].hasTextBinding
+        ? __ui_nodes[c].textBuffer
+        : __ui_nodes[c].text;
+      UI_COLOR_T bColor = __ui_nodes[c].borderColor ? __ui_nodes[c].borderColor : __ui_nodes[c].fg;
+      UI_COLOR_T fillBg = __ui_nodes[c].bg;
+      if (__ui_nodes[c].opacity < 100) {
+        UI_COLOR_T backdrop = ui_parent_clear_color(c);
+        bColor = ui_blend(bColor, backdrop, __ui_nodes[c].opacity);
+        fillBg = ui_blend(__ui_nodes[c].bg, backdrop, __ui_nodes[c].opacity);
+      }
+      UINodeDrawCtx ctx;
+      ctx.drawY = drawY;
+      ctx.bColor = bColor;
+      ctx.fillBg = fillBg;
+      ctx.ts = ts;
+      ctx.textMaxW = textMaxW;
+      ctx.tw = tw;
+      ctx.th = th;
+      ctx.paintTextW = paintTextW;
+      ctx.paintTextH = paintTextH;
+      ctx.displayText = displayText;
+      ctx.drawingBufferedScroll = 0;
+      ctx.drawTarget = prevTarget;
+      ctx.origBoxX = origBoxX;
+      ctx.origBoxY = origBoxY;
+      // Each band starts on a freshly seeded canvas, so the persistent
+      // incremental-paint caches (lastTextWidth/Height) are invalid mid-band.
+      // Save/restore so the band path is transient (same contract as
+      // ui_render_scroll_bands / ui_render_node_bands).
+      int16_t savedLastTextW = __ui_nodes[c].lastTextWidth;
+      uint16_t savedLastTextH = __ui_nodes[c].lastTextHeight;
+      if (__ui_nodes[c].kind == NODE_PROGRESS || __ui_nodes[c].kind == NODE_RANGE) {
+        __ui_nodes[c].lastTextWidth = -1;
+      }
+      __ui_nodes[c].lastTextHeight = 0;
+      ui_draw_node_body(static_cast<int16_t>(c), &ctx);
+      __ui_nodes[c].lastTextWidth = savedLastTextW;
+      __ui_nodes[c].lastTextHeight = savedLastTextH;
+      __ui_nodes[c].box.x = origBoxX;
+      __ui_nodes[c].box.y = origBoxY;
+    }
+    ui_display_set_target(prevTarget);
+    ui_push_canvas_rect(band, rx, static_cast<int16_t>(ry + bandTop), rw, thisH);
   }
   return 1;
 }
@@ -5587,7 +5934,9 @@ static inline uint8_t ui_render_list_bands(uint16_t i) {
     // Composite this band's scrollbar slice into the gutter (atomic full-width
     // push — no separate erase/redraw cycle, no scrollbar flash).
     if (sbVisible) {
-      display_canvasFillRect(band, contentW, 0, 3, thisH, sbTrackCol);
+      // Full gutter width (bw - contentW): child decorations poking past the
+      // content area must not survive in an uncovered edge column.
+      display_canvasFillRect(band, contentW, 0, bw - contentW, thisH, sbTrackCol);
       int16_t thumbTop = static_cast<int16_t>(sbThumbY);
       int16_t thumbBot = static_cast<int16_t>(sbThumbY + sbThumbH);
       int16_t ovTop = thumbTop > bandTop ? thumbTop : bandTop;
@@ -6118,6 +6467,11 @@ static inline void ui_tick(uint16_t deltaMs) {
   // Avoid pushing a full frame on idle ticks; this is the main steady-state cost
   // of the PSRAM path on otherwise static screens.
   uint8_t __ui_fb_frame_dirty = 0;
+  // Whether any node painted this tick. The select overlay below re-stamps
+  // only when it or the frame beneath changed; an unconditional stamp pushes
+  // the modal region over SPI every frame, which reads as constant
+  // refreshing/tearing on no-TE TFT panels.
+  uint8_t __ui_frame_painted = 0;
   if (__ui_fb && __ui_fb_needs_compose) {
     UI_COLOR_T fbBg = (UI_COLOR_T)0;
     if (__ui_active_screen_bg_node < __ui_node_count) {
@@ -6344,6 +6698,44 @@ static inline void ui_tick(uint16_t deltaMs) {
       __ui_draw_pass++;
     }
 
+    // Open-drawer overlap classification: the drawer subtree draws above other
+    // content (z-order + later draw slot). A dirty node underneath would
+    // paint its clear+redraw over the panel's pixels — a bound text behind an
+    // open drawer erases the drawer's buttons on repaint. Fully covered by an
+    // opaque open drawer → none of it is visible; skip the repaint entirely.
+    // Partially covered → re-dirty that drawer's subtree so it re-stamps on
+    // top later in this same pass (its z sorts it after the covered node).
+    if (__ui_drawer_slots > 0) {
+      for (uint8_t dslot = 0; dslot < __ui_drawer_slots; dslot++) {
+        if (__ui_drawer_idx[dslot] < 0) continue;
+        uint16_t droot = static_cast<uint16_t>(__ui_drawer_idx[dslot]);
+        if (static_cast<uint16_t>(i) == droot ||
+            (i > static_cast<int16_t>(droot) && static_cast<uint16_t>(i) < __ui_nodes[droot].subtreeEnd)) continue;
+        if (__ui_drawer_progress[dslot] < 255) continue;  // closed or sliding
+        int16_t dX = ui_draw_x_for_node(droot);
+        int16_t dY = ui_draw_y_for_node(droot);
+        int16_t nX = ui_draw_x_for_node(static_cast<uint16_t>(i));
+        int16_t nY = ui_draw_y_for_node(static_cast<uint16_t>(i));
+        if (!ui_rects_intersect(nX, nY, __ui_nodes[i].box.w, __ui_nodes[i].box.h,
+                                dX, dY, __ui_nodes[droot].box.w, __ui_nodes[droot].box.h)) continue;
+        uint8_t fullyCovered = (nX >= dX && nY >= dY &&
+          nX + __ui_nodes[i].box.w <= dX + __ui_nodes[droot].box.w &&
+          nY + __ui_nodes[i].box.h <= dY + __ui_nodes[droot].box.h) ? 1 : 0;
+        if (fullyCovered && __ui_nodes[droot].hasBg && __ui_nodes[droot].opacity >= 100) {
+          __ui_nodes[i].dirty = 0;
+        } else {
+          __ui_nodes[droot].dirty = 1;
+          __ui_nodes[droot].lastTextHeight = 0;
+          for (uint16_t c = droot + 1; c < __ui_nodes[droot].subtreeEnd; c++) {
+            __ui_nodes[c].dirty = 1;
+            __ui_nodes[c].lastTextHeight = 0;
+          }
+        }
+        break;
+      }
+      if (!__ui_nodes[i].dirty) continue;
+    }
+
     // Defer direct display draws for overflow scroll subtrees not composited this
     // frame (Mode B canvas, Mode C strip, direct-full fallback, or band render).
     // Drawing them directly clears the live viewport and produces sequential
@@ -6356,8 +6748,20 @@ static inline void ui_tick(uint16_t deltaMs) {
           (bufferedScrollCanvas || bufferedScrollDirectFull || bufferedScrollBands || bufferedScrollLocalRepair);
         if (!compositing) {
           if (static_cast<uint16_t>(i) == static_cast<uint16_t>(scrollComp)) break;
-          __ui_nodes[i].dirty = 0;
-          continue;
+          // Not composited this frame. A child FULLY inside its scroll
+          // viewport repaints directly through its own buffered paint (paint
+          // canvas or bands — a single atomic push; the epilogue invalidates
+          // the retained scroll canvas so the next scroll recomposes). Only
+          // partially/fully clipped children defer: their edge pixels must
+          // come from the composited canvas, and drawing them directly would
+          // paint outside the viewport.
+          if (ui_is_rect_clipped_by_scroll(static_cast<uint16_t>(i),
+              ui_draw_x_for_node(static_cast<uint16_t>(i)),
+              ui_draw_y_for_node(static_cast<uint16_t>(i)),
+              __ui_nodes[i].box.w, __ui_nodes[i].box.h)) {
+            __ui_nodes[i].dirty = 0;
+            continue;
+          }
         }
       }
     }
@@ -6370,6 +6774,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     if (bufferedScrollBands && bufferedScrollNode >= 0 &&
         static_cast<uint16_t>(i) == static_cast<uint16_t>(bufferedScrollNode)) {
       if (ui_render_scroll_bands(static_cast<uint16_t>(bufferedScrollNode))) {
+        __ui_frame_painted = 1;
         bufferedScrollBands = 0;
         bufferedScrollNode = -1;
         __ui_nodes[i].dirty = 0;
@@ -6390,6 +6795,7 @@ static inline void ui_tick(uint16_t deltaMs) {
         !(i > bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd) &&
         ui_node_draws_before(static_cast<uint16_t>(bufferedScrollNode), static_cast<uint16_t>(i))) {
       if (ui_render_scroll_bands(static_cast<uint16_t>(bufferedScrollNode))) {
+        __ui_frame_painted = 1;
         bufferedScrollBands = 0;
         bufferedScrollNode = -1;
       } else {
@@ -6417,6 +6823,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       ui_push_buffered_scroll_canvas(bufferedScrollCanvas, bufferedScrollRepaintCanvas,
         bufferedScrollNode, bufferedScrollVX, bufferedScrollVY,
         bufferedScrollRepaintY, bufferedScrollRepaintH, __ui_draw_target);
+      __ui_frame_painted = 1;
       bufferedScrollNode = -1;
       bufferedScrollCanvas = nullptr;
       bufferedScrollRepaintCanvas = nullptr;
@@ -6550,6 +6957,7 @@ static inline void ui_tick(uint16_t deltaMs) {
       // horizontal strip at a time, pushing each band tear-free. Avoids the
       // direct clear→redraw-to-SPI that visibly flashes on press/scroll.
       if (wantedBuffer && ui_render_node_bands(static_cast<uint16_t>(i), paintCanvasX, paintCanvasY, paintCanvasW, paintCanvasH)) {
+        __ui_frame_painted = 1;
         if (!drawingBufferedScroll) {
           ui_invalidate_scroll_canvas_for_node(i);
         }
@@ -6635,6 +7043,7 @@ static inline void ui_tick(uint16_t deltaMs) {
     __ui_ctx.drawTarget = __ui_draw_target;
     __ui_ctx.origBoxX = origBoxX;
     __ui_ctx.origBoxY = origBoxY;
+    __ui_frame_painted = 1;
     if (ui_draw_node_body(i, &__ui_ctx)) {
       continue;
     }
@@ -6668,11 +7077,11 @@ static inline void ui_tick(uint16_t deltaMs) {
   }
 
   // Modal <select> list: stamp the overlay after the dirty pass so tree
-  // redraws never bury it. Drawn every frame while open (a few fill rects);
-  // the close path marks the whole tree dirty for the erase repaint.
-  if (__ui_select_menu >= 0) {
+  // redraws never bury it. Stamped only when the overlay itself is dirty
+  // (open) or something painted beneath it this frame; the close path marks
+  // the whole tree dirty for the erase repaint.
+  if (__ui_select_menu >= 0 && (__ui_select_menu_dirty || __ui_frame_painted)) {
     ui_select_menu_draw();
-  }
   }
   // ②b Draw scrollbar + push canvas for the buffered scroll container.
   if (bufferedScrollNode >= 0 && bufferedScrollCanvas) {
@@ -7306,8 +7715,8 @@ static inline void ui_select_menu_draw() {
   if (radius > g.h / 2) radius = g.h / 2;
   UI_COLOR_T panel = n->hasBg ? n->bg : n->clearColor;
   UI_COLOR_T borderCol = (n->borderStyle != 0 && n->borderColor != 0) ? n->borderColor : n->fg;
-  display_fill_round_rect(g.x, g.y, g.w, g.h, radius, panel);
-  display_draw_round_rect(g.x, g.y, g.w, g.h, radius, borderCol);
+  ui_display_fill_round_rect(g.x, g.y, g.w, g.h, radius, panel);
+  ui_display_draw_round_rect(g.x, g.y, g.w, g.h, radius, borderCol);
   char buf[UI_TEXT_BUF + 1];
   int16_t rowInset = radius / 2; if (rowInset < 2) rowInset = 2;
   int16_t rowRadius = radius; if (rowRadius > 6) rowRadius = 6;
@@ -7315,7 +7724,7 @@ static inline void ui_select_menu_draw() {
     int16_t ry = g.y + 4 + static_cast<int16_t>(r) * rowH;
     uint8_t current = (r == static_cast<uint8_t>(n->value));
     if (current) {
-      display_fill_round_rect(g.x + rowInset, ry, g.w - 2 * rowInset, rowH, rowRadius, n->fg);
+      ui_display_fill_round_rect(g.x + rowInset, ry, g.w - 2 * rowInset, rowH, rowRadius, n->fg);
     }
     buf[0] = 0;
     if (n->optionTextFn) n->optionTextFn(r, buf, UI_TEXT_BUF + 1);
@@ -7328,8 +7737,8 @@ static inline void ui_select_menu_draw() {
     if (current) {
       int16_t cx = g.x + 7;
       int16_t cy = ry + rowH / 2;
-      display_draw_line(cx, cy, cx + 3, cy + 3, panel);
-      display_draw_line(cx + 3, cy + 3, cx + 8, cy - 4, panel);
+      ui_display_draw_line(cx, cy, cx + 3, cy + 3, panel);
+      ui_display_draw_line(cx + 3, cy + 3, cx + 8, cy - 4, panel);
     }
   }
   __ui_select_menu_dirty = 0;
@@ -7365,7 +7774,7 @@ static void ui_drawer_discover() {
   for (uint16_t i = 0; i < __ui_node_count && __ui_drawer_slots < UI_DRAWER_MAX; i++) {
     if (__ui_nodes[i].drawerSide < 0) continue;
     uint8_t s = __ui_drawer_slots++;
-    __ui_drawer_idx[s] = static_cast<int8_t>(i);
+    __ui_drawer_idx[s] = static_cast<int16_t>(i);
     __ui_drawer_open[s] = 0;
     __ui_drawer_progress[s] = 0;
     // Seed closed: subtree offsets at full travel (never paints at rest).
@@ -7419,22 +7828,42 @@ static void ui_drawer_tick(uint32_t deltaMs) {
     uint8_t target = __ui_drawer_open[s] ? 255 : 0;
     uint8_t p = __ui_drawer_progress[s];
     if (p == target) continue;
-    // Mark the subtree dirty around the offset change so the standard
-    // clear/redraw machinery handles the slide frames — and the whole active
-    // screen besides: the drawer's clear fills with the parent background
-    // only, so everything the drawer COVERED must repaint (same contract as
-    // the select modal's close path; device parity with the preview).
+    // Compose each slide frame as the UNION of the drawer's old and new
+    // paint rects in tear-free bands (ui_render_screen_bands). The previous
+    // contract — mark the whole active screen dirty per slide step — repaints
+    // the entire screen with direct per-node clears on no-fb targets: visible
+    // flashing, and only ~3 steps fit inside the 180ms slide. The banded
+    // union is a fraction of the SPI traffic and never exposes an
+    // intermediate state. Falls back to the whole-screen dirty repaint when
+    // the band canvas can't allocate or a retained framebuffer composes the
+    // frame in RAM (its dirty-union push is already tear-free).
     uint16_t di = static_cast<uint16_t>(__ui_drawer_idx[s]);
     uint8_t next = target > p ? (p + step > target ? target : p + step)
                               : (p < step || p - step < target ? target : p - step);
-    for (uint16_t i = 0; i < __ui_node_count; i++) {
-      if (__ui_nodes[i].screenId != __ui_active_screen) continue;
-      if (i >= di && i < __ui_nodes[di].subtreeEnd) continue;
-      if (next == 0 && !__ui_drawer_open[s]) continue;  // closing to hidden: skip drawer subtree
-      __ui_nodes[i].dirty = 1;
-      __ui_nodes[i].lastTextHeight = 0;
-    }
+    UIRect oldRect;
+    ui_node_current_paint_rect(di, &oldRect);
     ui_drawer_apply(s, next);
+    UIRect newRect;
+    ui_node_current_paint_rect(di, &newRect);
+    uint8_t composed = 0;
+    if (!ui_get_framebuffer()) {
+      int16_t ux0 = oldRect.x < newRect.x ? oldRect.x : newRect.x;
+      int16_t uy0 = oldRect.y < newRect.y ? oldRect.y : newRect.y;
+      int16_t ux1 = oldRect.x + oldRect.w > newRect.x + newRect.w ? static_cast<int16_t>(oldRect.x + oldRect.w) : static_cast<int16_t>(newRect.x + newRect.w);
+      int16_t uy1 = oldRect.y + oldRect.h > newRect.y + newRect.h ? static_cast<int16_t>(oldRect.y + oldRect.h) : static_cast<int16_t>(newRect.y + newRect.h);
+      composed = ui_render_screen_bands(ux0, uy0, static_cast<int16_t>(ux1 - ux0), static_cast<int16_t>(uy1 - uy0));
+      // The drawer crossed a scroll viewport that caches its pixels; the
+      // canvas holds pre-slide content where the drawer now sits. Invalidate
+      // it so the next scroll recomposites instead of shifting stale pixels.
+      if (composed) ui_invalidate_scroll_canvas_for_node(di);
+    }
+    if (!composed) {
+      for (uint16_t i = 0; i < __ui_node_count; i++) {
+        if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+        __ui_nodes[i].dirty = 1;
+        __ui_nodes[i].lastTextHeight = 0;
+      }
+    }
   }
 }
 

@@ -106,6 +106,12 @@ export interface TranspilerUIHook {
   // ── File splitting ──────────────────────────────────────────────────────
   splitUiFile(src: string): UiFileParts;
 
+  // ── Image conversion ────────────────────────────────────────────────────
+  /** Pre-decode src="…" image references (png/jpg/ico/…) into the RGB565
+   *  asset cache. Must be awaited BEFORE loadUIModule/loadUIModuleFromText —
+   *  the synchronous asset reader and natural-size layout read the cache. */
+  warmUpImageDecoding(sourceText: string, baseDir: string, opts?: { maxW?: number; maxH?: number }): Promise<void>;
+
   // ── Type declaration generation ─────────────────────────────────────────
   generateProjectUITypeDeclarations(projectRoot: string): { written: string[]; errors: Array<{ filePath: string; error: Error }> };
 }

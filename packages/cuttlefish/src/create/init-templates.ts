@@ -178,7 +178,6 @@ const config = {
 
   // Output options
   output: {
-    optimize: 'speed',
     outDir: './out',
   },
 };
@@ -234,7 +233,6 @@ const config: CuttlefishConfig = {
   // Output / build options
   output: {
     framework: '${options.framework}',
-    optimize: 'size',
     outDir: './out',
   },
 

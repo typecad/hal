@@ -8,16 +8,12 @@
 
 import { z } from 'zod';
 
-/** Optimization levels accepted by the output.optimize field. */
-const OptimizationLevel = z.enum(['none', 'size', 'speed', 'balanced']);
-
 /** PSRAM types accepted by the top-level `psram` field (ESP32 PSRAM variants). */
 const PsramType = z.enum(['opi', 'quad']);
 
 /** Schema for the `output` section. */
 const OutputConfig = z.object({
   framework: z.string().min(1).optional(),
-  optimize: OptimizationLevel.optional(),
   outDir: z.string().optional(),
   defines: z.record(z.string(), z.string()).optional(),
   extraFlags: z.array(z.string()).optional(),

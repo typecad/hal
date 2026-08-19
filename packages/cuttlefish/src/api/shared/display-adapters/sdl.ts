@@ -331,7 +331,7 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
       `    __tc_display.put(dx, dy, pixels[i]);`,
       `  }`,
       `}`,
-      `static inline CuttlefishCanvas16* display_createCanvas(int16_t w, int16_t h) { return new SdlGfxCanvas(w, h); }`,
+      `static inline CuttlefishCanvas16* display_createCanvas(int16_t w, int16_t h) { return new (std::nothrow) SdlGfxCanvas(w, h); }`,
       `static inline CuttlefishCanvas16* display_createCanvasPsram(int16_t, int16_t) { return nullptr; }`,
       `static inline void display_deleteCanvas(CuttlefishCanvas16* c) { delete c; }`,
       `static inline int16_t display_canvasWidth(CuttlefishCanvas16* c) { return c->width(); }`,

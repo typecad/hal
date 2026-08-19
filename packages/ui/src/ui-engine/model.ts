@@ -96,6 +96,12 @@ export interface UINodeModel {
   disabled: boolean;
   /** <drawer side>: 0=bottom 1=top 2=left 3=right; -1 = not a drawer. */
   drawerSide: number;
+  /** Visibility-reflow axis (device): 0 none, 1 column, 2 row. */
+  flowAxis: number;
+  /** Visibility-reflow: main-axis gap between in-flow children (px, 0-255). */
+  flowGap: number;
+  /** Visibility-reflow flags: bit0 auto height, bit1 auto width, bit2 out-of-flow. */
+  flowFlags: number;
   opacity: number;       // 0-100
   clearColor: number;
   lastTextWidth: number;
@@ -349,7 +355,11 @@ function textOverflowOf(val: string | undefined): boolean {
 function borderRadiusOf(style: CSSProperty): number {
   if (!style.borderRadius) return 0;
   const px = parseInt(style.borderRadius, 10);
-  return isNaN(px) ? 0 : px;
+  // Clamp at 0: kit recipes like `calc(var(--radius) - 2px)` go negative for
+  // 0px-radius themes (tweakcn's sharper exports) — a negative radius is both
+  // meaningless and a uint8 narrowing error in the emitted node table.
+  if (isNaN(px) || px < 0) return 0;
+  return Math.min(255, px);
 }
 
 function paddingOf(style: CSSProperty): { top: number; right: number; bottom: number; left: number } {
@@ -923,6 +933,11 @@ export function lowerUIToModel(
     if (s.id) screenIdToIndex.set(s.id, i);
   });
 
+  // Raw flex direction per node index (pre-order, parents first) — the
+  // visibility-reflow flags use the parent's direction to decide cross-axis
+  // stretch vs content sizing (see the flowAxis/flowFlags IIFE below).
+  const flowDirByIndex: number[] = [];
+
   const nodes = flat.map(({ index, node, box, hasBg, clearColor, parentIndex, subtreeEnd, screenId, zIndex, effectiveOpacity }): UINodeModel => {
     // If background is a gradient, use the first stop as the base bg color
     // (the runtime draws the actual gradient per-row on top of this).
@@ -1112,6 +1127,44 @@ export function lowerUIToModel(
       visible: node.style.visibility !== "hidden" && node.style.visibility !== "collapse" && !isDisplayNone(node),
       disabled: node.disabled === true,
       drawerSide: node.tag === "drawer" ? ({ bottom: 0, top: 1, left: 2, right: 3 } as Record<string, number>)[node.drawerSide ?? "bottom"] ?? 0 : -1,
+      // Visibility-reflow metadata: how this node's in-flow children stack, so
+      // the device runtime can re-stack them when a child's visibility changes
+      // (the preview re-layouts with yoga every frame; the device's boxes are
+      // baked at build time). The flex mapping mirrors yoga-layout.ts exactly;
+      // wrapped, reversed, or non-flex-start-justified containers opt out
+      // (axis 0) because a linear re-stack can't reproduce their layout.
+      ...(() => {
+        const s = node.style;
+        const fd = s.display === "flex" ? s.flexDirection : "column";
+        const outOfFlow = s.position === "absolute" || s.position === "fixed";
+        const gapPx = (v: string | undefined): number => {
+          const n = v === undefined ? 0 : parseFloat(v);
+          return Number.isFinite(n) && n > 0 ? Math.min(255, Math.round(n)) : 0;
+        };
+        const dirAxis = (fd === "row" || fd === "row-reverse") ? 2 : 1;
+        flowDirByIndex[index] = dirAxis;
+        let axis = 0;
+        if ((node.children?.length ?? 0) > 0 && !outOfFlow &&
+            fd !== "row-reverse" && fd !== "column-reverse" &&
+            s.flexWrap !== "wrap" && s.flexWrap !== "wrap-reverse" &&
+            (!s.justifyContent || s.justifyContent === "flex-start" || s.justifyContent === "normal")) {
+          axis = dirAxis;
+        }
+        const gap = axis === 2 ? gapPx(s.rowGap) : gapPx(s.columnGap);
+        // Content-sized only when the size truly comes from the content: an
+        // explicit size, flex-grow space, a flex-basis, or cross-axis
+        // stretch (a child of a row parent stretches its height; of a column
+        // parent its width) all derive the dimension from elsewhere. Getting
+        // this wrong let the reflow resize a flex-grown scroll body to its
+        // collapsed content — contentHeight == box.h, nothing scrollable.
+        const grown = s.flexGrow !== undefined && parseFloat(String(s.flexGrow)) > 0;
+        const basisSet = s.flexBasis !== undefined && s.flexBasis !== "auto";
+        const parentDir = parentIndex >= 0 ? (flowDirByIndex[parentIndex] ?? 1) : 0;
+        const parentDerived = grown || basisSet || parentDir === 0;
+        const autoH = !parentDerived && parentDir !== 2 && (s.height === undefined || s.height === "auto");
+        const autoW = !parentDerived && parentDir !== 1 && (s.width === undefined || s.width === "auto");
+        return { flowAxis: axis, flowGap: gap, flowFlags: (autoH ? 1 : 0) | (autoW ? 2 : 0) | (outOfFlow ? 4 : 0) };
+      })(),
       opacity: effectiveOpacity,
       clearColor: clear,
       lastTextWidth: 0,

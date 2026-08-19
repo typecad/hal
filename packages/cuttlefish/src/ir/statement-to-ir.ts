@@ -7,6 +7,7 @@ import { isCompileTimeOnlyCallName, isCompileTimeOnlyClassName } from "./compile
 import { CppTypeHint, inferExprCppType, resolveDeclarationType, typeNodeToCppType, extractOwnershipKindFromTypeNode, resolveAliasedTypeNode } from "./type-resolution.js";
 import { escapeCppKeyword } from "../utils/strings.js";
 import { PointerTracker, TYPED_ARRAY_ELEMENT_MAP, registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, nestedFunctionAliases, nestedClassAliases, activeCArrayVars, activeArrayLiteralVars, activeStringVars, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeEnumNames, activeStringEnumNames, resetFunctionScopeState, topLevelClassNames, topLevelClasses, requiredIncludes } from "./build-ir-state.js";
+import { isPinFoldingEnabled, setPinFoldingEnabled, invalidatePinLevels } from "./pin-state-tracking.js";
 import { getCurrentIrTypeScope, bindIrTypeScopeLocals } from "./symbol-types.js";
 import { calleeToText, renderExprAsText } from "./render-expr.js";
 import { expressionToIR } from "./expression-to-ir.js";
@@ -291,6 +292,15 @@ export function lowerStatementList(
   const nestedNames: string[] = [];
   const nestedClassNames: string[] = [];
 
+  // Function/method bodies run at an unmodeled time relative to top-level
+  // flow, so pin-state constant folding must be off inside them (reads fall
+  // back to the shadow variable), and any writes they contain invalidate the
+  // top-level levels afterwards. "" and "<top-level>" are the top-level
+  // markers; everything else names a function/method/lambda body.
+  const isFunctionBodyCtx = functionNameForDiagnostics !== "" && functionNameForDiagnostics !== "<top-level>";
+  const prevPinFolding = isPinFoldingEnabled();
+  if (isFunctionBodyCtx) setPinFoldingEnabled(false);
+
   // Phase 1: Pre-scan for nested function declarations â€” register aliases only.
   // This ensures sibling functions can reference each other.
   for (const statement of statements) {
@@ -495,6 +505,11 @@ export function lowerStatementList(
   }
   for (const name of nestedClassNames) {
     nestedClassAliases.delete(name);
+  }
+
+  if (isFunctionBodyCtx) {
+    setPinFoldingEnabled(prevPinFolding);
+    invalidatePinLevels();
   }
 
   return lowered;

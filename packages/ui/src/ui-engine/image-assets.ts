@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { StyledNode } from "./style-resolver.js";
+import { getCachedDecodedImage } from "./image-decode.js";
 
 type ColorFormat = "rgb565" | "rgb666" | "rgb888" | "mono";
 
@@ -66,9 +67,14 @@ export function loadImageAssets(roots: StyledNode | StyledNode[], htmlDir: strin
   const walk = (node: StyledNode) => {
     const src = (node as any).src as string | undefined;
     if (src && node.id) {
+      const abs = path.isAbsolute(src) ? src : path.resolve(htmlDir, src);
+      const decoded = getCachedDecodedImage(abs);
       const width = imageNaturalWidth(node);
       const height = imageNaturalHeight(node);
-      const key = imageAssetKey(src, htmlDir, width, height);
+      // Decoded (converted) assets are keyed by file alone — their size is
+      // the image's natural size, not the node's attrs. Raw .img dumps keep
+      // the (src, dims) key — the dims ARE the asset geometry there.
+      const key = decoded ? `decoded:\0${abs}` : imageAssetKey(src, htmlDir, width, height);
       let assetIdx = keyToAssetIndex.get(key);
       if (assetIdx === undefined) {
         const assetId = uniqueAssetId(node.id, assets.length, usedIds);
@@ -136,7 +142,31 @@ export function emitImageTables(assets: UIImageAsset[], colorFormat: ColorFormat
   return lines.join("\n");
 }
 
-/** Read a raw RGB565 binary file and return a padded UIImageAsset. */
+/** Give <img> nodes without explicit width/height attributes their decoded
+ *  image's natural size, so the layout box matches the asset. Must run
+ *  BEFORE layout (both pipelines arrange first, then load assets); explicit
+ *  author attrs keep controlling the layout box, with object-fit scaling. */
+export function applyDecodedImageSizes(roots: StyledNode | StyledNode[], htmlDir: string): void {
+  const walk = (node: StyledNode) => {
+    const src = (node as any).src as string | undefined;
+    if (src && (node as any).imgWidth === undefined && (node as any).imgHeight === undefined) {
+      const abs = path.isAbsolute(src) ? src : path.resolve(htmlDir, src);
+      const decoded = getCachedDecodedImage(abs);
+      if (decoded) {
+        (node as any).imgWidth = decoded.width;
+        (node as any).imgHeight = decoded.height;
+      }
+    }
+    node.children.forEach(walk);
+  };
+  for (const root of Array.isArray(roots) ? roots : [roots]) {
+    walk(root);
+  }
+}
+
+/** Read a raw RGB565 binary file and return a padded UIImageAsset. A decoded
+ *  (converted) image in the warm-up cache wins — natural size, converted
+ *  pixels. */
 export function readRgb565Image(
   srcPath: string,
   htmlDir: string,
@@ -147,6 +177,11 @@ export function readRgb565Image(
   const abs = path.isAbsolute(srcPath)
     ? srcPath
     : path.resolve(htmlDir, srcPath);
+
+  const decoded = getCachedDecodedImage(abs);
+  if (decoded) {
+    return { id, width: decoded.width, height: decoded.height, data: decoded.data };
+  }
 
   if (!fs.existsSync(abs)) {
     console.warn(`[img] Image file not found: ${abs}`);

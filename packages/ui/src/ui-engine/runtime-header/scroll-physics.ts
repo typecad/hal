@@ -98,6 +98,20 @@ static inline uint8_t ui_apply_scroll_delta(int16_t node, int16_t dy) {
 static inline uint8_t ui_scroll_release(int16_t node) {
   if (node < 0) return 0;
   uint8_t changed = 0;
+  // Only one settle animation owns the shared start state. If another node is
+  // still mid-settle, snap it to its end state so its stale animation can't
+  // consume this release's start values.
+  if (__ui_settle_node != 0xFFFFu && __ui_settle_node != static_cast<uint16_t>(node) &&
+      __ui_settle_node < __ui_node_count && __ui_nodes[__ui_settle_node].settling) {
+    __ui_nodes[__ui_settle_node].overscrollPx = 0;
+    if (__ui_settle_from_scrollY > 0) {
+      __ui_nodes[__ui_settle_node].scrollY = 0;
+    } else if (__ui_settle_from_scrollY < 0) {
+      __ui_nodes[__ui_settle_node].scrollY = ui_scroll_max(static_cast<int16_t>(__ui_settle_node));
+    }
+    __ui_nodes[__ui_settle_node].settling = 0;
+    ui_mark_scroll_view_dirty(__ui_settle_node);
+  }
   if (__ui_nodes[node].overscrollPx != 0) {
     __ui_nodes[node].settling = 1;
     __ui_settle_from_overscroll = __ui_nodes[node].overscrollPx;
@@ -122,6 +136,7 @@ static inline uint8_t ui_scroll_release(int16_t node) {
       changed = 1;
     }
   }
+  __ui_settle_node = static_cast<uint16_t>(node);
   return changed;
 }
 
@@ -130,6 +145,12 @@ static inline uint8_t ui_scroll_release(int16_t node) {
 static inline void ui_scroll_advance_settle(uint16_t node, uint16_t deltaMs) {
   (void)deltaMs;
   if (node >= __ui_node_count || !__ui_nodes[node].settling) return;
+  // The settle start state belongs to __ui_settle_node only; a settling flag
+  // on any other node is stale (superseded by a newer release) — drop it.
+  if (node != __ui_settle_node) {
+    __ui_nodes[node].settling = 0;
+    return;
+  }
   uint32_t elapsed = millis() - __ui_settle_start_ms;
   uint16_t dur = static_cast<uint16_t>(UI_SCROLL_SETTLE_MS);
   // ease-out: k = 1 - (1 - t)^2, t in [0,1]
@@ -151,7 +172,10 @@ static inline void ui_scroll_advance_settle(uint16_t node, uint16_t deltaMs) {
       if (t >= 100) __ui_nodes[node].scrollY = target;
     }
   }
-  if (t >= 100) __ui_nodes[node].settling = 0;
+  if (t >= 100) {
+    __ui_nodes[node].settling = 0;
+    __ui_settle_node = 0xFFFF;
+  }
   ui_mark_scroll_view_dirty(node);
 }
 `;

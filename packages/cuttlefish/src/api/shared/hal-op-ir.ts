@@ -30,18 +30,37 @@ export interface GpioWriteOp {
   pin: number;
   /** 0 = LOW, 1 = HIGH, or a runtime expression string (e.g. "state", "!state") */
   value: 0 | 1 | string;
+  /**
+   * Output-pin state tracking: set at the END of the file's IR build (see
+   * markShadowUpdatingOps) when this pin has a tracked shadow read anywhere
+   * in the file — the emitted write must also assign the shadow state
+   * variable. Baked into the op at build time because emit never sees live
+   * tracker state: every file's buildProgramIR resets the tracker, and all
+   * files build before any emit runs.
+   */
+  updatesShadow?: boolean;
 }
 
 export interface GpioReadOp {
   operation: "gpio.read";
   port?: string;
   pin: number;
+  /**
+   * Output-pin state tracking: when set, this read is on a pin explicitly
+   * configured as OUTPUT and must NOT lower to a hardware pin read (which is
+   * not portable for direction-only outputs, e.g. Zephyr). 'high'/'low' fold
+   * to a compile-time constant; 'shadow' lowers to the tracked state
+   * variable that generated writes keep updated.
+   */
+  trackedValue?: "high" | "low" | "shadow";
 }
 
 export interface GpioToggleOp {
   operation: "gpio.toggle";
   port?: string;
   pin: number;
+  /** Output-pin state tracking — same contract as GpioWriteOp.updatesShadow. */
+  updatesShadow?: boolean;
 }
 
 export interface GpioSetModeOp {

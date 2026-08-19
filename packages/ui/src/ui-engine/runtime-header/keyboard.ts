@@ -441,8 +441,8 @@ static inline void ui_select_menu_draw() {
   if (radius > g.h / 2) radius = g.h / 2;
   UI_COLOR_T panel = n->hasBg ? n->bg : n->clearColor;
   UI_COLOR_T borderCol = (n->borderStyle != 0 && n->borderColor != 0) ? n->borderColor : n->fg;
-  display_fill_round_rect(g.x, g.y, g.w, g.h, radius, panel);
-  display_draw_round_rect(g.x, g.y, g.w, g.h, radius, borderCol);
+  ui_display_fill_round_rect(g.x, g.y, g.w, g.h, radius, panel);
+  ui_display_draw_round_rect(g.x, g.y, g.w, g.h, radius, borderCol);
   char buf[UI_TEXT_BUF + 1];
   int16_t rowInset = radius / 2; if (rowInset < 2) rowInset = 2;
   int16_t rowRadius = radius; if (rowRadius > 6) rowRadius = 6;
@@ -450,7 +450,7 @@ static inline void ui_select_menu_draw() {
     int16_t ry = g.y + 4 + static_cast<int16_t>(r) * rowH;
     uint8_t current = (r == static_cast<uint8_t>(n->value));
     if (current) {
-      display_fill_round_rect(g.x + rowInset, ry, g.w - 2 * rowInset, rowH, rowRadius, n->fg);
+      ui_display_fill_round_rect(g.x + rowInset, ry, g.w - 2 * rowInset, rowH, rowRadius, n->fg);
     }
     buf[0] = 0;
     if (n->optionTextFn) n->optionTextFn(r, buf, UI_TEXT_BUF + 1);
@@ -463,8 +463,8 @@ static inline void ui_select_menu_draw() {
     if (current) {
       int16_t cx = g.x + 7;
       int16_t cy = ry + rowH / 2;
-      display_draw_line(cx, cy, cx + 3, cy + 3, panel);
-      display_draw_line(cx + 3, cy + 3, cx + 8, cy - 4, panel);
+      ui_display_draw_line(cx, cy, cx + 3, cy + 3, panel);
+      ui_display_draw_line(cx + 3, cy + 3, cx + 8, cy - 4, panel);
     }
   }
   __ui_select_menu_dirty = 0;
@@ -500,7 +500,7 @@ static void ui_drawer_discover() {
   for (uint16_t i = 0; i < __ui_node_count && __ui_drawer_slots < UI_DRAWER_MAX; i++) {
     if (__ui_nodes[i].drawerSide < 0) continue;
     uint8_t s = __ui_drawer_slots++;
-    __ui_drawer_idx[s] = static_cast<int8_t>(i);
+    __ui_drawer_idx[s] = static_cast<int16_t>(i);
     __ui_drawer_open[s] = 0;
     __ui_drawer_progress[s] = 0;
     // Seed closed: subtree offsets at full travel (never paints at rest).
@@ -554,22 +554,42 @@ static void ui_drawer_tick(uint32_t deltaMs) {
     uint8_t target = __ui_drawer_open[s] ? 255 : 0;
     uint8_t p = __ui_drawer_progress[s];
     if (p == target) continue;
-    // Mark the subtree dirty around the offset change so the standard
-    // clear/redraw machinery handles the slide frames — and the whole active
-    // screen besides: the drawer's clear fills with the parent background
-    // only, so everything the drawer COVERED must repaint (same contract as
-    // the select modal's close path; device parity with the preview).
+    // Compose each slide frame as the UNION of the drawer's old and new
+    // paint rects in tear-free bands (ui_render_screen_bands). The previous
+    // contract — mark the whole active screen dirty per slide step — repaints
+    // the entire screen with direct per-node clears on no-fb targets: visible
+    // flashing, and only ~3 steps fit inside the 180ms slide. The banded
+    // union is a fraction of the SPI traffic and never exposes an
+    // intermediate state. Falls back to the whole-screen dirty repaint when
+    // the band canvas can't allocate or a retained framebuffer composes the
+    // frame in RAM (its dirty-union push is already tear-free).
     uint16_t di = static_cast<uint16_t>(__ui_drawer_idx[s]);
     uint8_t next = target > p ? (p + step > target ? target : p + step)
                               : (p < step || p - step < target ? target : p - step);
-    for (uint16_t i = 0; i < __ui_node_count; i++) {
-      if (__ui_nodes[i].screenId != __ui_active_screen) continue;
-      if (i >= di && i < __ui_nodes[di].subtreeEnd) continue;
-      if (next == 0 && !__ui_drawer_open[s]) continue;  // closing to hidden: skip drawer subtree
-      __ui_nodes[i].dirty = 1;
-      __ui_nodes[i].lastTextHeight = 0;
-    }
+    UIRect oldRect;
+    ui_node_current_paint_rect(di, &oldRect);
     ui_drawer_apply(s, next);
+    UIRect newRect;
+    ui_node_current_paint_rect(di, &newRect);
+    uint8_t composed = 0;
+    if (!ui_get_framebuffer()) {
+      int16_t ux0 = oldRect.x < newRect.x ? oldRect.x : newRect.x;
+      int16_t uy0 = oldRect.y < newRect.y ? oldRect.y : newRect.y;
+      int16_t ux1 = oldRect.x + oldRect.w > newRect.x + newRect.w ? static_cast<int16_t>(oldRect.x + oldRect.w) : static_cast<int16_t>(newRect.x + newRect.w);
+      int16_t uy1 = oldRect.y + oldRect.h > newRect.y + newRect.h ? static_cast<int16_t>(oldRect.y + oldRect.h) : static_cast<int16_t>(newRect.y + newRect.h);
+      composed = ui_render_screen_bands(ux0, uy0, static_cast<int16_t>(ux1 - ux0), static_cast<int16_t>(uy1 - uy0));
+      // The drawer crossed a scroll viewport that caches its pixels; the
+      // canvas holds pre-slide content where the drawer now sits. Invalidate
+      // it so the next scroll recomposites instead of shifting stale pixels.
+      if (composed) ui_invalidate_scroll_canvas_for_node(di);
+    }
+    if (!composed) {
+      for (uint16_t i = 0; i < __ui_node_count; i++) {
+        if (__ui_nodes[i].screenId != __ui_active_screen) continue;
+        __ui_nodes[i].dirty = 1;
+        __ui_nodes[i].lastTextHeight = 0;
+      }
+    }
   }
 }
 `;

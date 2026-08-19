@@ -41,7 +41,6 @@ const config: CuttlefishConfig = {
   // Output / build options.
   output: {
     framework: 'arduino',
-    optimize: 'size',
     outDir: './out',
   },
 

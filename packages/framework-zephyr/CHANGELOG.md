@@ -1,5 +1,69 @@
 # @typecad/framework-zephyr
 
+## Unreleased
+
+- **All runtime support code is now gated on actual use.** A minimal
+  LED-toggle program previously carried ~45 lines of dead shim: the
+  `digitalRead`/`HIGH`/`LOW` wiring macros, `millis()`/`map()`/
+  `constrain()`, the `__tc_print`/`__tc_println` test-runner helpers, the
+  nullish macro + helpers, `__tc_gpio_dev`/`__tc_gpio_read`, every
+  board devicetree spec, and `<cstdio>`. Each piece now emits only under
+  its own usage signal: `usesMap`/`usesConstrain` (the setup emitter
+  already ORs `entryHasUI()` into constrain for the UI runtime's draw
+  path), a new `usesWallClock` flag for `millis()` (true millis/micros
+  references only — deliberately excluding the `delay()` conflation
+  `usesMillis` carries for AVR, since Zephyr's delay lowers straight to
+  `k_msleep`; hidden pollers — async, timers, a mounted UI — still keep
+  `millis()` alive), `usedPolyfillHelpers` tracking for the expect
+  print helpers, and `usesDigitalRead || programUsesSafety ||
+  entryHasUI()` for the GPIO-read surface. Devicetree specs emit per
+  referenced pin (`__tc_dt_<alias>` keyed off the structured `gpio.*`
+  hal-op pins), OUTSIDE the single `CUTTLEFISH_SHIM_DEFINED` guard and
+  behind per-symbol guards — per-file pin sets differ, and a TU-wide
+  guard would keep only the first header's specs in a multi-header TU.
+  `<cstdio>` drops unless something printf-shaped is used (expect
+  helpers, raw printf/snprintf, the fs/preferences/uart shims). The whole
+  shim block is omitted when empty, so a blink program now compiles to
+  includes + the `main()` bridge + user code. Capability queries (no
+  analysis present) keep the previous always-emit behavior.
+
+- **Fixed: `gpio.toggle` emitted a nonexistent Zephyr API.** The GPIO
+  lowering emitted `gpio_pin_toggle_raw(...)`, but Zephyr's toggle API has
+  no `_raw` variant (only get/set do) — any program using `.toggle()` on a
+  Zephyr target failed to compile with "'gpio_pin_toggle_raw' was not
+  declared in this scope". It now emits `gpio_pin_toggle(...)`, the
+  driver-level atomic toggle (for pins without `GPIO_ACTIVE_LOW` the
+  logical level equals the physical one). Surfaced by the first compile of
+  the zephyr-debug starter sketch.
+
+- **Create-time starter debug artifacts (`writeProjectDebugArtifacts`).** The
+  package now exports `writeProjectDebugArtifacts({ workspaceRoot,
+  buildTarget })`, invoked by `cuttlefish create` for freshly scaffolded
+  projects: gdb-capable targets (esp32s3) get `.vscode/launch.json` +
+  `tasks.json` + `src/out/.cuttlefish/openocd.cfg` immediately, so F5 in VS
+  Code works before the first build (the preLaunchTask builds + flashes, and
+  that `--debug` build re-merges the same launch entry with the
+  CMakeCache-resolved gdbPath). printf targets (xiao_ble, esp32) no-op.
+  `resolveGdbPath` also gained a create-time fallback that probes
+  `$ZEPHYR_SDK_INSTALL_DIR`, the zephyr-installer micromamba layout
+  (`<MAMBA_ROOT_PREFIX | ~/micromamba>/zephyr-sdk/zephyr-sdk-*`), and
+  standalone `~/zephyr-sdk-*` roots (newest first) when no build cache exists.
+
+- **`BUILT_IN_PROFILES` export (shared shape).** The DT-binding profiles
+  are now exported from `display/` pre-mapped to the shared `DisplayProfile`
+  shape — the same interface framework-arduino's displays modules use. The
+  strategy's `getProfileRegistry()` and the preview's profile-registry
+  loader both consume it, removing the duplicated Zephyr-side mapping from
+  `@typecad/ui`'s preview builder.
+
+- **Build-time warning: I2C touch controller with no bus pins.** An I2C
+  touch config (e.g. FT6336U) without `touch.sda`/`touch.scl` generates an
+  overlay that enables the bus but assigns it no pins — every I2C read then
+  fails and touch silently does nothing (demo-shadcn shipped that way while
+  demo-st worked on identical hardware). `generateOverlay` now reports the
+  missing pins through a diagnostics array and the toolchain prints the
+  warning during compile.
+
 ## 1.0.0-alpha.12
 
 ### Patch Changes

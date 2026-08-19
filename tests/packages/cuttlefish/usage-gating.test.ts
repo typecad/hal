@@ -78,5 +78,49 @@ describe("analyzeProgram new gating flags", () => {
     expect(a.usesDigitalRead).toBe(false);
     expect(a.usesDisplay).toBe(false);
     expect(a.usesHalt).toBe(false);
+    expect(a.usesWallClock).toBe(false);
+  });
+});
+
+describe("analyzeProgram wall-clock vs delay distinction", () => {
+  it("sets usesWallClock for millis() but NOT for a delay-only program", () => {
+    // delay() keeps usesMillis true (framework-avr derives its native timing
+    // ISR gate from it) but must not read as a wall-clock consumer — Zephyr
+    // lowers delay straight to k_msleep and gates its millis() shim on
+    // usesWallClock.
+    const delayOnly = analyzeSrc(`
+      declare function delay(ms: number): void;
+      export function f(): void { delay(1000); }
+    `);
+    expect(delayOnly.usesMillis).toBe(true);
+    expect(delayOnly.usesWallClock).toBe(false);
+
+    const clock = analyzeSrc(`
+      declare function millis(): number;
+      export function f(): number { return millis(); }
+    `);
+    expect(clock.usesWallClock).toBe(true);
+    expect(clock.usesMillis).toBe(true);
+  });
+});
+
+describe("analyzeProgram test-runner print helper tracking", () => {
+  it("tracks __tc_print/__tc_println as used polyfill helpers", () => {
+    // @typecad/expect's preprocessor injects these calls into the source
+    // before IR build; frameworks gate their definitions (and <cstdio>) on
+    // the helpers being present in this set.
+    const a = analyzeSrc(`
+      declare function __tc_print(s: string): void;
+      declare function __tc_println(s: string): void;
+      export function f(): void { __tc_print("marker"); __tc_println(5); }
+    `);
+    expect(a.usedPolyfillHelpers.has("__tc_print")).toBe(true);
+    expect(a.usedPolyfillHelpers.has("__tc_println")).toBe(true);
+  });
+
+  it("does not track __tc_print when nothing calls it", () => {
+    const a = analyzeSrc(`export function f(): void {}`);
+    expect(a.usedPolyfillHelpers.has("__tc_print")).toBe(false);
+    expect(a.usedPolyfillHelpers.has("__tc_println")).toBe(false);
   });
 });

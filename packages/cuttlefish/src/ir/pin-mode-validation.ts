@@ -44,6 +44,10 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
   // Track which receivers have had their mode explicitly set
   const pinModeSet = new Set<string>();
 
+  // Pins currently driven by PWM/tone (since their last digital write or
+  // mode change). Reading such a pin has no defined digital level.
+  const analogDrivenPins = new Set<string>();
+
   const checkCuttlefishCall = (receiver: string, receiverKind: string | undefined, method: string): void => {
     if (!receiverKind || !PIN_RECEIVER_KINDS.has(receiverKind)) return;
 
@@ -105,15 +109,32 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
     const pinKey = `pin${op.pin}`;
     if (op.operation === 'gpio.set_mode') {
       pinModeSet.add(pinKey);
-    } else if (op.operation === 'gpio.read' && !pinModeSet.has(pinKey)) {
-      diagnostics.push({
-        severity: 'warning',
-        message: `Pin ${op.pin} read without prior mode configuration. ` +
-                 `Call asInput() or inputPullUp() first — reading a floating pin is undefined behavior.`,
-        filePath: program.fileName,
-        code: 'pin-mode-not-set',
-        source: 'pin-mode-validation',
-      });
+      analogDrivenPins.delete(pinKey);
+    } else if (op.operation === 'pwm.write' || op.operation === 'tone.play') {
+      analogDrivenPins.add(pinKey);
+    } else if (op.operation === 'gpio.write' || op.operation === 'gpio.toggle') {
+      analogDrivenPins.delete(pinKey);
+    } else if (op.operation === 'gpio.read') {
+      if (analogDrivenPins.has(pinKey)) {
+        diagnostics.push({
+          severity: 'warning',
+          message: `Pin ${op.pin} read while driven by PWM/tone. ` +
+                   `The pin has no defined digital level while an analog output is active; ` +
+                   `tracked reads return the last digital write, not the waveform.`,
+          filePath: program.fileName,
+          code: 'pin-read-while-pwm',
+          source: 'pin-mode-validation',
+        });
+      } else if (!pinModeSet.has(pinKey)) {
+        diagnostics.push({
+          severity: 'warning',
+          message: `Pin ${op.pin} read without prior mode configuration. ` +
+                   `Call asInput() or inputPullUp() first — reading a floating pin is undefined behavior.`,
+          filePath: program.fileName,
+          code: 'pin-mode-not-set',
+          source: 'pin-mode-validation',
+        });
+      }
     } else if ((op.operation === 'gpio.write' || op.operation === 'gpio.toggle') && !pinModeSet.has(pinKey)) {
       diagnostics.push({
         severity: 'info',

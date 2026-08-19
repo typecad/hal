@@ -14,11 +14,14 @@ extern UIRadioGroup __ui_radio_groups[];
 extern const uint16_t __ui_radio_group_count;
 
 // Forward-declare the click handler type + tables (defined by the emit layer).
-extern void (*__ui_click_handlers[])();
-extern void (*__ui_hold_handlers[])();
-extern void (*__ui_release_handlers[])();
+// The tables are const (flash rodata) — they are never written at runtime.
+extern void (*const __ui_click_handlers[])();
+extern void (*const __ui_hold_handlers[])();
+extern void (*const __ui_release_handlers[])();
 extern void (*__ui_rangechange_handlers[])();
 extern const uint16_t __ui_click_handler_count;
+extern const uint16_t __ui_hold_handler_count;
+extern const uint16_t __ui_release_handler_count;
 extern const uint16_t __ui_rangechange_handler_count;
 
 // Touch state machine: tracks down → hold → up → click lifecycle
@@ -79,35 +82,9 @@ static inline void ui_kb_handle_tap(int16_t tx, int16_t ty);
 static inline void ui_kb_key_rect(uint8_t idx, UIRect* out);
 static inline void ui_kb_draw();
 
-// ── Modal <select> option list ────────────────────────────────────────────
-// Tapping a select opens a centered list of its options; tapping a row sets
-// the value, tapping outside dismisses. Mirrors the preview's select modal.
-static int16_t __ui_select_menu = -1;   // node index while open, -1 closed
-static uint8_t __ui_select_menu_dirty = 0; // overlay needs stamping this frame
-static inline void ui_select_menu_open(uint16_t nodeIdx);
-static inline void ui_select_menu_close(uint8_t repaint);
-static inline void ui_select_menu_geom(uint16_t nodeIdx, UIRect* out, int16_t* rowH);
-static inline void ui_select_menu_draw();
-static inline void ui_select_menu_tap(int16_t tx, int16_t ty);
+// Modal <select> + <drawer> declarations live in forward-decls.ts
+// (emit order: ui_navigate/visibility/ui_init reference them before this module).
 
-// ── <drawer> slide-in panels ──────────────────────────────────────────────
-// Author-styled absolute panels; the runtime slides the subtree in from the
-// drawer's edge (transform offsets), hides it while closed, and closes on
-// outside taps. Mirrors the preview's drawer implementation.
-#define UI_DRAWER_MAX 4
-static int8_t   __ui_drawer_idx[UI_DRAWER_MAX];    // node index per slot, -1 free
-static uint8_t  __ui_drawer_open[UI_DRAWER_MAX];   // target state (0 closed, 1 open)
-static uint8_t  __ui_drawer_progress[UI_DRAWER_MAX]; // 0 closed .. 1 open
-static uint8_t  __ui_drawer_slots = 0;             // discovered drawers (init scan)
-static int16_t __ui_drawer_last_dx[UI_DRAWER_MAX]; // last applied slide dx (delta bookkeeping)
-static int16_t __ui_drawer_last_dy[UI_DRAWER_MAX]; // last applied slide dy
-static int8_t   __ui_drawer_slot_of(uint16_t nodeIdx);
-static void     ui_drawer_discover();
-static void     ui_drawer_open(uint16_t nodeIdx);
-static void     ui_drawer_close(uint16_t nodeIdx);
-static void     ui_drawer_close_all();
-static void     ui_drawer_apply(uint8_t slot, uint8_t progress);
-static void     ui_drawer_tick(uint32_t deltaMs);
 static inline void ui_kb_draw_key(uint8_t i);
 static inline void ui_kb_draw_text_row();
 static inline void ui_kb_compute_box();
@@ -142,8 +119,9 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
         if (best < 0 || ui_node_draws_before(best, i)) best = i;
         continue;
       }
-      if (i < __ui_click_handler_count &&
-          (__ui_click_handlers[i] || __ui_hold_handlers[i] || __ui_release_handlers[i])) {
+      if ((i < __ui_click_handler_count && __ui_click_handlers[i]) ||
+          (i < __ui_hold_handler_count && __ui_hold_handlers[i]) ||
+          (i < __ui_release_handler_count && __ui_release_handlers[i])) {
         if (best < 0 || ui_node_draws_before(best, i)) best = i;
       }
     }
@@ -152,7 +130,7 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
 }
 
 // Dispatch a handler from the given table if registered for the node.
-static void ui_dispatch(void (**table)(), uint16_t count, int16_t node) {
+static void ui_dispatch(void (*const* table)(), uint16_t count, int16_t node) {
   if (node >= 0 && static_cast<uint16_t>(node) < count && table[node]) {
     table[node]();
   }
@@ -301,7 +279,7 @@ static void ui_touch_up() {
         if (target >= 0) ui_navigate(static_cast<uint8_t>(target));
       }
     }
-    ui_dispatch(__ui_release_handlers, __ui_click_handler_count, __ui_touch_node);
+    ui_dispatch(__ui_release_handlers, __ui_release_handler_count, __ui_touch_node);
     // Built-in check/radio/select handlers mutate the node value during click
     // dispatch and need one repaint. Buttons are already dirty from releasing
     // :pressed; links, lists, inputs, and ordinary callbacks are either handled
@@ -449,7 +427,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
     if (__ui_touch_state == 1 && __ui_touch_node >= 0 && !__ui_is_dragging) {
       if (now - __ui_touch_down_time >= UI_TOUCH_HOLD_MS) {
         __ui_touch_state = 2;
-        ui_dispatch(__ui_hold_handlers, __ui_click_handler_count, __ui_touch_node);
+        ui_dispatch(__ui_hold_handlers, __ui_hold_handler_count, __ui_touch_node);
       }
     }
   }

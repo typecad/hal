@@ -7,7 +7,7 @@ const config: CuttlefishConfig = {
   board: '@typecad/board-esp32s3',
   framework: '@typecad/framework-arduino',
   frameworkData: { buildTarget: 'esp32:esp32:esp32s3' },
-  output: { framework: 'arduino', optimize: 'size', outDir: './out-esp32s3' },
+  output: { framework: 'arduino', outDir: './out-esp32s3' },
   toolchain: { type: 'arduino-cli' },
   console: { baudRate: 115200 },
 };

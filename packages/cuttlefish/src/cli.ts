@@ -3,9 +3,10 @@ import path from "node:path";
 import fs from "node:fs";
 import { parseCommandLine, printHelp } from "./utils/cli.js";
 import type { GeneratedOutputs } from "./types.js";
-import type { CreateCommandOptions, BoardAddCommandOptions, AddCommandOptions } from "./types.js";
+import type { CreateCommandOptions, BoardAddCommandOptions } from "./types.js";
 import type { ScaffoldProjectResult } from "./create/index.js";
 import { scaffoldProject, printInitNextSteps, KNOWN_TARGETS, frameworksForTarget, frameworkCatalogEntry, FRAMEWORK_CATALOG, frameworkTargetProfile } from "./create/index.js";
+import { generateFrameworkDebugArtifacts } from "./create/debug-artifacts.js";
 import { runInitWizard } from "./create/index.js";
 import { installProjectDependencies } from "./create/install-deps.js";
 import { generateLibraryDefinitions, transpileFile } from "./transpile.js";
@@ -177,12 +178,21 @@ function finalizeCreate(result: ScaffoldProjectResult, options: CreateCommandOpt
     }
   }
 
-  printInitNextSteps(result.options, result.outDir, { installed });
-}
+  // Framework starter debug profile (e.g. Zephyr esp32s3): write .vscode/
+  // launch.json + tasks.json so F5 in VS Code works before the first build.
+  // Runs after the install step so the framework package resolves from the
+  // new project's node_modules; best-effort — the first --debug build writes
+  // the artifacts anyway.
+  const debugArtifacts = generateFrameworkDebugArtifacts({
+    frameworkPackage: result.options.frameworkPackage || undefined,
+    workspaceRoot: result.outDir,
+    buildTarget: result.options.buildTarget,
+  });
+  if (debugArtifacts.length > 0) {
+    console.log(`\n${chalk.green("✓")} Debug profile: ${debugArtifacts.map((f) => chalk.white(f)).join(", ")}`);
+  }
 
-async function handleAddPreset(options: AddCommandOptions): Promise<void> {
-  const { runAddPreset } = await import("./add-preset.js");
-  runAddPreset(options);
+  printInitNextSteps(result.options, result.outDir, { installed, debugProfile: debugArtifacts.length > 0 });
 }
 
 async function handleBoardAdd(options: BoardAddCommandOptions): Promise<void> {
@@ -224,11 +234,6 @@ async function main(): Promise<void> {
 
     if (options.command === "board-add") {
       await handleBoardAdd(options);
-      return;
-    }
-
-    if (options.command === "add") {
-      await handleAddPreset(options);
       return;
     }
 
@@ -653,7 +658,6 @@ async function main(): Promise<void> {
               buildTarget,
               port: effectivePort,
               baud: options.baud ?? config?.console?.baudRate,
-              optimize: config?.outputOptimize,
               extraFlags: config?.outputExtraFlags,
               defines: psramDefines,
               psram: config?.psram,
@@ -758,7 +762,6 @@ async function main(): Promise<void> {
                   buildTarget,
                   port: effectivePort,
                   baud: options.baud ?? config?.console?.baudRate,
-                  optimize: config?.outputOptimize,
                   extraFlags: config?.outputExtraFlags,
                   defines: psramDefines,
                   psram: config?.psram,
@@ -870,7 +873,6 @@ async function main(): Promise<void> {
       buildTarget,
       port: effectivePort,
       baud: options.baud ?? config?.console?.baudRate,
-      optimize: config?.outputOptimize,
       extraFlags: config?.outputExtraFlags,
       defines: psramDefines,
       psram: config?.psram,

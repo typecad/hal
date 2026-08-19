@@ -65,7 +65,7 @@ import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
 import { buildTimerPolyfill } from './async/timer-polyfill.js';
 import { resolveZephyrDisplayOp, newDisplayState, type DisplayState } from './display/index.js';
 import { buildDisplayRuntime } from './display/gfx.js';
-import { ZEPHYR_DISPLAY_PROFILES } from './display/profiles.js';
+import { ZEPHYR_DISPLAY_PROFILES, BUILT_IN_PROFILES } from './display/profiles.js';
 import { zephyrDisplayAdapterGenerator } from './display/ui-adapter.js';
 import { zephyrTouchAdapter } from './display/touch-adapter.js';
 
@@ -131,7 +131,22 @@ export class ZephyrStrategy implements PlatformStrategy {
     // true so nothing is stripped — mirrors framework-esp32's forcedIncludes.
     const a = (ctx as any)?.analysis;
     const uses = (f: string): boolean => (a ? !!a[f] : true);
-    const inc: string[] = ['<zephyr/kernel.h>', '<zephyr/drivers/gpio.h>', '<cstdio>', '<cstdint>'];
+    // <zephyr/drivers/gpio.h> and <cstdint> stay unconditional: gpio.h is
+    // cross-cutting (gpio/power/interrupt/spi/pulse lowerings + the DT-spec
+    // machinery all reference its API, and no single usesX flag owns it), and
+    // the fixed-width types come via <zephyr/kernel.h> regardless — DIRECT_CPP_TYPE_MAP
+    // passes int32_t/uint8_t through verbatim.
+    const inc: string[] = ['<zephyr/kernel.h>', '<zephyr/drivers/gpio.h>', '<cstdint>'];
+    // <cstdio> backs the printf family only: __tc_print/__tc_println (emitted
+    // solely when @typecad/expect's preprocessor injected them — tracked via
+    // usedPolyfillHelpers), raw printf/snprintf in user code (usesCstdio), and
+    // the fs/preferences/uart shims (their lowerings snprintf into buffers).
+    // A program touching none of those needs no <cstdio>.
+    const helpers = (a as { usedPolyfillHelpers?: Set<string> } | undefined)?.usedPolyfillHelpers;
+    const needsCstdio = uses('usesCstdio') || uses('usesFS') || uses('usesPreferences')
+      || uses('usesUart')
+      || !!helpers?.has('__tc_print') || !!helpers?.has('__tc_println');
+    if (needsCstdio) inc.push('<cstdio>');
     if (uses('usesI2C')) inc.push('<zephyr/drivers/i2c.h>');
     if (uses('usesSPI')) inc.push('<zephyr/drivers/spi.h>');
     if (uses('usesUart')) inc.push('<zephyr/drivers/uart.h>');
@@ -247,77 +262,176 @@ export class ZephyrStrategy implements PlatformStrategy {
     return found;
   }
 
+  /** Pins referenced by gpio.* hal-ops in the program IR. lowerGpio routes a
+   *  pin to its devicetree spec by pin NUMBER, so the structured hal-op pins
+   *  are the authoritative signal for which __tc_dt_* specs are needed —
+   *  regardless of when the final call text is rendered. */
+  private collectGpioPinUsage(program?: ProgramIR): Set<number> {
+    const pins = new Set<number>();
+    if (!program) return pins;
+    const visit = (node: any): void => {
+      if (!node || typeof node !== 'object') return;
+      if (node.operation && typeof node.operation === 'object'
+          && typeof node.operation.operation === 'string'
+          && node.operation.operation.startsWith('gpio.')
+          && typeof node.operation.pin === 'number') {
+        pins.add(node.operation.pin);
+      }
+      for (const v of Object.values(node)) {
+        if (Array.isArray(v)) { for (const item of v) visit(item); }
+        else if (v && typeof v === 'object') visit(v);
+      }
+    };
+    visit(program);
+    return pins;
+  }
+
+  /** Run `re` (global) against every raw string in the IR — raw expression
+   *  values plus raw hal-op codes — returning capture group 1 of each match
+   *  (the full match when the regex has no group). This is how references the
+   *  text scanners must see but that never appear as IR call nodes (e.g. a
+   *  rawCpp() escape hatch naming `__tc_dt_sw0` directly) are discovered. */
+  private collectRawMatches(program: ProgramIR | undefined, re: RegExp): Set<string> {
+    const found = new Set<string>();
+    if (!program) return found;
+    const scan = (text: string): void => {
+      for (const m of text.matchAll(re)) found.add(m[1] ?? m[0]);
+    };
+    const visit = (node: any): void => {
+      if (!node || typeof node !== 'object') return;
+      if (node.kind === 'raw' && typeof node.value === 'string') scan(node.value);
+      if (node.operation && typeof node.operation === 'object'
+          && node.operation.operation === 'raw' && typeof node.operation.code === 'string') {
+        scan(node.operation.code);
+      }
+      for (const v of Object.values(node)) {
+        if (Array.isArray(v)) { for (const item of v) visit(item); }
+        else if (v && typeof v === 'object') visit(v);
+      }
+    };
+    visit(program);
+    return found;
+  }
+
+  /** Whether the wiring-compat GPIO read surface (__tc_gpio_read definition,
+   *  __tc_gpio_dev dispatcher, and the wiring_compat polyfill's digitalRead /
+   *  HIGH / LOW macros) must be emitted. Consumers: user digitalRead() calls
+   *  (usesDigitalRead), the @typecad/safety voter (calls __tc_gpio_read
+   *  directly via lowered raw text), and the UI runtime header's
+   *  unconditional digitalRead() poll (entryHasUI — build-global, so every TU
+   *  in a UI build carries the macros). With no analysis present (capability
+   *  query), default to emitting — same convention as the uses() helper. */
+  private needsGpioReadShim(program?: ProgramIR, ctx?: PlatformContext): boolean {
+    if (program && programUsesSafety(program)) return true;
+    if (entryHasUI()) return true;
+    const a = (ctx as any)?.analysis;
+    return a ? !!a.usesDigitalRead : true;
+  }
+
   shimLines(program?: ProgramIR, ctx?: PlatformContext): string[] {
     const chip = this.resolveChip(ctx, program);
     const isPrintf = this.resolveDebugMode(ctx) === 'printf';
-    const lines: string[] = [
-      '// cuttlefish runtime shim. Wrapped in a single include guard so the',
-      '// block is safe to emit into multiple headers and .cpp files within',
-      '// one translation unit (a .cpp may #include several headers that each',
-      '// carry the shim). The guard ensures the definitions are seen exactly',
-      '// once per TU.',
-      '#ifndef CUTTLEFISH_SHIM_DEFINED',
-      '#define CUTTLEFISH_SHIM_DEFINED',
-      '#ifndef CUTTLEFISH_UNDEFINED',
-      '#define CUTTLEFISH_UNDEFINED 0',
-      '#endif',
-      'template<typename T> inline bool cuttlefish_is_nullish(const T& v) { return false; }',
-      'inline bool cuttlefish_is_nullish(long long v) { return v == CUTTLEFISH_UNDEFINED; }',
-      'inline bool cuttlefish_is_nullish(int v) { return v == CUTTLEFISH_UNDEFINED; }',
-      'inline bool cuttlefish_is_nullish(double v) { return v == static_cast<double>(CUTTLEFISH_UNDEFINED); }',
-      'inline bool cuttlefish_is_nullish(bool v) { return v == false; }',
-      'template<typename T> inline bool cuttlefish_is_nullish(T* v) { return v == nullptr; }',
-      'template<typename T> inline bool cuttlefish_exists(const T& v) { return !cuttlefish_is_nullish(v); }',
-      'template<typename T, typename U> inline T cuttlefish_nullish(const T& a, U b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }',
-      // millis() backed by the Zephyr uptime counter. uint32_t return matches
-      // the Arduino API the shared runtime expects (wraps every ~49.7 days).
-      'inline unsigned long millis() { return static_cast<unsigned long>(k_uptime_get_32()); }',
-      // Arduino-compat defines referenced by the shared runtime polyfills.
-      '#ifndef HIGH', '#define HIGH 1', '#endif',
-      '#ifndef LOW', '#define LOW 0', '#endif',
-      '#ifndef PROGMEM', '#define PROGMEM', '#endif',
-      'inline long map(long x, long in_min, long in_max, long out_min, long out_max) { return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min; }',
-      'inline long constrain(long x, long a, long b) { return x < a ? a : (x > b ? b : x); }',
-      // Test-runner console helpers: @typecad/expect's Zephyr shim calls these
-      // for protocol output. Overloaded for string (const char*) and numeric
-      // (double) so the same call site works for markers and test values.
-      'inline void __tc_print(const char* s) { printf("%s", s); }',
-      'inline void __tc_print(double v) { printf("%g", v); }',
-      'inline void __tc_println(const char* s) { printf("%s\\n", s); }',
-      'inline void __tc_println(double v) { printf("%g\\n", v); }',
-    ];
+    const a = (ctx as any)?.analysis;
+    const uses = (f: string): boolean => (a ? !!a[f] : true);
+    const helpers = (a as { usedPolyfillHelpers?: Set<string> } | undefined)?.usedPolyfillHelpers;
 
-    // Devicetree specs for every board-defined GPIO pin. Emitted unconditionally
-    // (guarded by the include guard) so any of them is available whether or not
-    // a given program uses it. Safe because every spec references a node that
-    // exists in the active board's devicetree.
-    for (const spec of chip.gpio.dtSpecs) {
-      lines.push(
-        `static const struct gpio_dt_spec __tc_dt_${spec.dtSpec} = GPIO_DT_SPEC_GET(DT_ALIAS(${spec.dtSpec}), gpios);`,
+    // --- Core shim, gated item by item on actual use ------------------------
+    // A minimal program (blink) uses none of these, and its output carries no
+    // shim block at all. Everything up to the #endif composes into one guard
+    // body; the guard itself is only stamped when the body is non-empty.
+    const guardBody: string[] = [];
+    // CUTTLEFISH_UNDEFINED: needed when the file references null/undefined
+    // literals (usesNullish), emits nullish helper CALLS (usesNullishHelper),
+    // or has async functions (the async state machine uses the macro for
+    // default waitFor* timeouts — not visible to the nullish scanners).
+    if (uses('usesNullish') || uses('usesNullishHelper') || uses('hasAsync')) {
+      guardBody.push(
+        '#ifndef CUTTLEFISH_UNDEFINED',
+        '#define CUTTLEFISH_UNDEFINED 0',
+        '#endif',
+      );
+    }
+    // Nullish helpers: only when the file actually emits cuttlefish_nullish /
+    // cuttlefish_exists CALLS (?? / ?. lowering). A file that only references
+    // null/undefined literals needs just the macro above — the same
+    // distinction the setup emitter's strip filter documents.
+    if (uses('usesNullishHelper')) {
+      guardBody.push(
+        'template<typename T> inline bool cuttlefish_is_nullish(const T& v) { return false; }',
+        'inline bool cuttlefish_is_nullish(long long v) { return v == CUTTLEFISH_UNDEFINED; }',
+        'inline bool cuttlefish_is_nullish(int v) { return v == CUTTLEFISH_UNDEFINED; }',
+        'inline bool cuttlefish_is_nullish(double v) { return v == static_cast<double>(CUTTLEFISH_UNDEFINED); }',
+        'inline bool cuttlefish_is_nullish(bool v) { return v == false; }',
+        'template<typename T> inline bool cuttlefish_is_nullish(T* v) { return v == nullptr; }',
+        'template<typename T> inline bool cuttlefish_exists(const T& v) { return !cuttlefish_is_nullish(v); }',
+        'template<typename T, typename U> inline T cuttlefish_nullish(const T& a, U b) { return !cuttlefish_is_nullish(a) ? a : (T)b; }',
+      );
+    }
+    // millis() backed by the Zephyr uptime counter. uint32_t return matches
+    // the Arduino API the shared runtime expects (wraps every ~49.7 days).
+    // Kept when the program reads the clock itself — usesWallClock,
+    // deliberately WITHOUT the delay() conflation usesMillis carries, because
+    // Zephyr's delay lowers straight to k_msleep — or has a hidden poller:
+    // async functions / the async runtime, the setInterval/setTimeout
+    // scheduler, or a mounted UI's per-frame tick.
+    if (uses('usesWallClock') || uses('hasAsync') || (!a || a.timerCallCount > 0)
+        || this.programUsesAsyncRuntime(program) || entryHasUI()) {
+      guardBody.push(
+        'inline unsigned long millis() { return static_cast<unsigned long>(k_uptime_get_32()); }',
+      );
+    }
+    // PROGMEM: only the (Arduino-oriented) UI runtime header can reference it.
+    if (entryHasUI()) {
+      guardBody.push(
+        '#ifndef PROGMEM', '#define PROGMEM', '#endif',
+      );
+    }
+    // map()/constrain() Arduino-API helpers — dead code unless called. The
+    // setup emitter ORs entryHasUI() into usesConstrain before we see it (the
+    // UI runtime's progress/range draw calls constrain).
+    if (uses('usesMap')) {
+      guardBody.push(
+        'inline long map(long x, long in_min, long in_max, long out_min, long out_max) { return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min; }',
+      );
+    }
+    if (uses('usesConstrain')) {
+      guardBody.push(
+        'inline long constrain(long x, long a, long b) { return x < a ? a : (x > b ? b : x); }',
+      );
+    }
+    // Test-runner console helpers: @typecad/expect's Zephyr shim calls these
+    // for protocol output. Overloaded for string (const char*) and numeric
+    // (double) so the same call site works for markers and test values.
+    // Emitted only when the expect preprocessor actually injected the calls
+    // (tracked as usedPolyfillHelpers).
+    if (!a || !!helpers?.has('__tc_print') || !!helpers?.has('__tc_println')) {
+      guardBody.push(
+        'inline void __tc_print(const char* s) { printf("%s", s); }',
+        'inline void __tc_print(double v) { printf("%g", v); }',
+        'inline void __tc_println(const char* s) { printf("%s\\n", s); }',
+        'inline void __tc_println(double v) { printf("%g\\n", v); }',
       );
     }
 
     // Per-peripheral bus state — gated on the same ctx.analysis.usesX flags as
     // forcedIncludes, so an unused peripheral emits no state (and its header is
     // not included). Mirrors framework-esp32's shimLines espInit block.
-    const a = (ctx as any)?.analysis;
-    const uses = (f: string): boolean => (a ? !!a[f] : true);
     if (uses('usesI2C') && chip.i2c) {
-      for (let i = 0; i < chip.i2c.controllers.length; i++) lines.push(...i2cInitLines(chip, i));
+      for (let i = 0; i < chip.i2c.controllers.length; i++) guardBody.push(...i2cInitLines(chip, i));
     }
     if (uses('usesSPI') && chip.spi) {
-      for (let i = 0; i < chip.spi.controllers.length; i++) lines.push(...spiInitLines(chip, i));
+      for (let i = 0; i < chip.spi.controllers.length; i++) guardBody.push(...spiInitLines(chip, i));
     }
     if (uses('usesUart') && chip.uart) {
-      for (let i = 0; i < chip.uart.controllers.length; i++) lines.push(...uartInitLines(chip, i));
+      for (let i = 0; i < chip.uart.controllers.length; i++) guardBody.push(...uartInitLines(chip, i));
     }
-    if (uses('usesADC') && chip.adc) lines.push(...adcInitLines(chip));
-    if (uses('usesPWM') && chip.pwm) lines.push(...pwmInitLines(chip));
-    if (uses('usesDAC') && chip.dac) lines.push(...dacInitLines(chip));
-    if (uses('usesHwtimer') && chip.hwtimer) lines.push(...hwtimerInitLines(chip));
-    if (uses('usesInterrupts')) lines.push(...interruptInitLines(chip));
-    if (uses('usesWDT') && chip.wdt) lines.push(...wdtInitLines(chip));
-    if (uses('usesBle')) lines.push(...bleInitLines());
+    if (uses('usesADC') && chip.adc) guardBody.push(...adcInitLines(chip));
+    if (uses('usesPWM') && chip.pwm) guardBody.push(...pwmInitLines(chip));
+    if (uses('usesDAC') && chip.dac) guardBody.push(...dacInitLines(chip));
+    if (uses('usesHwtimer') && chip.hwtimer) guardBody.push(...hwtimerInitLines(chip));
+    if (uses('usesInterrupts')) guardBody.push(...interruptInitLines(chip));
+    if (uses('usesWDT') && chip.wdt) guardBody.push(...wdtInitLines(chip));
+    if (uses('usesBle')) guardBody.push(...bleInitLines());
     // Display runtime (rect/text renderer): the DIRECT-call display path (user
     // code calling screen.display.fillRect etc., no @typecad/ui). Emitted only
     // when the program uses display.* but is NOT a UI program — the UI display
@@ -331,18 +445,52 @@ export class ZephyrStrategy implements PlatformStrategy {
     // previously dead code).
     if (uses('usesDisplay') && !entryHasUI()) {
       const rt = buildDisplayRuntime(this._displayState.profile);
-      lines.push(...rt.stateLines);
-      lines.push(rt.fontTable);
-      lines.push(rt.helpers);
+      guardBody.push(...rt.stateLines);
+      guardBody.push(rt.fontTable);
+      guardBody.push(rt.helpers);
     }
-    if (uses('usesWifi')) lines.push(...wifiInitLines());
-    if (uses('usesHttp')) lines.push(...httpInitLines());
-    if (uses('usesMqtt')) lines.push(...mqttInitLines());
-    if (uses('usesPreferences')) lines.push(...preferencesInitLines());
-    if (uses('usesFS')) lines.push(...fsInitLines());
-    if (uses('usesRandom')) lines.push(...randomInitLines());
+    if (uses('usesWifi')) guardBody.push(...wifiInitLines());
+    if (uses('usesHttp')) guardBody.push(...httpInitLines());
+    if (uses('usesMqtt')) guardBody.push(...mqttInitLines());
+    if (uses('usesPreferences')) guardBody.push(...preferencesInitLines());
+    if (uses('usesFS')) guardBody.push(...fsInitLines());
+    if (uses('usesRandom')) guardBody.push(...randomInitLines());
 
-    lines.push('#endif // CUTTLEFISH_SHIM_DEFINED');
+    const lines: string[] = [];
+    if (guardBody.length > 0) {
+      lines.push(
+        '// cuttlefish runtime shim. Wrapped in a single include guard so the',
+        '// block is safe to emit into multiple headers and .cpp files within',
+        '// one translation unit (a .cpp may #include several headers that each',
+        '// carry the shim). The guard ensures the definitions are seen exactly',
+        '// once per TU.',
+        '#ifndef CUTTLEFISH_SHIM_DEFINED',
+        '#define CUTTLEFISH_SHIM_DEFINED',
+        ...guardBody,
+        '#endif // CUTTLEFISH_SHIM_DEFINED',
+      );
+    }
+
+    // Devicetree specs — one per board-defined GPIO pin, but ONLY for pins the
+    // program actually addresses (lowerGpio routes by pin number, and the
+    // structured gpio.* hal-op pins are visible here) plus aliases named
+    // verbatim in raw code (rawCpp escape hatches). Emitted OUTSIDE the single
+    // CUTTLEFISH_SHIM_DEFINED guard with a per-symbol guard: per-file pin sets
+    // differ, and in a multi-header TU the first header's TU-wide guard would
+    // otherwise hide the second header's specs. Without a program (capability
+    // query), emit them all.
+    const usedPins = this.collectGpioPinUsage(program);
+    const dtTextRefs = this.collectRawMatches(program, /__tc_dt_([A-Za-z0-9_]+)/g);
+    for (const spec of chip.gpio.dtSpecs) {
+      if (program && !usedPins.has(spec.pin) && !dtTextRefs.has(spec.dtSpec)) continue;
+      const guard = `__TC_DT_${spec.dtSpec.replace(/[^A-Za-z0-9_]/g, '_').toUpperCase()}_SPEC`;
+      lines.push(
+        `#ifndef ${guard}`,
+        `#define ${guard}`,
+        `static const struct gpio_dt_spec __tc_dt_${spec.dtSpec} = GPIO_DT_SPEC_GET(DT_ALIAS(${spec.dtSpec}), gpios);`,
+        `#endif // ${guard}`,
+      );
+    }
 
     // --- Debug-mode halt + per-breakpoint disable registry ---
     //
@@ -408,9 +556,12 @@ export class ZephyrStrategy implements PlatformStrategy {
       '}',
     );
 
-    // GPIO read shim: the wiring_compat polyfill routes the UI runtime
-    // header's unconditional digitalRead() poll (init-press-input.ts) to
-    // __tc_gpio_read, so the definition must NOT be gated on @typecad/safety.
+    // GPIO read shim: emitted only when something actually reads a pin at
+    // runtime — user digitalRead() calls, the @typecad/safety voter (calls
+    // __tc_gpio_read directly), or the UI runtime header's digitalRead() poll
+    // (init-press-input.ts). A program that only writes/toggles GPIO needs
+    // neither the dispatcher nor the reader.
+    //
     // The signature is `int` to match wiring_compat's forward declaration —
     // a uint32_t definition alongside it would leave the declared int
     // overload undefined (int wins overload resolution for small integer
@@ -423,10 +574,12 @@ export class ZephyrStrategy implements PlatformStrategy {
     // dispatcher that resolves the owning controller's device per pin;
     // single-controller SoCs collapse it to a one-liner. Each DT_NODELABEL is
     // still compile-time-resolved per branch, so it is always statically valid.
-    lines.push(...emitGpioDevDispatcher(chip));
-    lines.push(
-      'inline int __tc_gpio_read(int pin) { return gpio_pin_get_raw(__tc_gpio_dev(static_cast<uint32_t>(pin)), static_cast<gpio_pin_t>(pin)); }',
-    );
+    if (this.needsGpioReadShim(program, ctx)) {
+      lines.push(...emitGpioDevDispatcher(chip));
+      lines.push(
+        'inline int __tc_gpio_read(int pin) { return gpio_pin_get_raw(__tc_gpio_dev(static_cast<uint32_t>(pin)), static_cast<gpio_pin_t>(pin)); }',
+      );
+    }
     // __tc_gpio_write / __tc_delay_us are only referenced via @typecad/safety
     // lowering, so they stay gated on it.
     if (program && programUsesSafety(program)) {
@@ -1137,6 +1290,45 @@ export class ZephyrStrategy implements PlatformStrategy {
   }
 
   generateNativePolyfills(program?: ProgramIR, ctx?: PlatformContext): RuntimePolyfillIR[] {
+    // wiring_compat (digitalRead/HIGH/LOW macros + the __tc_gpio_read forward
+    // declaration) is emitted only when something reads a pin: user
+    // digitalRead() calls, the @typecad/safety voter, or the UI runtime
+    // header's unconditional digitalRead() poll (init-press-input.ts — the
+    // loop body is dead when no pin watchers are configured but must
+    // compile). needsGpioReadShim defaults to true without analysis so
+    // capability queries keep seeing it.
+    const wiringCompat: RuntimePolyfillIR = {
+      // Wiring-compatibility shims for symbols the UI runtime header
+      // references unconditionally (e.g. init-press-input.ts polls pin
+      // watchers via digitalRead/HIGH/LOW even when none are configured —
+      // the loop body is dead but must compile). Zephyr lowers GPIO through
+      // its __tc_gpio_* helpers (defined in shimLines); these macros route
+      // the Wiring tokens to them.
+      kind: 'polyfill',
+      id: 'wiring_compat',
+      domain: 'standard' as const,
+      requiredIncludes: [],
+      forwardDeclarations: [
+        // Forward-declared so the digitalRead macro (below) can reference it
+        // before the shim block defines the body. The shim emits the full
+        // definition via gpio_pin_get_raw.
+        'int __tc_gpio_read(int pin);',
+      ],
+      helperStructs: [],
+      helperFunctions: [],
+      shimMacros: [
+        '#ifndef HIGH',
+        '#define HIGH 1',
+        '#endif',
+        '#ifndef LOW',
+        '#define LOW 0',
+        '#endif',
+        '#ifndef digitalRead',
+        '#define digitalRead(pin) __tc_gpio_read(pin)',
+        '#endif',
+      ],
+      dependencies: [],
+    };
     const polyfills: RuntimePolyfillIR[] = [
       {
         kind: 'polyfill',
@@ -1151,38 +1343,7 @@ export class ZephyrStrategy implements PlatformStrategy {
         shimMacros: [],
         dependencies: [],
       },
-      {
-        // Wiring-compatibility shims for symbols the UI runtime header
-        // references unconditionally (e.g. init-press-input.ts polls pin
-        // watchers via digitalRead/HIGH/LOW even when none are configured —
-        // the loop body is dead but must compile). Zephyr lowers GPIO through
-        // its __tc_gpio_* helpers (defined in shimLines); these macros route
-        // the Wiring tokens to them.
-        kind: 'polyfill',
-        id: 'wiring_compat',
-        domain: 'standard' as const,
-        requiredIncludes: [],
-        forwardDeclarations: [
-          // Forward-declared so the digitalRead macro (below) can reference it
-          // before the shim block defines the body. The shim emits the full
-          // definition via gpio_pin_get_raw.
-          'int __tc_gpio_read(int pin);',
-        ],
-        helperStructs: [],
-        helperFunctions: [],
-        shimMacros: [
-          '#ifndef HIGH',
-          '#define HIGH 1',
-          '#endif',
-          '#ifndef LOW',
-          '#define LOW 0',
-          '#endif',
-          '#ifndef digitalRead',
-          '#define digitalRead(pin) __tc_gpio_read(pin)',
-          '#endif',
-        ],
-        dependencies: [],
-      },
+      ...(this.needsGpioReadShim(program, ctx) ? [wiringCompat] : []),
       {
         // STL-free string-method polyfills. String methods (.toUpperCase(),
         // .includes(), .substring(), …) lower at IR level to __tc_* helpers for
@@ -1417,22 +1578,10 @@ struct __tc_StaticArray {
   // Named display-profile registry: maps config `profile` values (e.g.
   // "st7796-zephyr") to the shared DisplayProfile shape so transpile.ts can
   // resolve them per-framework. The Zephyr profiles are DT-binding descriptors;
-  // they're mapped to the shared shape (driver/width/height/colorFormat/
-  // rotation) the profile resolver expects.
+  // BUILT_IN_PROFILES (display/profiles.ts) is the single DT-binding →
+  // shared-shape mapping, shared with the preview's registry loader.
   getProfileRegistry(): Map<string, DisplayProfile> {
-    const m = new Map<string, DisplayProfile>();
-    for (const [name, p] of Object.entries(ZEPHYR_DISPLAY_PROFILES)) {
-      m.set(name, {
-        driver: p.driver,
-        width: p.width,
-        height: p.height,
-        nativeWidth: p.nativeWidth,
-        nativeHeight: p.nativeHeight,
-        colorFormat: p.colorFormat,
-        rotation: p.rotation ?? 1,
-      });
-    }
-    return m;
+    return new Map(Object.entries(BUILT_IN_PROFILES));
   }
 
   colorFormat(): 'rgb565' | 'rgb666' | 'rgb888' | 'mono' {

@@ -9,6 +9,8 @@
 
   import { ui } from '@typecad/ui';
 
+  ui.mount(screen);
+
   // ── Buttons screen: tap counter drives the badge interpolation ────────────
   export const taps = ui.signal(0);
   export function countTap() {
@@ -25,14 +27,14 @@
   // to the dark theme (border default = --input, error = --destructive).
   export const nameInvalid = ui.signal(false);
   export function validateName() {
-    nameInvalid.set(screen.formValidName.text.trim().length === 0);
+    nameInvalid.set(screen.formValidName.text.length === 0);
   }
   screen.formValidName.onChange(() => {
     validateName();
   });
   ui.bind(screen.formValidName, 'borderColor', () => nameInvalid() ? '#ef4444' : '#3f3f46');
   ui.bind(screen.nameError, 'visible', () => nameInvalid());
-  ui.bind(screen.nameSaved, 'visible', () => !nameInvalid() && screen.formValidName.text.trim().length > 0);
+  ui.bind(screen.nameSaved, 'visible', () => !nameInvalid());
 
   // ── Form controls: select / checkbox / radio / range echoes ───────────────
   ui.bind(screen.selectEcho, 'text', () => screen.demoSelect.value == 0 ? 'mode: alpha' : screen.demoSelect.value == 1 ? 'mode: beta' : 'mode: gamma');
@@ -149,7 +151,7 @@
 </script>
 
 <style>
-@import "./styles/shadcn.css";
+@import "./styles/theme.css";
 /* ---------------------------------------------------------------------------
    shadcn gallery shell — scaffolding for the demo screens, expressed only
    through the kit's tokens (no second palette: re-theming shadcn.css
@@ -640,6 +642,11 @@ screen {
         <view class="skeleton" style="height: 10px;"/>
         <view class="skeleton" style="height: 10px; width: 60%;"/>
       </view>
+      <h3 class="demoLabel">spinner (transform: translate orbit)</h3>
+      <view class="card" style="flex-direction: row; align-items: center; gap: 12px;">
+        <view class="spinner"><view class="spinner-dot"/></view>
+        <text class="card-description">loading sensors…</text>
+      </view>
     </main>
   </body>
 </screen>
@@ -657,7 +664,7 @@ screen {
       <hr class="separator"/>
       <h3 class="demoLabel">avatar (circular crop)</h3>
       <view class="avatarRow">
-        <img id="demoAvatar" class="avatar" src="avatar.img" style="width: 48px; height: 48px; object-fit: cover;"></img>
+        <img id="demoAvatar" class="avatar" src="avatar.png" style="width: 48px; height: 48px; object-fit: cover;"></img>
         <view>
           <text class="avatarName">Ada Lovelace</text>
           <text class="avatarRole">maintainer</text>
@@ -846,15 +853,15 @@ setup(); loop();</pre>
       <view class="card">
         <view class="fitRow">
           <text class="fitLabel">contain</text>
-          <img id="imgContain" class="avatar" src="avatar.img" style="width: 72px; height: 30px; object-fit: contain;"></img>
+          <img id="imgContain" class="avatar" src="avatar.png" style="width: 72px; height: 30px; object-fit: contain;"></img>
         </view>
         <view class="fitRow">
           <text class="fitLabel">cover</text>
-          <img id="imgCover" class="avatar" src="avatar.img" style="width: 72px; height: 30px; object-fit: cover;"></img>
+          <img id="imgCover" class="avatar" src="avatar.png" style="width: 72px; height: 30px; object-fit: cover;"></img>
         </view>
         <view class="fitRow">
           <text class="fitLabel">fill</text>
-          <img id="imgFill" class="avatar" src="avatar.img" style="width: 72px; height: 30px; object-fit: fill;"></img>
+          <img id="imgFill" class="avatar" src="avatar.png" style="width: 72px; height: 30px; object-fit: fill;"></img>
         </view>
       </view>
       <h3 class="demoLabel">canvas: every primitive once</h3>

@@ -36,11 +36,14 @@ static inline void ui_mark_dirty(uint16_t nodeIdx) {
           ui_mark_scroll_view_dirty(p);
           return;
         }
-        // Fully inside the viewport, but overflow scroll content is canvas-
-        // composited. Promote to a scroll repaint — otherwise the defer path
-        // drops the child's dirty flag without drawing (e.g. :pressed buttons).
-        ui_mark_scroll_view_dirty(p);
-        return;
+        // Fully inside the viewport: leave the CHILD dirty. The dirty loop's
+        // scroll defer lets fully-contained children repaint through their own
+        // buffered paint (one atomic push; the retained scroll canvas is
+        // invalidated after the draw). Promoting here recomposed the whole
+        // viewport per dirty tick — fine for a rare :pressed button, but with
+        // keyframe animations marking children (and their overlapping higher
+        // layers) at frame rate it turned every animation frame into a
+        // full-viewport canvas push — constant tearing on no-TE SPI panels.
       }
       p = __ui_nodes[p].parent;
     }

@@ -150,8 +150,8 @@ export const RULES: readonly RuleEntry[] = [
       },
     ],
   },
-  { id: "A18-5-10", title: "No malloc/calloc/realloc", severity: "required", category: "C",
-    detect: /\b(malloc|calloc|realloc)\s*\(/, enabled: true,
+  { id: "A18-5-10", title: "No malloc/calloc/realloc/free (C dynamic memory family)", severity: "required", category: "C",
+    detect: /\b(?:ps_)?(?:malloc|calloc|realloc|free)\s*\(/, enabled: true,
     knownPatterns: [
       {
         // Offscreen canvas allocation (CuttlefishCanvas16/CuttlefishCanvasMono
@@ -167,9 +167,23 @@ export const RULES: readonly RuleEntry[] = [
         // the alternative (operator new) is the very thing that crashes. The
         // object is placement-constructed on the malloc'd memory and freed via
         // an explicit dtor + free, so the vtable/lifetime are correct.
-        detect: /malloc\s*\(/,
-        justification: "Canvas object/buffer allocation on full-libcpp-without-exceptions targets; malloc avoids the operator-new std::bad_alloc → std::terminate → abort path. OOM returns NULL and the runtime degrades gracefully.",
+        // ps_malloc is the ESP32 PSRAM variant of the same constraint.
+        detect: /(?:ps_)?malloc\s*\(/,
+        justification: "Canvas object/buffer allocation on full-libcpp-without-exceptions targets; malloc (or ESP32 ps_malloc) avoids the operator-new std::bad_alloc → std::terminate → abort path. OOM returns NULL and the runtime degrades gracefully.",
         kind: "ts-literal",
+      },
+      {
+        // Offscreen canvas teardown, the release side of the allocations
+        // above (canvas objects and their malloc'd/ps_malloc'd pixel
+        // buffers). On Arduino cores operator new is malloc-backed and
+        // free() releases both SRAM and PSRAM objects via the ESP32 unified
+        // heap, so dtor + free() is the correct teardown for every canvas
+        // allocation path — `delete` would be UB on the placement-new PSRAM
+        // object. Only these named canvas/buffer releases are deviations;
+        // any other free() stays an unrecorded violation.
+        detect: /\bfree\s*\(\s*(?:canvas|buffer_|psramBuf)\s*\)/,
+        justification: "Canvas teardown on targets whose operator new is malloc-backed (Arduino cores, ESP32 unified heap): the object was placement-constructed or allocation-path-compatible, so dtor + free() is the only well-defined release; delete would be UB on placement-new PSRAM objects.",
+        kind: "raw-array",
       },
     ],
   },

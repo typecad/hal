@@ -666,8 +666,11 @@ export class StatementRenderer {
     }
     const declaredType = this.normalizeCppType(statement.cppType);
     const volatilePrefix = statement.isVolatile ? "volatile " : "";
-    // Transform type name for Arduino library classes (add namespace prefix)
-    const transformedType = transformTypeName(statement.cppType, this.classNameMap);
+    // Transform type name for Arduino library classes (add namespace prefix).
+    // A3-9-1: substitute the fixed-width default for the IR's hardcoded "int"
+    // BEFORE the class-name transform so var declarations match the other
+    // declaration paths under --autosar.
+    const transformedType = transformTypeName(declaredType, this.classNameMap);
     const ownershipKind = (statement as any).ownershipKind as 'owned' | 'shared' | 'mutable' | undefined;
     // Emit const for Shared<T> ownership annotations (ownershipKind === 'shared')
     const isConst = statement.storage === "const" || ownershipKind === 'shared';

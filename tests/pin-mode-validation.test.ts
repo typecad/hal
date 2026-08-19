@@ -156,3 +156,48 @@ describe('Pin Mode Configuration Validation', () => {
     expect(result.cpp).toContain('digitalRead(2)');
   });
 });
+
+describe('PWM-driven pin read validation', () => {
+  it('warns when reading a pin currently driven by pwm()', () => {
+    const result = transpile(`
+      import { LED } from '@typecad/board-arduino-uno';
+      const led = LED.asOutput(true);
+      led.pwm(128);
+      const a = led.read();
+    `);
+
+    const warnings = result.diagnostics.filter(
+      d => d.code === 'pin-read-while-pwm'
+    );
+    expect(warnings.length).toBe(1);
+    expect(warnings[0].severity).toBe('warning');
+  });
+
+  it('does not warn after a digital write restores the level', () => {
+    const result = transpile(`
+      import { LED } from '@typecad/board-arduino-uno';
+      const led = LED.asOutput(true);
+      led.pwm(128);
+      led.high();
+      const a = led.read();
+    `);
+
+    const warnings = result.diagnostics.filter(
+      d => d.code === 'pin-read-while-pwm'
+    );
+    expect(warnings.length).toBe(0);
+  });
+
+  it('does not warn for plain input reads', () => {
+    const result = transpile(`
+      import { D4 } from '@typecad/board-arduino-uno';
+      D4.asInput();
+      const value = D4.read();
+    `);
+
+    const warnings = result.diagnostics.filter(
+      d => d.code === 'pin-read-while-pwm'
+    );
+    expect(warnings.length).toBe(0);
+  });
+});

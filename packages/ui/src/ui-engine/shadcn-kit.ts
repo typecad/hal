@@ -1,15 +1,38 @@
-/* ---------------------------------------------------------------------------
- * shadcn-style component kit for cuttlefish — copy-and-own, like shadcn/ui.
+// ---------------------------------------------------------------------------
+// The built-in shadcn-style kit stylesheet (tokens + class recipes). Always
+// prepended to the CSS chain by BOTH pipelines (ui-registry for device
+// builds, buildPreviewSnapshot for the preview) ahead of the user's CSS, so
+// user rules and theme token blocks override it by cascade order. Themes are
+// plain CSS files the user @imports — no registry, no splicing.
+//
+// Source of truth: this string. Edit here; the demos rely on it verbatim.
+// ---------------------------------------------------------------------------
+
+export const SHADCN_KIT_CSS = `/* ---------------------------------------------------------------------------
+ * shadcn-style component kit — BUILT IN and always included.
  *
- * Added via `cuttlefish add shadcn` (this file lives in YOUR project under
- * src/styles/). Link it from any stylesheet with:
+ * These tokens + class recipes are prepended to every build and preview
+ * automatically, BEFORE your stylesheets, so anything you write overrides
+ * them by normal cascade order. No scaffolding, no imports needed: put the
+ * classes on native elements and they work.
  *
- *   @import "./styles/shadcn.css";
+ * THEMES: a theme is any CSS file. Pre-packaged ones ship with @typecad/ui —
+ * import by bare specifier from a <style> block (or the sidecar .ui.css):
  *
- * Everything is CSS variable tokens + class recipes over the native elements
- * (button/text/view/input/progress/...) — there is no runtime JS, so each
- * shadcn component maps to markup you already know:
+ *   @import "@typecad/ui/themes/blue.css";   (zinc slate stone gray neutral
+ *                                             blue green red)
  *
+ * Your own: save a ui.shadcn.com / tweakcn export into the project and
+ * @import it by path — its :root/.dark token blocks override the kit
+ * defaults (later definitions win). Both dialects parse — classic HSL channel triplets and
+ * Tailwind-v4 oklch(); alpha in colors is ignored (no blending on bare
+ * metal). Dark mode activates with themeClass: 'dark' in the config's
+ * display block.
+ *
+ * Overriding recipes: redefine any class in your own stylesheet; your
+ * definition wins.
+ *
+ * Components (classes over native elements):
  *   Button      <button class="btn btn-primary">Save</button>
  *               variants: -secondary -outline -ghost -destructive
  *               sizes: .btn-sm .btn-lg   full width: .btn-block
@@ -35,6 +58,10 @@
  *                 <text class="alert-description">...</text>
  *               </view>
  *   Skeleton    <view class="skeleton"/>            (pulse while loading)
+ *   Spinner     <view class="spinner"><view class="spinner-dot"/></view>
+ *               (indeterminate loading: a dot orbiting a ring via pure
+ *                transform keyframes — translate lerps smoothly, unlike
+ *                rotate which only renders exact quarter turns)
  *   Progress    <progress class="progress" value="40"/>
  *   Avatar      <img class="avatar" src="face.bmp"/>
  *   Switch      <check class="switch"/>             (pill container; the
@@ -46,25 +73,6 @@
  *               (content toggles via ui.bind visible; chevron via text bind)
  *   Table       <table> ... </table>                (UA styles apply; see the
  *               html-table-approximation build note)
- *
- * Themes: light tokens are the default; `.dark { ... }` overrides them.
- * Activate the dark set with `themeClass: 'dark'` in cuttlefish.config.ts's
- * display block. Token values here are opaque (no alpha blending on bare
- * metal) and tuned for small TFTs rather than copied from shadcn's defaults.
- *
- * PASTING A STOCK shadcn THEME: replace the :root/.dark blocks below with any
- * theme from the shadcn generator / tweakcn and it works unmodified — both
- * dialects are supported:
- *   - classic HSL channel triplets ("--primary: 222.2 47.4% 11.2%") resolve
- *     through bare var() and hsl(var(--x)) alike;
- *   - Tailwind v4 era oklch() themes ("--primary: oklch(0.21 0.006 285.885)")
- *     convert to sRGB at build time.
- * Extra tokens stock themes carry (--ring, --chart-*, --sidebar-*) are simply
- * unused here — no need to prune them. One caveat: alpha in any color is
- * ignored (no blending on bare metal).
- *
- * This file is YOURS: edit tokens, prune recipes, rename freely. The build
- * only reads what you @import.
  * ------------------------------------------------------------------------- */
 
 :root {
@@ -86,6 +94,7 @@
   --border: #e4e4e7;
   --input: #e4e4e7;
   --radius: 8px;
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.1);
 }
 
 .dark {
@@ -153,6 +162,7 @@
   color: var(--card-foreground);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
   padding: 16px;
   gap: 8px;
   align-self: stretch;
@@ -228,6 +238,10 @@
   font-weight: bold;
   padding: 0;
   min-height: 20px;
+  /* The UA sheet gives every button a 1px border (border: 1px solid, colored
+     by the foreground token). A trigger is a plain text row on the card —
+     cancel it or each one renders with a bright outline. */
+  border: none;
 }
 .accordion-chevron {
   color: var(--muted-foreground);
@@ -340,6 +354,45 @@
   100% { opacity: 1; }
 }
 
+/* ---- Spinner ---------------------------------------------------------------- */
+
+/* Indeterminate loading indicator: a dot orbiting inside a ring, pure
+   transform keyframes. translate() lerps CONTINUOUSLY between stops (unlike
+   rotate(), which only renders exact quarter turns), so the orbit is smooth.
+   The dot is absolute + out of flow; the ring is a fixed square so border
+   clipping stays symmetric. Sizes: change .spinner's width/height and keep
+   the dot inset consistent (orbit travel = inner - dot). */
+.spinner {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--muted);
+  border-radius: 999px;
+}
+.spinner-dot {
+  position: absolute;
+  /* The dot's BASE position is the orbit's TOP-LEFT corner, not the ring
+     center: the keyframes translate 0..8px from here, and the path only
+     centers when base + travel/2 == ring center (with the 2px border,
+     top/left 2px + border lands the 6px dot at 4,4; its center travels
+     7..15 around the 22px ring's center at 11,11). */
+  top: 2px;
+  left: 2px;
+  width: 6px;
+  height: 6px;
+  background: var(--primary);
+  border-radius: 999px;
+  animation: ui-spinner-orbit 1000ms linear infinite;
+}
+@keyframes ui-spinner-orbit {
+  0%   { transform: translate(0px, 0px); }
+  25%  { transform: translate(8px, 0px); }
+  50%  { transform: translate(8px, 8px); }
+  75%  { transform: translate(0px, 8px); }
+  100% { transform: translate(0px, 0px); }
+}
+
+
 /* ---- Progress / Avatar ----------------------------------------------------------- */
 
 .progress {
@@ -352,3 +405,4 @@
 /* Avatar: plain image element. The runtime draws images rectangular — no
    rounded clipping — so no border/radius here (a border would just draw
    over the image). Wrap in a sized view if you want a frame. */
+`;

@@ -1,0 +1,10 @@
+node_modules/
+out/
+dist/
+*.thcppmap.json
+.cuttlefish-cache.json
+
+# Generated boilerplate (regenerated on build — do not commit)
+.cuttlefish/cuttlefish-env.d.ts
+.cuttlefish/eslint.config.mjs
+.cuttlefish/eslint-transpiler-rules.mjs

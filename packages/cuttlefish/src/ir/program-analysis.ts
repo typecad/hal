@@ -28,6 +28,12 @@ export interface ProgramAnalysisResult {
   usesStringConversion: boolean;
   usesDateNow: boolean;
   usesMillis: boolean;
+  /** True when the program references millis()/micros() directly — WITHOUT the
+   *  delay() conflation usesMillis carries (framework-avr needs delay to keep
+   *  the native timing ISR alive, but frameworks whose delay() lowers straight
+   *  to a native sleep — e.g. Zephyr's k_msleep — must not treat a delay-only
+   *  program as a millis() consumer). */
+  usesWallClock: boolean;
   usesNullish: boolean;
   /** True when this file actually emits a cuttlefish_nullish/exists/is_nullish CALL
    *  (e.g. from a `??` lowering), as opposed to just referencing the
@@ -143,7 +149,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -189,6 +195,18 @@ function analyzeExpression(
       if (/\bmillis\s*\(/.test(expr.value)) {
         result.usesMillis = true;
       }
+      if (/\bmillis\s*\(/.test(expr.value) || /\bmicros\s*\(/.test(expr.value)) {
+        result.usesWallClock = true;
+      }
+      // Test-runner console helpers (@typecad/expect's preprocessor injects
+      // __tc_print/__tc_println calls into the source). Track them as polyfill
+      // helpers so frameworks can gate their definitions (and <cstdio>) on use.
+      if (expr.value.includes("__tc_println(")) {
+        result.usedPolyfillHelpers.add("__tc_println");
+      }
+      if (expr.value.includes("__tc_print(")) {
+        result.usedPolyfillHelpers.add("__tc_print");
+      }
       if (expr.value.includes('cuttlefish_nullish(') || expr.value.includes('cuttlefish_exists(') || expr.value.includes('cuttlefish_is_nullish(')) {
         result.usesNullish = true;
         result.usesNullishHelper = true;
@@ -228,6 +246,12 @@ function analyzeExpression(
       }
       if (/\bmillis\b/.test(expr.callee) || /\bdelay\b/.test(expr.callee) || /\bmicros\b/.test(expr.callee)) {
         result.usesMillis = true;
+      }
+      if (/\bmillis\b/.test(expr.callee) || /\bmicros\b/.test(expr.callee)) {
+        result.usesWallClock = true;
+      }
+      if (expr.callee === "__tc_print" || expr.callee === "__tc_println") {
+        result.usedPolyfillHelpers.add(expr.callee);
       }
       if (expr.callee === "Date.now" || expr.callee === "Date::now") {
         result.usesDateNow = true;
@@ -488,10 +512,17 @@ function analyzeStatement(
       if (statement.callee === "millis" || statement.callee === "delay") {
         result.usesMillis = true;
       }
+      if (statement.callee === "millis") {
+        result.usesWallClock = true;
+      }
       // Awaited HAL wait markers become async state-machine poll states that
       // arm deadlines via currentTimeMillis().
       if (statement.callee === "__WIFI_WAIT__" || statement.callee === "__HTTP_WAIT__" || statement.callee === "__HAL_WAIT__") {
         result.usesMillis = true;
+        result.usesWallClock = true;
+      }
+      if (statement.callee === "__tc_print" || statement.callee === "__tc_println") {
+        result.usedPolyfillHelpers.add(statement.callee);
       }
       // Namespace-qualified polyfill entry points used as bare call statements
       // (e.g. `Timing.delay(5);`). The expression-level analyzer (case
@@ -786,6 +817,9 @@ function analyzeStatement(
           result.usesTiming = true;
           result.usesMillis = true;
         }
+        if (opName === "timing.millis" || opName === "timing.micros") {
+          result.usesWallClock = true;
+        }
       }
       // Scan raw C++ code in HAL ops for polyfill helper usage
       if (statement.operation && statement.operation.operation === "raw" && typeof statement.operation.code === "string") {
@@ -813,6 +847,15 @@ function analyzeStatement(
         if (/\b(millis|micros|delay|delayMicroseconds)\s*\(/.test(code)) {
           result.usesTiming = true;
           result.usesMillis = true;
+        }
+        if (/\b(millis|micros)\s*\(/.test(code)) {
+          result.usesWallClock = true;
+        }
+        if (code.includes("__tc_println(")) {
+          result.usedPolyfillHelpers.add("__tc_println");
+        }
+        if (code.includes("__tc_print(")) {
+          result.usedPolyfillHelpers.add("__tc_print");
         }
         // Timer polyfill sizing — `Timing.setInterval(...)` / `Timing.setTimeout(...)`
         // are resolved by the HAL method resolver, which reads TimingClass's
@@ -891,6 +934,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesStringConversion: false,
     usesDateNow: false,
     usesMillis: false,
+    usesWallClock: false,
     usesNullish: false,
     usesNullishHelper: false,
     usesNum: false,

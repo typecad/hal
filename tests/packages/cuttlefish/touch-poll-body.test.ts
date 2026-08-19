@@ -43,8 +43,8 @@ describe("generateTouchPollBody", () => {
     });
     // rotation 1: native raw Y becomes screen X, and native raw X is inverted
     // into screen Y. The effective viewport is 480x320.
-    expect(body).toMatch(/int16_t __tx = map\(__rawY,\s*0,\s*480,\s*0,\s*480\)/);
-    expect(body).toMatch(/int16_t __ty = 320 - \(map\(__rawX,\s*0,\s*320,\s*0,\s*320\)\)/);
+    expect(body).toMatch(/int16_t __tx = \(\(__rawY - 0\) \* \(480 - 0\) \/ \(480 - 0\) \+ 0\)/);
+    expect(body).toMatch(/int16_t __ty = 320 - \(\(\(__rawX - 0\) \* \(320 - 0\) \/ \(320 - 0\) \+ 0\)\)/);
     expect(body).toContain("else if (__tx >= 480) __tx = 479;");
     expect(body).toContain("else if (__ty >= 320) __ty = 319;");
   });

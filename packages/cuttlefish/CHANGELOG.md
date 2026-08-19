@@ -2,6 +2,126 @@
 
 ## Unreleased
 
+- **`cuttlefish add` and `cuttlefish theme` are gone.** The shadcn kit is
+  now built into `@typecad/ui` (always included, cascade-overridable), which
+  removes the need for the scaffolding and theme-splicing commands and their
+  flags (`--theme`, `--force` on add). Themes are plain CSS files the user
+  `@import`s (see the `@typecad/ui` entry). `add-preset.ts`, `theme-tokens.ts`,
+  the `assets/shadcn/` templates, and their package exports are removed.
+
+- **Touch calibration code is self-contained.** `ui_poll_touch()` emitted bare
+  Arduino `map()` calls, but the map/constrain helpers are capability-gated
+  (`usesMap` reflects SCRIPT-level map() calls only) — on frameworks without
+  a core map() (Zephyr) the touch body failed to link. The emitter now
+  inlines the map arithmetic.
+
+- **shadcn kit: Spinner.** `<view class="spinner"><view class="spinner-dot"/>
+  </view>` — an indeterminate loading indicator: a dot orbiting inside a ring
+  via pure `transform: translate()` keyframes. translate lerps continuously
+  between stops (unlike rotate, which only renders exact quarter turns), so
+  the orbit is smooth. The dot's BASE position is the orbit's top-left
+  corner — base + travel/2 must equal the ring center (with the 2px border,
+  top/left 2px) — so the path circles the ring's center instead of its
+  bottom-right quadrant. Documented in the kit header with sizing notes;
+  demoed on the Alert & Skeleton screen.
+
+- **New `usesWallClock` analysis flag + `__tc_print`/`__tc_println`
+  helper tracking.** `usesWallClock` is set when the program references
+  `millis()`/`micros()` directly — without the `delay()` conflation
+  `usesMillis` carries (framework-avr derives its native-timing gate from
+  that conflation, but frameworks whose `delay()` lowers straight to a
+  native sleep must not treat a delay-only program as a clock consumer;
+  framework-zephyr gates its `millis()` shim on the new flag). The
+  test-runner console helpers injected by `@typecad/expect`'s
+  preprocessor are now recorded in `usedPolyfillHelpers`, so frameworks
+  can emit their definitions (and `<cstdio>`) only when the calls exist.
+
+- **Removed `output.optimize` (dead config).** No framework ever consumed
+  it — the only consumer, framework-esp32, is deleted — so the
+  `optimize: 'size'` line every scaffold stamped into new configs was
+  misleading. Removed from the schema, the exported `CuttlefishConfig`
+  type, `ToolchainOptions`, and the project templates. Existing configs
+  that still carry the key keep building: the loader warns
+  ("'output.optimize' has no effect and is deprecated — remove it") and
+  drops it before strict validation. Optimization is framework territory —
+  e.g. `zephyr.kconfig` `CONFIG_SIZE_OPTIMIZATIONS` /
+  `CONFIG_SPEED_OPTIMIZATIONS`.
+
+- **Full tweakcn exports work as theme files, and the shadow tokens are
+  live.** Save the whole export (Tailwind `@import`/`@theme inline`/
+  `@layer` scaffolding included) as `src/styles/themes/<name>.css` — the
+  loader reads the `:root`/`.dark` blocks and ignores the rest. The kit now
+  consumes the named shadow set: `.card` uses `box-shadow: var(--shadow-sm)`
+  (multi-layer `hsl(... / a)` shadows parse natively; the kit ships a
+  `--shadow-sm` default so themes without shadows still resolve). Token map
+  documented in the kit header + paste template: popover/ring (no focus
+  rings on bare metal), chart-*, sidebar-*, font-* (fonts are compiled into
+  firmware), tracking-* (sub-pixel at TFT sizes) and spacing are ignored.
+
+- **Included shadcn themes + `cuttlefish theme`.** The kit now ships theme
+  token sets under `assets/shadcn/themes/` (`default` = the hand-tuned
+  zinc-family tokens; more paste-in ready). Themes are also discovered from
+  the PROJECT first — `src/styles/themes/<name>.css` (wins over same-named
+  package themes), so pasting a theme from ui.shadcn.com / tweakcn is
+  dropping a file into your own project, never node_modules. Start a
+  project on one with
+  `cuttlefish add shadcn --theme <name>`; swap an existing project's
+  `src/styles/shadcn.css` in place with `cuttlefish theme <name>` (recipes
+  are preserved — only the `:root`/`.dark` token blocks are replaced).
+  Splicing MERGES: theme declarations override, kit-only extras
+  (`--destructive-background`) survive, and a required-token guard rejects
+  themes that would leave recipes unset. Block matching is comment-aware —
+  the kit header's literal `.dark { ... }` documentation mention previously
+  captured the splice, injecting tokens into the comment and silently
+  leaving the real dark block (and the render) unchanged. Pasting your own: the
+  `_paste-a-theme.css` template documents exactly where the blocks go;
+  both stock dialects (HSL triplets, Tailwind-v4 oklch) already parse.
+
+- **Debug builds say what they're doing, in cuttlefish blue.** The plain
+  `Loaded FrameworkStrategy from @typecad/framework-zephyr` log that appeared
+  under `--debug` is now a styled step line — `⇉ Preparing to debug using
+  zephyr` — matching the cyan `⇉ Transpiling...` / `⇉ Compiling for ...`
+  family (framework name from the loaded strategy's id; still debug-gated).
+
+- **`cuttlefish create` now generates a starter debug profile.** After the
+  dependency install, create calls the framework's optional
+  `writeProjectDebugArtifacts` export (new `create/debug-artifacts.ts`
+  helper) so gdb-capable targets (Zephyr esp32s3) get `.vscode/launch.json`
+  + `tasks.json` immediately — pressing F5 no longer opens the
+  "select a debugger" menu on a fresh project. Best-effort by design: the
+  framework package isn't resolvable yet (`--no-install`) or the framework
+  has no debug support, create silently skips (the first `--debug` build
+  writes the artifacts anyway), and the next-steps output gains an F5 hint
+  when a profile was written.
+
+- **Fixed: output-pin shadow reads went stale in multi-file programs.** The
+  shadow-variable updates for `gpio.write`/`gpio.toggle` were decided at
+  emit time from the pin tracker's live state, but every file's IR build
+  resets the tracker and all files build before any emit — so writes in
+  earlier-built files never updated the shadow variable their reads
+  consulted (`OutputPin.read()` silently returned a stale constant). The
+  `updatesShadow` flag is now baked into the write/toggle ops at the end of
+  each file's IR build, making emit independent of tracker state.
+
+- **AUTOSAR: `A18-5-10` now covers the C dynamic-memory family.** The
+  detector also catches `free()` and ESP32 `ps_malloc()` (previously
+  invisible — `ps_malloc` has no word boundary before `malloc`), and the
+  Arduino/Zephyr canvas teardowns (explicit dtor + `free()` on
+  malloc-backed operator-new targets) are recorded deviations instead of
+  passing unrecorded. Any other `free()`/`malloc()` in new shims now fails
+  `--autosar=strict` until justified.
+
+- **shadcn kit: `.accordion-trigger` sets `border: none`.** The UA sheet
+  gives every button a 1px border colored by the foreground token, so each
+  accordion trigger rendered with a bright outline around its plain text
+  row on the dark theme. New `cuttlefish add shadcn` installs get the fix.
+
+- **`cuttlefish add` now exists** (`add <preset> [--force]`): copy-and-own
+  preset scaffolding (shadcn kit first). Also fixes surfaced by the first
+  full device compile of the canonical demo: ui.drawer build-time lowering,
+  bind:value write-back assignment, and element `.text.length` → strlen in
+  expression lowering.
+
 - **Preview debug overlay.** A second canvas stacked over the display draws
   per-frame debug geometry from the runtime, toggled per mode from the new
   Debug overlay panel, `?debug=boxes,clips,dirty,inspect`, or the D key

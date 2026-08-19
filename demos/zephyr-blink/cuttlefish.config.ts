@@ -28,7 +28,7 @@ const config: CuttlefishConfig = {
   // Upload port for `npm run upload`. Precedence: --port flag >
   // CUTTLEFISH_PORT env var > this config — Linux/macOS users can set
   // CUTTLEFISH_PORT=/dev/ttyACM0 instead of editing the file.
-  console: { port: 'COM13' },
+  console: { port: 'COM5' },
   toolchain: { type: 'west' },
 };
 

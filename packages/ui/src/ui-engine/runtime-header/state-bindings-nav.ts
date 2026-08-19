@@ -40,6 +40,7 @@ static uint16_t __ui_active_screen_bg_node = 0xFFFF;
 static uint32_t __ui_settle_start_ms = 0;        // when the active settle animation began
 static int16_t __ui_settle_from_overscroll = 0;  // settle start value (bounce-back)
 static int16_t __ui_settle_from_scrollY = 0;     // settle start value (edge snap; sign: +toward 0, -toward max)
+static uint16_t __ui_settle_node = 0xFFFF;       // node owning the active settle; only one settles at a time
 static uint8_t __ui_kb_visible = 0;
 
 static uint8_t __ui_active_screen = 0;   // which screen is visible/interactive

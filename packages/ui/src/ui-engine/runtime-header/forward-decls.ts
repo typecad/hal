@@ -9,6 +9,40 @@
 // repository root) and are not subject to the license of this tool source.
 export function emitForwardDecls(): string {
   return `
+// ── Modal <select> + <drawer> declarations ────────────────────────────────
+// Declared here (the earliest runtime-header module) because ui_navigate,
+// ui_is_effectively_visible, ui_init, and ui_tick all reference them;
+// definitions live in the touch/keyboard modules below.
+// ── Modal <select> option list ────────────────────────────────────────────
+// Tapping a select opens a centered list of its options; tapping a row sets
+// the value, tapping outside dismisses. Mirrors the preview's select modal.
+static int16_t __ui_select_menu = -1;   // node index while open, -1 closed
+static uint8_t __ui_select_menu_dirty = 0; // overlay needs stamping this frame
+static inline void ui_select_menu_open(uint16_t nodeIdx);
+static inline void ui_select_menu_close(uint8_t repaint);
+static inline void ui_select_menu_geom(uint16_t nodeIdx, UIRect* out, int16_t* rowH);
+static inline void ui_select_menu_draw();
+static inline void ui_select_menu_tap(int16_t tx, int16_t ty);
+
+// ── <drawer> slide-in panels ──────────────────────────────────────────────
+// Author-styled absolute panels; the runtime slides the subtree in from the
+// drawer's edge (transform offsets), hides it while closed, and closes on
+// outside taps. Mirrors the preview's drawer implementation.
+#define UI_DRAWER_MAX 4
+static int16_t  __ui_drawer_idx[UI_DRAWER_MAX];    // node index per slot, -1 free; int16 — node indices exceed 127 in real apps
+static uint8_t  __ui_drawer_open[UI_DRAWER_MAX];   // target state (0 closed, 1 open)
+static uint8_t  __ui_drawer_progress[UI_DRAWER_MAX]; // 0 closed .. 1 open
+static uint8_t  __ui_drawer_slots = 0;             // discovered drawers (init scan)
+static int16_t __ui_drawer_last_dx[UI_DRAWER_MAX]; // last applied slide dx (delta bookkeeping)
+static int16_t __ui_drawer_last_dy[UI_DRAWER_MAX]; // last applied slide dy
+static int8_t   __ui_drawer_slot_of(uint16_t nodeIdx);
+static void     ui_drawer_discover();
+static void     ui_drawer_open(uint16_t nodeIdx);
+static void     ui_drawer_close(uint16_t nodeIdx);
+static void     ui_drawer_close_all();
+static void     ui_drawer_apply(uint8_t slot, uint8_t progress);
+static void     ui_drawer_tick(uint32_t deltaMs);
+
 // Early forward declaration: ui_navigate (below) calls ui_release_canvas_state
 // and ui_set_pressed (defined later) during screen changes. Needed on native
 // (single TU, no Arduino auto-prototyper).
@@ -141,6 +175,7 @@ static inline uint8_t ui_try_repair_geometry_fill(uint16_t nodeIdx, const UIRect
 // Band renderers (defined in node-draw-body; forward-declared so the NODE_LIST
 // case can fall back to ui_render_list_bands before its definition site).
 static inline uint8_t ui_render_node_bands(uint16_t nodeIdx, int16_t prX, int16_t prY, int16_t prW, int16_t prH);
+static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw, int16_t rh);
 static inline uint8_t ui_render_list_bands(uint16_t i);
 static inline uint8_t ui_render_list_direct(uint16_t i);
 static inline void ui_draw_node_border(uint16_t i, int16_t drawX, int16_t drawY, UI_COLOR_T color);

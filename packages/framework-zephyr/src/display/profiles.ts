@@ -114,3 +114,26 @@ export const ZEPHYR_DISPLAY_PROFILES: Record<string, ZephyrDisplayProfile> = {
 /** The default profile used when resolveDisplayOp is probed without a display.init. */
 export const DEFAULT_ZEPHYR_DISPLAY_PROFILE: ZephyrDisplayProfile =
   ZEPHYR_DISPLAY_PROFILES['ili9341-zephyr'];
+
+/**
+ * The Zephyr profiles mapped to the shared DisplayProfile shape — the single
+ * mapping, so no consumer needs to know the DT-binding descriptor layout.
+ * The strategy's getProfileRegistry() and the preview's profile-registry
+ * loader both consume this (the same role `BUILT_IN_PROFILES` plays in
+ * framework-arduino's displays modules).
+ */
+export const BUILT_IN_PROFILES: Record<string, import('@typecad/cuttlefish/api/shared').DisplayProfile> =
+  Object.fromEntries(
+    Object.entries(ZEPHYR_DISPLAY_PROFILES).map(([name, p]) => [
+      name,
+      {
+        driver: p.driver,
+        width: p.width,
+        height: p.height,
+        nativeWidth: p.nativeWidth,
+        nativeHeight: p.nativeHeight,
+        colorFormat: p.colorFormat,
+        rotation: p.rotation ?? 1,
+      },
+    ]),
+  );

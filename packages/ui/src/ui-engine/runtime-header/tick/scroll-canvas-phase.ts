@@ -3,7 +3,6 @@
 // See docs/superpowers/specs/2026-07-12-split-runtime-header-design.md.
 export function emitTickScrollCanvasPhase(): string {
   return `
-  }
   // ②b Draw scrollbar + push canvas for the buffered scroll container.
   if (bufferedScrollNode >= 0 && bufferedScrollCanvas) {
     ui_push_buffered_scroll_canvas(bufferedScrollCanvas, bufferedScrollRepaintCanvas,

@@ -82,9 +82,11 @@ describe('gpio lowering — raw-controller fallback (unmapped pin 99)', () => {
     expect(lowerGpio({ operation: 'gpio.read', pin: 99 } as any, XIAO_BLE))
       .toEqual({ expression: `gpio_pin_get_raw(${ctl}, 99)` });
   });
-  it('gpio.toggle reads-then-writes via raw API', () => {
+  it('gpio.toggle uses the native atomic toggle (no read-modify-write)', () => {
+    // gpio_pin_toggle — Zephyr's toggle API has no _raw variant; for pins
+    // without GPIO_ACTIVE_LOW the logical toggle equals the physical one.
     const out = lowerGpio({ operation: 'gpio.toggle', pin: 99 } as any, XIAO_BLE);
-    expect(out.code).toBe(`gpio_pin_set_raw(${ctl}, 99, !gpio_pin_get_raw(${ctl}, 99));`);
+    expect(out.code).toBe(`gpio_pin_toggle(${ctl}, 99);`);
   });
   it('gpio.set_mode INPUT_PULLUP adds GPIO_PULL_UP on raw path too', () => {
     const out = lowerGpio({ operation: 'gpio.set_mode', pin: 99, mode: 'INPUT_PULLUP' } as any, XIAO_BLE);

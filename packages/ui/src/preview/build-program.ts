@@ -10,7 +10,9 @@ import { injectDefaultFontFaces } from "../ui-engine/default-font.js";
 import { extractStyleBlocks, parseHtmlWithKeyboards } from "../ui-engine/html-parser.js";
 import { splitUiFile } from "../ui-engine/ui-file-splitter.js";
 import { buildUIFontAssets } from "../ui-engine/font-assets.js";
-import { loadImageAssets } from "../ui-engine/image-assets.js";
+import { loadImageAssets, applyDecodedImageSizes } from "../ui-engine/image-assets.js";
+import { warmUpImageDecoding } from "../ui-engine/image-decode.js";
+import { SHADCN_KIT_CSS } from "../ui-engine/shadcn-kit.js";
 import { buildKeyframeSets } from "../ui-engine/keyframes.js";
 import { measure, measureWithFonts, type Box } from "../ui-engine/layout-engine.js";
 import { lowerUIToModel } from "../ui-engine/model.js";
@@ -214,10 +216,20 @@ function collectBindBindings(
 async function loadProfileRegistry(frameworkPackage: string | undefined): Promise<Map<string, DisplayProfile>> {
   const registry = new Map<string, DisplayProfile>();
   if (!frameworkPackage) return registry;
-  const profileMod = await import(frameworkPackage + "/displays/ili9341-spi").catch(() => null);
-  if (profileMod?.BUILT_IN_PROFILES) {
-    for (const [key, value] of Object.entries(profileMod.BUILT_IN_PROFILES)) {
-      registry.set(key, value as DisplayProfile);
+  // Every framework package exports its named profiles as BUILT_IN_PROFILES
+  // in the shared DisplayProfile shape (Arduino: the displays modules; Zephyr:
+  // the display barrel, mapped from its DT-binding descriptors). Try each
+  // known entry point — the miss is expected per framework — so this loader
+  // stays layout-agnostic and profile names resolve identically here and via
+  // the strategy's getProfileRegistry() (which transpile.ts uses).
+  for (const modPath of [frameworkPackage + "/displays/ili9341-spi", frameworkPackage + "/display"]) {
+    const mod = await import(modPath).catch(() => null);
+    const profiles = (mod as { BUILT_IN_PROFILES?: Record<string, DisplayProfile> } | null)?.BUILT_IN_PROFILES;
+    if (profiles) {
+      for (const [key, value] of Object.entries(profiles)) {
+        registry.set(key, value);
+      }
+      break;
     }
   }
   return registry;
@@ -703,7 +715,10 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   // and model lowering rejects the raw var() color strings. The sidecar css and
   // the html style blocks can live in different directories, so each part
   // expands against its own base.
+  // Built-in shadcn kit first (device parity with ui-registry): user token
+  // blocks and recipe overrides win by cascade order.
   const fullCss =
+    SHADCN_KIT_CSS + "\n" +
     expandCssImports(cssText, cssFileDir) + "\n" +
     expandCssImports(extractStyleBlocks(htmlText), path.dirname(htmlFilePath));
   const cssRules = (() => {
@@ -732,6 +747,11 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const bindTextRe = /ui\.bind\(\s*screen\.([A-Za-z_$][\w$]*)\s*,\s*["']text["']/g;
   for (const m of sourceFile.text.matchAll(bindTextRe)) dynamicTextIds.add(m[1]);
   const fontAssets = buildUIFontAssets(fontRoot, fontFaces, path.dirname(htmlFilePath), dynamicTextIds);
+  // Prime the image-conversion cache (<img src="*.png|jpg|ico|…"> decodes
+  // here) and give id-less-size img nodes their natural geometry before the
+  // synchronous layout + asset pass below.
+  await warmUpImageDecoding(htmlText, path.dirname(htmlFilePath), { maxW: displaySize.width, maxH: displaySize.height });
+  applyDecodedImageSizes(allStyledScreens.length > 0 ? allStyledScreens : [styled], path.dirname(htmlFilePath));
   const viewport: Box = { x: 0, y: 0, w: displaySize.width, h: displaySize.height };
   const boxes = allStyledScreens.flatMap((screen) => {
     const engine = selectEngine(screen);

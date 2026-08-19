@@ -3,6 +3,7 @@ import { Diagnostic } from "../types.js";
 import { ExpressionIR, StatementIR } from "../api/index.js";
 import { makeDiagnostic, makeSourceSpan } from "./ast-node-utils.js";
 import { PointerTracker, PIN_FACTORY_FUNCTIONS, CONSTANT_FOLD_FUNCTIONS, TYPED_ARRAY_ELEMENT_MAP, activeCArrayVars, activeArrayLiteralVars, activeStringVars, nestedFunctionAliases, nestedClassAliases, registerFieldMap, hoistedNestedClasses, mutableArrayVars, arrayLiteralSizes, filteredArrayLengthVars, activeNamespaceNames, activeEnumNames, activeStringEnumNames, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, getActiveExtendsClass, restParamFunctions, getContext, getCurrentBoardConstants } from "./build-ir-state.js";
+import { isPinFoldingEnabled, setPinFoldingEnabled } from "./pin-state-tracking.js";
 import { getCurrentIrTypeScope, type IrTypeScope } from "./symbol-types.js";
 import { renderExprAsText } from "./render-expr.js";
 import { lowerStatement, tryResolveHALExpression } from "./statement-to-ir.js";
@@ -356,6 +357,22 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
    * variable name prefixed with "__FILTERED_LEN__" so the caller can detect it.
    */
   function resolveLengthProperty(receiverNode: ts.Expression, objectText: string): string {
+    // UI element text: screen.<id>.text is a raw char buffer on the node —
+    // `.length` must be strlen, not `.size()` (char[33] has no size member).
+    if (
+      ts.isPropertyAccessExpression(receiverNode) &&
+      receiverNode.name.text === "text" &&
+      ts.isPropertyAccessExpression(receiverNode.expression) &&
+      ts.isIdentifier(receiverNode.expression.expression)
+    ) {
+      const nodeIdx = resolveElementValue(
+        receiverNode.expression.expression.text,
+        receiverNode.expression.name.text,
+      );
+      if (nodeIdx !== undefined) {
+        return `static_cast<long long>(strlen(__ui_nodes[${nodeIdx}].textBuffer))`;
+      }
+    }
     if (ts.isStringLiteral(receiverNode) || ts.isNoSubstitutionTemplateLiteral(receiverNode)) {
       return `${receiverNode.text.length}`;
     }
@@ -2268,6 +2285,10 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
     }
 
     const isBlock = ts.isBlock(body);
+    // Lambda bodies run at an unmodeled time (callbacks), so pin-state
+    // constant folding must be off inside them.
+    const prevPinFolding = isPinFoldingEnabled();
+    setPinFoldingEnabled(false);
     const bodyStmts: StatementIR[] = isBlock
       ? (body as ts.Block).statements.map(stmt => {
           const lowered = lowerStatement(
@@ -2289,6 +2310,7 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
           sourceSpan: makeSourceSpan(body, "", sourceText),
           value: expressionToIR(body, sourceText, diagnostics, pointerVars),
       }];
+    setPinFoldingEnabled(prevPinFolding);
 
     // Infer return type: use explicit annotation, or infer from body. Thread
     // the lambda's own param types into the inference so a body like

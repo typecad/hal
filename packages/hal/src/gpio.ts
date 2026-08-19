@@ -29,6 +29,28 @@ export class OutputPin {
     gpioWrite(this._pin, value);
   }
 
+  /**
+   * Returns the level the program last drove onto this output pin.
+   *
+   * The transpiler tracks every write (high/low/write/toggle and the
+   * asOutput initial value) and lowers this to a compile-time constant
+   * when the state is statically known, or to a tracked shadow variable
+   * the generated writes keep updated. No hardware pin read is performed —
+   * reading back an OUTPUT-only pin is not portable (e.g. Zephyr), so this
+   * reports software truth, not electrical truth.
+   */
+  read(): boolean {
+    return gpioRead(this._pin) as unknown as boolean;
+  }
+
+  isHigh(): boolean {
+    return this.read();
+  }
+
+  isLow(): boolean {
+    return !this.read();
+  }
+
   pulse(durationMs: number): void {
     gpioWrite(this._pin, 1);
     rawCpp(`delay(${durationMs});`);

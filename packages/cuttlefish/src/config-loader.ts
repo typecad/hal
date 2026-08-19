@@ -40,8 +40,6 @@ export interface ResolvedCuttlefishConfig {
   buildTarget?: string;
   /** Output framework (e.g. 'arduino'). */
   outputFramework?: string;
-  /** Optimization level. */
-  outputOptimize?: string;
   /** Output directory. */
   outputOutDir?: string;
   /**
@@ -517,8 +515,17 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   const outputFramework = flat.get("output.framework");
   if (typeof outputFramework === "string") resolved.outputFramework = outputFramework;
 
-  const outputOptimize = flat.get("output.optimize");
-  if (typeof outputOptimize === "string") resolved.outputOptimize = outputOptimize;
+  // `output.optimize` is removed: no framework ever consumed it (the only
+  // consumer, framework-esp32, is deleted). Warn-and-drop instead of failing
+  // strict validation, so existing configs keep building while telling the
+  // user to delete the key. Optimization is framework territory — e.g.
+  // `zephyr.kconfig` CONFIG_*_OPTIMIZATIONS symbols.
+  if (flat.has("output.optimize")) {
+    warn(
+      "'output.optimize' has no effect and is deprecated — remove it. " +
+        "Control optimization via the framework (e.g. zephyr.kconfig CONFIG_SIZE_OPTIMIZATIONS / CONFIG_SPEED_OPTIMIZATIONS).",
+    );
+  }
 
   const outputOutDir = flat.get("output.outDir");
   if (typeof outputOutDir === "string") resolved.outputOutDir = outputOutDir;
@@ -576,10 +583,9 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   // `!== undefined` (not truthiness) so an empty-string psram reaches the
   // PsramType enum and fails validation instead of vanishing.
   if (resolved.psram !== undefined) structuredForValidation.psram = resolved.psram;
-  if (resolved.outputFramework || resolved.outputOptimize || resolved.outputOutDir || resolved.outputExtraFlags || resolved.outputDefines) {
+  if (resolved.outputFramework || resolved.outputOutDir || resolved.outputExtraFlags || resolved.outputDefines) {
     structuredForValidation.output = {
       ...(resolved.outputFramework ? { framework: resolved.outputFramework } : {}),
-      ...(resolved.outputOptimize ? { optimize: resolved.outputOptimize } : {}),
       ...(resolved.outputOutDir ? { outDir: resolved.outputOutDir } : {}),
       ...(resolved.outputExtraFlags ? { extraFlags: resolved.outputExtraFlags } : {}),
       ...(resolved.outputDefines ? { defines: resolved.outputDefines } : {}),

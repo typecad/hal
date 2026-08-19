@@ -12,6 +12,7 @@ import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from ".
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage.js";
 import { runProgramValidations } from "./validation-orchestrator.js";
 import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
+import { pinShadowVarName, takeShadowDeclarations, resetPinStateTracking, markShadowUpdatingOps } from "./pin-state-tracking.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
 import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
 import { requireUIHook } from "../ui-hook.js";
@@ -180,6 +181,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   // Reset module-level state for this file
   resetBuildState();
   resetHALResolver();
+  resetPinStateTracking();
   registerFieldMap.clear();
 
   // Phase 0: Pre-scan for top-level classes and register them so type inference can resolve them.
@@ -849,7 +851,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     peripheralUsage = createEmptyPeripheralUsage();
   }
 
-  return {
+  const program: ProgramIR = {
     fileName,
     imports,
     reExports,
@@ -871,5 +873,26 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     restParamFunctions: new Map(restParamFunctions),
     ...(defaultExportName ? { defaultExportName } : {}),
   };
+
+  // Output-pin state tracking. First bake the shadow-update flags into the
+  // write/toggle ops, while this file's tracker state is still live (the
+  // next file's build resets it, and emit runs after every file is built —
+  // multi-file programs would lose the updates otherwise). Then consume the
+  // shadow declarations — pins whose reads lowered to the shadow variable
+  // form need a file-scope declaration.
+  markShadowUpdatingOps(program);
+  const shadowDecls = takeShadowDeclarations();
+  for (const { pin, initial } of shadowDecls) {
+    program.topLevelStatements.unshift({
+      kind: "var_decl",
+      sourceSpan: { filePath: fileName, startOffset: 0, endOffset: 0, startLine: 0, startColumn: 0, endLine: 0, endColumn: 0 },
+      name: pinShadowVarName(pin),
+      storage: "var",
+      cppType: "bool",
+      initializer: { kind: "boolean", value: initial },
+    });
+  }
+
+  return program;
   });
 }

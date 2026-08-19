@@ -84,6 +84,14 @@ export function printCompiling(target: string): void {
 }
 
 /**
+ * Print the debug-session strategy notice (debug builds only): which
+ * framework's code-generation strategy is preparing the debug build.
+ */
+export function printDebugStrategy(framework: string): void {
+  console.log(chalk.cyan(`${ICON_COMPILE} Preparing to debug using `) + chalk.white(framework));
+}
+
+/**
  * Print uploading step
  */
 export function printUploading(port: string): void {

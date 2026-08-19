@@ -149,7 +149,7 @@ const config: CuttlefishConfig = {
   board: '@typecad/board-esp32-devkit',
   framework: '@typecad/framework-arduino',
   frameworkData: { buildTarget: 'esp32:esp32:esp32' },
-  output: { framework: 'arduino', optimize: 'size', outDir: './out' },
+  output: { framework: 'arduino', outDir: './out' },
   toolchain: { type: 'arduino-cli' },
   display: {
     profile: 'ili9341-spi',

@@ -1,10 +1,12 @@
-// shadcn kit: @import expansion, the shipped preset's parse cleanliness, and
-// the `cuttlefish add` scaffold command.
+// shadcn kit: @import expansion + the BUILT-IN kit's parse cleanliness and
+// cascade behavior (the kit ships in @typecad/ui and is prepended to every
+// build; no preset file, no add command).
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expandCssImports } from "@typecad/ui/ui-engine/css-imports";
+import { SHADCN_KIT_CSS } from "@typecad/ui/ui-engine/shadcn-kit";
 import { parseCss, parseKeyframes } from "@typecad/ui/ui-engine/css-parser";
 import { parseColor } from "@typecad/ui/ui-engine/color";
 import { setThemeClass } from "@typecad/cuttlefish/stores/theme-store";
@@ -16,7 +18,6 @@ import { parseCommandLine } from "../../../packages/cuttlefish/src/utils/cli";
 
 let tmp: string;
 
-const presetPath = path.resolve(__dirname, "../../../packages/cuttlefish/assets/shadcn/shadcn.css");
 
 beforeAll(() => {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "cf-shadcn-"));
@@ -60,9 +61,9 @@ describe("@import expansion", () => {
   });
 });
 
-describe("shadcn preset asset", () => {
+describe("built-in shadcn kit stylesheet", () => {
   it("parses with zero warnings (only supported properties)", () => {
-    const text = fs.readFileSync(presetPath, "utf-8");
+    const text = SHADCN_KIT_CSS;
     const diags: Diagnostic[] = [];
     const rules = parseCss(text, diags);
     expect(diags).toEqual([]);
@@ -70,7 +71,7 @@ describe("shadcn preset asset", () => {
   });
 
   it("defines the token sets and core recipes", () => {
-    const text = fs.readFileSync(presetPath, "utf-8");
+    const text = SHADCN_KIT_CSS;
     const rules = parseCss(text);
     const selectors = rules.map((r) => r.selector.compounds.flat().map((s) => ("name" in s ? s.name : "")).join("")).join("|");
     // .avatar is intentionally NOT a rule: images render rectangular (no
@@ -83,7 +84,7 @@ describe("shadcn preset asset", () => {
   });
 
   it("applies recipe classes to native elements through the cascade", () => {
-    const text = fs.readFileSync(presetPath, "utf-8");
+    const text = SHADCN_KIT_CSS;
     const styled = resolveStyles(
       parseHtml(`<screen><button id="b" class="btn btn-primary">Save</button><view id="c" class="card"><text class="card-title">T</text></view></screen>`),
       parseCss(text),
@@ -93,37 +94,6 @@ describe("shadcn preset asset", () => {
     expect(styled.children[0].style.borderRadius).toBe("8px");
     expect(styled.children[1].style.padding).toBe("16px");
     expect(styled.children[1].children[0].style.fontWeight).toBe("bold");
-  });
-});
-
-describe("cuttlefish add shadcn", () => {
-  it("parses the add command shape", () => {
-    const opts = parseCommandLine(["node", "cuttlefish.js", "add", "shadcn"]);
-    expect(opts).toMatchObject({ command: "add", preset: "shadcn", force: false });
-    const forced = parseCommandLine(["node", "cuttlefish.js", "add", "shadcn", "--force"]);
-    expect(forced).toMatchObject({ command: "add", force: true });
-    expect(() => parseCommandLine(["node", "cuttlefish.js", "add"])).toThrow(/Usage: cuttlefish add/);
-  });
-
-  it("copies the preset into src/styles without clobbering", () => {
-    const projectRoot = path.join(tmp, "proj");
-    fs.mkdirSync(projectRoot, { recursive: true });
-
-    runAddPreset({ command: "add", preset: "shadcn", force: false, projectRoot });
-    const dest = path.join(projectRoot, "src/styles/shadcn.css");
-    expect(fs.existsSync(dest)).toBe(true);
-    const source = fs.readFileSync(path.resolve(__dirname, "../../../packages/cuttlefish/assets/shadcn/shadcn.css"), "utf-8");
-    expect(fs.readFileSync(dest, "utf-8")).toBe(source);
-
-    // Second run without --force refuses; with --force overwrites.
-    expect(() => runAddPreset({ command: "add", preset: "shadcn", force: false, projectRoot })).toThrow(/already exists/);
-    fs.writeFileSync(dest, "// edited");
-    runAddPreset({ command: "add", preset: "shadcn", force: true, projectRoot });
-    expect(fs.readFileSync(dest, "utf-8")).toBe(source);
-  });
-
-  it("rejects unknown presets with the available list", () => {
-    expect(() => runAddPreset({ command: "add", preset: "nope", force: false, projectRoot: tmp })).toThrow(/Unknown preset .*shadcn/s);
   });
 });
 
@@ -141,7 +111,7 @@ describe("stock shadcn themes paste in unmodified", () => {
       }
       .dark { --primary: 0 0% 98%; --card: 240 10% 3.9%; --border: 240 3.7% 15.9%; }
     `;
-    const preset = fs.readFileSync(presetPath, "utf-8");
+    const preset = SHADCN_KIT_CSS;
     // The pasted theme overrides the preset's tokens exactly as a user would
     // (same names, later in the cascade).
     const styled = resolveStyles(parseHtml(MARKUP), parseCss(preset + "\n" + theme));
@@ -160,7 +130,7 @@ describe("stock shadcn themes paste in unmodified", () => {
         --border: oklch(0.92 0.004 286.32);
       }
     `;
-    const preset = fs.readFileSync(presetPath, "utf-8");
+    const preset = SHADCN_KIT_CSS;
     const styled = resolveStyles(parseHtml(MARKUP), parseCss(preset + "\n" + theme));
     expect(styled.children[0].style.background).toBe("oklch(0.21 0.006 285.885)");
     // oklch(0.21 0.006 285.885) is shadcn zinc-900 → #18181b.
@@ -198,7 +168,7 @@ describe("stock shadcn themes paste in unmodified", () => {
         --border: 16 16% 34%; --input: 17 17% 23%;
       }
     `;
-    const preset = fs.readFileSync(presetPath, "utf-8");
+    const preset = SHADCN_KIT_CSS;
     const styled = resolveStyles(parseHtml(`<screen>
       <button id="btnPrimary" class="btn btn-primary">P</button>
       <button id="btnSecondary" class="btn btn-secondary">S</button>
@@ -259,7 +229,7 @@ describe("stock shadcn themes paste in unmodified", () => {
 
   it("a pasted .dark block flips the same elements", () => {
     const theme = `:root { --primary: 5 5% 55%; } .dark { --primary: 200 50% 50%; }`;
-    const preset = fs.readFileSync(presetPath, "utf-8");
+    const preset = SHADCN_KIT_CSS;
     setThemeClass("dark");
     const dark = resolveStyles(
       parseHtml(`<screen><button id="b" class="btn btn-primary">x</button></screen>`),

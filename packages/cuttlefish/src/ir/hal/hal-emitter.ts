@@ -6,6 +6,7 @@ import { renderExprAsText } from "../render-expr.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser.js";
 import { tryResolveSemanticCall, tryResolveBoardResolveArg, tryResolveCompoundSemanticReturn, resolveConcatPath } from "./hal-plugins.js";
+import { resolveTrackedRead, pinShadowVarName } from "../pin-state-tracking.js";
 import { cppTypeForHalOp } from "../../emit/utils/hal-op-cpp-type.js";
 
 /** Escape C++ keywords in resolved text, but only when the text looks like a
@@ -60,13 +61,28 @@ function prefixOperatorText(operator: ts.SyntaxKind): string {
 function inlineThisGetterCall(methodName: string, pin: string, strategy: import("../../api/shared/index.js").PlatformStrategy | null): string | null {
   switch (methodName) {
     case "read":
-      return strategy?.readDigitalPin?.(pin) ?? `digitalRead(${pin})`;
+    case "isHigh":
+    case "isLow": {
+      // Output-pin state tracking: when the receiver is a tracked OUTPUT pin,
+      // lower to the tracked level (constant when statically known, shadow
+      // variable otherwise) instead of a hardware read. Reading back a
+      // direction-only output is not portable (e.g. Zephyr).
+      const pinNum = Number.parseInt(pin, 10);
+      if (Number.isFinite(pinNum)) {
+        const tracked = resolveTrackedRead(pinNum);
+        if (tracked !== null) {
+          const levelText = tracked === "shadow"
+            ? pinShadowVarName(pinNum)
+            : (tracked === "high" ? "true" : "false");
+          return methodName === "isLow" ? `(!${levelText})` : levelText;
+        }
+      }
+      if (methodName === "read") return strategy?.readDigitalPin?.(pin) ?? `digitalRead(${pin})`;
+      if (methodName === "isHigh") return strategy?.readDigitalPin?.(pin) ?? `digitalRead(${pin})`;
+      return strategy?.readDigitalPin ? `(!${strategy.readDigitalPin(pin)})` : `(!digitalRead(${pin}))`;
+    }
     case "readAnalog":
       return strategy?.readAnalogPin?.(pin) ?? `analogRead(${pin})`;
-    case "isHigh":
-      return strategy?.readDigitalPin?.(pin) ?? `digitalRead(${pin})`;
-    case "isLow":
-      return strategy?.readDigitalPin ? `(!${strategy.readDigitalPin(pin)})` : `(!digitalRead(${pin}))`;
     default:
       return null;
   }

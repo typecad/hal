@@ -122,4 +122,45 @@ describe('generateOverlay', () => {
     // Pin 33 is on gpio1 (ESP32-S3: 32-48 → gpio1).
     expect(txt).toContain('gpios = <&gpio1 33 GPIO_ACTIVE_HIGH>');
   });
+
+  it('warns when an I2C touch controller has no sda/scl pins', () => {
+    // The overlay would enable i2c0 + the FT6336U node but assign no pins —
+    // every I2C read fails and touch silently does nothing (the bug that
+    // left demo-shadcn without touch while demo-st worked).
+    const diags: Array<{ severity: string; message: string }> = [];
+    generateOverlay(
+      XIAO_BLE,
+      { usesI2c: true, usesTouch: true, touchController: 'ft6336u' },
+      undefined,
+      undefined,
+      { controller: 'ft6336u', irq: 15, resetPin: 4 },
+      diags,
+    );
+    expect(diags).toHaveLength(1);
+    expect(diags[0].severity).toBe('warning');
+    expect(diags[0].message).toContain('sda/scl');
+    // With pins: no warning, and the overlay remuxes the bus.
+    const diags2: Array<{ severity: string; message: string }> = [];
+    const txt = generateOverlay(
+      XIAO_BLE,
+      { usesI2c: true, usesTouch: true, touchController: 'ft6336u' },
+      undefined,
+      undefined,
+      { controller: 'ft6336u', irq: 15, resetPin: 4, sda: 8, scl: 9 },
+      diags2,
+    );
+    expect(diags2).toHaveLength(0);
+    expect(txt).toContain('I2C0_SDA_GPIO8');
+    // SPI touch controllers are unaffected.
+    const diags3: Array<{ severity: string; message: string }> = [];
+    generateOverlay(
+      XIAO_BLE,
+      { usesSpi: true, usesTouch: true, touchController: 'xpt2046' },
+      undefined,
+      undefined,
+      { controller: 'xpt2046' },
+      diags3,
+    );
+    expect(diags3).toHaveLength(0);
+  });
 });

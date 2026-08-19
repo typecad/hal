@@ -35,7 +35,13 @@ export function emitPostClassDeclarations(ctx: EmitterContext): void {
   // and failed at g++ time. Demo #28 Finding B.
   if (ctx.promotedVarDecls.size > 0) {
     for (const [varName, info] of ctx.promotedVarDecls) {
-      appendSourceLine(ctx, `${info.cppType} ${escapeCppKeyword(varName, platformReservedNames)} = {};`);
+      // A3-9-1: promoted file-scope declarations bypass renderVarDecl, so the
+      // int -> fixed-width substitution has to be applied here as well.
+      const autosarOn = ctx.compliance.isEnabled() && ctx.compliance.isBanned("A3-9-1");
+      const fwdType = autosarOn && info.cppType === "int"
+        ? strategy.defaultNumericType(ctx.compliance)
+        : normalizeCppTypeForTarget(info.cppType);
+      appendSourceLine(ctx, `${fwdType} ${escapeCppKeyword(varName, platformReservedNames)} = {};`);
       // Seed the top-level scope's type map so subsequent assign rendering
       // (e.g. the deferred `c = SafeInt(0)` initializer) can resolve the
       // variable's type and inject template args / casts via
