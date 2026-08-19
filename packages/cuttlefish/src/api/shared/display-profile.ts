@@ -86,6 +86,11 @@ export interface DisplayProfile {
    * is read, so a missing/unsafe readback path must not affect normal drawing.
    */
   scanlineSync?: boolean;
+  /** Tearing-effect (TE) sync, hardware variant: GPIO number of the panel's
+   *  TE output. Opt-in — few off-the-shelf display boards break the pin out.
+   *  When wired, panel updates wait for the TE frame pulse instead of the
+   *  GET_SCANLINE readback (no MISO needed; see also scanlineSync). */
+  tearingEffectPin?: number;
   touch?: TouchProfile;
   /** Enable antialiased rendering for circles, lines, rounded corners, and text
    *  unless a node opts out with font-smoothing:none.
@@ -156,6 +161,12 @@ export interface DisplayConfig {
    * default because some ST7796S modules misbehave when this command is read.
    */
   scanlineSync?: boolean;
+  /** Tearing-effect (TE) hardware sync: GPIO number of the panel's TE output
+   *  (ST7796S TE / ILI9341 TE pin). Strictly opt-in — few off-the-shelf
+   *  display boards break the pin out. When wired, panel updates arm on the
+   *  TE frame pulse (tear-free writes, no MISO readback); the Zephyr overlay
+   *  emits te-gpios on the display DT node and the adapter raises TEON. */
+  tearingEffectPin?: number;
   touch?: TouchProfile | false;
   cs?: number;
   dc?: number;
@@ -339,6 +350,7 @@ export function resolveDisplayProfile(
       spiPins: config.spiPins,
       colorOrder: config.colorOrder,
       invertDisplay: config.invertDisplay,
+      tearingEffectPin: config.tearingEffectPin,
       touch: config.touch === false ? undefined : config.touch,
       displayClass: config.displayClass,
       capabilities: config.capabilities,
@@ -358,6 +370,7 @@ export function resolveDisplayProfile(
   if (config.spiPins !== undefined) base.spiPins = config.spiPins;
   if (config.colorOrder !== undefined) base.colorOrder = config.colorOrder;
   if (config.invertDisplay !== undefined) base.invertDisplay = config.invertDisplay;
+  if (config.tearingEffectPin !== undefined) base.tearingEffectPin = config.tearingEffectPin;
   if (config.scanlineSync !== undefined) base.scanlineSync = config.scanlineSync;
   if (config.touch === false) base.touch = undefined;
   else if (config.touch !== undefined) base.touch = config.touch;

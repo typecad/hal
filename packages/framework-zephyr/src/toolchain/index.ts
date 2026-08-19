@@ -306,6 +306,7 @@ export const Toolchain = {
             mosi: typeof spiPins?.mosi === 'number' ? spiPins.mosi : undefined,
             miso: typeof spiPins?.miso === 'number' ? spiPins.miso : undefined,
             backlightPin: typeof dispCfg.backlightPin === 'number' ? dispCfg.backlightPin : undefined,
+            tearingEffectPin: typeof dispCfg.tearingEffectPin === 'number' ? dispCfg.tearingEffectPin : undefined,
           }
         : undefined;
       // Extract touch pin wiring from the config display.touch section so the

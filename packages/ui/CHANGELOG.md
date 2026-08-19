@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **LVGL-inspired performance work (render speed / responsivity):**
+  - Blend LUTs: per-opacity 256-entry tables (513 bytes of static RAM,
+    rebuilt only when the opacity level changes) replace the three
+    multiply-divide rounds per pixel in `ui_blend565`/`ui_blend888`. Hot
+    paths: skeleton pulse, keyframe colors, AA glyph coverage, translucent
+    fills, shadow passes.
+  - Per-frame dirty-rect merging: when several nodes repaint in one frame,
+    their paint rects are greedily grouped (8px inflate, capped at the band-
+    compositable pixel budget) and each multi-node region composites through
+    the band renderer as one set of pushes instead of per-node SPI
+    transactions. Singletons and unmergeable rects keep the per-node ladder;
+    scroll-composited subtrees, virtualized lists, and the retained-
+    framebuffer path are excluded (they have their own compositors).
+
 - **The shadcn kit is built in.** The kit stylesheet (default zinc-family
   tokens, light + `.dark`, and every class recipe — buttons, cards, badges,
   inputs, alerts, skeleton, spinner, tabs, accordion, separator, table, ...)

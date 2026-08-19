@@ -295,6 +295,77 @@ export function emitTickDirtyDrawPhase(): string {
   // the stacking draw pass below uses the same __ui_draw_target. The retained
   // single buffer is a composition surface, not a synchronized panel swap.
 
+  // ── Dirty-rect merging (LVGL refresh-cycle technique) ─────────────────────
+  // When several nodes repaint this frame, per-node transactions each pay
+  // SPI setup overhead. Group the frame's dirty paint rects into merged
+  // regions (inflate + greedy absorb, waste-capped) and composite each
+  // multi-node region through the band renderer in ONE set of pushes.
+  // Single-node and unmergeable rects keep the ordinary per-node paths.
+  // Skipped entirely when a retained framebuffer composes the frame (it
+  // already unions), when the keyboard overlay owns the screen, and for
+  // nodes inside overflow scroll subtrees (the Mode B machinery owns them).
+  if (!__ui_fb) {
+    UIRect __ui_merge_rects[UI_MERGE_MAX_REGIONS];
+    uint16_t __ui_merge_nodes[UI_MERGE_MAX_REGIONS][UI_MERGE_MAX_NODES];
+    uint16_t __ui_merge_counts[UI_MERGE_MAX_REGIONS];
+    uint16_t __ui_merge_region_count = 0;
+    for (uint16_t mi = 0; mi < __ui_node_count && __ui_merge_region_count < UI_MERGE_MAX_REGIONS; mi++) {
+      uint16_t m = __ui_draw_order ? __ui_draw_order[mi] : mi;
+      if (!__ui_nodes[m].dirty) continue;
+      if (__ui_nodes[m].screenId != __ui_active_screen) continue;
+      if (!ui_is_effectively_visible(m)) continue;
+      if (__ui_nodes[m].kind == NODE_LIST || __ui_nodes[m].virtualized) continue;
+      if (ui_overflow_scroll_compositor(m) >= 0) continue; // scroll machinery owns it
+      UIRect mr;
+      ui_node_current_paint_rect(m, &mr);
+      if (mr.w <= 0 || mr.h <= 0) continue;
+      // Greedy absorb into an existing region when they overlap after a small
+      // inflation and the merged waste stays bounded.
+      uint8_t absorbed = 0;
+      for (uint16_t r = 0; r < __ui_merge_region_count && !absorbed; r++) {
+        UIRect* reg = &__ui_merge_rects[r];
+        int16_t x0 = reg->x - UI_MERGE_INFLATE, y0 = reg->y - UI_MERGE_INFLATE;
+        int16_t x1 = static_cast<int16_t>(reg->x + reg->w + UI_MERGE_INFLATE), y1 = static_cast<int16_t>(reg->y + reg->h + UI_MERGE_INFLATE);
+        if (mr.x >= x1 || static_cast<int16_t>(mr.x + mr.w) <= x0 ||
+            mr.y >= y1 || static_cast<int16_t>(mr.y + mr.h) <= y0) continue;
+        int16_t nx0 = reg->x < mr.x ? reg->x : mr.x;
+        int16_t ny0 = reg->y < mr.y ? reg->y : mr.y;
+        int16_t nx1 = static_cast<int16_t>(reg->x + reg->w > mr.x + mr.w ? reg->x + reg->w : mr.x + mr.w);
+        int16_t ny1 = static_cast<int16_t>(reg->y + reg->h > mr.y + mr.h ? reg->y + reg->h : mr.y + mr.h);
+        uint32_t mergedArea = static_cast<uint32_t>(nx1 - nx0) * static_cast<uint32_t>(ny1 - ny0);
+        if (mergedArea > UI_MAX_BUFFERED_PAINT_PIXELS) continue; // too big to band-composite
+        if (__ui_merge_counts[r] >= UI_MERGE_MAX_NODES) continue;
+        reg->x = nx0; reg->y = ny0;
+        reg->w = static_cast<int16_t>(nx1 - nx0); reg->h = static_cast<int16_t>(ny1 - ny0);
+        __ui_merge_nodes[r][__ui_merge_counts[r]++] = m;
+        absorbed = 1;
+      }
+      if (!absorbed) {
+        __ui_merge_rects[__ui_merge_region_count] = mr;
+        __ui_merge_nodes[__ui_merge_region_count][0] = m;
+        __ui_merge_counts[__ui_merge_region_count] = 1;
+        __ui_merge_region_count++;
+      }
+    }
+    // Composite multi-node regions as one banded render; singletons keep the
+    // per-node ladder (repair canvas etc. is cheaper for one node).
+    for (uint16_t r = 0; r < __ui_merge_region_count; r++) {
+      if (__ui_merge_counts[r] < 2) continue;
+      const UIRect* reg = &__ui_merge_rects[r];
+      if (ui_render_screen_bands(reg->x, reg->y, reg->w, reg->h)) {
+        for (uint16_t k = 0; k < __ui_merge_counts[r]; k++) {
+          __ui_nodes[__ui_merge_nodes[r][k]].dirty = 0;
+          ui_invalidate_scroll_canvas_for_node(__ui_merge_nodes[r][k]);
+          ui_refresh_add_rect(__ui_nodes[__ui_merge_nodes[r][k]].box.x, __ui_nodes[__ui_merge_nodes[r][k]].box.y,
+            __ui_nodes[__ui_merge_nodes[r][k]].box.w, __ui_nodes[__ui_merge_nodes[r][k]].box.h);
+        }
+        __ui_frame_painted = 1;
+      }
+      // Band allocation failure: leave the nodes dirty; the per-node ladder
+      // below still repaints them correctly.
+    }
+  }
+
   // Draw dirty nodes in stacking order: lower z-index first, then source order.
   // __ui_draw_order is built once in ui_init so each frame is O(N).
   for (uint16_t __ui_draw_pass = 0; __ui_draw_pass < __ui_node_count; ) {

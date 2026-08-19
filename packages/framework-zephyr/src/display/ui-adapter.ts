@@ -46,6 +46,10 @@ export interface ZephyrDisplayReadbackOptions {
   scanlineSync?: boolean;
   /** MISO/SDO GPIO; readback is disabled when it is not explicitly wired. */
   miso?: number;
+  /** Tearing-effect GPIO (panel TE output). When set, panel updates wait for
+   *  the TE frame pulse instead of GET_SCANLINE readback — no MISO required.
+   *  The overlay adds te-gpios to the display DT node from this. */
+  tearingEffectPin?: number;
 }
 
 export function zephyrUiDisplayAdapter(
@@ -74,6 +78,9 @@ export function zephyrUiDisplayAdapter(
   // react badly to GSCAN reads. Both an explicit opt-in and an explicit MISO
   // pin are required before emitting an active synchronization path.
   const scanlineSync = readback.scanlineSync === true && readback.miso !== undefined;
+  // TE (hardware tearing-effect) sync: strictly opt-in via a configured GPIO.
+  // Preferred over GET_SCANLINE when wired — no readback traffic, no MISO.
+  const tePin = typeof readback.tearingEffectPin === 'number' ? readback.tearingEffectPin : undefined;
 
   const includes = [
     `// --- Zephyr UI display adapter (${profile.driver}) ---`,
@@ -140,6 +147,22 @@ export function zephyrUiDisplayAdapter(
     `// controller-specific validation are required; otherwise the display stays`,
     `// on the existing retained/composited path with no extra SPI reads.`,
     `static const bool __tc_pnl_scanline_sync = ${scanlineSync ? 'true' : 'false'};`,
+    `// Tearing-effect (TE) hardware sync: the panel pulses its TE line once`,
+    `// per frame. When te-gpios is present on the display DT node, panel`,
+    `// updates arm on the TE edge — tear-free writes with no MISO readback.`,
+    `#if DT_NODE_HAS_PROP(DT_NODELABEL(${dtLabel}), te_gpios)`,
+    `#define __TC_TE_SYNC 1`,
+    `static const struct gpio_dt_spec __tc_te =`,
+    `    GPIO_DT_SPEC_GET(DT_NODELABEL(${dtLabel}), te_gpios);`,
+    `static struct gpio_callback __tc_te_cb;`,
+    `static volatile uint32_t __tc_te_count = 0;`,
+    `static void __tc_te_isr(const struct device* port, struct gpio_callback* cb, uint32_t pins) {`,
+    `    (void)port; (void)cb; (void)pins;`,
+    `    __tc_te_count++;`,
+    `}`,
+    `#else`,
+    `#define __TC_TE_SYNC 0`,
+    `#endif`,
     `// Stashed address window from the last setAddrWindow call. The runtime`,
     `// calls setAddrWindow + writePixels as a matched pair, so we stash the rect`,
     `// here and consume it in writePixels.`,
@@ -157,6 +180,18 @@ export function zephyrUiDisplayAdapter(
   // with DT_HAS_ALIAS (the safe primitive for an alias that may be absent —
   // DT_NODE_HAS_STATUS(DT_ALIAS(...)) is version-dependent when the alias is
   // missing and can fail the build).
+  // TE pin: input + rising-edge interrupt (the ST7796 TE pulse), then tell
+  // the controller to drive the line (TEON 0x35, mode 1 = vertical sync only).
+  const teInit = tePin !== undefined ? `#if __TC_TE_SYNC
+    if (device_is_ready(__tc_te.port)) {
+      gpio_pin_configure_dt(&__tc_te, GPIO_INPUT);
+      gpio_init_callback(&__tc_te_cb, __tc_te_isr, BIT(__tc_te.pin));
+      (void)gpio_add_callback(__tc_te.port, &__tc_te_cb);
+      (void)gpio_pin_interrupt_configure_dt(&__tc_te, GPIO_INT_EDGE_RISING);
+      __tc_pnl_cmd1(0x35, 0x01); // TEON: TE output = vsync pulse
+    }
+#endif` : '';
+
   const blInit = backlightAlias
     ? `#if DT_HAS_ALIAS(${backlightAlias})\n    const struct gpio_dt_spec __bl = GPIO_DT_SPEC_GET(DT_ALIAS(${backlightAlias}), gpios);\n    if (device_is_ready(__bl.port)) { gpio_pin_configure_dt(&__bl, GPIO_OUTPUT_ACTIVE); }\n#endif`
     : '';
@@ -479,6 +514,19 @@ static uint16_t __tc_pnl_read_scanline(void) {
 // have no safe post-rectangle interval, so they retain the normal single-burst
 // behavior; the caller's framebuffer still prevents intermediate software frames.
 static void __tc_pnl_wait_for_safe_rect(int16_t y, int16_t rh) {
+#if __TC_TE_SYNC
+  // TE variant: arm on the next frame pulse, then start the burst — the write
+  // chases the scan beam from the top of the rect. Bounded so a stuck TE line
+  // can never hang the UI loop.
+  if (rh < 8 || y < 0) return;
+  uint32_t __was = __tc_te_count;
+  uint32_t __deadline = k_uptime_get_32() + 25U;
+  while (__tc_te_count == __was) {
+    if (static_cast<int32_t>(k_uptime_get_32() - __deadline) >= 0) break;
+    k_msleep(0);
+  }
+  return;
+#endif
   if (!__tc_pnl_scanline_sync || rh < 8 || y < 0) return;
   int16_t __last = static_cast<int16_t>(y + rh - 1);
   if (__last >= static_cast<int16_t>(${h} - 2)) return;
@@ -578,8 +626,10 @@ const CuttlefishPanelOps __tc_display_ops = {
 CuttlefishGFX __tc_display(&__tc_display_ops, nullptr);
 ${initBlock}
 // ── display_init (called from setup) ────────────────────────────────────
+
 static inline void display_init() {
   printk("TC_DISPLAY: device ready\\n");
+${teInit}
 ${blInit}
   gpio_pin_configure_dt(&__tc_pnl_cs, GPIO_OUTPUT);
   gpio_pin_configure_dt(&__tc_pnl_dc, GPIO_OUTPUT);
@@ -726,5 +776,6 @@ export const zephyrDisplayAdapterGenerator: DisplayAdapterGenerator = (display) 
   return zephyrUiDisplayAdapter(profile, {
     scanlineSync: display.scanlineSync,
     miso: display.spiPins?.miso,
+    tearingEffectPin: (display as { tearingEffectPin?: number }).tearingEffectPin,
   });
 };

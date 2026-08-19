@@ -21,6 +21,19 @@ describe('zephyrUiDisplayAdapter per-controller emission', () => {
     });
   });
 
+  describe('tearing-effect sync', () => {
+    it('emits TE machinery when the pin is configured, nothing otherwise', () => {
+      const withTe = zephyrUiDisplayAdapter(ZEPHYR_DISPLAY_PROFILES['st7796-zephyr'], { tearingEffectPin: 21 });
+      expect(withTe.declaration).toContain('#if DT_NODE_HAS_PROP(DT_NODELABEL(display0), te_gpios)');
+      expect(withTe.declaration).toContain('#define __TC_TE_SYNC 1');
+      expect(withTe.functions).toContain('__tc_pnl_wait_for_safe_rect');
+      expect(withTe.functions).toContain('0x35'); // TEON command
+      const without = zephyrUiDisplayAdapter(ZEPHYR_DISPLAY_PROFILES['st7796-zephyr']);
+      expect(without.declaration).toContain('#define __TC_TE_SYNC 0');
+      expect(without.functions).not.toContain('0x35, 0x01');
+    });
+  });
+
   describe('ILI9341', () => {
     const code = zephyrUiDisplayAdapter(ZEPHYR_DISPLAY_PROFILES['ili9341-zephyr']);
 

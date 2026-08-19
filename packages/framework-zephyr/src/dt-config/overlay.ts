@@ -25,6 +25,9 @@ export interface DisplayWiring {
   cs?: number;
   dc?: number;
   rst?: number;
+  /** Tearing-effect (TE) GPIO from display.tearingEffectPin — emitted as
+   *  te-gpios on the display DT node. Opt-in; most boards don't wire TE. */
+  tearingEffectPin?: number;
   spiFrequency?: number;
   /** SPI bus pins. When present, the overlay remuxes the SPI controller's
    *  pinctrl to these pins (the board defaults rarely match a breakout's
@@ -263,6 +266,13 @@ function emitDisplayNode(
   lines.push(`        ${display.dtLabel}: display@0 {`);
   lines.push(`            compatible = "${compatible}";`);
   lines.push('            reg = <0>;');
+            if (wiring?.tearingEffectPin !== undefined) {
+              const tePin = wiring.tearingEffectPin!;
+              // Tearing-effect input on the display node: GPIO_DT_SPEC_GET(
+              // DT_NODELABEL(display0), te_gpios) in the adapter. Opt-in —
+              // most modules don't break the TE pad out.
+              lines.push(`            te-gpios = <&${gpioController(tePin)} ${tePin} GPIO_ACTIVE_HIGH>;`);
+            }
             lines.push(`            mipi-max-frequency = <${freq}>;`);
             lines.push('            mipi-mode = "MIPI_DBI_MODE_SPI_4WIRE";');
             // Required by the lcd-controller binding (Zephyr 4.x): 0 = RGB565,

@@ -88,6 +88,20 @@
 // aliased edge pixels blend toward the wrong bg in the adjacent band, visible
 // as a clipped/faded text bottom. 32 ensures most fonts fit; at 480px wide
 // that's ~30KB (fits SRAM on most ESP32 targets).
+// Dirty-rect merging (LVGL refresh-cycle technique): several same-frame
+// dirty nodes whose paint rects are near each other composite as one banded
+// region instead of per-node transactions. Regions cap at the band-
+// compositable pixel budget; singleton rects keep the per-node ladder.
+#ifndef UI_MERGE_INFLATE
+#define UI_MERGE_INFLATE 8
+#endif
+#ifndef UI_MERGE_MAX_REGIONS
+#define UI_MERGE_MAX_REGIONS 6
+#endif
+#ifndef UI_MERGE_MAX_NODES
+#define UI_MERGE_MAX_NODES 12
+#endif
+
 #ifndef UI_STRIP_BAND_HEIGHT
 #define UI_STRIP_BAND_HEIGHT 32
 #endif
@@ -3440,21 +3454,40 @@ static inline void ui_handle_no_touch() {
 }
 
 // Blend two RGB565 colors by opacity (0-100). Returns fg faded toward bg.
+// Blend LUTs (LVGL draw-unit trick, memory-frugal variant): two 256-entry
+// per-channel tables rebuilt only when the opacity level CHANGES. Blends
+// typically run per-pixel at a fixed opacity (skeleton pulse frame, one
+// shadow pass, a glyph's coverage step), so the table amortizes to one
+// rebuild per pass and every pixel becomes three array lookups instead of
+// three multiply-divide rounds. Total cost: 513 bytes of static RAM.
+static uint8_t __ui_blend_lut_fg[256];
+static uint8_t __ui_blend_lut_bg[256];
+static uint8_t __ui_blend_lut_opacity = 255; // 255 = never built (valid range 0..100)
+static inline void ui_blend_lut_build(uint8_t opacity) {
+  if (__ui_blend_lut_opacity == opacity) return;
+  for (int16_t v = 0; v < 256; v++) {
+    __ui_blend_lut_fg[v] = static_cast<uint8_t>((v * opacity) / 100);
+    __ui_blend_lut_bg[v] = static_cast<uint8_t>((v * (100 - opacity)) / 100);
+  }
+  __ui_blend_lut_opacity = opacity;
+}
+
 static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
   if (opacity >= 100) return fg;
   if (opacity == 0) return bg;
-  // Blend in 888 internally for higher precision: unpack 565→888 (replicating
+  ui_blend_lut_build(opacity);
+  // Blend in 888 internally for higher precision: unpack 565->888 (replicating
   // high bits), blend at 8-bit, then re-quantize to 565. This produces smoother
-  // intermediate values for AA text edges, opacity, shadows, and gradients —
+  // intermediate values for AA text edges, opacity, shadows, and gradients --
   // the 565-channel blend (32 red levels) was too coarse and showed banding.
   uint8_t fr = (fg >> 11) & 0x1F, fg5 = (fg >> 5) & 0x3F, fb = fg & 0x1F;
   uint8_t br = (bg >> 11) & 0x1F, bg5 = (bg >> 5) & 0x3F, bb = bg & 0x1F;
-  // Unpack to 8-bit (5-bit → 8-bit: (v << 3) | (v >> 2)).
+  // Unpack to 8-bit (5-bit -> 8-bit: (v << 3) | (v >> 2)).
   uint16_t fr8 = (fr << 3) | (fr >> 2), fg8 = (fg5 << 2) | (fg5 >> 4), fb8 = (fb << 3) | (fb >> 2);
   uint16_t br8 = (br << 3) | (br >> 2), bg8 = (bg5 << 2) | (bg5 >> 4), bb8 = (bb << 3) | (bb >> 2);
-  uint16_t r = static_cast<uint16_t>((fr8 * opacity + br8 * (100 - opacity)) / 100);
-  uint16_t g = static_cast<uint16_t>((fg8 * opacity + bg8 * (100 - opacity)) / 100);
-  uint16_t b = static_cast<uint16_t>((fb8 * opacity + bb8 * (100 - opacity)) / 100);
+  uint16_t r = static_cast<uint16_t>(__ui_blend_lut_fg[fr8] + __ui_blend_lut_bg[br8]);
+  uint16_t g = static_cast<uint16_t>(__ui_blend_lut_fg[fg8] + __ui_blend_lut_bg[bg8]);
+  uint16_t b = static_cast<uint16_t>(__ui_blend_lut_fg[fb8] + __ui_blend_lut_bg[bb8]);
   return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
 }
 
@@ -3465,11 +3498,12 @@ static inline uint16_t ui_blend565(uint16_t fg, uint16_t bg, uint8_t opacity) {
 static inline uint32_t ui_blend888(uint32_t fg, uint32_t bg, uint8_t opacity) {
   if (opacity >= 100) return fg;
   if (opacity == 0) return bg;
+  ui_blend_lut_build(opacity);
   uint8_t fr = (fg >> 16) & 0xff, fg8 = (fg >> 8) & 0xff, fb = fg & 0xff;
   uint8_t br = (bg >> 16) & 0xff, bg8 = (bg >> 8) & 0xff, bb = bg & 0xff;
-  uint8_t r = (fr * opacity + br * (100 - opacity)) / 100;
-  uint8_t g = (fg8 * opacity + bg8 * (100 - opacity)) / 100;
-  uint8_t b = (fb * opacity + bb * (100 - opacity)) / 100;
+  uint8_t r = static_cast<uint8_t>(__ui_blend_lut_fg[fr] + __ui_blend_lut_bg[br]);
+  uint8_t g = static_cast<uint8_t>(__ui_blend_lut_fg[fg8] + __ui_blend_lut_bg[bg8]);
+  uint8_t b = static_cast<uint8_t>(__ui_blend_lut_fg[fb] + __ui_blend_lut_bg[bb]);
   return (static_cast<uint32_t>(r) << 16) | (static_cast<uint32_t>(g) << 8) | b;
 }
 
@@ -6673,6 +6707,77 @@ static inline void ui_tick(uint16_t deltaMs) {
   // The framebuffer target was selected and seeded before scroll compositors;
   // the stacking draw pass below uses the same __ui_draw_target. The retained
   // single buffer is a composition surface, not a synchronized panel swap.
+
+  // ── Dirty-rect merging (LVGL refresh-cycle technique) ─────────────────────
+  // When several nodes repaint this frame, per-node transactions each pay
+  // SPI setup overhead. Group the frame's dirty paint rects into merged
+  // regions (inflate + greedy absorb, waste-capped) and composite each
+  // multi-node region through the band renderer in ONE set of pushes.
+  // Single-node and unmergeable rects keep the ordinary per-node paths.
+  // Skipped entirely when a retained framebuffer composes the frame (it
+  // already unions), when the keyboard overlay owns the screen, and for
+  // nodes inside overflow scroll subtrees (the Mode B machinery owns them).
+  if (!__ui_fb) {
+    UIRect __ui_merge_rects[UI_MERGE_MAX_REGIONS];
+    uint16_t __ui_merge_nodes[UI_MERGE_MAX_REGIONS][UI_MERGE_MAX_NODES];
+    uint16_t __ui_merge_counts[UI_MERGE_MAX_REGIONS];
+    uint16_t __ui_merge_region_count = 0;
+    for (uint16_t mi = 0; mi < __ui_node_count && __ui_merge_region_count < UI_MERGE_MAX_REGIONS; mi++) {
+      uint16_t m = __ui_draw_order ? __ui_draw_order[mi] : mi;
+      if (!__ui_nodes[m].dirty) continue;
+      if (__ui_nodes[m].screenId != __ui_active_screen) continue;
+      if (!ui_is_effectively_visible(m)) continue;
+      if (__ui_nodes[m].kind == NODE_LIST || __ui_nodes[m].virtualized) continue;
+      if (ui_overflow_scroll_compositor(m) >= 0) continue; // scroll machinery owns it
+      UIRect mr;
+      ui_node_current_paint_rect(m, &mr);
+      if (mr.w <= 0 || mr.h <= 0) continue;
+      // Greedy absorb into an existing region when they overlap after a small
+      // inflation and the merged waste stays bounded.
+      uint8_t absorbed = 0;
+      for (uint16_t r = 0; r < __ui_merge_region_count && !absorbed; r++) {
+        UIRect* reg = &__ui_merge_rects[r];
+        int16_t x0 = reg->x - UI_MERGE_INFLATE, y0 = reg->y - UI_MERGE_INFLATE;
+        int16_t x1 = static_cast<int16_t>(reg->x + reg->w + UI_MERGE_INFLATE), y1 = static_cast<int16_t>(reg->y + reg->h + UI_MERGE_INFLATE);
+        if (mr.x >= x1 || static_cast<int16_t>(mr.x + mr.w) <= x0 ||
+            mr.y >= y1 || static_cast<int16_t>(mr.y + mr.h) <= y0) continue;
+        int16_t nx0 = reg->x < mr.x ? reg->x : mr.x;
+        int16_t ny0 = reg->y < mr.y ? reg->y : mr.y;
+        int16_t nx1 = static_cast<int16_t>(reg->x + reg->w > mr.x + mr.w ? reg->x + reg->w : mr.x + mr.w);
+        int16_t ny1 = static_cast<int16_t>(reg->y + reg->h > mr.y + mr.h ? reg->y + reg->h : mr.y + mr.h);
+        uint32_t mergedArea = static_cast<uint32_t>(nx1 - nx0) * static_cast<uint32_t>(ny1 - ny0);
+        if (mergedArea > UI_MAX_BUFFERED_PAINT_PIXELS) continue; // too big to band-composite
+        if (__ui_merge_counts[r] >= UI_MERGE_MAX_NODES) continue;
+        reg->x = nx0; reg->y = ny0;
+        reg->w = static_cast<int16_t>(nx1 - nx0); reg->h = static_cast<int16_t>(ny1 - ny0);
+        __ui_merge_nodes[r][__ui_merge_counts[r]++] = m;
+        absorbed = 1;
+      }
+      if (!absorbed) {
+        __ui_merge_rects[__ui_merge_region_count] = mr;
+        __ui_merge_nodes[__ui_merge_region_count][0] = m;
+        __ui_merge_counts[__ui_merge_region_count] = 1;
+        __ui_merge_region_count++;
+      }
+    }
+    // Composite multi-node regions as one banded render; singletons keep the
+    // per-node ladder (repair canvas etc. is cheaper for one node).
+    for (uint16_t r = 0; r < __ui_merge_region_count; r++) {
+      if (__ui_merge_counts[r] < 2) continue;
+      const UIRect* reg = &__ui_merge_rects[r];
+      if (ui_render_screen_bands(reg->x, reg->y, reg->w, reg->h)) {
+        for (uint16_t k = 0; k < __ui_merge_counts[r]; k++) {
+          __ui_nodes[__ui_merge_nodes[r][k]].dirty = 0;
+          ui_invalidate_scroll_canvas_for_node(__ui_merge_nodes[r][k]);
+          ui_refresh_add_rect(__ui_nodes[__ui_merge_nodes[r][k]].box.x, __ui_nodes[__ui_merge_nodes[r][k]].box.y,
+            __ui_nodes[__ui_merge_nodes[r][k]].box.w, __ui_nodes[__ui_merge_nodes[r][k]].box.h);
+        }
+        __ui_frame_painted = 1;
+      }
+      // Band allocation failure: leave the nodes dirty; the per-node ladder
+      // below still repaints them correctly.
+    }
+  }
 
   // Draw dirty nodes in stacking order: lower z-index first, then source order.
   // __ui_draw_order is built once in ui_init so each frame is O(N).

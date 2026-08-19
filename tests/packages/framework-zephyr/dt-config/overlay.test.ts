@@ -24,6 +24,13 @@ describe('generateOverlay', () => {
     expect(txt).not.toContain('madctl');
   });
 
+  it('emits te-gpios on the display node only when tearingEffectPin is wired', () => {
+    const withTe = generateOverlay(XIAO_BLE, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE, { tearingEffectPin: 21 });
+    expect(withTe).toContain('te-gpios = <&gpio0 21 GPIO_ACTIVE_HIGH>;');
+    const without = generateOverlay(XIAO_BLE, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE);
+    expect(without).not.toContain('te-gpios');
+  });
+
   it('emits the ST7796S compatible + gamma for the st7796 profile', () => {
     const txt = generateOverlay(
       XIAO_BLE, { usesDisplay: true }, ZEPHYR_DISPLAY_PROFILES['st7796-zephyr'],

@@ -92,6 +92,20 @@ export function emitTypesDefines(): string {
 // aliased edge pixels blend toward the wrong bg in the adjacent band, visible
 // as a clipped/faded text bottom. 32 ensures most fonts fit; at 480px wide
 // that's ~30KB (fits SRAM on most ESP32 targets).
+// Dirty-rect merging (LVGL refresh-cycle technique): several same-frame
+// dirty nodes whose paint rects are near each other composite as one banded
+// region instead of per-node transactions. Regions cap at the band-
+// compositable pixel budget; singleton rects keep the per-node ladder.
+#ifndef UI_MERGE_INFLATE
+#define UI_MERGE_INFLATE 8
+#endif
+#ifndef UI_MERGE_MAX_REGIONS
+#define UI_MERGE_MAX_REGIONS 6
+#endif
+#ifndef UI_MERGE_MAX_NODES
+#define UI_MERGE_MAX_NODES 12
+#endif
+
 #ifndef UI_STRIP_BAND_HEIGHT
 #define UI_STRIP_BAND_HEIGHT 32
 #endif

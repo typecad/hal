@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Tearing-effect (TE) hardware sync, opt-in via
+  `display.tearingEffectPin` in cuttlefish.config.ts.** Few off-the-shelf
+  display boards break the TE pad out, so the option is strictly opt-in:
+  when set, the DT overlay emits `te-gpios` on the display node and the
+  adapter configures a rising-edge GPIO interrupt on the panel's TE output,
+  raises TEON (0x35, vsync mode), and panel updates arm on the frame pulse
+  (tear-free writes, no MISO readback) with a bounded wait so a stuck TE
+  line can never hang the UI loop. Unwired projects compile exactly as
+  before (`__TC_TE_SYNC 0`).
+
 - **All runtime support code is now gated on actual use.** A minimal
   LED-toggle program previously carried ~45 lines of dead shim: the
   `digitalRead`/`HIGH`/`LOW` wiring macros, `millis()`/`map()`/
