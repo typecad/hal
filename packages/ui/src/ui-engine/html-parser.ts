@@ -64,6 +64,8 @@ export interface UIElementNode {
   disabled?: boolean;
   /** <drawer side="bottom|top|left|right"> — the edge the panel slides from. */
   drawerSide?: string;
+  /** <toast duration="2500"> — ms a toast stays open before auto-closing. */
+  toastDuration?: number;
   children: UIElementNode[];
   /** Ordered inline content sequence (text/element/break items). Present only
    *  for text nodes with mixed inline children; absent for plain-text nodes. */
@@ -117,7 +119,7 @@ export interface ParsedHtml {
   keyboards: KeyboardTemplate[];
 }
 
-const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a", "img", "list", "canvas", "br", "drawer"]);
+const SUPPORTED_TAGS = new Set(["screen", "text", "button", "view", "check", "select", "option", "label", "radio", "progress", "range", "input", "keyboard", "row", "key", "style", "a", "img", "list", "canvas", "br", "drawer", "dialog", "toast"]);
 
 /** Document-furniture tags that never render. Skipped silently (unlike unknown
  *  tags, which fall back to generic containers with a warning). */
@@ -552,8 +554,13 @@ function domToUIElementNode(el: Element, diagnostics?: Diagnostic[]): UIElementN
   }
 
   const remappedFrom = (remapped || tag === "label" || tag === "a") && tag !== effectiveTag ? tag : undefined;
-  const drawerSideAttr = tag === "drawer" ? (el.getAttribute("side") ?? "bottom").toLowerCase() : undefined;
-  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, drawerSide: drawerSideAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, inline, hasInterpolation, events: hasEvents ? events : undefined, bind: hasBind ? bind : undefined, ref: refAttr, children: [] };
+  const drawerSideAttr = tag === "dialog"
+    ? "center"
+    : (tag === "drawer" || tag === "toast") ? (el.getAttribute("side") ?? "bottom").toLowerCase() : undefined;
+  const toastDurationAttr = tag === "toast"
+    ? Math.max(500, parseInt(el.getAttribute("duration") || "2500", 10) || 2500)
+    : undefined;
+  const node: UIElementNode = { tag: effectiveTag, origTag: remappedFrom, id, classes, text, value: valueAttr, name: nameAttr, drawerSide: drawerSideAttr, toastDuration: toastDurationAttr, checked: checkedAttr, min: minAttr, max: maxAttr, type: typeAttr, placeholder: placeholderAttr, maxlength: maxlengthNum, keyboard: keyboardAttr, hidden: hiddenAttr, inlineStyle: inlineStyleAttr, href: hrefAttr, src: srcAttr, imgWidth: imgWidthAttr || undefined, imgHeight: imgHeightAttr || undefined, itemHeight: itemHeightAttr, canvasW: canvasWAttr, canvasH: canvasHAttr, disabled: disabledAttr, inline, hasInterpolation, events: hasEvents ? events : undefined, bind: hasBind ? bind : undefined, ref: refAttr, children: [] };
 
   // Anonymous inline wrap: stray text next to ONLY-inline element children
   // flows as one text line (CSS anonymous inline boxes) instead of stacking

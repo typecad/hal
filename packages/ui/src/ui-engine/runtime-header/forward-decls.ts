@@ -35,6 +35,7 @@ static uint8_t  __ui_drawer_progress[UI_DRAWER_MAX]; // 0 closed .. 1 open
 static uint8_t  __ui_drawer_slots = 0;             // discovered drawers (init scan)
 static int16_t __ui_drawer_last_dx[UI_DRAWER_MAX]; // last applied slide dx (delta bookkeeping)
 static int16_t __ui_drawer_last_dy[UI_DRAWER_MAX]; // last applied slide dy
+static uint32_t __ui_toast_elapsed[UI_DRAWER_MAX]; // <toast>: ms since fully open
 static int8_t   __ui_drawer_slot_of(uint16_t nodeIdx);
 static void     ui_drawer_discover();
 static void     ui_drawer_open(uint16_t nodeIdx);

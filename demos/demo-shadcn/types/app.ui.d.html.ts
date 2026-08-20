@@ -84,6 +84,16 @@ interface DrawerScreenGroup {
   drawerActionBtn: ButtonElement;
   closeDrawerBtn: ButtonElement;
 }
+interface DialogScreenGroup {
+  dialogScreen: ViewElement;
+  openDialogBtn: ButtonElement;
+  toastBtn: ButtonElement;
+  toastEcho: TextElement;
+  demoDialog: ViewElement;
+  dialogCancel: ButtonElement;
+  dialogOk: ButtonElement;
+  demoToast: ViewElement;
+}
 interface TabsScreenGroup {
   tabBtn0: ButtonElement;
   tabBtn1: ButtonElement;
@@ -121,6 +131,7 @@ interface ScreenGroups {
   keyboard: KeyboardScreenGroup;
   state: StateScreenGroup;
   drawer: DrawerScreenGroup;
+  dialog: DialogScreenGroup;
   tabs: TabsScreenGroup;
   accordion: AccordionScreenGroup;
 }
@@ -204,6 +215,15 @@ export interface ScreenTree {
   demoDrawer: TextElement;
   drawerActionBtn: ButtonElement;
   closeDrawerBtn: ButtonElement;
+  dialog: ViewElement;
+  dialogScreen: ViewElement;
+  openDialogBtn: ButtonElement;
+  toastBtn: ButtonElement;
+  toastEcho: TextElement;
+  demoDialog: ViewElement;
+  dialogCancel: ButtonElement;
+  dialogOk: ButtonElement;
+  demoToast: ViewElement;
   tabs: ViewElement;
   tabBtn0: ButtonElement;
   tabBtn1: ButtonElement;

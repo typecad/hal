@@ -234,7 +234,8 @@ struct UINode {
   uint8_t disabled;  // HTML disabled attr: no taps/keyboard, dimmed draw state
   uint8_t optionCount;  // <select>: number of options
   void (*optionTextFn)(uint8_t idx, char* buf, uint8_t size);  // option text by index
-  int8_t drawerSide;  // <drawer>: 0=bottom 1=top 2=left 3=right; -1 = not a drawer
+  int8_t drawerSide;  // <drawer>/<toast>: 0=bottom 1=top 2=left 3=right; 4=<dialog> center; -1 = none
+  uint16_t toastDuration;  // <toast duration>: ms before auto-close (0 = manual)
   int8_t flowAxis;  // visibility reflow: 0 none, 1 column, 2 row (ui_reflow_visibility)
   uint8_t flowGap;  // visibility reflow: main-axis gap between in-flow children
   uint8_t flowFlags;  // bit0 auto height, bit1 auto width, bit2 out-of-flow
@@ -687,6 +688,7 @@ static uint8_t  __ui_drawer_progress[UI_DRAWER_MAX]; // 0 closed .. 1 open
 static uint8_t  __ui_drawer_slots = 0;             // discovered drawers (init scan)
 static int16_t __ui_drawer_last_dx[UI_DRAWER_MAX]; // last applied slide dx (delta bookkeeping)
 static int16_t __ui_drawer_last_dy[UI_DRAWER_MAX]; // last applied slide dy
+static uint32_t __ui_toast_elapsed[UI_DRAWER_MAX]; // <toast>: ms since fully open
 static int8_t   __ui_drawer_slot_of(uint16_t nodeIdx);
 static void     ui_drawer_discover();
 static void     ui_drawer_open(uint16_t nodeIdx);
@@ -1940,6 +1942,14 @@ static inline uint8_t ui_is_effectively_visible(uint16_t nodeIdx) {
   while (p != UI_NO_PARENT && p < __ui_node_count) {
     if (!__ui_nodes[p].visible) return 0;
     p = __ui_nodes[p].parent;
+  }
+  // Centered overlay panels (<dialog>, <toast> side-free): offsets cannot
+  // hide them (travel is 0 by design), so the closed state gates visibility
+  // directly. Edge drawers (<drawer>, <toast side>) keep offset-only hiding
+  // — the bottom "peek" of an edge-anchored panel must stay visible.
+  if (__ui_nodes[nodeIdx].drawerSide == 4) {
+    int8_t centerSlot = __ui_drawer_slot_of(nodeIdx);
+    if (centerSlot < 0 || (!__ui_drawer_open[centerSlot] && __ui_drawer_progress[centerSlot] == 0)) return 0;
   }
   // No closed-drawer gating here: drawers hide by transform offsets alone
   // (seeded at full travel by ui_drawer_discover), exactly like the preview —
@@ -8024,6 +8034,7 @@ static void ui_drawer_apply(uint8_t slot, uint8_t progress) {
   UINode* d = &__ui_nodes[di];
   int16_t travel = (d->drawerSide == 2 || d->drawerSide == 3)
     ? static_cast<int16_t>(d->box.w) : static_cast<int16_t>(d->box.h);
+  if (d->drawerSide == 4) travel = 0;  // <dialog>: centered, no slide
   int16_t off = static_cast<int16_t>((static_cast<int32_t>(travel) * (255 - progress)) / 255);
   int16_t dx = d->drawerSide == 2 ? -off : d->drawerSide == 3 ? off : 0;
   int16_t dy = d->drawerSide == 1 ? -off : d->drawerSide == 0 ? off : 0;
@@ -8044,6 +8055,7 @@ static void ui_drawer_open(uint16_t nodeIdx) {
   int8_t s = __ui_drawer_slot_of(nodeIdx);
   if (s < 0) return;
   __ui_drawer_open[s] = 1;
+  __ui_toast_elapsed[s] = 0;  // <toast>: restart the auto-close window
 }
 
 static void ui_drawer_close(uint16_t nodeIdx) {
@@ -8061,6 +8073,16 @@ static void ui_drawer_tick(uint32_t deltaMs) {
   if (step == 0) step = 1;
   for (uint8_t s = 0; s < __ui_drawer_slots; s++) {
     if (__ui_drawer_idx[s] < 0) continue;
+    uint16_t tnode = static_cast<uint16_t>(__ui_drawer_idx[s]);
+    // <toast duration>: once fully open, count up and auto-close. A reopen
+    // (ui_drawer_open) restarts the window; manual close just wins.
+    if (__ui_nodes[tnode].toastDuration > 0 && __ui_drawer_open[s] &&
+        __ui_drawer_progress[s] == 255) {
+      __ui_toast_elapsed[s] += deltaMs;
+      if (__ui_toast_elapsed[s] >= __ui_nodes[tnode].toastDuration) {
+        __ui_drawer_open[s] = 0;
+      }
+    }
     uint8_t target = __ui_drawer_open[s] ? 255 : 0;
     uint8_t p = __ui_drawer_progress[s];
     if (p == target) continue;

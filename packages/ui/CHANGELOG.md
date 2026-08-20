@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **Dialog and Toast elements (shadcn recipes, built on the drawer slot
+  machinery).**
+  - `<dialog id="…">` is a centered overlay: the runtime treats it as a
+    drawer with side "center" (drawerSide 4) — travel 0, no slide; hidden
+    while closed by a visibility gate (offsets can't hide a centered panel),
+    visible when open. Programmatic control via `ui.dialog.open(id)` /
+    `ui.dialog.close(id?)` (same build-time lowering as the drawer) and the
+    `ui.dialog` facade in the preview. The scrim is markup: an absolute
+    `.dialog-scrim` view whose tap closes (`.dialog-scrim`, `.dialog-card`,
+    `.dialog-footer` recipes + a solid `--scrim` token — alpha blending
+    needs a canvas underneath, so the kit ships an opaque near-black).
+  - `<toast id="…" side="bottom|top" duration="2500">` is an edge-slid
+    transient: `ui.toast(id)` opens it, the runtime auto-closes once fully
+    open for `duration` ms (reopening restarts the window; manual close
+    wins). Recipes `.toast` / `.toast-title` / `.toast-description`.
+  - Both go through the same drawer slots (max 4 overlay panels of any
+    kind per screen), navigate resets, outside-tap close (dialogs), and the
+    banded slide renderer. The kit header documents markup + recipes, and
+    the demo's "Dialog & Toast" screen exercises both.
+
 - **Fixed drawer content vanishing on taps inside it (hardware).** Tapping a
   button inside an open drawer updates a bound text behind the drawer; the
   partial-overlap classification re-dirtied the drawer's whole subtree, and

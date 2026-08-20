@@ -62,6 +62,14 @@ export const SHADCN_KIT_CSS = `/* ----------------------------------------------
  *               (indeterminate loading: a dot orbiting a ring via pure
  *                transform keyframes — translate lerps smoothly, unlike
  *                rotate which only renders exact quarter turns)
+ *   Dialog      <dialog id="d"><view class="dialog-scrim" on:click={...}/>
+ *               <view class="dialog-card"> ... <view class="dialog-footer">
+ *               </view></dialog>
+ *               (centered modal: programmatic ui.dialog.open(id), scrim tap
+ *                closes; same slot machinery as the drawer)
+ *   Toast       <toast id="t" side="bottom" duration="2500" class="toast">
+ *               ...</toast>  (ui.toast(id) shows it; auto-closes after the
+ *               duration; stacks as authored siblings)
  *   Progress    <progress class="progress" value="40"/>
  *   Avatar      <img class="avatar" src="face.bmp"/>
  *   Switch      <check class="switch"/>             (pill container; the
@@ -95,6 +103,9 @@ export const SHADCN_KIT_CSS = `/* ----------------------------------------------
   --input: #e4e4e7;
   --radius: 8px;
   --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.1);
+  /* Solid scrim for dialogs — alpha blending needs a canvas underneath, so
+     the kit uses an opaque near-black that reads as a dimmed backdrop. */
+  --scrim: #101014;
 }
 
 .dark {
@@ -391,6 +402,64 @@ export const SHADCN_KIT_CSS = `/* ----------------------------------------------
   75%  { transform: translate(0px, 8px); }
   100% { transform: translate(0px, 0px); }
 }
+/* ---- Dialog ---------------------------------------------------------------- */
+
+/* Centered modal: <dialog> is a centered drawer (side-free) — programmatic
+   open/close via ui.dialog.open(id)/close(id?), hidden while closed by the
+   runtime (visibility gate for centered panels; offsets can't hide them).
+   The scrim is part of the markup: an absolute full-area view whose tap
+   closes the dialog; the card sits above it. z-index keeps both over page
+   content. */
+.dialog-scrim {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--scrim);
+  z-index: 30;
+}
+.dialog-card {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  top: 64px;
+  background: var(--card);
+  color: var(--card-foreground);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  padding: 16px;
+  gap: 8px;
+  z-index: 31;
+}
+.dialog-footer {
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ---- Toast ----------------------------------------------------------------- */
+
+/* Transient notification: <toast side="bottom" duration="2500"> slides from
+   the bottom edge (author-positioned, flush to the edge so the slide fully
+   hides it) and auto-closes after duration ms. Show with ui.toast(id).
+   Sibling toasts stack by author layout; each closes on its own timer. */
+.toast {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 0;
+  background: var(--foreground);
+  color: var(--background);
+  border-radius: var(--radius);
+  padding: 12px;
+  gap: 4px;
+  z-index: 40;
+}
+.toast-title { font-weight: bold; font-size: 14px; }
+.toast-description { font-size: 12px; color: var(--muted-foreground); }
+
 
 
 /* ---- Progress / Avatar ----------------------------------------------------------- */

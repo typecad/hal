@@ -16,6 +16,14 @@ static inline uint8_t ui_is_effectively_visible(uint16_t nodeIdx) {
     if (!__ui_nodes[p].visible) return 0;
     p = __ui_nodes[p].parent;
   }
+  // Centered overlay panels (<dialog>, <toast> side-free): offsets cannot
+  // hide them (travel is 0 by design), so the closed state gates visibility
+  // directly. Edge drawers (<drawer>, <toast side>) keep offset-only hiding
+  // — the bottom "peek" of an edge-anchored panel must stay visible.
+  if (__ui_nodes[nodeIdx].drawerSide == 4) {
+    int8_t centerSlot = __ui_drawer_slot_of(nodeIdx);
+    if (centerSlot < 0 || (!__ui_drawer_open[centerSlot] && __ui_drawer_progress[centerSlot] == 0)) return 0;
+  }
   // No closed-drawer gating here: drawers hide by transform offsets alone
   // (seeded at full travel by ui_drawer_discover), exactly like the preview —
   // whose drawerStates entry is deleted once fully closed, so a closed panel

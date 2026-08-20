@@ -3288,7 +3288,26 @@ export class PreviewUIRuntime {
   /** Node paint rects drawn during this tick (cleared at tick start). */
   private debugPaintedRects: Array<{ x: number; y: number; w: number; h: number }> = [];
   /** Drawer animation step per tick (~180ms full slide). */
+  /** <toast> auto-close windows, keyed by drawer slot node index. */
+  private readonly toastElapsed = new Map<number, number>();
+
   private applyDrawers(deltaMs: number): void {
+    // <toast duration>: once fully open, count up and auto-close.
+    for (const [idx, state] of this.drawerStates) {
+      const node = this.nodes[idx] as MutableNode & { toastDuration?: number };
+      const duration = node.toastDuration ?? 0;
+      if (duration > 0 && state.open && state.progress === 1) {
+        const elapsed = (this.toastElapsed.get(idx) ?? 0) + deltaMs;
+        if (elapsed >= duration) {
+          state.open = false;
+          this.toastElapsed.delete(idx);
+        } else {
+          this.toastElapsed.set(idx, elapsed);
+        }
+      } else if (!state.open) {
+        this.toastElapsed.delete(idx);
+      }
+    }
     for (const [idx, state] of this.drawerStates) {
       const target = state.open ? 1 : 0;
       if (state.progress === target) continue;
@@ -3306,6 +3325,7 @@ export class PreviewUIRuntime {
   private drawerOpen(id: string): void {
     const node = this.drawerNodeById(id);
     if (!node) return;
+    this.toastElapsed.delete(node.index);  // <toast>: restart the auto-close window
     if (!this.drawerStates.has(node.index)) {
       this.drawerStates.set(node.index, { open: true, progress: 0 });
       this.setDrawerProgress(node.index, 0);
@@ -3376,6 +3396,14 @@ export class PreviewUIRuntime {
   /** True while the node sits inside a fully-closed drawer (skip in draws and
    *  hit tests). Drawers with no state entry are closed. */
   private insideClosedDrawer(nodeIndex: number): boolean {
+    // Centered overlay roots (<dialog>, side 4) hide via the closed-state
+    // gate: their travel is 0, so offsets can't move them off-panel. Edge
+    // drawer/toast roots keep offset-only hiding (the bottom peek).
+    const self = this.nodes[nodeIndex] as MutableNode & { drawerSide?: number };
+    if ((self.drawerSide ?? -1) === 4) {
+      const st = this.drawerStates.get(nodeIndex);
+      return !st || (!st.open && st.progress === 0);
+    }
     for (const [idx, state] of this.drawerStates) {
       const drawer = this.nodes[idx];
       if (nodeIndex >= drawer.index && nodeIndex < drawer.subtreeEnd && state.progress === 0 && !state.open) return true;
@@ -4003,6 +4031,8 @@ export class PreviewUIRuntime {
     navigate(screenIdx: number): void;
     window: { setTitle(title: string): void; setIcon(path: string): void };
     drawer: { open(id: string): void; close(id?: string): void };
+    dialog: { open(id: string): void; close(id?: string): void };
+    toast(id: string): void;
   } {
     return {
       signal<T>(initial: T) {
@@ -4030,6 +4060,13 @@ export class PreviewUIRuntime {
         open: (id: string): void => this.drawerOpen(id),
         close: (id?: string): void => this.drawerClose(id),
       },
+      // <dialog>/<toast> controls: same slot machinery as drawers (a dialog
+      // is a centered drawer, a toast auto-closes via its duration attr).
+      dialog: {
+        open: (id: string): void => this.drawerOpen(id),
+        close: (id?: string): void => this.drawerClose(id),
+      },
+      toast: (id: string): void => this.drawerOpen(id),
     };
   }
 }

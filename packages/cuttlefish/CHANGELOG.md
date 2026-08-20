@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **`ui.dialog.open/close(id)` and `ui.toast(id)` lower at build time** to
+  the shared drawer slot calls (`ui_drawer_open(N)` / `ui_drawer_close(N)`),
+  resolving `<dialog>` / `<toast>` ids with the same diagnostics as drawer
+  ids (unknown id, non-literal id, unsupported method).
+
 - **`cuttlefish add` and `cuttlefish theme` are gone.** The shadcn kit is
   now built into `@typecad/ui` (always included, cascade-overridable), which
   removes the need for the scaffolding and theme-splicing commands and their

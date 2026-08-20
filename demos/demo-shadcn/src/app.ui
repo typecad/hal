@@ -120,6 +120,12 @@
   export function toggleAcc0() { openAcc.set(openAcc() === 0 ? -1 : 0); }
   export function toggleAcc1() { openAcc.set(openAcc() === 1 ? -1 : 1); }
   export function toggleAcc2() { openAcc.set(openAcc() === 2 ? -1 : 2); }
+  // Dialog + Toast: centered modal via ui.dialog, transient via ui.toast.
+  export function openDemoDialog() { ui.dialog.open('demoDialog'); }
+  export function closeDemoDialog() { ui.dialog.close('demoDialog'); }
+  export function showDemoToast() { ui.toast('demoToast'); }
+  export const toastCount = ui.signal(0);
+  export function toastFired() { toastCount.set(toastCount() + 1); showDemoToast(); }
   ui.bind(screen.accPane0, 'visible', () => openAcc() === 0);
   ui.bind(screen.accPane1, 'visible', () => openAcc() === 1);
   ui.bind(screen.accPane2, 'visible', () => openAcc() === 2);
@@ -151,7 +157,7 @@
 </script>
 
 <style>
-@import "./styles/theme.css";
+@import "./styles/doom64.css";
 /* ---------------------------------------------------------------------------
    shadcn gallery shell — scaffolding for the demo screens, expressed only
    through the kit's tokens (no second palette: re-theming shadcn.css
@@ -421,6 +427,7 @@ screen {
   z-index: 10;
 }
 #drawerScreen { position: relative; }
+#dialogScreen { position: relative; }
 
 /* ── State screen ── */
 #lamp { width: 18px; height: 18px; border-radius: 999px; background: #52525b; }
@@ -452,6 +459,7 @@ screen {
         <button href="#keyboard">Keyboard &gt;</button>
         <button href="#state">State &amp; Bindings &gt;</button>
         <button href="#drawer">Drawer &gt;</button>
+        <button href="#dialog">Dialog &amp; Toast &gt;</button>
         <button href="#tabs">Tabs &gt;</button>
         <button href="#accordion">Accordion &gt;</button>
       </nav>
@@ -971,6 +979,40 @@ setup(); loop();</pre>
           <button id="closeDrawerBtn" class="btn btn-outline btn-sm" on:click={closeDrawer}>Close</button>
         </view>
       </drawer>
+    </main>
+  </body>
+</screen>
+
+<!-- ── Dialog & Toast ─────────────────────────────────────────────────────── -->
+<screen id="dialog">
+  <body>
+    <header class="screenHeader">
+      <a class="backLink" href="#home">&lt; Back</a>
+      <h2 class="screenTitle">Dialog &amp; Toast</h2>
+    </header>
+    <main id="dialogScreen" class="scrollBody">
+      <h3 class="demoLabel">dialog (centered modal, scrim tap closes)</h3>
+      <button id="openDialogBtn" class="btn btn-primary" on:click={openDemoDialog}>Open dialog</button>
+      <h3 class="demoLabel">toast (auto-dismiss, duration="2200")</h3>
+      <view class="btnRow">
+        <button id="toastBtn" class="btn btn-secondary" on:click={toastFired}>Show toast</button>
+        <text id="toastEcho" class="controlEcho">toasts: {toastCount}</text>
+      </view>
+      <dialog id="demoDialog">
+        <view class="dialog-scrim" on:click={closeDemoDialog}></view>
+        <view class="dialog-card">
+          <text class="card-title">Are you sure?</text>
+          <text class="card-description">This action cannot be undone. The dialog closes on the scrim or the buttons.</text>
+          <view class="dialog-footer">
+            <button id="dialogCancel" class="btn btn-outline btn-sm" on:click={closeDemoDialog}>Cancel</button>
+            <button id="dialogOk" class="btn btn-primary btn-sm" on:click={closeDemoDialog}>Confirm</button>
+          </view>
+        </view>
+      </dialog>
+      <toast id="demoToast" side="bottom" duration="2200" class="toast">
+        <text class="toast-title">Settings saved</text>
+        <text class="toast-description">The toast dismisses itself in 2.2s.</text>
+      </toast>
     </main>
   </body>
 </screen>

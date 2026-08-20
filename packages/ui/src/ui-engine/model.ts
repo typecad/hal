@@ -96,6 +96,8 @@ export interface UINodeModel {
   disabled: boolean;
   /** <drawer side>: 0=bottom 1=top 2=left 3=right; -1 = not a drawer. */
   drawerSide: number;
+  /** <toast duration>: ms before auto-close (0 = manual close only). */
+  toastDuration: number;
   /** Visibility-reflow axis (device): 0 none, 1 column, 2 row. */
   flowAxis: number;
   /** Visibility-reflow: main-axis gap between in-flow children (px, 0-255). */
@@ -264,7 +266,7 @@ interface FlatModelSource {
 }
 
 function nodeKind(tag: string): UINodeKindModel {
-  if (tag === "screen" || tag === "view" || tag === "drawer") return "fill";
+  if (tag === "screen" || tag === "view" || tag === "drawer" || tag === "dialog" || tag === "toast") return "fill";
   if (tag === "button") return "button";
   if (tag === "check") return "check";
   if (tag === "radio") return "radio";
@@ -1126,7 +1128,11 @@ export function lowerUIToModel(
       whiteSpaceMode: wsMode,
       visible: node.style.visibility !== "hidden" && node.style.visibility !== "collapse" && !isDisplayNone(node),
       disabled: node.disabled === true,
-      drawerSide: node.tag === "drawer" ? ({ bottom: 0, top: 1, left: 2, right: 3 } as Record<string, number>)[node.drawerSide ?? "bottom"] ?? 0 : -1,
+      drawerSide: (node.tag === "drawer" || node.tag === "dialog" || node.tag === "toast")
+        ? ({ bottom: 0, top: 1, left: 2, right: 3, center: 4 } as Record<string, number>)[
+            node.tag === "dialog" ? "center" : (node.drawerSide ?? "bottom")] ?? 0
+        : -1,
+      toastDuration: node.tag === "toast" ? (node.toastDuration ?? 2500) : 0,
       // Visibility-reflow metadata: how this node's in-flow children stack, so
       // the device runtime can re-stack them when a child's visibility changes
       // (the preview re-layouts with yoga every frame; the device's boxes are

@@ -297,21 +297,41 @@ function matchUIDrawerCall(call: ts.CallExpression): string | undefined {
   return call.expression.name.text;
 }
 
-/** Resolve ui.drawer.open('<id>') / ui.drawer.close('<id>' | ).
- *  The drawer id resolves at BUILD time to the node index of the <drawer>
- *  element, emitting ui_drawer_open(N) / ui_drawer_close(N) (or close_all
- *  with no argument) — the preview evaluates the same call dynamically. */
+/** Detect ui.dialog.<method>(...) — same shape, resolves <dialog> ids. */
+function matchUIDialogCall(call: ts.CallExpression): string | undefined {
+  if (!ts.isPropertyAccessExpression(call.expression)) return undefined;
+  const inner = call.expression.expression;
+  if (!ts.isPropertyAccessExpression(inner)) return undefined;
+  if (!ts.isIdentifier(inner.expression) || inner.expression.text !== "ui") return undefined;
+  if (!ts.isIdentifier(inner.name) || inner.name.text !== "dialog") return undefined;
+  return call.expression.name.text;
+}
+
+/** Detect ui.toast('<id>') — show a <toast>; auto-closes via duration. */
+function matchUIToastCall(call: ts.CallExpression): boolean {
+  if (!ts.isPropertyAccessExpression(call.expression)) return false;
+  const inner = call.expression.expression;
+  if (!ts.isIdentifier(inner) || inner.text !== "ui") return false;
+  return ts.isIdentifier(call.expression.name) && call.expression.name.text === "toast";
+}
+
+/** Resolve ui.drawer.open('<id>') / ui.drawer.close('<id>' | ), and the
+ *  dialog/toast aliases. The id resolves at BUILD time to the node index of
+ *  the <drawer>/<dialog>/<toast> element, emitting ui_drawer_open(N) /
+ *  ui_drawer_close(N) (or close_all with no argument) — the preview
+ *  evaluates the same call dynamically. */
 function resolveDrawerCall(
   method: string,
   call: ts.CallExpression,
   sourceText: string,
   diagnostics: Diagnostic[],
+  kind = "drawer",
 ): StatementIR {
   const sourceSpan = makeSourceSpan(call, call.getSourceFile()?.fileName ?? "", sourceText);
   if (method !== "open" && method !== "close") {
     diagnostics.push(makeDiagnostic(
       sourceText, call.pos,
-      `ui.drawer.${method} is not supported — use ui.drawer.open(id) or ui.drawer.close(id?).`,
+      `ui.${kind}.${method} is not supported — use open(id) or close(id?).`,
       "error", "UI_DRAWER_METHOD",
     ));
     return { kind: "block", sourceSpan, body: [] };
@@ -330,7 +350,7 @@ function resolveDrawerCall(
   if (idText === undefined) {
     diagnostics.push(makeDiagnostic(
       sourceText, call.pos,
-      `ui.drawer.${method} needs a drawer id string literal (e.g. ui.drawer.open('settings')).`,
+      `ui.${kind}.${method} needs an id string literal (e.g. ui.${kind}.open('settings')).`,
       "error", "UI_DRAWER_ID",
     ));
     return { kind: "block", sourceSpan, body: [] };
@@ -339,7 +359,7 @@ function resolveDrawerCall(
   if (nodeIdx === undefined) {
     diagnostics.push(makeDiagnostic(
       sourceText, call.pos,
-      `ui.drawer.${method}('${idText}'): no <drawer id="${idText}"> in the mounted UI tree.`,
+      `ui.${kind}.${method}('${idText}'): no <${kind} id="${idText}"> in the mounted UI tree.`,
       "error", "UI_DRAWER_UNKNOWN_ID",
     ));
     return { kind: "block", sourceSpan, body: [] };
@@ -502,6 +522,39 @@ export function tryResolveUICall(
   // ui.drawer.open('id') / ui.drawer.close('id'|) — also a two-level chain.
   const drawerCall = matchUIDrawerCall(call);
   if (drawerCall) return resolveDrawerCall(drawerCall, call, sourceText, diagnostics);
+  const dialogCall = matchUIDialogCall(call);
+  if (dialogCall) return resolveDrawerCall(dialogCall, call, sourceText, diagnostics, "dialog");
+  if (matchUIToastCall(call)) {
+    // ui.toast('<id>') — show a <toast>; the duration attribute drives the
+    // auto-close. Same open lowering as a drawer.
+    const sourceSpan = makeSourceSpan(call, call.getSourceFile()?.fileName ?? "", sourceText);
+    const arg = call.arguments[0];
+    let idText: string | undefined;
+    if (arg && ts.isStringLiteral(arg)) idText = arg.text;
+    if (idText === undefined) {
+      diagnostics.push(makeDiagnostic(
+        sourceText, call.pos,
+        "ui.toast needs a toast id string literal (e.g. ui.toast('saved')).",
+        "error", "UI_TOAST_ID",
+      ));
+      return { kind: "block", sourceSpan, body: [] };
+    }
+    const nodeIdx = resolveElementValue("screen", idText);
+    if (nodeIdx === undefined) {
+      diagnostics.push(makeDiagnostic(
+        sourceText, call.pos,
+        `ui.toast('${idText}'): no <toast id="${idText}"> in the mounted UI tree.`,
+        "error", "UI_TOAST_UNKNOWN_ID",
+      ));
+      return { kind: "block", sourceSpan, body: [] };
+    }
+    return {
+      kind: "call",
+      sourceSpan,
+      callee: "__EMIT__",
+      args: [{ kind: "string", value: `ui_drawer_open(${nodeIdx});` }],
+    };
+  }
 
   if (!isUICall(call)) return null;
 

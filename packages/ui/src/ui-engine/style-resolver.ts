@@ -81,6 +81,7 @@ export interface StyledNode {
   disabled?: boolean;
   /** <drawer side="..."> — the edge the panel slides from (bottom default). */
   drawerSide?: string;
+  toastDuration?: number;
   /** True when text contains a `{expr}` interpolation; auto-wire synthesizes an
    *  implicit text binding. Propagated from UIElementNode for the auto-wire walk. */
   hasInterpolation?: boolean;
@@ -440,6 +441,8 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     type: node.type,
     placeholder: node.placeholder,
     maxlen: node.maxlength,
+    drawerSide: node.drawerSide,
+    toastDuration: node.toastDuration,
     keyboard: node.keyboard,
     hidden: node.hidden,
     href: node.href,

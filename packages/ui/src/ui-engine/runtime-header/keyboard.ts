@@ -514,6 +514,7 @@ static void ui_drawer_apply(uint8_t slot, uint8_t progress) {
   UINode* d = &__ui_nodes[di];
   int16_t travel = (d->drawerSide == 2 || d->drawerSide == 3)
     ? static_cast<int16_t>(d->box.w) : static_cast<int16_t>(d->box.h);
+  if (d->drawerSide == 4) travel = 0;  // <dialog>: centered, no slide
   int16_t off = static_cast<int16_t>((static_cast<int32_t>(travel) * (255 - progress)) / 255);
   int16_t dx = d->drawerSide == 2 ? -off : d->drawerSide == 3 ? off : 0;
   int16_t dy = d->drawerSide == 1 ? -off : d->drawerSide == 0 ? off : 0;
@@ -534,6 +535,7 @@ static void ui_drawer_open(uint16_t nodeIdx) {
   int8_t s = __ui_drawer_slot_of(nodeIdx);
   if (s < 0) return;
   __ui_drawer_open[s] = 1;
+  __ui_toast_elapsed[s] = 0;  // <toast>: restart the auto-close window
 }
 
 static void ui_drawer_close(uint16_t nodeIdx) {
@@ -551,6 +553,16 @@ static void ui_drawer_tick(uint32_t deltaMs) {
   if (step == 0) step = 1;
   for (uint8_t s = 0; s < __ui_drawer_slots; s++) {
     if (__ui_drawer_idx[s] < 0) continue;
+    uint16_t tnode = static_cast<uint16_t>(__ui_drawer_idx[s]);
+    // <toast duration>: once fully open, count up and auto-close. A reopen
+    // (ui_drawer_open) restarts the window; manual close just wins.
+    if (__ui_nodes[tnode].toastDuration > 0 && __ui_drawer_open[s] &&
+        __ui_drawer_progress[s] == 255) {
+      __ui_toast_elapsed[s] += deltaMs;
+      if (__ui_toast_elapsed[s] >= __ui_nodes[tnode].toastDuration) {
+        __ui_drawer_open[s] = 0;
+      }
+    }
     uint8_t target = __ui_drawer_open[s] ? 255 : 0;
     uint8_t p = __ui_drawer_progress[s];
     if (p == target) continue;
