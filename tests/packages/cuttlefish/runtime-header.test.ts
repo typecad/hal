@@ -399,6 +399,30 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/if \(need > travel\) travel = need;/);
   });
 
+  it("z-index raises the whole subtree (CSS stacking context), in draw order AND hit-test", () => {
+    // Regression: a flat (zIndex, index) sort painted a dialog's scrim (z30)
+    // and card (z31) over the card's own z0 children — the band compositor
+    // erased the content it had just drawn (dialog showed only its topmost
+    // child), and hit-testing saw the card as "topmost" so its buttons could
+    // never receive taps. Effective z = the nearest ancestor-or-self with a
+    // non-zero zIndex; descendants stack WITH their raised ancestor.
+    expect(header).toMatch(/static inline int16_t ui_stacking_z\(uint16_t nodeIdx\)/);
+    const cmp = header.match(/static inline uint8_t ui_node_draws_before\(uint16_t a, uint16_t b\) \{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(cmp).toMatch(/ui_stacking_z\(a\)/);
+    expect(cmp).toMatch(/ui_stacking_z\(b\)/);
+    expect(cmp).not.toMatch(/__ui_nodes\[a\]\.zIndex != __ui_nodes\[b\]\.zIndex/);
+  });
+
+  it("marking an overlapping higher layer dirty also marks its descendants", () => {
+    // Regression: a press under a dialog marked the scrim and card dirty
+    // (overlapping higher layers) but not the card's children — the ladder
+    // repainted the container faces alone and erased the just-composed
+    // dialog content. Repainting a container must repaint what lives inside
+    // it.
+    expect(header).toMatch(
+      /ui_rects_intersect[\s\S]{0,200}__ui_nodes\[c\]\.dirty = 1;[\s\S]{0,600}for \(uint16_t k = c \+ 1; k < __ui_nodes\[c\]\.subtreeEnd/);
+  });
+
   it("hit-test targets the topmost node and bubbles to ancestors only", () => {
     // Regression: hit-test picked the topmost HANDLER-BEARING node, so a tap
     // on a modal card (no handler, higher z) fell through to the

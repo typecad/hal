@@ -119,6 +119,17 @@ static inline void ui_mark_overlapping_higher_layers_dirty_for_rect(uint16_t nod
     if (cr.w <= 0 || cr.h <= 0) continue;
     if (ui_rects_intersect(r->x, r->y, r->w, r->h, cr.x, cr.y, cr.w, cr.h)) {
       __ui_nodes[c].dirty = 1;
+      // Repainting a container erases everything drawn inside it — its own
+      // descendants. Mark them too, or the ladder redraws the container face
+      // alone and wipes its children: a press under a dialog marked the scrim
+      // and card dirty (overlapping higher layers) but not the card's title/
+      // buttons, and their solo repaint erased the just-composed dialog. The
+      // dirty pass clears flags for invisible descendants, and scroll-subtree
+      // children route through the scroll defer as usual.
+      for (uint16_t k = c + 1; k < __ui_nodes[c].subtreeEnd && k < __ui_node_count; k++) {
+        if (__ui_nodes[k].screenId != __ui_active_screen) continue;
+        __ui_nodes[k].dirty = 1;
+      }
     }
   }
 }

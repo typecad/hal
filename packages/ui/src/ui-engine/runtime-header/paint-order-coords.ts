@@ -45,10 +45,29 @@ static inline uint8_t ui_is_effectively_visible(uint16_t nodeIdx) {
   return 1;
 }
 
-static inline uint8_t ui_node_draws_before(uint16_t a, uint16_t b) {
-  if (__ui_nodes[a].zIndex != __ui_nodes[b].zIndex) {
-    return __ui_nodes[a].zIndex < __ui_nodes[b].zIndex;
+// Effective stacking z, CSS-style: a non-zero zIndex raises the node AND its
+// subtree — a z-raised panel forms a stacking context, so its descendants
+// stack WITH it (above lower-z siblings), never independently UNDER it. A
+// flat (zIndex, index) sort painted a dialog's scrim (z30) and card (z31)
+// over the card's own z0 children (title/description/buttons): the band
+// compositor erased the content it had just drawn (only the topmost child
+// survived), and hit-testing saw the card as "topmost" so its buttons could
+// never receive taps. 0 = "auto" (no context) — keep walking ancestors.
+static inline int16_t ui_stacking_z(uint16_t nodeIdx) {
+  uint16_t n = nodeIdx;
+  while (n != UI_NO_PARENT && n < __ui_node_count) {
+    if (__ui_nodes[n].zIndex != 0) return __ui_nodes[n].zIndex;
+    n = __ui_nodes[n].parent;
   }
+  return 0;
+}
+
+static inline uint8_t ui_node_draws_before(uint16_t a, uint16_t b) {
+  int16_t za = ui_stacking_z(a);
+  int16_t zb = ui_stacking_z(b);
+  if (za != zb) return za < zb;
+  // Same stacking level: source order. Sibling stacking contexts occupy
+  // disjoint index ranges, so this also keeps a context's subtree contiguous.
   return a < b;
 }
 

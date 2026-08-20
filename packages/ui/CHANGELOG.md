@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **Fixed z-index flattening the dialog (content invisible, buttons dead).**
+  Reproduced on a host harness (runtime header + stub display driving the
+  dialog screen's node table) and fixed twice over:
+  - `z-index` now raises a node's whole subtree, CSS stacking-context style
+    (`ui_stacking_z`: nearest ancestor-or-self with a non-zero z). The flat
+    `(zIndex, index)` sort painted a dialog's scrim (z30) and card (z31) over
+    the card's own z0 children — the band compositor erased the content it
+    had just drawn (dialog showed only the topmost child), and hit-testing
+    saw the card as "topmost" so its buttons could never receive taps.
+    Applies to the draw order, the band compositor, and both hit-tests
+    (device `ui_hit_test` + preview).
+  - Marking an overlapping higher layer dirty now marks its DESCENDANTS too.
+    A press under the dialog marked the scrim and card dirty (overlapping
+    higher layers of the pressed button) but not the card's children — the
+    dirty pass repainted the container faces alone and erased the
+    band-composed dialog content in the same frame.
+
 - **Dialog/toast hardware round 3: tap routing, modal-toggle flashing, and
   the toast auto-dismiss remnant.**
   - `ui_hit_test` now targets the TOPMOST node at the tap point and bubbles

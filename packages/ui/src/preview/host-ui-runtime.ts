@@ -635,16 +635,31 @@ export class PreviewUIRuntime {
     return true;
   }
 
+  /** Effective stacking z, CSS-style: a non-zero zIndex raises the node AND
+   *  its subtree — a z-raised panel forms a stacking context, so its
+   *  descendants stack WITH it (above lower-z siblings), never
+   *  independently UNDER it (a flat (z, index) sort painted a dialog card
+   *  over its own children). 0 = "auto" — keep walking ancestors. */
+  private stackingZ(node: MutableNode): number {
+    let n: MutableNode | undefined = node;
+    while (n) {
+      const z = Math.trunc(n.zIndex ?? 0);
+      if (z !== 0) return z;
+      n = n.parentIndex >= 0 && n.parentIndex < this.nodes.length ? this.nodes[n.parentIndex] : undefined;
+    }
+    return 0;
+  }
+
   private drawsBefore(a: MutableNode, b: MutableNode): boolean {
-    const az = Math.trunc(a.zIndex ?? 0);
-    const bz = Math.trunc(b.zIndex ?? 0);
+    const az = this.stackingZ(a);
+    const bz = this.stackingZ(b);
     if (az !== bz) return az < bz;
     return a.index < b.index;
   }
 
   private compareDrawOrder(a: MutableNode, b: MutableNode): number {
-    const az = Math.trunc(a.zIndex ?? 0);
-    const bz = Math.trunc(b.zIndex ?? 0);
+    const az = this.stackingZ(a);
+    const bz = this.stackingZ(b);
     if (az !== bz) return az - bz;
     return a.index - b.index;
   }
@@ -2896,7 +2911,14 @@ export class PreviewUIRuntime {
   }
 
   private hitTest(tx: number, ty: number): number {
-    let best = -1;
+    // Phase 1 — the event target: the TOPMOST node containing the tap
+    // (stacking order), regardless of handlers. Filtering for
+    // handler-bearing nodes here let a tap fall through SIBLING layers — a
+    // modal card (no handler) over a click-to-close scrim (handler) sent
+    // every card tap to the scrim, so any tap dismissed the dialog. The DOM
+    // rule: the click targets the topmost element, then bubbles to
+    // ANCESTORS only — never sideways to a covered sibling.
+    let target = -1;
     for (let i = 0; i < this.nodes.length; i++) {
       const node = this.nodes[i];
       if (!this.isEffectivelyVisible(node)) continue;
@@ -2913,10 +2935,20 @@ export class PreviewUIRuntime {
         // still have a tappable link segment in its visible portion.
         const clip = this.scrollClipForNode(i);
         if (clip && (tx < clip.x || tx >= clip.x + clip.w || ty < clip.y || ty >= clip.y + clip.h)) continue;
-        if (this.hasAnyHandler(i) && (best < 0 || this.drawsBefore(this.nodes[best], node))) best = i;
+        if (target < 0 || this.drawsBefore(this.nodes[target], node)) target = i;
       }
     }
-    return best;
+    // Phase 2 — bubbling: from the target up through its ancestors.
+    // Interactive kinds match even with no JS handler wired (:pressed/
+    // transition feedback); otherwise the first handler-bearing ancestor.
+    let n = target;
+    while (n >= 0) {
+      const node = this.nodes[n];
+      if (this.hasAnyHandler(n)) return n;
+      if (node.parentIndex < 0 || node.parentIndex >= this.nodes.length) break;
+      n = node.parentIndex;
+    }
+    return -1;
   }
 
   // Unified scroll hit-scan: one pass over scrollable nodes. Lists are
