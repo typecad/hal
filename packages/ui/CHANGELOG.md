@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- **Drawer fixes: content no longer vanishes on a Tap-me press, and the
+  closed drawer fully leaves the display (peek removed).**
+  - Ladder-drawing a container now re-marks its descendants. A press inside
+    an open drawer marked the whole subtree dirty, but the dirty pass's
+    merge compositor composed the small children (texts/buttons) first and
+    cleared their flags — leaving the too-big-to-merge panel for the
+    per-node ladder, whose clear+fill then erased the merge-composed
+    children (title/Close vanished exactly like the dialog did before its
+    stacking fix). The draw pass re-marks descendants of any ladder-drawn
+    container; they sort after it and restore their pixels in the same
+    pass. Scroll owners never reach the ladder, so scroll repaints do not
+    amplify.
+  - ALL edge panels (drawers and toasts) slide fully off the display —
+    travel clears the display edge, not just the panel's own height. The
+    old `travel == box.h` parked a bottom panel's top rows at the fold: a
+    sliver stayed visible after close. That sliver was never shown before
+    the first open (the initial paint's scroll-clip dropped it) and a
+    closed panel can't be tapped open, so it read as a rendering artifact
+    rather than an affordance. Device and preview.
+
 - **Fixed the modal-toggle flash: a successful drawer band compose now
   clears the dirty flags it satisfies.** The open frame composed the whole
   dialog through the band renderer — and then the dirty pass repainted the

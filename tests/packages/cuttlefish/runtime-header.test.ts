@@ -389,14 +389,29 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_subtree_current_paint_rect\(di, &panelRect\)/);
   });
 
-  it("toast slide travel clears the display edge (no remnant strip after auto-close)", () => {
-    // Regression: travel == box.h left a bottom:0 toast's top rows parked
-    // exactly at the display bottom — a strip of title stayed visible after
-    // the auto-dismiss slide ("didn't lower enough to go out of view").
-    // Toasts (toastDuration > 0) slide fully off the display; drawers keep
-    // their intentional edge peek.
-    expect(header).toMatch(/d->toastDuration > 0\) \{[\s\S]*?ui_display_target_bounds/);
+  it("edge panels slide fully off the display (no peek after close)", () => {
+    // Regression: travel == box.h left a bottom:0 panel's top rows parked
+    // exactly at the display bottom — a sliver of title stayed visible after
+    // close (toast auto-dismiss first, then the drawer). The seeded closed
+    // state never showed the sliver before the first open, and a closed
+    // panel can't be tapped open, so it read as an artifact, not an
+    // affordance. ALL edge panels (drawers and toasts) now clear the
+    // display edge; only centered dialogs (side 4) keep travel 0.
+    expect(header).toMatch(/if \(d->drawerSide == 4\) travel = 0;[\s\S]{0,1300}ui_display_target_bounds/);
     expect(header).toMatch(/if \(need > travel\) travel = need;/);
+    expect(header).not.toMatch(/d->toastDuration > 0\) \{[\s\S]{0,300}ui_display_target_bounds/);
+  });
+
+  it("ladder-drawing a container re-marks its descendants (merge clearing can't strand them)", () => {
+    // Regression: a press inside an open drawer marked the whole subtree,
+    // but the merge pass composed the small children (texts/buttons) and
+    // CLEARED their flags, leaving the too-big panel for the per-node
+    // ladder — its clear+fill erased the merge-composed children and
+    // nothing re-drew them (drawer content vanished on Tap me). The draw
+    // pass re-marks descendants of any ladder-drawn container; they sort
+    // after it and restore their pixels in the same pass.
+    expect(header).toMatch(
+      /Ladder-drawing a CONTAINER[\s\S]{0,1000}for \(uint16_t c = static_cast<uint16_t>\(i\) \+ 1;[\s\S]{0,400}__ui_nodes\[c\]\.dirty = 1;/);
   });
 
   it("z-index raises the whole subtree (CSS stacking context), in draw order AND hit-test", () => {

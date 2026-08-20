@@ -515,14 +515,17 @@ static void ui_drawer_apply(uint8_t slot, uint8_t progress) {
   int16_t travel = (d->drawerSide == 2 || d->drawerSide == 3)
     ? static_cast<int16_t>(d->box.w) : static_cast<int16_t>(d->box.h);
   if (d->drawerSide == 4) travel = 0;  // <dialog>: centered, no slide
-  else if (d->toastDuration > 0) {
-    // A toast must slide FULLY off the display, not just its own height: a
-    // bottom toast parked at the viewport bottom (bottom:0) is already AT the
-    // panel edge, so travel == box.h parks its top row exactly at the panel
-    // bottom — a strip of title stayed visible under the fold on hardware.
-    // Drawers keep their intentional peek; toasts vanish completely. Rest
-    // position = box minus ancestor scroll (transformOffset still holds the
-    // previous apply's slide at this point, so it cannot be used here).
+  else {
+    // Edge panels must slide FULLY off the display, not just their own
+    // height: a bottom panel anchored at the viewport bottom (bottom:0) is
+    // already AT the edge, so travel == box.h parks its top row exactly at
+    // the fold — a sliver stayed visible after close. The seeded closed
+    // state never showed that sliver before the first open (the initial
+    // paint's scroll-clip dropped it), and a closed panel can't be tapped
+    // open, so the post-close "peek" read as a rendering artifact, not an
+    // affordance — it is gone for drawers and toasts alike. Rest position =
+    // box minus ancestor scroll (transformOffset still holds the previous
+    // apply's slide at this point, so it cannot be used here).
     int16_t restX = static_cast<int16_t>(d->box.x);
     int16_t restY = static_cast<int16_t>(d->box.y);
     uint16_t pa = d->parent;

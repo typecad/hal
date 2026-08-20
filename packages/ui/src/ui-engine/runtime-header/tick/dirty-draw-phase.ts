@@ -534,6 +534,27 @@ export function emitTickDirtyDrawPhase(): string {
       bufferedScrollRepaintCanvas = nullptr;
     }
 
+    // Ladder-drawing a CONTAINER (fill/view panel) clears and redraws its
+    // whole paint rect — everything drawn inside it (its descendants) is
+    // erased by this pass. Mark-time propagation (ui_mark_dirty) already
+    // marks descendants, but the merge pass composes and CLEARS some of
+    // them before this node's ladder turn — a press inside an open drawer
+    // left the panel for the ladder (too big to merge) while its texts and
+    // buttons were merge-composed first; the panel's clear+fill then erased
+    // them and nothing re-drew them. Re-mark the descendants here: they sort
+    // after this node, so they restore their pixels later in this same pass.
+    // Scroll owners never reach this point (the compositor paths skip them),
+    // so scroll-subtree repaints do not amplify.
+    if (__ui_nodes[i].subtreeEnd > static_cast<uint16_t>(i) + 1 &&
+        __ui_nodes[i].kind != NODE_LIST) {
+      for (uint16_t c = static_cast<uint16_t>(i) + 1;
+           c < __ui_nodes[i].subtreeEnd && c < __ui_node_count; c++) {
+        if (!__ui_nodes[c].visible) continue;
+        if (__ui_nodes[c].screenId != __ui_active_screen) continue;
+        __ui_nodes[c].dirty = 1;
+      }
+    }
+
     // Redirect to the scroll canvas if this node is inside the buffered container
     // AND a real canvas is active this frame (Mode B only). Direct-strip and
     // direct-full have no canvas — their children must draw to the display target

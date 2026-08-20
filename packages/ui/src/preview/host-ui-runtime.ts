@@ -3378,16 +3378,14 @@ export class PreviewUIRuntime {
     for (const st of this.drawerStates.values()) st.open = false;
   }
 
-  /** Slide extent for a drawer: the panel dimension along its travel axis.
-   *  Toasts must slide fully off the display — a bottom:0 toast already sits
-   *  at the display edge, so its own height would park a strip of title
-   *  on-screen (the device had exactly that remnant). Drawers keep their
-   *  intentional peek. */
+  /** Slide extent for a drawer or toast: the panel must clear the display
+   *  edge completely — its own height parks a bottom:0 panel's top row at
+   *  the fold (a visible sliver after close). Centered dialogs don't slide. */
   private drawerExtent(node: MutableNode): number {
-    const n = node as MutableNode & { drawerSide?: number; toastDuration?: number };
+    const n = node as MutableNode & { drawerSide?: number };
     const side = n.drawerSide ?? 0;
     const extent = side === 2 || side === 3 ? node.box.w : node.box.h;
-    if (side === 4 || (n.toastDuration ?? 0) <= 0) return extent;
+    if (side === 4) return 0;
     // Rest position (box minus ancestor scroll; transform offsets hold the
     // current slide), then clear the display edge along the travel axis.
     let restX = node.box.x;

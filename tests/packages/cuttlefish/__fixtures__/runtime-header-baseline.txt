@@ -7135,6 +7135,27 @@ static inline void ui_tick(uint16_t deltaMs) {
       bufferedScrollRepaintCanvas = nullptr;
     }
 
+    // Ladder-drawing a CONTAINER (fill/view panel) clears and redraws its
+    // whole paint rect — everything drawn inside it (its descendants) is
+    // erased by this pass. Mark-time propagation (ui_mark_dirty) already
+    // marks descendants, but the merge pass composes and CLEARS some of
+    // them before this node's ladder turn — a press inside an open drawer
+    // left the panel for the ladder (too big to merge) while its texts and
+    // buttons were merge-composed first; the panel's clear+fill then erased
+    // them and nothing re-drew them. Re-mark the descendants here: they sort
+    // after this node, so they restore their pixels later in this same pass.
+    // Scroll owners never reach this point (the compositor paths skip them),
+    // so scroll-subtree repaints do not amplify.
+    if (__ui_nodes[i].subtreeEnd > static_cast<uint16_t>(i) + 1 &&
+        __ui_nodes[i].kind != NODE_LIST) {
+      for (uint16_t c = static_cast<uint16_t>(i) + 1;
+           c < __ui_nodes[i].subtreeEnd && c < __ui_node_count; c++) {
+        if (!__ui_nodes[c].visible) continue;
+        if (__ui_nodes[c].screenId != __ui_active_screen) continue;
+        __ui_nodes[c].dirty = 1;
+      }
+    }
+
     // Redirect to the scroll canvas if this node is inside the buffered container
     // AND a real canvas is active this frame (Mode B only). Direct-strip and
     // direct-full have no canvas — their children must draw to the display target
@@ -8095,14 +8116,17 @@ static void ui_drawer_apply(uint8_t slot, uint8_t progress) {
   int16_t travel = (d->drawerSide == 2 || d->drawerSide == 3)
     ? static_cast<int16_t>(d->box.w) : static_cast<int16_t>(d->box.h);
   if (d->drawerSide == 4) travel = 0;  // <dialog>: centered, no slide
-  else if (d->toastDuration > 0) {
-    // A toast must slide FULLY off the display, not just its own height: a
-    // bottom toast parked at the viewport bottom (bottom:0) is already AT the
-    // panel edge, so travel == box.h parks its top row exactly at the panel
-    // bottom — a strip of title stayed visible under the fold on hardware.
-    // Drawers keep their intentional peek; toasts vanish completely. Rest
-    // position = box minus ancestor scroll (transformOffset still holds the
-    // previous apply's slide at this point, so it cannot be used here).
+  else {
+    // Edge panels must slide FULLY off the display, not just their own
+    // height: a bottom panel anchored at the viewport bottom (bottom:0) is
+    // already AT the edge, so travel == box.h parks its top row exactly at
+    // the fold — a sliver stayed visible after close. The seeded closed
+    // state never showed that sliver before the first open (the initial
+    // paint's scroll-clip dropped it), and a closed panel can't be tapped
+    // open, so the post-close "peek" read as a rendering artifact, not an
+    // affordance — it is gone for drawers and toasts alike. Rest position =
+    // box minus ancestor scroll (transformOffset still holds the previous
+    // apply's slide at this point, so it cannot be used here).
     int16_t restX = static_cast<int16_t>(d->box.x);
     int16_t restY = static_cast<int16_t>(d->box.y);
     uint16_t pa = d->parent;
