@@ -414,6 +414,20 @@ describe("C++ reactive runtime header", () => {
       /Ladder-drawing a CONTAINER[\s\S]{0,1000}for \(uint16_t c = static_cast<uint16_t>\(i\) \+ 1;[\s\S]{0,400}__ui_nodes\[c\]\.dirty = 1;/);
   });
 
+  it("a container's ladder turn composes its subtree region tear-free (no erase + re-pop)", () => {
+    // The re-mark fallback alone repaints the container face first (erasing
+    // its children) and then pops each child back one ladder at a time —
+    // the eye reads that erase/re-pop as a flash when pressing a button
+    // inside an open drawer. The container's ladder turn instead composes
+    // its whole subtree REGION through the band renderer (one pass, correct
+    // stacking, no intermediate state) and clears the dirty flags inside
+    // the region. The merge pass also skips nodes a dirty ancestor owns,
+    // so it can't compose-and-clear children the ancestor will repaint.
+    expect(header).toMatch(
+      /A container with descendants reaches its ladder turn[\s\S]{0,1200}ui_render_screen_bands\(subtreeRegion\.x, subtreeRegion\.y, subtreeRegion\.w, subtreeRegion\.h\)/);
+    expect(header).toMatch(/A dirty ancestor's ladder turn owns this node's repaint/);
+  });
+
   it("z-index raises the whole subtree (CSS stacking context), in draw order AND hit-test", () => {
     // Regression: a flat (zIndex, index) sort painted a dialog's scrim (z30)
     // and card (z31) over the card's own z0 children — the band compositor

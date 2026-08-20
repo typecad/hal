@@ -316,6 +316,20 @@ export function emitTickDirtyDrawPhase(): string {
       if (!ui_is_effectively_visible(m)) continue;
       if (__ui_nodes[m].kind == NODE_LIST || __ui_nodes[m].virtualized) continue;
       if (ui_overflow_scroll_compositor(m) >= 0) continue; // scroll machinery owns it
+      // A dirty ancestor's ladder turn owns this node's repaint: the ancestor
+      // composes its whole subtree region (or ladders and re-marks its
+      // descendants). Merging the node here composes it first, and the
+      // ancestor's clear+fill then erases it — the erase + re-pop sequence
+      // was the visible flash when pressing a button inside an open drawer.
+      {
+        uint16_t ap = __ui_nodes[m].parent;
+        while (ap != UI_NO_PARENT && ap < __ui_node_count) {
+          if (__ui_nodes[ap].dirty &&
+              __ui_nodes[ap].screenId == __ui_active_screen) break;
+          ap = __ui_nodes[ap].parent;
+        }
+        if (ap != UI_NO_PARENT && ap < __ui_node_count) continue;
+      }
       UIRect mr;
       ui_node_current_paint_rect(m, &mr);
       if (mr.w <= 0 || mr.h <= 0) continue;
@@ -565,6 +579,43 @@ export function emitTickDirtyDrawPhase(): string {
     uint8_t drawingBufferedScroll = !bufferedScrollDirectFull &&
       (bufferedScrollCanvas != nullptr) && bufferedScrollNode >= 0 &&
       i > bufferedScrollNode && i < __ui_nodes[bufferedScrollNode].subtreeEnd;
+    // A container with descendants reaches its ladder turn only when the
+    // merge pass couldn't own it (too big to merge, or a dirty ancestor
+    // excluded the children). The ladder clears + redraws just this node —
+    // erasing every descendant pixel — and the re-marked descendants would
+    // then pop back one ladder at a time: an erase + re-pop the eye reads
+    // as a flash (pressing a button inside an open drawer). Instead compose
+    // the container's whole subtree REGION through the band renderer — one
+    // pass, correct stacking order, no intermediate state — and clear every
+    // dirty node inside the region (the compose already painted them in
+    // final form). Falls back to the ladder + re-marks when the band canvas
+    // can't allocate. Display path only: into an active scroll canvas the
+    // ladder draws (children re-mark into the canvas afterwards).
+    if (!drawingBufferedScroll &&
+        __ui_nodes[i].subtreeEnd > static_cast<uint16_t>(i) + 1 &&
+        __ui_nodes[i].kind != NODE_LIST) {
+      UIRect subtreeRegion;
+      if (ui_subtree_current_paint_rect(static_cast<uint16_t>(i), &subtreeRegion) &&
+          subtreeRegion.w > 0 && subtreeRegion.h > 0) {
+        if (ui_render_screen_bands(subtreeRegion.x, subtreeRegion.y, subtreeRegion.w, subtreeRegion.h)) {
+          __ui_frame_painted = 1;
+          ui_invalidate_scroll_canvas_for_node(static_cast<uint16_t>(i));
+          for (uint16_t q = 0; q < __ui_node_count; q++) {
+            if (__ui_nodes[q].screenId != __ui_active_screen) continue;
+            if (!__ui_nodes[q].dirty) continue;
+            UIRect qr;
+            ui_node_current_paint_rect(q, &qr);
+            if (qr.w <= 0 || qr.h <= 0) continue;
+            if (qr.x >= subtreeRegion.x && qr.y >= subtreeRegion.y &&
+                static_cast<int16_t>(qr.x + qr.w) <= static_cast<int16_t>(subtreeRegion.x + subtreeRegion.w) &&
+                static_cast<int16_t>(qr.y + qr.h) <= static_cast<int16_t>(subtreeRegion.y + subtreeRegion.h)) {
+              __ui_nodes[q].dirty = 0;
+            }
+          }
+          continue;
+        }
+      }
+    }
     int16_t origBoxX = __ui_nodes[i].box.x;
     int16_t origBoxY = __ui_nodes[i].box.y;
     if (drawingBufferedScroll) {

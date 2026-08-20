@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Fixed the flash when pressing a button inside an open drawer.** The
+  previous frame contract repainted the drawer panel through the per-node
+  ladder (clear+fill) and then popped each re-marked child back one ladder
+  at a time — an erase/re-pop sequence the eye reads as a flash. A
+  container's ladder turn now composes its whole subtree REGION through
+  the band renderer instead: one pass, correct stacking order, no
+  intermediate state, then clears the dirty flags inside the region. The
+  merge pass likewise skips nodes a dirty ancestor will repaint, so it can
+  no longer compose-and-clear children just before the ancestor's erase.
+  Host-harness verified: the Tap-me frame is one echo repaint plus one
+  6-band subtree compose — no direct fills, no re-pops, and the echo text
+  updates. Screens without dirty containers (e.g. the plain Buttons
+  screen) keep the unchanged per-node path.
+
 - **Drawer fixes: content no longer vanishes on a Tap-me press, and the
   closed drawer fully leaves the display (peek removed).**
   - Ladder-drawing a container now re-marks its descendants. A press inside
