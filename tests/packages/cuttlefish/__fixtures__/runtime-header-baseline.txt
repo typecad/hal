@@ -3123,10 +3123,18 @@ static inline void ui_kb_compute_box();
 #define UI_DRAG_THRESHOLD 10
 
 // Hit-test a touch point against all visible nodes (topmost first).
-// Returns the node index of the topmost node that BOTH contains the point
-// AND has a click handler registered. Returns -1 if none.
+// Returns the node the tap TARGETS, resolved like the DOM: the topmost node
+// whose box contains the point, then bubbling to ANCESTORS only. Returns -1
+// if no ancestor of the target is interactive or handler-bearing.
 static int16_t ui_hit_test(int16_t tx, int16_t ty) {
-  int16_t best = -1;
+  // Phase 1 — the event target: the TOPMOST node containing the tap (last in
+  // draw order), regardless of handlers. Filtering for handler-bearing nodes
+  // here let a tap fall through SIBLING layers: a modal card (no handler,
+  // higher z) over a click-to-close scrim (handler) routed every card tap to
+  // the scrim underneath, so any tap dismissed the dialog. In the DOM the
+  // click targets the topmost element and never propagates sideways to a
+  // covered sibling.
+  int16_t target = -1;
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     if (!ui_is_effectively_visible(i)) continue;
     if (__ui_nodes[i].screenId != __ui_active_screen) continue;
@@ -3140,23 +3148,25 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
       // a tall wrapped paragraph can overflow below the fold yet still have a
       // tappable link segment in its visible portion.
       if (ui_is_point_clipped_by_scroll(static_cast<uint16_t>(i), tx, ty)) continue;
-      // Skip nodes without any click handler — they're containers, not targets.
-      // Exceptions: NODE_RANGE (horizontal drag), NODE_INPUT (opens keyboard),
-      // NODE_LIST (virtualized item tap), and NODE_BUTTON — the last so a button
-      // gets :pressed/transition visual feedback even with no JS onClick wired
-      // (a pure-CSS button like a demo "tap to transition" control).
-      if (__ui_nodes[i].kind == NODE_RANGE || __ui_nodes[i].kind == NODE_INPUT || __ui_nodes[i].kind == NODE_LIST || __ui_nodes[i].kind == NODE_BUTTON || __ui_nodes[i].kind == NODE_CHECK || __ui_nodes[i].kind == NODE_RADIO) {
-        if (best < 0 || ui_node_draws_before(best, i)) best = i;
-        continue;
-      }
-      if ((i < __ui_click_handler_count && __ui_click_handlers[i]) ||
-          (i < __ui_hold_handler_count && __ui_hold_handlers[i]) ||
-          (i < __ui_release_handler_count && __ui_release_handlers[i])) {
-        if (best < 0 || ui_node_draws_before(best, i)) best = i;
-      }
+      if (target < 0 || ui_node_draws_before(target, i)) target = static_cast<int16_t>(i);
     }
   }
-  return best;
+  // Phase 2 — bubbling: walk from the target up through its ancestors.
+  // Interactive kinds match even with no JS handler wired — NODE_RANGE
+  // (horizontal drag), NODE_INPUT (opens the keyboard), NODE_LIST
+  // (virtualized item tap), and NODE_BUTTON/NODE_CHECK/NODE_RADIO so a
+  // pure-CSS control still gets :pressed/transition visual feedback.
+  int16_t n = target;
+  while (n >= 0) {
+    uint16_t u = static_cast<uint16_t>(n);
+    if (__ui_nodes[u].kind == NODE_RANGE || __ui_nodes[u].kind == NODE_INPUT || __ui_nodes[u].kind == NODE_LIST || __ui_nodes[u].kind == NODE_BUTTON || __ui_nodes[u].kind == NODE_CHECK || __ui_nodes[u].kind == NODE_RADIO) return n;
+    if ((u < __ui_click_handler_count && __ui_click_handlers[u]) ||
+        (u < __ui_hold_handler_count && __ui_hold_handlers[u]) ||
+        (u < __ui_release_handler_count && __ui_release_handlers[u])) return n;
+    if (__ui_nodes[u].parent == UI_NO_PARENT || __ui_nodes[u].parent >= __ui_node_count) break;
+    n = static_cast<int16_t>(__ui_nodes[u].parent);
+  }
+  return -1;
 }
 
 // Dispatch a handler from the given table if registered for the node.
@@ -8055,6 +8065,29 @@ static void ui_drawer_apply(uint8_t slot, uint8_t progress) {
   int16_t travel = (d->drawerSide == 2 || d->drawerSide == 3)
     ? static_cast<int16_t>(d->box.w) : static_cast<int16_t>(d->box.h);
   if (d->drawerSide == 4) travel = 0;  // <dialog>: centered, no slide
+  else if (d->toastDuration > 0) {
+    // A toast must slide FULLY off the display, not just its own height: a
+    // bottom toast parked at the viewport bottom (bottom:0) is already AT the
+    // panel edge, so travel == box.h parks its top row exactly at the panel
+    // bottom — a strip of title stayed visible under the fold on hardware.
+    // Drawers keep their intentional peek; toasts vanish completely. Rest
+    // position = box minus ancestor scroll (transformOffset still holds the
+    // previous apply's slide at this point, so it cannot be used here).
+    int16_t restX = static_cast<int16_t>(d->box.x);
+    int16_t restY = static_cast<int16_t>(d->box.y);
+    uint16_t pa = d->parent;
+    while (pa != UI_NO_PARENT && pa < __ui_node_count) {
+      if (__ui_nodes[pa].scrollable) restY = static_cast<int16_t>(restY - __ui_nodes[pa].scrollY);
+      pa = __ui_nodes[pa].parent;
+    }
+    int16_t dl = 0, dt = 0, dr = 0, db = 0;
+    ui_display_target_bounds(&dl, &dt, &dr, &db);
+    int16_t need = d->drawerSide == 0 ? static_cast<int16_t>(db - restY)
+      : d->drawerSide == 1 ? static_cast<int16_t>(restY + d->box.h - dt)
+      : d->drawerSide == 2 ? static_cast<int16_t>(restX + d->box.w - dl)
+      : static_cast<int16_t>(dr - restX);
+    if (need > travel) travel = need;
+  }
   int16_t off = static_cast<int16_t>((static_cast<int32_t>(travel) * (255 - progress)) / 255);
   int16_t dx = d->drawerSide == 2 ? -off : d->drawerSide == 3 ? off : 0;
   int16_t dy = d->drawerSide == 1 ? -off : d->drawerSide == 0 ? off : 0;
@@ -8109,7 +8142,7 @@ static void ui_drawer_tick(uint32_t deltaMs) {
     // Compose each slide frame as the UNION of the drawer's old and new
     // SUBTREE paint rects in tear-free bands (ui_render_screen_bands). The
     // previous contract — mark the whole active screen dirty per slide step —
-    // repaints the entire screen with direct per-node clears on no-fb
+    // repainted the entire screen with direct per-node clears on no-fb
     // targets: visible flashing, and only ~3 steps fit inside the 180ms
     // slide. The banded union is a fraction of the SPI traffic and never
     // exposes an intermediate state. Falls back to the whole-screen dirty
@@ -8122,18 +8155,29 @@ static void ui_drawer_tick(uint32_t deltaMs) {
     // NOTHING repainted on open or close on hardware. The preview already
     // used its currentSubtreePaintRect here. Side-4 dialogs also snap
     // instead of animating: travel is 0, so intermediate progress values
-    // are 180ms of identical frames.
+    // are 180ms of identical frames — the snap composes ONE band frame for
+    // the open state and ONE for the erase, so modal toggles are tear-free
+    // on no-fb SPI targets too (mark-all's per-node clears flashed the
+    // whole screen).
     uint16_t di = static_cast<uint16_t>(__ui_drawer_idx[s]);
     uint8_t next = target > p ? (p + step > target ? target : p + step)
                               : (p < step || p - step < target ? target : p - step);
     if (__ui_nodes[di].drawerSide == 4) next = target;
     UIRect oldRect;
-    if (!ui_subtree_current_paint_rect(di, &oldRect)) { oldRect.w = 0; oldRect.h = 0; }
+    uint8_t hasOld = ui_subtree_current_paint_rect(di, &oldRect);
     ui_drawer_apply(s, next);
     UIRect newRect;
-    if (!ui_subtree_current_paint_rect(di, &newRect)) { newRect.w = 0; newRect.h = 0; }
+    uint8_t hasNew = ui_subtree_current_paint_rect(di, &newRect);
+    // A failed rect query leaves x/y UNWRITTEN — unioning it against the
+    // good side mixed stack garbage into the band region (huge regions clipped
+    // to full-screen, or empty ones that "composed" nothing). When one side
+    // has no on-screen extent (a dialog snapping open from fully-closed, or
+    // erasing to fully-closed), the union is just the side that exists.
+    if (!hasOld && !hasNew) continue;
+    if (!hasOld) oldRect = newRect;
+    if (!hasNew) newRect = oldRect;
     uint8_t composed = 0;
-    if (!ui_get_framebuffer() && __ui_nodes[di].drawerSide != 4) {
+    if (!ui_get_framebuffer()) {
       int16_t ux0 = oldRect.x < newRect.x ? oldRect.x : newRect.x;
       int16_t uy0 = oldRect.y < newRect.y ? oldRect.y : newRect.y;
       int16_t ux1 = oldRect.x + oldRect.w > newRect.x + newRect.w ? static_cast<int16_t>(oldRect.x + oldRect.w) : static_cast<int16_t>(newRect.x + newRect.w);

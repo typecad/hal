@@ -3346,10 +3346,31 @@ export class PreviewUIRuntime {
     for (const st of this.drawerStates.values()) st.open = false;
   }
 
-  /** Slide extent for a drawer: the panel dimension along its travel axis. */
+  /** Slide extent for a drawer: the panel dimension along its travel axis.
+   *  Toasts must slide fully off the display — a bottom:0 toast already sits
+   *  at the display edge, so its own height would park a strip of title
+   *  on-screen (the device had exactly that remnant). Drawers keep their
+   *  intentional peek. */
   private drawerExtent(node: MutableNode): number {
-    const side = (node as unknown as { drawerSide?: number }).drawerSide ?? 0;
-    return side === 2 || side === 3 ? node.box.w : node.box.h;
+    const n = node as MutableNode & { drawerSide?: number; toastDuration?: number };
+    const side = n.drawerSide ?? 0;
+    const extent = side === 2 || side === 3 ? node.box.w : node.box.h;
+    if (side === 4 || (n.toastDuration ?? 0) <= 0) return extent;
+    // Rest position (box minus ancestor scroll; transform offsets hold the
+    // current slide), then clear the display edge along the travel axis.
+    let restX = node.box.x;
+    let restY = node.box.y;
+    let parent = node.parentIndex;
+    while (parent >= 0 && this.nodes[parent]) {
+      const pn = this.nodes[parent] as MutableNode;
+      if (pn.scrollable) restY -= pn.scrollY;
+      parent = pn.parentIndex;
+    }
+    const need = side === 0 ? this.snapshot.program.height - restY
+      : side === 1 ? restY + node.box.h
+      : side === 2 ? restX + node.box.w
+      : this.snapshot.program.width - restX;
+    return Math.max(extent, need);
   }
 
   /** Apply a slide progress to the drawer subtree: offsets shift from the

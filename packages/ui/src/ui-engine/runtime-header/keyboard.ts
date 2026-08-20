@@ -515,6 +515,29 @@ static void ui_drawer_apply(uint8_t slot, uint8_t progress) {
   int16_t travel = (d->drawerSide == 2 || d->drawerSide == 3)
     ? static_cast<int16_t>(d->box.w) : static_cast<int16_t>(d->box.h);
   if (d->drawerSide == 4) travel = 0;  // <dialog>: centered, no slide
+  else if (d->toastDuration > 0) {
+    // A toast must slide FULLY off the display, not just its own height: a
+    // bottom toast parked at the viewport bottom (bottom:0) is already AT the
+    // panel edge, so travel == box.h parks its top row exactly at the panel
+    // bottom — a strip of title stayed visible under the fold on hardware.
+    // Drawers keep their intentional peek; toasts vanish completely. Rest
+    // position = box minus ancestor scroll (transformOffset still holds the
+    // previous apply's slide at this point, so it cannot be used here).
+    int16_t restX = static_cast<int16_t>(d->box.x);
+    int16_t restY = static_cast<int16_t>(d->box.y);
+    uint16_t pa = d->parent;
+    while (pa != UI_NO_PARENT && pa < __ui_node_count) {
+      if (__ui_nodes[pa].scrollable) restY = static_cast<int16_t>(restY - __ui_nodes[pa].scrollY);
+      pa = __ui_nodes[pa].parent;
+    }
+    int16_t dl = 0, dt = 0, dr = 0, db = 0;
+    ui_display_target_bounds(&dl, &dt, &dr, &db);
+    int16_t need = d->drawerSide == 0 ? static_cast<int16_t>(db - restY)
+      : d->drawerSide == 1 ? static_cast<int16_t>(restY + d->box.h - dt)
+      : d->drawerSide == 2 ? static_cast<int16_t>(restX + d->box.w - dl)
+      : static_cast<int16_t>(dr - restX);
+    if (need > travel) travel = need;
+  }
   int16_t off = static_cast<int16_t>((static_cast<int32_t>(travel) * (255 - progress)) / 255);
   int16_t dx = d->drawerSide == 2 ? -off : d->drawerSide == 3 ? off : 0;
   int16_t dy = d->drawerSide == 1 ? -off : d->drawerSide == 0 ? off : 0;
@@ -569,7 +592,7 @@ static void ui_drawer_tick(uint32_t deltaMs) {
     // Compose each slide frame as the UNION of the drawer's old and new
     // SUBTREE paint rects in tear-free bands (ui_render_screen_bands). The
     // previous contract — mark the whole active screen dirty per slide step —
-    // repaints the entire screen with direct per-node clears on no-fb
+    // repainted the entire screen with direct per-node clears on no-fb
     // targets: visible flashing, and only ~3 steps fit inside the 180ms
     // slide. The banded union is a fraction of the SPI traffic and never
     // exposes an intermediate state. Falls back to the whole-screen dirty
@@ -582,18 +605,29 @@ static void ui_drawer_tick(uint32_t deltaMs) {
     // NOTHING repainted on open or close on hardware. The preview already
     // used its currentSubtreePaintRect here. Side-4 dialogs also snap
     // instead of animating: travel is 0, so intermediate progress values
-    // are 180ms of identical frames.
+    // are 180ms of identical frames — the snap composes ONE band frame for
+    // the open state and ONE for the erase, so modal toggles are tear-free
+    // on no-fb SPI targets too (mark-all's per-node clears flashed the
+    // whole screen).
     uint16_t di = static_cast<uint16_t>(__ui_drawer_idx[s]);
     uint8_t next = target > p ? (p + step > target ? target : p + step)
                               : (p < step || p - step < target ? target : p - step);
     if (__ui_nodes[di].drawerSide == 4) next = target;
     UIRect oldRect;
-    if (!ui_subtree_current_paint_rect(di, &oldRect)) { oldRect.w = 0; oldRect.h = 0; }
+    uint8_t hasOld = ui_subtree_current_paint_rect(di, &oldRect);
     ui_drawer_apply(s, next);
     UIRect newRect;
-    if (!ui_subtree_current_paint_rect(di, &newRect)) { newRect.w = 0; newRect.h = 0; }
+    uint8_t hasNew = ui_subtree_current_paint_rect(di, &newRect);
+    // A failed rect query leaves x/y UNWRITTEN — unioning it against the
+    // good side mixed stack garbage into the band region (huge regions clipped
+    // to full-screen, or empty ones that "composed" nothing). When one side
+    // has no on-screen extent (a dialog snapping open from fully-closed, or
+    // erasing to fully-closed), the union is just the side that exists.
+    if (!hasOld && !hasNew) continue;
+    if (!hasOld) oldRect = newRect;
+    if (!hasNew) newRect = oldRect;
     uint8_t composed = 0;
-    if (!ui_get_framebuffer() && __ui_nodes[di].drawerSide != 4) {
+    if (!ui_get_framebuffer()) {
       int16_t ux0 = oldRect.x < newRect.x ? oldRect.x : newRect.x;
       int16_t uy0 = oldRect.y < newRect.y ? oldRect.y : newRect.y;
       int16_t ux1 = oldRect.x + oldRect.w > newRect.x + newRect.w ? static_cast<int16_t>(oldRect.x + oldRect.w) : static_cast<int16_t>(newRect.x + newRect.w);

@@ -373,14 +373,44 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("if (__ui_nodes[di].drawerSide == 4) next = target;");
   });
 
-  it("centered dialogs repaint via mark-all and close taps hit-test the subtree rect", () => {
-    // The band compositor is skipped for side 4 (a modal open/close is a
-    // rare user action; the whole-screen repaint is the proven navigate
-    // contract), and the outside-tap close uses the SUBTREE rect — the
-    // dialog root lays out at h=0, so the root box closed it on every tap.
-    expect(header).toMatch(/drawerSide != 4\) \{/);
+  it("centered dialogs compose tear-free and close taps hit-test the subtree rect", () => {
+    // A modal toggle composes through the band renderer like every drawer
+    // slide: mark-all's per-node direct clears flashed the whole screen on
+    // no-fb SPI targets (significant flashing on open/close). The rect-union
+    // inputs must be neutralized when a side has no on-screen extent — a
+    // dialog snapping open from fully-closed has no old rect, and the
+    // unwritten x/y mixed stack garbage into the band region. The
+    // outside-tap close uses the SUBTREE rect — the dialog root lays out at
+    // h=0, so the root box closed it on every tap.
+    expect(header).toMatch(/if \(!ui_get_framebuffer\(\)\) \{/);
+    expect(header).not.toMatch(/drawerSide != 4[\s\S]{0,120}ui_render_screen_bands/);
+    expect(header).toMatch(/if \(!hasOld\) oldRect = newRect;/);
     expect(header).toContain("Hit-test the SUBTREE rect");
     expect(header).toMatch(/ui_subtree_current_paint_rect\(di, &panelRect\)/);
+  });
+
+  it("toast slide travel clears the display edge (no remnant strip after auto-close)", () => {
+    // Regression: travel == box.h left a bottom:0 toast's top rows parked
+    // exactly at the display bottom — a strip of title stayed visible after
+    // the auto-dismiss slide ("didn't lower enough to go out of view").
+    // Toasts (toastDuration > 0) slide fully off the display; drawers keep
+    // their intentional edge peek.
+    expect(header).toMatch(/d->toastDuration > 0\) \{[\s\S]*?ui_display_target_bounds/);
+    expect(header).toMatch(/if \(need > travel\) travel = need;/);
+  });
+
+  it("hit-test targets the topmost node and bubbles to ancestors only", () => {
+    // Regression: hit-test picked the topmost HANDLER-BEARING node, so a tap
+    // on a modal card (no handler, higher z) fell through to the
+    // click-to-close scrim underneath (handler) — any tap anywhere dismissed
+    // the dialog. The DOM rule: the click targets the topmost element at the
+    // point, then bubbles to ANCESTORS only — never sideways to a covered
+    // sibling.
+    const fn = header.match(/int16_t ui_hit_test\([\s\S]*?\n\}/)?.[0] ?? "";
+    expect(fn).toMatch(/Phase 2 — bubbling/);
+    expect(fn).toMatch(/__ui_nodes\[u\]\.parent/);
+    expect(fn).toMatch(/__ui_nodes\[u\]\.kind == NODE_RANGE/);
+    expect(fn).toMatch(/NODE_BUTTON/);
   });
 
   it("partial drawer overlap inside a non-composited scroll subtree skips instead of re-dirtying", () => {
@@ -1092,8 +1122,8 @@ describe("touch hit-test supports node indices > 127", () => {
     // 150 (the flex screen) wrapped to -106, so its tap never fired — back
     // buttons on screens 4-9 (nodes 150/210/236/272/296/304) were dead while
     // screens 1-3 (nodes 22/61/102) worked. The return must be int16_t.
-    expect(header).not.toMatch(/ui_hit_test[\s\S]*?return \(int8_t\)best/);
-    expect(header).toMatch(/ui_hit_test[\s\S]*?return best/);
+    expect(header).not.toMatch(/ui_hit_test[\s\S]*?return \(int8_t\)/);
+    expect(header).toMatch(/int16_t ui_hit_test\([\s\S]*?int16_t target = -1;/);
   });
 
   it("does not cast a node index to int8_t anywhere it could truncate", () => {
@@ -1145,7 +1175,7 @@ describe("button press feedback without a click handler", () => {
     // :pressed/transition for feedback) was therefore not tappable at all — its
     // :pressed state never armed. NODE_BUTTON must be in the always-interactive
     // list so a button gets press feedback regardless of a wired handler.
-    const m = header.match(/kind == NODE_RANGE[\s\S]*?NODE_LIST[\s\S]*?best = i/);
+    const m = header.match(/int16_t n = target;[\s\S]*?kind == NODE_RANGE[\s\S]*?return n;/);
     expect(m).toBeTruthy();
     expect(m![0]).toMatch(/NODE_BUTTON/);
   });

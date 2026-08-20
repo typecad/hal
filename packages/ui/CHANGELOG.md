@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+- **Dialog/toast hardware round 3: tap routing, modal-toggle flashing, and
+  the toast auto-dismiss remnant.**
+  - `ui_hit_test` now targets the TOPMOST node at the tap point and bubbles
+    to ancestors only, matching the DOM. It previously picked the topmost
+    handler-bearing node, so a tap on a modal card (no handler, higher z)
+    fell through to the click-to-close scrim underneath (handler) — any tap
+    anywhere dismissed the dialog. Sibling fall-through is gone; a
+    handler-bearing ancestor still receives taps on its children (DOM
+    bubbling).
+  - Centered dialogs (side 4) compose their open/close frames through the
+    band renderer again instead of whole-screen mark-all. With the subtree
+    rects now measuring the real panel extent, the band path composes the
+    open frame and the erase frame tear-free — mark-all's per-node direct
+    clears flashed the whole screen on no-framebuffer SPI targets. The
+    rect-union inputs are neutralized when a side has no on-screen extent
+    (a dialog snapping open from fully-closed has no old rect; the
+    unwritten x/y previously mixed stack garbage into the band region).
+  - Toast slide travel now clears the display edge instead of stopping at
+    the panel's own height. A `bottom:0` toast sits at the display edge, so
+    `travel == box.h` parked its top rows exactly at the fold — a strip of
+    title stayed visible after auto-dismiss. Toasts (`toastDuration > 0`)
+    slide fully off-screen on both device and preview; edge drawers keep
+    their intentional peek.
+
 - **More <dialog> hardware fixes (content paint + close-on-any-tap).**
   - Centered dialogs (side 4) now repaint via the whole-screen mark-all
     contract on open/close instead of the drawer band compositor — a modal

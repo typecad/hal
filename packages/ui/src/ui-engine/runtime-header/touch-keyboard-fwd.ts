@@ -93,10 +93,18 @@ static inline void ui_kb_compute_box();
 #define UI_DRAG_THRESHOLD 10
 
 // Hit-test a touch point against all visible nodes (topmost first).
-// Returns the node index of the topmost node that BOTH contains the point
-// AND has a click handler registered. Returns -1 if none.
+// Returns the node the tap TARGETS, resolved like the DOM: the topmost node
+// whose box contains the point, then bubbling to ANCESTORS only. Returns -1
+// if no ancestor of the target is interactive or handler-bearing.
 static int16_t ui_hit_test(int16_t tx, int16_t ty) {
-  int16_t best = -1;
+  // Phase 1 — the event target: the TOPMOST node containing the tap (last in
+  // draw order), regardless of handlers. Filtering for handler-bearing nodes
+  // here let a tap fall through SIBLING layers: a modal card (no handler,
+  // higher z) over a click-to-close scrim (handler) routed every card tap to
+  // the scrim underneath, so any tap dismissed the dialog. In the DOM the
+  // click targets the topmost element and never propagates sideways to a
+  // covered sibling.
+  int16_t target = -1;
   for (uint16_t i = 0; i < __ui_node_count; i++) {
     if (!ui_is_effectively_visible(i)) continue;
     if (__ui_nodes[i].screenId != __ui_active_screen) continue;
@@ -110,23 +118,25 @@ static int16_t ui_hit_test(int16_t tx, int16_t ty) {
       // a tall wrapped paragraph can overflow below the fold yet still have a
       // tappable link segment in its visible portion.
       if (ui_is_point_clipped_by_scroll(static_cast<uint16_t>(i), tx, ty)) continue;
-      // Skip nodes without any click handler — they're containers, not targets.
-      // Exceptions: NODE_RANGE (horizontal drag), NODE_INPUT (opens keyboard),
-      // NODE_LIST (virtualized item tap), and NODE_BUTTON — the last so a button
-      // gets :pressed/transition visual feedback even with no JS onClick wired
-      // (a pure-CSS button like a demo "tap to transition" control).
-      if (__ui_nodes[i].kind == NODE_RANGE || __ui_nodes[i].kind == NODE_INPUT || __ui_nodes[i].kind == NODE_LIST || __ui_nodes[i].kind == NODE_BUTTON || __ui_nodes[i].kind == NODE_CHECK || __ui_nodes[i].kind == NODE_RADIO) {
-        if (best < 0 || ui_node_draws_before(best, i)) best = i;
-        continue;
-      }
-      if ((i < __ui_click_handler_count && __ui_click_handlers[i]) ||
-          (i < __ui_hold_handler_count && __ui_hold_handlers[i]) ||
-          (i < __ui_release_handler_count && __ui_release_handlers[i])) {
-        if (best < 0 || ui_node_draws_before(best, i)) best = i;
-      }
+      if (target < 0 || ui_node_draws_before(target, i)) target = static_cast<int16_t>(i);
     }
   }
-  return best;
+  // Phase 2 — bubbling: walk from the target up through its ancestors.
+  // Interactive kinds match even with no JS handler wired — NODE_RANGE
+  // (horizontal drag), NODE_INPUT (opens the keyboard), NODE_LIST
+  // (virtualized item tap), and NODE_BUTTON/NODE_CHECK/NODE_RADIO so a
+  // pure-CSS control still gets :pressed/transition visual feedback.
+  int16_t n = target;
+  while (n >= 0) {
+    uint16_t u = static_cast<uint16_t>(n);
+    if (__ui_nodes[u].kind == NODE_RANGE || __ui_nodes[u].kind == NODE_INPUT || __ui_nodes[u].kind == NODE_LIST || __ui_nodes[u].kind == NODE_BUTTON || __ui_nodes[u].kind == NODE_CHECK || __ui_nodes[u].kind == NODE_RADIO) return n;
+    if ((u < __ui_click_handler_count && __ui_click_handlers[u]) ||
+        (u < __ui_hold_handler_count && __ui_hold_handlers[u]) ||
+        (u < __ui_release_handler_count && __ui_release_handlers[u])) return n;
+    if (__ui_nodes[u].parent == UI_NO_PARENT || __ui_nodes[u].parent >= __ui_node_count) break;
+    n = static_cast<int16_t>(__ui_nodes[u].parent);
+  }
+  return -1;
 }
 
 // Dispatch a handler from the given table if registered for the node.
