@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Fixed the content bar flashing over the drawer on an inside press.**
+  The under-drawer node (the tap-counter echo) painted its own full rect
+  first — including the part covered by the open panel — straight onto the
+  display, briefly showing underlying content as a horizontal bar until
+  the drawer's compose re-stamped. A node partially covered by an open
+  drawer now skips its own direct repaint entirely: the drawer's subtree
+  compose paints it under the panel in stacking order, and that compose's
+  region is inflated to reach the node's uncovered sliver. Host-harness
+  verified: the echo's standalone push is gone; its updated text
+  composites into the inflated bands beneath the drawer.
+
 - **Fixed the flash when pressing a button inside an open drawer.** The
   previous frame contract repainted the drawer panel through the per-node
   ladder (clear+fill) and then popped each re-marked child back one ladder

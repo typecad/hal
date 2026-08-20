@@ -295,6 +295,10 @@ export function emitTickDirtyDrawPhase(): string {
   // the stacking draw pass below uses the same __ui_draw_target. The retained
   // single buffer is a composition surface, not a synchronized panel swap.
 
+  // Per-frame compose-region inflation (set by the overlap classification
+  // below, consumed by the drawer subtree compose).
+  for (uint8_t ds = 0; ds < UI_DRAWER_MAX; ds++) __ui_drawer_inflate_used[ds] = 0;
+
   // ── Dirty-rect merging (LVGL refresh-cycle technique) ─────────────────────
   // When several nodes repaint this frame, per-node transactions each pay
   // SPI setup overhead. Group the frame's dirty paint rects into merged
@@ -443,6 +447,26 @@ export function emitTickDirtyDrawPhase(): string {
           // whole viewport including the drawer, in order.
           __ui_nodes[i].dirty = 0;
         } else {
+          // Partial coverage, display path. The node's own ladder would paint
+          // its FULL rect — including the covered part — straight over the
+          // open panel, flashing underlying content as a bar until the panel
+          // re-stamps. Skip its direct repaint and let the drawer's subtree
+          // compose paint it (stacking order puts it under the panel); that
+          // compose region is inflated to reach the node's uncovered sliver.
+          UIRect nr = { nX, nY, __ui_nodes[i].box.w, __ui_nodes[i].box.h };
+          if (!__ui_drawer_inflate_used[dslot]) {
+            __ui_drawer_inflate_rect[dslot] = nr;
+            __ui_drawer_inflate_used[dslot] = 1;
+          } else {
+            UIRect* inf = &__ui_drawer_inflate_rect[dslot];
+            int16_t x1 = static_cast<int16_t>(inf->x + inf->w > nr.x + nr.w ? inf->x + inf->w : nr.x + nr.w);
+            int16_t y1 = static_cast<int16_t>(inf->y + inf->h > nr.y + nr.h ? inf->y + inf->h : nr.y + nr.h);
+            if (nr.x < inf->x) inf->x = nr.x;
+            if (nr.y < inf->y) inf->y = nr.y;
+            inf->w = static_cast<int16_t>(x1 - inf->x);
+            inf->h = static_cast<int16_t>(y1 - inf->y);
+          }
+          __ui_nodes[i].dirty = 0;
           __ui_nodes[droot].dirty = 1;
           __ui_nodes[droot].lastTextHeight = 0;
           for (uint16_t c = droot + 1; c < __ui_nodes[droot].subtreeEnd; c++) {
@@ -597,6 +621,21 @@ export function emitTickDirtyDrawPhase(): string {
       UIRect subtreeRegion;
       if (ui_subtree_current_paint_rect(static_cast<uint16_t>(i), &subtreeRegion) &&
           subtreeRegion.w > 0 && subtreeRegion.h > 0) {
+        // An open drawer's compose region reaches the nodes the overlap
+        // classification skipped this frame — they owe their uncovered
+        // sliver, and the compose paints them under the panel in stacking
+        // order.
+        int8_t islot = __ui_drawer_slot_of(static_cast<uint16_t>(i));
+        if (islot >= 0 && __ui_drawer_inflate_used[islot]) {
+          const UIRect* inf = &__ui_drawer_inflate_rect[islot];
+          int16_t x1 = static_cast<int16_t>(subtreeRegion.x + subtreeRegion.w > inf->x + inf->w ? subtreeRegion.x + subtreeRegion.w : inf->x + inf->w);
+          int16_t y1 = static_cast<int16_t>(subtreeRegion.y + subtreeRegion.h > inf->y + inf->h ? subtreeRegion.y + subtreeRegion.h : inf->y + inf->h);
+          if (inf->x < subtreeRegion.x) subtreeRegion.x = inf->x;
+          if (inf->y < subtreeRegion.y) subtreeRegion.y = inf->y;
+          subtreeRegion.w = static_cast<int16_t>(x1 - subtreeRegion.x);
+          subtreeRegion.h = static_cast<int16_t>(y1 - subtreeRegion.y);
+          __ui_drawer_inflate_used[islot] = 0;
+        }
         if (ui_render_screen_bands(subtreeRegion.x, subtreeRegion.y, subtreeRegion.w, subtreeRegion.h)) {
           __ui_frame_painted = 1;
           ui_invalidate_scroll_canvas_for_node(static_cast<uint16_t>(i));

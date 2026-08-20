@@ -36,6 +36,13 @@ static uint8_t  __ui_drawer_slots = 0;             // discovered drawers (init s
 static int16_t __ui_drawer_last_dx[UI_DRAWER_MAX]; // last applied slide dx (delta bookkeeping)
 static int16_t __ui_drawer_last_dy[UI_DRAWER_MAX]; // last applied slide dy
 static uint32_t __ui_toast_elapsed[UI_DRAWER_MAX]; // <toast>: ms since fully open
+// Compose-region inflation for an open drawer's subtree compose: nodes the
+// overlap classification skipped (their own ladder would paint their FULL
+// rect over the open panel) still owe pixels — their uncovered sliver. The
+// dirty pass unions their paint rect here; the drawer's subtree compose
+// consumes it and clears the flag. Per-frame, reset at pass start.
+static UIRect   __ui_drawer_inflate_rect[UI_DRAWER_MAX];
+static uint8_t  __ui_drawer_inflate_used[UI_DRAWER_MAX];
 static int8_t   __ui_drawer_slot_of(uint16_t nodeIdx);
 static void     ui_drawer_discover();
 static void     ui_drawer_open(uint16_t nodeIdx);

@@ -414,6 +414,19 @@ describe("C++ reactive runtime header", () => {
       /Ladder-drawing a CONTAINER[\s\S]{0,1000}for \(uint16_t c = static_cast<uint16_t>\(i\) \+ 1;[\s\S]{0,400}__ui_nodes\[c\]\.dirty = 1;/);
   });
 
+  it("a partially-covered node under an open drawer defers to the drawer's compose (no content bar)", () => {
+    // Regression: the under-node's own ladder painted its FULL rect —
+    // including the part covered by the open panel — straight onto the
+    // display, flashing underlying content as a horizontal bar until the
+    // drawer's compose re-stamped over it. The classification now skips
+    // its direct repaint and inflates the drawer's subtree compose region
+    // to reach its uncovered sliver; the compose paints it under the panel
+    // in stacking order.
+    expect(header).toMatch(/flashing underlying content as a bar[\s\S]{0,700}__ui_drawer_inflate_used\[dslot\] = 1;/);
+    expect(header).toMatch(/compose region reaches the nodes the overlap[\s\S]{0,500}__ui_drawer_inflate_used\[islot\]/);
+    expect(header).toContain("static UIRect   __ui_drawer_inflate_rect[UI_DRAWER_MAX];");
+  });
+
   it("a container's ladder turn composes its subtree region tear-free (no erase + re-pop)", () => {
     // The re-mark fallback alone repaints the container face first (erasing
     // its children) and then pops each child back one ladder at a time —
@@ -424,7 +437,7 @@ describe("C++ reactive runtime header", () => {
     // the region. The merge pass also skips nodes a dirty ancestor owns,
     // so it can't compose-and-clear children the ancestor will repaint.
     expect(header).toMatch(
-      /A container with descendants reaches its ladder turn[\s\S]{0,1200}ui_render_screen_bands\(subtreeRegion\.x, subtreeRegion\.y, subtreeRegion\.w, subtreeRegion\.h\)/);
+      /A container with descendants reaches its ladder turn[\s\S]{0,2400}ui_render_screen_bands\(subtreeRegion\.x, subtreeRegion\.y, subtreeRegion\.w, subtreeRegion\.h\)/);
     expect(header).toMatch(/A dirty ancestor's ladder turn owns this node's repaint/);
   });
 
