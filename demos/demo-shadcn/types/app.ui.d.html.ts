@@ -90,6 +90,7 @@ interface DialogScreenGroup {
   toastBtn: ButtonElement;
   toastEcho: TextElement;
   demoDialog: TextElement;
+  demoDialogScrim: ViewElement;
   dialogCancel: ButtonElement;
   dialogOk: ButtonElement;
   demoToast: TextElement;
@@ -221,6 +222,7 @@ export interface ScreenTree {
   toastBtn: ButtonElement;
   toastEcho: TextElement;
   demoDialog: TextElement;
+  demoDialogScrim: ViewElement;
   dialogCancel: ButtonElement;
   dialogOk: ButtonElement;
   demoToast: TextElement;

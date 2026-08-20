@@ -123,9 +123,11 @@
   // Dialog + Toast: centered modal via ui.dialog, transient via ui.toast.
   export function openDemoDialog() { ui.dialog.open('demoDialog'); }
   export function closeDemoDialog() { ui.dialog.close('demoDialog'); }
-  export function showDemoToast() { ui.toast('demoToast'); }
   export const toastCount = ui.signal(0);
-  export function toastFired() { toastCount.set(toastCount() + 1); showDemoToast(); }
+  export function showDemoToast() {
+    toastCount.set(toastCount() + 1);
+    ui.toast('demoToast');
+  }
   ui.bind(screen.accPane0, 'visible', () => openAcc() === 0);
   ui.bind(screen.accPane1, 'visible', () => openAcc() === 1);
   ui.bind(screen.accPane2, 'visible', () => openAcc() === 2);
@@ -995,11 +997,11 @@ setup(); loop();</pre>
       <button id="openDialogBtn" class="btn btn-primary" on:click={openDemoDialog}>Open dialog</button>
       <h3 class="demoLabel">toast (auto-dismiss, duration="2200")</h3>
       <view class="btnRow">
-        <button id="toastBtn" class="btn btn-secondary" on:click={toastFired}>Show toast</button>
+        <button id="toastBtn" class="btn btn-secondary" on:click={showDemoToast}>Show toast</button>
         <text id="toastEcho" class="controlEcho">toasts: {toastCount}</text>
       </view>
       <dialog id="demoDialog">
-        <view class="dialog-scrim" on:click={closeDemoDialog}></view>
+        <view id="demoDialogScrim" class="dialog-scrim" on:click={closeDemoDialog}></view>
         <view class="dialog-card">
           <text class="card-title">Are you sure?</text>
           <text class="card-description">This action cannot be undone. The dialog closes on the scrim or the buttons.</text>
