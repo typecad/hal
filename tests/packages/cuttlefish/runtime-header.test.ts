@@ -354,6 +354,15 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("#define UI_AA_GLYPH_CACHE_SLOTS 0");
   });
 
+  it("partial drawer overlap inside a non-composited scroll subtree skips instead of re-dirtying", () => {
+    // Re-dirtying the drawer sent its subtree through the defer fall-through
+    // (direct band/canvas pushes over a scroll viewport) — on hardware the
+    // drawer's text and buttons vanished while staying tappable. The sliver
+    // of an uncovered label is not worth the unsafe redraw; when the scroll
+    // owner is composited (dirty this frame) the full re-dirty stays safe.
+    expect(header).toMatch(/Partial coverage, but the drawer sits inside an overflow scroll/);
+  });
+
   it("keeps fully-contained dirty descendants local (buffered direct repaint, no viewport promotion)", () => {
     // Fully-inside children keep their own dirty flag — the dirty loop's
     // scroll defer lets them repaint through the paint canvas/bands. The old

@@ -6946,6 +6946,19 @@ static inline void ui_tick(uint16_t deltaMs) {
           nY + __ui_nodes[i].box.h <= dY + __ui_nodes[droot].box.h) ? 1 : 0;
         if (fullyCovered && __ui_nodes[droot].hasBg && __ui_nodes[droot].opacity >= 100) {
           __ui_nodes[i].dirty = 0;
+        } else if (ui_overflow_scroll_compositor(droot) >= 0) {
+          // Partial coverage, but the drawer sits inside an overflow scroll
+          // subtree that is NOT being composited this frame. Re-dirtying the
+          // drawer here sends its whole subtree through the defer fall-through
+          // (direct band/paint-canvas pushes over a scroll viewport) — the
+          // tearing path AGENTS.md forbids, and on hardware it corrupts the
+          // panel content (drawer text and buttons vanish while remaining
+          // tappable). Skip the covered node instead: its uncovered sliver
+          // (typically a few px of a full-width label) is not worth the
+          // unsafe redraw. When the scroll owner IS composited (dirty this
+          // frame), the re-dirty below is safe — the composition redraws the
+          // whole viewport including the drawer, in order.
+          __ui_nodes[i].dirty = 0;
         } else {
           __ui_nodes[droot].dirty = 1;
           __ui_nodes[droot].lastTextHeight = 0;

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+- **Fixed drawer content vanishing on taps inside it (hardware).** Tapping a
+  button inside an open drawer updates a bound text behind the drawer; the
+  partial-overlap classification re-dirtied the drawer's whole subtree, and
+  with the scroll-defer fall-through that redraw now goes through direct
+  band/paint-canvas pushes over a non-composited overflow scroll viewport —
+  on hardware the drawer's text and buttons vanished while remaining
+  tappable. (Before the fall-through existed, the defer silently dropped the
+  re-dirty, which is why the original overlap fix appeared to work.) The
+  classification now skips the covered node in that configuration instead:
+  the few uncovered pixels of a full-width label are not worth the unsafe
+  redraw. When the scroll owner IS composited this frame (dirty), the full
+  drawer re-stamp remains. Preview verified unaffected by both a synthetic
+  regression test and a real-program test driving the demo's actual drawer
+  screen through the snapshot builder.
+
 - **Rasterized-glyph coverage cache for classic-font AA text (LVGL-style).**
   The AA pass rasterized each text line into a canvas and neighbor-counted a
   3x3 (5x5 for ts>=3) kernel per pixel on EVERY repaint — a 460px label at
