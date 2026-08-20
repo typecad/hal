@@ -373,6 +373,16 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("if (__ui_nodes[di].drawerSide == 4) next = target;");
   });
 
+  it("centered dialogs repaint via mark-all and close taps hit-test the subtree rect", () => {
+    // The band compositor is skipped for side 4 (a modal open/close is a
+    // rare user action; the whole-screen repaint is the proven navigate
+    // contract), and the outside-tap close uses the SUBTREE rect — the
+    // dialog root lays out at h=0, so the root box closed it on every tap.
+    expect(header).toMatch(/drawerSide != 4\) \{/);
+    expect(header).toContain("Hit-test the SUBTREE rect");
+    expect(header).toMatch(/ui_subtree_current_paint_rect\(di, &panelRect\)/);
+  });
+
   it("partial drawer overlap inside a non-composited scroll subtree skips instead of re-dirtying", () => {
     // Re-dirtying the drawer sent its subtree through the defer fall-through
     // (direct band/canvas pushes over a scroll viewport) — on hardware the

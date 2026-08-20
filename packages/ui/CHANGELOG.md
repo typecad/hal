@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **More <dialog> hardware fixes (content paint + close-on-any-tap).**
+  - Centered dialogs (side 4) now repaint via the whole-screen mark-all
+    contract on open/close instead of the drawer band compositor — a modal
+    toggle is a rare user action, and the band path was delivering only
+    partial content (title visible, card/description/buttons missing) on
+    hardware. Edge drawers keep the banded slide.
+  - The outside-tap close hit-tests the drawer's SUBTREE rect. A <dialog>
+    root with absolutely positioned children lays out at h=0, so the root
+    box made every tap count as "outside" — the dialog closed on any touch,
+    including taps squarely on its own buttons.
+
 - **Fixed <dialog> not painting its content on open (hardware).** The drawer
   slide frames composite the union of the drawer's old and new paint rects —
   computed from the ROOT node's box. A `<dialog>` root whose children are

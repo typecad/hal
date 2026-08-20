@@ -3262,10 +3262,18 @@ static void ui_touch_up() {
     for (uint8_t s = 0; s < __ui_drawer_slots; s++) {
       if (__ui_drawer_idx[s] < 0 || !__ui_drawer_open[s] || __ui_drawer_progress[s] < 255) continue;
       uint16_t di = static_cast<uint16_t>(__ui_drawer_idx[s]);
-      int16_t px = ui_draw_x_for_node(di);
-      int16_t py = ui_draw_y_for_node(di);
-      if (dx0 < px || dx0 >= px + __ui_nodes[di].box.w ||
-          dy0 < py || dy0 >= py + __ui_nodes[di].box.h) {
+      // Hit-test the SUBTREE rect: a <dialog> root with absolutely
+      // positioned children lays out at h=0 — the root box made every tap
+      // count as "outside" and closed the dialog immediately.
+      UIRect panelRect;
+      if (!ui_subtree_current_paint_rect(di, &panelRect)) {
+        panelRect.x = ui_draw_x_for_node(di);
+        panelRect.y = ui_draw_y_for_node(di);
+        panelRect.w = __ui_nodes[di].box.w;
+        panelRect.h = __ui_nodes[di].box.h;
+      }
+      if (dx0 < panelRect.x || dx0 >= panelRect.x + panelRect.w ||
+          dy0 < panelRect.y || dy0 >= panelRect.y + panelRect.h) {
         __ui_drawer_open[s] = 0;
       }
     }
@@ -8125,7 +8133,7 @@ static void ui_drawer_tick(uint32_t deltaMs) {
     UIRect newRect;
     if (!ui_subtree_current_paint_rect(di, &newRect)) { newRect.w = 0; newRect.h = 0; }
     uint8_t composed = 0;
-    if (!ui_get_framebuffer()) {
+    if (!ui_get_framebuffer() && __ui_nodes[di].drawerSide != 4) {
       int16_t ux0 = oldRect.x < newRect.x ? oldRect.x : newRect.x;
       int16_t uy0 = oldRect.y < newRect.y ? oldRect.y : newRect.y;
       int16_t ux1 = oldRect.x + oldRect.w > newRect.x + newRect.w ? static_cast<int16_t>(oldRect.x + oldRect.w) : static_cast<int16_t>(newRect.x + newRect.w);

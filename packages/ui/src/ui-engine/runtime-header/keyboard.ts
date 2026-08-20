@@ -593,7 +593,7 @@ static void ui_drawer_tick(uint32_t deltaMs) {
     UIRect newRect;
     if (!ui_subtree_current_paint_rect(di, &newRect)) { newRect.w = 0; newRect.h = 0; }
     uint8_t composed = 0;
-    if (!ui_get_framebuffer()) {
+    if (!ui_get_framebuffer() && __ui_nodes[di].drawerSide != 4) {
       int16_t ux0 = oldRect.x < newRect.x ? oldRect.x : newRect.x;
       int16_t uy0 = oldRect.y < newRect.y ? oldRect.y : newRect.y;
       int16_t ux1 = oldRect.x + oldRect.w > newRect.x + newRect.w ? static_cast<int16_t>(oldRect.x + oldRect.w) : static_cast<int16_t>(newRect.x + newRect.w);
