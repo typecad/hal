@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Rasterized-glyph coverage cache for classic-font AA text (LVGL-style).**
+  The AA pass rasterized each text line into a canvas and neighbor-counted a
+  3x3 (5x5 for ts>=3) kernel per pixel on EVERY repaint — a 460px label at
+  ts=2 cost ~70k canvas reads per frame. Classic 5x7 glyph cells are
+  position-independent (the 6ts cell's trailing gap column is blank and the
+  sampling radius never crosses it, except a 1px outer halo on spacing), so
+  per-(char, ts) coverage is now cached in a direct-mapped static table
+  (48 slots x 450B, ts 1..3; 0 on AVR) and `ui_draw_aa_text` blends cached
+  cells straight into the destination — no line rasterization, no neighbor
+  sampling. Coverage is shape-only (computed black-on-white); fg/bg enter
+  at blend time, so entries are color-independent. Sizes above ts=3 and
+  canvas-allocation failure fall back to the original whole-line path.
+
 - **LVGL-inspired performance work (render speed / responsivity):**
   - Blend LUTs: per-opacity 256-entry tables (513 bytes of static RAM,
     rebuilt only when the opacity level changes) replace the three

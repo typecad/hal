@@ -342,6 +342,18 @@ describe("C++ reactive runtime header", () => {
     expect(between("ui_render_node_bands(uint16_t i,", "static inline uint8_t ui_render_list_bands")).toContain("ui_draw_shadow");
   });
 
+  it("emits the rasterized-glyph coverage cache for classic-font AA text", () => {
+    // The AA pass neighbor-counts per pixel of the whole line canvas on every
+    // repaint; per-(char, ts) coverage cells are cached instead (direct-mapped,
+    // color-independent), with a per-cell fast path in ui_draw_aa_text.
+    expect(header).toContain("ui_aa_glyph_coverage");
+    expect(header).toContain("struct UIGlyphCovEntry");
+    expect(header).toContain("Fast path (rasterized-glyph cache)");
+    // AVR disables the cache (2KB SRAM budget); everything else defaults on.
+    expect(header).toContain("#if defined(__AVR__)");
+    expect(header).toContain("#define UI_AA_GLYPH_CACHE_SLOTS 0");
+  });
+
   it("keeps fully-contained dirty descendants local (buffered direct repaint, no viewport promotion)", () => {
     // Fully-inside children keep their own dirty flag — the dirty loop's
     // scroll defer lets them repaint through the paint canvas/bands. The old

@@ -468,6 +468,82 @@ static inline uint8_t ui_text_aa_coverage(uint8_t neighbors, uint8_t outerNeighb
   return coverage > cap ? cap : coverage;
 }
 
+// ── Rasterized-glyph coverage cache (LVGL-style) ──────────────────────────
+// The classic-font AA pass neighbor-counts a 3x3 (5x5 for large sizes) kernel
+// per pixel of the whole line canvas on EVERY repaint — a 460px label at ts=2
+// costs ~70k canvas reads per frame. Classic 5x7 glyph cells are position-
+// independent (the 6ts cell's trailing gap column is blank and the sampling
+// radius never crosses it into the next glyph's pixels except the final gap
+// column's 1px outer halo, which lands on spacing), so per-(char, ts)
+// coverage is cacheable. Direct-mapped, color-independent (coverage is a
+// shape property; fg/bg enter only at blend time).
+#ifndef UI_AA_GLYPH_CACHE_SLOTS
+#if defined(__AVR__)
+#define UI_AA_GLYPH_CACHE_SLOTS 0
+#else
+#define UI_AA_GLYPH_CACHE_SLOTS 48
+#endif
+#endif
+#define UI_AA_GLYPH_CACHE_MAX_TS 3
+#if UI_AA_GLYPH_CACHE_SLOTS > 0
+struct UIGlyphCovEntry {
+  uint8_t ch;
+  uint8_t ts;
+  uint8_t valid;
+  uint8_t cov[(6 * UI_AA_GLYPH_CACHE_MAX_TS) * (8 * UI_AA_GLYPH_CACHE_MAX_TS + 1)];
+};
+static struct UIGlyphCovEntry __ui_glyph_cov[UI_AA_GLYPH_CACHE_SLOTS];
+static CuttlefishCanvas16* __ui_glyph_src_canvas = nullptr;
+
+// Compute (on miss) and return the cached coverage map for one glyph cell,
+// or nullptr when the size exceeds the cached range. The cell is
+// (6*ts) x (8*ts + 1) — the +1 bottom pad row matches the whole-line canvas
+// so bottom-edge coverage is identical.
+static const uint8_t* ui_aa_glyph_coverage(uint8_t ch, uint8_t ts) {
+  if (ts == 0U || ts > UI_AA_GLYPH_CACHE_MAX_TS) return nullptr;
+  uint16_t slot = static_cast<uint16_t>((static_cast<uint16_t>(ch) * 7U) + ts) % UI_AA_GLYPH_CACHE_SLOTS;
+  struct UIGlyphCovEntry* e = &__ui_glyph_cov[slot];
+  if (e->valid && e->ch == ch && e->ts == ts) return e->cov;
+  int16_t cw = static_cast<int16_t>(6 * ts);
+  int16_t chh = static_cast<int16_t>(8 * ts + 1);
+  if (cw <= 0 || chh <= 0) return nullptr;
+  if (!__ui_glyph_src_canvas || display_canvasWidth(__ui_glyph_src_canvas) < cw || display_canvasHeight(__ui_glyph_src_canvas) < chh) {
+    display_deleteCanvas(__ui_glyph_src_canvas);
+    __ui_glyph_src_canvas = display_createCanvas(cw, chh);
+  }
+  if (!__ui_glyph_src_canvas || !display_canvasBuffer(__ui_glyph_src_canvas)) return nullptr;
+  // Rasterize in black-on-white: coverage is shape-only (neighbor counts
+  // compare against the glyph color), independent of the draw-time colors.
+  const UI_COLOR_T cellFg = 0x0000;
+  const UI_COLOR_T cellBg = 0xFFFF;
+  display_canvasFillRect(__ui_glyph_src_canvas, 0, 0, cw, chh, cellBg);
+  display_targetSetCursor((CuttlefishDisplayTarget*)__ui_glyph_src_canvas, 0, 0);
+  display_targetSetTextColorBg((CuttlefishDisplayTarget*)__ui_glyph_src_canvas, cellFg, cellBg);
+  display_targetSetTextSize((CuttlefishDisplayTarget*)__ui_glyph_src_canvas, ts);
+  display_targetSetTextWrap((CuttlefishDisplayTarget*)__ui_glyph_src_canvas, false);
+  char buf[2] = { static_cast<char>(ch), 0 };
+  display_targetPrint((CuttlefishDisplayTarget*)__ui_glyph_src_canvas, buf);
+  uint16_t i = 0;
+  for (int16_t yy = 0; yy < chh; yy++) {
+    for (int16_t xx = 0; xx < cw; xx++) {
+      UI_COLOR_T px = display_canvasGetPixel(__ui_glyph_src_canvas, xx, yy);
+      uint8_t neighbors = ui_text_fg_neighbors(__ui_glyph_src_canvas, xx, yy, cw, chh, cellFg);
+      uint8_t outerNeighbors = 0;
+      if (ts >= 3U && px != cellFg && neighbors == 0U) {
+        outerNeighbors = ui_text_fg_neighbors(__ui_glyph_src_canvas, xx, yy, cw, chh, cellFg, 2);
+      }
+      e->cov[i++] = ui_text_aa_coverage(neighbors, outerNeighbors, px == cellFg ? 1U : 0U, ts);
+    }
+  }
+  e->ch = ch;
+  e->ts = ts;
+  e->valid = 1U;
+  return e->cov;
+}
+#else
+static const uint8_t* ui_aa_glyph_coverage(uint8_t /*ch*/, uint8_t /*ts*/) { return nullptr; }
+#endif
+
 static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, UI_COLOR_T fg, UI_COLOR_T bg, uint8_t ts) {
   if (!text || !*text) return;
   if (ts == 0) ts = 2;
@@ -487,6 +563,48 @@ static inline void ui_draw_aa_text(const char* text, int16_t x, int16_t y, UI_CO
   if (!ui_clip_rect_to_display_target(&clipX, &clipY, &clipW, &clipH)) return;
   int16_t localX = static_cast<int16_t>(clipX - x);
   int16_t localY = static_cast<int16_t>(clipY - y);
+
+  // Fast path (rasterized-glyph cache): when every glyph's coverage is
+  // cached, blend per-cell straight into dst — no line-canvas rasterization,
+  // no neighbor sampling. Identical coverage per pixel except the 1px outer
+  // halo the whole-line kernel lands on the final gap column before a glyph
+  // start (spacing-only; sub-perceptual).
+  {
+    const uint8_t* firstCov = ui_aa_glyph_coverage(static_cast<uint8_t>(text[0]), ts);
+    if (firstCov != nullptr) {
+      CuttlefishCanvas16* dst = ui_text_canvas(&__ui_text_dst_canvas, static_cast<int16_t>(w), static_cast<int16_t>(h));
+      if (dst && display_canvasBuffer(dst)) {
+        display_canvasFillRect(dst, localX, localY, clipW, clipH, bg);
+        int16_t cellW = static_cast<int16_t>(6 * ts);
+        int16_t cellH = static_cast<int16_t>(8 * ts + 1);
+        int16_t cellX = 0;
+        for (const char* p2 = text; *p2; p2++) {
+          const uint8_t* cov = (p2 == text) ? firstCov : ui_aa_glyph_coverage(static_cast<uint8_t>(*p2), ts);
+          if (!cov) break;  // size fell out of the cached range mid-string
+          int16_t sx0 = cellX < localX ? static_cast<int16_t>(localX - cellX) : 0;
+          int16_t sy0 = localY;
+          int16_t sx1 = static_cast<int16_t>(cellX + cellW < localX + clipW ? cellX + cellW : localX + clipW);
+          int16_t sy1 = static_cast<int16_t>(localY + clipH < cellH ? localY + clipH : cellH);
+          for (int16_t yy = sy0; yy < sy1; yy++) {
+            for (int16_t xx = static_cast<int16_t>(cellX + sx0); xx < sx1; xx++) {
+              uint8_t coverage = cov[static_cast<uint16_t>(yy) * static_cast<uint16_t>(cellW) + static_cast<uint16_t>(xx - cellX)];
+              display_targetDrawPixel((CuttlefishDisplayTarget*)dst, xx, yy,
+                coverage == 0U ? bg : ui_blend(fg, bg, coverage));
+            }
+          }
+          cellX += cellW;
+          if (cellX >= localX + clipW) break;
+        }
+        int16_t stride = display_canvasWidth(dst);
+        UI_COLOR_T* pixels = display_canvasBuffer(dst);
+        for (int16_t row = 0; row < clipH; row++) {
+          ui_display_draw_rgb_bitmap(clipX, static_cast<int16_t>(clipY + row),
+            pixels + static_cast<int32_t>(localY + row) * stride + localX, clipW, 1);
+        }
+        return;
+      }
+    }
+  }
 
 // Use pre-allocated static canvases (no dynamic allocation)
    CuttlefishCanvas16* src = ui_text_canvas(&__ui_text_src_canvas, static_cast<int16_t>(w), static_cast<int16_t>(h));
