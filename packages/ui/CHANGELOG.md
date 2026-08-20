@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- **Fixed the black header rect introduced by the scroll-clip fix.** The
+  band-local clip conversion subtracted region/band offsets from the
+  ±32767 unclipped sentinels in int16 arithmetic — the result wrapped
+  positive and the garbage clamp dropped whole candidates (the main
+  screen's header card painted ~20% of its face over the dark screen
+  background, reading as a black rect). The conversion is int32 now;
+  host-harness verified: the header card paints fully (44125 px),
+  zero stale pixels remain outside the viewport, and the dialog/drawer
+  scenarios are byte-identical to their last verified state.
+
 - **Fixed stale scroll-content bars outside the viewport (header + bottom
   of the main screen).** The screen-band compositor painted scroll-subtree
   candidates at their absolute faces, unclipped: a whole-screen compose

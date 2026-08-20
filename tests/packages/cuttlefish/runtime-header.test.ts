@@ -426,6 +426,12 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/Clamp the face to the scroll viewport/);
     expect(header).toContain("int16_t clipTop;");
     expect(header).toMatch(/__ui_nodes\[c\]\.box\.w = origBoxW;/);
+    // The band-local conversion must stay int32: the ±32767 unclipped
+    // sentinels wrap in int16 arithmetic once region/band offsets are
+    // subtracted, and the wrapped-positive clip dropped whole candidates
+    // (the main screen's header card vanished over the dark background).
+    expect(header).toMatch(/int32 math: the unclipped sentinels are ±32767/);
+    expect(header).toMatch(/int32_t clipTopL = static_cast<int32_t>\(__ui_scroll_candidates\[ci\]\.clipTop\) - ry - bandTop;/);
   });
 
   it("a partially-covered node under an open drawer defers to the drawer's compose (no content bar)", () => {

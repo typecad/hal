@@ -5893,24 +5893,29 @@ static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw,
       // text wrapping and layout metrics shrink with the box. Fully clipped
       // faces drop out here.
       {
-        int16_t clipTopL = static_cast<int16_t>(__ui_scroll_candidates[ci].clipTop - ry - bandTop);
-        int16_t clipBotL = static_cast<int16_t>(__ui_scroll_candidates[ci].clipBottom - ry - bandTop);
-        int16_t clipLeftL = static_cast<int16_t>(__ui_scroll_candidates[ci].clipLeft - rx);
-        int16_t clipRightL = static_cast<int16_t>(__ui_scroll_candidates[ci].clipRight - rx);
+        // int32 math: the unclipped sentinels are ±32767 and the band-local
+        // conversion subtracts region/band offsets — int16 arithmetic wraps
+        // (a wrapped-positive clipTop clamped every face to garbage and
+        // dropped the candidate: the main screen's header card vanished
+        // into the dark screen background, reading as a black rect).
+        int32_t clipTopL = static_cast<int32_t>(__ui_scroll_candidates[ci].clipTop) - ry - bandTop;
+        int32_t clipBotL = static_cast<int32_t>(__ui_scroll_candidates[ci].clipBottom) - ry - bandTop;
+        int32_t clipLeftL = static_cast<int32_t>(__ui_scroll_candidates[ci].clipLeft) - rx;
+        int32_t clipRightL = static_cast<int32_t>(__ui_scroll_candidates[ci].clipRight) - rx;
         int16_t boxY0 = __ui_nodes[c].box.y;
         if (boxY0 < clipTopL) {
-          __ui_nodes[c].box.y = clipTopL;
+          __ui_nodes[c].box.y = static_cast<int16_t>(clipTopL);
           __ui_nodes[c].box.h = static_cast<int16_t>(__ui_nodes[c].box.h - (clipTopL - boxY0));
         }
-        if (static_cast<int16_t>(__ui_nodes[c].box.y + __ui_nodes[c].box.h) > clipBotL) {
+        if (static_cast<int32_t>(__ui_nodes[c].box.y) + __ui_nodes[c].box.h > clipBotL) {
           __ui_nodes[c].box.h = static_cast<int16_t>(clipBotL - __ui_nodes[c].box.y);
         }
         int16_t boxX0 = __ui_nodes[c].box.x;
         if (boxX0 < clipLeftL) {
-          __ui_nodes[c].box.x = clipLeftL;
+          __ui_nodes[c].box.x = static_cast<int16_t>(clipLeftL);
           __ui_nodes[c].box.w = static_cast<int16_t>(__ui_nodes[c].box.w - (clipLeftL - boxX0));
         }
-        if (static_cast<int16_t>(__ui_nodes[c].box.x + __ui_nodes[c].box.w) > clipRightL) {
+        if (static_cast<int32_t>(__ui_nodes[c].box.x) + __ui_nodes[c].box.w > clipRightL) {
           __ui_nodes[c].box.w = static_cast<int16_t>(clipRightL - __ui_nodes[c].box.x);
         }
         if (__ui_nodes[c].box.w <= 0 || __ui_nodes[c].box.h <= 0) {
