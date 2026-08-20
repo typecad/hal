@@ -86,10 +86,11 @@ describe("preview runtime behavior", () => {
       program: {
         width: 100, height: 60, colorFormat: "rgb565",
         nodes: [
-          makeNode({ index: 0, tag: "screen", subtreeEnd: 4, box: { x: 0, y: 0, w: 100, h: 60 } }),
+          makeNode({ index: 0, tag: "screen", subtreeEnd: 5, box: { x: 0, y: 0, w: 100, h: 60 } }),
           makeNode({ index: 1, tag: "button", kind: "button", id: "btn", text: "B", parentIndex: 0, subtreeEnd: 2, box: { x: 4, y: 4, w: 40, h: 16 } }),
-          makeNode({ index: 2, tag: "dialog", id: "dlg", parentIndex: 0, subtreeEnd: 3, box: { x: 20, y: 15, w: 60, h: 30 }, hasBg: true, bg: 0xaaaa, zIndex: 30, drawerSide: 4 }),
-          makeNode({ index: 3, tag: "toast", id: "tst", parentIndex: 0, subtreeEnd: 4, box: { x: 10, y: 40, w: 80, h: 16 }, hasBg: true, bg: 0x0f0f, zIndex: 40, drawerSide: 0, toastDuration: 300 }),
+          makeNode({ index: 2, tag: "dialog", id: "dlg", parentIndex: 0, subtreeEnd: 4, box: { x: 20, y: 15, w: 60, h: 30 }, hasBg: true, bg: 0xaaaa, zIndex: 30, drawerSide: 4 }),
+          makeNode({ index: 3, tag: "view", kind: "fill", id: "scrim", parentIndex: 2, subtreeEnd: 4, box: { x: 0, y: 0, w: 100, h: 60 }, zIndex: 30 }),
+          makeNode({ index: 4, tag: "toast", id: "tst", parentIndex: 0, subtreeEnd: 5, box: { x: 10, y: 40, w: 80, h: 16 }, hasBg: true, bg: 0x0f0f, zIndex: 40, drawerSide: 0, toastDuration: 300 }),
         ],
         transitions: [],
       },
@@ -113,10 +114,13 @@ describe("preview runtime behavior", () => {
     // Centered: no slide offsets were applied.
     expect(dlg.transformOffsetX).toBe(0);
     expect(dlg.transformOffsetY).toBe(0);
+    const scrim = rt.nodes.find((n: any) => n.id === "scrim");
     rt.drawerClose("dlg");
+    expect(rt.insideClosedDrawer(scrim.index)).toBe(false);  // still open at this point
     for (let i = 0; i < 20; i++) { rt.tick(16); }
     await wait(30);
     expect(rt.insideClosedDrawer(dlg.index)).toBe(true);
+    expect(rt.insideClosedDrawer(scrim.index)).toBe(true);   // child gated via ancestor
   });
 
   it("toast auto-closes after its duration", async () => {

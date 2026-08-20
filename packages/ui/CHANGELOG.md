@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Fixed <dialog> children painting while the dialog was closed (hardware).
+  ** The side-4 closed-state gate covered only the dialog root; its children
+  (scrim, card, texts, buttons) carry `drawerSide -1` and no offsets (center
+  travel 0), so nothing hid them — the dialog painted on screen entry (the
+  quick flash) and its close buttons appeared dead (closing an
+  already-closed slot changes nothing). The gate now walks ancestors for a
+  side-4 root, hiding the whole closed subtree; edge drawers keep
+  offset-only hiding so the bottom peek survives.
+
 - **Dialog and Toast elements (shadcn recipes, built on the drawer slot
   machinery).**
   - `<dialog id="…">` is a centered overlay: the runtime treats it as a

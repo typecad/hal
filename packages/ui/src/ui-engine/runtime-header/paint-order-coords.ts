@@ -16,20 +16,32 @@ static inline uint8_t ui_is_effectively_visible(uint16_t nodeIdx) {
     if (!__ui_nodes[p].visible) return 0;
     p = __ui_nodes[p].parent;
   }
-  // Centered overlay panels (<dialog>, <toast> side-free): offsets cannot
-  // hide them (travel is 0 by design), so the closed state gates visibility
-  // directly. Edge drawers (<drawer>, <toast side>) keep offset-only hiding
-  // — the bottom "peek" of an edge-anchored panel must stay visible.
+  // Centered overlay panels (<dialog>): offsets cannot hide the panel or its
+  // subtree (travel is 0 by design), so the closed state gates visibility
+  // directly — the root via its own slot, descendants via a side-4 ancestor
+  // walk. Without the ancestor walk, dialog children (scrim, card, buttons)
+  // have drawerSide -1 and no offsets: they painted while the dialog was
+  // closed (an "Are you sure?" card on screen entry, buttons that close an
+  // already-closed slot and appear dead). Edge drawers (<drawer>, <toast
+  // side>) keep offset-only hiding — the bottom "peek" of an edge-anchored
+  // panel must stay visible.
   if (__ui_nodes[nodeIdx].drawerSide == 4) {
     int8_t centerSlot = __ui_drawer_slot_of(nodeIdx);
     if (centerSlot < 0 || (!__ui_drawer_open[centerSlot] && __ui_drawer_progress[centerSlot] == 0)) return 0;
+  } else {
+    uint16_t a = __ui_nodes[nodeIdx].parent;
+    while (a != UI_NO_PARENT && a < __ui_node_count) {
+      if (__ui_nodes[a].drawerSide == 4) {
+        int8_t centerSlot = __ui_drawer_slot_of(a);
+        if (centerSlot < 0 || (!__ui_drawer_open[centerSlot] && __ui_drawer_progress[centerSlot] == 0)) return 0;
+        break;
+      }
+      a = __ui_nodes[a].parent;
+    }
   }
-  // No closed-drawer gating here: drawers hide by transform offsets alone
-  // (seeded at full travel by ui_drawer_discover), exactly like the preview —
-  // whose drawerStates entry is deleted once fully closed, so a closed panel
-  // still shows whatever its slid position leaves on-screen (the bottom
-  // "peek" of a bottom-anchored drawer). A visibility gate in addition to
-  // the offsets hid that peek and deviated from the preview.
+  // No closed-drawer gating here for edge drawers: they hide by transform
+  // offsets alone (seeded at full travel by ui_drawer_discover), so the
+  // bottom "peek" of a bottom-anchored panel stays visible.
   return 1;
 }
 

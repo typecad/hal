@@ -89,10 +89,10 @@ interface DialogScreenGroup {
   openDialogBtn: ButtonElement;
   toastBtn: ButtonElement;
   toastEcho: TextElement;
-  demoDialog: ViewElement;
+  demoDialog: TextElement;
   dialogCancel: ButtonElement;
   dialogOk: ButtonElement;
-  demoToast: ViewElement;
+  demoToast: TextElement;
 }
 interface TabsScreenGroup {
   tabBtn0: ButtonElement;
@@ -220,10 +220,10 @@ export interface ScreenTree {
   openDialogBtn: ButtonElement;
   toastBtn: ButtonElement;
   toastEcho: TextElement;
-  demoDialog: ViewElement;
+  demoDialog: TextElement;
   dialogCancel: ButtonElement;
   dialogOk: ButtonElement;
-  demoToast: ViewElement;
+  demoToast: TextElement;
   tabs: ViewElement;
   tabBtn0: ButtonElement;
   tabBtn1: ButtonElement;

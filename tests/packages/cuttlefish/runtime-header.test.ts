@@ -354,6 +354,15 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("#define UI_AA_GLYPH_CACHE_SLOTS 0");
   });
 
+  it("centered dialogs gate their whole subtree while closed (children have drawerSide -1)", () => {
+    // Dialog children (scrim, card, buttons) carry no drawerSide and get no
+    // offsets (travel 0) — only the ancestor walk hides them while closed.
+    // Without it the dialog painted on screen entry and its close buttons
+    // appeared dead (closing an already-closed slot changes nothing).
+    expect(header).toContain("descendants via a side-4 ancestor");
+    expect(header).toContain("__ui_nodes[a].drawerSide == 4");
+  });
+
   it("partial drawer overlap inside a non-composited scroll subtree skips instead of re-dirtying", () => {
     // Re-dirtying the drawer sent its subtree through the defer fall-through
     // (direct band/canvas pushes over a scroll viewport) — on hardware the
