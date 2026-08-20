@@ -332,13 +332,15 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           if (paintTextH > clearH) clearH = paintTextH;
           // border-radius > 0 (kit .switch pills): clear the full text rect to
           // the backdrop, then paint the rounded box. Mirrors the preview's
-          // drawCheckNode pill path.
+          // drawCheckNode pill path. The :checked pair (kit wires it to
+          // --primary/--primary-foreground) swaps the TRACK color when on.
           if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg) {
             ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
               ui_parent_clear_color(i));
             ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY,
               __ui_nodes[i].box.w, __ui_nodes[i].box.h,
-              __ui_nodes[i].borderRadius, fillBg);
+              __ui_nodes[i].borderRadius,
+              (__ui_nodes[i].value && __ui_nodes[i].hasCheckedBg) ? __ui_nodes[i].checkedBg : fillBg);
           } else {
             ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
               __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i));
@@ -367,10 +369,16 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           if (__ui_nodes[i].value && __ui_nodes[i].borderRadius > 0) {
             // Switch pill: the knob stays a knob — a solid circle when on, no
             // checkbox square + checkmark. Same geometry as the radio dot.
-            ui_display_fill_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+            // The knob carries the :checked color (primary-foreground).
+            ui_display_fill_circle(cbX + 8, cbY + 8, 7,
+              __ui_nodes[i].hasCheckedFg ? __ui_nodes[i].checkedFg : __ui_nodes[i].fg);
           } else if (__ui_nodes[i].value) {
-            ui_display_fill_rect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
-            UI_COLOR_T inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+            // Checked face carries the :checked background (primary), the
+            // checkmark its color (primary-foreground).
+            ui_display_fill_rect(cbX, cbY, 16, 16,
+              __ui_nodes[i].hasCheckedBg ? __ui_nodes[i].checkedBg : __ui_nodes[i].fg);
+            UI_COLOR_T inv = __ui_nodes[i].hasCheckedFg ? __ui_nodes[i].checkedFg
+              : (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
 #ifdef UI_AA
             {
               // Draw the checkmark to a 16×16 AA canvas for smooth diagonals.
@@ -442,17 +450,20 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           {
             // Render the radio circle to a 16×16 AA canvas, then push.
             UI_COLOR_T radioBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+            // The selected ring carries the :checked background (primary).
+            UI_COLOR_T ringCol = (__ui_nodes[i].value && __ui_nodes[i].hasCheckedBg)
+              ? __ui_nodes[i].checkedBg : __ui_nodes[i].fg;
             CuttlefishCanvas16* c = ui_aa_begin(16, 16, radioBg);
             if (c) {
               if (__ui_nodes[i].value) {
-                ui_aa_fill_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
+                ui_aa_fill_circle(c, 8, 8, 7.0f, ringCol);
                 ui_aa_fill_circle(c, 8, 8, 3.0f, radioBg);
               } else {
                 ui_aa_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
               }
               ui_aa_push(c, cbX, cbY);
             } else if (__ui_nodes[i].value) {
-              ui_display_fill_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+              ui_display_fill_circle(cbX + 8, cbY + 8, 7, ringCol);
               ui_display_fill_circle(cbX + 8, cbY + 8, 3, radioBg);
             } else {
               ui_display_draw_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
@@ -460,7 +471,8 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           }
 #else
           if (__ui_nodes[i].value) {
-            ui_display_fill_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+            ui_display_fill_circle(cbX + 8, cbY + 8, 7,
+              __ui_nodes[i].hasCheckedBg ? __ui_nodes[i].checkedBg : __ui_nodes[i].fg);
             ui_display_fill_circle(cbX + 8, cbY + 8, 3, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           } else {
             ui_display_draw_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);

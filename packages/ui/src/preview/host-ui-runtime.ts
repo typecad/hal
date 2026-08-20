@@ -2753,10 +2753,12 @@ export class PreviewUIRuntime {
     const clearH = Math.max(node.box.h, node.lastTextHeight ?? 0, layout.height);
     // border-radius > 0 (kit .switch pills): clear the full text rect to the
     // backdrop, then paint the rounded box. Device parity: NODE_CHECK does the
-    // same via ui_display_fill_round_rect.
+    // same via ui_display_fill_round_rect. The :checked pair (kit wires it to
+    // --primary/--primary-foreground) swaps the TRACK color when on.
+    const onFill = node.value && node.checkedBg >= 0 ? node.checkedBg : node.bg;
     if (node.borderRadius > 0 && node.hasBg) {
       this.gfx.fillRect(node.box.x, drawY, clearW, clearH, this.parentClearColor(node));
-      this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, node.bg);
+      this.gfx.fillRoundRect(node.box.x, drawY, node.box.w, node.box.h, node.borderRadius, onFill);
     } else {
       this.gfx.fillRect(node.box.x, drawY, clearW, clearH, node.hasBg ? node.bg : node.clearColor);
     }
@@ -2778,10 +2780,13 @@ export class PreviewUIRuntime {
       if (node.borderRadius > 0) {
         // Switch pill: the knob stays a knob — a solid circle when on, no
         // checkbox square + checkmark. Same geometry as the radio indicator.
-        this.gfx.fillCircle(cbX + 8, cbY + 8, 7, node.fg);
+        // The knob carries the :checked color (primary-foreground).
+        this.gfx.fillCircle(cbX + 8, cbY + 8, 7, node.checkedFg >= 0 ? node.checkedFg : node.fg);
       } else {
-        this.gfx.fillRect(cbX, cbY, 16, 16, node.fg);
-        const inv = node.hasBg ? node.bg : node.clearColor;
+        // Checked face carries the :checked background (primary), the
+        // checkmark its color (primary-foreground).
+        this.gfx.fillRect(cbX, cbY, 16, 16, node.checkedBg >= 0 ? node.checkedBg : node.fg);
+        const inv = node.checkedFg >= 0 ? node.checkedFg : (node.hasBg ? node.bg : node.clearColor);
         this.gfx.drawLine(cbX + 3, cbY + 8, cbX + 7, cbY + 12, inv);
         this.gfx.drawLine(cbX + 4, cbY + 8, cbX + 8, cbY + 12, inv);
         this.gfx.drawLine(cbX + 3, cbY + 9, cbX + 7, cbY + 13, inv);
@@ -2811,7 +2816,8 @@ export class PreviewUIRuntime {
     const radioOff = Math.max(0, ((node.box.h - 16) / 2) | 0);
     const cbY = drawY + radioOff;
     if (node.value) {
-      this.gfx.fillCircle(cbX + 8, cbY + 8, 7, node.fg);
+      // The selected ring carries the :checked background (primary).
+      this.gfx.fillCircle(cbX + 8, cbY + 8, 7, node.checkedBg >= 0 ? node.checkedBg : node.fg);
       this.gfx.fillCircle(cbX + 8, cbY + 8, 3, node.hasBg ? node.bg : node.clearColor);
     } else {
       this.gfx.drawCircle(cbX + 8, cbY + 8, 7, node.fg);
@@ -3555,21 +3561,25 @@ export class PreviewUIRuntime {
     this.gfx.drawRoundRect(x, y, w, h, radius, borderCol);
     const ts = this.nodeTextSize(node);
     const rowInset = Math.max(2, Math.trunc(radius / 2));
+    // The selected row carries the :checked pair (the kit wires it to
+    // --accent/--accent-foreground, shadcn's SelectItem selected state).
+    const rowBg = node.checkedBg >= 0 ? node.checkedBg : node.fg;
+    const rowFg = node.checkedFg >= 0 ? node.checkedFg : panel;
     for (let r = 0; r < rows; r++) {
       const ry = y + 4 + r * rowH;
       const current = r === node.value;
       if (current) {
-        this.gfx.fillRoundRect(x + rowInset, ry, w - 2 * rowInset, rowH, Math.min(radius, 6), node.fg);
+        this.gfx.fillRoundRect(x + rowInset, ry, w - 2 * rowInset, rowH, Math.min(radius, 6), rowBg);
       }
       const text = clampText(node.options[r]?.text ?? "");
-      const fg = current ? panel : node.fg;
+      const fg = current ? rowFg : node.fg;
       this.drawText(text, x + 22, ry + Math.trunc((rowH - 8 * ts) / 2), fg, panel, ts, node.fontAntialias, node.fontFace, 0);
       if (current) {
-        // Check mark on the current row (panel color on the inverted fill).
+        // Check mark on the current row (the checked pair's color).
         const cx = x + 7;
         const cy = ry + Math.trunc(rowH / 2);
-        this.gfx.drawLine(cx, cy, cx + 3, cy + 3, panel);
-        this.gfx.drawLine(cx + 3, cy + 3, cx + 8, cy - 4, panel);
+        this.gfx.drawLine(cx, cy, cx + 3, cy + 3, rowFg);
+        this.gfx.drawLine(cx + 3, cy + 3, cx + 8, cy - 4, rowFg);
       }
     }
     this.selectMenuDirty = false;

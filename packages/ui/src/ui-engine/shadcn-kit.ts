@@ -295,6 +295,32 @@ export const SHADCN_KIT_CSS = `/* ----------------------------------------------
   background: var(--card);
 }
 
+/* ---- Checked-state pairs (shadcn data-[state=checked]) ------------------------
+   The ON control carries the primary pair: the switch's TRACK turns primary
+   with a primary-foreground knob, the checkbox face and the radio's selected
+   ring do the same. The select's pair themes the OPTION LIST's selected row
+   with the accent pair (shadcn's SelectItem selected state). These bake at
+   build time from :checked rules (a separate style bucket, like :pressed);
+   the device runtime swaps the pair onto the indicator when the value flips,
+   and the preview draws through the same fields. */
+.switch:checked {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+}
+check:checked {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+radio:checked {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.select:checked {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
 /* ---- Form validation states -------------------------------------------------- */
 
 /* Static hook: always-invalid styling for hardcoded markup. Runtime-driven

@@ -32,6 +32,12 @@ export interface UINodeModel {
   box: Box;
   bg: number;
   fg: number;
+  /** Checked-state color pair baked from :checked rules (RGB565; -1 unset).
+   *  Check/radio/select draw paths swap to it when the value flips — the
+   *  switch track, checkbox face, radio dot, and the select list's selected
+   *  row (shadcn data-[state=checked] theming). */
+  checkedBg: number;
+  checkedFg: number;
   kind: UINodeKindModel;
   text?: string;
   placeholder?: string;
@@ -948,6 +954,15 @@ export function lowerUIToModel(
       ? (grad ? grad.color1 : resolveColorInternal(node.style.background, colorFormat))
       : 0;
     const fg = node.style.color ? resolveColorInternal(node.style.color, colorFormat) : 0xffff;
+    // Checked-state pair from :checked rules (e.g. the kit's switch/checkbox/
+    // radio primary pair, the select list's accent pair). -1 = unset.
+    const checkedStyle = (node.style as CSSProperty & { checked?: CSSProperty }).checked;
+    const checkedBg = checkedStyle && checkedStyle.background
+      ? resolveColorInternal(checkedStyle.background, colorFormat)
+      : -1;
+    const checkedFg = checkedStyle && checkedStyle.color
+      ? resolveColorInternal(checkedStyle.color, colorFormat)
+      : -1;
     // Border color defaults to currentColor (the node's resolved text color),
     // matching browsers — `border: 1px solid` on a white-on-dark theme gets a
     // white border, not a hardcoded black one.
@@ -1049,6 +1064,8 @@ export function lowerUIToModel(
       box: baseTransformOffset.box,
       bg,
       fg,
+      checkedBg,
+      checkedFg,
       kind,
       text: applyTextTransform(node.text, node.style),
       placeholder: applyTextTransform(node.placeholder, node.style),

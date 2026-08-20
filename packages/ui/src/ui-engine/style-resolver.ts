@@ -349,6 +349,7 @@ export function resolveStyles(root: UIElementNode, rules: CSSRule[], diagnostics
 function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElementNode[], diagnostics?: Diagnostic[], parentInherited?: CSSProperty): StyledNode {
   const base: CSSProperty = {};
   const pressed: CSSProperty = {};
+  const checked: CSSProperty = {};
 
   // Preceding siblings of this node (most-recent-first), for + and ~ combinators.
   // The parent is the last ancestor; its children before this node are siblings.
@@ -368,7 +369,11 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
     if (pseudo === "pressed") {
       Object.assign(pressed, rule.properties);
     } else if (pseudo === "checked") {
-      if (node.checked) Object.assign(base, rule.properties);
+      // Baked as a separate checked-state pair (like :pressed), consumed by
+      // the check/radio/select draw paths — the runtime swaps the pair when
+      // the value flips. Merging into base only ever worked for statically
+      // checked markup and would repaint the node's whole box.
+      Object.assign(checked, rule.properties);
     } else if (pseudo === "disabled") {
       if (node.disabled) Object.assign(base, rule.properties);
     } else if (pseudo === "focus") {
@@ -391,6 +396,11 @@ function resolveNode(node: UIElementNode, rules: CSSRule[], ancestors: UIElement
   if (Object.keys(pressed).length > 0) {
     // Attach pressed overrides; the transition driver reads these on press.
     (style as CSSProperty & { pressed?: CSSProperty }).pressed = pressed;
+  }
+  if (Object.keys(checked).length > 0) {
+    // Attach checked-state overrides; the lowering bakes the resolved pair
+    // (checkedBg/checkedFg) into the node for runtime state swaps.
+    (style as CSSProperty & { checked?: CSSProperty }).checked = checked;
   }
 
   // Apply CSS inheritance: for each inherited key the node didn't set itself

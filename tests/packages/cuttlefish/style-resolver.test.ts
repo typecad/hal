@@ -170,7 +170,7 @@ describe("pseudo-class state gating (:checked/:disabled/:focus)", () => {
   // Regression: the resolver only gated :pressed; :checked/:disabled/:focus
   // rules were applied UNCONDITIONALLY (the else branch), so an unchecked
   // radio got the :checked color, an enabled button got :disabled styling, etc.
-  it(":checked applies only when the node is checked", () => {
+  it(":checked bakes a separate checked-state pair, base stays clean", () => {
     const styled = resolve(
       `<screen>
          <radio id="on" checked>On</radio>
@@ -180,8 +180,16 @@ describe("pseudo-class state gating (:checked/:disabled/:focus)", () => {
     );
     const on = styled.children[0];
     const off = styled.children[1];
-    expect(on.style.color).toBe("#0066ff");   // checked → accent
-    expect(off.style.color).toBe("#ffffff");  // unchecked → base white
+    // The :checked properties land in a SEPARATE bucket (like :pressed) —
+    // the lowering bakes the pair and the runtime swaps it onto the
+    // indicator when the value flips. Both radios carry the pair; the base
+    // color is never polluted (merging into base repainted the whole node
+    // box for statically-checked markup and couldn't change at runtime).
+    const pair = (s: unknown) => (s as { checked?: { color?: string } }).checked;
+    expect(pair(on.style)?.color).toBe("#0066ff");
+    expect(pair(off.style)?.color).toBe("#0066ff");
+    expect(on.style.color).toBe("#ffffff");   // base untouched
+    expect(off.style.color).toBe("#ffffff");  // base untouched
   });
 
   it(":disabled applies only when the node is disabled", () => {

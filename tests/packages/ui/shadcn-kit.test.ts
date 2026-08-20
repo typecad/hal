@@ -87,6 +87,40 @@ describe("built-in shadcn kit", () => {
     const btn = snap.program.nodes.find((n) => n.id === "b");
     expect(btn!.borderRadius).toBe(20);
   });
+
+  it(":checked rules bake a checked-state pair onto check/radio/select (primary/accent)", async () => {
+    fs.writeFileSync(path.join(dir, "theme.css"), `
+:root { --primary: #c25e00; --primary-foreground: #ffffff; --accent: #0055ff; --accent-foreground: #ffffff; }
+.dark { --primary: #c25e00; --primary-foreground: #ffffff; --accent: #0055ff; --accent-foreground: #ffffff; }
+`);
+    fs.writeFileSync(path.join(dir, "app.ui"), `
+<screen id="s">
+  <body>
+    <check id="sw" class="switch"></check>
+    <check id="cb">Auto-sync</check>
+    <radio id="rd" name="g" checked>Calm</radio>
+    <select id="sel" class="select"><option value="a">Alpha</option></select>
+  </body>
+</screen>
+<style>
+@import "./theme.css";
+</style>`);
+    const snap = await build(configFor());
+    const by = (id: string) => snap.program.nodes.find((n) => n.id === id)!;
+    // #c25e00 -> rgb565 0xc2e0 (24,23,0); #ffffff -> 0xffff;
+    // #0055ff -> rgb565 0x02bf (0,21,31).
+    // The checked pair is a SEPARATE bucket — the base bg of each control
+    // is untouched (the switch track stays --card until the value flips).
+    for (const id of ["sw", "cb", "rd"]) {
+      expect(by(id).checkedBg).toBe(0xc2e0);
+      expect(by(id).checkedFg).toBe(0xffff);
+    }
+    expect(by("sel").checkedBg).toBe(0x02bf);
+    expect(by("sel").checkedFg).toBe(0xffff);
+    // The statically-checked radio's BASE style is not polluted by the
+    // :checked rule (the old resolver merged it into base).
+    expect(by("rd").hasBg).toBeFalsy();
+  });
 });
 
 describe("css import normalization", () => {

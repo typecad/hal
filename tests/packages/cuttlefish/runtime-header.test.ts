@@ -434,6 +434,20 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/int32_t clipTopL = static_cast<int32_t>\(__ui_scroll_candidates\[ci\]\.clipTop\) - ry - bandTop;/);
   });
 
+  it("checked-state pair: check/radio/select draw paths swap to checkedBg/checkedFg with the value", () => {
+    // The kit's :checked rules (switch track, checkbox face, radio dot →
+    // --primary; the select list's selected row → --accent) bake a
+    // checked-state color pair into the node; the runtime swaps the pair
+    // onto the indicator when the value flips. Without the swap the ON
+    // state stayed foreground-colored (no primary/accent theming).
+    expect(header).toContain("uint32_t checkedBg;");
+    expect(header).toContain("uint8_t hasCheckedBg;");
+    expect(header).toMatch(
+      /\(__ui_nodes\[i\]\.value && __ui_nodes\[i\]\.hasCheckedBg\) \? __ui_nodes\[i\]\.checkedBg : fillBg/);
+    expect(header).toMatch(/hasCheckedFg \? __ui_nodes\[i\]\.checkedFg : __ui_nodes\[i\]\.fg/);
+    expect(header).toMatch(/n->hasCheckedBg \? static_cast<UI_COLOR_T>\(n->checkedBg\) : n->fg/);
+  });
+
   it("a partially-covered node under an open drawer defers to the drawer's compose (no content bar)", () => {
     // Regression: the under-node's own ladder painted its FULL rect —
     // including the part covered by the open panel — straight onto the

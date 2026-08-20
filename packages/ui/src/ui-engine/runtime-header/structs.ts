@@ -130,6 +130,10 @@ struct UINode {
   void (*optionTextFn)(uint8_t idx, char* buf, uint8_t size);  // option text by index
   int8_t drawerSide;  // <drawer>/<toast>: 0=bottom 1=top 2=left 3=right; 4=<dialog> center; -1 = none
   uint16_t toastDuration;  // <toast duration>: ms before auto-close (0 = manual)
+  uint32_t checkedBg;    // :checked background (RGB565) — switch track / checkbox face / radio dot / select selected row
+  uint32_t checkedFg;    // :checked color (RGB565) — knob / checkmark / selected-row text
+  uint8_t hasCheckedBg;  // 1 when checkedBg was authored (0 = swap not wired)
+  uint8_t hasCheckedFg;  // 1 when checkedFg was authored
   int8_t flowAxis;  // visibility reflow: 0 none, 1 column, 2 row (ui_reflow_visibility)
   uint8_t flowGap;  // visibility reflow: main-axis gap between in-flow children
   uint8_t flowFlags;  // bit0 auto height, bit1 auto width, bit2 out-of-flow

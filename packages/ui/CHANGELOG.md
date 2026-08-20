@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Checked-state theming for form controls (shadcn
+  data-[state=checked]).** `:checked` rules now bake a checked-state color
+  pair (checkedBg/checkedFg) into check/radio/select nodes — a separate
+  style bucket like `:pressed` — and the runtime swaps the pair onto the
+  indicator when the value flips, on device and in preview. The kit wires
+  the tokens: the switch's track, the checkbox face, and the radio's
+  selected ring carry `--primary`/`--primary-foreground` when on (the
+  same red as primary buttons in this theme), and the select's option
+  list highlights the selected row with `--accent`/`--accent-foreground`
+  (blue). The resolver no longer merges `:checked` into the base style
+  for statically-checked markup (it repainted the node's whole box and
+  couldn't change at runtime).
+
 - **Fixed the black header rect introduced by the scroll-clip fix.** The
   band-local clip conversion subtracted region/band offsets from the
   ±32767 unclipped sentinels in int16 arithmetic — the result wrapped

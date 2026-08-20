@@ -449,22 +449,26 @@ static inline void ui_select_menu_draw() {
   for (uint8_t r = 0; r < n->optionCount; r++) {
     int16_t ry = g.y + 4 + static_cast<int16_t>(r) * rowH;
     uint8_t current = (r == static_cast<uint8_t>(n->value));
+    // The selected row carries the :checked pair (the kit wires it to
+    // --accent/--accent-foreground, shadcn's SelectItem selected state).
+    UI_COLOR_T rowBg = n->hasCheckedBg ? static_cast<UI_COLOR_T>(n->checkedBg) : n->fg;
+    UI_COLOR_T rowFg = n->hasCheckedFg ? static_cast<UI_COLOR_T>(n->checkedFg) : panel;
     if (current) {
-      ui_display_fill_round_rect(g.x + rowInset, ry, g.w - 2 * rowInset, rowH, rowRadius, n->fg);
+      ui_display_fill_round_rect(g.x + rowInset, ry, g.w - 2 * rowInset, rowH, rowRadius, rowBg);
     }
     buf[0] = 0;
     if (n->optionTextFn) n->optionTextFn(r, buf, UI_TEXT_BUF + 1);
     ui_draw_wrapped_text(buf,
       g.x + 22, ry + (rowH - static_cast<int16_t>(8 * n->textSize)) / 2,
       static_cast<uint16_t>(g.w - 30),
-      current ? panel : n->fg,
+      current ? rowFg : n->fg,
       panel, n->textSize, n->fontAntialias, n->fontFace, n->letterSpacing,
       n->lineHeight, n->whiteSpaceMode, 0, 0, 0);
     if (current) {
       int16_t cx = g.x + 7;
       int16_t cy = ry + rowH / 2;
-      ui_display_draw_line(cx, cy, cx + 3, cy + 3, panel);
-      ui_display_draw_line(cx + 3, cy + 3, cx + 8, cy - 4, panel);
+      ui_display_draw_line(cx, cy, cx + 3, cy + 3, rowFg);
+      ui_display_draw_line(cx + 3, cy + 3, cx + 8, cy - 4, rowFg);
     }
   }
   __ui_select_menu_dirty = 0;
