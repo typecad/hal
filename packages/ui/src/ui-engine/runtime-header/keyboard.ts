@@ -633,10 +633,34 @@ static void ui_drawer_tick(uint32_t deltaMs) {
       int16_t ux1 = oldRect.x + oldRect.w > newRect.x + newRect.w ? static_cast<int16_t>(oldRect.x + oldRect.w) : static_cast<int16_t>(newRect.x + newRect.w);
       int16_t uy1 = oldRect.y + oldRect.h > newRect.y + newRect.h ? static_cast<int16_t>(oldRect.y + oldRect.h) : static_cast<int16_t>(newRect.y + newRect.h);
       composed = ui_render_screen_bands(ux0, uy0, static_cast<int16_t>(ux1 - ux0), static_cast<int16_t>(uy1 - uy0));
-      // The drawer crossed a scroll viewport that caches its pixels; the
-      // canvas holds pre-slide content where the drawer now sits. Invalidate
-      // it so the next scroll recomposites instead of shifting stale pixels.
-      if (composed) ui_invalidate_scroll_canvas_for_node(di);
+      if (composed) {
+        // The drawer crossed a scroll viewport that caches its pixels; the
+        // canvas holds pre-slide content where the drawer now sits. Invalidate
+        // it so the next scroll recomposites instead of shifting stale pixels.
+        ui_invalidate_scroll_canvas_for_node(di);
+        // The composed bands are the AUTHORITATIVE frame for this region —
+        // every node fully inside it is already painted in correct stacking
+        // order. Clear those dirty flags or the dirty pass repaints them
+        // through the per-node ladder: a viewport-sized overlay (the dialog
+        // scrim) is too big for the repair canvas and falls to the DIRECT
+        // ladder — one flat full-screen fill that erased the just-composed
+        // frame, then the card/title/buttons re-popped band by band. That
+        // erase + re-layer sequence was the modal-toggle flash on hardware.
+        // Bindings run after the drawer tick, so any dirty flag they raise
+        // this frame still repaints normally.
+        for (uint16_t q = 0; q < __ui_node_count; q++) {
+          if (__ui_nodes[q].screenId != __ui_active_screen) continue;
+          if (!__ui_nodes[q].dirty) continue;
+          UIRect pr;
+          ui_node_current_paint_rect(q, &pr);
+          if (pr.w <= 0 || pr.h <= 0) continue;
+          if (pr.x >= ux0 && pr.y >= uy0 &&
+              static_cast<int16_t>(pr.x + pr.w) <= static_cast<int16_t>(ux1) &&
+              static_cast<int16_t>(pr.y + pr.h) <= static_cast<int16_t>(uy1)) {
+            __ui_nodes[q].dirty = 0;
+          }
+        }
+      }
     }
     if (!composed) {
       for (uint16_t i = 0; i < __ui_node_count; i++) {

@@ -423,6 +423,19 @@ describe("C++ reactive runtime header", () => {
       /ui_rects_intersect[\s\S]{0,200}__ui_nodes\[c\]\.dirty = 1;[\s\S]{0,600}for \(uint16_t k = c \+ 1; k < __ui_nodes\[c\]\.subtreeEnd/);
   });
 
+  it("a successful drawer band compose clears the dirty flags it satisfies", () => {
+    // Regression: the open frame composed the dialog through the band
+    // renderer, then the dirty pass repainted the scrim DIRECTLY (a
+    // viewport-sized overlay is too big for the repair canvas) — one flat
+    // full-screen fill erasing the composed frame, then the card/title/
+    // buttons re-popped band by band. That erase + re-layer sequence was the
+    // modal-toggle flash on hardware. The compose is authoritative for its
+    // region: clear dirty flags of nodes fully inside it. Bindings run after
+    // the drawer tick, so same-frame binding dirt still repaints.
+    expect(header).toMatch(
+      /ui_render_screen_bands\(ux0, uy0[\s\S]{0,1400}for \(uint16_t q = 0; q < __ui_node_count; q\+\+\) \{[\s\S]{0,600}__ui_nodes\[q\]\.dirty = 0;/);
+  });
+
   it("hit-test targets the topmost node and bubbles to ancestors only", () => {
     // Regression: hit-test picked the topmost HANDLER-BEARING node, so a tap
     // on a modal card (no handler, higher z) fell through to the

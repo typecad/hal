@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+- **Fixed the modal-toggle flash: a successful drawer band compose now
+  clears the dirty flags it satisfies.** The open frame composed the whole
+  dialog through the band renderer — and then the dirty pass repainted the
+  scrim DIRECTLY (a viewport-sized overlay is too big for the repair
+  canvas, so the per-node ladder fell to a direct fill): one flat
+  full-screen fill erasing the just-composed frame, then the card, title,
+  and buttons re-popped band by band. That erase + re-layer sequence was
+  the flash/tear on hardware. The compose is authoritative for its region:
+  nodes fully inside it clear their dirty flags (bindings run after the
+  drawer tick, so same-frame binding dirt still repaints). Verified on the
+  host harness: a dialog toggle is now exactly one 8-band sequential
+  compose — the only direct display fill in the whole run is the boot-time
+  screen clear.
+
 - **Fixed z-index flattening the dialog (content invisible, buttons dead).**
   Reproduced on a host harness (runtime header + stub display driving the
   dialog screen's node table) and fixed twice over:
