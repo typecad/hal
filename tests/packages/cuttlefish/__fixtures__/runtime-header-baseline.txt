@@ -8099,22 +8099,31 @@ static void ui_drawer_tick(uint32_t deltaMs) {
     uint8_t p = __ui_drawer_progress[s];
     if (p == target) continue;
     // Compose each slide frame as the UNION of the drawer's old and new
-    // paint rects in tear-free bands (ui_render_screen_bands). The previous
-    // contract — mark the whole active screen dirty per slide step — repaints
-    // the entire screen with direct per-node clears on no-fb targets: visible
-    // flashing, and only ~3 steps fit inside the 180ms slide. The banded
-    // union is a fraction of the SPI traffic and never exposes an
-    // intermediate state. Falls back to the whole-screen dirty repaint when
-    // the band canvas can't allocate or a retained framebuffer composes the
-    // frame in RAM (its dirty-union push is already tear-free).
+    // SUBTREE paint rects in tear-free bands (ui_render_screen_bands). The
+    // previous contract — mark the whole active screen dirty per slide step —
+    // repaints the entire screen with direct per-node clears on no-fb
+    // targets: visible flashing, and only ~3 steps fit inside the 180ms
+    // slide. The banded union is a fraction of the SPI traffic and never
+    // exposes an intermediate state. Falls back to the whole-screen dirty
+    // repaint when the band canvas can't allocate or a retained framebuffer
+    // composes the frame in RAM (its dirty-union push is already tear-free).
+    //
+    // SUBTREE extent, not the root's paint rect: a <dialog> root whose
+    // children are absolutely positioned lays out at h=0 — the root-rect
+    // union degenerated to an empty band (a no-op "composed" success), so
+    // NOTHING repainted on open or close on hardware. The preview already
+    // used its currentSubtreePaintRect here. Side-4 dialogs also snap
+    // instead of animating: travel is 0, so intermediate progress values
+    // are 180ms of identical frames.
     uint16_t di = static_cast<uint16_t>(__ui_drawer_idx[s]);
     uint8_t next = target > p ? (p + step > target ? target : p + step)
                               : (p < step || p - step < target ? target : p - step);
+    if (__ui_nodes[di].drawerSide == 4) next = target;
     UIRect oldRect;
-    ui_node_current_paint_rect(di, &oldRect);
+    if (!ui_subtree_current_paint_rect(di, &oldRect)) { oldRect.w = 0; oldRect.h = 0; }
     ui_drawer_apply(s, next);
     UIRect newRect;
-    ui_node_current_paint_rect(di, &newRect);
+    if (!ui_subtree_current_paint_rect(di, &newRect)) { newRect.w = 0; newRect.h = 0; }
     uint8_t composed = 0;
     if (!ui_get_framebuffer()) {
       int16_t ux0 = oldRect.x < newRect.x ? oldRect.x : newRect.x;

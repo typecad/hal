@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- **Fixed <dialog> not painting its content on open (hardware).** The drawer
+  slide frames composite the union of the drawer's old and new paint rects —
+  computed from the ROOT node's box. A `<dialog>` root whose children are
+  absolutely positioned (the scrim + card recipe) lays out at h=0, so the
+  union degenerated to an empty band that `ui_render_screen_bands` reported
+  as handled, suppressing the mark-all fallback: nothing repainted on open or
+  close. The tick now measures the SUBTREE extent (`ui_subtree_current_paint_rect`,
+  matching the preview's `currentSubtreePaintRect`) and side-4 dialogs snap
+  open/closed instead of animating (travel 0 makes intermediate progress
+  identical frames).
+
 - **Fixed <dialog> children painting while the dialog was closed (hardware).
   ** The side-4 closed-state gate covered only the dialog root; its children
   (scrim, card, texts, buttons) carry `drawerSide -1` and no offsets (center

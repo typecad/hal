@@ -363,6 +363,16 @@ describe("C++ reactive runtime header", () => {
     expect(header).toContain("__ui_nodes[a].drawerSide == 4");
   });
 
+  it("drawer slide frames repaint the SUBTREE extent; centered dialogs snap", () => {
+    // A <dialog> root with absolutely positioned children lays out at h=0 —
+    // the old root-rect union was an empty band (a no-op "success"), so the
+    // dialog never repainted on open or close on hardware. The preview
+    // already used its subtree rect.
+    expect(header).toMatch(/SUBTREE extent, not the root's paint rect/);
+    expect(header).toMatch(/ui_subtree_current_paint_rect\(di, &oldRect\)/);
+    expect(header).toContain("if (__ui_nodes[di].drawerSide == 4) next = target;");
+  });
+
   it("partial drawer overlap inside a non-composited scroll subtree skips instead of re-dirtying", () => {
     // Re-dirtying the drawer sent its subtree through the defer fall-through
     // (direct band/canvas pushes over a scroll viewport) — on hardware the
