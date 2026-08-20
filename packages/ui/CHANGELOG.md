@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- **Fixed stale scroll-content bars outside the viewport (header + bottom
+  of the main screen).** The screen-band compositor painted scroll-subtree
+  candidates at their absolute faces, unclipped: a whole-screen compose
+  left stale button rows below the fold, and composes over the header
+  region smeared scrolled content into the header — bars of
+  previously-scrolled pixels that nothing repaints. Band candidates now
+  carry absolute clip bounds derived from their scroll ancestor's
+  viewport, and each band clamps the node's face to them (geometry
+  restored after the draw; fully-clipped faces drop out). Host-harness
+  verified with a drag-scroll scenario on the main screen's node table:
+  zero stale pixels above the viewport and below the fold at every stage,
+  viewport content unchanged; dialog/drawer scenarios re-verified intact.
+
 - **Fixed the content bar flashing over the drawer on an inside press.**
   The under-drawer node (the tap-counter echo) painted its own full rect
   first — including the part covered by the open panel — straight onto the

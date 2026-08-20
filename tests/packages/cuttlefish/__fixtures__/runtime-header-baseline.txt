@@ -510,6 +510,14 @@ struct UIScrollPaintCandidate {
   uint16_t node;
   int16_t screenY;
   int16_t faceH;
+  // Absolute clip bounds for the screen-band compositor: scrolled children
+  // clip to their scroll viewport (CSS overflow). Unclipped candidates use
+  // the full i16 range. The scroll-band renderer ignores these (its canvas
+  // IS the viewport) and only sets node/screenY/faceH.
+  int16_t clipTop;
+  int16_t clipBottom;
+  int16_t clipLeft;
+  int16_t clipRight;
 };
 static UIScrollPaintCandidate* __ui_scroll_candidates = nullptr;
 static uint16_t __ui_scroll_candidate_count = 0;
@@ -5838,6 +5846,26 @@ static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw,
     cand.node = c;
     cand.screenY = ui_draw_y_for_node(c);
     cand.faceH = __ui_nodes[c].box.h;
+    // Scrolled children clip to their scroll viewport (CSS overflow): a
+    // compose over a region touching the viewport edge must not paint their
+    // faces at absolute positions beyond it. The initial whole-screen compose
+    // left stale button rows below the fold, and composes over the header
+    // region smeared scrolled content into the header — bars of previously
+    // scrolled pixels that nothing repaints. The viewport rect is the scroll
+    // ancestor's own draw position (its scrollY applies to children, not to
+    // itself).
+    int16_t san = ui_scroll_ancestor_for_node(c);
+    if (san >= 0 && __ui_nodes[san].box.h > 0 && __ui_nodes[san].box.w > 0) {
+      cand.clipTop = ui_draw_y_for_node(static_cast<uint16_t>(san));
+      cand.clipBottom = static_cast<int16_t>(cand.clipTop + __ui_nodes[san].box.h);
+      cand.clipLeft = ui_draw_x_for_node(static_cast<uint16_t>(san));
+      cand.clipRight = static_cast<int16_t>(cand.clipLeft + __ui_nodes[san].box.w);
+    } else {
+      cand.clipTop = -32767;
+      cand.clipBottom = 32767;
+      cand.clipLeft = -32767;
+      cand.clipRight = 32767;
+    }
   }
   CuttlefishDisplayTarget* prevTarget = ui_display_get_target();
   for (int16_t bandTop = 0; bandTop < rh; bandTop += bandH) {
@@ -5856,8 +5884,43 @@ static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw,
       if (screenY >= ry + bandBot) continue;
       int16_t origBoxX = __ui_nodes[c].box.x;
       int16_t origBoxY = __ui_nodes[c].box.y;
+      int16_t origBoxW = __ui_nodes[c].box.w;
+      int16_t origBoxH = __ui_nodes[c].box.h;
       __ui_nodes[c].box.x = static_cast<int16_t>(origBoxX - rx);
       __ui_nodes[c].box.y = static_cast<int16_t>(origBoxY - ry - bandTop);
+      // Clamp the face to the scroll viewport (band-local coords). The
+      // shifted box/draw geometry stays within the candidate's clip bounds;
+      // text wrapping and layout metrics shrink with the box. Fully clipped
+      // faces drop out here.
+      {
+        int16_t clipTopL = static_cast<int16_t>(__ui_scroll_candidates[ci].clipTop - ry - bandTop);
+        int16_t clipBotL = static_cast<int16_t>(__ui_scroll_candidates[ci].clipBottom - ry - bandTop);
+        int16_t clipLeftL = static_cast<int16_t>(__ui_scroll_candidates[ci].clipLeft - rx);
+        int16_t clipRightL = static_cast<int16_t>(__ui_scroll_candidates[ci].clipRight - rx);
+        int16_t boxY0 = __ui_nodes[c].box.y;
+        if (boxY0 < clipTopL) {
+          __ui_nodes[c].box.y = clipTopL;
+          __ui_nodes[c].box.h = static_cast<int16_t>(__ui_nodes[c].box.h - (clipTopL - boxY0));
+        }
+        if (static_cast<int16_t>(__ui_nodes[c].box.y + __ui_nodes[c].box.h) > clipBotL) {
+          __ui_nodes[c].box.h = static_cast<int16_t>(clipBotL - __ui_nodes[c].box.y);
+        }
+        int16_t boxX0 = __ui_nodes[c].box.x;
+        if (boxX0 < clipLeftL) {
+          __ui_nodes[c].box.x = clipLeftL;
+          __ui_nodes[c].box.w = static_cast<int16_t>(__ui_nodes[c].box.w - (clipLeftL - boxX0));
+        }
+        if (static_cast<int16_t>(__ui_nodes[c].box.x + __ui_nodes[c].box.w) > clipRightL) {
+          __ui_nodes[c].box.w = static_cast<int16_t>(clipRightL - __ui_nodes[c].box.x);
+        }
+        if (__ui_nodes[c].box.w <= 0 || __ui_nodes[c].box.h <= 0) {
+          __ui_nodes[c].box.x = origBoxX;
+          __ui_nodes[c].box.y = origBoxY;
+          __ui_nodes[c].box.w = origBoxW;
+          __ui_nodes[c].box.h = origBoxH;
+          continue;
+        }
+      }
       int16_t baseDrawX = ui_base_draw_x_for_node(c);
       int16_t baseDrawY = ui_base_draw_y_for_node(c);
       int16_t drawX = ui_draw_x_for_node(c);
@@ -5926,6 +5989,8 @@ static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw,
       __ui_nodes[c].lastTextHeight = savedLastTextH;
       __ui_nodes[c].box.x = origBoxX;
       __ui_nodes[c].box.y = origBoxY;
+      __ui_nodes[c].box.w = origBoxW;
+      __ui_nodes[c].box.h = origBoxH;
     }
     ui_display_set_target(prevTarget);
     ui_push_canvas_rect(band, rx, static_cast<int16_t>(ry + bandTop), rw, thisH);

@@ -32,6 +32,14 @@ struct UIScrollPaintCandidate {
   uint16_t node;
   int16_t screenY;
   int16_t faceH;
+  // Absolute clip bounds for the screen-band compositor: scrolled children
+  // clip to their scroll viewport (CSS overflow). Unclipped candidates use
+  // the full i16 range. The scroll-band renderer ignores these (its canvas
+  // IS the viewport) and only sets node/screenY/faceH.
+  int16_t clipTop;
+  int16_t clipBottom;
+  int16_t clipLeft;
+  int16_t clipRight;
 };
 static UIScrollPaintCandidate* __ui_scroll_candidates = nullptr;
 static uint16_t __ui_scroll_candidate_count = 0;

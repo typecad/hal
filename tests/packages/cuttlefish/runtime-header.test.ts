@@ -414,6 +414,20 @@ describe("C++ reactive runtime header", () => {
       /Ladder-drawing a CONTAINER[\s\S]{0,1000}for \(uint16_t c = static_cast<uint16_t>\(i\) \+ 1;[\s\S]{0,400}__ui_nodes\[c\]\.dirty = 1;/);
   });
 
+  it("the screen-band compositor clips scrolled children to their scroll viewport", () => {
+    // Regression: the compositor painted scroll-subtree candidates at their
+    // absolute faces, unclipped — a whole-screen compose left stale button
+    // rows below the fold, and composes over the header region smeared
+    // scrolled content into the header: bars of previously-scrolled pixels
+    // that nothing repaints. Candidates now carry absolute clip bounds from
+    // their scroll ancestor's viewport, and the band loop clamps each face
+    // to them (box geometry restored after the draw).
+    expect(header).toMatch(/Scrolled children clip to their scroll viewport \(CSS overflow\)/);
+    expect(header).toMatch(/Clamp the face to the scroll viewport/);
+    expect(header).toContain("int16_t clipTop;");
+    expect(header).toMatch(/__ui_nodes\[c\]\.box\.w = origBoxW;/);
+  });
+
   it("a partially-covered node under an open drawer defers to the drawer's compose (no content bar)", () => {
     // Regression: the under-node's own ladder painted its FULL rect —
     // including the part covered by the open panel — straight onto the
