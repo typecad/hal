@@ -1,5 +1,12 @@
 # @typecad/expect
 
+## 1.0.0-alpha.13
+
+### Patch Changes
+
+- @typecad/hal@1.0.0-alpha.13
+- @typecad/arduino-cli@1.0.0-alpha.13
+
 ## Unreleased
 
 - **Dropped `output.optimize` from the config re-emitter.** The hw-test

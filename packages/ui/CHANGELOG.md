@@ -1,5 +1,11 @@
 # @typecad/ui
 
+## 1.0.0-alpha.13
+
+### Patch Changes
+
+- @typecad/cuttlefish@1.0.0-alpha.13
+
 ## Unreleased
 
 - **Checked-state theming for form controls (shadcn
@@ -65,6 +71,7 @@
 
 - **Drawer fixes: content no longer vanishes on a Tap-me press, and the
   closed drawer fully leaves the display (peek removed).**
+
   - Ladder-drawing a container now re-marks its descendants. A press inside
     an open drawer marked the whole subtree dirty, but the dirty pass's
     merge compositor composed the small children (texts/buttons) first and
@@ -100,6 +107,7 @@
 - **Fixed z-index flattening the dialog (content invisible, buttons dead).**
   Reproduced on a host harness (runtime header + stub display driving the
   dialog screen's node table) and fixed twice over:
+
   - `z-index` now raises a node's whole subtree, CSS stacking-context style
     (`ui_stacking_z`: nearest ancestor-or-self with a non-zero z). The flat
     `(zIndex, index)` sort painted a dialog's scrim (z30) and card (z31) over
@@ -116,6 +124,7 @@
 
 - **Dialog/toast hardware round 3: tap routing, modal-toggle flashing, and
   the toast auto-dismiss remnant.**
+
   - `ui_hit_test` now targets the TOPMOST node at the tap point and bubbles
     to ancestors only, matching the DOM. It previously picked the topmost
     handler-bearing node, so a tap on a modal card (no handler, higher z)
@@ -139,6 +148,7 @@
     their intentional peek.
 
 - **More <dialog> hardware fixes (content paint + close-on-any-tap).**
+
   - Centered dialogs (side 4) now repaint via the whole-screen mark-all
     contract on open/close instead of the drawer band compositor — a modal
     toggle is a rare user action, and the band path was delivering only
@@ -171,6 +181,7 @@
 
 - **Dialog and Toast elements (shadcn recipes, built on the drawer slot
   machinery).**
+
   - `<dialog id="…">` is a centered overlay: the runtime treats it as a
     drawer with side "center" (drawerSide 4) — travel 0, no slide; hidden
     while closed by a visibility gate (offsets can't hide a centered panel),
@@ -218,6 +229,7 @@
   canvas-allocation failure fall back to the original whole-line path.
 
 - **LVGL-inspired performance work (render speed / responsivity):**
+
   - Blend LUTs: per-opacity 256-entry tables (513 bytes of static RAM,
     rebuilt only when the opacity level changes) replace the three
     multiply-divide rounds per pixel in `ui_blend565`/`ui_blend888`. Hot
@@ -239,6 +251,7 @@
   preview snapshot builder) ahead of the user's CSS. No scaffolding, no
   `@import` needed — kit classes on native elements just work, and anything
   the user writes overrides them by normal cascade order.
+
   - **Themes are plain CSS files.** Drop a ui.shadcn.com / tweakcn export
     anywhere in the project and `@import` it: its `:root`/`.dark` token
     blocks override the kit defaults (later definitions win, verified for
@@ -284,6 +297,7 @@
 
 - **Renderer routing review (Zephyr/direct-SPI targets): every repaint now
   composites before it touches the panel.** Three fixes from the pass:
+
   - `ui_mark_dirty` no longer promotes a fully-contained dirty child inside
     an overflow scroll viewport to a full-viewport repaint. The child keeps
     its own dirty flag and the dirty loop's scroll defer lets it repaint
@@ -303,6 +317,7 @@
     the button-press flash.
 
 - **Preview parity for the device runtime's visibility + drawer fixes:**
+
   - `border-radius` clamps at 0 on the way into the node model. Kit recipes
     like `calc(var(--radius) - 2px)` go negative for 0px-radius themes
     (tweakcn's sharper exports) — the value was emitted into the node table
@@ -336,14 +351,15 @@
   decoded to the RGB565 asset form at build time (sharp for raster/SVG,
   decode-ico for `.ico` frames; the largest frame wins). Nothing to
   configure: files are identified by magic bytes, not extension.
+
   - Images larger than the physical panel downscale to fit (never enlarge),
-  so a phone photo can't emit a multi-megabyte C array.
+    so a phone photo can't emit a multi-megabyte C array.
   - Alpha flattens onto black; JPEGs auto-orient by EXIF.
   - An `<img>` without explicit width/height attributes takes the image's
-  natural size for its layout box (converted assets only; raw dumps keep
-  requiring author dimensions).
+    natural size for its layout box (converted assets only; raw dumps keep
+    requiring author dimensions).
   - Legacy raw RGB565 `.img` dumps keep working unchanged; anything that
-  fails to decode warns and falls back to the raw reader.
+    fails to decode warns and falls back to the raw reader.
   - New dependencies: `sharp`, `decode-ico`.
 
 - **Preview: Zephyr display profiles resolve again.** The preview's profile
@@ -374,6 +390,7 @@
   children opt out via the metadata. This also fixes the empty reserved space
   of the form-validation hints and any other `ui.bind(x, 'visible', ...)`
   recipe on device.
+
   - The auto-size flags now account for where a dimension actually comes
     from: an explicit size, `flex-grow` space, a `flex-basis`, or cross-axis
     stretch (a child of a row parent stretches its height; of a column
@@ -384,6 +401,7 @@
     accordion's bottom pane had nothing left to scroll into.
 
 - **More device render fixes from hardware testing (SPI TFT):**
+
   - Dirty nodes under an OPEN drawer no longer paint over the panel. The
     dirty pass now classifies each dirty node against every fully-open
     drawer: fully covered by an opaque panel → the repaint is skipped
@@ -427,6 +445,7 @@
     keyframes screen. Border/outline/shadow chrome still bails.
 
 - **Device render fixes surfaced on hardware (SPI TFT):**
+
   - The dropdown chevron + its 14px label reserve now live only in the
     `<select>` draw case. A mis-aimed patch had put them in the button case,
     so every button and nav link rendered a down-chevron and wrapped labels
@@ -441,6 +460,7 @@
 
 - **Device-lowering fixes surfaced by the canonical demo's first full
   toolchain compile (Zephyr/west, ESP32-S3):**
+
   - `ui.drawer.open('<id>')` / `ui.drawer.close('<id>'?)` now lower for the
     device — the drawer id resolves at build time to the `<drawer>` node
     index, emitting `ui_drawer_open(N)` / `ui_drawer_close(N)` (or
@@ -490,7 +510,7 @@
 - **Tabs recipe (shadcn Tabs).** `.tabs-list` (segmented trigger row),
   `.tabs-trigger`, `.tabs-content-area` (fixed-height region) +
   `.tabs-content` (absolutely-stacked panes). Panes toggle via `ui.bind(x,
-  'visible', () => signal === i)` — layout keeps every pane's box, so
+'visible', () => signal === i)` — layout keeps every pane's box, so
   switching never re-flows — and the active trigger swaps literal hex
   background/color at runtime (compile-time tokens, so pin to the theme the
   way native_demo accents do). Panes stay fully interactive while shown.
@@ -640,7 +660,7 @@
 - **List rendering fixes.** (1) Virtualized `<list>` rows are runtime text,
   but nothing fed their charset into the font-asset subset — a face built
   from unrelated static text rendered item strings with blank glyphs (a
-  subset carrying '0' but not '1'-'9' drew "Item 10" as "Item  0"). List
+  subset carrying '0' but not '1'-'9' drew "Item 10" as "Item 0"). List
   nodes now widen their resolved face to the fallback charset, preview and
   device alike. (2) The preview's GENERIC scroll passes (scrollbar draw +
   dirty-viewport clear) treated virtualized lists as ordinary scroll
@@ -674,7 +694,7 @@
   containers (text-only leaves become text nodes) with a warning instead of
   discarding the subtree; `<ul>/<li>` render with `•`/`N.` markers; `<hr>`,
   `<textarea>` (as single-line input, warned), and `<input
-  type="checkbox|radio|range">` (aliases of `check`/`radio`/`range`) are
+type="checkbox|radio|range">` (aliases of `check`/`radio`/`range`) are
   accepted. Stray text next to element children becomes anonymous text
   children (CSS anonymous-box model) — `<div>Total: <b>3</b></div>` keeps
   "Total:" and flows inline-only mixes as one line.

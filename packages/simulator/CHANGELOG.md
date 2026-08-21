@@ -1,5 +1,11 @@
 # @typecad/simulator
 
+## 1.0.0-alpha.13
+
+### Patch Changes
+
+- @typecad/hal@1.0.0-alpha.13
+
 ## 1.0.0-alpha.12
 
 ### Patch Changes

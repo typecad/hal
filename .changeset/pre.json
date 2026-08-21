@@ -36,14 +36,15 @@
     "framework-arduino-manifest-reasons",
     "framework-zephyr-arduino-parity",
     "framework-zephyr-doctor-parity",
+    "framework-zephyr-incremental-builds",
     "framework-zephyr-micromamba-discovery",
     "rp2-mcu-package-metadata",
     "standalone-install-dependency-fixes",
     "ui-integration-wizard",
     "zephyr-installer-broken-workspace",
+    "zephyr-installer-ccache",
     "zephyr-installer-delete-command",
     "zephyr-installer-npx-symlink",
-    "zephyr-installer-platform-selection",
-    "zephyr-installer-sdk-1-0-1"
+    "zephyr-installer-platform-selection"
   ]
 }

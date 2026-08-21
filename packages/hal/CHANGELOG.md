@@ -1,5 +1,7 @@
 # @typecad/hal
 
+## 1.0.0-alpha.13
+
 ## 1.0.0-alpha.12
 
 ## 1.0.0-alpha.11

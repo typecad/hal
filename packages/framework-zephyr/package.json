@@ -1,6 +1,6 @@
 {
   "name": "@typecad/framework-zephyr",
-  "version": "1.0.0-alpha.12",
+  "version": "1.0.0-alpha.13",
   "description": "TypeCAD framework package for the Zephyr RTOS — west/CMake build, devicetree-driven GPIO",
   "type": "module",
   "main": "./dist/index.js",
@@ -38,11 +38,11 @@
     "test:hw:mqtt": "cd ../../tests/hardware && npm exec -- cuttlefish-test mqtt-client.test.ts"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.12"
+    "@typecad/cuttlefish": "1.0.0-alpha.13"
   },
   "devDependencies": {
-    "@typecad/expect": "1.0.0-alpha.12",
-    "@typecad/board-xiao-nrf52840": "1.0.0-alpha.12",
+    "@typecad/expect": "1.0.0-alpha.13",
+    "@typecad/board-xiao-nrf52840": "1.0.0-alpha.13",
     "typescript": "^5.7.3"
   },
   "license": "MIT",

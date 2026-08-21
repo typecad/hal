@@ -1,5 +1,12 @@
 # @typecad/cuttlefish
 
+## 1.0.0-alpha.13
+
+### Patch Changes
+
+- @typecad/safety@1.0.0-alpha.13
+- @typecad/ui@1.0.0-alpha.13
+
 ## Unreleased
 
 - **`ui.dialog.open/close(id)` and `ui.toast(id)` lower at build time** to
@@ -21,7 +28,7 @@
   inlines the map arithmetic.
 
 - **shadcn kit: Spinner.** `<view class="spinner"><view class="spinner-dot"/>
-  </view>` — an indeterminate loading indicator: a dot orbiting inside a ring
+</view>` — an indeterminate loading indicator: a dot orbiting inside a ring
   via pure `transform: translate()` keyframes. translate lerps continuously
   between stops (unlike rotate, which only renders exact quarter turns), so
   the orbit is smooth. The dot's BASE position is the orbit's top-left
@@ -60,8 +67,8 @@
   (multi-layer `hsl(... / a)` shadows parse natively; the kit ships a
   `--shadow-sm` default so themes without shadows still resolve). Token map
   documented in the kit header + paste template: popover/ring (no focus
-  rings on bare metal), chart-*, sidebar-*, font-* (fonts are compiled into
-  firmware), tracking-* (sub-pixel at TFT sizes) and spacing are ignored.
+  rings on bare metal), chart-_, sidebar-_, font-_ (fonts are compiled into
+  firmware), tracking-_ (sub-pixel at TFT sizes) and spacing are ignored.
 
 - **Included shadcn themes + `cuttlefish theme`.** The kit now ships theme
   token sets under `assets/shadcn/themes/` (`default` = the hand-tuned
@@ -85,19 +92,20 @@
 - **Debug builds say what they're doing, in cuttlefish blue.** The plain
   `Loaded FrameworkStrategy from @typecad/framework-zephyr` log that appeared
   under `--debug` is now a styled step line — `⇉ Preparing to debug using
-  zephyr` — matching the cyan `⇉ Transpiling...` / `⇉ Compiling for ...`
+zephyr` — matching the cyan `⇉ Transpiling...` / `⇉ Compiling for ...`
   family (framework name from the loaded strategy's id; still debug-gated).
 
 - **`cuttlefish create` now generates a starter debug profile.** After the
   dependency install, create calls the framework's optional
   `writeProjectDebugArtifacts` export (new `create/debug-artifacts.ts`
   helper) so gdb-capable targets (Zephyr esp32s3) get `.vscode/launch.json`
-  + `tasks.json` immediately — pressing F5 no longer opens the
-  "select a debugger" menu on a fresh project. Best-effort by design: the
-  framework package isn't resolvable yet (`--no-install`) or the framework
-  has no debug support, create silently skips (the first `--debug` build
-  writes the artifacts anyway), and the next-steps output gains an F5 hint
-  when a profile was written.
+
+  - `tasks.json` immediately — pressing F5 no longer opens the
+    "select a debugger" menu on a fresh project. Best-effort by design: the
+    framework package isn't resolvable yet (`--no-install`) or the framework
+    has no debug support, create silently skips (the first `--debug` build
+    writes the artifacts anyway), and the next-steps output gains an F5 hint
+    when a profile was written.
 
 - **Fixed: output-pin shadow reads went stale in multi-file programs.** The
   shadow-variable updates for `gpio.write`/`gpio.toggle` were decided at
@@ -131,6 +139,7 @@
   per-frame debug geometry from the runtime, toggled per mode from the new
   Debug overlay panel, `?debug=boxes,clips,dirty,inspect`, or the D key
   (cycles boxes → clips → dirty → off):
+
   - **boxes** — every visible node's current draw rect (transform/press/
     drawer/scroll offsets applied), colored by kind (views cyan, text
     yellow, interactive magenta, img/canvas orange, lists green);
@@ -143,16 +152,16 @@
   - **inspect** — taps report the topmost node (id, tag, kind, box,
     tappability) into Diagnostics instead of interacting; Ctrl-click always
     inspects without entering the mode.
-  Zero cost while every mode is off (the runtime's capture flag gates the
-  per-tick paint-rect collection). The mode rows are generously-sized click
-  targets (hover-highlighted labels, 14px checkboxes) and a live state line
-  under them shows "overlay: off — check a box or press D" versus the active
-  mode list, so the intentionally-invisible off state is never mistaken for
-  a broken overlay. The overlay canvas is explicitly background-transparent
-  (the page's `canvas { background: #000 }` rule otherwise made it an
-  opaque black sheet hiding the content being inspected) and runs its backing
-  store at CSS-pixel resolution so strokes are 1 CSS px thin — thick
-  logical-pixel strokes buried text under the outlines.
+    Zero cost while every mode is off (the runtime's capture flag gates the
+    per-tick paint-rect collection). The mode rows are generously-sized click
+    targets (hover-highlighted labels, 14px checkboxes) and a live state line
+    under them shows "overlay: off — check a box or press D" versus the active
+    mode list, so the intentionally-invisible off state is never mistaken for
+    a broken overlay. The overlay canvas is explicitly background-transparent
+    (the page's `canvas { background: #000 }` rule otherwise made it an
+    opaque black sheet hiding the content being inspected) and runs its backing
+    store at CSS-pixel resolution so strokes are 1 CSS px thin — thick
+    logical-pixel strokes buried text under the outlines.
 
 - **Preview reloads the `@typecad/ui` engine per snapshot build.** The server
   cached the `buildPreviewSnapshot` module graph from its first snapshot
