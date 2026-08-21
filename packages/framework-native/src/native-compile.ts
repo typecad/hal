@@ -123,10 +123,11 @@ export const NativeToolchain = {
     // C++ standard
     flags.push(`-std=${nativeConfig.cxxStandard ?? "c++17"}`);
 
-    // Optimization
-    if (options.optimize === "size") flags.push("-Os");
-    else if (options.optimize === "speed") flags.push("-O3");
-    else flags.push("-O2");
+    // Optimization: always -O2. The old `output.optimize` config knob was
+    // removed from cuttlefish ("framework territory" — see config-loader's
+    // deprecation note); nothing can populate a ToolchainOptions.optimize, so
+    // these branches were dead code that never type-checked.
+    flags.push("-O2");
 
     // Warning level
     flags.push(...warningFlags(nativeConfig.warnings));
