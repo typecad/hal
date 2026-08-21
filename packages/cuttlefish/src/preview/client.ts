@@ -39,6 +39,9 @@ type DebugModes = { boxes: boolean; clips: boolean; dirty: boolean; inspect: boo
 let debugModes: DebugModes = { boxes: false, clips: false, dirty: false, inspect: false };
 let debugOverlay: HTMLCanvasElement | undefined;
 let debugCtx: CanvasRenderingContext2D | undefined;
+/** Re-syncs the overlay to the app canvas whenever layout changes its box
+ *  (aspect-ratio application, max-height, container reflow). */
+let overlayResizeObserver: ResizeObserver | undefined;
 let dirtyFlashAlpha = 0;
 /** CSS px per logical display px — the overlay backing store runs at this
  *  resolution so debug strokes are 1 CSS px thin (a 1-logical-px stroke on
@@ -289,12 +292,22 @@ async function start(): Promise<void> {
     debugOverlay.height = Math.max(1, Math.round(rect.height * dpr));
     debugScale = (rect.width * dpr) / snapshot.program.width;
   };
+  // Set the canvas CSS aspect-ratio to match the display (e.g. 128:64 for
+  // OLED, 320:240 for TFT) BEFORE syncing the overlay: the canvas is
+  // vertically centered (place-items: center), so applying the real aspect
+  // after the sync SHRANK it and moved it DOWN — the overlay stayed at the
+  // old 4/3-fallback position and every debug box sat that far above its
+  // element. A ResizeObserver re-syncs on any later layout-driven size
+  // change (max-height kicking in, container reflow), not just window
+  // resizes.
+  document.documentElement.style.setProperty("--display-aspect", `${snapshot.program.width} / ${snapshot.program.height}`);
   syncOverlayBox();
   window.addEventListener("resize", syncOverlayBox);
-
-  // Set the canvas CSS aspect-ratio to match the display (e.g. 128:64 for
-  // OLED, 320:240 for TFT) so the browser scales it proportionally.
-  document.documentElement.style.setProperty("--display-aspect", `${snapshot.program.width} / ${snapshot.program.height}`);
+  if (typeof ResizeObserver !== "undefined") {
+    overlayResizeObserver?.disconnect();
+    overlayResizeObserver = new ResizeObserver(() => syncOverlayBox());
+    overlayResizeObserver.observe(canvas);
+  }
 
   const status = byId<HTMLDivElement>("status");
   status.textContent = `${snapshot.profileName ?? snapshot.program.display?.driver ?? "display"} ${snapshot.program.width}x${snapshot.program.height} ${snapshot.program.colorFormat}`;

@@ -9,6 +9,17 @@
 
 ## Unreleased
 
+- **Fixed the preview debug overlay drawing above its elements.** The
+  overlay canvas was positioned before the app canvas's real
+  `--display-aspect` applied (the 4/3 CSS fallback was still in effect);
+  the canvas is vertically centered, so switching to the display's true
+  aspect (e.g. 480x320's 1.5, shorter than 4/3) shrank and moved it down
+  while the overlay stayed at the old position — every debug box sat that
+  far above its element (the header's "shadcn kit" box floated directly
+  over the title). The aspect variable now applies before the overlay
+  syncs, and a ResizeObserver re-syncs on any later layout-driven size
+  change (max-height, container reflow), not just window resizes.
+
 - **`ui.dialog.open/close(id)` and `ui.toast(id)` lower at build time** to
   the shared drawer slot calls (`ui_drawer_open(N)` / `ui_drawer_close(N)`),
   resolving `<dialog>` / `<toast>` ids with the same diagnostics as drawer
