@@ -665,7 +665,6 @@ export class PreviewUIRuntime {
   }
 
   private navigate(screenIdx: number): void {
-    this.onDiagnostics?.(`NAV -> screen ${screenIdx}`);
     const next = Math.trunc(Number(screenIdx));
     if (!Number.isFinite(next) || next < 0 || next >= this.screenCount || next === this.activeScreen) return;
     this.activeScreen = next;

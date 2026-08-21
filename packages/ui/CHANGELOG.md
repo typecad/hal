@@ -8,6 +8,9 @@
 
 ## Unreleased
 
+- **Removed the `NAV -> screen N` lines from the preview's diagnostics
+  panel.** Navigation is normal interaction noise, not a diagnostic.
+
 - **Fixed borderless buttons wrapping their last glyph ("Primar" /
   "y").** `border: none` zeroed the border STYLE but left the UA's
   residual 1px WIDTH on the node — and the draw path subtracts
