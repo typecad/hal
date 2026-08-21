@@ -30,6 +30,12 @@ dependencies:
   - cmake>=3.20,<4
   - ninja
   - gperf
+  # Compiler cache. Zephyr's cmake/modules/ccache.cmake auto-routes compiles
+  # AND links through ccache whenever it is on PATH (opt out with USE_CCACHE=0;
+  # ccache's per-user default cache dir is already shared across projects).
+  # Build dirs that must start fresh (config/board changes) then replay from
+  # cache instead of recompiling every unchanged Zephyr library object.
+  - ccache
   # Python helpers west/CMake invoke.
   - pyelftools
   - packaging

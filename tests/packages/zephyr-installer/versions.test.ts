@@ -144,6 +144,15 @@ describe('zephyr-installer install scripts', () => {
     expect(cmakeLine).toMatch(/>=\s*3\.20/);
   });
 
+  it('environment.yml installs ccache (Zephyr auto-routes compiles/links through it)', () => {
+    // Zephyr's cmake/modules/ccache.cmake wires RULE_LAUNCH_COMPILE/_LINK to
+    // ccache whenever it is on PATH, so env-installed ccache makes fresh build
+    // dirs (config/board changes) replay from cache instead of recompiling
+    // every unchanged Zephyr library object.
+    const env = readFileSync(join(installerDir, 'environment.yml'), 'utf8');
+    expect(env).toMatch(/^\s*-\s*ccache\s*$/m);
+  });
+
   it('install per-module requirements.txt (esptool for ESP32, etc.) — build-relevant locations only', () => {
     // Without this, board-specific build steps fall back to system tools (e.g. an
     // old esptool) and fail. Target HAL scripts/zephyr + lib codegen, NOT a

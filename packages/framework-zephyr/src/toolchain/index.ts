@@ -20,7 +20,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, join } from 'node:path';
-import { readdirSync, readFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
 import type { ToolchainOptions, CompileResult, UploadResult } from '@typecad/cuttlefish/api/shared';
 import { parseCompileErrors } from '@typecad/cuttlefish/api/shared';
 import { scaffoldZephyrProject, writeIfChanged } from './scaffold.js';
@@ -166,6 +166,33 @@ export function cleanseUploadOutput(
   return output;
 }
 
+
+/**
+ * Whether a failed `west build` output carries ninja's `dependency cycle`
+ * signature. Zephyr 4.3.99-dev snapshots have a regression
+ * (zephyrproject-rtos/zephyr#104757, fixed upstream by the #104784 revert,
+ * in v4.4+): after CMake re-runs from a .config change, the build dir's
+ * .ninja_deps records an `offsets.h -> offsets.c.obj -> offsets.h` cycle and
+ * ninja aborts with `ninja: error: dependency cycle: ...` before compiling
+ * anything. The cycle lives in the build dir, not the sources, so compile()
+ * recovers by deleting the dir and retrying once.
+ *
+ * Exported (pure) so the detection is unit-testable without spawning west.
+ */
+export function isDependencyCycleFailure(output: string): boolean {
+  return output.includes('dependency cycle');
+}
+
+/** stdout+stderr of a spawnSync result coerced to one string. Defensive about
+ *  the buffer form (spawnSync only returns strings when `encoding` is set,
+ *  which every call site here does — but the coercion costs nothing). */
+function combinedSpawnOutput(
+  result: { stdout?: string | Buffer | null; stderr?: string | Buffer | null },
+): string {
+  const so = typeof result.stdout === 'string' ? result.stdout : (result.stdout?.toString() ?? '');
+  const se = typeof result.stderr === 'string' ? result.stderr : (result.stderr?.toString() ?? '');
+  return so + se;
+}
 
 /**
  * FrameworkToolchain for Zephyr. Spec §3.5 (mirror of the ESP-IDF toolchain).
@@ -372,16 +399,23 @@ export const Toolchain = {
     // west defaults to <projectRoot>/build.
     const buildDir = join(projectRoot, 'build');
 
-    // Nuke the build dir whenever a previous build exists. Zephyr's gen_offset
-    // flow (offsets.h is generated FROM offsets.c.obj, while gen_offset.h makes
-    // offsets.c include offsets.h) leaves a permanent `offsets.h ->
-    // offsets.c.obj -> offsets.h` cycle in the .ninja_deps log after the first
-    // incremental pass — ninja then fails every later build with `dependency
-    // cycle` even when nothing changed. This is a known Zephyr-on-Windows
-    // issue; the reliable fix is a pristine build dir per build. Also nukes
-    // when prj.conf/CMakeLists/overlay changed, so Kconfig symbols and
-    // generated headers never diverge from a cached graph.
-    if (configChanged || existsSync(join(buildDir, 'zephyr', 'zephyr.bin'))) {
+    // Reuse the build dir across builds so ninja recompiles only the changed
+    // app translation units and re-links — a pristine configure + the
+    // ~280-target Zephyr library rebuild costs minutes on Windows
+    // (demo-shadcn measures 69s of ninja wall time, 448s of summed compile
+    // work, and every build redid all of it). Nuke it only when the generated
+    // config changed (prj.conf / CMakeLists content), the one path that must
+    // not reuse a cached graph: Zephyr 4.3.99-dev snapshots carry a
+    // regression (zephyrproject-rtos/zephyr#104757, fixed by the #104784
+    // revert on 2026-03-03, in v4.4+) where re-running CMake after a .config
+    // change records an `offsets.h -> offsets.c.obj -> offsets.h` cycle in
+    // .ninja_deps, after which every ninja run fails with `dependency cycle`.
+    // Plain source edits never reconfigure CMake, so they cannot trigger it —
+    // and the retry after the spawn below self-heals any path that still does.
+    // Board switches need no nuke here: `west build` is --pristine=auto by
+    // default and recreates the dir itself when -b <board> mismatches the
+    // cached board.
+    if (configChanged) {
       try { rmSync(buildDir, { recursive: true, force: true }); } catch { /* may not exist */ }
     }
 
@@ -409,11 +443,24 @@ export const Toolchain = {
       buildArgs,
       { cwd: projectRoot, encoding: 'utf-8', timeout: BUILD_TIMEOUT_MS },
     );
-    const result = spawnSync(inv.command, inv.args, inv.options);
+    let result = spawnSync(inv.command, inv.args, inv.options);
+    // Self-heal the Zephyr 4.3.99 dep-cycle regression (see the nuke comment
+    // above): when the cached .ninja_deps carries the cycle, ninja aborts with
+    // `dependency cycle` before compiling anything. The cycle lives in the
+    // build dir, not the sources — one pristine retry clears it and the build
+    // proceeds. On fixed Zephyr (>=4.4) this never fires.
+    let pristineRetry = false;
+    if (result.status !== 0 && isDependencyCycleFailure(combinedSpawnOutput(result))) {
+      try { rmSync(buildDir, { recursive: true, force: true }); } catch { /* may not exist */ }
+      result = spawnSync(inv.command, inv.args, inv.options);
+      pristineRetry = true;
+    }
 
     const stdout = typeof result.stdout === 'string' ? result.stdout : (result.stdout?.toString() ?? '');
     const stderr = typeof result.stderr === 'string' ? result.stderr : (result.stderr?.toString() ?? '');
-    const output = stdout + stderr;
+    const output = stdout + stderr + (pristineRetry
+      ? '\n[cuttlefish] dependency cycle detected in the cached build dir — retried with a pristine build'
+      : '');
     // Prefix the build log with how west was resolved, for transparency.
     const header = `Using west via ${inv.install.source}` +
       (inv.install.zephyrBase ? ` (ZEPHYR_BASE=${inv.install.zephyrBase})` : '') + '\n';
