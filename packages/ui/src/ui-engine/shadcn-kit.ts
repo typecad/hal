@@ -136,6 +136,10 @@ export const SHADCN_KIT_CSS = `/* ----------------------------------------------
   padding: 10px 16px;
   font-weight: bold;
   transition: background 80ms;
+  /* Reset the UA's browser-default button border (shadcn's button reset):
+     ghost must be truly borderless — variants that want one (outline)
+     re-declare it themselves. */
+  border: none;
 }
 .btn:pressed { transform: translateY(1px); }
 .btn-primary { background: var(--primary); color: var(--primary-foreground); }

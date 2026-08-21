@@ -8,6 +8,15 @@
 
 ## Unreleased
 
+- **Ghost buttons are borderless (shadcn button reset).** The UA stylesheet
+  gives every `<button>` a browser-default 1px border, and `.btn-ghost`
+  never overrode it — ghost rendered as outline with a slightly different
+  border color (the UA border defaults to currentColor). The kit's `.btn`
+  base now resets the border (`border: none`), matching shadcn's button
+  reset: ghost and primary/secondary/destructive are borderless, and only
+  `.btn-outline` re-declares its own. Bare buttons without kit classes
+  keep the UA default.
+
 - **Fixed the intermittent "header retains a copy of the screen contents
   and stops working".** The band compositor's scroll-viewport clamp
   compared each candidate's CONTENT-local box.y against DISPLAY-space

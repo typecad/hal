@@ -44,8 +44,9 @@ describe("built-in shadcn kit", () => {
     expect(btn).toBeDefined();
     // Kit dark tokens: primary #fafafa -> rgb565 65503 (0xffdf).
     expect(btn!.bg).toBe(65503);
-    // The kit's .btn recipe carries the pressed transform + border.
-    expect(btn!.borderStyle).toBeGreaterThan(0);
+    // The kit's .btn recipe carries the pressed transform and resets the
+    // UA button border (shadcn's button reset — only outline re-adds one).
+    expect(btn!.borderStyle).toBe(0);
     expect(btn!.pressedOffsetY).not.toBe(0);
   });
 
@@ -86,6 +87,26 @@ describe("built-in shadcn kit", () => {
     const snap = await build(configFor());
     const btn = snap.program.nodes.find((n) => n.id === "b");
     expect(btn!.borderRadius).toBe(20);
+  });
+
+  it("ghost buttons are borderless; outline keeps its border (UA reset)", async () => {
+    fs.writeFileSync(path.join(dir, "app.ui"), `
+<screen id="s">
+  <body>
+    <button id="g" class="btn btn-ghost">Ghost</button>
+    <button id="o" class="btn btn-outline">Outline</button>
+    <button id="bare">Bare</button>
+  </body>
+</screen>`);
+    const snap = await build(configFor());
+    const by = (id: string) => snap.program.nodes.find((n) => n.id === id)!;
+    // The UA stylesheet gives every button a browser-default 1px border.
+    // shadcn's button reset removes it (ghost must be truly borderless);
+    // outline re-declares its own. Bare buttons keep the UA default.
+    expect(by("g").borderStyle).toBe(0);
+    expect(by("o").borderStyle).toBe(1);
+    expect(by("o").borderWidth).toBe(1);
+    expect(by("bare").borderStyle).toBe(1);
   });
 
   it(":checked rules bake a checked-state pair onto check/radio/select (primary/accent)", async () => {
