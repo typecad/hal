@@ -1237,10 +1237,16 @@ static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw,
       int16_t origBoxH = __ui_nodes[c].box.h;
       __ui_nodes[c].box.x = static_cast<int16_t>(origBoxX - rx);
       __ui_nodes[c].box.y = static_cast<int16_t>(origBoxY - ry - bandTop);
-      // Clamp the face to the scroll viewport (band-local coords). The
-      // shifted box/draw geometry stays within the candidate's clip bounds;
-      // text wrapping and layout metrics shrink with the box. Fully clipped
-      // faces drop out here.
+      // Clamp the face to the scroll viewport (band-local DRAW coords). The
+      // clamp must operate on the node's DRAW position — box.y is
+      // content-local and the ancestor scroll is subtracted later, inside
+      // ui_draw_y_for_node, so comparing box.y against display-space clip
+      // bounds passed scrolled content whose CONTENT coordinate numerically
+      // fell inside the viewport: a button scrolled up past the viewport top
+      // painted over the header, and the smearing stuck (nothing repaints
+      // the header afterwards). Clamp the draw position and shift the box by
+      // the delta; text wrapping and layout metrics shrink with the box.
+      // Fully clipped faces drop out here.
       {
         // int32 math: the unclipped sentinels are ±32767 and the band-local
         // conversion subtracts region/band offsets — int16 arithmetic wraps
@@ -1251,29 +1257,25 @@ static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw,
         int32_t clipBotL = static_cast<int32_t>(__ui_scroll_candidates[ci].clipBottom) - ry - bandTop;
         int32_t clipLeftL = static_cast<int32_t>(__ui_scroll_candidates[ci].clipLeft) - rx;
         int32_t clipRightL = static_cast<int32_t>(__ui_scroll_candidates[ci].clipRight) - rx;
-        int16_t boxY0 = __ui_nodes[c].box.y;
-        if (boxY0 < clipTopL) {
-          __ui_nodes[c].box.y = static_cast<int16_t>(clipTopL);
-          __ui_nodes[c].box.h = static_cast<int16_t>(__ui_nodes[c].box.h - (clipTopL - boxY0));
-        }
-        if (static_cast<int32_t>(__ui_nodes[c].box.y) + __ui_nodes[c].box.h > clipBotL) {
-          __ui_nodes[c].box.h = static_cast<int16_t>(clipBotL - __ui_nodes[c].box.y);
-        }
-        int16_t boxX0 = __ui_nodes[c].box.x;
-        if (boxX0 < clipLeftL) {
-          __ui_nodes[c].box.x = static_cast<int16_t>(clipLeftL);
-          __ui_nodes[c].box.w = static_cast<int16_t>(__ui_nodes[c].box.w - (clipLeftL - boxX0));
-        }
-        if (static_cast<int32_t>(__ui_nodes[c].box.x) + __ui_nodes[c].box.w > clipRightL) {
-          __ui_nodes[c].box.w = static_cast<int16_t>(clipRightL - __ui_nodes[c].box.x);
-        }
-        if (__ui_nodes[c].box.w <= 0 || __ui_nodes[c].box.h <= 0) {
+        int16_t dispY0 = ui_draw_y_for_node(c);
+        int16_t dispX0 = ui_draw_x_for_node(c);
+        int32_t y0 = dispY0 < clipTopL ? clipTopL : dispY0;
+        int32_t y1 = static_cast<int32_t>(dispY0) + __ui_nodes[c].box.h > clipBotL ? clipBotL : static_cast<int32_t>(dispY0) + __ui_nodes[c].box.h;
+        int32_t x0 = dispX0 < clipLeftL ? clipLeftL : dispX0;
+        int32_t x1 = static_cast<int32_t>(dispX0) + __ui_nodes[c].box.w > clipRightL ? clipRightL : static_cast<int32_t>(dispX0) + __ui_nodes[c].box.w;
+        if (x1 - x0 <= 0 || y1 - y0 <= 0) {
           __ui_nodes[c].box.x = origBoxX;
           __ui_nodes[c].box.y = origBoxY;
           __ui_nodes[c].box.w = origBoxW;
           __ui_nodes[c].box.h = origBoxH;
           continue;
         }
+        // box.y/box.x already carry the band shift; add the clamp delta on
+        // top (y0 - dispY0 is 0 when unclipped, preserving the shift).
+        __ui_nodes[c].box.y = static_cast<int16_t>(__ui_nodes[c].box.y + (y0 - dispY0));
+        __ui_nodes[c].box.h = static_cast<int16_t>(y1 - y0);
+        __ui_nodes[c].box.x = static_cast<int16_t>(__ui_nodes[c].box.x + (x0 - dispX0));
+        __ui_nodes[c].box.w = static_cast<int16_t>(x1 - x0);
       }
       int16_t baseDrawX = ui_base_draw_x_for_node(c);
       int16_t baseDrawY = ui_base_draw_y_for_node(c);

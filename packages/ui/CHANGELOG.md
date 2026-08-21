@@ -8,6 +8,23 @@
 
 ## Unreleased
 
+- **Fixed the intermittent "header retains a copy of the screen contents
+  and stops working".** The band compositor's scroll-viewport clamp
+  compared each candidate's CONTENT-local box.y against DISPLAY-space
+  clip bounds — the ancestor scroll offset is subtracted later, inside
+  the draw helpers, so any scrolled content whose content coordinate
+  numerically fell inside the viewport passed the clamp and painted at
+  its unclipped position: a list button scrolled up past the viewport
+  top smeared over the header, and because the compose cleared the
+  header's dirty flags nothing ever repaired it. The trigger was
+  scrolling + any compose at non-zero scrollY with a canvas allocation
+  miss (heap pressure), which routed the frame through the subtree
+  compose. The clamp now operates on the node's DRAW position
+  (ui_draw_x/y_for_node) and shifts the box by the delta. Reproduced and
+  verified with a two-screen fuzz harness (scroll + taps + navigation,
+  box-geometry invariants, simulated allocation failures): all seeds
+  pass; the dialog/drawer and stale-bar scenarios re-verified unchanged.
+
 - **Checked-state theming for form controls (shadcn
   data-[state=checked]).** `:checked` rules now bake a checked-state color
   pair (checkedBg/checkedFg) into check/radio/select nodes — a separate
