@@ -322,9 +322,14 @@ function borderStyle(style: CSSProperty): 0 | 1 | 2 {
 }
 
 function borderWidthOf(style: CSSProperty): number {
+  // A none-style border renders nothing and must consume no space either:
+  // the draw path subtracts borderWidth*2 from the text max width, so a
+  // residual UA width on a borderless kit button wrapped its last glyph
+  // ("Primar" / "y"). Style none wins over any declared width.
+  if (borderStyle(style) === 0) return 0;
   const px = cssPx(style.borderWidth);
   if (px > 0) return Math.max(1, Math.min(8, px));
-  return borderStyle(style) === 0 ? 0 : 1;
+  return 1;
 }
 
 /** Per-side border width: the per-side field wins when set, else falls back to

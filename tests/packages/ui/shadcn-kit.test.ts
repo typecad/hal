@@ -103,7 +103,11 @@ describe("built-in shadcn kit", () => {
     // The UA stylesheet gives every button a browser-default 1px border.
     // shadcn's button reset removes it (ghost must be truly borderless);
     // outline re-declares its own. Bare buttons keep the UA default.
+    // A none-style border also zeroes the WIDTH — the draw path subtracts
+    // borderWidth*2 from the text max width, and a residual 1px wrapped
+    // the last glyph of borderless buttons ("Primar" / "y").
     expect(by("g").borderStyle).toBe(0);
+    expect(by("g").borderWidth).toBe(0);
     expect(by("o").borderStyle).toBe(1);
     expect(by("o").borderWidth).toBe(1);
     expect(by("bare").borderStyle).toBe(1);

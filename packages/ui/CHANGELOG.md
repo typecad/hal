@@ -8,6 +8,14 @@
 
 ## Unreleased
 
+- **Fixed borderless buttons wrapping their last glyph ("Primar" /
+  "y").** `border: none` zeroed the border STYLE but left the UA's
+  residual 1px WIDTH on the node — and the draw path subtracts
+  borderWidth*2 from a button's text max width, so borderless kit
+  buttons lost 2px of text space and wrapped. A none-style border now
+  zeroes the width too (CSS semantics: no border, no space), restoring
+  the exact text+padding fit the layout computed.
+
 - **Ghost buttons are borderless (shadcn button reset).** The UA stylesheet
   gives every `<button>` a browser-default 1px border, and `.btn-ghost`
   never overrode it — ghost rendered as outline with a slightly different
