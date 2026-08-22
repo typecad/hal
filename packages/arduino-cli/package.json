@@ -1,6 +1,6 @@
 {
   "name": "@typecad/arduino-cli",
-  "version": "1.0.0-alpha.13",
+  "version": "1.0.0-alpha.14",
   "description": "TypeCAD arduino-cli environment detection — verify arduino-cli and board cores are installed",
   "type": "module",
   "main": "./dist/index.js",

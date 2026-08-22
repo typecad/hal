@@ -1,6 +1,6 @@
 {
   "name": "@typecad/expect",
-  "version": "1.0.0-alpha.13",
+  "version": "1.0.0-alpha.14",
   "description": "Hardware test framework for TypeCAD — vitest-style assertions over serial",
   "type": "module",
   "main": "./dist/index.js",
@@ -40,11 +40,11 @@
   "dependencies": {
     "typescript": "^5.7.3",
     "serialport": "^13.0.0",
-    "@typecad/arduino-cli": "1.0.0-alpha.13",
-    "@typecad/hal": "1.0.0-alpha.13"
+    "@typecad/arduino-cli": "1.0.0-alpha.14",
+    "@typecad/hal": "1.0.0-alpha.14"
   },
   "optionalDependencies": {
-    "@typecad/framework-zephyr": "1.0.0-alpha.13"
+    "@typecad/framework-zephyr": "1.0.0-alpha.14"
   },
   "devDependencies": {
     "@types/node": "^22.10.7"

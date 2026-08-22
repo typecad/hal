@@ -1,5 +1,127 @@
 # @typecad/zephyr-installer
 
+## 1.0.0-alpha.14
+
+### Minor Changes
+
+- ## ccache in the build env: fresh build dirs replay from cache
+  
+  The micromamba env now installs `ccache` (conda-forge, all platforms). Zephyr's
+  `cmake/modules/ccache.cmake` automatically routes compiles and links through
+  ccache whenever it is on PATH — no extra wiring. Build dirs that legitimately
+  start fresh (config/board changes, the framework's dependency-cycle recovery)
+  then hit the cache for every unchanged Zephyr library object instead of
+  recompiling ~280 files from scratch. ccache's per-user default cache dir is
+  shared across projects; opt out with `USE_CCACHE=0`.
+- ## `--delete`: uninstall everything after explicit confirmation
+  
+  ```sh
+  npx @typecad/zephyr-installer --delete    # shows what will be removed, asks 'yes'
+  ```
+  
+  Removes everything the installer created:
+  
+  - the conda env (`$MAMBA_ROOT_PREFIX/envs/<name>`)
+  - the Zephyr SDK (`$MAMBA_ROOT_PREFIX/zephyr-sdk/`)
+  - the west workspace (`~/zephyrproject`)
+  - micromamba itself (`$MAMBA_ROOT_PREFIX`) — **only when no other conda envs
+    exist**; otherwise the root is kept and the other envs are named in the summary
+  
+  Safety model (destructive ops default-deny):
+  
+  - Shows the exact paths **with on-disk sizes** before anything is touched.
+  - Requires typing `yes` exactly (Enter/cancel aborts with nothing deleted).
+  - Non-interactive stdin without `--yes` **refuses** (unlike install/modify,
+    which proceed) — `--delete --yes` is the explicit scripting form.
+  - The shell-profile hook from `micromamba shell init` is deliberately NOT
+    edited automatically; the summary names the file to trim by hand.
+  - Per-item results report `deleted`/`skipped` (locked files skip with the OS
+    error instead of aborting the rest).
+- ## Selective platform installation + `--modify` reconfiguration
+  
+  A full install downloads the 1.5 GB SDK bundle (all 25+ toolchains). Most users
+  need one or two platforms. The installer now downloads the ~10 MB minimal bundle
+  (cmake config + sdk_version) plus only the selected toolchains:
+  
+  ```sh
+  npx @typecad/zephyr-installer              # interactive platform checklist
+  npx @typecad/zephyr-installer --modify     # add/remove platforms later
+  npx @typecad/zephyr-installer --platforms arm,esp32   # non-interactive
+  npx @typecad/zephyr-installer --platforms all          # full bundle (previous behavior)
+  ```
+  
+  ### Platform groups
+  
+  | Group | Toolchain(s) | Covers | ~Download |
+  |-------|-------------|--------|-----------|
+  | ARM Cortex-M | `arm-zephyr-eabi` | nRF, RP2040, STM32, SAMD | ~150 MB |
+  | ESP32 | `xtensa-espressif_esp32{,s2,s3}_zephyr-elf` | ESP32/S2/S3 | ~300 MB |
+  | RISC-V | `riscv64-zephyr-elf` | ESP32-C3/C6 | ~120 MB |
+  | x86 | `x86_64-zephyr-elf` | native_sim | ~100 MB |
+  | aarch64 | `aarch64-zephyr-elf` | ARM64 boards | ~100 MB |
+  | All | (full bundle) | everything | ~1.5 GB |
+  
+  ### Interactive checklist
+  
+  ```
+  Select platform toolchains to install:
+  
+    [1] ARM Cortex-M (nRF, RP2040, STM32, SAMD, ...)      ~150 MB  installed
+    [2] ESP32 / ESP32-S2 / ESP32-S3 (Xtensa)              ~300 MB
+    [3] RISC-V (ESP32-C3/C6, generic RISC-V)              ~120 MB
+    [4] x86 / native_sim                                  ~100 MB
+    [a] All (full bundle, ~1.5 GB download / ~11 GB extracted)
+  
+  Enter selection (e.g. '1 2', 'arm,esp32', or 'all'):
+  ```
+  
+  ### `--modify` (reconfigure an existing install)
+  
+  Re-runs the checklist with installed toolchains marked, then applies the delta:
+  new selections download (idempotent per-toolchain), deselections delete their
+  toolchain dirs. Skips the env/workspace steps — SDK platforms only. The
+  selection persists in `$SDK_INSTALL_DIR/.typecad-platforms`.
+  
+  ### Line-ending safety
+  
+  `.gitattributes` now forces `*.sh`/`*.mjs`/`*.env`/`environment.yml` to LF-only
+  (`text eol=lf`), preventing CRLF conversion on Windows checkouts that would
+  break bash on Linux with `$'\r': command not found`.
+
+### Patch Changes
+
+- ## Fix: recover from a broken `.west/` (missing config) instead of failing west update
+  
+  `init-workspace` checked only for `.west/` and skipped `west init` when present. But a
+  workspace can have `.west/` without `.west/config` (interrupted/partial init), which
+  makes `west update` fail:
+  
+  ```
+  west.configuration.MalformedConfig: local configuration file not found
+  ```
+  
+  Now requires BOTH `.west/` and `.west/config`; if `.west/` exists without its config,
+  it removes the partial `.west/` and re-initializes. The cloned `zephyr/` and `modules/`
+  are preserved — `west update` re-syncs them, so there's no full re-clone. Mirrored in
+  `install.sh` and `install.ps1`.
+- ## Fix: `npx @typecad/zephyr-installer` did nothing (symlinked-bin guard)
+  
+  The entry-point guard compared `import.meta.url` to `path.resolve(process.argv[1])`,
+  but `path.resolve` does NOT follow symlinks. npx (and global installs) run the bin
+  through a symlink (`node_modules/.bin/zephyr-installer` → `…/install.mjs`), so the
+  guard evaluated false and `install.mjs` exited without dispatching — `npx …` produced
+  no output. Running `node …/install.mjs` directly worked because that path isn't a
+  symlink.
+  
+  Fixed by resolving symlinks on both sides (`realpathSync`) before comparing — the
+  canonical "is main module" check that survives symlinked bins.
+  
+  Also: the confirmation gate's non-interactive path now PROCEEDS instead of aborting.
+  Some npx invocations don't forward a TTY for stdin; the old behavior aborted there
+  ("Non-interactive stdin with no --yes — aborting"). It now proceeds (the user invoked
+  it explicitly; `--yes` remains the explicit no-prompt flag), so `npx` works whether or
+  not it forwards a TTY.
+
 ## Unreleased
 
 - ## dfu-util in the Windows env + pyusb everywhere

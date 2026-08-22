@@ -1,5 +1,212 @@
 # @typecad/framework-zephyr
 
+## 1.0.0-alpha.14
+
+### Minor Changes
+
+- ## framework-zephyr parity with framework-arduino
+  
+  Closes the genuine feature gaps where the (newer) Zephyr framework lagged the
+  Arduino framework. The two areas Arduino led — a `licenses` subcommand and the
+  `dac`/`fs`/`hwtimer` HAL categories — are now closed.
+  
+  ### `cuttlefish licenses` for Zephyr (was missing entirely)
+  
+  - **Shared SPDX core** (`@typecad/cuttlefish/api/shared`): extracts the
+    framework-agnostic license-detection engine — the SPDX table, marker/alias
+    matching (`identifySpdx`), copyleft classification (`classifyRisk`), and the
+    LICENSE-file / source-header / manifest resolver (`resolveLibraryLicense`) —
+    out of `framework-arduino/src/licenses.ts` into a reusable
+    `spdx-licenses.ts`. Arduino is refactored to consume it (its public API and
+    tests are unchanged — a non-regressing import-only change).
+  - **Zephyr presenter** (`framework-zephyr/src/licenses.ts`): enumerates the
+    Zephyr kernel (`$ZEPHYR_BASE`) + the west manifest projects (`west list`)
+    and resolves each one's license through the shared core, rendering a
+    copyleft-sorted table that mirrors the Arduino presenter. `--strict` exits
+    non-zero on any strong-copyleft / unknown dependency; a missing west install
+    degrades gracefully instead of crashing. Declared `licenses: { available:
+    true }` in the Zephyr manifest and exported as the dispatcher-facing
+    `licenses` alias.
+    - **Build-based project scope** — unlike Arduino's installed-library
+      registry, a Zephyr workspace's west manifest carries *every* vendor HAL and
+      library (most unused by any single project). The default scope therefore
+      reports only the dependencies the firmware actually links, derived from the
+      last `cuttlefish build`'s `compile_commands.json` (a module is listed iff
+      one of its sources was compiled — e.g. an xiao_ble/nRF52840 build links
+      `hal_nordic` + the kernel, not the other ~60 modules). Without a build,
+      only the kernel is shown with a hint to build first; `--all` lists every
+      west module. Module LICENSE files are sought under `zephyr/` and `src/`
+      subdirs too (e.g. `hal_nordic` ships `zephyr/LICENSE.txt` → BSD-3-Clause).
+    - The CLI accepts `cuttlefish license` (singular) as an alias, and the shared
+      resolver now matches lowercase/`.rst` LICENSE files (e.g.
+      trusted-firmware-m's `license.rst`) using their real on-disk name so it
+      works on case-sensitive filesystems.
+  
+  ### HAL coverage: `dac`, `fs`, `hwtimer` lowerings
+  
+  These were previously declared unsupported (the Zephyr manifest flagged `dac`/
+  `fs` as "not yet wired"); they now lower to native Zephyr APIs, with
+  `profileDiagnostics` gates that surface clear errors for misuse on targets
+  lacking the peripheral (mirroring the existing ADC/WiFi gating).
+  
+  - **`dac`** — Zephyr DAC driver (`dac_channel_setup` + `dac_write_value`)
+    driven by a new chip-descriptor `dac` field. ESP32 declares its two 8-bit
+    channels (GPIO25/26); nRF52840 / ESP32-S3 (no DAC) lower to a comment and
+    trip `zephyr-dac-pin-unavailable`.
+  - **`fs`** — Zephyr FS API (littlefs on the storage partition). A lazy-mount
+    shim (formats on first use) backs `begin`/`read_text`/`write_text`/
+    `exists`/`remove`; the scaffold emits `CONFIG_FILE_SYSTEM` +
+    `CONFIG_FILE_SYSTEM_LITTLEFS`, and the overlay enables the DAC node / points
+    at the storage partition.
+  - **`hwtimer`** — Zephyr counter driver: `set_frequency` → top value
+    (`counter_freq/hz`) + `on_overflow` callback, `start` arms both, `stop`
+    halts. A new `hwtimer.controllers` descriptor field maps the instance index
+    to a counter nodelabel (nRF RTC1; RTC0 is kernel-owned). The JS
+    `setInterval`/`setTimeout` `k_timer` polyfill is unaffected.
+  
+  ### Coverage the manifest validator confirms
+  
+  The manifest declares `dac`/`fs`/`hwtimer` `supported` and the validator probes
+  each op against the resolver — all now lower. The new categories join the
+  `halResolutionTests` snapshot suite (`dac.test.ts` rewritten; `fs.test.ts`,
+  `hwtimer.test.ts` added) and the shared SPDX core has its own focused test.
+  
+  ### No-STL string/array polyfills (compile gap)
+  
+  Zephyr is a no-STL target (`hasVector`/`hasString = false`), like AVR — but it
+  was missing the two polyfills AVR ships, so programs using string methods or
+  dynamic arrays emitted undefined symbols and failed to compile. Two fixes:
+  
+  - **Polyfill definitions** — `generateNativePolyfills` now emits a STL-free
+    `static_array` (`__tc_StaticArray<T,N>`, mutated/struct array literals + array
+    methods) and `string_methods` (`__tc_toUpperCase`/`__tc_endsWith`/… `const
+    char*` helpers, inline ASCII case conversion so only `<cstring>` is needed).
+    Both are declared in `nativePolyfills()` and the manifest's `polyfills.emitted`.
+  - **String-method rewrite** — `normalizeRawExpression` now calls
+    `applyStringMethodRewrites` (Arduino always did; Zephyr omitted it), so
+    `s.toUpperCase()` lowers to `__tc_toUpperCase(s)` and `s.includes(x)` to
+    inline `strstr(...)` instead of a member call on `const char*`.
+  
+  Verified end-to-end: a program using `s.toUpperCase()` / `s.includes()` /
+  `let a = [...]; a.push(...)` now transpiles + compiles for `xiao_ble` (the
+  emitted `__tc_StaticArray<double,3>` + `__tc_toUpperCase(s)` resolve). Covered by
+  `tests/packages/framework-zephyr/polyfills.test.ts`.
+  
+  ### Monochrome OLED display (SSD1306) + direct-display fix
+  
+  Closes the display-driver coverage gap (Arduino ships `ssd1309`; Zephyr now
+  ships `ssd1306-zephyr`), skipping e-ink. Two coupled changes:
+  
+  - **Direct-display bug fix** — `gfx.ts` (the `display_*` runtime for direct
+    `display.*` HAL ops, no `@typecad/ui`) was dead code: `shimLines` gated it on
+    `!providesDisplayAdapter()`, which is always `true`, so it was never emitted —
+    leaving *every* direct-display program (ili9341/st7796 included) with five
+    undefined symbols. The gate now uses the per-program UI signal
+    (`usesDisplay && !entryHasUI()`), so the runtime is emitted only when no UI
+    adapter (which defines the same `display_init`) will be.
+  - **Mono GFX runtime** — `buildDisplayRuntime` now branches on
+    `profile.colorFormat`: RGB565 keeps the one-row line buffer; **mono** uses a
+    full page-framebuffer (the standard model for page-buffered OLEDs; the
+    AGENTS.md "no full framebuffer" guardrail targets RGB SPI TFTs, not OLEDs)
+    with Zephyr MONO01 packing (horizontal, MSB-first). `display_fill_rect`/
+    `draw_rect`/`draw_text` set bits (`color != 0 ⇒ lit`); `display_flush` pushes
+    the whole buffer via `display_write`.
+  - **Profile + adapter guard** — new `ssd1306-zephyr` profile (128×64 mono); the
+    RGB565/SPI UI adapter declines mono drivers (mono is direct-`display.*` only —
+    full `@typecad/ui` CuttlefishGFX rendering on mono OLED is out of scope).
+  
+  Caveat: there is no OLED fixture/demo in the repo, so mono rendering is
+  validated at the C++-string level (snapshot tests in `display/gfx.test.ts`,
+  same bar as the existing `gfx.ts`); the MONO01 bit orientation is isolated to
+  `__tc_set_pixel` for a trivial hardware-reveal fix. Manifest + 422-test
+  framework-zephyr suite pass.
+  
+  ### Intentional differences (unchanged)
+  
+  The optional strategy-method differences (`mapPeripheralIdentifier`,
+  `isrUnsafeOperations`, `setupInitCode`, library resolution, profile/cli-metadata
+  probing) remain deliberate platform divergences — Zephyr resolves pins through
+  chip descriptors, uses `printk` over a DT-chosen console (no `Serial.begin`),
+  and has no Arduino-library registry. `snprintf` stays unsupported by design
+  (raw escape hatch).
+- ## Zephyr doctor parity with framework-arduino
+  
+  Brings `cuttlefish doctor` (Zephyr) to feature parity with the Arduino
+  framework's doctor, which checks the build tool is installed and the board
+  support is present. The Zephyr doctor now performs the same two checks through
+  a new shared, structured `checkZephyrEnv()`:
+  
+  - **west toolchain probe** — verifies `west` (the Zephyr build tool) is
+    discoverable + responsive (the direct analog of `arduino-cli` presence) and
+    reports the discovered version + source. Previously the doctor only read the
+    Zephyr RTOS `VERSION` file and never confirmed the actual build tool worked.
+  - **board-support check** — verifies the configured board target exists in the
+    Zephyr checkout (`$ZEPHYR_BASE/boards/`), the analog of the Arduino
+    `arduino-cli core list` check, and prints a `west boards` hint when it is
+    missing. Previously the doctor only previewed how the target string
+    normalizes.
+  - **`checkZephyrEnv()`** — a structured result (`{ ok, reason, messages,
+    fixCommand, check }`) mirroring `@typecad/arduino-cli`'s `checkArduinoEnv`,
+    with failure precedence `west-not-found` → `zephyr-out-of-range` →
+    `board-not-supported`. `doctor.ts` is now a thin presenter over it so the
+    detection logic can be reused by the build/test gates. The existing
+    compat-range check and board-target normalization preview are preserved.
+- ## Incremental builds: stop deleting the build dir after every successful build
+  
+  `cuttlefish build` used to nuke `build/` whenever a previous build existed, so
+  every build was a full pristine configure + recompile of every Zephyr library
+  object — minutes for the larger demos (demo-shadcn: ~280 ninja targets, 69s of
+  parallel compile wall time, redone on every build). The build dir is now reused:
+  a code-only edit recompiles the changed app translation units and re-links.
+  
+  The nuke existed to dodge a Zephyr 4.3.99-dev regression
+  ([zephyr#104757](https://github.com/zephyrproject-rtos/zephyr/issues/104757),
+  fixed upstream 2026-03-03 by the
+  [#104784](https://github.com/zephyrproject-rtos/zephyr/pull/104784) revert, in
+  v4.4+): after CMake re-runs from a `.config` change, `.ninja_deps` records an
+  `offsets.h -> offsets.c.obj -> offsets.h` cycle and every later ninja run fails
+  with `dependency cycle`. That bug only fires on a Kconfig/config change — never
+  on a plain source edit — so the build dir is now deleted only when the generated
+  `prj.conf`/`CMakeLists.txt` content actually changed, and a failed build whose
+  output carries the `dependency cycle` signature self-heals with one pristine
+  retry (covering any reconfigure path on pre-fix Zephyr snapshots). Board
+  switches need no special handling: `west build`'s default `--pristine=auto`
+  recreates the dir itself when `-b <board>` mismatches the cached board.
+  
+  Also: the generated `CMakeLists.txt` now lists the emitted sources explicitly
+  via `target_sources` instead of `file(GLOB … CONFIGURE_DEPENDS …)` — the glob
+  put a `cmake.verify_globs` step in the ninja graph that spawned CMake to
+  re-check the glob on every build. The scaffold rewrites `CMakeLists.txt`
+  (unchanged bytes → no write) whenever the emitted file set changes.
+- ## Activation-free builds: discover the @typecad/zephyr-installer micromamba env
+  
+  `cuttlefish build` no longer requires `micromamba activate zephyr` first. The
+  west discovery cascade gains a new strategy that finds the micromamba env created
+  by `@typecad/zephyr-installer` (via `$MAMBA_ROOT_PREFIX/envs/<name>` or
+  `~/micromamba/envs/zephyr`), and `westSpawn` invokes west through
+  `micromamba run -n <env> west …`. That sets up the env's full PATH
+  (cmake/ninja/dtc) AND runs the activation hook (`ZEPHYR_BASE` /
+  `ZEPHYR_SDK_INSTALL_DIR`), so a fresh `cuttlefish build` works in any project —
+  new or existing — with the user never activating.
+  
+  Cascade order is now: PATH → `$ZEPHYR_BASE` → **micromamba env** → well-known
+  venvs → system python. The installer env is the managed default when nothing is
+  activated; an activated env (PATH) or explicit `$ZEPHYR_BASE` still takes
+  precedence. Discovery is file-check based (no spawn) so it adds no per-build
+  latency. Env name defaults to `zephyr` (`TYPECAD_ZEPHYR_ENV` override).
+  
+  This composes with the per-project auto-activation template
+  (`packages/zephyr-installer/templates/project/`) for the user's interactive
+  shell: builds need no activation; the shell can still be wired via the template
+  for `west`/`gdb`/serial use.
+
+### Patch Changes
+
+- Updated dependencies [d3f7b37]
+- Updated dependencies
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.14
+
 ## 1.0.0-alpha.13
 
 ### Minor Changes

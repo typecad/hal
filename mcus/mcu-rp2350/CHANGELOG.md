@@ -1,5 +1,22 @@
 # @typecad/mcu-rp2350
 
+## 1.0.0-alpha.14
+
+### Patch Changes
+
+- ## Ship source and full package metadata
+  
+  `@typecad/mcu-rp2040` and `@typecad/mcu-rp2350` now include `src/` in the
+  published files (matching all sibling MCU and board packages, so consumers can
+  introspect silicon definitions the way the transpiler does) and carry the full
+  npm metadata the siblings have: `repository`, `homepage`, `bugs`, `keywords`,
+  and `engines`.
+- Updated dependencies [d3f7b37]
+- Updated dependencies
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.14
+  - @typecad/hal@1.0.0-alpha.14
+
 ## 1.0.0-alpha.13
 
 ### Patch Changes

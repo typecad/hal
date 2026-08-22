@@ -1,6 +1,6 @@
 {
   "name": "@typecad/board-xiao-nrf52840",
-  "version": "1.0.0-alpha.13",
+  "version": "1.0.0-alpha.14",
   "description": "TypeCAD Seeed Studio XIAO nRF52840 board definition with typed pins and peripherals",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,9 +14,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.13",
-    "@typecad/hal": "1.0.0-alpha.13",
-    "@typecad/mcu-nrf52840": "1.0.0-alpha.13"
+    "@typecad/cuttlefish": "1.0.0-alpha.14",
+    "@typecad/hal": "1.0.0-alpha.14",
+    "@typecad/mcu-nrf52840": "1.0.0-alpha.14"
   },
   "license": "MIT",
   "publishConfig": {

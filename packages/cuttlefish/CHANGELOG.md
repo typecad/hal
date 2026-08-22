@@ -1,5 +1,194 @@
 # @typecad/cuttlefish
 
+## 1.0.0-alpha.14
+
+### Minor Changes
+
+- d3f7b37: ## Workspace editor tooling bundled into every project
+  
+  `cuttlefish create` now scaffolds a zero-install VS Code setup into each new
+  project's `.vscode/`, so `.ui` files work on first open with no marketplace
+  installs to manage:
+  
+  - **typecad-ui** — a grammar-only extension for `.ui` single-file components
+    (TextMate grammar adapted from Svelte's, MIT-attributed): full highlighting
+    of the TS `<script>`, CSS `<style>`, and markup streams including
+    `on:click={...}` directives and `{expr}` interpolations, snippets for the
+    common idioms (`screen`, `button`, `bind`, `signal`, `canvas`, `list`),
+    explorer file icons (used when the active icon theme has no `.ui` mapping —
+    the default Seti theme has none), word/indentation rules, and a markdown
+    injection grammar so ` ```ui ` fenced blocks highlight in docs.
+  - **TypeCAD Debug** — the built breakpoint-debugging extension is bundled too,
+    so F5 breakpoint commands work with zero install.
+  - **extensions.json** — carries `forceInstall` entries for both extensions;
+    current VS Code builds prompt once on first open, and builds with the
+    forceInstall feature (microsoft/vscode#299830) install silently.
+  - **tasks.json** — a `cuttlefish: watch build` task runs the project's
+    `npm run dev` with `NO_COLOR=1` and parses the transpiler and ESLint gate
+    diagnostic lines into Problems-panel squiggles, synced to the watch loop's
+    pass boundaries. Written only when the project has a `dev` script, and
+    merged by label so framework debug tasks and user edits survive.
+  - **.editorconfig** — consistent formatting across editors.
+  
+  For existing projects and the monorepo itself, `npm run sync:typecad-ui`
+  refreshes every vendored copy (repo root + all demos) from
+  `packages/cuttlefish/assets/editor-extensions/`, which ships with the npm
+  package. The extension icon is regenerable via
+  `node scripts/render-typecad-ui-icon.mjs` (dependency-free SDF rasterizer).
+- ## framework-zephyr parity with framework-arduino
+  
+  Closes the genuine feature gaps where the (newer) Zephyr framework lagged the
+  Arduino framework. The two areas Arduino led — a `licenses` subcommand and the
+  `dac`/`fs`/`hwtimer` HAL categories — are now closed.
+  
+  ### `cuttlefish licenses` for Zephyr (was missing entirely)
+  
+  - **Shared SPDX core** (`@typecad/cuttlefish/api/shared`): extracts the
+    framework-agnostic license-detection engine — the SPDX table, marker/alias
+    matching (`identifySpdx`), copyleft classification (`classifyRisk`), and the
+    LICENSE-file / source-header / manifest resolver (`resolveLibraryLicense`) —
+    out of `framework-arduino/src/licenses.ts` into a reusable
+    `spdx-licenses.ts`. Arduino is refactored to consume it (its public API and
+    tests are unchanged — a non-regressing import-only change).
+  - **Zephyr presenter** (`framework-zephyr/src/licenses.ts`): enumerates the
+    Zephyr kernel (`$ZEPHYR_BASE`) + the west manifest projects (`west list`)
+    and resolves each one's license through the shared core, rendering a
+    copyleft-sorted table that mirrors the Arduino presenter. `--strict` exits
+    non-zero on any strong-copyleft / unknown dependency; a missing west install
+    degrades gracefully instead of crashing. Declared `licenses: { available:
+    true }` in the Zephyr manifest and exported as the dispatcher-facing
+    `licenses` alias.
+    - **Build-based project scope** — unlike Arduino's installed-library
+      registry, a Zephyr workspace's west manifest carries *every* vendor HAL and
+      library (most unused by any single project). The default scope therefore
+      reports only the dependencies the firmware actually links, derived from the
+      last `cuttlefish build`'s `compile_commands.json` (a module is listed iff
+      one of its sources was compiled — e.g. an xiao_ble/nRF52840 build links
+      `hal_nordic` + the kernel, not the other ~60 modules). Without a build,
+      only the kernel is shown with a hint to build first; `--all` lists every
+      west module. Module LICENSE files are sought under `zephyr/` and `src/`
+      subdirs too (e.g. `hal_nordic` ships `zephyr/LICENSE.txt` → BSD-3-Clause).
+    - The CLI accepts `cuttlefish license` (singular) as an alias, and the shared
+      resolver now matches lowercase/`.rst` LICENSE files (e.g.
+      trusted-firmware-m's `license.rst`) using their real on-disk name so it
+      works on case-sensitive filesystems.
+  
+  ### HAL coverage: `dac`, `fs`, `hwtimer` lowerings
+  
+  These were previously declared unsupported (the Zephyr manifest flagged `dac`/
+  `fs` as "not yet wired"); they now lower to native Zephyr APIs, with
+  `profileDiagnostics` gates that surface clear errors for misuse on targets
+  lacking the peripheral (mirroring the existing ADC/WiFi gating).
+  
+  - **`dac`** — Zephyr DAC driver (`dac_channel_setup` + `dac_write_value`)
+    driven by a new chip-descriptor `dac` field. ESP32 declares its two 8-bit
+    channels (GPIO25/26); nRF52840 / ESP32-S3 (no DAC) lower to a comment and
+    trip `zephyr-dac-pin-unavailable`.
+  - **`fs`** — Zephyr FS API (littlefs on the storage partition). A lazy-mount
+    shim (formats on first use) backs `begin`/`read_text`/`write_text`/
+    `exists`/`remove`; the scaffold emits `CONFIG_FILE_SYSTEM` +
+    `CONFIG_FILE_SYSTEM_LITTLEFS`, and the overlay enables the DAC node / points
+    at the storage partition.
+  - **`hwtimer`** — Zephyr counter driver: `set_frequency` → top value
+    (`counter_freq/hz`) + `on_overflow` callback, `start` arms both, `stop`
+    halts. A new `hwtimer.controllers` descriptor field maps the instance index
+    to a counter nodelabel (nRF RTC1; RTC0 is kernel-owned). The JS
+    `setInterval`/`setTimeout` `k_timer` polyfill is unaffected.
+  
+  ### Coverage the manifest validator confirms
+  
+  The manifest declares `dac`/`fs`/`hwtimer` `supported` and the validator probes
+  each op against the resolver — all now lower. The new categories join the
+  `halResolutionTests` snapshot suite (`dac.test.ts` rewritten; `fs.test.ts`,
+  `hwtimer.test.ts` added) and the shared SPDX core has its own focused test.
+  
+  ### No-STL string/array polyfills (compile gap)
+  
+  Zephyr is a no-STL target (`hasVector`/`hasString = false`), like AVR — but it
+  was missing the two polyfills AVR ships, so programs using string methods or
+  dynamic arrays emitted undefined symbols and failed to compile. Two fixes:
+  
+  - **Polyfill definitions** — `generateNativePolyfills` now emits a STL-free
+    `static_array` (`__tc_StaticArray<T,N>`, mutated/struct array literals + array
+    methods) and `string_methods` (`__tc_toUpperCase`/`__tc_endsWith`/… `const
+    char*` helpers, inline ASCII case conversion so only `<cstring>` is needed).
+    Both are declared in `nativePolyfills()` and the manifest's `polyfills.emitted`.
+  - **String-method rewrite** — `normalizeRawExpression` now calls
+    `applyStringMethodRewrites` (Arduino always did; Zephyr omitted it), so
+    `s.toUpperCase()` lowers to `__tc_toUpperCase(s)` and `s.includes(x)` to
+    inline `strstr(...)` instead of a member call on `const char*`.
+  
+  Verified end-to-end: a program using `s.toUpperCase()` / `s.includes()` /
+  `let a = [...]; a.push(...)` now transpiles + compiles for `xiao_ble` (the
+  emitted `__tc_StaticArray<double,3>` + `__tc_toUpperCase(s)` resolve). Covered by
+  `tests/packages/framework-zephyr/polyfills.test.ts`.
+  
+  ### Monochrome OLED display (SSD1306) + direct-display fix
+  
+  Closes the display-driver coverage gap (Arduino ships `ssd1309`; Zephyr now
+  ships `ssd1306-zephyr`), skipping e-ink. Two coupled changes:
+  
+  - **Direct-display bug fix** — `gfx.ts` (the `display_*` runtime for direct
+    `display.*` HAL ops, no `@typecad/ui`) was dead code: `shimLines` gated it on
+    `!providesDisplayAdapter()`, which is always `true`, so it was never emitted —
+    leaving *every* direct-display program (ili9341/st7796 included) with five
+    undefined symbols. The gate now uses the per-program UI signal
+    (`usesDisplay && !entryHasUI()`), so the runtime is emitted only when no UI
+    adapter (which defines the same `display_init`) will be.
+  - **Mono GFX runtime** — `buildDisplayRuntime` now branches on
+    `profile.colorFormat`: RGB565 keeps the one-row line buffer; **mono** uses a
+    full page-framebuffer (the standard model for page-buffered OLEDs; the
+    AGENTS.md "no full framebuffer" guardrail targets RGB SPI TFTs, not OLEDs)
+    with Zephyr MONO01 packing (horizontal, MSB-first). `display_fill_rect`/
+    `draw_rect`/`draw_text` set bits (`color != 0 ⇒ lit`); `display_flush` pushes
+    the whole buffer via `display_write`.
+  - **Profile + adapter guard** — new `ssd1306-zephyr` profile (128×64 mono); the
+    RGB565/SPI UI adapter declines mono drivers (mono is direct-`display.*` only —
+    full `@typecad/ui` CuttlefishGFX rendering on mono OLED is out of scope).
+  
+  Caveat: there is no OLED fixture/demo in the repo, so mono rendering is
+  validated at the C++-string level (snapshot tests in `display/gfx.test.ts`,
+  same bar as the existing `gfx.ts`); the MONO01 bit orientation is isolated to
+  `__tc_set_pixel` for a trivial hardware-reveal fix. Manifest + 422-test
+  framework-zephyr suite pass.
+  
+  ### Intentional differences (unchanged)
+  
+  The optional strategy-method differences (`mapPeripheralIdentifier`,
+  `isrUnsafeOperations`, `setupInitCode`, library resolution, profile/cli-metadata
+  probing) remain deliberate platform divergences — Zephyr resolves pins through
+  chip descriptors, uses `printk` over a DT-chosen console (no `Serial.begin`),
+  and has no Arduino-library registry. `snprintf` stays unsupported by design
+  (raw escape hatch).
+
+### Patch Changes
+
+- ## Standalone-install dependency fixes
+  
+  Declared the dependencies each package actually consumes at build/test time,
+  so installs outside the monorepo resolve without relying on hoisting:
+  
+  - **`@typecad/expect`** now declares `@typecad/hal` (a hard dependency — the
+    test harness generates `cuttlefish.config.ts` files whose
+    `import type { CuttlefishConfig } from '@typecad/hal'` previously failed to
+    typecheck in standalone installs) and `@typecad/framework-zephyr` as an
+    optional dependency (the `west build`/`west flash` compile path requires it
+    dynamically and degrades gracefully when absent).
+  - **`@typecad/cuttlefish`** now declares `@typecad/expect` as an optional
+    dependency — `transpile.ts` loads its preprocessor and `cli-utils.ts`
+    resolves the `cuttlefish-test` CLI from it, both with existing fallbacks.
+  - **`@typecad/ui`** moved `@typecad/cuttlefish` from peerDependencies to
+    regular dependencies (it is imported throughout `src/`), so installing
+    `@typecad/ui` pulls the transpiler automatically like every other consumer.
+  - **`@typecad/safety`** dropped its duplicate peerDependencies block —
+    `@typecad/cuttlefish` and `@typecad/hal` were declared in both
+    `dependencies` and `peerDependencies`; the regular dependencies (the pattern
+    every other package uses) are kept.
+- Updated dependencies
+- Updated dependencies
+  - @typecad/ui@1.0.0-alpha.14
+  - @typecad/safety@1.0.0-alpha.14
+
 ## 1.0.0-alpha.13
 
 ### Patch Changes
