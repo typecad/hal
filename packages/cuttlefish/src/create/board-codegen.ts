@@ -4,7 +4,7 @@
 // registry/tests/README (idempotently), and returns the file list + the
 // framework-anticipation checklist.
 //
-// Pattern: mirrors init-scaffold.ts's scaffoldProject — a writeFile closure
+// Pattern: mirrors scaffold.ts's scaffoldProject — a writeFile closure
 // + fs.writeFileSync + tracks createdFiles.
 // ---------------------------------------------------------------------------
 
@@ -115,13 +115,13 @@ export function scaffoldBoardPackages(
     } catch { /* best-effort: skip if package.json isn't valid */ }
   }
 
-  // 2. init-scaffold.ts registry entry
-  const scaffoldPath = path.join(rootDir, 'packages', 'cuttlefish', 'src', 'create', 'init-scaffold.ts');
+  // 2. scaffold.ts registry entry
+  const scaffoldPath = path.join(rootDir, 'packages', 'cuttlefish', 'src', 'create', 'scaffold.ts');
   const registryEntry = `  {\n    id: '${spec.boardId}',\n    displayName: '${spec.boardName}',\n    isNative: false,\n    architecture: '${arch}',\n    boardPackage: '@typecad/board-${arch}',\n    frameworkPackage: '@typecad/framework-arduino',\n    framework: 'arduino',\n    buildTarget: '${spec.fqbn}',\n    mcu: '${arch}',\n  },\n`;
   insertAfter(scaffoldPath, "  _knownTargets: KnownTarget[] = [", registryEntry, `'${spec.boardId}'`);
 
   // 3. KNOWN_BOARDS test
-  const testPath = path.join(rootDir, 'tests', 'packages', 'transpiler', 'init-scaffold.test.ts');
+  const testPath = path.join(rootDir, 'tests', 'packages', 'transpiler', 'scaffold.test.ts');
   const testEntry = `
     it("contains ${spec.boardId}", () => {
       const b = KNOWN_BOARDS.find(b => b.id === '${spec.boardId}');

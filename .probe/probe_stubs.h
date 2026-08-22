@@ -10,6 +10,7 @@
 
 // Probe instrumentation counters.
 static uint32_t probeFillCalls = 0;
+static int probeInScreenBands = 0;
 static uint32_t probePrintCalls = 0;
 static uint32_t probeWritePixelsCalls = 0;
 static uint32_t probeSetAddrWindowCalls = 0;
@@ -58,7 +59,7 @@ static inline int16_t display_height() { return probeHostDisplay()->h; }
 static inline int16_t display_targetWidth(CuttlefishDisplayTarget* t) { return t ? t->w : 0; }
 static inline int16_t display_targetHeight(CuttlefishDisplayTarget* t) { return t ? t->h : 0; }
 
-static inline void display_targetFillRect(CuttlefishDisplayTarget* t, int16_t x, int16_t y, int16_t w, int16_t h, uint16_t c) { if (t) { probeFillCalls++; if (t == probeHostDisplay() && y < 320 && (y + h) > 140) fprintf(stderr, "[fill/disp] x=%d y=%d w=%d h=%d c=%04x\n", x, y, w, h, c); t->fillRectRaw(x, y, w, h, c); } }
+static inline void display_targetFillRect(CuttlefishDisplayTarget* t, int16_t x, int16_t y, int16_t w, int16_t h, uint16_t c) { if (t) { probeFillCalls++; if (t != probeHostDisplay() && t->w == 460) fprintf(stderr, "[cfill] buf=%p x=%d y=%d w=%d h=%d c=%04x\n", (void*)t->buf, x, y, w, h, c); t->fillRectRaw(x, y, w, h, c); } }
 static inline void display_targetDrawRect(CuttlefishDisplayTarget* t, int16_t x, int16_t y, int16_t w, int16_t h, uint16_t c) {
   if (!t) return;
   t->fillRectRaw(x, y, w, 1, c);
@@ -184,8 +185,8 @@ static inline void display_setAddrWindow(int16_t x, int16_t y, int16_t w, int16_
   probeAddrX = x; probeAddrY = y; probeAddrW = w; probeAddrH = h;
 }
 static inline void display_writePixels(const uint16_t* pixels, uint32_t count) { probeWritePixelsCalls++;
-  { uint32_t titleFg = 0; for (uint32_t k = 0; k < count; k++) if (pixels[k] == 0xe71c || pixels[k] == 0xa514) titleFg++;
-    fprintf(stderr, "[push] writePixels count=%u textFg=%u first=%04x\n", count, titleFg, count ? pixels[0] : 0); }
+  { uint32_t cardPx = 0; for (uint32_t k = 0; k < count; k++) if (pixels[k] == 0x39e7) cardPx++;
+    fprintf(stderr, "[push] writePixels count=%u cardPx=%u first=%04x buf=%p\n", count, cardPx, count ? pixels[0] : 0, (const void*)pixels); }
   CuttlefishDisplayTarget* d = probeHostDisplay();
   {
     // After blitting, verify a known text pixel from the payload landed.
@@ -209,9 +210,16 @@ static inline void display_partial_refresh(int16_t x, int16_t y, int16_t w, int1
 // Canvas allocation: mimic a no-PSRAM embedded heap — small canvases
 // (band/repair, a few KB) succeed, a full-screen framebuffer (300KB) fails,
 // so the runtime takes the same band-compositor path as the device.
+// probeCanvasFailEvery > 0 additionally fails every Nth allocation,
+// simulating the intermittent fragmentation failures a long-running device
+// heap exhibits (scroll render locks, ladder fallbacks).
+static uint32_t probeCanvasAllocCounter = 0;
+static uint32_t probeCanvasFailEvery = 0;
 static inline CuttlefishCanvas16* display_createCanvas(int16_t w, int16_t h) {
   if (w <= 0 || h <= 0) return nullptr;
   if (static_cast<uint32_t>(w) * static_cast<uint32_t>(h) * 2 > 40000u) return nullptr;
+  probeCanvasAllocCounter++;
+  if (probeCanvasFailEvery > 0 && (probeCanvasAllocCounter % probeCanvasFailEvery) == 0) return nullptr;
   return new CuttlefishCanvas16(w, h);
 }
 static inline CuttlefishCanvas16* display_createCanvasPsram(int16_t w, int16_t h) { return display_createCanvas(w, h); }
@@ -219,7 +227,7 @@ static inline void display_deleteCanvas(CuttlefishCanvas16* c) { delete c; }
 static inline int16_t display_canvasWidth(CuttlefishCanvas16* c) { return c ? c->w : 0; }
 static inline int16_t display_canvasHeight(CuttlefishCanvas16* c) { return c ? c->h : 0; }
 static inline uint16_t* display_canvasBuffer(CuttlefishCanvas16* c) { return c ? c->buf : nullptr; }
-static inline void display_canvasFillRect(CuttlefishCanvas16* c, int16_t x, int16_t y, int16_t w, int16_t h, uint16_t col) { if (c) c->fillRectRaw(x, y, w, h, col); }
+static inline void display_canvasFillRect(CuttlefishCanvas16* c, int16_t x, int16_t y, int16_t w, int16_t h, uint16_t col) { if (c) { if (c->w == 460) fprintf(stderr, "[seed] canvas buf=%p x=%d y=%d w=%d h=%d col=%04x\n", (void*)c->buf, x, y, w, h, col); c->fillRectRaw(x, y, w, h, col); } }
 static inline void display_canvasFillScreen(CuttlefishCanvas16* c, uint16_t col) { if (c) c->fillRectRaw(0, 0, c->w, c->h, col); }
 static inline uint16_t display_canvasGetPixel(CuttlefishCanvas16* c, int16_t x, int16_t y) { return c ? c->getPx(x, y) : 0; }
 

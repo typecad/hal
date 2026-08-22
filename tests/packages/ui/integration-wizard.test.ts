@@ -3,9 +3,10 @@
 //
 // Covers the display catalog shape, the config-splice writer (insert, replace,
 // CRLF, comma/comment handling), rendering (key order, hex addresses, nested
-// inline objects), the starter .ui template, pin-conflict detection, and a
-// round-trip through the real cuttlefish config loader so the wizard's output
-// is guaranteed to parse the same way the build parses it.
+// inline objects), the package.json preview-script writer, the starter .ui
+// template, pin-conflict detection, and a round-trip through the real
+// cuttlefish config loader so the wizard's output is guaranteed to parse the
+// same way the build parses it.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from "vitest";
@@ -24,6 +25,10 @@ import {
   renderDisplayProperty,
   upsertDisplaySection,
   renderStarterUi,
+  findPackageJson,
+  previewScriptCommand,
+  readPackageScript,
+  upsertPackageScript,
   type ConfigRecord,
 } from "@typecad/ui/wizard";
 
@@ -328,6 +333,120 @@ describe("findCuttlefishConfig", () => {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// package.json preview-script writer
+// ---------------------------------------------------------------------------
+
+// Shaped like the package.json `cuttlefish create` scaffolds (2-space indent,
+// trailing newline, scripts after name/version/private).
+const SCAFFOLDED_PACKAGE_JSON = `{
+  "name": "my-project",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cuttlefish build",
+    "compile": "cuttlefish build --compile"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "^1.0.0-alpha.3"
+  }
+}
+`;
+
+describe("findPackageJson", () => {
+  it("walks up parent directories until it finds package.json", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "ui-wizard-pkg-"));
+    try {
+      const nested = path.join(dir, "src");
+      fs.mkdirSync(nested, { recursive: true });
+      fs.writeFileSync(path.join(dir, "package.json"), "{}\n", "utf-8");
+      expect(findPackageJson(nested)).toBe(path.join(dir, "package.json"));
+      expect(findPackageJson(path.join(os.tmpdir(), "definitely-not-here-xyz"))).toBeUndefined();
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("readPackageScript", () => {
+  it("reads an existing script and returns undefined for a missing one", () => {
+    expect(readPackageScript(SCAFFOLDED_PACKAGE_JSON, "build")).toBe("cuttlefish build");
+    expect(readPackageScript(SCAFFOLDED_PACKAGE_JSON, "preview")).toBeUndefined();
+    expect(readPackageScript(`{ "scripts": {} }\n`, "preview")).toBeUndefined();
+  });
+
+  it("throws a descriptive error for invalid JSON", () => {
+    expect(() => readPackageScript("{ not json", "preview")).toThrow(/not valid JSON/i);
+  });
+});
+
+describe("upsertPackageScript", () => {
+  it("adds the preview script, preserving other keys, their order, and formatting", () => {
+    const result = upsertPackageScript(
+      SCAFFOLDED_PACKAGE_JSON,
+      "preview",
+      "cuttlefish preview --config ./cuttlefish.config.ts",
+    );
+    expect(result.changed).toBe(true);
+    expect(result.previous).toBeUndefined();
+    expect(result.text).toContain(
+      '"preview": "cuttlefish preview --config ./cuttlefish.config.ts"',
+    );
+    // Round-trips as JSON with scripts appended after the existing ones.
+    const parsed = JSON.parse(result.text) as { scripts: Record<string, string> };
+    expect(Object.keys(parsed.scripts)).toEqual(["build", "compile", "preview"]);
+    expect(parsed.scripts.build).toBe("cuttlefish build");
+    // npm/cuttlefish-create formatting: 2-space indent + trailing newline.
+    expect(result.text).toMatch(/\}\n$/);
+  });
+
+  it("is a byte-identical no-op when the exact command already exists", () => {
+    const withPreview = upsertPackageScript(
+      SCAFFOLDED_PACKAGE_JSON,
+      "preview",
+      "cuttlefish preview --config ./cuttlefish.config.ts",
+    ).text;
+    const again = upsertPackageScript(
+      withPreview,
+      "preview",
+      "cuttlefish preview --config ./cuttlefish.config.ts",
+    );
+    expect(again.changed).toBe(false);
+    expect(again.text).toBe(withPreview);
+  });
+
+  it("replaces a differing script and reports the previous command", () => {
+    const existing = SCAFFOLDED_PACKAGE_JSON.replace(
+      '"compile": "cuttlefish build --compile"',
+      '"compile": "cuttlefish build --compile",\n    "preview": "vite preview"',
+    );
+    const result = upsertPackageScript(existing, "preview", "cuttlefish preview --config ./cuttlefish.config.ts");
+    expect(result.changed).toBe(true);
+    expect(result.previous).toBe("vite preview");
+    const parsed = JSON.parse(result.text) as { scripts: Record<string, string> };
+    expect(parsed.scripts.preview).toBe("cuttlefish preview --config ./cuttlefish.config.ts");
+  });
+
+  it("creates a scripts object when the manifest has none", () => {
+    const result = upsertPackageScript('{\n  "name": "x"\n}\n', "preview", "cuttlefish preview");
+    const parsed = JSON.parse(result.text) as { name: string; scripts: Record<string, string> };
+    expect(parsed.name).toBe("x");
+    expect(parsed.scripts.preview).toBe("cuttlefish preview");
+  });
+});
+
+describe("previewScriptCommand", () => {
+  it("writes ./-prefixed sibling config paths exactly as the wizard advertises", () => {
+    expect(previewScriptCommand("/proj/package.json", "/proj/cuttlefish.config.ts"))
+      .toBe("cuttlefish preview --config ./cuttlefish.config.ts");
+  });
+
+  it("writes a package.json-relative path with posix separators for nested configs", () => {
+    expect(previewScriptCommand("/proj/package.json", "/proj/configs/cuttlefish.config.ts"))
+      .toBe("cuttlefish preview --config ./configs/cuttlefish.config.ts");
   });
 });
 

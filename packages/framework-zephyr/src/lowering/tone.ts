@@ -14,7 +14,7 @@
 
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
-import { lowerPwm } from './pwm.js';
+import { lowerPwm, pwmDtAliasToken } from './pwm.js';
 
 /**
  * Resolve a HAL tone.* op to Zephyr C++ via PWM.
@@ -35,7 +35,7 @@ export function lowerTone(
       if (!spec) {
         return { code: `/* tone.play(${o.frequency}): no PWM spec in chip descriptor */` };
       }
-      const v = `__tc_pwm_${spec.dtSpec.replace(/-/g, '_')}`;
+      const v = `__tc_pwm_${pwmDtAliasToken(spec)}`;
       const freq = o.frequency;
       const duration = o.duration;
       const setTone = `uint32_t __period = (${freq} > 0) ? (1000000000ULL / static_cast<uint64_t>(${freq})) : 0; pwm_set_dt(&${v}, __period, __period / 2);`;
@@ -48,7 +48,7 @@ export function lowerTone(
     case 'tone.stop': {
       const spec = chip.pwm?.specs[0];
       if (!spec) return { code: `/* tone.stop: no PWM spec */` };
-      const v = `__tc_pwm_${spec.dtSpec.replace(/-/g, '_')}`;
+      const v = `__tc_pwm_${pwmDtAliasToken(spec)}`;
       return { code: `pwm_set_pulse_dt(&${v}, 0);` };
     }
     default:

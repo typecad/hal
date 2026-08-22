@@ -24,7 +24,7 @@ import { createServer as createTlsServer } from 'node:tls';
 import { readFileSync } from 'node:fs';
 import { resolve as resolvePath, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import Aedes from 'aedes';
+import { Aedes } from 'aedes';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CERTS_DIR = resolvePath(__dirname, 'certs');
@@ -288,10 +288,10 @@ export function createHttpsTestServer(port = 8443): Promise<TestServer> {
 // can exchange messages on the same topic.
 
 /** A shared aedes broker instance backing both the plain and TLS listeners. */
-let _aedes: ReturnType<typeof Aedes> | undefined;
-function aedesBroker(): ReturnType<typeof Aedes> {
+let _aedes: Aedes | undefined;
+function aedesBroker(): Aedes {
 	if (!_aedes) {
-		_aedes = Aedes({ id: 'typecad-test-broker' });
+		_aedes = new Aedes({ id: 'typecad-test-broker' });
 		_aedes.on('client', (c: { id?: string }) => console.log(`mqtt: client connected ${c.id}`));
 		_aedes.on('clientDisconnect', (c: { id?: string }) => console.log(`mqtt: client disconnected ${c.id}`));
 		_aedes.on('subscribe', (subs: unknown, client: { id?: string }) =>

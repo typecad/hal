@@ -89,8 +89,10 @@ Transpile, compile, upload, and open a serial monitor in a single invocation. Or
 | ESP32-C6 | `@typecad/board-esp32c6` | ESP32-C6 (RISC-V, Wi-Fi 6) |
 | RP2040 (Pico) | `@typecad/board-rp2040` | RP2040 (ARM Cortex-M0+) |
 | RP2350 (Pico 2) | `@typecad/board-rp2350` | RP2350 (ARM Cortex-M33) |
+| Black Pill (STM32F411) | `@typecad/board-blackpill-f411ce` | STM32F411 (ARM Cortex-M4F, Zephyr) |
+| XIAO nRF52840 | `@typecad/board-xiao-nrf52840` | nRF52840 (ARM Cortex-M4F, Zephyr) |
 
-Additional architectures are scaffolded and ready for board definitions: ESP32-S2, ESP32-S3, ESP32-C3, RP2040, STM32, nRF52.
+Additional architectures are scaffolded and ready for board definitions: ESP32-S2, ESP32-S3, ESP32-C3, RP2040, STM32.
 
 ## Configure once
 
@@ -202,7 +204,7 @@ Combine script, styles, and template in one file — the Svelte-compatible `.ui`
 </screen>
 ```
 
-The transpiler splits the `.ui` file into its three streams and feeds them through the existing HTML/CSS/TS pipelines. Set `entry: './src/app.ui'` in your config. The VS Code Svelte extension provides syntax highlighting and linting for `.ui` files.
+The transpiler splits the `.ui` file into its three streams and feeds them through the existing HTML/CSS/TS pipelines. Set `entry: './src/app.ui'` in your config. `cuttlefish create` scaffolds grammar-only VS Code extensions into the project's `.vscode/extensions/` folder — `.ui` highlighting (with snippets, file icons, and ` ```ui ` markdown fences, derived from the Svelte grammar) plus the TypeCAD Debug tooling — so everything works on first open. VS Code 1.89+ prompts once to approve the workspace extensions, and newer builds with the `forceInstall` feature install them silently; a watch task with problem matchers surfaces transpiler diagnostics in the Problems panel while `npm run dev` runs. For an existing project, run `node scripts/sync-typecad-ui.mjs` from a checkout, or copy `packages/cuttlefish/assets/editor-extensions/` into `.vscode/extensions/`.
 
 ### Declarative bindings
 
@@ -393,7 +395,7 @@ Supported `@media` features: `(e-ink)`, `(update: slow|fast)`, `(monochrome)`, `
 
 ## Debug in VS Code
 
-Set breakpoints (or logpoints) in your `.ts` source files using the **TypeCAD Debug** extension in [`packages/vscode-typecad-debug`](packages/vscode-typecad-debug). The extension syncs them to `.cuttlefish/breakpoints.json`; then run `cuttlefish build --debug` (or `cuttlefish src/index.ts --debug`) and the transpiler injects `Serial.println` instrumentation that reports variable values and halts at each breakpoint — press ENTER over serial to continue. This is a `Serial.print`-based instrumentation shim, not a DAP debug adapter; see the extension's README for the JSON schema and limitations.
+Set breakpoints (or logpoints) in your `.ts` source files using the **TypeCAD Debug** extension in [`packages/vscode-typecad-debug`](packages/vscode-typecad-debug). `cuttlefish create` bundles its built form into every project's `.vscode/extensions/` alongside the `.ui` highlighting extension, so no separate install is needed (run `npm run sync:typecad-ui` at the repo root to refresh the vendored copies after changing it). The extension syncs breakpoints to `.cuttlefish/breakpoints.json`; then run `cuttlefish build --debug` (or `cuttlefish src/index.ts --debug`) and the transpiler injects `Serial.println` instrumentation that reports variable values and halts at each breakpoint — press ENTER over serial to continue. This is a `Serial.print`-based instrumentation shim, not a DAP debug adapter; see the extension's README for the JSON schema and limitations.
 
 ## Source maps for embedded
 
@@ -477,7 +479,7 @@ npx @typecad/cuttlefish sketch.ts --compile --upload --port COM4
 
 ```bash
 npx @typecad/cuttlefish create [project-name] [options]   # scaffold a new project
-cuttlefish init [project-name] [options]                  # scaffold via the full CLI (after install)
+cuttlefish create [project-name] [options]                # scaffold via the full CLI (after install)
 cuttlefish <input.ts> [options]
 cuttlefish build                                  # use entry from cuttlefish.config.ts
 cuttlefish gen-libdefs <input.ts>
@@ -498,8 +500,6 @@ The scaffolding is built into the `cuttlefish` CLI — `npx @typecad/cuttlefish 
 | `--no-sketch` | Skip generating the starter blink sketch. |
 | `--outDir, -o <dir>` | Output directory (default: `./<project-name>`). |
 | `--help, -h` | Show help. |
-
-The `cuttlefish init` command delegates to the same scaffolder and accepts the same flags.
 
 ### Transpile options
 

@@ -1,0 +1,18 @@
+{
+  "id": "zephyr-esp32s3-rgb",
+  "module": "@typecad/zephyr-esp32s3-rgb",
+  "framework": "zephyr",
+  "targets": ["esp32s3_devkitc"],
+  "include": "\"__tc_rgbled.h\"",
+  "gateToken": "__tc_rgbled",
+  "shims": [
+    { "path": "shims/__tc_rgbled.h", "outName": "__tc_rgbled.h" },
+    { "path": "shims/__tc_rgbled.cpp", "outName": "__tc_rgbled.cpp" }
+  ],
+  "kconfig": [
+    "CONFIG_LED_STRIP=y",
+    "CONFIG_I2S=y",
+    "CONFIG_DMA=y"
+  ],
+  "overlay": "shims/tc-rgb.overlay"
+}

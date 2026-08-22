@@ -64,14 +64,37 @@ export interface ZephyrBusController {
 /**
  * A PWM channel described as a devicetree spec.
  *
- * Emitted as `struct pwm_dt_spec __tc_pwm<N> = PWM_DT_SPEC_GET(DT_ALIAS(<dtSpec>))`.
- * `pwm_set_pulse_dt(&__tc_pwm<N>, pulse_ns)` honors the spec's period/polarity.
+ * Two forms, mutually exclusive:
+ * - **Board-shipped alias:** `dtSpec` names a DT alias the board's own DTS
+ *   already defines (e.g. the XIAO's `pwm-led0`). Emitted as
+ *   `PWM_DT_SPEC_GET(DT_ALIAS(<dtSpec>))`.
+ * - **Synthesized** (controller + channel): the board DTS enables a PWM
+ *   controller node (e.g. `pwm4`) but defines no alias for it. The overlay
+ *   generator synthesizes a `pwm-leds` consumer node + a `tc-pwm<pin>` alias
+ *   in `<board>.overlay`; the lowering emits
+ *   `PWM_DT_SPEC_GET(DT_ALIAS(tc-pwm<pin>))`. Both sides derive the alias
+ *   name from the pin, so they always agree.
+ *
+ * `pwm_set_pulse_dt(&spec, pulse_ns)` honors the spec's period/polarity.
  */
 export interface ZephyrPwmSpec {
   /** GPIO number (matches the HAL op `pin` field). */
   readonly pin: number;
-  /** Devicetree alias, e.g. 'pwm-led0'. */
-  readonly dtSpec: string;
+  /** Board-shipped DT alias, e.g. 'pwm-led0'. Omit when using the
+   *  synthesized form (controller + channel). */
+  readonly dtSpec?: string;
+  /** Synthesized form: PWM controller DT nodelabel, e.g. 'pwm4' (the STM32
+   *  timer's pwm child node). The overlay's pwm-leds node consumes it. */
+  readonly controller?: string;
+  /** Synthesized form: channel index within the controller (1-based timer
+   *  channel, matching the `pwms` binding's channel cell). */
+  readonly channel?: number;
+  /** Synthesized form: period in nanoseconds, baked into the DT spec. The
+   *  lowering scales duty against `spec.period`. Default 20 000 000 (20 ms /
+   *  50 Hz — the servo convention; harmless for LED dimming). */
+  readonly periodNs?: number;
+  /** Synthesized form: PWM polarity flag. Default PWM_POLARITY_NORMAL. */
+  readonly polarity?: string;
 }
 
 /**
@@ -88,7 +111,7 @@ export interface ZephyrInterruptPin {
 }
 
 /**
- * An ADC channel: which SAADC input a given HAL pin maps to.
+ * An ADC channel: which ADC input a given HAL pin maps to.
  *
  * The XIAO nRF52840 has no pre-declared ADC channel nodes in devicetree, so the
  * lowering emits `adc_channel_setup` against `DEVICE_DT_GET(DT_NODELABEL(adc))`
@@ -97,8 +120,16 @@ export interface ZephyrInterruptPin {
 export interface ZephyrAdcChannel {
   /** GPIO number (matches the HAL op `pin` field). */
   readonly pin: number;
-  /** SAADC channel index (AIN0–AIN7). */
+  /** ADC channel index (nRF SAADC AIN0–AIN7; STM32 ADC1_IN0–IN9). */
   readonly channel: number;
+  /**
+   * Pinctrl node label that muxes this pin to analog mode, e.g.
+   * 'adc1_in0_pa0' (STM32). When present, the overlay generator rewrites the
+   * ADC node's pinctrl-0 to the channels the program actually reads — SoCs
+   * like STM32 leave the pad in GPIO mode otherwise and reads float.
+   * Omit on SoCs whose ADC needs no pad muxing (nRF SAADC, RP2040).
+   */
+  readonly pinctrl?: string;
 }
 
 /**
@@ -134,11 +165,18 @@ export interface ZephyrChipDescriptor {
   readonly gpioController: string;
   /**
    * Per-range GPIO controllers for SoCs that split GPIO across multiple
-   * devicetree nodes (ESP32-S3: `gpio0` 0–31, `gpio1` 32–48). When present, the
-   * lowering routes a HAL pin to its owning controller at runtime via the
-   * emitted `__tc_gpio_dev(pin)` dispatcher; `gpioController` is the fallback.
-   * Omit on single-controller SoCs (nRF52840, RP2040, …) — every pin is on the
-   * one controller described by `gpioController`.
+   * devicetree nodes (ESP32-S3: `gpio0` 0–31, `gpio1` 32–48; STM32: one
+   * controller per port — `gpioa` 0–15, `gpiob` 16–31, `gpioc` 32–47).
+   * When present, the lowering routes a HAL pin to its owning controller at
+   * runtime via the emitted `__tc_gpio_dev(pin)` dispatcher; `gpioController`
+   * is the fallback. Omit on single-controller SoCs (RP2040, …) — every pin
+   * is on the one controller described by `gpioController`.
+   *
+   * NUMBERING RULE (load-bearing): `minPin` must equal the controller's port
+   * base so the port-relative raw index is `pin - minPin` (STM32 PB12 = pin
+   * 28 → raw 12 — the Zephyr raw API addresses the index WITHIN the
+   * controller). Number pins by port blocks and never contiguously across
+   * unbonded pins.
    */
   readonly gpioControllers?: readonly ZephyrGpioController[];
   /** GPIO pins with devicetree specs (LEDs, buttons, board-defined pins). */
@@ -155,7 +193,7 @@ export interface ZephyrChipDescriptor {
   readonly uart?: { readonly controllers: readonly ZephyrBusController[] };
   /** PWM channels with DT specs. */
   readonly pwm?: { readonly specs: readonly ZephyrPwmSpec[] };
-  /** ADC: the SAADC node label + the pin→channel map. */
+  /** ADC: the ADC device node label + the pin→channel map. */
   readonly adc?: {
     readonly nodeLabel: string;
     readonly channels: readonly ZephyrAdcChannel[];
@@ -163,6 +201,19 @@ export interface ZephyrChipDescriptor {
     readonly vrefMv: number;
     /** ADC resolution in bits. */
     readonly resolution: number;
+    /**
+     * Zephyr `enum adc_gain` macro for the channel setup, e.g.
+     * 'ADC_GAIN_1_4' (nRF SAADC default) or 'ADC_GAIN_1' (STM32 driver
+     * requires exactly this). Defaults to 'ADC_GAIN_1_4'.
+     */
+    readonly gain?: string;
+    /**
+     * Zephyr `enum adc_reference` macro, e.g. 'ADC_REF_INTERNAL'. Defaults to
+     * 'ADC_REF_INTERNAL' — on nRF that is the 0.6 V internal ref measured
+     * through the gain divider; the STM32 driver ALSO requires
+     * ADC_REF_INTERNAL (Zephyr maps it to the VREF+ pad) with vrefMv = VDDA.
+     */
+    readonly reference?: string;
   };
   /**
    * DAC: the DAC device node label + the pin→channel map. Present only on chips

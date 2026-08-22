@@ -50,12 +50,58 @@ export const ESP32C3Board: BoardDefinition = {
   build: {
     frameworks: {
       arduino: 'esp32:esp32:esp32c3',
+      // The Zephyr board target for `west build -b <target>`. Qualified form
+      // (board/soc): esp32c3_devkitm has a single soc variant so the bare id
+      // also works, but every catalog-provided target is kept qualified for
+      // consistency (verified against Zephyr 4.3
+      // boards/espressif/esp32c3_devkitm/board.yml).
+      zephyr: 'esp32c3_devkitm/esp32c3',
     },
     defines: {
       F_CPU:             '160000000UL',
       ARDUINO:           ARDUINO_CORE_VERSION,
       ARDUINO_ESP32C3_DEV: '1',
     },
+  },
+
+  // ----- @typecad/framework-zephyr chip data -------------------------------
+  // Carried into the flattened board constants under `zephyr.*` and
+  // reconstructed into a ZephyrChipDescriptor by framework-zephyr's
+  // resolveChipFromBoard(). Mirrors the ESP32/S3 board packages' zephyr fields,
+  // verified against Zephyr 4.3's
+  // boards/espressif/esp32c3_devkitm/esp32c3_devkitm.dts,
+  // dts/riscv/espressif/esp32c3/esp32c3_common.dtsi, and the board pinctrl dtsi.
+  //
+  // Plain object/array literals only — `as const` on nested values defeats the
+  // board-constants flattener.
+  zephyr: {
+    // Single GPIO controller — every GPIO line (0–25) is on gpio0
+    // (esp32c3_common.dtsi gpio0, ngpios = 26; the board exposes GPIO0–21,
+    // GPIO22–25 are the USB/flash pads).
+    gpioController: 'gpio0',
+    gpio: {
+      // The BOOT button (GPIO9) is the board's only DT-aliased GPIO —
+      // `sw0 = &user_button1`, active-low + pull-up in the board DTS. The
+      // onboard RGB is a WS2812 on GPIO8, not a plain GPIO LED, so there is
+      // deliberately no led0 entry. Every other pin uses the raw-controller
+      // path against gpio0.
+      dtSpecs: [
+        { pin: 9, dtSpec: 'sw0' },  // BOOT button (GPIO9)
+      ],
+      interruptPins: [
+        { pin: 9, dtSpec: 'sw0' },  // BOOT button (GPIO9)
+      ],
+    },
+    // Board-wired default-enabled controllers (esp32c3_devkitm.dts):
+    //   uart0 = console @115200, i2c0 (standard mode), spi2 (GPSPI2).
+    // The overlay generator enables whichever the program uses.
+    i2c:  { controllers: [{ nodeLabel: 'i2c0' }] },
+    spi:  { controllers: [{ nodeLabel: 'spi2' }] },
+    uart: { controllers: [{ nodeLabel: 'uart0' }] },
+    // wdt0 is the lowering's default when `wdt` is omitted (both are wdt0).
+    // Wi-Fi 4 + BLE 5: the board DTS enables &wifi; CONFIG_WIFI_ESP32 covers
+    // the whole ESP32 family. Omitted on radioless targets.
+    wifi: { supported: true },
   },
 };
 

@@ -1,6 +1,6 @@
-export { scaffoldProject, normalizeProjectName, KNOWN_TARGETS, KNOWN_BOARDS, registerKnownTarget, printInitNextSteps } from './init-scaffold.js';
-export type { KnownTarget, KnownBoard, ScaffoldProjectResult } from './init-scaffold.js';
-export { FRAMEWORK_CATALOG, frameworksForTarget, frameworkCatalogEntry, detectPackageManager, frameworkTargetProfile } from './framework-catalog.js';
+export { scaffoldProject, normalizeProjectName, KNOWN_TARGETS, KNOWN_BOARDS, registerKnownTarget, printCreateNextSteps } from './scaffold.js';
+export type { KnownTarget, KnownBoard, ScaffoldProjectResult } from './scaffold.js';
+export { FRAMEWORK_CATALOG, frameworksForTarget, frameworkCompatibleWithTarget, frameworkCatalogEntry, detectPackageManager, frameworkTargetProfile } from './framework-catalog.js';
 export type { FrameworkCatalogEntry, BoardLike, PackageManager, FrameworkTargetProfile, TargetProfileInput } from './framework-catalog.js';
 export { installProjectDependencies, __setProjectInstallRunnerForTest } from './install-deps.js';
 export type { ProjectInstallResult } from './install-deps.js';
@@ -13,12 +13,24 @@ export {
   generateStarterTest,
   generateStarterSim,
   generateGitignore,
+  generateEditorconfig,
   generateEslintConfig,
-} from './init-templates.js';
-export type { InitProjectOptions } from './init-templates.js';
-export { runInitWizard } from './init-wizard.js';
+} from './templates.js';
+export type { CreateProjectOptions } from './templates.js';
+export { runCreateWizard } from './wizard.js';
 export { generateFrameworkDebugArtifacts } from './debug-artifacts.js';
 export type { FrameworkDebugArtifactsOptions, FrameworkModuleLoader } from './debug-artifacts.js';
+export {
+  generateExtensionsJson,
+  generateTasksJson,
+  watchBuildTask,
+  writeEditorIntegration,
+  bundledExtensionSourceDir,
+  typecadUiExtensionSourceDir,
+  TYPECAD_UI_EXTENSION_ID,
+  TYPECAD_DEBUG_EXTENSION_ID,
+  WATCH_TASK_LABEL,
+} from './editor-integration.js';
 
 // Board codegen tool (`cuttlefish board add`)
 export { scaffoldBoardPackages } from './board-codegen.js';

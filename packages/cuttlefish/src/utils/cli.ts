@@ -1,5 +1,5 @@
 ﻿import path from "node:path";
-import { CommandLineOptions, CreateCommandOptions, BoardAddCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
+import { CommandLineOptions, CreateCommandOptions, BoardAddCommandOptions, LibraryCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
 
 import chalk from "chalk";
 
@@ -23,6 +23,15 @@ export function printHelp(): void {
   console.log(`  cuttlefish map-error <mapFile> [options]`);
   console.log(`  cuttlefish doctor                              Check the active framework's environment (e.g. toolchain + board core)`);
   console.log(`  cuttlefish licenses [--all] [--strict]          Scan this project's Arduino libraries for SPDX licenses (--all: every installed library)`);
+  console.log();
+  console.log(chalk.cyan(`LIBRARY PACKAGES`) + chalk.gray(` (npm keywords are the catalog)`));
+  console.log();
+  console.log(`  cuttlefish library search [text] [--category <id>] [--json]`);
+  console.log(`                          Browse cuttlefish library packages on npm, optionally by category`);
+  console.log(`  cuttlefish library install <pkg...>             Install library packages into this project`);
+  console.log(`  cuttlefish library init [name] [--framework <id>] [--category <id>] [--targets <list>]`);
+  console.log(`                          Scaffold a new library package (interactive; --yes takes defaults)`);
+  console.log(`  cuttlefish library validate [path] [--json]     Validate a library package (manifest, shims, keywords, AUTOSAR strict)`);
   console.log();
   console.log(chalk.gray(`Transpilation is always performed first. Use --compile, --upload, and`));
   console.log(chalk.gray(`--monitor to chain operations after transpilation.`));
@@ -363,7 +372,7 @@ function parsePipelineCommand(
   };
 }
 
-export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | BoardAddCommandOptions | "help" {
+export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | BoardAddCommandOptions | LibraryCommandOptions | "help" {
   const firstArg = argv[2];
 
   if (!firstArg || firstArg === "--help" || firstArg === "-h") {
@@ -399,10 +408,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
 
   if (firstArg === "create-board") {
     throw new Error(`The 'create-board' command has been removed. Board scaffolding is now in @typecad/create.`);
-  }
-
-  if (firstArg === "init") {
-    throw new Error(`Use 'cuttlefish create' instead of 'cuttlefish init'.`);
   }
 
   // build subcommand — entry point comes from cuttlefish.config.ts
@@ -473,6 +478,70 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       watch: false,
       baud: 9600,
       platformContext: {},
+    };
+  }
+
+  // library subcommand — the cuttlefish library package manager
+  // (search/install/init/validate; npm keywords are the catalog).
+  if (firstArg === "library") {
+    const sub = argv[3];
+    const known = new Set(["search", "install", "init", "validate"]);
+    if (!sub || !known.has(sub)) {
+      throw new Error(
+        "Usage: cuttlefish library <search|install|init|validate> [args]. " +
+          "Try 'cuttlefish library search' to browse, or 'cuttlefish library init <name>'.",
+      );
+    }
+    const subcommand = sub as "search" | "install" | "init" | "validate";
+
+    // Value flags accept both forms (--category led and --category=led); the
+    // generic readFlag helper only handles the space-separated form, which
+    // would silently drop an equals-form filter.
+    const valueFlags = new Set(["--category", "--framework", "--targets", "--dir"]);
+    const flagValues = new Map<string, string>();
+    const positionals: string[] = [];
+    let jsonFlag = false;
+    let yesFlag = false;
+    for (let i = 4; i < argv.length; i++) {
+      const tok = argv[i];
+      if (tok.startsWith("--") && tok.includes("=")) {
+        const eq = tok.indexOf("=");
+        flagValues.set(tok.slice(0, eq), tok.slice(eq + 1));
+        continue;
+      }
+      if (valueFlags.has(tok)) {
+        if (i + 1 < argv.length) {
+          flagValues.set(tok, argv[++i]);
+        }
+        continue;
+      }
+      if (tok === "--json") {
+        jsonFlag = true;
+        continue;
+      }
+      if (tok === "--yes" || tok === "-y") {
+        yesFlag = true;
+        continue;
+      }
+      if (tok.startsWith("-")) continue;
+      positionals.push(tok);
+    }
+
+    const category = flagValues.get("--category");
+    if (category !== undefined && subcommand !== "search" && subcommand !== "init") {
+      throw new Error("--category applies to 'library search' and 'library init' only.");
+    }
+
+    return {
+      command: "library",
+      subcommand,
+      positionals,
+      category,
+      framework: flagValues.get("--framework"),
+      targets: flagValues.get("--targets"),
+      dir: flagValues.get("--dir"),
+      yes: yesFlag,
+      json: jsonFlag,
     };
   }
 

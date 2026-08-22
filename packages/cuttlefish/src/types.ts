@@ -263,3 +263,23 @@ export interface BoardAddCommandOptions {
   specPath: string;
   force?: boolean;
 }
+
+/** Parsed `cuttlefish library <subcommand>` options. */
+export interface LibraryCommandOptions {
+  command: "library";
+  subcommand: "search" | "install" | "init" | "validate";
+  /** Non-flag tokens after the subcommand: search text, install names, init name, validate path. */
+  positionals: string[];
+  /** search: taxonomy category id. */
+  category?: string;
+  /** init: framework id from the framework catalog. */
+  framework?: string;
+  /** init: comma-separated board-target prefixes. */
+  targets?: string;
+  /** init: scaffold directory (default ./<library-id>). */
+  dir?: string;
+  /** init: skip prompts, take defaults. */
+  yes?: boolean;
+  /** Machine-readable output for search/validate. */
+  json?: boolean;
+}

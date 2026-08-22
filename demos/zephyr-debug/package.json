@@ -12,7 +12,8 @@
     "lint": "eslint --config .cuttlefish/eslint.config.mjs src/",
     "dev": "cuttlefish build --watch",
     "gen-decls": "cuttlefish gen-decls",
-    "gen-libdefs": "cuttlefish gen-libdefs"
+    "gen-libdefs": "cuttlefish gen-libdefs",
+    "preview": "cuttlefish preview --config ./cuttlefish.config.ts"
   },
   "dependencies": {
     "@typecad/cuttlefish": "^1.0.0-alpha.3",

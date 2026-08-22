@@ -1,0 +1,30 @@
+// ---------------------------------------------------------------------------
+// typeCAD Zephyr - VS Code terminal auto-activation (Windows).
+//
+// New integrated terminals launch the "zephyr-powershell" profile, which runs
+// .typecad/activate-zephyr.ps1 (-NoExit keeps the shell open afterward). This
+// makes `micromamba activate zephyr` happen automatically, so `west` is on
+// PATH and ZEPHYR_BASE / ZEPHYR_SDK_INSTALL_DIR are set without per-session
+// typing - and `npx cuttlefish build` uses the new install.
+//
+// If this project already has a .vscode/settings.json, MERGE these keys into
+// it by hand rather than overwriting the whole file.
+//
+// To make activation OPT-IN (pick "zephyr-powershell" from the terminal
+// dropdown) instead of automatic, delete the "defaultProfile.windows" line.
+// Do that in multi-framework workspaces (e.g. the typecode monorepo, which
+// also does ESP-IDF/Arduino) so this doesn't clash with other toolchains.
+// ---------------------------------------------------------------------------
+{
+  "terminal.integrated.defaultProfile.windows": "zephyr-powershell",
+  "terminal.integrated.profiles.windows": {
+    "zephyr-powershell": {
+      // Prefer PowerShell 7 if installed; fall back to Windows PowerShell 5.1.
+      "path": [
+        "${env:ProgramFiles}\\PowerShell\\7\\pwsh.exe",
+        "${env:WINDIR}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+      ],
+      "args": ["-NoExit", "-File", "${workspaceFolder}\\.typecad\\activate-zephyr.ps1"]
+    }
+  }
+}

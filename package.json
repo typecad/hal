@@ -14,6 +14,7 @@
     "mcus/mcu-nrf52840",
     "mcus/mcu-rp2040",
     "mcus/mcu-rp2350",
+    "mcus/mcu-stm32f411",
     "packages/framework-arduino",
     "packages/framework-native",
     "packages/framework-zephyr",
@@ -26,10 +27,12 @@
     "boards/board-xiao-nrf52840",
     "boards/board-rp2040",
     "boards/board-rp2350",
+    "boards/board-blackpill-f411ce",
     "packages/expect",
     "packages/ui",
     "packages/safety",
     "packages/simulator",
+    "packages/zephyr-esp32s3-rgb",
     "packages/vscode-typecad-debug"
   ],
   "scripts": {
@@ -51,16 +54,20 @@
     "test:ble": "tsx tests/hardware/ble-client.ts",
     "test:hw:ble": "cd tests/hardware && npm exec -- cuttlefish-test --config ble-demo.config.ts ble-peripheral.test.ts --port COM14",
     "changeset": "changeset",
-    "version": "changeset version"
+    "version": "changeset version",
+    "sync:typecad-ui": "node scripts/sync-typecad-ui.mjs"
+  },
+  "engines": {
+    "node": ">=22.11.0"
   },
   "devDependencies": {
     "@abandonware/bluetooth-hci-socket": "^0.5.3-12",
     "@abandonware/noble": "^1.9.2-26",
-    "@changesets/cli": "^2.31.0",
-    "@types/css-tree": "^2.3.11",
+    "@changesets/cli": "^3.0.1",
+    "@types/css-tree": "^3.2.0",
     "@typescript-eslint/eslint-plugin": "^8.61.0",
     "@typescript-eslint/parser": "^8.61.0",
-    "aedes": "^0.51.3",
+    "aedes": "^1.1.1",
     "css-tree": "^3.2.1",
     "eslint": "^10.4.1",
     "linkedom": "^0.18.12",

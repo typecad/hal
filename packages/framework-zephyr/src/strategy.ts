@@ -42,6 +42,54 @@ import { entryHasUI } from '@typecad/cuttlefish/ui-hook';
 import { chipForTarget, setActiveChip, getActiveChip } from './chips/index.js';
 import { resolveChipFromBoard } from './chips/resolve.js';
 import { emitGpioDevDispatcher } from './chips/controllers.js';
+import type { ZephyrChipDescriptor } from './chips/types.js';
+
+/**
+ * Deep-walk the program IR and collect the HAL pin numbers the program
+ * actually touches for a peripheral family ('adc' | 'pwm') — the same walk
+ * profileDiagnostics does. Emit paths gate per-channel state on these sets
+ * so nothing unused reaches the single generated TU (-Wunused-function
+ * hygiene: every emitted function/variable is referenced). `undefined`
+ * (no program — probe paths) means "no information": callers emit every
+ * descriptor channel, preserving probe behavior.
+ *
+ * `pwm` also covers tone.* — the tone lowering drives the descriptor's
+ * first PWM spec regardless of pin, so any tone op marks it used.
+ */
+function collectUsedPins(
+  program: ProgramIR | undefined,
+  kind: 'adc' | 'pwm',
+  chip?: ZephyrChipDescriptor,
+): Set<number> | undefined {
+  if (!program) return undefined;
+  const pins = new Set<number>();
+  let usesTone = false;
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    const op = n.operation;
+    if (op && typeof op === 'object') {
+      const o = op as Record<string, unknown>;
+      const name = o.operation;
+      const pin = o.pin;
+      if (typeof name === 'string' && typeof pin === 'number') {
+        if (kind === 'adc' && (name === 'adc.read' || name === 'adc.read_voltage')) pins.add(pin);
+        if (kind === 'pwm' && name.startsWith('pwm.')) pins.add(pin);
+      }
+      if (kind === 'pwm' && typeof name === 'string' && name.startsWith('tone.')) usesTone = true;
+    }
+    for (const v of Object.values(n)) {
+      if (Array.isArray(v)) { for (const item of v) visit(item); }
+      else if (v && typeof v === 'object') visit(v);
+    }
+  };
+  visit(program);
+  if (kind === 'pwm' && usesTone) {
+    const first = chip?.pwm?.specs[0];
+    if (first) pins.add(first.pin);
+  }
+  return pins;
+}
 import { lowerHalOp } from './lowering/index.js';
 import { buildZephyrWorkerBacking } from './lowering/worker-backing.js';
 import { adcInitLines } from './lowering/adc.js';
@@ -425,8 +473,8 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesUart') && chip.uart) {
       for (let i = 0; i < chip.uart.controllers.length; i++) guardBody.push(...uartInitLines(chip, i));
     }
-    if (uses('usesADC') && chip.adc) guardBody.push(...adcInitLines(chip));
-    if (uses('usesPWM') && chip.pwm) guardBody.push(...pwmInitLines(chip));
+    if (uses('usesADC') && chip.adc) guardBody.push(...adcInitLines(chip, collectUsedPins(program, 'adc')));
+    if (uses('usesPWM') && chip.pwm) guardBody.push(...pwmInitLines(chip, collectUsedPins(program, 'pwm', chip)));
     if (uses('usesDAC') && chip.dac) guardBody.push(...dacInitLines(chip));
     if (uses('usesHwtimer') && chip.hwtimer) guardBody.push(...hwtimerInitLines(chip));
     if (uses('usesInterrupts')) guardBody.push(...interruptInitLines(chip));
@@ -577,14 +625,14 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (this.needsGpioReadShim(program, ctx)) {
       lines.push(...emitGpioDevDispatcher(chip));
       lines.push(
-        'inline int __tc_gpio_read(int pin) { return gpio_pin_get_raw(__tc_gpio_dev(static_cast<uint32_t>(pin)), static_cast<gpio_pin_t>(pin)); }',
+        'inline int __tc_gpio_read(int pin) { return gpio_pin_get_raw(__tc_gpio_dev(static_cast<uint32_t>(pin)), __tc_gpio_pin(static_cast<uint32_t>(pin))); }',
       );
     }
     // __tc_gpio_write / __tc_delay_us are only referenced via @typecad/safety
     // lowering, so they stay gated on it.
     if (program && programUsesSafety(program)) {
       lines.push(
-        'inline void __tc_gpio_write(uint32_t pin, uint32_t value) { gpio_pin_set_raw(__tc_gpio_dev(pin), pin, value); }',
+        'inline void __tc_gpio_write(uint32_t pin, uint32_t value) { gpio_pin_set_raw(__tc_gpio_dev(pin), __tc_gpio_pin(pin), value); }',
         '#ifndef __TC_DELAY_US_DEFINED',
         '#define __TC_DELAY_US_DEFINED',
         'inline void __tc_delay_us(uint32_t us) { k_busy_wait(us); }',

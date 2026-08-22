@@ -62,3 +62,140 @@ describe('scaffoldZephyrProject — CMakeLists source list', () => {
     expect(txt).not.toContain('target_sources');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Cuttlefish library packages — Kconfig + overlay contributions read from the
+// transpiler's libraries.json sidecar (written next to the emitted sources
+// when a library import is used). Entries are pre-gated on the library's
+// include token; the scaffold only merges.
+// ---------------------------------------------------------------------------
+import { appendLibraryOverlayFragments } from '../../../packages/framework-zephyr/src/toolchain/scaffold';
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
+
+interface SidecarEntry {
+  id: string;
+  module: string;
+  framework: string;
+  gateToken: string;
+  kconfig: string[];
+  overlay: string | null;
+  shims: string[];
+}
+
+describe('scaffoldZephyrProject — library package contributions', () => {
+  let dir: string;
+  let srcDir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'zephyr-scaffold-lib-'));
+    srcDir = join(dir, 'src');
+    mkdirSync(srcDir, { recursive: true });
+    writeFileSync(join(srcDir, 'main.cpp'), '#include "__tc_rgbled.h"\nrgbLed.color(0, 255, 0).show();\n');
+  });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  const writeSidecar = (entries: SidecarEntry[]): void => {
+    writeFileSync(join(srcDir, 'libraries.json'), JSON.stringify(entries, null, 2));
+  };
+  const rgbEntry = (kconfig: string[], overlay: string | null = null): SidecarEntry => ({
+    id: 'zephyr-esp32s3-rgb',
+    module: '@typecad/zephyr-esp32s3-rgb',
+    framework: 'zephyr',
+    gateToken: '__tc_rgbled',
+    kconfig,
+    overlay,
+    shims: ['__tc_rgbled.h', '__tc_rgbled.cpp'],
+  });
+
+  it('appends library kconfig lines after the auto-detected symbols', () => {
+    writeSidecar([rgbEntry(['CONFIG_LED_STRIP=y', 'CONFIG_I2S=y', 'CONFIG_DMA=y'])]);
+    scaffoldZephyrProject(dir);
+    const txt = readFileSync(join(dir, 'prj.conf'), 'utf8');
+    expect(txt).toContain('# Library packages (cuttlefish.library.json contributions).');
+    expect(txt).toContain('CONFIG_LED_STRIP=y');
+    expect(txt).toContain('CONFIG_I2S=y');
+    expect(txt).toContain('CONFIG_DMA=y');
+    // Library section lands before the user-Kconfig section when one exists.
+    expect(txt.indexOf('CONFIG_LED_STRIP=y')).toBeGreaterThan(-1);
+  });
+
+  it('user zephyr.kconfig overrides a library-contributed symbol', () => {
+    writeSidecar([rgbEntry(['CONFIG_LED_STRIP=y', 'CONFIG_I2S=y'])]);
+    scaffoldZephyrProject(dir, false, { CONFIG_LED_STRIP: 'n' });
+    const txt = readFileSync(join(dir, 'prj.conf'), 'utf8');
+    expect(txt).not.toContain('CONFIG_LED_STRIP=y');
+    expect(txt).toContain('CONFIG_LED_STRIP=n');
+    expect(txt).toContain('CONFIG_I2S=y');
+  });
+
+  it('emits no library section without a sidecar', () => {
+    scaffoldZephyrProject(dir);
+    const txt = readFileSync(join(dir, 'prj.conf'), 'utf8');
+    expect(txt).not.toContain('Library packages');
+  });
+
+  it('compiles library shim sources as ordinary src files', () => {
+    writeSidecar([rgbEntry(['CONFIG_LED_STRIP=y'])]);
+    writeFileSync(join(srcDir, '__tc_rgbled.cpp'), '// shim source\n');
+    scaffoldZephyrProject(dir);
+    const txt = readFileSync(join(dir, 'CMakeLists.txt'), 'utf8');
+    expect(txt).toContain('__tc_rgbled.cpp');
+  });
+});
+
+describe('appendLibraryOverlayFragments', () => {
+  let dir: string;
+  let srcDir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'zephyr-overlay-lib-'));
+    srcDir = join(dir, 'src');
+    mkdirSync(srcDir, { recursive: true });
+  });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it('appends the sidecar overlay fragment after the framework overlay', () => {
+    const fragment = join(dir, 'frag.overlay');
+    writeFileSync(fragment, '&i2s0 { status = "okay"; };\n');
+    writeFileSync(
+      join(srcDir, 'libraries.json'),
+      JSON.stringify([{
+        id: 'lib', module: '@scope/lib', framework: 'zephyr', gateToken: 'x',
+        kconfig: [], overlay: fragment, shims: [],
+      }]),
+    );
+    const out = appendLibraryOverlayFragments('&gpio0 { status = "okay"; };\n', dir);
+    expect(out).toContain('&gpio0 { status = "okay"; };');
+    expect(out).toContain('&i2s0 { status = "okay"; };');
+    expect(out.indexOf('&i2s0')).toBeGreaterThan(out.indexOf('&gpio0'));
+  });
+
+  it('appends the real @typecad/zephyr-esp32s3-rgb WS2812 fragment', () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const fragment = join(here, '..', '..', '..', 'packages', 'zephyr-esp32s3-rgb', 'shims', 'tc-rgb.overlay');
+    writeFileSync(
+      join(srcDir, 'libraries.json'),
+      JSON.stringify([{
+        id: 'zephyr-esp32s3-rgb', module: '@typecad/zephyr-esp32s3-rgb', framework: 'zephyr',
+        gateToken: '__tc_rgbled', kconfig: [], overlay: fragment, shims: [],
+      }]),
+    );
+    const out = appendLibraryOverlayFragments('', dir);
+    expect(out).toContain('worldsemi,ws2812-i2s');
+    expect(out).toContain('I2S0_O_SD_GPIO48');
+    expect(out).toContain('led-strip = &led_strip');
+  });
+
+  it('is a pass-through without sidecar entries and tolerates missing fragment files', () => {
+    expect(appendLibraryOverlayFragments('&gpio0 {};\n', dir)).toBe('&gpio0 {};\n');
+    writeFileSync(
+      join(srcDir, 'libraries.json'),
+      JSON.stringify([{
+        id: 'lib', module: '@scope/lib', framework: 'zephyr', gateToken: 'x',
+        kconfig: [], overlay: join(dir, 'does-not-exist.overlay'), shims: [],
+      }]),
+    );
+    expect(appendLibraryOverlayFragments('&gpio0 {};\n', dir)).toBe('&gpio0 {};\n');
+  });
+});

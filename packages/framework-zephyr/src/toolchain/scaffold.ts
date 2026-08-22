@@ -10,6 +10,7 @@
 import { writeFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveKconfigFragments, type KconfigUsage } from '../dt-config/kconfig.js';
+import { readCuttlefishLibrarySidecar } from '@typecad/cuttlefish/library-packages';
 
 /** Write a file only if the content differs from the existing file.
  *  Returns true when the file was written (content changed or file was new). */
@@ -53,6 +54,30 @@ function readEmittedSources(srcDir: string): string {
       out += readFileSync(join(srcDir, name), 'utf8');
     } catch {
       // ignore unreadable files
+    }
+  }
+  return out;
+}
+
+/**
+ * Append cuttlefish library packages' devicetree overlay fragments to the
+ * generated overlay. Library entries come from the transpiler's libraries.json
+ * sidecar (next to the emitted sources) and are already gated on the
+ * library's include token appearing in the emitted sources — no re-detection.
+ * Fragments merge after the framework overlay so library nodes (e.g.
+ * @typecad/zephyr-esp32s3-rgb's WS2812 node on I2S0) layer over it.
+ */
+export function appendLibraryOverlayFragments(overlay: string, projectRoot: string): string {
+  let out = overlay;
+  for (const entry of readCuttlefishLibrarySidecar(join(projectRoot, 'src'))) {
+    if (!entry.overlay) continue;
+    try {
+      const fragment = readFileSync(entry.overlay, 'utf8').trim();
+      if (fragment.length > 0) {
+        out += (out.endsWith('\n') ? '' : '\n') + '\n' + fragment + '\n';
+      }
+    } catch {
+      // best-effort; a missing fragment surfaces as a DT error
     }
   }
   return out;
@@ -204,6 +229,24 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     // emitted in the User Kconfig section below and takes precedence.
     if (userKconfig && userKconfig.hasOwnProperty(sym)) continue;
     prjConf.push(`${sym}=${val}`);
+  }
+  // ── Cuttlefish library packages ─────────────────────────────────────────
+  // Libraries the program imports (recorded in the transpiler's libraries.json
+  // sidecar, next to the emitted sources) contribute their manifest's kconfig
+  // lines — e.g. @typecad/zephyr-esp32s3-rgb contributes CONFIG_LED_STRIP.
+  // Sidecar entries are already gated on the library's include token
+  // appearing in the emitted sources, so no re-detection here. User
+  // zephyr.kconfig overrides still win.
+  const libraryEntries = readCuttlefishLibrarySidecar(srcDir);
+  if (libraryEntries.length > 0) {
+    prjConf.push('', '# Library packages (cuttlefish.library.json contributions).');
+    for (const entry of libraryEntries) {
+      for (const line of entry.kconfig) {
+        const sym = line.split('=')[0];
+        if (userKconfig && sym !== undefined && userKconfig.hasOwnProperty(sym)) continue;
+        prjConf.push(line);
+      }
+    }
   }
   // Emit user-specified Kconfig from cuttlefish.config.ts zephyr.kconfig.
   // These override any matching auto-detected symbol (skipped above).

@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 // A minimal flat config that bans explicit `any`, mirroring the rule scaffolded
-// into new user projects (init-templates.ts generateEslintConfig).
+// into new user projects (templates.ts generateEslintConfig).
 const FLAT_CONFIG = `import tseslint from "@typescript-eslint/eslint-plugin";
 import tsparser from "@typescript-eslint/parser";
 

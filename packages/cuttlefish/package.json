@@ -37,6 +37,14 @@
       "types": "./dist/ir/build-ir-state.d.ts",
       "default": "./dist/ir/build-ir-state.js"
     },
+    "./library-packages": {
+      "types": "./dist/library-packages.d.ts",
+      "default": "./dist/library-packages.js"
+    },
+    "./compliance": {
+      "types": "./dist/emit/compliance/index.d.ts",
+      "default": "./dist/emit/compliance/index.js"
+    },
     "./config-loader": {
       "types": "./dist/config-loader.d.ts",
       "default": "./dist/config-loader.js"
@@ -95,9 +103,9 @@
     "start": "node dist/cli.js"
   },
   "dependencies": {
-    "chalk": "^4.1.2",
+    "chalk": "^6.0.0",
     "typescript": "^5.7.3",
-    "zod": "^3.24.0"
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@typecad/ui": "1.0.0-alpha.13",
@@ -142,7 +150,7 @@
     "typescript"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.11.0"
   },
   "author": "typecad0",
   "sideEffects": false

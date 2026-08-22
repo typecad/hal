@@ -50,9 +50,9 @@ export {
   generateStarterSim,
   generateGitignore,
   generateEslintConfig,
-  runInitWizard,
+  runCreateWizard,
 } from "./create/index.js";
-export type { InitProjectOptions } from "./create/index.js";
+export type { CreateProjectOptions } from "./create/index.js";
 
 // ── Board codegen (`cuttlefish board add`) ───────────────────────────────────
 export {

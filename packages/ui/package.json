@@ -45,7 +45,7 @@
   ],
   "dependencies": {
     "@typecad/cuttlefish": "1.0.0-alpha.13",
-    "chalk": "^4.1.2",
+    "chalk": "^6.0.0",
     "css-tree": "^3.2.1",
     "decode-ico": "^0.4.1",
     "linkedom": "^0.18.12",
@@ -86,7 +86,7 @@
     "firmware"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.11.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",

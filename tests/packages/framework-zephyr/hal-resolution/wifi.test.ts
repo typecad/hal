@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { lowerWifi, wifiInitLines } from '../../../../packages/framework-zephyr/src/lowering/wifi';
 import { setActiveChip } from '../../../../packages/framework-zephyr/src/chips/index';
 import { ESP32S3_DEVKITC } from '../../../../packages/framework-zephyr/src/chips/esp32s3';
+import { transpileZephyrStrategy } from '../../../setup';
 
 setActiveChip(ESP32S3_DEVKITC);
 
@@ -73,6 +74,35 @@ describe('wifi init shim', () => {
     expect(shim).toContain('__tc_wifi_ap_stop');
     expect(shim).toContain('NET_REQUEST_WIFI_AP_ENABLE');
     expect(shim).toContain('NET_REQUEST_WIFI_AP_DISABLE');
+  });
+});
+
+describe('wifi blocking-wait pump (UI stays live during waits)', () => {
+  const shim = wifiInitLines().join('\n');
+  it('routes every blocking wait through __tc_wifi_wait_slice (no bare k_msleep polls)', () => {
+    expect(shim).toContain('static void __tc_wifi_wait_slice(uint32_t slice_ms)');
+    // All four blocking loops poll via the pump slice, not k_msleep directly.
+    expect(shim).toContain('while (!__tc_wifi.connected && waited < timeout_ms) { __tc_wifi_wait_slice(20); waited += 20; }');
+    expect(shim).toContain('while (__tc_wifi.scanning) { __tc_wifi_wait_slice(20); }');
+    expect(shim).toContain('while (__tc_wifi.connected) { __tc_wifi_wait_slice(20); }');
+  });
+
+  it('guards the ui_tick pump behind CUTTLEFISH_ENTRY_UI_TU (entry TU only)', () => {
+    // ui_tick is defined only in the entry TU's UI runtime header; the pump
+    // must compile the call out everywhere else via the entry-TU macro.
+    expect(shim).toContain('#ifdef CUTTLEFISH_ENTRY_UI_TU');
+    expect(shim).toContain('ui_tick(static_cast<uint16_t>(delta));');
+  });
+
+  it('non-UI builds emit the guard but never define CUTTLEFISH_ENTRY_UI_TU', () => {
+    // End-to-end: a wifi program without a mounted UI must not define the
+    // entry-UI macro, so the pump compiles down to a plain k_msleep.
+    const result = transpileZephyrStrategy(`
+      import { WiFi } from '@typecad/hal';
+      WiFi.connect("net", "pw", 10000);
+    `);
+    expect(result.cpp).toContain('#ifdef CUTTLEFISH_ENTRY_UI_TU');
+    expect(result.cpp).not.toContain('#define CUTTLEFISH_ENTRY_UI_TU');
   });
 });
 

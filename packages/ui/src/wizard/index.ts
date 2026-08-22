@@ -32,6 +32,14 @@ export type {
   UpsertDisplayResult,
 } from "./config-writer.js";
 
+export {
+  findPackageJson,
+  previewScriptCommand,
+  readPackageScript,
+  upsertPackageScript,
+} from "./package-writer.js";
+export type { UpsertScriptResult } from "./package-writer.js";
+
 export { renderStarterUi } from "./starter-ui.js";
 
 export { runIntegrationWizard } from "./integration-wizard.js";

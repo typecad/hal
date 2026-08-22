@@ -11,6 +11,18 @@ export const XIAO_BLE: ZephyrChipDescriptor = {
   id: 'xiao_ble',
   soc: 'nrf52840',
   gpioController: 'gpio0',
+    // GPIO is split across two devicetree controllers: gpio0 (P0.00–P0.31)
+    // and gpio1 (P1.00–P1.15, HAL pins 32–47). Declaring the split makes the
+    // raw path emit the port-relative index against gpio1 (P1.11 = raw 11),
+    // which NRF_GPIO_PIN_MAP(1, 11) resolves to absolute pin 43 — the same
+    // physical pin the old single-controller form reached only by accident:
+    // gpio0 + global 43 also maps to 43 (MAP(0, 43) = 43), but that form
+    // trips the generic layer's port_pin_mask __ASSERT ("Unsupported pin",
+    // gpio0's mask covers 0–31) on any assert-enabled build.
+  gpioControllers: [
+    { nodelabel: 'gpio0', minPin: 0, maxPin: 31 },
+    { nodelabel: 'gpio1', minPin: 32, maxPin: 47 },
+  ],
   gpio: {
     dtSpecs: [
       // Onboard RGB LEDs — active-low (GPIO_ACTIVE_LOW in xiao_ble_common.dtsi).

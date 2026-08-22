@@ -12,9 +12,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Covers the engines.node >=18 claim across the supported LTS line and
-        # the current release. Node 18 is the floor (oldest supported).
-        node-version: [18, 20, 22]
+        # Covers the engines.node >=22.11.0 claim across the supported LTS
+        # lines. Node 22.11 is the floor (oldest non-EOL LTS, also the
+        # minimum for @changesets/cli@3); Node 24 is the active LTS.
+        node-version: ['22.11', 24]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5

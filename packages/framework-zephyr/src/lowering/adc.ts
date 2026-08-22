@@ -23,25 +23,38 @@ export function adcChannelForPin(chip: ZephyrChipDescriptor, pin: number): numbe
 
 /**
  * Emit the per-channel ADC setup state. One block per channel in the chip
- * descriptor, each guarded by a `static bool __tc_adc<N>_ready` so the first
- * read configures it and subsequent reads skip. Called from shimLines when
- * the program uses ADC.
+ * descriptor that the PROGRAM ACTUALLY READS (`usedPins`) — an unread
+ * channel's `static` setup function would trip -Wunused-function in the
+ * single generated TU. When `usedPins` is omitted (probe paths with no
+ * program), every descriptor channel is emitted. Each block is guarded by a
+ * `static bool __tc_adc<N>_ready` so the first read configures it and
+ * subsequent reads skip. Called from shimLines when the program uses ADC.
  */
-export function adcInitLines(chip: ZephyrChipDescriptor): string[] {
+export function adcInitLines(chip: ZephyrChipDescriptor, usedPins?: ReadonlySet<number>): string[] {
   const dev = `DEVICE_DT_GET(DT_NODELABEL(${chip.adc?.nodeLabel ?? 'adc'}))`;
   const res = chip.adc?.resolution ?? 12;
   const vref = chip.adc?.vrefMv ?? 3000;
+  // Gain/reference are SoC-specific: the nRF SAADC scheme (gain 1/4 against
+  // the 0.6V internal ref, vref-mv 3000 = VDD) is the default; the STM32
+  // driver requires exactly ADC_GAIN_1 + ADC_REF_INTERNAL (Zephyr maps
+  // "internal" to the VREF+ pad) with vref-mv = VDDA. The descriptor carries
+  // the SoC's pair so the emitted channel setup validates in the driver.
+  const gain = chip.adc?.gain ?? 'ADC_GAIN_1_4';
+  const reference = chip.adc?.reference ?? 'ADC_REF_INTERNAL';
+  const channels = (chip.adc?.channels ?? []).filter(
+    (c) => !usedPins || usedPins.has(c.pin),
+  );
   const lines: string[] = ['// CUTTLEFISH_ADC_BEGIN'];
   lines.push(`static const struct device* __tc_adc_dev = ${dev};`);
-  for (const c of chip.adc?.channels ?? []) {
+  for (const c of channels) {
     const n = c.channel;
     lines.push(
       `static bool __tc_adc${n}_ready = false;`,
       `static void __tc_adc${n}_setup(void) {`,
       `    if (__tc_adc${n}_ready) return;`,
       `    const struct adc_channel_cfg cfg = {`,
-      `        .gain = ADC_GAIN_1_4,`,
-      `        .reference = ADC_REF_INTERNAL,`,
+      `        .gain = ${gain},`,
+      `        .reference = ${reference},`,
       `        .acquisition_time = ADC_ACQ_TIME_DEFAULT,`,
       `        .channel_id = ${n},`,
       `        .differential = 0,`,
@@ -68,6 +81,8 @@ export function lowerAdc(
   const o = op as any;
   const res = chip.adc?.resolution ?? 12;
   const vref = chip.adc?.vrefMv ?? 3000;
+  const gain = chip.adc?.gain ?? 'ADC_GAIN_1_4';
+  const reference = chip.adc?.reference ?? 'ADC_REF_INTERNAL';
 
   switch (op.operation) {
     case 'adc.read': {
@@ -79,10 +94,11 @@ export function lowerAdc(
     }
     case 'adc.read_voltage': {
       const ch = adcChannelForPin(chip, o.pin);
-      // Read raw, convert to millivolts via adc_raw_to_millivolts (gain 1/4,
-      // internal ref). Returns mV as int.
+      // Read raw, convert to millivolts via adc_raw_to_millivolts with the
+      // descriptor's gain (raw_to_millivolts divides out the gain the channel
+      // was set up with). Returns mV as int.
       return {
-        expression: `({ __tc_adc${ch}_setup(); int16_t __b = 0; struct adc_sequence __s = { .channels = BIT(${ch}), .buffer = &__b, .buffer_size = sizeof(__b), .resolution = ${res} }; adc_read(__tc_adc_dev, &__s); int32_t __v = __b; adc_raw_to_millivolts(${vref}, ADC_GAIN_1_4, ${res}, &__v); __v; })`,
+        expression: `({ __tc_adc${ch}_setup(); int16_t __b = 0; struct adc_sequence __s = { .channels = BIT(${ch}), .buffer = &__b, .buffer_size = sizeof(__b), .resolution = ${res} }; adc_read(__tc_adc_dev, &__s); int32_t __v = __b; adc_raw_to_millivolts(${vref}, ${gain}, ${res}, &__v); __v; })`,
       };
     }
     case 'adc.get_resolution':
@@ -90,9 +106,9 @@ export function lowerAdc(
     case 'adc.set_reference':
       // Zephyr configures the reference at channel-setup time; runtime switching
       // would require re-setup. Record the intent as a no-op statement.
-      return { code: `/* adc.set_reference(${o.reference}): configured at channel setup (ADC_REF_INTERNAL) */` };
+      return { code: `/* adc.set_reference(${o.reference}): configured at channel setup (${reference}) */` };
     case 'adc.get_reference':
-      return { expression: `0 /* DEFAULT (ADC_REF_INTERNAL) */` };
+      return { expression: `0 /* DEFAULT (${reference}) */` };
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +

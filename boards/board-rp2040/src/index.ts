@@ -52,12 +52,64 @@ export const RP2040Board: BoardDefinition = {
   build: {
     frameworks: {
       arduino: 'rp2040:rp2040:rpipico',
+      // The Zephyr board target for `west build -b <target>`.
+      zephyr: 'rpi_pico',
     },
     defines: {
       F_CPU:         '133000000UL',
       ARDUINO:       ARDUINO_CORE_VERSION,
       ARDUINO_RPIPICO: '1',
     },
+  },
+
+  // ----- @typecad/framework-zephyr chip data -------------------------------
+  // Carried into the flattened board constants under `zephyr.*` and
+  // reconstructed into a ZephyrChipDescriptor by framework-zephyr's
+  // resolveChipFromBoard(). Verified against Zephyr 4.3's
+  // boards/raspberrypi/rpi_pico/rpi_pico-common.dtsi, rpi_pico-led.dtsi, and
+  // the common pinctrl dtsi.
+  //
+  // Plain object/array literals only — `as const` on nested values defeats the
+  // board-constants flattener.
+  zephyr: {
+    // Single GPIO controller — every exposed GP pin (0–28) is on gpio0.
+    gpioController: 'gpio0',
+    gpio: {
+      // Pico onboard LED on GP25, GPIO_ACTIVE_HIGH in rpi_pico-led.dtsi.
+      // Pins without a dtSpec fall back to the raw gpio0 controller path.
+      dtSpecs: [
+        { pin: 25, dtSpec: 'led0' },
+      ],
+      // No gpio-keys node in mainline rpi_pico DTS (no `sw0` alias) — an
+      // entry here would emit GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios) and fail
+      // to compile. Same situation as the XIAO nRF52840.
+      interruptPins: [],
+    },
+    // Board-wired controllers (rpi_pico-common.dtsi):
+    //   uart0 = GP0/GP1, i2c0 = GP4/GP5, spi0 = GP16–GP19 (okay by default;
+    //   the overlay generator enables whichever the program uses).
+    i2c:  { controllers: [{ nodeLabel: 'i2c0' }] },
+    spi:  { controllers: [{ nodeLabel: 'spi0' }] },
+    uart: { controllers: [{ nodeLabel: 'uart0' }] },
+    // ADC: 12-bit SAR, vref-mv defaults to 3300 in the raspberrypi,pico-adc
+    // binding; GP26–GP29 = channels 0–3 (adc_default pinctrl group).
+    adc: {
+      nodeLabel: 'adc',
+      resolution: 12,
+      vrefMv: 3300,
+      channels: [
+        { pin: 26, channel: 0 },
+        { pin: 27, channel: 1 },
+        { pin: 28, channel: 2 },
+        { pin: 29, channel: 3 },
+      ],
+    },
+    wdt: { nodeLabel: 'wdt0' },
+    // NOTE: no pwm.specs — the `pwm-led0` alias (PWM slice 4B on GP25) points
+    // at a `pwm_leds` node that is status = "disabled" in mainline rpi_pico
+    // DTS; the overlay generator does not enable it, so a spec here would
+    // compile but fail at runtime. pwm.* ops lower to a comment until a board
+    // overlay enables the node.
   },
 };
 

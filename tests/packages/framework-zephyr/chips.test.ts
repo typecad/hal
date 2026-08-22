@@ -3,8 +3,9 @@ import {
   chipForTarget,
   ESP32_DEVKITC,
   ESP32S3_DEVKITC,
+  XIAO_BLE,
 } from '../../../packages/framework-zephyr/src/chips/index';
-import { controllerNodelabelForPin } from '../../../packages/framework-zephyr/src/chips/controllers';
+import { controllerNodelabelForPin, controllerRawPinForPin, emitGpioDevDispatcher } from '../../../packages/framework-zephyr/src/chips/controllers';
 
 describe('chipForTarget — ESP32 (plain) resolution', () => {
   it("returns ESP32_DEVKITC for 'esp32_devkitc'", () => {
@@ -58,5 +59,48 @@ describe('ESP32_DEVKITC descriptor — GPIO controller split', () => {
 describe('ESP32_DEVKITC descriptor — WiFi', () => {
   it('marks WiFi supported (the board enables &wifi; WIFI_ESP32 !SMP dep is met)', () => {
     expect(ESP32_DEVKITC.wifi?.supported).toBe(true);
+  });
+});
+
+describe('raw-pin offset (port-relative indices for gpio_pin_*_raw)', () => {
+  it('subtracts the owning controller minPin (ESP32 gpio1: pin 33 -> raw 1)', () => {
+    expect(controllerRawPinForPin(ESP32_DEVKITC, 5)).toBe(5);
+    expect(controllerRawPinForPin(ESP32_DEVKITC, 33)).toBe(1);
+    expect(controllerRawPinForPin(ESP32_DEVKITC, 39)).toBe(7);
+  });
+
+  it('subtracts the owning controller minPin (XIAO gpio1: P1.11 pin 43 -> raw 11)', () => {
+    expect(controllerRawPinForPin(XIAO_BLE, 17)).toBe(17);   // P0.17 -> gpio0 17
+    expect(controllerRawPinForPin(XIAO_BLE, 34)).toBe(2);    // P1.02 -> gpio1 2
+    expect(controllerRawPinForPin(XIAO_BLE, 43)).toBe(11);   // P1.11 -> gpio1 11
+    expect(controllerRawPinForPin(XIAO_BLE, 44)).toBe(12);   // P1.12 -> gpio1 12
+  });
+
+  it('is identity on single-controller SoCs (no gpioControllers declared)', () => {
+    const single: Parameters<typeof controllerRawPinForPin>[0] = {
+      id: 'synthetic', soc: 'x', gpioController: 'gpio0', gpio: { dtSpecs: [] },
+    };
+    expect(controllerRawPinForPin(single, 17)).toBe(17);
+  });
+
+  it('emits a __tc_gpio_pin runtime offset dispatcher alongside __tc_gpio_dev', () => {
+    const lines = emitGpioDevDispatcher(ESP32_DEVKITC).join('\n');
+    expect(lines).toContain('__tc_gpio_dev');
+    expect(lines).toContain('__tc_gpio_pin');
+    expect(lines).toContain('return (gpio_pin_t)(pin - 32);');
+    // The XIAO declares its two-controller split too (gpio0/gpio1): the
+    // dispatcher carries both branches. The old single-controller form let
+    // gpio0+global work only via NRF_GPIO_PIN_MAP(0, 43)=43 — the right pin,
+    // but it trips the port_pin_mask __ASSERT on assert-enabled builds.
+    const xiao = emitGpioDevDispatcher(XIAO_BLE).join('\n');
+    expect(xiao).toContain('DT_NODELABEL(gpio1)');
+    expect(xiao).toContain('return (gpio_pin_t)(pin - 32);');
+    // Single-controller chips: identity dispatcher plus identity pin mapper.
+    const single: Parameters<typeof emitGpioDevDispatcher>[0] = {
+      id: 'synthetic', soc: 'x', gpioController: 'gpio0', gpio: { dtSpecs: [] },
+    };
+    const collapsed = emitGpioDevDispatcher(single).join('\n');
+    expect(collapsed).toContain('return (gpio_pin_t)pin;');
+    expect(collapsed).not.toContain('pin - ');
   });
 });

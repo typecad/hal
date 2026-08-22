@@ -7,7 +7,7 @@ import ts from "typescript";
 // approximated.  Used by feature-prescan.ts to emit build-time diagnostics.
 //
 // SINGLE SOURCE OF TRUTH FOR ESLint SELECTORS:
-// The scaffolded eslint.config.mjs (generateEslintConfig in create/init-templates.ts)
+// The scaffolded eslint.config.mjs (generateEslintConfig in create/templates.ts)
 // renders its `no-restricted-syntax` entries from LINT_RULES below, which is in turn
 // derived from KIND_REGISTRY (kind-based patterns) plus CONTEXT_LINT_RULES (patterns
 // that also appear in checkContextSensitive but are expressible as static selectors).

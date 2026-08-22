@@ -7,6 +7,7 @@ import {
   FRAMEWORK_CATALOG,
   frameworkCatalogEntry,
   frameworksForTarget,
+  frameworkCompatibleWithTarget,
   detectPackageManager,
   frameworkTargetProfile,
 } from "../../../packages/cuttlefish/src/create/framework-catalog";
@@ -31,8 +32,14 @@ describe("frameworksForTarget", () => {
     expect(frameworksForTarget({ architecture: "esp32s3" }).map((f) => f.id)).toEqual(["arduino", "zephyr"]);
   });
 
-  it("narrows avr / esp32c3 / esp32c6 / rp2040 / rp2350 to arduino only", () => {
-    for (const arch of ["avr", "esp32c3", "esp32c6", "rp2040", "rp2350"]) {
+  it("narrows esp32c3 / esp32c6 to arduino + zephyr", () => {
+    for (const arch of ["esp32c3", "esp32c6"]) {
+      expect(frameworksForTarget({ architecture: arch }).map((f) => f.id)).toEqual(["arduino", "zephyr"]);
+    }
+  });
+
+  it("narrows avr / rp2040 / rp2350 to arduino only", () => {
+    for (const arch of ["avr", "rp2040", "rp2350"]) {
       expect(frameworksForTarget({ architecture: arch }).map((f) => f.id)).toEqual(["arduino"]);
     }
   });
@@ -43,6 +50,11 @@ describe("frameworksForTarget", () => {
 
   it("maps nrf52 to [zephyr]", () => {
     expect(frameworksForTarget({ architecture: "nrf52" }).map((f) => f.id)).toEqual(["zephyr"]);
+  });
+
+  it("maps stm32f411 to [zephyr] (Black Pill is Zephyr-only; generic stm32 stays arduino)", () => {
+    expect(frameworksForTarget({ architecture: "stm32f411" }).map((f) => f.id)).toEqual(["zephyr"]);
+    expect(frameworksForTarget({ architecture: "stm32" }).map((f) => f.id)).toEqual(["arduino"]);
   });
 
   it("falls back to [arduino] for an unknown architecture", () => {
@@ -61,6 +73,34 @@ describe("frameworkCatalogEntry", () => {
   });
   it("returns undefined for an unknown id", () => {
     expect(frameworkCatalogEntry("nope")).toBeUndefined();
+  });
+});
+
+// ── explicit --framework validation (guard: an explicit request bypasses the
+// auto-pick narrowing, so incompatible pairs must be rejectable). ────────────
+
+describe("frameworkCompatibleWithTarget", () => {
+  it("accepts zephyr for nrf52 and rejects arduino (Zephyr-only board)", () => {
+    expect(frameworkCompatibleWithTarget({ architecture: "nrf52" }, "zephyr")).toBe(true);
+    expect(frameworkCompatibleWithTarget({ architecture: "nrf52" }, "arduino")).toBe(false);
+  });
+
+  it("accepts both arduino and zephyr for multi-framework architectures", () => {
+    for (const arch of ["esp32", "esp32s3"]) {
+      expect(frameworkCompatibleWithTarget({ architecture: arch }, "arduino")).toBe(true);
+      expect(frameworkCompatibleWithTarget({ architecture: arch }, "zephyr")).toBe(true);
+    }
+  });
+
+  it("keeps native and embedded frameworks disjoint", () => {
+    expect(frameworkCompatibleWithTarget({ architecture: "esp32s3" }, "native")).toBe(false);
+    expect(frameworkCompatibleWithTarget({ isNative: true }, "arduino")).toBe(false);
+    expect(frameworkCompatibleWithTarget({ isNative: true }, "zephyr")).toBe(false);
+    expect(frameworkCompatibleWithTarget({ isNative: true }, "native")).toBe(true);
+  });
+
+  it("returns false for framework ids outside the catalog", () => {
+    expect(frameworkCompatibleWithTarget({ architecture: "esp32" }, "esp-idf")).toBe(false);
   });
 });
 
@@ -113,10 +153,19 @@ describe("frameworkTargetProfile", () => {
     expect(frameworkTargetProfile({ id: "xiao-nrf52840" }, "zephyr").buildTarget).toBe(
       "xiao_ble/nrf52840",
     );
+    expect(frameworkTargetProfile({ id: "esp32c3" }, "zephyr").buildTarget).toBe(
+      "esp32c3_devkitm/esp32c3",
+    );
+    expect(frameworkTargetProfile({ id: "esp32c6" }, "zephyr").buildTarget).toBe(
+      "esp32c6_devkitc/esp32c6/hpcore",
+    );
+    expect(frameworkTargetProfile({ id: "blackpill-f411ce" }, "zephyr").buildTarget).toBe(
+      "blackpill_f411ce/stm32f411xe",
+    );
   });
 
   it("never emits a bare Zephyr board id (every Zephyr target is qualified)", () => {
-    for (const boardId of ["esp32-devkit", "esp32s3", "xiao-nrf52840"]) {
+    for (const boardId of ["esp32-devkit", "esp32s3", "xiao-nrf52840", "esp32c3", "esp32c6", "blackpill-f411ce"]) {
       const bt = frameworkTargetProfile({ id: boardId }, "zephyr").buildTarget ?? "";
       expect(bt.includes("/")).toBe(true);
     }

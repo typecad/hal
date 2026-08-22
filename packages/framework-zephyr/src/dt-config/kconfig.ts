@@ -35,6 +35,17 @@ export interface KconfigUsage {
   /** PSRAM type ('opi' | 'quad') when the target board has PSRAM. Emits the
    *  CONFIG_SPIRAM symbols so the ESP heap serves PSRAM for canvas allocations. */
   psram?: 'opi' | 'quad';
+  /** HAL pin numbers the program reads with adc.* — scanned from the emitted
+   *  `__tc_adc<N>_setup()` calls at compile time. Only the overlay generator
+   *  consumes this (to rewrite the ADC node's pinctrl-0 to the used channels
+   *  on SoCs that need pad muxing, e.g. STM32); prj.conf ignores it. */
+  adcReadPins?: readonly number[];
+  /** HAL pin numbers the program drives with pwm.* — scanned from the
+   *  emitted `__tc_pwm_*` spec references at compile time. Only the overlay
+   *  generator consumes this (synthesized pwm-leds consumers + aliases are
+   *  emitted per used pin, so the DT carries no dead channels); prj.conf
+   *  ignores it. */
+  pwmUsedPins?: readonly number[];
 }
 
 /**
@@ -123,7 +134,7 @@ export function resolveKconfigFragments(
     // (without it, Kconfig silently forces them all to n).
     m.set('CONFIG_NETWORKING', 'y');
     m.set('CONFIG_WIFI', 'y');
-    m.set('CONFIG_WIFI_ESP32', 'y');            // ESP32-specific driver (sole WiFi target)
+    m.set('CONFIG_WIFI_ESP32', 'y');            // family-wide ESP32 driver (esp32/s3/c3/c6)
     m.set('CONFIG_NET_L2_ETHERNET', 'y');
     m.set('CONFIG_NET_IPV4', 'y');
     m.set('CONFIG_NET_UDP', 'y');               // transitive dep of NET_DHCPV4

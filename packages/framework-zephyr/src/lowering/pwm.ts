@@ -10,6 +10,26 @@
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor, ZephyrPwmSpec } from '../chips/types.js';
 
+/**
+ * The DT alias a PWM spec is addressed by. Board-shipped specs carry their
+ * alias in `dtSpec`; synthesized specs (controller + channel) get a
+ * `tc-pwm<pin>` alias that the overlay generator creates in
+ * <board>.overlay — both sides derive the name from the pin so they agree.
+ */
+export function pwmDtAlias(spec: ZephyrPwmSpec): string {
+  return spec.dtSpec ?? `tc-pwm${spec.pin}`;
+}
+
+/**
+ * The C macro token for a spec's alias. Zephyr's devicetree macros replace
+ * dashes in alias names with underscores (`pwm-led0` in DTS is
+ * DT_ALIAS(pwm_led0) in C) — the dashed spelling is a subtraction
+ * expression and fails to compile (caught by the blackpill E2E west build).
+ */
+export function pwmDtAliasToken(spec: ZephyrPwmSpec): string {
+  return pwmDtAlias(spec).replace(/-/g, '_');
+}
+
 /** Look up a PWM spec by HAL pin number. */
 function findPwmSpec(chip: ZephyrChipDescriptor, pin: number): ZephyrPwmSpec | undefined {
   return chip.pwm?.specs.find((s) => s.pin === pin);
@@ -17,18 +37,23 @@ function findPwmSpec(chip: ZephyrChipDescriptor, pin: number): ZephyrPwmSpec | u
 
 /** The C variable name emitted for a PWM channel's spec. */
 function pwmVarName(spec: ZephyrPwmSpec): string {
-  return `__tc_pwm_${spec.dtSpec.replace(/-/g, '_')}`;
+  return `__tc_pwm_${pwmDtAliasToken(spec)}`;
 }
 
 /**
  * Emit the per-channel PWM spec declarations. One per spec in the chip
- * descriptor. Called from shimLines when the program uses PWM.
+ * descriptor that the PROGRAM ACTUALLY DRIVES (`usedPins`) — a spec for an
+ * untouched pin is unused code in the emitted TU (and would need a dead DT
+ * alias in the overlay). When `usedPins` is omitted (probe paths with no
+ * program), every spec is emitted. Called from shimLines when the program
+ * uses PWM.
  */
-export function pwmInitLines(chip: ZephyrChipDescriptor): string[] {
+export function pwmInitLines(chip: ZephyrChipDescriptor, usedPins?: ReadonlySet<number>): string[] {
   const lines: string[] = ['// CUTTLEFISH_PWM_BEGIN'];
   for (const spec of chip.pwm?.specs ?? []) {
+    if (usedPins && !usedPins.has(spec.pin)) continue;
     lines.push(
-      `static const struct pwm_dt_spec ${pwmVarName(spec)} = PWM_DT_SPEC_GET(DT_ALIAS(${spec.dtSpec}));`,
+      `static const struct pwm_dt_spec ${pwmVarName(spec)} = PWM_DT_SPEC_GET(DT_ALIAS(${pwmDtAliasToken(spec)}));`,
     );
   }
   lines.push('// CUTTLEFISH_PWM_END');

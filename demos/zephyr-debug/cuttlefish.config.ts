@@ -52,6 +52,19 @@ const config: CuttlefishConfig = {
     timeout: 30000,
     include: ['tests/**/*.test.ts'],
   },
+  display: {
+    profile: 'st7796-spi',
+    cs: 5,
+    dc: 17,
+    rst: 16,
+    // Hz — lower this if the panel glitches
+    spiFrequency: 80000000,
+    rotation: 1,
+    antialias: true,
+    colorOrder: 'bgr',
+    invertDisplay: false,
+    touch: { library: 'FT6336U', i2cAddress: 0x38, i2cFrequency: 400000, calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 } },
+  },
 };
 
 export default config;

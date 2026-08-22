@@ -102,18 +102,36 @@ export function resolveChipFromBoard(
 
   const pwmSpecs = collectIndexed<ZephyrPwmSpec>(bc, 'zephyr.pwm.specs', (m, i) => {
     const pin = m.get(`zephyr.pwm.specs.${i}.pin`) as number;
-    const dtSpec = m.get(`zephyr.pwm.specs.${i}.dtSpec`) as string;
-    if (pin != null && dtSpec) return { pin, dtSpec };
-    return null;
+    const dtSpec = m.get(`zephyr.pwm.specs.${i}.dtSpec`) as string | undefined;
+    const controller = m.get(`zephyr.pwm.specs.${i}.controller`) as string | undefined;
+    const channel = m.get(`zephyr.pwm.specs.${i}.channel`) as number | undefined;
+    const periodNs = m.get(`zephyr.pwm.specs.${i}.periodNs`) as number | undefined;
+    const polarity = m.get(`zephyr.pwm.specs.${i}.polarity`) as string | undefined;
+    // Board-shipped alias form (dtSpec) or synthesized form (controller +
+    // channel → overlay-generated alias) — at least one, else drop the entry.
+    if (pin == null || !(dtSpec || (controller && channel != null))) return null;
+    return {
+      pin,
+      ...(dtSpec ? { dtSpec } : {}),
+      ...(controller ? { controller } : {}),
+      ...(channel != null ? { channel } : {}),
+      ...(periodNs != null ? { periodNs } : {}),
+      ...(polarity ? { polarity } : {}),
+    };
   });
 
   const adcNodeLabel = bc.get('zephyr.adc.nodeLabel') as string | undefined;
   const adcResolution = bc.get('zephyr.adc.resolution') as number | undefined;
   const adcVref = bc.get('zephyr.adc.vrefMv') as number | undefined;
+  const adcGain = bc.get('zephyr.adc.gain') as string | undefined;
+  const adcReference = bc.get('zephyr.adc.reference') as string | undefined;
   const adcChannels = collectIndexed<ZephyrAdcChannel>(bc, 'zephyr.adc.channels', (m, i) => {
     const pin = m.get(`zephyr.adc.channels.${i}.pin`) as number;
     const channel = m.get(`zephyr.adc.channels.${i}.channel`) as number;
-    if (pin != null && channel != null) return { pin, channel };
+    const pinctrl = m.get(`zephyr.adc.channels.${i}.pinctrl`) as string | undefined;
+    if (pin != null && channel != null) {
+      return { pin, channel, ...(pinctrl ? { pinctrl } : {}) };
+    }
     return null;
   });
 
@@ -138,7 +156,16 @@ export function resolveChipFromBoard(
     ...(uartControllers.length > 0 ? { uart: { controllers: uartControllers } } : {}),
     ...(pwmSpecs.length > 0 ? { pwm: { specs: pwmSpecs } } : {}),
     ...(adcNodeLabel || adcResolution != null || adcVref != null || adcChannels.length > 0
-      ? { adc: { nodeLabel: adcNodeLabel ?? 'adc', resolution: adcResolution ?? 12, vrefMv: adcVref ?? 3000, channels: adcChannels } }
+      ? {
+          adc: {
+            nodeLabel: adcNodeLabel ?? 'adc',
+            resolution: adcResolution ?? 12,
+            vrefMv: adcVref ?? 3000,
+            channels: adcChannels,
+            ...(adcGain ? { gain: adcGain } : {}),
+            ...(adcReference ? { reference: adcReference } : {}),
+          },
+        }
       : {}),
     ...(wdtNodeLabel ? { wdt: { nodeLabel: wdtNodeLabel } } : {}),
     ...(wifiSupported ? { wifi: { supported: true as const } } : {}),

@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { generateOverlay } from '../../../../packages/framework-zephyr/src/dt-config/overlay';
 import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
+import { resolveChipFromBoard } from '../../../../packages/framework-zephyr/src/chips/resolve';
+import { resolveBoardConstants } from '../../../../packages/cuttlefish/src/ir/board-resolver';
+
+// The Black Pill descriptor carries synthesized PWM specs + pinctrl-labeled
+// ADC channels — resolved through the real board-package flattener so the
+// overlay assertions exercise the same data a real build sees.
+const BLACKPILL = resolveChipFromBoard(
+  resolveBoardConstants('boards/board-blackpill-f411ce/src/index.ts'),
+)!;
 import { DEFAULT_ZEPHYR_DISPLAY_PROFILE, ZEPHYR_DISPLAY_PROFILES } from '../../../../packages/framework-zephyr/src/display/profiles';
 
 describe('generateOverlay', () => {
@@ -169,5 +178,44 @@ describe('generateOverlay', () => {
       diags3,
     );
     expect(diags3).toHaveLength(0);
+  });
+
+  describe('synthesized PWM + ADC pinctrl (Black Pill)', () => {
+    it('emits pwm-leds consumers + tc-pwm<pin> aliases for synthesized specs', () => {
+      const txt = generateOverlay(BLACKPILL, { usesPwm: true }, undefined);
+      expect(txt).toContain('&pwm4 {');
+      expect(txt).toContain('compatible = "pwm-leds"');
+      expect(txt).toContain('tc_pwm_22: pwm-led-22 {');
+      expect(txt).toContain('pwms = <&pwm4 1 20000000 PWM_POLARITY_NORMAL>');
+      expect(txt).toContain('pwms = <&pwm4 2 20000000 PWM_POLARITY_NORMAL>');
+      expect(txt).toContain('tc-pwm22 = &tc_pwm_22;');
+      expect(txt).toContain('tc-pwm23 = &tc_pwm_23;');
+    });
+
+    it('synthesizes pwm-leds consumers only for the driven pins (no dead DT channels)', () => {
+      const txt = generateOverlay(BLACKPILL, { usesPwm: true, pwmUsedPins: [22] }, undefined);
+      expect(txt).toContain('tc-pwm22 = &tc_pwm_22;');
+      expect(txt).not.toContain('tc_pwm_23');
+      expect(txt).not.toContain('pwm4 2 ');
+    });
+
+    it('omits PWM nodes when the program uses none (the lowering emits no DT_ALIAS refs)', () => {
+      const txt = generateOverlay(BLACKPILL, {}, undefined);
+      expect(txt).not.toContain('pwm-leds');
+      expect(txt).not.toContain('tc-pwm');
+    });
+
+    it('rewrites the ADC pinctrl to exactly the channels the program reads', () => {
+      const txt = generateOverlay(BLACKPILL, { usesAdc: true, adcReadPins: [0, 16] }, undefined);
+      expect(txt).toContain('&adc1 {');
+      expect(txt).toContain('pinctrl-0 = <&adc1_in0_pa0 &adc1_in8_pb0>;');
+      expect(txt).not.toContain('adc1_in1_pa1');
+    });
+
+    it('emits a status-only ADC block when no channels carry pinctrl labels (nRF-style chips)', () => {
+      const txt = generateOverlay(XIAO_BLE, { usesAdc: true }, undefined);
+      expect(txt).toContain('&adc {');
+      expect(txt).not.toContain('pinctrl-0');
+    });
   });
 });

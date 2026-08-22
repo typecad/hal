@@ -215,6 +215,30 @@ install_platform_tools() {
     echo "env: note — openocd not available on $MAMBA_PLAT (only x86_64 POSIX); skipped." >&2
     echo "env:   only needed for JTAG/SWD flashing; nRF boards use nrfjprog/pyocd." >&2
   fi
+  # dfu-util — west flash's dfu-util runner (STM32 ROM DFU bootloader boards,
+  # e.g. the WeAct Black Pill) shells out to it; a missing executable makes
+  # the runner die with a raw FileNotFoundError. Not on conda-forge either, so
+  # fall back to the system package manager. No auto-sudo: warn with the
+  # right command instead of failing the install over a flashing helper.
+  if ! command -v dfu-util >/dev/null 2>&1; then
+    echo "env: dfu-util not found — west flash on DFU-bootloader boards (STM32) needs it." >&2
+    case "$(uname -s)" in
+      Linux)
+        if command -v apt-get >/dev/null 2>&1; then
+          echo "env:   install with: sudo apt-get install dfu-util" >&2
+        elif command -v dnf >/dev/null 2>&1; then
+          echo "env:   install with: sudo dnf install dfu-util" >&2
+        elif command -v pacman >/dev/null 2>&1; then
+          echo "env:   install with: sudo pacman -S dfu-util" >&2
+        else
+          echo "env:   install dfu-util via your distribution's package manager." >&2
+        fi ;;
+      Darwin)
+        echo "env:   install with: brew install dfu-util" >&2 ;;
+      *)
+        echo "env:   install dfu-util via your package manager (https://dfu-util.sourceforge.net)." >&2 ;;
+    esac
+  fi
 }
 
 create_env

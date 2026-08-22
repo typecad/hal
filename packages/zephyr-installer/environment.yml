@@ -40,3 +40,7 @@ dependencies:
   - pyelftools
   - packaging
   - pip
+  # west's runner registry imports every flash/debug runner; several (e.g.
+  # rtsflash) `import usb` (pyusb). Without it every west build/flash prints
+  # "The module for runner 'rtsflash' could not be imported" noise.
+  - pyusb

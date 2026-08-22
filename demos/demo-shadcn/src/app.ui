@@ -1,4 +1,4 @@
-<script>
+<script lang="ts">
   // app.ui — shadcn component-kit gallery (single-file component).
   //
   // Every recipe from `cuttlefish add shadcn` on one device: Button (all
@@ -8,13 +8,21 @@
   // recipes render from markup alone; only the live bits are wired here.
 
   import { ui } from '@typecad/ui';
+  import { rgbLed } from '@typecad/zephyr-esp32s3-rgb';
 
   ui.mount(screen);
+
+  // Onboard RGB LED (library package): lights the shadcn dark-theme accent
+  // once at boot, then tracks the tap counter on the buttons screen.
+  rgbLed.color('#18181b').brightness(32).show();
 
   // ── Buttons screen: tap counter drives the badge interpolation ────────────
   export const taps = ui.signal(0);
   export function countTap() {
     taps.set(taps() + 1);
+    // The LED follows the counter: cycle the kit's accent colors.
+    const phase = taps() % 3;
+    rgbLed.color(phase === 0 ? '#18181b' : phase === 1 ? '#ef4444' : '#22c55e').brightness(32).show();
   }
 
   // ── Form controls: input echo + switch state ──────────────────────────────

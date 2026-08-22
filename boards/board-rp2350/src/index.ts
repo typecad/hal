@@ -52,12 +52,69 @@ export const RP2350Board: BoardDefinition = {
   build: {
     frameworks: {
       arduino: 'rp2040:rp2040:rpipico2',
+      // The Zephyr board target for `west build -b <target>`. Qualified with
+      // the soc/cpucluster path: the rpi_pico2 board ships hazard3 (RISC-V)
+      // and m33 (Cortex-M33) variants with no default, so Zephyr 4.3+ rejects
+      // the bare `rpi_pico2` name. M33 matches the ARM toolchain the rest of
+      // the Zephyr targets use.
+      zephyr: 'rpi_pico2/rp2350a/m33',
     },
     defines: {
       F_CPU:           '150000000UL',
       ARDUINO:         ARDUINO_CORE_VERSION,
       ARDUINO_RPIPICO2: '1',
     },
+  },
+
+  // ----- @typecad/framework-zephyr chip data -------------------------------
+  // Carried into the flattened board constants under `zephyr.*` and
+  // reconstructed into a ZephyrChipDescriptor by framework-zephyr's
+  // resolveChipFromBoard(). Verified against Zephyr 4.3's
+  // boards/raspberrypi/rpi_pico2/rpi_pico2.dtsi + rpi_pico2_rp2350a_m33.dts,
+  // rpi_pico-led.dtsi, and the common pinctrl dtsi (Pico and Pico 2 are pin
+  // compatible).
+  //
+  // Plain object/array literals only — `as const` on nested values defeats the
+  // board-constants flattener.
+  zephyr: {
+    // Single GPIO controller — every exposed GP pin (0–28) is on gpio0.
+    gpioController: 'gpio0',
+    gpio: {
+      // Pico 2 onboard LED on GP25, GPIO_ACTIVE_HIGH in rpi_pico-led.dtsi
+      // (shared with the Pico). Pins without a dtSpec fall back to the raw
+      // gpio0 controller path.
+      dtSpecs: [
+        { pin: 25, dtSpec: 'led0' },
+      ],
+      // No gpio-keys node in mainline rpi_pico2 DTS (no `sw0` alias) — an
+      // entry here would emit GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios) and fail
+      // to compile. Same situation as the XIAO nRF52840.
+      interruptPins: [],
+    },
+    // Board-wired controllers (rpi_pico2.dtsi, identical pinout to the Pico):
+    //   uart0 = GP0/GP1, i2c0 = GP4/GP5, spi0 = GP16–GP19.
+    i2c:  { controllers: [{ nodeLabel: 'i2c0' }] },
+    spi:  { controllers: [{ nodeLabel: 'spi0' }] },
+    uart: { controllers: [{ nodeLabel: 'uart0' }] },
+    // ADC: 12-bit SAR (raspberrypi,pico-adc binding, vref-mv default 3300);
+    // GP26–GP29 = channels 0–3 (adc_default pinctrl group).
+    adc: {
+      nodeLabel: 'adc',
+      resolution: 12,
+      vrefMv: 3300,
+      channels: [
+        { pin: 26, channel: 0 },
+        { pin: 27, channel: 1 },
+        { pin: 28, channel: 2 },
+        { pin: 29, channel: 3 },
+      ],
+    },
+    wdt: { nodeLabel: 'wdt0' },
+    // NOTE: no pwm.specs — the `pwm-led0` alias (PWM channel 9, GP25) points
+    // at a `pwm_leds` node that is status = "disabled" in mainline rpi_pico
+    // DTS; the overlay generator does not enable it, so a spec here would
+    // compile but fail at runtime. pwm.* ops lower to a comment until a board
+    // overlay enables the node.
   },
 };
 

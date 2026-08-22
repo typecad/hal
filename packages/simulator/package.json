@@ -48,7 +48,7 @@
     "typescript"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=22.11.0"
   },
   "author": "typecad0",
   "sideEffects": false,

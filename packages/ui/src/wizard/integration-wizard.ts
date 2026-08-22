@@ -5,8 +5,10 @@
 // into their project's cuttlefish.config.ts: pick a display, answer bus/pin/
 // speed questions with hardware-aware defaults, then splice the resulting
 // `display` section into the config without touching any other section.
-// Offers to create a starter .ui entry file when none exists and prints the
-// next build/flash/library steps at the end.
+// Also adds a `preview` npm script to package.json so the desktop preview
+// renderer starts via `npm run preview`. Offers to create a starter .ui entry
+// file when none exists and prints the next build/flash/library steps at the
+// end.
 // ---------------------------------------------------------------------------
 
 import fs from "node:fs";
@@ -36,6 +38,12 @@ import {
   upsertDisplaySection,
   type ConfigRecord,
 } from "./config-writer.js";
+import {
+  findPackageJson,
+  previewScriptCommand,
+  readPackageScript,
+  upsertPackageScript,
+} from "./package-writer.js";
 import { renderStarterUi } from "./starter-ui.js";
 
 /** Keys the wizard manages — anything else found in an existing display
@@ -273,6 +281,9 @@ export interface WizardRunResult {
   exitCode: number;
   /** Absolute path of the config that was written, when a write happened. */
   configPath?: string;
+  /** Absolute path of the package.json holding the preview script, when the
+   *  script was added or already present. */
+  packageJsonPath?: string;
 }
 
 /** Optional stream overrides so tests can drive the interactive flow. */
@@ -520,7 +531,35 @@ export async function runIntegrationWizard(
       }
     }
 
-    // --- 8. Summary + write -------------------------------------------------------
+    // --- 8. package.json preview script ------------------------------------------
+    // `npm run preview` should start the desktop preview renderer, pointing at
+    // the config the wizard just verified. An existing identical script is
+    // left untouched; a differing one is only replaced with consent.
+    let packageJsonPath: string | undefined;
+    let packageJsonText: string | undefined;
+    let previewCommand: string | undefined;
+    let existingPreview: string | undefined;
+    let replacePreview = false;
+
+    const foundPackageJson = findPackageJson(path.dirname(configPath));
+    if (foundPackageJson) {
+      try {
+        packageJsonText = fs.readFileSync(foundPackageJson, "utf-8");
+        existingPreview = readPackageScript(packageJsonText, "preview");
+        packageJsonPath = foundPackageJson;
+        previewCommand = previewScriptCommand(foundPackageJson, configPath);
+      } catch (err) {
+        console.log(`  ${chalk.yellow("!")} ${err instanceof Error ? err.message : String(err)} — skipping the npm preview script.`);
+      }
+      if (previewCommand && existingPreview !== undefined && existingPreview !== previewCommand) {
+        console.log(`  ${chalk.yellow("!")} package.json already has a preview script: ${chalk.white(existingPreview)}`);
+        replacePreview = await promptConfirm(rl, "Replace it with the wizard's preview command?", true);
+      }
+    } else {
+      console.log(`${chalk.yellow("!")} No package.json found next to ${path.relative(cwd, configPath)} — skipping the npm preview script.`);
+    }
+
+    // --- 9. Summary + write -------------------------------------------------------
     console.log();
     console.log(chalk.dim("  The following display section will be written to"));
     console.log(chalk.dim(`  ${path.relative(cwd, configPath)}:`));
@@ -540,6 +579,15 @@ export async function runIntegrationWizard(
         `  ${chalk.dim(`Kept existing display settings the wizard does not manage: ${carried.join(", ")}`)}`,
       );
     }
+    if (previewCommand && packageJsonPath) {
+      if (existingPreview === previewCommand) {
+        console.log(`  ${chalk.dim(`npm script already configured: preview — "${previewCommand}"`)}`);
+      } else if (existingPreview === undefined || replacePreview) {
+        console.log(`  ${chalk.dim("Also writes npm script:")} ${chalk.white("preview")}${chalk.dim(` — "${previewCommand}"`)}`);
+      } else {
+        console.log(`  ${chalk.dim(`Kept existing preview script: "${existingPreview}"`)}`);
+      }
+    }
     console.log();
 
     if (!(await promptConfirm(rl, "Write this configuration?", true))) {
@@ -558,7 +606,25 @@ export async function runIntegrationWizard(
       `${chalk.green("✓")} ${updated.mode === "replaced" ? "Updated" : "Added"} the display section in ${chalk.white(path.relative(cwd, configPath))}`,
     );
 
-    // --- 9. Starter entry file ------------------------------------------------------
+    // The preview script rides along with the confirmed write: added when
+    // missing, confirmed verbatim when already the wizard's command, and only
+    // replaced when the user consented above.
+    if (packageJsonPath && packageJsonText !== undefined && previewCommand
+      && (existingPreview === undefined || existingPreview === previewCommand || replacePreview)) {
+      const scriptUpsert = upsertPackageScript(packageJsonText, "preview", previewCommand);
+      if (scriptUpsert.changed) {
+        fs.writeFileSync(packageJsonPath, scriptUpsert.text, "utf-8");
+        console.log(
+          `${chalk.green("✓")} ${scriptUpsert.previous !== undefined ? "Updated" : "Added"} npm script ${chalk.white("preview")} in ${chalk.white(path.relative(cwd, packageJsonPath))}`,
+        );
+      } else {
+        console.log(
+          `${chalk.green("✓")} npm script ${chalk.white("preview")} already configured in ${chalk.white(path.relative(cwd, packageJsonPath))}`,
+        );
+      }
+    }
+
+    // --- 10. Starter entry file ------------------------------------------------------
     if (entryPath) {
       const entryAbs = path.resolve(path.dirname(configPath), entryPath);
       if (!fs.existsSync(entryAbs) && entryAbs.endsWith(".ui")) {
@@ -577,7 +643,7 @@ export async function runIntegrationWizard(
       }
     }
 
-    // --- 10. Next steps ---------------------------------------------------------------
+    // --- 11. Next steps ---------------------------------------------------------------
     console.log();
     console.log(chalk.cyan("Next steps"));
     console.log();
@@ -595,7 +661,7 @@ export async function runIntegrationWizard(
     const firstStep = libraries.length > 0 ? 2 : 1;
     console.log(`  ${firstStep}. Preview your UI on the desktop:`);
     console.log();
-    console.log(`     ${chalk.cyan("npx @typecad/cuttlefish preview")}`);
+    console.log(`     ${chalk.cyan(previewCommand ? "npm run preview" : "npx @typecad/cuttlefish preview")}`);
     console.log();
     console.log(`  ${firstStep + 1}. Compile for your board:`);
     console.log();
@@ -612,7 +678,11 @@ export async function runIntegrationWizard(
       console.log();
     }
 
-    return { exitCode: 0, configPath };
+    return {
+      exitCode: 0,
+      configPath,
+      ...(packageJsonPath && previewCommand ? { packageJsonPath } : {}),
+    };
   } finally {
     rl.close();
   }

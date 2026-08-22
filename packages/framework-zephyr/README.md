@@ -35,7 +35,19 @@ fix (`pip install west`, set `ZEPHYR_BASE`, or activate the venv).
   symbols for the lowered peripherals). Both are regenerated idempotently —
   only rewritten when their content changes, so Ninja's incremental build is
   preserved.
-- The MVP target is the **Seeed Studio XIAO nRF52840** (`xiao_ble` board).
+- Supported board targets: **Seeed Studio XIAO nRF52840** (`xiao_ble`),
+  **ESP32 DevKit** (`esp32_devkitc`), **ESP32-S3 DevKit** (`esp32s3_devkitc`),
+  **ESP32-C3 DevKitM** (`esp32c3_devkitm/esp32c3`), **ESP32-C6 DevKitC**
+  (`esp32c6_devkitc/esp32c6/hpcore` — the qualified form is required, the
+  board also ships an lpcore variant), **Raspberry Pi Pico** (`rpi_pico`),
+  **Pico 2** (`rpi_pico2/rp2350a/m33`), and **WeAct Black Pill V2.0**
+  (`blackpill_f411ce/stm32f411xe` — the first STM32 target; flashed over USB
+  via the ROM DFU bootloader). The rpi_pico, esp32c3, esp32c6, and blackpill
+  boards resolve their chip data from the board packages' `zephyr` field (see
+  `resolveChipFromBoard`) rather than the hardcoded chip registry; the
+  qualified Pico 2 target selects the Cortex-M33 cpucluster (Zephyr 4.3+
+  rejects the bare `rpi_pico2` because the board also ships a Hazard3 variant
+  with no default).
 
 ## Installation
 

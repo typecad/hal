@@ -40,6 +40,16 @@ describe('mqtt init shim', () => {
     expect(shim).toContain('zsock_poll');
   });
 
+  it('pins the poll thread to the app core under SMP (create K_FOREVER → pin → start)', () => {
+    // SMP groundwork: on !SMP builds the pin compiles away entirely and the
+    // thread still starts via k_thread_start.
+    expect(shim).toContain('5, 0, K_FOREVER);');
+    expect(shim).toContain('#ifdef CONFIG_SMP');
+    expect(shim).toContain('k_thread_cpu_pin(&__tc_mqtt.poll_thread, 1);');
+    expect(shim).toContain('k_thread_start(&__tc_mqtt.poll_thread);');
+    expect(shim).not.toContain('K_NO_WAIT);');
+  });
+
   it('dispatches incoming PUBLISHes to the onMessage callback', () => {
     expect(shim).toContain('MQTT_EVT_PUBLISH');
     expect(shim).toContain('mqtt_read_publish_payload');

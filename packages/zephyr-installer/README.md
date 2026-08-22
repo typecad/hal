@@ -249,6 +249,7 @@ tools are added by the install scripts in a follow-up `micromamba install`:
 | `dtc` (device tree compiler)     | conda-forge via `install.sh`  | linux-64, linux-aarch64, osx-64, osx-arm64 |
 | `openocd` (JTAG/SWD flash+debug) | conda-forge via `install.sh`  | linux-64, osx-64 only (no arm64, no win)   |
 | `7zip` (extract the `.7z` SDK)   | conda-forge via `install.ps1` | win-64                                     |
+| `dfu-util` (USB DFU flashing)    | MSYS2 mingw64 via `install.ps1` (pinned in `versions.env`); system package manager hint on POSIX | win-64 (installed into the env); POSIX prints the install command |
 
 **Windows `dtc`** — conda-forge has no win-64 build and the SDK bundle ships no
 standalone `dtc` binary there. This rarely blocks builds (Zephyr's Python

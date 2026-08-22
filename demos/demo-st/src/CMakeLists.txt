@@ -5,12 +5,11 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 
 project(zephyr_app)
 
-# Collect cuttlefish-emitted sources. CONFIGURE_DEPENDS makes CMake re-
-# check the glob when the source set changes (e.g. the transpiler removes
-# a stale entry), instead of linking a file list from the last configure.
-file(GLOB app_sources CONFIGURE_DEPENDS src/*.cpp src/*.c)
-
-target_sources(app PRIVATE ${app_sources})
+# Cuttlefish-emitted sources. This list is regenerated whenever the
+# emitted file set changes (the scaffold rewrites CMakeLists.txt).
+target_sources(app PRIVATE
+  src/src.cpp
+)
 
 # PSRAM enabled: activate the runtime PSRAM canvas paths.
 target_compile_definitions(app PRIVATE BOARD_HAS_PSRAM)

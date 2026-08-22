@@ -16,9 +16,9 @@ import {
   ESLINT_OPT_OUT_KINDS,
   kindRegistryEntries,
 } from "@typecad/cuttlefish/testing";
-import type { InitProjectOptions } from "@typecad/cuttlefish/testing";
+import type { CreateProjectOptions } from "@typecad/cuttlefish/testing";
 
-const OPTIONS: InitProjectOptions = {
+const OPTIONS: CreateProjectOptions = {
   projectName: "parity-fixture",
   targetId: "arduino:avr:uno",
   targetDisplayName: "Arduino Uno",

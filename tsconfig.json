@@ -32,6 +32,7 @@
     { "path": "packages/ui" },
     { "path": "packages/safety" },
     { "path": "packages/expect" },
-    { "path": "packages/simulator" }
+    { "path": "packages/simulator" },
+    { "path": "packages/zephyr-esp32s3-rgb" }
   ]
 }

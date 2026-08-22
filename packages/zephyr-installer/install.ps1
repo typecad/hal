@@ -198,6 +198,63 @@ if ($LASTEXITCODE -ne 0) {
   Write-Warning "env: 7zip install failed (exit $LASTEXITCODE) - SDK .7z extraction will need 7z.exe elsewhere."
 }
 
+# dfu-util: west flash's dfu-util runner (STM32 ROM DFU bootloader boards,
+# e.g. the WeAct Black Pill) shells out to dfu-util, and the runner dies with
+# a raw FileNotFoundError when the executable is missing. conda-forge has no
+# dfu-util build, so fetch MSYS2's mingw64 dfu-util package plus the
+# libusb / libwinpthread runtime DLLs it links, and unpack them into the
+# env's Library\bin — that dir is on the activation PATH and on the PATH of
+# the `micromamba run -n zephyr west flash` the framework toolchain spawns,
+# so flashing works without a global dfu-util install. Idempotent: skipped
+# when dfu-util.exe is already in place. Warn-and-continue on any failure
+# (it only affects DFU-bootloader boards).
+$dfuBinDir = Join-Path $EnvPrefix 'Library\bin'
+if (Test-Path (Join-Path $dfuBinDir 'dfu-util.exe')) {
+  Write-Host "dfu-util: already present - skipping"
+} else {
+  $dfu7z = Get-ChildItem -Path $EnvPrefix -Recurse -Filter '7z.exe' -ErrorAction SilentlyContinue `
+           | Select-Object -First 1 -ExpandProperty FullName
+  if (-not $dfu7z) { $found = Get-Command 7z -ErrorAction SilentlyContinue; if ($found) { $dfu7z = $found.Source } }
+  if (-not $dfu7z) {
+    Write-Warning "dfu-util: 7z.exe not found - skipping (west flash on DFU-bootloader boards will need dfu-util on PATH)."
+  } else {
+    try {
+      New-Item -ItemType Directory -Force -Path $dfuBinDir | Out-Null
+      $dfuTmp = Join-Path ([System.IO.Path]::GetTempPath()) "tc-dfu-util-$PID"
+      New-Item -ItemType Directory -Force -Path $dfuTmp | Out-Null
+      # Each package is a .zst wrapping a .tar; 7z handles both layers.
+      $dfuPkgs = @(
+        @{ Name = $DFU_UTIL_PKG;      Sha256 = $DFU_UTIL_PKG_SHA256 },
+        @{ Name = $LIBUSB_PKG;        Sha256 = $LIBUSB_PKG_SHA256 },
+        @{ Name = $LIBWINPTHREAD_PKG; Sha256 = $LIBWINPTHREAD_PKG_SHA256 }
+      )
+      foreach ($pkg in $dfuPkgs) {
+        $zst = Join-Path $dfuTmp "$($pkg.Name)-any.pkg.tar.zst"
+        Download-File -Url "$MSYS2_MINGW64_BASE/$($pkg.Name)-any.pkg.tar.zst" -OutFile $zst
+        $actual = (Get-FileHash $zst -Algorithm SHA256).Hash.ToLower()
+        if ($pkg.Sha256 -and $pkg.Sha256 -ne 'TODO' -and $actual -ne $pkg.Sha256.ToLower()) {
+          throw "SHA256 mismatch for $($pkg.Name) (expected $($pkg.Sha256), got $actual)"
+        }
+        Invoke-Native { & $dfu7z x -y "-o$dfuTmp" $zst } "dfu-util extract zst ($($pkg.Name))"
+        $tar = Join-Path $dfuTmp "$($pkg.Name)-any.pkg.tar"
+        Invoke-Native { & $dfu7z x -y "-o$(Join-Path $dfuTmp "x-$($pkg.Name)")" $tar } "dfu-util extract tar ($($pkg.Name))"
+      }
+      # Payload: the three dfu-* executables + the two runtime DLLs.
+      foreach ($root in @(
+        (Join-Path $dfuTmp "x-$DFU_UTIL_PKG\mingw64\bin"),
+        (Join-Path $dfuTmp "x-$LIBUSB_PKG\mingw64\bin"),
+        (Join-Path $dfuTmp "x-$LIBWINPTHREAD_PKG\mingw64\bin")
+      )) {
+        if (Test-Path $root) { Copy-Item (Join-Path $root '*') $dfuBinDir -Force }
+      }
+      Remove-Item -Recurse -Force $dfuTmp -ErrorAction SilentlyContinue
+      Write-Host "dfu-util: installed - $(Join-Path $dfuBinDir 'dfu-util.exe')"
+    } catch {
+      Write-Warning "dfu-util: install failed ($_) - west flash on DFU-bootloader boards will need dfu-util on PATH."
+    }
+  }
+}
+
 # --- 3. activation hooks ----------------------------------------------------
 $actDst   = Join-Path $EnvPrefix 'etc\conda\activate.d'
 $deactDst = Join-Path $EnvPrefix 'etc\conda\deactivate.d'

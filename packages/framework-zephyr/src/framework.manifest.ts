@@ -50,8 +50,16 @@ export default defineFrameworkManifest({
   profile: {
     // Informational list of supported board targets. The manifest validator
     // never iterates this; chipForTarget (src/chips/index.ts) is the real
-    // resolver. ESP32-S3 + plain ESP32 added alongside the nRF52840 MVP target.
-    targets: ['xiao_ble', 'esp32s3_devkitc', 'esp32_devkitc'],
+    // resolver. ESP32-S3 + plain ESP32 added alongside the nRF52840 MVP target;
+    // rpi_pico / rpi_pico2 / esp32c3 / esp32c6 / blackpill_f411ce resolve via
+    // the board packages' zephyr chip data (resolveChipFromBoard), not the
+    // hardcoded chip registry.
+    targets: [
+      'xiao_ble', 'esp32s3_devkitc', 'esp32_devkitc',
+      'rpi_pico', 'rpi_pico2/rp2350a/m33',
+      'esp32c3_devkitm/esp32c3', 'esp32c6_devkitc/esp32c6/hpcore',
+      'blackpill_f411ce/stm32f411xe',
+    ],
     forcedIncludes: ['<zephyr/kernel.h>', '<zephyr/drivers/gpio.h>', '<cstdint>'],
     symbolAliases: {},
   },
@@ -213,7 +221,8 @@ export default defineFrameworkManifest({
       },
     },
     // ── Partial: WiFi (STA connect + scan + config via conn_mgr/net_mgmt) ────
-    // ESP32-S3 only — profileDiagnostics flags wifi usage on radioless chips.
+    // ESP32 family only (esp32, esp32s3, esp32c3, esp32c6) — profileDiagnostics
+    // flags wifi usage on radioless chips (nRF52840, RP2040/RP2350).
     // AP mode, credential persistence, static IP, and event callbacks deferred.
     wifi: {
       supported: true,

@@ -15,7 +15,8 @@ const USAGE = `
 Usage:
   npx @typecad/ui --config        Configure a display (+ touch) for your
                                   cuttlefish project interactively. Writes the
-                                  \`display\` section of cuttlefish.config.ts.
+                                  \`display\` section of cuttlefish.config.ts
+                                  and a \`preview\` npm script.
 
 Options:
   --config            Run the integration wizard
@@ -25,7 +26,9 @@ Options:
 The wizard asks which display module you are using (ILI9341 / ST7796S SPI TFT,
 SSD1309 I2C OLED, desktop simulator, or custom), then walks through bus pins,
 SPI/I2C speed, rotation, and touch controller wiring with hardware-aware
-defaults. It never touches the rest of your cuttlefish.config.ts.
+defaults. It never touches the rest of your cuttlefish.config.ts, and adds a
+\`preview\` script to package.json so the desktop preview renderer starts with
+\`npm run preview\`.
 
 Docs: https://github.com/justind000/typecode/tree/main/packages/ui
 `.trim();

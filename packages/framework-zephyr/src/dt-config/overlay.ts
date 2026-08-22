@@ -117,6 +117,24 @@ export function generateOverlay(
   if (usage.usesUart && chip.uart) {
     for (const c of chip.uart.controllers) block(c.nodeLabel);
   }
+  // PWM: synthesized specs (controller + channel, no board-shipped alias) get
+  // a pwm-leds consumer node + tc-pwm<pin> alias here — the lowering addresses
+  // the channel as PWM_DT_SPEC_GET(DT_ALIAS(tc-pwm<pin>)), so the alias must
+  // exist in the merged DT. pwmDtAlias (lowering/pwm.ts) derives the same
+  // name from the pin; the two sides cannot drift. Filtered to the pins the
+  // program actually drives (pwmUsedPins) so the DT carries no dead channels;
+  // an undefined list (prepare-time overlay) emits all specs.
+  if (usage.usesPwm && chip.pwm) {
+    emitPwmNodes(lines, chip, usage.pwmUsedPins);
+  }
+  // ADC: enable the ADC device node, and on SoCs whose channels carry a
+  // pinctrl label (STM32: the pad stays in GPIO mode unless the ADC node's
+  // pinctrl-0 muxes it analog), rewrite pinctrl-0 to exactly the channels the
+  // program reads. DT assignment replaces the whole property — the board
+  // default (one pad) is deliberately dropped in favor of the used set.
+  if (usage.usesAdc && chip.adc) {
+    emitAdcNode(lines, chip, usage.adcReadPins);
+  }
   // DAC: enable the chip's DAC device node when the program uses dac.*. The
   // lowering references DEVICE_DT_GET(DT_NODELABEL(<dac.device>)).
   if (usage.usesDac && chip.dac) {
@@ -177,6 +195,84 @@ export function generateOverlay(
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Emit the pwm-leds consumer node + aliases for synthesized PWM specs.
+ *
+ * A board DTS may enable a PWM controller (`pwm4`) without aliasing any
+ * channel — the STM32 pattern — while the lowering addresses channels via
+ * DT_ALIAS. Each synthesized spec gets a `pwm-leds` child whose `pwms` cell
+ * binds the controller+channel (+ period/polarity), and a `tc-pwm<pin>`
+ * alias pointing at it. Alias/label names are valid DT identifiers (lowercase
+ * alphanumerics + dash/underscore).
+ */
+function emitPwmNodes(
+  lines: string[],
+  chip: ZephyrChipDescriptor,
+  usedPins?: readonly number[],
+): void {
+  const synthesized = (chip.pwm?.specs ?? []).filter(
+    (s) => s.controller && s.channel != null && !s.dtSpec,
+  ).filter((s) => !usedPins || usedPins.includes(s.pin));
+  if (synthesized.length === 0) return;
+  // Enable each distinct PWM controller node (idempotent when already okay).
+  for (const controller of [...new Set(synthesized.map((s) => s.controller!))]) {
+    lines.push(`&${controller} {`);
+    lines.push('    status = "okay";');
+    lines.push('};');
+    lines.push('');
+  }
+  lines.push('/ {');
+  lines.push('    tc_pwm_leds: tc-pwm-leds {');
+  lines.push('        compatible = "pwm-leds";');
+  for (const s of synthesized) {
+    // 20 ms / 50 Hz default — the servo convention; the duty scaling in the
+    // lowering normalizes 0-255 against whatever period is baked in.
+    const period = s.periodNs ?? 20_000_000;
+    const polarity = s.polarity ?? 'PWM_POLARITY_NORMAL';
+    lines.push(`        tc_pwm_${s.pin}: pwm-led-${s.pin} {`);
+    lines.push(`            pwms = <&${s.controller} ${s.channel} ${period} ${polarity}>;`);
+    lines.push('        };');
+  }
+  lines.push('    };');
+  lines.push('    aliases {');
+  for (const s of synthesized) {
+    lines.push(`        tc-pwm${s.pin} = &tc_pwm_${s.pin};`);
+  }
+  lines.push('    };');
+  lines.push('};');
+  lines.push('');
+}
+
+/**
+ * Emit the ADC device-node enable (+ optional pinctrl override). The pinctrl
+ * override applies only when the descriptor's channels carry pinctrl labels
+ * AND the caller knows which pins the program reads (compile-time regen scans
+ * the emitted `__tc_adc<N>_setup()` calls); the prepare-time overlay omits it
+ * and the compile regen rewrites the file before west runs.
+ */
+function emitAdcNode(
+  lines: string[],
+  chip: ZephyrChipDescriptor,
+  readPins?: readonly number[],
+): void {
+  const adc = chip.adc!;
+  const labeled = adc.channels.filter((c) => c.pinctrl);
+  const used = labeled.filter((c) => !readPins || readPins.includes(c.pin));
+  if (labeled.length > 0 && used.length > 0) {
+    lines.push(`&${adc.nodeLabel} {`);
+    lines.push('    status = "okay";');
+    lines.push(`    pinctrl-0 = <${used.map((c) => `&${c.pinctrl}`).join(' ')}>;`);
+    lines.push('    pinctrl-names = "default";');
+    lines.push('};');
+    lines.push('');
+    return;
+  }
+  lines.push(`&${adc.nodeLabel} {`);
+  lines.push('    status = "okay";');
+  lines.push('};');
+  lines.push('');
 }
 
 /**

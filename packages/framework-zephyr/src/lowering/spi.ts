@@ -15,7 +15,7 @@
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 import { parseControllerIndex } from './util.js';
-import { controllerNodelabelForPin } from '../chips/controllers.js';
+import { controllerNodelabelForPin, controllerRawPinForPin } from '../chips/controllers.js';
 
 /** The C variable prefix for a controller's state. */
 function prefix(idx: number): string {
@@ -112,7 +112,7 @@ export function lowerSpi(
       const val = op.operation === 'spi.cs_low' ? 0 : 1;
       const gpioController = controllerNodelabelForPin(chip, o.pin);
       return {
-        code: `gpio_pin_set_raw(DEVICE_DT_GET(DT_NODELABEL(${gpioController})), ${o.pin}, ${val});`,
+        code: `gpio_pin_set_raw(DEVICE_DT_GET(DT_NODELABEL(${gpioController})), ${controllerRawPinForPin(chip, o.pin)}, ${val});`,
       };
     }
     default:

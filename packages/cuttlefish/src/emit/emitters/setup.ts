@@ -7,6 +7,7 @@ import { collectStatementIdentifiers } from "../../ir/identifier-collector.js";
 import { Diagnostic, EmitMode, SourceMapEntry } from "../../types.js";
 import { ensureDir } from "../../utils/fs.js";
 import { resolveImport } from "../../libdef/registry.js";
+import { isRegisteredCuttlefishLibrary } from "../../library-packages.js";
 import { emitPolyfillBoilerplate } from "../native-helpers-emitter.js";
 import { ResolvedNpmPackage } from "../../transpile/resolution.js";
 import { resolveStrategy } from "../../platform/registry.js";
@@ -558,6 +559,14 @@ export function buildEmitterContext(
     if (!programAnalysis.usesPreferences) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_PREFERENCES_BEGIN', '// CUTTLEFISH_PREFERENCES_END');
     }
+    // Entry-TU marker for framework shims: the UI runtime header (ui_tick) is
+    // emitted ONLY into the entry file (emitUIRuntime gates on isEntryFile), so
+    // shim helpers that keep the UI alive during bounded blocking waits (e.g.
+    // Zephyr's wifi connect) must compile those calls down everywhere else.
+    // Defined before the shim lines land in the preamble, after all filters.
+    if (isEntryFile && entryHasUI() && shimLines.length > 0) {
+      shimLines.unshift("#define CUTTLEFISH_ENTRY_UI_TU 1");
+    }
     profileDiagnostics = [...strategy.profileDiagnostics(program, options.platformContext)];
   }
 
@@ -566,6 +575,18 @@ export function buildEmitterContext(
     // named imports — add it to the symbolMap so cross-module references
     // resolve. Demo #12 Finding C — was skipped, so `encode` wasn't declared.
     const defaultName = (imported as any).defaultImportName as string | undefined;
+    // Cuttlefish library packages: the import emits the shim-header include
+    // (resolved through the libdef registry from the library manifest) and
+    // contributes native shims + build fragments. This must run BEFORE the
+    // SDK skip below — @typecad-scoped libraries would otherwise be treated
+    // as type-level-only like the rest of the SDK.
+    if (isRegisteredCuttlefishLibrary(imported.moduleSpecifier)) {
+      const resolved = resolveImport(imported, options.libdefs, options.target, options.platformContext, program.fileName);
+      includes.push(normalizeInclude(resolved.include));
+      Object.assign(symbolMap, resolved.symbolMap);
+      if (defaultName) symbolMap[defaultName] = defaultName;
+      continue;
+    }
     if (isCuttlefishSDKImport(imported.moduleSpecifier, program.fileName)) {
       for (const symbol of imported.namedImports) {
         symbolMap[symbol] = symbol;

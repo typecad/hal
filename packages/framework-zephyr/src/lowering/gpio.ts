@@ -17,7 +17,7 @@
 
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
-import { controllerNodelabelForPin } from '../chips/controllers.js';
+import { controllerNodelabelForPin, controllerRawPinForPin } from '../chips/controllers.js';
 
 /** The C identifier emitted for a pin's gpio_dt_spec variable. */
 export function dtSpecVarName(dtSpec: string): string {
@@ -121,20 +121,23 @@ function lowerGpioRaw(
   const o = op as any;
   const pin: number = o.pin;
   // Resolve the owning controller by pin range (ESP32-S3 splits GPIO across
-  // gpio0/gpio1). For single-controller SoCs this is just chip.gpioController.
+  // gpio0/gpio1; STM32 across gpioa/gpiob/gpioc). For single-controller SoCs
+  // this is just chip.gpioController. The raw API takes the PORT-RELATIVE
+  // index (STM32 gpiob is 0-15), not the global HAL pin number.
   const controller = `DEVICE_DT_GET(DT_NODELABEL(${controllerNodelabelForPin(chip, pin)}))`;
+  const rawPin = controllerRawPinForPin(chip, pin);
 
   switch (op.operation) {
     case 'gpio.set_mode': {
-      return { code: `gpio_pin_configure(${controller}, ${pin}, ${flagsForMode(o.mode)});` };
+      return { code: `gpio_pin_configure(${controller}, ${rawPin}, ${flagsForMode(o.mode)});` };
     }
     case 'gpio.write': {
       const v = o.value;
       const rhs = typeof v === 'string' ? `((${v}) ? 1 : 0)` : v ? 1 : 0;
-      return { code: `gpio_pin_set_raw(${controller}, ${pin}, ${rhs});` };
+      return { code: `gpio_pin_set_raw(${controller}, ${rawPin}, ${rhs});` };
     }
     case 'gpio.read':
-      return { expression: `gpio_pin_get_raw(${controller}, ${pin})` };
+      return { expression: `gpio_pin_get_raw(${controller}, ${rawPin})` };
     case 'gpio.toggle':
       // Native atomic toggle — never read-modify-write. gpio_pin_get_raw on
       // a direction-only output reads the input latch, which is undefined on
@@ -142,7 +145,7 @@ function lowerGpioRaw(
       // gpio_pin_toggle is the driver-level atomic toggle, and for pins
       // configured without GPIO_ACTIVE_LOW the logical level equals the
       // physical one, so it matches the get_raw/set_raw used elsewhere.
-      return { code: `gpio_pin_toggle(${controller}, ${pin});` };
+      return { code: `gpio_pin_toggle(${controller}, ${rawPin});` };
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +

@@ -477,7 +477,7 @@ export function writeDebugConfig(o: DebugConfigOptions): void {
  * the CLI resolves output.outDir against the ENTRY's directory (cli.ts), so
  * the emitted app root — and therefore the ELF, build dir, and .cuttlefish/
  * debug artifacts — always lands at `src/out`. Keep in sync with
- * generateProjectConfig in @typecad/cuttlefish create/init-templates.ts.
+ * generateProjectConfig in @typecad/cuttlefish create/templates.ts.
  */
 const STARTER_SKETCH_REL = 'src/out';
 

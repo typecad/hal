@@ -1,0 +1,33 @@
+{
+  "name": "zephyr-blackpill",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "cuttlefish build",
+    "compile": "cuttlefish build --compile",
+    "upload": "cuttlefish build --compile --upload",
+    "monitor": "cuttlefish build --compile --upload --monitor",
+    "test:hw": "npm exec -- cuttlefish-test",
+    "simulate": "vitest run sim/",
+    "lint": "eslint --config .cuttlefish/eslint.config.mjs src/",
+    "dev": "cuttlefish build --watch",
+    "gen-decls": "cuttlefish gen-decls",
+    "gen-libdefs": "cuttlefish gen-libdefs",
+    "flash": "cuttlefish build --flash"
+  },
+  "dependencies": {
+    "@typecad/cuttlefish": "*",
+    "@typecad/hal": "*",
+    "@typecad/framework-zephyr": "*",
+    "@typecad/board-blackpill-f411ce": "*"
+  },
+  "devDependencies": {
+    "eslint": "^10.4.1",
+    "@typescript-eslint/parser": "^8.61.0",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
+    "@typecad/expect": "^1.0.0-alpha.3",
+    "@typecad/simulator": "^1.0.0-alpha.3",
+    "vitest": "^4.0.18"
+  },
+  "description": "STM32 Black Pill (STM32F411CEU6) peripheral showcase \u2014 ADC dimmer + PWM + button via @typecad/framework-zephyr"
+}

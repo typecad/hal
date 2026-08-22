@@ -47,7 +47,7 @@ export interface BoardLike {
  * Architecture → compatible framework ids. Derived from each framework
  * package's framework.manifest.ts `profile.targets`:
  *   - arduino: avr, esp32 family, rp2040/rp2350, samd, stm32
- *   - zephyr:  nrf52 (xiao_ble), esp32, esp32s3
+ *   - zephyr:  nrf52 (xiao_ble), esp32 family (esp32, esp32s3, esp32c3, esp32c6)
  *   - native:  desktop only
  * Unknown embedded architectures fall back to [arduino] (the broadest core).
  */
@@ -56,11 +56,15 @@ const ARCHITECTURE_FRAMEWORKS: Record<string, string[]> = {
   esp32: ["arduino", "zephyr"],
   esp32s2: ["arduino"],
   esp32s3: ["arduino", "zephyr"],
-  esp32c3: ["arduino"],
-  esp32c6: ["arduino"],
+  esp32c3: ["arduino", "zephyr"],
+  esp32c6: ["arduino", "zephyr"],
   rp2040: ["arduino"],
   rp2350: ["arduino"],
   samd: ["arduino"],
+  // Per-chip key (esp32c3/c6 style). The generic 'stm32' entry stays
+  // ["arduino"] for future STM32duino support; the F411 Black Pill is
+  // Zephyr-only today.
+  stm32f411: ["zephyr"],
   stm32: ["arduino"],
   nrf52: ["zephyr"],
 };
@@ -97,8 +101,17 @@ const FRAMEWORK_TOOLCHAIN: Record<string, string> = {
 const ZEPHYR_BOARD_IDS: Record<string, string> = {
   "esp32-devkit": "esp32_devkitc/esp32/procpu",
   esp32s3: "esp32s3_devkitc/esp32s3/procpu",
-  // xiao_ble isn't currently a KNOWN_TARGETS entry, but keep the descriptor
-  // correct for completeness: nRF52840 (single core), base (non-sense) variant.
+  // Single-variant RISC-V board — the bare id is also accepted, but the
+  // qualified form is kept for consistency (verified against Zephyr 4.3
+  // boards/espressif/esp32c3_devkitm).
+  esp32c3: "esp32c3_devkitm/esp32c3",
+  // hpcore/lpcore cpucluster variants — the qualified form is required (the
+  // bare id is rejected); hpcore is the application core.
+  esp32c6: "esp32c6_devkitc/esp32c6/hpcore",
+  // First STM32 target — WeAct Black Pill V2.0 (STM32F411CEU6). Single
+  // variant; qualified for consistency with every other catalog target.
+  "blackpill-f411ce": "blackpill_f411ce/stm32f411xe",
+  // nRF52840 (single core), base (non-sense) variant.
   "xiao-nrf52840": "xiao_ble/nrf52840",
 };
 
@@ -153,6 +166,17 @@ export function frameworksForTarget(target: BoardLike): FrameworkCatalogEntry[] 
   // Re-map ids → catalog entries in catalog order (stable ordering), dropping
   // any id that has no catalog entry (defensive — keeps the prompt clean).
   return FRAMEWORK_CATALOG.filter((entry) => ids.includes(entry.id));
+}
+
+/**
+ * Whether `frameworkId` is actually offered for `target`: compatible with the
+ * board's architecture AND installable. Auto-picking narrows via
+ * frameworksForTarget, but an explicit `--framework` bypasses that narrowing —
+ * callers accepting one must reject anything this returns false for (e.g.
+ * `--framework arduino` on the Zephyr-only xiao-nrf52840).
+ */
+export function frameworkCompatibleWithTarget(target: BoardLike, frameworkId: string): boolean {
+  return frameworksForTarget(target).some((f) => f.id === frameworkId && f.installable);
 }
 
 // ── package-manager detection ──────────────────────────────────────────────

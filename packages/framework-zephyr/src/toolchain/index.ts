@@ -20,21 +20,82 @@
 
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, join } from 'node:path';
-import { readdirSync, readFileSync, mkdirSync, rmSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
 import type { ToolchainOptions, CompileResult, UploadResult } from '@typecad/cuttlefish/api/shared';
 import { parseCompileErrors } from '@typecad/cuttlefish/api/shared';
-import { scaffoldZephyrProject, writeIfChanged } from './scaffold.js';
+import { scaffoldZephyrProject, writeIfChanged, appendLibraryOverlayFragments } from './scaffold.js';
 import { westSpawn, buildEnv } from './west-spawn.js';
 import { discoverWest } from './west-discover.js';
 import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
 import { ZephyrStrategy } from '../strategy.js';
 import { generateOverlay, type DisplayWiring, type TouchWiring, type OverlayDiagnostic } from '../dt-config/overlay.js';
 import { chipForTarget } from '../chips/index.js';
+import { resolveChipFromBoard } from '../chips/resolve.js';
+import type { ZephyrChipDescriptor } from '../chips/types.js';
+import { pwmDtAliasToken } from '../lowering/pwm.js';
 import { detectZephyrVersion, checkZephyrCompat, resolveBoardTarget } from './compat.js';
 import { DEFAULT_ZEPHYR_DISPLAY_PROFILE } from '../display/profiles.js';
 
 /** Default board target — the framework's MVP canonical board. */
 const DEFAULT_BOARD = 'xiao_ble';
+
+/**
+ * Resolve the chip for a build the same way the strategy does at emit time —
+ * from the board constants the transpile persisted next to the emitted
+ * source (`board-constants.json`), falling back to the hardcoded registry.
+ * Board-package chips (rpi_pico, esp32c3/c6, blackpill) exist only in their
+ * board packages; the registry fallback would silently resolve them to the
+ * XIAO default and the overlay generator would emit wrong controller labels
+ * (e.g. `&uart0` on an STM32, whose node is `usart1`).
+ */
+function chipForBuild(projectRoot: string, board: string): ZephyrChipDescriptor {
+  try {
+    // The transpile writes the constants into the emit outDir, which is
+    // <projectRoot>/src for the standard layout (basename 'src' collapsed by
+    // projectRootFromOptions); check both locations.
+    const bcPath = [join(projectRoot, 'src', 'board-constants.json'), join(projectRoot, 'board-constants.json')]
+      .find(p => existsSync(p));
+    if (bcPath) {
+      const raw = JSON.parse(readFileSync(bcPath, 'utf8')) as Record<string, string | number | boolean>;
+      const fromBoard = resolveChipFromBoard(new Map(Object.entries(raw)));
+      if (fromBoard) return fromBoard;
+    }
+  } catch { /* fall back to the registry below */ }
+  return chipForTarget(board);
+}
+
+/**
+ * HAL pins the emitted sources read via adc.* — scanned from the emitted
+ * `__tc_adc<N>_setup()` call sites (N = channel index, mapped back to the HAL
+ * pin via the chip descriptor). Feeds the overlay's ADC pinctrl rewrite: on
+ * SoCs that mux ADC pads via pinctrl (STM32), only the read channels are
+ * switched to analog mode.
+ */
+function scanAdcReadPins(src: string, chip: ZephyrChipDescriptor): number[] {
+  const pins: number[] = [];
+  // Match CALL SITES only (`__tc_adc<N>_setup()` with empty parens) — the
+  // setup definitions emitted by adcInitLines have a `(void)` parameter list
+  // and would otherwise mark every descriptor channel as used.
+  for (const m of src.matchAll(/__tc_adc(\d+)_setup\(\)/g)) {
+    const ch = Number(m[1]);
+    const c = chip.adc?.channels.find((x) => x.channel === ch);
+    if (c && !pins.includes(c.pin)) pins.push(c.pin);
+  }
+  return pins;
+}
+
+/**
+ * HAL pins the emitted sources drive with pwm.* — the emitted source
+ * references each used spec as `__tc_pwm_<alias token>` (pwmVarName in
+ * lowering/pwm.ts), and the lowering only emits specs for driven pins, so
+ * var-presence is the authoritative signal. Feeds the overlay's per-pin
+ * pwm-leds gating (no dead DT channels).
+ */
+function scanPwmUsedPins(src: string, chip: ZephyrChipDescriptor): number[] {
+  return (chip.pwm?.specs ?? [])
+    .filter((s) => src.includes(`__tc_pwm_${pwmDtAliasToken(s)}`))
+    .map((s) => s.pin);
+}
 
 function targetFromOptions(o: ToolchainOptions): string {
   // The cuttlefish CLI populates ToolchainOptions.buildTarget from
@@ -208,7 +269,7 @@ export const Toolchain = {
     // resolution is a pre-build artifact step.
     const projectRoot = basename(outputDir) === 'src' ? dirname(outputDir) : outputDir;
     const board = DEFAULT_BOARD;
-    const chip = chipForTarget(board);
+    const chip = chipForBuild(projectRoot, board);
     // Scan the emitted source for usage tokens (same authoritative signal the
     // scaffold uses). entryPoint is the path to main.cpp; its dir is src/.
     const srcDir = dirname(entryPoint);
@@ -241,6 +302,10 @@ export const Toolchain = {
       usesI2c: uses('i2c_'),
       usesSpi: uses('spi_'),
       usesUart: uses('uart_'),
+      usesPwm: uses('pwm_'),
+      usesAdc: uses('adc_'),
+      adcReadPins: scanAdcReadPins(src, chip),
+      pwmUsedPins: scanPwmUsedPins(src, chip),
       usesDisplay,
       usesTouch: usesTouch || usesXpt,
       touchController: usesXpt ? 'xpt2046' : 'ft6336u',
@@ -286,7 +351,7 @@ export const Toolchain = {
     // the <default>.overlay it wrote does not match `west build -b <board>`.
     // Zephyr auto-detects boards/<board>.overlay under APPLICATION_CONFIG_DIR.
     try {
-      const chip = chipForTarget(board);
+      const chip = chipForBuild(projectRoot, board);
       const srcDir = join(projectRoot, 'src');
       let src = '';
       try {
@@ -377,6 +442,10 @@ export const Toolchain = {
         usesI2c: uses('i2c_'),
         usesSpi: uses('spi_'),
         usesUart: uses('uart_'),
+        usesPwm: uses('pwm_'),
+        usesAdc: uses('adc_'),
+        adcReadPins: scanAdcReadPins(src, chip),
+      pwmUsedPins: scanPwmUsedPins(src, chip),
         usesDisplay,
         usesTouch: uses('ft6336u') || uses('touch_') || usesXpt,
         touchController: usesXpt ? 'xpt2046' : 'ft6336u',
@@ -390,9 +459,13 @@ export const Toolchain = {
       // Write the board-specific overlay (the one west loads). Zephyr looks for
       // boards/<board_id>.overlay under APPLICATION_CONFIG_DIR — use the bare
       // board id (before any hardware-qualifier suffix, e.g. 'esp32_devkitc'
-      // not the full 'esp32_devkitc/esp32/procpu' target string).
+      // not the full 'esp32_devkitc/esp32/procpu' target string). Library
+      // packages' overlay fragments are appended by the scaffold helper.
       const boardId = board.split('/')[0];
-      writeIfChanged(join(overlayDir, `${boardId}.overlay`), overlay);
+      writeIfChanged(
+        join(overlayDir, `${boardId}.overlay`),
+        appendLibraryOverlayFragments(overlay, projectRoot),
+      );
     } catch { /* best-effort overlay regen; the build surfaces DT errors */ }
 
     // Use a stable build dir so incremental builds reuse the Ninja graph.

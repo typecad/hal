@@ -1,0 +1,45 @@
+/*
+ * Onboard WS2812 RGB LED — ESP32-S3 DevKitC, GPIO48, I2S backend.
+ *
+ * Adapted from Zephyr's in-tree sample overlay for this exact board:
+ *   samples/drivers/led/led_strip/boards/esp32s3_devkitc_procpu.overlay
+ *   Copyright (c) 2024-2025 Espressif Systems (Shanghai) Co., Ltd.
+ *   SPDX-License-Identifier: Apache-2.0
+ *
+ * Appended to the generated boards/<board>.overlay when the library's
+ * __tc_rgbled include token appears in the emitted sources. color-mapping
+ * uses raw LED_COLOR_ID values (GREEN=2, RED=1, BLUE=3 — the WS2812 GRB
+ * wire order) to keep the fragment include-free.
+ */
+
+/ {
+	aliases {
+		led-strip = &led_strip;
+	};
+};
+
+&i2s0_default {
+	group1 {
+		pinmux = <I2S0_O_SD_GPIO48>;
+	};
+};
+
+i2s_led: &i2s0 {
+	status = "okay";
+
+	dmas = <&dma 3>;
+	dma-names = "tx";
+
+	led_strip: ws2812@0 {
+		compatible = "worldsemi,ws2812-i2s";
+
+		reg = <0>;
+		chain-length = <1>;
+		color-mapping = <2 1 3>; /* GRB: LED_COLOR_ID_GREEN, _RED, _BLUE */
+		reset-delay = <500>;
+	};
+};
+
+&dma {
+	status = "okay";
+};

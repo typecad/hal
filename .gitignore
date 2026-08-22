@@ -36,8 +36,11 @@ glyphs.txt
 nul
 **/nul
 
-# Editor / OS
-.vscode/
+# Editor / OS — .vscode is local state except the bundled typecad-ui
+# highlighting extension, which is shared so .ui files highlight for everyone.
+.vscode/*
+!.vscode/extensions/
+!.vscode/extensions.json
 .DS_Store
 Thumbs.db
 

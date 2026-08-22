@@ -41,7 +41,7 @@ export function generateFrameworkChecklist(spec: BoardSpec): string {
     '',
     'Then rebuild and test:',
     '  npm run build --workspaces',
-    '  npx vitest run tests/packages/transpiler/init-scaffold.test.ts',
+    '  npx vitest run tests/packages/transpiler/scaffold.test.ts',
     '  npx vitest run tests/packages/framework-arduino/',
     '',
   ];

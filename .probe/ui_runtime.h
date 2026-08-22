@@ -236,6 +236,10 @@ struct UINode {
   void (*optionTextFn)(uint8_t idx, char* buf, uint8_t size);  // option text by index
   int8_t drawerSide;  // <drawer>/<toast>: 0=bottom 1=top 2=left 3=right; 4=<dialog> center; -1 = none
   uint16_t toastDuration;  // <toast duration>: ms before auto-close (0 = manual)
+  uint32_t checkedBg;    // :checked background (RGB565) — switch track / checkbox face / radio dot / select selected row
+  uint32_t checkedFg;    // :checked color (RGB565) — knob / checkmark / selected-row text
+  uint8_t hasCheckedBg;  // 1 when checkedBg was authored (0 = swap not wired)
+  uint8_t hasCheckedFg;  // 1 when checkedFg was authored
   int8_t flowAxis;  // visibility reflow: 0 none, 1 column, 2 row (ui_reflow_visibility)
   uint8_t flowGap;  // visibility reflow: main-axis gap between in-flow children
   uint8_t flowFlags;  // bit0 auto height, bit1 auto width, bit2 out-of-flow
@@ -4995,13 +4999,15 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           if (paintTextH > clearH) clearH = paintTextH;
           // border-radius > 0 (kit .switch pills): clear the full text rect to
           // the backdrop, then paint the rounded box. Mirrors the preview's
-          // drawCheckNode pill path.
+          // drawCheckNode pill path. The :checked pair (kit wires it to
+          // --primary/--primary-foreground) swaps the TRACK color when on.
           if (__ui_nodes[i].borderRadius > 0 && __ui_nodes[i].hasBg) {
             ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
               ui_parent_clear_color(i));
             ui_display_fill_round_rect(__ui_nodes[i].box.x, drawY,
               __ui_nodes[i].box.w, __ui_nodes[i].box.h,
-              __ui_nodes[i].borderRadius, fillBg);
+              __ui_nodes[i].borderRadius,
+              (__ui_nodes[i].value && __ui_nodes[i].hasCheckedBg) ? __ui_nodes[i].checkedBg : fillBg);
           } else {
             ui_display_fill_rect(__ui_nodes[i].box.x, drawY, clearW, clearH,
               __ui_nodes[i].hasBg ? fillBg : ui_parent_clear_color(i));
@@ -5030,10 +5036,16 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           if (__ui_nodes[i].value && __ui_nodes[i].borderRadius > 0) {
             // Switch pill: the knob stays a knob — a solid circle when on, no
             // checkbox square + checkmark. Same geometry as the radio dot.
-            ui_display_fill_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+            // The knob carries the :checked color (primary-foreground).
+            ui_display_fill_circle(cbX + 8, cbY + 8, 7,
+              __ui_nodes[i].hasCheckedFg ? __ui_nodes[i].checkedFg : __ui_nodes[i].fg);
           } else if (__ui_nodes[i].value) {
-            ui_display_fill_rect(cbX, cbY, 16, 16, __ui_nodes[i].fg);
-            UI_COLOR_T inv = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+            // Checked face carries the :checked background (primary), the
+            // checkmark its color (primary-foreground).
+            ui_display_fill_rect(cbX, cbY, 16, 16,
+              __ui_nodes[i].hasCheckedBg ? __ui_nodes[i].checkedBg : __ui_nodes[i].fg);
+            UI_COLOR_T inv = __ui_nodes[i].hasCheckedFg ? __ui_nodes[i].checkedFg
+              : (__ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
 #ifdef UI_AA
             {
               // Draw the checkmark to a 16×16 AA canvas for smooth diagonals.
@@ -5105,17 +5117,20 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           {
             // Render the radio circle to a 16×16 AA canvas, then push.
             UI_COLOR_T radioBg = __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor;
+            // The selected ring carries the :checked background (primary).
+            UI_COLOR_T ringCol = (__ui_nodes[i].value && __ui_nodes[i].hasCheckedBg)
+              ? __ui_nodes[i].checkedBg : __ui_nodes[i].fg;
             CuttlefishCanvas16* c = ui_aa_begin(16, 16, radioBg);
             if (c) {
               if (__ui_nodes[i].value) {
-                ui_aa_fill_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
+                ui_aa_fill_circle(c, 8, 8, 7.0f, ringCol);
                 ui_aa_fill_circle(c, 8, 8, 3.0f, radioBg);
               } else {
                 ui_aa_circle(c, 8, 8, 7.0f, __ui_nodes[i].fg);
               }
               ui_aa_push(c, cbX, cbY);
             } else if (__ui_nodes[i].value) {
-              ui_display_fill_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+              ui_display_fill_circle(cbX + 8, cbY + 8, 7, ringCol);
               ui_display_fill_circle(cbX + 8, cbY + 8, 3, radioBg);
             } else {
               ui_display_draw_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
@@ -5123,7 +5138,8 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           }
 #else
           if (__ui_nodes[i].value) {
-            ui_display_fill_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
+            ui_display_fill_circle(cbX + 8, cbY + 8, 7,
+              __ui_nodes[i].hasCheckedBg ? __ui_nodes[i].checkedBg : __ui_nodes[i].fg);
             ui_display_fill_circle(cbX + 8, cbY + 8, 3, __ui_nodes[i].hasBg ? __ui_nodes[i].bg : __ui_nodes[i].clearColor);
           } else {
             ui_display_draw_circle(cbX + 8, cbY + 8, 7, __ui_nodes[i].fg);
@@ -5888,10 +5904,16 @@ static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw,
       int16_t origBoxH = __ui_nodes[c].box.h;
       __ui_nodes[c].box.x = static_cast<int16_t>(origBoxX - rx);
       __ui_nodes[c].box.y = static_cast<int16_t>(origBoxY - ry - bandTop);
-      // Clamp the face to the scroll viewport (band-local coords). The
-      // shifted box/draw geometry stays within the candidate's clip bounds;
-      // text wrapping and layout metrics shrink with the box. Fully clipped
-      // faces drop out here.
+      // Clamp the face to the scroll viewport (band-local DRAW coords). The
+      // clamp must operate on the node's DRAW position — box.y is
+      // content-local and the ancestor scroll is subtracted later, inside
+      // ui_draw_y_for_node, so comparing box.y against display-space clip
+      // bounds passed scrolled content whose CONTENT coordinate numerically
+      // fell inside the viewport: a button scrolled up past the viewport top
+      // painted over the header, and the smearing stuck (nothing repaints
+      // the header afterwards). Clamp the draw position and shift the box by
+      // the delta; text wrapping and layout metrics shrink with the box.
+      // Fully clipped faces drop out here.
       {
         // int32 math: the unclipped sentinels are ±32767 and the band-local
         // conversion subtracts region/band offsets — int16 arithmetic wraps
@@ -5902,29 +5924,25 @@ static inline uint8_t ui_render_screen_bands(int16_t rx, int16_t ry, int16_t rw,
         int32_t clipBotL = static_cast<int32_t>(__ui_scroll_candidates[ci].clipBottom) - ry - bandTop;
         int32_t clipLeftL = static_cast<int32_t>(__ui_scroll_candidates[ci].clipLeft) - rx;
         int32_t clipRightL = static_cast<int32_t>(__ui_scroll_candidates[ci].clipRight) - rx;
-        int16_t boxY0 = __ui_nodes[c].box.y;
-        if (boxY0 < clipTopL) {
-          __ui_nodes[c].box.y = static_cast<int16_t>(clipTopL);
-          __ui_nodes[c].box.h = static_cast<int16_t>(__ui_nodes[c].box.h - (clipTopL - boxY0));
-        }
-        if (static_cast<int32_t>(__ui_nodes[c].box.y) + __ui_nodes[c].box.h > clipBotL) {
-          __ui_nodes[c].box.h = static_cast<int16_t>(clipBotL - __ui_nodes[c].box.y);
-        }
-        int16_t boxX0 = __ui_nodes[c].box.x;
-        if (boxX0 < clipLeftL) {
-          __ui_nodes[c].box.x = static_cast<int16_t>(clipLeftL);
-          __ui_nodes[c].box.w = static_cast<int16_t>(__ui_nodes[c].box.w - (clipLeftL - boxX0));
-        }
-        if (static_cast<int32_t>(__ui_nodes[c].box.x) + __ui_nodes[c].box.w > clipRightL) {
-          __ui_nodes[c].box.w = static_cast<int16_t>(clipRightL - __ui_nodes[c].box.x);
-        }
-        if (__ui_nodes[c].box.w <= 0 || __ui_nodes[c].box.h <= 0) {
+        int16_t dispY0 = ui_draw_y_for_node(c);
+        int16_t dispX0 = ui_draw_x_for_node(c);
+        int32_t y0 = dispY0 < clipTopL ? clipTopL : dispY0;
+        int32_t y1 = static_cast<int32_t>(dispY0) + __ui_nodes[c].box.h > clipBotL ? clipBotL : static_cast<int32_t>(dispY0) + __ui_nodes[c].box.h;
+        int32_t x0 = dispX0 < clipLeftL ? clipLeftL : dispX0;
+        int32_t x1 = static_cast<int32_t>(dispX0) + __ui_nodes[c].box.w > clipRightL ? clipRightL : static_cast<int32_t>(dispX0) + __ui_nodes[c].box.w;
+        if (x1 - x0 <= 0 || y1 - y0 <= 0) {
           __ui_nodes[c].box.x = origBoxX;
           __ui_nodes[c].box.y = origBoxY;
           __ui_nodes[c].box.w = origBoxW;
           __ui_nodes[c].box.h = origBoxH;
           continue;
         }
+        // box.y/box.x already carry the band shift; add the clamp delta on
+        // top (y0 - dispY0 is 0 when unclipped, preserving the shift).
+        __ui_nodes[c].box.y = static_cast<int16_t>(__ui_nodes[c].box.y + (y0 - dispY0));
+        __ui_nodes[c].box.h = static_cast<int16_t>(y1 - y0);
+        __ui_nodes[c].box.x = static_cast<int16_t>(__ui_nodes[c].box.x + (x0 - dispX0));
+        __ui_nodes[c].box.w = static_cast<int16_t>(x1 - x0);
       }
       int16_t baseDrawX = ui_base_draw_x_for_node(c);
       int16_t baseDrawY = ui_base_draw_y_for_node(c);
@@ -8217,22 +8235,26 @@ static inline void ui_select_menu_draw() {
   for (uint8_t r = 0; r < n->optionCount; r++) {
     int16_t ry = g.y + 4 + static_cast<int16_t>(r) * rowH;
     uint8_t current = (r == static_cast<uint8_t>(n->value));
+    // The selected row carries the :checked pair (the kit wires it to
+    // --accent/--accent-foreground, shadcn's SelectItem selected state).
+    UI_COLOR_T rowBg = n->hasCheckedBg ? static_cast<UI_COLOR_T>(n->checkedBg) : n->fg;
+    UI_COLOR_T rowFg = n->hasCheckedFg ? static_cast<UI_COLOR_T>(n->checkedFg) : panel;
     if (current) {
-      ui_display_fill_round_rect(g.x + rowInset, ry, g.w - 2 * rowInset, rowH, rowRadius, n->fg);
+      ui_display_fill_round_rect(g.x + rowInset, ry, g.w - 2 * rowInset, rowH, rowRadius, rowBg);
     }
     buf[0] = 0;
     if (n->optionTextFn) n->optionTextFn(r, buf, UI_TEXT_BUF + 1);
     ui_draw_wrapped_text(buf,
       g.x + 22, ry + (rowH - static_cast<int16_t>(8 * n->textSize)) / 2,
       static_cast<uint16_t>(g.w - 30),
-      current ? panel : n->fg,
+      current ? rowFg : n->fg,
       panel, n->textSize, n->fontAntialias, n->fontFace, n->letterSpacing,
       n->lineHeight, n->whiteSpaceMode, 0, 0, 0);
     if (current) {
       int16_t cx = g.x + 7;
       int16_t cy = ry + rowH / 2;
-      ui_display_draw_line(cx, cy, cx + 3, cy + 3, panel);
-      ui_display_draw_line(cx + 3, cy + 3, cx + 8, cy - 4, panel);
+      ui_display_draw_line(cx, cy, cx + 3, cy + 3, rowFg);
+      ui_display_draw_line(cx + 3, cy + 3, cx + 8, cy - 4, rowFg);
     }
   }
   __ui_select_menu_dirty = 0;

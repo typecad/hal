@@ -11,7 +11,7 @@ import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution.js";
 import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver.js";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage.js";
 import { runProgramValidations } from "./validation-orchestrator.js";
-import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
+import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinForwardMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
 import { pinShadowVarName, takeShadowDeclarations, resetPinStateTracking, markShadowUpdatingOps } from "./pin-state-tracking.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
 import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
@@ -496,10 +496,30 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             continue;
           }
 
-          // A-pins: A0-A19 → Pin instance with board-specific offset and MCU port name (fallback)
+          // A-pins: A0, A1, … → resolve through the board manifest's analog
+          // pin list first (A-ordered on every board package: A<n> →
+          // pins.analog[n] → the MCU port name → pin number). Only when the
+          // list is absent (bare Arduino-style boards) fall back to the
+          // analogOffset convention (A0 = 14) — on port-named boards that
+          // fallback resolves A1 to a random GPIO (Black Pill PA15, a
+          // non-analog pin, was the first to surface it via a capability
+          // error).
           const aMatch = name.match(/^A(\d+)$/);
           if (aMatch) {
-            const pinNum = String(analogOffset + parseInt(aMatch[1]));
+            let pinNum: string | undefined;
+            // The flattener stores the manifest's analog pin list as a
+            // comma-joined string under `pins.analog`.
+            const analogList = boardConstants.get("pins.analog");
+            if (typeof analogList === "string") {
+              const analogName = analogList.split(",")[parseInt(aMatch[1], 10)];
+              if (analogName) {
+                const byName = mcuPinForwardMap.get(analogName);
+                if (byName !== undefined) pinNum = String(byName);
+              }
+            }
+            if (pinNum === undefined) {
+              pinNum = String(analogOffset + parseInt(aMatch[1]));
+            }
             const fields = new Map([["_pin", pinNum]]);
             const portName = mcuPinReverseMap.get(pinNum);
             if (portName) fields.set("_port", portName);

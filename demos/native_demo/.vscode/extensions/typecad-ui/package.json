@@ -1,0 +1,54 @@
+{
+  "name": "typecad-ui",
+  "displayName": "TypeCAD UI (.ui) Syntax",
+  "description": "Syntax highlighting for cuttlefish .ui single-file components: TypeScript in <script>, CSS in <style>, Svelte-style markup directives and interpolations.",
+  "version": "0.1.0",
+  "publisher": "typecad",
+  "license": "MIT",
+  "icon": "icon.png",
+  "engines": {
+    "vscode": "^1.89.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "typecad-ui",
+        "aliases": [
+          "Cuttlefish UI",
+          "typecad-ui"
+        ],
+        "extensions": [
+          ".ui"
+        ],
+        "icon": {
+          "light": "./file-icon-light.png",
+          "dark": "./file-icon-dark.png"
+        },
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "typecad-ui",
+        "scopeName": "source.typecad-ui",
+        "path": "./syntaxes/typecad-ui.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.typecad-ui.codeblock",
+        "path": "./syntaxes/markdown-ui.json",
+        "injectTo": [
+          "text.html.markdown"
+        ]
+      }
+    ],
+    "snippets": [
+      {
+        "language": "typecad-ui",
+        "path": "./snippets/typecad-ui.json"
+      }
+    ]
+  }
+}

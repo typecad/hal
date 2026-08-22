@@ -4,10 +4,11 @@ import fs from "node:fs";
 import { parseCommandLine, printHelp } from "./utils/cli.js";
 import type { GeneratedOutputs } from "./types.js";
 import type { CreateCommandOptions, BoardAddCommandOptions } from "./types.js";
+import { runLibraryCommand } from "./library/cli.js";
 import type { ScaffoldProjectResult } from "./create/index.js";
-import { scaffoldProject, printInitNextSteps, KNOWN_TARGETS, frameworksForTarget, frameworkCatalogEntry, FRAMEWORK_CATALOG, frameworkTargetProfile } from "./create/index.js";
+import { scaffoldProject, printCreateNextSteps, KNOWN_TARGETS, frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile } from "./create/index.js";
 import { generateFrameworkDebugArtifacts } from "./create/debug-artifacts.js";
-import { runInitWizard } from "./create/index.js";
+import { runCreateWizard } from "./create/index.js";
 import { installProjectDependencies } from "./create/install-deps.js";
 import { generateLibraryDefinitions, transpileFile } from "./transpile.js";
 import { generateDecl, generateDeclsForDirectory, generateComponentDeclsForProject } from "./libdef/cpp-to-decl.js";
@@ -78,8 +79,9 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       );
     }
 
-    // Resolve the framework. --framework wins; otherwise narrow via the catalog
-    // for the chosen board and auto-pick when exactly one is compatible.
+    // Resolve the framework. --framework wins (validated against the board's
+    // compatible set); otherwise narrow via the catalog for the chosen board
+    // and auto-pick when exactly one is compatible.
     let frameworkId: string;
     let frameworkPackage: string;
     if (options.framework) {
@@ -87,6 +89,13 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       if (!requested) {
         const available = FRAMEWORK_CATALOG.filter(f => f.installable).map(f => f.id).join(", ");
         throw new Error(`Unknown framework '${options.framework}'. Available: ${available}`);
+      }
+      if (!frameworkCompatibleWithTarget(target, requested.id)) {
+        const list = frameworksForTarget(target).filter(f => f.installable).map(f => f.id).join(", ");
+        throw new Error(
+          `Framework '${requested.id}' is not compatible with target '${target.id}' (${target.displayName}). ` +
+          `Compatible frameworks: ${list}`,
+        );
       }
       frameworkId = requested.id;
       frameworkPackage = requested.packageName;
@@ -131,7 +140,7 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
 
     finalizeCreate(result, options);
   } else {
-    const wizardResult = await runInitWizard({
+    const wizardResult = await runCreateWizard({
       projectName: options.projectName,
       board: options.board,
       framework: options.framework,
@@ -192,7 +201,7 @@ function finalizeCreate(result: ScaffoldProjectResult, options: CreateCommandOpt
     console.log(`\n${chalk.green("✓")} Debug profile: ${debugArtifacts.map((f) => chalk.white(f)).join(", ")}`);
   }
 
-  printInitNextSteps(result.options, result.outDir, { installed, debugProfile: debugArtifacts.length > 0 });
+  printCreateNextSteps(result.options, result.outDir, { installed, debugProfile: debugArtifacts.length > 0 });
 }
 
 async function handleBoardAdd(options: BoardAddCommandOptions): Promise<void> {
@@ -234,6 +243,11 @@ async function main(): Promise<void> {
 
     if (options.command === "board-add") {
       await handleBoardAdd(options);
+      return;
+    }
+
+    if (options.command === "library") {
+      await runLibraryCommand(options);
       return;
     }
 

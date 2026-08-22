@@ -12,6 +12,7 @@ import {
   isCuttlefishSDKPath,
 } from "../transpile/resolution.js";
 import { requireUIHook } from "../ui-hook.js";
+import { registerCuttlefishLibraryFromSpecifier } from "../library-packages.js";
 
 /**
  * Sort files in dependency order using Kahn's algorithm.
@@ -151,6 +152,13 @@ export async function collectTranspileGraph(
           moduleSpecifier = statement.moduleSpecifier.text;
         }
         if (!moduleSpecifier) continue;
+        // Cuttlefish library package: an import whose package ships a
+        // cuttlefish.library.json contributes native shims + build fragments
+        // instead of transpiling — its own TypeScript types are the contract.
+        // Must precede the @typecad/* skips: scoped libraries would otherwise
+        // be dropped as "SDK packages" here (the .ui script loop skips ALL
+        // @typecad/* specifiers, unlike the selective main-loop skip list).
+        if (registerCuttlefishLibraryFromSpecifier(filePath, moduleSpecifier)) continue;
         if (moduleSpecifier === "@typecad/expect" || moduleSpecifier === "@typecad/ui" || moduleSpecifier === "@typecad/safety") continue;
         if (moduleSpecifier.startsWith("@typecad/")) continue;
         const resolved = resolveImport(filePath, moduleSpecifier, boardPackage);
@@ -188,6 +196,14 @@ export async function collectTranspileGraph(
       if (nativeModule) {
         nativeModules.set(moduleSpecifier, nativeModule);
         continue; // Don't try to resolve as TypeScript
+      }
+
+      // Cuttlefish library package: an import whose package ships a
+      // cuttlefish.library.json contributes native shims + build fragments
+      // instead of transpiling — its own TypeScript types are the contract.
+      // Checked before the @typecad/* skips so scoped libraries register.
+      if (registerCuttlefishLibraryFromSpecifier(filePath, moduleSpecifier)) {
+        continue;
       }
 
       // Skip @typecad/expect — it provides type-level stubs only.

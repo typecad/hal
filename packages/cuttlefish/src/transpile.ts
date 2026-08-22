@@ -21,6 +21,7 @@ const CUTTLEFISH_VERSION: string = (() => {
   }
 })();
 import { buildProgramIR } from "./ir/build-ir.js";
+import { getCurrentBoardConstants } from "./ir/build-ir-state.js";
 import { classDeclarationToIR } from "./ir/declaration-builders.js";
 import { clickHandlers } from "./ir/transformers/ui-call-resolver.js";
 import { setUIHook, requireUIHook, hasUIHook } from "./ui-hook.js";
@@ -35,6 +36,13 @@ import { readText, writeText, resetWrittenFiles, wasWrittenThisRun } from "./uti
 import { debug as logDebug, info } from "./utils/logger.js";
 import { printDebugStrategy } from "./utils/ui.js";
 import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry.js";
+import {
+  resetCuttlefishLibraries,
+  validateCuttlefishLibraries,
+  cuttlefishLibraryLibdefs,
+  libraryDefinitionKey,
+  writeCuttlefishLibraryArtifacts,
+} from "./library-packages.js";
 import type { ClassIR, ProgramIR } from "./api/index.js";
 import { buildCallGraph } from "./ir/call-graph.js";
 import {
@@ -449,8 +457,18 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       return {};
     }
   })();
+  resetCuttlefishLibraries();
   const graphResult = await collectTranspileGraph(entryFile, options.boardPackage, imageDecodeMax);
   profiler.endTimer("graph:collect");
+
+  // Cuttlefish library packages registered during the graph walk — validate
+  // them against the loaded framework (and build target, when known) before
+  // any codegen. A framework/target mismatch is a hard error here, far
+  // clearer than the native compiler's take on a missing header or node.
+  validateCuttlefishLibraries(
+    strategy.id,
+    (options.platformContext?.frameworkData as { buildTarget?: string } | undefined)?.buildTarget,
+  );
 
   const transpileFiles = graphResult.files;
 
@@ -532,6 +550,16 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   const npmPackages = graphResult.npmPackages;
 
   const definitions = loadLibraryDefinitions(sourceDir);
+
+  // Cuttlefish library packages: the import resolves to the library's shim
+  // include (e.g. '"__tc_rgbled.h"') instead of a transpiled module header.
+  // Project-local .libdef.json files keep precedence.
+  for (const libdef of cuttlefishLibraryLibdefs()) {
+    const key = libraryDefinitionKey(libdef.module);
+    if (!definitions.has(key)) {
+      definitions.set(key, libdef);
+    }
+  }
 
   let entryOutputs: GeneratedOutputs | undefined;
   const diagnostics = [] as GeneratedOutputs["diagnostics"];
@@ -1073,6 +1101,45 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         source: "transpile",
       });
     }
+  }
+
+  // ── Persist the resolved board constants next to the emitted source ─────
+  // Framework toolchains re-read this at compile time to rebuild their chip
+  // descriptors (framework-zephyr's resolveChipFromBoard). Board packages
+  // carry chip data — controller splits, ADC channel maps, PWM specs — that
+  // lives only in the board package, so without this file the toolchain's
+  // registry fallback silently resolves board-derived targets (rpi_pico,
+  // esp32c3/c6, blackpill) to the XIAO default descriptor.
+  try {
+    // Read from the built program IRs — the IR build context (and its
+    // current-board-constants slot) is already closed at this point. Any
+    // file's IR may carry the constants (the board import is traversed while
+    // building whichever file imports it first), so scan for a populated one.
+    let boardConstants: (typeof preBuilt extends Map<string, { programIR: infer P }> ? P extends { boardConstants?: infer B } ? B : never : never) | undefined;
+    for (const pb of preBuilt.values()) {
+      const bc = pb.programIR.boardConstants;
+      if (bc && bc.size > 0) { boardConstants = bc; break; }
+    }
+    if (boardConstants && boardConstants.size > 0) {
+      fs.writeFileSync(
+        path.join(outDir, "board-constants.json"),
+        JSON.stringify(Object.fromEntries(boardConstants), null, 2),
+      );
+    }
+  } catch {
+    // Best-effort persistence; the toolchain falls back to its registry.
+  }
+
+  // ── Cuttlefish library packages: shims + libraries.json sidecar ─────────
+  // Shims are written next to the emitted sources (the framework scaffold's
+  // CMake/sketch regen compiles them); the sidecar records the used
+  // libraries' build contributions (Kconfig lines, overlay fragments) for
+  // the framework toolchain — the board-constants.json convention.
+  try {
+    const emittedSrcDir = entryOutputs ? path.dirname(entryOutputs.sourcePath) : outDir;
+    writeCuttlefishLibraryArtifacts(outDir, emittedSrcDir);
+  } catch {
+    // Best-effort; a missing shim surfaces at native compile time.
   }
 
   return {

@@ -1,5 +1,20 @@
 # @typecad/zephyr-installer
 
+## Unreleased
+
+- ## dfu-util in the Windows env + pyusb everywhere
+
+  west flash's dfu-util runner (STM32 ROM DFU bootloader boards, e.g. the
+  WeAct Black Pill) shells out to dfu-util, and a missing executable dies
+  with a raw FileNotFoundError. conda-forge has no dfu-util, so the Windows
+  installer now fetches MSYS2's mingw64 dfu-util package plus its
+  libusb/libwinpthread DLLs (SHA256-pinned in versions.env) into the env's
+  Library/bin — on the activation PATH and on the PATH of the
+  'micromamba run -n zephyr west flash' the framework spawns. install.sh
+  prints the per-OS install command instead (no auto-sudo). environment.yml
+  also gains pyusb, which silences the "runner rtsflash could not be
+  imported" warning west prints on every invocation.
+
 ## 1.0.0-alpha.13
 
 ### Minor Changes

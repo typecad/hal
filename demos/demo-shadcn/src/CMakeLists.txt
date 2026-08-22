@@ -8,6 +8,7 @@ project(zephyr_app)
 # Cuttlefish-emitted sources. This list is regenerated whenever the
 # emitted file set changes (the scaffold rewrites CMakeLists.txt).
 target_sources(app PRIVATE
+  src/__tc_rgbled.cpp
   src/src.cpp
 )
 
