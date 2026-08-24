@@ -76,6 +76,23 @@ while (true) {
 
 `USB0` and `UART0` are independent ports (on the Black Pill: USB-C connector vs. PA9/PA10), and `console.log` continues to route to the board's configured console — the three streams never interfere.
 
+### Routing `console.log` to USB
+
+`console.log` lowers to `printk` and follows the board's devicetree console node — often a UART on pins you may not have wired. The build prints where it goes (`console.log -> printk -> usart1 on PA9 (TX) / PA10 (RX) on this board`). To send it out the USB connector instead, set `output: 'usb'` in the config's `console` section:
+
+```typescript
+// cuttlefish.config.ts
+export default defineConfig({
+  // ...
+  console: {
+    output: 'usb',   // console.log → the USB CDC port (boards with USB)
+    port: 'COM4',    // monitor port (unchanged role)
+  },
+});
+```
+
+The overlay rebinds the console onto the CDC port and forces the USB symbols on — the program itself needs no `USB0.begin()` call for `console.log` to work.
+
 ---
 
 ## I2C (Inter-Integrated Circuit)

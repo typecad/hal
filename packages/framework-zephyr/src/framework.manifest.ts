@@ -38,13 +38,15 @@ export default defineFrameworkManifest({
   implementationMode: 'from-scratch',
 
   entrypoint: {
-    entrypointFunctionName: 'setup',
-    requiresLoopFunction: true,
+    // Zephyr is a main()-based RTOS: top-level statements lower straight into
+    // main() (no setup()/loop() pair, no bridge shim). Event-driven programs
+    // get their scheduler loop appended inside main() by the driver machinery.
+    entrypointFunctionName: 'main',
+    requiresLoopFunction: false,
     sourceExtension: 'cpp',
     overrideBaseName: 'main',
     outputSubdirectory: 'src',
     generateHeaderFile: true,
-    customBridgeShim: 'main',
   },
 
   profile: {

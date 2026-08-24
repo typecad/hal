@@ -142,4 +142,8 @@ describe('board-blackpill-f411ce → ZephyrChipDescriptor', () => {
   it('declares no radio (omitted — radioless target)', () => {
     expect(chip!.wifi).toBeUndefined();
   });
+
+  it('carries a human console destination for the build note', () => {
+    expect(chip!.consoleDescription).toBe('usart1 on PA9 (TX) / PA10 (RX)');
+  });
 });

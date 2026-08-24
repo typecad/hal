@@ -8,7 +8,7 @@
 // debug session is self-contained.  cortex-debug starts OpenOCD as a child
 // process via `servertype: "openocd"`; the preLaunch task handles only the
 // build + flash step.  After attach we issue `monitor reset init`, set a
-// temporary hardware breakpoint at setup(), and continue — this ensures the
+// temporary hardware breakpoint at main(), and continue — this ensures the
 // breakpoint is deferred until the bootloader maps the app flash region.
 //
 // All generators are deterministic + idempotent so toggling --debug does not
@@ -342,16 +342,16 @@ function buildLaunchConfig(
   //     read-only so -break-insert uses hw breakpoints, not sw breakpoints
   //     (which would fail with "Cannot access memory at 0x4200xxxx").
   //   monitor reset init  — reset target + halt (bootloader maps flash)
-  //   thb setup           — temporary HW breakpoint at setup()
-  //   c                   — continue; bootloader maps flash, breaks at setup()
+  //   thb main            — temporary HW breakpoint at main()
+  //   c                   — continue; bootloader maps flash, breaks at main()
   //
   // The trailing `c` is ESP32-only. On instant-reset ARM targets the
-  // thb-setup stop lands within milliseconds — WHILE cortex-debug is still
+  // thb-main stop lands within milliseconds — WHILE cortex-debug is still
   // chewing through this command list — and a stop event mid-initialization
   // leaves the session half-started (toolbar never enables, user breakpoints
   // never bind). The ESP32's bootloader takes hundreds of milliseconds, so
   // its stop safely arrives after init completes. ARM keeps the pending
-  // thb (the first user Continue stops at setup()) but hands the run/stop
+  // thb (the first user Continue stops at main()) but hands the run/stop
   // transition to cortex-debug.
   //
   // Paths use forward slashes — ${workspaceFolder} on Windows produces
@@ -369,7 +369,7 @@ function buildLaunchConfig(
       'mem 0x42000000 0x44000000 ro cache',
     ] : []),
     'monitor reset init',
-    'thb setup',
+    'thb main',
     ...(isEsp32Target ? ['c'] : []),
   ];
   if (gdbScriptRel) {
@@ -388,7 +388,7 @@ function buildLaunchConfig(
     type: 'cortex-debug',
     // Attach mode: no download (the ELF is already flashed). The server
     // controller's attachCommands() just halts the target, then our
-    // postAttachCommands reset it, set a HW breakpoint at setup(), and
+    // postAttachCommands reset it, set a HW breakpoint at main(), and
     // continue.  HW breakpoints use debug registers and work before the
     // bootloader maps the app flash region.
     request: 'attach',

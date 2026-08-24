@@ -53,6 +53,15 @@ function speedForHz(hz: number): string {
 }
 
 /**
+ * The (void) comma expression begin/end lower to — a no-op that references
+ * the controller's whole state block (device + transaction buffers) so a
+ * program calling only begin() stays -Werror clean (-Wunused-variable).
+ */
+function i2cKeepAlive(p: string): string {
+  return `(void)${p}_dev, (void)${p}_addr, (void)${p}_txbuf, (void)${p}_txlen, (void)${p}_rxbuf, (void)${p}_rxlen, (void)${p}_rxpos;`;
+}
+
+/**
  * Resolve a HAL i2c.* op to Zephyr C++.
  * Returns `{ code }` for statement ops, `{ expression }` for value-returning ops.
  */
@@ -67,10 +76,13 @@ export function lowerI2c(
   switch (op.operation) {
     case 'i2c.begin':
       // Zephyr resolves the device at compile time; begin is a no-op (device
-      // ready check is folded into the driver calls).
-      return { code: `(void)${p}_dev;` };
+      // ready check is folded into the driver calls). The comma expression
+      // references the transaction state so a program that only calls begin()
+      // (no transactions yet) keeps every shim variable used — Zephyr builds
+      // with -Werror and -Wunused-variable would otherwise fail it.
+      return { code: i2cKeepAlive(p) };
     case 'i2c.end':
-      return { code: `(void)${p}_dev;` };
+      return { code: i2cKeepAlive(p) };
     case 'i2c.set_clock': {
       const hz = typeof o.hz === 'number' ? o.hz : parseInt(String(o.hz), 10);
       const speed = isNaN(hz) ? 'I2C_SPEED_STANDARD' : speedForHz(hz || 100000);
@@ -109,8 +121,16 @@ export function lowerI2c(
     case 'i2c.read':
       return { expression: `(${p}_rxpos < ${p}_rxlen ? ${p}_rxbuf[${p}_rxpos++] : -1)` };
     case 'i2c.read_buffer': {
-      // Read straight into the user's buffer (o.buffer), count bytes.
+      // Read straight into the user's buffer (o.buffer), count bytes. When the
+      // caller discards the result (readByte()/readBytes() as a bare
+      // statement), the IR carries the __HAL_READ_BUF__ placeholder — the
+      // var-init rewrite never runs, so fall back to a local scratch buffer.
       const count = o.count;
+      if (o.buffer === '__HAL_READ_BUF__') {
+        return {
+          code: `{ uint8_t __tc_rdbuf[${count}]; i2c_read(${p}_dev, __tc_rdbuf, static_cast<uint32_t>(${count}), ${p}_addr); }`,
+        };
+      }
       return {
         code: `i2c_read(${p}_dev, reinterpret_cast<uint8_t*>(${o.buffer}), static_cast<uint32_t>(${count}), ${p}_addr);`,
       };

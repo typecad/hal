@@ -20,6 +20,13 @@ interface PeripheralCapacity {
 
 /**
  * Get peripheral capacity from board constants.
+ *
+ * The count comes from an explicit `peripherals.<bus>.count` key when the
+ * board carries one; otherwise it is derived from the flattened instance
+ * entries (`peripherals.<bus>.<N>.instance`, produced by the MCU package's
+ * *_INSTANCES arrays) so a board whose MCU declares two I2C controllers
+ * accepts I2C1 (the Arduino-pico and ESP32 cores both expose the second
+ * bus). Only when neither form is present does it fall back to 1.
  */
 function getPeripheralCapacity(boardConstants: BoardConstants | undefined): PeripheralCapacity {
   const defaultCapacity: PeripheralCapacity = {
@@ -32,10 +39,22 @@ function getPeripheralCapacity(boardConstants: BoardConstants | undefined): Peri
     return defaultCapacity;
   }
 
+  const capacityFor = (bus: 'i2c' | 'spi' | 'uart'): number => {
+    const explicit = boardConstants.get(`peripherals.${bus}.count`) as number | undefined;
+    if (typeof explicit === 'number') return explicit;
+    let highest = -1;
+    for (let i = 0; i < 16; i++) {
+      const instance = boardConstants.get(`peripherals.${bus}.${i}.instance`);
+      if (instance === undefined) break;
+      highest = i;
+    }
+    return highest >= 0 ? highest + 1 : 1;
+  };
+
   return {
-    i2c: (boardConstants.get('peripherals.i2c.count') as number) ?? 1,
-    spi: (boardConstants.get('peripherals.spi.count') as number) ?? 1,
-    uart: (boardConstants.get('peripherals.uart.count') as number) ?? 1,
+    i2c: capacityFor('i2c'),
+    spi: capacityFor('spi'),
+    uart: capacityFor('uart'),
   };
 }
 

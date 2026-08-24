@@ -38,7 +38,10 @@ export function lowerTone(
       const v = `__tc_pwm_${pwmDtAliasToken(spec)}`;
       const freq = o.frequency;
       const duration = o.duration;
-      const setTone = `uint32_t __period = (${freq} > 0) ? (1000000000ULL / static_cast<uint64_t>(${freq})) : 0; pwm_set_dt(&${v}, __period, __period / 2);`;
+      // Braced: two tone ops in one statement-scope (e.g. tone(440).for(50)
+      // lowers tone.play + tone.play_for back-to-back) would otherwise
+      // redeclare __period.
+      const setTone = `{ uint32_t __period = (${freq} > 0) ? (1000000000ULL / static_cast<uint64_t>(${freq})) : 0; pwm_set_dt(&${v}, __period, __period / 2); }`;
       if (duration !== undefined) {
         // Blocking tone for the requested duration, then stop.
         return { code: `${setTone} k_msleep(${duration}); pwm_set_pulse_dt(&${v}, 0);` };

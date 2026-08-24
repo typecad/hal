@@ -9,6 +9,13 @@ import { describe, done } from '@typecad/expect';
 // '250ms' lowers to the wdt_enable(WDTO_250MS) macro rather than being passed
 // raw) is pinned by tests/packages/hal/hal-output-correctness.test.ts, which
 // asserts on the transpiled output rather than on hardware execution.
+//
+// Black Pill / STM32: the independent watchdog (IWDG) CANNOT be disabled once
+// started — Zephyr's wdt_disable() returns -EPERM and the counter keeps
+// running. The timeouts below are therefore long (8 s): the whole file
+// finishes in milliseconds and the idle loop after SUITE_END may reset the
+// board harmlessly once the host has already detached. A short timeout
+// ('250ms') would reset the board mid-protocol and time out the runner.
 
 describe("WDT namespace")
   .it("WDT.reset() runs without trapping")
@@ -21,7 +28,7 @@ describe("WDT namespace")
   .it("WDT.enable() then WDT.disable() runs without trapping")
   .expect(
     (() => {
-      WDT.enable('250ms');
+      WDT.enable('8s');
       WDT.disable();
       return 1;
     })
@@ -29,7 +36,7 @@ describe("WDT namespace")
   .it("WDT.enable() + WDT.reset() + WDT.disable() full cycle runs")
   .expect(
     (() => {
-      WDT.enable('500ms');
+      WDT.enable('8s');
       WDT.reset();
       WDT.disable();
       return 1;

@@ -20,7 +20,7 @@
         "set mem inaccessible-by-default off",
         "mem 0x42000000 0x44000000 ro cache",
         "monitor reset init",
-        "thb setup",
+        "thb main",
         "c"
       ],
       "preLaunchTask": "cuttlefish: build + flash (debug)"
@@ -45,7 +45,7 @@
         "set mem inaccessible-by-default off",
         "mem 0x42000000 0x44000000 ro cache",
         "monitor reset init",
-        "thb setup",
+        "thb main",
         "c"
       ],
       "preLaunchTask": "cuttlefish: build + flash (debug)"

@@ -1,4 +1,6 @@
 import { describe, done } from '@typecad/expect';
+// Black Pill ADC1: 12-bit raw reads (0–4095) — the Zephyr lowering returns the
+// chip descriptor's resolution, not the Uno's 10-bit range.
 import { A0, ADC } from '@typecad/board';
 
 describe("ADC reads")
@@ -6,7 +8,7 @@ describe("ADC reads")
   .expect(
     (() => {
       const v = ADC.read(0);
-      return (v >= 0 && v <= 1023) ? 1 : 0;
+      return (v >= 0 && v <= 4095) ? 1 : 0;
     })
   ).toBe(1)
   .it("ADC.read() on channel 1 is callable")
@@ -38,7 +40,7 @@ describe("InputPin analog helpers")
   .expect(
     (() => {
       const v = A0.asInput().readAnalog();
-      return (v >= 0 && v <= 1023) ? 1 : 0;
+      return (v >= 0 && v <= 4095) ? 1 : 0;
     })
   ).toBe(1)
   .it("InputPin.readVoltage() returns a non-negative value")

@@ -10,6 +10,7 @@
 //   boards/raspberrypi/common/rpi_pico-led.dtsi (led0 = GP25, active-high)
 //   boards/raspberrypi/common/rpi_pico-pinctrl-common.dtsi
 //   dts/bindings/adc/raspberrypi,pico-adc.yaml (vref-mv default 3300)
+//   drivers/usb/udc/udc_rpi_pico.c (next-stack UDC driver for both SoCs)
 
 import { describe, it, expect } from 'vitest';
 import { resolveBoardConstants } from '../../../packages/cuttlefish/src/ir/board-resolver';
@@ -44,10 +45,28 @@ describe('board-rp2040 → ZephyrChipDescriptor', () => {
     expect(rp2040Chip!.gpio.interruptPins ?? []).toEqual([]);
   });
 
-  it("wires i2c0 / spi0 / uart0 (the board default-enabled controllers)", () => {
-    expect(rp2040Chip!.i2c?.controllers).toEqual([{ nodeLabel: 'i2c0' }]);
+  it("wires i2c0 + i2c1 / spi0 / uart0 (the board-pinned controllers — i2c1's GP6/GP7 pinctrl group ships in the board DT, the overlay enables it)", () => {
+    expect(rp2040Chip!.i2c?.controllers).toEqual([{ nodeLabel: 'i2c0' }, { nodeLabel: 'i2c1' }]);
     expect(rp2040Chip!.spi?.controllers).toEqual([{ nodeLabel: 'spi0' }]);
     expect(rp2040Chip!.uart?.controllers).toEqual([{ nodeLabel: 'uart0' }]);
+  });
+
+  it('declares the USB device (zephyr_udc0 is status okay in rpi_pico-common.dtsi)', () => {
+    expect(rp2040Chip!.usb).toEqual({ controller: 'zephyr_udc0', cdcInstances: 1 });
+  });
+
+  it('describes the console destination for the build note', () => {
+    expect(rp2040Chip!.consoleDescription).toBe('uart0 on GP0 (TX) / GP1 (RX)');
+  });
+
+  it('declares named probe methods (uf2 bootloader, SWD probes — from board.cmake)', () => {
+    const ids = (rp2040Chip!.probeMethods ?? []).map((m) => m.id);
+    expect(ids).toEqual(['uf2', 'openocd', 'jlink']);
+    const uf2 = rp2040Chip!.probeMethods!.find((m) => m.id === 'uf2')!;
+    expect(uf2.runner).toBe('uf2');
+    expect(uf2.debug).toBe(false);
+    const jlink = rp2040Chip!.probeMethods!.find((m) => m.id === 'jlink')!;
+    expect(jlink.debugDevice).toBe('RP2040_M0_0');
   });
 
   it('maps ADC channels GP26–GP29 → 0–3 at 12-bit / 3300 mV', () => {
@@ -87,12 +106,46 @@ describe('board-rp2350 → ZephyrChipDescriptor', () => {
     expect(rp2350Chip!.gpio.interruptPins ?? []).toEqual([]);
   });
 
-  it('wires i2c0 / spi0 / uart0 and the same ADC channel map as the Pico', () => {
-    expect(rp2350Chip!.i2c?.controllers).toEqual([{ nodeLabel: 'i2c0' }]);
+  it('wires i2c0 + i2c1 / spi0 / uart0, USB, console, and probes (mirrors the Pico)', () => {
+    expect(rp2350Chip!.i2c?.controllers).toEqual([{ nodeLabel: 'i2c0' }, { nodeLabel: 'i2c1' }]);
     expect(rp2350Chip!.spi?.controllers).toEqual([{ nodeLabel: 'spi0' }]);
     expect(rp2350Chip!.uart?.controllers).toEqual([{ nodeLabel: 'uart0' }]);
+    expect(rp2350Chip!.usb).toEqual({ controller: 'zephyr_udc0', cdcInstances: 1 });
+    expect(rp2350Chip!.consoleDescription).toBe('uart0 on GP0 (TX) / GP1 (RX)');
+    expect((rp2350Chip!.probeMethods ?? []).map((m) => m.id)).toEqual(['uf2', 'openocd', 'jlink']);
+    expect(rp2350Chip!.probeMethods!.find((m) => m.id === 'jlink')!.debugDevice).toBe('RP2350_M33_0');
+  });
+
+  it('maps the same ADC channels as the Pico and the wdt0 node', () => {
     expect(rp2350Chip!.adc).toEqual(rp2040Chip!.adc);
     expect(rp2350Chip!.wdt).toEqual({ nodeLabel: 'wdt0' });
     expect(rp2350Chip!.pwm?.specs ?? []).toEqual([]);
+  });
+});
+
+describe('RP board/MCU constants → pin capability data (analogRead regression)', () => {
+  // The board-constants flattener is a static AST walker: it drops `functions`
+  // entries written as helper calls (functions: [adc(0, 0)]) and the shorthand
+  // `capabilities` object. The MCU packages must keep inline object literals
+  // so the pin-capability validator finds the ADC channels — otherwise every
+  // readAnalog() fails with "no pins support analog input".
+  const rp2040Constants = resolveBoardConstants('mcus/mcu-rp2040/src/index.ts');
+  const rp2350Constants = resolveBoardConstants('mcus/mcu-rp2350/src/index.ts');
+
+  it('mcu-rp2040 GP26–GP29 carry flattenable adc function entries', () => {
+    for (const pin of [26, 27, 28, 29]) {
+      expect(rp2040Constants.get(`pins.all.${pin}.functions.0.type`), `GP${pin}`).toBe('adc');
+    }
+  });
+
+  it('mcu-rp2350 GP26–GP29 carry flattenable adc function entries', () => {
+    for (const pin of [26, 27, 28, 29]) {
+      expect(rp2350Constants.get(`pins.all.${pin}.functions.0.type`), `GP${pin}`).toBe('adc');
+    }
+  });
+
+  it('both MCUs flatten through the board constants merge (pins.all.26 reaches the board)', () => {
+    const board2040 = resolveBoardConstants('boards/board-rp2040/src/index.ts');
+    expect(board2040.get('pins.all.26.functions.0.type')).toBe('adc');
   });
 });

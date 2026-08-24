@@ -94,7 +94,7 @@ export function appendLibraryOverlayFragments(overlay: string, projectRoot: stri
  *
  * Idempotent. Mirrors scaffoldEspIdfProject's writeIfChanged discipline.
  */
-export function scaffoldZephyrProject(projectRoot: string, debug = false, userKconfig?: Record<string, string>, psram?: 'opi' | 'quad'): boolean {
+export function scaffoldZephyrProject(projectRoot: string, debug = false, userKconfig?: Record<string, string>, psram?: 'opi' | 'quad', consoleOutput?: 'usb'): boolean {
   const srcDir = join(projectRoot, 'src');
   if (!existsSync(srcDir)) mkdirSync(srcDir, { recursive: true });
 
@@ -123,12 +123,18 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     usesDac: uses('dac_') || uses('__tc_dac'),
     usesFS: uses('__tc_fs'),
     usesHwtimer: uses('counter_') || uses('__tc_hw'),
-    usesI2c: uses('i2c_'),
-    usesSpi: uses('spi_'),
-    usesUart: uses('uart_'),
+    // The __tc_<bus> alternative matches the shim's state block — a program
+    // that only calls begin() emits `(void)__tc_i2c1_dev;` (no driver API
+    // call yet), but the shim still declared DEVICE_DT_GET(DT_NODELABEL(...))
+    // so the overlay must enable the node or the device symbol is missing.
+    usesI2c: uses('i2c_') || uses('__tc_i2c'),
+    usesSpi: uses('spi_') || uses('__tc_spi'),
+    usesUart: uses('uart_') || uses('__tc_uart'),
     // USB CDC serial: every usb.* lowering calls into the __tc_usb<N>_* shim
-    // (device + init helper emitted under usesUsb).
-    usesUsb: uses('__tc_usb'),
+    // (device + init helper emitted under usesUsb). console.output 'usb'
+    // forces the stack on too — printk then lands on the CDC device.
+    usesUsb: uses('__tc_usb') || consoleOutput === 'usb',
+    consoleOutput,
     // STM32F4 DBGMCU keep-SWD-alive init present (emitted for stm32f4 socs).
     usesStm32DebugSleep: uses('__tc_stm32_dbgmcu'),
     usesWdt: uses('wdt_'),

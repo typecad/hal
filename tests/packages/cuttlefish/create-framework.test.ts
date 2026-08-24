@@ -39,9 +39,13 @@ describe("frameworksForTarget", () => {
     }
   });
 
-  it("narrows avr / rp2040 / rp2350 to arduino only", () => {
-    for (const arch of ["avr", "rp2040", "rp2350"]) {
-      expect(frameworksForTarget({ architecture: arch }).map((f) => f.id)).toEqual(["arduino"]);
+  it("narrows avr to arduino only", () => {
+    expect(frameworksForTarget({ architecture: "avr" }).map((f) => f.id)).toEqual(["arduino"]);
+  });
+
+  it("narrows rp2040 / rp2350 to arduino + zephyr (rpi_pico / rpi_pico2 targets)", () => {
+    for (const arch of ["rp2040", "rp2350"]) {
+      expect(frameworksForTarget({ architecture: arch }).map((f) => f.id)).toEqual(["arduino", "zephyr"]);
     }
   });
 
@@ -249,6 +253,8 @@ describe('BOARD_PROBE_METHODS (create-time catalog vs board packages)', () => {
     const boardSrc: Record<string, string> = {
       'blackpill-f411ce': 'boards/board-blackpill-f411ce/src/index.ts',
       'xiao-nrf52840': 'boards/board-xiao-nrf52840/src/index.ts',
+      'rp2040': 'boards/board-rp2040/src/index.ts',
+      'rp2350': 'boards/board-rp2350/src/index.ts',
     };
     for (const [boardId, src] of Object.entries(boardSrc)) {
       const catalog = BOARD_PROBE_METHODS[boardId];

@@ -115,6 +115,19 @@ export const BlackPillF411CEBoard: BoardDefinition = {
     // `wdt0` the lowering defaults to — declared explicitly so wdt.* ops
     // resolve to the right DEVICE_DT_GET(DT_NODELABEL(iwdg)).
     wdt: { nodeLabel: 'iwdg' },
+    // Storage partition synthesis: the board DTS carries only the MCUboot
+    // boot/slot/scratch partition set — no storage_partition for the
+    // ZMS-backed Preferences / littlefs FS backends. The overlay generator
+    // declares this region under &flash0 when a program uses preferences.* or
+    // fs.*. 256 KB at 0x40000 = exactly the two last 128 KB flash pages
+    // (ZMS needs ≥2 sectors) and overlaps only the unused slot1/scratch
+    // MCUboot regions — the linked application image starts at 0x0 and would
+    // have to exceed 256 KB to reach it.
+    storage: { offset: 0x00040000, size: 0x00040000 },
+    // Human text for the build-time console.log destination note (the board
+    // DTS's chosen console). Set console.output: 'usb' in cuttlefish.config.ts
+    // to route console.log to the USB-C connector instead.
+    consoleDescription: 'usart1 on PA9 (TX) / PA10 (RX)',
     // PWM: the board DTS enables `pwm4` (TIM4 ch1/ch2 on PB6/PB7, the
     // `pwm` child of &timers4) but defines no DT alias for it — hence the
     // synthesized form (controller + channel). The overlay generator creates

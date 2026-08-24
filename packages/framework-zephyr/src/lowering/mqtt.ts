@@ -3,11 +3,11 @@
 //
 // Zephyr's MQTT library is event-driven but has no internal task: the app
 // must call mqtt_input() when the socket is readable and mqtt_live()
-// periodically for keepalive. The generated firmware is setup()/loop(),
-// and the user's loop() is not ours to edit — so the connect shim spawns a
+// periodically for keepalive. The generated firmware is main()-based and
+// the user's main() is not ours to edit — so the connect shim spawns a
 // dedicated k_thread that runs the poll loop (poll() → mqtt_input/mqtt_live)
 // until disconnect. This mirrors a "managed client" model (like ESP-IDF's
-// esp_mqtt internal task) and keeps the user's loop() untouched.
+// esp_mqtt internal task) and keeps the user's main() untouched.
 //
 // mqtt_connect() does no DNS — the broker is a resolved sockaddr — so the
 // shim getaddrinfo-resolves the broker host itself (like the HTTP shim).

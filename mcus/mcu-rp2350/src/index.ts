@@ -20,9 +20,11 @@ const FULL_GPIO = {
 
 const FULL_GPIO_ANALOG = { ...FULL_GPIO, analogInput: YES } as const;
 
-function adc(n: number, ch: number) {
-  return { type: 'adc' as const, instance: n, role: `ch${ch}` };
-}
+// `functions` entries MUST be inline object literals, not helper calls: the
+// board-constants flattener is a static AST walker (cuttlefish
+// ir/board-resolver.ts) that drops call-expression array elements — a
+// `functions: [adc(0, 0)]` style entry flattens to nothing and the
+// pin-capability validator then reports "no pins support analog input".
 
 export const RP2350: MCUDefinition = {
   id: 'rp2350',
@@ -58,17 +60,32 @@ export const RP2350: MCUDefinition = {
       { number: 20, gpio: 20, name: 'GP20', capabilities: FULL_GPIO, alternateFunctions: [] },
       { number: 21, gpio: 21, name: 'GP21', capabilities: FULL_GPIO, alternateFunctions: [] },
       { number: 22, gpio: 22, name: 'GP22', capabilities: FULL_GPIO, alternateFunctions: [] },
-      { number: 23, gpio: 23, name: 'GP23', capabilities: FULL_GPIO, alternateFunctions: [] },
-      { number: 24, gpio: 24, name: 'GP24', capabilities: FULL_GPIO, alternateFunctions: [] },
-      { number: 25, gpio: 25, name: 'GP25', capabilities: FULL_GPIO, alternateFunctions: [] },
-      { number: 26, gpio: 26, name: 'GP26', capabilities: FULL_GPIO_ANALOG, functions: [adc(0, 0)], alternateFunctions: ['ADC0'] },
-      { number: 27, gpio: 27, name: 'GP27', capabilities: FULL_GPIO_ANALOG, functions: [adc(0, 1)], alternateFunctions: ['ADC1'] },
-      { number: 28, gpio: 28, name: 'GP28', capabilities: FULL_GPIO_ANALOG, functions: [adc(0, 2)], alternateFunctions: ['ADC2'] },
-      { number: 29, gpio: 29, name: 'GP29', capabilities: FULL_GPIO_ANALOG, functions: [adc(0, 3)], alternateFunctions: ['ADC3'] },
-      { number: 30, gpio: 30, name: 'GP30', capabilities: FULL_GPIO_ANALOG, functions: [adc(0, 4)], alternateFunctions: ['ADC4'] },
-      { number: 31, gpio: 31, name: 'GP31', capabilities: FULL_GPIO_ANALOG, functions: [adc(0, 5)], alternateFunctions: ['ADC5'] },
-      { number: 32, gpio: 32, name: 'GP32', capabilities: FULL_GPIO_ANALOG, functions: [adc(0, 6)], alternateFunctions: ['ADC6'] },
-      { number: 33, gpio: 33, name: 'GP33', capabilities: FULL_GPIO_ANALOG, functions: [adc(0, 7)], alternateFunctions: ['ADC7'] },
+      { number: 23, gpio: 23, name: 'GP23', capabilities: FULL_GPIO, alternateFunctions: ['SMPS power-save'],
+        warnings: ['GP23 is wired to the SMPS power-save control on the Pico 2 — do not use as GPIO'], unsafe: true, notes: 'SMPS power-save (Pico 2)' },
+      { number: 24, gpio: 24, name: 'GP24', capabilities: FULL_GPIO, alternateFunctions: ['VBUS detect'],
+        warnings: ['GP24 is the USB VBUS detect input on the Pico 2 — do not use as GPIO'], unsafe: true, notes: 'VBUS detect (Pico 2)' },
+      { number: 25, gpio: 25, name: 'GP25', capabilities: FULL_GPIO, alternateFunctions: ['Onboard LED'],
+        warnings: ['GP25 is the onboard LED on the Pico 2 — using as GPIO may interfere'], unsafe: true, notes: 'Onboard LED (Pico 2)' },
+      { number: 26, gpio: 26, name: 'GP26', capabilities: FULL_GPIO_ANALOG,
+        functions: [{ type: 'adc', instance: 0, role: 'ch0' }], alternateFunctions: ['ADC0'] },
+      { number: 27, gpio: 27, name: 'GP27', capabilities: FULL_GPIO_ANALOG,
+        functions: [{ type: 'adc', instance: 0, role: 'ch1' }], alternateFunctions: ['ADC1'] },
+      { number: 28, gpio: 28, name: 'GP28', capabilities: FULL_GPIO_ANALOG,
+        functions: [{ type: 'adc', instance: 0, role: 'ch2' }], alternateFunctions: ['ADC2'] },
+      { number: 29, gpio: 29, name: 'GP29', capabilities: FULL_GPIO_ANALOG,
+        functions: [{ type: 'adc', instance: 0, role: 'ch3' }], alternateFunctions: ['ADC3'],
+        warnings: ['GP29 is wired to the VSYS monitor divider on the Pico 2 — do not use as GPIO'], unsafe: true, notes: 'VSYS monitor / ADC3 (Pico 2)' },
+      // GPIO30–GPIO33 exist on the RP2350B package only. The typecad board
+      // target is the Pico 2 (RP2350A — 30 GPIOs), where these pads are not
+      // bonded; the board package does not export them.
+      { number: 30, gpio: 30, name: 'GP30', capabilities: FULL_GPIO_ANALOG,
+        functions: [{ type: 'adc', instance: 0, role: 'ch4' }], alternateFunctions: ['ADC4'] },
+      { number: 31, gpio: 31, name: 'GP31', capabilities: FULL_GPIO_ANALOG,
+        functions: [{ type: 'adc', instance: 0, role: 'ch5' }], alternateFunctions: ['ADC5'] },
+      { number: 32, gpio: 32, name: 'GP32', capabilities: FULL_GPIO_ANALOG,
+        functions: [{ type: 'adc', instance: 0, role: 'ch6' }], alternateFunctions: ['ADC6'] },
+      { number: 33, gpio: 33, name: 'GP33', capabilities: FULL_GPIO_ANALOG,
+        functions: [{ type: 'adc', instance: 0, role: 'ch7' }], alternateFunctions: ['ADC7'] },
       { number: 34, gpio: 34, name: 'GP34', capabilities: FULL_GPIO, alternateFunctions: [] },
       { number: 35, gpio: 35, name: 'GP35', capabilities: FULL_GPIO, alternateFunctions: [] },
       { number: 36, gpio: 36, name: 'GP36', capabilities: FULL_GPIO, alternateFunctions: [] },
@@ -92,9 +109,13 @@ export const RP2350: MCUDefinition = {
       'GP26', 'GP27', 'GP28', 'GP29', 'GP30', 'GP31', 'GP32', 'GP33', 
     ],
     pwm: [
-      'GP0', 'GP1', 'GP2', 'GP3', 'GP4', 'GP5', 'GP6', 'GP7', 'GP8', 'GP9', 'GP10', 'GP11', 'GP12', 'GP13', 'GP14', 'GP15', 'GP16', 'GP17', 'GP18', 'GP19', 'GP20', 'GP21', 'GP22', 'GP23', 'GP24', 'GP25', 'GP26', 'GP27', 'GP28', 'GP29', 'GP30', 'GP31', 'GP32', 'GP33', 'GP34', 'GP35', 'GP36', 'GP37', 'GP38', 'GP39', 'GP40', 'GP41', 'GP42', 'GP43', 'GP44', 'GP45', 'GP46', 'GP47', 
+      'GP0', 'GP1', 'GP2', 'GP3', 'GP4', 'GP5', 'GP6', 'GP7', 'GP8', 'GP9',
+      'GP10', 'GP11', 'GP12', 'GP13', 'GP14', 'GP15', 'GP16', 'GP17', 'GP18', 'GP19',
+      'GP20', 'GP21', 'GP22', 'GP26', 'GP27', 'GP28', 'GP29', 'GP30', 'GP31', 'GP32',
+      'GP33', 'GP34', 'GP35', 'GP36', 'GP37', 'GP38', 'GP39', 'GP40', 'GP41', 'GP42',
+      'GP43', 'GP44', 'GP45', 'GP46', 'GP47',
     ],
-    unsafe: [],
+    unsafe: ['GP23','GP24','GP25','GP29'],
 
     i2c:  { 0: { sda: 'GP4', scl: 'GP5' } },
     spi:  { 0: { mosi: 'GP19', miso: 'GP16', sck: 'GP18', cs: 'GP17' } },

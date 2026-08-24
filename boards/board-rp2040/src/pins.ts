@@ -27,3 +27,10 @@ export const A2 = GP28;
 
 // Bus aliases
 export { I2C0, I2C1, SPI0, SPI1, UART0, UART1 } from '@typecad/mcu-rp2040';
+
+// USB CDC serial over the USB-C connector (the RP2040 USBD peripheral's
+// dedicated D+/D- pads — not GPIOs, so there is no PeripheralPins entry).
+// Board-level instance — the connector is board wiring, not silicon, so it
+// lives here rather than in the MCU package.
+import { USBSerialPort } from '@typecad/hal';
+export const USB0 = new USBSerialPort('USBSerial');

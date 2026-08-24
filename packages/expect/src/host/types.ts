@@ -174,6 +174,12 @@ export interface ResolvedConfig {
   toolchainType: 'arduino-cli' | 'west';
   /** Zephyr-specific config (kconfig, etc.) from cuttlefish.config.ts. */
   zephyrConfig?: Record<string, unknown>;
+  /**
+   * Console config (the `console` section) from cuttlefish.config.ts.
+   * Forwarded to the framework toolchain so `output: 'usb'` routes the
+   * [TC:...] protocol lines onto the board's USB CDC port.
+   */
+  consoleConfig?: Record<string, unknown>;
   /** Absolute path to project root. */
   projectRoot: string;
   /** Absolute path to the cuttlefish config file these values were read from. */

@@ -1,6 +1,11 @@
 import { describe, done } from '@typecad/expect';
 
-// @typecad-skip-target esp32: ESP32 EEPROMClass has no update() method.
+// @typecad-skip-target esp32, stm32f411: ESP32 EEPROMClass has no update()
+//   method, and framework-zephyr ships no EEPROM shim at all — EEPROM.*
+//   lowers to raw `EEPROM.write(...)` C++ against the Arduino EEPROM library
+//   object, which does not exist on Zephyr (compile error). Persistent
+//   storage on this target goes through Preferences (ZMS settings on the
+//   synthesized storage_partition) instead — see 14-preferences.test.ts.
 
 describe("EEPROM namespace")
   .it("EEPROM.length() is positive")

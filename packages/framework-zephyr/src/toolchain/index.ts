@@ -97,6 +97,30 @@ function scanPwmUsedPins(src: string, chip: ZephyrChipDescriptor): number[] {
     .map((s) => s.pin);
 }
 
+/**
+ * Bus controller indexes the emitted sources actually reference — the shim
+ * declares one `__tc_<bus><N>_dev` state block per used instance (gated by
+ * collectUsedBusIndices at transpile time), so var-presence is the
+ * authoritative signal. The overlay enables only these controllers: an
+ * enabled-but-unused one claims its default pins (i2c0's GP4/GP5 on the
+ * Pico) which a program driving the OTHER controller may want as GPIO.
+ * Empty list (no state blocks — e.g. display/touch composites that use the
+ * driver API directly) means "no signal"; the caller then passes undefined
+ * so the overlay enables every declared controller, preserving old behavior.
+ */
+function scanUsedBusInstances(
+  src: string,
+  controllers: readonly { nodeLabel: string }[] | undefined,
+  bus: 'i2c' | 'spi' | 'uart',
+): number[] | undefined {
+  if (!controllers) return undefined;
+  const used: number[] = [];
+  for (let i = 0; i < controllers.length; i++) {
+    if (src.includes(`__tc_${bus}${i}_dev`)) used.push(i);
+  }
+  return used.length > 0 ? used : undefined;
+}
+
 function targetFromOptions(o: ToolchainOptions): string {
   // The cuttlefish CLI populates ToolchainOptions.buildTarget from
   // config.frameworkData.buildTarget. Accept frameworkData.target as an alias.
@@ -377,14 +401,25 @@ export const Toolchain = {
     const usesTouch = uses('ft6336u') || uses('touch_');
     const usesXpt = uses('xpt2046');
     const overlay = generateOverlay(chip, {
-      usesI2c: uses('i2c_'),
-      usesSpi: uses('spi_'),
-      usesUart: uses('uart_'),
+      // __tc_<bus> matches the shim state block — a begin()-only program
+      // emits no driver API call but still declares the DT device.
+      usesI2c: uses('i2c_') || uses('__tc_i2c'),
+      usesSpi: uses('spi_') || uses('__tc_spi'),
+      usesUart: uses('uart_') || uses('__tc_uart'),
       usesUsb: uses('__tc_usb'),
       usesPwm: uses('pwm_'),
       usesAdc: uses('adc_'),
       adcReadPins: scanAdcReadPins(src, chip),
       pwmUsedPins: scanPwmUsedPins(src, chip),
+      i2cUsedInstances: scanUsedBusInstances(src, chip.i2c?.controllers, 'i2c'),
+      spiUsedInstances: scanUsedBusInstances(src, chip.spi?.controllers, 'spi'),
+      uartUsedInstances: scanUsedBusInstances(src, chip.uart?.controllers, 'uart'),
+      // Preferences/FS — same tokens scaffoldZephyrProject scans (the ZMS
+      // settings_* API + __tc_prefs shim, the __tc_fs mount shim); drive the
+      // storage-partition synthesis + /chosen settings pointer.
+      usesPreferences: uses('settings_') || uses('__tc_prefs'),
+      usesFS: uses('__tc_fs'),
+      usesWdt: uses('wdt_'),
       usesDisplay,
       usesTouch: usesTouch || usesXpt,
       touchController: usesXpt ? 'xpt2046' : 'ft6336u',
@@ -423,7 +458,11 @@ export const Toolchain = {
     const isGdbDebug = o.debug === true && debugMode === 'gdb';
     const zc = o.zephyrConfig as Record<string, unknown> | undefined;
     const userKconfig = zc?.kconfig as Record<string, string> | undefined;
-    const configChanged = scaffoldZephyrProject(projectRoot, isGdbDebug, userKconfig, o.psram);
+    // console.output from cuttlefish.config.ts's console section: 'usb' routes
+    // console.log (printk) onto the CDC serial port.
+    const cc = o.consoleConfig as { output?: 'default' | 'usb' } | undefined;
+    const consoleOutput = cc?.output === 'usb' ? 'usb' as const : undefined;
+    const configChanged = scaffoldZephyrProject(projectRoot, isGdbDebug, userKconfig, o.psram, consoleOutput);
 
     // Regenerate the DT overlay for the ACTUAL target board. prepare() writes
     // it for the default board (the real target is unknown until compile), so
@@ -517,19 +556,45 @@ export const Toolchain = {
         touchWiring = { controller: 'xpt2046', ...(touchWiring ?? {}) };
       }
       const overlayDiagnostics: OverlayDiagnostic[] = [];
+      if (consoleOutput === 'usb' && !chip.usb) {
+        overlayDiagnostics.push({
+          severity: 'warning',
+          message: `console.output: 'usb' is set, but this board's chip data declares no USB device (zephyr.usb) — console.log stays on the board's default console.`,
+        });
+      }
+      // Console destination note: console.log's target is per-board and
+      // invisible in the code — state it once per compile so it is never a
+      // mystery where the output went (printk is what console.log lowers to).
+      if (uses('printk(')) {
+        const dest = consoleOutput === 'usb' && chip.usb
+          ? 'USB CDC serial (the USB connector)'
+          : (chip.consoleDescription ?? "the board's default console (its devicetree zephyr,console node)");
+        console.log(`i console.log -> printk -> ${dest} on this board`);
+      }
       const overlay = generateOverlay(chip, {
-        usesI2c: uses('i2c_'),
-        usesSpi: uses('spi_'),
-        usesUart: uses('uart_'),
+        // __tc_<bus> matches the shim state block — a begin()-only program
+        // emits no driver API call but still declares the DT device.
+        usesI2c: uses('i2c_') || uses('__tc_i2c'),
+        usesSpi: uses('spi_') || uses('__tc_spi'),
+        usesUart: uses('uart_') || uses('__tc_uart'),
         usesUsb: uses('__tc_usb'),
         usesPwm: uses('pwm_'),
         usesAdc: uses('adc_'),
         adcReadPins: scanAdcReadPins(src, chip),
-      pwmUsedPins: scanPwmUsedPins(src, chip),
+        pwmUsedPins: scanPwmUsedPins(src, chip),
+        i2cUsedInstances: scanUsedBusInstances(src, chip.i2c?.controllers, 'i2c'),
+        spiUsedInstances: scanUsedBusInstances(src, chip.spi?.controllers, 'spi'),
+        uartUsedInstances: scanUsedBusInstances(src, chip.uart?.controllers, 'uart'),
+        // Preferences/FS — same tokens scaffoldZephyrProject scans; drive the
+        // storage-partition synthesis + /chosen settings pointer.
+        usesPreferences: uses('settings_') || uses('__tc_prefs'),
+        usesWdt: uses('wdt_'),
+        usesFS: uses('__tc_fs'),
         usesDisplay,
         usesTouch: uses('ft6336u') || uses('touch_') || usesXpt,
         touchController: usesXpt ? 'xpt2046' : 'ft6336u',
         psram: o.psram,
+        consoleOutput,
       }, displayProfile, wiring, touchWiring, overlayDiagnostics);
       for (const d of overlayDiagnostics) {
         console.warn(`overlay: ${d.message}`);

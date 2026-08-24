@@ -19,9 +19,11 @@ const FULL_GPIO = {
 
 const FULL_GPIO_ANALOG = { ...FULL_GPIO, analogInput: YES } as const;
 
-function adc(n: number, ch: number) {
-  return { type: 'adc' as const, instance: n, role: `ch${ch}` };
-}
+// `functions` entries MUST be inline object literals, not helper calls: the
+// board-constants flattener is a static AST walker (cuttlefish
+// ir/board-resolver.ts) that drops call-expression array elements — a
+// `functions: [adc(0, 0)]` style entry flattens to nothing and the
+// pin-capability validator then reports "no pins support analog input".
 
 export const RP2040: MCUDefinition = {
   id: 'rp2040',
@@ -72,13 +74,13 @@ export const RP2040: MCUDefinition = {
       { number: 25, gpio: 25, name: 'GP25', capabilities: FULL_GPIO, alternateFunctions: ['Onboard LED'],
         warnings: ['GP25 is the onboard LED on the Pico — using as GPIO may interfere'], unsafe: true, notes: 'Onboard LED (Pico)' },
       { number: 26, gpio: 26, name: 'GP26', capabilities: FULL_GPIO_ANALOG,
-        functions: [adc(0, 0)], alternateFunctions: ['ADC0'] },
+        functions: [{ type: 'adc', instance: 0, role: 'ch0' }], alternateFunctions: ['ADC0'] },
       { number: 27, gpio: 27, name: 'GP27', capabilities: FULL_GPIO_ANALOG,
-        functions: [adc(0, 1)], alternateFunctions: ['ADC1'] },
+        functions: [{ type: 'adc', instance: 0, role: 'ch1' }], alternateFunctions: ['ADC1'] },
       { number: 28, gpio: 28, name: 'GP28', capabilities: FULL_GPIO_ANALOG,
-        functions: [adc(0, 2)], alternateFunctions: ['ADC2'] },
+        functions: [{ type: 'adc', instance: 0, role: 'ch2' }], alternateFunctions: ['ADC2'] },
       { number: 29, gpio: 29, name: 'GP29', capabilities: FULL_GPIO_ANALOG,
-        functions: [adc(0, 3)], alternateFunctions: ['ADC3'],
+        functions: [{ type: 'adc', instance: 0, role: 'ch3' }], alternateFunctions: ['ADC3'],
         warnings: ['GP29 is connected to internal SPI flash — do not use as GPIO'], unsafe: true, notes: 'SPI flash / ADC3' },
     ],
 

@@ -109,13 +109,29 @@ export function generateOverlay(
   };
 
   if (usage.usesI2c && chip.i2c) {
-    for (const c of chip.i2c.controllers) block(c.nodeLabel);
+    for (const [i, c] of chip.i2c.controllers.entries()) {
+      if (usage.i2cUsedInstances && !usage.i2cUsedInstances.includes(i)) continue;
+      block(c.nodeLabel);
+    }
   }
   if (usage.usesSpi && chip.spi) {
-    for (const c of chip.spi.controllers) block(c.nodeLabel);
+    for (const [i, c] of chip.spi.controllers.entries()) {
+      if (usage.spiUsedInstances && !usage.spiUsedInstances.includes(i)) continue;
+      block(c.nodeLabel);
+    }
   }
   if (usage.usesUart && chip.uart) {
-    for (const c of chip.uart.controllers) block(c.nodeLabel);
+    for (const [i, c] of chip.uart.controllers.entries()) {
+      if (usage.uartUsedInstances && !usage.uartUsedInstances.includes(i)) continue;
+      block(c.nodeLabel);
+    }
+  }
+  // Watchdog: the SoC dtsi declares the node disabled (STM32 iwdg ships
+  // status = "disabled" until a board enables it) — the wdt.* lowering
+  // addresses DEVICE_DT_GET(DT_NODELABEL(<nodeLabel>)), which needs the
+  // driver instance built, so enable the node when wdt_* is used.
+  if (usage.usesWdt && chip.wdt) {
+    block(chip.wdt.nodeLabel);
   }
   // USB CDC-ACM: the "next" USB device stack composes classes as devicetree
   // children of the UDC controller node. Enable the controller and declare one
@@ -123,7 +139,11 @@ export function generateOverlay(
   // lowering addresses instance N as DT_NODELABEL(cdc_acm_uart<N>), so the
   // nodelabels here and in lowering/usb.ts cannot drift. Endpoints and
   // descriptors are assigned by the class driver at build time.
-  if (usage.usesUsb && chip.usb) {
+  // console.output: 'usb' composes the CDC port even when the program never
+  // calls USB0, and rebinds chosen zephyr,console onto it so printk (what
+  // console.log lowers to) lands on the USB connector instead of the board's
+  // default console node.
+  if ((usage.usesUsb || usage.consoleOutput === 'usb') && chip.usb) {
     lines.push(`&${chip.usb.controller} {`);
     lines.push('    status = "okay";');
     for (let i = 0; i < chip.usb.cdcInstances; i++) {
@@ -133,6 +153,14 @@ export function generateOverlay(
     }
     lines.push('};');
     lines.push('');
+    if (usage.consoleOutput === 'usb') {
+      lines.push('/ {');
+      lines.push('    chosen {');
+      lines.push('        zephyr,console = &cdc_acm_uart0;');
+      lines.push('    };');
+      lines.push('};');
+      lines.push('');
+    }
   }
   // PWM: synthesized specs (controller + channel, no board-shipped alias) get
   // a pwm-leds consumer node + tc-pwm<pin> alias here — the lowering addresses
@@ -190,13 +218,32 @@ export function generateOverlay(
   // chosen entry makes the lookup explicit and survives boards that name the
   // partition differently. It only adds a /chosen pointer (never redeclares
   // the partition node — west errors if a node is multiply-defined).
-  if (usage.usesPreferences) {
-    lines.push('/ {');
-    lines.push('    chosen {');
-    lines.push('        zephyr,settings-partition = &storage_partition;');
-    lines.push('    };');
-    lines.push('};');
-    lines.push('');
+  if (usage.usesPreferences || usage.usesFS) {
+    // Boards whose DTS ships no storage_partition (most STM32s define only
+    // the MCUboot boot/slot/scratch set) declare a synthesis region in the
+    // chip descriptor — emit it as a partition@<offset> child of the flash0
+    // partitions node. Adding a NEW child via overlay is legal; redeclaring
+    // an existing one is not, so boards that already carry the label simply
+    // omit the descriptor field and only the /chosen pointer lands here.
+    if (chip.storage) {
+      lines.push('&flash0 {');
+      lines.push('    partitions {');
+      lines.push(`        storage_partition: partition@${chip.storage.offset.toString(16)} {`);
+      lines.push('            label = "storage";');
+      lines.push(`            reg = <0x${chip.storage.offset.toString(16).padStart(8, '0')} 0x${chip.storage.size.toString(16).padStart(8, '0')}>;`);
+      lines.push('        };');
+      lines.push('    };');
+      lines.push('};');
+      lines.push('');
+    }
+    if (usage.usesPreferences) {
+      lines.push('/ {');
+      lines.push('    chosen {');
+      lines.push('        zephyr,settings-partition = &storage_partition;');
+      lines.push('    };');
+      lines.push('};');
+      lines.push('');
+    }
   }
 
   // PSRAM: enable the psram0 DT node with the correct size. The devkitc board

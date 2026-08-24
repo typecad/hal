@@ -11,8 +11,9 @@ LED honors its `GPIO_ACTIVE_LOW` flag via `gpio_pin_set_dt`).
 import { LED } from '@typecad/board';
 import { delay } from '@typecad/hal';
 
-function setup(): void { LED.asOutput(); }
-function loop(): void {
+LED.asOutput();
+
+while (true) {
   LED.high(); delay(500);   // → gpio_pin_set_dt(&__tc_dt_led0, 1)  LED ON
   LED.low();  delay(500);   // → gpio_pin_set_dt(&__tc_dt_led0, 0)  LED OFF
 }

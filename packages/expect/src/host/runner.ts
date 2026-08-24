@@ -135,7 +135,7 @@ async function processTestFile(
 
   // Step 3: Compile via the configured toolchain (arduino-cli or west)
   console.log(`  ${DIM}compiling...${RESET}`);
-  const compileResult = compileSketch(transpileResult.sketchDir, config.buildTarget, config.framework, config.toolchainType, config.zephyrConfig);
+  const compileResult = compileSketch(transpileResult.sketchDir, config.buildTarget, config.framework, config.toolchainType, config.zephyrConfig, config.consoleConfig);
   if (!compileResult.success) {
     return errorResult(filePath, compileResult.error ?? 'Compilation failed', startTime);
   }

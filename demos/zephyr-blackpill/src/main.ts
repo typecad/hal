@@ -7,7 +7,7 @@
 // heartbeats at a rate that shows the mode: fast (~100 ms) in dimmer mode,
 // slow (~500 ms) in breathing mode.
 //
-// Top-level statements run ONCE at boot (they lower into setup()) — the
+// Top-level statements run ONCE at boot (they lower into main()) — the
 // program's main loop is the explicit `while (true)`, matching the shape
 // `cuttlefish create` scaffolds.
 //

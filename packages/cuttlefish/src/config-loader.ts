@@ -58,6 +58,8 @@ export interface ResolvedCuttlefishConfig {
   console?: {
     baudRate?: number;
     port?: string;
+    /** Where console.log output goes ('usb' = the USB CDC serial port). */
+    output?: 'default' | 'usb';
   };
   /** Extra compiler flags from `output.extraFlags`. */
   outputExtraFlags?: string[];
@@ -533,10 +535,14 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   // Parse console configuration
   const consoleBaudRate = flat.get("console.baudRate");
   const consolePort = flat.get("console.port");
-  if (typeof consoleBaudRate === "number" || typeof consolePort === "string") {
+  const consoleOutput = flat.get("console.output");
+  const consoleOutputTyped =
+    consoleOutput === "usb" || consoleOutput === "default" ? consoleOutput : undefined;
+  if (typeof consoleBaudRate === "number" || typeof consolePort === "string" || consoleOutputTyped) {
     resolved.console = {
       ...(typeof consoleBaudRate === "number" ? { baudRate: consoleBaudRate } : {}),
       ...(typeof consolePort === "string" ? { port: consolePort } : {}),
+      ...(consoleOutputTyped ? { output: consoleOutputTyped } : {}),
     };
   }
 

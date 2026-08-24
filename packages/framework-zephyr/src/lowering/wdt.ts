@@ -14,10 +14,13 @@ import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 
 /** Parse a HAL wdt timeout ("250ms", WDTO_2S, or a bare number) to ms.
- *  Tolerates undefined (the manifest validator's probe sends a minimal op). */
+ *  Tolerates undefined (the manifest validator's probe sends a minimal op)
+ *  and quote-wrapped strings (resolveSemanticArg can hand the literal's
+ *  quoted source text through). */
 function timeoutToMs(timeout: string | number | undefined): number {
   if (typeof timeout === 'number') return timeout;
   if (!timeout) return 1000; // default 1s when absent (e.g. the validator probe)
+  timeout = timeout.replace(/^['"]|['"]$/g, '');
   // Arduino WDTO_* constants.
   const wdto: Record<string, number> = {
     WDTO_15MS: 15, WDTO_30MS: 30, WDTO_60MS: 60, WDTO_120MS: 120,

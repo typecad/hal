@@ -272,5 +272,20 @@ describe('generateOverlay', () => {
       expect(txt).not.toContain('zephyr_udc0');
       expect(txt).not.toContain('cdc-acm-uart');
     });
+
+    it("composes the CDC port + rebinds chosen console for console.output 'usb'", () => {
+      // No usesUsb — the config routing alone must bring up the CDC port and
+      // point printk at it.
+      const txt = generateOverlay(BLACKPILL, { consoleOutput: 'usb' }, undefined);
+      expect(txt).toContain('&zephyr_udc0 {');
+      expect(txt).toContain('cdc_acm_uart0: cdc-acm-uart0 {');
+      expect(txt).toContain('zephyr,console = &cdc_acm_uart0;');
+    });
+
+    it('does not rebind the console for plain USB usage (USB0 alone)', () => {
+      const txt = generateOverlay(BLACKPILL, { usesUsb: true }, undefined);
+      expect(txt).toContain('cdc_acm_uart0: cdc-acm-uart0 {');
+      expect(txt).not.toContain('zephyr,console');
+    });
   });
 });

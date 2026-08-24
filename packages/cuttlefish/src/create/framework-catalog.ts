@@ -47,7 +47,8 @@ export interface BoardLike {
  * Architecture → compatible framework ids. Derived from each framework
  * package's framework.manifest.ts `profile.targets`:
  *   - arduino: avr, esp32 family, rp2040/rp2350, samd, stm32
- *   - zephyr:  nrf52 (xiao_ble), esp32 family (esp32, esp32s3, esp32c3, esp32c6)
+ *   - zephyr:  nrf52 (xiao_ble), esp32 family (esp32, esp32s3, esp32c3, esp32c6),
+ *              rp2040/rp2350 (rpi_pico, rpi_pico2), stm32f411 (blackpill)
  *   - native:  desktop only
  * Unknown embedded architectures fall back to [arduino] (the broadest core).
  */
@@ -58,8 +59,8 @@ const ARCHITECTURE_FRAMEWORKS: Record<string, string[]> = {
   esp32s3: ["arduino", "zephyr"],
   esp32c3: ["arduino", "zephyr"],
   esp32c6: ["arduino", "zephyr"],
-  rp2040: ["arduino"],
-  rp2350: ["arduino"],
+  rp2040: ["arduino", "zephyr"],
+  rp2350: ["arduino", "zephyr"],
   samd: ["arduino"],
   // Per-chip key (esp32c3/c6 style). The generic 'stm32' entry stays
   // ["arduino"] for future STM32duino support; the F411 Black Pill is
@@ -113,6 +114,12 @@ const ZEPHYR_BOARD_IDS: Record<string, string> = {
   "blackpill-f411ce": "blackpill_f411ce/stm32f411xe",
   // nRF52840 (single core), base (non-sense) variant.
   "xiao-nrf52840": "xiao_ble/nrf52840",
+  // Raspberry Pi Pico (RP2040) — single-soc board, bare name accepted.
+  rp2040: "rpi_pico",
+  // Raspberry Pi Pico 2 (RP2350A) — the m33 cpucluster qualifier is required
+  // (the board ships hazard3 RISC-V and m33 variants with no default); M33
+  // matches the ARM toolchain the rest of the Zephyr targets use.
+  rp2350: "rpi_pico2/rp2350a/m33",
 };
 
 /**
@@ -130,6 +137,7 @@ export interface CatalogProbeMethod {
 export const BOARD_PROBE_METHODS: Record<string, CatalogProbeMethod[]> = {
   "blackpill-f411ce": [
     { id: "stlink", description: "ST-Link or any SWD probe openocd supports (no BOOT0 needed) — also debugs" },
+    { id: "stlink-srst", description: "ST-Link with the RST/SRST line wired — connect under reset (recovers wedged targets) — also debugs" },
     { id: "dfu", description: "Built-in USB bootloader: hold BOOT0, tap reset (no debug)" },
     { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
   ],
@@ -137,6 +145,16 @@ export const BOARD_PROBE_METHODS: Record<string, CatalogProbeMethod[]> = {
     { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
     { id: "openocd", description: "Any SWD probe openocd supports (CMSIS-DAP, cheap clones) — also debugs" },
     { id: "uf2", description: "Bootloader UF2 drag-and-drop: double-tap reset (no debug)" },
+  ],
+  rp2040: [
+    { id: "uf2", description: "BOOTSEL UF2 bootloader: hold BOOTSEL while plugging in USB (no debug)" },
+    { id: "openocd", description: "Any CMSIS-DAP-class SWD probe on the SWD header — also debugs" },
+    { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
+  ],
+  rp2350: [
+    { id: "uf2", description: "BOOTSEL UF2 bootloader: hold BOOTSEL while plugging in USB (no debug)" },
+    { id: "openocd", description: "Any CMSIS-DAP-class SWD probe on the SWD header (m33 core) — also debugs" },
+    { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
   ],
 };
 

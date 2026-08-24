@@ -64,6 +64,12 @@ export interface ToolchainOptions {
    */
   zephyrConfig?: Record<string, unknown>;
   /**
+   * Console config from `cuttlefish.config.ts` (the `console` section).
+   * Frameworks read `output` to route console output (e.g. Zephyr's
+   * console.output: 'usb' rebinds printk onto the CDC serial port).
+   */
+  consoleConfig?: Record<string, unknown>;
+  /**
    * Display config from `cuttlefish.config.ts` (the `display` section).
    * Frameworks use cs/dc/rst/spiFrequency to generate devicetree wiring.
    */

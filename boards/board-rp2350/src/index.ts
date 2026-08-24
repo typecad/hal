@@ -17,8 +17,9 @@ export const RP2350Board: BoardDefinition = {
   name: 'RP2350 (Pico 2)',
   vendor: 'Raspberry Pi',
   description:
-    'Generic Raspberry Pi Pico 2 (RP2350). Dual-core ARM Cortex-M33 @ 150 MHz. ' +
-    '48 GPIO, 520 KB SRAM, 4 MB QSPI flash. No wireless. USB device mode. FPU.',
+    'Generic Raspberry Pi Pico 2 (RP2350A). Dual-core ARM Cortex-M33 @ 150 MHz. ' +
+    '30 GPIO (26 on the header), 520 KB SRAM, 4 MB QSPI flash. No wireless. ' +
+    'USB device mode. FPU.',
 
   mcu: RP2350,
   clockSpeed: 150_000_000,
@@ -45,6 +46,7 @@ export const RP2350Board: BoardDefinition = {
       I2C1:  'Wire1',
       SPI0:  'SPI',
       SPI1:  'SPI1',
+      USB0:  'USBSerial',
     },
   },
 
@@ -77,7 +79,11 @@ export const RP2350Board: BoardDefinition = {
   // Plain object/array literals only — `as const` on nested values defeats the
   // board-constants flattener.
   zephyr: {
-    // Single GPIO controller — every exposed GP pin (0–28) is on gpio0.
+    // Single GPIO controller — gpio0 owns every GPIO the RP2350A has
+    // (rp2350a.dtsi sets ngpios = <30>; GPIO30+ live on the second gpio0_hi
+    // controller of the RP2350B package, disabled here and not bonded on the
+    // A). The header exposes GP0–GP22 + GP26–GP28; GP23/GP24/GP25/GP29 are
+    // board-internal (SMPS power-save, VBUS detect, LED, VSYS monitor).
     gpioController: 'gpio0',
     gpio: {
       // Pico 2 onboard LED on GP25, GPIO_ACTIVE_HIGH in rpi_pico-led.dtsi
@@ -92,10 +98,22 @@ export const RP2350Board: BoardDefinition = {
       interruptPins: [],
     },
     // Board-wired controllers (rpi_pico2.dtsi, identical pinout to the Pico):
-    //   uart0 = GP0/GP1, i2c0 = GP4/GP5, spi0 = GP16–GP19.
-    i2c:  { controllers: [{ nodeLabel: 'i2c0' }] },
+    //   uart0 = GP0/GP1, i2c0 = GP4/GP5, i2c1 = GP6/GP7 (both okay by default
+    //   on this board — the Pico 2 DTS ships i2c1 enabled), spi0 = GP16–GP19.
+    //   spi1/uart1 have no default pinctrl group in the board DT and are not
+    //   declared.
+    i2c:  { controllers: [{ nodeLabel: 'i2c0' }, { nodeLabel: 'i2c1' }] },
     spi:  { controllers: [{ nodeLabel: 'spi0' }] },
     uart: { controllers: [{ nodeLabel: 'uart0' }] },
+    // USB device: the RP2350 USBD peripheral on the USB-C connector (dedicated
+    // D+/D- pads, not GPIOs). Zephyr's rpi_pico2 DTS labels it `zephyr_udc0`
+    // and enables it by default (rpi_pico2.dtsi:
+    // `zephyr_udc0: &usbd { status = "okay"; }`), and the next-stack UDC
+    // driver (drivers/usb/udc/udc_rpi_pico.c) backs it — the overlay
+    // generator composes one CDC-ACM serial instance when a program uses USB0.
+    // USB CDC is the Pico 2's primary serial link (there is no UART bridge on
+    // the connector).
+    usb: { controller: 'zephyr_udc0', cdcInstances: 1 },
     // ADC: 12-bit SAR (raspberrypi,pico-adc binding, vref-mv default 3300);
     // GP26–GP29 = channels 0–3 (adc_default pinctrl group).
     adc: {
@@ -110,11 +128,40 @@ export const RP2350Board: BoardDefinition = {
       ],
     },
     wdt: { nodeLabel: 'wdt0' },
+    // Where the board DTS's chosen console goes (rpi_pico2.dtsi routes
+    // zephyr,console to uart0 on the GP0/GP1 header pins — a USB-serial
+    // adapter is needed to see it). Set console.output: 'usb' in
+    // cuttlefish.config.ts to route console.log to the USB-C connector
+    // instead (the CDC port this board composes).
+    consoleDescription: 'uart0 on GP0 (TX) / GP1 (RX)',
     // NOTE: no pwm.specs — the `pwm-led0` alias (PWM channel 9, GP25) points
     // at a `pwm_leds` node that is status = "disabled" in mainline rpi_pico
     // DTS; the overlay generator does not enable it, so a spec here would
-    // compile but fail at runtime. pwm.* ops lower to a comment until a board
-    // overlay enables the node.
+    // compile but fail at runtime. pwm.* ops lower to a comment (with a
+    // profileDiagnostics warning) until the overlay generator can synthesize
+    // per-pin pinctrl groups for the raspberrypi,pico-pwm driver.
+    //
+    // Named probe methods — what `zephyr.probe` / `--probe` accept on this
+    // board, for BOTH flashing and debugging (rpi_pico2 board.cmake):
+    //   - uf2: the BOOTSEL UF2 bootloader — hold BOOTSEL while plugging in
+    //     USB, the board mounts as a drive and west flash copies the UF2.
+    //     Zero extra hardware, but no debug (it's a bootloader).
+    //   - openocd: any CMSIS-DAP-class SWD probe on the 3-pin SWD header
+    //     (the board.cmake default adapter; the ARM/m33 target cfg — the
+    //     hazard3 RISC-V variant is a different target entirely).
+    //   - jlink: J-Link SWD (device RP2350_M33_0 per board.cmake).
+    probeMethods: [
+      { id: 'uf2', runner: 'uf2',
+        description: 'BOOTSEL UF2 bootloader: hold BOOTSEL while plugging in USB (no debug)',
+        debug: false },
+      { id: 'openocd', runner: 'openocd',
+        description: 'Any CMSIS-DAP-class SWD probe on the SWD header (m33 core) — also debugs',
+        debug: true, debugInterface: 'swd',
+        debugCfgSource: ['interface/cmsis-dap.cfg', 'target/rp2350.cfg'] },
+      { id: 'jlink', runner: 'jlink',
+        description: 'J-Link probe (SWD) — also debugs',
+        debug: true, debugInterface: 'swd', debugDevice: 'RP2350_M33_0' },
+    ],
   },
 };
 
@@ -132,36 +179,37 @@ export * from '@typecad/mcu-rp2350';
 // here at transpile time and exposes every HAL symbol plus board-specific pins.
 export * from '@typecad/hal';
 
-// Board-level pin Discovery API (uses local silicon pins)
+// Board-level pin Discovery API (uses local silicon pins). The Pico 2 header
+// exposes the same pins as the Pico: GP0–GP22 + GP26–GP28 (GP23/GP24 are
+// board-internal SMPS/VBUS lines, GP25 is the onboard LED, GP29 is the VSYS
+// monitor — none are on the header, and GPIO30+ don't exist on the RP2350A).
 import {
   GP0, GP1, GP2, GP3, GP4, GP5, GP6, GP7,
   GP8, GP9, GP10, GP11, GP12, GP13, GP14, GP15,
-  GP16, GP17, GP18, GP19, GP20, GP21, GP22, GP23,
-  GP24, GP25, GP26, GP27, GP28, GP29, GP30, GP31,
-  GP32, GP33,
+  GP16, GP17, GP18, GP19, GP20, GP21, GP22,
+  GP26, GP27, GP28,
 } from '@typecad/mcu-rp2350';
 
 /**
  * Pin collections for runtime capability discovery.
  */
 export const pins = {
-  /** PWM-capable pins (all GPIOs except GP24/GP25, which are board-internal). */
+  /** PWM-capable pins (every header GPIO — GP23–GP25/GP29 are board-internal
+   *  and not exported). */
   pwm: [GP0, GP1, GP2, GP3, GP4, GP5, GP6, GP7, GP8, GP9,
         GP10, GP11, GP12, GP13, GP14, GP15, GP16, GP17, GP18, GP19,
-        GP20, GP21, GP22, GP23, GP24, GP25, GP26, GP27, GP28, GP29,
-        GP30, GP31, GP32, GP33] as const,
-  /** Analog input pins (ADC0–ADC7 on GP26–GP33). */
-  analog: [GP26, GP27, GP28, GP29, GP30, GP31, GP32, GP33] as const,
-  /** All GPIOs support interrupts on RP2350. */
+        GP20, GP21, GP22, GP26, GP27, GP28] as const,
+  /** Analog input pins (ADC0–ADC2 on GP26–GP28; ADC3 = GP29 is the VSYS
+   *  monitor, board-internal). */
+  analog: [GP26, GP27, GP28] as const,
+  /** All header GPIOs support interrupts on RP2350. */
   interrupt: [GP0, GP1, GP2, GP3, GP4, GP5, GP6, GP7, GP8, GP9,
               GP10, GP11, GP12, GP13, GP14, GP15, GP16, GP17, GP18, GP19,
-              GP20, GP21, GP22, GP23, GP24, GP25, GP26, GP27, GP28, GP29,
-              GP30, GP31, GP32, GP33] as const,
-  /** All digital I/O pins. */
+              GP20, GP21, GP22, GP26, GP27, GP28] as const,
+  /** All digital I/O pins on the header. */
   digital: [GP0, GP1, GP2, GP3, GP4, GP5, GP6, GP7, GP8, GP9,
             GP10, GP11, GP12, GP13, GP14, GP15, GP16, GP17, GP18, GP19,
-            GP20, GP21, GP22, GP23, GP24, GP25, GP26, GP27, GP28, GP29,
-            GP30, GP31, GP32, GP33] as const,
+            GP20, GP21, GP22, GP26, GP27, GP28] as const,
 } as const;
 
 /**

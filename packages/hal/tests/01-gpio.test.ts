@@ -1,32 +1,35 @@
 import { describe, done } from '@typecad/expect';
-import { D2, D3, D4, D9, D10, D11, D13, A0, LED } from '@typecad/board';
+// Black Pill pin spread: digital smoke pins are free port pins; PWM needs the
+// board's synthesized PWM channels (TIM4 on PB6/PB7 — the only pwm4 specs the
+// Zephyr chip descriptor maps). A0 = PA0 (ADC1_IN0).
+import { PB0, PB1, PB10, PB6, PB7, PB5, PA1, A0, LED } from '@typecad/board';
 
 describe("Pin mode configuration")
   .it("Pin.output() alias configures without crashing")
   .expect(
     (() => {
-      D11.output();
+      PB5.output();
       return 1;
     })
   ).toBe(1)
   .it("Pin.inputPullUp() alias configures without crashing")
   .expect(
     (() => {
-      D2.inputPullUp();
+      PB0.inputPullUp();
       return 1;
     })
   ).toBe(1)
   .it("Pin.asOutput(initial) sets initial level")
   .expect(
     (() => {
-      D11.asOutput(1);
+      PB5.asOutput(1);
       return 1;
     })
   ).toBe(1)
   .it("Pin.asOutput() configures without crashing")
   .expect(
     (() => {
-      D13.asOutput();
+      PA1.asOutput();
       return 1;
     })
   ).toBe(1)
@@ -49,28 +52,28 @@ describe("Pin digital writes")
   .it("Pin.high() is callable")
   .expect(
     (() => {
-      D13.high();
+      PA1.high();
       return 1;
     })
   ).toBe(1)
   .it("Pin.low() is callable")
   .expect(
     (() => {
-      D13.low();
+      PA1.low();
       return 1;
     })
   ).toBe(1)
   .it("Pin.toggle() is callable")
   .expect(
     (() => {
-      D13.toggle();
+      PA1.toggle();
       return 1;
     })
   ).toBe(1)
   .it("Pin.write() accepts a number")
   .expect(
     (() => {
-      D13.write(1);
+      PA1.write(1);
       return 1;
     })
   ).toBe(1)
@@ -79,7 +82,7 @@ describe("OutputPin methods via asOutput()")
   .it("OutputPin.high/low/toggle sequence is callable")
   .expect(
     (() => {
-      const out = D11.asOutput();
+      const out = PB5.asOutput();
       out.high();
       out.low();
       out.toggle();
@@ -89,7 +92,7 @@ describe("OutputPin methods via asOutput()")
   .it("OutputPin.write() accepts a boolean")
   .expect(
     (() => {
-      const out = D11.asOutput();
+      const out = PB5.asOutput();
       out.write(true);
       return 1;
     })
@@ -97,7 +100,7 @@ describe("OutputPin methods via asOutput()")
   .it("OutputPin.tone() returns a ToneChain usable with .for()")
   .expect(
     (() => {
-      const out = D10.asOutput();
+      const out = PB7.asOutput();
       out.tone(440).for(50);
       return 1;
     })
@@ -105,7 +108,7 @@ describe("OutputPin methods via asOutput()")
   .it("OutputPin.toneFor() is callable")
   .expect(
     (() => {
-      const out = D10.asOutput();
+      const out = PB7.asOutput();
       out.toneFor(880, 20);
       return 1;
     })
@@ -113,7 +116,7 @@ describe("OutputPin methods via asOutput()")
   .it("OutputPin.noTone() is callable")
   .expect(
     (() => {
-      const out = D10.asOutput();
+      const out = PB7.asOutput();
       out.noTone();
       return 1;
     })
@@ -121,7 +124,7 @@ describe("OutputPin methods via asOutput()")
   .it("OutputPin.pwm() is callable")
   .expect(
     (() => {
-      const out = D9.asOutput();
+      const out = PB6.asOutput();
       out.pwm(50);
       return 1;
     })
@@ -129,40 +132,40 @@ describe("OutputPin methods via asOutput()")
   .it("OutputPin.pulse() is callable")
   .expect(
     (() => {
-      D13.asOutput().pulse(1);
+      PA1.asOutput().pulse(1);
       return 1;
     })
   ).toBe(1)
   .it("OutputPin.getPwmFrequency() returns the board PWM max frequency")
   .expect(
     (() => {
-      const out = D9.asOutput();
+      const out = PB6.asOutput();
       return out.getPwmFrequency();
     })
-  ).toBe(62500)
+  ).toBe(50000000)
   .it("OutputPin.getPwmResolution() returns the board PWM resolution in bits")
   .expect(
     (() => {
-      const out = D9.asOutput();
+      const out = PB6.asOutput();
       return out.getPwmResolution();
     })
-  ).toBe(8)
+  ).toBe(16)
 
 describe("Pin methods before mode conversion")
   .it("Pin.read()/isHigh()/isLow() are callable")
   .expect(
     (() => {
-      D2.asInputPullUp();
-      D2.read();
-      D2.isHigh();
-      D2.isLow();
+      PB0.asInputPullUp();
+      PB0.read();
+      PB0.isHigh();
+      PB0.isLow();
       return 1;
     })
   ).toBe(1)
   .it("Pin.pwm() is callable")
   .expect(
     (() => {
-      D9.pwm(64);
+      PB6.pwm(64);
       return 1;
     })
   ).toBe(1)
@@ -199,7 +202,7 @@ describe("Pin groups")
   .it("createPinGroup().fill() is callable")
   .expect(
     (() => {
-      const leds = createPinGroup([D2, D3, D4]);
+      const leds = createPinGroup([PB0, PB1, PB10]);
       leds.fill(false);
       return 1;
     })
@@ -207,7 +210,7 @@ describe("Pin groups")
   .it("createPinGroup().writePattern() is callable")
   .expect(
     (() => {
-      const leds = createPinGroup([D2, D3, D4]);
+      const leds = createPinGroup([PB0, PB1, PB10]);
       leds.writePattern(0b101);
       return 1;
     })
@@ -215,7 +218,7 @@ describe("Pin groups")
   .it("createPinGroup().readPattern() returns a non-negative bitmask")
   .expect(
     (() => {
-      const leds = createPinGroup([D2, D3]);
+      const leds = createPinGroup([PB0, PB1]);
       const pat = leds.readPattern();
       return pat >= 0 ? 1 : 0;
     })

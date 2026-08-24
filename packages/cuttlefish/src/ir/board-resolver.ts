@@ -61,6 +61,29 @@ export function resolveBoardConstants(defFilePath: string): BoardConstants {
 
   if (!sourceFile) return result;
 
+  // Same-file const table: module-local `const NAME = <literal>` declarations
+  // (exported or not) that object literals reference by identifier — e.g. the
+  // MCU packages' capability objects (FULL_GPIO, GPIO_ANALOG) and their YES/NO
+  // boolean flags. The walker resolves those references through this table.
+  const constTable = new Map<string, ts.Expression>();
+  ts.forEachChild(sourceFile, (node) => {
+    if (!ts.isVariableStatement(node)) return;
+    for (const decl of node.declarationList.declarations) {
+      if (!ts.isIdentifier(decl.name) || !decl.initializer) continue;
+      let init: ts.Expression = decl.initializer;
+      while (ts.isAsExpression(init)) init = init.expression;
+      const isUsable =
+        ts.isObjectLiteralExpression(init) ||
+        init.kind === ts.SyntaxKind.TrueKeyword ||
+        init.kind === ts.SyntaxKind.FalseKeyword ||
+        ts.isNumericLiteral(init) ||
+        ts.isStringLiteral(init) ||
+        ts.isNoSubstitutionTemplateLiteral(init) ||
+        (ts.isPrefixUnaryExpression(init) && ts.isNumericLiteral(init.operand));
+      if (isUsable) constTable.set(decl.name.text, init);
+    }
+  });
+
   // Find exported variable declarations — both object literals (board/MCU defs)
   // and arrays of objects (peripheral instance lists).
   ts.forEachChild(sourceFile, (node) => {
@@ -87,9 +110,9 @@ export function resolveBoardConstants(defFilePath: string): BoardConstants {
         // resolve. Other object literals (board/MCU definitions) walk with no prefix.
         if (varName.endsWith("_CAPABILITIES")) {
           const baseName = varName.replace("_CAPABILITIES", "").toLowerCase();
-          walkObjectLiteral(walkInit, `peripherals.${baseName}`, result);
+          walkObjectLiteral(walkInit, `peripherals.${baseName}`, result, constTable);
         } else {
-          walkObjectLiteral(walkInit, "", result);
+          walkObjectLiteral(walkInit, "", result, constTable);
         }
       }
 
@@ -99,7 +122,7 @@ export function resolveBoardConstants(defFilePath: string): BoardConstants {
         if (varName.endsWith("_INSTANCES")) {
           const baseName = varName.replace("_INSTANCES", "").toLowerCase();
           const prefix = `peripherals.${baseName}`;
-          walkArrayLiteral(walkInit, prefix, result);
+          walkArrayLiteral(walkInit, prefix, result, constTable);
         }
       }
     }
@@ -222,10 +245,24 @@ function walkObjectLiteral(
   obj: ts.ObjectLiteralExpression,
   prefix: string,
   out: BoardConstants,
+  constTable?: Map<string, ts.Expression>,
+  resolving: Set<string> = new Set(),
 ): void {
   for (const prop of obj.properties) {
+    // Spread of a same-file const object (e.g. `const GPIO_ANALOG = { ...FULL_GPIO,
+    // analogInput: YES }`) — walk the referenced literal first so its keys land
+    // at the same prefix; later explicit properties overwrite them.
+    if (ts.isSpreadAssignment(prop)) {
+      const target = prop.expression;
+      if (constTable && ts.isIdentifier(target) && constTable.has(target.text) && !resolving.has(target.text)) {
+        resolving.add(target.text);
+        walkObjectLiteral(constTable.get(target.text) as ts.ObjectLiteralExpression, prefix, out, constTable, resolving);
+        resolving.delete(target.text);
+      }
+      continue;
+    }
     // Only handle plain  `key: value`  assignments.
-    // Shorthand, spread, methods, and getters are ignored.
+    // Shorthand, methods, and getters are ignored.
     if (!ts.isPropertyAssignment(prop)) continue;
 
     const keyNode = prop.name;
@@ -236,14 +273,33 @@ function walkObjectLiteral(
     if (!key) continue;
 
     const fullPath = prefix ? `${prefix}.${key}` : key;
-    const init = prop.initializer;
+    let init = prop.initializer;
+
+    // Same-file const reference as a property value (e.g. `capabilities:
+    // GPIO_ANALOG`, or a scalar flag `pwm: YES`). Resolve through the const
+    // table so MCU capability objects — declared once and referenced by every
+    // pin — actually flatten into pins.all.N.capabilities.* keys. Without
+    // this, pin-capability validation sees no capability data at all and
+    // rejects interrupt/pwm/adc use on every pin of the board.
+    if (constTable && ts.isIdentifier(init) && constTable.has(init.text) && !resolving.has(init.text)) {
+      resolving.add(init.text);
+      const resolved = constTable.get(init.text) as ts.Expression;
+      const scalar = resolveScalar(resolved);
+      if (scalar !== undefined) {
+        out.set(fullPath, scalar);
+      } else if (ts.isObjectLiteralExpression(resolved)) {
+        walkObjectLiteral(resolved, fullPath, out, constTable, resolving);
+      }
+      resolving.delete(init.text);
+      continue;
+    }
 
     const scalar = resolveScalar(init);
     if (scalar !== undefined) {
       out.set(fullPath, scalar);
     } else if (ts.isObjectLiteralExpression(init)) {
       // Recurse into nested objects (e.g. `memory: { flash: 32_768, ... }`).
-      walkObjectLiteral(init, fullPath, out);
+      walkObjectLiteral(init, fullPath, out, constTable, resolving);
     } else if (ts.isArrayLiteralExpression(init)) {
       // Capture string arrays (e.g. `pins.unsafe: ['D0', 'D1']`)
       const arrValues: string[] = [];
@@ -255,7 +311,7 @@ function walkObjectLiteral(
       if (arrValues.length > 0) {
         out.set(fullPath, arrValues.join(','));
       } else {
-        walkArrayLiteral(init, fullPath, out);
+        walkArrayLiteral(init, fullPath, out, constTable, resolving);
       }
     }
 
@@ -277,6 +333,8 @@ function walkArrayLiteral(
   arr: ts.ArrayLiteralExpression,
   prefix: string,
   out: BoardConstants,
+  constTable?: Map<string, ts.Expression>,
+  resolving: Set<string> = new Set(),
 ): void {
   arr.elements.forEach((elem, index) => {
     const fullPath = `${prefix}.${index}`;
@@ -287,7 +345,7 @@ function walkArrayLiteral(
     }
 
     if (ts.isObjectLiteralExpression(elem)) {
-      walkObjectLiteral(elem, fullPath, out);
+      walkObjectLiteral(elem, fullPath, out, constTable, resolving);
       return;
     }
 

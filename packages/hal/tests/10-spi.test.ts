@@ -1,5 +1,5 @@
 import { describe, done } from '@typecad/expect';
-import { D10, SPI0 } from '@typecad/board';
+import { PA4, SPI0 } from '@typecad/board';
 
 describe("SPI0 lifecycle")
   .it("SPI0.begin() is callable")
@@ -82,28 +82,28 @@ describe("SPI0 device accessor")
   .it("SPI0.device(cs).write() is callable")
   .expect(
     (() => {
-      SPI0.device(D10).write(0x3C);
+      SPI0.device(PA4).write(0x3C);
       return 1;
     })
   ).toBe(1)
   .it("SPI0.device(cs).transfer() is callable")
   .expect(
     (() => {
-      SPI0.device(D10).transfer(0x55);
+      SPI0.device(PA4).transfer(0x55);
       return 1;
     })
   ).toBe(1)
   .it("SPI0.device(cs).writeRegister() is callable")
   .expect(
     (() => {
-      SPI0.device(D10).writeRegister(0x00, 0x01);
+      SPI0.device(PA4).writeRegister(0x00, 0x01);
       return 1;
     })
   ).toBe(1)
   .it("SPI0.device(cs).readRegister() is callable")
   .expect(
     (() => {
-      SPI0.device(D10).readRegister(0x00, 1);
+      SPI0.device(PA4).readRegister(0x00, 1);
       return 1;
     })
   ).toBe(1)

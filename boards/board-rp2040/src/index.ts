@@ -45,6 +45,7 @@ export const RP2040Board: BoardDefinition = {
       I2C1:  'Wire1',
       SPI0:  'SPI',
       SPI1:  'SPI1',
+      USB0:  'USBSerial',
     },
   },
 
@@ -86,11 +87,24 @@ export const RP2040Board: BoardDefinition = {
       interruptPins: [],
     },
     // Board-wired controllers (rpi_pico-common.dtsi):
-    //   uart0 = GP0/GP1, i2c0 = GP4/GP5, spi0 = GP16–GP19 (okay by default;
-    //   the overlay generator enables whichever the program uses).
-    i2c:  { controllers: [{ nodeLabel: 'i2c0' }] },
+    //   uart0 = GP0/GP1, i2c0 = GP4/GP5 (okay by default), i2c1 = GP6/GP7
+    //   (disabled in the board DTS but fully pinned — i2c1_default in
+    //   rpi_pico-pinctrl-common.dtsi — so the overlay generator enables it),
+    //   spi0 = GP16–GP19 (okay by default; the overlay generator enables
+    //   whichever the program uses). spi1/uart1 have no default pinctrl group
+    //   in the board DT and are not declared.
+    i2c:  { controllers: [{ nodeLabel: 'i2c0' }, { nodeLabel: 'i2c1' }] },
     spi:  { controllers: [{ nodeLabel: 'spi0' }] },
     uart: { controllers: [{ nodeLabel: 'uart0' }] },
+    // USB device: the RP2040 USBD peripheral on the USB-C connector (dedicated
+    // D+/D- pads, not GPIOs). Zephyr's rpi_pico DTS labels it `zephyr_udc0`
+    // and enables it by default (rpi_pico-common.dtsi:
+    // `zephyr_udc0: &usbd { status = "okay"; }`), and the next-stack UDC
+    // driver (drivers/usb/udc/udc_rpi_pico.c) backs it — the overlay
+    // generator composes one CDC-ACM serial instance when a program uses USB0.
+    // USB CDC is the Pico's primary serial link (there is no UART bridge on
+    // the connector).
+    usb: { controller: 'zephyr_udc0', cdcInstances: 1 },
     // ADC: 12-bit SAR, vref-mv defaults to 3300 in the raspberrypi,pico-adc
     // binding; GP26–GP29 = channels 0–3 (adc_default pinctrl group).
     adc: {
@@ -105,11 +119,42 @@ export const RP2040Board: BoardDefinition = {
       ],
     },
     wdt: { nodeLabel: 'wdt0' },
+    // Where the board DTS's chosen console goes (rpi_pico-common.dtsi routes
+    // zephyr,console to uart0 on the GP0/GP1 header pins — a USB-serial
+    // adapter is needed to see it). Set console.output: 'usb' in
+    // cuttlefish.config.ts to route console.log to the USB-C connector
+    // instead (the CDC port this board composes).
+    consoleDescription: 'uart0 on GP0 (TX) / GP1 (RX)',
     // NOTE: no pwm.specs — the `pwm-led0` alias (PWM slice 4B on GP25) points
     // at a `pwm_leds` node that is status = "disabled" in mainline rpi_pico
     // DTS; the overlay generator does not enable it, so a spec here would
-    // compile but fail at runtime. pwm.* ops lower to a comment until a board
-    // overlay enables the node.
+    // compile but fail at runtime. pwm.* ops lower to a comment (with a
+    // profileDiagnostics warning) until the overlay generator can synthesize
+    // per-pin pinctrl groups for the raspberrypi,pico-pwm driver.
+    //
+    // Named probe methods — what `zephyr.probe` / `--probe` accept on this
+    // board, for BOTH flashing and debugging (rpi_pico board.cmake):
+    //   - uf2: the BOOTSEL UF2 bootloader — hold BOOTSEL while plugging in
+    //     USB, the board mounts as a drive and west flash copies the UF2.
+    //     Zero extra hardware, but no debug (it's a bootloader).
+    //   - openocd: any CMSIS-DAP-class SWD probe on the 3-pin SWD header
+    //     (the board.cmake default adapter). A Raspberry Pi Debug Probe
+    //     (picoprobe) needs the raw zephyr.runner escape hatch today — its
+    //     interface cfg is selected at CMake configure time
+    //     (-DRPI_PICO_DEBUG_ADAPTER=picoprobe), not via runner args.
+    //   - jlink: J-Link SWD (device RP2040_M0_0 per board.cmake).
+    probeMethods: [
+      { id: 'uf2', runner: 'uf2',
+        description: 'BOOTSEL UF2 bootloader: hold BOOTSEL while plugging in USB (no debug)',
+        debug: false },
+      { id: 'openocd', runner: 'openocd',
+        description: 'Any CMSIS-DAP-class SWD probe on the SWD header — also debugs',
+        debug: true, debugInterface: 'swd',
+        debugCfgSource: ['interface/cmsis-dap.cfg', 'target/rp2040.cfg'] },
+      { id: 'jlink', runner: 'jlink',
+        description: 'J-Link probe (SWD) — also debugs',
+        debug: true, debugInterface: 'swd', debugDevice: 'RP2040_M0_0' },
+    ],
   },
 };
 

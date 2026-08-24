@@ -364,27 +364,30 @@ export function emitFunctions(ctx: EmitterContext): void {
     // Drive the UI runtime each frame. Fires only in the driver function when
     // a UI is mounted (entryHasUI). Uses a separate gate from the async pump
     // so a pure-UI program (no async/timers) still animates. When the strategy
-    // provides hostEventLoop, the per-frame work runs inside a while loop so a
-    // host target (SDL) can pump events and present between ticks. Emitted
-    // AFTER the function's init statements (ui_init/display_init/touch_init)
-    // so initialization precedes the loop.
-    if (entryHasUI() && fn.name === asyncDriverFn) {
-      const loop = strategy.hostEventLoop?.();
-      if (loop) {
-        appendSourceLine(ctx, `  bool ${loop.flagName} = true;`);
-        appendSourceLine(ctx, `  while (${loop.continueCondition}) {`);
-        appendSourceLine(ctx, `    ${loop.preIteration}`);
+    // provides hostEventLoop, the per-frame work — ui_tick AND the async-task
+    // injections below — runs inside a while loop so a driver that is called
+    // once (a main() entrypoint: SDL native, Zephyr's scheduler loop) can pump
+    // events, tick the UI, and advance async tasks every frame. (A repeatedly-
+    // called driver like Arduino's loop() provides no hostEventLoop and the
+    // work stays flat.) Emitted AFTER the function's init statements
+    // (ui_init/display_init/touch_init) so initialization precedes the loop.
+    const hostLoop = entryHasUI() && fn.name === asyncDriverFn
+      ? strategy.hostEventLoop?.()
+      : undefined;
+    if (hostLoop) {
+      appendSourceLine(ctx, `  bool ${hostLoop.flagName} = true;`);
+      appendSourceLine(ctx, `  while (${hostLoop.continueCondition}) {`);
+      if (hostLoop.preIteration) {
+        appendSourceLine(ctx, `    ${hostLoop.preIteration}`);
       }
+    }
+    if (entryHasUI() && fn.name === asyncDriverFn) {
       appendSourceLine(ctx, `  uint32_t __tc_ui_now = static_cast<uint32_t>(${strategy.currentTimeMillis()});`);
       appendSourceLine(ctx, "  static uint32_t __tc_ui_last_tick = __tc_ui_now;");
       appendSourceLine(ctx, "  uint32_t __tc_ui_delta = __tc_ui_now - __tc_ui_last_tick;");
       appendSourceLine(ctx, "  __tc_ui_last_tick = __tc_ui_now;");
       appendSourceLine(ctx, "  if (__tc_ui_delta > 250) __tc_ui_delta = 250;");
       appendSourceLine(ctx, "  ui_tick(static_cast<uint16_t>(__tc_ui_delta));");
-      if (loop) {
-        appendSourceLine(ctx, `    ${loop.postIteration}`);
-        appendSourceLine(ctx, `  }`);
-      }
     }
 
     if (isLoopDriver && (hasPromiseRuntime || asyncTaskClasses.length > 0 || usesTimers)) {
@@ -392,10 +395,11 @@ export function emitFunctions(ctx: EmitterContext): void {
       const asyncConfig = strategy.getAsyncRuntimeConfig();
       asyncConfig.hasPromiseRuntime = hasPromiseRuntime;
       asyncConfig.hasTimers = usesTimers;
+      const injectionIndent = hostLoop ? "    " : "  ";
 
       // Cooperative scheduler path (Phase 0): when opted in, replace the flat
       // per-frame pump sequence with a single CoopSched dispatch. The work
-      // units mirror exactly what the strategy's asyncLoopInjection() would
+      // units mirror exactly what a strategy's asyncLoopInjection() would
       // have emitted (so Zephyr, which omits the microtask pump, still omits
       // it), but they are dispatched in priority order and budget-bounded.
       if (asyncConfig.enablePriority || asyncConfig.enableTimeBudget) {
@@ -406,14 +410,21 @@ export function emitFunctions(ctx: EmitterContext): void {
         } else {
           // No work units: fall back to the strategy's own injection.
           const injectionLines = strategy.asyncLoopInjection(taskNames, asyncConfig);
-          for (const line of injectionLines) appendSourceLine(ctx, `  ${line}`);
+          for (const line of injectionLines) appendSourceLine(ctx, `${injectionIndent}${line}`);
         }
       } else {
         const injectionLines = strategy.asyncLoopInjection(taskNames, asyncConfig);
         for (const line of injectionLines) {
-          appendSourceLine(ctx, `  ${line}`);
+          appendSourceLine(ctx, `${injectionIndent}${line}`);
         }
       }
+    }
+
+    if (hostLoop) {
+      if (hostLoop.postIteration) {
+        appendSourceLine(ctx, `    ${hostLoop.postIteration}`);
+      }
+      appendSourceLine(ctx, "  }");
     }
 
     if (isLoopDriver && lastIsReturn) {

@@ -218,11 +218,11 @@ describe('writeDebugConfig — probe-method-driven artifacts (Black Pill stlink)
       expect(cfg.interface).toBe('swd');
       // The ESP32 flash-mapping commands are xtensa-only.
       expect(cfg.postAttachCommands.some((l: string) => l.includes('0x42000000'))).toBe(false);
-      // No trailing `c`: an instant reset→thb-setup stop would arrive while
+      // No trailing `c`: an instant reset→thb-main stop would arrive while
       // cortex-debug is still initializing, leaving the session half-started.
-      // The pending thb means the first user Continue stops at setup().
+      // The pending thb means the first user Continue stops at main().
       expect(cfg.postAttachCommands).toContain('monitor reset init');
-      expect(cfg.postAttachCommands).toContain('thb setup');
+      expect(cfg.postAttachCommands).toContain('thb main');
       expect(cfg.postAttachCommands).not.toContain('c');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
@@ -291,7 +291,7 @@ describe('writeDebugConfig — launch.json + tasks.json generation', () => {
       expect(postCmds).toContain('set mem inaccessible-by-default off');
       expect(postCmds.some((c) => c.startsWith('mem 0x42000000'))).toBe(true);
       expect(postCmds).toContain('monitor reset init');
-      expect(postCmds).toContain('thb setup');
+      expect(postCmds).toContain('thb main');
       expect(postCmds).toContain('c');
       expect(cfg.preLaunchTask).toBe('cuttlefish: build + flash (debug)');
 

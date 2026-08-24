@@ -128,8 +128,12 @@ describe("ZephyrStrategy core shim usage gating", () => {
     expect(lines.some((l) => l.includes("__tc_print"))).toBe(false);
     expect(lines.some((l) => l.includes("cuttlefish_is_nullish"))).toBe(false);
     expect(lines.some((l) => l.includes("CUTTLEFISH_UNDEFINED"))).toBe(false);
-    // The main() bridge stays — it is the Zephyr entrypoint, not dead code.
-    expect(lines.some((l) => l.includes("int main(void)"))).toBe(true);
+    // The shim no longer defines main() — the synthesizer emits main()
+    // directly (entrypointFunctionName()="main") and a second definition in
+    // the shim would collide at link time.
+    expect(lines.some((l) => l.includes("int main(void)"))).toBe(false);
+    expect(lines.some((l) => l.includes("extern void setup"))).toBe(false);
+    expect(lines.some((l) => l.includes("extern void loop"))).toBe(false);
   });
 
   it("emits each core piece only under its own usage flag", () => {

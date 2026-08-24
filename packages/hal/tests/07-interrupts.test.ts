@@ -1,5 +1,9 @@
 import { describe, done } from '@typecad/expect';
-import { D2 } from '@typecad/board';
+// Black Pill: the Zephyr interrupt lowering only attaches on pins the chip
+// descriptor lists in gpio.interruptPins — on this board that's PA0 (the KEY
+// button, sw0). attachInterrupt() on any other pin lowers to a diagnostic
+// comment (no-op), so the register/detach smoke below rides pin 0.
+import { PA0 } from '@typecad/board';
 
 describe("Global interrupt control")
   .it("noInterrupts() is callable without crashing")
@@ -29,28 +33,28 @@ describe("attachInterrupt / detachInterrupt")
   .it("attachInterrupt() registers a handler")
   .expect(
     (() => {
-      attachInterrupt(2, () => {}, 'FALLING');
+      attachInterrupt(0, () => {}, 'FALLING');
       return 1;
     })
   ).toBe(1)
   .it("attachInterrupt() accepts RISING mode")
   .expect(
     (() => {
-      attachInterrupt(2, () => {}, 'RISING');
+      attachInterrupt(0, () => {}, 'RISING');
       return 1;
     })
   ).toBe(1)
   .it("attachInterrupt() accepts CHANGE mode")
   .expect(
     (() => {
-      attachInterrupt(2, () => {}, 'CHANGE');
+      attachInterrupt(0, () => {}, 'CHANGE');
       return 1;
     })
   ).toBe(1)
   .it("detachInterrupt() removes a handler")
   .expect(
     (() => {
-      detachInterrupt(2);
+      detachInterrupt(0);
       return 1;
     })
   ).toBe(1)
@@ -59,7 +63,7 @@ describe("InputPin edge helpers")
   .it("onFalling/onRising/onChange/offAll are callable")
   .expect(
     (() => {
-      const btn = D2.asInputPullUp();
+      const btn = PA0.asInputPullUp();
       btn.onFalling(() => {});
       btn.onRising(() => {});
       btn.onChange(() => {});

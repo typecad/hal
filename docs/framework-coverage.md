@@ -7,8 +7,8 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 
 | Framework | HAL cats supported | HAL cats partial | HAL cats unsupported | Toolchain | Last validated |
 |---|---|---|---|---|---|
-| framework-arduino (canonical) | 12/19 | 4 | 3 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-23 |
-| framework-zephyr | 11/19 | 8 | 0 | west (prepare ✓ compile ✓ upload ✓ monitor ✓ debug ✓) | 2026-08-23 |
+| framework-arduino (canonical) | 12/19 | 4 | 3 | arduino-cli (prepare ✓ compile ✓ upload ✓ monitor ✓) | 2026-08-24 |
+| framework-zephyr | 11/19 | 8 | 0 | west (prepare ✓ compile ✓ upload ✓ monitor ✓ debug ✓) | 2026-08-24 |
 
 ## framework-arduino
 
@@ -47,7 +47,7 @@ Counts are out of 19 HAL categories (raw passthrough tracked separately).
 **Zephyr RTOS** — Native Zephyr framework targeting the Zephyr RTOS via west/CMake. GPIO is lowered through devicetree specs (gpio_pin_*_dt).
 
 **Implements:** from-scratch
-**Entrypoint:** `setup` + `loop` wrapped in `main` bridge
+**Entrypoint:** `main` + no loop
 **Toolchain:** west (prepare ✓ compile ✓ upload ✓ monitor ✓ debug ✓)
 
 ### HAL categories

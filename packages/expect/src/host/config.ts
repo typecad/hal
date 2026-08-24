@@ -77,6 +77,7 @@ export function loadConfig(
     framework: raw.framework,
     toolchainType: raw.toolchain?.type === 'west' ? 'west' : 'arduino-cli',
     zephyrConfig: raw.zephyr,
+    consoleConfig: raw.console as Record<string, unknown> | undefined,
     projectRoot,
     // The config file these values came from. writeBuildConfig re-reads it to
     // extract board/MCU for the transpile, so it must point at the same file
@@ -120,6 +121,7 @@ export interface RawConfig {
   };
   console?: {
     baudRate?: number;
+    output?: string;
   };
 }
 
@@ -399,9 +401,18 @@ function extractConsoleConfig(obj: ts.ObjectLiteralExpression): NonNullable<RawC
   const result: NonNullable<RawConfig['console']> = {};
   for (const prop of obj.properties) {
     if (!ts.isPropertyAssignment(prop)) continue;
-    if (propName(prop) === 'baudRate') {
+    const name = propName(prop);
+    if (!name) continue;
+    if (name === 'baudRate') {
       const v = numericValue(prop.initializer);
       if (v !== undefined) result.baudRate = v;
+    }
+    // output: 'usb' | 'default' — routes the console (and therefore the
+    // [TC:...] protocol lines) onto the board's USB CDC port. Carried through
+    // so writeBuildConfig can inline it into the per-test build config.
+    if (name === 'output') {
+      const v = stringLikeText(prop.initializer);
+      if (v !== undefined) result.output = v;
     }
   }
   return result;

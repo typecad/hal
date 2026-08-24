@@ -14,9 +14,18 @@ describe('i2c init block', () => {
 });
 
 describe('i2c lowering', () => {
-  it('begin → no-op device check', () => {
-    expect(lowerI2c({ operation: 'i2c.begin', bus: 'I2C0' } as any, XIAO_BLE))
-      .toEqual({ code: '(void)__tc_i2c0_dev;' });
+  it('begin → no-op keep-alive referencing the whole controller state block', () => {
+    // Zephyr resolves the device at compile time, so begin has nothing to do —
+    // but it must (void)-reference every shim variable so a program that only
+    // calls begin() stays -Werror clean (Zephyr builds with warnings-as-errors).
+    const out = lowerI2c({ operation: 'i2c.begin', bus: 'I2C0' } as any, XIAO_BLE);
+    expect(out.code).toContain('(void)__tc_i2c0_dev');
+    expect(out.code).toContain('(void)__tc_i2c0_addr');
+    expect(out.code).toContain('(void)__tc_i2c0_txbuf');
+    expect(out.code).toContain('(void)__tc_i2c0_rxpos');
+    // Same shape for end.
+    const end = lowerI2c({ operation: 'i2c.end', bus: 'I2C0' } as any, XIAO_BLE);
+    expect(end.code).toBe(out.code);
   });
 
   it('begin_transmission records the address + resets txlen', () => {

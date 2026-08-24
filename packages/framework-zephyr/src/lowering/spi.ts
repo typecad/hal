@@ -43,7 +43,9 @@ export function spiInitLines(chip: ZephyrChipDescriptor, controllerIndex: number
     `};`,
     `static void ${p}_init(void) {`,
     `    if (!${p}_ready) {`,
-    `        ${p}_cfg.bus = ${p}_dev;`,
+    // NOTE: no .bus assignment — struct spi_config lost its `bus` member in
+    // Zephyr 4.x (deprecated 3.5, removed 4.0); spi_transceive takes the
+    // device alongside the config, which the ops below already do.
     `        ${p}_cfg.operation = SPI_OP_MODE_MASTER | SPI_WORD_SET(8)`,
     `            | (${p}_lsb ? SPI_TRANSFER_LSB : SPI_TRANSFER_MSB)`,
     `            | ((${p}_mode & 0x1) ? SPI_MODE_CPOL : 0)`,
@@ -97,10 +99,16 @@ export function lowerSpi(
       };
     }
     case 'spi.read_buffer': {
-      // Read count bytes by sending 0xFF dummy bytes (full-duplex read).
+      // Read count bytes by sending 0xFF dummy bytes (full-duplex read). When
+      // the caller discards the result (readRegister() as a bare statement),
+      // the IR carries the __HAL_READ_BUF__ placeholder — the var-init rewrite
+      // never runs, so fall back to a local scratch buffer.
       const count = o.count;
+      const isPlaceholder = o.buffer === '__HAL_READ_BUF__';
+      const bufDecl = isPlaceholder ? `uint8_t __tc_rdbuf[${count}]; ` : '';
+      const bufExpr = isPlaceholder ? '__tc_rdbuf' : `reinterpret_cast<void*>(${o.buffer})`;
       return {
-        code: `{ uint8_t __dummy[${count}] = {0}; for (int __i = 0; __i < (int)(${count}); __i++) __dummy[__i] = 0xFF; struct spi_buf __tb = { .buf = __dummy, .len = ${count} }; struct spi_buf_set __tbs = { .buffers = &__tb, .count = 1 }; struct spi_buf __rb = { .buf = reinterpret_cast<void*>(${o.buffer}), .len = ${count} }; struct spi_buf_set __rbs = { .buffers = &__rb, .count = 1 }; ${p}_init(); spi_transceive(${p}_dev, &${p}_cfg, &__tbs, &__rbs); }`,
+        code: `{ ${bufDecl}uint8_t __dummy[${count}] = {0}; for (int __i = 0; __i < (int)(${count}); __i++) __dummy[__i] = 0xFF; struct spi_buf __tb = { .buf = __dummy, .len = ${count} }; struct spi_buf_set __tbs = { .buffers = &__tb, .count = 1 }; struct spi_buf __rb = { .buf = ${bufExpr}, .len = ${count} }; struct spi_buf_set __rbs = { .buffers = &__rb, .count = 1 }; ${p}_init(); spi_transceive(${p}_dev, &${p}_cfg, &__tbs, &__rbs); }`,
       };
     }
     case 'spi.cs_low':

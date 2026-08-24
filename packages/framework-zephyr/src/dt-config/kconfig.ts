@@ -46,6 +46,10 @@ export interface KconfigUsage {
   /** PSRAM type ('opi' | 'quad') when the target board has PSRAM. Emits the
    *  CONFIG_SPIRAM symbols so the ESP heap serves PSRAM for canvas allocations. */
   psram?: 'opi' | 'quad';
+  /** cuttlefish.config.ts console.output: 'usb' routes console.log to the
+   *  CDC serial port — forces the USB symbols on even when the program
+   *  itself never calls USB0. */
+  consoleOutput?: 'usb';
   /** HAL pin numbers the program reads with adc.* — scanned from the emitted
    *  `__tc_adc<N>_setup()` calls at compile time. Only the overlay generator
    *  consumes this (to rewrite the ADC node's pinctrl-0 to the used channels
@@ -57,6 +61,17 @@ export interface KconfigUsage {
    *  emitted per used pin, so the DT carries no dead channels); prj.conf
    *  ignores it. */
   pwmUsedPins?: readonly number[];
+  /** Controller indexes per bus the program actually drives — scanned from
+   *  the emitted `__tc_<bus><N>_dev` state blocks at compile time. The
+   *  overlay enables only those controllers (an enabled-but-unused
+   *  controller claims its default pins — e.g. i2c0's GP4/GP5 on the Pico —
+   *  which a program using the OTHER controller may want as GPIO). Absent
+   *  (prepare-time overlays, driver-API-only users like the display
+   *  adapter) → every declared controller is enabled, preserving the old
+   *  behavior. prj.conf ignores these. */
+  i2cUsedInstances?: readonly number[];
+  spiUsedInstances?: readonly number[];
+  uartUsedInstances?: readonly number[];
 }
 
 /**
@@ -93,7 +108,7 @@ export function resolveKconfigFragments(
   //     keeps prj.conf explicit.
   //   - UART_LINE_CTRL gates the driver's line_ctrl_get — usb.connected()
   //     polls DTR through it.
-  if (usage.usesUsb) {
+  if (usage.usesUsb || usage.consoleOutput === 'usb') {
     m.set('CONFIG_USB_DEVICE_STACK_NEXT', 'y');
     m.set('CONFIG_USBD_CDC_ACM_CLASS', 'y');
     m.set('CONFIG_UART_LINE_CTRL', 'y');
@@ -173,7 +188,7 @@ export function resolveKconfigFragments(
     m.set('CONFIG_NET_DHCPV4', 'y');
     // NOT CONFIG_NET_CONFIG_SETTINGS: that runs net_config_init() at boot which
     // BLOCKS up to NET_CONFIG_INIT_TIMEOUT (default 30s) waiting for the iface
-    // to come up — but our shim brings the iface up itself in setup() (connect),
+    // to come up — but our shim brings the iface up itself in main() (connect),
     // so net_config waits the full 30s, then the dual management of the same
     // iface crashes the driver. Our shim owns connectivity (net_mgmt connect/
     // disconnect + conn_mgr monitor for L4), exactly like the standalone Zephyr
@@ -342,15 +357,17 @@ export function resolveKconfigFragments(
   // usesUart: the board enables the console UART by default; the overlay (not
   // Kconfig) is where a UART node would be enabled, so no symbol here.
   // Random: <zephyr/random/random.h> sys_rand_get is backed by the random
-  // generator subsystem. CONFIG_RANDOM_GENERATOR is the umbrella that selects a
-  // working backend for the board (nRF52840 → hardware RNG via the entropy
-  // driver; QEMU/host → the test generator). CONFIG_ENTROPY_GENERATOR is its
-  // hard dependency on hardware targets. Both default on for most boards, but
-  // setting them explicitly keeps the symbol set honest and survives a board
-  // whose defconfig leaves them off.
+  // generator subsystem's RNG_GENERATOR_CHOICE. There is no umbrella symbol —
+  // CONFIG_RANDOM_GENERATOR is a phantom in 4.x (assigning an undefined symbol
+  // aborts the build). The choice defaults to the entropy-device generator
+  // when the board has a driver (ENTROPY_HAS_DRIVER: nRF52840, ESP32, …);
+  // RNG-less SoCs (STM32F411 has no hardware RNG) need
+  // CONFIG_TEST_RANDOM_GENERATOR to unlock the timer-clock fallback, which
+  // the choice then picks by default. Setting both keys gets the best
+  // available source per board.
   if (usage.usesRandom) {
     m.set('CONFIG_ENTROPY_GENERATOR', 'y');
-    m.set('CONFIG_RANDOM_GENERATOR', 'y');
+    m.set('CONFIG_TEST_RANDOM_GENERATOR', 'y');
   }
 
   // System workqueue — bumped for worker-offload AND timer callbacks. The

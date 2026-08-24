@@ -71,6 +71,13 @@ describe('resolveKconfigFragments', () => {
     expect(off.has('CONFIG_USBD_CDC_ACM_CLASS')).toBe(false);
   });
 
+  it("forces the USB symbols on for console.output 'usb' even without usb.* ops", () => {
+    const m = resolveKconfigFragments({ consoleOutput: 'usb' }, false);
+    expect(m.get('CONFIG_USB_DEVICE_STACK_NEXT')).toBe('y');
+    expect(m.get('CONFIG_USBD_CDC_ACM_CLASS')).toBe('y');
+    expect(m.get('CONFIG_UART_LINE_CTRL')).toBe('y');
+  });
+
   it('debug adds CONFIG_DEBUG + CONFIG_DEBUG_OPTIMIZATIONS', () => {
     const m = resolveKconfigFragments({}, true);
     expect(m.get('CONFIG_DEBUG')).toBe('y');
@@ -121,12 +128,16 @@ describe('resolveKconfigFragments', () => {
   it('enables the random + entropy generators when usesRandom', () => {
     const m = resolveKconfigFragments({ usesRandom: true }, false);
     expect(m.get('CONFIG_ENTROPY_GENERATOR')).toBe('y');
-    expect(m.get('CONFIG_RANDOM_GENERATOR')).toBe('y');
+    // No phantom umbrella symbol (assigning CONFIG_RANDOM_GENERATOR —
+    // undefined in Zephyr 4.x — aborts the build); RNG-less boards fall back
+    // via TEST_RANDOM_GENERATOR.
+    expect(m.get('CONFIG_TEST_RANDOM_GENERATOR')).toBe('y');
+    expect(m.has('CONFIG_RANDOM_GENERATOR')).toBe(false);
   });
 
   it('does NOT enable random symbols when usesRandom is absent', () => {
     const m = resolveKconfigFragments({ usesAdc: true }, false);
-    expect(m.has('CONFIG_RANDOM_GENERATOR')).toBe(false);
+    expect(m.has('CONFIG_TEST_RANDOM_GENERATOR')).toBe(false);
     expect(m.has('CONFIG_ENTROPY_GENERATOR')).toBe(false);
   });
 });

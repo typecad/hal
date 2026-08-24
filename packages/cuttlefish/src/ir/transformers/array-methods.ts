@@ -275,9 +275,16 @@ export function tryLowerArrayAndStringMethods(
   //
   // Target gate: the __tc_* helpers are native/hosted-only (Arduino/embedded
   // lower arrays to StaticArray, caught by the mutableArrayVars branch above,
-  // and have no __tc_* polyfills). requiresLoopFunction() is false exactly on
-  // hosted targets — the same set that ran the old native normalizeRawExpression.
-  const isHostedTarget = !getContext().activeStrategy?.requiresLoopFunction();
+  // and have no __tc_* polyfills). Two signals compose: the target has no
+  // repeatedly-called loop() (requiresLoopFunction() false — the historical
+  // proxy for "hosted"), AND it actually carries std::vector (getStdLibSupport
+  // ().hasVector). The second signal matters because a main()-entry RTOS
+  // target (Zephyr) also reports requiresLoopFunction()=false but lowers
+  // arrays to __tc_StaticArray — without the hasVector conjunct it would
+  // wrongly take the std::vector/.push_back path.
+  const strat = getContext().activeStrategy;
+  const isHostedTarget = !strat?.requiresLoopFunction()
+    && (strat?.getStdLibSupport?.().hasVector ?? true);
   if (isHostedTarget && ts.isPropertyAccessExpression(expr.expression)) {
     const methodName = expr.expression.name.text;
     // `push` lowers to native push_back (matches the old

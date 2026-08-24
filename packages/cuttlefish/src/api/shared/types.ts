@@ -59,6 +59,8 @@ export type TargetProfile = "generic" | (string & {});
 export interface PlatformContext {
   console?: {
     baudRate?: number;
+    /** 'usb' routes console.log (printk) onto the board's USB CDC port. */
+    output?: 'default' | 'usb';
   };
   /** Target architecture identifier (e.g., 'avr', 'esp32'). Populated from board config. */
   architecture?: string;

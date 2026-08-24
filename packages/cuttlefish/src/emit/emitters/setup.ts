@@ -442,9 +442,11 @@ export function buildEmitterContext(
     // mounted even if the source-level analysis didn't flag usesMillis. The
     // async runtime and the setInterval/setTimeout scheduler also poll
     // millis() without any user-source millis() call (Async.sleep lowers to a
-    // raw hal-op the timing scanners can't see) — mirror the usesNativeTiming
-    // derivation and keep the shim for those hidden consumers too.
-    if (!programAnalysis.usesMillis && !programAnalysis.hasAsync && programAnalysis.timerCallCount === 0 && !entryHasUI()) {
+    // raw hal-op the timing scanners can't see) — hasPromiseRuntime is exactly
+    // the "static async runtime will be emitted" signal, so keep the shim for
+    // that hidden consumer too (it forward-declares millis and links against
+    // it; stripping the definition here is a link error).
+    if (!programAnalysis.usesMillis && !programAnalysis.hasAsync && programAnalysis.timerCallCount === 0 && !entryHasUI() && !hasPromiseRuntime) {
       shimLines = shimLines.filter(l => !l.includes('millis()'));
     }
     // Strip the nullish helper FUNCTIONS (not the CUTTLEFISH_UNDEFINED macro)
@@ -1137,7 +1139,13 @@ export function buildEmitterContext(
   // include in the AVR profile (which leaked the header into every AVR
   // program, even ones that never touch the watchdog like `led.toggle()`).
   if (programUsesWdt(program)) {
-    includes.push("<avr/wdt.h>");
+    // Strategy-vetoed: framework-zephyr lowers wdt.* to the Zephyr watchdog
+    // driver (<zephyr/drivers/watchdog.h>, forced under usesWDT) and must not
+    // carry the AVR-only header into a Zephyr build.
+    const wdtInc = strategy.filterRequiredIncludes
+      ? strategy.filterRequiredIncludes(["<avr/wdt.h>"])
+      : ["<avr/wdt.h>"];
+    includes.push(...wdtInc);
   }
 
   // Placeholder defaults for fields that are computed later by other phases

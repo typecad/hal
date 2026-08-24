@@ -143,9 +143,9 @@ export function transpileTestFile(
 /**
  * Compile the sketch/project via the configured toolchain (arduino-cli or west).
  */
-export function compileSketch(sketchDir: string, buildTarget: string, framework?: string, toolchainType: 'arduino-cli' | 'west' = 'arduino-cli', zephyrConfig?: Record<string, unknown>): CompileResult {
+export function compileSketch(sketchDir: string, buildTarget: string, framework?: string, toolchainType: 'arduino-cli' | 'west' = 'arduino-cli', zephyrConfig?: Record<string, unknown>, consoleConfig?: Record<string, unknown>): CompileResult {
   if (toolchainType === 'west') {
-    return compileWestProject(sketchDir, buildTarget, zephyrConfig);
+    return compileWestProject(sketchDir, buildTarget, zephyrConfig, consoleConfig);
   }
   return compileArduinoSketch(sketchDir, buildTarget);
 }
@@ -233,7 +233,7 @@ function uploadArduinoSketch(
  * and the board target. We call it via dynamic import to avoid a hard
  * dependency on framework-zephyr (the Arduino path doesn't need it).
  */
-function compileWestProject(sketchDir: string, buildTarget: string, zephyrConfig?: Record<string, unknown>): CompileResult {
+function compileWestProject(sketchDir: string, buildTarget: string, zephyrConfig?: Record<string, unknown>, consoleConfig?: Record<string, unknown>): CompileResult {
   // sketchDir for Zephyr is the project root containing src/, app/, build/.
   // The transpiler emits src/src.cpp; the west project root is the parent of src/.
   const srcDir = path.join(sketchDir, 'src');
@@ -256,6 +256,7 @@ function compileWestProject(sketchDir: string, buildTarget: string, zephyrConfig
       sourcePath,
       buildTarget,
       zephyrConfig,
+      consoleConfig,
     });
     return {
       success: result.success,
@@ -456,9 +457,17 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
     lines.push(`    outDir: './out',`);
     lines.push('  },');
 
-    if (baseValues.console?.baudRate) {
+    if (baseValues.console?.baudRate || baseValues.console?.output) {
       lines.push('  console: {');
-      lines.push(`    baudRate: ${baseValues.console?.baudRate},`);
+      if (baseValues.console?.baudRate) {
+        lines.push(`    baudRate: ${baseValues.console?.baudRate},`);
+      }
+      // output: 'usb' matters as much as the baud — it rebinds the Zephyr
+      // console onto the CDC port so the [TC:...] protocol lines leave via
+      // the USB connector (and the board's default UART is freed for tests).
+      if (baseValues.console?.output) {
+        lines.push(`    output: '${baseValues.console.output}',`);
+      }
       lines.push('  },');
     }
 

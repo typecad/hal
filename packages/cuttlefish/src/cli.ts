@@ -602,10 +602,16 @@ async function main(): Promise<void> {
           }
         }
       }
-      // Pass console baud rate to platform context
-      if (config.console?.baudRate) {
+      // Pass console baud rate + output route to platform context. `output:
+      // 'usb'` matters at emit time: the framework strategy must define and
+      // start the USB device for the CDC console even when the program never
+      // touches USB0 (the DT/Kconfig side alone leaves the port dead).
+      if (config.console?.baudRate || config.console?.output) {
         effectivePlatformContext = effectivePlatformContext || {};
-        (effectivePlatformContext as any).console = { baudRate: config.console.baudRate };
+        (effectivePlatformContext as any).console = {
+          ...(config.console?.baudRate ? { baudRate: config.console.baudRate } : {}),
+          ...(config.console?.output ? { output: config.console.output } : {}),
+        };
       }
 
       // Keep cuttlefish-env.d.ts in sync so the TS language server can resolve
@@ -691,6 +697,7 @@ async function main(): Promise<void> {
               psram: config?.psram,
               frameworkConfig: config?.frameworkConfig,
               zephyrConfig: config?.zephyrConfig,
+              consoleConfig: config?.console,
               display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,
               debug: options.debug,
             };
@@ -905,6 +912,7 @@ async function main(): Promise<void> {
       defines: psramDefines,
       psram: config?.psram,
       frameworkConfig: config?.frameworkConfig,
+      consoleConfig: config?.console,
       // --probe <method> overrides zephyr.probe from the config for this run.
       zephyrConfig: options.probe
         ? { ...(config?.zephyrConfig ?? {}), probe: options.probe }

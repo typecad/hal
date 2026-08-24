@@ -223,6 +223,13 @@ export interface ZephyrChipDescriptor {
      */
     readonly clockHz?: number;
   };
+  /**
+   * Human-readable description of where the board's default console goes
+   * (its devicetree `zephyr,console` node), e.g. "usart1 on PA9 (TX) /
+   * PA10 (RX)". Shown in the build note when a program uses console.log,
+   * so the output's destination is not tribal knowledge.
+   */
+  readonly consoleDescription?: string;
   /** ADC: the ADC device node label + the pin→channel map. */
   readonly adc?: {
     readonly nodeLabel: string;
@@ -256,6 +263,22 @@ export interface ZephyrChipDescriptor {
   };
   /** Watchdog node label, e.g. 'wdt0'. */
   readonly wdt?: { readonly nodeLabel: string };
+  /**
+   * Storage partition to synthesize when the board DTS ships none. Boards
+   * with an MCUboot-style partition map (most STM32s) define boot/slot
+   * partitions but no `storage_partition`, which the Preferences/FS backends
+   * (ZMS/littlefs) require. Present = "the overlay generator must declare
+   * this partition under &flash0"; boards whose DTS already carries one
+   * (ESP32 devkits) omit it — the overlay only adds the /chosen pointer.
+   * The region must cover ≥2 flash pages (ZMS minimum) and stay clear of
+   * the linked application image.
+   */
+  readonly storage?: {
+    /** Partition start offset in flash, page-aligned. */
+    readonly offset: number;
+    /** Partition size in bytes, a multiple of the flash page size. */
+    readonly size: number;
+  };
   /**
    * Hardware timers exposed as Zephyr counter devices. `instance` (the HAL
    * hwtimer.* op's instance index) maps to `controllers[instance].nodeLabel`.

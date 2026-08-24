@@ -8,11 +8,9 @@ import { delay } from '@typecad/hal';
 
 let toggle: number = 0;
 
-function setup(): void {
-  LED.asOutput();
-}
+LED.asOutput();
 
-function loop(): void {
+while (true) {
   const val: number = A0.read() ? 1 : 0;   // adc.read → SAADC (read() returns boolean)
   if (val) {
     LED.toggle();                          // gpio.toggle → gpio_pin_toggle_dt

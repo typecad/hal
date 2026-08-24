@@ -124,6 +124,8 @@ export function resolveChipFromBoard(
   const adcNodeLabel = bc.get('zephyr.adc.nodeLabel') as string | undefined;
   // PWM timer input clock — feeds the overlay's 16-bit prescaler derivation.
   const pwmClockHz = bc.get('zephyr.pwm.clockHz') as number | undefined;
+  // Human text for the console.log destination build note.
+  const consoleDescription = bc.get('zephyr.consoleDescription') as string | undefined;
   const adcResolution = bc.get('zephyr.adc.resolution') as number | undefined;
   const adcVref = bc.get('zephyr.adc.vrefMv') as number | undefined;
   const adcGain = bc.get('zephyr.adc.gain') as string | undefined;
@@ -139,6 +141,11 @@ export function resolveChipFromBoard(
   });
 
   const wdtNodeLabel = bc.get('zephyr.wdt.nodeLabel') as string | undefined;
+
+  // Storage partition synthesis (boards whose DTS ships no storage_partition
+  // — see ZephyrChipDescriptor.storage).
+  const storageOffset = bc.get('zephyr.storage.offset') as number | undefined;
+  const storageSize = bc.get('zephyr.storage.size') as number | undefined;
 
   // USB device (CDC-ACM): zephyr.usb.controller + zephyr.usb.cdcInstances
   // (+ optional vid/pid for the device descriptor).
@@ -208,6 +215,9 @@ export function resolveChipFromBoard(
         }
       : {}),
     ...(wdtNodeLabel ? { wdt: { nodeLabel: wdtNodeLabel } } : {}),
+    ...(storageOffset != null && storageSize != null
+      ? { storage: { offset: storageOffset, size: storageSize } }
+      : {}),
     ...(usbController && usbCdcInstances && usbCdcInstances > 0
       ? {
           usb: {
@@ -218,6 +228,7 @@ export function resolveChipFromBoard(
           },
         }
       : {}),
+    ...(consoleDescription ? { consoleDescription } : {}),
     ...(wifiSupported ? { wifi: { supported: true as const } } : {}),
     ...(probeMethods.length > 0 ? { probeMethods } : {}),
   };

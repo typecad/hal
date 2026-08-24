@@ -7,25 +7,28 @@ import { describe, done } from '@typecad/expect';
 // codegen tests (tests/pulse-shift-random.test.ts covers the Shift class
 // patterns). These hardware tests exercise the ambient free functions instead.
 
+// Black Pill: numeric pins follow the port-block scheme (PA<n> = n); 2/3 are
+// PA2/PA3 (USART2 pads, unclaimed — the console rides the USB CDC port).
+
 describe("Free shift functions")
   .it("shiftOut() with MSBFIRST is callable")
   .expect(
     (() => {
-      shiftOut(8, 9, 1, 0x99);
+      shiftOut(2, 3, 1, 0x99);
       return 1;
     })
   ).toBe(1)
   .it("shiftOut() with LSBFIRST is callable")
   .expect(
     (() => {
-      shiftOut(8, 9, 0, 0x66);
+      shiftOut(2, 3, 0, 0x66);
       return 1;
     })
   ).toBe(1)
   .it("shiftIn() is callable")
   .expect(
     (() => {
-      shiftIn(8, 9, 1);
+      shiftIn(2, 3, 1);
       return 1;
     })
   ).toBe(1)
