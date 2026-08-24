@@ -25,7 +25,7 @@ describe("split-file header gating (unified entry/non-entry path)", () => {
     expect(result.cpp).not.toContain("Wire.beginTransmission");
   });
 
-  it("a program with no EEPROM usage does not emit EEPROM shim code", () => {
+  it("a program with no EEPROM usage does not emit EEPROM shim code (API removed — nothing may regress it back)", () => {
     const result = transpile(`
       import { D2 } from "@typecad/board-arduino-uno";
       D2.asOutput();

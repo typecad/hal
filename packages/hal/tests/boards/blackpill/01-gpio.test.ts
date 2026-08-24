@@ -2,7 +2,7 @@ import { describe, done } from '@typecad/expect';
 // Black Pill pin spread: digital smoke pins are free port pins; PWM needs the
 // board's synthesized PWM channels (TIM4 on PB6/PB7 — the only pwm4 specs the
 // Zephyr chip descriptor maps). A0 = PA0 (ADC1_IN0).
-import { PB0, PB1, PB10, PB6, PB7, PB5, PA1, A0, LED } from '@typecad/board';
+import { PB0, PB1, PB10, PB6, PB7, PB5, PA0, PA1, A0, LED } from '@typecad/board';
 
 describe("Pin mode configuration")
   .it("Pin.output() alias configures without crashing")
@@ -221,6 +221,19 @@ describe("Pin groups")
       const leds = createPinGroup([PB0, PB1]);
       const pat = leds.readPattern();
       return pat >= 0 ? 1 : 0;
+    })
+  ).toBe(1)
+
+describe("InputPin edge helpers")
+  .it("onFalling/onRising/onChange/offAll are callable")
+  .expect(
+    (() => {
+      const btn = PA0.asInputPullUp();
+      btn.onFalling(() => {});
+      btn.onRising(() => {});
+      btn.onChange(() => {});
+      btn.offAll();
+      return 1;
     })
   ).toBe(1)
 

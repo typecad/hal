@@ -289,3 +289,42 @@ describe('generateOverlay', () => {
     });
   });
 });
+
+describe('storage partition synthesis (Preferences/FS on boards without one)', () => {
+  it('declares the descriptor storage region + the /chosen settings pointer under usesPreferences', () => {
+    // The Black Pill DTS ships only the MCUboot boot/slot/scratch set — the
+    // overlay must synthesize storage_partition from zephyr.storage (256 KB
+    // at 0x40000 = exactly the two last 128 KB flash pages, the ZMS minimum)
+    // or the settings backend's FIXED_PARTITION_ID(storage_partition) dangles.
+    const txt = generateOverlay(BLACKPILL, { usesPreferences: true }, undefined);
+    expect(txt).toContain('storage_partition: partition@40000');
+    expect(txt).toContain('reg = <0x00040000 0x00040000>');
+    expect(txt).toContain('label = "storage"');
+    expect(txt).toContain('zephyr,settings-partition = &storage_partition');
+  });
+
+  it('synthesizes under usesFS too (littlefs mounts the same partition)', () => {
+    const txt = generateOverlay(BLACKPILL, { usesFS: true }, undefined);
+    expect(txt).toContain('storage_partition: partition@40000');
+  });
+
+  it('boards whose DTS already ships the partition get only the /chosen pointer', () => {
+    // Redeclaring an existing node is a devicetree error — a board without
+    // zephyr.storage (ESP32 devkits: partition@3b0000 in the board DTS) must
+    // not get a synthesized partition.
+    const txt = generateOverlay(XIAO_BLE, { usesPreferences: true }, undefined);
+    expect(txt).not.toContain('partition@');
+    expect(txt).toContain('zephyr,settings-partition = &storage_partition');
+  });
+
+  it('no Preferences/FS usage emits no storage lines at all', () => {
+    const txt = generateOverlay(BLACKPILL, {}, undefined);
+    expect(txt).not.toContain('storage_partition');
+  });
+
+  it('enables the watchdog node when wdt_* is used (STM32 iwdg ships disabled)', () => {
+    const txt = generateOverlay(BLACKPILL, { usesWdt: true }, undefined);
+    expect(txt).toContain('&iwdg');
+    expect(txt).toContain('status = "okay"');
+  });
+});

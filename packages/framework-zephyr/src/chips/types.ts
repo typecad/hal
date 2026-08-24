@@ -222,6 +222,16 @@ export interface ZephyrChipDescriptor {
      * rejects the channel ("period cycles exceeds 16-bit timer limit").
      */
     readonly clockHz?: number;
+    /**
+     * The PWM capability constants the transpiler constant-folds
+     * getPwmFrequency()/getPwmResolution() to (from the MCU manifest's
+     * peripherals.pwm.maxFrequency/resolution). The runtime lowering returns
+     * the SAME numbers so a folded literal and a runtime call never disagree.
+     * When absent, the lowering falls back to 1e9/period and the 8-bit
+     * Arduino duty range.
+     */
+    readonly maxFrequencyHz?: number;
+    readonly resolutionBits?: number;
   };
   /**
    * Human-readable description of where the board's default console goes

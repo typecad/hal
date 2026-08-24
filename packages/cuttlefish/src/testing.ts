@@ -97,6 +97,11 @@ export type { LintFingerprint, GateCacheResult } from "./lint-cache.js";
 
 // ── Semantic gates (TypeChecker-based) ──────────────────────────────────────
 export { runSemanticGates } from "./orchestrator/type-checker.js";
+
+// ── Board constants / pin capability internals ──────────────────────────────
+export { resolveBoardConstants } from "./ir/board-resolver.js";
+export { pinEntryIndexForNumber } from "./ir/pin-capability-validation.js";
+
 export {
   canonicalize,
   buildSemanticFacts,

@@ -263,7 +263,7 @@ function stm32f4DbgmcuLines(): string[] {
     '// CUTTLEFISH_STM32_DBGMCU_END',
   ];
 }
-import { interruptInitLines } from './lowering/interrupts.js';
+import { interruptInitLines, collectInterruptPins } from './lowering/interrupts.js';
 import { wdtInitLines } from './lowering/wdt.js';
 import { bleInitLines } from './lowering/ble.js';
 import { wifiInitLines } from './lowering/wifi.js';
@@ -852,7 +852,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesPWM') && chip.pwm) guardBody.push(...pwmInitLines(chip, collectUsedPins(program, 'pwm', chip)));
     if (uses('usesDAC') && chip.dac) guardBody.push(...dacInitLines(chip));
     if (uses('usesHwtimer') && chip.hwtimer) guardBody.push(...hwtimerInitLines(chip));
-    if (uses('usesInterrupts')) guardBody.push(...interruptInitLines(chip));
+    if (uses('usesInterrupts')) guardBody.push(...interruptInitLines(chip, program ? collectInterruptPins(program) : undefined));
     if ((uses('usesWDT') || uses('usesWdt')) && chip.wdt) guardBody.push(...wdtInitLines(chip));
     if (uses('usesBle')) guardBody.push(...bleInitLines());
     // Display runtime (rect/text renderer): the DIRECT-call display path (user
@@ -1169,21 +1169,23 @@ export class ZephyrStrategy implements PlatformStrategy {
     }
 
     // ── Interrupt pin validity ──────────────────────────────────────────────
-    // interrupt.attach only wires a real callback for pins listed in the chip
-    // descriptor's gpio.interruptPins (the lowering needs a DT spec to build
-    // the gpio_callback struct at init). An attach on an unlisted pin emits
-    // only a comment — silent no-op. Flag it so the user knows the handler
-    // will never fire.
+    // interrupt.attach works on every REAL GPIO: pins listed in the chip
+    // descriptor's gpio.interruptPins wire through the DT-spec chain, any
+    // other in-range pin through the raw-controller chain. What cannot work
+    // is a pin number no declared controller range covers (e.g. 99 on a
+    // 34-pin SoC) — that lowering is a comment (silent no-op). Flag only
+    // that case.
     const intPins = new Set((chip.gpio.interruptPins ?? []).map((p) => p.pin));
     for (const pin of interruptPins) {
-      if (!intPins.has(pin)) {
+      if (intPins.has(pin)) continue;
+      const inRange = !chip.gpioControllers || chip.gpioControllers.length === 0
+        || chip.gpioControllers.some((r) => pin >= r.minPin && pin <= r.maxPin);
+      if (!inRange) {
         diags.push({
           severity: 'error',
           code: 'zephyr-interrupt-pin-unavailable',
-          message: `GPIO ${pin} has no interrupt DT spec on ${chip.id}; interrupt.attach is a no-op.`,
-          hint: intPins.size > 0
-            ? `Add the pin to the chip descriptor's gpio.interruptPins, or use an interrupt-capable pin: ${[...intPins].sort((x, y) => x - y).join(', ')}.`
-            : `This target declares no interrupt pins in its chip descriptor; interrupts are not available.`,
+          message: `GPIO ${pin} does not exist on ${chip.id}; interrupt.attach is a no-op.`,
+          hint: `Use a real GPIO on this board (controller ranges: ${chip.gpioControllers.map((r) => `${r.nodelabel} ${r.minPin}-${r.maxPin}`).join(', ')}).`,
           source: program.fileName,
         });
       }
@@ -1365,7 +1367,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // Arduino-core / AVR-only headers the HAL classes declare via __includes.
     // On Zephyr the watchdog lowers to the Zephyr driver (<zephyr/drivers/
     // watchdog.h>, forced under usesWDT) — <avr/wdt.h> does not exist there.
-    const arduinoOnlyHeaders = new Set(['<Wire.h>', '<SPI.h>', '<EEPROM.h>', '<avr/wdt.h>', '<avr/io.h>', '<avr/interrupt.h>', '<avr/sleep.h>', '<avr/power.h>']);
+    const arduinoOnlyHeaders = new Set(['<Wire.h>', '<SPI.h>', '<avr/wdt.h>', '<avr/io.h>', '<avr/interrupt.h>', '<avr/sleep.h>', '<avr/power.h>']);
     return includes.filter((i) => !arduinoOnlyHeaders.has(i));
   }
 

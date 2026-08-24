@@ -124,6 +124,12 @@ export function resolveChipFromBoard(
   const adcNodeLabel = bc.get('zephyr.adc.nodeLabel') as string | undefined;
   // PWM timer input clock — feeds the overlay's 16-bit prescaler derivation.
   const pwmClockHz = bc.get('zephyr.pwm.clockHz') as number | undefined;
+
+  // PWM capability constants (peripherals.pwm.* from the MCU manifest) — the
+  // numbers the transpiler constant-folds getPwmFrequency()/getPwmResolution()
+  // to; carried so the runtime lowering agrees with the fold.
+  const pwmMaxFreq = bc.get('peripherals.pwm.maxFrequency') as number | undefined;
+  const pwmResolution = bc.get('peripherals.pwm.resolution') as number | undefined;
   // Human text for the console.log destination build note.
   const consoleDescription = bc.get('zephyr.consoleDescription') as string | undefined;
   const adcResolution = bc.get('zephyr.adc.resolution') as number | undefined;
@@ -200,7 +206,14 @@ export function resolveChipFromBoard(
     ...(spiControllers.length > 0 ? { spi: { controllers: spiControllers } } : {}),
     ...(uartControllers.length > 0 ? { uart: { controllers: uartControllers } } : {}),
     ...(pwmSpecs.length > 0
-      ? { pwm: { specs: pwmSpecs, ...(pwmClockHz ? { clockHz: pwmClockHz } : {}) } }
+      ? {
+          pwm: {
+            specs: pwmSpecs,
+            ...(pwmClockHz ? { clockHz: pwmClockHz } : {}),
+            ...(pwmMaxFreq !== undefined ? { maxFrequencyHz: pwmMaxFreq } : {}),
+            ...(pwmResolution !== undefined ? { resolutionBits: pwmResolution } : {}),
+          },
+        }
       : {}),
     ...(adcNodeLabel || adcResolution != null || adcVref != null || adcChannels.length > 0
       ? {

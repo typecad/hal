@@ -13,6 +13,7 @@
 
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor, ZephyrInterruptPin } from '../chips/types.js';
+import { controllerNodelabelForPin, controllerRawPinForPin, controllerRangeForPin } from '../chips/controllers.js';
 
 /** Look up an interrupt pin spec by HAL pin number. */
 function findIntPin(chip: ZephyrChipDescriptor, pin: number): ZephyrInterruptPin | undefined {
@@ -40,10 +41,17 @@ function modeToFlags(mode: string): string {
  * Emit the per-pin interrupt callback state + trampolines. Called from shimLines
  * when the program uses interrupts. The trampoline calls a user function via a
  * function-pointer static, set at attach time.
+ *
+ * Two paths:
+ *  - descriptor `gpio.interruptPins` (buttons with DT specs): callback state
+ *    against the DT spec, polarity-correct via gpio_*_dt.
+ *  - `usedPins` (any other pin the program attaches to): raw-controller state —
+ *    attachInterrupt() works on EVERY GPIO, not just DT-aliased buttons. Each
+ *    such pin gets its own callback struct + trampoline addressed by the owning
+ *    controller (STM32 splits gpioa/gpiob/gpioc) and port-relative bit.
  */
-export function interruptInitLines(chip: ZephyrChipDescriptor): string[] {
+export function interruptInitLines(chip: ZephyrChipDescriptor, usedPins?: ReadonlySet<number>): string[] {
   const pins = chip.gpio.interruptPins ?? [];
-  if (pins.length === 0) return [];
   const lines: string[] = ['// CUTTLEFISH_INT_BEGIN'];
   for (const pin of pins) {
     const v = dtSpecVar(pin.dtSpec);
@@ -57,18 +65,60 @@ export function interruptInitLines(chip: ZephyrChipDescriptor): string[] {
       `}`,
     );
   }
+  if (usedPins) {
+    for (const pin of usedPins) {
+      if (pins.some((p) => p.pin === pin)) continue;
+      const v = `__tc_int_raw${pin}`;
+      lines.push(
+        `static const struct device* ${v}_dev = DEVICE_DT_GET(DT_NODELABEL(${controllerNodelabelForPin(chip, pin)}));`,
+        `static struct gpio_callback ${v}_cb;`,
+        `static void (*${v}_handler)(void) = NULL;`,
+        `static void ${v}_tramp(const struct device* port, struct gpio_callback* cb, gpio_port_pins_t pins_v) {`,
+        `    (void)port; (void)cb; (void)pins_v;`,
+        `    if (${v}_handler) { ${v}_handler(); }`,
+        `}`,
+      );
+    }
+  }
   lines.push('// CUTTLEFISH_INT_END');
   return lines;
+}
+
+/**
+ * Collect the pin numbers the program attaches interrupts to (any GPIO — not
+ * just descriptor-listed buttons). Feeds interruptInitLines' raw-path state.
+ */
+export function collectInterruptPins(program: unknown): Set<number> {
+  const pins = new Set<number>();
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    const op = n.operation;
+    if (op && typeof op === 'object') {
+      const o = op as Record<string, unknown>;
+      if (o.operation === 'interrupt.attach' && typeof o.pin === 'number') {
+        pins.add(o.pin as number);
+      }
+    }
+    for (const v of Object.values(n)) {
+      if (Array.isArray(v)) { for (const item of v) visit(item); }
+      else if (v && typeof v === 'object') visit(v);
+    }
+  };
+  visit(program);
+  return pins;
 }
 
 /**
  * Resolve a HAL interrupt.* op to Zephyr C++.
  * Returns `{ code }` for statement ops, `{ expression }` for value-returning ops.
  *
- * Note: attach requires the pin to be in the descriptor's interruptPins. If a
- * program attaches to an unlisted pin, we fall back to a diagnostic comment
- * (the probe uses an unknown pin, so the manifest marks these 'supported' via
- * the comment lowering — the probe sees a non-undefined return).
+ * Two paths: pins listed in the descriptor's gpio.interruptPins (DT-aliased
+ * buttons) go through the polarity-correct gpio_*_dt chain; every other GPIO
+ * attaches through the raw-controller chain (any GPIO is interrupt-capable on
+ * the supported SoCs — the descriptor list exists for DT specs, not as a
+ * capability gate). The manifest probe's synthetic op keeps the comment
+ * fallback (no program ⇒ no shim state was emitted for the raw path).
  */
 export function lowerInterrupt(
   op: HALOpIR,
@@ -78,6 +128,35 @@ export function lowerInterrupt(
   const pin = findIntPin(chip, o.pin);
 
   if (!pin) {
+    // Raw-controller path — state comes from interruptInitLines' usedPins.
+    // Only for pins a declared controller range covers: an out-of-range number
+    // (e.g. pin 99 on a 34-pin SoC) keeps the diagnostic comment. Single-
+    // controller chips declare no ranges, so every number is taken as real and
+    // the driver rejects invalid bits at runtime (Arduino-like behavior).
+    const knownPin = typeof o.pin === 'number' && Number.isInteger(o.pin)
+      && (!chip.gpioControllers || chip.gpioControllers.length === 0
+        || controllerRangeForPin(chip, o.pin) !== undefined);
+    if (knownPin) {
+      const v = `__tc_int_raw${o.pin}`;
+      const raw = controllerRawPinForPin(chip, o.pin);
+      if (op.operation === 'interrupt.attach') {
+        const flags = modeToFlags(o.mode);
+        return {
+          code: [
+            `${v}_handler = (${o.handler});`,
+            `gpio_pin_configure(${v}_dev, ${raw}, GPIO_INPUT);`,
+            `gpio_init_callback(&${v}_cb, ${v}_tramp, BIT(${raw}));`,
+            `gpio_pin_interrupt_configure(${v}_dev, ${raw}, ${flags});`,
+            `gpio_add_callback(${v}_dev, &${v}_cb);`,
+          ].join(' '),
+        };
+      }
+      if (op.operation === 'interrupt.detach') {
+        return {
+          code: `gpio_pin_interrupt_configure(${v}_dev, ${raw}, GPIO_INT_DISABLE); gpio_remove_callback(${v}_dev, &${v}_cb); ${v}_handler = NULL;`,
+        };
+      }
+    }
     // Fallback (also covers the manifest probe): a diagnostic comment so the
     // resolver returns non-undefined. Real attach needs a descriptor entry.
     if (op.operation === 'interrupt.attach') {

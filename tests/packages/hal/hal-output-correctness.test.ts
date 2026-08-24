@@ -40,16 +40,21 @@ describe("HAL hardware-test output correctness (golden guards)", () => {
     expect(cpp).not.toContain("unhandled hal-op");
   });
 
-  it("10-spi.test.ts: setBitOrder maps 'msb' → MSBFIRST", () => {
-    const { cpp } = transpileHw("10-spi.test.ts");
+  it("10-spi.test.ts (uno variant): setBitOrder maps 'msb' → MSBFIRST", () => {
+    // The spi group moved under tests/boards/<board>/ with the per-board
+    // suite split; the uno variant carries the AVR-compatible D-pin names.
+    const { cpp } = transpileHw("boards/uno/10-spi.test.ts");
     expect(cpp).toContain("SPI.setBitOrder(MSBFIRST)");
   });
 
-  it("13-wdt.test.ts: WDT.enable('250ms') emits the WDTO_250MS macro", () => {
+  it("13-wdt.test.ts: WDT.enable('8s') emits the WDTO_8S macro", () => {
+    // The hw test uses 8 s timeouts (STM32 IWDG cannot be disabled once
+    // started — a short timeout resets the board mid-protocol). The string
+    // must map to the macro on AVR exactly the same way.
     const { cpp } = transpileHw("13-wdt.test.ts");
-    expect(cpp).toContain("wdt_enable(WDTO_250MS)");
+    expect(cpp).toContain("wdt_enable(WDTO_8S)");
     // The raw string must never reach the macro (garbage timeout on hardware).
-    expect(cpp).not.toMatch(/wdt_enable\("250ms"\)/);
+    expect(cpp).not.toMatch(/wdt_enable\("8s"\)/);
   });
 
   it("07-interrupts.test.ts: free attachInterrupt emits unquoted mode macros", () => {

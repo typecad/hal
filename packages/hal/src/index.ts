@@ -38,7 +38,6 @@ export { createHALInstances } from './utils.js';
 // Register-mapped struct decorators (compile-time markers, erased by transpiler)
 export type { Bit, Bits } from './register.js';
 export { register, bits } from './register.js';
-export { EEPROMClass, EEPROM } from './eeprom.js';
 export { WDTClass, WDT } from './wdt.js';
 export { ADCClass, ADC } from './adc.js';
 export { DACClass, DAC } from './dac.js';

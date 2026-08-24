@@ -499,9 +499,6 @@ export function buildEmitterContext(
     if (!programAnalysis.usesI2C) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_TWI_BEGIN', '// CUTTLEFISH_TWI_END');
     }
-    if (!programAnalysis.usesEEPROM && !programAnalysis.usesPreferences) {
-      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_EEPROM_BEGIN', '// CUTTLEFISH_EEPROM_END');
-    }
     if (!programAnalysis.usesTone) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_TONE_BEGIN', '// CUTTLEFISH_TONE_END');
     }

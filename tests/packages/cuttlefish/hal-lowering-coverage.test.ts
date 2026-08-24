@@ -706,24 +706,6 @@ describe("HAL SerialPort.printf lowering (format quoting)", () => {
 });
 
 // ===========================================================================
-// EEPROM.get — must emit the C++ .get() call (regression: placeholder body
-// "return ref;" defeated auto-passthrough and emitted no call)
-// ===========================================================================
-
-describe("HAL EEPROM.get lowering", () => {
-  it("emits EEPROM.get() call into the reference", () => {
-    const result = transpile(`
-      import { EEPROM } from '@typecad/board-arduino-uno';
-      struct Config { int magic; };
-      const cfg: Config = { magic: 0 };
-      EEPROM.get(0, cfg);
-    `, { target: 'arduino' });
-
-    expectCppContains(result, ['EEPROM.get(0, cfg)']);
-  });
-});
-
-// ===========================================================================
 // FS — string path parameters must be passed via .c_str() (regression: paths
 // were interpolated unquoted, producing FS.open(config.json, "r") — invalid C++)
 // ===========================================================================

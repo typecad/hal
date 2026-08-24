@@ -10,10 +10,9 @@ import { transpile } from "./setup";
 //   3. String predicates using C stdlib (strstr / strncmp / __tc_endsWith)
 //   4. CUTTLEFISH_STR_BUF_SIZE macro in string polyfills
 //   5. Heap-allocation validator (blocks `new ClassName()` on AVR)
-//   6. EEPROM namespace dispatch
-//   7. Timing namespace dispatch
-//   8. WDT namespace dispatch
-//   9. IRAM_ATTR attribute for ESP32 ISR functions
+//   6. Timing namespace dispatch
+//   7. WDT namespace dispatch
+//   8. IRAM_ATTR attribute for ESP32 ISR functions
 // ---------------------------------------------------------------------------
 
 const AVR_CTX = { platformContext: { architecture: "avr", frameworkData: { buildTarget: "arduino:avr:uno" } } };
@@ -352,50 +351,9 @@ describe("Heap-allocation validator (AVR)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 6. EEPROM namespace dispatch
-// ---------------------------------------------------------------------------
-
-describe("EEPROM namespace dispatch", () => {
-  it("transpiles EEPROM.read(addr) to EEPROM.read()", () => {
-    const result = transpile(
-      `function setup(): void { const v = EEPROM.read(10); }`,
-      { target: "arduino",
-      mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
-    );
-    expect(result.cpp).toContain("EEPROM.read(10)");
-  });
-
-  it("transpiles EEPROM.write(addr, val) to EEPROM.write()", () => {
-    const result = transpile(
-      `function setup(): void { EEPROM.write(0, 42); }`,
-      { target: "arduino",
-      mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
-    );
-    expect(result.cpp).toContain("EEPROM.write(0, 42)");
-  });
-
-  it("transpiles EEPROM.update(addr, val) to EEPROM.update()", () => {
-    const result = transpile(
-      `function setup(): void { EEPROM.update(5, 99); }`,
-      { target: "arduino",
-      mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
-    );
-    expect(result.cpp).toContain("EEPROM.update(5, 99)");
-  });
-
-  it("transpiles EEPROM.length() to EEPROM.length()", () => {
-    const result = transpile(
-      `function setup(): void { const sz = EEPROM.length(); }`,
-      { target: "arduino",
-      mcu: "@typecad/mcu-atmega328p", ...AVR_CTX },
-    );
-    expect(result.cpp).toContain("EEPROM.length()");
-  });
-});
 
 // ---------------------------------------------------------------------------
-// 7. Timing namespace dispatch
+// 6. Timing namespace dispatch
 // ---------------------------------------------------------------------------
 
 describe("Timing namespace dispatch", () => {
@@ -437,7 +395,7 @@ describe("Timing namespace dispatch", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 8. WDT namespace dispatch
+// 7. WDT namespace dispatch
 // ---------------------------------------------------------------------------
 
 describe("WDT namespace dispatch", () => {
@@ -502,7 +460,7 @@ describe("WDT namespace dispatch", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 9. IRAM_ATTR for ESP32 ISR functions
+// 8. IRAM_ATTR for ESP32 ISR functions
 // ---------------------------------------------------------------------------
 
 describe("IRAM_ATTR attribute for ESP32 ISR functions", () => {

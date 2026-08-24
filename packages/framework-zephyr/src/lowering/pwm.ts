@@ -84,12 +84,18 @@ export function lowerPwm(
       return { code: `pwm_set_pulse_dt(&${v}, (static_cast<uint32_t>(${o.duty}) * ${v}.period) / 255);` };
     }
     case 'pwm.get_frequency': {
-      // period is in ns; frequency = 1e9 / period (Hz).
+      // Prefer the board's declared max frequency — the SAME constant the
+      // transpiler folds getPwmFrequency() to (peripherals.pwm.maxFrequency),
+      // so a folded literal and a runtime call agree. Without a declared
+      // value, derive from the spec's period (ns): frequency = 1e9 / period.
+      const declared = chip.pwm?.maxFrequencyHz;
+      if (declared !== undefined) return { expression: String(declared) };
       return { expression: `(${v}.period ? (1000000000ULL / ${v}.period) : 0)` };
     }
     case 'pwm.get_resolution':
-      // Arduino-compatible 8-bit duty range.
-      return { expression: '8' };
+      // The board's declared PWM resolution when it has one (matches the
+      // constant fold); otherwise the Arduino-compatible 8-bit duty range.
+      return { expression: String(chip.pwm?.resolutionBits ?? 8) };
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +

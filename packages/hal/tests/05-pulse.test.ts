@@ -1,11 +1,14 @@
 import { describe, done } from '@typecad/expect';
-// Black Pill: PA7 (raw pin 7) is pulled down before the pulse calls so the
+import { INPUT_PULLDOWN } from '@typecad/board';
+
+// Board-agnostic: raw pin number 7 (PA7 on the Black Pill, D7 on the Uno,
+// GPIO7 on the ESP32 devkit). It is pulled down before the pulse calls so the
 // floating pad idles at 0 — the pulse lowering's measurement loop is
 // unbounded once it sees the start edge, and a floating pin drifting high
 // could stall the whole suite. Held low, every call cleanly hits its timeout.
-import { PA7 } from '@typecad/board';
-
-PA7.inputPullDown();
+// (On cores without hardware pull-down, pinMode(pin, INPUT_PULLDOWN) is
+// accepted and simply configures a plain input — the smoke assertions hold.)
+pinMode(7, INPUT_PULLDOWN);
 
 // NOTE: The Pulse fluent class (Pulse.on(pin).high()) lowers to a C++ class
 // method chain (Pulse::on(pin).high()) that requires a C++ class definition

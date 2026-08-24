@@ -231,7 +231,7 @@ function collectUsedIdentifiers(program: ProgramIR): Set<string> {
     if (statement.kind === "hal-op") {
       // HAL ops carry raw C++ code (e.g. the Preferences namespace lowers to
       // `Preferences.begin(...)` inside a hal-op). Scan it for identifiers so
-      // namespace-detection shims (Preferences/EEPROM/etc.) fire. Without this,
+      // namespace-detection shims (Preferences/etc.) fire. Without this,
       // `used` never sees "Preferences" and the AVR Preferences shim is dropped
       // (avr-g++: "'Preferences' was not declared in this scope"). Demo #33.
       const op = statement.operation;
@@ -241,7 +241,7 @@ function collectUsedIdentifiers(program: ProgramIR): Set<string> {
         }
       }
       // Typed preferences.* ops replaced the rawCpp path. Map them back to the
-      // "Preferences" namespace identifier so the per-arch shim (AVR EEPROM /
+      // "Preferences" namespace identifier so the per-arch shim (AVR backend /
       // ESP32 <Preferences.h>) still fires from needsPreferences below.
       if (op && typeof op.operation === "string" && op.operation.startsWith("preferences.")) {
         used.add("Preferences");

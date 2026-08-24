@@ -69,6 +69,27 @@ describe('pwm lowering', () => {
   });
 });
 
+describe('pwm capability constants (match the transpiler constant fold)', () => {
+  // getPwmFrequency()/getPwmResolution() constant-fold to the MCU manifest's
+  // peripherals.pwm.maxFrequency/resolution; the runtime lowering must return
+  // the SAME numbers or a folded literal and a runtime call disagree
+  // (Black Pill fold: 50 MHz / 16-bit vs the old lowering's 50 Hz / 8).
+  const CHIP = {
+    ...XIAO_BLE,
+    pwm: { ...XIAO_BLE.pwm!, maxFrequencyHz: 50_000_000, resolutionBits: 16 },
+  };
+
+  it('pwm.get_frequency → the declared max frequency when the descriptor carries one', () => {
+    const out = lowerPwm({ operation: 'pwm.get_frequency', pin: 17 } as any, CHIP as any);
+    expect(out.expression).toBe('50000000');
+  });
+
+  it('pwm.get_resolution → the declared resolution when the descriptor carries one', () => {
+    const out = lowerPwm({ operation: 'pwm.get_resolution', pin: 17 } as any, CHIP as any);
+    expect(out.expression).toBe('16');
+  });
+});
+
 describe('synthesized PWM specs (Black Pill — overlay-generated aliases)', () => {
   it('addresses the channel via the tc-pwm<pin> alias the overlay creates', () => {
     const lines = pwmInitLines(BLACKPILL_PWM).join('\n');

@@ -559,7 +559,6 @@ export function variableStatementToIR(
                 if (className === "I2CBus") fieldValues.set("_bus", arg.text);
                 else if (className === "SPIBus") fieldValues.set("_bus", arg.text);
                 else if (className === "SerialPort") fieldValues.set("_port", arg.text);
-                else if (className === "EEPROMClass") fieldValues.set("_name", arg.text);
               } else if (ts.isNumericLiteral(arg)) {
                 if (className === "Pin") fieldValues.set("_pin", arg.text);
               } else if (ts.isPropertyAccessExpression(arg)) {

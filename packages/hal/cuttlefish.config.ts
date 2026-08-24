@@ -72,8 +72,17 @@ const config: CuttlefishConfig = {
     // west flash resets the MCU, which re-enumerates the USB CDC port — give
     // Windows time to bring COM7 back before the reader opens it.
     serialOpenDelay: 3000,
+    // Per-board suite shape (mirrors tests/hardware in the repo root):
+    // tests/*.test.ts holds the board-agnostic groups (bus singletons, LED,
+    // A0, numeric ambient calls) and tests/boards/<board>/ holds the
+    // pin-name-specific groups. Each board config selects its own set; this
+    // one runs everything the Black Pill can. Sibling configs:
+    //   esp32-devkit.config.ts / uno.config.ts
+    // selected via `cuttlefish-test --config <file>` (see package.json
+    // test:hw:esp32 / test:hw:uno scripts).
     include: [
-      'tests/**/*.test.ts',
+      'tests/*.test.ts',
+      'tests/boards/blackpill/*.test.ts',
     ],
   },
 };

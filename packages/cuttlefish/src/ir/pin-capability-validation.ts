@@ -42,10 +42,34 @@ function operationToCapability(op: string): string | null {
 // Board constant lookups
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve the `pins.all.<INDEX>` entry for a HAL pin NUMBER.
+ *
+ * The array is keyed by position, but pin numbers are sparse on MCUs with
+ * unbonded pads (STM32F411: PB11 doesn't exist, so PB12 = number 28 sits at
+ * array index 27) — keying `pins.all.${number}` reads the WRONG pin's entry
+ * for every pin past the first gap. Match by the entry's `number` field; the
+ * dense case (index === number) is checked first so the common path stays a
+ * single lookup. Returns -1 when no entry matches.
+ */
+export function pinEntryIndexForNumber(
+  pinNumber: number,
+  boardConstants: BoardConstants | undefined,
+): number {
+  if (!boardConstants) return -1;
+  if (Number(boardConstants.get(`pins.all.${pinNumber}.number`)) === pinNumber) return pinNumber;
+  for (let i = 0; i < 200; i++) {
+    if (boardConstants.get(`pins.all.${i}.name`) === undefined) continue;
+    if (Number(boardConstants.get(`pins.all.${i}.number`)) === pinNumber) return i;
+  }
+  return -1;
+}
+
 /** Find the human-readable name for a pin number (e.g. 14 → "PC0" or "A0"). */
 function getPinName(pinNumber: number, boardConstants: BoardConstants | undefined): string {
   if (!boardConstants) return `pin ${pinNumber}`;
-  const name = boardConstants.get(`pins.all.${pinNumber}.name`);
+  const idx = pinEntryIndexForNumber(pinNumber, boardConstants);
+  const name = idx >= 0 ? boardConstants.get(`pins.all.${idx}.name`) : undefined;
   return name ? String(name) : `pin ${pinNumber}`;
 }
 
@@ -149,8 +173,12 @@ function checkCapability(
 
   // Check the pin's capability via the board definition.
   // Try the capabilities flag first, then fall back to scanning the
-  // functions array (functions.N.type === capability prefix).
-  const capFlag = boardConstants?.get(`pins.all.${pin}.capabilities.${capability}`);
+  // functions array (functions.N.type === capability prefix). The entry is
+  // resolved by pin NUMBER — the array index diverges from the number on
+  // MCUs with unbonded pads (see pinEntryIndexForNumber).
+  const entryIdx = pinEntryIndexForNumber(pin, boardConstants);
+  if (entryIdx < 0) return; // Unknown pin — the emitter's own resolution reports it.
+  const capFlag = boardConstants?.get(`pins.all.${entryIdx}.capabilities.${capability}`);
   if (capFlag === true || capFlag === 'true') return; // Capability confirmed.
 
   // Fallback: scan the functions array for a matching type.
@@ -166,7 +194,7 @@ function checkCapability(
   if (funcType) {
     let hasCapabilityData = false;
     for (let i = 0; i < 10; i++) {
-      const type = boardConstants?.get(`pins.all.${pin}.functions.${i}.type`);
+      const type = boardConstants?.get(`pins.all.${entryIdx}.functions.${i}.type`);
       if (type === undefined) break;
       hasCapabilityData = true;
       if (String(type) === funcType) return; // Capability confirmed via functions.

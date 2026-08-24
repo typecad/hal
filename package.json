@@ -47,6 +47,8 @@
     "test:ui-layout": "vitest run tests/packages/cuttlefish/ui-layout-harness.test.ts",
     "test:hw": "npm run test:hw --workspace @typecad/hal && npm run test:hw --workspace @typecad/framework-arduino",
     "test:hw:hal": "npm run test:hw --workspace @typecad/hal",
+    "test:hw:hal:esp32": "npm run test:hw:esp32 --workspace @typecad/hal",
+    "test:hw:hal:uno": "npm run test:hw:uno --workspace @typecad/hal",
     "test:hw:framework": "npm run test:hw --workspace @typecad/framework-arduino",
     "test:hw:basics": "npm run test:hw:basics --workspace @typecad/framework-arduino",
     "test:http": "tsx tests/hardware/start-server.ts",

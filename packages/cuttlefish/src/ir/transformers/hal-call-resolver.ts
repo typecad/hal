@@ -11,7 +11,7 @@ import { makeSourceSpan } from "../ast-node-utils.js";
 
 /**
  * Resolve a HAL method call using the HAL resolver.
- * Handles all HAL classes: Pin, I2CBus, SPIBus, SerialPort, EEPROMClass, WDTClass,
+ * Handles all HAL classes: Pin, I2CBus, SPIBus, SerialPort, WDTClass,
  * plus device accessor patterns (I2CDevice, SPIDevice) and namespace methods (Pulse, Shift, Random).
  */
 export function tryResolveHALMethod(

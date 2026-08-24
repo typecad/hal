@@ -280,7 +280,7 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
       const inst = halInstances.get(receiver.text);
       if (inst) return inst;
 
-      // Metadata-driven singleton resolution (e.g., ADC, EEPROM, WDT)
+      // Metadata-driven singleton resolution (e.g., ADC, WDT)
       const singleton = halSingletons.get(receiver.text);
       if (singleton) {
         if (singleton.includes) {

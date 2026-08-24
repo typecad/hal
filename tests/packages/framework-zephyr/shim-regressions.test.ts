@@ -245,3 +245,93 @@ describe("ZephyrStrategy <cstdio> gating", () => {
     expect(inc).toContain("<cstdio>");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Black Pill HAL-suite regressions — the wiring-ambient / bus-index / hidden
+// millis-consumer bug class found running packages/hal's hardware tests on
+// the STM32F411 (commit "test(hal): HAL hardware suite on the Black Pill").
+// ---------------------------------------------------------------------------
+
+describe("ZephyrStrategy bus-state + wiring-ambient regressions", () => {
+  it("emits bus state for digitless aliases (Wire/SPI/Serial → controller 0)", () => {
+    // collectUsedBusIndices used to skip ids without a trailing digit, so a
+    // begin()-only program on a board aliased I2C0→Wire got NO state block
+    // and every __tc_i2c0_* reference dangled.
+    const program = {
+      functions: [],
+      topLevelStatements: [
+        { kind: "hal-op", operation: { operation: "i2c.begin", bus: "Wire" } },
+        { kind: "hal-op", operation: { operation: "spi.begin", bus: "SPI" } },
+        { kind: "hal-op", operation: { operation: "uart.begin", port: "Serial" } },
+      ],
+      classes: [],
+    } as any;
+    const lines = s.shimLines(program, ctxOf({ ...noUses, usesI2C: true, usesSPI: true, usesUart: true })).join("\n");
+    expect(lines).toContain("__tc_i2c0_dev");
+    expect(lines).toContain("__tc_spi0_dev");
+    expect(lines).toContain("__tc_uart0_dev");
+  });
+
+  it("emits pinMode/digitalWrite shims + the gpio dispatcher when the program calls them", () => {
+    const program = {
+      functions: [],
+      topLevelStatements: [
+        { kind: "call", callee: "pinMode", args: [] },
+        { kind: "call", callee: "digitalWrite", args: [] },
+      ],
+      classes: [],
+    } as any;
+    const lines = s.shimLines(program, ctxOf(noUses)).join("\n");
+    expect(lines).toContain("static inline void pinMode(");
+    expect(lines).toContain("static inline void digitalWrite(");
+    expect(lines).toContain("__tc_gpio_dev(");
+    // The dispatcher must precede the shims that call it (single push order).
+    expect(lines.indexOf("__tc_gpio_dev(uint32_t pin)")).toBeLessThan(lines.indexOf("static inline void pinMode("));
+  });
+
+  it("detects free functions passed through __EMIT__ strings (pulseIn et al.)", () => {
+    // The hal resolver's legacy free-function path lowers bare pulseIn() to
+    // an __EMIT__ string — detection that only walked call nodes missed it.
+    const program = {
+      functions: [],
+      topLevelStatements: [
+        { kind: "call", callee: "__EMIT__", args: [{ kind: "string", value: "pulseIn(7, 1, 100);" }] },
+      ],
+      classes: [],
+    } as any;
+    const lines = s.shimLines(program, ctxOf(noUses)).join("\n");
+    expect(lines).toContain("static inline uint32_t pulseIn(");
+    expect(lines).toContain("__tc_gpio_dev(");
+  });
+
+  it("keeps millis() when the injected async runtime is its only consumer", () => {
+    // Async.sleep lowers to a raw hal-op the timing scanners can't see —
+    // usesWallClock/hasAsync stay false. The runtime's pump polls millis()
+    // regardless; the shim must survive (link error otherwise).
+    const program = {
+      functions: [],
+      topLevelStatements: [
+        { kind: "raw", value: "__cuttlefish_async_sleep(10);" },
+      ],
+      classes: [],
+    } as any;
+    const lines = s.shimLines(program, ctxOf(noUses)).join("\n");
+    expect(lines).toContain("inline unsigned long millis()");
+  });
+
+  it("shims random/randomSeed over the PRNG helpers, seeded before use", () => {
+    const program = {
+      functions: [],
+      topLevelStatements: [
+        { kind: "call", callee: "randomSeed", args: [] },
+        { kind: "call", callee: "random", args: [] },
+      ],
+      classes: [],
+    } as any;
+    const lines = s.shimLines(program, ctxOf(noUses)).join("\n");
+    expect(lines).toContain("static inline void randomSeed(");
+    expect(lines).toContain("static inline long random(");
+    // The __tc_rand_* helpers the shims call must be defined BEFORE them.
+    expect(lines.indexOf("__tc_rand_next(void)")).toBeLessThan(lines.indexOf("static inline long random("));
+  });
+});

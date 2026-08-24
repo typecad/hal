@@ -45,7 +45,7 @@ export interface ProgramAnalysisResult {
   usesWDT: boolean;
   usesStrPtr: boolean;
   // Native AVR peripheral usage — framework-avr gates its UART/SPI/TWI/
-  // EEPROM/tone driver shims on these (mirroring how framework-arduino gates
+  // tone driver shims on these (mirroring how framework-arduino gates
   // __tc_Num/__tc_WDT on usesNum/usesWDT). Detected from HAL-op operation
   // names + lowered callee/raw-code references so usage that flows through
   // the HAL resolver (SPI0.begin() → spi.begin hal-op) is still seen.
@@ -54,7 +54,6 @@ export interface ProgramAnalysisResult {
   usesUsb: boolean;
   usesSPI: boolean;
   usesI2C: boolean;
-  usesEEPROM: boolean;
   usesTone: boolean;
   /** map()/constrain() Arduino-API calls. framework-avr gates its native
    *  _native_map/_native_constrain helpers on these (they're dead code
@@ -151,7 +150,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesUsb' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesUsb' | 'usesSPI' | 'usesI2C' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -287,7 +286,7 @@ function analyzeExpression(
         result.usesWDT = true;
       }
       // Native AVR peripheral usage from namespace-prefixed method calls
-      // (Serial.* / SPI.* / Wire.* / EEPROM.*). The HAL resolver lowers these
+      // (Serial.* / SPI.* / Wire.*). The HAL resolver lowers these
       // to structured hal-ops (detected in analyzeStatement) OR to bare
       // lowered calls; these checks cover the pre-lowering and direct forms.
       if (expr.callee.startsWith("Serial.") || expr.callee === "Serial") {
@@ -298,9 +297,6 @@ function analyzeExpression(
       }
       if (expr.callee.startsWith("Wire.") || expr.callee === "Wire") {
         result.usesI2C = true;
-      }
-      if (expr.callee.startsWith("EEPROM.") || expr.callee === "EEPROM") {
-        result.usesEEPROM = true;
       }
       // map()/constrain() Arduino-API calls appear as method-call exprs
       // (callee "map"/"constrain"). framework-avr lowers these to _native_map/
@@ -563,9 +559,6 @@ function analyzeStatement(
       }
       if (statement.callee.startsWith("Wire.") || statement.callee === "Wire") {
         result.usesI2C = true;
-      }
-      if (statement.callee.startsWith("EEPROM.") || statement.callee === "EEPROM") {
-        result.usesEEPROM = true;
       }
       // Statement-form map()/constrain() mirror the method-call checks above.
       if (statement.callee === "map") result.usesMap = true;
@@ -876,12 +869,8 @@ function analyzeStatement(
         if (intervalSites) result.timerCallCount += intervalSites.length;
         const timeoutSites = code.match(/__tc_setTimeout\s*\(/g);
         if (timeoutSites) result.timerCallCount += timeoutSites.length;
-        // Native AVR peripheral usage inside raw hal-op code (e.g. the
-        // EEPROM namespace lowers to `EEPROM.write(...)` in a raw hal-op;
-        // Serial/SPI/Wire may appear as lowered library calls too).
-        if (/\bEEPROM\b/.test(code) || /\beeprom_(read|write|update)_byte\b/.test(code)) {
-          result.usesEEPROM = true;
-        }
+        // Native AVR peripheral usage inside raw hal-op code (Serial/SPI/Wire
+        // may appear as lowered library calls).
         if (/\bSerial\b/.test(code)) {
           result.usesUart = true;
         }
@@ -949,7 +938,6 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesUsb: false,
     usesSPI: false,
     usesI2C: false,
-    usesEEPROM: false,
     usesTone: false,
     usesMap: false,
     usesConstrain: false,

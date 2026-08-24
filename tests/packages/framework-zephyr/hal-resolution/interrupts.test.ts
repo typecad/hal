@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { lowerInterrupt, interruptInitLines } from '../../../../packages/framework-zephyr/src/lowering/interrupts';
+import { lowerInterrupt, interruptInitLines, collectInterruptPins } from '../../../../packages/framework-zephyr/src/lowering/interrupts';
 import { ESP32_DEVKITC } from '../../../../packages/framework-zephyr/src/chips/esp32';
+import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
 
 // ESP32_DEVKITC exposes the BOOT button (GPIO0) via the DT `sw0` alias and
 // lists pin 0 in gpio.interruptPins, so attachInterrupt/detachInterrupt on
@@ -52,5 +53,54 @@ describe('interrupt lowering', () => {
   it('attach on an unmapped pin → diagnostic comment (caught by profileDiagnostics)', () => {
     const out = lowerInterrupt({ operation: 'interrupt.attach', pin: 99, mode: 'rising', handler: 'h' } as any, ESP32_DEVKITC);
     expect(out.code).toContain('no DT spec');
+  });
+});
+
+describe('raw-path interrupts (any GPIO, no DT spec needed)', () => {
+  it('attach on an unlisted but real pin wires the raw callback chain', () => {
+    // GPIO5 exists on the ESP32 (gpio0 range 0-31) but has no DT alias —
+    // attachInterrupt must still work: raw controller + port-relative bit.
+    const out = lowerInterrupt({ operation: 'interrupt.attach', pin: 5, mode: 'falling', handler: 'myIsr' } as any, ESP32_DEVKITC);
+    expect(out.code).toContain('__tc_int_raw5_handler = (myIsr)');
+    expect(out.code).toContain('gpio_pin_configure(__tc_int_raw5_dev, 5, GPIO_INPUT)');
+    expect(out.code).toContain('gpio_init_callback(&__tc_int_raw5_cb, __tc_int_raw5_tramp, BIT(5))');
+    expect(out.code).toContain('gpio_pin_interrupt_configure(__tc_int_raw5_dev, 5, GPIO_INT_EDGE_FALLING)');
+    expect(out.code).toContain('gpio_add_callback(__tc_int_raw5_dev, &__tc_int_raw5_cb)');
+  });
+
+  it('attach on a split-controller SoC addresses the owning port (XIAO split)', () => {
+    // XIAO nRF52840: gpio0 0-31, gpio1 32-48. Pin 2 (P0.04, no DT button
+    // alias) attaches through the gpio0 controller.
+    const out = lowerInterrupt({ operation: 'interrupt.attach', pin: 2, mode: 'change', handler: 'h' } as any, XIAO_BLE);
+    expect(out.code).toContain('gpio_pin_interrupt_configure(__tc_int_raw2_dev, 2, GPIO_INT_EDGE_BOTH)');
+  });
+
+  it('detach on an unlisted pin disables + removes via the raw state', () => {
+    const out = lowerInterrupt({ operation: 'interrupt.detach', pin: 5 } as any, ESP32_DEVKITC);
+    expect(out.code).toContain('gpio_pin_interrupt_configure(__tc_int_raw5_dev, 5, GPIO_INT_DISABLE)');
+    expect(out.code).toContain('__tc_int_raw5_handler = NULL');
+  });
+
+  it('init lines emit raw state only for attached, unlisted pins', () => {
+    const lines = interruptInitLines(ESP32_DEVKITC, new Set([5, 0])).join('\n');
+    // Pin 0 is sw0 (DT-spec path) — no raw duplicate.
+    expect(lines).not.toContain('__tc_int_raw0_');
+    // Pin 5 gets raw state.
+    expect(lines).toContain('static struct gpio_callback __tc_int_raw5_cb');
+    expect(lines).toContain('static void __tc_int_raw5_tramp');
+  });
+
+  it('collectInterruptPins gathers attach pins from a program-like IR', () => {
+    const program = {
+      functions: [
+        { statements: [
+          { kind: 'hal-op', operation: { operation: 'interrupt.attach', pin: 5, mode: 'falling', handler: 'h' } },
+          { kind: 'hal-op', operation: { operation: 'interrupt.detach', pin: 5 } },
+        ] },
+      ],
+    };
+    const pins = collectInterruptPins(program);
+    expect(pins.has(5)).toBe(true);
+    expect(pins.size).toBe(1); // detach alone does not add pins
   });
 });
