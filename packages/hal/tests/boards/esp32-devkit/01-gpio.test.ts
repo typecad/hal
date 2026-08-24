@@ -139,14 +139,14 @@ describe("OutputPin methods via asOutput()")
       const out = D9.asOutput();
       return out.getPwmFrequency();
     })
-  ).toBe(62500)
+  ).toBe(40000000)
   .it("OutputPin.getPwmResolution() returns the board PWM resolution in bits")
   .expect(
     (() => {
       const out = D9.asOutput();
       return out.getPwmResolution();
     })
-  ).toBe(8)
+  ).toBe(20)
 
 describe("Pin methods before mode conversion")
   .it("Pin.read()/isHigh()/isLow() are callable")

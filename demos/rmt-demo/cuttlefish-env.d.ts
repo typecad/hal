@@ -85,15 +85,6 @@ declare global {
     end(): void;
   };
 
-  // EEPROM: not lowered on ESP-IDF (use Preferences / NVS instead).
-  // Type is declared so user code type-checks; transpile emits a diagnostic.
-  const EEPROM: {
-    write(address: number, value: number): void;
-    read(address: number): number;
-    update(address: number, value: number): void;
-    length(): number;
-  };
-
 }
 
 declare module '@typecad/board' {

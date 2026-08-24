@@ -127,7 +127,7 @@ function isBuiltin(name: string): boolean {
   // Common names that don't need explicit init
   const builtins = new Set([
     "true", "false", "null", "undefined", "undefined_t",
-    "console", "Math", "Timing", "Serial", "EEPROM", "WDT", "Preferences",
+    "console", "Math", "Timing", "Serial", "WDT", "Preferences",
     "delay", "millis", "micros", "delayMicroseconds",
     "HIGH", "LOW", "INPUT", "OUTPUT", "INPUT_PULLUP", "INPUT_PULLDOWN",
     "LED_BUILTIN", "Serial",

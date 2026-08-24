@@ -492,7 +492,7 @@ export default defineFrameworkManifest({
       '15-math-functions', '16-bit-operations', '17-buffer-operations', '18-volatile-variables',
       '19-type-aliases-structs', '20-abstract-classes', '21-interfaces', '22-namespaces',
       '23-set-map', '24-error-handling', '25-generics', '26-instanceof', '27-nested-functions',
-      '28-callback-types', '29-accessors-foreach-typeof', '30-timing', '31-eeprom', '32-wdt',
+      '28-callback-types', '29-accessors-foreach-typeof', '30-timing', '32-wdt',
       '33-preferences', '34-num-fluent', '35-string-buffer', '36-destructuring', '37-enum',
       '99-board-dynamic',
     ],

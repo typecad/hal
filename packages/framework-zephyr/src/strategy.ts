@@ -1357,7 +1357,7 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   /**
    * Strip Arduino library headers that @typecad/hal's class surfaces register
-   * (I2CBus → <Wire.h>, SPIBus → <SPI.h>, EEPROM → <EEPROM.h>). The Zephyr
+   * (I2CBus → <Wire.h>, SPIBus → <SPI.h>). The Zephyr
    * equivalents are usage-gated forcedIncludes (<zephyr/drivers/i2c.h>, …),
    * so an unstripped Wire.h reaches the west build and gcc rejects it
    * ("Wire.h: No such file or directory") — this hook is why I2C/SPI class

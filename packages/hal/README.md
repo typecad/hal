@@ -1,7 +1,7 @@
 # `@typecad/hal`
 
 Hardware abstraction layer for [TypeCAD](https://cuttlefish.typecad.net) —
-GPIO, I2C, SPI, UART, timers, ADC/DAC, EEPROM, WiFi/HTTP, and more, written as
+GPIO, I2C, SPI, UART, timers, ADC/DAC, WiFi/HTTP, and more, written as
 regular TypeScript.
 
 `@typecad/hal` is what firmware code imports to talk to hardware. You write
@@ -46,7 +46,7 @@ add new HAL features.
 | **Pulse / Shift** | `pulseIn`, `shiftIn`, `shiftOut` |
 | **Interrupts** | `attachInterrupt`, `detachInterrupt`, `noInterrupts`, `interrupts`, `InterruptMode` |
 | **Timers** | `HardwareTimer`, `Timer0`, `Timer1`, `Timer2` |
-| **Storage** | `EEPROM`, `Preferences` (NVFlash), `FS` |
+| **Storage** | `Preferences` (NVS/ZMS/EEPROM-backed by target), `FS` |
 | **Power / Watchdog** | `Power`, `WDT` (`WDTO_1S`, …) |
 | **Math / Random** | `abs`, `min`, `max`, `Num`, `random`, `randomSeed` |
 | **Async** | `Async` (cooperative scheduling) |
@@ -81,7 +81,7 @@ exercises every AVR-compilable HAL subsystem against real Arduino Uno hardware,
 using [`@typecad/expect`](https://cuttlefish.typecad.net)
 (`describe()` / `.it()` / `.expect()` / `done()`) over serial. Each file covers
 one subsystem: GPIO, timing, math, random, pulse, shift, interrupts, UART,
-I2C, SPI, ADC, EEPROM, WDT, Preferences, async, and constants.
+I2C, SPI, ADC, WDT, Preferences, async, and constants.
 
 ESP32-only subsystems (DAC, `FS`, `Power`, `HardwareTimer`) are intentionally
 omitted — they require an ESP32 target.

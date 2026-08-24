@@ -26,16 +26,6 @@
     delayMicroseconds(us: number): void;
   };
 
-  // EEPROM non-volatile storage (transpiled to EEPROM.*)
-  const EEPROM: {
-    read(addr: number): number;
-    write(addr: number, value: number): void;
-    update(addr: number, value: number): void;
-    length(): number;
-    get<T>(addr: number, ref: T): T;
-    put<T>(addr: number, ref: T): void;
-  };
-
   // Watchdog timer (transpiled to wdt_enable/wdt_reset/wdt_disable)
   const WDT: {
     enable(timeout?: '15ms' | '30ms' | '60ms' | '120ms' | '250ms' | '500ms' | '1s' | '2s' | '4s' | '8s'): void;

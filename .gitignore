@@ -108,5 +108,7 @@ eslint-transpiler-rules.mjs
 # Produced by `npm run test:http` (tests/hardware/start-server.ts).
 tests/hardware/secrets.ts
 
-# scratch probe binaries (local hardware debugging)
-.probe/
+# scratch probe build artifacts (local hardware debugging; the .probe/*.cpp
+# sources and extracted headers are TRACKED — see commit 2f6bc29f)
+.probe/*.exe
+.probe/*.o
