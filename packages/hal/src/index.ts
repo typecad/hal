@@ -33,6 +33,7 @@ export { Pin, OutputPin, InputPin, ToneChain } from './gpio.js';
 export { I2CBus, I2CDevice, i2cName } from './i2c.js';
 export { SPIBus, SPIDevice, spiName } from './spi.js';
 export { SerialPort, serialName } from './uart.js';
+export { USBSerialPort } from './usb.js';
 export { createHALInstances } from './utils.js';
 // Register-mapped struct decorators (compile-time markers, erased by transpiler)
 export type { Bit, Bits } from './register.js';

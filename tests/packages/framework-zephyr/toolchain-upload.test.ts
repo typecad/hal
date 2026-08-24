@@ -1,9 +1,92 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildFlashArgs,
+  resolveProbeMethod,
   classifyUploadResult,
   cleanseUploadOutput,
 } from '../../../packages/framework-zephyr/src/toolchain';
+import type { ZephyrChipDescriptor } from '../../../packages/framework-zephyr/src/chips/types';
+
+// Board-package chip shape (probeMethods table) for the resolution tests.
+const BLACKPILL: ZephyrChipDescriptor = {
+  id: 'blackpill_f411ce/stm32f411xe', soc: 'stm32f411', gpioController: 'gpioa',
+  gpio: { dtSpecs: [] },
+  probeMethods: [
+    { id: 'stlink', runner: 'openocd', args: ['--cmd-pre-init=reset_config none'], debug: true },
+    { id: 'dfu', runner: 'dfu-util', debug: false },
+    { id: 'jlink', runner: 'jlink', debug: true },
+  ],
+};
+const NO_TABLE: ZephyrChipDescriptor = {
+  id: 'esp32s3_devkitc', soc: 'esp32s3', gpioController: 'gpio0', gpio: { dtSpecs: [] },
+};
+
+describe('resolveProbeMethod (zephyr.probe → runner + args)', () => {
+  it("maps the friendly id to the method's runner AND args (quirks included)", () => {
+    const r = resolveProbeMethod({ probe: 'stlink' }, BLACKPILL);
+    expect(r).toEqual({
+      ok: true,
+      runner: 'openocd',
+      args: ['--cmd-pre-init=reset_config none'],
+    });
+  });
+
+  it('appends user runnerArgs AFTER the method args (so they can override)', () => {
+    const r = resolveProbeMethod(
+      { probe: 'stlink', runnerArgs: ['--cmd-pre-init=reset_config srst_only'] },
+      BLACKPILL,
+    ) as Extract<ReturnType<typeof resolveProbeMethod>, { ok: true }>;
+    expect(r.args).toEqual([
+      '--cmd-pre-init=reset_config none',
+      '--cmd-pre-init=reset_config srst_only',
+    ]);
+  });
+
+  it('rejects probe + runner together (two ways of saying it)', () => {
+    const r = resolveProbeMethod({ probe: 'stlink', runner: 'openocd' }, BLACKPILL);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('zephyr.probe');
+  });
+
+  it('lists the supported methods on an unknown id', () => {
+    const r = resolveProbeMethod({ probe: 'swd' }, BLACKPILL);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toContain("'swd'");
+      expect(r.error).toContain('stlink');
+      expect(r.error).toContain('dfu');
+      expect(r.error).toContain('jlink');
+    }
+  });
+
+  it('hints at zephyr.runner for boards without a probeMethods table', () => {
+    const r = resolveProbeMethod({ probe: 'stlink' }, NO_TABLE);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error).toContain('zephyr.runner');
+  });
+
+  it('resolves identically for the debug purpose when the method can debug', () => {
+    const r = resolveProbeMethod({ probe: 'stlink' }, BLACKPILL, 'debug');
+    expect(r).toEqual({ ok: true, runner: 'openocd', args: ['--cmd-pre-init=reset_config none'] });
+  });
+
+  it("rejects a bootloader for the debug purpose and lists the debug-capable methods", () => {
+    const r = resolveProbeMethod({ probe: 'dfu' }, BLACKPILL, 'debug');
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error).toContain('cannot debug');
+      expect(r.error).toContain('stlink');
+      expect(r.error).toContain('jlink');
+      expect(r.error).not.toContain('dfu,');
+    }
+  });
+
+  it('passes the raw runner through untouched (escape hatch)', () => {
+    expect(resolveProbeMethod({ runner: 'jlink', runnerArgs: ['--speed=4000'] }, BLACKPILL))
+      .toEqual({ ok: true, runner: 'jlink', args: ['--speed=4000'] });
+    expect(resolveProbeMethod(undefined, BLACKPILL)).toEqual({ ok: true, runner: undefined, args: [] });
+  });
+});
 
 describe('buildFlashArgs (west flash runner selection)', () => {
   it('trusts the board.cmake default for non-ESP32 boards (no forced nrfjprog)', () => {
@@ -15,6 +98,19 @@ describe('buildFlashArgs (west flash runner selection)', () => {
     // No runner injected: west resolves the board.cmake default itself.
     expect(args).not.toContain('--runner');
     expect(args).not.toContain('nrfjprog');
+  });
+
+
+  it('appends runnerArgs verbatim after the runner (ST-Link openocd reset_config)', () => {
+    const args = buildFlashArgs(
+      '/proj/build', 'blackpill_f411ce/stm32f411xe', 'openocd', undefined,
+      ['--cmd-pre-init=reset_config none'],
+    );
+    expect(args).toEqual([
+      'flash', '-d', '/proj/build',
+      '--runner', 'openocd',
+      '--cmd-pre-init=reset_config none',
+    ]);
   });
 
   it('does not force a runner even when no port is given', () => {

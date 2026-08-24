@@ -17,6 +17,12 @@ export interface CreateProjectOptions {
   toolchainType?: string;
   /** Extra frameworkData fields (e.g. `{ target: 'esp32s3' }` for framework-esp32). */
   frameworkData?: Record<string, unknown>;
+  /** Selected probe-method id (Zephyr boards with a probeMethods table);
+   *  emits the zephyr.probe section in the scaffolded config. */
+  probeMethod?: string;
+  /** Probe methods the board supports (wizard/catalog data) — used to write
+   *  the config comment listing the alternatives. */
+  probeMethods?: { id: string; description?: string }[];
 }
 
 export function generateProjectPackageJson(options: CreateProjectOptions): string {
@@ -206,6 +212,20 @@ export default config;
   const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
   const baudLine = options.baudRate ? `\n\n  // Console polyfill configuration\n  console: {\n    baudRate: ${options.baudRate},\n    // Serial port for upload/monitor. Override with --port on the CLI.\n    port: '${portHint}',\n  },` : '';
 
+  // zephyr.probe — set by `cuttlefish create` from the probe-method choice
+  // (or --probe). Only Zephyr projects with a selected method carry it.
+  const probeIds = (options.probeMethods ?? []).map((m) => m.id).join(', ');
+  const zephyrProbeBlock = options.probeMethod
+    ? `
+
+  // Zephyr-specific: how this board attaches a probe (picked at create time;
+  // the board also supports: ${probeIds || 'see the framework docs'}). Serves
+  // flashing AND debugging.
+  zephyr: {
+    probe: '${options.probeMethod}',
+  },`
+    : '';
+
   // Hardware test runner configuration — used by \`npm run test:hw\` (cuttlefish-test,
   // provided by @typecad/expect). It transpiles each tests/**/*.test.ts file,
   // flashes it to the board, and evaluates the assertions over serial.
@@ -239,7 +259,7 @@ const config: CuttlefishConfig = {
   // Toolchain configuration
   toolchain: {
     type: '${resolvedToolchain}',
-  },${baudLine}${testLine}
+  },${zephyrProbeBlock}${baudLine}${testLine}
 };
 
 export default config;

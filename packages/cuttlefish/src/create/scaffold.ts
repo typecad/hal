@@ -208,7 +208,9 @@ export function scaffoldProject(
 
   // Editor integration: workspace-bundled VS Code extension for .ui syntax
   // highlighting (best-effort — warns and skips if the assets are missing).
-  for (const file of writeEditorIntegration(resolvedOutDir)) createdFiles.push(file);
+  // hideNpm: end-user projects are not npm packages — hide VS Code's NPM
+  // Scripts view and npm task detection.
+  for (const file of writeEditorIntegration(resolvedOutDir, undefined, true)) createdFiles.push(file);
 
   if (options.boardPackage) {
     const boardFilePath = path.join(cuttlefishDir, 'board.ts');

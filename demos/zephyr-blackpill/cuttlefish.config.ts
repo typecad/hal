@@ -42,6 +42,17 @@ const config: CuttlefishConfig = {
     type: 'west',
   },
 
+  // Zephyr-specific: attach via ST-Link (SWD) instead of the board's default
+  // dfu-util runner. 'stlink' is one of the board's named probe methods — it
+  // serves BOTH flashing and debugging, and resolves to the openocd runner
+  // plus the args the method needs (the reset_config quirk for unwired SRST
+  // lives in the board package, not here). The board also supports: dfu
+  // (flash only), jlink. One-off overrides:
+  //   npx cuttlefish build --compile --upload --probe dfu
+  zephyr: {
+    probe: 'stlink',
+  },
+
   // Console polyfill configuration
   console: {
     baudRate: 9600,

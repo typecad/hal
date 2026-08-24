@@ -10,6 +10,7 @@ import {
 } from './pins.js';
 
 import { I2C0, I2C1, I2C2, SPI0, SPI1, SPI2, UART0, UART1, UART2 } from '@typecad/mcu-stm32f411';
+import { USB0 } from './pins.js';
 import * as boardIndex from './index.js';
 
 export const Board = {
@@ -22,4 +23,5 @@ export const Board = {
   I2C0, I2C1, I2C2,
   SPI0, SPI1, SPI2,
   UART0, UART1, UART2,
+  USB0,
 } as const;

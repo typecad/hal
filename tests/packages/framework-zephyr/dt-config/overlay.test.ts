@@ -192,6 +192,29 @@ describe('generateOverlay', () => {
       expect(txt).toContain('tc-pwm23 = &tc_pwm_23;');
     });
 
+    it('derives st,prescaler on the timers node so the period fits the 16-bit ARR', () => {
+      // 20 ms @ 96 MHz = 1.92M cycles; divider = ceil(1.92e6 / 65536) = 30
+      // → cycles 64000, binding value divider-1 = 29.
+      const txt = generateOverlay(BLACKPILL, { usesPwm: true }, undefined);
+      expect(txt).toContain('&timers4 {');
+      expect(txt).toContain('st,prescaler = <29>;');
+    });
+
+    it('emits no prescaler override when the period already fits 16 bits', () => {
+      const chip = {
+        ...BLACKPILL,
+        pwm: { specs: [{ pin: 22, controller: 'pwm4', channel: 1, periodNs: 500_000 }], clockHz: 96_000_000 },
+      } as typeof BLACKPILL;
+      const txt = generateOverlay(chip, { usesPwm: true, pwmUsedPins: [22] }, undefined);
+      expect(txt).not.toContain('st,prescaler');
+    });
+
+    it('emits no prescaler without a declared timer clock (unknown SoC clock)', () => {
+      const noClock = { ...BLACKPILL, pwm: { specs: BLACKPILL.pwm!.specs } } as typeof BLACKPILL;
+      const txt = generateOverlay(noClock, { usesPwm: true }, undefined);
+      expect(txt).not.toContain('st,prescaler');
+    });
+
     it('synthesizes pwm-leds consumers only for the driven pins (no dead DT channels)', () => {
       const txt = generateOverlay(BLACKPILL, { usesPwm: true, pwmUsedPins: [22] }, undefined);
       expect(txt).toContain('tc-pwm22 = &tc_pwm_22;');
@@ -216,6 +239,38 @@ describe('generateOverlay', () => {
       const txt = generateOverlay(XIAO_BLE, { usesAdc: true }, undefined);
       expect(txt).toContain('&adc {');
       expect(txt).not.toContain('pinctrl-0');
+    });
+  });
+
+  describe('usb CDC-ACM composition', () => {
+    it('enables the UDC controller + declares one cdc_acm_uart child per instance', () => {
+      const txt = generateOverlay(BLACKPILL, { usesUsb: true }, undefined);
+      expect(txt).toContain('&zephyr_udc0 {');
+      expect(txt).toContain('status = "okay";');
+      expect(txt).toContain('cdc_acm_uart0: cdc-acm-uart0 {');
+      expect(txt).toContain('compatible = "zephyr,cdc-acm-uart";');
+      // No second instance — the board declares cdcInstances: 1.
+      expect(txt).not.toContain('cdc_acm_uart1');
+    });
+
+    it('composes multiple CDC instances when the descriptor declares them', () => {
+      const chip = { ...XIAO_BLE, usb: { controller: 'zephyr_udc0', cdcInstances: 2 } } as typeof XIAO_BLE;
+      const txt = generateOverlay(chip, { usesUsb: true }, undefined);
+      expect(txt).toContain('cdc_acm_uart0: cdc-acm-uart0 {');
+      expect(txt).toContain('cdc_acm_uart1: cdc-acm-uart1 {');
+    });
+
+    it('omits USB nodes when the program uses none', () => {
+      const txt = generateOverlay(BLACKPILL, {}, undefined);
+      expect(txt).not.toContain('zephyr_udc0');
+      expect(txt).not.toContain('cdc-acm-uart');
+    });
+
+    it('omits USB nodes for a chip that declares no usb capability', () => {
+      const noUsb = { ...XIAO_BLE, usb: undefined } as typeof XIAO_BLE;
+      const txt = generateOverlay(noUsb, { usesUsb: true }, undefined);
+      expect(txt).not.toContain('zephyr_udc0');
+      expect(txt).not.toContain('cdc-acm-uart');
     });
   });
 });

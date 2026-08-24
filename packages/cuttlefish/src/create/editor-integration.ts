@@ -201,13 +201,50 @@ function hasDevScript(outDir: string): boolean {
 }
 
 /**
+ * Settings that hide VS Code's web-dev npm surface in end-user projects. The
+ * scaffolded package.json is build tooling, not an npm package the user
+ * develops — without these, VS Code shows the NPM Scripts explorer view,
+ * auto-detected npm tasks, and Debug codelenses over the scripts.
+ */
+const END_USER_NPM_SETTINGS: Record<string, unknown> = {
+  'npm.autoDetect': 'off',
+  'npm.exclude': '**/package.json',
+  'debug.javascript.codelens.npmScripts': 'never',
+};
+
+/**
+ * Read-merge-write .vscode/settings.json with the npm-hiding settings. Merge-
+ * safe because the framework debug writer may also contribute settings
+ * (e.g. cortex-debug paths) — those must survive.
+ */
+function writeNpmHiddenSettings(vscodeDir: string): string {
+  const settingsPath = path.join(vscodeDir, 'settings.json');
+  let doc: Record<string, unknown> = {};
+  if (fs.existsSync(settingsPath)) {
+    try {
+      const parsed: unknown = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        doc = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // malformed — start fresh
+    }
+  }
+  Object.assign(doc, END_USER_NPM_SETTINGS);
+  fs.writeFileSync(settingsPath, `${JSON.stringify(doc, null, 2)}\n`, 'utf-8');
+  return settingsPath;
+}
+
+/**
  * Copy the bundled extensions into <outDir>/.vscode/extensions/, then write the
  * companion .vscode/extensions.json and — when the project has a `dev` watch
  * script — the .vscode/tasks.json watch task. Returns the absolute paths
  * written, or [] when the extension assets are missing (warns, never throws).
- * `assetsRoot` overrides the bundled-asset location (tests).
+ * `assetsRoot` overrides the bundled-asset location (tests). `hideNpm` (used by
+ * `cuttlefish create` for end-user projects) also writes settings.json keys
+ * that hide VS Code's NPM Scripts view and npm task detection.
  */
-export function writeEditorIntegration(outDir: string, assetsRoot?: string): string[] {
+export function writeEditorIntegration(outDir: string, assetsRoot?: string, hideNpm = false): string[] {
   const vscodeDir = path.join(outDir, '.vscode');
   const extensionRoot = path.join(vscodeDir, 'extensions');
   const root = assetsRoot ?? ASSETS_ROOT;
@@ -234,6 +271,10 @@ export function writeEditorIntegration(outDir: string, assetsRoot?: string): str
 
   if (hasDevScript(outDir)) {
     written.push(writeTasksJson(vscodeDir));
+  }
+
+  if (hideNpm) {
+    written.push(writeNpmHiddenSettings(vscodeDir));
   }
 
   return written;

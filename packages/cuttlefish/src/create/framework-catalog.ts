@@ -115,6 +115,41 @@ const ZEPHYR_BOARD_IDS: Record<string, string> = {
   "xiao-nrf52840": "xiao_ble/nrf52840",
 };
 
+/**
+ * Probe methods per cuttlefish board id, for `cuttlefish create`'s wizard
+ * (which runs BEFORE the board package is installed, so it cannot read the
+ * package's zephyr field). Ids and descriptions mirror the board packages'
+ * probeMethods tables — the consistency test in tests/packages/cuttlefish
+ * keeps them in sync; the runtime resolution reads the board package.
+ */
+export interface CatalogProbeMethod {
+  id: string;
+  description: string;
+}
+
+export const BOARD_PROBE_METHODS: Record<string, CatalogProbeMethod[]> = {
+  "blackpill-f411ce": [
+    { id: "stlink", description: "ST-Link or any SWD probe openocd supports (no BOOT0 needed) — also debugs" },
+    { id: "dfu", description: "Built-in USB bootloader: hold BOOT0, tap reset (no debug)" },
+    { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
+  ],
+  "xiao-nrf52840": [
+    { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
+    { id: "openocd", description: "Any SWD probe openocd supports (CMSIS-DAP, cheap clones) — also debugs" },
+    { id: "uf2", description: "Bootloader UF2 drag-and-drop: double-tap reset (no debug)" },
+  ],
+};
+
+/**
+ * The probe methods a board offers (wizard/catalog data). Empty when the
+ * board has no table — then no probe question is asked and no zephyr.probe
+ * section is scaffolded.
+ */
+export function probeMethodsForBoard(boardId: string | undefined): CatalogProbeMethod[] {
+  if (!boardId) return [];
+  return BOARD_PROBE_METHODS[boardId] ?? [];
+}
+
 export interface FrameworkTargetProfile {
   /** Framework-specific build target (FQBN for Arduino, board id for Zephyr). */
   buildTarget?: string;

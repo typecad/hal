@@ -48,6 +48,9 @@ run('npm run build --workspace @typecad/cuttlefish');
 const { writeEditorIntegration } = await import(
   pathToFileUrl(path.join(REPO, 'packages/cuttlefish/dist/create/editor-integration.js'))
 );
+const { generateFrameworkDebugArtifacts } = await import(
+  pathToFileUrl(path.join(REPO, 'packages/cuttlefish/dist/create/debug-artifacts.js'))
+);
 
 const targets = [REPO];
 const demosDir = path.join(REPO, 'demos');
@@ -62,6 +65,20 @@ if (fs.existsSync(demosDir)) {
 for (const target of targets) {
   const written = writeEditorIntegration(target);
   console.log(`${path.relative(REPO, target) || '.'} -> ${written.length} editor files refreshed`);
+
+  // Debug artifacts (launch.json/tasks.json/openocd.cfg) — hand-assembled demos
+  // never went through cuttlefish create's finalize step, so regenerate them
+  // from each demo's config. No-ops for frameworks/targets without GDB support.
+  const demo = path.relative(REPO, target);
+  if (demo) {
+    const cfg = fs.readFileSync(path.join(target, 'cuttlefish.config.ts'), 'utf-8');
+    const framework = cfg.match(/framework:\s*'([^']+)'/)?.[1];
+    const buildTarget = cfg.match(/buildTarget:\s*'([^']+)'/)?.[1];
+    if (framework) {
+      const debugWritten = generateFrameworkDebugArtifacts({ frameworkPackage: framework, workspaceRoot: target, buildTarget });
+      if (debugWritten.length) console.log(`${demo} -> debug artifacts: ${debugWritten.join(', ')}`);
+    }
+  }
 }
 
 function pathToFileUrl(p) {

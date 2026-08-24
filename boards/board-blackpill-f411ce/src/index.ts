@@ -45,6 +45,7 @@ export const BlackPillF411CEBoard: BoardDefinition = {
     ...STM32F411.peripherals,
     aliases: {
       UART0: 'Serial',
+      USB0:  'USBSerial',
       I2C0:  'Wire',
       SPI0:  'SPI',
     },
@@ -104,6 +105,12 @@ export const BlackPillF411CEBoard: BoardDefinition = {
     i2c:  { controllers: [{ nodeLabel: 'i2c1' }] },
     spi:  { controllers: [{ nodeLabel: 'spi1' }] },
     uart: { controllers: [{ nodeLabel: 'usart1' }] },
+    // USB device: the STM32F411's OTG_FS peripheral on PA11/PA12 (the USB-C
+    // connector). Zephyr's blackpill_f411ce DTS carries the `zephyr_udc0`
+    // controller node (disabled by default); the overlay generator enables it
+    // and composes one CDC-ACM serial instance when a program uses USB0. The
+    // board clocks are already shaped for it (PLLQ = exactly 48 MHz).
+    usb: { controller: 'zephyr_udc0', cdcInstances: 1 },
     // The STM32 watchdog node is `iwdg` (independent watchdog), NOT the
     // `wdt0` the lowering defaults to — declared explicitly so wdt.* ops
     // resolve to the right DEVICE_DT_GET(DT_NODELABEL(iwdg)).
@@ -119,6 +126,10 @@ export const BlackPillF411CEBoard: BoardDefinition = {
         { pin: 22, controller: 'pwm4', channel: 1, periodNs: 20_000_000 },  // PB6 (TIM4_CH1)
         { pin: 23, controller: 'pwm4', channel: 2, periodNs: 20_000_000 },  // PB7 (TIM4_CH2)
       ],
+      // TIM4 input clock: APB1 (48 MHz at 96 MHz sysclk) ×2 timer multiplier.
+      // The overlay derives st,prescaler from this so the 20 ms period fits
+      // the 16-bit ARR (÷1 would need 1.92M cycles and pwm_stm32 rejects it).
+      clockHz: 96_000_000,
     },
     // ADC1: 12-bit, 10 external channels reach bonded pins (IN0–IN9 = PA0–PA7,
     // PB0/PB1; IN10–IN15 route to unbonded PC0–PC5). The STM32 driver requires
@@ -146,6 +157,40 @@ export const BlackPillF411CEBoard: BoardDefinition = {
       ],
     },
     // NOTE: no wifi — radioless target (omission is the "no WiFi" signal).
+    //
+    // Named probe methods — what `zephyr.probe` / `--probe` accept on this
+    // board, for BOTH flashing and debugging. The openocd method carries
+    // `reset_config none` because most ST-Link setups leave the SRST line
+    // unwired and openocd's default `reset init` times out without it
+    // (verified on hardware). dfu is a bootloader, not a debugger — it sets
+    // debug: false.
+    probeMethods: [
+      { id: 'stlink', runner: 'openocd',
+        args: ['--cmd-pre-init=reset_config none'],
+        description: 'ST-Link or any SWD probe openocd supports (no BOOT0 needed)',
+        debug: true, debugInterface: 'swd',
+        debugCfg: ['reset_config none'],
+        debugCfgSource: ['interface/stlink.cfg', 'target/stm32f4x.cfg'] },
+      // Connect-under-reset variant for wedged targets. When the running
+      // firmware leaves the AHB-AP unreachable (openocd: "Failed to read
+      // memory at 0xe000ed04" / "AP write error, reset will not halt"),
+      // attaching AFTER a reset is the only reliable way in. Requires the
+      // probe's SRST/RST line actually wired to the board's RST — most
+      // ST-LINK V2 5-pin hookups carry it; the default `stlink` method
+      // doesn't because many 4-pin setups leave it unwired.
+      { id: 'stlink-srst', runner: 'openocd',
+        args: ['--cmd-pre-init=reset_config srst_only srst_nogate connect_assert_srst'],
+        description: 'ST-Link with the RST/SRST line wired — connect under reset (recovers wedged targets)',
+        debug: true, debugInterface: 'swd',
+        debugCfg: ['reset_config srst_only srst_nogate connect_assert_srst'],
+        debugCfgSource: ['interface/stlink.cfg', 'target/stm32f4x.cfg'] },
+      { id: 'dfu', runner: 'dfu-util',
+        description: 'Built-in USB bootloader: hold BOOT0, tap reset',
+        debug: false },
+      { id: 'jlink', runner: 'jlink',
+        description: 'J-Link probe (SWD)',
+        debug: true, debugInterface: 'swd', debugDevice: 'STM32F411CE' },
+    ],
   },
 };
 
@@ -208,6 +253,8 @@ export const PeripheralPins = {
   SPI0: { MOSI: 'PA7', MISO: 'PA6', SCK: 'PA5', CS: 'PA4' } as const,
   /** UART 1 — PA9 (TX) / PA10 (RX); console + USB-CDC serial available. */
   UART0: { TX: 'PA9', RX: 'PA10' } as const,
+  /** USB CDC serial — OTG_FS on the USB-C connector (PA11 = D-, PA12 = D+). */
+  USB0: { DM: 'PA11', DP: 'PA12' } as const,
 } as const;
 
 // Board-level typed pins (LED/BUTTON + A0–A9 analog aliases)

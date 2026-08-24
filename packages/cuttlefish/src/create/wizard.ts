@@ -3,7 +3,7 @@ import { stdin as input, stdout as output } from "node:process";
 import chalk from "chalk";
 import type { CreateProjectOptions } from "./templates.js";
 import { KNOWN_TARGETS, type KnownTarget } from "./scaffold.js";
-import { frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile } from "./framework-catalog.js";
+import { frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from './framework-catalog.js';
 
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
 
@@ -77,6 +77,7 @@ async function promptConfirm(
 
 export async function runCreateWizard(
   partialOptions?: {
+    probe?: string;
     projectName?: string;
     board?: string;
     framework?: string;
@@ -171,6 +172,28 @@ export async function runCreateWizard(
     // board id + 'west' vs the Arduino FQBN + 'arduino-cli'). See framework-catalog.
     const profile = frameworkTargetProfile(target, framework);
 
+    // 3.5 Probe method (Zephyr boards that ship a table). The probe in the
+    // user's hand becomes the scaffolded zephyr.probe entry — it serves both
+    // flashing and debugging; "board default" omits the section.
+    let probeMethod: string | undefined;
+    const probeMethods = framework === 'zephyr' ? probeMethodsForBoard(target.id) : [];
+    if (probeMethods.length > 0) {
+      if (partialOptions?.probe) {
+        probeMethod = partialOptions.probe;
+        console.log(`${chalk.cyan("?")} Probe method: ${chalk.white(probeMethod)}`);
+      } else {
+        const chosen = await promptSelect(
+          rl,
+          "Which probe will you attach to this board?",
+          [
+            ...probeMethods.map((m) => ({ label: `${m.id} — ${m.description}`, value: m.id })),
+            { label: "board default (no zephyr.probe entry)", value: "" },
+          ],
+        );
+        probeMethod = chosen === "" ? undefined : chosen;
+      }
+    }
+
     // 4. Baud rate (only for embedded)
     let baudRate: number | undefined;
     if (!target.isNative) {
@@ -200,6 +223,8 @@ export async function runCreateWizard(
     }
 
     return {
+      probeMethod,
+      probeMethods,
       projectName,
       targetId: target.id,
       targetDisplayName: target.displayName,

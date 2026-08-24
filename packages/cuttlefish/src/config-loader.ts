@@ -555,11 +555,15 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   // Parse zephyr-specific config section.
   const zephyrKconfig = extractStringRecord(configObject, ["zephyr", "kconfig"], warn);
   const zephyrCmakeArgs = extractStringArray(configObject, ["zephyr", "cmakeArgs"], warn);
+  const zephyrRunnerArgs = extractStringArray(configObject, ["zephyr", "runnerArgs"], warn);
   const zephyrRunner = flat.get("zephyr.runner");
-  if (zephyrKconfig || zephyrCmakeArgs || typeof zephyrRunner === "string") {
+  const zephyrProbe = flat.get("zephyr.probe");
+  if (zephyrKconfig || zephyrCmakeArgs || zephyrRunnerArgs || typeof zephyrRunner === "string" || typeof zephyrProbe === "string") {
     resolved.zephyrConfig = {
       ...(zephyrKconfig ? { kconfig: zephyrKconfig } : {}),
       ...(zephyrCmakeArgs ? { cmakeArgs: zephyrCmakeArgs } : {}),
+      ...(zephyrRunnerArgs ? { runnerArgs: zephyrRunnerArgs } : {}),
+      ...(typeof zephyrProbe === "string" ? { probe: zephyrProbe } : {}),
       ...(typeof zephyrRunner === "string" ? { runner: zephyrRunner } : {}),
     };
   }

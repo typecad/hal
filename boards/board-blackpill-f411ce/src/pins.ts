@@ -6,6 +6,7 @@ import {
   PA0, PA1, PA2, PA3, PA4, PA5, PA6, PA7,
   PB0, PB1, PC13,
 } from '@typecad/mcu-stm32f411';
+import { USBSerialPort } from '@typecad/hal';
 
 // Board-fixed aliases
 export const LED    = PC13;  // onboard user LED (active-low)
@@ -26,3 +27,8 @@ export const A9 = PB1;
 
 // Bus aliases
 export { I2C0, I2C1, I2C2, SPI0, SPI1, SPI2, UART0, UART1, UART2 } from '@typecad/mcu-stm32f411';
+
+// USB CDC serial over the USB-C connector (OTG_FS on PA11/PA12). Board-level
+// instance — the connector is board wiring, not silicon, so it lives here
+// rather than in the MCU package.
+export const USB0 = new USBSerialPort('USBSerial');

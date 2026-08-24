@@ -55,6 +55,15 @@ export const XIAO_BLE: ZephyrChipDescriptor = {
   uart: {
     controllers: [{ nodeLabel: 'uart0' }],
   },
+  // nRF52840 native USB device (USBD). The board DTS carries `zephyr_udc0`
+  // (the nRF USBD driver node); the overlay enables it + composes one CDC-ACM
+  // instance when a program uses USB0. (The console on this board is already
+  // USB-CDC via the board's own chosen cdc_acm_uart0 — this field exposes the
+  // same peripheral to usb.* HAL ops.)
+  usb: {
+    controller: 'zephyr_udc0',
+    cdcInstances: 1,
+  },
   pwm: {
     // pwm-led0 drives the board PWM LED (PWM_OUT0 on P0.17, inverted).
     specs: [{ pin: 17, dtSpec: 'pwm-led0' }],
@@ -79,4 +88,16 @@ export const XIAO_BLE: ZephyrChipDescriptor = {
   // Verified against the nRF52840 SoC dtsi (rtc0/rtc1 nodes). The kernel uses
   // RTC0 for the system tick; RTC1 is available for application use.
   hwtimer: { controllers: [{ nodeLabel: 'rtc1' }] },
+  // Mirror of board-xiao-nrf52840's probeMethods (registry fallback parity —
+  // the board package's zephyr field wins when board constants are present).
+  probeMethods: [
+    { id: 'jlink', runner: 'jlink', description: 'J-Link probe (SWD)',
+      debug: true, debugInterface: 'swd', debugDevice: 'nRF52840_xxAA' },
+    { id: 'openocd', runner: 'openocd',
+      description: 'Any SWD probe openocd supports (CMSIS-DAP, cheap clones)',
+      debug: true, debugInterface: 'swd',
+      debugCfgSource: ['interface/stlink.cfg', 'target/nrf52.cfg'] },
+    { id: 'uf2', runner: 'uf2', description: 'Bootloader UF2 drag-and-drop: double-tap reset',
+      debug: false },
+  ],
 };

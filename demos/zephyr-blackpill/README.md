@@ -52,13 +52,28 @@ npm run flash      # → west flash (dfu-util)
 
 ## Flashing the Black Pill
 
-No debug probe needed — the STM32F411 ships with a **USB DFU bootloader in
-ROM**: hold **BOOT0**, tap **NRST**, release, and the board enumerates as a
-DFU device. The board's default Zephyr flash runner is `dfu-util`, so
-`west flash` works over the USB-C cable alone. (dfu-util ≥ 0.8 required; on
-Windows a one-time [Zadig](https://zadig.akeo.ie/) driver install may be
-needed. SWD debugging needs an ST-Link probe + openocd, which ships with the
-Zephyr SDK.)
+Two supported paths, selected by the `zephyr` section in `cuttlefish.config.ts`:
+
+**ST-Link (SWD) — the demo's default.** The config sets
+`zephyr: { runner: 'openocd', runnerArgs: ['--cmd-pre-init=reset_config none'] }`.
+openocd ships with the Zephyr SDK (the framework puts it on the spawned
+west's PATH automatically), so wiring SWDIO/SWCLK/GND/3V3 to an ST-Link and
+running `npm run upload` just works — no BOOT0 dance, and the target is
+reset to run after flashing. The `reset_config none` matters: most ST-Link
+setups don't wire the SRST line to the Black Pill's RST pad, and without it
+openocd's default `reset init` times out waiting for the target to halt
+(SYSRESETREQ-based reset works without the line).
+
+**USB DFU (no probe).** The STM32F411 ships with a DFU bootloader in ROM:
+hold **BOOT0**, tap **NRST**, release, and the board enumerates as a DFU
+device. Remove the `zephyr` section (the board default runner is dfu-util,
+which the typeCAD Zephyr installer provides inside the env on Windows) and
+run `npm run upload`. On Windows a one-time
+[Zadig](https://zadig.akeo.ie/) driver install may be needed for the DFU
+device.
+
+Note: SWD flashing is also the debugging path — `west debug` / the
+framework's debug tooling use the same ST-Link via openocd+GDB.
 
 ## Prerequisites
 

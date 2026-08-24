@@ -1395,31 +1395,64 @@ export interface TwaiReceiveOp {
 }
 
 // ---------------------------------------------------------------------------
-// USB — USB OTG / USB-Serial-JTAG (ESP32-S3 OTG; C3/C6 USB-Serial-JTAG)
+// USB — USB device CDC-ACM serial port (Zephyr "next" USB device stack)
+//
+// Class-level, serial-shaped surface: a CDC-ACM instance is a serial pipe
+// over the USB connector, not raw endpoints. Composition (controller +
+// class instances) is devicetree's job; the app only enables the device and
+// reads/writes the CDC UART device. The `port` identifies the instance
+// ("USB0" → 0), mirroring `uart.*`'s `port`.
 // ---------------------------------------------------------------------------
 
-export interface UsbInitOp {
-  operation: "usb.init";
-  /** Device descriptor name or C expression (framework-specific) */
-  descriptor?: string;
+export interface UsbBeginOp {
+  operation: "usb.begin";
+  /** Port identifier, e.g. "USB0" (instance 0) */
+  port: string;
+  /** Baud rate (line coding hint; CDC has no wire baud — defaults 115200) */
+  baud: number | string;
+}
+export interface UsbEndOp {
+  operation: "usb.end";
+  port: string;
+}
+export interface UsbPrintOp {
+  operation: "usb.print";
+  port: string;
+  value: string;
+}
+export interface UsbPrintlnOp {
+  operation: "usb.println";
+  port: string;
+  value: string;
+}
+export interface UsbPrintfOp {
+  operation: "usb.printf";
+  port: string;
+  format: string;
+  args: string[];
 }
 export interface UsbWriteOp {
   operation: "usb.write";
-  /** Endpoint index (0 for control/default) */
-  endpoint: number | string;
+  port: string;
   /** C expression for the data buffer */
   data: string;
-  /** Number of bytes */
-  length: number | string;
 }
 export interface UsbReadOp {
   operation: "usb.read";
-  /** Endpoint index */
-  endpoint: number | string;
-  /** Buffer variable name */
-  buffer: string;
-  /** Max bytes to read */
-  length: number | string;
+  port: string;
+}
+export interface UsbAvailableOp {
+  operation: "usb.available";
+  port: string;
+}
+export interface UsbFlushOp {
+  operation: "usb.flush";
+  port: string;
+}
+export interface UsbConnectedOp {
+  operation: "usb.connected";
+  /** Port identifier; resolves to a boolean expression (host opened the port) */
+  port: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -1807,10 +1840,17 @@ export type HALOpIR =
   | TwaiInitOp
   | TwaiSendOp
   | TwaiReceiveOp
-  // USB OTG / USB-Serial-JTAG (unimplemented surface)
-  | UsbInitOp
+  // USB CDC-ACM serial (class-level surface)
+  | UsbBeginOp
+  | UsbEndOp
+  | UsbPrintOp
+  | UsbPrintlnOp
+  | UsbPrintfOp
   | UsbWriteOp
   | UsbReadOp
+  | UsbAvailableOp
+  | UsbFlushOp
+  | UsbConnectedOp
   // Ethernet MAC (unimplemented surface)
   | EthInitOp
   | EthStartOp
@@ -1953,8 +1993,9 @@ export const HAL_OPERATION_KINDS = [
   'i2s.init', 'i2s.write', 'i2s.read',
   // TWAI / CAN (unimplemented)
   'twai.init', 'twai.send', 'twai.receive',
-  // USB OTG / USB-Serial-JTAG (unimplemented)
-  'usb.init', 'usb.write', 'usb.read',
+  // USB CDC-ACM serial port
+  'usb.begin', 'usb.end', 'usb.print', 'usb.println', 'usb.printf', 'usb.write',
+  'usb.read', 'usb.available', 'usb.flush', 'usb.connected',
   // Ethernet MAC (unimplemented)
   'eth.init', 'eth.start', 'eth.is_linked',
   // ESPNOW (unimplemented)

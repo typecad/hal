@@ -16,7 +16,8 @@
 // ---------------------------------------------------------------------------
 
 import type { SpawnSyncOptions } from 'node:child_process';
-import { dirname } from 'node:path';
+import { dirname, join } from 'node:path';
+import { existsSync } from 'node:fs';
 import { type WestInstall, discoverWest } from './west-discover.js';
 
 export interface WestInvocation {
@@ -57,8 +58,19 @@ export function buildEnv(install: WestInstall): NodeJS.ProcessEnv {
   if (install.zephyrBase && !env.ZEPHYR_BASE) {
     env.ZEPHYR_BASE = install.zephyrBase;
   }
-  const bin = venvBinDir(install);
-  if (bin) {
+  // SWD flashing (`zephyr.runner: 'openocd'`): west's openocd runner resolves
+  // a bare `openocd` from PATH. The Zephyr SDK ships it under
+  // hosttools/openocd/bin (the SDK's own setup.cmd puts that dir on PATH for
+  // activated terminals) — do the same for spawned west processes so ST-Link
+  // flashing works without activation. $ZEPHYR_SDK_INSTALL_DIR (set by an
+  // activated env) wins over the discovered install dir.
+  const sdkRoot = env.ZEPHYR_SDK_INSTALL_DIR || install.sdkInstallDir;
+  const openocdBin = sdkRoot ? join(sdkRoot, 'hosttools', 'openocd', 'bin') : undefined;
+  const prepend = [
+    openocdBin !== undefined && existsSync(openocdBin) ? openocdBin : undefined,
+    venvBinDir(install),
+  ].filter((d): d is string => d !== undefined);
+  if (prepend.length > 0) {
     const sep = process.platform === 'win32' ? ';' : ':';
     // On Windows the PATH environment variable may be cased as `Path` (the
     // registry-native form, the only one populated when node is launched from
@@ -66,9 +78,9 @@ export function buildEnv(install: WestInstall): NodeJS.ProcessEnv {
     // casing can leave the other stale/empty, which under PowerShell would drop
     // the user's real PATH (cmake, ninja, …) — breaking `west` configure. Read
     // whichever casing is populated and write that same casing back, preserving
-    // the full existing value with the venv dir prepended.
+    // the full existing value with the discovered dirs prepended.
     const existing = env.Path ?? env.PATH ?? '';
-    const updated = bin + sep + existing;
+    const updated = prepend.join(sep) + sep + existing;
     if (env.Path !== undefined || (env.PATH === undefined && process.platform === 'win32')) {
       env.Path = updated;
     } else {

@@ -159,6 +159,9 @@ export interface CommandLineOptions {
   monitor: boolean;
   /** Serial port for upload and monitor (e.g. COM4 or /dev/ttyACM0) */
   port?: string;
+  /** One-off probe-method override (a board probeMethods id) for --upload
+   *  and --debug. Wins over zephyr.probe in cuttlefish.config.ts; Zephyr-only. */
+  probe?: string;
   /** Baud rate for monitor. Undefined when --baud is absent so the consumer
    *  can fall back to config.console.baudRate (the framework monitor default
    *  applies only when neither is set). */
@@ -256,6 +259,9 @@ export interface CreateCommandOptions {
   outDir?: string;
   /** Skip the automatic `npm install` in the scaffolded project. */
   noInstall?: boolean;
+  /** Probe method id (board probeMethods table) — skips the wizard question
+   *  and writes zephyr.probe into the scaffolded config. Zephyr-only. */
+  probe?: string;
 }
 
 export interface BoardAddCommandOptions {

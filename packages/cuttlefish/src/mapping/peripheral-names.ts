@@ -29,6 +29,7 @@ export function mapPeripheralName(name: string, strategy?: PlatformStrategy): st
   if (canonical === "UART0") return "Serial";
   if (canonical === "I2C0") return "Wire";
   if (canonical === "SPI0") return "SPI";
+  if (canonical === "USB0") return "USBSerial";
   
   return undefined;
 }

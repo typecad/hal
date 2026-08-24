@@ -131,6 +131,12 @@ const OP_PROBE_PAYLOADS: Readonly<Record<string, object>> = {
   'i2c.write_bytes': { bus: 'i2c0', address: 0x50, bytes: [0x00, 0x01] },
   // uart.printf requires format + args (resolver joins args).
   'uart.printf': { port: 'Serial', format: '%d', args: ['x'] },
+  // usb.* require port (+ value/format where the resolver renders them).
+  'usb.begin': { port: 'USB0', baud: 115200 },
+  'usb.print': { port: 'USB0', value: '"x"' },
+  'usb.println': { port: 'USB0', value: '"x"' },
+  'usb.write': { port: 'USB0', data: '"x"' },
+  'usb.printf': { port: 'USB0', format: '%d', args: ['x'] },
   // adc.read / adc.read_voltage require pin.
   'adc.read': { pin: 0 },
   'adc.read_voltage': { pin: 0 },

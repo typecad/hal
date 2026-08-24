@@ -25,6 +25,7 @@ import { lowerPwm } from './pwm.js';
 import { lowerI2c } from './i2c.js';
 import { lowerSpi } from './spi.js';
 import { lowerUart } from './uart.js';
+import { lowerUsb } from './usb.js';
 import { lowerInterrupt } from './interrupts.js';
 import { lowerWdt } from './wdt.js';
 import { lowerPower } from './power.js';
@@ -44,7 +45,7 @@ import { lowerHwtimer } from './hwtimer.js';
 
 export {
   lowerGpio, lowerTiming, lowerAdc, lowerPwm, lowerI2c, lowerSpi, lowerUart,
-  lowerInterrupt, lowerWdt, lowerPower, lowerTone, lowerPulseOrShift, lowerBle,
+  lowerUsb, lowerInterrupt, lowerWdt, lowerPower, lowerTone, lowerPulseOrShift, lowerBle,
   lowerWifi, lowerHttp, lowerMqtt, lowerPreferences, lowerBoard, lowerRandom,
   lowerDac, lowerFs, lowerHwtimer,
 };
@@ -66,6 +67,7 @@ export function lowerHalOp(
   if (op.operation.startsWith('i2c.'))        return lowerI2c(op, chip);
   if (op.operation.startsWith('spi.'))        return lowerSpi(op, chip);
   if (op.operation.startsWith('uart.'))       return lowerUart(op);
+  if (op.operation.startsWith('usb.'))        return lowerUsb(op, chip);
   if (op.operation.startsWith('interrupt.'))  return lowerInterrupt(op, chip);
   if (op.operation.startsWith('wdt.'))        return lowerWdt(op);
   if (op.operation.startsWith('hwtimer.'))    return lowerHwtimer(op, chip);

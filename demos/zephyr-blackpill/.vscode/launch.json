@@ -1,0 +1,26 @@
+{
+  "configurations": [
+    {
+      "name": "TypeCAD Debug (Zephyr, blackpill_f411ce)",
+      "type": "cortex-debug",
+      "request": "attach",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/src/out/build/zephyr/zephyr.elf",
+      "servertype": "openocd",
+      "configFiles": [
+        "${workspaceFolder}/src/out/.cuttlefish/openocd.cfg"
+      ],
+      "interface": "swd",
+      "gdbPath": "C:/Users/justi/micromamba/zephyr-sdk/zephyr-sdk-1.0.1/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe",
+      "serverpath": "C:/Users/justi/.espressif/tools/openocd-esp32/v0.12.0-esp32-20260424/openocd-esp32/bin/openocd.exe",
+      "postAttachCommands": [
+        "set directories C:/typecad/typecode/demos/zephyr-blackpill",
+        "set remote hardware-watchpoint-limit 2",
+        "set remote hardware-breakpoint-limit 2",
+        "monitor reset init",
+        "thb setup"
+      ],
+      "preLaunchTask": "cuttlefish: build + flash (debug)"
+    }
+  ]
+}

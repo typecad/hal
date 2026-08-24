@@ -117,6 +117,23 @@ export function generateOverlay(
   if (usage.usesUart && chip.uart) {
     for (const c of chip.uart.controllers) block(c.nodeLabel);
   }
+  // USB CDC-ACM: the "next" USB device stack composes classes as devicetree
+  // children of the UDC controller node. Enable the controller and declare one
+  // cdc_acm_uart<N> child per instance the chip descriptor declares — the
+  // lowering addresses instance N as DT_NODELABEL(cdc_acm_uart<N>), so the
+  // nodelabels here and in lowering/usb.ts cannot drift. Endpoints and
+  // descriptors are assigned by the class driver at build time.
+  if (usage.usesUsb && chip.usb) {
+    lines.push(`&${chip.usb.controller} {`);
+    lines.push('    status = "okay";');
+    for (let i = 0; i < chip.usb.cdcInstances; i++) {
+      lines.push(`    cdc_acm_uart${i}: cdc-acm-uart${i} {`);
+      lines.push('        compatible = "zephyr,cdc-acm-uart";');
+      lines.push('    };');
+    }
+    lines.push('};');
+    lines.push('');
+  }
   // PWM: synthesized specs (controller + channel, no board-shipped alias) get
   // a pwm-leds consumer node + tc-pwm<pin> alias here — the lowering addresses
   // the channel as PWM_DT_SPEC_GET(DT_ALIAS(tc-pwm<pin>)), so the alias must
@@ -217,11 +234,34 @@ function emitPwmNodes(
   ).filter((s) => !usedPins || usedPins.includes(s.pin));
   if (synthesized.length === 0) return;
   // Enable each distinct PWM controller node (idempotent when already okay).
+  // 16-bit fit: STM32 timers count period cycles in a 16-bit ARR, and the
+  // SoC dtsi default is st,prescaler = <0> (÷1) — a 20 ms servo period at
+  // 96 MHz is 1.92M cycles and pwm_stm32 rejects the channel. When the
+  // descriptor declares the timer clock, derive the smallest divider that
+  // fits the controller's slowest used period and override the prescaler
+  // on the timers parent node (the property lives there, not on the pwm
+  // child). pwm4 → timers4 is the STM32 nodelabel convention.
+  const clockHz = chip.pwm?.clockHz;
   for (const controller of [...new Set(synthesized.map((s) => s.controller!))]) {
     lines.push(`&${controller} {`);
     lines.push('    status = "okay";');
     lines.push('};');
     lines.push('');
+    if (!clockHz) continue;
+    const timersMatch = controller.match(/^pwm(\d+)$/);
+    if (!timersMatch) continue;
+    const maxPeriodNs = Math.max(
+      ...synthesized.filter((s) => s.controller === controller).map((s) => s.periodNs ?? 20_000_000),
+    );
+    // cycles = clockHz * period_s / divider ≤ 65536 (driver allows
+    // UINT16_MAX + 1); binding value is divider - 1 (CLK/(prescaler+1)).
+    const divider = Math.max(1, Math.ceil((clockHz * maxPeriodNs) / 1e9 / 65536));
+    if (divider > 1) {
+      lines.push(`&timers${timersMatch[1]} {`);
+      lines.push(`    st,prescaler = <${divider - 1}>;`);
+      lines.push('};');
+      lines.push('');
+    }
   }
   lines.push('/ {');
   lines.push('    tc_pwm_leds: tc-pwm-leds {');

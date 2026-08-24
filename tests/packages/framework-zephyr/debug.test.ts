@@ -32,6 +32,11 @@ describe('ZephyrStrategy.debugMode — target selection', () => {
     expect(strategy.debugMode('esp32s3_other')).toBe('gdb');
   });
 
+  it('selects gdb for blackpill (ST-Link probe method ships in the board package)', () => {
+    expect(strategy.debugMode('blackpill_f411ce')).toBe('gdb');
+    expect(strategy.debugMode('blackpill_f411ce/stm32f411xe')).toBe('gdb');
+  });
+
   it('falls back to printf for xiao_ble (J-Link path not yet wired)', () => {
     expect(strategy.debugMode('xiao_ble')).toBe('printf');
   });
@@ -45,6 +50,37 @@ describe('ZephyrStrategy.debugMode — target selection', () => {
 
   it('falls back to printf when no target is given', () => {
     expect(strategy.debugMode(undefined)).toBe('printf');
+  });
+});
+
+describe('gdbPathFromSdkRoot — per-architecture toolchain dir', () => {
+  it('resolves the arm-zephyr-eabi GDB for ARM board targets', () => {
+    const sdk = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-sdk-arm-'));
+    const armBin = path.join(sdk, 'arm-zephyr-eabi', 'bin');
+    fs.mkdirSync(armBin, { recursive: true });
+    fs.writeFileSync(path.join(armBin, 'arm-zephyr-eabi-gdb.exe'), '');
+    try {
+      const p = gdbPathFromSdkRoot(sdk, 'blackpill_f411ce/stm32f411xe');
+      expect(p).toBeTruthy();
+      expect(p!.replace(/\\/g, '/')).toContain('arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe');
+      // Xtensa targets must not resolve against an ARM-only SDK layout.
+      expect(gdbPathFromSdkRoot(sdk, 'esp32s3_devkitc')).toBeUndefined();
+    } finally {
+      fs.rmSync(sdk, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the xtensa-espressif default for esp32 targets and legacy no-target calls', () => {
+    const sdk = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-sdk-xt-'));
+    const xtBin = path.join(sdk, 'xtensa-espressif_esp32s3_zephyr-elf', 'bin');
+    fs.mkdirSync(xtBin, { recursive: true });
+    fs.writeFileSync(path.join(xtBin, 'xtensa-espressif_esp32s3_zephyr-elf-gdb.exe'), '');
+    try {
+      expect(gdbPathFromSdkRoot(sdk, 'esp32s3_devkitc')).toContain('xtensa-espressif_esp32s3');
+      expect(gdbPathFromSdkRoot(sdk)).toContain('xtensa-espressif_esp32s3');
+    } finally {
+      fs.rmSync(sdk, { recursive: true, force: true });
+    }
   });
 });
 
@@ -149,6 +185,51 @@ describe('generateGdbScript — conditional lambda frame filter', () => {
   });
 });
 
+describe('writeDebugConfig — probe-method-driven artifacts (Black Pill stlink)', () => {
+  it('shapes openocd.cfg + launch.json from the board probeMethods table (swd, no xtensa mem)', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-dbg-bp-'));
+    const projectRoot = path.join(tmp, 'src', 'out');
+    fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
+    // The board constants carry the probeMethods table; the config selects
+    // the method. resolveDebugProbeMethod reads both.
+    try {
+      const { resolveBoardConstants } = await import('../../../packages/cuttlefish/src/ir/board-resolver');
+      const bc = resolveBoardConstants('boards/board-blackpill-f411ce/src/index.ts');
+      fs.writeFileSync(path.join(projectRoot, 'src', 'board-constants.json'), JSON.stringify(Object.fromEntries(bc)));
+      fs.writeFileSync(path.join(tmp, 'cuttlefish.config.ts'), "export default { zephyr: { probe: 'stlink' } } as any;");
+
+      writeDebugConfig({
+        projectRoot,
+        workspaceRoot: tmp,
+        sketchRel: 'src/out',
+        target: 'blackpill_f411ce/stm32f411xe',
+        buildDir: path.join(projectRoot, 'build'),
+      });
+
+      const cfgText = fs.readFileSync(path.join(projectRoot, '.cuttlefish', 'openocd.cfg'), 'utf8');
+      expect(cfgText).toContain('source [find interface/stlink.cfg]');
+      expect(cfgText).toContain('source [find target/stm32f4x.cfg]');
+      expect(cfgText).toContain('reset_config none');
+
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      const cfg = launch.configurations[0];
+      expect(cfg.name).toBe('TypeCAD Debug (Zephyr, blackpill_f411ce)');
+      expect(cfg.servertype).toBe('openocd');
+      expect(cfg.interface).toBe('swd');
+      // The ESP32 flash-mapping commands are xtensa-only.
+      expect(cfg.postAttachCommands.some((l: string) => l.includes('0x42000000'))).toBe(false);
+      // No trailing `c`: an instant reset→thb-setup stop would arrive while
+      // cortex-debug is still initializing, leaving the session half-started.
+      // The pending thb means the first user Continue stops at setup().
+      expect(cfg.postAttachCommands).toContain('monitor reset init');
+      expect(cfg.postAttachCommands).toContain('thb setup');
+      expect(cfg.postAttachCommands).not.toContain('c');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('writeDebugConfig — launch.json + tasks.json generation', () => {
   it('writes a self-contained cortex-debug launch config + build task', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-debugcfg-'));
@@ -172,7 +253,7 @@ describe('writeDebugConfig — launch.json + tasks.json generation', () => {
 
       const launch = JSON.parse(fs.readFileSync(launchPath, 'utf8'));
       const cfg = launch.configurations[0];
-      expect(cfg.name).toBe('TypeCAD Debug (Zephyr, ESP32-S3)');
+      expect(cfg.name).toBe('TypeCAD Debug (Zephyr, esp32s3_devkitc)');
       // cortex-debug (the standard Cortex-Debug extension), NOT gdbtarget.
       // cortex-debug starts OpenOCD via servertype; postAttachCommands reset
       // the target, set a HW breakpoint at setup(), and continue.
@@ -329,7 +410,7 @@ describe('writeProjectDebugArtifacts — create-time starter artifacts', () => {
       // The launch config targets the starter app's ELF + openocd cfg, and its
       // preLaunchTask pairs with the emitted task label (F5 wiring).
       const cfg = launch.configurations[0];
-      expect(cfg.name).toBe('TypeCAD Debug (Zephyr, ESP32-S3)');
+      expect(cfg.name).toBe('TypeCAD Debug (Zephyr, esp32s3_devkitc)');
       expect(cfg.executable).toBe('${workspaceFolder}/src/out/build/zephyr/zephyr.elf');
       expect(cfg.configFiles[0]).toBe('${workspaceFolder}/src/out/.cuttlefish/openocd.cfg');
       const task = tasks.tasks[0];

@@ -18,6 +18,10 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname, relative } from 'node:path';
 import { ZephyrStrategy } from '../strategy.js';
+import { resolveChipFromBoard } from '../chips/resolve.js';
+import { resolveProbeMethod } from './index.js';
+import { loadCuttlefishConfig } from '@typecad/cuttlefish/config-loader';
+import type { ZephyrProbeMethod } from '../chips/types.js';
 
 export interface DebugConfigOptions {
   /** Absolute path to the Zephyr project root (contains CMakeLists.txt + src/). */
@@ -46,14 +50,13 @@ export interface DebugConfigOptions {
  * omits gdbPath and relies on Cortex-Debug's default resolution).
  */
 export function resolveGdbPath(buildDir: string, target: string): string | undefined {
-  void target; // toolchain dir is esp32s3-specific today; see gdbPathFromSdkRoot
   const cachePath = join(buildDir, 'CMakeCache.txt');
   if (existsSync(cachePath)) {
     try {
       const cache = readFileSync(cachePath, 'utf-8');
       const m = cache.match(/^ZEPHYR_SDK_INSTALL_DIR:PATH=(.+)$/m);
       if (m) {
-        const fromCache = gdbPathFromSdkRoot(m[1].trim());
+        const fromCache = gdbPathFromSdkRoot(m[1].trim(), target);
         if (fromCache) return fromCache;
       }
     } catch {
@@ -62,17 +65,23 @@ export function resolveGdbPath(buildDir: string, target: string): string | undef
   }
   // No build dir yet (project just created): probe known SDK locations.
   for (const sdkRoot of discoverZephyrSdkRoots()) {
-    const p = gdbPathFromSdkRoot(sdkRoot);
+    const p = gdbPathFromSdkRoot(sdkRoot, target);
     if (p) return p;
   }
   return undefined;
 }
 
-/** The esp32s3 xtensa GDB location inside a Zephyr SDK root (verified against
- *  zephyr-sdk-0.17.4). Returns a forward-slash absolute path or undefined. */
-export function gdbPathFromSdkRoot(sdkRoot: string): string | undefined {
-  const gdbName = 'xtensa-espressif_esp32s3_zephyr-elf-gdb.exe';
-  const gdbPath = join(sdkRoot, 'xtensa-espressif_esp32s3_zephyr-elf', 'bin', gdbName);
+/** The GDB location inside a Zephyr SDK root, per target architecture:
+ *  ARM boards use the arm-zephyr-eabi toolchain (verified against
+ *  zephyr-sdk-0.17.4), Espressif the xtensa-espressif_esp32s3_zephyr-elf one.
+ *  Returns a forward-slash absolute path or undefined. */
+export function gdbPathFromSdkRoot(sdkRoot: string, target?: string): string | undefined {
+  // No target given (legacy callers/tests): the historical Espresif default.
+  const boardId = (target ?? '').split('/')[0];
+  const isArm = boardId.length > 0 && !boardId.startsWith('esp32');
+  const toolchainDir = isArm ? 'arm-zephyr-eabi' : 'xtensa-espressif_esp32s3_zephyr-elf';
+  const gdbName = isArm ? 'arm-zephyr-eabi-gdb.exe' : 'xtensa-espressif_esp32s3_zephyr-elf-gdb.exe';
+  const gdbPath = join(sdkRoot, toolchainDir, 'bin', gdbName);
   return existsSync(gdbPath) ? gdbPath.replace(/\\/g, '/') : undefined;
 }
 
@@ -307,6 +316,7 @@ function buildLaunchConfig(
   o: DebugConfigOptions,
   gdbScriptRel: string | undefined,
   openOcdCfgRel: string,
+  method?: ZephyrProbeMethod,
 ): Record<string, unknown> {
   // The ELF is at <projectRoot>/build/zephyr/zephyr.elf (Zephyr's standard
   // build output). cortex-debug uses `executable` (not `program`).
@@ -335,25 +345,46 @@ function buildLaunchConfig(
   //   thb setup           — temporary HW breakpoint at setup()
   //   c                   — continue; bootloader maps flash, breaks at setup()
   //
+  // The trailing `c` is ESP32-only. On instant-reset ARM targets the
+  // thb-setup stop lands within milliseconds — WHILE cortex-debug is still
+  // chewing through this command list — and a stop event mid-initialization
+  // leaves the session half-started (toolbar never enables, user breakpoints
+  // never bind). The ESP32's bootloader takes hundreds of milliseconds, so
+  // its stop safely arrives after init completes. ARM keeps the pending
+  // thb (the first user Continue stops at setup()) but hands the run/stop
+  // transition to cortex-debug.
+  //
   // Paths use forward slashes — ${workspaceFolder} on Windows produces
   // backslashes that GDB interprets as escape sequences (\t → tab, etc.).
   const ws = o.workspaceRoot.replace(/\\/g, '/');
+  // The Xtensa flash-mapping commands are ESP32-specific (app flash isn't
+  // readable until the bootloader maps it); ARM targets drop them.
+  const isEsp32Target = o.target.split('/')[0].startsWith('esp32');
   const postAttachCommands = [
     `set directories ${ws}`,
     'set remote hardware-watchpoint-limit 2',
     'set remote hardware-breakpoint-limit 2',
-    'set mem inaccessible-by-default off',
-    'mem 0x42000000 0x44000000 ro cache',
+    ...(isEsp32Target ? [
+      'set mem inaccessible-by-default off',
+      'mem 0x42000000 0x44000000 ro cache',
+    ] : []),
     'monitor reset init',
     'thb setup',
-    'c',
+    ...(isEsp32Target ? ['c'] : []),
   ];
   if (gdbScriptRel) {
     postAttachCommands.splice(1, 0, `source ${ws}/${gdbScriptRel}`);
   }
 
+  // Probe-method-driven server shape: jlink-runner methods use cortex-debug's
+  // jlink server (needs the device name from the board table); openocd-runner
+  // methods keep the openocd server with the generated cfg file. Without a
+  // method (ESP32 builtin-JTAG targets), the historical default applies.
+  const servertype = method?.runner === 'jlink' ? 'jlink' : 'openocd';
+  const isEsp32 = o.target.split('/')[0].startsWith('esp32');
+
   const cfg: Record<string, unknown> = {
-    name: 'TypeCAD Debug (Zephyr, ESP32-S3)',
+    name: `TypeCAD Debug (Zephyr, ${o.target.split('/')[0]})`,
     type: 'cortex-debug',
     // Attach mode: no download (the ELF is already flashed). The server
     // controller's attachCommands() just halts the target, then our
@@ -363,11 +394,12 @@ function buildLaunchConfig(
     request: 'attach',
     cwd: '${workspaceFolder}',
     executable,
-    servertype: 'openocd',
-    configFiles,
-    interface: 'jtag',
+    servertype,
+    ...(servertype === 'openocd' ? { configFiles } : {}),
+    ...(method?.debugDevice ? { device: method.debugDevice } : {}),
+    interface: method?.debugInterface ?? (isEsp32 ? 'jtag' : 'swd'),
     ...(gdbPath ? { gdbPath } : {}),
-    ...(openocdPath ? { serverpath: openocdPath } : {}),
+    ...(servertype === 'openocd' && openocdPath ? { serverpath: openocdPath } : {}),
     postAttachCommands,
     preLaunchTask: 'cuttlefish: build + flash (debug)',
   };
@@ -418,13 +450,29 @@ const OPENOCD_ADAPTER_SPEED = 4000;
  * helper/RTOS tcl, so the override can land before the driver exists or be
  * re-defaulted). Putting it in the cfg, after the source, is deterministic.
  */
-function buildOpenOcdCfg(): string {
-  return [
+function buildOpenOcdCfg(method?: ZephyrProbeMethod): string {
+  const header = [
     '# Auto-generated by @typecad/framework-zephyr. Do not edit — regenerate',
-    '# with `cuttlefish build --debug`. Sources the board cfg (which loads the',
-    '# esp_usb_jtag adapter driver + esp32s3 target + ESP_RTOS Zephyr) then',
-    '# overrides the adapter speed to a USB-JTAG-stable value AFTER the driver',
-    '# is loaded. See debug-config.ts for the rationale.',
+    '# with `cuttlefish build --debug`.',
+  ];
+  if (method?.debugCfgSource && method.debugCfgSource.length > 0) {
+    // Probe-method-driven config: the board package's verified interface +
+    // target sources, then the method's quirk lines (e.g. reset_config for an
+    // unwired SRST) — the cfg-file form of the west runner args.
+    return [
+      ...header,
+      `# Probe method '${method.id}' — from the board package's probeMethods table.`,
+      ...method.debugCfgSource.map((src) => `source [find ${src}]`),
+      ...(method.debugCfg ?? []),
+      '',
+    ].join('\n');
+  }
+  return [
+    ...header,
+    '# Sources the board cfg (which loads the esp_usb_jtag adapter driver +',
+    '# esp32s3 target + ESP_RTOS Zephyr) then overrides the adapter speed to a',
+    '# USB-JTAG-stable value AFTER the driver is loaded. See debug-config.ts',
+    '# for the rationale.',
     'source [find board/esp32s3-builtin.cfg]',
     `adapter speed ${OPENOCD_ADAPTER_SPEED}`,
     '',
@@ -441,16 +489,49 @@ function buildOpenOcdCfg(): string {
  *   <projectRoot>/.cuttlefish/openocd.cfg (OpenOCD cfg, adapter speed override)
  *   <projectRoot>/.cuttlefish/.cuttlefish-gdb.py  (lambda frame filter, conditional)
  */
+/**
+ * Resolve the debug-side probe method for a project: the board constants the
+ * transpile persists + the workspace config's zephyr.probe selection.
+ * Returns the method object (for cfg/servertype data) or undefined — ESP32
+ * targets and boards without tables fall back to the framework's default
+ * (esp_usb_jtag openocd) behavior.
+ */
+function resolveDebugProbeMethod(
+  projectRoot: string,
+  workspaceRoot: string,
+): ZephyrProbeMethod | undefined {
+  try {
+    const bcPath = [
+      join(projectRoot, 'src', 'board-constants.json'),
+      join(projectRoot, 'board-constants.json'),
+    ].find((p) => existsSync(p));
+    if (!bcPath) return undefined;
+    const raw = JSON.parse(readFileSync(bcPath, 'utf8')) as Record<string, string | number | boolean>;
+    const chip = resolveChipFromBoard(new Map(Object.entries(raw)));
+    if (!chip) return undefined;
+    const zc = loadCuttlefishConfig(workspaceRoot)?.zephyrConfig as Record<string, unknown> | undefined;
+    const probe = resolveProbeMethod(zc, chip, 'debug');
+    if (!probe.ok) return undefined;
+    return chip.probeMethods?.find((m) => m.id === (zc?.probe as string | undefined));
+  } catch {
+    return undefined;
+  }
+}
+
 export function writeDebugConfig(o: DebugConfigOptions): void {
   const vscodeDir = join(o.workspaceRoot, '.vscode');
   const cuttlefishDir = join(o.projectRoot, '.cuttlefish');
   mkdirSync(cuttlefishDir, { recursive: true });
 
+  // The selected probe method (if any) drives the debug server shape:
+  // openocd cfg source/quirks, cortex-debug servertype, wire interface.
+  const method = resolveDebugProbeMethod(o.projectRoot, o.workspaceRoot);
+
   // openocd.cfg — written first so its relative path can be wired into the
   // cortex-debug configFiles.  cortex-debug starts OpenOCD as a child process
   // and passes this file via -f.
   const openOcdCfgPath = join(cuttlefishDir, 'openocd.cfg');
-  writeFileSync(openOcdCfgPath, buildOpenOcdCfg(), 'utf-8');
+  writeFileSync(openOcdCfgPath, buildOpenOcdCfg(method), 'utf-8');
   const openOcdCfgRel = `${o.sketchRel}/.cuttlefish/openocd.cfg`;
 
   // launch.json — merge the cortex-debug config by name.
@@ -462,7 +543,7 @@ export function writeDebugConfig(o: DebugConfigOptions): void {
     gdbScriptRel = `${o.sketchRel}/.cuttlefish/.cuttlefish-gdb.py`;
   }
 
-  const launchConfig = buildLaunchConfig(o, gdbScriptRel, openOcdCfgRel);
+  const launchConfig = buildLaunchConfig(o, gdbScriptRel, openOcdCfgRel, method);
   mergeJsonArrayEntry(join(vscodeDir, 'launch.json'), 'configurations', 'name', launchConfig);
 
   // tasks.json — merge the build+flash task by label.  OpenOCD is managed by

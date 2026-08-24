@@ -55,6 +55,22 @@ describe('resolveKconfigFragments', () => {
     expect(m.get('CONFIG_PM_DEVICE')).toBe('y');
   });
 
+  it('enables the "next" USB device stack when usesUsb', () => {
+    const m = resolveKconfigFragments({ usesUsb: true }, false);
+    // Zephyr 4.3 symbol names (subsys/usb/device_next/Kconfig): the next
+    // stack is USB_DEVICE_STACK_NEXT (USB_DEVICE_STACK is the deprecated
+    // legacy one) and the class is USBD_CDC_ACM_CLASS (USBD_ prefix).
+    expect(m.get('CONFIG_USB_DEVICE_STACK_NEXT')).toBe('y');
+    expect(m.get('CONFIG_USBD_CDC_ACM_CLASS')).toBe('y');
+    // usb.connected() polls DTR through line ctrl.
+    expect(m.get('CONFIG_UART_LINE_CTRL')).toBe('y');
+    expect(m.get('CONFIG_SERIAL')).toBe('y');
+    // A program that never touches USB pulls in none of it.
+    const off = resolveKconfigFragments({}, false);
+    expect(off.has('CONFIG_USB_DEVICE_STACK_NEXT')).toBe(false);
+    expect(off.has('CONFIG_USBD_CDC_ACM_CLASS')).toBe(false);
+  });
+
   it('debug adds CONFIG_DEBUG + CONFIG_DEBUG_OPTIMIZATIONS', () => {
     const m = resolveKconfigFragments({}, true);
     expect(m.get('CONFIG_DEBUG')).toBe('y');

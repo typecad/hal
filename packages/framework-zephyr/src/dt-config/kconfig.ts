@@ -17,6 +17,11 @@ export interface KconfigUsage {
   usesI2c?: boolean;
   usesSpi?: boolean;
   usesUart?: boolean;
+  /** USB CDC-ACM serial used (usb.* ops). Selects the "next" USB device
+   *  stack + CDC class; the class instances themselves are composed in the
+   *  DT overlay and auto-default on once the node exists (assigning the
+   *  class symbol keeps prj.conf explicit and survives DT-only probes). */
+  usesUsb?: boolean;
   usesWdt?: boolean;
   usesBle?: boolean;
   usesDisplay?: boolean;
@@ -32,6 +37,12 @@ export interface KconfigUsage {
   /** Which touch controller the program uses — FT6336U rides I2C, XPT2046
    *  rides the display's SPI bus. Only meaningful with usesTouch. */
   touchController?: 'ft6336u' | 'xpt2046';
+  /** The emitted shim carries the STM32F4 DBGMCU keep-SWD-alive init
+   *  (__tc_stm32_dbgmcu token). Selects Zephyr's own "debugger attach in
+   *  stop/sleep" init (sets DBG_STOP via the LL headers); the shim's raw
+   *  register poke additionally covers DBG_SLEEP, which the Zephyr F4 path
+   *  does not set. */
+  usesStm32DebugSleep?: boolean;
   /** PSRAM type ('opi' | 'quad') when the target board has PSRAM. Emits the
    *  CONFIG_SPIRAM symbols so the ESP heap serves PSRAM for canvas allocations. */
   psram?: 'opi' | 'quad';
@@ -70,7 +81,28 @@ export function resolveKconfigFragments(
   if (usage.usesDac) m.set('CONFIG_DAC', 'y');
   if (usage.usesI2c) m.set('CONFIG_I2C', 'y');
   if (usage.usesSpi) m.set('CONFIG_SPI', 'y');
+  // USB CDC-ACM serial: the "next" USB device stack + the CDC-ACM class.
+  // Symbol names verified against Zephyr 4.3 (subsys/usb/device_next/Kconfig):
+  //   - USB_DEVICE_STACK_NEXT is the new stack (selects UDC_DRIVER);
+  //     USB_DEVICE_STACK is the LEGACY stack — deprecated in 4.3 (selects
+  //     DEPRECATED) and its assignment is what trips the build.
+  //   - USBD_CDC_ACM_CLASS is the class (note the USBD_ prefix — a bare
+  //     CDC_ACM_CLASS is an undefined symbol). It depends on SERIAL +
+  //     DT_HAS_ZEPHYR_CDC_ACM_UART_ENABLED (the overlay's cdc-acm-uart node)
+  //     and selects UART_INTERRUPT_DRIVEN/RING_BUFFER itself; assigning it
+  //     keeps prj.conf explicit.
+  //   - UART_LINE_CTRL gates the driver's line_ctrl_get — usb.connected()
+  //     polls DTR through it.
+  if (usage.usesUsb) {
+    m.set('CONFIG_USB_DEVICE_STACK_NEXT', 'y');
+    m.set('CONFIG_USBD_CDC_ACM_CLASS', 'y');
+    m.set('CONFIG_UART_LINE_CTRL', 'y');
+    m.set('CONFIG_SERIAL', 'y');
+  }
   if (usage.usesWdt) m.set('CONFIG_WATCHDOG', 'y');
+  // STM32: keep the debugger attachable in sleep/stop (see the shim's
+  // DBGMCU init — this covers the Zephyr-side DBG_STOP bit via LL headers).
+  if (usage.usesStm32DebugSleep) m.set('CONFIG_STM32_ENABLE_DEBUG_SLEEP_STOP', 'y');
   // Hardware timers via the counter driver.
   if (usage.usesHwtimer) m.set('CONFIG_COUNTER', 'y');
   if (usage.usesDisplay) {

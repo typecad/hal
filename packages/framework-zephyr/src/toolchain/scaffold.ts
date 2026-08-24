@@ -126,6 +126,11 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     usesI2c: uses('i2c_'),
     usesSpi: uses('spi_'),
     usesUart: uses('uart_'),
+    // USB CDC serial: every usb.* lowering calls into the __tc_usb<N>_* shim
+    // (device + init helper emitted under usesUsb).
+    usesUsb: uses('__tc_usb'),
+    // STM32F4 DBGMCU keep-SWD-alive init present (emitted for stm32f4 socs).
+    usesStm32DebugSleep: uses('__tc_stm32_dbgmcu'),
     usesWdt: uses('wdt_'),
     usesBle: uses('bt_') || uses('bt_gatt') || uses('bt_le_'),
     usesDisplay: uses('display_write') || uses('display_init') || uses('display_fill_rect') || uses('__tc_display_dev') || uses('CuttlefishDisplayTarget'),

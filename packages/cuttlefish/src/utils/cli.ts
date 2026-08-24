@@ -254,6 +254,7 @@ function parsePipelineCommand(
   const emitMapsFlag = readFirstFlagValue(argv, ["--emit-maps"]);
   const buildTarget = readFirstFlagValue(argv, ["--build-target"]);
   const port = readFirstFlagValue(argv, ["--port"]);
+  const probeFlag = readFirstFlagValue(argv, ["--probe", "--flash"]);
   // Default to undefined (NOT 9600) so the build/upload/monitor flow's
   // `options.baud ?? config.console.baudRate` falls through to the configured
   // baud. Hardcoding 9600 here shadowed config.console.baudRate whenever --baud
@@ -356,6 +357,7 @@ function parsePipelineCommand(
     monitor,
     watch,
     port,
+    probe: probeFlag,
     baud,
     platformContext,
     treeShaking,
@@ -391,11 +393,13 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
     const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir", "-o"]);
     const noSketch = argv.includes("--no-sketch");
     const noInstall = argv.includes("--no-install");
+    const probeFlag = readFirstFlagValue(argv, ["--probe", "--flash"]);
 
     const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : undefined;
 
     return {
       command: "create",
+      probe: probeFlag,
       projectName,
       target,
       baud,

@@ -145,11 +145,84 @@ const FLASH_TIMEOUT_MS = 120_000;
  * Exported (pure) so the runner-selection contract is unit-testable without
  * spawning west.
  */
+/**
+ * Resolve HOW this build attaches to the board for flashing OR debugging:
+ * the friendly `zephyr.probe` id from the board's probeMethods table (quirks
+ * included), or the raw `zephyr.runner` escape hatch. Exported (pure) so the
+ * selection contract is unit-testable without spawning west.
+ *
+ * Rules:
+ * - `probe` + `runner` together is an error (two ways of saying it — pick one).
+ * - An unknown `probe` id is an error listing what the board supports; a board
+ *   with no probeMethods table gets a hint to use `runner` directly.
+ * - purpose 'debug': the chosen method must be debug-capable (`debug` is not
+ *   false — a bootloader is not a debugger). Non-capable or unknown ids list
+ *   the debug-capable methods.
+ * - User `runnerArgs` are appended AFTER the method's args, so they can
+ *   override the method's baked-in flags (argparse takes the last value).
+ */
+export type ProbeResolution =
+  | { ok: true; runner?: string; args: string[] }
+  | { ok: false; error: string };
+
+export function resolveProbeMethod(
+  zc: Record<string, unknown> | undefined,
+  chip: ZephyrChipDescriptor,
+  purpose: 'flash' | 'debug' = 'flash',
+): ProbeResolution {
+  const probe = zc?.probe as string | undefined;
+  const runner = zc?.runner as string | undefined;
+  const userArgs = (zc?.runnerArgs as string[] | undefined) ?? [];
+
+  if (probe && runner) {
+    return {
+      ok: false,
+      error:
+        `cuttlefish.config.ts sets both zephyr.probe ('${probe}') and zephyr.runner ('${runner}'). ` +
+        `They are two ways to choose the probe method — remove one.`,
+    };
+  }
+
+  if (probe) {
+    const methods = chip.probeMethods ?? [];
+    const method = methods.find((m) => m.id === probe);
+    if (!method) {
+      const listAll = methods
+        .map((m) => `${m.id} (${m.runner}${m.description ? ` — ${m.description}` : ''})`)
+        .join('; ');
+      return {
+        ok: false,
+        error: methods.length > 0
+          ? `Unknown probe method '${probe}' for ${chip.id}. Supported: ${listAll}.`
+          : `This board (${chip.id}) ships no probe-method table, so 'zephyr.probe' cannot resolve '${probe}'. ` +
+            `Use the raw 'zephyr.runner' field instead (run 'west flash --context' in the build dir for options).`,
+      };
+    }
+    if (purpose === 'debug' && method.debug === false) {
+      const debuggable = methods.filter((m) => m.debug !== false).map((m) => m.id).join(', ');
+      return {
+        ok: false,
+        error:
+          `The '${probe}' method cannot debug ${chip.id} — a bootloader is not a debugger. ` +
+          `Debug-capable methods: ${debuggable || '(none — this board needs an external probe)'}.`,
+      };
+    }
+    return {
+      ok: true,
+      runner: method.runner,
+      args: [...(method.args ?? []), ...userArgs],
+    };
+  }
+
+  return { ok: true, runner, args: userArgs };
+}
+
 export function buildFlashArgs(
   buildDir: string,
   board: string,
   userRunner: string | undefined,
   port: string | undefined,
+  runnerArgs?: readonly string[],
 ): string[] {
   const args = ['flash', '-d', buildDir];
   if (userRunner) {
@@ -157,6 +230,11 @@ export function buildFlashArgs(
   }
   if (port && board.startsWith('esp32')) {
     args.push('--esp-device', port);
+  }
+  // Extra runner-specific flags, appended verbatim (west's runner parsers
+  // accept them after the runner is selected).
+  if (runnerArgs && runnerArgs.length > 0) {
+    args.push(...runnerArgs);
   }
   return args;
 }
@@ -302,6 +380,7 @@ export const Toolchain = {
       usesI2c: uses('i2c_'),
       usesSpi: uses('spi_'),
       usesUart: uses('uart_'),
+      usesUsb: uses('__tc_usb'),
       usesPwm: uses('pwm_'),
       usesAdc: uses('adc_'),
       adcReadPins: scanAdcReadPins(src, chip),
@@ -442,6 +521,7 @@ export const Toolchain = {
         usesI2c: uses('i2c_'),
         usesSpi: uses('spi_'),
         usesUart: uses('uart_'),
+        usesUsb: uses('__tc_usb'),
         usesPwm: uses('pwm_'),
         usesAdc: uses('adc_'),
         adcReadPins: scanAdcReadPins(src, chip),
@@ -571,8 +651,12 @@ export const Toolchain = {
     const buildDir = join(projectRoot, 'build');
     const board = targetFromOptions(o);
     const zc = o.zephyrConfig as Record<string, unknown> | undefined;
-    const runner = zc?.runner as string | undefined;
-    const args = buildFlashArgs(buildDir, board, runner, o.port);
+    const chip = chipForBuild(projectRoot, board);
+    const probe = resolveProbeMethod(zc, chip, 'flash');
+    if (!probe.ok) {
+      return { success: false, output: `-- west flash: ${probe.error}` };
+    }
+    const args = buildFlashArgs(buildDir, board, probe.runner, o.port, probe.args);
 
     const inv = westSpawn(args, {
       cwd: projectRoot,
@@ -585,8 +669,8 @@ export const Toolchain = {
     const fstderr = typeof result.stderr === 'string' ? result.stderr : (result.stderr?.toString() ?? '');
     const raw = fstdout + fstderr;
     return {
-      success: classifyUploadResult(runner, result.status, raw),
-      output: cleanseUploadOutput(runner, result.status, raw),
+      success: classifyUploadResult(probe.runner, result.status, raw),
+      output: cleanseUploadOutput(probe.runner, result.status, raw),
     };
   },
 
@@ -620,15 +704,26 @@ export const Toolchain = {
   },
 
   debug(o: ToolchainOptions): void {
-    // Launch an interactive GDB session for the last build. `west debug`
-    // auto-resolves the runner (openocd for esp32s3, nrfjprog/jlink for nRF)
-    // and the GDB binary from the build dir's CMakeCache/board.cmake — no
+    // Launch an interactive GDB session for the last build. The probe method
+    // resolves exactly like flashing (zephyr.probe / zephyr.runner — the same
+    // attach session, so the same quirks apply); debug-incapable methods
+    // (bootloaders) are rejected with the debug-capable list. west debug
+    // resolves the GDB binary from the build dir's CMakeCache — no
     // hand-authored gdbinit needed. Inherits stdio so GDB runs interactively.
-    // (Not invoked by the standard build/compile flow; powers an explicit
-    // debug-attach entry point for terminal-driven debugging without VS Code.)
     const projectRoot = projectRootFromOptions(o);
     const buildDir = join(projectRoot, 'build');
-    const inv = westSpawn(['debug', '-d', buildDir], {
+    const board = targetFromOptions(o);
+    const zc = o.zephyrConfig as Record<string, unknown> | undefined;
+    const probe = resolveProbeMethod(zc, chipForBuild(projectRoot, board), 'debug');
+    if (!probe.ok) {
+      console.error(`-- west debug: ${probe.error}`);
+      process.exitCode = 1;
+      return;
+    }
+    const debugArgs = ['debug', '-d', buildDir];
+    if (probe.runner) debugArgs.push('--runner', probe.runner);
+    debugArgs.push(...probe.args);
+    const inv = westSpawn(debugArgs, {
       cwd: projectRoot,
       encoding: 'utf-8',
       stdio: 'inherit',

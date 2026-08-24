@@ -118,6 +118,27 @@ describe('board-blackpill-f411ce → ZephyrChipDescriptor', () => {
     ]);
   });
 
+  it('declares named probe methods (stlink carries the reset_config quirk; stlink-srst connects under reset; dfu cannot debug)', () => {
+    expect(chip!.probeMethods).toEqual([
+      { id: 'stlink', runner: 'openocd', args: ['--cmd-pre-init=reset_config none'],
+        description: 'ST-Link or any SWD probe openocd supports (no BOOT0 needed)',
+        debug: true, debugInterface: 'swd',
+        debugCfg: ['reset_config none'],
+        debugCfgSource: ['interface/stlink.cfg', 'target/stm32f4x.cfg'] },
+      { id: 'stlink-srst', runner: 'openocd',
+        args: ['--cmd-pre-init=reset_config srst_only srst_nogate connect_assert_srst'],
+        description: 'ST-Link with the RST/SRST line wired — connect under reset (recovers wedged targets)',
+        debug: true, debugInterface: 'swd',
+        debugCfg: ['reset_config srst_only srst_nogate connect_assert_srst'],
+        debugCfgSource: ['interface/stlink.cfg', 'target/stm32f4x.cfg'] },
+      { id: 'dfu', runner: 'dfu-util',
+        description: 'Built-in USB bootloader: hold BOOT0, tap reset', debug: false },
+      { id: 'jlink', runner: 'jlink', description: 'J-Link probe (SWD)',
+        debug: true, debugInterface: 'swd', debugDevice: 'STM32F411CE' },
+    ]);
+  });
+
+
   it('declares no radio (omitted — radioless target)', () => {
     expect(chip!.wifi).toBeUndefined();
   });

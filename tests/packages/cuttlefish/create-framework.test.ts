@@ -10,6 +10,7 @@ import {
   frameworkCompatibleWithTarget,
   detectPackageManager,
   frameworkTargetProfile,
+  BOARD_PROBE_METHODS,
 } from "../../../packages/cuttlefish/src/create/framework-catalog";
 import {
   installProjectDependencies,
@@ -238,5 +239,23 @@ describe("installProjectDependencies", () => {
   it("throws on launch failure (binary missing)", () => {
     __setProjectInstallRunnerForTest(() => ({ status: null, launchError: "'npm' not found on PATH" }));
     expect(() => installProjectDependencies({ projectDir: makeTempDir() })).toThrowError(/not found on PATH/);
+  });
+});
+
+describe('BOARD_PROBE_METHODS (create-time catalog vs board packages)', () => {
+  it('mirrors the board packages flashMethods tables (ids must not drift)', async () => {
+    const { resolveBoardConstants } = await import('../../../../packages/cuttlefish/src/ir/board-resolver');
+    const { resolveChipFromBoard } = await import('../../../../packages/framework-zephyr/src/chips/resolve');
+    const boardSrc: Record<string, string> = {
+      'blackpill-f411ce': 'boards/board-blackpill-f411ce/src/index.ts',
+      'xiao-nrf52840': 'boards/board-xiao-nrf52840/src/index.ts',
+    };
+    for (const [boardId, src] of Object.entries(boardSrc)) {
+      const catalog = BOARD_PROBE_METHODS[boardId];
+      expect(catalog, `catalog entry for ${boardId}`).toBeDefined();
+      const chip = resolveChipFromBoard(resolveBoardConstants(src));
+      const ids = (chip?.probeMethods ?? []).map((m) => m.id);
+      expect(catalog.map((m) => m.id), `ids for ${boardId}`).toEqual(ids);
+    }
   });
 });

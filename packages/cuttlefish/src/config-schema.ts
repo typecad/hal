@@ -45,7 +45,9 @@ const ToolchainConfig = z.object({
 const ZephyrConfig = z.object({
   kconfig: z.record(z.string(), z.string()).optional(),
   cmakeArgs: z.array(z.string()).optional(),
+  probe: z.string().optional(),
   runner: z.string().optional(),
+  runnerArgs: z.array(z.string()).optional(),
 }).strict();
 
 /**

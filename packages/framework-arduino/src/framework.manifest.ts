@@ -296,9 +296,9 @@ export default defineFrameworkManifest({
     },
     usb: {
       supported: false,
-      unsupportedReason: 'USB OTG / USB-Serial-JTAG is an ESP32-S3/C3/C6 peripheral, not part of the Arduino core on AVR/SAMD.',
+      unsupportedReason: 'USB CDC-ACM needs a USB device stack; the Arduino core on AVR/SAMD has none (native-USB boards expose it as the Serial object instead).',
       partialCoverage: false,
-      ops: { 'usb.init': 'unsupported', 'usb.write': 'unsupported', 'usb.read': 'unsupported' },
+      ops: { 'usb.begin': 'unsupported', 'usb.end': 'unsupported', 'usb.print': 'unsupported', 'usb.println': 'unsupported', 'usb.printf': 'unsupported', 'usb.write': 'unsupported', 'usb.read': 'unsupported', 'usb.available': 'unsupported', 'usb.flush': 'unsupported', 'usb.connected': 'unsupported' },
     },
     eth: {
       supported: false,

@@ -9,9 +9,12 @@
 // checkZephyrEnv so the detection logic can be shared with the build/test gates.
 // ---------------------------------------------------------------------------
 
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import * as ui from '@typecad/cuttlefish/utils/ui';
 import { loadCuttlefishConfig } from '@typecad/cuttlefish/config-loader';
 import { checkZephyrEnv } from './toolchain/env-check.js';
+import { resolveChipFromBoard } from './chips/resolve.js';
 
 /**
  * Verify west is installed + responsive, the Zephyr RTOS is inside the supported
@@ -65,6 +68,32 @@ export function runDoctor(): void {
     }
   } else {
     ui.printInfo('(no buildTarget in cuttlefish.config.ts — skipping board check)');
+  }
+
+  // Probe methods — from the board package's table, via the board constants
+  // the transpile persists (candidates cover the standard out-dir layouts).
+  // The debug line lists the debug-capable subset (bootloaders can't debug).
+  if (buildTarget) {
+    const bcPath = [
+      join(process.cwd(), 'out', 'src', 'board-constants.json'),
+      join(process.cwd(), 'out', 'board-constants.json'),
+      join(process.cwd(), 'src', 'out', 'src', 'board-constants.json'),
+      join(process.cwd(), 'src', 'out', 'board-constants.json'),
+    ].find((p) => existsSync(p));
+    if (bcPath) {
+      try {
+        const raw = JSON.parse(readFileSync(bcPath, 'utf8')) as Record<string, string | number | boolean>;
+        const chip = resolveChipFromBoard(new Map(Object.entries(raw)));
+        const methods = chip?.probeMethods ?? [];
+        if (methods.length > 0) {
+          ui.printInfo(`Probe methods .... ${methods.map((m) => m.id).join(', ')}  (zephyr.probe / --probe)`);
+          const debuggable = methods.filter((m) => m.debug !== false).map((m) => m.id);
+          ui.printInfo(`Debug methods .... ${debuggable.join(', ') || '(none — an external probe is required)'}`);
+        }
+      } catch { /* best-effort listing */ }
+    } else {
+      ui.printInfo('Probe methods .... (build once to list them)');
+    }
   }
 
   // Exit code — mirrors framework-arduino's doctor.

@@ -6,7 +6,7 @@ import type { GeneratedOutputs } from "./types.js";
 import type { CreateCommandOptions, BoardAddCommandOptions } from "./types.js";
 import { runLibraryCommand } from "./library/cli.js";
 import type { ScaffoldProjectResult } from "./create/index.js";
-import { scaffoldProject, printCreateNextSteps, KNOWN_TARGETS, frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile } from "./create/index.js";
+import { scaffoldProject, printCreateNextSteps, KNOWN_TARGETS, frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from "./create/index.js";
 import { generateFrameworkDebugArtifacts } from "./create/debug-artifacts.js";
 import { runCreateWizard } from "./create/index.js";
 import { installProjectDependencies } from "./create/install-deps.js";
@@ -113,6 +113,17 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       }
     }
 
+    // Probe methods (Zephyr boards whose packages ship a table). An explicit
+    // --probe id is validated against the catalog so a typo fails at create
+    // time, not at the first upload.
+    const probeMethods = frameworkId === 'zephyr' ? probeMethodsForBoard(target.id) : [];
+    if (options.probe && probeMethods.length > 0 && !probeMethods.some(m => m.id === options.probe)) {
+      const list = probeMethods.map(m => `${m.id} (${m.description})`).join('; ');
+      throw new Error(
+        `Unknown probe method '${options.probe}' for ${target.displayName}. Supported: ${list}.`,
+      );
+    }
+
     const projectName = options.projectName || 'my-project';
 
     // Framework-specific build target + toolchain (Zephyr board id + 'west' vs
@@ -120,6 +131,8 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
     const profile = frameworkTargetProfile(target, frameworkId);
 
     const result = scaffoldProject({
+      probeMethod: options.probe,
+      probeMethods,
       projectName,
       targetId: target.id,
       targetDisplayName: target.displayName,
@@ -146,6 +159,7 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       framework: options.framework,
       baud: options.baud,
       noSketch: options.noSketch,
+      probe: options.probe,
     });
 
     if (!wizardResult) {
@@ -891,7 +905,10 @@ async function main(): Promise<void> {
       defines: psramDefines,
       psram: config?.psram,
       frameworkConfig: config?.frameworkConfig,
-      zephyrConfig: config?.zephyrConfig,
+      // --probe <method> overrides zephyr.probe from the config for this run.
+      zephyrConfig: options.probe
+        ? { ...(config?.zephyrConfig ?? {}), probe: options.probe }
+        : config?.zephyrConfig,
               display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,
       debug: options.debug,
     };

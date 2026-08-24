@@ -247,6 +247,33 @@ describe("writeEditorIntegration", () => {
     expect(written.map(p => p.replace(/\\/g, '/')).some(p => p.endsWith('.vscode/tasks.json'))).toBe(false);
   });
 
+  it("hides the npm surface in end-user projects and preserves existing settings", () => {
+    seedDevScript();
+    // Pre-existing settings (e.g. from the framework debug writer) must survive.
+    fs.mkdirSync(path.join(tmpDir, '.vscode'));
+    fs.writeFileSync(
+      path.join(tmpDir, '.vscode', 'settings.json'),
+      JSON.stringify({ 'cortex-debug.gdbPath': '/usr/bin/gdb' }),
+      'utf-8',
+    );
+
+    writeEditorIntegration(tmpDir, undefined, true);
+    const settings = JSON.parse(fs.readFileSync(path.join(tmpDir, '.vscode', 'settings.json'), 'utf-8'));
+    expect(settings['npm.autoDetect']).toBe('off');
+    expect(settings['npm.exclude']).toBe('**/package.json');
+    expect(settings['debug.javascript.codelens.npmScripts']).toBe('never');
+    expect(settings['cortex-debug.gdbPath']).toBe('/usr/bin/gdb');
+
+    // Without the flag (dev workspaces like this monorepo) settings stay untouched.
+    const tmp2 = fs.mkdtempSync(path.join(os.tmpdir(), 'cuttlefish-editor-integration-'));
+    try {
+      writeEditorIntegration(tmp2);
+      expect(fs.existsSync(path.join(tmp2, '.vscode', 'settings.json'))).toBe(false);
+    } finally {
+      fs.rmSync(tmp2, { recursive: true, force: true });
+    }
+  });
+
   it("warns and skips when the extension assets are missing", () => {
     const emptyAssetsRoot = path.join(tmpDir, 'no-such-assets');
     const written = writeEditorIntegration(tmpDir, emptyAssetsRoot);
@@ -263,6 +290,7 @@ describe("scaffoldProject wiring", () => {
     expect(created.some(p => p.endsWith('.editorconfig'))).toBe(true);
     expect(created.some(p => p.endsWith('.vscode/extensions.json'))).toBe(true);
     expect(created.some(p => p.endsWith('.vscode/tasks.json'))).toBe(true);
+    expect(created.some(p => p.endsWith('.vscode/settings.json'))).toBe(true);
     expect(created.some(p => p.endsWith('.vscode/extensions/typecad-ui/package.json'))).toBe(true);
     expect(created.some(p => p.endsWith('.vscode/extensions/typecad-ui/syntaxes/typecad-ui.tmLanguage.json'))).toBe(true);
     expect(created.some(p => p.endsWith('.vscode/extensions/typecad-debug/package.json'))).toBe(true);

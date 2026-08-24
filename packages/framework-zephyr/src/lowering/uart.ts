@@ -39,7 +39,7 @@ export function uartInitLines(chip: ZephyrChipDescriptor, controllerIndex: numbe
 }
 
 /** Render a string-literal or expression to a per-byte poll_out loop. */
-function renderWrite(dev: string, value: string, newline: boolean): string {
+export function renderWrite(dev: string, value: string, newline: boolean): string {
   // String literal → emit a char-array loop (known length). Otherwise fall back
   // to a const char* cast with a strlen-guarded loop.
   if (/^".*"$/.test(value)) {

@@ -551,6 +551,14 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
             continue;
           }
 
+          // USB CDC serial ports: USB0, USB1, ...
+          const usbMatch = name.match(/^USB(\d+)$/);
+          if (usbMatch) {
+            const alias = peripheralAliasMap.get(name) ?? (usbMatch[1] === '0' ? 'USBSerial' : `USBSerial${usbMatch[1]}`);
+            halInstances.set(name, { className: "USBSerialPort", fieldValues: new Map([["_port", alias]]) });
+            continue;
+          }
+
           // HAL namespace imports: Pulse, Shift, Random
           if (name === 'Pulse' || name === 'Shift' || name === 'Random') {
             activeNamespaceNames.add(name);

@@ -100,6 +100,30 @@ import { hwtimerInitLines } from './lowering/hwtimer.js';
 import { i2cInitLines } from './lowering/i2c.js';
 import { spiInitLines } from './lowering/spi.js';
 import { uartInitLines } from './lowering/uart.js';
+import { usbInitLines, usbdDeviceLines } from './lowering/usb.js';
+
+/**
+ * STM32F4 boot-time DBGMCU setup: set DBG_SLEEP|DBG_STOP|DBG_STANDBY
+ * (DBGMCU_CR @ 0xE0042004, bits 0–2) so SWD stays attachable while the app
+ * sleeps. RCC_APB1ENR (0x40023840) bit 18 clocks the DBGMCU first — F4 gates
+ * register access behind it. Raw-register form (not the STM32 LL headers) so
+ * the shim stays include-light; AUTOSAR-clean via reinterpret_cast.
+ */
+function stm32f4DbgmcuLines(): string[] {
+  return [
+    '// CUTTLEFISH_STM32_DBGMCU_BEGIN',
+    '#include <zephyr/init.h>',
+    'static int __tc_stm32_dbgmcu_keep_swd_alive(void) {',
+    '    volatile uint32_t* const rcc_apb1enr = reinterpret_cast<volatile uint32_t*>(0x40023840);',
+    '    *rcc_apb1enr = *rcc_apb1enr | (1UL << 18);',
+    '    volatile uint32_t* const dbgmcu_cr = reinterpret_cast<volatile uint32_t*>(0xE0042004);',
+    '    *dbgmcu_cr = *dbgmcu_cr | 0x7u;',
+    '    return 0;',
+    '}',
+    'SYS_INIT(__tc_stm32_dbgmcu_keep_swd_alive, PRE_KERNEL_1, 0);',
+    '// CUTTLEFISH_STM32_DBGMCU_END',
+  ];
+}
 import { interruptInitLines } from './lowering/interrupts.js';
 import { wdtInitLines } from './lowering/wdt.js';
 import { bleInitLines } from './lowering/ble.js';
@@ -192,7 +216,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // A program touching none of those needs no <cstdio>.
     const helpers = (a as { usedPolyfillHelpers?: Set<string> } | undefined)?.usedPolyfillHelpers;
     const needsCstdio = uses('usesCstdio') || uses('usesFS') || uses('usesPreferences')
-      || uses('usesUart')
+      || uses('usesUart') || uses('usesUsb')
       || !!helpers?.has('__tc_print') || !!helpers?.has('__tc_println');
     if (needsCstdio) inc.push('<cstdio>');
     if (uses('usesI2C')) inc.push('<zephyr/drivers/i2c.h>');
@@ -203,6 +227,12 @@ export class ZephyrStrategy implements PlatformStrategy {
     // program itself does not use the UART HAL. In gdb mode the shim is not
     // emitted, so skip the include there to avoid pulling in an unused header.
     if (isPrintf && !inc.includes('<zephyr/drivers/uart.h>')) inc.push('<zephyr/drivers/uart.h>');
+    // USB CDC serial: the class instance is a UART device (uart.h); the
+    // device context macros + usbd_* API live in the next-stack header.
+    if (uses('usesUsb')) {
+      if (!inc.includes('<zephyr/drivers/uart.h>')) inc.push('<zephyr/drivers/uart.h>');
+      inc.push('<zephyr/usb/usbd.h>');
+    }
     if (uses('usesADC')) inc.push('<zephyr/drivers/adc.h>');
     if (uses('usesPWM')) inc.push('<zephyr/drivers/pwm.h>');
     if (uses('usesDAC')) inc.push('<zephyr/drivers/dac.h>');
@@ -473,6 +503,10 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesUart') && chip.uart) {
       for (let i = 0; i < chip.uart.controllers.length; i++) guardBody.push(...uartInitLines(chip, i));
     }
+    if (uses('usesUsb') && chip.usb) {
+      guardBody.push(...usbdDeviceLines(chip));
+      for (let i = 0; i < chip.usb.cdcInstances; i++) guardBody.push(...usbInitLines(chip, i));
+    }
     if (uses('usesADC') && chip.adc) guardBody.push(...adcInitLines(chip, collectUsedPins(program, 'adc')));
     if (uses('usesPWM') && chip.pwm) guardBody.push(...pwmInitLines(chip, collectUsedPins(program, 'pwm', chip)));
     if (uses('usesDAC') && chip.dac) guardBody.push(...dacInitLines(chip));
@@ -503,6 +537,20 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesPreferences')) guardBody.push(...preferencesInitLines());
     if (uses('usesFS')) guardBody.push(...fsInitLines());
     if (uses('usesRandom')) guardBody.push(...randomInitLines());
+    // STM32F4: keep the core debug port alive across WFI sleep. The DBGMCU
+    // gates PPB access while the core sleeps unless DBGMCU_CR DBG_SLEEP/
+    // DBG_STOP/DBG_STANDBY are set — without them openocd cannot examine or
+    // halt the running target ("Failed to read memory at 0xe000ed04", "AP
+    // write error, reset will not halt"), and with no RST pad on boards like
+    // the Black Pill the only recovery is the BOOT0 bootloader. Zephyr's
+    // CONFIG_STM32_ENABLE_DEBUG_SLEEP_STOP sets only DBG_STOP on F4 (the
+    // soc_config.c F1/L1 branch is the one that sets DBG_SLEEP), so the bits
+    // are set here at boot, unconditionally for dev boards.
+    // (soc is empty on board-resolved chips — the SoC name rides in the
+    // qualified id's variant segment, e.g. 'blackpill_f411ce/stm32f411xe'.)
+    if (chip.soc.startsWith('stm32f4') || /stm32f4\d*/.test(chip.id)) {
+      guardBody.push(...stm32f4DbgmcuLines());
+    }
 
     const lines: string[] = [];
     if (guardBody.length > 0) {
@@ -1664,6 +1712,12 @@ struct __tc_StaticArray {
     // e.g. 'esp32s3_devkitc/esp32s3/procpu'). Match on the bare board id.
     const boardId = (target ?? '').split('/')[0];
     if (boardId === 'esp32s3_devkitc' || boardId.startsWith('esp32s3')) {
+      return 'gdb';
+    }
+    // The STM32 Black Pill ships a verified ST-Link probe method in its board
+    // package (openocd runner over SWD, with the reset_config quirk for the
+    // unwired SRST line), so F5 attaches natively out of the box.
+    if (boardId.startsWith('blackpill_')) {
       return 'gdb';
     }
     // The plain ESP32 (esp32_devkitc) intentionally stays on 'printf': unlike

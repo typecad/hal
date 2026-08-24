@@ -15,6 +15,7 @@
 import type { BoardConstants } from '@typecad/cuttlefish/api/shared';
 import type {
   ZephyrChipDescriptor,
+  ZephyrProbeMethod,
   ZephyrGpioDtSpec,
   ZephyrGpioController,
   ZephyrBusController,
@@ -121,6 +122,8 @@ export function resolveChipFromBoard(
   });
 
   const adcNodeLabel = bc.get('zephyr.adc.nodeLabel') as string | undefined;
+  // PWM timer input clock — feeds the overlay's 16-bit prescaler derivation.
+  const pwmClockHz = bc.get('zephyr.pwm.clockHz') as number | undefined;
   const adcResolution = bc.get('zephyr.adc.resolution') as number | undefined;
   const adcVref = bc.get('zephyr.adc.vrefMv') as number | undefined;
   const adcGain = bc.get('zephyr.adc.gain') as string | undefined;
@@ -136,6 +139,41 @@ export function resolveChipFromBoard(
   });
 
   const wdtNodeLabel = bc.get('zephyr.wdt.nodeLabel') as string | undefined;
+
+  // USB device (CDC-ACM): zephyr.usb.controller + zephyr.usb.cdcInstances
+  // (+ optional vid/pid for the device descriptor).
+  const usbController = bc.get('zephyr.usb.controller') as string | undefined;
+  const usbCdcInstances = bc.get('zephyr.usb.cdcInstances') as number | undefined;
+  const usbVid = bc.get('zephyr.usb.vid') as string | undefined;
+  const usbPid = bc.get('zephyr.usb.pid') as string | undefined;
+
+  const probeMethods = collectIndexed<ZephyrProbeMethod>(bc, 'zephyr.probeMethods', (m, i) => {
+    const id = m.get(`zephyr.probeMethods.${i}.id`) as string;
+    const runner = m.get(`zephyr.probeMethods.${i}.runner`) as string;
+    if (!id || !runner) return null;
+    const argsRaw = m.get(`zephyr.probeMethods.${i}.args`) as string | undefined;
+    const description = m.get(`zephyr.probeMethods.${i}.description`) as string | undefined;
+    const debugRaw = m.get(`zephyr.probeMethods.${i}.debug`) as boolean | undefined;
+    const debugInterface = m.get(`zephyr.probeMethods.${i}.debugInterface`) as string | undefined;
+    const debugDevice = m.get(`zephyr.probeMethods.${i}.debugDevice`) as string | undefined;
+    const debugCfgRaw = m.get(`zephyr.probeMethods.${i}.debugCfg`) as string | undefined;
+    const debugCfgSourceRaw = m.get(`zephyr.probeMethods.${i}.debugCfgSource`) as string | undefined;
+    // The flattener stores string arrays comma-joined.
+    const split = (v: string | undefined): string[] | undefined =>
+      typeof v === 'string' && v.length > 0 ? v.split(',') : undefined;
+    const args = split(argsRaw);
+    return {
+      id,
+      runner,
+      ...(args ? { args } : {}),
+      ...(description ? { description } : {}),
+      ...(debugRaw !== undefined ? { debug: debugRaw } : {}),
+      ...(debugInterface ? { debugInterface: debugInterface as 'swd' | 'jtag' } : {}),
+      ...(debugDevice ? { debugDevice } : {}),
+      ...(split(debugCfgRaw) ? { debugCfg: split(debugCfgRaw) } : {}),
+      ...(split(debugCfgSourceRaw) ? { debugCfgSource: split(debugCfgSourceRaw) } : {}),
+    };
+  });
   const wifiSupported = bc.get('zephyr.wifi.supported') as boolean | undefined;
 
   // ── Construct the final readonly descriptor ─────────────────────────────
@@ -154,7 +192,9 @@ export function resolveChipFromBoard(
     ...(i2cControllers.length > 0 ? { i2c: { controllers: i2cControllers } } : {}),
     ...(spiControllers.length > 0 ? { spi: { controllers: spiControllers } } : {}),
     ...(uartControllers.length > 0 ? { uart: { controllers: uartControllers } } : {}),
-    ...(pwmSpecs.length > 0 ? { pwm: { specs: pwmSpecs } } : {}),
+    ...(pwmSpecs.length > 0
+      ? { pwm: { specs: pwmSpecs, ...(pwmClockHz ? { clockHz: pwmClockHz } : {}) } }
+      : {}),
     ...(adcNodeLabel || adcResolution != null || adcVref != null || adcChannels.length > 0
       ? {
           adc: {
@@ -168,6 +208,17 @@ export function resolveChipFromBoard(
         }
       : {}),
     ...(wdtNodeLabel ? { wdt: { nodeLabel: wdtNodeLabel } } : {}),
+    ...(usbController && usbCdcInstances && usbCdcInstances > 0
+      ? {
+          usb: {
+            controller: usbController,
+            cdcInstances: usbCdcInstances,
+            ...(usbVid ? { vid: usbVid } : {}),
+            ...(usbPid ? { pid: usbPid } : {}),
+          },
+        }
+      : {}),
     ...(wifiSupported ? { wifi: { supported: true as const } } : {}),
+    ...(probeMethods.length > 0 ? { probeMethods } : {}),
   };
 }

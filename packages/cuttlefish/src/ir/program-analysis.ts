@@ -50,6 +50,8 @@ export interface ProgramAnalysisResult {
   // names + lowered callee/raw-code references so usage that flows through
   // the HAL resolver (SPI0.begin() → spi.begin hal-op) is still seen.
   usesUart: boolean;
+  /** USB CDC-ACM serial port used (usb.* hal-ops) */
+  usesUsb: boolean;
   usesSPI: boolean;
   usesI2C: boolean;
   usesEEPROM: boolean;
@@ -149,7 +151,7 @@ const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|a
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesUsb' | 'usesSPI' | 'usesI2C' | 'usesEEPROM' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -456,6 +458,7 @@ function analyzeExpression(
         if (opName.startsWith("i2c."))       result.usesI2C = true;
         if (opName.startsWith("spi."))       result.usesSPI = true;
         if (opName.startsWith("uart."))      result.usesUart = true;
+        if (opName.startsWith("usb."))       result.usesUsb = true;
         if (opName.startsWith("wifi.")) {
           result.usesWifi = true;
           if (opName === "wifi.connect" || opName === "wifi.connect_start" || opName === "wifi.disconnect") {
@@ -746,6 +749,7 @@ function analyzeStatement(
         if (opName.startsWith("i2c.")) result.usesI2C = true;
         if (opName.startsWith("tone.")) result.usesTone = true;
         if (opName.startsWith("uart.")) result.usesUart = true;
+        if (opName.startsWith("usb."))  result.usesUsb = true;
         // Display HAL ops (display.init from ui.mount, display.flush per frame)
         // always imply GPIO usage (CS/DC/RST pins). Native SPI/I2C display
         // adapters emit their own transport #includes (driver/spi_master.h,
@@ -942,6 +946,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesWDT: false,
     usesStrPtr: false,
     usesUart: false,
+    usesUsb: false,
     usesSPI: false,
     usesI2C: false,
     usesEEPROM: false,

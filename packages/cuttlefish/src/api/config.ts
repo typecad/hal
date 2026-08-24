@@ -50,8 +50,23 @@ export interface CuttlefishZephyrConfig {
   kconfig?: Record<string, string>;
   /** Extra arguments forwarded to `west build`. */
   cmakeArgs?: string[];
-  /** Override the west flash runner (e.g. 'nrfjprog', 'jlink'). */
+  /**
+   * Named probe method from the board's supported table (e.g. 'stlink',
+   * 'dfu', 'jlink') — what `--probe` on the CLI also accepts. Serves both
+   * flashing and debugging; resolves to a west runner plus the args the
+   * method needs. The board package is the source of the table. Mutually
+   * exclusive with `runner`.
+   */
+  probe?: string;
+  /** Override the west flash runner (e.g. 'nrfjprog', 'jlink', 'openocd'). */
   runner?: string;
+  /**
+   * Extra arguments appended verbatim to `west flash` after the runner —
+   * anything the chosen runner's parser accepts. Example for an ST-Link
+   * clone with no SRST line wired to the target:
+   *   runnerArgs: ['--cmd-pre-init=reset_config none']
+   */
+  runnerArgs?: string[];
 }
 
 /**

@@ -191,8 +191,38 @@ export interface ZephyrChipDescriptor {
   readonly spi?: { readonly controllers: readonly ZephyrBusController[] };
   /** UART controllers (board-wired). Index 0 = the primary port. */
   readonly uart?: { readonly controllers: readonly ZephyrBusController[] };
+  /**
+   * USB device (CDC-ACM serial) capability. Zephyr "next" USB device stack:
+   * the UDC controller node (uniformly `zephyr_udc0` on every USB-capable
+   * board) plus `cdcInstances` CDC-ACM class child nodes, both composed in
+   * the generated overlay. The lowering addresses instance N as
+   * DT_NODELABEL(cdc_acm_uart<N>) — a UART-class device driven with the
+   * plain uart_* API. Boards without USB device support omit this field;
+   * usb.* HAL ops then fail with a clear "board does not expose USB" error.
+   */
+  readonly usb?: {
+    /** UDC controller nodelabel (convention: 'zephyr_udc0'). */
+    readonly controller: string;
+    /** How many CDC-ACM serial instances to compose (≥1). */
+    readonly cdcInstances: number;
+    /** USB vendor ID for the device descriptor ('0x2fe3' Zephyr-test default). */
+    readonly vid?: string;
+    /** USB product ID for the device descriptor ('0x0001' default). */
+    readonly pid?: string;
+  };
   /** PWM channels with DT specs. */
-  readonly pwm?: { readonly specs: readonly ZephyrPwmSpec[] };
+  readonly pwm?: {
+    readonly specs: readonly ZephyrPwmSpec[];
+    /**
+     * Timer input clock (Hz) for the synthesized specs' controllers — the
+     * number the 16-bit overflow check divides by (STM32: APB clock × the
+     * timer multiplier; blackpill TIM4 = 96 MHz). When set, the overlay
+     * generator derives an `st,prescaler` for the timers node so slow
+     * periods (servo 20 ms) fit the 16-bit ARR — without it pwm_stm32
+     * rejects the channel ("period cycles exceeds 16-bit timer limit").
+     */
+    readonly clockHz?: number;
+  };
   /** ADC: the ADC device node label + the pin→channel map. */
   readonly adc?: {
     readonly nodeLabel: string;
@@ -239,5 +269,45 @@ export interface ZephyrChipDescriptor {
    * Omit on radioless chips (nRF52840) — its absence is the "no WiFi" signal.
    */
   readonly wifi?: { readonly supported: true };
+  /**
+   * Probe methods the board supports, in user-facing terms. Each entry maps a
+   * friendly id (`stlink`, `dfu`, `jlink`, …) to the west runner it drives
+   * plus any args the method always needs — the hardware quirks (e.g. openocd
+   * needing `reset_config none` when the SRST line is unwired) live here,
+   * verified with the board, instead of in user configs. One probe method
+   * serves BOTH flashing and debugging (the same attach session); entries
+   * that cannot debug (bootloaders) set `debug: false`. Users select one via
+   * `zephyr.probe` in cuttlefish.config.ts or `--probe` on the CLI;
+   * `zephyr.runner`/`runnerArgs` remain the raw escape hatch underneath.
+   */
+  readonly probeMethods?: readonly ZephyrProbeMethod[];
+}
+
+/**
+ * A named way to attach a probe to a board — what the user picks, and what
+ * flashing/debugging lower to.
+ */
+export interface ZephyrProbeMethod {
+  /** User-facing id, stable per board (`stlink`, `dfu`, `jlink`, `uf2`, …). */
+  readonly id: string;
+  /** The west runner this method drives (flash and debug). */
+  readonly runner: string;
+  /** Args always passed with this method (before any user runnerArgs). */
+  readonly args?: readonly string[];
+  /** One-line human description for the wizard, doctor, and error messages. */
+  readonly description?: string;
+  /** Whether this method can debug (default true — SWD/JTAG probes can,
+   *  bootloaders cannot and set this false explicitly). */
+  readonly debug?: boolean;
+  /** cortex-debug: the wire protocol (default 'swd'; esp_usb_jtag is 'jtag'). */
+  readonly debugInterface?: 'swd' | 'jtag';
+  /** cortex-debug servertype=jlink: the J-Link device name (e.g. 'STM32F411CE'). */
+  readonly debugDevice?: string;
+  /** Raw OpenOCD cfg lines for the debug server config (e.g. 'reset_config
+   *  none') — the cfg-file form of the quirks `args` carry for west. */
+  readonly debugCfg?: readonly string[];
+  /** OpenOCD cfg `source [find …]` lines for the debug server (interface +
+   *  target configs). Omitted entries fall back to the framework default. */
+  readonly debugCfgSource?: readonly string[];
 }
 

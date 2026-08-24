@@ -214,6 +214,31 @@ export function uartAvailable(port: string): number { return 0; }
 export function uartFlush(port: string): void {}
 
 // ---------------------------------------------------------------------------
+// USB — CDC-ACM serial over the USB connector (device stack)
+// ---------------------------------------------------------------------------
+
+/** Enable the USB device + open the CDC serial port with a baud hint. */
+export function usbBegin(port: string, baud: number): void {}
+/** Disable the CDC serial port. */
+export function usbEnd(port: string): void {}
+/** Print value to the USB serial port. */
+export function usbPrint(port: string, value: any): void {}
+/** Print value with newline to the USB serial port. */
+export function usbPrintln(port: string, value: any): void {}
+/** printf-style formatted print to the USB serial port. */
+export function usbPrintf(port: string, format: any, args: any[]): void {}
+/** Write raw data to the USB serial port. */
+export function usbWrite(port: string, data: any): void {}
+/** Read a byte from the USB serial port (-1 if none). */
+export function usbRead(port: string): number { return 0; }
+/** Check if bytes are available from the USB serial port. */
+export function usbAvailable(port: string): number { return 0; }
+/** Flush USB serial output. */
+export function usbFlush(port: string): void {}
+/** True when the host has opened the port (DTR asserted). */
+export function usbConnected(port: string): boolean { return false; }
+
+// ---------------------------------------------------------------------------
 // Pulse measurement
 // ---------------------------------------------------------------------------
 

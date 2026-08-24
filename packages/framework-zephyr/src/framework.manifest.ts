@@ -472,10 +472,18 @@ export default defineFrameworkManifest({
       ops: unsupportedOps('twai.'),
     },
     usb: {
-      supported: false,
-      unsupportedReason: 'No USB OTG / USB-Serial lowering on Zephyr (Zephyr USB device stack not wired).',
-      partialCoverage: false,
-      ops: unsupportedOps('usb.'),
+      // CDC-ACM serial over the board's USB connector (Zephyr "next" USB
+      // device stack: UDC controller + cdc_acm_uart class instances, both
+      // composed in the generated overlay). Board-gated — the chip descriptor
+      // must declare `usb` or the lowering fails with a clear diagnostic.
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        'usb.begin': 'supported', 'usb.end': 'supported', 'usb.print': 'supported',
+        'usb.println': 'supported', 'usb.printf': 'supported', 'usb.write': 'supported',
+        'usb.read': 'supported', 'usb.available': 'supported', 'usb.flush': 'supported',
+        'usb.connected': 'supported',
+      },
     },
     eth: {
       supported: false,

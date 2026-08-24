@@ -1354,6 +1354,65 @@ export function tryResolveSemanticCall(
       return { operation: "uart.printf", port, format, args: varArgs };
     }
 
+    // ── USB CDC-ACM serial ──
+    case "usbBegin": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const baud = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || baud === null) return null;
+      return { operation: "usb.begin", port, baud };
+    }
+    case "usbEnd": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null) return null;
+      return { operation: "usb.end", port };
+    }
+    case "usbPrint": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || value === null) return null;
+      return { operation: "usb.print", port, value };
+    }
+    case "usbPrintln": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || value === null) return null;
+      return { operation: "usb.println", port, value };
+    }
+    case "usbWrite": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const data = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || data === null) return null;
+      return { operation: "usb.write", port, data };
+    }
+    case "usbRead": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null) return null;
+      return { operation: "usb.read", port };
+    }
+    case "usbAvailable": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null) return null;
+      return { operation: "usb.available", port };
+    }
+    case "usbFlush": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null) return null;
+      return { operation: "usb.flush", port };
+    }
+    case "usbConnected": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null) return null;
+      return { operation: "usb.connected", port };
+    }
+    case "usbPrintf": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const format = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || format === null) return null;
+      const spreadText = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const varArgs = spreadText !== null && spreadText !== "" ? splitArgList(spreadText) : [];
+      return { operation: "usb.printf", port, format, args: varArgs };
+    }
+
     // ── Pulse ──
     case "pulseIn_": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);

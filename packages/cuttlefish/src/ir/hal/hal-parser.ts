@@ -303,6 +303,7 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
       if (mappedName) {
         const canonical = name.toUpperCase();
         if (canonical.startsWith("UART")) return { className: "SerialPort", fieldValues: new Map([["_port", mappedName]]) };
+        if (canonical.startsWith("USB")) return { className: "USBSerialPort", fieldValues: new Map([["_port", mappedName]]) };
         if (canonical.startsWith("I2C")) return { className: "I2CBus", fieldValues: new Map([["_bus", mappedName]]) };
         if (canonical.startsWith("SPI")) return { className: "SPIBus", fieldValues: new Map([["_bus", mappedName]]) };
       }

@@ -34,7 +34,9 @@ export const XiaoNRF52840: BoardDefinition = {
   // ----- Peripherals -------------------------------------------------------
   peripherals: {
     ...NRF52840.peripherals,
-    aliases: {},
+    aliases: {
+      USB0: 'USBSerial',
+    },
   },
 
   // ----- Build config ------------------------------------------------------
@@ -89,6 +91,11 @@ export const XiaoNRF52840: BoardDefinition = {
     i2c:  { controllers: [{ nodeLabel: 'i2c1' }] },
     spi:  { controllers: [{ nodeLabel: 'spi2' }] },
     uart: { controllers: [{ nodeLabel: 'uart0' }] },
+    // nRF52840 native USB device (USBD → zephyr_udc0). The overlay enables
+    // the controller + composes one CDC-ACM instance when a program uses
+    // USB0; the board's own console is already USB-CDC via chosen
+    // cdc_acm_uart0. Mirrors the framework's built-in XIAO_BLE chip data.
+    usb: { controller: 'zephyr_udc0', cdcInstances: 1 },
     pwm: {
       // pwm-led0 drives the board PWM LED (PWM_OUT0 on P0.17, inverted).
       specs: [{ pin: 17, dtSpec: 'pwm-led0' }],
@@ -107,6 +114,21 @@ export const XiaoNRF52840: BoardDefinition = {
       ],
     },
     wdt: { nodeLabel: 'wdt0' },
+    // Named probe methods — what `zephyr.probe` / `--probe` accept on this
+    // board, for BOTH flashing and debugging. Verified against xiao_ble's
+    // board.cmake runner registrations. uf2 is a bootloader, not a debugger —
+    // it sets debug: false. (jlink's device name matches board.cmake's
+    // --device=nRF52840_xxAA.)
+    probeMethods: [
+      { id: 'jlink', runner: 'jlink', description: 'J-Link probe (SWD)',
+        debug: true, debugInterface: 'swd', debugDevice: 'nRF52840_xxAA' },
+      { id: 'openocd', runner: 'openocd',
+        description: 'Any SWD probe openocd supports (CMSIS-DAP, cheap clones)',
+        debug: true, debugInterface: 'swd',
+        debugCfgSource: ['interface/stlink.cfg', 'target/nrf52.cfg'] },
+      { id: 'uf2', runner: 'uf2', description: 'Bootloader UF2 drag-and-drop: double-tap reset',
+        debug: false },
+    ],
   },
 };
 

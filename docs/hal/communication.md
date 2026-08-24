@@ -51,6 +51,33 @@ serial.println("Hello, PC! Connection established.");
 
 ---
 
+## USB CDC Serial (`USB0`)
+
+On boards with a USB device port (WeAct Black Pill STM32F411, Seeed XIAO nRF52840), TypeCAD exposes the connector as a dedicated serial port: `USB0`. It appears on the host as a regular COM/tty device and shares the `ISerialPort` print API with `UART0`, plus one addition — `connected()`, which reports whether the host has actually opened the port. Output written before that is silently dropped by most hosts, so gate early writes on it.
+
+`USB0` is board-gated: the board package must declare the USB capability, otherwise `usb.*` calls fail at build time with a diagnostic naming the missing board data.
+
+### Basic Usage
+
+```typescript
+import { USB0 } from '@typecad/board';
+import { delay } from '@typecad/hal';
+
+// The baud value is a line-coding hint only — CDC has no wire speed.
+USB0.begin(115200);
+
+while (true) {
+  if (USB0.connected()) {           // DTR asserted — host opened the port
+    USB0.println("hello over USB");
+  }
+  delay(1000);
+}
+```
+
+`USB0` and `UART0` are independent ports (on the Black Pill: USB-C connector vs. PA9/PA10), and `console.log` continues to route to the board's configured console — the three streams never interfere.
+
+---
+
 ## I2C (Inter-Integrated Circuit)
 
 I2C is used for communicating with sensors, displays, and port expanders over two wires (SDA/SCL). TypeCAD automates address management and register access.

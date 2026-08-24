@@ -9,8 +9,10 @@
 // ---------------------------------------------------------------------------
 
 import { D0, D1, D2, D3 } from '@typecad/mcu-nrf52840';
+import { USBSerialPort } from '@typecad/hal';
 
 // ---------------------------------------------------------------------------
+
 // Analog input aliases (SAADC channels on XIAO D0–D3)
 // ---------------------------------------------------------------------------
 
@@ -18,3 +20,10 @@ export const A0 = D0;
 export const A1 = D1;
 export const A2 = D2;
 export const A3 = D3;
+
+// ---------------------------------------------------------------------------
+// USB CDC serial over the XIAO's USB-C connector (nRF52840 native USBD).
+// Board-level instance — the connector is board wiring, not silicon.
+// ---------------------------------------------------------------------------
+
+export const USB0 = new USBSerialPort('USBSerial');

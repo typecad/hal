@@ -53,6 +53,19 @@
           }
         }
       ]
+    },
+    {
+      "label": "cuttlefish: build + flash (debug)",
+      "type": "shell",
+      "command": "npx cuttlefish build --compile --upload --debug",
+      "options": {
+        "cwd": "${workspaceFolder}/src/out"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "problemMatcher": []
     }
   ]
 }

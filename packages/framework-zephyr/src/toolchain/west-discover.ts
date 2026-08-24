@@ -72,8 +72,11 @@ export interface WestInstall {
   westExecutable?: string;
   /** Absolute path to a Python interpreter with west installed (mode 'module'). */
   pythonExecutable?: string;
-  /** Absolute path to the Zephyr SDK root (for $ZEPHYR_BASE), if found. */
+  /** Absolute path to the Zephyr workspace (for $ZEPHYR_BASE), if found. */
   zephyrBase?: string;
+  /** Absolute path to the Zephyr SDK install dir (hosttools/openocd lives
+   *  there), if found — used to put the SDK's openocd on the flash PATH. */
+  sdkInstallDir?: string;
   /** mode 'micromamba': path to the micromamba binary (for `micromamba run -n …`). */
   micromambaExe?: string;
   /** mode 'micromamba': the conda env name (default 'zephyr'). */
@@ -199,12 +202,14 @@ export function discoverFromMicromamba(
   // anything else in the cuttlefish process) can detect the Zephyr version
   // WITHOUT activation — micromamba run sets it only inside the west subprocess.
   const zb = readMicromambaEnvVar(envDir, 'TYPECAD_ZEPHYR_BASE');
+  const sdk = readMicromambaEnvVar(envDir, 'TYPECAD_ZEPHYR_SDK_INSTALL_DIR');
   return {
     mode: 'micromamba',
     micromambaExe: mm.exe,
     envName,
     mambaRootPrefix: mm.rootPrefix,
     zephyrBase: zb && isZephyrBase(zb) ? zb : undefined,
+    sdkInstallDir: sdk && existsSync(sdk) ? sdk : undefined,
     source: 'micromamba',
   };
 }

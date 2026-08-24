@@ -1,7 +1,7 @@
 export { scaffoldProject, normalizeProjectName, KNOWN_TARGETS, KNOWN_BOARDS, registerKnownTarget, printCreateNextSteps } from './scaffold.js';
 export type { KnownTarget, KnownBoard, ScaffoldProjectResult } from './scaffold.js';
-export { FRAMEWORK_CATALOG, frameworksForTarget, frameworkCompatibleWithTarget, frameworkCatalogEntry, detectPackageManager, frameworkTargetProfile } from './framework-catalog.js';
-export type { FrameworkCatalogEntry, BoardLike, PackageManager, FrameworkTargetProfile, TargetProfileInput } from './framework-catalog.js';
+export { FRAMEWORK_CATALOG, frameworksForTarget, frameworkCompatibleWithTarget, frameworkCatalogEntry, detectPackageManager, frameworkTargetProfile, probeMethodsForBoard, BOARD_PROBE_METHODS } from './framework-catalog.js';
+export type { FrameworkCatalogEntry, BoardLike, PackageManager, FrameworkTargetProfile, TargetProfileInput, CatalogProbeMethod } from './framework-catalog.js';
 export { installProjectDependencies, __setProjectInstallRunnerForTest } from './install-deps.js';
 export type { ProjectInstallResult } from './install-deps.js';
 export {
