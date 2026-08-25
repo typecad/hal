@@ -217,6 +217,25 @@ describe('zephyr-installer install scripts', () => {
     expect(installPs1.includes('2>&1')).toBe(false);
   });
 
+  it('pins the bossac MSI for Windows (bossac ships in nothing Zephyr provides)', () => {
+    // west flash's bossac runner (SAMD SAM-BA bootloader boards — the Arduino
+    // Nano 33 IoT, Zero, MKR series) needs bossac on PATH, and FindHostTools
+    // resolves find_program(BOSSAC) at build-configure time, so a missing
+    // binary bakes BOSSAC-NOTFOUND into the runner args. bossac is in neither
+    // the Zephyr SDK, west modules, nor conda-forge — install.ps1 extracts the
+    // official upstream MSI's self-contained bossac.exe into the env's
+    // Library\bin; install.sh prints per-OS hints on POSIX instead.
+    expect(v.BOSSA_URL).toMatch(
+      /^https:\/\/github\.com\/shumatech\/BOSSA\/releases\/download\/[\d.]+\/bossa-x64-[\d.]+\.msi$/,
+    );
+    expect(v.BOSSA_SHA256).toMatch(/^[0-9a-f]{64}$/);
+    const installPs1 = readFileSync(join(installerDir, 'install.ps1'), 'utf8');
+    const installSh = readFileSync(join(installerDir, 'install.sh'), 'utf8');
+    expect(installPs1).toContain('$BOSSA_URL');
+    expect(installPs1).toContain("Join-Path $dfuBinDir 'bossac.exe'");
+    expect(installSh).toContain('bossa-cli');
+  });
+
   it('both native installers re-pin the manifest revision on an adopted workspace', () => {
     // A workspace adopted from a pre-existing install (or initialized by an
     // older installer) may track a branch or an older tag — plain `west

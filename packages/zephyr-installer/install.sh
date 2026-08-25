@@ -239,6 +239,26 @@ install_platform_tools() {
         echo "env:   install dfu-util via your package manager (https://dfu-util.sourceforge.net)." >&2 ;;
     esac
   fi
+  # bossac — west flash's bossac runner (SAMD SAM-BA bootloader boards — the
+  # Arduino Nano 33 IoT, Zero, MKR series) shells out to it, and Zephyr's
+  # FindHostTools resolves find_program(BOSSAC) at build-configure time, so it
+  # must be on PATH BEFORE building. In neither the Zephyr SDK nor conda-forge;
+  # no auto-sudo — warn with the right command instead.
+  if ! command -v bossac >/dev/null 2>&1; then
+    echo "env: bossac not found — west flash on SAM-BA-bootloader boards (SAMD) needs it." >&2
+    case "$(uname -s)" in
+      Linux)
+        if command -v apt-get >/dev/null 2>&1; then
+          echo "env:   install with: sudo apt-get install bossa-cli" >&2
+        else
+          echo "env:   install bossac via your distribution's package manager, or build it: https://github.com/shumatech/BOSSA" >&2
+        fi ;;
+      Darwin)
+        echo "env:   install with: brew install bossa" >&2 ;;
+      *)
+        echo "env:   install bossac via your package manager (https://github.com/shumatech/BOSSA)." >&2 ;;
+    esac
+  fi
 }
 
 create_env

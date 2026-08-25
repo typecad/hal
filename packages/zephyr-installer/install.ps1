@@ -255,6 +255,44 @@ if (Test-Path (Join-Path $dfuBinDir 'dfu-util.exe')) {
   }
 }
 
+# bossac: west flash's bossac runner (SAMD SAM-BA bootloader boards - the
+# Arduino Nano 33 IoT, Zero, MKR series) shells out to bossac. Zephyr's
+# FindHostTools resolves find_program(BOSSAC) at BUILD-CONFIGURE time, so a
+# missing binary gets baked into the runner args (BOSSAC-NOTFOUND) and west
+# flash dies with "required program bossac not found" even after bossac
+# lands on PATH without a reconfigure. bossac is in neither the Zephyr SDK
+# nor conda-forge; the official upstream MSI extracts cleanly with 7z and
+# ships a self-contained bossac.exe (system DLLs only). Same placement rules
+# as dfu-util above. Idempotent; warn-and-continue (SAM-BA boards only).
+if (Test-Path (Join-Path $dfuBinDir 'bossac.exe')) {
+  Write-Host "bossac: already present - skipping"
+} else {
+  $bossa7z = Get-ChildItem -Path $EnvPrefix -Recurse -Filter '7z.exe' -ErrorAction SilentlyContinue `
+             | Select-Object -First 1 -ExpandProperty FullName
+  if (-not $bossa7z) { $found = Get-Command 7z -ErrorAction SilentlyContinue; if ($found) { $bossa7z = $found.Source } }
+  if (-not $bossa7z) {
+    Write-Warning "bossac: 7z.exe not found - skipping (west flash on SAM-BA-bootloader boards will need bossac on PATH)."
+  } else {
+    try {
+      $bossaTmp = Join-Path ([System.IO.Path]::GetTempPath()) "tc-bossa-$PID"
+      New-Item -ItemType Directory -Force -Path $bossaTmp | Out-Null
+      $msi = Join-Path $bossaTmp 'bossa-x64.msi'
+      Download-File -Url $BOSSA_URL -OutFile $msi
+      $actual = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLower()
+      if ($BOSSA_SHA256 -and $actual -ne $BOSSA_SHA256.ToLower()) {
+        throw "SHA256 mismatch for bossac MSI (expected $BOSSA_SHA256, got $actual)"
+      }
+      Invoke-Native { & $bossa7z x -y "-o$bossaTmp" $msi } "bossac extract msi"
+      if (-not (Test-Path (Join-Path $bossaTmp 'bossac.exe'))) { throw "bossac.exe not found in MSI payload" }
+      Copy-Item (Join-Path $bossaTmp 'bossac.exe') $dfuBinDir -Force
+      Remove-Item -Recurse -Force $bossaTmp -ErrorAction SilentlyContinue
+      Write-Host "bossac: installed - $(Join-Path $dfuBinDir 'bossac.exe')"
+    } catch {
+      Write-Warning "bossac: install failed ($_) - west flash on SAM-BA-bootloader boards will need bossac on PATH."
+    }
+  }
+}
+
 # --- 3. activation hooks ----------------------------------------------------
 $actDst   = Join-Path $EnvPrefix 'etc\conda\activate.d'
 $deactDst = Join-Path $EnvPrefix 'etc\conda\deactivate.d'
