@@ -34,7 +34,14 @@
 //       "pwmMaxFrequency": 50000000,  -> PWM_MAX_FREQ
 //       "pwmResolutionBits": 16,      -> PWM_RESOLUTION_BITS
 //       "adcMax": 4095                -> ADC_MAX
-//     }
+//     },
+//     "usb": {                        -> port discovery (host side only):
+//       "vid": "2FE3",                multi-board test rigs match the
+//       "pid": "0002",                console/upload port by USB identity
+//       "serial": "…" (optional)      instead of tracking COM/tty numbers;
+//     }                               Zephyr CDC boards pair this with their
+//   }                                 per-board zephyr.usb.pid (see the
+//                                       expect README's "USB port discovery")
 //   }
 // ---------------------------------------------------------------------------
 

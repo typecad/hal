@@ -143,6 +143,13 @@ export interface TestConfig {
   exclude?: string[];
   /** Serial port (e.g. `'COM3'`, `'/dev/ttyACM0'`). */
   port: string;
+  /**
+   * USB identity for port discovery — resolves the port by VID/PID (+
+   * optional serial) instead of a hardcoded path. When set, the port is
+   * re-resolved after every upload, surviving CDC re-enumeration. The
+   * board's test-pins.json may carry the same block; the config wins.
+   */
+  usb?: { vid: string; pid: string; serial?: string };
   /** Serial baud rate. Default: `115200`. */
   baudRate: number;
   /** Timeout in ms waiting for SUITE_END. Default: `30000`. */

@@ -1,5 +1,10 @@
 import { describe, done } from '@typecad/expect';
 // @typecad-requires-roles adcMax
+
+// @typecad-skip-target samd21: the Nano 33 IoT's ADC channel map is sparse
+// (AIN1 does not reach a header pin — the board dts muxes only AIN0/2/3/10/
+// 17/18/19), so the "channel 1 is callable" case below has no channel to
+// read. The channel-0 case is covered by 11-adc's pin-based reads.
 // ADC.read(channel) takes a channel NUMBER (the Arduino-compat form). The
 // Zephyr lowering resolves it via the chip descriptor's channel map —
 // pin-first (readAnalog's GPIO-number form), then by channel index, so

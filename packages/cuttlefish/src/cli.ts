@@ -6,7 +6,8 @@ import type { GeneratedOutputs } from "./types.js";
 import type { CreateCommandOptions, BoardAddCommandOptions } from "./types.js";
 import { runLibraryCommand } from "./library/cli.js";
 import type { ScaffoldProjectResult } from "./create/index.js";
-import { scaffoldProject, printCreateNextSteps, KNOWN_TARGETS, frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from "./create/index.js";
+import { scaffoldProject, printCreateNextSteps, KNOWN_TARGETS, KNOWN_MCUS, frameworksForTarget, frameworkCatalogEntry, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from "./create/index.js";
+import { mcuAsTarget, findKnownMcu, findZephyrBoardForMcu, mcuSupportsZephyr, sanitizeBoardName, isValidFqbn, zephyrBoardsForMcu, type McuCreateTarget } from "./create/mcu-target.js";
 import { generateFrameworkDebugArtifacts } from "./create/debug-artifacts.js";
 import { runCreateWizard } from "./create/index.js";
 import { installProjectDependencies } from "./create/install-deps.js";
@@ -68,16 +69,40 @@ function applyPsramToArduinoBuild(
 
 async function handleCreate(options: CreateCommandOptions): Promise<void> {
   const targetId = options.target ?? options.board;
-  const hasTarget = !!targetId;
+  const mcuId = options.mcu ?? (targetId ? undefined : undefined);
+  const hasTarget = !!targetId || !!options.mcu;
 
   if (hasTarget) {
-    const target = KNOWN_TARGETS.find(t => t.id === targetId);
+    // Target resolution: --mcu names a bare-MCU entry; --target/--board may
+    // name either a board or (as a convenience) an MCU entry.
+    const mcuEntry = options.mcu
+      ? findKnownMcu(options.mcu)
+      : targetId
+        ? findKnownMcu(targetId)
+        : undefined;
+    if (options.mcu && !mcuEntry) {
+      const available = KNOWN_MCUS.map(m => `  - ${m.id} (${m.displayName})`).join("\n");
+      throw new Error(`Unknown MCU '${options.mcu}'. Available MCUs:\n${available}`);
+    }
+    const target = mcuEntry
+      ? mcuAsTarget(mcuEntry)
+      : KNOWN_TARGETS.find(t => t.id === targetId);
+    const mcuTarget = mcuEntry ? (target as McuCreateTarget) : undefined;
     if (!target) {
-      const available = KNOWN_TARGETS.map(t => `  - ${t.id} (${t.displayName})`).join("\n");
+      const available = [
+        ...KNOWN_TARGETS.map(t => `  - ${t.id} (${t.displayName})`),
+        ...KNOWN_MCUS.map(m => `  - ${m.id} (${m.displayName}) [MCU-only]`),
+      ].join("\n");
       throw new Error(
         `Unknown target '${targetId}'. Available targets:\n${available}`,
       );
     }
+
+    // Framework narrowing shared by the explicit and auto-pick paths: on
+    // MCU-only targets, Zephyr needs the package's silicon zephyr block.
+    const compatibleFrameworks = frameworksForTarget(target)
+      .filter((f) => !mcuTarget || f.id !== 'zephyr' || mcuSupportsZephyr(mcuTarget))
+      .filter(f => f.installable);
 
     // Resolve the framework. --framework wins (validated against the board's
     // compatible set); otherwise narrow via the catalog for the chosen board
@@ -90,8 +115,8 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
         const available = FRAMEWORK_CATALOG.filter(f => f.installable).map(f => f.id).join(", ");
         throw new Error(`Unknown framework '${options.framework}'. Available: ${available}`);
       }
-      if (!frameworkCompatibleWithTarget(target, requested.id)) {
-        const list = frameworksForTarget(target).filter(f => f.installable).map(f => f.id).join(", ");
+      if (!compatibleFrameworks.some(f => f.id === requested.id)) {
+        const list = compatibleFrameworks.map(f => f.id).join(", ");
         throw new Error(
           `Framework '${requested.id}' is not compatible with target '${target.id}' (${target.displayName}). ` +
           `Compatible frameworks: ${list}`,
@@ -100,12 +125,11 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       frameworkId = requested.id;
       frameworkPackage = requested.packageName;
     } else {
-      const compatible = frameworksForTarget(target).filter(f => f.installable);
-      if (compatible.length === 1) {
-        frameworkId = compatible[0]!.id;
-        frameworkPackage = compatible[0]!.packageName;
+      if (compatibleFrameworks.length === 1) {
+        frameworkId = compatibleFrameworks[0]!.id;
+        frameworkPackage = compatibleFrameworks[0]!.packageName;
       } else {
-        const list = compatible.map(f => f.id).join(", ");
+        const list = compatibleFrameworks.map(f => f.id).join(", ");
         throw new Error(
           `Target '${target.id}' is compatible with multiple frameworks (${list}). ` +
           `Pass --framework <id> to choose one.`,
@@ -129,6 +153,39 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
     // Framework-specific build target + toolchain (Zephyr board id + 'west' vs
     // the Arduino FQBN + 'arduino-cli').
     const profile = frameworkTargetProfile(target, frameworkId);
+    let buildTarget = profile.buildTarget ?? target.buildTarget;
+    let zephyrCustomBoard = false;
+
+    // MCU-only targets carry no catalog build target. Non-interactive rules:
+    // Zephyr generates a custom board unless --zephyr-board names an upstream
+    // board; Arduino requires --fqbn (the wizard prompts instead).
+    if (mcuTarget) {
+      if (frameworkId === 'zephyr') {
+        if (options.zephyrBoard) {
+          const board = findZephyrBoardForMcu(mcuTarget, options.zephyrBoard);
+          if (!board) {
+            const count = zephyrBoardsForMcu(mcuTarget).length;
+            throw new Error(
+              `--zephyr-board '${options.zephyrBoard}' is not a Zephyr board for the ` +
+              `${mcuTarget.displayName} (checked ${count} snapshot board${count === 1 ? '' : 's'} for its SoC). ` +
+              `Omit the flag to generate a custom board, or pick from the snapshot via the wizard.`,
+            );
+          }
+          buildTarget = board.target;
+        } else {
+          buildTarget = sanitizeBoardName(projectName);
+          zephyrCustomBoard = true;
+        }
+      } else if (!options.fqbn || !isValidFqbn(options.fqbn)) {
+        throw new Error(
+          `MCU-only Arduino targets need an FQBN: pass --fqbn <packager:architecture:board[:options]> ` +
+          `(e.g. --fqbn arduino:avr:pro — find yours with \`arduino-cli board search '<board>'\`), ` +
+          `or run the interactive wizard (cuttlefish create --mcu ${mcuTarget.id}).`,
+        );
+      } else {
+        buildTarget = options.fqbn;
+      }
+    }
 
     const result = scaffoldProject({
       probeMethod: options.probe,
@@ -141,9 +198,11 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       boardPackage: target.boardPackage,
       frameworkPackage,
       framework: frameworkId,
-      buildTarget: profile.buildTarget ?? target.buildTarget,
+      buildTarget,
       ...(profile.toolchainType ? { toolchainType: profile.toolchainType } : {}),
       mcu: target.mcu,
+      ...(mcuTarget ? { sketchPin: mcuTarget.sketchPin } : {}),
+      ...(zephyrCustomBoard ? { zephyrCustomBoard: true } : {}),
       baudRate: target.isNative ? undefined : (options.baud ?? 9600),
       includeSketch: !options.noSketch,
       ...(target.frameworkData
@@ -743,7 +802,7 @@ async function main(): Promise<void> {
 
           const timestamp = new Date().toLocaleTimeString();
           const relativePath = path.relative(process.cwd(), changedFile);
-          console.log(chalk.cyan(`⤳ Cuttlefish`) + chalk.gray(` v0.1.0`));
+          console.log(chalk.cyan(`⤳ Cuttlefish`) + chalk.gray(` v${ui.VERSION}`));
           console.log();
           ui.printInfo(`[${timestamp}] Change detected: ${relativePath}`);
           console.log();

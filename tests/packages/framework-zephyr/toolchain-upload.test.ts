@@ -133,6 +133,18 @@ describe('buildFlashArgs (west flash runner selection)', () => {
     expect(args).toEqual(['flash', '-d', '/proj/build', '--runner', 'jlink']);
   });
 
+  it('forwards the port via --bossac-port for the bossac runner', () => {
+    // Regression: bossac defaults its port to /dev/ttyACM0, which never
+    // matches on Windows — "No device found on /dev/ttyACM0" — so the port
+    // must be forwarded explicitly (Nano 33 IoT / SAMD21 bootloader flash).
+    const args = buildFlashArgs('/proj/build', 'arduino_nano_33_iot/samd21g18a', 'bossac', 'COM8');
+    expect(args).toEqual([
+      'flash', '-d', '/proj/build',
+      '--runner', 'bossac',
+      '--bossac-port', 'COM8',
+    ]);
+  });
+
   it('honors an explicit runner even on ESP32 (no --esp-device without a port)', () => {
     const args = buildFlashArgs('/proj/build', 'esp32_devkitc', 'openocd', undefined);
     expect(args).toEqual(['flash', '-d', '/proj/build', '--runner', 'openocd']);

@@ -133,6 +133,29 @@ export function resolveBoardConstants(defFilePath: string): BoardConstants {
   // cannot handle, but the MCU file has static pin data we can parse.
   resolveAndMergeMCUConstants(defFilePath, result);
 
+  // MCU-only resolution: the def file may itself be an MCU package definition
+  // (a config with `mcu:` but no `board:` resolves pins straight from the
+  // silicon). No board file sits above it, so nothing triggered the
+  // peripherals.ts merge that board files get via mergeMCUConstants — do it
+  // here. The mcu.ts/index.ts basename guard keeps the peripherals file
+  // (also under an mcu- package) from merging itself recursively.
+  const baseName = path.basename(defFilePath);
+  const normalizedDef = defFilePath.replace(/\\/g, "/");
+  if (
+    (baseName === "mcu.ts" || baseName === "index.ts") &&
+    /\/mcu-[^/]+\//.test(normalizedDef)
+  ) {
+    const periphFile = path.join(path.dirname(defFilePath), "peripherals.ts");
+    if (fs.existsSync(periphFile)) {
+      const periphConstants = resolveBoardConstants(periphFile);
+      for (const [key, value] of periphConstants.entries()) {
+        if (!result.has(key)) {
+          result.set(key, value);
+        }
+      }
+    }
+  }
+
   return result;
 }
 
@@ -527,6 +550,36 @@ export function tryResolveBoardDefFile(
       if (parent === dir) break; // reached filesystem root
       dir = parent;
     }
+  }
+
+  // Handle npm-scoped MCU package imports (e.g. "@typecad/mcu-esp32") — an
+  // MCU-only config (no board package) resolves pin constants straight from
+  // the silicon definition. MCU packages keep the definition object in either
+  // src/mcu.ts (mcu-atmega328p style: index.ts is a pure barrel) or
+  // src/index.ts (mcu-esp32 style: definition inline); prefer mcu.ts so the
+  // walker always sees the object literal. The monorepo layouts alongside
+  // node_modules are the top-level boards/ and mcus/ directories.
+  if (effectiveSpecifier.startsWith("@typecad/mcu-")) {
+    const parts = effectiveSpecifier.split("/");
+    const pkgName = parts[1]; // "mcu-esp32"
+    let dir = path.dirname(fromFile);
+    while (true) {
+      const srcDirs = [
+        path.join(dir, "node_modules", "@typecad", pkgName, "src"),
+        path.join(dir, "mcus", pkgName, "src"),
+        path.join(dir, "packages", pkgName, "src"),
+      ];
+      for (const srcDir of srcDirs) {
+        for (const fileName of ["mcu.ts", "index.ts"]) {
+          const candidate = path.join(srcDir, fileName);
+          if (fs.existsSync(candidate)) return candidate;
+        }
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    return undefined;
   }
 
   return undefined;

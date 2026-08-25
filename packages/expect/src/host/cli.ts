@@ -21,6 +21,8 @@
 
 import { loadConfig } from './config.js';
 import { run } from './runner.js';
+import { boardTestPins } from './test-pins.js';
+import { listUsbSerialPorts, matchUsbPorts, formatUsbIdentity } from './port-discovery.js';
 import type { TestConfig } from './types.js';
 import path from 'node:path';
 
@@ -42,6 +44,7 @@ interface CLIArgs {
   config?: string;
   dryRun?: boolean;
   bail?: boolean;
+  discover?: boolean;
 }
 
 function parseArgs(argv: string[]): CLIArgs {
@@ -101,6 +104,9 @@ function parseArgs(argv: string[]): CLIArgs {
       case '-v':
         result.verbose = true;
         break;
+      case '--discover':
+        result.discover = true;
+        break;
       case '--dry-run':
         result.dryRun = true;
         break;
@@ -143,6 +149,9 @@ const HELP = `
   --include, -i <glob>  Test file pattern (repeatable)
   --exclude, -x <glob>  Test file pattern to skip (repeatable)
   --verbose, -v         Show debug serial output
+  --discover            List attached USB serial ports (VID:PID, serial,
+                        manufacturer) and which one the current config/board
+                        identity matches, then exit — test-box bring-up aid
   --help, -h            Show this help
 
 \x1b[1mExamples:\x1b[0m
@@ -214,6 +223,37 @@ async function main(): Promise<void> {
   // CLI mode flags (not config-file settings).
   config.dryRun = args.dryRun;
   config.bail = args.bail;
+
+  // --discover: list attached USB serial ports and annotate the match for
+  // the active board identity (config test.usb, else the board's
+  // test-pins.json usb block). Bring-up aid for multi-board test boxes.
+  if (args.discover) {
+    const ports = await listUsbSerialPorts();
+    const identity = config.test.usb ?? boardTestPins(config.board, config.projectRoot)?.usb;
+    const matches = identity ? matchUsbPorts(ports, identity) : [];
+    console.log('USB serial ports:');
+    if (ports.length === 0) {
+      console.log('  (none found)');
+    }
+    for (const p of ports) {
+      const isMatch = identity ? matchUsbPorts([p], identity).length > 0 : false;
+      const id = `${p.vid.toUpperCase()}:${p.pid.toUpperCase()}`;
+      const serial = p.serialNumber ? ` serial ${p.serialNumber}` : '';
+      const mfr = p.manufacturer ? ` [${p.manufacturer}]` : '';
+      console.log(`  ${p.path}  ${id}${serial}${mfr}${isMatch ? '  <-- matches this config' : ''}`);
+    }
+    console.log();
+    if (identity) {
+      console.log(matches.length === 1
+        ? `config identity ${formatUsbIdentity(identity)} -> ${matches[0].path}`
+        : `config identity ${formatUsbIdentity(identity)} -> no unique match (${matches.length} found)`);
+    } else {
+      console.log('(no USB identity on this config or board — set test.usb or a test-pins.json usb block)');
+    }
+    // Exit 1 when an identity is set but has no unique match, so scripts
+    // can gate on discovery success.
+    process.exit(identity ? (matches.length === 1 ? 0 : 1) : 0);
+  }
 
   // Run tests
   const exitCode = await run(config);

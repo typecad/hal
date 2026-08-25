@@ -50,6 +50,37 @@ export function usbdDeviceLines(chip: ZephyrChipDescriptor): string[] {
   if (!chip.usb) return [];
   const vid = chip.usb.vid ?? '0x2fe3';
   const pid = chip.usb.pid ?? '0x0001';
+  // 1200-baud touch-to-reset (BOSSA-bootloader boards): a usbd message
+  // callback that reboots into the bootloader when the host sets the CDC
+  // baud rate to 1200. Zephyr's CDC-ACM class publishes
+  // USBD_MSG_CDC_ACM_LINE_CODING on every host SET_LINE_CODING (the message
+  // carries the CDC uart device; its line coding is readable via
+  // uart_cfg_get). The reboot writes the bootloader's stay-resident magic
+  // (Arduino SAMD scheme: the bootloader checks the last word of SRAM after
+  // reset) so the board waits in the bootloader instead of booting the app.
+  const touch = chip.usb.touchReset;
+  const touchLines: string[] = touch
+    ? [
+        `// 1200-baud touch-to-reset: reboot into the bootloader (flag 0x${touch.magic.toString(16)} @ 0x${touch.flagAddress.toString(16)}).`,
+        'static void __tc_usbd_msg_cb(struct usbd_context* ctx, const struct usbd_msg* msg) {',
+        '    (void)ctx;',
+        '    if (msg->type != USBD_MSG_CDC_ACM_LINE_CODING) { return; }',
+        '    struct uart_config __tc_cfg;',
+        '    if (uart_config_get(msg->dev, &__tc_cfg) == 0 && __tc_cfg.baudrate == 1200) {',
+        '        // Delay the reboot so the host touch (which applies 1200 as part',
+        '        // of opening the port) can close its handle first — resetting under',
+        '        // an open host handle can wedge the Windows usbser driver and block',
+        '        // re-enumeration until a physical replug.',
+        '        k_msleep(250);',
+        `        *(volatile uint32_t*)0x${touch.flagAddress.toString(16)} = 0x${touch.magic.toString(16)};`,
+        '        NVIC_SystemReset();',
+        '    }',
+        '}',
+      ]
+    : [];
+  const touchRegister: string[] = touch
+    ? ['    usbd_msg_register_cb(&__tc_usbd, __tc_usbd_msg_cb);']
+    : [];
   return [
     '// CUTTLEFISH_USBD_BEGIN',
     'USBD_DEVICE_DEFINE(__tc_usbd,',
@@ -61,6 +92,7 @@ export function usbdDeviceLines(chip: ZephyrChipDescriptor): string[] {
     'USBD_DESC_CONFIG_DEFINE(__tc_usbd_cfg_desc, "cuttlefish");',
     'USBD_CONFIGURATION_DEFINE(__tc_usbd_cfg, 0, 250, &__tc_usbd_cfg_desc);',
     'static bool __tc_usbd_started = false;',
+    ...touchLines,
     'static void __tc_usbd_start(void) {',
     '    if (__tc_usbd_started) { return; }',
     '    __tc_usbd_started = true;',
@@ -74,6 +106,8 @@ export function usbdDeviceLines(chip: ZephyrChipDescriptor): string[] {
     '    if (err != 0) { printk("cuttlefish usb: add configuration failed: %d\\n", err); return; }',
     '    err = usbd_register_all_classes(&__tc_usbd, USBD_SPEED_FS, 1, NULL);',
     '    if (err != 0) { printk("cuttlefish usb: register classes failed: %d\\n", err); return; }',
+    // Registered before usbd_init so no line-coding event can be missed.
+    ...touchRegister,
     // usbd_init builds the descriptor tables from the registered
     // configuration/classes and marks the context initialized — usbd_enable
     // refuses with -EPERM ("not initialized") without it (sample_usbd_init.c

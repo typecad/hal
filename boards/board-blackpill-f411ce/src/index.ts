@@ -110,7 +110,11 @@ export const BlackPillF411CEBoard: BoardDefinition = {
     // controller node (disabled by default); the overlay generator enables it
     // and composes one CDC-ACM serial instance when a program uses USB0. The
     // board clocks are already shaped for it (PLLQ = exactly 48 MHz).
-    usb: { controller: 'zephyr_udc0', cdcInstances: 1 },
+    // Per-board PID under the Zephyr test VID: every Zephyr CDC console
+    // defaults to 2FE3:0001, which makes boards indistinguishable to a
+    // multi-board test rig. The PID below is this board's USB identity —
+    // test-pins.json carries the same pair for host-side port matching.
+    usb: { controller: 'zephyr_udc0', cdcInstances: 1, vid: '0x2FE3', pid: '0x0002' },
     // The STM32 watchdog node is `iwdg` (independent watchdog), NOT the
     // `wdt0` the lowering defaults to — declared explicitly so wdt.* ops
     // resolve to the right DEVICE_DT_GET(DT_NODELABEL(iwdg)).

@@ -33,7 +33,11 @@ export interface ResolvedCuttlefishConfig {
   target?: string;
   /** MCU package specifier (e.g. '@typecad/mcu-atmega328p'). */
   mcu?: string;
-  /** Board package specifier (e.g. '@typecad/board-arduino-uno'). (Deprecated) */
+  /** Board package specifier (e.g. '@typecad/board-arduino-uno'). Layers
+   *  board-level assets (silkscreen aliases, onboard devices, probe methods,
+   *  build targets) on top of the MCU package. Optional: an MCU-only config
+   *  (mcu set, board absent) programs bare silicon — on Zephyr via a
+   *  generated custom board (`zephyr.customBoard: true`). */
   board?: string;
   /** Path to a TypeCAD contract file (*.contract.json). */
   contract?: string;
@@ -565,13 +569,15 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   const zephyrRunnerArgs = extractStringArray(configObject, ["zephyr", "runnerArgs"], warn);
   const zephyrRunner = flat.get("zephyr.runner");
   const zephyrProbe = flat.get("zephyr.probe");
-  if (zephyrKconfig || zephyrCmakeArgs || zephyrRunnerArgs || typeof zephyrRunner === "string" || typeof zephyrProbe === "string") {
+  const zephyrCustomBoard = flat.get("zephyr.customBoard");
+  if (zephyrKconfig || zephyrCmakeArgs || zephyrRunnerArgs || typeof zephyrRunner === "string" || typeof zephyrProbe === "string" || typeof zephyrCustomBoard === "boolean") {
     resolved.zephyrConfig = {
       ...(zephyrKconfig ? { kconfig: zephyrKconfig } : {}),
       ...(zephyrCmakeArgs ? { cmakeArgs: zephyrCmakeArgs } : {}),
       ...(zephyrRunnerArgs ? { runnerArgs: zephyrRunnerArgs } : {}),
       ...(typeof zephyrProbe === "string" ? { probe: zephyrProbe } : {}),
       ...(typeof zephyrRunner === "string" ? { runner: zephyrRunner } : {}),
+      ...(zephyrCustomBoard === true ? { customBoard: true } : {}),
     };
   }
 

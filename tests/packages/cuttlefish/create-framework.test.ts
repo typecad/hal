@@ -252,6 +252,7 @@ describe('BOARD_PROBE_METHODS (create-time catalog vs board packages)', () => {
     const { resolveChipFromBoard } = await import('../../../../packages/framework-zephyr/src/chips/resolve');
     const boardSrc: Record<string, string> = {
       'blackpill-f411ce': 'boards/board-blackpill-f411ce/src/index.ts',
+      'nano-33-iot': 'boards/board-nano-33-iot/src/index.ts',
       'xiao-nrf52840': 'boards/board-xiao-nrf52840/src/index.ts',
       'rp2040': 'boards/board-rp2040/src/index.ts',
       'rp2350': 'boards/board-rp2350/src/index.ts',

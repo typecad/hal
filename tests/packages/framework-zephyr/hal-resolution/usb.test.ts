@@ -124,7 +124,7 @@ describe('usb lowering', () => {
 
 describe('blackpill usb capability', () => {
   it('declares the zephyr_udc0 controller with one CDC instance', () => {
-    expect(BLACKPILL?.usb).toEqual({ controller: 'zephyr_udc0', cdcInstances: 1 });
+    expect(BLACKPILL?.usb).toEqual({ controller: 'zephyr_udc0', cdcInstances: 1, vid: '0x2FE3', pid: '0x0002' });
   });
 
   it('lowers USB0 println against the blackpill descriptor', () => {

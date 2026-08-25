@@ -37,6 +37,10 @@ const config: CuttlefishConfig = {
   },
 
   test: {
+    // Upload + console on the 16U2 USB-serial bridge (official Uno; CH340
+    // clones report 1A86:7523 — set that here or pass --port). Resolved by
+    // USB identity; the explicit port below is the fallback.
+    usb: { vid: '2341', pid: '0043' },
     port: 'COM8',
     baudRate: 115200,
     timeout: 30000,

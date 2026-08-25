@@ -69,7 +69,7 @@ export function lowerHalOp(
   if (op.operation.startsWith('uart.'))       return lowerUart(op);
   if (op.operation.startsWith('usb.'))        return lowerUsb(op, chip);
   if (op.operation.startsWith('interrupt.'))  return lowerInterrupt(op, chip);
-  if (op.operation.startsWith('wdt.'))        return lowerWdt(op);
+  if (op.operation.startsWith('wdt.'))        return lowerWdt(op, chip);
   if (op.operation.startsWith('hwtimer.'))    return lowerHwtimer(op, chip);
   if (op.operation.startsWith('power.'))      return lowerPower(op);
   if (op.operation.startsWith('tone.'))       return lowerTone(op, chip);

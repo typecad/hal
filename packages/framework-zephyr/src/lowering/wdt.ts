@@ -55,8 +55,16 @@ export function wdtInitLines(chip: ZephyrChipDescriptor): string[] {
  * Resolve a HAL wdt.* op to Zephyr C++.
  * Returns `{ code }` for statement ops, `{ expression }` for value-returning ops.
  */
-export function lowerWdt(op: HALOpIR): { code?: string; expression?: string } {
+export function lowerWdt(op: HALOpIR, chip: ZephyrChipDescriptor): { code?: string; expression?: string } {
   const o = op as any;
+
+  // No watchdog node on this target (e.g. SAM D21 — Zephyr's samd21 dtsi
+  // exposes none). Comment + (in profileDiagnostics) a clear error, mirroring
+  // the hwtimer unavailable pattern. Without this the wdt_* calls reference
+  // the shim vars that wdtInitLines (gated on chip.wdt) never emitted.
+  if (!chip.wdt) {
+    return { code: `/* ${op.operation}: no watchdog device on ${chip.id} */` };
+  }
 
   switch (op.operation) {
     case 'wdt.enable': {

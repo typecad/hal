@@ -9,6 +9,7 @@
 export { ZephyrStrategy as FrameworkStrategy } from './strategy.js';
 export { ZephyrStrategy } from './strategy.js';
 export { Toolchain } from './toolchain/index.js';
+export { bossacTouchReset } from './toolchain/bossac-touch.js';
 
 // Create-time starter debug artifacts. The `cuttlefish create` flow reads this
 // optional named export off the loaded framework module (same loader pattern

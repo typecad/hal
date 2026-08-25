@@ -264,6 +264,19 @@ export interface MCUDefinition {
   features: FeatureFlags;
   /** MCU-specific build configuration. */
   build: BuildConfig;
+  /**
+   * Silicon-level @typecad/framework-zephyr chip data for this MCU. The lower
+   * layer of the same record boards carry (BoardDefinition.zephyr): SoC
+   * name(s), devicetree includes, GPIO controller split, default console and
+   * clock plan — facts of the chip, not of any PCB. An MCU-only config (no
+   * board package) flattens these into board constants under `zephyr.*` so
+   * framework-zephyr's resolveChipFromBoard() reconstructs its chip descriptor
+   * and the custom-board generator can emit an out-of-tree board for the
+   * chip. Board packages keep board-level Zephyr facts (target name, probe
+   * methods, storage layout, onboard LED/button DT aliases) in their own
+   * zephyr field.
+   */
+  zephyr?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------

@@ -156,6 +156,25 @@ describe("ZephyrStrategy core shim usage gating", () => {
     expect(withAll.some((l) => l.includes("__tc_print(const char*"))).toBe(true);
   });
 
+  it("formats protocol numbers via integer conversions, never %g", () => {
+    // The 0.17.5 SDK swapped newlib for picolibc, whose default build
+    // silently prints NOTHING for %g (newlib-nano's -u _printf_float trap).
+    // Every [TC:EXPECT:...:value:] arrived empty and all tests failed with
+    // "*float*" actuals. The numeric helpers must format with %lld only.
+    const lines = s.shimLines(emptyProgram, ctxOf({
+      ...noUses,
+      usedPolyfillHelpers: new Set(["__tc_print", "__tc_println"]),
+    }));
+    const joined = lines.join("\n");
+    expect(joined).toContain("__tc_fmt_num");
+    expect(joined).toContain('printf("%lld", ip)');
+    expect(joined).toContain('snprintf(fbuf, sizeof(fbuf), "%06lld", fr)');
+    // No float conversion specifier anywhere in the numeric helpers.
+    expect(joined.includes("%g")).toBe(false);
+    expect(joined.includes("%f")).toBe(false);
+    expect(joined.includes("%e")).toBe(false);
+  });
+
   it("keeps millis() for hidden pollers even without usesWallClock", () => {
     // delay() sets usesMillis (AVR conflation) but NOT usesWallClock — the
     // async runtime / timer scheduler / UI tick still poll millis().

@@ -59,7 +59,12 @@ export async function readSerialOutput(
     let resolved = false;
 
     const cleanup = (callback: () => void) => {
+      // Strip the data/close listeners, but keep (re-attach) a no-op error
+      // handler: a USB dropout mid-close emits 'error' after the removal,
+      // and an 'error' event with no listener throws and kills the process
+      // — the exact failure a nightly rig must survive.
       sp.removeAllListeners();
+      sp.on('error', () => {});
 
       if (sp.isOpen) {
         sp.close(() => callback());

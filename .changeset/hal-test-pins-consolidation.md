@@ -160,3 +160,70 @@ With this round, all eight board configs compile the full shared suite
 (`cuttlefish-test --dry-run`): uno, esp32-devkit, xiao-nrf52840, esp32c3,
 esp32c6, esp32s3, rp2040, rp2350 — plus the Black Pill's 95-test hardware
 pass. The only skips left are the documented hardware limits above.
+
+## USB port discovery for multi-board test rigs
+
+COM/tty numbers reshuffle on replug and on every CDC re-enumeration after a
+flash — a nightly test box with several boards cannot track them. Ports are
+now identified by USB VID/PID (+ optional serial number):
+
+- **feat(expect): USB identity port resolution.** `test.usb: { vid, pid,
+  serial? }` in the config, or the same block in a board's test-pins.json
+  (config wins), resolves the console/upload port via `serialport`'s
+  listing. The runner **re-resolves after every upload**, so a CDC console
+  that re-enumerates under a different COM number is found again; failures
+  are loud and include the full attached-port table. `--port`/`test.port`
+  always override (and a `--port` flag disables discovery). New
+  `--discover` flag lists attached ports (VID:PID/serial/manufacturer),
+  marks the active identity's match, and exits 1 when no unique match —
+  a rig bring-up and CI gate in one.
+- **feat(boards): per-board Zephyr CDC PIDs.** Every Zephyr CDC console
+  defaults to the Zephyr test IDs 2FE3:0001, making boards
+  indistinguishable by USB. The blackpill/xiao/rp2040/rp2350 board
+  packages now assign their own PID (2FE3:0002–:0005) via the existing
+  zephyr.usb.vid/pid plumbing, mirrored by the `usb` block in all nine
+  test-pins.json files (bridge boards carry their bridge chip's ID: Uno
+  16U2 2341:0043, ESP32 DevKitC CP2102 10C4:EA60; the esp32c3/c6/s3
+  entries assume the USB-Serial/JTAG console, unverified on hardware).
+  All nine hal board configs now use `test.usb`, keeping their explicit
+  port only as the bootstrap fallback for pre-PID firmware.
+
+Nightly-rig hardening (found by hammering the Black Pill 17 flash cycles
+in a row):
+
+- **fix(expect): mid-close serial errors no longer kill the process.** The
+  reader's cleanup stripped ALL listeners before close() completed, so a
+  USB dropout mid-close emitted an unhandled 'error' event and crashed
+  Node — now a no-op error handler stays attached through close.
+- **feat(expect): transient-failure retry.** A USB console glitch mid-read
+  loses the protocol lines (timeout, board fine) and debug-probe flashes
+  occasionally fail target examination under repeated SWD cycles
+  (OpenOCD "Failed to read memory at 0xe000ed04"). With a USB identity
+  active, each file gets one fresh compile/upload/read cycle on such a
+  failure — verified live: a timing-out file recovered on retry and the
+  run went green. The resolved port is also re-checked before every
+  upload, so a mid-run COM change never feeds a stale port to a bridge
+  upload.
+
+## fix(framework-zephyr): protocol numbers survive libc swaps (SDK 0.17.5)
+
+The 0.17.5 Zephyr SDK switched the libc from newlib to picolibc, whose
+default build silently prints NOTHING for `%g` — the same trap as
+newlib-nano without `-u _printf_float`. Every `[TC:EXPECT:<matcher>:<n>:]`
+protocol line arrived with an empty value and all hardware tests failed
+with `*float*` actuals. The expect shim's numeric helpers now format via a
+manual integer-only formatter (`__tc_fmt_num`: sign, `%lld` integer part,
+`%06lld` fraction with trailing-zero trim, NaN guard) — integer conversions
+work in every libc configuration, and the host parser accepts plain
+fixed-point. Regression-tested in shim-regressions (no %g/%f/%e in the
+emitted helpers) and verified on hardware: the 12/12-failing math group
+passes and the full Black Pill suite runs green again.
+
+- **fix(framework-zephyr): pulseIn's END wait is bounded by the timeout.**
+  The pulse-measurement loop (`while (pin == value) {}`) had no deadline —
+  a line idling at the target level spun forever, hanging the board (no
+  SUITE_END, host timeout). The 0.17.5 SDK exposed it on the hardware
+  suite: `INPUT_PULLUP` + `pulseIn(pin, 1)` now that pull configuration
+  takes effect, so the pin reads HIGH, the bounded START wait exits
+  instantly, and the old unbounded END loop hung. Both waits now share the
+  caller's timeout, matching Arduino pulseIn semantics.

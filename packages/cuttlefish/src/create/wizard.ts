@@ -2,8 +2,17 @@ import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import chalk from "chalk";
 import type { CreateProjectOptions } from "./templates.js";
-import { KNOWN_TARGETS, type KnownTarget } from "./scaffold.js";
+import { KNOWN_TARGETS, KNOWN_MCUS, type KnownTarget } from "./scaffold.js";
 import { frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from './framework-catalog.js';
+import {
+  mcuAsTarget,
+  findKnownMcu,
+  mcuSupportsZephyr,
+  zephyrBoardsForMcu,
+  sanitizeBoardName,
+  isValidFqbn,
+  type McuCreateTarget,
+} from './mcu-target.js';
 
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
 
@@ -96,20 +105,30 @@ export async function runCreateWizard(
     const projectName = partialOptions?.projectName
       ?? await promptText(rl, "Project name", "my-project", validateProjectName);
 
-    // 2. Target selection (native first, then embedded boards)
-    const targetOptions = KNOWN_TARGETS.map((t: KnownTarget) => ({
-      label: t.isNative
-        ? `${t.displayName} (Windows/Linux executable)`
-        : `${t.displayName} (${t.architecture!.toUpperCase()})`,
-      value: t.id,
-    }));
+    // 2. Target selection (native first, then embedded boards, then bare MCUs)
+    const targetOptions = [
+      ...KNOWN_TARGETS.map((t: KnownTarget) => ({
+        label: t.isNative
+          ? `${t.displayName} (Windows/Linux executable)`
+          : `${t.displayName} (${t.architecture!.toUpperCase()})`,
+        value: t.id,
+      })),
+      ...KNOWN_MCUS.map((m) => ({
+        label: `${m.displayName} — no board package (${m.architecture.toUpperCase()})`,
+        value: `mcu:${m.id}`,
+      })),
+    ];
 
     let targetId: string;
     if (partialOptions?.board) {
       const found = KNOWN_TARGETS.find((t: KnownTarget) => t.id === partialOptions.board);
+      const mcuFound = findKnownMcu(partialOptions.board);
       if (found) {
         targetId = found.id;
         console.log(`${chalk.cyan("?")} Target: ${chalk.white(found.displayName)} (${chalk.dim(partialOptions.board)})`);
+      } else if (mcuFound) {
+        targetId = `mcu:${mcuFound.id}`;
+        console.log(`${chalk.cyan("?")} Target: ${chalk.white(mcuFound.displayName)} (${chalk.dim(partialOptions.board)})`);
       } else {
         console.log(`  ${chalk.yellow("!")} Target '${chalk.white(partialOptions.board)}' not found.`);
         targetId = await promptSelect(rl, "Target", targetOptions);
@@ -118,7 +137,10 @@ export async function runCreateWizard(
       targetId = await promptSelect(rl, "Target", targetOptions);
     }
 
-    const target = KNOWN_TARGETS.find((t: KnownTarget) => t.id === targetId)!;
+    // MCU-only entries carry a `mcu:` prefix in the picker value space.
+    const mcuEntry = targetId.startsWith("mcu:") ? findKnownMcu(targetId.slice(4)) : undefined;
+    const target: KnownTarget = mcuEntry ? mcuAsTarget(mcuEntry) : KNOWN_TARGETS.find((t: KnownTarget) => t.id === targetId)!;
+    const mcuTarget = mcuEntry ? (target as McuCreateTarget) : undefined;
 
     // 3. Framework. Narrow to the frameworks compatible with the selected board
     // (see framework-catalog), then let the user pick. The chosen package is
@@ -129,7 +151,11 @@ export async function runCreateWizard(
     let framework = target.framework;
     let frameworkPackage = target.frameworkPackage;
 
-    const compatible = frameworksForTarget(target).filter((f) => f.installable);
+    const compatible = frameworksForTarget(target)
+      // MCU-only targets: Zephyr needs the package's silicon zephyr block
+      // (custom-board generation + the board snapshot both key off its socs).
+      .filter((f) => !mcuTarget || f.id !== 'zephyr' || mcuSupportsZephyr(mcuTarget))
+      .filter((f) => f.installable);
     if (compatible.length === 0) {
       // Defensive: every known target maps to at least one framework in the catalog.
       throw new Error(`No installable frameworks are compatible with target '${target.id}'.`);
@@ -171,6 +197,48 @@ export async function runCreateWizard(
     // Resolve the framework-specific build target + toolchain (e.g. a Zephyr
     // board id + 'west' vs the Arduino FQBN + 'arduino-cli'). See framework-catalog.
     const profile = frameworkTargetProfile(target, framework);
+    let buildTarget = profile.buildTarget ?? target.buildTarget;
+    let zephyrCustomBoard = false;
+
+    // MCU-only targets have no catalog build target — resolve one here.
+    if (mcuTarget) {
+      if (framework === 'zephyr') {
+        const boards = zephyrBoardsForMcu(mcuTarget);
+        const choice = await promptSelect(
+          rl,
+          `Zephyr board for the ${mcuTarget.displayName.split(' (')[0]}`,
+          [
+            { label: `Generate a custom board (${sanitizeBoardName(projectName)} — for hardware with no Zephyr board)`, value: 'custom' },
+            { label: `Pick an existing Zephyr board (${boards.length} board${boards.length === 1 ? '' : 's'} use this SoC)`, value: 'existing' },
+          ],
+        );
+        if (choice === 'custom') {
+          buildTarget = sanitizeBoardName(projectName);
+          zephyrCustomBoard = true;
+          console.log(`  ${chalk.dim(`framework-zephyr generates boards/typecad/${buildTarget}/ at compile time`)}${' '}`);
+        } else {
+          buildTarget = await promptSelect(
+            rl,
+            `Board (${boards.length} — showing first 30)`,
+            boards.slice(0, 30).map((b) => ({ label: `${b.name} (${b.vendor})`, value: b.target })),
+          );
+        }
+      } else {
+        // Arduino: the FQBN lives in the user's arduino-cli installation —
+        // hand them the command and take the paste. Shape-validated here;
+        // core presence is checked at first compile.
+        console.log();
+        console.log(`  ${chalk.cyan("i")} Find your board's FQBN in another terminal, e.g.:`);
+        console.log(`      ${chalk.white("arduino-cli board search 'pro mini'")}   ${chalk.dim("(or: arduino-cli board listall)")}`);
+        console.log(`  ${chalk.yellow("!")} The board must carry this exact MCU — the silicon pin map is per-chip.`);
+        buildTarget = await promptText(
+          rl,
+          'Arduino FQBN',
+          undefined,
+          (v) => isValidFqbn(v) ? null : "Expected packager:architecture:board[:options] — e.g. arduino:avr:pro",
+        );
+      }
+    }
 
     // 3.5 Probe method (Zephyr boards that ship a table). The probe in the
     // user's hand becomes the scaffolded zephyr.probe entry — it serves both
@@ -233,9 +301,11 @@ export async function runCreateWizard(
       boardPackage: target.boardPackage,
       frameworkPackage: frameworkPackage ?? '',
       framework: framework ?? '',
-      buildTarget: profile.buildTarget ?? target.buildTarget,
+      buildTarget,
       ...(profile.toolchainType ? { toolchainType: profile.toolchainType } : {}),
       mcu: target.mcu,
+      ...(mcuTarget ? { sketchPin: mcuTarget.sketchPin } : {}),
+      ...(zephyrCustomBoard ? { zephyrCustomBoard: true } : {}),
       baudRate,
       includeSketch,
       ...(target.frameworkData

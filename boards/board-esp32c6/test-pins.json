@@ -2,7 +2,11 @@
   "pins": {
     "gpioOut": "D4",
     "gpioIn": "D5",
-    "gpioGroup": ["D4", "D5", "D6"],
+    "gpioGroup": [
+      "D4",
+      "D5",
+      "D6"
+    ],
     "pwm": "D6",
     "pwmAlt": "D7",
     "cs": "D10",
@@ -12,5 +16,9 @@
     "pwmMaxFrequency": 40000000,
     "pwmResolutionBits": 14,
     "adcMax": 4095
+  },
+  "usb": {
+    "vid": "303A",
+    "pid": "4001"
   }
 }

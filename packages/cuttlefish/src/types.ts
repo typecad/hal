@@ -253,6 +253,15 @@ export interface CreateCommandOptions {
   /** @deprecated Use target */
   board?: string;
   target?: string;
+  /** Bare-MCU target id (e.g. 'stm32f411') — no board package; programs
+   *  silicon via an @typecad/mcu-* package. */
+  mcu?: string;
+  /** Arduino FQBN for MCU-only Arduino targets (e.g. 'arduino:avr:pro').
+   *  Required non-interactively; the wizard prompts for the paste. */
+  fqbn?: string;
+  /** Existing Zephyr board name (bare west id) for MCU-only Zephyr targets —
+   *  skips the wizard's board picker. Default: generate a custom board. */
+  zephyrBoard?: string;
   framework?: string;
   baud?: number;
   noSketch?: boolean;

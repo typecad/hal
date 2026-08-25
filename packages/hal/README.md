@@ -111,6 +111,15 @@ or directly with a config (add `--port COMx` to override the configured one):
 npm exec --workspace @typecad/hal -- cuttlefish-test --config boards/blackpill.config.ts
 ```
 
+**Port tracking is by USB identity, not COM numbers.** Every board package's
+`test-pins.json` carries a `usb: { vid, pid }` block (Zephyr CDC boards use
+per-board PIDs under the Zephyr test VID; bridge boards use the bridge
+chip's ID), and each config's `test.usb` matches it — so a nightly test box
+with several boards plugged in finds each board's console without tracking
+COM/tty numbers, and re-finds it after every flash when the CDC port
+re-enumerates under a new number. `--discover` prints the attached-port
+table and marks the config's match.
+
 Board-agnostic groups import through `@typecad/board` (the configured board
 package) and ambient globals declared in `cuttlefish-env.d.ts`, never from a
 concrete `@typecad/board-*` name, so the transpiler resolves each call

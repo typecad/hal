@@ -130,7 +130,11 @@ export const RP2040Board: BoardDefinition = {
     // generator composes one CDC-ACM serial instance when a program uses USB0.
     // USB CDC is the Pico's primary serial link (there is no UART bridge on
     // the connector).
-    usb: { controller: 'zephyr_udc0', cdcInstances: 1 },
+    // Per-board PID under the Zephyr test VID: every Zephyr CDC console
+    // defaults to 2FE3:0001, which makes boards indistinguishable to a
+    // multi-board test rig. The PID below is this board's USB identity —
+    // test-pins.json carries the same pair for host-side port matching.
+    usb: { controller: 'zephyr_udc0', cdcInstances: 1, vid: '0x2FE3', pid: '0x0004' },
     // ADC: 12-bit SAR, vref-mv defaults to 3300 in the raspberrypi,pico-adc
     // binding; GP26–GP29 = channels 0–3 (adc_default pinctrl group).
     adc: {

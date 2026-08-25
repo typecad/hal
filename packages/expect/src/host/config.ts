@@ -60,6 +60,8 @@ export function loadConfig(
     include: overrides.include ?? testFromFile.include ?? DEFAULT_TEST_CONFIG.include,
     exclude: overrides.exclude ?? testFromFile.exclude,
     port: overrides.port ?? testFromFile.port ?? DEFAULT_TEST_CONFIG.port,
+    // A CLI --port override disables USB discovery outright (explicit wins).
+    usb: overrides.port ? undefined : (testFromFile.usb ?? overrides.usb),
     baudRate: overrides.baudRate ?? testFromFile.baudRate ?? DEFAULT_TEST_CONFIG.baudRate,
     timeout: overrides.timeout ?? testFromFile.timeout ?? DEFAULT_TEST_CONFIG.timeout,
     serialOpenDelay: overrides.serialOpenDelay ?? testFromFile.serialOpenDelay ?? DEFAULT_TEST_CONFIG.serialOpenDelay,
@@ -328,6 +330,22 @@ function extractTestConfig(obj: ts.ObjectLiteralExpression): Partial<TestConfig>
       case 'port': {
         const v = stringLikeText(prop.initializer);
         if (v !== undefined) result.port = v;
+        break;
+      }
+      case 'usb': {
+        const init = unwrapExpr(prop.initializer);
+        if (ts.isObjectLiteralExpression(init)) {
+          const sub: Record<string, string> = {};
+          for (const subProp of init.properties) {
+            if (!ts.isPropertyAssignment(subProp)) continue;
+            const subKey = propName(subProp);
+            const v = stringLikeText(subProp.initializer);
+            if (subKey !== undefined && v !== undefined) sub[subKey] = v;
+          }
+          if (sub.vid && sub.pid) {
+            result.usb = { vid: sub.vid, pid: sub.pid, ...(sub.serial ? { serial: sub.serial } : {}) };
+          }
+        }
         break;
       }
       case 'baudRate': {

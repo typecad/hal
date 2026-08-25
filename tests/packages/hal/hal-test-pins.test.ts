@@ -20,6 +20,7 @@ const halBoardsDir = path.join(repoRoot, "packages", "hal", "boards");
 
 const PIN_ROLES = ["gpioOut", "gpioIn", "gpioGroup", "pwm", "pwmAlt", "cs", "interrupt", "led", "button"] as const;
 const FACT_ROLES = ["pwmMaxFrequency", "pwmResolutionBits", "adcMax"] as const;
+const HEX_ID_RE = /^[0-9a-fA-F]{1,4}$/;
 
 function listBoardPackages(): { name: string; dir: string }[] {
   return fs
@@ -137,6 +138,16 @@ describe("Board test-pins contract", () => {
 
           for (const [role, value] of Object.entries(data.facts ?? {})) {
             expect(typeof value === "number" && Number.isFinite(value), `fact ${role} must be a finite number`).toBe(true);
+          }
+
+          // USB identity (port discovery for multi-board rigs): vid/pid are
+          // 1–4 hex digits; serial is optional.
+          if (data.usb) {
+            expect(HEX_ID_RE.test(data.usb.vid ?? ""), "usb.vid must be 1-4 hex digits").toBe(true);
+            expect(HEX_ID_RE.test(data.usb.pid ?? ""), "usb.pid must be 1-4 hex digits").toBe(true);
+            if (data.usb.serial !== undefined) {
+              expect(typeof data.usb.serial, "usb.serial must be a string when present").toBe("string");
+            }
           }
         });
       }

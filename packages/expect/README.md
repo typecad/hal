@@ -180,7 +180,47 @@ npm run test:hw -- --port COM4
 | `--include <glob>` | `-i` | from config | Test file glob pattern (repeatable) |
 | `--exclude <glob>` | `-x` | from config | Test file glob pattern to skip (repeatable) |
 | `--verbose` | `-v` | `false` | Show raw serial output and per-assertion detail |
+| `--discover` | | | List attached USB serial ports (VID:PID, serial, manufacturer) and which one the active board identity matches, then exit |
 | `--help` | `-h` | | Print help and exit |
+
+### USB port discovery (multi-board rigs)
+
+COM/tty numbers reshuffle on every replug and on every CDC re-enumeration
+after a flash, so a test box with several boards identifies them by USB
+VID/PID (+ optional serial number) instead:
+
+```typescript
+test: {
+  usb: { vid: '2FE3', pid: '0002' },   // resolves the port by identity
+},
+```
+
+Board packages that ship a `test-pins.json` can carry the same `usb` block —
+then no config change is needed at all (an explicit `test.usb` in the config
+wins). Zephyr CDC consoles default to the Zephyr test IDs `2FE3:0001` for
+every board, so `@typecad` board packages assign each board its own PID
+there; UART-bridge boards identify by their bridge chip (Uno 16U2
+`2341:0043`, CH340 clones `1A86:7523`; ESP32 DevKitC CP2102 `10C4:EA60`).
+Several identical devkits disambiguate with the bridge's USB serial number:
+`usb: { vid: '10C4', pid: 'EA60', serial: '0001' }`.
+
+When a USB identity is active the runner re-resolves the port **after every
+upload** — a CDC console that comes back under a different COM number is
+found again automatically. Discovery failures are loud and list every
+attached port (what a nightly log wants). An explicit `--port` flag or
+`test.port` always overrides discovery.
+
+Bring a rig up with `--discover`: it prints every attached port's
+VID:PID/serial/manufacturer and marks which one the current config matches
+(exit code 1 when the identity has no unique match, so scripts can gate).
+
+```bash
+cuttlefish-test --config boards/blackpill.config.ts --discover
+# USB serial ports:
+#   COM7  2FE3:0002 serial …  <-- matches this config
+#   COM4  10C4:EA60 serial 0001 [Silicon Labs]
+# config identity 2FE3:0002 -> COM7
+```
 
 ### cuttlefish.config.ts
 

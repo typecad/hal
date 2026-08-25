@@ -148,6 +148,15 @@ export function printHelp(): void {
   console.log();
   console.log(`  --board, -b <id>        Alias for --target`);
   console.log();
+  console.log(`  --mcu <id>              Bare-MCU target, no board package (stm32f411,`);
+  console.log(`                          atmega328p, ...) — programs silicon via @typecad/mcu-*`);
+  console.log();
+  console.log(`  --fqbn <fqbn>           Arduino FQBN for --mcu Arduino targets`);
+  console.log(`                          (e.g. arduino:avr:pro — find yours: arduino-cli board search)`);
+  console.log();
+  console.log(`  --zephyr-board <name>   Existing Zephyr board for --mcu Zephyr targets;`);
+  console.log(`                          omit to generate a custom board for the chip`);
+  console.log();
   console.log(`  --framework, -f <pkg>   Framework (arduino, avr, native)`);
   console.log();
   console.log(`  --baud <rate>           Serial baud rate (default: 9600)`);
@@ -166,6 +175,12 @@ export function printHelp(): void {
   console.log();
   console.log(chalk.gray(`  # Arduino Uno project`));
   console.log(`  cuttlefish create my-project --target arduino-uno`);
+  console.log();
+  console.log(chalk.gray(`  # Arduino Pro Mini — no board package, bare ATmega328P`));
+  console.log(`  cuttlefish create my-pro-mini --mcu atmega328p --fqbn arduino:avr:pro`);
+  console.log();
+  console.log(chalk.gray(`  # Custom STM32F411 hardware — generated Zephyr board`));
+  console.log(`  cuttlefish create my-board --mcu stm32f411`);
   console.log();
   console.log(chalk.gray(`  # Build using config entry point`));
   console.log(`  cuttlefish build --compile --upload --port COM4`);
@@ -388,7 +403,10 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
 
     const target = readFirstFlagValue(argv, ["--target", "-t"])
       ?? readFirstFlagValue(argv, ["--board", "-b"]);
+    const mcu = readFirstFlagValue(argv, ["--mcu"]);
     const framework = readFirstFlagValue(argv, ["--framework", "-f"]);
+    const fqbn = readFirstFlagValue(argv, ["--fqbn"]);
+    const zephyrBoard = readFirstFlagValue(argv, ["--zephyr-board"]);
     const baudRaw = readFirstFlagValue(argv, ["--baud"]);
     const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir", "-o"]);
     const noSketch = argv.includes("--no-sketch");
@@ -402,6 +420,9 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       probe: probeFlag,
       projectName,
       target,
+      mcu,
+      fqbn,
+      zephyrBoard,
       baud,
       framework,
       noSketch,

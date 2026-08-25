@@ -93,10 +93,21 @@ export function resolveChipFromBoard(
   if (!bc) return null;
 
   const boardTarget = bc.get('build.frameworks.zephyr') as string | undefined;
-  if (!boardTarget) return null;
+  // MCU-silicon entry: an MCU-only config (no board package) carries the
+  // chip facts under zephyr.* without any build.frameworks target (the
+  // build target comes from frameworkData instead — a custom board name).
+  const socsRaw = bc.get('zephyr.socs') as string | undefined;
+  if (!boardTarget && !socsRaw) return null;
+
+  const socs = typeof socsRaw === 'string' && socsRaw.length > 0
+    ? socsRaw.split(',').map((s) => s.trim()).filter(Boolean)
+    : [];
+  // Chip identity: the board target when a board resolved it, else the SoC
+  // (an MCU-only chip — its "board" is the generated custom board).
+  const id = boardTarget ?? socs[0] ?? 'custom';
 
   const zGpioController = bc.get('zephyr.gpioController') as string | undefined;
-  const soc = (bc.get('mcu.id') as string) ?? '';
+  const soc = (bc.get('mcu.id') as string) ?? (socs[0] ?? '');
 
   // ── Build mutable sub-objects, then construct the final descriptor ──────
 
@@ -186,9 +197,13 @@ export function resolveChipFromBoard(
   const usbCdcInstances = bc.get('zephyr.usb.cdcInstances') as number | undefined;
   const usbVid = bc.get('zephyr.usb.vid') as string | undefined;
   const usbPid = bc.get('zephyr.usb.pid') as string | undefined;
+  // Optional 1200-baud touch-to-reset data (BOSSA-bootloader boards).
+  const trFlag = bc.get('zephyr.usb.touchReset.flagAddress') as number | undefined;
+  const trMagic = bc.get('zephyr.usb.touchReset.magic') as number | undefined;
+  const trVid = bc.get('zephyr.usb.touchReset.bootloaderVid') as string | undefined;
+  const trPid = bc.get('zephyr.usb.touchReset.bootloaderPid') as string | undefined;
 
-  const probeMethods = collectIndexed<ZephyrProbeMethod>(bc, 'zephyr.probeMethods', (m, i) => {
-    const id = m.get(`zephyr.probeMethods.${i}.id`) as string;
+  const probeMethods = collectIndexed<ZephyrProbeMethod>(bc, 'zephyr.probeMethods', (m, i) => {    const id = m.get(`zephyr.probeMethods.${i}.id`) as string;
     const runner = m.get(`zephyr.probeMethods.${i}.runner`) as string;
     if (!id || !runner) return null;
     const argsRaw = m.get(`zephyr.probeMethods.${i}.args`) as string | undefined;
@@ -216,6 +231,49 @@ export function resolveChipFromBoard(
   });
   const wifiSupported = bc.get('zephyr.wifi.supported') as boolean | undefined;
 
+  // ── Custom-board generator inputs (MCU silicon) ─────────────────────────
+  // Only complete when the MCU package carried a default console + clock
+  // plan — without those there is nothing to generate a board from.
+  const consoleNodeLabel = bc.get('zephyr.console.nodeLabel') as string | undefined;
+  const consoleTx = bc.get('zephyr.console.tx') as string | undefined;
+  const consoleRx = bc.get('zephyr.console.rx') as string | undefined;
+  const consoleSpeed = bc.get('zephyr.console.speed') as number | undefined;
+  const hseMHz = bc.get('zephyr.clocks.hseMHz') as number | undefined;
+  const pllDivM = bc.get('zephyr.clocks.pll.divM') as number | undefined;
+  const pllMulN = bc.get('zephyr.clocks.pll.mulN') as number | undefined;
+  const pllDivP = bc.get('zephyr.clocks.pll.divP') as number | undefined;
+  const pllDivQ = bc.get('zephyr.clocks.pll.divQ') as number | undefined;
+  const sysMHz = bc.get('zephyr.clocks.sysMHz') as number | undefined;
+  const dtsIncludesRaw = bc.get('zephyr.dtsIncludes') as string | undefined;
+  const usbNode = bc.get('zephyr.usb.usbNode') as string | undefined;
+  const customBoard =
+    socs.length > 0 &&
+    consoleNodeLabel && consoleTx && consoleRx &&
+    hseMHz != null && pllDivM != null && pllMulN != null && pllDivP != null &&
+    pllDivQ != null && sysMHz != null
+      ? {
+          socs,
+          dtsIncludes: typeof dtsIncludesRaw === 'string' && dtsIncludesRaw.length > 0
+            ? dtsIncludesRaw.split(',').map((s) => s.trim()).filter(Boolean)
+            : [],
+          console: {
+            nodeLabel: consoleNodeLabel,
+            tx: consoleTx,
+            rx: consoleRx,
+            speed: consoleSpeed ?? 115200,
+          },
+          clocks: {
+            hseMHz,
+            pll: { divM: pllDivM, mulN: pllMulN, divP: pllDivP, divQ: pllDivQ },
+            sysMHz,
+            ahbPrescaler: (bc.get('zephyr.clocks.ahbPrescaler') as number) ?? 1,
+            apb1Prescaler: (bc.get('zephyr.clocks.apb1Prescaler') as number) ?? 1,
+            apb2Prescaler: (bc.get('zephyr.clocks.apb2Prescaler') as number) ?? 1,
+          },
+          ...(usbNode ? { usbNode } : {}),
+        }
+      : undefined;
+
   // ── Construct the final readonly descriptor ─────────────────────────────
 
   const gpio: ZephyrChipDescriptor['gpio'] = {
@@ -224,7 +282,7 @@ export function resolveChipFromBoard(
   };
 
   return {
-    id: boardTarget,
+    id,
     soc,
     gpioController: zGpioController ?? 'gpio0',
     ...(gc.length > 0 ? { gpioControllers: gc } : {}),
@@ -265,11 +323,26 @@ export function resolveChipFromBoard(
             cdcInstances: usbCdcInstances,
             ...(usbVid ? { vid: usbVid } : {}),
             ...(usbPid ? { pid: usbPid } : {}),
+            ...(trFlag != null && trMagic != null
+              ? {
+                  touchReset: {
+                    flagAddress: trFlag,
+                    magic: trMagic,
+                    ...(trVid ? { bootloaderVid: trVid } : {}),
+                    ...(trPid ? { bootloaderPid: trPid } : {}),
+                  },
+                }
+              : {}),
           },
         }
       : {}),
-    ...(consoleDescription ? { consoleDescription } : {}),
+    ...(consoleDescription
+      ? { consoleDescription }
+      : bc.get('zephyr.console.description')
+        ? { consoleDescription: bc.get('zephyr.console.description') as string }
+        : {}),
     ...(wifiSupported ? { wifi: { supported: true as const } } : {}),
     ...(probeMethods.length > 0 ? { probeMethods } : {}),
+    ...(customBoard ? { customBoard } : {}),
   };
 }

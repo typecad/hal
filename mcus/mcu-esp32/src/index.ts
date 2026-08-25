@@ -288,3 +288,7 @@ export const TypeCADManifest = {
   /** All HAL peripheral instance names exported from this package. */
   peripheralNames: ['I2C0', 'I2C1', 'SPI0', 'SPI1', 'UART0', 'UART2'] as const,
 } as const;
+// Generic HAL re-exports — an MCU package is a superset of @typecad/hal
+// (mirrors board packages), so code importing from '@typecad/board' resolves
+// identically whether a board package is configured or bare silicon.
+export * from '@typecad/hal';

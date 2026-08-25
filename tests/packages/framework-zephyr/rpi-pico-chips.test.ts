@@ -63,7 +63,7 @@ describe('board-rp2040 → ZephyrChipDescriptor', () => {
   });
 
   it('declares the USB device (zephyr_udc0 is status okay in rpi_pico-common.dtsi)', () => {
-    expect(rp2040Chip!.usb).toEqual({ controller: 'zephyr_udc0', cdcInstances: 1 });
+    expect(rp2040Chip!.usb).toEqual({ controller: 'zephyr_udc0', cdcInstances: 1, vid: '0x2FE3', pid: '0x0004' });
   });
 
   it('describes the console destination for the build note', () => {
@@ -135,7 +135,7 @@ describe('board-rp2350 → ZephyrChipDescriptor', () => {
         props: ['current-speed = <115200>;'],
       },
     ]);
-    expect(rp2350Chip!.usb).toEqual({ controller: 'zephyr_udc0', cdcInstances: 1 });
+    expect(rp2350Chip!.usb).toEqual({ controller: 'zephyr_udc0', cdcInstances: 1, vid: '0x2FE3', pid: '0x0005' });
     expect(rp2350Chip!.consoleDescription).toBe('uart0 on GP0 (TX) / GP1 (RX)');
     expect((rp2350Chip!.probeMethods ?? []).map((m) => m.id)).toEqual(['uf2', 'openocd', 'jlink']);
     expect(rp2350Chip!.probeMethods!.find((m) => m.id === 'jlink')!.debugDevice).toBe('RP2350_M33_0');

@@ -41,6 +41,9 @@ const config: CuttlefishConfig = {
   },
 
   test: {
+    // Upload + console on the CP2102 USB-serial bridge (FT232 clones report
+    // 0403:6001). Resolved by USB identity; the explicit port is the fallback.
+    usb: { vid: '10C4', pid: 'EA60' },
     port: 'COM9',
     baudRate: 115200,
     timeout: 30000,

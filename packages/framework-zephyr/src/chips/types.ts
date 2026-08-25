@@ -245,6 +245,31 @@ export interface ZephyrChipDescriptor {
     readonly vid?: string;
     /** USB product ID for the device descriptor ('0x0001' default). */
     readonly pid?: string;
+    /**
+     * 1200-baud touch-to-reset (BOSSA-bootloader boards, e.g. SAM D21).
+     *
+     * Present = two things happen automatically:
+     * - Device side: the emitted USB shim registers a usbd message callback;
+     *   when the host sets the CDC baud rate to 1200, the shim writes the
+     *   bootloader's "stay resident" magic to the flag address and reboots —
+     *   the board lands in the bootloader with no button press.
+     * - Host side: the bossac upload path opens the app's console port at
+     *   1200 baud to trigger the above, waits for the bootloader's USB
+     *   identity, and points bossac at that port.
+     * Omit on boards without a cooperative bootloader (probe- or
+     * UF2-flashed boards don't need it).
+     */
+    readonly touchReset?: {
+      /** RAM address of the bootloader's stay-resident flag word
+       * (SAMD21G18A: 0x20007FFC — the last word of the 32 KB SRAM). */
+      readonly flagAddress: number;
+      /** Magic word the bootloader checks there (Arduino SAMD: 0x07738135). */
+      readonly magic: number;
+      /** Bootloader USB vendor id, hex string ('0x2341') — host-side watch. */
+      readonly bootloaderVid?: string;
+      /** Bootloader USB product id, hex string ('0x0057') — host-side watch. */
+      readonly bootloaderPid?: string;
+    };
   };
   /** PWM channels with DT specs. */
   readonly pwm?: {
@@ -350,6 +375,64 @@ export interface ZephyrChipDescriptor {
    * `zephyr.runner`/`runnerArgs` remain the raw escape hatch underneath.
    */
   readonly probeMethods?: readonly ZephyrProbeMethod[];
+  /**
+   * Silicon-level inputs for the custom-board generator — present when the
+   * chip was resolved from an MCU package's `zephyr` block (an MCU-only
+   * config with no board package). The generator emits an out-of-tree Zephyr
+   * board (`boards/typecad/<name>/` in the project) from exactly this data:
+   * SoC name, devicetree includes, the default console mux, and the default
+   * clock plan. Absent on board-resolved chips (their board already exists).
+   */
+  readonly customBoard?: ZephyrCustomBoardData;
+}
+
+/**
+ * Everything the custom-board generator needs from the silicon to emit a
+ * minimal, buildable out-of-tree board for a chip with no board package.
+ */
+export interface ZephyrCustomBoardData {
+  /** Zephyr SoC name(s) for board.yml + the Kconfig SOC_* selection. */
+  readonly socs: readonly string[];
+  /** Devicetree includes for the generated board DTS root (SoC + pinctrl). */
+  readonly dtsIncludes: readonly string[];
+  /** The default console the generated board enables. */
+  readonly console: {
+    /** Controller nodelabel, e.g. 'usart1'. */
+    readonly nodeLabel: string;
+    /** TX pinctrl token from the SoC's pinctrl dtsi, e.g. 'usart1_tx_pa9'. */
+    readonly tx: string;
+    /** RX pinctrl token, e.g. 'usart1_rx_pa10'. */
+    readonly rx: string;
+    /** Baud rate (the DT `current-speed`). */
+    readonly speed: number;
+  };
+  /**
+   * Default clock plan — the numbers the generated DTS writes into the SoC's
+   * clock nodes (HSE crystal frequency, PLL dividers, bus prescalers). A
+   * board package overrides with its own crystal/plan; a custom board uses
+   * this silicon default.
+   */
+  readonly clocks: {
+    /** HSE crystal frequency in MHz. */
+    readonly hseMHz: number;
+    /** PLL divider/multiplier plan. */
+    readonly pll: {
+      readonly divM: number;
+      readonly mulN: number;
+      readonly divP: number;
+      readonly divQ: number;
+    };
+    /** System clock frequency in MHz (the &rcc clock-frequency). */
+    readonly sysMHz: number;
+    readonly ahbPrescaler: number;
+    readonly apb1Prescaler: number;
+    readonly apb2Prescaler: number;
+  };
+  /**
+   * Silicon USB node to alias as `usb.controller` in the generated DTS
+   * (e.g. 'usbotg_fs' aliased as 'zephyr_udc0'). Omit when usb is absent.
+   */
+  readonly usbNode?: string;
 }
 
 /**

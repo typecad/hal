@@ -40,6 +40,14 @@ export const FACT_ROLE_CONSTS: Record<string, string> = {
 export interface TestPinsData {
   pins?: Record<string, string | string[]>;
   facts?: Record<string, number>;
+  /**
+   * USB identity for port discovery — how a multi-board rig finds this
+   * board's console/upload port without tracking COM/tty numbers. Zephyr
+   * CDC boards carry their per-board PID here (matching zephyr.usb.vid/pid
+   * in the board package); UART-bridge boards carry the bridge chip's ID
+   * (Uno 16U2 2341:0043, ESP32 DevKitC CP2102 10C4:EA60).
+   */
+  usb?: { vid: string; pid: string; serial?: string };
 }
 
 /**

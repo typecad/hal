@@ -94,13 +94,22 @@ export function transpileTestFile(
 
   const result = spawnSync(
     process.execPath,
-    useBuildMode
-      ? [cuttlefishCmd, 'build', '--skip-type-check', '--force']
-      : [cuttlefishCmd, tsPath, '--skip-type-check', '--force'],
+    // Explicit heap headroom for the transpile child. The steady-state
+    // transpile peaks well under 1 GB, but Node's default old-space cap
+    // (~4 GB on large-RAM machines) has been hit transiently — a GC storm
+    // then kills the child with "JavaScript heap out of memory" and fails
+    // the whole test file. Dedicated headroom makes a spike recoverable.
+    [
+      '--max-old-space-size=6144',
+      cuttlefishCmd,
+      ...(useBuildMode
+        ? ['build', '--skip-type-check', '--force']
+        : [tsPath, '--skip-type-check', '--force']),
+    ],
     {
       encoding: 'utf8',
       cwd: useBuildMode ? buildDir : projectRoot,
-      timeout: 60000,
+      timeout: 120000,
       env: { ...process.env },
     },
   );

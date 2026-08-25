@@ -377,6 +377,9 @@ export class ZephyrStrategy implements PlatformStrategy {
       if (!inc.includes('<zephyr/drivers/uart.h>')) inc.push('<zephyr/drivers/uart.h>');
       inc.push('<zephyr/usb/usbd.h>');
       if (consoleToUsb) inc.push('<zephyr/init.h>');
+      // touch-to-reset shim callback reboots via NVIC_SystemReset()
+      // (RAM-retaining Cortex-M reset — no CONFIG_REBOOT needed).
+      if (chip?.usb?.touchReset) inc.push('<cmsis_core.h>');
     }
     if (uses('usesADC')) inc.push('<zephyr/drivers/adc.h>');
     if (uses('usesPWM')) inc.push('<zephyr/drivers/pwm.h>');
@@ -703,6 +706,11 @@ export class ZephyrStrategy implements PlatformStrategy {
     }
     if (usesPulseFn) {
       guardBody.push(
+        // Both waits are bounded by the timeout (Arduino pulseIn semantics):
+        // waiting for the pulse to START and for it to END. An unbounded
+        // END loop hangs forever when the line idles at the target level —
+        // exactly the INPUT_PULLUP + pulseIn(pin, 1) case, which the 0.17.5
+        // SDK exposed once pull configuration actually took effect.
         'static inline uint32_t __tc_wiring_pulse_in(uint32_t pin, uint32_t value, uint32_t timeoutUs) {',
         '    int64_t __max = static_cast<int64_t>(timeoutUs / 1000U);',
         '    int64_t __t0 = k_uptime_get();',
@@ -710,7 +718,9 @@ export class ZephyrStrategy implements PlatformStrategy {
         '        if ((k_uptime_get() - __t0) > __max) { return 0U; }',
         '    }',
         '    int64_t __start = k_uptime_get();',
-        '    while (static_cast<uint32_t>(gpio_pin_get_raw(__tc_gpio_dev(pin), __tc_gpio_pin(pin))) == value) { }',
+        '    while (static_cast<uint32_t>(gpio_pin_get_raw(__tc_gpio_dev(pin), __tc_gpio_pin(pin))) == value) {',
+        '        if ((k_uptime_get() - __start) > __max) { return 0U; }',
+        '    }',
         '    return static_cast<uint32_t>((k_uptime_get() - __start) * 1000);',
         '}',
         'static inline uint32_t pulseIn(uint32_t pin, uint32_t value, uint32_t timeoutUs) { return __tc_wiring_pulse_in(pin, value, timeoutUs); }',
@@ -788,12 +798,34 @@ export class ZephyrStrategy implements PlatformStrategy {
     // (double) so the same call site works for markers and test values.
     // Emitted only when the expect preprocessor actually injected the calls
     // (tracked as usedPolyfillHelpers).
+    //
+    // The numeric form formats via INTEGER conversions only: libc float
+    // printf is not dependable across SDKs — the 0.17.5 toolchain swapped
+    // newlib for picolibc, whose default build silently prints NOTHING for
+    // %g (the same trap as newlib-nano's -u _printf_float), which emptied
+    // every [TC:EXPECT:...:value:] line. Integer %lld works in every libc
+    // configuration, and the host parser accepts plain fixed-point.
     if (!a || !!helpers?.has('__tc_print') || !!helpers?.has('__tc_println')) {
       guardBody.push(
         'inline void __tc_print(const char* s) { printf("%s", s); }',
-        'inline void __tc_print(double v) { printf("%g", v); }',
+        [
+          'static void __tc_fmt_num(double v) {',
+          '    if (v != v) { printf("nan"); return; }',
+          '    double a = v < 0 ? -v : v;',
+          '    long long ip = (long long)a;',
+          '    long long fr = (long long)((a - (double)ip) * 1000000.0 + 0.5);',
+          '    if (fr >= 1000000LL) { ip += 1LL; fr = 0LL; }',
+          '    if (v < 0 && (ip != 0LL || fr != 0LL)) printf("-");',
+          '    if (fr == 0LL) { printf("%lld", ip); return; }',
+          '    char fbuf[8];',
+          '    int len = snprintf(fbuf, sizeof(fbuf), "%06lld", fr);',
+          '    while (len > 0 && fbuf[len - 1] == \'0\') { fbuf[--len] = \'\\0\'; }',
+          '    printf("%lld.%s", ip, fbuf);',
+          '}',
+        ].join('\n'),
+        'inline void __tc_print(double v) { __tc_fmt_num(v); }',
         'inline void __tc_println(const char* s) { printf("%s\\n", s); }',
-        'inline void __tc_println(double v) { printf("%g\\n", v); }',
+        'inline void __tc_println(double v) { __tc_fmt_num(v); printf("\\n"); }',
       );
     }
 
@@ -1074,6 +1106,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     const outputPins = new Set<number>();
     const adcReadPins = new Set<number>();
     const interruptPins = new Set<number>();
+    const wdtOps = new Set<string>();
     const dacPins = new Set<number>();
     const pwmPins = new Set<number>();
     let usesTone = false;
@@ -1098,6 +1131,9 @@ export class ZephyrStrategy implements PlatformStrategy {
           }
           if (op.operation === 'interrupt.attach' && typeof op.pin === 'number') {
             interruptPins.add(op.pin);
+          }
+          if (typeof op.operation === 'string' && op.operation.startsWith('wdt.')) {
+            wdtOps.add(op.operation);
           }
           if (op.operation === 'dac.write' && typeof op.pin === 'number') {
             dacPins.add(op.pin);
@@ -1301,6 +1337,21 @@ export class ZephyrStrategy implements PlatformStrategy {
           });
         }
       }
+    }
+
+    // ── Watchdog availability ───────────────────────────────────────────────
+    // wdt.* resolves the device via the chip descriptor's wdt.nodeLabel. A
+    // chip without that entry (e.g. SAM D21 — Zephyr's samd21 dtsi exposes
+    // no watchdog node) lowers to a comment — flag it so the user knows the
+    // watchdog never arms.
+    if (wdtOps.size > 0 && !chip.wdt) {
+      diags.push({
+        severity: 'error',
+        code: 'zephyr-wdt-unavailable',
+        message: `Watchdog ops are used but ${chip.id} exposes no watchdog device.`,
+        hint: `${chip.id} declares no wdt.nodeLabel (Zephyr's devicetree for this SoC has no watchdog node). Use a target with a watchdog, or drop the wdt.* calls.`,
+        source: program.fileName,
+      });
     }
 
     // ── WiFi target validity ────────────────────────────────────────────────

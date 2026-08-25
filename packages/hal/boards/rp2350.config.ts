@@ -35,7 +35,10 @@ const config: CuttlefishConfig = {
   },
 
   test: {
-    port: '',
+    // Console found by USB identity (best-effort for a board with no
+    // hardware in this workspace). Zephyr CDC boards carry their per-board
+    // PID; ESP32 variants identify by the USB-Serial/JTAG console.
+    usb: { vid: '2FE3', pid: '0005' },
     baudRate: 115200,
     timeout: 30000,
     include: [

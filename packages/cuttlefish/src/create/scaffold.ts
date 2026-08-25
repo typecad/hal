@@ -131,7 +131,135 @@ const _knownTargets: KnownTarget[] = [
     buildTarget: 'blackpill_f411ce/stm32f411xe',
     mcu: 'stm32f411',
   },
+  {
+    id: 'nano-33-iot',
+    displayName: 'Arduino Nano 33 IoT (SAMD21)',
+    isNative: false,
+    architecture: 'samd21',
+    boardPackage: '@typecad/board-nano-33-iot',
+    // Zephyr-only target: the build target is the `west build -b` board id,
+    // not an Arduino FQBN (frameworkTargetProfile resolves it for Zephyr).
+    buildTarget: 'arduino_nano_33_iot/samd21g18a',
+    mcu: 'samd21',
+  },
 ];
+
+// ---------------------------------------------------------------------------
+// MCU-only targets — program bare silicon with no board package. The catalog
+// mirrors the mcus/ packages: architecture + the Zephyr SoC name(s) from the
+// package's silicon zephyr block (the join key into ZEPHYR_BOARD_SNAPSHOT —
+// an MCU with zephyrSocs supports both generated custom boards and any
+// upstream board built on that SoC). The consistency tests keep this in sync
+// with the packages, the same way BOARD_PROBE_METHODS mirrors board data.
+// ---------------------------------------------------------------------------
+
+export interface KnownMcu {
+  id: string;
+  displayName: string;
+  architecture: ArchitectureIdentifier;
+  /** MCU package specifier, e.g. '@typecad/mcu-stm32f411'. */
+  mcu: string;
+  /** Zephyr SoC name(s) from the package's silicon zephyr block. Empty when
+   *  the package carries no zephyr data yet (Zephyr unavailable for it). */
+  zephyrSocs: string[];
+  /** A safe output-capable port pin for the starter sketch (no board-level
+   *  LED alias exists on bare silicon). */
+  sketchPin: string;
+}
+
+const _knownMcus: KnownMcu[] = [
+  {
+    id: 'atmega328p',
+    displayName: 'ATmega328P (bare MCU — Uno/Nano/Pro Mini family)',
+    architecture: 'avr',
+    mcu: '@typecad/mcu-atmega328p',
+    zephyrSocs: [],
+    sketchPin: 'PB5',
+  },
+  {
+    id: 'esp32',
+    displayName: 'ESP32 (bare MCU)',
+    architecture: 'esp32',
+    mcu: '@typecad/mcu-esp32',
+    zephyrSocs: [],
+    sketchPin: 'GPIO2',
+  },
+  {
+    id: 'esp32c3',
+    displayName: 'ESP32-C3 (bare MCU)',
+    architecture: 'esp32c3',
+    mcu: '@typecad/mcu-esp32c3',
+    zephyrSocs: [],
+    sketchPin: 'GPIO8',
+  },
+  {
+    id: 'esp32c6',
+    displayName: 'ESP32-C6 (bare MCU)',
+    architecture: 'esp32c6',
+    mcu: '@typecad/mcu-esp32c6',
+    zephyrSocs: [],
+    sketchPin: 'GPIO8',
+  },
+  {
+    id: 'esp32s3',
+    displayName: 'ESP32-S3 (bare MCU)',
+    architecture: 'esp32s3',
+    mcu: '@typecad/mcu-esp32s3',
+    zephyrSocs: [],
+    sketchPin: 'GPIO2',
+  },
+  {
+    id: 'nrf52840',
+    displayName: 'nRF52840 (bare MCU)',
+    architecture: 'nrf52',
+    mcu: '@typecad/mcu-nrf52840',
+    zephyrSocs: [],
+    sketchPin: 'P1_11',
+  },
+  {
+    id: 'rp2040',
+    displayName: 'RP2040 (bare MCU)',
+    architecture: 'rp2040',
+    mcu: '@typecad/mcu-rp2040',
+    zephyrSocs: [],
+    sketchPin: 'GP25',
+  },
+  {
+    id: 'rp2350',
+    displayName: 'RP2350 (bare MCU)',
+    architecture: 'rp2350',
+    mcu: '@typecad/mcu-rp2350',
+    zephyrSocs: [],
+    sketchPin: 'GP25',
+  },
+  {
+    id: 'samd21',
+    displayName: 'SAMD21 (bare MCU)',
+    architecture: 'samd21',
+    mcu: '@typecad/mcu-samd21',
+    zephyrSocs: [],
+    sketchPin: 'PB23',
+  },
+  {
+    id: 'stm32f411',
+    displayName: 'STM32F411 (bare MCU — custom board or any F411 board)',
+    architecture: 'stm32f411',
+    mcu: '@typecad/mcu-stm32f411',
+    zephyrSocs: ['stm32f411xe'],
+    sketchPin: 'PA5',
+  },
+];
+
+export const KNOWN_MCUS: ReadonlyArray<KnownMcu> = _knownMcus;
+
+export function registerKnownMcu(mcu: KnownMcu): void {
+  const existing = _knownMcus.findIndex(m => m.id === mcu.id);
+  if (existing >= 0) {
+    _knownMcus[existing] = mcu;
+  } else {
+    _knownMcus.push(mcu);
+  }
+}
 
 export function registerKnownTarget(target: KnownTarget): void {
   const existing = _knownTargets.findIndex(t => t.id === target.id);

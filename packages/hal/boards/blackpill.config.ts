@@ -56,7 +56,11 @@ const config: CuttlefishConfig = {
   },
 
   test: {
-    // The Black Pill's USB-C CDC serial port. Override locally with --port.
+    // Console found by USB identity (the board package's CDC PID) — no COM
+    // tracking. After each ST-Link flash the port re-enumerates and is
+    // re-resolved; the explicit port below is only the bootstrap fallback
+    // for firmware flashed before the PID assignment. Override with --port.
+    usb: { vid: '2FE3', pid: '0002' },
     port: 'COM7',
     baudRate: 115200,
     timeout: 30000,

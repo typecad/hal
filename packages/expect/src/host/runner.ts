@@ -15,6 +15,13 @@ import { readSerialOutput } from './serial.js';
 import { parseProtocolLines } from './parser.js';
 import { reportFileResult, reportSummary } from './reporter.js';
 import { boardTestPins, testPinsRolesOf, buildTestPinsSubstitutions } from './test-pins.js';
+import type { TestPinsData } from './test-pins.js';
+import {
+  resolveUsbPort,
+  waitForUsbPort,
+  formatUsbIdentity,
+  type UsbIdentity,
+} from './port-discovery.js';
 
 // ---------------------------------------------------------------------------
 // ANSI codes (for inline progress messages)
@@ -34,6 +41,18 @@ const YELLOW = '\x1b[33m';
  *
  * @returns Exit code: 0 = all passed, 1 = failures, 2 = error.
  */
+/**
+ * Per-run mutable context shared across files: the board's test-pins data,
+ * the USB identity (config `test.usb` wins over the board's test-pins.json),
+ * and the currently-resolved upload port (threaded forward — bridge boards
+ * keep it across files; CDC consoles re-resolve after every flash).
+ */
+interface RunContext {
+  boardPins: TestPinsData | undefined;
+  usbIdentity: UsbIdentity | undefined;
+  uploadPort: string;
+}
+
 export async function run(config: ResolvedConfig): Promise<number> {
   const startTime = Date.now();
 
@@ -46,13 +65,57 @@ export async function run(config: ResolvedConfig): Promise<number> {
   }
 
   console.log(`${DIM}Found ${testFiles.length} test file${testFiles.length !== 1 ? 's' : ''}${RESET}`);
+
+  // 2. Resolve the board's USB identity and an initial upload port.
+  const ctx: RunContext = {
+    boardPins: boardTestPins(config.board, config.projectRoot),
+    usbIdentity: config.test.usb ?? ctxBoardUsb(config),
+    uploadPort: config.test.port,
+  };
+
+  if (ctx.usbIdentity) {
+    console.log(`${DIM}usb identity ${formatUsbIdentity(ctx.usbIdentity)}${RESET}`);
+    const resolved = await resolveUsbPort(ctx.usbIdentity);
+    if (resolved.port) {
+      if (resolved.port !== ctx.uploadPort) {
+        console.log(`${DIM}console port resolved: ${resolved.port}${RESET}`);
+      }
+      ctx.uploadPort = resolved.port;
+    } else if (config.test.port) {
+      // Bootstrap/fallback: the currently-flashed firmware may predate this
+      // board's PID assignment (or a clone bridge may report a different
+      // VID/PID). The post-upload re-resolve will pick the identity up.
+      console.log(`${YELLOW}${resolved.error}${RESET}`);
+      console.log(`${YELLOW}falling back to configured port ${config.test.port}${RESET}`);
+    } else if (config.toolchainType === 'arduino-cli') {
+      // Upload itself needs the serial port — nothing to fall back to.
+      console.error(resolved.error ?? 'USB port resolution failed');
+      return 2;
+    }
+    // west + CDC boards flash via a debug probe, not the console port — the
+    // port arrives from the post-flash re-enumeration below.
+  }
   console.log();
 
-  // 2. Process each file sequentially (one compile/upload cycle per file)
+  // 3. Process each file sequentially (one compile/upload cycle per file)
   const fileResults: FileResult[] = [];
+  const retried = new Set<string>();
 
   for (const filePath of testFiles) {
-    const result = await processTestFile(filePath, config);
+    let result = await processTestFile(filePath, config, ctx);
+    // Nightly-rig hardening: transient hardware glitches fail a file even
+    // though the board is fine — a USB console dropout mid-read loses the
+    // protocol lines, and debug-probe flashes occasionally fail target
+    // examination (OpenOCD "Failed to read memory at 0xe000ed04" under
+    // repeated SWD cycles). One fresh compile/upload/read cycle per file
+    // recovers both without masking persistent failures (those fail twice).
+    const transient = result.error
+      && /Timeout after|Serial error|did not re-appear|west flash failed|Upload failed/.test(result.error);
+    if (transient && !retried.has(filePath) && ctx.usbIdentity) {
+      retried.add(filePath);
+      console.log(`${YELLOW}transient console loss — retrying ${path.relative(config.projectRoot, filePath)}${RESET}`);
+      result = await processTestFile(filePath, config, ctx);
+    }
     fileResults.push(result);
     reportFileResult(result, { verbose: config.test.verbose });
     // --bail: stop after the first file that fails to compile/upload or has a
@@ -63,16 +126,22 @@ export async function run(config: ResolvedConfig): Promise<number> {
     }
   }
 
-  // 3. Aggregate results
+  // 4. Aggregate results
   const runResult = aggregateResults(fileResults, Date.now() - startTime);
 
-  // 4. Final summary
+  // 5. Final summary
   reportSummary(runResult, {
     board: config.board,
-    port: config.test.port,
+    port: ctx.uploadPort,
   });
 
   return (runResult.totalFailed > 0 || runResult.totalErrors > 0) ? 1 : 0;
+}
+
+/** The board's test-pins.json usb block, when present. */
+function ctxBoardUsb(config: ResolvedConfig): UsbIdentity | undefined {
+  const usb = boardTestPins(config.board, config.projectRoot)?.usb;
+  return usb ? { ...usb } : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,6 +151,7 @@ export async function run(config: ResolvedConfig): Promise<number> {
 async function processTestFile(
   filePath: string,
   config: ResolvedConfig,
+  ctx: RunContext,
 ): Promise<FileResult> {
   const startTime = Date.now();
   const relativePath = path.relative(config.projectRoot, filePath);
@@ -99,19 +169,20 @@ async function processTestFile(
     return skippedResult(relativePath, skipReason, startTime);
   }
 
-  // Resolve the board's test-pins data once per file: role gating for the
-  // skip check, substitutions for the preprocessor.
-  const testPinsData = boardTestPins(config.board, config.projectRoot);
+  // The board's test-pins data: role gating for the skip check,
+  // substitutions for the preprocessor.
+  const testPinsData = ctx.boardPins;
   const missingRolesReason = checkRequiredRoles(source, config, testPinsData);
   if (missingRolesReason) {
     return skippedResult(relativePath, missingRolesReason, startTime);
   }
 
-  // Validate port only for files that will actually compile/upload. This lets
-  // target-incompatible files be skipped without requiring hardware to be
-  // connected, and lets --dry-run run without any port (it stops after compile).
-  if (!config.test.port && !config.dryRun) {
-    return errorResult(filePath, 'No serial port specified. Use --port <port> or set test.port in cuttlefish.config.ts', startTime);
+  // Validate port only for files that will actually compile/upload. A USB
+  // identity satisfies this (the port resolves after upload for CDC boards);
+  // target-incompatible files still skip without hardware; --dry-run stops
+  // after compile and needs no port at all.
+  if (!ctx.uploadPort && !ctx.usbIdentity && !config.dryRun) {
+    return errorResult(filePath, 'No serial port specified. Use --port <port>, set test.port, or set test.usb in cuttlefish.config.ts', startTime);
   }
 
   console.log(`${CYAN}●${RESET} ${relativePath}`);
@@ -158,12 +229,22 @@ async function processTestFile(
     return { filePath: relativePath, describes: [], passed: true, durationMs, debugOutput: [], compiled: true };
   }
 
-  // Step 4: Upload via the configured toolchain
-  console.log(`  ${DIM}uploading to ${config.test.port}...${RESET}`);
+  // Step 4: Upload via the configured toolchain. With a USB identity active,
+  // refresh the resolved port first — a mid-run dropout can leave the
+  // threaded port stale (matters for bridge uploads; probes ignore it).
+  if (ctx.usbIdentity && ctx.uploadPort) {
+    const fresh = await resolveUsbPort(ctx.usbIdentity);
+    if (fresh.port && fresh.port !== ctx.uploadPort) {
+      console.log(`  ${DIM}console port re-resolved: ${fresh.port}${RESET}`);
+      ctx.uploadPort = fresh.port;
+    }
+  }
+
+  console.log(`  ${DIM}uploading${ctx.uploadPort ? ` to ${ctx.uploadPort}` : ''}...${RESET}`);
   const uploadResult = uploadSketch(
     transpileResult.sketchDir,
     config.buildTarget,
-    config.test.port,
+    ctx.uploadPort,
     config.framework,
     config.toolchainType,
     config.zephyrConfig,
@@ -172,13 +253,41 @@ async function processTestFile(
     return errorResult(filePath, uploadResult.error ?? 'Upload failed', startTime);
   }
 
+  // Step 4b: Re-resolve the console port. CDC consoles re-enumerate after a
+  // flash and may return under a different COM/tty number; bridge boards
+  // (Uno/ESP32 devkits) keep their port. The identity-based lookup settles
+  // after serialOpenDelay and then polls briefly for the re-enumeration.
+  let readPort = ctx.uploadPort;
+  let readOpenDelay = config.test.serialOpenDelay;
+  if (ctx.usbIdentity) {
+    console.log(`  ${DIM}waiting for ${formatUsbIdentity(ctx.usbIdentity)} to re-enumerate...${RESET}`);
+    const settled = await waitForUsbPort(ctx.usbIdentity, config.test.serialOpenDelay ?? 500);
+    if (settled) {
+      if (settled !== readPort) {
+        console.log(`  ${DIM}console port re-resolved: ${settled}${RESET}`);
+      }
+      readPort = settled;
+      ctx.uploadPort = settled;
+      // The settle wait above already covered the open delay.
+      readOpenDelay = 250;
+    } else if (readPort) {
+      console.log(`${YELLOW}USB port for ${formatUsbIdentity(ctx.usbIdentity)} did not re-appear — reading ${readPort}${RESET}`);
+    } else {
+      return errorResult(
+        filePath,
+        `USB port for ${formatUsbIdentity(ctx.usbIdentity)} did not re-appear after upload`,
+        startTime,
+      );
+    }
+  }
+
   // Step 5: Read serial output
   console.log(`  ${DIM}reading serial output...${RESET}`);
   const serialResult = await readSerialOutput(
-    config.test.port,
+    readPort ?? '',
     config.test.baudRate,
     config.test.timeout,
-    config.test.serialOpenDelay,
+    readOpenDelay,
     { resetAfterOpen: config.test.resetAfterOpen ?? config.target === 'esp32' },
   );
 

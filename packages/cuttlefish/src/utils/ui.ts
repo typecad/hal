@@ -1,6 +1,18 @@
 ﻿import chalk from "chalk";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-const VERSION = "0.1.0";
+// Real package version (dist/utils/ui.js → ../../package.json). Previously
+// hardcoded "0.1.0", which drifted from the published version and misled
+// bug reports into blaming a stale global install.
+const pkgPath = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..", "..", "package.json",
+);
+const VERSION: string =
+  JSON.parse(fs.readFileSync(pkgPath, "utf8")).version ?? "unknown";
+export { VERSION };
 
 // Icons
 const ICON_CUTTLEFISH = "⤳";

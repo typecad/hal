@@ -18,5 +18,9 @@
     "adcMax": 4095,
     "pwmMaxFrequency": 2000000,
     "pwmResolutionBits": 16
+  },
+  "usb": {
+    "vid": "2FE3",
+    "pid": "0003"
   }
 }

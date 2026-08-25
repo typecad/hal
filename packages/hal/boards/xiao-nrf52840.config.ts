@@ -37,7 +37,10 @@ const config: CuttlefishConfig = {
   },
 
   test: {
-    // The XIAO's USB-C CDC serial port. Override locally with --port.
+    // Console is the XIAO's USB-C CDC, found by the board's per-board PID
+    // and re-resolved after each flash. The explicit port below is only the
+    // bootstrap fallback. Override with --port.
+    usb: { vid: '2FE3', pid: '0003' },
     port: 'COM14',
     baudRate: 115200,
     timeout: 30000,

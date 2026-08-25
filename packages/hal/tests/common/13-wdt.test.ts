@@ -1,5 +1,10 @@
 import { describe, done } from '@typecad/expect';
 
+// @typecad-skip-target samd21: Zephyr's samd21 devicetree exposes no watchdog
+// node at all (no wdt in samd21.dtsi), so there is no watchdog device to
+// exercise — the framework lowers wdt.* to comments and flags usage. This is
+// a silicon/devicetree limitation, not a framework gap.
+
 // NOTE: The WDT API is entirely void — enable()/reset()/disable() return no
 // value, so on bare metal there is nothing deterministic to assert on beyond
 // "the call ran without trapping". These tests are therefore intentionally

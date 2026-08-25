@@ -236,6 +236,110 @@ export const STM32F411: MCUDefinition = {
   build: {
     extraFlags: [],
   },
+
+  // Silicon-level @typecad/framework-zephyr chip data — facts of the
+  // STM32F411, not of any PCB (board-level Zephyr facts live in the board
+  // packages' own zephyr field). Carried into the flattened board constants
+  // under `zephyr.*` and reconstructed by framework-zephyr's
+  // resolveChipFromBoard(). Verified against Zephyr 4.3/4.4:
+  // dts/arm/st/f4/stm32f411Xe.dtsi, the stm32f411c(c-e)ux-pinctrl dtsi, and
+  // boards/weact/blackpill_f411ce (clock plan + console mux).
+  //
+  // Plain object/array literals only — `as const` on nested values defeats
+  // the board-constants flattener.
+  zephyr: {
+    // Zephyr SoC name(s) this silicon maps to — feeds the custom-board
+    // generator's board.yml + Kconfig SOC_* selection, and the create-time
+    // MCU→board catalog filter.
+    socs: ['stm32f411xe'],
+    // Devicetree includes for a generated board's DTS root.
+    dtsIncludes: [
+      'st/f4/stm32f411Xe.dtsi',
+      'st/f4/stm32f411c(c-e)ux-pinctrl.dtsi',
+    ],
+    // GPIO is split across THREE devicetree controllers — one per port.
+    // Matches the port-block pin numbering (PA<bit> → bit, PB → 16+bit,
+    // PC → 32+bit).
+    gpioController: 'gpioa',
+    gpioControllers: [
+      { nodelabel: 'gpioa', minPin: 0, maxPin: 15 },
+      { nodelabel: 'gpiob', minPin: 16, maxPin: 31 },
+      { nodelabel: 'gpioc', minPin: 32, maxPin: 47 },
+    ],
+    // Default console: UART0 (HAL) = usart1 on PA9/PA10, the pins every
+    // common F411 board wires to its header/USB-serial. A generated board
+    // enables exactly this; the pinctrl tokens come from the SoC dtsi.
+    console: {
+      nodeLabel: 'usart1',
+      tx: 'usart1_tx_pa9',
+      rx: 'usart1_rx_pa10',
+      speed: 115200,
+      description: 'usart1 on PA9 (TX) / PA10 (RX)',
+    },
+    // Default clock plan for a generated board: 25 MHz HSE crystal (the
+    // typical F411CEU6 module crystal), 96 MHz sysclock via PLL — the same
+    // plan the Zephyr blackpill_f411ce board uses, with PLLQ = 48 MHz for
+    // USB OTG_FS. A board package overrides with its own crystal/plan.
+    clocks: {
+      hseMHz: 25,
+      pll: { divM: 25, mulN: 192, divP: 2, divQ: 4 },
+      sysMHz: 96,
+      ahbPrescaler: 1,
+      apb1Prescaler: 2,
+      apb2Prescaler: 1,
+    },
+    // Bus controllers a generated board declares. v1: the console UART only —
+    // the usage-driven overlay enables a declared controller as soon as a
+    // program touches the bus, and STM32 bindings require pinctrl-0 on any
+    // enabled node; a controller without pinctrl synthesis data would break
+    // the devicetree build. Unlocking the other instances (usart2/usart6,
+    // i2c1–3, spi1–5) needs per-controller pinctrl tokens in their entries
+    // (same synthesis shape the rp2040 board uses for uart1) — until then
+    // they stay unlisted and bus HAL ops on them are compile errors.
+    uart: { controllers: [{ nodeLabel: 'usart1' }] },
+    // USB OTG_FS peripheral on PA11/PA12. `controller` is the DT alias a
+    // generated board binds it to (the Zephyr convention every USB-capable
+    // board uses); `usbNode` is the silicon node the alias targets.
+    usb: { controller: 'zephyr_udc0', usbNode: 'usbotg_fs', cdcInstances: 1 },
+    // The STM32 watchdog node is `iwdg` (independent watchdog), NOT the
+    // `wdt0` the lowering defaults to.
+    wdt: { nodeLabel: 'iwdg' },
+    // PWM: the UFQFPN48-bonded TIM4 channels with Zephyr st,pwm bindings
+    // (the blackpill board carries the same pair on PB6/PB7).
+    pwm: {
+      specs: [
+        { pin: 22, controller: 'pwm4', channel: 1, periodNs: 20_000_000 },  // PB6 (TIM4_CH1)
+        { pin: 23, controller: 'pwm4', channel: 2, periodNs: 20_000_000 },  // PB7 (TIM4_CH2)
+      ],
+      // TIM4 input clock: APB1 (48 MHz at 96 MHz sysclk) ×2 timer multiplier.
+      clockHz: 96_000_000,
+    },
+    // ADC1: 12-bit, 10 external channels reach bonded pins (IN0–IN9 = PA0–PA7,
+    // PB0/PB1). The STM32 driver requires exactly ADC_GAIN_1 +
+    // ADC_REF_INTERNAL; vref-mv defaults to 3300 in the st,stm32-adc binding.
+    adc: {
+      nodeLabel: 'adc1',
+      resolution: 12,
+      vrefMv: 3300,
+      gain: 'ADC_GAIN_1',
+      reference: 'ADC_REF_INTERNAL',
+      channels: [
+        { pin:  0, channel: 0, pinctrl: 'adc1_in0_pa0' },
+        { pin:  1, channel: 1, pinctrl: 'adc1_in1_pa1' },
+        { pin:  2, channel: 2, pinctrl: 'adc1_in2_pa2' },
+        { pin:  3, channel: 3, pinctrl: 'adc1_in3_pa3' },
+        { pin:  4, channel: 4, pinctrl: 'adc1_in4_pa4' },
+        { pin:  5, channel: 5, pinctrl: 'adc1_in5_pa5' },
+        { pin:  6, channel: 6, pinctrl: 'adc1_in6_pa6' },
+        { pin:  7, channel: 7, pinctrl: 'adc1_in7_pa7' },
+        { pin: 16, channel: 8, pinctrl: 'adc1_in8_pb0' },
+        { pin: 17, channel: 9, pinctrl: 'adc1_in9_pb1' },
+      ],
+    },
+    // NOTE: no wifi — radioless silicon (omission is the "no WiFi" signal).
+    // NOTE: no probeMethods — probe wiring is a board-level fact (a custom
+    // board defaults to openocd/SWD; see framework-zephyr's flash config).
+  },
 };
 
 export default STM32F411;
@@ -265,3 +369,8 @@ export const TypeCADManifest = {
   /** All HAL peripheral instance names exported from this package. */
   peripheralNames: [] as const,
 } as const;
+
+// Generic HAL re-exports — an MCU package is a superset of @typecad/hal
+// (mirrors board packages), so code importing from '@typecad/board' resolves
+// identically whether a board package is configured or bare silicon.
+export * from '@typecad/hal';

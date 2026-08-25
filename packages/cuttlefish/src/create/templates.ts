@@ -23,6 +23,12 @@ export interface CreateProjectOptions {
   /** Probe methods the board supports (wizard/catalog data) — used to write
    *  the config comment listing the alternatives. */
   probeMethods?: { id: string; description?: string }[];
+  /** MCU-only Zephyr target: emit `zephyr.customBoard: true` so the framework
+   *  generates an out-of-tree board named after the build target. */
+  zephyrCustomBoard?: boolean;
+  /** Starter-sketch pin for MCU-only targets (a port name — bare silicon has
+   *  no board-level LED alias). */
+  sketchPin?: string;
 }
 
 export function generateProjectPackageJson(options: CreateProjectOptions): string {
@@ -42,6 +48,9 @@ export function generateProjectPackageJson(options: CreateProjectOptions): strin
   };
   if (boardPackage) {
     deps[boardPackage] = "^1.0.0-alpha.3";
+  } else if (options.mcu) {
+    // MCU-only target: the silicon package is the pin/peripheral source.
+    deps[options.mcu] = "^1.0.0-alpha.3";
   }
 
   const depsJson = Object.entries(deps)
@@ -133,11 +142,15 @@ ${devDepsJson}
 }
 
 export function generateProjectTsconfig(options: CreateProjectOptions): string {
-  const paths = options.boardPackage
+  // The @typecad/board virtual import resolves for board AND MCU-only targets
+  // (the transpile writes .cuttlefish/board.ts re-exporting either). The
+  // @typecad/test-pins module is board data — MCU-only targets have none.
+  const hasBoard = !!options.boardPackage;
+  const paths = (hasBoard || options.mcu)
     ? `,
     "paths": {
-      "@typecad/board": ["./.cuttlefish/board.ts"],
-      "@typecad/test-pins": ["./.cuttlefish/test-pins.ts"]
+      "@typecad/board": ["./.cuttlefish/board.ts"]${hasBoard ? `,
+      "@typecad/test-pins": ["./.cuttlefish/test-pins.ts"]` : ''}
     }`
     : '';
 
@@ -213,17 +226,29 @@ export default config;
   const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
   const baudLine = options.baudRate ? `\n\n  // Console polyfill configuration\n  console: {\n    baudRate: ${options.baudRate},\n    // Serial port for upload/monitor. Override with --port on the CLI.\n    port: '${portHint}',\n  },` : '';
 
-  // zephyr.probe — set by `cuttlefish create` from the probe-method choice
-  // (or --probe). Only Zephyr projects with a selected method carry it.
-  const probeIds = (options.probeMethods ?? []).map((m) => m.id).join(', ');
-  const zephyrProbeBlock = options.probeMethod
+  // zephyr.* section — probe (boards with a probe-method table) and/or
+  // customBoard (MCU-only targets: generate an out-of-tree board for the
+  // chip, named after frameworkData.buildTarget).
+  const zephyrFields: string[] = [];
+  if (options.zephyrCustomBoard) {
+    zephyrFields.push(`    // Generate an out-of-tree Zephyr board for this MCU under
+    // boards/typecad/ (no board package exists for this hardware). The
+    // board's name comes from frameworkData.buildTarget above.
+    customBoard: true,`);
+  }
+  if (options.probeMethod) {
+    const probeIds = (options.probeMethods ?? []).map((m) => m.id).join(', ');
+    zephyrFields.push(`    // How this board attaches a probe (picked at create time;
+    // the board also supports: ${probeIds || 'see the framework docs'}). Serves
+    // flashing AND debugging.
+    probe: '${options.probeMethod}',`);
+  }
+  const zephyrProbeBlock = zephyrFields.length > 0
     ? `
 
-  // Zephyr-specific: how this board attaches a probe (picked at create time;
-  // the board also supports: ${probeIds || 'see the framework docs'}). Serves
-  // flashing AND debugging.
+  // Zephyr-specific configuration.
   zephyr: {
-    probe: '${options.probeMethod}',
+${zephyrFields.join('\n')}
   },`
     : '';
 
@@ -268,7 +293,9 @@ export default config;
 }
 
 export function generateProjectEnvDts(options: CreateProjectOptions): string {
-  if (!options.boardPackage) {
+  // The @typecad/board virtual module resolves for board AND MCU-only targets
+  // — the transpile's first build rewrites this placeholder either way.
+  if (!options.boardPackage && !options.mcu) {
     return `// ---------------------------------------------------------------------------
 // cuttlefish-env.d.ts — Global type declarations
 //
@@ -436,6 +463,28 @@ function fibonacci(n: number): number {
 
 console.log("Hello from Cuttlefish!");
 console.log("Fibonacci(10) =", fibonacci(10));
+`;
+  }
+
+  // MCU-only target: bare silicon has no board-level LED alias — blink a
+  // port pin from the MCU datasheet instead.
+  if (!options.boardPackage && options.sketchPin) {
+    return `// ---------------------------------------------------------------------------
+// Blink — The classic "Hello World" of embedded
+//
+// MCU-only target (no board package): ${options.targetDisplayName}. Pins are
+// addressed by their datasheet port names — see the MCU package for the full
+// pinout and each pin's capabilities.
+// ---------------------------------------------------------------------------
+
+import { ${options.sketchPin}, delay } from '@typecad/board';
+
+const led = ${options.sketchPin}.asOutput(false);
+
+while (true) {
+  led.toggle();
+  delay(1000);
+}
 `;
   }
 

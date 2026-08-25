@@ -27,8 +27,10 @@ import { scaffoldZephyrProject, writeIfChanged, appendLibraryOverlayFragments } 
 import { westSpawn, buildEnv } from './west-spawn.js';
 import { discoverWest } from './west-discover.js';
 import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
+import { bossacTouchReset } from './bossac-touch.js';
 import { ZephyrStrategy } from '../strategy.js';
 import { generateOverlay, type DisplayWiring, type TouchWiring, type OverlayDiagnostic } from '../dt-config/overlay.js';
+import { generateCustomBoard } from '../dt-config/custom-board.js';
 import { chipForTarget } from '../chips/index.js';
 import { resolveChipFromBoard } from '../chips/resolve.js';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
@@ -255,6 +257,13 @@ export function buildFlashArgs(
   if (port && board.startsWith('esp32')) {
     args.push('--esp-device', port);
   }
+  // The bossac runner defaults its port to /dev/ttyACM0 — on Windows that
+  // never matches, so the port MUST be forwarded or bossac fails with
+  // "No device found on /dev/ttyACM0" (same class of problem as the ESP32
+  // --esp-device forwarding above).
+  if (port && userRunner === 'bossac') {
+    args.push('--bossac-port', port);
+  }
   // Extra runner-specific flags, appended verbatim (west's runner parsers
   // accept them after the runner is selected).
   if (runnerArgs && runnerArgs.length > 0) {
@@ -470,6 +479,21 @@ export const Toolchain = {
     // Zephyr auto-detects boards/<board>.overlay under APPLICATION_CONFIG_DIR.
     try {
       const chip = chipForBuild(projectRoot, board);
+      // Custom-board generation: an MCU-only target (no board package) has no
+      // upstream Zephyr board — generate one under boards/typecad/<name>/ from
+      // the chip's silicon data. Opt-in via `zephyr.customBoard: true` in
+      // cuttlefish.config.ts; the board takes its name from the build target.
+      // Idempotent — regenerated on every compile, before the overlay pass.
+      if (zc?.customBoard === true) {
+        const generated = generateCustomBoard(projectRoot, chip, board.split('/')[0]);
+        if (!generated) {
+          throw new Error(
+            `zephyr.customBoard is set, but the resolved chip ('${chip.id}') carries no ` +
+            `silicon board data. Custom-board generation requires an MCU-only config ` +
+            `(mcu set, board absent) whose MCU package ships a zephyr block.`,
+          );
+        }
+      }
       const srcDir = join(projectRoot, 'src');
       let src = '';
       try {
@@ -721,7 +745,18 @@ export const Toolchain = {
     if (!probe.ok) {
       return { success: false, output: `-- west flash: ${probe.error}` };
     }
-    const args = buildFlashArgs(buildDir, board, probe.runner, o.port, probe.args);
+    // BOSSA bootloader boards with touch-reset data: open the app's console
+    // port at 1200 baud (the firmware's USB shim reboots into the
+    // bootloader), wait for the bootloader identity, and flash THAT port.
+    // Falls back to the configured port (manual double-tap) on any failure.
+    let flashPort = o.port;
+    const flashNotes: string[] = [];
+    if (probe.runner === 'bossac' && flashPort && chip.usb?.touchReset) {
+      const touch = bossacTouchReset(flashPort, chip.usb.touchReset);
+      flashNotes.push(`-- ${touch.note}`);
+      if (touch.port) flashPort = touch.port;
+    }
+    const args = buildFlashArgs(buildDir, board, probe.runner, flashPort, probe.args);
 
     const inv = westSpawn(args, {
       cwd: projectRoot,
@@ -735,7 +770,8 @@ export const Toolchain = {
     const raw = fstdout + fstderr;
     return {
       success: classifyUploadResult(probe.runner, result.status, raw),
-      output: cleanseUploadOutput(probe.runner, result.status, raw),
+      output: [...flashNotes, cleanseUploadOutput(probe.runner, result.status, raw)]
+        .filter(Boolean).join('\n'),
     };
   },
 

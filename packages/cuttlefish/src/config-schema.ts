@@ -53,6 +53,11 @@ const ZephyrConfig = z.object({
   probe: z.string().optional(),
   runner: z.string().optional(),
   runnerArgs: z.array(z.string()).optional(),
+  /** Generate an out-of-tree Zephyr board for an MCU-only target (no board
+   *  package): the framework emits boards/typecad/<buildTarget>/ from the
+   *  MCU package's silicon data (SoC, console, clock plan). The board is
+   *  named after `frameworkData.buildTarget`. */
+  customBoard: z.boolean().optional(),
 }).strict();
 
 /**

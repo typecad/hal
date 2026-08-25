@@ -62,6 +62,9 @@ const ARCHITECTURE_FRAMEWORKS: Record<string, string[]> = {
   rp2040: ["arduino", "zephyr"],
   rp2350: ["arduino", "zephyr"],
   samd: ["arduino"],
+  // Per-chip key (stm32f411 style) — the Nano 33 IoT is Zephyr-only today;
+  // the generic 'samd' entry stays ["arduino"] for the Arduino SAMD core.
+  samd21: ["zephyr"],
   // Per-chip key (esp32c3/c6 style). The generic 'stm32' entry stays
   // ["arduino"] for future STM32duino support; the F411 Black Pill is
   // Zephyr-only today.
@@ -112,6 +115,9 @@ const ZEPHYR_BOARD_IDS: Record<string, string> = {
   // First STM32 target — WeAct Black Pill V2.0 (STM32F411CEU6). Single
   // variant; qualified for consistency with every other catalog target.
   "blackpill-f411ce": "blackpill_f411ce/stm32f411xe",
+  // First Microchip SAM target — Arduino Nano 33 IoT (SAMD21G18A).
+  // Single variant; qualified for consistency with every other target.
+  "nano-33-iot": "arduino_nano_33_iot/samd21g18a",
   // nRF52840 (single core), base (non-sense) variant.
   "xiao-nrf52840": "xiao_ble/nrf52840",
   // Raspberry Pi Pico (RP2040) — single-soc board, bare name accepted.
@@ -140,6 +146,11 @@ export const BOARD_PROBE_METHODS: Record<string, CatalogProbeMethod[]> = {
     { id: "stlink-srst", description: "ST-Link with the RST/SRST line wired — connect under reset (recovers wedged targets) — also debugs" },
     { id: "dfu", description: "Built-in USB bootloader: hold BOOT0, tap reset (no debug)" },
     { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
+  ],
+  "nano-33-iot": [
+    { id: "bossac", description: "Built-in USB bootloader: double-tap reset, flash over the USB port (no debug)" },
+    { id: "openocd", description: "Any CMSIS-DAP-class SWD probe on the underside SWD pads — also debugs" },
+    { id: "jlink", description: "J-Link probe (SWD) on the underside SWD pads — also debugs" },
   ],
   "xiao-nrf52840": [
     { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
