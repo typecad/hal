@@ -1,0 +1,18 @@
+{
+  "pins": {
+    "gpioOut": "PB5",
+    "gpioIn": "PB0",
+    "gpioGroup": ["PB0", "PB1", "PB10"],
+    "pwm": "PB6",
+    "pwmAlt": "PB7",
+    "cs": "PA4",
+    "interrupt": "PA0",
+    "led": "LED",
+    "button": "BUTTON"
+  },
+  "facts": {
+    "pwmMaxFrequency": 50000000,
+    "pwmResolutionBits": 16,
+    "adcMax": 4095
+  }
+}

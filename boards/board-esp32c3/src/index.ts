@@ -98,7 +98,26 @@ export const ESP32C3Board: BoardDefinition = {
     i2c:  { controllers: [{ nodeLabel: 'i2c0' }] },
     spi:  { controllers: [{ nodeLabel: 'spi2' }] },
     uart: { controllers: [{ nodeLabel: 'uart0' }] },
-    // wdt0 is the lowering's default when `wdt` is omitted (both are wdt0).
+    // ADC1 (the `adc0` DT node — the C3 has a single ADC). 12-bit SARADC,
+    // ~1.1 V internal reference. Channel numbering per the ESP32-C3
+    // datasheet: ADC1_CH0–CH4 = GPIO0–GPIO4 (A0 = GPIO0 is CH0). The node
+    // ships disabled in esp32c3_common.dtsi — the overlay generator enables
+    // it on adc use.
+    adc: {
+      nodeLabel: 'adc0',
+      resolution: 12,
+      vrefMv: 1100,
+      channels: [
+        { pin: 0, channel: 0 },  // A0
+        { pin: 1, channel: 1 },  // A1
+        { pin: 2, channel: 2 },  // A2
+        { pin: 3, channel: 3 },  // A3
+        { pin: 4, channel: 4 },  // A4
+      ],
+    },
+    // Timer-group 0 main watchdog — enabled by the board DTS (&wdt0 okay in
+    // esp32c3_devkitm.dts).
+    wdt: { nodeLabel: 'wdt0' },
     // Wi-Fi 4 + BLE 5: the board DTS enables &wifi; CONFIG_WIFI_ESP32 covers
     // the whole ESP32 family. Omitted on radioless targets.
     wifi: { supported: true },

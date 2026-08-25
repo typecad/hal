@@ -82,7 +82,7 @@ export function transpileTestFile(
   // OR when an explicit configPath was passed. The latter matters because
   // direct-file mode discovers cuttlefish.config.ts from cwd (projectRoot),
   // which is the DEFAULT config — so a project with several target-specific
-  // configs (e.g. tests/hardware/cuttlefish.config.ts vs ble-demo.config.ts)
+  // configs (e.g. packages/hal/tests/network/cuttlefish.config.ts vs ble-demo.config.ts)
   // would always transpile against the default. Build mode writes a config
   // derived from the chosen configPath into the build dir, so the right
   // board/MCU/target is used.

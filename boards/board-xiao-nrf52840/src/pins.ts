@@ -8,7 +8,7 @@
 // the bus-pin aliases for IDE convenience.
 // ---------------------------------------------------------------------------
 
-import { D0, D1, D2, D3 } from '@typecad/mcu-nrf52840';
+import { D0, D1, D2, D3, P0_17 } from '@typecad/mcu-nrf52840';
 import { USBSerialPort } from '@typecad/hal';
 
 // ---------------------------------------------------------------------------
@@ -20,6 +20,11 @@ export const A0 = D0;
 export const A1 = D1;
 export const A2 = D2;
 export const A3 = D3;
+
+// Board-fixed alias: the PWM-driven onboard LED (P0.17, the board's
+// pwm-led0 DT spec — PWM_OUT0 on the pwm0 controller, inverted). The only
+// PWM-mapped channel this board's DT carries.
+export const PWM_LED = P0_17;
 
 // ---------------------------------------------------------------------------
 // USB CDC serial over the XIAO's USB-C connector (nRF52840 native USBD).

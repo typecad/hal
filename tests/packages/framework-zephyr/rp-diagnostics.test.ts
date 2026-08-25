@@ -41,11 +41,18 @@ describe('ZephyrStrategy.profileDiagnostics — PWM gate (RP boards ship no pwm.
     expect(d!.message).toContain('GPIO 15');
   });
 
-  it('warns on tone.play when the chip has no PWM channels at all', () => {
+  it('warns on pwm.write for a pin with no PWM spec (GP15 is unpinned)', () => {
     const diags = s.profileDiagnostics(programWith([
-      { operation: 'tone.play', pin: 15, frequency: 440 },
+      { operation: 'pwm.write', pin: 15, duty: 128 },
     ]));
-    expect(diags.some((x) => x.code === 'zephyr-pwm-pin-unavailable' && x.message.includes('tone'))).toBe(true);
+    expect(diags.some((x) => x.code === 'zephyr-pwm-pin-unavailable' && x.message.includes('15'))).toBe(true);
+  });
+
+  it('accepts tone.play now that the Pico carries the GP25 spec (tone rides specs[0])', () => {
+    const diags = s.profileDiagnostics(programWith([
+      { operation: 'tone.play', pin: 25, frequency: 440 },
+    ]));
+    expect(diags.some((x) => x.code === 'zephyr-pwm-pin-unavailable')).toBe(false);
   });
 
   it('does not warn for a spec-listed pin (xiao_ble pwm-led0 on pin 17)', () => {
@@ -77,11 +84,18 @@ describe('ZephyrStrategy.profileDiagnostics — bus instance gate', () => {
     expect(d!.message).toContain('SPI1');
   });
 
-  it('errors on UART1 on rpi_pico (only uart0 is declared)', () => {
+  it('errors on UART2 on rpi_pico (only uart0 + the synthesized uart1 are declared)', () => {
+    const diags = s.profileDiagnostics(programWith([
+      { operation: 'uart.begin', port: 'UART2', baud: 115200 },
+    ]));
+    expect(diags.some((x) => x.code === 'zephyr-bus-instance-unavailable' && x.message.includes('UART2'))).toBe(true);
+  });
+
+  it('accepts UART1 on rpi_pico (the synthesized uart1 controller)', () => {
     const diags = s.profileDiagnostics(programWith([
       { operation: 'uart.begin', port: 'UART1', baud: 115200 },
     ]));
-    expect(diags.some((x) => x.code === 'zephyr-bus-instance-unavailable' && x.message.includes('UART1'))).toBe(true);
+    expect(diags.some((x) => x.code === 'zephyr-bus-instance-unavailable')).toBe(false);
   });
 
   it('accepts every declared instance on the Pico 2 (i2c0/i2c1/spi0/uart0)', () => {

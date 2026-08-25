@@ -68,8 +68,9 @@ export const ESP32DevKit: BoardDefinition = {
   //
   // GPIO is split across two devicetree controllers — gpio0 (pins 0–31) and
   // gpio1 (pins 32–39) — so the runtime pin→controller routing is carried here
-  // (a compile-time DT macro cannot reach it). UART/I2C/SPI/wdt nodelabels are
-  // resolved by Zephyr's own devicetree at compile time, not hand-copied.
+  // (a compile-time DT macro cannot reach it). Bus controllers, ADC channels
+  // and the watchdog nodelabel below are the board-DTS-verified facts the
+  // lowerings resolve against.
   zephyr: {
     gpioController: 'gpio0',
     gpioControllers: [
@@ -87,6 +88,42 @@ export const ESP32DevKit: BoardDefinition = {
         { pin: 0, dtSpec: 'sw0' },  // BOOT button (GPIO0)
       ],
     },
+    // Board-wired controllers (esp32_devkitc_procpu.dts): uart0 = console
+    // @115200 on the USB-serial bridge (GPIO1/GPIO3), i2c0 (GPIO21/22,
+    // standard mode), spi2 + spi3 (GPSPI2/GPSPI3, pinctrl spim2/spim3_default,
+    // both enabled). The overlay generator enables whichever the program uses.
+    //
+    // UART: the HAL instances deliberately map to the NON-console
+    // controllers. The lowering resolves HAL UART instance N against
+    // uart.controllers[N] (the board defines map UART0→"Serial" = index 0),
+    // so declaring [uart1, uart2] puts UART0 on uart1 (and UART1 on uart2) —
+    // exercising the UART never reconfigures the console mid-protocol. Both
+    // carry default pinctrl groups in the board DTS (uart1_default/uart2_default).
+    i2c:  { controllers: [{ nodeLabel: 'i2c0' }] },
+    spi:  { controllers: [{ nodeLabel: 'spi2' }, { nodeLabel: 'spi3' }] },
+    uart: { controllers: [{ nodeLabel: 'uart1' }, { nodeLabel: 'uart2' }] },
+    // ADC1 (the `adc0` DT node; ADC2 shares pads with the Wi-Fi radio and is
+    // deliberately not mapped). 12-bit SARADC, ~1.1 V internal reference.
+    // Channel numbering per the ESP32 datasheet: ADC1_CH0–CH7 = GPIO36, 37,
+    // 38, 39, 32, 33, 34, 35 (A0 = GPIO36 is CH0). The node ships disabled
+    // in esp32_common.dtsi — the overlay generator enables it on adc use.
+    adc: {
+      nodeLabel: 'adc0',
+      resolution: 12,
+      vrefMv: 1100,
+      channels: [
+        { pin: 36, channel: 0 },  // A0
+        { pin: 37, channel: 1 },  // A1
+        { pin: 38, channel: 2 },
+        { pin: 39, channel: 3 },
+        { pin: 32, channel: 4 },  // A4
+        { pin: 33, channel: 5 },  // A5
+        { pin: 34, channel: 6 },  // A2 (input-only pad)
+        { pin: 35, channel: 7 },  // A3 (input-only pad)
+      ],
+    },
+    // Timer-group 0 main watchdog — enabled in esp32_common.dtsi.
+    wdt: { nodeLabel: 'wdt0' },
     // The ESP32 has a 2.4GHz radio; conn_mgr + the esp32 wifi driver
     // (CONFIG_WIFI_ESP32) provide connectivity. Omitted on radioless targets.
     wifi: { supported: true },

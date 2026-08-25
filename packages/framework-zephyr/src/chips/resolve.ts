@@ -50,7 +50,34 @@ function collectBusControllers(
 ): ZephyrBusController[] {
   return collectIndexed<ZephyrBusController>(bc, prefix, (m, i) => {
     const nodeLabel = m.get(`${prefix}.${i}.nodeLabel`) as string;
-    return nodeLabel ? { nodeLabel } : null;
+    if (!nodeLabel) return null;
+    // Optional pinctrl synthesis data (nested object; string arrays arrive
+    // comma-joined from the board-constants flattener).
+    const splitCsv = (v: unknown): string[] | undefined =>
+      typeof v === 'string' && v.length > 0
+        ? v.split(',').map((s) => s.trim()).filter(Boolean)
+        : undefined;
+    const include = m.get(`${prefix}.${i}.pinctrl.include`) as string | undefined;
+    const pinmux = splitCsv(m.get(`${prefix}.${i}.pinctrl.pinmux`));
+    const inputPinmux = splitCsv(m.get(`${prefix}.${i}.pinctrl.inputPinmux`));
+    const defines = splitCsv(m.get(`${prefix}.${i}.pinctrl.defines`));
+    const pinctrlRef = m.get(`${prefix}.${i}.pinctrlRef`) as string | undefined;
+    const props = splitCsv(m.get(`${prefix}.${i}.props`));
+    return {
+      nodeLabel,
+      ...(include && pinmux
+        ? {
+            pinctrl: {
+              include,
+              pinmux,
+              ...(inputPinmux ? { inputPinmux } : {}),
+              ...(defines ? { defines } : {}),
+            },
+          }
+        : {}),
+      ...(pinctrlRef ? { pinctrlRef } : {}),
+      ...(props ? { props } : {}),
+    };
   });
 }
 

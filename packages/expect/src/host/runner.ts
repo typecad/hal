@@ -14,6 +14,7 @@ import { transpileTestFile, compileSketch, uploadSketch } from './compiler.js';
 import { readSerialOutput } from './serial.js';
 import { parseProtocolLines } from './parser.js';
 import { reportFileResult, reportSummary } from './reporter.js';
+import { boardTestPins, testPinsRolesOf, buildTestPinsSubstitutions } from './test-pins.js';
 
 // ---------------------------------------------------------------------------
 // ANSI codes (for inline progress messages)
@@ -98,6 +99,14 @@ async function processTestFile(
     return skippedResult(relativePath, skipReason, startTime);
   }
 
+  // Resolve the board's test-pins data once per file: role gating for the
+  // skip check, substitutions for the preprocessor.
+  const testPinsData = boardTestPins(config.board, config.projectRoot);
+  const missingRolesReason = checkRequiredRoles(source, config, testPinsData);
+  if (missingRolesReason) {
+    return skippedResult(relativePath, missingRolesReason, startTime);
+  }
+
   // Validate port only for files that will actually compile/upload. This lets
   // target-incompatible files be skipped without requiring hardware to be
   // connected, and lets --dry-run run without any port (it stops after compile).
@@ -107,13 +116,14 @@ async function processTestFile(
 
   console.log(`${CYAN}●${RESET} ${relativePath}`);
 
-  // Step 1: Preprocess
+  // Step 1: Preprocess (with test-pin role substitution for this board)
   console.log(`  ${DIM}preprocessing...${RESET}`);
   let preprocessed: string;
   try {
     preprocessed = preprocess(source, path.basename(filePath), {
       isAvr: config.target === 'avr' || config.target === 'megaavr',
       shim: config.toolchainType === 'west' ? zephyrShim : serialShim,
+      testPins: testPinsData ? buildTestPinsSubstitutions(testPinsData) : undefined,
     });
   } catch (e) {
     return errorResult(filePath, `Preprocessing failed: ${(e as Error).message}`, startTime);
@@ -253,8 +263,35 @@ function aggregateResults(files: FileResult[], durationMs: number): RunResult {
   };
 }
 
-function getSkipReason(source: string, relativePath: string, config: ResolvedConfig): string | undefined {
-  const excludedByConfig = config.test.exclude?.find(pattern => matchesTestPattern(relativePath, pattern));
+/**
+ * Skip files whose required test-pins roles are not provided by the
+ * configured board. Directive form (roles from test-pins.json schema):
+ *   // @typecad-requires-roles pwm, pwmAlt, pwmMaxFrequency
+ */
+function checkRequiredRoles(source: string, config: ResolvedConfig, testPinsData: ReturnType<typeof boardTestPins>): string | undefined {
+  const match = source.match(/@typecad-requires-roles\s+([A-Za-z0-9_,\s]+)/);
+  if (!match) return undefined;
+
+  const required = match[1]
+    .split(/[,\s]+/)
+    .map(r => r.trim())
+    .filter(Boolean);
+  if (required.length === 0) return undefined;
+
+  if (!testPinsData) {
+    return `${config.board} ships no test-pins.json — cannot provide roles: ${required.join(', ')}`;
+  }
+
+  const roles = testPinsRolesOf(testPinsData);
+  const missing = required.filter(role => !roles.has(role));
+  if (missing.length > 0) {
+    return `board ${config.board} does not provide test-pins role(s): ${missing.join(', ')}`;
+  }
+
+  return undefined;
+}
+
+function getSkipReason(source: string, relativePath: string, config: ResolvedConfig): string | undefined {  const excludedByConfig = config.test.exclude?.find(pattern => matchesTestPattern(relativePath, pattern));
   if (excludedByConfig) {
     return `matched test.exclude pattern '${excludedByConfig}'`;
   }

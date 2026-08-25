@@ -328,3 +328,46 @@ describe('storage partition synthesis (Preferences/FS on boards without one)', (
     expect(txt).toContain('status = "okay"');
   });
 });
+
+// RP2040 carries the synthesized uart1 pinctrl entry (no default group in
+// the mainline board DT) — resolved through the real board-package
+// flattener like the Black Pill fixture above.
+const RP2040 = resolveChipFromBoard(
+  resolveBoardConstants('boards/board-rp2040/src/index.ts'),
+)!;
+
+describe('generateOverlay pinctrl synthesis', () => {
+  it('synthesizes a pinctrl group and wires it onto the controller', () => {
+    const txt = generateOverlay(RP2040, { usesUart: true, uartUsedInstances: [1] }, undefined);
+    expect(txt).toContain('#include <zephyr/dt-bindings/pinctrl/rpi-pico-rp2040-pinctrl.h>');
+    expect(txt).toContain('&pinctrl {');
+    expect(txt).toContain('uart1_default: uart1_default {');
+    expect(txt).toContain('pinmux = <UART1_TX_P8>;');
+    expect(txt).toContain('pinmux = <UART1_RX_P9>;');
+    expect(txt).toContain('input-enable;');
+    expect(txt).toContain('&uart1 {');
+    expect(txt).toContain('pinctrl-0 = <&uart1_default>;');
+    expect(txt).toContain('pinctrl-names = "default";');
+    expect(txt).toContain('status = "okay";');
+    // The include must precede the blocks that reference its tokens.
+    expect(txt.indexOf('rpi-pico-rp2040-pinctrl.h')).toBeLessThan(txt.indexOf('UART1_TX_P8'));
+  });
+
+  it('leaves controllers without synthesis data in plain enable form', () => {
+    const txt = generateOverlay(RP2040, { usesI2c: true }, undefined);
+    expect(txt).toContain('&i2c0 {');
+    expect(txt).not.toContain('&pinctrl {');
+    expect(txt).not.toContain('rpi-pico-rp2040-pinctrl.h');
+  });
+
+  it('carries the synthesis data through the board-constants flattener', () => {
+    // uart0 = console (no synthesis data), uart1 = synthesized on GP8/GP9.
+    expect(RP2040.uart?.controllers).toHaveLength(2);
+    expect(RP2040.uart?.controllers[0]).toEqual({ nodeLabel: 'uart0' });
+    expect(RP2040.uart?.controllers[1].pinctrl).toEqual({
+      include: 'zephyr/dt-bindings/pinctrl/rpi-pico-rp2040-pinctrl.h',
+      pinmux: ['UART1_TX_P8'],
+      inputPinmux: ['UART1_RX_P9'],
+    });
+  });
+});

@@ -76,36 +76,74 @@ For I2C/SPI/UART, instantiate the bus class with the board's pinned instance
 
 ## Hardware tests
 
-The [`tests/`](./tests/) directory contains a hardware test suite that
-exercises every AVR-compilable HAL subsystem against real Arduino Uno hardware,
-using [`@typecad/expect`](https://cuttlefish.typecad.net)
-(`describe()` / `.it()` / `.expect()` / `done()`) over serial. Each file covers
-one subsystem: GPIO, timing, math, random, pulse, shift, interrupts, UART,
-I2C, SPI, ADC, WDT, Preferences, async, and constants.
+The [`tests/`](./tests/) directory is the HAL hardware suite — the on-metal
+proof that the HAL works. It runs via
+[`@typecad/expect`](https://cuttlefish.typecad.net)
+(`describe()` / `.it()` / `.expect()` / `done()`) over serial or USB CDC, and
+is organized so one shared suite covers every board:
 
-ESP32-only subsystems (DAC, `FS`, `Power`, `HardwareTimer`) are intentionally
-omitted — they require an ESP32 target.
+- **`tests/common/`** — board-agnostic groups, one file per subsystem:
+  timing, math, random, pulse, shift, interrupts, UART, I2C, ADC, WDT,
+  Preferences, async, and constants. They use bus singletons, `A0`, and
+  ambient globals only.
+- **`tests/board/`** — the board-level groups (GPIO, PWM/tone, SPI, LED).
+  These import **role names** from the `@typecad/test-pins` virtual module
+  (`GPIO_OUT`, `PWM_PIN`, `PWM_MAX_FREQ`, …); each board package's
+  `test-pins.json` declares which of its pins fill each role, and the runner
+  substitutes them before transpiling. A file skipped because a board lacks
+  a role carries `// @typecad-requires-roles …`.
+- **`tests/network/`** — on-hardware HTTP/MQTT/BLE client suites against a
+  local host server (`npm run test:http` starts it; see
+  [`tests/network/README.md`](./tests/network/README.md)).
+- **`tests/wired/`** — opt-in loopback tier (jumper `gpioOut` → `gpioIn`);
+  not part of the default runs. See the file header for wiring.
 
-Run on a connected Uno:
+Each board has a config in [`boards/`](./boards/) selecting target, MCU,
+framework, and console. Run the suite for a board from its board package:
 
 ```bash
-npm exec --workspace @typecad/hal -- cuttlefish-test
+npm run hal --workspace @typecad/board-arduino-uno
 ```
 
-The suite is configured by [`cuttlefish.config.ts`](./cuttlefish.config.ts).
-Like the [`@typecad/framework-arduino`](https://cuttlefish.typecad.net)
-tests, it imports through `@typecad/board` (the board package) and ambient globals
-declared in `cuttlefish-env.d.ts`, never directly from `@typecad/board`, so the
-transpiler resolves each call against the active MCU/board packages.
+or directly with a config (add `--port COMx` to override the configured one):
 
-### Skipped on AVR
+```bash
+npm exec --workspace @typecad/hal -- cuttlefish-test --config boards/blackpill.config.ts
+```
 
-One file is skipped on AVR by a `@typecad-skip-target` directive, for a
-genuine hardware reason (not a transpiler limitation):
+Board-agnostic groups import through `@typecad/board` (the configured board
+package) and ambient globals declared in `cuttlefish-env.d.ts`, never from a
+concrete `@typecad/board-*` name, so the transpiler resolves each call
+against the active MCU/board packages.
 
-- **`08-uart`** — the Uno has a single hardware UART, which the test runner
-  itself uses as the `[TC:...]` protocol channel. Any `UART0` call disrupts
-  that channel. Runs on multi-UART targets (ESP32).
+### Board parity and documented hardware limits
+
+The suite aims for parity: every board runs every group its silicon can
+support. Gaps are expressed as data (a missing `test-pins.json` role skips
+the groups that need it) or a `@typecad-skip-target` directive, never as a
+per-board test copy. The only remaining skips are hard hardware limits:
+
+- **`08-uart` on AVR** (`@typecad-skip-target avr`): the ATmega328P has one
+  hardware UART and it IS the `[TC:...]` protocol channel the runner reads —
+  exercising it disrupts the protocol, and there is no second UART or USB
+  console to move either side to. Every other target runs the group (the
+  Picos synthesize a uart1 pinctrl group, the ESP32s declare the
+  non-console controllers, the Black Pill's USB CDC console frees usart1).
+- **`11-led` on the ESP32-C3/C6/S3 dev boards**: the onboard "LED" is a
+  WS2812 addressable RGB — not a plain GPIO LED — so those board packages
+  export no `led` role and the group skips. (The Black Pill, Uno, ESP32
+  DevKitC, XIAO, and both Picos run it.)
+
+Everything else — gpio, pwm/tone (incl. the PWM fact cross-checks), spi,
+i2c, adc (both the pin-based and channel-numbered forms), uart, timing,
+math, random, pulse, shift, interrupts, wdt, preferences, async, and the
+constants group — compiles for all eight board configs (`cuttlefish-test
+--dry-run`) and runs on metal via `npm run test:hw` / `npm run hal`.
+
+Known single-channel constraint: the Picos' only DT-pinned PWM pad is GP25
+(the onboard LED), so `pwm`/`pwmAlt` roles both point there and the pwm and
+tone groups exercise it sequentially. Other pads would need per-pin pinctrl
+synthesis beyond GP25's board-pinned group.
 
 The async test (`15-async`) **runs on AVR**: on heap-less targets the
 transpiler emits a fixed-capacity, allocation-free static timer/task runtime

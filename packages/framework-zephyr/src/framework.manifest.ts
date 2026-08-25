@@ -565,17 +565,11 @@ export default defineFrameworkManifest({
   ambientTypes: ['Preferences'],
 
   conformance: {
-    // Hardware-test groups — each entry is backed by a tests/<group>.test.ts
-    // file in this package (validated by the manifest validator). Mirrors the
-    // framework-avr/framework-esp32 convention. These run on metal via
-    // `npm run test:hw` (cuttlefish-test transpiles → west build → flash).
-    hardwareTestGroups: [
-      '01-basics',
-      '30-timing',
-      '40-gpio',
-      '41-analog',
-      '42-timers',
-    ],
+    // Hardware-test groups moved to the shared HAL suite
+    // (packages/hal/tests — common/ + board/ via board test-pins.json), which
+    // runs on Zephyr targets through the hal board configs. The
+    // hal-resolution snapshots below stay.
+    hardwareTestGroups: [],
     // Per-op HAL-resolution suite — one tests/packages/framework-zephyr/
     // hal-resolution/<cat>.test.ts per category, snapshotting the exact C++
     // each op lowers to. Mirrors the framework-esp32 convention. These are

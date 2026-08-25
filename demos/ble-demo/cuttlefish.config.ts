@@ -10,10 +10,10 @@ const config: CuttlefishConfig = {
   //   06-custom-uuid.ts      128-bit vendor-specific UUIDs
   //   07-status.ts           connection monitoring + status queries
   //   08-test-server.ts      combined peripheral for the on-hardware BLE suite
-  //                          (mirrors tests/hardware/ble-peripheral.test.ts)
+  //                          (mirrors packages/hal/tests/network/ble-peripheral.test.ts)
   entry: './src/08-test-server.ts',
   // Seeed XIAO nRF52840 — a native BLE board. Flashes via UF2 (mass-storage
-  // bootloader); double-tap reset to enter it. See tests/hardware/README.md.
+  // bootloader); double-tap reset to enter it. See packages/hal/tests/network/README.md.
   target: 'nrf52',
   mcu: '@typecad/mcu-nrf52840',
   board: '@typecad/board-xiao-nrf52840',

@@ -100,11 +100,43 @@ export const RP2350Board: BoardDefinition = {
     // Board-wired controllers (rpi_pico2.dtsi, identical pinout to the Pico):
     //   uart0 = GP0/GP1, i2c0 = GP4/GP5, i2c1 = GP6/GP7 (both okay by default
     //   on this board — the Pico 2 DTS ships i2c1 enabled), spi0 = GP16–GP19.
-    //   spi1/uart1 have no default pinctrl group in the board DT and are not
-    //   declared.
+    //   uart1 has no default pinctrl group in the board DT — its entry below
+    //   carries synthesis data instead. spi1 is not declared (unused, and
+    //   likewise unpinned by the board).
     i2c:  { controllers: [{ nodeLabel: 'i2c0' }, { nodeLabel: 'i2c1' }] },
     spi:  { controllers: [{ nodeLabel: 'spi0' }] },
-    uart: { controllers: [{ nodeLabel: 'uart0' }] },
+    // The board defines map UART0→Arduino "Serial1" (= uart1 on the Pico 2),
+    // so uart0 (the console) is declared for completeness and HAL UART0
+    // resolves to the SECOND entry — uart1 on GP22/GP23, free header pins
+    // (the RP2350's UART1 ALT mux has no GP8/GP9 option; P22/P23 keep clear
+    // of this board's test-pin roles). The mainline rpi_pico2 DT ships no
+    // uart1 pinctrl group, so the entry carries synthesis data; the overlay
+    // generator emits the group under &pinctrl and enables the controller.
+    uart: { controllers: [
+      { nodeLabel: 'uart0' },
+      {
+        nodeLabel: 'uart1',
+        pinctrl: {
+          include: 'zephyr/dt-bindings/pinctrl/rpi-pico-rp2350a-pinctrl.h',
+          pinmux: ['UART1_TX_P22'],
+          inputPinmux: ['UART1_RX_P23'],
+          // Upstream latent bug: Zephyr's rp2350 pinctrl headers define the
+          // UART1 tokens against RP2_PINCTRL_GPIO_FUNC_UART_ALT, which is
+          // defined nowhere (mainline never consumes the tokens, so it went
+          // unnoticed). UART1 on GP22/GP23 is the AUX funcsel (11) per the
+          // RP2350 datasheet — define it before the include.
+          defines: ['RP2_PINCTRL_GPIO_FUNC_UART_ALT 11'],
+        },
+        // The PL011 binding requires current-speed; the board DTS only sets
+        // it on its own wired uart0.
+        props: ['current-speed = <115200>;'],
+      },
+    ] },
+    // RP2350 watchdog (`wdt0`, raspberrypi,pico-watchdog @400d8000) — ships
+    // disabled in rp2350.dtsi; the overlay generator enables it on wdt use.
+    // Note it cannot be disabled once started (single-shot tickle), same
+    // operational caveat as the STM32 IWDG.
+    wdt: { nodeLabel: 'wdt0' },
     // USB device: the RP2350 USBD peripheral on the USB-C connector (dedicated
     // D+/D- pads, not GPIOs). Zephyr's rpi_pico2 DTS labels it `zephyr_udc0`
     // and enables it by default (rpi_pico2.dtsi:
@@ -127,19 +159,29 @@ export const RP2350Board: BoardDefinition = {
         { pin: 29, channel: 3 },
       ],
     },
-    wdt: { nodeLabel: 'wdt0' },
     // Where the board DTS's chosen console goes (rpi_pico2.dtsi routes
     // zephyr,console to uart0 on the GP0/GP1 header pins — a USB-serial
     // adapter is needed to see it). Set console.output: 'usb' in
     // cuttlefish.config.ts to route console.log to the USB-C connector
     // instead (the CDC port this board composes).
     consoleDescription: 'uart0 on GP0 (TX) / GP1 (RX)',
-    // NOTE: no pwm.specs — the `pwm-led0` alias (PWM channel 9, GP25) points
-    // at a `pwm_leds` node that is status = "disabled" in mainline rpi_pico
-    // DTS; the overlay generator does not enable it, so a spec here would
-    // compile but fail at runtime. pwm.* ops lower to a comment (with a
-    // profileDiagnostics warning) until the overlay generator can synthesize
-    // per-pin pinctrl groups for the raspberrypi,pico-pwm driver.
+    // Storage partition synthesis: the Pico 2's rpi_pico2.dtsi defines the
+    // 4 MB flash with NO partitions at all — no storage_partition for the
+    // ZMS-backed Preferences / littlefs FS backends. The overlay generator
+    // declares this region under &flash0 when a program uses preferences.*
+    // or fs.*: the top 1 MB of the Pico 2's 4 MB flash. The app links from
+    // 0x0 and would have to exceed 3 MB to reach it.
+    storage: { offset: 0x00300000, size: 0x00100000 },
+    // PWM: GP25 — the only pad the board DT pins for PWM (pwm_ch4b_default,
+    // slice 4 channel B = driver channel 9; same placement as the Pico via
+    // rpi_pico-led.dtsi). Declared in controller+channel form: the overlay
+    // generator enables &pwm (the node ships disabled in the SoC dtsi, and
+    // rpi_pico2-common already attaches the pinctrl group) and synthesizes
+    // the channel node. Other pads would need a synthesized pinctrl group
+    // (the board pins none of them).
+    pwm: {
+      specs: [{ pin: 25, controller: 'pwm', channel: 9 }],
+    },
     //
     // Named probe methods — what `zephyr.probe` / `--probe` accept on this
     // board, for BOTH flashing and debugging (rpi_pico2 board.cmake):

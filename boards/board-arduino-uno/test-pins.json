@@ -1,0 +1,17 @@
+{
+  "pins": {
+    "gpioOut": "D11",
+    "gpioIn": "D2",
+    "gpioGroup": ["D2", "D3", "D4"],
+    "pwm": "D9",
+    "pwmAlt": "D10",
+    "cs": "D10",
+    "interrupt": "D2",
+    "led": "LED"
+  },
+  "facts": {
+    "pwmMaxFrequency": 62500,
+    "pwmResolutionBits": 8,
+    "adcMax": 1023
+  }
+}

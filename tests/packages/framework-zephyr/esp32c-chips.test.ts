@@ -57,9 +57,17 @@ describe('board-esp32c3 → ZephyrChipDescriptor', () => {
     expect(esp32c3Chip!.wifi).toEqual({ supported: true });
   });
 
-  it('declares no PWM specs / ADC map (omitted, mirroring the ESP32/S3 descriptors)', () => {
+  it('declares no PWM specs (no PWM-capable node is pinned) and maps ADC1 channels', () => {
     expect(esp32c3Chip!.pwm?.specs ?? []).toEqual([]);
-    expect(esp32c3Chip!.adc).toBeUndefined();
+    // ADC1_CH0–CH4 = GPIO0–GPIO4 (A0 = GPIO0 is CH0).
+    expect(esp32c3Chip!.adc?.nodeLabel).toBe('adc0');
+    expect(esp32c3Chip!.adc?.channels).toEqual([
+      { pin: 0, channel: 0 },
+      { pin: 1, channel: 1 },
+      { pin: 2, channel: 2 },
+      { pin: 3, channel: 3 },
+      { pin: 4, channel: 4 },
+    ]);
   });
 });
 
@@ -92,8 +100,11 @@ describe('board-esp32c6 → ZephyrChipDescriptor', () => {
     expect(esp32c6Chip!.wifi).toEqual({ supported: true });
   });
 
-  it('declares no PWM specs / ADC map (omitted, mirroring the ESP32/S3 descriptors)', () => {
+  it('declares no PWM specs (no PWM-capable node is pinned) and maps ADC1 channels', () => {
     expect(esp32c6Chip!.pwm?.specs ?? []).toEqual([]);
-    expect(esp32c6Chip!.adc).toBeUndefined();
+    // ADC1_CH0–CH6 = GPIO0–GPIO6 (A0 = GPIO0 is CH0).
+    expect(esp32c6Chip!.adc?.nodeLabel).toBe('adc0');
+    expect(esp32c6Chip!.adc?.channels).toHaveLength(7);
+    expect(esp32c6Chip!.adc?.channels[0]).toEqual({ pin: 0, channel: 0 });
   });
 });

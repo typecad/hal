@@ -136,7 +136,8 @@ export function generateProjectTsconfig(options: CreateProjectOptions): string {
   const paths = options.boardPackage
     ? `,
     "paths": {
-      "@typecad/board": ["./.cuttlefish/board.ts"]
+      "@typecad/board": ["./.cuttlefish/board.ts"],
+      "@typecad/test-pins": ["./.cuttlefish/test-pins.ts"]
     }`
     : '';
 

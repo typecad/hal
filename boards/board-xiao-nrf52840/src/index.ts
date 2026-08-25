@@ -29,6 +29,10 @@ export const XiaoNRF52840: BoardDefinition = {
     // convention used by other board packages).
     led: 'P0.26',
     button: 'P0.04',
+    // The PWM-driven onboard LED (pwm-led0 DT spec). snake_case so the
+    // flattened pins.pwm_led key registers the PWM_LED identifier in the
+    // transpiler's pin alias map.
+    pwm_led: 'P0.17',
   },
 
   // ----- Peripherals -------------------------------------------------------
@@ -169,6 +173,10 @@ export const pins = {
   led: MCU_LED,
   /** Onboard user button. */
   button: MCU_BUTTON,
+  /** PWM-driven onboard LED (P0.17, the board's pwm-led0 DT spec). Numeric
+   *  with a snake_case key so the flattener registers the PWM_LED identifier
+   *  in the pin alias map (pins.pwm_led → PWM_LED). */
+  pwm_led: 17,
 } as const;
 
 /**

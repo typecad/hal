@@ -15,10 +15,22 @@
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 
-/** Resolve the SAADC channel index for a HAL pin number; -1 if unmapped. */
+/**
+ * Resolve the SAADC channel index for an adc.read argument; -1 if unmapped.
+ *
+ * The numeric argument serves two HAL forms: `InputPin.readAnalog()` passes
+ * a GPIO number, while the Arduino-compat `ADC.read(channel)` passes an ADC
+ * channel number. Pin-first resolution keeps readAnalog behavior unchanged;
+ * the channel fallback makes `ADC.read(n)` resolve on targets where channel
+ * n does not alias GPIO n (e.g. the XIAO's AIN2 = P0.28). Where a number
+ * matches both a mapped pin and another channel's index, the pin wins.
+ */
 export function adcChannelForPin(chip: ZephyrChipDescriptor, pin: number): number {
-  const ch = chip.adc?.channels.find((c) => c.pin === pin);
-  return ch ? ch.channel : -1;
+  const channels = chip.adc?.channels ?? [];
+  const byPin = channels.find((c) => c.pin === pin);
+  if (byPin) return byPin.channel;
+  const byChannel = channels.find((c) => c.channel === pin);
+  return byChannel ? byChannel.channel : -1;
 }
 
 /**
@@ -42,7 +54,7 @@ export function adcInitLines(chip: ZephyrChipDescriptor, usedPins?: ReadonlySet<
   const gain = chip.adc?.gain ?? 'ADC_GAIN_1_4';
   const reference = chip.adc?.reference ?? 'ADC_REF_INTERNAL';
   const channels = (chip.adc?.channels ?? []).filter(
-    (c) => !usedPins || usedPins.has(c.pin),
+    (c) => !usedPins || usedPins.has(c.pin) || [...usedPins].some((n) => adcChannelForPin(chip, n) === c.channel),
   );
   const lines: string[] = ['// CUTTLEFISH_ADC_BEGIN'];
   lines.push(`static const struct device* __tc_adc_dev = ${dev};`);

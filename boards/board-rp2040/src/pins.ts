@@ -6,6 +6,7 @@ import {
   GP0, GP1, GP2, GP3, GP4, GP5, GP6, GP7,
   GP8, GP9, GP10, GP11, GP12, GP13, GP14, GP15,
   GP16, GP17, GP18, GP19, GP20, GP21, GP22,
+  GP25,
   GP26, GP27, GP28,
 } from '@typecad/mcu-rp2040';
 
@@ -19,6 +20,11 @@ export const D15 = GP15;  export const D16 = GP16;  export const D17 = GP17;
 export const D18 = GP18;  export const D19 = GP19;  export const D20 = GP20;
 export const D21 = GP21;  export const D22 = GP22;
 export const D26 = GP26;  export const D27 = GP27;  export const D28 = GP28;
+
+// Board-fixed alias: the onboard user LED (GP25, driven through the board's
+// led0 DT spec). Expressed as the alias rather than a Dx entry because GP25
+// is reserved for the LED — the MCU package marks generic GPIO use unsafe.
+export const LED = GP25;
 
 // Ax aliases (ADC channels)
 export const A0 = GP26;

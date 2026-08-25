@@ -96,7 +96,28 @@ export const ESP32C6Board: BoardDefinition = {
     i2c:  { controllers: [{ nodeLabel: 'i2c0' }] },
     spi:  { controllers: [{ nodeLabel: 'spi2' }] },
     uart: { controllers: [{ nodeLabel: 'uart0' }] },
-    // wdt0 is the lowering's default when `wdt` is omitted (both are wdt0).
+    // ADC1 (the `adc0` DT node — 7 channels per esp32c6_common.dtsi). 12-bit
+    // SARADC, ~1.1 V internal reference. Channel numbering per the ESP32-C6
+    // datasheet: ADC1_CH0–CH6 = GPIO0–GPIO6 (A0 = GPIO0 is CH0). The node
+    // ships disabled in the SoC dtsi — the overlay generator enables it on
+    // adc use.
+    adc: {
+      nodeLabel: 'adc0',
+      resolution: 12,
+      vrefMv: 1100,
+      channels: [
+        { pin: 0, channel: 0 },  // A0
+        { pin: 1, channel: 1 },  // A1
+        { pin: 2, channel: 2 },  // A2
+        { pin: 3, channel: 3 },  // A3
+        { pin: 4, channel: 4 },
+        { pin: 5, channel: 5 },
+        { pin: 6, channel: 6 },
+      ],
+    },
+    // Timer-group 0 main watchdog — enabled by the board DTS (&wdt0 okay in
+    // esp32c6_devkitc_hpcore.dts).
+    wdt: { nodeLabel: 'wdt0' },
     // Wi-Fi 6 + BLE 5.3 (+ 802.15.4): the board DTS enables &wifi and
     // &ieee802154; CONFIG_WIFI_ESP32 covers the whole ESP32 family.
     wifi: { supported: true },

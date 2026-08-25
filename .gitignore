@@ -10,6 +10,10 @@ dist/
 src/build/
 **/*.tsbuildinfo
 
+# Generated '@typecad/test-pins' modules (written next to the importing file
+# by the transpile-time resolver; see packages/cuttlefish/src/transpile/test-pins.ts)
+**/test-pins.gen.ts
+
 # TypeScript project state
 *.tsbuildinfo
 
@@ -105,8 +109,8 @@ cuttlefish.svg
 eslint-transpiler-rules.mjs
 
 # Generated WiFi credentials + server address for the HTTP hardware test.
-# Produced by `npm run test:http` (tests/hardware/start-server.ts).
-tests/hardware/secrets.ts
+# Produced by `npm run test:http` (packages/hal/tests/network/start-server.ts).
+packages/hal/tests/network/secrets.ts
 
 # scratch probe build artifacts (local hardware debugging; the .probe/*.cpp
 # sources and extracted headers are TRACKED — see commit 2f6bc29f)

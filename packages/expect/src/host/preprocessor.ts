@@ -25,6 +25,7 @@
 import ts from 'typescript';
 import { isDescribeChain, collectChainSegments } from './chain-collector.js';
 import { emitSegments } from './protocol-emitter.js';
+import type { TestPinsSubstitutions } from './test-pins.js';
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -71,25 +72,37 @@ export interface PreprocessorOptions {
   isAvr?: boolean;
   /** Output shim — defaults to serialShim (Arduino HardwareSerial). */
   shim?: OutputShim;
+  /**
+   * Board test-pins substitutions (role const -> replacement text). When
+   * present, every role identifier in the source is replaced with the
+   * board's real pin symbol (or numeric fact), and a synthesized
+   * `import { <used pins> } from '@typecad/board'` is prepended. The
+   * '@typecad/test-pins' import itself is stripped — the transpiler never
+   * sees the virtual specifier.
+   */
+  testPins?: TestPinsSubstitutions;
 }
 
 /**
  * Preprocess a test file's TypeScript source.
  *
- * 1. Strips `import { ... } from '@typecad/expect'`
+ * 1. Strips `import { ... } from '@typecad/expect'` and
+ *    `import { ... } from '@typecad/test-pins'`
  * 2. Walks top-level expression-statements looking for `describe(...)...` chains
  * 3. Replaces `done()` with the suite-end sentinel + idle loop
  * 4. Hoists hardware expressions out of `expect()` into `const` declarations
  * 5. Wraps everything with Serial.initialize + SUITE_START preamble
+ * 6. Substitutes test-pin role identifiers with the board's real pin symbols
  */
 export function preprocess(source: string, fileName: string = 'test.ts', options?: PreprocessorOptions): string {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const ctx = new PreprocessorContext(options?.isAvr ?? false, options?.shim);
+  const ctx = new PreprocessorContext(options?.isAvr ?? false, options?.shim, options?.testPins);
 
   for (const stmt of sf.statements) {
     if (ts.isImportDeclaration(stmt)) {
       const moduleSpecifier = (stmt.moduleSpecifier as ts.StringLiteral).text;
       if (moduleSpecifier === '@typecad/expect') continue; // strip
+      if (moduleSpecifier === '@typecad/test-pins') continue; // stripped; roles are substituted inline
       ctx.emit(stmt.getText(sf));
     } else if (ts.isExpressionStatement(stmt)) {
       processExpressionStatement(stmt, sf, ctx);
@@ -112,10 +125,15 @@ export class PreprocessorContext {
   private preambleEmitted = false;
   readonly isAvr: boolean;
   readonly shim: OutputShim;
+  /** Role const -> replacement text (board pin symbols / numeric facts). */
+  private readonly substitutions?: TestPinsSubstitutions;
+  /** Pin symbols seen in substitutions that actually replaced something. */
+  private readonly usedPins = new Set<string>();
 
-  constructor(isAvr: boolean, shim: OutputShim = serialShim) {
+  constructor(isAvr: boolean, shim: OutputShim = serialShim, substitutions?: TestPinsSubstitutions) {
     this.isAvr = isAvr;
     this.shim = shim;
+    this.substitutions = substitutions;
   }
 
   /** Wrap a string literal in F() on AVR to keep it in flash.
@@ -127,7 +145,7 @@ export class PreprocessorContext {
   /** Emit a line of TypeScript output. */
   emit(line: string): void {
     if (!this.preambleEmitted) this.emitPreamble();
-    this.lines.push(line);
+    this.lines.push(this.substitute(line));
   }
 
   /** Generate a unique temporary variable name. */
@@ -140,6 +158,28 @@ export class PreprocessorContext {
     return `__tc_fn${++this.fnCounter}`;
   }
 
+  /**
+   * Replace whole-word role identifiers with their board-specific text.
+   * Role const names are SCREAMING_SNAKE and never appear in protocol
+   * strings, so a word-boundary replace over the emitted statement text is
+   * safe. Pin symbols referenced by a used replacement are recorded so the
+   * synthesized board import covers them.
+   */
+  private substitute(line: string): string {
+    if (!this.substitutions || this.substitutions.size === 0) return line;
+
+    let result = line;
+    for (const [role, replacement] of this.substitutions) {
+      const pattern = new RegExp(`\\b${role}\\b`, 'g');
+      if (!pattern.test(result)) continue;
+      result = result.replace(pattern, replacement);
+      for (const pin of replacement.matchAll(/[A-Za-z_$][\w$]*/g)) {
+        if (!/^\d/.test(pin[0])) this.usedPins.add(pin[0]);
+      }
+    }
+    return result;
+  }
+
   private emitPreamble(): void {
     this.preambleEmitted = true;
     this.lines.push(`${this.shim.begin};`);
@@ -147,7 +187,14 @@ export class PreprocessorContext {
   }
 
   build(): string {
-    return this.lines.join('\n') + '\n';
+    const parts: string[] = [];
+    // Synthesized import for the substituted pins — must be a top-level
+    // statement; placed first so the (untype-checked) source reads naturally.
+    if (this.usedPins.size > 0) {
+      parts.push(`import { ${[...this.usedPins].join(', ')} } from '@typecad/board';`);
+    }
+    parts.push(...this.lines);
+    return parts.join('\n') + '\n';
   }
 }
 

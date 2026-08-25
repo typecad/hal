@@ -103,6 +103,13 @@ export interface PinDefinitions {
   led?: string;
   /** On-board button pin name. */
   button?: string;
+
+  /**
+   * Additional named board pins (e.g. a PWM-driven onboard LED). Keys should
+   * be snake_case so the flattened `pins.<key>` entry registers the
+   * UPPER_SNAKE identifier in the transpiler's pin alias map.
+   */
+  [key: string]: unknown;
 }
 
 // ---------------------------------------------------------------------------

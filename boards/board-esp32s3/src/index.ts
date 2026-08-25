@@ -74,10 +74,10 @@ export const ESP32S3Board: BoardDefinition = {
   //
   // GPIO is split across two devicetree controllers — gpio0 (pins 0–31) and
   // gpio1 (pins 32–48) — so the runtime pin→controller routing is carried here
-  // (a compile-time DT macro cannot reach it). UART/I2C/SPI/wdt nodelabels are
-  // resolved by Zephyr's own devicetree at compile time, not hand-copied. The
-  // onboard RGB LED is a WS2812 on GPIO38 (not a plain GPIO), so it is not
-  // listed here — same as the framework descriptor.
+  // (a compile-time DT macro cannot reach it). Bus controllers, ADC channels
+  // and the watchdog nodelabel below are the board-DTS-verified facts the
+  // lowerings resolve against. The onboard RGB LED is a WS2812 on GPIO38 (not
+  // a plain GPIO), so it is not listed here — same as the framework descriptor.
   zephyr: {
     gpioController: 'gpio0',
     gpioControllers: [
@@ -96,6 +96,54 @@ export const ESP32S3Board: BoardDefinition = {
         { pin: 0, dtSpec: 'sw0' },  // BOOT button (GPIO0)
       ],
     },
+    // Board-wired controllers (esp32s3_devkitc_procpu.dts): uart0 = console
+    // @115200 (the USB-serial bridge), i2c0 (pinctrl i2c0_default), spi2 +
+    // spi3 (GPSPI2/GPSPI3, pinctrl spim2/spim3_default, both enabled),
+    // uart1 (pinctrl uart1_default — uart2 carries no default group in the
+    // board DT). The overlay generator enables whichever the program uses.
+    //
+    // UART: the HAL instances deliberately map to the NON-console controller —
+    // the lowering resolves HAL UART instance N against uart.controllers[N]
+    // (the board defines map UART0→"Serial" = index 0), so declaring [uart1]
+    // puts UART0 on uart1 and exercising the UART never reconfigures the
+    // console mid-protocol. The esp32s3_devkitc pinctrl dtsi defines a
+    // uart1_default group but the board DTS never attaches it to &uart1 —
+    // pinctrlRef wires the existing group when the overlay enables the node.
+    i2c:  { controllers: [{ nodeLabel: 'i2c0' }] },
+    spi:  { controllers: [{ nodeLabel: 'spi2' }, { nodeLabel: 'spi3' }] },
+    uart: { controllers: [
+      {
+        nodeLabel: 'uart1',
+        pinctrlRef: 'uart1_default',
+        // The esp32-uart binding requires current-speed once the node is
+        // enabled; the board DTS only sets it on the console uart0.
+        props: ['current-speed = <115200>;'],
+      },
+    ] },
+    // ADC1 (the `adc0` DT node; ADC2 shares pads with the Wi-Fi radio and is
+    // deliberately not mapped). 12-bit SARADC, ~1.1 V internal reference.
+    // Channel numbering per the ESP32-S3 datasheet: ADC1_CH0–CH9 = GPIO1–10
+    // (A0 = GPIO1 is CH0). The node ships disabled in esp32s3_common.dtsi —
+    // the overlay generator enables it on adc use.
+    adc: {
+      nodeLabel: 'adc0',
+      resolution: 12,
+      vrefMv: 1100,
+      channels: [
+        { pin: 1, channel: 0 },   // A0
+        { pin: 2, channel: 1 },   // A1
+        { pin: 3, channel: 2 },
+        { pin: 4, channel: 3 },
+        { pin: 5, channel: 4 },
+        { pin: 6, channel: 5 },
+        { pin: 7, channel: 6 },
+        { pin: 8, channel: 7 },
+        { pin: 9, channel: 8 },
+        { pin: 10, channel: 9 },
+      ],
+    },
+    // Timer-group 0 main watchdog — enabled in esp32s3_common.dtsi.
+    wdt: { nodeLabel: 'wdt0' },
     // The ESP32-S3 has a 2.4GHz radio; conn_mgr + the esp32 wifi driver
     // (CONFIG_WIFI_ESP32) provide connectivity. Omitted on radioless targets.
     wifi: { supported: true },

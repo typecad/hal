@@ -7,11 +7,13 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "src"
+    "src",
+    "test-pins.json"
   ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "hal": "npm run test:hw --workspace @typecad/hal -- --config boards/uno.config.ts"
   },
   "dependencies": {
     "@typecad/cuttlefish": "1.0.0-alpha.14",

@@ -59,6 +59,42 @@ export interface ZephyrGpioController {
 export interface ZephyrBusController {
   /** Devicetree nodelabel, e.g. 'i2c1', 'spi2', 'uart0'. */
   readonly nodeLabel: string;
+  /**
+   * Synthesized pinctrl group, for controllers whose board DT ships no
+   * default group (e.g. uart1 on rpi_pico/rpi_pico2 — the mainline board DT
+   * only pins uart0). When present, the overlay generator emits the group
+   * under `&pinctrl` and wires `pinctrl-0`/`pinctrl-names` onto the
+   * controller when enabling it. RP2xxx pinmux is fully muxable per pad, so
+   * the group is pure data: which pads carry the signals.
+   */
+  readonly pinctrl?: {
+    /** Pinmux header to #include (token definitions). */
+    readonly include: string;
+    /** Output-signal pinmux tokens (emitted as group1). */
+    readonly pinmux: readonly string[];
+    /** Input-signal pinmux tokens (emitted as group2 with input-enable). */
+    readonly inputPinmux?: readonly string[];
+    /**
+     * `#define` lines emitted (ifndef-guarded) BEFORE the include — for
+     * upstream header bugs where a token's macro body references an
+     * undefined helper (e.g. RP2_PINCTRL_GPIO_FUNC_UART_ALT in Zephyr's
+     * rp2350 pinctrl headers, unreferenced by mainline so never noticed).
+     */
+    readonly defines?: readonly string[];
+  };
+  /**
+   * Reference an EXISTING pinctrl group (defined in the board's pinctrl
+   * dtsi but not attached to the node) instead of synthesizing one — e.g.
+   * uart1_default on esp32s3_devkitc. The overlay wires
+   * `pinctrl-0 = <&<group>>` when enabling the controller.
+   */
+  readonly pinctrlRef?: string;
+  /**
+   * Raw devicetree property lines emitted inside the enable block — for
+   * bindings with required properties the board DTS only sets on its own
+   * wired-up nodes (e.g. `current-speed` on the Picos' PL011 UARTs).
+   */
+  readonly props?: readonly string[];
 }
 
 /**

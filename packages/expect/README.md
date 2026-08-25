@@ -245,6 +245,46 @@ Skipped files are reported in the same style as Vitest:
 
 Run with `--verbose` to print the skip reason from the directive.
 
+### Board test-pin roles (`@typecad/test-pins`)
+
+Board packages can ship a `test-pins.json` next to their `package.json` declaring which pins a hardware suite may use and the board's numeric facts:
+
+```jsonc
+{
+  "pins": {
+    "gpioOut": "PB5",
+    "gpioIn": "PB0",
+    "gpioGroup": ["PB0", "PB1", "PB10"],
+    "pwm": "PB6", "pwmAlt": "PB7",
+    "cs": "PA4", "interrupt": "PA0",
+    "led": "LED", "button": "BUTTON"
+  },
+  "facts": {
+    "pwmMaxFrequency": 50000000,
+    "pwmResolutionBits": 16,
+    "adcMax": 4095
+  }
+}
+```
+
+Test files import stable role names instead of board-specific pin symbols:
+
+```typescript
+import { GPIO_OUT, PWM_PIN, PWM_MAX_FREQ } from '@typecad/test-pins';
+```
+
+During preprocessing the runner substitutes each role with the configured board's pin symbol (facts become numeric literals) and rewrites the import to `@typecad/board` — the exact lowering path hand-written per-board tests use. Files declare the roles they need so they skip cleanly on boards that cannot provide them:
+
+```typescript
+// @typecad-requires-roles pwm, pwmAlt, pwmMaxFrequency
+```
+
+Because expect matcher arguments must be literals, compare facts on-device inside the `expect()` IIFE:
+
+```typescript
+.expect((() => { const out = PWM_PIN.asOutput(); return out.getPwmFrequency() === PWM_MAX_FREQ ? 1 : 0; })()).toBe(1)
+```
+
 ### Uno showcase validation example
 
 Use the stock-Uno showcase in [examples/23-transpiler-showcase.ts](../../examples/23-transpiler-showcase.ts) for manual serial confirmation, then run the companion hardware test in [examples/24-uno-validation.test.ts](../../examples/24-uno-validation.test.ts) for automated checks.

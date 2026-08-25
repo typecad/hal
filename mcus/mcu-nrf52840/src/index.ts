@@ -56,6 +56,9 @@ export const NRF52840: MCUDefinition = {
         functions: [], alternateFunctions: ['User LED (active-low)'],
         onboardLed: true,
         notes: 'Active-low: logic 0 = LED on. Zephyr DT honors GPIO_ACTIVE_LOW.' },
+      { number: 17, gpio: 17, name: 'P0.17', capabilities: FULL_GPIO,
+        functions: [], alternateFunctions: ['PWM LED (pwm-led0, inverted)'],
+        notes: 'Board-internal PWM-driven LED on XIAO-family boards (PWM_OUT0). Not on the header.' },
 
       // ---- XIAO edge pins D0–D10 -------------------------------------------
       { number:  2, gpio:  2, name: 'P0.02', capabilities: GPIO_ANALOG,

@@ -1,7 +1,7 @@
 // 08 — combined test peripheral for the on-hardware BLE suite.
 //
 // The inverse of the HTTP test: here the firmware is the GATT peripheral and
-// the host PC (tests/hardware/ble-client.ts, noble) is the central. This
+// the host PC (packages/hal/tests/network/ble-client.ts, noble) is the central. This
 // server advertises one device name and exposes every feature the host central
 // probes, so a single flash covers the whole suite:
 //

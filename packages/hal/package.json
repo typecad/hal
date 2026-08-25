@@ -12,12 +12,9 @@
   "scripts": {
     "build": "tsc",
     "prepublishOnly": "npm run build",
-    "test:hw": "npm exec -- cuttlefish-test",
-    "test:hw:basics": "npm exec -- cuttlefish-test tests/02-timing.test.ts",
-    "test:hw:gpio": "npm exec -- cuttlefish-test tests/boards/blackpill/01-gpio.test.ts",
-    "test:hw:esp32": "npm exec -- cuttlefish-test --config esp32-devkit.config.ts",
-    "test:hw:uno": "npm exec -- cuttlefish-test --config uno.config.ts",
-    "test:hw:preferences": "npm exec -- cuttlefish-test tests/14-preferences.test.ts"
+    "test:hw": "npm exec -- cuttlefish-test --config boards/blackpill.config.ts",
+    "test:hw:board": "npm exec -- cuttlefish-test",
+    "test:hw:wired": "npm exec -- cuttlefish-test --config boards/blackpill.config.ts --include \"tests/wired/*.test.ts\""
   },
   "license": "MIT",
   "publishConfig": {

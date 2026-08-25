@@ -485,17 +485,10 @@ export default defineFrameworkManifest({
   ambientTypes: ['Timing', 'WDT', 'Preferences'],
 
   conformance: {
-    hardwareTestGroups: [
-      '01-basics', '02-arithmetic', '03-comparison', '04-control-flow', '05-scoping',
-      '06-loops', '07-classes', '08-enums', '09-strings', '10-expressions',
-      '11-arrays', '12-modules-types', '13-functions-collections', '14-string-methods',
-      '15-math-functions', '16-bit-operations', '17-buffer-operations', '18-volatile-variables',
-      '19-type-aliases-structs', '20-abstract-classes', '21-interfaces', '22-namespaces',
-      '23-set-map', '24-error-handling', '25-generics', '26-instanceof', '27-nested-functions',
-      '28-callback-types', '29-accessors-foreach-typeof', '30-timing', '32-wdt',
-      '33-preferences', '34-num-fluent', '35-string-buffer', '36-destructuring', '37-enum',
-      '99-board-dynamic',
-    ],
+    // Hardware-test groups moved to the shared HAL suite
+    // (packages/hal/tests — common/ + board/ via board test-pins.json), which
+    // runs on the Uno through packages/hal/boards/uno.config.ts.
+    hardwareTestGroups: [],
     halResolutionTests: [],
   },
 

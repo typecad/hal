@@ -45,10 +45,21 @@ describe('board-rp2040 → ZephyrChipDescriptor', () => {
     expect(rp2040Chip!.gpio.interruptPins ?? []).toEqual([]);
   });
 
-  it("wires i2c0 + i2c1 / spi0 / uart0 (the board-pinned controllers — i2c1's GP6/GP7 pinctrl group ships in the board DT, the overlay enables it)", () => {
+  it("wires i2c0 + i2c1 / spi0 / uart0 + synthesized uart1 (i2c1's GP6/GP7 pinctrl group ships in the board DT; uart1 carries synthesis data — the overlay emits a GP8/GP9 group)", () => {
     expect(rp2040Chip!.i2c?.controllers).toEqual([{ nodeLabel: 'i2c0' }, { nodeLabel: 'i2c1' }]);
     expect(rp2040Chip!.spi?.controllers).toEqual([{ nodeLabel: 'spi0' }]);
-    expect(rp2040Chip!.uart?.controllers).toEqual([{ nodeLabel: 'uart0' }]);
+    expect(rp2040Chip!.uart?.controllers).toEqual([
+      { nodeLabel: 'uart0' },
+      {
+        nodeLabel: 'uart1',
+        pinctrl: {
+          include: 'zephyr/dt-bindings/pinctrl/rpi-pico-rp2040-pinctrl.h',
+          pinmux: ['UART1_TX_P8'],
+          inputPinmux: ['UART1_RX_P9'],
+        },
+        props: ['current-speed = <115200>;'],
+      },
+    ]);
   });
 
   it('declares the USB device (zephyr_udc0 is status okay in rpi_pico-common.dtsi)', () => {
@@ -87,8 +98,10 @@ describe('board-rp2040 → ZephyrChipDescriptor', () => {
     expect(rp2040Chip!.wdt).toEqual({ nodeLabel: 'wdt0' });
   });
 
-  it('declares no PWM specs (pwm_leds is disabled in mainline rpi_pico DTS)', () => {
-    expect(rp2040Chip!.pwm?.specs ?? []).toEqual([]);
+  it('declares a synthesized PWM spec on GP25 (slice 4B = channel 9, the only pad the board DT pins for PWM)', () => {
+    expect(rp2040Chip!.pwm?.specs).toEqual([
+      { pin: 25, controller: 'pwm', channel: 9 },
+    ]);
   });
 });
 
@@ -109,17 +122,29 @@ describe('board-rp2350 → ZephyrChipDescriptor', () => {
   it('wires i2c0 + i2c1 / spi0 / uart0, USB, console, and probes (mirrors the Pico)', () => {
     expect(rp2350Chip!.i2c?.controllers).toEqual([{ nodeLabel: 'i2c0' }, { nodeLabel: 'i2c1' }]);
     expect(rp2350Chip!.spi?.controllers).toEqual([{ nodeLabel: 'spi0' }]);
-    expect(rp2350Chip!.uart?.controllers).toEqual([{ nodeLabel: 'uart0' }]);
+    expect(rp2350Chip!.uart?.controllers).toEqual([
+      { nodeLabel: 'uart0' },
+      {
+        nodeLabel: 'uart1',
+        pinctrl: {
+          include: 'zephyr/dt-bindings/pinctrl/rpi-pico-rp2350a-pinctrl.h',
+          pinmux: ['UART1_TX_P22'],
+          inputPinmux: ['UART1_RX_P23'],
+          defines: ['RP2_PINCTRL_GPIO_FUNC_UART_ALT 11'],
+        },
+        props: ['current-speed = <115200>;'],
+      },
+    ]);
     expect(rp2350Chip!.usb).toEqual({ controller: 'zephyr_udc0', cdcInstances: 1 });
     expect(rp2350Chip!.consoleDescription).toBe('uart0 on GP0 (TX) / GP1 (RX)');
     expect((rp2350Chip!.probeMethods ?? []).map((m) => m.id)).toEqual(['uf2', 'openocd', 'jlink']);
     expect(rp2350Chip!.probeMethods!.find((m) => m.id === 'jlink')!.debugDevice).toBe('RP2350_M33_0');
   });
 
-  it('maps the same ADC channels as the Pico and the wdt0 node', () => {
+  it('maps the same ADC channels and PWM spec as the Pico, and the wdt0 node', () => {
     expect(rp2350Chip!.adc).toEqual(rp2040Chip!.adc);
     expect(rp2350Chip!.wdt).toEqual({ nodeLabel: 'wdt0' });
-    expect(rp2350Chip!.pwm?.specs ?? []).toEqual([]);
+    expect(rp2350Chip!.pwm?.specs).toEqual(rp2040Chip!.pwm?.specs);
   });
 });
 

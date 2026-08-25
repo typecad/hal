@@ -91,11 +91,36 @@ export const RP2040Board: BoardDefinition = {
     //   (disabled in the board DTS but fully pinned — i2c1_default in
     //   rpi_pico-pinctrl-common.dtsi — so the overlay generator enables it),
     //   spi0 = GP16–GP19 (okay by default; the overlay generator enables
-    //   whichever the program uses). spi1/uart1 have no default pinctrl group
-    //   in the board DT and are not declared.
+    //   whichever the program uses). uart1 has no default pinctrl group in
+    //   the board DT — its entry below carries synthesis data instead.
+    //   spi1 is not declared (unused, and likewise unpinned by the board).
     i2c:  { controllers: [{ nodeLabel: 'i2c0' }, { nodeLabel: 'i2c1' }] },
     spi:  { controllers: [{ nodeLabel: 'spi0' }] },
-    uart: { controllers: [{ nodeLabel: 'uart0' }] },
+    // The board defines map UART0→Arduino "Serial1" (= uart1 on the Pico),
+    // so uart0 (the console) is declared for completeness and HAL UART0
+    // resolves to the SECOND entry — uart1 on GP8/GP9, free header pins.
+    // The mainline rpi_pico DT ships no uart1 pinctrl group, so the entry
+    // carries synthesis data; the overlay generator emits the group under
+    // &pinctrl (UART1_TX_P8 / UART1_RX_P9) and enables the controller.
+    uart: { controllers: [
+      { nodeLabel: 'uart0' },
+      {
+        nodeLabel: 'uart1',
+        pinctrl: {
+          include: 'zephyr/dt-bindings/pinctrl/rpi-pico-rp2040-pinctrl.h',
+          pinmux: ['UART1_TX_P8'],
+          inputPinmux: ['UART1_RX_P9'],
+        },
+        // The PL011 binding requires current-speed; the board DTS only sets
+        // it on its own wired uart0.
+        props: ['current-speed = <115200>;'],
+      },
+    ] },
+    // RP2040 watchdog (`wdt0`, raspberrypi,pico-watchdog @40058000) — ships
+    // disabled in rp2040.dtsi; the overlay generator enables it on wdt use.
+    // Note it cannot be disabled once started (single-shot tickle), same
+    // operational caveat as the STM32 IWDG.
+    wdt: { nodeLabel: 'wdt0' },
     // USB device: the RP2040 USBD peripheral on the USB-C connector (dedicated
     // D+/D- pads, not GPIOs). Zephyr's rpi_pico DTS labels it `zephyr_udc0`
     // and enables it by default (rpi_pico-common.dtsi:
@@ -118,19 +143,30 @@ export const RP2040Board: BoardDefinition = {
         { pin: 29, channel: 3 },
       ],
     },
-    wdt: { nodeLabel: 'wdt0' },
     // Where the board DTS's chosen console goes (rpi_pico-common.dtsi routes
     // zephyr,console to uart0 on the GP0/GP1 header pins — a USB-serial
     // adapter is needed to see it). Set console.output: 'usb' in
     // cuttlefish.config.ts to route console.log to the USB-C connector
     // instead (the CDC port this board composes).
     consoleDescription: 'uart0 on GP0 (TX) / GP1 (RX)',
-    // NOTE: no pwm.specs — the `pwm-led0` alias (PWM slice 4B on GP25) points
-    // at a `pwm_leds` node that is status = "disabled" in mainline rpi_pico
-    // DTS; the overlay generator does not enable it, so a spec here would
-    // compile but fail at runtime. pwm.* ops lower to a comment (with a
-    // profileDiagnostics warning) until the overlay generator can synthesize
-    // per-pin pinctrl groups for the raspberrypi,pico-pwm driver.
+    // Storage partition synthesis: rpi_pico_common.dtsi defines only the
+    // second-stage-bootloader (0x0–0x100) and a read-only code_partition —
+    // no storage_partition for the ZMS-backed Preferences / littlefs FS
+    // backends. The overlay generator declares this region under &flash0
+    // when a program uses preferences.* or fs.*: the top 512 KB of the
+    // Pico's 2 MB flash (4 KB-erased sectors, ZMS needs ≥2). The app links
+    // from 0x100 and would have to exceed 1.5 MB to reach it.
+    storage: { offset: 0x00180000, size: 0x00080000 },
+    // PWM: GP25 — the only pad the board DT pins for PWM (pwm_ch4b_default,
+    // slice 4 channel B = driver channel 9). Declared in controller+channel
+    // form: the overlay generator enables &pwm (the node ships disabled in
+    // rp2040.dtsi, and rpi_pico-common already attaches the pinctrl group)
+    // and synthesizes the channel node — the board's own pwm_leds node also
+    // ships disabled and is left untouched. Other pads would need a
+    // synthesized pinctrl group (the board pins none of them).
+    pwm: {
+      specs: [{ pin: 25, controller: 'pwm', channel: 9 }],
+    },
     //
     // Named probe methods — what `zephyr.probe` / `--probe` accept on this
     // board, for BOTH flashing and debugging (rpi_pico board.cmake):

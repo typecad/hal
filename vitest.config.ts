@@ -4,13 +4,12 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["tests/**/*.test.ts"],
-    // packages/framework-arduino/tests/ uses the @typecad/expect hardware test
-    // framework (TypeCAD fluent describe/it/expect API), not Vitest. It runs on
-    // real hardware via `npm run test:hw`. tests/hardware/ holds the same kind
-    // of hardware tests. Excluding these paths prevents spurious Vitest load
-    // errors on files that use a different harness.
-    exclude: ["node_modules", "dist", "tests/hardware"],
+      include: ["tests/**/*.test.ts"],
+      // The @typecad/expect hardware suites (packages/hal/tests/** — fluent
+      // describe/it/expect transpiled to firmware) are not Vitest tests; they
+      // run on real hardware via `npm run test:hw`. This include pattern only
+      // matches the root tests/ tree, so they are never loaded here.
+      exclude: ["node_modules", "dist"],
     setupFiles: ["tests/setup-framework.ts"],
     testTimeout: 60000,
     coverage: {

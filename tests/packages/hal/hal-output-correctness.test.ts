@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { preprocess } from "../../../packages/expect/src/host/preprocessor.ts";
+import { boardTestPins, buildTestPinsSubstitutions } from "../../../packages/expect/src/host/test-pins.ts";
 import { transpile } from "../../setup";
 
 /**
@@ -20,10 +21,15 @@ import { transpile } from "../../setup";
  */
 
 const halTestsDir = path.join("packages", "hal", "tests");
+const unoPins = boardTestPins("@typecad/board-arduino-uno", path.resolve("."));
+const unoSubstitutions = unoPins ? buildTestPinsSubstitutions(unoPins) : undefined;
 
 function transpileHw(file: string) {
   const source = fs.readFileSync(path.join(halTestsDir, file), "utf8");
-  const preprocessed = preprocess(source, file, { isAvr: true });
+  const preprocessed = preprocess(source, file, {
+    isAvr: true,
+    testPins: unoSubstitutions,
+  });
   return transpile(preprocessed, {
     target: "arduino",
     boardPackage: "@typecad/board-arduino-uno",
@@ -32,7 +38,7 @@ function transpileHw(file: string) {
 
 describe("HAL hardware-test output correctness (golden guards)", () => {
   it("09-i2c.test.ts: readByte emits requestFrom before read (no dropped op)", () => {
-    const { cpp } = transpileHw("09-i2c.test.ts");
+    const { cpp } = transpileHw("common/09-i2c.test.ts");
     // Every readByte path must request bytes before reading. The dropped-op bug
     // emitted Wire.read() with no preceding requestFrom.
     expect(cpp).toContain("Wire.requestFrom(");
@@ -40,10 +46,10 @@ describe("HAL hardware-test output correctness (golden guards)", () => {
     expect(cpp).not.toContain("unhandled hal-op");
   });
 
-  it("10-spi.test.ts (uno variant): setBitOrder maps 'msb' → MSBFIRST", () => {
-    // The spi group moved under tests/boards/<board>/ with the per-board
-    // suite split; the uno variant carries the AVR-compatible D-pin names.
-    const { cpp } = transpileHw("boards/uno/10-spi.test.ts");
+  it("board/10-spi.test.ts: setBitOrder maps 'msb' → MSBFIRST", () => {
+    // The spi group is shared across boards; the CS pin arrives via the
+    // '@typecad/test-pins' roles, substituted for the Uno here.
+    const { cpp } = transpileHw("board/10-spi.test.ts");
     expect(cpp).toContain("SPI.setBitOrder(MSBFIRST)");
   });
 
@@ -51,14 +57,14 @@ describe("HAL hardware-test output correctness (golden guards)", () => {
     // The hw test uses 8 s timeouts (STM32 IWDG cannot be disabled once
     // started — a short timeout resets the board mid-protocol). The string
     // must map to the macro on AVR exactly the same way.
-    const { cpp } = transpileHw("13-wdt.test.ts");
+    const { cpp } = transpileHw("common/13-wdt.test.ts");
     expect(cpp).toContain("wdt_enable(WDTO_8S)");
     // The raw string must never reach the macro (garbage timeout on hardware).
     expect(cpp).not.toMatch(/wdt_enable\("8s"\)/);
   });
 
   it("07-interrupts.test.ts: free attachInterrupt emits unquoted mode macros", () => {
-    const { cpp } = transpileHw("07-interrupts.test.ts");
+    const { cpp } = transpileHw("common/07-interrupts.test.ts");
     // The free-function path previously emitted the mode as a quoted string
     // ("FALLING"), which compiles via -fpermissive but registers the wrong
     // interrupt mode. It must emit the unquoted Arduino macro.

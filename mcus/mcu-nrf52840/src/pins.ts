@@ -39,6 +39,7 @@ export const P0_10 = Pin.fromPort('P0.10');
 export const P0_13 = Pin.fromPort('P0.13');
 export const P0_14 = Pin.fromPort('P0.14');
 export const P0_15 = Pin.fromPort('P0.15');
+export const P0_17 = Pin.fromPort('P0.17');
 export const P0_24 = Pin.fromPort('P0.24');
 export const P0_25 = Pin.fromPort('P0.25');
 export const P0_26 = Pin.fromPort('P0.26');

@@ -108,23 +108,68 @@ export function generateOverlay(
     lines.push('');
   };
 
+  // Controllers whose board DT ships no default pinctrl group (rp2xxx uart1)
+  // carry synthesis data: emit the group under &pinctrl, then enable the
+  // controller referencing it. Controllers with a pinctrlRef wire an existing
+  // group instead; `props` adds raw property lines for bindings with
+  // required properties the board only sets on its own wired nodes.
+  // The pinmux header include is collected and spliced before all blocks
+  // (tokens must be defined before use).
+  const pinctrlIncludes = new Map<string, string[]>();
+  const controllerBlock = (c: { nodeLabel: string; pinctrlRef?: string; props?: readonly string[]; pinctrl?: { include: string; pinmux: readonly string[]; inputPinmux?: readonly string[]; defines?: readonly string[] } }): void => {
+    const extra: string[] = [...(c.props ?? [])];
+    if (c.pinctrl) {
+      pinctrlIncludes.set(c.pinctrl.include, c.pinctrl.defines ? [...c.pinctrl.defines] : []);
+      const group = `${c.nodeLabel}_default`;
+      lines.push('&pinctrl {');
+      lines.push(`    ${group}: ${group} {`);
+      lines.push(`        group1 {`);
+      lines.push(`            pinmux = <${c.pinctrl.pinmux.join(', ')}>;`);
+      lines.push(`        };`);
+      if (c.pinctrl.inputPinmux && c.pinctrl.inputPinmux.length > 0) {
+        lines.push(`        group2 {`);
+        lines.push(`            pinmux = <${c.pinctrl.inputPinmux.join(', ')}>;`);
+        lines.push(`            input-enable;`);
+        lines.push(`        };`);
+      }
+      lines.push(`    };`);
+      lines.push('};');
+      lines.push('');
+      extra.push(`pinctrl-0 = <&${group}>;`, `pinctrl-names = "default";`);
+    } else if (c.pinctrlRef) {
+      extra.push(`pinctrl-0 = <&${c.pinctrlRef}>;`, `pinctrl-names = "default";`);
+    }
+    block(c.nodeLabel, extra);
+  };
+
   if (usage.usesI2c && chip.i2c) {
     for (const [i, c] of chip.i2c.controllers.entries()) {
       if (usage.i2cUsedInstances && !usage.i2cUsedInstances.includes(i)) continue;
-      block(c.nodeLabel);
+      controllerBlock(c);
     }
   }
   if (usage.usesSpi && chip.spi) {
     for (const [i, c] of chip.spi.controllers.entries()) {
       if (usage.spiUsedInstances && !usage.spiUsedInstances.includes(i)) continue;
-      block(c.nodeLabel);
+      controllerBlock(c);
     }
   }
   if (usage.usesUart && chip.uart) {
     for (const [i, c] of chip.uart.controllers.entries()) {
       if (usage.uartUsedInstances && !usage.uartUsedInstances.includes(i)) continue;
-      block(c.nodeLabel);
+      controllerBlock(c);
     }
+  }
+  // Synthesized pinctrl groups reference pinmux tokens — splice their header
+  // includes ahead of every block (same slot the display path uses), with
+  // ifndef-guarded #defines for upstream header bugs in front.
+  for (const [include, defines] of pinctrlIncludes) {
+    const pre: string[] = [];
+    for (const d of defines) {
+      const name = d.trim().split(/\s+/)[0];
+      pre.push(`#ifndef ${name}`, `#define ${d}`, `#endif`);
+    }
+    lines.splice(2, 0, ...pre, `#include <${include}>`, '');
   }
   // Watchdog: the SoC dtsi declares the node disabled (STM32 iwdg ships
   // status = "disabled" until a board enables it) — the wdt.* lowering
@@ -227,7 +272,15 @@ export function generateOverlay(
     // omit the descriptor field and only the /chosen pointer lands here.
     if (chip.storage) {
       lines.push('&flash0 {');
+      // Explicit compatible + cells: boards whose DTS already carries a
+      // partitions node (rp2040, STM32 MCUboot sets) merge identically, and
+      // boards without one (rpi_pico2) would otherwise hit dtc's spec
+      // default of #address-cells 2 / #size-cells 1 — a 3-cell reg and a
+      // "length 8 not divisible by 12" error for the 2-cell reg below.
       lines.push('    partitions {');
+      lines.push('        compatible = "fixed-partitions";');
+      lines.push('        #address-cells = <1>;');
+      lines.push('        #size-cells = <1>;');
       lines.push(`        storage_partition: partition@${chip.storage.offset.toString(16)} {`);
       lines.push('            label = "storage";');
       lines.push(`            reg = <0x${chip.storage.offset.toString(16).padStart(8, '0')} 0x${chip.storage.size.toString(16).padStart(8, '0')}>;`);

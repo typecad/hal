@@ -140,7 +140,7 @@ function collectUsedBusIndices(program: ProgramIR | undefined): { i2c: Set<numbe
 }
 import { lowerHalOp } from './lowering/index.js';
 import { buildZephyrWorkerBacking } from './lowering/worker-backing.js';
-import { adcInitLines } from './lowering/adc.js';
+import { adcInitLines, adcChannelForPin } from './lowering/adc.js';
 import { pwmInitLines } from './lowering/pwm.js';
 import { dacInitLines } from './lowering/dac.js';
 import { fsInitLines } from './lowering/fs.js';
@@ -1148,13 +1148,15 @@ export class ZephyrStrategy implements PlatformStrategy {
     visit(program);
 
     // ── ADC pin validity ────────────────────────────────────────────────────
-    // The SAADC lowering resolves a HAL pin to a channel via the chip
-    // descriptor's adc.channels map. A pin not in that map resolves to -1,
-    // which emits __tc_adc-1_setup() — an undefined symbol → link error. Flag
-    // it at compile time with a clear message instead of an opaque link failure.
+    // The SAADC lowering resolves the adc.read argument to a channel via the
+    // chip descriptor's adc.channels map (pin-first, then channel-number
+    // fallback for the Arduino-compat ADC.read(n) form — see
+    // adcChannelForPin). A number resolving to neither emits
+    // __tc_adc-1_setup() — an undefined symbol → link error. Flag it at
+    // compile time with a clear message instead of an opaque link failure.
     const adcPins = new Set((chip.adc?.channels ?? []).map((c) => c.pin));
     for (const pin of adcReadPins) {
-      if (!adcPins.has(pin)) {
+      if (adcChannelForPin(chip, pin) < 0) {
         const valid = [...adcPins].sort((x, y) => x - y).join(', ');
         diags.push({
           severity: 'error',

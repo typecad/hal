@@ -1,0 +1,22 @@
+{
+  "pins": {
+    "gpioOut": "D4",
+    "gpioIn": "D5",
+    "gpioGroup": [
+      "D4",
+      "D5",
+      "D6"
+    ],
+    "cs": "D1",
+    "interrupt": "D3",
+    "led": "LED",
+    "button": "BUTTON",
+    "pwm": "PWM_LED",
+    "pwmAlt": "PWM_LED"
+  },
+  "facts": {
+    "adcMax": 4095,
+    "pwmMaxFrequency": 2000000,
+    "pwmResolutionBits": 16
+  }
+}
