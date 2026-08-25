@@ -50,8 +50,9 @@ export const ESP32DevKit: BoardDefinition = {
   build: {
     frameworks: {
       arduino: 'esp32:esp32:esp32',
-      // The Zephyr board target for `west build -b <target>`.
-      zephyr: 'esp32_devkitc',
+      // The Zephyr board target for `west build -b <target>` — fully
+      // qualified (board/soc/core); the bare id is rejected on Zephyr >=4.3.
+      zephyr: 'esp32_devkitc/esp32/procpu',
     },
     defines: {
       F_CPU:            '240000000UL',

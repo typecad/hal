@@ -28,8 +28,8 @@ describe('board-rp2040 → ZephyrChipDescriptor', () => {
     expect(rp2040Chip).not.toBeNull();
   });
 
-  it("targets 'rpi_pico' for west build -b", () => {
-    expect(rp2040Chip!.id).toBe('rpi_pico');
+  it("targets 'rpi_pico/rp2040' for west build -b (fully qualified)", () => {
+    expect(rp2040Chip!.id).toBe('rpi_pico/rp2040');
   });
 
   it('uses the single gpio0 controller (no controller split)', () => {

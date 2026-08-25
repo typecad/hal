@@ -18,7 +18,7 @@ const config: CuttlefishConfig = {
   mcu: '@typecad/mcu-nrf52840',
   board: '@typecad/board-xiao-nrf52840',
   framework: '@typecad/framework-zephyr',
-  frameworkData: { buildTarget: 'xiao_ble' },
+  frameworkData: { buildTarget: 'xiao_ble/nrf52840' },
   output: { outDir: './out' },
   toolchain: { type: 'west' },
   console: { baudRate: 115200 },

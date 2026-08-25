@@ -53,8 +53,9 @@ export const RP2040Board: BoardDefinition = {
   build: {
     frameworks: {
       arduino: 'rp2040:rp2040:rpipico',
-      // The Zephyr board target for `west build -b <target>`.
-      zephyr: 'rpi_pico',
+      // The Zephyr board target for `west build -b <target>` — fully
+      // qualified (board/soc) per Zephyr >=4.3 HWMv2.
+      zephyr: 'rpi_pico/rp2040',
     },
     defines: {
       F_CPU:         '133000000UL',

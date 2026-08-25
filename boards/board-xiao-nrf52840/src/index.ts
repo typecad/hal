@@ -46,8 +46,9 @@ export const XiaoNRF52840: BoardDefinition = {
   // ----- Build config ------------------------------------------------------
   build: {
     frameworks: {
-      // The Zephyr board target for `west build -b <target>`.
-      zephyr: 'xiao_ble',
+      // The Zephyr board target for `west build -b <target>` — fully
+      // qualified (board/soc) per Zephyr >=4.3 HWMv2.
+      zephyr: 'xiao_ble/nrf52840',
     },
     defines: {},
   },
@@ -99,7 +100,11 @@ export const XiaoNRF52840: BoardDefinition = {
     // the controller + composes one CDC-ACM instance when a program uses
     // USB0; the board's own console is already USB-CDC via chosen
     // cdc_acm_uart0. Mirrors the framework's built-in XIAO_BLE chip data.
-    usb: { controller: 'zephyr_udc0', cdcInstances: 1 },
+    // Per-board PID under the Zephyr test VID: every Zephyr CDC console
+    // defaults to 2FE3:0001, which makes boards indistinguishable to a
+    // multi-board test rig. The PID below is this board's USB identity —
+    // test-pins.json carries the same pair for host-side port matching.
+    usb: { controller: 'zephyr_udc0', cdcInstances: 1, vid: '0x2FE3', pid: '0x0003' },
     pwm: {
       // pwm-led0 drives the board PWM LED (PWM_OUT0 on P0.17, inverted).
       specs: [{ pin: 17, dtSpec: 'pwm-led0' }],

@@ -21,7 +21,7 @@ const config: CuttlefishConfig = {
   target: 'nrf52',
   mcu: '@typecad/mcu-nrf52840',
   board: '@typecad/board-xiao-nrf52840',
-  frameworkData: { buildTarget: 'xiao_ble' },
+  frameworkData: { buildTarget: 'xiao_ble/nrf52840' },
   output: {
     outDir: './out',
   },
