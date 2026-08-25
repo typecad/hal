@@ -57,8 +57,8 @@ export default defineFrameworkManifest({
     // the board packages' zephyr chip data (resolveChipFromBoard), not the
     // hardcoded chip registry.
     targets: [
-      'xiao_ble', 'esp32s3_devkitc', 'esp32_devkitc',
-      'rpi_pico', 'rpi_pico2/rp2350a/m33',
+      'xiao_ble/nrf52840', 'esp32s3_devkitc/esp32s3/procpu', 'esp32_devkitc/esp32/procpu',
+      'rpi_pico/rp2040', 'rpi_pico2/rp2350a/m33',
       'esp32c3_devkitm/esp32c3', 'esp32c6_devkitc/esp32c6/hpcore',
       'blackpill_f411ce/stm32f411xe',
     ],

@@ -132,17 +132,22 @@ export function checkZephyrCompat(version: string | undefined): CompatResult {
  * found". Map each known multi-core board id to its procpu (main app core)
  * qualified form. procpu is the core that runs application firmware; appcpu is
  * the secondary core (selected explicitly only when offloading to it).
+ * Single-SoC boards (xiao_ble, rpi_pico) still normalize their bare ids on
+ * 4.4, but Zephyr has signaled that bare-name normalization is going away —
+ * map them too so builds do not depend on it.
  */
 const QUALIFIED_TARGETS_GE_4_3: Record<string, string> = {
   esp32_devkitc: 'esp32_devkitc/esp32/procpu',
   esp32s3_devkitc: 'esp32s3_devkitc/esp32s3/procpu',
+  xiao_ble: 'xiao_ble/nrf52840',
+  rpi_pico: 'rpi_pico/rp2040',
 };
 
 /**
  * Normalize a board target for the installed Zephyr version. Rewrites a stale
  * bare id (esp32s3_devkitc) to the qualified form on Zephyr >=4.3; idempotent
- * if the target is already qualified. Older Zephyr, single-core boards
- * (xiao_ble), and unknown boards pass through unchanged.
+ * if the target is already qualified. Older Zephyr and unknown boards pass
+ * through unchanged.
  */
 export function resolveBoardTarget(boardTarget: string, version: string | undefined): string {
   const boardId = boardTarget.split('/')[0]!;

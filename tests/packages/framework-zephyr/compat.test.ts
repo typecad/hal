@@ -142,8 +142,18 @@ describe("resolveBoardTarget", () => {
   it("leaves a bare id unchanged when the version is undetectable (conservative)", () => {
     expect(resolveBoardTarget("esp32s3_devkitc", undefined)).toBe("esp32s3_devkitc");
   });
-  it("passes single-core / unknown boards through unchanged", () => {
-    expect(resolveBoardTarget("xiao_ble", "4.3.99")).toBe("xiao_ble");
+  it("qualifies single-SoC boards too (bare-name normalization is going away)", () => {
+    expect(resolveBoardTarget("xiao_ble", "4.4.2")).toBe("xiao_ble/nrf52840");
+    expect(resolveBoardTarget("rpi_pico", "4.4.2")).toBe("rpi_pico/rp2040");
+    // Idempotent — an already-qualified target is never rewritten.
+    expect(resolveBoardTarget("xiao_ble/nrf52840", "4.4.2")).toBe("xiao_ble/nrf52840");
+    expect(resolveBoardTarget("rpi_pico/rp2040", "4.4.2")).toBe("rpi_pico/rp2040");
+  });
+  it("leaves bare ids unchanged on older Zephyr (<4.3 did not accept the qualified form)", () => {
+    expect(resolveBoardTarget("xiao_ble", "3.7.0")).toBe("xiao_ble");
+    expect(resolveBoardTarget("rpi_pico", "3.7.0")).toBe("rpi_pico");
+  });
+  it("passes unknown boards through unchanged", () => {
     expect(resolveBoardTarget("some_future_board", "4.3.99")).toBe("some_future_board");
   });
 });
