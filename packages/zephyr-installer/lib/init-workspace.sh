@@ -33,6 +33,27 @@ init_workspace() {
   export MAMBA_ROOT_PREFIX
   if [ -d "$WORKSPACE_DIR/.west" ] && [ -f "$WORKSPACE_DIR/.west/config" ]; then
     echo "init-workspace: $WORKSPACE_DIR already initialized — running west update only"
+    # A workspace adopted from a pre-existing install (or initialized by an
+    # older installer) can track a branch or an older tag — plain `west update`
+    # never moves the manifest repository, so it drifts out of sync with the
+    # SDK this installer pins. Re-pin the revision AND check the tag out so
+    # west update below syncs modules against the pinned manifest.
+    if cur_rev="$(cd "$WORKSPACE_DIR" && "$MAMBA" run -n "$ENV_NAME" west config manifest.revision 2>/dev/null)"; then
+      :
+    else
+      cur_rev=""
+    fi
+    if [ "$cur_rev" != "$ZEPHYR_MANIFEST_REV" ]; then
+      echo "init-workspace: pinning manifest revision -> $ZEPHYR_MANIFEST_REV (was: ${cur_rev:-<unset - default branch>})"
+    fi
+    # All three steps are idempotent; they must also run when the config
+    # already says the right thing but the tree is still on the old revision.
+    (cd "$WORKSPACE_DIR" && "$MAMBA" run -n "$ENV_NAME" west config manifest.revision "$ZEPHYR_MANIFEST_REV") \
+      || { echo "init-workspace: west config manifest.revision failed" >&2; return 1; }
+    "$MAMBA" run -n "$ENV_NAME" git -C "$WORKSPACE_DIR/zephyr" fetch origin "refs/tags/$ZEPHYR_MANIFEST_REV:refs/tags/$ZEPHYR_MANIFEST_REV" \
+      || { echo "init-workspace: git fetch tag $ZEPHYR_MANIFEST_REV failed" >&2; return 1; }
+    "$MAMBA" run -n "$ENV_NAME" git -C "$WORKSPACE_DIR/zephyr" checkout "$ZEPHYR_MANIFEST_REV" \
+      || { echo "init-workspace: git checkout $ZEPHYR_MANIFEST_REV failed (dirty zephyr tree?)" >&2; return 1; }
   else
     if [ -d "$WORKSPACE_DIR/.west" ]; then
       echo "init-workspace: $WORKSPACE_DIR/.west exists but its config is missing (interrupted init?) — re-initializing"

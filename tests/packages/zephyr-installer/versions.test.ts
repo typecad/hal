@@ -204,4 +204,34 @@ describe('zephyr-installer install scripts', () => {
     expect(fetchSdk).toContain('.typecad-platforms');
     expect(installPs1).toContain('.typecad-platforms');
   });
+
+  it('install.ps1 never redirects native stderr with 2>&1 (PS 5.1 terminates on it)', () => {
+    // Under $ErrorActionPreference='Stop', Windows PowerShell 5.1 wraps every
+    // redirected native stderr line in an ErrorRecord and the FIRST one becomes
+    // a terminating NativeCommandError. pip logs its live source-build relay
+    // ("Running command git clone ...") to stderr, so `pip ... 2>&1` aborted
+    // the installer at the silabs cmsis-svd requirement even though pip was
+    // succeeding. Un-redirected native stderr just prints to the console —
+    // exit codes ($LASTEXITCODE) are the failure signal, not streams.
+    const installPs1 = readFileSync(join(installerDir, 'install.ps1'), 'utf8');
+    expect(installPs1.includes('2>&1')).toBe(false);
+  });
+
+  it('both native installers re-pin the manifest revision on an adopted workspace', () => {
+    // A workspace adopted from a pre-existing install (or initialized by an
+    // older installer) may track a branch or an older tag — plain `west
+    // update` never moves the manifest repository, so it drifts out of sync
+    // with the pinned SDK (e.g. a main-tracking zephyr against SDK 1.0.1).
+    // Re-running the installer must converge the workspace: set the config,
+    // AND fetch+check out the tag (the config alone leaves the tree — and
+    // the west.yml west update reads — on the old revision).
+    const initSh = readFileSync(join(installerDir, 'lib/init-workspace.sh'), 'utf8');
+    const installPs1 = readFileSync(join(installerDir, 'install.ps1'), 'utf8');
+    expect(initSh).toContain('west config manifest.revision');
+    expect(initSh).toContain('refs/tags/$ZEPHYR_MANIFEST_REV');
+    expect(initSh).toContain('checkout "$ZEPHYR_MANIFEST_REV"');
+    expect(installPs1).toContain('west config manifest.revision');
+    expect(installPs1).toContain('refs/tags/${ZEPHYR_MANIFEST_REV}');
+    expect(installPs1).toContain('checkout $ZEPHYR_MANIFEST_REV');
+  });
 });

@@ -405,6 +405,25 @@ elseif (-not $NoWorkspace) {
   $westConfig = Join-Path $westDir 'config'
   if ((Test-Path $westDir) -and (Test-Path $westConfig)) {
     Write-Host "init-workspace: already initialized - running west update only"
+    # A workspace adopted from a pre-existing install (or initialized by an
+    # older installer) can track a branch or an older tag - plain `west update`
+    # never moves the manifest repository, so it drifts out of sync with the
+    # SDK this installer pins. Re-pin the revision AND check the tag out so
+    # west update below syncs modules against the pinned manifest.
+    Push-Location $env:WORKSPACE_DIR
+    try {
+      $curRev = (& $MambaExe run -n $ENV_NAME west config manifest.revision)
+      if ($LASTEXITCODE -ne 0) { $curRev = '' }
+      if ("$curRev".Trim() -ne $ZEPHYR_MANIFEST_REV) {
+        $was = if ("$curRev".Trim()) { "$curRev" } else { '<unset - default branch>' }
+        Write-Host "init-workspace: pinning manifest revision -> $ZEPHYR_MANIFEST_REV (was: $was)"
+      }
+      # All three steps are idempotent; they must also run when the config
+      # already says the right thing but the tree is still on the old revision.
+      Invoke-Native { & $MambaExe run -n $ENV_NAME west config manifest.revision $ZEPHYR_MANIFEST_REV } "west config manifest.revision"
+      Invoke-Native { & $MambaExe run -n $ENV_NAME git -C $zb fetch origin "refs/tags/${ZEPHYR_MANIFEST_REV}:refs/tags/${ZEPHYR_MANIFEST_REV}" } "git fetch tag $ZEPHYR_MANIFEST_REV"
+      Invoke-Native { & $MambaExe run -n $ENV_NAME git -C $zb checkout $ZEPHYR_MANIFEST_REV } "git checkout $ZEPHYR_MANIFEST_REV"
+    } finally { Pop-Location }
   } else {
     if (Test-Path $westDir) {
       Write-Host "init-workspace: .west exists but its config is missing (interrupted init?) - re-initializing"
@@ -434,7 +453,13 @@ elseif (-not $NoWorkspace) {
   )
   foreach ($pat in $patterns) {
     foreach ($req in Get-Item -Path $pat -ErrorAction SilentlyContinue) {
-      & $MambaExe run -n $ENV_NAME pip install -r $req.FullName 2>&1 | Out-Null
+      # Do NOT add a native stderr redirect on this call: under
+      # $ErrorActionPreference='Stop', PowerShell 5.1 wraps redirected native
+      # stderr in ErrorRecords and the first one becomes a TERMINATING error -
+      # pip's live "Running command git clone ..." relay for git-pinned
+      # packages (silabs' cmsis-svd) aborted the whole install this way.
+      # Un-redirected native stderr just prints to the console.
+      & $MambaExe run -n $ENV_NAME pip install -r $req.FullName
       if ($LASTEXITCODE -ne 0) { Write-Warning "init-workspace:   module requirements failed: $($req.FullName)" }
     }
   }

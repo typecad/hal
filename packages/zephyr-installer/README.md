@@ -228,7 +228,10 @@ All version + URL pinning lives in [`versions.env`](./versions.env):
 - `ZEPHYR_SDK_BUNDLE_SUFFIX` — the bundle flavor (`_gnu` on 1.0.x, empty on
   0.17.x). Individual toolchain tarballs carry it as an infix
   (`toolchain_gnu_<plat>_<target>`).
-- `ZEPHYR_MANIFEST_REV` — bump and re-run to upgrade.
+- `ZEPHYR_MANIFEST_REV` — bump and re-run to upgrade. Re-running re-pins the
+  manifest revision on an existing workspace (`west config manifest.revision`),
+  so a workspace adopted from a pre-existing install — or one tracking `main` —
+  converges onto the pinned tag instead of drifting out of sync with the SDK.
 - `SHA256_<platform>` — per-platform bundle hashes from the release's official
   `sha256.sum`. `TODO` = not yet pinned (the installer prints the computed hash
   on first download for you to pin); `NONE` = no build exists for that platform
