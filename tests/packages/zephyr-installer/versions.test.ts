@@ -100,6 +100,22 @@ describe('zephyr-installer versions.env', () => {
     expect(installPs1).toContain('toolchain_$TcInfix');
   });
 
+  it('1.0.x selective installs target the gnu/ subdir (SDK cmake only globs gnu/*)', () => {
+    // SDK 1.0.x resolves TOOLCHAIN_HOME to ${ZEPHYR_SDK_INSTALL_DIR}/gnu, and
+    // its setup.cmd installs toolchains with `pushd gnu; 7z x`. Extracting at
+    // the SDK root (the 0.17.x layout) works on pre-4.4 Zephyr but fails on
+    // 4.4+ with "Unable to find ... in <sdk>/gnu". Both native installers must
+    // extract into gnu/, migrate misplaced root-level copies from older
+    // installs, and treat a target dir without bin/ as a hollow leftover (a
+    // failed setup.cmd download) to re-download.
+    const fetchSdk = readFileSync(join(repoRoot, 'packages/zephyr-installer/lib/fetch-sdk.sh'), 'utf8');
+    const installPs1 = readFileSync(join(repoRoot, 'packages/zephyr-installer/install.ps1'), 'utf8');
+    expect(fetchSdk).toContain('tc_root="$sdk/gnu"');
+    expect(fetchSdk).toContain('"$tc_root/$target/bin"');
+    expect(installPs1).toContain("Join-Path $ZephyrSdkInstallDir 'gnu'");
+    expect(installPs1).toContain('$target\\bin');
+  });
+
   it('constructs a well-formed bundle URL for each platform', () => {
     const extByPlat: Record<string, string> = {
       'linux-x86_64': 'tar.xz',

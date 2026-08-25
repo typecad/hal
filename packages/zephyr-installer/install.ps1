@@ -386,6 +386,16 @@ if (-not $NoSdk) {
         Remove-Item $minArchive -Force
       }
 
+      # 1.0.x installs toolchains under <sdk>\gnu\ - the SDK's own setup.cmd
+      # does `pushd gnu; 7z x`, and its cmake globs
+      # ${ZEPHYR_SDK_INSTALL_DIR}/gnu/*. 0.17.x used the SDK root. Toolchains
+      # misplaced at the root by older installers are migrated (moved) into
+      # gnu\ instead of re-downloaded. Idempotency checks <target>\bin - a
+      # bare <target>\ dir can be a hollow leftover of a failed setup.cmd
+      # toolchain download.
+      $tcRoot = if ($TcInfix) { Join-Path $ZephyrSdkInstallDir 'gnu' } else { $ZephyrSdkInstallDir }
+      New-Item -ItemType Directory -Force -Path $tcRoot | Out-Null
+
       # 2. Individual toolchains per selected platform group.
       foreach ($grp in $sel.Split(',')) {
         $targets = (Get-Variable -Name "PLATFORM_$grp" -ErrorAction SilentlyContinue).Value
@@ -396,9 +406,26 @@ if (-not $NoSdk) {
         Write-Host "fetch-sdk: platform '${grp}':"
         foreach ($target in $targets.Split(' ')) {
           if (-not $target) { continue }
-          if (Test-Path (Join-Path $ZephyrSdkInstallDir $target)) {
+          $misplaced = if ($TcInfix) { Join-Path $ZephyrSdkInstallDir $target } else { $null }
+          # Migrate / clean a misplaced SDK-root copy from pre-1.0.x-layout installs.
+          if ($misplaced -and (Test-Path $misplaced)) {
+            if (Test-Path (Join-Path $tcRoot "$target\bin")) {
+              Write-Host "fetch-sdk:   $target - removing misplaced SDK-root copy (pre-1.0.x-layout install)"
+              Remove-Item -Recurse -Force $misplaced
+            } else {
+              Write-Host "fetch-sdk:   $target - migrating misplaced SDK-root copy into gnu\"
+              Move-Item $misplaced (Join-Path $tcRoot $target)
+            }
+            continue
+          }
+          if (Test-Path (Join-Path $tcRoot "$target\bin")) {
             Write-Host "fetch-sdk:   $target - already installed, skipping"
             continue
+          }
+          # A target dir without bin\ is a hollow leftover - re-download clean.
+          if (Test-Path (Join-Path $tcRoot $target)) {
+            Write-Host "fetch-sdk:   $target - hollow toolchain dir (no bin\), re-downloading"
+            Remove-Item -Recurse -Force (Join-Path $tcRoot $target)
           }
           $tcBundle = "toolchain_$TcInfix$($SdkPlat)_$($target).$ArchiveExt"
           $tcUrl = "$SDK_RELEASE_BASE/v$ZEPHYR_SDK_VERSION/$tcBundle"
@@ -406,23 +433,27 @@ if (-not $NoSdk) {
           $tcArchive = Join-Path $env:SDK_INSTALL_PARENT $tcBundle
           Download-File -Url $tcUrl -OutFile $tcArchive
           if (-not $sevenz) { throw "fetch-sdk: 7z.exe not found in env or on PATH" }
-          Invoke-Native { & $sevenz x -y "-o$ZephyrSdkInstallDir" $tcArchive } "fetch-sdk $target extract"
+          Invoke-Native { & $sevenz x -y "-o$tcRoot" $tcArchive } "fetch-sdk $target extract"
           Remove-Item $tcArchive -Force
         }
       }
 
       # 3. Remove toolchains installed but NOT in the new selection (--modify removal).
+      #    On 1.0.x scan both the gnu\ root and the SDK root so misplaced copies
+      #    get cleaned up too.
       $selectedTargets = @()
       foreach ($grp in $sel.Split(',')) {
         $t = (Get-Variable -Name "PLATFORM_$grp" -ErrorAction SilentlyContinue).Value
         if ($t) { $selectedTargets += $t.Split(' ') }
       }
-      Get-ChildItem -Path $ZephyrSdkInstallDir -Directory -ErrorAction SilentlyContinue |
+      $scanDirs = @($tcRoot)
+      if ($TcInfix) { $scanDirs += $ZephyrSdkInstallDir }
+      Get-ChildItem -Path $scanDirs -Directory -ErrorAction SilentlyContinue |
         Where-Object { $_.Name -match '^(xtensa-)?.*-zephyr-(eabi|elf)$' } |
         ForEach-Object {
           if ($selectedTargets -notcontains $_.Name) {
             Write-Host "fetch-sdk: removing deselected toolchain: $($_.Name)"
-            Remove-Item -Recurse -Force $_.FullName
+            Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue
           }
         }
 

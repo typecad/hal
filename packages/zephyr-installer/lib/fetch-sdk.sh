@@ -97,12 +97,14 @@ _extract() {
   esac
 }
 
-# List installed toolchain targets by scanning the SDK dir. Used by the
-# [plan] output + the --modify delta (installed-but-not-selected → removed).
+# List installed toolchain targets by scanning a directory. Used by the
+# --modify delta (installed-but-not-selected → removed). The xtensa- prefixed
+# pattern matters: xtensa targets are multi-segment
+# (xtensa-espressif_esp32s3_zephyr-elf) and a single-segment regex misses them.
 _list_installed_toolchains() {
-  local sdk="$1"
-  [ -d "$sdk" ] || return 0
-  (cd "$sdk" && ls -d */ 2>/dev/null | sed 's|/$||' | grep -E '^([a-z0-9]+-)?zephyr-(eabi|elf)$' || true)
+  local dir="$1"
+  [ -d "$dir" ] || return 0
+  (cd "$dir" && ls -d */ 2>/dev/null | sed 's|/$||' | grep -E '^(xtensa-)?.*-zephyr-(eabi|elf)$' || true)
 }
 
 fetch_sdk() {
@@ -195,6 +197,21 @@ fetch_sdk() {
     rm -f "$minimal_archive"
   fi
 
+  # 1.0.x installs toolchains under <sdk>/gnu/ — the SDK's own setup.sh does
+  # `cd gnu && tar -x`, and its cmake globs ${ZEPHYR_SDK_INSTALL_DIR}/gnu/*
+  # (generic.cmake: TOOLCHAIN_HOME=${ZEPHYR_SDK_INSTALL_DIR}/gnu). 0.17.x used
+  # the SDK root. Toolchains misplaced at the root by older installers are
+  # migrated (moved) into gnu/ instead of re-downloaded. Idempotency checks
+  # <target>/bin — a bare <target>/ dir can be a hollow leftover of a failed
+  # setup.sh/setup.cmd toolchain download.
+  local tc_root="$sdk"
+  local sdk_ng=0
+  if [ -n "$suffix" ]; then
+    tc_root="$sdk/gnu"
+    sdk_ng=1
+  fi
+  mkdir -p "$tc_root"
+
   # 2. Individual toolchains for each selected platform group.
   local grp targets target
   for grp in ${platforms//,/ }; do
@@ -206,9 +223,26 @@ fetch_sdk() {
     fi
     echo "fetch-sdk: platform '${grp}':"
     for target in $targets; do
-      if [ -d "$sdk/$target" ]; then
+      # Migrate / clean a misplaced SDK-root copy from pre-1.0.x-layout installs.
+      if [ "$sdk_ng" -eq 1 ] && [ -d "$sdk/$target" ]; then
+        if [ -d "$tc_root/$target/bin" ]; then
+          echo "fetch-sdk:   $target — removing misplaced SDK-root copy (pre-1.0.x-layout install)"
+          rm -rf "$sdk/$target"
+        else
+          echo "fetch-sdk:   $target — migrating misplaced SDK-root copy into gnu/"
+          mv "$sdk/$target" "$tc_root/$target"
+        fi
+        continue
+      fi
+      if [ -d "$tc_root/$target/bin" ]; then
         echo "fetch-sdk:   $target — already installed, skipping"
         continue
+      fi
+      # A target dir without bin/ is a hollow leftover (e.g. a failed SDK
+      # setup.sh download) — remove it so the fresh extract lands clean.
+      if [ -d "$tc_root/$target" ]; then
+        echo "fetch-sdk:   $target — hollow toolchain dir (no bin/), re-downloading"
+        rm -rf "$tc_root/$target"
       fi
       # 1.0.x names individual toolchains toolchain_gnu_<plat>_<target>; 0.17.x
       # used toolchain_<plat>_<target>. tc_infix carries the flavor when set.
@@ -218,17 +252,19 @@ fetch_sdk() {
       local tc_archive="${SDK_INSTALL_PARENT}/${tc_bundle}"
       _download "$tc_url" "$tc_archive" || return 1
       _verify "$tc_archive" "TODO" || true
-      # Individual toolchain tarballs may extract either to <target>/ directly
-      # or with a leading ./ — tar handles both; extract into the SDK root.
-      _extract "$tc_archive" "$sdk" || return 1
+      # Toolchain archives are flat (<target>/bin/...); extract into the
+      # toolchain root (gnu/ on 1.0.x, the SDK root on 0.17.x).
+      _extract "$tc_archive" "$tc_root" || return 1
       rm -f "$tc_archive"
     done
   done
 
   # 3. Remove toolchains that are installed but NOT in the new selection.
   #    This is the "--modify" removal path: a user deselects a platform and its
-  #    toolchains are deleted to reclaim disk space.
-  local installed="$(_list_installed_toolchains "$sdk")"
+  #    toolchains are deleted to reclaim disk space. On 1.0.x scan both the
+  #    gnu/ root and the SDK root so misplaced copies get cleaned up too.
+  local installed="$(_list_installed_toolchains "$tc_root")"
+  [ "$sdk_ng" -eq 1 ] && installed="$installed $(_list_installed_toolchains "$sdk")"
   local selected_targets=""
   for grp in ${platforms//,/ }; do
     local targets_var="PLATFORM_${grp}"
@@ -237,7 +273,7 @@ fetch_sdk() {
   for target in $installed; do
     if ! echo " $selected_targets " | grep -q " $target "; then
       echo "fetch-sdk: removing deselected toolchain: $target"
-      rm -rf "$sdk/$target"
+      rm -rf "$tc_root/$target" "$sdk/$target"
     fi
   done
 
