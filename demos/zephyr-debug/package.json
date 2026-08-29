@@ -18,8 +18,7 @@
   "dependencies": {
     "@typecad/cuttlefish": "^1.0.0-alpha.3",
     "@typecad/hal": "^1.0.0-alpha.3",
-    "@typecad/framework-zephyr": "^1.0.0-alpha.3",
-    "@typecad/board-esp32s3": "^1.0.0-alpha.3"
+    "@typecad/framework-zephyr": "^1.0.0-alpha.3"
   },
   "devDependencies": {
     "eslint": "^10.4.1",

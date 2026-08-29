@@ -191,11 +191,7 @@ function tryResolveSafetyCallStatement(
     if (a.kind === ts.SyntaxKind.TrueKeyword) return true;
     if (a.kind === ts.SyntaxKind.FalseKeyword) return false;
     if (ts.isIdentifier(a)) {
-      const name = a.text;
-      if (name === "INPUT") return 0;
-      if (name === "OUTPUT") return 1;
-      if (name === "INPUT_PULLUP") return 2;
-      return name;
+      return a.text;
     }
     // Property access (e.g. r.value), arithmetic, or other expression:
     // render to the C++ expression text so the op can emit it inline.

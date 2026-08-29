@@ -51,7 +51,7 @@ describe('adc channel resolution', () => {
 
 describe('adc init block', () => {
   it('emits CUTTLEFISH_ADC markers + the SAADC device + per-channel setup', () => {
-    const lines = adcInitLines(XIAO_BLE).join('\n');
+    const lines = adcInitLines(XIAO_BLE).join('|');
     expect(lines).toContain('// CUTTLEFISH_ADC_BEGIN');
     expect(lines).toContain('// CUTTLEFISH_ADC_END');
     expect(lines).toContain('DEVICE_DT_GET(DT_NODELABEL(adc))');
@@ -60,41 +60,6 @@ describe('adc init block', () => {
     // resolution + vref defines
     expect(lines).toContain('#define __TC_ADC_RESOLUTION 12');
     expect(lines).toContain('#define __TC_ADC_VREF_MV 3000');
-  });
-});
-
-describe('adc lowering', () => {
-  it('adc.read → statement-expression: setup + adc_read + return raw (expression)', () => {
-    const out = lowerAdc({ operation: 'adc.read', pin: 2 } as any, XIAO_BLE);
-    expect(out.expression).toContain('__tc_adc0_setup()');
-    expect(out.expression).toContain('adc_read');
-    expect(out.expression).toContain('.channels = BIT(0)');
-    expect(out.expression).toContain('.resolution = 12');
-  });
-
-  it('adc.read on an unmapped pin emits a -1 channel (caught by profileDiagnostics)', () => {
-    const out = lowerAdc({ operation: 'adc.read', pin: 99 } as any, XIAO_BLE);
-    expect(out.expression).toContain('__tc_adc-1_setup');
-  });
-
-  it('adc.read_voltage → adc_raw_to_millivolts (expression)', () => {
-    const out = lowerAdc({ operation: 'adc.read_voltage', pin: 2 } as any, XIAO_BLE);
-    expect(out.expression).toContain('adc_raw_to_millivolts(3000, ADC_GAIN_1_4, 12');
-  });
-
-  it('adc.get_resolution → chip resolution (expression)', () => {
-    expect(lowerAdc({ operation: 'adc.get_resolution' } as any, XIAO_BLE))
-      .toEqual({ expression: '12' });
-  });
-
-  it('adc.set_reference → no-op comment (configured at channel setup)', () => {
-    const out = lowerAdc({ operation: 'adc.set_reference', reference: 'DEFAULT' } as any, XIAO_BLE);
-    expect(out.code).toContain('configured at channel setup');
-  });
-
-  it('adc.get_reference → 0 (ADC_REF_INTERNAL)', () => {
-    const out = lowerAdc({ operation: 'adc.get_reference' } as any, XIAO_BLE);
-    expect(out.expression).toContain('0');
   });
 });
 
@@ -124,15 +89,11 @@ describe('SoC-aware ADC channel setup (descriptor-driven gain/reference)', () =>
     expect(lines).toContain('DEVICE_DT_GET(DT_NODELABEL(adc1))');
   });
 
-  it('read_voltage converts with the descriptor gain + vref', () => {
-    const out = lowerAdc({ operation: 'adc.read_voltage', pin: 0 } as any, STM32_ADC);
-    expect(out.expression).toContain('adc_raw_to_millivolts(3300, ADC_GAIN_1, 12');
-  });
 
   it("defaults to the nRF SAADC scheme when the descriptor omits gain/reference (XIAO regression)", () => {
     const lines = adcInitLines(XIAO_BLE).join('\n');
     expect(lines).toContain('.gain = ADC_GAIN_1_4,');
-    const out = lowerAdc({ operation: 'adc.read_voltage', pin: 2 } as any, XIAO_BLE);
+    const out = lowerAdc({ operation: 'adc.read_mv', pin: 2, gain: '', reference: '' } as any, XIAO_BLE);
     expect(out.expression).toContain('adc_raw_to_millivolts(3000, ADC_GAIN_1_4, 12');
   });
 });

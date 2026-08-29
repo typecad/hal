@@ -24,11 +24,6 @@ describe('fs init block', () => {
 });
 
 describe('fs lowering', () => {
-  it('fs.begin → mount helper (no payload referenced)', () => {
-    const out = lowerFs({ operation: 'fs.begin' } as any);
-    expect(out.code).toBe('return __tc_fs_begin();');
-  });
-
   it('fs.read_text → read helper returning the path text', () => {
     const out = lowerFs({ operation: 'fs.read_text', path: '"/data.txt"' } as any);
     expect(out.code).toBe('return __tc_fs_read_text("/data.txt");');

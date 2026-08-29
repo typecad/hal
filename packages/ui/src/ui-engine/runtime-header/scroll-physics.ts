@@ -116,7 +116,7 @@ static inline uint8_t ui_scroll_release(int16_t node) {
     __ui_nodes[node].settling = 1;
     __ui_settle_from_overscroll = __ui_nodes[node].overscrollPx;
     __ui_settle_from_scrollY = 0;
-    __ui_settle_start_ms = millis();
+    __ui_settle_start_ms = __tc_now_ms();
     changed = 1;
   } else {
     int16_t sy = __ui_nodes[node].scrollY;
@@ -126,13 +126,13 @@ static inline uint8_t ui_scroll_release(int16_t node) {
       __ui_nodes[node].settling = 1;
       __ui_settle_from_scrollY = sy;            // positive → snap toward 0
       __ui_settle_from_overscroll = 0;
-      __ui_settle_start_ms = millis();
+      __ui_settle_start_ms = __tc_now_ms();
       changed = 1;
     } else if (maxS > 0 && sy < maxS && sy >= maxS - snap) {
       __ui_nodes[node].settling = 1;
       __ui_settle_from_scrollY = sy - maxS;     // negative → snap toward max
       __ui_settle_from_overscroll = 0;
-      __ui_settle_start_ms = millis();
+      __ui_settle_start_ms = __tc_now_ms();
       changed = 1;
     }
   }
@@ -151,7 +151,7 @@ static inline void ui_scroll_advance_settle(uint16_t node, uint16_t deltaMs) {
     __ui_nodes[node].settling = 0;
     return;
   }
-  uint32_t elapsed = millis() - __ui_settle_start_ms;
+  uint32_t elapsed = __tc_now_ms() - __ui_settle_start_ms;
   uint16_t dur = static_cast<uint16_t>(UI_SCROLL_SETTLE_MS);
   // ease-out: k = 1 - (1 - t)^2, t in [0,1]
   uint32_t t = elapsed >= dur ? 100 : (elapsed * 100) / dur;

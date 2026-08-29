@@ -64,3 +64,21 @@ describe('cuttlefish library argument parsing', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// `cuttlefish board regen` argument parsing — the project-local board module
+// refresh path (documented in the generated board.ts header; must parse as a
+// subcommand, not fall through to the input-file branch).
+// ---------------------------------------------------------------------------
+
+describe('cuttlefish board argument parsing', () => {
+  it('parses board regen as a subcommand', () => {
+    const opts = parseCommandLine(['node', 'cuttlefish', 'board', 'regen']);
+    expect(opts).toEqual({ command: 'board', subcommand: 'regen' });
+  });
+
+  it('requires the regen subcommand', () => {
+    expect(() => parseCommandLine(['node', 'cuttlefish', 'board'])).toThrow(/Usage: cuttlefish board/);
+    expect(() => parseCommandLine(['node', 'cuttlefish', 'board', 'frobnicate'])).toThrow(/Usage: cuttlefish board/);
+  });
+});

@@ -86,7 +86,7 @@ function buildExecutionFlowSection(flow: ExecutionFlow, callGraph: CallGraph): s
   const lines: string[] = [];
   lines.push("## Execution Flow");
   lines.push("");
-  lines.push("> This graph shows the relationships between entry points, HAL objects, and Arduino APIs.");
+  lines.push("> This graph shows the relationships between entry points, HAL objects, and framework APIs.");
   lines.push("");
   lines.push(buildExecutionFlowDiagram(flow, callGraph));
   lines.push("");
@@ -224,7 +224,7 @@ function buildAsyncTasksSection(tasks: AsyncTaskEntry[]): string {
   lines.push("");
 
   if (tasks.length === 0) {
-    lines.push("> _No async tasks registered in this sketch._");
+    lines.push("> _No async tasks registered in this program._");
     lines.push("");
     return lines.join("\n");
   }

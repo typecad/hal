@@ -13,10 +13,16 @@
 
 import { describe, it, expect } from 'vitest';
 import { ZephyrStrategy } from '../../../packages/framework-zephyr/src/strategy';
-import { resolveBoardConstants } from '../../../packages/cuttlefish/src/ir/board-resolver';
+import { generateBoard } from '../../../packages/framework-zephyr/src/boardgen';
+import type { BoardConstants } from '../../../packages/cuttlefish/src/api/shared/board-resolver';
+function generatedConstants(target: string): BoardConstants {
+  const g = generateBoard(target);
+  return new Map(Object.entries(JSON.parse(g.boardJson).constants)) as BoardConstants;
+}
 
-const rp2040Board = resolveBoardConstants('boards/board-rp2040/src/index.ts');
-const rp2350Board = resolveBoardConstants('boards/board-rp2350/src/index.ts');
+
+const rp2040Board = generatedConstants('rpi_pico/rp2040');
+const rp2350Board = generatedConstants('rpi_pico2/rp2350a/m33');
 
 /** Wrap HAL ops in the program-IR shape profileDiagnostics walks. */
 function programWith(ops: Record<string, unknown>[], boardConstants = rp2040Board) {
@@ -31,9 +37,9 @@ function programWith(ops: Record<string, unknown>[], boardConstants = rp2040Boar
 describe('ZephyrStrategy.profileDiagnostics — PWM gate (RP boards ship no pwm.specs)', () => {
   const s = new ZephyrStrategy();
 
-  it('warns on pwm.write against an unlisted pin (rpi_pico)', () => {
+  it('warns on pwm.set_pulse against an unlisted pin (rpi_pico)', () => {
     const diags = s.profileDiagnostics(programWith([
-      { operation: 'pwm.write', pin: 15, duty: 128 },
+      { operation: 'pwm.set_pulse', pin: 15, pulse: 1000 },
     ]));
     const d = diags.find((x) => x.code === 'zephyr-pwm-pin-unavailable');
     expect(d).toBeDefined();
@@ -41,9 +47,9 @@ describe('ZephyrStrategy.profileDiagnostics — PWM gate (RP boards ship no pwm.
     expect(d!.message).toContain('GPIO 15');
   });
 
-  it('warns on pwm.write for a pin with no PWM spec (GP15 is unpinned)', () => {
+  it('warns on pwm.set_pulse for a pin with no PWM spec (GP15 is unpinned)', () => {
     const diags = s.profileDiagnostics(programWith([
-      { operation: 'pwm.write', pin: 15, duty: 128 },
+      { operation: 'pwm.set_pulse', pin: 15, pulse: 1000 },
     ]));
     expect(diags.some((x) => x.code === 'zephyr-pwm-pin-unavailable' && x.message.includes('15'))).toBe(true);
   });
@@ -56,9 +62,9 @@ describe('ZephyrStrategy.profileDiagnostics — PWM gate (RP boards ship no pwm.
   });
 
   it('does not warn for a spec-listed pin (xiao_ble pwm-led0 on pin 17)', () => {
-    const xiaoBoard = resolveBoardConstants('boards/board-xiao-nrf52840/src/index.ts');
+    const xiaoBoard = generatedConstants('xiao_ble/nrf52840');
     const diags = s.profileDiagnostics(programWith([
-      { operation: 'pwm.write', pin: 17, duty: 128 },
+      { operation: 'pwm.set_pulse', pin: 17, pulse: 1000 },
     ], xiaoBoard));
     expect(diags.some((x) => x.code === 'zephyr-pwm-pin-unavailable')).toBe(false);
   });
@@ -74,14 +80,14 @@ describe('ZephyrStrategy.profileDiagnostics — bus instance gate', () => {
     expect(diags.some((x) => x.code === 'zephyr-bus-instance-unavailable')).toBe(false);
   });
 
-  it('errors on SPI1 on rpi_pico (only spi0 is declared — the old path was a link error)', () => {
+  it('errors on SPI2 on rpi_pico (spi0 + spi1 are declared — the silicon has two)', () => {
     const diags = s.profileDiagnostics(programWith([
-      { operation: 'spi.begin', bus: 'SPI1' },
+      { operation: 'spi.begin', bus: 'SPI2' },
     ]));
     const d = diags.find((x) => x.code === 'zephyr-bus-instance-unavailable');
     expect(d).toBeDefined();
     expect(d!.severity).toBe('error');
-    expect(d!.message).toContain('SPI1');
+    expect(d!.message).toContain('SPI2');
   });
 
   it('errors on UART2 on rpi_pico (only uart0 + the synthesized uart1 are declared)', () => {

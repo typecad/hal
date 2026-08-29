@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // Display + touch hardware catalog for the @typecad/ui integration wizard.
 //
-// Mirrors the built-in display profiles exported by @typecad/framework-arduino
-// (src/displays/*.ts — BUILT_IN_PROFILES) and the TouchLibrary union in
+// Mirrors the built-in display profiles exported by the active framework
+// (BUILT_IN_PROFILES) and the TouchLibrary union in
 // @typecad/cuttlefish's display-profile.ts. The wizard asks questions and
 // fills defaults from these entries; the resulting object literal is written
 // into the project's cuttlefish.config.ts `display` section.
@@ -45,8 +45,6 @@ export interface DisplayCatalogEntry {
     invert?: boolean;
     antialias?: boolean;
   };
-  /** Arduino libraries the driver needs (for the printed next steps). */
-  arduinoLibraries?: string[];
   /** A wiring note printed with the summary. */
   wiringNote?: string;
 }
@@ -73,7 +71,6 @@ export const DISPLAY_CATALOG: readonly DisplayCatalogEntry[] = [
       colorOrder: "rgb",
       antialias: true,
     },
-    arduinoLibraries: ["Adafruit GFX Library", "Adafruit ILI9341"],
     wiringNote: "Defaults assume ESP32 VSPI: SCK=18, MOSI=23, MISO=19.",
   },
   {
@@ -98,11 +95,10 @@ export const DISPLAY_CATALOG: readonly DisplayCatalogEntry[] = [
       invert: false,
       antialias: true,
     },
-    arduinoLibraries: ["Adafruit GFX Library", "Adafruit ST7735 and ST7789 Library"],
     wiringNote:
       "Defaults assume ESP32 VSPI: SCK=18, MOSI=23, MISO=19. Adafruit_ST7796S.h comes from the" +
       " Adafruit_ST7735_and_ST7789 fork bundled in the typecode demos (demos/demo-st/lib) —" +
-      " copy it into your sketchbook libraries/ if your Library Manager copy lacks the class.",
+      " copy it into your libraries/ folder if your Library Manager copy lacks the class.",
   },
   {
     id: "ssd1309-i2c",
@@ -117,7 +113,6 @@ export const DISPLAY_CATALOG: readonly DisplayCatalogEntry[] = [
       rotation: 0,
       antialias: false,
     },
-    arduinoLibraries: ["Adafruit GFX Library", "Adafruit SSD1306"],
   },
   {
     id: "sdl",
@@ -157,7 +152,6 @@ export interface TouchCatalogEntry {
     calibration?: { xMin: number; xMax: number; yMin: number; yMax: number };
     analogPins?: { xp: number; yp: number; xm: number; ym: number; rx: number };
   };
-  arduinoLibrary?: string;
 }
 
 export const TOUCH_CATALOG: readonly TouchCatalogEntry[] = [
@@ -178,7 +172,6 @@ export const TOUCH_CATALOG: readonly TouchCatalogEntry[] = [
       // Typical raw-ADC range for 320×240 modules; refine per panel.
       calibration: { xMin: 375, xMax: 3950, yMin: 200, yMax: 3750 },
     },
-    arduinoLibrary: "XPT2046_Touchscreen",
   },
   {
     id: "FT6336U",
@@ -190,7 +183,6 @@ export const TOUCH_CATALOG: readonly TouchCatalogEntry[] = [
       i2cFrequency: 400_000,
     },
     // The framework's FT6336U adapter includes RAK14014_FT6336U.h.
-    arduinoLibrary: "RAK14014-FT6336U",
   },
   {
     id: "GT911",
@@ -201,7 +193,6 @@ export const TOUCH_CATALOG: readonly TouchCatalogEntry[] = [
       i2cAddress: 0x5d,
       i2cFrequency: 400_000,
     },
-    arduinoLibrary: "GT911",
   },
   {
     id: "CST816S",
@@ -212,7 +203,6 @@ export const TOUCH_CATALOG: readonly TouchCatalogEntry[] = [
       i2cAddress: 0x15,
       i2cFrequency: 400_000,
     },
-    arduinoLibrary: "CST816S",
   },
   {
     id: "Adafruit_TouchScreen",
@@ -223,7 +213,6 @@ export const TOUCH_CATALOG: readonly TouchCatalogEntry[] = [
       analogPins: { xp: 24, yp: 25, xm: 26, ym: 27, rx: 300 },
       calibration: { xMin: 100, xMax: 900, yMin: 120, yMax: 900 },
     },
-    arduinoLibrary: "Adafruit TouchScreen",
   },
   {
     id: "Adafruit_STMPE610",
@@ -234,7 +223,6 @@ export const TOUCH_CATALOG: readonly TouchCatalogEntry[] = [
       cs: 14,
       calibration: { xMin: 375, xMax: 3950, yMin: 200, yMax: 3750 },
     },
-    arduinoLibrary: "Adafruit STMPE610",
   },
   {
     id: "adapter",

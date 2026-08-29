@@ -121,6 +121,8 @@ export interface ProgramAnalysisResult {
   usesOta: boolean;
   /** Temperature (die temp) usage. Detected from temp.* ops. */
   usesTemp: boolean;
+  /** DT-bound sensor parts (sensor.* ops, hal/sensor.ts) */
+  usesSensor: boolean;
   /** Hardware timer (GPTimer) usage. Detected from hwtimer.* ops. */
   usesHwtimer: boolean;
   /** Capacitive touch pins usage. Detected from capacitive.* ops. */
@@ -143,14 +145,16 @@ export interface ProgramAnalysisResult {
 }
 
 // Regex for std:: math calls
-const MATH_PATTERN = /\bstd::(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|acos|atan|abs|max|min)\b/;
+// Both the lowered form (std::<fn>) and the source form (Math.<fn>) — the
+// analysis can see either depending on when expressions render.
+const MATH_PATTERN = /\b(?:std::|Math\.)(floor|ceil|round|trunc|sqrt|pow|sin|cos|tan|asin|acos|atan|abs|max|min)\b/;
 
 /**
  * Analyze an expression for all features in a single pass.
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesUsb' | 'usesSPI' | 'usesI2C' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesUsb' | 'usesSPI' | 'usesI2C' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesSensor' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -457,13 +461,13 @@ function analyzeExpression(
         if (opName.startsWith("usb."))       result.usesUsb = true;
         if (opName.startsWith("wifi.")) {
           result.usesWifi = true;
-          if (opName === "wifi.connect" || opName === "wifi.connect_start" || opName === "wifi.disconnect") {
+          if (opName === "wifi.join" || opName === "wifi.connect_start" || opName === "wifi.disconnect") {
             result.usesWifiConnect = true;
-            if (opName === "wifi.connect") result.usesWifiConnectBlocking = true;
+            if (opName === "wifi.join") result.usesWifiConnectBlocking = true;
           }
           else if (opName.startsWith("wifi.scan")) result.usesWifiScan = true;
-          else if (opName === "wifi.status" || opName === "wifi.local_ip" || opName === "wifi.rssi" || opName === "wifi.mac") result.usesWifiQuery = true;
-          else if (opName === "wifi.set_hostname") result.usesWifiConfig = true;
+          else if (opName === "wifi.is_connected" || opName === "wifi.local_ip" || opName === "wifi.rssi" || opName === "wifi.mac") result.usesWifiQuery = true;
+          else if (opName === "wifi.on_event") result.usesWifiConfig = true;
         }
         if (opName.startsWith("http."))      result.usesHttp = true;
         if (opName.startsWith("ble."))       result.usesBle = true;
@@ -474,7 +478,8 @@ function analyzeExpression(
         if (opName.startsWith("mqtt."))      result.usesMqtt = true;
         if (opName.startsWith("ota."))       result.usesOta = true;
         if (opName.startsWith("temp."))      result.usesTemp = true;
-        if (opName.startsWith("hwtimer."))   result.usesHwtimer = true;
+        if (opName.startsWith("sensor."))    result.usesSensor = true;
+        if (opName.startsWith("hwtimer.") || opName.startsWith("counter."))   result.usesHwtimer = true;
         if (opName.startsWith("capacitive.")) result.usesCapacitive = true;
         if (opName.startsWith("worker."))    result.usesWorker = true;
       }
@@ -785,13 +790,13 @@ function analyzeStatement(
         if (opName.startsWith("shift."))     result.usesShift = true;
         if (opName.startsWith("wifi.")) {
           result.usesWifi = true;
-          if (opName === "wifi.connect" || opName === "wifi.connect_start" || opName === "wifi.disconnect") {
+          if (opName === "wifi.join" || opName === "wifi.connect_start" || opName === "wifi.disconnect") {
             result.usesWifiConnect = true;
-            if (opName === "wifi.connect") result.usesWifiConnectBlocking = true;
+            if (opName === "wifi.join") result.usesWifiConnectBlocking = true;
           }
           else if (opName.startsWith("wifi.scan")) result.usesWifiScan = true;
-          else if (opName === "wifi.status" || opName === "wifi.local_ip" || opName === "wifi.rssi" || opName === "wifi.mac") result.usesWifiQuery = true;
-          else if (opName === "wifi.set_hostname") result.usesWifiConfig = true;
+          else if (opName === "wifi.is_connected" || opName === "wifi.local_ip" || opName === "wifi.rssi" || opName === "wifi.mac") result.usesWifiQuery = true;
+          else if (opName === "wifi.on_event") result.usesWifiConfig = true;
         }
         if (opName.startsWith("http."))      result.usesHttp = true;
         if (opName.startsWith("ble."))       result.usesBle = true;
@@ -802,21 +807,10 @@ function analyzeStatement(
         if (opName.startsWith("mqtt."))       result.usesMqtt = true;
         if (opName.startsWith("ota."))        result.usesOta = true;
         if (opName.startsWith("temp."))       result.usesTemp = true;
-        if (opName.startsWith("hwtimer."))    result.usesHwtimer = true;
+        if (opName.startsWith("sensor."))     result.usesSensor = true;
+        if (opName.startsWith("hwtimer.") || opName.startsWith("counter."))    result.usesHwtimer = true;
         if (opName.startsWith("capacitive.")) result.usesCapacitive = true;
         if (opName.startsWith("worker."))     result.usesWorker = true;
-        // Timing HAL ops (timing.delay/millis/micros) carry a typed operation
-        // name, not raw code, so the regex scans below miss them. Mirror the
-        // raw-code timing detection here so usesMillis/usesTiming (and thus
-        // usesNativeTiming) fire for `delay()`/`millis()` on AVR.
-        if (opName === "timing.delay" || opName === "timing.delay_microseconds"
-          || opName === "timing.millis" || opName === "timing.micros") {
-          result.usesTiming = true;
-          result.usesMillis = true;
-        }
-        if (opName === "timing.millis" || opName === "timing.micros") {
-          result.usesWallClock = true;
-        }
       }
       // Scan raw C++ code in HAL ops for polyfill helper usage
       if (statement.operation && statement.operation.operation === "raw" && typeof statement.operation.code === "string") {
@@ -971,6 +965,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesMqtt: false,
     usesOta: false,
     usesTemp: false,
+    usesSensor: false,
     usesHwtimer: false,
     usesCapacitive: false,
     usesWorker: false,

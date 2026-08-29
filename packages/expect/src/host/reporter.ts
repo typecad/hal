@@ -21,7 +21,7 @@
 //      Expected: 20–25
 //
 //  Tests   3 passed | 1 failed (4)
-//  Board   Arduino Uno @ COM3
+//  Board   Black Pill @ COM3
 //  Time    8.42s
 // ---------------------------------------------------------------------------
 

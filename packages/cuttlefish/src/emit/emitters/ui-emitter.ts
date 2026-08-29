@@ -204,7 +204,7 @@ export function emitUIRuntime(ctx: EmitterContext): void {
   if (profile) {
     const adapter = generateDisplayAdapter(profile, ctx.strategy);
     // Prepend includes to the very front — Arduino's auto-prototyper scans
-    // the whole .ino and generates prototypes that reference GFXcanvas16
+    // the whole translation unit and generates prototypes that reference GFXcanvas16
     // etc. before any #include, so the GFX header must come first.
     ctx.sourceLines.unshift(adapter.includes);
     // Color-depth preamble: UI_COLOR_T is referenced by adapter draw

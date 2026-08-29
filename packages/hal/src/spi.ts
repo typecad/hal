@@ -1,7 +1,18 @@
-import { spiBegin, spiEnd, spiTransfer, spiBeginTx, spiEndTx, spiCsLow, spiCsHigh, spiSetMode, spiSetBitOrder, spiReadBuffer, rawCpp } from './emit.js';
-import { include } from './include.js';
+// ---------------------------------------------------------------------------
+// SPI — controller identity + device-fact carriers (legacy transfer API removed)
+//
+// The bus singletons (SPI0/SPI1…) are CONTROLLER SELECTORS; the only method
+// they keep is device(cs), producing the fact-carrier the generic Sensor
+// catalog consumes (`new Sensor(SENSOR.x, SPI0.device(PA4), { spiHz })`).
+// Register/byte access to arbitrary devices is the thin `SPITarget`
+// (spi-target.ts): construction emits a devicetree child node (hardware CS,
+// spi-max-frequency, mode bits) and the verbs are spi_transceive_dt /
+// spi_write_dt / readReg — no manual chip-select toggling, no runtime
+// spi_config rebuilding. The former begin/beginTransaction/setMode/transfer
+// surface was removed with the legacy Arduino surface.
+// ----------------------------------------------------------------------------
+
 import type { Pin } from './gpio.js';
-import type { SPIMode, SPISettings } from './types.js';
 
 export class SPIDevice {
   private _bus: string;
@@ -11,111 +22,19 @@ export class SPIDevice {
     this._bus = bus;
     this._cs = chipSelect;
   }
-
-  transfer(data: number | Uint8Array): number {
-    include("<SPI.h>");
-    spiCsLow(this._cs);
-    rawCpp(`auto __res = ${this._bus}.transfer(${data});`);
-    spiCsHigh(this._cs);
-    rawCpp(`return __res;`);
-    return 0;
-  }
-
-  write(data: number | Uint8Array): void {
-    include("<SPI.h>");
-    spiCsLow(this._cs);
-    spiTransfer(this._bus, data);
-    spiCsHigh(this._cs);
-  }
-
-  readRegister(register: number, count: number): Uint8Array {
-    include("<SPI.h>");
-    spiCsLow(this._cs);
-    spiTransfer(this._bus, register);
-    // Clock `count` dummy bytes and drain them into the caller's buffer
-    // (declared by the Uint8Array return marker as `uint8_t data[count]`).
-    // Using the semantic primitive — NOT rawCpp — keeps the buffer in user
-    // scope so it survives the return (no decayed pointer) and `data.length`
-    // / `data[i]` work, mirroring I2CDevice.readBytes.
-    spiReadBuffer(this._bus, count, new Uint8Array(count));
-    spiCsHigh(this._cs);
-    return new Uint8Array(count);
-  }
-
-  writeRegister(register: number, value: number): void {
-    include("<SPI.h>");
-    spiCsLow(this._cs);
-    spiTransfer(this._bus, register);
-    spiTransfer(this._bus, value);
-    spiCsHigh(this._cs);
-  }
 }
 
 export class SPIBus {
-  static readonly __includes = ["<SPI.h>"];
   private _bus: string;
 
   constructor(bus: string) {
     this._bus = bus;
   }
 
+  /** Produce the fact-carrier for one chip-select on this controller.
+   *  Pass it to `new Sensor(...)`; use `SPITarget` directly instead when you
+   *  need transceive/write/readReg verbs. */
   device(chipSelect: Pin): SPIDevice {
     return new SPIDevice(this._bus, chipSelect.number);
   }
-
-  begin(): this {
-    include("<SPI.h>");
-    spiBegin(this._bus);
-    return this;
-  }
-
-  end(): void {
-    spiEnd(this._bus);
-  }
-
-  take(): this | null {
-    return this;
-  }
-
-  release(): void {
-    // No-op for standard Arduino.
-  }
-
-
-  transfer(value: number | Uint8Array): number {
-    return spiTransfer(this._bus, value);
-  }
-
-  setFrequency(hz: number): void {
-    spiBeginTx(this._bus, `SPISettings(${hz}, MSBFIRST, SPI_MODE0)`);
-  }
-
-  beginTransaction(settings: SPISettings): void {
-    spiBeginTx(this._bus, settings);
-  }
-
-  endTransaction(): void {
-    spiEndTx(this._bus);
-  }
-
-  setMode(mode: SPIMode): void {
-    spiSetMode(this._bus, mode);
-  }
-
-  setBitOrder(order: 'lsb' | 'msb'): void {
-    spiSetBitOrder(this._bus, order);
-  }
-
-  write(value: number): void {
-    spiTransfer(this._bus, value);
-  }
-
-  write16(value: number): void {
-    rawCpp(`${this._bus}.transfer16(${value});`);
-  }
-}
-
-/** Map TypeCAD SPI instance number to Arduino C++ object name. SPI0→SPI, SPI1→SPI1 */
-export function spiName(instance: number): string {
-  return instance === 0 ? "SPI" : `SPI${instance}`;
 }

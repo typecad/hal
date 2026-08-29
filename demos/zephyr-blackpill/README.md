@@ -17,17 +17,17 @@ KEY button (PA0) flips between dimmer and breathing modes.
 
 ```ts
 import { LED, BUTTON, A1, PB6 } from '@typecad/board';
-import { delay } from '@typecad/hal';
+import { GPIO, ADCChannel, PWM, Time } from '@typecad/hal';
 
-const led = LED.asOutput(false);
-const sense = A1.asInput();
-const dimmer = PB6.asOutput(false);
+const led = new GPIO(LED, GPIO.OUTPUT);
+const sense = new ADCChannel(A1);
+const dimmer = new PWM(PB6, { periodNs: 20_000_000 });
 
 function loop(): void {
-  const mv = sense.readVoltage();          // → adc_raw_to_millivolts(3300, ADC_GAIN_1, 12, …)
-  dimmer.pwm(mv / 13);                     // → pwm_set_pulse_dt(&__tc_pwm_tc_pwm22, …)
+  const mv = sense.readMillivolts();       // → adc_raw_to_millivolts(3300, ADC_GAIN_1, 12, …)
+  dimmer.setDuty(mv / 3300);               // → pwm_set_pulse_dt(&__tc_pwm_tc_pwm22, …)
   led.toggle();
-  delay(20);
+  Time.sleep(20);
 }
 ```
 

@@ -33,6 +33,10 @@
       "types": "./dist/safety-hook.d.ts",
       "default": "./dist/safety-hook.js"
     },
+    "./safety": {
+      "types": "./dist/safety/authoring.d.ts",
+      "default": "./dist/safety/authoring.js"
+    },
     "./build-ir-state": {
       "types": "./dist/ir/build-ir-state.d.ts",
       "default": "./dist/ir/build-ir-state.js"
@@ -103,25 +107,22 @@
     "start": "node dist/cli.js"
   },
   "dependencies": {
+    "@typecad/hal": "1.0.0-alpha.14",
     "chalk": "^6.0.0",
+    "inquirer-select-pro": "^1.0.0-alpha.9",
     "typescript": "^5.7.3",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@typecad/ui": "1.0.0-alpha.14",
-    "@typecad/safety": "1.0.0-alpha.14"
+    "@typecad/ui": "1.0.0-alpha.14"
   },
   "peerDependenciesMeta": {
     "@typecad/ui": {
       "optional": true
-    },
-    "@typecad/safety": {
-      "optional": true
     }
   },
   "optionalDependencies": {
-    "@typecad/expect": "1.0.0-alpha.14",
-    "@typecad/framework-native": "1.0.0-alpha.14"
+    "@typecad/expect": "1.0.0-alpha.14"
   },
   "devDependencies": {
     "@types/node": "^22.10.7"

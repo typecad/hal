@@ -11,7 +11,7 @@
 //   wifi-blocking-in-loop     (warning) blocking WiFi.connect()/scan() or
 //                                       Http send inside loop() — stalls every
 //                                       iteration; use async/await instead.
-//   wifi-ap-password-short    (error)   WiFi.startAP() with a literal WPA2
+//   wifi-ap-password-short    (error)   WiFiAP with a literal WPA2
 //                                       password shorter than 8 characters —
 //                                       esp_wifi rejects it at runtime.
 //   http-max-body-large       (warning) Http maxBody() above 64 KB — the
@@ -29,22 +29,18 @@ import { walkProgramIR, walkNestedStatements } from "./utils/walk-ir.js";
 
 /** Architectures with no WiFi radio. Driven by the `architecture` board
  *  constant (from the MCU package); absent data emits nothing. */
-const NO_RADIO_ARCHITECTURES = new Set(["avr"]);
+const NO_RADIO_ARCHITECTURES = new Set<string>();
 
 /** Ops that bring the WiFi link (STA or AP) up. */
 const LINK_UP_OPS = new Set<string>([
-  "wifi.connect",
+  "wifi.join",
   "wifi.connect_start",
-  "wifi.connect_saved",
   "wifi.ap_start",
 ]);
 
 /** Blocking waits that stall loop() for their full duration. */
 const BLOCKING_LOOP_OPS = new Set<string>([
-  "wifi.connect",
-  "wifi.connect_saved",
-  "wifi.wait_connected",
-  "wifi.wait_disconnected",
+  "wifi.join",
   "wifi.scan",
   "http.send",
 ]);
@@ -126,7 +122,7 @@ export function validateNetworkUsage(program: ProgramIR, boardConstants?: BoardC
       severity: "error",
       code: "wifi-no-radio",
       message: `WiFi/HTTP APIs are used but the target board's architecture ('${archName}') has no WiFi radio.`,
-      hint: "Target a WiFi-capable board (e.g. @typecad/board-esp32-devkit) or remove the WiFi/HTTP calls.",
+      hint: "Target a WiFi-capable board (e.g. esp32_devkitc/esp32/procpu) or remove the WiFi/HTTP calls.",
     }));
     // No point piling on the remaining checks for a board that can't radio.
     return diagnostics;
@@ -138,7 +134,7 @@ export function validateNetworkUsage(program: ProgramIR, boardConstants?: BoardC
       severity: "warning",
       code: "http-without-wifi",
       message: "HTTP requests are made but the program never brings the WiFi link up — every request will fail at runtime.",
-      hint: "Call WiFi.connect(ssid, password) (or WiFi.connectSaved() / WiFi.startAP()) before sending HTTP requests.",
+      hint: "Join a network first — new WiFi(ssid, { psk}).join() (or a WiFiAP) — before sending HTTP requests.",
     }));
   }
 
@@ -171,7 +167,7 @@ export function validateNetworkUsage(program: ProgramIR, boardConstants?: BoardC
       diagnostics.push(diagAt(stmt, {
         severity: "error",
         code: "wifi-ap-password-short",
-        message: `WiFi.startAP() password is ${password.length} characters — WPA2 requires at least 8, and esp_wifi rejects shorter ones at runtime.`,
+        message: `WiFiAP password is ${password.length} characters — WPA2 requires at least 8, and the driver rejects shorter ones at runtime.`,
         hint: "Use a password of 8+ characters, or omit the password entirely for an open access point.",
       }));
     }

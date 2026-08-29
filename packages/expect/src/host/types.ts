@@ -175,10 +175,8 @@ export interface ResolvedConfig {
   buildTarget: string;
   board: string;
   target: string;
-  /** Framework package name, e.g. "@typecad/framework-avr". */
+  /** Framework package name, e.g. "@typecad/framework-zephyr". */
   framework?: string;
-  /** Toolchain type from config: 'arduino-cli' (default) or 'west' (Zephyr). */
-  toolchainType: 'arduino-cli' | 'west';
   /** Zephyr-specific config (kconfig, etc.) from cuttlefish.config.ts. */
   zephyrConfig?: Record<string, unknown>;
   /**

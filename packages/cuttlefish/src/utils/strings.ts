@@ -142,12 +142,3 @@ export function escapeCppStringLiteral(value: string): string {
 export function escapeSnprintfFormatFragment(value: string): string {
   return escapeCppStringLiteral(value).replace(/%/g, "%%");
 }
-
-export function normalizeKebabName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[\s_]+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-}

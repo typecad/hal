@@ -1,12 +1,12 @@
-// 06 — access point (SoftAP). Zephyr supports startAP/stopAP but not the
-// fine-grained AP options (channel, max clients, client count, AP IP) — those
-// are configured via devicetree / net_mgmt on Zephyr, not the HAL surface.
-import { WiFi, delay } from '@typecad/hal';
+// 06 — access point (SoftAP). The AP facts (ssid/psk/channel) ride the
+// constructor; client enumeration/AP IP have no Zephyr driver hook.
+import { WiFiAP, Time } from '@typecad/hal';
 
-WiFi.startAP("cuttlefish-setup", "config123");
+const ap = new WiFiAP("cuttlefish-setup", { psk: "config123" });
+ap.start();
 console.log("AP started");
 
 while (true) {
   console.log("AP running");
-  delay(5000);
+  Time.sleep(5000);
 }

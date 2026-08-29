@@ -3,14 +3,14 @@
 //
 // `npm run build --workspaces` runs in package.json listing order, which does
 // not match the dependency graph: cuttlefish is listed first but depends on
-// arduino-cli and framework-arduino, so it builds before its own dependencies'
-// dist/ exists and fails with TS2307 "Cannot find module" errors. This script
-// reads each workspace's runtime `dependencies`, computes a topological order,
-// and runs each package's `build` script sequentially so a package's deps are
+// packages that appear later, so it builds before its own dependencies' dist/
+// exists and fails with TS2307 "Cannot find module" errors. This script reads
+// each workspace's runtime `dependencies`, computes a topological order, and
+// runs each package's `build` script sequentially so a package's deps are
 // always built first.
 //
 // devDependencies are intentionally excluded — they are not build-order inputs
-// for the published library (e.g. hal's devDependency on board-arduino-uno is
+// for the published library (e.g. hal's devDependency on @typecad/expect is
 // for its hardware-test harness, not for compiling src/).
 
 import { readFileSync } from 'node:fs';
@@ -22,7 +22,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rootPkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
 
 // Each workspace entry is a path relative to the repo root (e.g.
-// 'packages/cuttlefish', 'boards/board-esp32s3', 'mcus/mcu-esp32s3'). The
+// 'packages/cuttlefish', 'packages/framework-zephyr'). The
 // package's directory name is the last path segment. We key everything by that
 // name so dependency lookups (@typecad/<name>) match across the graph, while
 // keeping the original relative path for filesystem resolution.

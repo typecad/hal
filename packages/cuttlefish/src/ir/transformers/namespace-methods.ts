@@ -95,7 +95,7 @@ export function resolveNamespaceMethodCall(
 
   if (ns === "Random") {
     // Random.* lowers to the random.* HAL op family, which frameworks lower to
-    // their platform PRNG (Arduino random()/randomSeed(), ESP-IDF esp_random()).
+    // their platform PRNG (e.g. Zephyr's sys_rand).
     // Previously these emitted bare `random()`/`randomSeed()` calls, which only
     // resolve to symbols on Arduino-core frameworks — on ESP-IDF they were
     // undefined and failed at C++ link time.

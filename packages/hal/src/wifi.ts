@@ -1,221 +1,189 @@
+// ---------------------------------------------------------------------------
+// WiFi — the thin Zephyr-shaped station/AP wrappers
+//
+// The link policy is CONSTRUCTION facts: credentials, security, band/channel,
+// join timeout, power-save, and (optionally) static IPv4 all ride the join op
+// (the sensor discipline — every op carries its construction facts). Methods
+// lower 1:1 onto Zephyr's net_mgmt/wifi_mgmt surface:
+//
+//   join()    → wifi_connect_req_params from the facts + a bounded wait on
+//               the L4 connected flag (conn_mgr monitor raises it post-DHCP,
+//               or immediately when static IPv4 facts are configured).
+//               Returns boolean — no exceptions. Awaitable in async contexts
+//               (start + poll split, like Time.sleep).
+//   leave()   → NET_REQUEST_WIFI_DISCONNECT
+//   linked() / rssi() / ip() / mac() → iface-status + net_if queries
+//   onUp() / onDrop() → the L4 / IPv4-addr net_mgmt event callbacks
+//   scan()    → one blocking scan, results read through the Scan handle
+//               (fixed pool, no heap)
+//
+// WiFiAP carries the SoftAP facts (ssid/psk/channel) the same way:
+// start()/stop() map to NET_REQUEST_WIFI_AP_ENABLE/DISABLE.
+// ----------------------------------------------------------------------------
+
 import {
-  wifiConnect,
-  wifiConnectStart,
-  wifiDisconnect,
-  wifiStatus,
-  wifiIsConnected,
-  wifiLocalIp,
-  wifiRssi,
-  wifiMac,
-  wifiSetHostname,
-  wifiSetStaticIp,
-  wifiSetAutoReconnect,
-  wifiSetPowerSave,
-  wifiSetTxPower,
-  wifiOnEvent,
-  wifiApStart,
-  wifiApStop,
-  wifiApClientCount,
-  wifiApIp,
-  wifiApSetChannel,
-  wifiApSetHidden,
-  wifiApSetMaxClients,
-  wifiScan,
-  wifiScanStart,
-  wifiScanCount,
-  wifiScanSsid,
-  wifiScanRssi,
-  wifiScanEncryption,
-  wifiScanChannel,
-  wifiSaveCredentials,
-  wifiConnectSaved,
-  wifiClearCredentials,
-  wifiWaitConnected,
-  wifiWaitDisconnected,
+  wifiJoin, wifiConnectStart, wifiDisconnect, wifiIsConnected, wifiLocalIp,
+  wifiRssi, wifiMac, wifiOnEvent, wifiScan, wifiScanCount, wifiScanSsid,
+  wifiScanRssi, wifiScanEncryption, wifiScanChannel, wifiApStart, wifiApStop,
 } from './emit.js';
 import { callback } from './callback.js';
 
-/** Normalized WiFi link status (mapped from esp_wifi events by the runtime shim). */
-export enum WiFiStatus {
-  Idle = 0,
-  Connecting = 1,
-  Connected = 2,
-  ConnectFailed = 3,
-  Disconnected = 4,
-}
+export class WiFi {
+  /** Security tokens — lowered to Zephyr's wifi_security_type enum. */
+  static readonly OPEN = 0;
+  static readonly WPA2 = 1;
+  static readonly WPA3 = 2;
+  static readonly WPA2_WPA3 = 3;
 
-export enum WiFiEncryption {
-  Open = 0,
-  WEP = 1,
-  WPA = 2,
-  WPA2 = 3,
-  WPA3 = 4,
-  Enterprise = 5,
-}
+  /** Band tokens. */
+  static readonly BAND_2_4 = 0;
+  static readonly BAND_5 = 1;
 
-/**
- * WiFi radio / link control, lowered to native ESP-IDF (`esp_wifi` /
- * `esp_netif` / `esp_event` / `nvs_flash`) by framework-esp32.
- *
- * No `include()` calls here — ESP-IDF headers are framework-owned and added
- * via forcedIncludes when the program uses wifi.* ops (the Preferences
- * lesson: HAL files must not carry platform headers). Frameworks without a
- * wifi lowering reject these ops with a diagnostic.
- */
-export class WiFiClass {
-  static readonly __instance_name = "WiFi";
+  /** Power-save token — pass PS_OFF to disable the radio's modem sleep. */
+  static readonly PS_OFF = 0;
 
-  /** Blocking at top level; cooperatively awaitable inside async functions. */
-  connect(ssid: string, password?: string, timeoutMs: number = 15000): Promise<boolean> {
-    wifiConnect(ssid, password, timeoutMs);
-    return Promise.resolve(false);
+  private readonly _ssid: string;
+  private readonly _psk: string | undefined;
+  private readonly _security: number;
+  private readonly _channel: number;
+  private readonly _band: number;
+  private readonly _timeoutMs: number;
+  private readonly _ps: number;
+  private readonly _ipAddr: string | undefined;
+  private readonly _gateway: string | undefined;
+  private readonly _netmask: string | undefined;
+
+  /** Construct a station link policy. `psk` omitted → open network;
+   *  `security` defaults WPA2 when a psk is present, OPEN otherwise;
+   *  `channel` 0/omitted = any. `ipv4` opts out of DHCP with static facts. */
+  constructor(ssid: string, opts: {
+    psk?: string;
+    security?: number;
+    channel?: number;
+    band?: number;
+    timeoutMs?: number;
+    powerSave?: number;
+    ipv4?: { addr: string; gateway: string; netmask: string };
+  } = {}) {
+    this._ssid = ssid;
+    this._psk = opts.psk;
+    this._security = opts.security ?? (opts.psk !== undefined ? WiFi.WPA2 : WiFi.OPEN);
+    this._channel = opts.channel ?? 0;
+    this._band = opts.band ?? WiFi.BAND_2_4;
+    this._timeoutMs = opts.timeoutMs ?? 15000;
+    this._ps = opts.powerSave ?? 0;
+    this._ipAddr = opts.ipv4?.addr;
+    this._gateway = opts.ipv4?.gateway;
+    this._netmask = opts.ipv4?.netmask;
   }
 
-  /** Fire-and-forget STA begin; poll status() / untilConnected(). */
-  connectAsync(ssid: string, password?: string): void {
-    wifiConnectStart(ssid, password);
+  /** Join the network. Blocks (bounded by timeoutMs, pumping a mounted UI's
+   *  tick between polls); returns true once IP connectivity is up, false on
+   *  timeout or missing radio. Idempotent-ish: re-joining re-associates. */
+  join(): boolean {
+    return wifiJoin(this._ssid, this._psk, this._security, this._channel,
+      this._band, this._timeoutMs, this._ps, this._ipAddr, this._gateway,
+      this._netmask);
   }
 
-  untilConnected(timeoutMs: number = 15000): Promise<boolean> {
-    wifiWaitConnected(timeoutMs);
-    return Promise.resolve(false);
+  /** Fire-and-forget join — poll linked() or await in an async function. */
+  joinStart(): void {
+    wifiConnectStart(this._ssid, this._psk);
   }
 
-  untilDisconnected(): Promise<void> {
-    wifiWaitDisconnected();
-    return Promise.resolve();
-  }
-
-  disconnect(): void {
+  /** Leave the network (NET_REQUEST_WIFI_DISCONNECT). */
+  leave(): void {
     wifiDisconnect();
   }
 
-  isConnected(): boolean {
+  /** True once IP connectivity is up (the L4 flag — post-DHCP, or after
+   *  static IPv4 facts are applied). */
+  linked(): boolean {
     return wifiIsConnected();
   }
 
-  status(): WiFiStatus {
-    return wifiStatus() as WiFiStatus;
-  }
-
-  localIP(): string {
-    return wifiLocalIp();
-  }
-
+  /** Signal strength in dBm (iface-status query). */
   rssi(): number {
     return wifiRssi();
   }
 
-  macAddress(): string {
+  /** The interface's global IPv4 address as text ("0.0.0.0" when down). */
+  ip(): string {
+    return wifiLocalIp();
+  }
+
+  /** The radio's BSSID packed into a number (iface-status query). */
+  mac(): number {
     return wifiMac();
   }
 
-  hostname(name: string): this {
-    wifiSetHostname(name);
-    return this;
+  /** Fires once DHCP (or static config) assigns an address. */
+  onUp(handler: () => void): void {
+    wifiOnEvent('connect', callback(handler));
   }
 
-  staticIP(ip: string, gateway: string, subnet: string, dns?: string): this {
-    wifiSetStaticIp(ip, gateway, subnet, dns);
-    return this;
+  /** Fires on link loss (deferred off the net_mgmt event chain so the
+   *  callback may safely call join()). */
+  onDrop(handler: () => void): void {
+    wifiOnEvent('disconnect', callback(handler));
   }
 
-  autoReconnect(enabled: boolean): this {
-    wifiSetAutoReconnect(enabled);
-    return this;
+  /** One blocking scan; read the results through the returned handle.
+   *  Fixed pool of 16 — no heap. */
+  scan(): Scan {
+    wifiScan();
+    return new Scan();
   }
+}
 
-  powerSave(mode: "default" | "none"): this {
-    wifiSetPowerSave(mode);
-    return this;
-  }
-
-  /** Cap TX power in dBm (roughly 2–20). Safe to call before connect() —
-   *  the value is applied after the radio starts. */
-  txPower(dbm: number): this {
-    wifiSetTxPower(dbm);
-    return this;
-  }
-
-  saveCredentials(ssid: string, password: string): void {
-    wifiSaveCredentials(ssid, password);
-  }
-
-  connectSaved(timeoutMs: number = 15000): boolean {
-    return wifiConnectSaved(timeoutMs);
-  }
-
-  clearCredentials(): void {
-    wifiClearCredentials();
-  }
-
-  onConnect(handler: () => void): void {
-    wifiOnEvent("connect", callback(handler));
-  }
-
-  onDisconnect(handler: () => void): void {
-    wifiOnEvent("disconnect", callback(handler));
-  }
-
-  startAP(ssid: string, password?: string): boolean {
-    return wifiApStart(ssid, password);
-  }
-
-  apChannel(ch: number): this {
-    wifiApSetChannel(ch);
-    return this;
-  }
-
-  apHidden(hidden: boolean): this {
-    wifiApSetHidden(hidden);
-    return this;
-  }
-
-  apMaxClients(n: number): this {
-    wifiApSetMaxClients(n);
-    return this;
-  }
-
-  stopAP(): void {
-    wifiApStop();
-  }
-
-  apClientCount(): number {
-    return wifiApClientCount();
-  }
-
-  apIP(): string {
-    return wifiApIp();
-  }
-
-  scan(): number {
-    return wifiScan();
-  }
-
-  scanAsync(): Promise<void> {
-    wifiScanStart();
-    return Promise.resolve();
-  }
-
-  scanCount(): number {
+/** Read-only view over the last scan's fixed result pool. */
+export class Scan {
+  /** Number of networks found. */
+  count(): number {
     return wifiScanCount();
   }
 
-  scanSSID(i: number): string {
+  /** Network name ("" when out of range). */
+  ssid(i: number): string {
     return wifiScanSsid(i);
   }
 
-  scanRSSI(i: number): number {
+  /** Signal strength in dBm. */
+  rssi(i: number): number {
     return wifiScanRssi(i);
   }
 
-  scanEncryption(i: number): WiFiEncryption {
-    return wifiScanEncryption(i) as WiFiEncryption;
+  /** Security family as text: "open" / "wpa" / "wpa2" / "wpa3". */
+  security(i: number): string {
+    return wifiScanEncryption(i);
   }
 
-  scanChannel(i: number): number {
+  /** Channel number (0 when unknown). */
+  channel(i: number): number {
     return wifiScanChannel(i);
   }
 }
 
-export const WiFi = new WiFiClass();
+/** SoftAP — the AP facts at construction, then start/stop. */
+export class WiFiAP {
+  private readonly _ssid: string;
+  private readonly _psk: string | undefined;
+  private readonly _channel: number;
+
+  /** Construct an AP. `psk` omitted → open network. `channel` 0 = auto. */
+  constructor(ssid: string, opts: { psk?: string; channel?: number } = {}) {
+    this._ssid = ssid;
+    this._psk = opts.psk;
+    this._channel = opts.channel ?? 0;
+  }
+
+  /** Bring the interface up as an AP (NET_REQUEST_WIFI_AP_ENABLE). */
+  start(): void {
+    wifiApStart(this._ssid, this._psk, this._channel);
+  }
+
+  /** Tear the AP down (NET_REQUEST_WIFI_AP_DISABLE). */
+  stop(): void {
+    wifiApStop();
+  }
+}

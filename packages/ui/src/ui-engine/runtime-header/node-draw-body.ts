@@ -49,9 +49,9 @@ struct UINodeDrawCtx {
 // which case the caller is responsible for the post-switch epilogue.
 //
 // The ctx parameter is typed const void* (cast back to UINodeDrawCtx* below):
-// the Arduino .ino preprocessor auto-inserts a forward declaration of every
-// function near the top of the sketch, BEFORE this struct is defined, so a
-// struct-typed parameter makes that generated prototype fail to compile
+// the emitter auto-inserts a forward declaration of every function near the
+// top of the program, BEFORE this struct is defined, so a struct-typed
+// parameter makes that generated prototype fail to compile
 // ("'UINodeDrawCtx' does not name a type"). Primitive-only parameters keep
 // the auto-generated prototype valid; call sites still pass &ctx, which
 // converts implicitly to const void*.
@@ -502,7 +502,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
 
           // On first draw (lastTextWidth < 0), draw everything.
           // Otherwise incremental: only update the changed portion.
-          uint8_t pct = constrain(__ui_nodes[i].value, 0, 100);
+          uint8_t pct = __ui_constrain(__ui_nodes[i].value, 0, 100);
           int16_t fillW = (static_cast<int32_t>(bw - 2) * pct) / 100;
           int16_t prevW = __ui_nodes[i].lastTextWidth; // reused as previous fill width
 
@@ -544,7 +544,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           int16_t rMax = __ui_nodes[i].rangeMax;
           int16_t range = rMax - rMin;
           if (range <= 0) range = 100;
-          int16_t pct = constrain(__ui_nodes[i].value, rMin, rMax) - rMin;
+          int16_t pct = __ui_constrain(__ui_nodes[i].value, rMin, rMax) - rMin;
           int16_t fillW = (static_cast<int32_t>(bw - 8) * pct) / range;
           // lastTextWidth carries the previous fill width, or -1 if this node
           // has never been drawn (fillW=0 at value=min is a valid thumb pos).

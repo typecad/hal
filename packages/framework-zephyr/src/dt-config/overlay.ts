@@ -6,7 +6,7 @@
 // descriptor knows, emit a `&nodelabel { status = "okay"; }` block enabling it.
 // West merges this over the board's base DT; we never rewrite the base.
 //
-// This is the Zephyr analog of Arduino's library-resolution hooks: the artifact
+// Framework library-resolution hook: the artifact
 // that brings external capabilities into a build. (Arduino does it by parsing
 // library headers into .d.ts; Zephyr does it by enabling DT nodes + Kconfig.)
 // ---------------------------------------------------------------------------
@@ -14,7 +14,12 @@
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 import type { ZephyrDisplayProfile } from '../display/profiles.js';
 import { PANEL_CONTROLLER_DEFAULTS, panelControllerFor } from '../display/profiles.js';
+import { SENSOR_PART_INFO } from '@typecad/hal';
 import type { KconfigUsage } from './kconfig.js';
+
+/** Display panel CS default — shared by the display block and the SPI-sensor
+ *  cs-gpios merge so both sites write the same entry. */
+const DEFAULT_DISPLAY_CS = 5;
 
 /**
  * Generate the overlay source for a board + usage. Returns the overlay text
@@ -142,11 +147,48 @@ export function generateOverlay(
     block(c.nodeLabel, extra);
   };
 
-  if (usage.usesI2c && chip.i2c) {
+  // Sensors ride a bus: a constructed sensor must enable its controller even
+  // when the program never calls i2c.*/spi.* directly (the sensor device
+  // handle is the only bus user) — merge their instances into the used sets.
+  const sensorParts = usage.sensorParts ?? [];
+  const i2cSensors = sensorParts.filter((s) => s.busKind !== 'spi');
+  const spiSensors = sensorParts.filter((s) => s.busKind === 'spi');
+  const spiTargets = usage.spiTargets ?? [];
+  const i2cInstances = new Set(usage.i2cUsedInstances ?? []);
+  for (const sp of i2cSensors) i2cInstances.add(sp.busIndex);
+  if ((usage.usesI2c || i2cSensors.length > 0) && chip.i2c) {
     for (const [i, c] of chip.i2c.controllers.entries()) {
-      if (usage.i2cUsedInstances && !usage.i2cUsedInstances.includes(i)) continue;
+      if (usage.i2cUsedInstances && !i2cInstances.has(i)) continue;
       controllerBlock(c);
     }
+  }
+  const spiInstances = new Set(usage.spiUsedInstances ?? []);
+  for (const sp of spiSensors) spiInstances.add(sp.busIndex);
+  for (const t of spiTargets) spiInstances.add(t.busIndex);
+  if ((usage.usesSpi || spiSensors.length > 0 || spiTargets.length > 0) && chip.spi) {
+    for (const [i, c] of chip.spi.controllers.entries()) {
+      if (usage.spiUsedInstances && !spiInstances.has(i)) continue;
+      controllerBlock(c);
+    }
+  }
+  // One DT child node per constructed I2C sensor — THE enable switch for the
+  // driver (its Kconfig is `default y` on this node's presence). The nodelabel
+  // is derived identically to the lowering's DEVICE_DT_GET target
+  // (lowering/sensor.ts sensorNames) — the two cannot drift.
+  for (const sp of i2cSensors) {
+    const ctrl = chip.i2c?.controllers[sp.busIndex];
+    const info = SENSOR_PART_INFO[sp.part.replace(/^SENSOR\./, '')];
+    if (!ctrl || !info) continue; // the lowering already threw on unknown parts
+    const nodeName = info.compatible.split(',')[1] ?? sp.part;
+    const addrHex = sp.port.toString(16);
+    lines.push(`&${ctrl.nodeLabel} {`);
+    lines.push(`    tc_${sp.part.replace(/^SENSOR\./, '')}_i2c${sp.busIndex}_0x${addrHex}: ${nodeName}@${addrHex} {`);
+    lines.push(`        compatible = "${info.compatible}";`);
+    lines.push(`        reg = <0x${addrHex}>;`);
+    emitAlert(lines, chip, sp.alertPin, info.alert, 8);
+    lines.push('    };');
+    lines.push('};');
+    lines.push('');
   }
   if (usage.usesSpi && chip.spi) {
     for (const [i, c] of chip.spi.controllers.entries()) {
@@ -303,6 +345,87 @@ export function generateOverlay(
   // DT defaults to a no-PSRAM module variant (e.g. wroom_n8); a PSRAM-capable
   // module (N16R8, N8R8) needs the node enabled + sized so the linker maps
   // .ext_ram sections into the real PSRAM. OPI on ESP32-S3 = 8MB octal PSRAM.
+  // SPI sensors: children whose reg is their cs-gpios INDEX. DT property
+  // assignment replaces the whole property, so cs-gpios is written here with
+  // every sensor CS on the controller, after the display block — a display
+  // panel sharing the bus is a wiring conflict this layer cannot merge (its
+  // CS comes from config wiring), so warn instead of silently dropping it.
+  // spi-max-frequency defaults to 1 MHz — conservative for sensors whose
+  // datasheet max isn't in any binding; the constructor opts override it.
+  const SPI_SENSOR_HZ = 1000000;
+  const spiByCtrl = new Map<number, typeof spiSensors>();
+  for (const sp of spiSensors) {
+    const list = spiByCtrl.get(sp.busIndex) ?? [];
+    list.push(sp);
+    spiByCtrl.set(sp.busIndex, list);
+  }
+  // Target-only controllers (no sensors) still need the cs-gpios block.
+  for (const t of spiTargets) {
+    if (!spiByCtrl.has(t.busIndex)) spiByCtrl.set(t.busIndex, []);
+  }
+  for (const [idx, sensors] of spiByCtrl) {
+    const ctrl = chip.spi?.controllers[idx];
+    if (!ctrl) continue;
+    // A display panel on the same controller already wrote cs-gpios earlier
+    // in this overlay (its CS at index 0, an XPT2046 at 1). DT property
+    // assignment replaces, so this rewrite carries BOTH: the display entries
+    // first — keeping the panel/touch reg indexes stable — then the sensor CS
+    // pins. The entry construction mirrors emitDisplayNode's defaults via the
+    // shared DEFAULT_DISPLAY_CS/DEFAULT_XPT2046_CS constants.
+    const displayEntries: string[] = [];
+    if (display && (display.busLabel ?? 'spi2') === ctrl.nodeLabel) {
+      const displayCs = wiring?.cs ?? DEFAULT_DISPLAY_CS;
+      displayEntries.push(`<&gpio${displayCs <= 31 ? '0' : '1'} ${displayCs} GPIO_ACTIVE_LOW>`);
+      if (touch?.controller === 'xpt2046') {
+        const touchCs = touch.cs ?? DEFAULT_XPT2046_CS;
+        displayEntries.push(`<&gpio${touchCs <= 31 ? '0' : '1'} ${touchCs} GPIO_ACTIVE_LOW>`);
+      }
+    }
+    // Thin SPI targets ride this controller too: their CS entries append
+    // after the sensor pins, and their child nodes carry no compatible —
+    // a raw spi_dt_spec peer, not a driver node.
+    const ctrlTargets = spiTargets.filter((t) => t.busIndex === idx);
+    lines.push(`&${ctrl.nodeLabel} {`);
+    lines.push(`    cs-gpios = ${displayEntries.concat(sensors.map((sp) => {
+      const gc = chip.gpioControllers?.find((g) => sp.port >= g.minPin && sp.port <= g.maxPin);
+      const ctrlLabel = gc?.nodelabel ?? 'gpio0';
+      return `<&${ctrlLabel} ${sp.port} GPIO_ACTIVE_LOW>`;
+    }), ctrlTargets.map((t) => {
+      const gc = chip.gpioControllers?.find((g) => t.cs >= g.minPin && t.cs <= g.maxPin);
+      const ctrlLabel = gc?.nodelabel ?? 'gpio0';
+      return `<&${ctrlLabel} ${t.cs} GPIO_ACTIVE_LOW>`;
+    })).join(', ')};`);
+    sensors.forEach((sp, sensorIdx) => {
+      const info = SENSOR_PART_INFO[sp.part.replace(/^SENSOR\./, '')];
+      if (!info) return;
+      const nodeName = info.compatible.split(',')[1] ?? sp.part;
+      const csIndex = displayEntries.length + sensorIdx;
+      lines.push(`    tc_${sp.part}_spi${idx}_cs${sp.port}: ${nodeName}@${csIndex} {`);
+      lines.push(`        compatible = "${info.compatible}";`);
+      lines.push(`        reg = <${csIndex}>;`);
+      lines.push(`        spi-max-frequency = <${sp.spiHz && sp.spiHz > 0 ? sp.spiHz : SPI_SENSOR_HZ}>;`);
+      // mode bits: 1 = CPHA, 2 = CPOL (presence props, no value).
+      if ((sp.spiMode ?? 0) & 2) lines.push('        spi-cpol;');
+      if ((sp.spiMode ?? 0) & 1) lines.push('        spi-cpha;');
+      emitAlert(lines, chip, sp.alertPin, info.alert, 8);
+      lines.push('    };');
+    });
+    ctrlTargets.forEach((t, targetIdx) => {
+      const csIndex = displayEntries.length + sensors.length + targetIdx;
+      lines.push(`    tc_spit_spi${idx}_cs${t.cs}: spidev@${csIndex} {`);
+      // The app-local cuttlefish,spi-target binding (no driver — it makes
+      // gen_defines emit the spi properties SPI_DT_SPEC_GET reads).
+      lines.push(`        compatible = "cuttlefish,spi-target";`);
+      lines.push(`        reg = <${csIndex}>;`);
+      lines.push(`        spi-max-frequency = <${t.hz && t.hz > 0 ? t.hz : SPI_SENSOR_HZ}>;`);
+      if ((t.mode ?? 0) & 2) lines.push('        spi-cpol;');
+      if ((t.mode ?? 0) & 1) lines.push('        spi-cpha;');
+      lines.push('    };');
+    });
+    lines.push('};');
+    lines.push('');
+  }
+
   if (usage.psram) {
     lines.push('&psram0 {');
     lines.push('    status = "okay";');
@@ -329,10 +452,71 @@ function emitPwmNodes(
   chip: ZephyrChipDescriptor,
   usedPins?: readonly number[],
 ): void {
-  const synthesized = (chip.pwm?.specs ?? []).filter(
+  const staticSynth = (chip.pwm?.specs ?? []).filter(
     (s) => s.controller && s.channel != null && !s.dtSpec,
   ).filter((s) => !usedPins || usedPins.includes(s.pin));
+
+  // Matrix PWM (ESP32 LEDC): channels are assigned here, over the pins the
+  // program actually drives (ascending — the same order lowering/pwm.ts
+  // emits the alias vars in; the C++ is channel-blind, so this is the single
+  // place a channel number is decided). The espressif,esp32-ledc binding
+  // needs three pieces per channel: a pinctrl pinmux token routing the
+  // channel to the pad (LEDC_CH<ch>_GPIO<pin> — every channel×pad pair
+  // exists in esp32s3-pinctrl.h, already included via the SoC dtsi), a
+  // channel child node (the driver's DT_INST_FOREACH_CHILD reads reg +
+  // timer from each), and the pwm-leds consumer the alias resolves to.
+  const m = chip.pwm?.matrix;
+  let matrixSynth: { pin: number; controller: string; channel: number }[] = [];
+  if (m) {
+    const pins = [...new Set(usedPins ? usedPins.filter((p) => m.pins.includes(p)) : m.pins)]
+      .sort((a, b) => a - b);
+    if (pins.length > m.channelCount) {
+      throw new Error(
+        `framework-zephyr: the program drives ${pins.length} PWM pins but ${chip.id}'s ` +
+        `${m.controller} exposes only ${m.channelCount} channels — drop ` +
+        `${pins.length - m.channelCount} pwm/tone pin(s).`,
+      );
+    }
+    matrixSynth = pins.map((pin, ch) => ({ pin, controller: m.controller, channel: ch }));
+    lines.push('&pinctrl {');
+    lines.push(`    tc_${m.controller}_default: tc-${m.controller}-default {`);
+    lines.push('        group1 {');
+    lines.push(`            pinmux = ${pins.map((p, ch) => `<LEDC_CH${ch}_GPIO${p}>`).join(', ')};`);
+    lines.push('            output-enable;');
+    lines.push('        };');
+    lines.push('    };');
+    lines.push('};');
+    lines.push('');
+    // The four LEDC timers are round-robined so co-driven channels share a
+    // timer only past four (sharing is fine at equal periods; the driver
+    // reconfigures on pwm_set_dt when they differ).
+    lines.push(`&${m.controller} {`);
+    lines.push('    status = "okay";');
+    lines.push(`    pinctrl-0 = <&tc_${m.controller}_default>;`);
+    lines.push('    pinctrl-names = "default";');
+    lines.push('    #address-cells = <1>;');
+    lines.push('    #size-cells = <0>;');
+    for (let ch = 0; ch < pins.length; ch++) {
+      lines.push(`    channel${ch}@${ch} {`);
+      lines.push(`        reg = <${ch}>;`);
+      lines.push(`        timer = <${ch % 4}>;`);
+      lines.push('    };');
+    }
+    lines.push('};');
+    lines.push('');
+  }
+
+  const synthesized = staticSynth.concat(matrixSynth);
   if (synthesized.length === 0) return;
+  // The pwms cells name the polarity as a macro (PWM_POLARITY_NORMAL). It is
+  // NOT universally available: only dts include chains that already use PWM
+  // bindings pull <zephyr/dt-bindings/pwm/pwm.h> in (STM32 does; the
+  // ESP32-S3 chain does not), so the overlay carries its own include.
+  // Spliced after the header comments, the established pattern (see the
+  // esp32s3-pinctrl.h splice above); guarded for the double-emit case.
+  if (!lines.includes('#include <zephyr/dt-bindings/pwm/pwm.h>')) {
+    lines.splice(2, 0, '#include <zephyr/dt-bindings/pwm/pwm.h>', '');
+  }
   // Enable each distinct PWM controller node (idempotent when already okay).
   // 16-bit fit: STM32 timers count period cycles in a 16-bit ARR, and the
   // SoC dtsi default is st,prescaler = <0> (÷1) — a 20 ms servo period at
@@ -340,9 +524,11 @@ function emitPwmNodes(
   // descriptor declares the timer clock, derive the smallest divider that
   // fits the controller's slowest used period and override the prescaler
   // on the timers parent node (the property lives there, not on the pwm
-  // child). pwm4 → timers4 is the STM32 nodelabel convention.
+  // child). pwm4 → timers4 is the STM32 nodelabel convention. Matrix
+  // controllers are skipped — the block above already enabled them (with
+  // their pinctrl + channel children, which this loop doesn't know).
   const clockHz = chip.pwm?.clockHz;
-  for (const controller of [...new Set(synthesized.map((s) => s.controller!))]) {
+  for (const controller of [...new Set(staticSynth.map((s) => s.controller!))]) {
     lines.push(`&${controller} {`);
     lines.push('    status = "okay";');
     lines.push('};');
@@ -351,7 +537,7 @@ function emitPwmNodes(
     const timersMatch = controller.match(/^pwm(\d+)$/);
     if (!timersMatch) continue;
     const maxPeriodNs = Math.max(
-      ...synthesized.filter((s) => s.controller === controller).map((s) => s.periodNs ?? 20_000_000),
+      ...staticSynth.filter((s) => s.controller === controller).map((s) => s.periodNs ?? 20_000_000),
     );
     // cycles = clockHz * period_s / divider ≤ 65536 (driver allows
     // UINT16_MAX + 1); binding value is divider - 1 (CLK/(prescaler+1)).
@@ -427,6 +613,15 @@ function emitAdcNode(
  * appended as the second cs-gpios entry (the touch node uses reg = <1>) — DT
  * property assignment replaces, so both entries must be written together.
  */
+/** Emit alert-gpios for parts whose binding declares it (active high — the
+ *  bindings describe the sensor's output level, e.g. sht3xd's ALERT). */
+function emitAlert(lines: string[], chip: ZephyrChipDescriptor, alertPin: number | undefined, supported: boolean, indent: number): void {
+  if (alertPin === undefined || alertPin < 0 || !supported) return;
+  const gc = chip.gpioControllers?.find((g) => alertPin >= g.minPin && alertPin <= g.maxPin);
+  const pad = ' '.repeat(indent);
+  lines.push(`${pad}alert-gpios = <&${gc?.nodelabel ?? 'gpio0'} ${alertPin} GPIO_ACTIVE_HIGH>;`);
+}
+
 function emitDisplayNode(
   lines: string[],
   display: ZephyrDisplayProfile,
@@ -438,7 +633,7 @@ function emitDisplayNode(
   const compatible = display.dtCompatible ?? PANEL_CONTROLLER_DEFAULTS[controller].dtCompatible;
   const dc = wiring?.dc ?? 17;
   const rst = wiring?.rst ?? 16;
-  const cs = wiring?.cs ?? 5;
+  const cs = wiring?.cs ?? DEFAULT_DISPLAY_CS;
   const freq = wiring?.spiFrequency ?? 80000000;
   // DT node describes the NATIVE panel geometry; the effective (rotated)
   // dimensions live in the display profile.

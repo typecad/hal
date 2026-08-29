@@ -1,0 +1,58 @@
+{
+  "version": 1,
+  "mcu": {
+    "symbol": "STM32F411CEU6",
+    "package": "UFQFPN48"
+  },
+  "connectedPins": {
+    "PA5": {
+      "pinName": "PA5",
+      "pinType": "bidirectional",
+      "net": "net_led",
+      "externalComponents": [
+        { "reference": "D1", "value": "green 0603 LED", "dnp": false },
+        { "reference": "R1", "value": "1k", "dnp": false }
+      ]
+    },
+    "PA0": {
+      "pinName": "PA0",
+      "pinType": "bidirectional",
+      "net": "net_button",
+      "externalComponents": [
+        { "reference": "SW1", "value": "tact switch", "dnp": false },
+        { "reference": "R2", "value": "100k pull-up", "dnp": false }
+      ]
+    },
+    "PA1": {
+      "pinName": "PA1",
+      "pinType": "bidirectional",
+      "net": "net_sensor",
+      "externalComponents": [
+        { "reference": "J1", "value": "analog sensor header", "dnp": false }
+      ]
+    },
+    "PA9": {
+      "pinName": "PA9",
+      "pinType": "bidirectional",
+      "net": "net_uart_tx",
+      "boardName": "TX",
+      "externalComponents": [
+        { "reference": "U2", "value": "USB-UART bridge (RX side)", "dnp": false }
+      ]
+    },
+    "PA10": {
+      "pinName": "PA10",
+      "pinType": "bidirectional",
+      "net": "net_uart_rx",
+      "boardName": "RX",
+      "externalComponents": [
+        { "reference": "U2", "value": "USB-UART bridge (TX side)", "dnp": false }
+      ]
+    }
+  },
+  "availablePeripherals": {
+    "i2c": false,
+    "spi": false,
+    "uart": true
+  }
+}

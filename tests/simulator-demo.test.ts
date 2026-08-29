@@ -51,11 +51,11 @@ function tick(hw: StreetLightHardware) {
 // ===========================================================================
 // SECTION 2: THE VIRTUAL TEST BENCH
 // ---------------------------------------------------------------------------
-// This function creates a virtual "Arduino Uno" and wires up our logic.
+// This function creates a virtual board and wires up our logic.
 // ===========================================================================
 
 function setupTestHarness() {
-  const board = createSimBoard({ boardType: "arduino-uno" });
+  const board = createSimBoard({ pwmPins: [9] });
 
   const hw: StreetLightHardware = {
     sensor: board.analog(0), // Light sensor on A0

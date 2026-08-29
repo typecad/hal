@@ -331,6 +331,7 @@ export function classDeclarationToIR(
         visibility: methodVisibility,
         isStatic,
         isAbstract: isMethodAbstract,
+        isAsync: member.modifiers?.some(m => m.kind === ts.SyntaxKind.AsyncKeyword) ?? false,
         isOverride,
         ...(member.typeParameters && member.typeParameters.length > 0
           ? { typeParameters: member.typeParameters.map(tp => tp.name.text) }

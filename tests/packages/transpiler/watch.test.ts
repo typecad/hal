@@ -9,14 +9,14 @@ import { discoverWatchDirs, isRelevantChange, parseCommandLine } from "@typecad/
 describe("watch", () => {
   describe("discoverWatchDirs", () => {
     it("returns the entry file's directory", () => {
-      const dirs = discoverWatchDirs("/project/src/sketch.ts");
+      const dirs = discoverWatchDirs("/project/src/main.ts");
       expect(dirs).toHaveLength(1);
       expect(dirs[0]).toBe(path.resolve("/project/src"));
     });
 
     it("includes config directory when config is in a different directory", () => {
       const dirs = discoverWatchDirs(
-        "/project/src/sketch.ts",
+        "/project/src/main.ts",
         "/project/cuttlefish.config.ts",
       );
       expect(dirs).toHaveLength(2);
@@ -26,7 +26,7 @@ describe("watch", () => {
 
     it("deduplicates when entry and config are in the same directory", () => {
       const dirs = discoverWatchDirs(
-        "/project/sketch.ts",
+        "/project/main.ts",
         "/project/cuttlefish.config.ts",
       );
       expect(dirs).toHaveLength(1);
@@ -38,7 +38,7 @@ describe("watch", () => {
     const entryDir = path.resolve("/project/src");
 
     it("accepts .ts file changes", () => {
-      expect(isRelevantChange("/project/src/sketch.ts", entryDir)).toBe(true);
+      expect(isRelevantChange("/project/src/main.ts", entryDir)).toBe(true);
     });
 
     it("accepts .ts file in subdirectory", () => {
@@ -82,38 +82,38 @@ describe("watch", () => {
   describe("watch flag parsing", () => {
 
     it("parses --watch flag", () => {
-      const result = parseCommandLine(["node", "typecad", "sketch.ts", "--watch"]);
+      const result = parseCommandLine(["node", "typecad", "main.ts", "--watch"]);
       expect(result).toMatchObject({ watch: true, command: "default" });
     });
 
     it("parses -w short flag", () => {
-      const result = parseCommandLine(["node", "typecad", "sketch.ts", "-w"]);
+      const result = parseCommandLine(["node", "typecad", "main.ts", "-w"]);
       expect(result).toMatchObject({ watch: true, command: "default" });
     });
 
     it("defaults watch to false", () => {
-      const result = parseCommandLine(["node", "typecad", "sketch.ts"]);
+      const result = parseCommandLine(["node", "typecad", "main.ts"]);
       expect(result).toMatchObject({ watch: false, command: "default" });
     });
 
     it("rejects --watch --monitor combination", () => {
       expect(() =>
-        parseCommandLine(["node", "typecad", "sketch.ts", "--watch", "--monitor", "--port", "COM4"]),
+        parseCommandLine(["node", "typecad", "main.ts", "--watch", "--monitor", "--port", "COM4"]),
       ).toThrow("--watch and --monitor cannot be used together");
     });
 
     it("allows --watch --compile", () => {
       const result = parseCommandLine([
-        "node", "typecad", "sketch.ts", "--watch", "--compile",
-        "--fqbn", "arduino:avr:uno",
+        "node", "typecad", "main.ts", "--watch", "--compile",
+        "--build-target", "blackpill_f411ce/stm32f411xe",
       ]);
       expect(result).toMatchObject({ watch: true, compile: true });
     });
 
     it("allows --watch --compile --upload", () => {
       const result = parseCommandLine([
-        "node", "typecad", "sketch.ts", "--watch", "--compile", "--upload",
-        "--fqbn", "arduino:avr:uno", "--port", "COM4",
+        "node", "typecad", "main.ts", "--watch", "--compile", "--upload",
+        "--build-target", "blackpill_f411ce/stm32f411xe", "--port", "COM4",
       ]);
       expect(result).toMatchObject({ watch: true, compile: true, upload: true });
     });

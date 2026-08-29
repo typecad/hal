@@ -3,22 +3,24 @@ import path from "node:path";
 import fs from "node:fs";
 import { parseCommandLine, printHelp } from "./utils/cli.js";
 import type { GeneratedOutputs } from "./types.js";
-import type { CreateCommandOptions, BoardAddCommandOptions } from "./types.js";
+import type { CreateCommandOptions } from "./types.js";
 import { runLibraryCommand } from "./library/cli.js";
 import type { ScaffoldProjectResult } from "./create/index.js";
 import { scaffoldProject, printCreateNextSteps, KNOWN_TARGETS, KNOWN_MCUS, frameworksForTarget, frameworkCatalogEntry, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from "./create/index.js";
-import { mcuAsTarget, findKnownMcu, findZephyrBoardForMcu, mcuSupportsZephyr, sanitizeBoardName, isValidFqbn, zephyrBoardsForMcu, type McuCreateTarget } from "./create/mcu-target.js";
+import { findPackBoard, packBoardAsTarget } from "./create/pack-targets.js";
+import { BOARD_DATA } from "./create/board-catalog.generated.js";
+import { mcuAsTarget, findKnownMcu, findZephyrBoardForMcu, mcuSupportsZephyr, sanitizeBoardName, zephyrBoardsForMcu, type McuCreateTarget } from "./create/mcu-target.js";
 import { generateFrameworkDebugArtifacts } from "./create/debug-artifacts.js";
 import { runCreateWizard } from "./create/index.js";
 import { installProjectDependencies } from "./create/install-deps.js";
 import { generateLibraryDefinitions, transpileFile } from "./transpile.js";
 import { generateDecl, generateDeclsForDirectory, generateComponentDeclsForProject } from "./libdef/cpp-to-decl.js";
-import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForSketch } from "./mapping/source-map.js";
+import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForProgram } from "./mapping/source-map.js";
 import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain.js";
 import { resolveStrategy } from "./platform/registry.js";
 import { loadFrameworkPackage } from "./framework-package.js";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js";
-import { loadCuttlefishConfig, generateVirtualTypeDeclaration } from "./config-loader.js";
+import { loadCuttlefishConfig, generateVirtualTypeDeclaration, regenBoardModule } from "./config-loader.js";
 import { generateContractBoard } from "./contract/index.js";
 import { requireUIHook, hasUIHook } from "./ui-hook.js";
 import { loadUIEngine } from "./ui/ui-bridge.js";
@@ -42,37 +44,18 @@ function displayConfigForTranspile<T extends { configPath: string; display?: obj
   return display;
 }
 
-/**
- * Apply the PSRAM config to the Arduino build: append the `PSRAM={opi|quad}`
- * menu option to the FQBN (so the Arduino core's psramFound()/ps_malloc work
- * at runtime — they're gated on the board menu option, not just the define)
- * and add `-DBOARD_HAS_PSRAM` to the defines (so the framework's PSRAM canvas
- * allocator is compiled in). No-op when psram is unset or the target isn't an
- * Arduino FQBN (the PSRAM= option is Arduino-core-specific).
- */
-function applyPsramToArduinoBuild(
-  buildTarget: string | undefined,
-  defines: Record<string, string> | undefined,
-  psram: 'opi' | 'quad' | undefined,
-): { buildTarget: string | undefined; defines: Record<string, string> } {
-  if (!psram || !buildTarget || !buildTarget.includes(':')) {
-    return { buildTarget, defines: defines ?? {} };
-  }
-  // Arduino FQBN config options follow the board:option as `key=value` pairs.
-  // Append PSRAM= if not already present (don't clobber an explicit override).
-  const psramOpt = `PSRAM=${psram}`;
-  const adjustedTarget = buildTarget.includes('PSRAM=') ? buildTarget : `${buildTarget}:${psramOpt}`;
-  const adjustedDefines = { ...(defines ?? {}) };
-  if (!('BOARD_HAS_PSRAM' in adjustedDefines)) adjustedDefines.BOARD_HAS_PSRAM = '';
-  return { buildTarget: adjustedTarget, defines: adjustedDefines };
-}
-
 async function handleCreate(options: CreateCommandOptions): Promise<void> {
   const targetId = options.target ?? options.board;
   const mcuId = options.mcu ?? (targetId ? undefined : undefined);
   const hasTarget = !!targetId || !!options.mcu;
 
-  if (hasTarget) {
+  // Preseeded targets run non-interactively ONLY when stdin is not a TTY
+  // (scripts/CI pipe nothing and expect zero prompts). A human typing
+  // `cuttlefish create x --board <target>` still gets the wizard — it
+  // prints the preseeded answers and asks only what was not specified
+  // (probe method, serial port, baud, starter).
+  const interactive = process.stdin.isTTY === true;
+  if (hasTarget && !interactive) {
     // Target resolution: --mcu names a bare-MCU entry; --target/--board may
     // name either a board or (as a convenience) an MCU entry.
     const mcuEntry = options.mcu
@@ -86,15 +69,23 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
     }
     const target = mcuEntry
       ? mcuAsTarget(mcuEntry)
-      : KNOWN_TARGETS.find(t => t.id === targetId);
+      : KNOWN_TARGETS.find(t => t.id === targetId)
+        ?? (() => {
+          // Any other Zephyr board: resolve off the generated catalog (the
+          // pack carries every board variant). Accepts a qualified target
+          // ('nucleo_f411re/stm32f411xe') or a bare board id.
+          const pack = findPackBoard(targetId!);
+          return pack ? packBoardAsTarget(pack) : undefined;
+        })();
     const mcuTarget = mcuEntry ? (target as McuCreateTarget) : undefined;
     if (!target) {
-      const available = [
-        ...KNOWN_TARGETS.map(t => `  - ${t.id} (${t.displayName})`),
-        ...KNOWN_MCUS.map(m => `  - ${m.id} (${m.displayName}) [MCU-only]`),
-      ].join("\n");
+      const curated = KNOWN_TARGETS.map(t => `  - ${t.id} (${t.displayName})`);
+      const mcus = KNOWN_MCUS.map(m => `  - ${m.id} (${m.displayName}) [bare silicon]`);
       throw new Error(
-        `Unknown target '${targetId}'. Available targets:\n${available}`,
+        `Unknown target '${targetId}'. Curated targets:\n${curated.join("\n")}\n${mcus.join("\n")}\n` +
+        `Or pass any Zephyr board target (e.g. --target nucleo_f411re/stm32f411xe,\n` +
+        `--target disco_l475_iot01a) — the full catalog is generated from the\n` +
+        `Zephyr tree. Run \`west boards\` or check the pack for names.`,
       );
     }
 
@@ -150,15 +141,14 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
 
     const projectName = options.projectName || 'my-project';
 
-    // Framework-specific build target + toolchain (Zephyr board id + 'west' vs
-    // the Arduino FQBN + 'arduino-cli').
+    // Framework-specific build target + toolchain (Zephyr board id + 'west').
     const profile = frameworkTargetProfile(target, frameworkId);
     let buildTarget = profile.buildTarget ?? target.buildTarget;
     let zephyrCustomBoard = false;
 
     // MCU-only targets carry no catalog build target. Non-interactive rules:
     // Zephyr generates a custom board unless --zephyr-board names an upstream
-    // board; Arduino requires --fqbn (the wizard prompts instead).
+    // board; native has no build target.
     if (mcuTarget) {
       if (frameworkId === 'zephyr') {
         if (options.zephyrBoard) {
@@ -176,14 +166,8 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
           buildTarget = sanitizeBoardName(projectName);
           zephyrCustomBoard = true;
         }
-      } else if (!options.fqbn || !isValidFqbn(options.fqbn)) {
-        throw new Error(
-          `MCU-only Arduino targets need an FQBN: pass --fqbn <packager:architecture:board[:options]> ` +
-          `(e.g. --fqbn arduino:avr:pro — find yours with \`arduino-cli board search '<board>'\`), ` +
-          `or run the interactive wizard (cuttlefish create --mcu ${mcuTarget.id}).`,
-        );
       } else {
-        buildTarget = options.fqbn;
+        buildTarget = undefined;
       }
     }
 
@@ -195,16 +179,25 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       targetDisplayName: target.displayName,
       isNative: target.isNative,
       architecture: target.architecture,
-      boardPackage: target.boardPackage,
+      board: target.board,
+      // Pack fact: does the board's devicetree declare an LED? Drives the
+      // starter between LED-blink and console-heartbeat (384 of 1,248 pack
+      // boards ship no gpio-leds node).
+      ...(target.board ? { hasLed: Boolean(BOARD_DATA[target.board]?.led) } : {}),
       frameworkPackage,
       framework: frameworkId,
       buildTarget,
       ...(profile.toolchainType ? { toolchainType: profile.toolchainType } : {}),
-      mcu: target.mcu,
-      ...(mcuTarget ? { sketchPin: mcuTarget.sketchPin } : {}),
+      // soc rides the config only for bare-silicon/contract projects — a
+      // board target's soc derives from the identifier at boardgen time.
+      ...(target.board ? {} : { soc: target.soc }),
+      ...(mcuTarget ? { starterPin: mcuTarget.starterPin } : {}),
       ...(zephyrCustomBoard ? { zephyrCustomBoard: true } : {}),
-      baudRate: target.isNative ? undefined : (options.baud ?? 9600),
-      includeSketch: !options.noSketch,
+      // Zephyr consoles default 115200; the 9600 default is the Arduino-class
+      // convention.
+      baudRate: target.isNative ? undefined : (options.baud ?? (frameworkId === 'zephyr' ? 115200 : 9600)),
+      includeStarter: !options.noStarter,
+      ...(options.port ? { port: options.port } : {}),
       ...(target.frameworkData
         ? { frameworkData: target.frameworkData }
         : {}),
@@ -214,11 +207,12 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
   } else {
     const wizardResult = await runCreateWizard({
       projectName: options.projectName,
-      board: options.board,
+      board: options.board ?? options.target,
       framework: options.framework,
       baud: options.baud,
-      noSketch: options.noSketch,
+      noStarter: options.noStarter,
       probe: options.probe,
+      port: options.port,
     });
 
     if (!wizardResult) {
@@ -277,29 +271,6 @@ function finalizeCreate(result: ScaffoldProjectResult, options: CreateCommandOpt
   printCreateNextSteps(result.options, result.outDir, { installed, debugProfile: debugArtifacts.length > 0 });
 }
 
-async function handleBoardAdd(options: BoardAddCommandOptions): Promise<void> {
-  const { scaffoldBoardPackages, parseBoardSpec, generateFrameworkChecklist } = await import("./create/index.js");
-
-  if (!fs.existsSync(options.specPath)) {
-    throw new Error(`Spec file not found: ${options.specPath}`);
-  }
-
-  console.log(`Reading spec: ${options.specPath}`);
-  const specText = fs.readFileSync(options.specPath, "utf8");
-  const spec = parseBoardSpec(specText);
-
-  console.log(`Generating board packages for ${spec.architecture} (${spec.boardName})...`);
-  const result = scaffoldBoardPackages(spec, { force: options.force });
-
-  console.log(`\nCreated ${result.createdFiles.length} files:`);
-  for (const f of result.createdFiles) {
-    console.log(`  ${path.relative(process.cwd(), f)}`);
-  }
-
-  console.log(generateFrameworkChecklist(spec));
-}
-
-
 async function main(): Promise<void> {
   try {
     const options = parseCommandLine(process.argv);
@@ -311,11 +282,6 @@ async function main(): Promise<void> {
 
     if (options.command === "create") {
       await handleCreate(options);
-      return;
-    }
-
-    if (options.command === "board-add") {
-      await handleBoardAdd(options);
       return;
     }
 
@@ -400,6 +366,22 @@ async function main(): Promise<void> {
       return;
     }
 
+    // ── Handle board regen — refresh the project-local board module ──────
+    if (options.command === "board") {
+      const config = loadCuttlefishConfig(process.cwd());
+      if (!config) {
+        throw new Error(
+          "No cuttlefish.config.ts found in current directory.\n" +
+          "Run 'cuttlefish create' to create one.",
+        );
+      }
+      const dir = regenBoardModule(config);
+      ui.printSuccess(
+        `Regenerated the board module for '${config.board}' in ${path.join(dir, "board.ts")}`,
+      );
+      return;
+    }
+
     // ── Handle build command — entry point comes from config ──────────
     if (options.command === "build") {
       const buildConfig = loadCuttlefishConfig(process.cwd());
@@ -412,7 +394,7 @@ async function main(): Promise<void> {
       if (!buildConfig.entry) {
         throw new Error(
           "cuttlefish.config.ts has no 'entry' field.\n" +
-          "Add: entry: './src/sketch.ts'",
+          "Add: entry: './src/main.ts'",
         );
       }
 
@@ -605,9 +587,8 @@ async function main(): Promise<void> {
     let effectivePlatformContext = options.platformContext;
     let effectiveTarget = options.target;
     let effectiveOutDir = options.outDir;
-    let effectiveBoardPackage = options.boardPackage;
+    let effectiveBoardTarget = options.boardTarget;
     let effectiveFrameworkPackage = options.frameworkPackage;
-    let effectiveMcuPackage: string | undefined;
     let effectivePort = options.port;
     // CUTTLEFISH_PORT env var sits between the CLI flag and the config file
     // (flag > env > config), so cross-platform uploads don't need a
@@ -617,15 +598,12 @@ async function main(): Promise<void> {
     }
 
     if (config) {
-      if (config.mcu) {
-        effectiveMcuPackage = config.mcu;
-      }
       // Config port is the default; CLI --port flag overrides it.
       if (!effectivePort && config.console?.port) {
         effectivePort = config.console.port;
       }
-      if (config.board || config.mcu) {
-        effectiveBoardPackage = config.board || config.mcu;
+      if (config.board) {
+        effectiveBoardTarget = config.board;
       }
       
       let configBuildTarget = config.buildTarget;
@@ -638,7 +616,7 @@ async function main(): Promise<void> {
           frameworkData: {
             buildTarget: configBuildTarget,
             // Thread the PSRAM type through to the framework so it can emit the
-            // PSRAM-enabling Kconfig (Zephyr) / define + FQBN option (Arduino).
+            // PSRAM-enabling Kconfig + BOARD_HAS_PSRAM compile definition.
             ...(config.psram ? { psram: config.psram } : {}),
           },
         };
@@ -648,18 +626,6 @@ async function main(): Promise<void> {
       }
       if (config.framework) {
         effectiveFrameworkPackage = config.framework;
-      }
-      if (config.target) {
-        if (effectiveFrameworkPackage) {
-          try {
-            loadFrameworkPackage(effectiveFrameworkPackage, inputDir);
-            if (hasLoadedFramework()) {
-              effectiveTarget = getLoadedFramework().strategy.id;
-            }
-          } catch {
-            // Framework not loadable — keep the CLI-provided target
-          }
-        }
       }
       // Pass console baud rate + output route to platform context. `output:
       // 'usb'` matters at emit time: the framework strategy must define and
@@ -698,8 +664,7 @@ async function main(): Promise<void> {
     ui.printHeader();
     ui.printBuildInfo({
       framework: effectiveFrameworkPackage,
-      mcu: effectiveMcuPackage,
-      board: effectiveBoardPackage,
+      board: effectiveBoardTarget,
       buildTarget: (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined),
     });
 
@@ -719,7 +684,7 @@ async function main(): Promise<void> {
           emitMaps: options.emitMaps,
           platformContext: effectivePlatformContext,
           treeShaking: options.treeShaking,
-          boardPackage: effectiveBoardPackage,
+          boardTarget: effectiveBoardTarget,
           frameworkPackage: effectiveFrameworkPackage,
           debug: options.debug,
           force: options.force,
@@ -744,15 +709,15 @@ async function main(): Promise<void> {
           // Initial compile + upload if flags are set
           if (options.compile) {
             const baseBuildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
-            const { buildTarget, defines: psramDefines } = applyPsramToArduinoBuild(baseBuildTarget, config?.outputDefines, config?.psram);
+            
             const watchOpts = {
               outputDir: path.dirname(result.sourcePath),
               sourcePath: result.sourcePath,
-              buildTarget,
+              buildTarget: baseBuildTarget,
               port: effectivePort,
               baud: options.baud ?? config?.console?.baudRate,
               extraFlags: config?.outputExtraFlags,
-              defines: psramDefines,
+              defines: config?.outputDefines ?? {},
               psram: config?.psram,
               frameworkConfig: config?.frameworkConfig,
               zephyrConfig: config?.zephyrConfig,
@@ -760,7 +725,7 @@ async function main(): Promise<void> {
               display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,
               debug: options.debug,
             };
-            ui.printCompiling(buildTarget ?? "native");
+            ui.printCompiling(baseBuildTarget ?? "native");
             const compileResult = compileSource(watchOpts);
             printMappedCompileErrors(compileResult, result.sourceMapPath, result.sourcePath, path.dirname(result.sourcePath));
 
@@ -824,7 +789,7 @@ async function main(): Promise<void> {
               emitMaps: options.emitMaps,
               platformContext: effectivePlatformContext,
               treeShaking: options.treeShaking,
-              boardPackage: effectiveBoardPackage,
+              boardTarget: effectiveBoardTarget,
               frameworkPackage: effectiveFrameworkPackage,
               debug: options.debug,
               force: true, // Always force in watch mode to bypass stale cache
@@ -849,22 +814,22 @@ async function main(): Promise<void> {
 
               if (options.compile) {
                 const baseBuildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
-                const { buildTarget, defines: psramDefines } = applyPsramToArduinoBuild(baseBuildTarget, config?.outputDefines, config?.psram);
+                
                 const rebuildOpts = {
                   outputDir: path.dirname(rebuildResult.sourcePath),
                   sourcePath: rebuildResult.sourcePath,
-                  buildTarget,
+                  buildTarget: baseBuildTarget,
                   port: effectivePort,
                   baud: options.baud ?? config?.console?.baudRate,
                   extraFlags: config?.outputExtraFlags,
-                  defines: psramDefines,
+                  defines: config?.outputDefines ?? {},
                   psram: config?.psram,
                   frameworkConfig: config?.frameworkConfig,
                   zephyrConfig: config?.zephyrConfig,
               display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,
                   debug: options.debug,
                 };
-                ui.printCompiling(buildTarget ?? "native");
+                ui.printCompiling(baseBuildTarget ?? "native");
                 const compileResult = compileSource(rebuildOpts);
                 printMappedCompileErrors(compileResult, rebuildResult.sourceMapPath, rebuildResult.sourcePath, path.dirname(rebuildResult.sourcePath));
 
@@ -919,7 +884,7 @@ async function main(): Promise<void> {
         emitMaps: options.emitMaps,
         platformContext: effectivePlatformContext,
         treeShaking: options.treeShaking,
-        boardPackage: effectiveBoardPackage,
+        boardTarget: effectiveBoardTarget,
         frameworkPackage: effectiveFrameworkPackage,
         debug: options.debug,
         force: options.force,
@@ -960,15 +925,15 @@ async function main(): Promise<void> {
 
     // --compile (delegates to the active framework's toolchain)
     const baseBuildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
-    const { buildTarget, defines: psramDefines } = applyPsramToArduinoBuild(baseBuildTarget, config?.outputDefines, config?.psram);
+    
     const toolchainOpts = {
       outputDir: path.dirname(result.sourcePath),
       sourcePath: result.sourcePath,
-      buildTarget,
+      buildTarget: baseBuildTarget,
       port: effectivePort,
       baud: options.baud ?? config?.console?.baudRate,
       extraFlags: config?.outputExtraFlags,
-      defines: psramDefines,
+      defines: config?.outputDefines ?? {},
       psram: config?.psram,
       frameworkConfig: config?.frameworkConfig,
       consoleConfig: config?.console,
@@ -980,7 +945,7 @@ async function main(): Promise<void> {
       debug: options.debug,
     };
 
-    ui.printCompiling(buildTarget ?? "native");
+    ui.printCompiling(baseBuildTarget ?? "native");
     let compileResult: import("./api/shared/index.js").CompileResult;
     try {
       compileResult = compileSource(toolchainOpts);
@@ -1047,7 +1012,7 @@ async function main(): Promise<void> {
       ui.printSuccess();
       const exitCode = runExpectTests({
         port: effectivePort,
-        buildTarget,
+        buildTarget: baseBuildTarget,
         baud: config?.console?.baudRate ?? options.baud,
         expectFile: options.expectFile,
       });

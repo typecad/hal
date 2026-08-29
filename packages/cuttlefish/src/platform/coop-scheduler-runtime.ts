@@ -21,7 +21,7 @@ import type { AsyncRuntimeConfig } from "../api/shared/index.js";
 export function buildCoopSchedulerPolyfill(
   _program: ProgramIR,
   config: AsyncRuntimeConfig,
-  currentTimeExpr: string = "millis()",
+  currentTimeExpr: string = "__tc_now_ms()",
 ): RuntimePolyfillIR | null {
   if (!config.enablePriority && !config.enableTimeBudget) return null;
 
@@ -29,7 +29,7 @@ export function buildCoopSchedulerPolyfill(
     kind: "polyfill",
     id: "coop_scheduler",
     domain: "embedded",
-    // STL-free: only needs a 32-bit unsigned time source (millis() /
+    // STL-free: only needs a 32-bit unsigned time source (__tc_now_ms() /
     // k_uptime_get_32()) and fixed-width types, both available everywhere.
     requiredIncludes: [],
     forwardDeclarations: [],

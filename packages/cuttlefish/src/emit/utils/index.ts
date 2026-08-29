@@ -21,7 +21,6 @@ export {
 
 // Async state machine utilities
 export {
-  toPascalCaseLocal,
   generateAsyncTaskClass,
   type AsyncTaskClassResult,
 } from "./async-state-machine.js";
@@ -37,6 +36,5 @@ export {
 
 // Comment handling utilities
 export {
-  normalizeComment,
   emitCommentLines,
 } from "./comment-helpers.js";

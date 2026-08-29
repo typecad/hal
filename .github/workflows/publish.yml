@@ -18,7 +18,7 @@ jobs:
       - run: npm install
       # Topological build (scripts/build-workspaces.mjs) — `npm run build
       # --workspaces` runs in package.json listing order, where cuttlefish
-      # builds before arduino-cli/framework-arduino dist/ exists (TS2307).
+      # builds before its dependencies' dist/ exists (TS2307).
       - run: npm run build
       - run: npx changeset publish
         env:

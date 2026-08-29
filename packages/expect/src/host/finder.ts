@@ -15,7 +15,7 @@ import fs from 'node:fs';
  * Find all test files matching the include glob patterns.
  *
  * Supports patterns like `tests/**\/*.test.ts`, `src/**\/*.test.ts`, or exact
- * file paths like `src/sketch.ts`.  Only files ending in `.test.ts` are
+ * file paths like `src/main.ts`.  Only files ending in `.test.ts` are
  * returned.
  *
  * @param projectRoot  Absolute path to the project root.

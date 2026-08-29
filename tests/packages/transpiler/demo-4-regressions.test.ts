@@ -3,14 +3,13 @@
 //
 // Each test pins a specific previously-broken shape so the fixes in the
 // transpiler (expression-renderer, class-emitter, top-level-prep,
-// snprintf-helpers) are not regressed. The SUPPORT_MATRIX section references
-// point at the documented pattern each fix restores.
+// snprintf-helpers) are not regressed.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
 import { expectCppContains, transpile, transpileNative } from '../../setup';
 
-// ── A5: enum-typed struct-field arithmetic (SUPPORT_MATRIX §1.7) ────────────
+// ── A5: enum-typed struct-field arithmetic ───────────────────────────────────
 //
 // Before the fix, `item.rarity * 4` and `item.power + item.rarity` emitted the
 // raw enum operand and failed at g++ ("no match for 'operator*'

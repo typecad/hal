@@ -9,8 +9,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { ResolvedConfig, RunResult, FileResult } from './types.js';
 import { findTestFiles } from './finder.js';
-import { preprocess, serialShim, zephyrShim } from './preprocessor.js';
-import { transpileTestFile, compileSketch, uploadSketch } from './compiler.js';
+import { preprocess, zephyrShim } from './preprocessor.js';
+import { transpileTestFile, compileProgram, uploadProgram } from './compiler.js';
 import { readSerialOutput } from './serial.js';
 import { parseProtocolLines } from './parser.js';
 import { reportFileResult, reportSummary } from './reporter.js';
@@ -87,10 +87,6 @@ export async function run(config: ResolvedConfig): Promise<number> {
       // VID/PID). The post-upload re-resolve will pick the identity up.
       console.log(`${YELLOW}${resolved.error}${RESET}`);
       console.log(`${YELLOW}falling back to configured port ${config.test.port}${RESET}`);
-    } else if (config.toolchainType === 'arduino-cli') {
-      // Upload itself needs the serial port — nothing to fall back to.
-      console.error(resolved.error ?? 'USB port resolution failed');
-      return 2;
     }
     // west + CDC boards flash via a debug probe, not the console port — the
     // port arrives from the post-flash re-enumeration below.
@@ -192,8 +188,7 @@ async function processTestFile(
   let preprocessed: string;
   try {
     preprocessed = preprocess(source, path.basename(filePath), {
-      isAvr: config.target === 'avr' || config.target === 'megaavr',
-      shim: config.toolchainType === 'west' ? zephyrShim : serialShim,
+      shim: zephyrShim,
       testPins: testPinsData ? buildTestPinsSubstitutions(testPinsData) : undefined,
     });
   } catch (e) {
@@ -207,16 +202,15 @@ async function processTestFile(
     filePath,
     config.projectRoot,
     config.buildTarget,
-    config.toolchainType,
     config.configPath,
   );
   if (!transpileResult.success) {
     return errorResult(filePath, transpileResult.error ?? 'Transpilation failed', startTime);
   }
 
-  // Step 3: Compile via the configured toolchain (arduino-cli or west)
+  // Step 3: Compile via west (through the Zephyr Toolchain)
   console.log(`  ${DIM}compiling...${RESET}`);
-  const compileResult = compileSketch(transpileResult.sketchDir, config.buildTarget, config.framework, config.toolchainType, config.zephyrConfig, config.consoleConfig);
+  const compileResult = compileProgram(transpileResult.projectDir, config.buildTarget, config.zephyrConfig, config.consoleConfig);
   if (!compileResult.success) {
     return errorResult(filePath, compileResult.error ?? 'Compilation failed', startTime);
   }
@@ -241,12 +235,10 @@ async function processTestFile(
   }
 
   console.log(`  ${DIM}uploading${ctx.uploadPort ? ` to ${ctx.uploadPort}` : ''}...${RESET}`);
-  const uploadResult = uploadSketch(
-    transpileResult.sketchDir,
+const uploadResult = uploadProgram(
+  transpileResult.projectDir,
     config.buildTarget,
     ctx.uploadPort,
-    config.framework,
-    config.toolchainType,
     config.zephyrConfig,
   );
   if (!uploadResult.success) {

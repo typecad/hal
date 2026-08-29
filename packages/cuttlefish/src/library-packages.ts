@@ -280,7 +280,7 @@ function readSidecar(sidecarPath: string): LibrarySidecarEntry[] {
  *
  *   1. scan the emitted sources for each library's gate token;
  *   2. write (write-if-changed) the shims of every gated library into the
- *      emitted source directory — the framework scaffold's CMake/sketch
+ *      emitted source directory — the framework scaffold's CMake/program
  *      regen picks the sources up automatically;
  *   3. delete shim files recorded in the previous sidecar that are no longer
  *      used, so removing an import removes its native code;

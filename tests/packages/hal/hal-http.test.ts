@@ -1,18 +1,17 @@
 // ---------------------------------------------------------------------------
 // HAL HTTP Tests — Zephyr transpilation
 //
-// Revived from the deleted framework-esp32 harness (git: 38bd7248^, originally
-// tests/packages/hal/hal-http.test.ts). End-to-end coverage of the HTTP HAL
-// through the ZephyrStrategy: factory chain (Http.get/post/...), builder
-// setters, blocking vs async send, and the single-slot __tc_http shim. Uses
+// End-to-end coverage of the thin Request class through the
+// ZephyrStrategy: construction facts (method/url/opts), the header() chain,
+// blocking vs async send, and the single-slot __tc_http shim. Uses
 // transpileZephyrStrategy() because the http.* ops lower via
 // ZephyrStrategy.resolveHALOperation, which the plain transpile() helper does
 // not activate.
 //
-// The esp32 harness asserted against esp_http_client; this Zephyr port asserts
-// the socket-based __tc_http shim (http_client_req over a pre-connected
-// socket). The contract under test is the same — verb lowering, builder chain,
-// blocking vs cooperative-await split, response accessors, clean compile.
+// The contract under test: verb lowering (Request.GET tokens + plain
+// strings), facts-at-construction (timeout/body/json/insecure/caCert ride
+// the constructor; the shim setters emit from send()), response accessors,
+// the cooperative-await split, and clean compile.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
@@ -21,15 +20,15 @@ import { expectCppContains, hasInclude, transpileZephyrStrategy } from '../../se
 describe('HTTP HAL — Zephyr transpilation', () => {
   describe('GET smoke', () => {
     const snippet = `
-      import { Http } from '@typecad/hal';
-      Http.get("https://example.com").send();
+      import { Request } from '@typecad/hal';
+      new Request(Request.GET, "https://example.com").send();
     `;
 
-    it('begins with HTTP_GET and url', () => {
+    it('begins with HTTP_GET and url (fresh shim state per request)', () => {
       // Zephyr's enum is HTTP_GET (no METHOD_ infix), unlike esp_http_client's
       // HTTP_METHOD_GET.
       const result = transpileZephyrStrategy(snippet);
-      expectCppContains(result, ['__tc_http_begin(HTTP_GET, "https://example.com");']);
+      expectCppContains(result, ['__tc_http_reset(); __tc_http_begin(HTTP_GET, "https://example.com");']);
     });
 
     it('emits the blocking __tc_http_send() call', () => {
@@ -37,7 +36,7 @@ describe('HTTP HAL — Zephyr transpilation', () => {
       expect(result.cpp).toMatch(/__tc_http_send\(\)/);
     });
 
-    it('forces the Zephyr http client + socket headers only when Http is used', () => {
+    it('forces the Zephyr http client + socket headers only when Request is used', () => {
       const result = transpileZephyrStrategy(snippet);
       expect(hasInclude(result.cpp, '<zephyr/net/http/client.h>')).toBe(true);
       expect(hasInclude(result.cpp, '<zephyr/net/socket.h>')).toBe(true);
@@ -51,71 +50,116 @@ describe('HTTP HAL — Zephyr transpilation', () => {
   });
 
   describe('verb normalization', () => {
-    it('Http.post → HTTP_POST', () => {
+    it('Request.POST token → HTTP_POST', () => {
       const result = transpileZephyrStrategy(`
-        import { Http } from '@typecad/hal';
-        Http.post("https://example.com").send();
+        import { Request } from '@typecad/hal';
+        new Request(Request.POST, "https://example.com").send();
       `);
       expectCppContains(result, ['__tc_http_begin(HTTP_POST, "https://example.com");']);
     });
 
-    it('Http.del → HTTP_DELETE', () => {
+    it('Request.DELETE token → HTTP_DELETE', () => {
       const result = transpileZephyrStrategy(`
-        import { Http } from '@typecad/hal';
-        Http.del("https://example.com").send();
+        import { Request } from '@typecad/hal';
+        new Request(Request.DELETE, "https://example.com").send();
       `);
       expectCppContains(result, ['__tc_http_begin(HTTP_DELETE, "https://example.com");']);
     });
+
+    it("plain 'put' string also normalizes (tokens are sugar)", () => {
+      const result = transpileZephyrStrategy(`
+        import { Request } from '@typecad/hal';
+        new Request('put', "https://example.com").send();
+      `);
+      expectCppContains(result, ['__tc_http_begin(HTTP_PUT, "https://example.com");']);
+    });
   });
 
-  describe('builder chain', () => {
-    it('header() → __tc_http_set_header', () => {
+  describe('construction facts (opts lower from send())', () => {
+    it('header() → __tc_http_set_header (declaration chain)', () => {
       const result = transpileZephyrStrategy(`
-        import { Http } from '@typecad/hal';
-        Http.get("https://example.com").header("X-Device", "cuttlefish").send();
+        import { Request } from '@typecad/hal';
+        new Request(Request.GET, "https://example.com").header("X-Device", "cuttlefish").send();
       `);
       expectCppContains(result, ['__tc_http_set_header("X-Device", "cuttlefish");']);
     });
 
-    it('jsonBody() → __tc_http_set_body with json=true', () => {
+    it('body + json: true → __tc_http_set_body with json=true', () => {
       const result = transpileZephyrStrategy(`
-        import { Http } from '@typecad/hal';
-        Http.post("https://example.com").jsonBody('{"temp":21.5}').send();
+        import { Request } from '@typecad/hal';
+        new Request(Request.POST, "https://example.com", { body: '{"temp":21.5}', json: true }).send();
       `);
-      // The json flag is the second arg to __tc_http_set_body and must be true.
       expect(result.cpp).toMatch(/__tc_http_set_body\([^,]+,\s*true\)/);
     });
 
-    it('plain body() → __tc_http_set_body with json=false', () => {
+    it('body without json → __tc_http_set_body with json=false', () => {
       const result = transpileZephyrStrategy(`
-        import { Http } from '@typecad/hal';
-        Http.post("https://example.com").body("raw=1").send();
+        import { Request } from '@typecad/hal';
+        new Request(Request.POST, "https://example.com", { body: "raw=1" }).send();
       `);
       expect(result.cpp).toMatch(/__tc_http_set_body\([^,]+,\s*false\)/);
     });
 
-    it('timeout(ms) → __tc_http_set_timeout', () => {
+    it('absent body elides the setter call entirely', () => {
       const result = transpileZephyrStrategy(`
-        import { Http } from '@typecad/hal';
-        Http.get("https://example.com").timeout(10000).send();
+        import { Request } from '@typecad/hal';
+        new Request(Request.GET, "https://example.com").send();
+      `);
+      const withoutShim = result.cpp.replace(
+        /\/\/ CUTTLEFISH_HTTP_BEGIN[\s\S]*?\/\/ CUTTLEFISH_HTTP_END/g, '',
+      );
+      expect(withoutShim).not.toMatch(/__tc_http_set_body/);
+    });
+
+    it('timeoutMs → __tc_http_set_timeout', () => {
+      const result = transpileZephyrStrategy(`
+        import { Request } from '@typecad/hal';
+        new Request(Request.GET, "https://example.com", { timeoutMs: 10000 }).send();
       `);
       expectCppContains(result, ['__tc_http_set_timeout(10000);']);
     });
 
-    it('insecure() → __tc_http_set_insecure', () => {
+    it('absent timeout still carries the class default', () => {
       const result = transpileZephyrStrategy(`
-        import { Http } from '@typecad/hal';
-        Http.get("https://example.com").insecure().send();
+        import { Request } from '@typecad/hal';
+        new Request(Request.GET, "https://example.com").send();
       `);
-      expectCppContains(result, ['__tc_http_set_insecure();']);
+      expectCppContains(result, ['__tc_http_set_timeout(10000);']);
+    });
+
+    it('insecure: true → __tc_http_set_insecure; absent elides', () => {
+      const withInsecure = transpileZephyrStrategy(`
+        import { Request } from '@typecad/hal';
+        new Request(Request.GET, "https://example.com", { insecure: true }).send();
+      `);
+      expectCppContains(withInsecure, ['__tc_http_set_insecure();']);
+      const without = transpileZephyrStrategy(`
+        import { Request } from '@typecad/hal';
+        new Request(Request.GET, "https://example.com").send();
+      `);
+      const withoutShim = without.cpp.replace(
+        /\/\/ CUTTLEFISH_HTTP_BEGIN[\s\S]*?\/\/ CUTTLEFISH_HTTP_END/g, '',
+      );
+      expect(withoutShim).not.toMatch(/__tc_http_set_insecure/);
+    });
+
+    it('caCert PEM decodes to a DER byte array', () => {
+      const pem = '-----BEGIN CERTIFICATE-----\nAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4v\nMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5\nfYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3\n-----END CERTIFICATE-----';
+      const result = transpileZephyrStrategy(`
+        import { Request } from '@typecad/hal';
+        const PEM = "${pem.replace(/\n/g, '\\n')}"; 
+        new Request(Request.GET, "https://example.com", { caCert: PEM }).send();
+      `);
+      expect(result.cpp).toContain('static const uint8_t __tc_ca_der[]');
+      expect(result.cpp).toContain('__tc_http_set_ca_cert_der(__tc_ca_der, sizeof(__tc_ca_der));');
     });
   });
 
   describe('response accessors', () => {
     it('status() and text() lower to expression shims', () => {
       const result = transpileZephyrStrategy(`
-        import { Http } from '@typecad/hal';
-        const req = Http.get("https://example.com");
+        import { Request } from '@typecad/hal';
+        const req = new Request(Request.GET, "https://example.com");
         req.send();
         const s = req.status();
         const t = req.text();
@@ -132,9 +176,9 @@ describe('HTTP HAL — Zephyr transpilation', () => {
     // intentionally do NOT split — they inline to the blocking shim, since the
     // state machine cannot yield a value mid-suspension. Test the split form.
     const asyncSnippet = `
-      import { Http } from '@typecad/hal';
+      import { Request } from '@typecad/hal';
       async function fetch() {
-        const req = Http.get("https://example.com");
+        const req = new Request(Request.GET, "https://example.com");
         await req.send();
       }
     `;
@@ -161,17 +205,13 @@ describe('HTTP HAL — Zephyr transpilation', () => {
     });
 
     it('value-position await falls back to the blocking shim (intentional)', () => {
-      // `const ok = await ...send()` cannot yield a value mid-suspension, so
-      // the state machine inlines the blocking __tc_http_send() call. This
-      // locks in that contract — if it ever silently changes to a split, the
-      // returned value would be wrong.
       const result = transpileZephyrStrategy(`
-        import { Http } from '@typecad/hal';
+        import { Request } from '@typecad/hal';
         async function fetch() {
-          const ok = await Http.get("https://example.com").send();
+          const req = new Request(Request.GET, "https://example.com");
+          const ok = await req.send();
         }
       `);
-      // Strip the shim block first so we only look at the task body.
       const withoutShim = result.cpp.replace(
         /\/\/ CUTTLEFISH_HTTP_BEGIN[\s\S]*?\/\/ CUTTLEFISH_HTTP_END/g,
         '',
@@ -183,8 +223,8 @@ describe('HTTP HAL — Zephyr transpilation', () => {
   describe('compiles cleanly', () => {
     it('no error diagnostics on a basic GET', () => {
       const result = transpileZephyrStrategy(`
-        import { Http } from '@typecad/hal';
-        Http.get("https://example.com").send();
+        import { Request } from '@typecad/hal';
+        new Request(Request.GET, "https://example.com").send();
       `);
       expect(result.diagnostics.filter(d => d.severity === 'error')).toEqual([]);
     });

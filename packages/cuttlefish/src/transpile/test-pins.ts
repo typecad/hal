@@ -75,24 +75,9 @@ export interface TestPinsFile {
 
 const IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
-/** Locate a workspace/npm package directory by walking node_modules upward. */
-export function findBoardPackageDir(packageName: string, fromDir: string): string | undefined {
-  let searchDir = path.resolve(fromDir);
-  for (let i = 0; i < 8; i++) {
-    const candidate = path.join(searchDir, "node_modules", ...packageName.split("/"));
-    if (fs.existsSync(path.join(candidate, "package.json"))) {
-      return candidate;
-    }
-    const parent = path.dirname(searchDir);
-    if (parent === searchDir) break;
-    searchDir = parent;
-  }
-  return undefined;
-}
-
-/** Read and parse a board package's test-pins.json. Returns undefined when absent. */
-export function readTestPinsFile(boardPackagePath: string): TestPinsFile | undefined {
-  const jsonPath = path.join(boardPackagePath, "test-pins.json");
+/** Read and parse a project's test-pins.json. Returns undefined when absent. */
+export function readTestPinsFile(projectDir: string): TestPinsFile | undefined {
+  const jsonPath = path.join(projectDir, "test-pins.json");
   if (!fs.existsSync(jsonPath)) return undefined;
   try {
     return JSON.parse(fs.readFileSync(jsonPath, "utf8")) as TestPinsFile;
@@ -113,9 +98,9 @@ export function readTestPinsFile(boardPackagePath: string): TestPinsFile | undef
  * pins through board-package metadata, not through transpiled modules).
  * Returns undefined when the board declares no usable roles.
  */
-export function buildTestPinsModuleContent(boardPackage: string, data: TestPinsFile): string | undefined {
+export function buildTestPinsModuleContent(boardTarget: string, data: TestPinsFile): string | undefined {
   const lines: string[] = [
-    `// Generated from ${boardPackage}/test-pins.json by the '@typecad/test-pins'`,
+    `// Generated from ${boardTarget}/test-pins.json by the '@typecad/test-pins'`,
     `// resolver. Do not edit — regenerated on every transpile.`,
     `import {`,
   ];
@@ -136,7 +121,7 @@ export function buildTestPinsModuleContent(boardPackage: string, data: TestPinsF
       importedPins.push(value);
       exports.push(`export const ${constName} = ${value};`);
     } else {
-      console.error(`[test-pins] Ignoring invalid pin role '${role}' in ${boardPackage}/test-pins.json`);
+      console.error(`[test-pins] Ignoring invalid pin role '${role}' in test-pins.json`);
     }
   }
 
@@ -151,7 +136,8 @@ export function buildTestPinsModuleContent(boardPackage: string, data: TestPinsF
   for (const name of [...new Set(importedPins)].sort()) {
     lines.push(`  ${name},`);
   }
-  lines.push(`} from '${boardPackage}';`);
+    // Pin symbols live in the generated board module (the .cuttlefish sibling).
+    lines.push(`} from './board.js';`);
   lines.push("");
   lines.push(...exports);
   lines.push("");

@@ -1,5 +1,5 @@
 ---
-'@typecad/zephyr-installer': minor
+'@typecad/framework-zephyr': minor
 ---
 
 ## bossac on Windows

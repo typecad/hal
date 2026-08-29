@@ -31,29 +31,27 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 // link without the expect harness.
 
 const config: CuttlefishConfig = {
-  target: 'nrf52',
-  mcu: '@typecad/mcu-nrf52840',
-  board: '@typecad/board-xiao-nrf52840',
+  // The connected ESP32-S3 devkitC: BLE via the Zephyr bt_* stack (esp32s3
+  // supports BLE; the GATT lowering is chip-neutral). The board's WCH CH34x
+  // USB-UART bridge carries esptool flashing AND the uart0 console — the test
+  // identity matches the bridge (1A86:55D3), which never re-enumerates.
+  // resetAfterOpen: the bridge's default DTR/RTS state holds the S3 in reset;
+  // pulsing EN boots the app under the capture.
+  target: 'esp32s3',
+  board: 'esp32s3_devkitc/esp32s3/procpu',
   framework: '@typecad/framework-zephyr',
-  frameworkData: { buildTarget: 'xiao_ble' },
+  frameworkData: { buildTarget: 'esp32s3_devkitc/esp32s3/procpu' },
   toolchain: { type: 'west' },
   console: { baudRate: 115200 },
-  // UF2 mass-storage bootloader: west flash copies to the mounted drive, not a
-  // serial port. An explicit zephyr.runner always wins over board.cmake's pick
-  // (nrfjprog for xiao_ble), which would need a J-Link. The XIAO's native USB
-  // bootloader is UF2 — double-tap reset to enter it before flashing.
-  zephyr: {
-    runner: 'uf2',
-  },
   test: {
-    // Set via --port COM14 (the board's USB-CDC serial, used to read the test
-    // protocol after the UF2 flash reboots the board).
+    usb: { vid: '0x1A86', pid: '0x55D3' },
+    resetAfterOpen: true,
     port: '',
     baudRate: 115200,
     // BLE is slow: advertise + central scan + connect + GATT discovery + the
     // busy-waits in the test for connect/write/disconnect need headroom over
     // the default 30 s. ~90 s covers a sleepy adapter + a full suite pass.
-    timeout: 90000,
+    timeout: 180000,   // wide windows: connect(60s) + write(30s) + notify(30s) + disconnect(30s)
     include: ['ble-peripheral.test.ts'],
   },
 };

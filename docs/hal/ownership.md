@@ -12,34 +12,36 @@ In embedded systems, multiple tasks (such as a sensor reader and a display drive
 
 ### The Problem
 ```typescript
-// Task A: Reading a Sensor
-I2C0.device(0x76).readByte(0x00);
+// Task A: reading a sensor
+new I2CTarget('I2C0', 0x76).readReg(0x00);
 
-// Task B: Updating a Display (could potentially interrupt Task A)
-I2C0.device(0x3C).writeByte(0x00, 0x55);
+// Task B: updating a display (could interrupt Task A mid-transaction)
+new I2CTarget('I2C0', 0x3C).writeReg(0x00, 0x55);
 ```
 
 ### The Solution: Exclusive Claims
 TypeCAD provides an exclusive acquisition pattern. When you `take()` a bus, you receive a handle that uniquely owns that resource.
 
 ```typescript
-import { I2C0 } from '@typecad/board';
+import { I2CTarget } from '@typecad/hal';
 
-// Claim exclusive access
-const bus = I2C0.take(); 
+// Claim exclusive access (a compile-time marker — no runtime call is emitted)
+I2C0.take();
 
-if (bus) {
-  // We now exclusively own I2C0
-  bus.device(0x76).readByte(0x00);
-  
-  // Return the bus to the shared pool when finished
-  bus.release();
-}
+const sensor = new I2CTarget('I2C0', 0x76);
+sensor.readReg(0x00);
+
+// Return the bus to the shared pool when finished
+I2C0.release();
 ```
 
 **Implementation Details:**
-- **Single-Threaded (e.g., Arduino Uno):** `take()` and `release()` are emitted as comments and have zero runtime cost. However, the transpiler still validates that you don't "double-take" or forget to "release."
-- **Multi-Threaded (e.g., ESP32):** These calls map to actual **mutex** acquisition and release, providing true thread-safe peripheral sharing.
+- `take()`/`release()` are **compile-time ownership markers** — nothing is emitted into the C++; the ownership pass validates the discipline instead:
+  - I/O on an owned bus only occurs between `take()` and `release()`.
+  - No double-`take()` on an already-owned bus; no `release()` without a `take()`.
+  - A bus taken but never released is reported at the end of the program.
+- The system is **opt-in**: if `take()` never appears, no diagnostics are generated.
+- For true concurrent bus sharing across [Threads](./thin-hal.md), the ownership discipline documents the protocol; the underlying Zephyr driver calls serialize at the controller.
 
 ---
 

@@ -1,5 +1,14 @@
 # TypeCAD
 
+> **⚠️ Framework notice (alpha breaking change):** Arduino support has been
+> **removed**. TypeCAD now targets **Zephyr RTOS** through a thin,
+> Zephyr-shaped HAL — construction-fact classes (`GPIO`, `PWM`, `ADCChannel`,
+> `I2CTarget`, `SPITarget`, `UART`, `Watchdog`, `Counter`, `Thread`, `Time`,
+> `Sensor`) whose methods lower 1:1 onto Zephyr driver calls, with
+> devicetree/Kconfig generated from your code. The examples below still show
+> the legacy API and will be updated; see `docs/hal/thin-hal.md` for the
+> current surface and `demos/zephyr-*` for working programs.
+
 - Write firmware in TypeScript. Ship it as C++.
 - Type-safe, board-aware embedded development that catches hardware bugs before you flash — not after a 30-second upload cycle.
 
@@ -13,30 +22,31 @@ Embedded firmware development has a feedback loop problem. You write C++, flash 
 TypeCAD moves those checks into your editor. You write TypeScript against typed hardware abstractions that know which pins support PWM, which pins are shared with SPI, and whether your I2C bus was initialized before you tried to read from it. If something's wrong, you see the red squiggle immediately — not a blank serial monitor thirty seconds later.
 
 ```typescript
-import { LED, delay } from '@typecad/board';
+import { LED } from '@typecad/board';
+import { GPIO, Time } from '@typecad/hal';
 
-const led = LED.asOutput();
+const led = new GPIO(LED, GPIO.OUTPUT);
 
 while (true) {
   led.toggle();
-  delay(1000);
+  Time.sleep(1000);   // → k_msleep(1000)
 }
 ```
 
-That's a complete Arduino sketch. `LED.asOutput()` configures the pin mode and returns a type-narrowed handle. The transpiler emits `pinMode(13, OUTPUT)` and `digitalWrite(13, !digitalRead(13))` — no extra variables, no overhead.
+That's a complete Zephyr program. `new GPIO(LED, GPIO.OUTPUT)` carries construction facts to the generated devicetree; `led.toggle()` lowers to the driver's atomic `gpio_pin_toggle_dt`. No extra variables, no overhead.
 
 ## Catch hardware mistakes in your editor
 
 Every pin has a narrow type that reflects what it can actually do on your board.
 
 ```typescript
-import { D4, D9, A0 } from '@typecad/board';
+import { D4, PB6, A0 } from '@typecad/board';
 
-D4.pwm(50);    // Error: D4 does not support PWM on Arduino Uno
-D9.pwm(50);    // OK — D9 is a PWM pin
+new PWM(D4, { periodNs: 20_000_000 });
+// Error: D4 has no PWM channel on this board (use: PB6)
 
-A0.high();     // Error: A0 is analog-only
-A0.readAnalog(); // OK
+const sense = new ADCChannel(A0);
+sense.read();  // OK — raw counts at the chip's resolution
 ```
 
 The transpiler also detects conflicts between peripherals and GPIO:
@@ -57,17 +67,12 @@ Calling `.device()` on an uninitialized bus is a compile-time error.
 ```typescript
 import { I2C0 } from '@typecad/board';
 
-I2C0.device(0x76).readByte(0xFA); // Error: I2C0 has not been initialized
-```
-
 ```typescript
-import { I2C0 } from '@typecad/board';
-
-I2C0.begin();
-const who = I2C0.device(0x76).readByte(0xFA); // OK
+const sht = new I2CTarget('I2C0', 0x76);
+sht.readReg(0xFA); // OK — no begin() to forget; construction configures everything
 ```
 
-SPI and UART follow the same pattern — the type system tracks initialization state so you can't forget `.begin()`.
+Buses have nothing to initialize: thin devices carry their facts (address, CS, speed) in the constructor and the generated devicetree enables the controllers.
 
 ## One command to flash
 
@@ -79,20 +84,21 @@ Transpile, compile, upload, and open a serial monitor in a single invocation. Or
 
 ## Supported boards
 
-| Board | Package | Architecture |
-|---|---|---|
-| Arduino Uno | `@typecad/board-arduino-uno` | AVR |
-| Arduino Nano 33 IoT | `@typecad/board-arduino-nano33iot` | SAMD |
-| ESP32 DevKit | `@typecad/board-esp32-devkit` | ESP32 |
-| ESP32-S3 | `@typecad/board-esp32s3` | ESP32-S3 (Xtensa LX7) |
-| ESP32-C3 | `@typecad/board-esp32c3` | ESP32-C3 (RISC-V) |
-| ESP32-C6 | `@typecad/board-esp32c6` | ESP32-C6 (RISC-V, Wi-Fi 6) |
-| RP2040 (Pico) | `@typecad/board-rp2040` | RP2040 (ARM Cortex-M0+) |
-| RP2350 (Pico 2) | `@typecad/board-rp2350` | RP2350 (ARM Cortex-M33) |
-| Black Pill (STM32F411) | `@typecad/board-blackpill-f411ce` | STM32F411 (ARM Cortex-M4F, Zephyr) |
-| XIAO nRF52840 | `@typecad/board-xiao-nrf52840` | nRF52840 (ARM Cortex-M4F, Zephyr) |
+Boards come from a generated data pack extracted from the Zephyr board tree — **1,300+ board variants** work out of the box, each with datasheet-named pins, LED/BUTTON aliases, and connector maps generated into your project on first build. The nine hardware-validated targets:
 
-Additional architectures are scaffolded and ready for board definitions: ESP32-S2, ESP32-S3, ESP32-C3, RP2040, STM32.
+| Board | `board:` target | Silicon |
+|---|---|---|
+| ESP32 DevKit | `esp32_devkitc/esp32/procpu` | ESP32 (Xtensa LX6) |
+| ESP32-S3 | `esp32s3_devkitc/esp32s3/procpu` | ESP32-S3 (Xtensa LX7) |
+| ESP32-C3 | `esp32c3_devkitm/esp32c3` | ESP32-C3 (RISC-V) |
+| ESP32-C6 | `esp32c6_devkitc/esp32c6/hpcore` | ESP32-C6 (RISC-V, Wi-Fi 6) |
+| RP2040 (Pico) | `rpi_pico/rp2040` | RP2040 (ARM Cortex-M0+) |
+| RP2350 (Pico 2) | `rpi_pico2/rp2350a/m33` | RP2350 (ARM Cortex-M33) |
+| Black Pill (STM32F411) | `blackpill_f411ce/stm32f411xe` | STM32F411 (ARM Cortex-M4F) |
+| XIAO nRF52840 | `xiao_ble/nrf52840` | nRF52840 (ARM Cortex-M4F) |
+| Arduino Nano 33 IoT | `arduino_nano_33_iot/samd21g18a` | SAMD21 (ARM Cortex-M0+) |
+
+Custom PCBs use a *contract project*: set `soc:` (e.g. `'stm32f411xe'`) plus a board contract and the SoC's pinout generates locally. Arduino Uno/AVR support was removed with the legacy framework.
 
 ## Configure once
 
@@ -101,12 +107,10 @@ Additional architectures are scaffolded and ready for board definitions: ESP32-S
 import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
 const config: CuttlefishConfig = {
-  entry:  './src/main.ts',
-  target: 'avr',
-  mcu:    '@typecad/mcu-atmega328p',
-  board:  '@typecad/board-arduino-uno',
-  framework: '@typecad/framework-arduino',
-  output: { framework: 'arduino', optimize: 'size', outDir: './out' },
+  entry:     './src/main.ts',
+  board:     'esp32s3_devkitc/esp32s3/procpu',
+  framework: '@typecad/framework-zephyr',
+  output:    { outDir: './out' },
 };
 
 export default config;
@@ -135,7 +139,7 @@ bus.device(0x76).readByte(0xFA);
 bus.release(); // return to pool
 ```
 
-On single-threaded Arduino, `take`/`release` are emitted as comments. On multi-threaded platforms like ESP32, they map to mutex acquisition. In both cases the transpiler validates correct usage — double-take and use-without-own are errors.
+On Zephyr, `take`/`release` map to mutex acquisition. The transpiler validates correct usage — double-take and use-without-own are errors.
 
 ## Test on real hardware
 
@@ -409,7 +413,7 @@ You see the TypeScript file, line, and column — not the generated C++.
 
 ## Dead code elimination
 
-Tree-shaking is on by default. Only code reachable from your entry points (`setup`/`loop` for Arduino, `main` for generic) makes it into the output. The transpiler reports what was removed.
+Tree-shaking is on by default. Only code reachable from your entry points (top-level statements → generated `main()`) makes it into the output. The transpiler reports what was removed.
 
 ---
 
@@ -418,12 +422,12 @@ Tree-shaking is on by default. Only code reachable from your entry points (`setu
 Scaffold a new project in one command — no global install needed:
 
 ```bash
-npx @typecad/cuttlefish create my-project --board arduino-uno
+npx @typecad/cuttlefish create my-project --board esp32s3
 cd my-project
 npm install
 ```
 
-This creates a complete project with `cuttlefish.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: `arduino-uno`, `esp32-devkit`, `esp32s3`, `esp32c3`, `esp32c6`, `rp2040`, `rp2350`.
+This creates a complete project with `cuttlefish.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: any Zephyr board variant in the data pack (`esp32s3`, `xiao_ble`, `blackpill_f411ce`, `rpi_pico`, …), or `--soc` for a contract (custom-PCB) project.
 
 Or launch an interactive wizard:
 
@@ -434,7 +438,7 @@ npx @typecad/cuttlefish create
 ### Manual setup
 
 ```bash
-npm install @typecad/board-arduino-uno
+npm install @typecad/cuttlefish @typecad/hal @typecad/framework-zephyr
 ```
 
 Create `cuttlefish.config.ts`:
@@ -443,12 +447,10 @@ Create `cuttlefish.config.ts`:
 import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
 const config: CuttlefishConfig = {
-  entry:  './src/main.ts',
-  target: 'avr',
-  mcu:    '@typecad/mcu-atmega328p',
-  board:  '@typecad/board-arduino-uno',
-  framework: '@typecad/framework-arduino',
-  output: { framework: 'arduino', optimize: 'size', outDir: './out' },
+  entry:     './src/main.ts',
+  board:     'xiao_ble/nrf52840',
+  framework: '@typecad/framework-zephyr',
+  output:    { outDir: './out' },
 };
 
 export default config;
@@ -494,8 +496,8 @@ The scaffolding is built into the `cuttlefish` CLI — `npx @typecad/cuttlefish 
 | Flag | Description |
 |---|---|
 | `[project-name]` | Project name (default: interactive prompt) |
-| `--board, -b <id>` | Board to target (`arduino-uno`, `esp32-devkit`). Skips interactive wizard. |
-| `--framework, -f <id>` | Framework (`arduino`, `avr`). Default: `arduino`. |
+| `--board, -b <id>` | Board to target (e.g. `esp32s3`). Skips interactive wizard. |
+| `--framework, -f <id>` | Framework. Default: `@typecad/framework-zephyr`. |
 | `--baud <rate>` | Serial baud rate (default: `9600`). |
 | `--no-sketch` | Skip generating the starter blink sketch. |
 | `--outDir, -o <dir>` | Output directory (default: `./<project-name>`). |
@@ -505,8 +507,8 @@ The scaffolding is built into the `cuttlefish` CLI — `npx @typecad/cuttlefish 
 
 | Flag | Default | Description |
 |---|---|---|
-| `--emit cpp\|split` | `split` | Output format; Arduino target always emits `.ino` |
-| `--target arduino\|generic` | `generic` | Auto-set to `arduino` when `--compile`, `--upload`, or `--monitor` is used |
+| `--emit cpp\|split` | `split` | Output format for multi-file programs |
+| `--target <board>` | — | Target profile resolved from your board package |
 | `--outDir <path>` | input directory | Output directory for generated files |
 | `--emit-maps true\|false` | `true` | Write `.thcppmap.json` source map sidecars |
 | `--fqbn <package:arch:board>` | *(from config)* | FQBN override; required for `--compile` when no config exists |
@@ -515,7 +517,7 @@ The scaffolding is built into the `cuttlefish` CLI — `npx @typecad/cuttlefish 
 
 | Flag | Requires | Description |
 |---|---|---|
-| `--compile` | `fqbn` | Run `arduino-cli compile` after transpilation |
+| `--compile` | `west build` | Run the toolchain build after transpilation |
 | `--upload` | `--compile`, `--port` | Upload compiled sketch to the board |
 | `--monitor` | `--port` | Open serial monitor after upload |
 | `--port <port>` | — | Serial port, e.g. `COM4` or `/dev/ttyACM0` |
@@ -570,10 +572,6 @@ All packages share a fixed version via [Changesets](https://github.com/changeset
 
 ## Documentation
 
-- [Supported boards and features](SUPPORT_MATRIX.md) — per-board feature
-  support matrix
-- [Demo coverage tracker](DEMO_COVERAGE.md) — which `SUPPORT_MATRIX.md`
-  features the iterative demo builds exercised
 - [Runtime exception behavior](RUNTIME_EXCEPTION.md)
 - [Third-party notices](NOTICE.md)
 - [Framework authoring guide](docs/framework-authoring-guide.md)

@@ -1,17 +1,17 @@
-// 11 — HTTPS with insecure() for lab devices without a proper CA chain.
+// 11 — HTTPS with insecure for lab devices without a proper CA chain.
 // Skips certificate verification — development use only.
 const WIFI_SSID = "HomeNet";
 const WIFI_PASSWORD = "hunter22";
 
-import { WiFi, Http, delay } from '@typecad/hal';
+import { WiFi, Request, Time } from '@typecad/hal';
 
-WiFi.connect(WIFI_SSID, WIFI_PASSWORD);
+const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD });
+wifi.join();
 
-const req = Http.get("https://self-signed.local/status");
-req.insecure();
+const req = new Request(Request.GET, "https://self-signed.local/status", { insecure: true });
 req.send();
 console.log(req.status());
 
 while (true) {
-  delay(1000);
+  Time.sleep(1000);
 }

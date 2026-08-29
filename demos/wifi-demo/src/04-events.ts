@@ -1,21 +1,23 @@
-// 04 — event-callback style: no async functions, no blocking connect.
+// 04 — event-callback style: no async functions, no blocking join.
 const WIFI_SSID = "HomeNet";
 const WIFI_PASSWORD = "hunter22";
 
-import { WiFi, delay } from '@typecad/hal';
+import { WiFi, Time } from '@typecad/hal';
 
-WiFi.onGotIP(() => {
+const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD });
+
+wifi.onUp(() => {
   console.log("online");
 });
-WiFi.onDisconnect(() => {
-  console.log("link lost, auto-reconnecting");
+wifi.onDrop(() => {
+  console.log("link lost");
 });
 
-WiFi.connectAsync(WIFI_SSID, WIFI_PASSWORD);
+wifi.joinStart();
 
 while (true) {
-  if (WiFi.isConnected()) {
+  if (wifi.linked()) {
     // do connected work here
   }
-  delay(250);
+  Time.sleep(250);
 }

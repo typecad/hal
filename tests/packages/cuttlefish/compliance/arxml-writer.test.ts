@@ -11,12 +11,12 @@ describe("arxml-writer", () => {
       "Adafruit HAL global.",
       42,
     );
-    const arxml = renderArxml(ctx, "main.ino");
+    const arxml = renderArxml(ctx, "main.cpp");
     expect(arxml).toContain("<?xml");
     expect(arxml).toContain("<AUTOSAR");
     expect(arxml).toContain("M3-2-1");
     expect(arxml).toContain("Adafruit HAL global.");
-    expect(arxml).toContain('ARTIFACT="main.ino"');
+    expect(arxml).toContain('ARTIFACT="main.cpp"');
   });
 
   it("escapes XML special characters in justifications and snippets", () => {
@@ -68,7 +68,7 @@ describe("arxml-writer", () => {
       "source",
       { tsFile: "src/hardware/display.ts", tsLine: 12, kind: "hal-instance" },
     );
-    const arxml = renderArxml(ctx, "main.ino");
+    const arxml = renderArxml(ctx, "main.cpp");
     expect(arxml).toContain('TS-FILE="src/hardware/display.ts"');
     expect(arxml).toContain('TS-LINE="12"');
     expect(arxml).toContain('KIND="hal-instance"');

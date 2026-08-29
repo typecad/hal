@@ -87,7 +87,7 @@ under cuttlefish's basename-matching loader):
 | `logMessage` | string | no | Logpoint with `{variable}` interpolation. When present, the breakpoint logs instead of halting. |
 
 Two source files sharing the same basename in one project will share
-breakpoints — acceptable for typical single-sketch Arduino projects.
+breakpoints — acceptable for typical single-program Arduino projects.
 
 ## Native debugging on ESP32-S3
 

@@ -66,7 +66,8 @@ export function httpInitLines(): string[] {
     `    const char* body;        // request body (user-owned)`,
     `    int32_t body_len;`,
     `    bool insecure;`,
-    `    const char* ca_cert;     // PEM, user-owned; nullptr = no pinned CA`,
+    `    const uint8_t* ca_der;    // DER, user-owned; nullptr = no pinned CA`,
+    `    size_t ca_der_len;`,
     `    const char* hdr_name[__TC_HTTP_MAX_HEADERS];`,
     `    const char* hdr_value[__TC_HTTP_MAX_HEADERS];`,
     `    int32_t hdr_count;`,
@@ -200,20 +201,26 @@ export function httpInitLines(): string[] {
     `#if defined(CONFIG_NET_SOCKETS_SOCKOPT_TLS)`,
     `        int sock_tls = zsock_socket(res->ai_family, res->ai_socktype, IPPROTO_TLS_1_2);`,
     `        if (sock_tls >= 0) {`,
-    `            // Register the pinned CA as the active sec tag. tls_credential_add`,
+            `            // Register the pinned CA as the active sec tag. tls_credential_add`,
     `            // is idempotent-enough for the single-slot model: a duplicate tag`,
     `            // is an error we ignore, and the most recently added cert wins.`,
-    `            if (__tc_http.ca_cert != nullptr) {`,
-    `                (void)tls_credential_add(__TC_HTTP_SEC_TAG,`,
+    `            if (__tc_http.ca_der != nullptr) {`,
+    `                int cred_rc = tls_credential_add(__TC_HTTP_SEC_TAG,`,
     `                                         TLS_CREDENTIAL_CA_CERTIFICATE,`,
-    `                                         __tc_http.ca_cert, strlen(__tc_http.ca_cert) + 1U);`,
+    `                                         __tc_http.ca_der, __tc_http.ca_der_len);`,
     `                sec_tag_t tags[1] = { __TC_HTTP_SEC_TAG };`,
     `                (void)zsock_setsockopt(sock_tls, SOL_TLS, TLS_SEC_TAG_LIST, tags, sizeof(tags));`,
+    `                (void)cred_rc;`,
     `            }`,
     `            // Hostname SNI + verification. insecure() disables verification;`,
     `            // the default (no caCert, no insecure) leaves verification required`,
     `            // with no sec tag, so the handshake fails safely until a CA is set.`,
-    `            (void)zsock_setsockopt(sock_tls, SOL_TLS, TLS_HOSTNAME, __tc_http.host, strlen(__tc_http.host) + 1U);`,
+    `            // mbedtls does not match IP literals against SAN entries —`,
+    `            // skip the hostname check for IP hosts (chain-only verify).`,
+    `            bool host_is_ip = true; for (const char* p3 = __tc_http.host; *p3 != 0; p3++) { if (!((*p3 >= '0' && *p3 <= '9') || *p3 == '.')) { host_is_ip = false; break; } }`,
+    `            if (!host_is_ip) {`,
+    `                (void)zsock_setsockopt(sock_tls, SOL_TLS, TLS_HOSTNAME, __tc_http.host, strlen(__tc_http.host) + 1U);`,
+    `            }`,
     `            int32_t verify = __tc_http.insecure ? TLS_PEER_VERIFY_NONE : TLS_PEER_VERIFY_REQUIRED;`,
     `            (void)zsock_setsockopt(sock_tls, SOL_TLS, TLS_PEER_VERIFY, &verify, sizeof(verify));`,
     `        }`,
@@ -249,7 +256,8 @@ export function httpInitLines(): string[] {
     `    __tc_http.body = nullptr;`,
     `    __tc_http.body_len = 0;`,
     `    __tc_http.insecure = false;`,
-    `    __tc_http.ca_cert = nullptr;`,
+    `    __tc_http.ca_der = nullptr;`,
+    `    __tc_http.ca_der_len = 0;`,
     `    __tc_http.hdr_count = 0;`,
     `    __tc_http.status = 0;`,
     `    __tc_http.done = false;`,
@@ -297,7 +305,7 @@ export function httpInitLines(): string[] {
     ``,
     `static inline void __tc_http_set_insecure(void) { __tc_http.insecure = true; }`,
     ``,
-    `static inline void __tc_http_set_ca_cert(const char* pem) { __tc_http.ca_cert = pem; }`,
+    `static inline void __tc_http_set_ca_cert_der(const uint8_t* der, size_t len) { __tc_http.ca_der = der; __tc_http.ca_der_len = len; }`,
     ``,
     `// ── perform (the shared blocking core) ──────────────────────────────────`,
     `// Parse url → open socket → build http_request → http_client_req → close.`,
@@ -447,12 +455,12 @@ const METHOD_MAP: Record<string, string> = {
 export function lowerHttp(op: HALOpIR): { code?: string; expression?: string } {
   const o = op as any;
   switch (op.operation) {
-    case 'http.reset':
-      return { code: `__tc_http_reset();` };
     case 'http.begin': {
       const methodName = String(o.method).replace(/^["']|["']$/g, '').toUpperCase();
       const method = METHOD_MAP[methodName] ?? 'HTTP_GET';
-      return { code: `__tc_http_begin(${method}, ${s(o.url)});` };
+      // Fresh shim state per request — the reset used to ride the deleted
+      // factory op (http.reset); construction now owns it.
+      return { code: `__tc_http_reset(); __tc_http_begin(${method}, ${s(o.url)});` };
     }
     case 'http.set_header':
       return { code: `__tc_http_set_header(${s(o.name)}, ${s(o.value)});` };
@@ -461,11 +469,27 @@ export function lowerHttp(op: HALOpIR): { code?: string; expression?: string } {
     case 'http.set_max_body':
       return { code: `__tc_http_set_max_body(${s(o.bytes)});` };
     case 'http.set_body':
-      return { code: `__tc_http_set_body(${s(o.data)}, ${o.json ? 'true' : 'false'});` };
+      // '' is the no-body sentinel — the op always emits from send(); elide.
+      return { code: o.data === '""' || o.data === '' ? '' : `__tc_http_set_body(${s(o.data)}, ${o.json ? 'true' : 'false'});` };
     case 'http.set_insecure':
-      return { code: `__tc_http_set_insecure();` };
-    case 'http.set_ca_cert':
-      return { code: `__tc_http_set_ca_cert(${s(o.pem)});` };
+      return { code: o.insecure ? `__tc_http_set_insecure();` : '' };
+    case 'http.set_ca_cert': {
+      // This tree's tf-psa-crypto mbedTLS has no PEM parser (MBEDTLS_PEM_C is
+      // not settable) — decode the PEM literal to DER here and emit a static
+      // byte array. tls_credential_add takes the DER directly (crt_is_pem is
+      // false → mbedtls_x509_crt_parse_der_nocopy on the verify path).
+      const pem = String(o.pem).replace(/^"|"$/g, '').replace(/\\n/g, '\n');
+      if (pem.replace(/\s+/g, '') === '') {
+        // No-CA sentinel (Request always emits the op; opts.caCert defaults
+        // to '') — elide silently so plain-HTTP requests carry no comment.
+        return { code: '' };
+      }
+      const b64 = pem.replace(/-----[A-Z ]+-----/g, '').replace(/\s+/g, '');
+      const der = Buffer.from(b64, 'base64');
+      if (der.length < 100) return { code: `// tc-http: caCert PEM failed to decode` };
+      const hex = [...der].map((b) => `0x${b.toString(16).padStart(2, '0')}`).join(', ');
+      return { code: `{ static const uint8_t __tc_ca_der[] = { ${hex} }; __tc_http_set_ca_cert_der(__tc_ca_der, sizeof(__tc_ca_der)); }` };
+    }
     case 'http.send':
       return { expression: `__tc_http_send()` };
     case 'http.send_start':

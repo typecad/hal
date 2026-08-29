@@ -318,6 +318,20 @@ export function setCurrentBoardConstants(v: BoardConstants | undefined) {
         }
       }
     }
+
+    // Board-module pin aliases (pins.aliases.<NAME> → pin name): the
+    // generated board module exports LED/BUTTON (and silkscreen labels) as
+    // aliases of datasheet-named pins. Map them through to numbers so
+    // resolveHALReceiver treats them as Pin constants.
+    for (const [key, value] of v.entries()) {
+      const aliasMatch = key.match(/^pins\.aliases\.([A-Za-z_][A-Za-z0-9_]*)$/);
+      if (aliasMatch && typeof value === 'string') {
+        const num = mcuPinForwardMap.get(value);
+        if (num !== undefined) {
+          pinAliasMap.set(aliasMatch[1], num);
+        }
+      }
+    }
   }
 }
 

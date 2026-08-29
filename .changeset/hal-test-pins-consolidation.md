@@ -2,10 +2,8 @@
 '@typecad/cuttlefish': minor
 '@typecad/expect': minor
 '@typecad/hal': minor
-'@typecad/framework-arduino': minor
 '@typecad/framework-zephyr': minor
 '@typecad/mcu-nrf52840': minor
-'@typecad/board-arduino-uno': minor
 '@typecad/board-blackpill-f411ce': minor
 '@typecad/board-esp32-devkit': minor
 '@typecad/board-esp32c3': minor

@@ -76,7 +76,7 @@ export function detectZephyrVersion(): string | undefined {
   let base = process.env.ZEPHYR_BASE;
   if (!base) {
     // Fall back to the discovered west install's zephyrBase — covers the
-    // micromamba env from @typecad/zephyr-installer WITHOUT activation.
+    // micromamba env from the bundled Zephyr installer WITHOUT activation.
     // (micromamba run sets ZEPHYR_BASE only inside the west subprocess; this
     // makes the compat check work in the parent cuttlefish process too.)
     const install = discoverWest();

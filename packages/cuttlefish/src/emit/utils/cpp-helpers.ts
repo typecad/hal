@@ -7,8 +7,8 @@ export function accessorSetterName(prop: string): string {
 }
 
 /**
- * Matches a C++ INTEGRAL scalar type (the enum↔integral storage boundary in
- * SUPPORT_MATRIX §1.7). Used by the enum-storage cast sites to decide whether
+ * Matches a C++ INTEGRAL scalar type (the enum↔integral storage boundary).
+ * Used by the enum-storage cast sites to decide whether
  * a value/target is on the integral side of an `enum class` boundary that
  * needs a `static_cast`. Covers the signed/unsigned `char`/`short`/`int`/
  * `long` spellings, the fixed-width `<cstdint>` aliases, `size_t`, and `bool`

@@ -63,7 +63,6 @@ Output is a `GeneratedOutputs` object with generated paths and diagnostics.
 - `emitCpp()` in `packages/transpiler/src/emit/cpp-emitter.ts` is the emission engine.
 - It consumes IR, platform strategy, board constants, and polyfills.
 - `registerAllEnumNames()` is required before emission to keep enum access normalization correct.
-- For Arduino, `flattenGeneratedModulesIntoSketch()` is used to create an `.ino` sketch.
 
 ### 7. Source maps and error mapping
 

@@ -266,8 +266,8 @@ describe('validateFrameworkManifest — HAL coverage', () => {
       supported: true,
       partialCoverage: true,
       ops: {
-        'timing.delay': 'supported',
-        'timing.delay_microseconds': 'supported',
+        'timing.sleep': 'supported',
+        'timing.busy_wait_us': 'supported',
         'timing.millis': 'supported',
         'timing.micros': 'supported',
         'timing.free_heap': 'supported',
@@ -280,7 +280,7 @@ describe('validateFrameworkManifest — HAL coverage', () => {
     // manifest.polyfills.emitted is empty — timer_methods is missing.
     const strategy = makeStubStrategy({
       resolveHALOperation: (op: { operation: string }) => {
-        if (op.operation.startsWith('timing.delay') || op.operation === 'timing.millis' || op.operation === 'timing.micros' || op.operation === 'timing.free_heap') return { code: `// ${op.operation}` };
+        if (['timing.sleep','timing.now','timing.now_us','timing.busy_wait_us'].includes(op.operation)) return { code: `// ${op.operation}` };
         return undefined;
       },
     } as Partial<PlatformStrategy>);
@@ -312,8 +312,8 @@ describe('validateFrameworkManifest — HAL coverage', () => {
       supported: true,
       partialCoverage: true,
       ops: {
-        'timing.delay': 'supported',
-        'timing.delay_microseconds': 'supported',
+        'timing.sleep': 'supported',
+        'timing.busy_wait_us': 'supported',
         'timing.millis': 'supported',
         'timing.micros': 'supported',
         'timing.free_heap': 'supported',
@@ -326,7 +326,7 @@ describe('validateFrameworkManifest — HAL coverage', () => {
     manifest.polyfills.emitted = [{ id: 'timer_methods', domain: 'standard' }];
     const strategy = makeStubStrategy({
       resolveHALOperation: (op: { operation: string }) => {
-        if (['timing.delay', 'timing.delay_microseconds', 'timing.millis', 'timing.micros', 'timing.free_heap'].includes(op.operation)) return { code: `// ${op.operation}` };
+        if (['timing.sleep','timing.now','timing.now_us','timing.busy_wait_us'].includes(op.operation)) return { code: `// ${op.operation}` };
         return undefined;
       },
     } as Partial<PlatformStrategy>);
@@ -494,15 +494,15 @@ void DISPLAY_OPERATION_KINDS;
 describe('validateFrameworkManifest — HAL completeness', () => {
   it('errors when a known category is missing from manifest.hal', () => {
     const manifest = makeMinimalManifest();
-    // Remove a category the validator knows about (rmt is in CATEGORY_PREFIXES).
-    delete (manifest.hal as Record<string, unknown>).rmt;
+    // Remove a category the validator knows about (gpio is in CATEGORY_PREFIXES).
+    delete (manifest.hal as Record<string, unknown>).gpio;
     const result = validateFrameworkManifest(manifest, {
       strategy: makeStubStrategy(),
       moduleExports: {},
       packageRoot: '/x',
       repoTestsDir: '/x',
     });
-    expect(result.errors.map((e) => e.code)).toContain('hal/rmt/category-undeclared');
+    expect(result.errors.map((e) => e.code)).toContain('hal/gpio/category-undeclared');
   });
 
   it('passes when every known category is declared', () => {

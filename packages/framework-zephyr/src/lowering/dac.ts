@@ -57,17 +57,17 @@ export function lowerDac(
   }
 
   switch (op.operation) {
-    case 'dac.write': {
-      // Lazy one-time channel setup on first write (the HAL DAC surface has no
-      // begin()), then output the value. Arduino analogWrite is 0–255 against
-      // the channel's resolution; dac_write_value takes the raw code.
+    case 'dac.write_value': {
+      // Thin DAC: raw code with the construction resolution (0 = the
+      // descriptor channel's), lazy setup per pin.
+      const res = Number(o.resolution) > 0 ? Number(o.resolution) : ch.resolution;
       return {
         code: [
-          `{ static bool __tc_dac_done = false;`,
-          `  if (!__tc_dac_done) {`,
-          `    static const struct dac_channel_cfg __tc_dac_cfg = { .channel_id = ${ch.channel}, .resolution = ${ch.resolution} };`,
-          `    (void)dac_channel_setup(__tc_dac_dev, &__tc_dac_cfg);`,
-          `    __tc_dac_done = true;`,
+          `{ static bool __tc_dact${o.pin}_done = false;`,
+          `  if (!__tc_dact${o.pin}_done) {`,
+          `    static const struct dac_channel_cfg __tc_dact${o.pin}_cfg = { .channel_id = ${ch.channel}, .resolution = ${res} };`,
+          `    (void)dac_channel_setup(__tc_dac_dev, &__tc_dact${o.pin}_cfg);`,
+          `    __tc_dact${o.pin}_done = true;`,
           `  }`,
           `  (void)dac_write_value(__tc_dac_dev, ${ch.channel}, ${o.value}); }`,
         ].join(' '),

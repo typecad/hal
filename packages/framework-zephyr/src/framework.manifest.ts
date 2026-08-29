@@ -75,7 +75,12 @@ export default defineFrameworkManifest({
         'gpio.write': 'supported',
         'gpio.read': 'supported',
         'gpio.toggle': 'supported',
-        'gpio.set_mode': 'supported',
+        // Thin GPIO (hal/gpio-pin.ts): construction flags as tokens, applied
+        // once per pin ahead of first use.
+        'gpio.configure': 'supported',
+        'gpio.read_cfg': 'supported',   // fused guarded configure + read
+        'gpio.shift_out': 'supported',
+        'gpio.shift_in': 'supported',
       },
     },
 
@@ -84,11 +89,6 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       ops: {
-        'timing.delay': 'supported',            // → k_msleep(ms)
-        'timing.delay_microseconds': 'supported', // → k_busy_wait(us)
-        'timing.millis': 'supported',           // → k_uptime_get_32()
-        'timing.micros': 'supported',           // → k_cycle_get_32 + cycles/sec
-        'timing.free_heap': 'supported',        // → 0 (no portable query; see lowering)
         // Timer ops are POLYFILL_BACKED_OPS → timer_methods. The validator skips
         // the resolver probe (these legitimately return polyfill-helper calls,
         // not direct lowering) and requires the polyfill be in polyfills.emitted.
@@ -96,6 +96,12 @@ export default defineFrameworkManifest({
         'timing.set_timeout': 'polyfill',
         'timing.clear_interval': 'polyfill',
         'timing.clear_timeout': 'polyfill',
+        // Time.* — the TS-flavored surface (hal/time.ts), preferred over the
+        // Arduino-named forms above for new code.
+        'timing.sleep': 'supported',             // → k_msleep(ms) — Time.sleep
+        'timing.now': 'supported',               // → k_uptime_get() — Time.now
+        'timing.now_us': 'supported',            // → k_cyc_to_us_floor64 — Time.nowUs
+        'timing.busy_wait_us': 'supported',      // → k_busy_wait(us) — Time.busyWaitUs
       },
     },
 
@@ -104,9 +110,14 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       ops: {
-        'pwm.write': 'supported',
         'pwm.get_frequency': 'supported',
         'pwm.get_resolution': 'supported',
+        // Thin PWM (hal/pwm-pin.ts): ns-true verbs; construction period
+        // applies once, setDuty is 0.0–1.0 sugar over one set_pulse call.
+        'pwm.set_pulse': 'supported',
+        'pwm.set_duty': 'supported',
+        'pwm.set_period': 'supported',
+        'pwm.tone': 'supported',          // 50% square-wave sugar (one pwm_set_dt)
       },
     },
 
@@ -115,11 +126,10 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       ops: {
-        'adc.read': 'supported',
-        'adc.get_resolution': 'supported',
-        'adc.set_reference': 'supported',
-        'adc.get_reference': 'supported',
-        'adc.read_voltage': 'supported',
+        // Thin ADC (hal/adc-pin.ts): construction gain/reference tokens,
+        // lazy inline channel setup.
+        'adc.read_raw': 'supported',
+        'adc.read_mv': 'supported',
       },
     },
     dac: {
@@ -129,23 +139,26 @@ export default defineFrameworkManifest({
       // (zephyr-dac-pin-unavailable).
       supported: true,
       partialCoverage: true,
-      ops: { 'dac.write': 'supported' },
+      ops: {
+        // Thin DAC (hal/dac-pin.ts): raw code, construction resolution.
+        'dac.write_value': 'supported',
+      },
     },
     interrupts: {
       supported: true,
       partialCoverage: true,
       unsupportedReason: undefined,
       ops: {
-        'interrupt.attach': 'supported',
         'interrupt.detach': 'supported',
+        // Thin GPIO interrupts (hal/gpio-pin.ts onInterrupt): INT_* tokens,
+        // covering the level modes the mode strings cannot express.
+        'interrupt.attach_flags': 'supported',
       },
     },
     tone: {
       supported: true,
       partialCoverage: true,
       ops: {
-        'tone.play': 'supported',   // PWM-based square wave (blocking for duration)
-        'tone.stop': 'supported',
       },
     },
     power: {
@@ -162,43 +175,36 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       ops: {
-        'i2c.begin': 'supported', 'i2c.end': 'supported', 'i2c.set_clock': 'supported',
-        'i2c.begin_transmission': 'supported', 'i2c.write': 'supported',
-        'i2c.write_bytes': 'supported', 'i2c.write_buffer': 'supported',
-        'i2c.read_buffer': 'supported', 'i2c.end_transmission': 'supported',
-        'i2c.request_from': 'supported', 'i2c.available': 'supported', 'i2c.read': 'supported',
-        'i2c.recover': 'supported',
+        // Thin I2C device (hal/i2c-target.ts): Zephyr register verbs.
+        'i2c.reg_write': 'supported',
+        'i2c.reg_read': 'supported',
+        'i2c.reg_update': 'supported',
+        'i2c.dev_write': 'supported',
       },
     },
     spi: {
       supported: true,
       partialCoverage: false,
       ops: {
-        'spi.begin': 'supported', 'spi.end': 'supported', 'spi.transfer': 'supported',
-        'spi.begin_transaction': 'supported', 'spi.end_transaction': 'supported',
-        'spi.set_mode': 'supported', 'spi.set_bit_order': 'supported',
-        'spi.cs_low': 'supported', 'spi.cs_high': 'supported', 'spi.read_buffer': 'supported',
+        // Thin SPI device (hal/spi-target.ts): spi_dt_spec against the DT
+        // child node the overlay emits per constructed target.
+        'spi.transceive': 'supported',
+        'spi.dev_write': 'supported',
+        'spi.reg_read': 'supported',
       },
     },
     uart: {
       supported: true,
       partialCoverage: true,
       ops: {
-        'uart.begin': 'supported', 'uart.end': 'supported', 'uart.print': 'supported',
-        'uart.println': 'supported', 'uart.printf': 'supported', 'uart.write': 'supported',
-        'uart.read': 'supported', 'uart.peek': 'supported', 'uart.available': 'supported',
-        'uart.flush': 'supported',
+        // Thin UART (hal/uart-port.ts): poll API with construction baud.
+        'uart.poll_write': 'supported',
+        // Interrupt-drained RX ring (hal/uart-port.ts).
+        'uart.rx_arm': 'supported',
+        'uart.rx_available': 'supported',
+        'uart.rx_peek': 'supported',
+        'uart.rx_read': 'supported',
       },
-    },
-    pulse: {
-      supported: true,
-      partialCoverage: true,
-      ops: { 'pulse.in': 'supported', 'pulse.in_long': 'supported' },
-    },
-    shift: {
-      supported: true,
-      partialCoverage: false,
-      ops: { 'shift.out': 'supported', 'shift.in': 'supported' },
     },
     board: {
       // Board constant resolution. Board.definition.<path> /
@@ -217,9 +223,33 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       ops: {
-        'wdt.enable': 'supported',
-        'wdt.reset': 'supported',
         'wdt.disable': 'supported',
+        // Thin Watchdog (hal/watchdog.ts): construction timeout in ms.
+        'wdt.setup': 'supported',
+        'wdt.feed': 'supported',
+      },
+    },
+    // Thin Counter (hal/counter.ts) — Zephyr's counter driver with Zephyr's
+    // verbs, over the same per-instance state as hwtimer.*. Chips without a
+    // declared free counter lower to a comment + profileDiagnostics flag.
+    counter: {
+      supported: true,
+      partialCoverage: true,
+      ops: {
+        'counter.on_alarm': 'supported',
+        'counter.start': 'supported',
+        'counter.stop': 'supported',
+      },
+    },
+    // Thin Thread (hal/thread.ts) — kernel threads. start(fn) is
+    // k_thread_create (K_NO_WAIT) over a per-slot stack sized by the
+    // construction stackKb; join is k_thread_join (K_FOREVER).
+    thread: {
+      supported: true,
+      partialCoverage: false,
+      ops: {
+        'thread.start': 'supported',
+        'thread.join': 'supported',
       },
     },
     // ── Partial: WiFi (STA connect + scan + config via conn_mgr/net_mgmt) ────
@@ -233,51 +263,34 @@ export default defineFrameworkManifest({
       // driver hook; credentials need a custom settings-subsystem layer; static IP
       // / auto-reconnect / tx-power aren't wifi-shaped or aren't exposed by the
       // esp32 Zephyr driver. See per-op reasons.
-      unsupportedReason: 'AP client enumeration/IP/per-station config, credential persistence, static IP, auto-reconnect, and tx-power have no Zephyr lowering (no driver/Kconfig hook).',
+      unsupportedReason: 'Per-station AP enumeration and credential persistence have no Zephyr lowering (no driver/Kconfig hook).',
       ops: {
-        // Connection (8) — net_mgmt connect/disconnect + L4 connectivity state.
-        'wifi.connect': 'supported', 'wifi.connect_start': 'supported',
-        'wifi.disconnect': 'supported', 'wifi.status': 'supported',
-        'wifi.is_connected': 'supported', 'wifi.local_ip': 'supported',
-        'wifi.rssi': 'supported', 'wifi.mac': 'supported',
-        // Waits (2) — block on the L4 connected flag (k_msleep poll).
-        'wifi.wait_connected': 'supported', 'wifi.wait_disconnected': 'supported',
+        // Station (8) — join carries the construction facts (credentials,
+        // security, band/channel, timeout, static IPv4, power-save);
+        // net_mgmt connect/disconnect + L4 connectivity state underneath.
+        'wifi.join': 'supported', 'wifi.connect_start': 'supported',
+        'wifi.disconnect': 'supported', 'wifi.is_connected': 'supported',
+        'wifi.local_ip': 'supported', 'wifi.rssi': 'supported',
+        'wifi.mac': 'supported',
         // Scan (8) — net_mgmt NET_REQUEST_WIFI_SCAN + result pool.
-        'wifi.scan': 'supported', 'wifi.scan_start': 'supported',
+        // scan_start is the async split of scan (kick + poll scan_done);
+        // emitted synthetically by the async tier, no TS-facing method.
+        'wifi.scan': 'supported',
+        'wifi.scan_start': 'supported',
         'wifi.scan_done': 'supported', 'wifi.scan_count': 'supported',
         'wifi.scan_ssid': 'supported', 'wifi.scan_rssi': 'supported',
         'wifi.scan_encryption': 'supported', 'wifi.scan_channel': 'supported',
-        // AP mode (2 of 7) — esp32 driver wires ap_enable/ap_disable. Only
-        // ssid/password/channel are honored; the rest of the AP surface has no
-        // driver hook (config_params isn't wired, max_clients hardcodes 5).
+        // AP mode (2) — esp32 driver wires ap_enable/ap_disable. Only
+        // ssid/psk/channel are honored (the thin WiFiAP facts carry exactly those).
         'wifi.ap_start': 'supported', 'wifi.ap_stop': 'supported',
-        // Config (2) — hostname (best-effort no-op) + power save (real net_mgmt).
-        'wifi.set_hostname': 'supported', 'wifi.set_power_save': 'supported',
         // on_event: 'disconnect' (NET_EVENT_L4_DISCONNECTED) + 'connect'
         // (NET_EVENT_IPV4_ADDR_ADD) are lowered.
         'wifi.on_event': 'supported',
-        // ── Genuinely unsupported (no Zephyr/driver hook) ───────────────────
+        // ── Genuinely unsupported (no driver hook) ─────────────────────────
         // ap_client_count: no API to enumerate connected AP stations.
-        // ap_ip: set via net_if, not wifi net_mgmt.
-        // ap_set_channel: channel set at ap_start; driver doesn't wire ap_config_params.
-        // ap_set_hidden: esp32 ap_enable config has no ssid_hidden field.
-        // ap_set_max_clients: driver hardcodes max_connection to 5; config_params unwired.
-        // save_credentials/connect_saved/clear_credentials: no wifi-credentials API in
-        //   Zephyr (would need a custom settings-subsystem layer).
-        // set_static_ip: a net_if operation, not a wifi net_mgmt request.
-        // set_auto_reconnect: esp32 driver doesn't expose esp_wifi_set_auto_connect.
-        // set_tx_power: driver owns the radio; the PHY ceiling isn't a Zephyr Kconfig (zephyr#45580).
         'wifi.ap_client_count': 'unsupported',
-        'wifi.ap_ip': 'unsupported',
-        'wifi.ap_set_channel': 'unsupported',
-        'wifi.ap_set_hidden': 'unsupported',
-        'wifi.ap_set_max_clients': 'unsupported',
-        'wifi.save_credentials': 'unsupported', 'wifi.connect_saved': 'unsupported',
-        'wifi.clear_credentials': 'unsupported',
-        'wifi.set_static_ip': 'unsupported',
-        'wifi.set_auto_reconnect': 'unsupported',
-        'wifi.set_tx_power': 'unsupported',
       },
+      
     },
     http: {
       supported: true,
@@ -288,7 +301,7 @@ export default defineFrameworkManifest({
       // a networked target (ESP32 WiFi); profileDiagnostics flags usage on a
       // radioless chip as 'zephyr-http-unavailable-on-target'.
       ops: {
-        'http.begin': 'supported', 'http.reset': 'supported',
+        'http.begin': 'supported',
         'http.set_header': 'supported', 'http.set_timeout': 'supported',
         'http.set_max_body': 'supported', 'http.set_body': 'supported',
         'http.set_insecure': 'supported', 'http.set_ca_cert': 'supported',
@@ -342,12 +355,6 @@ export default defineFrameworkManifest({
     // catchall schema (HalCoverageSchema) validates any declared extended
     // category; declaring them keeps the manifest a complete coverage record.
 
-    rmt: {
-      supported: false,
-      unsupportedReason: 'RMT (ESP32 infrared/transaction peripheral) has no Zephyr lowering.',
-      partialCoverage: false,
-      ops: unsupportedOps('rmt.'),
-    },
     snprintf: {
       supported: false,
       unsupportedReason: 'snprintf.emit is a raw escape hatch; the Zephyr resolver returns undefined (use rawCpp()).',
@@ -368,10 +375,8 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       ops: {
-        'preferences.begin': 'supported', 'preferences.end': 'supported',
         'preferences.clear': 'supported', 'preferences.remove': 'supported',
         'preferences.put_int': 'supported', 'preferences.get_int': 'supported',
-        'preferences.put_uint': 'supported', 'preferences.get_uint': 'supported',
         'preferences.put_bool': 'supported', 'preferences.get_bool': 'supported',
         'preferences.put_float': 'supported', 'preferences.get_float': 'supported',
         'preferences.put_string': 'supported', 'preferences.get_string': 'supported',
@@ -398,15 +403,9 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       ops: {
-        'fs.begin': 'supported', 'fs.read_text': 'supported', 'fs.write_text': 'supported',
+        'fs.read_text': 'supported', 'fs.write_text': 'supported',
         'fs.exists': 'supported', 'fs.remove': 'supported',
       },
-    },
-    mdns: {
-      supported: false,
-      unsupportedReason: 'No mDNS lowering on Zephyr (requires networking stack).',
-      partialCoverage: false,
-      ops: unsupportedOps('mdns.'),
     },
     mqtt: {
       supported: true,
@@ -424,42 +423,18 @@ export default defineFrameworkManifest({
         'mqtt.connected': 'supported', 'mqtt.disconnect': 'supported',
       },
     },
-    ota: {
-      supported: false,
-      unsupportedReason: 'No OTA lowering on Zephyr (Zephyr has MCUmgr; not wired).',
-      partialCoverage: false,
-      ops: unsupportedOps('ota.'),
-    },
-    temp: {
-      supported: false,
-      unsupportedReason: 'No on-chip temperature lowering on Zephyr (nRF52840 TEMP peripheral; not wired).',
-      partialCoverage: false,
-      ops: { 'temp.read': 'unsupported' },
-    },
-    hwtimer: {
-      // Hardware timers via the Zephyr counter driver (<zephyr/drivers/counter.h>).
-      // set_frequency → top value (counter_freq/hz) + on_overflow callback;
-      // start arms both; stop halts. A chip declares its free counters
-      // (e.g. nRF RTC1; RTC0 is kernel-owned). This is distinct from the JS
-      // setInterval/setTimeout k_timer polyfill, which is unaffected.
+    sensor: {
+      // DT-bound sensor parts — the generic catalog (hal/sensor.ts +
+      // sensor-catalog.generated.ts). fetch → sensor_sample_fetch,
+      // get → sensor_channel_get on a per-sensor device handle; the overlay
+      // generator emits the DT child node, and the driver's own Kconfig
+      // `default y` lights it up (only CONFIG_SENSOR is set, usage-gated).
       supported: true,
-      partialCoverage: true,
+      partialCoverage: false,
       ops: {
-        'hwtimer.set_frequency': 'supported', 'hwtimer.on_overflow': 'supported',
-        'hwtimer.start': 'supported', 'hwtimer.stop': 'supported',
+        'sensor.fetch': 'supported',
+        'sensor.get': 'supported',
       },
-    },
-    capacitive: {
-      // FT6336U capacitive touch is handled via the strategy-owned touch adapter
-      // (src/display/touch-adapter.ts → touch_init/touch_isTouched/touch_readRaw),
-      // NOT via a HAL op lowering. The manifest marks it unsupported here (no
-      // resolveHALOperation path for capacitive.read); the touch adapter provides
-      // the integration. partialCoverage reflects that it works on targets with
-      // the FT6336U DT node (ESP32), not on the bare nRF52840.
-      supported: false,
-      unsupportedReason: 'Capacitive touch is handled via the strategy touch adapter (FT6336U I2C), not a HAL op. Requires the ft6336u DT node.',
-      partialCoverage: true,
-      ops: { 'capacitive.read': 'unsupported' },
     },
     i2s: {
       supported: false,
@@ -481,9 +456,9 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: true,
       ops: {
-        'usb.begin': 'supported', 'usb.end': 'supported', 'usb.print': 'supported',
-        'usb.println': 'supported', 'usb.printf': 'supported', 'usb.write': 'supported',
-        'usb.read': 'supported', 'usb.available': 'supported', 'usb.flush': 'supported',
+        'usb.begin': 'supported', 'usb.wait_ready': 'supported', 'usb.end': 'supported',
+        'usb.print': 'supported', 'usb.println': 'supported',
+        'usb.read': 'supported', 'usb.available': 'supported',
         'usb.connected': 'supported',
       },
     },
@@ -546,7 +521,7 @@ export default defineFrameworkManifest({
 
   typeEmission: {
     normalizeCppType: true,
-    mathHeader: '<math.h>',
+    mathHeader: '<cmath>',
     needsStdString: false,
     needsStdVector: false,
     needsIostream: false,
@@ -577,8 +552,8 @@ export default defineFrameworkManifest({
     // catches regressions like silent pull-resistor / interrupt no-ops.
     halResolutionTests: [
       'adc', 'ble', 'board', 'dac', 'fs', 'gpio', 'http', 'hwtimer', 'i2c',
-      'interrupts', 'mqtt', 'power', 'preferences', 'pulse', 'pwm', 'random',
-      'spi', 'timing', 'tone', 'uart', 'wdt', 'worker',
+      'interrupts', 'mqtt', 'power', 'preferences', 'pwm', 'random',
+      'spi', 'timing', 'uart', 'wdt', 'worker',
     ],
   },
 

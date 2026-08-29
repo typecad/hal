@@ -6,7 +6,6 @@ import { resolveExpressionText, extractAndRegisterCallbacks } from "./hal-emitte
 import { renderExprAsText } from "../render-expr.js";
 import type { ExpressionIR } from "../../api/index.js";
 import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
-import { notePinSetMode, notePinToggle, notePinWrite, notePinAnalogOutput, resolveTrackedRead } from "../pin-state-tracking.js";
 
 /**
  * Split a comma-joined argument list back into individual arguments, respecting
@@ -393,13 +392,11 @@ export function tryResolveSemanticCall(
       // Try literal resolution first (compile-time 0/1/true/false)
       const numValue = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (numValue !== null) {
-        notePinWrite(pin, numValue);
         return { operation: "gpio.write", port, pin, value: (numValue ? 1 : 0) as 0 | 1 };
       }
       // Fall back to runtime expression (e.g. a variable, negated expression)
       const exprValue = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (exprValue !== null) {
-        notePinWrite(pin, null);
         return { operation: "gpio.write", port, pin, value: exprValue };
       }
       return null;
@@ -407,166 +404,15 @@ export function tryResolveSemanticCall(
     case "gpioRead": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null) return null;
-      const tracked = resolveTrackedRead(pin);
-      if (tracked !== null) {
-        return { operation: "gpio.read", port, pin, trackedValue: tracked };
-      }
       return { operation: "gpio.read", port, pin };
     }
     case "gpioToggle": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null) return null;
-      notePinToggle(pin);
       return { operation: "gpio.toggle", port, pin };
     }
-    case "gpioSetMode": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const mode = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || mode === null) return null;
-      notePinSetMode(pin, mode);
-      return { operation: "gpio.set_mode", port, pin, mode };
-    }
 
-    // ── PWM ──
-    case "pwmWrite": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const duty = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || duty === null) return null;
-      notePinAnalogOutput(pin);
-      return { operation: "pwm.write", port, pin, duty };
-    }
-
-    // ── RMT ──
-    // rmtTxInit/rmtRxInit are POSITIONAL semantic primitives (the ergonomic
-    // opts-object form lives in hal/rmt.ts's RmtChannel class, which
-    // destructures opts and forwards positionally). The resolver dispatches on
-    // the literal callee name, so rmt.ts must call these by their real names
-    // (no `as _rmtTxInit` aliasing — that breaks the switch).
-    //   rmtTxInit(pin, resolutionHz, bit0Hi, bit0Lo, bit1Hi, bit1Lo, msbFirst, queueDepth)
-    case "rmtTxInit": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const resolutionHz = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const bit0Hi = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      const bit0Lo = resolveNumericOrExpression(args, 3, instance, paramNames, callArgTexts, paramDefaults);
-      const bit1Hi = resolveNumericOrExpression(args, 4, instance, paramNames, callArgTexts, paramDefaults);
-      const bit1Lo = resolveNumericOrExpression(args, 5, instance, paramNames, callArgTexts, paramDefaults);
-      const msbFirst = resolveSemanticArg(args, 6, instance, paramNames, callArgTexts, paramDefaults);
-      const queueDepth = resolveNumericOrExpression(args, 7, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || resolutionHz === null) return null;
-      const op: any = { operation: "rmt.tx_init", port, pin, resolutionHz, bit0Hi, bit0Lo, bit1Hi, bit1Lo };
-      if (queueDepth !== null) op.queueDepth = queueDepth;
-      if (msbFirst !== null) op.msbFirst = msbFirst;
-      return op;
-    }
-    case "rmtTxWriteBytes": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      // bytes is an array literal — resolveSemanticArg renders it positionally as "1, 2, 3".
-      const bytes = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || bytes === null) return null;
-      return { operation: "rmt.tx_write_bytes", port, pin, bytes };
-    }
-    case "rmtTxWriteSymbols": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const symbols = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || symbols === null) return null;
-      return { operation: "rmt.tx_write_symbols", port, pin, symbols };
-    }
-    case "rmtTxWaitDone": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const timeoutMs = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null) return null;
-      const op: any = { operation: "rmt.tx_wait_done", port, pin };
-      if (timeoutMs !== null) op.timeoutMs = timeoutMs;
-      return op;
-    }
-    case "rmtTxDeinit": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null) return null;
-      return { operation: "rmt.tx_deinit", port, pin };
-    }
-    case "rmtRxInit": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const resolutionHz = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || resolutionHz === null) return null;
-      return { operation: "rmt.rx_init", port, pin, resolutionHz };
-    }
-    case "rmtRxOnReceived": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || handler === null) return null;
-      return { operation: "rmt.rx_on_received", port, pin, handler };
-    }
-    case "rmtRxStart": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null) return null;
-      return { operation: "rmt.rx_start", port, pin };
-    }
-    case "rmtRxStop": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null) return null;
-      return { operation: "rmt.rx_stop", port, pin };
-    }
-    case "rmtRxRead": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const maxCount = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || maxCount === null) return null;
-      return { operation: "rmt.rx_read", port, pin, maxCount };
-    }
-    case "rmtRxDeinit": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null) return null;
-      return { operation: "rmt.rx_deinit", port, pin };
-    }
-
-    // ── ADC ──
-    case "adcRead": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null) return null;
-      return { operation: "adc.read", port, pin };
-    }
-    case "adcSetReference": {
-      const ref = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (ref === null) return null;
-      const numRef = Number(ref);
-      return { operation: "adc.set_reference", reference: isNaN(numRef) ? ref : numRef };
-    }
-    case "adcReadVoltage": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null) return null;
-      const op: Record<string, unknown> = { operation: "adc.read_voltage", port, pin };
-      const bc = getCurrentBoardConstants();
-      if (bc) {
-        // Check if ADC has a non-default reference set
-        const adcInst = halInstances.get("ADC");
-        const ref = adcInst?.fieldValues.get("_reference");
-        const refKey = ref && ref !== "DEFAULT" ? ref : null;
-        const vRefPath = refKey
-          ? `peripherals.adc.0.referenceVoltages.${refKey}`
-          : `peripherals.adc.0.referenceVoltage`;
-        const vRef = bc.get(vRefPath);
-        const maxValue = bc.get("peripherals.adc.0.maxValue");
-        if (vRef !== undefined) op.vRef = Number(vRef);
-        if (maxValue !== undefined) op.maxValue = Number(maxValue);
-      }
-      return op as unknown as HALOpIR;
-    }
-
-    // ── DAC ──
-    case "dacWrite": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || value === null) return null;
-      return { operation: "dac.write", port, pin, value };
-    }
-
-    // ── Watchdog timer ──
-    case "wdtEnable": {
-      const timeout = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (timeout === null) return null;
-      return { operation: "wdt.enable", timeout };
-    }
-    case "wdtReset":
-      return { operation: "wdt.reset" };
+;
     case "wdtDisable":
       return { operation: "wdt.disable" };
 
@@ -590,21 +436,25 @@ export function tryResolveSemanticCall(
       return { operation: "power.deep_sleep_pin", pin, level };
     }
 
-    // ── WiFi ──
-    // Optional string args (password, dns) resolve to the text "undefined"
-    // when omitted at the call site (no default in the HAL signature). Treat
-    // that as absent so the backend emits its own default ("").
-    case "wifiConnect": {
-      const ssid = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const password = dropUndefined(resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults));
-      const timeoutMs = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults) ?? 15000;
+    case "wifiJoin": {
+      const R = resolveSemanticArg;
+      const N = resolveNumericArg;
+      const ssid = R(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const psk = dropUndefined(R(args, 1, instance, paramNames, callArgTexts, paramDefaults));
+      const security = N(args, 2, instance, paramNames, callArgTexts, paramDefaults) ?? (psk !== null ? 1 : 0);
+      const channel = N(args, 3, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      const band = N(args, 4, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      const timeoutMs = N(args, 5, instance, paramNames, callArgTexts, paramDefaults) ?? 15000;
+      const ps = N(args, 6, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      const ipAddr = dropUndefined(R(args, 7, instance, paramNames, callArgTexts, paramDefaults));
+      const gateway = dropUndefined(R(args, 8, instance, paramNames, callArgTexts, paramDefaults));
+      const netmask = dropUndefined(R(args, 9, instance, paramNames, callArgTexts, paramDefaults));
       if (ssid === null) return null;
       return {
-        operation: "wifi.connect",
-        ssid,
-        ...(password !== null ? { password } : {}),
-        timeoutMs,
-        blocking: true,
+        operation: "wifi.join", ssid,
+        ...(psk !== null ? { psk } : {}),
+        security, channel, band, timeoutMs, ps,
+        ...(ipAddr !== null && gateway !== null && netmask !== null ? { ipAddr, gateway, netmask } : {}),
       };
     }
     case "wifiConnectStart": {
@@ -615,8 +465,7 @@ export function tryResolveSemanticCall(
     }
     case "wifiDisconnect":
       return { operation: "wifi.disconnect" };
-    case "wifiStatus":
-      return { operation: "wifi.status" };
+;
     case "wifiIsConnected":
       return { operation: "wifi.is_connected" };
     case "wifiLocalIp":
@@ -625,34 +474,6 @@ export function tryResolveSemanticCall(
       return { operation: "wifi.rssi" };
     case "wifiMac":
       return { operation: "wifi.mac" };
-    case "wifiSetHostname": {
-      const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (name === null) return null;
-      return { operation: "wifi.set_hostname", name };
-    }
-    case "wifiSetStaticIp": {
-      const ip = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const gateway = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const subnet = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      const dns = dropUndefined(resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults));
-      if (ip === null || gateway === null || subnet === null) return null;
-      return { operation: "wifi.set_static_ip", ip, gateway, subnet, ...(dns !== null ? { dns } : {}) };
-    }
-    case "wifiSetAutoReconnect": {
-      const enabled = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (enabled === null) return null;
-      return { operation: "wifi.set_auto_reconnect", enabled: enabled === "true" };
-    }
-    case "wifiSetPowerSave": {
-      const mode = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (mode === null) return null;
-      return { operation: "wifi.set_power_save", mode };
-    }
-    case "wifiSetTxPower": {
-      const dbm = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (dbm === null) return null;
-      return { operation: "wifi.set_tx_power", dbm };
-    }
     case "wifiOnEvent": {
       const event = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
@@ -677,29 +498,10 @@ export function tryResolveSemanticCall(
     }
     case "wifiApStop":
       return { operation: "wifi.ap_stop" };
-    case "wifiApClientCount":
-      return { operation: "wifi.ap_client_count" };
-    case "wifiApIp":
-      return { operation: "wifi.ap_ip" };
-    case "wifiApSetChannel": {
-      const channel = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (channel === null) return null;
-      return { operation: "wifi.ap_set_channel", channel };
-    }
-    case "wifiApSetHidden": {
-      const hidden = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (hidden === null) return null;
-      return { operation: "wifi.ap_set_hidden", hidden };
-    }
-    case "wifiApSetMaxClients": {
-      const maxClients = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (maxClients === null) return null;
-      return { operation: "wifi.ap_set_max_clients", maxClients };
-    }
+;
+;
     case "wifiScan":
       return { operation: "wifi.scan" };
-    case "wifiScanStart":
-      return { operation: "wifi.scan_start" };
     case "wifiScanCount":
       return { operation: "wifi.scan_count" };
     case "wifiScanSsid": {
@@ -722,24 +524,8 @@ export function tryResolveSemanticCall(
       if (index === null) return null;
       return { operation: "wifi.scan_channel", index };
     }
-    case "wifiSaveCredentials": {
-      const ssid = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const password = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (ssid === null || password === null) return null;
-      return { operation: "wifi.save_credentials", ssid, password };
-    }
-    case "wifiConnectSaved": {
-      const timeoutMs = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults) ?? 15000;
-      return { operation: "wifi.connect_saved", timeoutMs };
-    }
-    case "wifiClearCredentials":
-      return { operation: "wifi.clear_credentials" };
-    case "wifiWaitConnected": {
-      const timeoutMs = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults) ?? 15000;
-      return { operation: "wifi.wait_connected", timeoutMs };
-    }
-    case "wifiWaitDisconnected":
-      return { operation: "wifi.wait_disconnected" };
+;
+;
 
     // ── HTTP ──
     case "httpBegin": {
@@ -752,8 +538,6 @@ export function tryResolveSemanticCall(
       // lowering emits valid C++.
       return { operation: "http.begin", method, url: quoteNonIdentifier(url) };
     }
-    case "httpReset":
-      return { operation: "http.reset" };
     case "httpSetHeader": {
       const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
@@ -776,8 +560,11 @@ export function tryResolveSemanticCall(
       if (data === null) return null;
       return { operation: "http.set_body", data, json: json === "true" };
     }
-    case "httpSetInsecure":
-      return { operation: "http.set_insecure" };
+    case "httpSetInsecure": {
+      const insecure = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (insecure === null) return null;
+      return { operation: "http.set_insecure", insecure: insecure === "true" };
+    }
     case "httpSetCaCert": {
       const pem = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (pem === null) return null;
@@ -785,8 +572,6 @@ export function tryResolveSemanticCall(
     }
     case "httpSend":
       return { operation: "http.send", blocking: true };
-    case "httpSendStart":
-      return { operation: "http.send_start" };
     case "httpStatus":
       return { operation: "http.status" };
     case "httpOk":
@@ -831,8 +616,10 @@ export function tryResolveSemanticCall(
       // this index.
       const uuid = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const type = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      const perms = resolveNumericOrExpression(args, 3, instance, paramNames, callArgTexts, paramDefaults);
-      const svcIndex = resolveNumericOrExpression(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      // Perms arrive as token text ("BlePerm.Read | BlePerm.Notify") —
+      // resolveBlePermExpr maps the member names to the bitmask.
+      const perms = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const svcIndex = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
       if (uuid === null || type === null) return null;
       // Resolve BleValueType.X → the enum's string value (e.g. Int16 → 'int16').
       const resolvedType = type.startsWith("BleValueType.")
@@ -853,13 +640,13 @@ export function tryResolveSemanticCall(
       };
     }
     case "bleOnRead": {
-      const index = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const index = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (handler === null) return null;
       return { operation: "ble.on_read", index: index ?? 0, handler };
     }
     case "bleOnWrite": {
-      const index = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const index = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (handler === null) return null;
       return { operation: "ble.on_write", index: index ?? 0, handler };
@@ -875,8 +662,8 @@ export function tryResolveSemanticCall(
       return { operation: "ble.on_disconnect", handler };
     }
     case "bleNotify": {
-      const index = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const index = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (value === null) return null;
       return { operation: "ble.notify", index: index ?? 0, value };
     }
@@ -884,156 +671,116 @@ export function tryResolveSemanticCall(
       return { operation: "ble.is_connected" };
     case "bleClientCount":
       return { operation: "ble.client_count" };
-    case "bleStatus":
-      return { operation: "ble.status" };
-    case "bleSetName": {
-      const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (name === null) return null;
-      return { operation: "ble.set_name", name: quoteNonIdentifier(name) };
-    }
-    case "bleUntilConnected": {
-      const timeoutMs = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
-      return { operation: "ble.until_connected", timeoutMs, blocking: true };
-    }
-    case "bleUntilConnectedStart":
-      return { operation: "ble.until_connected_start" };
-    case "bleSetTxPower": {
-      const dbm = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (dbm === null) return null;
-      return { operation: "ble.set_tx_power", dbm };
-    }
 
-    // ── Preferences (NVS key/value store) ──
-    case "preferencesBegin": {
+
+
+
+    case "preferencesClear": {
       const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const ro = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (ns === null) return null;
-      return { operation: "preferences.begin", namespace: quoteNonIdentifier(ns), readOnly: ro === "true" };
+      return { operation: "preferences.clear", ns: quoteNonIdentifier(ns) };
     }
-    case "preferencesEnd":
-      return { operation: "preferences.end" };
-    case "preferencesClear":
-      return { operation: "preferences.clear" };
     case "preferencesRemove": {
-      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ns === null) return null;
+      const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (key === null) return null;
-      return { operation: "preferences.remove", key: quoteNonIdentifier(key) };
+      return { operation: "preferences.remove", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key) };
     }
     case "preferencesPutInt": {
-      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ns === null) return null;
+      const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (key === null || value === null) return null;
-      return { operation: "preferences.put_int", key: quoteNonIdentifier(key), value };
+      return { operation: "preferences.put_int", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), value };
     }
     case "preferencesGetInt": {
-      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const def = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ns === null) return null;
+      const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const def = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
       if (key === null) return null;
-      return { operation: "preferences.get_int", key: quoteNonIdentifier(key), defaultValue: def };
-    }
-    case "preferencesPutUInt": {
-      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (key === null || value === null) return null;
-      return { operation: "preferences.put_uint", key: quoteNonIdentifier(key), value };
-    }
-    case "preferencesGetUInt": {
-      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const def = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
-      if (key === null) return null;
-      return { operation: "preferences.get_uint", key: quoteNonIdentifier(key), defaultValue: def };
+      return { operation: "preferences.get_int", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: def };
     }
     case "preferencesPutBool": {
-      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ns === null) return null;
+      const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (key === null || value === null) return null;
-      return { operation: "preferences.put_bool", key: quoteNonIdentifier(key), value: value === "true" };
+      return { operation: "preferences.put_bool", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), value: value === "true" };
     }
     case "preferencesGetBool": {
-      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const def = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ns === null) return null;
+      const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const def = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (key === null) return null;
-      return { operation: "preferences.get_bool", key: quoteNonIdentifier(key), defaultValue: def === "true" };
+      return { operation: "preferences.get_bool", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: def === "true" };
     }
     case "preferencesPutFloat": {
-      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ns === null) return null;
+      const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (key === null || value === null) return null;
-      return { operation: "preferences.put_float", key: quoteNonIdentifier(key), value };
+      return { operation: "preferences.put_float", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), value };
     }
     case "preferencesGetFloat": {
-      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const def = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ns === null) return null;
+      const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const def = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
       if (key === null) return null;
-      return { operation: "preferences.get_float", key: quoteNonIdentifier(key), defaultValue: def };
+      return { operation: "preferences.get_float", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: def };
     }
     case "preferencesPutString": {
-      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ns === null) return null;
+      const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (key === null || value === null) return null;
-      return { operation: "preferences.put_string", key: quoteNonIdentifier(key), value: quoteNonIdentifier(value) };
+      return { operation: "preferences.put_string", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), value: quoteNonIdentifier(value) };
     }
     case "preferencesGetString": {
-      const key = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const def = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults) ?? '""';
+      const ns = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ns === null) return null;
+      const key = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const def = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults) ?? '""';
       if (key === null) return null;
-      return { operation: "preferences.get_string", key: quoteNonIdentifier(key), defaultValue: quoteNonIdentifier(def) };
+      return { operation: "preferences.get_string", ns: quoteNonIdentifier(ns), key: quoteNonIdentifier(key), defaultValue: quoteNonIdentifier(def) };
     }
 
-    // ── FS (filesystem) ──
-    case "fsBegin":
-      return { operation: "fs.begin" };
+    // ── FS (littlefs on the storage partition — lazy mount, no session) ──
     case "fsReadText": {
       const path = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (path === null) return null;
-      return { operation: "fs.read_text", path };
+      return { operation: "fs.read_text", path: quoteNonIdentifier(path) };
     }
     case "fsWriteText": {
       const path = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const content = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (path === null || content === null) return null;
-      return { operation: "fs.write_text", path, content };
+      return { operation: "fs.write_text", path: quoteNonIdentifier(path), content: quoteNonIdentifier(content) };
     }
     case "fsExists": {
       const path = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (path === null) return null;
-      return { operation: "fs.exists", path };
+      return { operation: "fs.exists", path: quoteNonIdentifier(path) };
     }
     case "fsRemove": {
       const path = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (path === null) return null;
-      return { operation: "fs.remove", path };
+      return { operation: "fs.remove", path: quoteNonIdentifier(path) };
     }
-
-    // ── mDNS ──
-    case "mdnsStart": {
-      const hostname = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (hostname === null) return null;
-      return { operation: "mdns.start", hostname };
-    }
-    case "mdnsSetHostname": {
-      const name = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (name === null) return null;
-      return { operation: "mdns.set_hostname", name };
-    }
-    case "mdnsAddService": {
-      const instanceName = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const proto = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const port = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      if (instanceName === null || proto === null || port === null) return null;
-      return { operation: "mdns.add_service", instance: instanceName, proto, port };
-    }
-    case "mdnsAnnounce":
-      return { operation: "mdns.announce" };
-    case "mdnsStop":
-      return { operation: "mdns.stop" };
 
     // ── MQTT ──
     case "mqttConnect": {
-      const brokerUri = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const uri = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const clientId = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (brokerUri === null || clientId === null) return null;
-      return { operation: "mqtt.connect", brokerUri, clientId };
+      if (uri === null || clientId === null) return null;
+      return { operation: "mqtt.connect", brokerUri: quoteNonIdentifier(uri), clientId: quoteNonIdentifier(clientId) };
     }
     case "mqttOnMessage": {
       const handler = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
@@ -1043,323 +790,40 @@ export function tryResolveSemanticCall(
     case "mqttSubscribe": {
       const topic = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (topic === null) return null;
-      return { operation: "mqtt.subscribe", topic };
+      return { operation: "mqtt.subscribe", topic: quoteNonIdentifier(topic) };
     }
     case "mqttPublish": {
       const topic = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const data = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (topic === null || data === null) return null;
-      return { operation: "mqtt.publish", topic, data };
+      return { operation: "mqtt.publish", topic: quoteNonIdentifier(topic), data: quoteNonIdentifier(data) };
     }
     case "mqttConnected":
       return { operation: "mqtt.connected" };
     case "mqttDisconnect":
       return { operation: "mqtt.disconnect" };
 
-    // ── OTA ──
-    case "otaFromUrl": {
-      const url = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (url === null) return null;
-      return { operation: "ota.from_url", url };
-    }
-    case "otaBegin":
-      return { operation: "ota.begin" };
-    case "otaWrite": {
-      const chunk = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (chunk === null) return null;
-      return { operation: "ota.write", chunk };
-    }
-    case "otaApply":
-      return { operation: "ota.apply" };
-
-    // ── Temperature (die temp) ──
-    case "tempRead":
-      return { operation: "temp.read" };
-
-    // ── Hardware timer (GPTimer) ──
-    case "hwtimerSetFrequency": {
-      const inst = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const hz = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (inst === null || hz === null) return null;
-      return { operation: "hwtimer.set_frequency", instance: inst, hz };
-    }
-    case "hwtimerOnOverflow": {
-      const inst = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (inst === null || handler === null) return null;
-      return { operation: "hwtimer.on_overflow", instance: inst, handler };
-    }
-    case "hwtimerStart": {
-      const inst = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (inst === null) return null;
-      return { operation: "hwtimer.start", instance: inst };
-    }
-    case "hwtimerStop": {
-      const inst = resolveNumericOrExpression(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (inst === null) return null;
-      return { operation: "hwtimer.stop", instance: inst };
-    }
-
-    // ── Capacitive touch pins ──
-    case "capacitiveRead": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null) return null;
-      return { operation: "capacitive.read", port, pin };
-    }
-
-    // ── Interrupts ──
-    case "interruptAttach": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const mode = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || handler === null || mode === null) return null;
-      return { operation: "interrupt.attach", port, pin, handler, mode };
-    }
     case "interruptDetach": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null) return null;
       return { operation: "interrupt.detach", port, pin };
     }
 
-    // ── Tone ──
-    case "tonePlay": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const frequency = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const duration = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || frequency === null) return null;
-      notePinAnalogOutput(pin);
-      return { operation: "tone.play", port, pin, frequency, ...(duration !== null ? { duration } : {}) };
-    }
-    case "toneStop": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null) return null;
-      return { operation: "tone.stop", port, pin };
-    }
+;
+;
 
-    // ── Timing ──
-    case "delayMs": {
-      const ms = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (ms === null) return null;
-      return { operation: "timing.delay", ms };
-    }
-    case "delayMicro": {
-      const us = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (us === null) return null;
-      return { operation: "timing.delay_microseconds", us };
-    }
-    case "getMillis":
-      return { operation: "timing.millis" };
-    case "getMicros":
-      return { operation: "timing.micros" };
-    case "getFreeHeap":
-      return { operation: "timing.free_heap" };
-
-    // ── I2C ──
-    case "i2cBegin": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const address = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null) return null;
-      return { operation: "i2c.begin", bus, ...(address !== null ? { address } : {}) };
-    }
-    case "i2cEnd": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null) return null;
-      return { operation: "i2c.end", bus };
-    }
-    case "i2cSetClock": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const hz = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || hz === null) return null;
-      return { operation: "i2c.set_clock", bus, hz };
-    }
-    case "i2cBeginTx": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const address = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || address === null) return null;
-      return { operation: "i2c.begin_transmission", bus, address };
-    }
-    case "i2cWrite": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null) return null;
-      const resolved = resolveI2cBufferArg(args, 1, instance, paramNames, callArgTexts, paramDefaults, callArgs);
-      if (!resolved) return null;
-      if (resolved.kind === "bytes") {
-        return { operation: "i2c.write_bytes", bus, bytes: resolved.bytes };
-      }
-      return { operation: "i2c.write", bus, data: resolved.data };
-    }
-    case "i2cWriteBuffer": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null) return null;
-      const resolved = resolveI2cBufferArg(args, 1, instance, paramNames, callArgTexts, paramDefaults, callArgs);
-      if (!resolved) return null;
-      if (resolved.kind === "bytes") {
-        return { operation: "i2c.write_bytes", bus, bytes: resolved.bytes };
-      }
-      return { operation: "i2c.write_buffer", bus, data: resolved.data };
-    }
-    case "i2cReadBuffer": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const count = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || count === null) return null;
-      return { operation: "i2c.read_buffer", bus, count, buffer: "__HAL_READ_BUF__" };
-    }
-    case "i2cEndTx": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const stop = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || stop === null) return null;
-      return { operation: "i2c.end_transmission", bus, stop: stop !== "false" };
-    }
-    case "i2cRequestFrom": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const address = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const quantity = resolveNumericOrExpression(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || address === null || quantity === null) return null;
-      // stop is optional; default to true (Arduino sends a STOP by default).
-      const stopRaw = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
-      const stop = stopRaw === null ? true : stopRaw !== "false";
-      return { operation: "i2c.request_from", bus, address, quantity, stop };
-    }
-    case "i2cAvailable": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null) return null;
-      return { operation: "i2c.available", bus };
-    }
-    case "i2cRead": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null) return null;
-      return { operation: "i2c.read", bus };
-    }
-
-    // ── SPI ──
-    case "spiBegin": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null) return null;
-      return { operation: "spi.begin", bus };
-    }
-    case "spiEnd": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null) return null;
-      return { operation: "spi.end", bus };
-    }
-    case "spiTransfer": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const data = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || data === null) return null;
-      return { operation: "spi.transfer", bus, data };
-    }
-    case "spiBeginTx": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const settings = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || settings === null) return null;
-      return { operation: "spi.begin_transaction", bus, settings };
-    }
-    case "spiEndTx": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null) return null;
-      return { operation: "spi.end_transaction", bus };
-    }
-    case "spiCsLow": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null) return null;
-      return { operation: "spi.cs_low", port, pin };
-    }
-    case "spiCsHigh": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null) return null;
-      return { operation: "spi.cs_high", port, pin };
-    }
-    case "spiSetMode": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const mode = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || mode === null) return null;
-      return { operation: "spi.set_mode", bus, mode };
-    }
-    case "spiSetBitOrder": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const order = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || order === null) return null;
-      return { operation: "spi.set_bit_order", bus, order };
-    }
-    case "spiReadBuffer": {
-      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const count = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (bus === null || count === null) return null;
-      // The buffer arg (args[2]) is only a placeholder for type resolution;
-      // the real target is the caller's variable, rewritten from
-      // __HAL_READ_BUF__ by replaceHalReadBufferPlaceholder.
-      return { operation: "spi.read_buffer", bus, count, buffer: "__HAL_READ_BUF__" };
-    }
-
-    // ── UART ──
-    case "uartBegin": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const baud = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null || baud === null) return null;
-      return { operation: "uart.begin", port, baud };
-    }
-    case "uartEnd": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null) return null;
-      return { operation: "uart.end", port };
-    }
-    case "uartPrint": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null || value === null) return null;
-      return { operation: "uart.print", port, value };
-    }
-    case "uartPrintln": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null || value === null) return null;
-      return { operation: "uart.println", port, value };
-    }
-    case "uartWrite": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const data = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null || data === null) return null;
-      return { operation: "uart.write", port, data };
-    }
-    case "uartRead": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null) return null;
-      return { operation: "uart.read", port };
-    }
-    case "uartPeek": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null) return null;
-      return { operation: "uart.peek", port };
-    }
-    case "uartAvailable": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null) return null;
-      return { operation: "uart.available", port };
-    }
-    case "uartFlush": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null) return null;
-      return { operation: "uart.flush", port };
-    }
-    case "uartPrintf": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const format = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null || format === null) return null;
-      // The HAL declares `...args: any[]`; the third semantic-call arg is the
-      // `args` rest identifier. resolveSemanticArg expands it via the spread
-      // mechanism into a comma-joined string — split it back into the per-arg
-      // list the UartPrintfOp expects.
-      const spreadText = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      const varArgs = spreadText !== null && spreadText !== "" ? splitArgList(spreadText) : [];
-      return { operation: "uart.printf", port, format, args: varArgs };
-    }
 
     // ── USB CDC-ACM serial ──
     case "usbBegin": {
       const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const baud = resolveNumericOrExpression(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null || baud === null) return null;
-      return { operation: "usb.begin", port, baud };
+      if (port === null) return null;
+      return { operation: "usb.begin", port };
+    }
+    case "usbWaitReady": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const timeoutMs = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults) ?? 0;
+      if (port === null) return null;
+      return { operation: "usb.wait_ready", port, timeoutMs };
     }
     case "usbEnd": {
       const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
@@ -1378,12 +842,6 @@ export function tryResolveSemanticCall(
       if (port === null || value === null) return null;
       return { operation: "usb.println", port, value };
     }
-    case "usbWrite": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const data = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null || data === null) return null;
-      return { operation: "usb.write", port, data };
-    }
     case "usbRead": {
       const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (port === null) return null;
@@ -1394,55 +852,10 @@ export function tryResolveSemanticCall(
       if (port === null) return null;
       return { operation: "usb.available", port };
     }
-    case "usbFlush": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null) return null;
-      return { operation: "usb.flush", port };
-    }
     case "usbConnected": {
       const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (port === null) return null;
       return { operation: "usb.connected", port };
-    }
-    case "usbPrintf": {
-      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const format = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (port === null || format === null) return null;
-      const spreadText = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      const varArgs = spreadText !== null && spreadText !== "" ? splitArgList(spreadText) : [];
-      return { operation: "usb.printf", port, format, args: varArgs };
-    }
-
-    // ── Pulse ──
-    case "pulseIn_": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const timeout = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || value === null) return null;
-      return { operation: "pulse.in", port, pin, value: (value ? 1 : 0) as 0 | 1, ...(timeout !== null ? { timeout } : {}) };
-    }
-    case "pulseInLong_": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || value === null) return null;
-      return { operation: "pulse.in_long", port, pin, value: (value ? 1 : 0) as 0 | 1 };
-    }
-
-    // ── Shift ──
-    case "shiftOut_": {
-      const dataPin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const clockPin = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const bitOrder = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      const value = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
-      if (dataPin === null || clockPin === null || bitOrder === null || value === null) return null;
-      return { operation: "shift.out", dataPin, clockPin, bitOrder, value };
-    }
-    case "shiftIn_": {
-      const dataPin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const clockPin = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const bitOrder = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      if (dataPin === null || clockPin === null || bitOrder === null) return null;
-      return { operation: "shift.in", dataPin, clockPin, bitOrder };
     }
 
     // ── Board ──
@@ -1457,6 +870,300 @@ export function tryResolveSemanticCall(
       const code = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (code === null) return null;
       return { operation: "raw", code };
+    }
+
+    case "gpioConfigure": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const flags = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || flags === null) return null;
+      return { operation: "gpio.configure", pin, flags };
+    }
+
+    case "gpioReadCfg": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const flags = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || flags === null) return null;
+      return { operation: "gpio.read_cfg", pin, flags };
+    }
+
+    case "gpioShiftOut": {
+      const dataPin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const clockPin = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const msbFirstRaw = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      if (dataPin === null || clockPin === null || value === null || msbFirstRaw === null) return null;
+      return { operation: "gpio.shift_out", dataPin, clockPin, value, msbFirst: msbFirstRaw !== "false" };
+    }
+
+    case "gpioShiftIn": {
+      const dataPin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const clockPin = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const msbFirstRaw = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (dataPin === null || clockPin === null || msbFirstRaw === null) return null;
+      return { operation: "gpio.shift_in", dataPin, clockPin, msbFirst: msbFirstRaw !== "false" };
+    }
+
+    case "pwmSetPulse": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const periodNs = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const pulseNs = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || periodNs === null || pulseNs === null) return null;
+      return { operation: "pwm.set_pulse", pin, periodNs, pulseNs };
+    }
+
+    case "pwmSetDuty": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const periodNs = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const duty = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || periodNs === null || duty === null) return null;
+      return { operation: "pwm.set_duty", pin, periodNs, duty };
+    }
+
+    case "pwmSetPeriod": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const periodNs = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || periodNs === null) return null;
+      return { operation: "pwm.set_period", pin, periodNs };
+    }
+
+    case "pwmTone": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || hz === null) return null;
+      return { operation: "pwm.tone", pin, hz };
+    }
+
+    case "adcReadRaw": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const gain = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const reference = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || gain === null || reference === null) return null;
+      return { operation: "adc.read_raw", pin, gain, reference };
+    }
+
+    case "adcReadMv": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const gain = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const reference = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || gain === null || reference === null) return null;
+      return { operation: "adc.read_mv", pin, gain, reference };
+    }
+
+    case "interruptAttachFlags": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const intFlags = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || handler === null || intFlags === null) return null;
+      return { operation: "interrupt.attach_flags", pin, handler, intFlags };
+    }
+
+    case "timeSleep": {
+      const ms = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (ms === null) return null;
+      return { operation: "timing.sleep", ms };
+    }
+
+    case "timeNow":
+      return { operation: "timing.now" };
+
+    case "timeNowUs":
+      return { operation: "timing.now_us" };
+
+    case "timeBusyWaitUs": {
+      const us = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (us === null) return null;
+      return { operation: "timing.busy_wait_us", us };
+    }
+
+    case "i2cRegWrite": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const reg = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || address === null || hz === null || reg === null || value === null) return null;
+      return { operation: "i2c.reg_write", bus, address, hz, reg, value };
+    }
+
+    case "i2cRegRead": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const reg = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || address === null || hz === null || reg === null) return null;
+      return { operation: "i2c.reg_read", bus, address, hz, reg };
+    }
+
+    case "i2cRegUpdate": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const reg = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const mask = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericArg(args, 5, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || address === null || hz === null || reg === null || mask === null || value === null) return null;
+      return { operation: "i2c.reg_update", bus, address, hz, reg, mask, value };
+    }
+
+    case "i2cDevWrite": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const address = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const data = resolveI2cBufferArg(args, 3, instance, paramNames, callArgTexts, paramDefaults, callArgs);
+      if (bus === null || address === null || hz === null || data === null) return null;
+      if (data.kind === "bytes") {
+        return { operation: "i2c.dev_write", bus, address, hz, bytes: data.bytes };
+      }
+      return { operation: "i2c.dev_write", bus, address, hz, bytes: [data.data] };
+    }
+
+    case "dacWriteValue": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const value = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const resolution = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || value === null || resolution === null) return null;
+      return { operation: "dac.write_value", pin, value, resolution };
+    }
+
+    case "wdtSetup": {
+      const timeoutMs = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (timeoutMs === null) return null;
+      return { operation: "wdt.setup", timeoutMs };
+    }
+
+    case "wdtFeed":
+      return { operation: "wdt.feed" };
+
+    case "counterOnAlarm": {
+      const inst = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (inst === null || handler === null) return null;
+      return { operation: "counter.on_alarm", instance: inst, handler };
+    }
+
+    case "counterStart": {
+      const inst = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (inst === null || hz === null) return null;
+      return { operation: "counter.start", instance: inst, hz };
+    }
+
+    case "counterStop": {
+      const inst = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (inst === null) return null;
+      return { operation: "counter.stop", instance: inst };
+    }
+
+    case "spiTransceiveDt": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const cs = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const mode = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const txData = resolveI2cBufferArg(args, 4, instance, paramNames, callArgTexts, paramDefaults, callArgs);
+      let rx = resolveSemanticArg(args, 5, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || cs === null || hz === null || mode === null || txData === null || rx === null) return null;
+      // The class body's `rx ?? new Uint8Array(0)` arrives nullish-lowered as
+      // `X != CUTTLEFISH_UNDEFINED ? X : new Uint8Array(0)` — the caller's
+      // buffer identifier is the X branch ('' = write-only when omitted).
+      if (rx.includes(" != CUTTLEFISH_UNDEFINED ? ")) {
+        // Take the taken branch and strip the nullish wrapper's parens.
+        rx = rx.split(" != CUTTLEFISH_UNDEFINED ? ")[0].replace(/^\(+/, "").trim();
+        if (rx === "undefined" || rx === "null") rx = "";
+      }
+      const tx = txData.kind === "bytes" ? txData.bytes : [txData.data];
+      return { operation: "spi.transceive", bus, cs, hz, mode, tx, rx };
+    }
+
+    case "spiWriteDt": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const cs = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const mode = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const txData = resolveI2cBufferArg(args, 4, instance, paramNames, callArgTexts, paramDefaults, callArgs);
+      if (bus === null || cs === null || hz === null || mode === null || txData === null) return null;
+      const tx = txData.kind === "bytes" ? txData.bytes : [txData.data];
+      return { operation: "spi.dev_write", bus, cs, hz, mode, tx };
+    }
+
+    case "spiReadReg": {
+      const bus = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const cs = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const hz = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const mode = resolveNumericArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const reg = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      if (bus === null || cs === null || hz === null || mode === null || reg === null) return null;
+      return { operation: "spi.reg_read", bus, cs, hz, mode, reg };
+    }
+
+    case "uartPollWrite": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const baud = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const data = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || baud === null || data === null) return null;
+      return { operation: "uart.poll_write", port, baud, data };
+    }
+
+    case "uartRxAvailable": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const ring = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || ring === null) return null;
+      return { operation: "uart.rx_available", port, ring };
+    }
+
+    case "uartRxPeek": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const ring = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || ring === null) return null;
+      return { operation: "uart.rx_peek", port, ring };
+    }
+
+    case "uartRxRead": {
+      const port = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const ring = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      if (port === null || ring === null) return null;
+      return { operation: "uart.rx_read", port, ring };
+    }
+
+    case "threadStart": {
+      const inst = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const stackBytes = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      // The class computes `opts?.priority ?? 5` — only stackKb is captured at
+      // instance creation, so apply the constructor's default here.
+      const priority = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults) ?? 5;
+      const handler = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      if (inst === null || stackBytes === null || handler === null) return null;
+      return { operation: "thread.start", instance: inst, stackBytes, priority, handler };
+    }
+
+    case "threadJoin": {
+      const inst = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      if (inst === null) return null;
+      return { operation: "thread.join", instance: inst };
+    }
+
+    case "sensorFetch": {
+      const part = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const bus = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const port = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const busKind = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const spiHz = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      const spiMode = resolveSemanticArg(args, 5, instance, paramNames, callArgTexts, paramDefaults);
+      const alertPin = resolveSemanticArg(args, 6, instance, paramNames, callArgTexts, paramDefaults);
+      if (part === null || bus === null || port === null || busKind === null || spiHz === null || spiMode === null || alertPin === null) return null;
+      return { operation: "sensor.fetch", part, bus, port, busKind, spiHz, spiMode, alertPin };
+    }
+
+    case "sensorGet": {
+      const part = resolveSemanticArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const bus = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const port = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const busKind = resolveSemanticArg(args, 3, instance, paramNames, callArgTexts, paramDefaults);
+      const spiHz = resolveNumericArg(args, 4, instance, paramNames, callArgTexts, paramDefaults);
+      const spiMode = resolveSemanticArg(args, 5, instance, paramNames, callArgTexts, paramDefaults);
+      const alertPin = resolveSemanticArg(args, 6, instance, paramNames, callArgTexts, paramDefaults);
+      const chan = resolveSemanticArg(args, 7, instance, paramNames, callArgTexts, paramDefaults);
+      if (part === null || bus === null || port === null || busKind === null || spiHz === null || spiMode === null || alertPin === null || chan === null) return null;
+      return { operation: "sensor.get", part, bus, port, busKind, spiHz, spiMode, alertPin, chan };
     }
 
     default:

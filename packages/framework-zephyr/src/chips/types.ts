@@ -131,6 +131,45 @@ export interface ZephyrPwmSpec {
   readonly periodNs?: number;
   /** Synthesized form: PWM polarity flag. Default PWM_POLARITY_NORMAL. */
   readonly polarity?: string;
+  /**
+   * SoC pinctrl dtsi token muxing this channel's pin to the timer (e.g.
+   * 'tim4_ch1_pb6' on STM32). Required on custom boards — the st,stm32-pwm
+   * binding demands pinctrl-0 on an enabled node and only a board DTS (or
+   * the custom-board generator, fed by this token) can provide it. Also
+   * gates the generated board's `pwmN: pwm { }` label declaration: the
+   * overlay references `&<controller>`, a label that otherwise exists only
+   * when a board DTS defines it.
+   */
+  readonly pinctrl?: string;
+}
+
+/**
+ * A "PWM matrix" controller: any listed pin can carry any channel, routed by
+ * the SoC's GPIO matrix rather than a fixed timer-channel↔pad map.
+ *
+ * ESP32 LEDC is the shape (espressif,esp32-ledc): 8 channels, each routable
+ * to (almost) any pad via a pinctrl pinmux token (`LEDC_CH<ch>_GPIO<pin>`).
+ * A static `specs` list cannot express this — two arbitrary pins would
+ * collide on a statically assigned channel — so the channel assignment is
+ * made at build time: the pins the program actually drives are assigned
+ * channels 0..N-1 (ascending pin order, capped at `channelCount`), and the
+ * overlay generator emits the pinctrl group + per-channel child nodes the
+ * espressif,esp32-ledc binding requires. The emitted C++ is channel-blind:
+ * it addresses each pin via the same `DT_ALIAS(tc-pwm<pin>)` the synthesized
+ * static form uses, so the two paths share the lowering.
+ */
+export interface ZephyrPwmMatrix {
+  /** PWM controller DT nodelabel, e.g. 'ledc0'. */
+  readonly controller: string;
+  /** Channels the controller exposes (ESP32-S3 LEDC: 8). */
+  readonly channelCount: number;
+  /**
+   * HAL pins usable as PWM outputs. This is the safety filter as much as the
+   * capability list — on the ESP32-S3 it excludes the boot-strap pin, the
+   * USB D+/D− pads, the flash/PSRAM pins (GPIO 26–32), the octal-PSRAM pins
+   * (GPIO 33–37), and the console UART pads (GPIO 43/44).
+   */
+  readonly pins: readonly number[];
 }
 
 /**
@@ -189,6 +228,33 @@ export interface ZephyrChipDescriptor {
   readonly id: string;
   /** SoC family, e.g. 'nrf52840'. */
   readonly soc: string;
+  /**
+   * How confident the framework is in this descriptor's facts.
+   * - 'validated' — the soc is part of the hardware-tested set; every field
+   *   was verified against the pinned Zephyr tree and real hardware.
+   * - 'derived' — reconstructed from data (board/MCU packages, DTS reading)
+   *   but never hardware-verified; capability errors may be less precise.
+   */
+  readonly tier?: 'validated' | 'derived';
+  /**
+   * Datasheet pin-naming convention — how a controller/pin pair becomes the
+   * schematic-facing name the generated board module exports (the
+   * `Pin.fromPort()` identity). One of:
+   * - 'esp32-gpio'   — flat numbering, `GPION` (esp32, esp32s3, esp32c*)
+   * - 'stm32-port'   — one controller per port, `P<port><bit>` (PA5, PB12)
+   * - 'nrf-port'     — P0.28 / P1.11 style (`P<port>.<bit>`)
+   * - 'rp-gpio'      — `GP<n>` flat numbering
+   * - 'samd-port'    — PA/PB ports like stm32-port
+   * Absent on tier-3 socs with no known convention (the generated board
+   * exposes only connector/alias pins + LED/BUTTON).
+   */
+  readonly pinNaming?: 'esp32-gpio' | 'stm32-port' | 'nrf-port' | 'rp-gpio' | 'samd-port';
+  /**
+   * Pins that exist in the controller ranges but must NOT be exported as
+   * usable GPIOs — strapping pads, flash/PSRAM, USB D+/-. The generated
+   * board module's pin list subtracts these.
+   */
+  readonly excludedPins?: readonly number[];
   /**
    * Default GPIO controller nodelabel for the raw-pin fallback. Pins not in
    * `gpio.dtSpecs` are addressed via
@@ -274,6 +340,12 @@ export interface ZephyrChipDescriptor {
   /** PWM channels with DT specs. */
   readonly pwm?: {
     readonly specs: readonly ZephyrPwmSpec[];
+    /**
+     * Matrix PWM capability (ESP32 LEDC) — channels assigned to the driven
+     * pins at build time instead of enumerated statically. `specs` may be
+     * empty when only the matrix is declared.
+     */
+    readonly matrix?: ZephyrPwmMatrix;
     /**
      * Timer input clock (Hz) for the synthesized specs' controllers — the
      * number the 16-bit overflow check divides by (STM32: APB clock × the
@@ -433,6 +505,33 @@ export interface ZephyrCustomBoardData {
    * (e.g. 'usbotg_fs' aliased as 'zephyr_udc0'). Omit when usb is absent.
    */
   readonly usbNode?: string;
+  /**
+   * Pinctrl tokens muxing the USB node's pins (e.g.
+   * 'usb_otg_fs_dm_pa11'/'usb_otg_fs_dp_pa12'). The st,stm32-otgfs binding
+   * requires pinctrl-0 on an enabled node, so the generated board pre-enables
+   * the USB node with exactly these (the blackpill shape). Omit when the
+   * SoC's USB needs no board-side muxing.
+   */
+  readonly usbPinctrl?: readonly string[];
+  /**
+   * ADC node the generated board must pre-enable with the SoC driver's
+   * required properties — e.g. the STM32 F4 binding rejects an enabled adc
+   * node without `st,adc-clock-source`/`st,adc-prescaler` (upstream boards
+   * set them in their DTS; a custom board has none, so the generator emits
+   * them from this data). The baseline pinctrl satisfies the binding's
+   * pinctrl-0 requirement; the usage-driven overlay rewrites it to the
+   * channels the program actually reads. Omit on SoCs whose ADC needs no
+   * board-side enabling.
+   */
+  readonly adcNode?: {
+    readonly nodeLabel: string;
+    /** The binding's clock-source property value (e.g. 'SYNC'). */
+    readonly clockSource: string;
+    /** The binding's prescaler property value (e.g. 2). */
+    readonly prescaler: number;
+    /** Baseline pinctrl token (e.g. 'adc1_in1_pa1'). */
+    readonly pinctrl: string;
+  };
 }
 
 /**

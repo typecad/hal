@@ -17,32 +17,16 @@ describe('dac init block', () => {
   });
 });
 
-describe('dac lowering (ESP32 — GPIO25/26)', () => {
-  it('dac.write on GPIO25 (channel 1) sets up the channel + writes the value', () => {
-    const out = lowerDac({ operation: 'dac.write', pin: 25, value: 128 } as any, ESP32_DEVKITC);
-    expect(out.code).toContain('dac_channel_setup');
+describe('dac lowering (thin write_value)', () => {
+  it('write_value on GPIO25 lazily sets up channel 1 and writes the raw code', () => {
+    const out = lowerDac({ operation: 'dac.write_value', pin: 25, value: 128, resolution: 0 } as any, ESP32_DEVKITC);
+    expect(out.code).toContain('__tc_dact25_done');
     expect(out.code).toContain('.channel_id = 1');
-    expect(out.code).toContain('.resolution = 8');
     expect(out.code).toContain('dac_write_value(__tc_dac_dev, 1, 128)');
   });
 
-  it('dac.write on GPIO26 (channel 2)', () => {
-    const out = lowerDac({ operation: 'dac.write', pin: 26, value: 200 } as any, ESP32_DEVKITC);
-    expect(out.code).toContain('.channel_id = 2');
-    expect(out.code).toContain('dac_write_value(__tc_dac_dev, 2, 200)');
-  });
-
-  it('a non-DAC pin on a DAC chip → comment listing the valid pins', () => {
-    const out = lowerDac({ operation: 'dac.write', pin: 4, value: 10 } as any, ESP32_DEVKITC);
-    expect(out.code).toContain('not a DAC pin');
-    expect(out.code).toContain('25');
-    expect(out.code).toContain('26');
-  });
-});
-
-describe('dac lowering (nRF52840 — no DAC)', () => {
-  it('lowers to a "no DAC" comment (probe-tolerant; profileDiagnostics flags misuse)', () => {
-    const out = lowerDac({ operation: 'dac.write', pin: 25, value: 128 } as any, XIAO_BLE);
+  it('non-DAC targets lower to a comment for the probe', () => {
+    const out = lowerDac({ operation: 'dac.write_value', pin: 2, value: 128, resolution: 0 } as any, XIAO_BLE);
     expect(out.code).toContain('no DAC on xiao_ble');
   });
 });

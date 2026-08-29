@@ -21,15 +21,15 @@ this target — see the board package for the full capability notes.
 
 ```ts
 import { LED, A0, USB0 } from '@typecad/board';
-import { delay } from '@typecad/hal';
+import { PWM, ADCChannel, Time } from '@typecad/hal';
 
-const led = LED.asOutput(false);
-const sense = A0.asInput();
+const led = new PWM(LED, { periodNs: 20_000_000 });
+const sense = new ADCChannel(A0);
 
 function loop(): void {
-  const mv = sense.readVoltage();          // → adc_raw_to_millivolts(1650, ADC_GAIN_1, 12, …)
-  led.pwm(mv / 7);                         // → pwm_set_pulse_dt(pwm-led0 spec, …)
-  delay(20);
+  const mv = sense.readMillivolts();       // → adc_raw_to_millivolts(1650, ADC_GAIN_1, 12, …)
+  led.setDuty(mv / 1650);                  // → pwm_set_pulse_dt(pwm-led0 spec, …)
+  Time.sleep(20);
 }
 ```
 

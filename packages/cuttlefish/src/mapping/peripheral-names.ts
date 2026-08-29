@@ -24,12 +24,15 @@ export function mapPeripheralName(name: string, strategy?: PlatformStrategy): st
     if (mapped) return mapped;
   }
   
-  // Default fallbacks if strategy doesn't provide a mapping
+  // Default fallbacks if strategy doesn't provide a mapping: the canonical
+  // TypeCAD controller names. (The Arduino object names — Serial/Wire/SPI —
+  // went with framework-arduino; every live consumer only parses the
+  // trailing controller digit, which the canonical names carry too.)
   const canonical = name.toUpperCase();
-  if (canonical === "UART0") return "Serial";
-  if (canonical === "I2C0") return "Wire";
-  if (canonical === "SPI0") return "SPI";
-  if (canonical === "USB0") return "USBSerial";
+  if (canonical === "UART0") return "UART0";
+  if (canonical === "I2C0") return "I2C0";
+  if (canonical === "SPI0") return "SPI0";
+  if (canonical === "USB0") return "USB0";
   
   return undefined;
 }

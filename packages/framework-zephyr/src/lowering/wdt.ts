@@ -67,10 +67,10 @@ export function lowerWdt(op: HALOpIR, chip: ZephyrChipDescriptor): { code?: stri
   }
 
   switch (op.operation) {
-    case 'wdt.enable': {
-      const ms = timeoutToMs(o.timeout);
-      // Install a timeout then set up the watchdog. Both are idempotent via
-      // the static flags. WDT_FLAG_RESET_CPU_CORE = full reset on timeout.
+    case 'wdt.setup': {
+      // Same install+setup sequence as wdt.enable, but the timeout is a
+      // plain ms number from construction — no WDTO_*/string parsing.
+      const ms = Number(o.timeoutMs ?? 1000);
       return {
         code: [
           `if (!__tc_wdt_setup_done) {`,
@@ -82,7 +82,7 @@ export function lowerWdt(op: HALOpIR, chip: ZephyrChipDescriptor): { code?: stri
         ].join(' '),
       };
     }
-    case 'wdt.reset':
+    case 'wdt.feed':
       return { code: `if (__tc_wdt_channel >= 0) { wdt_feed(__tc_wdt_dev, __tc_wdt_channel); }` };
     case 'wdt.disable':
       return { code: `wdt_disable(__tc_wdt_dev); __tc_wdt_setup_done = false;` };

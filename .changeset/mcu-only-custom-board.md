@@ -1,6 +1,5 @@
 ---
 '@typecad/cuttlefish': minor
-'@typecad/mcu-atmega328p': minor
 '@typecad/mcu-esp32': minor
 '@typecad/mcu-esp32c3': minor
 '@typecad/mcu-esp32c6': minor
@@ -64,3 +63,41 @@ v1 scope: the generated board enables the console UART only — non-console
 buses need per-controller pinctrl synthesis data in the MCU package first
 (STM32 bindings require pinctrl-0 on enabled nodes). Flashing a custom
 board uses `zephyr.runner`/`runnerArgs` (no probe-method table on silicon).
+
+### Demos
+
+- `demos/demo-pro-mini` — MCU-only Arduino: a Pro Mini programmed through
+  `@typecad/mcu-atmega328p` alone (`arduino:avr:pro`), verified through
+  arduino-cli compile (204 B / 2 KB RAM) and `--autosar=strict`.
+- `demos/demo-contract-board` — contract + Zephyr custom board: a custom
+  STM32F411 PCB described by `board.contract.json` (typecad.net export),
+  narrowed to the wired pins, with the generated out-of-tree board linked to
+  a `zephyr.bin` through west.
+
+The contract demo exposed a class of gaps: Zephyr bindings require
+board-DTS properties a generated custom board must therefore carry. A full
+audit of every devicetree touch (overlay + generator) against the Zephyr
+4.4 bindings found and fixed three more beyond the ADC node
+(`st,adc-clock-source`/`st,adc-prescaler`):
+
+- **PWM** — the overlay enables `&pwm<N>` and composes pwm-leds consumers
+  against it, but the `pwmN` label exists only when a board DTS declares it
+  (the SoC dtsi ships the timers' pwm child unlabeled), and st,stm32-pwm
+  requires pinctrl-0. PWM specs gained `pinctrl` tokens
+  (tim4_ch1_pb6/tim4_ch2_pb7) and the generator emits the blackpill-shape
+  `&timers4 { pwm4: pwm { pinctrl-0 = <...>; status = "okay"; } }` for
+  controllers with full token coverage.
+- **USB** — st,stm32-otgfs requires pinctrl-0 on an enabled node. The
+  silicon usb block gained pinctrl tokens (usb_otg_fs_dm_pa11/dp_pa12) and
+  the generated board pre-enables zephyr_udc0 with them. The MCU package
+  also exports the `USB0` CDC instance (silicon peripheral, previously a
+  board-package-only export — USB was unusable on MCU-only projects).
+- **Preferences/FS** — the overlay's `/chosen zephyr,settings-partition`
+  references a `storage_partition` label nothing defined on a custom board.
+  The silicon block carries the default storage region (256 KB at 0x40000,
+  the blackpill-proven layout); the overlay synthesizes it as before.
+
+Verified by compiling a worst-case program (PWM via pwm() + tone(), WDT,
+Preferences, USB CDC, GPIO, console) to a zephyr.bin on a generated board.
+Audit also confirmed safe: watchdog (reg only), the console UART (pinned in
+the board DTS), and DAC (F411 has none).

@@ -2,7 +2,7 @@
   "name": "demo-shadcn",
   "version": "1.0.0",
   "private": true,
-  "description": "shadcn component-kit gallery — every recipe from `cuttlefish add shadcn` on one device",
+  "description": "shadcn component-kit gallery \u2014 every recipe from `cuttlefish add shadcn` on one device",
   "type": "module",
   "scripts": {
     "build": "cuttlefish build",
@@ -12,9 +12,6 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "@typecad/board-esp32-devkit": "*",
-    "@typecad/framework-arduino": "*",
-    "@typecad/mcu-esp32": "*",
     "@typecad/ui": "*",
     "@typecad/zephyr-esp32s3-rgb": "*"
   },

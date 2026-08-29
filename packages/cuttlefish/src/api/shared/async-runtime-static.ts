@@ -32,7 +32,7 @@
  *   Async.sleep / sleepUntil / yield operations.
  * @param waitForPinEdge How `__cuttlefish_wait_pin_edge` (the HAL gpio
  *   waitForRising/waitForFalling lowering target) is implemented:
- *   - "polling" (default): a busy-wait loop using digitalRead/delay/millis +
+ *   - "polling" (default): a busy-wait loop using digitalRead/delay/__tc_now_ms +
  *     the RISING/FALLING/HIGH/LOW symbols. For Arduino-style targets where
  *     those are part of the core API.
  *   - "stub": resolve immediately, emitting NO Arduino symbols in the body.
@@ -47,10 +47,10 @@ export function generateStaticAsyncRuntime(
   waitForPinEdge: "interrupt" | "polling" | "stub" = "polling",
   strategy?: import("./platform-strategy.js").PlatformStrategy,
 ): string {
-  // The current-time expression (millis() on Wiring-derived frameworks,
-  // std::chrono on generic). Falling back to millis() preserves the historical
+  // The current-time expression (__tc_now_ms() — the runtime clock contract
+  // every strategy provides). Falling back to the contract symbol keeps the
   // behavior when no strategy is supplied.
-  const now = strategy?.currentTimeMillis?.() ?? "millis()";
+  const now = strategy?.currentTimeMillis?.() ?? "__tc_now_ms()";
   return `
 // TypeCAD static (heap-free) async runtime — for targets without <vector>.
 namespace typecad_async_static {
@@ -205,7 +205,7 @@ ${waitPinEdgeForMode(waitForPinEdge, strategy, now)}
 }
 
 /** Emit `__cuttlefish_wait_pin_edge` per the strategy's waitForPinEdge mode. */
-function waitPinEdgeForMode(mode: "interrupt" | "polling" | "stub", strategy?: import("./platform-strategy.js").PlatformStrategy, now: string = "millis()"): string {
+function waitPinEdgeForMode(mode: "interrupt" | "polling" | "stub", strategy?: import("./platform-strategy.js").PlatformStrategy, now: string = "__tc_now_ms()"): string {
   if (mode === "interrupt") {
     // The strategy/ISR layer provides the symbol; emit nothing here.
     return "// __cuttlefish_wait_pin_edge is provided by the strategy (interrupt mode).";

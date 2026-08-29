@@ -26,7 +26,7 @@ export function buildAsyncRuntimePolyfill(
   // instead of a millis() token the generic target never defines). When the
   // expression uses std::chrono, the polyfill must carry <chrono> itself —
   // the generic strategy's forcedIncludes are empty by design.
-  const now = strategy?.currentTimeMillis?.() ?? "millis()";
+  const now = strategy?.currentTimeMillis?.() ?? "__tc_now_ms()";
   const requiredIncludes = ["<functional>", "<vector>", "<utility>", "<string>"];
   if (now.includes("std::chrono")) requiredIncludes.push("<chrono>");
 

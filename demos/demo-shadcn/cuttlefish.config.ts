@@ -13,19 +13,18 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
 const config: CuttlefishConfig = {
   entry: './src/app.ui',
-  target: 'esp32s3',
-  mcu: '@typecad/mcu-esp32s3',
-  board: '@typecad/board-esp32s3',
+
+  board: 'esp32s3_devkitc/esp32s3/procpu',
   framework: '@typecad/framework-zephyr',
-  frameworkData: { buildTarget: 'esp32s3_devkitc/esp32s3/procpu' },
+
   // ESP32-S3 N16R8 has PSRAM. Uncomment to route large canvas allocations
   // (scroll viewports, lists) to external RAM instead of the SRAM
   // band-renderer path. Also enables the full-screen PSRAM framebuffer.
   psram: 'opi',
-  toolchain: { type: 'west' },
+
   console: {
-    baudRate: 9600,
-    port: 'COM12'
+    baudRate: 115200,
+    port: 'COM10'
   },
   display: {
     profile: 'st7796-zephyr',

@@ -18,8 +18,7 @@
   "dependencies": {
     "@typecad/cuttlefish": "*",
     "@typecad/hal": "*",
-    "@typecad/framework-zephyr": "*",
-    "@typecad/board-blackpill-f411ce": "*"
+    "@typecad/framework-zephyr": "*"
   },
   "devDependencies": {
     "eslint": "^10.4.1",

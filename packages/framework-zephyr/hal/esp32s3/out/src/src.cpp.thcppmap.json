@@ -1,0 +1,584 @@
+{
+  "version": 1,
+  "generatedFilePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\out\\src\\src.cpp",
+  "sourceFilePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+  "entries": [
+    {
+      "generatedStartLine": 67,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 67,
+      "generatedEndColumn": 17,
+      "tsSpan": {
+        "filePath": "",
+        "startOffset": 587,
+        "endOffset": 602,
+        "startLine": 11,
+        "startColumn": 28,
+        "endLine": 11,
+        "endColumn": 43
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 72,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 72,
+      "generatedEndColumn": 11,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "function_definition",
+      "symbolName": "main"
+    },
+    {
+      "generatedStartLine": 74,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 74,
+      "generatedEndColumn": 36,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 0,
+        "endOffset": 32,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 33
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 76,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 76,
+      "generatedEndColumn": 187,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 560,
+        "endOffset": 606,
+        "startLine": 11,
+        "startColumn": 1,
+        "endLine": 11,
+        "endColumn": 47
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 78,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 78,
+      "generatedEndColumn": 322,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 608,
+        "endOffset": 620,
+        "startLine": 12,
+        "startColumn": 1,
+        "endLine": 12,
+        "endColumn": 13
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 80,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 80,
+      "generatedEndColumn": 4,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 622,
+        "endOffset": 635,
+        "startLine": 13,
+        "startColumn": 1,
+        "endLine": 13,
+        "endColumn": 14
+      },
+      "nodeKind": "block"
+    },
+    {
+      "generatedStartLine": 81,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 81,
+      "generatedEndColumn": 195,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 622,
+        "endOffset": 635,
+        "startLine": 13,
+        "startColumn": 1,
+        "endLine": 13,
+        "endColumn": 14
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 82,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 82,
+      "generatedEndColumn": 65,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 622,
+        "endOffset": 635,
+        "startLine": 13,
+        "startColumn": 1,
+        "endLine": 13,
+        "endColumn": 14
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 85,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 85,
+      "generatedEndColumn": 273,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 637,
+        "endOffset": 656,
+        "startLine": 14,
+        "startColumn": 1,
+        "endLine": 14,
+        "endColumn": 20
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 87,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 87,
+      "generatedEndColumn": 53,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 658,
+        "endOffset": 707,
+        "startLine": 15,
+        "startColumn": 1,
+        "endLine": 15,
+        "endColumn": 50
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 89,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 89,
+      "generatedEndColumn": 76,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 709,
+        "endOffset": 781,
+        "startLine": 16,
+        "startColumn": 1,
+        "endLine": 16,
+        "endColumn": 73
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 91,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 91,
+      "generatedEndColumn": 60,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 789,
+        "endOffset": 817,
+        "startLine": 17,
+        "startColumn": 7,
+        "endLine": 17,
+        "endColumn": 35
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 93,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 93,
+      "generatedEndColumn": 47,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 819,
+        "endOffset": 862,
+        "startLine": 18,
+        "startColumn": 1,
+        "endLine": 18,
+        "endColumn": 44
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 95,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 95,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 864,
+        "endOffset": 883,
+        "startLine": 19,
+        "startColumn": 1,
+        "endLine": 19,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 97,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 97,
+      "generatedEndColumn": 21,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 885,
+        "endOffset": 902,
+        "startLine": 20,
+        "startColumn": 1,
+        "endLine": 20,
+        "endColumn": 18
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 99,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 99,
+      "generatedEndColumn": 85,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 904,
+        "endOffset": 985,
+        "startLine": 21,
+        "startColumn": 1,
+        "endLine": 21,
+        "endColumn": 82
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 101,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 101,
+      "generatedEndColumn": 233,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 993,
+        "endOffset": 1023,
+        "startLine": 22,
+        "startColumn": 7,
+        "endLine": 22,
+        "endColumn": 37
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 103,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 103,
+      "generatedEndColumn": 40,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1025,
+        "endOffset": 1061,
+        "startLine": 23,
+        "startColumn": 1,
+        "endLine": 23,
+        "endColumn": 37
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 105,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 105,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1063,
+        "endOffset": 1082,
+        "startLine": 24,
+        "startColumn": 1,
+        "endLine": 24,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 107,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 107,
+      "generatedEndColumn": 21,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1084,
+        "endOffset": 1101,
+        "startLine": 25,
+        "startColumn": 1,
+        "endLine": 25,
+        "endColumn": 18
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 109,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 109,
+      "generatedEndColumn": 90,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1103,
+        "endOffset": 1189,
+        "startLine": 26,
+        "startColumn": 1,
+        "endLine": 26,
+        "endColumn": 87
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 111,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 111,
+      "generatedEndColumn": 510,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1197,
+        "endOffset": 1227,
+        "startLine": 27,
+        "startColumn": 7,
+        "endLine": 27,
+        "endColumn": 37
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 113,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 113,
+      "generatedEndColumn": 52,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1229,
+        "endOffset": 1277,
+        "startLine": 28,
+        "startColumn": 1,
+        "endLine": 28,
+        "endColumn": 49
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 115,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 115,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1279,
+        "endOffset": 1298,
+        "startLine": 29,
+        "startColumn": 1,
+        "endLine": 29,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 117,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 117,
+      "generatedEndColumn": 21,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1300,
+        "endOffset": 1317,
+        "startLine": 30,
+        "startColumn": 1,
+        "endLine": 30,
+        "endColumn": 18
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 119,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 119,
+      "generatedEndColumn": 77,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1319,
+        "endOffset": 1392,
+        "startLine": 31,
+        "startColumn": 1,
+        "endLine": 31,
+        "endColumn": 74
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 121,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 121,
+      "generatedEndColumn": 152,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1400,
+        "endOffset": 1435,
+        "startLine": 32,
+        "startColumn": 7,
+        "endLine": 32,
+        "endColumn": 42
+      },
+      "nodeKind": "var_decl"
+    },
+    {
+      "generatedStartLine": 123,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 123,
+      "generatedEndColumn": 51,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1437,
+        "endOffset": 1484,
+        "startLine": 33,
+        "startColumn": 1,
+        "endLine": 33,
+        "endColumn": 48
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 125,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 125,
+      "generatedEndColumn": 23,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1486,
+        "endOffset": 1505,
+        "startLine": 34,
+        "startColumn": 1,
+        "endLine": 34,
+        "endColumn": 20
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 127,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 127,
+      "generatedEndColumn": 21,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1507,
+        "endOffset": 1524,
+        "startLine": 35,
+        "startColumn": 1,
+        "endLine": 35,
+        "endColumn": 18
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 129,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 129,
+      "generatedEndColumn": 75,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1526,
+        "endOffset": 1536,
+        "startLine": 36,
+        "startColumn": 1,
+        "endLine": 36,
+        "endColumn": 11
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 131,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 131,
+      "generatedEndColumn": 54,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1538,
+        "endOffset": 1551,
+        "startLine": 37,
+        "startColumn": 1,
+        "endLine": 37,
+        "endColumn": 14
+      },
+      "nodeKind": "hal-op"
+    },
+    {
+      "generatedStartLine": 133,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 133,
+      "generatedEndColumn": 34,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1553,
+        "endOffset": 1583,
+        "startLine": 38,
+        "startColumn": 1,
+        "endLine": 38,
+        "endColumn": 31
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 135,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 135,
+      "generatedEndColumn": 15,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1585,
+        "endOffset": 1617,
+        "startLine": 39,
+        "startColumn": 1,
+        "endLine": 39,
+        "endColumn": 33
+      },
+      "nodeKind": "while"
+    },
+    {
+      "generatedStartLine": 137,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 137,
+      "generatedEndColumn": 20,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 1600,
+        "endOffset": 1614,
+        "startLine": 39,
+        "startColumn": 16,
+        "endLine": 39,
+        "endColumn": 30
+      },
+      "nodeKind": "call"
+    },
+    {
+      "generatedStartLine": 140,
+      "generatedStartColumn": 1,
+      "generatedEndLine": 140,
+      "generatedEndColumn": 12,
+      "tsSpan": {
+        "filePath": "C:\\typecad\\typecode\\packages\\framework-zephyr\\hal\\esp32s3\\hal.test.ts",
+        "startOffset": 0,
+        "endOffset": 0,
+        "startLine": 1,
+        "startColumn": 1,
+        "endLine": 1,
+        "endColumn": 1
+      },
+      "nodeKind": "return"
+    }
+  ]
+}

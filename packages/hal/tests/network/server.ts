@@ -287,8 +287,11 @@ export function createHttpsTestServer(port = 8443): Promise<TestServer> {
 // Both listeners share one aedes instance so a plain client and a TLS client
 // can exchange messages on the same topic.
 
-/** A shared aedes broker instance backing both the plain and TLS listeners. */
+/** A shared aedes broker instance backing both the plain and TLS listeners.
+ *  aedes ≥1.x starts `closed` — listen() initializes it (persistence,
+ *  connected-clients bookkeeping). Both listener factories await it. */
 let _aedes: Aedes | undefined;
+let _aedesReady: Promise<Aedes> | undefined;
 function aedesBroker(): Aedes {
 	if (!_aedes) {
 		_aedes = new Aedes({ id: 'typecad-test-broker' });
@@ -301,13 +304,21 @@ function aedesBroker(): Aedes {
 	return _aedes;
 }
 
+async function aedesBrokerReady(): Promise<Aedes> {
+	const broker = aedesBroker();
+	if (!_aedesReady) {
+		_aedesReady = broker.listen();
+	}
+	await _aedesReady;
+	return broker;
+}
+
 /**
  * Start the plain MQTT broker (mqtt://) on the given port. Resolves once
  * listening.
  */
 export function createMqttBroker(port = 1883): Promise<TestServer> {
-	return new Promise((resolve, reject) => {
-		const broker = aedesBroker();
+	return aedesBrokerReady().then((broker) => new Promise((resolve, reject) => {
 		const server = createNetServer(broker.handle.bind(broker));
 		server.on('error', reject);
 		server.listen(port, '0.0.0.0', () => {
@@ -316,7 +327,7 @@ export function createMqttBroker(port = 1883): Promise<TestServer> {
 				close: () => new Promise<void>((r) => server.close(() => r())),
 			});
 		});
-	});
+	}));
 }
 
 /**
@@ -325,10 +336,9 @@ export function createMqttBroker(port = 1883): Promise<TestServer> {
  * the firmware pins). Resolves once listening.
  */
 export function createMqttTlsBroker(port = 8883): Promise<TestServer> {
-	return new Promise((resolve, reject) => {
+	return aedesBrokerReady().then((broker) => new Promise((resolve, reject) => {
 		const key = readFileSync(resolvePath(CERTS_DIR, 'server.key'));
 		const cert = readFileSync(resolvePath(CERTS_DIR, 'server.crt'));
-		const broker = aedesBroker();
 		const server = createTlsServer({ key, cert }, broker.handle.bind(broker));
 		server.on('error', reject);
 		server.listen(port, '0.0.0.0', () => {
@@ -337,5 +347,5 @@ export function createMqttTlsBroker(port = 8883): Promise<TestServer> {
 				close: () => new Promise<void>((r) => server.close(() => r())),
 			});
 		});
-	});
+	}));
 }

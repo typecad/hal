@@ -1,77 +1,18 @@
-import { uartBegin, uartEnd, uartPrint, uartPrintln, uartPrintf, uartWrite, uartRead, uartPeek, uartAvailable, uartFlush, rawCpp } from './emit.js';
+// ---------------------------------------------------------------------------
+// SerialPort — controller identity carrier (legacy UART API removed)
+//
+// The class carries ONLY the controller identity (the canonical controller
+// name: UART0, UART1, …). Generated board modules construct the singletons;
+// program-level serial is the thin `UART` (uart-port.ts — interrupt-drained
+// RX ring + poll TX, construction baud) or `USBConsole` (usb.ts) for the CDC
+// connector. The former print/printf/read/peek/available/waitForConnection
+// surface was removed with the legacy Arduino surface.
+// ----------------------------------------------------------------------------
 
 export class SerialPort {
-  static readonly __includes = ["<Arduino.h>"];
   private _port: string;
 
   constructor(port: string) {
     this._port = port;
   }
-
-  begin(baud: number = 9600): this {
-    uartBegin(this._port, baud);
-    return this;
-  }
-
-  end(): void {
-    uartEnd(this._port);
-  }
-
-  print(value: any): void {
-    uartPrint(this._port, value);
-  }
-
-  println(value: any): void {
-    uartPrintln(this._port, value);
-  }
-
-  printf(format: string, ...args: any[]): void {
-    uartPrintf(this._port, format, args);
-  }
-
-  write(data: any): void {
-    uartWrite(this._port, data);
-  }
-
-  read(): number {
-    return uartRead(this._port);
-  }
-
-  readLine(): string {
-    rawCpp(`return ${this._port}.readStringUntil('\\n');`);
-    return "";
-  }
-
-  peek(): number {
-    return uartPeek(this._port);
-  }
-
-  available(): number {
-    return uartAvailable(this._port);
-  }
-
-  flush(): void {
-    uartFlush(this._port);
-  }
-
-  waitForConnection(timeout?: number): Promise<void> {
-    rawCpp(`while (!${this._port}) { delay(10); }`);
-    return Promise.resolve();
-  }
-
-  take(): this | null {
-    // Basic implementation for single-threaded Arduino; 
-    // real locking would be framework-specific.
-    return this;
-  }
-
-  release(): void {
-    // No-op for standard Arduino.
-  }
-}
-
-
-/** Map TypeCAD UART instance number to Arduino C++ object name. UART0→Serial, UART1→Serial1 */
-export function serialName(instance: number): string {
-  return instance === 0 ? "Serial" : `Serial${instance}`;
 }

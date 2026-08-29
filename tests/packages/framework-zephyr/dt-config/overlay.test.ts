@@ -2,15 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { generateOverlay } from '../../../../packages/framework-zephyr/src/dt-config/overlay';
 import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
 import { resolveChipFromBoard } from '../../../../packages/framework-zephyr/src/chips/resolve';
-import { resolveBoardConstants } from '../../../../packages/cuttlefish/src/ir/board-resolver';
+import { SOC_CHIPS } from '../../../../packages/framework-zephyr/src/chips/soc/index';
 
 // The Black Pill descriptor carries synthesized PWM specs + pinctrl-labeled
-// ADC channels — resolved through the real board-package flattener so the
-// overlay assertions exercise the same data a real build sees.
-const BLACKPILL = resolveChipFromBoard(
-  resolveBoardConstants('boards/board-blackpill-f411ce/src/index.ts'),
-)!;
+// ADC channels — the consolidated soc registry holds the same data a real
+// build resolves (keyed off the generated board manifest's zephyr.soc).
+const BLACKPILL = SOC_CHIPS['stm32f411xe'];
 import { DEFAULT_ZEPHYR_DISPLAY_PROFILE, ZEPHYR_DISPLAY_PROFILES } from '../../../../packages/framework-zephyr/src/display/profiles';
+import { generateBoard } from '../../../../packages/framework-zephyr/src/boardgen';
+import type { BoardConstants } from '../../../../packages/cuttlefish/src/api/shared/board-resolver';
+function generatedConstants(target: string): BoardConstants {
+  const g = generateBoard(target);
+  return new Map(Object.entries(JSON.parse(g.boardJson).constants)) as BoardConstants;
+}
+
 
 describe('generateOverlay', () => {
   it('enables used peripherals with status okay', () => {
@@ -330,11 +335,9 @@ describe('storage partition synthesis (Preferences/FS on boards without one)', (
 });
 
 // RP2040 carries the synthesized uart1 pinctrl entry (no default group in
-// the mainline board DT) — resolved through the real board-package
-// flattener like the Black Pill fixture above.
-const RP2040 = resolveChipFromBoard(
-  resolveBoardConstants('boards/board-rp2040/src/index.ts'),
-)!;
+// the mainline board DT) — from the consolidated soc registry like the
+// Black Pill fixture above.
+const RP2040 = SOC_CHIPS['rp2040'];
 
 describe('generateOverlay pinctrl synthesis', () => {
   it('synthesizes a pinctrl group and wires it onto the controller', () => {
@@ -369,5 +372,66 @@ describe('generateOverlay pinctrl synthesis', () => {
       pinmux: ['UART1_TX_P8'],
       inputPinmux: ['UART1_RX_P9'],
     });
+  });
+});
+
+// The ESP32-S3 descriptor resolved through the real board-package flattener —
+// same path a real build takes, so the matrix assertions below also cover
+// resolve.ts's zephyr.pwm.matrix.* parsing.
+const ESP32S3 = SOC_CHIPS['esp32s3'];
+
+describe('matrix PWM (ESP32-S3 LEDC) + USB overlay', () => {
+  it('emits pinctrl pinmux tokens + channel children + pwm-leds for the driven pins', () => {
+    const txt = generateOverlay(ESP32S3, { usesPwm: true, pwmUsedPins: [4, 12] }, undefined);
+    // The pwms cell's PWM_POLARITY_NORMAL macro is not in every board's DTS
+    // include chain (the ESP32-S3 chain has no PWM nodes) — the overlay
+    // carries its own dt-bindings include or dtc rejects the cell ("expected
+    // number or parenthesized expression", found by the E2E west build).
+    expect(txt).toContain('#include <zephyr/dt-bindings/pwm/pwm.h>');
+    expect(txt).toContain('&pinctrl {');
+    expect(txt).toContain('tc_ledc0_default: tc-ledc0-default {');
+    expect(txt).toContain('pinmux = <LEDC_CH0_GPIO4>, <LEDC_CH1_GPIO12>;');
+    expect(txt).toContain('&ledc0 {');
+    expect(txt).toContain('pinctrl-0 = <&tc_ledc0_default>;');
+    expect(txt).toContain('channel0@0 {');
+    expect(txt).toContain('channel1@1 {');
+    expect(txt).toContain('timer = <0>;');
+    // Channels are assigned ascending over the driven pins — the alias var
+    // in the emitted C++ and the pwms cell here must agree on the pin.
+    expect(txt).toContain('pwms = <&ledc0 0 20000000 PWM_POLARITY_NORMAL>');
+    expect(txt).toContain('pwms = <&ledc0 1 20000000 PWM_POLARITY_NORMAL>');
+    expect(txt).toContain('tc-pwm4 = &tc_pwm_4;');
+    expect(txt).toContain('tc-pwm12 = &tc_pwm_12;');
+  });
+
+  it('filters pins outside the matrix from the used list (USB/flash/console pads)', () => {
+    const txt = generateOverlay(ESP32S3, { usesPwm: true, pwmUsedPins: [4, 19] }, undefined);
+    expect(txt).toContain('tc-pwm4 = &tc_pwm_4;');
+    expect(txt).not.toContain('tc_pwm_19');
+    expect(txt).not.toContain('GPIO19');
+  });
+
+  it('throws when the driven pins exceed the controller channel count', () => {
+    const nine = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    expect(() => generateOverlay(ESP32S3, { usesPwm: true, pwmUsedPins: nine }, undefined))
+      .toThrow(/exposes only 8 channels/);
+  });
+
+  it('omits PWM nodes when the program uses none', () => {
+    const txt = generateOverlay(ESP32S3, {}, undefined);
+    expect(txt).not.toContain('pwm-leds');
+    expect(txt).not.toContain('ledc0');
+  });
+
+  it('composes the CDC-ACM instance under the board zephyr_udc0 alias on usb use', () => {
+    const txt = generateOverlay(ESP32S3, { usesUsb: true }, undefined);
+    expect(txt).toContain('&zephyr_udc0 {');
+    expect(txt).toContain('cdc_acm_uart0: cdc-acm-uart0 {');
+    expect(txt).toContain('compatible = "zephyr,cdc-acm-uart";');
+  });
+
+  it("rebinds zephyr,console to the CDC port when console.output is 'usb'", () => {
+    const txt = generateOverlay(ESP32S3, { consoleOutput: 'usb' }, undefined);
+    expect(txt).toContain('zephyr,console = &cdc_acm_uart0;');
   });
 });

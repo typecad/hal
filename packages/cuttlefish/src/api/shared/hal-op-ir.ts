@@ -6,7 +6,7 @@
 // framework-specific C++.
 //
 // The transpiler produces these nodes when resolving HAL method calls.
-// Framework strategies (ArduinoStrategy, NativeAVRStrategy, etc.) implement
+// Framework strategies (ZephyrStrategy, NativeStrategy, etc.) implement
 // resolveHALOperation() to map each operation to concrete C++ code.
 //
 // Pin-carrying operations include an optional `port` field for the MCU
@@ -38,7 +38,6 @@ export interface GpioWriteOp {
    * tracker state: every file's buildProgramIR resets the tracker, and all
    * files build before any emit runs.
    */
-  updatesShadow?: boolean;
 }
 
 export interface GpioReadOp {
@@ -52,7 +51,6 @@ export interface GpioReadOp {
    * to a compile-time constant; 'shadow' lowers to the tracked state
    * variable that generated writes keep updated.
    */
-  trackedValue?: "high" | "low" | "shadow";
 }
 
 export interface GpioToggleOp {
@@ -60,28 +58,11 @@ export interface GpioToggleOp {
   port?: string;
   pin: number;
   /** Output-pin state tracking — same contract as GpioWriteOp.updatesShadow. */
-  updatesShadow?: boolean;
-}
-
-export interface GpioSetModeOp {
-  operation: "gpio.set_mode";
-  port?: string;
-  pin: number;
-  /** "output" | "input" | "input_pullup" | "input_pulldown" */
-  mode: string;
 }
 
 // ---------------------------------------------------------------------------
 // PWM — pulse-width modulation output
 // ---------------------------------------------------------------------------
-
-export interface PwmWriteOp {
-  operation: "pwm.write";
-  port?: string;
-  pin: number;
-  /** Duty cycle — numeric value or runtime expression string */
-  duty: number | string;
-}
 
 export interface PwmGetFrequencyOp {
   operation: "pwm.get_frequency";
@@ -102,145 +83,28 @@ export interface PwmGetResolutionOp {
 // strings, so a nested `opts` object is not representable on a HALOpIR.
 // bit0/bit1 timings are [hi, lo] tick pairs flattened to two fields each.
 
-export interface RmtTxInitOp {
-  operation: "rmt.tx_init";
-  port?: string;
-  pin: number;
-  resolutionHz: number | string;
-  bit0Hi: number | string;
-  bit0Lo: number | string;
-  bit1Hi: number | string;
-  bit1Lo: number | string;
-  msbFirst?: boolean | string;
-  queueDepth?: number | string;
-}
 
-export interface RmtTxWriteBytesOp {
-  operation: "rmt.tx_write_bytes";
-  port?: string;
-  pin: number;
-  /** Pre-rendered C array initializer body, e.g. "1, 2, 3" (positional; bytes arg is array-literal-rendered). */
-  bytes: string;
-}
 
-export interface RmtTxWriteSymbolsOp {
-  operation: "rmt.tx_write_symbols";
-  port?: string;
-  pin: number;
-  /** Rendered rmt_symbol_word_t array body, one row per symbol. */
-  symbols: string;
-}
 
-export interface RmtTxWaitDoneOp {
-  operation: "rmt.tx_wait_done";
-  port?: string;
-  pin: number;
-  timeoutMs?: number | string;
-}
 
-export interface RmtTxDeinitOp {
-  operation: "rmt.tx_deinit";
-  port?: string;
-  pin: number;
-}
 
-export interface RmtRxInitOp {
-  operation: "rmt.rx_init";
-  port?: string;
-  pin: number;
-  resolutionHz: number | string;
-}
 
-export interface RmtRxOnReceivedOp {
-  operation: "rmt.rx_on_received";
-  port?: string;
-  pin: number;
-  /** User-declared C function name to call on receive. */
-  handler: string;
-}
 
-export interface RmtRxStartOp {
-  operation: "rmt.rx_start";
-  port?: string;
-  pin: number;
-}
 
-export interface RmtRxStopOp {
-  operation: "rmt.rx_stop";
-  port?: string;
-  pin: number;
-}
 
-export interface RmtRxReadOp {
-  operation: "rmt.rx_read";
-  port?: string;
-  pin: number;
-  maxCount: number | string;
-}
 
-export interface RmtRxDeinitOp {
-  operation: "rmt.rx_deinit";
-  port?: string;
-  pin: number;
-}
 
 // ---------------------------------------------------------------------------
 // ADC — analog-to-digital conversion
 // ---------------------------------------------------------------------------
 
-export interface AdcReadOp {
-  operation: "adc.read";
-  port?: string;
-  pin: number;
-}
-
-export interface AdcGetResolutionOp {
-  operation: "adc.get_resolution";
-}
-
-export interface AdcSetReferenceOp {
-  operation: "adc.set_reference";
-  /** Reference constant name or numeric value */
-  reference: string | number;
-}
-
-export interface AdcGetReferenceOp {
-  operation: "adc.get_reference";
-}
-
-export interface AdcReadVoltageOp {
-  operation: "adc.read_voltage";
-  port?: string;
-  pin: number;
-  vRef?: number;
-  maxValue?: number;
-}
-
 // ---------------------------------------------------------------------------
 // DAC — digital-to-analog conversion
 // ---------------------------------------------------------------------------
 
-export interface DacWriteOp {
-  operation: "dac.write";
-  port?: string;
-  pin: number;
-  /** Output value — numeric or runtime expression string */
-  value: number | string;
-}
-
 // ---------------------------------------------------------------------------
 // Interrupts
 // ---------------------------------------------------------------------------
-
-export interface InterruptAttachOp {
-  operation: "interrupt.attach";
-  port?: string;
-  pin: number;
-  /** Resolved C++ callback function name */
-  handler: string;
-  /** "rising" | "falling" | "change" | "high" | "low" */
-  mode: string;
-}
 
 export interface InterruptDetachOp {
   operation: "interrupt.detach";
@@ -252,47 +116,9 @@ export interface InterruptDetachOp {
 // Tone / audio output
 // ---------------------------------------------------------------------------
 
-export interface TonePlayOp {
-  operation: "tone.play";
-  port?: string;
-  pin: number;
-  /** Frequency in Hz — numeric or runtime expression string */
-  frequency: number | string;
-  /** Optional duration in milliseconds — numeric or runtime expression string */
-  duration?: number | string;
-}
-
-export interface ToneStopOp {
-  operation: "tone.stop";
-  port?: string;
-  pin: number;
-}
-
 // ---------------------------------------------------------------------------
 // Timing
 // ---------------------------------------------------------------------------
-
-export interface TimingDelayOp {
-  operation: "timing.delay";
-  ms: number;
-}
-
-export interface TimingDelayMicrosecondsOp {
-  operation: "timing.delay_microseconds";
-  us: number;
-}
-
-export interface TimingMillisOp {
-  operation: "timing.millis";
-}
-
-export interface TimingMicrosOp {
-  operation: "timing.micros";
-}
-
-export interface TimingFreeHeapOp {
-  operation: "timing.free_heap";
-}
 
 export interface TimingSetIntervalOp {
   operation: "timing.set_interval";
@@ -316,6 +142,279 @@ export interface TimingClearIntervalOp {
 export interface TimingClearTimeoutOp {
   operation: "timing.clear_timeout";
   id: number;
+}
+
+// Time.* — the TS-flavored timing surface (Time.sleep/now/nowUs/busyWaitUs).
+// Distinct ops from the Arduino-named forms above so each framework can
+// declare them independently (framework-arduino is frozen on the legacy ops).
+
+export interface TimingSleepOp {
+  operation: "timing.sleep";
+  ms: number;
+}
+
+export interface TimingNowOp {
+  operation: "timing.now";
+}
+
+export interface TimingNowUsOp {
+  operation: "timing.now_us";
+}
+
+export interface TimingBusyWaitUsOp {
+  operation: "timing.busy_wait_us";
+  us: number;
+}
+
+// ---------------------------------------------------------------------------
+// Thin Zephyr-shaped peripherals (GPIO/PWM/ADCChannel/DACChannel/Watchdog/
+// Counter — hal/gpio-pin.ts and siblings). Construction facts ride the ops
+// (the sensor discipline: ops are self-contained so shim lines and overlay
+// generation derive from op facts alone). Flag/gain/reference arguments are
+// token TEXT (e.g. "GPIO.OUTPUT | GPIO.PULL_UP", "ADCChannel.GAIN_1_4") —
+// the lowerings map token names to the C macros.
+// ---------------------------------------------------------------------------
+
+export interface GpioConfigureOp {
+  operation: "gpio.configure";
+  pin: number;
+  /** Flag token text: "GPIO.OUTPUT | GPIO.PULL_UP" */
+  flags: string;
+}
+
+export interface GpioReadCfgOp {
+  operation: "gpio.read_cfg";
+  pin: number;
+  /** Flag token text — the guarded configure is fused into the read. */
+  flags: string;
+}
+
+export interface GpioShiftOutOp {
+  operation: "gpio.shift_out";
+  dataPin: number;
+  clockPin: number;
+  value: number | string;
+  msbFirst: boolean;
+}
+
+export interface GpioShiftInOp {
+  operation: "gpio.shift_in";
+  dataPin: number;
+  clockPin: number;
+  msbFirst: boolean;
+}
+
+export interface InterruptAttachFlagsOp {
+  operation: "interrupt.attach_flags";
+  pin: number;
+  /** Resolved C++ callback function name */
+  handler: string;
+  /** INT flag token text: "GPIO.INT_EDGE_FALLING" */
+  intFlags: string;
+}
+
+export interface PwmSetPulseOp {
+  operation: "pwm.set_pulse";
+  pin: number;
+  /** Construction period in ns */
+  periodNs: number | string;
+  pulseNs: number | string;
+}
+
+export interface PwmSetDutyOp {
+  operation: "pwm.set_duty";
+  pin: number;
+  /** Construction period in ns */
+  periodNs: number | string;
+  /** Duty fraction 0.0–1.0 */
+  duty: number | string;
+}
+
+export interface PwmSetPeriodOp {
+  operation: "pwm.set_period";
+  pin: number;
+  periodNs: number | string;
+}
+
+export interface PwmToneOp {
+  operation: "pwm.tone";
+  pin: number;
+  /** Tone frequency in Hz (50% duty square wave). */
+  hz: number | string;
+}
+
+export interface AdcReadRawOp {
+  operation: "adc.read_raw";
+  pin: number;
+  /** Gain token text ("ADCChannel.GAIN_1_4"); '' = descriptor default */
+  gain?: string;
+  /** Reference token text ("ADCChannel.REF_INTERNAL"); '' = descriptor default */
+  reference?: string;
+}
+
+export interface AdcReadMvOp {
+  operation: "adc.read_mv";
+  pin: number;
+  gain?: string;
+  reference?: string;
+}
+
+export interface DacWriteValueOp {
+  operation: "dac.write_value";
+  pin: number;
+  value: number | string;
+  /** Construction resolution in bits; 0 = descriptor channel default */
+  resolution: number;
+}
+
+export interface WdtSetupOp {
+  operation: "wdt.setup";
+  /** Construction timeout in milliseconds */
+  timeoutMs: number;
+}
+
+export interface WdtFeedOp {
+  operation: "wdt.feed";
+}
+
+export interface CounterOnAlarmOp {
+  operation: "counter.on_alarm";
+  instance: number;
+  /** Resolved C++ callback function name */
+  handler: string;
+}
+
+export interface CounterStartOp {
+  operation: "counter.start";
+  instance: number;
+  /** Construction alarm frequency in Hz — realized as the top value */
+  hz: number;
+}
+
+export interface CounterStopOp {
+  operation: "counter.stop";
+  instance: number;
+}
+
+// ── Tier-2 thin buses (I2CTarget/SPITarget/UART — hal/i2c-target.ts,
+// spi-target.ts, uart-port.ts). Construction facts ride the ops; `bus`/
+// `port` carry the instance string ("I2C0"/"UART1"); the SPI ops carry the
+// cs pin + hz + mode so the shim state block and overlay child node derive
+// from op facts alone (the sensor discipline). ──
+
+export interface I2cRegWriteOp {
+  operation: "i2c.reg_write";
+  bus: string;
+  address: number;
+  /** Bus speed applied once at first use; 0 = leave as configured */
+  hz: number;
+  reg: number | string;
+  value: number | string;
+}
+
+export interface I2cRegReadOp {
+  operation: "i2c.reg_read";
+  bus: string;
+  address: number;
+  hz: number;
+  reg: number | string;
+}
+
+export interface I2cRegUpdateOp {
+  operation: "i2c.reg_update";
+  bus: string;
+  address: number;
+  hz: number;
+  reg: number | string;
+  mask: number | string;
+  value: number | string;
+}
+
+export interface I2cDevWriteOp {
+  operation: "i2c.dev_write";
+  bus: string;
+  address: number;
+  hz: number;
+  /** Byte values — numeric literals or runtime expressions */
+  bytes: (number | string)[];
+}
+
+export interface SpiTransceiveOp {
+  operation: "spi.transceive";
+  bus: string;
+  cs: number;
+  hz: number;
+  mode: number;
+  tx: (number | string)[];
+  /** Caller's buffer identifier ('' = write-only) */
+  rx: string;
+}
+
+export interface SpiDevWriteOp {
+  operation: "spi.dev_write";
+  bus: string;
+  cs: number;
+  hz: number;
+  mode: number;
+  tx: (number | string)[];
+}
+
+export interface SpiRegReadOp {
+  operation: "spi.reg_read";
+  bus: string;
+  cs: number;
+  hz: number;
+  mode: number;
+  reg: number | string;
+}
+
+export interface UartPollWriteOp {
+  operation: "uart.poll_write";
+  port: string;
+  baud: number;
+  data: string;
+}
+
+export interface UartRxArmOp {
+  operation: "uart.rx_arm";
+  port: string;
+  /** Ring size in bytes (sizes the shim's static buffer). */
+  ring: number;
+}
+
+export interface UartRxAvailableOp {
+  operation: "uart.rx_available";
+  port: string;
+  ring: number;
+}
+
+export interface UartRxPeekOp {
+  operation: "uart.rx_peek";
+  port: string;
+  ring: number;
+}
+
+export interface UartRxReadOp {
+  operation: "uart.rx_read";
+  port: string;
+  ring: number;
+}
+
+export interface ThreadStartOp {
+  operation: "thread.start";
+  /** Thread identity slot (0, 1, 2, …) */
+  instance: number;
+  /** Stack size in bytes (construction fact — sizes the K_THREAD_STACK) */
+  stackBytes: number;
+  /** Zephyr priority (negative = cooperative; default 5 = preemptive below main) */
+  priority: number;
+  /** Resolved C++ entry function name (callback-registered) */
+  handler: string;
+}
+
+export interface ThreadJoinOp {
+  operation: "thread.join";
+  instance: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -346,82 +445,6 @@ export interface PowerDeepSleepPinOp {
 // I2C — inter-integrated circuit bus
 // ---------------------------------------------------------------------------
 
-export interface I2cBeginOp {
-  operation: "i2c.begin";
-  bus: string;
-  /** Slave address (only for slave mode) — numeric or runtime expression string */
-  address?: number | string;
-}
-
-export interface I2cEndOp {
-  operation: "i2c.end";
-  bus: string;
-}
-
-export interface I2cSetClockOp {
-  operation: "i2c.set_clock";
-  bus: string;
-  /** Clock speed in Hz — numeric or runtime expression string */
-  hz: number | string;
-}
-
-export interface I2cBeginTransmissionOp {
-  operation: "i2c.begin_transmission";
-  bus: string;
-  /** Slave address — numeric or runtime expression string */
-  address: number | string;
-}
-
-export interface I2cWriteOp {
-  operation: "i2c.write";
-  bus: string;
-  /** Resolved C++ expression for the data to write */
-  data: string;
-}
-
-export interface I2cWriteBytesOp {
-  operation: "i2c.write_bytes";
-  bus: string;
-  /** Individual byte values — numeric literals or runtime expressions */
-  bytes: (number | string)[];
-}
-
-export interface I2cWriteBufferOp {
-  operation: "i2c.write_buffer";
-  bus: string;
-  /** C array / buffer variable name */
-  data: string;
-}
-
-export interface I2cReadBufferOp {
-  operation: "i2c.read_buffer";
-  bus: string;
-  count: number | string;
-  /** Buffer variable name, or "__DISCARD__" to read-and-drop */
-  buffer: string;
-}
-
-export interface I2cEndTransmissionOp {
-  operation: "i2c.end_transmission";
-  bus: string;
-  stop: boolean;
-}
-
-export interface I2cRequestFromOp {
-  operation: "i2c.request_from";
-  bus: string;
-  /** Slave address — numeric or runtime expression string */
-  address: number | string;
-  /** Number of bytes — numeric or runtime expression string */
-  quantity: number | string;
-  stop: boolean;
-}
-
-export interface I2cAvailableOp {
-  operation: "i2c.available";
-  bus: string;
-}
-
 export interface I2cReadOp {
   operation: "i2c.read";
   bus: string;
@@ -436,180 +459,20 @@ export interface I2cRecoverOp {
 // SPI — serial peripheral interface bus
 // ---------------------------------------------------------------------------
 
-export interface SpiBeginOp {
-  operation: "spi.begin";
-  bus: string;
-}
-
-export interface SpiEndOp {
-  operation: "spi.end";
-  bus: string;
-}
-
-export interface SpiTransferOp {
-  operation: "spi.transfer";
-  bus: string;
-  /** Resolved C++ expression for data to transfer */
-  data: string;
-}
-
-export interface SpibeginTransactionOp {
-  operation: "spi.begin_transaction";
-  bus: string;
-  /** Resolved C++ SPISettings expression */
-  settings: string;
-}
-
-export interface SpiEndTransactionOp {
-  operation: "spi.end_transaction";
-  bus: string;
-}
-
-
-export interface SpiSetModeOp {
-  operation: "spi.set_mode";
-  bus: string;
-  /** SPI mode (0-3) — numeric or runtime expression string */
-  mode: number | string;
-}
-
-export interface SpiSetBitOrderOp {
-  operation: "spi.set_bit_order";
-  bus: string;
-  /** "lsb" | "msb" */
-  order: string;
-}
-
-export interface SpiCsLowOp {
-  operation: "spi.cs_low";
-  port?: string;
-  pin: number;
-}
-
-export interface SpiCsHighOp {
-  operation: "spi.cs_high";
-  port?: string;
-  pin: number;
-}
-
-export interface SpiReadBufferOp {
-  operation: "spi.read_buffer";
-  bus: string;
-  /** Number of bytes — numeric or runtime expression string */
-  count: number | string;
-  /** Buffer variable name, "__HAL_READ_BUF__" placeholder (rewritten to the
-   *  caller's variable by the variable-init transformer), or "__DISCARD__" */
-  buffer: string;
-}
 
 // ---------------------------------------------------------------------------
 // UART — universal asynchronous receiver-transmitter (serial)
 // ---------------------------------------------------------------------------
 
-export interface UartBeginOp {
-  operation: "uart.begin";
-  port: string;
-  /** Baud rate — numeric or runtime expression string */
-  baud: number | string;
-}
-
-export interface UartEndOp {
-  operation: "uart.end";
-  port: string;
-}
-
-export interface UartPrintOp {
-  operation: "uart.print";
-  port: string;
-  /** Resolved C++ expression to print */
-  value: string;
-}
-
-export interface UartPrintlnOp {
-  operation: "uart.println";
-  port: string;
-  /** Resolved C++ expression to print */
-  value: string;
-}
-
-export interface UartPrintfOp {
-  operation: "uart.printf";
-  port: string;
-  /** printf format string */
-  format: string;
-  /** Resolved C++ argument expressions */
-  args: string[];
-}
-
-export interface UartWriteOp {
-  operation: "uart.write";
-  port: string;
-  /** Resolved C++ expression for data */
-  data: string;
-}
-
-export interface UartReadOp {
-  operation: "uart.read";
-  port: string;
-}
-
-export interface UartPeekOp {
-  operation: "uart.peek";
-  port: string;
-}
-
-export interface UartAvailableOp {
-  operation: "uart.available";
-  port: string;
-}
-
-export interface UartFlushOp {
-  operation: "uart.flush";
-  port: string;
-}
-
 // ---------------------------------------------------------------------------
 // Pulse measurement
 // ---------------------------------------------------------------------------
 
-export interface PulseInOp {
-  operation: "pulse.in";
-  port?: string;
-  pin: number;
-  /** 0 = LOW, 1 = HIGH */
-  value: 0 | 1;
-  /** Optional timeout in microseconds */
-  timeout?: number;
-}
 
-export interface PulseInLongOp {
-  operation: "pulse.in_long";
-  port?: string;
-  pin: number;
-  /** 0 = LOW, 1 = HIGH */
-  value: 0 | 1;
-}
 
 // ---------------------------------------------------------------------------
 // Shift register
 // ---------------------------------------------------------------------------
-
-export interface ShiftOutOp {
-  operation: "shift.out";
-  dataPin: number;
-  clockPin: number;
-  /** "lsb" | "msb" */
-  bitOrder: string;
-  value: number;
-}
-
-export interface ShiftInOp {
-  operation: "shift.in";
-  dataPin: number;
-  clockPin: number;
-  /** "lsb" | "msb" */
-  bitOrder: string;
-}
 
 // ---------------------------------------------------------------------------
 // Board constant resolution
@@ -624,16 +487,6 @@ export interface BoardResolveOp {
 // ---------------------------------------------------------------------------
 // Watchdog timer (WDT)
 // ---------------------------------------------------------------------------
-
-export interface WdtEnableOp {
-  operation: "wdt.enable";
-  /** Timeout — a duration string ("250ms"), a WDTO_* constant name, or a number */
-  timeout: string | number;
-}
-
-export interface WdtResetOp {
-  operation: "wdt.reset";
-}
 
 export interface WdtDisableOp {
   operation: "wdt.disable";
@@ -657,12 +510,26 @@ export interface SnprintfEmitOp {
 // WiFi
 // ---------------------------------------------------------------------------
 
-export interface WifiConnectOp {
-  operation: "wifi.connect";
+export interface WifiJoinOp {
+  operation: "wifi.join";
   ssid: string;
-  password?: string;
-  timeoutMs: number | string;
-  blocking: boolean;
+  /** Pre-shared key; absent for open networks. */
+  psk?: string;
+  /** Security token value (WiFi.OPEN/WPA2/WPA3/WPA2_WPA3) — the lowering
+   *  maps it to the Zephyr wifi_security_type enum. */
+  security?: number;
+  /** 0 = any. */
+  channel?: number;
+  /** Band token value (WiFi.BAND_2_4 / BAND_5). */
+  band?: number;
+  /** join()'s bounded-wait deadline. */
+  timeoutMs?: number;
+  /** Nonzero = WiFi.PS_OFF — disable the radio's modem sleep. */
+  ps?: number;
+  /** Static IPv4 facts — applied instead of DHCP when present. */
+  ipAddr?: string;
+  gateway?: string;
+  netmask?: string;
 }
 
 export interface WifiConnectStartOp {
@@ -673,10 +540,6 @@ export interface WifiConnectStartOp {
 
 export interface WifiDisconnectOp {
   operation: "wifi.disconnect";
-}
-
-export interface WifiStatusOp {
-  operation: "wifi.status";
 }
 
 export interface WifiIsConnectedOp {
@@ -693,34 +556,6 @@ export interface WifiRssiOp {
 
 export interface WifiMacOp {
   operation: "wifi.mac";
-}
-
-export interface WifiSetHostnameOp {
-  operation: "wifi.set_hostname";
-  name: string;
-}
-
-export interface WifiSetStaticIpOp {
-  operation: "wifi.set_static_ip";
-  ip: string;
-  gateway: string;
-  subnet: string;
-  dns?: string;
-}
-
-export interface WifiSetAutoReconnectOp {
-  operation: "wifi.set_auto_reconnect";
-  enabled: boolean | string;
-}
-
-export interface WifiSetPowerSaveOp {
-  operation: "wifi.set_power_save";
-  mode: string;
-}
-
-export interface WifiSetTxPowerOp {
-  operation: "wifi.set_tx_power";
-  dbm: number | string;
 }
 
 export interface WifiOnEventOp {
@@ -742,33 +577,13 @@ export interface WifiApStopOp {
   operation: "wifi.ap_stop";
 }
 
-export interface WifiApClientCountOp {
-  operation: "wifi.ap_client_count";
-}
-
-export interface WifiApIpOp {
-  operation: "wifi.ap_ip";
-}
-
-export interface WifiApSetChannelOp {
-  operation: "wifi.ap_set_channel";
-  channel: number | string;
-}
-
-export interface WifiApSetHiddenOp {
-  operation: "wifi.ap_set_hidden";
-  hidden: boolean | string;
-}
-
-export interface WifiApSetMaxClientsOp {
-  operation: "wifi.ap_set_max_clients";
-  maxClients: number | string;
-}
-
 export interface WifiScanOp {
   operation: "wifi.scan";
 }
 
+/** Async split partner of wifi.scan — kicks the scan without waiting; pair
+ *  with the wifi.scan_done poll predicate (netWaitInfo). Emitted
+ *  synthetically by the async tier, not by a TS-facing HAL method. */
 export interface WifiScanStartOp {
   operation: "wifi.scan_start";
 }
@@ -802,30 +617,6 @@ export interface WifiScanChannelOp {
   index: number | string;
 }
 
-export interface WifiSaveCredentialsOp {
-  operation: "wifi.save_credentials";
-  ssid: string;
-  password: string;
-}
-
-export interface WifiConnectSavedOp {
-  operation: "wifi.connect_saved";
-  timeoutMs: number | string;
-}
-
-export interface WifiClearCredentialsOp {
-  operation: "wifi.clear_credentials";
-}
-
-export interface WifiWaitConnectedOp {
-  operation: "wifi.wait_connected";
-  timeoutMs: number | string;
-}
-
-export interface WifiWaitDisconnectedOp {
-  operation: "wifi.wait_disconnected";
-}
-
 // ---------------------------------------------------------------------------
 // HTTP client
 // ---------------------------------------------------------------------------
@@ -834,10 +625,6 @@ export interface HttpBeginOp {
   operation: "http.begin";
   method: string;
   url: string;
-}
-
-export interface HttpResetOp {
-  operation: "http.reset";
 }
 
 export interface HttpSetHeaderOp {
@@ -864,6 +651,8 @@ export interface HttpSetBodyOp {
 
 export interface HttpSetInsecureOp {
   operation: "http.set_insecure";
+  /** False is a no-op (the op always emits from send(); the lowering elides). */
+  insecure: boolean;
 }
 
 export interface HttpSetCaCertOp {
@@ -1010,109 +799,83 @@ export interface BleClientCountOp {
   operation: "ble.client_count";
 }
 
-export interface BleSetNameOp {
-  operation: "ble.set_name";
-  name: string;
-}
-
-export interface BleUntilConnectedOp {
-  operation: "ble.until_connected";
-  timeoutMs: number | string;
-  blocking: boolean;
-}
-
-export interface BleUntilConnectedStartOp {
-  operation: "ble.until_connected_start";
-}
-
-export interface BleSetTxPowerOp {
-  operation: "ble.set_tx_power";
-  dbm: number | string;
-}
-
-export interface BleStatusOp {
-  operation: "ble.status";
-}
-
 // ---------------------------------------------------------------------------
 // Preferences (NVS-backed persistent key/value store)
 // ---------------------------------------------------------------------------
 
-export interface PreferencesBeginOp {
-  operation: "preferences.begin";
-  namespace: string;
-  readOnly: boolean;
-}
-
-export interface PreferencesEndOp {
-  operation: "preferences.end";
-}
-
 export interface PreferencesClearOp {
   operation: "preferences.clear";
+  /** Namespace — the settings subtree prefix tc/<ns>/. */
+  ns: string;
 }
 
 export interface PreferencesRemoveOp {
   operation: "preferences.remove";
+  /** Namespace — the settings subtree prefix tc/<ns>/. */
+  ns: string;
   key: string;
 }
 
 export interface PreferencesPutIntOp {
   operation: "preferences.put_int";
+  /** Namespace — the settings subtree prefix tc/<ns>/. */
+  ns: string;
   key: string;
   value: number | string;
 }
 
 export interface PreferencesGetIntOp {
   operation: "preferences.get_int";
-  key: string;
-  defaultValue: number | string;
-}
-
-export interface PreferencesPutUIntOp {
-  operation: "preferences.put_uint";
-  key: string;
-  value: number | string;
-}
-
-export interface PreferencesGetUIntOp {
-  operation: "preferences.get_uint";
+  /** Namespace — the settings subtree prefix tc/<ns>/. */
+  ns: string;
   key: string;
   defaultValue: number | string;
 }
 
 export interface PreferencesPutBoolOp {
   operation: "preferences.put_bool";
+  /** Namespace — the settings subtree prefix tc/<ns>/. */
+  ns: string;
   key: string;
   value: boolean;
 }
 
 export interface PreferencesGetBoolOp {
   operation: "preferences.get_bool";
+  /** Namespace — the settings subtree prefix tc/<ns>/. */
+  ns: string;
   key: string;
   defaultValue: boolean;
 }
 
 export interface PreferencesPutFloatOp {
   operation: "preferences.put_float";
+  /** Namespace — the settings subtree prefix tc/<ns>/. */
+  ns: string;
   key: string;
   value: number | string;
 }
 
 export interface PreferencesGetFloatOp {
   operation: "preferences.get_float";
+  /** Namespace — the settings subtree prefix tc/<ns>/. */
+  ns: string;
   key: string;
   defaultValue: number | string;
 }
 
 export interface PreferencesPutStringOp {
   operation: "preferences.put_string";
+  /** Namespace — the settings subtree prefix tc/<ns>/. */
+  ns: string;
   key: string;
   value: string;
 }
 
 export interface PreferencesGetStringOp {
   operation: "preferences.get_string";
+  /** Namespace — the settings subtree prefix tc/<ns>/. */
+  ns: string;
   key: string;
   defaultValue: string;
 }
@@ -1153,10 +916,6 @@ export interface RandomSeedOp {
 // close dance and returns heap strings for readText (caller-owned, must not be
 // freed by the caller on Arduino-ESP32 where String manages its own heap).
 
-export interface FsBeginOp {
-  operation: "fs.begin";
-}
-
 export interface FsReadTextOp {
   operation: "fs.read_text";
   /** C string expression for the path */
@@ -1186,36 +945,6 @@ export interface FsRemoveOp {
 // ---------------------------------------------------------------------------
 // mDNS — service discovery (esp_mdns)
 // ---------------------------------------------------------------------------
-
-export interface MdnsStartOp {
-  operation: "mdns.start";
-  /** C string expression for the host name */
-  hostname: string;
-}
-
-export interface MdnsSetHostnameOp {
-  operation: "mdns.set_hostname";
-  /** C string expression for the host name */
-  name: string;
-}
-
-export interface MdnsAddServiceOp {
-  operation: "mdns.add_service";
-  /** C string expression for the service instance name */
-  instance: string;
-  /** C string expression for the protocol ("_tcp" / "_udp") */
-  proto: string;
-  /** Port number — numeric or runtime expression string */
-  port: number | string;
-}
-
-export interface MdnsAnnounceOp {
-  operation: "mdns.announce";
-}
-
-export interface MdnsStopOp {
-  operation: "mdns.stop";
-}
 
 // ---------------------------------------------------------------------------
 // MQTT — pub/sub client (esp_mqtt)
@@ -1261,76 +990,62 @@ export interface MqttDisconnectOp {
 // OTA — over-the-air firmware update (esp_https_ota)
 // ---------------------------------------------------------------------------
 
-export interface OtaFromUrlOp {
-  operation: "ota.from_url";
-  /** C string expression for the HTTPS firmware URL */
-  url: string;
-}
-
-export interface OtaBeginOp {
-  operation: "ota.begin";
-}
-
-export interface OtaWriteOp {
-  operation: "ota.write";
-  /** C expression for the chunk data (buffer/pointer) */
-  chunk: string;
-}
-
-export interface OtaApplyOp {
-  operation: "ota.apply";
-}
-
 // ---------------------------------------------------------------------------
 // Temperature — on-chip die temperature sensor
 // ---------------------------------------------------------------------------
 
-export interface TempReadOp {
-  operation: "temp.read";
+// ---------------------------------------------------------------------------
+// Sensors — DT-bound peripheral parts (generic catalog, hal/sensor.ts)
+// ---------------------------------------------------------------------------
+
+export interface SensorFetchOp {
+  operation: "sensor.fetch";
+  /** Catalog token — an underscored Zephyr compatible ('SENSOR.sensirion_sht3xd'
+   *  or the bare 'sensirion_sht3xd'); the lowering resolves it against the
+   *  generated catalog for the DT compatible string. */
+  part: string;
+  /** Bus name as carried by the HAL ('I2C1' / its alias 'Wire1'). */
+  bus: string;
+  /** Bus port: 7-bit I2C address, or the SPI chip-select pin number. */
+  port: number | string;
+  /** 'i2c' | 'spi' — which DT child shape the overlay emits. */
+  busKind: string;
+  /** SPI clock Hz (0 = the 1 MHz default). */
+  spiHz: number | string;
+  /** SPI mode 0-3. */
+  spiMode: number | string;
+  /** Alert GPIO (-1 = none). */
+  alertPin: number | string;
+}
+
+export interface SensorGetOp {
+  operation: "sensor.get";
+  /** Catalog token — see SensorFetchOp.part. */
+  part: string;
+  /** Bus name — see SensorFetchOp.bus. */
+  bus: string;
+  /** Bus port — see SensorFetchOp.port. */
+  port: number | string;
+  /** 'i2c' | 'spi' — see SensorFetchOp.busKind. */
+  busKind: string;
+  /** SPI clock Hz — see SensorFetchOp.spiHz. */
+  spiHz: number | string;
+  /** SPI mode — see SensorFetchOp.spiMode. */
+  spiMode: number | string;
+  /** Alert GPIO — see SensorFetchOp.alertPin. */
+  alertPin: number | string;
+  /** Channel name — a SENSOR_CHAN_* suffix, possibly 'CHAN.'-prefixed
+   *  (the property-access text of a CHAN.<name> argument). */
+  chan: string;
 }
 
 // ---------------------------------------------------------------------------
 // Hardware timer — GPTimer / TIM (high-precision periodic interrupts)
 // ---------------------------------------------------------------------------
 
-export interface HwtimerSetFrequencyOp {
-  operation: "hwtimer.set_frequency";
-  /** Timer instance index */
-  instance: number | string;
-  /** Frequency in Hz */
-  hz: number | string;
-}
-
-export interface HwtimerOnOverflowOp {
-  operation: "hwtimer.on_overflow";
-  /** Timer instance index */
-  instance: number | string;
-  /** Resolved C++ callback function name */
-  handler: string;
-}
-
-export interface HwtimerStartOp {
-  operation: "hwtimer.start";
-  /** Timer instance index */
-  instance: number | string;
-}
-
-export interface HwtimerStopOp {
-  operation: "hwtimer.stop";
-  /** Timer instance index */
-  instance: number | string;
-}
-
 // ---------------------------------------------------------------------------
 // Capacitive touch pins — ESP32 on-chip capacitive sensing
 // ---------------------------------------------------------------------------
-
-export interface CapacitiveReadOp {
-  operation: "capacitive.read";
-  port?: string;
-  /** Touch-capable GPIO pin number */
-  pin: number;
-}
 
 // ---------------------------------------------------------------------------
 // I2S — Inter-IC Sound / digital audio (ESP32 I2S peripheral)
@@ -1408,8 +1123,13 @@ export interface UsbBeginOp {
   operation: "usb.begin";
   /** Port identifier, e.g. "USB0" (instance 0) */
   port: string;
-  /** Baud rate (line coding hint; CDC has no wire baud — defaults 115200) */
-  baud: number | string;
+}
+
+export interface UsbWaitReadyOp {
+  operation: "usb.wait_ready";
+  port: string;
+  /** Bounded DTR poll in the shim; 0 = wait forever. */
+  timeoutMs: number;
 }
 export interface UsbEndOp {
   operation: "usb.end";
@@ -1425,28 +1145,12 @@ export interface UsbPrintlnOp {
   port: string;
   value: string;
 }
-export interface UsbPrintfOp {
-  operation: "usb.printf";
-  port: string;
-  format: string;
-  args: string[];
-}
-export interface UsbWriteOp {
-  operation: "usb.write";
-  port: string;
-  /** C expression for the data buffer */
-  data: string;
-}
 export interface UsbReadOp {
   operation: "usb.read";
   port: string;
 }
 export interface UsbAvailableOp {
   operation: "usb.available";
-  port: string;
-}
-export interface UsbFlushOp {
-  operation: "usb.flush";
   port: string;
 }
 export interface UsbConnectedOp {
@@ -1479,44 +1183,11 @@ export interface EthIsLinkedOp {
 // ESPNOW — ESP-exclusive peer-to-peer wireless protocol
 // ---------------------------------------------------------------------------
 
-export interface EspnowInitOp {
-  operation: "espnow.init";
-}
-export interface EspnowAddPeerOp {
-  operation: "espnow.add_peer";
-  /** Peer MAC address as a C expression (e.g. an array initializer) */
-  mac: string;
-}
-export interface EspnowSendOp {
-  operation: "espnow.send";
-  /** Peer MAC address C expression, or NULL for broadcast */
-  mac: string;
-  /** C expression for the payload */
-  data: string;
-  /** Number of bytes */
-  length: number | string;
-}
-export interface EspnowOnReceiveOp {
-  operation: "espnow.on_receive";
-  /** Resolved C++ callback function name */
-  handler: string;
-}
 
 // ---------------------------------------------------------------------------
 // Crypto — hardware crypto acceleration (AES/SHA/HMAC/RSA/ECC via mbedtls)
 // ---------------------------------------------------------------------------
 
-export interface CryptoAesEncryptOp {
-  operation: "crypto.aes_encrypt";
-  /** C expression for the key buffer */
-  key: string;
-  /** C expression for the plaintext buffer */
-  input: string;
-  /** Output buffer variable name */
-  output: string;
-  /** Number of bytes (must be a multiple of 16) */
-  length: number | string;
-}
 export interface CryptoSha256Op {
   operation: "crypto.sha256";
   /** C expression for the input buffer */
@@ -1526,67 +1197,16 @@ export interface CryptoSha256Op {
   /** Output buffer variable name (32 bytes) */
   output: string;
 }
-export interface CryptoHmacOp {
-  operation: "crypto.hmac";
-  /** Key C expression */
-  key: string;
-  /** Message C expression */
-  message: string;
-  /** Message length in bytes */
-  length: number | string;
-  /** Output buffer variable name */
-  output: string;
-}
 
 // ---------------------------------------------------------------------------
 // PCNT — pulse counter peripheral (hardware event counting)
 // ---------------------------------------------------------------------------
 
-export interface PcntInitOp {
-  operation: "pcnt.init";
-  /** PCNT unit index */
-  unit: number | string;
-  /** Pulse input GPIO pin */
-  pulsePin: number;
-  /** Optional control/filter GPIO pin */
-  ctrlPin?: number;
-}
-export interface PcntCountOp {
-  operation: "pcnt.count";
-  /** PCNT unit index */
-  unit: number | string;
-}
-export interface PcntClearOp {
-  operation: "pcnt.clear";
-  /** PCNT unit index */
-  unit: number | string;
-}
 
 // ---------------------------------------------------------------------------
 // MCPWM — motor control PWM (distinct from the LEDC general-purpose PWM)
 // ---------------------------------------------------------------------------
 
-export interface McpwmInitOp {
-  operation: "mcpwm.init";
-  /** MCPWM unit index */
-  unit: number | string;
-  /** PWM frequency in Hz */
-  frequency: number | string;
-}
-export interface McpwmSetDutyOp {
-  operation: "mcpwm.set_duty";
-  /** MCPWM unit index */
-  unit: number | string;
-  /** Operator/timer index */
-  operator: number | string;
-  /** Duty cycle percentage (0.0 - 100.0) */
-  duty: number | string;
-}
-export interface McpwmStartOp {
-  operation: "mcpwm.start";
-  /** MCPWM unit index */
-  unit: number | string;
-}
 
 // ---------------------------------------------------------------------------
 // Raw C++ passthrough — escape hatch for unsupported operations
@@ -1612,124 +1232,84 @@ export type HALOpIR =
   | GpioWriteOp
   | GpioReadOp
   | GpioToggleOp
-  | GpioSetModeOp
   // PWM
-  | PwmWriteOp
   | PwmGetFrequencyOp
   | PwmGetResolutionOp
   // RMT
-  | RmtTxInitOp
-  | RmtTxWriteBytesOp
-  | RmtTxWriteSymbolsOp
-  | RmtTxWaitDoneOp
-  | RmtTxDeinitOp
-  | RmtRxInitOp
-  | RmtRxOnReceivedOp
-  | RmtRxStartOp
-  | RmtRxStopOp
-  | RmtRxReadOp
-  | RmtRxDeinitOp
   // ADC
-  | AdcReadOp
-  | AdcGetResolutionOp
-  | AdcSetReferenceOp
-  | AdcGetReferenceOp
-  | AdcReadVoltageOp
   // DAC
-  | DacWriteOp
   // Interrupts
-  | InterruptAttachOp
   | InterruptDetachOp
   // Tone
-  | TonePlayOp
-  | ToneStopOp
   // Timing
-  | TimingDelayOp
-  | TimingDelayMicrosecondsOp
-  | TimingMillisOp
-  | TimingMicrosOp
-  | TimingFreeHeapOp
   | TimingSetIntervalOp
   | TimingSetTimeoutOp
   | TimingClearIntervalOp
   | TimingClearTimeoutOp
+  | TimingSleepOp
+  | TimingNowOp
+  | TimingNowUsOp
+  | TimingBusyWaitUsOp
+  | GpioConfigureOp
+  | GpioReadCfgOp
+  | GpioShiftOutOp
+  | GpioShiftInOp
+  | InterruptAttachFlagsOp
+  | PwmSetPulseOp
+  | PwmSetDutyOp
+  | PwmSetPeriodOp
+  | PwmToneOp
+  | AdcReadRawOp
+  | AdcReadMvOp
+  | DacWriteValueOp
+  | WdtSetupOp
+  | WdtFeedOp
+  | CounterOnAlarmOp
+  | CounterStartOp
+  | CounterStopOp
+  | I2cRegWriteOp
+  | I2cRegReadOp
+  | I2cRegUpdateOp
+  | I2cDevWriteOp
+  | SpiTransceiveOp
+  | SpiDevWriteOp
+  | SpiRegReadOp
+  | UartPollWriteOp
+  | UartRxArmOp
+  | UartRxAvailableOp
+  | UartRxPeekOp
+  | UartRxReadOp
+  | ThreadStartOp
+  | ThreadJoinOp
   // Power
   | PowerDeepSleepOp
   | PowerLightSleepOp
   | PowerSetCpuFrequencyOp
   | PowerDeepSleepPinOp
   // I2C
-  | I2cBeginOp
-  | I2cEndOp
-  | I2cSetClockOp
-  | I2cBeginTransmissionOp
-  | I2cWriteOp
-  | I2cWriteBytesOp
-  | I2cWriteBufferOp
-  | I2cReadBufferOp
-  | I2cEndTransmissionOp
-  | I2cRequestFromOp
-  | I2cAvailableOp
   | I2cReadOp
   | I2cRecoverOp
   // SPI
-  | SpiBeginOp
-  | SpiEndOp
-  | SpiTransferOp
-  | SpibeginTransactionOp
-  | SpiEndTransactionOp
-  | SpiSetModeOp
-  | SpiSetBitOrderOp
-  | SpiCsLowOp
-  | SpiCsHighOp
-  | SpiReadBufferOp
   // UART
-  | UartBeginOp
-  | UartEndOp
-  | UartPrintOp
-  | UartPrintlnOp
-  | UartPrintfOp
-  | UartWriteOp
-  | UartReadOp
-  | UartPeekOp
-  | UartAvailableOp
-  | UartFlushOp
   // Pulse
-  | PulseInOp
-  | PulseInLongOp
   // Shift
-  | ShiftOutOp
-  | ShiftInOp
   // Board
   | BoardResolveOp
   // Watchdog timer
-  | WdtEnableOp
-  | WdtResetOp
   | WdtDisableOp
   // Snprintf
   | SnprintfEmitOp
   // WiFi
-  | WifiConnectOp
+  | WifiJoinOp
   | WifiConnectStartOp
   | WifiDisconnectOp
-  | WifiStatusOp
   | WifiIsConnectedOp
   | WifiLocalIpOp
   | WifiRssiOp
   | WifiMacOp
-  | WifiSetHostnameOp
-  | WifiSetStaticIpOp
-  | WifiSetAutoReconnectOp
-  | WifiSetPowerSaveOp
-  | WifiSetTxPowerOp
   | WifiOnEventOp
   | WifiApStartOp
   | WifiApStopOp
-  | WifiApClientCountOp
-  | WifiApIpOp
-  | WifiApSetChannelOp
-  | WifiApSetHiddenOp
-  | WifiApSetMaxClientsOp
   | WifiScanOp
   | WifiScanStartOp
   | WifiScanDoneOp
@@ -1738,14 +1318,8 @@ export type HALOpIR =
   | WifiScanRssiOp
   | WifiScanEncryptionOp
   | WifiScanChannelOp
-  | WifiSaveCredentialsOp
-  | WifiConnectSavedOp
-  | WifiClearCredentialsOp
-  | WifiWaitConnectedOp
-  | WifiWaitDisconnectedOp
   // HTTP
   | HttpBeginOp
-  | HttpResetOp
   | HttpSetHeaderOp
   | HttpSetTimeoutOp
   | HttpSetMaxBodyOp
@@ -1775,20 +1349,11 @@ export type HALOpIR =
   | BleNotifyOp
   | BleIsConnectedOp
   | BleClientCountOp
-  | BleSetNameOp
-  | BleUntilConnectedOp
-  | BleUntilConnectedStartOp
-  | BleSetTxPowerOp
-  | BleStatusOp
   // Preferences (NVS)
-  | PreferencesBeginOp
-  | PreferencesEndOp
   | PreferencesClearOp
   | PreferencesRemoveOp
   | PreferencesPutIntOp
   | PreferencesGetIntOp
-  | PreferencesPutUIntOp
-  | PreferencesGetUIntOp
   | PreferencesPutBoolOp
   | PreferencesGetBoolOp
   | PreferencesPutFloatOp
@@ -1800,17 +1365,10 @@ export type HALOpIR =
   | RandomRangeOp
   | RandomSeedOp
   // FS (filesystem)
-  | FsBeginOp
   | FsReadTextOp
   | FsWriteTextOp
   | FsExistsOp
   | FsRemoveOp
-  // mDNS
-  | MdnsStartOp
-  | MdnsSetHostnameOp
-  | MdnsAddServiceOp
-  | MdnsAnnounceOp
-  | MdnsStopOp
   // MQTT
   | MqttConnectOp
   | MqttOnMessageOp
@@ -1818,20 +1376,9 @@ export type HALOpIR =
   | MqttPublishOp
   | MqttConnectedOp
   | MqttDisconnectOp
-  // OTA
-  | OtaFromUrlOp
-  | OtaBeginOp
-  | OtaWriteOp
-  | OtaApplyOp
-  // Temperature
-  | TempReadOp
+  | SensorFetchOp
+  | SensorGetOp
   // Hardware timer
-  | HwtimerSetFrequencyOp
-  | HwtimerOnOverflowOp
-  | HwtimerStartOp
-  | HwtimerStopOp
-  // Capacitive touch pins
-  | CapacitiveReadOp
   // I2S / digital audio (unimplemented surface)
   | I2sInitOp
   | I2sWriteOp
@@ -1845,33 +1392,19 @@ export type HALOpIR =
   | UsbEndOp
   | UsbPrintOp
   | UsbPrintlnOp
-  | UsbPrintfOp
-  | UsbWriteOp
+  | UsbWaitReadyOp
   | UsbReadOp
   | UsbAvailableOp
-  | UsbFlushOp
   | UsbConnectedOp
   // Ethernet MAC (unimplemented surface)
   | EthInitOp
   | EthStartOp
   | EthIsLinkedOp
   // ESPNOW (unimplemented surface)
-  | EspnowInitOp
-  | EspnowAddPeerOp
-  | EspnowSendOp
-  | EspnowOnReceiveOp
   // Hardware crypto (unimplemented surface)
-  | CryptoAesEncryptOp
   | CryptoSha256Op
-  | CryptoHmacOp
   // Pulse counter (unimplemented surface)
-  | PcntInitOp
-  | PcntCountOp
-  | PcntClearOp
   // Motor control PWM (unimplemented surface)
-  | McpwmInitOp
-  | McpwmSetDutyOp
-  | McpwmStartOp
   // Raw passthrough
   | RawCppOp
   // Display / graphics
@@ -1895,64 +1428,50 @@ export type HALOperationKind = HALOpIR["operation"];
  */
 export const HAL_OPERATION_KINDS = [
   // GPIO
-  'gpio.write', 'gpio.read', 'gpio.toggle', 'gpio.set_mode',
+  'gpio.write', 'gpio.read', 'gpio.toggle',
   // PWM
-  'pwm.write', 'pwm.get_frequency', 'pwm.get_resolution',
+  'pwm.get_frequency', 'pwm.get_resolution',
   // RMT
-  'rmt.tx_init', 'rmt.tx_write_bytes', 'rmt.tx_write_symbols',
-  'rmt.tx_wait_done', 'rmt.tx_deinit',
-  'rmt.rx_init', 'rmt.rx_on_received', 'rmt.rx_start',
-  'rmt.rx_stop', 'rmt.rx_read', 'rmt.rx_deinit',
   // ADC
-  'adc.read', 'adc.get_resolution', 'adc.set_reference',
-  'adc.get_reference', 'adc.read_voltage',
   // DAC
-  'dac.write',
   // Interrupts
-  'interrupt.attach', 'interrupt.detach',
+  'interrupt.attach_flags', 'interrupt.detach',
   // Tone
-  'tone.play', 'tone.stop',
-  // Timing
-  'timing.delay', 'timing.delay_microseconds', 'timing.millis',
-  'timing.micros', 'timing.free_heap', 'timing.set_interval',
-  'timing.set_timeout', 'timing.clear_interval', 'timing.clear_timeout',
+  // Timing (legacy Arduino-named ops removed; timers keep JS names)
+  'timing.set_interval', 'timing.set_timeout', 'timing.clear_interval', 'timing.clear_timeout',
+  'timing.sleep', 'timing.now', 'timing.now_us', 'timing.busy_wait_us',
+  // Thin Zephyr-shaped peripherals
+  'gpio.configure', 'gpio.read_cfg', 'gpio.shift_out', 'gpio.shift_in',
+  'pwm.set_pulse', 'pwm.set_duty', 'pwm.set_period', 'pwm.tone',
+  'adc.read_raw', 'adc.read_mv',
+  'dac.write_value',
+  'wdt.setup', 'wdt.feed',
+  'counter.on_alarm', 'counter.start', 'counter.stop',
+  // Tier-2 thin buses
+  'i2c.reg_write', 'i2c.reg_read', 'i2c.reg_update', 'i2c.dev_write',
+  'spi.transceive', 'spi.dev_write', 'spi.reg_read',
+  'uart.poll_write', 'uart.rx_arm', 'uart.rx_available', 'uart.rx_peek', 'uart.rx_read',
+  'thread.start', 'thread.join',
   // Power
   'power.deep_sleep', 'power.light_sleep', 'power.set_cpu_frequency', 'power.deep_sleep_pin',
-  // I2C
-  'i2c.begin', 'i2c.end', 'i2c.set_clock', 'i2c.begin_transmission',
-  'i2c.write', 'i2c.write_bytes', 'i2c.write_buffer', 'i2c.read_buffer',
-  'i2c.end_transmission', 'i2c.request_from', 'i2c.available', 'i2c.read',
-  'i2c.recover',
-  // SPI
-  'spi.begin', 'spi.end', 'spi.transfer', 'spi.begin_transaction',
-  'spi.end_transaction', 'spi.set_mode', 'spi.set_bit_order',
-  'spi.cs_low', 'spi.cs_high', 'spi.read_buffer',
-  // UART
-  'uart.begin', 'uart.end', 'uart.print', 'uart.println', 'uart.printf',
-  'uart.write', 'uart.read', 'uart.peek', 'uart.available', 'uart.flush',
   // Pulse
-  'pulse.in', 'pulse.in_long',
   // Shift
-  'shift.out', 'shift.in',
   // Board
   'board.resolve',
   // Watchdog timer
-  'wdt.enable', 'wdt.reset', 'wdt.disable',
+  'wdt.disable',
   // Snprintf
   'snprintf.emit',
   // WiFi
-  'wifi.connect', 'wifi.connect_start', 'wifi.disconnect', 'wifi.status',
+  'wifi.join', 'wifi.connect_start', 'wifi.disconnect',
   'wifi.is_connected', 'wifi.local_ip', 'wifi.rssi', 'wifi.mac',
-  'wifi.set_hostname', 'wifi.set_static_ip', 'wifi.set_auto_reconnect',
-  'wifi.set_power_save', 'wifi.set_tx_power', 'wifi.on_event',
-  'wifi.ap_start', 'wifi.ap_stop', 'wifi.ap_client_count', 'wifi.ap_ip',
-  'wifi.ap_set_channel', 'wifi.ap_set_hidden', 'wifi.ap_set_max_clients',
+  'wifi.on_event',
+  'wifi.ap_start', 'wifi.ap_stop',
   'wifi.scan', 'wifi.scan_start', 'wifi.scan_done', 'wifi.scan_count',
   'wifi.scan_ssid', 'wifi.scan_rssi', 'wifi.scan_encryption',
-  'wifi.scan_channel', 'wifi.save_credentials', 'wifi.connect_saved',
-  'wifi.clear_credentials', 'wifi.wait_connected', 'wifi.wait_disconnected',
+  'wifi.scan_channel',
   // HTTP
-  'http.begin', 'http.reset', 'http.set_header', 'http.set_timeout',
+  'http.begin', 'http.set_header', 'http.set_timeout',
   'http.set_max_body', 'http.set_body', 'http.set_insecure',
   'http.set_ca_cert', 'http.send', 'http.send_start', 'http.done',
   'http.status', 'http.ok', 'http.body', 'http.content_length',
@@ -1963,49 +1482,35 @@ export const HAL_OPERATION_KINDS = [
   'ble.server_begin', 'ble.advertise_start', 'ble.advertise_stop',
   'ble.add_service', 'ble.add_char',
   'ble.on_read', 'ble.on_write', 'ble.on_connect', 'ble.on_disconnect', 'ble.notify',
-  'ble.is_connected', 'ble.client_count', 'ble.set_name',
-  'ble.until_connected', 'ble.until_connected_start',
-  'ble.set_tx_power', 'ble.status',
+  'ble.is_connected', 'ble.client_count',
   // Preferences (NVS)
-  'preferences.begin', 'preferences.end', 'preferences.clear', 'preferences.remove',
+  'preferences.clear', 'preferences.remove',
   'preferences.put_int', 'preferences.get_int',
-  'preferences.put_uint', 'preferences.get_uint',
   'preferences.put_bool', 'preferences.get_bool',
   'preferences.put_float', 'preferences.get_float',
   'preferences.put_string', 'preferences.get_string',
   // Random
   'random.int', 'random.range', 'random.seed',
   // FS (filesystem)
-  'fs.begin', 'fs.read_text', 'fs.write_text', 'fs.exists', 'fs.remove',
-  // mDNS
-  'mdns.start', 'mdns.set_hostname', 'mdns.add_service', 'mdns.announce', 'mdns.stop',
+  'fs.read_text', 'fs.write_text', 'fs.exists', 'fs.remove',
   // MQTT
   'mqtt.connect', 'mqtt.on_message', 'mqtt.subscribe', 'mqtt.publish', 'mqtt.connected', 'mqtt.disconnect',
-  // OTA
-  'ota.from_url', 'ota.begin', 'ota.write', 'ota.apply',
-  // Temperature
-  'temp.read',
+  'sensor.fetch',
+  'sensor.get',
   // Hardware timer
-  'hwtimer.set_frequency', 'hwtimer.on_overflow', 'hwtimer.start', 'hwtimer.stop',
-  // Capacitive touch pins
-  'capacitive.read',
   // I2S / digital audio (unimplemented — declared unsupported by all frameworks)
   'i2s.init', 'i2s.write', 'i2s.read',
   // TWAI / CAN (unimplemented)
   'twai.init', 'twai.send', 'twai.receive',
   // USB CDC-ACM serial port
-  'usb.begin', 'usb.end', 'usb.print', 'usb.println', 'usb.printf', 'usb.write',
-  'usb.read', 'usb.available', 'usb.flush', 'usb.connected',
+  'usb.begin', 'usb.wait_ready', 'usb.end', 'usb.print', 'usb.println',
+  'usb.read', 'usb.available', 'usb.connected',
   // Ethernet MAC (unimplemented)
   'eth.init', 'eth.start', 'eth.is_linked',
   // ESPNOW (unimplemented)
-  'espnow.init', 'espnow.add_peer', 'espnow.send', 'espnow.on_receive',
   // Hardware crypto (unimplemented)
-  'crypto.aes_encrypt', 'crypto.sha256', 'crypto.hmac',
   // Pulse counter (unimplemented)
-  'pcnt.init', 'pcnt.count', 'pcnt.clear',
   // Motor control PWM (unimplemented)
-  'mcpwm.init', 'mcpwm.set_duty', 'mcpwm.start',
   // Raw passthrough
   'raw',
 ] as const;

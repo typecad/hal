@@ -91,7 +91,7 @@ export function validateBlockingDelayInLoop(program: ProgramIR, strategy?: Platf
           ? `Blocking delayMicroseconds() inside loop() is a busy-wait that wastes CPU cycles. ` +
             `On RTOS targets (ESP-IDF), prefer timing.delay() (vTaskDelay) which yields the CPU to other tasks.`
           : `Blocking delay() inside loop() freezes the async microtask queue and UI rendering ` +
-            `for the delay duration. This causes display tearing and makes the sketch unresponsive.`;
+            `for the delay duration. This causes display tearing and makes the program unresponsive.`;
         const hint = isRtos
           ? `Replace delayMicroseconds with delay() if the timing permits, or accept the brief busy-wait if sub-millisecond precision is required.`
           : `Use the cooperative pattern instead: track elapsed time with millis() comparisons, ` +

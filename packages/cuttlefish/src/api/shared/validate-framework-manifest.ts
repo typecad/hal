@@ -66,18 +66,14 @@ class Accumulator {
 const CATEGORY_PREFIXES: Record<string, string[]> = {
   gpio: ['gpio.'],
   pwm: ['pwm.'],
-  rmt: ['rmt.'],
   adc: ['adc.'],
   dac: ['dac.'],
   interrupts: ['interrupt.'],
-  tone: ['tone.'],
   timing: ['timing.'],
   power: ['power.'],
   i2c: ['i2c.'],
   spi: ['spi.'],
   uart: ['uart.'],
-  pulse: ['pulse.'],
-  shift: ['shift.'],
   board: ['board.'],
   wdt: ['wdt.'],
   wifi: ['wifi.'],
@@ -87,12 +83,7 @@ const CATEGORY_PREFIXES: Record<string, string[]> = {
   ble: ['ble.'],
   random: ['random.'],
   fs: ['fs.'],
-  mdns: ['mdns.'],
   mqtt: ['mqtt.'],
-  ota: ['ota.'],
-  temp: ['temp.'],
-  hwtimer: ['hwtimer.'],
-  capacitive: ['capacitive.'],
   // Unimplemented-but-recognized categories: each framework may declare these
   // as unsupported in its manifest so the coverage matrix records them as a
   // roadmap. The validator probes the resolver and confirms it does NOT lower
@@ -101,10 +92,6 @@ const CATEGORY_PREFIXES: Record<string, string[]> = {
   twai: ['twai.'],
   usb: ['usb.'],
   eth: ['eth.'],
-  espnow: ['espnow.'],
-  crypto: ['crypto.'],
-  pcnt: ['pcnt.'],
-  mcpwm: ['mcpwm.'],
   // Worker offload + snprintf raw-escape: recognized categories. Frameworks
   // that lower worker.* declare it supported; snprintf.emit is a raw escape
   // hatch (declared unsupported by frameworks that don't special-case it).
@@ -129,10 +116,8 @@ function opKindsForCategory(category: string): string[] {
 const OP_PROBE_PAYLOADS: Readonly<Record<string, object>> = {
   // i2c.write_bytes requires bus + bytes (resolver iterates bytes).
   'i2c.write_bytes': { bus: 'i2c0', address: 0x50, bytes: [0x00, 0x01] },
-  // uart.printf requires format + args (resolver joins args).
-  'uart.printf': { port: 'Serial', format: '%d', args: ['x'] },
   // usb.* require port (+ value/format where the resolver renders them).
-  'usb.begin': { port: 'USB0', baud: 115200 },
+  'usb.begin': { port: 'USB0' },
   'usb.print': { port: 'USB0', value: '"x"' },
   'usb.println': { port: 'USB0', value: '"x"' },
   'usb.write': { port: 'USB0', data: '"x"' },
@@ -157,10 +142,6 @@ const OP_PROBE_PAYLOADS: Readonly<Record<string, object>> = {
   'fs.remove': { path: '/sdcard/x.txt' },
   // random.range requires min/max.
   'random.range': { min: 0, max: 10 },
-  // mdns.add_service requires instance/proto/port.
-  'mdns.start': { hostname: 'h' },
-  'mdns.set_hostname': { name: 'h' },
-  'mdns.add_service': { instance: 'i', proto: '_tcp', port: 80 },
   // mqtt.connect requires brokerUri/clientId; mqtt.publish requires topic/data.
   'mqtt.connect': { brokerUri: 'mqtt://b', clientId: 'c' },
   'mqtt.on_message': { handler: 'cb' },
@@ -170,16 +151,12 @@ const OP_PROBE_PAYLOADS: Readonly<Record<string, object>> = {
   // Without a payload the probe sends event=undefined and a 'supported'
   // declaration would false-fail as "resolver returned undefined".
   'wifi.on_event': { event: 'connect', handler: 'cb' },
-  // ota.from_url requires url; ota.write requires chunk.
-  'ota.from_url': { url: 'https://x' },
-  'ota.write': { chunk: 'buf' },
-  // hwtimer.* require an instance (and hz/handler).
-  'hwtimer.set_frequency': { instance: 0, hz: 1000 },
-  'hwtimer.on_overflow': { instance: 0, handler: 'cb' },
-  'hwtimer.start': { instance: 0 },
-  'hwtimer.stop': { instance: 0 },
   // capacitive.read requires pin.
-  'capacitive.read': { pin: 4 },
+  // sensor.* resolve their part against the generated catalog (hal's
+  // sensor-catalog.generated.ts) — sensirion_sht3xd is the stable probe part
+  // (in-tree since 2.x; the catalog regeneration checklist covers its removal).
+  'sensor.fetch': { part: 'sensirion_sht3xd', bus: 'I2C0', address: 0x44 },
+  'sensor.get': { part: 'sensirion_sht3xd', bus: 'I2C0', address: 0x44, chan: 'AMBIENT_TEMP' },
 };
 
 // Builds a HALOpIR probe. Uses OP_PROBE_PAYLOADS when available so resolvers

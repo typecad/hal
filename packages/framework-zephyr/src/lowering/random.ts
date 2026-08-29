@@ -5,7 +5,7 @@
 // the configured entropy source (the nRF52840 hardware RNG when
 // CONFIG_HARDWARE_DEVICE_RANDOM_GENERATOR is selected, or the default test/
 // xoroshiro generator otherwise). It is seeded automatically at boot from the
-// entropy driver, so unlike Arduino there is no implicit seeding step.
+// entropy driver, so there is no implicit seeding step.
 //
 // The HAL random surface is the Arduino-core model:
 //   random.int()    → a non-negative 31-bit integer [0, 2^31 - 1]
@@ -73,7 +73,7 @@ export function randomInitLines(): string[] {
     `}`,
     ``,
     `// Re-seed the PRNG. After this call the sequence is deterministic from`,
-    `// \`seed\`, matching Arduino randomSeed. A literal zero seed is accepted and`,
+    `// \`seed\`, matching the platform's randomSeed. A literal zero seed is accepted and`,
     `// remapped to the same odd constant (xorshift32 cannot start from 0).`,
     `static inline void __tc_rand_seed(uint32_t seed) {`,
     `    __tc_rand_state = (seed == 0U) ? 0x9E3779B9U : seed;`,
@@ -87,7 +87,7 @@ export function randomInitLines(): string[] {
     `}`,
     ``,
     `// Half-open range [min, max-1]. Implements the HAL contract directly rather`,
-    `// than calling Arduino random(min, max): the modulus rejection-free form`,
+    `// than calling the platform random(min, max): the modulus rejection-free form`,
     `// avoids the modulo bias a naive (rand % (max-min)) introduces. max > min`,
     `// is assumed (the HAL validates this at the source level).`,
     `static inline int32_t __tc_rand_range(int32_t min, int32_t max) {`,

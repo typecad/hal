@@ -53,7 +53,7 @@ const WRITE_SETPOINT = 2350;     // host writes this, then reads it back
 const EXPECT_NOTIFY_FIRST = 2200; // first value the peripheral pushes
 
 // Timeouts. BLE discovery + GATT traversal is slow; give each phase headroom.
-const SCAN_TIMEOUT_MS = 30_000;
+const SCAN_TIMEOUT_MS = 300_000;   // covers the peripheral's full build+flash+boot
 const CONNECT_TIMEOUT_MS = 15_000;
 const GATT_TIMEOUT_MS = 15_000;
 const NOTIFY_TIMEOUT_MS = 15_000;
@@ -98,11 +98,26 @@ function readUInt16LE(buf: Buffer): number {
   return buf.readUInt16LE(0);
 }
 
-/** Discover services+characteristics once and index them by normalized UUID. */
+/** Discover services+characteristics and index them by normalized UUID.
+ *  Windows noble occasionally wedges mid-discovery ("device not connected"
+ *  while the link is up) — one retry recovers it more often than not. */
 async function loadCharacteristics(peripheral: noble.Peripheral): Promise<Map<string, noble.Characteristic>> {
-  const { characteristics } = await peripheral.discoverAllServicesAndCharacteristicsAsync();
+  let characteristics: noble.Characteristic[] | undefined;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      ({ characteristics } = await peripheral.discoverAllServicesAndCharacteristicsAsync());
+      break;
+    } catch (e) {
+      if (attempt === 2) throw e;
+      console.log('  [discover] wedged — retrying once…');
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
   const map = new Map<string, noble.Characteristic>();
-  for (const c of characteristics) map.set(norm(c.uuid), c);
+  for (const c of characteristics ?? []) {
+    map.set(norm(c.uuid), c);
+    console.log(`  [discover] char uuid=${c.uuid} props=${Object.keys(c.properties).join(',')}`);
+  }
   return map;
 }
 

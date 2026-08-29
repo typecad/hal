@@ -2,7 +2,7 @@
 // Platform strategy exports
 //
 // Re-exports platform strategies for use within the CLI and by consumers.
-// Framework-specific strategies (e.g. ArduinoStrategy) are provided by their
+// Framework-specific strategies (e.g. ZephyrStrategy) are provided by their
 // respective framework packages, which register via registerPlatformStrategy().
 // ---------------------------------------------------------------------------
 

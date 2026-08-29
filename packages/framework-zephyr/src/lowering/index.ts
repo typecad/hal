@@ -29,8 +29,6 @@ import { lowerUsb } from './usb.js';
 import { lowerInterrupt } from './interrupts.js';
 import { lowerWdt } from './wdt.js';
 import { lowerPower } from './power.js';
-import { lowerTone } from './tone.js';
-import { lowerPulseOrShift } from './pulse.js';
 import { lowerBle } from './ble.js';
 import { lowerWorker } from './worker.js';
 import { lowerWifi } from './wifi.js';
@@ -41,13 +39,15 @@ import { lowerBoard } from './board.js';
 import { lowerRandom } from './random.js';
 import { lowerDac } from './dac.js';
 import { lowerFs } from './fs.js';
-import { lowerHwtimer } from './hwtimer.js';
+import { lowerSensor } from './sensor.js';
+import { lowerHwtimer, lowerCounter } from './hwtimer.js';
+import { lowerThread } from './thread.js';
 
 export {
   lowerGpio, lowerTiming, lowerAdc, lowerPwm, lowerI2c, lowerSpi, lowerUart,
-  lowerUsb, lowerInterrupt, lowerWdt, lowerPower, lowerTone, lowerPulseOrShift, lowerBle,
+  lowerUsb, lowerInterrupt, lowerWdt, lowerPower, lowerBle,
   lowerWifi, lowerHttp, lowerMqtt, lowerPreferences, lowerBoard, lowerRandom,
-  lowerDac, lowerFs, lowerHwtimer,
+  lowerDac, lowerFs, lowerHwtimer, lowerCounter, lowerSensor, lowerThread,
 };
 
 /**
@@ -71,11 +71,9 @@ export function lowerHalOp(
   if (op.operation.startsWith('interrupt.'))  return lowerInterrupt(op, chip);
   if (op.operation.startsWith('wdt.'))        return lowerWdt(op, chip);
   if (op.operation.startsWith('hwtimer.'))    return lowerHwtimer(op, chip);
+  if (op.operation.startsWith('counter.'))    return lowerCounter(op, chip);
   if (op.operation.startsWith('power.'))      return lowerPower(op);
-  if (op.operation.startsWith('tone.'))       return lowerTone(op, chip);
-  // pulse.* and shift.* share a bit-bang lowering module.
-  if (op.operation.startsWith('pulse.') || op.operation.startsWith('shift.'))
-    return lowerPulseOrShift(op, chip);
+  // (legacy pulse/shift bit-bang module removed)
   if (op.operation.startsWith('ble.'))        return lowerBle(op);
   if (op.operation.startsWith('worker.'))     return lowerWorker(op);
   if (op.operation.startsWith('wifi.'))       return lowerWifi(op);
@@ -87,6 +85,8 @@ export function lowerHalOp(
   // dead-letter reached only on an unresolvable path.
   if (op.operation.startsWith('board.')) return lowerBoard(op);
   if (op.operation.startsWith('random.')) return lowerRandom(op);
+  if (op.operation.startsWith('sensor.')) return lowerSensor(op);
+  if (op.operation.startsWith('thread.'))   return lowerThread(op);
 
   // raw / snprintf.emit / display.* / ... — not lowered by this
   // framework. Return undefined so the transpiler falls back and the manifest

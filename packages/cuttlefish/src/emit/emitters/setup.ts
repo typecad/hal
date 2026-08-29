@@ -2,6 +2,7 @@
 import type { ProgramIR, StatementIR } from "../../api/index.js";
 import { filterPolyfillHelpers, isStringEnum } from "../../api/shared/index.js";
 import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
+import { isSafetyImportSpecifier } from "../../safety/specifiers.js";
 import { analyzeProgram } from "../../ir/program-analysis.js";
 import { collectStatementIdentifiers } from "../../ir/identifier-collector.js";
 import { Diagnostic, EmitMode, SourceMapEntry } from "../../types.js";
@@ -312,23 +313,6 @@ export function buildEmitterContext(
   const programAnalysis = analyzeProgram(program, strategy);
 
   if (options.platformContext) {
-    // The UI runtime's per-frame tick calls millis() (injected by the emitter,
-    // not present in user source), so a mounted UI needs the native millis ISR
-    // even when usesNativeTiming is false. OR entryHasUI() into the flag the
-    // AVR strategy reads when gating native_millis, so framework-avr doesn't
-    // drop the Timer0 ISR from a UI program.
-    if (!programAnalysis.usesNativeTiming && entryHasUI()) {
-      programAnalysis.usesNativeTiming = true;
-    }
-    // The UI runtime header calls constrain() in the progress/range node draw
-    // and touch-slider paths (injected by the emitter, not present in user
-    // source), so a mounted UI needs the constrain polyfill even when
-    // usesConstrain is false. OR entryHasUI() into the flag the native
-    // strategy reads when gating the constrain helper, mirroring the
-    // usesNativeTiming handling above.
-    if (!programAnalysis.usesConstrain && entryHasUI()) {
-      programAnalysis.usesConstrain = true;
-    }
     options.platformContext.analysis = programAnalysis;
     if (!options.platformContext.architecture && program.boardConstants) {
       options.platformContext.architecture = program.boardConstants.get("architecture") as string;
@@ -379,10 +363,10 @@ export function buildEmitterContext(
   }
 
   // Safety polyfills (mode table + voter + SafeVariable + SafeInt). Gated on
-  // programUsesSafety(program) so they ONLY appear when the sketch actually
+  // programUsesSafety(program) so they ONLY appear when the program actually
   // references a safety construct — emitting them unconditionally (just because
   // @typecad/safety is installed and registered its hook) leaks ~200 lines of
-  // polyfill into every sketch, and SafeInt's `return *this` chaining methods
+  // polyfill into every program, and SafeInt's `return *this` chaining methods
   // tripped byte-identity / lowering assertions that expect no `this` token.
   // programUsesSafety walks the IR for any safety.* hal-op.
   if (isEntryFile && hasSafetyHook() && programUsesSafety(program)) {
@@ -403,6 +387,7 @@ export function buildEmitterContext(
   const coopConfig = strategy.getAsyncRuntimeConfig?.();
   const hasCoopWork =
     program.functions.some(fn => fn.isAsync) ||
+    program.classes.some(c => c.methods.some(m => m.isAsync)) ||
     programAnalysis.usedPolyfillHelpers.has('__tc_setInterval') ||
     programAnalysis.usedPolyfillHelpers.has('__tc_setTimeout');
   if (isEntryFile && coopConfig && hasCoopWork) {
@@ -414,7 +399,7 @@ export function buildEmitterContext(
   const emittedPolyfills = allPolyfills.length > 0
     ? emitPolyfillBoilerplate(allPolyfills)
     : undefined;
-  const hasAsyncRuntime = program.functions.some(fn => fn.isAsync);
+  const hasAsyncRuntime = program.functions.some(fn => fn.isAsync) || program.classes.some(c => c.methods.some(m => m.isAsync));
   const hasPromiseRuntime = nativePolyfills.some(
     (p) => p.id === "async_runtime" && p.hasPromiseRuntime === true
   );
@@ -437,18 +422,6 @@ export function buildEmitterContext(
     if (!programAnalysis.usesDateNow) {
       shimLines = shimLines.filter(l => !l.includes('namespace Date'));
     }
-    // The UI runtime's per-frame tick uses millis() (injected by the emitter,
-    // not authored in user source), so keep the millis() shim when a UI is
-    // mounted even if the source-level analysis didn't flag usesMillis. The
-    // async runtime and the setInterval/setTimeout scheduler also poll
-    // millis() without any user-source millis() call (Async.sleep lowers to a
-    // raw hal-op the timing scanners can't see) — hasPromiseRuntime is exactly
-    // the "static async runtime will be emitted" signal, so keep the shim for
-    // that hidden consumer too (it forward-declares millis and links against
-    // it; stripping the definition here is a link error).
-    if (!programAnalysis.usesMillis && !programAnalysis.hasAsync && programAnalysis.timerCallCount === 0 && !entryHasUI() && !hasPromiseRuntime) {
-      shimLines = shimLines.filter(l => !l.includes('millis()'));
-    }
     // Strip the nullish helper FUNCTIONS (not the CUTTLEFISH_UNDEFINED macro)
     // when the file doesn't actually emit cuttlefish_nullish(...) calls. A
     // file that only references `null`/`undefined` literals needs just the
@@ -460,6 +433,14 @@ export function buildEmitterContext(
     // cuttlefish_nullish( call (a more reliable post-emit check than the
     // per-file pre-emit analysis flag). The logic here governs the .cpp
     // source shim only.
+    // The runtime clock (__tc_now_ms) is gated by the Zephyr strategy at
+    // emission; native emits its definition unconditionally. Strip it from
+    // programs that can never read the clock (no Time calls, async, timers,
+    // scheduler, or mounted UI) so the definition doesn't leak into the
+    // emitted header.
+    if (!programAnalysis.usesWallClock && !programAnalysis.hasAsync && programAnalysis.timerCallCount === 0 && !entryHasUI() && !hasPromiseRuntime) {
+      shimLines = shimLines.filter(l => !l.includes('__tc_now_ms'));
+    }
     if (!programAnalysis.usesNullishHelper) {
       const filtered: string[] = [];
       for (let i = 0; i < shimLines.length; i++) {
@@ -471,9 +452,6 @@ export function buildEmitterContext(
     }
     if (!programAnalysis.usesNum) {
       shimLines = filterShimBlock(shimLines, 'struct __tc_Num {', '} Num;');
-    }
-    if (!programAnalysis.usesTiming) {
-      shimLines = filterShimBlock(shimLines, 'struct __tc_Timing {', '} Timing;');
     }
     if (!programAnalysis.usesWDT) {
       shimLines = filterShimBlock(shimLines, '#include <avr/wdt.h>', '} WDT;');
@@ -616,7 +594,7 @@ export function buildEmitterContext(
     // symbols so references resolve, but skip the #include generation.
     if (
       imported.moduleSpecifier === "@typecad/ui" ||
-      imported.moduleSpecifier === "@typecad/safety"
+      isSafetyImportSpecifier(imported.moduleSpecifier)
     ) {
       for (const symbol of imported.namedImports) {
         symbolMap[symbol] = symbol;
@@ -712,11 +690,11 @@ export function buildEmitterContext(
   // Map a function's original TS name to its emitted C++ name, applying the
   // strategy's user-function renames. The entrypoint sentinel
   // `__cuttlefish_entrypoint__` maps to the strategy's entrypoint name
-  // (`main` on native, `setup` on Arduino); every other name is routed through
+  // (per-target entrypoint names); every other name is routed through
   // `strategy.mapFunctionName`, which is where a target renames a user
   // function that would otherwise collide with a C++/framework reserved name
-  // — e.g. Arduino renames a user `function main()` to `cuttlefish_main`,
-  // because Arduino has no `main()` (the entrypoints are the auto-generated
+  // — e.g. Targets without a user `main()` rename one to `cuttlefish_main`;
+  // because this target has no user `main()` (the entrypoints are the auto-generated
   // `setup()`/`loop()`), and a file-scope `static void main()` collides with
   // C++'s required `int main()` signature. Call-site renames are applied
   // uniformly in StatementRenderer.renderCall (the single call-rendering
@@ -889,7 +867,7 @@ export function buildEmitterContext(
   // method/ctor parameter, or a top-level binding. Previously only local
   // var_decls were registered (in class-emitter), which ran too late for the
   // free-function pass — leaving `hero->alive` unrewritten and failing g++.
-  // See SUPPORT_MATRIX §4.3 (demo #4 fix).
+  // (demo #4 fix.)
   // `classAccessorNames` is built at the outer scope (not inside a nested
   // block) so it can also be passed to the expression renderer as
   // `typeAccessorNames` — the type-keyed fallback used when a getter access's
@@ -1007,6 +985,7 @@ export function buildEmitterContext(
   );
 
   const asyncTaskClasses: AsyncTaskClass[] = [];
+  const asyncMethodStarters: { proto: string }[] = [];
   if (hasAsyncRuntime) {
     for (const fn of program.functions) {
       if (fn.isAsync) {
@@ -1044,8 +1023,101 @@ export function buildEmitterContext(
             }
             return statement;
           },
+          {
+            onUnsupportedAwait: (callee, span) => {
+              emitDiagnostics.push({
+                severity: "error",
+                code: "await-unsupported-call",
+                message: `await ${callee}(...) has no cooperative lowering here — the call would be dropped. Await is supported on Time.sleep, HAL ops (wifi.join / wifi.scan / http.send / worker.submit), ui.onTap(), and pin-edge waits.`,
+                ...(span ? { source: `${callee}(...)` } : {}),
+              } as never);
+            },
+          },
         );
         asyncTaskClasses.push({ ...task, taskVarName: `${fn.originalName}Task` });
+      }
+    }
+
+    // Async METHODS on user classes: the body becomes an owner-bound task
+    // (this->x renders as _owner->x inside segments); the in-class method
+    // body is replaced by a call to a forward-declared starter that binds
+    // the receiver and arms the machine (see class-emitter.ts).
+    for (const cls of program.classes) {
+      for (const method of cls.methods) {
+        if (!method.isAsync) continue;
+        const fnName = `${cls.name}_${method.name}`;
+        if (method.isStatic) {
+          emitDiagnostics.push({
+            severity: "error",
+            code: "async-method-static",
+            message: `static async method ${cls.name}.${method.name}() is not supported — hoist it to a free async function instead.`,
+          } as never);
+          continue;
+        }
+        if (method.parameters.length > 0) {
+          emitDiagnostics.push({
+            severity: "error",
+            code: "async-method-params",
+            message: `async method ${cls.name}.${method.name}() takes parameters, which the cooperative state machine cannot capture — make it parameterless.`,
+          } as never);
+          continue;
+        }
+        if (method.returnType !== "void" && !String(method.returnType).startsWith("Promise")) {
+          emitDiagnostics.push({
+            severity: "error",
+            code: "async-method-return",
+            message: `async method ${cls.name}.${method.name}() returns ${method.returnType}; async methods lower to fire-and-forget tasks and must return void (Promise<void>).`,
+          } as never);
+          continue;
+        }
+        const task = generateAsyncTaskClass(
+          fnName,
+          method.statements,
+          strategy,
+          knownFunctionReturnTypes,
+          (stmt, forHeader, strategy, pointerVarTypes, calleeTransformer, knownReturnTypes) => {
+            const contextRenderer = new StatementRenderer({
+              strategy,
+              boardConstants: program.boardConstants,
+              classNameMap,
+              enumNames,
+              stringEnumNames,
+              largeEnumNames,
+              knownFunctionReturnTypes: knownReturnTypes ?? knownFunctionReturnTypes,
+              knownVariableTypes: topLevelScope.knownVariableTypes,
+              globalPointerVarTypes,
+              namespaceNames,
+              snprintfCounter,
+              stringVarNames,
+              varAccessorNames,
+              typeAccessorNames: classAccessorNames,
+              pointerVarTypes,
+              diagnostics: emitDiagnostics,
+            });
+            const { prelude, statement } = contextRenderer.renderWithPrelude(stmt, forHeader, calleeTransformer);
+            const body = prelude.length > 0 ? prelude.join("\n") + "\n" + statement : statement;
+            // The task class is not the receiver: rebind member accesses from
+            // the owning instance to the task's _owner pointer. The renderer
+            // emits every this-form as `this->`; a rendered string literal
+            // containing that token would be rewritten too (accepted edge).
+            return body.replace(/this->/g, "_owner->");
+          },
+          {
+            ownerClassName: cls.name,
+            onUnsupportedAwait: (callee, span) => {
+              emitDiagnostics.push({
+                severity: "error",
+                code: "await-unsupported-call",
+                message: `await ${callee}(...) has no cooperative lowering here — the call would be dropped. Await is supported on Time.sleep, HAL ops (wifi.join / wifi.scan / http.send / worker.submit), ui.onTap(), and pin-edge waits.`,
+                ...(span ? { source: `${callee}(...)` } : {}),
+              } as never);
+            },
+          },
+        );
+        asyncTaskClasses.push({ ...task, taskVarName: `${fnName}Task` });
+        asyncMethodStarters.push({
+          proto: `void __tc_async_start_${fnName}(${cls.name}* owner);`,
+        });
       }
     }
   }
@@ -1218,6 +1290,7 @@ export function buildEmitterContext(
     boardConstants: program.boardConstants,
     restParamFunctions: program.restParamFunctions,
     asyncTaskClasses,
+    asyncMethodStarters,
     asyncFunctionOriginalNames,
     asyncFunctionMappedNames,
     hasAsyncRuntime,

@@ -32,6 +32,10 @@
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 
 /** Render a HAL field: pass through (already rendered by the resolver). */
+function unq(v: unknown): string {
+  return String(v).replace(/^"|"$/g, '');
+}
+
 function s(v: unknown): string {
   return String(v);
 }
@@ -78,10 +82,7 @@ export function preferencesInitLines(): string[] {
     `    bool used;`,
     `};`,
     ``,
-    `// Active namespace prefix ("tc/<ns>/"). begin() overwrites it; end() clears.`,
-    `// prefs_ns is deliberately sized to hold "tc/" + a 16-char ns + "/" + NUL.`,
     `static struct {`,
-    `    char ns[24];`,
     `    bool loaded;`,
     `    __tc_prefs_slot slots[__TC_PREFS_SLOT_COUNT];`,
     `} __tc_prefs;`,
@@ -101,15 +102,18 @@ export function preferencesInitLines(): string[] {
     `            __tc_prefs.slots[i].len = static_cast<uint8_t>(got);`,
     `            // Type is encoded as the first byte of the stored value (see put_*).`,
     `            __tc_prefs.slots[i].type = __tc_prefs.slots[i].val[0];`,
-    `            (void)snprintf(__tc_prefs.slots[i].key, __TC_PREFS_KEY_LEN, "%s", name);`,
+    `            // h_set hands us the name RELATIVE to the handler's "tc"`,
+    `            // subtree ("rig/marker") — the cache keys full names, so`,
+    `            // re-attach the prefix or loaded entries never match a lookup.`,
+    `            (void)snprintf(__tc_prefs.slots[i].key, __TC_PREFS_KEY_LEN, "tc/%s", name);`,
     `            __tc_prefs.slots[i].used = true;`,
     `            return 0;`,
     `        }`,
     `    }`,
     `    return 0;  // cache full — silently drop (matches ESP32 NVS-full behavior)`,
     `}`,
-    `static int __tc_prefs_h_get(const char* key, char* val, int val_len_max) {`,
-    `    (void)key; (void)val; (void)val_len_max;`,
+    `static int __tc_prefs_h_get(const char* full, char* val, int val_len_max) {`,
+    `    (void)full; (void)val; (void)val_len_max;`,
     `    return -ENOENT;`,
     `}`,
     `static int __tc_prefs_h_commit(void) { return 0; }`,
@@ -127,12 +131,6 @@ export function preferencesInitLines(): string[] {
     `    }`,
     `}`,
     ``,
-    `// Build the full settings name "tc/<ns>/<key>" into out. ns is the active`,
-    `// prefix set by begin(); the slot's key[] stores this full path so remove()`,
-    `// and clear() can settings_delete the exact stored name.`,
-    `static void __tc_prefs_full(char* out, size_t outsz, const char* key) {`,
-    `    (void)snprintf(out, outsz, "%s%s", __tc_prefs.ns, key);`,
-    `}`,
     ``,
     `// Slot lookup by full settings name. Returns nullptr when absent (the get_*`,
     `// helpers then fall back to the caller's default value, matching the ESP32`,
@@ -164,9 +162,8 @@ export function preferencesInitLines(): string[] {
     `// as val[0] so h_set can recover it on the next boot without a separate`,
     `// name→type map.`,
     `template <typename T>`,
-    `static inline void __tc_prefs_put(const char* key, uint8_t tag, const T& value) {`,
-    `    char full[__TC_PREFS_KEY_LEN];`,
-    `    __tc_prefs_full(full, sizeof(full), key);`,
+    `static inline void __tc_prefs_put(const char* full, uint8_t tag, const T& value) {`,
+    `    __tc_prefs_ensure_loaded();   // begin() is gone — mount lazily here`,
     `    uint8_t buf[1U + sizeof(T)];`,
     `    buf[0] = tag;`,
     `    (void)memcpy(&buf[1], &value, sizeof(T));`,
@@ -182,9 +179,8 @@ export function preferencesInitLines(): string[] {
     `}`,
     ``,
     `template <typename T>`,
-    `static inline T __tc_prefs_get(const char* key, uint8_t tag, T def) {`,
-    `    char full[__TC_PREFS_KEY_LEN];`,
-    `    __tc_prefs_full(full, sizeof(full), key);`,
+    `static inline T __tc_prefs_get(const char* full, uint8_t tag, T def) {`,
+    `    __tc_prefs_ensure_loaded();`,
     `    __tc_prefs_slot* slot = __tc_prefs_find(full);`,
     `    if (slot == nullptr || slot->type != tag || slot->len < (1U + sizeof(T))) {`,
     `        return def;`,
@@ -197,23 +193,12 @@ export function preferencesInitLines(): string[] {
     `// ── Lifecycle (session model on top of the flat key-space) ──────────────`,
     `// begin records "tc/<ns>/" as the prefix every subsequent key is built under.`,
     `// end clears the prefix (NOT the cache). Both are cheap on Zephyr: the real`,
-    `// work is in settings_load() at boot. They exist for portability with the`,
-    `// ESP32 NVS session model and so a future session-needing backend has a hook.`,
-    `static inline void __tc_prefs_begin(const char* ns, bool readOnly) {`,
-    `    (void)readOnly;`,
-    `    __tc_prefs_ensure_loaded();`,
-    `    (void)snprintf(__tc_prefs.ns, sizeof(__tc_prefs.ns), "tc/%s/", ns);`,
-    `}`,
-    `static inline void __tc_prefs_end(void) {`,
-    `    __tc_prefs.ns[0] = '\\0';`,
-    `}`,
     ``,
     `// remove: drop one key from flash and the cache. Falls back to no-op if the`,
     `// slot isn't cached (settings_delete on a missing key returns -ENOENT, which`,
     `// we swallow).`,
-    `static inline void __tc_prefs_remove(const char* key) {`,
-    `    char full[__TC_PREFS_KEY_LEN];`,
-    `    __tc_prefs_full(full, sizeof(full), key);`,
+    `static inline void __tc_prefs_remove(const char* full) {`,
+    `    __tc_prefs_ensure_loaded();`,
     `    (void)settings_delete(full);`,
     `    __tc_prefs_slot* slot = __tc_prefs_find(full);`,
     `    if (slot != nullptr) { slot->used = false; }`,
@@ -223,11 +208,12 @@ export function preferencesInitLines(): string[] {
     `// authoritative list of keys we have written) and settings_delete each whose`,
     `// full name starts with the active ns prefix, then mark the slot free. Only`,
     `// the active namespace is cleared — keys under other namespaces survive.`,
-    `static inline void __tc_prefs_clear(void) {`,
-    `    const size_t plen = strlen(__tc_prefs.ns);`,
+    `static inline void __tc_prefs_clear(const char* prefix) {`,
+    `    __tc_prefs_ensure_loaded();`,
+    `    const size_t plen = strlen(prefix);`,
     `    for (int i = 0; i < __TC_PREFS_SLOT_COUNT; i++) {`,
     `        if (__tc_prefs.slots[i].used &&`,
-    `            strncmp(__tc_prefs.slots[i].key, __tc_prefs.ns, plen) == 0) {`,
+    `            strncmp(__tc_prefs.slots[i].key, prefix, plen) == 0) {`,
     `            (void)settings_delete(__tc_prefs.slots[i].key);`,
     `            __tc_prefs.slots[i].used = false;`,
     `        }`,
@@ -237,39 +223,38 @@ export function preferencesInitLines(): string[] {
     `// ── Typed accessors ─────────────────────────────────────────────────────`,
     `// Each put_* stamps its tag byte and persists; each get_* reads the cache and`,
     `// returns the default on miss/type-mismatch (mirrors ESP32 Preferences).`,
-    `static inline void __tc_prefs_put_int(const char* key, int32_t v) {`,
-    `    __tc_prefs_put<int32_t>(key, ${TAG.INT}, v);`,
+    `static inline void __tc_prefs_put_int(const char* full, int32_t v) {`,
+    `    __tc_prefs_put<int32_t>(full, ${TAG.INT}, v);`,
     `}`,
-    `static inline int32_t __tc_prefs_get_int(const char* key, int32_t def) {`,
-    `    return __tc_prefs_get<int32_t>(key, ${TAG.INT}, def);`,
+    `static inline int32_t __tc_prefs_get_int(const char* full, int32_t def) {`,
+    `    return __tc_prefs_get<int32_t>(full, ${TAG.INT}, def);`,
     `}`,
-    `static inline void __tc_prefs_put_uint(const char* key, uint32_t v) {`,
-    `    __tc_prefs_put<uint32_t>(key, ${TAG.UINT}, v);`,
+    `static inline void __tc_prefs_put_uint(const char* full, uint32_t v) {`,
+    `    __tc_prefs_put<uint32_t>(full, ${TAG.UINT}, v);`,
     `}`,
-    `static inline uint32_t __tc_prefs_get_uint(const char* key, uint32_t def) {`,
-    `    return __tc_prefs_get<uint32_t>(key, ${TAG.UINT}, def);`,
+    `static inline uint32_t __tc_prefs_get_uint(const char* full, uint32_t def) {`,
+    `    return __tc_prefs_get<uint32_t>(full, ${TAG.UINT}, def);`,
     `}`,
-    `static inline void __tc_prefs_put_bool(const char* key, bool v) {`,
+    `static inline void __tc_prefs_put_bool(const char* full, bool v) {`,
     `    uint8_t b = v ? 1U : 0U;`,
-    `    __tc_prefs_put<uint8_t>(key, ${TAG.BOOL}, b);`,
+    `    __tc_prefs_put<uint8_t>(full, ${TAG.BOOL}, b);`,
     `}`,
-    `static inline bool __tc_prefs_get_bool(const char* key, bool def) {`,
-    `    uint8_t b = __tc_prefs_get<uint8_t>(key, ${TAG.BOOL}, def ? 1U : 0U);`,
+    `static inline bool __tc_prefs_get_bool(const char* full, bool def) {`,
+    `    uint8_t b = __tc_prefs_get<uint8_t>(full, ${TAG.BOOL}, def ? 1U : 0U);`,
     `    return b != 0U;`,
     `}`,
-    `static inline void __tc_prefs_put_float(const char* key, float v) {`,
-    `    __tc_prefs_put<float>(key, ${TAG.FLOAT}, v);`,
+    `static inline void __tc_prefs_put_float(const char* full, float v) {`,
+    `    __tc_prefs_put<float>(full, ${TAG.FLOAT}, v);`,
     `}`,
-    `static inline float __tc_prefs_get_float(const char* key, float def) {`,
-    `    return __tc_prefs_get<float>(key, ${TAG.FLOAT}, def);`,
+    `static inline float __tc_prefs_get_float(const char* full, float def) {`,
+    `    return __tc_prefs_get<float>(full, ${TAG.FLOAT}, def);`,
     `}`,
     ``,
     `// Strings are length-prefixed into the value buffer (capped at STR_LEN so the`,
     `// whole slot still fits in __TC_PREFS_VAL_LEN). get copies out with a NUL and`,
     `// returns def when the slot is absent or the wrong type.`,
-    `static inline void __tc_prefs_put_string(const char* key, const char* v) {`,
-    `    char full[__TC_PREFS_KEY_LEN];`,
-    `    __tc_prefs_full(full, sizeof(full), key);`,
+    `static inline void __tc_prefs_put_string(const char* full, const char* v) {`,
+    `    __tc_prefs_ensure_loaded();`,
     `    uint8_t buf[1U + __TC_PREFS_STR_LEN];`,
     `    buf[0] = ${TAG.STRING};`,
     `    size_t n = strlen(v);`,
@@ -285,10 +270,9 @@ export function preferencesInitLines(): string[] {
     `        slot->used = true;`,
     `    }`,
     `}`,
-    `static inline const char* __tc_prefs_get_string(const char* key, const char* def) {`,
+    `static inline const char* __tc_prefs_get_string(const char* full, const char* def) {`,
+    `    __tc_prefs_ensure_loaded();`,
     `    static char out[__TC_PREFS_STR_LEN + 1U];`,
-    `    char full[__TC_PREFS_KEY_LEN];`,
-    `    __tc_prefs_full(full, sizeof(full), key);`,
     `    __tc_prefs_slot* slot = __tc_prefs_find(full);`,
     `    if (slot == nullptr || slot->type != ${TAG.STRING} || slot->len < 1U) {`,
     `        return def;`,
@@ -314,37 +298,26 @@ export function lowerPreferences(op: HALOpIR): { code?: string; expression?: str
   const o = op as any;
 
   switch (op.operation) {
-    case 'preferences.begin':
-      // readOnly is honored as a no-op: Zephyr settings has no read-only mount,
-      // and silently ignoring it matches the ESP32 Preferences behavior when
-      // an RO handle is written (the put returns an error the app doesn't see).
-      return { code: `__tc_prefs_begin(${s(o.namespace)}, ${o.readOnly ? 'true' : 'false'});` };
-    case 'preferences.end':
-      return { code: `__tc_prefs_end();` };
     case 'preferences.clear':
-      return { code: `__tc_prefs_clear();` };
+      return { code: `__tc_prefs_clear("tc/${unq(o.ns)}/");` };
     case 'preferences.remove':
-      return { code: `__tc_prefs_remove(${s(o.key)});` };
+      return { code: `__tc_prefs_remove("tc/${unq(o.ns)}/${unq(o.key)}");` };
     case 'preferences.put_int':
-      return { code: `__tc_prefs_put_int(${s(o.key)}, ${s(o.value)});` };
+      return { code: `__tc_prefs_put_int("tc/${unq(o.ns)}/${unq(o.key)}", ${s(o.value)});` };
     case 'preferences.get_int':
-      return { expression: `__tc_prefs_get_int(${s(o.key)}, ${s(o.defaultValue)})` };
-    case 'preferences.put_uint':
-      return { code: `__tc_prefs_put_uint(${s(o.key)}, ${s(o.value)});` };
-    case 'preferences.get_uint':
-      return { expression: `__tc_prefs_get_uint(${s(o.key)}, ${s(o.defaultValue)})` };
+      return { expression: `__tc_prefs_get_int("tc/${unq(o.ns)}/${unq(o.key)}", ${s(o.defaultValue)})` };
     case 'preferences.put_bool':
-      return { code: `__tc_prefs_put_bool(${s(o.key)}, ${o.value ? 'true' : 'false'});` };
+      return { code: `__tc_prefs_put_bool("tc/${unq(o.ns)}/${unq(o.key)}", ${o.value ? 'true' : 'false'});` };
     case 'preferences.get_bool':
-      return { expression: `__tc_prefs_get_bool(${s(o.key)}, ${o.defaultValue ? 'true' : 'false'})` };
+      return { expression: `__tc_prefs_get_bool("tc/${unq(o.ns)}/${unq(o.key)}", ${o.defaultValue ? 'true' : 'false'})` };
     case 'preferences.put_float':
-      return { code: `__tc_prefs_put_float(${s(o.key)}, ${s(o.value)});` };
+      return { code: `__tc_prefs_put_float("tc/${unq(o.ns)}/${unq(o.key)}", ${s(o.value)});` };
     case 'preferences.get_float':
-      return { expression: `__tc_prefs_get_float(${s(o.key)}, ${s(o.defaultValue)})` };
+      return { expression: `__tc_prefs_get_float("tc/${unq(o.ns)}/${unq(o.key)}", ${s(o.defaultValue)})` };
     case 'preferences.put_string':
-      return { code: `__tc_prefs_put_string(${s(o.key)}, ${s(o.value)});` };
+      return { code: `__tc_prefs_put_string("tc/${unq(o.ns)}/${unq(o.key)}", ${s(o.value)});` };
     case 'preferences.get_string':
-      return { expression: `__tc_prefs_get_string(${s(o.key)}, ${s(o.defaultValue)})` };
+      return { expression: `__tc_prefs_get_string("tc/${unq(o.ns)}/${unq(o.key)}", ${s(o.defaultValue)})` };
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +

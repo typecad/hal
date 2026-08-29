@@ -41,9 +41,8 @@ export class SimAnalogPin extends SimDigitalPin implements AnalogPin {
   }
 
   setAnalogReference(ref: string): void {
-    // Map Arduino analogReference() names to the voltage they represent, so
-    // the sim's ADC conversion math stays correct. Mirrors the HAL
-    // setAnalogReference(ref: string), which lowers to analogReference(name).
+    // Map analogReference() names to the voltage they represent, so the sim's
+    // ADC conversion math stays correct. Mirrors the HAL setAnalogReference.
     const known: Record<string, number> = {
       DEFAULT: 5.0,
       INTERNAL: 1.1,

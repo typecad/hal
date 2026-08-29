@@ -13,15 +13,13 @@
 //   drivers/usb/udc/udc_rpi_pico.c (next-stack UDC driver for both SoCs)
 
 import { describe, it, expect } from 'vitest';
-import { resolveBoardConstants } from '../../../packages/cuttlefish/src/ir/board-resolver';
+import { generateBoard } from '../../../packages/framework-zephyr/src/boardgen';
+import { SOC_CHIPS } from '../../../packages/framework-zephyr/src/chips/soc/index';
+import type { BoardConstants } from '../../../packages/cuttlefish/src/api/shared/board-resolver';
 import { resolveChipFromBoard } from '../../../packages/framework-zephyr/src/chips/resolve';
 
-const rp2040Chip = resolveChipFromBoard(
-  resolveBoardConstants('boards/board-rp2040/src/index.ts'),
-);
-const rp2350Chip = resolveChipFromBoard(
-  resolveBoardConstants('boards/board-rp2350/src/index.ts'),
-);
+const rp2040Chip = SOC_CHIPS['rp2040'];
+const rp2350Chip = SOC_CHIPS['rp2350a'];
 
 describe('board-rp2040 → ZephyrChipDescriptor', () => {
   it('resolves (the board package carries a zephyr build target + chip data)', () => {
@@ -47,7 +45,7 @@ describe('board-rp2040 → ZephyrChipDescriptor', () => {
 
   it("wires i2c0 + i2c1 / spi0 / uart0 + synthesized uart1 (i2c1's GP6/GP7 pinctrl group ships in the board DT; uart1 carries synthesis data — the overlay emits a GP8/GP9 group)", () => {
     expect(rp2040Chip!.i2c?.controllers).toEqual([{ nodeLabel: 'i2c0' }, { nodeLabel: 'i2c1' }]);
-    expect(rp2040Chip!.spi?.controllers).toEqual([{ nodeLabel: 'spi0' }]);
+    expect(rp2040Chip!.spi?.controllers).toEqual([{ nodeLabel: 'spi0' }, { nodeLabel: 'spi1' }]);
     expect(rp2040Chip!.uart?.controllers).toEqual([
       { nodeLabel: 'uart0' },
       {
@@ -121,7 +119,7 @@ describe('board-rp2350 → ZephyrChipDescriptor', () => {
 
   it('wires i2c0 + i2c1 / spi0 / uart0, USB, console, and probes (mirrors the Pico)', () => {
     expect(rp2350Chip!.i2c?.controllers).toEqual([{ nodeLabel: 'i2c0' }, { nodeLabel: 'i2c1' }]);
-    expect(rp2350Chip!.spi?.controllers).toEqual([{ nodeLabel: 'spi0' }]);
+    expect(rp2350Chip!.spi?.controllers).toEqual([{ nodeLabel: 'spi0' }, { nodeLabel: 'spi1' }]);
     expect(rp2350Chip!.uart?.controllers).toEqual([
       { nodeLabel: 'uart0' },
       {
@@ -149,28 +147,39 @@ describe('board-rp2350 → ZephyrChipDescriptor', () => {
 });
 
 describe('RP board/MCU constants → pin capability data (analogRead regression)', () => {
-  // The board-constants flattener is a static AST walker: it drops `functions`
-  // entries written as helper calls (functions: [adc(0, 0)]) and the shorthand
-  // `capabilities` object. The MCU packages must keep inline object literals
-  // so the pin-capability validator finds the ADC channels — otherwise every
-  // readAnalog() fails with "no pins support analog input".
-  const rp2040Constants = resolveBoardConstants('mcus/mcu-rp2040/src/index.ts');
-  const rp2350Constants = resolveBoardConstants('mcus/mcu-rp2350/src/index.ts');
-
-  it('mcu-rp2040 GP26–GP29 carry flattenable adc function entries', () => {
-    for (const pin of [26, 27, 28, 29]) {
-      expect(rp2040Constants.get(`pins.all.${pin}.functions.0.type`), `GP${pin}`).toBe('adc');
+  // The MCU packages are gone; the equivalent fact — the RP2040/RP2350 ADC
+  // channels reach the pin capability layer — now lives in boardgen's
+  // emitted constants (analogInput capability on GP26-GP29).
+  const rp2040 = generateBoard('rpi_pico/rp2040');
+  const rp2350 = generateBoard('rpi_pico2/rp2350a/m33');
+  const adcOf = (g: { boardJson: string }): Set<number> => {
+    const c = JSON.parse(g.boardJson).constants as Record<string, unknown>;
+    // pins.all.<INDEX>.number is the HAL pin — map through it (indices shift
+    // when exclusions remove pads from the sweep).
+    const s = new Set<number>();
+    for (const [k, v] of Object.entries(c)) {
+      const m = k.match(/^pins[.]all[.](\d+)[.]capabilities[.]analogInput$/);
+      if (m && v === true) {
+        const num = c[`pins.all.${m[1]}.number`];
+        if (num !== undefined) s.add(Number(num));
+      }
     }
+    return s;
+  };
+
+  it('rp2040 GP26-GP29 carry analogInput in the generated board', () => {
+    const adc = adcOf(rp2040);
+    for (const pin of [26, 27, 28, 29]) expect(adc.has(pin), `GP${pin}`).toBe(true);
   });
 
-  it('mcu-rp2350 GP26–GP29 carry flattenable adc function entries', () => {
-    for (const pin of [26, 27, 28, 29]) {
-      expect(rp2350Constants.get(`pins.all.${pin}.functions.0.type`), `GP${pin}`).toBe('adc');
-    }
+  it('rp2350 GP26-GP29 carry analogInput in the generated board', () => {
+    const adc = adcOf(rp2350);
+    for (const pin of [26, 27, 28, 29]) expect(adc.has(pin), `GP${pin}`).toBe(true);
   });
 
-  it('both MCUs flatten through the board constants merge (pins.all.26 reaches the board)', () => {
-    const board2040 = resolveBoardConstants('boards/board-rp2040/src/index.ts');
-    expect(board2040.get('pins.all.26.functions.0.type')).toBe('adc');
+  it('the soc descriptors declare the ADC channel maps (26-29)', () => {
+    expect(SOC_CHIPS['rp2040'].adc?.channels.map((c) => c.pin)).toEqual([26, 27, 28, 29]);
+    expect(SOC_CHIPS['rp2350a'].adc?.channels.map((c) => c.pin)).toEqual([26, 27, 28, 29]);
   });
 });
+

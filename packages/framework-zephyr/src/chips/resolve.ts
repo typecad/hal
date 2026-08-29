@@ -146,6 +146,7 @@ export function resolveChipFromBoard(
     const channel = m.get(`zephyr.pwm.specs.${i}.channel`) as number | undefined;
     const periodNs = m.get(`zephyr.pwm.specs.${i}.periodNs`) as number | undefined;
     const polarity = m.get(`zephyr.pwm.specs.${i}.polarity`) as string | undefined;
+    const pinctrl = m.get(`zephyr.pwm.specs.${i}.pinctrl`) as string | undefined;
     // Board-shipped alias form (dtSpec) or synthesized form (controller +
     // channel → overlay-generated alias) — at least one, else drop the entry.
     if (pin == null || !(dtSpec || (controller && channel != null))) return null;
@@ -156,12 +157,25 @@ export function resolveChipFromBoard(
       ...(channel != null ? { channel } : {}),
       ...(periodNs != null ? { periodNs } : {}),
       ...(polarity ? { polarity } : {}),
+      ...(pinctrl ? { pinctrl } : {}),
     };
   });
 
   const adcNodeLabel = bc.get('zephyr.adc.nodeLabel') as string | undefined;
   // PWM timer input clock — feeds the overlay's 16-bit prescaler derivation.
   const pwmClockHz = bc.get('zephyr.pwm.clockHz') as number | undefined;
+
+  // PWM matrix (ESP32 LEDC): any listed pin can carry any channel; channels
+  // are assigned to the driven pins at build time (dt-config/overlay.ts).
+  const matrixController = bc.get('zephyr.pwm.matrix.controller') as string | undefined;
+  const matrixChannelCount = bc.get('zephyr.pwm.matrix.channelCount') as number | undefined;
+  const matrixPins = collectIndexed<number>(
+    bc, 'zephyr.pwm.matrix.pins',
+    (m, i) => (m.get(`zephyr.pwm.matrix.pins.${i}`) as number | undefined) ?? null,
+  );
+  const pwmMatrix = matrixController && matrixChannelCount
+    ? { controller: matrixController, channelCount: matrixChannelCount, pins: matrixPins }
+    : undefined;
 
   // PWM capability constants (peripherals.pwm.* from the MCU manifest) — the
   // numbers the transpiler constant-folds getPwmFrequency()/getPwmResolution()
@@ -213,9 +227,12 @@ export function resolveChipFromBoard(
     const debugDevice = m.get(`zephyr.probeMethods.${i}.debugDevice`) as string | undefined;
     const debugCfgRaw = m.get(`zephyr.probeMethods.${i}.debugCfg`) as string | undefined;
     const debugCfgSourceRaw = m.get(`zephyr.probeMethods.${i}.debugCfgSource`) as string | undefined;
-    // The flattener stores string arrays comma-joined.
+    // Args are comma-joined (west flags never carry commas); cfg lines are
+    // newline-joined (tcl legally contains commas).
     const split = (v: string | undefined): string[] | undefined =>
       typeof v === 'string' && v.length > 0 ? v.split(',') : undefined;
+    const splitLines = (v: string | undefined): string[] | undefined =>
+      typeof v === 'string' && v.length > 0 ? v.split('\n') : undefined;
     const args = split(argsRaw);
     return {
       id,
@@ -225,8 +242,8 @@ export function resolveChipFromBoard(
       ...(debugRaw !== undefined ? { debug: debugRaw } : {}),
       ...(debugInterface ? { debugInterface: debugInterface as 'swd' | 'jtag' } : {}),
       ...(debugDevice ? { debugDevice } : {}),
-      ...(split(debugCfgRaw) ? { debugCfg: split(debugCfgRaw) } : {}),
-      ...(split(debugCfgSourceRaw) ? { debugCfgSource: split(debugCfgSourceRaw) } : {}),
+      ...(split(debugCfgRaw) ? { debugCfg: splitLines(debugCfgRaw) } : {}),
+      ...(split(debugCfgSourceRaw) ? { debugCfgSource: splitLines(debugCfgSourceRaw) } : {}),
     };
   });
   const wifiSupported = bc.get('zephyr.wifi.supported') as boolean | undefined;
@@ -246,6 +263,14 @@ export function resolveChipFromBoard(
   const sysMHz = bc.get('zephyr.clocks.sysMHz') as number | undefined;
   const dtsIncludesRaw = bc.get('zephyr.dtsIncludes') as string | undefined;
   const usbNode = bc.get('zephyr.usb.usbNode') as string | undefined;
+  const usbPinctrlRaw = bc.get('zephyr.usb.pinctrl') as string | undefined;
+  const usbPinctrl = typeof usbPinctrlRaw === 'string' && usbPinctrlRaw.length > 0
+    ? usbPinctrlRaw.split(',').map((s) => s.trim()).filter(Boolean)
+    : undefined;
+  const cbAdcNodeLabel = bc.get('zephyr.adcNode.nodeLabel') as string | undefined;
+  const cbAdcClockSource = bc.get('zephyr.adcNode.clockSource') as string | undefined;
+  const cbAdcPrescaler = bc.get('zephyr.adcNode.prescaler') as number | undefined;
+  const cbAdcPinctrl = bc.get('zephyr.adcNode.pinctrl') as string | undefined;
   const customBoard =
     socs.length > 0 &&
     consoleNodeLabel && consoleTx && consoleRx &&
@@ -271,6 +296,10 @@ export function resolveChipFromBoard(
             apb2Prescaler: (bc.get('zephyr.clocks.apb2Prescaler') as number) ?? 1,
           },
           ...(usbNode ? { usbNode } : {}),
+          ...(usbPinctrl ? { usbPinctrl } : {}),
+          ...(cbAdcNodeLabel && cbAdcClockSource && cbAdcPrescaler != null && cbAdcPinctrl
+            ? { adcNode: { nodeLabel: cbAdcNodeLabel, clockSource: cbAdcClockSource, prescaler: cbAdcPrescaler, pinctrl: cbAdcPinctrl } }
+            : {}),
         }
       : undefined;
 
@@ -290,10 +319,11 @@ export function resolveChipFromBoard(
     ...(i2cControllers.length > 0 ? { i2c: { controllers: i2cControllers } } : {}),
     ...(spiControllers.length > 0 ? { spi: { controllers: spiControllers } } : {}),
     ...(uartControllers.length > 0 ? { uart: { controllers: uartControllers } } : {}),
-    ...(pwmSpecs.length > 0
+    ...(pwmSpecs.length > 0 || pwmMatrix
       ? {
           pwm: {
             specs: pwmSpecs,
+            ...(pwmMatrix ? { matrix: pwmMatrix } : {}),
             ...(pwmClockHz ? { clockHz: pwmClockHz } : {}),
             ...(pwmMaxFreq !== undefined ? { maxFrequencyHz: pwmMaxFreq } : {}),
             ...(pwmResolution !== undefined ? { resolutionBits: pwmResolution } : {}),
@@ -344,5 +374,61 @@ export function resolveChipFromBoard(
     ...(wifiSupported ? { wifi: { supported: true as const } } : {}),
     ...(probeMethods.length > 0 ? { probeMethods } : {}),
     ...(customBoard ? { customBoard } : {}),
+  };
+}
+
+/**
+ * Board-level PWM specs from the generated board manifest (zephyr.pwm.specs.*
+ * — the pwm-leds facts boardgen emits on virtual pins 8192+). The active
+ * chip's spec table is silicon-curated; these JOIN it (see mergeBoardPwmSpecs)
+ * so a board's own devicetree-aliased PWM LED is addressable without curation.
+ */
+export function boardPwmSpecsFromConstants(
+  bc: BoardConstants | undefined,
+): ZephyrPwmSpec[] {
+  if (!bc) return [];
+  const specs: ZephyrPwmSpec[] = [];
+  for (let i = 0; i < 256; i++) {
+    const pin = bc.get(`zephyr.pwm.specs.${i}.pin`) as number | undefined;
+    if (pin == null) break;
+    const dtSpec = bc.get(`zephyr.pwm.specs.${i}.dtSpec`) as string | undefined;
+    const controller = bc.get(`zephyr.pwm.specs.${i}.controller`) as string | undefined;
+    const channel = bc.get(`zephyr.pwm.specs.${i}.channel`) as number | undefined;
+    if (!(dtSpec || (controller && channel != null))) continue;
+    specs.push({
+      pin,
+      ...(dtSpec ? { dtSpec } : {}),
+      ...(controller ? { controller } : {}),
+      ...(channel != null ? { channel } : {}),
+    });
+  }
+  return specs;
+}
+
+/**
+ * Merge board-level PWM specs into a chip descriptor. Collision rule: a
+ * board spec whose pin OR dtSpec already exists in the chip's table is
+ * dropped (the curated entry wins — e.g. the XIAO's hand-tuned pwm-led0
+ * spec). Returns the chip unchanged when nothing joins.
+ */
+export function mergeBoardPwmSpecs(
+  chip: ZephyrChipDescriptor,
+  boardSpecs: readonly ZephyrPwmSpec[],
+): ZephyrChipDescriptor {
+  if (boardSpecs.length === 0) return chip;
+  const existing = chip.pwm?.specs ?? [];
+  const joining = boardSpecs.filter(
+    (s) => !existing.some((e) => e.pin === s.pin || (s.dtSpec != null && e.dtSpec === s.dtSpec)),
+  );
+  if (joining.length === 0) return chip;
+  return {
+    ...chip,
+    pwm: {
+      specs: [...existing, ...joining],
+      ...(chip.pwm?.matrix ? { matrix: chip.pwm.matrix } : {}),
+      ...(chip.pwm?.clockHz ? { clockHz: chip.pwm.clockHz } : {}),
+      ...(chip.pwm?.maxFrequencyHz ? { maxFrequencyHz: chip.pwm.maxFrequencyHz } : {}),
+      ...(chip.pwm?.resolutionBits ? { resolutionBits: chip.pwm.resolutionBits } : {}),
+    },
   };
 }

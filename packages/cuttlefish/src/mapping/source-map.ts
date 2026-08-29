@@ -115,26 +115,26 @@ export function resolveMapPath(mapFileOrGeneratedFile: string): string {
 }
 
 /**
- * Resolve source map path for a flattened Arduino sketch
- * When a sketch is flattened, the source map needs to account for merged files
+ * Resolve source map path for a generated program
+ * When a program is flattened, the source map needs to account for merged files
  */
-export function resolveSourceMapForSketch(
-  sketchPath: string,
+export function resolveSourceMapForProgram(
+  programPath: string,
   originalSourceMapPath?: string
 ): string | undefined {
-  const sketchDir = path.dirname(sketchPath);
-  const sketchName = path.basename(sketchPath, path.extname(sketchPath));
+  const programDir = path.dirname(programPath);
+  const programName = path.basename(programPath, path.extname(programPath));
   
   // First try the original source map path
   if (originalSourceMapPath && fs.existsSync(originalSourceMapPath)) {
     return originalSourceMapPath;
   }
   
-  // Try to find source maps for the sketch directory
+  // Try to find source maps for the program directory
   const possibleMaps = [
-    path.join(sketchDir, `${sketchName}.thcppmap.json`),
-    path.join(sketchDir, `${sketchName}.ino.thcppmap.json`),
-    path.join(sketchDir, "example.thcppmap.json"), // Common case for example sketches
+    path.join(programDir, `${programName}.thcppmap.json`),
+    path.join(programDir, `${programName}.cpp.thcppmap.json`),
+    path.join(programDir, "example.thcppmap.json"), // Common case for example programs
   ];
   
   for (const mapPath of possibleMaps) {
@@ -143,14 +143,14 @@ export function resolveSourceMapForSketch(
     }
   }
   
-  // Look for any .thcppmap.json files in the sketch directory
+  // Look for any .thcppmap.json files in the program directory
   try {
-    const files = fs.readdirSync(sketchDir);
+    const files = fs.readdirSync(programDir);
     const mapFiles = files.filter(f => f.endsWith('.thcppmap.json'));
     if (mapFiles.length > 0) {
       // Return the most recent one
       const latest = mapFiles.sort().pop();
-      return path.join(sketchDir, latest!);
+      return path.join(programDir, latest!);
     }
   } catch {
     // Ignore readdir errors

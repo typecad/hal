@@ -57,7 +57,7 @@ Breakpoints are only injected when cuttlefish is run with `--debug`:
 
 ```sh
 cuttlefish build --debug                                    # uses cuttlefish.config.ts entry
-cuttlefish src/index.ts --debug --framework @typecad/framework-arduino --compile --upload --port COM4
+cuttlefish src/index.ts --debug --compile --upload --port COM4
 ```
 
 See `cuttlefish --help` for the full `--debug` description.
@@ -87,7 +87,7 @@ under cuttlefish's basename-matching loader):
 | `logMessage` | string | no | Logpoint with `{variable}` interpolation. When present, the breakpoint logs instead of halting. |
 
 Two source files sharing the same basename in one project will share
-breakpoints — acceptable for typical single-sketch Arduino projects.
+breakpoints — acceptable for typical single-program projects.
 
 ## Native debugging on ESP32-S3
 
@@ -118,11 +118,11 @@ requires ESP-IDF itself configured), set the board's serial port in
 `demos/demo/README.md` for the full F5 flow.
 
 The printf instrumentation documented below remains the path for targets that
-don't yet support native debugging (Arduino, other ESP32 variants).
+targets that don't ship a native GDB path yet.
 
 ## Limitations
 
-- This is a `Serial.print`-based instrumentation shim, not a DAP debug
+- This is a printf-based instrumentation shim, not a DAP debug
   adapter. There is no native step/step-in/step-out — each breakpoint halts
   until ENTER (continue) or `s` (skip this breakpoint for the run) is received
   over serial. **On ESP32-S3, use the native GDB path above instead** — it
@@ -131,12 +131,10 @@ don't yet support native debugging (Arduino, other ESP32 variants).
   parameters in the enclosing function. Member access and arbitrary
   expressions are not resolved; `{ value }` in a logpoint emits the literal
   `"{value}"` if `value` is not in scope.
-- Baud rate is hardcoded to `9600` in the injected `Serial.begin` regardless
-  of the CLI `--baud` value.
-- **Target-specific output:** on Arduino/AVR the injected code uses `Serial.*`
-  and blocks on `Serial.available()`. On ESP-IDF (`@typecad/framework-esp32`)
-  it routes through native `printf` and blocks on `getchar()` with the task
-  watchdog fed — so an ESP32 debug build must have `idf.py monitor` (or
-  equivalent) attached, or it will hang at the first breakpoint until power
-  is cycled. This is the ESP-IDF equivalent of "no IDE attached to a
-  breakpoint."
+- Baud rate is fixed by the framework's console shim regardless of the CLI
+  `--baud` value.
+- **Target-specific output:** under @typecad/framework-zephyr the injected
+  code routes through the board console (`printk`/shell backend) and blocks on
+  a getchar-equivalent with the idle thread feeding — so a debug build must
+  have a serial monitor attached (e.g. `cuttlefish build --monitor`), or it
+  will hang at the first breakpoint until power is cycled.

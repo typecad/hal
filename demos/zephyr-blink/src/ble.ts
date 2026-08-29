@@ -1,13 +1,15 @@
 // BLE minimal server: advertise a GATT server with one read-only characteristic.
 // Environmental Sensing Temperature (2A6E), int16, read-only.
 
-import { Ble, delay, BleValueType, BlePerm } from '@typecad/hal';
+import { BLE, BleValueType, BlePerm, Time } from '@typecad/hal';
 
-Ble.server('TempSensor')
-  .characteristic('2A6E', BleValueType.Int16, BlePerm.Read)
-  .onRead(() => 2180); // 21.80 °C (int16, 0.01 °C units per GATT 2A6E)
-Ble.server('TempSensor').begin();
+const ble = new BLE('TempSensor');
+
+ble.char('2A6E', BleValueType.Int16, BlePerm.Read)
+  .onRead((): number => 2180);   // 21.80 °C (int16, 0.01 °C units per GATT 2A6E)
+
+ble.start();
 
 while (true) {
-  delay(1000);
+  Time.sleep(1000);
 }

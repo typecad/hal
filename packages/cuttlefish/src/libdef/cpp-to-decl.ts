@@ -717,7 +717,7 @@ export function generateComponentDeclsForProject(
       created.push(out);
       // Write a sibling .libdef.json so the import → #include resolver picks
       // up the real (case-preserving) header name. Without this, the resolver
-      // falls back to toPascalCase(moduleKey) + ".h" — fine for Arduino libs
+      // falls back to toPascalCase(moduleKey) + ".h" — fine for platform libs
       // (Adafruit_GFX → Adafruit_GFX.h, resolved separately) but wrong for
       // ESP-IDF component headers (esp_wifi → <EspWifi.h>, not <esp_wifi.h>).
       // The libdef declares the actual header basename ("esp_wifi.h"), which

@@ -225,14 +225,12 @@ describe("analyzeReachability", () => {
 
     const resultWithKeep = analyzeReachability(programIR, callGraph, {
       target: "generic",
-      mcu: "@typecad/mcu-generic",
       keepUnusedEnums: true,
     });
     expect(resultWithKeep.reachableEnums.has("UnusedEnum")).toBe(true);
 
     const resultWithoutKeep = analyzeReachability(programIR, callGraph, {
       target: "generic",
-      mcu: "@typecad/mcu-generic",
       keepUnusedEnums: false,
     });
     expect(resultWithoutKeep.reachableEnums.has("UnusedEnum")).toBe(false);
@@ -252,7 +250,6 @@ describe("analyzeReachability", () => {
     const callGraph = buildCallGraph(programIR);
     const result = analyzeReachability(programIR, callGraph, {
       target: "generic",
-      mcu: "@typecad/mcu-generic",
       reportUnused: true,
     });
 
@@ -345,7 +342,6 @@ describe("filterProgramIR", () => {
     const callGraph = buildCallGraph(programIR);
     const reachability = analyzeReachability(programIR, callGraph, {
       target: "generic",
-      mcu: "@typecad/mcu-generic",
       reportUnused: true,
     });
     const filtered = filterProgramIR(programIR, reachability, { enabled: true, reportUnused: true });
@@ -416,7 +412,7 @@ describe("getReachableSymbols", () => {
 });
 
 // Regression: a free function referenced ONLY from inside a HAL-registered
-// callback (e.g. `Ble.server('x').characteristic(...).onRead(() => readTemp())`)
+// callback (e.g. `new BLE('x').char(...).onRead(() => readTemp())`)
 // was tree-shaken as unreachable, then g++ reported "'readTemp' was not
 // declared in this scope". Registered callbacks ride in
 // `program.registeredCallbacks` (not topLevelStatements); their body

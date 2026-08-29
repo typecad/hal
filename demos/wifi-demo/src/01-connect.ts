@@ -1,14 +1,15 @@
-// 01 — minimal: connect and print the acquired IP.
-// === EDIT THESE BEFORE FLASHING ===
-const WIFI_SSID = "Skynet";
-const WIFI_PASSWORD = "justin04";
-// ==================================
+// 01 — thin station join: construction facts + one bounded verb.
+const WIFI_SSID = "HomeNet";
+const WIFI_PASSWORD = "hunter22";
 
-import { WiFi, delay } from '@typecad/hal';
+import { WiFi } from '@typecad/hal';
 
-WiFi.connect(WIFI_SSID, WIFI_PASSWORD);
-console.log(WiFi.localIP());
+const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD, timeoutMs: 15000 });
 
-while (true) {
-  delay(1000);
+if (!wifi.join()) {
+  console.error("join failed");
+} else {
+  console.log(wifi.ip());
 }
+
+while (true) { /* idle */ }

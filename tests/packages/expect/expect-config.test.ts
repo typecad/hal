@@ -16,7 +16,7 @@ describe('expect config', () => {
       [
         'export default {',
         "  target: 'esp32',",
-        "  board: '@typecad/board-esp32-devkit',",
+        "  board: 'esp32_devkitc/esp32/procpu',",
         "  frameworkData: { buildTarget: 'esp32:esp32:esp32' },",
         '  test: {',
         "    port: 'COM3',",
@@ -42,7 +42,7 @@ describe('expect config', () => {
       [
         'export default {',
         "  target: 'stm32f411',",
-        "  board: '@typecad/board-blackpill-f411ce',",
+        "  board: 'blackpill_f411ce/stm32f411xe',",
         "  frameworkData: { buildTarget: 'blackpill_f411ce/stm32f411xe' },",
         '  test: {',
         "    usb: { vid: '2FE3', pid: '0002', serial: 'DEV-A' },",
@@ -64,7 +64,7 @@ describe('expect config', () => {
       [
         'export default {',
         "  target: 'stm32f411',",
-        "  board: '@typecad/board-blackpill-f411ce',",
+        "  board: 'blackpill_f411ce/stm32f411xe',",
         '  test: {',
         "    usb: { vid: '2FE3', pid: '0002' },",
         "    port: 'COM7',",

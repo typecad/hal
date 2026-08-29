@@ -15,15 +15,12 @@
 //     depends on DT_HAS_ESPRESSIF_ESP32_WIFI_ENABLED; both boards enable &wifi)
 
 import { describe, it, expect } from 'vitest';
-import { resolveBoardConstants } from '../../../packages/cuttlefish/src/ir/board-resolver';
+import { SOC_CHIPS } from '../../../packages/framework-zephyr/src/chips/soc/index';
+import type { BoardConstants } from '../../../packages/cuttlefish/src/api/shared/board-resolver';
 import { resolveChipFromBoard } from '../../../packages/framework-zephyr/src/chips/resolve';
 
-const esp32c3Chip = resolveChipFromBoard(
-  resolveBoardConstants('boards/board-esp32c3/src/index.ts'),
-);
-const esp32c6Chip = resolveChipFromBoard(
-  resolveBoardConstants('boards/board-esp32c6/src/index.ts'),
-);
+const esp32c3Chip = SOC_CHIPS['esp32c3'];
+const esp32c6Chip = SOC_CHIPS['esp32c6'];
 
 describe('board-esp32c3 → ZephyrChipDescriptor', () => {
   it('resolves (the board package carries a zephyr build target + chip data)', () => {

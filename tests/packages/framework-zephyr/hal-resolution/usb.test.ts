@@ -11,21 +11,38 @@
 import { describe, it, expect } from 'vitest';
 import { lowerUsb, usbInitLines, usbdDeviceLines } from '../../../../packages/framework-zephyr/src/lowering/usb';
 import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
-import { resolveChipFromBoard } from '../../../../packages/framework-zephyr/src/chips/resolve';
+import { SOC_CHIPS } from '../../../../packages/framework-zephyr/src/chips/soc/index';
 import { setActiveChip } from '../../../../packages/framework-zephyr/src/chips/index';
-import { resolveBoardConstants } from '../../../../packages/cuttlefish/src/ir/board-resolver';
 import { transpile } from '../../../setup';
 import { ZephyrStrategy } from '../../../../packages/framework-zephyr/src/strategy';
+import { generateBoard } from '../../../../packages/framework-zephyr/src/boardgen';
+import type { BoardConstants } from '../../../../packages/cuttlefish/src/api/shared/board-resolver';
+function generatedConstants(target: string): BoardConstants {
+  const g = generateBoard(target);
+  return new Map(Object.entries(JSON.parse(g.boardJson).constants)) as BoardConstants;
+}
 
-const BLACKPILL = resolveChipFromBoard(
-  resolveBoardConstants('boards/board-blackpill-f411ce/src/index.ts'),
-);
+
+const BLACKPILL = SOC_CHIPS['stm32f411xe'];
 
 const USB_CHIP = { ...XIAO_BLE, usb: { controller: 'zephyr_udc0', cdcInstances: 1 } } as typeof XIAO_BLE;
 // The pre-USB XIAO shape — a capable chip that simply declares no `usb`.
 const NO_USB_CHIP = { ...XIAO_BLE, usb: undefined } as typeof XIAO_BLE;
 
+// The ESP32-S3 board package now declares its native USB-OTG (the board DTS
+// ships `zephyr_udc0: &usb_otg { status = "okay"; }`); usb.* ops on the S3
+// resolve through the same path as the blackpill/XIAO instead of failing the
+// "board does not expose USB" gate.
+const ESP32S3 = SOC_CHIPS['esp32s3'];
+
 describe('usb init block', () => {
+  it('esp32s3 board resolution exposes USB (native OTG via zephyr_udc0)', () => {
+    expect(ESP32S3.usb?.controller).toBe('zephyr_udc0');
+    expect(ESP32S3.usb?.cdcInstances).toBe(1);
+    // usb.* ops must not throw on the S3 anymore.
+    expect(() => lowerUsb({ operation: 'usb.println', port: 'USB0', value: '"hi"' } as any, ESP32S3)).not.toThrow();
+  });
+
   it('emits the next-stack device context (USBD_DEVICE_DEFINE + descriptors + usbd_init + usbd_enable)', () => {
     const lines = usbdDeviceLines(USB_CHIP).join('\n');
     expect(lines).toContain('// CUTTLEFISH_USBD_BEGIN');
@@ -57,7 +74,6 @@ describe('usb init block', () => {
     expect(lines).toContain('// CUTTLEFISH_USB_END');
     expect(lines).toContain('DEVICE_DT_GET(DT_NODELABEL(cdc_acm_uart0))');
     expect(lines).toContain('__tc_usbd_start()');
-    expect(lines).toContain('uart_configure');
   });
 
   it('emits nothing without a declared usb capability', () => {
@@ -67,9 +83,16 @@ describe('usb init block', () => {
 });
 
 describe('usb lowering', () => {
-  it('begin → device-stack start + baud via the init helper', () => {
-    expect(lowerUsb({ operation: 'usb.begin', port: 'USB0', baud: 115200 } as any, USB_CHIP))
-      .toEqual({ code: '__tc_usb0_init(static_cast<uint32_t>(115200));' });
+  it('begin → device-stack start (no baud — CDC line coding is host-owned)', () => {
+    expect(lowerUsb({ operation: 'usb.begin', port: 'USB0' } as any, USB_CHIP))
+      .toEqual({ code: '__tc_usb0_init();' });
+  });
+
+  it('wait_ready → bounded DTR poll with k_msleep slices (expression)', () => {
+    const out = lowerUsb({ operation: 'usb.wait_ready', port: 'USB0', timeoutMs: 5000 } as any, USB_CHIP);
+    expect(out.expression).toContain('uart_line_ctrl_get(__tc_usb0_dev, UART_LINE_CTRL_DTR');
+    expect(out.expression).toContain('k_msleep(10)');
+    expect(out.expression).toContain('__t >= (uint32_t)(5000)');
   });
 
   it('print of a string literal → per-byte poll_out loop on the CDC device', () => {
@@ -83,11 +106,6 @@ describe('usb lowering', () => {
     expect(out.code).toContain("uart_poll_out(__tc_usb0_dev, '\\n')");
   });
 
-  it('printf → snprintk + poll_out loop', () => {
-    const out = lowerUsb({ operation: 'usb.printf', port: 'USB0', format: '"%d"', args: [42] } as any, USB_CHIP);
-    expect(out.code).toContain('snprintk(__buf');
-    expect(out.code).toContain('uart_poll_out');
-  });
 
   it('read → non-blocking poll, byte or -1 (expression)', () => {
     const out = lowerUsb({ operation: 'usb.read', port: 'USB0' } as any, USB_CHIP);
@@ -100,10 +118,6 @@ describe('usb lowering', () => {
       .toEqual({ expression: '(0)' });
   });
 
-  it('flush → no-op (poll_out is synchronous)', () => {
-    expect(lowerUsb({ operation: 'usb.flush', port: 'USB0' } as any, USB_CHIP))
-      .toEqual({ code: '(void)__tc_usb0_dev;' });
-  });
 
   it('connected → DTR line-ctrl query (expression)', () => {
     const out = lowerUsb({ operation: 'usb.connected', port: 'USB0' } as any, USB_CHIP);
@@ -137,18 +151,19 @@ describe('USB0 end-to-end (transpile with the blackpill board package)', () => {
   it('lowers USB0.begin/println/connected to the CDC device shim calls', () => {
     setActiveChip(BLACKPILL!);
     const result = transpile(`
-      import { USB0 } from '@typecad/board-blackpill-f411ce';
-      USB0.begin(115200);
-      USB0.println("hi");
-      if (USB0.connected()) { USB0.print("host open"); }
+      const USB0 = 'USB0'; // composed CDC node
+      USB0.open();
+      USB0.writeLine("hi");
+      if (USB0.ready()) { USB0.write("host open"); }
+      USB0.waitReady(5000);
     `, {
       strategy: new ZephyrStrategy(),
       target: 'zephyr',
-      boardPackage: '@typecad/board-blackpill-f411ce',
+      
       platformContext: { frameworkData: { target: 'blackpill_f411ce/stm32f411xe' } } as any,
     });
 
-    expect(result.cpp).toContain('__tc_usb0_init(static_cast<uint32_t>(115200))');
+    expect(result.cpp).toContain('__tc_usb0_init();');
     expect(result.cpp).toContain('uart_poll_out(__tc_usb0_dev');
     expect(result.cpp).toContain('uart_line_ctrl_get(__tc_usb0_dev, UART_LINE_CTRL_DTR');
     // The shim block (device + usb_enable-guarded init) rides along.

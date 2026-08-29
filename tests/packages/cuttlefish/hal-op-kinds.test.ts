@@ -28,8 +28,12 @@ describe('HAL_OPERATION_KINDS', () => {
 
   it('contains expected core op kinds', () => {
     expect(HAL_OPERATION_KINDS).toContain('gpio.write');
-    expect(HAL_OPERATION_KINDS).toContain('i2c.begin');
-    expect(HAL_OPERATION_KINDS).toContain('wifi.connect');
+    // i2c.begin was removed with the legacy Wire surface; the thin verbs live on:
+    expect(HAL_OPERATION_KINDS).toContain('i2c.reg_read');
+    expect(HAL_OPERATION_KINDS).not.toContain('i2c.begin');
+    // wifi.connect was folded into the fact-carrying wifi.join:
+    expect(HAL_OPERATION_KINDS).toContain('wifi.join');
+    expect(HAL_OPERATION_KINDS).not.toContain('wifi.connect');
     expect(HAL_OPERATION_KINDS).toContain('http.send');
     expect(HAL_OPERATION_KINDS).toContain('raw');
   });

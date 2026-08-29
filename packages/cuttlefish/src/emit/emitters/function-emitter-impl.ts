@@ -466,6 +466,13 @@ export function emitFunctionForwardDeclarations(ctx: EmitterContext): void {
   const { strategy, effectiveEmitMode } = ctx;
   const excludedNames = new Set(strategy.forwardDeclarationExclusions?.() ?? []);
 
+  // Async-method starters: the owning class's method body calls these before
+  // the task class (and this definition) exists later in the TU. The class
+  // forward declarations emitted nearby make the <Class>* parameter valid.
+  for (const starter of ctx.asyncMethodStarters ?? []) {
+    appendSourceLine(ctx, starter.proto);
+  }
+
   // Callback forward declarations (no IRAM_ATTR — ESP-IDF's attribute uses
   // __COUNTER__, so decl+def would get conflicting .iram1.N sections).
   if (effectiveEmitMode !== "split") {

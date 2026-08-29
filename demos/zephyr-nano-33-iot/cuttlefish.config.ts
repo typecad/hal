@@ -20,31 +20,21 @@ const config: CuttlefishConfig = {
   entry: './src/main.ts',
 
   // Target architecture
-  target: 'samd21',
+
   // MCU package — provides silicon-level pin definitions
-  mcu: '@typecad/mcu-samd21',
 
   // Board package — provides pin definitions and board constants
-  board: '@typecad/board-nano-33-iot',
+  board: 'arduino_nano_33_iot/samd21g18a',
 
   // Framework package — controls code generation strategy
   framework: '@typecad/framework-zephyr',
   // Framework data
-  frameworkData: {
-    buildTarget: 'arduino_nano_33_iot/samd21g18a',
-  },
-
   // Output / build options
   output: {
-    framework: 'zephyr',
     outDir: './out',
   },
 
   // Toolchain configuration
-  toolchain: {
-    type: 'west',
-  },
-
   // Zephyr-specific: flash over the built-in USB bootloader. 'bossac' is one
   // of the board's named probe methods — put the board in bootloader mode
   // (double-tap reset) before `--upload`. It cannot debug; for that use the

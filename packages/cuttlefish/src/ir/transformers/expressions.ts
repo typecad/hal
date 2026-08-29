@@ -30,6 +30,15 @@ export function expressionStatementToIR(
     return callToStatement(statement, expr, fileName, sourceText, diagnostics, pointerVars);
   }
 
+  // `void expr();` — the fire-and-forget idiom. Lower the inner call like a
+  // bare call statement (the raw (void)(...) form drops it entirely, which
+  // silently skipped the async-method kickoff: `void b.run();`). Free async
+  // function calls reaching here are still filtered at top level (their
+  // tasks auto-start), so the idiom keeps its meaning there.
+  if (ts.isVoidExpression(expr) && ts.isCallExpression(expr.expression)) {
+    return callToStatement(statement, expr.expression, fileName, sourceText, diagnostics, pointerVars);
+  }
+
   if (ts.isAwaitExpression(expr) && ts.isCallExpression(expr.expression)) {
     const callStmt = callToStatement(statement, expr.expression, fileName, sourceText, diagnostics, pointerVars);
     if (callStmt && callStmt.kind === "call") {
@@ -464,13 +473,10 @@ export function expressionStatementToIR(
  *  timing.delay is included because `delay()` from @typecad/hal resolves to a
  *  hal-op, dropping the isAwaited flag the state machine keys on. */
 const AWAITABLE_HAL_OPS = new Set<string>([
-  "timing.delay",
-  "wifi.connect",
-  "wifi.wait_connected",
-  "wifi.wait_disconnected",
+  "timing.sleep",
+  "wifi.join",
   "wifi.scan",
   "http.send",
-  "ble.until_connected",
   // Worker offload: `await worker.submit(...)` rewrites to submit + poll
   // worker.done — mirrors `await http.send(...)`. The start op is worker.submit
   // (emitted by the previous state segment); the poll predicate is worker.done.

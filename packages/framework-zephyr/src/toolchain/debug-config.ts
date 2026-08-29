@@ -29,7 +29,7 @@ export interface DebugConfigOptions {
   /** Absolute path to the workspace root (the cuttlefish config dir — the folder VS Code has open). */
   workspaceRoot: string;
   /** The Zephyr app dir relative to the workspace root (e.g. 'src/out'). */
-  sketchRel: string;
+  appRel: string;
   /** The Zephyr board id (e.g. 'esp32s3_devkitc'). */
   target: string;
   /** Absolute path to the Zephyr build dir (<projectRoot>/build) — read for the SDK/GDB path. */
@@ -101,7 +101,7 @@ function compareSdkVersions(a: string, b: string): number {
  * Probe the well-known Zephyr SDK install locations, newest version first:
  *   1. $ZEPHYR_SDK_INSTALL_DIR (the var board.cmake reads)
  *   2. <MAMBA_ROOT_PREFIX | ~/micromamba>/zephyr-sdk/zephyr-sdk-<ver> — the
- *      @typecad/zephyr-installer layout
+ *      the bundled Zephyr installer layout
  *   3. ~/zephyr-sdk-<ver> — the standalone download layout
  *
  * Only roots that actually contain the esp32s3 GDB are useful to callers;
@@ -144,44 +144,59 @@ export function discoverZephyrSdkRoots(opts?: {
 }
 
 /**
- * Resolve the Espressif OpenOCD binary path. The esp32s3 needs the Espressif
- * OpenOCD fork (openocd-esp32) — not the Zephyr SDK's openocd and not a
+ * Resolve the OpenOCD binary path. The esp32s3 needs the Espressif OpenOCD
+ * fork (openocd-esp32) — not the Zephyr SDK's openocd and not a
  * generic/GDB-stub build — because only it carries the Xtensa + esp_usb_jtag
- * support. It is NOT on PATH by default, so Cortex-Debug must be pointed at it
- * explicitly or it fails with `spawn openocd.exe ENOENT`.
+ * support. ARM targets prefer the Zephyr SDK's own openocd (it ships the
+ * interface/target cfgs boards reference); the Espressif fork is only
+ * consulted for esp32 targets.
  *
  * Discovery order:
- *   1. ESPRESSIF_TOOLCHAIN_PATH env (the var board.cmake reads) — if set, its
- *      openocd-esp32/bin/openocd.exe.
+ *   1. ESPRESSIF_TOOLCHAIN_PATH env (the var board.cmake reads) — esp32
+ *      targets; its openocd-esp32/bin/openocd.exe.
  *   2. The standard ESP-IDF install layout: ~/.espressif/tools/openocd-esp32/
- *      <version>/openocd-esp32/bin/openocd.exe. Pick the newest version dir.
+ *      <version>/openocd-esp32/bin/openocd.exe (esp32 targets; newest first).
+ *   3. A Zephyr SDK root (discoverZephyrSdkRoots) — its
+ *      tools/opt/openocd/bin/openocd(.exe), any target.
  * Returns undefined if not found (the launch.json then omits openOCDPath and
  * Cortex-Debug falls back to PATH / its openocdPath setting).
  */
-export function resolveOpenOcdPath(): string | undefined {
+export function resolveOpenOcdPath(target?: string): string | undefined {
+  const isEsp32Target = (target ?? '').split('/')[0].startsWith('esp32');
   const candidates: string[] = [];
-  // 1. ESPRESSIF_TOOLCHAIN_PATH env
-  const envPath = process.env.ESPRESSIF_TOOLCHAIN_PATH;
-  if (envPath) {
-    candidates.push(join(envPath, 'openocd-esp32', 'bin', 'openocd.exe'));
+  if (isEsp32Target) {
+    // 1. ESPRESSIF_TOOLCHAIN_PATH env
+    const envPath = process.env.ESPRESSIF_TOOLCHAIN_PATH;
+    if (envPath) {
+      candidates.push(join(envPath, 'openocd-esp32', 'bin', 'openocd.exe'));
+    }
+    // 2. ~/.espressif/tools/openocd-esp32/<version>/openocd-esp32/bin/openocd.exe
+    const home = process.env.USERPROFILE || process.env.HOME;
+    if (home) {
+      const base = join(home, '.espressif', 'tools', 'openocd-esp32');
+      let versions: string[] = [];
+      try {
+        versions = readdirSync(base).filter((v) =>
+          existsSync(join(base, v, 'openocd-esp32', 'bin', 'openocd.exe')),
+        );
+      } catch {
+        // dir absent
+      }
+      // newest version last — sort then reverse so the highest wins on match.
+      versions.sort().reverse();
+      for (const v of versions) {
+        candidates.push(join(base, v, 'openocd-esp32', 'bin', 'openocd.exe'));
+      }
+    }
   }
-  // 2. ~/.espressif/tools/openocd-esp32/<version>/openocd-esp32/bin/openocd.exe
-  const home = process.env.USERPROFILE || process.env.HOME;
-  if (home) {
-    const base = join(home, '.espressif', 'tools', 'openocd-esp32');
-    let versions: string[] = [];
-    try {
-      versions = readdirSync(base).filter((v) =>
-        existsSync(join(base, v, 'openocd-esp32', 'bin', 'openocd.exe')),
-      );
-    } catch {
-      // dir absent
-    }
-    // newest version last — sort then reverse so the highest wins on match.
-    versions.sort().reverse();
-    for (const v of versions) {
-      candidates.push(join(base, v, 'openocd-esp32', 'bin', 'openocd.exe'));
-    }
+  // 3. The Zephyr SDK's openocd (ARM targets' interface/target cfgs ship
+  // with it — interface/stlink-dap.cfg, target/stm32f4x.cfg, ...). Layout
+  // differs by SDK generation: 1.0.x hosttools/openocd, 0.17.x
+  // tools/opt/openocd (when present).
+  const exe = process.platform === 'win32' ? 'openocd.exe' : 'openocd';
+  for (const sdkRoot of discoverZephyrSdkRoots()) {
+    candidates.push(join(sdkRoot, 'hosttools', 'openocd', 'bin', exe));
+    candidates.push(join(sdkRoot, 'tools', 'opt', 'openocd', 'bin', exe));
   }
   for (const c of candidates) {
     if (existsSync(c)) return resolve(c).replace(/\\/g, '/');
@@ -202,13 +217,13 @@ export function resolveOpenOcdPath(): string | undefined {
  * THAT as the workspace root. This makes F5 work when a user opens the project
  * folder directly, and keeps launch.json paths relative to it.
  *
- * Returns { workspaceRoot, sketchRel } where workspaceRoot is the cuttlefish
- * project root (the `.vscode/` target) and sketchRel is the Zephyr app dir
+ * Returns { workspaceRoot, appRel } where workspaceRoot is the cuttlefish
+ * project root (the `.vscode/` target) and appRel is the Zephyr app dir
  * (`projectRoot`) relative to it (e.g. 'src/out').
  */
 export function resolveDebugLocations(projectRoot: string): {
   workspaceRoot: string;
-  sketchRel: string;
+  appRel: string;
 } {
   // Walk up from the Zephyr app dir to find the cuttlefish project root (the
   // nearest ancestor containing cuttlefish.config.ts). Fall back to projectRoot
@@ -225,8 +240,8 @@ export function resolveDebugLocations(projectRoot: string): {
     dir = parent;
   }
 
-  const sketchRel = relative(workspaceRoot, resolve(projectRoot)).replace(/\\/g, '/');
-  return { workspaceRoot, sketchRel };
+  const appRel = relative(workspaceRoot, resolve(projectRoot)).replace(/\\/g, '/');
+  return { workspaceRoot, appRel };
 }
 
 /** Read-merge-write a JSON file, adding/replacing a single config by a key. */
@@ -320,7 +335,7 @@ function buildLaunchConfig(
 ): Record<string, unknown> {
   // The ELF is at <projectRoot>/build/zephyr/zephyr.elf (Zephyr's standard
   // build output). cortex-debug uses `executable` (not `program`).
-  const executable = `\${workspaceFolder}/${o.sketchRel}/build/zephyr/zephyr.elf`;
+  const executable = `\${workspaceFolder}/${o.appRel}/build/zephyr/zephyr.elf`;
 
   // OpenOCD cfg relative to the workspace root so cortex-debug can pass it
   // via the -f flag.  Must be a list; cortex-debug prepends -f per entry.
@@ -332,7 +347,7 @@ function buildLaunchConfig(
   // OpenOCD binary path — the Espressif fork (openocd-esp32) is required for
   // the esp_usb_jtag adapter.  cortex-debug's `serverpath` tells it where to
   // find the binary (not on PATH by default).
-  const openocdPath = resolveOpenOcdPath();
+  const openocdPath = resolveOpenOcdPath(o.target);
 
   // Post-attach commands executed after GDB connects to the OpenOCD gdbserver.
   //   set mem inaccessible-by-default off — suppresses "Cannot access memory"
@@ -421,7 +436,7 @@ function buildTask(o: DebugConfigOptions): Record<string, unknown> {
     label: 'cuttlefish: build + flash (debug)',
     type: 'shell',
     command: 'npx cuttlefish build --compile --upload --debug',
-    options: { cwd: `\${workspaceFolder}/${o.sketchRel}` },
+    options: { cwd: `\${workspaceFolder}/${o.appRel}` },
     group: { kind: 'build', isDefault: false },
     problemMatcher: [],
   };
@@ -450,11 +465,43 @@ const OPENOCD_ADAPTER_SPEED = 4000;
  * helper/RTOS tcl, so the override can land before the driver exists or be
  * re-defaulted). Putting it in the cfg, after the source, is deterministic.
  */
-function buildOpenOcdCfg(method?: ZephyrProbeMethod): string {
+/**
+ * Drop the gdb-attach/gdb-detach target-event blocks from a cfg line list.
+ * Board cfgs use them for standalone openocd sessions (reset on attach,
+ * resume on detach), but under VS Code they fire DURING cortex-debug's
+ * initialization — the unexpected stop event aborts the session setup
+ * ("Program stopped, probably due to a reset and/or halt issued by
+ * debugger") and the toolbar never enables. The IDE owns the lifecycle.
+ */
+function stripGdbEventBlocks(lines: readonly string[]): string[] {
+  const out: string[] = [];
+  let skipping = false;
+  let depth = 0;
+  for (const line of lines) {
+    if (!skipping && /configure\s+-event\s+gdb-(attach|detach)/.test(line)) {
+      skipping = true;
+      depth = 0;
+    }
+    if (skipping) {
+      depth += (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
+      if (depth <= 0 && (line.includes('}') || !line.includes('{'))) skipping = false;
+      continue;
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+function buildOpenOcdCfg(method?: ZephyrProbeMethod, target?: string): string {
   const header = [
     '# Auto-generated by @typecad/framework-zephyr. Do not edit — regenerate',
     '# with `cuttlefish build --debug`.',
   ];
+  // Zephyr RTOS awareness (thread names in the call stack) — appended after
+  // the target source on ARM targets; the ESP32 board cfgs already carry
+  // ESP_RTOS Zephyr.
+  const isEsp32 = (target ?? '').split('/')[0].startsWith('esp32');
+  const rtosLine = isEsp32 ? [] : ['$_TARGETNAME configure -rtos Zephyr'];
   if (method?.debugCfgSource && method.debugCfgSource.length > 0) {
     // Probe-method-driven config: the board package's verified interface +
     // target sources, then the method's quirk lines (e.g. reset_config for an
@@ -463,7 +510,23 @@ function buildOpenOcdCfg(method?: ZephyrProbeMethod): string {
       ...header,
       `# Probe method '${method.id}' — from the board package's probeMethods table.`,
       ...method.debugCfgSource.map((src) => `source [find ${src}]`),
-      ...(method.debugCfg ?? []),
+      ...stripGdbEventBlocks(method.debugCfg ?? []),
+      ...rtosLine,
+      '',
+    ].join('\n');
+  }
+  // Pack-derived methods (the board's own support/openocd.cfg, extracted by
+  // the board data pack) carry complete cfg lines — including their
+  // `source [find ...]` directives — verbatim in file order, minus the
+  // gdb-attach/detach events (IDE-managed lifecycle; see stripGdbEventBlocks).
+  if (method?.debugCfg && method.debugCfg.length > 0) {
+    return [
+      ...header,
+      `# Probe method '${method.id}' — the board's own support/openocd.cfg,`,
+      `# extracted by the board data pack (gdb-attach/detach events removed —`,
+      `# the IDE owns the session lifecycle).`,
+      ...stripGdbEventBlocks(method.debugCfg),
+      ...rtosLine,
       '',
     ].join('\n');
   }
@@ -531,8 +594,8 @@ export function writeDebugConfig(o: DebugConfigOptions): void {
   // cortex-debug configFiles.  cortex-debug starts OpenOCD as a child process
   // and passes this file via -f.
   const openOcdCfgPath = join(cuttlefishDir, 'openocd.cfg');
-  writeFileSync(openOcdCfgPath, buildOpenOcdCfg(method), 'utf-8');
-  const openOcdCfgRel = `${o.sketchRel}/.cuttlefish/openocd.cfg`;
+  writeFileSync(openOcdCfgPath, buildOpenOcdCfg(method, o.target), 'utf-8');
+  const openOcdCfgRel = `${o.appRel}/.cuttlefish/openocd.cfg`;
 
   // launch.json — merge the cortex-debug config by name.
   const gdbScript = generateGdbScript(o.sourceMapPath);
@@ -540,7 +603,7 @@ export function writeDebugConfig(o: DebugConfigOptions): void {
   if (gdbScript) {
     const scriptPath = join(cuttlefishDir, '.cuttlefish-gdb.py');
     writeFileSync(scriptPath, gdbScript, 'utf-8');
-    gdbScriptRel = `${o.sketchRel}/.cuttlefish/.cuttlefish-gdb.py`;
+    gdbScriptRel = `${o.appRel}/.cuttlefish/.cuttlefish-gdb.py`;
   }
 
   const launchConfig = buildLaunchConfig(o, gdbScriptRel, openOcdCfgRel, method);
@@ -560,7 +623,7 @@ export function writeDebugConfig(o: DebugConfigOptions): void {
  * debug artifacts — always lands at `src/out`. Keep in sync with
  * generateProjectConfig in @typecad/cuttlefish create/templates.ts.
  */
-const STARTER_SKETCH_REL = 'src/out';
+const STARTER_APP_REL = 'src/out';
 
 /**
  * Create-time starter debug artifacts. Called by the cuttlefish `create` flow
@@ -585,11 +648,11 @@ export function writeProjectDebugArtifacts(o: {
 }): string[] {
   if (new ZephyrStrategy().debugMode(o.buildTarget) !== 'gdb') return [];
   const workspaceRoot = resolve(o.workspaceRoot);
-  const projectRoot = join(workspaceRoot, STARTER_SKETCH_REL);
+  const projectRoot = join(workspaceRoot, STARTER_APP_REL);
   writeDebugConfig({
     projectRoot,
     workspaceRoot,
-    sketchRel: STARTER_SKETCH_REL,
+    appRel: STARTER_APP_REL,
     target: o.buildTarget ?? '',
     // No build dir exists yet — resolveGdbPath falls back to probing known
     // Zephyr SDK locations so gdbPath is still filled in when possible.
@@ -598,6 +661,6 @@ export function writeProjectDebugArtifacts(o: {
   return [
     '.vscode/launch.json',
     '.vscode/tasks.json',
-    `${STARTER_SKETCH_REL}/.cuttlefish/openocd.cfg`,
+    `${STARTER_APP_REL}/.cuttlefish/openocd.cfg`,
   ];
 }

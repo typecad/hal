@@ -1,6 +1,5 @@
 ---
 "@typecad/cuttlefish": minor
-"@typecad/framework-arduino": minor
 "@typecad/framework-zephyr": minor
 ---
 

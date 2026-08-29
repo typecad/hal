@@ -8,11 +8,10 @@ import { isStringEnum } from "../api/shared/index.js";
 import type { ParameterIR } from "../api/shared/ir-core.js";
 import { makeDiagnostic } from "./ast-node-utils.js";
 import { buildFunctionReturnTypeMap, CppTypeHint } from "./type-resolution.js";
-import { resolveBoardConstants, tryResolveBoardDefFile, BoardConstants } from "./board-resolver.js";
+import { tryResolveBoardDefFile, findGeneratedBoard, readGeneratedBoardConstants, BoardConstants } from "./board-resolver.js";
 import { analyzePeripheralUsage, createEmptyPeripheralUsage, PeripheralUsage } from "./peripheral-usage.js";
 import { runProgramValidations } from "./validation-orchestrator.js";
 import { registerFieldMap, hoistedNestedFunctions, hoistedNestedClasses, hoistedNestedEnums, hoistedNestedInterfaces, hoistedNestedTypeAliases, activeNamespaceNames, activeEnumNames, activeStringEnumNames, peripheralAliasMap, pinAliasMap, mcuPinForwardMap, mcuPinReverseMap, topLevelClassNames, topLevelInterfaceNames, classTypeNames, topLevelClasses, requiredIncludes, resetBuildState, getCurrentBoardConstants, setCurrentBoardConstants, contextStorage, CompilationContext, registeredCallbacks, getContext, discriminatedUnionVariantNames, restParamFunctions, topLevelAliasReceivers } from "./build-ir-state.js";
-import { pinShadowVarName, takeShadowDeclarations, resetPinStateTracking, markShadowUpdatingOps } from "./pin-state-tracking.js";
 import { collectPointerVars, expressionStatementToIR, lowerStatement, variableStatementToIR, prescanArrayUsage, lowerStatementList } from "./statement-to-ir.js";
 import { registerUIModuleImport, registerElementValue, recordClickHandler, recordBinding } from "./transformers/ui-call-resolver.js";
 import { requireUIHook } from "../ui-hook.js";
@@ -140,7 +139,7 @@ function resolveUIImportPath(fromFile: string, moduleSpecifier: string): string 
   return undefined;
 }
 
-export function buildProgramIR(fileName: string, sourceText: string, boardPackage?: string, prebuiltClassMap?: Map<string, ClassIR>): ProgramIR {
+export function buildProgramIR(fileName: string, sourceText: string, boardTarget?: string, prebuiltClassMap?: Map<string, ClassIR>): ProgramIR {
   const parentStrategy = getContext().activeStrategy;
   return contextStorage.run(new CompilationContext(), () => {
     getContext().activeStrategy = parentStrategy;
@@ -181,7 +180,6 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   // Reset module-level state for this file
   resetBuildState();
   resetHALResolver();
-  resetPinStateTracking();
   registerFieldMap.clear();
 
   // Phase 0: Pre-scan for top-level classes and register them so type inference can resolve them.
@@ -301,7 +299,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
       // lowered to IR, but `ui` itself must NOT be emitted as a C++ value
       // (it would synthesize a bogus _ui_t struct). Drop it from the imports
       // IR so the emit path never sees it as an imported value.
-      const isUiPackage = moduleSpecifier === '@typecad/ui' || moduleSpecifier === '@typecad/ui';
+      const isUiPackage = moduleSpecifier === '@typecad/ui';
       const filteredImports = isUiPackage
         ? namedImports.filter((n) => n !== 'ui')
         : namedImports;
@@ -309,10 +307,10 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     }
   }
   for (const imp of earlyImports) {
-    const boardFile = tryResolveBoardDefFile(fileName, imp.moduleSpecifier, boardPackage);
+    const boardFile = tryResolveBoardDefFile(fileName, imp.moduleSpecifier, boardTarget);
     if (boardFile) {
       try {
-        setCurrentBoardConstants(resolveBoardConstants(boardFile));
+        setCurrentBoardConstants(readGeneratedBoardConstants(boardFile));
       } catch {
         // Non-fatal
       }
@@ -320,19 +318,20 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
     }
   }
   // If only the default board constants are loaded (4 keys from getDefaultBoardConstants),
-  // try the config's boardPackage directly. This covers the case where board()/boardResolve()
-  // is imported from @typecad/hal but no @typecad/board-* import is present in the user's code.
+  // load the generated board manifest directly — covers the case where board()/boardResolve()
+  // is imported from @typecad/hal but no @typecad/board import is present in the user's code.
   const currentBC = getCurrentBoardConstants();
-  if (currentBC && currentBC.size <= 4 && boardPackage) {
-    const boardFile = tryResolveBoardDefFile(fileName, boardPackage, boardPackage);
-    if (boardFile) {
+  if (currentBC && currentBC.size <= 4) {
+    const generated = findGeneratedBoard(fileName);
+    if (generated) {
       try {
-        setCurrentBoardConstants(resolveBoardConstants(boardFile));
+        setCurrentBoardConstants(readGeneratedBoardConstants(generated.boardJson));
       } catch {
         // Non-fatal
       }
     }
   }
+  void boardTarget;
 
   // Phase 0c-bis: register UI module imports (name → .ui.html path) so
   // ui.mount(screen, ...) can resolve `screen` back to its source tree.
@@ -442,21 +441,21 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
         }
       }
 
-      // Track HAL instances imported from board packages and framework HAL
-      // subpaths so the HAL resolver can resolve them to framework C++ names.
-      // The `@typecad/board` virtual import resolves to the board package, so it
-      // also registers pin aliases (LED, etc.). Case-insensitive on the scope.
+      // Track HAL instances imported from the board module (virtual
+      // `@typecad/board`, or a legacy `@typecad/board-*` package import from
+      // pre-boardgen projects, which resolves against the project's generated
+      // board constants) so the HAL resolver can resolve them to framework
+      // C++ names. Case-insensitive.
       const lowerSpecifier = moduleSpecifier.toLowerCase();
       const isHALSource = lowerSpecifier.startsWith('@typecad/board-')
-        || lowerSpecifier === '@typecad/board'
-        || /^@typecad\/framework-[a-z0-9-]+\/(arduino|hal|gpio)$/.test(lowerSpecifier);
+        || lowerSpecifier === '@typecad/board';
 
       // UI authoring namespace: `import { ui } from "@typecad/ui"`. The `ui`
       // value is a compile-time construct (its calls are intercepted by
       // tryResolveUICall); it must NOT be emitted as a C++ struct/value.
       // Treat it like the HAL namespace imports (Pulse/Shift/Random): register
       // as a namespace name and skip, so no struct is synthesized.
-      if (moduleSpecifier === '@typecad/ui' || moduleSpecifier === '@typecad/ui') {
+      if (moduleSpecifier === '@typecad/ui') {
         for (const name of namedImports) {
           if (name === 'ui') {
             activeNamespaceNames.add(name);
@@ -530,7 +529,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
           // I2C buses: I2C0, I2C1, ...
           const i2cMatch = name.match(/^I2C(\d+)$/);
           if (i2cMatch) {
-            const alias = peripheralAliasMap.get(name) ?? (i2cMatch[1] === '0' ? 'Wire' : `Wire${i2cMatch[1]}`);
+            const alias = peripheralAliasMap.get(name) ?? `I2C${i2cMatch[1]}`;
             halInstances.set(name, { className: "I2CBus", fieldValues: new Map([["_bus", alias]]) });
             continue;
           }
@@ -538,7 +537,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
           // SPI buses: SPI0, SPI1, ...
           const spiMatch = name.match(/^SPI(\d+)$/);
           if (spiMatch) {
-            const alias = peripheralAliasMap.get(name) ?? (spiMatch[1] === '0' ? 'SPI' : `SPI${spiMatch[1]}`);
+            const alias = peripheralAliasMap.get(name) ?? `SPI${spiMatch[1]}`;
             halInstances.set(name, { className: "SPIBus", fieldValues: new Map([["_bus", alias]]) });
             continue;
           }
@@ -546,7 +545,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
           // UART: UART0, UART1, ...
           const uartMatch = name.match(/^UART(\d+)$/);
           if (uartMatch) {
-            const alias = peripheralAliasMap.get(name) ?? (uartMatch[1] === '0' ? 'Serial' : `Serial${uartMatch[1]}`);
+            const alias = peripheralAliasMap.get(name) ?? `UART${uartMatch[1]}`;
             halInstances.set(name, { className: "SerialPort", fieldValues: new Map([["_port", alias]]) });
             continue;
           }
@@ -554,8 +553,8 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
           // USB CDC serial ports: USB0, USB1, ...
           const usbMatch = name.match(/^USB(\d+)$/);
           if (usbMatch) {
-            const alias = peripheralAliasMap.get(name) ?? (usbMatch[1] === '0' ? 'USBSerial' : `USBSerial${usbMatch[1]}`);
-            halInstances.set(name, { className: "USBSerialPort", fieldValues: new Map([["_port", alias]]) });
+            const alias = peripheralAliasMap.get(name) ?? `USB${usbMatch[1]}`;
+            halInstances.set(name, { className: "USBConsole", fieldValues: new Map([["_port", alias]]) });
             continue;
           }
 
@@ -906,21 +905,6 @@ export function buildProgramIR(fileName: string, sourceText: string, boardPackag
   // write/toggle ops, while this file's tracker state is still live (the
   // next file's build resets it, and emit runs after every file is built —
   // multi-file programs would lose the updates otherwise). Then consume the
-  // shadow declarations — pins whose reads lowered to the shadow variable
-  // form need a file-scope declaration.
-  markShadowUpdatingOps(program);
-  const shadowDecls = takeShadowDeclarations();
-  for (const { pin, initial } of shadowDecls) {
-    program.topLevelStatements.unshift({
-      kind: "var_decl",
-      sourceSpan: { filePath: fileName, startOffset: 0, endOffset: 0, startLine: 0, startColumn: 0, endLine: 0, endColumn: 0 },
-      name: pinShadowVarName(pin),
-      storage: "var",
-      cppType: "bool",
-      initializer: { kind: "boolean", value: initial },
-    });
-  }
-
   return program;
   });
 }

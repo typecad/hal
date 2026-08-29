@@ -1,87 +1,78 @@
+// ---------------------------------------------------------------------------
+// Store — the thin persistent key/value store
+//
+// The namespace is the CONSTRUCTION fact: `new Store('app')` rides every op
+// as the settings subtree prefix (tc/app/<key> on Zephyr's settings/ZMS
+// backend). There is no session to open or close — the backend loads once at
+// boot and every verb maps 1:1 onto a settings write/read/delete:
+//
+//   setInt/getInt, setFloat/getFloat, setBool/getBool,
+//   setString/getString  — typed pairs; get takes a REQUIRED default (no
+//                          hidden = 0 magic value)
+//   remove(key)          → settings_delete
+//   clear()              → delete every tc/<ns>/* key this app wrote
+//
+// Values survive re-flashing the application: they live in the board's
+// storage partition, not the app image.
+// ----------------------------------------------------------------------------
+
 import {
-  preferencesBegin,
-  preferencesEnd,
-  preferencesClear,
-  preferencesRemove,
-  preferencesPutInt,
-  preferencesGetInt,
-  preferencesPutUInt,
-  preferencesGetUInt,
-  preferencesPutBool,
-  preferencesGetBool,
-  preferencesPutFloat,
-  preferencesGetFloat,
-  preferencesPutString,
-  preferencesGetString,
+  preferencesPutInt, preferencesGetInt,
+  preferencesPutFloat, preferencesGetFloat,
+  preferencesPutBool, preferencesGetBool,
+  preferencesPutString, preferencesGetString,
+  preferencesRemove, preferencesClear,
 } from './emit.js';
 
-/**
- * Preferences — a persistent key/value store, lowered to native NVS
- * (nvs_flash / nvs_open / nvs_set_* / nvs_get_*) by framework-esp32.
- *
- * No include() calls here — NVS headers are framework-owned and added via
- * forcedIncludes when the program uses preferences.* ops. Method bodies pass
- * parameters directly into semantic calls so the resolver can statically track
- * every argument (matching the WiFi/HTTP HAL pattern).
- */
-export class PreferencesClass {
-  static readonly __instance_name = "Preferences";
+export class Store {
+  private readonly _ns: string;
 
-  begin(name: string, readOnly: boolean = false): void {
-    preferencesBegin(name, readOnly);
+  /** Construct the store for a namespace ('app' → settings subtree tc/app/). */
+  constructor(ns: string) {
+    this._ns = ns;
   }
 
-  end(): void {
-    preferencesEnd();
+  setInt(key: string, value: number): void {
+    preferencesPutInt(this._ns, key, value);
   }
 
-  clear(): void {
-    preferencesClear();
+  getInt(key: string, defaultValue: number): number {
+    return preferencesGetInt(this._ns, key, defaultValue);
   }
 
+  setFloat(key: string, value: number): void {
+    preferencesPutFloat(this._ns, key, value);
+  }
+
+  getFloat(key: string, defaultValue: number): number {
+    return preferencesGetFloat(this._ns, key, defaultValue);
+  }
+
+  setBool(key: string, value: boolean): void {
+    preferencesPutBool(this._ns, key, value);
+  }
+
+  getBool(key: string, defaultValue: boolean): boolean {
+    return preferencesGetBool(this._ns, key, defaultValue);
+  }
+
+  setString(key: string, value: string): void {
+    preferencesPutString(this._ns, key, value);
+  }
+
+  /** Read a string back. The value lands in the shim's ring buffer — copy
+   *  what you need before the next get on the same key. */
+  getString(key: string, defaultValue: string): string {
+    return preferencesGetString(this._ns, key, defaultValue);
+  }
+
+  /** Delete one key (flash + cache). No-op when absent. */
   remove(key: string): void {
-    preferencesRemove(key);
+    preferencesRemove(this._ns, key);
   }
 
-  putInt(key: string, value: number): void {
-    preferencesPutInt(key, value);
-  }
-
-  getInt(key: string, defaultValue: number = 0): number {
-    return preferencesGetInt(key, defaultValue);
-  }
-
-  putUInt(key: string, value: number): void {
-    preferencesPutUInt(key, value);
-  }
-
-  getUInt(key: string, defaultValue: number = 0): number {
-    return preferencesGetUInt(key, defaultValue);
-  }
-
-  putBool(key: string, value: boolean): void {
-    preferencesPutBool(key, value);
-  }
-
-  getBool(key: string, defaultValue: boolean = false): boolean {
-    return preferencesGetBool(key, defaultValue);
-  }
-
-  putFloat(key: string, value: number): void {
-    preferencesPutFloat(key, value);
-  }
-
-  getFloat(key: string, defaultValue: number = 0): number {
-    return preferencesGetFloat(key, defaultValue);
-  }
-
-  putString(key: string, value: string): void {
-    preferencesPutString(key, value);
-  }
-
-  getString(key: string, defaultValue: string = ""): string {
-    return preferencesGetString(key, defaultValue);
+  /** Delete every key under this store's namespace. */
+  clear(): void {
+    preferencesClear(this._ns);
   }
 }
-
-export const Preferences = new PreferencesClass();

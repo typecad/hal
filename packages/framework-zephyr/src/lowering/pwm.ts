@@ -30,9 +30,18 @@ export function pwmDtAliasToken(spec: ZephyrPwmSpec): string {
   return pwmDtAlias(spec).replace(/-/g, '_');
 }
 
-/** Look up a PWM spec by HAL pin number. */
-function findPwmSpec(chip: ZephyrChipDescriptor, pin: number): ZephyrPwmSpec | undefined {
-  return chip.pwm?.specs.find((s) => s.pin === pin);
+/**
+ * Look up a PWM spec by HAL pin number. Matrix pins (ESP32 LEDC) synthesize
+ * a spec on the fly: the channel is inert here — the emitted C++ addresses
+ * the pin only via its `tc-pwm<pin>` alias (the DT pwms cell carries the
+ * real channel, assigned by the overlay generator over the driven pins).
+ */
+export function findPwmSpec(chip: ZephyrChipDescriptor, pin: number): ZephyrPwmSpec | undefined {
+  const spec = chip.pwm?.specs.find((s) => s.pin === pin);
+  if (spec) return spec;
+  const m = chip.pwm?.matrix;
+  if (m && m.pins.includes(pin)) return { pin, controller: m.controller, channel: 0 };
+  return undefined;
 }
 
 /** The C variable name emitted for a PWM channel's spec. */
@@ -55,6 +64,21 @@ export function pwmInitLines(chip: ZephyrChipDescriptor, usedPins?: ReadonlySet<
     lines.push(
       `static const struct pwm_dt_spec ${pwmVarName(spec)} = PWM_DT_SPEC_GET(DT_ALIAS(${pwmDtAliasToken(spec)}));`,
     );
+  }
+  // Matrix pins (ESP32 LEDC): one alias per driven pin, ascending — the same
+  // order the overlay generator assigns channels in, though the C++ never
+  // needs the channel (the DT pwms cell carries it). An omitted usage set
+  // (probe paths) emits every matrix pin, mirroring the static behavior.
+  const m = chip.pwm?.matrix;
+  if (m) {
+    const pins = (usedPins ? [...usedPins].filter((p) => m.pins.includes(p)) : [...m.pins])
+      .sort((a, b) => a - b);
+    for (const pin of pins) {
+      const spec: ZephyrPwmSpec = { pin, controller: m.controller, channel: 0 };
+      lines.push(
+        `static const struct pwm_dt_spec ${pwmVarName(spec)} = PWM_DT_SPEC_GET(DT_ALIAS(${pwmDtAliasToken(spec)}));`,
+      );
+    }
   }
   lines.push('// CUTTLEFISH_PWM_END');
   return lines;
@@ -79,10 +103,6 @@ export function lowerPwm(
   const v = pwmVarName(spec);
 
   switch (op.operation) {
-    case 'pwm.write': {
-      // Duty is 0–255 (Arduino analogWrite). Scale to ns against the period.
-      return { code: `pwm_set_pulse_dt(&${v}, (static_cast<uint32_t>(${o.duty}) * ${v}.period) / 255);` };
-    }
     case 'pwm.get_frequency': {
       // Prefer the board's declared max frequency — the SAME constant the
       // transpiler folds getPwmFrequency() to (peripherals.pwm.maxFrequency),
@@ -96,6 +116,34 @@ export function lowerPwm(
       // The board's declared PWM resolution when it has one (matches the
       // constant fold); otherwise the Arduino-compatible 8-bit duty range.
       return { expression: String(chip.pwm?.resolutionBits ?? 8) };
+
+    // ── Thin PWM (hal/pwm-pin.ts) — ns-true verbs ──────────────────────────
+    // Zephyr 4.4 has pwm_set_dt (period + pulse) and pwm_set_pulse_dt (pulse
+    // only) — no period-only setter. The construction period is established
+    // once via pwm_set_dt(period, pulse 0 = line idle), then every set is one
+    // pwm_set_pulse_dt. No 0–255 scaling anywhere.
+    case 'pwm.set_pulse': {
+      return {
+        code: `{ static bool __tc_pwm_p${o.pin}_prd = false; if (!__tc_pwm_p${o.pin}_prd) { (void)pwm_set_dt(&${v}, ${o.periodNs}, 0); __tc_pwm_p${o.pin}_prd = true; } (void)pwm_set_pulse_dt(&${v}, ${o.pulseNs}); }`,
+      };
+    }
+    case 'pwm.set_duty': {
+      // duty is 0.0–1.0; pulse = duty × the construction period.
+      return {
+        code: `{ static bool __tc_pwm_p${o.pin}_prd = false; if (!__tc_pwm_p${o.pin}_prd) { (void)pwm_set_dt(&${v}, ${o.periodNs}, 0); __tc_pwm_p${o.pin}_prd = true; } (void)pwm_set_pulse_dt(&${v}, static_cast<uint32_t>(static_cast<double>(${o.duty}) * static_cast<double>(${o.periodNs}))); }`,
+      };
+    }
+    case 'pwm.set_period': {
+      // No period-only API: pwm_set_dt applies the new period and resets the
+      // pulse to idle — follow with setPulse/setDuty to drive the line.
+      return { code: `(void)pwm_set_dt(&${v}, ${o.periodNs}, 0);` };
+    }
+    case 'pwm.tone': {
+      // 50% square wave at hz: period = 1e9/hz, pulse = period/2.
+      return {
+        code: `{ uint32_t __p = (${o.hz} > 0) ? static_cast<uint32_t>(1000000000ULL / static_cast<uint64_t>(${o.hz})) : 0U; (void)pwm_set_dt(&${v}, __p, __p / 2U); }`,
+      };
+    }
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +

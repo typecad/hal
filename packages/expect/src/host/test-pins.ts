@@ -104,18 +104,16 @@ function findPackageDir(fromDir: string, packageName: string): string | undefine
 }
 
 /**
- * Load the configured board's test-pins.json.
- * Returns undefined when the board package or its test-pins.json is absent.
+ * Load the project's test-pins.json (project-local — board packages are
+ * gone; a project that wants role pins carries them itself).
+ * Returns undefined when absent.
  */
-export function boardTestPins(board: string, projectRoot: string): TestPinsData | undefined {
-  const packageDir = findPackageDir(projectRoot, board);
-  if (!packageDir) return undefined;
-
-  const jsonPath = path.join(packageDir, 'test-pins.json');
+export function boardTestPins(_board: string, projectRoot: string): TestPinsData | undefined {
+  void _board;
+  const jsonPath = path.join(projectRoot, 'test-pins.json');
   if (!fs.existsSync(jsonPath)) return undefined;
-
   try {
-    return JSON.parse(fs.readFileSync(jsonPath, 'utf8')) as TestPinsData;
+    return JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as TestPinsData;
   } catch {
     return undefined;
   }

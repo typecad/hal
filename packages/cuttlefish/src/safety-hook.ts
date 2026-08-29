@@ -1,20 +1,20 @@
 // ---------------------------------------------------------------------------
-// Safety hook — the contract cuttlefish core uses to talk to the optional
-// @typecad/safety package. Modeled on ui-hook.ts.
+// Safety hook — the contract cuttlefish core uses to talk to the safety
+// engine. Modeled on ui-hook.ts.
 //
-// @typecad/safety is an optional peer dependency. When it is installed and
-// imported by a sketch, transpile.ts calls loadSafetyEngine() which dynamic-
-// imports @typecad/safety/engine and calls registerSafetyEngine() to push an
-// implementation of this interface into the registry. When absent, every
-// hasSafetyHook() guard returns false and cuttlefish behaves as before.
+// The engine lives in this package (src/safety/engine.ts); transpile.ts calls
+// loadSafetyEngine() at the start of each run, which registers an
+// implementation of this interface. The seam is kept so the degradation paths
+// (resetSafetyEngine / __simulateSafetyAbsentForTest) stay testable.
 // ---------------------------------------------------------------------------
 
 import type { HALOpIR, ProgramIR, RuntimePolyfillIR, Diagnostic } from "./api/shared/index.js";
 
 /** Context handed to transformIR. */
 export interface SafetyTransformContext {
-  /** True iff the entry file imports `safe` from @typecad/safety. The pass
-   *  uses this as a fast no-op guard. */
+  /** True iff the entry file imports `safe` from the safety authoring
+   *  surface (@typecad/cuttlefish/safety, or legacy @typecad/safety). The
+   *  pass uses this as a fast no-op guard. */
   readonly safetyInUse: boolean;
   /** Build target (e.g. "esp32", "avr"). Strategies still resolve the
    *  underlying pinMode/digitalRead symbols; the safety package is target-
@@ -42,7 +42,7 @@ export interface TranspilerSafetyHook {
 
   /** Lower a safe.* TS call to a HAL op. Called from an extension point in
    *  tryResolveSemanticCall (hal-plugins.ts) when the callee resolves to the
-   *  @typecad/safety package. Returns undefined if not a safety call. */
+   *  safety authoring surface. Returns undefined if not a safety call. */
   resolveSemanticCall?(callee: string, args: readonly unknown[]): HALOpIR | undefined;
 
   /** Provide safety runtime polyfills (mode table + voter). Called from
@@ -68,18 +68,18 @@ export interface TranspilerSafetyHook {
 
 let safetyHook: TranspilerSafetyHook | null = null;
 
-/** Set the safety hook. Called by transpile.ts after dynamically loading
- *  @typecad/safety/engine. Passing null clears it. */
+/** Set the safety hook. Called by transpile.ts after loading the safety
+ *  engine. Passing null clears it. */
 export function setSafetyHook(hook: TranspilerSafetyHook | null): void {
   safetyHook = hook;
 }
 
-/** Get the current safety hook, or null if @typecad/safety is not loaded. */
+/** Get the current safety hook, or null if the safety engine is not loaded. */
 export function getSafetyHook(): TranspilerSafetyHook | null {
   return safetyHook;
 }
 
-/** Returns true if the safety hook is registered (i.e. @typecad/safety loaded). */
+/** Returns true if the safety hook is registered (i.e. safety engine loaded). */
 export function hasSafetyHook(): boolean {
   return safetyHook !== null;
 }
@@ -89,8 +89,8 @@ export function hasSafetyHook(): boolean {
 export function requireSafetyHook(): TranspilerSafetyHook {
   if (!safetyHook) {
     throw new Error(
-      "Safety hook is not registered. This code path requires @typecad/safety " +
-      "to be installed and loaded. This should not happen — the hook is set " +
+      "Safety hook is not registered. This code path requires the safety " +
+      "engine to be loaded. This should not happen — the hook is set " +
       "at the start of transpileFile() when safety is detected."
     );
   }

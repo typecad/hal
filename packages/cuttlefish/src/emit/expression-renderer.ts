@@ -289,8 +289,17 @@ export class ExpressionRenderer {
         break;
       case "hal-expr": {
         const resolved = routeHALOp(expr.operation, this.strategy);
+        // A method body's preceding side-effect ops (bus transactions, pin
+        // configures) must run even in expression position — wrap them with
+        // the value in a GCC statement-expression.
+        const prefix = (expr.prefixOps ?? [])
+          .map((op) => routeHALOp(op, this.strategy))
+          .map((r) => r?.code ?? `/* unhandled hal-op prefix: dropped */`)
+          .join(' ');
         if (resolved?.expression) {
-          rendered = resolved.expression;
+          rendered = prefix
+            ? `({ ${prefix} ${resolved.expression}; })`
+            : resolved.expression;
         } else if (resolved?.code) {
           // Strip trailing semicolon and a leading `return ` for expression
           // context. HAL rawCpp definitions (e.g. Preferences.getString) bake
@@ -298,7 +307,8 @@ export class ExpressionRenderer {
           // `return` keyword is invalid (avr-g++: "expected primary-expression
           // before 'return'") and would leak as
           // `strcmp(return Preferences.getString(...), ...)`. Demo #33 Finding C.
-          rendered = resolved.code.replace(/;\s*$/, "").replace(/^\s*return\s+/, "");
+          const asExpr = resolved.code.replace(/;\s*$/, "").replace(/^\s*return\s+/, "");
+          rendered = prefix ? `({ ${prefix} ${asExpr}; })` : asExpr;
         } else {
           // Unregistered HAL op: surface as a warning so the user sees it, but
           // keep HAL as an extensibility point. The bare comment is retained
@@ -992,7 +1002,7 @@ export class ExpressionRenderer {
     // must be cast to an integral type — a C++ `enum class` does not
     // implicitly convert to `size_t`, so `vector[enumValue]` fails to compile.
     // `renderEnumSafeValue` already wraps numeric-enum operands in
-    // `static_cast<int>(...)` (SUPPORT_MATRIX §1.7); route the index through it
+    // `static_cast<int>(...)`; route the index through it
     // (with the in-scope variable types so a bare enum-typed identifier
     // resolves) so enum indices lower correctly. Non-enum indices are passed
     // through unchanged. Demo #28 Finding E.
@@ -1016,8 +1026,8 @@ export class ExpressionRenderer {
    * String-enum operands are passed through unchanged (they're `const char*`).
    *
    * This is the assignment/argument-site counterpart to the operator-level
-   * enum wrapping in renderBinary. SUPPORT_MATRIX §1.7: enum values used as
-   * integers need an explicit cast in C++.
+   * enum wrapping in renderBinary. Enum values used as integers need an
+   * explicit cast in C++.
    */
   public renderEnumSafeValue(expr: ExpressionIR, knownVariableTypes?: Map<string, KnownVariableInfo>): string {
     const rendered = this.render(expr, undefined, knownVariableTypes);
@@ -1052,7 +1062,7 @@ export class ExpressionRenderer {
    *     operand → `static_cast<EnumType>(value)` (int → enum). C++ `enum
    *     class` does not implicitly convert FROM an integral storage type
    *     either, so reading an `int`/`uint8_t` cell back into an enum-typed
-   *     local needs the reverse cast. SUPPORT_MATRIX §1.7.
+   *     local needs the reverse cast.
    *
    * This closes the "enum↔integral storage boundary" family — the previous
    * point-specific casts handled enum-as-array-index (demo #28 E) and
@@ -1306,7 +1316,7 @@ export class ExpressionRenderer {
     // Wrap enum-class operands in static_cast<int>() for arithmetic operators
     // (+, -, *, /) and bitwise operators (&, |, ^, <<, >>). C++ enum class
     // values don't interoperate with int implicitly — `trophic - 1`, `a | b`,
-    // `x & MASK` all fail without the cast. SUPPORT_MATRIX §1.7/§5.1. The
+    // `x & MASK` all fail without the cast. The
     // shared castEnumOperandsForOperator helper handles detection + defensive
     // symmetry in one place.
     const numericOps = new Set(["+", "-", "*", "/", "&", "|", "^", "<<", ">>"]);

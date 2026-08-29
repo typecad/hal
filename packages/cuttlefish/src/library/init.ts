@@ -22,7 +22,7 @@ import { FRAMEWORK_CATALOG } from "../create/framework-catalog.js";
 export interface LibraryInitOptions {
   /** Full package name (e.g. '@acme/esp32-led-ring' or 'my-lib'). */
   name?: string;
-  /** Framework id from FRAMEWORK_CATALOG ('zephyr', 'arduino', ...). */
+  /** Framework id from FRAMEWORK_CATALOG ('zephyr', 'native', ...). */
   framework?: string;
   /** Category id from LIBRARY_CATEGORIES. */
   category?: string;

@@ -69,7 +69,7 @@ static int32_t __tc_timer_add(void (*cb)(void), int32_t ms, bool repeat) {
             k_timer_init(&__tc_timer_slots[i].timer, __tc_timer_expiry_fn, nullptr);
             k_work_init(&__tc_timer_slots[i].work, __tc_timer_work_handler);
             k_timer_start(&__tc_timer_slots[i].timer, K_MSEC(ms), repeat ? K_MSEC(ms) : K_FOREVER);
-            return i + 1;  // 1-based id (Arduino parity)
+            return i + 1;  // 1-based id
         }
     }
     return 0;  // pool full

@@ -1,38 +1,26 @@
 // ---------------------------------------------------------------------------
-// Safety bridge — loads the safety engine from @typecad/safety and registers it.
+// Safety bridge — registers the built-in safety engine.
 //
-// transpile.ts calls loadSafetyEngine() at the start of transpileFile(). If
-// @typecad/safety is not installed, the import fails gracefully and the hook
-// stays null — cuttlefish works as a pure TS→C++ transpiler with no safety
-// support.
+// The engine used to ship as the optional @typecad/safety package and was
+// loaded via a dynamic package import; it now lives in this package under
+// src/safety/. transpile.ts still calls loadSafetyEngine() at the start of
+// transpileFile(), and the hook seam (safety-hook.ts) is unchanged so the
+// degradation paths (resetSafetyEngine / __simulateSafetyAbsentForTest) keep
+// working for tests.
 // ---------------------------------------------------------------------------
 
 import { setSafetyHook, type TranspilerSafetyHook } from "../safety-hook.js";
 
 let loaded = false;
 
-/** Dynamically load @typecad/safety/engine and register the hook.
- *  Called by transpile.ts at the start of each transpile run.
- *  Safe to call when @typecad/safety is absent (hook stays null). */
+/** Load the safety engine and register the hook. Called by transpile.ts at
+ *  the start of each transpile run. */
 export async function loadSafetyEngine(): Promise<void> {
   if (loaded) return;
   loaded = true;
-  try {
-    // Dynamic import — @typecad/safety is optional. The module specifier is
-    // routed through a variable (rather than a string literal) so tsc types
-    // the result as `any` and never resolves @typecad/safety's declaration
-    // files while type-checking this file. A literal specifier would make tsc
-    // load safety's dist/engine-index.d.ts, which imports back
-    // @typecad/cuttlefish/safety-hook-types — a self-referencing package path
-    // that resolves into this package's own dist/ output and causes TS5055
-    // ("would overwrite input file") on every rebuild where dist/ exists.
-    const safetyEnginePath = "@typecad/safety/engine";
-    const engine = await import(safetyEnginePath);
-    const hook = engine.registerSafetyEngine() as TranspilerSafetyHook;
-    setSafetyHook(hook);
-  } catch {
-    // @typecad/safety is not installed — cuttlefish works without safety.
-  }
+  const engine = await import("./engine.js");
+  const hook = engine.registerSafetyEngine() as TranspilerSafetyHook;
+  setSafetyHook(hook);
 }
 
 /** Reset the safety bridge: forget a load was attempted and clear the hook.
@@ -42,9 +30,9 @@ export function resetSafetyEngine(): void {
   setSafetyHook(null);
 }
 
-/** Test-only: force the bridge into the "no @typecad/safety" state — mark the
- *  load as already attempted and leave the hook null, exactly as if the
- *  dynamic import had failed because the package is not installed. */
+/** Test-only: force the bridge into the "safety not loaded" state — mark the
+ *  load as already attempted and leave the hook null, exactly as the old
+ *  dynamic import behaved when @typecad/safety was not installed. */
 export function __simulateSafetyAbsentForTest(): void {
   loaded = true;
   setSafetyHook(null);

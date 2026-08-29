@@ -122,7 +122,7 @@ export interface ResolvedDisplay extends DisplayProfile {
   _mountBus: string;
   _mountAddress: number;
   _mountReset: number;
-  /** Framework build target string (e.g. an Arduino FQBN like
+  /** Framework build target string (e.g. a Zephyr board target like
    *  "esp32:esp32:esp32s3:PSRAM=opi" or an IDF target). Carried through for
    *  framework-side toolchain/compile use; cuttlefish itself does not parse it.
    *  Optional. */
@@ -472,10 +472,8 @@ export function generateTouchAdapter(
 
   throw new Error(
     `No touch adapter for library "${touch.library}". ` +
-    `The built-in Arduino touch libraries (XPT2046_Touchscreen, Adafruit_TouchScreen, ` +
-    `Adafruit_STMPE610, FT6336U) are provided by @typecad/framework-arduino — pass the ` +
-    `ArduinoStrategy (or another framework strategy that provides touch adapters) so its ` +
-    `resolveTouchAdapter can dispatch to them. Otherwise use the framework-agnostic ` +
-    `"sdl" library, or { adapter: './path' } for a custom touch adapter.`,
+    `Pass a framework strategy whose resolveTouchAdapter dispatches to that driver, ` +
+    `use the framework-agnostic "sdl" library, or pass { adapter: './path' } for a ` +
+    `custom touch adapter.`,
   );
 }

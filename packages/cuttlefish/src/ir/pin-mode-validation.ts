@@ -107,10 +107,10 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
   const checkGpioHalOp = (op: any): void => {
     if (!op) return;
     const pinKey = `pin${op.pin}`;
-    if (op.operation === 'gpio.set_mode') {
+    if (op.operation === 'gpio.configure' || op.operation === 'gpio.read_cfg') {
       pinModeSet.add(pinKey);
       analogDrivenPins.delete(pinKey);
-    } else if (op.operation === 'pwm.write' || op.operation === 'tone.play') {
+    } else if (op.operation === 'pwm.set_pulse' || op.operation === 'pwm.set_duty' || op.operation === 'pwm.tone') {
       analogDrivenPins.add(pinKey);
     } else if (op.operation === 'gpio.write' || op.operation === 'gpio.toggle') {
       analogDrivenPins.delete(pinKey);
@@ -251,7 +251,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
   const checkStatement = (stmt: StatementIR): void => {
     if (!stmt || typeof stmt !== 'object') return;
 
-    // HAL-op statements: track pin-mode state from gpio.set_mode and warn on
+    // HAL-op statements: track pin-mode state from gpio.configure and warn on
     // gpio.read/write/toggle without prior mode configuration. After HAL
     // resolution, pin method calls (D2.isHigh(), D2.high()) become these
     // structured ops — the method-call form no longer exists at validation time.

@@ -46,7 +46,7 @@ export interface DiagnosticsReportInput {
   /** Target architecture (e.g. "avr", "esp32") */
   target: string;
   /** Board package name */
-  boardPackage?: string;
+  boardTarget?: string;
   /** Framework package name */
   frameworkPackage?: string;
   /** Build target identifier */
@@ -186,7 +186,7 @@ function buildPinUsage(
 
     // Map board pins to GPIO entries
   for (const pin of boardPinsData) {
-    // Only include pins that are explicitly used in the sketch to keep the table clean
+    // Only include pins that are explicitly used in the program to keep the table clean
     const isExplicitlyUsed = usage.pinsUsed.has(pin.name) || 
                              pin.aliases.some(a => usage.pinsUsed.has(a)) ||
                              (pin.number !== undefined && (
@@ -247,14 +247,6 @@ function buildPinUsage(
       instance: 0,
       displayName: "PWM",
       pins: [...usage.pwmPinsUsed].map((n) => `D${n}`),
-    });
-  }
-  if (usage.timer0) {
-    peripherals.push({
-      type: "timer",
-      instance: 0,
-      displayName: "Timer0 (millis/micros)",
-      pins: [],
     });
   }
   if (usage.externalInterrupts) {
@@ -375,10 +367,10 @@ export function buildDiagnosticsReport(input: DiagnosticsReportInput): Diagnosti
       timestamp: new Date().toISOString(),
       sourceFile: path.basename(input.entryFile),
       target: input.target,
-      board: input.boardPackage,
+      board: input.boardTarget,
       framework: input.frameworkPackage,
       buildTarget: input.buildTarget,
-      outputFile: input.outputFile ?? path.basename(input.entryFile, path.extname(input.entryFile)) + ".ino",
+      outputFile: input.outputFile ?? path.basename(input.entryFile, path.extname(input.entryFile)) + ".cpp",
       boardDetails: program?.boardConstants ? {
         mcu: program.boardConstants.get("mcu") as string,
         architecture: program.boardConstants.get("architecture") as string,

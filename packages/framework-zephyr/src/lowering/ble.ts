@@ -91,6 +91,9 @@ export function bleInitLines(): string[] {
     `// bt_gatt_chrc metadata for each characteristic declaration attr.`,
     `static struct bt_gatt_chrc __tc_ble_chrc_meta[__TC_BLE_MAX_CHARS];`,
     `// The flat attribute array + its wrapping service. Plus per-char CCC cfg.`,
+    `static struct bt_gatt_ccc_managed_user_data __tc_ble_ccc[__TC_BLE_MAX_CHARS];`,
+    `// write_ccc dereferences cfg_changed — every slot needs the no-op.`,
+    `static void __tc_ble_ccc_changed(const struct bt_gatt_attr* a, uint16_t v) { (void)a; (void)v; }`,
     `static struct bt_gatt_attr __tc_ble_attrs[__TC_BLE_MAX_ATTRS];`,
     `static size_t __tc_ble_attr_count = 0;`,
     `static struct bt_gatt_service __tc_ble_svc;`,
@@ -145,8 +148,10 @@ export function bleInitLines(): string[] {
     `    if (idx < 0 || idx >= __TC_BLE_MAX_CHARS || !__tc_ble.on_read[idx]) return 0;`,
     `    const char* t = __tc_ble_char_defs[idx].type;`,
     `    if (t && strcmp(t, "utf8") == 0) {`,
-    `        const char* s_c = reinterpret_cast<const char*(*)(void)>(__tc_ble.on_read[idx])();`,
-    `        return bt_gatt_attr_read(conn, attr, buf, len, offset, s_c, strlen(s_c));`,
+    `        // Hoisted string callbacks return std::string BY VALUE — call through`,
+    `        // the true signature and borrow c_str() for the copy below.`,
+    `        std::string s_v = reinterpret_cast<std::string(*)(void)>(__tc_ble.on_read[idx])();`,
+    `        return bt_gatt_attr_read(conn, attr, buf, len, offset, s_v.c_str(), s_v.size());`,
     `    } else if (t && strcmp(t, "float32") == 0) {`,
     `        double d = reinterpret_cast<double(*)(void)>(__tc_ble.on_read[idx])();`,
     `        float f = static_cast<float>(d);`,
@@ -266,6 +271,7 @@ export function bleInitLines(): string[] {
     `// (declaration + value); the value attr carries the char index in user_data.`,
     `static void __tc_ble_build_svc_table(void) {`,
     `    size_t a = 0;`,
+    `    for (int c = 0; c < __TC_BLE_MAX_CHARS; c++) { __tc_ble_ccc[c].cfg_changed = __tc_ble_ccc_changed; }`,
     `    for (int s = 0; s < static_cast<int>(__tc_ble.svc_count); s++) {`,
     `        // Primary service declaration.`,
     `        __tc_ble_attrs[a].uuid = BT_UUID_GATT_PRIMARY;`,
@@ -301,6 +307,17 @@ export function bleInitLines(): string[] {
     `            __tc_ble_attrs[a].perm = BT_GATT_PERM_READ | BT_GATT_PERM_WRITE;`,
     `            __tc_ble.val_attr_idx[c] = static_cast<int>(a);`,
     `            a++;`,
+    `            if (__tc_ble_char_defs[c].perms & 4) {`,
+    `                // CCC descriptor — without it a central cannot subscribe`,
+    `                // and notifications never reach anyone.`,
+    `                __tc_ble_attrs[a].uuid = BT_UUID_GATT_CCC;`,
+    `                __tc_ble_attrs[a].read = bt_gatt_attr_read_ccc;`,
+    `                __tc_ble_attrs[a].write = bt_gatt_attr_write_ccc;`,
+    `                __tc_ble_attrs[a].user_data = &__tc_ble_ccc[c];`,
+    `                __tc_ble_attrs[a].handle = 0;`,
+    `                __tc_ble_attrs[a].perm = BT_GATT_PERM_READ | BT_GATT_PERM_WRITE;`,
+    `                a++;`,
+    `            }`,
     `        }`,
     `    }`,
     `    __tc_ble_attr_count = a;`,
@@ -323,24 +340,28 @@ export function bleInitLines(): string[] {
     `    bt_gatt_service_register(&__tc_ble_svc);`,
     `    __tc_ble.status = 1; // Initializing`,
     `    bt_enable(NULL);  // synchronous`,
+    `    bt_enable(NULL);  // synchronous`,
     `    __tc_ble.inited = true;`,
     `    __tc_ble_advertise_start();`,
     `}`,
     ``,
     `// ── Notify ──`,
+    `// Explicit-conn: the NULL (broadcast) form hit an ESP32 controller assert`,
+    `// (lld_con.c) on the first push after subscription on the S3.`,
     `static void __tc_ble_notify(int idx, int16_t value) {`,
     `    if (idx < 0 || idx >= __TC_BLE_MAX_CHARS) return;`,
+    `    if (__tc_ble.conn == NULL) return;   // no link: a NULL-conn notify asserted the controller`,
     `    int ai = __tc_ble.val_attr_idx[idx];`,
     `    if (ai == 0) return;`,
     `    const char* t = __tc_ble_char_defs[idx].type;`,
     `    if (t && strcmp(t, "uint32") == 0) {`,
-    `        uint32_t u = static_cast<uint32_t>(value); bt_gatt_notify(NULL, &__tc_ble_attrs[ai], &u, sizeof(u));`,
+    `        uint32_t u = static_cast<uint32_t>(value); bt_gatt_notify(__tc_ble.conn, &__tc_ble_attrs[ai], &u, sizeof(u));`,
     `    } else if (t && strcmp(t, "float32") == 0) {`,
-    `        float f = static_cast<float>(value); bt_gatt_notify(NULL, &__tc_ble_attrs[ai], &f, sizeof(f));`,
+    `        float f = static_cast<float>(value); bt_gatt_notify(__tc_ble.conn, &__tc_ble_attrs[ai], &f, sizeof(f));`,
     `    } else if (t && strcmp(t, "boolean") == 0) {`,
-    `        uint8_t b = value ? 1 : 0; bt_gatt_notify(NULL, &__tc_ble_attrs[ai], &b, sizeof(b));`,
+    `        uint8_t b = value ? 1 : 0; bt_gatt_notify(__tc_ble.conn, &__tc_ble_attrs[ai], &b, sizeof(b));`,
     `    } else {`,
-    `        int16_t s16 = value; bt_gatt_notify(NULL, &__tc_ble_attrs[ai], &s16, sizeof(s16));`,
+    `        int16_t s16 = value; bt_gatt_notify(__tc_ble.conn, &__tc_ble_attrs[ai], &s16, sizeof(s16));`,
     `    }`,
     `}`,
     ``,
@@ -348,18 +369,7 @@ export function bleInitLines(): string[] {
     `    return __tc_ble.status == 3 && __tc_ble.connected_clients > 0;`,
     `}`,
     `static inline int __tc_ble_client_count(void) { return __tc_ble.connected_clients; }`,
-    `static inline void __tc_ble_set_name(const char* name) { strncpy(__tc_ble.name, name, sizeof(__tc_ble.name) - 1); __tc_ble.name[sizeof(__tc_ble.name) - 1] = 0; }`,
-    `static inline void __tc_ble_set_tx_power(int dbm) { (void)dbm; /* nRF TX power via bt_le_set_tx_power — deferred */ }`,
     ``,
-    `static inline bool __tc_ble_until_connected(uint32_t timeout_ms) {`,
-    `    int64_t deadline = static_cast<int64_t>(k_uptime_get()) + static_cast<int64_t>(timeout_ms);`,
-    `    while (!__tc_ble_is_connected()) {`,
-    `        if (timeout_ms > 0 && k_uptime_get() >= deadline) return false;`,
-    `        k_msleep(50);`,
-    `    }`,
-    `    return true;`,
-    `}`,
-    `static inline void __tc_ble_until_connected_start(void) { /* __tc_ble_server_begin already started advertising */ }`,
     `// CUTTLEFISH_BLE_END`,
     ``,
   ];
@@ -404,21 +414,14 @@ export function lowerBle(op: HALOpIR): { code?: string; expression?: string } {
     case 'ble.on_disconnect':
       return { code: `__tc_ble.on_disconnect = (${s(o.handler)});` };
     case 'ble.notify':
-      return { expression: `__tc_ble_notify(__tc_ble.current_char, ${s(o.value)})` };
+      // Index-based: val_attr_idx[idx] resolves the registered attr (the
+      // declaration-order slot). current_char would be whatever add_char ran
+      // last — wrong for a standalone notify after later declarations.
+      return { expression: `__tc_ble_notify(${s(o.index ?? 0)}, ${s(o.value)})` };
     case 'ble.is_connected':
       return { expression: `__tc_ble_is_connected()` };
     case 'ble.client_count':
       return { expression: `__tc_ble_client_count()` };
-    case 'ble.status':
-      return { expression: `__tc_ble.status` };
-    case 'ble.set_name':
-      return { code: `__tc_ble_set_name(${s(o.name)});` };
-    case 'ble.set_tx_power':
-      return { code: `__tc_ble_set_tx_power(${s(o.dbm)});` };
-    case 'ble.until_connected':
-      return { expression: `__tc_ble_until_connected(${s(o.timeoutMs)})` };
-    case 'ble.until_connected_start':
-      return { code: `__tc_ble_until_connected_start();` };
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +
@@ -426,3 +429,4 @@ export function lowerBle(op: HALOpIR): { code?: string; expression?: string } {
       );
   }
 }
+

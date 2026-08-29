@@ -16,7 +16,7 @@ Read these first:
   frameworks. Generated from manifests; do not edit.
 - `docs/framework-manifest-error-codes.md` — every validator error code, its
   trigger, and how to fix it.
-- `packages/framework-arduino/src/framework.manifest.ts` — the canonical
+- `packages/framework-zephyr/src/framework.manifest.ts` — the canonical
   reference manifest. Use it as your template.
 
 ## Part 1: Create the package
@@ -63,8 +63,8 @@ packages/framework-rp2040/
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.6",
-    "@typecad/framework-arduino": "1.0.0-alpha.6"
+    "@typecad/cuttlefish": "1.0.0-alpha.14",
+    "@typecad/framework-zephyr": "1.0.0-alpha.14"
   }
 }
 ```
@@ -80,7 +80,6 @@ alongside the other frameworks:
 
 ```json
 "workspaces": [
-  "packages/framework-arduino",
   "packages/framework-zephyr",
   "packages/framework-rp2040"
 ]
@@ -90,13 +89,14 @@ alongside the other frameworks:
 
 A class implementing `PlatformStrategy` (defined in
 `packages/cuttlefish/src/api/shared/platform-strategy.ts` — 10 sub-interfaces,
-~50 methods). Either implement from scratch or extend `ArduinoStrategy`:
+~50 methods). Either implement from scratch or extend an existing strategy (e.g.
+`ZephyrStrategy`):
 
 ```ts
-import { ArduinoStrategy } from '@typecad/framework-arduino';
+import { ZephyrStrategy } from '@typecad/framework-zephyr';
 
-export class Rp2040Strategy extends ArduinoStrategy {
-  // Override the methods that differ from Arduino. The rest inherit.
+export class Rp2040ZephyrStrategy extends ZephyrStrategy {
+  // Override the methods that differ for your board family. The rest inherit.
 }
 ```
 
@@ -108,7 +108,7 @@ import { Rp2040Strategy } from './strategy.js';
 export { Rp2040Strategy };
 export { Rp2040Strategy as FrameworkStrategy };  // loader expects this name
 
-export { Toolchain } from './toolchain/index.js';   // or re-export arduino's
+export { Toolchain } from './toolchain/index.js';   // or re-export the base framework's
 // Optional — only if you implement them:
 // export { isFrameworkLibraryImport, getFrameworkLibraryHeaderName, buildClassNameMap, tryGenerateLibDecl } from '...';
 ```
@@ -129,7 +129,6 @@ Edit `packages/cuttlefish/src/api/shared/framework-manifest-registry.ts`:
 
 ```ts
 export const KNOWN_FRAMEWORK_PACKAGES = [
-  '@typecad/framework-arduino',
   '@typecad/framework-zephyr',
   '@typecad/framework-rp2040',   // ← add
 ] as const;
@@ -245,7 +244,7 @@ type name must appear in your `ambientTypes` (or you'll get an
 
 ### 2.4 Write `src/framework.manifest.ts`
 
-Copy `packages/framework-arduino/src/framework.manifest.ts` as a template.
+Copy `packages/framework-zephyr/src/framework.manifest.ts` as a template.
 Edit the top-level fields from your probes, then the HAL block from the
 HAL probe. Skeleton:
 
@@ -256,12 +255,12 @@ export default defineFrameworkManifest({
   schemaVersion: 1,
   frameworkId: 'rp2040',
   packageName: '@typecad/framework-rp2040',
-  canonical: false,                    // only framework-arduino sets this
+  canonical: false,
   displayName: 'RP2040',
   description: 'Raspberry Pi Pico RP2040 framework.',
-  basedOn: '@typecad/framework-arduino',
+  basedOn: '@typecad/framework-zephyr',
   implementationMode: 'extends-canonical',
-  inheritsStrategyId: 'arduino',       // only if you reuse id='arduino' for registry takeover
+  inheritsStrategyId: 'zephyr',        // only if you reuse id='zephyr' for registry takeover
 
   entrypoint: {
     entrypointFunctionName: 'setup',   // must match strategy.entrypointFunctionName()
@@ -273,7 +272,7 @@ export default defineFrameworkManifest({
 
   profile: {
     targets: ['rp2040:...'],
-    forcedIncludes: ['<Arduino.h>'],
+    forcedIncludes: [],
     symbolAliases: {},                 // e.g. AVR maps delay → _native_delay_ms
   },
 
@@ -314,9 +313,9 @@ export default defineFrameworkManifest({
   },
 
   toolchain: {
-    backend: 'arduino-cli',                                  // or 'idf.py', 'platformio', etc.
+    backend: 'west',                                         // the toolchain backend id
     operations: { prepare: true, compile: true, upload: true, monitor: true },
-    reexportedFrom: '@typecad/framework-arduino',            // if you re-export Arduino's
+    reexportedFrom: '@typecad/framework-zephyr',            // if you re-export another framework's
   },
 
   // Optional — omit entirely if you don't implement these
@@ -325,7 +324,7 @@ export default defineFrameworkManifest({
     getFrameworkLibraryHeaderName: true,
     buildClassNameMap: true,
     tryGenerateLibDecl: true,
-    reexportedFrom: '@typecad/framework-arduino',
+    reexportedFrom: '@typecad/framework-zephyr',
   },
 
   typeEmission: {
@@ -437,7 +436,7 @@ wifi (0/34 supported — unsupported: RP2040 has no native WiFi.)
 
 | Error code | Fix |
 |---|---|
-| `identity/id-mismatch` | Add `inheritsStrategyId: 'arduino'` if reusing the id for registry takeover |
+| `identity/id-mismatch` | Add `inheritsStrategyId: 'zephyr'` if reusing the id for registry takeover |
 | `entrypoint/<field>/mismatch` | Manifest value doesn't match what `strategy.entrypointFunctionName()` etc. returns |
 | `hal/<cat>/op/<kind>/undeclared` | You missed an op kind — every op kind from `HAL_OPERATION_KINDS` / `DISPLAY_OPERATION_KINDS` must appear in `ops` |
 | `hal/<cat>/declared-supported-but-undefined` | Category `supported: true` but resolver returns undefined for every op |
@@ -472,7 +471,7 @@ code:
    `packages/cuttlefish/src/api/shared/framework-manifest.ts` and mark the op
    `'polyfill'` in your manifest.
 
-3. **Change entrypoint shape** (e.g. switch from `.ino` to `.cc`) → update
+3. **Change entrypoint shape** (e.g. switch the entry file extension) → update
    `manifest.entrypoint`. If you forget, the test fails with
    `entrypoint/sourceExtension/mismatch`.
 
@@ -484,7 +483,7 @@ code:
 ## Adding a native display adapter
 
 If your framework cannot use the Adafruit_GFX-based adapters (e.g. bare-metal
-AVR with no Arduino core, ESP-IDF without Arduino-ESP32), you can provide
+targets whose toolchain ships no driver libraries), you can provide
 native display adapters that reuse your framework's existing peripheral
 primitives.
 
@@ -492,14 +491,14 @@ primitives.
 
 Override both `providesDisplayAdapter()` (return `true`) and
 `resolveDisplayAdapter(display)` on your `PlatformStrategy`. The base
-`ArduinoStrategy` declares them as `providesDisplayAdapter(): boolean { return
-false; }` and `resolveDisplayAdapter(): undefined` so subclasses can override
-them. When `providesDisplayAdapter()` is false, `generateDisplayAdapter()`
-falls through to the built-in Adafruit registry — that fallback only works
-when Adafruit libraries are available.
+the base `PlatformStrategy` declares them as `providesDisplayAdapter():
+boolean { return false; }` and `resolveDisplayAdapter(): undefined` so
+subclasses can override them. When `providesDisplayAdapter()` is false,
+`generateDisplayAdapter()` emits direct display-driver calls (or nothing, if
+the target carries no display adapter).
 
 You MUST also override `resolveDisplayOp(op)` to return `undefined`, breaking
-the latent inheritance from `ArduinoStrategy.resolveDisplayOp`. Otherwise
+any base-class `resolveDisplayOp` you inherit. Otherwise
 display HAL ops fall through to the broken `__tc_display.fillRect(...)` path
 that assumes an Adafruit object exists.
 
@@ -546,8 +545,8 @@ ST7796S, SSD1309.
 
 ### Emitting pin control
 
-Use plain Arduino-core calls (`digitalWrite`, `SPI.transfer`, `Wire`) or the
-core's direct-register variants where the target demands it. Do NOT call
+Use the target's native driver calls (`gpio_pin_set_dt`, `spi_transceive`,
+`i2c_write`) or framework shim helpers where the target demands it. Do NOT call
 strategy-side helpers like `nativeDigitalWrite` from adapter-emit code —
 those are for HAL lowering, not display adapters.
 
@@ -563,13 +562,13 @@ to the validator's probe. `'probe-inconclusive'` is the honest status;
 
 ### Reference implementations
 
-- `packages/framework-arduino/src/displays/ssd1309-i2c.ts` — I2C OLED
+- `packages/framework-zephyr/src/displays/ssd1309-i2c.ts` — I2C OLED
   (SSD1309).
-- `packages/framework-arduino/src/displays/ili9341-spi.ts` — SPI TFT
+- `packages/framework-zephyr/src/displays/ili9341-spi.ts` — SPI TFT
   (ILI9341).
-- `packages/framework-arduino/src/displays/st7796-spi.ts` — SPI TFT
+- `packages/framework-zephyr/src/displays/st7796-spi.ts` — SPI TFT
   (ST7796), same shape as ILI9341 with a different init sequence.
-- `packages/framework-arduino/src/displays/adafruit-adapters.ts` /
+- `packages/framework-zephyr/src/displays/adafruit-adapters.ts` /
   `touch-adapters-codegen.ts` — Adafruit GFX-backed display and touch
   adapters.
 - `packages/framework-zephyr/src/display/` — Zephyr display/touch/UI adapters
@@ -583,7 +582,7 @@ If you want the absolute smallest setup to get a new framework passing CI:
    `packages/cuttlefish/src/api/shared/framework-manifest-registry.ts`).
 2. Add `"./framework.manifest"` subpath export to `package.json`.
 3. Add the package to root `package.json` workspaces.
-4. Write `src/framework.manifest.ts` — copy framework-native's as a template,
+4. Write `src/framework.manifest.ts` — copy @typecad/framework-zephyr's as a template,
    change `frameworkId` / `packageName` / `displayName` / `description`, then
    fill in each HAL category either `supported: false` (with reason and all
    ops marked `'unsupported'`) or `supported: true` (with op statuses from
@@ -614,4 +613,4 @@ strategy on every test run.
 - **Test helpers:** `tests/packages/cuttlefish/manifest-test-helpers.ts`
 - **Error code catalog:** `docs/framework-manifest-error-codes.md`
 - **Rendered coverage matrix:** `docs/framework-coverage.md`
-- **Canonical reference manifest:** `packages/framework-arduino/src/framework.manifest.ts`
+- **Canonical reference manifest:** `packages/framework-zephyr/src/framework.manifest.ts`

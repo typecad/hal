@@ -10,7 +10,7 @@ import {
   frameworkCompatibleWithTarget,
   detectPackageManager,
   frameworkTargetProfile,
-  BOARD_PROBE_METHODS,
+  probeMethodsForBoard,
 } from "../../../packages/cuttlefish/src/create/framework-catalog";
 import {
   installProjectDependencies,
@@ -25,27 +25,23 @@ afterEach(() => {
 // ── board → framework narrowing (used by the create wizard) ─────────────────
 
 describe("frameworksForTarget", () => {
-  it("narrows esp32 to arduino + zephyr", () => {
-    expect(frameworksForTarget({ architecture: "esp32" }).map((f) => f.id)).toEqual(["arduino", "zephyr"]);
+  it("narrows esp32 to zephyr", () => {
+    expect(frameworksForTarget({ architecture: "esp32" }).map((f) => f.id)).toEqual(["zephyr"]);
   });
 
-  it("narrows esp32s3 to arduino + zephyr", () => {
-    expect(frameworksForTarget({ architecture: "esp32s3" }).map((f) => f.id)).toEqual(["arduino", "zephyr"]);
+  it("narrows esp32s3 to zephyr", () => {
+    expect(frameworksForTarget({ architecture: "esp32s3" }).map((f) => f.id)).toEqual(["zephyr"]);
   });
 
-  it("narrows esp32c3 / esp32c6 to arduino + zephyr", () => {
+  it("narrows esp32c3 / esp32c6 to zephyr", () => {
     for (const arch of ["esp32c3", "esp32c6"]) {
-      expect(frameworksForTarget({ architecture: arch }).map((f) => f.id)).toEqual(["arduino", "zephyr"]);
+      expect(frameworksForTarget({ architecture: arch }).map((f) => f.id)).toEqual(["zephyr"]);
     }
   });
 
-  it("narrows avr to arduino only", () => {
-    expect(frameworksForTarget({ architecture: "avr" }).map((f) => f.id)).toEqual(["arduino"]);
-  });
-
-  it("narrows rp2040 / rp2350 to arduino + zephyr (rpi_pico / rpi_pico2 targets)", () => {
+  it("narrows rp2040 / rp2350 to zephyr (rpi_pico / rpi_pico2 targets)", () => {
     for (const arch of ["rp2040", "rp2350"]) {
-      expect(frameworksForTarget({ architecture: arch }).map((f) => f.id)).toEqual(["arduino", "zephyr"]);
+      expect(frameworksForTarget({ architecture: arch }).map((f) => f.id)).toEqual(["zephyr"]);
     }
   });
 
@@ -57,13 +53,15 @@ describe("frameworksForTarget", () => {
     expect(frameworksForTarget({ architecture: "nrf52" }).map((f) => f.id)).toEqual(["zephyr"]);
   });
 
-  it("maps stm32f411 to [zephyr] (Black Pill is Zephyr-only; generic stm32 stays arduino)", () => {
+  it("maps per-chip keys (stm32f411, samd21) to [zephyr]", () => {
     expect(frameworksForTarget({ architecture: "stm32f411" }).map((f) => f.id)).toEqual(["zephyr"]);
-    expect(frameworksForTarget({ architecture: "stm32" }).map((f) => f.id)).toEqual(["arduino"]);
+    expect(frameworksForTarget({ architecture: "samd21" }).map((f) => f.id)).toEqual(["zephyr"]);
   });
 
-  it("falls back to [arduino] for an unknown architecture", () => {
-    expect(frameworksForTarget({ architecture: "totally-unknown-mcu" }).map((f) => f.id)).toEqual(["arduino"]);
+  it("falls back to [zephyr] for an unknown architecture (avr silicon was removed)", () => {
+    for (const arch of ["totally-unknown-mcu", "avr", "stm32", "samd"]) {
+      expect(frameworksForTarget({ architecture: arch }).map((f) => f.id)).toEqual(["zephyr"]);
+    }
   });
 
   it("only returns installable catalog entries", () => {
@@ -85,14 +83,14 @@ describe("frameworkCatalogEntry", () => {
 // auto-pick narrowing, so incompatible pairs must be rejectable). ────────────
 
 describe("frameworkCompatibleWithTarget", () => {
-  it("accepts zephyr for nrf52 and rejects arduino (Zephyr-only board)", () => {
+  it("accepts zephyr for nrf52 and rejects arduino (removed framework)", () => {
     expect(frameworkCompatibleWithTarget({ architecture: "nrf52" }, "zephyr")).toBe(true);
     expect(frameworkCompatibleWithTarget({ architecture: "nrf52" }, "arduino")).toBe(false);
   });
 
-  it("accepts both arduino and zephyr for multi-framework architectures", () => {
+  it("accepts only zephyr for embedded architectures", () => {
     for (const arch of ["esp32", "esp32s3"]) {
-      expect(frameworkCompatibleWithTarget({ architecture: arch }, "arduino")).toBe(true);
+      expect(frameworkCompatibleWithTarget({ architecture: arch }, "arduino")).toBe(false);
       expect(frameworkCompatibleWithTarget({ architecture: arch }, "zephyr")).toBe(true);
     }
   });
@@ -109,26 +107,19 @@ describe("frameworkCompatibleWithTarget", () => {
   });
 });
 
-// ── framework-specific build target + toolchain (the bug: Arduino FQBN was
-// written for Zephyr projects; Zephyr needs its own board id + 'west'). ───────
+// ── framework-specific build target + toolchain (Zephyr needs its own board
+// id + 'west'). ───────────────────────────────────────────────────────────────
 
 describe("frameworkTargetProfile", () => {
-  it("uses the Arduino FQBN + arduino-cli for arduino", () => {
-    expect(frameworkTargetProfile({ id: "esp32s3", buildTarget: "esp32:esp32:esp32s3" }, "arduino")).toEqual({
-      buildTarget: "esp32:esp32:esp32s3",
-      toolchainType: "arduino-cli",
-    });
-  });
-
   it("uses the Zephyr board id + west for zephyr (esp32s3)", () => {
-    expect(frameworkTargetProfile({ id: "esp32s3", buildTarget: "esp32:esp32:esp32s3" }, "zephyr")).toEqual({
+    expect(frameworkTargetProfile({ id: "esp32s3", buildTarget: "esp32s3_devkitc/esp32s3/procpu" }, "zephyr")).toEqual({
       buildTarget: "esp32s3_devkitc/esp32s3/procpu",
       toolchainType: "west",
     });
   });
 
   it("uses the Zephyr board id + west for zephyr (esp32-devkit)", () => {
-    expect(frameworkTargetProfile({ id: "esp32-devkit", buildTarget: "esp32:esp32:esp32" }, "zephyr")).toEqual({
+    expect(frameworkTargetProfile({ id: "esp32-devkit", buildTarget: "esp32_devkitc/esp32/procpu" }, "zephyr")).toEqual({
       buildTarget: "esp32_devkitc/esp32/procpu",
       toolchainType: "west",
     });
@@ -136,13 +127,6 @@ describe("frameworkTargetProfile", () => {
 
   it("returns an empty profile for native (no buildTarget / toolchain)", () => {
     expect(frameworkTargetProfile({ id: "native", isNative: true }, "native")).toEqual({});
-  });
-
-  it("still gives AVR its FQBN under arduino", () => {
-    expect(frameworkTargetProfile({ id: "arduino-uno", buildTarget: "arduino:avr:uno" }, "arduino")).toEqual({
-      buildTarget: "arduino:avr:uno",
-      toolchainType: "arduino-cli",
-    });
   });
 
   it("locks in the correct qualified Zephyr target for every supported board", () => {
@@ -246,23 +230,95 @@ describe("installProjectDependencies", () => {
   });
 });
 
-describe('BOARD_PROBE_METHODS (create-time catalog vs board packages)', () => {
-  it('mirrors the board packages flashMethods tables (ids must not drift)', async () => {
-    const { resolveBoardConstants } = await import('../../../../packages/cuttlefish/src/ir/board-resolver');
-    const { resolveChipFromBoard } = await import('../../../../packages/framework-zephyr/src/chips/resolve');
-    const boardSrc: Record<string, string> = {
-      'blackpill-f411ce': 'boards/board-blackpill-f411ce/src/index.ts',
-      'nano-33-iot': 'boards/board-nano-33-iot/src/index.ts',
-      'xiao-nrf52840': 'boards/board-xiao-nrf52840/src/index.ts',
-      'rp2040': 'boards/board-rp2040/src/index.ts',
-      'rp2350': 'boards/board-rp2350/src/index.ts',
-    };
-    for (const [boardId, src] of Object.entries(boardSrc)) {
-      const catalog = BOARD_PROBE_METHODS[boardId];
-      expect(catalog, `catalog entry for ${boardId}`).toBeDefined();
-      const chip = resolveChipFromBoard(resolveBoardConstants(src));
-      const ids = (chip?.probeMethods ?? []).map((m) => m.id);
-      expect(catalog.map((m) => m.id), `ids for ${boardId}`).toEqual(ids);
+describe('probeMethodsForBoard (create-time catalog from the board data pack)', () => {
+  it('resolves qualified Zephyr targets and bare board ids', () => {
+    // The wizard passes the qualified target; --board may carry a bare id.
+    const qualified = probeMethodsForBoard('blackpill_f401ce/stm32f401xe');
+    expect(qualified.map((m) => m.id)).toContain('stlink');
+    expect(qualified.map((m) => m.id)).toContain('dfu');
+    const bare = probeMethodsForBoard('blackpill_f401ce');
+    expect(bare.map((m) => m.id)).toContain('stlink');
+  });
+
+  it('is case-sensitive for @revision qualifiers', () => {
+    expect(probeMethodsForBoard('mimxrt1060_evk@A/mimxrt1062/qspi').length).toBeGreaterThan(0);
+  });
+
+  it('boardgen merges curated and pack tables so every wizard id resolves', async () => {
+    const { generateBoard } = await import('../../../../packages/framework-zephyr/src/boardgen');
+    // Curated soc: curated table first (stlink-srst is curated-only), pack
+    // extras appended (blackmagicprobe has no board.cmake curated entry).
+    const f411 = JSON.parse(generateBoard('blackpill_f411ce/stm32f411xe').boardJson);
+    const ids = (i: string) => f411.constants[`zephyr.probeMethods.${i}.id`] as string | undefined;
+    const all: string[] = [];
+    for (let i = 0; ids(String(i)) !== undefined; i++) all.push(ids(String(i)));
+    expect(all).toEqual(['stlink', 'stlink-srst', 'dfu', 'jlink', 'blackmagicprobe']);
+    // Tier-3 soc: the pack's own table rides.
+    const f401 = JSON.parse(generateBoard('blackpill_f401ce/stm32f401xe').boardJson);
+    const tier3: string[] = [];
+    for (let i = 0; f401.constants[`zephyr.probeMethods.${i}.id`] !== undefined; i++) {
+      tier3.push(f401.constants[`zephyr.probeMethods.${i}.id`] as string);
     }
+    expect(tier3).toContain('stlink');
+    expect(tier3).toContain('dfu');
+  }, 180_000);
+});
+
+// ---------------------------------------------------------------------------
+// Wizard spec plumbing — the probe/port/baud choices must land in the
+// scaffolded config (console.port, test.port, zephyr.probe).
+// ---------------------------------------------------------------------------
+
+describe('generateProjectConfig — wizard choices ride the config', () => {
+  it('emits zephyr.probe and the chosen serial port in both port fields', async () => {
+    const { generateProjectConfig } = await import('../../../packages/cuttlefish/src/create/templates');
+    const cfg = generateProjectConfig({
+      projectName: 'p',
+      targetId: 'blackpill_f401ce',
+      targetDisplayName: 'Black Pill',
+      isNative: false,
+      frameworkPackage: '@typecad/framework-zephyr',
+      framework: 'zephyr',
+      board: 'blackpill_f401ce/stm32f401xe',
+      buildTarget: 'blackpill_f401ce/stm32f401xe',
+      probeMethod: 'stlink',
+      probeMethods: [{ id: 'dfu' }, { id: 'stlink' }, { id: 'jlink' }],
+      port: 'COM10',
+      baudRate: 115200,
+      includeStarter: true,
+    });
+    expect(cfg).toContain("probe: 'stlink'");
+    expect(cfg).toContain("port: 'COM10'");
+    // Both console.port and test.port carry the choice — no COM4 guesses.
+    expect(cfg.match(/port: 'COM10'/g)).toHaveLength(2);
+    expect(cfg).not.toContain("COM4'");
+  });
+
+  it('falls back to the platform hint when no port was chosen', async () => {
+    const { generateProjectConfig } = await import('../../../packages/cuttlefish/src/create/templates');
+    const cfg = generateProjectConfig({
+      projectName: 'p',
+      targetId: 'xiao_ble',
+      targetDisplayName: 'XIAO BLE',
+      isNative: false,
+      frameworkPackage: '@typecad/framework-zephyr',
+      framework: 'zephyr',
+      board: 'xiao_ble/nrf52840',
+      buildTarget: 'xiao_ble/nrf52840',
+      baudRate: 115200,
+      includeStarter: true,
+    });
+    const hint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
+    expect(cfg).toContain(`port: '${hint}'`);
+    expect(cfg).not.toContain("probe: '");
+  });
+});
+
+describe('detectSerialPorts — dependency-free enumeration', () => {
+  it('returns a list (possibly empty) without throwing', async () => {
+    const { detectSerialPorts } = await import('../../../packages/cuttlefish/src/create/wizard');
+    const ports = detectSerialPorts();
+    expect(Array.isArray(ports)).toBe(true);
+    for (const p of ports) expect(p).toMatch(/^(COM\d+|\/dev\/)/);
   });
 });

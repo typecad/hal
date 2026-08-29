@@ -73,11 +73,10 @@ export function loadConfig(
 
   return {
     test,
-    buildTarget: test.buildTarget ?? raw.frameworkData?.buildTarget ?? 'arduino:avr:uno',
-    board: test.board ?? raw.board ?? '@typecad/board-arduino-uno',
-    target: raw.target ?? 'avr',
+    buildTarget: test.buildTarget ?? raw.frameworkData?.buildTarget ?? '',
+    board: test.board ?? raw.board ?? 'xiao_ble/nrf52840',
+    target: raw.target ?? 'zephyr',
     framework: raw.framework,
-    toolchainType: raw.toolchain?.type === 'west' ? 'west' : 'arduino-cli',
     zephyrConfig: raw.zephyr,
     consoleConfig: raw.console as Record<string, unknown> | undefined,
     projectRoot,

@@ -1,5 +1,6 @@
 ﻿import fs from "node:fs";
 import path from "node:path";
+import { findGeneratedBoard } from "../ir/board-resolver.js";
 
 export interface ResolvedNpmPackage {
   packagePath: string;
@@ -243,14 +244,20 @@ function resolveNpmPackageImport(
 export function resolveImport(
   fromFile: string,
   moduleSpecifier: string,
-  boardPackage?: string,
+  boardTarget?: string,
 ): { sourcePath: string; npmPackage?: ResolvedNpmPackage; uiModule?: boolean } | undefined {
   let effectiveSpecifier = moduleSpecifier;
-  // The `@typecad/board` virtual import resolves to the configured board package.
-  // (Case-insensitive so the documented mixed-case form is treated identically.)
-  if (moduleSpecifier.toLowerCase() === "@typecad/board" && boardPackage) {
-    effectiveSpecifier = boardPackage;
+  // The `@typecad/board` virtual import resolves to the project-local
+  // generated board module (.cuttlefish/board.ts) when one exists — the
+  // config's board target materialized by boardgen. Falls through to the
+  // package-based path otherwise (transition; board packages are going away).
+  if (moduleSpecifier.toLowerCase() === "@typecad/board") {
+    const generated = findGeneratedBoard(fromFile);
+    if (generated) {
+      return { sourcePath: generated.boardTs };
+    }
   }
+  void boardTarget;
 
   const localResolved = resolveLocalImport(fromFile, effectiveSpecifier);
   if (localResolved) {
@@ -351,13 +358,15 @@ export function isCuttlefishSDKPath(filePath: string): boolean {
   const normalized = filePath.replace(/\\/g, "/");
   return (
     /\/code\/core\//.test(normalized) ||
-    /\/code\/board-/.test(normalized) ||
-    /\/packages\/board-/.test(normalized) ||
     /\/packages\/expect\//.test(normalized) ||
     /\/packages\/cuttlefish\//.test(normalized) ||
-    /\/node_modules\/@typecad\/board-/.test(normalized) ||
     /\/node_modules\/@typecad\/core\//.test(normalized) ||
     /\/node_modules\/@typecad\/expect\//.test(normalized) ||
-    /\/node_modules\/@typecad\/cuttlefish\//.test(normalized)
+    /\/node_modules\/@typecad\/cuttlefish\//.test(normalized) ||
+    // The generated project-local board module: like @typecad/hal, its source
+    // exists for pin resolution (halInstances / board constants), never for
+    // C++ emission — transpiling it would treat LED/PA5 as cross-module
+    // imports instead of compile-time pin facts.
+    /\/\.cuttlefish\/board\.ts$/.test(normalized)
   );
 }

@@ -1,5 +1,6 @@
 import type { ArchitectureIdentifier } from '../api/index.js';
 import { LINT_RULES } from '../ir/feature-registry.js';
+import { isBuiltinFramework } from './framework-catalog.js';
 
 export interface CreateProjectOptions {
   projectName: string;
@@ -7,13 +8,18 @@ export interface CreateProjectOptions {
   targetDisplayName: string;
   isNative: boolean;
   architecture?: ArchitectureIdentifier;
-  boardPackage?: string;
+  /** Qualified Zephyr board target (board-target projects). */
+  board?: string;
+  /** True when the board's devicetree declares an LED (pack fact — drives
+   *  the starter between LED-blink and console-heartbeat). */
+  hasLed?: boolean;
   frameworkPackage: string;
   framework: string;
   buildTarget?: string;
-  mcu?: string;
+  /** Zephyr SoC name (bare-silicon / contract projects). */
+  soc?: string;
   baudRate?: number;
-  includeSketch: boolean;
+  includeStarter: boolean;
   toolchainType?: string;
   /** Extra frameworkData fields (e.g. `{ target: 'esp32s3' }` for framework-esp32). */
   frameworkData?: Record<string, unknown>;
@@ -23,34 +29,35 @@ export interface CreateProjectOptions {
   /** Probe methods the board supports (wizard/catalog data) — used to write
    *  the config comment listing the alternatives. */
   probeMethods?: { id: string; description?: string }[];
+  /** Serial port picked at create time (console.port + test.port). Absent →
+   *  the platform hint placeholder. */
+  port?: string;
   /** MCU-only Zephyr target: emit `zephyr.customBoard: true` so the framework
    *  generates an out-of-tree board named after the build target. */
   zephyrCustomBoard?: boolean;
-  /** Starter-sketch pin for MCU-only targets (a port name — bare silicon has
+  /** Starter-program pin for MCU-only targets (a port name — bare silicon has
    *  no board-level LED alias). */
-  sketchPin?: string;
+  starterPin?: string;
 }
 
 export function generateProjectPackageJson(options: CreateProjectOptions): string {
-  const { projectName, frameworkPackage, boardPackage } = options;
+  const { projectName, frameworkPackage } = options;
 
   // @typecad/hal is needed by every build, not just embedded ones: the
   // transpiler unconditionally warms the HAL source modules (loadHALModules in
   // transpile.ts), and resolveHALSourceDir() throws "Could not resolve
   // @typecad/hal/src/" if the package is absent. Embedded targets pull it in
-  // transitively (@typecad/framework-arduino + board packages depend on it),
-  // but native targets have no board package and @typecad/framework-native does
-  // not declare it, so HAL must be an explicit direct dependency here.
+  // transitively (framework + board packages depend on it),
+  // but native targets have no board package, so HAL must be an explicit
+  // direct dependency here.
   const deps: Record<string, string> = {
     "@typecad/cuttlefish": "^1.0.0-alpha.3",
     "@typecad/hal": "^1.0.0-alpha.3",
-    [frameworkPackage]: "^1.0.0-alpha.3",
   };
-  if (boardPackage) {
-    deps[boardPackage] = "^1.0.0-alpha.3";
-  } else if (options.mcu) {
-    // MCU-only target: the silicon package is the pin/peripheral source.
-    deps[options.mcu] = "^1.0.0-alpha.3";
+  // Built-in frameworks (native) ship inside @typecad/cuttlefish — no
+  // separate dependency entry.
+  if (!isBuiltinFramework(frameworkPackage)) {
+    deps[frameworkPackage] = "^1.0.0-alpha.3";
   }
 
   const depsJson = Object.entries(deps)
@@ -145,8 +152,8 @@ export function generateProjectTsconfig(options: CreateProjectOptions): string {
   // The @typecad/board virtual import resolves for board AND MCU-only targets
   // (the transpile writes .cuttlefish/board.ts re-exporting either). The
   // @typecad/test-pins module is board data — MCU-only targets have none.
-  const hasBoard = !!options.boardPackage;
-  const paths = (hasBoard || options.mcu)
+  const hasBoard = !!options.board || !!options.soc;
+  const paths = (hasBoard || options.soc)
     ? `,
     "paths": {
       "@typecad/board": ["./.cuttlefish/board.ts"]${hasBoard ? `,
@@ -206,25 +213,33 @@ export default config;
 `;
   }
 
+  // The build target rides `board:` for board projects; only board-less
+  // projects (bare silicon / contract, whose target is a generated custom
+  // board) need the explicit frameworkData entry.
   const buildTarget = options.buildTarget;
-  const resolvedToolchain = options.toolchainType
-    ?? 'arduino-cli';
-
   let frameworkDataBlock = '';
-  if (buildTarget) {
-    frameworkDataBlock = `\n  // Framework data\n  frameworkData: {\n    buildTarget: '${buildTarget}',\n  },`;
+  if (buildTarget && buildTarget !== options.board) {
+    frameworkDataBlock = `\n  // Framework data — the generated custom board's name (no upstream board).\n  frameworkData: {\n    buildTarget: '${buildTarget}',\n  },`;
   }
 
-  const mcuLine = options.mcu
-    ? `\n  // MCU package — provides silicon-level pin definitions\n  mcu: '${options.mcu.startsWith('@') ? options.mcu : `@typecad/mcu-${options.mcu}`}',\n`
+  const socLine = options.soc
+    ? `
+  // Zephyr SoC — bare silicon; the board module is generated from the
+  // curated soc descriptor (contract projects narrow it further).
+  soc: '${options.soc}',
+`
     : '';
 
-  const boardLine = options.boardPackage
-    ? `\n  // Board package — provides pin definitions and board constants\n  board: '${options.boardPackage}',`
+  const boardLine = options.board
+    ? `
+  // Zephyr board target — the project-local board module is generated
+  // from the framework's board data pack on first build.
+  board: '${options.board}',`
     : '';
 
   const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
-  const baudLine = options.baudRate ? `\n\n  // Console polyfill configuration\n  console: {\n    baudRate: ${options.baudRate},\n    // Serial port for upload/monitor. Override with --port on the CLI.\n    port: '${portHint}',\n  },` : '';
+  const portValue = options.port ?? portHint;
+  const baudLine = options.baudRate ? `\n\n  // Console polyfill configuration\n  console: {\n    baudRate: ${options.baudRate},\n    // Serial port for upload/monitor. Override with --port on the CLI.\n    port: '${portValue}',\n  },` : '';
 
   // zephyr.* section — probe (boards with a probe-method table) and/or
   // customBoard (MCU-only targets: generate an out-of-tree board for the
@@ -253,10 +268,10 @@ ${zephyrFields.join('\n')}
     : '';
 
   // Hardware test runner configuration — used by \`npm run test:hw\` (cuttlefish-test,
-  // provided by @typecad/expect). It transpiles each tests/**/*.test.ts file,
-  // flashes it to the board, and evaluates the assertions over serial.
-  const resolvedBaud = options.baudRate ?? 115200;
-  const testLine = `\n\n  // Hardware test runner (@typecad/expect / \`npm run test:hw\`)\n  test: {\n    // Serial port for the test board. Override with --port on the CLI or the\n    // CUTTLEFISH_PORT env var (e.g. CUTTLEFISH_PORT=/dev/ttyUSB0 npm run test:hw).\n    port: '${portHint}',\n    baudRate: ${resolvedBaud},\n    timeout: 30000,\n    include: ['tests/**/*.test.ts'],\n  },`;
+  // provided by @typecad/expect). Defaults: baudRate 115200, timeout 30000,
+  // include tests/**/*.test.ts.
+  const testBaud = options.baudRate && options.baudRate !== 115200 ? `\n    baudRate: ${options.baudRate},` : '';
+  const testLine = `\n\n  // Hardware test runner (@typecad/expect / \`npm run test:hw\`)\n  test: {\n    // Serial port for the test board. Override with --port on the CLI or the\n    // CUTTLEFISH_PORT env var (e.g. CUTTLEFISH_PORT=/dev/ttyUSB0 npm run test:hw).\n    port: '${portValue}',${testBaud}\n  },`;
 
   return `// ---------------------------------------------------------------------------
 // cuttlefish.config.ts — Project configuration
@@ -269,22 +284,13 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 const config: CuttlefishConfig = {
   // Entry point — the main TypeScript file to transpile
   entry: './src/main.ts',
-
-  // Target architecture
-  target: '${options.architecture}',${mcuLine}${boardLine}
-
+${socLine}${boardLine}
   // Framework package — controls code generation strategy
   framework: '${options.frameworkPackage}',${frameworkDataBlock}
 
-  // Output / build options
+  // Transpiled output (the Zephyr app lands in src/out)
   output: {
-    framework: '${options.framework}',
     outDir: './out',
-  },
-
-  // Toolchain configuration
-  toolchain: {
-    type: '${resolvedToolchain}',
   },${zephyrProbeBlock}${baudLine}${testLine}
 };
 
@@ -295,7 +301,7 @@ export default config;
 export function generateProjectEnvDts(options: CreateProjectOptions): string {
   // The @typecad/board virtual module resolves for board AND MCU-only targets
   // — the transpile's first build rewrites this placeholder either way.
-  if (!options.boardPackage && !options.mcu) {
+  if (!options.board && !options.soc) {
     return `// ---------------------------------------------------------------------------
 // cuttlefish-env.d.ts — Global type declarations
 //
@@ -448,7 +454,7 @@ export {};
 `;
 }
 
-export function generateStarterSketch(options: CreateProjectOptions): string {
+export function generateStarterProgram(options: CreateProjectOptions): string {
   if (options.isNative) {
     return `// ---------------------------------------------------------------------------
 // Hello World — Native desktop application
@@ -468,7 +474,7 @@ console.log("Fibonacci(10) =", fibonacci(10));
 
   // MCU-only target: bare silicon has no board-level LED alias — blink a
   // port pin from the MCU datasheet instead.
-  if (!options.boardPackage && options.sketchPin) {
+  if (!options.board && options.starterPin) {
     return `// ---------------------------------------------------------------------------
 // Blink — The classic "Hello World" of embedded
 //
@@ -477,13 +483,14 @@ console.log("Fibonacci(10) =", fibonacci(10));
 // pinout and each pin's capabilities.
 // ---------------------------------------------------------------------------
 
-import { ${options.sketchPin}, delay } from '@typecad/board';
+import { GPIO, Time } from '@typecad/hal';
+import { ${options.starterPin} } from '@typecad/board';
 
-const led = ${options.sketchPin}.asOutput(false);
+const led = new GPIO(${options.starterPin}, GPIO.OUTPUT);
 
 while (true) {
   led.toggle();
-  delay(1000);
+  Time.sleep(1000);
 }
 `;
   }
@@ -491,17 +498,32 @@ while (true) {
   return `// ---------------------------------------------------------------------------
 // Blink — The classic "Hello World" of embedded
 //
-// Toggles the onboard LED every second using the recommended GPIO pattern.
+// ${options.hasLed === false
+    ? `This board's devicetree declares no LED — a console heartbeat instead.`
+    : `Toggles the onboard LED every second using the recommended GPIO pattern.`}
 // ---------------------------------------------------------------------------
 
-import { LED, delay } from '@typecad/board';
+${options.hasLed === false
+    ? `import { Time } from '@typecad/hal';
 
-const led = LED.asOutput(false);
+let beats: number = 0;
+
+while (true) {
+  beats = beats + 1;
+  console.log(\`beat \${beats}\`);
+  Time.sleep(1000);
+}
+`
+    : `import { GPIO, Time } from '@typecad/hal';
+import { LED } from '@typecad/board';
+
+const led = new GPIO(LED, GPIO.OUTPUT);
 
 while (true) {
   led.toggle();
-  delay(1000);
+  Time.sleep(1000);
 }
+`}
 `;
 }
 
@@ -563,7 +585,7 @@ export function generateStarterSim(options: CreateProjectOptions): string {
 // Hardware simulation — Button + LED
 //
 // Runs entirely on your computer with \`npm run simulate\` (vitest + the
-// @typecad/simulator package). No board, serial port, or arduino-cli required.
+// @typecad/simulator package). No board, serial port, or west build required.
 // The simulator mirrors the pins/peripherals of your ${options.targetDisplayName}
 // (${boardType}); you inject fake inputs and assert on the outputs in Node.
 //
@@ -649,15 +671,6 @@ describe("Button + LED (simulator)", () => {
 `;
 }
 
-export function generateBoardForwardingFile(boardPackage: string): string {
-  return `// ---------------------------------------------------------------------------
-// .cuttlefish/board.ts — Dynamically generated forwarding board package
-// ---------------------------------------------------------------------------
-
-export * from '${boardPackage}';
-`;
-}
-
 export function generateGitignore(_options: CreateProjectOptions): string {
   return `node_modules/
 out/
@@ -691,8 +704,8 @@ indent_size = 2
 export function generateEslintConfig(_options: CreateProjectOptions): string {
   // `no-restricted-syntax` selectors are generated from LINT_RULES
   // (packages/cuttlefish/src/ir/feature-registry.ts), the single source of
-  // truth shared with build-time prescan diagnostics. See SUPPORT_MATRIX for
-  // the per-pattern ❌/🚫 rationale. Do not hand-edit the array below.
+  // truth shared with build-time prescan diagnostics. Do not hand-edit the
+  // array below.
   const transpilerRulesJson = JSON.stringify(
     LINT_RULES.map(({ selector, message }) => ({ selector, message })),
     null,

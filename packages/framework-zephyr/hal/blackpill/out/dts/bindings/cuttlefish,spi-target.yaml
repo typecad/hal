@@ -1,0 +1,8 @@
+description: |
+  Cuttlefish thin SPITarget (hal/spi-target.ts) — a raw spi_dt_spec
+  peer. No driver binds this compatible; it exists so devicetree
+  generation emits the spi properties (spi-max-frequency,
+  spi-cpol/spi-cpha, reg = the cs-gpios index) that SPI_DT_SPEC_GET
+  consumes from the generated C++.
+compatible: "cuttlefish,spi-target"
+include: spi-device.yaml

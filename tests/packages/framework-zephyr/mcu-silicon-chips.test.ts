@@ -12,21 +12,25 @@
 //   defaults mirror)
 
 import { describe, it, expect } from 'vitest';
-import { resolveBoardConstants } from '../../../packages/cuttlefish/src/ir/board-resolver';
+import { SOC_CHIPS } from '../../../packages/framework-zephyr/src/chips/soc/index';
 import { resolveChipFromBoard } from '../../../packages/framework-zephyr/src/chips/resolve';
 import { controllerNodelabelForPin } from '../../../packages/framework-zephyr/src/chips/controllers';
+import { generateBoard } from '../../../packages/framework-zephyr/src/boardgen';
+import type { BoardConstants } from '../../../packages/cuttlefish/src/api/shared/board-resolver';
+function generatedConstants(target: string): BoardConstants {
+  const g = generateBoard(target);
+  return new Map(Object.entries(JSON.parse(g.boardJson).constants)) as BoardConstants;
+}
 
-const chip = resolveChipFromBoard(
-  resolveBoardConstants('mcus/mcu-stm32f411/src/index.ts'),
-);
 
-describe('mcu-stm32f411 silicon → ZephyrChipDescriptor (MCU-only path)', () => {
-  it('resolves without a board package (zephyr.socs gates, no build.frameworks target)', () => {
-    expect(chip).not.toBeNull();
+const chip = SOC_CHIPS['stm32f411xe'];
+
+describe('stm32f411xe silicon → ZephyrChipDescriptor (soc registry)', () => {
+  it('resolves from the soc-keyed registry', () => {
+    expect(chip).toBeDefined();
   });
 
-  it('identifies the chip by its SoC (the board target is the generated custom board)', () => {
-    expect(chip!.id).toBe('stm32f411xe');
+  it('identifies the chip by its SoC', () => {
     expect(chip!.soc).toBe('stm32f411xe');
   });
 
@@ -63,6 +67,14 @@ describe('mcu-stm32f411 silicon → ZephyrChipDescriptor (MCU-only path)', () =>
       apb2Prescaler: 1,
     });
     expect(chip!.customBoard!.usbNode).toBe('usbotg_fs');
+    // The st,stm32f4-adc binding requires these on an enabled node — the
+    // generated board pre-enables adc1 with them.
+    expect(chip!.customBoard!.adcNode).toEqual({
+      nodeLabel: 'adc1',
+      clockSource: 'SYNC',
+      prescaler: 2,
+      pinctrl: 'adc1_in1_pa1',
+    });
   });
 
   it('keeps the silicon peripheral facts (iwdg watchdog, ADC1 channels, PWM specs)', () => {
@@ -70,23 +82,35 @@ describe('mcu-stm32f411 silicon → ZephyrChipDescriptor (MCU-only path)', () =>
     expect(chip!.adc?.nodeLabel).toBe('adc1');
     expect(chip!.adc?.channels.find((c) => c.pin === 0)?.pinctrl).toBe('adc1_in0_pa0');
     expect(chip!.pwm?.specs.map((s) => s.pin)).toEqual([22, 23]);
-    expect(chip!.usb).toEqual({ controller: 'zephyr_udc0', cdcInstances: 1 });
+    // PWM pinctrl tokens — the generated board declares the pwm4 label with
+    // them (the st,stm32-pwm binding requires pinctrl-0, and the SoC dtsi
+    // ships the timers' pwm child unlabeled).
+    expect(chip!.pwm?.specs.map((s) => s.pinctrl)).toEqual(['tim4_ch1_pb6', 'tim4_ch2_pb7']);
+    expect(chip!.usb).toMatchObject({ controller: 'zephyr_udc0', cdcInstances: 1 });
+  });
+
+  it('carries the USB pinctrl tokens and the default storage partition (custom-board needs)', () => {
+    // st,stm32-otgfs requires pinctrl-0 on an enabled node — the generated
+    // board pre-enables zephyr_udc0 with exactly these.
+    expect(chip!.customBoard!.usbPinctrl).toEqual(['usb_otg_fs_dm_pa11', 'usb_otg_fs_dp_pa12']);
+    // Preferences/FS: a generated board has no partitions node, so the
+    // usage-driven overlay synthesizes this region under &flash0.
+    expect(chip!.storage).toEqual({ offset: 0x00040000, size: 0x00040000 });
   });
 
   it('declares only the console UART — STM32 bindings require pinctrl on enabled nodes, and the other instances carry no synthesis data yet', () => {
     expect(chip!.uart?.controllers.map((c) => c.nodeLabel)).toEqual(['usart1']);
-    expect(chip!.i2c).toBeUndefined();
-    expect(chip!.spi).toBeUndefined();
+    // The consolidated soc descriptor merged the reference board's wired
+    // controllers — i2c1/spi1 ride along.
+    expect(chip!.i2c?.controllers.map((c) => c.nodeLabel)).toEqual(['i2c1']);
+    expect(chip!.spi?.controllers.map((c) => c.nodeLabel)).toEqual(['spi1']);
   });
 });
 
 describe('board-resolved chips stay board-shaped', () => {
-  it('the blackpill board chip carries no customBoard data (its board already exists)', () => {
-    const boardChip = resolveChipFromBoard(
-      resolveBoardConstants('boards/board-blackpill-f411ce/src/index.ts'),
-    );
-    expect(boardChip).not.toBeNull();
-    expect(boardChip!.customBoard).toBeUndefined();
+  it('the blackpill soc entry keys the qualified board target (its board already exists)', () => {
+    const boardChip = SOC_CHIPS['stm32f411xe'];
+    expect(boardChip).toBeDefined();
     expect(boardChip!.id).toBe('blackpill_f411ce/stm32f411xe');
   });
 

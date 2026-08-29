@@ -92,7 +92,7 @@ foo();  // AUTOSAR Deviation M3-2-1, A18-5-8: Adafruit HAL global instance
 ### Sidecar registry (`<name>.autosar-deviations.json`)
 
 Written next to the emitted artifact (mirrors how `.thcppmap.json` sits
-next to the `.cpp`/`.ino`). Schema:
+next to the `.cpp`). Schema:
 
 ```json
 {
@@ -101,7 +101,7 @@ next to the `.cpp`/`.ino`). Schema:
   "tool": "cuttlefish",
   "toolVersion": "<version>",
   "generatedAt": "<ISO 8601>",
-  "emittedArtifact": "main.ino",
+  "emittedArtifact": "main.cpp",
   "ruleSubset": [ { "id": "M5-0-7", "category": "C" }, /* ... */ ],
   "summary": { "totalDeviations": 17, "byRule": { "M3-2-1": 4 } },
   "deviations": [
@@ -118,7 +118,7 @@ next to the `.cpp`/`.ino`). Schema:
         "kind": "hal-instance"
       },
       "cpp": {
-        "file": "main.ino",
+        "file": "main.cpp",
         "line": 42
       }
     }

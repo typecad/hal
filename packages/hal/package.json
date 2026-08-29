@@ -11,10 +11,7 @@
   ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build",
-    "test:hw": "npm exec -- cuttlefish-test --config boards/blackpill.config.ts",
-    "test:hw:board": "npm exec -- cuttlefish-test",
-    "test:hw:wired": "npm exec -- cuttlefish-test --config boards/blackpill.config.ts --include \"tests/wired/*.test.ts\""
+    "prepublishOnly": "npm run build"
   },
   "license": "MIT",
   "publishConfig": {
@@ -50,9 +47,7 @@
   },
   "author": "typecad0",
   "devDependencies": {
-    "@typecad/expect": "1.0.0-alpha.14",
-    "@typecad/board-arduino-uno": "1.0.0-alpha.14",
-    "@typecad/mcu-atmega328p": "1.0.0-alpha.14"
+    "@typecad/expect": "1.0.0-alpha.14"
   },
   "sideEffects": false,
   "exports": {

@@ -19,7 +19,7 @@ import type { ISimSPIDevice } from '../types.js';
 /**
  * Simulated SPI bus for testing SPI communication.
  *
- * Tests register mock devices via `attachDevice()`. When sketch code performs
+ * Tests register mock devices via `attachDevice()`. When program code performs
  * transfers, the corresponding mock device handles the operation.
  */
 export class SimSPIBus implements ISPIBus {

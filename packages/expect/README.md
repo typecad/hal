@@ -46,10 +46,10 @@ Hardware test runner for [TypeCAD](../../README.md). Write vitest-style assertio
 
 ## How it works
 
-1. **Preprocess** — an AST transform rewrites the fluent test syntax into `Serial.print()` calls.
-2. **Transpile** — Cuttlefish converts the rewritten TypeScript to a C++ Arduino sketch.
-3. **Compile** — `arduino-cli compile` builds the sketch for the target board.
-4. **Upload** — `arduino-cli upload` flashes the firmware over serial.
+1. **Preprocess** — an AST transform rewrites the fluent test syntax into console `print()` calls.
+2. **Transpile** — Cuttlefish converts the rewritten TypeScript to a C++ Zephyr program.
+3. **Compile** — `west build` compiles the program for the target board.
+4. **Upload** — `west flash` flashes the firmware over serial.
 5. **Capture** — the host reads structured protocol lines from the serial port.
 6. **Evaluate** — assertion math runs on the host; the firmware only sends raw values.
 7. **Report** — results are printed in vitest-style output.
@@ -354,14 +354,14 @@ This hybrid workflow is the recommended way to confirm that simple variables, ar
          │  AST preprocessor  (host, Node.js)
          ▼
 ┌─────────────────┐
-│ rewritten .ts   │  (Serial.print calls, hoisted hardware vars)
+│ rewritten .ts   │  (console print calls, hoisted hardware vars)
 └────────┬────────┘
          │  Cuttlefish transpiler
          ▼
 ┌─────────────────┐
-│  .ino sketch    │  (Arduino C++)
+│  .cpp program   │  (Zephyr C++)
 └────────┬────────┘
-         │  arduino-cli compile + upload
+         │  west build + flash
          ▼
 ┌─────────────────┐
 │  running board  │
@@ -421,5 +421,5 @@ The result is valid TypeCAD TypeScript with no nested hardware calls, ready for 
 - **No vitest-style callback suites** — groups and cases are defined by fluent chaining, not by `describe("name", () => { ... })`.
 - **No async tests** — all timing is implicit (the board executes sequentially, the host waits on serial output).
 - **Sequential execution only** — all describes in a file run once, in order, inside `setup()`. There is no `beforeEach`/`afterEach`.
-- **One file per upload** — each test file produces one sketch and one upload cycle. Multiple test files run as separate upload+execute passes.
+- **One file per upload** — each test file produces one program and one upload cycle. Multiple test files run as separate upload+execute passes.
 - **Number types only for hardware values** — TypeCAD maps numeric hardware readings to `int`/`float`. String expectations are for software string variables, not raw hardware reads.

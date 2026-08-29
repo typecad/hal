@@ -84,7 +84,7 @@ const BUS_INTERFACE_TYPE_NAMES = new Set<string>([
 ]);
 
 const STRATEGY_TYPE_NAMES = new Set<string>([
-  "NativeStrategy", "ArduinoStrategy", "BoardStrategy",
+  "NativeStrategy", "ZephyrStrategy", "BoardStrategy",
   "RuntimePolyfillIR", "PeripheralUsage",
 ]);
 

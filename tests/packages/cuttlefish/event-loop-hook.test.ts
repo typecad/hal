@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { NativeStrategy } from "../../../packages/framework-native/src/strategy";
+import { NativeStrategy } from "../../../packages/cuttlefish/src/frameworks/native/strategy";
 
 describe("native hostEventLoop hook", () => {
   it("returns loop scaffolding that pumps events and ticks repeatedly", () => {

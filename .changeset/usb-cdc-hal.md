@@ -2,7 +2,6 @@
 '@typecad/cuttlefish': minor
 '@typecad/hal': minor
 '@typecad/framework-zephyr': minor
-'@typecad/framework-arduino': patch
 '@typecad/board-blackpill-f411ce': minor
 '@typecad/board-xiao-nrf52840': minor
 ---

@@ -110,14 +110,7 @@ describe("Enum narrowing (emit-time)", () => {
     expect(r.cpp).not.toContain("enum class Code : uint8_t");
   });
 
-  it("widens to long on AVR when a value exceeds 32767", () => {
-    const r = transpile(
-      `enum Big { Small = 0, Big = 40000 }
-       function setup(): void {}`,
-      { target: "arduino", ...AVR_CTX },
-    );
-    expect(r.cpp).toContain("enum class Big : long {");
-  });
+
 });
 
 // ===========================================================================

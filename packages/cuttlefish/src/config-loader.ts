@@ -10,7 +10,9 @@
 import path from "node:path";
 import fs from "node:fs";
 import ts from "typescript";
-import { findBoardPackageDir, readTestPinsFile, buildTestPinsModuleContent } from "./transpile/test-pins.js";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+import { readTestPinsFile, buildTestPinsModuleContent } from "./transpile/test-pins.js";
 import { safeValidateConfig } from "./config-schema.js";
 
 /** The filename we search for when walking up directories. */
@@ -19,7 +21,7 @@ const CONFIG_FILENAME = "cuttlefish.config.ts";
 /** Top-level keys recognized by CuttlefishConfigSchema — used to warn about
  *  misspelled keys that the AST extraction would otherwise drop silently. */
 const KNOWN_TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
-  "entry", "target", "mcu", "board", "contract", "framework", "psram",
+  "entry", "target", "board", "soc", "contract", "framework", "psram",
   "output", "frameworkData", "include", "exclude", "test", "toolchain",
   "console", "native", "zephyr", "display",
 ]);
@@ -31,25 +33,24 @@ const KNOWN_TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
  */
 export interface ResolvedCuttlefishConfig {
   target?: string;
-  /** MCU package specifier (e.g. '@typecad/mcu-atmega328p'). */
-  mcu?: string;
-  /** Board package specifier (e.g. '@typecad/board-arduino-uno'). Layers
-   *  board-level assets (silkscreen aliases, onboard devices, probe methods,
-   *  build targets) on top of the MCU package. Optional: an MCU-only config
-   *  (mcu set, board absent) programs bare silicon — on Zephyr via a
-   *  generated custom board (`zephyr.customBoard: true`). */
+  /** Zephyr board target — the qualified `west build -b` argument (e.g.
+   *  'esp32s3_devkitc/esp32s3/procpu'). The project-local board module is
+   *  generated from the framework's board data pack on first build. */
   board?: string;
+  /** Zephyr SoC name for contract-based projects (custom PCBs, no board
+   *  target) — e.g. 'stm32f411xe'. Selects the curated soc descriptor. */
+  soc?: string;
   /** Path to a TypeCAD contract file (*.contract.json). */
   contract?: string;
-  /** Build target identifier (e.g. FQBN for Arduino CLI). */
+  /** Build target identifier (the framework's board id, e.g. 'blackpill_f411ce/stm32f411xe'). */
   buildTarget?: string;
-  /** Output framework (e.g. 'arduino'). */
+  /** Output framework (e.g. 'zephyr'). */
   outputFramework?: string;
   /** Output directory. */
   outputOutDir?: string;
   /**
    * Framework package for code generation strategy.
-   * Can be '@typecad/framework-arduino', '@typecad/framework-zephyr',
+   * Can be '@typecad/framework-zephyr', '@typecad/framework-native',
    * '@typecad/framework-native', or a custom path.
    */
   framework?: string;
@@ -496,8 +497,8 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   const target = flat.get("target");
   if (typeof target === "string") resolved.target = target;
 
-  const mcu = flat.get("mcu");
-  if (typeof mcu === "string") resolved.mcu = mcu;
+  const soc = flat.get("soc");
+  if (typeof soc === "string") resolved.soc = soc;
 
   const board = flat.get("board");
   if (typeof board === "string") resolved.board = board;
@@ -505,9 +506,25 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   const contract = flat.get("contract");
   if (typeof contract === "string") resolved.contract = contract;
 
-  // We do not extract fqbn here anymore, it should be in frameworkData
-  const buildTarget = flat.get("frameworkData.buildTarget");
-  if (typeof buildTarget === "string") resolved.buildTarget = buildTarget;
+  // The build target (what `west build -b` receives) has a single source of
+  // truth: `board:` for board-target projects. `frameworkData.buildTarget`
+  // is honored only for board-less projects (bare silicon / contract, whose
+  // build target is a generated custom board). When both are present they
+  // must agree — a disagreement is the split-brain trap (board module for
+  // one board, firmware for another), so board wins with a warning.
+  const buildTargetFlat = flat.get("frameworkData.buildTarget");
+  if (typeof board === "string") {
+    if (typeof buildTargetFlat === "string" && buildTargetFlat !== board) {
+      warn(
+        `config sets both board: '${board}' and frameworkData.buildTarget: '${buildTargetFlat}' — ` +
+          `they disagree. 'board' is the source of truth; building for '${board}'. ` +
+          `Remove the stale frameworkData.buildTarget entry.`,
+      );
+    }
+    resolved.buildTarget = board;
+  } else if (typeof buildTargetFlat === "string") {
+    resolved.buildTarget = buildTargetFlat;
+  }
 
   const framework = flat.get("framework");
   if (typeof framework === "string") resolved.framework = framework;
@@ -592,7 +609,7 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   // Reconstruct a structured object from the flat-map extraction for validation.
   const structuredForValidation: Record<string, unknown> = {};
   if (resolved.target) structuredForValidation.target = resolved.target;
-  if (resolved.mcu) structuredForValidation.mcu = resolved.mcu;
+  if (resolved.soc) structuredForValidation.soc = resolved.soc;
   if (resolved.board) structuredForValidation.board = resolved.board;
   if (resolved.contract) structuredForValidation.contract = resolved.contract;
   if (resolved.entry) structuredForValidation.entry = resolved.entry;
@@ -642,9 +659,116 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
  * The file is regenerated on every transpiler run so it stays in sync when
  * the board changes in `cuttlefish.config.ts`.
  */
+/**
+ * Ensure the generated board module (.cuttlefish/board.ts + board.json)
+ * exists for a board-target config. Generated once (first build) — refresh
+ * explicitly with `cuttlefish board regen` — so the emitted module is
+ * project-pinned and diffable, not rebuilt on every compile. One exception:
+ * when the module on disk is for a DIFFERENT board than config.board (the
+ * user switched boards), it regenerates automatically — a stale module is
+ * the split-brain trap, not something to pin.
+ */
+function ensureGeneratedBoard(config: ResolvedCuttlefishConfig, cuttlefishDir: string): void {
+  const boardTsPath = path.join(cuttlefishDir, "board.ts");
+  const boardJsonPath = path.join(cuttlefishDir, "board.json");
+  if (fs.existsSync(boardTsPath) && fs.existsSync(boardJsonPath)) {
+    // Board switch: keep the module in lockstep with config.board.
+    try {
+      const existing = JSON.parse(fs.readFileSync(boardJsonPath, "utf8")) as { identifier?: string };
+      if (existing.identifier && existing.identifier.toLowerCase() === config.board!.toLowerCase()) return;
+    } catch {
+      // Unreadable manifest — regenerate below rather than build on a
+      // module of unknown provenance.
+    }
+  }
+  // Missing files or a board mismatch — (re)generate.
+  const target = config.board!;
+  if (!config.framework) {
+    throw new Error(`Cannot generate the board module for '${target}' — no framework configured.`);
+  }
+  // The framework owns board generation; reach its strategy through the
+  // configured package (exported as ZephyrStrategy / default). The package
+  // is ESM ("type": "module"), so resolve it from the built dist through
+  // createRequire against the project's node_modules resolution.
+  const generated = loadFrameworkBoardModule(config, configDirOf(config));
+  if (!generated) {
+    throw new Error(
+      `Framework '${config.framework}' cannot generate a board module for '${target}'. ` +
+      `Check the target against the framework's board catalog.`,
+    );
+  }
+  fs.writeFileSync(boardTsPath, generated.boardTs, "utf-8");
+  fs.writeFileSync(boardJsonPath, generated.boardJson, "utf-8");
+}
+
+/**
+ * Force-regenerate the project-local board module — the `cuttlefish board
+ * regen` path. Board-target configs only: contract projects write their
+ * board module through the contract reader, and native projects have none.
+ * Returns the .cuttlefish directory the module was written to.
+ */
+export function regenBoardModule(config: ResolvedCuttlefishConfig): string {
+  if (!config.board || config.contract) {
+    throw new Error(
+      "'cuttlefish board regen' applies to board-target projects. " +
+      "Set 'board:' in cuttlefish.config.ts (contract projects regenerate on build).",
+    );
+  }
+  const cuttlefishDir = path.join(path.dirname(config.configPath), ".cuttlefish");
+  if (!fs.existsSync(cuttlefishDir)) {
+    fs.mkdirSync(cuttlefishDir, { recursive: true });
+  }
+  fs.rmSync(path.join(cuttlefishDir, "board.ts"), { force: true });
+  fs.rmSync(path.join(cuttlefishDir, "board.json"), { force: true });
+  ensureGeneratedBoard(config, cuttlefishDir);
+  return cuttlefishDir;
+}
+
+/** The subset of a platform strategy ensureGeneratedBoard needs. */
+interface BoardGenStrategy {
+  generateBoardModule?(target: string): { boardTs: string; boardJson: string } | undefined;
+}
+
+/** Resolve the configured framework package's board generator. The framework
+ *  packages are ESM, so this imports their built entry from the resolving
+ *  project's node_modules (createRequire against the project dir).
+ *  @param configDir  the project directory (where node_modules resolution starts) */
+function configDirOf(config: ResolvedCuttlefishConfig): string {
+  return path.dirname(config.configPath);
+}
+
+function loadFrameworkBoardModule(
+  config: ResolvedCuttlefishConfig,
+  configDir: string,
+): { boardTs: string; boardJson: string } | undefined {
+  const target = config.board!;
+  const spec = config.framework!;
+  const tryResolve = (anchor: string) => {
+    try {
+      const projectRequire = createRequire(anchor);
+      const mod = projectRequire(projectRequire.resolve(spec)) as {
+        ZephyrStrategy?: new () => BoardGenStrategy;
+        default?: unknown;
+      };
+      const Ctor = mod.ZephyrStrategy ?? (mod.default as (new () => BoardGenStrategy) | undefined);
+      const strategy = typeof Ctor === "function" ? new Ctor() : undefined;
+      return strategy?.generateBoardModule?.(target) ?? undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  // Resolve from the project's package.json when it has one; projects without
+  // one (bare configs, tests) fall back to cuttlefish's own resolution — the
+  // framework is a peer of the tool in every real layout.
+  return (
+    tryResolve(path.join(configDir, "package.json")) ??
+    tryResolve(path.join(path.dirname(fileURLToPath(import.meta.url)), "package.json"))
+  );
+}
+
 export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig, platformDeclarations?: string[]): void {
-  if (!config.mcu && !config.board) {
-    // For native targets with no board/mcu, still generate declarations
+  if (!config.board && !config.soc) {
+    // For native targets with no board, still generate declarations
     if (!platformDeclarations || platformDeclarations.length === 0) return;
   }
 
@@ -659,18 +783,22 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
 
   // Determine what @typecad/board exports
   let boardExport = "";
-  if (config.contract) {
-    // Contract-based: export from generated board (same dir — .cuttlefish/)
+  if (config.contract || config.board) {
+    // Board-target or contract project: the project-local generated board
+    // module (.cuttlefish/board.ts) — produced by boardgen (board target)
+    // or the contract reader (soc + contract), never a package.
     boardExport = "export * from './board.js';";
-  } else if (config.board) {
-    // Explicit board package (legacy)
-    boardExport = `export * from '${config.board}';`;
-  } else if (config.mcu) {
-    // MCU-only: export all from MCU
-    boardExport = `export * from '${config.mcu}';`;
   } else {
-    // Native target with no board/mcu: empty export
+    // Native target with no board: empty export
     boardExport = "";
+  }
+
+  // Board-target projects: ensure the generated board module exists. The
+  // framework owns the generation (the Zephyr framework joins its board
+  // data pack with its curated soc descriptors) — reach it through the
+  // configured framework package's strategy hook.
+  if (config.board && !config.contract) {
+    ensureGeneratedBoard(config, cuttlefishDir);
   }
 
   const content = [
@@ -680,7 +808,7 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
     "// Auto-generated by the cuttlefish transpiler. Do not edit manually.",
     "// To change the board, update cuttlefish.config.ts and re-run the transpiler.",
     "//",
-    `// Board: ${config.board ?? config.mcu ?? "native"}`,
+    `// Board: ${config.board ?? config.soc ?? "native"}`,
     "// ---------------------------------------------------------------------------",
     "",
     "declare global {",
@@ -756,36 +884,22 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
 
   fs.writeFileSync(outPath, content, "utf-8");
 
-  // Also write a `.cuttlefish/board.ts` re-export. The scaffolded tsconfig.json
-  // path mapping points the virtual specifier ("@typecad/board") at this file so
-  // the TypeScript language server and the transpiler's type-check resolve
-  // `import { ... } from '@typecad/board'` to the configured board — which
-  // re-exports the HAL plus board-specific pins. Without this, the ambient
-  // `declare module` in cuttlefish-env.d.ts is treated as module augmentation
-  // (because that file has `export {}`), which can't define a new module.
-  //
-  // For contract-based configs, the narrowed board.ts is generated by the
-  // contract reader (`contract/board-generator.ts`, invoked from cli.ts before
-  // this function runs), so don't overwrite it with the generic re-export here.
-  if (!config.contract && (config.board || config.mcu)) {
-    const reExportSource = config.board ?? config.mcu!;
-    const boardTsPath = path.join(cuttlefishDir, "board.ts");
-    const boardTsContent = [
-      `// Auto-generated by the cuttlefish transpiler. Do not edit manually.`,
-      `// Re-exports the configured board/MCU package so the tsconfig path`,
-      `// mapping for the virtual "@typecad/board" specifier resolves correctly.`,
-      `export * from '${reExportSource}';`,
-      ``,
-    ].join("\n");
-    fs.writeFileSync(boardTsPath, boardTsContent, "utf-8");
-  }
+  // The .cuttlefish/board.ts module itself is written by ensureGeneratedBoard
+  // (board-target configs, above) or the contract reader (invoked from cli.ts
+  // before this function runs) — never a package re-export here. The
+  // scaffolded tsconfig path mapping points the virtual specifier
+  // ("@typecad/board") at that file, and the ambient declare module in
+  // cuttlefish-env.d.ts mirrors it for the language server.
 
-  // Boards that ship a test-pins.json get a sibling .cuttlefish/test-pins.ts
+  // A project-local test-pins.json (board packages are gone — projects that
+  // want role pins carry them) gets a sibling .cuttlefish/test-pins.ts
   // re-export, so the language server resolves the '@typecad/test-pins'
   // virtual specifier to the same role consts the transpiler generates.
   if (config.board) {
-    const boardDir = findBoardPackageDir(config.board, configDir);
-    const testPinsData = boardDir ? readTestPinsFile(boardDir) : undefined;
+    const projectTestPins = path.join(configDir, "test-pins.json");
+    const testPinsData = fs.existsSync(projectTestPins)
+      ? readTestPinsFile(configDir)
+      : undefined;
     const testPinsContent = testPinsData
       ? buildTestPinsModuleContent(config.board, testPinsData)
       : undefined;

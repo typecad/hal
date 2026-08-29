@@ -4,11 +4,22 @@
 //
 // EMIT BOUNDARY: This file is the structural head of the UI runtime header
 // surface (C) — every partial emitter in this directory produces bytes that are
-// assembled into the C++ header inlined into user sketches. The emitted bytes
+// assembled into the C++ header inlined into user programs. The emitted bytes
 // are covered by the TypeCAD Runtime Exception (see RUNTIME_EXCEPTION.md at the
 // repository root) and are not subject to the license of this tool source.
 export function emitForwardDecls(): string {
   return `
+// ── Runtime clock + clamp (thin-HAL contract) ────────────────────────────
+// The UI runtime's timing contracts (debounce, press/repeat, toasts,
+// animations, scroll physics) need a monotonic millisecond clock. The
+// framework strategy provides __tc_now_ms() (Zephyr: kernel uptime,
+// native: steady_clock) — the same clock the async runtime and Time.now()
+// lower onto. All comparisons are subtraction-based, so the 32-bit wrap
+// (~49.7 days) is harmless.
+extern uint32_t __tc_now_ms(void);
+// Integer clamp used by progress/range draws and the keyboard value steps.
+static inline long __ui_constrain(long x, long lo, long hi) { return (x < lo) ? lo : ((x > hi) ? hi : x); }
+
 // ── Modal <select> + <drawer> declarations ────────────────────────────────
 // Declared here (the earliest runtime-header module) because ui_navigate,
 // ui_is_effectively_visible, ui_init, and ui_tick all reference them;

@@ -150,12 +150,37 @@ export function emitPreamble(ctx: EmitterContext): void {
 export function emitAsyncTaskClasses(ctx: EmitterContext): void {
   const { asyncTaskClasses } = ctx;
   if (asyncTaskClasses.length === 0) return;
-  for (const { classDef, instanceDecl } of asyncTaskClasses) {
-    for (const line of classDef.split("\n")) {
+  for (const t of asyncTaskClasses) {
+    // Async-METHOD tasks move to emitAsyncMethodTasks (after the user
+    // classes): their segment bodies dereference `_owner->field`, which
+    // needs the owning class COMPLETE — at this point only the forward
+    // declaration exists.
+    if (t.starterDef !== undefined) continue;
+    for (const line of t.classDef.split("\n")) {
       appendSourceLineLocal(ctx, line);
     }
     appendSourceLineLocal(ctx, "");
-    appendSourceLineLocal(ctx, instanceDecl);
+    appendSourceLineLocal(ctx, t.instanceDecl);
+    appendSourceLineLocal(ctx, "");
+  }
+}
+
+/**
+ * Emit async-METHOD task classes + instances + starter definitions. Must run
+ * AFTER emitClasses (segments dereference _owner->field on the now-complete
+ * owning class) and BEFORE emitFunctions (the loop pump references the
+ * instances; the starter definitions call .start on them).
+ */
+export function emitAsyncMethodTasks(ctx: EmitterContext): void {
+  const { asyncTaskClasses } = ctx;
+  for (const t of asyncTaskClasses) {
+    if (t.starterDef === undefined) continue;
+    for (const line of t.classDef.split("\n")) {
+      appendSourceLineLocal(ctx, line);
+    }
+    appendSourceLineLocal(ctx, "");
+    appendSourceLineLocal(ctx, t.instanceDecl);
+    appendSourceLineLocal(ctx, t.starterDef);
     appendSourceLineLocal(ctx, "");
   }
 }
@@ -362,7 +387,7 @@ export function finalizeOutput(ctx: EmitterContext): GeneratedOutputs {
 
     // Sidecar deviation registry — written for both warn and strict modes
     // alongside the emitted artifact (mirrors how .thcppmap.json sits next
-    // to the .cpp/.ino today).
+    // to the .cpp today).
     const toolVersion = options.toolVersion ?? "unknown";
     const registryPath = path.join(outDir, `${baseName}.autosar-deviations.json`);
     writeText(registryPath, renderRegistryJson(ctx.compliance, path.basename(sourcePath), toolVersion));

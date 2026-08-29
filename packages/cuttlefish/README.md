@@ -70,9 +70,12 @@ export default config;
 - [`@typecad/hal`](https://cuttlefish.typecad.net) — hardware abstraction (GPIO, I2C, SPI, UART) as regular TypeScript.
 - [`@typecad/ui`](https://cuttlefish.typecad.net) — HTML/CSS-driven graphics for microcontroller displays.
 - [`@typecad/expect`](https://cuttlefish.typecad.net) — hardware test framework (vitest-style assertions over serial).
-- [`@typecad/framework-arduino`](https://cuttlefish.typecad.net) — Arduino framework code-gen strategy.
-- [`@typecad/framework-native`](https://cuttlefish.typecad.net) — native desktop C++ code-gen strategy.
-- `@typecad/mcu-*` and `@typecad/board-*` — silicon- and board-level pin/peripheral definitions.
+- [`@typecad/framework-zephyr`](https://cuttlefish.typecad.net) — Zephyr RTOS framework (build, flashing, and the bundled Zephyr toolchain installer).
+
+Built in, no separate package: the **native** desktop target (`framework:
+'@typecad/framework-native'` resolves inside cuttlefish) and the **safety**
+engine (verified GPIO reads, ISO 26262 analysis — author via
+`@typecad/cuttlefish/safety`).
 
 ## License
 

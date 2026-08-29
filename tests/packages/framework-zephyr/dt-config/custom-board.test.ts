@@ -114,10 +114,83 @@ describe('generateCustomBoard', () => {
     expect(dts).toContain('apb1-prescaler = <2>;');
   });
 
-  it('aliases the silicon USB node under the Zephyr convention, left disabled for the overlay', () => {
-    const { dir } = generateCustomBoard(tmp, stm32f411Chip, 'my_f411')!;
+  it('aliases and pre-enables the USB node with its pinctrl (the otgfs binding requires it)', () => {
+    const { dir } = generateCustomBoard(
+      tmp,
+      {
+        ...stm32f411Chip,
+        customBoard: {
+          ...stm32f411Chip.customBoard!,
+          usbPinctrl: ['usb_otg_fs_dm_pa11', 'usb_otg_fs_dp_pa12'],
+        },
+      },
+      'my_f411',
+    )!;
     const dts = readFileSync(join(dir, 'my_f411.dts'), 'utf8');
     expect(dts).toContain('zephyr_udc0: &usbotg_fs {');
+    expect(dts).toContain('pinctrl-0 = <&usb_otg_fs_dm_pa11 &usb_otg_fs_dp_pa12>;');
+    expect(dts).toContain('pinctrl-names = "default";');
+    expect(dts).toContain('status = "okay";');
+  });
+
+  it('declares the PWM controller label + pinctrl for controllers with full token coverage', () => {
+    const { dir } = generateCustomBoard(
+      tmp,
+      {
+        ...stm32f411Chip,
+        pwm: {
+          specs: [
+            { pin: 22, controller: 'pwm4', channel: 1, pinctrl: 'tim4_ch1_pb6' },
+            { pin: 23, controller: 'pwm4', channel: 2, pinctrl: 'tim4_ch2_pb7' },
+          ],
+        },
+      },
+      'my_f411',
+    )!;
+    const dts = readFileSync(join(dir, 'my_f411.dts'), 'utf8');
+    // The overlay enables &pwm4 and composes pwm-leds consumers against the
+    // label — which only exists when a board DTS declares it (the SoC dtsi
+    // ships the timers' pwm child unlabeled), and the st,stm32-pwm binding
+    // requires pinctrl-0. Blackpill shape.
+    expect(dts).toContain('&timers4 {');
+    expect(dts).toContain('pwm4: pwm {');
+    expect(dts).toContain('pinctrl-0 = <&tim4_ch1_pb6 &tim4_ch2_pb7>;');
+    expect(dts).toContain('pinctrl-names = "default";');
+  });
+
+  it('declares no PWM block when a spec lacks its pinctrl token (partial coverage stays with board packages)', () => {
+    const { dir } = generateCustomBoard(
+      tmp,
+      {
+        ...stm32f411Chip,
+        pwm: { specs: [{ pin: 22, controller: 'pwm4', channel: 1 }] },
+      },
+      'my_f411',
+    )!;
+    const dts = readFileSync(join(dir, 'my_f411.dts'), 'utf8');
+    expect(dts).not.toContain('pwm4: pwm {');
+  });
+
+  it('pre-enables the ADC node with the binding-required properties (STM32 F4)', () => {
+    const { dir } = generateCustomBoard(
+      tmp,
+      {
+        ...stm32f411Chip,
+        customBoard: {
+          ...stm32f411Chip.customBoard!,
+          adcNode: { nodeLabel: 'adc1', clockSource: 'SYNC', prescaler: 2, pinctrl: 'adc1_in1_pa1' },
+        },
+      },
+      'my_f411',
+    )!;
+    const dts = readFileSync(join(dir, 'my_f411.dts'), 'utf8');
+    // Without these the st,stm32f4-adc binding rejects the node the moment
+    // the usage-driven overlay enables adc1 (verified against Zephyr 4.4).
+    expect(dts).toContain('&adc1 {');
+    expect(dts).toContain('pinctrl-0 = <&adc1_in1_pa1>;');
+    expect(dts).toContain('st,adc-clock-source = "SYNC";');
+    expect(dts).toContain('st,adc-prescaler = <2>;');
+    expect(dts).toContain('status = "okay";');
   });
 
   it('defconfig carries CONFIG_GPIO (the pinctrl driver link dependency)', () => {

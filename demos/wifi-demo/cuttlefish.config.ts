@@ -14,13 +14,12 @@ const config: CuttlefishConfig = {
   //   10-http-async.ts         cooperative HTTP send + heartbeat
   //   11-https-insecure.ts     HTTPS without cert verification (lab use)
   entry: './src/03-async.ts',
-  target: 'esp32',
-  mcu: '@typecad/mcu-esp32',
-  board: '@typecad/board-esp32-devkit',
+
+  board: 'esp32_devkitc/esp32/procpu',
   framework: '@typecad/framework-zephyr',
-  frameworkData: { buildTarget: 'esp32_devkitc/esp32/procpu' },
+
   output: { outDir: './out' },
-  toolchain: { type: 'west' },
+
   console: { baudRate: 115200 },
   zephyr: {
     kconfig: { 'CONFIG_ESP32_USE_UNSUPPORTED_REVISION': 'y' },

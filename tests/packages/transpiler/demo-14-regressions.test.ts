@@ -324,7 +324,6 @@ describe("E (cross-file): getter access on an imported class", () => {
       inputFile: path.join(workspaceDir, "main.ts"),
       emitMode: "split",
       target: "generic",
-      mcu: "@typecad/mcu-generic",
       emitMaps: false,
     });
     const mainCpp = fs.readFileSync(result.sourcePath, "utf8");

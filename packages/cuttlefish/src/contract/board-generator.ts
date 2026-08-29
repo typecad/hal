@@ -19,17 +19,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+const BS_DOT = /\./g;
+
 /** The directory (relative to the project root) where board.ts is generated. */
 export const CUTTLEFISH_DIR = '.cuttlefish';
 
 export interface GenerateBoardOptions {
   /** Absolute project root dir (where .cuttlefish/ lives). */
   projectDir: string;
-  /** MCU package specifier, e.g. '@typecad/mcu-atmega328p'. */
-  mcuPackage: string;
-  /** Matched MCU pin names to re-export (e.g. ['PB5','PC4']). */
+  /** The Zephyr SoC name the contract narrows (e.g. 'stm32f411xe'). */
+  soc: string;
+  /** Matched pin names to export (e.g. ['PB5','PC4']). */
   connectedPins: string[];
-  /** Selected peripheral instance names to re-export (e.g. ['I2C0']). */
+  /** Selected peripheral instance names to export (e.g. ['I2C0']). */
   peripherals: string[];
 }
 
@@ -38,7 +40,7 @@ export interface GenerateBoardOptions {
  * @returns the absolute path to the generated file.
  */
 export function generateBoardFile(opts: GenerateBoardOptions): string {
-  const { projectDir, mcuPackage, connectedPins, peripherals } = opts;
+  const { projectDir, soc, connectedPins, peripherals } = opts;
 
   const cuttlefishDir = path.join(projectDir, CUTTLEFISH_DIR);
   if (!fs.existsSync(cuttlefishDir)) {
@@ -50,23 +52,30 @@ export function generateBoardFile(opts: GenerateBoardOptions): string {
     '// Do not edit manually — regenerate by re-running cuttlefish.',
     '//',
     '// This board exposes only the pins and peripherals that the source contract',
-    `// (${mcuPackage}) declares as connected on the PCB. Pins the board did not wire`,
+    `// (soc ${soc}) declares as connected on the PCB. Pins the board did not wire`,
     '// are intentionally absent: using one is a compile error.',
     '',
     '// Full HAL runtime surface (constants, timing, math, GPIO/bus helpers).',
-    "export * from '@typecad/hal';",
+    "import { Pin, I2CBus, SPIBus, SerialPort } from '@typecad/hal';",
     '',
     '// Narrowed pin set — only pins the contract declares connected.',
   ];
 
   if (connectedPins.length > 0) {
-    lines.push(`export { ${connectedPins.join(', ')} } from '${mcuPackage}';`);
+    for (const pin of connectedPins) {
+      const ident = pin.replace(BS_DOT, '_');
+      lines.push(`export const ${ident} = Pin.fromPort('${pin}');`);
+    }
   }
 
   if (peripherals.length > 0) {
     lines.push('');
     lines.push('// Narrowed peripheral set — only buses whose pins are wired on the PCB.');
-    lines.push(`export { ${peripherals.join(', ')} } from '${mcuPackage}';`);
+    for (const p of peripherals) {
+      if (p.startsWith('I2C')) lines.push(`export const ${p} = new I2CBus('${p}');`);
+      else if (p.startsWith('SPI')) lines.push(`export const ${p} = new SPIBus('${p}');`);
+      else if (p.startsWith('UART')) lines.push(`export const ${p} = new SerialPort('${p}');`);
+    }
   }
 
   lines.push(''); // trailing newline

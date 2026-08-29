@@ -5,7 +5,7 @@
 // `struct gpio_callback` per pin, registered with gpio_add_callback, with a
 // trampoline that calls the user's C handler. The descriptor's gpio.interruptPins
 // lists the pins with DT specs (buttons). The user's handler is a free C
-// function; the trampoline calls it with no args (Arduino attachInterrupt style).
+// function; the trampoline calls it with no args.
 //
 // Each interrupt pin gets a static callback struct + a trampoline in shimLines.
 // attach enables + adds the callback; detach disables + removes it.
@@ -14,6 +14,7 @@
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor, ZephyrInterruptPin } from '../chips/types.js';
 import { controllerNodelabelForPin, controllerRawPinForPin, controllerRangeForPin } from '../chips/controllers.js';
+import { ZEPHYR_GPIO_INTS } from '@typecad/hal';
 
 /** Look up an interrupt pin spec by HAL pin number. */
 function findIntPin(chip: ZephyrChipDescriptor, pin: number): ZephyrInterruptPin | undefined {
@@ -35,6 +36,27 @@ function modeToFlags(mode: string): string {
     case 'low': return 'GPIO_INT_LEVEL_LOW';
     default: return 'GPIO_INT_EDGE_BOTH';
   }
+}
+
+// ── Thin GPIO interrupts (hal/gpio-pin.ts onInterrupt) — INT_* tokens ─────
+//
+// The name set comes from the GENERATED Zephyr token table (parsed from the
+// pinned tree's drivers/gpio.h).
+
+const GPIO_INT_TOKENS: Record<string, string> = Object.fromEntries(
+  ZEPHYR_GPIO_INTS.map((f) => [`GPIO.${f}`, `GPIO_${f}`]),
+);
+
+/** Map thin-GPIO INT token text to the GPIO_INT_* macro. */
+export function gpioIntTokenToMacro(intFlags: string): string {
+  const token = String(intFlags ?? '').trim();
+  const m = GPIO_INT_TOKENS[token];
+  if (!m) {
+    throw new Error(
+      `GPIO interrupt flag '${token}' is not a known GPIO.INT_* token — valid: ${Object.keys(GPIO_INT_TOKENS).join(', ')}.`,
+    );
+  }
+  return m;
 }
 
 /**
@@ -99,6 +121,9 @@ export function collectInterruptPins(program: unknown): Set<number> {
       if (o.operation === 'interrupt.attach' && typeof o.pin === 'number') {
         pins.add(o.pin as number);
       }
+      if (o.operation === 'interrupt.attach_flags' && typeof o.pin === 'number') {
+        pins.add(o.pin as number);
+      }
     }
     for (const v of Object.values(n)) {
       if (Array.isArray(v)) { for (const item of v) visit(item); }
@@ -139,12 +164,15 @@ export function lowerInterrupt(
     if (knownPin) {
       const v = `__tc_int_raw${o.pin}`;
       const raw = controllerRawPinForPin(chip, o.pin);
-      if (op.operation === 'interrupt.attach') {
-        const flags = modeToFlags(o.mode);
+      if (op.operation === 'interrupt.attach_flags') {
+        // Thin GPIO: INT_* tokens instead of mode strings. The pin's
+        // input/pull configuration already came from the construction flags
+        // (the class emits gpio.configure ahead of this op) — no INPUT
+        // override here, unlike the legacy raw path above.
+        const flags = gpioIntTokenToMacro(o.intFlags);
         return {
           code: [
             `${v}_handler = (${o.handler});`,
-            `gpio_pin_configure(${v}_dev, ${raw}, GPIO_INPUT);`,
             `gpio_init_callback(&${v}_cb, ${v}_tramp, BIT(${raw}));`,
             `gpio_pin_interrupt_configure(${v}_dev, ${raw}, ${flags});`,
             `gpio_add_callback(${v}_dev, &${v}_cb);`,
@@ -159,8 +187,8 @@ export function lowerInterrupt(
     }
     // Fallback (also covers the manifest probe): a diagnostic comment so the
     // resolver returns non-undefined. Real attach needs a descriptor entry.
-    if (op.operation === 'interrupt.attach') {
-      return { code: `/* interrupt.attach(pin ${o.pin}): no DT spec — add to chip descriptor gpio.interruptPins */` };
+    if (op.operation === 'interrupt.attach_flags') {
+      return { code: `/* interrupt.attach_flags(pin ${o.pin}): no DT spec — add to chip descriptor gpio.interruptPins */` };
     }
     return { code: `/* interrupt.detach(pin ${o.pin}): no DT spec */` };
   }
@@ -168,12 +196,12 @@ export function lowerInterrupt(
   const v = dtSpecVar(pin.dtSpec);
 
   switch (op.operation) {
-    case 'interrupt.attach': {
-      const flags = modeToFlags(o.mode);
+    case 'interrupt.attach_flags': {
+      // Thin GPIO: INT_* tokens; construction flags already configured the pin.
+      const flags = gpioIntTokenToMacro(o.intFlags);
       return {
         code: [
           `${v}_handler = (${o.handler});`,
-          `gpio_pin_configure_dt(&${v}, GPIO_INPUT);`,
           `gpio_init_callback(&${v}_cb, ${v}_tramp, BIT(${v}.pin));`,
           `gpio_pin_interrupt_configure_dt(&${v}, ${flags});`,
           `gpio_add_callback(${v}.port, &${v}_cb);`,

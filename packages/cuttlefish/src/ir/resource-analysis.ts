@@ -148,10 +148,22 @@ function isPinUsedAsGpio(pinName: string, pinNumber: number | undefined, usage: 
 }
 
 function isPeripheralActive(type: 'i2c' | 'spi' | 'uart', instance: number, usage: PeripheralUsage): boolean {
+  // When the program's ops identify WHICH controller instances are used, only
+  // those instances claim pins. The old `usage.i2c || ...` disjunct claimed
+  // every instance's pins whenever the bus type appeared at all — on boards
+  // whose alternate-bus pin sets overlap another bus's (the blackpill's
+  // i2c-alt on PB3/PB4 shares pins with spi2), that manufactured phantom
+  // peripheral-peripheral conflicts. The bare-type fallback only applies when
+  // NO instance information was recorded (degenerate programs whose ops carry
+  // no instance), preserving the conservative claim where it's the only
+  // signal available.
   switch (type) {
-    case 'i2c': return usage.i2c || usage.i2cInstancesUsed.has(instance);
-    case 'spi': return usage.spi || usage.spiInstancesUsed.has(instance);
-    case 'uart': return usage.uart || usage.uartInstancesUsed.has(instance);
+    case 'i2c':
+      return usage.i2cInstancesUsed.size > 0 ? usage.i2cInstancesUsed.has(instance) : usage.i2c;
+    case 'spi':
+      return usage.spiInstancesUsed.size > 0 ? usage.spiInstancesUsed.has(instance) : usage.spi;
+    case 'uart':
+      return usage.uartInstancesUsed.size > 0 ? usage.uartInstancesUsed.has(instance) : usage.uart;
     default: return false;
   }
 }

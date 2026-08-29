@@ -460,8 +460,7 @@ function resolveReceiverCppType(receiverNode: ts.Expression): string | undefined
  *
  * When the element type is integral and the arg is a numeric-enum value, wrap
  * the rendered arg in `static_cast<int>(...)`. Demo #32 Finding A. Mirrors the
- * SUPPORT_MATRIX §1.7 enum↔integral family fixed at the assign/var_decl sites
- * in the emit layer.
+ * enum↔integral family fixed at the assign/var_decl sites in the emit layer.
  */
 function renderPushArgForElement(
   argNode: ts.Expression,

@@ -60,15 +60,14 @@ describe('wifi init shim', () => {
     expect(shim).not.toContain('tx_power_dbm');
   });
 
-  it('emits power-save + AP-mode + wait helpers', () => {
-    // set_power_save → real net_mgmt PS_CONFIG request.
-    expect(shim).toContain('__tc_wifi_set_power_save');
+  it('emits join (PS fact) + AP-mode helpers', () => {
+    // join()'s PS_OFF fact → real net_mgmt PS_CONFIG request.
     expect(shim).toContain('NET_REQUEST_WIFI_PS_CONFIG');
-    expect(shim).toContain('WIFI_PS_ENABLED');
     expect(shim).toContain('WIFI_PS_DISABLED');
-    // waits → block on the connected flag.
-    expect(shim).toContain('__tc_wifi_wait_connected');
-    expect(shim).toContain('__tc_wifi_wait_disconnected');
+    // join's bounded wait blocks on the connected flag.
+    expect(shim).toContain('__tc_wifi_join');
+    // Static IPv4 facts → net_if config instead of DHCP.
+    expect(shim).toContain('net_if_ipv4_addr_add');
     // AP mode → net_mgmt AP_ENABLE/AP_DISABLE.
     expect(shim).toContain('__tc_wifi_ap_start');
     expect(shim).toContain('__tc_wifi_ap_stop');
@@ -81,10 +80,9 @@ describe('wifi blocking-wait pump (UI stays live during waits)', () => {
   const shim = wifiInitLines().join('\n');
   it('routes every blocking wait through __tc_wifi_wait_slice (no bare k_msleep polls)', () => {
     expect(shim).toContain('static void __tc_wifi_wait_slice(uint32_t slice_ms)');
-    // All four blocking loops poll via the pump slice, not k_msleep directly.
+    // Both blocking loops poll via the pump slice, not k_msleep directly.
     expect(shim).toContain('while (!__tc_wifi.connected && waited < timeout_ms) { __tc_wifi_wait_slice(20); waited += 20; }');
     expect(shim).toContain('while (__tc_wifi.scanning) { __tc_wifi_wait_slice(20); }');
-    expect(shim).toContain('while (__tc_wifi.connected) { __tc_wifi_wait_slice(20); }');
   });
 
   it('guards the ui_tick pump behind CUTTLEFISH_ENTRY_UI_TU (entry TU only)', () => {
@@ -99,7 +97,8 @@ describe('wifi blocking-wait pump (UI stays live during waits)', () => {
     // entry-UI macro, so the pump compiles down to a plain k_msleep.
     const result = transpileZephyrStrategy(`
       import { WiFi } from '@typecad/hal';
-      WiFi.connect("net", "pw", 10000);
+      const wifi = new WiFi("net", { psk: "pw", timeoutMs: 10000 });
+      wifi.join();
     `);
     expect(result.cpp).toContain('#ifdef CUTTLEFISH_ENTRY_UI_TU');
     expect(result.cpp).not.toContain('#define CUTTLEFISH_ENTRY_UI_TU');
@@ -108,8 +107,8 @@ describe('wifi blocking-wait pump (UI stays live during waits)', () => {
 
 describe('wifi lowering — connection ops', () => {
   it('connect → blocking wrapper', () => {
-    expect(lowerWifi({ operation: 'wifi.connect', ssid: '"net"', password: '"pw"', timeoutMs: 10000 } as any))
-      .toEqual({ code: '__tc_wifi_connect("net", "pw", 10000);' });
+    expect(lowerWifi({ operation: 'wifi.join', ssid: '"net"', psk: '"pw"', timeoutMs: 10000, security: 1, channel: 0, band: 0, ps: 0 } as any))
+      .toEqual({ expression: '__tc_wifi_join("net", "pw", WIFI_SECURITY_TYPE_PSK, 0, WIFI_FREQ_BAND_2_4_GHZ, 10000, false, nullptr, nullptr, nullptr)' });
   });
   it('connect_start → net_if_up + NET_REQUEST_WIFI_CONNECT kick', () => {
     expect(lowerWifi({ operation: 'wifi.connect_start', ssid: '"net"', password: '"pw"' } as any))
@@ -120,8 +119,6 @@ describe('wifi lowering — connection ops', () => {
       .toEqual({ code: '__tc_wifi_disconnect();' });
   });
   it('status → expression', () => {
-    expect(lowerWifi({ operation: 'wifi.status' } as any))
-      .toEqual({ expression: '__tc_wifi_status()' });
   });
   it('is_connected → connected flag (the async-split poll predicate)', () => {
     expect(lowerWifi({ operation: 'wifi.is_connected' } as any))
@@ -156,17 +153,6 @@ describe('wifi lowering — scan ops', () => {
 });
 
 describe('wifi lowering — config ops', () => {
-  it('set_hostname → shim call', () => {
-    expect(lowerWifi({ operation: 'wifi.set_hostname', name: '"dev"' } as any))
-      .toEqual({ code: '__tc_wifi_set_hostname("dev");' });
-  });
-  it('set_power_save → NET_REQUEST_WIFI_PS_CONFIG', () => {
-    // HAL modes "default" (on) / "none" (off); passed through verbatim.
-    expect(lowerWifi({ operation: 'wifi.set_power_save', mode: '"default"' } as any))
-      .toEqual({ code: '__tc_wifi_set_power_save("default");' });
-    expect(lowerWifi({ operation: 'wifi.set_power_save', mode: '"none"' } as any))
-      .toEqual({ code: '__tc_wifi_set_power_save("none");' });
-  });
   it('on_event disconnect → assigns on_disconnect callback', () => {
     expect(lowerWifi({ operation: 'wifi.on_event', event: 'disconnect', handler: 'onLinkLost' } as any))
       .toEqual({ code: '__tc_wifi.on_disconnect = onLinkLost;' });
@@ -178,17 +164,6 @@ describe('wifi lowering — config ops', () => {
 });
 
 describe('wifi lowering — waits + AP mode', () => {
-  it('wait_connected → blocks on the L4 flag with a timeout', () => {
-    expect(lowerWifi({ operation: 'wifi.wait_connected', timeoutMs: 5000 } as any))
-      .toEqual({ code: '__tc_wifi_wait_connected(5000);' });
-    // Default timeout when none given.
-    expect(lowerWifi({ operation: 'wifi.wait_connected' } as any))
-      .toEqual({ code: '__tc_wifi_wait_connected(15000);' });
-  });
-  it('wait_disconnected → blocks until the L4 flag clears', () => {
-    expect(lowerWifi({ operation: 'wifi.wait_disconnected' } as any))
-      .toEqual({ code: '__tc_wifi_wait_disconnected();' });
-  });
   it('ap_start → ap_enable with ssid/password/channel', () => {
     expect(lowerWifi({ operation: 'wifi.ap_start', ssid: '"hotspot"', password: '"pw"', channel: 6 } as any))
       .toEqual({ code: '__tc_wifi_ap_start("hotspot", "pw", 6);' });

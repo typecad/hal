@@ -25,7 +25,9 @@ describe('ble init shim', () => {
     expect(shim).toContain('static_cast<void*>(const_cast<struct bt_uuid*>');
     expect(shim).not.toContain('(void*)__tc_ble_make_svc_uuid');
     // the read dispatcher must cast via reinterpret_cast, not C-style fn casts.
-    expect(shim).toContain('reinterpret_cast<const char*(*)(void)>');
+    // utf8 handlers return std::string by value — the dispatcher calls
+    // through the true signature and borrows c_str() (no const char* cast).
+    expect(shim).toContain('reinterpret_cast<std::string(*)(void)>');
     expect(shim).toContain('reinterpret_cast<double(*)(void)>');
     // Numeric read handlers are invoked through a double-returning pointer:
     // hoisted callbacks return double (TS number -> C++ double), and calling
@@ -62,9 +64,24 @@ describe('ble lowering', () => {
     expect(out.code).toBe('__tc_ble.on_read[__tc_ble.current_char] = reinterpret_cast<void*>(myRead);');
   });
 
-  it('is_connected / client_count / status → expressions', () => {
+  it('is_connected / client_count → expressions', () => {
     expect(lowerBle({ operation: 'ble.is_connected' } as any)).toEqual({ expression: '__tc_ble_is_connected()' });
     expect(lowerBle({ operation: 'ble.client_count' } as any)).toEqual({ expression: '__tc_ble_client_count()' });
-    expect(lowerBle({ operation: 'ble.status' } as any)).toEqual({ expression: '__tc_ble.status' });
+  });
+});
+
+describe('ble thin surface end-to-end', () => {
+  it('new BLE(name).char(...).onRead(...) lowers through the resolver', async () => {
+    const { transpileZephyrStrategy } = await import('../../../setup');
+    const result = transpileZephyrStrategy(`
+import { BLE, BleValueType, BlePerm } from '@typecad/hal';
+const ble = new BLE('TempSensor');
+ble.char('2A6E', BleValueType.Int16, BlePerm.Read).onRead((): number => 2180);
+ble.start();
+`);
+    expect(result.cpp).toContain('__tc_ble_server_begin("TempSensor");');
+    expect(result.cpp).toContain('__tc_ble_add_char(0, "2A6E", "int16", 1, 0);');
+    expect(result.cpp).toContain('__tc_ble.on_read[__tc_ble.current_char] = reinterpret_cast<void*>');
+    expect(result.cpp).toContain('__tc_ble_advertise_start();');
   });
 });

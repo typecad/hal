@@ -49,7 +49,6 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "split",
       target: "generic",
-      mcu: "@typecad/mcu-generic",
       emitMaps: true,
 
     });
@@ -101,7 +100,6 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "split",
       target: "generic",
-      mcu: "@typecad/mcu-generic",
       emitMaps: true,
 
     });
@@ -164,7 +162,6 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",
-      mcu: "@typecad/mcu-generic",
       emitMaps: true,
 
     });
@@ -207,7 +204,6 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",
-      mcu: "@typecad/mcu-generic",
       emitMaps: true,
 
     });
@@ -259,7 +255,6 @@ describe("transpileFile module graph", () => {
       inputFile: entryPath,
       emitMode: "cpp",
       target: "generic",
-      mcu: "@typecad/mcu-generic",
       emitMaps: true,
 
     });

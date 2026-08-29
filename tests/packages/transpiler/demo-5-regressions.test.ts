@@ -2,14 +2,13 @@
 // Regression tests for bugs surfaced by demo #5 (Relay).
 //
 // Each test pins a specific previously-broken shape so the fixes are not
-// regressed. The SUPPORT_MATRIX section references point at the documented
-// pattern each fix restores.
+// regressed.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
 import { expectCppContains, transpile, transpileNative } from '../../setup';
 
-// ── Bitwise operators on enum-class operands (SUPPORT_MATRIX §5.1) ──────────
+// ── Bitwise operators on enum-class operands ─────────────────────────────────
 //
 // Before the fix, `flags | LinkFlag.Up` and `from.links[0] & LinkFlag.Wired`
 // emitted the raw enum operands and failed g++ ("no match for 'operator|'

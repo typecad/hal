@@ -1,12 +1,14 @@
-// 05 — network scanner: blocking scan at top level.
-import { WiFi, delay } from '@typecad/hal';
+// 05 — network scanner: one blocking scan, results through the handle.
+import { WiFi, Time } from '@typecad/hal';
 
-const n = WiFi.scan();
-console.log(`found ${n} networks`);
-for (let i = 0; i < n; i++) {
-  console.log(`${WiFi.scanSSID(i)}  ${WiFi.scanRSSI(i)} dBm  ch${WiFi.scanChannel(i)}  enc=${WiFi.scanEncryption(i)}`);
+const wifi = new WiFi("any");
+const scan = wifi.scan();
+
+console.log(`found ${scan.count()} networks`);
+for (let i = 0; i < scan.count(); i++) {
+  console.log(`${scan.ssid(i)}  ${scan.rssi(i)} dBm  ch${scan.channel(i)}  enc=${scan.security(i)}`);
 }
 
 while (true) {
-  delay(1000);
+  Time.sleep(1000);
 }

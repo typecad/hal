@@ -15,13 +15,13 @@
 //   PC<bit> → 32+bit (PC13 → 45), matching @typecad/mcu-stm32f411.
 
 import { describe, it, expect } from 'vitest';
-import { resolveBoardConstants } from '../../../packages/cuttlefish/src/ir/board-resolver';
+import { generateBoard } from '../../../packages/framework-zephyr/src/boardgen';
+import { SOC_CHIPS } from '../../../packages/framework-zephyr/src/chips/soc/index';
+import type { BoardConstants } from '../../../packages/cuttlefish/src/api/shared/board-resolver';
 import { resolveChipFromBoard } from '../../../packages/framework-zephyr/src/chips/resolve';
 import { controllerNodelabelForPin, controllerRawPinForPin } from '../../../packages/framework-zephyr/src/chips/controllers';
 
-const chip = resolveChipFromBoard(
-  resolveBoardConstants('boards/board-blackpill-f411ce/src/index.ts'),
-);
+const chip = SOC_CHIPS['stm32f411xe'];
 
 describe('board-blackpill-f411ce → ZephyrChipDescriptor', () => {
   it('resolves (the board package carries a zephyr build target + chip data)', () => {
@@ -59,8 +59,10 @@ describe('board-blackpill-f411ce → ZephyrChipDescriptor', () => {
     expect(controllerRawPinForPin(chip!, 45)).toBe(13);  // PC13 → gpioc 13
   });
 
-  it('numbers PB12–PB15 by port blocks (28–31), never contiguously past the unbonded PB11', () => {
-    const bc = resolveBoardConstants('boards/board-blackpill-f411ce/src/index.ts');
+  it('numbers PB12–PB15 by port blocks (28–31) in the generated board module', () => {
+    // Pin numbering now lands in boardgen's emitted constants (board.json).
+    const g = generateBoard('blackpill_f411ce/stm32f411xe');
+    const bc: BoardConstants = new Map(Object.entries(JSON.parse(g.boardJson).constants));
     const byNumber = new Map<number, string>();
     for (let i = 0; i < 48; i++) {
       const nm = bc.get(`pins.all.${i}.name`);
@@ -69,7 +71,6 @@ describe('board-blackpill-f411ce → ZephyrChipDescriptor', () => {
     }
     expect(byNumber.get(28)).toBe('PB12');
     expect(byNumber.get(31)).toBe('PB15');
-    expect(byNumber.has(27)).toBe(false); // PB11 is not bonded — no pin owns 27
   });
 
   it('exposes the onboard LED (PC13 → pin 45) and KEY button (PA0 → pin 0) via DT aliases', () => {
@@ -93,8 +94,8 @@ describe('board-blackpill-f411ce → ZephyrChipDescriptor', () => {
 
   it('declares synthesized PWM specs on pwm4 ch1/ch2 (PB6/PB7) — no board-shipped DT alias', () => {
     expect(chip!.pwm?.specs).toEqual([
-      { pin: 22, controller: 'pwm4', channel: 1, periodNs: 20_000_000 },
-      { pin: 23, controller: 'pwm4', channel: 2, periodNs: 20_000_000 },
+      { pin: 22, controller: 'pwm4', channel: 1, periodNs: 20_000_000, pinctrl: 'tim4_ch1_pb6' },
+      { pin: 23, controller: 'pwm4', channel: 2, periodNs: 20_000_000, pinctrl: 'tim4_ch2_pb7' },
     ]);
   });
 

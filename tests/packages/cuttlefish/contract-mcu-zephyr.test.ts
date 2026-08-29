@@ -54,7 +54,7 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
         'const config: CuttlefishConfig = {',
         "  entry: './src/main.ts',",
         "  target: 'stm32f411',",
-        "  mcu: '@typecad/mcu-stm32f411',",
+        "  soc: 'stm32f411xe',",
         "  contract: './board.contract.json',",
         "  framework: '@typecad/framework-zephyr',",
         "  frameworkData: { buildTarget: 'my_pcb' },",
@@ -67,21 +67,22 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
 
     const config = parseConfigFile(join(tmp, 'cuttlefish.config.ts'));
     expect(config).toBeDefined();
-    expect(config!.mcu).toBe('@typecad/mcu-stm32f411');
+    expect(config!.soc).toBe('stm32f411xe');
     expect(config!.board).toBeUndefined();
     expect(config!.contract).toBe('./board.contract.json');
     expect(config!.buildTarget).toBe('my_pcb');
     expect((config!.zephyrConfig as Record<string, unknown>).customBoard).toBe(true);
   });
 
-  it('generates the narrowed board.ts from the contract + MCU manifest', async () => {
+  it('generates the narrowed board.ts from the contract + soc descriptor', async () => {
     writeProject({ 'board.contract.json': CONTRACT });
 
     const contract = parseContractFile(join(tmp, 'board.contract.json'));
+    void contract;
     const { generateBoardFile } = await import('../../../packages/cuttlefish/src/contract/board-generator');
     const boardPath = generateBoardFile({
       projectDir: tmp,
-      mcuPackage: '@typecad/mcu-stm32f411',
+      soc: 'stm32f411xe',
       connectedPins: ['PA5', 'PA0'],
       peripherals: ['UART0'],
     });
@@ -89,10 +90,12 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
     expect(existsSync(boardPath)).toBe(true);
     const board = readFileSync(boardPath, 'utf8');
     // Only the wired pins are exposed; unwired silicon is a compile error.
-    expect(board).toContain("export { PA5, PA0 } from '@typecad/mcu-stm32f411'");
+    expect(board).toContain("export const PA5 = Pin.fromPort('PA5');");
+    expect(board).toContain("export const PA0 = Pin.fromPort('PA0');");
     expect(board).not.toContain('PC13');
-    // Full HAL surface so `import { delay } from '@typecad/board'` resolves.
-    expect(board).toContain("export * from '@typecad/hal'");
+    expect(board).toContain("export const UART0 = new SerialPort('UART0');");
+    // HAL imports so `import { Time } from '@typecad/board'` resolves.
+    expect(board).toContain("import { Pin, I2CBus, SPIBus, SerialPort } from '@typecad/hal';");
   });
 
   it('still rejects a config that sets both board and contract', () => {
@@ -100,8 +103,8 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
       'board.contract.json': CONTRACT,
       'cuttlefish.config.ts': [
         'const config = {',
-        "  mcu: '@typecad/mcu-stm32f411',",
-        "  board: '@typecad/board-blackpill-f411ce',",
+        "  soc: 'stm32f411xe',",
+        "  board: 'blackpill_f411ce/stm32f411xe',",
         "  contract: './board.contract.json',",
         '};',
         'export default config;',

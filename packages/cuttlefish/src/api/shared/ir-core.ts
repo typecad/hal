@@ -87,8 +87,13 @@ export type ExpressionIR =
   /**
    * HAL operation used as an expression (returns a value).
    * The framework strategy resolves the operation to a C++ expression string.
+   * `prefixOps` carries a method body's PRECEDING side-effect ops: expression
+   * positions historically kept only the last op, silently dropping e.g. a
+   * bus transaction prefix (i2c begin/write/end before a read) or a pin
+   * configure before a read. The renderer emits them as a GCC
+   * statement-expression `({ op; ...; value; })` so every op runs.
    */
-  | { kind: "hal-expr"; operation: HALOpIR };
+  | { kind: "hal-expr"; operation: HALOpIR; prefixOps?: HALOpIR[] };
 
 // ---------------------------------------------------------------------------
 // Statements

@@ -410,17 +410,16 @@ describe('SimSPIBus', () => {
 // ===========================================================================
 
 describe('createSimBoard', () => {
-  it('creates an Arduino Uno board with default peripherals', () => {
-    const board = createSimBoard({ boardType: 'arduino-uno' });
+  it('creates a board with default peripheral counts', () => {
+    const board = createSimBoard({});
 
     // 14 digital pins
     expect(board.digitalPins.size).toBe(14);
     // 6 analog pins
     expect(board.analogPins.size).toBe(6);
-    // PWM pins: 3, 5, 6, 9, 10, 11
-    expect(board.pwmPins.size).toBe(6);
-    // Interrupt pins: 2, 3
-    expect(board.interruptPins.size).toBe(2);
+    // No PWM or interrupt pins by default
+    expect(board.pwmPins.size).toBe(0);
+    expect(board.interruptPins.size).toBe(0);
     // 1 serial port, 1 I2C bus, 1 SPI bus
     expect(board.serialPorts.size).toBe(1);
     expect(board.i2cBuses.size).toBe(1);
@@ -428,7 +427,7 @@ describe('createSimBoard', () => {
   });
 
   it('accesses peripherals via convenience methods', () => {
-    const board = createSimBoard({ boardType: 'arduino-uno' });
+    const board = createSimBoard({ pwmPins: [9], interruptPins: [2] });
 
     // Digital pin
     const d13 = board.digital(13);
@@ -470,7 +469,7 @@ describe('createSimBoard', () => {
   });
 
   it('throws for invalid pin access', () => {
-    const board = createSimBoard({ boardType: 'arduino-uno' });
+    const board = createSimBoard({});
     expect(() => board.digital(99)).toThrow('Digital pin 99');
     expect(() => board.analog(10)).toThrow('Analog pin A10');
     expect(() => board.pwm(2)).toThrow('Pin 2 is not a PWM');
@@ -478,7 +477,7 @@ describe('createSimBoard', () => {
   });
 
   it('resets all peripherals', () => {
-    const board = createSimBoard({ boardType: 'arduino-uno' });
+    const board = createSimBoard({});
     const d13 = board.digital(13);
     d13.asOutput();
     d13.high();
@@ -494,7 +493,6 @@ describe('createSimBoard', () => {
 
   it('respects custom pin counts', () => {
     const board = createSimBoard({
-      boardType: 'custom',
       digitalPinCount: 20,
       analogPinCount: 8,
       uartCount: 2,
@@ -508,21 +506,19 @@ describe('createSimBoard', () => {
     expect(board.spiBuses.size).toBe(2);
   });
 
-  it('custom/unknown board types have no PWM or interrupt pins by default', () => {
+  it('a board has no PWM or interrupt pins by default', () => {
     const board = createSimBoard({
-      boardType: 'custom',
       digitalPinCount: 14,
     });
     expect(board.pwmPins.size).toBe(0);
     expect(board.interruptPins.size).toBe(0);
-    // And the accessors throw for capability pins on a custom board
+    // And the accessors throw for capability pins on a board without them
     expect(() => board.pwm(3)).toThrow('Pin 3 is not a PWM');
     expect(() => board.interrupt(2)).toThrow('Pin 2 is not an interrupt');
   });
 
-  it('pwmPins/interruptPins overrides declare capability on a custom board', () => {
+  it('pwmPins/interruptPins declare capability pins', () => {
     const board = createSimBoard({
-      boardType: 'custom',
       digitalPinCount: 10,
       pwmPins: [5, 9],
       interruptPins: [7],
@@ -533,9 +529,8 @@ describe('createSimBoard', () => {
     expect(board.interrupt(7)).toBeInstanceOf(SimInterruptPin);
   });
 
-  it('pwmPins/interruptPins overrides also apply to known board types', () => {
+  it('pwmPins/interruptPins overrides apply', () => {
     const board = createSimBoard({
-      boardType: 'arduino-uno',
       pwmPins: [3, 6],
       interruptPins: [2],
     });
@@ -945,7 +940,7 @@ describe('SimSPIBus (extended)', () => {
 
 describe('createSimBoard (extended)', () => {
   it('provides typed pin instances on each accessor map', () => {
-    const board = createSimBoard({ boardType: 'arduino-uno' });
+    const board = createSimBoard({ pwmPins: [3], interruptPins: [2] });
     expect(board.digital(0)).toBeInstanceOf(SimDigitalPin);
     expect(board.analog(0)).toBeInstanceOf(SimAnalogPin);
     expect(board.pwm(3)).toBeInstanceOf(SimPWMPin);
@@ -956,7 +951,7 @@ describe('createSimBoard (extended)', () => {
   });
 
   it('throws for out-of-range bus accessors', () => {
-    const board = createSimBoard({ boardType: 'arduino-uno' });
+    const board = createSimBoard({});
     expect(() => board.serial(9)).toThrow('Serial port UART9');
     expect(() => board.i2c(9)).toThrow('I2C bus 9');
     expect(() => board.spi(9)).toThrow('SPI bus 9');

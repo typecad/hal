@@ -135,14 +135,8 @@ export { effectiveDisplaySize, normalizeDisplayRotation, resolveDisplayProfile, 
 export { GLCDFONT_BYTES, renderGlcdfontArray } from './glcdfont.js';
 
 // Display adapter generator types. Consumed by strategy.resolveDisplayAdapter
-// implementations (framework-arduino owns the Adafruit_GFX drivers, etc.) and
-// cuttlefish's generic built-in adapter registry (SDL native).
+// implementations and cuttlefish's generic built-in adapter registry (SDL native).
 export type { DisplayAdapterCode, DisplayAdapterGenerator } from './display-adapter.js';
-
-// Native display-op resolver — lowers display.* HAL ops into calls against
-// the adapter surface (display_init / display_targetFillRect / etc.). Used
-// by NativeAVRStrategy and Esp32Strategy's resolveDisplayOp overrides.
-export { resolveNativeDisplayOp } from './native-display-op-resolver.js';
 
 // Display capabilities descriptor (Phase 2: display-agnostic core)
 export type {
@@ -277,3 +271,7 @@ export {
   statusMark,
   countByRisk,
 } from './spdx-licenses.js';
+
+// Generated Zephyr board catalog (shared with the create/scaffold flow).
+export { BOARD_DATA } from './board-catalog.js';
+export type { BoardDataEntry } from './board-catalog.js';

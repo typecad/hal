@@ -14,8 +14,6 @@ import { validatePinAliasConflicts } from "./pin-alias-conflict.js";
 import { validatePinModeConfig } from "./pin-mode-validation.js";
 import { validateUnsafePins } from "./pin-safety.js";
 import { validatePulldownSupport } from "./pulldown-validation.js";
-import { validatePWMTimerSharing } from "./pwm-timer-sharing.js";
-import { validateTimer0PWMTimingConflict } from "./timer0-pwm-timing-conflict.js";
 import { validateTryCatch } from "./try-catch-validation.js";
 import { validateMemoryBudget } from "./memory-budget-validation.js";
 import { validateBlockingDelayInLoop } from "./timing-validation.js";
@@ -34,8 +32,6 @@ export function runProgramValidations(program: ProgramIR, strategy?: PlatformStr
   diagnostics.push(...validateUnsafePins(peripheralUsage, program.boardConstants, program.fileName));
   diagnostics.push(...analyzeResources(program, resolvedStrategy));
   diagnostics.push(...validatePinAliasConflicts(peripheralUsage, program.boardConstants, program.fileName));
-  diagnostics.push(...validatePWMTimerSharing(peripheralUsage, program.boardConstants, program.fileName));
-  diagnostics.push(...validateTimer0PWMTimingConflict(peripheralUsage, program.boardConstants, program.fileName));
   diagnostics.push(...validatePulldownSupport(peripheralUsage, program.boardConstants, program.fileName));
   diagnostics.push(...analyzeInterruptSafety(program, peripheralUsage, resolvedStrategy.isrUnsafeOperations?.()));
   inferVolatileForIsrSharedVars(program, diagnostics);

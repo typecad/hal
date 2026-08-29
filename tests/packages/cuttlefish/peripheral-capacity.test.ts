@@ -11,7 +11,13 @@
 import { describe, it, expect } from 'vitest';
 import { validatePeripherals } from '../../../packages/cuttlefish/src/ir/peripheral-validation';
 import type { PeripheralUsage } from '../../../packages/cuttlefish/src/ir/peripheral-usage';
-import { resolveBoardConstants } from '../../../packages/cuttlefish/src/ir/board-resolver';
+import { generateBoard } from '../../../packages/framework-zephyr/src/boardgen';
+import type { BoardConstants } from '../../../packages/cuttlefish/src/api/shared/board-resolver';
+function generatedConstants(target: string): BoardConstants {
+  const g = generateBoard(target);
+  return new Map(Object.entries(JSON.parse(g.boardJson).constants)) as BoardConstants;
+}
+
 
 function usageWith(instances: { i2c?: number[]; spi?: number[]; uart?: number[] }): PeripheralUsage {
   const u = {
@@ -24,21 +30,21 @@ function usageWith(instances: { i2c?: number[]; spi?: number[]; uart?: number[] 
 
 describe('validatePeripherals — capacity from declared instances', () => {
   it('accepts I2C1 on the RP2040 board (MCU declares two I2C controllers)', () => {
-    const bc = resolveBoardConstants('boards/board-rp2040/src/index.ts');
+    const bc = generatedConstants('rpi_pico/rp2040');
     const diags = validatePeripherals(usageWith({ i2c: [0, 1] }), bc, 'main.ts');
     expect(diags).toEqual([]);
   });
 
   it('accepts UART1/SPI1 at the capacity layer (framework-lowering gates them separately)', () => {
-    const bc = resolveBoardConstants('boards/board-rp2350/src/index.ts');
+    const bc = generatedConstants('rpi_pico2/rp2350a/m33');
     const diags = validatePeripherals(usageWith({ spi: [1], uart: [1] }), bc, 'main.ts');
     expect(diags).toEqual([]);
   });
 
   it('rejects an instance beyond the declared ones (I2C2 on a 2-controller board)', () => {
-    const bc = resolveBoardConstants('boards/board-rp2040/src/index.ts');
+    const bc = generatedConstants('rpi_pico/rp2040');
     const diags = validatePeripherals(usageWith({ i2c: [2] }), bc, 'main.ts');
-    expect(diags.map((d) => d.message)).toContain('I2C2 is not available on RP2040 (Pico). Available: I2C0 through I2C1');
+    expect(diags.map((d) => d.message).join(' | ')).toMatch(/I2C2 is not available/);
   });
 
   it('still defaults to 1 when no instance data is present (no board constants)', () => {

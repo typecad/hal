@@ -75,12 +75,12 @@ describe('library init scaffold', () => {
   it('omits kconfig and the overlay fragment for non-Zephyr frameworks', async () => {
     const result = await scaffold({
       name: 'my-sensor',
-      framework: 'arduino',
+      framework: 'native',
       category: 'sensor',
       targets: '',
     });
     const manifest = JSON.parse(readFileSync(join(result.packageDir, 'cuttlefish.library.json'), 'utf8'));
-    expect(manifest.framework).toBe('arduino');
+    expect(manifest.framework).toBe('native');
     expect(manifest.kconfig).toBeUndefined();
     expect(manifest.overlay).toBeUndefined();
     expect(manifest.targets).toBeUndefined();

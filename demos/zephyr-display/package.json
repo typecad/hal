@@ -1,0 +1,17 @@
+{
+  "name": "zephyr-display",
+  "version": "1.0.0",
+  "private": true,
+  "description": "ESP32-S3 + ST7796S + FT6336U display showcase on Zephyr \u2014 the framework-zephyr port of demo-display",
+  "type": "module",
+  "scripts": {
+    "build": "cuttlefish build",
+    "compile": "cuttlefish build --compile",
+    "upload": "cuttlefish build --compile --upload",
+    "flash": "cuttlefish build --flash"
+  },
+  "dependencies": {
+    "@typecad/framework-zephyr": "*",
+    "@typecad/ui": "*"
+  }
+}

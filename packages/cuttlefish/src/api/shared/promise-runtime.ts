@@ -26,10 +26,10 @@ export function generatePromiseRuntime(
   includeWaitForPinEdge: boolean = false,
   strategy?: import("./platform-strategy.js").PlatformStrategy,
 ): string {
-  // The current-time expression (millis() on Wiring-derived frameworks,
-  // std::chrono on generic). Falling back to millis() preserves the historical
+  // The current-time expression (__tc_now_ms() — the runtime clock contract
+  // every strategy provides). Falling back to the contract symbol keeps the
   // behavior when no strategy is supplied.
-  const now = strategy?.currentTimeMillis?.() ?? "millis()";
+  const now = strategy?.currentTimeMillis?.() ?? "__tc_now_ms()";
   const waitForPinEdge = includeWaitForPinEdge ? `
   // HAL-level wait for pin edge — polling-based implementation.
   // Detects an actual transition (idle→target), not just the current level.

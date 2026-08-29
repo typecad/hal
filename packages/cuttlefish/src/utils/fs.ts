@@ -31,7 +31,7 @@ export function writeText(filePath: string, content: string): void {
   ensureDir(path.dirname(filePath));
   const resolved = path.resolve(filePath);
   // Skip writing when content is identical — preserves mtime so downstream
-  // build tools (idf.py/ninja, arduino-cli, make) can skip recompilation.
+  // build tools (west/ninja, make) can skip recompilation.
   // The file still counts as "written this run" (it is current output).
   writtenFiles.add(resolved);
   try {

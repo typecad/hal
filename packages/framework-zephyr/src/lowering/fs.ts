@@ -34,9 +34,9 @@ export function fsInitLines(): string[] {
     'FS_LITTLEFS_DECLARE_DEFAULT_CONFIG(__tc_fs_data);',
     'static struct fs_mount_t __tc_fs_mp_init = {',
     '    .type = FS_LITTLEFS,',
+    '    .mnt_point = "/lfs",',
     '    .fs_data = &__tc_fs_data,',
     '    .storage_dev = (void *)FIXED_PARTITION_ID(storage_partition),',
-    '    .mnt_point = "/lfs",',
     '};',
     '',
     'static void __tc_fs_ensure_mount(void) {',
@@ -107,9 +107,6 @@ export function fsInitLines(): string[] {
 export function lowerFs(op: HALOpIR): { code?: string; expression?: string } {
   const o = op as any;
   switch (op.operation) {
-    case 'fs.begin':
-      // No payload (the op carries only its discriminator).
-      return { code: 'return __tc_fs_begin();' };
     case 'fs.read_text':
       return { code: `return __tc_fs_read_text(${o.path});` };
     case 'fs.write_text':

@@ -18,6 +18,7 @@
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 import { controllerNodelabelForPin, controllerRawPinForPin } from '../chips/controllers.js';
+import { ZEPHYR_GPIO_FLAGS } from '@typecad/hal';
 
 /** The C identifier emitted for a pin's gpio_dt_spec variable. */
 export function dtSpecVarName(dtSpec: string): string {
@@ -62,6 +63,60 @@ function flagsForMode(mode: string): string {
   return base + dtFlagsForMode(mode);
 }
 
+// ── Thin GPIO (hal/gpio-pin.ts) — flag tokens ─────────────────────────────
+//
+// "GPIO.OUTPUT | GPIO.PULL_UP" token text maps name-for-name onto the GPIO_*
+// macros. The name set comes from the GENERATED Zephyr token table (parsed
+// from the pinned tree's headers); unknown tokens are build errors listing
+// the valid spellings — the sensor-catalog discipline.
+
+const GPIO_FLAG_TOKENS: Record<string, string> = Object.fromEntries(
+  ZEPHYR_GPIO_FLAGS.map((f) => [`GPIO.${f}`, `GPIO_${f}`]),
+);
+
+/** Map thin-GPIO flag token text to the GPIO_* macro expression. */
+export function gpioFlagsToMacros(flags: string): string {
+  const tokens = String(flags ?? '')
+    .split('|')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (tokens.length === 0) return 'GPIO_INPUT';
+  const macros = tokens.map((t) => {
+    const m = GPIO_FLAG_TOKENS[t];
+    if (!m) {
+      throw new Error(
+        `GPIO flag '${t}' is not a known GPIO.* token — valid: ${Object.keys(GPIO_FLAG_TOKENS).join(', ')}.`,
+      );
+    }
+    return m;
+  });
+  return macros.join(' | ');
+}
+
+/** Guarded per-pin configure statement for the dt-spec path: construction
+ *  flags apply exactly once, ahead of the first use. */
+function dtSpecConfigure(varName: string, dtSpec: string, flags: string): string {
+  return `{ ${dtSpecGuardConfigure(varName, dtSpec, flags)} }`;
+}
+
+/** The guard body only (no wrapping braces) — for fusing into
+ *  statement-expressions. */
+function dtSpecGuardConfigure(varName: string, dtSpec: string, flags: string): string {
+  const done = `__tc_gpio_cfg_${dtSpec.replace(/-/g, '_')}_done`;
+  return `static bool ${done} = false; if (!${done}) { gpio_pin_configure_dt(&${varName}, ${gpioFlagsToMacros(flags)}); ${done} = true; }`;
+}
+
+/** Guarded per-pin configure statement for the raw-controller path. */
+function rawConfigure(controller: string, rawPin: number, pin: number, flags: string): string {
+  return `{ ${rawGuardConfigure(controller, rawPin, pin, flags)} }`;
+}
+
+/** The raw-path guard body only — for fusing into statement-expressions. */
+function rawGuardConfigure(controller: string, rawPin: number, pin: number, flags: string): string {
+  const done = `__tc_gpio_cfg_raw${pin}_done`;
+  return `static bool ${done} = false; if (!${done}) { gpio_pin_configure(${controller}, ${rawPin}, ${gpioFlagsToMacros(flags)}); ${done} = true; }`;
+}
+
 /**
  * Resolve a HAL gpio.* op to Zephyr C++.
  * Returns `{ code }` for statement ops, `{ expression }` for value-returning ops.
@@ -89,9 +144,17 @@ function lowerGpioDtSpec(
   const varName = dtSpecVarName(dtSpec);
 
   switch (op.operation) {
-    case 'gpio.set_mode': {
-      return { code: `gpio_pin_configure_dt(&${varName}, ${flagsForMode(o.mode)});` };
-    }
+    case 'gpio.configure':
+      // Thin GPIO: construction flags, applied once per pin (guard).
+      return { code: dtSpecConfigure(varName, dtSpec, o.flags) };
+    case 'gpio.read_cfg':
+      // Thin GPIO get(): the guarded configure FUSED into the read — one
+      // statement-expression, correct in any expression position (a method's
+      // leading side-effect ops are dropped when the call sits in a pure
+      // expression, e.g. an if-condition).
+      return {
+        expression: `({ ${dtSpecGuardConfigure(varName, dtSpec, o.flags)} gpio_pin_get_dt(&${varName}); })`,
+      };
     case 'gpio.write': {
       // Literal 0/1 stays as-is; runtime expression coerced to int via ternary.
       const v = o.value;
@@ -128,8 +191,32 @@ function lowerGpioRaw(
   const rawPin = controllerRawPinForPin(chip, pin);
 
   switch (op.operation) {
-    case 'gpio.set_mode': {
-      return { code: `gpio_pin_configure(${controller}, ${rawPin}, ${flagsForMode(o.mode)});` };
+    case 'gpio.configure':
+      // Thin GPIO: construction flags, applied once per pin (guard).
+      return { code: rawConfigure(controller, rawPin, pin, o.flags) };
+    case 'gpio.read_cfg':
+      // Fused guarded configure + raw read (see the dt-spec path above).
+      return {
+        expression: `({ ${rawGuardConfigure(controller, rawPin, pin, o.flags)} gpio_pin_get_raw(${controller}, ${rawPin}); })`,
+      };
+    case 'gpio.shift_out':
+    case 'gpio.shift_in': {
+      // Bit-bang over the raw-controller path (shift pairs are arbitrary
+      // pins): configure both once (guarded), then clock the bits. Zephyr
+      // verbs only — gpio_pin_set_raw / gpio_pin_get_raw / k_busy_wait.
+      const dataCtrl = `DEVICE_DT_GET(DT_NODELABEL(${controllerNodelabelForPin(chip, o.dataPin)}))`;
+      const dataRaw = controllerRawPinForPin(chip, o.dataPin);
+      const clkCtrl = `DEVICE_DT_GET(DT_NODELABEL(${controllerNodelabelForPin(chip, o.clockPin)}))`;
+      const clkRaw = controllerRawPinForPin(chip, o.clockPin);
+      const cfg = `{ static bool __tc_shf${o.dataPin}_${o.clockPin}_done = false; if (!__tc_shf${o.dataPin}_${o.clockPin}_done) { gpio_pin_configure(${dataCtrl}, ${dataRaw}, GPIO_INPUT); gpio_pin_configure(${clkCtrl}, ${clkRaw}, GPIO_OUTPUT); __tc_shf${o.dataPin}_${o.clockPin}_done = true; } }`;
+      if (op.operation === 'gpio.shift_out') {
+        return {
+          code: `${cfg} for (int __i = ${(o.msbFirst ?? true) ? '7' : '0'}; ${(o.msbFirst ?? true) ? '__i >= 0' : '__i < 8'}; ${(o.msbFirst ?? true) ? '__i--' : '__i++'}) { gpio_pin_set_raw(${dataCtrl}, ${dataRaw}, ((static_cast<uint8_t>(${o.value})) >> __i) & 1); gpio_pin_set_raw(${clkCtrl}, ${clkRaw}, 1); k_busy_wait(1); gpio_pin_set_raw(${clkCtrl}, ${clkRaw}, 0); }`,
+        };
+      }
+      return {
+        expression: `({ ${cfg} uint8_t __b = 0; for (int __i = ${(o.msbFirst ?? true) ? '7' : '0'}; ${(o.msbFirst ?? true) ? '__i >= 0' : '__i < 8'}; ${(o.msbFirst ?? true) ? '__i--' : '__i++'}) { gpio_pin_set_raw(${clkCtrl}, ${clkRaw}, 1); k_busy_wait(1); __b = static_cast<uint8_t>((__b << 1) | (gpio_pin_get_raw(${dataCtrl}, ${dataRaw}) & 1)); gpio_pin_set_raw(${clkCtrl}, ${clkRaw}, 0); } __b; })`,
+      };
     }
     case 'gpio.write': {
       const v = o.value;

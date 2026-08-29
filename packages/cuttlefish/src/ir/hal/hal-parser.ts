@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { parseSource } from "../../ast/parse.js";
-import { requiredIncludes, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap, halInstances, topLevelAliasReceivers } from "../build-ir-state.js";
+import { requiredIncludes, getCurrentBoardConstants, mcuPinForwardMap, mcuPinReverseMap, halInstances, topLevelAliasReceivers, pinAliasMap } from "../build-ir-state.js";
 import { mapPeripheralName } from "../../mapping/peripheral-names.js";
 import { escapeCppStringLiteral } from "../../utils/strings.js";
 
@@ -249,22 +249,72 @@ export function getCtorIncludes(className: string): string[] {
   return halCtorIncludes.get(className) ?? [];
 }
 
-/** Map an HttpClass factory method name to its HTTP verb, or null. */
-export function httpFactoryVerb(methodName: string): string | null {
-  switch (methodName) {
-    case "get": return "GET";
-    case "post": return "POST";
-    case "put": return "PUT";
-    case "del": return "DELETE";
-    case "head": return "HEAD";
-    case "patch": return "PATCH";
-    default: return null;
-  }
-}
-
 /** Render an Http factory URL argument as C++ expression text (string
  *  literals quoted, identifiers/member accesses verbatim), or null when the
  *  argument shape can't be resolved at compile time. */
+/** Capture `new Request(method, url, opts?)` construction facts into
+ *  fieldValues (method token/string → verb, URL as C++ text, opts with
+ *  class-default sentinels so send()'s setter calls always resolve).
+ *  Returns null when the arg shapes don't resolve. */
+
+/** Top-level `const NAME = "literal"` lookup, or null. One pass over the
+ *  file's statements — cheap and cached by the TS compiler. */
+function topLevelStringConst(sourceFile: ts.SourceFile, name: string): string | null {
+  for (const stmt of sourceFile.statements) {
+    if (!ts.isVariableStatement(stmt)) continue;
+    for (const decl of stmt.declarationList.declarations) {
+      if (ts.isIdentifier(decl.name) && decl.name.text === name
+          && decl.initializer && ts.isStringLiteral(decl.initializer)) {
+        return decl.initializer.text;
+      }
+    }
+  }
+  return null;
+}
+
+export function requestCtorFields(ctorArgs: readonly ts.Expression[] | undefined, sourceFile?: ts.SourceFile): Map<string, string> | null {
+  if (!ctorArgs || ctorArgs.length < 2) return null;
+  const fieldValues = new Map<string, string>();
+  const methodArg = ctorArgs[0];
+  if (ts.isStringLiteral(methodArg)) {
+    fieldValues.set("_method", methodArg.text.toUpperCase());
+  } else if (ts.isPropertyAccessExpression(methodArg) && methodArg.expression.getText() === "Request") {
+    fieldValues.set("_method", methodArg.name.text);
+  } else {
+    return null;
+  }
+  const urlText = httpUrlArgText(ctorArgs[1]);
+  if (!urlText) return null;
+  fieldValues.set("_url", urlText);
+  fieldValues.set("_timeoutMs", "10000");
+  fieldValues.set("_body", '""');
+  fieldValues.set("_json", "false");
+  fieldValues.set("_insecure", "false");
+  fieldValues.set("_caCert", '""');
+  const opts = ctorArgs[2];
+  if (opts && ts.isObjectLiteralExpression(opts)) {
+    for (const prop of opts.properties) {
+      if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
+      const name = prop.name.text;
+      if (name === "timeoutMs" && ts.isNumericLiteral(prop.initializer)) {
+        fieldValues.set("_timeoutMs", prop.initializer.text.replace(/_/g, ""));
+      } else if (name === "body" || name === "caCert") {
+        // Literal, or an identifier resolving to a top-level string const
+        // (the PEM-as-const pattern the hardware suite uses).
+        if (ts.isStringLiteral(prop.initializer)) {
+          fieldValues.set("_" + name, JSON.stringify(prop.initializer.text));
+        } else if (ts.isIdentifier(prop.initializer) && sourceFile) {
+          const lit = topLevelStringConst(sourceFile, prop.initializer.text);
+          if (lit !== null) fieldValues.set("_" + name, JSON.stringify(lit));
+        }
+      } else if (name === "json" || name === "insecure") {
+        fieldValues.set("_" + name, prop.initializer.kind === ts.SyntaxKind.TrueKeyword ? "true" : "false");
+      }
+    }
+  }
+  return fieldValues;
+}
+
 export function httpUrlArgText(arg: ts.Expression): string | null {
   if (ts.isStringLiteral(arg) || ts.isNoSubstitutionTemplateLiteral(arg)) return JSON.stringify(arg.text);
   if (ts.isIdentifier(arg)) return arg.text;
@@ -303,12 +353,29 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
       if (mappedName) {
         const canonical = name.toUpperCase();
         if (canonical.startsWith("UART")) return { className: "SerialPort", fieldValues: new Map([["_port", mappedName]]) };
-        if (canonical.startsWith("USB")) return { className: "USBSerialPort", fieldValues: new Map([["_port", mappedName]]) };
+        if (canonical.startsWith("USB")) return { className: "USBConsole", fieldValues: new Map([["_port", mappedName]]) };
         if (canonical.startsWith("I2C")) return { className: "I2CBus", fieldValues: new Map([["_bus", mappedName]]) };
         if (canonical.startsWith("SPI")) return { className: "SPIBus", fieldValues: new Map([["_bus", mappedName]]) };
       }
 
-      // Bare pin resolution (D0, A0, etc.) — enriched with MCU port name
+      // Board-module pin constant (LED, BUTTON, D0, A0, connector labels,
+      // datasheet-named pins — anything the generated board manifest maps
+      // through pins.aliases.*). Checked BEFORE the legacy Arduino D/A
+      // arithmetic below: the alias carries the board's actual wiring, which
+      // the Arduino-style offset math cannot know (the XIAO's D0 is
+      // gpio0.2, not Arduino pin 0).
+      const aliasNum = pinAliasMap.get(name);
+      if (getCurrentBoardConstants() && aliasNum !== undefined) {
+        const portName = mcuPinReverseMap.get(aliasNum);
+        const fields: Map<string, string> = new Map([["_pin", aliasNum]]);
+        if (portName) fields.set("_port", portName);
+        const inst = { className: "Pin", fieldValues: fields };
+        halInstances.set(name, inst);
+        return inst;
+      }
+
+      // Legacy Arduino-style D/A fallback (no board manifest — the old
+      // package-less path or bare-silicon configs).
       const dMatch = name.match(/^D(\d+)$/);
       if (dMatch) {
         const arduinoPin = dMatch[1];
@@ -397,23 +464,6 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
           }
         }
 
-        // Specialized handling for Http factory chaining
-        // (Http.get(url).header(...).send()): the factory records the HTTP
-        // verb and URL into the HttpRequest instance so send() can resolve
-        // this._method / this._url.
-        if (innerInstance.className === "HttpClass") {
-          const verb = httpFactoryVerb(methodName);
-          if (verb && receiver.arguments.length > 0) {
-            const urlText = httpUrlArgText(receiver.arguments[0]);
-            if (urlText) {
-              return {
-                className: "HttpRequest",
-                fieldValues: new Map([["_method", verb], ["_url", urlText]]),
-              };
-            }
-          }
-        }
-
         // Specialized handling for BLE factory chaining
         // (Ble.server(name).characteristic(uuid,type,perms).onRead(handler)):
         // server() creates a BleServer. The characteristic index is taken from a
@@ -472,6 +522,10 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
     // Inline new expression: new Pin(x).method()
     if (ts.isNewExpression(receiver) && ts.isIdentifier(receiver.expression)) {
       const className = receiver.expression.text;
+      if (className === "Request") {
+        const reqFields = requestCtorFields(receiver.arguments as readonly ts.Expression[] | undefined, receiver.getSourceFile());
+        if (reqFields) return { className, fieldValues: reqFields };
+      }
       const classEntry = halClassRegistry.get(className);
       if (!classEntry) return null;
 

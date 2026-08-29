@@ -68,8 +68,8 @@ const ZephyrConfig = z.object({
 export const CuttlefishConfigSchema = z.object({
   entry: z.string().optional(),
   target: z.string().min(1).optional(),
-  mcu: z.string().min(1).optional(),
   board: z.string().optional(),
+  soc: z.string().optional(),
   contract: z.string().optional(),
   framework: z.string().optional(),
   /** ESP32 PSRAM type. When set, the framework emits the PSRAM-enabling
@@ -89,7 +89,7 @@ export const CuttlefishConfigSchema = z.object({
    *  the loader's presence/shape extraction round-trips through validation. */
   display: z.record(z.string(), z.unknown()).optional(),
   zephyr: ZephyrConfig.optional(),
-}).strict().refine(data => !(data.board && data.contract), {
+}).strict().refine(data => !(data.board && (data.contract || data.soc)), {
   message: "Specifying both 'board' and 'contract' is not allowed. Choose one.",
   path: ['board'],
 });

@@ -2,16 +2,16 @@
 const WIFI_SSID = "HomeNet";
 const WIFI_PASSWORD = "hunter22";
 
-import { WiFi, Http, delay } from '@typecad/hal';
+import { WiFi, Request, Time } from '@typecad/hal';
 
-WiFi.connect(WIFI_SSID, WIFI_PASSWORD);
+const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD });
+wifi.join();
 
-const req = Http.get("http://httpbin.org/get");
-req.timeout(10000);
+const req = new Request(Request.GET, "http://httpbin.org/get", { timeoutMs: 10000 });
 req.send();
 console.log(`status=${req.status()}`);
 console.log(req.text());
 
 while (true) {
-  delay(1000);
+  Time.sleep(1000);
 }

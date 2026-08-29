@@ -31,7 +31,7 @@
   // -------------------------------------------------------------------------
 
   // Lowercase architecture id (e.g. "esp32c6", "esp32s3", "esp32c3").
-  // Becomes the package name suffix: @typecad/mcu-<architecture>.
+  // Selects the curated soc descriptor.
   // Match the chip family; the Arduino core's board-id segment is a good guide.
   "architecture": "esp32c6",
 
@@ -41,7 +41,7 @@
   // Human-readable MCU name (e.g. "ESP32-C6"). Shown in the MCU definition.
   "mcuName": "ESP32-C6",
 
-  // Board id — lowercase (e.g. "esp32c6"). Becomes @typecad/board-<boardId>
+  // Board id — lowercase (e.g. "esp32c6"); names the qualified target
   // and the registry entry id. Usually the same as architecture for generic
   // boards.
   "boardId": "esp32c6",
@@ -112,7 +112,7 @@
     // --- ADC1 pins (GPIO0-GPIO6 on the C6) ---
     // capabilities: one of FULL_GPIO, FULL_GPIO_ANALOG, FULL_GPIO_TOUCH,
     //               FULL_GPIO_ANALOG_TOUCH, FULL_GPIO_DAC, INPUT_ONLY.
-    //   See packages/mcu-esp32s3/src/index.ts for the capability-flag meanings.
+    //   See a generated board manifest (board.json) for the capability-flag meanings.
     // functions: peripheral assignments (adc, touch, spi, i2c, uart, usb, dac).
     //   { "type": "adc", "instance": 1, "role": "ch0" }  -> ADC1 channel 0
     //   { "type": "touch", "instance": 0, "role": "touch0" } -> Touch sensor 0

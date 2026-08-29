@@ -20,9 +20,9 @@ const _registry = new Map<string, PlatformStrategy>([
  * their entry point to override the default strategy for a target.
  *
  * @example
- * // In @typecad/framework-arduino
+ * // In @typecad/framework-zephyr
  * import { registerPlatformStrategy } from "@typecad/cuttlefish/platform/registry";
- * registerPlatformStrategy(new ArduinoStrategy());
+ * registerPlatformStrategy(new ZephyrStrategy());
  */
 export function registerPlatformStrategy(strategy: PlatformStrategy): void {
   _registry.set(strategy.id, strategy);

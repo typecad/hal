@@ -40,7 +40,6 @@
   "dependencies": {
     "typescript": "^5.7.3",
     "serialport": "^13.0.0",
-    "@typecad/arduino-cli": "1.0.0-alpha.14",
     "@typecad/hal": "1.0.0-alpha.14"
   },
   "optionalDependencies": {
@@ -63,7 +62,6 @@
     "url": "https://github.com/justind000/typecode/issues"
   },
   "keywords": [
-    "arduino",
     "cpp",
     "cuttlefish",
     "embedded",
@@ -74,7 +72,8 @@
     "test-framework",
     "testing",
     "typecad",
-    "typescript"
+    "typescript",
+    "zephyr"
   ],
   "engines": {
     "node": ">=22.11.0"

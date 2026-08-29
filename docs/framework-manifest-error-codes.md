@@ -12,7 +12,7 @@ but do not fail the build.
 
 | Code | Trigger | Fix |
 |---|---|---|
-| `identity/id-mismatch` | `strategy.id` ≠ `manifest.frameworkId` and no `inheritsStrategyId` declared | Set distinct strategy ids, or add `inheritsStrategyId: "<strategy.id>"` to the manifest to document intentional id reuse (AVR/ESP32 reuse `id = "arduino"` for registry takeover) |
+| `identity/id-mismatch` | `strategy.id` ≠ `manifest.frameworkId` and no `inheritsStrategyId` declared | Set distinct strategy ids, or add `inheritsStrategyId: "<strategy.id>"` to the manifest to document intentional id reuse (a derived framework may reuse its base's strategy id) |
 
 ## Entrypoint
 

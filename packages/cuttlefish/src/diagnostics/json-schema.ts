@@ -17,7 +17,7 @@ export interface GpioPinEntry {
 }
 
 export interface PeripheralAllocation {
-  type: "i2c" | "spi" | "uart" | "adc" | "pwm" | "timer" | "interrupt";
+  type: "i2c" | "spi" | "uart" | "adc" | "pwm" | "interrupt";
   instance: number;
   displayName: string;
   pins: string[];

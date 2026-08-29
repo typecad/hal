@@ -648,17 +648,7 @@ export async function runIntegrationWizard(
     console.log(chalk.cyan("Next steps"));
     console.log();
 
-    const libraries: string[] = [];
-    if (displayEntry.arduinoLibraries) libraries.push(...displayEntry.arduinoLibraries);
-    if (touchEntry?.arduinoLibrary && touchRecord?.library) libraries.push(touchEntry.arduinoLibrary);
-    if (libraries.length > 0) {
-      console.log("  1. Install the display/touch Arduino libraries (once per machine):");
-      console.log();
-      console.log(`     ${chalk.cyan(`arduino-cli lib install ${libraries.map((lib) => `"${lib}"`).join(" ")}`)}`);
-      console.log();
-    }
-
-    const firstStep = libraries.length > 0 ? 2 : 1;
+    const firstStep = 1;
     console.log(`  ${firstStep}. Preview your UI on the desktop:`);
     console.log();
     console.log(`     ${chalk.cyan(previewCommand ? "npm run preview" : "npx @typecad/cuttlefish preview")}`);

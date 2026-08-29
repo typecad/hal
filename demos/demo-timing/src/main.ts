@@ -1,37 +1,46 @@
-// demo-timing — exercises the new Timing paradigm.
+// ---------------------------------------------------------------------------
+// main.ts — the Time API showcase (Seeed XIAO nRF52840)
 //
-// Shows the sync/async dual-mode `wait` (same symbol, blocking vs yielding
-// chosen by `await`), the `Duration` typed-time factory, the `every` cadence
-// with a `Cancellable` handle, and `Clock` for deadline-style timeouts.
+// The TS-flavored timing surface on hardware:
+//   Time.sleep(ms)    — yielding sleep (k_msleep); the loop idiom
+//   Time.now()        — milliseconds since boot, double, no uint32 wrap
+//   Time.nowUs()      — the microsecond clock
+//   Time.busyWaitUs() — cooperative spin (k_busy_wait), no yield
+//   setInterval       — plain JS names (k_timer + k_work underneath)
+//   Thread            — a real kernel thread (k_thread_create) running the
+//                       LED blink OFF the main loop, joined at the end
+//
+// Top-level statements lower into main(); the program ends on blinker.join()
+// (K_FOREVER — the thread blinks forever, keeping the firmware alive).
+// ---------------------------------------------------------------------------
 
-import { Timing, Duration, Clock, OutputPin, LED_BUILTIN } from '@typecad/hal';
+import { LED } from '@typecad/board';
+import { GPIO, Time, Thread, setInterval } from '@typecad/hal';
 
-const led = new OutputPin(LED_BUILTIN);
+const led = new GPIO(LED, GPIO.OUTPUT);
 
-// ── 1. SYNC wait: blocks the CPU (lowers to delay()) ──────────────────────
-// Duration.hz(2) folds to 500 (period of a 2 Hz signal) at compile time.
-function syncBlink(): void {
-  led.high();
-  Timing.wait(Duration.hz(2));   // → delay(500)
-  led.low();
-  Timing.wait(Duration.hz(2));   // → delay(500)
-}
+// ── 1. Clocks ─────────────────────────────────────────────────────────────
+const boot: number = Time.now();
+console.log(`boot at ${boot} ms, us clock reads ${Time.nowUs()}`);
 
-// ── 2. ASYNC wait: yields to other tasks (lowers to a state machine) ──────
-// The SAME Timing.wait symbol, now awaited → the transpiler splits this into a
-// cooperative task that runs alongside others.
-async function asyncBlink() {
+// ── 2. A kernel thread blinks the LED concurrently with main ─────────────
+const blinker = new Thread(0, { stackKb: 4, priority: 5 });
+blinker.start((): void => {
   while (true) {
     led.toggle();
-    await Timing.wait(Duration.seconds(1));   // → 1000 ms deadline in a state
+    Time.sleep(250);        // yields the thread — main keeps running
   }
-}
-
-// ── 3. CADENCE: every() returns a Cancellable handle ──────────────────────
-Timing.every(Duration.minutes(1), (): void => {
-  led.toggle();
 });
 
-// Entry point
-syncBlink();
-asyncBlink();
+// ── 3. setInterval is plain JS (k_timer underneath), firing while main sleeps
+let beats: number = 0;
+setInterval((): void => {
+  beats = beats + 1;
+  console.log(`beat ${beats} @ ${Time.now() - boot} ms since boot`);
+}, 1000);
+
+// ── 4. The microsecond spin — no yield, for sub-ms protocol timing ───────
+Time.busyWaitUs(10);
+
+// Main parks on the join: K_FOREVER, since the blinker never exits.
+blinker.join();

@@ -1,28 +1,71 @@
 import { describe, it, expect } from 'vitest';
 import {
   chipForTarget,
+  chipForSoc,
   ESP32_DEVKITC,
   ESP32S3_DEVKITC,
   XIAO_BLE,
+  SOC_CHIPS,
 } from '../../../packages/framework-zephyr/src/chips/index';
 import { controllerNodelabelForPin, controllerRawPinForPin, emitGpioDevDispatcher } from '../../../packages/framework-zephyr/src/chips/controllers';
+import { resolveChipFromBoard } from '../../../packages/framework-zephyr/src/chips/resolve';
+import { generateBoard } from '../../../packages/framework-zephyr/src/boardgen';
+import type { BoardConstants } from '../../../packages/cuttlefish/src/api/shared/board-resolver';
+function generatedConstants(target: string): BoardConstants {
+  const g = generateBoard(target);
+  return new Map(Object.entries(JSON.parse(g.boardJson).constants)) as BoardConstants;
+}
+
 
 describe('chipForTarget — ESP32 (plain) resolution', () => {
   it("returns ESP32_DEVKITC for 'esp32_devkitc'", () => {
-    expect(chipForTarget('esp32_devkitc')).toBe(ESP32_DEVKITC);
+    expect(chipForTarget('esp32_devkitc')).toBe(SOC_CHIPS['esp32']);
   });
 
   it("strips the /esp32/procpu qualifier (Zephyr 4.x board/soc/cpurev form)", () => {
-    expect(chipForTarget('esp32_devkitc/esp32/procpu')).toBe(ESP32_DEVKITC);
+    // The consolidated soc registry wins over the legacy 3-entry registry —
+    // same silicon, richer data (superset of ESP32_DEVKITC).
+    expect(chipForTarget('esp32_devkitc/esp32/procpu')).toBe(SOC_CHIPS['esp32']);
   });
 
   it("is case-insensitive and trims whitespace", () => {
-    expect(chipForTarget('  ESP32_DevKitC  ')).toBe(ESP32_DEVKITC);
+    expect(chipForTarget('  ESP32_DevKitC  ')).toBe(SOC_CHIPS['esp32']);
   });
 
   it("still resolves esp32s3_devkitc (regression — didn't break S3)", () => {
-    expect(chipForTarget('esp32s3_devkitc')).toBe(ESP32S3_DEVKITC);
-    expect(chipForTarget('esp32s3_devkitc/esp32s3/procpu')).toBe(ESP32S3_DEVKITC);
+    expect(chipForTarget('esp32s3_devkitc')).toBe(SOC_CHIPS['esp32s3']);
+    expect(chipForTarget('esp32s3_devkitc/esp32s3/procpu')).toBe(SOC_CHIPS['esp32s3']);
+  });
+});
+
+describe('ESP32S3_DEVKITC descriptor — USB + LEDC PWM matrix', () => {
+  it('declares native USB CDC over the board DTS zephyr_udc0 alias (usb_otg/DWC2)', () => {
+    expect(ESP32S3_DEVKITC.usb?.controller).toBe('zephyr_udc0');
+    expect(ESP32S3_DEVKITC.usb?.cdcInstances).toBe(1);
+  });
+
+  it('declares the LEDC matrix: 8 channels, routable to the listed pads', () => {
+    const m = ESP32S3_DEVKITC.pwm?.matrix;
+    expect(m?.controller).toBe('ledc0');
+    expect(m?.channelCount).toBe(8);
+    // Excluded pads: GPIO0 (boot strap / BOOT button), GPIO19/20 (USB D±),
+    // GPIO26–32 (SPI flash/PSRAM), GPIO33–37 (octal PSRAM), GPIO43/44
+    // (uart0 console).
+    for (const excluded of [0, 19, 20, 26, 32, 33, 37, 43, 44]) {
+      expect(m?.pins).not.toContain(excluded);
+    }
+    for (const ok of [1, 18, 21, 38, 48]) {
+      expect(m?.pins).toContain(ok);
+    }
+  });
+
+  it('carries the same USB + matrix through the soc registry', () => {
+    const resolved = chipForSoc('esp32s3')!;
+    expect(resolved.usb?.controller).toBe('zephyr_udc0');
+    expect(resolved.usb?.cdcInstances).toBe(1);
+    expect(resolved.pwm?.matrix?.controller).toBe('ledc0');
+    expect(resolved.pwm?.matrix?.channelCount).toBe(8);
+    expect(resolved.pwm?.matrix?.pins).toEqual(ESP32S3_DEVKITC.pwm?.matrix?.pins);
   });
 });
 

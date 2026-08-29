@@ -31,8 +31,8 @@ import { bossacTouchReset } from './bossac-touch.js';
 import { ZephyrStrategy } from '../strategy.js';
 import { generateOverlay, type DisplayWiring, type TouchWiring, type OverlayDiagnostic } from '../dt-config/overlay.js';
 import { generateCustomBoard } from '../dt-config/custom-board.js';
-import { chipForTarget } from '../chips/index.js';
-import { resolveChipFromBoard } from '../chips/resolve.js';
+import { chipForTarget, chipForSoc } from '../chips/index.js';
+import { resolveChipFromBoard, boardPwmSpecsFromConstants, mergeBoardPwmSpecs } from '../chips/resolve.js';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 import { pwmDtAliasToken } from '../lowering/pwm.js';
 import { detectZephyrVersion, checkZephyrCompat, resolveBoardTarget } from './compat.js';
@@ -59,11 +59,22 @@ function chipForBuild(projectRoot: string, board: string): ZephyrChipDescriptor 
       .find(p => existsSync(p));
     if (bcPath) {
       const raw = JSON.parse(readFileSync(bcPath, 'utf8')) as Record<string, string | number | boolean>;
-      const fromBoard = resolveChipFromBoard(new Map(Object.entries(raw)));
+      const bc = new Map(Object.entries(raw));
+      // Generated board manifests key the consolidated soc registry by
+      // zephyr.soc — the silicon-faithful resolution (carries customBoard
+      // data for soc/contract projects that the flat constants alone lose).
+      // Board-level pwm-led specs join the curated table (the manifest's
+      // zephyr.pwm.specs.* — pwm-leds facts boardgen emitted).
+      const soc = bc.get('zephyr.soc') as string | undefined;
+      if (soc) {
+        const fromSoc = chipForSoc(soc);
+        if (fromSoc) return mergeBoardPwmSpecs(fromSoc, boardPwmSpecsFromConstants(bc));
+      }
+      const fromBoard = resolveChipFromBoard(bc);
       if (fromBoard) return fromBoard;
     }
   } catch { /* fall back to the registry below */ }
-  return chipForTarget(board);
+  return chipForTarget(board); // registry fallback
 }
 
 /**
@@ -94,9 +105,24 @@ function scanAdcReadPins(src: string, chip: ZephyrChipDescriptor): number[] {
  * pwm-leds gating (no dead DT channels).
  */
 function scanPwmUsedPins(src: string, chip: ZephyrChipDescriptor): number[] {
-  return (chip.pwm?.specs ?? [])
+  const pins = (chip.pwm?.specs ?? [])
     .filter((s) => src.includes(`__tc_pwm_${pwmDtAliasToken(s)}`))
     .map((s) => s.pin);
+  // Matrix pins (ESP32 LEDC) have no static specs — recover the driven pins
+  // from the same alias-var presence signal (`__tc_pwm_tc_pwm<N>`), keeping
+  // only pins the descriptor's matrix allows (the regex grabs the full
+  // number, so pin 4 never matches a reference to pin 45).
+  const matrix = chip.pwm?.matrix;
+  if (matrix) {
+    const present = new Set<number>();
+    for (const match of src.matchAll(/__tc_pwm_tc_pwm(\d+)/g)) {
+      present.add(Number(match[1]));
+    }
+    for (const pin of matrix.pins) {
+      if (present.has(pin)) pins.push(pin);
+    }
+  }
+  return pins;
 }
 
 /**
@@ -123,11 +149,69 @@ function scanUsedBusInstances(
   return used.length > 0 ? used : undefined;
 }
 
+/**
+ * Distinct DT-bound sensors the emitted sources reference — the lowering's
+ * state blocks name each one `__tc_sensor_<part>_i2c<N>_0x<addr>_dev`
+ * (lowering/sensor.ts sensorNames), so var-presence is the authoritative
+ * signal. Feeds the overlay's DT child nodes; the part group is greedy so a
+ * compatible containing '_i2c<N>_' still resolves to the longest part match.
+ */
+export interface ScannedSensorPart {
+  part: string; busIndex: number; port: number; busKind: 'i2c' | 'spi';
+  spiHz: number; spiMode: number; alertPin: number;
+}
+
+export interface ScannedSpiTarget {
+  busIndex: number; cs: number; hz: number; mode: number;
+}
+
+/** Scan the emitted source for thin SPI targets (hal/spi-target.ts): the
+ *  spi_dt_spec state block's tc-spit-cfg comment carries the construction
+ *  facts, the same channel tc-sensor-cfg uses. */
+export function scanSpiTargets(src: string): ScannedSpiTarget[] {
+  const out = new Map<string, ScannedSpiTarget>();
+  for (const m of src.matchAll(/tc-spit-cfg: tc_spit_spi(\d+)_cs(\d+) hz=(\d+) mode=(\d+)/g)) {
+    const ref: ScannedSpiTarget = { busIndex: parseInt(m[1], 10), cs: parseInt(m[2], 10), hz: parseInt(m[3], 10), mode: parseInt(m[4], 10) };
+    out.set(`${ref.busIndex}|${ref.cs}`, ref);
+  }
+  return [...out.values()];
+}
+
+export function scanSensorParts(src: string): ScannedSensorPart[] {
+  const out = new Map<string, ScannedSensorPart>();
+  for (const m of src.matchAll(/__tc_sensor_([a-z0-9_]+)_(i2c|spi)(\d+)_(0x[0-9a-f]+|cs[0-9]+)_dev\b/g)) {
+    const port = m[4].startsWith('0x') ? parseInt(m[4], 16) : parseInt(m[4].slice(2), 10);
+    const ref: ScannedSensorPart = { part: m[1], busIndex: parseInt(m[3], 10), port, busKind: m[2] as 'i2c' | 'spi', spiHz: 0, spiMode: 0, alertPin: -1 };
+    out.set(`${ref.part}|${ref.busKind}${ref.busIndex}|${ref.port}`, ref);
+  }
+  // Construction facts ride the state block's config comment — merge by
+  // nodelabel so the scanner stays the single source for the overlay.
+  for (const m of src.matchAll(/tc-sensor-cfg: tc_([a-z0-9_]+)_(i2c|spi)(\d+)_(0x[0-9a-f]+|cs[0-9]+) hz=(\d+) mode=(\d+) alert=(-?\d+)/g)) {
+    const port = m[4].startsWith('0x') ? parseInt(m[4], 16) : parseInt(m[4].slice(2), 10);
+    const key = `${m[1]}|${m[2]}${m[3]}|${port}`;
+    const existing = out.get(key);
+    if (existing) {
+      existing.spiHz = parseInt(m[5], 10);
+      existing.spiMode = parseInt(m[6], 10);
+      existing.alertPin = parseInt(m[7], 10);
+    }
+  }
+  return [...out.values()];
+}
+
 function targetFromOptions(o: ToolchainOptions): string {
-  // The cuttlefish CLI populates ToolchainOptions.buildTarget from
-  // config.frameworkData.buildTarget. Accept frameworkData.target as an alias.
+  // The cuttlefish CLI populates ToolchainOptions.buildTarget from the
+  // config's board: (frameworkData.buildTarget for board-less projects).
+  // Accept frameworkData.target as an alias. No silent default: building for
+  // a wrong hard-coded board is the split-brain trap.
   const fcTarget = (o.frameworkConfig?.target as string | undefined);
-  return (o.buildTarget as string | undefined) ?? fcTarget ?? DEFAULT_BOARD;
+  const board = (o.buildTarget as string | undefined) ?? fcTarget;
+  if (!board) {
+    throw new Error(
+      'No build target: set board: in cuttlefish.config.ts (or frameworkData.buildTarget for custom-board projects).',
+    );
+  }
+  return board;
 }
 
 /**
@@ -409,11 +493,19 @@ export const Toolchain = {
     // references (FT6336U on I2C, XPT2046 on the display's SPI bus).
     const usesTouch = uses('ft6336u') || uses('touch_');
     const usesXpt = uses('xpt2046');
+    const sensorParts = scanSensorParts(src);
+    const spiTargetParts = scanSpiTargets(src);
     const overlay = generateOverlay(chip, {
       // __tc_<bus> matches the shim state block — a begin()-only program
-      // emits no driver API call but still declares the DT device.
-      usesI2c: uses('i2c_') || uses('__tc_i2c'),
-      usesSpi: uses('spi_') || uses('__tc_spi'),
+      // emits no driver API call but still declares the DT device. A
+      // constructed sensor is also a bus user (its device handle is the
+      // only i2c reference a sensor-only program carries).
+      usesI2c: uses('i2c_') || uses('__tc_i2c') || sensorParts.length > 0,
+      usesSensor: uses('sensor_') || sensorParts.length > 0,
+      usesFloatFormat: /%[-0-9.]*[eEfFgG]/.test(src),
+      sensorParts,
+      spiTargets: spiTargetParts,
+      usesSpi: uses('spi_') || uses('__tc_spi') || spiTargetParts.length > 0,
       usesUart: uses('uart_') || uses('__tc_uart'),
       usesUsb: uses('__tc_usb'),
       usesPwm: uses('pwm_'),
@@ -436,6 +528,25 @@ export const Toolchain = {
     const overlayDir = join(projectRoot, 'boards');
     mkdirSync(overlayDir, { recursive: true });
     writeIfChanged(join(overlayDir, `${board}.overlay`), overlay);
+    // Thin SPI targets need an app-local binding: a compatible-less DT node
+    // generates NO property macros, so SPI_DT_SPEC_GET's spi-max-frequency
+    // lookup would not exist. The binding has no driver — it exists so
+    // gen_defines emits the spi properties for the target nodes.
+    if (spiTargetParts.length > 0) {
+      const bindingsDir = join(projectRoot, 'dts', 'bindings');
+      mkdirSync(bindingsDir, { recursive: true });
+      writeIfChanged(join(bindingsDir, 'cuttlefish,spi-target.yaml'), [
+        'description: |',
+        '  Cuttlefish thin SPITarget (hal/spi-target.ts) — a raw spi_dt_spec',
+        '  peer. No driver binds this compatible; it exists so devicetree',
+        '  generation emits the spi properties (spi-max-frequency,',
+        '  spi-cpol/spi-cpha, reg = the cs-gpios index) that SPI_DT_SPEC_GET',
+        '  consumes from the generated C++.',
+        'compatible: "cuttlefish,spi-target"',
+        'include: spi-device.yaml',
+        '',
+      ].join('\n'));
+    }
   },
 
   compile(o: ToolchainOptions): CompileResult {
@@ -595,11 +706,18 @@ export const Toolchain = {
           : (chip.consoleDescription ?? "the board's default console (its devicetree zephyr,console node)");
         console.log(`i console.log -> printk -> ${dest} on this board`);
       }
+      const sensorParts = scanSensorParts(src);
+      const spiTargetParts = scanSpiTargets(src);
       const overlay = generateOverlay(chip, {
         // __tc_<bus> matches the shim state block — a begin()-only program
-        // emits no driver API call but still declares the DT device.
-        usesI2c: uses('i2c_') || uses('__tc_i2c'),
-        usesSpi: uses('spi_') || uses('__tc_spi'),
+        // emits no driver API call but still declares the DT device. A
+        // constructed sensor is also a bus user (see scanSensorParts).
+        usesI2c: uses('i2c_') || uses('__tc_i2c') || sensorParts.length > 0,
+        usesSensor: uses('sensor_') || sensorParts.length > 0,
+        usesFloatFormat: /%[-0-9.]*[eEfFgG]/.test(src),
+        sensorParts,
+        spiTargets: spiTargetParts,
+        usesSpi: uses('spi_') || uses('__tc_spi') || spiTargetParts.length > 0,
         usesUart: uses('uart_') || uses('__tc_uart'),
         usesUsb: uses('__tc_usb'),
         usesPwm: uses('pwm_'),
@@ -635,6 +753,24 @@ export const Toolchain = {
         join(overlayDir, `${boardId}.overlay`),
         appendLibraryOverlayFragments(overlay, projectRoot),
       );
+      // Thin SPI targets need the app-local binding (see the transpile-side
+      // write for the rationale): no compatible → no generated spi props →
+      // SPI_DT_SPEC_GET's spi-max-frequency lookup does not exist.
+      if (spiTargetParts.length > 0) {
+        const bindingsDir = join(projectRoot, 'dts', 'bindings');
+        mkdirSync(bindingsDir, { recursive: true });
+        writeIfChanged(join(bindingsDir, 'cuttlefish,spi-target.yaml'), [
+          'description: |',
+          '  Cuttlefish thin SPITarget (hal/spi-target.ts) — a raw spi_dt_spec',
+          '  peer. No driver binds this compatible; it exists so devicetree',
+          '  generation emits the spi properties (spi-max-frequency,',
+          '  spi-cpol/spi-cpha, reg = the cs-gpios index) that SPI_DT_SPEC_GET',
+          '  consumes from the generated C++.',
+          'compatible: "cuttlefish,spi-target"',
+          'include: spi-device.yaml',
+          '',
+        ].join('\n'));
+      }
     } catch { /* best-effort overlay regen; the build surfaces DT errors */ }
 
     // Use a stable build dir so incremental builds reuse the Ninja graph.
@@ -714,11 +850,11 @@ export const Toolchain = {
     // toolchain compile() debug-config wiring.
     if (result.status === 0 && isGdbDebug) {
       try {
-        const { workspaceRoot, sketchRel } = resolveDebugLocations(projectRoot);
+        const { workspaceRoot, appRel } = resolveDebugLocations(projectRoot);
         writeDebugConfig({
           projectRoot,
           workspaceRoot,
-          sketchRel,
+          appRel,
           target: board,
           buildDir,
           sourceMapPath: join(dirname(o.sourcePath), `${basename(o.sourcePath)}.thcppmap.json`),

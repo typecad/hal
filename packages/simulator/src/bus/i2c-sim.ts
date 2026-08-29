@@ -18,7 +18,7 @@ import type { ISimI2CDevice } from '../types.js';
 /**
  * Simulated I2C bus for testing I2C communication.
  *
- * Tests register mock devices via `attachDevice()`. When sketch code reads
+ * Tests register mock devices via `attachDevice()`. When program code reads
  * or writes to an address, the corresponding mock device handles the operation.
  */
 export class SimI2CBus implements II2CBus {

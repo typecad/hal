@@ -16,6 +16,13 @@ import { scaffoldZephyrProject } from '../../../packages/framework-zephyr/src/to
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { generateBoard } from '../../../packages/framework-zephyr/src/boardgen';
+import type { BoardConstants } from '../../../packages/cuttlefish/src/api/shared/board-resolver';
+function generatedConstants(target: string): BoardConstants {
+  const g = generateBoard(target);
+  return new Map(Object.entries(JSON.parse(g.boardJson).constants)) as BoardConstants;
+}
+
 
 const strategy = new ZephyrStrategy();
 
@@ -193,15 +200,14 @@ describe('writeDebugConfig — probe-method-driven artifacts (Black Pill stlink)
     // The board constants carry the probeMethods table; the config selects
     // the method. resolveDebugProbeMethod reads both.
     try {
-      const { resolveBoardConstants } = await import('../../../packages/cuttlefish/src/ir/board-resolver');
-      const bc = resolveBoardConstants('boards/board-blackpill-f411ce/src/index.ts');
+      const bc = generatedConstants('blackpill_f411ce/stm32f411xe');
       fs.writeFileSync(path.join(projectRoot, 'src', 'board-constants.json'), JSON.stringify(Object.fromEntries(bc)));
       fs.writeFileSync(path.join(tmp, 'cuttlefish.config.ts'), "export default { zephyr: { probe: 'stlink' } } as any;");
 
       writeDebugConfig({
         projectRoot,
         workspaceRoot: tmp,
-        sketchRel: 'src/out',
+        appRel: 'src/out',
         target: 'blackpill_f411ce/stm32f411xe',
         buildDir: path.join(projectRoot, 'build'),
       });
@@ -228,6 +234,37 @@ describe('writeDebugConfig — probe-method-driven artifacts (Black Pill stlink)
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  it('tier-3 boards (uncurated soc) emit the board\'s own support/openocd.cfg from the pack table', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-dbg-bp401-'));
+    const projectRoot = path.join(tmp, 'src', 'out');
+    fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
+    try {
+      const bc = generatedConstants('blackpill_f401ce/stm32f401xe');
+      fs.writeFileSync(path.join(projectRoot, 'src', 'board-constants.json'), JSON.stringify(Object.fromEntries(bc)));
+      fs.writeFileSync(path.join(tmp, 'cuttlefish.config.ts'), "export default { zephyr: { probe: 'stlink' } } as any;");
+
+      writeDebugConfig({
+        projectRoot,
+        workspaceRoot: tmp,
+        appRel: 'src/out',
+        target: 'blackpill_f401ce/stm32f401xe',
+        buildDir: path.join(projectRoot, 'build'),
+      });
+
+      // The pack carries the board's support/openocd.cfg verbatim — the
+      // stlink-dap interface, the SWD transport, and the F4 target.
+      const cfgText = fs.readFileSync(path.join(projectRoot, '.cuttlefish', 'openocd.cfg'), 'utf8');
+      expect(cfgText).toContain('source [find interface/stlink-dap.cfg]');
+      expect(cfgText).toContain('transport select dapdirect_swd');
+      expect(cfgText).toContain('source [find target/stm32f4x.cfg]');
+
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      expect(launch.configurations[0].interface).toBe('swd');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('writeDebugConfig — launch.json + tasks.json generation', () => {
@@ -240,7 +277,7 @@ describe('writeDebugConfig — launch.json + tasks.json generation', () => {
       const opts = {
         projectRoot,
         workspaceRoot,
-        sketchRel: 'project',
+        appRel: 'project',
         target: 'esp32s3_devkitc',
         buildDir: path.join(projectRoot, 'build'),
       };
@@ -339,7 +376,7 @@ describe('writeDebugConfig — launch.json + tasks.json generation', () => {
       writeDebugConfig({
         projectRoot,
         workspaceRoot: tmp,
-        sketchRel: 'project',
+        appRel: 'project',
         target: 'esp32s3_devkitc',
         buildDir: path.join(projectRoot, 'build'),
         // no sourceMapPath
@@ -367,11 +404,11 @@ describe('resolveDebugLocations', () => {
     fs.mkdirSync(appDir, { recursive: true });
     fs.writeFileSync(path.join(cfgDir, 'cuttlefish.config.ts'), '// stub');
     try {
-      const { workspaceRoot, sketchRel } = resolveDebugLocations(appDir);
+      const { workspaceRoot, appRel } = resolveDebugLocations(appDir);
       // workspaceRoot is the cuttlefish config dir (where .vscode/ goes).
       expect(path.resolve(workspaceRoot)).toBe(path.resolve(cfgDir));
-      // sketchRel is the app dir relative to the config dir.
-      expect(sketchRel).toBe('src/out');
+      // appRel is the app dir relative to the config dir.
+      expect(appRel).toBe('src/out');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -380,10 +417,10 @@ describe('resolveDebugLocations', () => {
   it('falls back to projectRoot when no cuttlefish.config.ts ancestor exists', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-debug-nocfg-'));
     try {
-      const { workspaceRoot, sketchRel } = resolveDebugLocations(tmp);
+      const { workspaceRoot, appRel } = resolveDebugLocations(tmp);
       expect(path.resolve(workspaceRoot)).toBe(path.resolve(tmp));
       // path.relative(x, x) === '' (same dir); the app dir IS the workspace.
-      expect(sketchRel).toBe('');
+      expect(appRel).toBe('');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -462,7 +499,7 @@ describe('writeProjectDebugArtifacts — create-time starter artifacts', () => {
       writeDebugConfig({
         projectRoot: appRoot,
         workspaceRoot: tmp,
-        sketchRel: 'src/out',
+        appRel: 'src/out',
         target: 'esp32s3_devkitc',
         buildDir: path.join(appRoot, 'build'),
       });
@@ -528,6 +565,40 @@ describe('Zephyr SDK discovery (create-time gdbPath fallback)', () => {
       fs.mkdirSync(envRoot, { recursive: true });
       const roots = discoverZephyrSdkRoots({ home, env: { ZEPHYR_SDK_INSTALL_DIR: envRoot } });
       expect(roots[0]).toBe(path.resolve(envRoot));
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('openocd.cfg — gdb lifecycle events + RTOS awareness', () => {
+  it('strips gdb-attach/detach event blocks from the board cfg (IDE owns the lifecycle) and adds Zephyr RTOS', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-dbg-evt-'));
+    const projectRoot = path.join(tmp, 'src', 'out');
+    fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
+    try {
+      const bc = generatedConstants('blackpill_f401ce/stm32f401xe');
+      fs.writeFileSync(path.join(projectRoot, 'src', 'board-constants.json'), JSON.stringify(Object.fromEntries(bc)));
+      fs.writeFileSync(path.join(tmp, 'cuttlefish.config.ts'), "export default { zephyr: { probe: 'stlink' } } as any;");
+      writeDebugConfig({
+        projectRoot,
+        workspaceRoot: tmp,
+        appRel: 'src/out',
+        target: 'blackpill_f401ce/stm32f401xe',
+        buildDir: path.join(projectRoot, 'build'),
+      });
+      const cfg = fs.readFileSync(path.join(projectRoot, '.cuttlefish', 'openocd.cfg'), 'utf8');
+      // The board's own cfg configures gdb-attach (reset halt) — under
+      // cortex-debug that stop event aborts session init.
+      expect(cfg).not.toContain('-event gdb-attach');
+      expect(cfg).not.toContain('-event gdb-detach');
+      expect(cfg).not.toContain('reset halt');
+      // The rest of the board cfg rides verbatim.
+      expect(cfg).toContain('source [find interface/stlink-dap.cfg]');
+      expect(cfg).toContain('source [find target/stm32f4x.cfg]');
+      expect(cfg).toContain('reset_config srst_only');
+      // Thread awareness for ARM targets (the ESP32 cfgs carry ESP_RTOS).
+      expect(cfg).toContain('$_TARGETNAME configure -rtos Zephyr');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

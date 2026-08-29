@@ -39,7 +39,7 @@ export interface CoopSchedOptions {
   timeBudgetMs?: number;
   /**
    * C++ expression yielding the current monotonic time in ms, used for the
-   * budget check (e.g. `millis()`, `k_uptime_get_32()`). Required only when
+   * budget check (`__tc_now_ms()`). Required only when
    * enableTimeBudget is true.
    */
   currentTimeExpr?: string;
@@ -62,7 +62,7 @@ export function generateCoopScheduler(options: CoopSchedOptions = {}): string {
   const priorities = options.priorities ?? 2;
   const enableTimeBudget = options.enableTimeBudget ?? false;
   const timeBudgetMs = options.timeBudgetMs ?? 5;
-  const currentTimeExpr = options.currentTimeExpr ?? "millis()";
+  const currentTimeExpr = options.currentTimeExpr ?? "__tc_now_ms()";
 
   // Budget check snippet, only included when time-budgeting is enabled.
   const budgetCheck = enableTimeBudget

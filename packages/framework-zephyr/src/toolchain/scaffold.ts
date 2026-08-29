@@ -10,7 +10,9 @@
 import { writeFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveKconfigFragments, type KconfigUsage } from '../dt-config/kconfig.js';
+import { scanSensorParts } from './index.js';
 import { readCuttlefishLibrarySidecar } from '@typecad/cuttlefish/library-packages';
+import { SENSOR_PART_INFO } from '@typecad/hal';
 
 /** Write a file only if the content differs from the existing file.
  *  Returns true when the file was written (content changed or file was new). */
@@ -128,6 +130,10 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     // call yet), but the shim still declared DEVICE_DT_GET(DT_NODELABEL(...))
     // so the overlay must enable the node or the device symbol is missing.
     usesI2c: uses('i2c_') || uses('__tc_i2c'),
+    // DT-bound sensor parts: the __tc_sensor_* state references and the
+    // sensor_sample_fetch/sensor_channel_get calls both carry the token.
+    usesSensor: uses('sensor_') || uses('__tc_sensor'),
+    usesFloatFormat: /%[-0-9.]*[eEfFgG]/.test(src),
     usesSpi: uses('spi_') || uses('__tc_spi'),
     usesUart: uses('uart_') || uses('__tc_uart'),
     // USB CDC serial: every usb.* lowering calls into the __tc_usb<N>_* shim
@@ -263,6 +269,18 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
         if (userKconfig && sym !== undefined && userKconfig.hasOwnProperty(sym)) continue;
         prjConf.push(line);
       }
+    }
+  }
+  // Per-part Kconfig exceptions: catalog parts whose driver is NOT default-y
+  // on its DT node carry extra lines here (empty today — every in-tree sensor
+  // driver lights up from the node; the path exists so the first exception
+  // found by the generator has somewhere to go).
+  const sensorParts = scanSensorParts(src);
+  if (sensorParts.length > 0) {
+    const extra = [...new Set(sensorParts.flatMap((sp) => SENSOR_PART_INFO[sp.part]?.kconfig ?? []))];
+    if (extra.length > 0) {
+      prjConf.push('', '# Sensor part Kconfig (catalog exceptions).');
+      for (const line of extra) prjConf.push(line);
     }
   }
   // Emit user-specified Kconfig from cuttlefish.config.ts zephyr.kconfig.

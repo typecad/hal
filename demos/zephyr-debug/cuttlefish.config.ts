@@ -11,32 +11,19 @@ const config: CuttlefishConfig = {
   entry: './src/main.ts',
 
   // Target architecture
-  target: 'esp32s3',
   // MCU package — provides silicon-level pin definitions
-  mcu: '@typecad/mcu-esp32s3',
 
   // Board package — provides pin definitions and board constants
-  board: '@typecad/board-esp32s3',
+  board: 'esp32s3_devkitc/esp32s3/procpu',
 
   // Framework package — controls code generation strategy
   framework: '@typecad/framework-zephyr',
-  // Framework data
-  frameworkData: {
-    buildTarget: 'esp32s3_devkitc/esp32s3/procpu',
-  },
-
-  // Output / build options
+  // Framework data  // Output / build options
   output: {
-    framework: 'zephyr',
     outDir: './out',
   },
 
-  // Toolchain configuration
-  toolchain: {
-    type: 'west',
-  },
-
-  // Console polyfill configuration
+  // Toolchain configuration  // Console polyfill configuration
   console: {
     baudRate: 115200,
     // Serial port for upload/monitor. Override with --port on the CLI.
@@ -53,7 +40,7 @@ const config: CuttlefishConfig = {
     include: ['tests/**/*.test.ts'],
   },
   display: {
-    profile: 'st7796-spi',
+    profile: 'st7796-zephyr',
     cs: 5,
     dc: 17,
     rst: 16,
@@ -63,7 +50,7 @@ const config: CuttlefishConfig = {
     antialias: true,
     colorOrder: 'bgr',
     invertDisplay: false,
-    touch: { library: 'FT6336U', i2cAddress: 0x38, i2cFrequency: 400000, calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 } },
+    touch: { library: 'FT6336U', i2cAddress: 0x38, i2cFrequency: 400000, sda: 8, scl: 9, calibration: { xMin: 0, xMax: 320, yMin: 0, yMax: 480 } },
   },
 };
 

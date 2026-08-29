@@ -69,15 +69,15 @@ export interface TranspileOptions {
   /** Tree-shaking options for dead code elimination */
   treeShaking?: TreeShakingOptions;
   /**
-   * Board package specifier resolved from `cuttlefish.config.ts`.
-   * When present, `@typecad/board` imports are rewritten to this package
-   * (e.g. `'@typecad/board-arduino-uno'`).
+   * Zephyr board target resolved from `cuttlefish.config.ts` (e.g.
+   * `'esp32s3_devkitc/esp32s3/procpu'`). When a generated board module is
+   * absent, `@typecad/board` imports resolve through it.
    */
-  boardPackage?: string;
+  boardTarget?: string;
   /**
    * Framework package for code generation strategy.
-   * Can be any framework package path, e.g. '@typecad/framework-arduino',
-   * '@typecad/framework-avr', or a custom local path.
+   * Can be any framework package path, e.g. '@typecad/framework-zephyr',
+   * '@typecad/framework-native', or a custom local path.
    * When not specified, the GenericStrategy (standard C++) is used.
    */
   frameworkPackage?: string;
@@ -178,10 +178,10 @@ export interface CommandLineOptions {
    * Board package specifier resolved from `cuttlefish.config.ts`.
    * When present, `@typecad/board` imports are rewritten to this package.
    */
-  boardPackage?: string;
+  boardTarget?: string;
   /**
    * Framework package for code generation strategy.
-   * Can be '@typecad/framework-arduino', '@typecad/framework-avr', or a custom path.
+   * Can be '@typecad/framework-zephyr', '@typecad/framework-native', or a custom path.
    */
   frameworkPackage?: string;
   /** Enable debug mode - inject breakpoint instrumentation */
@@ -253,30 +253,30 @@ export interface CreateCommandOptions {
   /** @deprecated Use target */
   board?: string;
   target?: string;
-  /** Bare-MCU target id (e.g. 'stm32f411') — no board package; programs
-   *  silicon via an @typecad/mcu-* package. */
+  /** Bare-silicon target id (e.g. 'stm32f411') — no board target;
+   *  programs silicon via the curated soc descriptor. */
   mcu?: string;
-  /** Arduino FQBN for MCU-only Arduino targets (e.g. 'arduino:avr:pro').
-   *  Required non-interactively; the wizard prompts for the paste. */
-  fqbn?: string;
   /** Existing Zephyr board name (bare west id) for MCU-only Zephyr targets —
    *  skips the wizard's board picker. Default: generate a custom board. */
   zephyrBoard?: string;
   framework?: string;
   baud?: number;
-  noSketch?: boolean;
+  noStarter?: boolean;
   outDir?: string;
   /** Skip the automatic `npm install` in the scaffolded project. */
   noInstall?: boolean;
   /** Probe method id (board probeMethods table) — skips the wizard question
-   *  and writes zephyr.probe into the scaffolded config. Zephyr-only. */
+   * and writes zephyr.probe into the scaffolded config. Zephyr-only. */
   probe?: string;
+  /** Serial port the board is attached to (COMx / /dev/tty*) — skips the
+   * wizard question and seeds console.port + test.port in the config. */
+  port?: string;
 }
 
-export interface BoardAddCommandOptions {
-  command: "board-add";
-  specPath: string;
-  force?: boolean;
+/** Parsed `cuttlefish board <subcommand>` options. */
+export interface BoardCommandOptions {
+  command: "board";
+  subcommand: "regen";
 }
 
 /** Parsed `cuttlefish library <subcommand>` options. */

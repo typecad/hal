@@ -80,18 +80,20 @@ export interface CuttlefishConfig {
   target: ArchitectureIdentifier;
 
   /**
-   * MCU package providing silicon definitions.
-   * Example: '@typecad/mcu-atmega328p'
-   *
-   * Optional for native/host targets — a desktop build has no MCU (the
-   * loader generates a boardless `@typecad/board` shim). Embedded targets
-   * should set this (or the deprecated `board`).
-   */
-  mcu?: string;
-  /**
-   * Board package to use. (Deprecated — use mcu + contract instead)
+   * Zephyr board target — the qualified `west build -b` argument (e.g.
+   * 'esp32s3_devkitc/esp32s3/procpu'). The project-local board module
+   * (.cuttlefish/board.ts + board.json) is generated from the framework's
+   * board data pack on first build; `cuttlefish board regen` refreshes it.
    */
   board?: string;
+
+  /**
+   * Zephyr SoC name for contract-based projects (custom PCBs with no board
+   * target) — e.g. 'stm32f411xe'. Selects the curated soc descriptor whose
+   * pin set the contract narrows against. Required with `contract` on
+   * embedded targets.
+   */
+  soc?: string;
 
   /**
    * Path to a TypeCAD contract file (*.contract.json).
@@ -106,7 +108,7 @@ export interface CuttlefishConfig {
 
   /**
    * ESP32 PSRAM type. When set, the framework emits the PSRAM-enabling
-   * Kconfig (Zephyr) / define + FQBN option (Arduino) so large canvas
+   * Kconfig + BOARD_HAS_PSRAM define (Zephyr) so large canvas
    * allocations (scroll viewports, lists) prefer external RAM. No effect
    * on boards without PSRAM.
    */

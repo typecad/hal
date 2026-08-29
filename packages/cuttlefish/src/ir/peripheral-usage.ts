@@ -17,8 +17,6 @@ export interface PeripheralUsage {
   pwm: boolean;
   /** External interrupts are used (attachInterrupt on D2, D3) */
   externalInterrupts: boolean;
-  /** Timer0-based timing is used (millis, micros) */
-  timer0: boolean;
   /** I2C bus is used */
   i2c: boolean;
   /** SPI bus is used */
@@ -39,6 +37,14 @@ export interface PeripheralUsage {
   inputPulldownPins: Set<number>;
   /** Specific I2C bus instances used (0 for I2C0, 1 for I2C1, etc.) */
   i2cInstancesUsed: Set<number>;
+  /** DT-bound sensor parts used (generic catalog, hal/sensor.ts) */
+  sensor: boolean;
+  /** Distinct sensors used: `${part}|${busInstance}|${address}` keys — feeds
+   *  the framework's per-sensor DT node + device-handle emission. */
+  sensorPartsUsed: Set<string>;
+  /** Distinct thin SPI targets used: `${bus}|${cs}|${hz}|${mode}` keys —
+   *  feeds the per-target DT child node + spi_dt_spec emission. */
+  spiTargetsUsed: Set<string>;
   /** Specific SPI bus instances used (0 for SPI0, 1 for SPI1, etc.) */
   spiInstancesUsed: Set<number>;
   /** Specific UART instances used (0 for UART0/Serial, 1 for UART1/Serial1, etc.) */
@@ -57,7 +63,6 @@ export function createEmptyPeripheralUsage(): PeripheralUsage {
     adc: false,
     pwm: false,
     externalInterrupts: false,
-    timer0: false,
     i2c: false,
     spi: false,
     uart: false,
@@ -68,6 +73,9 @@ export function createEmptyPeripheralUsage(): PeripheralUsage {
     inputPins: new Set(),
     inputPulldownPins: new Set(),
     i2cInstancesUsed: new Set(),
+    sensor: false,
+    sensorPartsUsed: new Set(),
+    spiTargetsUsed: new Set(),
     spiInstancesUsed: new Set(),
     uartInstancesUsed: new Set(),
     pinsUsed: new Set(),
@@ -117,28 +125,6 @@ export function analyzePeripheralUsage(program: ProgramIR): PeripheralUsage {
   }
 
   return usage;
-}
-
-function markTimer0UsageFromText(text: string | undefined, usage: PeripheralUsage): void {
-  if (!text) return;
-
-  const normalized = text.replace(/\s+/g, '');
-  if (
-    normalized === 'delay' ||
-    normalized === 'millis' ||
-    normalized === 'micros' ||
-    normalized === 'Board.delay' ||
-    normalized === 'Board.millis' ||
-    normalized === 'Board.micros' ||
-    normalized.startsWith('delay(') ||
-    normalized.startsWith('millis(') ||
-    normalized.startsWith('micros(') ||
-    normalized.startsWith('Board.delay(') ||
-    normalized.startsWith('Board.millis(') ||
-    normalized.startsWith('Board.micros(')
-  ) {
-    usage.timer0 = true;
-  }
 }
 
 function analyzeStatements(statements: StatementIR[] | undefined, usage: PeripheralUsage): void {
@@ -233,9 +219,6 @@ function analyzeEmitString(cpp: string, usage: PeripheralUsage): void {
     usage.uartInstancesUsed.add(uartMatch[1] ? parseInt(uartMatch[1], 10) : 0);
   }
 
-  // delay(), millis(), micros() — timer0
-  markTimer0UsageFromText(cpp, usage);
-
   // tone(N, ...) — also implies PWM output
   const toneMatch = cpp.match(/^tone\((\d+)/);
   if (toneMatch) {
@@ -292,8 +275,6 @@ function analyzeCalleeForPeripheralUsage(callee: string, usage: PeripheralUsage)
       usage.uartInstancesUsed.add(instance);
     }
   }
-
-  markTimer0UsageFromText(callee, usage);
 }
 
 /**
@@ -309,31 +290,44 @@ function extractBusInstance(busOrPort: string, prefix: string): number {
  */
 function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
   switch (op.operation) {
-    // GPIO — pin mode configuration
-    case 'gpio.set_mode': {
-      trackPinNumberAsName(op.pin, usage);
-      const mode = op.mode.toLowerCase();
-      if (mode === 'output') {
-        usage.outputPins.add(op.pin);
-      } else if (mode === 'input_pullup') {
-        usage.inputPullupPins.add(op.pin);
-      } else if (mode === 'input_pulldown') {
-        usage.inputPulldownPins.add(op.pin);
-      } else if (mode === 'input') {
-        usage.inputPins.add(op.pin);
-      }
-      break;
-    }
-
+    // GPIO
     case 'gpio.write':
     case 'gpio.read':
+    case 'gpio.read_cfg':
     case 'gpio.toggle': {
       trackPinNumberAsName(op.pin, usage);
       break;
     }
 
+    case 'gpio.shift_out':
+    case 'gpio.shift_in': {
+      trackPinNumberAsName(op.dataPin, usage);
+      trackPinNumberAsName(op.clockPin, usage);
+      usage.outputPins.add(op.clockPin);
+      usage.outputPins.add(op.dataPin);
+      break;
+    }
+
+    // Thin GPIO configure — flag-token text feeds the same mode sets the
+    // legacy mode-set ops do (diagnostics + conflict checks).
+    case 'gpio.configure': {
+      trackPinNumberAsName(op.pin, usage);
+      const flags = String(op.flags ?? '');
+      if (flags.includes('GPIO.OUTPUT')) {
+        usage.outputPins.add(op.pin);
+      } else {
+        if (flags.includes('GPIO.PULL_UP')) usage.inputPullupPins.add(op.pin);
+        else if (flags.includes('GPIO.PULL_DOWN')) usage.inputPulldownPins.add(op.pin);
+        else usage.inputPins.add(op.pin);
+      }
+      break;
+    }
+
     // PWM
-    case 'pwm.write': {
+    case 'pwm.set_pulse':
+    case 'pwm.set_duty':
+    case 'pwm.set_period':
+    case 'pwm.tone': {
       trackPinNumberAsName(op.pin, usage);
       usage.pwm = true;
       usage.pwmPinsUsed.add(op.pin);
@@ -347,26 +341,23 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
     }
 
     // ADC
-    case 'adc.read':
-    case 'adc.read_voltage': {
+        case 'adc.read_raw':
+    case 'adc.read_mv': {
       usage.adc = true;
       usage.adcChannelsUsed.add(op.pin);
       break;
     }
 
-    case 'adc.get_resolution':
-    case 'adc.set_reference':
-    case 'adc.get_reference':
-      break;
+            break;
 
     // DAC
-    case 'dac.write': {
+    case 'dac.write_value': {
       trackPinNumberAsName(op.pin, usage);
       break;
     }
 
     // Interrupts
-    case 'interrupt.attach': {
+        case 'interrupt.attach_flags': {
       trackPinNumberAsName(op.pin, usage);
       usage.externalInterrupts = true;
       usage.interruptPinsUsed.add(op.pin);
@@ -379,116 +370,54 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
     }
 
     // Tone
-    case 'tone.play': {
-      usage.pwm = true;
-      usage.pwmPinsUsed.add(op.pin);
+
+    // Tier-2 thin SPI (hal/spi-target.ts) — instances used, plus the distinct
+    // constructed targets (bus|cs|hz|mode) that feed the DT child nodes and
+    // per-target spi_dt_spec state.
+    case 'spi.transceive':
+    case 'spi.dev_write':
+    case 'spi.reg_read': {
+      usage.spi = true;
+      usage.spiInstancesUsed.add(extractBusInstance(op.bus, 'SPI'));
+      usage.spiTargetsUsed.add(`${String(op.bus)}|${op.cs}|${op.hz ?? 0}|${op.mode ?? 0}`);
       break;
     }
 
-    case 'tone.stop': {
-      trackPinNumberAsName(op.pin, usage);
-      break;
-    }
-
-    // Timing
-    case 'timing.delay':
-    case 'timing.delay_microseconds':
-    case 'timing.millis':
-    case 'timing.micros': {
-      usage.timer0 = true;
-      break;
-    }
-
-    case 'timing.free_heap':
-    case 'timing.set_interval':
-    case 'timing.set_timeout':
-    case 'timing.clear_interval':
-    case 'timing.clear_timeout':
-      break;
-
-    // I2C
-    case 'i2c.begin': {
-      usage.i2c = true;
-      usage.i2cInstancesUsed.add(extractBusInstance(op.bus, 'Wire'));
-      break;
-    }
-
-    case 'i2c.end':
-    case 'i2c.set_clock':
-    case 'i2c.begin_transmission':
-    case 'i2c.write':
-    case 'i2c.end_transmission':
-    case 'i2c.request_from':
-    case 'i2c.available':
-    case 'i2c.read':
-    case 'i2c.recover': {
-      usage.i2c = true;
-      usage.i2cInstancesUsed.add(extractBusInstance(op.bus, 'Wire'));
+                                    
+    // DT-bound sensor parts (generic catalog). A sensor rides the I2C bus, so
+    // each use marks the bus instance used too — the overlay enables exactly
+    // the controllers that carry constructed sensors.
+    case 'sensor.fetch':
+    case 'sensor.get': {
+      usage.sensor = true;
+      const kind = String(op.busKind ?? 'i2c');
+      const part = String(op.part ?? '');
+      const busInstance = kind === 'spi' ? extractBusInstance(op.bus, 'SPI') : extractBusInstance(op.bus, 'Wire');
+      // Instance-level claims only: the category booleans mean EVERY
+      // declared controller is in play to the resource-conflict checker
+      // (resource-analysis.ts), which would raise phantom pin conflicts
+      // between unused silicon instances.
+      if (kind === 'spi') {
+        usage.spiInstancesUsed.add(busInstance);
+      } else {
+        usage.i2cInstancesUsed.add(busInstance);
+      }
+      usage.sensorPartsUsed.add(`${part}|${kind}${busInstance}|${op.port ?? 0}`);
       break;
     }
 
     // SPI
-    case 'spi.begin': {
-      usage.spi = true;
-      usage.spiInstancesUsed.add(extractBusInstance(op.bus, 'SPI'));
-      break;
-    }
-
-    case 'spi.end':
-    case 'spi.transfer':
-    case 'spi.begin_transaction':
-    case 'spi.end_transaction':
-    case 'spi.set_mode':
-    case 'spi.set_bit_order': {
-      usage.spi = true;
-      usage.spiInstancesUsed.add(extractBusInstance(op.bus, 'SPI'));
-      break;
-    }
-
-    case 'spi.cs_low':
-    case 'spi.cs_high': {
-      trackPinNumberAsName(op.pin, usage);
-      break;
-    }
-
-    // UART
-    case 'uart.begin': {
+    
+                        
+        
+    // Tier-2 thin UART (hal/uart-port.ts).
+    case 'uart.poll_write':
+    case 'uart.rx_arm':
+    case 'uart.rx_available':
+    case 'uart.rx_peek':
+    case 'uart.rx_read': {
       usage.uart = true;
-      usage.uartInstancesUsed.add(extractBusInstance(op.port, 'Serial'));
-      break;
-    }
-
-    case 'uart.end':
-    case 'uart.print':
-    case 'uart.println':
-    case 'uart.printf':
-    case 'uart.write':
-    case 'uart.read':
-    case 'uart.peek':
-    case 'uart.available':
-    case 'uart.flush': {
-      usage.uart = true;
-      usage.uartInstancesUsed.add(extractBusInstance(op.port, 'Serial'));
-      break;
-    }
-
-    // Pulse
-    case 'pulse.in':
-    case 'pulse.in_long': {
-      trackPinNumberAsName(op.pin, usage);
-      break;
-    }
-
-    // Shift
-    case 'shift.out': {
-      trackPinNumberAsName(op.dataPin, usage);
-      trackPinNumberAsName(op.clockPin, usage);
-      break;
-    }
-
-    case 'shift.in': {
-      trackPinNumberAsName(op.dataPin, usage);
-      trackPinNumberAsName(op.clockPin, usage);
+      usage.uartInstancesUsed.add(extractBusInstance(op.port, 'UART'));
       break;
     }
 
@@ -628,7 +557,6 @@ function analyzeExpression(expr: ExpressionIR | undefined, usage: PeripheralUsag
   try {
     switch (expr.kind) {
     case 'raw': {
-      markTimer0UsageFromText(expr.value, usage);
       break;
     }
 

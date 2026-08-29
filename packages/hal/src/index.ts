@@ -12,7 +12,7 @@ export type { InterruptHandler } from './types.js';
 
 export type { ArchitectureIdentifier } from './types.js';
 
-// Protocol-shape types (re-exported downstream by @typecad/framework-arduino)
+// Protocol-shape types
 export type { I2CAddress } from './types.js';
 export type { SPIBitOrder, SPIMode, SPISettings } from './types.js';
 
@@ -20,49 +20,43 @@ export { include } from './include.js';
 export { board } from './board.js';
 export { callback } from './callback.js';
 export { rawCpp, rawCppExpr, boardResolve } from './emit.js';
-export { HIGH, LOW, OUTPUT, INPUT, INPUT_PULLUP, INPUT_PULLDOWN, OUTPUT_OPEN_DRAIN, ANALOG, LED_BUILTIN, LSBFIRST, MSBFIRST, WDTO_15MS, WDTO_30MS, WDTO_60MS, WDTO_120MS, WDTO_250MS, WDTO_500MS, WDTO_1S, WDTO_2S, WDTO_4S, WDTO_8S } from './constants.js';
-export { delay, millis, micros, delayMicroseconds, map, constrain, TimingClass, Timing } from './timing.js';
-export { freeHeap, setInterval, setTimeout, clearInterval, clearTimeout } from './timing.js';
-export { abs, min, max, NumClass, Num, MapChain, ConstrainChain } from './math.js';
-export { Pulse, pulseIn, pulseInLong } from './pulse.js';
-export { Shift, shiftIn, shiftOut } from './shift.js';
+export { setInterval, setTimeout, clearInterval, clearTimeout } from './time.js';
+export { TimeClass, Time } from './time.js';
+export { abs, min, max, NumClass, Num } from './math.js';
+
 export { Random } from './random.js';
 export { randomSeed, random } from './random.js';
 export { noInterrupts, interrupts, attachInterrupt, detachInterrupt } from './interrupts.js';
-export { Pin, OutputPin, InputPin, ToneChain } from './gpio.js';
-export { I2CBus, I2CDevice, i2cName } from './i2c.js';
-export { SPIBus, SPIDevice, spiName } from './spi.js';
-export { SerialPort, serialName } from './uart.js';
-export { USBSerialPort } from './usb.js';
-export { createHALInstances } from './utils.js';
+export { Pin } from './gpio.js';
+export { GPIO } from './gpio-pin.js';
+export { shiftOut, shiftIn } from './shift-pin.js';
+export { PWM } from './pwm-pin.js';
+export { ADCChannel } from './adc-pin.js';
+export { DACChannel } from './dac-pin.js';
+export { Watchdog } from './watchdog.js';
+export { Counter } from './counter.js';
+export { I2CTarget } from './i2c-target.js';
+export { SPITarget } from './spi-target.js';
+export { UART } from './uart-port.js';
+export { Thread } from './thread.js';
+export { I2CBus, I2CDevice } from './i2c.js';
+export { Sensor } from './sensor.js';
+export { SENSOR, CHAN, SENSOR_PART_INFO } from './sensor-catalog.generated.js';
+export { ZEPHYR_ADC_GAINS, ZEPHYR_ADC_REFERENCES, ZEPHYR_GPIO_FLAGS, ZEPHYR_GPIO_INTS } from './zephyr-tokens.generated.js';
+export type { SensorToken, SensorChannelName, SensorPartInfo } from './sensor-catalog.generated.js';
+export { SPIBus, SPIDevice } from './spi.js';
+export { SerialPort } from './uart.js';
+export { USBConsole } from './usb.js';
 // Register-mapped struct decorators (compile-time markers, erased by transpiler)
 export type { Bit, Bits } from './register.js';
 export { register, bits } from './register.js';
-export { WDTClass, WDT } from './wdt.js';
-export { ADCClass, ADC } from './adc.js';
-export { DACClass, DAC } from './dac.js';
-export { PreferencesClass, Preferences } from './preferences.js';
-export { HardwareTimer, Timer0, Timer1, Timer2 } from './timer.js';
-export { FSClass, FS } from './fs.js';
-export { fsBegin, fsReadText, fsWriteText, fsExists, fsRemove } from './fs.js';
-export { MdnsClass, MDNS } from './mdns.js';
-export { mdnsStart, mdnsSetHostname, mdnsAddService, mdnsAnnounce, mdnsStop } from './mdns.js';
-export { MqttClass, MQTT } from './mqtt.js';
-export { mqttConnect, mqttOnMessage, mqttSubscribe, mqttPublish, mqttConnected, mqttDisconnect } from './mqtt.js';
-export { OtaClass, OTA } from './ota.js';
-export { otaFromUrl, otaBegin, otaWrite, otaApply } from './ota.js';
-export { TemperatureClass, Temperature } from './temperature.js';
-export { tempRead } from './temperature.js';
-export { hwtimerSetFrequency, hwtimerOnOverflow, hwtimerStart, hwtimerStop } from './timer.js';
-export { CapacitiveClass, Capacitive } from './capacitive.js';
-export { capacitiveRead } from './capacitive.js';
-export { PowerClass, Power } from './power.js';
+export { Store } from './preferences.js';
+export { File } from './fs.js';
+export { Mqtt } from './mqtt.js';
+export { Power, PowerDefault } from './power.js';
 export { AsyncClass, Async } from './async.js';
-export { WiFiClass, WiFi, WiFiStatus, WiFiEncryption } from './wifi.js';
-export { HttpClass, Http, HttpRequest, HttpMethod } from './http.js';
-export {
-  BleClass, Ble, BleServer,
-  BleValueType, BlePerm, BleStatus, BleAdvertisingMode, GATT,
-} from './ble.js';
+export { WiFi, Scan, WiFiAP } from './wifi.js';
+export { Request } from './http.js';
+export type { RequestOpts } from './http.js';
+export { BLE, BleChain, BleValueType, BlePerm, GATT } from './ble.js';
 export type { GattCharacteristicDef, CharValue } from './ble.js';
-export { RmtChannel } from './rmt.js';

@@ -14,6 +14,7 @@
 
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
+import { ZEPHYR_ADC_GAINS, ZEPHYR_ADC_REFERENCES } from '@typecad/hal';
 
 /**
  * Resolve the SAADC channel index for an adc.read argument; -1 if unmapped.
@@ -31,6 +32,35 @@ export function adcChannelForPin(chip: ZephyrChipDescriptor, pin: number): numbe
   if (byPin) return byPin.channel;
   const byChannel = channels.find((c) => c.channel === pin);
   return byChannel ? byChannel.channel : -1;
+}
+
+// ── Thin ADC (hal/adc-pin.ts) — gain/reference tokens ──────────────────────
+//
+// "ADCChannel.GAIN_1_4" / "ADCChannel.REF_INTERNAL" token text maps name-for-
+// name onto the enum adc_gain / adc_reference macros. The name sets come from
+// the GENERATED Zephyr token tables (scripts/gen-zephyr-hal-tokens.mjs —
+// parsed from the pinned tree's headers, so the set cannot drift from
+// upstream); empty/absent tokens mean "use the chip descriptor's pair".
+
+const ADC_GAIN_TOKENS: Record<string, string> = Object.fromEntries(
+  ZEPHYR_ADC_GAINS.map((g) => [`ADCChannel.GAIN_${g}`, `ADC_GAIN_${g}`]),
+);
+const ADC_REF_TOKENS: Record<string, string> = Object.fromEntries(
+  ZEPHYR_ADC_REFERENCES.map((r) => [`ADCChannel.REF_${r}`, `ADC_REF_${r}`]),
+);
+
+/** Resolve one thin-ADC token to its macro; undefined when absent/empty.
+ *  Unknown tokens are build errors naming the valid spellings. */
+function adcThinToken(token: string | undefined, map: Record<string, string>, kind: string): string | undefined {
+  const t = String(token ?? '').trim();
+  if (!t || t === '0' || t === "''") return undefined;
+  const m = map[t];
+  if (!m) {
+    throw new Error(
+      `ADC ${kind} token '${t}' is not a known ADCChannel.* token — valid ${kind}s: ${Object.keys(map).join(', ')}.`,
+    );
+  }
+  return m;
 }
 
 /**
@@ -97,30 +127,22 @@ export function lowerAdc(
   const reference = chip.adc?.reference ?? 'ADC_REF_INTERNAL';
 
   switch (op.operation) {
-    case 'adc.read': {
+    case 'adc.read_raw':
+    case 'adc.read_mv': {
       const ch = adcChannelForPin(chip, o.pin);
-      // GCC statement-expression: configures-on-first-call, reads, returns raw.
+      const gainMacro = adcThinToken(o.gain, ADC_GAIN_TOKENS, 'gain');
+      const refMacro = adcThinToken(o.reference, ADC_REF_TOKENS, 'reference');
+      const g = gainMacro ?? gain;
+      const r = refMacro ?? reference;
+      const setup = `static bool __tc_adct${o.pin}_done = false; if (!__tc_adct${o.pin}_done) { const struct adc_channel_cfg __tc_adct${o.pin}_cfg = { .gain = ${g}, .reference = ${r}, .acquisition_time = ADC_ACQ_TIME_DEFAULT, .channel_id = ${ch}, .differential = 0 }; adc_channel_setup(__tc_adc_dev, &__tc_adct${o.pin}_cfg); __tc_adct${o.pin}_done = true; }`;
+      const read = `int16_t __b = 0; struct adc_sequence __s = { .channels = BIT(${ch}), .buffer = &__b, .buffer_size = sizeof(__b), .resolution = ${res} }; adc_read(__tc_adc_dev, &__s);`;
+      if (op.operation === 'adc.read_raw') {
+        return { expression: `({ ${setup} ${read} __b; })` };
+      }
       return {
-        expression: `({ __tc_adc${ch}_setup(); int16_t __b = 0; struct adc_sequence __s = { .channels = BIT(${ch}), .buffer = &__b, .buffer_size = sizeof(__b), .resolution = ${res} }; adc_read(__tc_adc_dev, &__s); __b; })`,
+        expression: `({ ${setup} ${read} int32_t __v = __b; adc_raw_to_millivolts(${vref}, ${g}, ${res}, &__v); __v; })`,
       };
     }
-    case 'adc.read_voltage': {
-      const ch = adcChannelForPin(chip, o.pin);
-      // Read raw, convert to millivolts via adc_raw_to_millivolts with the
-      // descriptor's gain (raw_to_millivolts divides out the gain the channel
-      // was set up with). Returns mV as int.
-      return {
-        expression: `({ __tc_adc${ch}_setup(); int16_t __b = 0; struct adc_sequence __s = { .channels = BIT(${ch}), .buffer = &__b, .buffer_size = sizeof(__b), .resolution = ${res} }; adc_read(__tc_adc_dev, &__s); int32_t __v = __b; adc_raw_to_millivolts(${vref}, ${gain}, ${res}, &__v); __v; })`,
-      };
-    }
-    case 'adc.get_resolution':
-      return { expression: String(res) };
-    case 'adc.set_reference':
-      // Zephyr configures the reference at channel-setup time; runtime switching
-      // would require re-setup. Record the intent as a no-op statement.
-      return { code: `/* adc.set_reference(${o.reference}): configured at channel setup (${reference}) */` };
-    case 'adc.get_reference':
-      return { expression: `0 /* DEFAULT (${reference}) */` };
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +

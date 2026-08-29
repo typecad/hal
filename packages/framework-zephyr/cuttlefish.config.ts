@@ -9,8 +9,7 @@ const config: CuttlefishConfig = {
 
   // Target architecture / silicon / board
   target: 'esp32',
-  mcu: '@typecad/mcu-esp32',
-  board: '@typecad/board-esp32-devkit',
+  board: 'esp32_devkitc/esp32/procpu',
 
   // Framework package — Zephyr RTOS code generation
   framework: '@typecad/framework-zephyr',

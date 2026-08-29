@@ -16,7 +16,7 @@ import { routeHALOp } from "../route-hal-op.js";
  * @param str The input string (e.g., "my_function" or "myFunction")
  * @returns PascalCase string (e.g., "MyFunction")
  */
-export function toPascalCaseLocal(str: string): string {
+function toPascalCaseLocal(str: string): string {
   return str
     .split(/[_\s]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -33,6 +33,8 @@ interface Segment {
   awaitedCallee?: string;
   /** Arguments to the awaited call */
   awaitedArgs: ExpressionIR[];
+  /** Source span of the awaited call (for diagnostics). */
+  awaitedSpan?: StatementIR["sourceSpan"];
 }
 
 /**
@@ -45,6 +47,34 @@ export interface AsyncTaskClassResult {
   instanceDecl: string;
   /** The task variable name for use in loop() */
   taskVarName: string;
+  /** For async METHODS: the definition of the starter function the in-class
+   *  body calls (binds the owner and arms STATE_0). Emitted after the task
+   *  class; the matching prototype must precede the owning class. */
+  starterDef?: string;
+}
+
+/** Awaited callees that legitimately lower to a plain timed wait (their
+ *  single numeric argument IS the deadline). Everything else reaching the
+ *  plain-wait arm would have its call silently dropped — the embedding
+ *  emitter turns that into a diagnostic via onUnsupportedAwait. */
+const PLAIN_AWAIT_CALLEES = new Set<string>([
+  "Async.sleep",
+  "AsyncClass.sleep",
+  "__cuttlefish_async_sleep",
+  "delay",
+  "sleep",
+]);
+
+/** Options for generateAsyncTaskClass. */
+export interface AsyncTaskClassOptions {
+  /** Owning class name for async METHODS: the task binds `this` to an owner
+   *  pointer set by start(owner); segment code that renders `this->x` is
+   *  rewritten to `_owner->x` by the embedding renderStatement callback. */
+  ownerClassName?: string;
+  /** Invoked for every awaited call that has no cooperative lowering (the
+   *  call would be silently dropped). The emitter surfaces it as a
+   *  diagnostic instead of emitting wrong code. */
+  onUnsupportedAwait?: (callee: string, span: StatementIR["sourceSpan"] | undefined) => void;
 }
 
 /**
@@ -68,9 +98,12 @@ export function generateAsyncTaskClass(
   strategy: PlatformStrategy,
   knownFunctionReturnTypes: Map<string, string>,
   renderStatement: (stmt: StatementIR, forHeader: boolean, strategy: PlatformStrategy, pointerVarTypes?: Map<string, string>, calleeTransformer?: (callee: string) => string, knownFunctionReturnTypes?: Map<string, string>) => string,
+  options?: AsyncTaskClassOptions,
 ): AsyncTaskClassResult {
   const className = toPascalCaseLocal(fnName) + "Task";
   const instanceName = `${fnName}Task`;
+  const owner = options?.ownerClassName;
+  const starterName = `__tc_async_start_${fnName}`;
 
   // Detect whether the body is a single while-loop (cyclic) or linear statements
   let bodyStatements: StatementIR[];
@@ -89,7 +122,7 @@ export function generateAsyncTaskClass(
 
   for (const stmt of bodyStatements) {
     if (stmt.kind === "call" && stmt.isAwaited) {
-      segments.push({ preStatements: currentPre, awaitedCallee: stmt.callee, awaitedArgs: stmt.args });
+      segments.push({ preStatements: currentPre, awaitedCallee: stmt.callee, awaitedArgs: stmt.args, awaitedSpan: stmt.sourceSpan });
       currentPre = [];
     } else if (
       // Chained HAL calls (e.g. `await Http.get(url).send()`) resolve to a
@@ -103,7 +136,7 @@ export function generateAsyncTaskClass(
     ) {
       const last = stmt.body[stmt.body.length - 1] as Extract<StatementIR, { kind: "call" }>;
       currentPre.push(...stmt.body.slice(0, -1));
-      segments.push({ preStatements: currentPre, awaitedCallee: last.callee, awaitedArgs: last.args });
+      segments.push({ preStatements: currentPre, awaitedCallee: last.callee, awaitedArgs: last.args, awaitedSpan: last.sourceSpan });
       currentPre = [];
     } else {
       currentPre.push(stmt);
@@ -219,7 +252,13 @@ export function generateAsyncTaskClass(
         lines.push(`${pad}_waitUntil = ${strategy.currentTimeMillis()} + ${net.timeoutExpr};`);
       }
     } else {
-      // Plain timed wait (await delay(ms)) — arm its deadline.
+      // Plain timed wait (await delay(ms)) — arm its deadline. Anything whose
+      // callee is not a known timer shape has no cooperative lowering here:
+      // the call itself is NOT rendered (only marker/net awaits carry start
+      // code), so report it instead of silently dropping it.
+      if (!PLAIN_AWAIT_CALLEES.has(seg.awaitedCallee)) {
+        options?.onUnsupportedAwait?.(seg.awaitedCallee, seg.awaitedSpan);
+      }
       const ms = seg.awaitedArgs[0] ? renderExpression(seg.awaitedArgs[0], strategy) : "0";
       lines.push(`${pad}_waitUntil = ${strategy.currentTimeMillis()} + ${ms};`);
     }
@@ -313,12 +352,27 @@ export function generateAsyncTaskClass(
   const inits: string[] = [`_state(${Q_0})`, `_waitUntil(0)`];
   for (const m of edgeMemberArr) inits.push(`${m}(LOW)`);
   for (const m of tapMemberArr) inits.push(`${m}(0)`);
+  // Owner pointer (async methods): initialized null, bound by start(owner).
+  // Declared last / initialized last so the initializer list order matches.
+  if (owner) inits.push("_owner(nullptr)");
   const ctorInitList = inits.join(", ");
   const edgeResetList = edgeMemberArr.map(m => ` ${m} = LOW;`).join("");
   const tapResetList = tapMemberArr.map(m => ` ${m} = 0;`).join("");
   const edgeMemberDecls = edgeMemberArr.map(m => `  int ${m};`);
   // __ui_tap_seq is uint32_t; the snapshot must match to detect bumps correctly.
   const tapMemberDecls = tapMemberArr.map(m => `  uint32_t ${m};`);
+  const ownerMemberDecl = owner ? [`  ${owner}* _owner;`] : [];
+  const runGuard = owner ? [`    if (_owner == nullptr) { return; }`] : [];
+  // start(owner): (re)bind the receiver and rewind the machine. Calling the
+  // async method again restarts the task with the new receiver — the task
+  // is a singleton per method, mirroring the free-function tasks.
+  const startMethod = owner ? [
+    `  void start(${owner}* owner) {`,
+    `    _owner = owner;`,
+    `    _state = ${Q_0};`,
+    `    _waitUntil = 0;${edgeResetList}${tapResetList}`,
+    `  }`,
+  ] : [];
 
   const classDef = [
     `// Async state machine for ${fnName}`,
@@ -326,7 +380,9 @@ export function generateAsyncTaskClass(
     `public:`,
     `  enum class State { ${stateEnumList} };`,
     `  ${className}() : ${ctorInitList} {}`,
+    ...startMethod,
     `  void run() {`,
+    ...runGuard,
     `    switch (_state) {`,
     ...caseLines,
     `    }`,
@@ -338,10 +394,15 @@ export function generateAsyncTaskClass(
     `  unsigned long _waitUntil;`,
     ...edgeMemberDecls,
     ...tapMemberDecls,
+    ...ownerMemberDecl,
     `};`,
   ].join("\n");
 
-  return { classDef, instanceDecl: `${className} ${instanceName};`, taskVarName: instanceName };
+  const starterDef = owner
+    ? `void ${starterName}(${owner}* owner) { ${instanceName}.start(owner); }`
+    : undefined;
+
+  return { classDef, instanceDecl: `${className} ${instanceName};`, taskVarName: instanceName, starterDef };
 }
 
 /**
@@ -417,10 +478,16 @@ function netWaitInfo(op: HALOpIR, strategy: PlatformStrategy): NetWaitInfo {
     route({ operation })?.expression ?? null;
 
   switch (op.operation) {
-    case "timing.delay":
+    case "timing.sleep":
+      // Pure deadline wait: no start op, no poll — the machine arms
+      // _waitUntil and cooperatively yields until it passes. Bare
+      // (non-awaited) calls lower to the blocking form (k_msleep).
       return { startLines: [], pollCond: null, timeoutExpr: ms(o.ms) };
-    case "wifi.connect": {
-      const start = route({ operation: "wifi.connect_start", ssid: o.ssid, password: o.password });
+    case "wifi.join": {
+      // Awaited join splits into the staged association + the L4 poll.
+      // (Static-IPv4/power-save facts are join()-side blocking-path extras;
+      // the async form associates with defaults and polls connectivity.)
+      const start = route({ operation: "wifi.connect_start", ssid: o.ssid, password: o.psk });
       const poll = expr("wifi.is_connected");
       if (start?.code && poll) {
         return {
@@ -431,24 +498,7 @@ function netWaitInfo(op: HALOpIR, strategy: PlatformStrategy): NetWaitInfo {
       }
       break;
     }
-    case "wifi.wait_connected": {
-      const poll = expr("wifi.is_connected");
-      if (poll) {
-        return {
-          startLines: [],
-          pollCond: poll,
-          timeoutExpr: isZeroTimeout(o.timeoutMs) ? null : ms(o.timeoutMs),
-        };
-      }
-      break;
-    }
-    case "wifi.wait_disconnected": {
-      const poll = expr("wifi.is_connected");
-      if (poll) {
-        return { startLines: [], pollCond: `!${poll}`, timeoutExpr: null };
-      }
-      break;
-    }
+
     case "wifi.scan": {
       const start = route({ operation: "wifi.scan_start" });
       const poll = expr("wifi.scan_done");
@@ -462,18 +512,6 @@ function netWaitInfo(op: HALOpIR, strategy: PlatformStrategy): NetWaitInfo {
       const poll = expr("http.done");
       if (start?.code && poll) {
         return { startLines: [start.code], pollCond: poll, timeoutExpr: null };
-      }
-      break;
-    }
-    case "ble.until_connected": {
-      const start = route({ operation: "ble.until_connected_start" });
-      const poll = expr("ble.is_connected");
-      if (start?.code && poll) {
-        return {
-          startLines: [start.code],
-          pollCond: poll,
-          timeoutExpr: isZeroTimeout(o.timeoutMs) ? null : ms(o.timeoutMs),
-        };
       }
       break;
     }

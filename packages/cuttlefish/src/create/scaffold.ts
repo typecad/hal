@@ -8,12 +8,11 @@ import {
   generateProjectTsconfig,
   generateProjectConfig,
   generateProjectEnvDts,
-  generateStarterSketch,
+  generateStarterProgram,
   generateStarterTest,
   generateStarterSim,
   generateGitignore,
   generateEditorconfig,
-  generateBoardForwardingFile,
   generateEslintConfig,
 } from "./templates.js";
 import { generateEslintRules } from "./eslint-rules-template.js";
@@ -24,7 +23,9 @@ export interface KnownTarget {
   displayName: string;
   isNative: boolean;
   architecture?: ArchitectureIdentifier;
-  boardPackage?: string;
+  /** Qualified Zephyr board target — the config's board: value and the
+   *  boardgen input (materialized to .cuttlefish/board.ts at create). */
+  board?: string;
   /** Framework package + id. Optional on embedded targets: the scaffold wizard
    *  fills these in by discovering installed @typecad/framework-* packages, so
    *  KNOWN_TARGETS board entries do not hardcode a framework. Native targets
@@ -32,7 +33,7 @@ export interface KnownTarget {
   frameworkPackage?: string;
   framework?: string;
   buildTarget?: string;
-  mcu?: string;
+  soc?: string;
   /** Framework-specific config (becomes frameworkData in cuttlefish.config.ts).
    *  Carries framework-specific target/options data for the selected framework. */
   frameworkData?: Record<string, unknown>;
@@ -47,107 +48,98 @@ const _knownTargets: KnownTarget[] = [
     framework: 'native',
   },
   {
-    id: 'arduino-uno',
-    displayName: 'Arduino Uno',
-    isNative: false,
-    architecture: 'avr',
-    boardPackage: '@typecad/board-arduino-uno',
-    buildTarget: 'arduino:avr:uno',
-    mcu: 'atmega328p',
-  },
-  {
     id: 'esp32-devkit',
     displayName: 'ESP32 DevKit',
     isNative: false,
     architecture: 'esp32',
-    boardPackage: '@typecad/board-esp32-devkit',
-    buildTarget: 'esp32:esp32:esp32',
-    mcu: 'esp32',
+    board: 'esp32_devkitc/esp32/procpu',
+    buildTarget: 'esp32_devkitc/esp32/procpu',
+    soc: 'esp32',
   },
   {
     id: 'esp32s3',
     displayName: 'ESP32-S3',
     isNative: false,
     architecture: 'esp32s3',
-    boardPackage: '@typecad/board-esp32s3',
-    buildTarget: 'esp32:esp32:esp32s3',
-    mcu: 'esp32s3',
+    board: 'esp32s3_devkitc/esp32s3/procpu',
+    buildTarget: 'esp32s3_devkitc/esp32s3/procpu',
+    soc: 'esp32s3',
   },
   {
     id: 'esp32c3',
     displayName: 'ESP32-C3',
     isNative: false,
     architecture: 'esp32c3',
-    boardPackage: '@typecad/board-esp32c3',
-    buildTarget: 'esp32:esp32:esp32c3',
-    mcu: 'esp32c3',
+    board: 'esp32c3_devkitm/esp32c3',
+    buildTarget: 'esp32c3_devkitm/esp32c3',
+    soc: 'esp32c3',
   },
   {
     id: 'esp32c6',
     displayName: 'ESP32-C6',
     isNative: false,
     architecture: 'esp32c6',
-    boardPackage: '@typecad/board-esp32c6',
-    buildTarget: 'esp32:esp32:esp32c6',
-    mcu: 'esp32c6',
+    board: 'esp32c6_devkitc/esp32c6/hpcore',
+    buildTarget: 'esp32c6_devkitc/esp32c6/hpcore',
+    soc: 'esp32c6',
   },
   {
     id: 'rp2040',
     displayName: 'RP2040 (Pico)',
     isNative: false,
     architecture: 'rp2040',
-    boardPackage: '@typecad/board-rp2040',
-    buildTarget: 'rp2040:rp2040:rpipico',
-    mcu: 'rp2040',
+    board: 'rpi_pico/rp2040',
+    buildTarget: 'rpi_pico',
+    soc: 'rp2040',
   },
   {
     id: 'rp2350',
     displayName: 'RP2350 (Pico 2)',
     isNative: false,
     architecture: 'rp2350',
-    boardPackage: '@typecad/board-rp2350',
-    buildTarget: 'rp2040:rp2040:rpipico2',
-    mcu: 'rp2350',
+    board: 'rpi_pico2/rp2350a/m33',
+    buildTarget: 'rpi_pico2/rp2350a/m33',
+    soc: 'rp2350a',
   },
   {
     id: 'xiao-nrf52840',
     displayName: 'XIAO nRF52840',
     isNative: false,
     architecture: 'nrf52',
-    boardPackage: '@typecad/board-xiao-nrf52840',
+    board: 'xiao_ble/nrf52840',
     // Zephyr-only target: the build target is the `west build -b` board id,
     // not an Arduino FQBN (frameworkTargetProfile resolves it for Zephyr).
     buildTarget: 'xiao_ble/nrf52840',
-    mcu: 'nrf52840',
+    soc: 'nrf52840',
   },
   {
     id: 'blackpill-f411ce',
     displayName: 'Black Pill (STM32F411)',
     isNative: false,
     architecture: 'stm32f411',
-    boardPackage: '@typecad/board-blackpill-f411ce',
+    board: 'blackpill_f411ce/stm32f411xe',
     // Zephyr-only target: the build target is the `west build -b` board id,
     // not an Arduino FQBN (frameworkTargetProfile resolves it for Zephyr).
     buildTarget: 'blackpill_f411ce/stm32f411xe',
-    mcu: 'stm32f411',
+    soc: 'stm32f411xe',
   },
   {
     id: 'nano-33-iot',
     displayName: 'Arduino Nano 33 IoT (SAMD21)',
     isNative: false,
     architecture: 'samd21',
-    boardPackage: '@typecad/board-nano-33-iot',
+    board: 'arduino_nano_33_iot/samd21g18a',
     // Zephyr-only target: the build target is the `west build -b` board id,
     // not an Arduino FQBN (frameworkTargetProfile resolves it for Zephyr).
     buildTarget: 'arduino_nano_33_iot/samd21g18a',
-    mcu: 'samd21',
+    soc: 'samd21g18a',
   },
 ];
 
 // ---------------------------------------------------------------------------
 // MCU-only targets — program bare silicon with no board package. The catalog
 // mirrors the mcus/ packages: architecture + the Zephyr SoC name(s) from the
-// package's silicon zephyr block (the join key into ZEPHYR_BOARD_SNAPSHOT —
+// soc name (the join key into the board catalog —
 // an MCU with zephyrSocs supports both generated custom boards and any
 // upstream board built on that SoC). The consistency tests keep this in sync
 // with the packages, the same way BOARD_PROBE_METHODS mirrors board data.
@@ -157,125 +149,29 @@ export interface KnownMcu {
   id: string;
   displayName: string;
   architecture: ArchitectureIdentifier;
-  /** MCU package specifier, e.g. '@typecad/mcu-stm32f411'. */
-  mcu: string;
-  /** Zephyr SoC name(s) from the package's silicon zephyr block. Empty when
-   *  the package carries no zephyr data yet (Zephyr unavailable for it). */
-  zephyrSocs: string[];
-  /** A safe output-capable port pin for the starter sketch (no board-level
+  /** Zephyr SoC name — the config's soc: value (contract projects program
+   *  bare silicon through the curated soc descriptor). */
+  soc: string;
+  /** A safe output-capable port pin for the starter program (no board-level
    *  LED alias exists on bare silicon). */
-  sketchPin: string;
+  starterPin: string;
 }
 
 const _knownMcus: KnownMcu[] = [
-  {
-    id: 'atmega328p',
-    displayName: 'ATmega328P (bare MCU — Uno/Nano/Pro Mini family)',
-    architecture: 'avr',
-    mcu: '@typecad/mcu-atmega328p',
-    zephyrSocs: [],
-    sketchPin: 'PB5',
-  },
-  {
-    id: 'esp32',
-    displayName: 'ESP32 (bare MCU)',
-    architecture: 'esp32',
-    mcu: '@typecad/mcu-esp32',
-    zephyrSocs: [],
-    sketchPin: 'GPIO2',
-  },
-  {
-    id: 'esp32c3',
-    displayName: 'ESP32-C3 (bare MCU)',
-    architecture: 'esp32c3',
-    mcu: '@typecad/mcu-esp32c3',
-    zephyrSocs: [],
-    sketchPin: 'GPIO8',
-  },
-  {
-    id: 'esp32c6',
-    displayName: 'ESP32-C6 (bare MCU)',
-    architecture: 'esp32c6',
-    mcu: '@typecad/mcu-esp32c6',
-    zephyrSocs: [],
-    sketchPin: 'GPIO8',
-  },
-  {
-    id: 'esp32s3',
-    displayName: 'ESP32-S3 (bare MCU)',
-    architecture: 'esp32s3',
-    mcu: '@typecad/mcu-esp32s3',
-    zephyrSocs: [],
-    sketchPin: 'GPIO2',
-  },
-  {
-    id: 'nrf52840',
-    displayName: 'nRF52840 (bare MCU)',
-    architecture: 'nrf52',
-    mcu: '@typecad/mcu-nrf52840',
-    zephyrSocs: [],
-    sketchPin: 'P1_11',
-  },
-  {
-    id: 'rp2040',
-    displayName: 'RP2040 (bare MCU)',
-    architecture: 'rp2040',
-    mcu: '@typecad/mcu-rp2040',
-    zephyrSocs: [],
-    sketchPin: 'GP25',
-  },
-  {
-    id: 'rp2350',
-    displayName: 'RP2350 (bare MCU)',
-    architecture: 'rp2350',
-    mcu: '@typecad/mcu-rp2350',
-    zephyrSocs: [],
-    sketchPin: 'GP25',
-  },
-  {
-    id: 'samd21',
-    displayName: 'SAMD21 (bare MCU)',
-    architecture: 'samd21',
-    mcu: '@typecad/mcu-samd21',
-    zephyrSocs: [],
-    sketchPin: 'PB23',
-  },
-  {
-    id: 'stm32f411',
-    displayName: 'STM32F411 (bare MCU — custom board or any F411 board)',
-    architecture: 'stm32f411',
-    mcu: '@typecad/mcu-stm32f411',
-    zephyrSocs: ['stm32f411xe'],
-    sketchPin: 'PA5',
-  },
+  { id: 'esp32',      displayName: 'ESP32 (bare silicon)',    architecture: 'esp32',    soc: 'esp32',      starterPin: 'GPIO2' },
+  { id: 'esp32c3',    displayName: 'ESP32-C3 (bare silicon)', architecture: 'esp32c3',  soc: 'esp32c3',    starterPin: 'GPIO8' },
+  { id: 'esp32c6',    displayName: 'ESP32-C6 (bare silicon)', architecture: 'esp32c6',  soc: 'esp32c6',    starterPin: 'GPIO8' },
+  { id: 'esp32s3',    displayName: 'ESP32-S3 (bare silicon)', architecture: 'esp32s3',  soc: 'esp32s3',    starterPin: 'GPIO2' },
+  { id: 'nrf52840',   displayName: 'nRF52840 (bare silicon)', architecture: 'nrf52',    soc: 'nrf52840',   starterPin: 'P1_11' },
+  { id: 'rp2040',     displayName: 'RP2040 (bare silicon)',   architecture: 'rp2040',  soc: 'rp2040',     starterPin: 'GP25' },
+  { id: 'rp2350',     displayName: 'RP2350 (bare silicon)',   architecture: 'rp2350',  soc: 'rp2350a',    starterPin: 'GP25' },
+  { id: 'samd21',     displayName: 'SAMD21 (bare silicon)',   architecture: 'samd21',  soc: 'samd21g18a', starterPin: 'PB23' },
+  { id: 'stm32f411',  displayName: 'STM32F411 (bare silicon — contract PCBs)', architecture: 'stm32f411', soc: 'stm32f411xe', starterPin: 'PA5' },
 ];
 
 export const KNOWN_MCUS: ReadonlyArray<KnownMcu> = _knownMcus;
 
-export function registerKnownMcu(mcu: KnownMcu): void {
-  const existing = _knownMcus.findIndex(m => m.id === mcu.id);
-  if (existing >= 0) {
-    _knownMcus[existing] = mcu;
-  } else {
-    _knownMcus.push(mcu);
-  }
-}
-
-export function registerKnownTarget(target: KnownTarget): void {
-  const existing = _knownTargets.findIndex(t => t.id === target.id);
-  if (existing >= 0) {
-    _knownTargets[existing] = target;
-  } else {
-    _knownTargets.push(target);
-  }
-}
-
 export const KNOWN_TARGETS: ReadonlyArray<KnownTarget> = _knownTargets;
-
-/** @deprecated Use KNOWN_TARGETS */
-export const KNOWN_BOARDS = _knownTargets;
-/** @deprecated Use KnownTarget */
-export type KnownBoard = KnownTarget;
 
 export function normalizeProjectName(name: string): string {
   return name
@@ -340,17 +236,17 @@ export function scaffoldProject(
   // Scripts view and npm task detection.
   for (const file of writeEditorIntegration(resolvedOutDir, undefined, true)) createdFiles.push(file);
 
-  if (options.boardPackage) {
-    const boardFilePath = path.join(cuttlefishDir, 'board.ts');
-    fs.writeFileSync(boardFilePath, generateBoardForwardingFile(options.boardPackage), 'utf-8');
-    createdFiles.push(boardFilePath);
+  if (options.board) {
+    // Board-target projects materialize .cuttlefish/board.ts + board.json on
+    // the first build (config-loader → the framework's board generator);
+    // nothing to write here.
   }
 
-  if (options.includeSketch) {
+  if (options.includeStarter) {
     const entryName = 'main.ts';
-    const sketchPath = path.join(srcDir, entryName);
-    fs.writeFileSync(sketchPath, generateStarterSketch(options), 'utf-8');
-    createdFiles.push(sketchPath);
+    const entryPath = path.join(srcDir, entryName);
+    fs.writeFileSync(entryPath, generateStarterProgram(options), 'utf-8');
+    createdFiles.push(entryPath);
   }
 
   // Embedded projects get a starter hardware test (@typecad/expect / cuttlefish-test).
@@ -405,7 +301,6 @@ export function printCreateNextSteps(
   console.log(`  ${chalk.cyan("open the folder and approve the workspace extension")} ${chalk.dim("(adds .ui syntax highlighting)")}`);
 
   if (!options.isNative) {
-    const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
     console.log();
     console.log(chalk.bold.white("To simulate without hardware:"));
     console.log(`  ${chalk.cyan("npm run simulate")}`);
@@ -415,7 +310,10 @@ export function printCreateNextSteps(
     console.log();
     console.log(chalk.bold.white("To run hardware tests:"));
     console.log(`  ${chalk.cyan("npm run test:hw")}`);
-    console.log();
-    console.log(chalk.dim(`Edit ${chalk.white("cuttlefish.config.ts")} to change the serial port from ${chalk.white(portHint)} to your port.`));
+    if (!options.port) {
+      const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
+      console.log();
+      console.log(chalk.dim(`No serial port was set — edit ${chalk.white("cuttlefish.config.ts")} to change ${chalk.white(portHint)} to your port (or pass --port on any command).`));
+    }
   }
 }

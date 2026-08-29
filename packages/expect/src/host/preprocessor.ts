@@ -10,16 +10,15 @@
 //   done();
 //
 // OUTPUT (preprocessed — fed to transpiler):
-//   Serial.begin(115200);
-//   Serial.println("[TC:SUITE_START]");
-//   Serial.println("[TC:DESCRIBE:A0 analog read]");
-//   Serial.println("[TC:IT:reads zero]");
+//   __tc_println("[TC:SUITE_START]");
+//   __tc_println("[TC:DESCRIBE:A0 analog read]");
+//   __tc_println("[TC:IT:reads zero]");
 //   const __tc_v1: number = A0.readAnalog();
-//   Serial.print("[TC:EXPECT:toBe:0:");
-//   Serial.print(__tc_v1);
-//   Serial.println("]");
-//   Serial.println("[TC:SUITE_END]");
-//   while (true) { delay(1000); }
+//   __tc_print("[TC:EXPECT:toBe:0:");
+//   __tc_print(__tc_v1);
+//   __tc_println("]");
+//   __tc_println("[TC:SUITE_END]");
+//   while (true) { k_msleep(1000); }
 // ---------------------------------------------------------------------------
 
 import ts from 'typescript';
@@ -34,31 +33,24 @@ import type { TestPinsSubstitutions } from './test-pins.js';
 /**
  * Describes how the test protocol emits output for a given framework.
  * Each framework provides its own shim so the preprocessor doesn't hardcode
- * Serial.* (which would force the Arduino core to be linked).
+ * a specific console API.
  */
 export interface OutputShim {
-  /** The init call emitted in the preamble, e.g. "Serial.begin(115200)". */
+  /** The init call emitted in the preamble, e.g. "Serial.begin(115200)". Empty when the console self-initializes. */
   begin: string;
   /** Print without newline — receives a fully-formed argument expression. */
   print: (expr: string) => string;
   /** Print with newline — receives a fully-formed argument expression. */
   println: (expr: string) => string;
-  /** The idle-loop delay call after SUITE_END, e.g. "delay(1000)". */
+  /** The idle-loop delay call after SUITE_END, e.g. "k_msleep(1000)". */
   delay: string;
 }
 
-/** Default shim: Arduino HardwareSerial. */
-export const serialShim: OutputShim = {
-  begin: 'Serial.begin(115200)',
-  print: (e) => `Serial.print(${e})`,
-  println: (e) => `Serial.println(${e})`,
-  delay: 'delay(1000)',
-};
-
 /**
- * Zephyr shim: uses overloaded __tc_print/__tc_println helpers that handle
- * both string and numeric (double) output via printf. The Zephyr strategy's
- * shimLines emits these helper definitions. k_msleep replaces delay().
+ * Zephyr shim (the default): uses overloaded __tc_print/__tc_println helpers
+ * that handle both string and numeric (double) output via printf. The Zephyr
+ * strategy's shimLines emits these helper definitions. k_msleep replaces
+ * delay().
  */
 export const zephyrShim: OutputShim = {
   begin: '',  // Zephyr console auto-initializes via DT; no explicit begin needed
@@ -68,9 +60,7 @@ export const zephyrShim: OutputShim = {
 };
 
 export interface PreprocessorOptions {
-  /** Wrap string literals in Arduino F() macro to save SRAM on AVR. */
-  isAvr?: boolean;
-  /** Output shim — defaults to serialShim (Arduino HardwareSerial). */
+  /** Output shim — defaults to the Zephyr __tc_print helpers. */
   shim?: OutputShim;
   /**
    * Board test-pins substitutions (role const -> replacement text). When
@@ -91,12 +81,12 @@ export interface PreprocessorOptions {
  * 2. Walks top-level expression-statements looking for `describe(...)...` chains
  * 3. Replaces `done()` with the suite-end sentinel + idle loop
  * 4. Hoists hardware expressions out of `expect()` into `const` declarations
- * 5. Wraps everything with Serial.initialize + SUITE_START preamble
+ * 5. Wraps everything with the console init + SUITE_START preamble
  * 6. Substitutes test-pin role identifiers with the board's real pin symbols
  */
 export function preprocess(source: string, fileName: string = 'test.ts', options?: PreprocessorOptions): string {
   const sf = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const ctx = new PreprocessorContext(options?.isAvr ?? false, options?.shim, options?.testPins);
+  const ctx = new PreprocessorContext(options?.shim, options?.testPins);
 
   for (const stmt of sf.statements) {
     if (ts.isImportDeclaration(stmt)) {
@@ -123,23 +113,20 @@ export class PreprocessorContext {
   private varCounter = 0;
   private fnCounter = 0;
   private preambleEmitted = false;
-  readonly isAvr: boolean;
   readonly shim: OutputShim;
   /** Role const -> replacement text (board pin symbols / numeric facts). */
   private readonly substitutions?: TestPinsSubstitutions;
   /** Pin symbols seen in substitutions that actually replaced something. */
   private readonly usedPins = new Set<string>();
 
-  constructor(isAvr: boolean, shim: OutputShim = serialShim, substitutions?: TestPinsSubstitutions) {
-    this.isAvr = isAvr;
+  constructor(shim: OutputShim = zephyrShim, substitutions?: TestPinsSubstitutions) {
     this.shim = shim;
     this.substitutions = substitutions;
   }
 
-  /** Wrap a string literal in F() on AVR to keep it in flash.
-   *  Only applies when using the serialShim (Arduino core provides F()). */
-  flash(s: string): string {
-    return this.isAvr ? `F("${s}")` : `"${s}"`;
+  /** Quote a protocol string literal for the active shim. */
+  quote(s: string): string {
+    return `"${s}"`;
   }
 
   /** Emit a line of TypeScript output. */
@@ -182,8 +169,9 @@ export class PreprocessorContext {
 
   private emitPreamble(): void {
     this.preambleEmitted = true;
-    this.lines.push(`${this.shim.begin};`);
-    this.lines.push(`${this.shim.println(this.flash('[TC:SUITE_START]'))};`);
+    // Shims whose console self-initializes (Zephyr DT) have an empty begin.
+    if (this.shim.begin) this.lines.push(`${this.shim.begin};`);
+    this.lines.push(`${this.shim.println(this.quote('[TC:SUITE_START]'))};`);
   }
 
   build(): string {
@@ -210,7 +198,7 @@ function processExpressionStatement(
   const expr = stmt.expression;
 
   if (isDoneCall(expr)) {
-    ctx.emit(`${ctx.shim.println(ctx.flash('[TC:SUITE_END]'))};`);
+    ctx.emit(`${ctx.shim.println(ctx.quote('[TC:SUITE_END]'))};`);
     ctx.emit(`while (true) { ${ctx.shim.delay}; }`);
     return;
   }

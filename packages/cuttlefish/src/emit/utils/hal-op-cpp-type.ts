@@ -7,28 +7,23 @@ export function cppTypeForHalOp(operation: string): string | undefined {
   switch (operation) {
     case "wifi.local_ip":
     case "wifi.mac":
-    case "wifi.ap_ip":
     case "wifi.scan_ssid":
     case "http.body":
     case "http.response_header":
       return "const char*";
     case "wifi.is_connected":
-    case "wifi.connect":
-    case "wifi.wait_connected":
+    case "wifi.join":
     case "wifi.scan_done":
     case "wifi.ap_start":
-    case "wifi.connect_saved":
     case "http.ok":
     case "http.done":
       return "bool";
-    case "wifi.status":
     case "wifi.rssi":
     case "wifi.scan":
     case "wifi.scan_count":
     case "wifi.scan_rssi":
     case "wifi.scan_encryption":
     case "wifi.scan_channel":
-    case "wifi.ap_client_count":
     case "http.status":
     case "http.content_length":
       return "int";

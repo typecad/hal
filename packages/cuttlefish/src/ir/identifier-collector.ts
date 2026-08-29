@@ -467,7 +467,7 @@ export function collectStatementIdentifiers(statement: StatementIR | null | unde
 function collectHALOpIdentifiers(op: HALOpIR): Set<string> {
   const identifiers = new Set<string>();
   switch (op.operation) {
-    case "interrupt.attach":
+    case "interrupt.attach_flags":
       // handler is a resolved C++ function name (e.g. "myIsr" or a placeholder)
       identifiers.add(op.handler);
       break;

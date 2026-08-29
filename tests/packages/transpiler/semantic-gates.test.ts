@@ -870,8 +870,8 @@ describe("runSemanticGates — Phase 3 fact-completeness verifier", () => {
 
   it("does NOT flag a same-kind string-literal union (lowers to a single std::string)", () => {
     // A pure string-literal union `type Status = "ok" | "err"` lowers to a
-    // single `std::string` (SUPPORT_MATRIX §1.6 — string unions are a
-    // recommended alternative to keyof). All constituents canonicalize to the
+    // single `std::string` (string unions are a recommended alternative to
+    // keyof). All constituents canonicalize to the
     // same "primitive" category, so the union coalesces and must NOT trip the
     // unclassifiable warning. Demo #22 Finding C.
     const { byCode } = runGates(`

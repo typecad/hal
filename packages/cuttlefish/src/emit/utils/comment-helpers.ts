@@ -10,7 +10,7 @@
  * @param comment The comment string (may contain newlines)
  * @returns Array of normalized comment lines
  */
-export function normalizeComment(comment: string): string[] {
+function normalizeComment(comment: string): string[] {
   return comment
     .split(/\r?\n/)
     .map((line) => line.trimEnd())

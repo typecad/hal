@@ -1,3 +1,22 @@
+// ---------------------------------------------------------------------------
+// BLE — the thin Zephyr-shaped GATT peripheral
+//
+// The advertised identity is a CONSTRUCTION fact: `new BLE('TempSensor')`.
+// The GATT database is declared through service()/char() chains (each char's
+// uuid/type/perms ride its add op — the sensor discipline), handlers attach
+// with onRead/onWrite, and the verbs map 1:1 onto Zephyr's bt_* GATT surface:
+//
+//   start()   → register the deferred service table + bt_enable + advertise
+//   stop()    → bt_le_adv_stop
+//   linked()  → a central is connected
+//   onConnect()/onDrop() → bt_conn callbacks
+//   notify(i, v) → bt_gatt_notify on the declared characteristic i
+//
+// Ordering contract (same as the runtime shim's current_char keying):
+// onRead/onWrite/notify bind to the char() they immediately follow in the
+// chain. Declare handlers right where the characteristic is declared.
+// ----------------------------------------------------------------------------
+
 import {
   bleServerBegin,
   bleAdvertiseStart,
@@ -11,11 +30,6 @@ import {
   bleNotify,
   bleIsConnected,
   bleClientCount,
-  bleSetName,
-  bleUntilConnected,
-  bleUntilConnectedStart,
-  bleSetTxPower,
-  bleStatus,
 } from './emit.js';
 import { callback } from './callback.js';
 
@@ -40,20 +54,6 @@ export enum BlePerm {
   Notify = 4,
 }
 
-/** BLE peripheral status (mirrored by the runtime shim). */
-export enum BleStatus {
-  Idle = 0,
-  Initializing = 1,
-  Advertising = 2,
-  Connected = 3,
-  Error = 4,
-}
-
-export enum BleAdvertisingMode {
-  Connectable = 'connectable',
-  NonConnectable = 'non_connectable',
-}
-
 /** A well-known GATT characteristic entry in the catalog. */
 export interface GattCharacteristicDef {
   readonly uuid: string;
@@ -64,9 +64,10 @@ export interface GattCharacteristicDef {
 }
 
 /**
- * Standard GATT services/characteristics. Autocomplete walks the hierarchy:
- *   GATT.ENVIRONMENTAL. -> TEMPERATURE, HUMIDITY, ...
- * Pass the .uuid, .type, and computed perms to BleServer.characteristic().
+ * Standard GATT services/characteristics — uuid/type/perms reference data.
+ * Pass the pieces explicitly to char():
+ *   GATT.ENVIRONMENTAL.TEMPERATURE →
+ *     char('2A6E', BleValueType.Int16, BlePerm.Read | BlePerm.Notify)
  */
 export const GATT = {
   DEVICE_INFO: {
@@ -88,122 +89,94 @@ export const GATT = {
 export type CharValue = number | string | boolean | Uint8Array;
 
 /**
- * BLE GATT peripheral control, lowered to native ESP-IDF NimBLE
- * (`nimble_host` / `ble_gap` / `ble_gatts`) by framework-esp32.
- *
- * No `include()` calls here — NimBLE headers are framework-owned and added via
- * forcedIncludes when the program uses ble.* ops.
- *
- * Transpiler note: method bodies pass parameters directly into semantic calls
- * (no local consts / module counters) so the resolver can statically track every
- * argument. The characteristic index is carried through the chain via
- * `this._charCount` fieldValues, mirroring how HttpRequest carries _method/_url.
+ * The GATT declaration chain returned by BLE.service()/BLE.char(). Each char()
+ * appends a characteristic; onRead/onWrite/notify bind to the most recent one.
  */
-export class BleClass {
-  static readonly __instance_name = "Ble";
-
-  /** Begin building a GATT server with the given advertised device name. */
-  server(name: string): BleServer {
-    bleSetName(name);
-    return new BleServer(name, 0, 1);
-  }
-
-  /** Initialize NimBLE, register services, and start advertising. */
-  begin(): void {
-    bleServerBegin("TypeCAD");
-    bleAdvertiseStart();
-  }
-
-  advertise(): void { bleAdvertiseStart(); }
-  stopAdvertising(): void { bleAdvertiseStop(); }
-
-  /** Blocking at top level; cooperatively awaitable inside async functions. */
-  untilConnected(timeoutMs: number = 0): Promise<boolean> {
-    bleUntilConnected(timeoutMs);
-    return Promise.resolve(false);
-  }
-
-  untilConnectedStart(): void { bleUntilConnectedStart(); }
-  isConnected(): boolean { return bleIsConnected(); }
-  status(): BleStatus { return bleStatus() as BleStatus; }
-  clientCount(): number { return bleClientCount(); }
-  txPower(dbm: number): this { bleSetTxPower(dbm); return this; }
-  notify(index: number, value: number): void { bleNotify(index, value); }
-}
-
-/**
- * Fluent GATT server builder. Returned by `Ble.server()`.
- *
- * Single-class fluent chain (like HttpRequest): characteristic() returns `this`,
- * so onRead/onWrite/onSubscribe chain directly. The _charCount field tracks
- * which characteristic slot the callbacks attach to.
- *
- * Field tracking (read by the transpiler resolver via ctor field assignment):
- *   _name      — advertised device name
- *   _charCount — current characteristic index (the last characteristic() target)
- *   _svcCount  — current service index
- */
-export class BleServer {
-  private _name: string;
-  private _charCount: number;
-  private _lastChar: number;
-  private _svcCount: number;
-
-  constructor(name: string, charCount: number, svcCount: number) {
-    this._name = name;
-    this._charCount = charCount;
-    this._lastChar = charCount;
-    this._svcCount = svcCount;
-  }
-
-  /** Add a characteristic by UUID, value type, and permissions.
-   *  Combine permissions with `|`: `BlePerm.Read | BlePerm.Notify`.
-   *  Returns this for chaining. */
-  characteristic(uuid: string, type: BleValueType, perms: number): this {
-    bleAddChar(this._charCount, uuid, type, perms, this._svcCount);
-    return this;
-  }
-
-  /** Begin a new service grouping. Subsequent characteristics attach to it. */
-  service(uuid: string): this {
+export class BleChain {
+  /** Begin a new service grouping; subsequent char() calls attach to it. */
+  service(uuid: string): BleChain {
     bleAddService(uuid);
     return this;
   }
 
-  /** Register a read handler for the most recently added characteristic. */
-  onRead(handler: () => CharValue): this {
-    bleOnRead(this._lastChar, callback(handler));
+  /** Append a characteristic by uuid, value type, and permissions
+   *  (`BlePerm.Read | BlePerm.Notify`). Returns this for chaining. */
+  char(uuid: string, type: BleValueType, perms: number): BleChain {
+    bleAddChar(0, uuid, type, perms, 0);
     return this;
   }
 
-  /** Register a write handler for the most recently added characteristic. */
-  onWrite(handler: (value: number) => void): this {
-    bleOnWrite(this._lastChar, callback(handler));
+  /** Read handler for the most recently declared characteristic. */
+  onRead(handler: () => CharValue): BleChain {
+    bleOnRead(0, callback(handler));
     return this;
   }
 
-  /** Register a connect handler (called when a central connects). */
-  onConnect(handler: () => void): this {
-    bleOnConnect(callback(handler));
+  /** Write handler for the most recently declared characteristic. */
+  onWrite(handler: (value: number) => void): BleChain {
+    bleOnWrite(0, callback(handler));
     return this;
   }
 
-  /** Register a disconnect handler (called when a central disconnects). */
-  onDisconnect(handler: () => void): this {
-    bleOnDisconnect(callback(handler));
-    return this;
+}
+
+/** A GATT peripheral. The advertised device name is the construction fact. */
+export class BLE {
+  private readonly _name: string;
+
+  constructor(name: string) {
+    this._name = name;
   }
 
-  /** Push a new value to subscribed clients on the most recently added characteristic. */
-  notify(value: number): void {
-    bleNotify(this._lastChar, value);
+  /** Begin a service grouping; chain char() declarations off it. */
+  service(uuid: string): BleChain {
+    bleAddService(uuid);
+    return new BleChain();
   }
 
-  /** Initialize NimBLE, register services, and start advertising. */
-  begin(): void {
+  /** Append a characteristic under the default (Environmental Sensing)
+   *  service — the common single-service case. */
+  char(uuid: string, type: BleValueType, perms: number): BleChain {
+    bleAddChar(0, uuid, type, perms, 0);
+    return new BleChain();
+  }
+
+  /** Register the declared GATT database, enable the stack, and start
+   *  advertising the construction name. */
+  start(): void {
     bleServerBegin(this._name);
     bleAdvertiseStart();
   }
-}
 
-export const Ble = new BleClass();
+  /** Stop advertising (the GATT database and any link stay up). */
+  stop(): void {
+    bleAdvertiseStop();
+  }
+
+  /** True while a central is connected. */
+  linked(): boolean {
+    return bleIsConnected();
+  }
+
+  /** Number of connected centrals (0 or 1 — the shim is single-connection). */
+  clients(): number {
+    return bleClientCount();
+  }
+
+  /** Fires when a central connects. */
+  onConnect(handler: () => void): void {
+    bleOnConnect(callback(handler));
+  }
+
+  /** Fires when the central disconnects. */
+  onDrop(handler: () => void): void {
+    bleOnDisconnect(callback(handler));
+  }
+
+  /** Push a value to subscribed clients on a characteristic
+   *  (bt_gatt_notify). `index` is the characteristic's declaration order
+   *  (0-based — the first char() is 0). */
+  notify(index: number, value: number): void {
+    bleNotify(index, value);
+  }
+}

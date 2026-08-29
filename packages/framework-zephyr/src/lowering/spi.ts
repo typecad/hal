@@ -15,11 +15,69 @@
 import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 import { parseControllerIndex } from './util.js';
-import { controllerNodelabelForPin, controllerRawPinForPin } from '../chips/controllers.js';
 
 /** The C variable prefix for a controller's state. */
 function prefix(idx: number): string {
   return `__tc_spi${idx}`;
+}
+
+// ── Thin SPI device names — the shared-facts discipline ────────────────────
+//
+// The DT nodelabel (tc_spit_spi<N>_cs<cs>), the shim's spi_dt_spec var, and
+// the overlay scanner's regex all derive from bus index + cs pin here.
+
+export interface SpiTargetNames {
+  dtLabel: string;
+  varName: string;
+  busIndex: number;
+  cs: number;
+}
+
+/** Derive a thin SPI target's names from the op facts. */
+export function spiTargetNames(bus: string, cs: number | string): SpiTargetNames {
+  const busIndex = parseControllerIndex(typeof bus === 'string' ? bus : String(bus));
+  const csNum = typeof cs === 'number' ? cs : parseInt(String(cs), 10);
+  const stem = `spit_spi${busIndex}_cs${csNum}`;
+  return { dtLabel: `tc_${stem}`, varName: `__tc_${stem}_spec`, busIndex, cs: csNum };
+}
+
+/** The per-target state block: one spi_dt_spec against the DT child node the
+ *  overlay emits, plus the tc-spit-cfg comment the overlay scanner reads (the
+ *  tc-sensor-cfg channel). Called from shimLines for each distinct target. */
+export function spiTargetStateLines(bus: string, cs: number | string, hz: number | string = 0, mode: number | string = 0): string[] {
+  const n = spiTargetNames(bus, cs);
+  return [
+    '// CUTTLEFISH_SPIT_BEGIN',
+    // Zephyr 4.4's SPI_DT_SPEC_GET takes the base operation explicitly (mode
+    // bits come from the DT node's spi-cpol/spi-cpha via SPI_CONFIG_DT).
+    `static const struct spi_dt_spec ${n.varName} = SPI_DT_SPEC_GET(DT_NODELABEL(${n.dtLabel}), SPI_OP_MODE_MASTER | SPI_WORD_SET(8), 0);`,
+    `// tc-spit-cfg: ${n.dtLabel} hz=${Number(hz)} mode=${Number(mode)}`,
+    '// CUTTLEFISH_SPIT_END',
+  ];
+}
+
+/** Build the tx buffer declaration + set for a thin SPI op. A literal byte
+ *  array becomes a local array; a single identifier is the user's own buffer
+ *  (its storage + sizeof drive length). spi_buf.buf is void*, and the user's
+ *  buffer may be const-qualified — cast through const void* to stay legal
+ *  under -Werror without mutating anyone's qualifications. */
+function spiTxBuffers(tx: unknown, tag: string): { decl: string; set: string } {
+  const bytes = (Array.isArray(tx) ? tx : []) as unknown[];
+  // Only an identifier-shaped string is a real caller buffer — the resolver
+  // collapses a single-byte literal array to buffer-kind with NUMERIC text
+  // (e.g. "159"), which must take the literal path below.
+  const isIdentifier = bytes.length === 1 && typeof bytes[0] === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(bytes[0] as string);
+  if (isIdentifier) {
+    const name = bytes[0] as string;
+    return {
+      decl: `const struct spi_buf __tb${tag} = { .buf = const_cast<void*>(static_cast<const void*>(${name})), .len = sizeof(${name}) }; const struct spi_buf_set __txs${tag} = { .buffers = &__tb${tag}, .count = 1 };`,
+      set: `__txs${tag}`,
+    };
+  }
+  return {
+    decl: `uint8_t __tx${tag}[] = { ${bytes.join(', ')} }; const struct spi_buf __tb${tag} = { .buf = __tx${tag}, .len = sizeof(__tx${tag}) }; const struct spi_buf_set __txs${tag} = { .buffers = &__tb${tag}, .count = 1 };`,
+    set: `__txs${tag}`,
+  };
 }
 
 /**
@@ -70,57 +128,31 @@ export function lowerSpi(
   const p = prefix(idx);
 
   switch (op.operation) {
-    case 'spi.begin':
-      return { code: `${p}_init();` };
-    case 'spi.end':
-      return { code: `spi_release(${p}_dev, &${p}_cfg);` };
-    case 'spi.begin_transaction':
-      // Config is static; transaction begin is a no-op (frequency/mode baked in).
-      return { code: `${p}_init();` };
-    case 'spi.end_transaction':
-      return { code: `(void)0;` };
-    case 'spi.set_mode':
-      // Apply CPOL/CPHA: store the mode byte then re-init so the next transfer
-      // picks up the rebuilt operation flags. The ready flag is cleared so
-      // _init() rebuilds rather than early-returning.
-      return { code: `{ ${p}_mode = static_cast<uint8_t>(${o.mode}); ${p}_ready = false; ${p}_init(); }` };
-    case 'spi.set_bit_order': {
-      // The HAL payload `order` is a string ("lsb" | "msb"), per SpiSetBitOrderOp.
-      // Normalize here in TS so we emit a boolean literal, not the raw string
-      // (which would be an undeclared C++ identifier).
-      const key = String(o.order).replace(/^["']|["']$/g, '').toLowerCase();
-      const lsb = (key === 'lsb' || key === 'lsbfirst') ? 'true' : 'false';
-      return { code: `{ ${p}_lsb = ${lsb}; ${p}_ready = false; ${p}_init(); }` };
-    }
-    case 'spi.transfer': {
-      // Single-byte full-duplex, returns the received byte (GCC stmt-expr).
+    case 'spi.transceive': {
+      const v = spiTargetNames(o.bus, o.cs).varName;
+      const tx = spiTxBuffers(o.tx, 't');
+      const rxName = String(o.rx ?? '');
+      const rx = rxName
+        ? `struct spi_buf __rb = { .buf = const_cast<void*>(static_cast<const void*>(${rxName})), .len = sizeof(${rxName}) }; const struct spi_buf_set __rbs = { .buffers = &__rb, .count = 1 };`
+        : `const struct spi_buf_set __rbs = { .buffers = NULL, .count = 0 };`;
       return {
-        expression: `({ uint8_t __tx = static_cast<uint8_t>(${o.data}); uint8_t __rx = 0; struct spi_buf __tb = { .buf = &__tx, .len = 1 }; struct spi_buf_set __tbs = { .buffers = &__tb, .count = 1 }; struct spi_buf __rb = { .buf = &__rx, .len = 1 }; struct spi_buf_set __rbs = { .buffers = &__rb, .count = 1 }; ${p}_init(); spi_transceive(${p}_dev, &${p}_cfg, &__tbs, &__rbs); __rx; })`,
+        code: `{ ${tx.decl} ${rx} (void)spi_transceive_dt(&${v}, &${tx.set}, &__rbs); }`,
       };
     }
-    case 'spi.read_buffer': {
-      // Read count bytes by sending 0xFF dummy bytes (full-duplex read). When
-      // the caller discards the result (readRegister() as a bare statement),
-      // the IR carries the __HAL_READ_BUF__ placeholder — the var-init rewrite
-      // never runs, so fall back to a local scratch buffer.
-      const count = o.count;
-      const isPlaceholder = o.buffer === '__HAL_READ_BUF__';
-      const bufDecl = isPlaceholder ? `uint8_t __tc_rdbuf[${count}]; ` : '';
-      const bufExpr = isPlaceholder ? '__tc_rdbuf' : `reinterpret_cast<void*>(${o.buffer})`;
+    case 'spi.dev_write': {
+      const v = spiTargetNames(o.bus, o.cs).varName;
+      const tx = spiTxBuffers(o.tx, 'w');
       return {
-        code: `{ ${bufDecl}uint8_t __dummy[${count}] = {0}; for (int __i = 0; __i < (int)(${count}); __i++) __dummy[__i] = 0xFF; struct spi_buf __tb = { .buf = __dummy, .len = ${count} }; struct spi_buf_set __tbs = { .buffers = &__tb, .count = 1 }; struct spi_buf __rb = { .buf = ${bufExpr}, .len = ${count} }; struct spi_buf_set __rbs = { .buffers = &__rb, .count = 1 }; ${p}_init(); spi_transceive(${p}_dev, &${p}_cfg, &__tbs, &__rbs); }`,
+        code: `{ ${tx.decl} (void)spi_write_dt(&${v}, &${tx.set}); }`,
       };
     }
-    case 'spi.cs_low':
-    case 'spi.cs_high': {
-      // CS driven as a plain GPIO via the owning controller (the CS pin comes
-      // from the op's `pin` field; Zephyr uses gpio_pin_set_raw). Resolve the
-      // controller by pin so a CS on a high-numbered pin (ESP32-S3 gpio1) lands
-      // on the right node.
-      const val = op.operation === 'spi.cs_low' ? 0 : 1;
-      const gpioController = controllerNodelabelForPin(chip, o.pin);
+    case 'spi.reg_read': {
+      // One-byte register read against an INTERNAL buffer — no caller array
+      // (sidesteps the file-scope Uint8Array promotion issue; also just the
+      // right shape for ID/status registers).
+      const v = spiTargetNames(o.bus, o.cs).varName;
       return {
-        code: `gpio_pin_set_raw(DEVICE_DT_GET(DT_NODELABEL(${gpioController})), ${controllerRawPinForPin(chip, o.pin)}, ${val});`,
+        expression: `({ uint8_t __txr = static_cast<uint8_t>(${o.reg}); uint8_t __rxr = 0; struct spi_buf __tbr = { .buf = &__txr, .len = 1 }; const struct spi_buf_set __txsr = { .buffers = &__tbr, .count = 1 }; struct spi_buf __rbr = { .buf = &__rxr, .len = 1 }; const struct spi_buf_set __rxsr = { .buffers = &__rbr, .count = 1 }; (void)spi_transceive_dt(&${v}, &__txsr, &__rxsr); __rxr; })`,
       };
     }
     default:

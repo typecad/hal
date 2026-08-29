@@ -105,6 +105,10 @@ export interface ClassMethodIR {
   typeParameters?: string[];
   /** True when this is a generator method. */
   isGenerator?: boolean;
+  /** True when declared `async` — the body lowers to an owner-bound
+   *  cooperative state-machine task (see async-state-machine.ts), not an
+   *  ordinary method. */
+  isAsync?: boolean;
   /** Decorators applied to this method (e.g. ["asilD"]). */
   decorators?: string[];
 }

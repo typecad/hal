@@ -1,5 +1,5 @@
 ---
-'@typecad/zephyr-installer': patch
+'@typecad/framework-zephyr': patch
 ---
 
 ## Fix selective SDK installs for the 1.0.x `gnu/` layout

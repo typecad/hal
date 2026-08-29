@@ -26,7 +26,7 @@ extern const uint16_t __ui_rangechange_handler_count;
 
 // Touch state machine: tracks down → hold → up → click lifecycle
 // Touch node/scroll node state is defined near navigation because ui_navigate resets it.
-static uint32_t __ui_touch_down_time = 0;  // millis() when touch started
+static uint32_t __ui_touch_down_time = 0;  // __tc_now_ms() when touch started
 static int16_t __ui_touch_down_y_pos = 0; // Y position when touch started (for tap vs drag detection)
 static uint32_t __ui_last_touch_time = 0;  // for debounce (updated on touch down only)
 static uint32_t __ui_last_release_time = 0;  // for release debounce
@@ -174,13 +174,13 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   // option rows. No hit-test/press/scroll while the overlay is open.
   if (__ui_select_menu >= 0) {
     __ui_touch_state = 1;
-    __ui_touch_down_time = millis();
+    __ui_touch_down_time = __tc_now_ms();
     return;
   }
   int16_t node = ui_hit_test(tx, ty);
   __ui_touch_node = node;
   __ui_touch_state = 1;
-  __ui_touch_down_time = millis();
+  __ui_touch_down_time = __tc_now_ms();
   __ui_touch_down_y_pos = ty;
   __ui_drag_start_x = tx;
   __ui_drag_start_y = ty;
@@ -215,7 +215,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
       int16_t usable = __ui_nodes[node].box.w - 8;
       if (usable <= 0) usable = 1;
       int16_t nextVal = rMin + (static_cast<int32_t>(relX) * range) / usable;
-      nextVal = constrain(nextVal, rMin, rMax);
+      nextVal = __ui_constrain(nextVal, rMin, rMax);
       if (nextVal != __ui_nodes[node].value) {
         __ui_nodes[node].value = nextVal;
         ui_mark_dirty(node);
@@ -261,7 +261,7 @@ static void ui_touch_up() {
   if (__ui_select_menu >= 0) {
     ui_select_menu_tap(__ui_last_touch_x, __ui_last_touch_y);
     __ui_touch_state = 0;
-    __ui_last_touch_time = millis();
+    __ui_last_touch_time = __tc_now_ms();
     return;
   }
 #if !defined(UI_HIDE_OSK)
@@ -269,11 +269,11 @@ static void ui_touch_up() {
     ui_kb_handle_tap(__ui_last_touch_x, __ui_last_touch_y);
     __ui_kb_bs_held = 0;
     __ui_touch_state = 0;
-    __ui_last_touch_time = millis();
+    __ui_last_touch_time = __tc_now_ms();
     return;
   }
 #endif
-  uint32_t elapsed = millis() - __ui_touch_down_time;
+  uint32_t elapsed = __tc_now_ms() - __ui_touch_down_time;
   // Release the scroll owner: arm a bounded settle (bounce-back / edge-snap).
   // No fling — motion ends with the finger (the settle animation is the only
   // post-lift motion, terminating within UI_SCROLL_SETTLE_MS).
@@ -353,7 +353,7 @@ static void ui_touch_up() {
 // Called each frame from ui_poll_touch when touch is detected.
 // Implements debounce + the down/hold/up/click state machine.
 static inline void ui_handle_touch(int16_t tx, int16_t ty) {
-  uint32_t now = millis();
+  uint32_t now = __tc_now_ms();
   // Track last touch coords for tap-up routing.
   __ui_last_touch_x = tx;
   __ui_last_touch_y = ty;
@@ -404,7 +404,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
       int16_t usable = __ui_nodes[__ui_range_node].box.w - 8;
       if (usable <= 0) usable = 1;
       int16_t newVal = rMin + (static_cast<int32_t>(relX) * range) / usable;
-      newVal = constrain(newVal, rMin, rMax);
+      newVal = __ui_constrain(newVal, rMin, rMax);
       if (newVal != __ui_nodes[__ui_range_node].value) {
         __ui_nodes[__ui_range_node].value = newVal;
         ui_mark_dirty(__ui_range_node);
@@ -457,9 +457,9 @@ static inline void ui_handle_no_touch() {
   if (__ui_touch_state != 0) {
     // Debounce: require a gap since the last release before processing another.
     // This prevents crash from rapid touch/no-touch flicker on resistive screens.
-    if (millis() - __ui_last_release_time < UI_TOUCH_DEBOUNCE_MS) return;
+    if (__tc_now_ms() - __ui_last_release_time < UI_TOUCH_DEBOUNCE_MS) return;
     ui_touch_up();
-    __ui_last_release_time = millis();
+    __ui_last_release_time = __tc_now_ms();
   }
 }
 

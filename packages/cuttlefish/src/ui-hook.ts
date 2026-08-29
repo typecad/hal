@@ -91,7 +91,7 @@ export interface TranspilerUIHook {
    * native display paths). Called separately from emitRuntimeHeader so the
    * class can be emitted BEFORE display adapter declarations that
    * instantiate CuttlefishGFX by value. Returns "" when active is false
-   * (Arduino path).
+   * (console path).
    */
   emitCuttlefishGfx(active: boolean): string;
 

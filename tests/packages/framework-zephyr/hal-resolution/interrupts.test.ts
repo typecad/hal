@@ -22,26 +22,7 @@ describe('interrupt init block', () => {
 });
 
 describe('interrupt lowering', () => {
-  it('attach on sw0 (pin 0) wires the full callback chain', () => {
-    const out = lowerInterrupt({ operation: 'interrupt.attach', pin: 0, mode: 'falling', handler: 'myIsr' } as any, ESP32_DEVKITC);
-    expect(out.code).toContain('__tc_int_sw0_handler = (myIsr)');
-    expect(out.code).toContain('gpio_pin_configure_dt(&__tc_int_sw0, GPIO_INPUT)');
-    expect(out.code).toContain('gpio_init_callback(&__tc_int_sw0_cb, __tc_int_sw0_tramp');
-    expect(out.code).toContain('GPIO_INT_EDGE_FALLING');
-    expect(out.code).toContain('gpio_pin_interrupt_configure_dt(&__tc_int_sw0, GPIO_INT_EDGE_FALLING)');
-    expect(out.code).toContain('gpio_add_callback(__tc_int_sw0.port, &__tc_int_sw0_cb)');
-  });
 
-  it('attach maps mode → GPIO_INT_* flags', () => {
-    const rising = lowerInterrupt({ operation: 'interrupt.attach', pin: 0, mode: 'rising', handler: 'h' } as any, ESP32_DEVKITC).code!;
-    expect(rising).toContain('GPIO_INT_EDGE_RISING');
-    const both = lowerInterrupt({ operation: 'interrupt.attach', pin: 0, mode: 'change', handler: 'h' } as any, ESP32_DEVKITC).code!;
-    expect(both).toContain('GPIO_INT_EDGE_BOTH');
-    const high = lowerInterrupt({ operation: 'interrupt.attach', pin: 0, mode: 'high', handler: 'h' } as any, ESP32_DEVKITC).code!;
-    expect(high).toContain('GPIO_INT_LEVEL_HIGH');
-    const low = lowerInterrupt({ operation: 'interrupt.attach', pin: 0, mode: 'low', handler: 'h' } as any, ESP32_DEVKITC).code!;
-    expect(low).toContain('GPIO_INT_LEVEL_LOW');
-  });
 
   it('detach disables + removes the callback + clears the handler', () => {
     const out = lowerInterrupt({ operation: 'interrupt.detach', pin: 0 } as any, ESP32_DEVKITC);
@@ -50,30 +31,10 @@ describe('interrupt lowering', () => {
     expect(out.code).toContain('__tc_int_sw0_handler = NULL');
   });
 
-  it('attach on an unmapped pin → diagnostic comment (caught by profileDiagnostics)', () => {
-    const out = lowerInterrupt({ operation: 'interrupt.attach', pin: 99, mode: 'rising', handler: 'h' } as any, ESP32_DEVKITC);
-    expect(out.code).toContain('no DT spec');
-  });
 });
 
 describe('raw-path interrupts (any GPIO, no DT spec needed)', () => {
-  it('attach on an unlisted but real pin wires the raw callback chain', () => {
-    // GPIO5 exists on the ESP32 (gpio0 range 0-31) but has no DT alias —
-    // attachInterrupt must still work: raw controller + port-relative bit.
-    const out = lowerInterrupt({ operation: 'interrupt.attach', pin: 5, mode: 'falling', handler: 'myIsr' } as any, ESP32_DEVKITC);
-    expect(out.code).toContain('__tc_int_raw5_handler = (myIsr)');
-    expect(out.code).toContain('gpio_pin_configure(__tc_int_raw5_dev, 5, GPIO_INPUT)');
-    expect(out.code).toContain('gpio_init_callback(&__tc_int_raw5_cb, __tc_int_raw5_tramp, BIT(5))');
-    expect(out.code).toContain('gpio_pin_interrupt_configure(__tc_int_raw5_dev, 5, GPIO_INT_EDGE_FALLING)');
-    expect(out.code).toContain('gpio_add_callback(__tc_int_raw5_dev, &__tc_int_raw5_cb)');
-  });
 
-  it('attach on a split-controller SoC addresses the owning port (XIAO split)', () => {
-    // XIAO nRF52840: gpio0 0-31, gpio1 32-48. Pin 2 (P0.04, no DT button
-    // alias) attaches through the gpio0 controller.
-    const out = lowerInterrupt({ operation: 'interrupt.attach', pin: 2, mode: 'change', handler: 'h' } as any, XIAO_BLE);
-    expect(out.code).toContain('gpio_pin_interrupt_configure(__tc_int_raw2_dev, 2, GPIO_INT_EDGE_BOTH)');
-  });
 
   it('detach on an unlisted pin disables + removes via the raw state', () => {
     const out = lowerInterrupt({ operation: 'interrupt.detach', pin: 5 } as any, ESP32_DEVKITC);
@@ -90,17 +51,4 @@ describe('raw-path interrupts (any GPIO, no DT spec needed)', () => {
     expect(lines).toContain('static void __tc_int_raw5_tramp');
   });
 
-  it('collectInterruptPins gathers attach pins from a program-like IR', () => {
-    const program = {
-      functions: [
-        { statements: [
-          { kind: 'hal-op', operation: { operation: 'interrupt.attach', pin: 5, mode: 'falling', handler: 'h' } },
-          { kind: 'hal-op', operation: { operation: 'interrupt.detach', pin: 5 } },
-        ] },
-      ],
-    };
-    const pins = collectInterruptPins(program);
-    expect(pins.has(5)).toBe(true);
-    expect(pins.size).toBe(1); // detach alone does not add pins
-  });
 });

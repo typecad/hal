@@ -1,21 +1,21 @@
 # zephyr-blink
 
 Blinks the onboard user LED on a **Seeed Studio XIAO nRF52840** using
-`@typecad/framework-zephyr`. This is the MVP vertical slice for Zephyr
-support — GPIO-only, devicetree-driven, polarity-correct (the active-low
+`@typecad/framework-zephyr`, with the thin HAL classes — `GPIO` with Zephyr
+flag tokens and `Time` — devicetree-driven, polarity-correct (the active-low
 LED honors its `GPIO_ACTIVE_LOW` flag via `gpio_pin_set_dt`).
 
 ## What it does
 
 ```ts
 import { LED } from '@typecad/board';
-import { delay } from '@typecad/hal';
+import { GPIO, Time } from '@typecad/hal';
 
-LED.asOutput();
+const led = new GPIO(LED, GPIO.OUTPUT);
 
 while (true) {
-  LED.high(); delay(500);   // → gpio_pin_set_dt(&__tc_dt_led0, 1)  LED ON
-  LED.low();  delay(500);   // → gpio_pin_set_dt(&__tc_dt_led0, 0)  LED OFF
+  led.set(true);   Time.sleep(500);  // → gpio_pin_set_dt(&__tc_dt_led0, 1)  LED ON
+  led.set(false);  Time.sleep(500);  // → gpio_pin_set_dt(&__tc_dt_led0, 0)  LED OFF
 }
 ```
 

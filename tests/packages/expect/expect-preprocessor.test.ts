@@ -27,13 +27,13 @@ done();
     expect(result).toContain("import { A0 } from '@typecad/board'");
   });
 
-  it('emits Serial.initialize preamble', () => {
+  it('emits the protocol preamble', () => {
     const source = `
 import { describe, done } from '@typecad/expect';
 done();
 `;
     const result = preprocess(source);
-    expect(result).toContain('Serial.begin(115200);');
+    expect(result).toContain('__tc_println("[TC:SUITE_START]");');
     expect(result).toContain('[TC:SUITE_START]');
   });
 
@@ -71,7 +71,7 @@ done();
 `;
     const result = preprocess(source);
     expect(result).toContain('[TC:EXPECT:toBe:0:');
-    expect(result).toContain('Serial.print(42)');
+    expect(result).toContain('__tc_print(42)');
   });
 
   it('hoists complex expressions into const declarations', () => {
@@ -87,7 +87,7 @@ done();
     // Should hoist A0.read() to a const
     expect(result).toMatch(/const __tc_v\d+: number = A0\.read\(\)/);
     // Should use the hoisted variable in the protocol print
-    expect(result).toMatch(/Serial\.print\(__tc_v\d+\)/);
+    expect(result).toMatch(/__tc_print\(__tc_v\d+\)/);
   });
 
   it('does not hoist simple expressions', () => {
@@ -101,7 +101,7 @@ done();
     const result = preprocess(source);
     // Simple number literal should be inlined
     expect(result).not.toMatch(/const __tc_v/);
-    expect(result).toContain('Serial.print(42)');
+    expect(result).toContain('__tc_print(42)');
   });
 
   it('transforms done() to SUITE_END + idle loop', () => {
@@ -232,7 +232,7 @@ done();
     expect(result).toContain('mutable += fixed');
     expect(result).toContain('return mutable');
     // Should call the named function as the actual value (inlined since it's a simple call)
-    expect(result).toMatch(/Serial\.print\(__tc_fn\d+\(\)\)/);
+    expect(result).toMatch(/__tc_print\(__tc_fn\d+\(\)\)/);
     // The matcher protocol should be present
     expect(result).toContain('[TC:EXPECT:toBe:15:');
   });
@@ -285,9 +285,9 @@ done();
     expect(result).toMatch(/function __tc_fn\d+\(\): number \{/);
     expect(result).toContain('const fixed = 10');
     expect(result).toContain('mutable += fixed');
-    expect(result).toMatch(/Serial\.print\(__tc_fn\d+\(\)\)/);
+    expect(result).toMatch(/__tc_print\(__tc_fn\d+\(\)\)/);
     expect(result).toContain('[TC:EXPECT:toBe:15:');
-    // Must NOT contain the raw IIFE in Serial.print
-    expect(result).not.toContain('Serial.print((() =>');
+    // Must NOT contain the raw IIFE in __tc_print
+    expect(result).not.toContain('__tc_print((() =>');
   });
 });

@@ -136,6 +136,55 @@ export function generateCustomBoard(
     '	};',
     '};',
     '',
+  ];
+
+  // The chip descriptor's DT-aliased GPIOs (sw0/led0 from the reference
+  // board data): the generated firmware addresses them via DT_ALIAS, so the
+  // custom board must define the nodes. Pins map through gpioControllers
+  // (port-block numbering: pin = minPin + port bit).
+  const controllerFor = (pin: number): { label: string; bit: number } | undefined => {
+    const c = chip.gpioControllers?.find((c) => pin >= c.minPin && pin <= c.maxPin);
+    if (c) return { label: c.nodelabel, bit: pin - c.minPin };
+    return undefined;
+  };
+  const keys = chip.gpio.dtSpecs.filter((s) => s.dtSpec.startsWith('sw') || s.dtSpec.startsWith('button'));
+  const leds = chip.gpio.dtSpecs.filter((s) => s.dtSpec.startsWith('led'));
+  if (keys.length > 0 || leds.length > 0) {
+    lines.push('/ {');
+    if (leds.length > 0) {
+      lines.push('	leds {', '		compatible = "gpio-leds";');
+      for (const l of leds) {
+        const c = controllerFor(l.pin);
+        if (!c) continue;
+        lines.push(
+          `		${l.dtSpec}_node: ${l.dtSpec.replace(/_/g, '-')} {`,
+          `			gpios = <&${c.label} ${c.bit} GPIO_ACTIVE_LOW>;`,
+          '		};',
+        );
+      }
+      lines.push('	};');
+    }
+    if (keys.length > 0) {
+      lines.push('	gpio_keys {', '		compatible = "gpio-keys";');
+      for (const k of keys) {
+        const c = controllerFor(k.pin);
+        if (!c) continue;
+        lines.push(
+          `		${k.dtSpec}_node: ${k.dtSpec.replace(/_/g, '-')} {`,
+          `			gpios = <&${c.label} ${c.bit} (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;`,
+          '		};',
+        );
+      }
+      lines.push('	};');
+      lines.push('	aliases {');
+      for (const k of keys) lines.push(`		${k.dtSpec} = &${k.dtSpec}_node;`);
+      for (const l of leds) lines.push(`		${l.dtSpec} = &${l.dtSpec}_node;`);
+      lines.push('	};');
+    }
+    lines.push('};', '');
+  }
+
+  lines.push(
     // Console UART — the one controller the board enables unconditionally;
     // every other bus is enabled by the usage-driven overlay.
     `&${cb.console.nodeLabel} {`,
@@ -145,14 +194,79 @@ export function generateCustomBoard(
     `	current-speed = <${cb.console.speed}>;`,
     '};',
     '',
-  ];
+  );
 
   // USB: alias the silicon node under the Zephyr convention the descriptor's
-  // usb.controller names (e.g. zephyr_udc0: &usbotg_fs). Left disabled here —
-  // the overlay composes + enables the CDC device when a program uses USB.
+  // usb.controller names (e.g. zephyr_udc0: &usbotg_fs), pre-enabled with its
+  // pinctrl — the st,stm32-otgfs binding requires pinctrl-0 on an enabled
+  // node, and the overlay's CDC composition only flips status/enables the
+  // stack (Kconfig-gated), never pins. Mirrors the blackpill board shape.
   if (cb.usbNode && chip.usb) {
     lines.push(
       `${chip.usb.controller}: &${cb.usbNode} {`,
+      ...(cb.usbPinctrl && cb.usbPinctrl.length > 0
+        ? [
+          `	pinctrl-0 = <${cb.usbPinctrl.map((p) => `&${p}`).join(' ')}>;`,
+          '	pinctrl-names = "default";',
+        ]
+        : []),
+      '	status = "okay";',
+      '};',
+      '',
+    );
+  }
+
+  // PWM: the overlay enables `&pwm<N>` and synthesizes pwm-leds consumers
+  // against it — but the pwm<N> LABEL only exists when a board DTS declares
+  // it (the SoC dtsi ships the timers' pwm child unlabeled), and the
+  // st,stm32-pwm binding requires pinctrl-0 on an enabled node. Emit the
+  // blackpill-shape block per controller whose specs all carry pinctrl
+  // tokens; controllers without full token coverage stay to board packages.
+  if (chip.pwm) {
+    const byController = new Map<string, { n: string; tokens: string[]; complete: boolean }>();
+    for (const s of chip.pwm.specs) {
+      if (!s.controller) continue;
+      const timersMatch = s.controller.match(/^pwm(\d+)$/);
+      if (!timersMatch) continue;
+      const entry = byController.get(s.controller) ?? { n: timersMatch[1], tokens: [], complete: true };
+      if (s.pinctrl) {
+        entry.tokens.push(s.pinctrl);
+      } else {
+        entry.complete = false;
+      }
+      byController.set(s.controller, entry);
+    }
+    for (const [controller, entry] of byController) {
+      if (!entry.complete || entry.tokens.length === 0) continue;
+      lines.push(
+        `&timers${entry.n} {`,
+        '	status = "okay";',
+        '',
+        `	${controller}: pwm {`,
+        `		pinctrl-0 = <${entry.tokens.map((t) => `&${t}`).join(' ')}>;`,
+        '		pinctrl-names = "default";',
+        '		status = "okay";',
+        '	};',
+        '};',
+        '',
+      );
+    }
+  }
+
+  // ADC: some SoC drivers require board-DTS properties on an enabled adc node
+  // (STM32 F4: st,adc-clock-source + st,adc-prescaler, or the binding rejects
+  // the node when the usage-driven overlay enables it). Pre-enable with the
+  // silicon-required props + a baseline pinctrl; the overlay rewrites
+  // pinctrl-0 to the channels the program actually reads.
+  if (cb.adcNode) {
+    const a = cb.adcNode;
+    lines.push(
+      `&${a.nodeLabel} {`,
+      `	pinctrl-0 = <&${a.pinctrl}>;`,
+      '	pinctrl-names = "default";',
+      `	st,adc-clock-source = "${a.clockSource}";`,
+      `	st,adc-prescaler = <${a.prescaler}>;`,
+      '	status = "okay";',
       '};',
       '',
     );

@@ -33,43 +33,8 @@ describe('gpio lowering — devicetree-spec path (led0 = pin 26)', () => {
       .toEqual({ code: 'gpio_pin_toggle_dt(&__tc_dt_led0);' });
   });
 
-  it('gpio.set_mode "OUTPUT" (uppercase) → GPIO_OUTPUT', () => {
-    const out = lowerGpio({ operation: 'gpio.set_mode', pin: 26, mode: 'OUTPUT' } as any, XIAO_BLE);
-    expect(out.code).toBe('gpio_pin_configure_dt(&__tc_dt_led0, GPIO_OUTPUT);');
-  });
-
-  it('gpio.set_mode "output" (lowercase) → GPIO_OUTPUT', () => {
-    const out = lowerGpio({ operation: 'gpio.set_mode', pin: 26, mode: 'output' } as any, XIAO_BLE);
-    expect(out.code).toBe('gpio_pin_configure_dt(&__tc_dt_led0, GPIO_OUTPUT);');
-  });
-
   // ── B1 regression: pull resistors ─────────────────────────────────────────
-  it('gpio.set_mode "INPUT_PULLUP" adds GPIO_PULL_UP (B1 fix)', () => {
-    const out = lowerGpio({ operation: 'gpio.set_mode', pin: 26, mode: 'INPUT_PULLUP' } as any, XIAO_BLE);
-    expect(out.code).toBe('gpio_pin_configure_dt(&__tc_dt_led0, GPIO_INPUT | GPIO_PULL_UP);');
-  });
 
-  it('gpio.set_mode "input_pullup" (lowercase) adds GPIO_PULL_UP', () => {
-    const out = lowerGpio({ operation: 'gpio.set_mode', pin: 26, mode: 'input_pullup' } as any, XIAO_BLE);
-    expect(out.code).toContain('GPIO_PULL_UP');
-    expect(out.code).toContain('GPIO_INPUT');
-  });
-
-  it('gpio.set_mode "INPUT_PULLDOWN" adds GPIO_PULL_DOWN', () => {
-    const out = lowerGpio({ operation: 'gpio.set_mode', pin: 26, mode: 'INPUT_PULLDOWN' } as any, XIAO_BLE);
-    expect(out.code).toBe('gpio_pin_configure_dt(&__tc_dt_led0, GPIO_INPUT | GPIO_PULL_DOWN);');
-  });
-
-  it('gpio.set_mode "input_pulldown" adds GPIO_PULL_DOWN', () => {
-    const out = lowerGpio({ operation: 'gpio.set_mode', pin: 26, mode: 'input_pulldown' } as any, XIAO_BLE);
-    expect(out.code).toContain('GPIO_PULL_DOWN');
-  });
-
-  it('plain INPUT has no pull flag', () => {
-    const out = lowerGpio({ operation: 'gpio.set_mode', pin: 26, mode: 'INPUT' } as any, XIAO_BLE);
-    expect(out.code).toBe('gpio_pin_configure_dt(&__tc_dt_led0, GPIO_INPUT);');
-    expect(out.code).not.toMatch(/PULL/);
-  });
 });
 
 describe('gpio lowering — raw-controller fallback (unmapped pin 99)', () => {
@@ -87,14 +52,6 @@ describe('gpio lowering — raw-controller fallback (unmapped pin 99)', () => {
     // without GPIO_ACTIVE_LOW the logical toggle equals the physical one.
     const out = lowerGpio({ operation: 'gpio.toggle', pin: 99 } as any, XIAO_BLE);
     expect(out.code).toBe(`gpio_pin_toggle(${ctl}, 99);`);
-  });
-  it('gpio.set_mode INPUT_PULLUP adds GPIO_PULL_UP on raw path too', () => {
-    const out = lowerGpio({ operation: 'gpio.set_mode', pin: 99, mode: 'INPUT_PULLUP' } as any, XIAO_BLE);
-    expect(out.code).toBe(`gpio_pin_configure(${ctl}, 99, GPIO_INPUT | GPIO_PULL_UP);`);
-  });
-  it('gpio.set_mode OUTPUT on raw path', () => {
-    const out = lowerGpio({ operation: 'gpio.set_mode', pin: 99, mode: 'OUTPUT' } as any, XIAO_BLE);
-    expect(out.code).toBe(`gpio_pin_configure(${ctl}, 99, GPIO_OUTPUT);`);
   });
 });
 

@@ -6,7 +6,7 @@
 // framework-specific C++ at code generation time.
 //
 // EMIT BOUNDARY: This file is a canonical entry point of the HAL lowering
-// surface (A) — its C++ output lands in user sketches. The emitted bytes are
+// surface (A) — its C++ output lands in user programs. The emitted bytes are
 // covered by the TypeCAD Runtime Exception (see RUNTIME_EXCEPTION.md at the
 // repository root) and are not subject to the license of this tool source.
 //
@@ -25,15 +25,36 @@ export function gpioWrite(pin: number | string, value: number | boolean): void {
 export function gpioRead(pin: number | string): number { return 0; }
 /** Toggle a digital pin. */
 export function gpioToggle(pin: number | string): void {}
-/** Set pin mode: "output" | "input" | "input_pullup" | "input_pulldown". */
-export function gpioSetMode(pin: number | string, mode: string): void {}
+/** Thin GPIO (hal/gpio-pin.ts): configure with Zephyr flag tokens
+ *  ("GPIO.OUTPUT | GPIO.PULL_UP"). The lowering maps token names to the
+ *  GPIO_* macros; the emitted configure is guarded per pin (first use wins). */
+export function gpioConfigure(pin: number | string, flags: number | string): void {}
+/** GPIO.shiftOut/shiftIn: bit-banged shift via two pins (one op each). */
+export function gpioShiftOut(dataPin: number | import('./gpio.js').Pin, clockPin: number | import('./gpio.js').Pin, value: number, msbFirst: boolean): void {}
+export function gpioShiftIn(dataPin: number | import('./gpio.js').Pin, clockPin: number | import('./gpio.js').Pin, msbFirst: boolean): number { return 0; }
+
+/** Thin GPIO read with FUSED guarded configure — one op, one statement-
+ *  expression: correct in any expression position (if-conditions drop a
+ *  method's leading side-effect ops, so get() must not rely on a separate
+ *  configure op). */
+export function gpioReadCfg(pin: number | string, flags: number | string): number { return 0; }
 
 // ---------------------------------------------------------------------------
 // PWM — pulse-width modulation
 // ---------------------------------------------------------------------------
 
-/** Write PWM duty cycle to a pin. */
-export function pwmWrite(pin: number | string, duty: number): void {}
+/** Thin PWM (hal/pwm-pin.ts): set pulse width in ns against the constructed
+ *  period. The first use also applies the construction period
+ *  (pwm_set_dt with an idle pulse), then pwm_set_pulse_dt. */
+export function pwmSetPulse(pin: number | string, periodNs: number, pulseNs: number): void {}
+/** Thin PWM duty sugar: pulse = duty(0.0–1.0) × periodNs — one
+ *  pwm_set_pulse_dt call, no 0–255 scaling. */
+export function pwmSetDuty(pin: number | string, periodNs: number, duty: number): void {}
+/** Thin PWM: change the period at runtime (pwm_set_dt; the pulse resets to
+ *  idle — Zephyr 4.4 has no period-only setter). */
+export function pwmSetPeriod(pin: number | string, periodNs: number): void {}
+/** Thin PWM tone sugar: 50% square wave at `hz` (one pwm_set_dt). */
+export function pwmTone(pin: number | string, hz: number): void {}
 
 // ---------------------------------------------------------------------------
 // RMT — Remote Control Transceiver (addressable LEDs, IR, raw digital waveforms)
@@ -46,48 +67,21 @@ export function pwmWrite(pin: number | string, duty: number): void {}
 // Pin params accept Pin | number | string so callers can pass a board alias
 // like LED (a Pin object) directly; the transpiler resolves it to its number.
 import type { Pin } from './gpio.js';
-type RmtPin = Pin | number | string;
-
 /** Positional semantic primitive. Args: pin, resolutionHz, bit0Hi, bit0Lo,
  *  bit1Hi, bit1Lo, msbFirst, queueDepth. Use rmtTxInit() from hal/rmt.ts. */
-export function rmtTxInit(
-  pin: RmtPin,
-  resolutionHz: number,
-  bit0Hi: number, bit0Lo: number, bit1Hi: number, bit1Lo: number,
-  msbFirst: boolean, queueDepth: number,
-): void {}
-/** Write bytes via the channel's bytes-encoder (timings fixed at init). */
-export function rmtTxWriteBytes(pin: RmtPin, bytes: number[] | Uint8Array): void {}
-/** Write raw RMT symbols — arbitrary [hiTicks, loTicks] pairs. */
-export function rmtTxWriteSymbols(pin: RmtPin, symbols: [number, number][]): void {}
-/** Block until the queued TX completes. */
-export function rmtTxWaitDone(pin: RmtPin, timeoutMs?: number): void {}
-/** Tear down the TX channel and release its slot. */
-export function rmtTxDeinit(pin: RmtPin): void {}
 
-/** Positional semantic primitive — use rmtRxInit() from hal/rmt.ts. */
-export function rmtRxInit(pin: RmtPin, resolutionHz: number): void {}
-/** Register a callback-by-name invoked when an RX burst completes. */
-export function rmtRxOnReceived(pin: RmtPin, handler: string): void {}
-/** Start receiving. */
-export function rmtRxStart(pin: RmtPin): void {}
-/** Stop receiving. */
-export function rmtRxStop(pin: RmtPin): void {}
-/** Blocking read — returns flattened symbols [d0,l0,d1,l1,…] in ticks. */
-export function rmtRxRead(pin: RmtPin, maxCount: number): number[] { return []; }
-/** Tear down the RX channel and release its slot. */
-export function rmtRxDeinit(pin: RmtPin): void {}
 
 // ---------------------------------------------------------------------------
 // ADC — analog-to-digital conversion
 // ---------------------------------------------------------------------------
 
-/** Read analog value from a pin. */
-export function adcRead(pin: number | string): number { return 0; }
-/** Read analog voltage from a pin (ADC value converted to voltage). */
-export function adcReadVoltage(pin: number | string): number { return 0; }
-/** Set the analog reference. */
-export function adcSetReference(ref: string | number): void {}
+/** Thin ADC (hal/adc-pin.ts): raw read with construction-time gain/reference
+ *  tokens ("ADCChannel.GAIN_1_4" / "ADCChannel.REF_INTERNAL"); empty strings
+ *  mean "use the chip descriptor's defaults". */
+export function adcReadRaw(pin: number | string, gain: number | string, reference: number | string): number { return 0; }
+/** Thin ADC: millivolts read (adc_raw_to_millivolts) with the same
+ *  construction-time gain/reference tokens. */
+export function adcReadMv(pin: number | string, gain: number | string, reference: number | string): number { return 0; }
 
 // ---------------------------------------------------------------------------
 // Interrupts
@@ -95,6 +89,9 @@ export function adcSetReference(ref: string | number): void {}
 
 /** Attach an interrupt handler to a pin. */
 export function interruptAttach(pin: number | string, handler: string, mode: string): void {}
+/** Thin GPIO interrupts (hal/gpio-pin.ts onInterrupt): attach with Zephyr
+ *  INT_* tokens ("GPIO.INT_EDGE_FALLING") instead of mode strings. */
+export function interruptAttachFlags(pin: number | string, handler: string, intFlags: number | string): void {}
 /** Detach an interrupt from a pin. */
 export function interruptDetach(pin: number | string): void {}
 
@@ -102,51 +99,28 @@ export function interruptDetach(pin: number | string): void {}
 // Tone / audio output
 // ---------------------------------------------------------------------------
 
-/** Play a tone on a pin at the given frequency, optionally for a duration. */
-export function tonePlay(pin: number | string, frequency: number, duration?: number): void {}
-/** Stop tone playback on a pin. */
-export function toneStop(pin: number | string): void {}
 
 // ---------------------------------------------------------------------------
 // Timing
 // ---------------------------------------------------------------------------
 
-/** Delay for the given number of milliseconds. */
-export function delayMs(ms: number): void {}
-/** Delay for the given number of microseconds. */
-export function delayMicro(us: number): void {}
-/** Get milliseconds since boot. */
-export function getMillis(): number { return 0; }
-/** Get microseconds since boot. */
-export function getMicros(): number { return 0; }
 /** Get free heap bytes. Architecture-aware: the strategy maps this to the right
  *  symbol per target (ESP.getFreeHeap() on ESP32, __heap_start trick on AVR). */
 export function getFreeHeap(): number { return 0; }
+
+/** Time.sleep — yielding sleep in milliseconds (Zephyr: k_msleep). */
+export function timeSleep(ms: number): void {}
+/** Time.now — milliseconds since boot as a double (Zephyr: k_uptime_get). */
+export function timeNow(): number { return 0; }
+/** Time.nowUs — microseconds since boot as a double (Zephyr: k_cyc_to_us_floor64). */
+export function timeNowUs(): number { return 0; }
+/** Time.busyWaitUs — spin-wait the given microseconds, no yield (Zephyr: k_busy_wait). */
+export function timeBusyWaitUs(us: number): void {}
 
 // ---------------------------------------------------------------------------
 // I2C — inter-integrated circuit bus
 // ---------------------------------------------------------------------------
 
-/** Initialize I2C bus (master mode if no address, slave mode with address). */
-export function i2cBegin(bus: string, address?: number): void {}
-/** Disable I2C bus. */
-export function i2cEnd(bus: string): void {}
-/** Set I2C bus clock speed. */
-export function i2cSetClock(bus: string, hz: number): void {}
-/** Begin I2C transmission to a slave address. */
-export function i2cBeginTx(bus: string, address: number): void {}
-/** Write data to I2C bus. */
-export function i2cWrite(bus: string, data: string | number | number[] | Uint8Array): void {}
-/** Write a byte buffer to I2C bus (expands array literals to per-byte writes). */
-export function i2cWriteBuffer(bus: string, data: number[] | Uint8Array): void {}
-/** End I2C transmission. Returns status. */
-export function i2cEndTx(bus: string, stop: boolean): number { return 0; }
-/** Request bytes from I2C slave. */
-export function i2cRequestFrom(bus: string, address: number, quantity: number, stop?: boolean): number { return 0; }
-/** Check if bytes are available from I2C. */
-export function i2cAvailable(bus: string): number { return 0; }
-/** Read a byte from I2C. */
-export function i2cRead(bus: string): number { return 0; }
 /**
  * Drain `count` bytes requested from the I2C bus into a caller-provided buffer.
  * Semantic primitive: lowers to the `i2c.read_buffer` HAL op. The `buffer`
@@ -155,26 +129,19 @@ export function i2cRead(bus: string): number { return 0; }
  * the `uint8_t data[N]` declared in user scope — NOT an internal temp that
  * decays to a pointer on return. Keeps `data.length` / `data[i]` valid.
  */
-export function i2cReadBuffer(bus: string, count: number, buffer: number[] | Uint8Array): void {}
+
+// Thin I2C device (hal/i2c-target.ts): Zephyr register verbs. `hz` (0 =
+// leave the bus at its current speed) applies once via a guarded
+// i2c_configure on first use.
+export function i2cRegWrite(bus: string, address: number, hz: number, reg: number, value: number): void {}
+export function i2cRegRead(bus: string, address: number, hz: number, reg: number): number { return 0; }
+export function i2cRegUpdate(bus: string, address: number, hz: number, reg: number, mask: number, value: number): void {}
+export function i2cDevWrite(bus: string, address: number, hz: number, data: number[] | Uint8Array): void {}
 
 // ---------------------------------------------------------------------------
 // SPI — serial peripheral interface
 // ---------------------------------------------------------------------------
 
-/** Initialize SPI bus. */
-export function spiBegin(bus: string): void {}
-/** Disable SPI bus. */
-export function spiEnd(bus: string): void {}
-/** Transfer data on SPI bus. */
-export function spiTransfer(bus: string, data: string | number | Uint8Array): number { return 0; }
-/** Begin SPI transaction with settings. */
-export function spiBeginTx(bus: string, settings: string | any): void {}
-/** End SPI transaction. */
-export function spiEndTx(bus: string): void {}
-/** Set SPI chip-select pin LOW. */
-export function spiCsLow(pin: number | string): void {}
-/** Set SPI chip-select pin HIGH. */
-export function spiCsHigh(pin: number | string): void {}
 /**
  * Read `count` bytes from the SPI bus into a caller-provided buffer by clocking
  * dummy (0x00) transfers. Semantic primitive: lowers to the `spi.read_buffer`
@@ -182,99 +149,99 @@ export function spiCsHigh(pin: number | string): void {}
  * rewritten to the caller's variable. Mirrors i2cReadBuffer. The caller is
  * responsible for asserting/de-asserting chip-select around it.
  */
-export function spiReadBuffer(bus: string, count: number, buffer: number[] | Uint8Array): void {}
-/** Set SPI data mode. */
-export function spiSetMode(bus: string, mode: number): void {}
-/** Set SPI bit order. */
-export function spiSetBitOrder(bus: string, order: string): void {}
 
 // ---------------------------------------------------------------------------
 // UART — serial communication
 // ---------------------------------------------------------------------------
 
-/** Initialize serial port with baud rate. */
-export function uartBegin(port: string, baud: number): void {}
-/** Disable serial port. */
-export function uartEnd(port: string): void {}
-/** Print value to serial. */
-export function uartPrint(port: string, value: any): void {}
-/** Print value with newline to serial. */
-export function uartPrintln(port: string, value: any): void {}
-/** printf-style formatted print to serial. */
-export function uartPrintf(port: string, format: any, args: any[]): void {}
-/** Write raw data to serial. */
-export function uartWrite(port: string, data: any): void {}
-/** Read a byte from serial. */
-export function uartRead(port: string): number { return 0; }
-/** Peek at next byte from serial without consuming. */
-export function uartPeek(port: string): number { return 0; }
-/** Check if bytes are available from serial. */
-export function uartAvailable(port: string): number { return 0; }
-/** Flush serial output. */
-export function uartFlush(port: string): void {}
 
 // ---------------------------------------------------------------------------
 // USB — CDC-ACM serial over the USB connector (device stack)
 // ---------------------------------------------------------------------------
 
 /** Enable the USB device + open the CDC serial port with a baud hint. */
-export function usbBegin(port: string, baud: number): void {}
+export function usbBegin(port: string): void {}
 /** Disable the CDC serial port. */
 export function usbEnd(port: string): void {}
 /** Print value to the USB serial port. */
 export function usbPrint(port: string, value: any): void {}
 /** Print value with newline to the USB serial port. */
 export function usbPrintln(port: string, value: any): void {}
-/** printf-style formatted print to the USB serial port. */
-export function usbPrintf(port: string, format: any, args: any[]): void {}
-/** Write raw data to the USB serial port. */
-export function usbWrite(port: string, data: any): void {}
 /** Read a byte from the USB serial port (-1 if none). */
 export function usbRead(port: string): number { return 0; }
 /** Check if bytes are available from the USB serial port. */
 export function usbAvailable(port: string): number { return 0; }
-/** Flush USB serial output. */
-export function usbFlush(port: string): void {}
 /** True when the host has opened the port (DTR asserted). */
 export function usbConnected(port: string): boolean { return false; }
+/** Thin waitReady(): bounded DTR poll in the shim. */
+export function usbWaitReady(port: string, timeoutMs: number): boolean { return false; }
 
 // ---------------------------------------------------------------------------
 // Pulse measurement
 // ---------------------------------------------------------------------------
 
-/** Measure pulse duration on a pin. */
-export function pulseIn_(pin: number | string, value: number, timeout?: number): number { return 0; }
-/** Measure long pulse using high-precision timer. */
-export function pulseInLong_(pin: number | string, value: number): number { return 0; }
 
 // ---------------------------------------------------------------------------
 // Shift register
 // ---------------------------------------------------------------------------
 
 /** Shift a byte out to a pin. */
-export function shiftOut_(dataPin: number | string, clockPin: number | string, bitOrder: number, value: number): void {}
 /** Shift a byte in from a pin. */
-export function shiftIn_(dataPin: number | string, clockPin: number | string, bitOrder: number): number { return 0; }
 
 // ---------------------------------------------------------------------------
 // Board constant resolution
 // ---------------------------------------------------------------------------
 
-/** Write a value to a DAC pin. */
-export function dacWrite(pin: number | string, value: number): void {}
+/** Thin DAC (hal/dac-pin.ts): raw dac_write_value with a construction-time
+ *  resolution (0 = the chip descriptor's channel resolution). */
+export function dacWriteValue(pin: number | string, value: number, resolution: number): void {}
 
 // ---------------------------------------------------------------------------
 // Watchdog timer (WDT)
 // ---------------------------------------------------------------------------
 
-/** Enable the watchdog timer with the given timeout (string preset or number). */
-export function wdtEnable(timeout: string | number): void {}
 
-/** Reset (kick) the watchdog timer. */
-export function wdtReset(): void {}
 
 /** Disable the watchdog timer. */
 export function wdtDisable(): void {}
+
+/** Thin Watchdog (hal/watchdog.ts): arm with the construction timeout in ms
+ *  (wdt_install_timeout + wdt_setup). */
+export function wdtSetup(timeoutMs: number): void {}
+/** Thin Watchdog: feed (wdt_feed). */
+export function wdtFeed(): void {}
+
+/** Thin Counter (hal/counter.ts): register the alarm handler. */
+export function counterOnAlarm(instance: number, handler: string): void {}
+/** Thin Counter: apply hz as the top value and start (counter_start). */
+export function counterStart(instance: number, hz: number): void {}
+/** Thin Counter: stop (counter_stop). */
+export function counterStop(instance: number): void {}
+
+// Thin SPI device (hal/spi-target.ts): the op carries the construction facts
+// (cs pin, hz, mode) so the shim state block and overlay child node derive
+// from op facts alone (the sensor discipline). `rx` is the caller's buffer
+// identifier ('' = write-only).
+export function spiTransceiveDt(bus: string, cs: number, hz: number, mode: number, tx: number[] | Uint8Array, rx: Uint8Array | number[]): void {}
+export function spiWriteDt(bus: string, cs: number, hz: number, mode: number, tx: number[] | Uint8Array): void {}
+/** SPITarget.readReg sugar: one-byte register read via spi_transceive_dt
+ *  against an INTERNAL buffer — no caller array needed. */
+export function spiReadReg(bus: string, cs: number, hz: number, mode: number, reg: number): number { return 0; }
+
+// Thin UART (hal/uart-port.ts): TX is poll-based with the construction baud
+// applied once (guarded uart_configure); RX is interrupt-backed into a
+// construction-sized ring (armed on first receive call). `ring` sizes the
+// shim's static buffer and rides every RX op (self-contained-op discipline).
+export function uartPollWrite(port: string, baud: number, data: string): void {}
+export function uartRxAvailable(port: string, ring: number): number { return 0; }
+export function uartRxPeek(port: string, ring: number): number { return 0; }
+export function uartRxRead(port: string, ring: number): number { return 0; }
+
+// Thin Thread (hal/thread.ts): create + schedule (k_thread_create, K_NO_WAIT).
+// The handler is the callback-registered entry function name.
+export function threadStart(index: number, stackBytes: number, priority: number, handler: string): void {}
+/** Thin Thread: block until exit (k_thread_join, K_FOREVER). */
+export function threadJoin(index: number): void {}
 
 /** Resolve a board definition path to a compile-time constant. */
 export function boardResolve(path: string): any { return undefined as any; }
@@ -286,6 +253,16 @@ export function boardResolve(path: string): any { return undefined as any; }
 /** Enter deep sleep for the given duration (ms). Architecture-aware: the
  *  strategy emits the right call per target (esp_deep_sleep on ESP32, a
  *  not-supported comment elsewhere). */
+export function fsReadText(path: string): string { return ""; }
+export function fsWriteText(path: string, content: string): void {}
+export function fsExists(path: string): boolean { return false; }
+export function fsRemove(path: string): boolean { return false; }
+export function mqttConnect(brokerUri: string, clientId: string): boolean { return false; }
+export function mqttOnMessage(handler: string): void {}
+export function mqttSubscribe(topic: string): void {}
+export function mqttPublish(topic: string, data: string): void {}
+export function mqttConnected(): boolean { return false; }
+export function mqttDisconnect(): void {}
 export function powerDeepSleep(ms: number): void {}
 /** Enter light sleep. Architecture-aware. */
 export function powerLightSleep(): void {}
@@ -299,69 +276,48 @@ export function powerDeepSleepPin(pin: number, level: number): void {}
 // Preferences (NVS-backed key/value store)
 // ---------------------------------------------------------------------------
 
-export function preferencesBegin(namespace: string, readOnly: boolean): void {}
-export function preferencesEnd(): void {}
-export function preferencesClear(): void {}
-export function preferencesRemove(key: string): void {}
-export function preferencesPutInt(key: string, value: number): void {}
-export function preferencesGetInt(key: string, defaultValue: number): number { return 0; }
-export function preferencesPutUInt(key: string, value: number): void {}
-export function preferencesGetUInt(key: string, defaultValue: number): number { return 0; }
-export function preferencesPutBool(key: string, value: boolean): void {}
-export function preferencesGetBool(key: string, defaultValue: boolean): boolean { return false; }
-export function preferencesPutFloat(key: string, value: number): void {}
-export function preferencesGetFloat(key: string, defaultValue: number): number { return 0; }
-export function preferencesPutString(key: string, value: string): void {}
-export function preferencesGetString(key: string, defaultValue: string): string { return ""; }
+export function preferencesClear(ns: string): void {}
+export function preferencesRemove(ns: string, key: string): void {}
+export function preferencesPutInt(ns: string, key: string, value: number): void {}
+export function preferencesGetInt(ns: string, key: string, defaultValue: number): number { return 0; }
+export function preferencesPutBool(ns: string, key: string, value: boolean): void {}
+export function preferencesGetBool(ns: string, key: string, defaultValue: boolean): boolean { return false; }
+export function preferencesPutFloat(ns: string, key: string, value: number): void {}
+export function preferencesGetFloat(ns: string, key: string, defaultValue: number): number { return 0; }
+export function preferencesPutString(ns: string, key: string, value: string): void {}
+export function preferencesGetString(ns: string, key: string, defaultValue: string): string { return ""; }
 
-export function wifiConnect(ssid: string, password?: string, timeoutMs?: number): boolean { return false; }
 export function wifiConnectStart(ssid: string, password?: string): void {}
+/** Join with the station's construction facts (the thin WiFi.join). */
+export function wifiJoin(ssid: string, psk: string | undefined, security: number, channel: number, band: number, timeoutMs: number, ps: number, ipAddr: string | undefined, gateway: string | undefined, netmask: string | undefined): boolean { return false; }
 export function wifiDisconnect(): void {}
-export function wifiStatus(): number { return 0; }
 export function wifiIsConnected(): boolean { return false; }
 export function wifiLocalIp(): string { return ""; }
 export function wifiRssi(): number { return 0; }
-export function wifiMac(): string { return ""; }
-export function wifiSetHostname(name: string): void {}
-export function wifiSetStaticIp(ip: string, gateway: string, subnet: string, dns?: string): void {}
-export function wifiSetAutoReconnect(enabled: boolean): void {}
-export function wifiSetPowerSave(mode: string): void {}
-export function wifiSetTxPower(dbm: number): void {}
+export function wifiMac(): number { return 0; }
 export function wifiOnEvent(event: string, handler: string): void {}
 export function wifiApStart(ssid: string, password?: string, channel?: number, hidden?: boolean, maxClients?: number): boolean { return false; }
 export function wifiApStop(): void {}
-export function wifiApClientCount(): number { return 0; }
-export function wifiApIp(): string { return ""; }
-export function wifiApSetChannel(channel: number): void {}
-export function wifiApSetHidden(hidden: boolean): void {}
-export function wifiApSetMaxClients(maxClients: number): void {}
 export function wifiScan(): number { return 0; }
-export function wifiScanStart(): void {}
+
 export function wifiScanCount(): number { return 0; }
 export function wifiScanSsid(index: number): string { return ""; }
 export function wifiScanRssi(index: number): number { return 0; }
-export function wifiScanEncryption(index: number): number { return 0; }
+export function wifiScanEncryption(index: number): string { return ""; }
 export function wifiScanChannel(index: number): number { return 0; }
-export function wifiSaveCredentials(ssid: string, password: string): void {}
-export function wifiConnectSaved(timeoutMs?: number): boolean { return false; }
-export function wifiClearCredentials(): void {}
-export function wifiWaitConnected(timeoutMs?: number): boolean { return false; }
-export function wifiWaitDisconnected(): void {}
 
 // ---------------------------------------------------------------------------
 // HTTP client
 // ---------------------------------------------------------------------------
 
 export function httpBegin(method: string, url: string): void {}
-export function httpReset(): void {}
 export function httpSetHeader(name: string, value: string): void {}
 export function httpSetTimeout(ms: number): void {}
 export function httpSetMaxBody(bytes: number): void {}
 export function httpSetBody(data: string, json?: boolean): void {}
-export function httpSetInsecure(): void {}
+export function httpSetInsecure(insecure: boolean): void {}
 export function httpSetCaCert(pem: string): void {}
 export function httpSend(): boolean { return false; }
-export function httpSendStart(): void {}
 export function httpStatus(): number { return 0; }
 export function httpOk(): boolean { return false; }
 export function httpBody(): string { return ""; }
@@ -384,11 +340,6 @@ export function bleOnDisconnect(handler: string): void {}
 export function bleNotify(index: number, value: number | string): void {}
 export function bleIsConnected(): boolean { return false; }
 export function bleClientCount(): number { return 0; }
-export function bleSetName(name: string): void {}
-export function bleUntilConnected(timeoutMs?: number): boolean { return false; }
-export function bleUntilConnectedStart(): void {}
-export function bleSetTxPower(dbm: number): void {}
-export function bleStatus(): number { return 0; }
 
 // ---------------------------------------------------------------------------
 // Raw C++ escape hatch
@@ -413,3 +364,22 @@ export function rawCpp(code: string): void {}
 export function rawCppExpr<T>(code: string): T {
   return undefined as unknown as T;
 }
+
+// ---------------------------------------------------------------------------
+// Sensors — DT-bound peripheral parts (generic catalog)
+//
+// The part identity is a catalog token (SENSOR.<underscored-compatible> from
+// sensor-catalog.generated.ts); the bus/address come from the I2CDevice the
+// Sensor class was constructed with. Zephyr's uniform sensor API backs these —
+// one code shape for every part in the catalog.
+// ---------------------------------------------------------------------------
+
+/** Fetch a fresh sample from a DT-bound sensor part. Args: part token, bus
+ *  name, bus port (I2C address or SPI CS pin), bus kind ('i2c' | 'spi'),
+ *  SPI clock Hz, SPI mode 0-3, alert pin (-1 = none). */
+export function sensorFetch(part: string, bus: string, port: number, kind: string, spiHz: number, spiMode: number, alertPin: number): void {}
+/** Read one channel (a SENSOR_CHAN_* suffix, see CHAN) from the fetched sample.
+ *  Returns the value as a double (Zephyr's sensor_value val1 + val2/1e6).
+ *  Carries the same construction facts as sensorFetch so either op alone
+ *  yields a complete device. */
+export function sensorGet(part: string, bus: string, port: number, kind: string, spiHz: number, spiMode: number, alertPin: number, chan: string): number { return 0; }

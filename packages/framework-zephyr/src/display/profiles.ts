@@ -83,7 +83,7 @@ export const ZEPHYR_DISPLAY_PROFILES: Record<string, ZephyrDisplayProfile> = {
     // ST7796S SPI TFT, 320x480 RGB565 mounted landscape (effective 480x320).
     // Same DT nodelabel convention as the ILI9341 — the board's devicetree
     // carries the `display0` node bound to the ST7796 driver; the overlay
-    // enables it via status="okay". Effective dims match the Arduino
+    // enables it via status="okay". Effective dims match the display
     // st7796-spi profile (480x320 landscape, rotation 1).
     driver: 'st7796-zephyr',
     dtLabel: 'display0',

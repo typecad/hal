@@ -20,6 +20,11 @@ import type { ZephyrChipDescriptor } from '../chips/types.js';
 import { parseControllerIndex } from './util.js';
 import { renderWrite } from './uart.js';
 
+/** Render a HAL field: pass through (already rendered by the resolver). */
+function s(v: unknown): string {
+  return String(v);
+}
+
 /** The C variable prefix for a CDC instance's state. */
 function prefix(idx: number): string {
   return `__tc_usb${idx}`;
@@ -139,10 +144,8 @@ export function usbInitLines(chip: ZephyrChipDescriptor, instanceIndex: number):
   return [
     '// CUTTLEFISH_USB_BEGIN',
     `static const struct device* ${dev} = DEVICE_DT_GET(DT_NODELABEL(${nodeLabel(instanceIndex)}));`,
-    `static void ${p}_init(uint32_t baud) {`,
-    `    __tc_usbd_start();`,
-    `    const struct uart_config cfg = { .baudrate = (baud ? baud : 115200), .parity = UART_CFG_PARITY_NONE, .stop_bits = UART_CFG_STOP_BITS_1, .data_bits = UART_CFG_DATA_BITS_8, .flow_ctrl = UART_CFG_FLOW_CTRL_NONE };`,
-    `    uart_configure(${dev}, &cfg);`,
+    `static void ${p}_init(void) {`,
+    `    __tc_usbd_start();   // CDC line coding is the host's business`,
     `}`,
     '// CUTTLEFISH_USB_END',
   ];
@@ -178,7 +181,12 @@ export function lowerUsb(op: HALOpIR, chip: ZephyrChipDescriptor): { code?: stri
 
   switch (op.operation) {
     case 'usb.begin':
-      return { code: `${p}_init(static_cast<uint32_t>(${o.baud}));` };
+      return { code: `${p}_init();` };
+    case 'usb.wait_ready': {
+      // Bounded DTR poll, sliced in the shim-side expression (no user-code
+      // busy loop). timeoutMs 0 = wait forever.
+      return { expression: `({ bool __ok = false; uint32_t __t = 0U; while (true) { uint32_t __dtr = 0U; if ((uart_line_ctrl_get(${dev}, UART_LINE_CTRL_DTR, &__dtr) == 0) && (__dtr != 0U)) { __ok = true; break; } if ((${s(o.timeoutMs ?? 0)}) != 0 && __t >= (uint32_t)(${s(o.timeoutMs ?? 0)})) { break; } k_msleep(10); __t += 10U; } __ok; })` };
+    }
     case 'usb.end':
       // CDC has no per-port disable short of tearing down the device stack
       // (which would drop every other instance); make end observable but safe.
@@ -187,16 +195,6 @@ export function lowerUsb(op: HALOpIR, chip: ZephyrChipDescriptor): { code?: stri
       return { code: renderWrite(dev, o.value, false) };
     case 'usb.println':
       return { code: renderWrite(dev, o.value, true) };
-    case 'usb.write':
-      return { code: renderWrite(dev, o.data, false) };
-    case 'usb.printf': {
-      const fmt = o.format;
-      const args = (o.args ?? []).join(', ');
-      const argList = args ? `, ${args}` : '';
-      return {
-        code: `char __buf[128]; int __n = snprintk(__buf, sizeof(__buf), ${fmt}${argList}); for (int __i = 0; __i < __n; __i++) { uart_poll_out(${dev}, __buf[__i]); }`,
-      };
-    }
     case 'usb.read':
       // Same poll semantics as uart.read: the byte or -1 if none available.
       return { expression: `({ unsigned char __b = 0; (uart_poll_in(${dev}, &__b) == 0) ? (int)__b : -1; })` };
@@ -204,8 +202,6 @@ export function lowerUsb(op: HALOpIR, chip: ZephyrChipDescriptor): { code?: stri
       // uart_poll_in reports only "one byte ready" and probing would drain it;
       // same honest limitation as uart.available.
       return { expression: '(0)' };
-    case 'usb.flush':
-      return { code: `(void)${dev};` };
     case 'usb.connected':
       // DTR asserted = the host actually opened the port.
       return { expression: `({ uint32_t __dtr = 0; (uart_line_ctrl_get(${dev}, UART_LINE_CTRL_DTR, &__dtr) == 0) && (__dtr != 0); })` };

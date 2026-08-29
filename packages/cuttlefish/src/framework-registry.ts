@@ -19,13 +19,13 @@ import type { CompileResult, UploadResult, ToolchainOptions } from "./api/shared
  * Components loaded from a framework package.
  */
 export interface LoadedFramework {
-  /** The platform strategy (e.g. ArduinoStrategy, NativeAVRStrategy) */
+  /** The platform strategy (e.g. ZephyrStrategy, NativeStrategy) */
   strategy: PlatformStrategy;
 
   /** Optional toolchain for compile/upload/monitor (framework-specific) */
   toolchain?: FrameworkToolchain;
 
-  /** Framework library import resolution (e.g., Arduino library detection) */
+  /** Framework library import resolution (e.g., framework library detection) */
   libraryResolver?: FrameworkLibraryResolver;
 
   /** Framework class name mapping for library imports */
@@ -38,8 +38,8 @@ export interface LoadedFramework {
    * Optional subcommand presenters owned by the framework. Cuttlefish dispatches
    * `cuttlefish doctor` / `cuttlefish licenses` to these when the loaded
    * framework provides them; otherwise it prints a no-support message. Each
-   * framework decides what (if anything) these do — e.g. framework-arduino
-   * checks arduino-cli + board core (doctor) and scans Arduino library licenses
+   * framework decides what (if anything) these do — e.g. framework-zephyr
+   * checks west + board target (doctor) and scans library licenses
    * (licenses).
    */
   doctor?: () => void;
@@ -47,7 +47,7 @@ export interface LoadedFramework {
 }
 
 /**
- * Resolves framework-specific library imports (e.g., Arduino libraries).
+ * Resolves framework-specific library imports.
  */
 export interface FrameworkLibraryResolver {
   isFrameworkLibraryImport(moduleSpecifier: string): boolean;

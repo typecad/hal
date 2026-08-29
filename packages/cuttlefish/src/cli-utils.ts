@@ -9,7 +9,7 @@ import {
   mapCppErrorToTs,
   mapCppLocationToTs,
   readSourceMap,
-  resolveSourceMapForSketch,
+  resolveSourceMapForProgram,
   type SourceMapIndex,
 } from "./mapping/source-map.js";
 import type { CompileResult, Diagnostic } from "./api/shared/index.js";
@@ -131,13 +131,13 @@ export function printDiagnostics(diagnostics: Array<Diagnostic | { severity: str
  *  - If `buildDir` is supplied (native mode), build a per-file source-map
  *    index over every `*.thcppmap.json` in the dir and map each error via
  *    its own translation unit's map.
- *  - Otherwise fall back to the single-map Arduino sketch path so non-native
+ *  - Otherwise fall back to the single-map program path so non-native
  *    frameworks keep their existing behavior.
  */
 export function printMappedCompileErrors(
   compileResult: CompileResult,
   originalSourceMapPath?: string,
-  sketchPath?: string,
+  programPath?: string,
   buildDir?: string,
 ): { printed: boolean } {
   if (compileResult.errors.length === 0) {
@@ -153,8 +153,8 @@ export function printMappedCompileErrors(
   let singleMap: ReturnType<typeof readSourceMap> | undefined;
   if (!index) {
     let sourceMapPath = originalSourceMapPath;
-    if (sketchPath && !sourceMapPath) {
-      sourceMapPath = resolveSourceMapForSketch(sketchPath, originalSourceMapPath);
+    if (programPath && !sourceMapPath) {
+      sourceMapPath = resolveSourceMapForProgram(programPath, originalSourceMapPath);
     }
     singleMap = sourceMapPath ? readSourceMap(sourceMapPath) : undefined;
   }

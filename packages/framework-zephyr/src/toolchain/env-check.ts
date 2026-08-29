@@ -1,15 +1,15 @@
 // ---------------------------------------------------------------------------
 // Zephyr environment check — the shared detection behind `cuttlefish doctor`.
 //
-// Mirrors @typecad/arduino-cli's checkArduinoEnv(): gather the impure
+// Zephyr environment check: gather the impure
 // environment facts once (west presence + version, Zephyr version, board
 // existence), then reduce them to a structured result the doctor (and, later,
 // the build/test gates) can present uniformly. The check is side-effect-free
 // and never throws — it never installs or mutates anything.
 //
-// Two parity checks vs. framework-arduino's doctor:
+// Two checks (mirroring the doctor contract):
 //  1. west (the Zephyr build tool) is discoverable + responsive — the direct
-//     analog of "arduino-cli is installed". discoverWest() already confirms
+//     toolchain presence. discoverWest() already confirms
 //     responsiveness via `west --version`; we additionally capture the version
 //     string to report it.
 //  2. the configured board target exists in the Zephyr checkout
@@ -36,7 +36,7 @@ import {
 
 /**
  * Raw west facts gathered from discovery + a `west --version` probe. Mirrors
- * ArduinoCliProbeData: `westFound` is true when a usable west install was
+ * probe data: `westFound` is true when a usable west install was
  * discovered (discovery itself probes responsiveness).
  */
 export interface WestProbeData {
@@ -51,8 +51,8 @@ export interface WestProbeData {
 }
 
 /**
- * Test-injection seam for checkZephyrEnv. Mirrors Arduino's
- * CheckArduinoEnvOptions.fakeProbe so tests never spawn a real west/python.
+ * Test-injection seam for checkZephyrEnv. Mirrors the
+ * fakeProbe option so tests never spawn a real west/python.
  */
 export interface CheckZephyrEnvOptions {
   /** FOR TESTS ONLY: skip the real probe and use this data directly. */
@@ -61,7 +61,7 @@ export interface CheckZephyrEnvOptions {
   fakeBoardExists?: (boardId: string, zephyrBase: string | undefined) => boolean | undefined;
 }
 
-// ---- result types (mirror ArduinoEnvResult's shape) ------------------------
+// ---- result types ------------------------------------------------------------
 
 export interface ZephyrEnvCheck {
   /** west (the Zephyr build tool) was discovered and responsive. */
@@ -202,7 +202,7 @@ export function boardExistsInCheckout(
  * checkout. Reports what (if anything) is wrong.
  *
  * - If `buildTarget` is undefined/empty, the board check is skipped (not a
- *   failure), mirroring Arduino's no-FQBN path.
+ *   failure), mirroring the no-build-target path.
  * - Never installs anything. Never mutates the user environment.
  * - Never throws — always returns a result. Callers decide how to react.
  *
@@ -258,7 +258,7 @@ export function checkZephyrEnv(
       check,
       messages: [
         `Zephyr ${zephyrVersion} is outside the supported range (${compat.range}) for @typecad/framework-zephyr.`,
-        "  Set ZEPHYR_BASE to a compatible Zephyr checkout, or install one via '@typecad/zephyr-installer'.",
+        "  Set ZEPHYR_BASE to a compatible Zephyr checkout, or or run the bundled Zephyr installer (npx --package @typecad/framework-zephyr zephyr-installer).",
       ],
       fixCommand: undefined,
     };

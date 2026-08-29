@@ -2,7 +2,7 @@
   "name": "demo-wifi",
   "version": "1.0.0",
   "private": true,
-  "description": "HAL WiFi + HTTP client demos transpiled to the Arduino-ESP32 core (WiFi / HTTPClient)",
+  "description": "HAL WiFi + HTTP client demos targeting Zephyr",
   "type": "module",
   "scripts": {
     "build": "cuttlefish build",
@@ -11,9 +11,6 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "@typecad/framework-arduino": "*",
-    "@typecad/board-esp32-devkit": "*",
-    "@typecad/mcu-esp32": "*",
     "@typecad/hal": "*"
   },
   "devDependencies": {

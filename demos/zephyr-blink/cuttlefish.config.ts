@@ -18,10 +18,7 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 const config: CuttlefishConfig = {
   entry: './src/main.ts',
   framework: '@typecad/framework-zephyr',
-  target: 'nrf52',
-  mcu: '@typecad/mcu-nrf52840',
-  board: '@typecad/board-xiao-nrf52840',
-  frameworkData: { buildTarget: 'xiao_ble/nrf52840' },
+  board: 'xiao_ble/nrf52840',
   output: {
     outDir: './out',
   },
@@ -29,7 +26,6 @@ const config: CuttlefishConfig = {
   // CUTTLEFISH_PORT env var > this config — Linux/macOS users can set
   // CUTTLEFISH_PORT=/dev/ttyACM0 instead of editing the file.
   console: { port: 'COM5' },
-  toolchain: { type: 'west' },
 };
 
 export default config;

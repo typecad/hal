@@ -163,7 +163,7 @@ export async function readSerialOutput(
       finish(`Serial error: ${err.message}`);
     });
 
-    // Give the device time to reset after upload (Arduino resets on serial open)
+    // Give the device time to reset after upload (many boards reset on serial open)
     setTimeout(() => {
       sp.open((err: Error | null) => {
         if (err) {

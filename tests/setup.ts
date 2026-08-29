@@ -1,7 +1,6 @@
 import {
   buildProgramIR,
   emitCpp,
-  analyzePeripheralUsage,
   setLoadedFramework,
   registerPlatformStrategy,
   resolveStrategy,
@@ -12,8 +11,7 @@ import { hasSafetyHook, requireSafetyHook } from "../packages/cuttlefish/src/saf
 import { hasUIHook, requireUIHook } from "../packages/cuttlefish/src/ui-hook";
 import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext, ComplianceMode } from "../packages/cuttlefish/src/types";
 import type { PlatformStrategy } from "../packages/cuttlefish/src/api/shared/platform-strategy";
-import { ArduinoStrategy } from "../packages/framework-arduino/src";
-import { NativeStrategy } from "../packages/framework-native/src";
+import { NativeStrategy } from "../packages/cuttlefish/src/frameworks/native";
 import { ZephyrStrategy } from "../packages/framework-zephyr/src/strategy";
 import { expect } from "vitest";
 import * as fs from "fs";
@@ -21,12 +19,15 @@ import * as path from "path";
 
 // Load the default framework package so polyfill generators and emitters
 // can access framework functions without going through transpileFile().
-const _arduinoStrategy = new ArduinoStrategy();
+// Legacy framework-arduino removed — the Zephyr strategy is the default
+// test target. Suites exercising legacy class lowerings must use the zephyr
+// transpilers or explicit strategies.
+const _zephyrDefault = new ZephyrStrategy();
 const _nativeStrategy = new NativeStrategy();
-setLoadedFramework({ strategy: _arduinoStrategy });
-registerPlatformStrategy(_arduinoStrategy);
+setLoadedFramework({ strategy: _zephyrDefault });
+registerPlatformStrategy(_zephyrDefault);
 registerPlatformStrategy(_nativeStrategy);
-setActiveStrategy(_arduinoStrategy);
+setActiveStrategy(_zephyrDefault);
 
 // Ensure output directory exists
 const testOutDir = ".build/tests";
@@ -40,11 +41,18 @@ export interface TranspileResult {
   diagnostics: GeneratedOutputs["diagnostics"];
 }
 
-export interface TranspileOptions {
+interface TranspileOptions {
   target?: TargetProfile;
   emitMode?: EmitMode;
   platformContext?: PlatformContext;
   boardPackage?: string;
+  /**
+   * Optional board constants injected into the built ProgramIR (overriding
+   * whatever buildProgramIR derived). Lets tests exercise the board-derived
+   * chip resolution path (framework-zephyr's resolveChipFromBoard) without
+   * the full CLI config — e.g. the blackpill dry run.
+   */
+  boardConstants?: import("../packages/cuttlefish/src/api/shared/index.js").BoardConstants;
   /**
    * Optional explicit strategy. When provided, overrides target-based
    * resolution so semantic-op HAL lowering routes through the given
@@ -83,14 +91,11 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
   const uniqueId = `test_${process.pid}_${testCounter++}_${Date.now()}`;
   const fileName = options.fileName ?? `${uniqueId}.ts`;
 
-  // For Arduino target, use a unique output directory to avoid filename collisions
-  // since Arduino uses the directory name as the .ino filename
-  const uniqueOutDir = target === "arduino"
-    ? path.join(testOutDir, uniqueId)
-    : testOutDir;
-  if (target === "arduino" && !fs.existsSync(uniqueOutDir)) {
-    fs.mkdirSync(uniqueOutDir, { recursive: true });
-  }
+  // Per-call unique output directory for EVERY target — parallel vitest
+  // workers writing+deleting src.cpp/src.h in one shared dir produced an
+  // intermittent empty-file read race (the "expected '' to contain" flake).
+  const uniqueOutDir = path.join(testOutDir, uniqueId);
+  fs.mkdirSync(uniqueOutDir, { recursive: true });
 
   // transpile.ts's import-graph build loads relative .ui.html modules into
   // the UI registry before IR building; direct buildProgramIR callers must
@@ -103,6 +108,9 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
   }
 
   const programIR = buildProgramIR(fileName, tsCode, boardPackage);
+  if (options.boardConstants) {
+    programIR.boardConstants = options.boardConstants;
+  }
   // Phase D — safety transform (mirrors transpile.ts: when @typecad/safety is
   // loaded, run its post-build IR transform so safe.* calls get their
   // companions and the polyfill tree-shaking keys land in the IR).
@@ -147,24 +155,6 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
   return { cpp, header, diagnostics: result.diagnostics };
 }
 
-export function transpileArduino(tsCode: string, options: Omit<TranspileOptions, "target"> = {}): TranspileResult {
-  return transpile(tsCode, { ...options, target: "arduino" });
-}
-
-export function transpileAVR(tsCode: string): TranspileResult {
-  return transpile(tsCode, { 
-    target: "arduino", 
-    platformContext: { frameworkData: { buildTarget: "arduino:avr:uno" } } 
-  });
-}
-
-export function transpileESP32(tsCode: string): TranspileResult {
-  return transpile(tsCode, { 
-    target: "arduino", 
-    platformContext: { frameworkData: { buildTarget: "esp32:esp32:devkitv1" } } 
-  });
-}
-
 export function transpileNative(tsCode: string): TranspileResult {
   return transpile(tsCode, { target: "native" });
 }
@@ -204,37 +194,6 @@ export function normalizeCpp(code: string): string {
 }
 
 /**
- * Semantic C++ matching helper.
- * Strips comments and normalizes whitespace for robust comparisons.
- */
-export function matchesCpp(cpp: string, expected: string | string[]): void {
-  const normalizedCpp = normalizeCpp(cpp);
-  const expectedSnippets = Array.isArray(expected) ? expected : [expected];
-
-  for (const snippet of expectedSnippets) {
-    const normalizedSnippet = normalizeCpp(snippet);
-    expect(normalizedCpp).toContain(normalizedSnippet);
-  }
-}
-
-/**
- * Helper to check if C++ code contains expected lines (in order)
- */
-export function containsLines(cpp: string, lines: string[]): boolean {
-  const normalized = normalizeCpp(cpp);
-  let lastIndex = -1;
-  for (const line of lines) {
-    const normalizedLine = normalizeCpp(line);
-    const index = normalized.indexOf(normalizedLine);
-    if (index === -1 || index <= lastIndex) {
-      return false;
-    }
-    lastIndex = index;
-  }
-  return true;
-}
-
-/**
  * Helper to extract a function body from C++ code
  */
 export function extractFunction(cpp: string, functionName: string): string | null {
@@ -267,38 +226,4 @@ export function expectCppNotContains(result: TranspileResult, snippets: string[]
 
 export function findDiagnostics(result: TranspileResult, code: string) {
   return result.diagnostics.filter((diagnostic) => diagnostic.code === code);
-}
-
-/**
- * Diagnostic codes that reflect the build environment rather than the code
- * under test (e.g. whether `arduino-cli` is installed on the runner). These
- * are excluded from snapshots so tests are stable across local/CI machines.
- */
-const ENVIRONMENT_DEPENDENT_DIAGNOSTIC_CODES = new Set([
-  "TS2CPP_ARDUINO_CLI_PROBE_FAILED",
-  "TS2CPP_ARDUINO_CLI_PARSE_FAILED",
-]);
-
-/**
- * Snapshot diagnostics to ensure error reporting remains consistent.
- * Environment-dependent diagnostics (arduino-cli availability, etc.) are
- * filtered out — they vary between local and CI machines and are not part of
- * the semantic behavior under test.
- */
-export function expectDiagnosticsMatchSnapshot(result: TranspileResult): void {
-  const stable = result.diagnostics
-    .filter(d => !ENVIRONMENT_DEPENDENT_DIAGNOSTIC_CODES.has(d.code))
-    .map(d => ({
-      code: d.code,
-      severity: d.severity,
-      message: d.message,
-      line: d.line,
-      column: d.column
-    }));
-  expect(stable).toMatchSnapshot();
-}
-
-export function analyzeUsage(tsCode: string) {
-  const ir = buildProgramIR("test.ts", tsCode);
-  return analyzePeripheralUsage(ir);
 }

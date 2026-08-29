@@ -15,9 +15,6 @@ import type { HALOpIR } from '@typecad/cuttlefish/api/shared';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 import { parseControllerIndex } from './util.js';
 
-const TXBUF_SIZE = 32;
-const RXBUF_SIZE = 32;
-
 /** The C variable prefix for a controller's state. */
 function prefix(idx: number): string {
   return `__tc_i2c${idx}`;
@@ -34,12 +31,6 @@ export function i2cInitLines(chip: ZephyrChipDescriptor, controllerIndex: number
   return [
     '// CUTTLEFISH_I2C_BEGIN',
     `static const struct device* ${p}_dev = DEVICE_DT_GET(DT_NODELABEL(${ctrl.nodeLabel}));`,
-    `static uint16_t ${p}_addr = 0xFFFF;`,
-    `static uint8_t ${p}_txbuf[${TXBUF_SIZE}];`,
-    `static size_t ${p}_txlen = 0;`,
-    `static uint8_t ${p}_rxbuf[${RXBUF_SIZE}];`,
-    `static size_t ${p}_rxlen = 0;`,
-    `static size_t ${p}_rxpos = 0;`,
     '// CUTTLEFISH_I2C_END',
   ];
 }
@@ -58,7 +49,19 @@ function speedForHz(hz: number): string {
  * program calling only begin() stays -Werror clean (-Wunused-variable).
  */
 function i2cKeepAlive(p: string): string {
-  return `(void)${p}_dev, (void)${p}_addr, (void)${p}_txbuf, (void)${p}_txlen, (void)${p}_rxbuf, (void)${p}_rxlen, (void)${p}_rxpos;`;
+  return `(void)${p}_dev;`;
+}
+
+/** The thin-device bus-speed preamble: apply the construction hz once
+ *  (i2c_configure with Zephyr's I2C_SPEED_SET tier mapping), or '' when the
+ *  target constructed without hz. Guarded per controller, so the cost after
+ *  the first op is one bool test. */
+function i2cSpeedGuard(p: string, hz: unknown): string {
+  const n = typeof hz === 'number' ? hz : parseInt(String(hz ?? 0), 10);
+  if (!n || isNaN(n)) return '';
+  const speed = speedForHz(n);
+  const done = `${p}_spd_done`;
+  return `{ static bool ${done} = false; if (!${done}) { (void)i2c_configure(${p}_dev, I2C_SPEED_SET(${speed})); ${done} = true; } } `;
 }
 
 /**
@@ -74,69 +77,36 @@ export function lowerI2c(
   const p = prefix(idx);
 
   switch (op.operation) {
-    case 'i2c.begin':
-      // Zephyr resolves the device at compile time; begin is a no-op (device
-      // ready check is folded into the driver calls). The comma expression
-      // references the transaction state so a program that only calls begin()
-      // (no transactions yet) keeps every shim variable used — Zephyr builds
-      // with -Werror and -Wunused-variable would otherwise fail it.
-      return { code: i2cKeepAlive(p) };
-    case 'i2c.end':
-      return { code: i2cKeepAlive(p) };
-    case 'i2c.set_clock': {
-      const hz = typeof o.hz === 'number' ? o.hz : parseInt(String(o.hz), 10);
-      const speed = isNaN(hz) ? 'I2C_SPEED_STANDARD' : speedForHz(hz || 100000);
-      return { code: `i2c_configure(${p}_dev, I2C_SPEED_SET(${speed}));` };
+    // ── Thin I2C device (hal/i2c-target.ts) — Zephyr register verbs ──────
+    // One call per op against the controller device handle; the optional
+    // construction hz applies once via a guarded i2c_configure (the same
+    // call i2c.set_clock lowers to).
+    case 'i2c.reg_write': {
+      const pre = i2cSpeedGuard(p, o.hz);
+      return { code: `${pre} i2c_reg_write_byte(${p}_dev, static_cast<uint16_t>(${o.address}), static_cast<uint8_t>(${o.reg}), static_cast<uint8_t>(${o.value}));` };
     }
-    case 'i2c.begin_transmission':
-      // Record the target address + reset the pending write buffer.
-      return { code: `${p}_addr = static_cast<uint16_t>(${o.address}); ${p}_txlen = 0;` };
-    case 'i2c.write':
-      // Append one byte (clamped to capacity).
-      return { code: `if (${p}_txlen < ${TXBUF_SIZE}) { ${p}_txbuf[${p}_txlen++] = static_cast<uint8_t>(${o.data}); }` };
-    case 'i2c.write_bytes': {
+    case 'i2c.reg_read': {
+      const pre = i2cSpeedGuard(p, o.hz);
+      return { expression: `({ ${pre} uint8_t __v = 0; (void)i2c_reg_read_byte(${p}_dev, static_cast<uint16_t>(${o.address}), static_cast<uint8_t>(${o.reg}), &__v); __v; })` };
+    }
+    case 'i2c.reg_update': {
+      const pre = i2cSpeedGuard(p, o.hz);
+      return { code: `${pre} (void)i2c_reg_update_byte(${p}_dev, static_cast<uint16_t>(${o.address}), static_cast<uint8_t>(${o.reg}), static_cast<uint8_t>(${o.mask}), static_cast<uint8_t>(${o.value}));` };
+    }
+    case 'i2c.dev_write': {
+      const pre = i2cSpeedGuard(p, o.hz);
       const bytes: unknown[] = o.bytes ?? [];
-      const stmts = bytes.map(
-        (b) => `if (${p}_txlen < ${TXBUF_SIZE}) { ${p}_txbuf[${p}_txlen++] = static_cast<uint8_t>(${b}); }`,
-      );
-      return { code: stmts.join(' ') };
-    }
-    case 'i2c.write_buffer': {
-      // Copy from a user buffer (its name is o.data), clamped to capacity.
-      return {
-        code: `for (size_t __i = 0; __i < sizeof(${o.data}) && ${p}_txlen < ${TXBUF_SIZE}; __i++) { ${p}_txbuf[${p}_txlen++] = reinterpret_cast<const uint8_t*>(${o.data})[__i]; }`,
-      };
-    }
-    case 'i2c.end_transmission':
-      // Flush the accumulated txbuf to the cached address.
-      return { code: `i2c_write(${p}_dev, ${p}_txbuf, ${p}_txlen, ${p}_addr);` };
-    case 'i2c.request_from': {
-      const qty = o.quantity;
-      return {
-        code: `i2c_read(${p}_dev, ${p}_rxbuf, static_cast<uint32_t>(${qty}), static_cast<uint16_t>(${o.address})); ${p}_rxlen = ${qty}; ${p}_rxpos = 0;`,
-      };
-    }
-    case 'i2c.available':
-      return { expression: `(${p}_rxlen - ${p}_rxpos)` };
-    case 'i2c.read':
-      return { expression: `(${p}_rxpos < ${p}_rxlen ? ${p}_rxbuf[${p}_rxpos++] : -1)` };
-    case 'i2c.read_buffer': {
-      // Read straight into the user's buffer (o.buffer), count bytes. When the
-      // caller discards the result (readByte()/readBytes() as a bare
-      // statement), the IR carries the __HAL_READ_BUF__ placeholder — the
-      // var-init rewrite never runs, so fall back to a local scratch buffer.
-      const count = o.count;
-      if (o.buffer === '__HAL_READ_BUF__') {
-        return {
-          code: `{ uint8_t __tc_rdbuf[${count}]; i2c_read(${p}_dev, __tc_rdbuf, static_cast<uint32_t>(${count}), ${p}_addr); }`,
-        };
+      // Identifier-shaped only — a single-byte literal array arrives as
+      // numeric text ("159") and must take the literal path.
+      const isBuffer = bytes.length === 1 && typeof bytes[0] === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(bytes[0] as string);
+      if (isBuffer) {
+        const name = bytes[0] as string;
+        // A named user buffer: i2c_write against its storage directly.
+        return { code: `${pre} (void)i2c_write(${p}_dev, reinterpret_cast<const uint8_t*>(${name}), sizeof(${name}), static_cast<uint16_t>(${o.address}));` };
       }
-      return {
-        code: `i2c_read(${p}_dev, reinterpret_cast<uint8_t*>(${o.buffer}), static_cast<uint32_t>(${count}), ${p}_addr);`,
-      };
+      const arr = `static const uint8_t __tc_i2cw[] = { ${bytes.join(', ')} };`;
+      return { code: `${pre} ${arr} (void)i2c_write(${p}_dev, __tc_i2cw, sizeof(__tc_i2cw), static_cast<uint16_t>(${o.address}));` };
     }
-    case 'i2c.recover':
-      return { code: `i2c_recover_bus(${p}_dev);` };
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +

@@ -63,7 +63,7 @@ export function synthesizeEntrypoints(ctx: EmitterContext): void {
         ctx.emitDiagnostics.push({
           severity: "error",
           code: "gpio-unsupported-on-target",
-          message: `${which} require GPIO hardware, which this target (${ctx.options.target}) does not model. Use the browser preview to exercise pin-driven UI, or target @typecad/framework-arduino.`,
+          message: `${which} require GPIO hardware, which this target (${ctx.options.target}) does not model. Use the browser preview to exercise pin-driven UI, or target a framework that models GPIO pins.`,
           source: program.fileName,
         } as never);
       }

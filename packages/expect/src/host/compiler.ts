@@ -1,8 +1,8 @@
 ﻿// ---------------------------------------------------------------------------
 // @typecad/expect — Compiler
 //
-// Wraps the cuttlefish transpiler + arduino-cli compile/upload cycle.
-// Takes preprocessed TypeScript source, transpiles to C++, compiles, uploads.
+// Wraps the cuttlefish transpiler + west compile/flash cycle. Takes
+// preprocessed TypeScript source, transpiles to C++, compiles, uploads.
 // ---------------------------------------------------------------------------
 
 import path from 'node:path';
@@ -10,10 +10,9 @@ import fs from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { parseConfigAST } from './config.js';
-import { checkArduinoEnv, type ArduinoEnvFailure } from '@typecad/arduino-cli';
 
 // createRequire lets us use require() in an ESM module for the optional
-// framework-zephyr dynamic import (avoids a hard dependency for Arduino users).
+// framework-zephyr dynamic import.
 const require = createRequire(import.meta.url);
 
 // ---------------------------------------------------------------------------
@@ -22,8 +21,8 @@ const require = createRequire(import.meta.url);
 
 export interface CompileResult {
   success: boolean;
-  sketchDir: string;
-  sketchPath: string;
+  projectDir: string;
+  sourcePath: string;
   output: string;
   error?: string;
 }
@@ -34,29 +33,20 @@ export interface UploadResult {
   error?: string;
 }
 
-/** Format a check failure into the `error` field used by CompileResult/UploadResult. */
-function formatEnvFailure(failure: ArduinoEnvFailure): string {
-  const lines = [...failure.messages];
-  if (failure.fixCommand) lines.push(`  Fix: ${failure.fixCommand}`);
-  return lines.join('\n');
-}
-
 /**
- * Transpile preprocessed TypeScript source to a C++ Arduino sketch (or Zephyr
- * project). Writes the preprocessed source to a temp file, invokes the cuttlefish
- * transpiler, and returns the path to the generated .ino (Arduino) or .cpp
- * (Zephyr) entry file.
+ * Transpile preprocessed TypeScript source to a C++ Zephyr project. Writes
+ * the preprocessed source to a temp file, invokes the cuttlefish transpiler,
+ * and returns the path to the generated .cpp entry file.
  */
 export function transpileTestFile(
   preprocessedSource: string,
   originalFilePath: string,
   projectRoot: string,
   buildTarget: string,
-  toolchainType: 'arduino-cli' | 'west' = 'arduino-cli',
   configPath?: string,
 ): CompileResult {
   // Create a build directory for this test file. Per-file directories are
-  // used — arduino-cli compile has no incremental benefit from a shared dir.
+  // used — west builds have no incremental benefit from a shared dir.
   const baseName = path.basename(originalFilePath, '.test.ts').replace(/[^a-zA-Z0-9_]/g, '_');
   const buildDir = path.join(projectRoot, '.build', 'expect', baseName);
 
@@ -65,7 +55,7 @@ export function transpileTestFile(
     fs.rmSync(buildDir, { recursive: true, force: true });
     fs.mkdirSync(buildDir, { recursive: true });
   } catch {
-    return { success: false, sketchDir: buildDir, sketchPath: '', output: '', error: `Failed to create build dir: ${buildDir}` };
+    return { success: false, projectDir: buildDir, sourcePath: '', output: '', error: `Failed to create build dir: ${buildDir}` };
   }
 
   const rewrittenSource = rewriteRelativeImports(preprocessedSource, originalFilePath, buildDir);
@@ -119,117 +109,53 @@ export function transpileTestFile(
   if (result.status !== 0) {
     return {
       success: false,
-      sketchDir: buildDir,
-      sketchPath: '',
+      projectDir: buildDir,
+      sourcePath: '',
       output: transpileOutput,
       error: `Transpilation failed:\n${transpileOutput}`,
     };
   }
 
-  // Find the generated entry file (.ino for Arduino, .cpp for Zephyr)
-  const outDir = findOutputDir(buildDir, baseName, projectRoot, toolchainType);
-  const entryPath = findEntryFile(outDir, toolchainType);
+  // Find the generated entry file (.cpp for Zephyr)
+  const outDir = findOutputDir(buildDir, baseName, projectRoot);
+  const entryPath = findEntryFile(outDir);
 
   if (!entryPath) {
-    const ext = toolchainType === 'west' ? '.cpp' : '.ino';
     return {
       success: false,
-      sketchDir: outDir,
-      sketchPath: '',
+      projectDir: outDir,
+      sourcePath: '',
       output: transpileOutput,
-      error: `No ${ext} file found in ${outDir} after transpilation`,
+      error: `No .cpp file found in ${outDir} after transpilation`,
     };
   }
 
   return {
     success: true,
-    sketchDir: path.dirname(entryPath),
-    sketchPath: entryPath,
+    projectDir: path.dirname(entryPath),
+    sourcePath: entryPath,
     output: transpileOutput,
   };
 }
 
 /**
- * Compile the sketch/project via the configured toolchain (arduino-cli or west).
+ * Compile the Zephyr project via `west build` (through the Zephyr Toolchain).
  */
-export function compileSketch(sketchDir: string, buildTarget: string, framework?: string, toolchainType: 'arduino-cli' | 'west' = 'arduino-cli', zephyrConfig?: Record<string, unknown>, consoleConfig?: Record<string, unknown>): CompileResult {
-  if (toolchainType === 'west') {
-    return compileWestProject(sketchDir, buildTarget, zephyrConfig, consoleConfig);
-  }
-  return compileArduinoSketch(sketchDir, buildTarget);
-}
-
-/** Compile via arduino-cli. */
-function compileArduinoSketch(sketchDir: string, buildTarget: string): CompileResult {
-  // Hard gate: verify arduino-cli + core before spawning.
-  {
-    const gate = checkArduinoEnv(buildTarget);
-    if (!gate.ok) {
-      const message = formatEnvFailure(gate);
-      return { success: false, sketchDir, sketchPath: '', output: message, error: message };
-    }
-  }
-  const result = spawnSync(
-    'arduino-cli',
-    ['compile', '--fqbn', buildTarget, sketchDir],
-    { encoding: 'utf8', timeout: 120000 },
-  );
-
-  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
-
-  return {
-    success: result.status === 0,
-    sketchDir,
-    sketchPath: '',
-    output,
-    error: result.status !== 0 ? `Compilation failed:\n${output}` : undefined,
-  };
+export function compileProgram(projectDir: string, buildTarget: string, zephyrConfig?: Record<string, unknown>, consoleConfig?: Record<string, unknown>): CompileResult {
+  return compileWestProject(projectDir, buildTarget, zephyrConfig, consoleConfig);
 }
 
 /**
- * Upload the compiled sketch/project to the board via the configured toolchain.
+ * Upload the compiled project to the board via `west flash` (through the
+ * Zephyr Toolchain).
  */
-export function uploadSketch(
-  sketchDir: string,
+export function uploadProgram(
+  projectDir: string,
   buildTarget: string,
   port: string,
-  framework?: string,
-  toolchainType: 'arduino-cli' | 'west' = 'arduino-cli',
   zephyrConfig?: Record<string, unknown>,
 ): UploadResult {
-  if (toolchainType === 'west') {
-    return uploadWestProject(sketchDir, buildTarget, port, zephyrConfig);
-  }
-  return uploadArduinoSketch(sketchDir, buildTarget, port);
-}
-
-/** Upload via arduino-cli. */
-function uploadArduinoSketch(
-  sketchDir: string,
-  buildTarget: string,
-  port: string,
-): UploadResult {
-  // Hard gate: verify arduino-cli + core before spawning.
-  {
-    const gate = checkArduinoEnv(buildTarget);
-    if (!gate.ok) {
-      const message = formatEnvFailure(gate);
-      return { success: false, output: message, error: message };
-    }
-  }
-  const result = spawnSync(
-    'arduino-cli',
-    ['upload', '--fqbn', buildTarget, '--port', port, sketchDir],
-    { encoding: 'utf8', timeout: 60000 },
-  );
-
-  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
-
-  return {
-    success: result.status === 0,
-    output,
-    error: result.status !== 0 ? `Upload failed:\n${output}` : undefined,
-  };
+  return uploadWestProject(projectDir, buildTarget, port, zephyrConfig);
 }
 
 // ---------------------------------------------------------------------------
@@ -239,18 +165,18 @@ function uploadArduinoSketch(
 /**
  * Compile a Zephyr project via `west build`. The Zephyr Toolchain (from
  * @typecad/framework-zephyr) handles west discovery, ZEPHYR_BASE, scaffolding,
- * and the board target. We call it via dynamic import to avoid a hard
- * dependency on framework-zephyr (the Arduino path doesn't need it).
+ * and the board target. We call it via dynamic import so expect only gains
+ * the dependency when framework-zephyr is installed.
  */
-function compileWestProject(sketchDir: string, buildTarget: string, zephyrConfig?: Record<string, unknown>, consoleConfig?: Record<string, unknown>): CompileResult {
-  // sketchDir for Zephyr is the project root containing src/, app/, build/.
+function compileWestProject(projectDir: string, buildTarget: string, zephyrConfig?: Record<string, unknown>, consoleConfig?: Record<string, unknown>): CompileResult {
+  // projectDir for Zephyr is the project root containing src/, app/, build/.
   // The transpiler emits src/src.cpp; the west project root is the parent of src/.
-  const srcDir = path.join(sketchDir, 'src');
-  const projectRoot = fs.existsSync(srcDir) ? sketchDir : path.dirname(sketchDir);
+  const srcDir = path.join(projectDir, 'src');
+  const projectRoot = fs.existsSync(srcDir) ? projectDir : path.dirname(projectDir);
   const sourcePath = fs.existsSync(path.join(srcDir, 'src.cpp'))
     ? path.join(srcDir, 'src.cpp')
-    : path.join(sketchDir, 'src.cpp');
-  const outputDir = fs.existsSync(srcDir) ? srcDir : sketchDir;
+    : path.join(projectDir, 'src.cpp');
+  const outputDir = fs.existsSync(srcDir) ? srcDir : projectDir;
 
   try {
     // Dynamic import — framework-zephyr is an optional dependency (only present
@@ -258,7 +184,7 @@ function compileWestProject(sketchDir: string, buildTarget: string, zephyrConfig
     const mod = require('@typecad/framework-zephyr');
     const Toolchain = mod.Toolchain;
     if (!Toolchain || typeof Toolchain.compile !== 'function') {
-      return { success: false, sketchDir, sketchPath: '', output: '', error: '@typecad/framework-zephyr did not export a usable Toolchain.compile().' };
+      return { success: false, projectDir, sourcePath: '', output: '', error: '@typecad/framework-zephyr did not export a usable Toolchain.compile().' };
     }
     const result = Toolchain.compile({
       outputDir,
@@ -269,13 +195,13 @@ function compileWestProject(sketchDir: string, buildTarget: string, zephyrConfig
     });
     return {
       success: result.success,
-      sketchDir: projectRoot,
-      sketchPath: sourcePath,
+      projectDir: projectRoot,
+      sourcePath: sourcePath,
       output: result.output,
       error: result.success ? undefined : `west build failed:\n${result.output}`,
     };
   } catch (e) {
-    return { success: false, sketchDir, sketchPath: '', output: '', error: `Failed to compile via west: ${(e as Error).message}` };
+    return { success: false, projectDir, sourcePath: '', output: '', error: `Failed to compile via west: ${(e as Error).message}` };
   }
 }
 
@@ -283,13 +209,13 @@ function compileWestProject(sketchDir: string, buildTarget: string, zephyrConfig
  * Upload (flash) a Zephyr project via `west flash`. For ESP32 boards, west
  * uses the esptool runner; for nRF boards, nrfjprog. The port is forwarded.
  */
-function uploadWestProject(sketchDir: string, buildTarget: string, port: string, zephyrConfig?: Record<string, unknown>): UploadResult {
-  const srcDir = path.join(sketchDir, 'src');
-  const projectRoot = fs.existsSync(srcDir) ? sketchDir : path.dirname(sketchDir);
+function uploadWestProject(projectDir: string, buildTarget: string, port: string, zephyrConfig?: Record<string, unknown>): UploadResult {
+  const srcDir = path.join(projectDir, 'src');
+  const projectRoot = fs.existsSync(srcDir) ? projectDir : path.dirname(projectDir);
   const sourcePath = fs.existsSync(path.join(srcDir, 'src.cpp'))
     ? path.join(srcDir, 'src.cpp')
-    : path.join(sketchDir, 'src.cpp');
-  const outputDir = fs.existsSync(srcDir) ? srcDir : sketchDir;
+    : path.join(projectDir, 'src.cpp');
+  const outputDir = fs.existsSync(srcDir) ? srcDir : projectDir;
 
   try {
     const mod = require('@typecad/framework-zephyr');
@@ -344,7 +270,7 @@ function resolveCuttlefishCmd(projectRoot: string): string {
   return 'cuttlefish';
 }
 
-function findOutputDir(buildDir: string, baseName: string, projectRoot: string, toolchainType: 'arduino-cli' | 'west' = 'arduino-cli'): string {
+function findOutputDir(buildDir: string, baseName: string, projectRoot: string): string {
   // The cuttlefish transpiler writes output next to the source by default,
   // or to the configured outDir.  Check common locations.
   const candidates = [
@@ -357,60 +283,55 @@ function findOutputDir(buildDir: string, baseName: string, projectRoot: string, 
   ];
 
   for (const c of candidates) {
-    if (fs.existsSync(c) && hasEntryFile(c, toolchainType)) return c;
+    if (fs.existsSync(c) && hasEntryFile(c)) return c;
   }
 
   // Last resort: walk the buildDir tree recursively to find any entry file
-  const found = findEntryFileRecursive(buildDir, toolchainType);
+  const found = findEntryFileRecursive(buildDir);
   if (found) return path.dirname(found);
 
   return buildDir;
 }
 
-/** Check for a .ino (Arduino) or .cpp (Zephyr) entry file in a directory. */
-function hasEntryFile(dir: string, toolchainType: 'arduino-cli' | 'west' = 'arduino-cli'): boolean {
+/** Check for a .cpp entry file in a directory. */
+function hasEntryFile(dir: string): boolean {
   if (!fs.existsSync(dir)) return false;
-  return fs.readdirSync(dir).some(f => isEntryFileName(f, toolchainType));
+  return fs.readdirSync(dir).some(f => isEntryFileName(f));
 }
 
-/** True if the filename is a valid entry file for the toolchain. */
-function isEntryFileName(name: string, toolchainType: 'arduino-cli' | 'west'): boolean {
-  if (toolchainType === 'west') {
-    return name.endsWith('.cpp') || name.endsWith('.cc');
-  }
-  return name.endsWith('.ino') || name.endsWith('.cc');
+/** True if the filename is a valid entry file (.cpp/.cc). */
+function isEntryFileName(name: string): boolean {
+  return name.endsWith('.cpp') || name.endsWith('.cc');
 }
 
-/** Find the entry file (.ino for Arduino, .cpp for Zephyr) in a directory. */
-function findEntryFile(dir: string, toolchainType: 'arduino-cli' | 'west' = 'arduino-cli'): string | undefined {
+/** Find the entry .cpp file in a directory (or its src/ subdirectory). */
+function findEntryFile(dir: string): string | undefined {
   if (!fs.existsSync(dir)) return undefined;
   for (const entry of fs.readdirSync(dir)) {
-    if (isEntryFileName(entry, toolchainType)) {
+    if (isEntryFileName(entry)) {
       return path.join(dir, entry);
     }
   }
-  // For Zephyr, the entry may be in a src/ subdirectory
-  if (toolchainType === 'west') {
-    const srcDir = path.join(dir, 'src');
-    if (fs.existsSync(srcDir)) {
-      for (const entry of fs.readdirSync(srcDir)) {
-        if (isEntryFileName(entry, toolchainType)) {
-          return path.join(srcDir, entry);
-        }
+  // The entry may be in a src/ subdirectory
+  const srcDir = path.join(dir, 'src');
+  if (fs.existsSync(srcDir)) {
+    for (const entry of fs.readdirSync(srcDir)) {
+      if (isEntryFileName(entry)) {
+        return path.join(srcDir, entry);
       }
     }
   }
   return undefined;
 }
 
-function findEntryFileRecursive(dir: string, toolchainType: 'arduino-cli' | 'west' = 'arduino-cli'): string | undefined {
+function findEntryFileRecursive(dir: string): string | undefined {
   if (!fs.existsSync(dir)) return undefined;
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (isEntryFileName(entry.name, toolchainType)) {
+    if (isEntryFileName(entry.name)) {
       return path.join(dir, entry.name);
     }
     if (entry.isDirectory()) {
-      const result = findEntryFileRecursive(path.join(dir, entry.name), toolchainType);
+      const result = findEntryFileRecursive(path.join(dir, entry.name));
       if (result) return result;
     }
   }
@@ -507,12 +428,12 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
       '',
       'const config: CuttlefishConfig = {',
       `  entry: './${entryFileName}',`,
-      `  target: 'avr',`,
+      `  framework: '@typecad/framework-zephyr',`,
       `  frameworkData: { buildTarget: '${buildTarget}' },`,
       '  output: {',
-      `    framework: 'arduino',`,
       `    outDir: './out',`,
       '  },',
+      '  toolchain: { type: \'west\' },',
       '};',
       '',
       'export default config;',

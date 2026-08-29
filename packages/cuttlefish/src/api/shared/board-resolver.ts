@@ -2,18 +2,16 @@
 // Board constant types
 //
 // Types for compile-time constant extraction from board definitions.
-// The implementation (which uses TypeScript compiler API) remains in CLI.
+// The implementation lives in the CLI (ir/board-resolver.ts) and reads the
+// project-local generated board.json manifest.
 // ---------------------------------------------------------------------------
 
 /**
  * Flat map from dot-path key to scalar constant value.
  *
- * Examples (for Arduino Uno):
- *   "id"           → "arduino-uno"
- *   "mcu"          → "ATmega328P"
- *   "clockSpeed"   → 16000000
- *   "memory.flash" → 32768
- *   "memory.sram"  → 2048
- *   "memory.eeprom"→ 1024
+ * Examples (from a generated board.json manifest):
+ *   "name"         → "XIAO BLE"
+ *   "pins.led"     → 13
+ *   "pins.analogOffset" → 14
  */
 export type BoardConstants = Map<string, string | number | boolean>;

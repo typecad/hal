@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
-// WiFi lowering — net_mgmt (connect/scan/radio) + conn_mgr monitor (L4 events)
+// WiFi lowering — net_mgmt (join/scan/radio) + conn_mgr monitor (L4 events)
 //
-// Hybrid: the WiFi connect/disconnect/scan/radio-query requests go directly
+// Hybrid: the WiFi join/disconnect/scan/radio-query requests go directly
 // through net_mgmt + wifi_mgmt.h (NET_REQUEST_WIFI_CONNECT/DISCONNECT/SCAN/...),
 // taking the iface admin-up with net_if_up first. IP-level connectivity is
 // still signaled by conn_mgr's monitoring layer (conn_mgr_monitor.c raises
@@ -27,8 +27,9 @@ function s(v: unknown): string {
  *
  * State is driven by two net_mgmt event handlers:
  *  - L4 connectivity (NET_EVENT_L4_CONNECTED/DISCONNECTED) → connected flag.
- *    This reflects IP connectivity (post-DHCP), not just the WiFi link — the
- *    events are raised by conn_mgr's monitoring layer (conn_mgr_monitor.c).
+ *    This reflects IP connectivity (post-DHCP, or right after static IPv4
+ *    facts are applied) — the events are raised by conn_mgr's monitoring
+ *    layer (conn_mgr_monitor.c).
  *  - WiFi scan (NET_EVENT_WIFI_SCAN_RESULT/SCAN_DONE) → scan_results pool.
  */
 export function wifiInitLines(): string[] {
@@ -39,12 +40,12 @@ export function wifiInitLines(): string[] {
     `// ── core (always needed when wifi.* is used) ────────────────────────────`,
     `// CUTTLEFISH_WIFI_CORE_BEGIN`,
     `// WiFi event callback signature (wifi.on_event). One slot per supported`,
-    `// event — a second registration overwrites the first (matches framework-esp32).`,
+    `// event — a second registration overwrites the first.`,
     `typedef void (*__tc_wifi_cb_t)(void);`,
     ``,
     `// WiFi state. connected reflects IP connectivity (L4), not just link —`,
-    `// connect takes the iface admin-up (net_if_up) and conn_mgr_monitor raises`,
-    `// the L4 event once DHCP completes. is_connected polls this flag.`,
+    `// join takes the iface admin-up (net_if_up) and conn_mgr_monitor raises`,
+    `// the L4 event once DHCP completes (or the static-IPv4 facts are applied).`,
     `static struct {`,
     `    bool inited;              // net_mgmt handlers registered + iface resolved`,
     `    bool connected;           // set by NET_EVENT_L4_CONNECTED/DISCONNECTED`,
@@ -75,15 +76,15 @@ export function wifiInitLines(): string[] {
     `        __tc_wifi.connected = true;`,
     `    } else if (mgmt_event == NET_EVENT_L4_DISCONNECTED) {`,
     `        __tc_wifi.connected = false;`,
-    `        // Defer on_disconnect via k_work_submit so the user callback (which`,
-    `        // typically calls connectAsync) runs outside the net_mgmt event`,
-    `        // chain. Calling NET_REQUEST_WIFI_CONNECT from within the disconnect`,
+    `        // Defer on_drop via k_work_submit so the user callback (which`,
+    `        // typically re-joins) runs outside the net_mgmt event chain.`,
+    `        // Calling NET_REQUEST_WIFI_CONNECT from within the disconnect`,
     `        // callback causes re-entrancy that prevents re-association.`,
     `        if (__tc_wifi.on_disconnect != nullptr) {`,
     `            (void)k_work_submit(&__tc_wifi.disconnect_work);`,
     `        }`,
     `    } else if (mgmt_event == NET_EVENT_IPV4_ADDR_ADD) {`,
-    `        // DHCP assigned an IPv4 address — the true "got IP" signal. Fires`,
+    `        // An IPv4 address was assigned — the true "got IP" signal. Fires`,
     `        // after NET_EVENT_L4_CONNECTED on a successful DHCP join.`,
     `        if (__tc_wifi.on_connect != nullptr) __tc_wifi.on_connect();`,
     `    } else if (mgmt_event == NET_EVENT_WIFI_SCAN_RESULT) {`,
@@ -133,8 +134,8 @@ export function wifiInitLines(): string[] {
     `// duration. Each wait slice sleeps 20ms and, in the entry TU of a UI build`,
     `// (the only TU carrying the ui_tick definition), pumps one frame so`,
     `// animations and touch stay live during the wait. Constraint: do NOT call`,
-    `// blocking wifi waits from inside UI event handlers — that re-enters`,
-    `// ui_tick mid-tick; use wifi.connect_start + wifi.is_connected there.`,
+    `// join() from inside UI event handlers — that re-enters ui_tick mid-tick;`,
+    `// use joinStart() + linked() there.`,
     `#ifdef CUTTLEFISH_ENTRY_UI_TU`,
     `static void ui_tick(uint16_t deltaMs);   // defined by the UI runtime header`,
     `#endif`,
@@ -151,17 +152,20 @@ export function wifiInitLines(): string[] {
     `}`,
     `// CUTTLEFISH_WIFI_CORE_END`,
     ``,
-    `// ── connect / disconnect (net_mgmt — conn_mgr monitor supplies L4 events) ─`,
+    `// ── join / leave (net_mgmt — conn_mgr monitor supplies L4 events) ────────`,
     `// CUTTLEFISH_WIFI_CONNECT_BEGIN`,
     `// SSID/PSK are staged into static buffers (wifi_connect_req_params.ssid/psk`,
     `// are const uint8_t* — they point at caller-owned storage that must outlive`,
     `// the request), then net_if_up takes the iface admin-up and NET_REQUEST_WIFI_CONNECT`,
-    `// is issued. conn_mgr_monitor raises the L4 event once DHCP completes.`,
+    `// is issued with the station's construction facts (security/band/channel).`,
+    `// conn_mgr_monitor raises the L4 event once DHCP completes.`,
     `static struct wifi_connect_req_params __tc_wifi_conn_params;`,
     `static uint8_t __tc_wifi_ssid_buf[33];    // SSID ≤32 + slack`,
     `static uint8_t __tc_wifi_psk_buf[64];     // PSK ≤63 + slack`,
     ``,
-    `static void __tc_wifi_stage_creds(const char* ssid, const char* password) {`,
+    `static void __tc_wifi_stage_creds(const char* ssid, const char* password,`,
+    `                                  enum wifi_security_type security, int32_t channel,`,
+    `                                  enum wifi_frequency_bands band) {`,
     `    __tc_wifi_ensure_init();`,
     `    if (__tc_wifi.iface == nullptr) return;`,
     `    uint32_t ssid_len = strlen(ssid);`,
@@ -178,15 +182,16 @@ export function wifiInitLines(): string[] {
     `    } else {`,
     `        __tc_wifi_conn_params.psk_length = 0U;`,
     `    }`,
-    `    __tc_wifi_conn_params.security = WIFI_SECURITY_TYPE_PSK;`,
-    `    __tc_wifi_conn_params.channel = WIFI_CHANNEL_ANY;`,
-    `    __tc_wifi_conn_params.band = WIFI_FREQ_BAND_2_4_GHZ;`,
-    `    // Stage the connection request (wifi_connect). The L4 handler sets`,
-    `    // \`connected\` once DHCP completes.`,
+    `    __tc_wifi_conn_params.security = security;`,
+    `    __tc_wifi_conn_params.channel = (channel > 0) ? static_cast<uint8_t>(channel) : WIFI_CHANNEL_ANY;`,
+    `    __tc_wifi_conn_params.band = band;`,
     `    (void)net_mgmt(NET_REQUEST_WIFI_CONNECT, __tc_wifi.iface,`,
     `                   &__tc_wifi_conn_params, sizeof(__tc_wifi_conn_params));`,
     `}`,
     ``,
+    `// joinStart(): stage the association without waiting — poll linked() or`,
+    `// await join() in an async function (the async machinery splits it into`,
+    `// this + the is_connected poll).`,
     `static void __tc_wifi_connect_start(const char* ssid, const char* password) {`,
     `    __tc_wifi_ensure_init();`,
     `    if (__tc_wifi.iface == nullptr) {`,
@@ -194,21 +199,58 @@ export function wifiInitLines(): string[] {
     `        return;`,
     `    }`,
     `    net_if_up(__tc_wifi.iface);`,
-    `    __tc_wifi_stage_creds(ssid, password);`,
+    `    __tc_wifi_stage_creds(ssid, password, WIFI_SECURITY_TYPE_PSK, 0, WIFI_FREQ_BAND_2_4_GHZ);`,
     `    __tc_wifi.connected = false;`,
     `    printk("tc-wifi: connecting to %s\\n", ssid);`,
     `}`,
     ``,
-    `// CUTTLEFISH_WIFI_CONNECT_BLOCKING_BEGIN`,
-    `static void __tc_wifi_connect(const char* ssid, const char* password, int32_t timeout_ms) {`,
-    `    __tc_wifi_connect_start(ssid, password);`,
-    `    // Block until the L4 handler signals connectivity or the deadline passes.`,
-    `    // 20ms slices let __tc_wifi_wait_slice pump the UI between polls.`,
+    `// join(): the thin station verb — associate from the construction facts,`,
+    `// apply the optional static-IPv4 / power-save facts, then bounded-wait for`,
+    `// IP connectivity. Returns whether the link came up (boolean, no exceptions).`,
+    `static bool __tc_wifi_join(const char* ssid, const char* psk,`,
+    `                           enum wifi_security_type security, int32_t channel,`,
+    `                           enum wifi_frequency_bands band, int32_t timeout_ms,`,
+    `                           bool ps_off, const char* ip_addr, const char* gateway,`,
+    `                           const char* netmask) {`,
+    `    __tc_wifi_ensure_init();`,
+    `    if (__tc_wifi.iface == nullptr) {`,
+    `        printk("tc-wifi: no WiFi iface found\\n");`,
+    `        return false;`,
+    `    }`,
+    `    net_if_up(__tc_wifi.iface);`,
+    `    __tc_wifi_stage_creds(ssid, psk, security, channel, band);`,
+    `    __tc_wifi.connected = false;`,
+    `    if (ip_addr != nullptr && gateway != nullptr && netmask != nullptr) {`,
+    `        // Static IPv4 facts: stop DHCP, configure the address manually. The`,
+    `        // addr-add raises the events conn_mgr_monitor listens for, so`,
+    `        // \`connected\` flips without a lease.`,
+    `        net_dhcpv4_stop(__tc_wifi.iface);`,
+    `        struct in_addr addr = { 0 }, gw = { 0 }, mask = { 0 };`,
+    `        if (net_addr_pton(AF_INET, ip_addr, &addr) == 0`,
+    `            && net_addr_pton(AF_INET, netmask, &mask) == 0`,
+    `            && net_addr_pton(AF_INET, gateway, &gw) == 0) {`,
+    `            (void)net_if_ipv4_addr_add(__tc_wifi.iface, &addr, NET_ADDR_MANUAL, 0);`,
+    `            // set_netmask() is __deprecated on Zephyr >= 4.3 — the`,
+    `            // by-addr form carries the prefix it belongs to.`,
+    `            (void)net_if_ipv4_set_netmask_by_addr(__tc_wifi.iface, &addr, &mask);`,
+    `            (void)net_if_ipv4_set_gw(__tc_wifi.iface, &gw);`,
+    `        } else {`,
+    `            printk("tc-wifi: bad static ipv4 facts, falling back to DHCP\\n");`,
+    `            net_dhcpv4_start(__tc_wifi.iface);`,
+    `        }`,
+    `    }`,
+    `    if (ps_off) {`,
+    `        // WiFi.PS_OFF — disable the radio's modem sleep (wifi_ps_params).`,
+    `        struct wifi_ps_params ps = {};   // value-init: first member is an enum`,
+    `        ps.enabled = WIFI_PS_DISABLED;`,
+    `        (void)net_mgmt(NET_REQUEST_WIFI_PS_CONFIG, __tc_wifi.iface, &ps, sizeof(ps));`,
+    `    }`,
+    `    printk("tc-wifi: joining %s\\n", ssid);`,
     `    int32_t waited = 0;`,
     `    while (!__tc_wifi.connected && waited < timeout_ms) { __tc_wifi_wait_slice(20); waited += 20; }`,
-    `    printk("tc-wifi: connect %s after %dms\\n", __tc_wifi.connected ? "ok" : "timeout", waited);`,
+    `    printk("tc-wifi: join %s after %dms\\n", __tc_wifi.connected ? "ok" : "timeout", waited);`,
+    `    return __tc_wifi.connected;`,
     `}`,
-    `// CUTTLEFISH_WIFI_CONNECT_BLOCKING_END`,
     ``,
     `static void __tc_wifi_disconnect(void) {`,
     `    __tc_wifi_ensure_init();`,
@@ -221,10 +263,6 @@ export function wifiInitLines(): string[] {
     ``,
     `// ── status / radio queries ───────────────────────────────────────────────`,
     `// CUTTLEFISH_WIFI_QUERY_BEGIN`,
-    `static int32_t __tc_wifi_status(void) {`,
-    `    return __tc_wifi.connected ? 3 : 0;   // 3=Connected in the HAL status enum`,
-    `}`,
-    ``,
     `static const char* __tc_wifi_local_ip(void) {`,
     `    __tc_wifi_ensure_init();`,
     `    if (__tc_wifi.iface == nullptr || !__tc_wifi.connected) return "0.0.0.0";`,
@@ -251,7 +289,7 @@ export function wifiInitLines(): string[] {
     `    struct wifi_iface_status status = { 0 };`,
     `    (void)net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, __tc_wifi.iface,`,
     `                   &status, sizeof(status));`,
-    `    // Pack the 6 MAC bytes (status.bssid) into a uint64 (HAL returns a number).`,
+    `    // Pack the 6 MAC bytes (status.bssid) into a uint64 (the HAL returns a number).`,
     `    uint64_t m = 0;`,
     `    for (int32_t b = 0; b < 6; b++) { m = (m << 8) | static_cast<uint64_t>(status.bssid[b]); }`,
     `    return m;`,
@@ -295,62 +333,12 @@ export function wifiInitLines(): string[] {
     `}`,
     `// CUTTLEFISH_WIFI_SCAN_END`,
     ``,
-    `// ── config ───────────────────────────────────────────────────────────────`,
-    `// CUTTLEFISH_WIFI_CONFIG_BEGIN`,
-    `// NOTE: wifi.set_tx_power is intentionally NOT lowered here. The Zephyr esp32`,
-    `// WiFi driver owns esp_wifi_start/esp_wifi_connect, and calling`,
-    `// esp_wifi_set_max_tx_power from this shim fights the driver for control of`,
-    `// the radio (brownout). The compile-time PHY ceiling (ESP_PHY_MAX_WIFI_TX_POWER`,
-    `// in ESP-IDF's components/esp_phy/Kconfig) is NOT sourced into Zephyr's Kconfig`,
-    `// tree, so it cannot be lowered via prj.conf either (zephyr#45580). TX power`,
-    `// stays at its default until a Zephyr-native surface exists.`,
-    `static void __tc_wifi_set_hostname(const char* name) {`,
-    `    // Best-effort: Zephyr has no net_if_set_hostname; the system hostname`,
-    `    // comes from the hostname subsystem (net_hostname.h) + CONFIG_NET_HOSTNAME.`,
-    `    // The interface name is set via net_if_set_name, which is not the same as`,
-    `    // a DHCP hostname. No-op until the hostname subsystem is wired.`,
-    `    (void)name;`,
-    `    (void)__tc_wifi;`,
-    `}`,
-    ``,
-    `// ── power save (NET_REQUEST_WIFI_PS_CONFIG) ─────────────────────────────`,
-    `// wifi.set_power_save: HAL modes are "default" (enabled) / "none" (disabled).`,
-    `// The Zephyr esp32 driver implements esp32_wifi_set_power_save, so this is a`,
-    `// real net_mgmt request — not a no-op like set_hostname above.`,
-    `static void __tc_wifi_set_power_save(const char* mode) {`,
-    `    __tc_wifi_ensure_init();`,
-    `    if (__tc_wifi.iface == nullptr) return;`,
-    `    struct wifi_ps_params ps = { 0 };`,
-    `    ps.type = WIFI_PS_PARAM_TYPE_ENABLED;`,
-    `    // HAL mode "default" → power save on; "none" → off. (The full HAL surface`,
-    `    // only exposes those two; deeper ps_mode/wakeup tuning isn't exposed.)`,
-    `    bool on = (mode != nullptr && strcmp(mode, "none") != 0);`,
-    `    ps.enabled = on ? WIFI_PS_ENABLED : WIFI_PS_DISABLED;`,
-    `    (void)net_mgmt(NET_REQUEST_WIFI_PS_CONFIG, __tc_wifi.iface,`,
-    `                   &ps, sizeof(ps));`,
-    `}`,
-    ``,
-    `// ── waits (block on the L4 connectivity flag) ───────────────────────────`,
-    `// wifi.wait_connected / wait_disconnected: poll __tc_wifi.connected (set by`,
-    `// the L4 net_mgmt handler) with a deadline. Same blocking pattern as`,
-    `// __tc_wifi_connect.`,
-    `static void __tc_wifi_wait_connected(int32_t timeout_ms) {`,
-    `    __tc_wifi_ensure_init();`,
-    `    int32_t waited = 0;`,
-    `    while (!__tc_wifi.connected && waited < timeout_ms) { __tc_wifi_wait_slice(20); waited += 20; }`,
-    `}`,
-
-    `static void __tc_wifi_wait_disconnected(void) {`,
-    `    __tc_wifi_ensure_init();`,
-    `    // No timeout in the HAL surface — block until the L4 handler clears the flag.`,
-    `    while (__tc_wifi.connected) { __tc_wifi_wait_slice(20); }`,
-    `}`,
-    ``,
     `// ── AP mode (NET_REQUEST_WIFI_AP_ENABLE / DISABLE) ──────────────────────`,
-    `// wifi.ap_start / ap_stop: bring the iface up as an AP. The esp32 driver's`,
-    `// ap_enable takes the same struct as connect (ssid/psk/channel/security).`,
-    `// hidden/maxClients/channel-after-start have no driver hook (see manifest) —`,
-    `// only ssid/password/channel at start are honored.`,
+    `// CUTTLEFISH_WIFI_CONFIG_BEGIN`,
+    `// WiFiAP.start()/stop(): bring the iface up as an AP. The esp32 driver's`,
+    `// ap_enable takes the same struct as join (ssid/psk/channel/security).`,
+    `// hidden/maxClients have no driver hook — the thin WiFiAP facts carry only`,
+    `// what the driver honors.`,
     `static struct wifi_connect_req_params __tc_wifi_ap_params;`,
     `static uint8_t __tc_wifi_ap_ssid_buf[33];`,
     `static uint8_t __tc_wifi_ap_psk_buf[64];`,
@@ -402,15 +390,21 @@ export function wifiInitLines(): string[] {
 export function lowerWifi(op: HALOpIR): { code?: string; expression?: string } | undefined {
   const o = op as any;
   switch (op.operation) {
-    // ── Connection ──
-    case 'wifi.connect':
-      return { code: `__tc_wifi_connect(${s(o.ssid)}, ${s(o.password ?? 'nullptr')}, ${s(o.timeoutMs ?? 15000)});` };
+    // ── Station ──
+    case 'wifi.join': {
+      // Token → Zephyr enum mapping (WiFi.OPEN/WPA2/WPA3/WPA2_WPA3).
+      const sec = Number(o.security ?? 1);
+      const secEnum = sec === 0 ? 'WIFI_SECURITY_TYPE_NONE'
+        : sec === 2 ? 'WIFI_SECURITY_TYPE_SAE'
+        : sec === 3 ? 'WIFI_SECURITY_TYPE_PSK_SAE'
+        : 'WIFI_SECURITY_TYPE_PSK';
+      const bandEnum = Number(o.band ?? 0) === 1 ? 'WIFI_FREQ_BAND_5_GHZ' : 'WIFI_FREQ_BAND_2_4_GHZ';
+      return { expression: `__tc_wifi_join(${s(o.ssid)}, ${o.psk != null ? s(o.psk) : 'nullptr'}, ${secEnum}, ${s(o.channel ?? 0)}, ${bandEnum}, ${s(o.timeoutMs ?? 15000)}, ${Number(o.ps ?? 0) !== 0 ? 'true' : 'false'}, ${o.ipAddr != null ? s(o.ipAddr) : 'nullptr'}, ${o.gateway != null ? s(o.gateway) : 'nullptr'}, ${o.netmask != null ? s(o.netmask) : 'nullptr'})` };
+    }
     case 'wifi.connect_start':
-      return { code: `__tc_wifi_connect_start(${s(o.ssid)}, ${s(o.password ?? 'nullptr')});` };
+      return { code: `__tc_wifi_connect_start(${s(o.ssid)}, ${o.password != null ? s(o.password) : 'nullptr'});` };
     case 'wifi.disconnect':
       return { code: `__tc_wifi_disconnect();` };
-    case 'wifi.status':
-      return { expression: `__tc_wifi_status()` };
     case 'wifi.is_connected':
       return { expression: `(__tc_wifi.connected)` };
     case 'wifi.local_ip':
@@ -422,6 +416,8 @@ export function lowerWifi(op: HALOpIR): { code?: string; expression?: string } |
     // ── Scan ──
     case 'wifi.scan':
       return { code: `__tc_wifi_scan_blocking();` };
+    // Async split of wifi.scan (synthesized by the async tier's netWaitInfo —
+    // no TS-facing method maps here). Kick without waiting; poll scan_done.
     case 'wifi.scan_start':
       return { code: `__tc_wifi_scan_start();` };
     case 'wifi.scan_done':
@@ -438,14 +434,9 @@ export function lowerWifi(op: HALOpIR): { code?: string; expression?: string } |
         : '__tc_wifi_scan_channel';
       return { expression: `${helper}(${s(o.index ?? 0)})` };
     }
-    // ── Config ──
-    case 'wifi.set_hostname':
-      return { code: `__tc_wifi_set_hostname(${s(o.name)});` };
-    case 'wifi.set_power_save':
-      // HAL modes are "default" (on) / "none" (off) — see the shim's note.
-      return { code: `__tc_wifi_set_power_save(${s(o.mode)});` };
+    // ── Events ──
     case 'wifi.on_event': {
-      // Event callbacks (wifi.on_event). 'disconnect' and 'connect' are supported.
+      // 'disconnect' and 'connect' are the supported events.
       if (o.event === 'disconnect') {
         return { code: `__tc_wifi.on_disconnect = ${s(o.handler)};` };
       }
@@ -454,11 +445,6 @@ export function lowerWifi(op: HALOpIR): { code?: string; expression?: string } |
       }
       return undefined;
     }
-    // ── Waits (block on the L4 connectivity flag) ──
-    case 'wifi.wait_connected':
-      return { code: `__tc_wifi_wait_connected(${s(o.timeoutMs ?? 15000)});` };
-    case 'wifi.wait_disconnected':
-      return { code: `__tc_wifi_wait_disconnected();` };
     // ── AP mode (esp32 driver: ap_enable/ap_disable wired; only ssid/psk/channel
     //    honored — hidden/maxClients have no driver hook). ──
     case 'wifi.ap_start':
@@ -466,11 +452,10 @@ export function lowerWifi(op: HALOpIR): { code?: string; expression?: string } |
     case 'wifi.ap_stop':
       return { code: `__tc_wifi_ap_stop();` };
     default:
-      // Out of scope (genuinely not lowered): ap_client_count/ap_ip/ap_set_*,
-      // credentials (save/connect_saved/clear), set_static_ip, set_auto_reconnect,
-      // set_tx_power. Each has no driver/Kconfig hook on Zephyr — see the manifest's
-      // per-op reasons. Return undefined so the resolver falls back and the
-      // 'unsupported' declaration is honest (the validator probes these).
+      // Out of scope (genuinely not lowered): each remaining wifi.* kind has no
+      // driver/Kconfig hook on Zephyr — see the manifest's per-op reasons.
+      // Return undefined so the resolver falls back and the 'unsupported'
+      // declaration is honest (the validator probes these).
       return undefined;
   }
 }

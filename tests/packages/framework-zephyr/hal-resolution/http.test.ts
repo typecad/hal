@@ -13,7 +13,7 @@ describe('http init shim', () => {
     expect(shim).toContain('char url[512]');
     expect(shim).toContain('enum http_method method');
     expect(shim).toContain('bool insecure');
-    expect(shim).toContain('const char* ca_cert');
+    expect(shim).toContain('const uint8_t* ca_der');   // DER since the tf-psa-crypto tree dropped PEM
     expect(shim).toContain('hdr_name');
     expect(shim).toContain('volatile bool done');
   });
@@ -73,40 +73,40 @@ describe('http init shim', () => {
 });
 
 describe('http lowering — request/response ops', () => {
-  it('reset → __tc_http_reset()', () => {
-    expect(lowerHttp({ operation: 'http.reset' } as any))
-      .toEqual({ code: '__tc_http_reset();' });
+  it('reset is folded into begin (fresh shim state per request)', () => {
+    expect(lowerHttp({ operation: 'http.begin', method: '"GET"', url: '"https://x"' } as any))
+      .toEqual({ code: '__tc_http_reset(); __tc_http_begin(HTTP_GET, "https://x");' });
   });
 
   it('begin GET → __tc_http_begin(HTTP_GET, url)', () => {
     // Zephyr's enum is HTTP_GET (no METHOD_ infix), unlike esp_http_client's
     // HTTP_METHOD_GET.
     expect(lowerHttp({ operation: 'http.begin', method: '"GET"', url: '"https://x"' } as any))
-      .toEqual({ code: '__tc_http_begin(HTTP_GET, "https://x");' });
+      .toEqual({ code: '__tc_http_reset(); __tc_http_begin(HTTP_GET, "https://x");' });
   });
 
   it('begin normalizes a bare/quoted method string to the Zephyr enum', () => {
     // The resolver may pass the verb with or without quotes; both must map.
     expect(lowerHttp({ operation: 'http.begin', method: 'GET', url: '"http://x"' } as any))
-      .toEqual({ code: '__tc_http_begin(HTTP_GET, "http://x");' });
+      .toEqual({ code: '__tc_http_reset(); __tc_http_begin(HTTP_GET, "http://x");' });
   });
 
   it('begin POST/PUT/DELETE/HEAD/PATCH → the matching HTTP_*', () => {
     expect(lowerHttp({ operation: 'http.begin', method: '"POST"', url: '"u"' } as any))
-      .toEqual({ code: '__tc_http_begin(HTTP_POST, "u");' });
+      .toEqual({ code: '__tc_http_reset(); __tc_http_begin(HTTP_POST, "u");' });
     expect(lowerHttp({ operation: 'http.begin', method: '"PUT"', url: '"u"' } as any))
-      .toEqual({ code: '__tc_http_begin(HTTP_PUT, "u");' });
+      .toEqual({ code: '__tc_http_reset(); __tc_http_begin(HTTP_PUT, "u");' });
     expect(lowerHttp({ operation: 'http.begin', method: '"DELETE"', url: '"u"' } as any))
-      .toEqual({ code: '__tc_http_begin(HTTP_DELETE, "u");' });
+      .toEqual({ code: '__tc_http_reset(); __tc_http_begin(HTTP_DELETE, "u");' });
     expect(lowerHttp({ operation: 'http.begin', method: '"HEAD"', url: '"u"' } as any))
-      .toEqual({ code: '__tc_http_begin(HTTP_HEAD, "u");' });
+      .toEqual({ code: '__tc_http_reset(); __tc_http_begin(HTTP_HEAD, "u");' });
     expect(lowerHttp({ operation: 'http.begin', method: '"PATCH"', url: '"u"' } as any))
-      .toEqual({ code: '__tc_http_begin(HTTP_PATCH, "u");' });
+      .toEqual({ code: '__tc_http_reset(); __tc_http_begin(HTTP_PATCH, "u");' });
   });
 
   it('begin with an unknown verb falls back to HTTP_GET', () => {
     expect(lowerHttp({ operation: 'http.begin', method: '"BOGUS"', url: '"u"' } as any))
-      .toEqual({ code: '__tc_http_begin(HTTP_GET, "u");' });
+      .toEqual({ code: '__tc_http_reset(); __tc_http_begin(HTTP_GET, "u");' });
   });
 
   it('set_header → shim call', () => {
@@ -132,10 +132,12 @@ describe('http lowering — request/response ops', () => {
   });
 
   it('set_insecure / set_ca_cert → shim calls', () => {
-    expect(lowerHttp({ operation: 'http.set_insecure' } as any))
+    // ca_cert PEM decodes to DER at emit time (this tree has no PEM parser).
+    expect(lowerHttp({ operation: 'http.set_insecure', insecure: true } as any))
       .toEqual({ code: '__tc_http_set_insecure();' });
-    expect(lowerHttp({ operation: 'http.set_ca_cert', pem: '"-----BEGIN CERT-----"' } as any))
-      .toEqual({ code: '__tc_http_set_ca_cert("-----BEGIN CERT-----");' });
+    const out = lowerHttp({ operation: 'http.set_ca_cert', pem: '"-----BEGIN CERTIFICATE-----\nAAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4v\nMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5\nfYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3\n-----END CERTIFICATE-----"' } as any);
+    expect(out?.code).toContain('static const uint8_t __tc_ca_der[] = { 0x00, 0x01');   // PEM decodes to DER
+    expect(out?.code).toContain('__tc_http_set_ca_cert_der(__tc_ca_der, sizeof(__tc_ca_der));');
   });
 
   it('send → expression (blocking perform)', () => {

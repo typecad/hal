@@ -2,66 +2,32 @@ import { describe, it, expect } from 'vitest';
 import { lowerI2c, i2cInitLines } from '../../../../packages/framework-zephyr/src/lowering/i2c';
 import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
 
-describe('i2c init block', () => {
-  it('emits CUTTLEFISH_I2C markers + the i2c1 device + tx/rx buffers', () => {
-    const lines = i2cInitLines(XIAO_BLE, 0).join('\n');
-    expect(lines).toContain('// CUTTLEFISH_I2C_BEGIN');
-    expect(lines).toContain('// CUTTLEFISH_I2C_END');
-    expect(lines).toContain('DEVICE_DT_GET(DT_NODELABEL(i2c1))');
-    expect(lines).toContain('__tc_i2c0_txbuf');
-    expect(lines).toContain('__tc_i2c0_rxbuf');
+// ── Surviving thin I2C surface (hal/i2c-target.ts). The Wire transaction ops
+// were removed with the legacy I2CBus/I2CDevice API; register access is
+// i2ctarget's reg_*/dev_write against the shared controller device handle.
+
+describe('thin I2C state block', () => {
+  it('emits a bare controller device handle per used instance', () => {
+    const lines = i2cInitLines(XIAO_BLE, 0).join('|');
+    expect(lines).toContain('__tc_i2c0_dev = DEVICE_DT_GET(DT_NODELABEL(i2c1))');
+    expect(lines).not.toContain('_txbuf');
   });
 });
 
-describe('i2c lowering', () => {
-  it('begin → no-op keep-alive referencing the whole controller state block', () => {
-    // Zephyr resolves the device at compile time, so begin has nothing to do —
-    // but it must (void)-reference every shim variable so a program that only
-    // calls begin() stays -Werror clean (Zephyr builds with warnings-as-errors).
-    const out = lowerI2c({ operation: 'i2c.begin', bus: 'I2C0' } as any, XIAO_BLE);
-    expect(out.code).toContain('(void)__tc_i2c0_dev');
-    expect(out.code).toContain('(void)__tc_i2c0_addr');
-    expect(out.code).toContain('(void)__tc_i2c0_txbuf');
-    expect(out.code).toContain('(void)__tc_i2c0_rxpos');
-    // Same shape for end.
-    const end = lowerI2c({ operation: 'i2c.end', bus: 'I2C0' } as any, XIAO_BLE);
-    expect(end.code).toBe(out.code);
+describe('thin i2c lowering (reg_* / dev_write)', () => {
+  it('reg_write → one i2c_reg_write_byte', () => {
+    const out = lowerI2c({ operation: 'i2c.reg_write', bus: 'I2C1', address: 0x44, hz: 0, reg: 0x30, value: 0xA2 } as any, XIAO_BLE);
+    expect(out.code).toContain('i2c_reg_write_byte(__tc_i2c1_dev');
   });
 
-  it('begin_transmission records the address + resets txlen', () => {
-    const out = lowerI2c({ operation: 'i2c.begin_transmission', bus: 'I2C0', address: 0x42 } as any, XIAO_BLE);
-    expect(out.code).toBe('__tc_i2c0_addr = static_cast<uint16_t>(66); __tc_i2c0_txlen = 0;');
+  it('construction hz applies once via guarded i2c_configure', () => {
+    const out = lowerI2c({ operation: 'i2c.reg_write', bus: 'I2C1', address: 0x44, hz: 400000, reg: 1, value: 2 } as any, XIAO_BLE);
+    expect(out.code).toContain('__tc_i2c1_spd_done');
+    expect(out.code).toContain('I2C_SPEED_SET(I2C_SPEED_FAST)');
   });
 
-  it('write appends one byte (clamped to capacity)', () => {
-    const out = lowerI2c({ operation: 'i2c.write', bus: 'I2C0', data: 0xAA } as any, XIAO_BLE);
-    expect(out.code).toContain('__tc_i2c0_txbuf[__tc_i2c0_txlen++] = static_cast<uint8_t>(170)');
-    expect(out.code).toContain('if (__tc_i2c0_txlen < 32)');
-  });
-
-  it('end_transmission flushes txbuf via i2c_write', () => {
-    const out = lowerI2c({ operation: 'i2c.end_transmission', bus: 'I2C0' } as any, XIAO_BLE);
-    expect(out.code).toBe('i2c_write(__tc_i2c0_dev, __tc_i2c0_txbuf, __tc_i2c0_txlen, __tc_i2c0_addr);');
-  });
-
-  it('request_from reads into rxbuf', () => {
-    const out = lowerI2c({ operation: 'i2c.request_from', bus: 'I2C0', address: 0x42, quantity: 4 } as any, XIAO_BLE);
-    expect(out.code).toContain('i2c_read(__tc_i2c0_dev, __tc_i2c0_rxbuf, static_cast<uint32_t>(4), static_cast<uint16_t>(66))');
-    expect(out.code).toContain('__tc_i2c0_rxlen = 4');
-  });
-
-  it('available → rxlen - rxpos (expression)', () => {
-    expect(lowerI2c({ operation: 'i2c.available', bus: 'I2C0' } as any, XIAO_BLE))
-      .toEqual({ expression: '(__tc_i2c0_rxlen - __tc_i2c0_rxpos)' });
-  });
-
-  it('read → next byte or -1 (expression)', () => {
-    expect(lowerI2c({ operation: 'i2c.read', bus: 'I2C0' } as any, XIAO_BLE))
-      .toEqual({ expression: '(__tc_i2c0_rxpos < __tc_i2c0_rxlen ? __tc_i2c0_rxbuf[__tc_i2c0_rxpos++] : -1)' });
-  });
-
-  it('recover → i2c_recover_bus', () => {
-    expect(lowerI2c({ operation: 'i2c.recover', bus: 'I2C0' } as any, XIAO_BLE))
-      .toEqual({ code: 'i2c_recover_bus(__tc_i2c0_dev);' });
+  it('dev_write literal array → one i2c_write', () => {
+    const out = lowerI2c({ operation: 'i2c.dev_write', bus: 'I2C1', address: 0x44, hz: 0, bytes: [0x2C, 0x06] } as any, XIAO_BLE);
+    expect(out.code).toContain('i2c_write(__tc_i2c1_dev');
   });
 });

@@ -16,7 +16,7 @@
 // that works identically on Windows (backslash) and POSIX (forward slash)
 // without slash normalization. The trade-off is that two files with the same
 // basename in one project share breakpoints — acceptable for typical
-// single-sketch Arduino projects.
+// single-program Zephyr projects.
 // ---------------------------------------------------------------------------
 
 import * as vscode from 'vscode';

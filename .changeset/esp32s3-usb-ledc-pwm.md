@@ -1,0 +1,11 @@
+---
+'@typecad/framework-zephyr': minor
+'@typecad/board-esp32s3': minor
+'@typecad/mcu-esp32s3': minor
+---
+
+ESP32-S3 Zephyr: native USB CDC and LEDC PWM were data gaps, not missing machinery — both now work on `esp32s3_devkitc` targets (verified by a full `west build` against Zephyr 4.4.2 / SDK 1.0.1: devicetree, kernel, and app compile and link).
+
+- **USB CDC serial (`USB0`)**: the chip descriptor + board package now declare `usb` (`zephyr_udc0`, one CDC-ACM instance, PID 0x0006), and the MCU package exports the `USB0` peripheral instance (same shape as the STM32F411 package). The board DTS already shipped `zephyr_udc0: &usb_otg { status = "okay"; }` and the DWC2 UDC driver is DT-default-on, so declaring the field is the whole fix — `usb.*` ops stop failing the "board does not expose USB" gate, and `console.output: 'usb'` now routes `console.log` through the S3's USB-C connector (console stays on uart0/the on-board bridge otherwise).
+- **PWM + tone (LEDC)**: new `pwm.matrix` descriptor shape for any-pin/any-channel controllers. ESP32 LEDC can't be a static spec list (two arbitrary pins would collide on a statically assigned channel), so channels are assigned at build time to the pins the program actually drives: the overlay generator emits the `LEDC_CH<ch>_GPIO<pin>` pinctrl pinmux group, the `channelN@N` child nodes (`reg` + `timer`, round-robined over the 4 LEDC timers), and the pwm-leds consumer + `tc-pwm<pin>` alias the lowering addresses. `pwm.write`/`tone` on any of 29 PWM-safe pads (excludes the boot strap, USB D±, flash/PSRAM, octal-PSRAM, and console pads); driving more than 8 pins is a clear build error; the false "lowers to a no-op" diagnostic is gone. `tone` additionally resolves its own pin instead of the board's first PWM spec, and `zephyr.pwm.matrix.{controller,channelCount,pins}` board-package keys resolve through the same path as the hardcoded chip registry.
+- **Overlay**: pwm-leds emission now carries `#include <zephyr/dt-bindings/pwm/pwm.h>` — the `PWM_POLARITY_NORMAL` cell macro is only in the DTS include chain on boards that already use PWM bindings (STM32 yes, ESP32-S3 no), and without the include dtc rejects the cell ("expected number or parenthesized expression").

@@ -72,17 +72,40 @@ export function lowerHwtimer(
   }
 
   switch (op.operation) {
-    case 'hwtimer.set_frequency':
-      return { code: `${hzVar(instance)} = ${o.hz};` };
-    case 'hwtimer.on_overflow':
+    default:
+      throw new Error(
+        `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +
+          `Open an issue or use rawCpp() to emit it manually.`,
+      );
+  }
+}
+
+export function lowerCounter(
+  op: HALOpIR,
+  chip: ZephyrChipDescriptor,
+): { code?: string; expression?: string } {
+  const o = op as any;
+  const controllers = chip.hwtimer?.controllers ?? [];
+
+  if (controllers.length === 0) {
+    return { code: `/* ${op.operation}: no counter device on ${chip.id} */` };
+  }
+
+  const instance = typeof o.instance === 'number' ? o.instance : parseInt(String(o.instance), 10);
+  if (isNaN(instance) || instance < 0 || instance >= controllers.length) {
+    return { code: `/* counter instance ${o.instance}: out of range on ${chip.id} (${controllers.length} declared) */` };
+  }
+
+  switch (op.operation) {
+    case 'counter.on_alarm':
       return { code: `${cbVar(instance)} = (${o.handler});` };
-    case 'hwtimer.start':
-      // Arm the top value (counter_freq / desired_hz) + the overflow callback,
-      // then start the counter. Doing both here handles any call order — the
-      // HAL typical sequence (setFrequency → onOverflow → start) and permutations.
+    case 'counter.start': {
+      // Apply the construction hz as the top value, arm the alarm callback,
+      // start. hz rides the op, so no ordering constraint exists.
       return {
         code: [
           `{`,
+          `  ${hzVar(instance)} = ${o.hz};`,
           `  uint32_t __f = counter_get_frequency(${devVar(instance)});`,
           `  uint32_t __top = __f ? (__f / ${hzVar(instance)}) : 0U;`,
           `  if (__top > 0U) { (void)counter_set_top_value(${devVar(instance)}, __top, ${cbVar(instance)}, NULL); }`,
@@ -90,7 +113,8 @@ export function lowerHwtimer(
           `}`,
         ].join(' '),
       };
-    case 'hwtimer.stop':
+    }
+    case 'counter.stop':
       return { code: `(void)counter_stop(${devVar(instance)});` };
     default:
       throw new Error(

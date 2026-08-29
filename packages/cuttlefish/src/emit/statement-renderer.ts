@@ -356,7 +356,7 @@ export class StatementRenderer {
         // `return nullptr;` / `return CUTTLEFISH_UNDEFINED;` — those are
         // integer/pointer literals that won't convert to the struct type.
         // Lower to a value-initialized `return {};` instead. The `T | null`
-        // union already strips to `T` (SUPPORT_MATRIX §1.8), so the function
+        // union already strips to `T`, so the function
         // signature really does return the struct. Demo #14 Finding A.
         const retType = statement.functionReturnType;
         if (retType && isStructReturnType(retType, this.strategy) && isNullishReturnValue(statement.value)) {
@@ -482,29 +482,46 @@ export class StatementRenderer {
       }
 
       if (statement.kind === "block") {
-        return `{`;
+        // Blocks reach the single-line renderer as async state-machine segment
+        // pre-statements (chained HAL calls lower to a block of hal-ops). The
+        // former bare `{` dropped the block body AND emitted an unbalanced
+        // brace. Mirrors the line-appender's block emission: empty body →
+        // no-op, otherwise brace + rendered statements.
+        const bodyLines = statement.body
+          .map((nested) => this.render(nested, forHeader, calleeTransformer, knownVariableTypes))
+          .filter((line) => line.length > 0);
+        if (bodyLines.length === 0) {
+          return "";
+        }
+        return ["{", ...bodyLines, "}"].join("\n");
       }
 
       if (statement.kind === "hal-op") {
         const resolved = routeHALOp(statement.operation, this.strategy);
-        if (resolved?.code) {
-          // Strip leading 'return ' from raw hal-op code when emitted as a
-          // standalone statement.  The HAL definition includes `return` because
-          // the TypeScript stub returns a value, but the C++ statement context
-          // (e.g. inside void setup()) does not expect it.
-          let code = resolved.code;
-          if (code.startsWith('return ')) code = code.slice('return '.length);
-          // A raw hal-op statement (e.g. `Async.sleep(10)` →
-          // `__cuttlefish_async_sleep(10)`) is a complete C++ statement and
-          // needs a terminating semicolon, unless it already ends with one or
-          // with `}` (a compound block).
-          if (!forHeader && !code.endsWith(';') && !code.endsWith('}')) {
-            code = code + ';';
+        if (resolved) {
+          // `{ code: '' }` is a registered op's deliberate elision (sentinel
+          // facts — an absent request body, insecure=false) — emit nothing and
+          // do NOT fall through to the unregistered-op warning.
+          if (resolved.code) {
+            // Strip leading 'return ' from raw hal-op code when emitted as a
+            // standalone statement.  The HAL definition includes `return` because
+            // the TypeScript stub returns a value, but the C++ statement context
+            // (e.g. inside void setup()) does not expect it.
+            let code = resolved.code;
+            if (code.startsWith('return ')) code = code.slice('return '.length);
+            // A raw hal-op statement (e.g. `Async.sleep(10)` →
+            // `__cuttlefish_async_sleep(10)`) is a complete C++ statement and
+            // needs a terminating semicolon, unless it already ends with one or
+            // with `}` (a compound block).
+            if (!forHeader && !code.endsWith(';') && !code.endsWith('}')) {
+              code = code + ';';
+            }
+            return code;
           }
-          return code;
-        }
-        if (resolved?.expression) {
-          return forHeader ? resolved.expression : `${resolved.expression};`;
+          if (resolved.expression) {
+            return forHeader ? resolved.expression : `${resolved.expression};`;
+          }
+          return "";
         }
         // Unregistered HAL op: surface as a warning so the user sees it, but
         // keep HAL as an extensibility point. The bare comment is retained as
@@ -619,6 +636,11 @@ export class StatementRenderer {
       const code = resolved?.code ?? (resolved?.expression ? `${resolved.expression};` : undefined);
       if (code) {
         return forHeader ? code.replace(/;$/, "") : code;
+      }
+      // A resolved op with no code/expression is a deliberate elision
+      // (sentinel facts) — emit nothing, no placeholder comment.
+      if (resolved) {
+        return "";
       }
       return `/* unhandled awaited hal-op: ${statement.args[0].operation.operation} */`;
     }
@@ -921,7 +943,7 @@ export class StatementRenderer {
           ? `${arrayType} ${safeSpreadArrName}[] = { ${initializerText} }`
           : `${arrayType} ${safeSpreadArrName}[] = { ${initializerText} };`;
       }
-      // Enum ↔ integral storage boundary (SUPPORT_MATRIX §1.7). TS lets an
+      // Enum ↔ integral storage boundary. TS lets an
       // enum and a number flow into each other freely (enums ARE numbers at
       // runtime), but the lowered C++ `enum class` has NO implicit conversion
       // in EITHER direction: `const n: int = Color.Red` AND

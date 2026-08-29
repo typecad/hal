@@ -28,6 +28,7 @@ import { setUIHook, requireUIHook, hasUIHook } from "./ui-hook.js";
 import { loadUIEngine } from "./ui/ui-bridge.js";
 import { hasSafetyHook, requireSafetyHook } from "./safety-hook.js";
 import { loadSafetyEngine } from "./safety/safety-bridge.js";
+import { isSafetyImportSpecifier } from "./safety/specifiers.js";
 import { setDisplayProfile, resetDisplayProfile, getDisplayProfile } from "./stores/display-profile-store.js";
 import { setThemeCss, resetThemeCss, setThemeClass } from "./stores/theme-store.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
@@ -101,7 +102,7 @@ function loadExpectPreprocessor(): ExpectPreprocessor | undefined {
 function cleanOutput(_entryDir: string, outDir: string): void {
   // The out dir is NOT wiped: writeText skips writing when content is
   // identical, so keeping it lets downstream build tools (idf.py/ninja,
-  // arduino-cli) reuse their build caches. Stale generated SOURCES are handled
+  // west) reuse their build caches. Stale generated SOURCES are handled
   // precisely instead — after emission, sweepStaleGeneratedSources() removes
   // compiled-source files in the out dir that this run did not write (e.g. a
   // main.cpp left behind by the old emit naming next to the current src.cpp;
@@ -112,7 +113,7 @@ function cleanOutput(_entryDir: string, outDir: string): void {
   resetWrittenFiles();
 }
 
-const GENERATED_SOURCE_EXTENSIONS = [".cpp", ".cc", ".c", ".h", ".ino"];
+const GENERATED_SOURCE_EXTENSIONS = [".cpp", ".cc", ".c", ".h"];
 
 /**
  * Remove stale generated source files from the out dir: compiled-source files
@@ -155,13 +156,13 @@ function sweepStaleGeneratedSources(outDir: string): void {
 
 
 /**
- * True iff the program imports `@typecad/safety` anywhere. The safety
- * transform pass uses this as its fast no-op guard — when no file imports
- * safety, the pass returns the program unchanged.
+ * True iff the program imports the safety authoring surface anywhere. The
+ * safety transform pass uses this as its fast no-op guard — when no file
+ * imports safety, the pass returns the program unchanged.
  */
 function entryImportsSafety(program: ProgramIR): boolean {
   for (const imp of program.imports) {
-    if (imp.moduleSpecifier === "@typecad/safety") return true;
+    if (isSafetyImportSpecifier(imp.moduleSpecifier)) return true;
   }
   return false;
 }
@@ -318,7 +319,7 @@ function throwIfFatalDiagnostics(entries: LocatedDiagnostic[]): void {
  */
 function loadPlatformStrategy(
   frameworkPackage: string | undefined,
-  _boardPackage: string | undefined,
+  _boardTarget: string | undefined,
   fromDir: string,
   debug?: boolean,
 ): PlatformStrategy | undefined {
@@ -381,7 +382,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   const entryFile = path.resolve(options.inputFile);
   const entryDir = path.dirname(entryFile);
   const sourceDir = entryDir;
-  const sketchBaseName = path.basename(entryFile).replace(/\.[^.]+$/, "");
+  const entryBaseName = path.basename(entryFile).replace(/\.[^.]+$/, "");
   const outBaseDir = options.outDir ?? sourceDir;
 
   profiler.endTimer("setup:caches");
@@ -390,7 +391,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   // Load platform strategy from framework or board package, or use target-based resolution
   const boardStrategy = loadPlatformStrategy(
     options.frameworkPackage,
-    options.boardPackage,
+    options.boardTarget,
     entryDir,
     options.debug,
   );
@@ -409,7 +410,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   if (configDisplay) {
     const { resolveDisplayProfile } = await import("./api/shared/display-profile.js");
     // Build the named-profile registry. Prefer the strategy's hook (per-framework
-    // canonical profiles — Arduino returns its BUILT_IN_PROFILES, Zephyr returns
+    // canonical profiles — the framework returns its BUILT_IN_PROFILES
     // its DT-binding profiles). Fall back to the legacy dynamic import of the
     // framework's displays/ili9341-spi module when the strategy provides none.
     // The registry maps a config `profile` name (e.g. "st7796-zephyr") to its
@@ -439,7 +440,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
   }
 
-  const outDir = path.join(outBaseDir, strategy.outputSubdirectory(sketchBaseName));
+  const outDir = path.join(outBaseDir, strategy.outputSubdirectory(entryBaseName));
 
   // Start fresh: clean the output directory. (Incremental builds are disabled —
   // see incremental-cache.ts — so we always transpile the full graph.)
@@ -458,7 +459,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
   })();
   resetCuttlefishLibraries();
-  const graphResult = await collectTranspileGraph(entryFile, options.boardPackage, imageDecodeMax);
+  const graphResult = await collectTranspileGraph(entryFile, options.boardTarget, imageDecodeMax);
   profiler.endTimer("graph:collect");
 
   // Cuttlefish library packages registered during the graph walk — validate
@@ -477,7 +478,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   let typeCheckProgram: ts.Program | undefined;
   if (options.skipTypeCheck !== true && transpileFiles.length > 0) {
     profiler.startTimer("typecheck:full");
-    let typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage, entryFile);
+    let typeCheckResult = typeCheckFiles(transpileFiles, options.boardTarget, entryFile);
 
     // If type-checking failed, try to auto-generate missing .d.ts files from C++ sources
     if (!typeCheckResult.success) {
@@ -488,7 +489,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
       // If we generated any declaration files, retry type-checking
       if (generatedDecls.length > 0) {
         profiler.startTimer("typecheck:retry");
-        typeCheckResult = typeCheckFiles(transpileFiles, options.boardPackage, entryFile);
+        typeCheckResult = typeCheckFiles(transpileFiles, options.boardTarget, entryFile);
         profiler.endTimer("typecheck:retry");
       }
     }
@@ -738,7 +739,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     }
 
     profiler.startTimer(`ir:build-ir:${fileBasename}`);
-    const programIR = buildProgramIR(filePath, sourceText, options.boardPackage, prebuiltClassMap);
+    const programIR = buildProgramIR(filePath, sourceText, options.boardTarget, prebuiltClassMap);
     profiler.endTimer(`ir:build-ir:${fileBasename}`);
 
     const npmPackage = npmPackages.get(filePath);
@@ -802,7 +803,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   for (const { filePath, programIR } of rawIRArray) {
     for (const imp of programIR.imports) {
       // Resolve the import to find which file it comes from
-      const resolved = resolveImport(filePath, imp.moduleSpecifier, options.boardPackage);
+      const resolved = resolveImport(filePath, imp.moduleSpecifier, options.boardTarget);
       if (!resolved) continue;
       const targetFile = resolved.sourcePath;
       // Only track imports from files in our transpile graph
@@ -1038,10 +1039,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   profiler.startTimer("post:native-modules");
   const nativeModuleOutputs: string[] = [];
   for (const [moduleSpecifier, nativeModule] of graphResult.nativeModules) {
-    // Skip copying — Arduino's library system provides both .h and .cpp.
-    // Copying either causes conflicts: the .cpp merges into the .ino (duplicate
-    // definitions), and the .h shadows the library's own header (link failures).
-    // The gen-decls .d.ts files are sufficient for TypeScript type-checking.
+    // Skip copying — framework libraries provide both .h and .cpp.
+    // Copying either causes conflicts: the .cpp merges into the entry source
+    // (duplicate definitions), and the .h shadows the library's own header
+    // (link failures). The gen-decls .d.ts files are sufficient for TS
+    // type-checking.
     info(`Native module (library-managed): ${moduleSpecifier}`);
   }
   profiler.endTimer("post:native-modules");
@@ -1081,7 +1083,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
         asyncTaskNames: entryOutputs.asyncTaskNames ?? [],
         usesTimers: entryOutputs.usesTimers ?? false,
         target: options.target,
-        boardPackage: options.boardPackage,
+        boardTarget: options.boardTarget,
         frameworkPackage: options.frameworkPackage,
         outDir,
         outputFile: entryOutputs.sourcePath,
@@ -1132,7 +1134,7 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
 
   // ── Cuttlefish library packages: shims + libraries.json sidecar ─────────
   // Shims are written next to the emitted sources (the framework scaffold's
-  // CMake/sketch regen compiles them); the sidecar records the used
+  // CMake/program regen compiles them); the sidecar records the used
   // libraries' build contributions (Kconfig lines, overlay fragments) for
   // the framework toolchain — the board-constants.json convention.
   try {

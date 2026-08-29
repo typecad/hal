@@ -3,7 +3,8 @@
 //
 // Validates that try/catch and throw statements are not used on architectures
 // that do not support C++ exceptions. The platform strategy determines which
-// architectures have exceptions disabled (e.g. AVR-GCC with -fno-exceptions).
+// architectures have exceptions disabled (e.g. Zephyr with
+// CONFIG_CPP_EXCEPTIONS=n).
 // ---------------------------------------------------------------------------
 
 import type { Diagnostic } from '../types.js';
@@ -54,7 +55,7 @@ export function validateTryCatch(
         severity: 'error',
         code: 'try-catch-unsupported',
         message: `try/catch is not supported on ${arch.toUpperCase()} targets. ` +
-                 `AVR-GCC disables C++ exceptions (-fno-exceptions) and the generated ` +
+                 `C++ exceptions are disabled (-fno-exceptions) on this target and the generated ` +
                  `code will not compile. Use return-code error checking instead.`,
         hint: `function readSensor(): number | null {\n  const data = sensor.read();\n  if (!data) return null;  // error path\n  return data.value;       // success path\n}`,
         line: (stmt as any).sourceSpan?.startLine,
@@ -74,7 +75,7 @@ export function validateTryCatch(
         severity: 'error',
         code: 'try-catch-unsupported',
         message: `throw is not supported on ${arch.toUpperCase()} targets. ` +
-                 `AVR-GCC disables C++ exceptions (-fno-exceptions). ` +
+                 `C++ exceptions are disabled (-fno-exceptions) on this target. ` +
                  `Use return codes or error flags instead.`,
         hint: `return null;  // or return an error code`,
         line: (stmt as any).sourceSpan?.startLine,

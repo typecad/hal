@@ -11,7 +11,7 @@ import { SimDigitalPin } from './digital-pin-sim.js';
  */
 export class SimPWMPin extends SimDigitalPin implements PWMPin {
   private _pwmPercent: number = 0;
-  private _pwmFrequency: number = 490; // Default Arduino PWM frequency
+  private _pwmFrequency: number = 490; // Default PWM frequency (Hz)
   private _pwmResolution: number = 8; // Default 8-bit
   private _attached: boolean = false;
 

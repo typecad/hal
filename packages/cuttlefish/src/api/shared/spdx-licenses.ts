@@ -6,7 +6,7 @@
 // classification) and the file-based license resolver (LICENSE file + source
 // header comments + an injected manifest reader) live here so every framework
 // package can reuse them. Each framework supplies only its own dependency
-// enumeration (arduino-cli lib list, west list, …) and a manifest reader, then
+// enumeration (package-manager listings, west list, …) and a manifest reader, then
 // calls resolveLibraryLicense.
 //
 // Nothing here imports a framework package or shells out to a toolchain: all
@@ -29,8 +29,8 @@ export type CopyleftRisk =
 /**
  * Where a license declaration was found.
  *
- * `"library.properties"` is the Arduino library-manifest form (kept verbatim
- * for Arduino parity); `"manifest"` is the framework-neutral form for any
+ * `"library.properties"` is the Arduino-ecosystem library-manifest form (kept
+ * verbatim for packages that carry one); `"manifest"` is the framework-neutral form for any
  * other manifest reader a framework supplies (e.g. a west module.yml).
  */
 export type LicenseSource =
@@ -56,9 +56,10 @@ export interface LibraryLicenseEntry {
 }
 
 /**
- * Neutral dependency shape every framework adapts its enumeration to. Arduino
- * maps `{ name, version, install_dir }` → `{ name, version, installDir }`;
- * Zephyr maps a west-listed project (`{ name, abspath }`) the same way.
+ * Neutral dependency shape every framework adapts its enumeration to.
+ * Package-manager listings map `{ name, version, install_dir }` →
+ * `{ name, version, installDir }`; Zephyr maps a west-listed project
+ * (`{ name, abspath }`) the same way.
  */
 export interface DiscoveredDependency {
   name: string;
@@ -426,15 +427,16 @@ export interface ResolveLicenseOptions {
   subdirs?: readonly string[];
   /**
    * Read a manifest file's text for a license field. Given the install dir and
-   * the readFile seam, return the raw license value (or undefined). Arduino
-   * wires this to read `library.properties` `license=`. Omit to skip the
-   * manifest step (e.g. a framework whose manifest carries no license field).
+   * the readFile seam, return the raw license value (or undefined). A
+   * library.properties-style adapter wires this to read its `license=` field.
+   * Omit to skip the manifest step (e.g. a framework whose manifest carries
+   * no license field).
    */
   readManifestLicense?: (installDir: string, readFile: ReadFile) => string | undefined;
   /**
    * LicenseSource label attached when the license is found via
-   * `readManifestLicense`. Defaults to `"manifest"`; Arduino passes
-   * `"library.properties"` for parity with its existing output.
+   * `readManifestLicense`. Defaults to `"manifest"`; a library.properties
+   * adapter passes `"library.properties"` for parity with its existing output.
    */
   manifestSourceLabel?: LicenseSource;
 }

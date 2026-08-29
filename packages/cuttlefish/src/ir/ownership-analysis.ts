@@ -1137,7 +1137,7 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
     // Promote `let` bindings that are never reassigned (in this scope or any
     // other) to `const` in the emitted C++. The transpiler's whole-program
     // reassignment analysis proves the binding is never written after init —
-    // information avr-gcc cannot recover across translation units. Emitting
+    // information the compiler cannot recover across translation units. Emitting
     // `const` lets the compiler place the value in flash/ROM and enables
     // constant folding. The inverse demotion (const→let when a member is
     // mutated) already mutates `.storage` the same way (see above), so the

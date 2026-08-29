@@ -256,10 +256,15 @@ export function tryResolveHALExpression(
     if (result) {
       // Prefer hal-expr for semantic HAL operations
       if (result.halOps.length > 0) {
-        // Use the last halOp as the expression; preceding ones are side effects
+        // Use the last halOp as the expression; PRECEDING ones are its
+        // prefixOps — a method body's leading side effects (bus transaction
+        // begin/write/end, a pin configure) that must still run. The renderer
+        // wraps them with the value in a statement-expression. (They were
+        // historically dropped here — the "dead keypress" bug class.)
         const lastOp = result.halOps[result.halOps.length - 1];
+        const prefixOps = result.halOps.slice(0, -1);
         return {
-          ir: { kind: "hal-expr", operation: lastOp },
+          ir: { kind: "hal-expr", operation: lastOp, ...(prefixOps.length > 0 ? { prefixOps } : {}) },
           sideEffects: result.emitLines,
         };
       }
@@ -299,8 +304,9 @@ export function tryResolveHALExpression(
     if (nsResult) {
       if (nsResult.halOps.length > 0) {
         const lastOp = nsResult.halOps[nsResult.halOps.length - 1];
+        const prefixOps = nsResult.halOps.slice(0, -1);
         return {
-          ir: { kind: "hal-expr", operation: lastOp },
+          ir: { kind: "hal-expr", operation: lastOp, ...(prefixOps.length > 0 ? { prefixOps } : {}) },
           sideEffects: nsResult.emitLines,
         };
       }

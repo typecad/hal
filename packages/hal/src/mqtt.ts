@@ -1,26 +1,44 @@
+// ---------------------------------------------------------------------------
+// Mqtt — the thin pub/sub client
+//
+// The broker URI and client id are CONSTRUCTION facts; the verbs map onto
+// the Zephyr MQTT client (mqtt_connect / mqtt_publish / mqtt_subscribe,
+// with a poll thread feeding mqtt_input/mqtt_live):
+//
+//   connect()     → establish the broker session (poll linked() after —
+//                   the Zephyr client connects in its poll thread)
+//   onMessage(cb) → handler for every received PUBLISH on a subscribed
+//                   topic — receives (topic, payload)
+//   subscribe(t)  → subscribe to a topic filter ("sensors/#")
+//   publish(t, s) → publish a message
+//   linked()      → the broker session is up
+//   close()       → disconnect and free the client
+// ----------------------------------------------------------------------------
+
 import { callback } from './callback.js';
+import {
+  mqttConnect, mqttOnMessage, mqttSubscribe, mqttPublish, mqttConnected, mqttDisconnect,
+} from './emit.js';
 
-/**
- * MqttClass — MQTT 3.1.1 pub/sub client (ESP-IDF esp_mqtt).
- *
- * Lowered to native MQTT HAL ops (mqtt.*): ESP-IDF's esp_mqtt_client_* API.
- * Covers the common IoT pub/sub path: connect to a broker, publish, subscribe
- * with an onMessage callback, and disconnect. The runtime shim owns the event
- * loop translation (ESP-IDF's MQTT event handler → the user's TS callback).
- *
- * Requires a network connection (WiFi) before connect().
- */
-export class MqttClass {
-  static readonly __instance_name = "MQTT";
+export class Mqtt {
+  private readonly _uri: string;
+  private readonly _clientId: string;
 
-  /** Connect to a broker URI (e.g. "mqtt://broker.local" or "mqtts://..."). */
-  connect(brokerUri: string, clientId: string): boolean {
-    mqttConnect(brokerUri, clientId);
-    return true;
+  /** Construct the client for a broker ("mqtt://broker.local" or
+   *  "mqtts://..." for TLS). */
+  constructor(uri: string, opts: { clientId: string }) {
+    this._uri = uri;
+    this._clientId = opts.clientId;
   }
 
-  /** Set a handler invoked for every received PUBLISH on a subscribed topic.
-   *  The handler receives (topic, payload). */
+  /** Connect to the broker. Requires a network connection (WiFi) first.
+   *  The Zephyr client completes the session in its poll thread — poll
+   *  linked() afterwards. */
+  connect(): void {
+    mqttConnect(this._uri, this._clientId);
+  }
+
+  /** Handler invoked for every received PUBLISH on a subscribed topic. */
   onMessage(handler: (topic: string, payload: string) => void): void {
     mqttOnMessage(callback(handler));
   }
@@ -35,23 +53,13 @@ export class MqttClass {
     mqttPublish(topic, data);
   }
 
-  /** True if the client is currently connected to the broker. */
-  connected(): boolean {
+  /** True while the broker session is up. */
+  linked(): boolean {
     return mqttConnected();
   }
 
   /** Disconnect from the broker and free the client. */
-  disconnect(): void {
+  close(): void {
     mqttDisconnect();
   }
 }
-
-export const MQTT = new MqttClass();
-
-// ── Semantic primitives (resolved to mqtt.* HAL ops by the transpiler) ──
-export function mqttConnect(brokerUri: string, clientId: string): void {}
-export function mqttOnMessage(handler: string): void {}
-export function mqttSubscribe(topic: string): void {}
-export function mqttPublish(topic: string, data: string): void {}
-export function mqttConnected(): boolean { return false; }
-export function mqttDisconnect(): void {}

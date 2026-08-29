@@ -25,8 +25,8 @@ import { z } from 'zod';
 // validated by the manifest validator like any core category. A framework that
 // does not lower an extended category simply omits it.
 const HAL_CATEGORIES = [
-  'gpio', 'pwm', 'adc', 'dac', 'interrupts', 'tone', 'timing', 'power',
-  'i2c', 'spi', 'uart', 'pulse', 'shift', 'board', 'wdt', 'wifi', 'http',
+  'gpio', 'pwm', 'adc', 'dac', 'interrupts', 'timing', 'power',
+  'i2c', 'spi', 'uart', 'board', 'wdt', 'wifi', 'http',
   'mqtt', 'display',
 ] as const;
 
@@ -146,7 +146,7 @@ const StdLibSupportSchema = z.object({
 
 const TypeEmissionSchema = z.object({
   normalizeCppType: z.boolean(),
-  mathHeader: z.enum(['none', '<math.h>', '<Arduino.h>']),
+  mathHeader: z.enum(['none', '<math.h>', '<Arduino.h>', '<cmath>']),
   needsStdString: z.boolean(),
   needsStdVector: z.boolean(),
   needsIostream: z.boolean(),

@@ -50,7 +50,6 @@ export type {
   InterruptCallback,
   ISimI2CDevice,
   ISimSPIDevice,
-  SimBoardType,
   SimBoardConfig,
 } from './types.js';
 

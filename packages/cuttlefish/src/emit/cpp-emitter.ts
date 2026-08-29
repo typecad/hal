@@ -5,7 +5,7 @@ import { buildEmitterContext } from "./emitters/setup.js";
 import type { EmitterOptions } from "./emitters/emitter-context.js";
 export { type EmitterOptions } from "./emitters/emitter-context.js";
 
-import { emitPreamble, emitAsyncTaskClasses, finalizeOutput } from "./emitters/output-finalizer.js";
+import { emitPreamble, emitAsyncTaskClasses, emitAsyncMethodTasks, finalizeOutput } from "./emitters/output-finalizer.js";
 import { runTopLevelPreprocessing } from "./emitters/top-level-prep.js";
 import { synthesizeEntrypoints } from "./emitters/entrypoint-synthesizer.js";
 import { emitTypeDeclarations } from "./emitters/type-decl-emitter.js";
@@ -57,6 +57,10 @@ export function emitCpp(program: ProgramIR, options: EmitterOptions): GeneratedO
 
   // 7. Emit classes
   emitClasses(ctx);
+
+  // 7.5. Async-method tasks — after the owning classes (segments dereference
+  // _owner->field on a complete type), before functions (loop pump + starters).
+  emitAsyncMethodTasks(ctx);
 
   // 8. Emit post-class declarations (runtime vars, promoted vars, object literal structs)
   emitPostClassDeclarations(ctx);

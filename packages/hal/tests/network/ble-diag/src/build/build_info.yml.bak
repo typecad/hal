@@ -1,0 +1,61 @@
+cmake:
+  application:
+    configuration-dir: 'C:/typecad/typecode/packages/hal/tests/network/ble-diag/src'
+    source-dir: 'C:/typecad/typecode/packages/hal/tests/network/ble-diag/src'
+  board:
+    name: 'esp32s3_devkitc'
+    path:
+     - 'C:/Users/justi/zephyrproject/zephyr/boards/espressif/esp32s3_devkitc'
+    qualifiers: 'esp32s3/procpu'
+    revision: ''
+  devicetree:
+    bindings-dirs:
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/bindings'
+    files:
+     - 'C:/Users/justi/zephyrproject/zephyr/boards/espressif/esp32s3_devkitc/esp32s3_devkitc_procpu.dts'
+     - 'C:/typecad/typecode/packages/hal/tests/network/ble-diag/src/boards/esp32s3_devkitc.overlay'
+    include-dirs:
+     - 'C:/Users/justi/zephyrproject/modules/hal/ambiq/dts'
+     - 'C:/Users/justi/zephyrproject/modules/hal/atmel/include'
+     - 'C:/Users/justi/zephyrproject/modules/hal/bouffalolab/include'
+     - 'C:/Users/justi/zephyrproject/modules/hal/bouffalolab/include/zephyr'
+     - 'C:/Users/justi/zephyrproject/modules/hal/gigadevice/include'
+     - 'C:/Users/justi/zephyrproject/modules/hal/microchip/include'
+     - 'C:/Users/justi/zephyrproject/modules/hal/microchip/dts'
+     - 'C:/Users/justi/zephyrproject/modules/hal/nuvoton/dts'
+     - 'C:/Users/justi/zephyrproject/modules/hal/nxp/dts'
+     - 'C:/Users/justi/zephyrproject/modules/hal/stm32/dts'
+     - 'C:/Users/justi/zephyrproject/modules/hal/ti/dts'
+     - 'C:/Users/justi/zephyrproject/zephyr/include'
+     - 'C:/Users/justi/zephyrproject/zephyr/include/zephyr'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/common'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/vendor'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/rx'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/x86'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/xtensa'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/sparc'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/riscv'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/posix'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/arm64'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/arm'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts/arc'
+     - 'C:/Users/justi/zephyrproject/zephyr/dts'
+    user-files:
+     - 'C:/typecad/typecode/packages/hal/tests/network/ble-diag/src/boards/esp32s3_devkitc.overlay'
+  kconfig:
+    files:
+     - 'C:/Users/justi/zephyrproject/zephyr/boards/espressif/esp32s3_devkitc/esp32s3_devkitc_procpu_defconfig'
+     - 'C:/typecad/typecode/packages/hal/tests/network/ble-diag/src/prj.conf'
+    user-files:
+     - 'C:/typecad/typecode/packages/hal/tests/network/ble-diag/src/prj.conf'
+  toolchain:
+    name: 'zephyr'
+    path: 'C:/Users/justi/micromamba/zephyr-sdk/zephyr-sdk-1.0.1'
+  zephyr:
+    version: '4.4.2'
+    zephyr-base: 'C:/Users/justi/zephyrproject/zephyr'
+version: '0.1.0'
+west:
+  command: 'C:\Users\justi\micromamba\envs\zephyr\Scripts\west build -b esp32s3_devkitc/esp32s3/procpu -d C:\typecad\typecode\packages\hal\tests\network\ble-diag\src\build C:\typecad\typecode\packages\hal\tests\network\ble-diag\src -- -DDTC_OVERLAY_FILE=C:/typecad/typecode/packages/hal/tests/network/ble-diag/src/boards/esp32s3_devkitc.overlay'
+  topdir: 'C:\Users\justi\zephyrproject'
+  version: '1.5.0'

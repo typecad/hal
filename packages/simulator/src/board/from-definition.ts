@@ -9,7 +9,7 @@ import type { SimBoard } from './board-sim.js';
 /**
  * Build a simulated board from a board package's `BoardDefinition`.
  *
- * Every `@typecad/board-*` package exports a `BoardDefinition` whose `pins.all`
+ * A generated board manifest (.cuttlefish/board.json) carries `pins.all`
  * entries carry real framework pin numbers and per-pin capability flags, and
  * whose `peripherals` describe the ADC resolution/reference and bus counts.
  * This helper reads that authoritative data and produces a `SimBoard` whose
@@ -18,12 +18,12 @@ import type { SimBoard } from './board-sim.js';
  *
  * @example
  * ```ts
- * import { ArduinoUno } from '@typecad/board-arduino-uno';
+ * import boardDef from '../.cuttlefish/board.json';
  * import { createBoardFromDefinition } from '@typecad/simulator';
  *
- * const board = createBoardFromDefinition(ArduinoUno);
- * board.digital(13).asOutput().high();   // LED on PB5
- * board.analog(0).injectVoltage(2.5);    // A0, 10-bit / 5V reference
+ * const board = createBoardFromDefinition(ESP32S3Board);
+ * board.digital(48).asOutput().high();  // the onboard LED
+ * board.analog(0).injectVoltage(2.5);   // A0, 12-bit / internal reference
  * ```
  *
  * The board package must be built (its `dist/`) so the `BoardDefinition` is
@@ -43,7 +43,7 @@ import type { SimBoard } from './board-sim.js';
  * | ADC resolution    | `peripherals.adc[0].resolution` |
  * | ADC reference     | `peripherals.adc[0].referenceVoltage` |
  *
- * @param def - The board package's `BoardDefinition` (e.g. `ArduinoUno`).
+ * @param def - The board package's `BoardDefinition` (e.g. `ESP32S3Board`).
  * @returns A `SimBoard` configured to match the board.
  */
 export function createBoardFromDefinition(def: BoardDefinition): SimBoard {
@@ -55,15 +55,13 @@ export function createBoardFromDefinition(def: BoardDefinition): SimBoard {
 
   // Interrupt-capable pins, excluding any marked unsafe (e.g. boot-strap pins).
   // The `interrupt` capability flag is set per-pin in the board definition's
-  // `pins.all`; for ATmega328P only PD2 (INT0) and PD3 (INT1) carry it, so
-  // this yields [2, 3] on Uno. Override with `createSimBoard({ interruptPins })`
-  // if your board's flagging differs from the interrupts you want to simulate.
+  // `pins.all`. Override with `createSimBoard({ interruptPins })` if your
+  // board's flagging differs from the interrupts you want to simulate.
   const interruptPins = all
     .filter(p => p.capabilities?.interrupt && !p.unsafe)
     .map(p => p.number);
 
   const board = createSimBoard({
-    boardType: def.id,
     digitalPinCount: def.pins.digital.length,
     analogPinCount: def.pins.analog.length,
     i2cBusCount: def.peripherals.i2c?.length ?? 1,

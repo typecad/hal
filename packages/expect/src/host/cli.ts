@@ -24,6 +24,7 @@ import { run } from './runner.js';
 import { boardTestPins } from './test-pins.js';
 import { listUsbSerialPorts, matchUsbPorts, formatUsbIdentity } from './port-discovery.js';
 import type { TestConfig } from './types.js';
+import { resolveProjectRoot } from './project-root.js';
 import path from 'node:path';
 
 // ---------------------------------------------------------------------------
@@ -163,9 +164,9 @@ const HELP = `
   Add a \`test\` section to your cuttlefish.config.ts:
 
     const config = {
-      board: '@typecad/board-arduino-uno',
+      board: 'xiao_ble/nrf52840',
       test: {
-        buildTarget: 'arduino:avr:uno',
+        buildTarget: 'blackpill/stm32f411ce',
         port: 'COM4',
         include: ['tests/**/*.test.ts'],
         baudRate: 115200,
@@ -186,7 +187,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  const projectRoot = process.cwd();
+  // npm exec / npm run reset the child cwd to the npm local prefix (the
+  // nearest package.json ancestor), stashing the real invocation dir in
+  // INIT_CWD — resolve through it so nested suite dirs work under npx.
+  // See host/project-root.ts for the full rationale.
+  const projectRoot = resolveProjectRoot();
 
   // Build config overrides from CLI args
   const overrides: Partial<TestConfig> = {};

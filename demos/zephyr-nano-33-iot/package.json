@@ -18,8 +18,7 @@
   "dependencies": {
     "@typecad/cuttlefish": "*",
     "@typecad/hal": "*",
-    "@typecad/framework-zephyr": "*",
-    "@typecad/board-nano-33-iot": "*"
+    "@typecad/framework-zephyr": "*"
   },
   "devDependencies": {
     "eslint": "^10.4.1",
@@ -29,5 +28,5 @@
     "@typecad/simulator": "^1.0.0-alpha.3",
     "vitest": "^4.0.18"
   },
-  "description": "Arduino Nano 33 IoT (SAMD21G18A) peripheral showcase — ADC dimmer + LED PWM + USB CDC via @typecad/framework-zephyr"
+  "description": "Arduino Nano 33 IoT (SAMD21G18A) peripheral showcase \u2014 ADC dimmer + LED PWM + USB CDC via @typecad/framework-zephyr"
 }

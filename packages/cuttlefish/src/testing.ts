@@ -40,12 +40,11 @@ export { setSafetyHook, hasSafetyHook } from "./safety-hook.js";
 export {
   scaffoldProject,
   normalizeProjectName,
-  KNOWN_BOARDS,
   generateProjectPackageJson,
   generateProjectTsconfig,
   generateProjectConfig,
   generateProjectEnvDts,
-  generateStarterSketch,
+  generateStarterProgram,
   generateStarterTest,
   generateStarterSim,
   generateGitignore,
@@ -53,16 +52,6 @@ export {
   runCreateWizard,
 } from "./create/index.js";
 export type { CreateProjectOptions } from "./create/index.js";
-
-// ── Board codegen (`cuttlefish board add`) ───────────────────────────────────
-export {
-  scaffoldBoardPackages,
-  parseBoardSpec,
-  safeParseBoardSpec,
-  stripJsonc,
-} from "./create/index.js";
-export type { BoardSpec, ScaffoldBoardResult } from "./create/index.js";
-export { BoardGenerators } from "./create/index.js";
 
 // ── Tree-shaking & reachability ──────────────────────────────────────────────
 export { buildCallGraph, getReachableSymbols } from "./ir/call-graph.js";
@@ -99,7 +88,7 @@ export type { LintFingerprint, GateCacheResult } from "./lint-cache.js";
 export { runSemanticGates } from "./orchestrator/type-checker.js";
 
 // ── Board constants / pin capability internals ──────────────────────────────
-export { resolveBoardConstants } from "./ir/board-resolver.js";
+export { readGeneratedBoardConstants } from "./ir/board-resolver.js";
 export { pinEntryIndexForNumber } from "./ir/pin-capability-validation.js";
 
 export {

@@ -270,8 +270,6 @@ export function mqttInitLines(): string[] {
     `        (void)mqtt_abort(&__tc_mqtt.client);`,
     `        return;`,
     `    }`,
-    `    printk("tc-mqtt: connecting to %s:%u\\n", __tc_mqtt.host,`,
-    `           static_cast<unsigned int>(__tc_mqtt.port));`,
     `    // Drive input locally until CONNACK arrives (poll thread hasn't started).`,
     `    // mqtt_connect opened the socket; poll it for the connect-ack. Cap the wait`,
     `    // so a silent broker doesn't hang setup forever.`,

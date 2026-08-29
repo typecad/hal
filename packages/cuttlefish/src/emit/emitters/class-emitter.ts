@@ -150,7 +150,7 @@ export function emitClasses(ctx: EmitterContext): void {
   // Build variable → accessor map. NOTE: the variable/parameter registration
   // now lives in setup.ts so it runs before any emit pass. The classAccessorNames
   // map built here is still used below for the per-method "this" registration.
-  // See SUPPORT_MATRIX §4.3 (demo #4 fix).
+  // (demo #4 fix.)
 
   // Build virtual/override maps for inherited methods
   const classMethodNames = new Map<string, Set<string>>();
@@ -346,7 +346,19 @@ export function emitClasses(ctx: EmitterContext): void {
         if (method.typeParameters && method.typeParameters.length > 0) {
           appendSourceLine(ctx, `  template<typename ${method.typeParameters.join(", typename ")}>`);
         }
-        appendSourceLine(ctx, `  ${virtualPrefix}${staticPrefix}${returnType} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams})${overrideSuffix} {`);
+        // Async methods: the body becomes an owner-bound cooperative task
+        // (setup.ts generates it); the in-class body just binds the receiver
+        // via the forward-declared starter. Return type is void — the task
+        // is fire-and-forget.
+        const asyncKick = method.isAsync && ctx.hasAsyncRuntime;
+        const emittedReturnType = asyncKick ? "void" : returnType;
+        appendSourceLine(ctx, `  ${virtualPrefix}${staticPrefix}${emittedReturnType} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams})${overrideSuffix} {`);
+        if (asyncKick) {
+          appendSourceLine(ctx, `    __tc_async_start_${classDef.name}_${method.name}(this);`);
+          appendSourceLine(ctx, "  }");
+          appendSourceLine(ctx, "");
+          continue;
+        }
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         addClassFieldsToScope(classDef, methodScope);
         const classAccessors = classAccessorNames.get(classDef.name);
@@ -418,7 +430,15 @@ export function emitClasses(ctx: EmitterContext): void {
         if (method.typeParameters && method.typeParameters.length > 0) {
           appendSourceLine(ctx, `  template<typename ${method.typeParameters.join(", typename ")}>`);
         }
-        appendSourceLine(ctx, `  ${virtualPrefix}${staticPrefix}${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams})${overrideSuffix} {`);
+        const asyncKick = method.isAsync && ctx.hasAsyncRuntime;
+        const emittedReturnType = asyncKick ? "void" : normalizeCppTypeForTarget(method.returnType);
+        appendSourceLine(ctx, `  ${virtualPrefix}${staticPrefix}${emittedReturnType} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams})${overrideSuffix} {`);
+        if (asyncKick) {
+          appendSourceLine(ctx, `    __tc_async_start_${classDef.name}_${method.name}(this);`);
+          appendSourceLine(ctx, "  }");
+          appendSourceLine(ctx, "");
+          continue;
+        }
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         addClassFieldsToScope(classDef, methodScope);
         withThisAccessors(classDef, method.isStatic, () => {
@@ -484,7 +504,15 @@ export function emitClasses(ctx: EmitterContext): void {
         if (method.typeParameters && method.typeParameters.length > 0) {
           appendSourceLine(ctx, `  template<typename ${method.typeParameters.join(", typename ")}>`);
         }
-        appendSourceLine(ctx, `  ${virtualPrefix}${staticPrefix}${normalizeCppTypeForTarget(method.returnType)} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams})${overrideSuffix} {`);
+        const asyncKick = method.isAsync && ctx.hasAsyncRuntime;
+        const emittedReturnType = asyncKick ? "void" : normalizeCppTypeForTarget(method.returnType);
+        appendSourceLine(ctx, `  ${virtualPrefix}${staticPrefix}${emittedReturnType} ${escapeCppKeyword(method.name, reservedNames)}(${methodParams})${overrideSuffix} {`);
+        if (asyncKick) {
+          appendSourceLine(ctx, `    __tc_async_start_${classDef.name}_${method.name}(this);`);
+          appendSourceLine(ctx, "  }");
+          appendSourceLine(ctx, "");
+          continue;
+        }
         const methodScope = createChildEmissionScope(topLevelScope, method.parameters);
         addClassFieldsToScope(classDef, methodScope);
         withThisAccessors(classDef, method.isStatic, () => {

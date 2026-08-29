@@ -54,4 +54,53 @@ export const ESP32S3_DEVKITC: ZephyrChipDescriptor = {
   // WiFi: the ESP32-S3 has a 2.4GHz radio; conn_mgr + the esp32 wifi driver
   // (CONFIG_WIFI_ESP32) provide connectivity. Omitted on radioless targets.
   wifi: { supported: true },
+  // User buses, mirroring the devkit's verified facts (the
+  // board-constants path is authoritative in real builds; this registry
+  // entry is the fallback when board constants are absent — e.g. the
+  // transpile test harness). uart1 (not uart0 — the console) with the
+  // pinctrl group + current-speed the esp32-uart binding requires; i2c0;
+  // spi2/spi3.
+  i2c: { controllers: [{ nodeLabel: 'i2c0' }] },
+  spi: { controllers: [{ nodeLabel: 'spi2' }, { nodeLabel: 'spi3' }] },
+  uart: {
+    controllers: [
+      {
+        nodeLabel: 'uart1',
+        pinctrlRef: 'uart1_default',
+        props: ['current-speed = <115200>;'],
+      },
+    ],
+  },
+  // USB CDC-ACM over the S3's native USB-OTG (D-/D+ on the dedicated GPIO19/20
+  // pads, no GPIO matrix). The board DTS already aliases the DWC2 controller
+  // node and enables it (`zephyr_udc0: &usb_otg { status = "okay"; }` —
+  // esp32s3_devkitc_procpu.dts), and the UDC DWC2 driver is DT-default-on, so
+  // declaring it here is all usb.* needs: the overlay composes one CDC-ACM
+  // instance child and the kconfig resolver enables the "next" USB stack.
+  // Console stays on uart0 (the devkit's USB-serial bridge) unless
+  // `console.output: 'usb'` rebinds zephyr,console to the CDC port.
+  usb: { controller: 'zephyr_udc0', cdcInstances: 1, vid: '0x2FE3', pid: '0x0006' },
+  // PWM: the LEDC controller (ledc0 in esp32s3_common.dtsi) — 8 channels, each
+  // routable to nearly any pad through the GPIO matrix, so this is a matrix
+  // (channels assigned to the driven pins at build time), not a static spec
+  // list. Pin selection excludes: GPIO0 (boot strap / BOOT button), GPIO19/20
+  // (USB D-/D+), GPIO26–32 (SPI flash/PSRAM), GPIO33–37 (octal PSRAM on OPI
+  // modules), GPIO43/44 (uart0 console pads). The driver
+  // (CONFIG_PWM_LED_ESP32, DT-default-on) requires a pinctrl group routing
+  // each used channel (LEDC_CH<ch>_GPIO<pin> pinmux tokens, all 8×46 pairs in
+  // esp32s3-pinctrl.h) plus per-channel child nodes (reg + timer) — both
+  // emitted by the overlay generator (dt-config/overlay.ts emitPwmNodes).
+  pwm: {
+    specs: [],
+    matrix: {
+      controller: 'ledc0',
+      channelCount: 8,
+      pins: [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+        21,
+        38, 39, 40, 41, 42,
+        45, 46, 47, 48,
+      ],
+    },
+  },
 };

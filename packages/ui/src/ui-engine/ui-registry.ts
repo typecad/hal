@@ -237,7 +237,8 @@ export function lowerOnMount(htmlPath: string, opts: LowerOptions): LoweredUI {
 
   const imageAssets = loadImageAssets(allStyled.length > 0 ? allStyled : [mod.styled], path.dirname(abs));
 
-  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets);
+  const kfNs = hashlibLike(abs);
+  const result = lowerUIToCpp(mod.styled, allBoxes, opts.colorFormat, opts.storage, mod.keyboards, mod.rules, getDisplayProfile(), mod.fontAssets, allStyled, imageAssets.nodeIdToAssetIndex, keyframeSets, kfNs);
 
   // Layout diagnostics: viewport-overflow (node bottom past the viewport) and
   // text-overflow (node right edge past its parent). Both reference the node by
@@ -330,6 +331,13 @@ export function getLoweredUIModule(htmlPath: string): LoweredUI | undefined {
 
 export function hasUIModule(htmlPath: string): boolean {
   return modules.has(path.resolve(htmlPath));
+}
+
+/** Stable short per-module namespace for generated symbols (link-level dedup). */
+function hashlibLike(absPath: string): string {
+  let h = 5381;
+  for (let i = 0; i < absPath.length; i++) h = ((h * 33) ^ absPath.charCodeAt(i)) >>> 0;
+  return "m" + h.toString(36);
 }
 
 /** All loaded UI modules (used by the emitter to inject every mounted tree). */

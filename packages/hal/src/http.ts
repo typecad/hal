@@ -1,9 +1,31 @@
+// ---------------------------------------------------------------------------
+// Request — the thin HTTP/S client
+//
+// The request is CONSTRUCTION facts: method, URL, and the policy opts
+// (timeout, body, TLS mode) ride the constructor; headers attach with the
+// header() chain; send() lowers the facts into the shim and performs the
+// request; the response is read from this request afterwards (the shim
+// holds the response until the next request).
+//
+//   const req = new Request(Request.POST, url, {
+//     timeoutMs: 10_000,
+//     body: '{"v":1}', json: true,
+//     caCert: PEM,            // pin a CA (verified TLS)
+//   });
+//   req.header('X-Custom', 'v');
+//   if (req.send()) { console.log(req.status()); }
+//
+// Method tokens: Request.GET / POST / PUT / DELETE / HEAD / PATCH (plain
+// 'GET' strings also accepted). `insecure: true` skips TLS certificate
+// verification (development only). Awaiting send() inside async functions
+// still splits into a background request + done-poll (the async machinery
+// intercepts the send op; the facts were already lowered at send()).
+// ----------------------------------------------------------------------------
+
 import {
   httpBegin,
-  httpReset,
   httpSetHeader,
   httpSetTimeout,
-  httpSetMaxBody,
   httpSetBody,
   httpSetInsecure,
   httpSetCaCert,
@@ -15,80 +37,71 @@ import {
   httpResponseHeader,
 } from './emit.js';
 
-export enum HttpMethod {
-  GET = 0,
-  POST = 1,
-  PUT = 2,
-  DELETE = 3,
-  HEAD = 4,
-  PATCH = 5,
+/** Request construction facts beyond method + URL. */
+export interface RequestOpts {
+  /** Response timeout in ms (default 10_000). */
+  timeoutMs?: number;
+  /** Request body (raw). */
+  body?: string;
+  /** The body is JSON — sets the JSON content type. */
+  json?: boolean;
+  /** Skip TLS certificate verification (development only). */
+  insecure?: boolean;
+  /** PEM of a trusted CA — enables verified TLS. */
+  caCert?: string;
 }
 
-/**
- * Fluent HTTP/S request builder, lowered to native ESP-IDF
- * `esp_http_client` by framework-esp32 (TLS via esp-tls / mbedTLS bundle).
- * Response fields are read from this object after send() — mirrors
- * `await WiFi.connect(); WiFi.localIP()`.
- *
- * No `include()` calls here — ESP-IDF headers are framework-owned and added
- * via forcedIncludes when the program uses http.* ops.
- */
-export class HttpRequest {
-  private _method: string;
-  private _url: string;
+export class Request {
+  static readonly GET = 'GET';
+  static readonly POST = 'POST';
+  static readonly PUT = 'PUT';
+  static readonly DELETE = 'DELETE';
+  static readonly HEAD = 'HEAD';
+  static readonly PATCH = 'PATCH';
 
-  constructor(method: string, url: string) {
-    this._method = method;
+  private readonly _method: string;
+  private readonly _url: string;
+  private readonly _timeoutMs: number;
+  private readonly _body: string;
+  private readonly _json: boolean;
+  private readonly _insecure: boolean;
+  private readonly _caCert: string;
+
+  constructor(method: string, url: string, opts: RequestOpts = {}) {
+    this._method = method.toUpperCase();
     this._url = url;
+    this._timeoutMs = opts.timeoutMs ?? 10_000;
+    this._body = opts.body ?? '';
+    this._json = opts.json === true;
+    this._insecure = opts.insecure === true;
+    this._caCert = opts.caCert ?? '';
   }
 
+  /** Attach a request header. Chainable — one per header. */
   header(name: string, value: string): this {
     httpSetHeader(name, value);
     return this;
   }
 
-  timeout(ms: number): this {
-    httpSetTimeout(ms);
-    return this;
-  }
-
-  maxBody(bytes: number): this {
-    httpSetMaxBody(bytes);
-    return this;
-  }
-
-  body(data: string): this {
-    httpSetBody(data, false);
-    return this;
-  }
-
-  jsonBody(json: string): this {
-    httpSetBody(json, true);
-    return this;
-  }
-
-  /** Skip TLS certificate verification (development only). */
-  insecure(): this {
-    httpSetInsecure();
-    return this;
-  }
-
-  caCert(pem: string): this {
-    httpSetCaCert(pem);
-    return this;
-  }
-
-  /** Blocking at top level; cooperatively awaitable inside async functions. */
-  send(): Promise<boolean> {
+  /** Send the request (blocking). The construction facts lower into the
+   *  shim first (timeout/body/TLS mode), then the request performs.
+   *  Awaitable inside async functions — the async machinery splits the
+   *  send into a background request + done-poll. */
+  send(): boolean {
+    httpSetTimeout(this._timeoutMs);
+    httpSetBody(this._body, this._json);
+    httpSetInsecure(this._insecure);
+    httpSetCaCert(this._caCert);
     httpBegin(this._method, this._url);
-    httpSend();
-    return Promise.resolve(false);
+    return httpSend();
   }
 
+  /** Response status code (0 before a completed send). */
   status(): number {
     return httpStatus();
   }
 
+  /** True when the response status is 2xx. */
   ok(): boolean {
     return httpOk();
   }
@@ -98,47 +111,14 @@ export class HttpRequest {
     return httpBody();
   }
 
+  /** Response Content-Length (0 when absent). */
   contentLength(): number {
     return httpContentLength();
   }
 
+  /** One response header value ("" when absent; valid until the next
+   *  request). */
   responseHeader(name: string): string {
     return httpResponseHeader(name);
   }
 }
-
-export class HttpClass {
-  static readonly __instance_name = "Http";
-
-  get(url: string): HttpRequest {
-    httpReset();
-    return new HttpRequest("GET", url);
-  }
-
-  post(url: string): HttpRequest {
-    httpReset();
-    return new HttpRequest("POST", url);
-  }
-
-  put(url: string): HttpRequest {
-    httpReset();
-    return new HttpRequest("PUT", url);
-  }
-
-  del(url: string): HttpRequest {
-    httpReset();
-    return new HttpRequest("DELETE", url);
-  }
-
-  head(url: string): HttpRequest {
-    httpReset();
-    return new HttpRequest("HEAD", url);
-  }
-
-  patch(url: string): HttpRequest {
-    httpReset();
-    return new HttpRequest("PATCH", url);
-  }
-}
-
-export const Http = new HttpClass();

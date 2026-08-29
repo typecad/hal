@@ -33,73 +33,56 @@ describe('preferences init block', () => {
 });
 
 describe('preferences lowering — lifecycle', () => {
-  it('begin → __tc_prefs_begin with namespace + readOnly flag', () => {
-    // readOnly=true renders the bool literal true.
-    expect(lowerPreferences({ operation: 'preferences.begin', namespace: '"app"', readOnly: true } as any))
-      .toEqual({ code: '__tc_prefs_begin("app", true);' });
-    expect(lowerPreferences({ operation: 'preferences.begin', namespace: '"app"', readOnly: false } as any))
-      .toEqual({ code: '__tc_prefs_begin("app", false);' });
+  it('clear → __tc_prefs_clear with the namespace prefix', () => {
+    expect(lowerPreferences({ operation: 'preferences.clear', ns: 'app' } as any))
+      .toEqual({ code: '__tc_prefs_clear("tc/app/");' });
   });
 
-  it('end → __tc_prefs_end', () => {
-    expect(lowerPreferences({ operation: 'preferences.end' } as any))
-      .toEqual({ code: '__tc_prefs_end();' });
-  });
-
-  it('clear → __tc_prefs_clear', () => {
-    expect(lowerPreferences({ operation: 'preferences.clear' } as any))
-      .toEqual({ code: '__tc_prefs_clear();' });
-  });
-
-  it('remove → __tc_prefs_remove with key', () => {
-    expect(lowerPreferences({ operation: 'preferences.remove', key: '"k"' } as any))
-      .toEqual({ code: '__tc_prefs_remove("k");' });
+  it('remove → full settings name composed at emit time', () => {
+    expect(lowerPreferences({ operation: 'preferences.remove', ns: 'app', key: '"k"' } as any))
+      .toEqual({ code: '__tc_prefs_remove("tc/app/k");' });
   });
 });
 
 describe('preferences lowering — typed put (statements)', () => {
-  it('put_int / put_uint / put_float pass value through', () => {
-    expect(lowerPreferences({ operation: 'preferences.put_int', key: '"count"', value: 42 } as any))
-      .toEqual({ code: '__tc_prefs_put_int("count", 42);' });
-    expect(lowerPreferences({ operation: 'preferences.put_uint', key: '"counter"', value: 1000 } as any))
-      .toEqual({ code: '__tc_prefs_put_uint("counter", 1000);' });
-    expect(lowerPreferences({ operation: 'preferences.put_float', key: '"gain"', value: 2.5 } as any))
-      .toEqual({ code: '__tc_prefs_put_float("gain", 2.5);' });
+  it('put_int / put_float pass value through', () => {
+    expect(lowerPreferences({ operation: 'preferences.put_int', ns: 'app', key: '"count"', value: 42 } as any))
+      .toEqual({ code: '__tc_prefs_put_int("tc/app/count", 42);' });
+    expect(lowerPreferences({ operation: 'preferences.put_float', ns: 'app', key: '"gain"', value: 2.5 } as any))
+      .toEqual({ code: '__tc_prefs_put_float("tc/app/gain", 2.5);' });
   });
 
   it('put_bool renders the C++ bool literal', () => {
-    expect(lowerPreferences({ operation: 'preferences.put_bool', key: '"flag"', value: true } as any))
-      .toEqual({ code: '__tc_prefs_put_bool("flag", true);' });
-    expect(lowerPreferences({ operation: 'preferences.put_bool', key: '"flag"', value: false } as any))
-      .toEqual({ code: '__tc_prefs_put_bool("flag", false);' });
+    expect(lowerPreferences({ operation: 'preferences.put_bool', ns: 'app', key: '"flag"', value: true } as any))
+      .toEqual({ code: '__tc_prefs_put_bool("tc/app/flag", true);' });
+    expect(lowerPreferences({ operation: 'preferences.put_bool', ns: 'app', key: '"flag"', value: false } as any))
+      .toEqual({ code: '__tc_prefs_put_bool("tc/app/flag", false);' });
   });
 
   it('put_string passes key + value', () => {
-    expect(lowerPreferences({ operation: 'preferences.put_string', key: '"label"', value: '"hello"' } as any))
-      .toEqual({ code: '__tc_prefs_put_string("label", "hello");' });
+    expect(lowerPreferences({ operation: 'preferences.put_string', ns: 'app', key: '"label"', value: '"hello"' } as any))
+      .toEqual({ code: '__tc_prefs_put_string("tc/app/label", "hello");' });
   });
 });
 
 describe('preferences lowering — typed get (expressions)', () => {
-  it('get_int / get_uint / get_float return the default on the expression path', () => {
-    expect(lowerPreferences({ operation: 'preferences.get_int', key: '"count"', defaultValue: 0 } as any))
-      .toEqual({ expression: '__tc_prefs_get_int("count", 0)' });
-    expect(lowerPreferences({ operation: 'preferences.get_uint', key: '"counter"', defaultValue: 0 } as any))
-      .toEqual({ expression: '__tc_prefs_get_uint("counter", 0)' });
-    expect(lowerPreferences({ operation: 'preferences.get_float', key: '"gain"', defaultValue: 0 } as any))
-      .toEqual({ expression: '__tc_prefs_get_float("gain", 0)' });
+  it('get_int / get_float return the default on the expression path', () => {
+    expect(lowerPreferences({ operation: 'preferences.get_int', ns: 'app', key: '"count"', defaultValue: 0 } as any))
+      .toEqual({ expression: '__tc_prefs_get_int("tc/app/count", 0)' });
+    expect(lowerPreferences({ operation: 'preferences.get_float', ns: 'app', key: '"gain"', defaultValue: 0 } as any))
+      .toEqual({ expression: '__tc_prefs_get_float("tc/app/gain", 0)' });
   });
 
   it('get_bool renders the C++ bool literal default', () => {
-    expect(lowerPreferences({ operation: 'preferences.get_bool', key: '"flag"', defaultValue: false } as any))
-      .toEqual({ expression: '__tc_prefs_get_bool("flag", false)' });
-    expect(lowerPreferences({ operation: 'preferences.get_bool', key: '"flag"', defaultValue: true } as any))
-      .toEqual({ expression: '__tc_prefs_get_bool("flag", true)' });
+    expect(lowerPreferences({ operation: 'preferences.get_bool', ns: 'app', key: '"flag"', defaultValue: false } as any))
+      .toEqual({ expression: '__tc_prefs_get_bool("tc/app/flag", false)' });
+    expect(lowerPreferences({ operation: 'preferences.get_bool', ns: 'app', key: '"flag"', defaultValue: true } as any))
+      .toEqual({ expression: '__tc_prefs_get_bool("tc/app/flag", true)' });
   });
 
   it('get_string passes key + default', () => {
-    expect(lowerPreferences({ operation: 'preferences.get_string', key: '"label"', defaultValue: '""' } as any))
-      .toEqual({ expression: '__tc_prefs_get_string("label", "")' });
+    expect(lowerPreferences({ operation: 'preferences.get_string', ns: 'app', key: '"label"', defaultValue: '""' } as any))
+      .toEqual({ expression: '__tc_prefs_get_string("tc/app/label", "")' });
   });
 });
 
@@ -111,15 +94,12 @@ describe('preferences lowering — classification', () => {
   // compile (an expression used as a statement).
   it('statement ops return { code } only', () => {
     const statementOps = [
-      { operation: 'preferences.begin', namespace: '"n"', readOnly: false },
-      { operation: 'preferences.end' },
-      { operation: 'preferences.clear' },
-      { operation: 'preferences.remove', key: '"k"' },
-      { operation: 'preferences.put_int', key: '"k"', value: 1 },
-      { operation: 'preferences.put_uint', key: '"k"', value: 1 },
-      { operation: 'preferences.put_bool', key: '"k"', value: true },
-      { operation: 'preferences.put_float', key: '"k"', value: 1 },
-      { operation: 'preferences.put_string', key: '"k"', value: '"v"' },
+      { operation: 'preferences.clear', ns: 'app' },
+      { operation: 'preferences.remove', ns: 'app', key: '"k"' },
+      { operation: 'preferences.put_int', ns: 'app', key: '"k"', value: 1 },
+      { operation: 'preferences.put_bool', ns: 'app', key: '"k"', value: true },
+      { operation: 'preferences.put_float', ns: 'app', key: '"k"', value: 1 },
+      { operation: 'preferences.put_string', ns: 'app', key: '"k"', value: '"v"' },
     ];
     for (const op of statementOps) {
       const out = lowerPreferences(op as any);
@@ -130,11 +110,10 @@ describe('preferences lowering — classification', () => {
 
   it('value ops return { expression } only', () => {
     const valueOps = [
-      { operation: 'preferences.get_int', key: '"k"', defaultValue: 0 },
-      { operation: 'preferences.get_uint', key: '"k"', defaultValue: 0 },
-      { operation: 'preferences.get_bool', key: '"k"', defaultValue: false },
-      { operation: 'preferences.get_float', key: '"k"', defaultValue: 0 },
-      { operation: 'preferences.get_string', key: '"k"', defaultValue: '""' },
+      { operation: 'preferences.get_int', ns: 'app', key: '"k"', defaultValue: 0 },
+      { operation: 'preferences.get_bool', ns: 'app', key: '"k"', defaultValue: false },
+      { operation: 'preferences.get_float', ns: 'app', key: '"k"', defaultValue: 0 },
+      { operation: 'preferences.get_string', ns: 'app', key: '"k"', defaultValue: '""' },
     ];
     for (const op of valueOps) {
       const out = lowerPreferences(op as any);

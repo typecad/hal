@@ -1,130 +1,80 @@
-# Hardware Events
+# Hardware Events (Interrupts)
 
-TypeCAD provides two powerful ways to handle hardware events like pin state changes: **External Interrupts** for immediate, low-latency response, and **Asynchronous Edge Detection** for readable, sequential logic.
+One mechanism: **GPIO interrupts**. A pin event lowers to `gpio_pin_interrupt_configure_dt` + a callback registered through `gpio_init_callback`/`gpio_add_callback` — Zephyr's interrupt path verbatim, with the edge/level mode expressed as Zephyr's own `GPIO.INT_*` tokens.
+
+For sequential "wait for a signal" logic, interrupts are the wrong tool — poll inside an `async function` with `Time.sleep` (see [Async](./async.md)); the polling task yields between checks and costs nothing when idle.
 
 ---
 
-## External Interrupts
-
-Interrupts allow the microcontroller to respond to a physical event (like a button press or sensor trigger) immediately, pausing the main loop to execute a handler function.
-
-### Basic Interrupts
-Use `.onRising()`, `.onFalling()`, or `.onChange()` to attach an interrupt handler.
+## Attaching an interrupt
 
 ```typescript
-import { D2, D13 } from '@typecad/board';
+import { GPIO } from '@typecad/hal';
+import { LED, BUTTON } from '@typecad/board';
 
-const led = D13.asOutput();
+const led = new GPIO(LED, GPIO.OUTPUT);
+const button = new GPIO(BUTTON, GPIO.INPUT | GPIO.PULL_UP);
 
-// Toggle LED whenever D2 goes from LOW to HIGH
-D2.onRising(() => {
+// Fire on a falling edge (press of a pull-up button).
+button.onInterrupt(GPIO.INT_EDGE_FALLING, () => {
   led.toggle();
 });
 ```
 
-### Detaching Handlers
-You can remove all interrupts from a pin using `.offInterrupts()`.
+The mode is one of the `GPIO.INT_*` tokens — Zephyr's names verbatim, covering edge and level modes:
 
-```typescript
-D2.offInterrupts();
-```
-
-### Important Constraints (ISR Safety)
-Interrupt handlers (ISRs) run in a special hardware context. To ensure system stability:
-1. **Keep it short**: Execute the minimum amount of logic necessary.
-2. **Avoid blocking**: Never use `delay()` or long-running loops inside an interrupt.
-3. **No Serial/I2C**: Avoid complex communication inside an ISR as they often rely on interrupts themselves.
-
----
-
-## Asynchronous Edge Detection
-
-For many applications, interrupts are unnecessary and can make code logic difficult to follow. TypeCAD provides `async` methods that allow you to "wait" for a hardware event in a clean, sequential style.
-
-### Waiting for an Edge
-The `waitForRising` and `waitForFalling` methods return a `Promise` that resolves when the event occurs. The transpiler automatically generates the necessary state machines to handle this without blocking other tasks.
-
-```typescript
-import { D2, delay } from '@typecad/board';
-
-const sensor = D2.asInput();
-
-async function main() {
-  while (true) {
-    console.log("Waiting for trigger...");
-    
-    // Execution pauses here (non-blocking) until D2 goes HIGH
-    await sensor.waitForRising();
-    
-    console.log("Event detected!");
-    
-    // Resolution: handle the event
-    delay(2000); 
-  }
-}
-
-main();
-```
-
-### Timeouts
-You can provide an optional timeout (in milliseconds). If the event doesn't occur within the timeout, the promise resolves.
-
-```typescript
-// Wait up to 5 seconds for a response
-await sensor.waitForRising(5000);
-```
-
----
-
-## Comparison: Interrupts vs. Async
-
-| Feature | Interrupts (`onRising`) | Async (`waitForRising`) |
+| Token | Zephyr equivalent | Fires when |
 | :--- | :--- | :--- |
-| **Latency** | Extremely low (nanoseconds) | Moderate (microsecond polling) |
-| **Code Style**| Event-driven (Callbacks) | Sequential (`async`/`await`) |
-| **Complexity**| High (requires ISR-safe logic)| Low (standard TypeScript style) |
-| **Best For** | High-speed encoders, safety stops | Buttons, slow sensor pulses, UI |
+| `GPIO.INT_EDGE_RISING` | `GPIO_INT_EDGE_RISING` | the pin goes low → high |
+| `GPIO.INT_EDGE_FALLING` | `GPIO_INT_EDGE_FALLING` | the pin goes high → low |
+| `GPIO.INT_EDGE_BOTH` | `GPIO_INT_EDGE_BOTH` | either transition |
+| `GPIO.INT_LEVEL_LOW` | `GPIO_INT_LEVEL_LOW` | the pin is held low |
+| `GPIO.INT_LEVEL_HIGH` | `GPIO_INT_LEVEL_HIGH` | the pin is held high |
+
+Token sets are generated from the Zephyr tree's headers — a misspelled token is an editor-visible member error, and an invalid mode is a build error naming the valid spellings.
+
+## Detaching
+
+```typescript
+button.offInterrupt();   // disable + remove the callback
+```
+
+## ISR safety constraints
+
+The handler runs in interrupt context. The transpiler's ISR-safety analysis enforces the rules that keep it sound — a handler may set signals and drive pins, but calls that would block or allocate (bus transactions, network, console formatting) are rejected at build time with the offending call named. Keep handlers to flag-setting; do the work in the main flow:
+
+```typescript
+import { GPIO, Time } from '@typecad/hal';
+
+let pressed = false;
+const button = new GPIO(0, GPIO.INPUT | GPIO.PULL_UP);
+button.onInterrupt(GPIO.INT_EDGE_FALLING, () => { pressed = true; });
+
+while (true) {
+  if (pressed) {
+    pressed = false;
+    console.log('pressed');       // safe here — main flow
+  }
+  Time.sleep(10);
+}
+```
+
+## Interrupts or polling?
+
+| | Interrupt | Poll in an async task |
+| :--- | :--- | :--- |
+| Latency | microseconds | poll period (typically ms) |
+| Context | ISR constraints apply | none — it's ordinary code |
+| Best at | wake/flag/count events that must not be missed | sequential logic, debouncing, "wait for signal then…" |
+| Multiple pins | one callback per pin | one task can watch many conditions |
+
+Debouncing is the classic deciding case: an interrupt fires on every bounce, while a polling task naturally reads a settled level — `while (button.get()) { await Time.sleep(20); }` debounces by construction.
 
 ---
 
 ## API Reference
 
-### Interrupt Methods
-Available on pins with hardware interrupt capabilities (narrowed via `.asInput()`).
-
-| Method | Parameters | Description |
-| :--- | :--- | :--- |
-| `onRising(fn)` | `fn: () => void` | Execute `fn` when pin goes from LOW to HIGH. |
-| `onFalling(fn)` | `fn: () => void` | Execute `fn` when pin goes from HIGH to LOW. |
-| `onChange(fn)` | `fn: () => void` | Execute `fn` on any state change. |
-| `offInterrupts()` | — | Remove all interrupt handlers from the pin. |
-
-### Async Methods
-Available on all digital input pins.
-
-| Method | Parameters | Description |
-| :--- | :--- | :--- |
-| `waitForRising(to?)`| `to: number` (opt) | Pauses execution until a rising edge (or timeout). |
-| `waitForFalling(to?)`| `to: number` (opt) | Pauses execution until a falling edge (or timeout). |
-
----
-
-## Advanced Example: Manual Pulse Measurement
-While the `Pulse` utility is optimized for high speed, you can use async methods for long-duration pulses.
-
-```typescript
-import { D2, millis } from '@typecad/board';
-
-const pin = D2.asInput();
-
-async function measureLongPulse() {
-  console.log("Waiting for start of pulse...");
-  await pin.waitForRising();
-  const start = millis();
-  
-  await pin.waitForFalling();
-  const end = millis();
-  
-  console.log(`Pulse lasted ${end - start} ms`);
-}
-```
+| Method | Description |
+| :--- | :--- |
+| `onInterrupt(intFlags, handler)` | Attach an interrupt with a `GPIO.INT_*` edge/level token. |
+| `offInterrupt()` | Detach (disable + remove callback). |

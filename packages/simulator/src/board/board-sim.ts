@@ -51,10 +51,10 @@ export class SimBoard {
     }
     this.analogPins = analogMap;
 
-    // PWM pins (e.g. 3, 5, 6, 9, 10, 11 on Uno). Custom/unknown board types
-    // default to no PWM pins unless explicitly configured via `pwmPins`.
+    // PWM pins. Empty by default — declare capability pins via `pwmPins`, or
+    // use `createBoardFromDefinition()` to derive them from a board package.
     const pwmMap = new Map<number, SimPWMPin>();
-    const pwmPinNumbers = config.pwmPins ?? getPwmPinsForBoard(config.boardType);
+    const pwmPinNumbers = config.pwmPins ?? [];
     for (const pinNum of pwmPinNumbers) {
       if (pinNum < digitalCount) {
         pwmMap.set(pinNum, new SimPWMPin(pinNum));
@@ -62,10 +62,10 @@ export class SimBoard {
     }
     this.pwmPins = pwmMap;
 
-    // Interrupt pins (e.g. 2, 3 on Uno). Custom/unknown board types default
-    // to no interrupt pins unless explicitly configured via `interruptPins`.
+    // Interrupt pins. Empty by default — declare them via `interruptPins`, or
+    // use `createBoardFromDefinition()`.
     const interruptMap = new Map<number, SimInterruptPin>();
-    const intPinNumbers = config.interruptPins ?? getInterruptPinsForBoard(config.boardType);
+    const intPinNumbers = config.interruptPins ?? [];
     for (const pinNum of intPinNumbers) {
       if (pinNum < digitalCount) {
         interruptMap.set(pinNum, new SimInterruptPin(pinNum));
@@ -169,7 +169,7 @@ export class SimBoard {
  *
  * @example
  * ```ts
- * const board = createSimBoard({ boardType: 'arduino-uno' });
+ * const board = createSimBoard({ digitalPinCount: 14, pwmPins: [3, 5, 6, 9] });
  * board.digital(13).output();
  * board.digital(13).high();
  * expect(board.digital(13).getBitValue()).toBe(1);
@@ -177,32 +177,4 @@ export class SimBoard {
  */
 export function createSimBoard(config: SimBoardConfig): SimBoard {
   return new SimBoard(config);
-}
-
-// ---------------------------------------------------------------------------
-// Board-specific pin maps
-//
-// Only known board types carry a default capability pin map. Custom and
-// unrecognized board types return an empty set — use `pwmPins` /
-// `interruptPins` on SimBoardConfig to declare capability pins for them.
-// ---------------------------------------------------------------------------
-
-function getPwmPinsForBoard(boardType: string): number[] {
-  switch (boardType) {
-    case 'arduino-uno':
-    case 'arduino-nano':
-      return [3, 5, 6, 9, 10, 11];
-    default:
-      return [];
-  }
-}
-
-function getInterruptPinsForBoard(boardType: string): number[] {
-  switch (boardType) {
-    case 'arduino-uno':
-    case 'arduino-nano':
-      return [2, 3];
-    default:
-      return [];
-  }
 }

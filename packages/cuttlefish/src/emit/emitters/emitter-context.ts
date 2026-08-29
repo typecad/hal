@@ -87,6 +87,17 @@ export interface AsyncTaskClass {
   classDef: string;
   instanceDecl: string;
   taskVarName: string;
+  /** Async methods: the starter-function DEFINITION (binds the owner and
+   *  arms the task). Emitted after the task class; the matching prototype
+   *  (asyncMethodStarters) precedes the owning class. */
+  starterDef?: string;
+}
+
+/** Forward prototypes for async-method starters — emitted before the class
+ *  definitions whose method bodies call them. */
+export interface AsyncMethodStarter {
+  /** The `void __tc_async_start_<Class>_<method>(<Class>*);` prototype. */
+  proto: string;
 }
 
 export interface FixPointerFieldAccessFn {
@@ -139,6 +150,7 @@ export interface EmitterContext {
 
   // ── Computed during setup / async ─────────────────────────────────────────
   asyncTaskClasses: AsyncTaskClass[];
+  asyncMethodStarters: AsyncMethodStarter[];
   asyncFunctionOriginalNames: Set<string>;
   asyncFunctionMappedNames: Set<string>;
   hasAsyncRuntime: boolean;

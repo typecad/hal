@@ -198,7 +198,7 @@ static inline void ui_kb_handle_touch(int16_t tx, int16_t ty) {
       // Backspace starts deleting immediately + arms auto-repeat.
       if (k.special == 2) {
         __ui_kb_bs_held = 1;
-        __ui_kb_bs_repeat = millis();
+        __ui_kb_bs_repeat = __tc_now_ms();
         ui_kb_delete();
       }
       return;

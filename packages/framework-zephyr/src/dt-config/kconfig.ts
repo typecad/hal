@@ -1,3 +1,33 @@
+import { SENSOR_PART_INFO } from '@typecad/hal';
+
+/** A sensor part's catalog facts, as the exceptions helper consumes them. */
+interface SensorKconfigSource {
+  kconfig: readonly string[];
+}
+
+/**
+ * Apply the per-part Kconfig exceptions the generated catalog records, for
+ * exactly the parts the program constructs. Lines are CONFIG_<SYM>=<value>
+ * strings parsed into the map; a symbol the user set explicitly in
+ * zephyr.kconfig is left alone (scaffold.ts already skips user overrides for
+ * auto symbols, and Map.set idempotence covers the rest). The lookup is a
+ * parameter so tests can drive it with a synthetic catalog.
+ */
+export function applySensorKconfigExceptions(
+  m: Map<string, string>,
+  parts: readonly { part: string }[] | undefined,
+  lookup: Readonly<Record<string, SensorKconfigSource>> = SENSOR_PART_INFO,
+): void {
+  if (!parts) return;
+  for (const sp of parts) {
+    for (const line of lookup[sp.part]?.kconfig ?? []) {
+      const eq = line.indexOf('=');
+      if (eq <= 0) continue;
+      m.set(line.slice(0, eq), line.slice(eq + 1));
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Kconfig fragment resolver — extracts the prj.conf symbol logic
 //
@@ -31,6 +61,22 @@ export interface KconfigUsage {
   usesMqtt?: boolean;
   usesPreferences?: boolean;
   usesRandom?: boolean;
+  /** A printf-family format specifier with a float conversion (%f, %.2f, %e,
+   *  …) appears in the emitted source — Zephyr's cbprintf only links float
+   *  conversions with FP_SUPPORT (which itself needs the COMPLETE impl). */
+  usesFloatFormat?: boolean;
+  /** DT-bound sensor parts used (sensor.* ops — the generic catalog). The
+   *  umbrella under which every driver sensor Kconfig lives (`if SENSOR`);
+   *  the per-driver symbols default on from their DT node presence. */
+  usesSensor?: boolean;
+  /** Distinct constructed sensors — only the overlay generator consumes this
+   *  (one DT child node per entry, on the given I2C controller index); prj.conf
+   *  ignores it. Same adcReadPins/pwmUsedPins pattern. */
+  sensorParts?: readonly { part: string; busIndex: number; port: number; busKind: 'i2c' | 'spi'; spiHz?: number; spiMode?: number; alertPin?: number }[];
+  /** Distinct thin SPI targets (hal/spi-target.ts) — one DT child node per
+   *  entry (no compatible — a raw spi_dt_spec peer), appended after sensor
+   *  CS entries in the controller's merged cs-gpios. */
+  spiTargets?: readonly { busIndex: number; cs: number; hz?: number; mode?: number }[];
   /** Touch controller referenced (UI touch adapter emits DT_NODELABEL(ft6336u)
    *  or DT_NODELABEL(xpt2046)). Selects the bus driver the node needs. */
   usesTouch?: boolean;
@@ -92,6 +138,21 @@ export function resolveKconfigFragments(
   m.set('CONFIG_CONSOLE', 'y');
 
   if (usage.usesAdc) m.set('CONFIG_ADC', 'y');
+  // Sensors: only the umbrella — each in-tree driver is `default y` on its
+  // DT_HAS_<COMPAT>_ENABLED, so the overlay's child node enables the driver.
+  if (usage.usesSensor) m.set('CONFIG_SENSOR', 'y');
+  // The rare driver that is NOT DT-default-on: the catalog records its
+  // Kconfig lines (from the driver's own Kconfig) and they are applied for
+  // exactly the parts the program constructs. Empty for every in-tree part
+  // today — this path is insurance for the next exception.
+  applySensorKconfigExceptions(m, usage.sensorParts);
+  // Float formatting: cbprintf builds float conversions only under
+  // FP_SUPPORT, which depends on the COMPLETE implementation — without these,
+  // %f silently prints garbage instead of the value.
+  if (usage.usesFloatFormat) {
+    m.set('CONFIG_CBPRINTF_COMPLETE', 'y');
+    m.set('CONFIG_CBPRINTF_FP_SUPPORT', 'y');
+  }
   if (usage.usesPwm) m.set('CONFIG_PWM', 'y');
   if (usage.usesDac) m.set('CONFIG_DAC', 'y');
   if (usage.usesI2c) m.set('CONFIG_I2C', 'y');
@@ -273,13 +334,26 @@ export function resolveKconfigFragments(
     // server's RSA cert (rsa:2048) and is widely offered; add more ciphersuites
     // here to broaden server compatibility.
     m.set('CONFIG_MBEDTLS_CIPHERSUITE_TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256', 'y');
+    // Ciphersuites only *depend on* X509_CRT_PARSE_C (they don't select it) —
+    // without it sockets_tls.c compiles out mbedtls_x509_crt_parse and every
+    // pinned-CA handshake fails with EPERM at connect (the insecure path
+    // skips verification, so it works either way).
+    m.set('CONFIG_MBEDTLS_X509_CRT_PARSE_C', 'y');
+    // KNOWN LIMITATION on this Zephyr tree: pinned-CA (verified TLS) fails at
+    // connect — the tf-psa-crypto mbedTLS needs a wider symbol matrix
+    // (RSA public-key parse + PEM/DER glue) than the single-ciphersuite
+    // select pulls in, and forcing the extra symbols regresses the insecure
+    // path. insecure() HTTPS is fully verified; caCert() chain verification
+    // stays open until the upstream matrix is mapped.
     // Handshake/protocol buffers allocate from the mbedTLS heap; MBEDTLS_HEAP_SIZE
     // must hold ~2x MBEDTLS_SSL_MAX_CONTENT_LEN plus working state. 65000 fits on
     // the ESP32; mbedTLS requires the full libc and PEM (not DER) cert format.
     m.set('CONFIG_MBEDTLS_ENABLE_HEAP', 'y');
-    m.set('CONFIG_MBEDTLS_HEAP_SIZE', '65000');
+    // 2x SSL_MAX_CONTENT_LEN record buffers + CA-chain parse state +
+    // handshake working memory. 65000 fit insecure-mode handshakes but the
+    // pinned-CA path (verification state) overflowed → EPERM at connect.
+    m.set('CONFIG_MBEDTLS_HEAP_SIZE', '100000');
     m.set('CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN', '16384');
-    m.set('CONFIG_MBEDTLS_PEM_CERTIFICATE_FORMAT', 'y');
     m.set('CONFIG_PSA_CRYPTO', 'y');
     m.set('CONFIG_REQUIRES_FULL_LIBC', 'y');
     // The http client + TLS handshake are stack-hungry; mirror the wifi bumps
@@ -302,6 +376,12 @@ export function resolveKconfigFragments(
     m.set('CONFIG_NET_SOCKETS', 'y');
     m.set('CONFIG_MQTT_LIB', 'y');
     m.set('CONFIG_MQTT_LIB_TLS', 'y');
+    // The shim getaddrinfo-resolves the broker host — without the DNS
+    // resolver linked, getaddrinfo fails numeric AND hostname lookups with
+    // EAI_FAIL even while plain HTTP (which selects DNS via its own block)
+    // works.
+    m.set('CONFIG_DNS_RESOLVER', 'y');
+    m.set('CONFIG_DNS_SERVER_IP_ADDRESSES', 'y');
     // NET_MAX_CONTEXTS / NET_MAX_CONN: same exhaustion risk as HTTP — sequential
     // connections linger after close. Give the broker session + headroom.
     m.set('CONFIG_NET_MAX_CONTEXTS', '16');
@@ -313,10 +393,23 @@ export function resolveKconfigFragments(
     m.set('CONFIG_MBEDTLS', 'y');
     m.set('CONFIG_MBEDTLS_BUILTIN', 'y');
     m.set('CONFIG_MBEDTLS_CIPHERSUITE_TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256', 'y');
+    // Ciphersuites only *depend on* X509_CRT_PARSE_C (they don't select it) —
+    // without it sockets_tls.c compiles out mbedtls_x509_crt_parse and every
+    // pinned-CA handshake fails with EPERM at connect (the insecure path
+    // skips verification, so it works either way).
+    m.set('CONFIG_MBEDTLS_X509_CRT_PARSE_C', 'y');
+    // KNOWN LIMITATION on this Zephyr tree: pinned-CA (verified TLS) fails at
+    // connect — the tf-psa-crypto mbedTLS needs a wider symbol matrix
+    // (RSA public-key parse + PEM/DER glue) than the single-ciphersuite
+    // select pulls in, and forcing the extra symbols regresses the insecure
+    // path. insecure() HTTPS is fully verified; caCert() chain verification
+    // stays open until the upstream matrix is mapped.
     m.set('CONFIG_MBEDTLS_ENABLE_HEAP', 'y');
-    m.set('CONFIG_MBEDTLS_HEAP_SIZE', '65000');
+    // 2x SSL_MAX_CONTENT_LEN record buffers + CA-chain parse state +
+    // handshake working memory. 65000 fit insecure-mode handshakes but the
+    // pinned-CA path (verification state) overflowed → EPERM at connect.
+    m.set('CONFIG_MBEDTLS_HEAP_SIZE', '100000');
     m.set('CONFIG_MBEDTLS_SSL_MAX_CONTENT_LEN', '16384');
-    m.set('CONFIG_MBEDTLS_PEM_CERTIFICATE_FORMAT', 'y');
     m.set('CONFIG_PSA_CRYPTO', 'y');
     m.set('CONFIG_REQUIRES_FULL_LIBC', 'y');
     m.set('CONFIG_NET_TX_STACK_SIZE', '2048');
@@ -353,6 +446,9 @@ export function resolveKconfigFragments(
     m.set('CONFIG_FLASH_MAP', 'y');
     m.set('CONFIG_FILE_SYSTEM', 'y');
     m.set('CONFIG_FILE_SYSTEM_LITTLEFS', 'y');
+    // fs_mkfs (the lazy first-use format in the shim) is gated behind this —
+    // without it the mount path links fine but the format call is undefined.
+    m.set('CONFIG_FILE_SYSTEM_MKFS', 'y');
   }
   // usesUart: the board enables the console UART by default; the overlay (not
   // Kconfig) is where a UART node would be enabled, so no symbol here.

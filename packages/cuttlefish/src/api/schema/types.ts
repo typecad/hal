@@ -69,8 +69,6 @@ export interface PeripheralFunction {
   instance: number;
   /** Function role (e.g. "sda", "scl", "mosi", "miso"). */
   role: string;
-  /** Timer associated with this PWM function (e.g. "timer0", "timer1"). */
-  timer?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +246,7 @@ export interface BuildConfig {
  * Describes the silicon capabilities that are independent of any board.
  */
 export interface MCUDefinition {
-  /** MCU identifier (e.g. "atmega328p"). */
+  /** MCU identifier (e.g. "stm32f411"). */
   id: string;
   /** Human-readable name. */
   name: string;

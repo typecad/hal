@@ -81,7 +81,7 @@ import {
   resolveStrategy,
 } from "../../../packages/cuttlefish/src/testing";
 import { setActiveStrategy } from "../../../packages/cuttlefish/src/ir/hal-resolver";
-import { NativeStrategy } from "../../../packages/framework-native/src";
+import { NativeStrategy } from "../../../packages/cuttlefish/src/frameworks/native";
 import { setLoadedFramework, registerPlatformStrategy } from "../../../packages/cuttlefish/src/testing";
 import { STRING_METHOD_NAMES } from "../../../packages/cuttlefish/src/api/shared/string-method-registry";
 

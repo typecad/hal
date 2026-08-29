@@ -104,13 +104,13 @@ static inline void ui_set_pressed(uint16_t nodeIdx, uint8_t pressed) {
 // On press, arm transitions toward the :pressed target color; on release,
 // arm them back toward the base color (interrupt-and-re-lerp from current).
 static inline void ui_on_press(uint16_t nodeIdx) {
-  uint32_t now = millis();
+  uint32_t now = __tc_now_ms();
   if (now - __ui_last_edge_time < UI_DEBOUNCE_MS) return;
   __ui_last_edge_time = now;
   ui_set_pressed(nodeIdx, 1);
 }
 static inline void ui_on_release(uint16_t nodeIdx) {
-  uint32_t now = millis();
+  uint32_t now = __tc_now_ms();
   if (now - __ui_last_edge_time < UI_DEBOUNCE_MS) return;
   __ui_last_edge_time = now;
   ui_set_pressed(nodeIdx, 0);

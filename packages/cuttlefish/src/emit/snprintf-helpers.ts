@@ -8,10 +8,10 @@
 // Types are imported from @typecad/cuttlefish/api/shared.
 // ---------------------------------------------------------------------------
 
-import type { AssignmentIR, ExpressionIR, StatementIR, VariableDeclarationIR } from "../api/shared/index.js";
+import type { ExpressionIR, StatementIR, VariableDeclarationIR } from "../api/shared/index.js";
 import type { PlatformStrategy } from "../api/shared/index.js";
 import type { KnownVariableInfo, SnprintfArgRenderResult, SnprintfRenderResult, EmissionScopeState, SnprintfExpressionRenderer } from "../api/shared/index.js";
-import { escapeCppStringLiteral, escapeSnprintfFormatFragment } from "../utils/strings.js";
+import { escapeCppStringLiteral } from "../utils/strings.js";
 import { cppTypeForHalOp } from "./utils/hal-op-cpp-type.js";
 import { formatKindOf, parseCppType, parsedElementString, parsedIsStringLike } from "../api/shared/cpp-type-ir.js";
 
@@ -404,75 +404,8 @@ export function inferSnprintfArg(
 }
 
 // ---------------------------------------------------------------------------
-// Snprintf render result builder
-// ---------------------------------------------------------------------------
-
-export function buildSnprintfRenderResult(
-  expr: ExpressionIR,
-  strategy: PlatformStrategy,
-  scopeState: EmissionScopeState,
-  renderExpression: SnprintfExpressionRenderer,
-  pointerVarTypes?: Map<string, string>,
-  knownFunctionReturnTypes?: Map<string, string>,
-  stringVarNames?: Set<string>,
-): SnprintfRenderResult | undefined {
-  if (expr.kind !== "string_concat") {
-    return undefined;
-  }
-
-  let formatString = "";
-  const args: string[] = [];
-  let estimatedLength = 1;
-  const preludeLines: string[] = [];
-
-  for (const part of expr.parts) {
-    if (part.kind === "string") {
-      // These literal parts are concatenated into the snprintf *format* string,
-      // so any embedded `%` must be doubled or snprintf misreads it on hardware.
-      formatString += escapeSnprintfFormatFragment(part.value);
-      estimatedLength += part.value.length;
-      continue;
-    }
-
-    const innerExpr = part.kind === "template_string" ? part.expression : part;
-
-    const arg = inferSnprintfArg(
-      innerExpr,
-      strategy,
-      scopeState,
-      renderExpression,
-      pointerVarTypes,
-      knownFunctionReturnTypes,
-      stringVarNames,
-    );
-    if (!arg) {
-      return undefined;
-    }
-
-    formatString += arg.format;
-    args.push(arg.arg);
-    estimatedLength += arg.estimatedLength;
-    preludeLines.push(...arg.preludeLines);
-  }
-
-  return { formatString, args, estimatedLength: Math.max(estimatedLength, 16), preludeLines };
-}
-
-// ---------------------------------------------------------------------------
 // Snprintf usage detection
 // ---------------------------------------------------------------------------
-
-export function shouldUseSnprintfForString(
-  statement: VariableDeclarationIR | AssignmentIR,
-  strategy: PlatformStrategy,
-): boolean {
-  if (!strategy.useSnprintfForStrings()) {
-    return false;
-  }
-
-  const value = statement.kind === "var_decl" ? statement.initializer : statement.value;
-  return value?.kind === "string_concat";
-}
 
 export function statementNeedsSnprintf(statement: StatementIR, strategy: PlatformStrategy): boolean {
   if (!strategy.useSnprintfForStrings()) {

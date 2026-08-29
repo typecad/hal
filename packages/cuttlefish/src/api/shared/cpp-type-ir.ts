@@ -723,7 +723,7 @@ export function parsedIsPlainStructType(cppType: string): boolean {
 /**
  * True for types that own a string buffer and therefore need `.c_str()` when
  * passed to a C variadic (printf/snprintf): `std::string`, `__tc_str_ptr`,
- * and platform string types like Arduino `String`. NOT true for `const char*`
+ * and platform string types like `String`. NOT true for `const char*`
  * / `char*`, which are already C-strings.
  *
  * This is the structured replacement for the

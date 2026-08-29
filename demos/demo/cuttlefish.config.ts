@@ -10,11 +10,8 @@ const config: CuttlefishConfig = {
   // controller. The onboard user LED (P0.26) is exposed as the DT alias `led0`
   // and is active-low (GPIO_ACTIVE_LOW in xiao_ble_common.dtsi), so .high() =
   // LED on. The user button (P0.04) is the `sw0` alias.
-  target: 'nrf52',
-  mcu: '@typecad/mcu-nrf52840',
-  board: '@typecad/board-xiao-nrf52840',
+  board: 'xiao_ble/nrf52840',
   framework: '@typecad/framework-zephyr',
-  frameworkData: { buildTarget: 'xiao_ble/nrf52840' },
   output: {
     outDir: './out',
   },
@@ -22,7 +19,6 @@ const config: CuttlefishConfig = {
   // CUTTLEFISH_PORT env var > this config — Linux/macOS users can set
   // CUTTLEFISH_PORT=/dev/ttyACM0 instead of editing the file.
   console: { port: 'COM13' },
-  toolchain: { type: 'west' },
   // The XIAO nRF52840 ships with a UF2 USB bootloader (no J-Link probe). When
   // the board is in UF2 mode it mounts as a USB-MSC drive and exposes no debug
   // interface, so nrfutil/jlink can't see it. The uf2 runner copies the built

@@ -67,19 +67,12 @@ export interface ISimSPIDevice {
 }
 
 /**
- * Board type identifiers for the simulator factory.
- */
-export type SimBoardType = 'arduino-uno' | 'arduino-nano' | string;
-
-/**
  * Configuration for creating a simulated board.
  */
 export interface SimBoardConfig {
-  /** Board type identifier. Determines pin count and peripheral availability. */
-  boardType: SimBoardType;
-  /** Number of digital pins (default: 14 for Uno) */
+  /** Number of digital pins (default: 14) */
   digitalPinCount?: number;
-  /** Number of analog input pins (default: 6 for Uno) */
+  /** Number of analog input pins (default: 6) */
   analogPinCount?: number;
   /** Number of I2C buses (default: 1) */
   i2cBusCount?: number;
@@ -88,13 +81,14 @@ export interface SimBoardConfig {
   /** Number of UART ports (default: 1) */
   uartCount?: number;
   /**
-   * PWM-capable pin numbers. Overrides the board type's default PWM pin map.
-   * For unknown/custom board types the default is empty (no PWM pins).
+   * PWM-capable pin numbers. Defaults to empty (no PWM pins); declare the
+   * board's real PWM pins here, or use `createBoardFromDefinition()` to derive
+   * them from a board package.
    */
   pwmPins?: number[];
   /**
-   * Interrupt-capable pin numbers. Overrides the board type's default interrupt
-   * pin map. For unknown/custom board types the default is empty.
+   * Interrupt-capable pin numbers. Defaults to empty; declare the board's real
+   * interrupt pins here, or use `createBoardFromDefinition()`.
    */
   interruptPins?: number[];
   /** RX buffer size for UART simulation (default: 256) */

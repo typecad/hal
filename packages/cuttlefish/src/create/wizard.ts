@@ -1,8 +1,13 @@
 import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { execSync } from "node:child_process";
+import { readdirSync } from "node:fs";
 import chalk from "chalk";
 import type { CreateProjectOptions } from "./templates.js";
 import { KNOWN_TARGETS, KNOWN_MCUS, type KnownTarget } from "./scaffold.js";
+import { findPackBoard, packBoardAsTarget } from "./pack-targets.js";
+import { pickTarget } from "./board-search.js";
+import { BOARD_DATA } from "./board-catalog.generated.js";
 import { frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from './framework-catalog.js';
 import {
   mcuAsTarget,
@@ -10,11 +15,37 @@ import {
   mcuSupportsZephyr,
   zephyrBoardsForMcu,
   sanitizeBoardName,
-  isValidFqbn,
   type McuCreateTarget,
 } from './mcu-target.js';
 
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
+
+/**
+ * Attached serial ports for the wizard's port question — dependency-free
+ * (the wizard runs before any project deps exist, and cuttlefish itself
+ * carries no native serialport binding). Windows asks the .NET SerialPort
+ * class via PowerShell; macOS/Linux scan /dev for USB CDC/bridge nodes.
+ * Returns [] when enumeration fails — the question then falls back to a
+ * free-text prompt with the platform hint as default.
+ */
+export function detectSerialPorts(): string[] {
+  try {
+    if (process.platform === "win32") {
+      const out = execSync(
+        "[System.IO.Ports.SerialPort]::GetPortNames() -join ','",
+        { shell: "powershell.exe", stdio: ["ignore", "pipe", "ignore"], timeout: 5000 },
+      ).toString();
+      return out.split(",").map((s) => s.trim()).filter((s) => /^[Cc][Oo][Mm]\d+$/.test(s));
+    }
+    const dev = readdirSync("/dev");
+    return dev
+      .filter((n) => /^tty(ACM|USB)/.test(n) || /^cu\.(usb|USB|modem)/.test(n))
+      .map((n) => (process.platform === "darwin" ? `/dev/${n}` : `/dev/${n}`))
+      .sort();
+  } catch {
+    return [];
+  }
+}
 
 function validateProjectName(name: string): string | null {
   if (!name || name.trim().length === 0) {
@@ -87,14 +118,15 @@ async function promptConfirm(
 export async function runCreateWizard(
   partialOptions?: {
     probe?: string;
+    port?: string;
     projectName?: string;
     board?: string;
     framework?: string;
     baud?: number;
-    noSketch?: boolean;
+    noStarter?: boolean;
   },
 ): Promise<CreateProjectOptions | null> {
-  const rl = readline.createInterface({ input, output });
+  let rl = readline.createInterface({ input, output });
 
   try {
     console.log();
@@ -105,41 +137,57 @@ export async function runCreateWizard(
     const projectName = partialOptions?.projectName
       ?? await promptText(rl, "Project name", "my-project", validateProjectName);
 
-    // 2. Target selection (native first, then embedded boards, then bare MCUs)
-    const targetOptions = [
-      ...KNOWN_TARGETS.map((t: KnownTarget) => ({
-        label: t.isNative
-          ? `${t.displayName} (Windows/Linux executable)`
-          : `${t.displayName} (${t.architecture!.toUpperCase()})`,
-        value: t.id,
-      })),
-      ...KNOWN_MCUS.map((m) => ({
-        label: `${m.displayName} — no board package (${m.architecture.toUpperCase()})`,
-        value: `mcu:${m.id}`,
-      })),
-    ];
-
-    let targetId: string;
+    // 2. Target selection — the filterable board picker covers everything:
+    //    native, bare silicon (soc entries), and every Zephyr board from the
+    //    catalog. One search box, no two-stage list. A preseeded --board that
+    //    resolves skips the picker entirely.
+    let packBoard: { identifier: string; name: string; soc: string } | undefined;
+    let mcuEntry: ReturnType<typeof findKnownMcu> = undefined;
+    let foundTarget: KnownTarget | undefined;
     if (partialOptions?.board) {
       const found = KNOWN_TARGETS.find((t: KnownTarget) => t.id === partialOptions.board);
-      const mcuFound = findKnownMcu(partialOptions.board);
+      const mcuFound = found ? undefined : findKnownMcu(partialOptions.board);
+      const packFound = found || mcuFound ? undefined : findPackBoard(partialOptions.board);
       if (found) {
-        targetId = found.id;
+        foundTarget = found;
         console.log(`${chalk.cyan("?")} Target: ${chalk.white(found.displayName)} (${chalk.dim(partialOptions.board)})`);
       } else if (mcuFound) {
-        targetId = `mcu:${mcuFound.id}`;
+        mcuEntry = mcuFound;
         console.log(`${chalk.cyan("?")} Target: ${chalk.white(mcuFound.displayName)} (${chalk.dim(partialOptions.board)})`);
-      } else {
-        console.log(`  ${chalk.yellow("!")} Target '${chalk.white(partialOptions.board)}' not found.`);
-        targetId = await promptSelect(rl, "Target", targetOptions);
+      } else if (packFound) {
+        packBoard = packFound;
+        console.log(`${chalk.cyan("?")} Target: ${chalk.white(packFound.name)} (${chalk.dim(packFound.identifier)})`);
       }
-    } else {
-      targetId = await promptSelect(rl, "Target", targetOptions);
+    }
+    if (!foundTarget && !mcuEntry && !packBoard) {
+      // Close the readline interface for the filterable select (it owns
+      // stdin in raw mode), then recreate it for the remaining prompts.
+      // Closing a readline pauses stdin; resume it so the select's internal
+      // readline receives character bytes (arrow keys arrive via keypress
+      // events either way, but typed characters need flowing mode).
+      rl.close();
+      input.resume();
+      const pick = await pickTarget();
+      rl = readline.createInterface({ input, output });
+      if (!pick) {
+        console.log(`  ${chalk.yellow("!")} Target selection cancelled.`);
+        return null;
+      }
+      if (pick.kind === 'native') {
+        foundTarget = KNOWN_TARGETS.find((t: KnownTarget) => t.isNative);
+      } else if (pick.kind === 'mcu') {
+        mcuEntry = findKnownMcu(pick.id);
+      } else {
+        packBoard = pick.entry;
+        console.log(`${chalk.cyan("?")} Target: ${chalk.white(pick.entry.name)} (${chalk.dim(pick.entry.identifier)})`);
+      }
     }
 
-    // MCU-only entries carry a `mcu:` prefix in the picker value space.
-    const mcuEntry = targetId.startsWith("mcu:") ? findKnownMcu(targetId.slice(4)) : undefined;
-    const target: KnownTarget = mcuEntry ? mcuAsTarget(mcuEntry) : KNOWN_TARGETS.find((t: KnownTarget) => t.id === targetId)!;
+    const target: KnownTarget = mcuEntry
+      ? mcuAsTarget(mcuEntry)
+      : packBoard
+        ? packBoardAsTarget(packBoard)
+        : foundTarget!;
     const mcuTarget = mcuEntry ? (target as McuCreateTarget) : undefined;
 
     // 3. Framework. Narrow to the frameworks compatible with the selected board
@@ -194,8 +242,8 @@ export async function runCreateWizard(
       frameworkPackage = match.packageName;
     }
 
-    // Resolve the framework-specific build target + toolchain (e.g. a Zephyr
-    // board id + 'west' vs the Arduino FQBN + 'arduino-cli'). See framework-catalog.
+    // Resolve the framework-specific build target + toolchain (the Zephyr
+    // board id + 'west'). See framework-catalog.
     const profile = frameworkTargetProfile(target, framework);
     let buildTarget = profile.buildTarget ?? target.buildTarget;
     let zephyrCustomBoard = false;
@@ -224,19 +272,9 @@ export async function runCreateWizard(
           );
         }
       } else {
-        // Arduino: the FQBN lives in the user's arduino-cli installation —
-        // hand them the command and take the paste. Shape-validated here;
-        // core presence is checked at first compile.
-        console.log();
-        console.log(`  ${chalk.cyan("i")} Find your board's FQBN in another terminal, e.g.:`);
-        console.log(`      ${chalk.white("arduino-cli board search 'pro mini'")}   ${chalk.dim("(or: arduino-cli board listall)")}`);
-        console.log(`  ${chalk.yellow("!")} The board must carry this exact MCU — the silicon pin map is per-chip.`);
-        buildTarget = await promptText(
-          rl,
-          'Arduino FQBN',
-          undefined,
-          (v) => isValidFqbn(v) ? null : "Expected packager:architecture:board[:options] — e.g. arduino:avr:pro",
-        );
+        // Native has no build target; no other framework is offered for bare
+        // silicon (the catalog narrows MCU targets to Zephyr).
+        buildTarget = undefined;
       }
     }
 
@@ -262,32 +300,66 @@ export async function runCreateWizard(
       }
     }
 
-    // 4. Baud rate (only for embedded)
-    let baudRate: number | undefined;
+    // 4. Serial port (only for embedded) — the port the board's console
+    // rides on. Detected ports are offered as a choice; the answer seeds
+    // console.port + test.port in the scaffolded config (no more guessing
+    // COM4). "skip" leaves the platform-hint placeholder.
+    let serialPort: string | undefined;
     if (!target.isNative) {
-      if (partialOptions?.baud) {
-        baudRate = partialOptions.baud;
-        console.log(`${chalk.cyan("?")} Serial baud rate: ${chalk.white(baudRate)}`);
+      if (partialOptions?.port) {
+        serialPort = partialOptions.port;
+        console.log(`${chalk.cyan("?")} Serial port: ${chalk.white(serialPort)}`);
       } else {
-        const baudAnswer = await promptText(rl, "Serial baud rate", "9600");
-        baudRate = parseInt(baudAnswer, 10);
-        if (Number.isNaN(baudRate) || baudRate <= 0) {
-          baudRate = 9600;
-          console.log(`  ${chalk.dim("Using default: 9600")}`);
+        const detected = detectSerialPorts();
+        if (detected.length > 0) {
+          const chosenPort = await promptSelect(
+            rl,
+            "Which serial port is the board attached to?",
+            [
+              ...detected.map((p) => ({ label: p, value: p })),
+              { label: "not listed / set later (type a path)", value: "__other__" },
+              { label: "skip — use the placeholder, configure later", value: "" },
+            ],
+          );
+          serialPort = chosenPort === "" ? undefined
+            : chosenPort === "__other__" ? await promptText(rl, "Serial port path", detected[0])
+            : chosenPort;
+        } else {
+          const hint = process.platform === "win32" ? "COM4" : "/dev/ttyACM0";
+          const typed = await promptText(rl, "Serial port (none detected — plug the board in, or type a path)", hint);
+          serialPort = typed === hint ? undefined : typed;
         }
       }
     }
 
-    // 5. Starter sketch
-    let includeSketch: boolean;
-    if (partialOptions?.noSketch) {
-      includeSketch = false;
-      console.log(`${chalk.cyan("?")} Create starter sketch: ${chalk.dim("no")}`);
-    } else if (partialOptions?.noSketch === false) {
-      includeSketch = true;
-      console.log(`${chalk.cyan("?")} Create starter sketch: ${chalk.green("yes")}`);
-    } else {
-      includeSketch = await promptConfirm(rl, "Create starter sketch?", true);
+    // 5. Baud rate (only for embedded)
+    let baudRate: number | undefined;
+    if (!target.isNative) {
+      // Zephyr consoles default to 115200; 9600 is the Arduino-class default.
+      const defaultBaud = framework === 'zephyr' ? 115200 : 9600;
+      if (partialOptions?.baud) {
+        baudRate = partialOptions.baud;
+        console.log(`${chalk.cyan("?")} Serial baud rate: ${chalk.white(baudRate)}`);
+      } else {
+        const baudAnswer = await promptText(rl, "Serial baud rate", String(defaultBaud));
+        baudRate = parseInt(baudAnswer, 10);
+        if (Number.isNaN(baudRate) || baudRate <= 0) {
+          baudRate = defaultBaud;
+          console.log(`  ${chalk.dim(`Using default: ${defaultBaud}`)}`);
+        }
+      }
+    }
+
+// 5. Starter program
+let includeStarter: boolean;
+if (partialOptions?.noStarter) {
+  includeStarter = false;
+  console.log(`${chalk.cyan("?")} Create starter program: ${chalk.dim("no")}`);
+} else if (partialOptions?.noStarter === false) {
+  includeStarter = true;
+  console.log(`${chalk.cyan("?")} Create starter program: ${chalk.green("yes")}`);
+} else {
+  includeStarter = await promptConfirm(rl, "Create starter program?", true);
     }
 
     return {
@@ -298,16 +370,22 @@ export async function runCreateWizard(
       targetDisplayName: target.displayName,
       isNative: target.isNative,
       architecture: target.architecture,
-      boardPackage: target.boardPackage,
+      board: target.board,
+      // Pack fact: does the board's devicetree declare an LED? Drives the
+      // starter between LED-blink and console-heartbeat.
+      ...(target.board ? { hasLed: Boolean(BOARD_DATA[target.board]?.led) } : {}),
+      ...(serialPort ? { port: serialPort } : {}),
       frameworkPackage: frameworkPackage ?? '',
       framework: framework ?? '',
       buildTarget,
       ...(profile.toolchainType ? { toolchainType: profile.toolchainType } : {}),
-      mcu: target.mcu,
-      ...(mcuTarget ? { sketchPin: mcuTarget.sketchPin } : {}),
+      // soc rides the config only for bare-silicon/contract projects — a
+      // board target's soc derives from the identifier at boardgen time.
+      ...(target.board ? {} : { soc: target.soc }),
+      ...(mcuTarget ? { starterPin: mcuTarget.starterPin } : {}),
       ...(zephyrCustomBoard ? { zephyrCustomBoard: true } : {}),
       baudRate,
-      includeSketch,
+      includeStarter,
       ...(target.frameworkData
         ? { frameworkData: target.frameworkData }
         : {}),
@@ -318,6 +396,8 @@ export async function runCreateWizard(
     }
     throw err;
   } finally {
-    rl.close();
+    // The board picker closes rl itself (it hands stdin to the filterable
+    // select); a second close is harmless but explicit is cleaner.
+    try { rl.close(); } catch { /* already closed */ }
   }
 }

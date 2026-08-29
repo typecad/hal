@@ -6,8 +6,8 @@ Purpose
 ================================================================================
 
 TypeCAD is a TypeScript-to-C++ transpiler. The transpiler writes C and C++
-source text into files that belong to the end user — the generated .ino / .cpp
-/ .h sketches that get compiled into firmware binaries and flashed to devices.
+source text into files that belong to the end user — the generated .cpp / .h
+files that get compiled into firmware binaries and flashed to devices.
 
 This file grants an additional permission (a "runtime exception") so that the
 license of the transpiler tool itself can never contaminate the code it emits
@@ -32,7 +32,7 @@ obligation arising from the license of the transpiler source code.
 
 In other words: the license of packages/cuttlefish, packages/hal, the
 framework packages, and packages/ui imposes no restriction on the generated
-sketches, headers, and firmware binaries you produce with them.
+files, headers, and firmware binaries you produce with them.
 
 ================================================================================
 The emit boundary — what the exception covers
@@ -43,20 +43,20 @@ The exception applies only to code that TypeCAD writes into your output files
 whatever license is stated in its package.
 
 The emit boundary consists of three surfaces, all of which produce text that
-lands in user .ino / .cpp / .h files:
+lands in user .cpp / .h files:
 
   (A) HAL lowering
       The framework strategies translate HAL semantic calls into framework-
       specific C++. Entered via:
         packages/hal/src/emit.ts
-        packages/framework-*/src/lowering/*.ts   (e.g. fs.ts, mdns.ts,
-                                                  mqtt.ts, ota.ts, random.ts)
+        packages/framework-*/src/lowering/*.ts   (e.g. fs.ts, gpio.ts,
+                                                  mqtt.ts, random.ts, wifi.ts)
 
   (B) Framework strategy / scaffold
-      setup()/loop() scaffolds, .ino structure, and peripheral adapters.
-      Entered via:
-        packages/framework-arduino/src/strategy.ts
-        packages/framework-native/src/strategy.ts
+      Entrypoint scaffolds, devicetree/Kconfig synthesis, and peripheral
+      adapters. Entered via:
+        packages/framework-zephyr/src/strategy.ts
+        packages/cuttlefish/src/frameworks/native/strategy.ts
 
   (C) UI runtime header
       The C++ runtime header assembled from the partial emitters in:
@@ -81,10 +81,10 @@ What this exception does NOT change
    bytes. See NOTICE for the itemized third-party attributions and their
    BSD-3-Clause / MIT terms.
 
-2. Linked libraries are unaffected. The Arduino path links the Adafruit
-   libraries at compile time rather than emitting their source. End users retain
-   their own license obligations to those libraries through normal Arduino
-   library distribution; this exception says nothing about them.
+2. Linked libraries are unaffected. The Zephyr framework links the Zephyr
+   kernel and vendor HAL libraries at compile time rather than emitting their
+   source. End users retain their own license obligations to those libraries;
+   this exception says nothing about them.
 
 3. The transpiler source code is not re-licensed by this file. Every package's
    license field in its package.json continues to govern the source of the tool

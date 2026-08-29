@@ -8,6 +8,7 @@
 
 import path from "node:path";
 import fs from "node:fs";
+import { findPackBoard } from "./pack-targets.js";
 
 /** A framework family that ships as an installable @typecad/framework-* package. */
 export interface FrameworkCatalogEntry {
@@ -23,18 +24,30 @@ export interface FrameworkCatalogEntry {
    * be offered (it would fail at the package-manager step).
    */
   installable: boolean;
+  /**
+   * True when the framework ships inside @typecad/cuttlefish (no separate npm
+   * package): the scaffold must not add it to project dependencies, and the
+   * loader (framework-package.ts) resolves it internally instead of via
+   * require.resolve. The config string stays the package name for continuity.
+   */
+  builtin?: boolean;
 }
 
 /**
- * The installable frameworks. Kept aligned with the packages/ directory:
- * framework-arduino, framework-native, framework-zephyr all ship real packages.
- * esp-idf is intentionally absent (no published package in this repo).
+ * The usable frameworks. zephyr ships as a real package; native is built
+ * into @typecad/cuttlefish (formerly a separate package, now resolved
+ * internally). esp-idf is intentionally absent (no published package).
  */
 export const FRAMEWORK_CATALOG: readonly FrameworkCatalogEntry[] = [
-  { id: "arduino", packageName: "@typecad/framework-arduino", label: "Arduino (digitalWrite, Wire, SPI)", installable: true },
   { id: "zephyr", packageName: "@typecad/framework-zephyr", label: "Zephyr RTOS", installable: true },
-  { id: "native", packageName: "@typecad/framework-native", label: "Native (Windows/Linux executable)", installable: true },
+  { id: "native", packageName: "@typecad/framework-native", label: "Native (Windows/Linux executable)", installable: true, builtin: true },
 ];
+
+/** True iff the framework package ships inside @typecad/cuttlefish and needs
+ *  no separate npm dependency in scaffolded projects. */
+export function isBuiltinFramework(packageName: string): boolean {
+  return FRAMEWORK_CATALOG.some((f) => f.packageName === packageName && f.builtin === true);
+}
 
 /** Structural shape we need from a board/target. Keeps this module decoupled
  *  from the KnownTarget type (and trivially testable with literals). */
@@ -46,34 +59,27 @@ export interface BoardLike {
 /**
  * Architecture → compatible framework ids. Derived from each framework
  * package's framework.manifest.ts `profile.targets`:
- *   - arduino: avr, esp32 family, rp2040/rp2350, samd, stm32
  *   - zephyr:  nrf52 (xiao_ble), esp32 family (esp32, esp32s3, esp32c3, esp32c6),
- *              rp2040/rp2350 (rpi_pico, rpi_pico2), stm32f411 (blackpill)
+ *              rp2040/rp2350 (rpi_pico, rpi_pico2), stm32f411 (blackpill),
+ *              samd21 (nano_33_iot)
  *   - native:  desktop only
- * Unknown embedded architectures fall back to [arduino] (the broadest core).
+ * Unknown embedded architectures fall back to [zephyr].
  */
 const ARCHITECTURE_FRAMEWORKS: Record<string, string[]> = {
-  avr: ["arduino"],
-  esp32: ["arduino", "zephyr"],
-  esp32s2: ["arduino"],
-  esp32s3: ["arduino", "zephyr"],
-  esp32c3: ["arduino", "zephyr"],
-  esp32c6: ["arduino", "zephyr"],
-  rp2040: ["arduino", "zephyr"],
-  rp2350: ["arduino", "zephyr"],
-  samd: ["arduino"],
-  // Per-chip key (stm32f411 style) — the Nano 33 IoT is Zephyr-only today;
-  // the generic 'samd' entry stays ["arduino"] for the Arduino SAMD core.
+  esp32: ["zephyr"],
+  esp32s3: ["zephyr"],
+  esp32c3: ["zephyr"],
+  esp32c6: ["zephyr"],
+  rp2040: ["zephyr"],
+  rp2350: ["zephyr"],
+  // Per-chip key (stm32f411 style) — the Black Pill's generic 'stm32' family
+  // has no other supported silicon today.
   samd21: ["zephyr"],
-  // Per-chip key (esp32c3/c6 style). The generic 'stm32' entry stays
-  // ["arduino"] for future STM32duino support; the F411 Black Pill is
-  // Zephyr-only today.
   stm32f411: ["zephyr"],
-  stm32: ["arduino"],
   nrf52: ["zephyr"],
 };
 
-const FALLBACK_FRAMEWORKS: readonly string[] = ["arduino"];
+const FALLBACK_FRAMEWORKS: readonly string[] = ["zephyr"];
 
 /** Look up a catalog entry by framework id (e.g. "arduino"). */
 export function frameworkCatalogEntry(id: string): FrameworkCatalogEntry | undefined {
@@ -81,15 +87,13 @@ export function frameworkCatalogEntry(id: string): FrameworkCatalogEntry | undef
 }
 
 // ── framework-specific build target + toolchain ─────────────────────────────
-// A board's buildTarget string is NOT framework-independent: Arduino uses an
-// FQBN (e.g. 'esp32:esp32:esp32s3') while Zephyr uses a board id for
-// `west build -b` (e.g. 'esp32s3_devkitc'). The scaffold must pick the right
-// one for the chosen framework, and the matching toolchain backend
-// ('arduino-cli' vs 'west'). Source for Zephyr board ids: framework-zephyr's
+// A board's buildTarget string is framework-specific: Zephyr uses a board id
+// for `west build -b` (e.g. 'esp32s3_devkitc/esp32s3/procpu'). The scaffold
+// must pick the right one for the chosen framework, and the matching
+// toolchain backend ('west'). Source for Zephyr board ids: framework-zephyr's
 // chip registry (src/chips/index.ts) + the demo configs.
 
 const FRAMEWORK_TOOLCHAIN: Record<string, string> = {
-  arduino: "arduino-cli",
   zephyr: "west",
   // native has no toolchain (the native config path writes neither field).
 };
@@ -129,54 +133,27 @@ const ZEPHYR_BOARD_IDS: Record<string, string> = {
 };
 
 /**
- * Probe methods per cuttlefish board id, for `cuttlefish create`'s wizard
- * (which runs BEFORE the board package is installed, so it cannot read the
- * package's zephyr field). Ids and descriptions mirror the board packages'
- * probeMethods tables — the consistency test in tests/packages/cuttlefish
- * keeps them in sync; the runtime resolution reads the board package.
+ * Probe method a board offers, for `cuttlefish create`'s wizard (which runs
+ * BEFORE the framework is installed, so it reads the board data pack — the
+ * same table boardgen emits into the generated board module for tier-3
+ * boards, extracted from each board's own board.cmake runners).
  */
 export interface CatalogProbeMethod {
   id: string;
   description: string;
 }
 
-export const BOARD_PROBE_METHODS: Record<string, CatalogProbeMethod[]> = {
-  "blackpill-f411ce": [
-    { id: "stlink", description: "ST-Link or any SWD probe openocd supports (no BOOT0 needed) — also debugs" },
-    { id: "stlink-srst", description: "ST-Link with the RST/SRST line wired — connect under reset (recovers wedged targets) — also debugs" },
-    { id: "dfu", description: "Built-in USB bootloader: hold BOOT0, tap reset (no debug)" },
-    { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
-  ],
-  "nano-33-iot": [
-    { id: "bossac", description: "Built-in USB bootloader: double-tap reset, flash over the USB port (no debug)" },
-    { id: "openocd", description: "Any CMSIS-DAP-class SWD probe on the underside SWD pads — also debugs" },
-    { id: "jlink", description: "J-Link probe (SWD) on the underside SWD pads — also debugs" },
-  ],
-  "xiao-nrf52840": [
-    { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
-    { id: "openocd", description: "Any SWD probe openocd supports (CMSIS-DAP, cheap clones) — also debugs" },
-    { id: "uf2", description: "Bootloader UF2 drag-and-drop: double-tap reset (no debug)" },
-  ],
-  rp2040: [
-    { id: "uf2", description: "BOOTSEL UF2 bootloader: hold BOOTSEL while plugging in USB (no debug)" },
-    { id: "openocd", description: "Any CMSIS-DAP-class SWD probe on the SWD header — also debugs" },
-    { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
-  ],
-  rp2350: [
-    { id: "uf2", description: "BOOTSEL UF2 bootloader: hold BOOTSEL while plugging in USB (no debug)" },
-    { id: "openocd", description: "Any CMSIS-DAP-class SWD probe on the SWD header (m33 core) — also debugs" },
-    { id: "jlink", description: "J-Link probe (SWD) — also debugs" },
-  ],
-};
-
 /**
- * The probe methods a board offers (wizard/catalog data). Empty when the
- * board has no table — then no probe question is asked and no zephyr.probe
- * section is scaffolded.
+ * The probe methods a board offers, from the board data pack. Accepts a
+ * qualified Zephyr target ('blackpill_f401ce/stm32f401xe'), a bare board id,
+ * or undefined. Empty when the board ships no runner table — then no probe
+ * question is asked and no zephyr.probe section is scaffolded.
  */
 export function probeMethodsForBoard(boardId: string | undefined): CatalogProbeMethod[] {
   if (!boardId) return [];
-  return BOARD_PROBE_METHODS[boardId] ?? [];
+  const entry = findPackBoard(boardId);
+  if (!entry?.probeMethods) return [];
+  return entry.probeMethods.map((m) => ({ id: m.id, description: m.description }));
 }
 
 export interface FrameworkTargetProfile {
@@ -189,15 +166,15 @@ export interface FrameworkTargetProfile {
 export interface TargetProfileInput {
   id: string;
   isNative?: boolean;
-  /** The board's Arduino FQBN, as currently stored on KnownTarget. */
+  /** The board's default build target, as currently stored on KnownTarget. */
   buildTarget?: string;
 }
 
 /**
  * Resolve the framework-specific buildTarget + toolchain type for a
- * (board, framework) pair. Arduino reuses the board's FQBN; Zephyr maps to the
- * Zephyr board id; native returns an empty profile (the native config writes
- * neither field).
+ * (board, framework) pair. Zephyr maps the board id to its Zephyr board
+ * target; native returns an empty profile (the native config writes neither
+ * field); any unlisted framework falls back to the board's stored target.
  */
 export function frameworkTargetProfile(
   target: TargetProfileInput,
@@ -210,13 +187,13 @@ export function frameworkTargetProfile(
   if (frameworkId === "zephyr") {
     return { buildTarget: ZEPHYR_BOARD_IDS[target.id], toolchainType };
   }
-  // Arduino (and any unlisted framework) → use the board's FQBN.
+  // Unlisted framework → pass the board's stored build target through.
   return { buildTarget: target.buildTarget, toolchainType };
 }
 
 /**
  * The framework ids compatible with a board. Native boards map to ["native"];
- * embedded boards map via ARCHITECTURE_FRAMEWORKS (falling back to arduino for
+ * embedded boards map via ARCHITECTURE_FRAMEWORKS (falling back to zephyr for
  * unknown architectures). Order is preserved as the catalog order so the most
  * common framework is offered first in the prompt.
  */
@@ -237,7 +214,7 @@ export function frameworksForTarget(target: BoardLike): FrameworkCatalogEntry[] 
  * board's architecture AND installable. Auto-picking narrows via
  * frameworksForTarget, but an explicit `--framework` bypasses that narrowing —
  * callers accepting one must reject anything this returns false for (e.g.
- * `--framework arduino` on the Zephyr-only xiao-nrf52840).
+ * `--framework native` on an embedded board).
  */
 export function frameworkCompatibleWithTarget(target: BoardLike, frameworkId: string): boolean {
   return frameworksForTarget(target).some((f) => f.id === frameworkId && f.installable);

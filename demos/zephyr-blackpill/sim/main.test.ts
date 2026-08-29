@@ -51,8 +51,7 @@ function reflectButtonOnLed(button: SimDigitalPin, led: SimDigitalPin): void {
 // ===========================================================================
 
 function setupSim(): { board: SimBoard; button: SimDigitalPin; led: SimDigitalPin } {
-  // boardType mirrors the target chosen with `cuttlefish create`.
-  const board = createSimBoard({ boardType: "blackpill-f411ce" });
+  const board = createSimBoard({});
 
   const button = board.digital(2).asInputPullUp();  // button on pin 2 (INPUT_PULLUP)
   const led = board.digital(13).asOutput(false);    // LED on pin 13

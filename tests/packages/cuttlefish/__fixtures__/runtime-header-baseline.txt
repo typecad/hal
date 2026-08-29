@@ -674,6 +674,17 @@ extern const uint16_t __ui_input_binding_count;
 // The UIListBinding table below is still emitted by the lowering for the
 // node-initializer to read at static-init time; the runtime never indexes it.
 
+// ── Runtime clock + clamp (thin-HAL contract) ────────────────────────────
+// The UI runtime's timing contracts (debounce, press/repeat, toasts,
+// animations, scroll physics) need a monotonic millisecond clock. The
+// framework strategy provides __tc_now_ms() (Zephyr: kernel uptime,
+// native: steady_clock) — the same clock the async runtime and Time.now()
+// lower onto. All comparisons are subtraction-based, so the 32-bit wrap
+// (~49.7 days) is harmless.
+extern uint32_t __tc_now_ms(void);
+// Integer clamp used by progress/range draws and the keyboard value steps.
+static inline long __ui_constrain(long x, long lo, long hi) { return (x < lo) ? lo : ((x > hi) ? hi : x); }
+
 // ── Modal <select> + <drawer> declarations ────────────────────────────────
 // Declared here (the earliest runtime-header module) because ui_navigate,
 // ui_is_effectively_visible, ui_init, and ui_tick all reference them;
@@ -1225,7 +1236,7 @@ static inline uint8_t ui_scroll_release(int16_t node) {
     __ui_nodes[node].settling = 1;
     __ui_settle_from_overscroll = __ui_nodes[node].overscrollPx;
     __ui_settle_from_scrollY = 0;
-    __ui_settle_start_ms = millis();
+    __ui_settle_start_ms = __tc_now_ms();
     changed = 1;
   } else {
     int16_t sy = __ui_nodes[node].scrollY;
@@ -1235,13 +1246,13 @@ static inline uint8_t ui_scroll_release(int16_t node) {
       __ui_nodes[node].settling = 1;
       __ui_settle_from_scrollY = sy;            // positive → snap toward 0
       __ui_settle_from_overscroll = 0;
-      __ui_settle_start_ms = millis();
+      __ui_settle_start_ms = __tc_now_ms();
       changed = 1;
     } else if (maxS > 0 && sy < maxS && sy >= maxS - snap) {
       __ui_nodes[node].settling = 1;
       __ui_settle_from_scrollY = sy - maxS;     // negative → snap toward max
       __ui_settle_from_overscroll = 0;
-      __ui_settle_start_ms = millis();
+      __ui_settle_start_ms = __tc_now_ms();
       changed = 1;
     }
   }
@@ -1260,7 +1271,7 @@ static inline void ui_scroll_advance_settle(uint16_t node, uint16_t deltaMs) {
     __ui_nodes[node].settling = 0;
     return;
   }
-  uint32_t elapsed = millis() - __ui_settle_start_ms;
+  uint32_t elapsed = __tc_now_ms() - __ui_settle_start_ms;
   uint16_t dur = static_cast<uint16_t>(UI_SCROLL_SETTLE_MS);
   // ease-out: k = 1 - (1 - t)^2, t in [0,1]
   uint32_t t = elapsed >= dur ? 100 : (elapsed * 100) / dur;
@@ -3045,13 +3056,13 @@ static inline void ui_set_pressed(uint16_t nodeIdx, uint8_t pressed) {
 // On press, arm transitions toward the :pressed target color; on release,
 // arm them back toward the base color (interrupt-and-re-lerp from current).
 static inline void ui_on_press(uint16_t nodeIdx) {
-  uint32_t now = millis();
+  uint32_t now = __tc_now_ms();
   if (now - __ui_last_edge_time < UI_DEBOUNCE_MS) return;
   __ui_last_edge_time = now;
   ui_set_pressed(nodeIdx, 1);
 }
 static inline void ui_on_release(uint16_t nodeIdx) {
-  uint32_t now = millis();
+  uint32_t now = __tc_now_ms();
   if (now - __ui_last_edge_time < UI_DEBOUNCE_MS) return;
   __ui_last_edge_time = now;
   ui_set_pressed(nodeIdx, 0);
@@ -3105,7 +3116,7 @@ extern const uint16_t __ui_rangechange_handler_count;
 
 // Touch state machine: tracks down → hold → up → click lifecycle
 // Touch node/scroll node state is defined near navigation because ui_navigate resets it.
-static uint32_t __ui_touch_down_time = 0;  // millis() when touch started
+static uint32_t __ui_touch_down_time = 0;  // __tc_now_ms() when touch started
 static int16_t __ui_touch_down_y_pos = 0; // Y position when touch started (for tap vs drag detection)
 static uint32_t __ui_last_touch_time = 0;  // for debounce (updated on touch down only)
 static uint32_t __ui_last_release_time = 0;  // for release debounce
@@ -3253,13 +3264,13 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
   // option rows. No hit-test/press/scroll while the overlay is open.
   if (__ui_select_menu >= 0) {
     __ui_touch_state = 1;
-    __ui_touch_down_time = millis();
+    __ui_touch_down_time = __tc_now_ms();
     return;
   }
   int16_t node = ui_hit_test(tx, ty);
   __ui_touch_node = node;
   __ui_touch_state = 1;
-  __ui_touch_down_time = millis();
+  __ui_touch_down_time = __tc_now_ms();
   __ui_touch_down_y_pos = ty;
   __ui_drag_start_x = tx;
   __ui_drag_start_y = ty;
@@ -3294,7 +3305,7 @@ static void ui_touch_down(int16_t tx, int16_t ty) {
       int16_t usable = __ui_nodes[node].box.w - 8;
       if (usable <= 0) usable = 1;
       int16_t nextVal = rMin + (static_cast<int32_t>(relX) * range) / usable;
-      nextVal = constrain(nextVal, rMin, rMax);
+      nextVal = __ui_constrain(nextVal, rMin, rMax);
       if (nextVal != __ui_nodes[node].value) {
         __ui_nodes[node].value = nextVal;
         ui_mark_dirty(node);
@@ -3340,7 +3351,7 @@ static void ui_touch_up() {
   if (__ui_select_menu >= 0) {
     ui_select_menu_tap(__ui_last_touch_x, __ui_last_touch_y);
     __ui_touch_state = 0;
-    __ui_last_touch_time = millis();
+    __ui_last_touch_time = __tc_now_ms();
     return;
   }
 #if !defined(UI_HIDE_OSK)
@@ -3348,11 +3359,11 @@ static void ui_touch_up() {
     ui_kb_handle_tap(__ui_last_touch_x, __ui_last_touch_y);
     __ui_kb_bs_held = 0;
     __ui_touch_state = 0;
-    __ui_last_touch_time = millis();
+    __ui_last_touch_time = __tc_now_ms();
     return;
   }
 #endif
-  uint32_t elapsed = millis() - __ui_touch_down_time;
+  uint32_t elapsed = __tc_now_ms() - __ui_touch_down_time;
   // Release the scroll owner: arm a bounded settle (bounce-back / edge-snap).
   // No fling — motion ends with the finger (the settle animation is the only
   // post-lift motion, terminating within UI_SCROLL_SETTLE_MS).
@@ -3432,7 +3443,7 @@ static void ui_touch_up() {
 // Called each frame from ui_poll_touch when touch is detected.
 // Implements debounce + the down/hold/up/click state machine.
 static inline void ui_handle_touch(int16_t tx, int16_t ty) {
-  uint32_t now = millis();
+  uint32_t now = __tc_now_ms();
   // Track last touch coords for tap-up routing.
   __ui_last_touch_x = tx;
   __ui_last_touch_y = ty;
@@ -3483,7 +3494,7 @@ static inline void ui_handle_touch(int16_t tx, int16_t ty) {
       int16_t usable = __ui_nodes[__ui_range_node].box.w - 8;
       if (usable <= 0) usable = 1;
       int16_t newVal = rMin + (static_cast<int32_t>(relX) * range) / usable;
-      newVal = constrain(newVal, rMin, rMax);
+      newVal = __ui_constrain(newVal, rMin, rMax);
       if (newVal != __ui_nodes[__ui_range_node].value) {
         __ui_nodes[__ui_range_node].value = newVal;
         ui_mark_dirty(__ui_range_node);
@@ -3536,9 +3547,9 @@ static inline void ui_handle_no_touch() {
   if (__ui_touch_state != 0) {
     // Debounce: require a gap since the last release before processing another.
     // This prevents crash from rapid touch/no-touch flicker on resistive screens.
-    if (millis() - __ui_last_release_time < UI_TOUCH_DEBOUNCE_MS) return;
+    if (__tc_now_ms() - __ui_last_release_time < UI_TOUCH_DEBOUNCE_MS) return;
     ui_touch_up();
-    __ui_last_release_time = millis();
+    __ui_last_release_time = __tc_now_ms();
   }
 }
 
@@ -4716,9 +4727,9 @@ struct UINodeDrawCtx {
 // which case the caller is responsible for the post-switch epilogue.
 //
 // The ctx parameter is typed const void* (cast back to UINodeDrawCtx* below):
-// the Arduino .ino preprocessor auto-inserts a forward declaration of every
-// function near the top of the sketch, BEFORE this struct is defined, so a
-// struct-typed parameter makes that generated prototype fail to compile
+// the emitter auto-inserts a forward declaration of every function near the
+// top of the program, BEFORE this struct is defined, so a struct-typed
+// parameter makes that generated prototype fail to compile
 // ("'UINodeDrawCtx' does not name a type"). Primitive-only parameters keep
 // the auto-generated prototype valid; call sites still pass &ctx, which
 // converts implicitly to const void*.
@@ -5169,7 +5180,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
 
           // On first draw (lastTextWidth < 0), draw everything.
           // Otherwise incremental: only update the changed portion.
-          uint8_t pct = constrain(__ui_nodes[i].value, 0, 100);
+          uint8_t pct = __ui_constrain(__ui_nodes[i].value, 0, 100);
           int16_t fillW = (static_cast<int32_t>(bw - 2) * pct) / 100;
           int16_t prevW = __ui_nodes[i].lastTextWidth; // reused as previous fill width
 
@@ -5211,7 +5222,7 @@ static inline uint8_t ui_draw_node_body(int16_t i, const void* rawCtx) {
           int16_t rMax = __ui_nodes[i].rangeMax;
           int16_t range = rMax - rMin;
           if (range <= 0) range = 100;
-          int16_t pct = constrain(__ui_nodes[i].value, rMin, rMax) - rMin;
+          int16_t pct = __ui_constrain(__ui_nodes[i].value, rMin, rMax) - rMin;
           int16_t fillW = (static_cast<int32_t>(bw - 8) * pct) / range;
           // lastTextWidth carries the previous fill width, or -1 if this node
           // has never been drawn (fillW=0 at value=min is a valid thumb pos).
@@ -7984,7 +7995,7 @@ static inline void ui_kb_handle_touch(int16_t tx, int16_t ty) {
       // Backspace starts deleting immediately + arms auto-repeat.
       if (k.special == 2) {
         __ui_kb_bs_held = 1;
-        __ui_kb_bs_repeat = millis();
+        __ui_kb_bs_repeat = __tc_now_ms();
         ui_kb_delete();
       }
       return;

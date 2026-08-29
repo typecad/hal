@@ -8,29 +8,30 @@ describe("transpile() helper with autosar option", () => {
     // Snapshot the existing sidecar files so we can identify the ones this
     // call creates (and clean them up — transpile() deletes the .cpp but
     // leaves the sidecar).
-    const testOutDir = path.resolve(".build/tests");
-    const before = new Set(
-      fs.existsSync(testOutDir)
-        ? fs.readdirSync(testOutDir).filter((f) => f.endsWith(".autosar-deviations.json"))
-        : [],
-    );
+    // transpile() now uses a per-call unique out dir (parallel-worker race fix),
+    // so scan the whole tree for the freshly created sidecar.
+    const testOutRoot = path.resolve(".build/tests");
+    const walkSidecars = (dir: string): string[] =>
+      !fs.existsSync(dir) ? [] : fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+        const full = path.join(dir, e.name);
+        return e.isDirectory() ? walkSidecars(full)
+          : e.name.endsWith(".autosar-deviations.json") ? [full] : [];
+      });
+    const before = new Set(walkSidecars(testOutRoot));
 
     const result = transpile("const x: number = 5;", { autosar: "warn" });
     expect(result.cpp).toBeDefined();
 
-    const after = fs.readdirSync(testOutDir).filter((f) => f.endsWith(".autosar-deviations.json"));
-    const created = after.filter((f) => !before.has(f));
+    const created = walkSidecars(testOutRoot).filter((f) => !before.has(f));
     expect(created.length).toBeGreaterThan(0);
 
-    const sidecar = JSON.parse(
-      fs.readFileSync(path.join(testOutDir, created[0]), "utf-8"),
-    );
+    const sidecar = JSON.parse(fs.readFileSync(created[0], "utf-8"));
     expect(sidecar.standard).toBe("AUTOSAR C++14");
     expect(sidecar.tool).toBe("cuttlefish");
 
     // Cleanup: remove every sidecar this test created.
     for (const f of created) {
-      fs.unlinkSync(path.join(testOutDir, f));
+      fs.unlinkSync(f);
     }
   });
 

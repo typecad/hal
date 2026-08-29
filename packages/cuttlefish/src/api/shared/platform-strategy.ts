@@ -221,7 +221,7 @@ export interface PlatformExpressionStrategy {
   /** Wrap an expression in the platform's string object type (e.g. String(...) on Arduino). */
   wrapStringObject(expr: string): string;
 
-  /** Platform-specific expression for current time in milliseconds (e.g. "millis()" on Arduino, "std::chrono" on hosted). */
+  /** Platform-specific expression for the monotonic runtime clock in milliseconds (e.g. "__tc_now_ms()" on Zephyr/native). */
   currentTimeMillis(): string;
 
   /**
@@ -386,7 +386,7 @@ export interface PlatformSafetyStrategy {
 
   /**
    * Whether C++ exceptions are disabled on the given architecture.
-   * Frameworks return true for targets compiled with -fno-exceptions (e.g. AVR-GCC).
+   * Frameworks return true for targets compiled with -fno-exceptions (e.g. Zephyr).
    */
   isExceptionSupportDisabled?(architecture: string): boolean;
 
@@ -506,6 +506,16 @@ export interface PlatformAsyncStrategy {
    *   - What queue capacity to use
    */
   getAsyncRuntimeConfig(): AsyncRuntimeConfig;
+
+  /**
+   * Generate the project-local board module for a board target — the
+   * framework owns its board data (the Zephyr framework joins its generated
+   * data pack with its curated soc descriptors). Returns the contents of
+   * `.cuttlefish/board.ts` and `.cuttlefish/board.json`; the caller writes
+   * them. Undefined = the framework has no board generation (the config's
+   * board field then requires a different resolution path).
+   */
+  generateBoardModule?(target: string): { boardTs: string; boardJson: string } | undefined;
 
   /**
    * Lines to inject into the loop/run function body to drive async tasks.

@@ -13,12 +13,12 @@ describe("deviation-writer", () => {
       "source",
       { tsFile: "src/hardware/display.ts", tsLine: 12, kind: "hal-instance" },
     );
-    const json = JSON.parse(renderRegistryJson(ctx, "main.ino", "1.0.0-alpha.7"));
+    const json = JSON.parse(renderRegistryJson(ctx, "main.cpp", "1.0.0-alpha.7"));
     expect(json.schemaVersion).toBe("1.0.0");
     expect(json.standard).toBe("AUTOSAR C++14");
     expect(json.tool).toBe("cuttlefish");
     expect(json.toolVersion).toBe("1.0.0-alpha.7");
-    expect(json.emittedArtifact).toBe("main.ino");
+    expect(json.emittedArtifact).toBe("main.cpp");
     expect(json.summary.totalDeviations).toBe(1);
     expect(json.summary.byRule).toEqual({ "M3-2-1": 1 });
     expect(json.deviations[0]).toMatchObject({
@@ -32,7 +32,7 @@ describe("deviation-writer", () => {
       kind: "hal-instance",
     });
     expect(json.deviations[0].cpp).toMatchObject({
-      file: "main.ino",
+      file: "main.cpp",
       line: 42,
     });
   });

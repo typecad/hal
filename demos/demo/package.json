@@ -12,9 +12,7 @@
     "lint": "eslint src/"
   },
   "dependencies": {
-    "@typecad/framework-zephyr": "*",
-    "@typecad/board-xiao-nrf52840": "*",
-    "@typecad/mcu-nrf52840": "*"
+    "@typecad/framework-zephyr": "*"
   },
   "devDependencies": {
     "eslint": "^10.4.1",

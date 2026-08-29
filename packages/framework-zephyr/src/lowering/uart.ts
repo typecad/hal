@@ -61,51 +61,77 @@ export function lowerUart(op: HALOpIR): { code?: string; expression?: string } {
   const dev = `${p}_dev`;
 
   switch (op.operation) {
-    case 'uart.begin':
-      return { code: `${p}_init(static_cast<uint32_t>(${o.baud}));` };
-    case 'uart.end':
-      return { code: `(void)${dev};` };
-    case 'uart.print':
-      return { code: renderWrite(dev, o.value, false) };
-    case 'uart.println':
-      return { code: renderWrite(dev, o.value, true) };
-    case 'uart.write':
-      return { code: renderWrite(dev, o.data, false) };
-    case 'uart.printf': {
-      // snprintf into a buffer, then poll_out each byte.
-      const fmt = o.format;
-      const args = (o.args ?? []).join(', ');
-      const argList = args ? `, ${args}` : '';
+    case 'uart.poll_write': {
+      const pre = uartBaudGuard(p, o.baud);
+      return { code: `${pre} ${renderWrite(dev, o.data, false)}` };
+    }
+
+    // ── Thin UART RX (hal/uart-port.ts) — interrupt-drained ring ──────────
+    // The first receive call arms the driver IRQ (guarded); the ISR drains
+    // the FIFO into the construction-sized static ring (uartRingStateLines).
+    // available/peek/read are then pure ring arithmetic — the calls the poll
+    // API honestly could not support.
+    case 'uart.rx_arm':
+    case 'uart.rx_available':
+    case 'uart.rx_peek':
+    case 'uart.rx_read': {
+      const r = `__tc_uartrx${idx}`;
+      const arm = `{ static bool ${r}_armed = false; if (!${r}_armed) { uart_irq_callback_user_data_set(${dev}, ${r}_isr, NULL); uart_irq_rx_enable(${dev}); ${r}_armed = true; } }`;
+      if (op.operation === 'uart.rx_arm') return { code: arm };
+      if (op.operation === 'uart.rx_available') {
+        return { expression: `({ ${arm} (${r}_head - ${r}_tail); })` };
+      }
+      if (op.operation === 'uart.rx_peek') {
+        return { expression: `({ ${arm} (${r}_tail < ${r}_head ? ${r}_buf[${r}_tail % ${o.ring}] : -1); })` };
+      }
       return {
-        code: `char __buf[128]; int __n = snprintk(__buf, sizeof(__buf), ${fmt}${argList}); for (int __i = 0; __i < __n; __i++) { uart_poll_out(${dev}, __buf[__i]); }`,
+        expression: `({ ${arm} (${r}_tail < ${r}_head ? ${r}_buf[(${r}_tail)++ % ${o.ring}] : -1); })`,
       };
     }
-    case 'uart.read':
-      // Non-blocking poll; returns the byte or -1 if none available.
-      return { expression: `({ unsigned char __b = 0; (uart_poll_in(${dev}, &__b) == 0) ? (int)__b : -1; })` };
-    case 'uart.peek':
-      // The poll API has no buffered-byte store, so there is no true peek.
-      // Return -1 (the Arduino "no data" sentinel) rather than blocking. This
-      // is an honest limitation of the byte-level poll driver; an interrupt- or
-      // DMA-backed UART driver would be needed for real peek semantics.
-      return { expression: '(-1)' };
-    case 'uart.available':
-      // The poll API reports only "at least one byte ready" via uart_poll_in's
-      // return code — it has no buffered-byte count, and probing with poll_in
-      // would DRAIN the very byte the caller next wants to read. So we cannot
-      // honestly report availability. Return 0 (Arduino's "no data" value)
-      // rather than the old truthy -1, so `if (uart.available())` loops don't
-      // spin forever on a false-positive. Callers should instead just call
-      // uart.read() directly (it returns -1 when no byte is ready). For true
-      // buffered availability, use an interrupt/DMA-backed UART driver.
-      return { expression: '(0)' };
-    case 'uart.flush':
-      // poll_out is synchronous (blocking until sent); flush is a no-op.
-      return { code: `(void)${dev};` };
     default:
       throw new Error(
         `framework-zephyr does not yet support HAL op \`${op.operation}\`. ` +
           `Open an issue or use rawCpp() to emit it manually.`,
       );
   }
+}
+
+/** The thin-port baud preamble: apply the construction baud once via the
+ *  shim's `_init` helper (uart_configure). Guarded per controller. */
+function uartBaudGuard(p: string, baud: unknown): string {
+  const n = typeof baud === 'number' ? baud : parseInt(String(baud ?? 0), 10);
+  if (!n || isNaN(n)) return '';
+  const done = `${p}_baud_done`;
+  return `{ static bool ${done} = false; if (!${done}) { ${p}_init(static_cast<uint32_t>(${n})); ${done} = true; } } `;
+}
+
+/** The per-port RX ring state: a construction-sized static buffer, free-running
+ *  head/tail counters (available = head - tail, no wrap ambiguity), and the
+ *  ISR that drains the FIFO. A byte arriving with a full ring is dropped —
+ *  the embedded-honest answer (no unbounded buffering). Emitted only for
+ *  ports whose uart.rx_* ops were emitted (collectUartRings), so an unused
+ *  ISR never trips -Wunused-function. */
+export function uartRingStateLines(index: number, ring: number): string[] {
+  const r = `__tc_uartrx${index}`;
+  const dev = `__tc_uart${index}_dev`;
+  return [
+    '// CUTTLEFISH_UARTRX_BEGIN',
+    `static uint8_t ${r}_buf[${ring}];`,
+    `static volatile uint32_t ${r}_head = 0;`,
+    `static volatile uint32_t ${r}_tail = 0;`,
+    `static void ${r}_isr(const struct device* dev, void* user_data) {`,
+    `    (void)user_data;`,
+    `    uart_irq_update(dev);`,
+    `    while (uart_irq_rx_ready(dev)) {`,
+    `        uint8_t __c = 0;`,
+    `        (void)uart_fifo_read(dev, &__c, 1);`,
+    `        if ((${r}_head - ${r}_tail) < ${ring}) {`,
+    `            ${r}_buf[${r}_head % ${ring}] = __c;`,
+    `            ${r}_head++;`,
+    `        }`,
+    `    }`,
+    `}`,
+    `(void)${dev};`,
+    '// CUTTLEFISH_UARTRX_END',
+  ];
 }

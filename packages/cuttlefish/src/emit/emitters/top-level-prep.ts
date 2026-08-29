@@ -358,7 +358,7 @@ export function runTopLevelPreprocessing(ctx: EmitterContext): void {
   // sees runtime mutations — e.g. `const reached = descended` freezes `reached`
   // at `descended`'s initial value because both are emitted as file-scope globals
   // initialized before main(), while the `descended = depth` assignments run
-  // inside main(). See SUPPORT_MATRIX §6.1.
+  // inside main().
   {
     // Collect every variable name that is the target of an assignment anywhere
     // in the program (top-level statements + function/method bodies). Such

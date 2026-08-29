@@ -2,7 +2,7 @@
   "name": "zephyr-blink",
   "version": "1.0.0",
   "private": true,
-  "description": "Zephyr RTOS LED blink demo — Seeed XIAO nRF52840",
+  "description": "Zephyr RTOS LED blink demo \u2014 Seeed XIAO nRF52840",
   "type": "module",
   "scripts": {
     "build": "cuttlefish build",
@@ -11,8 +11,6 @@
     "flash": "cuttlefish build --flash"
   },
   "dependencies": {
-    "@typecad/framework-zephyr": "*",
-    "@typecad/mcu-nrf52840": "*",
-    "@typecad/board-xiao-nrf52840": "*"
+    "@typecad/framework-zephyr": "*"
   }
 }

@@ -28,11 +28,11 @@ export function emitSegments(segments: ChainSegment[], ctx: PreprocessorContext)
   for (const seg of segments) {
     switch (seg.kind) {
       case 'describe':
-        ctx.emit(`${ctx.shim.println(ctx.flash(`[TC:DESCRIBE:${escapeProtocol(seg.name ?? '')}]`))};`);
+        ctx.emit(`${ctx.shim.println(ctx.quote(`[TC:DESCRIBE:${escapeProtocol(seg.name ?? '')}]`))};`);
         break;
 
       case 'it':
-        ctx.emit(`${ctx.shim.println(ctx.flash(`[TC:IT:${escapeProtocol(seg.name ?? '')}]`))};`);
+        ctx.emit(`${ctx.shim.println(ctx.quote(`[TC:IT:${escapeProtocol(seg.name ?? '')}]`))};`);
         break;
 
       case 'expect': {
@@ -83,17 +83,17 @@ export function emitExpectProtocol(
 ): void {
   if (isString && matcher === 'toBe') {
     const rawExpected = (matcherArgs[0] ?? '').replace(/^["']|["']$/g, '');
-    ctx.emit(`${ctx.shim.print(ctx.flash(`[TC:EXPECT:${matcher}:`))};`);
+    ctx.emit(`${ctx.shim.print(ctx.quote(`[TC:EXPECT:${matcher}:`))};`);
     ctx.emit(`${ctx.shim.print(`"${escapeProtocol(rawExpected)}"`)};`);
-    ctx.emit(`${ctx.shim.print(ctx.flash(':'))};`);
+    ctx.emit(`${ctx.shim.print(ctx.quote(':'))};`);
     ctx.emit(`${ctx.shim.print(actualVar)};`);
-    ctx.emit(`${ctx.shim.println(ctx.flash(']'))};`);
+    ctx.emit(`${ctx.shim.println(ctx.quote(']'))};`);
     return;
   }
   const expectedPart = matcherArgs.join(',');
-  ctx.emit(`${ctx.shim.print(ctx.flash(`[TC:EXPECT:${matcher}:${expectedPart}:`))};`);
+  ctx.emit(`${ctx.shim.print(ctx.quote(`[TC:EXPECT:${matcher}:${expectedPart}:`))};`);
   ctx.emit(`${ctx.shim.print(actualVar)};`);
-  ctx.emit(`${ctx.shim.println(ctx.flash(']'))};`);
+  ctx.emit(`${ctx.shim.println(ctx.quote(']'))};`);
 }
 
 // ---------------------------------------------------------------------------

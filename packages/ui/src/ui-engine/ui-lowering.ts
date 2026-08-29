@@ -60,6 +60,7 @@ export function lowerUIToCpp(
   allScreens: StyledNode[] = [],
   imageAssetIds: Map<string, number> = new Map(),
   keyframeSets: KeyframeSetModel[] = [],
+  keyframeNs: string = "",
 ): LoweredUI {
   void storage;
   const model = lowerUIToModel(root, boxes, colorFormat, display, fontAssets, allScreens, imageAssetIds, keyframeSets);
@@ -114,7 +115,7 @@ export function lowerUIToCpp(
 
   const screenCount = model.nodes.length > 0 ? Math.max(...model.nodes.map(n => n.screenId)) + 1 : 1;
   const imageTables = "const UIImage __ui_images[] = {};\nconst uint16_t __ui_image_count = 0;";
-  const keyframeTables = emitKeyframeTables(model);
+  const keyframeTables = emitKeyframeTables(model, keyframeNs);
   return { fontTables, nodeTable, transitionTable, typeDecl, keyboardLoaders, keyboardDispatch, screenCount, imageTables, keyframeTables, diagnostics: [] };
 }
 
@@ -424,7 +425,7 @@ function emitTransitionTable(model: UIProgram): string {
 }
 
 /** Emit keyframe stop arrays + keyframe set index + animation table. */
-function emitKeyframeTables(model: UIProgram): string {
+function emitKeyframeTables(model: UIProgram, keyframeNs: string = ""): string {
   if (model.keyframeSets.length === 0 && model.animations.length === 0) {
     return [
       `const UIKeyframeSet __ui_keyframe_sets[] = {};`,
@@ -435,8 +436,14 @@ function emitKeyframeTables(model: UIProgram): string {
   }
   const lines: string[] = [];
   // Emit one stop array per keyframe set.
+  // `keyframeNs` namespaces symbols per UI module, and shared stylesheets can
+  // register the same animation name into multiple mounted modules — dedupe
+  // by name so identical sets emit once (duplicate static arrays fail to link).
+  const seenKfNames = new Set<string>();
   for (const ks of model.keyframeSets) {
-    const safeName = ks.name.replace(/[^a-zA-Z0-9_]/g, "_");
+    if (seenKfNames.has(ks.name)) continue;
+    seenKfNames.add(ks.name);
+    const safeName = (keyframeNs ? keyframeNs + "_" : "") + ks.name.replace(/[^a-zA-Z0-9_]/g, "_");
     lines.push(`static const UIKeyframeStop __ui_kf_${safeName}_stops[] = {`);
     for (const s of ks.stops) {
       lines.push(`  { .percent=${s.percent}, .props=${s.props}, .bg=${hex(s.bg)}, .fg=${hex(s.fg)}, .opacity=${s.opacity}, .transformOffsetX=${s.transformOffsetX}, .transformOffsetY=${s.transformOffsetY}, .translatePctX=${s.translatePctX}, .translatePctY=${s.translatePctY}, .scaleX=${s.scaleX}, .scaleY=${s.scaleY}, .rotateDeg=${s.rotateDeg}, .width=${s.width}, .height=${s.height} },`);
@@ -446,7 +453,8 @@ function emitKeyframeTables(model: UIProgram): string {
   // Emit keyframe set index table.
   lines.push(`const UIKeyframeSet __ui_keyframe_sets[] = {`);
   model.keyframeSets.forEach((ks) => {
-    const safeName = ks.name.replace(/[^a-zA-Z0-9_]/g, "_");
+    if (!seenKfNames.has(ks.name)) return;
+    const safeName = (keyframeNs ? keyframeNs + "_" : "") + ks.name.replace(/[^a-zA-Z0-9_]/g, "_");
     lines.push(`  { .stopCount=${ks.stops.length}, .stops=__ui_kf_${safeName}_stops },`);
   });
   lines.push(`};`);

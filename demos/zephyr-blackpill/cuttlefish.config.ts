@@ -17,32 +17,20 @@ const config: CuttlefishConfig = {
   entry: './src/main.ts',
 
   // Target architecture
-  target: 'stm32f411',
+
   // MCU package — provides silicon-level pin definitions
-  mcu: '@typecad/mcu-stm32f411',
 
   // Board package — provides pin definitions and board constants
-  board: '@typecad/board-blackpill-f411ce',
+  board: 'blackpill_f411ce/stm32f411xe',
 
   // Framework package — controls code generation strategy
   framework: '@typecad/framework-zephyr',
-  // Framework data
-  frameworkData: {
-    buildTarget: 'blackpill_f411ce/stm32f411xe',
-  },
-
-  // Output / build options
+  // Framework data  // Output / build options
   output: {
-    framework: 'zephyr',
     outDir: './out',
   },
 
-  // Toolchain configuration
-  toolchain: {
-    type: 'west',
-  },
-
-  // Zephyr-specific: attach via ST-Link (SWD) instead of the board's default
+  // Toolchain configuration  // Zephyr-specific: attach via ST-Link (SWD) instead of the board's default
   // dfu-util runner. 'stlink' is one of the board's named probe methods — it
   // serves BOTH flashing and debugging, and resolves to the openocd runner
   // plus the args the method needs (the reset_config quirk for unwired SRST

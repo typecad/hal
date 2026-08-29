@@ -51,25 +51,7 @@ export const DEFAULT_STDLIB_SUPPORT: StdLibSupport = {
 };
 
 const STDLIB_SUPPORT: Record<string, StdLibSupport> = {
-  avr: {
-    hasVector: false,
-    hasString: false,
-    hasIostream: false,
-    hasExceptions: false,
-    hasRTTI: false,
-    recommendedArrayImpl: "static_array",
-    recommendedStringImpl: "static_string",
-  },
   esp32: {
-    hasVector: true,
-    hasString: true,
-    hasIostream: true,
-    hasExceptions: true,
-    hasRTTI: true,
-    recommendedArrayImpl: "std_vector",
-    recommendedStringImpl: "std_string",
-  },
-  esp8266: {
     hasVector: true,
     hasString: true,
     hasIostream: true,
@@ -95,15 +77,6 @@ const STDLIB_SUPPORT: Record<string, StdLibSupport> = {
     hasRTTI: true,
     recommendedArrayImpl: "std_vector",
     recommendedStringImpl: "std_string",
-  },
-  megaavr: {
-    hasVector: false,
-    hasString: false,
-    hasIostream: false,
-    hasExceptions: false,
-    hasRTTI: false,
-    recommendedArrayImpl: "static_array",
-    recommendedStringImpl: "static_string",
   },
   default: DEFAULT_STDLIB_SUPPORT,
 };

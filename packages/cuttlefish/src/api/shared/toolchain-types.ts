@@ -103,7 +103,7 @@ export interface UploadResult {
 /**
  * Parse compile errors from output (GCC and Clang formats)
  */
-export function parseCompileErrors(output: string, sketchDir?: string): CompileError[] {
+export function parseCompileErrors(output: string, projectDir?: string): CompileError[] {
   const errors: CompileError[] = [];
 
   for (const rawLine of output.split(/\r?\n/)) {
@@ -127,9 +127,9 @@ export function parseCompileErrors(output: string, sketchDir?: string): CompileE
     let filePath = match[1];
 
     // Normalize file paths
-    if (sketchDir) {
+    if (projectDir) {
       if (!path.isAbsolute(filePath)) {
-        const resolved = path.resolve(sketchDir, filePath);
+        const resolved = path.resolve(projectDir, filePath);
         if (fs.existsSync(resolved)) {
           filePath = resolved;
         }

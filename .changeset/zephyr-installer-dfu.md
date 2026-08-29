@@ -1,5 +1,5 @@
 ---
-'@typecad/zephyr-installer': minor
+'@typecad/framework-zephyr': minor
 ---
 
 ## dfu-util on Windows + pyusb in the env

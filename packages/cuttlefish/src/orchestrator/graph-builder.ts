@@ -12,6 +12,7 @@ import {
   isCuttlefishSDKPath,
 } from "../transpile/resolution.js";
 import { requireUIHook } from "../ui-hook.js";
+import { isSafetyImportSpecifier } from "../safety/specifiers.js";
 import { registerCuttlefishLibraryFromSpecifier } from "../library-packages.js";
 
 /**
@@ -84,12 +85,12 @@ export function topologicalSortFiles(
  * Also detects native C++ modules (.d.ts + .cpp pairs).
  * Files are returned in dependency order (dependencies before dependents).
  *
- * @param boardPackage  When provided, `@typecad/board` imports resolve to this
- *                      board package (e.g. `'@typecad/board-arduino-uno'`).
+ * @param boardTarget  When provided, `@typecad/board` imports fall back to
+ *                      this package specifier (legacy; generated boards win).
  */
 export async function collectTranspileGraph(
   entryFile: string,
-  boardPackage?: string,
+  boardTarget?: string,
   imageDecodeOpts?: { maxW?: number; maxH?: number },
 ): Promise<TranspileGraphResult> {
   const ordered: string[] = [];
@@ -159,9 +160,9 @@ export async function collectTranspileGraph(
         // be dropped as "SDK packages" here (the .ui script loop skips ALL
         // @typecad/* specifiers, unlike the selective main-loop skip list).
         if (registerCuttlefishLibraryFromSpecifier(filePath, moduleSpecifier)) continue;
-        if (moduleSpecifier === "@typecad/expect" || moduleSpecifier === "@typecad/ui" || moduleSpecifier === "@typecad/safety") continue;
+        if (moduleSpecifier === "@typecad/expect" || moduleSpecifier === "@typecad/ui" || isSafetyImportSpecifier(moduleSpecifier)) continue;
         if (moduleSpecifier.startsWith("@typecad/")) continue;
-        const resolved = resolveImport(filePath, moduleSpecifier, boardPackage);
+        const resolved = resolveImport(filePath, moduleSpecifier, boardTarget);
         if (!resolved) continue;
         if (resolved.uiModule) continue; // already handled above
         fileDeps.add(resolved.sourcePath);
@@ -212,17 +213,17 @@ export async function collectTranspileGraph(
         continue;
       }
 
-      // Skip @typecad/ui and @typecad/safety — they provide compile-time
-      // authoring stubs only. Their calls (ui.mount/signal/bind, safe.read)
-      // are intercepted at IR-build time and lowered to IR; the packages
-      // themselves must NOT be emitted as C++ modules (they would synthesize
+      // Skip @typecad/ui and the safety authoring surface — they provide
+      // compile-time authoring stubs only. Their calls (ui.mount/signal/bind,
+      // safe.read) are intercepted at IR-build time and lowered to IR; the
+      // modules themselves must NOT be emitted as C++ (they would synthesize
       // bogus _ui_t / _safe_t structs). All runtime definitions the user code
       // needs (enums, structs, shims) are provided by the safety polyfill.
-      if (moduleSpecifier === "@typecad/ui" || moduleSpecifier === "@typecad/safety") {
+      if (moduleSpecifier === "@typecad/ui" || isSafetyImportSpecifier(moduleSpecifier)) {
         continue;
       }
 
-      // Skip @typecad/board, @typecad/board-*, @typecad/mcu-*, @typecad/hal,
+      // Skip @typecad/board (virtual), the legacy board/mcu package prefixes, @typecad/hal,
       // and @typecad/framework-* — these packages ship src/ for HAL metadata
       // introspection (hal-parser.ts, board-resolver.ts) but their source
       // must NOT be transpiled to C++. The HAL resolver loads class/method
@@ -240,7 +241,7 @@ export async function collectTranspileGraph(
         continue;
       }
 
-      const resolved = resolveImport(filePath, moduleSpecifier, boardPackage);
+      const resolved = resolveImport(filePath, moduleSpecifier, boardTarget);
       // .ui.html modules: load into the UI registry, record the path, and don't
       // push onto `pending` (they are never parsed as TypeScript).
       if (resolved?.uiModule) {

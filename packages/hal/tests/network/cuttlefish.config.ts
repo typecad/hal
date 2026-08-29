@@ -25,22 +25,18 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 // target').
 
 const config: CuttlefishConfig = {
-  target: 'esp32',
-  mcu: '@typecad/mcu-esp32',
-  board: '@typecad/board-esp32-devkit',
+
+  board: 'esp32s3_devkitc/esp32s3/procpu',
   framework: '@typecad/framework-zephyr',
-  frameworkData: {
-    buildTarget: 'esp32_devkitc/esp32/procpu',
-  },
-  toolchain: { type: 'west' },
   console: { baudRate: 115200 },
   // CONFIG_ESP32_USE_UNSUPPORTED_REVISION is required for the ESP32 DevKitC
   // rev in this workspace — mirrors packages/hal/boards/esp32-devkit.config.ts.
   zephyr: {
-    kconfig: { CONFIG_ESP32_USE_UNSUPPORTED_REVISION: 'y' },
   },
   test: {
-    // Set via --port COM9 (or /dev/ttyUSB0 on Linux/macOS).
+    // The CH34x bridge identity — resolves before AND after flashing.
+    usb: { vid: '0x1A86', pid: '0x55D3' },
+    resetAfterOpen: true,
     port: '',
     baudRate: 115200,
     // WiFi connect (up to 30 s) + ~17 HTTP round-trips (verbs + status codes

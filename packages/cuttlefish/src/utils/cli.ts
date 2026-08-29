@@ -1,5 +1,5 @@
 ﻿import path from "node:path";
-import { CommandLineOptions, CreateCommandOptions, BoardAddCommandOptions, LibraryCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
+import { CommandLineOptions, CreateCommandOptions, LibraryCommandOptions, BoardCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
 
 import chalk from "chalk";
 
@@ -18,11 +18,11 @@ export function printHelp(): void {
   console.log(`  cuttlefish build [options]`);
   console.log(`  cuttlefish preview [--config <path>] [--port <port>]`);
   console.log(`  cuttlefish gen-libdefs <input.ts>`);
-  console.log(`  cuttlefish board add <spec.jsonc> [--force]   Generate board + MCU packages from a chip spec`);
   console.log(`  cuttlefish gen-decls <input.cpp|--all <directory>>`);
   console.log(`  cuttlefish map-error <mapFile> [options]`);
+  console.log(`  cuttlefish board regen                          Regenerate the project-local board module (.cuttlefish/board.ts + board.json)`);
   console.log(`  cuttlefish doctor                              Check the active framework's environment (e.g. toolchain + board core)`);
-  console.log(`  cuttlefish licenses [--all] [--strict]          Scan this project's Arduino libraries for SPDX licenses (--all: every installed library)`);
+  console.log(`  cuttlefish licenses [--all] [--strict]          Scan this project's libraries for SPDX licenses (--all: every installed library)`);
   console.log();
   console.log(chalk.cyan(`LIBRARY PACKAGES`) + chalk.gray(` (npm keywords are the catalog)`));
   console.log();
@@ -85,7 +85,7 @@ export function printHelp(): void {
   console.log();
   console.log(`  --build-target <id>     Framework-specific build target identifier.`);
   console.log(`                          Required by most frameworks for --compile and --upload.`);
-  console.log(`                          Example: arduino:avr:uno, esp32:esp32:esp32dev, cmake:Debug`);
+  console.log(`                          Example: blackpill_f411ce/stm32f411xe, esp32s3_devkitc/esp32s3/procpu`);
   console.log();
   console.log(`  --port <port>           Serial port of the connected board.`);
   console.log(`                          Required for --upload and --monitor.`);
@@ -95,7 +95,7 @@ export function printHelp(): void {
   console.log();
   console.log(`  --framework <pkg>       Framework package for code generation strategy.`);
   console.log(`                          Overrides cuttlefish.config.ts framework setting.`);
-  console.log(`                          Example: @typecad/framework-arduino, @typecad/framework-native`);
+  console.log(`                          Example: @typecad/framework-zephyr, @typecad/framework-native`);
   console.log();
   console.log(chalk.cyan(`BUILD COMMAND`));
   console.log();
@@ -142,26 +142,29 @@ export function printHelp(): void {
   console.log(chalk.cyan(`PROJECT CREATION`));
   console.log();
   console.log(`  create [name]           Create a new TypeCAD project`);
-  console.log(`                          Interactive wizard if no --target flag.`);
+  console.log(`                          Interactive wizard (also with --board on a terminal;`);
+  console.log(`                          piped/CI runs are non-interactive).`);
   console.log();
-  console.log(`  --target, -t <id>       Target platform (native, arduino-uno, esp32-devkit)`);
+  console.log(`  --target, -t <id>       Target platform (native, esp32-devkit, blackpill-f411ce, ...)`);
   console.log();
   console.log(`  --board, -b <id>        Alias for --target`);
   console.log();
   console.log(`  --mcu <id>              Bare-MCU target, no board package (stm32f411,`);
-  console.log(`                          atmega328p, ...) — programs silicon via @typecad/mcu-*`);
-  console.log();
-  console.log(`  --fqbn <fqbn>           Arduino FQBN for --mcu Arduino targets`);
-  console.log(`                          (e.g. arduino:avr:pro — find yours: arduino-cli board search)`);
+  console.log(`                          esp32s3, ...) — programs bare silicon via the soc registry`);
   console.log();
   console.log(`  --zephyr-board <name>   Existing Zephyr board for --mcu Zephyr targets;`);
   console.log(`                          omit to generate a custom board for the chip`);
   console.log();
-  console.log(`  --framework, -f <pkg>   Framework (arduino, avr, native)`);
+  console.log(`  --framework, -f <pkg>   Framework (zephyr, native)`);
   console.log();
-  console.log(`  --baud <rate>           Serial baud rate (default: 9600)`);
+  console.log(`  --probe, --flash <id>   Probe/flash method (stlink, dfu, jlink, ...) —`);
+  console.log(`                          what uploads AND debugs the board`);
   console.log();
-  console.log(`  --no-sketch             Skip generating starter sketch`);
+  console.log(`  --port, -p <port>       Serial port the board is on (COM10, /dev/ttyACM0)`);
+  console.log();
+  console.log(`  --baud <rate>           Serial baud rate (default: 115200 on Zephyr, 9600 otherwise)`);
+  console.log();
+  console.log(`  --no-starter            Skip generating the starter program`);
   console.log();
   console.log(`  --outDir, -o <path>     Output directory (default: ./<name>)`);
   console.log();
@@ -173,11 +176,8 @@ export function printHelp(): void {
   console.log(chalk.gray(`  # Native desktop project`));
   console.log(`  cuttlefish create my-app --target native`);
   console.log();
-  console.log(chalk.gray(`  # Arduino Uno project`));
-  console.log(`  cuttlefish create my-project --target arduino-uno`);
-  console.log();
-  console.log(chalk.gray(`  # Arduino Pro Mini — no board package, bare ATmega328P`));
-  console.log(`  cuttlefish create my-pro-mini --mcu atmega328p --fqbn arduino:avr:pro`);
+  console.log(chalk.gray(`  # Zephyr board project`));
+  console.log(`  cuttlefish create my-project --target blackpill-f411ce`);
   console.log();
   console.log(chalk.gray(`  # Custom STM32F411 hardware — generated Zephyr board`));
   console.log(`  cuttlefish create my-board --mcu stm32f411`);
@@ -191,29 +191,29 @@ export function printHelp(): void {
   console.log(chalk.gray(`  # Transpile to generic C++`));
   console.log(`  cuttlefish src/main.ts`);
   console.log();
-  console.log(chalk.gray(`  # Transpile using Arduino framework`));
-  console.log(`  cuttlefish sketch.ts --framework @typecad/framework-arduino --outDir ./build`);
+  console.log(chalk.gray(`  # Transpile using the Zephyr framework`));
+  console.log(`  cuttlefish main.ts --framework @typecad/framework-zephyr --outDir ./build`);
   console.log();
-  console.log(chalk.gray(`  # Transpile and compile for Arduino Uno`));
-  console.log(`  cuttlefish sketch.ts --framework @typecad/framework-arduino --compile --build-target arduino:avr:uno`);
+  console.log(chalk.gray(`  # Transpile and compile for the Black Pill`));
+  console.log(`  cuttlefish main.ts --framework @typecad/framework-zephyr --compile --build-target blackpill_f411ce/stm32f411xe`);
   console.log();
   console.log(chalk.gray(`  # Transpile, compile, and upload`));
-  console.log(`  cuttlefish sketch.ts --framework @typecad/framework-arduino --compile --upload --build-target arduino:avr:uno --port COM4`);
+  console.log(`  cuttlefish main.ts --framework @typecad/framework-zephyr --compile --upload --build-target blackpill_f411ce/stm32f411xe --port COM4`);
   console.log();
   console.log(chalk.gray(`  # Full chain: transpile → compile → upload → monitor`));
-  console.log(`  cuttlefish sketch.ts --framework @typecad/framework-arduino --compile --upload --monitor --build-target arduino:avr:uno --port COM4 --baud 115200`);
+  console.log(`  cuttlefish main.ts --framework @typecad/framework-zephyr --compile --upload --monitor --build-target blackpill_f411ce/stm32f411xe --port COM4 --baud 115200`);
   console.log();
   console.log(chalk.gray(`  # Watch mode: auto-retranspile on changes`));
-  console.log(`  cuttlefish sketch.ts --watch`);
+  console.log(`  cuttlefish main.ts --watch`);
   console.log();
-  console.log(chalk.gray(`  # Watch and auto-compile for Arduino`));
-  console.log(`  cuttlefish sketch.ts --framework @typecad/framework-arduino --watch --compile --build-target arduino:avr:uno`);
+  console.log(chalk.gray(`  # Watch and auto-compile`));
+  console.log(`  cuttlefish main.ts --framework @typecad/framework-zephyr --watch --compile --build-target blackpill_f411ce/stm32f411xe`);
   console.log();
   console.log(chalk.gray(`  # Generate library definitions from imports`));
   console.log(`  cuttlefish gen-libdefs src/sensor.ts`);
   console.log();
   console.log(chalk.gray(`  # Map a C++ error to TypeScript source`));
-  console.log(`  cuttlefish map-error .build/sketch.cpp.map --line 42 --column 5 --message "undefined reference"`);
+  console.log(`  cuttlefish map-error .build/main.cpp.map --line 42 --column 5 --message "undefined reference"`);
   console.log();
 }
 
@@ -389,7 +389,7 @@ function parsePipelineCommand(
   };
 }
 
-export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | BoardAddCommandOptions | LibraryCommandOptions | "help" {
+export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | LibraryCommandOptions | BoardCommandOptions | "help" {
   const firstArg = argv[2];
 
   if (!firstArg || firstArg === "--help" || firstArg === "-h") {
@@ -405,13 +405,13 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       ?? readFirstFlagValue(argv, ["--board", "-b"]);
     const mcu = readFirstFlagValue(argv, ["--mcu"]);
     const framework = readFirstFlagValue(argv, ["--framework", "-f"]);
-    const fqbn = readFirstFlagValue(argv, ["--fqbn"]);
     const zephyrBoard = readFirstFlagValue(argv, ["--zephyr-board"]);
     const baudRaw = readFirstFlagValue(argv, ["--baud"]);
     const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir", "-o"]);
-    const noSketch = argv.includes("--no-sketch");
+    const noStarter = argv.includes("--no-starter");
     const noInstall = argv.includes("--no-install");
     const probeFlag = readFirstFlagValue(argv, ["--probe", "--flash"]);
+    const portFlag = readFirstFlagValue(argv, ["--port", "-p"]);
 
     const baud = baudRaw && !Number.isNaN(Number(baudRaw)) ? Number(baudRaw) : undefined;
 
@@ -421,12 +421,12 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       projectName,
       target,
       mcu,
-      fqbn,
       zephyrBoard,
       baud,
       framework,
-      noSketch,
+      noStarter,
       noInstall,
+      port: portFlag,
       outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
     };
   }
@@ -504,6 +504,19 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       baud: 9600,
       platformContext: {},
     };
+  }
+
+  // board subcommand — project-local board module management
+  // (regen: re-emit .cuttlefish/board.ts + board.json from the framework's
+  // board data pack — the refresh path after a pack/engine bump).
+  if (firstArg === "board") {
+    const sub = argv[3];
+    if (sub !== "regen") {
+      throw new Error(
+        "Usage: cuttlefish board regen — regenerate .cuttlefish/board.ts + board.json for the config's board target.",
+      );
+    }
+    return { command: "board", subcommand: "regen" };
   }
 
   // library subcommand — the cuttlefish library package manager

@@ -98,7 +98,7 @@ function isHalApi(name: string): boolean {
 // ── Execution Flow Diagram ──────────────────────────────────────────────────
 
 /**
- * Build a categorized architecture diagram showing how the sketch
+ * Build a categorized architecture diagram showing how the program
  * is organized: entry points, HAL objects, HAL APIs (grouped by
  * subsystem), state variables, and custom functions.
  *

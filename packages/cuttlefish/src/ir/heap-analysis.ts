@@ -10,37 +10,7 @@ import type { ProgramIR, StructDefIR, ClassIR, FunctionIR, StatementIR, Expressi
 import type { HeapEstimate } from "../diagnostics/json-schema.js";
 import { parseCppType, renderCppType, bareType } from "../api/shared/cpp-type-ir.js";
 
-/** Type sizes for common C++ types on AVR (8-bit) and ESP32 (32-bit) */
-const AVR_TYPE_SIZES: Record<string, number> = {
-  bool: 1,
-  char: 1,
-  "unsigned char": 1,
-  "signed char": 1,
-  uint8_t: 1,
-  int8_t: 1,
-  byte: 1,
-  short: 2,
-  "unsigned short": 2,
-  int16_t: 2,
-  uint16_t: 2,
-  int: 2,
-  "unsigned int": 2,
-  int32_t: 4,
-  uint32_t: 4,
-  long: 4,
-  "unsigned long": 4,
-  int64_t: 8,
-  uint64_t: 8,
-  float: 4,
-  double: 4,
-  "long long": 8,
-  size_t: 2,
-  ptrdiff_t: 2,
-  pointer: 2,
-  "char*": 2,
-  "const char*": 2,
-};
-
+/** Type sizes for common C++ types on 32-bit targets */
 const ESP32_TYPE_SIZES: Record<string, number> = {
   bool: 1,
   char: 1,
@@ -75,14 +45,6 @@ const ESP32_TYPE_SIZES: Record<string, number> = {
  * Determine the type size table based on the target architecture.
  */
 function getTypeSizes(architecture?: string): Record<string, number> {
-  const arch = (architecture ?? "").toLowerCase();
-  if (arch === "avr" || arch === "atmega328p" || arch === "atmega2560") {
-    return AVR_TYPE_SIZES;
-  }
-  if (arch === "esp32" || arch === "esp32s3" || arch === "esp32c3" || arch === "esp32c6" || arch === "xtensa" || arch === "riscv32") {
-    return ESP32_TYPE_SIZES;
-  }
-  // Default to ESP32 sizes (more conservative for 32-bit targets)
   return ESP32_TYPE_SIZES;
 }
 
@@ -385,9 +347,7 @@ export function analyzeHeapUsage(
   notes.push("Heap estimate is static only — dynamic allocations (malloc/new) are not tracked.");
   notes.push("String literals may be deduplicated by the compiler/linker.");
   notes.push(
-    architecture === "avr"
-      ? "AVR sizes: int=2 bytes, pointer=2 bytes, float=4 bytes."
-      : `Default sizes: int=${typeSizes.int ?? "?"} bytes, pointer=${typeSizes.pointer ?? "?"} bytes, float=${typeSizes.float ?? "?"} bytes.`,
+    `Default sizes: int=${typeSizes.int ?? "?"} bytes, pointer=${typeSizes.pointer ?? "?"} bytes, float=${typeSizes.float ?? "?"} bytes.`,
   );
 
   return {

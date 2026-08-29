@@ -10,7 +10,6 @@
     "preview": "cuttlefish preview"
   },
   "dependencies": {
-    "@typecad/framework-native": "*",
     "@typecad/ui": "*"
   }
 }
