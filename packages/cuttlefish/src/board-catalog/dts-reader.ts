@@ -533,9 +533,18 @@ const PWM_NODE_RE = /(pwm\d+):\s*pwm@[0-9a-f]+\s*\{/g;
 // subchannel outputs (`pwma`/`pwmb`, channel 0/1 of the DT child
 // `flexpwm<N>_pwm<K>`); the complementary `pwmx` is skipped. This family is
 // NOT in PINCTRL_DIALECTS — its routes resolve through a two-phase join.
+//
+// Two node-name conventions exist across the RT parts (both harvested):
+//   OLD (rt10xx):  `…_adc1_in1` / `…_flexpwm2_pwma3`
+//   NEW (rt11xx/rt118x/rt798/rt59x/rt68x): `…_adc1_ch0a` / `…_flexpwm1_pwm0_a`
+// The NEW ADC `ch<N>a` is the single-ended (positive) side — channel N; the
+// `ch<N>b` negative side is differential-only and skipped, mirroring the
+// STM32 `inn` handling. The NEW FlexPWM `pwm<K>_a`/`_b` map A→0/B→1.
 const IMX_GPIO_JOIN_RE = /iomuxc_([a-z0-9_]+)_gpio(\d+)_io(\d+):/g;
 const IMX_ADC_RE = /(iomuxc_[a-z0-9_]+_adc(\d+)_in(\d+)):\s*\w+\s*\{[^}]*?pinmux/g;
+const IMX_ADC_CH_RE = /(iomuxc_[a-z0-9_]+_adc(\d+)_ch(\d+)a):\s*\w+\s*\{[^}]*?pinmux/g;
 const IMX_PWM_RE = /(iomuxc_[a-z0-9_]+_flexpwm(\d+)_pwm([ab])(\d+)):\s*\w+\s*\{[^}]*?pinmux/g;
+const IMX_PWM2_RE = /(iomuxc_[a-z0-9_]+_flexpwm(\d+)_pwm(\d+)_([ab])):\s*\w+\s*\{[^}]*?pinmux/g;
 
 /** A self-contained pinctrl dialect: a route grammar whose name/macro token
  *  encodes the complete route (source/channel/port/bit) with no cross-node
@@ -637,9 +646,38 @@ function harvestPinctrlPins(
       pinctrl: jm[1]!,
     });
   }
+  // NEW FlexPWM spelling: `…_flexpwm1_pwm0_a` (pwm<K>_<a|b>, channel a=0/b=1).
+  IMX_PWM2_RE.lastIndex = 0;
+  while ((jm = IMX_PWM2_RE.exec(src))) {
+    const pad = jm[1]!.replace(/^iomuxc_/, '').replace(/_flexpwm\d+_pwm\d+_[ab]$/, '');
+    const gpio = imxPadToGpio.get(pad);
+    if (!gpio || pwm.has(jm[1]!)) continue;
+    pwm.set(jm[1]!, {
+      source: `flexpwm${jm[2]}_pwm${jm[3]}`,
+      channel: jm[4] === 'b' ? 1 : 0,
+      port: gpio.port,
+      bit: gpio.bit,
+      pinctrl: jm[1]!,
+    });
+  }
   IMX_ADC_RE.lastIndex = 0;
   while ((jm = IMX_ADC_RE.exec(src))) {
     const pad = jm[1]!.replace(/^iomuxc_/, '').replace(/_adc\d+_in\d+$/, '');
+    const gpio = imxPadToGpio.get(pad);
+    if (!gpio || adc.has(jm[1]!)) continue;
+    adc.set(jm[1]!, {
+      source: `adc${jm[2]}`,
+      channel: Number(jm[3]),
+      port: gpio.port,
+      bit: gpio.bit,
+      pinctrl: jm[1]!,
+    });
+  }
+  // NEW ADC spelling: `…_adc1_ch0a` (ch<N>a — the single-ended positive side;
+  // the `ch<N>b` negative side is differential-only and stays out).
+  IMX_ADC_CH_RE.lastIndex = 0;
+  while ((jm = IMX_ADC_CH_RE.exec(src))) {
+    const pad = jm[1]!.replace(/^iomuxc_/, '').replace(/_adc\d+_ch\d+a$/, '');
     const gpio = imxPadToGpio.get(pad);
     if (!gpio || adc.has(jm[1]!)) continue;
     adc.set(jm[1]!, {
