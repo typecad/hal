@@ -2,16 +2,20 @@
 // board-catalog/pinconfig.ts — parse the vendor `pinconfigs/*.yml` datasheet
 // pin tables into normalized silicon routes.
 //
-// GigaDevice (GD32), Atmel (SAM/SAM0) and Bouffalolab publish datasheet-
-// complete pin-mux tables as YAML under their HAL module's `pinconfigs/`
-// directory — the SAME files the vendors' own pinctrl generators consume.
-// Each declares, per pin and per bonded package ("pincode"), the full list of
-// alternate functions (ADC input channel, DAC output channel, timer/PWM
-// channel, and the raw signal vocabulary). That is the authoritative "every
-// pin + every function" source — no macro-name regexes, no generated-header
-// churn.
+// Atmel (SAM/SAM0) and Bouffalolab publish datasheet-complete pin-mux tables
+// as YAML under their HAL module's `pinconfigs/` directory — the SAME files
+// the vendors' own pinctrl generators consume. Each declares, per pin and per
+// bonded package ("pincode"), the full list of alternate functions (ADC input
+// channel, DAC output channel, timer/PWM channel, and the raw signal
+// vocabulary). That is the authoritative "every pin + every function" source
+// — no macro-name regexes, no generated-header churn.
 //
-// This module unifies the three grammars (they share a `series`/`pincode`/
+// GigaDevice is deliberately NOT here: its board soc segment is the SERIES
+// (gd32f450), not the part, so the package key this parser needs is absent
+// from the soc name — the package-specific generated header (read by the
+// dts-reader's dialect table) is the authoritative source for GD32.
+//
+// This module unifies the two grammars (they share a `series`/`pincode`/
 // `pins` skeleton) and returns ADC routes in the raw harvest form the rest of
 // the catalog already uses (source/channel/port/bit). DAC/PWM routes are
 // deliberately NOT lowered yet — their overlay pinmux synthesis is per-family
@@ -31,10 +35,8 @@ export interface PinconfigAdcRoute {
   /** GPIO port letter ('A', …) or digit ('0' for a flat gpio0 controller). */
   readonly port: string;
   readonly bit: number;
-  /** Synthesized pinmux token when the family's ADC needs a pad mux
-   *  (GD32: `<SIGNAL>_P<port><bit>` — the exact macro the generated header
-   *  defines). Absent for families whose analog inputs need no mux (Atmel
-   *  SAM, Bouffalolab). */
+  /** Pinmux token when the family's ADC needs a pad mux. Absent for families
+   *  whose analog inputs need none (Atmel SAM, Bouffalolab). */
   readonly pinctrl?: string;
 }
 
@@ -51,101 +53,6 @@ function listYml(dir: string): string[] | undefined {
   } catch {
     return undefined;
   }
-}
-
-// ── GigaDevice GD32 ─────────────────────────────────────────────────────────
-// Two models:
-//   AF   — pins carry an `afs:` DICT of SIGNAL -> AF number | ANALOG
-//           (gd32f405, gd32f450, …)
-//   AFIO — pins carry an `afs:` LIST of signal names + a `signal-configs`
-//           block + `remaps` (gd32vf103, gd32e103, gd32f350, …)
-// The signal vocabulary is identical in both: `ADC<n>_IN<m>`, `ADC012_IN<m>`,
-// `DAC_OUT<m>`, `TIMER<n>_CH<m>` (plus the non-route `_ETI`/`_BRKIN`/
-// `_CH<n>_ON`/`_MCH` spellings we skip).
-// ---------------------------------------------------------------------------
-
-/** `ADC01_IN4` / `ADC012_IN0` / `ADC1_IN2` → controller + channel. Shared
- *  multi-unit signals collapse to their first unit (the primary), matching
- *  the historical GD32 harvest — a pad a shared ADC samples is recorded
- *  under adc0. */
-function gd32AdcSignal(signal: string): { source: string; channel: number } | undefined {
-  const m = signal.match(/^ADC(\d*)_IN(\d+)$/);
-  if (!m) return undefined;
-  const units = m[1]!;
-  return { source: units ? `adc${units[0]}` : 'adc', channel: Number(m[2]) };
-}
-
-function harvestGd32(soc: string, westRoot: string): PinconfigFacts | undefined {
-  const dir = path.join(westRoot, 'modules', 'hal', 'gigadevice', 'pinconfigs');
-  const files = listYml(dir);
-  if (!files) return undefined;
-  const socLower = soc.toLowerCase();
-  for (const f of files) {
-    let text: string;
-    try {
-      text = fs.readFileSync(path.join(dir, f), 'utf8');
-    } catch {
-      continue;
-    }
-    const seriesMatch = text.match(/^series:\s*([\w-]+)/m);
-    if (!seriesMatch) continue;
-    const series = seriesMatch[1]!.trim().toLowerCase();
-    if (!socLower.startsWith(series)) continue;
-    // The soc name encodes the package: gd32f405vg → series gd32f405,
-    // pincode v (next char). Uppercase in the file, matched case-insensitively.
-    const pincode = socLower.slice(series.length).charAt(0) ?? '';
-    if (!/^[a-z]$/.test(pincode)) break;
-
-    const routes: PinconfigAdcRoute[] = [];
-    let pin: { port: string; bit: number } | undefined;
-    let pincodes = new Set<string>();
-    let inAfs = false;
-    const pushAdc = (signal: string, bonded: boolean): void => {
-      if (!bonded || !pin) return;
-      const adc = gd32AdcSignal(signal);
-      if (adc) routes.push({ ...adc, port: pin.port, bit: pin.bit, pinctrl: `${signal}_P${pin.port}${pin.bit}` });
-    };
-    for (const rawLine of text.split('\n')) {
-      const line = rawLine.replace(/\r$/, '');
-      const pinM = line.match(/^  P([A-Z])(\d+):/);
-      if (pinM) {
-        pin = { port: pinM[1]!, bit: Number(pinM[2]) };
-        pincodes = new Set();
-        inAfs = false;
-        continue;
-      }
-      if (!pin) continue;
-      // AFIO-model pins omit per-pin pincodes (bonded on every package);
-      // AF-model pins filter by the board's package.
-      const bonded = pincodes.size === 0 || pincodes.has(pincode.toUpperCase());
-      if (inAfs) {
-        if (/^\s{2}\S/.test(line) && !/^\s{4}\S/.test(line)) { inAfs = false; continue; }
-        const dict = line.match(/^\s{4,}([\w]+):\s*(\S*)/);
-        if (dict) { pushAdc(dict[1]!, bonded); continue; }
-        const item = line.match(/^\s{4,}-\s*([\w]+)/);
-        if (item) pushAdc(item[1]!, bonded);
-        continue;
-      }
-      const codesM = line.match(/^\s{4}pincodes:\s*\[([^\]]*)\]/);
-      if (codesM) {
-        pincodes = new Set(codesM[1]!.split(',').map((s) => s.trim()).filter(Boolean).map((s) => s.toUpperCase()));
-        continue;
-      }
-      // Inline `afs: [S1, S2, …]` (AFIO model) — parse the list on this line.
-      const inlineAfs = line.match(/^\s{4}afs:\s*\[([^\]]*)\]/);
-      if (inlineAfs) {
-        for (const sig of inlineAfs[1]!.split(',').map((s) => s.trim()).filter(Boolean)) pushAdc(sig, bonded);
-        continue;
-      }
-      if (/^\s{4}afs:/.test(line)) inAfs = true;
-    }
-    if (routes.length > 0) {
-      routes.sort((a, b) => a.source.localeCompare(b.source, undefined, { numeric: true }) || a.channel - b.channel);
-      return { adc: routes, file: f };
-    }
-    break;
-  }
-  return undefined;
 }
 
 // ── Atmel SAM / SAM0 ────────────────────────────────────────────────────────
@@ -261,8 +168,9 @@ function harvestBflb(soc: string, westRoot: string): PinconfigFacts | undefined 
     const series = [...text.matchAll(/^series:\s*\[([^\]]*)\]/gm)]
       .flatMap((m) => m[1]!.split(',').map((s) => s.trim()).filter(Boolean));
     if (series.length === 0) continue;
-    // The soc name is `bl` + a series entry (bl602, bl704l, …).
-    const suffix = series.find((s) => socLower === ('bl' + s).toLowerCase());
+    // The soc name starts with `bl` + a series entry (bl602c00q2i → bl602,
+    // bl704l10q2i → bl704l, …) — the tail is package/flash detail.
+    const suffix = series.find((s) => socLower.startsWith(('bl' + s).toLowerCase()));
     if (!suffix) continue;
 
     const routes: PinconfigAdcRoute[] = [];
@@ -311,7 +219,6 @@ export function harvestPinconfig(identifier: string, westRoot: string): Pinconfi
   const soc = identifier.split('/')[1];
   if (!soc) return undefined;
   const s = soc.toLowerCase();
-  if (s.startsWith('gd32')) return harvestGd32(soc, westRoot);
   if (s.startsWith('sam')) return harvestAtmel(soc, westRoot);
   if (s.startsWith('bl')) return harvestBflb(soc, westRoot);
   return undefined;

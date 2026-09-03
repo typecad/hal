@@ -6,9 +6,9 @@
 //   sweeps EVERY port the SoC dtsi declares (the full pin inventory), with
 //   ngpios refining letter-port widths.
 //
-//   P1 — vendor pinconfigs: package-aware ADC routes (with synthesized GD32
-//   pinmux tokens) map to per-pin `analogInput` capability flags and
-//   `zephyr.adc.channels` specs, exactly like the STM32 pinctrl harvest.
+//   P1 — silicon ADC routes (header/pinconfig pinctrl tokens) map to per-pin
+//   `analogInput` capability flags and `zephyr.adc.channels` specs, exactly
+//   like the STM32 pinctrl harvest.
 // ----------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
@@ -62,7 +62,7 @@ describe('P3 — full GPIO controller inventory sweep', () => {
 });
 
 describe('P1 — pinconfig ADC routes at the boardgen boundary', () => {
-  it('maps package-aware GD32 ADC routes to capability flags + channel specs', () => {
+  it('maps harvested ADC routes to capability flags + channel specs', () => {
     const g = buildModule(record({
       identifier: 'gd_board/gd32f405vg',
       gpioControllers: [{ nodelabel: 'gpioa' }, { nodelabel: 'gpioc' }],

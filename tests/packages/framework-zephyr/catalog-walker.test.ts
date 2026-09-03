@@ -73,8 +73,11 @@ function fixtureTree(): string {
     '#define FTM0_CH5_PTA0 KINETIS_MUX(\'A\', 0, 3)',
     // NXP LPC55 CTIMER match outputs.
     '#define CTIMER0_MATCH0_PIO0_0 IOCON_MUX(0, IOCON_TYPE_A, 3)',
-    // GigaDevice: ADC01 (shared pad) + TIMER channels (complementary CH0N excluded).
+    // GigaDevice: ADC (all unit spellings) + TIMER channels (CH0N excluded).
     '#define ADC01_IN0_PA0 GD32_PINMUX_AFIO(\'A\', 0, ANALOG, NORMP)',
+    '#define ADC012_IN10_PC0 GD32_PINMUX_AFIO(\'C\', 0, ANALOG, NORMP)',
+    '#define ADC_IN1_PA1 GD32_PINMUX_AFIO(\'A\', 1, ANALOG, NORMP)',
+    '#define ADC2_IN4_PA4 GD32_PINMUX_AFIO(\'A\', 4, ANALOG, NORMP)',
     '#define TIMER0_CH0_PA8 GD32_PINMUX_AFIO(\'A\', 8, AF1, NORMP)',
     '#define TIMER0_CH0N_PA7 GD32_PINMUX_AFIO(\'A\', 7, AF1, NORMP)',
     // i.MX RT: node-name shape; the pad→GPIO join is a sibling node.
@@ -341,48 +344,6 @@ function fixtureTree(): string {
     '',
   ].join('\n'));
 
-  // ── GigaDevice GD32 pinconfigs family ────────────────────────────────────
-  // The AF-model datasheet table (gd32f405): per-pin pincodes + an afs dict.
-  const gd32Cfg = path.join(path.dirname(zephyr), 'modules', 'hal', 'gigadevice', 'pinconfigs');
-  fs.mkdirSync(gd32Cfg, { recursive: true });
-  fs.writeFileSync(path.join(gd32Cfg, 'gd32f405xx.yml'), [
-    'model: af',
-    'series: gd32f405',
-    'variants:',
-    '  - pincode: R',
-    '    memories: [G]',
-    '  - pincode: V',
-    '    memories: [G]',
-    'pins:',
-    '  PA0:',
-    '    pincodes: [R, V]',
-    '    afs:',
-    '      ADC012_IN0: ANALOG',
-    '      TIMER1_CH0: 1',
-    '  PA4:',
-    '    pincodes: [R, V]',
-    '    afs:',
-    '      ADC01_IN4: ANALOG',
-    '      DAC_OUT0: ANALOG',
-    '  PC0:',
-    '    pincodes: [V]',
-    '    afs:',
-    '      ADC012_IN10: ANALOG',
-    '',
-  ].join('\n'));
-  const gdboard = path.join(zephyr, 'boards', 'testvendor', 'gd_board');
-  fs.mkdirSync(gdboard, { recursive: true });
-  fs.writeFileSync(path.join(gdboard, 'board.yml'), 'socs:\n  - name: gd32f405vg\n');
-  fs.writeFileSync(path.join(gdboard, 'gd_board.yaml'), 'identifier: gd_board\nname: GigaDevice Board\n');
-  fs.writeFileSync(path.join(gdboard, 'gd_board.dts'), [
-    '/ {',
-    '    leds { compatible = "gpio-leds";',
-    '        user_led: led_0 { gpios = <&gpioa 1 GPIO_ACTIVE_LOW>; }; };',
-    '    aliases { led0 = &user_led; };',
-    '};',
-    '',
-  ].join('\n'));
-
   // ── Bouffalolab pinconfigs family ────────────────────────────────────────
   // Pins are global pads; `analog:` lists `[adc, [ch<N>]]`; `series` names the
   // SoC variants (bl602/bl604).
@@ -501,7 +462,6 @@ describe('catalog-walker', () => {
       'cn_board/other_soc',
       'duo_board_a/acme_soc_a',
       'duo_board_b/acme_soc_b',
-      'gd_board/gd32f405vg',
       'ledorder_board/acme_soc',
       'port_board/acme_soc',
       'revboard/nrf9160',
@@ -557,20 +517,6 @@ describe('catalog-walker', () => {
     ]);
   });
 
-  it('GD32 pinconfigs YAML: package-aware adc routes with synthesized pinmux tokens', () => {
-    const gd = result.boards['gd_board/gd32f405vg'];
-    expect(gd).toBeDefined();
-    // gd32f405vg → series gd32f405, pincode v. Shared-unit ADC signals
-    // (ADC012/ADC01) collapse to the primary adc0; the pinmux token is the
-    // generated header macro name (`<SIGNAL>_P<port><bit>`). DAC_OUT0 is a
-    // DAC route and stays unlowered (pending pinmux synthesis).
-    expect(gd!.adcPins).toEqual([
-      { source: 'adc0', channel: 0, port: 'A', bit: 0, pinctrl: 'ADC012_IN0_PA0' },
-      { source: 'adc0', channel: 4, port: 'A', bit: 4, pinctrl: 'ADC01_IN4_PA4' },
-      { source: 'adc0', channel: 10, port: 'C', bit: 0, pinctrl: 'ADC012_IN10_PC0' },
-    ]);
-  });
-
   it('Bouffalolab pinconfigs YAML: per-SoC-variant adc routes (gpio0 pad form)', () => {
     const bl = result.boards['bl_board/bl602'];
     expect(bl).toBeDefined();
@@ -583,9 +529,9 @@ describe('catalog-walker', () => {
   });
 
   it('coverage ledger: records which silicon source satisfied each capability', () => {
-    // widget_board → pinctrl ADC; at/gd/bl boards → pinconfig; rp_board →
+    // widget_board → pinctrl ADC; at_board + bl_board → pinconfig; rp_board →
     // header; cn_board → connector. Aggregated into stats.coverage.
-    expect(result.stats.coverage.adc).toEqual({ pinctrl: 1, pinconfig: 3, header: 1, connector: 1 });
+    expect(result.stats.coverage.adc).toEqual({ pinctrl: 1, pinconfig: 2, header: 1, connector: 1 });
     expect(result.stats.coverage.pwm).toEqual({ pinctrl: 1, header: 1 }); // widget_board tim3 + rp_board PWM macros
     expect(result.stats.coverage.dac).toEqual({ pinctrl: 1 }); // widget_board dac1
   });
@@ -636,10 +582,12 @@ describe('catalog-walker', () => {
     expect(pwm.find((r) => r.pinctrl === 'FTM0_CH5_PTA0')).toMatchObject({ source: 'ftm0', channel: 5, port: 'A', bit: 0 });
     // LPC CTIMER (MATCHn = pwm channel n).
     expect(pwm.find((r) => r.pinctrl === 'CTIMER0_MATCH0_PIO0_0')).toMatchObject({ source: 'ctimer0', channel: 0, port: '0', bit: 0 });
-    // GD32 ADC moved to the pinconfig YAMLs (package-aware) — the header
-    // regex no longer harvests it; the raw macro is ignored here.
-    expect(adc.find((r) => r.pinctrl === 'ADC01_IN0_PA0')).toBeUndefined();
-    // GD32 PWM still rides the header macro; CH0N complementary excluded.
+    // GD32 ADC: header macros harvest all unit spellings (ADC01→adc0,
+    // ADC012→adc0, ADC_IN→adc, ADC2→adc2); CH0N complementary excluded.
+    expect(adc.find((r) => r.pinctrl === 'ADC01_IN0_PA0')).toMatchObject({ source: 'adc0', channel: 0, port: 'A', bit: 0 });
+    expect(adc.find((r) => r.pinctrl === 'ADC012_IN10_PC0')).toMatchObject({ source: 'adc0', channel: 10, port: 'C', bit: 0 });
+    expect(adc.find((r) => r.pinctrl === 'ADC_IN1_PA1')).toMatchObject({ source: 'adc', channel: 1, port: 'A', bit: 1 });
+    expect(adc.find((r) => r.pinctrl === 'ADC2_IN4_PA4')).toMatchObject({ source: 'adc2', channel: 4, port: 'A', bit: 4 });
     expect(pwm.find((r) => r.pinctrl === 'TIMER0_CH0_PA8')).toMatchObject({ source: 'timer0', channel: 0, port: 'A', bit: 8 });
     expect(pwm.find((r) => r.pinctrl === 'TIMER0_CH0N_PA7')).toBeUndefined();
     // i.MX RT: routes via the in-band pad→GPIO join; controller = the DT
@@ -671,7 +619,7 @@ describe('catalog-walker', () => {
     expect(result.boards['dtsless_board/acme_soc']).toBeUndefined();
     expect(result.stats.droppedYamls).toBe(1);
     expect(result.stats.failures).toBe(1);
-    expect(result.stats.variants).toBe(14);
+    expect(result.stats.variants).toBe(13);
   });
 
   it('qualifies multi-board dirs against each entry’s own soc', () => {
@@ -759,7 +707,7 @@ describe('catalog-walker', () => {
     expect(result.provenance.version).toBe('4.9.1');
     expect(result.provenance.gitHead).toBe('0123456789abcdef0123456789abcdef01234567');
     expect(result.provenance.zephyrBase).toBe(path.resolve(zephyr));
-    expect(result.provenance.variants).toBe(14);
+    expect(result.provenance.variants).toBe(13);
   });
 
   it('reads version and git head helpers directly', () => {

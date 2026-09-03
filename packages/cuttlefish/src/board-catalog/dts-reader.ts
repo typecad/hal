@@ -570,6 +570,12 @@ const PINCTRL_DIALECTS: readonly PinctrlDialect[] = [
   { kind: PWM, re: /#define CTIMER(\d+)_MATCH(\d+)_PIO(\d+)_(\d+)\b/g, token: (m) => `CTIMER${m[1]}_MATCH${m[2]}_PIO${m[3]}_${m[4]}`, source: (m) => `ctimer${m[1]}`, channel: (m) => Number(m[2]), port: (m) => m[3]!, bit: (m) => Number(m[4]) },
   // GigaDevice GD32 TIMER macros (TIMER N is the DT timer label verbatim).
   { kind: PWM, re: /#define TIMER(\d+)_CH(\d+)_P([A-Z])(\d+)\b/g, token: (m) => `TIMER${m[1]}_CH${m[2]}_P${m[3]}${m[4]}`, source: (m) => `timer${m[1]}`, channel: (m) => Number(m[2]), port: (m) => m[3]!, bit: (m) => Number(m[4]) },
+  // GigaDevice GD32 ADC — the header macros are package-specific (the board's
+  // include chain reaches its own part's header), so the header is the
+  // authoritative source, not the pinconfig YAML (whose package key is absent
+  // from the GD32 soc segment). All unit spellings: ADC_IN (digitless),
+  // ADC0/1/2_IN (single unit), ADC01_IN / ADC012_IN (shared — primary adc0).
+  { kind: ADC, re: /#define ADC(\d*)_IN(\d+)_P([A-Z])(\d+)\b/g, token: (m) => `ADC${m[1]}_IN${m[2]}_P${m[3]}${m[4]}`, source: (m) => `adc${m[1] ? m[1][0] : ''}`, channel: (m) => Number(m[2]), port: (m) => m[3]!, bit: (m) => Number(m[4]) },
   // STM32 ADC — three vendor spellings: adc1_in1_pa1 (multi-unit),
   // adc_in0_pa0 (single-unit, no unit digit), adc1_inp16_pa0 (H7 positive).
   { kind: ADC, re: /\/omit-if-no-ref\/?\s+(adc(\d*)_(?:in|inp)(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => `adc${m[2]}`, channel: (m) => Number(m[3]), port: (m) => m[4]!, bit: (m) => Number(m[5]) },
