@@ -534,15 +534,15 @@ const PWM_NODE_RE = /(pwm\d+):\s*pwm@[0-9a-f]+\s*\{/g;
 // `flexpwm<N>_pwm<K>`); the complementary `pwmx` is skipped. This family is
 // NOT in PINCTRL_DIALECTS — its routes resolve through a two-phase join.
 //
-// Two node-name conventions exist across the RT parts (both harvested):
-//   OLD (rt10xx):  `…_adc1_in1` / `…_flexpwm2_pwma3`
-//   NEW (rt11xx/rt118x/rt798/rt59x/rt68x): `…_adc1_ch0a` / `…_flexpwm1_pwm0_a`
-// The NEW ADC `ch<N>a` is the single-ended (positive) side — channel N; the
-// `ch<N>b` negative side is differential-only and skipped, mirroring the
-// STM32 `inn` handling. The NEW FlexPWM `pwm<K>_a`/`_b` map A→0/B→1.
+// Two FlexPWM node-name conventions exist across the RT parts (both
+// harvested): the classic rt10xx `…_flexpwm2_pwma3`, and the newer
+// rt11xx/rt116x/rt118x `…_flexpwm1_pwm0_a` (pwm<K>_<a|b>, A→0/B→1; the `_x`
+// complementary stays out, mirroring `pwmx`). The newer parts' ADC is the
+// LPADC (`lpadc<N>`) — a different driver with a differential `ch<N>a|b`
+// input-pair channel model — and stays OUT like the LPC55 lpadc, pending a
+// dedicated channel-model gate.
 const IMX_GPIO_JOIN_RE = /iomuxc_([a-z0-9_]+)_gpio(\d+)_io(\d+):/g;
 const IMX_ADC_RE = /(iomuxc_[a-z0-9_]+_adc(\d+)_in(\d+)):\s*\w+\s*\{[^}]*?pinmux/g;
-const IMX_ADC_CH_RE = /(iomuxc_[a-z0-9_]+_adc(\d+)_ch(\d+)a):\s*\w+\s*\{[^}]*?pinmux/g;
 const IMX_PWM_RE = /(iomuxc_[a-z0-9_]+_flexpwm(\d+)_pwm([ab])(\d+)):\s*\w+\s*\{[^}]*?pinmux/g;
 const IMX_PWM2_RE = /(iomuxc_[a-z0-9_]+_flexpwm(\d+)_pwm(\d+)_([ab])):\s*\w+\s*\{[^}]*?pinmux/g;
 
@@ -663,21 +663,6 @@ function harvestPinctrlPins(
   IMX_ADC_RE.lastIndex = 0;
   while ((jm = IMX_ADC_RE.exec(src))) {
     const pad = jm[1]!.replace(/^iomuxc_/, '').replace(/_adc\d+_in\d+$/, '');
-    const gpio = imxPadToGpio.get(pad);
-    if (!gpio || adc.has(jm[1]!)) continue;
-    adc.set(jm[1]!, {
-      source: `adc${jm[2]}`,
-      channel: Number(jm[3]),
-      port: gpio.port,
-      bit: gpio.bit,
-      pinctrl: jm[1]!,
-    });
-  }
-  // NEW ADC spelling: `…_adc1_ch0a` (ch<N>a — the single-ended positive side;
-  // the `ch<N>b` negative side is differential-only and stays out).
-  IMX_ADC_CH_RE.lastIndex = 0;
-  while ((jm = IMX_ADC_CH_RE.exec(src))) {
-    const pad = jm[1]!.replace(/^iomuxc_/, '').replace(/_adc\d+_ch\d+a$/, '');
     const gpio = imxPadToGpio.get(pad);
     if (!gpio || adc.has(jm[1]!)) continue;
     adc.set(jm[1]!, {

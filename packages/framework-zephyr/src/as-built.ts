@@ -52,12 +52,11 @@ const ST_PWM = /^(tim(\d+)_ch(\d+)_p([a-z])(\d+))$/;
 const ST_DAC = /^(dac(\d+)_out(\d+)_p([a-z])(\d+))$/;
 // i.MX RT labels: iomuxc_<pad>_adc1_in1 / iomuxc_<pad>_flexpwm2_pwma3,
 // with the pad→GPIO join as sibling iomuxc_<pad>_gpio1_io12 labels. The NEW
-// RT parts (rt11xx/rt118x/rt798/rt59x/rt68x) use `…_adc1_ch0a` /
-// `…_flexpwm1_pwm0_a` — the `ch<N>a` is the single-ended positive side
-// (the `b` negative is differential-only), and `pwm<K>_a|b` map A→0/B→1.
+// RT parts (rt11xx/rt116x/rt118x) use `…_flexpwm1_pwm0_a` (pwm<K>_<a|b> →
+// A=0/B=1). Their ADC is the LPADC (`lpadc<N>`) and stays out — see
+// dts-reader.ts.
 const IMX_GPIO = /^iomuxc_([a-z0-9_]+)_gpio(\d+)_io(\d+)$/;
 const IMX_ADC = /^iomuxc_([a-z0-9_]+)_adc(\d+)_in(\d+)$/;
-const IMX_ADC_CH = /^iomuxc_([a-z0-9_]+)_adc(\d+)_ch(\d+)a$/;
 const IMX_PWM = /^iomuxc_([a-z0-9_]+)_flexpwm(\d+)_pwm([ab])(\d+)$/;
 const IMX_PWM2 = /^iomuxc_([a-z0-9_]+)_flexpwm(\d+)_pwm(\d+)_([ab])$/;
 
@@ -116,17 +115,6 @@ export function parseZephyrDts(text: string): AsBuiltFacts {
     const label = m[1]!;
     let g: RegExpMatchArray | null;
     if ((g = label.match(IMX_ADC))) {
-      const gpio = imxPadToGpio.get(g[1]!);
-      if (!gpio || seen.has(label)) continue;
-      seen.add(label);
-      facts.adc.push({
-        source: `adc${g[2]}`,
-        channel: Number(g[3]),
-        port: gpio.port,
-        bit: gpio.bit,
-        pinctrl: label,
-      });
-    } else if ((g = label.match(IMX_ADC_CH))) {
       const gpio = imxPadToGpio.get(g[1]!);
       if (!gpio || seen.has(label)) continue;
       seen.add(label);

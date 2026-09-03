@@ -102,14 +102,9 @@ function fixtureTree(): string {
     '/omit-if-no-ref/ iomuxc_gpio_ad_b0_02_flexpwm1_pwmx0: IOMUXC_GPIO_AD_B0_02_FLEXPWM1_PWMX0 {',
     '	pinmux = <0x401f80e0 5 0x0 0 0x401f82d8>;',
     '};',
-    // NEW i.MX RT node-name convention (rt11xx/rt118x/rt798/rt59x/rt68x):
-    // `adc1_ch0a` (single-ended positive) + `flexpwm1_pwm0_a` (A→ch0).
-    '/omit-if-no-ref/ iomuxc_gpio_ad_06_adc1_ch0a: IOMUXC_GPIO_AD_06_ADC1_CH0A {',
-    '	pinmux = <0x401f80ec 5 0x0 0 0x401f82dc>;',
-    '};',
-    '/omit-if-no-ref/ iomuxc_gpio_ad_07_adc1_ch0b: IOMUXC_GPIO_AD_07_ADC1_CH0B {',
-    '	pinmux = <0x401f80f0 5 0x0 0 0x401f82e0>;',
-    '};',
+    // NEW i.MX RT FlexPWM node-name convention (rt11xx/rt116x/rt118x):
+    // `flexpwm1_pwm0_a` (A→ch0); the `_x` complementary is skipped.
+    // (The rt11xx ADC is the LPADC — `adc1_ch0a` — and stays out, like LPC55.)
     '/omit-if-no-ref/ iomuxc_gpio_ad_06_gpio8_io31: IOMUXC_GPIO_AD_06_GPIO8_IO31 {',
     '	pinmux = <0x401f80ec 5 0x0 0 0x401f82dc>;',
     '};',
@@ -620,14 +615,13 @@ describe('catalog-walker', () => {
     expect(fta).toMatchObject({ source: 'flexpwm2_pwm3', channel: 0, port: '1', bit: 0 });
     expect(pwm.find((r) => r.pinctrl === 'iomuxc_gpio_ad_b0_01_flexpwm2_pwmb3')).toMatchObject({ channel: 1 });
     expect(pwm.find((r) => r.pinctrl === 'iomuxc_gpio_ad_b0_02_flexpwm1_pwmx0')).toBeUndefined();
-    // NEW i.MX RT convention (rt11xx+): `adc1_ch0a` (single-ended positive),
-    // `flexpwm1_pwm0_a` (A→ch0); `ch0b` (differential negative) and `_x`
-    // (complementary) are skipped — mirroring the STM32 inn / pwmx rules.
-    expect(adc.find((r) => r.pinctrl === 'iomuxc_gpio_ad_06_adc1_ch0a')).toMatchObject({ source: 'adc1', channel: 0, port: '8', bit: 31 });
-    expect(adc.find((r) => r.pinctrl === 'iomuxc_gpio_ad_07_adc1_ch0b')).toBeUndefined();
+    // NEW i.MX RT FlexPWM convention (rt11xx+): `flexpwm1_pwm0_a` (A→ch0);
+    // `_x` (complementary) is skipped — mirroring the pwmx rule. The rt11xx
+    // ADC (`adc1_ch0a`) is the LPADC and stays out (not harvested).
     expect(pwm.find((r) => r.pinctrl === 'iomuxc_gpio_ad_06_flexpwm1_pwm0_a')).toMatchObject({ source: 'flexpwm1_pwm0', channel: 0, port: '8', bit: 31 });
     expect(pwm.find((r) => r.pinctrl === 'iomuxc_gpio_ad_07_flexpwm1_pwm0_b')).toMatchObject({ source: 'flexpwm1_pwm0', channel: 1, port: '9', bit: 0 });
     expect(pwm.find((r) => r.pinctrl === 'iomuxc_gpio_ad_08_flexpwm1_pwm0_x')).toBeUndefined();
+    expect(adc.find((r) => r.pinctrl === 'iomuxc_gpio_ad_06_adc1_ch0a')).toBeUndefined();
   });
 
   it('name↔value cross-validation drops disagreeing routes and warns', () => {
