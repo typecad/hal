@@ -12,6 +12,8 @@ In embedded systems, multiple tasks (such as a sensor reader and a display drive
 
 ### The Problem
 ```typescript
+import { I2CTarget } from '@typecad/hal';
+
 // Task A: reading a sensor
 new I2CTarget('I2C0', 0x76).readReg(0x00);
 
@@ -24,6 +26,7 @@ TypeCAD provides an exclusive acquisition pattern. When you `take()` a bus, you 
 
 ```typescript
 import { I2CTarget } from '@typecad/hal';
+import { I2C0 } from '@typecad/board';
 
 // Claim exclusive access (a compile-time marker — no runtime call is emitted)
 I2C0.take();
@@ -55,7 +58,7 @@ Select a type below for detailed documentation and examples:
 1.  **[When and How to use Ownership](../ownership/what-to-use.md)**: A practical guide to choosing the right type for your data lifecycle.
 2.  **[Single Ownership (`Owned<T>`)](../ownership/owned.md)**: Deep dive into move semantics.
 3.  **[Immutable Borrowing (`Shared<T>`)](../ownership/shared.md)**: Deep dive into zero-copy references.
-4.  **[Mutable Borrowing (`Mut<T>`)](../ownership/mut.md)**: Deep dive into in-place mutation.
+4.  **[Mutable Borrowing (`Mutable<T>`)](../ownership/mut.md)**: Deep dive into in-place mutation.
 
 ### 1. [Single Ownership (`Owned<T>`)](../ownership/owned.md)
 The foundation of TypeCAD's resource management. Ensures that every piece of data has exactly one owner at a time.
@@ -67,7 +70,7 @@ The most common way to share data. Provides zero-copy access to data for reading
 *   **Key Concept**: [Zero-Copy Efficiency](../ownership/shared.md#key-benefits)
 *   **Prevents**: Accidental mutation, memory bloat from copies.
 
-### 3. [Mutable Borrowing (`Mut<T>`)](../ownership/mut.md)
+### 3. [Mutable Borrowing (`Mutable<T>`)](../ownership/mut.md)
 Allows sharing data for the purpose of in-place modification.
 *   **Key Concept**: [In-Place Mutation](../ownership/mut.md#key-benefits)
 *   **Prevents**: Borrow mismatches, race conditions.
@@ -80,7 +83,7 @@ Allows sharing data for the purpose of in-place modification.
 | :--- | :--- | :--- | :--- |
 | `Owned<T>` | Read/Write/Move | `T` | Data you created and manage. |
 | `Shared<T>` | Read-Only | `const T&` | Shared settings, read-only buffers. |
-| `Mut<T>` | Read/Write | `T&` | Buffers that need in-place updates. |
+| `Mutable<T>` | Read/Write | `T&` | Buffers that need in-place updates. |
 
 ---
 
@@ -101,7 +104,7 @@ A core principle of TypeCAD is that safety should not come at the cost of perfor
 
 - `Owned<number>` emits as `int`.
 - `Shared<number>` emits as `const int`.
-- `take()` and `release()` on 8-bit platforms emit as code comments.
+- `take()` and `release()` emit nothing at all — they are compile-time markers.
 
 ---
 
@@ -110,7 +113,7 @@ A core principle of TypeCAD is that safety should not come at the cost of perfor
 ### Bus Ownership Handle
 | Method | Description |
 | :--- | :--- |
-| `bus.take()` | Attempts to acquire exclusive ownership. Returns `undefined` if already owned. |
+| `bus.take()` | Marks exclusive ownership (compile-time marker — no runtime call). A second `take()` on an owned bus is a build error. |
 | `bus.release()` | Returns ownership of the bus to the system. |
 
 ### Ownership Phantom Types
@@ -118,14 +121,14 @@ A core principle of TypeCAD is that safety should not come at the cost of perfor
 | :--- | :--- | :--- |
 | `Owned<T>` | `T` | Prevents use-after-move (Transfer of ownership). |
 | `Shared<T>` | `const T` | Prevents reassignment and modification (Immutability). |
-| `Mut<T>` | `T` | Explicitly marks a mutable reference for clarity. |
+| `Mutable<T>` | `T` | Explicitly marks a mutable reference for clarity. |
 
 ---
 
 ## Complex Example: Safety Across Functions
 
 ```typescript
-import { Owned, Shared } from '@typecad/hal';
+// Owned<T> / Shared<T> / Mutable<T> are ambient global types — no import needed.
 
 /** Reads data without taking ownership (Borrowing) */
 function analyze(data: Shared<Uint8Array>) {

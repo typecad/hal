@@ -159,19 +159,36 @@ export async function readSerialOutput(
 
     sp.on('data', handleChunk);
 
-    sp.on('error', (err: Error) => {
-      finish(`Serial error: ${err.message}`);
-    });
+    // A CDC console that just re-enumerated after a flash can be LISTED but
+    // not yet OPENABLE for several seconds — Windows usbser returns
+    // SetCommState error 31 while the PDO/driver state from the flash-cycle
+    // detach/attach settles. Retry the open generously (the firmware's boot
+    // DTR-wait holds all protocol output until the host opens, so a long
+    // window loses nothing).
+    const OPEN_RETRIES = 16;
+    const OPEN_RETRY_MS = 750;
+    let openRetriesLeft = OPEN_RETRIES;
 
-    // Give the device time to reset after upload (many boards reset on serial open)
-    setTimeout(() => {
+    const tryOpen = () => {
       sp.open((err: Error | null) => {
-        if (err) {
-          finish(`Failed to open ${port}: ${err.message}`);
+        if (!err) {
+          // Only now can open-lifecycle errors surface as events (open
+          // failures above arrive via the callback, not 'error').
+          sp.on('error', (err: Error) => {
+            finish(`Serial error: ${err.message}`);
+          });
+          resetBoard();
           return;
         }
-        resetBoard();
+        if (openRetriesLeft-- > 0) {
+          setTimeout(tryOpen, OPEN_RETRY_MS);
+          return;
+        }
+        finish(`Failed to open ${port}: ${err.message}`);
       });
-    }, serialOpenDelay);
+    };
+
+    // Give the device time to reset after upload (many boards reset on serial open)
+    setTimeout(tryOpen, serialOpenDelay);
   });
 }

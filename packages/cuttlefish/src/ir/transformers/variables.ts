@@ -42,7 +42,7 @@ import {
   isHALSingleton,
   HALInstance,
 } from "../hal-resolver.js";
-import { requestCtorFields } from "../hal/hal-parser.js";
+import { requestCtorFields, halClassRegistry } from "../hal/hal-parser.js";
 import { resolveHALCallForVarInit } from "./hal-call-resolver.js";
 import { recordSignal } from "./ui-call-resolver.js";
 import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
@@ -553,7 +553,7 @@ export function variableStatementToIR(
               } else if (ts.isStringLiteral(arg)) {
                 if (className === "I2CBus") fieldValues.set("_bus", arg.text);
                 else if (className === "SPIBus") fieldValues.set("_bus", arg.text);
-                else if (className === "SerialPort") fieldValues.set("_port", arg.text);
+                else if (className === "UART") fieldValues.set("_port", arg.text);
               } else if (ts.isNumericLiteral(arg)) {
                 if (className === "Pin") fieldValues.set("_pin", arg.text);
               } else if (ts.isPropertyAccessExpression(arg)) {
@@ -565,7 +565,7 @@ export function variableStatementToIR(
           // new Sensor(SENSOR.<part>, I2C1.device(0x44)) — the generic
           // DT-bound peripheral. The part token is kept as text (property
           // access text like 'SENSOR.sensirion_sht3xd'); the bus + address
-          // come from the I2CDevice the second arg resolves to. The lowering
+          // come from the I2CTarget the second arg resolves to. The lowering
           // resolves the token against the generated catalog.
           if (className === "Sensor" && ctorArgs && ctorArgs.length >= 2) {
             const dev = resolveSensorDeviceArg(ctorArgs[1]);
@@ -586,7 +586,16 @@ export function variableStatementToIR(
               );
             }
             // opts object literal: numeric properties pass through, pin
-            // identifiers resolve to their number (alert?: PA5).
+            // identifiers resolve to their number (alert?: PA5). Absent
+            // properties fall back to the class-field initializer defaults
+            // (_spiHz = 1000000 etc.) so `this._spiHz` in an inlined method
+            // body always resolves.
+            const sensorDefaults = halClassRegistry.get("Sensor")?.fieldDefaults;
+            if (sensorDefaults) {
+              for (const [name, val] of sensorDefaults) {
+                if (!fieldValues.has(name)) fieldValues.set(name, val);
+              }
+            }
             if (ctorArgs.length >= 3 && ts.isObjectLiteralExpression(ctorArgs[2])) {
               for (const prop of ctorArgs[2].properties) {
                 if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
@@ -608,14 +617,14 @@ export function variableStatementToIR(
             if (reqFields) for (const [k, v] of reqFields) fieldValues.set(k, v);
           }
 
-          // Thin Zephyr-shaped peripherals (GPIO/PWM/ADCChannel/DACChannel/
+          // Thin Zephyr-shaped peripherals (GPIO/PWM/ADC/DAC/
           // Watchdog/Counter — hal/gpio-pin.ts and siblings). Same discipline
           // as Sensor: construction facts become instance fields. Pin args
           // keep their identifier/text form (resolved to numbers later);
           // flag/gain token EXPRESSIONS keep their source text — the lowering
           // maps token names to C macros; numeric opts props pass through as
           // numbers (numeric separators stripped for C++).
-          const thinPinFirst: Record<string, true> = { GPIO: true, PWM: true, ADCChannel: true, DACChannel: true };
+          const thinPinFirst: Record<string, true> = { GPIO: true, PWM: true, ADC: true, DAC: true };
           if (thinPinFirst[className] && ctorArgs && ctorArgs.length >= 1) {
             const pinArg = ctorArgs[0];
             if (ts.isIdentifier(pinArg)) {
@@ -632,7 +641,7 @@ export function variableStatementToIR(
             // "GPIO.OUTPUT | GPIO.PULL_UP" — the token text is the IR carrier.
             fieldValues.set("_flags", ctorArgs[1].getText());
           }
-          const thinOptsCtor: Record<string, true> = { PWM: true, ADCChannel: true, DACChannel: true, Counter: true };
+          const thinOptsCtor: Record<string, true> = { PWM: true, ADC: true, DAC: true, Counter: true };
           if (thinOptsCtor[className] && ctorArgs && ctorArgs.length >= 2 && ts.isObjectLiteralExpression(ctorArgs[1])) {
             for (const prop of ctorArgs[1].properties) {
               if (!ts.isPropertyAssignment(prop) || !ts.isIdentifier(prop.name)) continue;
@@ -640,7 +649,7 @@ export function variableStatementToIR(
               if (ts.isNumericLiteral(prop.initializer)) {
                 fieldValues.set(`_${name}`, prop.initializer.text.replace(/_/g, ""));
               } else {
-                // Token (ADCChannel.GAIN_1_4) or runtime expression text.
+                // Token (ADC.GAIN_1_4) or runtime expression text.
                 fieldValues.set(`_${name}`, prop.initializer.getText());
               }
             }
@@ -784,11 +793,11 @@ export function variableStatementToIR(
           // an omitted opts object must resolve to these sentinels, not leak
           // `this->_gain` text into the ops (string args pass through raw).
           const thinFieldDefaults: Record<string, Record<string, string>> = {
-            ADCChannel: { _gain: "", _reference: "" },
+            ADC: { _gain: "", _reference: "" },
             I2CTarget: { _hz: "0" },
             SPITarget: { _hz: "1000000", _mode: "0" },
             UART: { _baud: "115200", _rxBufferBytes: "64" },
-            DACChannel: { _resolution: "0" },
+            DAC: { _resolution: "0" },
           };
           // WiFi absent-fact sentinels: fields whose class initializer is
           // `opts.x?.y` render as raw `this->_x` when the fact was omitted.
@@ -845,8 +854,8 @@ export function variableStatementToIR(
           const isHalOpReturn = result.returnValue === "__hal_op_return__";
 
           // A __TYPED_ARRAY__ return comes ONLY from a HAL method body
-          // (`return new Uint8Array(count)` in e.g. I2CDevice.readBytes /
-          // SPIDevice.readRegister). The method's side-effect HAL ops (the
+          // (`return new Uint8Array(count)` in buffer-returning device
+          // methods). The method's side-effect HAL ops (the
           // i2c.read_buffer / spi.read_buffer fill loops) write INTO this buffer
           // via the __HAL_READ_BUF__ placeholder (rewritten to `varName`). So the
           // buffer var_decl MUST precede the fill ops in emitted order — at top
@@ -911,9 +920,15 @@ export function variableStatementToIR(
             const instance = resolveHALReceiver(receiver);
             const fieldValues = new Map(instance?.fieldValues || []);
             // For device() factory calls, copy the address/cs from the call arg
-            // so I2CDevice/SPIDevice methods can resolve this._address / this._cs.
-            if (result.returnClassName === "I2CDevice" || result.returnClassName === "SPIDevice") {
-              const fieldName = result.returnClassName === "SPIDevice" ? "_cs" : "_address";
+            // so I2CTarget/SPITarget methods can resolve this._address / this._cs.
+            if (result.returnClassName === "I2CTarget" || result.returnClassName === "SPITarget") {
+              const isSpiTarget = result.returnClassName === "SPITarget";
+              const fieldName = isSpiTarget ? "_cs" : "_address";
+              // The targets' __default_fields channel does not reach factory
+              // results; carry the wire defaults so this._hz / this._mode
+              // resolve in the inlined method bodies.
+              fieldValues.set("_hz", isSpiTarget ? "1000000" : "0");
+              if (isSpiTarget) fieldValues.set("_mode", "0");
               const firstArg = init.arguments?.[0];
               if (firstArg) {
                 if (ts.isNumericLiteral(firstArg)) fieldValues.set(fieldName, firstArg.text);
@@ -961,11 +976,15 @@ export function variableStatementToIR(
             }
           }
           if (result.returnValue && result.returnValue !== "this") {
+            const lastOp = result.halOps[result.halOps.length - 1];
+            // A double-returning HAL op makes the captured var floating
+            // (sensor.get → val1 + val2/1e6): the snprintf specifier picker
+            // reads floatVariables and must pick %g, not %d.
+            if (lastOp && lastOp.operation === "sensor.get") registerFloatVariable(varName);
             if (isHalOpReturn) {
-              const lastOp = result.halOps[result.halOps.length - 1];
               lowered.push({
                 kind: "var_decl",
-                sourceSpan: makeSourceSpan(declaration, fileName, sourceText),
+                sourceSpan: makeSourceSpan(declaration.initializer!, fileName, sourceText),
                 leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
                 trailingComments: [],
                 name: varName,
@@ -1019,7 +1038,7 @@ export function variableStatementToIR(
 
     let isVolatile = false;
     let actualInitializer = declaration.initializer;
-    
+
     if (declaration.initializer && ts.isCallExpression(declaration.initializer)) {
       const callee = declaration.initializer.expression;
       if (ts.isIdentifier(callee) && callee.text === "volatile") {
@@ -1032,11 +1051,19 @@ export function variableStatementToIR(
       }
     }
 
+    // A typed-array buffer declared `const` stays writable storage: HAL fills
+    // write through it (e.g. spi.transceive's rx buffer), so the emitted C
+    // array must not be const — mirroring the __TYPED_ARRAY__ return branch.
+    // Keeping the source storage would split the definition (`uint8_t id[]`,
+    // the array renderer drops the qualifier) from the split-mode extern
+    // (`extern const uint8_t id[]`) — a conflicting declaration.
+    let effectiveStorage = storage;
     if (actualInitializer && ts.isNewExpression(actualInitializer)) {
       const ctorText = actualInitializer.expression && ts.isIdentifier(actualInitializer.expression)
         ? actualInitializer.expression.text : "";
       if (TYPED_ARRAY_ELEMENT_MAP[ctorText] && ts.isIdentifier(declaration.name)) {
         activeCArrayVars.add(declaration.name.text);
+        if (effectiveStorage === "const") effectiveStorage = "let";
       }
     }
 
@@ -1080,7 +1107,7 @@ export function variableStatementToIR(
       leadingComments: commentsAssigned ? [] : statementComments.leadingComments,
       trailingComments: commentsAssigned ? [] : statementComments.trailingComments,
       name: declaration.name.text,
-      storage,
+      storage: effectiveStorage,
       cppType: "auto",
       isVolatile,
       initializer: lambdaInitializer ?? (actualInitializer
@@ -1557,14 +1584,14 @@ export function collectPointerVars(statements: readonly ts.Statement[]): Pointer
  * 7-bit address. Accepts the inline factory form `I2C1.device(0x44)` and an
  * identifier previously bound to one (`const dev = I2C1.device(0x44)`). The
  * general receiver resolution carries the bus fields through `device()`'s
- * I2CDevice return type; the inline form's address is taken from the call's
+ * I2CTarget return type; the inline form's address is taken from the call's
  * numeric argument (the general path does not extract call args).
  */
 function resolveSensorDeviceArg(arg: ts.Expression): { bus: string; port: string; kind: "i2c" | "spi" } | null {
   const inst = resolveHALReceiver(arg);
-  const portField = inst?.className === "SPIDevice" ? "_cs" : "_address";
-  if (inst && (inst.className === "I2CDevice" || inst.className === "SPIDevice") && inst.fieldValues.has("_bus") && inst.fieldValues.has(portField)) {
-    return { bus: inst.fieldValues.get("_bus")!, port: inst.fieldValues.get(portField)!, kind: inst.className === "SPIDevice" ? "spi" : "i2c" };
+  const portField = inst?.className === "SPITarget" ? "_cs" : "_address";
+  if (inst && (inst.className === "I2CTarget" || inst.className === "SPITarget") && inst.fieldValues.has("_bus") && inst.fieldValues.has(portField)) {
+    return { bus: inst.fieldValues.get("_bus")!, port: inst.fieldValues.get(portField)!, kind: inst.className === "SPITarget" ? "spi" : "i2c" };
   }
   // Inline bus.device(<port>) call: the general receiver path carries the bus
   // fields through device()'s return type but drops the argument — take the
@@ -1583,7 +1610,7 @@ function resolveSensorDeviceArg(arg: ts.Expression): { bus: string; port: string
       // The bus kind follows the receiver's resolved class when it round-
       // tripped; otherwise infer from the bus alias (SPI/SPI<n> vs Wire).
       const busName = inst.fieldValues.get("_bus")!;
-      const kind: "i2c" | "spi" = inst.className === "SPIDevice" || /^SPI/.test(busName) ? "spi" : "i2c";
+      const kind: "i2c" | "spi" = inst.className === "SPITarget" || /^SPI/.test(busName) ? "spi" : "i2c";
       return { bus: busName, port: portText, kind };
     }
   }

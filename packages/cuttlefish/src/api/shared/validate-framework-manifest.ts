@@ -70,7 +70,6 @@ const CATEGORY_PREFIXES: Record<string, string[]> = {
   dac: ['dac.'],
   interrupts: ['interrupt.'],
   timing: ['timing.'],
-  power: ['power.'],
   i2c: ['i2c.'],
   spi: ['spi.'],
   uart: ['uart.'],
@@ -92,10 +91,8 @@ const CATEGORY_PREFIXES: Record<string, string[]> = {
   twai: ['twai.'],
   usb: ['usb.'],
   eth: ['eth.'],
-  // Worker offload + snprintf raw-escape: recognized categories. Frameworks
-  // that lower worker.* declare it supported; snprintf.emit is a raw escape
-  // hatch (declared unsupported by frameworks that don't special-case it).
-  worker: ['worker.'],
+  // snprintf raw-escape: recognized category; declared unsupported by
+  // frameworks that don't special-case it.
   snprintf: ['snprintf.'],
 };
 

@@ -15,7 +15,7 @@ Hardware test runner for [TypeCAD](../../README.md). Write vitest-style assertio
 
 
  Tests   4 passed (4)
- Board   @typecad/board-arduino-uno @ COM4
+ Board   blackpill_f411ce/stm32f411xe @ COM4
  Time    18.97s
 
  PASS  All tests passed
@@ -66,8 +66,10 @@ npm install --save-dev @typecad/expect @typecad/cuttlefish
 
 **Prerequisites:**
 
-- [`arduino-cli`](https://arduino.github.io/arduino-cli/) installed and on `PATH`
-- The target board core installed (`arduino-cli core install arduino:avr` for Uno)
+- A Zephyr build environment — install it with the bundled installer:
+  `npx --package @typecad/framework-zephyr zephyr-installer`
+- A project `cuttlefish.config.ts` naming a board target
+  (`board: 'blackpill_f411ce/stm32f411xe'`) and `@typecad/framework-zephyr`
 - A USB serial port available
 
 ---
@@ -79,13 +81,16 @@ Test files follow a fluent chaining style. Expectations can use direct values or
 ```typescript
 // examples/my-sensor.test.ts
 import { describe, done } from '@typecad/expect';
-import { A0 } from '@typecad/board';
+import { ADC_PIN, ADC_MAX } from '@typecad/test-pins';
+import { ADC } from '@typecad/board';
 
 describe("A0 analog read")
   .it("reads a value in valid ADC range")
-    .expect(A0.readAnalog()).toBeWithinRange(0, 1023)
+    .expect((() => { const sense = new ADC(ADC_PIN); return sense.read(); })())
+    .toBeWithinRange(0, ADC_MAX)
   .it("reads less than mid-scale when grounded")
-    .expect(A0.readAnalog()).toBeLessThan(512);
+    .expect((() => { const sense = new ADC(ADC_PIN); return sense.read(); })())
+    .toBeLessThan(ADC_MAX / 2);
 
 done();
 ```
@@ -104,7 +109,7 @@ Opens a named test case within the current group. Returns the same `Suite` for f
 
 `suite.expect(value: number): Expectation`
 
-Captures a hardware value to be asserted. The argument must be a TypeCAD hardware expression (e.g. `A0.readAnalog()`, `pin.read()`) or a zero-argument function returning one. The preprocessor hoists hardware expressions so they are evaluated exactly once.
+Captures a hardware value to be asserted. The argument must be a TypeCAD hardware expression (e.g. `sense.read()`, `pin.get()`) or a zero-argument function returning one. The preprocessor hoists hardware expressions so they are evaluated exactly once.
 
 `suite.expectString(value: string): StringExpectation`
 
@@ -173,14 +178,17 @@ npm run test:hw -- --port COM4
 | Flag | Short | Default | Description |
 |---|---|---|---|
 | `--port <port>` | `-p` | from config | Serial port (e.g. `COM4`, `/dev/ttyACM0`) |
-| `--board <pkg>` | `-b` | from config | Board package name override |
-| `--build-target <fqbn>` | | from config | Framework-specific build target / FQBN override |
+| `--board <pkg>` | `-b` | from config | Board target override |
+| `--build-target <id>` | | from config | Framework build target override (e.g. `blackpill_f411ce/stm32f411xe`) |
 | `--baud <rate>` | | `115200` | Serial baud rate |
 | `--timeout <ms>` | `-t` | `30000` | Serial read timeout in milliseconds |
 | `--include <glob>` | `-i` | from config | Test file glob pattern (repeatable) |
 | `--exclude <glob>` | `-x` | from config | Test file glob pattern to skip (repeatable) |
 | `--verbose` | `-v` | `false` | Show raw serial output and per-assertion detail |
+| `--config <path>` | | `cuttlefish.config.ts` | Config file to load (suite dirs pass a board-specific config) |
 | `--discover` | | | List attached USB serial ports (VID:PID, serial, manufacturer) and which one the active board identity matches, then exit |
+| `--dry-run` | | | Compile only — skip upload and serial execution (pipeline check without hardware) |
+| `--bail` | | | Stop after the first failing file |
 | `--help` | `-h` | | Print help and exit |
 
 ### USB port discovery (multi-board rigs)
@@ -191,16 +199,17 @@ VID/PID (+ optional serial number) instead:
 
 ```typescript
 test: {
-  usb: { vid: '2FE3', pid: '0002' },   // resolves the port by identity
+  usb: { vid: '2FE3', pid: '0001' },   // resolves the port by identity
 },
 ```
 
 Board packages that ship a `test-pins.json` can carry the same `usb` block —
 then no config change is needed at all (an explicit `test.usb` in the config
-wins). Zephyr CDC consoles default to the Zephyr test IDs `2FE3:0001` for
-every board, so `@typecad` board packages assign each board its own PID
-there; UART-bridge boards identify by their bridge chip (Uno 16U2
-`2341:0043`, CH340 clones `1A86:7523`; ESP32 DevKitC CP2102 `10C4:EA60`).
+wins). Zephyr CDC consoles enumerate at the Zephyr test IDs `2FE3:0001` for
+every board (per-board PIDs are no longer assigned), so vid/pid alone cannot
+distinguish several attached CDC boards — run one CDC board at a time.
+UART-bridge boards identify by their bridge chip (Uno 16U2 `2341:0043`,
+CH340 clones `1A86:7523`; ESP32 DevKitC CP2102 `10C4:EA60`).
 Several identical devkits disambiguate with the bridge's USB serial number:
 `usb: { vid: '10C4', pid: 'EA60', serial: '0001' }`.
 
@@ -215,11 +224,11 @@ VID:PID/serial/manufacturer and marks which one the current config matches
 (exit code 1 when the identity has no unique match, so scripts can gate).
 
 ```bash
-cuttlefish-test --config boards/blackpill.config.ts --discover
+cuttlefish-test --config boards/blackpill/cuttlefish.config.ts --discover
 # USB serial ports:
-#   COM7  2FE3:0002 serial …  <-- matches this config
+#   COM7  2FE3:0001 serial …  <-- matches this config
 #   COM4  10C4:EA60 serial 0001 [Silicon Labs]
-# config identity 2FE3:0002 -> COM7
+# config identity 2FE3:0001 -> COM7
 ```
 
 ### cuttlefish.config.ts
@@ -231,23 +240,20 @@ Add a `test` section to your project's `cuttlefish.config.ts` to avoid passing f
 import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
 const config: CuttlefishConfig = {
-  target: 'avr',
-  board: '@typecad/board-arduino-uno',
-  framework: '@typecad/framework-arduino',
-  frameworkData: {
-    buildTarget: 'arduino:avr:uno',
-  },
+  entry: './src/main.ts',
+  board: 'blackpill_f411ce/stm32f411xe',
+  framework: '@typecad/framework-zephyr',
 
   test: {
-    port: 'COM4',           // serial port of the connected board
-    baudRate: 115200,        // must match Serial.begin() in firmware
+    port: 'COM4',            // serial port of the connected board
+    baudRate: 115200,        // must match the console's baud rate
     timeout: 30000,          // ms to wait for SUITE_END before giving up
     include: [               // glob patterns for test discovery
       'examples/**/*.test.ts',
       'tests/hardware/**/*.test.ts',
     ],
     exclude: [               // optional glob patterns to skip after discovery
-      'tests/hardware/avr-only/**/*.test.ts',
+      'tests/hardware/network/**/*.test.ts',
     ],
   },
 };
@@ -262,16 +268,16 @@ All `test` fields are optional and can be overridden by CLI flags.
 Use a file-level comment when a test is valid only for some MCUs or framework targets. The runner checks these comments before preprocessing, compiling, or uploading.
 
 ```typescript
-// @typecad-skip-target esp32: ESP32 does not expose the AVR watchdog API.
+// @typecad-skip-target native: this group drives Zephyr console timing.
 ```
 
 The inverse form skips every target except the listed ones:
 
 ```typescript
-// @typecad-only-target avr,megaavr: uses AVR watchdog registers.
+// @typecad-only-target esp32s3_devkitc,blackpill_f411ce: pins live in test-pins.json for these boards.
 ```
 
-Targets are matched against `target`, the FQBN parts from `frameworkData.buildTarget` such as `esp32` in `esp32:esp32:esp32`, the full FQBN, and the board package name.
+Targets are matched against `target`, the `buildTarget` id, and the final `/`-segment of the board target (e.g. `stm32f411xe` from `blackpill_f411ce/stm32f411xe`) — `*` matches everything.
 
 Skipped files are reported in the same style as Vitest:
 
@@ -287,21 +293,22 @@ Run with `--verbose` to print the skip reason from the directive.
 
 ### Board test-pin roles (`@typecad/test-pins`)
 
-Board packages can ship a `test-pins.json` next to their `package.json` declaring which pins a hardware suite may use and the board's numeric facts:
+Each board config ships a `test-pins.json` (co-located with its
+`cuttlefish.config.ts`, e.g. `packages/hal/boards/<name>/`) declaring which
+pins a hardware suite may use and the board's numeric facts:
 
 ```jsonc
 {
   "pins": {
     "gpioOut": "PB5",
     "gpioIn": "PB0",
-    "gpioGroup": ["PB0", "PB1", "PB10"],
     "pwm": "PB6", "pwmAlt": "PB7",
     "cs": "PA4", "interrupt": "PA0",
-    "led": "LED", "button": "BUTTON"
+    "led": "LED", "button": "BUTTON",
+    "adcPin": "PA1", "adcPinAlt": "PA2",
+    "i2cBus": "'I2C0'"
   },
   "facts": {
-    "pwmMaxFrequency": 50000000,
-    "pwmResolutionBits": 16,
     "adcMax": 4095
   }
 }
@@ -310,36 +317,21 @@ Board packages can ship a `test-pins.json` next to their `package.json` declarin
 Test files import stable role names instead of board-specific pin symbols:
 
 ```typescript
-import { GPIO_OUT, PWM_PIN, PWM_MAX_FREQ } from '@typecad/test-pins';
+import { GPIO_OUT, PWM_PIN, ADC_PIN, ADC_MAX } from '@typecad/test-pins';
 ```
 
 During preprocessing the runner substitutes each role with the configured board's pin symbol (facts become numeric literals) and rewrites the import to `@typecad/board` — the exact lowering path hand-written per-board tests use. Files declare the roles they need so they skip cleanly on boards that cannot provide them:
 
 ```typescript
-// @typecad-requires-roles pwm, pwmAlt, pwmMaxFrequency
+// @typecad-requires-roles adcPin, adcMax
 ```
 
 Because expect matcher arguments must be literals, compare facts on-device inside the `expect()` IIFE:
 
 ```typescript
-.expect((() => { const out = PWM_PIN.asOutput(); return out.getPwmFrequency() === PWM_MAX_FREQ ? 1 : 0; })()).toBe(1)
+describe("ADC upper bound")
+  .expect((() => { const sense = new ADC(ADC_PIN); return sense.read() <= ADC_MAX ? 1 : 0; })()).toBe(1)
 ```
-
-### Uno showcase validation example
-
-Use the stock-Uno showcase in [examples/23-transpiler-showcase.ts](../../examples/23-transpiler-showcase.ts) for manual serial confirmation, then run the companion hardware test in [examples/24-uno-validation.test.ts](../../examples/24-uno-validation.test.ts) for automated checks.
-
-Example flow:
-
-```bash
-# 1. Compile and upload the serial-output showcase
-npx @typecad/cuttlefish src/23-transpiler-showcase.ts --compile --upload --port COM4
-
-# 2. Run the on-hardware expect test against the connected Uno
-npx --package=@typecad/expect cuttlefish-test examples/24-uno-validation.test.ts --port COM4
-```
-
-This hybrid workflow is the recommended way to confirm that simple variables, arithmetic, arrays, enums, functions, GPIO, and analog input are behaving correctly on real Uno hardware.
 
 ---
 
@@ -392,7 +384,7 @@ The firmware emits structured lines that the host runner filters from any other 
 [TC:SUITE_END]
 ```
 
-All lines not beginning with `[TC:` are ignored, so `Serial.print()` debug statements in imported board libraries do not interfere with results.
+All lines not beginning with `[TC:` are ignored, so any other console output (`printk` debug prints, shell output) does not interfere with results.
 
 **Assertion line format:** `[TC:EXPECT:<matcher>:<expected>:<actual>]`
 
@@ -403,14 +395,14 @@ Assertion math (pass/fail, formatting) is computed entirely on the host, not in 
 
 ### AST preprocessor
 
-The Cuttlefish transpiler cannot evaluate hardware calls (like `A0.readAnalog()`) when they are nested inside non-TypeCAD function calls — they lose their structured IR and become plain text. The preprocessor solves this before transpilation:
+The Cuttlefish transpiler cannot evaluate hardware calls (like `sense.read()`) when they are nested inside non-TypeCAD function calls — they lose their structured IR and become plain text. The preprocessor solves this before transpilation:
 
 1. Removes the `import { describe, done } from '@typecad/expect'` statement.
-2. Emits a `Serial.begin(...)` + `[TC:SUITE_START]` preamble once.
+2. Emits the console init + `[TC:SUITE_START]` preamble once (the Zephyr console self-initializes — no init call is needed).
 3. Walks the fluent chain `describe(...).it(...).expect(expr).matcher(args)`.
 4. **Hoists** hardware expressions out of `.expect()` into a `const __tc_vN: number = expr;` declaration at the surrounding statement level.
-5. Replaces the `.expect(...).matcher(...)` chain with the appropriate `Serial.print("[TC:EXPECT:...]")` calls.
-6. Rewrites `done()` to `Serial.println("[TC:SUITE_END]") + while(true){delay(1000)}`.
+5. Replaces the `.expect(...).matcher(...)` chain with the appropriate `__tc_print("[TC:EXPECT:...]")` calls.
+6. Rewrites `done()` to `__tc_println("[TC:SUITE_END]")` + `while (true) { k_msleep(1000); }`.
 
 The result is valid TypeCAD TypeScript with no nested hardware calls, ready for the standard transpiler.
 
@@ -420,6 +412,6 @@ The result is valid TypeCAD TypeScript with no nested hardware calls, ready for 
 
 - **No vitest-style callback suites** — groups and cases are defined by fluent chaining, not by `describe("name", () => { ... })`.
 - **No async tests** — all timing is implicit (the board executes sequentially, the host waits on serial output).
-- **Sequential execution only** — all describes in a file run once, in order, inside `setup()`. There is no `beforeEach`/`afterEach`.
+- **Sequential execution only** — all describes in a file run once, in order, from the program's top-level statements. There is no `beforeEach`/`afterEach`.
 - **One file per upload** — each test file produces one program and one upload cycle. Multiple test files run as separate upload+execute passes.
 - **Number types only for hardware values** — TypeCAD maps numeric hardware readings to `int`/`float`. String expectations are for software string variables, not raw hardware reads.

@@ -147,10 +147,8 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     usesBle: uses('bt_') || uses('bt_gatt') || uses('bt_le_'),
     usesDisplay: uses('display_write') || uses('display_init') || uses('display_fill_rect') || uses('__tc_display_dev') || uses('CuttlefishDisplayTarget'),
     usesTouch: uses('ft6336u') || uses('touch_'),
-    // Power tokens: k_sleep + pm_state_force / PM_STATE_* (what power.ts emits).
-    // The old `power_` token matched nothing the power HAL emits and collides
-    // with tx_power_dbm — removed.
-    usesPower: uses('pm_') || uses('k_sleep') || uses('PM_STATE_'),
+    // (The power HAL is removed; its former pm_/k_sleep token scan is gone —
+    // nothing here must match tx_power_dbm's `power` substring.)
     usesWifi: uses('wifi_') || uses('net_mgmt') || uses('conn_mgr'),
     // HTTP: the __tc_http_* shim + http_client_req + getaddrinfo. The '_'-anchored
     // 'http_' token matches __tc_http_* and http_client_req (the core HTTP lib

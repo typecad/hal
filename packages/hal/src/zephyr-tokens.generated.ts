@@ -17,7 +17,7 @@
 // token→macro maps from these lists — names only; values never cross to C++.
 // ---------------------------------------------------------------------------
 
-/** enum adc_gain suffixes — ADCChannel.GAIN_<name> ↔ ADC_GAIN_<name>. */
+/** enum adc_gain suffixes — ADC.GAIN_<name> ↔ ADC_GAIN_<name>. */
 export const ZEPHYR_ADC_GAINS: readonly string[] = [
   '1_6',
   '1_5',
@@ -42,7 +42,7 @@ export const ZEPHYR_ADC_GAINS: readonly string[] = [
   '128',
 ];
 
-/** enum adc_reference suffixes — ADCChannel.REF_<name> ↔ ADC_REF_<name>. */
+/** enum adc_reference suffixes — ADC.REF_<name> ↔ ADC_REF_<name>. */
 export const ZEPHYR_ADC_REFERENCES: readonly string[] = [
   'VDD_1',
   'VDD_1_2',

@@ -9,6 +9,7 @@ import {
   discoverFromWellKnown,
   wellKnownWorkspaces,
   isZephyrBase,
+  discoverFromPath,
 } from '../../../packages/framework-zephyr/src/toolchain/west-discover.js';
 import { westSpawn } from '../../../packages/framework-zephyr/src/toolchain/west-spawn.js';
 
@@ -55,6 +56,27 @@ describe('framework-zephyr west discovery', () => {
         expect(install.micromambaExe).toBeTruthy();
         expect(install.envName).toBeTruthy();
       }
+    }
+  });
+
+  it('discoverFromPath spawns where/which without a shell (no DEP0190)', async () => {
+    // Node's DEP0190 fires when a child process is spawned with BOTH an args
+    // array and a truthy `shell` option (args are concatenated unescaped).
+    // Discovery must stay shell-less on every platform — `where.exe` is a
+    // plain PE executable, not a cmd builtin needing cmd.exe resolution.
+    const dep0190: string[] = [];
+    const onWarning = (w: NodeJS.ProcessWarning) => {
+      if (w.code === 'DEP0190') dep0190.push(w.message);
+    };
+    process.on('warning', onWarning);
+    try {
+      expect(() => discoverFromPath()).not.toThrow();
+      // Deprecation warnings are delivered asynchronously — flush before
+      // asserting so a violation can't slip past on timing.
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(dep0190).toEqual([]);
+    } finally {
+      process.off('warning', onWarning);
     }
   });
 

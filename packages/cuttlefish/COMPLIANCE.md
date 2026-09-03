@@ -5,10 +5,6 @@ coding-standard rule set, with auto-generated deviations for unavoidable
 library/HAL violations. This document describes how to enable it, what it
 covers, and how to read its output.
 
-> **Design reference:** `docs/superpowers/specs/2026-07-26-autosar-compliance-design.md`
-> covers the architecture, decision history, and the full Track 1/2/3
-> classification of every rule.
-
 ## Enabling compliance
 
 Compliance is **opt-in** and off by default — emitted code is byte-identical
@@ -39,23 +35,20 @@ cuttlefish build --autosar=warn --autosar-arxml
 ## The rule subset
 
 The rule table lives in [`src/emit/compliance/rules.ts`](./src/emit/compliance/rules.ts)
-as the source of truth — 50 rules, tagged **[C]** (enforce-by-construction)
-or **[D]** (deviation-required). The spec's "Curated rule subset" section
-has the full table with what each rule bans.
+as the source of truth — 51 rules, tagged **[C]** (enforce-by-construction,
+40 rules) or **[D]** (deviation-required, 11 rules).
 
 ### Implementation status
 
-A codebase-wide investigation during Phase 2 revealed the 39 [C] rules sort
-into three implementation tracks (see the spec addendum "Implementation
-scope revision"):
+The [C] rules sort into three implementation tracks:
 
-- **Track 1 — already compliant (14 rules).** The current emitter satisfies
+- **Track 1 — already compliant.** The current emitter satisfies
   these; the self-check is a regression net.
-- **Track 2 — cheap renderer gates (12 rules).** Single-chokepoint rules
+- **Track 2 — cheap renderer gates.** Single-chokepoint rules
   where the renderer picks a compliant spelling. All wired.
-- **Track 3 — shim-scattered (5 rules).** All converted:
+- **Track 3 — shim-scattered.** All converted:
   - **M5-0-7 (C-style casts)** — fully converted across all packages
-    (cuttlefish, framework-arduino/avr/esp32/native, UI runtime header).
+    (cuttlefish, the Zephyr and native frameworks, the UI runtime header).
     Zero C-style casts remain in any emitted C++.
   - **A3-9-1 (fixed-width integers)** — `defaultNumericType()` returns
     `int32_t` (or `int64_t` on native) under autosar; legacy `int` preserved

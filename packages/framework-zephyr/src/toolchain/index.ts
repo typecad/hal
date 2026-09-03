@@ -20,10 +20,11 @@
 
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, join } from 'node:path';
-import { readdirSync, readFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdirSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import type { ToolchainOptions, CompileResult, UploadResult } from '@typecad/cuttlefish/api/shared';
 import { parseCompileErrors } from '@typecad/cuttlefish/api/shared';
 import { scaffoldZephyrProject, writeIfChanged, appendLibraryOverlayFragments } from './scaffold.js';
+import { parseZephyrDts, asBuiltJson } from '../as-built.js';
 import { westSpawn, buildEnv } from './west-spawn.js';
 import { discoverWest } from './west-discover.js';
 import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
@@ -31,24 +32,19 @@ import { bossacTouchReset } from './bossac-touch.js';
 import { ZephyrStrategy } from '../strategy.js';
 import { generateOverlay, type DisplayWiring, type TouchWiring, type OverlayDiagnostic } from '../dt-config/overlay.js';
 import { generateCustomBoard } from '../dt-config/custom-board.js';
-import { chipForTarget, chipForSoc } from '../chips/index.js';
-import { resolveChipFromBoard, boardPwmSpecsFromConstants, mergeBoardPwmSpecs } from '../chips/resolve.js';
+import { NO_BOARD_CHIP } from '../chips/index.js';
+import { resolveChipFromBoard } from '../chips/resolve.js';
 import type { ZephyrChipDescriptor } from '../chips/types.js';
 import { pwmDtAliasToken } from '../lowering/pwm.js';
 import { detectZephyrVersion, checkZephyrCompat, resolveBoardTarget } from './compat.js';
 import { DEFAULT_ZEPHYR_DISPLAY_PROFILE } from '../display/profiles.js';
 
-/** Default board target — the framework's MVP canonical board. */
-const DEFAULT_BOARD = 'xiao_ble';
-
 /**
  * Resolve the chip for a build the same way the strategy does at emit time —
  * from the board constants the transpile persisted next to the emitted
- * source (`board-constants.json`), falling back to the hardcoded registry.
- * Board-package chips (rpi_pico, esp32c3/c6, blackpill) exist only in their
- * board packages; the registry fallback would silently resolve them to the
- * XIAO default and the overlay generator would emit wrong controller labels
- * (e.g. `&uart0` on an STM32, whose node is `usart1`).
+ * source (`board-constants.json`). There is no registry fallback: a build
+ * whose constants did not persist stays NO_BOARD_CHIP, exactly like the
+ * emit-time path.
  */
 function chipForBuild(projectRoot: string, board: string): ZephyrChipDescriptor {
   try {
@@ -60,21 +56,11 @@ function chipForBuild(projectRoot: string, board: string): ZephyrChipDescriptor 
     if (bcPath) {
       const raw = JSON.parse(readFileSync(bcPath, 'utf8')) as Record<string, string | number | boolean>;
       const bc = new Map(Object.entries(raw));
-      // Generated board manifests key the consolidated soc registry by
-      // zephyr.soc — the silicon-faithful resolution (carries customBoard
-      // data for soc/contract projects that the flat constants alone lose).
-      // Board-level pwm-led specs join the curated table (the manifest's
-      // zephyr.pwm.specs.* — pwm-leds facts boardgen emitted).
-      const soc = bc.get('zephyr.soc') as string | undefined;
-      if (soc) {
-        const fromSoc = chipForSoc(soc);
-        if (fromSoc) return mergeBoardPwmSpecs(fromSoc, boardPwmSpecsFromConstants(bc));
-      }
       const fromBoard = resolveChipFromBoard(bc);
       if (fromBoard) return fromBoard;
     }
-  } catch { /* fall back to the registry below */ }
-  return chipForTarget(board); // registry fallback
+  } catch { /* constants unreadable — no board resolved */ }
+  return NO_BOARD_CHIP;
 }
 
 /**
@@ -86,13 +72,41 @@ function chipForBuild(projectRoot: string, board: string): ZephyrChipDescriptor 
  */
 function scanAdcReadPins(src: string, chip: ZephyrChipDescriptor): number[] {
   const pins: number[] = [];
-  // Match CALL SITES only (`__tc_adc<N>_setup()` with empty parens) — the
-  // setup definitions emitted by adcInitLines have a `(void)` parameter list
-  // and would otherwise mark every descriptor channel as used.
-  for (const m of src.matchAll(/__tc_adc(\d+)_setup\(\)/g)) {
-    const ch = Number(m[1]);
-    const c = chip.adc?.channels.find((x) => x.channel === ch);
+  // Two used-signal forms:
+  //  - `__tc_adc<N>_setup()` / `__tc_adc_<ctrl>_<N>_setup()` CALL SITES
+  //    (empty parens — the adcInitLines definitions have `(void)` and would
+  //    otherwise mark every descriptor channel as used).
+  //  - `__tc_adct<pin>_done` lazy-guard vars — the thin-ADC read lowering's
+  //    inline setup (families without pinctrl groups, e.g. ESP32 SARADC,
+  //    never emit the setup-function form at all).
+  // Channel indices are unique per CONTROLLER, so the labeled form resolves
+  // (controller, channel) before mapping back to the HAL pin.
+  for (const m of src.matchAll(/__tc_adc(?:(\w+?)_)?(\d+)_setup\(\)/g)) {
+    const ch = Number(m[2]);
+    const label = m[1];
+    const c = chip.adc?.channels.find(
+      (x) => x.channel === ch && (x.controller ?? chip.adc?.nodeLabel) === (label ?? chip.adc?.nodeLabel),
+    );
     if (c && !pins.includes(c.pin)) pins.push(c.pin);
+  }
+  for (const m of src.matchAll(/__tc_adct(\d+)_done/g)) {
+    const pin = Number(m[1]);
+    if (chip.adc?.channels.some((x) => x.pin === pin) && !pins.includes(pin)) pins.push(pin);
+  }
+  return pins;
+}
+
+/**
+ * HAL pins the emitted sources drive with dac.* — the DAC lowering's lazy
+ * per-pin setup guard is `__tc_dact<pin>_done` (lowering/dac.ts), so
+ * var-presence is the authoritative used-signal. Feeds the overlay's DAC
+ * pinctrl gating (same pattern as scanAdcReadPins).
+ */
+function scanDacWritePins(src: string): number[] {
+  const pins: number[] = [];
+  for (const m of src.matchAll(/__tc_dact(\d+)_done/g)) {
+    const pin = Number(m[1]);
+    if (!pins.includes(pin)) pins.push(pin);
   }
   return pins;
 }
@@ -104,8 +118,61 @@ function scanAdcReadPins(src: string, chip: ZephyrChipDescriptor): number[] {
  * var-presence is the authoritative signal. Feeds the overlay's per-pin
  * pwm-leds gating (no dead DT channels).
  */
-function scanPwmUsedPins(src: string, chip: ZephyrChipDescriptor): number[] {
-  const pins = (chip.pwm?.specs ?? [])
+/**
+ * Inline-override markers (the escape hatch): the adc/pwm lowerings emit
+ * `/* cuttlefish-user-facts: <kind> pin=N [device=X] [pinctrl=P] channel=C *​/`
+ * comments when a construction carries routing overrides. Merged into the
+ * chip so the overlay synthesis + used-pin scans treat them as facts —
+ * the transpiler cannot create DT nodes, but this regen can.
+ */
+function applyUserFactMarkers(chip: ZephyrChipDescriptor, src: string): ZephyrChipDescriptor {
+  const adcAdds: { pin: number; channel: number; controller?: string; pinctrl?: string }[] = [];
+  const pwmAdds: { pin: number; controller: string; channel: number }[] = [];
+  for (const m of src.matchAll(/\/\* cuttlefish-user-facts: (adc|pwm) ([^*]*?) \*\//g)) {
+    const kind = m[1];
+    const fields = new Map<string, string>();
+    for (const kv of m[2]!.split(/\s+/).filter(Boolean)) {
+      const eq = kv.indexOf('=');
+      if (eq > 0) fields.set(kv.slice(0, eq), kv.slice(eq + 1));
+    }
+    const pin = Number(fields.get('pin'));
+    const channel = Number(fields.get('channel'));
+    if (!Number.isFinite(pin) || !Number.isFinite(channel)) continue;
+    if (kind === 'adc') {
+      adcAdds.push({
+        pin,
+        channel,
+        ...(fields.get('device') ? { controller: fields.get('device') } : {}),
+        ...(fields.get('pinctrl') ? { pinctrl: fields.get('pinctrl') } : {}),
+      });
+    } else if (fields.get('controller')) {
+      pwmAdds.push({ pin, channel, controller: fields.get('controller')! });
+    }
+  }
+  if (adcAdds.length === 0 && pwmAdds.length === 0) return chip;
+  const adc = chip.adc
+    ? chip.adc
+    : { nodeLabel: adcAdds.find((a) => !a.controller)?.controller ?? 'adc', resolution: 12, vrefMv: 3000, channels: [] };
+  const adcChannels = [...adc.channels];
+  for (const a of adcAdds) {
+    const existing = adcChannels.findIndex((c) => c.pin === a.pin);
+    if (existing >= 0) adcChannels.splice(existing, 1);
+    adcChannels.push({ pin: a.pin, channel: a.channel, ...(a.controller ? { controller: a.controller } : {}), ...(a.pinctrl ? { pinctrl: a.pinctrl } : {}) });
+  }
+  const pwmSpecs = [...(chip.pwm?.specs ?? [])];
+  for (const p of pwmAdds) {
+    const existing = pwmSpecs.findIndex((s) => s.pin === p.pin);
+    if (existing >= 0) pwmSpecs.splice(existing, 1);
+    pwmSpecs.push({ pin: p.pin, controller: p.controller, channel: p.channel });
+  }
+  return {
+    ...chip,
+    adc: { ...adc, channels: adcChannels },
+    pwm: { ...(chip.pwm ?? { specs: [] }), specs: pwmSpecs },
+  };
+}
+
+function scanPwmUsedPins(src: string, chip: ZephyrChipDescriptor): number[] {  const pins = (chip.pwm?.specs ?? [])
     .filter((s) => src.includes(`__tc_pwm_${pwmDtAliasToken(s)}`))
     .map((s) => s.pin);
   // Matrix pins (ESP32 LEDC) have no static specs — recover the driven pins
@@ -327,25 +394,116 @@ export function resolveProbeMethod(
   return { ok: true, runner, args: userArgs };
 }
 
+/**
+ * Run an openocd session against the board's probe config — the shared
+ * engine for the pre-flash quiesce and the post-flash SYSRESETREQ (see the
+ * call sites in upload()). The config is the probe method's verbatim
+ * debugCfg from the board catalog (the same lines `west debug` uses);
+ * `commands` are appended after `-f <cfg> -c init`. Returns a flash note on
+ * success, undefined when skipped or failed (best-effort by design).
+ */
+function openocdProbeSession(
+  buildDir: string,
+  zc: Record<string, unknown> | undefined,
+  chip: ZephyrChipDescriptor,
+  commands: readonly string[],
+): string | undefined {
+  // Config resolution — two sources, in order:
+  //   1. The named probe method's verbatim debugCfg from the board catalog
+  //      (written to a temp cfg), when zephyr.probe names a method that has
+  //      one.
+  //   2. The board's own support/openocd.cfg in the Zephyr tree — the exact
+  //      config `west flash` resolves for the openocd runner. This covers
+  //      raw `zephyr.runner: 'openocd'` (no named probe) and probe methods
+  //      that ship no debugCfg of their own.
+  const probeId = zc?.probe as string | undefined;
+  const method = chip.probeMethods?.find((m) => m.id === probeId);
+  const cfgLines = method?.debugCfg;
+
+  const install = discoverWest();
+  const sdkRoot = process.env.ZEPHYR_SDK_INSTALL_DIR || install?.sdkInstallDir;
+  if (!sdkRoot) return undefined;
+  const openocdExe = join(sdkRoot, 'hosttools', 'openocd', 'bin',
+    process.platform === 'win32' ? 'openocd.exe' : 'openocd');
+  if (!existsSync(openocdExe)) return undefined;
+  // Script search path: the SDK layouts differ across versions — prefer the
+  // share/ form west's own runner uses, fall back to the scripts/ form.
+  const shareScripts = join(sdkRoot, 'hosttools', 'openocd', 'share', 'openocd', 'scripts');
+  const binScripts = join(sdkRoot, 'hosttools', 'openocd', 'scripts');
+  const searchDir = existsSync(shareScripts) ? shareScripts : binScripts;
+
+  let cfgArgs: string[] | undefined;
+  let sessionCfg: string | undefined;
+  if (cfgLines && cfgLines.length > 0) {
+    sessionCfg = join(buildDir, 'cuttlefish-probe.cfg');
+  } else {
+    // The board target's qualifier ('blackpill_f411ce/stm32f411xe' →
+    // 'blackpill_f411ce') identifies the board dir; the vendor segment is
+    // not part of the target, so probe the boards/ tree for it.
+    const zephyrBase = process.env.ZEPHYR_BASE || install?.zephyrBase;
+    const boardDir = (chip.id ?? '').split('/')[0];
+    if (!zephyrBase || !boardDir) return undefined;
+    const boardsRoot = join(zephyrBase, 'boards');
+    let supportCfg: string | undefined;
+    try {
+      for (const vendor of readdirSync(boardsRoot)) {
+        const candidate = join(boardsRoot, vendor, boardDir, 'support', 'openocd.cfg');
+        if (existsSync(candidate)) { supportCfg = candidate; break; }
+      }
+    } catch {
+      return undefined;
+    }
+    if (!supportCfg) return undefined;
+    cfgArgs = ['-s', dirname(supportCfg), '-f', supportCfg];
+  }
+
+  try {
+    mkdirSync(buildDir, { recursive: true });
+    if (sessionCfg) {
+      writeFileSync(sessionCfg, cfgLines!.join('\n') + '\n', 'utf-8');
+      cfgArgs = ['-f', sessionCfg];
+    }
+    const res = spawnSync(openocdExe, [
+      '-s', searchDir, ...cfgArgs!,
+      '-c', 'init',
+      ...commands.map((c) => ['-c', c]).flat(),
+      '-c', 'shutdown',
+    ], {
+      cwd: buildDir,
+      encoding: 'utf-8' as const,
+      timeout: 20_000,
+    });
+    return res.status === 0 ? `-- probe session ok: ${commands.join('; ')}` : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function buildFlashArgs(
   buildDir: string,
-  board: string,
   userRunner: string | undefined,
   port: string | undefined,
+  flashRunner?: string,
   runnerArgs?: readonly string[],
 ): string[] {
+  // flashRunner is the runner the flash will actually use — the explicit
+  // zephyr.runner when set, else the board's declared default from its probe
+  // table. It gates the esptool port forwarding below; only an EXPLICIT
+  // userRunner forces west's --runner (board defaults stay board.cmake's
+  // choice). Runner-gated, never board-name-gated: any board whose flash
+  // runs esptool gets the same forwarding.
   const args = ['flash', '-d', buildDir];
   if (userRunner) {
     args.push('--runner', userRunner);
   }
-  if (port && board.startsWith('esp32')) {
+  if (port && flashRunner === 'esptool') {
     args.push('--esp-device', port);
   }
   // The bossac runner defaults its port to /dev/ttyACM0 — on Windows that
   // never matches, so the port MUST be forwarded or bossac fails with
-  // "No device found on /dev/ttyACM0" (same class of problem as the ESP32
-  // --esp-device forwarding above).
-  if (port && userRunner === 'bossac') {
+  // "No device found on /dev/ttyACM0" (same class of port-forwarding
+  // problem as the esptool --esp-device above).
+  if (port && flashRunner === 'bossac') {
     args.push('--bossac-port', port);
   }
   // Extra runner-specific flags, appended verbatim (west's runner parsers
@@ -463,8 +621,6 @@ export const Toolchain = {
     // logic in scaffold via the usage scan. Mirrors how Arduino's library
     // resolution is a pre-build artifact step.
     const projectRoot = basename(outputDir) === 'src' ? dirname(outputDir) : outputDir;
-    const board = DEFAULT_BOARD;
-    const chip = chipForBuild(projectRoot, board);
     // Scan the emitted source for usage tokens (same authoritative signal the
     // scaffold uses). entryPoint is the path to main.cpp; its dir is src/.
     const srcDir = dirname(entryPoint);
@@ -477,6 +633,12 @@ export const Toolchain = {
       }
     } catch { /* src may not exist yet on first prepare */ }
     const uses = (t: string): boolean => src.includes(t);
+    // Inline-override markers (the escape hatch): the lowerings emit
+    // `cuttlefish-user-facts` comments carrying routing the transpiler
+    // cannot synthesize (adc device/pinctrl, pwm controller/channel).
+    // Merged into the chip BEFORE the scans + overlay generation, so the DT
+    // nodes, pinctrl groups, and used-pin recovery treat them as facts.
+    const chip = applyUserFactMarkers(chipForBuild(projectRoot, ''), src);
     // Display usage tokens: the minimal GFX runtime (display_write/_fill_rect)
     // and the UI display adapter (display_init / __tc_display_dev /
     // DEVICE_DT_GET on the display nodelabel). Both paths need the DT overlay
@@ -506,11 +668,12 @@ export const Toolchain = {
       sensorParts,
       spiTargets: spiTargetParts,
       usesSpi: uses('spi_') || uses('__tc_spi') || spiTargetParts.length > 0,
-      usesUart: uses('uart_') || uses('__tc_uart'),
+      usesUart: uses('__tc_uart'),
       usesUsb: uses('__tc_usb'),
       usesPwm: uses('pwm_'),
       usesAdc: uses('adc_'),
       adcReadPins: scanAdcReadPins(src, chip),
+      dacWritePins: scanDacWritePins(src),
       pwmUsedPins: scanPwmUsedPins(src, chip),
       i2cUsedInstances: scanUsedBusInstances(src, chip.i2c?.controllers, 'i2c'),
       spiUsedInstances: scanUsedBusInstances(src, chip.spi?.controllers, 'spi'),
@@ -521,13 +684,17 @@ export const Toolchain = {
       usesPreferences: uses('settings_') || uses('__tc_prefs'),
       usesFS: uses('__tc_fs'),
       usesWdt: uses('wdt_'),
+      usesHwtimer: uses('counter_') || uses('__tc_hw'),
       usesDisplay,
       usesTouch: usesTouch || usesXpt,
       touchController: usesXpt ? 'xpt2046' : 'ft6336u',
     }, displayProfile);
     const overlayDir = join(projectRoot, 'boards');
     mkdirSync(overlayDir, { recursive: true });
-    writeIfChanged(join(overlayDir, `${board}.overlay`), overlay);
+    // prepare() runs before the real target is known — the placeholder name
+    // never matches `west build -b <board>` (compile rewrites the overlay
+    // under the actual board's name below).
+    writeIfChanged(join(overlayDir, 'board.overlay'), overlay);
     // Thin SPI targets need an app-local binding: a compatible-less DT node
     // generates NO property macros, so SPI_DT_SPEC_GET's spi-max-frequency
     // lookup would not exist. The binding has no driver — it exists so
@@ -718,11 +885,13 @@ export const Toolchain = {
         sensorParts,
         spiTargets: spiTargetParts,
         usesSpi: uses('spi_') || uses('__tc_spi') || spiTargetParts.length > 0,
-        usesUart: uses('uart_') || uses('__tc_uart'),
+        usesUart: uses('__tc_uart'),
         usesUsb: uses('__tc_usb'),
         usesPwm: uses('pwm_'),
         usesAdc: uses('adc_'),
         adcReadPins: scanAdcReadPins(src, chip),
+        usesDac: uses('dac_') || uses('__tc_dac'),
+        dacWritePins: scanDacWritePins(src),
         pwmUsedPins: scanPwmUsedPins(src, chip),
         i2cUsedInstances: scanUsedBusInstances(src, chip.i2c?.controllers, 'i2c'),
         spiUsedInstances: scanUsedBusInstances(src, chip.spi?.controllers, 'spi'),
@@ -731,6 +900,7 @@ export const Toolchain = {
         // storage-partition synthesis + /chosen settings pointer.
         usesPreferences: uses('settings_') || uses('__tc_prefs'),
         usesWdt: uses('wdt_'),
+        usesHwtimer: uses('counter_') || uses('__tc_hw'),
         usesFS: uses('__tc_fs'),
         usesDisplay,
         usesTouch: uses('ft6336u') || uses('touch_') || usesXpt,
@@ -864,6 +1034,40 @@ export const Toolchain = {
       }
     }
 
+    // As-built snapshot: after a successful build, the resolved devicetree
+    // at <buildDir>/zephyr/zephyr.dts carries the board's pinctrl labels —
+    // the STABLE name grammar, immune to vendor macro churn. Harvest its
+    // routes into .cuttlefish/as-built.json; the next build's board-module
+    // generation merges them per-pin over the catalog harvest (build wins,
+    // silently when they agree). One-build freshness lag on first setup,
+    // self-maintaining after. Best-effort — a missing/unparseable artifact
+    // never fails the build.
+    if (result.status === 0) {
+      try {
+        const dtsPath = join(buildDir, 'zephyr', 'zephyr.dts');
+        const dtsText = readFileSync(dtsPath, 'utf8');
+        const facts = parseZephyrDts(dtsText);
+        const total = facts.adc.length + facts.pwm.length + facts.dac.length;
+        if (total > 0) {
+          // Write beside the project's board module — the .cuttlefish dir the
+          // config loader reads from, discovered by walking up to the
+          // generated board.json (the scaffold root and the config root are
+          // different dirs in the standard layout: src/out vs project root).
+          let cfDir = join(projectRoot, '.cuttlefish');
+          for (let dir = projectRoot; ; dir = dirname(dir)) {
+            if (existsSync(join(dir, '.cuttlefish', 'board.json'))) {
+              cfDir = join(dir, '.cuttlefish');
+              break;
+            }
+            const parent = dirname(dir);
+            if (parent === dir) break;
+          }
+          mkdirSync(cfDir, { recursive: true });
+          writeIfChanged(join(cfDir, 'as-built.json'), asBuiltJson(board, facts));
+        }
+      } catch { /* best-effort snapshot — nothing to harvest or unreadable */ }
+    }
+
     return {
       success: result.status === 0,
       output: header + output,
@@ -887,26 +1091,93 @@ export const Toolchain = {
     // Falls back to the configured port (manual double-tap) on any failure.
     let flashPort = o.port;
     const flashNotes: string[] = [];
-    if (probe.runner === 'bossac' && flashPort && chip.usb?.touchReset) {
+    // The runner this flash will actually use: the explicit choice, else the
+    // board's declared default (first probe-method entry). Gates port
+    // forwarding and the bossac touch below — board.cmake still resolves
+    // the default runner itself.
+    const flashRunner = probe.runner ?? chip.probeMethods?.[0]?.runner;
+    if (flashRunner === 'bossac' && flashPort && chip.usb?.touchReset) {
       const touch = bossacTouchReset(flashPort, chip.usb.touchReset);
       flashNotes.push(`-- ${touch.note}`);
       if (touch.port) flashPort = touch.port;
     }
-    const args = buildFlashArgs(buildDir, board, probe.runner, flashPort, probe.args);
+    const args = buildFlashArgs(buildDir, probe.runner, flashPort, flashRunner, probe.args);
 
-    const inv = westSpawn(args, {
-      cwd: projectRoot,
-      encoding: 'utf-8',
-      timeout: FLASH_TIMEOUT_MS,
-    });
-    const result = spawnSync(inv.command, inv.args, inv.options);
+    // openocd flashes go through a dedicated session instead of `west flash`.
+    // west's flow has three sequential races that each strand the board: the
+    // connect happens against a running (often USB-active) application, the
+    // erase precedes the write so the vector table is 0xFFFFFFFF while the
+    // RAM algorithm runs (any exception → core LOCKUP at 0xFFFFFFFE, "timeout
+    // waiting for algorithm"), and the trailing `reset run` frequently does
+    // not reach the core. This session is deterministic end to end: halt at
+    // the reset vector (static target for the DAP), mask interrupts for the
+    // algorithm (exceptions cannot vector through erased flash), unmask
+    // after, and boot the flashed app with a direct SYSRESETREQ. Falls back
+    // to `west flash` when the image or session is unavailable.
+    let westFallback = true;
+    if (probe.runner === 'openocd') {
+      const hex = join(buildDir, 'zephyr', 'zephyr.hex');
+      if (existsSync(hex)) {
+        // Forward slashes + TCL quoting so project paths with spaces work.
+        const hexArg = `"${hex.replace(/\\/g, '/')}"`;
+        // Target addressing: `cortex_m` is a PER-TARGET subcommand — a bare
+        // `cortex_m maskisr on` is an unknown command (a silent no-op inside
+        // catch). Resolve the session's target object once and address it.
+        // Cortex-M-only, self-gating: on other cores the cortex_m method
+        // errors and catch contains it (the plain flash path is safe there
+        // without masking — the lockup class is Cortex-M vectoring).
+        const flashed = openocdProbeSession(buildDir, zc, chip, [
+          'set _tgt [lindex [target names] 0]',
+          'reset halt',
+          'catch { $_tgt cortex_m maskisr on }',
+          `flash write_image erase ${hexArg}`,
+          'catch { $_tgt cortex_m maskisr off }',
+          // Boot the flashed app. Cortex-M: a direct SYSRESETREQ via AIRCR —
+          // pin-independent, always reaches the core, and clears PRIMASK
+          // (so the masked algorithm leaves nothing behind). Other cores:
+          // openocd's generic reset run.
+          'if {[catch {$_tgt cortex_m maskisr on}] == 0} { $_tgt cortex_m maskisr off; mww 0xE000ED0C 0x05FA0004 } else { reset run }',
+          'sleep 300',
+        ]);
+        if (flashed) {
+          westFallback = false;
+          flashNotes.push('-- probe flash ok: halt → masked write → SYSRESETREQ');
+        }
+      }
+    }
 
-    const fstdout = typeof result.stdout === 'string' ? result.stdout : (result.stdout?.toString() ?? '');
-    const fstderr = typeof result.stderr === 'string' ? result.stderr : (result.stderr?.toString() ?? '');
-    const raw = fstdout + fstderr;
+    let result: ReturnType<typeof spawnSync> | undefined;
+    let raw = '';
+    let ok = false;
+    if (westFallback) {
+      const inv = westSpawn(args, {
+        cwd: projectRoot,
+        encoding: 'utf-8',
+        timeout: FLASH_TIMEOUT_MS,
+      });
+      result = spawnSync(inv.command, inv.args, inv.options);
+      const fstdout = typeof result.stdout === 'string' ? result.stdout : (result.stdout?.toString() ?? '');
+      const fstderr = typeof result.stderr === 'string' ? result.stderr : (result.stderr?.toString() ?? '');
+      raw = fstdout + fstderr;
+      ok = classifyUploadResult(probe.runner, result.status, raw);
+      // Fallback-path recovery: a failed west flash leaves the core in
+      // lockup; a direct SYSRESETREQ clears it so the caller's retry (or a
+      // later flash) starts from a clean chip.
+      if (!ok && probe.runner === 'openocd') {
+        const revived = openocdProbeSession(buildDir, zc, chip, [
+          'init',
+          'set _tgt [lindex [target names] 0]',
+          'if {[catch {$_tgt cortex_m maskisr on}] == 0} { $_tgt cortex_m maskisr off; mww 0xE000ED0C 0x05FA0004 } else { reset run }',
+          'sleep 300',
+        ]);
+        if (revived) flashNotes.push(revived);
+      }
+    } else {
+      ok = true;
+    }
     return {
-      success: classifyUploadResult(probe.runner, result.status, raw),
-      output: [...flashNotes, cleanseUploadOutput(probe.runner, result.status, raw)]
+      success: ok,
+      output: [...flashNotes, cleanseUploadOutput(probe.runner, westFallback ? result!.status : 0, raw)]
         .filter(Boolean).join('\n'),
     };
   },

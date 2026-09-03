@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { TEST_CHIP } from '../helpers/test-chip';
 import { lowerSpi, spiInitLines } from '../../../../packages/framework-zephyr/src/lowering/spi';
-import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
 
 
 describe('legacy SPI op removal', () => {

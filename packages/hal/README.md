@@ -1,174 +1,183 @@
 # `@typecad/hal`
 
 Hardware abstraction layer for [TypeCAD](https://cuttlefish.typecad.net) —
-GPIO, I2C, SPI, UART, timers, ADC/DAC, WiFi/HTTP, and more, written as
-regular TypeScript.
+GPIO, timing, threads, PWM/ADC/DAC, I2C/SPI/UART/USB, persistent storage,
+sensors, and WiFi/HTTP/MQTT/BLE, written as regular TypeScript.
 
 `@typecad/hal` is what firmware code imports to talk to hardware. You write
-normal TypeScript (`pin.high()`, `i2c.write(...)`, `Serial0.print(...)`); the
-TypeCAD transpiler (`@typecad/cuttlefish`) resolves each HAL call against the
-active MCU/board packages and emits the equivalent C++ at build time.
+normal TypeScript (`led.toggle()`, `bus.writeReg(...)`, `Time.sleep(250)`);
+the transpiler (`@typecad/cuttlefish`) resolves each HAL call against the
+active board's facts and emits the equivalent C++ at build time. There are
+no runtime fallbacks — if the HAL doesn't lower it, it doesn't appear in the
+firmware.
 
 ## Install
 
+HAL projects are scaffolded by cuttlefish, which wires the framework,
+board target, and the Zephyr SDK for you:
+
 ```bash
-npm install @typecad/hal @typecad/cuttlefish
+npx @typecad/cuttlefish create my-firmware
+cd my-firmware && npx cuttlefish build --compile
 ```
 
-You'll also want an MCU package (e.g. `@typecad/mcu-esp32`) and a board package
-(e.g. `@typecad/board-esp32-devkit`) to pin and bus definitions for your target.
-
-## Overview
-
-The HAL is built on three compile-time directives that look like ordinary
-TypeScript but are intercepted by the transpiler:
-
-- **`emit(text)`** — appends a line of C++ to the output (with parameter/field substitution).
-- **`include(header)`** — adds a deduplicated `#include` to the output.
-- **`board(path)`** — looks up a board-specific constant (e.g. pin numbers) inside an `emit()` template.
-
-This means there are no runtime fallbacks: if the HAL doesn't `emit()` it, it
-doesn't appear in the firmware. See [`HAL-GUIDE.md`](./HAL-GUIDE.md) for how to
-add new HAL features.
+A project imports hardware from **`@typecad/board`** — the module cuttlefish
+generates per project from the Zephyr board catalog. That module is the
+narrowed gateway: it re-exports a hardware class only when this board's
+facts support it, so importing unavailable hardware fails at module
+resolution (editor and transpile), not at a deep diagnostic. `@typecad/hal`
+is the implementation package.
 
 ## What's included
 
+Every class is thin and Zephyr-shaped: construction carries the facts, and
+each method maps onto the kernel/driver API verbatim — no Arduino
+vocabulary, no transaction dance.
+
 | Area | Exports |
 | --- | --- |
-| **Digital I/O** | `Pin`, `OutputPin`, `InputPin`, `PinMode`, `HIGH`, `LOW`, `INPUT`, `OUTPUT`, `INPUT_PULLUP` |
-| **Pin groups** | `createPinGroup`, `IPinGroup`, `PinCapabilityFlags` |
-| **Analog** | `ADC`, `ADCClass`, `DAC`, `DACClass`, `AnalogValue` |
-| **I2C** | `I2CBus`, `II2CBus`, `I2CStatus`, `i2cName` |
-| **SPI** | `SPIBus`, `ISPIBus`, `SPIStatus`, `SPISettings`, `spiName` |
-| **UART / Serial** | `SerialPort`, `IUARTBus`, `UARTStatus`, `serialName` |
-| **Networking** | `WiFi`, `WiFiClass`, `WiFiStatus`, `WiFiEncryption`, `Http`, `HttpClass`, `HttpRequest`, `HttpMethod` |
-| **Timing** | `delay`, `millis`, `micros`, `delayMicroseconds`, `Timing`, `map`, `constrain` |
-| **Pulse / Shift** | `pulseIn`, `shiftIn`, `shiftOut` |
+| **Digital I/O** | `Pin` (identity), `GPIO` (configure/read/write/toggle), `shiftOut`/`shiftIn` |
 | **Interrupts** | `attachInterrupt`, `detachInterrupt`, `noInterrupts`, `interrupts`, `InterruptMode` |
-| **Timers** | `HardwareTimer`, `Timer0`, `Timer1`, `Timer2` |
-| **Storage** | `Preferences` (NVS/ZMS/EEPROM-backed by target), `FS` |
-| **Power / Watchdog** | `Power`, `WDT` (`WDTO_1S`, …) |
-| **Math / Random** | `abs`, `min`, `max`, `Num`, `random`, `randomSeed` |
-| **Async** | `Async` (cooperative scheduling) |
-| **Directives** | `emit`, `include`, `board`, `callback` |
+| **Timing** | `Time` (`sleep`/`now`/`nowUs`/`busyWaitUs`) |
+| **Concurrency** | `Thread` (kernel threads), `Async` (cooperative await), `Counter` (hardware timers) |
+| **PWM** | `PWM` (`setPulse`/`setDuty`/`setPeriod`; ns-true verbs) |
+| **Analog in** | `ADC` (`read`/`readMillivolts`, gain/reference tokens; every ADC controller the SoC declares) |
+| **Analog out** | `DAC` (`write`) |
+| **I2C** | `I2CTarget` (register verbs; also the Sensor fact-carrier), `I2CBus` (controller selector: `I2C0.device(0x44)` returns a ready target) |
+| **SPI** | `SPITarget` (transceive/register verbs), `SPIBus` (controller selector: `SPI0.device(PA4)` returns a ready target) |
+| **UART** | `UART` (write/println/read ring) — the board exports ready-to-use instances (`UART0.println(...)`) |
+| **USB** | `USBConsole` (CDC console: open/write/read/ready) |
+| **Storage** | `Store` (persistent typed keys), `File` (littlefs text files) |
+| **Watchdog** | `Watchdog` |
+| **Sensors** | `Sensor` + the generated `SENSOR`/`CHAN` catalog |
+| **Networking** | `WiFi`, `Request` (HTTP), `Mqtt`, `BLE` (GATT peripheral) |
+| **Math / Random** | `abs`/`min`/`max`/`Num`, `random`/`randomSeed`/`Random` |
+| **Registers** | `@register`/`@bits` (memory-mapped struct decorators) |
+| **Zephyr tokens** | `ZEPHYR_ADC_GAINS`, `ZEPHYR_ADC_REFERENCES`, `ZEPHYR_GPIO_FLAGS`, `ZEPHYR_GPIO_INTS` (generated from the pinned tree's headers) |
+
+Periodic and deferred work is a `Thread` (or a `Counter` for hardware
+timers) — there are no JS-named timers (`setInterval`/`setTimeout`) on
+embedded targets.
+
+## Compile-time directives
+
+Directives look like ordinary TypeScript but are intercepted by the
+transpiler:
+
+- **`rawCpp(text)`** — appends a line of C++ to the output (with field/parameter substitution).
+- **`rawCppExpr(text)`** — the same, in expression position.
+- **`include(header)`** — adds a deduplicated `#include` to the output.
+- **`board(path)`** — resolves a board-fact constant inside a template.
+
+`callback(fn)` registers a function value so it can be passed to APIs that
+take handlers (interrupts, threads, bus events). See
+[`HAL-GUIDE.md`](./HAL-GUIDE.md) for how HAL features are built.
 
 ## Example
 
 ```ts
-import { OutputPin, HIGH, LOW, delay } from '@typecad/hal';
+import { LED } from '@typecad/board';
+import { GPIO, Time, Thread } from '@typecad/hal';
 
-const led = new OutputPin('LED_BUILTIN');
+const led = new GPIO(LED, GPIO.OUTPUT);
 
-export function setup() {
-  led.mode();
-}
-
-export function loop() {
-  led.write(HIGH);
-  delay(500);
-  led.write(LOW);
-  delay(500);
-}
+// A kernel thread blinks concurrently with main.
+const blinker = new Thread(0, { stackKb: 2 });
+blinker.start((): void => {
+  while (true) {
+    led.toggle();
+    Time.sleep(250);
+  }
+});
+blinker.join();
 ```
 
-For I2C/SPI/UART, instantiate the bus class with the board's pinned instance
-(see your `@typecad/board-*` package for available bus names).
+Bus singletons from `@typecad/board` are directly usable — the board
+exports functional instances (no strings, no construction, and unavailable
+buses are simply not exported):
+
+```ts
+import { UART0 } from '@typecad/board';
+
+UART0.println('hello');           // usart1, default 115200
+```
+
+Explicit construction remains for non-default facts, and takes the board
+instance or the name; targets and sensors carry the bus instance and the
+7-bit address / chip-select from construction:
+
+```ts
+import { I2C0, SENSOR, CHAN } from '@typecad/board';
+
+// device() hands back the FUNCTIONAL target — verbs callable immediately,
+// and the same object is the Sensor fact-carrier.
+const dev = I2C0.device(0x44);
+dev.writeReg(0x30, 0xA2);   // i2c_reg_write_byte
+
+const sht3x = new Sensor(SENSOR.sensirion_sht3xd, I2C0.device(0x44));
+sht3x.fetch();
+const temp = sht3x.get(CHAN.AMBIENT_TEMP);
+
+// Explicit construction is equivalent: new I2CTarget(I2C0, 0x44).
+```
 
 ## Hardware tests
 
 The [`tests/`](./tests/) directory is the HAL hardware suite — the on-metal
 proof that the HAL works. It runs via
-[`@typecad/expect`](https://cuttlefish.typecad.net)
-(`describe()` / `.it()` / `.expect()` / `done()`) over serial or USB CDC, and
-is organized so one shared suite covers every board:
+[`@typecad/expect`](../expect/README.md) (`describe()` / `.it()` /
+`.expect()` / `done()`) over the board's console, and one shared suite
+covers every board:
 
 - **`tests/common/`** — board-agnostic groups, one file per subsystem:
-  timing, math, random, pulse, shift, interrupts, UART, I2C, ADC, WDT,
-  Preferences, async, and constants. They use bus singletons, `A0`, and
-  ambient globals only.
-- **`tests/board/`** — the board-level groups (GPIO, PWM/tone, SPI, LED).
-  These import **role names** from the `@typecad/test-pins` virtual module
-  (`GPIO_OUT`, `PWM_PIN`, `PWM_MAX_FREQ`, …); each board package's
-  `test-pins.json` declares which of its pins fill each role, and the runner
-  substitutes them before transpiling. A file skipped because a board lacks
-  a role carries `// @typecad-requires-roles …`.
-- **`tests/network/`** — on-hardware HTTP/MQTT/BLE client suites against a
-  local host server (`npm run test:http` starts it; see
-  [`tests/network/README.md`](./tests/network/README.md)).
+  timing, math, random, shift, interrupts, UART, I2C, ADC, WDT, Store,
+  File, async, constants, Counter.
+- **`tests/board/`** — board-level groups (GPIO, PWM, SPI, LED). These
+  import **role names** from the `@typecad/test-pins` virtual module
+  (`GPIO_OUT`, `PWM_PIN`, `ADC_PIN`, `I2C_BUS`, …); each board's
+  `boards/<name>/test-pins.json` declares which pins fill each role, and the
+  runner substitutes them before transpiling. A file whose required roles
+  (declared with `// @typecad-requires-roles …`) are absent skips cleanly —
+  coverage differences are data, never per-board test copies.
+- **`tests/network/`** — on-hardware HTTP/MQTT/BLE suites against a local
+  host server (see [`tests/network/README.md`](./tests/network/README.md)).
 - **`tests/wired/`** — opt-in loopback tier (jumper `gpioOut` → `gpioIn`);
-  not part of the default runs. See the file header for wiring.
+  not part of the default runs.
 
-Each board has a config in [`boards/`](./boards/) selecting target, MCU,
-framework, and console. Run the suite for a board from its board package:
-
-```bash
-npm run hal --workspace @typecad/board-arduino-uno
-```
-
-or directly with a config (add `--port COMx` to override the configured one):
+Each board has a config in [`boards/`](./boards/) (currently the WeAct
+Black Pill STM32F411 and the ESP32-S3 DevKitC). Run a suite:
 
 ```bash
-npm exec --workspace @typecad/hal -- cuttlefish-test --config boards/blackpill.config.ts
+npm run test:hw --workspace @typecad/hal            # Black Pill (ST-Link + USB CDC)
+npm run test:hw:esp32s3 --workspace @typecad/hal    # DevKitC (esptool + CH34x console)
 ```
 
-**Port tracking is by USB identity, not COM numbers.** Every board package's
-`test-pins.json` carries a `usb: { vid, pid }` block (Zephyr CDC boards use
-per-board PIDs under the Zephyr test VID; bridge boards use the bridge
-chip's ID), and each config's `test.usb` matches it — so a nightly test box
-with several boards plugged in finds each board's console without tracking
-COM/tty numbers, and re-finds it after every flash when the CDC port
-re-enumerates under a new number. `--discover` prints the attached-port
-table and marks the config's match.
-
-Board-agnostic groups import through `@typecad/board` (the configured board
-package) and ambient globals declared in `cuttlefish-env.d.ts`, never from a
-concrete `@typecad/board-*` name, so the transpiler resolves each call
-against the active MCU/board packages.
+Port discovery is by USB identity, not COM numbers: Zephyr CDC consoles
+enumerate at the shared test identity `2FE3:0001`, bridge boards at the
+bridge chip's ID (`test-pins.json` carries `usb: { vid, pid }`), and the
+port re-resolves after every flash re-enumeration.
 
 ### Board parity and documented hardware limits
 
-The suite aims for parity: every board runs every group its silicon can
-support. Gaps are expressed as data (a missing `test-pins.json` role skips
-the groups that need it) or a `@typecad-skip-target` directive, never as a
-per-board test copy. The only remaining skips are hard hardware limits:
+Every board runs every group its silicon supports. Gaps are hard hardware
+limits expressed as role skips: the ESP32-S3 DevKitC declares no I2C
+controller and no `led0` node (and its UART0 is the protocol channel), so
+those groups skip there by role. Everything else — GPIO, PWM, ADC (both
+SARADC units), SPI, timing, math, random, shift, interrupts, WDT, Store,
+File, async, constants, Counter — runs on both boards.
 
-- **`08-uart` on AVR** (`@typecad-skip-target avr`): the ATmega328P has one
-  hardware UART and it IS the `[TC:...]` protocol channel the runner reads —
-  exercising it disrupts the protocol, and there is no second UART or USB
-  console to move either side to. Every other target runs the group (the
-  Picos synthesize a uart1 pinctrl group, the ESP32s declare the
-  non-console controllers, the Black Pill's USB CDC console frees usart1).
-- **`11-led` on the ESP32-C3/C6/S3 dev boards**: the onboard "LED" is a
-  WS2812 addressable RGB — not a plain GPIO LED — so those board packages
-  export no `led` role and the group skips. (The Black Pill, Uno, ESP32
-  DevKitC, XIAO, and both Picos run it.)
-
-Everything else — gpio, pwm/tone (incl. the PWM fact cross-checks), spi,
-i2c, adc (both the pin-based and channel-numbered forms), uart, timing,
-math, random, pulse, shift, interrupts, wdt, preferences, async, and the
-constants group — compiles for all eight board configs (`cuttlefish-test
---dry-run`) and runs on metal via `npm run test:hw` / `npm run hal`.
-
-Known single-channel constraint: the Picos' only DT-pinned PWM pad is GP25
-(the onboard LED), so `pwm`/`pwmAlt` roles both point there and the pwm and
-tone groups exercise it sequentially. Other pads would need per-pin pinctrl
-synthesis beyond GP25's board-pinned group.
-
-The async test (`15-async`) **runs on AVR**: on heap-less targets the
-transpiler emits a fixed-capacity, allocation-free static timer/task runtime
-(`async-runtime-static.ts`) in place of the full `Promise<T>` runtime used on
-ESP32, so `Async.sleep`/`yield`/`sleepUntil`/`currentTask` link and run on the
-ATmega328P.
-
-ESP32-only subsystems (DAC, `FS`, `Power`, `HardwareTimer`) are omitted
-entirely — they require an ESP32 target.
+`Sensor` and `DAC` have a full pipeline (catalog → devicetree
+synthesis → Zephyr driver API) but no sensor or DAC-capable board on the
+current rig, so they are compile-verified only until one is attached. The
+network tier needs the host server (`npm run test:http`) and credentials in
+`tests/network/secrets.ts`.
 
 ## Ecosystem
 
-- [`@typecad/cuttlefish`](https://cuttlefish.typecad.net) — the transpiler that resolves HAL calls to C++.
-- [`@typecad/ui`](https://cuttlefish.typecad.net) — HTML/CSS-driven display graphics.
-- `@typecad/mcu-*` — silicon pin/port/peripheral definitions.
-- `@typecad/board-*` — board-level pin mappings and bus aliases.
+- [`@typecad/cuttlefish`](../../README.md) — the transpiler that resolves HAL calls to C++.
+- [`@typecad/framework-zephyr`](../framework-zephyr/README.md) — the Zephyr lowering, board catalog, and toolchain.
+- [`@typecad/expect`](../expect/README.md) — the on-hardware test framework.
+- [`@typecad/ui`](../ui/README.md) — HTML/CSS-driven display graphics.
 
 ## License
 

@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import { TEST_CHIP } from '../helpers/test-chip';
 import {
   lowerRandom,
   randomInitLines,
 } from '../../../../packages/framework-zephyr/src/lowering/random';
 import { lowerHalOp } from '../../../../packages/framework-zephyr/src/lowering/index';
 import { setActiveChip } from '../../../../packages/framework-zephyr/src/chips/index';
-import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
 
-setActiveChip(XIAO_BLE);
+setActiveChip(TEST_CHIP);
 
 describe('random init block', () => {
   it('emits CUTTLEFISH_RANDOM markers + the entropy tap + xorshift32 PRNG', () => {

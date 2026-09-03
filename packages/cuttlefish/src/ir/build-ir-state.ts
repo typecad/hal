@@ -266,10 +266,19 @@ export function getCurrentBoardConstants(): BoardConstants {
   return getContext()._currentBoardConstants || getDefaultBoardConstants(); 
 }
 
-export function setCurrentBoardConstants(v: BoardConstants | undefined) { 
+export function setCurrentBoardConstants(v: BoardConstants | undefined) {
   const ctx = getContext();
-  ctx._currentBoardConstants = v; 
+  ctx._currentBoardConstants = v;
   if (v) {
+    // Framework strategies that resolve per-program chip data (framework-zephyr's
+    // prepareChip) must see the board constants at IR-build time: HAL method
+    // bodies lower to C++ text during the build, before the emitter's
+    // prepareChip call (emit/emitters/setup.ts) ever runs — without this, the
+    // lowering resolves every op against the NO_BOARD_CHIP defaults.
+    // Mirrors that duck-typed call.
+    (ctx.activeStrategy as { prepareChip?: (program: unknown, ctx?: unknown) => void } | undefined)
+      ?.prepareChip?.({ boardConstants: v }, undefined);
+
     // Populate peripheral aliases (e.g. UART0 -> Serial, I2C0 -> Wire)
     for (const [key, value] of v.entries()) {
       if (key.startsWith("peripherals.aliases.")) {
@@ -370,6 +379,28 @@ export function resetBuildState(): void {
   restParamFunctions.clear();
   activeFunctionReturnTypes.clear();
   getContext()._currentBoardConstants = undefined;
+}
+
+// ── Transpile-resolved HAL ops ──────────────────────────────────────────────
+// HAL ops the transpiler resolves to C++ TEXT while inlining one HAL method
+// inside another (e.g. `sense.readMillivolts()` in the argument of
+// `USB0.writeLine(...)`) never appear as hal-op/hal-expr IR nodes, so the
+// statement walk in program-analysis can't see them. routeHALOp and
+// resolveHALExprToText record every op they successfully resolve here, and
+// analyzeProgram merges these names into the peripheral usage flags — same
+// shape as loweredConsoleInCallback(). Deliberately NOT cleared by
+// resetBuildState (per-file): the ops resolve while building whichever file
+// inlines them, and analyzeProgram runs later, at emit. resetTranspileResolvedHalOps
+// clears it once per transpile run.
+const transpileResolvedHalOps = new Set<string>();
+export function markHalOpResolved(opName: string): void {
+  transpileResolvedHalOps.add(opName);
+}
+export function getTranspileResolvedHalOps(): ReadonlySet<string> {
+  return transpileResolvedHalOps;
+}
+export function resetTranspileResolvedHalOps(): void {
+  transpileResolvedHalOps.clear();
 }
 
 export function resetFunctionScopeState(): void {

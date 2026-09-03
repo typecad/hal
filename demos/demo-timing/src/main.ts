@@ -6,16 +6,15 @@
 //   Time.now()        — milliseconds since boot, double, no uint32 wrap
 //   Time.nowUs()      — the microsecond clock
 //   Time.busyWaitUs() — cooperative spin (k_busy_wait), no yield
-//   setInterval       — plain JS names (k_timer + k_work underneath)
-//   Thread            — a real kernel thread (k_thread_create) running the
-//                       LED blink OFF the main loop, joined at the end
+//   Thread            — real kernel threads (k_thread_create) running the LED
+//                       blink and the beat logger OFF the main loop
 //
 // Top-level statements lower into main(); the program ends on blinker.join()
-// (K_FOREVER — the thread blinks forever, keeping the firmware alive).
+// (K_FOREVER — the threads run forever, keeping the firmware alive).
 // ---------------------------------------------------------------------------
 
 import { LED } from '@typecad/board';
-import { GPIO, Time, Thread, setInterval } from '@typecad/hal';
+import { GPIO, Time, Thread } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);
 
@@ -32,12 +31,17 @@ blinker.start((): void => {
   }
 });
 
-// ── 3. setInterval is plain JS (k_timer underneath), firing while main sleeps
-let beats: number = 0;
-setInterval((): void => {
-  beats = beats + 1;
-  console.log(`beat ${beats} @ ${Time.now() - boot} ms since boot`);
-}, 1000);
+// ── 3. A second thread logs a beat every second while main sleeps ─────────
+const logger = new Thread(1, { stackKb: 4, priority: 5 });
+logger.start((): void => {
+  let beats: number = 0;
+  const started: number = Time.now();
+  while (true) {
+    beats = beats + 1;
+    console.log(`beat ${beats} @ ${Time.now() - started} ms since start`);
+    Time.sleep(1000);
+  }
+});
 
 // ── 4. The microsecond spin — no yield, for sub-ms protocol timing ───────
 Time.busyWaitUs(10);

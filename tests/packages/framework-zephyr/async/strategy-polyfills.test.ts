@@ -4,30 +4,18 @@ import { ZephyrStrategy } from '../../../../packages/framework-zephyr/src/strate
 describe('ZephyrStrategy polyfill wiring', () => {
   const s = new ZephyrStrategy();
 
-  it('declares timer_methods + async_runtime in nativePolyfills()', () => {
+  it('declares async_runtime (and no timer queue) in nativePolyfills()', () => {
     const ids = s.nativePolyfills();
-    expect(ids.has('timer_methods')).toBe(true);
     expect(ids.has('async_runtime')).toBe(true);
     expect(ids.has('cuttlefish_halt')).toBe(true);
+    // Periodic work is a Thread (k_thread) or Counter (hardware timer) —
+    // there is no cooperative timer polyfill on Zephyr.
+    expect(ids.has('timer_methods')).toBe(false);
   });
 
   it('emits cuttlefish_halt always', () => {
     const irs = s.generateNativePolyfills(undefined, undefined);
     expect(irs.map((p) => p.id)).toContain('cuttlefish_halt');
-  });
-
-  it('emits timer_methods when timerCallCount > 0', () => {
-    const ctx = { analysis: { timerCallCount: 3 } } as any;
-    const irs = s.generateNativePolyfills(undefined, ctx);
-    const timer = irs.find((p) => p.id === 'timer_methods');
-    expect(timer).toBeDefined();
-    expect(timer!.helperStructs[0]).toContain('k_timer');
-  });
-
-  it('omits timer_methods when timerCallCount is 0', () => {
-    const ctx = { analysis: { timerCallCount: 0 } } as any;
-    const irs = s.generateNativePolyfills(undefined, ctx);
-    expect(irs.map((p) => p.id)).not.toContain('timer_methods');
   });
 
   it('emits async_runtime when the program has an async function', () => {
@@ -44,10 +32,10 @@ describe('ZephyrStrategy polyfill wiring', () => {
     expect(irs.map((p) => p.id)).not.toContain('async_runtime');
   });
 
-  it('async runtime config reports promise runtime + timers', () => {
+  it('async runtime config reports promise runtime (timers are Threads/Counters)', () => {
     const cfg = s.getAsyncRuntimeConfig();
     expect(cfg.hasPromiseRuntime).toBe(true);
-    expect(cfg.hasTimers).toBe(true);
+    expect(cfg.hasTimers).toBe(false);
   });
 
   it('asyncLoopInjection drives each task via .run() + pumps microtasks (no native-timer poll)', () => {
@@ -57,7 +45,7 @@ describe('ZephyrStrategy polyfill wiring', () => {
     // self-wraps its own for(;;) scheduler loop (main() runs once).
     const lines = s.asyncLoopInjection(
       ['networkTask', 'watchLinkTask', 'heartbeatTask'],
-      { hasPromiseRuntime: true, hasTimers: true } as any,
+      { hasPromiseRuntime: true, hasTimers: false } as any,
     );
     expect(lines[0]).toBe('for (;;) {');
     expect(lines).toContain('  cuttlefish_pump_microtasks();');
@@ -65,7 +53,7 @@ describe('ZephyrStrategy polyfill wiring', () => {
     expect(lines).toContain('  watchLinkTask.run();');
     expect(lines).toContain('  heartbeatTask.run();');
     expect(lines).toContain('  k_msleep(1);');
-    // Timers are native k_timer — there is NO __tc_timer_runtime.run() poll.
+    // There is NO __tc_timer_runtime.run() poll.
     expect(lines.some((l) => l.includes('__tc_timer_runtime'))).toBe(false);
   });
 

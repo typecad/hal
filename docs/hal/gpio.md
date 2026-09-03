@@ -40,10 +40,6 @@ The pin argument takes a board package pin export (`LED`, `BUTTON`, `PB5`), a ra
 
 `onInterrupt(GPIO.INT_EDGE_FALLING, handler)` / `offInterrupt()` — the edge/level tokens are Zephyr's `GPIO_INT_*` names, and the ISR-safety analysis constrains what handlers may call. See [Events](./events.md).
 
-## Pin groups
-
-`createPinGroup` bundles several pins into one named handle — useful when a connector's pins move as a unit. Members keep their individual `GPIO` objects; the group is a compile-time organizational fact (validated for conflicts), not a runtime container.
-
 ---
 
 ## API Reference

@@ -28,14 +28,16 @@ describe('HAL expression prefix ops (transpiler-level)', () => {
   });
 
   it('multi-op statement chain survives intact (regression: resolver keeps ONLY the tail)', () => {
-    // timing.set_interval resolves to the timer polyfill pair in one
-    // statement; assert both fragments land. Proxy for the class of bug
-    // where a leading op was dropped before the value.
+    // UART println resolves to TWO uart.write ops in one method body; assert
+    // both fragments land. Proxy for the class of bug where a leading op was
+    // dropped (the "dead keypress"/expression-prefixOps regression family).
     const result = tr(`
-      import { setInterval } from '@typecad/hal';
-      setInterval((): void => {}, 500);
+      import { UART } from '@typecad/board';
+      const port = new UART('UART0');
+      port.println('hi');
     `);
     expect(result.cpp.length).toBeGreaterThan(0);
-    expect(result.cpp).toContain('__tc_setInterval');
+    const outs = result.cpp.match(/uart_poll_out/g) ?? [];
+    expect(outs.length).toBeGreaterThanOrEqual(2);
   });
 });

@@ -21,19 +21,19 @@ import path from 'node:path';
 export const PIN_ROLE_CONSTS: Record<string, string> = {
   gpioOut: 'GPIO_OUT',
   gpioIn: 'GPIO_IN',
-  gpioGroup: 'GPIO_GROUP',
   pwm: 'PWM_PIN',
   pwmAlt: 'PWM_ALT',
+  adcPin: 'ADC_PIN',
+  adcPinAlt: 'ADC_PIN_ALT',
   cs: 'CS_PIN',
   interrupt: 'INT_PIN',
   led: 'LED_PIN',
   button: 'BUTTON_PIN',
+  i2cBus: 'I2C_BUS',
 };
 
 /** Fact role -> fact const name used in test sources. */
 export const FACT_ROLE_CONSTS: Record<string, string> = {
-  pwmMaxFrequency: 'PWM_MAX_FREQ',
-  pwmResolutionBits: 'PWM_RESOLUTION_BITS',
   adcMax: 'ADC_MAX',
 };
 
@@ -104,17 +104,28 @@ function findPackageDir(fromDir: string, packageName: string): string | undefine
 }
 
 /**
- * Load the project's test-pins.json (project-local — board packages are
- * gone; a project that wants role pins carries them itself).
- * Returns undefined when absent.
+ * Load the project's test-pins.json. A file co-located with the chosen
+ * cuttlefish.config.ts wins (boards/<name>/test-pins.json — one pins set per
+ * board config in a multi-board project); the project root is the fallback
+ * (and the location for single-board projects). Returns undefined when
+ * neither exists.
  */
-export function boardTestPins(_board: string, projectRoot: string): TestPinsData | undefined {
+export function boardTestPins(
+  _board: string,
+  projectRoot: string,
+  configPath?: string,
+): TestPinsData | undefined {
   void _board;
-  const jsonPath = path.join(projectRoot, 'test-pins.json');
-  if (!fs.existsSync(jsonPath)) return undefined;
-  try {
-    return JSON.parse(fs.readFileSync(jsonPath, 'utf-8')) as TestPinsData;
-  } catch {
-    return undefined;
+  const candidates = configPath
+    ? [path.join(path.dirname(configPath), 'test-pins.json'), path.join(projectRoot, 'test-pins.json')]
+    : [path.join(projectRoot, 'test-pins.json')];
+  for (const jsonPath of candidates) {
+    if (!fs.existsSync(jsonPath)) continue;
+    try {
+      return JSON.parse(fs.readFileSync(jsonPath, 'utf8')) as TestPinsData;
+    } catch {
+      // Malformed JSON — try the next candidate.
+    }
   }
+  return undefined;
 }

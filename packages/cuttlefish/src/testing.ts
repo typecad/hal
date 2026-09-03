@@ -115,7 +115,7 @@ export { parseCommandLine } from "./utils/cli.js";
 export { parseHeader, stripPreprocessorBlocks } from "./libdef/header-parser.js";
 export { BaseClassResolver, buildClassIndex } from "./libdef/base-class-resolver.js";
 export type { ResolveResult } from "./libdef/base-class-resolver.js";
-export { generateDecl, generateDeclsForDirectory, generateComponentDeclsForProject } from "./libdef/cpp-to-decl.js";
+export { generateDecl, generateDeclsForDirectory } from "./libdef/cpp-to-decl.js";
 
 // ── IR rendering internals (for fail-closed regression tests) ───────────────
 export { renderExprAsText } from "./ir/render-expr.js";

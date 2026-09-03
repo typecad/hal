@@ -36,7 +36,6 @@ export type {
   IUARTBus,
   ISerialPort,
   PinCapabilityFlags,
-  IToneAttachment,
   InterruptOptions,
   ErrorPolicy,
 } from './contracts.js';

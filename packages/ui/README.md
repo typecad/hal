@@ -4,12 +4,14 @@ Write UIs in HTML and CSS. TypeCAD's `cuttlefish` transpiler lowers them to a re
 
 ## Install
 
-`@typecad/ui` is the authoring API you import in source; `@typecad/cuttlefish` is the transpiler that lowers those imports to firmware at build time. You need both, plus a board package:
+`@typecad/ui` is the authoring API you import in source; `@typecad/cuttlefish` is the transpiler that lowers those imports to firmware at build time. You need both, plus a framework that lowers the display ops:
 
 ```bash
-npm install @typecad/ui @typecad/board-esp32-devkit
+npm install @typecad/ui @typecad/framework-zephyr
 npm install --save-dev @typecad/cuttlefish
 ```
+
+Hardware pins/classes come from **`@typecad/board`** — the module cuttlefish generates per project from the board catalog; the scaffold creates it for you.
 
 `@typecad/ui` is compile-time only — none of its code is shipped to the device. The transpiler intercepts `ui.mount` / `ui.signal` / `ui.bind` / ... calls and lowers them to device variables and binding-table entries, so the package can be safely kept in `dependencies`.
 
@@ -29,9 +31,9 @@ It asks:
 4. **Touch** — none, resistive (XPT2046, STMPE610, 4-wire analog), capacitive (FT6336U, GT911, CST816S), or a custom adapter file — each with its pins, address, and a sensible default calibration.
 5. **Theme** — optional `themeCss` / `themeClass`.
 
-After a summary preview and confirmation, the wizard splices only the `display` section into `cuttlefish.config.ts` — every other section (and its comments) is preserved byte-for-byte, unmanaged display keys like `scroll` are carried over, and the result is syntax-checked before anything is written. If your config's `entry` points at a `.ui` file that doesn't exist yet, it offers to generate a starter screen, and it prints the exact `arduino-cli lib install ...`, preview, compile, and flash commands as next steps.
+After a summary preview and confirmation, the wizard splices only the `display` section into `cuttlefish.config.ts` — every other section (and its comments) is preserved byte-for-byte, unmanaged display keys like `scroll` are carried over, and the result is syntax-checked before anything is written. If your config's `entry` points at a `.ui` file that doesn't exist yet, it offers to generate a starter screen, and it prints the exact preview, compile, and flash commands as next steps.
 
-If there is no `cuttlefish.config.ts` yet, create the project first with `npx @typecad/cuttlefish init`, then re-run the wizard.
+If there is no `cuttlefish.config.ts` yet, create the project first with `npx @typecad/cuttlefish create`, then re-run the wizard.
 
 ## Project layout
 
@@ -50,16 +52,16 @@ The transpiler injects an implicit `import { screen } from './app.ui.html'` into
 ```html
 <script>
   import { ui } from '@typecad/ui';
-  import { A0 } from '@typecad/board-esp32-devkit';
+  import { GPIO34, ADC } from '@typecad/board';
 
   ui.mount(screen);
 
   // Plain TypeScript — same lowering as a standalone .ts. HAL pin reads,
   // timers, and UI writes coexist as regular statements.
-  const sensor = A0.asInput();
+  const sensor = new ADC(GPIO34);
 
   setInterval(() => {
-    screen.reading.value = sensor.readAnalog();
+    screen.reading.value = sensor.read();
   }, 500);
 
   ui.bind(screen.lamp, 'background', () =>
@@ -86,13 +88,9 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
 const config: CuttlefishConfig = {
   entry: './src/app.ui',
-  target: 'esp32',
-  mcu: '@typecad/mcu-esp32',
-  board: '@typecad/board-esp32-devkit',
-  framework: '@typecad/framework-arduino',
-  frameworkData: { buildTarget: 'esp32:esp32:esp32' },
-  output: { framework: 'arduino', optimize: 'size', outDir: './out' },
-  toolchain: { type: 'arduino-cli' },
+  board: 'esp32s3_devkitc/esp32s3/procpu',
+  framework: '@typecad/framework-zephyr',
+  output: { outDir: './out' },
   console: { baudRate: 115200 },
   display: { profile: 'ili9341-spi', cs: 5, dc: 21, rst: 22, backlight: 33 },
 };
@@ -126,10 +124,10 @@ export function main(): void { while (true) {} }
 **`src/sensors.ts`** — plain cuttlefish TS, owns device I/O, no UI imports:
 
 ```typescript
-import { A0 } from '@typecad/board-arduino-uno';
-const adc = A0.asInput();
+import { GPIO1, ADC } from '@typecad/board';   // an ADC-capable pin on this board
+const adc = new ADC(GPIO1);
 export function readVolts(): number {
-  return adc.readVoltage();
+  return adc.readMillivolts() / 1000;
 }
 ```
 
@@ -247,13 +245,9 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 
 const config: CuttlefishConfig = {
   entry: './src/app.ui',
-  target: 'esp32',
-  mcu: '@typecad/mcu-esp32',
-  board: '@typecad/board-esp32-devkit',
-  framework: '@typecad/framework-arduino',
-  frameworkData: { buildTarget: 'esp32:esp32:esp32' },
-  output: { framework: 'arduino', optimize: 'size', outDir: './out' },
-  toolchain: { type: 'arduino-cli' },
+  board: 'esp32s3_devkitc/esp32s3/procpu',
+  framework: '@typecad/framework-zephyr',
+  output: { outDir: './out' },
   console: { baudRate: 115200 },
   display: { profile: 'ili9341-spi', cs: 5, dc: 21, rst: 22, backlight: 33 },
 };
@@ -1081,7 +1075,7 @@ setInterval(() => {
                          ↓
                     lower to C++ UINode[] table
                          ↓
-              ui_mount → display.init (Adafruit_ILI9341)
+              ui_mount → display.init (the active display adapter)
               ui_tick  → poll inputs → eval bindings → transitions → draw
               ui_init  → mark all dirty for first frame
 ```
@@ -1095,14 +1089,7 @@ and redraws only the nodes marked dirty (most frames touch a handful of nodes,
 not the whole screen). Dirty paint regions are composed in an offscreen RGB565
 canvas and pushed as one rectangle when memory allows.
 
-**Framebuffer (PSRAM-gated).** When the board has PSRAM (`BOARD_HAS_PSRAM`
-defined + `psramFound()`), the runtime allocates a full-screen `GFXcanvas16`
-framebuffer and renders the entire dirty-node pass into it, then pushes once
-via a single SPI transaction. This eliminates the per-primitive transaction
-storm that otherwise limits redraw rate on ILI9341 over SPI. Without PSRAM the
-runtime falls back to direct per-node drawing (no behavior change). The
-framebuffer activates automatically — no config needed beyond enabling PSRAM in
-the Arduino build flags.
+**Framebuffer (PSRAM-gated).** When the board has PSRAM (`psram: 'opi'` or `'quad'` in `cuttlefish.config.ts`), the runtime allocates a full-screen RGB565 canvas framebuffer and renders the entire dirty-node pass into it, then pushes once via a single transaction. This eliminates the per-primitive transaction storm that otherwise limits redraw rate on ILI9341 over SPI. Without PSRAM the runtime falls back to direct per-node drawing (no behavior change). Setting `psram` makes the framework emit the PSRAM-enabling Kconfig and define `BOARD_HAS_PSRAM`, which activates the runtime's PSRAM canvas paths automatically.
 
 ### Diagnostics (warnings)
 
@@ -1185,6 +1172,7 @@ display: {
 | Name | Display | Dimensions | Color | Touch |
 |---|---|---|---|---|
 | `ili9341-spi` | ILI9341 (SPI) | 320×240 | RGB565 | Add via `touch` config |
+| `st7796-spi` | ST7796S (SPI) | 480×320 | RGB565 | Add via `touch` config |
 | `ssd1309-i2c` | SSD1309 OLED (I2C) | 128×64 | Mono | None |
 
 ### Adding a new display
@@ -1292,7 +1280,7 @@ import './display-adapters';  // registers the 'ssd1306' adapter
 |--------|---------|-------|-------|
 | `ili9341` | ILI9341 (320×240) | RGB565 | Default, hardware SPI |
 
-To add more built-in adapters, contribute a file to `packages/framework-arduino/src/graphics/` and register it.
+To add more built-in adapters, contribute a file to `packages/cuttlefish/src/api/shared/display-adapters/` (the SDL simulator adapter lives there) or to the Zephyr framework's display adapter in `packages/framework-zephyr/src/display/`, and register it.
 
 ## Touch input
 
@@ -1387,7 +1375,7 @@ async function screensaver() {
     backlightOff();
     await ui.onTap();        // resume on the next tap, anywhere on the screen
     backlightOn();
-    await delay(10000);      // keep the display awake for 10 seconds
+    await Time.sleep(10000); // keep the display awake for 10 seconds
   }
 }
 ```
@@ -1415,7 +1403,7 @@ not a value: there is nothing to read from it (it returns `Promise<void>`).
 
 Under the hood this lowers to a cooperative state-machine state that polls a
 tap counter incremented by the touch driver each frame — no ISRs, natural
-debounce from the ~16ms tick, same model as `await delay()`.
+debounce from the ~16ms tick, same model as `await Time.sleep()`.
 
 ### Custom touch adapters
 

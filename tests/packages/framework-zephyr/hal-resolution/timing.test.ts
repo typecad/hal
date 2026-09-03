@@ -8,17 +8,6 @@ describe('timing lowering', () => {
 
 
 
-  it('timer ops lower to polyfill helpers (no longer throw)', () => {
-    expect(lowerTiming({ operation: 'timing.set_interval', handler: 'cb', timeout: 100 } as any))
-      .toEqual({ expression: '__tc_setInterval(cb, 100)' });
-    expect(lowerTiming({ operation: 'timing.set_timeout', handler: 'cb', timeout: 50 } as any))
-      .toEqual({ expression: '__tc_setTimeout(cb, 50)' });
-    expect(lowerTiming({ operation: 'timing.clear_interval', id: 2 } as any))
-      .toEqual({ code: '__tc_clearInterval(2);' });
-    expect(lowerTiming({ operation: 'timing.clear_timeout', id: 2 } as any))
-      .toEqual({ code: '__tc_clearTimeout(2);' });
-  });
-
   // ── Time.* — the TS-flavored surface (hal/time.ts) ──────────────────────
   it('Time.sleep → k_msleep', () => {
     expect(lowerTiming({ operation: 'timing.sleep', ms: 250 } as any))
@@ -30,9 +19,12 @@ describe('timing lowering', () => {
       .toEqual({ expression: 'static_cast<double>(k_uptime_get())' });
   });
 
-  it('Time.nowUs → k_cyc_to_us_floor64(k_cycle_get_64()) as double (expression)', () => {
+  it('Time.nowUs → uptime-derived µs as double, uniform for every board (expression)', () => {
+    // The cycle-counter form reads a constant on SoCs without a free-running
+    // 64-bit counter, so the one expression that is monotonic and advancing
+    // everywhere is the kernel uptime scaled to µs.
     expect(lowerTiming({ operation: 'timing.now_us' } as any))
-      .toEqual({ expression: 'static_cast<double>(k_cyc_to_us_floor64(k_cycle_get_64()))' });
+      .toEqual({ expression: 'static_cast<double>(k_uptime_get() * 1000)' });
   });
 
   it('Time.busyWaitUs → k_busy_wait', () => {
@@ -55,7 +47,7 @@ describe('Time end-to-end (user code → resolver → Zephyr lowering)', () => {
     expectCppContains(result, [
       'k_msleep(100);',
       'static_cast<double>(k_uptime_get())',
-      'static_cast<double>(k_cyc_to_us_floor64(k_cycle_get_64()))',
+      'static_cast<double>(k_uptime_get() * 1000)',
       'k_busy_wait(5);',
     ]);
   });

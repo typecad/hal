@@ -29,15 +29,24 @@ function usageWith(instances: { i2c?: number[]; spi?: number[]; uart?: number[] 
 }
 
 describe('validatePeripherals — capacity from declared instances', () => {
-  it('accepts I2C1 on the RP2040 board (MCU declares two I2C controllers)', () => {
-    const bc = generatedConstants('rpi_pico/rp2040');
+  it('accepts I2C1 on the Pico 2 (its DTS wires i2c0 + i2c1)', () => {
+    const bc = generatedConstants('rpi_pico2/rp2350a/m33');
     const diags = validatePeripherals(usageWith({ i2c: [0, 1] }), bc, 'main.ts');
     expect(diags).toEqual([]);
   });
 
-  it('accepts UART1/SPI1 at the capacity layer (framework-lowering gates them separately)', () => {
-    const bc = generatedConstants('rpi_pico2/rp2350a/m33');
-    const diags = validatePeripherals(usageWith({ spi: [1], uart: [1] }), bc, 'main.ts');
+  it('rejects I2C1 on the base Pico (its DTS wires only i2c0)', () => {
+    const bc = generatedConstants('rpi_pico/rp2040');
+    const diags = validatePeripherals(usageWith({ i2c: [0, 1] }), bc, 'main.ts');
+    expect(diags.length).toBeGreaterThan(0);
+  });
+
+  it('accepts UART1/SPI1 at the capacity layer when the board wires them', () => {
+    // The Black Pill wires spi1/uart1? Its DTS fact set decides — use a
+    // board that actually declares both at index 1 (esp32s3: spi2/spi3 are
+    // the wired ones, so SPI1 is beyond the wired set).
+    const bc = generatedConstants('esp32s3_devkitc/esp32s3/procpu');
+    const diags = validatePeripherals(usageWith({ spi: [0, 1], uart: [0] }), bc, 'main.ts');
     expect(diags).toEqual([]);
   });
 

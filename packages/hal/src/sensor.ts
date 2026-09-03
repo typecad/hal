@@ -16,16 +16,16 @@
 
 import { sensorFetch, sensorGet } from './emit.js';
 import { include } from './include.js';
-import type { I2CDevice } from './i2c.js';
-import type { SPIDevice } from './spi.js';
+import type { I2CTarget } from './i2c-target.js';
+import type { SPITarget } from './spi-target.js';
 import type { SensorChannelOf, SensorBusOf } from './sensor-catalog.generated.js';
 
 /** Part ids the catalog knows (the Sensor<P> narrowing keys). */
 type SensorPartId = keyof SensorChannelOf;
 
 /** The bus-device argument a part accepts, from its generated bus map:
- *  SPI-only parts take SPIDevice, I2C-only take I2CDevice, dual-bus either. */
-type BusDeviceFor<B extends string> = B extends 'spi' ? SPIDevice : B extends 'i2c' ? I2CDevice : I2CDevice | SPIDevice;
+ *  SPI-only parts take SPITarget, I2C-only take I2CTarget, dual-bus either. */
+type BusDeviceFor<B extends string> = B extends 'spi' ? SPITarget : B extends 'i2c' ? I2CTarget : I2CTarget | SPITarget;
 export type SensorBusDevice<P extends SensorPartId = SensorPartId> = BusDeviceFor<SensorBusOf[P]>;
 
 /** Construction options. */

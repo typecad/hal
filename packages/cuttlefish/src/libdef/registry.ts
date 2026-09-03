@@ -30,8 +30,7 @@ interface ResolvedImport {
 export function loadLibraryDefinitions(definitionsDir: string): Map<string, LibraryDefinition> {
   const registry = new Map<string, LibraryDefinition>();
   // Recursive scan: libdefs may live at the entry dir (single-level convention)
-  // or nested under cache trees like `.cuttlefish/component-decls/<component>/`
-  // (per-component overrides generated alongside .d.ts stubs).
+  // or nested in project subdirectories (per-module overrides).
   const files = listFilesRecursive(definitionsDir, ".libdef.json");
 
   for (const filePath of files) {
@@ -155,31 +154,4 @@ export function resolveImport(
       ...mappedSymbols,
     },
   };
-}
-
-export function generateLibdefStubs(inputFile: string, imports: ImportIR[], outDir: string): string[] {
-  const created: string[] = [];
-
-  if (!fs.existsSync(outDir)) {
-    fs.mkdirSync(outDir, { recursive: true });
-  }
-
-  for (const item of imports) {
-    const moduleKey = toModuleKey(item.moduleSpecifier);
-    const libdefPath = path.join(outDir, `${moduleKey}.libdef.json`);
-
-    if (!fs.existsSync(libdefPath)) {
-      const include = `<${toPascalCase(moduleKey)}.h>`;
-      const libdefContent = {
-        module: moduleKey,
-        include,
-        symbols: Object.fromEntries(item.namedImports.map((symbol) => [symbol, symbol])),
-        source: inputFile,
-      };
-      fs.writeFileSync(libdefPath, JSON.stringify(libdefContent, null, 2) + "\n", "utf8");
-      created.push(libdefPath);
-    }
-  }
-
-  return created;
 }

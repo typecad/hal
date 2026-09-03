@@ -42,8 +42,9 @@ export interface AsyncRuntimeConfig {
   hasPromiseRuntime: boolean;
 
   /**
-   * Whether the platform supports timer-based setTimeout/setInterval
-   * (as opposed to cooperative polling).
+   * Whether the platform provides native timer callbacks for async sleeps
+   * (as opposed to cooperative polling). Zephyr sets this false: periodic
+   * work is a Thread (k_thread) or a Counter, never a timer queue.
    */
   hasTimers: boolean;
 

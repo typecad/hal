@@ -134,10 +134,12 @@ export const KNOWN_FRAMEWORK_PACKAGES = [
 ] as const;
 ```
 
-The moment you add this line, the central test
-(`tests/packages/cuttlefish/framework-manifest.test.ts`) will start enforcing
-your manifest. If you haven't written one yet, the test will fail with
-"package does not export a default manifest" — that's expected; finish Part 2.
+Once the package is registered, the manifest loader (`loadFrameworkManifest`)
+must find a default `./framework.manifest` export — a registered package
+without one fails with "package does not export a default manifest". That's
+expected; finish Part 2. CI enforcement comes from the validator suite
+(`tests/packages/cuttlefish/validate-framework-manifest.test.ts`) plus the
+per-framework test you add in §2.5.
 
 ### 2.2 Probe the strategy to learn actual coverage
 
@@ -167,7 +169,7 @@ Map results to manifest op status:
 | `lowers` | `'supported'` | Fully lowered via `resolveHALOperation`; verified by probe |
 | `throws` | `'probe-inconclusive'` | Probe can't verify — resolver needs strategy-held state (e.g. `board.resolve` needs a configured board profile; `display.*` needs driver init; `dac.write` on ESP32 validates pin against actual DAC pins). Consider adding a payload template to `OP_PROBE_PAYLOADS` if the throw is just missing-arg validation rather than missing-state |
 | `no-emit` | `'unsupported'` | No lowering; verify your strategy legitimately doesn't handle it |
-| (special) | `'polyfill'` | Lowered via runtime polyfill, not HAL resolver. Currently only `timing.set_interval/set_timeout/clear_interval/clear_timeout` (backed by `timer_methods`). See `POLYFILL_BACKED_OPS` |
+| (special) | `'polyfill'` | Lowered via a runtime polyfill, not the HAL resolver. Only ops listed in `POLYFILL_BACKED_OPS` may use this status (currently empty — no ops are polyfill-routed). See `POLYFILL_BACKED_OPS` |
 | (special) | `'stub'` | Emits code but partial/non-functional. Rare — use when a real lowering exists but isn't complete |
 
 > **Note on `throws` vs `unsupported`:** if your resolver throws for an op
@@ -277,7 +279,10 @@ export default defineFrameworkManifest({
   },
 
   hal: {
-    // Every one of the 18 categories is REQUIRED.
+    // Every category the validator recognizes is REQUIRED — the completeness
+    // check errors on any missing category (the 15 core categories in the
+    // zod schema, plus the extended ones it recognizes: preferences, ble,
+    // random, fs, i2s, twai, usb, eth, snprintf).
     // For categories you support, list every op kind (from HAL_OPERATION_KINDS)
     // with the status from your probe.
     gpio: {
@@ -286,15 +291,15 @@ export default defineFrameworkManifest({
         'gpio.write': 'supported',
         'gpio.read': 'supported',
         'gpio.toggle': 'supported',
-        'gpio.set_mode': 'supported',
+        'gpio.configure': 'supported',
       },
     },
-    // ...16 more categories...
+    // ...the remaining categories...
     wifi: {
       supported: false,
       unsupportedReason: 'RP2040 has no native WiFi (use Pico W via CYW43439).',
       ops: {
-        'wifi.connect': 'unsupported',
+        'wifi.join': 'unsupported',
         // ... every wifi.* op kind: 'unsupported'
       },
     },
@@ -343,7 +348,7 @@ export default defineFrameworkManifest({
     },
   },
 
-  ambientTypes: ['Timing', 'EEPROM', 'WDT', 'Preferences', 'Owned', 'Shared', 'Mutable'],
+  ambientTypes: ['Preferences'],  // every name from your ambient-types probe
 
   conformance: {
     // Basenames of packages/framework-rp2040/tests/*.test.ts
@@ -356,9 +361,11 @@ export default defineFrameworkManifest({
 
 ### 2.5 (Optional) Add a self-contained manifest test
 
-The central test (`tests/packages/cuttlefish/framework-manifest.test.ts`)
-already covers your framework automatically. This per-framework test is for
-faster local iteration on one framework:
+The validator suite
+(`tests/packages/cuttlefish/validate-framework-manifest.test.ts`) tests the
+validator itself; the per-framework test below is what enforces your manifest
+against your strategy (see `tests/packages/framework-zephyr/manifest.test.ts`
+for a live example):
 
 Create `tests/packages/framework-rp2040/manifest.test.ts`:
 
@@ -388,15 +395,14 @@ npm run render:framework-coverage
 ```
 
 Updates `docs/framework-coverage.md` with your framework's row in the summary
-matrix and per-category table. The freshness test
-(`tests/packages/cuttlefish/framework-manifest.test.ts > docs/framework-coverage.md freshness`)
-fails in CI if you forget this.
+matrix and per-category table, keeping the rendered doc in sync with your
+manifest.
 
 ## Part 3: Verify
 
 ```bash
 npm run build
-npx vitest run tests/packages/cuttlefish/framework-manifest.test.ts
+npx vitest run tests/packages/framework-rp2040/manifest.test.ts
 ```
 
 You'll see the per-op coverage table printed for your framework, and the test
@@ -405,7 +411,7 @@ these symbols:
 
 ```
 ✓  supported           — fully lowered via resolveHALOperation
-⊕  polyfill            — lowered via runtime polyfill (e.g. timer_methods)
+⊕  polyfill            — lowered via a runtime polyfill (see POLYFILL_BACKED_OPS)
 ◐  stub                — emits code but partial/non-functional
 ?  probe-inconclusive  — minimal probe can't verify (needs real pin args)
 ✗  unsupported         — no lowering (with reason)
@@ -414,21 +420,16 @@ these symbols:
 Example output excerpt:
 
 ```
-HAL coverage for @typecad/framework-rp2040 (14/18 categories fully supported)
+HAL coverage for @typecad/framework-rp2040 (14/24 categories fully supported)
 
-timing (partial: 5 supported + 4 polyfill = 9/9 ops covered)
-  timing.delay               ✓
-  timing.delay_microseconds  ✓
-  timing.millis              ✓
-  timing.micros              ✓
-  timing.free_heap           ✓
-  timing.set_interval        ⊕  (timer_methods)
-  timing.set_timeout         ⊕  (timer_methods)
-  timing.clear_interval      ⊕  (timer_methods)
-  timing.clear_timeout       ⊕  (timer_methods)
+timing (4/4 ops supported)
+  timing.sleep               ✓
+  timing.now                 ✓
+  timing.now_us              ✓
+  timing.busy_wait_us        ✓
 
-wifi (0/34 supported — unsupported: RP2040 has no native WiFi.)
-  wifi.connect             ✗
+wifi (0/18 supported — unsupported: RP2040 has no native WiFi.)
+  wifi.join                  ✗
   ...
 ```
 
@@ -482,29 +483,26 @@ code:
 
 ## Adding a native display adapter
 
-If your framework cannot use the Adafruit_GFX-based adapters (e.g. bare-metal
-targets whose toolchain ships no driver libraries), you can provide
-native display adapters that reuse your framework's existing peripheral
-primitives.
+If your framework owns its display driver code (rather than falling back to
+cuttlefish's generic adapter registry), you can provide native display
+adapters that reuse your framework's existing peripheral primitives.
 
 ### When to override
 
-Override both `providesDisplayAdapter()` (return `true`) and
-`resolveDisplayAdapter(display)` on your `PlatformStrategy`. The base
-the base `PlatformStrategy` declares them as `providesDisplayAdapter():
-boolean { return false; }` and `resolveDisplayAdapter(): undefined` so
-subclasses can override them. When `providesDisplayAdapter()` is false,
-`generateDisplayAdapter()` emits direct display-driver calls (or nothing, if
-the target carries no display adapter).
+Both hooks are declared optional on `PlatformGraphicsStrategy` (in
+`packages/cuttlefish/src/api/shared/graphics-strategy.ts`, which
+`PlatformStrategy` extends). Override `providesDisplayAdapter()` (return
+`true`) and `resolveDisplayAdapter(display)` on your strategy. When
+`providesDisplayAdapter()` is false or omitted, `generateDisplayAdapter()`
+falls back to cuttlefish's built-in adapter registry — currently only the
+SDL native desktop driver; a driver with no registered adapter throws
+`No display adapter registered for driver "..."` (see
+`packages/cuttlefish/src/api/shared/display-adapter.ts`).
 
-You MUST also override `resolveDisplayOp(op)` to return `undefined`, breaking
-any base-class `resolveDisplayOp` you inherit. Otherwise
-display HAL ops fall through to the broken `__tc_display.fillRect(...)` path
-that assumes an Adafruit object exists.
-
-For drivers you don't support, throw a clear compile-time error from
-`resolveDisplayAdapter` instead of returning `undefined` (which would defer
-to the Adafruit registry and emit uncompilable code).
+`resolveDisplayOp(op)` is a required member: return the C++ for the display
+ops your driver handles directly, and `undefined` to fall back to the generic
+display lowering. Ops your adapter cannot support should throw a clear
+compile-time error rather than silently emitting uncompilable code.
 
 ### The panel-ops contract
 
@@ -517,7 +515,8 @@ Each adapter fills a `CuttlefishPanelOps` struct with function pointers
 - `writePixel` — direct-mode single pixel.
 - `fillRect` — fast path for axis-aligned fills.
 - `width` / `height`.
-- `flush` — backing-store flush (SSD1309 only; nullptr on direct-mode panels).
+- `flush` — backing-store flush (SSD1309/SSD1680 class panels; nullptr on
+  direct-mode panels).
 
 The `CuttlefishGFX` class (geometry/canvas/text) is emitted into the runtime
 header only when `providesDisplayAdapter()` is true. Adapters reference the
@@ -525,54 +524,31 @@ already-defined `CuttlefishGFX` symbol in their `declaration` block.
 
 ### Direct vs buffered mode
 
-- **Direct mode** (ILI9341, ST7796S on ESP32): no backing store; every draw
-  hits the panel via `setAddrWindow` + `writePixels`. Required when RAM can't
-  fit a framebuffer.
-- **Buffered mode** (SSD1309 on AVR/ESP32): RAM backing store, flush on
-  demand via the `flush` op. Mandatory for page-buffered panels.
-
-### RAM budget
-
-ATmega328P (2KB RAM) constraints — why AVR supports only SSD1309:
-- SSD1309 128×64 page buffer: 1KB — fits.
-- ILI9341/ST7796S RGB565 framebuffer: 150KB+ — does NOT fit; direct mode is
-  unusably slow on an 8-bit MCU. AVR's `resolveDisplayAdapter` throws for
-  these drivers.
-- SSD1680 mono buffer: 5KB+ — does NOT fit.
-
-ESP32-S3 with PSRAM has no practical constraint. ESP32 supports ILI9341,
-ST7796S, SSD1309.
-
-### Emitting pin control
-
-Use the target's native driver calls (`gpio_pin_set_dt`, `spi_transceive`,
-`i2c_write`) or framework shim helpers where the target demands it. Do NOT call
-strategy-side helpers like `nativeDigitalWrite` from adapter-emit code —
-those are for HAL lowering, not display adapters.
+- **Direct mode** (ILI9341/ST7796S-class RGB TFTs): no backing store; every
+  draw hits the panel via `setAddrWindow` + `writePixels`. Required when RAM
+  can't fit a framebuffer.
+- **Buffered mode** (SSD1306-class mono OLEDs): RAM backing store (page
+  framebuffer), pushed on demand via the `flush` op. Standard for
+  page-buffered panels.
 
 ### Manifest declaration
 
-Display ops should be declared `'probe-inconclusive'`, NOT `'supported'`.
-The validator probes display ops via `resolveDisplayOp`, which returns
-`undefined` because the adapter path bypasses HAL lowering entirely. The
-implementation is real and unit-tested in
-`tests/packages/framework-<framework>/displays/`, but structurally invisible
-to the validator's probe. `'probe-inconclusive'` is the honest status;
-`'supported'` will fail validation with `status-mismatch`.
+Declare display ops the honest way for your strategy: `'supported'` when
+`resolveDisplayOp` emits for the minimal probe (see the `display` block in
+`packages/framework-zephyr/src/framework.manifest.ts`), `'probe-inconclusive'`
+when the minimal probe cannot verify (the op needs driver/profile state the
+payload can't supply). Declaring `'supported'` on an op whose resolver returns
+undefined fails validation with `status-mismatch`.
 
 ### Reference implementations
 
-- `packages/framework-zephyr/src/displays/ssd1309-i2c.ts` — I2C OLED
-  (SSD1309).
-- `packages/framework-zephyr/src/displays/ili9341-spi.ts` — SPI TFT
-  (ILI9341).
-- `packages/framework-zephyr/src/displays/st7796-spi.ts` — SPI TFT
-  (ST7796), same shape as ILI9341 with a different init sequence.
-- `packages/framework-zephyr/src/displays/adafruit-adapters.ts` /
-  `touch-adapters-codegen.ts` — Adafruit GFX-backed display and touch
-  adapters.
-- `packages/framework-zephyr/src/display/` — Zephyr display/touch/UI adapters
-  (`touch-adapter.ts`, `ui-adapter.ts`, `profiles.ts`).
+- `packages/framework-zephyr/src/display/` — the Zephyr strategy-owned
+  display/touch adapters and profile registry (`ui-adapter.ts`,
+  `touch-adapter.ts`, `gfx.ts`, `profiles.ts`); `providesDisplayAdapter()`
+  returns true and `resolveDisplayAdapter()` dispatches per resolved profile
+  (see `packages/framework-zephyr/src/strategy.ts`).
+- `packages/cuttlefish/src/api/shared/display-adapters/sdl.ts` — the generic
+  SDL desktop adapter (the one built-in registry entry).
 
 ## Minimum-viable path
 
@@ -589,7 +565,7 @@ If you want the absolute smallest setup to get a new framework passing CI:
    the probe).
 5. `npm run build`
 6. `npm run render:framework-coverage`
-7. `npx vitest run tests/packages/cuttlefish/framework-manifest.test.ts` —
+7. `npx vitest run tests/packages/framework-rp2040/manifest.test.ts` —
    iterate on errors until green. Read
    `docs/framework-manifest-error-codes.md` for each code's fix.
 
@@ -609,7 +585,8 @@ strategy on every test run.
 - **Per-op probe payloads:** `OP_PROBE_PAYLOADS` in `validate-framework-manifest.ts` — minimal valid args for ops whose resolver needs more than the operation discriminator (e.g. `i2c.write_bytes` needs `bus`+`bytes`, `uart.printf` needs `format`+`args`). When you add a new HAL op kind whose resolver destructures required fields, add an entry here so the validator can probe it instead of marking it `probe-inconclusive`.
 - **Polyfill-routed ops:** `POLYFILL_BACKED_OPS` in `framework-manifest.ts`
 - **Renderer:** `scripts/render-framework-coverage.ts`
-- **Central test:** `tests/packages/cuttlefish/framework-manifest.test.ts`
+- **Central validator suite:** `tests/packages/cuttlefish/validate-framework-manifest.test.ts`
+- **Per-framework enforcement:** `tests/packages/framework-<pkg>/manifest.test.ts`
 - **Test helpers:** `tests/packages/cuttlefish/manifest-test-helpers.ts`
 - **Error code catalog:** `docs/framework-manifest-error-codes.md`
 - **Rendered coverage matrix:** `docs/framework-coverage.md`

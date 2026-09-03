@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { TEST_CHIP, chipForBoard } from '../helpers/test-chip';
 import { lowerInterrupt, interruptInitLines, collectInterruptPins } from '../../../../packages/framework-zephyr/src/lowering/interrupts';
-import { ESP32_DEVKITC } from '../../../../packages/framework-zephyr/src/chips/esp32';
-import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
+const ESP32_DEVKITC = chipForBoard('esp32_devkitc/esp32/procpu');
+
 
 // ESP32_DEVKITC exposes the BOOT button (GPIO0) via the DT `sw0` alias and
 // lists pin 0 in gpio.interruptPins, so attachInterrupt/detachInterrupt on

@@ -21,7 +21,7 @@ function demo(x: Shared<number>) {
 ```
 
 **How to fix:**
-If you need to modify the data, change the annotation to `Mut`.
+If you need to modify the data, change the annotation to `Mutable`.
 
 ---
 
@@ -73,7 +73,7 @@ const view: Shared = storage; // Safe zero-copy borrow
 If you copy a `Shared` variable into a variable with no annotation, TypeCAD warns you that you are creating a copy of the underlying data rather than a new reference.
 
 ```typescript
-const src: Shared<Uint8Array> = ...;
+const src: Shared<Uint8Array> = new Uint8Array(4);
 const dup = src; // INFO: 'dup' silently copies 'src' — no borrow annotation.
 ```
 

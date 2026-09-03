@@ -22,20 +22,20 @@ while (true) {
 ## Pipeline
 
 ```
-TypeScript  →  cuttlefish build  →  out/src/main.cpp  →  west build  →  west flash
+TypeScript  →  cuttlefish build  →  generated C++  →  west build  →  west flash
 ```
 
 Transpile only (no Zephyr SDK needed):
 
 ```sh
-npm run build      # → out/src/main.cpp + main.h
+npm run build      # → src/out/src/src.cpp + src.h (+ CMakeLists.txt, prj.conf, overlay)
 ```
 
 Compile + flash (requires the prerequisites below):
 
 ```sh
 npm run compile    # → west build -b xiao_ble
-npm run flash      # → west flash
+npm run upload     # → compile, then west flash
 ```
 
 ## Prerequisites
@@ -76,14 +76,14 @@ The framework lowers HAL `gpio.*` ops through Zephyr **devicetree specs**:
   number to its DT alias (`led0`).
 - `shimLines` emits `static const struct gpio_dt_spec __tc_dt_led0 =
   GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);`.
-- `gpio.set_mode` → `gpio_pin_configure_dt`, `gpio.write` →
+- `gpio.configure` → `gpio_pin_configure_dt` (guarded, applied once), `gpio.write` →
   `gpio_pin_set_dt`, etc.
 
 Because `gpio_pin_set_dt` honors the node's polarity flags, logical `1`
 (= "on") turns the LED on **despite the active-low wiring** — no polarity
 inversion in the generated code. Zephyr's devicetree (`xiao_ble.dts`)
 carries the `GPIO_ACTIVE_LOW` flag, so the actual hardware pin number is
-resolved by the DT, not hardcoded in `main.cpp`.
+resolved by the DT, not hardcoded in the generated C++.
 
 Pins without a DT spec (or the manifest validator's probe) fall back to the
 raw controller path: `gpio_pin_set_raw(DEVICE_DT_GET(DT_NODELABEL(gpio0)), pin, ...)`.

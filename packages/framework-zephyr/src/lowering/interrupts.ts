@@ -125,6 +125,18 @@ export function collectInterruptPins(program: unknown): Set<number> {
         pins.add(o.pin as number);
       }
     }
+    // The FREE attachInterrupt(pin, fn, mode) lowers to an interrupt.attach
+    // op only at cpp-emit time — at IR-build it is still a plain `call`
+    // statement (detachInterrupt becomes an op; attach does not). Scan the
+    // call form too, or the raw-pin shim state is never emitted while the
+    // emit-time lowering references it (undefined __tc_int_raw<N>_*).
+    if (n.kind === 'call' && n.callee === 'attachInterrupt') {
+      const args = n.args as { kind?: string; value?: unknown }[] | undefined;
+      const pinArg = args?.[0];
+      if (pinArg && pinArg.kind === 'number' && typeof pinArg.value === 'number') {
+        pins.add(pinArg.value);
+      }
+    }
     for (const v of Object.values(n)) {
       if (Array.isArray(v)) { for (const item of v) visit(item); }
       else if (v && typeof v === 'object') visit(v);

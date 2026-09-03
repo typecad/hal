@@ -29,7 +29,7 @@ Do not use it for:
 ```ts
 import { createSimBoard } from '@typecad/simulator';
 
-const board = createSimBoard({ boardType: 'arduino-uno' });
+const board = createSimBoard({ digitalPinCount: 14, interruptPins: [2] });
 
 const button = board.digital(2).asInputPullUp();
 const led = board.digital(13).asOutput();
@@ -60,7 +60,7 @@ function updateLed(button: any, led: any) {
 
 describe('button toggle logic', () => {
   it('turns the LED on when the button is pressed', () => {
-    const board = createSimBoard({ boardType: 'arduino-uno' });
+    const board = createSimBoard({ digitalPinCount: 14, interruptPins: [2] });
     const button = board.digital(2).asInputPullUp();
     const led = board.digital(13).asOutput();
 
@@ -76,15 +76,15 @@ describe('button toggle logic', () => {
 
 ### Create a simulated board
 
-Use `createSimBoard()` with a board type and optional custom counts:
+Use `createSimBoard()` with an options object:
 
-- `boardType` — board identifier such as `arduino-uno` or `arduino-nano`. Known board types carry default PWM/interrupt pin maps; custom/unknown types have no capability pins unless declared via `pwmPins`/`interruptPins`.
-- `digitalPinCount` — number of digital pins
-- `analogPinCount` — number of analog pins
-- `uartCount` — number of serial ports
-- `i2cBusCount` — number of I2C buses
-- `spiBusCount` — number of SPI buses
-- `pwmPins` / `interruptPins` — override the capability pin numbers (defaults to the board type's map, or empty for custom boards)
+- `digitalPinCount` — number of digital pins (default: 14)
+- `analogPinCount` — number of analog pins (default: 6)
+- `uartCount` — number of serial ports (default: 1)
+- `i2cBusCount` — number of I2C buses (default: 1)
+- `spiBusCount` — number of SPI buses (default: 1)
+- `pwmPins` / `interruptPins` — the capability pin numbers (default: empty — declare the pins your board can PWM or interrupt on, or derive them from a board definition with `createBoardFromDefinition()`)
+- `uartRxBufferSize` / `uartTxBufferSize` — UART simulation buffer sizes (default: 256)
 
 ### Access simulated peripherals
 
@@ -98,22 +98,22 @@ The `SimBoard` instance exposes typed accessors:
 - `board.i2c(bus)` — `SimI2CBus`
 - `board.spi(bus)` — `SimSPIBus`
 
-### Simulating a real board package
+### Simulating a real board
 
-When you already depend on a `@typecad/board-*` package, use `createBoardFromDefinition()` to build a `SimBoard` whose pin layout, PWM/interrupt pins, ADC resolution/reference, and bus counts match the real board — instead of hardcoding them in `createSimBoard()`:
+When your project has a generated board manifest, use `createBoardFromDefinition()` to build a `SimBoard` whose pin layout, PWM/interrupt pins, ADC resolution/reference, and bus counts match the real board — instead of hardcoding them in `createSimBoard()`:
 
 ```ts
-import { ArduinoUno } from '@typecad/board-arduino-uno';
+import boardDef from '../.cuttlefish/board.json';
 import { createBoardFromDefinition } from '@typecad/simulator';
 
-const board = createBoardFromDefinition(ArduinoUno);
+const board = createBoardFromDefinition(boardDef);
 
-board.digital(13).asOutput().high();   // LED on PB5 (pin 13)
-board.pwm(9).pwm(50);                  // PWM on PB1 (pin 9)
-board.analog(0).injectVoltage(2.5);    // A0, 10-bit ADC, 5V reference
+board.digital(48).asOutput().high();   // a pin, with its real capability flags
+board.pwm(9).pwm(50);                  // a PWM-capable pin from the board's routes
+board.analog(0).injectVoltage(2.5);    // ADC resolution/reference from the board definition
 ```
 
-This is the recommended path for board-specific tests. The board package must be built so its `BoardDefinition` is importable at runtime. See the [Software-Defined Hardware docs](https://cuttlefish.typecad.net/docs/simulation/software-defined-hardware#simulating-a-real-board-package) for the full list of derived fields.
+`createBoardFromDefinition()` accepts any `BoardDefinition` (the shape carried by `.cuttlefish/board.json`, generated from the board catalog on first build). This is the recommended path for board-specific tests. See the [Software-Defined Hardware docs](https://cuttlefish.typecad.net/docs/simulation/software-defined-hardware#simulating-a-real-board-package) for the full list of derived fields.
 
 ### Verify state and reset
 
@@ -143,6 +143,6 @@ expect(board.digital(13).getBitValue()).toBe(0);
 - `PinMode` values are imported from `@typecad/hal` and used to track simulated pin direction and pull state.
 - capability flags like `digitalInput`, `pwm`, and `interrupt` are modeled using the same type definitions that HAL packages expose for pin capabilities.
 - serial, I2C, and SPI simulation classes rely on the shared TypeCAD bus interfaces to ensure host code can interact with them using the same method names and semantics as real hardware.
-- `createSimBoard()` selects default PWM and interrupt pin sets by board type, matching the physical pin layout conventions used by TypeCAD board packages.
+- `createSimBoard()` takes per-pin capability lists (`pwmPins`/`interruptPins`), or derives them from a board definition with `createBoardFromDefinition()`.
 
 This makes the simulator a practical way to validate hardware logic and unit tests while staying aligned with TypeCAD's HAL abstraction layer.

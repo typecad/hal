@@ -11,7 +11,11 @@
   ],
   "scripts": {
     "build": "tsc",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test:hw": "npm exec -- cuttlefish-test --config boards/blackpill/cuttlefish.config.ts",
+    "test:hw:board": "npm exec -- cuttlefish-test",
+    "test:hw:wired": "npm exec -- cuttlefish-test --config boards/blackpill/cuttlefish.config.ts --include \"tests/wired/*.test.ts\"",
+    "test:hw:esp32s3": "npm exec -- cuttlefish-test --config boards/esp32s3/cuttlefish.config.ts"
   },
   "license": "MIT",
   "publishConfig": {

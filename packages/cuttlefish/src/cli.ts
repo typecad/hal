@@ -6,16 +6,15 @@ import type { GeneratedOutputs } from "./types.js";
 import type { CreateCommandOptions } from "./types.js";
 import { runLibraryCommand } from "./library/cli.js";
 import type { ScaffoldProjectResult } from "./create/index.js";
-import { scaffoldProject, printCreateNextSteps, KNOWN_TARGETS, KNOWN_MCUS, frameworksForTarget, frameworkCatalogEntry, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from "./create/index.js";
+import { scaffoldProject, printCreateNextSteps, KNOWN_TARGETS, frameworksForTarget, frameworkCatalogEntry, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from "./create/index.js";
 import { findPackBoard, packBoardAsTarget } from "./create/pack-targets.js";
-import { BOARD_DATA } from "./create/board-catalog.generated.js";
-import { mcuAsTarget, findKnownMcu, findZephyrBoardForMcu, mcuSupportsZephyr, sanitizeBoardName, zephyrBoardsForMcu, type McuCreateTarget } from "./create/mcu-target.js";
+import { activeBoardCatalog, assertZephyrSdkForCreate, formatZephyrSdkFound, ensureFreshBoardCatalog, resetBoardCatalogOverlayCache, sdkFingerprint, PINNED_ZEPHYR_MANIFEST_REV } from "./board-catalog/index.js";
 import { generateFrameworkDebugArtifacts } from "./create/debug-artifacts.js";
 import { runCreateWizard } from "./create/index.js";
 import { installProjectDependencies } from "./create/install-deps.js";
-import { generateLibraryDefinitions, transpileFile } from "./transpile.js";
-import { generateDecl, generateDeclsForDirectory, generateComponentDeclsForProject } from "./libdef/cpp-to-decl.js";
-import { mapCppLocationToTs, readSourceMap, resolveMapPath, resolveSourceMapForProgram } from "./mapping/source-map.js";
+import { transpileFile } from "./transpile.js";
+import { generateDecl, generateDeclsForDirectory } from "./libdef/cpp-to-decl.js";
+import { resolveSourceMapForProgram } from "./mapping/source-map.js";
 import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain.js";
 import { resolveStrategy } from "./platform/registry.js";
 import { loadFrameworkPackage } from "./framework-package.js";
@@ -35,6 +34,23 @@ function hasFatalDiagnostics(result: GeneratedOutputs): boolean {
   return result.diagnostics.some((diagnostic) => diagnostic.severity === "error");
 }
 
+/** The board-catalog hooks the Zephyr strategy exposes — structurally typed
+ *  (cuttlefish cannot import framework-zephyr types at build time; the
+ *  framework is loaded at runtime, same as the BoardGenStrategy pattern in
+ *  config-loader). */
+interface BoardCatalogStrategy {
+  syncBoardCatalog?(zephyrBase?: string): {
+    zephyrBase: string;
+    overlayPath: string;
+    provenance: { version: string; gitHead?: string };
+    stats: { variants: number; withFacts: number; failures: number; droppedYamls: number };
+    added: readonly string[];
+    changed: readonly string[];
+    removed: readonly string[];
+  };
+  ensureFreshBoardCatalog?(): unknown;
+}
+
 function displayConfigForTranspile<T extends { configPath: string; display?: object }>(config: T | undefined): object | undefined {
   if (!config?.display) return undefined;
   const display = { ...(config.display as Record<string, unknown>) };
@@ -46,8 +62,26 @@ function displayConfigForTranspile<T extends { configPath: string; display?: obj
 
 async function handleCreate(options: CreateCommandOptions): Promise<void> {
   const targetId = options.target ?? options.board;
-  const mcuId = options.mcu ?? (targetId ? undefined : undefined);
-  const hasTarget = !!targetId || !!options.mcu;
+  const hasTarget = !!targetId;
+
+  // SDK gate: the installed Zephyr SDK is the source of truth — boards, pin
+  // data, everything derives from it. No SDK (or a wrong-version one) means
+  // the project cannot work; fail with the fix instead of scaffolding junk.
+  // Native-desktop projects are the one exception (no Zephyr involved).
+  const wantsNative = options.framework === "native" || (!options.framework && targetId === "native");
+  if (!wantsNative) {
+    // The gate doubles as the lookup — its ok-return carries everything the
+    // printout needs (no second discovery pass).
+    const sdk = assertZephyrSdkForCreate();
+    if (sdk) {
+      console.log(chalk.gray('  Zephyr SDK:'));
+      for (const line of formatZephyrSdkFound(sdk)) console.log(chalk.gray(line));
+    }
+    // Build/refresh the board registry from the installed SDK now — the
+    // wizard's board list and --board resolution below read it.
+    ensureFreshBoardCatalog();
+    resetBoardCatalogOverlayCache();
+  }
 
   // Preseeded targets run non-interactively ONLY when stdin is not a TTY
   // (scripts/CI pipe nothing and expect zero prompts). A human typing
@@ -56,43 +90,36 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
   // (probe method, serial port, baud, starter).
   const interactive = process.stdin.isTTY === true;
   if (hasTarget && !interactive) {
-    // Target resolution: --mcu names a bare-MCU entry; --target/--board may
-    // name either a board or (as a convenience) an MCU entry.
-    const mcuEntry = options.mcu
-      ? findKnownMcu(options.mcu)
-      : targetId
-        ? findKnownMcu(targetId)
-        : undefined;
-    if (options.mcu && !mcuEntry) {
-      const available = KNOWN_MCUS.map(m => `  - ${m.id} (${m.displayName})`).join("\n");
-      throw new Error(`Unknown MCU '${options.mcu}'. Available MCUs:\n${available}`);
-    }
-    const target = mcuEntry
-      ? mcuAsTarget(mcuEntry)
-      : KNOWN_TARGETS.find(t => t.id === targetId)
-        ?? (() => {
-          // Any other Zephyr board: resolve off the generated catalog (the
-          // pack carries every board variant). Accepts a qualified target
-          // ('nucleo_f411re/stm32f411xe') or a bare board id.
-          const pack = findPackBoard(targetId!);
-          return pack ? packBoardAsTarget(pack) : undefined;
-        })();
-    const mcuTarget = mcuEntry ? (target as McuCreateTarget) : undefined;
+    // Target resolution: --target/--board names the native target or any
+    // board from the catalog (a qualified target like
+    // 'nucleo_f411re/stm32f411xe', or a bare board id).
+    let target = KNOWN_TARGETS.find(t => t.id === targetId)
+      ?? (() => {
+        const pack = findPackBoard(targetId!);
+        return pack ? packBoardAsTarget(pack) : undefined;
+      })();
     if (!target) {
-      const curated = KNOWN_TARGETS.map(t => `  - ${t.id} (${t.displayName})`);
-      const mcus = KNOWN_MCUS.map(m => `  - ${m.id} (${m.displayName}) [bare silicon]`);
-      throw new Error(
-        `Unknown target '${targetId}'. Curated targets:\n${curated.join("\n")}\n${mcus.join("\n")}\n` +
-        `Or pass any Zephyr board target (e.g. --target nucleo_f411re/stm32f411xe,\n` +
-        `--target disco_l475_iot01a) — the full catalog is generated from the\n` +
-        `Zephyr tree. Run \`west boards\` or check the pack for names.`,
-      );
+      // No catalog on this machine (or a typo). A QUALIFIED target passes
+      // through raw: the first build syncs the catalog from the Zephyr tree
+      // and validates it there, where the real error is actionable.
+      if (targetId!.includes("/")) {
+        target = packBoardAsTarget({
+          identifier: targetId!,
+          name: targetId!,
+          soc: targetId!.split("/")[1] ?? "",
+        });
+      } else {
+        const known = KNOWN_TARGETS.map(t => `  - ${t.id} (${t.displayName})`);
+        throw new Error(
+          `Unknown target '${targetId}'. Built-in targets:\n${known.join("\n")}\n` +
+          `Or pass any board from the catalog (e.g. --board nucleo_f411re/stm32f411xe) —\n` +
+          `the catalog comes from your Zephyr tree; run \`cuttlefish board sync\` (or the\n` +
+          `installer) to generate it.`,
+        );
+      }
     }
 
-    // Framework narrowing shared by the explicit and auto-pick paths: on
-    // MCU-only targets, Zephyr needs the package's silicon zephyr block.
     const compatibleFrameworks = frameworksForTarget(target)
-      .filter((f) => !mcuTarget || f.id !== 'zephyr' || mcuSupportsZephyr(mcuTarget))
       .filter(f => f.installable);
 
     // Resolve the framework. --framework wins (validated against the board's
@@ -143,33 +170,7 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
 
     // Framework-specific build target + toolchain (Zephyr board id + 'west').
     const profile = frameworkTargetProfile(target, frameworkId);
-    let buildTarget = profile.buildTarget ?? target.buildTarget;
-    let zephyrCustomBoard = false;
-
-    // MCU-only targets carry no catalog build target. Non-interactive rules:
-    // Zephyr generates a custom board unless --zephyr-board names an upstream
-    // board; native has no build target.
-    if (mcuTarget) {
-      if (frameworkId === 'zephyr') {
-        if (options.zephyrBoard) {
-          const board = findZephyrBoardForMcu(mcuTarget, options.zephyrBoard);
-          if (!board) {
-            const count = zephyrBoardsForMcu(mcuTarget).length;
-            throw new Error(
-              `--zephyr-board '${options.zephyrBoard}' is not a Zephyr board for the ` +
-              `${mcuTarget.displayName} (checked ${count} snapshot board${count === 1 ? '' : 's'} for its SoC). ` +
-              `Omit the flag to generate a custom board, or pick from the snapshot via the wizard.`,
-            );
-          }
-          buildTarget = board.target;
-        } else {
-          buildTarget = sanitizeBoardName(projectName);
-          zephyrCustomBoard = true;
-        }
-      } else {
-        buildTarget = undefined;
-      }
-    }
+    const buildTarget = profile.buildTarget ?? target.buildTarget;
 
     const result = scaffoldProject({
       probeMethod: options.probe,
@@ -183,7 +184,7 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       // Pack fact: does the board's devicetree declare an LED? Drives the
       // starter between LED-blink and console-heartbeat (384 of 1,248 pack
       // boards ship no gpio-leds node).
-      ...(target.board ? { hasLed: Boolean(BOARD_DATA[target.board]?.led) } : {}),
+      ...(target.board ? { hasLed: Boolean(activeBoardCatalog()[target.board]?.led) } : {}),
       frameworkPackage,
       framework: frameworkId,
       buildTarget,
@@ -191,8 +192,6 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
       // soc rides the config only for bare-silicon/contract projects — a
       // board target's soc derives from the identifier at boardgen time.
       ...(target.board ? {} : { soc: target.soc }),
-      ...(mcuTarget ? { starterPin: mcuTarget.starterPin } : {}),
-      ...(zephyrCustomBoard ? { zephyrCustomBoard: true } : {}),
       // Zephyr consoles default 115200; the 9600 default is the Arduino-class
       // convention.
       baudRate: target.isNative ? undefined : (options.baud ?? (frameworkId === 'zephyr' ? 115200 : 9600)),
@@ -298,42 +297,6 @@ async function main(): Promise<void> {
       return;
     }
 
-    if (options.command === "map-error") {
-      if (!options.mapFile || !options.cppLine || !options.cppColumn) {
-        throw new Error("map-error requires map file and C++ line/column options.");
-      }
-
-      const mapPath = resolveMapPath(options.mapFile);
-      const sourceMap = readSourceMap(mapPath);
-      const mapped = mapCppLocationToTs(
-        sourceMap,
-        options.cppLine,
-        options.cppColumn,
-        options.message,
-        options.cppFile,
-      );
-
-      if (!mapped.mappedTsSpan) {
-        console.log("No TypeScript mapping found for the provided C++ location.");
-      } else {
-        console.log(
-          [
-            `Mapped TS location: ${mapped.mappedTsSpan.filePath}`,
-            `(${mapped.mappedTsSpan.startLine},${mapped.mappedTsSpan.startColumn})`,
-            `node=${mapped.nodeKind ?? "unknown"}`,
-            mapped.symbolName ? `symbol=${mapped.symbolName}` : undefined,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        );
-      }
-
-      if (mapped.message) {
-        console.log(`Compiler message: ${mapped.message}`);
-      }
-      return;
-    }
-
     if (options.command === "doctor" || options.command === "licenses") {
       // These commands run standalone (often before a build), so the framework
       // isn't loaded yet. Load it from the config's framework field so the
@@ -366,7 +329,7 @@ async function main(): Promise<void> {
       return;
     }
 
-    // ── Handle board regen — refresh the project-local board module ──────
+    // ── Handle board catalog sync / board module regen ────────────────────
     if (options.command === "board") {
       const config = loadCuttlefishConfig(process.cwd());
       if (!config) {
@@ -374,6 +337,69 @@ async function main(): Promise<void> {
           "No cuttlefish.config.ts found in current directory.\n" +
           "Run 'cuttlefish create' to create one.",
         );
+      }
+      // The framework owns the board catalog + module generation; load it
+      // the same way the doctor command does.
+      if (!hasLoadedFramework() && config.framework) {
+        try {
+          loadFrameworkPackage(config.framework, process.cwd());
+        } catch {
+          // Framework package not resolvable — the hook error below names
+          // the problem better than a loader crash would.
+        }
+      }
+      const strategy = hasLoadedFramework()
+        ? (getLoadedFramework().strategy as BoardCatalogStrategy)
+        : undefined;
+
+      if (options.subcommand === "sync") {
+        if (typeof strategy?.syncBoardCatalog !== "function") {
+          throw new Error(
+            `Framework '${config.framework ?? "(none)"}' provides no board catalog sync — ` +
+            `'cuttlefish board sync' applies to Zephyr-framework projects.`,
+          );
+        }
+        const report = strategy.syncBoardCatalog(options.zephyrBase);
+        const version = report.provenance.version || "unknown version";
+        const head = report.provenance.gitHead ? ` @ ${report.provenance.gitHead.slice(0, 12)}` : "";
+        const fp = sdkFingerprint(report.zephyrBase);
+        ui.printSuccess(`Board catalog synced from Zephyr ${version}${head}`);
+        console.log(chalk.gray(`  tree:     ${report.zephyrBase}`));
+        if (fp) console.log(chalk.gray(`  fingerprint: ${fp} (pin ${PINNED_ZEPHYR_MANIFEST_REV})`));
+        console.log(chalk.gray(`  catalog:  ${report.overlayPath}`));
+        console.log(
+          `  ${report.stats.variants} board variants (${report.stats.withFacts} with pin facts` +
+          `${report.stats.failures > 0 ? `, ${report.stats.failures} reader failures` : ""}` +
+          `${report.stats.droppedYamls > 0 ? `, ${report.stats.droppedYamls} yamls with no resolvable .dts` : ""})`,
+        );
+        const { added, changed, removed } = report;
+        const list = (ids: readonly string[], verb: string): string =>
+          ids.length === 0
+            ? chalk.gray(`  0 ${verb}`)
+            : `  ${ids.length} ${verb}: ${ids.slice(0, 8).join(", ")}${ids.length > 8 ? ", …" : ""}`;
+        console.log(chalk.gray("  vs the previous catalog (what changed in your tree):"));
+        console.log(list(added, "added"));
+        console.log(list(changed, "changed"));
+        console.log(list(removed, "removed"));
+        // Refresh the project's own board module so the sync lands in this
+        // project immediately (not just on the next first-build).
+        if (config.board && !config.contract) {
+          const dir = regenBoardModule(config);
+          ui.printSuccess(
+            `Regenerated the board module for '${config.board}' in ${path.join(dir, "board.ts")}`,
+          );
+        }
+        return;
+      }
+
+      // regen: refresh a stale catalog overlay first, so a regen after
+      // `west update` picks up the tree's boards automatically. Best-effort
+      // — a missing tree or a failed walk must not block regenerating from
+      // whatever catalog is already present.
+      try {
+        strategy?.ensureFreshBoardCatalog?.();
+      } catch {
+        // Non-fatal by design (see above).
       }
       const dir = regenBoardModule(config);
       ui.printSuccess(
@@ -419,38 +445,6 @@ async function main(): Promise<void> {
     // it intentionally has no inputFile (it scans scanDir instead), so the
     // generic "Missing input file path" check would otherwise block it.
     if (options.command === "gen-decls") {
-      // Check for --components flag (ESP-IDF components: managed + local).
-      // Runs before scanDir/single-file branches; components mode has no
-      // inputFile by design (it scans managed_components/ + components/).
-      const componentsDir = (options as any).componentsDir as string | undefined;
-      if (componentsDir) {
-        ui.printHeader();
-        ui.printStep(`Generating component declarations for ${componentsDir}...`);
-        const config = loadCuttlefishConfig(componentsDir);
-        const frameworkConfig = (config?.frameworkConfig ?? {}) as Record<string, unknown>;
-        const componentsNode = (frameworkConfig as any)?.components ?? {};
-        const managedSpecs = Object.keys(componentsNode.managed ?? {}) as string[];
-        // idf.py stores managed deps as <namespace>__<name> (slashes → __).
-        const managedNames = managedSpecs.map((spec) => spec.replace("/", "__"));
-        const localPaths = ((componentsNode.local as string[]) ?? []).map((p: string) =>
-          path.isAbsolute(p) ? p : path.resolve(componentsDir, p),
-        );
-        const builtinNames = (componentsNode.builtin as string[]) ?? [];
-        const created = generateComponentDeclsForProject(componentsDir, {
-          managed: managedNames,
-          local: localPaths,
-          builtin: [],
-          idfRoot: undefined,
-        });
-        if (created.length === 0) {
-          ui.printInfo("No component declaration files created.");
-        } else {
-          ui.printSuccess(`Created ${created.length} declaration file(s):`);
-          for (const f of created) ui.printFileCreated(f);
-        }
-        return;
-      }
-
       // Check for --all flag (scan directory)
       const scanDir = (options as any).scanDir as string | undefined;
 
@@ -507,24 +501,6 @@ async function main(): Promise<void> {
 
     assertTypeScriptInput(options.inputFile);
 
-    if (options.command === "gen-libdefs") {
-      const outDir = path.dirname(options.inputFile);
-      const created = generateLibraryDefinitions({
-        inputFile: options.inputFile,
-        outDir,
-      });
-
-      if (created.length === 0) {
-        console.log("No new library definition files created.");
-      } else {
-        console.log("Created library definition files:");
-        for (const filePath of created) {
-          console.log(`- ${filePath}`);
-        }
-      }
-      return;
-    }
-
     // ── Load cuttlefish.config.ts (config wins over CLI flags) ──────────
     const inputDir = path.dirname(path.resolve(options.inputFile));
     const config = loadCuttlefishConfig(inputDir);
@@ -537,44 +513,6 @@ async function main(): Promise<void> {
     // only the pins/peripherals the PCB actually wires.
     if (config?.contract) {
       await generateContractBoard(config);
-    }
-
-    // ── Pre-transpile: generate component .d.ts stubs ───────────────────
-    // The transpile type-check needs the .d.ts imports in main.ts to resolve.
-    // For ESP-IDF builtin/managed/local components, those .d.ts files are
-    // generated by gen-decls — so we must run it BEFORE type-checking, not
-    // only as part of --compile. The cache is written under the transpile
-    // output dir (the same path --compile uses), so user imports resolve
-    // identically in both flows.
-    if (config?.frameworkConfig) {
-      const fc = config.frameworkConfig as Record<string, unknown>;
-      const componentsNode = (fc as any)?.components ?? {};
-      const managedSpecs = Object.keys(componentsNode.managed ?? {}) as string[];
-      const localPaths = ((componentsNode.local as string[]) ?? []).map((p: string) =>
-        path.isAbsolute(p) ? p : path.resolve(inputDir, p),
-      );
-      const builtinNames = (componentsNode.builtin as string[]) ?? [];
-      if (managedSpecs.length > 0 || localPaths.length > 0 || builtinNames.length > 0) {
-        // Resolve the transpile output dir — the cache lives under it so the
-        // framework's compile path and this pre-transpile pass agree on location.
-        // output.outDir in config is relative to the project root (inputDir);
-        // if absent, the transpile output goes alongside the entry file.
-        const outBase = config.outputOutDir
-          ? path.resolve(inputDir, config.outputOutDir)
-          : inputDir;
-        try {
-          generateComponentDeclsForProject(outBase, {
-            managed: managedSpecs.map((s) => s.replace('/', '__')),
-            local: localPaths,
-            builtin: [],
-            idfRoot: undefined,
-          });
-        } catch {
-          // Non-fatal: if gen-decls fails (e.g. component not yet fetched),
-          // the type-checker will surface the missing-import errors with
-          // clearer context than crashing here.
-        }
-      }
     }
 
     // Load the UI engine (if @typecad/ui is installed) before any UI work.

@@ -55,7 +55,6 @@ export interface KconfigUsage {
   usesWdt?: boolean;
   usesBle?: boolean;
   usesDisplay?: boolean;
-  usesPower?: boolean;
   usesWifi?: boolean;
   usesHttp?: boolean;
   usesMqtt?: boolean;
@@ -101,6 +100,11 @@ export interface KconfigUsage {
    *  consumes this (to rewrite the ADC node's pinctrl-0 to the used channels
    *  on SoCs that need pad muxing, e.g. STM32); prj.conf ignores it. */
   adcReadPins?: readonly number[];
+  /** HAL pin numbers the program drives with dac.* — scanned from the
+   *  emitted lazy-setup guards (__tc_dact<pin>_done) at compile time. Only
+   *  the overlay generator consumes this (the DAC node's pinctrl-0 lists
+   *  the used channels); prj.conf ignores it. */
+  dacWritePins?: readonly number[];
   /** HAL pin numbers the program drives with pwm.* — scanned from the
    *  emitted `__tc_pwm_*` spec references at compile time. Only the overlay
    *  generator consumes this (synthesized pwm-leds consumers + aliases are
@@ -174,6 +178,13 @@ export function resolveKconfigFragments(
     m.set('CONFIG_USBD_CDC_ACM_CLASS', 'y');
     m.set('CONFIG_UART_LINE_CTRL', 'y');
     m.set('CONFIG_SERIAL', 'y');
+    // The device presents a serial-number string descriptor sourced from
+    // hwinfo (the SoC's unique ID). Without it Windows keys the CDC devnode
+    // on the physical USB port: replugs reuse stale nodes and repeated flash
+    // cycles wedge them into permanent "access denied" opens. A serial makes
+    // the instance path identity-based — stable across ports, immune to the
+    // port-keyed ghost pool.
+    m.set('CONFIG_HWINFO', 'y');
   }
   if (usage.usesWdt) m.set('CONFIG_WATCHDOG', 'y');
   // STM32: keep the debugger attachable in sleep/stop (see the shim's
@@ -231,11 +242,6 @@ export function resolveKconfigFragments(
     } else {
       m.set('CONFIG_SPIRAM_MODE_QUAD', 'y');
     }
-  }
-  // deep_sleep_pin wake needs PM + PM_DEVICE.
-  if (usage.usesPower) {
-    m.set('CONFIG_PM', 'y');
-    m.set('CONFIG_PM_DEVICE', 'y');
   }
   if (usage.usesWifi) {
     // Master networking switch — every CONFIG_NET_* symbol depends on NETWORKING

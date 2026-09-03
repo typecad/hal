@@ -1,0 +1,19 @@
+# typecad-repo: modules/tee/tf-m/trusted-firmware-m
+# Applied by the typeCAD installer after west update (git apply --check guarded).
+diff --git a/tools/modules/c_include.py b/tools/modules/c_include.py
+index 636f31dd0..2ea02646e 100644
+--- a/tools/modules/c_include.py
++++ b/tools/modules/c_include.py
+@@ -13,7 +13,11 @@ def get_compile_command(compile_commands_file, c_file):
+     with open(compile_commands_file, "rt") as f:
+         compile_commands = json.load(f)
+ 
+-    return [x['command'] for x in compile_commands if c_file in x['file']][0]
++    # Match on normalized separators: on Windows x['file'] carries
++    # backslashes while callers pass forward-slash names ("bl1_2/main.c"),
++    # and the raw substring match then finds nothing (IndexError downstream).
++    return [x['command'] for x in compile_commands
++            if os.path.normpath(c_file) in os.path.normpath(x['file'])][0]
+ 
+ def get_includes(compile_commands_file, c_file):
+     compile_command = get_compile_command(compile_commands_file, c_file).split()

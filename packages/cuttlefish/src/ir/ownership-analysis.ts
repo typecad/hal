@@ -946,6 +946,14 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
     for (const child of ns.children ?? []) collectNamespaceBodies(child);
   };
   for (const ns of program.namespaces) collectNamespaceBodies(ns);
+  // Callbacks registered out-of-band (interrupt handlers, Thread.start,
+  // watchPin / drawCanvas bodies) carry their statements on the callback
+  // expression rather than in a function body. A top-level `let` mutated
+  // only inside one must not be const-suggested — the emitted `const`
+  // makes g++ reject the assignment.
+  for (const rc of program.registeredCallbacks ?? []) {
+    allStatementBodies.push(rc.callbackIR.statements);
+  }
 
   // Collect every plain-identifier assignment / update target across the whole
   // program. A `let` declared in one scope may be reassigned by a *different*
@@ -1143,18 +1151,25 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
     // mutated) already mutates `.storage` the same way (see above), so the
     // emit path already handles both directions.
     for (const entry of letVars.values()) {
-      if (!entry.everAssigned && !globallyAssignedNames.has(entry.name)) {
-        entry.stmt.storage = 'const';
-        diagnostics.push({
-          severity: 'info',
-          message: `'${entry.name}' is never reassigned — emitted as \`const\` so the C++ compiler can place it in ROM and fold it.`,
-          line: entry.span.startLine,
-          column: entry.span.startColumn,
-          filePath: entry.span.filePath,
-          code: 'ownership-suggest-const',
-          source: 'ownership-analysis',
-        });
-      }
+      if (entry.everAssigned || globallyAssignedNames.has(entry.name)) continue;
+      // A typed-array buffer (`const id = new Uint8Array(N)`, forced to let at
+      // IR build) lowers with a pointer cppType + array initializer. HAL fills
+      // write through it opaquely — the lowered C++ embeds the buffer name in
+      // hal-op text (e.g. spi.transceive's rx), which the reassignment walk
+      // above cannot see. Promoting it to const would make the HAL fill
+      // undefined behavior and disagree with the array-shaped definition.
+      const bufferInit = entry.stmt.initializer;
+      if (bufferInit?.kind === 'array' && /\*\s*$/.test(entry.stmt.cppType ?? '')) continue;
+      entry.stmt.storage = 'const';
+      diagnostics.push({
+        severity: 'info',
+        message: `'${entry.name}' is never reassigned — emitted as \`const\` so the C++ compiler can place it in ROM and fold it.`,
+        line: entry.span.startLine,
+        column: entry.span.startColumn,
+        filePath: entry.span.filePath,
+        code: 'ownership-suggest-const',
+        source: 'ownership-analysis',
+      });
     }
   };
 

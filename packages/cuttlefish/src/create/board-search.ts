@@ -13,8 +13,8 @@
 // ---------------------------------------------------------------------------
 
 import { select } from 'inquirer-select-pro';
-import { BOARD_DATA } from './board-catalog.generated.js';
-import { KNOWN_TARGETS, KNOWN_MCUS } from './scaffold.js';
+import { activeBoardCatalog } from '../board-catalog/index.js';
+import { KNOWN_TARGETS } from './scaffold.js';
 
 /** The discriminator union the wizard switches on. */
 export type TargetPick =
@@ -29,25 +29,19 @@ function targetOptions(): Array<{ name: string; value: string }> {
     .filter((t) => t.isNative)
     .map((t) => ({ name: `${t.displayName} (Windows/Linux executable)`, value: `native:${t.id}` }));
 
-  const mcus = KNOWN_MCUS.map((m) => ({
-    name: `${m.displayName} (${m.architecture.toUpperCase()})`,
-    value: `mcu:${m.id}`,
-  }));
-
-  const boards = Object.values(BOARD_DATA).map((b) => ({
+  const boards = Object.values(activeBoardCatalog()).map((b) => ({
     name: `${b.name} (${b.identifier})`,
     value: b.identifier,
   }));
 
-  return [...native, ...mcus, ...boards];
+  return [...native, ...boards];
 }
 
 /** Resolve a picked value back to its discriminated form. */
 function resolvePick(value: string): TargetPick | undefined {
   if (value.startsWith('native:')) return { kind: 'native' };
-  if (value.startsWith('mcu:')) return { kind: 'mcu', id: value.slice(4) };
   // Board: value IS the qualified identifier.
-  const entry = BOARD_DATA[value];
+  const entry = activeBoardCatalog()[value];
   if (!entry) return undefined;
   return { kind: 'board', entry: { identifier: entry.identifier, name: entry.name, soc: value.split('/')[1] } };
 }
@@ -83,7 +77,7 @@ export async function pickTarget(): Promise<TargetPick | undefined> {
 /** Back-compat alias for the board-only picker (still used by tests/tools
  *  that want boards only). */
 export async function pickBoard(): Promise<{ identifier: string; name: string; soc: string; curated: boolean } | undefined> {
-  const boards = Object.values(BOARD_DATA).map((b) => ({ name: `${b.name} (${b.identifier})`, value: b.identifier }));
+  const boards = Object.values(activeBoardCatalog()).map((b) => ({ name: `${b.name} (${b.identifier})`, value: b.identifier }));
   const value = await select<string, false>({
     message: 'Board (type to filter — e.g. "esp32", "nucleo_f411"):',
     multiple: false,
@@ -96,7 +90,7 @@ export async function pickBoard(): Promise<{ identifier: string; name: string; s
     pageSize: 15,
   });
   if (value === undefined || value === null) return undefined;
-  const entry = BOARD_DATA[value as string];
+  const entry = activeBoardCatalog()[value as string];
   if (!entry) return undefined;
   return { identifier: entry.identifier, name: entry.name, soc: (value as string).split('/')[1], curated: false };
 }

@@ -5,8 +5,6 @@
 // now live in @typecad/simulator. Import them from there.
 export type { DigitalValue, AnalogValue } from './types.js';
 export { PinMode, InterruptMode } from './types.js';
-export type { IPinGroup, PinGroupMember } from './types.js';
-export { createPinGroup } from './types.js';
 
 export type { InterruptHandler } from './types.js';
 
@@ -20,7 +18,6 @@ export { include } from './include.js';
 export { board } from './board.js';
 export { callback } from './callback.js';
 export { rawCpp, rawCppExpr, boardResolve } from './emit.js';
-export { setInterval, setTimeout, clearInterval, clearTimeout } from './time.js';
 export { TimeClass, Time } from './time.js';
 export { abs, min, max, NumClass, Num } from './math.js';
 
@@ -31,21 +28,20 @@ export { Pin } from './gpio.js';
 export { GPIO } from './gpio-pin.js';
 export { shiftOut, shiftIn } from './shift-pin.js';
 export { PWM } from './pwm-pin.js';
-export { ADCChannel } from './adc-pin.js';
-export { DACChannel } from './dac-pin.js';
+export { ADC } from './adc-pin.js';
+export { DAC } from './dac-pin.js';
 export { Watchdog } from './watchdog.js';
 export { Counter } from './counter.js';
 export { I2CTarget } from './i2c-target.js';
 export { SPITarget } from './spi-target.js';
 export { UART } from './uart-port.js';
 export { Thread } from './thread.js';
-export { I2CBus, I2CDevice } from './i2c.js';
+export { I2CBus } from './i2c.js';
 export { Sensor } from './sensor.js';
 export { SENSOR, CHAN, SENSOR_PART_INFO } from './sensor-catalog.generated.js';
 export { ZEPHYR_ADC_GAINS, ZEPHYR_ADC_REFERENCES, ZEPHYR_GPIO_FLAGS, ZEPHYR_GPIO_INTS } from './zephyr-tokens.generated.js';
 export type { SensorToken, SensorChannelName, SensorPartInfo } from './sensor-catalog.generated.js';
-export { SPIBus, SPIDevice } from './spi.js';
-export { SerialPort } from './uart.js';
+export { SPIBus } from './spi.js';
 export { USBConsole } from './usb.js';
 // Register-mapped struct decorators (compile-time markers, erased by transpiler)
 export type { Bit, Bits } from './register.js';
@@ -53,7 +49,7 @@ export { register, bits } from './register.js';
 export { Store } from './preferences.js';
 export { File } from './fs.js';
 export { Mqtt } from './mqtt.js';
-export { Power, PowerDefault } from './power.js';
+
 export { AsyncClass, Async } from './async.js';
 export { WiFi, Scan, WiFiAP } from './wifi.js';
 export { Request } from './http.js';

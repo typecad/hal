@@ -66,14 +66,13 @@ describe('generated board module (board-target config)', () => {
 
     const ts = fs.readFileSync(boardTs, 'utf-8');
     expect(ts).toContain("GPIO2 = Pin.fromPort('GPIO2')");
-    // The S3 devkit's LED is the WS2812 on GPIO48 — no gpio-leds node, but
-    // the curated board override maps it (plain GPIO, like the old package).
-    expect(ts).toContain('export const LED = GPIO48');
+    // All boards are equal: no curated LED override — the S3 devkit's DTS
+    // has no gpio-leds node, so the module honestly carries no LED export.
+    expect(ts).not.toContain('export const LED =');
     expect(ts).toContain('export const BUTTON');
 
     const manifest = JSON.parse(fs.readFileSync(boardJson, 'utf-8'));
     expect(manifest.soc).toBe('esp32s3');
-    expect(manifest.tier).toBe('validated');
     expect(manifest.constants['build.frameworks.zephyr']).toBe('esp32s3_devkitc/esp32s3/procpu');
   });
 

@@ -69,6 +69,35 @@ init_workspace() {
   "$MAMBA" run -n "$ENV_NAME" west update \
     || { echo "init-workspace: west update failed" >&2; return 1; }
 
+  # Workspace patches — upstream fixes the pinned manifest revisions don't
+  # carry yet (see patches/*.patch). `git apply --check` makes this
+  # idempotent: an already-applied (or already-upstreamed) patch is skipped,
+  # never a hard failure. Each patch carries a `# typecad-repo: <path>`
+  # header naming its workspace repo (first-directory guesses break on
+  # nested projects like modules/tee/tf-m/trusted-firmware-m).
+  if [ -d "$PKG_DIR/patches" ]; then
+    for patch in "$PKG_DIR"/patches/*.patch; do
+      [ -f "$patch" ] || continue
+      repo_name=$(grep -m1 '^# typecad-repo:' "$patch" | sed 's/^# typecad-repo:[[:space:]]*//')
+      if [ -z "$repo_name" ]; then
+        echo "init-workspace: WARNING: $(basename "$patch") — no 'typecad-repo:' header, skipping" >&2
+        continue
+      fi
+      repo_dir="$WORKSPACE_DIR/$repo_name"
+      if [ ! -d "$repo_dir" ]; then
+        echo "init-workspace: WARNING: $(basename "$patch") — $repo_dir not present, skipping" >&2
+        continue
+      fi
+      echo "init-workspace: applying patch $(basename "$patch") to $repo_name..."
+      if git -C "$repo_dir" apply --check "$patch" 2>/dev/null; then
+        git -C "$repo_dir" apply "$patch" \
+          || { echo "init-workspace: patch apply failed: $(basename "$patch")" >&2; return 1; }
+      else
+        echo "init-workspace:   already applied (or inapplicable) — skipping"
+      fi
+    done
+  fi
+
   # Install Zephyr's pinned Python build deps (jsonschema, pykwalify, PyYAML,
   # intelhex, canopen, ...) into the env. CMake checks for these and the build
   # fails with e.g. "Missing jsonschema dependency" without them. Letting
@@ -77,6 +106,27 @@ init_workspace() {
   echo "init-workspace: installing Zephyr Python requirements (requirements-base.txt)..."
   "$MAMBA" run -n "$ENV_NAME" pip install -r "$WORKSPACE_DIR/zephyr/scripts/requirements-base.txt" \
     || { echo "init-workspace: pip install requirements failed" >&2; return 1; }
+
+  # imgtool — MCUboot's signing tool. Not in requirements-base.txt, but TF-M /
+  # FVP signing steps invoke it as a module (mps4 corstone builds fail with
+  # "No module named 'imgtool'" without it).
+  echo "init-workspace: installing imgtool (MCUboot signing tool)..."
+  "$MAMBA" run -n "$ENV_NAME" pip install imgtool \
+    || echo "init-workspace: WARNING: imgtool install failed — TF-M/FVP signing will not work" >&2
+
+  # TF-M secure-build tooling: the inner TF-M build's bl2_image_config step
+  # parses compile_commands (needs the `clang` python bindings) and Nordic's
+  # RTE_Device.h needs devicetree headers — requirements + libclang (native
+  # library the python `clang` bindings load) from conda-forge.
+  tfm_tools="$WORKSPACE_DIR/modules/tee/tf-m/trusted-firmware-m/tools/requirements.txt"
+  if [ -f "$tfm_tools" ]; then
+    echo "init-workspace: installing TF-M tools requirements..."
+    "$MAMBA" run -n "$ENV_NAME" pip install -r "$tfm_tools" >/dev/null 2>&1 \
+      || echo "init-workspace:   WARNING: TF-M tools requirements install failed" >&2
+  fi
+  echo "init-workspace: installing libclang (conda-forge)..."
+  "$MAMBA" install -n "$ENV_NAME" -c conda-forge libclang -y \
+    || echo "init-workspace:   WARNING: libclang install failed — TF-M bl2 config step will fail" >&2
 
   # Build-relevant per-module Python requirements ONLY. A bare `find -name
   # requirements.txt` would also pull docs/test/harness/example requirements

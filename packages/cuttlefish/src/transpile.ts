@@ -21,7 +21,7 @@ const CUTTLEFISH_VERSION: string = (() => {
   }
 })();
 import { buildProgramIR } from "./ir/build-ir.js";
-import { getCurrentBoardConstants } from "./ir/build-ir-state.js";
+import { getCurrentBoardConstants, resetTranspileResolvedHalOps } from "./ir/build-ir-state.js";
 import { classDeclarationToIR } from "./ir/declaration-builders.js";
 import { clickHandlers } from "./ir/transformers/ui-call-resolver.js";
 import { setUIHook, requireUIHook, hasUIHook } from "./ui-hook.js";
@@ -32,11 +32,11 @@ import { isSafetyImportSpecifier } from "./safety/specifiers.js";
 import { setDisplayProfile, resetDisplayProfile, getDisplayProfile } from "./stores/display-profile-store.js";
 import { setThemeCss, resetThemeCss, setThemeClass } from "./stores/theme-store.js";
 import { emitCpp, registerAllEnumNames } from "./emit/cpp-emitter.js";
-import { Diagnostic, GenerateLibdefOptions, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types.js";
+import { Diagnostic, GeneratedOutputs, TranspileOptions, TreeShakingOptions } from "./types.js";
 import { readText, writeText, resetWrittenFiles, wasWrittenThisRun } from "./utils/fs.js";
 import { debug as logDebug, info } from "./utils/logger.js";
 import { printDebugStrategy } from "./utils/ui.js";
-import { loadLibraryDefinitions, generateLibdefStubs } from "./libdef/registry.js";
+import { loadLibraryDefinitions } from "./libdef/registry.js";
 import {
   resetCuttlefishLibraries,
   validateCuttlefishLibraries,
@@ -758,6 +758,11 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
   profiler.startTimer("ir:load-hal");
   loadHALModules(true);
   profiler.endTimer("ir:load-hal");
+  // Fresh run, fresh resolved-op set: the lowering seams record every HAL op
+  // they resolve (some never become IR nodes); analyzeProgram merges them into
+  // the peripheral usage flags at emit. Without this reset, a watch-mode
+  // rebuild in the same process would carry the previous program's ops over.
+  resetTranspileResolvedHalOps();
   const rawIRArray = await Promise.all(filesToProcess.map(buildRawIR));
   profiler.captureMemorySnapshot("ir:post-build");
   profiler.endTimer("ir:build-all");
@@ -1149,10 +1154,4 @@ export async function transpileFile(options: TranspileOptions): Promise<Generate
     diagnostics,
     diagnosticsReportPath,
   };
-}
-
-export function generateLibraryDefinitions(options: GenerateLibdefOptions): string[] {
-  const sourceText = readText(options.inputFile);
-  const programIR = buildProgramIR(options.inputFile, sourceText);
-  return generateLibdefStubs(options.inputFile, programIR.imports, options.outDir);
 }

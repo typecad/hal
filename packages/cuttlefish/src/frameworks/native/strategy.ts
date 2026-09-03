@@ -360,6 +360,14 @@ export class NativeStrategy implements PlatformStrategy {
       "    readLine(): string;",
       "    readCharacter(): string;",
       "  }",
+      "",
+      "  // Host timers — real OS threads back these on the native (host) target",
+      "  // only. Embedded targets have no JS-named timers: periodic work is a",
+      "  // Thread.",
+      "  declare function setInterval(handler: () => void, timeout?: number): number;",
+      "  declare function setTimeout(handler: () => void, timeout?: number): number;",
+      "  declare function clearInterval(id: number): void;",
+      "  declare function clearTimeout(id: number): void;",
     ];
   }
 

@@ -17,9 +17,8 @@ export function printHelp(): void {
   console.log(`  cuttlefish create [name] [options]`);
   console.log(`  cuttlefish build [options]`);
   console.log(`  cuttlefish preview [--config <path>] [--port <port>]`);
-  console.log(`  cuttlefish gen-libdefs <input.ts>`);
   console.log(`  cuttlefish gen-decls <input.cpp|--all <directory>>`);
-  console.log(`  cuttlefish map-error <mapFile> [options]`);
+  console.log(`  cuttlefish board sync [zephyr-base]            Rebuild the board catalog from your Zephyr tree (after west update)`);
   console.log(`  cuttlefish board regen                          Regenerate the project-local board module (.cuttlefish/board.ts + board.json)`);
   console.log(`  cuttlefish doctor                              Check the active framework's environment (e.g. toolchain + board core)`);
   console.log(`  cuttlefish licenses [--all] [--strict]          Scan this project's libraries for SPDX licenses (--all: every installed library)`);
@@ -145,15 +144,9 @@ export function printHelp(): void {
   console.log(`                          Interactive wizard (also with --board on a terminal;`);
   console.log(`                          piped/CI runs are non-interactive).`);
   console.log();
-  console.log(`  --target, -t <id>       Target platform (native, esp32-devkit, blackpill-f411ce, ...)`);
+  console.log(`  --target, -t <id>       Target platform (native, or any catalog board)`);
   console.log();
   console.log(`  --board, -b <id>        Alias for --target`);
-  console.log();
-  console.log(`  --mcu <id>              Bare-MCU target, no board package (stm32f411,`);
-  console.log(`                          esp32s3, ...) — programs bare silicon via the soc registry`);
-  console.log();
-  console.log(`  --zephyr-board <name>   Existing Zephyr board for --mcu Zephyr targets;`);
-  console.log(`                          omit to generate a custom board for the chip`);
   console.log();
   console.log(`  --framework, -f <pkg>   Framework (zephyr, native)`);
   console.log();
@@ -180,7 +173,6 @@ export function printHelp(): void {
   console.log(`  cuttlefish create my-project --target blackpill-f411ce`);
   console.log();
   console.log(chalk.gray(`  # Custom STM32F411 hardware — generated Zephyr board`));
-  console.log(`  cuttlefish create my-board --mcu stm32f411`);
   console.log();
   console.log(chalk.gray(`  # Build using config entry point`));
   console.log(`  cuttlefish build --compile --upload --port COM4`);
@@ -208,12 +200,6 @@ export function printHelp(): void {
   console.log();
   console.log(chalk.gray(`  # Watch and auto-compile`));
   console.log(`  cuttlefish main.ts --framework @typecad/framework-zephyr --watch --compile --build-target blackpill_f411ce/stm32f411xe`);
-  console.log();
-  console.log(chalk.gray(`  # Generate library definitions from imports`));
-  console.log(`  cuttlefish gen-libdefs src/sensor.ts`);
-  console.log();
-  console.log(chalk.gray(`  # Map a C++ error to TypeScript source`));
-  console.log(`  cuttlefish map-error .build/main.cpp.map --line 42 --column 5 --message "undefined reference"`);
   console.log();
 }
 
@@ -403,9 +389,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
 
     const target = readFirstFlagValue(argv, ["--target", "-t"])
       ?? readFirstFlagValue(argv, ["--board", "-b"]);
-    const mcu = readFirstFlagValue(argv, ["--mcu"]);
     const framework = readFirstFlagValue(argv, ["--framework", "-f"]);
-    const zephyrBoard = readFirstFlagValue(argv, ["--zephyr-board"]);
     const baudRaw = readFirstFlagValue(argv, ["--baud"]);
     const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir", "-o"]);
     const noStarter = argv.includes("--no-starter");
@@ -420,8 +404,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       probe: probeFlag,
       projectName,
       target,
-      mcu,
-      zephyrBoard,
       baud,
       framework,
       noStarter,
@@ -429,10 +411,6 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       port: portFlag,
       outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
     };
-  }
-
-  if (firstArg === "create-board") {
-    throw new Error(`The 'create-board' command has been removed. Board scaffolding is now in @typecad/create.`);
   }
 
   // build subcommand — entry point comes from cuttlefish.config.ts
@@ -507,13 +485,21 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
   }
 
   // board subcommand — project-local board module management
-  // (regen: re-emit .cuttlefish/board.ts + board.json from the framework's
-  // board data pack — the refresh path after a pack/engine bump).
+  // (sync: rebuild the board catalog overlay from the user's Zephyr tree —
+  // the refresh path after `west update`; regen: re-emit
+  // .cuttlefish/board.ts + board.json from the active catalog).
   if (firstArg === "board") {
     const sub = argv[3];
+    if (sub === "sync") {
+      // Optional positional: an explicit Zephyr checkout to sync from.
+      const positional = argv.slice(4).find((a) => !a.startsWith("-"));
+      return { command: "board", subcommand: "sync", zephyrBase: positional };
+    }
     if (sub !== "regen") {
       throw new Error(
-        "Usage: cuttlefish board regen — regenerate .cuttlefish/board.ts + board.json for the config's board target.",
+        "Usage: cuttlefish board <sync|regen> — 'sync' rebuilds the board catalog from your " +
+          "Zephyr tree, 'regen' regenerates .cuttlefish/board.ts + board.json for the config's " +
+          "board target.",
       );
     }
     return { command: "board", subcommand: "regen" };
@@ -583,10 +569,8 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
     };
   }
 
-  // Named subcommands
-  if (firstArg === "gen-libdefs" || firstArg === "gen-decls" || firstArg === "map-error") {
-    const command = firstArg;
-
+  // gen-decls subcommand — generate .d.ts from C++ files
+  if (firstArg === "gen-decls") {
     const emitFlag = readFirstFlagValue(argv, ["--emit"]);
     const targetFlag = readFirstFlagValue(argv, ["--target"]);
     const outDir = readFirstFlagValue(argv, ["--outDir", "--out-dir"]);
@@ -597,140 +581,46 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
     const target: TargetProfile = targetFlag ?? "generic";
     const emitMaps = emitMapsFlag === undefined ? true : emitMapsFlag !== "false";
     const platformContext: PlatformContext = {
-    architecture: buildTarget?.split(":")?.[1]?.toLowerCase(),
-    frameworkData: { buildTarget },
-  };
+      architecture: buildTarget?.split(":")?.[1]?.toLowerCase(),
+      frameworkData: { buildTarget },
+    };
 
-    if (command === "map-error") {
-      const mapFile = argv[3];
-      if (!mapFile) {
-        throw new Error("Missing source map path for map-error.");
+    const allFlag = argv.includes("--all");
+
+    // The positional path may sit at argv[3] or argv[4] depending on whether
+    // --all precedes or follows it. Scan argv starting after the subcommand
+    // name (argv[2]) for the first token that is not a flag and not a known
+    // flag's value. This mirrors the default-pipeline approach of "first
+    // non-flag token wins".
+    const valueFlags = new Set([
+      "--emit", "--target", "--outDir", "--out-dir", "--emit-maps", "--build-target",
+    ]);
+    let inputPath: string | undefined;
+    for (let i = 3; i < argv.length; i++) {
+      const tok = argv[i];
+      if (valueFlags.has(tok)) {
+        // Value-consuming flag: skip its value (if any) so it isn't mistaken
+        // for the positional path.
+        if (i + 1 < argv.length) { i++; }
+        continue;
       }
-
-      const cppLineRaw = readFirstFlagValue(argv, ["--line", "--cpp-line"]);
-      if (!cppLineRaw || Number.isNaN(Number(cppLineRaw))) {
-        throw new Error("map-error requires --line <number>.");
+      if (tok.startsWith("-")) {
+        continue; // boolean flag (e.g. --all) or unknown flag — ignore
       }
-
-      const cppColumnRaw = readFirstFlagValue(argv, ["--column", "--cpp-column"]);
-      const cppFile = readFirstFlagValue(argv, ["--cpp-file"]);
-      const message = readFirstFlagValue(argv, ["--message"]);
-
-      return {
-        command,
-        emitMode,
-        target,
-        outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
-        emitMaps,
-        noTranspile: false,
-        compile: false,
-        upload: false,
-        monitor: false,
-        watch: false,
-        baud: 9600,
-        platformContext,
-        mapFile: path.resolve(process.cwd(), mapFile),
-        cppFile: cppFile ? path.resolve(process.cwd(), cppFile) : undefined,
-        cppLine: Number(cppLineRaw),
-        cppColumn: cppColumnRaw ? Number(cppColumnRaw) : 1,
-        message,
-      };
+      inputPath = tok;
+      break;
     }
 
-    // gen-decls - generate .d.ts from C++ files
-    if (command === "gen-decls") {
-      const allFlag = argv.includes("--all");
-      const componentsFlag = argv.includes("--components");
-
-      if (allFlag && componentsFlag) {
-        throw new Error(
-          "gen-decls: --components and --all are mutually exclusive. Use one or the other.",
-        );
-      }
-
-      // The positional path may sit at argv[3] or argv[4] depending on whether
-      // --all precedes or follows it. Scan argv starting after the subcommand
-      // name (argv[2]) for the first token that is not a flag and not a known
-      // flag's value. This mirrors the default-pipeline approach of "first
-      // non-flag token wins".
-      const booleanFlags = new Set(["--all", "--components"]);
-      const valueFlags = new Set([
-        "--emit", "--target", "--outDir", "--out-dir", "--emit-maps", "--build-target",
-      ]);
-      let inputPath: string | undefined;
-      for (let i = 3; i < argv.length; i++) {
-        const tok = argv[i];
-        if (valueFlags.has(tok)) {
-          // Value-consuming flag: skip its value (if any) so it isn't mistaken
-          // for the positional path.
-          if (i + 1 < argv.length) { i++; }
-          continue;
-        }
-        if (tok.startsWith("-")) {
-          continue; // boolean flag (e.g. --all) or unknown flag — ignore
-        }
-        inputPath = tok;
-        break;
-      }
-
-      // --components mode: scan managed_components/ + components/ declared in
-      // cuttlefish.config.ts. Falls back to cwd when no path is given.
-      if (componentsFlag) {
-        const componentsDir = inputPath || process.cwd();
-        return {
-          command: "gen-decls",
-          inputFile: undefined,
-          emitMode,
-          target,
-          outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
-          emitMaps,
-          noTranspile: false,
-          compile: false,
-          upload: false,
-          monitor: false,
-          watch: false,
-          baud: 9600,
-          platformContext,
-          scanDir: undefined,
-          componentsDir: path.resolve(process.cwd(), componentsDir),
-        } as CommandLineOptions;
-      }
-
-      if (!inputPath && !allFlag) {
-        throw new Error("Missing input C++ file path. Use: gen-decls <file.cpp> or gen-decls --all <directory>");
-      }
-
-      const scanDir = allFlag ? (inputPath || process.cwd()) : undefined;
-      const inputFile = allFlag ? undefined : inputPath;
-
-      return {
-        command: "gen-decls",
-        inputFile: inputFile ? path.resolve(process.cwd(), inputFile) : undefined,
-        emitMode,
-        target,
-        outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
-        emitMaps,
-        noTranspile: false,
-        compile: false,
-        upload: false,
-        monitor: false,
-        watch: false,
-        baud: 9600,
-        platformContext,
-        // Custom fields for gen-decls
-        scanDir: scanDir ? path.resolve(process.cwd(), scanDir) : undefined,
-      } as CommandLineOptions;
+    if (!inputPath && !allFlag) {
+      throw new Error("Missing input C++ file path. Use: gen-decls <file.cpp> or gen-decls --all <directory>");
     }
 
-    // gen-libdefs
-    const inputFile = argv[3];
-    if (!inputFile) {
-      throw new Error("Missing input TypeScript file path.");
-    }
+    const scanDir = allFlag ? (inputPath || process.cwd()) : undefined;
+    const inputFile = allFlag ? undefined : inputPath;
 
     return {
-      command,
-      inputFile: path.resolve(process.cwd(), inputFile),
+      command: "gen-decls",
+      inputFile: inputFile ? path.resolve(process.cwd(), inputFile) : undefined,
       emitMode,
       target,
       outDir: outDir ? path.resolve(process.cwd(), outDir) : undefined,
@@ -742,7 +632,8 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
       watch: false,
       baud: 9600,
       platformContext,
-    };
+      scanDir: scanDir ? path.resolve(process.cwd(), scanDir) : undefined,
+    } as CommandLineOptions;
   }
 
   // Default: firstArg is the input file (unless it's a flag like --expect)

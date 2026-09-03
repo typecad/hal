@@ -12,7 +12,7 @@ When you assign an `Owned` variable to another variable or pass it to a function
 
 ### Example: Ownership Transfer
 ```typescript
-import { Owned } from '@typecad/hal';
+// Owned<T> / Shared<T> / Mutable<T> are ambient global types — no import needed.
 
 const buffer: Owned<Uint8Array> = new Uint8Array([1, 2, 3]);
 
@@ -63,4 +63,4 @@ const view: Shared = src; // Zero-copy borrow
 ## Best Practices
 1. **Pass by Owned** only when the function needs to store the data long-term or destroy it.
 2. **Pass by Shared** for temporary reading (most common).
-3. **Pass by Mut** for temporary in-place modification.
+3. **Pass by Mutable** for temporary in-place modification.

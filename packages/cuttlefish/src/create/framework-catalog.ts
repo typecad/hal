@@ -99,38 +99,10 @@ const FRAMEWORK_TOOLCHAIN: Record<string, string> = {
 };
 
 /**
- * Zephyr board target for each cuttlefish board id that supports Zephyr. These
- * are the full qualified targets passed to `west build -b <target>` (framework-
- * zephyr's chipForTarget splits on '/' and takes the board id, so the qualified
- * form resolves correctly there too). Zephyr 4.3+ REQUIRES the qualifier for
- * multi-core ESP32 boards — the bare id (e.g. 'esp32s3_devkitc') is rejected
- * with "Board qualifiers ... not found". procpu is the main application core.
+ * Zephyr build targets come straight from the board catalog (the pack or a
+ * local `cuttlefish board sync` overlay) — every catalog board carries its
+ * own qualified `west build -b` target. There is no curated id→target map.
  */
-const ZEPHYR_BOARD_IDS: Record<string, string> = {
-  "esp32-devkit": "esp32_devkitc/esp32/procpu",
-  esp32s3: "esp32s3_devkitc/esp32s3/procpu",
-  // Single-variant RISC-V board — the bare id is also accepted, but the
-  // qualified form is kept for consistency (verified against Zephyr 4.3
-  // boards/espressif/esp32c3_devkitm).
-  esp32c3: "esp32c3_devkitm/esp32c3",
-  // hpcore/lpcore cpucluster variants — the qualified form is required (the
-  // bare id is rejected); hpcore is the application core.
-  esp32c6: "esp32c6_devkitc/esp32c6/hpcore",
-  // First STM32 target — WeAct Black Pill V2.0 (STM32F411CEU6). Single
-  // variant; qualified for consistency with every other catalog target.
-  "blackpill-f411ce": "blackpill_f411ce/stm32f411xe",
-  // First Microchip SAM target — Arduino Nano 33 IoT (SAMD21G18A).
-  // Single variant; qualified for consistency with every other target.
-  "nano-33-iot": "arduino_nano_33_iot/samd21g18a",
-  // nRF52840 (single core), base (non-sense) variant.
-  "xiao-nrf52840": "xiao_ble/nrf52840",
-  // Raspberry Pi Pico (RP2040) — single-soc board, bare name accepted.
-  rp2040: "rpi_pico",
-  // Raspberry Pi Pico 2 (RP2350A) — the m33 cpucluster qualifier is required
-  // (the board ships hazard3 RISC-V and m33 variants with no default); M33
-  // matches the ARM toolchain the rest of the Zephyr targets use.
-  rp2350: "rpi_pico2/rp2350a/m33",
-};
 
 /**
  * Probe method a board offers, for `cuttlefish create`'s wizard (which runs
@@ -185,7 +157,8 @@ export function frameworkTargetProfile(
   }
   const toolchainType = FRAMEWORK_TOOLCHAIN[frameworkId];
   if (frameworkId === "zephyr") {
-    return { buildTarget: ZEPHYR_BOARD_IDS[target.id], toolchainType };
+    // The target input's buildTarget IS the qualified catalog identifier.
+    return { buildTarget: target.buildTarget, toolchainType };
   }
   // Unlisted framework → pass the board's stored build target through.
   return { buildTarget: target.buildTarget, toolchainType };

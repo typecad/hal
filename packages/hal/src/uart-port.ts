@@ -41,7 +41,8 @@ export class UART {
 
   /** Write a string followed by a newline. */
   println(data: string): void {
-    uartPollWrite(this._port, this._baud, data + '\n');
+    uartPollWrite(this._port, this._baud, data);
+    uartPollWrite(this._port, this._baud, "\n");
   }
 
   /** Bytes waiting in the receive ring. Arms the RX interrupt on first

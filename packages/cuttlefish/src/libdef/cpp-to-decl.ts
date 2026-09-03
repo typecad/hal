@@ -9,7 +9,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseHeader, type ParsedClass } from "./header-parser.js";
 import { buildClassIndex, BaseClassResolver } from "./base-class-resolver.js";
-import { writeText } from "../utils/fs.js";
 
 interface CppMethod {
   name: string;
@@ -670,82 +669,4 @@ function generateDeclWithResolver(
     fs.writeFileSync(outPath, declaration, "utf8");
   }
   return outPath;
-}
-
-// ─── ESP-IDF component dispatch ───────────────────────────────────────────
-//
-// Picks the C or C++ emitter per header based on whether it declares classes.
-// ESP-IDF components are mostly C (free functions + typedefs); Arduino-style
-// libraries are C++ classes. Spec:
-// docs/superpowers/specs/2026-07-19-framework-esp32-components-design.md
-
-import { generateCDecl } from "./c-to-decl.js";
-import { discoverComponentHeaders, type ComponentScanRoots } from "./component-discovery.js";
-
-/** Heuristic: does this header declare any C++ classes? */
-function hasClasses(headerPath: string): boolean {
-  try {
-    const content = fs.readFileSync(headerPath, "utf8");
-    return parseHeader(content).length > 0;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Generate .d.ts declarations for every declared component's headers,
- * picking the C or C++ emitter per header based on whether it declares classes.
- *
- * Returns the list of created/updated .d.ts paths (headers that produced no
- * declarations are skipped).
- */
-export function generateComponentDeclsForProject(
-  projectDir: string,
-  roots: ComponentScanRoots,
-): string[] {
-  const headers = discoverComponentHeaders(projectDir, roots);
-  const created: string[] = [];
-  for (const discovered of headers) {
-    // Output path: <outputDir>/<basename>.d.ts. For managed/local this is
-    // alongside the header; for builtins it's the project-local cache dir.
-    const baseName = path.basename(discovered.path).replace(/\.h$/i, '');
-    const outputPath = path.join(discovered.outputDir, baseName + '.d.ts');
-    const out = hasClasses(discovered.path)
-      ? generateDecl(discovered.path, outputPath)
-      : generateCDecl(discovered.path, outputPath);
-    if (out) {
-      created.push(out);
-      // Write a sibling .libdef.json so the import → #include resolver picks
-      // up the real (case-preserving) header name. Without this, the resolver
-      // falls back to toPascalCase(moduleKey) + ".h" — fine for platform libs
-      // (Adafruit_GFX → Adafruit_GFX.h, resolved separately) but wrong for
-      // ESP-IDF component headers (esp_wifi → <EspWifi.h>, not <esp_wifi.h>).
-      // The libdef declares the actual header basename ("esp_wifi.h"), which
-      // is the ground truth — the generator just read the file.
-      writeComponentLibdef(discovered.path, outputPath);
-    }
-  }
-  return created;
-}
-
-/**
- * Write `<d.ts-basename>.libdef.json` next to a generated component `.d.ts`,
- * pointing the import → #include resolver at the actual source header.
- *
- * The libdef `module` field is the lowercased basename (matches what
- * `toModuleKey()` produces from an import specifier), and `include` is the
- * case-preserving `<basename>.h` — quote-wrapped because component headers
- * are project-local (resolved via the include path), not system angle-bracket
- * includes. Matches the local-header convention in `resolveLocalModuleHeader`.
- */
-function writeComponentLibdef(sourceHeaderPath: string, dtsOutputPath: string): void {
-  const headerBaseName = path.basename(sourceHeaderPath); // e.g. "esp_wifi.h"
-  const dtsBaseName = path.basename(dtsOutputPath, '.d.ts'); // e.g. "esp_wifi"
-  const libdefPath = path.join(path.dirname(dtsOutputPath), `${dtsBaseName}.libdef.json`);
-  const libdef = {
-    module: dtsBaseName.toLowerCase(),
-    include: `"${headerBaseName}"`,
-    source: sourceHeaderPath,
-  };
-  writeText(libdefPath, JSON.stringify(libdef, null, 2) + '\n');
 }

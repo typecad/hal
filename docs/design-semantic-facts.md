@@ -1,7 +1,12 @@
 # SemanticFacts Layer — Design Plan
 
-Status: **Proposed** (awaiting review)
-Scope: Refactor of semantic-gate detection only. No emitter changes. No IR rewrite.
+Status: **Implemented** (Phases 0–3 landed; see
+`packages/cuttlefish/src/orchestrator/semantic-facts.ts`,
+`packages/cuttlefish/src/orchestrator/semantic-facts-verifier.ts`, and
+`runSemanticGates` in `packages/cuttlefish/src/orchestrator/type-checker.ts`).
+Line numbers below refer to the pre-refactor snapshot of
+`type-checker.ts` and are kept for historical context.
+Original scope: Refactor of semantic-gate detection only. No emitter changes. No IR rewrite.
 Target: `packages/cuttlefish/src/orchestrator/type-checker.ts` and one new module.
 
 ---

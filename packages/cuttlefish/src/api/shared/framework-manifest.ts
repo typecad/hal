@@ -25,7 +25,7 @@ import { z } from 'zod';
 // validated by the manifest validator like any core category. A framework that
 // does not lower an extended category simply omits it.
 const HAL_CATEGORIES = [
-  'gpio', 'pwm', 'adc', 'dac', 'interrupts', 'timing', 'power',
+  'gpio', 'pwm', 'adc', 'dac', 'interrupts', 'timing',
   'i2c', 'spi', 'uart', 'board', 'wdt', 'wifi', 'http',
   'mqtt', 'display',
 ] as const;
@@ -194,20 +194,15 @@ export type FrameworkManifest = z.infer<typeof FrameworkManifestSchema>;
  * polyfill id that backs it.
  *
  * The manifest validator uses this to verify `polyfill`-declared ops: if a
- * manifest declares `timing.set_interval: 'polyfill'`, the framework's
- * `polyfills.emitted` list must include the polyfill id named here.
+ * manifest declares an op as `polyfill`, the framework's `polyfills.emitted`
+ * list must include the polyfill id named here.
  *
  * Keep in sync with the transpiler's lowering routes — when a new op kind
  * starts being routed via a polyfill instead of the HAL resolver, add it
  * here. The set is intentionally small and stable: polyfill-routed ops are
  * the exception, not the rule.
  */
-export const POLYFILL_BACKED_OPS: Readonly<Record<string, string>> = {
-  'timing.set_interval': 'timer_methods',
-  'timing.set_timeout': 'timer_methods',
-  'timing.clear_interval': 'timer_methods',
-  'timing.clear_timeout': 'timer_methods',
-};
+export const POLYFILL_BACKED_OPS: Readonly<Record<string, string>> = {};
 
 /**
  * Validates and returns a FrameworkManifest. Frameworks call this from their

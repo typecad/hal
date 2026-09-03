@@ -9,8 +9,8 @@
 // framework narrowing (the fallback maps unknowns to zephyr anyway).
 // ---------------------------------------------------------------------------
 
-import { BOARD_DATA } from './board-catalog.generated.js';
-import type { BoardDataEntry } from './board-catalog.generated.js';
+import type { BoardDataEntry } from '../board-catalog/types.js';
+import { activeBoardCatalog, findBoardInCatalog } from '../board-catalog/index.js';
 import type { KnownTarget } from './scaffold.js';
 
 /** A coarse architecture id derived from a Zephyr soc name. Used only for
@@ -39,17 +39,11 @@ export function architectureFromSoc(soc: string): string {
  *  Bare names with multiple variants return the first (deterministic —
  *  the pack is keyed in directory-walk order). */
 export function findPackBoard(idOrTarget: string): { identifier: string; name: string; vendor: string; soc: string; probeMethods?: BoardDataEntry['probeMethods'] } | undefined {
+  const data = activeBoardCatalog();
   const raw = idOrTarget.trim();
-  // Exact case first — revision qualifiers are case-sensitive (@A).
-  const exact = BOARD_DATA[raw] ?? BOARD_DATA[raw.toLowerCase()];
-  if (exact) {
-    return { identifier: exact.identifier, name: exact.name, vendor: exact.vendor, soc: exact.identifier.split('/')[1], probeMethods: exact.probeMethods };
-  }
-  const t = raw.toLowerCase();
-  // Bare board id or board/soc prefix: first matching key.
-  const prefix = Object.keys(BOARD_DATA).find((k) => k === t || k.startsWith(t + '/'));
-  if (prefix) {
-    return { identifier: BOARD_DATA[prefix].identifier, name: BOARD_DATA[prefix].name, vendor: BOARD_DATA[prefix].vendor, soc: prefix.split('/')[1], probeMethods: BOARD_DATA[prefix].probeMethods };
+  const entry = findBoardInCatalog(data, raw);
+  if (entry) {
+    return { identifier: entry.identifier, name: entry.name, vendor: entry.vendor, soc: entry.identifier.split('/')[1], probeMethods: entry.probeMethods };
   }
   return undefined;
 }

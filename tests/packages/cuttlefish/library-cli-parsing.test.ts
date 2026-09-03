@@ -77,7 +77,14 @@ describe('cuttlefish board argument parsing', () => {
     expect(opts).toEqual({ command: 'board', subcommand: 'regen' });
   });
 
-  it('requires the regen subcommand', () => {
+  it('parses board sync, with an optional explicit Zephyr base', () => {
+    const opts = parseCommandLine(['node', 'cuttlefish', 'board', 'sync']);
+    expect(opts).toEqual({ command: 'board', subcommand: 'sync', zephyrBase: undefined });
+    const withPath = parseCommandLine(['node', 'cuttlefish', 'board', 'sync', 'C:/zephyrproject/zephyr']);
+    expect(withPath).toEqual({ command: 'board', subcommand: 'sync', zephyrBase: 'C:/zephyrproject/zephyr' });
+  });
+
+  it('requires a known board subcommand', () => {
     expect(() => parseCommandLine(['node', 'cuttlefish', 'board'])).toThrow(/Usage: cuttlefish board/);
     expect(() => parseCommandLine(['node', 'cuttlefish', 'board', 'frobnicate'])).toThrow(/Usage: cuttlefish board/);
   });

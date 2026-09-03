@@ -44,10 +44,14 @@ Usage: bash install.sh [options]
                    Downloads/creates nothing.
   --no-sdk         Skip the Zephyr SDK download (env + workspace only).
   --no-workspace   Skip west init/update (env + SDK only).
-  --modify         SDK platforms only: re-run selection, add/remove toolchains.
-                   Implies --no-workspace (env/workspace untouched).
-  --platforms SEL  Comma-separated platform groups (arm,esp32,riscv,x86,aarch64)
-                   or 'all' for the full bundle. Default: all.
+  --modify         SDK platforms only: re-run selection and ADD the selected
+                   platforms with missing toolchains. Implies --no-workspace.
+  --prune          With --modify: also DELETE toolchains of platforms not in
+                   the selection (reclaim disk space). Without it, --modify
+                   is purely additive.
+  --platforms SEL  Comma-separated platform groups (arm,esp32,riscv,arc,rx,x86,aarch64)
+                   or 'all' for the full bundle. Default: all — RECOMMENDED:
+                   every board in the data pack builds as-is.
   --env-name NAME  Override the conda env name (default: zephyr).
   --sdk-version V  Override the Zephyr SDK version (default: pinned in versions.env).
   -h, --help       Show this help.
@@ -65,6 +69,7 @@ while [ $# -gt 0 ]; do
     --no-sdk)         DO_SDK=0 ;;
     --no-workspace)   DO_WORKSPACE=0 ;;
     --modify|-m)      DO_WORKSPACE=0 ;;
+    --prune)          PRUNE=1 ;;
     --platforms)      PLATFORMS="${2:?--platforms needs a value}"; shift ;;
     --env-name)       ENV_NAME_OVERRIDE="${2:?--env-name needs a value}"; shift ;;
     --sdk-version)    SDK_VERSION_OVERRIDE="${2:?--sdk-version needs a value}"; shift ;;
@@ -75,6 +80,7 @@ while [ $# -gt 0 ]; do
 done
 
 : "${PLATFORMS:=all}"
+export PRUNE="${PRUNE:-0}"
 
 # --- load pinned versions + library functions -------------------------------
 # shellcheck source=versions.env

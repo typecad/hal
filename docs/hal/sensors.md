@@ -9,14 +9,14 @@ Cuttlefish ships a generic sensor interface that covers every Zephyr sensor driv
 Construct a sensor from a part token and a bus device, then `fetch()` a sample and `get()` channels from it:
 
 ```typescript
-import { I2C0, SPI0, PA4 } from '@typecad/board';
+import { I2C0, SPI0, ANY_PIN } from '@typecad/board';
 import { Sensor, SENSOR, CHAN } from '@typecad/hal';
 
 // SHT3X temp/humidity breakout at I2C address 0x44
 const sht3x = new Sensor(SENSOR.sensirion_sht3xd, I2C0.device(0x44));
 
-// BME280 wired to SPI with chip-select on PA4
-const bme = new Sensor(SENSOR.bosch_bme280, SPI0.device(PA4));
+// BME280 wired to SPI with a chip-select pin
+const bme = new Sensor(SENSOR.bosch_bme280, SPI0.device(ANY_PIN));
 
 while (true) {
   sht3x.fetch();                                   // sensor_sample_fetch

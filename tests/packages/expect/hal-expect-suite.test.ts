@@ -19,7 +19,8 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as path from 'node:path';
 import { preprocess, zephyrShim } from '../../../packages/expect/src/host/preprocessor';
 import { resolveChipFromBoard } from '../../../packages/framework-zephyr/src/chips/resolve';
-import { getActiveChip, setActiveChip, XIAO_BLE } from '../../../packages/framework-zephyr/src/chips/index';
+import { getActiveChip, setActiveChip } from '../../../packages/framework-zephyr/src/chips/index';
+import { TEST_CHIP, TEST_CHIP_CONSTANTS } from '../framework-zephyr/helpers/test-chip';
 import { ZephyrStrategy } from '../../../packages/framework-zephyr/src/strategy';
 import { transpile, expectCppContains, type TranspileResult } from '../../setup';
 import type { BoardConstants } from '../../../packages/cuttlefish/src/api/shared/index';
@@ -53,12 +54,12 @@ function suiteProgram(f: {
 }): string {
   return `
 import { describe, done } from '@typecad/expect';
-import { GPIO, PWM, ADCChannel, Watchdog, I2CTarget, SPITarget, Thread, Time } from '@typecad/hal';
+import { GPIO, PWM, ADC, Watchdog, I2CTarget, SPITarget, Thread, Time } from '@typecad/hal';
 
 const led = new GPIO(${f.ledPin}, GPIO.OUTPUT);
 const button = new GPIO(${f.buttonPin}, GPIO.INPUT | GPIO.PULL_UP);
 const dimmer = new PWM(${f.pwmPin}, { periodNs: 20000000 });
-const sense = new ADCChannel(${f.adcPin});
+const sense = new ADC(${f.adcPin});
 const dog = new Watchdog(2500);
 const sht = new I2CTarget('${f.i2cBus}', 0x44);
 const flash = new SPITarget('${f.spiBus}', ${f.spiCs}, { hz: 10000000 });
@@ -96,7 +97,7 @@ describe('hal expect suite — protocol (XIAO facts)', () => {
     result = dryRun(suiteProgram({
       ledPin: 26, buttonPin: 3, pwmPin: 17, adcPin: 2,
       i2cBus: 'I2C1', spiBus: 'SPI2', spiCs: 10,
-    }));
+    }), TEST_CHIP_CONSTANTS);
   }, 180_000);
 
   it('the expect preprocessor protocol survived transpilation', () => {
@@ -129,7 +130,7 @@ describe('hal expect suite — protocol (XIAO facts)', () => {
       // PWM: construction period + one set_pulse (XIAO pwm-led0 spec).
       'pwm_set_dt(&__tc_pwm_pwm_led0, 20000000, 0)',
       'pwm_set_pulse_dt(&__tc_pwm_pwm_led0',
-      // ADCChannel: lazy inline setup against the descriptor pair.
+      // ADC: lazy inline setup against the descriptor pair.
       '__tc_adct2_done',
       'adc_channel_setup(__tc_adc_dev',
       // Watchdog: install + setup.

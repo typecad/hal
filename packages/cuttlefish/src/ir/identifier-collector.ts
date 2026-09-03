@@ -283,15 +283,21 @@ export function collectStatementIdentifiers(statement: StatementIR | null | unde
       }
       break;
 
-    case "assign":
+    case "assign": {
       identifiers.add(statement.target);
+      // An element-access target (`buf[i] = x`) references the base array;
+      // extract it so the buffer's var_decl survives tree-shaking (the raw
+      // `buf[i]` string never matches a declaration named `buf`).
+      addElementAccessBase(statement.target, identifiers);
       for (const id of collectExpressionIdentifiers(statement.value)) {
         identifiers.add(id);
       }
       break;
+    }
 
     case "update":
       identifiers.add(statement.target);
+      addElementAccessBase(statement.target, identifiers);
       break;
 
     case "return":
@@ -464,6 +470,12 @@ export function collectStatementIdentifiers(statement: StatementIR | null | unde
  * This ensures the call graph tracks function references embedded in
  * semantic HAL ops (e.g. the handler name in interrupt.attach).
  */
+/** Record the base identifier of an element-access lvalue (`buf[i]` → `buf`). */
+function addElementAccessBase(target: string, identifiers: Set<string>): void {
+  const base = /^([A-Za-z_][A-Za-z0-9_]*)\s*\[/.exec(target);
+  if (base) identifiers.add(base[1]);
+}
+
 function collectHALOpIdentifiers(op: HALOpIR): Set<string> {
   const identifiers = new Set<string>();
   switch (op.operation) {
@@ -499,20 +511,20 @@ function collectHALOpIdentifiers(op: HALOpIR): Set<string> {
     }
     // Other HAL ops have only numeric/literal fields — no identifier references
   }
-  // wifi.* / http.* / mqtt.* ops carry resolved C++ expression texts in their
-  // string fields (e.g. wifi.connect ssid: `WIFI_SSID` — a top-level const, or
-  // a quoted literal). Scan every string field for identifiers so referenced
-  // globals survive tree-shaking; quoted literals are skipped.
-  if (op.operation.startsWith("wifi.") || op.operation.startsWith("http.")
-      || op.operation.startsWith("mqtt.")) {
-    for (const value of Object.values(op)) {
-      if (typeof value !== "string" || value === op.operation) continue;
-      if (/^".*"$/.test(value.trim())) continue;
-      const matches = value.match(/[A-Za-z_][A-Za-z0-9_]*/g);
-      if (matches) {
-        for (const match of matches) {
-          identifiers.add(match);
-        }
+  // HAL ops can carry resolved C++ expression texts in their string fields —
+  // not just wifi/http/mqtt (e.g. wifi.connect ssid: `WIFI_SSID`, a top-level
+  // const) but also peripheral lowerings that inline a user buffer into the
+  // emitted code (spi.transceive rx: `static_cast<const void*>(id)`). Scan
+  // every string field of every op for identifiers so referenced variables
+  // survive tree-shaking; quoted literals are skipped. Over-matching is safe
+  // (the reachability set just keeps a name no var_decl uses).
+  for (const value of Object.values(op)) {
+    if (typeof value !== "string" || value === op.operation) continue;
+    if (/^".*"$/.test(value.trim())) continue;
+    const matches = value.match(/[A-Za-z_][A-Za-z0-9_]*/g);
+    if (matches) {
+      for (const match of matches) {
+        identifiers.add(match);
       }
     }
   }

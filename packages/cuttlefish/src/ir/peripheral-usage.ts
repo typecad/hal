@@ -326,17 +326,10 @@ function analyzeHALOp(op: HALOpIR, usage: PeripheralUsage): void {
     // PWM
     case 'pwm.set_pulse':
     case 'pwm.set_duty':
-    case 'pwm.set_period':
-    case 'pwm.tone': {
+    case 'pwm.set_period': {
       trackPinNumberAsName(op.pin, usage);
       usage.pwm = true;
       usage.pwmPinsUsed.add(op.pin);
-      break;
-    }
-
-    case 'pwm.get_frequency':
-    case 'pwm.get_resolution': {
-      trackPinNumberAsName(op.pin, usage);
       break;
     }
 

@@ -10,10 +10,7 @@
     "test:hw": "npm exec -- cuttlefish-test",
     "simulate": "vitest run sim/",
     "lint": "eslint --config .cuttlefish/eslint.config.mjs src/",
-    "dev": "cuttlefish build --watch",
-    "gen-decls": "cuttlefish gen-decls",
-    "gen-libdefs": "cuttlefish gen-libdefs",
-    "flash": "cuttlefish build --flash"
+    "dev": "cuttlefish build --watch"
   },
   "dependencies": {
     "@typecad/cuttlefish": "*",

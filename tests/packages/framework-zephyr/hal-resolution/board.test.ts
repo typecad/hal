@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { TEST_CHIP } from '../helpers/test-chip';
 import type { BoardConstants } from '@typecad/cuttlefish/api/shared';
 import { ZephyrStrategy } from '../../../../packages/framework-zephyr/src/strategy';
 import { lowerHalOp } from '../../../../packages/framework-zephyr/src/lowering/index';
 import { lowerBoard } from '../../../../packages/framework-zephyr/src/lowering/board';
 import { setActiveChip } from '../../../../packages/framework-zephyr/src/chips/index';
-import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
 
-setActiveChip(XIAO_BLE);
+setActiveChip(TEST_CHIP);
 
 // Board constant resolution on Zephyr mirrors framework-arduino: the lone HAL
 // op (board.resolve) is constant-folded at IR-build time, and the real

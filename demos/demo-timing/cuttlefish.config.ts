@@ -2,7 +2,7 @@
 // cuttlefish.config.ts — Time API showcase (Seeed XIAO nRF52840)
 //
 // Exercises the TS-flavored timing surface: Time.sleep/now/nowUs/busyWaitUs,
-// the setInterval polyfill, and a kernel Thread driving the LED off-main.
+// kernel Threads driving the LED blink and the beat logger off-main.
 //
 // Pipeline: cuttlefish build → out/src/main.cpp → west build → west flash.
 // ---------------------------------------------------------------------------

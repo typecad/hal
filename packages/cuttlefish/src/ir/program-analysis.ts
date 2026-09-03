@@ -14,6 +14,89 @@ import { loweredConsoleInCallback } from "./transformers/ui-callback-lowering.js
 import { watchPinSpecs, clickHandlers } from "./transformers/ui-call-resolver.js";
 import { canvasBindings } from "./transformers/canvas-lowering.js";
 import { getInputBindings, getListBindings } from "./transformers/ui-reactive.js";
+import { getTranspileResolvedHalOps } from "./build-ir-state.js";
+
+/**
+ * Map one HAL op name onto the peripheral usage flags its lowering requires.
+ * Called from three places: the hal-expr expression case, the hal-op statement
+ * case, and analyzeProgram's merge of transpile-resolved ops (ops baked into
+ * another HAL method's emit lines never appear as IR nodes, so without the
+ * merge their peripheral's init block + include were dropped — e.g.
+ * `sense.readMillivolts()` inside `USB0.writeLine(...)` compiled against a
+ * missing adc.h). Keep in sync with the per-strategy gating in the frameworks.
+ */
+function applyHalOpUsageFlags(
+  opName: string,
+  result: Pick<
+    ProgramAnalysisResult,
+    | 'usesGPIO' | 'usesDisplay' | 'usesDigitalRead' | 'usesPWM' | 'usesRmt'
+    | 'usesADC' | 'usesDAC' | 'usesWdt' | 'usesSPI' | 'usesI2C' | 'usesUart' | 'usesUsb'
+    | 'usedPolyfillHelpers'
+    | 'usesInterrupts' | 'usesPulse' | 'usesShift'
+    | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiScan'
+    | 'usesWifiQuery' | 'usesWifiConfig'
+    | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS'
+    | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesSensor'
+    | 'usesHwtimer' | 'usesCapacitive'
+  >,
+): void {
+  if (opName.startsWith("display.")) {
+    result.usesGPIO = true;
+    result.usesDisplay = true;
+  }
+  if (opName.startsWith("gpio."))      result.usesGPIO = true;
+  if (opName === "gpio.read") result.usesDigitalRead = true;
+  if (opName.startsWith("pwm."))       result.usesPWM = true;
+  if (opName.startsWith("rmt."))       result.usesRmt = true;
+  if (opName.startsWith("adc."))       result.usesADC = true;
+  if (opName.startsWith("dac."))       result.usesDAC = true;
+  if (opName.startsWith("wdt."))       result.usesWdt = true;
+  if (opName.startsWith("spi."))       result.usesSPI = true;
+  if (opName.startsWith("i2c."))       result.usesI2C = true;
+  if (opName.startsWith("uart."))      result.usesUart = true;
+  if (opName.startsWith("usb."))       result.usesUsb = true;
+  // Safety HAL ops (@typecad/safety) — map each op to the __tc_safety_*
+  // polyfill helper it triggers, so the mode-table and voter polyfills
+  // survive tree-shaking when actually used. Matches the resolveSafetyOp
+  // output naming. Cast through string because the HALOpIR operation union is
+  // closed and doesn't include safety.* ops (those are owned by the optional
+  // @typecad/safety package).
+  const safetyOpName = opName as string;
+  if (safetyOpName === "safety.record_pin_mode") {
+    result.usedPolyfillHelpers.add("__tc_safety_record_pin_mode");
+  }
+  if (safetyOpName === "safety.read_safe") {
+    result.usedPolyfillHelpers.add("__tc_safety_read_safe");
+  }
+  if (safetyOpName === "safety.write_verify") {
+    result.usedPolyfillHelpers.add("__tc_safety_write_verify");
+  }
+  if (opName.startsWith("interrupt.")) result.usesInterrupts = true;
+  if (opName.startsWith("pulse."))     result.usesPulse = true;
+  if (opName.startsWith("shift."))     result.usesShift = true;
+  if (opName.startsWith("wifi.")) {
+    result.usesWifi = true;
+    if (opName === "wifi.join" || opName === "wifi.connect_start" || opName === "wifi.disconnect") {
+      result.usesWifiConnect = true;
+      if (opName === "wifi.join") result.usesWifiConnectBlocking = true;
+    }
+    else if (opName.startsWith("wifi.scan")) result.usesWifiScan = true;
+    else if (opName === "wifi.is_connected" || opName === "wifi.local_ip" || opName === "wifi.rssi" || opName === "wifi.mac") result.usesWifiQuery = true;
+    else if (opName === "wifi.on_event") result.usesWifiConfig = true;
+  }
+  if (opName.startsWith("http."))      result.usesHttp = true;
+  if (opName.startsWith("ble."))       result.usesBle = true;
+  if (opName.startsWith("preferences.")) result.usesPreferences = true;
+  if (opName.startsWith("random."))    result.usesRandom = true;
+  if (opName.startsWith("fs."))        result.usesFS = true;
+  if (opName.startsWith("mdns."))      result.usesMdns = true;
+  if (opName.startsWith("mqtt."))      result.usesMqtt = true;
+  if (opName.startsWith("ota."))       result.usesOta = true;
+  if (opName.startsWith("temp."))      result.usesTemp = true;
+  if (opName.startsWith("sensor."))    result.usesSensor = true;
+  if (opName.startsWith("hwtimer.") || opName.startsWith("counter."))   result.usesHwtimer = true;
+  if (opName.startsWith("capacitive.")) result.usesCapacitive = true;
+}
 
 export interface ProgramAnalysisResult {
   hasConsoleCalls: boolean;
@@ -54,7 +137,6 @@ export interface ProgramAnalysisResult {
   usesUsb: boolean;
   usesSPI: boolean;
   usesI2C: boolean;
-  usesTone: boolean;
   /** map()/constrain() Arduino-API calls. framework-avr gates its native
    *  _native_map/_native_constrain helpers on these (they're dead code
    *  otherwise — no other internal caller references them). */
@@ -62,17 +144,13 @@ export interface ProgramAnalysisResult {
   usesConstrain: boolean;
   /** Comprehensive timing gate for the native millis() Timer0 ISR on AVR.
    *  True when the program directly uses millis/delay/micros, OR has hidden
-   *  consumers of the soft clock: setInterval/setTimeout (timerCallCount),
-   *  async functions (the runtime polls millis), or a mounted UI (per-frame
-   *  tick injected by the emitter, not present in user source). */
+   *  consumers of the soft clock: async functions (the runtime polls
+   *  millis), or a mounted UI (per-frame tick injected by the emitter,
+   *  not present in user source). */
   usesNativeTiming: boolean;
   hasSerialBegin: boolean;
   hasGenerators: boolean;
   usesStdMap: boolean;
-  /** Number of setInterval/setTimeout call sites in the program. Used to size
-   *  __tc_TimerRuntime::MAX_TIMERS to the observed count (floor 1) rather than
-   *  a blind constant, so a one-timer program links one slot, not eight. */
-  timerCallCount: number;
   /** True when any function is declared `async` — the async runtime polls
    *  millis() every pump even when no timing call appears in user source
    *  (Async.sleep lowers to a raw hal-op the text scanners can't see). */
@@ -86,7 +164,6 @@ export interface ProgramAnalysisResult {
   usesRmt: boolean;
   usesADC: boolean;
   usesDAC: boolean;
-  usesPower: boolean;
   usesWdt: boolean;
   usesInterrupts: boolean;
   usesPulse: boolean;
@@ -127,9 +204,6 @@ export interface ProgramAnalysisResult {
   usesHwtimer: boolean;
   /** Capacitive touch pins usage. Detected from capacitive.* ops. */
   usesCapacitive: boolean;
-  /** Worker offload usage. Detected from worker.* ops. Frameworks gate the
-   *  worker_runtime polyfill (and its per-framework backing) on this. */
-  usesWorker: boolean;
   /** Native/desktop: std::set usage (gates <set>). */
   usesSet: boolean;
   /** Native/desktop: std::algorithm usage (std::sort/find/transform etc., gates <algorithm>). */
@@ -154,7 +228,7 @@ const MATH_PATTERN = /\b(?:std::|Math\.)(floor|ceil|round|trunc|sqrt|pow|sin|cos
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'timerCallCount' | 'usesUart' | 'usesUsb' | 'usesSPI' | 'usesI2C' | 'usesTone' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesPower' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesSensor' | 'usesHwtimer' | 'usesCapacitive' | 'usesWorker' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
+  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'usesUart' | 'usesUsb' | 'usesSPI' | 'usesI2C' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesSensor' | 'usesHwtimer' | 'usesCapacitive' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -178,18 +252,6 @@ function analyzeExpression(
             result.usedPolyfillHelpers.add(name);
           }
         }
-      }
-      // Timer polyfill sizing — Timing.setInterval/Timing.setTimeout in
-      // expression position (e.g. `const id = Timing.setInterval(...)`) lower to
-      // a raw expression whose value contains `__tc_setInterval(...)`. The
-      // callee-based counter in the "call" case only fires for bare timer
-      // calls; without this the timer_methods polyfill is gated off and the
-      // link fails: "'__tc_setInterval' was not declared in this scope".
-      {
-        const intervals = expr.value.match(/__tc_setInterval\s*\(/g);
-        if (intervals) result.timerCallCount += intervals.length;
-        const timeouts = expr.value.match(/__tc_setTimeout\s*\(/g);
-        if (timeouts) result.timerCallCount += timeouts.length;
       }
       if (/\bString\s*\(/.test(expr.value)) {
         result.usesStringConversion = true;
@@ -308,12 +370,6 @@ function analyzeExpression(
       // unless the program actually calls them.
       if (expr.callee === "map") result.usesMap = true;
       if (expr.callee === "constrain") result.usesConstrain = true;
-      // Count setInterval/setTimeout call sites (post-rename callee names) so
-      // __tc_TimerRuntime::MAX_TIMERS can be sized to the observed count.
-      if (expr.callee === "__tc_setInterval" || expr.callee === "__tc_setTimeout"
-        || expr.callee === "setInterval" || expr.callee === "setTimeout") {
-        result.timerCallCount++;
-      }
       for (const arg of expr.args) {
         analyzeExpression(arg, result, strategy);
       }
@@ -419,69 +475,11 @@ function analyzeExpression(
       // a value-returning HAL op used in a var-init or expression context fails
       // to set its analysis flag — the framework then drops the matching init
       // block + forced includes (e.g. __tc_adc_read was emitted but the
-      // CUTTLEFISH_ADC init block and adc_oneshot.h include were not). Keep this
-      // list in sync with the hal-op statement case at the bottom of this file.
+      // CUTTLEFISH_ADC init block and adc_oneshot.h include were not). Both
+      // this case and the hal-op statement case delegate to
+      // applyHalOpUsageFlags, which also covers transpile-resolved ops.
       if (expr.operation && typeof expr.operation.operation === "string") {
-        const opName = expr.operation.operation;
-        if (opName.startsWith("display.")) {
-          result.usesGPIO = true;
-          result.usesDisplay = true;
-        }
-        if (opName.startsWith("gpio."))      result.usesGPIO = true;
-        if (opName === "gpio.read") result.usesDigitalRead = true;
-        if (opName.startsWith("pwm."))       result.usesPWM = true;
-        if (opName.startsWith("rmt."))       result.usesRmt = true;
-        if (opName.startsWith("adc."))       result.usesADC = true;
-        if (opName.startsWith("dac."))       result.usesDAC = true;
-        if (opName.startsWith("power."))     result.usesPower = true;
-        if (opName.startsWith("wdt."))       result.usesWdt = true;
-        // Safety HAL ops (@typecad/safety) — map each op to the
-        // __tc_safety_* polyfill helper it triggers, so the mode-table and
-        // voter polyfills survive tree-shaking when actually used. Matches
-        // the resolveSafetyOp output naming. Cast through string because the
-        // HALOpIR operation union is closed and doesn't include safety.* ops
-        // (those are owned by the optional @typecad/safety package).
-        const safetyOpName = opName as string;
-        if (safetyOpName === "safety.record_pin_mode") {
-          result.usedPolyfillHelpers.add("__tc_safety_record_pin_mode");
-        }
-        if (safetyOpName === "safety.read_safe") {
-          result.usedPolyfillHelpers.add("__tc_safety_read_safe");
-        }
-        if (safetyOpName === "safety.write_verify") {
-          result.usedPolyfillHelpers.add("__tc_safety_write_verify");
-        }
-        if (opName.startsWith("interrupt.")) result.usesInterrupts = true;
-        if (opName.startsWith("pulse."))     result.usesPulse = true;
-        if (opName.startsWith("shift."))     result.usesShift = true;
-        if (opName.startsWith("tone."))      result.usesTone = true;
-        if (opName.startsWith("i2c."))       result.usesI2C = true;
-        if (opName.startsWith("spi."))       result.usesSPI = true;
-        if (opName.startsWith("uart."))      result.usesUart = true;
-        if (opName.startsWith("usb."))       result.usesUsb = true;
-        if (opName.startsWith("wifi.")) {
-          result.usesWifi = true;
-          if (opName === "wifi.join" || opName === "wifi.connect_start" || opName === "wifi.disconnect") {
-            result.usesWifiConnect = true;
-            if (opName === "wifi.join") result.usesWifiConnectBlocking = true;
-          }
-          else if (opName.startsWith("wifi.scan")) result.usesWifiScan = true;
-          else if (opName === "wifi.is_connected" || opName === "wifi.local_ip" || opName === "wifi.rssi" || opName === "wifi.mac") result.usesWifiQuery = true;
-          else if (opName === "wifi.on_event") result.usesWifiConfig = true;
-        }
-        if (opName.startsWith("http."))      result.usesHttp = true;
-        if (opName.startsWith("ble."))       result.usesBle = true;
-        if (opName.startsWith("preferences.")) result.usesPreferences = true;
-        if (opName.startsWith("random."))    result.usesRandom = true;
-        if (opName.startsWith("fs."))        result.usesFS = true;
-        if (opName.startsWith("mdns."))      result.usesMdns = true;
-        if (opName.startsWith("mqtt."))      result.usesMqtt = true;
-        if (opName.startsWith("ota."))       result.usesOta = true;
-        if (opName.startsWith("temp."))      result.usesTemp = true;
-        if (opName.startsWith("sensor."))    result.usesSensor = true;
-        if (opName.startsWith("hwtimer.") || opName.startsWith("counter."))   result.usesHwtimer = true;
-        if (opName.startsWith("capacitive.")) result.usesCapacitive = true;
-        if (opName.startsWith("worker."))    result.usesWorker = true;
+        applyHalOpUsageFlags(expr.operation.operation, result);
       }
       break;
   }
@@ -544,12 +542,9 @@ function analyzeStatement(
       if (statement.callee.startsWith("WDT.") || statement.callee === "WDT") {
         result.usesWDT = true;
       }
-      // Native AVR peripheral usage from statement-form calls. tone()/noTone()
-      // are bare Arduino-API calls; console.* / Serial.* drive UART; the
-      // namespace prefixes mirror the method-call checks above.
-      if (statement.callee === "tone" || statement.callee === "noTone") {
-        result.usesTone = true;
-      }
+      // Native AVR peripheral usage from statement-form calls. console.* /
+      // Serial.* drive UART; the namespace prefixes mirror the method-call
+      // checks above.
       // console.* is NOT UART: on ESP-IDF it lowers to printf, on Arduino to
       // Serial via hasConsoleCalls. Only real UART HAL / Serial peripheral
       // usage should gate the uart shim (avoids unused __tc_uart*_init).
@@ -568,18 +563,6 @@ function analyzeStatement(
       // Statement-form map()/constrain() mirror the method-call checks above.
       if (statement.callee === "map") result.usesMap = true;
       if (statement.callee === "constrain") result.usesConstrain = true;
-      // Statement-form setInterval/setTimeout mirror the expression-level
-      // timer-count (analyzeExpression). A top-level `setInterval(...)` call
-      // stays a `call` statement (never becomes a method-call expression — see
-      // the comment above re: Timing./Num./WDT.), so without this mirror the
-      // timer polyfill gate (timerCallCount) stays 0 and __tc_setInterval is
-      // emitted as a call but never defined (demo: "'__tc_setInterval' was not
-      // declared in this scope"). The arrow-callback hoister renames the callee
-      // to __tc_setInterval/__tc_setTimeout, so check both pre- and post-rename.
-      if (statement.callee === "setInterval" || statement.callee === "setTimeout"
-        || statement.callee === "__tc_setInterval" || statement.callee === "__tc_setTimeout") {
-        result.timerCallCount++;
-      }
       // The HAL resolver lowers WDT.*/Timing.* namespace calls to bare AVR
       // library functions (WDT.reset() → wdt_reset(), Timing.delay() → delay(),
       // Timing.millis() → millis()). When that happens the `WDT.`/`Timing.`
@@ -604,25 +587,6 @@ function analyzeStatement(
         for (const name of helperNames) {
           if (statement.callee.includes(name)) {
             result.usedPolyfillHelpers.add(name);
-          }
-        }
-      }
-      // Timer polyfill sizing for __EMIT__ statements (callee "__EMIT__"):
-      // Timing.setInterval/Timing.setTimeout can lower to an __EMIT__ call whose
-      // single string arg is the raw C++ payload, e.g.
-      // `return __tc_setInterval(<cb>, 500)`. The callee-based timer counter
-      // above only fires for bare setInterval/__tc_setInterval calls, so without
-      // this the timer_methods polyfill is gated off and the link fails:
-      // "'__tc_setInterval' was not declared in this scope". Count call sites
-      // embedded in the raw payload. (The hal-op raw-code path has a parallel
-      // counter below.)
-      if (statement.callee === "__EMIT__") {
-        for (const arg of statement.args) {
-          if (arg && arg.kind === "string" && typeof arg.value === "string") {
-            const matches = arg.value.match(/__tc_setInterval\s*\(/g);
-            if (matches) result.timerCallCount += matches.length;
-            const timeouts = arg.value.match(/__tc_setTimeout\s*\(/g);
-            if (timeouts) result.timerCallCount += timeouts.length;
           }
         }
       }
@@ -742,75 +706,7 @@ function analyzeStatement(
       // always be emitted. Same blind spot the wdt.* fix below the raw-code
       // block addresses for the watchdog.
       if (statement.operation && typeof statement.operation.operation === "string") {
-        const opName = statement.operation.operation;
-        if (opName.startsWith("spi.")) result.usesSPI = true;
-        if (opName.startsWith("i2c.")) result.usesI2C = true;
-        if (opName.startsWith("tone.")) result.usesTone = true;
-        if (opName.startsWith("uart.")) result.usesUart = true;
-        if (opName.startsWith("usb."))  result.usesUsb = true;
-        // Display HAL ops (display.init from ui.mount, display.flush per frame)
-        // always imply GPIO usage (CS/DC/RST pins). Native SPI/I2C display
-        // adapters emit their own transport #includes (driver/spi_master.h,
-        // driver/i2c_master.h) — we don't force usesSPI/usesI2C here because
-        // that would pull headers even for non-display SPI/I2C code, and the
-        // display's transport type can't be determined from the op alone.
-        if (opName.startsWith("display.")) {
-          result.usesGPIO = true;
-          result.usesDisplay = true;
-        }
-        // ESP32 peripheral usage — framework-esp32 gates IDF driver blocks
-        // and forced includes on these. No-op for other frameworks (their
-        // shimLines emit no CUTTLEFISH_* blocks with these marker names).
-        if (opName.startsWith("gpio."))      result.usesGPIO = true;
-        if (opName === "gpio.read") result.usesDigitalRead = true;
-        if (opName.startsWith("pwm."))       result.usesPWM = true;
-        if (opName.startsWith("rmt."))       result.usesRmt = true;
-        if (opName.startsWith("adc."))       result.usesADC = true;
-        if (opName.startsWith("dac."))       result.usesDAC = true;
-        if (opName.startsWith("power."))     result.usesPower = true;
-        if (opName.startsWith("wdt."))       result.usesWdt = true;
-        // Safety HAL ops (@typecad/safety) — map each op to the
-        // __tc_safety_* polyfill helper it triggers, so the mode-table and
-        // voter polyfills survive tree-shaking when actually used. Matches
-        // the resolveSafetyOp output naming. Cast through string because the
-        // HALOpIR operation union is closed and doesn't include safety.* ops
-        // (those are owned by the optional @typecad/safety package).
-        const safetyOpName = opName as string;
-        if (safetyOpName === "safety.record_pin_mode") {
-          result.usedPolyfillHelpers.add("__tc_safety_record_pin_mode");
-        }
-        if (safetyOpName === "safety.read_safe") {
-          result.usedPolyfillHelpers.add("__tc_safety_read_safe");
-        }
-        if (safetyOpName === "safety.write_verify") {
-          result.usedPolyfillHelpers.add("__tc_safety_write_verify");
-        }
-        if (opName.startsWith("interrupt.")) result.usesInterrupts = true;
-        if (opName.startsWith("pulse."))     result.usesPulse = true;
-        if (opName.startsWith("shift."))     result.usesShift = true;
-        if (opName.startsWith("wifi.")) {
-          result.usesWifi = true;
-          if (opName === "wifi.join" || opName === "wifi.connect_start" || opName === "wifi.disconnect") {
-            result.usesWifiConnect = true;
-            if (opName === "wifi.join") result.usesWifiConnectBlocking = true;
-          }
-          else if (opName.startsWith("wifi.scan")) result.usesWifiScan = true;
-          else if (opName === "wifi.is_connected" || opName === "wifi.local_ip" || opName === "wifi.rssi" || opName === "wifi.mac") result.usesWifiQuery = true;
-          else if (opName === "wifi.on_event") result.usesWifiConfig = true;
-        }
-        if (opName.startsWith("http."))      result.usesHttp = true;
-        if (opName.startsWith("ble."))       result.usesBle = true;
-        if (opName.startsWith("preferences.")) result.usesPreferences = true;
-        if (opName.startsWith("random."))     result.usesRandom = true;
-        if (opName.startsWith("fs."))         result.usesFS = true;
-        if (opName.startsWith("mdns."))       result.usesMdns = true;
-        if (opName.startsWith("mqtt."))       result.usesMqtt = true;
-        if (opName.startsWith("ota."))        result.usesOta = true;
-        if (opName.startsWith("temp."))       result.usesTemp = true;
-        if (opName.startsWith("sensor."))     result.usesSensor = true;
-        if (opName.startsWith("hwtimer.") || opName.startsWith("counter."))    result.usesHwtimer = true;
-        if (opName.startsWith("capacitive.")) result.usesCapacitive = true;
-        if (opName.startsWith("worker."))     result.usesWorker = true;
+        applyHalOpUsageFlags(statement.operation.operation, result);
       }
       // Scan raw C++ code in HAL ops for polyfill helper usage
       if (statement.operation && statement.operation.operation === "raw" && typeof statement.operation.code === "string") {
@@ -848,21 +744,6 @@ function analyzeStatement(
         if (code.includes("__tc_print(")) {
           result.usedPolyfillHelpers.add("__tc_print");
         }
-        // Timer polyfill sizing — `Timing.setInterval(...)` / `Timing.setTimeout(...)`
-        // are resolved by the HAL method resolver, which reads TimingClass's
-        // rawCpp body and emits a raw hal-op whose code is e.g.
-        // `return __tc_setInterval(<cb>, 500)`. The callee-based counter below
-        // (statement.callee === "__tc_setInterval") never fires for these — the
-        // statement is a hal-op, not a bare timer call — so without counting
-        // here the timer_methods polyfill is gated off (timerCallCount == 0)
-        // and the link fails: "'__tc_setInterval' was not declared in this
-        // scope". Count each __tc_setInterval/__tc_setTimeout call site in the
-        // raw code. The optional `return ` prefix is emitted by value-returning
-        // HAL methods (statement context), so match with or without it.
-        const intervalSites = code.match(/__tc_setInterval\s*\(/g);
-        if (intervalSites) result.timerCallCount += intervalSites.length;
-        const timeoutSites = code.match(/__tc_setTimeout\s*\(/g);
-        if (timeoutSites) result.timerCallCount += timeoutSites.length;
         // Native AVR peripheral usage inside raw hal-op code (Serial/SPI/Wire
         // may appear as lowered library calls).
         if (/\bSerial\b/.test(code)) {
@@ -932,20 +813,17 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesUsb: false,
     usesSPI: false,
     usesI2C: false,
-    usesTone: false,
     usesMap: false,
     usesConstrain: false,
     usesNativeTiming: false,
     hasSerialBegin: false,
     hasGenerators: false,
     usesStdMap: false,
-    timerCallCount: 0,
     usesGPIO: false,
     usesPWM: false,
     usesRmt: false,
     usesADC: false,
     usesDAC: false,
-    usesPower: false,
     usesWdt: false,
     usesInterrupts: false,
     usesPulse: false,
@@ -968,7 +846,6 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     usesSensor: false,
     usesHwtimer: false,
     usesCapacitive: false,
-    usesWorker: false,
     hasAsync: false,
     usesSet: false,
     usesAlgorithm: false,
@@ -1099,7 +976,7 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
   // Analyze UI callback bodies that live outside program.functions
   // (onClick / watchPin / drawCanvas / bindInput / bindList). They now carry
   // StatementIR[] from the main lowerStatementList pipeline, so console /
-  // helper usage is visible here the same way setInterval bodies are.
+  // helper usage is visible here the same way nested-function bodies are.
   for (const wp of watchPinSpecs()) {
     for (const stmt of wp.bodyStatements ?? []) analyzeStatement(stmt, result, strategy);
   }
@@ -1127,19 +1004,26 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     result.hasConsoleCalls = true;
   }
 
+  // HAL ops the transpiler resolved to C++ text while inlining one HAL method
+  // inside another (e.g. `sense.readMillivolts()` in a USB0.writeLine template)
+  // never appear as hal-op/hal-expr IR nodes, so the walks above can't see
+  // them. The lowering seams record every op they resolve; merge their
+  // peripheral flags here (same shape as loweredConsoleInCallback above).
+  for (const opName of getTranspileResolvedHalOps()) {
+    applyHalOpUsageFlags(opName, result);
+  }
+
   // Derive the comprehensive native-timing gate for the AVR millis() Timer0
   // ISR. The ISR is needed whenever the program touches the soft clock
-  // directly (millis/delay/micros) OR has a hidden consumer: setInterval/
-  // setTimeout (the scheduler polls millis), or async functions (the runtime
-  // polls millis). The per-frame UI tick is injected by the emitter, not
-  // present in user source — the setup emitter ORs entryHasUI() in at the
-  // consume site. Without this gate, every AVR program pulled in the Timer0
-  // ISR even when it never uses timing.
+  // directly (millis/delay/micros) OR has a hidden consumer: async functions
+  // (the runtime polls millis). The per-frame UI tick is injected by the
+  // emitter, not present in user source — the setup emitter ORs entryHasUI()
+  // in at the consume site. Without this gate, every AVR program pulled in
+  // the Timer0 ISR even when it never uses timing.
   const hasAsync = program.functions.some(fn => fn.isAsync);
   result.hasAsync = hasAsync;
   result.usesNativeTiming = result.usesMillis
     || result.usesTiming
-    || result.timerCallCount > 0
     || hasAsync;
 
   return result;

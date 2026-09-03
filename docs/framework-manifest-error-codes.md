@@ -34,9 +34,9 @@ discriminator. Op status is one of `supported`, `polyfill`, `stub`,
 - `polyfill` — lowered via a runtime polyfill, NOT the HAL resolver. Verified
   by checking the op kind exists in `POLYFILL_BACKED_OPS`
   (`packages/cuttlefish/src/api/shared/framework-manifest.ts`) AND the named
-  polyfill id is present in `polyfills.emitted`. Use for ops like
-  `timing.set_interval` that route through the `timer_methods` polyfill
-  rather than the resolver.
+  polyfill id is present in `polyfills.emitted`. `POLYFILL_BACKED_OPS` is
+  currently empty — no op is polyfill-routed today; an op not listed there
+  cannot use this status.
 - `stub` — emits code but partial/non-functional; verified by probe.
 - `unsupported` — no lowering; verified by probe.
 - `probe-inconclusive` — minimal probe can't determine support (typically
@@ -45,20 +45,13 @@ discriminator. Op status is one of `supported`, `polyfill`, `stub`,
 
 | Code | Trigger | Fix |
 |---|---|---|
+| `hal/<cat>/category-undeclared` | A category the validator recognizes (in `CATEGORY_PREFIXES`) is missing from `manifest.hal` entirely | Add a block declaring it (`supported: true/false` with ops, or unsupported with `unsupportedReason`) |
 | `hal/<cat>/declared-supported-but-undefined` | Category `supported: true` but resolver returns `undefined`/throws for every verifiable op | Implement lowering or change status to `unsupported` with a reason |
 | `hal/<cat>/declared-unsupported-but-actually-lowers` | Category `supported: false` but resolver lowers at least one verifiable op | Either mark supported or override the resolver to throw/return undefined. **This code catches inherited-broken behavior** — e.g. a framework that inherits the parent's `resolveDisplayOp` without overriding it will lower display ops despite declaring display unsupported. |
 | `hal/<cat>/op/<kind>/status-mismatch` | Per-op status disagrees with resolver behavior | Align op status with reality |
 | `hal/<cat>/op/<kind>/undeclared` | Known op kind (from `HAL_OPERATION_KINDS` / `DISPLAY_OPERATION_KINDS`) missing from `manifest.hal.<cat>.ops` | Add the missing op kind |
 | `hal/<cat>/op/<kind>/polyfill-not-recognized` | Op declared `polyfill` but not in `POLYFILL_BACKED_OPS` | Add the op kind → polyfill id mapping to `packages/cuttlefish/src/api/shared/framework-manifest.ts`, or use a different status |
 | `hal/<cat>/op/<kind>/polyfill-not-declared` | Op declared `polyfill` (mapping says backed by polyfill X) but X not in `polyfills.emitted` | Add the polyfill to `polyfills.emitted`, or remove this op from polyfill status |
-
-### Known strategic violations
-
-`KNOWN_STRATEGIC_ERRORS` in `tests/packages/cuttlefish/framework-manifest.test.ts`
-is currently empty — no framework ships with tolerated manifest errors. The
-central test fails on any error so regressions surface immediately. Add an
-entry there only with a documented justification (e.g. a known
-`resolveDisplayOp` inheritance mismatch awaiting a dedicated fix).
 
 ## Polyfills
 

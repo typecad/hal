@@ -5,7 +5,7 @@
 // shipped next to their package.json. Test suites import stable role names
 // from the '@typecad/test-pins' virtual module:
 //
-//   import { GPIO_OUT, PWM_PIN, PWM_MAX_FREQ } from '@typecad/test-pins';
+//   import { GPIO_OUT, PWM_PIN } from '@typecad/test-pins';
 //
 // At hardware-test time the @typecad/expect preprocessor substitutes each
 // role identifier in the test source with the board's real pin symbol (and
@@ -22,7 +22,6 @@
 //     "pins": {
 //       "gpioOut": "PB5",            -> GPIO_OUT
 //       "gpioIn": "PB0",             -> GPIO_IN
-//       "gpioGroup": ["PB0","PB1"],  -> GPIO_GROUP
 //       "pwm": "PB6",                -> PWM_PIN
 //       "pwmAlt": "PB7",             -> PWM_ALT
 //       "cs": "PA4",                 -> CS_PIN
@@ -31,17 +30,16 @@
 //       "button": "PA0"              -> BUTTON_PIN
 //     },
 //     "facts": {
-//       "pwmMaxFrequency": 50000000,  -> PWM_MAX_FREQ
-//       "pwmResolutionBits": 16,      -> PWM_RESOLUTION_BITS
 //       "adcMax": 4095                -> ADC_MAX
 //     },
 //     "usb": {                        -> port discovery (host side only):
 //       "vid": "2FE3",                multi-board test rigs match the
-//       "pid": "0002",                console/upload port by USB identity
+//       "pid": "0001",                console/upload port by USB identity
 //       "serial": "…" (optional)      instead of tracking COM/tty numbers;
-//     }                               Zephyr CDC boards pair this with their
-//   }                                 per-board zephyr.usb.pid (see the
-//                                       expect README's "USB port discovery")
+//     }                               Zephyr CDC boards all enumerate at
+//   }                                 the default 2FE3:0001 — run one CDC
+//                                       board at a time (see the expect
+//                                       README's "USB port discovery")
 //   }
 // ---------------------------------------------------------------------------
 
@@ -52,19 +50,22 @@ import path from "node:path";
 const PIN_ROLES: Record<string, string> = {
   gpioOut: "GPIO_OUT",
   gpioIn: "GPIO_IN",
-  gpioGroup: "GPIO_GROUP",
   pwm: "PWM_PIN",
   pwmAlt: "PWM_ALT",
+  adcPin: "ADC_PIN",
+  adcPinAlt: "ADC_PIN_ALT",
   cs: "CS_PIN",
   interrupt: "INT_PIN",
   led: "LED_PIN",
   button: "BUTTON_PIN",
+  // Bus selector roles carry a quoted instance name ('I2C0'), not a pin
+  // symbol — they export as string literals and substitute inline the same
+  // way (the value text already includes the quotes).
+  i2cBus: "I2C_BUS",
 };
 
 /** Fact role -> exported const name. */
 const FACT_ROLES: Record<string, string> = {
-  pwmMaxFrequency: "PWM_MAX_FREQ",
-  pwmResolutionBits: "PWM_RESOLUTION_BITS",
   adcMax: "ADC_MAX",
 };
 
@@ -119,6 +120,10 @@ export function buildTestPinsModuleContent(boardTarget: string, data: TestPinsFi
       exports.push(`export const ${constName} = [${names.join(", ")}];`);
     } else if (typeof value === "string" && IDENTIFIER_RE.test(value)) {
       importedPins.push(value);
+      exports.push(`export const ${constName} = ${value};`);
+    } else if (typeof value === "string" && /^'[^']*'$/.test(value)) {
+      // Quoted selector text (a bus instance name) — export as-is; no board
+      // pin import needed.
       exports.push(`export const ${constName} = ${value};`);
     } else {
       console.error(`[test-pins] Ignoring invalid pin role '${role}' in test-pins.json`);

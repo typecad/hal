@@ -88,21 +88,18 @@ Two related rules:
 
 ---
 
-## Timers and `Async`
+## `Async` helpers
 
-Outside `async` functions, two scheduling surfaces ride the same cooperative runtime:
+Outside `async` functions, the `Async` surface rides the same cooperative runtime:
 
 ```typescript
-import { setInterval, setTimeout, Async } from '@typecad/hal';
+import { Async } from '@typecad/hal';
 
-setInterval(() => console.log('tick'), 1000);   // periodic, cooperative
-setTimeout(() => console.log('once'), 250);     // one-shot
-
-Async.sleep(20);        // arm a one-shot timer (fire-and-forget scheduling)
+Async.sleep(20);        // arm a one-shot deadline (fire-and-forget scheduling)
 Async.yield();          // defer one pump cycle
 ```
 
-`Async.sleep` inside an async function is awaitable (`await Async.sleep(ms)` is the timer-shaped deadline wait). Timers allocate from a fixed slot pool (8 by default) — beyond that, `armTimeout` returns false and the timer silently doesn't fire, so keep concurrent timers bounded.
+`Async.sleep` inside an async function is awaitable (`await Async.sleep(ms)` is the timer-shaped deadline wait).
 
 ---
 

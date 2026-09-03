@@ -46,13 +46,14 @@ function pythonRunsWest(exe: string): boolean {
   }
 }
 
-/** True if `cmd` runs `west --version` successfully. */
+/** True if `cmd` runs `west --version` successfully. `cmd` comes from
+ * `where`/`which` output — a venv launcher (west.exe) or script path, spawned
+ * without a shell like every other command in this module. */
 function westOnPath(cmd: string): boolean {
   try {
     const r = spawnSync(cmd, ['--version'], {
       encoding: 'utf8',
       timeout: 15_000,
-      shell: IS_WIN,
       windowsHide: true,
     });
     return r.status === 0;
@@ -100,12 +101,11 @@ export function isZephyrBase(dir: string): boolean {
 // ── Strategy 1: `west` on PATH ──────────────────────────────────────────────
 
 export function discoverFromPath(): WestInstall | null {
-  // shell only on Windows (where.exe resolution through cmd) — an args array
-  // with shell: true triggers Node's DEP0190 deprecation warning on Linux/
-  // macOS, where `which` is a plain executable that needs no shell.
+  // No shell: `where`/`which` are plain executables Node resolves from PATH
+  // (where.exe is a real PE, not a cmd builtin), and an args array with a
+  // truthy shell triggers Node's DEP0190 deprecation warning.
   const which = spawnSync(IS_WIN ? 'where' : 'which', ['west'], {
     encoding: 'utf8',
-    shell: IS_WIN,
     windowsHide: true,
   });
   if (which.status !== 0) return null;
@@ -188,6 +188,19 @@ function readMicromambaEnvVar(envDir: string, varName: string): string | undefin
     } catch { /* ignore unreadable */ }
   }
   return undefined;
+}
+
+/** The installer-written ZEPHYR_BASE of the micromamba env, fs-only (no
+ *  spawn) — the cheap probe shared by board-catalog overlay discovery.
+ *  Undefined when the installer env or its env-vars file is absent. */
+export function micromambaZephyrBase(
+  envName: string = process.env.TYPECAD_ZEPHYR_ENV || 'zephyr',
+): string | undefined {
+  const mm = findMicromamba();
+  if (!mm) return undefined;
+  const envDir = join(mm.rootPrefix, 'envs', envName);
+  const zb = readMicromambaEnvVar(envDir, 'TYPECAD_ZEPHYR_BASE');
+  return zb && isZephyrBase(zb) ? zb : undefined;
 }
 
 export function discoverFromMicromamba(

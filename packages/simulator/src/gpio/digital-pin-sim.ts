@@ -4,7 +4,6 @@
 
 import type {
   BasePin,
-  IToneAttachment,
   PinCapabilityFlags,
 } from '../contracts.js';
 import { PinMode } from '@typecad/hal';
@@ -159,22 +158,6 @@ export class SimDigitalPin implements BasePin {
   pulse(_duration: number): void {
     // In simulation the pulse duration is not awaited, so a pulse produces no
     // observable transition — leave both pin state and history unchanged.
-  }
-
-  tone(_frequency: number): IToneAttachment {
-    return {
-      for(_duration: number): void {
-        // No-op in simulation
-      },
-    };
-  }
-
-  noTone(): void {
-    // No-op in simulation
-  }
-
-  stop(): void {
-    this.noTone();
   }
 
   // --- Simulation helpers ---

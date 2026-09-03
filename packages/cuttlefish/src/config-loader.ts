@@ -11,6 +11,13 @@ import path from "node:path";
 import fs from "node:fs";
 import ts from "typescript";
 import { createRequire } from "node:module";
+import {
+  loadBoardCatalogOverlay,
+  ensureFreshBoardCatalog,
+  boardRecordFingerprint,
+  factsFingerprint,
+  findBoardInCatalog,
+} from "./board-catalog/index.js";
 import { fileURLToPath } from "node:url";
 import { readTestPinsFile, buildTestPinsModuleContent } from "./transpile/test-pins.js";
 import { safeValidateConfig } from "./config-schema.js";
@@ -659,10 +666,23 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
  * The file is regenerated on every transpiler run so it stays in sync when
  * the board changes in `cuttlefish.config.ts`.
  */
+/** Refresh a stale catalog overlay before the board-module check — fs-only
+ *  discovery, re-walks the tree only when the provenance moved. Errors are
+ *  swallowed deliberately: an offline or tree-less machine keeps whatever
+ *  catalog it already has; generation surfaces the real problem. */
+function refreshBoardCatalogQuietly(): void {
+  try {
+    ensureFreshBoardCatalog();
+  } catch {
+    // non-fatal by design
+  }
+}
+
 /**
  * Ensure the generated board module (.cuttlefish/board.ts + board.json)
- * exists for a board-target config. Generated once (first build) — refresh
- * explicitly with `cuttlefish board regen` — so the emitted module is
+ * is current for a board-target config. Regen-first: any input change —
+ * the config's board, the catalog overlay, the Zephyr tree, the generator
+ * revision — recreates the module, so the emitted module is
  * project-pinned and diffable, not rebuilt on every compile. One exception:
  * when the module on disk is for a DIFFERENT board than config.board (the
  * user switched boards), it regenerates automatically — a stale module is
@@ -671,17 +691,35 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
 function ensureGeneratedBoard(config: ResolvedCuttlefishConfig, cuttlefishDir: string): void {
   const boardTsPath = path.join(cuttlefishDir, "board.ts");
   const boardJsonPath = path.join(cuttlefishDir, "board.json");
+  // Regen-first: the board module is a derived artifact, recreated whenever
+  // ANY input moves — the config's board target, the catalog overlay, the
+  // Zephyr tree the overlay was generated from, or the extraction revision.
+  // The check is cheap (fs-only provenance + a fingerprint compare); a
+  // stale overlay re-walks the tree once, then this regenerates.
+  refreshBoardCatalogQuietly();
   if (fs.existsSync(boardTsPath) && fs.existsSync(boardJsonPath)) {
-    // Board switch: keep the module in lockstep with config.board.
     try {
-      const existing = JSON.parse(fs.readFileSync(boardJsonPath, "utf8")) as { identifier?: string };
-      if (existing.identifier && existing.identifier.toLowerCase() === config.board!.toLowerCase()) return;
+      const existing = JSON.parse(fs.readFileSync(boardJsonPath, "utf8")) as {
+        identifier?: string;
+        source?: { generatorRev?: number; fingerprint?: string };
+      };
+      const sameBoard = existing.identifier
+        && existing.identifier.toLowerCase() === config.board!.toLowerCase();
+      const overlay = loadBoardCatalogOverlay();
+      const entry = overlay && sameBoard ? findBoardInCatalog(overlay.data, config.board!) : undefined;
+      const sameSource = entry && overlay
+        ? existing.source?.fingerprint
+          === boardRecordFingerprint(entry, overlay)
+            + factsFingerprint(readUserFactsJson(config) ?? "")
+            + factsFingerprint(readAsBuiltJson(config) ?? "")
+        : true; // no overlay to verify against — keep the existing module
+      if (sameBoard && sameSource) return;
     } catch {
       // Unreadable manifest — regenerate below rather than build on a
       // module of unknown provenance.
     }
   }
-  // Missing files or a board mismatch — (re)generate.
+  // Missing files, a board mismatch, or a source change — (re)generate.
   const target = config.board!;
   if (!config.framework) {
     throw new Error(`Cannot generate the board module for '${target}' — no framework configured.`);
@@ -690,13 +728,16 @@ function ensureGeneratedBoard(config: ResolvedCuttlefishConfig, cuttlefishDir: s
   // configured package (exported as ZephyrStrategy / default). The package
   // is ESM ("type": "module"), so resolve it from the built dist through
   // createRequire against the project's node_modules resolution.
-  const generated = loadFrameworkBoardModule(config, configDirOf(config));
+  const generated = loadFrameworkBoardModule(config, configDirOf(config), readUserFactsJson(config), readAsBuiltJson(config));
   if (!generated) {
     throw new Error(
       `Framework '${config.framework}' cannot generate a board module for '${target}'. ` +
       `Check the target against the framework's board catalog.`,
     );
   }
+  // User-facts notes (shadowed harvest routes) surface once per regen —
+  // the fingerprint keeps regens rare.
+  for (const w of generated.warnings ?? []) console.warn(`cuttlefish: ${w}`);
   fs.writeFileSync(boardTsPath, generated.boardTs, "utf-8");
   fs.writeFileSync(boardJsonPath, generated.boardJson, "utf-8");
 }
@@ -724,9 +765,41 @@ export function regenBoardModule(config: ResolvedCuttlefishConfig): string {
   return cuttlefishDir;
 }
 
-/** The subset of a platform strategy ensureGeneratedBoard needs. */
+/** The subset of a platform strategy ensureGeneratedBoard needs. The
+ *  optional factsJson is the project's raw cuttlefish.facts.json — user
+ *  facts merge into the generated manifest, and the strategy hashes the
+ *  same text into the module's source fingerprint. */
 interface BoardGenStrategy {
-  generateBoardModule?(target: string): { boardTs: string; boardJson: string } | undefined;
+  generateBoardModule?(target: string, opts?: { factsJson?: string; asBuiltJson?: string }): {
+    boardTs: string;
+    boardJson: string;
+    warnings?: readonly string[];
+  } | undefined;
+}
+
+/** The project's last-build snapshot (.cuttlefish/as-built.json, written by
+ *  the framework toolchain after each successful west build). Absent →
+ *  undefined; malformed content is handled downstream (soft ignore). */
+function readAsBuiltJson(config: ResolvedCuttlefishConfig): string | undefined {
+  const p = path.join(path.dirname(config.configPath), ".cuttlefish", "as-built.json");
+  if (!fs.existsSync(p)) return undefined;
+  try {
+    return fs.readFileSync(p, "utf8");
+  } catch {
+    return undefined; // best-effort enrichment — never blocks generation
+  }
+}
+
+/** The project's raw cuttlefish.facts.json text, when one exists beside the
+ *  config. Absent file → undefined; present-but-unreadable surfaces. */
+function readUserFactsJson(config: ResolvedCuttlefishConfig): string | undefined {
+  const factsPath = path.join(path.dirname(config.configPath), "cuttlefish.facts.json");
+  if (!fs.existsSync(factsPath)) return undefined;
+  try {
+    return fs.readFileSync(factsPath, "utf8");
+  } catch (err) {
+    throw new Error(`cuttlefish.facts.json exists but cannot be read: ${(err as Error).message}`);
+  }
 }
 
 /** Resolve the configured framework package's board generator. The framework
@@ -740,7 +813,9 @@ function configDirOf(config: ResolvedCuttlefishConfig): string {
 function loadFrameworkBoardModule(
   config: ResolvedCuttlefishConfig,
   configDir: string,
-): { boardTs: string; boardJson: string } | undefined {
+  factsJson?: string,
+  asBuiltJson?: string,
+): { boardTs: string; boardJson: string; warnings?: readonly string[] } | undefined {
   const target = config.board!;
   const spec = config.framework!;
   const tryResolve = (anchor: string) => {
@@ -752,7 +827,10 @@ function loadFrameworkBoardModule(
       };
       const Ctor = mod.ZephyrStrategy ?? (mod.default as (new () => BoardGenStrategy) | undefined);
       const strategy = typeof Ctor === "function" ? new Ctor() : undefined;
-      return strategy?.generateBoardModule?.(target) ?? undefined;
+      const opts: { factsJson?: string; asBuiltJson?: string } = {};
+      if (factsJson !== undefined) opts.factsJson = factsJson;
+      if (asBuiltJson !== undefined) opts.asBuiltJson = asBuiltJson;
+      return strategy?.generateBoardModule?.(target, Object.keys(opts).length > 0 ? opts : undefined) ?? undefined;
     } catch {
       return undefined;
     }
@@ -863,11 +941,6 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
     "  // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.",
     "  declare function volatile<T>(value: T): T;",
     "",
-    "  // JS-style timers",
-    "  declare function setInterval(handler: () => void, timeout?: number): number;",
-    "  declare function setTimeout(handler: () => void, timeout?: number): number;",
-    "  declare function clearInterval(id: number): void;",
-    "  declare function clearTimeout(id: number): void;",
     ...(platformDeclarations ?? []),
     "}",
     "",

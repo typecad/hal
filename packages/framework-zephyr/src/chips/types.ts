@@ -60,6 +60,13 @@ export interface ZephyrBusController {
   /** Devicetree nodelabel, e.g. 'i2c1', 'spi2', 'uart0'. */
   readonly nodeLabel: string;
   /**
+   * Counter child form only: the labeled TIMER PARENT's nodelabel (ESP32
+   * timer0-3). The counter device is an unlabeled `counter {}` child; the
+   * nodeLabel above is a label the generated overlay defines on that child,
+   * and this field tells the overlay which parent to attach it to.
+   */
+  readonly counterParent?: string;
+  /**
    * Synthesized pinctrl group, for controllers whose board DT ships no
    * default group (e.g. uart1 on rpi_pico/rpi_pico2 — the mainline board DT
    * only pins uart0). When present, the overlay generator emits the group
@@ -198,6 +205,14 @@ export interface ZephyrAdcChannel {
   /** ADC channel index (nRF SAADC AIN0–AIN7; STM32 ADC1_IN0–IN9). */
   readonly channel: number;
   /**
+   * ADC device node label that OWNS this channel when the SoC has more than
+   * one ADC controller (STM32 adc1/adc2, ESP32 units), e.g. 'adc2'. Omitted
+   * for channels on the descriptor's primary controller (`adc.nodeLabel`) —
+   * a single-controller manifest is unchanged. Channel indices are unique
+   * only WITHIN a controller; the pair (controller, channel) is the key.
+   */
+  readonly controller?: string;
+  /**
    * Pinctrl node label that muxes this pin to analog mode, e.g.
    * 'adc1_in0_pa0' (STM32). When present, the overlay generator rewrites the
    * ADC node's pinctrl-0 to the channels the program actually reads — SoCs
@@ -218,6 +233,8 @@ export interface ZephyrDacChannel {
   readonly channel: number;
   /** DAC resolution in bits (ESP32 DAC is 8-bit). */
   readonly resolution: number;
+  /** Pinctrl node name routing the channel to its pad (STM32 harvest). */
+  readonly pinctrl?: string;
 }
 
 /**
@@ -355,16 +372,6 @@ export interface ZephyrChipDescriptor {
      * rejects the channel ("period cycles exceeds 16-bit timer limit").
      */
     readonly clockHz?: number;
-    /**
-     * The PWM capability constants the transpiler constant-folds
-     * getPwmFrequency()/getPwmResolution() to (from the MCU manifest's
-     * peripherals.pwm.maxFrequency/resolution). The runtime lowering returns
-     * the SAME numbers so a folded literal and a runtime call never disagree.
-     * When absent, the lowering falls back to 1e9/period and the 8-bit
-     * Arduino duty range.
-     */
-    readonly maxFrequencyHz?: number;
-    readonly resolutionBits?: number;
   };
   /**
    * Human-readable description of where the board's default console goes
@@ -421,6 +428,9 @@ export interface ZephyrChipDescriptor {
     readonly offset: number;
     /** Partition size in bytes, a multiple of the flash page size. */
     readonly size: number;
+    /** True when the board's own DTS already declares this partition — the
+     *  overlay must only point /chosen at it, never redeclare the node. */
+    readonly preexisting?: boolean;
   };
   /**
    * Hardware timers exposed as Zephyr counter devices. `instance` (the HAL

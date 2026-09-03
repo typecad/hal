@@ -540,46 +540,6 @@ export interface PlatformAsyncStrategy {
     preIteration: string;
     postIteration: string;
   } | null;
-
-  // ── Worker offload backing (Phase 1) ────────────────────────────────────
-  //
-  // These three hooks supply the per-framework primitives that the shared
-  // worker_runtime polyfill calls into. The polyfill owns the slot table and
-  // the __tc_worker_submit/done contract; the hooks provide the actual
-  // spawn/signal/poll primitives (ESP32: xTaskCreate + xTaskNotifyGive/Take;
-  // Zephyr: k_work_submit + k_sem_give/take). Returning undefined/empty means
-  // "this framework does not support worker offload" and the worker.* ops
-  // resolve to unsupported.
-  //
-  // Memory barrier contract (load-bearing on dual-core targets): the signal
-  // primitive MUST issue a full memory barrier so that, once the consumer
-  // observes completion, it also observes the worker's preceding output
-  // writes. ESP32's xTaskNotifyGive satisfies this; Zephyr's k_sem_give too.
-  // Bare volatile is NOT sufficient across cores.
-
-  /**
-   * C++ statements that spawn the worker for slot `handleId`, running
-   * `fn(arg)`. Emitted as the body of __tc_worker_submit. Return undefined
-   * to declare worker offload unsupported on this framework.
-   *
-   * The shared runtime has already recorded `waiter`/set `done=false` before
-   * this runs; the hook need only spawn. `fn` and `arg` are C++ expressions
-   * (a function pointer and a void*).
-   */
-  workerSpawnLines?(handleId: number, fn: string, arg: string): string[] | undefined;
-
-  /**
-   * C++ expression the worker calls AFTER completing its work and writing its
-   * outputs, to signal completion to the waiter. Emitted inside the worker
-   * trampoline. Must issue a memory barrier. Return undefined if unsupported.
-   */
-  workerSignalDoneExpr?(handleId: number): string | undefined;
-
-  /**
-   * C++ boolean expression polled by __tc_worker_done to test completion.
-   * Must observe the signal's memory barrier. Return undefined if unsupported.
-   */
-  workerIsDoneExpr?(handleId: number): string | undefined;
 }
 
 // ---------------------------------------------------------------------------

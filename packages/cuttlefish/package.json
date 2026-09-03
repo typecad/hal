@@ -1,7 +1,7 @@
 {
   "name": "@typecad/cuttlefish",
   "version": "1.0.0-alpha.14",
-  "description": "TypeScript to C++ transpiler — native, Arduino, and bare-metal targets",
+  "description": "TypeScript to C++ transpiler \u2014 native, Arduino, and bare-metal targets",
   "type": "module",
   "main": "./dist/transpile.js",
   "types": "./dist/transpile.d.ts",
@@ -24,6 +24,10 @@
     "./api/shared": {
       "types": "./dist/api/shared/index.d.ts",
       "default": "./dist/api/shared/index.js"
+    },
+    "./board-catalog": {
+      "types": "./dist/board-catalog/index.d.ts",
+      "default": "./dist/board-catalog/index.js"
     },
     "./ui-hook": {
       "types": "./dist/ui-hook.d.ts",
@@ -72,10 +76,6 @@
     "./emit/route-hal-op": {
       "types": "./dist/emit/route-hal-op.d.ts",
       "default": "./dist/emit/route-hal-op.js"
-    },
-    "./lib/component-decls": {
-      "types": "./dist/libdef/component-decls.d.ts",
-      "default": "./dist/libdef/component-decls.js"
     },
     "./ir/transformers/ui-lowering": {
       "types": "./dist/ir/transformers/ui-lowering.d.ts",

@@ -3,11 +3,11 @@
 Auto-generated from per-package `framework.manifest.ts` files.
 Do not edit directly; run `npm run render:framework-coverage` to regenerate.
 
-Counts are out of 16 HAL categories (raw passthrough tracked separately).
+Counts are out of 15 HAL categories (raw passthrough tracked separately).
 
 | Framework | HAL cats supported | HAL cats partial | HAL cats unsupported | Toolchain | Last validated |
 |---|---|---|---|---|---|
-| framework-zephyr | 10/16 | 6 | 0 | west (prepare ✓ compile ✓ upload ✓ monitor ✓ debug ✓) | 2026-08-29 |
+| framework-zephyr | 10/15 | 5 | 0 | west (prepare ✓ compile ✓ upload ✓ monitor ✓ debug ✓) | 2026-09-01 |
 
 ## framework-zephyr
 
@@ -27,7 +27,6 @@ Counts are out of 16 HAL categories (raw passthrough tracked separately).
 | dac | partial | — |
 | interrupts | partial | — |
 | timing | supported | — |
-| power | partial | — |
 | i2c | supported | — |
 | spi | supported | — |
 | uart | partial | — |
@@ -48,7 +47,6 @@ Counts are out of 16 HAL categories (raw passthrough tracked separately).
 | dac | ◐ partial |
 | interrupts | ◐ partial |
 | timing | ✓ |
-| power | ◐ partial |
 | i2c | ✓ |
 | spi | ✓ |
 | uart | ◐ partial |

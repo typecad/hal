@@ -52,4 +52,14 @@ export class I2CTarget {
   write(data: number[] | Uint8Array): void {
     i2cDevWrite(this._bus, this._address, this._hz, data);
   }
+
+  /** The 7-bit I2C address this target addresses. Exposed so I2CTarget
+   *  structurally satisfies the @typecad/simulator II2CDeviceAccessor
+   *  contract (`readonly address`), letting the same driver function be
+   *  typed against the contract and accept either a real board device or a
+   *  simulated one. The transpiler strips HAL class bodies to IR, so this
+   *  getter carries no runtime cost in the generated C++. */
+  get address(): number {
+    return this._address;
+  }
 }

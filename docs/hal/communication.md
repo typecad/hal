@@ -49,13 +49,17 @@ const b = usb.read();                 // one byte, or -1
 
 ```typescript
 // cuttlefish.config.ts
-export default defineConfig({
+import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
+
+const config: CuttlefishConfig = {
   // ...
   console: {
     output: 'usb',   // console.log → the USB CDC port (boards with USB)
     port: 'COM4',    // monitor port (unchanged role)
   },
-});
+};
+
+export default config;
 ```
 
 The overlay rebinds the console onto the CDC port and forces the USB symbols on — the program itself needs no `USBConsole` for `console.log` to work.

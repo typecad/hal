@@ -7,7 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
-import { ADCChannel } from '../../../packages/hal/src/adc-pin';
+import { ADC } from '../../../packages/hal/src/adc-pin';
 import { GPIO } from '../../../packages/hal/src/gpio-pin';
 import {
   ZEPHYR_ADC_GAINS,
@@ -23,12 +23,12 @@ const staticNames = (cls: object, prefix: string): string[] =>
     .sort();
 
 describe('thin-HAL token sync (statics ↔ generated Zephyr sets)', () => {
-  it('ADCChannel gain tokens equal enum adc_gain', () => {
-    expect(staticNames(ADCChannel, 'GAIN_')).toEqual([...ZEPHYR_ADC_GAINS].sort());
+  it('ADC gain tokens equal enum adc_gain', () => {
+    expect(staticNames(ADC, 'GAIN_')).toEqual([...ZEPHYR_ADC_GAINS].sort());
   });
 
-  it('ADCChannel reference tokens equal enum adc_reference', () => {
-    expect(staticNames(ADCChannel, 'REF_')).toEqual([...ZEPHYR_ADC_REFERENCES].sort());
+  it('ADC reference tokens equal enum adc_reference', () => {
+    expect(staticNames(ADC, 'REF_')).toEqual([...ZEPHYR_ADC_REFERENCES].sort());
   });
 
   it('GPIO config-flag tokens equal the header flag set', () => {

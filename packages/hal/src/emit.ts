@@ -46,15 +46,13 @@ export function gpioReadCfg(pin: number | string, flags: number | string): numbe
 /** Thin PWM (hal/pwm-pin.ts): set pulse width in ns against the constructed
  *  period. The first use also applies the construction period
  *  (pwm_set_dt with an idle pulse), then pwm_set_pulse_dt. */
-export function pwmSetPulse(pin: number | string, periodNs: number, pulseNs: number): void {}
+export function pwmSetPulse(pin: number | string, periodNs: number, pulseNs: number, controller: string = '', channel: number = -1): void {}
 /** Thin PWM duty sugar: pulse = duty(0.0–1.0) × periodNs — one
  *  pwm_set_pulse_dt call, no 0–255 scaling. */
-export function pwmSetDuty(pin: number | string, periodNs: number, duty: number): void {}
+export function pwmSetDuty(pin: number | string, periodNs: number, duty: number, controller: string = '', channel: number = -1): void {}
 /** Thin PWM: change the period at runtime (pwm_set_dt; the pulse resets to
  *  idle — Zephyr 4.4 has no period-only setter). */
-export function pwmSetPeriod(pin: number | string, periodNs: number): void {}
-/** Thin PWM tone sugar: 50% square wave at `hz` (one pwm_set_dt). */
-export function pwmTone(pin: number | string, hz: number): void {}
+export function pwmSetPeriod(pin: number | string, periodNs: number, controller: string = '', channel: number = -1): void {}
 
 // ---------------------------------------------------------------------------
 // RMT — Remote Control Transceiver (addressable LEDs, IR, raw digital waveforms)
@@ -76,12 +74,12 @@ import type { Pin } from './gpio.js';
 // ---------------------------------------------------------------------------
 
 /** Thin ADC (hal/adc-pin.ts): raw read with construction-time gain/reference
- *  tokens ("ADCChannel.GAIN_1_4" / "ADCChannel.REF_INTERNAL"); empty strings
+ *  tokens ("ADC.GAIN_1_4" / "ADC.REF_INTERNAL"); empty strings
  *  mean "use the chip descriptor's defaults". */
-export function adcReadRaw(pin: number | string, gain: number | string, reference: number | string): number { return 0; }
+export function adcReadRaw(pin: number | string, gain: number | string, reference: number | string, channel: number = -1, device: string = '', pinctrl: string = ''): number { return 0; }
 /** Thin ADC: millivolts read (adc_raw_to_millivolts) with the same
  *  construction-time gain/reference tokens. */
-export function adcReadMv(pin: number | string, gain: number | string, reference: number | string): number { return 0; }
+export function adcReadMv(pin: number | string, gain: number | string, reference: number | string, channel: number = -1, device: string = '', pinctrl: string = ''): number { return 0; }
 
 // ---------------------------------------------------------------------------
 // Interrupts
@@ -103,10 +101,6 @@ export function interruptDetach(pin: number | string): void {}
 // ---------------------------------------------------------------------------
 // Timing
 // ---------------------------------------------------------------------------
-
-/** Get free heap bytes. Architecture-aware: the strategy maps this to the right
- *  symbol per target (ESP.getFreeHeap() on ESP32, __heap_start trick on AVR). */
-export function getFreeHeap(): number { return 0; }
 
 /** Time.sleep — yielding sleep in milliseconds (Zephyr: k_msleep). */
 export function timeSleep(ms: number): void {}
@@ -246,13 +240,6 @@ export function threadJoin(index: number): void {}
 /** Resolve a board definition path to a compile-time constant. */
 export function boardResolve(path: string): any { return undefined as any; }
 
-// ---------------------------------------------------------------------------
-// Power — MCU power states and clock frequency
-// ---------------------------------------------------------------------------
-
-/** Enter deep sleep for the given duration (ms). Architecture-aware: the
- *  strategy emits the right call per target (esp_deep_sleep on ESP32, a
- *  not-supported comment elsewhere). */
 export function fsReadText(path: string): string { return ""; }
 export function fsWriteText(path: string, content: string): void {}
 export function fsExists(path: string): boolean { return false; }
@@ -263,14 +250,6 @@ export function mqttSubscribe(topic: string): void {}
 export function mqttPublish(topic: string, data: string): void {}
 export function mqttConnected(): boolean { return false; }
 export function mqttDisconnect(): void {}
-export function powerDeepSleep(ms: number): void {}
-/** Enter light sleep. Architecture-aware. */
-export function powerLightSleep(): void {}
-/** Set the CPU frequency (MHz). */
-export function powerSetCpuFrequency(mhz: number): void {}
-/** Enter deep sleep until `pin` reaches `level` (pin wakeup). Architecture-aware:
- *  ext0 on Xtensa (RTC pins), gpio-wakeup on RISC-V. */
-export function powerDeepSleepPin(pin: number, level: number): void {}
 
 // ---------------------------------------------------------------------------
 // Preferences (NVS-backed key/value store)
@@ -369,7 +348,7 @@ export function rawCppExpr<T>(code: string): T {
 // Sensors — DT-bound peripheral parts (generic catalog)
 //
 // The part identity is a catalog token (SENSOR.<underscored-compatible> from
-// sensor-catalog.generated.ts); the bus/address come from the I2CDevice the
+// sensor-catalog.generated.ts); the bus/address come from the I2CTarget the
 // Sensor class was constructed with. Zephyr's uniform sensor API backs these —
 // one code shape for every part in the catalog.
 // ---------------------------------------------------------------------------

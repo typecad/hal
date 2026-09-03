@@ -49,12 +49,6 @@ describe('resolveKconfigFragments', () => {
     expect(xpt.has('CONFIG_INPUT')).toBe(false);
   });
 
-  it('enables PM when usesPower (deep_sleep_pin wake needs it)', () => {
-    const m = resolveKconfigFragments({ usesPower: true }, false);
-    expect(m.get('CONFIG_PM')).toBe('y');
-    expect(m.get('CONFIG_PM_DEVICE')).toBe('y');
-  });
-
   it('enables the "next" USB device stack when usesUsb', () => {
     const m = resolveKconfigFragments({ usesUsb: true }, false);
     // Zephyr 4.3 symbol names (subsys/usb/device_next/Kconfig): the next
@@ -142,37 +136,19 @@ describe('resolveKconfigFragments', () => {
   });
 });
 
-// Regression: the WiFi shim emits a `tx_power_dbm` identifier. The scaffold's
-// usage scan must NOT read the `power_` substring inside it as power-HAL usage
-// and enable CONFIG_PM — on the ESP32-S3 that spins the PM soft-off retry loop
-// forever and freezes a WiFi-only program.
-describe('scaffoldZephyrProject — usage-scan boundary', () => {
-  it('does NOT enable CONFIG_PM for a WiFi-only program (tx_power_dbm false positive)', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'zephyr-wifi-power-fp-'));
-    mkdirSync(join(dir, 'src'), { recursive: true });
-    // Mirrors the real WiFi emit: net_mgmt + a tx_power_dbm field, no pm_/k_sleep.
-    writeFileSync(join(dir, 'src', 'main.cpp'),
-      'int tx_power_dbm = -1; void f(){ net_mgmt(0,0,0,0); }\n');
-    try {
-      scaffoldZephyrProject(dir, false);
-      const prj = readFileSync(join(dir, 'prj.conf'), 'utf8');
-      expect(prj).toContain('CONFIG_WIFI=y');     // WiFi IS used
-      expect(prj).not.toContain('CONFIG_PM=y');   // power is NOT
-      expect(prj).not.toContain('CONFIG_PM_DEVICE=y');
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('DOES enable CONFIG_PM when the power HAL (pm_/k_sleep) is actually used', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'zephyr-power-real-'));
+// The power HAL is removed; nothing in the scaffold emits CONFIG_PM anymore
+// (a raw k_sleep in user code is Time.sleep's domain, not PM policy).
+describe('scaffoldZephyrProject — CONFIG_PM never emitted', () => {
+  it('does NOT enable CONFIG_PM even when the source mentions pm_/k_sleep', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'zephyr-pm-never-'));
     mkdirSync(join(dir, 'src'), { recursive: true });
     writeFileSync(join(dir, 'src', 'main.cpp'),
       'void f(){ k_sleep(0); pm_state_force(0,0); }\n');
     try {
       scaffoldZephyrProject(dir, false);
       const prj = readFileSync(join(dir, 'prj.conf'), 'utf8');
-      expect(prj).toContain('CONFIG_PM=y');
+      expect(prj).not.toContain('CONFIG_PM=y');
+      expect(prj).not.toContain('CONFIG_PM_DEVICE=y');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

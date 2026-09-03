@@ -1,9 +1,9 @@
 ﻿import ts from "typescript";
 import { ExpressionIR, HALOpIR } from "../../api/index.js";
-import { requiredIncludes, registeredCallbacks, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants } from "../build-ir-state.js";
+import { requiredIncludes, registeredCallbacks, activeStringVars, TYPED_ARRAY_ELEMENT_MAP, getContext, floatVariables, halInstances, getCurrentBoardConstants, markHalOpResolved } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { renderExprAsText } from "../render-expr.js";
-import { escapeCppKeyword } from "../../utils/strings.js";
+import { escapeCppKeyword, escapeCppStringLiteral } from "../../utils/strings.js";
 import { HALInstance, halClassRegistry, halGlobalFunctions, HALMethodEntry } from "./hal-parser.js";
 import { tryResolveSemanticCall, tryResolveBoardResolveArg, tryResolveCompoundSemanticReturn, resolveConcatPath } from "./hal-plugins.js";
 import { cppTypeForHalOp } from "../../emit/utils/hal-op-cpp-type.js";
@@ -143,7 +143,11 @@ export function resolveExpressionText(
   }
 
   if (ts.isNumericLiteral(expr)) return expr.text;
-  if (ts.isStringLiteral(expr)) return expr.text;
+  // Escape the DECODED text back to a valid C++ literal — expr.text holds
+  // real control chars (a "\n" argument decodes to a newline), and a raw
+  // newline inside a C string literal is an unterminated literal that
+  // corrupts the rest of the file. Same helper every other renderer uses.
+  if (ts.isStringLiteral(expr)) return `"${escapeCppStringLiteral(expr.text)}"`;
 
   // Call expression (e.g., digitalRead(this._pin), board("path"))
   if (ts.isCallExpression(expr)) {
@@ -736,8 +740,14 @@ export function resolveHALExprToText(expr: Extract<import("../../api/shared/inde
   const strategy = getContext().activeStrategy;
   if (!strategy?.resolveHALOperation) return null;
   const resolved = strategy.resolveHALOperation(expr.operation);
-  if (resolved?.expression) return resolved.expression;
-  if (resolved?.code) return resolved.code.replace(/;\s*$/, "");
+  if (resolved) {
+    // The op may never exist as an IR node (its text is baked into the
+    // calling method's emit lines), so record it for program-analysis's
+    // peripheral usage flags.
+    markHalOpResolved(expr.operation.operation);
+    if (resolved.expression) return resolved.expression;
+    if (resolved.code) return resolved.code.replace(/;\s*$/, "");
+  }
   return null;
 }
 
@@ -747,6 +757,19 @@ export function registerFloatVariable(name: string): void {
 
 /** Build snprintf prelude lines from a string_concat expression.
  *  Returns { lines, bufferName } or null if the expression can't be formatted. */
+
+/** True when a binary IR expression touches a known float variable on either
+ *  side (recursively) — its rendered C++ is double-valued. */
+function binaryTouchesFloatVar(expr: { kind: string; left?: unknown; right?: unknown }): boolean {
+  for (const side of [expr.left, expr.right]) {
+    if (!side || typeof side !== "object") continue;
+    const s = side as { kind: string; value?: unknown; left?: unknown; right?: unknown };
+    if (s.kind === "identifier" && typeof s.value === "string" && floatVariables.has(s.value)) return true;
+    if (s.kind === "binary" && binaryTouchesFloatVar(s as never)) return true;
+  }
+  return false;
+}
+
 export function buildSnprintfFromConcat(
   expr: Extract<ExpressionIR, { kind: "string_concat" }>,
 ): { lines: string[]; bufferName: string } | null {
@@ -760,17 +783,20 @@ export function buildSnprintfFromConcat(
   for (const part of expr.parts) {
     const text = renderExprAsText(part);
     if (part.kind === "string") {
-      formatString += text.slice(1, -1).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      // Escape % → %% first (a bare % in the format string starts a
+      // conversion — a literal '%RH' becomes the unknown-conversion 'R'),
+      // then the C-literal escapes.
+      formatString += text.slice(1, -1).replace(/%/g, "%%").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
       estimatedLength += part.value.length;
     } else if (part.kind === "number") {
       const isFloat = part.cppType === "float" || part.cppType === "double" || !Number.isInteger(part.value);
       if (isFloat) {
-        requiredIncludes.add("<stdlib.h>");
-        const floatBuf = `__cuttlefish_float_${getContext().snprintfCounter++}`;
-        prelude.push(`char ${floatBuf}[16];`);
-        prelude.push(`dtostrf(${text}, 0, 1, ${floatBuf});`);
-        formatString += "%s";
-        args.push(floatBuf);
+        // %g formats the double literal directly — portable (Zephyr's
+        // cbprintf turns on FP support when it sees a float specifier);
+        // dtostrf is AVR-only and fails to compile elsewhere (same reasoning
+        // as the float-VARIABLE branch below).
+        formatString += "%g";
+        args.push(text);
         estimatedLength += 16;
       } else {
         formatString += "%d";
@@ -783,16 +809,34 @@ export function buildSnprintfFromConcat(
         && part.expression.kind === "identifier"
         && (activeStringVars.has((part.expression as any).value) || getCurrentIrTypeScope()?.locals.get((part.expression as any).value) === "std::string" || getCurrentIrTypeScope()?.globals.get((part.expression as any).value) === "std::string");
 
-      // Check for float variable reference: template_string wrapping an identifier
+      // Check for float variable reference: template_string wrapping an identifier.
+      // A var initialized from a double-returning HAL op (sensor.get) records
+      // as a float var; one declared `: number` from such an initializer also
+      // lands in the IR scope's float types.
       const isFloatVar = part.kind === "template_string"
         && part.expression.kind === "identifier"
         && floatVariables.has((part.expression as any).value);
+
+      // Inline double-returning HAL call (template_string wrapping a call):
+      // the lowerings' deterministic shape for a double return is
+      // `static_cast<double>(...)` — Time.now()/sensor.get()/millivolt reads.
+      // Formatting that with the %d default is a -Wformat warning at best and
+      // wrong output at worst; %g matches the float-variable branch.
+      const isDoubleCall = part.kind === "template_string"
+        && /^static_cast<double>\(/.test(text);
 
       if (isStringVar) {
         formatString += "%s";
         const varName = (part.expression as any).value;
         const varType = getCurrentIrTypeScope()?.locals.get(varName) || getCurrentIrTypeScope()?.globals.get(varName) || "";
-        const cleanType = varType.replace(/\bconst\b\s*/g, "").trim();
+        // Normalize through the ACTIVE strategy before the char* check — the
+        // IR scope carries the pre-normalization type ("std::string") while
+        // the declaration renderer emitted the strategy's mapping of it
+        // (Zephyr: std::string → const char*). Without this, a string-literal
+        // variable declares as const char* but its snprintf arg gains a
+        // .c_str() that const char* does not have.
+        const normalizedType = getContext().activeStrategy?.normalizeCppType(varType) ?? varType;
+        const cleanType = normalizedType.replace(/\bconst\b\s*/g, "").trim();
         if (cleanType && cleanType !== "char*" && cleanType !== "const char*") {
           args.push(`${text}.c_str()`);
         } else {
@@ -800,12 +844,17 @@ export function buildSnprintfFromConcat(
         }
         estimatedLength += 32;
       } else if (isFloatVar) {
-        requiredIncludes.add("<stdlib.h>");
-        const floatBuf = `__cuttlefish_float_${getContext().snprintfCounter++}`;
-        prelude.push(`char ${floatBuf}[16];`);
-        prelude.push(`dtostrf(${text}, 0, 1, ${floatBuf});`);
-        formatString += "%s";
-        args.push(floatBuf);
+        // %g formats the double expression directly — portable (Zephyr's
+        // cbprintf turns on FP support when it sees a float specifier);
+        // dtostrf is AVR-only and fails to compile elsewhere.
+        formatString += "%g";
+        args.push(text);
+        estimatedLength += 16;
+      } else if (isDoubleCall) {
+        // Inline double-returning HAL call (`${Time.now()}`) — the rendered
+        // text IS the double expression; %g, never the %d default.
+        formatString += "%g";
+        args.push(text);
         estimatedLength += 16;
       } else if (part.kind === "template_string" && part.expression.kind === "hal-expr") {
         // HAL expression inside template literal — resolve via strategy
@@ -820,6 +869,11 @@ export function buildSnprintfFromConcat(
           formatString += "%s";
           args.push(`(${argText} ? "true" : "false")`);
           estimatedLength += 5;
+        } else if (cppType === "float" || cppType === "double") {
+          // %g formats the double expression directly — no AVR-only dtostrf.
+          formatString += "%g";
+          args.push(argText);
+          estimatedLength += 12;
         } else {
           formatString += "%d";
           args.push(argText);
@@ -828,14 +882,21 @@ export function buildSnprintfFromConcat(
       } else {
         const numVal = Number(text);
         if (!isNaN(numVal) && !Number.isInteger(numVal)) {
-          requiredIncludes.add("<stdlib.h>");
-          const floatBuf = `__cuttlefish_float_${getContext().snprintfCounter++}`;
-          const precision = text.includes(".") ? text.split(".")[1].length : 1;
-          prelude.push(`char ${floatBuf}[16];`);
-          prelude.push(`dtostrf(${text}, 0, ${precision}, ${floatBuf});`);
-          formatString += "%s";
-          args.push(floatBuf);
+          // A float literal (or float-valued expression) — %g directly; the
+          // AVR dtostrf detour fails to compile on every other framework.
+          formatString += "%g";
+          args.push(text);
           estimatedLength += 16;
+        } else if (
+          part.kind === "template_string"
+          && part.expression.kind === "binary"
+          && binaryTouchesFloatVar(part.expression)
+        ) {
+          // Arithmetic on a double var (`tenths / 10`) is double-valued: %g,
+          // not %d — the rendered text is already the C++ expression.
+          formatString += "%g";
+          args.push(text);
+          estimatedLength += 12;
         } else {
           formatString += "%d";
           args.push(text);

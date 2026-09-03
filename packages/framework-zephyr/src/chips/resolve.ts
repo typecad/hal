@@ -7,9 +7,9 @@
 // (from the MCU package's zephyr field) with board-level overrides (from the
 // board package's zephyr field).
 //
-// When a board package carries Zephyr config, this path replaces the
-// hardcoded chip descriptor registry. When it doesn't (legacy), chipForTarget
-// still works as the fallback.
+// This is the ONE resolution path: every board's chip view reconstructs
+// from its generated manifest — there is no curated registry to fall back
+// to.
 // ---------------------------------------------------------------------------
 
 import type { BoardConstants } from '@typecad/cuttlefish/api/shared';
@@ -22,6 +22,7 @@ import type {
   ZephyrPwmSpec,
   ZephyrInterruptPin,
   ZephyrAdcChannel,
+  ZephyrDacChannel,
 } from './types.js';
 
 /** Collect an indexed array of objects reconstructed from flat dot-path keys. */
@@ -85,7 +86,7 @@ function collectBusControllers(
  * Try to derive a ZephyrChipDescriptor from board/MCU package constants.
  *
  * Returns null when no zephyr info is available in the board constants
- * (the caller should fall back to the hardcoded chipForTarget registry).
+ * (the caller should treat the board as unresolved — NO_BOARD_CHIP).
  */
 export function resolveChipFromBoard(
   bc: BoardConstants | undefined,
@@ -107,7 +108,11 @@ export function resolveChipFromBoard(
   const id = boardTarget ?? socs[0] ?? 'custom';
 
   const zGpioController = bc.get('zephyr.gpioController') as string | undefined;
-  const soc = (bc.get('mcu.id') as string) ?? (socs[0] ?? '');
+  // The soc name: MCU packages key it under mcu.id; generated board
+  // manifests carry it as the second segment of the qualified target.
+  const soc = (bc.get('mcu.id') as string)
+    ?? (socs.length > 0 ? socs[0] : undefined)
+    ?? (boardTarget && boardTarget.includes('/') ? boardTarget.split('/')[1] : '');
 
   // ── Build mutable sub-objects, then construct the final descriptor ──────
 
@@ -177,11 +182,6 @@ export function resolveChipFromBoard(
     ? { controller: matrixController, channelCount: matrixChannelCount, pins: matrixPins }
     : undefined;
 
-  // PWM capability constants (peripherals.pwm.* from the MCU manifest) — the
-  // numbers the transpiler constant-folds getPwmFrequency()/getPwmResolution()
-  // to; carried so the runtime lowering agrees with the fold.
-  const pwmMaxFreq = bc.get('peripherals.pwm.maxFrequency') as number | undefined;
-  const pwmResolution = bc.get('peripherals.pwm.resolution') as number | undefined;
   // Human text for the console.log destination build note.
   const consoleDescription = bc.get('zephyr.consoleDescription') as string | undefined;
   const adcResolution = bc.get('zephyr.adc.resolution') as number | undefined;
@@ -192,18 +192,41 @@ export function resolveChipFromBoard(
     const pin = m.get(`zephyr.adc.channels.${i}.pin`) as number;
     const channel = m.get(`zephyr.adc.channels.${i}.channel`) as number;
     const pinctrl = m.get(`zephyr.adc.channels.${i}.pinctrl`) as string | undefined;
+    const controller = m.get(`zephyr.adc.channels.${i}.controller`) as string | undefined;
     if (pin != null && channel != null) {
-      return { pin, channel, ...(pinctrl ? { pinctrl } : {}) };
+      return { pin, channel, ...(pinctrl ? { pinctrl } : {}), ...(controller ? { controller } : {}) };
+    }
+    return null;
+  });
+
+  const dacDevice = bc.get('zephyr.dac.device') as string | undefined;
+  const dacChannels = collectIndexed<ZephyrDacChannel>(bc, 'zephyr.dac.channels', (m, i) => {
+    const pin = m.get(`zephyr.dac.channels.${i}.pin`) as number;
+    const channel = m.get(`zephyr.dac.channels.${i}.channel`) as number;
+    const resolution = m.get(`zephyr.dac.channels.${i}.resolution`) as number | undefined;
+    if (pin != null && channel != null) {
+      return { pin, channel, resolution: resolution ?? 12 };
     }
     return null;
   });
 
   const wdtNodeLabel = bc.get('zephyr.wdt.nodeLabel') as string | undefined;
 
+  // Hardware counters (Zephyr counter devices): nodeLabel always; the child
+  // form carries the timer parent the overlay attaches the (label-less)
+  // counter child to.
+  const hwtimerControllers = collectIndexed<ZephyrBusController>(bc, 'zephyr.hwtimer.controllers', (m, i) => {
+    const nodeLabel = m.get(`zephyr.hwtimer.controllers.${i}.nodeLabel`) as string;
+    const counterParent = m.get(`zephyr.hwtimer.controllers.${i}.counterParent`) as string | undefined;
+    if (!nodeLabel) return null;
+    return { nodeLabel, ...(counterParent ? { counterParent } : {}) };
+  });
+
   // Storage partition synthesis (boards whose DTS ships no storage_partition
   // — see ZephyrChipDescriptor.storage).
   const storageOffset = bc.get('zephyr.storage.offset') as number | undefined;
   const storageSize = bc.get('zephyr.storage.size') as number | undefined;
+  const storagePreexisting = bc.get('zephyr.storage.preexisting') as boolean | undefined;
 
   // USB device (CDC-ACM): zephyr.usb.controller + zephyr.usb.cdcInstances
   // (+ optional vid/pid for the device descriptor).
@@ -325,8 +348,6 @@ export function resolveChipFromBoard(
             specs: pwmSpecs,
             ...(pwmMatrix ? { matrix: pwmMatrix } : {}),
             ...(pwmClockHz ? { clockHz: pwmClockHz } : {}),
-            ...(pwmMaxFreq !== undefined ? { maxFrequencyHz: pwmMaxFreq } : {}),
-            ...(pwmResolution !== undefined ? { resolutionBits: pwmResolution } : {}),
           },
         }
       : {}),
@@ -342,9 +363,11 @@ export function resolveChipFromBoard(
           },
         }
       : {}),
+    ...(dacDevice && dacChannels.length > 0 ? { dac: { device: dacDevice, channels: dacChannels } } : {}),
     ...(wdtNodeLabel ? { wdt: { nodeLabel: wdtNodeLabel } } : {}),
+    ...(hwtimerControllers.length > 0 ? { hwtimer: { controllers: hwtimerControllers } } : {}),
     ...(storageOffset != null && storageSize != null
-      ? { storage: { offset: storageOffset, size: storageSize } }
+      ? { storage: { offset: storageOffset, size: storageSize, ...(storagePreexisting ? { preexisting: true } : {}) } }
       : {}),
     ...(usbController && usbCdcInstances && usbCdcInstances > 0
       ? {
@@ -427,8 +450,6 @@ export function mergeBoardPwmSpecs(
       specs: [...existing, ...joining],
       ...(chip.pwm?.matrix ? { matrix: chip.pwm.matrix } : {}),
       ...(chip.pwm?.clockHz ? { clockHz: chip.pwm.clockHz } : {}),
-      ...(chip.pwm?.maxFrequencyHz ? { maxFrequencyHz: chip.pwm.maxFrequencyHz } : {}),
-      ...(chip.pwm?.resolutionBits ? { resolutionBits: chip.pwm.resolutionBits } : {}),
     },
   };
 }

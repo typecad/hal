@@ -14,6 +14,7 @@ import { join } from 'node:path';
 import * as ui from '@typecad/cuttlefish/utils/ui';
 import { loadCuttlefishConfig } from '@typecad/cuttlefish/config-loader';
 import { checkZephyrEnv } from './toolchain/env-check.js';
+import { PINNED_ZEPHYR_MANIFEST_REV, PINNED_ZEPHYR_SDK_VERSION, sdkFingerprint } from '@typecad/cuttlefish/board-catalog';
 import { resolveChipFromBoard } from './chips/resolve.js';
 
 /**
@@ -43,6 +44,9 @@ export function runDoctor(): void {
   // Zephyr RTOS version + declared compat range.
   ui.printInfo(`ZEPHYR_BASE ...... ${c.zephyrBase ?? '(not set)'}`);
   ui.printInfo(`Zephyr version .. ${c.zephyrVersion ?? 'unknown (could not read ZEPHYR_BASE/VERSION)'}`);
+  ui.printInfo(`Workspace pin ... ${PINNED_ZEPHYR_MANIFEST_REV} (SDK ${PINNED_ZEPHYR_SDK_VERSION})`);
+  const fp = c.zephyrBase ? sdkFingerprint(c.zephyrBase) : undefined;
+  ui.printInfo(`SDK fingerprint . ${fp ?? '(no tree — run ' + 'npx --package @typecad/framework-zephyr zephyr-installer)'}`);
   ui.printInfo(`Supported range . ${c.compatRange ?? '(none declared)'}`);
 
   if (c.compatStatus === 'out-of-range') {

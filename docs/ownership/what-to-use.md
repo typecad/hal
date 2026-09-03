@@ -98,9 +98,9 @@ checkWifi(config);
 ## 5. In-Place Modification (e.g., Data Filtering)
 **Scenario**: You have a raw buffer from a sensor and you need to pass it through a "Noise Filter" that cleans up the data within the same memory space.
 
-### Best Pattern: `Mut` Borrow
+### Best Pattern: `Mutable` Borrow
 ```typescript
-function applyFilter(data: Mut<Uint8Array>) {
+function applyFilter(data: Mutable<Uint8Array>) {
   for (let i = 0; i < data.length; i++) {
     if (data[i] > 100) data[i] = 100; // Modify in-place
   }
@@ -114,7 +114,7 @@ function readSensors() {
   // 'raw' is now filtered and ready to use
 }
 ```
-**Benefit**: **RAM Efficiency**. You modify the data in-place without needing a second "result" buffer, which is critical on devices with very little RAM (like an Arduino Uno).
+**Benefit**: **RAM Efficiency**. You modify the data in-place without needing a second "result" buffer, which is critical on devices with very little RAM.
 
 ---
 
@@ -124,6 +124,6 @@ function readSensors() {
 | :--- | :--- | :--- |
 | `number`, `boolean` | Anything | None (Plain JS) |
 | `Array`, `Object`, `string` | Read-only access | `Shared<T>` |
-| `Array`, `Object` | Modify in-place | `Mut<T>` |
+| `Array`, `Object` | Modify in-place | `Mutable<T>` |
 | `Array`, `Object` | Transfer/Final Handoff | `Owned<T>` |
 | Large Buffers | Storing in a class | `Owned<T>` |

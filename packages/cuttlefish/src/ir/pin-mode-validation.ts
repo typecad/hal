@@ -23,7 +23,7 @@ const READ_METHODS = new Set([
 
 /** Write operations that implicitly set OUTPUT mode on Wiring-derived frameworks. */
 const WRITE_METHODS = new Set([
-  'write', 'high', 'low', 'toggle', 'pulse', 'pwm', 'tone',
+  'write', 'high', 'low', 'toggle', 'pulse', 'pwm',
 ]);
 
 /** Receiver kinds that represent GPIO pins. */
@@ -95,7 +95,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
    *  their respective pin kinds; everything else defaults to digital. */
   const inferReceiverKind = (method: string): string | undefined => {
     if (method === 'readAnalog' || method === 'readVoltage') return 'analog-input';
-    if (method === 'pwm' || method === 'tone') return 'pwm';
+    if (method === 'pwm') return 'pwm';
     // Methods in the read/write/mode sets that aren't analog/pwm are digital.
     if (READ_METHODS.has(method) || WRITE_METHODS.has(method) || MODE_SET_METHODS.has(method)) return 'digital';
     return undefined;
@@ -110,7 +110,7 @@ export function validatePinModeConfig(program: ProgramIR): Diagnostic[] {
     if (op.operation === 'gpio.configure' || op.operation === 'gpio.read_cfg') {
       pinModeSet.add(pinKey);
       analogDrivenPins.delete(pinKey);
-    } else if (op.operation === 'pwm.set_pulse' || op.operation === 'pwm.set_duty' || op.operation === 'pwm.tone') {
+    } else if (op.operation === 'pwm.set_pulse' || op.operation === 'pwm.set_duty') {
       analogDrivenPins.add(pinKey);
     } else if (op.operation === 'gpio.write' || op.operation === 'gpio.toggle') {
       analogDrivenPins.delete(pinKey);

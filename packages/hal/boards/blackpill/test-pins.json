@@ -1,0 +1,22 @@
+{
+  "pins": {
+    "gpioOut": "PA1",
+    "gpioIn": "PA2",
+    "pwm": "PB6",
+    "pwmAlt": "PA8",
+    "adcPin": "PA1",
+    "adcPinAlt": "PA2",
+    "cs": "PA4",
+    "interrupt": "PA0",
+    "led": "LED",
+    "button": "BUTTON",
+    "i2cBus": "'I2C0'"
+  },
+  "facts": {
+    "adcMax": 4095
+  },
+  "usb": {
+    "vid": "2FE3",
+    "pid": "0001"
+  }
+}

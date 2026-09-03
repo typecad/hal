@@ -57,10 +57,9 @@ export function listFiles(dirPath: string, extension: string): string[] {
  * Recursive variant of {@link listFiles}. Walks `dirPath` depth-first and
  * returns every file (in every subdirectory) whose name ends with `extension`.
  *
- * Used by {@link loadLibraryDefinitions} so libdefs under nested cache dirs
- * like `.cuttlefish/component-decls/<component>/` are discovered. Purely
- * additive vs. the non-recursive `listFiles` — single-level layouts keep
- * working, nested layouts now also work.
+ * Used by {@link loadLibraryDefinitions} so libdefs in project subdirectories
+ * are discovered. Purely additive vs. the non-recursive `listFiles` —
+ * single-level layouts keep working, nested layouts now also work.
  *
  * Returns absolute paths. Unreadable directories are silently skipped
  * (matches `listFiles`'s not-exist behavior for non-existent roots).

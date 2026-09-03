@@ -5,9 +5,11 @@
 // they reshuffle on every replug and every CDC re-enumeration after a flash.
 // Boards are instead identified by their USB VID/PID (+ optional serial
 // number), declared per board in test-pins.json (`usb: { vid, pid, serial? }`)
-// or directly in the config's `test.usb`. Zephyr CDC consoles share the
-// Zephyr test VID (0x2FE3) by default, so each board package assigns its own
-// PID there (zephyr.usb.vid/pid feeds USBD_DEVICE_DEFINE).
+// or directly in the config's `test.usb`. Zephyr CDC consoles all enumerate
+// at the Zephyr-test default identity 0x2FE3:0001 (per-board PIDs are no
+// longer assigned), so vid/pid alone cannot distinguish several attached CDC
+// boards — run one CDC board at a time, or disambiguate via `serial` when the
+// descriptor provides one.
 //
 // UART-bridge boards identify by their bridge chip instead: the Uno's 16U2
 // (2341:0043, CH340 clones report 1A86:7523) and the ESP32 DevKitC's CP2102
@@ -49,7 +51,7 @@ export function normalizeUsbIdentity(identity: UsbIdentity): UsbIdentity {
   };
 }
 
-/** Human-readable one-line form: `2FE3:0002 (serial DF7A…)` / `2FE3:0002`. */
+/** Human-readable one-line form: `2FE3:0001 (serial DF7A…)` / `2FE3:0001`. */
 export function formatUsbIdentity(identity: UsbIdentity): string {
   const n = normalizeUsbIdentity(identity);
   return `${n.vid.toUpperCase()}:${n.pid.toUpperCase()}${n.serial ? ` serial ${n.serial}` : ''}`;

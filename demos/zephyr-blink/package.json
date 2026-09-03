@@ -7,8 +7,7 @@
   "scripts": {
     "build": "cuttlefish build",
     "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload",
-    "flash": "cuttlefish build --flash"
+    "upload": "cuttlefish build --compile --upload"
   },
   "dependencies": {
     "@typecad/framework-zephyr": "*"

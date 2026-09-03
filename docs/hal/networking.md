@@ -26,6 +26,8 @@ if (wifi.join()) {
 Both are construction facts:
 
 ```typescript
+import { WiFi } from '@typecad/hal';
+
 const lab = new WiFi('LabNet', {
   psk: 'hunter22',
   ipv4: { addr: '10.0.0.5', gateway: '10.0.0.1', netmask: '255.255.255.0' },
@@ -105,6 +107,8 @@ if (req.send()) {
 Method statics (`Request.GET/POST/PUT/DELETE/HEAD/PATCH`) and chaining read naturally:
 
 ```typescript
+import { Request } from '@typecad/hal';
+
 new Request(Request.POST, 'http://api.local/telemetry', {
   body: '{"temp":21.5}',
   json: true,                             // sets Content-Type: application/json
@@ -117,12 +121,14 @@ new Request(Request.POST, 'http://api.local/telemetry', {
 HTTPS is native (mbedTLS over TLS sockets). The CA policy is a construction fact:
 
 ```typescript
+import { Request } from '@typecad/hal';
+
 // Pin a specific CA (a private CA, for example). The PEM literal is decoded
 // to DER at BUILD time — no PEM parser ships on the target.
-const pinned = new Request(Request.GET, 'https://internal.corp/api', { caCert: CORP_CA_PEM });
+const pinned = new Request(Request.GET, 'https://internal.corp/api', { caCert: '...PEM...' });
 
 // Self-signed lab endpoint: encrypt but skip verification (development only).
-const lab = new Request(Request.GET, 'https://lab-server.local', { insecure: true });
+const pinnedLab = new Request(Request.GET, 'https://lab-server.local', { insecure: true });
 ```
 
 Don't ship `insecure: true` in production firmware.
@@ -132,6 +138,8 @@ Don't ship `insecure: true` in production firmware.
 Inside an `async function`, `await req.send()` (statement position) splits into send-start + done-polling, so a slow request never stalls the rest of the program:
 
 ```typescript
+import { Request, Time } from '@typecad/hal';
+
 async function pollCloud() {
   while (true) {
     const req = new Request(Request.GET, 'http://api.local/health');
@@ -219,7 +227,7 @@ The compile-time validator treats MQTT like HTTP: using `Mqtt` in a program that
 
 | Member | Returns | Description |
 | :--- | :--- | :--- |
-| `new Mqtt(uri, opts?)` | `Mqtt` | `mqtt://` / `mqtts://` broker URI; `clientId`. |
+| `new Mqtt(uri, opts)` | `Mqtt` | `mqtt://` / `mqtts://` broker URI; `clientId` (required). |
 | `connect()` | `void` | Open the session (CONNACK completes in the poll thread — poll `linked()`). |
 | `onMessage(fn)` | `void` | Handler for every received publish on subscribed topics. |
 | `subscribe(filter)` | `void` | Subscribe to a topic filter (`"sensors/#"`). |

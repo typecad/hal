@@ -53,65 +53,6 @@ export enum InterruptMode {
 export type InterruptHandler = () => void;
 
 // ---------------------------------------------------------------------------
-// Pin groups
-// ---------------------------------------------------------------------------
-
-export interface PinGroupMember {
-  readonly number: number;
-  readonly gpio: number;
-  write(value: DigitalValue): void;
-  high(): void;
-  low(): void;
-  toggle(): void;
-  read(): DigitalValue;
-  isHigh(): boolean;
-  isLow(): boolean;
-}
-
-export interface IPinGroup<T extends PinGroupMember = PinGroupMember> {
-  readonly name: string;
-  readonly pins: ReadonlyArray<T>;
-  writePattern(pattern: number): void;
-  readPattern(): number;
-  fill(value: DigitalValue): void;
-}
-
-export function createPinGroup<T extends PinGroupMember>(
-  pins: T[]
-): IPinGroup<T> {
-  return {
-    name: 'PinGroup',
-    pins: Object.freeze(pins) as ReadonlyArray<T>,
-    writePattern(pattern: number): void {
-      for (let i = 0; i < this.pins.length; i++) {
-        const bit = (pattern >> i) & 1;
-        const pin = this.pins[i];
-        if ('write' in pin && typeof pin.write === 'function') {
-          pin.write(bit === 1);
-        }
-      }
-    },
-    readPattern(): number {
-      let value = 0;
-      for (let i = 0; i < this.pins.length; i++) {
-        const pin = this.pins[i];
-        if ('isHigh' in pin && typeof pin.isHigh === 'function' && pin.isHigh()) {
-          value |= (1 << i);
-        }
-      }
-      return value;
-    },
-    fill(value: DigitalValue): void {
-      for (const pin of this.pins) {
-        if ('write' in pin && typeof pin.write === 'function') {
-          pin.write(value);
-        }
-      }
-    },
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Architecture identifier
 // ---------------------------------------------------------------------------
 

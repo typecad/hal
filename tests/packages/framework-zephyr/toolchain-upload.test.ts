@@ -89,11 +89,11 @@ describe('resolveProbeMethod (zephyr.probe → runner + args)', () => {
 });
 
 describe('buildFlashArgs (west flash runner selection)', () => {
-  it('trusts the board.cmake default for non-ESP32 boards (no forced nrfjprog)', () => {
+  it('trusts the board.cmake default when no runner applies (no forced nrfjprog)', () => {
     // Regression: xiao_ble's board.cmake defaults to nrfutil, not nrfjprog.
     // The framework must not override that default — forcing nrfjprog broke
     // USB-bootloader boards that have no Nordic J-Link tooling installed.
-    const args = buildFlashArgs('/proj/build', 'xiao_ble', undefined, 'COM9');
+    const args = buildFlashArgs('/proj/build', undefined, 'COM9', undefined);
     expect(args).toEqual(['flash', '-d', '/proj/build']);
     // No runner injected: west resolves the board.cmake default itself.
     expect(args).not.toContain('--runner');
@@ -103,7 +103,7 @@ describe('buildFlashArgs (west flash runner selection)', () => {
 
   it('appends runnerArgs verbatim after the runner (ST-Link openocd reset_config)', () => {
     const args = buildFlashArgs(
-      '/proj/build', 'blackpill_f411ce/stm32f411xe', 'openocd', undefined,
+      '/proj/build', 'openocd', undefined, undefined,
       ['--cmd-pre-init=reset_config none'],
     );
     expect(args).toEqual([
@@ -114,22 +114,31 @@ describe('buildFlashArgs (west flash runner selection)', () => {
   });
 
   it('does not force a runner even when no port is given', () => {
-    const args = buildFlashArgs('/proj/build', 'xiao_ble', undefined, undefined);
+    const args = buildFlashArgs('/proj/build', undefined, undefined, undefined);
     expect(args).toEqual(['flash', '-d', '/proj/build']);
     expect(args).not.toContain('--runner');
   });
 
-  it('forwards the port via --esp-device for ESP32 boards', () => {
-    // esptool reads the device from --esp-device; board.cmake picks the runner.
-    const args = buildFlashArgs('/proj/build', 'esp32s3_devkitc', undefined, 'COM5');
-    expect(args).toContain('--esp-device');
-    expect(args).toContain('COM5');
-    // ESP32 lets board.cmake select esptool — no explicit --runner either.
-    expect(args).not.toContain('--runner');
+  it('forwards the port via --esp-device whenever esptool is the flash runner', () => {
+    // esptool reads the device from --esp-device. Runner-gated, never
+    // board-name-gated: the resolved flash runner (explicit choice OR the
+    // board's declared default) decides, so any esptool board is treated
+    // identically.
+    const viaDefault = buildFlashArgs('/proj/build', undefined, 'COM5', 'esptool');
+    expect(viaDefault).toContain('--esp-device');
+    expect(viaDefault).toContain('COM5');
+    // board.cmake still selects the runner — no forced --runner.
+    expect(viaDefault).not.toContain('--runner');
+    const viaExplicit = buildFlashArgs('/proj/build', 'esptool', 'COM5', 'esptool');
+    expect(viaExplicit).toEqual([
+      'flash', '-d', '/proj/build',
+      '--runner', 'esptool',
+      '--esp-device', 'COM5',
+    ]);
   });
 
   it('lets an explicit zephyr.runner override the board default', () => {
-    const args = buildFlashArgs('/proj/build', 'xiao_ble', 'jlink', undefined);
+    const args = buildFlashArgs('/proj/build', 'jlink', undefined, undefined);
     expect(args).toEqual(['flash', '-d', '/proj/build', '--runner', 'jlink']);
   });
 
@@ -137,7 +146,7 @@ describe('buildFlashArgs (west flash runner selection)', () => {
     // Regression: bossac defaults its port to /dev/ttyACM0, which never
     // matches on Windows — "No device found on /dev/ttyACM0" — so the port
     // must be forwarded explicitly (Nano 33 IoT / SAMD21 bootloader flash).
-    const args = buildFlashArgs('/proj/build', 'arduino_nano_33_iot/samd21g18a', 'bossac', 'COM8');
+    const args = buildFlashArgs('/proj/build', 'bossac', 'COM8', 'bossac');
     expect(args).toEqual([
       'flash', '-d', '/proj/build',
       '--runner', 'bossac',
@@ -145,8 +154,8 @@ describe('buildFlashArgs (west flash runner selection)', () => {
     ]);
   });
 
-  it('honors an explicit runner even on ESP32 (no --esp-device without a port)', () => {
-    const args = buildFlashArgs('/proj/build', 'esp32_devkitc', 'openocd', undefined);
+  it('no port forwarding for runners that do not take one', () => {
+    const args = buildFlashArgs('/proj/build', 'openocd', undefined, undefined);
     expect(args).toEqual(['flash', '-d', '/proj/build', '--runner', 'openocd']);
   });
 });

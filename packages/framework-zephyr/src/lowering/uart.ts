@@ -131,7 +131,6 @@ export function uartRingStateLines(index: number, ring: number): string[] {
     `        }`,
     `    }`,
     `}`,
-    `(void)${dev};`,
     '// CUTTLEFISH_UARTRX_END',
   ];
 }

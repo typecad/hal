@@ -435,8 +435,8 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
       return `(sizeof(${safeText}) / sizeof(${safeText}[0]))`;
     }
     if (ts.isCallExpression(receiverNode)) {
-      // Case B: a HAL buffer-returning method (I2CDevice.readBytes /
-      // SPIDevice.readRegister) used INLINE as a sub-expression — e.g.
+      // Case B: a HAL buffer-returning method (a device target's read
+      // verbs) used INLINE as a sub-expression — e.g.
       // `dev.readBytes(0,6).length`. These methods lower to STATEMENTS (a fill
       // loop), not a single C++ expression, so by the time we get here the
       // receiver text is already a leaked `for (...) __buf[__i] = Wire.read()`

@@ -5,16 +5,16 @@ The thin HAL is Cuttlefish's Zephyr-first surface: one class per peripheral, Zep
 Every class follows the same shape:
 
 - **Construction carries the facts.** Pin, flags, period, gain, baud, stack size — the constructor's arguments become devicetree nodes, Kconfig, or state blocks. There is no `begin()`, no `setClock()`, nothing to order.
-- **Tokens are Zephyr's enums.** `GPIO.OUTPUT | GPIO.PULL_UP` ↔ `GPIO_OUTPUT | GPIO_PULL_UP`, `ADCChannel.GAIN_1_4` ↔ `ADC_GAIN_1_4`, `CHAN.AMBIENT_TEMP` ↔ `SENSOR_CHAN_AMBIENT_TEMP`. The token name sets are generated from the pinned Zephyr tree's headers (`scripts/gen-zephyr-hal-tokens.mjs`) and re-validated at build time — a misspelled token is an editor-visible member error, and an unknown combination is a build error naming the valid spellings.
+- **Tokens are Zephyr's enums.** `GPIO.OUTPUT | GPIO.PULL_UP` ↔ `GPIO_OUTPUT | GPIO_PULL_UP`, `ADC.GAIN_1_4` ↔ `ADC_GAIN_1_4`, `CHAN.AMBIENT_TEMP` ↔ `SENSOR_CHAN_AMBIENT_TEMP`. The token name sets are generated from the pinned Zephyr tree's headers (`scripts/gen-zephyr-hal-tokens.mjs`) and re-validated at build time — a misspelled token is an editor-visible member error, and an unknown combination is a build error naming the valid spellings.
 - **Units are Zephyr's.** Nanoseconds for PWM time, Hz for construction clocks, millivolts, raw ADC counts, Zephyr priority numbers. No 0–255, no 0–1023.
 
 ```typescript
-import { GPIO, PWM, ADCChannel, Time, Thread } from '@typecad/hal';
-import { LED, PB6, A1 } from '@typecad/board';
+import { GPIO, PWM, ADC, Time, Thread } from '@typecad/hal';
+import { LED, ANY_PIN } from '@typecad/board';
 
 const led = new GPIO(LED, GPIO.OUTPUT);            // gpio_pin_configure_dt + set/toggle
-const dimmer = new PWM(PB6, { periodNs: 20_000_000 }); // 50 Hz from construction
-const sense = new ADCChannel(A1);                 // channel setup = construction
+const dimmer = new PWM(ANY_PIN, { periodNs: 20_000_000 }); // 50 Hz from construction
+const sense = new ADC(ANY_PIN);             // channel setup = construction
 
 const worker = new Thread(0, { stackKb: 4 });
 worker.start((): void => {
@@ -26,7 +26,7 @@ worker.start((): void => {
 });
 ```
 
-Per-family docs: [Networking](./networking.md) (WiFi / Request / Mqtt), [Persistence](./persistence.md) (File / Store), [Async](./async.md) (the cooperative tier), [Sensors](./sensors.md), plus [Communication](./communication.md) (buses and consoles), [GPIO](./gpio.md), [Analog & PWM](./analog-pwm.md), [Events](./events.md), [Ownership](./ownership.md), and the small stateless surfaces in [Utilities](./utilities.md) (tone / shift / random / power).
+Per-family docs: [Networking](./networking.md) (WiFi / Request / Mqtt), [Persistence](./persistence.md) (File / Store), [Async](./async.md) (the cooperative tier), [Sensors](./sensors.md), plus [Communication](./communication.md) (buses and consoles), [GPIO](./gpio.md), [Analog & PWM](./analog-pwm.md), [Events](./events.md), [Ownership](./ownership.md), and the small stateless surfaces in [Utilities](./utilities.md) (shift / random / math).
 
 ## Time
 
@@ -34,9 +34,8 @@ Per-family docs: [Networking](./networking.md) (WiFi / Request / Mqtt), [Persist
 
 - `Time.sleep(ms)` → `k_msleep` — yielding sleep; in the generated single-threaded main this blocks the caller, `delay()`'s semantics JS-spelled. Inside an `async function`, `await Time.sleep(ms)` becomes cooperative: the async state machine arms a deadline and yields (timers and other tasks run) until it passes — the same machinery `await delay()` rides.
 - `Time.now()` → `k_uptime_get()` as a double — milliseconds since boot, monotonic, no uint32 wrap (`Date.now()`-shaped).
-- `Time.nowUs()` → `k_cyc_to_us_floor64(k_cycle_get_64())`.
+- `Time.nowUs()` → uptime-derived microseconds (`k_uptime_get() * 1000`) on every board — the uniform, monotonic expression; resolution is the uptime tick (for sub-ms determinism use `Counter`).
 - `Time.busyWaitUs(us)` → `k_busy_wait` — the honest name for a spin with no schedule point.
-- `setTimeout`/`setInterval` keep their plain-JS names (k_timer + k_work underneath).
 
 ## GPIO
 
@@ -55,18 +54,18 @@ Per-family docs: [Networking](./networking.md) (WiFi / Request / Mqtt), [Persist
 
 On matrix-routed chips (ESP32 LEDC) any listed pad works; channels are assigned at build time over the pins the program actually drives.
 
-## ADCChannel
+## ADC
 
-`new ADCChannel(pin, { gain?, reference? })` — construction **is** the channel setup (exactly `struct adc_channel_cfg`'s fields; tokens from `enum adc_gain`/`enum adc_reference`). Omitted options fall back to the chip descriptor's pair — the values the platform's driver validates against.
+`new ADC(pin, { gain?, reference? })` — construction **is** the channel setup (exactly `struct adc_channel_cfg`'s fields; tokens from `enum adc_gain`/`enum adc_reference`). Omitted options fall back to the chip descriptor's pair — the values the platform's driver validates against.
 
 - `read()` → raw counts at the chip's resolution.
 - `readMillivolts()` → `adc_raw_to_millivolts`.
 
 There is deliberately no `setReference()` — Zephyr applies it at channel-setup time; the surface doesn't promise runtime switching. A pin with no ADC channel is a `zephyr-adc-pin-unavailable` diagnostic naming the valid pins.
 
-## DACChannel, Watchdog, Counter
+## DAC, Watchdog, Counter
 
-- `new DACChannel(pin, { resolution? })` → lazy `dac_channel_setup` + `write(rawCode)` → `dac_write_value`. Raw codes — the channel's resolution decides the range.
+- `new DAC(pin, { resolution? })` → lazy `dac_channel_setup` + `write(rawCode)` → `dac_write_value`. Raw codes — the channel's resolution decides the range.
 - `new Watchdog(timeoutMs)` → `enable()` arms (`wdt_install_timeout` + `wdt_setup`, reset-CPU-core), `feed()` keeps it alive. Milliseconds from construction; no WDTO presets, no string parsing.
 - `new Counter(instance, { hz })` → Zephyr's counter driver: `onAlarm(fn)`, `start()` (applies hz as the top value — no ordering constraint), `stop()`.
 
@@ -75,20 +74,23 @@ There is deliberately no `setReference()` — Zephyr applies it at channel-setup
 The buses speak Zephyr's device model — an address or chip-select peer, not a Wire transaction:
 
 ```typescript
+import { I2CTarget, SPITarget, UART } from '@typecad/hal';
+import { ANY_PIN } from '@typecad/board';
+
 const sht = new I2CTarget('I2C0', 0x44, { hz: 400_000 });
 sht.writeReg(0x30, 0xA2);              // i2c_reg_write_byte
 const id = sht.readReg(0x32);          // i2c_reg_read_byte
 sht.updateReg(0x30, 0x0F, 0x02);       // i2c_reg_update_byte — atomic RMW, no read-back race
 sht.write([0x2C, 0x06]);               // i2c_write (raw bytes)
 
-const flash = new SPITarget('SPI0', PA4, { hz: 10_000_000, mode: 0 });
-const id = new Uint8Array(4);
-flash.transceive([0x9F], id);          // spi_transceive_dt — hardware CS, fills YOUR buffer
+const flash = new SPITarget('SPI0', ANY_PIN, { hz: 10_000_000, mode: 0 });
+const buf = new Uint8Array(4);
+flash.transceive([0x9F], buf);         // spi_transceive_dt — hardware CS, fills YOUR buffer
 flash.write([0x06]);                   // spi_write_dt
 
 const gps = new UART('UART0', { baud: 9600 });
 gps.write('$PMTK220,1000*1F\n');       // uart_poll_out
-const c = gps.read();                  // uart_poll_in — the byte, or -1 when idle
+const c = gps.read();                  // pop the oldest byte from the RX ring, or -1 when empty
 ```
 
 - `SPITarget` construction emits a devicetree child node (merged `cs-gpios`, `spi-max-frequency`, mode bits) — **hardware chip select**; the verbs address a static `spi_dt_spec`.
@@ -110,4 +112,4 @@ Construction facts never become runtime state: they become devicetree nodes (sen
 
 - `LEDStrip` — the current Zephyr ws2812 bindings require per-SoC timing symbols the binding docs call hardware-specific; it ships when a verified per-board timing table exists.
 - `Temperature` — folds into `Sensor` (a DT-bound die-temp part) when the catalog grows a no-bus case.
-- The Arduino-named surface (`OutputPin`, `Wire`-shaped buses, `delay`…) is gone — the Arduino framework target was removed outright and Zephyr is the only target.
+- The Arduino-named surface (`OutputPin`, `Wire`-shaped buses, `delay`…) is gone — the Arduino framework target was removed outright.

@@ -102,7 +102,7 @@ describe('printf halt shim gating', () => {
     // gate actually adds it for the shim.
     const ctx = {
       frameworkData: { buildTarget: 'xiao_ble' },
-      analysis: { usesUart: false, usesI2C: false, usesSPI: false, usesADC: false, usesPWM: false, usesWDT: false, usesPower: false, usesBle: false, usesStdString: false },
+      analysis: { usesUart: false, usesI2C: false, usesSPI: false, usesADC: false, usesPWM: false, usesWDT: false, usesBle: false, usesStdString: false },
     } as any;
     const shims = strategy.shimLines(undefined, ctx);
     expect(shims.join('\n')).toContain('__tc_debug_wait_for_continue');
@@ -122,7 +122,7 @@ describe('printf halt shim gating', () => {
     // use-flag to true (defensive "include everything" for pre-build queries).
     const ctx = {
       frameworkData: { buildTarget: 'esp32s3_devkitc' },
-      analysis: { usesUart: false, usesI2C: false, usesSPI: false, usesADC: false, usesPWM: false, usesWDT: false, usesPower: false, usesBle: false, usesStdString: false },
+      analysis: { usesUart: false, usesI2C: false, usesSPI: false, usesADC: false, usesPWM: false, usesWDT: false, usesBle: false, usesStdString: false },
     } as any;
     const includes = strategy.forcedIncludes(undefined, ctx);
     // uart.h should NOT be present in gdb mode: no shim needs it, and the
@@ -213,9 +213,9 @@ describe('writeDebugConfig — probe-method-driven artifacts (Black Pill stlink)
       });
 
       const cfgText = fs.readFileSync(path.join(projectRoot, '.cuttlefish', 'openocd.cfg'), 'utf8');
-      expect(cfgText).toContain('source [find interface/stlink.cfg]');
+      expect(cfgText).toContain('source [find interface/stlink-dap.cfg]');
       expect(cfgText).toContain('source [find target/stm32f4x.cfg]');
-      expect(cfgText).toContain('reset_config none');
+      expect(cfgText).toContain('reset_config srst_only');
 
       const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
       const cfg = launch.configurations[0];

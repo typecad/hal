@@ -73,7 +73,10 @@ export function loadConfig(
 
   return {
     test,
-    buildTarget: test.buildTarget ?? raw.frameworkData?.buildTarget ?? '',
+    // Board: is the source of truth for west's -b target (mirrors the
+    // cuttlefish config-loader: frameworkData.buildTarget is the board-less
+    // custom-board form). An explicit test.buildTarget overrides both.
+    buildTarget: test.buildTarget ?? raw.board ?? raw.frameworkData?.buildTarget ?? '',
     board: test.board ?? raw.board ?? 'xiao_ble/nrf52840',
     target: raw.target ?? 'zephyr',
     framework: raw.framework,

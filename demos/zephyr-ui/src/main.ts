@@ -7,6 +7,7 @@
 // ---------------------------------------------------------------------------
 
 import { ui } from '@typecad/ui';
+import { Thread, Time } from '@typecad/hal';
 import { screen } from './showcase.ui.html';
 import { Adafruit_ILI9341 } from '../lib/Adafruit_ILI9341/Adafruit_ILI9341';
 
@@ -27,9 +28,13 @@ export function incrementTaps() {
 
 // ── Forms screen: progress 0→100 loop ──────────────────────────────────────
 screen.formProg.value = 0;
-setInterval(() => {
-  screen.formProg.value = (screen.formProg.value + 5) % 105;
-}, 400);
+const progLoop = new Thread(0, { stackKb: 2 });
+progLoop.start((): void => {
+  while (true) {
+    screen.formProg.value = (screen.formProg.value + 5) % 105;
+    Time.sleep(400);
+  }
+});
 
 // ── Forms screen: range + inputs log on change ─────────────────────────────
 screen.formRange1.onChange(() => {

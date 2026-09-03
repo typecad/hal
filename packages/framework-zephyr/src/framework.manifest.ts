@@ -2,7 +2,7 @@
 // Zephyr framework manifest
 //
 // Coverage reflects actual resolveHALOperation / lowerHalOp + resolveDisplayOp
-// behavior. GPIO, PWM, ADC, I2C, SPI, UART, interrupts, tone, power, pulse,
+// behavior. GPIO, PWM, ADC, I2C, SPI, UART, interrupts, pulse,
 // shift, WDT, BLE, timing, WiFi, HTTP/S, MQTT, board constants, and random
 // are lowered; display is lowered via the generic <zephyr/drivers/display.h>
 // GFX runtime. WiFi/HTTP/MQTT require an ESP32 target (nRF52840 has no radio).
@@ -51,17 +51,10 @@ export default defineFrameworkManifest({
 
   profile: {
     // Informational list of supported board targets. The manifest validator
-    // never iterates this; chipForTarget (src/chips/index.ts) is the real
-    // resolver. ESP32-S3 + plain ESP32 added alongside the nRF52840 MVP target;
-    // rpi_pico / rpi_pico2 / esp32c3 / esp32c6 / blackpill_f411ce resolve via
-    // the board packages' zephyr chip data (resolveChipFromBoard), not the
-    // hardcoded chip registry.
-    targets: [
-      'xiao_ble/nrf52840', 'esp32s3_devkitc/esp32s3/procpu', 'esp32_devkitc/esp32/procpu',
-      'rpi_pico/rp2040', 'rpi_pico2/rp2350a/m33',
-      'esp32c3_devkitm/esp32c3', 'esp32c6_devkitc/esp32c6/hpcore',
-      'blackpill_f411ce/stm32f411xe',
-    ],
+    // never iterates this. Every board in the catalog resolves the same way
+    // (resolveChipFromBoard over the generated manifest) — there is no
+    // curated target list.
+    targets: [],
     forcedIncludes: ['<zephyr/kernel.h>', '<zephyr/drivers/gpio.h>', '<cstdint>'],
     symbolAliases: {},
   },
@@ -84,7 +77,7 @@ export default defineFrameworkManifest({
       },
     },
 
-    // ── Supported: Timing (delay/millis/delay_us/micros/free_heap; timers via polyfill) ─
+    // ── Supported: Timing (delay/millis/delay_us/micros; timers via polyfill) ─
     timing: {
       supported: true,
       partialCoverage: false,
@@ -92,10 +85,6 @@ export default defineFrameworkManifest({
         // Timer ops are POLYFILL_BACKED_OPS → timer_methods. The validator skips
         // the resolver probe (these legitimately return polyfill-helper calls,
         // not direct lowering) and requires the polyfill be in polyfills.emitted.
-        'timing.set_interval': 'polyfill',
-        'timing.set_timeout': 'polyfill',
-        'timing.clear_interval': 'polyfill',
-        'timing.clear_timeout': 'polyfill',
         // Time.* — the TS-flavored surface (hal/time.ts), preferred over the
         // Arduino-named forms above for new code.
         'timing.sleep': 'supported',             // → k_msleep(ms) — Time.sleep
@@ -110,14 +99,11 @@ export default defineFrameworkManifest({
       supported: true,
       partialCoverage: false,
       ops: {
-        'pwm.get_frequency': 'supported',
-        'pwm.get_resolution': 'supported',
         // Thin PWM (hal/pwm-pin.ts): ns-true verbs; construction period
         // applies once, setDuty is 0.0–1.0 sugar over one set_pulse call.
         'pwm.set_pulse': 'supported',
         'pwm.set_duty': 'supported',
         'pwm.set_period': 'supported',
-        'pwm.tone': 'supported',          // 50% square-wave sugar (one pwm_set_dt)
       },
     },
 
@@ -150,25 +136,12 @@ export default defineFrameworkManifest({
       unsupportedReason: undefined,
       ops: {
         'interrupt.detach': 'supported',
+        // Free attachInterrupt(pin, fn, mode): mode strings map to the
+        // GPIO_INT_* edges/levels.
+        'interrupt.attach': 'supported',
         // Thin GPIO interrupts (hal/gpio-pin.ts onInterrupt): INT_* tokens,
         // covering the level modes the mode strings cannot express.
         'interrupt.attach_flags': 'supported',
-      },
-    },
-    tone: {
-      supported: true,
-      partialCoverage: true,
-      ops: {
-      },
-    },
-    power: {
-      supported: true,
-      partialCoverage: true,
-      ops: {
-        'power.deep_sleep': 'supported',   // k_sleep (deepest allowed state)
-        'power.light_sleep': 'supported',  // pm_state_force SUSPEND_TO_IDLE
-        'power.set_cpu_frequency': 'supported', // comment (nRF clock API deferred)
-        'power.deep_sleep_pin': 'supported',   // GPIO-interrupt wake + k_sleep
       },
     },
     i2c: {
@@ -340,13 +313,6 @@ export default defineFrameworkManifest({
     },
 
     // ── Supported: Worker offload (k_work system workqueue + k_sem) ──────────
-    // worker.* is lowered via lowerWorkerOp against the shared __tc_worker
-    // contract; the Zephyr backing (worker-backing.ts) supplies k_work + k_sem.
-    worker: {
-      supported: true,
-      partialCoverage: false,
-      ops: { 'worker.submit': 'supported', 'worker.done': 'supported' },
-    },
 
     // ── Honestly unsupported extended categories ─────────────────────────────
     // These have op-kinds in HAL_OPERATION_KINDS but no Zephyr lowering. Each
@@ -449,18 +415,14 @@ export default defineFrameworkManifest({
       ops: unsupportedOps('twai.'),
     },
     usb: {
-      // CDC-ACM serial over the board's USB connector (Zephyr "next" USB
-      // device stack: UDC controller + cdc_acm_uart class instances, both
-      // composed in the generated overlay). Board-gated — the chip descriptor
-      // must declare `usb` or the lowering fails with a clear diagnostic.
-      supported: true,
-      partialCoverage: true,
-      ops: {
-        'usb.begin': 'supported', 'usb.wait_ready': 'supported', 'usb.end': 'supported',
-        'usb.print': 'supported', 'usb.println': 'supported',
-        'usb.read': 'supported', 'usb.available': 'supported',
-        'usb.connected': 'supported',
-      },
+      // CDC-ACM serial over the board's USB connector. BOARD-GATED: the
+      // lowering only fires when the board's manifest carries zephyr.usb.*
+      // (boardgen emits it from the board's own DTS) — the manifest probe
+      // runs with no board, so the honest declaration is unsupported here.
+      supported: false,
+      unsupportedReason: 'Board-gated: USB lowers only on boards whose DTS enables the USB device controller (boardgen emits zephyr.usb.* from the catalog).',
+      partialCoverage: false,
+      ops: unsupportedOps('usb.'),
     },
     eth: {
       supported: false,
@@ -501,7 +463,6 @@ export default defineFrameworkManifest({
       { id: 'wiring_compat', domain: 'standard', notes: 'HIGH/LOW/digitalRead/etc. macros routing Wiring tokens (referenced unconditionally by the UI runtime header) to the __tc_gpio_* helpers' },
       { id: 'string_methods', domain: 'embedded', notes: 'STL-free __tc_* string helpers (const char*, inline ASCII case conv, <cstring> only)' },
       { id: 'static_array', domain: 'embedded', notes: 'STL-free __tc_StaticArray<T,N> wrapper for no-<vector> mutated/struct array literals' },
-      { id: 'timer_methods', domain: 'embedded', notes: 'k_timer + k_work pool (system workqueue); callbacks run in thread context' },
       { id: 'async_runtime', domain: 'embedded', notes: 'Heap-free static Promise/microtask runtime (generateStaticAsyncRuntime), pumped in loop()' },
     ],
     suppressed: [],
@@ -552,8 +513,9 @@ export default defineFrameworkManifest({
     // catches regressions like silent pull-resistor / interrupt no-ops.
     halResolutionTests: [
       'adc', 'ble', 'board', 'dac', 'fs', 'gpio', 'http', 'hwtimer', 'i2c',
-      'interrupts', 'mqtt', 'power', 'preferences', 'pwm', 'random',
-      'spi', 'timing', 'uart', 'wdt', 'worker',
+      'interrupts', 'mqtt', 'preferences', 'pwm', 'random',
+      'spi', 'thin-buses', 'thin-classes', 'thread', 'timing',
+      'uart', 'usb', 'wdt', 'wifi',
     ],
   },
 

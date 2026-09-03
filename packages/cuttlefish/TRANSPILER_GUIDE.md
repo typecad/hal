@@ -4,28 +4,28 @@ This guide is for language models and future maintainers investigating or extend
 
 ## Key files
 
-- `packages/transpiler/src/cli.ts` — main CLI entry, command dispatch, build/watch flows
-- `packages/transpiler/src/utils/cli.ts` — CLI option parser, command validation, help text
-- `packages/transpiler/src/transpile.ts` — transpilation pipeline, import resolution, emit orchestration
-- `packages/transpiler/src/emit/cpp-emitter.ts` — C++ emission logic and platform-specific codegen
-- `packages/transpiler/src/config-loader.ts` — cuttlefish.config.ts loading and board/package config
-- `packages/transpiler/src/cli-utils.ts` — shared CLI helpers like expect test runner and error mapping
-- `packages/transpiler/src/mapping/source-map.ts` — source map I/O and C++ → TypeScript error mapping
-- `packages/transpiler/src/watch.ts` — watch mode, directory discovery, rebuild callbacks
+- `packages/cuttlefish/src/cli.ts` — main CLI entry, command dispatch, build/watch flows
+- `packages/cuttlefish/src/utils/cli.ts` — CLI option parser, command validation, help text
+- `packages/cuttlefish/src/transpile.ts` — transpilation pipeline, import resolution, emit orchestration
+- `packages/cuttlefish/src/emit/cpp-emitter.ts` — C++ emission logic and platform-specific codegen
+- `packages/cuttlefish/src/config-loader.ts` — cuttlefish.config.ts loading and board/package config
+- `packages/cuttlefish/src/cli-utils.ts` — shared CLI helpers like expect test runner and error mapping
+- `packages/cuttlefish/src/mapping/source-map.ts` — source map I/O and C++ → TypeScript error mapping
+- `packages/cuttlefish/src/watch.ts` — watch mode, directory discovery, rebuild callbacks
 
 ## Main code paths for creating or evaluating transpilation
 
 ### 1. CLI command entry
 
-- `packages/transpiler/src/cli.ts` is the application's entrypoint.
-- `main()` calls `parseCommandLine(process.argv)` from `packages/transpiler/src/utils/cli.ts`.
-- CLI parsing produces one of: `default`, `build`, `gen-libdefs`, `gen-decls`, `map-error`, `create-board`, `init`.
+- `packages/cuttlefish/src/cli.ts` is the application's entrypoint.
+- `main()` calls `parseCommandLine(process.argv)` from `packages/cuttlefish/src/utils/cli.ts`.
+- CLI parsing produces one of: `default`, `build`, `create`, `preview`, `doctor`, `licenses`, `board`, `library`, `gen-decls`.
 - For `default` and `build`, CLI options are normalized and passed into the transpilation flow.
 
 ### 2. Config loading and effective option resolution
 
-- `loadCuttlefishConfig()` from `packages/transpiler/src/config-loader.ts` reads `cuttlefish.config.ts`.
-- Config values override CLI-supplied flags for board package, fqbn, target, outDir, framework, and console settings.
+- `loadCuttlefishConfig()` from `packages/cuttlefish/src/config-loader.ts` reads `cuttlefish.config.ts`.
+- Config values override CLI-supplied flags for board, buildTarget, target, outDir, framework, and console settings.
 - `generateVirtualTypeDeclaration()` is used to keep editor type resolution aligned with bare `@typecad` imports.
 
 ### 3. Transpilation flow
@@ -55,26 +55,26 @@ Output is a `GeneratedOutputs` object with generated paths and diagnostics.
 
 - `typeCheckFiles()` performs TS compilation and reports errors before emission.
 - Diagnostics are surfaced via `GeneratedOutputs.diagnostics`.
-- CLI output uses `printDiagnostics()` in `packages/transpiler/src/cli-utils.ts`.
+- CLI output uses `printDiagnostics()` in `packages/cuttlefish/src/cli-utils.ts`.
 - A build may still produce generated outputs alongside warnings and errors.
 
 ### 6. Emission and platform strategy
 
-- `emitCpp()` in `packages/transpiler/src/emit/cpp-emitter.ts` is the emission engine.
+- `emitCpp()` in `packages/cuttlefish/src/emit/cpp-emitter.ts` is the emission engine.
 - It consumes IR, platform strategy, board constants, and polyfills.
 - `registerAllEnumNames()` is required before emission to keep enum access normalization correct.
 
 ### 7. Source maps and error mapping
 
 - Generated output may include source maps via `emitMaps`.
-- `packages/transpiler/src/mapping/source-map.ts` reads and maps C++ error locations back to TypeScript.
-- `printMappedCompileErrors()` uses this mapping during Arduino compile failures.
+- `packages/cuttlefish/src/mapping/source-map.ts` reads and maps C++ error locations back to TypeScript.
+- `printMappedCompileErrors()` uses this mapping during compile failures.
 
 ### 8. Watch mode and incremental rebuilds
 
-- `packages/transpiler/src/watch.ts` handles filesystem watch events and rebuild callbacks.
+- `packages/cuttlefish/src/watch.ts` handles filesystem watch events and rebuild callbacks.
 - `discoverWatchDirs()` finds relevant directories for the entry file and config file.
-- Incremental rebuilds use `packages/transpiler/src/incremental-cache.ts` when enabled.
+- Incremental rebuilds use `packages/cuttlefish/src/incremental-cache.ts` when enabled.
 
 ### 9. @typecad/expect support and preprocessing
 
@@ -85,10 +85,10 @@ Output is a `GeneratedOutputs` object with generated paths and diagnostics.
 ## Common extension checklist for new transpiler features
 
 1. Decide whether the feature belongs to CLI parsing, config behavior, transpile graph resolution, emit logic, or runtime support.
-2. Add the new option/command to `packages/transpiler/src/types.ts`.
-3. Parse CLI flags in `packages/transpiler/src/utils/cli.ts`.
-4. Wire command behavior in `packages/transpiler/src/cli.ts`.
-5. Implement transpilation behavior in `packages/transpiler/src/transpile.ts` or `packages/transpiler/src/emit/*`.
+2. Add the new option/command to `packages/cuttlefish/src/types.ts`.
+3. Parse CLI flags in `packages/cuttlefish/src/utils/cli.ts`.
+4. Wire command behavior in `packages/cuttlefish/src/cli.ts`.
+5. Implement transpilation behavior in `packages/cuttlefish/src/transpile.ts` or `packages/cuttlefish/src/emit/*`.
 6. Preserve diagnostics, source maps, and default `watch` semantics.
 7. Add tests under `tests/` for the new CLI behavior and transpilation path.
 

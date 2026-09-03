@@ -106,14 +106,6 @@ export function mapCppLocationToTs(
   };
 }
 
-export function resolveMapPath(mapFileOrGeneratedFile: string): string {
-  if (mapFileOrGeneratedFile.endsWith(".thcppmap.json")) {
-    return path.resolve(process.cwd(), mapFileOrGeneratedFile);
-  }
-
-  return toSourceMapPath(path.resolve(process.cwd(), mapFileOrGeneratedFile));
-}
-
 /**
  * Resolve source map path for a generated program
  * When a program is flattened, the source map needs to account for merged files

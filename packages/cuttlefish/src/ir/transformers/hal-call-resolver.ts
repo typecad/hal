@@ -11,8 +11,8 @@ import { makeSourceSpan } from "../ast-node-utils.js";
 
 /**
  * Resolve a HAL method call using the HAL resolver.
- * Handles all HAL classes: Pin, I2CBus, SPIBus, SerialPort, WDTClass,
- * plus device accessor patterns (I2CDevice, SPIDevice) and namespace methods (Pulse, Shift, Random).
+ * Handles all HAL classes: Pin, I2CBus, SPIBus, UART, WDTClass,
+ * plus device accessor patterns (I2CTarget, SPITarget) and namespace methods (Pulse, Shift, Random).
  */
 export function tryResolveHALMethod(
   call: ts.CallExpression,
@@ -42,8 +42,8 @@ export function tryResolveHALMethod(
   if (instance) {
     const result = processHALMethodBody(instance, method, argIRs);
     if (result) {
-      // Collect emit lines and halOps from chained inner calls: led.tone(440).for(400)
-      // The receiver of this call is itself a chained HAL call (led.tone(440)).
+      // Collect emit lines and halOps from chained inner calls: rgb.brightness(50).show()
+      // The receiver of this call is itself a chained HAL call (rgb.brightness(50)).
       // We need to process that inner call to collect its emit lines too.
       const chainedEmits: string[] = [];
       const chainedHalOps: HALOpIR[] = [];
@@ -109,7 +109,7 @@ export function tryResolveHALMethod(
   const receiver = ts.isPropertyAccessExpression(call.expression) ? call.expression.expression : null;
 
   // Try device accessor pattern: <bus>.device(addr).method(args)
-  // This resolves I2CDevice and SPIDevice calls
+  // This resolves I2CTarget and SPITarget device()-factory calls
   if (receiver && ts.isCallExpression(receiver)) {
     const deviceCall = receiver;
     if (ts.isPropertyAccessExpression(deviceCall.expression) && deviceCall.expression.name.text === "device") {
@@ -120,11 +120,14 @@ export function tryResolveHALMethod(
         const deviceArgs = deviceCall.arguments as ts.NodeArray<ts.Expression> | undefined;
         if (deviceArgs && deviceArgs.length > 0) {
           // Determine the device class based on bus class
-          const deviceClassName = busInstance.className === "SPIBus" ? "SPIDevice" : "I2CDevice";
+          const isSpiDevice = busInstance.className === "SPIBus";
+          const deviceClassName = isSpiDevice ? "SPITarget" : "I2CTarget";
           // Build field values for the device: _bus from bus instance, _address/_cs from device() arg
           const deviceFieldValues = new Map<string, string>();
           const busField = busInstance.fieldValues.get("_bus");
           if (busField) deviceFieldValues.set("_bus", busField);
+          deviceFieldValues.set("_hz", isSpiDevice ? "1000000" : "0");
+          if (isSpiDevice) deviceFieldValues.set("_mode", "0");
           const deviceArg = deviceArgs[0];
           if (ts.isNumericLiteral(deviceArg)) {
             const fieldName = busInstance.className === "SPIBus" ? "_cs" : "_address";
@@ -202,10 +205,13 @@ export function resolveHALCallForVarInit(
       if (busInstance) {
         const deviceArgs = deviceCall.arguments as ts.NodeArray<ts.Expression> | undefined;
         if (deviceArgs && deviceArgs.length > 0) {
-          const deviceClassName = busInstance.className === "SPIBus" ? "SPIDevice" : "I2CDevice";
+          const isSpiDevice = busInstance.className === "SPIBus";
+          const deviceClassName = isSpiDevice ? "SPITarget" : "I2CTarget";
           const deviceFieldValues = new Map<string, string>();
           const busField = busInstance.fieldValues.get("_bus");
           if (busField) deviceFieldValues.set("_bus", busField);
+          deviceFieldValues.set("_hz", isSpiDevice ? "1000000" : "0");
+          if (isSpiDevice) deviceFieldValues.set("_mode", "0");
           const deviceArg = deviceArgs[0];
           if (ts.isNumericLiteral(deviceArg)) {
             const fieldName = busInstance.className === "SPIBus" ? "_cs" : "_address";

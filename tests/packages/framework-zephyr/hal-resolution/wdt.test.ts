@@ -1,16 +1,16 @@
 import { describe, it, expect } from 'vitest';
+import { TEST_CHIP } from '../helpers/test-chip';
 import { lowerWdt, wdtInitLines } from '../../../../packages/framework-zephyr/src/lowering/wdt';
-import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
 
 // A wdt-less chip (the Nano 33 IoT / SAM D21 shape — Zephyr's samd21.dtsi
 // exposes no watchdog node, so its descriptor carries no wdt entry). Built
 // by stripping wdt from a real descriptor rather than importing a second
 // chip module.
-const NO_WDT_CHIP = { ...XIAO_BLE, id: 'nano_33_iot_samd21', wdt: undefined };
+const NO_WDT_CHIP = { ...TEST_CHIP, id: 'nano_33_iot_samd21', wdt: undefined };
 
 describe('wdt init block', () => {
   it('emits CUTTLEFISH_WDT markers + the wdt0 device + channel state', () => {
-    const lines = wdtInitLines(XIAO_BLE).join('\n');
+    const lines = wdtInitLines(TEST_CHIP).join('\n');
     expect(lines).toContain('// CUTTLEFISH_WDT_BEGIN');
     expect(lines).toContain('// CUTTLEFISH_WDT_END');
     expect(lines).toContain('DEVICE_DT_GET(DT_NODELABEL(wdt0))');
@@ -25,7 +25,7 @@ describe('wdt lowering', () => {
 
 
   it('disable → wdt_disable + reset setup flag', () => {
-    expect(lowerWdt({ operation: 'wdt.disable' } as any, XIAO_BLE))
+    expect(lowerWdt({ operation: 'wdt.disable' } as any, TEST_CHIP))
       .toEqual({ code: 'wdt_disable(__tc_wdt_dev); __tc_wdt_setup_done = false;' });
   });
 });

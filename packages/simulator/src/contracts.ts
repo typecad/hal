@@ -44,14 +44,6 @@ export interface PinCapabilityFlags {
 }
 
 // ---------------------------------------------------------------------------
-// Tone attachment (returned by tone() for chaining .for() duration)
-// ---------------------------------------------------------------------------
-
-export interface IToneAttachment {
-  for(duration: number): void;
-}
-
-// ---------------------------------------------------------------------------
 // Interrupt handler types
 // ---------------------------------------------------------------------------
 
@@ -79,8 +71,6 @@ export interface BasePin {
   low(): void;
   toggle(): void;
   pwm?(duty: number): void;
-  tone(frequency: number): IToneAttachment;
-  noTone(): void;
   asOutput(initial?: DigitalValue): IOutputModePin;
   asInput(): IInputModePin;
   asInputPullUp(): IInputModePin;
@@ -95,8 +85,6 @@ export interface IOutputModePin {
   low(): void;
   toggle(): void;
   pulse(duration: number): void;
-  tone(frequency: number): IToneAttachment;
-  noTone(): void;
   pwm?(duty: number): void;
   getPwmFrequency?(): number;
   getPwmResolution?(): number;
@@ -256,10 +244,10 @@ export interface ISPIBus {
 // ---------------------------------------------------------------------------
 // UART types
 //
-// The HAL SerialPort (packages/hal/src/uart.ts) is the source of truth for the
-// runtime UART surface. The contract below mirrors it: no public identity
-// fields, no status/error/callback machinery — just begin/end and the
-// read/write/print methods the HAL exposes.
+// Host-side simulation contract for UART-shaped peripherals. This is the
+// SIMULATOR's own surface (drivers typed against it run in plain Node); the
+// device-side HAL UART (packages/hal/src/uart-port.ts) is Zephyr-shaped and
+// lower separately.
 // ---------------------------------------------------------------------------
 
 export interface IUARTBus {

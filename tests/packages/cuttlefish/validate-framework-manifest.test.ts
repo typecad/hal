@@ -7,6 +7,7 @@ import {
   FrameworkManifestSchema,
   HAL_OPERATION_KINDS,
   DISPLAY_OPERATION_KINDS,
+  POLYFILL_BACKED_OPS,
 } from '@typecad/cuttlefish/api/shared';
 import type {
   PlatformStrategy,
@@ -260,35 +261,37 @@ describe('validateFrameworkManifest — HAL coverage', () => {
   });
 
   it('errors when polyfill op references a polyfill not in polyfills.emitted', () => {
-    const manifest = makeMinimalManifest();
-    // timing.set_interval is in POLYFILL_BACKED_OPS → backed by timer_methods.
-    manifest.hal.timing = {
-      supported: true,
-      partialCoverage: true,
-      ops: {
-        'timing.sleep': 'supported',
-        'timing.busy_wait_us': 'supported',
-        'timing.millis': 'supported',
-        'timing.micros': 'supported',
-        'timing.free_heap': 'supported',
-        'timing.set_interval': 'polyfill',
-        'timing.set_timeout': 'polyfill',
-        'timing.clear_interval': 'polyfill',
-        'timing.clear_timeout': 'polyfill',
-      },
-    };
-    // manifest.polyfills.emitted is empty — timer_methods is missing.
-    const strategy = makeStubStrategy({
-      resolveHALOperation: (op: { operation: string }) => {
-        if (['timing.sleep','timing.now','timing.now_us','timing.busy_wait_us'].includes(op.operation)) return { code: `// ${op.operation}` };
-        return undefined;
-      },
-    } as Partial<PlatformStrategy>);
-    const result = validateFrameworkManifest(manifest, {
-      strategy, moduleExports: {}, packageRoot: '/x', repoTestsDir: '/x',
-    });
-    expect(result.errors.map((e) => e.code))
-      .toContain('hal/timing/op/timing.set_interval/polyfill-not-declared');
+    // POLYFILL_BACKED_OPS is empty (no op is polyfill-routed today), so seed
+    // a temporary entry to exercise the not-declared branch.
+    (POLYFILL_BACKED_OPS as Record<string, string>)['timing.set_interval'] = 'timer_methods';
+    try {
+      const manifest = makeMinimalManifest();
+      manifest.hal.timing = {
+        supported: true,
+        partialCoverage: true,
+        ops: {
+          'timing.sleep': 'supported',
+          'timing.busy_wait_us': 'supported',
+          'timing.millis': 'supported',
+          'timing.micros': 'supported',
+          'timing.set_interval': 'polyfill',
+        },
+      };
+      // manifest.polyfills.emitted is empty — timer_methods is missing.
+      const strategy = makeStubStrategy({
+        resolveHALOperation: (op: { operation: string }) => {
+          if (['timing.sleep','timing.now','timing.now_us','timing.busy_wait_us'].includes(op.operation)) return { code: `// ${op.operation}` };
+          return undefined;
+        },
+      } as Partial<PlatformStrategy>);
+      const result = validateFrameworkManifest(manifest, {
+        strategy, moduleExports: {}, packageRoot: '/x', repoTestsDir: '/x',
+      });
+      expect(result.errors.map((e) => e.code))
+        .toContain('hal/timing/op/timing.set_interval/polyfill-not-declared');
+    } finally {
+      delete (POLYFILL_BACKED_OPS as Record<string, string>)['timing.set_interval'];
+    }
   });
 
   it('errors when polyfill op is not in POLYFILL_BACKED_OPS', () => {
@@ -307,38 +310,39 @@ describe('validateFrameworkManifest — HAL coverage', () => {
   });
 
   it('passes when polyfill op is backed by a declared polyfill', () => {
-    const manifest = makeMinimalManifest();
-    manifest.hal.timing = {
-      supported: true,
-      partialCoverage: true,
-      ops: {
-        'timing.sleep': 'supported',
-        'timing.busy_wait_us': 'supported',
-        'timing.millis': 'supported',
-        'timing.micros': 'supported',
-        'timing.free_heap': 'supported',
-        'timing.set_interval': 'polyfill',
-        'timing.set_timeout': 'polyfill',
-        'timing.clear_interval': 'polyfill',
-        'timing.clear_timeout': 'polyfill',
-      },
-    };
-    manifest.polyfills.emitted = [{ id: 'timer_methods', domain: 'standard' }];
-    const strategy = makeStubStrategy({
-      resolveHALOperation: (op: { operation: string }) => {
-        if (['timing.sleep','timing.now','timing.now_us','timing.busy_wait_us'].includes(op.operation)) return { code: `// ${op.operation}` };
-        return undefined;
-      },
-    } as Partial<PlatformStrategy>);
-    const result = validateFrameworkManifest(manifest, {
-      strategy, moduleExports: {}, packageRoot: '/x', repoTestsDir: '/x',
-    });
-    // Only check the HAL polyfill-status cross-check codes (not the unrelated
-    // polyfill-emission check, which is exercised by the stub strategy).
-    const halPolyfillErrors = result.errors.filter(
-      (e) => e.code.startsWith('hal/') && e.code.includes('polyfill'),
-    );
-    expect(halPolyfillErrors).toEqual([]);
+    (POLYFILL_BACKED_OPS as Record<string, string>)['timing.set_interval'] = 'timer_methods';
+    try {
+      const manifest = makeMinimalManifest();
+      manifest.hal.timing = {
+        supported: true,
+        partialCoverage: true,
+        ops: {
+          'timing.sleep': 'supported',
+          'timing.busy_wait_us': 'supported',
+          'timing.millis': 'supported',
+          'timing.micros': 'supported',
+          'timing.set_interval': 'polyfill',
+        },
+      };
+      manifest.polyfills.emitted = [{ id: 'timer_methods', domain: 'standard' }];
+      const strategy = makeStubStrategy({
+        resolveHALOperation: (op: { operation: string }) => {
+          if (['timing.sleep','timing.now','timing.now_us','timing.busy_wait_us'].includes(op.operation)) return { code: `// ${op.operation}` };
+          return undefined;
+        },
+      } as Partial<PlatformStrategy>);
+      const result = validateFrameworkManifest(manifest, {
+        strategy, moduleExports: {}, packageRoot: '/x', repoTestsDir: '/x',
+      });
+      // Only check the HAL polyfill-status cross-check codes (not the unrelated
+      // polyfill-emission check, which is exercised by the stub strategy).
+      const halPolyfillErrors = result.errors.filter(
+        (e) => e.code.startsWith('hal/') && e.code.includes('polyfill'),
+      );
+      expect(halPolyfillErrors).toEqual([]);
+    } finally {
+      delete (POLYFILL_BACKED_OPS as Record<string, string>)['timing.set_interval'];
+    }
   });
 });
 

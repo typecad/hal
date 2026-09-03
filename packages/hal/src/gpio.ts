@@ -8,10 +8,10 @@
 //
 //   new GPIO(PB5, GPIO.OUTPUT | GPIO.PULL_UP)
 //   new PWM(PA5, { periodNs: 20_000_000 })
-//   new ADCChannel(A1)
+//   new ADC(A1)
 //
 // The former OutputPin/InputPin/ToneChain classes (and their as*/read/write/
-// pwm/tone methods) were removed with the legacy Arduino surface. Their thin
+// pwm methods) were removed with the legacy Arduino surface. Their thin
 // replacements are gpio-pin.ts / pwm-pin.ts / adc-pin.ts.
 // ---------------------------------------------------------------------------
 

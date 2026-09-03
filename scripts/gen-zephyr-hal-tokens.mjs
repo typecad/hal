@@ -12,7 +12,7 @@
 //   ZEPHYR_GPIO_FLAGS      config-flag name set          (drivers/gpio.h + dt-bindings/gpio/gpio.h)
 //   ZEPHYR_GPIO_INTS       interrupt-config name set     (drivers/gpio.h)
 //
-// The class statics (ADCChannel.GAIN_*, GPIO.OUTPUT, …) stay hand-declared
+// The class statics (ADC.GAIN_*, GPIO.OUTPUT, …) stay hand-declared
 // for editor typing — tests/packages/hal/token-sync.test.ts asserts the
 // declared sets equal these generated ones, so a Zephyr revision that adds
 // or renames a token fails CI until the class is updated. The lowerings'
@@ -82,12 +82,12 @@ const out = `// ----------------------------------------------------------------
 // token→macro maps from these lists — names only; values never cross to C++.
 // ---------------------------------------------------------------------------
 
-/** enum adc_gain suffixes — ADCChannel.GAIN_<name> ↔ ADC_GAIN_<name>. */
+/** enum adc_gain suffixes — ADC.GAIN_<name> ↔ ADC_GAIN_<name>. */
 export const ZEPHYR_ADC_GAINS: readonly string[] = [
 ${gains.map((g) => `  '${g}',`).join('\n')}
 ];
 
-/** enum adc_reference suffixes — ADCChannel.REF_<name> ↔ ADC_REF_<name>. */
+/** enum adc_reference suffixes — ADC.REF_<name> ↔ ADC_REF_<name>. */
 export const ZEPHYR_ADC_REFERENCES: readonly string[] = [
 ${refs.map((r) => `  '${r}',`).join('\n')}
 ];

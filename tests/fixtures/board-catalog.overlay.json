@@ -1,0 +1,6672 @@
+{
+ "schema": 1,
+ "generatorRev": 9,
+ "provenance": {
+  "zephyrBase": "C:\\Users\\justi\\zephyrproject\\zephyr",
+  "version": "4.4.2",
+  "gitHead": "dccb09599635bdff17633fa7e9dab014b91dce90",
+  "boardsMtimeMs": 1787671931157.0088,
+  "generatedAt": "2026-08-30T02:28:38.056Z",
+  "variants": 1313
+ },
+ "boards": {
+  "adafruit_feather_adalogger_rp2040/rp2040": {
+   "identifier": "adafruit_feather_adalogger_rp2040/rp2040",
+   "name": "Adafruit Feather RP2040 Adalogger",
+   "vendor": "adafruit",
+   "dts": "adafruit_feather_adalogger_rp2040.dts",
+   "probeMethods": [
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RPI-RP2"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c1"
+    ],
+    "spi": [
+     "spi0",
+     "spi1"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio0",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio0",
+    "pin": 7,
+    "flags": [
+     "GPIO_ACTIVE_LOW",
+     "GPIO_PULL_UP"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "feather_header",
+     "compatible": "adafruit-feather-header",
+     "pins": {
+      "A0": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "A1": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "A2": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      },
+      "A3": {
+       "controller": "gpio0",
+       "pin": 29,
+       "flags": []
+      },
+      "D24": {
+       "controller": "gpio0",
+       "pin": 24,
+       "flags": []
+      },
+      "D25": {
+       "controller": "gpio0",
+       "pin": 25,
+       "flags": []
+      },
+      "SCK": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "MOSI": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "MISO": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "RX": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "TX": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "D4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "SDA": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "SCL": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "D5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "D6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "D9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "D10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "D11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "D12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "p20": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      }
+     }
+    },
+    {
+     "nodelabel": "stemma_connector",
+     "compatible": "stemma-qt-connector",
+     "pins": {
+      "SCL": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "p1": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "adafruit_feather_esp32s2_tft_reverse/esp32s2": {
+   "identifier": "adafruit_feather_esp32s2_tft_reverse/esp32s2",
+   "name": "Adafruit ESP32-S2 TFT Feather Reverse",
+   "vendor": "adafruit",
+   "dts": "adafruit_feather_esp32s2_tft_reverse.dts",
+   "probeMethods": [
+    {
+     "id": "esptool",
+     "description": "Espressif ROM bootloader over USB-serial (no debug)",
+     "debug": false,
+     "runner": "esp32"
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "set ESP_RTOS Zephyr",
+      "set ESP_ONLYCPU 1",
+      "source [find interface/esp_usb_jtag.cfg]",
+      "source [find target/esp32s3.cfg]"
+     ]
+    }
+   ],
+   "console": "uart1",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0"
+    ],
+    "spi": [
+     "spi2",
+     "spi3"
+    ],
+    "uart": [
+     "uart0",
+     "uart1"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio0",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio0",
+    "pin": 0,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "backlight",
+     "controller": "gpio1",
+     "pin": 13,
+     "flags": [
+      "GPIO_ACTIVE_HIGH"
+     ]
+    }
+   ],
+   "connectors": [
+    {
+     "nodelabel": "feather_header",
+     "compatible": "adafruit-feather-header",
+     "pins": {
+      "A0": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "A1": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "A2": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "A3": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "A4": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "A5": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "SCK": {
+       "controller": "gpio1",
+       "pin": 4,
+       "flags": []
+      },
+      "MOSI": {
+       "controller": "gpio1",
+       "pin": 3,
+       "flags": []
+      },
+      "MISO": {
+       "controller": "gpio1",
+       "pin": 5,
+       "flags": []
+      },
+      "RX": {
+       "controller": "gpio1",
+       "pin": 6,
+       "flags": []
+      },
+      "TX": {
+       "controller": "gpio1",
+       "pin": 7,
+       "flags": []
+      },
+      "DB": {
+       "controller": "gpio1",
+       "pin": 11,
+       "flags": []
+      },
+      "SDA": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "SCL": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "D5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "D6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "D9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "D10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "D11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "D12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "p20": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "adafruit_feather_m4_express/samd51j19a": {
+   "identifier": "adafruit_feather_m4_express/samd51j19a",
+   "name": "Adafruit Feather M4 Express",
+   "vendor": "adafruit",
+   "dts": "adafruit_feather_m4_express.dts",
+   "probeMethods": [
+    {
+     "id": "bossac",
+     "description": "Built-in USB bootloader: double-tap reset (no debug)",
+     "debug": false,
+     "runner": "bossac"
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "source [find interface/jlink.cfg]",
+      "transport select swd",
+      "set CHIPNAME atsamd51j19a",
+      "source [find target/atsame5x.cfg]",
+      "adapter speed 500",
+      "reset_config srst_only",
+      "$_TARGETNAME configure -event gdb-attach {",
+      "echo \"Debugger attaching: halting execution\"",
+      "reset halt",
+      "}",
+      "$_TARGETNAME configure -event gdb-detach {",
+      "echo \"Debugger detaching: resuming execution\"",
+      "resume",
+      "}"
+     ]
+    }
+   ],
+   "console": "sercom5",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "porta",
+    "pin": 23,
+    "flags": [
+     "0"
+    ]
+   }
+  },
+  "adafruit_itsybitsy_m4_express/samd51g19a": {
+   "identifier": "adafruit_itsybitsy_m4_express/samd51g19a",
+   "name": "Adafruit ItsyBitsy M4 Express",
+   "vendor": "adafruit",
+   "dts": "adafruit_itsybitsy_m4_express.dts",
+   "probeMethods": [
+    {
+     "id": "bossac",
+     "description": "Built-in USB bootloader: double-tap reset (no debug)",
+     "debug": false,
+     "runner": "bossac"
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "source [find interface/jlink.cfg]",
+      "transport select swd",
+      "set CHIPNAME atsamd51g19a",
+      "source [find target/atsame5x.cfg]",
+      "adapter speed 500",
+      "reset_config srst_only",
+      "$_TARGETNAME configure -event gdb-attach {",
+      "echo \"Debugger attaching: halting execution\"",
+      "reset halt",
+      "}",
+      "$_TARGETNAME configure -event gdb-detach {",
+      "echo \"Debugger detaching: resuming execution\"",
+      "resume",
+      "}"
+     ]
+    }
+   ],
+   "console": "sercom3",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "tcc0",
+     "channel": 2
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "porta",
+    "pin": 22,
+    "flags": [
+     "0"
+    ]
+   }
+  },
+  "apollo4p_blue_kxr_evb/apollo4p_blue": {
+   "identifier": "apollo4p_blue_kxr_evb/apollo4p_blue",
+   "name": "Apollo4 Blue Plus KXR EVB",
+   "vendor": "ambiq",
+   "dts": "apollo4p_blue_kxr_evb.dts",
+   "probeMethods": [
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "AMAP42KK-KBR"
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "pwm2",
+     "channel": 0,
+     "flags": [
+      "PWM_POLARITY_NORMAL"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio0_31",
+    "pin": 30,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio0_31",
+    "pin": 17,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio0_31",
+     "pin": 16,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    },
+    {
+     "dtSpec": "led2",
+     "controller": "gpio64_95",
+     "pin": 27,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    }
+   ],
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "gpio0_31",
+     "pin": 19,
+     "flags": [
+      "GPIO_PULL_UP",
+      "GPIO_ACTIVE_LOW"
+     ]
+    }
+   ]
+  },
+  "arduino_nano_33_iot/samd21g18a": {
+   "identifier": "arduino_nano_33_iot/samd21g18a",
+   "name": "Arduino Nano 33 IOT",
+   "vendor": "arduino",
+   "dts": "arduino_nano_33_iot.dts",
+   "probeMethods": [
+    {
+     "id": "bossac",
+     "description": "Built-in USB bootloader: double-tap reset (no debug)",
+     "debug": false,
+     "runner": "bossac"
+    }
+   ],
+   "console": "sercom5",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "tcc2",
+     "channel": 1
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "porta",
+    "pin": 17,
+    "flags": [
+     "0"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "arduino_nano_header",
+     "compatible": "arduino-nano-header",
+     "pins": {
+      "D0": {
+       "controller": "portb",
+       "pin": 23,
+       "flags": []
+      },
+      "D1": {
+       "controller": "portb",
+       "pin": 22,
+       "flags": []
+      },
+      "D2": {
+       "controller": "portb",
+       "pin": 10,
+       "flags": []
+      },
+      "D3": {
+       "controller": "portb",
+       "pin": 11,
+       "flags": []
+      },
+      "D4": {
+       "controller": "porta",
+       "pin": 7,
+       "flags": []
+      },
+      "D5": {
+       "controller": "porta",
+       "pin": 5,
+       "flags": []
+      },
+      "D6": {
+       "controller": "porta",
+       "pin": 4,
+       "flags": []
+      },
+      "D7": {
+       "controller": "porta",
+       "pin": 6,
+       "flags": []
+      },
+      "D8": {
+       "controller": "porta",
+       "pin": 18,
+       "flags": []
+      },
+      "D9": {
+       "controller": "porta",
+       "pin": 20,
+       "flags": []
+      },
+      "D10": {
+       "controller": "porta",
+       "pin": 21,
+       "flags": []
+      },
+      "D11": {
+       "controller": "porta",
+       "pin": 16,
+       "flags": []
+      },
+      "D12": {
+       "controller": "porta",
+       "pin": 19,
+       "flags": []
+      },
+      "D13": {
+       "controller": "porta",
+       "pin": 17,
+       "flags": []
+      },
+      "D14": {
+       "controller": "porta",
+       "pin": 2,
+       "flags": []
+      },
+      "A0": {
+       "controller": "porta",
+       "pin": 2,
+       "flags": []
+      },
+      "D15": {
+       "controller": "portb",
+       "pin": 2,
+       "flags": []
+      },
+      "A1": {
+       "controller": "portb",
+       "pin": 2,
+       "flags": []
+      },
+      "D16": {
+       "controller": "porta",
+       "pin": 11,
+       "flags": []
+      },
+      "A2": {
+       "controller": "porta",
+       "pin": 11,
+       "flags": []
+      },
+      "D17": {
+       "controller": "porta",
+       "pin": 10,
+       "flags": []
+      },
+      "A3": {
+       "controller": "porta",
+       "pin": 10,
+       "flags": []
+      },
+      "D18": {
+       "controller": "portb",
+       "pin": 8,
+       "flags": []
+      },
+      "A4": {
+       "controller": "portb",
+       "pin": 8,
+       "flags": []
+      },
+      "D19": {
+       "controller": "portb",
+       "pin": 9,
+       "flags": []
+      },
+      "A5": {
+       "controller": "portb",
+       "pin": 9,
+       "flags": []
+      },
+      "D20": {
+       "controller": "porta",
+       "pin": 9,
+       "flags": []
+      },
+      "A6": {
+       "controller": "porta",
+       "pin": 9,
+       "flags": []
+      },
+      "D21": {
+       "controller": "portb",
+       "pin": 3,
+       "flags": []
+      },
+      "A7": {
+       "controller": "portb",
+       "pin": 3,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "mps2/an383": {
+   "identifier": "mps2/an383",
+   "name": "ARM V2M MPS2-an383",
+   "vendor": "arm",
+   "dts": "mps2_an383.dts",
+   "console": "uart0",
+   "wdtNodeLabel": "wdog0",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio_led0",
+    "pin": 0,
+    "flags": []
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio_button",
+    "pin": 0,
+    "flags": []
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio_led0",
+     "pin": 1,
+     "flags": []
+    }
+   ],
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "gpio_button",
+     "pin": 1,
+     "flags": []
+    }
+   ]
+  },
+  "mps2/an385": {
+   "identifier": "mps2/an385",
+   "name": "ARM V2M MPS2",
+   "vendor": "arm",
+   "dts": "mps2_an385.dts",
+   "console": "uart0",
+   "wdtNodeLabel": "wdog0",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio_led0",
+    "pin": 0,
+    "flags": []
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio_button",
+    "pin": 0,
+    "flags": []
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio_led0",
+     "pin": 1,
+     "flags": []
+    }
+   ],
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "gpio_button",
+     "pin": 1,
+     "flags": []
+    }
+   ]
+  },
+  "mps2/an386": {
+   "identifier": "mps2/an386",
+   "name": "ARM V2M MPS2-an386",
+   "vendor": "arm",
+   "dts": "mps2_an386.dts",
+   "console": "uart0",
+   "wdtNodeLabel": "wdog0",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio_led0",
+    "pin": 0,
+    "flags": []
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio_button",
+    "pin": 0,
+    "flags": []
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio_led0",
+     "pin": 1,
+     "flags": []
+    }
+   ],
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "gpio_button",
+     "pin": 1,
+     "flags": []
+    }
+   ]
+  },
+  "mps2/an500": {
+   "identifier": "mps2/an500",
+   "name": "ARM V2M MPS2-an500",
+   "vendor": "arm",
+   "dts": "mps2_an500.dts",
+   "console": "uart0",
+   "wdtNodeLabel": "wdog0",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio_led0",
+    "pin": 0,
+    "flags": []
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio_button",
+    "pin": 0,
+    "flags": []
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio_led0",
+     "pin": 1,
+     "flags": []
+    }
+   ],
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "gpio_button",
+     "pin": 1,
+     "flags": []
+    }
+   ]
+  },
+  "mps2/an521/cpu0": {
+   "identifier": "mps2/an521/cpu0",
+   "name": "ARM V2M MPS2-AN521",
+   "vendor": "arm",
+   "dts": "mps2_an521_cpu0.dts",
+   "console": "uart0",
+   "wdtNodeLabel": "wdog0",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio_led0",
+    "pin": 0,
+    "flags": []
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio_button",
+    "pin": 0,
+    "flags": []
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio_led0",
+     "pin": 1,
+     "flags": []
+    }
+   ],
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "gpio_button",
+     "pin": 1,
+     "flags": []
+    }
+   ]
+  },
+  "mps2/an521/cpu0/ns": {
+   "identifier": "mps2/an521/cpu0/ns",
+   "name": "ARM V2M MPS2-AN521_ns",
+   "vendor": "arm",
+   "dts": "mps2_an521_cpu0_ns.dts",
+   "console": "uart0",
+   "wdtNodeLabel": "wdog0",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio_led0",
+    "pin": 0,
+    "flags": []
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio_button",
+    "pin": 0,
+    "flags": []
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio_led0",
+     "pin": 1,
+     "flags": []
+    }
+   ],
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "gpio_button",
+     "pin": 1,
+     "flags": []
+    }
+   ]
+  },
+  "mps2/an521/cpu1": {
+   "identifier": "mps2/an521/cpu1",
+   "name": "ARM V2M MPS2-AN521_cpu1",
+   "vendor": "arm",
+   "dts": "mps2_an521_cpu1.dts",
+   "console": "uart0",
+   "wdtNodeLabel": "wdog0",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio_led0",
+    "pin": 0,
+    "flags": []
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio_button",
+    "pin": 0,
+    "flags": []
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio_led0",
+     "pin": 1,
+     "flags": []
+    }
+   ],
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "gpio_button",
+     "pin": 1,
+     "flags": []
+    }
+   ]
+  },
+  "v2m_musca_b1/musca_b1": {
+   "identifier": "v2m_musca_b1/musca_b1",
+   "name": "ARM V2M MUSCA B1",
+   "vendor": "arm",
+   "dts": "v2m_musca_b1.dts",
+   "probeMethods": [
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=musca_b1"
+     ]
+    }
+   ],
+   "console": "uart1",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio",
+    "pin": 3,
+    "flags": [
+     "0"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led2",
+     "controller": "gpio",
+     "pin": 2,
+     "flags": [
+      "0"
+     ]
+    },
+    {
+     "dtSpec": "led1",
+     "controller": "gpio",
+     "pin": 4,
+     "flags": [
+      "0"
+     ]
+    }
+   ]
+  },
+  "v2m_musca_b1/musca_b1/ns": {
+   "identifier": "v2m_musca_b1/musca_b1/ns",
+   "name": "ARM V2M MUSCA B1 NonSecure",
+   "vendor": "arm",
+   "dts": "v2m_musca_b1_musca_b1_ns.dts",
+   "probeMethods": [
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=musca_b1"
+     ]
+    }
+   ],
+   "console": "uart1"
+  },
+  "pt2/sf32lb52jud6": {
+   "identifier": "pt2/sf32lb52jud6",
+   "name": "Pebble-Time-2",
+   "vendor": "coredevices",
+   "dts": "pt2.dts",
+   "probeMethods": [
+    {
+     "id": "sftool",
+     "description": "SiFli sftool (no debug)",
+     "debug": false,
+     "runner": "sftool",
+     "args": [
+      "--chip=SF32LB52"
+     ]
+    }
+   ],
+   "console": "usart1",
+   "wdtNodeLabel": "wdt",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "usart1"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpioa_32_44",
+    "pin": 2,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "gpioa_32_44",
+     "pin": 5,
+     "flags": [
+      "GPIO_ACTIVE_LOW",
+      "GPIO_PULL_UP"
+     ]
+    }
+   ]
+  },
+  "cy8ckit_062_wifi_bt/cy8c6247/m0": {
+   "identifier": "cy8ckit_062_wifi_bt/cy8c6247/m0",
+   "name": "Cypress PSOC 6 WiFi-BT Pioneer Kit (M0)",
+   "vendor": "cypress",
+   "dts": "cy8ckit_062_wifi_bt_cy8c6247_m0.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "if {[info exists env(OPENOCD_INTERFACE)]} {",
+      "set INTERFACE $env(OPENOCD_INTERFACE)",
+      "} else {",
+      "set INTERFACE \"cmsis-dap\"",
+      "}",
+      "source [find interface/$INTERFACE.cfg]",
+      "transport select swd",
+      "source [find target/psoc6.cfg]"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true
+    }
+   ],
+   "console": "uart6",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "p13_0_scb6_uart_rx",
+     "p13_1_scb6_uart_tx",
+     "p5_0_scb5_uart_rx",
+     "p9_0_scb2_uart_rx",
+     "p9_1_scb2_uart_tx",
+     "uart6"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio_prt13",
+    "pin": 7,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio_prt0",
+    "pin": 4,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   }
+  },
+  "cy8ckit_062_wifi_bt/cy8c6247/m4": {
+   "identifier": "cy8ckit_062_wifi_bt/cy8c6247/m4",
+   "name": "Cypress PSOC 6 WiFi-BT Pioneer Kit (M4)",
+   "vendor": "cypress",
+   "dts": "cy8ckit_062_wifi_bt_cy8c6247_m4.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "if {[info exists env(OPENOCD_INTERFACE)]} {",
+      "set INTERFACE $env(OPENOCD_INTERFACE)",
+      "} else {",
+      "set INTERFACE \"cmsis-dap\"",
+      "}",
+      "source [find interface/$INTERFACE.cfg]",
+      "transport select swd",
+      "source [find target/psoc6.cfg]"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true
+    }
+   ],
+   "console": "uart5",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "p13_0_scb6_uart_rx",
+     "p13_1_scb6_uart_tx",
+     "p5_0_scb5_uart_rx",
+     "p9_0_scb2_uart_rx",
+     "p9_1_scb2_uart_tx",
+     "uart5"
+    ]
+   }
+  },
+  "esp32c3_devkitm/esp32c3": {
+   "identifier": "esp32c3_devkitm/esp32c3",
+   "name": "ESP32-C3",
+   "vendor": "espressif",
+   "dts": "esp32c3_devkitm.dts",
+   "probeMethods": [
+    {
+     "id": "esptool",
+     "description": "Espressif ROM bootloader over USB-serial (no debug)",
+     "debug": false,
+     "runner": "esp32"
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "set ESP_RTOS Zephyr",
+      "source [find interface/ftdi/esp32_devkitj_v1.cfg]",
+      "source [find target/esp32c3.cfg]",
+      "adapter speed 5000"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0"
+    ],
+    "spi": [
+     "spi2"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio0",
+    "pin": 9,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   }
+  },
+  "esp32s3_devkitc/esp32s3/appcpu": {
+   "identifier": "esp32s3_devkitc/esp32s3/appcpu",
+   "name": "ESP32-S3 DevKitC APPCPU",
+   "vendor": "espressif",
+   "dts": "esp32s3_devkitc_appcpu.dts",
+   "probeMethods": [
+    {
+     "id": "esptool",
+     "description": "Espressif ROM bootloader over USB-serial (no debug)",
+     "debug": false,
+     "runner": "esp32"
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "set ESP_RTOS Zephyr",
+      "set ESP_ONLYCPU 1",
+      "source [find interface/esp_usb_jtag.cfg]",
+      "source [find target/esp32s3.cfg]"
+     ]
+    }
+   ]
+  },
+  "esp32s3_devkitc/esp32s3/procpu": {
+   "identifier": "esp32s3_devkitc/esp32s3/procpu",
+   "name": "ESP32-S3 DevKitC PROCPU",
+   "vendor": "espressif",
+   "dts": "esp32s3_devkitc_procpu.dts",
+   "probeMethods": [
+    {
+     "id": "esptool",
+     "description": "Espressif ROM bootloader over USB-serial (no debug)",
+     "debug": false,
+     "runner": "esp32"
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "set ESP_RTOS Zephyr",
+      "set ESP_ONLYCPU 1",
+      "source [find interface/esp_usb_jtag.cfg]",
+      "source [find target/esp32s3.cfg]"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0",
+     "i2c1"
+    ],
+    "spi": [
+     "spi2",
+     "spi3"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio0",
+    "pin": 0,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   }
+  },
+  "esp32_devkitc/esp32/appcpu": {
+   "identifier": "esp32_devkitc/esp32/appcpu",
+   "name": "ESP32-DevkitC APPCPU",
+   "vendor": "espressif",
+   "dts": "esp32_devkitc_appcpu.dts",
+   "probeMethods": [
+    {
+     "id": "esptool",
+     "description": "Espressif ROM bootloader over USB-serial (no debug)",
+     "debug": false,
+     "runner": "esp32"
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "set ESP_RTOS Zephyr",
+      "set ESP_ONLYCPU 1",
+      "source [find interface/ftdi/esp32_devkitj_v1.cfg]",
+      "source [find target/esp32.cfg]"
+     ]
+    }
+   ]
+  },
+  "esp32_devkitc/esp32/procpu": {
+   "identifier": "esp32_devkitc/esp32/procpu",
+   "name": "ESP32-DevkitC PROCPU",
+   "vendor": "espressif",
+   "dts": "esp32_devkitc_procpu.dts",
+   "probeMethods": [
+    {
+     "id": "esptool",
+     "description": "Espressif ROM bootloader over USB-serial (no debug)",
+     "debug": false,
+     "runner": "esp32"
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "set ESP_RTOS Zephyr",
+      "set ESP_ONLYCPU 1",
+      "source [find interface/ftdi/esp32_devkitj_v1.cfg]",
+      "source [find target/esp32.cfg]"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0"
+    ],
+    "spi": [
+     "spi2",
+     "spi3"
+    ],
+    "uart": [
+     "uart0",
+     "uart1",
+     "uart2"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio0",
+    "pin": 0,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   }
+  },
+  "mm_swiftio/mimxrt1052": {
+   "identifier": "mm_swiftio/mimxrt1052",
+   "name": "MM MM-SWIFTIO",
+   "vendor": "madmachine",
+   "dts": "mm_swiftio.dts",
+   "probeMethods": [
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=mimxrt1050_quadspi"
+     ]
+    }
+   ],
+   "console": "lpuart1",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "lpuart1",
+     "lpuart2",
+     "lpuart4",
+     "lpuart6",
+     "lpuart8"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio1",
+    "pin": 10,
+    "flags": [
+     "0"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio1",
+     "pin": 9,
+     "flags": [
+      "0"
+     ]
+    },
+    {
+     "dtSpec": "led2",
+     "controller": "gpio1",
+     "pin": 11,
+     "flags": [
+      "0"
+     ]
+    }
+   ]
+  },
+  "frdm_imx93/mimx9352/a55": {
+   "identifier": "frdm_imx93/mimx9352/a55",
+   "name": "NXP FRDM-IMX93 A55",
+   "vendor": "nxp",
+   "dts": "frdm_imx93_mimx9352_a55.dts",
+   "probeMethods": [
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "MIMX9352_A55_0"
+    }
+   ],
+   "console": "lpuart2",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdog4",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "lpuart2"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio2",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio_exp0",
+    "pin": 5,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio2",
+     "pin": 4,
+     "flags": [
+      "GPIO_ACTIVE_HIGH"
+     ]
+    }
+   ]
+  },
+  "frdm_imx93/mimx9352/m33": {
+   "identifier": "frdm_imx93/mimx9352/m33",
+   "name": "NXP FRDM-IMX93 M33",
+   "vendor": "nxp",
+   "dts": "frdm_imx93_mimx9352_m33.dts",
+   "console": "lpuart2",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "lpuart2"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio2",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio2",
+    "pin": 23,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio2",
+     "pin": 4,
+     "flags": [
+      "GPIO_ACTIVE_HIGH"
+     ]
+    }
+   ]
+  },
+  "frdm_imx93/mimx9352/m33/ddr": {
+   "identifier": "frdm_imx93/mimx9352/m33/ddr",
+   "name": "NXP FRDM-IMX93 M33 DDR",
+   "vendor": "nxp",
+   "dts": "frdm_imx93_mimx9352_m33_ddr.dts",
+   "console": "lpuart2",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "lpuart2"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio2",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio2",
+    "pin": 23,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio2",
+     "pin": 4,
+     "flags": [
+      "GPIO_ACTIVE_HIGH"
+     ]
+    }
+   ]
+  },
+  "frdm_mcxe31b/mcxe31b": {
+   "identifier": "frdm_mcxe31b/mcxe31b",
+   "name": "NXP FRDM-MCXE31B",
+   "vendor": "nxp",
+   "dts": "frdm_mcxe31b.dts",
+   "probeMethods": [
+    {
+     "id": "linkserver",
+     "description": "NXP LinkServer (no debug)",
+     "debug": false,
+     "runner": "linkserver",
+     "args": [
+      "--device=MCXE31B:FRDM-MCXE31B"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "MCXE31B"
+    }
+   ],
+   "console": "lpuart_5",
+   "wdtNodeLabel": "swt_0",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "lpuart_2",
+     "lpuart_5"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpioc_h",
+    "pin": 0,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpiod_l",
+    "pin": 5,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpiob_h",
+     "pin": 6,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    },
+    {
+     "dtSpec": "led2",
+     "controller": "gpioc_l",
+     "pin": 14,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    }
+   ],
+   "connectors": [
+    {
+     "nodelabel": "arduino_header",
+     "compatible": "arduino-header-r3",
+     "pins": {
+      "A0": {
+       "controller": "gpioe_h",
+       "pin": 0,
+       "flags": []
+      },
+      "A1": {
+       "controller": "gpioe_l",
+       "pin": 15,
+       "flags": []
+      },
+      "A2": {
+       "controller": "gpiod_l",
+       "pin": 1,
+       "flags": []
+      },
+      "A3": {
+       "controller": "gpioe_l",
+       "pin": 10,
+       "flags": []
+      },
+      "A4": {
+       "controller": "gpioc_l",
+       "pin": 11,
+       "flags": []
+      },
+      "A5": {
+       "controller": "gpioc_l",
+       "pin": 10,
+       "flags": []
+      },
+      "D0": {
+       "controller": "gpioa_l",
+       "pin": 8,
+       "flags": []
+      },
+      "D1": {
+       "controller": "gpioa_l",
+       "pin": 9,
+       "flags": []
+      },
+      "D2": {
+       "controller": "gpioe_h",
+       "pin": 7,
+       "flags": []
+      },
+      "D3": {
+       "controller": "gpioa_l",
+       "pin": 13,
+       "flags": []
+      },
+      "D4": {
+       "controller": "gpioe_h",
+       "pin": 6,
+       "flags": []
+      },
+      "D5": {
+       "controller": "gpioe_h",
+       "pin": 5,
+       "flags": []
+      },
+      "D6": {
+       "controller": "gpioa_h",
+       "pin": 0,
+       "flags": []
+      },
+      "D7": {
+       "controller": "gpioe_h",
+       "pin": 1,
+       "flags": []
+      },
+      "D8": {
+       "controller": "gpioe_h",
+       "pin": 2,
+       "flags": []
+      },
+      "D9": {
+       "controller": "gpioa_l",
+       "pin": 15,
+       "flags": []
+      },
+      "D10": {
+       "controller": "gpioe_l",
+       "pin": 6,
+       "flags": []
+      },
+      "D11": {
+       "controller": "gpioe_l",
+       "pin": 2,
+       "flags": []
+      },
+      "D12": {
+       "controller": "gpioe_l",
+       "pin": 0,
+       "flags": []
+      },
+      "D13": {
+       "controller": "gpioe_l",
+       "pin": 1,
+       "flags": []
+      },
+      "D14": {
+       "controller": "gpioc_l",
+       "pin": 6,
+       "flags": []
+      },
+      "D15": {
+       "controller": "gpioc_l",
+       "pin": 7,
+       "flags": []
+      }
+     }
+    },
+    {
+     "nodelabel": "nxp_lcd_8080_connector",
+     "compatible": "nxp,lcd-8080",
+     "pins": {
+      "p9": {
+       "controller": "gpiob_l",
+       "pin": 14,
+       "flags": []
+      },
+      "p10": {
+       "controller": "gpioc_l",
+       "pin": 9,
+       "flags": []
+      },
+      "p11": {
+       "controller": "gpiob_l",
+       "pin": 15,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "imx8mm_evk/mimx8mm6/a53": {
+   "identifier": "imx8mm_evk/mimx8mm6/a53",
+   "name": "NXP i.MX8M Mini EVK A53",
+   "vendor": "nxp",
+   "dts": "imx8mm_evk_mimx8mm6_a53.dts",
+   "probeMethods": [
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "MIMX8MM6_A53_0"
+    }
+   ],
+   "console": "uart4",
+   "wdtNodeLabel": "wdog1",
+   "buses": {
+    "i2c": [
+     "i2c3"
+    ],
+    "spi": [],
+    "uart": [
+     "uart4"
+    ]
+   }
+  },
+  "imx8mm_evk/mimx8mm6/a53/smp": {
+   "identifier": "imx8mm_evk/mimx8mm6/a53/smp",
+   "name": "NXP i.MX8M Mini EVK A53 with SMP kernel",
+   "vendor": "nxp",
+   "dts": "imx8mm_evk_mimx8mm6_a53_smp.dts",
+   "probeMethods": [
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "MIMX8MM6_A53_0"
+    }
+   ],
+   "console": "uart4",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "uart4"
+    ]
+   }
+  },
+  "imx8mm_evk/mimx8mm6/m4": {
+   "identifier": "imx8mm_evk/mimx8mm6/m4",
+   "name": "NXP i.MX8M Mini EVK",
+   "vendor": "nxp",
+   "dts": "imx8mm_evk_mimx8mm6_m4.dts",
+   "probeMethods": [
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "MIMX8MD6_M4"
+    }
+   ],
+   "console": "uart4",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "uart4"
+    ]
+   }
+  },
+  "mimxrt1060_evk@A/mimxrt1062/qspi": {
+   "identifier": "mimxrt1060_evk@A/mimxrt1062/qspi",
+   "name": "NXP MIMXRT1060-EVK",
+   "vendor": "nxp",
+   "dts": "mimxrt1060_evk_mimxrt1062_qspi.dts",
+   "probeMethods": [
+    {
+     "id": "linkserver",
+     "description": "NXP LinkServer (no debug)",
+     "debug": false,
+     "runner": "linkserver",
+     "args": [
+      "--device=MIMXRT1062xxxxA:EVK-MIMXRT1060"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "MIMXRT1062xxx6A"
+    },
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=mimxrt1060"
+     ]
+    }
+   ],
+   "console": "lpuart1",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdog0",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "lpuart1",
+     "lpuart3",
+     "lpuart8"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "flexpwm2_pwm3",
+     "channel": 0,
+     "flags": [
+      "PWM_POLARITY_NORMAL"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio1",
+    "pin": 9,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio5",
+    "pin": 0,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "nxp_parallel_lcd_connector",
+     "compatible": "nxp,parallel-lcd-connector",
+     "pins": {
+      "p0": {
+       "controller": "gpio2",
+       "pin": 31,
+       "flags": []
+      }
+     }
+    },
+    {
+     "nodelabel": "nxp_i2c_touch_fpc",
+     "compatible": "nxp,i2c-tsc-fpc",
+     "pins": {
+      "p1": {
+       "controller": "gpio1",
+       "pin": 2,
+       "flags": []
+      },
+      "p2": {
+       "controller": "gpio1",
+       "pin": 11,
+       "flags": []
+      }
+     }
+    },
+    {
+     "nodelabel": "arduino_header",
+     "compatible": "arduino-header-r3",
+     "pins": {
+      "A0": {
+       "controller": "gpio1",
+       "pin": 26,
+       "flags": []
+      },
+      "A1": {
+       "controller": "gpio1",
+       "pin": 27,
+       "flags": []
+      },
+      "A2": {
+       "controller": "gpio1",
+       "pin": 20,
+       "flags": []
+      },
+      "A3": {
+       "controller": "gpio1",
+       "pin": 21,
+       "flags": []
+      },
+      "A4": {
+       "controller": "gpio1",
+       "pin": 17,
+       "flags": []
+      },
+      "A5": {
+       "controller": "gpio1",
+       "pin": 16,
+       "flags": []
+      },
+      "D0": {
+       "controller": "gpio1",
+       "pin": 23,
+       "flags": []
+      },
+      "D1": {
+       "controller": "gpio1",
+       "pin": 22,
+       "flags": []
+      },
+      "D2": {
+       "controller": "gpio1",
+       "pin": 11,
+       "flags": []
+      },
+      "D3": {
+       "controller": "gpio1",
+       "pin": 24,
+       "flags": []
+      },
+      "D4": {
+       "controller": "gpio1",
+       "pin": 9,
+       "flags": []
+      },
+      "D5": {
+       "controller": "gpio1",
+       "pin": 10,
+       "flags": []
+      },
+      "D6": {
+       "controller": "gpio1",
+       "pin": 18,
+       "flags": []
+      },
+      "D7": {
+       "controller": "gpio1",
+       "pin": 19,
+       "flags": []
+      },
+      "D8": {
+       "controller": "gpio1",
+       "pin": 3,
+       "flags": []
+      },
+      "D9": {
+       "controller": "gpio1",
+       "pin": 2,
+       "flags": []
+      },
+      "D10": {
+       "controller": "gpio3",
+       "pin": 13,
+       "flags": []
+      },
+      "D11": {
+       "controller": "gpio3",
+       "pin": 14,
+       "flags": []
+      },
+      "D12": {
+       "controller": "gpio3",
+       "pin": 15,
+       "flags": []
+      },
+      "D13": {
+       "controller": "gpio3",
+       "pin": 12,
+       "flags": []
+      },
+      "D14": {
+       "controller": "gpio1",
+       "pin": 17,
+       "flags": []
+      },
+      "D15": {
+       "controller": "gpio1",
+       "pin": 16,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "pico_plus2/rp2350b/hazard3": {
+   "identifier": "pico_plus2/rp2350b/hazard3",
+   "name": "Pimoroni Pico Plus 2 (Hazard3)",
+   "vendor": "pimoroni",
+   "dts": "pico_plus2_rp2350b_hazard3.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "proc set_adapter_speed_if_not_set { speed } {",
+      "puts \"checking adapter speed...\"",
+      "if { [catch {adapter speed} ret] } {",
+      "adapter speed $speed",
+      "}",
+      "}"
+     ]
+    },
+    {
+     "id": "probe-rs",
+     "description": "probe-rs flasher (no debug)",
+     "debug": false,
+     "runner": "probe-rs",
+     "args": [
+      "--chip=RP235x"
+     ]
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RP2350"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0",
+     "i2c1"
+    ],
+    "spi": [
+     "spi0"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "pwm",
+     "channel": 9,
+     "flags": [
+      "PWM_POLARITY_NORMAL"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio0",
+    "pin": 25,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio0_hi",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "pico_header",
+     "compatible": "raspberrypi,pico-header",
+     "pins": {
+      "GP0": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "GP1": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "GP2": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "GP3": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "GP4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "GP5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "GP6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "GP7": {
+       "controller": "gpio0",
+       "pin": 7,
+       "flags": []
+      },
+      "GP8": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "GP9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "GP10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "GP11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "GP12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "GP13": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      },
+      "GP14": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "GP15": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "GP16": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "GP17": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "GP18": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "GP19": {
+       "controller": "gpio0",
+       "pin": 19,
+       "flags": []
+      },
+      "GP20": {
+       "controller": "gpio0",
+       "pin": 20,
+       "flags": []
+      },
+      "GP21": {
+       "controller": "gpio0",
+       "pin": 21,
+       "flags": []
+      },
+      "GP22": {
+       "controller": "gpio0",
+       "pin": 22,
+       "flags": []
+      },
+      "GP26": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "GP27": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "GP28": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "pico_plus2/rp2350b/m33": {
+   "identifier": "pico_plus2/rp2350b/m33",
+   "name": "Pimoroni Pico Plus 2 (Cortex-M33)",
+   "vendor": "pimoroni",
+   "dts": "pico_plus2_rp2350b_m33.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "proc set_adapter_speed_if_not_set { speed } {",
+      "puts \"checking adapter speed...\"",
+      "if { [catch {adapter speed} ret] } {",
+      "adapter speed $speed",
+      "}",
+      "}"
+     ]
+    },
+    {
+     "id": "probe-rs",
+     "description": "probe-rs flasher (no debug)",
+     "debug": false,
+     "runner": "probe-rs",
+     "args": [
+      "--chip=RP235x"
+     ]
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RP2350"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0",
+     "i2c1"
+    ],
+    "spi": [
+     "spi0"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "pwm",
+     "channel": 9,
+     "flags": [
+      "PWM_POLARITY_NORMAL"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio0",
+    "pin": 25,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio0_hi",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "pico_header",
+     "compatible": "raspberrypi,pico-header",
+     "pins": {
+      "GP0": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "GP1": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "GP2": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "GP3": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "GP4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "GP5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "GP6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "GP7": {
+       "controller": "gpio0",
+       "pin": 7,
+       "flags": []
+      },
+      "GP8": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "GP9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "GP10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "GP11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "GP12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "GP13": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      },
+      "GP14": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "GP15": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "GP16": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "GP17": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "GP18": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "GP19": {
+       "controller": "gpio0",
+       "pin": 19,
+       "flags": []
+      },
+      "GP20": {
+       "controller": "gpio0",
+       "pin": 20,
+       "flags": []
+      },
+      "GP21": {
+       "controller": "gpio0",
+       "pin": 21,
+       "flags": []
+      },
+      "GP22": {
+       "controller": "gpio0",
+       "pin": 22,
+       "flags": []
+      },
+      "GP26": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "GP27": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "GP28": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "quick_feather/quicklogic_eos_s3": {
+   "identifier": "quick_feather/quicklogic_eos_s3",
+   "name": "QuickLogic Quick Feather",
+   "vendor": "quicklogic",
+   "dts": "quick_feather.dts",
+   "console": "uart0",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio",
+    "pin": 4,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio",
+    "pin": 0,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio",
+     "pin": 5,
+     "flags": [
+      "GPIO_ACTIVE_HIGH"
+     ]
+    },
+    {
+     "dtSpec": "led2",
+     "controller": "gpio",
+     "pin": 6,
+     "flags": [
+      "GPIO_ACTIVE_HIGH"
+     ]
+    }
+   ]
+  },
+  "rpi_pico/rp2040": {
+   "identifier": "rpi_pico/rp2040",
+   "name": "Raspberry Pi Pico",
+   "vendor": "raspberrypi",
+   "dts": "rpi_pico.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "proc set_adapter_speed_if_not_set { speed } {",
+      "puts \"checking adapter speed...\"",
+      "if { [catch {adapter speed} ret] } {",
+      "adapter speed $speed",
+      "}",
+      "}"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "RP2040_M0_0"
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RPI-RP2"
+     ]
+    },
+    {
+     "id": "blackmagicprobe",
+     "description": "Black Magic Probe (no debug)",
+     "debug": false,
+     "runner": "blackmagicprobe"
+    },
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=rp2040"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0"
+    ],
+    "spi": [
+     "spi0"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "pwm",
+     "channel": 9,
+     "flags": [
+      "PWM_POLARITY_NORMAL"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio0",
+    "pin": 25,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "pico_header",
+     "compatible": "raspberrypi,pico-header",
+     "pins": {
+      "GP0": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "GP1": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "GP2": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "GP3": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "GP4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "GP5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "GP6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "GP7": {
+       "controller": "gpio0",
+       "pin": 7,
+       "flags": []
+      },
+      "GP8": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "GP9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "GP10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "GP11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "GP12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "GP13": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      },
+      "GP14": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "GP15": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "GP16": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "GP17": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "GP18": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "GP19": {
+       "controller": "gpio0",
+       "pin": 19,
+       "flags": []
+      },
+      "GP20": {
+       "controller": "gpio0",
+       "pin": 20,
+       "flags": []
+      },
+      "GP21": {
+       "controller": "gpio0",
+       "pin": 21,
+       "flags": []
+      },
+      "GP22": {
+       "controller": "gpio0",
+       "pin": 22,
+       "flags": []
+      },
+      "GP26": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "GP27": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "GP28": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "rpi_pico/rp2040/mcuboot": {
+   "identifier": "rpi_pico/rp2040/mcuboot",
+   "name": "Raspberry Pi Pico - MCUboot",
+   "vendor": "raspberrypi",
+   "dts": "rpi_pico_rp2040_mcuboot.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "proc set_adapter_speed_if_not_set { speed } {",
+      "puts \"checking adapter speed...\"",
+      "if { [catch {adapter speed} ret] } {",
+      "adapter speed $speed",
+      "}",
+      "}"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "RP2040_M0_0"
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RPI-RP2"
+     ]
+    },
+    {
+     "id": "blackmagicprobe",
+     "description": "Black Magic Probe (no debug)",
+     "debug": false,
+     "runner": "blackmagicprobe"
+    },
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=rp2040"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0"
+    ],
+    "spi": [
+     "spi0"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "pwm",
+     "channel": 9,
+     "flags": [
+      "PWM_POLARITY_NORMAL"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio0",
+    "pin": 25,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "pico_header",
+     "compatible": "raspberrypi,pico-header",
+     "pins": {
+      "GP0": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "GP1": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "GP2": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "GP3": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "GP4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "GP5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "GP6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "GP7": {
+       "controller": "gpio0",
+       "pin": 7,
+       "flags": []
+      },
+      "GP8": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "GP9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "GP10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "GP11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "GP12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "GP13": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      },
+      "GP14": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "GP15": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "GP16": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "GP17": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "GP18": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "GP19": {
+       "controller": "gpio0",
+       "pin": 19,
+       "flags": []
+      },
+      "GP20": {
+       "controller": "gpio0",
+       "pin": 20,
+       "flags": []
+      },
+      "GP21": {
+       "controller": "gpio0",
+       "pin": 21,
+       "flags": []
+      },
+      "GP22": {
+       "controller": "gpio0",
+       "pin": 22,
+       "flags": []
+      },
+      "GP26": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "GP27": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "GP28": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "rpi_pico/rp2040/w": {
+   "identifier": "rpi_pico/rp2040/w",
+   "name": "Raspberry Pi Pico W",
+   "vendor": "raspberrypi",
+   "dts": "rpi_pico_rp2040_w.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "proc set_adapter_speed_if_not_set { speed } {",
+      "puts \"checking adapter speed...\"",
+      "if { [catch {adapter speed} ret] } {",
+      "adapter speed $speed",
+      "}",
+      "}"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "RP2040_M0_0"
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RPI-RP2"
+     ]
+    },
+    {
+     "id": "blackmagicprobe",
+     "description": "Black Magic Probe (no debug)",
+     "debug": false,
+     "runner": "blackmagicprobe"
+    },
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=rp2040"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0"
+    ],
+    "spi": [
+     "spi0"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "pico_header",
+     "compatible": "raspberrypi,pico-header",
+     "pins": {
+      "GP0": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "GP1": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "GP2": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "GP3": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "GP4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "GP5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "GP6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "GP7": {
+       "controller": "gpio0",
+       "pin": 7,
+       "flags": []
+      },
+      "GP8": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "GP9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "GP10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "GP11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "GP12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "GP13": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      },
+      "GP14": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "GP15": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "GP16": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "GP17": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "GP18": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "GP19": {
+       "controller": "gpio0",
+       "pin": 19,
+       "flags": []
+      },
+      "GP20": {
+       "controller": "gpio0",
+       "pin": 20,
+       "flags": []
+      },
+      "GP21": {
+       "controller": "gpio0",
+       "pin": 21,
+       "flags": []
+      },
+      "GP22": {
+       "controller": "gpio0",
+       "pin": 22,
+       "flags": []
+      },
+      "GP26": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "GP27": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "GP28": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "rpi_pico/rp2040/w/mcuboot": {
+   "identifier": "rpi_pico/rp2040/w/mcuboot",
+   "name": "Raspberry Pi Pico W - MCUboot",
+   "vendor": "raspberrypi",
+   "dts": "rpi_pico_rp2040_w_mcuboot.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "proc set_adapter_speed_if_not_set { speed } {",
+      "puts \"checking adapter speed...\"",
+      "if { [catch {adapter speed} ret] } {",
+      "adapter speed $speed",
+      "}",
+      "}"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "RP2040_M0_0"
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RPI-RP2"
+     ]
+    },
+    {
+     "id": "blackmagicprobe",
+     "description": "Black Magic Probe (no debug)",
+     "debug": false,
+     "runner": "blackmagicprobe"
+    },
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=rp2040"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0"
+    ],
+    "spi": [
+     "spi0"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "pico_header",
+     "compatible": "raspberrypi,pico-header",
+     "pins": {
+      "GP0": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "GP1": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "GP2": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "GP3": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "GP4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "GP5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "GP6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "GP7": {
+       "controller": "gpio0",
+       "pin": 7,
+       "flags": []
+      },
+      "GP8": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "GP9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "GP10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "GP11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "GP12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "GP13": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      },
+      "GP14": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "GP15": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "GP16": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "GP17": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "GP18": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "GP19": {
+       "controller": "gpio0",
+       "pin": 19,
+       "flags": []
+      },
+      "GP20": {
+       "controller": "gpio0",
+       "pin": 20,
+       "flags": []
+      },
+      "GP21": {
+       "controller": "gpio0",
+       "pin": 21,
+       "flags": []
+      },
+      "GP22": {
+       "controller": "gpio0",
+       "pin": 22,
+       "flags": []
+      },
+      "GP26": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "GP27": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "GP28": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "rpi_pico2/rp2350a/hazard3": {
+   "identifier": "rpi_pico2/rp2350a/hazard3",
+   "name": "Raspberry Pi Pico 2 (Hazard3)",
+   "vendor": "raspberrypi",
+   "dts": "rpi_pico2_rp2350a_hazard3.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "proc set_adapter_speed_if_not_set { speed } {",
+      "puts \"checking adapter speed...\"",
+      "if { [catch {adapter speed} ret] } {",
+      "adapter speed $speed",
+      "}",
+      "}"
+     ]
+    },
+    {
+     "id": "probe-rs",
+     "description": "probe-rs flasher (no debug)",
+     "debug": false,
+     "runner": "probe-rs",
+     "args": [
+      "--chip=RP235x"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "RP2350_M33_0"
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RP2350"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0",
+     "i2c1"
+    ],
+    "spi": [
+     "spi0"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "pico_header",
+     "compatible": "raspberrypi,pico-header",
+     "pins": {
+      "GP0": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "GP1": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "GP2": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "GP3": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "GP4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "GP5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "GP6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "GP7": {
+       "controller": "gpio0",
+       "pin": 7,
+       "flags": []
+      },
+      "GP8": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "GP9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "GP10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "GP11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "GP12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "GP13": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      },
+      "GP14": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "GP15": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "GP16": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "GP17": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "GP18": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "GP19": {
+       "controller": "gpio0",
+       "pin": 19,
+       "flags": []
+      },
+      "GP20": {
+       "controller": "gpio0",
+       "pin": 20,
+       "flags": []
+      },
+      "GP21": {
+       "controller": "gpio0",
+       "pin": 21,
+       "flags": []
+      },
+      "GP22": {
+       "controller": "gpio0",
+       "pin": 22,
+       "flags": []
+      },
+      "GP26": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "GP27": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "GP28": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "rpi_pico2/rp2350a/m33": {
+   "identifier": "rpi_pico2/rp2350a/m33",
+   "name": "Raspberry Pi Pico 2 (Cortex-M33)",
+   "vendor": "raspberrypi",
+   "dts": "rpi_pico2_rp2350a_m33.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "proc set_adapter_speed_if_not_set { speed } {",
+      "puts \"checking adapter speed...\"",
+      "if { [catch {adapter speed} ret] } {",
+      "adapter speed $speed",
+      "}",
+      "}"
+     ]
+    },
+    {
+     "id": "probe-rs",
+     "description": "probe-rs flasher (no debug)",
+     "debug": false,
+     "runner": "probe-rs",
+     "args": [
+      "--chip=RP235x"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "RP2350_M33_0"
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RP2350"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0",
+     "i2c1"
+    ],
+    "spi": [
+     "spi0"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "pwm",
+     "channel": 9,
+     "flags": [
+      "PWM_POLARITY_NORMAL"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio0",
+    "pin": 25,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "pico_header",
+     "compatible": "raspberrypi,pico-header",
+     "pins": {
+      "GP0": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "GP1": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "GP2": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "GP3": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "GP4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "GP5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "GP6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "GP7": {
+       "controller": "gpio0",
+       "pin": 7,
+       "flags": []
+      },
+      "GP8": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "GP9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "GP10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "GP11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "GP12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "GP13": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      },
+      "GP14": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "GP15": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "GP16": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "GP17": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "GP18": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "GP19": {
+       "controller": "gpio0",
+       "pin": 19,
+       "flags": []
+      },
+      "GP20": {
+       "controller": "gpio0",
+       "pin": 20,
+       "flags": []
+      },
+      "GP21": {
+       "controller": "gpio0",
+       "pin": 21,
+       "flags": []
+      },
+      "GP22": {
+       "controller": "gpio0",
+       "pin": 22,
+       "flags": []
+      },
+      "GP26": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "GP27": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "GP28": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "rpi_pico2/rp2350a/m33/mcuboot": {
+   "identifier": "rpi_pico2/rp2350a/m33/mcuboot",
+   "name": "Raspberry Pi Pico 2 (Cortex-M33) - MCUboot",
+   "vendor": "raspberrypi",
+   "dts": "rpi_pico2_rp2350a_m33_mcuboot.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "proc set_adapter_speed_if_not_set { speed } {",
+      "puts \"checking adapter speed...\"",
+      "if { [catch {adapter speed} ret] } {",
+      "adapter speed $speed",
+      "}",
+      "}"
+     ]
+    },
+    {
+     "id": "probe-rs",
+     "description": "probe-rs flasher (no debug)",
+     "debug": false,
+     "runner": "probe-rs",
+     "args": [
+      "--chip=RP235x"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "RP2350_M33_0"
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RP2350"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0",
+     "i2c1"
+    ],
+    "spi": [
+     "spi0"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "pico_header",
+     "compatible": "raspberrypi,pico-header",
+     "pins": {
+      "GP0": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "GP1": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "GP2": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "GP3": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "GP4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "GP5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "GP6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "GP7": {
+       "controller": "gpio0",
+       "pin": 7,
+       "flags": []
+      },
+      "GP8": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "GP9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "GP10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "GP11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "GP12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "GP13": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      },
+      "GP14": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "GP15": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "GP16": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "GP17": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "GP18": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "GP19": {
+       "controller": "gpio0",
+       "pin": 19,
+       "flags": []
+      },
+      "GP20": {
+       "controller": "gpio0",
+       "pin": 20,
+       "flags": []
+      },
+      "GP21": {
+       "controller": "gpio0",
+       "pin": 21,
+       "flags": []
+      },
+      "GP22": {
+       "controller": "gpio0",
+       "pin": 22,
+       "flags": []
+      },
+      "GP26": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "GP27": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "GP28": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "rpi_pico2/rp2350a/m33/w": {
+   "identifier": "rpi_pico2/rp2350a/m33/w",
+   "name": "Raspberry Pi Pico 2 (Cortex-M33) WiFi",
+   "vendor": "raspberrypi",
+   "dts": "rpi_pico2_rp2350a_m33_w.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "proc set_adapter_speed_if_not_set { speed } {",
+      "puts \"checking adapter speed...\"",
+      "if { [catch {adapter speed} ret] } {",
+      "adapter speed $speed",
+      "}",
+      "}"
+     ]
+    },
+    {
+     "id": "probe-rs",
+     "description": "probe-rs flasher (no debug)",
+     "debug": false,
+     "runner": "probe-rs",
+     "args": [
+      "--chip=RP235x"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "RP2350_M33_0"
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RP2350"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0",
+     "i2c1"
+    ],
+    "spi": [
+     "spi0"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "pico_header",
+     "compatible": "raspberrypi,pico-header",
+     "pins": {
+      "GP0": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "GP1": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "GP2": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "GP3": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "GP4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "GP5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "GP6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "GP7": {
+       "controller": "gpio0",
+       "pin": 7,
+       "flags": []
+      },
+      "GP8": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "GP9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "GP10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "GP11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "GP12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "GP13": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      },
+      "GP14": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "GP15": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "GP16": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "GP17": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "GP18": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "GP19": {
+       "controller": "gpio0",
+       "pin": 19,
+       "flags": []
+      },
+      "GP20": {
+       "controller": "gpio0",
+       "pin": 20,
+       "flags": []
+      },
+      "GP21": {
+       "controller": "gpio0",
+       "pin": 21,
+       "flags": []
+      },
+      "GP22": {
+       "controller": "gpio0",
+       "pin": 22,
+       "flags": []
+      },
+      "GP26": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "GP27": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "GP28": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "rpi_pico2/rp2350a/m33/w/mcuboot": {
+   "identifier": "rpi_pico2/rp2350a/m33/w/mcuboot",
+   "name": "Raspberry Pi Pico 2 (Cortex-M33) WiFi - MCUboot",
+   "vendor": "raspberrypi",
+   "dts": "rpi_pico2_rp2350a_m33_w_mcuboot.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "proc set_adapter_speed_if_not_set { speed } {",
+      "puts \"checking adapter speed...\"",
+      "if { [catch {adapter speed} ret] } {",
+      "adapter speed $speed",
+      "}",
+      "}"
+     ]
+    },
+    {
+     "id": "probe-rs",
+     "description": "probe-rs flasher (no debug)",
+     "debug": false,
+     "runner": "probe-rs",
+     "args": [
+      "--chip=RP235x"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "RP2350_M33_0"
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=RP2350"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0",
+     "i2c1"
+    ],
+    "spi": [
+     "spi0"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "pico_header",
+     "compatible": "raspberrypi,pico-header",
+     "pins": {
+      "GP0": {
+       "controller": "gpio0",
+       "pin": 0,
+       "flags": []
+      },
+      "GP1": {
+       "controller": "gpio0",
+       "pin": 1,
+       "flags": []
+      },
+      "GP2": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "GP3": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "GP4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "GP5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "GP6": {
+       "controller": "gpio0",
+       "pin": 6,
+       "flags": []
+      },
+      "GP7": {
+       "controller": "gpio0",
+       "pin": 7,
+       "flags": []
+      },
+      "GP8": {
+       "controller": "gpio0",
+       "pin": 8,
+       "flags": []
+      },
+      "GP9": {
+       "controller": "gpio0",
+       "pin": 9,
+       "flags": []
+      },
+      "GP10": {
+       "controller": "gpio0",
+       "pin": 10,
+       "flags": []
+      },
+      "GP11": {
+       "controller": "gpio0",
+       "pin": 11,
+       "flags": []
+      },
+      "GP12": {
+       "controller": "gpio0",
+       "pin": 12,
+       "flags": []
+      },
+      "GP13": {
+       "controller": "gpio0",
+       "pin": 13,
+       "flags": []
+      },
+      "GP14": {
+       "controller": "gpio0",
+       "pin": 14,
+       "flags": []
+      },
+      "GP15": {
+       "controller": "gpio0",
+       "pin": 15,
+       "flags": []
+      },
+      "GP16": {
+       "controller": "gpio0",
+       "pin": 16,
+       "flags": []
+      },
+      "GP17": {
+       "controller": "gpio0",
+       "pin": 17,
+       "flags": []
+      },
+      "GP18": {
+       "controller": "gpio0",
+       "pin": 18,
+       "flags": []
+      },
+      "GP19": {
+       "controller": "gpio0",
+       "pin": 19,
+       "flags": []
+      },
+      "GP20": {
+       "controller": "gpio0",
+       "pin": 20,
+       "flags": []
+      },
+      "GP21": {
+       "controller": "gpio0",
+       "pin": 21,
+       "flags": []
+      },
+      "GP22": {
+       "controller": "gpio0",
+       "pin": 22,
+       "flags": []
+      },
+      "GP26": {
+       "controller": "gpio0",
+       "pin": 26,
+       "flags": []
+      },
+      "GP27": {
+       "controller": "gpio0",
+       "pin": 27,
+       "flags": []
+      },
+      "GP28": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "ek_ra8d1/r7fa8d1bhecbd": {
+   "identifier": "ek_ra8d1/r7fa8d1bhecbd",
+   "name": "Renesas EK-RA8D1",
+   "vendor": "renesas",
+   "dts": "ek_ra8d1.dts",
+   "probeMethods": [
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "R7FA8D1BH"
+    },
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=R7FA8D1BH"
+     ]
+    }
+   ],
+   "console": "uart9",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt",
+   "buses": {
+    "i2c": [],
+    "spi": [
+     "spi1"
+    ],
+    "uart": [
+     "uart3"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "ioport6",
+    "pin": 0,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "ioport0",
+    "pin": 9,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "ioport0",
+     "pin": 8,
+     "flags": [
+      "GPIO_PULL_UP",
+      "GPIO_ACTIVE_LOW"
+     ]
+    }
+   ],
+   "connectors": [
+    {
+     "nodelabel": "mikrobus_header",
+     "compatible": "mikro-bus",
+     "pins": {
+      "AN": {
+       "controller": "ioport0",
+       "pin": 4,
+       "flags": []
+      },
+      "RST": {
+       "controller": "ioport5",
+       "pin": 7,
+       "flags": []
+      },
+      "CS": {
+       "controller": "ioport4",
+       "pin": 13,
+       "flags": []
+      },
+      "SCK": {
+       "controller": "ioport4",
+       "pin": 12,
+       "flags": []
+      },
+      "MISO": {
+       "controller": "ioport4",
+       "pin": 10,
+       "flags": []
+      },
+      "MOSI": {
+       "controller": "ioport4",
+       "pin": 11,
+       "flags": []
+      },
+      "PWM": {
+       "controller": "ioport9",
+       "pin": 7,
+       "flags": []
+      },
+      "INT": {
+       "controller": "ioport0",
+       "pin": 10,
+       "flags": []
+      },
+      "RX": {
+       "controller": "ioport4",
+       "pin": 8,
+       "flags": []
+      },
+      "TX": {
+       "controller": "ioport4",
+       "pin": 9,
+       "flags": []
+      },
+      "SCL": {
+       "controller": "ioport4",
+       "pin": 0,
+       "flags": []
+      },
+      "p11": {
+       "controller": "ioport4",
+       "pin": 1,
+       "flags": []
+      }
+     }
+    },
+    {
+     "nodelabel": "renesas_mipi_connector",
+     "compatible": "renesas,ra-gpio-mipi-header",
+     "pins": {
+      "IIC_SDA": {
+       "controller": "ioport5",
+       "pin": 11,
+       "flags": []
+      },
+      "DISP_BLEN": {
+       "controller": "ioport4",
+       "pin": 4,
+       "flags": []
+      },
+      "IIC_SCL": {
+       "controller": "ioport5",
+       "pin": 12,
+       "flags": []
+      },
+      "DISP_INT": {
+       "controller": "ioport5",
+       "pin": 10,
+       "flags": []
+      },
+      "p18": {
+       "controller": "ioporta",
+       "pin": 1,
+       "flags": []
+      }
+     }
+    },
+    {
+     "nodelabel": "ek_ra8d1_parallel_graphics_expansion",
+     "compatible": "renesas,ra-parallel-graphics-header",
+     "pins": {
+      "DISP_BLEN": {
+       "controller": "ioport4",
+       "pin": 4,
+       "flags": []
+      },
+      "IIC_SDA": {
+       "controller": "ioport5",
+       "pin": 11,
+       "flags": []
+      },
+      "DISP_INT": {
+       "controller": "ioport5",
+       "pin": 10,
+       "flags": []
+      },
+      "IIC_SCL": {
+       "controller": "ioport5",
+       "pin": 12,
+       "flags": []
+      },
+      "p6": {
+       "controller": "ioporta",
+       "pin": 1,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "xiao_ble/nrf52840": {
+   "identifier": "xiao_ble/nrf52840",
+   "name": "XIAO BLE",
+   "vendor": "seeed",
+   "dts": "xiao_ble.dts",
+   "probeMethods": [
+    {
+     "id": "nrfutil",
+     "description": "nrfutil device — Nordic USB DFU / serial bootloader (no debug)",
+     "debug": false,
+     "runner": "nrfutil"
+    },
+    {
+     "id": "nrfjprog",
+     "description": "Segger nRF command-line flasher (no debug)",
+     "debug": false,
+     "runner": "nrfjprog",
+     "args": [
+      "--nrf-family=NRF52"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "nRF52840_xxAA"
+    },
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=nrf52840",
+      "--frequency=4000000"
+     ]
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=Seeed_XIAO_nRF52840_Sense"
+     ]
+    },
+    {
+     "id": "blackmagicprobe",
+     "description": "Black Magic Probe (no debug)",
+     "debug": false,
+     "runner": "blackmagicprobe"
+    }
+   ],
+   "console": "board_cdc_acm_uart",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c1"
+    ],
+    "spi": [
+     "spi2"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "pwm0",
+     "channel": 0,
+     "flags": [
+      "PWM_POLARITY_INVERTED"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio0",
+    "pin": 26,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio0",
+     "pin": 30,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    },
+    {
+     "dtSpec": "led2",
+     "controller": "gpio0",
+     "pin": 6,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    }
+   ],
+   "connectors": [
+    {
+     "nodelabel": "xiao_d",
+     "compatible": "seeed,xiao-gpio",
+     "pins": {
+      "D0": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "D1": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "D2": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      },
+      "D3": {
+       "controller": "gpio0",
+       "pin": 29,
+       "flags": []
+      },
+      "D4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "D5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "D6": {
+       "controller": "gpio1",
+       "pin": 11,
+       "flags": []
+      },
+      "D7": {
+       "controller": "gpio1",
+       "pin": 12,
+       "flags": []
+      },
+      "D8": {
+       "controller": "gpio1",
+       "pin": 13,
+       "flags": []
+      },
+      "D9": {
+       "controller": "gpio1",
+       "pin": 14,
+       "flags": []
+      },
+      "D10": {
+       "controller": "gpio1",
+       "pin": 15,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "xiao_ble/nrf52840/sense": {
+   "identifier": "xiao_ble/nrf52840/sense",
+   "name": "XIAO BLE Sense",
+   "vendor": "seeed",
+   "dts": "xiao_ble_nrf52840_sense.dts",
+   "probeMethods": [
+    {
+     "id": "nrfutil",
+     "description": "nrfutil device — Nordic USB DFU / serial bootloader (no debug)",
+     "debug": false,
+     "runner": "nrfutil"
+    },
+    {
+     "id": "nrfjprog",
+     "description": "Segger nRF command-line flasher (no debug)",
+     "debug": false,
+     "runner": "nrfjprog",
+     "args": [
+      "--nrf-family=NRF52"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "nRF52840_xxAA"
+    },
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=nrf52840",
+      "--frequency=4000000"
+     ]
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true
+    },
+    {
+     "id": "uf2",
+     "description": "UF2 bootloader: copy the firmware file (no debug)",
+     "debug": false,
+     "runner": "uf2",
+     "args": [
+      "--board-id=Seeed_XIAO_nRF52840_Sense"
+     ]
+    },
+    {
+     "id": "blackmagicprobe",
+     "description": "Black Magic Probe (no debug)",
+     "debug": false,
+     "runner": "blackmagicprobe"
+    }
+   ],
+   "console": "board_cdc_acm_uart",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0",
+     "i2c1"
+    ],
+    "spi": [
+     "spi2"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "pwm0",
+     "channel": 0,
+     "flags": [
+      "PWM_POLARITY_INVERTED"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio0",
+    "pin": 26,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpio0",
+     "pin": 30,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    },
+    {
+     "dtSpec": "led2",
+     "controller": "gpio0",
+     "pin": 6,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    }
+   ],
+   "connectors": [
+    {
+     "nodelabel": "xiao_d",
+     "compatible": "seeed,xiao-gpio",
+     "pins": {
+      "D0": {
+       "controller": "gpio0",
+       "pin": 2,
+       "flags": []
+      },
+      "D1": {
+       "controller": "gpio0",
+       "pin": 3,
+       "flags": []
+      },
+      "D2": {
+       "controller": "gpio0",
+       "pin": 28,
+       "flags": []
+      },
+      "D3": {
+       "controller": "gpio0",
+       "pin": 29,
+       "flags": []
+      },
+      "D4": {
+       "controller": "gpio0",
+       "pin": 4,
+       "flags": []
+      },
+      "D5": {
+       "controller": "gpio0",
+       "pin": 5,
+       "flags": []
+      },
+      "D6": {
+       "controller": "gpio1",
+       "pin": 11,
+       "flags": []
+      },
+      "D7": {
+       "controller": "gpio1",
+       "pin": 12,
+       "flags": []
+      },
+      "D8": {
+       "controller": "gpio1",
+       "pin": 13,
+       "flags": []
+      },
+      "D9": {
+       "controller": "gpio1",
+       "pin": 14,
+       "flags": []
+      },
+      "D10": {
+       "controller": "gpio1",
+       "pin": 15,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "nucleo_h753zi/stm32h753xx": {
+   "identifier": "nucleo_h753zi/stm32h753xx",
+   "name": "ST Nucleo H753ZI",
+   "vendor": "st",
+   "dts": "nucleo_h753zi.dts",
+   "probeMethods": [
+    {
+     "id": "stm32cubeprogrammer",
+     "description": "STM32CubeProgrammer CLI via ST-Link (no debug)",
+     "debug": false,
+     "runner": "stm32cubeprogrammer",
+     "args": [
+      "--port=swd",
+      "--reset-mode=hw"
+     ]
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd-stm32",
+     "debug": true,
+     "debugCfg": [
+      "source [find board/st_nucleo_h743zi.cfg]",
+      "reset_config srst_only srst_nogate connect_assert_srst",
+      "$_CHIPNAME.cpu0 configure -event gdb-attach {",
+      "echo \"Debugger attaching: halting execution\"",
+      "gdb_breakpoint_override hard",
+      "}",
+      "$_CHIPNAME.cpu0 configure -event gdb-detach {",
+      "echo \"Debugger detaching: resuming execution\"",
+      "resume",
+      "}",
+      "rename init old_init",
+      "proc init {} {",
+      "old_init",
+      "reset halt",
+      "}"
+     ]
+    },
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=stm32h753zitx"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "STM32H753ZI"
+    }
+   ],
+   "console": "usart3",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "iwdg",
+   "buses": {
+    "i2c": [
+     "i2c1",
+     "i2c2"
+    ],
+    "spi": [
+     "spi1"
+    ],
+    "uart": [
+     "lpuart1",
+     "usart3"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "pwm12",
+     "channel": 1,
+     "flags": [
+      "PWM_POLARITY_NORMAL"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpiob",
+    "pin": 0,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpioc",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpioe",
+     "pin": 1,
+     "flags": [
+      "GPIO_ACTIVE_HIGH"
+     ]
+    }
+   ],
+   "connectors": [
+    {
+     "nodelabel": "arduino_header",
+     "compatible": "arduino-header-r3",
+     "pins": {
+      "A0": {
+       "controller": "gpioa",
+       "pin": 3,
+       "flags": []
+      },
+      "A1": {
+       "controller": "gpioc",
+       "pin": 0,
+       "flags": []
+      },
+      "A2": {
+       "controller": "gpioc",
+       "pin": 3,
+       "flags": []
+      },
+      "A3": {
+       "controller": "gpiob",
+       "pin": 1,
+       "flags": []
+      },
+      "A4": {
+       "controller": "gpioc",
+       "pin": 2,
+       "flags": []
+      },
+      "A5": {
+       "controller": "gpiof",
+       "pin": 10,
+       "flags": []
+      },
+      "D0": {
+       "controller": "gpiob",
+       "pin": 7,
+       "flags": []
+      },
+      "D1": {
+       "controller": "gpiob",
+       "pin": 6,
+       "flags": []
+      },
+      "D2": {
+       "controller": "gpiog",
+       "pin": 14,
+       "flags": []
+      },
+      "D3": {
+       "controller": "gpioe",
+       "pin": 13,
+       "flags": []
+      },
+      "D4": {
+       "controller": "gpioe",
+       "pin": 14,
+       "flags": []
+      },
+      "D5": {
+       "controller": "gpioe",
+       "pin": 11,
+       "flags": []
+      },
+      "D6": {
+       "controller": "gpioe",
+       "pin": 9,
+       "flags": []
+      },
+      "D7": {
+       "controller": "gpiog",
+       "pin": 12,
+       "flags": []
+      },
+      "D8": {
+       "controller": "gpiof",
+       "pin": 3,
+       "flags": []
+      },
+      "D9": {
+       "controller": "gpiod",
+       "pin": 15,
+       "flags": []
+      },
+      "D10": {
+       "controller": "gpiod",
+       "pin": 14,
+       "flags": []
+      },
+      "D11": {
+       "controller": "gpiob",
+       "pin": 5,
+       "flags": []
+      },
+      "D12": {
+       "controller": "gpioa",
+       "pin": 6,
+       "flags": []
+      },
+      "D13": {
+       "controller": "gpioa",
+       "pin": 5,
+       "flags": []
+      },
+      "D14": {
+       "controller": "gpiob",
+       "pin": 9,
+       "flags": []
+      },
+      "D15": {
+       "controller": "gpiob",
+       "pin": 8,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "nucleo_l053r8/stm32l053xx": {
+   "identifier": "nucleo_l053r8/stm32l053xx",
+   "name": "ST Nucleo L053R8",
+   "vendor": "st",
+   "dts": "nucleo_l053r8.dts",
+   "probeMethods": [
+    {
+     "id": "stm32cubeprogrammer",
+     "description": "STM32CubeProgrammer CLI via ST-Link (no debug)",
+     "debug": false,
+     "runner": "stm32cubeprogrammer",
+     "args": [
+      "--port=swd",
+      "--reset-mode=hw"
+     ]
+    },
+    {
+     "id": "stlink",
+     "description": "ST-Link or any SWD probe openocd supports (no BOOT0 needed) — also debugs",
+     "runner": "openocd-stm32",
+     "debug": true,
+     "debugCfg": [
+      "source [find interface/stlink-dap.cfg]",
+      "transport select dapdirect_swd",
+      "set WORKAREASIZE 0x2000",
+      "source [find target/stm32l0.cfg]",
+      "set _FLASHNAME $_CHIPNAME.flash1",
+      "flash bank $_FLASHNAME stm32lx 0 0 0 0 $_TARGETNAME",
+      "reset_config srst_only",
+      "$_TARGETNAME configure -event gdb-attach {",
+      "echo \"Debugger attaching: halting execution\"",
+      "reset halt",
+      "gdb_breakpoint_override hard",
+      "}",
+      "$_TARGETNAME configure -event gdb-detach {",
+      "echo \"Debugger detaching: resuming execution\"",
+      "resume",
+      "}"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "STM32L053R8"
+    }
+   ],
+   "console": "usart2",
+   "buses": {
+    "i2c": [
+     "i2c1"
+    ],
+    "spi": [
+     "spi1"
+    ],
+    "uart": [
+     "usart1",
+     "usart2"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpioa",
+    "pin": 5,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpioc",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "arduino_header",
+     "compatible": "arduino-header-r3",
+     "pins": {
+      "A0": {
+       "controller": "gpioa",
+       "pin": 0,
+       "flags": []
+      },
+      "A1": {
+       "controller": "gpioa",
+       "pin": 1,
+       "flags": []
+      },
+      "A2": {
+       "controller": "gpioa",
+       "pin": 4,
+       "flags": []
+      },
+      "A3": {
+       "controller": "gpiob",
+       "pin": 0,
+       "flags": []
+      },
+      "A4": {
+       "controller": "gpioc",
+       "pin": 1,
+       "flags": []
+      },
+      "A5": {
+       "controller": "gpioc",
+       "pin": 0,
+       "flags": []
+      },
+      "D0": {
+       "controller": "gpioa",
+       "pin": 3,
+       "flags": []
+      },
+      "D1": {
+       "controller": "gpioa",
+       "pin": 2,
+       "flags": []
+      },
+      "D2": {
+       "controller": "gpioa",
+       "pin": 10,
+       "flags": []
+      },
+      "D3": {
+       "controller": "gpiob",
+       "pin": 3,
+       "flags": []
+      },
+      "D4": {
+       "controller": "gpiob",
+       "pin": 5,
+       "flags": []
+      },
+      "D5": {
+       "controller": "gpiob",
+       "pin": 4,
+       "flags": []
+      },
+      "D6": {
+       "controller": "gpiob",
+       "pin": 10,
+       "flags": []
+      },
+      "D7": {
+       "controller": "gpioa",
+       "pin": 8,
+       "flags": []
+      },
+      "D8": {
+       "controller": "gpioa",
+       "pin": 9,
+       "flags": []
+      },
+      "D9": {
+       "controller": "gpioc",
+       "pin": 7,
+       "flags": []
+      },
+      "D10": {
+       "controller": "gpiob",
+       "pin": 6,
+       "flags": []
+      },
+      "D11": {
+       "controller": "gpioa",
+       "pin": 7,
+       "flags": []
+      },
+      "D12": {
+       "controller": "gpioa",
+       "pin": 6,
+       "flags": []
+      },
+      "D13": {
+       "controller": "gpioa",
+       "pin": 5,
+       "flags": []
+      },
+      "D14": {
+       "controller": "gpiob",
+       "pin": 9,
+       "flags": []
+      },
+      "D15": {
+       "controller": "gpiob",
+       "pin": 8,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "nucleo_n657x0_q/stm32n657xx": {
+   "identifier": "nucleo_n657x0_q/stm32n657xx",
+   "name": "Nucleo N657X0-Q",
+   "vendor": "st",
+   "dts": "nucleo_n657x0_q.dts",
+   "probeMethods": [
+    {
+     "id": "stm32cubeprogrammer",
+     "description": "STM32CubeProgrammer CLI via ST-Link (no debug)",
+     "debug": false,
+     "runner": "stm32cubeprogrammer",
+     "args": [
+      "--port=swd"
+     ]
+    }
+   ],
+   "console": "usart1",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "iwdg",
+   "buses": {
+    "i2c": [
+     "i2c1",
+     "i2c2",
+     "i2c4"
+    ],
+    "spi": [
+     "spi5"
+    ],
+    "uart": [
+     "usart1",
+     "usart3"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpiog",
+    "pin": 0,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpioc",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_HIGH",
+     "GPIO_PULL_DOWN"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpiog",
+     "pin": 8,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    },
+    {
+     "dtSpec": "led2",
+     "controller": "gpiog",
+     "pin": 10,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    }
+   ],
+   "connectors": [
+    {
+     "nodelabel": "arduino_header",
+     "compatible": "arduino-header-r3",
+     "pins": {
+      "A0": {
+       "controller": "gpioa",
+       "pin": 8,
+       "flags": []
+      },
+      "A1": {
+       "controller": "gpioa",
+       "pin": 9,
+       "flags": []
+      },
+      "A2": {
+       "controller": "gpioa",
+       "pin": 10,
+       "flags": []
+      },
+      "A3": {
+       "controller": "gpioa",
+       "pin": 12,
+       "flags": []
+      },
+      "A4": {
+       "controller": "gpiof",
+       "pin": 3,
+       "flags": []
+      },
+      "A5": {
+       "controller": "gpiog",
+       "pin": 15,
+       "flags": []
+      },
+      "D0": {
+       "controller": "gpiod",
+       "pin": 9,
+       "flags": []
+      },
+      "D1": {
+       "controller": "gpiod",
+       "pin": 8,
+       "flags": []
+      },
+      "D2": {
+       "controller": "gpiod",
+       "pin": 0,
+       "flags": []
+      },
+      "D3": {
+       "controller": "gpioe",
+       "pin": 9,
+       "flags": []
+      },
+      "D4": {
+       "controller": "gpioe",
+       "pin": 0,
+       "flags": []
+      },
+      "D5": {
+       "controller": "gpioe",
+       "pin": 10,
+       "flags": []
+      },
+      "D6": {
+       "controller": "gpiod",
+       "pin": 5,
+       "flags": []
+      },
+      "D7": {
+       "controller": "gpioe",
+       "pin": 11,
+       "flags": []
+      },
+      "D8": {
+       "controller": "gpiod",
+       "pin": 12,
+       "flags": []
+      },
+      "D9": {
+       "controller": "gpiod",
+       "pin": 7,
+       "flags": []
+      },
+      "D10": {
+       "controller": "gpioa",
+       "pin": 3,
+       "flags": []
+      },
+      "D11": {
+       "controller": "gpiog",
+       "pin": 2,
+       "flags": []
+      },
+      "D12": {
+       "controller": "gpiog",
+       "pin": 1,
+       "flags": []
+      },
+      "D13": {
+       "controller": "gpioe",
+       "pin": 15,
+       "flags": []
+      },
+      "D14": {
+       "controller": "gpioc",
+       "pin": 1,
+       "flags": []
+      },
+      "D15": {
+       "controller": "gpioh",
+       "pin": 9,
+       "flags": []
+      }
+     }
+    },
+    {
+     "nodelabel": "csi_connector",
+     "compatible": "raspberrypi,csi-connector",
+     "pins": {
+      "IO0": {
+       "controller": "gpioo",
+       "pin": 5,
+       "flags": []
+      },
+      "IO1": {
+       "controller": "gpioa",
+       "pin": 0,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "nucleo_n657x0_q/stm32n657xx/sb": {
+   "identifier": "nucleo_n657x0_q/stm32n657xx/sb",
+   "name": "Nucleo N657X0-Q",
+   "vendor": "st",
+   "dts": "nucleo_n657x0_q_stm32n657xx_sb.dts",
+   "probeMethods": [
+    {
+     "id": "stm32cubeprogrammer",
+     "description": "STM32CubeProgrammer CLI via ST-Link (no debug)",
+     "debug": false,
+     "runner": "stm32cubeprogrammer",
+     "args": [
+      "--port=swd"
+     ]
+    }
+   ],
+   "console": "usart1",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "iwdg",
+   "buses": {
+    "i2c": [
+     "i2c1",
+     "i2c2",
+     "i2c4"
+    ],
+    "spi": [
+     "spi5"
+    ],
+    "uart": [
+     "usart1",
+     "usart3"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpiog",
+    "pin": 0,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpioc",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_HIGH",
+     "GPIO_PULL_DOWN"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpiog",
+     "pin": 8,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    },
+    {
+     "dtSpec": "led2",
+     "controller": "gpiog",
+     "pin": 10,
+     "flags": [
+      "GPIO_ACTIVE_LOW"
+     ]
+    }
+   ],
+   "connectors": [
+    {
+     "nodelabel": "arduino_header",
+     "compatible": "arduino-header-r3",
+     "pins": {
+      "A0": {
+       "controller": "gpioa",
+       "pin": 8,
+       "flags": []
+      },
+      "A1": {
+       "controller": "gpioa",
+       "pin": 9,
+       "flags": []
+      },
+      "A2": {
+       "controller": "gpioa",
+       "pin": 10,
+       "flags": []
+      },
+      "A3": {
+       "controller": "gpioa",
+       "pin": 12,
+       "flags": []
+      },
+      "A4": {
+       "controller": "gpiof",
+       "pin": 3,
+       "flags": []
+      },
+      "A5": {
+       "controller": "gpiog",
+       "pin": 15,
+       "flags": []
+      },
+      "D0": {
+       "controller": "gpiod",
+       "pin": 9,
+       "flags": []
+      },
+      "D1": {
+       "controller": "gpiod",
+       "pin": 8,
+       "flags": []
+      },
+      "D2": {
+       "controller": "gpiod",
+       "pin": 0,
+       "flags": []
+      },
+      "D3": {
+       "controller": "gpioe",
+       "pin": 9,
+       "flags": []
+      },
+      "D4": {
+       "controller": "gpioe",
+       "pin": 0,
+       "flags": []
+      },
+      "D5": {
+       "controller": "gpioe",
+       "pin": 10,
+       "flags": []
+      },
+      "D6": {
+       "controller": "gpiod",
+       "pin": 5,
+       "flags": []
+      },
+      "D7": {
+       "controller": "gpioe",
+       "pin": 11,
+       "flags": []
+      },
+      "D8": {
+       "controller": "gpiod",
+       "pin": 12,
+       "flags": []
+      },
+      "D9": {
+       "controller": "gpiod",
+       "pin": 7,
+       "flags": []
+      },
+      "D10": {
+       "controller": "gpioa",
+       "pin": 3,
+       "flags": []
+      },
+      "D11": {
+       "controller": "gpiog",
+       "pin": 2,
+       "flags": []
+      },
+      "D12": {
+       "controller": "gpiog",
+       "pin": 1,
+       "flags": []
+      },
+      "D13": {
+       "controller": "gpioe",
+       "pin": 15,
+       "flags": []
+      },
+      "D14": {
+       "controller": "gpioc",
+       "pin": 1,
+       "flags": []
+      },
+      "D15": {
+       "controller": "gpioh",
+       "pin": 9,
+       "flags": []
+      }
+     }
+    },
+    {
+     "nodelabel": "csi_connector",
+     "compatible": "raspberrypi,csi-connector",
+     "pins": {
+      "IO0": {
+       "controller": "gpioo",
+       "pin": 5,
+       "flags": []
+      },
+      "IO1": {
+       "controller": "gpioa",
+       "pin": 0,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "nucleo_u3c5zi_q/stm32u3c5xx": {
+   "identifier": "nucleo_u3c5zi_q/stm32u3c5xx",
+   "name": "ST Nucleo U3C5ZI Q",
+   "vendor": "st",
+   "dts": "nucleo_u3c5zi_q.dts",
+   "probeMethods": [
+    {
+     "id": "stm32cubeprogrammer",
+     "description": "STM32CubeProgrammer CLI via ST-Link (no debug)",
+     "debug": false,
+     "runner": "stm32cubeprogrammer",
+     "args": [
+      "--port=swd",
+      "--reset-mode=hw"
+     ]
+    },
+    {
+     "id": "pyocd",
+     "description": "Any CMSIS-DAP probe via pyOCD (no debug)",
+     "debug": false,
+     "runner": "pyocd",
+     "args": [
+      "--target=stm32u3c5zit6q"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "STM32U3C5ZI"
+    }
+   ],
+   "console": "usart1",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "iwdg",
+   "buses": {
+    "i2c": [
+     "i2c1"
+    ],
+    "spi": [
+     "spi1"
+    ],
+    "uart": [
+     "lpuart1",
+     "usart1"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "pwm2",
+     "channel": 1,
+     "flags": [
+      "PWM_POLARITY_NORMAL"
+     ]
+    },
+    {
+     "alias": "pwm-led1",
+     "controller": "pwm1",
+     "channel": 4,
+     "flags": [
+      "PWM_POLARITY_NORMAL"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpioa",
+    "pin": 5,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpioc",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_HIGH",
+     "GPIO_PULL_DOWN"
+    ]
+   },
+   "connectors": [
+    {
+     "nodelabel": "arduino_header",
+     "compatible": "arduino-header-r3",
+     "pins": {
+      "A0": {
+       "controller": "gpioa",
+       "pin": 0,
+       "flags": []
+      },
+      "A1": {
+       "controller": "gpioa",
+       "pin": 1,
+       "flags": []
+      },
+      "A2": {
+       "controller": "gpioa",
+       "pin": 4,
+       "flags": []
+      },
+      "A3": {
+       "controller": "gpiob",
+       "pin": 0,
+       "flags": []
+      },
+      "A4": {
+       "controller": "gpioc",
+       "pin": 1,
+       "flags": []
+      },
+      "A5": {
+       "controller": "gpioc",
+       "pin": 0,
+       "flags": []
+      },
+      "D0": {
+       "controller": "gpiod",
+       "pin": 9,
+       "flags": []
+      },
+      "D1": {
+       "controller": "gpiod",
+       "pin": 8,
+       "flags": []
+      },
+      "D2": {
+       "controller": "gpioe",
+       "pin": 13,
+       "flags": []
+      },
+      "D3": {
+       "controller": "gpioe",
+       "pin": 9,
+       "flags": []
+      },
+      "D4": {
+       "controller": "gpioe",
+       "pin": 10,
+       "flags": []
+      },
+      "D5": {
+       "controller": "gpioc",
+       "pin": 6,
+       "flags": []
+      },
+      "D6": {
+       "controller": "gpiob",
+       "pin": 10,
+       "flags": []
+      },
+      "D7": {
+       "controller": "gpioa",
+       "pin": 8,
+       "flags": []
+      },
+      "D8": {
+       "controller": "gpioe",
+       "pin": 11,
+       "flags": []
+      },
+      "D9": {
+       "controller": "gpioc",
+       "pin": 7,
+       "flags": []
+      },
+      "D10": {
+       "controller": "gpiod",
+       "pin": 14,
+       "flags": []
+      },
+      "D11": {
+       "controller": "gpioa",
+       "pin": 7,
+       "flags": []
+      },
+      "D12": {
+       "controller": "gpioa",
+       "pin": 6,
+       "flags": []
+      },
+      "D13": {
+       "controller": "gpioa",
+       "pin": 5,
+       "flags": []
+      },
+      "D14": {
+       "controller": "gpiob",
+       "pin": 7,
+       "flags": []
+      },
+      "D15": {
+       "controller": "gpiob",
+       "pin": 6,
+       "flags": []
+      }
+     }
+    }
+   ]
+  },
+  "stm32c0116_dk/stm32c011xx": {
+   "identifier": "stm32c0116_dk/stm32c011xx",
+   "name": "STM32C0116 DK",
+   "vendor": "st",
+   "dts": "stm32c0116_dk.dts",
+   "probeMethods": [
+    {
+     "id": "stm32cubeprogrammer",
+     "description": "STM32CubeProgrammer CLI via ST-Link (no debug)",
+     "debug": false,
+     "runner": "stm32cubeprogrammer",
+     "args": [
+      "--port=swd",
+      "--reset-mode=hw"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "STM32C011F6"
+    }
+   ],
+   "console": "usart1",
+   "wdtNodeLabel": "iwdg",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "usart1",
+     "usart2"
+    ]
+   },
+   "pwmLeds": [
+    {
+     "alias": "pwm-led0",
+     "controller": "pwm1",
+     "channel": 1,
+     "flags": [
+      "PWM_POLARITY_NORMAL"
+     ]
+    }
+   ],
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpiob",
+    "pin": 6,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpiof",
+    "pin": 2,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   }
+  },
+  "stm32l152c_disco/stm32l152xc": {
+   "identifier": "stm32l152c_disco/stm32l152xc",
+   "name": "ST STM32L152C Discovery",
+   "vendor": "st",
+   "dts": "stm32l152c_disco.dts",
+   "probeMethods": [
+    {
+     "id": "stm32cubeprogrammer",
+     "description": "STM32CubeProgrammer CLI via ST-Link (no debug)",
+     "debug": false,
+     "runner": "stm32cubeprogrammer",
+     "args": [
+      "--port=swd",
+      "--reset-mode=hw"
+     ]
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd-stm32",
+     "debug": true,
+     "debugCfg": [
+      "source [find board/stm32ldiscovery.cfg]",
+      "$_TARGETNAME configure -event gdb-attach {",
+      "echo \"Debugger attaching: halting execution\"",
+      "reset halt",
+      "gdb_breakpoint_override hard",
+      "}",
+      "$_TARGETNAME configure -event gdb-detach {",
+      "echo \"Debugger detaching: resuming execution\"",
+      "resume",
+      "}"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "STM32L151RB"
+    }
+   ],
+   "console": "usart1",
+   "buses": {
+    "i2c": [
+     "i2c1",
+     "i2c2"
+    ],
+    "spi": [
+     "spi1",
+     "spi2"
+    ],
+    "uart": [
+     "usart1",
+     "usart2",
+     "usart3"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpiob",
+    "pin": 7,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpioa",
+    "pin": 0,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpiob",
+     "pin": 6,
+     "flags": [
+      "GPIO_ACTIVE_HIGH"
+     ]
+    }
+   ]
+  },
+  "lp_mspm0g3519/mspm0g3519": {
+   "identifier": "lp_mspm0g3519/mspm0g3519",
+   "name": "TI MSPM0G3519 Launchpad",
+   "vendor": "ti",
+   "dts": "lp_mspm0g3519.dts",
+   "probeMethods": [
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "source [find interface/xds110.cfg]",
+      "adapter speed 10000",
+      "source [find target/ti_mspm0.cfg]"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "MSPM0G3519"
+    }
+   ],
+   "console": "uart0",
+   "buses": {
+    "i2c": [],
+    "spi": [],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpiob",
+    "pin": 22,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpioa",
+    "pin": 18,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "extraLeds": [
+    {
+     "dtSpec": "led1",
+     "controller": "gpiob",
+     "pin": 26,
+     "flags": [
+      "GPIO_ACTIVE_HIGH"
+     ]
+    },
+    {
+     "dtSpec": "led2",
+     "controller": "gpiob",
+     "pin": 27,
+     "flags": [
+      "GPIO_ACTIVE_HIGH"
+     ]
+    }
+   ],
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "gpiob",
+     "pin": 3,
+     "flags": [
+      "GPIO_ACTIVE_LOW",
+      "GPIO_PULL_UP"
+     ]
+    }
+   ]
+  },
+  "imx8mp_var_dart/mimx8ml8/a53": {
+   "identifier": "imx8mp_var_dart/mimx8ml8/a53",
+   "name": "Variscite DART-MX8M-PLUS A53",
+   "vendor": "variscite",
+   "dts": "imx8mp_var_dart_mimx8ml8_a53.dts",
+   "console": "uart3",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio3",
+    "pin": 9,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio3",
+    "pin": 8,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   }
+  },
+  "imx8mp_var_dart/mimx8ml8/m7": {
+   "identifier": "imx8mp_var_dart/mimx8ml8/m7",
+   "name": "Variscite DART-MX8M-PLUS M7",
+   "vendor": "variscite",
+   "dts": "imx8mp_var_dart_mimx8ml8_m7.dts",
+   "probeMethods": [
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "MIMX8ML8_M7"
+    }
+   ],
+   "console": "uart3",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio3",
+    "pin": 9,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio3",
+    "pin": 8,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   }
+  },
+  "imx8mp_var_dart/mimx8ml8/m7/ddr": {
+   "identifier": "imx8mp_var_dart/mimx8ml8/m7/ddr",
+   "name": "Variscite DART-MX8M-PLUS M7 (DDR)",
+   "vendor": "variscite",
+   "dts": "imx8mp_var_dart_mimx8ml8_m7_ddr.dts",
+   "probeMethods": [
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "MIMX8ML8_M7"
+    }
+   ],
+   "console": "uart3",
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpio3",
+    "pin": 9,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio3",
+    "pin": 8,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   }
+  },
+  "blackpill_f401ce/stm32f401xe": {
+   "identifier": "blackpill_f401ce/stm32f401xe",
+   "name": "WeAct Studio Black Pill V3.0 (F401CE)",
+   "vendor": "weact",
+   "dts": "blackpill_f401ce.dts",
+   "probeMethods": [
+    {
+     "id": "dfu",
+     "description": "Built-in USB DFU bootloader: hold BOOT0, tap reset (no debug)",
+     "debug": false,
+     "runner": "dfu-util",
+     "args": [
+      "--pid=0483:df11",
+      "--alt=0",
+      "--dfuse"
+     ]
+    },
+    {
+     "id": "stlink",
+     "description": "ST-Link or any SWD probe openocd supports (no BOOT0 needed) — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "source [find interface/stlink-dap.cfg]",
+      "transport select dapdirect_swd",
+      "source [find target/stm32f4x.cfg]",
+      "reset_config srst_only",
+      "$_TARGETNAME configure -event gdb-attach {",
+      "echo \"Debugger attaching: halting execution\"",
+      "reset halt",
+      "gdb_breakpoint_override hard",
+      "}",
+      "$_TARGETNAME configure -event gdb-detach {",
+      "echo \"Debugger detaching: resuming execution\"",
+      "resume",
+      "}"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "STM32F401CE"
+    },
+    {
+     "id": "blackmagicprobe",
+     "description": "Black Magic Probe (no debug)",
+     "debug": false,
+     "runner": "blackmagicprobe"
+    }
+   ],
+   "console": "usart1",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "buses": {
+    "i2c": [
+     "i2c1"
+    ],
+    "spi": [
+     "spi1"
+    ],
+    "uart": [
+     "usart1"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpioc",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpioa",
+    "pin": 0,
+    "flags": [
+     "GPIO_ACTIVE_LOW",
+     "GPIO_PULL_UP"
+    ]
+   }
+  },
+  "blackpill_f411ce/stm32f411xe": {
+   "identifier": "blackpill_f411ce/stm32f411xe",
+   "name": "WeAct Studio Black Pill V2.0",
+   "vendor": "weact",
+   "dts": "blackpill_f411ce.dts",
+   "probeMethods": [
+    {
+     "id": "dfu",
+     "description": "Built-in USB DFU bootloader: hold BOOT0, tap reset (no debug)",
+     "debug": false,
+     "runner": "dfu-util",
+     "args": [
+      "--pid=0483:df11",
+      "--alt=0",
+      "--dfuse"
+     ]
+    },
+    {
+     "id": "stlink",
+     "description": "ST-Link or any SWD probe openocd supports (no BOOT0 needed) — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "source [find interface/stlink-dap.cfg]",
+      "transport select dapdirect_swd",
+      "source [find target/stm32f4x.cfg]",
+      "reset_config srst_only",
+      "$_TARGETNAME configure -event gdb-attach {",
+      "echo \"Debugger attaching: halting execution\"",
+      "reset halt",
+      "gdb_breakpoint_override hard",
+      "}",
+      "$_TARGETNAME configure -event gdb-detach {",
+      "echo \"Debugger detaching: resuming execution\"",
+      "resume",
+      "}"
+     ]
+    },
+    {
+     "id": "jlink",
+     "description": "J-Link probe (SWD) — also debugs",
+     "runner": "jlink",
+     "debug": true,
+     "debugDevice": "STM32F411CE"
+    },
+    {
+     "id": "blackmagicprobe",
+     "description": "Black Magic Probe (no debug)",
+     "debug": false,
+     "runner": "blackmagicprobe"
+    }
+   ],
+   "console": "usart1",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "buses": {
+    "i2c": [
+     "i2c1"
+    ],
+    "spi": [
+     "spi1"
+    ],
+    "uart": [
+     "usart1"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpioc",
+    "pin": 13,
+    "flags": [
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpioa",
+    "pin": 0,
+    "flags": [
+     "GPIO_ACTIVE_LOW",
+     "GPIO_PULL_UP"
+    ]
+   }
+  },
+  "weact_esp32s3_b/esp32s3/appcpu": {
+   "identifier": "weact_esp32s3_b/esp32s3/appcpu",
+   "name": "WeAct Studio ESP32-S3-B APPCPU",
+   "vendor": "weact",
+   "dts": "weact_esp32s3_b_appcpu.dts",
+   "probeMethods": [
+    {
+     "id": "esptool",
+     "description": "Espressif ROM bootloader over USB-serial (no debug)",
+     "debug": false,
+     "runner": "esp32"
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "set ESP_RTOS Zephyr",
+      "set ESP_ONLYCPU 1",
+      "source [find interface/esp_usb_jtag.cfg]",
+      "source [find target/esp32s3.cfg]"
+     ]
+    }
+   ]
+  },
+  "weact_esp32s3_b/esp32s3/procpu": {
+   "identifier": "weact_esp32s3_b/esp32s3/procpu",
+   "name": "WeAct Studio ESP32-S3-B PROCPU",
+   "vendor": "weact",
+   "dts": "weact_esp32s3_b_procpu.dts",
+   "probeMethods": [
+    {
+     "id": "esptool",
+     "description": "Espressif ROM bootloader over USB-serial (no debug)",
+     "debug": false,
+     "runner": "esp32"
+    },
+    {
+     "id": "openocd",
+     "description": "Any SWD/JTAG probe openocd supports — also debugs",
+     "runner": "openocd",
+     "debug": true,
+     "debugCfg": [
+      "set ESP_RTOS Zephyr",
+      "set ESP_ONLYCPU 1",
+      "source [find interface/esp_usb_jtag.cfg]",
+      "source [find target/esp32s3.cfg]"
+     ]
+    }
+   ],
+   "console": "uart0",
+   "stripLed": {
+    "controller": "gpio0",
+    "pin": 7
+   },
+   "wdtNodeLabel": "wdt0",
+   "buses": {
+    "i2c": [
+     "i2c0",
+     "i2c1"
+    ],
+    "spi": [
+     "spi2",
+     "spi3"
+    ],
+    "uart": [
+     "uart0"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpio0",
+    "pin": 0,
+    "flags": [
+     "GPIO_PULL_UP",
+     "GPIO_ACTIVE_LOW"
+    ]
+   },
+   "extraButtons": [
+    {
+     "dtSpec": "sw1",
+     "controller": "gpio1",
+     "pin": 13,
+     "flags": [
+      "GPIO_PULL_UP",
+      "GPIO_ACTIVE_LOW"
+     ]
+    }
+   ]
+  },
+  "weact_stm32h562_core/stm32h562xx": {
+   "identifier": "weact_stm32h562_core/stm32h562xx",
+   "name": "WeAct Studio STM32H562 Core Board",
+   "vendor": "weact",
+   "dts": "weact_stm32h562_core.dts",
+   "probeMethods": [
+    {
+     "id": "dfu",
+     "description": "Built-in USB DFU bootloader: hold BOOT0, tap reset (no debug)",
+     "debug": false,
+     "runner": "dfu-util",
+     "args": [
+      "--pid=0483:df11",
+      "--alt=0",
+      "--dfuse"
+     ]
+    }
+   ],
+   "console": "usart1",
+   "usbDevice": "enabled",
+   "usbController": "zephyr_udc0",
+   "wdtNodeLabel": "iwdg",
+   "buses": {
+    "i2c": [],
+    "spi": [
+     "spi1"
+    ],
+    "uart": [
+     "usart1"
+    ]
+   },
+   "led": {
+    "dtSpec": "led0",
+    "controller": "gpiob",
+    "pin": 2,
+    "flags": [
+     "GPIO_ACTIVE_HIGH"
+    ]
+   },
+   "button": {
+    "dtSpec": "sw0",
+    "controller": "gpioc",
+    "pin": 13,
+    "flags": [
+     "GPIO_PULL_DOWN",
+     "GPIO_ACTIVE_HIGH"
+    ]
+   }
+  }
+ }
+}

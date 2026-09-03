@@ -64,18 +64,6 @@ export interface GpioToggleOp {
 // PWM — pulse-width modulation output
 // ---------------------------------------------------------------------------
 
-export interface PwmGetFrequencyOp {
-  operation: "pwm.get_frequency";
-  port?: string;
-  pin: number;
-}
-
-export interface PwmGetResolutionOp {
-  operation: "pwm.get_resolution";
-  port?: string;
-  pin: number;
-}
-
 // ---------------------------------------------------------------------------
 // RMT — Remote Control Transceiver (addressable LEDs, IR, raw waveforms)
 // ---------------------------------------------------------------------------
@@ -113,36 +101,8 @@ export interface InterruptDetachOp {
 }
 
 // ---------------------------------------------------------------------------
-// Tone / audio output
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
 // Timing
 // ---------------------------------------------------------------------------
-
-export interface TimingSetIntervalOp {
-  operation: "timing.set_interval";
-  /** Resolved C++ callback function name */
-  handler: string;
-  timeout: number;
-}
-
-export interface TimingSetTimeoutOp {
-  operation: "timing.set_timeout";
-  /** Resolved C++ callback function name */
-  handler: string;
-  timeout: number;
-}
-
-export interface TimingClearIntervalOp {
-  operation: "timing.clear_interval";
-  id: number;
-}
-
-export interface TimingClearTimeoutOp {
-  operation: "timing.clear_timeout";
-  id: number;
-}
 
 // Time.* — the TS-flavored timing surface (Time.sleep/now/nowUs/busyWaitUs).
 // Distinct ops from the Arduino-named forms above so each framework can
@@ -167,11 +127,11 @@ export interface TimingBusyWaitUsOp {
 }
 
 // ---------------------------------------------------------------------------
-// Thin Zephyr-shaped peripherals (GPIO/PWM/ADCChannel/DACChannel/Watchdog/
+// Thin Zephyr-shaped peripherals (GPIO/PWM/ADC/DAC/Watchdog/
 // Counter — hal/gpio-pin.ts and siblings). Construction facts ride the ops
 // (the sensor discipline: ops are self-contained so shim lines and overlay
 // generation derive from op facts alone). Flag/gain/reference arguments are
-// token TEXT (e.g. "GPIO.OUTPUT | GPIO.PULL_UP", "ADCChannel.GAIN_1_4") —
+// token TEXT (e.g. "GPIO.OUTPUT | GPIO.PULL_UP", "ADC.GAIN_1_4") —
 // the lowerings map token names to the C macros.
 // ---------------------------------------------------------------------------
 
@@ -213,7 +173,23 @@ export interface InterruptAttachFlagsOp {
   intFlags: string;
 }
 
-export interface PwmSetPulseOp {
+export interface InterruptAttachOp {
+  operation: "interrupt.attach";
+  pin: number;
+  /** Resolved C++ callback function name */
+  handler: string;
+  /** Mode string: "RISING" | "FALLING" | "CHANGE" | "HIGH" | "LOW" */
+  mode: string;
+}
+
+/** Inline routing overrides shared by the pwm.set_* ops (construction
+ *  opts, the escape hatch): DT controller nodelabel + channel. */
+export interface PwmRoutingOverride {
+  controllerOverride?: string;
+  channelOverride?: number;
+}
+
+export interface PwmSetPulseOp extends PwmRoutingOverride {
   operation: "pwm.set_pulse";
   pin: number;
   /** Construction period in ns */
@@ -221,7 +197,7 @@ export interface PwmSetPulseOp {
   pulseNs: number | string;
 }
 
-export interface PwmSetDutyOp {
+export interface PwmSetDutyOp extends PwmRoutingOverride {
   operation: "pwm.set_duty";
   pin: number;
   /** Construction period in ns */
@@ -230,26 +206,24 @@ export interface PwmSetDutyOp {
   duty: number | string;
 }
 
-export interface PwmSetPeriodOp {
+export interface PwmSetPeriodOp extends PwmRoutingOverride {
   operation: "pwm.set_period";
   pin: number;
   periodNs: number | string;
 }
 
-export interface PwmToneOp {
-  operation: "pwm.tone";
-  pin: number;
-  /** Tone frequency in Hz (50% duty square wave). */
-  hz: number | string;
-}
-
 export interface AdcReadRawOp {
   operation: "adc.read_raw";
   pin: number;
-  /** Gain token text ("ADCChannel.GAIN_1_4"); '' = descriptor default */
+  /** Gain token text ("ADC.GAIN_1_4"); '' = descriptor default */
   gain?: string;
-  /** Reference token text ("ADCChannel.REF_INTERNAL"); '' = descriptor default */
+  /** Reference token text ("ADC.REF_INTERNAL"); '' = descriptor default */
   reference?: string;
+  /** Inline routing overrides (construction opts, the escape hatch): the
+   *  user vouches for a pin the facts layer does not cover. -1/'' = absent. */
+  channelOverride?: number;
+  deviceOverride?: string;
+  pinctrlOverride?: string;
 }
 
 export interface AdcReadMvOp {
@@ -257,6 +231,9 @@ export interface AdcReadMvOp {
   pin: number;
   gain?: string;
   reference?: string;
+  channelOverride?: number;
+  deviceOverride?: string;
+  pinctrlOverride?: string;
 }
 
 export interface DacWriteValueOp {
@@ -415,30 +392,6 @@ export interface ThreadStartOp {
 export interface ThreadJoinOp {
   operation: "thread.join";
   instance: number;
-}
-
-// ---------------------------------------------------------------------------
-// Power — MCU power states and clock frequency
-// ---------------------------------------------------------------------------
-
-export interface PowerDeepSleepOp {
-  operation: "power.deep_sleep";
-  ms: number;
-}
-
-export interface PowerLightSleepOp {
-  operation: "power.light_sleep";
-}
-
-export interface PowerSetCpuFrequencyOp {
-  operation: "power.set_cpu_frequency";
-  mhz: number;
-}
-
-export interface PowerDeepSleepPinOp {
-  operation: "power.deep_sleep_pin";
-  pin: number;
-  level: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -672,43 +625,6 @@ export interface HttpSendStartOp {
 /** Poll predicate paired with http.send_start — true when the response is in. */
 export interface HttpDoneOp {
   operation: "http.done";
-}
-
-// ---------------------------------------------------------------------------
-// Worker offload (generalized request-in / poll-out over a worker pool).
-//
-// These ops model the isolated-worker pattern: a pure/compute function is
-// submitted to a per-framework worker backend (ESP32: FreeRTOS task; Zephyr:
-// k_work workqueue) and its completion is polled. The worker receives its
-// inputs by value and exposes its outputs only through an opaque handle, so
-// the program-facing API stays single-threaded cooperative — no mutex/
-// semaphore is added to the IR. The worker-isolation analyzer (see
-// worker-analysis.ts) statically forbids shared mutable state (globals get
-// volatile promotion + warning; bus access inside a worker is a hard error
-// because take()/release() is runtime-unimplemented).
-//
-// `handleId` selects a fixed worker slot (the runtime ships a small pool, e.g.
-// 4 slots). `fnRef` is the C++ symbol of the submitted function (signature
-// `void(void*)`). `argRef` is an optional opaque argument expression passed
-// through verbatim (worker-owned; the worker must not alias app globals).
-// ---------------------------------------------------------------------------
-
-/** Submit `fnRef(argRef)` to worker slot `handleId`; returns immediately. */
-export interface WorkerSubmitOp {
-  operation: "worker.submit";
-  /** Fixed worker slot index (0..poolSize-1). */
-  handleId: number;
-  /** C++ symbol of the function to run: `void fn(void* arg)`. */
-  fnRef: string;
-  /** Optional argument expression (passed through verbatim). */
-  argRef?: string;
-}
-
-/** Poll predicate paired with worker.submit — true once the worker finished. */
-export interface WorkerDoneOp {
-  operation: "worker.done";
-  /** Worker slot index, matching the worker.submit it polls. */
-  handleId: number;
 }
 
 export interface HttpStatusOp {
@@ -1233,19 +1149,12 @@ export type HALOpIR =
   | GpioReadOp
   | GpioToggleOp
   // PWM
-  | PwmGetFrequencyOp
-  | PwmGetResolutionOp
   // RMT
   // ADC
   // DAC
   // Interrupts
   | InterruptDetachOp
-  // Tone
   // Timing
-  | TimingSetIntervalOp
-  | TimingSetTimeoutOp
-  | TimingClearIntervalOp
-  | TimingClearTimeoutOp
   | TimingSleepOp
   | TimingNowOp
   | TimingNowUsOp
@@ -1255,10 +1164,10 @@ export type HALOpIR =
   | GpioShiftOutOp
   | GpioShiftInOp
   | InterruptAttachFlagsOp
+  | InterruptAttachOp
   | PwmSetPulseOp
   | PwmSetDutyOp
   | PwmSetPeriodOp
-  | PwmToneOp
   | AdcReadRawOp
   | AdcReadMvOp
   | DacWriteValueOp
@@ -1281,11 +1190,6 @@ export type HALOpIR =
   | UartRxReadOp
   | ThreadStartOp
   | ThreadJoinOp
-  // Power
-  | PowerDeepSleepOp
-  | PowerLightSleepOp
-  | PowerSetCpuFrequencyOp
-  | PowerDeepSleepPinOp
   // I2C
   | I2cReadOp
   | I2cRecoverOp
@@ -1329,8 +1233,6 @@ export type HALOpIR =
   | HttpSendOp
   | HttpSendStartOp
   | HttpDoneOp
-  | WorkerSubmitOp
-  | WorkerDoneOp
   | HttpStatusOp
   | HttpOkOp
   | HttpBodyOp
@@ -1430,19 +1332,16 @@ export const HAL_OPERATION_KINDS = [
   // GPIO
   'gpio.write', 'gpio.read', 'gpio.toggle',
   // PWM
-  'pwm.get_frequency', 'pwm.get_resolution',
   // RMT
   // ADC
   // DAC
   // Interrupts
-  'interrupt.attach_flags', 'interrupt.detach',
-  // Tone
+  'interrupt.attach', 'interrupt.attach_flags', 'interrupt.detach',
   // Timing (legacy Arduino-named ops removed; timers keep JS names)
-  'timing.set_interval', 'timing.set_timeout', 'timing.clear_interval', 'timing.clear_timeout',
-  'timing.sleep', 'timing.now', 'timing.now_us', 'timing.busy_wait_us',
+    'timing.sleep', 'timing.now', 'timing.now_us', 'timing.busy_wait_us',
   // Thin Zephyr-shaped peripherals
   'gpio.configure', 'gpio.read_cfg', 'gpio.shift_out', 'gpio.shift_in',
-  'pwm.set_pulse', 'pwm.set_duty', 'pwm.set_period', 'pwm.tone',
+  'pwm.set_pulse', 'pwm.set_duty', 'pwm.set_period',
   'adc.read_raw', 'adc.read_mv',
   'dac.write_value',
   'wdt.setup', 'wdt.feed',
@@ -1452,8 +1351,6 @@ export const HAL_OPERATION_KINDS = [
   'spi.transceive', 'spi.dev_write', 'spi.reg_read',
   'uart.poll_write', 'uart.rx_arm', 'uart.rx_available', 'uart.rx_peek', 'uart.rx_read',
   'thread.start', 'thread.join',
-  // Power
-  'power.deep_sleep', 'power.light_sleep', 'power.set_cpu_frequency', 'power.deep_sleep_pin',
   // Pulse
   // Shift
   // Board
@@ -1476,8 +1373,6 @@ export const HAL_OPERATION_KINDS = [
   'http.set_ca_cert', 'http.send', 'http.send_start', 'http.done',
   'http.status', 'http.ok', 'http.body', 'http.content_length',
   'http.response_header',
-  // Worker offload (generalized request-in / poll-out over a worker pool)
-  'worker.submit', 'worker.done',
   // BLE (NimBLE GATT peripheral)
   'ble.server_begin', 'ble.advertise_start', 'ble.advertise_stop',
   'ble.add_service', 'ble.add_char',

@@ -2,13 +2,12 @@
   "name": "demo-timing",
   "version": "1.0.0",
   "private": true,
-  "description": "Time API showcase \u2014 Time.sleep/now/nowUs/busyWaitUs, setInterval, and a kernel Thread on a Seeed XIAO nRF52840",
+  "description": "Time API showcase \u2014 Time.sleep/now/nowUs/busyWaitUs and kernel Threads on a Seeed XIAO nRF52840",
   "type": "module",
   "scripts": {
     "build": "cuttlefish build",
     "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload",
-    "flash": "cuttlefish build --flash"
+    "upload": "cuttlefish build --compile --upload"
   },
   "dependencies": {
     "@typecad/framework-zephyr": "*"

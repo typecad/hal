@@ -29,14 +29,29 @@ export { runDoctor as doctor } from './doctor.js';
 // framework-package.ts). Mirrors framework-arduino's presenter.
 export { runLicensesPresenter as licenses } from './licenses.js';
 
-// Chip descriptor registry (for downstream tooling / additional boards).
+// Chip descriptor cache (the lowering's resolved-board view; no curated
+// registry — every board reconstructs from its generated manifest).
 export {
-  chipForTarget,
   setActiveChip,
   getActiveChip,
-  XIAO_BLE,
+  NO_BOARD_CHIP,
 } from './chips/index.js';
 export type {
   ZephyrChipDescriptor,
   ZephyrGpioDtSpec,
 } from './chips/types.js';
+
+// Board catalog sync — regenerate the local board overlay from the user's
+// own Zephyr tree (`cuttlefish board sync`), so board add/change/remove
+// tracks `west update` instead of cuttlefish releases.
+export {
+  syncBoardCatalog,
+  ensureFreshBoardCatalog,
+  loadBoardCatalogOverlay,
+  resetBoardCatalogOverlayCache,
+} from './sdk/board-catalog-sync.js';
+export type {
+  BoardCatalogSyncReport,
+  BoardCatalogEnsureResult,
+  BoardCatalogOverlay,
+} from './sdk/board-catalog-sync.js';

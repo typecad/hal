@@ -68,7 +68,7 @@ export async function run(config: ResolvedConfig): Promise<number> {
 
   // 2. Resolve the board's USB identity and an initial upload port.
   const ctx: RunContext = {
-    boardPins: boardTestPins(config.board, config.projectRoot),
+    boardPins: boardTestPins(config.board, config.projectRoot, config.configPath),
     usbIdentity: config.test.usb ?? ctxBoardUsb(config),
     uploadPort: config.test.port,
   };
@@ -95,21 +95,23 @@ export async function run(config: ResolvedConfig): Promise<number> {
 
   // 3. Process each file sequentially (one compile/upload cycle per file)
   const fileResults: FileResult[] = [];
-  const retried = new Set<string>();
+  const MAX_FILE_RETRIES = 2;
 
   for (const filePath of testFiles) {
     let result = await processTestFile(filePath, config, ctx);
     // Nightly-rig hardening: transient hardware glitches fail a file even
     // though the board is fine — a USB console dropout mid-read loses the
-    // protocol lines, and debug-probe flashes occasionally fail target
+    // protocol lines, debug-probe flashes occasionally fail target
     // examination (OpenOCD "Failed to read memory at 0xe000ed04" under
-    // repeated SWD cycles). One fresh compile/upload/read cycle per file
-    // recovers both without masking persistent failures (those fail twice).
-    const transient = result.error
-      && /Timeout after|Serial error|did not re-appear|west flash failed|Upload failed/.test(result.error);
-    if (transient && !retried.has(filePath) && ctx.usbIdentity) {
-      retried.add(filePath);
-      console.log(`${YELLOW}transient console loss — retrying ${path.relative(config.projectRoot, filePath)}${RESET}`);
+    // repeated SWD cycles), and a port open right after a failed-flash retry
+    // can hit a briefly held handle ("access denied"). A fresh
+    // compile/upload/read cycle per file recovers all of these without
+    // masking persistent failures (those fail every retry).
+    const transientPattern = /Timeout after|Serial error|did not re-appear|west flash failed|Upload failed|Failed to open|Access denied/;
+    for (let tries = 0; tries < MAX_FILE_RETRIES; tries++) {
+      if (!result.error || !transientPattern.test(result.error) || !ctx.usbIdentity) break;
+      const cause = result.error.split('\n').find((l) => l.trim().length > 0) ?? result.error;
+      console.log(`${YELLOW}transient console loss (${cause.trim()}) — retrying ${path.relative(config.projectRoot, filePath)} (${tries + 1}/${MAX_FILE_RETRIES})${RESET}`);
       result = await processTestFile(filePath, config, ctx);
     }
     fileResults.push(result);
@@ -136,7 +138,7 @@ export async function run(config: ResolvedConfig): Promise<number> {
 
 /** The board's test-pins.json usb block, when present. */
 function ctxBoardUsb(config: ResolvedConfig): UsbIdentity | undefined {
-  const usb = boardTestPins(config.board, config.projectRoot)?.usb;
+  const usb = boardTestPins(config.board, config.projectRoot, config.configPath)?.usb;
   return usb ? { ...usb } : undefined;
 }
 
@@ -367,7 +369,7 @@ function aggregateResults(files: FileResult[], durationMs: number): RunResult {
 /**
  * Skip files whose required test-pins roles are not provided by the
  * configured board. Directive form (roles from test-pins.json schema):
- *   // @typecad-requires-roles pwm, pwmAlt, pwmMaxFrequency
+ *   // @typecad-requires-roles pwm, pwmAlt
  */
 function checkRequiredRoles(source: string, config: ResolvedConfig, testPinsData: ReturnType<typeof boardTestPins>): string | undefined {
   const match = source.match(/@typecad-requires-roles\s+([A-Za-z0-9_,\s]+)/);

@@ -85,6 +85,15 @@ function resolveI2cBufferArg(
 }
 
 /** Resolve a single argument from a semantic call's AST node list. */
+/** Normalize an inline-override text from an instance field: strip the
+ *  quotes of a stored string literal and reject unresolved source text
+ *  (`this->_x`, expressions) — only clean identifiers/tokens pass. */
+function cleanOverrideText(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const t = v.replace(/^["']+|["']+$/g, "").trim();
+  return t !== "" && /^[A-Za-z0-9_.:-]+$/.test(t) ? t : undefined;
+}
+
 export function resolveSemanticArg(
   args: readonly ts.Expression[],
   idx: number,
@@ -143,11 +152,16 @@ function dropUndefined(value: string | null): string | null {
 }
 
 /** Quote a resolved string value unless it is already a quoted literal or a
- *  plain identifier / member-access expression (i.e. a runtime variable). */
+ *  plain single identifier (i.e. a runtime variable reference). Dotted text
+ *  is NOT passed through: every consumer of this helper feeds a C++ string
+ *  parameter (fs paths, preference keys, BLE names, URLs), and a dotted form
+ *  like `a.txt` is far more likely a field-tracked literal that lost its
+ *  quotes than a valid member-expression argument — emitting it bare is a
+ *  compile error ('a' was not declared). */
 function quoteNonIdentifier(value: string): string {
   const t = value.trim();
   if (/^".*"$/.test(t)) return t;
-  if (/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(t)) return t;
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(t)) return t;
   return JSON.stringify(t);
 }
 
@@ -415,26 +429,6 @@ export function tryResolveSemanticCall(
 ;
     case "wdtDisable":
       return { operation: "wdt.disable" };
-
-    // ── Power ──
-    case "powerDeepSleep": {
-      const ms = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (ms === null) return null;
-      return { operation: "power.deep_sleep", ms };
-    }
-    case "powerLightSleep":
-      return { operation: "power.light_sleep" };
-    case "powerSetCpuFrequency": {
-      const mhz = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      if (mhz === null) return null;
-      return { operation: "power.set_cpu_frequency", mhz };
-    }
-    case "powerDeepSleepPin": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const level = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || level === null) return null;
-      return { operation: "power.deep_sleep_pin", pin, level };
-    }
 
     case "wifiJoin": {
       const R = resolveSemanticArg;
@@ -903,50 +897,58 @@ export function tryResolveSemanticCall(
       return { operation: "gpio.shift_in", dataPin, clockPin, msbFirst: msbFirstRaw !== "false" };
     }
 
-    case "pwmSetPulse": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const periodNs = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const pulseNs = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || periodNs === null || pulseNs === null) return null;
-      return { operation: "pwm.set_pulse", pin, periodNs, pulseNs };
-    }
-
-    case "pwmSetDuty": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const periodNs = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const duty = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || periodNs === null || duty === null) return null;
-      return { operation: "pwm.set_duty", pin, periodNs, duty };
-    }
-
+    case "pwmSetPulse":
+    case "pwmSetDuty":
     case "pwmSetPeriod": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const periodNs = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null || periodNs === null) return null;
-      return { operation: "pwm.set_period", pin, periodNs };
+      // Inline routing overrides (the escape hatch): read the CONSTRUCTION
+      // fields off the instance — the inlined method-body args arrive as
+      // unresolved text (quoted literals, `this->_x`), while fieldValues
+      // carry what the constructor actually assigned.
+      const pwmPulse = resolveNumericArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const pwmDuty = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      const controllerOverride = cleanOverrideText(instance.fieldValues.get("_controller"));
+      const pwmCh = Number(instance.fieldValues.get("_channel"));
+      const channelOverride = Number.isFinite(pwmCh) && pwmCh >= 0 ? pwmCh : undefined;
+      const routing = {
+        ...(controllerOverride !== undefined ? { controllerOverride } : {}),
+        ...(channelOverride !== undefined ? { channelOverride } : {}),
+      };
+      if (fnName === "pwmSetPulse") {
+        if (pwmPulse === null || typeof pwmPulse !== "number") return null;
+        return { operation: "pwm.set_pulse", pin, periodNs, pulseNs: pwmPulse, ...routing };
+      }
+      if (fnName === "pwmSetDuty") {
+        if (pwmDuty === null) return null;
+        return { operation: "pwm.set_duty", pin, periodNs, duty: pwmDuty, ...routing };
+      }
+      return { operation: "pwm.set_period", pin, periodNs, ...routing };
     }
 
-    case "pwmTone": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const hz = resolveNumericArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || hz === null) return null;
-      return { operation: "pwm.tone", pin, hz };
-    }
-
-    case "adcReadRaw": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const gain = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const reference = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || gain === null || reference === null) return null;
-      return { operation: "adc.read_raw", pin, gain, reference };
-    }
-
+    case "adcReadRaw":
     case "adcReadMv": {
       const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       const gain = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
       const reference = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null || gain === null || reference === null) return null;
-      return { operation: "adc.read_mv", pin, gain, reference };
+      // Inline routing overrides (the escape hatch): read the CONSTRUCTION
+      // fields off the instance — inlined method-body args arrive as
+      // unresolved text, fieldValues carry what the constructor assigned.
+      const adcCh = Number(instance.fieldValues.get("_channel"));
+      const channelOverride = Number.isFinite(adcCh) && adcCh >= 0 ? adcCh : undefined;
+      const deviceOverride = cleanOverrideText(instance.fieldValues.get("_device"));
+      const pinctrlOverride = cleanOverrideText(instance.fieldValues.get("_pinctrl"));
+      return {
+        operation: fnName === "adcReadRaw" ? "adc.read_raw" : "adc.read_mv",
+        pin,
+        gain,
+        reference,
+        ...(channelOverride !== undefined ? { channelOverride } : {}),
+        ...(deviceOverride !== undefined ? { deviceOverride } : {}),
+        ...(pinctrlOverride !== undefined ? { pinctrlOverride } : {}),
+      };
     }
 
     case "interruptAttachFlags": {
@@ -955,6 +957,14 @@ export function tryResolveSemanticCall(
       const intFlags = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
       if (pin === null || handler === null || intFlags === null) return null;
       return { operation: "interrupt.attach_flags", pin, handler, intFlags };
+    }
+
+    case "interruptAttach": {
+      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
+      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
+      const mode = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
+      if (pin === null || handler === null || mode === null) return null;
+      return { operation: "interrupt.attach", pin, handler, mode };
     }
 
     case "timeSleep": {

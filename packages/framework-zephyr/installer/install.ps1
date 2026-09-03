@@ -24,6 +24,7 @@ param(
   [switch]$NoSdk,
   [switch]$NoWorkspace,
   [switch]$Modify,
+  [switch]$Prune,
   [string]$EnvName,
   [string]$SdkVersion,
   [string]$Platforms
@@ -438,27 +439,47 @@ if (-not $NoSdk) {
         }
       }
 
-      # 3. Remove toolchains installed but NOT in the new selection (--modify removal).
-      #    On 1.0.x scan both the gnu\ root and the SDK root so misplaced copies
-      #    get cleaned up too.
-      $selectedTargets = @()
-      foreach ($grp in $sel.Split(',')) {
-        $t = (Get-Variable -Name "PLATFORM_$grp" -ErrorAction SilentlyContinue).Value
-        if ($t) { $selectedTargets += $t.Split(' ') }
-      }
-      $scanDirs = @($tcRoot)
-      if ($TcInfix) { $scanDirs += $ZephyrSdkInstallDir }
-      Get-ChildItem -Path $scanDirs -Directory -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '^(xtensa-)?.*-zephyr-(eabi|elf)$' } |
-        ForEach-Object {
-          if ($selectedTargets -notcontains $_.Name) {
-            Write-Host "fetch-sdk: removing deselected toolchain: $($_.Name)"
-            Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue
-          }
+            # 3. -Prune only: remove toolchains installed but NOT in the new
+      #    selection. Without -Prune the modify step is purely additive —
+      #    unselected toolchains stay on disk so an existing install never
+      #    loses anything because of a narrower re-run. On 1.0.x scan both
+      #    the gnu root and the SDK root so misplaced copies get cleaned up.
+      if ($Prune) {
+        $selectedTargets = @()
+        foreach ($grp in $sel.Split(',')) {
+          $t = (Get-Variable -Name "PLATFORM_$grp" -ErrorAction SilentlyContinue).Value
+          if ($t) { $selectedTargets += $t.Split(' ') }
         }
+        $scanDirs = @($tcRoot)
+        if ($TcInfix) { $scanDirs += $ZephyrSdkInstallDir }
+        Get-ChildItem -Path $scanDirs -Directory -ErrorAction SilentlyContinue |
+          Where-Object { $_.Name -match '^(xtensa-)?.*-zephyr-(eabi|elf)$' } |
+          ForEach-Object {
+            if ($selectedTargets -notcontains $_.Name) {
+              Write-Host "fetch-sdk: removing deselected toolchain: $($_.Name)"
+              Remove-Item -Recurse -Force $_.FullName -ErrorAction SilentlyContinue
+            }
+          }
+      }
 
-      # 4. Persist the selection.
-      Set-Content -Path (Join-Path $ZephyrSdkInstallDir '.typecad-platforms') -Value $sel
+      # 4. Persist the selection. Without -Prune the marker records the UNION
+      #    of what was here before and the new selection — the marker must
+      #    describe what is actually on disk, and a narrower re-run must not
+      #    make previously installed groups vanish from the record.
+      $markerPath = Join-Path $ZephyrSdkInstallDir '.typecad-platforms'
+      $markerSel = $sel
+      if (-not $Prune -and (Test-Path $markerPath)) {
+        $prev = (Get-Content $markerPath -Raw).Trim()
+        if ($prev) {
+          $union = @()
+          foreach ($grp in ($prev.Split(',') + $sel.Split(','))) {
+            $g = $grp.Trim()
+            if ($g -and ($g -ne 'all') -and ($union -notcontains $g)) { $union += $g }
+          }
+          $markerSel = $union -join ','
+        }
+      }
+      Set-Content -Path $markerPath -Value $markerSel
       Write-Host "fetch-sdk: done - $ZephyrSdkInstallDir (platforms: $sel)"
     }
   }
@@ -504,11 +525,56 @@ elseif (-not $NoWorkspace) {
   }
   Write-Host "init-workspace: running west update (fetches zephyr + modules)..."
   Invoke-Native { & $MambaExe run -n $ENV_NAME west update } "west update"
+  # Workspace patches — upstream fixes the pinned manifest revisions don't
+  # carry yet. Applied with `git apply --check` first so an already-applied
+  # (or already-upstreamed) patch is skipped, never a hard failure. Each
+  # patch carries a `# typecad-repo: <workspace-relative path>` header naming
+  # the repo it patches (first-directory guesses break on nested projects).
+  $patchesDir = Join-Path $PSScriptRoot 'patches'
+  if (Test-Path $patchesDir) {
+    foreach ($patch in Get-ChildItem -Path $patchesDir -Filter '*.patch' | Sort-Object Name) {
+      $patchText = Get-Content $patch.FullName -Raw
+      $repoName = if ($patchText -match '# typecad-repo:\s*(\S+)') { $Matches[1] } else { $null }
+      if (-not $repoName) { Write-Warning "workspace-patch: $($patch.Name) - no 'typecad-repo:' header, skipping"; continue }
+      $repoDir = Join-Path $env:WORKSPACE_DIR ($repoName -replace '/', '\')
+      if (-not (Test-Path $repoDir)) { Write-Warning "workspace-patch: $($patch.Name) - $repoDir not present, skipping"; continue }
+      Write-Host "init-workspace: applying patch $($patch.Name) to $repoName..."
+      # `git apply --check` probes applicability WITHOUT touching stderr —
+      # PS 5.1 wraps redirected native stderr in ErrorRecords (never redirect
+      # native stderr through the pipeline), so the probe shells out via
+      # Start-Process with a file redirect: exit 0 = applicable, else already
+      # applied / inapplicable.
+      $checkErr = Join-Path $env:TEMP "typecad-patch-check.$PID.err"
+      $probe = Start-Process -FilePath 'git' `
+        -ArgumentList @('-C', $repoDir, 'apply', '--check', $patch.FullName) `
+        -NoNewWindow -Wait -PassThru -RedirectStandardError $checkErr
+      if ($probe.ExitCode -ne 0) {
+        Remove-Item $checkErr -Force -ErrorAction SilentlyContinue
+        Write-Host "init-workspace:   already applied (or inapplicable) - skipping"
+      } else {
+        Remove-Item $checkErr -Force -ErrorAction SilentlyContinue
+        Invoke-Native { & git -C $repoDir apply $patch.FullName } "workspace patch $($patch.Name)"
+      }
+    }
+  }
   # Install Zephyr's pinned Python build deps (jsonschema, pykwalify, ...). CMake
   # checks for these and the build fails with "Missing jsonschema dependency"
   # without them; letting Zephyr's requirements file drive it tracks the revision.
   Write-Host "init-workspace: installing Zephyr Python requirements (requirements-base.txt)..."
   Invoke-Native { & $MambaExe run -n $ENV_NAME pip install -r "$zb\scripts\requirements-base.txt" } "pip install zephyr requirements"
+  # imgtool — MCUboot's signing tool. Not in requirements-base.txt, but TF-M /
+  # FVP signing steps invoke it as a module (mps4 corstone builds fail with
+  # "No module named 'imgtool'" without it).
+  Invoke-Native { & $MambaExe run -n $ENV_NAME pip install imgtool } "pip install imgtool"
+  # TF-M secure-build tooling: the inner TF-M build's bl2_image_config step
+  # parses compile_commands (needs the `clang` python bindings) and Nordic's
+  # RTE_Device.h needs devicetree headers — requirements + libclang (native
+  # library the python `clang` bindings load) from conda-forge.
+  $tfmTools = Join-Path $env:WORKSPACE_DIR 'modules/tee/tf-m/trusted-firmware-m/tools/requirements.txt'
+  if (Test-Path $tfmTools) {
+    Invoke-Native { & $MambaExe run -n $ENV_NAME pip install -r $tfmTools } "pip install TF-M tools requirements"
+  }
+  Invoke-Native { & $MambaExe install -n $ENV_NAME -c conda-forge libclang -y } "micromamba install libclang"
   # Build-relevant per-module Python requirements ONLY (not docs/test/harness).
   # HAL scripts/zephyr dirs (esptool for espressif, vendor tools) + top-level lib
   # codegen (nanopb, zcbor). Board support is universal (west fetched every

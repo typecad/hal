@@ -4,7 +4,10 @@ import * as fs from "fs";
 import * as path from "path";
 
 describe("transpile() helper with autosar option", () => {
-  it("writes a sidecar deviation registry when autosar is 'warn'", () => {
+  // ~20s standalone; under full-suite parallel load it can stretch well past
+  // the 60s default ceiling — give it headroom so it fails on regressions,
+  // not on worker contention.
+  it("writes a sidecar deviation registry when autosar is 'warn'", { timeout: 180_000 }, () => {
     // Snapshot the existing sidecar files so we can identify the ones this
     // call creates (and clean them up — transpile() deletes the .cpp but
     // leaves the sidecar).

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// ADCChannel — the thin Zephyr-shaped analog input
+// ADC — the thin Zephyr-shaped analog input
 //
 // Construction IS the channel setup: gain and reference are constructor
 // options (exactly struct adc_channel_cfg), defaulting to the chip
@@ -8,19 +8,19 @@
 // setReference() — Zephyr applies the reference at channel-setup time, and
 // this surface doesn't promise otherwise.
 //
-// Gain/reference tokens are Zephyr's enum names under the ADCChannel.
-// namespace (ADC_GAIN_1_4 ↔ ADCChannel.GAIN_1_4, ADC_REF_INTERNAL ↔
-// ADCChannel.REF_INTERNAL); the lowering maps token names to macros.
+// Gain/reference tokens are Zephyr's enum names under the ADC
+// namespace (ADC_GAIN_1_4 ↔ ADC.GAIN_1_4, ADC_REF_INTERNAL ↔
+// ADC.REF_INTERNAL); the lowering maps token names to macros.
 // ----------------------------------------------------------------------------
 
 import { adcReadRaw, adcReadMv } from './emit.js';
 import type { Pin } from './gpio.js';
 
-export class ADCChannel {
+export class ADC {
   // Field defaults the HAL parser seeds onto instances when construction
   // omits the opts object — without them, `this._gain` reaches the resolver
   // as unresolved text instead of the "use descriptor defaults" sentinel.
-  static readonly __default_fields = { _gain: '', _reference: '' };
+  static readonly __default_fields = { _gain: '', _reference: '', _channel: '-1', _device: '', _pinctrl: '' };
 
   // ── Gain tokens (enum adc_gain, verbatim — generated set, see the
   //    token-sync test) ───────────────────────────────────────────────────
@@ -58,25 +58,37 @@ export class ADCChannel {
   private readonly _pin: number;
   private readonly _gain: number | string;
   private readonly _reference: number | string;
+  // Routing overrides (the inline escape hatch): when the facts layer does
+  // not cover this pin, the construction carries the channel (and optional
+  // device label + pinctrl token) the lowering uses verbatim.
+  private readonly _channel: number;
+  private readonly _device: string;
+  private readonly _pinctrl: string;
 
   /** Construct an analog input channel. Omitted gain/reference fall back to
    *  the chip descriptor's pair (the values the platform's driver validates
    *  against, e.g. STM32's ADC_GAIN_1 + ADC_REF_INTERNAL). */
-  constructor(pin: number | Pin, opts?: { gain?: number; reference?: number }) {
+  constructor(
+    pin: number | Pin,
+    opts?: { gain?: number; reference?: number; channel?: number; device?: string; pinctrl?: string },
+  ) {
     this._pin = typeof pin === 'number' ? pin : pin.number;
     this._gain = opts?.gain ?? '';
     this._reference = opts?.reference ?? '';
+    this._channel = opts?.channel ?? -1;
+    this._device = opts?.device ?? '';
+    this._pinctrl = opts?.pinctrl ?? '';
   }
 
   /** Read raw counts at the chip's resolution (adc_channel_setup on first
    *  use with the construction gain/reference, then adc_read). */
   read(): number {
-    return adcReadRaw(this._pin, this._gain, this._reference);
+    return adcReadRaw(this._pin, this._gain, this._reference, this._channel, this._device, this._pinctrl);
   }
 
   /** Read millivolts (adc_raw_to_millivolts against the descriptor's
    *  vref). Returns mV. */
   readMillivolts(): number {
-    return adcReadMv(this._pin, this._gain, this._reference);
+    return adcReadMv(this._pin, this._gain, this._reference, this._channel, this._device, this._pinctrl);
   }
 }

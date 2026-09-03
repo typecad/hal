@@ -22,7 +22,7 @@ function assertNever(x: never): never {
 
 /** Maps a HAL operation string to the board-definition capability flag it requires. */
 function operationToCapability(op: string): string | null {
-  if (op === 'pwm.get_frequency' || op === 'pwm.get_resolution' || op === 'pwm.set_pulse' || op === 'pwm.set_duty' || op === 'pwm.set_period' || op === 'pwm.tone') {
+  if (op === 'pwm.set_pulse' || op === 'pwm.set_duty' || op === 'pwm.set_period') {
     return 'pwm';
   }
   if (op === 'adc.read' || op === 'adc.read_voltage' || op === 'adc.get_resolution') {

@@ -82,8 +82,11 @@ export interface CuttlefishConfig {
   /**
    * Zephyr board target — the qualified `west build -b` argument (e.g.
    * 'esp32s3_devkitc/esp32s3/procpu'). The project-local board module
-   * (.cuttlefish/board.ts + board.json) is generated from the framework's
-   * board data pack on first build; `cuttlefish board regen` refreshes it.
+   * (.cuttlefish/board.ts + board.json) is a derived artifact: every build
+   * regenerates it when any input moves — this field, the local board
+   * catalog, or the Zephyr tree the catalog was generated from. The catalog
+   * itself is always local (`cuttlefish board sync` rebuilds it from your
+   * tree); there is no compiled-in board database.
    */
   board?: string;
 
@@ -184,6 +187,8 @@ interface CuttlefishConsoleConfig {
    * Can be overridden by the --port CLI flag.
    */
   port?: string;
+  /** Where console.log output goes ('usb' = the USB CDC serial port). */
+  output?: 'default' | 'usb';
 }
 
 /**

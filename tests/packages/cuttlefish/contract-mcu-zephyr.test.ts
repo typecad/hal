@@ -93,9 +93,9 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
     expect(board).toContain("export const PA5 = Pin.fromPort('PA5');");
     expect(board).toContain("export const PA0 = Pin.fromPort('PA0');");
     expect(board).not.toContain('PC13');
-    expect(board).toContain("export const UART0 = new SerialPort('UART0');");
+    expect(board).toContain("export const UART0 = new UART('UART0');");
     // HAL imports so `import { Time } from '@typecad/board'` resolves.
-    expect(board).toContain("import { Pin, I2CBus, SPIBus, SerialPort } from '@typecad/hal';");
+    expect(board).toContain("import { Pin, I2CBus, SPIBus, UART } from '@typecad/hal';");
   });
 
   it('still rejects a config that sets both board and contract', () => {

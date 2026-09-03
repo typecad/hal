@@ -593,16 +593,6 @@ describe('SimDigitalPin (extended)', () => {
     expect(pin.getBitValue()).toBe(0);
   });
 
-  it('tone/noTone/stop are no-ops', () => {
-    const pin = new SimDigitalPin(5);
-    expect(() => {
-      const t = pin.tone(440);
-      t.for(10);
-      pin.noTone();
-      pin.stop();
-    }).not.toThrow();
-  });
-
   it('waitForRising/waitForFalling resolve immediately', async () => {
     const pin = new SimDigitalPin(9);
     await expect(pin.waitForRising(10)).resolves.toBeUndefined();

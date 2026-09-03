@@ -74,19 +74,13 @@ export function generateProjectPackageJson(options: CreateProjectOptions): strin
     '    "@typescript-eslint/eslint-plugin": "^8.61.0"',
   ];
 
-  // Developer-utility scripts shared by every target (native + embedded).
-  // None require hardware or extra dependencies:
-  //   dev        — auto-retranspile on save (transpile-only; append --compile
-  //                to also compile on each change). The fast "does it
-  //                typecheck" feedback loop.
-  //   gen-decls  — generate TypeScript .d.ts from C++ headers. File-argument:
-  //                `npm run gen-decls -- lib/foo.h` or `-- --all lib/`.
-  //   gen-libdefs — generate library-definition stubs from a TS file's imports.
-  //                File-argument: `npm run gen-libdefs -- src/main.ts`.
+  // Developer-utility script shared by every target (native + embedded).
+  // Requires no hardware or extra dependencies:
+  //   dev — auto-retranspile on save (transpile-only; append --compile
+  //         to also compile on each change). The fast "does it typecheck"
+  //         feedback loop.
   const devScripts = [
     '"dev": "cuttlefish build --watch"',
-    '"gen-decls": "cuttlefish gen-decls"',
-    '"gen-libdefs": "cuttlefish gen-libdefs"',
   ];
 
   if (options.isNative) {
@@ -357,16 +351,6 @@ declare global {
   // Convenience helper for volatile variables in TypeCAD programs.
   // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.
   declare function volatile<T>(value: T): T;
-
-  // JS-style timers (declared here so a project does not need "dom" in tsconfig
-  // lib to type setInterval/setTimeout). The transpiler rewrites these to
-  // __tc_setInterval/__tc_setTimeout and emits the timer_methods polyfill when
-  // used. Note: Timing.setInterval/setTimeout (from @typecad/hal) is the
-  // preferred single entry point and is typed via the @typecad/board import.
-  declare function setInterval(handler: () => void, timeout?: number): number;
-  declare function setTimeout(handler: () => void, timeout?: number): number;
-  declare function clearInterval(id: number): void;
-  declare function clearTimeout(id: number): void;
 }
 
 export {};
@@ -431,16 +415,6 @@ declare global {
   // Convenience helper for volatile variables in TypeCAD programs.
   // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.
   declare function volatile<T>(value: T): T;
-
-  // JS-style timers (declared here so a project does not need "dom" in tsconfig
-  // lib to type setInterval/setTimeout). The transpiler rewrites these to
-  // __tc_setInterval/__tc_setTimeout and emits the timer_methods polyfill when
-  // used. Note: Timing.setInterval/setTimeout (from @typecad/hal) is the
-  // preferred single entry point and is typed via the @typecad/board import.
-  declare function setInterval(handler: () => void, timeout?: number): number;
-  declare function setTimeout(handler: () => void, timeout?: number): number;
-  declare function clearInterval(id: number): void;
-  declare function clearTimeout(id: number): void;
 }
 
 declare module '@typecad/board' {

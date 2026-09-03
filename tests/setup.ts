@@ -13,6 +13,7 @@ import type { EmitMode, GeneratedOutputs, TargetProfile, PlatformContext, Compli
 import type { PlatformStrategy } from "../packages/cuttlefish/src/api/shared/platform-strategy";
 import { NativeStrategy } from "../packages/cuttlefish/src/frameworks/native";
 import { ZephyrStrategy } from "../packages/framework-zephyr/src/strategy";
+import { generateBoard } from "../packages/framework-zephyr/src/boardgen";
 import { expect } from "vitest";
 import * as fs from "fs";
 import * as path from "path";
@@ -54,6 +55,14 @@ interface TranspileOptions {
    */
   boardConstants?: import("../packages/cuttlefish/src/api/shared/index.js").BoardConstants;
   /**
+   * Optional generated board module source, written beside board.json as
+   * .cuttlefish/board.ts. findGeneratedBoard requires BOTH files, and a
+   * program importing '@typecad/board' transpiles the .ts — pass the
+   * generateBoard(target).boardTs output here to exercise the full
+   * board-module path (pin exports, hardware re-exports).
+   */
+  boardTs?: string;
+  /**
    * Optional explicit strategy. When provided, overrides target-based
    * resolution so semantic-op HAL lowering routes through the given
    * strategy's resolveHALOperation instead of the default.
@@ -89,7 +98,7 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
   // unless the caller supplied a real entry path (needed for relative
   // .ui.html / cross-file import resolution).
   const uniqueId = `test_${process.pid}_${testCounter++}_${Date.now()}`;
-  const fileName = options.fileName ?? `${uniqueId}.ts`;
+  let fileName = options.fileName ?? `${uniqueId}.ts`;
 
   // Per-call unique output directory for EVERY target — parallel vitest
   // workers writing+deleting src.cpp/src.h in one shared dir produced an
@@ -107,6 +116,25 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
     }
   }
 
+  // Mirror the real pipeline: when a test supplies board constants, write
+  // them as the project's generated board manifest (.cuttlefish/board.json
+  // beside the source file) so build-ir's own default-constants fallback
+  // loads them exactly the way ensureGeneratedBoard does in a real project.
+  if (options.boardConstants) {
+    const cfDir = path.join(uniqueOutDir, '.cuttlefish');
+    fs.mkdirSync(cfDir, { recursive: true });
+    fs.writeFileSync(path.join(cfDir, 'board.json'), JSON.stringify({
+      version: 1,
+      identifier: String(options.boardConstants.get('build.frameworks.zephyr') ?? 'test'),
+      constants: Object.fromEntries(options.boardConstants),
+    }));
+    if (options.boardTs) {
+      fs.writeFileSync(path.join(cfDir, 'board.ts'), options.boardTs);
+    }
+    if (!options.fileName) {
+      fileName = path.join(uniqueOutDir, 'main.ts');
+    }
+  }
   const programIR = buildProgramIR(fileName, tsCode, boardPackage);
   if (options.boardConstants) {
     programIR.boardConstants = options.boardConstants;
@@ -174,9 +202,15 @@ export function transpileNative(tsCode: string): TranspileResult {
 let _zephyrStrategy: ZephyrStrategy | undefined;
 export function transpileZephyrStrategy(tsCode: string): TranspileResult {
   if (!_zephyrStrategy) _zephyrStrategy = new ZephyrStrategy();
+  // The equal path: a real project carries .cuttlefish/board.json (written
+  // by ensureGeneratedBoard from the catalog). The harness simulates that
+  // step for the test target so the strategy resolves the same chip view a
+  // real build gets — there is no curated registry to fall back to.
+  const g = generateBoard("esp32s3_devkitc/esp32s3/procpu");
   return transpile(tsCode, {
     strategy: _zephyrStrategy,
     target: "zephyr",
+    boardConstants: new Map(Object.entries(JSON.parse(g.boardJson).constants)) as any,
     platformContext: { frameworkData: { target: "esp32s3_devkitc" } } as any,
   });
 }

@@ -50,9 +50,9 @@ describe('boardgen pin aliases', () => {
     expect(j.constants['pins.aliases.BUTTON']).toBe('PA0');
   });
 
-  it('curated socs keep strap-pin exclusions in pinNames (BUTTON exists as alias, not sweep)', () => {
+  it('all boards sweep strap pins equally (the BUTTON alias still resolves)', () => {
     const j = JSON.parse(generateBoard('esp32s3_devkitc/esp32s3/procpu').boardJson);
-    expect(j.pinNames).not.toContain('GPIO0');
+    expect(j.pinNames).toContain('GPIO0');
     expect(j.constants['pins.aliases.BUTTON']).toBeDefined();
   });
 });
@@ -149,7 +149,9 @@ describe('boardgen tier-3 GPIO controller families', () => {
     const j = JSON.parse(generateBoard('v2m_musca_b1/musca_b1').boardJson);
     const ctrls = controllersOf(j);
     expect(ctrls['gpio']?.minPin).toBe(0);
-    expect(j.constants['pins.aliases.LED']).toBe('GPIO2');
+    // devicetree led0 = &green_led (gpio 3) — the SECOND child; canonical
+    // selection follows the alias, not child order (red is led2 here).
+    expect(j.constants['pins.aliases.LED']).toBe('GPIO3');
   });
 });
 

@@ -253,3 +253,86 @@ export function selectPeripherals(
     return true;
   });
 }
+
+/**
+ * The canonical MCU pad names the contract declares wired — boardName when
+ * typecad.net carried a mapping, else the KiCAD pin-name segment that looks
+ * like a datasheet pad (PA5, PB6, P0.28, GPIO9). De-duplicated, order
+ * preserved. This replaces the old soc-manifest pinNames source: under
+ * SDK-as-truth the contract itself declares the wired pads.
+ */
+export function contractPinNames(contract: HwContract): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const pin of Object.values(contract.connectedPins)) {
+    if (isPowerPin(pin)) continue;
+    if (pin.boardName && !seen.has(pin.boardName)) {
+      seen.add(pin.boardName);
+      out.push(pin.boardName);
+      continue;
+    }
+    const segments = pin.pinName.replace(/[~{}]/g, '').split(/[/-]/);
+    const padLike = segments.find((seg) => /^(?:P[A-Za-z]\d|P\d\.\d{1,2}|GPIO\d{1,2}|GP\d{1,2})$/i.test(seg));
+    if (padLike && !seen.has(padLike.toUpperCase())) {
+      seen.add(padLike.toUpperCase());
+      out.push(padLike.toUpperCase());
+    }
+  }
+  return out;
+}
+
+/** One wired pad: the MCU datasheet name plus an optional functional alias. */
+export interface ContractPad {
+  /** Datasheet-form pad name (PA9, P0.28, GP25) — what boardgen can place. */
+  mcuName: string;
+  /** Functional name from the schematic (TX, RX, LED) when boardName is not
+   *  itself a pad name. Exported as an alias pointing at the pad. */
+  alias?: string;
+}
+
+/** A pad-form name in any supported family notation. */
+function isPadName(name: string): boolean {
+  return /^(?:P[A-Pa-p]\d{1,2}|P\d\.\d{1,2}|GPIO\d{1,2}|GP\d{1,2})$/.test(name.trim());
+}
+
+/**
+ * The wired pads of the contract, as MCU datasheet names plus optional
+ * functional aliases. For each non-power pin: boardName is preferred when
+ * it is itself pad-form (PA9); otherwise the KiCAD pin-name segments are
+ * searched for a pad-form name ("XTAL1/PB6" → PB6). When boardName is set
+ * but NOT pad-form (TX, LED), it rides along as the pad's alias.
+ *
+ * This replaces the old soc-manifest pinNames source: under SDK-as-truth
+ * the contract declares the wired pads itself.
+ */
+export function contractPads(contract: HwContract): ContractPad[] {
+  const out: ContractPad[] = [];
+  const seen = new Set<string>();
+  for (const pin of Object.values(contract.connectedPins)) {
+    if (isPowerPin(pin)) continue;
+    let pad: string | undefined;
+    let alias: string | undefined;
+    if (pin.boardName && isPadName(pin.boardName)) {
+      pad = pin.boardName.toUpperCase().replace(/^P([AP]) (\d{1,2})$/, 'P$1.$2');
+    }
+    if (!pad) {
+      const segments = pin.pinName.replace(/[~{}]/g, '').split(/[/-]/);
+      pad = segments.find((seg) => isPadName(seg));
+    }
+    if (!pad) continue;
+    pad = pad.toUpperCase();
+    if (pin.boardName && pin.boardName !== pad) alias = pin.boardName;
+    if (seen.has(pad)) {
+      // Same pad, new functional alias — keep the alias on the existing pad
+      // (a pad can be exported under two names).
+      if (alias) {
+        const existing = out.find((p) => p.mcuName === pad);
+        if (existing && !existing.alias) existing.alias = alias;
+      }
+      continue;
+    }
+    seen.add(pad);
+    out.push({ mcuName: pad, ...(alias ? { alias } : {}) });
+  }
+  return out;
+}

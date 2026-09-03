@@ -383,8 +383,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
     "asOutput", "asInput", "asInputPullUp", "asInputPullDown",
     "output", "inputPullUp", "inputPullDown",
     "device",  // I2CBus.device(addr) / SPIBus.device(cs) → device instance
-    "tone",    // OutputPin.tone(freq) → ToneChain
-    "begin",   // I2CBus.begin() / SPIBus.begin() / SerialPort.begin() → same instance
+    "begin",   // I2CBus.begin() / SPIBus.begin() → same instance
     "take",    // Bus.take() → same instance (ownership is compile-time only)
   ]);
   for (const node of source.statements) {
@@ -396,7 +395,7 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
           && HAL_ALIASING_METHODS.has(init.expression.name.text)
           && ts.isIdentifier(init.expression.expression)) {
         // Capture call arguments for factory methods like device(0x76) that
-        // need the arg to construct the derived instance (I2CDevice._address).
+        // need the arg to construct the derived instance (I2CTarget._address).
         const argTexts = init.arguments.map(a => {
           if (ts.isNumericLiteral(a)) return a.text;
           if (ts.isStringLiteral(a)) return a.text;
@@ -542,11 +541,18 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
             continue;
           }
 
-          // UART: UART0, UART1, ...
+          // UART: UART0, UART1, ... — the FUNCTIONAL thin UART instance, so
+          // the board singleton is directly usable (UART0.println(...)) with
+          // the same fields a `new UART('UART0')` construction captures
+          // (port + the class's baud/ring defaults; variables.ts merges those
+          // only at construction, so the registration carries them).
           const uartMatch = name.match(/^UART(\d+)$/);
           if (uartMatch) {
             const alias = peripheralAliasMap.get(name) ?? `UART${uartMatch[1]}`;
-            halInstances.set(name, { className: "SerialPort", fieldValues: new Map([["_port", alias]]) });
+            halInstances.set(name, {
+              className: "UART",
+              fieldValues: new Map([["_port", alias], ["_bus", alias], ["_baud", "115200"], ["_rxBufferBytes", "64"]]),
+            });
             continue;
           }
 

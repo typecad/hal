@@ -31,12 +31,6 @@ export const POLYFILL_HELPER_MAP: Record<string, string[]> = {
   '.indexOf(':      ['__tc_indexOf'],
   '.slice(':        ['__tc_slice2', '__tc_slice1'],
 
-  // Timer methods
-  'setTimeout(':    ['__tc_setTimeout'],
-  'setInterval(':   ['__tc_setInterval'],
-  'clearTimeout(':  ['__tc_clearTimeout'],
-  'clearInterval(': ['__tc_clearInterval'],
-
   // Math methods
   'Math.random(':   ['__tc_random'],
 

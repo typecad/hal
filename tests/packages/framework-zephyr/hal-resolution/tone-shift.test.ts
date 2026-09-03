@@ -1,23 +1,21 @@
 // ---------------------------------------------------------------------------
-// Phase-0 gap closers: PWM.tone (square-wave sugar) and GPIO.shiftOut/shiftIn
-// (bit-bang) — the thin replacements for the legacy tone()/shiftOut()/shiftIn()
+// Phase-0 gap closers: GPIO.shiftOut/shiftIn (bit-bang) — the thin
+// replacements for the legacy shiftOut()/shiftIn()
 // ahead of the legacy-HAL removal.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
 import { lowerPwm } from '../../../../packages/framework-zephyr/src/lowering/pwm';
+import { ESP32S3_DEVKITC } from '../helpers/test-chip';
+import { ZephyrStrategy } from '../../../../packages/framework-zephyr/src/strategy';
+import { generateBoard } from '../../../../packages/framework-zephyr/src/boardgen';
+import type { BoardConstants } from '../../../../packages/cuttlefish/src/api/shared/board-resolver';
+function generatedConstants(target: string): BoardConstants {
+  const g = generateBoard(target);
+  return new Map(Object.entries(JSON.parse(g.boardJson).constants)) as BoardConstants;
+}
 import { lowerGpio } from '../../../../packages/framework-zephyr/src/lowering/gpio';
-import { ESP32S3_DEVKITC } from '../../../../packages/framework-zephyr/src/chips/esp32s3';
-import { transpileZephyrStrategy as transpile, expectCppContains } from '../../../setup';
-
-describe('PWM.tone lowering', () => {
-  it('tone(hz) → one pwm_set_dt at 50% duty', () => {
-    const out = lowerPwm({ operation: 'pwm.tone', pin: 17, hz: 440 } as any, { pwm: { specs: [{ pin: 17, controller: 'pwm4', channel: 1 }] } } as any);
-    expect(out.code).toContain('1000000000ULL / static_cast<uint64_t>(440)');
-    expect(out.code).toContain('__p / 2U');
-    expect(out.code).toContain('pwm_set_dt(');
-  });
-});
+import { transpile, expectCppContains } from '../../../setup';
 
 describe('GPIO.shift lowering', () => {
   it('shift_out bit-bangs 8 bits MSB-first: data then clock pulse', () => {
@@ -35,15 +33,21 @@ describe('GPIO.shift lowering', () => {
     expect(out.expression).toMatch(/__b; \}\)$/);
   });
 
-  it('end-to-end: GPIO.shiftOut + tone flow through the resolver', () => {
+  it('end-to-end: GPIO.shiftOut + PWM duty flow through the resolver', () => {
+    // PWM duty needs the LEDC matrix — a synthetic silicon fact injected with
+    // the generated board constants.
+    const constants = generatedConstants('esp32s3_devkitc/esp32s3/procpu');
+    constants.set('zephyr.pwm.matrix.controller', 'ledc0');
+    constants.set('zephyr.pwm.matrix.channelCount', 8);
+    for (let i = 0; i < 49; i++) constants.set(`zephyr.pwm.matrix.pins.${i}`, i);
     const result = transpile(`
       import { shiftOut, shiftIn, PWM } from '@typecad/hal';
       shiftOut(5, 6, 0xA5);
       const b = shiftIn(5, 6);
       const buzzer = new PWM(4, { periodNs: 2273000 });
-      buzzer.tone(440);
+      buzzer.setDuty(0.5);
       console.log(b);
-    `);
-    expectCppContains(result, ['for (int __i = 7', 'k_busy_wait(1)', 'pwm_set_dt']);
+    `, { strategy: new ZephyrStrategy(), boardConstants: constants });
+    expectCppContains(result, ['for (int __i = 7', 'k_busy_wait(1)', 'pwm_set_pulse_dt']);
   });
 });

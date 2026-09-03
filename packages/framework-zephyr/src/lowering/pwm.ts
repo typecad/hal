@@ -57,9 +57,24 @@ function pwmVarName(spec: ZephyrPwmSpec): string {
  * program), every spec is emitted. Called from shimLines when the program
  * uses PWM.
  */
-export function pwmInitLines(chip: ZephyrChipDescriptor, usedPins?: ReadonlySet<number>): string[] {
+export function pwmInitLines(
+  chip: ZephyrChipDescriptor,
+  usedPins?: ReadonlySet<number>,
+  userSpecs?: readonly { pin: number; controller: string; channel: number }[],
+): string[] {
   const lines: string[] = ['// CUTTLEFISH_PWM_BEGIN'];
   for (const spec of chip.pwm?.specs ?? []) {
+    if (usedPins && !usedPins.has(spec.pin)) continue;
+    lines.push(
+      `static const struct pwm_dt_spec ${pwmVarName(spec)} = PWM_DT_SPEC_GET(DT_ALIAS(${pwmDtAliasToken(spec)}));`,
+    );
+  }
+  // Inline-override pins (the escape hatch): the construction opts vouch for
+  // controller+channel on a pin the manifest does not map — the alias var
+  // the lowered calls reference (the DT node itself comes from the overlay
+  // regen's marker merge).
+  for (const spec of userSpecs ?? []) {
+    if (chip.pwm?.specs.some((s) => s.pin === spec.pin)) continue;
     if (usedPins && !usedPins.has(spec.pin)) continue;
     lines.push(
       `static const struct pwm_dt_spec ${pwmVarName(spec)} = PWM_DT_SPEC_GET(DT_ALIAS(${pwmDtAliasToken(spec)}));`,
@@ -93,7 +108,20 @@ export function lowerPwm(
   chip: ZephyrChipDescriptor,
 ): { code?: string; expression?: string } {
   const o = op as any;
-  const spec = findPwmSpec(chip, o.pin);
+  // Construction-time controller/channel overrides (hal/pwm-pin.ts opts):
+  // the user vouches for the routing. The spec synthesizes from the
+  // override (addressing rides the tc-pwm<pin> alias like a matrix pin) and
+  // a marker comment carries controller+channel to the overlay regen, which
+  // synthesizes the DT node — the transpiler cannot.
+  const hasOverride = (typeof o.controllerOverride === 'string' && o.controllerOverride !== '')
+    || (typeof o.channelOverride === 'number' && o.channelOverride >= 0);
+  const spec = hasOverride
+    ? {
+        pin: o.pin as number,
+        controller: (o.controllerOverride as string | undefined) ?? 'pwm0',
+        channel: (o.channelOverride as number | undefined) ?? 0,
+      }
+    : findPwmSpec(chip, o.pin);
   if (!spec) {
     // Probe / unlisted pin: return a comment so the resolver reports non-
     // undefined (the manifest validator's probe sends pin:0 with no spec).
@@ -101,22 +129,14 @@ export function lowerPwm(
     return { code: `/* pwm on pin ${o.pin}: no PWM spec in chip descriptor */` };
   }
   const v = pwmVarName(spec);
+  // The overlay regen (toolchain) parses this into a synthesized pwm-leds
+  // spec: pin → controller/channel. Comment placement inside the block
+  // braces is legal C.
+  const marker = hasOverride
+    ? `/* cuttlefish-user-facts: pwm pin=${spec.pin} controller=${spec.controller} channel=${spec.channel} */ `
+    : '';
 
   switch (op.operation) {
-    case 'pwm.get_frequency': {
-      // Prefer the board's declared max frequency — the SAME constant the
-      // transpiler folds getPwmFrequency() to (peripherals.pwm.maxFrequency),
-      // so a folded literal and a runtime call agree. Without a declared
-      // value, derive from the spec's period (ns): frequency = 1e9 / period.
-      const declared = chip.pwm?.maxFrequencyHz;
-      if (declared !== undefined) return { expression: String(declared) };
-      return { expression: `(${v}.period ? (1000000000ULL / ${v}.period) : 0)` };
-    }
-    case 'pwm.get_resolution':
-      // The board's declared PWM resolution when it has one (matches the
-      // constant fold); otherwise the Arduino-compatible 8-bit duty range.
-      return { expression: String(chip.pwm?.resolutionBits ?? 8) };
-
     // ── Thin PWM (hal/pwm-pin.ts) — ns-true verbs ──────────────────────────
     // Zephyr 4.4 has pwm_set_dt (period + pulse) and pwm_set_pulse_dt (pulse
     // only) — no period-only setter. The construction period is established
@@ -124,25 +144,19 @@ export function lowerPwm(
     // pwm_set_pulse_dt. No 0–255 scaling anywhere.
     case 'pwm.set_pulse': {
       return {
-        code: `{ static bool __tc_pwm_p${o.pin}_prd = false; if (!__tc_pwm_p${o.pin}_prd) { (void)pwm_set_dt(&${v}, ${o.periodNs}, 0); __tc_pwm_p${o.pin}_prd = true; } (void)pwm_set_pulse_dt(&${v}, ${o.pulseNs}); }`,
+        code: `{ ${marker}static bool __tc_pwm_p${o.pin}_prd = false; if (!__tc_pwm_p${o.pin}_prd) { (void)pwm_set_dt(&${v}, ${o.periodNs}, 0); __tc_pwm_p${o.pin}_prd = true; } (void)pwm_set_pulse_dt(&${v}, ${o.pulseNs}); }`,
       };
     }
     case 'pwm.set_duty': {
       // duty is 0.0–1.0; pulse = duty × the construction period.
       return {
-        code: `{ static bool __tc_pwm_p${o.pin}_prd = false; if (!__tc_pwm_p${o.pin}_prd) { (void)pwm_set_dt(&${v}, ${o.periodNs}, 0); __tc_pwm_p${o.pin}_prd = true; } (void)pwm_set_pulse_dt(&${v}, static_cast<uint32_t>(static_cast<double>(${o.duty}) * static_cast<double>(${o.periodNs}))); }`,
+        code: `{ ${marker}static bool __tc_pwm_p${o.pin}_prd = false; if (!__tc_pwm_p${o.pin}_prd) { (void)pwm_set_dt(&${v}, ${o.periodNs}, 0); __tc_pwm_p${o.pin}_prd = true; } (void)pwm_set_pulse_dt(&${v}, static_cast<uint32_t>(static_cast<double>(${o.duty}) * static_cast<double>(${o.periodNs}))); }`,
       };
     }
     case 'pwm.set_period': {
       // No period-only API: pwm_set_dt applies the new period and resets the
       // pulse to idle — follow with setPulse/setDuty to drive the line.
-      return { code: `(void)pwm_set_dt(&${v}, ${o.periodNs}, 0);` };
-    }
-    case 'pwm.tone': {
-      // 50% square wave at hz: period = 1e9/hz, pulse = period/2.
-      return {
-        code: `{ uint32_t __p = (${o.hz} > 0) ? static_cast<uint32_t>(1000000000ULL / static_cast<uint64_t>(${o.hz})) : 0U; (void)pwm_set_dt(&${v}, __p, __p / 2U); }`,
-      };
+      return { code: `${marker}(void)pwm_set_dt(&${v}, ${o.periodNs}, 0);` };
     }
     default:
       throw new Error(

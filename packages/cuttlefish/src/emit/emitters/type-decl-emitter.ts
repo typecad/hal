@@ -3,6 +3,7 @@ import { appendSourceLine, appendHeaderLine, appendRenderedStatement } from "./l
 import type { EmitterContext } from "./emitter-context.js";
 import { escapeCppKeyword } from "../../utils/strings.js";
 import { isStringEnum } from "../../api/shared/index.js";
+import { parsedIsVector } from "../../api/shared/cpp-type-ir.js";
 import { resolveEnumValues, narrowestEnumUnderlying } from "../utils/cpp-helpers.js";
 
 export function emitTypeDeclarations(ctx: EmitterContext): void {
@@ -258,14 +259,18 @@ export function emitTypeDeclarations(ctx: EmitterContext): void {
       const typeAlreadyConst = cppType.trimStart().startsWith("const");
       const constPrefix = isConst && !typeAlreadyConst ? "const " : "";
       const varName = escapeCppKeyword(statement.name, platformReservedNames);
-      // Array-typed top-level consts (e.g. `export const ARR: T[] = [...]`)
-      // lower with cppType "auto" and a `{ kind: "array", elementType }`
-      // initializer. They emit as C-style arrays (`T name[] = {...}`), so the
-      // matching extern is `extern const T name[];` — not a scalar extern and
-      // not a std::vector extern. Without this, cross-file consumers fail with
-      // "was not declared in this scope" (the definition lives in the .cpp
-      // only). Mirror renderVarDecl's element-type fallback for "auto".
-      if (cppType === "auto" && statement.initializer && statement.initializer.kind === "array") {
+      // Array-typed top-level consts (e.g. `export const ARR: T[] = [...]`
+      // and `new Uint8Array(N)` buffers) lower with an `{ kind: "array",
+      // elementType }` initializer — typed arrays carry a pointer cppType
+      // (`uint8_t*`) even though renderVarDecl emits the DEFINITION as a
+      // C-style array (`T name[] = {...}`). The matching extern must use the
+      // same array form regardless of cppType — a pointer extern conflicts
+      // with the array definition. Vector-typed arrays are the exception: the
+      // definition emits `std::vector<T> name = {...}`, so the extern stays a
+      // vector extern. Without this, cross-file consumers fail with "was not
+      // declared in this scope" (the definition lives in the .cpp only).
+      // Mirror renderVarDecl's element-type fallback for "auto".
+      if (statement.initializer && statement.initializer.kind === "array" && !parsedIsVector(cppType)) {
         const elemType = statement.initializer.elementType && statement.initializer.elementType !== "auto"
           ? strategy.normalizeCppType(statement.initializer.elementType)
           : strategy.defaultNumericType(ctx.compliance.isEnabled() ? ctx.compliance : undefined);

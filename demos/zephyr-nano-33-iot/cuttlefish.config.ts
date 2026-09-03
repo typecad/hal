@@ -59,8 +59,8 @@ const config: CuttlefishConfig = {
   test: {
     // Serial port for the test board. Before the first cuttlefish flash the
     // board enumerates with Arduino's USB identity — set the port explicitly
-    // (or use test.usb with the board's PID 2FE3:0003 once cuttlefish
-    // firmware is on it). Override with --port on the CLI.
+    // (or use test.usb with the default 2FE3:0001 once cuttlefish firmware
+    // is on it). Override with --port on the CLI.
     port: 'COM8',
     baudRate: 115200,
     timeout: 30000,

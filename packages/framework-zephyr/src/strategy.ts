@@ -39,13 +39,18 @@ import type {
   TouchAdapterCodegen,
 } from '@typecad/cuttlefish/api/shared';
 import { DEFAULT_STDLIB_SUPPORT } from '@typecad/cuttlefish/api/shared';
-import { buildWorkerRuntimePolyfill } from '@typecad/cuttlefish/api/shared';
 import { applyStringMethodRewrites } from '@typecad/cuttlefish/api/shared';
 import { programUsesSafety } from '@typecad/cuttlefish/api';
 import { entryHasUI } from '@typecad/cuttlefish/ui-hook';
-import { generateBoard } from './boardgen.js';
-import { chipForTarget, chipForSoc, setActiveChip, getActiveChip } from './chips/index.js';
-import { resolveChipFromBoard, boardPwmSpecsFromConstants, mergeBoardPwmSpecs } from './chips/resolve.js';
+import { generateBoard, generateBoardModuleFromContract } from './boardgen.js';
+import {
+  syncBoardCatalog,
+  ensureFreshBoardCatalog,
+  type BoardCatalogSyncReport,
+  type BoardCatalogEnsureResult,
+} from './sdk/board-catalog-sync.js';
+import { setActiveChip, getActiveChip, NO_BOARD_CHIP } from './chips/index.js';
+import { resolveChipFromBoard } from './chips/resolve.js';
 import { emitGpioDevDispatcher } from './chips/controllers.js';
 import type { ZephyrChipDescriptor } from './chips/types.js';
 
@@ -57,9 +62,6 @@ import type { ZephyrChipDescriptor } from './chips/types.js';
  * hygiene: every emitted function/variable is referenced). `undefined`
  * (no program — probe paths) means "no information": callers emit every
  * descriptor channel, preserving probe behavior.
- *
- * `pwm` also covers tone.* — the tone lowering drives the descriptor's
- * first PWM spec regardless of pin, so any tone op marks it used.
  */
 function collectUsedPins(
   program: ProgramIR | undefined,
@@ -68,7 +70,6 @@ function collectUsedPins(
 ): Set<number> | undefined {
   if (!program) return undefined;
   const pins = new Set<number>();
-  let usesTone = false;
   const visit = (node: unknown): void => {
     if (!node || typeof node !== 'object') return;
     const n = node as Record<string, unknown>;
@@ -81,7 +82,6 @@ function collectUsedPins(
         if (kind === 'adc' && (name === 'adc.read' || name === 'adc.read_voltage' || name === 'adc.read_raw' || name === 'adc.read_mv')) pins.add(pin);
         if (kind === 'pwm' && name.startsWith('pwm.')) pins.add(pin);
       }
-      if (kind === 'pwm' && name === 'pwm.tone') usesTone = true;
     }
     for (const v of Object.values(n)) {
       if (Array.isArray(v)) { for (const item of v) visit(item); }
@@ -89,11 +89,69 @@ function collectUsedPins(
     }
   };
   visit(program);
-  if (kind === 'pwm' && usesTone) {
-    const first = chip?.pwm?.specs[0];
-    if (first) pins.add(first.pin);
-  }
   return pins;
+}
+
+/**
+ * The inline-override escape hatch: ADC ops carrying construction-time
+ * device overrides (hal/adc-pin.ts opts) name DT device labels the manifest
+ * may not know — the shim's init block must declare their device handles
+ * (the reads reference them) and fire even when the chip has no adc facts
+ * at all.
+ */
+function collectAdcOverrideDevices(program: ProgramIR | undefined): Set<string> {
+  const devices = new Set<string>();
+  if (!program) return devices;
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    const op = n.operation;
+    if (op && typeof op === 'object') {
+      const o = op as Record<string, unknown>;
+      if (typeof o.operation === 'string' && o.operation.startsWith('adc.')
+          && typeof o.deviceOverride === 'string' && o.deviceOverride !== '') {
+        devices.add(o.deviceOverride);
+      }
+    }
+    for (const v of Object.values(n)) {
+      if (Array.isArray(v)) { for (const item of v) visit(item); }
+      else if (v && typeof v === 'object') visit(v);
+    }
+  };
+  visit(program);
+  return devices;
+}
+
+/**
+ * PWM construction-time overrides (the escape hatch): controller+channel
+ * vouched for by the user on pins the manifest may not map. The shim emits
+ * their alias vars; the overlay regen's marker merge creates the DT nodes.
+ */
+function collectPwmOverrideSpecs(program: ProgramIR | undefined): { pin: number; controller: string; channel: number }[] {
+  const specs: { pin: number; controller: string; channel: number }[] = [];
+  if (!program) return specs;
+  const seen = new Set<number>();
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== 'object') return;
+    const n = node as Record<string, unknown>;
+    const op = n.operation;
+    if (op && typeof op === 'object') {
+      const o = op as Record<string, unknown>;
+      const ctrl = typeof o.controllerOverride === 'string' && o.controllerOverride !== '' ? o.controllerOverride : undefined;
+      const ch = typeof o.channelOverride === 'number' && o.channelOverride >= 0 ? o.channelOverride : undefined;
+      if (typeof o.operation === 'string' && o.operation.startsWith('pwm.')
+          && typeof o.pin === 'number' && (ctrl || ch !== undefined) && !seen.has(o.pin)) {
+        seen.add(o.pin);
+        specs.push({ pin: o.pin, controller: ctrl ?? 'pwm0', channel: ch ?? 0 });
+      }
+    }
+    for (const v of Object.values(n)) {
+      if (Array.isArray(v)) { for (const item of v) visit(item); }
+      else if (v && typeof v === 'object') visit(v);
+    }
+  };
+  visit(program);
+  return specs;
 }
 
 /**
@@ -273,7 +331,6 @@ export function collectThreads(program: ProgramIR | undefined): Map<number, { in
   return threads;
 }
 import { lowerHalOp } from './lowering/index.js';
-import { buildZephyrWorkerBacking } from './lowering/worker-backing.js';
 import { adcInitLines, adcChannelForPin } from './lowering/adc.js';
 import { pwmInitLines } from './lowering/pwm.js';
 import { dacInitLines } from './lowering/dac.js';
@@ -331,54 +388,6 @@ function collectWiringAmbientUsage(program?: ProgramIR): Set<string> {
 }
 
 /**
- * Scan the program IR for createPinGroup() usage — the gate for the
- * __tc_PinGroup shim block + gpio dispatcher emission. Mirrors framework-
- * arduino's detectPinGroupUsage: bare calls, var_decl initializers, and any
- * nested block/if/loop/switch/try body count. The expect preprocessor
- * hoists test bodies into __tc_fn* functions, so BOTH the top-level
- * statements and every function's statements are walked.
- */
-function programUsesPinGroup(program?: ProgramIR): boolean {
-  if (!program) return false;
-  const initializerCalls = (init: unknown): boolean => {
-    const node = init as { callee?: unknown } | undefined;
-    if (!node || typeof node !== 'object') return false;
-    if (typeof node.callee === 'string' && node.callee.includes('createPinGroup')) return true;
-    for (const key of Object.keys(node)) {
-      const v = (node as Record<string, unknown>)[key];
-      if (v && typeof v === 'object' && !Array.isArray(v) && initializerCalls(v)) return true;
-    }
-    return false;
-  };
-  const visitStatement = (stmt: StatementIR): boolean => {
-    const s = stmt as unknown as Record<string, unknown>;
-    if (s.kind === 'call' && typeof s.callee === 'string' && s.callee.includes('createPinGroup')) return true;
-    if (s.kind === 'method-call' && typeof s.callee === 'string' && s.callee.includes('createPinGroup')) return true;
-    if (s.kind === 'var_decl' && s.initializer !== undefined && initializerCalls(s.initializer)) return true;
-    for (const key of ['body', 'thenBranch', 'elseBranch', 'tryBlock', 'catchBlock']) {
-      const arr = s[key];
-      if (Array.isArray(arr) && arr.some((x) => visitStatement(x as StatementIR))) return true;
-    }
-    const cases = s.cases;
-    if (Array.isArray(cases)) {
-      for (const c of cases as Array<{ body?: unknown }>) {
-        if (Array.isArray(c.body) && c.body.some((x) => visitStatement(x as StatementIR))) return true;
-      }
-    }
-    return false;
-  };
-  const top = (program as unknown as { topLevelStatements?: unknown }).topLevelStatements;
-  if (Array.isArray(top) && top.some((s) => visitStatement(s as StatementIR))) return true;
-  const functions = (program as unknown as { functions?: unknown }).functions;
-  if (Array.isArray(functions)) {
-    for (const fn of functions as Array<{ statements?: unknown }>) {
-      if (Array.isArray(fn.statements) && fn.statements.some((s) => visitStatement(s as StatementIR))) return true;
-    }
-  }
-  return false;
-}
-
-/**
  * STM32F4 boot-time DBGMCU setup: set DBG_SLEEP|DBG_STOP|DBG_STANDBY
  * (DBGMCU_CR @ 0xE0042004, bits 0–2) so SWD stays attachable while the app
  * sleeps. RCC_APB1ENR (0x40023840) bit 18 clocks the DBGMCU first — F4 gates
@@ -410,7 +419,6 @@ import { preferencesInitLines } from './lowering/preferences.js';
 import { randomInitLines } from './lowering/random.js';
 import { generateZephyrInitCode, generateZephyrBreakpointCode, generateZephyrLogpointCode } from './debug-codegen.js';
 import { generateStaticAsyncRuntime } from '@typecad/cuttlefish/api/shared';
-import { buildTimerPolyfill } from './async/timer-polyfill.js';
 import { resolveZephyrDisplayOp, newDisplayState, type DisplayState } from './display/index.js';
 import { buildDisplayRuntime } from './display/gfx.js';
 import { ZEPHYR_DISPLAY_PROFILES, BUILT_IN_PROFILES } from './display/profiles.js';
@@ -427,41 +435,44 @@ export class ZephyrStrategy implements PlatformStrategy {
    * by the methods that need the descriptor (shimLines, resolveHALOperation
    * via lowerHalOp).
    *
-   * Tries to derive the chip descriptor from the board/MCU package's zephyr
-   * fields (via boardConstants) first. Falls back to the hardcoded
-   * chipForTarget registry for boards that haven't shipped zephyr config yet.
+   * The chip descriptor derives from the board/MCU manifest's zephyr
+   * fields (via boardConstants). There is no registry fallback — a board
+   * that never generated a manifest stays NO_BOARD_CHIP.
    */
+  /**
+   * Eagerly resolve + cache the chip for `program`. The emitter calls this
+   * before rendering any bodies — hal-op lowering reads the module-global
+   * chip cache, and the lazy resolve (inside shimLines) runs later than the
+   * first lowered statement.
+   */
+  prepareChip(program: ProgramIR | undefined, ctx?: PlatformContext): void {
+    this.resolveChip(ctx, program);
+  }
+
+  /**
+   * Contract-board generation: a custom PCB spec (typecad contract) names
+   * its wired pads and bus families; the SoC's bus controller labels come
+   * from the installed Zephyr tree's soc dtsi. Same builder as every board.
+   */
+  generateContractBoardModule(opts: {
+    soc: string;
+    zephyrBase: string;
+    pinNames: readonly string[];
+    padAliases?: readonly { exportName: string; padName: string }[];
+    peripherals: { i2c: boolean; spi: boolean; uart: boolean };
+  }): { boardTs: string; boardJson: string } {
+    return generateBoardModuleFromContract(opts);
+  }
+
   private resolveChip(ctx?: PlatformContext, program?: ProgramIR) {
-    // 1. Generated board manifest: the soc name keys the consolidated
-    //    per-soc descriptor registry (chips/soc).
-    const soc = program?.boardConstants?.get('zephyr.soc') as string | undefined;
-    if (soc) {
-      const fromSoc = chipForSoc(soc);
-      if (fromSoc) {
-        // Board-level pwm-led specs (the manifest's zephyr.pwm.specs.*) join
-        // the silicon-curated table — a board's own pwm-led0 alias becomes
-        // addressable without per-board curation.
-        const merged = mergeBoardPwmSpecs(fromSoc, boardPwmSpecsFromConstants(program?.boardConstants));
-        setActiveChip(merged);
-        return merged;
-      }
-    }
-
-    // 2. Board/MCU package constants (the package-era path)
+    // The chip view reconstructs from the project's generated board
+    // manifest (boardgen's zephyr.* constants) — the one path, for every
+    // board. No curated registry, no target-based fallback: a program with
+    // no board data resolves NO_BOARD_CHIP and the lowering reports
+    // unsupported per subsystem.
     const fromBoard = resolveChipFromBoard(program?.boardConstants);
-    if (fromBoard) {
-      setActiveChip(fromBoard);
-      return fromBoard;
-    }
-
-    // 3. Fall back to frameworkData.buildTarget → soc-keyed + legacy registry
-    const fd = ctx?.frameworkData as Record<string, unknown> | undefined;
-    const target =
-      (fd?.target as string | undefined) ??
-      (fd?.buildTarget as string | undefined);
-    const chip = chipForTarget(target);
-    setActiveChip(chip);
-    return chip;
+    setActiveChip(fromBoard ?? NO_BOARD_CHIP);
+    return fromBoard ?? NO_BOARD_CHIP;
   }
 
   /**
@@ -544,7 +555,6 @@ export class ZephyrStrategy implements PlatformStrategy {
     // Hardware timers via the counter driver.
     if (uses('usesHwtimer')) inc.push('<zephyr/drivers/counter.h>');
     if (uses('usesWDT') || uses('usesWdt')) inc.push('<zephyr/drivers/watchdog.h>');
-    if (uses('usesPower')) inc.push('<zephyr/pm/pm.h>', '<zephyr/pm/state.h>', '<zephyr/pm/policy.h>');
     // BLE: the bt_* GATT API + the flat-string headers the shim uses. <string>
     // is needed because a Utf8 (BleValueType.Utf8) read handler lowers to a
     // std::string-returning function (the string literal return type), and the
@@ -797,8 +807,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // C++ needs the definitions before use).
     const usesRandomFn = ambient.has('random') || ambient.has('randomSeed');
     const usesIrqGate = ambient.has('noInterrupts') || ambient.has('interrupts');
-    if (this.needsGpioReadShim(program, ctx)
-        || (!!program && programUsesPinGroup(program))) {
+    if (this.needsGpioReadShim(program, ctx)) {
       guardBody.push(...emitGpioDevDispatcher(chip));
     }
     if (uses('usesRandom') || usesRandomFn) {
@@ -812,17 +821,16 @@ export class ZephyrStrategy implements PlatformStrategy {
       );
     }
     if (usesIrqGate) {
+      // irq_lock/irq_unlock is Zephyr's PORTABLE interrupt gate (every
+      // arch: Cortex-M PRIMASK, Xtensa PS.INTLEVEL, RISC-V mstatus) — a
+      // CPU-family #if here would silently no-op on the others.
+      // The paired static key matches the hal's paired-call semantics (not
+      // nesting-safe, same as the Arduino cli/sei model it replaces).
       guardBody.push(
-        'static inline void noInterrupts(void) {',
-        '#if defined(__CORTEX_M)',
-        '    __disable_irq();',
-        '#endif',
-        '}',
-        'static inline void interrupts(void) {',
-        '#if defined(__CORTEX_M)',
-        '    __enable_irq();',
-        '#endif',
-        '}',
+        '#include <zephyr/irq.h>',
+        'static unsigned int __tc_irq_key = 0;',
+        'static inline void noInterrupts(void) { __tc_irq_key = irq_lock(); }',
+        'static inline void interrupts(void) { irq_unlock(__tc_irq_key); }',
       );
     }
     // PROGMEM note: only some UI runtime headers reference it.
@@ -953,9 +961,19 @@ export class ZephyrStrategy implements PlatformStrategy {
         'static int __tc_console_usb_boot(void) {',
         '    __tc_usbd_start();',
         '    const struct device* __tc_console_cdc = DEVICE_DT_GET(DT_NODELABEL(cdc_acm_uart0));',
-        '    for (int32_t __i = 0; __i < 500; __i++) {',
+        // Wait for a STABLE DTR, not the first edge: a failed host open
+        // attempt toggles DTR briefly, and printing into a port whose open
+        // never completes loses that output. Requiring ~200 ms of
+        // continuously asserted DTR skips those transients.
+        '    int32_t __stable = 0;',
+        '    for (int32_t __i = 0; __i < 1000; __i++) {',
         '        uint32_t __dtr = 0;',
-        '        if (uart_line_ctrl_get(__tc_console_cdc, UART_LINE_CTRL_DTR, &__dtr) == 0 && __dtr != 0) { break; }',
+        '        if (uart_line_ctrl_get(__tc_console_cdc, UART_LINE_CTRL_DTR, &__dtr) == 0 && __dtr != 0) {',
+        '            __stable++;',
+        '            if (__stable >= 20) { break; }',
+        '        } else {',
+        '            __stable = 0;',
+        '        }',
         '        k_msleep(10);',
         '    }',
         '    return 0;',
@@ -963,7 +981,15 @@ export class ZephyrStrategy implements PlatformStrategy {
         'SYS_INIT(__tc_console_usb_boot, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);',
       );
     }
-    if (uses('usesPWM') && chip.pwm) guardBody.push(...pwmInitLines(chip, collectUsedPins(program, 'pwm', chip)));
+    // PWM init also fires (with alias vars for the override pins) when a
+    // program drives ONLY inline-override channels on a chip with no pwm
+    // facts — the lowered calls reference those aliases.
+    {
+      const pwmUserSpecs = collectPwmOverrideSpecs(program);
+      if ((uses('usesPWM') && chip.pwm) || pwmUserSpecs.length > 0) {
+        guardBody.push(...pwmInitLines(chip, collectUsedPins(program, 'pwm', chip), pwmUserSpecs));
+      }
+    }
     if (uses('usesDAC') && chip.dac) guardBody.push(...dacInitLines(chip));
     if (uses('usesHwtimer') && chip.hwtimer) guardBody.push(...hwtimerInitLines(chip));
     if (uses('usesInterrupts')) guardBody.push(...interruptInitLines(chip, program ? collectInterruptPins(program) : undefined));
@@ -991,7 +1017,15 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesMqtt')) guardBody.push(...mqttInitLines());
     if (uses('usesPreferences')) guardBody.push(...preferencesInitLines());
     if (uses('usesFS')) guardBody.push(...fsInitLines());
-    if (uses('usesADC') && chip.adc) guardBody.push(...adcInitLines(chip, collectUsedPins(program, 'adc')));
+    // The ADC init block also fires (with the override devices' handles)
+    // when a program uses ONLY inline-override reads on a chip with no adc
+    // facts — otherwise those reads reference undeclared device handles.
+    {
+      const adcOverrideDevices = collectAdcOverrideDevices(program);
+      if ((uses('usesADC') && chip.adc) || adcOverrideDevices.size > 0) {
+        guardBody.push(...adcInitLines(chip, collectUsedPins(program, 'adc'), adcOverrideDevices));
+      }
+    }
     // STM32F4: keep the core debug port alive across WFI sleep. The DBGMCU
     // gates PPB access while the core sleeps unless DBGMCU_CR DBG_SLEEP/
     // DBG_STOP/DBG_STANDBY are set — without them openocd cannot examine or
@@ -1067,6 +1101,11 @@ export class ZephyrStrategy implements PlatformStrategy {
         'static inline bool __tc_bp_is_disabled(int id) { return id >= 0 && id < 256 && __tc_bp_disabled[id]; }',
         // Console input: poll the UART console device. DEVICE_DT_GET(DT_CHOSEN(zephyr_console))
         // resolves to the board's console (UART0 USB-CDC on the XIAO nRF52840).
+        // Not every board DTS declares a zephyr,console chosen (STM32MP1 M-side,
+        // display/carrier boards): there is nothing to print a prompt on and
+        // nothing to read a key from, so breakpoints auto-continue instead of
+        // hanging an unattended run.
+        '#if DT_HAS_CHOSEN(zephyr_console)',
         'static inline char __tc_debug_wait_for_continue(int id) {',
         '    const struct device* __con = DEVICE_DT_GET(DT_CHOSEN(zephyr_console));',
         '    unsigned char __c = 0;',
@@ -1079,6 +1118,9 @@ export class ZephyrStrategy implements PlatformStrategy {
         "    if ((__c == 's') || (__c == 'S')) { if (id >= 0 && id < 256) __tc_bp_disabled[id] = true; }",
         '    return static_cast<char>(__c);',
         '}',
+        '#else',
+        'static inline char __tc_debug_wait_for_continue(int id) { (void)id; return static_cast<char>(0); }',
+        '#endif // DT_HAS_CHOSEN(zephyr_console)',
         '#endif // __TC_BP_DISABLED_DEFINED',
         '',
       );
@@ -1129,48 +1171,6 @@ export class ZephyrStrategy implements PlatformStrategy {
         '#endif',
       );
     }
-    // PinGroup (createPinGroup().fill()/writePattern()/readPattern()): the IR
-    // passes the pins through as runtime numbers, so the group routes each
-    // write through the same __tc_gpio_dev/__tc_gpio_pin dispatchers the gpio
-    // read shim uses (STM32 splits ports across gpioa/gpiob/gpioc). The call
-    // site itself is rewritten by normalizeRawExpression.
-    if (program && programUsesPinGroup(program)) {
-      lines.push(
-        'struct __tc_PinGroup {',
-        '    int32_t pins[16];',
-        '    int32_t count;',
-        '    void fill(bool value) const {',
-        '        for (int32_t i = 0; i < count; i++) {',
-        '            gpio_pin_configure(__tc_gpio_dev(static_cast<uint32_t>(pins[i])), __tc_gpio_pin(static_cast<uint32_t>(pins[i])), value ? GPIO_OUTPUT_ACTIVE : GPIO_OUTPUT_INACTIVE);',
-        '        }',
-        '    }',
-        '    void writePattern(int32_t pattern) const {',
-        '        for (int32_t i = 0; i < count; i++) {',
-        '            gpio_pin_set(__tc_gpio_dev(static_cast<uint32_t>(pins[i])), __tc_gpio_pin(static_cast<uint32_t>(pins[i])), ((pattern >> i) & 1) != 0 ? 1 : 0);',
-        '        }',
-        '    }',
-        '    int32_t readPattern() const {',
-        '        int32_t value = 0;',
-        '        for (int32_t i = 0; i < count; i++) {',
-        '            if (gpio_pin_get_raw(__tc_gpio_dev(static_cast<uint32_t>(pins[i])), __tc_gpio_pin(static_cast<uint32_t>(pins[i]))) != 0) { value |= (1 << i); }',
-        '        }',
-        '        return value;',
-        '    }',
-        '};',
-        'template<typename... Args>',
-        '__tc_PinGroup __tc_createPinGroup(Args... args) {',
-        '    __tc_PinGroup __g;',
-        '    int32_t __tmp[] = { static_cast<int32_t>(args)... };',
-        '    __g.count = static_cast<int32_t>(sizeof...(args));',
-        '    if (__g.count > 16) { __g.count = 16; }',
-        '    for (int32_t i = 0; i < __g.count; i++) {',
-        '        __g.pins[i] = __tmp[i];',
-        '        gpio_pin_configure(__tc_gpio_dev(static_cast<uint32_t>(__g.pins[i])), __tc_gpio_pin(static_cast<uint32_t>(__g.pins[i])), GPIO_OUTPUT);',
-        '    }',
-        '    return __g;',
-        '}',
-      );
-    }
 
     return lines;
   }
@@ -1184,14 +1184,15 @@ export class ZephyrStrategy implements PlatformStrategy {
     // Collect the pins the program uses for output config, ADC reads, and
     // interrupt attaches — deep-walking the IR the same way framework-esp32
     // does (its profileDiagnostics walks program to find gpio.set_mode /
-    // power.deep_sleep_pin / adc.read nodes).
+    // adc.read nodes).
     const outputPins = new Set<number>();
     const adcReadPins = new Set<number>();
+    const adcOverriddenPins = new Set<number>();
+    const pwmOverriddenPins = new Set<number>();
     const interruptPins = new Set<number>();
     const wdtOps = new Set<string>();
     const dacPins = new Set<number>();
     const pwmPins = new Set<number>();
-    let usesTone = false;
     const busInstances = { i2c: new Set<number>(), spi: new Set<number>(), uart: new Set<number>() };
     const hwtimerInstances = new Set<number>();
     let usesWifiOps = false;
@@ -1211,6 +1212,12 @@ export class ZephyrStrategy implements PlatformStrategy {
                 || op.operation === 'adc.read_raw' || op.operation === 'adc.read_mv')
               && typeof op.pin === 'number') {
             adcReadPins.add(op.pin);
+            // Inline routing overrides (construction opts): the user vouches
+            // for the pin — the unavailable-pin diagnostic does not apply.
+            if ((typeof op.channelOverride === 'number' && op.channelOverride >= 0)
+                || (typeof op.deviceOverride === 'string' && op.deviceOverride !== '')) {
+              adcOverriddenPins.add(op.pin);
+            }
           }
           if (op.operation === 'interrupt.attach' && typeof op.pin === 'number') {
             interruptPins.add(op.pin);
@@ -1223,12 +1230,13 @@ export class ZephyrStrategy implements PlatformStrategy {
             dacPins.add(op.pin);
           }
           if ((op.operation === 'pwm.set_pulse' || op.operation === 'pwm.set_duty'
-                || op.operation === 'pwm.set_period' || op.operation === 'pwm.tone')
+                || op.operation === 'pwm.set_period')
               && typeof op.pin === 'number') {
             pwmPins.add(op.pin);
-          }
-          if (op.operation === 'pwm.tone') {
-            usesTone = true;
+            if ((typeof op.controllerOverride === 'string' && op.controllerOverride !== '')
+                || (typeof op.channelOverride === 'number' && op.channelOverride >= 0)) {
+              pwmOverriddenPins.add(op.pin);
+            }
           }
           // Bus instance usage: which I2C/SPI/UART controller indexes the
           // program drives (the lowering resolves index N against
@@ -1278,15 +1286,22 @@ export class ZephyrStrategy implements PlatformStrategy {
     // compile time with a clear message instead of an opaque link failure.
     const adcPins = new Set((chip.adc?.channels ?? []).map((c) => c.pin));
     for (const pin of adcReadPins) {
+      if (adcOverriddenPins.has(pin)) continue;
       if (adcChannelForPin(chip, pin) < 0) {
         const valid = [...adcPins].sort((x, y) => x - y).join(', ');
+        // Cross-peripheral suggestion: the facts know what this pin IS wired
+        // to — a PWM-capable pin misread as analog is the classic mix-up.
+        const pwmOnPin = (chip.pwm?.specs ?? []).find((s) => s.pin === pin);
+        const mixup = pwmOnPin
+          ? ` GPIO ${pin} carries PWM on this board (${pwmOnPin.controller} ch ${pwmOnPin.channel}) — did you mean new PWM(${pin}, …)?`
+          : '';
         diags.push({
           severity: 'error',
           code: 'zephyr-adc-pin-unavailable',
           message: `GPIO ${pin} is not a SAADC channel on ${chip.id} and cannot be read with adc.read.`,
           hint: valid
-            ? `Use an analog-capable pin. On ${chip.id} (SAADC): ${valid}.`
-            : `This target has no ADC channels mapped in its chip descriptor.`,
+            ? `Use an analog-capable pin. On ${chip.id} (SAADC): ${valid}.${mixup}`
+            : `This target has no ADC channels mapped in its chip descriptor.${mixup}`,
           source: program.fileName,
         });
       }
@@ -1325,13 +1340,17 @@ export class ZephyrStrategy implements PlatformStrategy {
       const dacChannels = new Set((chip.dac?.channels ?? []).map((c) => c.pin));
       for (const pin of dacPins) {
         if (!dacChannels.has(pin)) {
+          const adcCh = (chip.adc?.channels ?? []).find((c) => c.pin === pin);
+          const mixup = adcCh
+            ? ` GPIO ${pin} is an ADC channel (${adcCh.controller ?? chip.adc?.nodeLabel ?? 'adc'} ch ${adcCh.channel}) — did you mean new ADC(${pin})?`
+            : '';
           diags.push({
             severity: 'error',
             code: 'zephyr-dac-pin-unavailable',
             message: `GPIO ${pin} is not a DAC channel on ${chip.id} and cannot be driven with dac.write.`,
             hint: dacChannels.size > 0
-              ? `Use a DAC-capable pin. On ${chip.id}: ${[...dacChannels].sort((x, y) => x - y).join(', ')}.`
-              : `${chip.id} has no DAC. Use an esp32_devkitc target (ESP32 DAC on GPIO25/26).`,
+              ? `Use a DAC-capable pin. On ${chip.id}: ${[...dacChannels].sort((x, y) => x - y).join(', ')}.${mixup}`
+              : `${chip.id} has no DAC. Use an esp32_devkitc target (ESP32 DAC on GPIO25/26).${mixup}`,
             source: program.fileName,
           });
         }
@@ -1344,9 +1363,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // a spec at build time). A pin on neither lowers to a comment — the pin
     // silently never toggles. Flag it so the user knows (warning, not error:
     // boards legitimately ship partial PWM coverage, e.g. only the aliased LED
-    // channel, and the rest of the program still works). tone.play rides the
-    // same machinery (its own pin, else specs[0]), so a chip with neither
-    // specs nor a matrix cannot make sound.
+    // channel, and the rest of the program still works).
     const pwmMatrix = chip.pwm?.matrix;
     const pwmSpecPins = new Set([
       ...(chip.pwm?.specs ?? []).map((s) => s.pin),
@@ -1354,7 +1371,14 @@ export class ZephyrStrategy implements PlatformStrategy {
     ]);
     const pwmValid = [...pwmSpecPins].sort((x, y) => x - y).join(', ');
     for (const pin of pwmPins) {
+      if (pwmOverriddenPins.has(pin)) continue;
       if (!pwmSpecPins.has(pin)) {
+        // Cross-peripheral suggestion: an analog pin driven as PWM is the
+        // other classic mix-up.
+        const adcCh = (chip.adc?.channels ?? []).find((c) => c.pin === pin);
+        const mixup = adcCh
+          ? ` GPIO ${pin} is an ADC channel (${adcCh.controller ?? chip.adc?.nodeLabel ?? 'adc'} ch ${adcCh.channel}) — did you mean new ADC(${pin})?`
+          : '';
         diags.push({
           severity: 'warning',
           code: 'zephyr-pwm-pin-unavailable',
@@ -1363,23 +1387,13 @@ export class ZephyrStrategy implements PlatformStrategy {
             : `pwm on GPIO ${pin} lowers to a no-op: the pin has no PWM spec in ${chip.id}'s chip descriptor, so nothing is driven.`,
           hint: pwmValid
             ? pwmMatrix
-              ? `PWM-capable pins on ${chip.id} (first ${pwmMatrix.channelCount} driven get channels): ${pwmValid}.`
-              : `PWM-capable pins on ${chip.id}: ${pwmValid}.`
-            : `${chip.id} maps no PWM channels in its chip descriptor — pwm.*/tone are no-ops on this target.`,
+              ? `PWM-capable pins on ${chip.id} (first ${pwmMatrix.channelCount} driven get channels): ${pwmValid}.${mixup}`
+              : `PWM-capable pins on ${chip.id}: ${pwmValid}.${mixup}`
+            : `${chip.id} maps no PWM channels in its chip descriptor — pwm.* are no-ops on this target.${mixup}`,
           source: program.fileName,
         });
       }
     }
-    if (usesTone && pwmSpecPins.size === 0) {
-      diags.push({
-        severity: 'warning',
-        code: 'zephyr-pwm-pin-unavailable',
-        message: `tone lowers to a no-op: ${chip.id} maps no PWM channels in its chip descriptor.`,
-        hint: `tone needs a PWM spec (the aliased LED channel on boards that ship one).`,
-        source: program.fileName,
-      });
-    }
-
     // ── Bus instance validity ───────────────────────────────────────────────
     // The bus lowerings resolve instance N against chip.<bus>.controllers[N]
     // and emit `__tc_<bus>N_dev` references; the state block is only declared
@@ -1450,12 +1464,21 @@ export class ZephyrStrategy implements PlatformStrategy {
       });
     }
 
+    // ── Radio presence: family-derived, not board-curated ───────────────────
+    // Espressif ESP32 variants carry a 2.4GHz WiFi radio; every other Zephyr
+    // family in the catalog is radioless (until an Ethernet/board-wifi fact
+    // exists). Derived from the soc name — or, when no board module was
+    // generated, from the raw build target the config carries.
+    const familyTarget = `${chip.soc || ''} ${(ctx?.frameworkData as Record<string, unknown> | undefined)?.target ?? ''} ${(ctx?.frameworkData as Record<string, unknown> | undefined)?.buildTarget ?? ''}`.toLowerCase();
+    const wifiSupported = chip.wifi?.supported
+      ?? familyTarget.split(/[^a-z0-9]+/).some((t) => t.startsWith('esp32'));
+
     // ── WiFi target validity ────────────────────────────────────────────────
     // WiFi ops require a chip with a WiFi radio. The ESP32-S3 descriptor sets
     // wifi.supported; the XIAO nRF52840 omits it (no radio). Flag wifi usage on
     // a radioless chip so the user gets a clear "use an ESP32 target" message
     // instead of an opaque link/DT failure.
-    if (usesWifiOps && !chip.wifi?.supported) {
+    if (usesWifiOps && !wifiSupported) {
       diags.push({
         severity: 'error',
         code: 'zephyr-wifi-unavailable-on-target',
@@ -1473,7 +1496,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // gets a clear "use an ESP32 target" message instead of an opaque link or
     // runtime failure. (HTTP rides over WiFi here; an Ethernet target would
     // set wifi.supported via a different transport flag if/when added.)
-    if (usesHttpOps && !chip.wifi?.supported) {
+    if (usesHttpOps && !wifiSupported) {
       diags.push({
         severity: 'error',
         code: 'zephyr-http-unavailable-on-target',
@@ -1486,7 +1509,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // ── MQTT target validity ─────────────────────────────────────────────
     // Same constraint as HTTP: MQTT needs a network transport to reach a broker.
     // Flag mqtt usage on a radioless chip so the user picks a networked target.
-    if (usesMqttOps && !chip.wifi?.supported) {
+    if (usesMqttOps && !wifiSupported) {
       diags.push({
         severity: 'error',
         code: 'zephyr-mqtt-unavailable-on-target',
@@ -1621,10 +1644,6 @@ export class ZephyrStrategy implements PlatformStrategy {
         startsWith: (recv, args) => `(strncmp(${recv}, ${args[0]}, strlen(${args[0]})) == 0)`,
       },
     });
-    // createPinGroup({...}) → __tc_createPinGroup(...): the variadic template
-    // (emitted by shimLines under programUsesPinGroup) takes the pins as
-    // template arguments' call args instead of an initializer list.
-    v = v.replace(/createPinGroup\(\{\s*(.*?)\s*\}\)/g, '__tc_createPinGroup($1)');
     return v;
   }
 
@@ -1875,7 +1894,13 @@ export class ZephyrStrategy implements PlatformStrategy {
   }
 
   needsVectorOverload(): boolean {
-    return true;
+    // The std::ostream operator<< helper cannot link on Zephyr (picolibc,
+    // STL-free target — no <ostream>, no std::vector). Console output goes
+    // through the printf-based __tc_print helpers; emitting the overload
+    // here only produced a guaranteed compile error for any program whose
+    // analysis touched vector-ish types (e.g. a typed-array buffer) while
+    // also calling console.log.
+    return false;
   }
 
   needsLargeEnumUnderlying(): boolean {
@@ -1893,10 +1918,10 @@ export class ZephyrStrategy implements PlatformStrategy {
   }
 
   // ── Async ───────────────────────────────────────────────────────────────
-  // Hybrid: timers are native (k_timer + k_work, see src/async/timer-polyfill.ts);
-  // Promises use the heap-free static runtime (generateStaticAsyncRuntime), pumped
-  // cooperatively via cuttlefish_pump_microtasks(). There is no
-  // __tc_timer_runtime.run() poll — native timers fire from their own expiry path.
+  // Promises use the heap-free static runtime (generateStaticAsyncRuntime),
+  // pumped cooperatively via cuttlefish_pump_microtasks(). There is no
+  // __tc_timer_runtime.run() poll — periodic work is a Thread (k_thread) or a
+  // Counter (hardware timer), never a cooperative timer queue.
 
   getAsyncRuntimeConfig(): AsyncRuntimeConfig {
     return {
@@ -1904,7 +1929,7 @@ export class ZephyrStrategy implements PlatformStrategy {
       scheduler: 'microtask',
       waitForPinEdge: 'stub',
       hasPromiseRuntime: true,
-      hasTimers: true,
+      hasTimers: false,
       // Static (heap-free) runtime — no STL headers required.
       requiredIncludes: [],
     };
@@ -1915,13 +1940,39 @@ export class ZephyrStrategy implements PlatformStrategy {
    * from the pinned tree) with the curated soc descriptors. See
    * src/boardgen.ts.
    */
-  generateBoardModule(target: string): { boardTs: string; boardJson: string } | undefined {
+  generateBoardModule(
+    target: string,
+    opts?: { factsJson?: string; asBuiltJson?: string },
+  ): { boardTs: string; boardJson: string; warnings?: readonly string[] } | undefined {
     try {
-      const g = generateBoard(target);
-      return { boardTs: g.boardTs, boardJson: g.boardJson };
-    } catch {
+      const g = generateBoard(target, { factsJson: opts?.factsJson, asBuiltJson: opts?.asBuiltJson });
+      return { boardTs: g.boardTs, boardJson: g.boardJson, ...(g.warnings ? { warnings: g.warnings } : {}) };
+    } catch (err) {
+      // A malformed facts/as-built file is the USER's error — surface it
+      // verbatim instead of the generic "cannot generate" below.
+      if (err instanceof Error && (err.message.includes('cuttlefish.facts.json') || err.message.includes('as-built.json'))) throw err;
       return undefined;
     }
+  }
+
+  /**
+   * Regenerate the board catalog overlay from the user's own Zephyr tree —
+   * `cuttlefish board sync`. After a `west update`, this is how new/changed/
+   * removed boards reach projects without a cuttlefish release. See
+   * src/sdk/board-catalog-sync.ts.
+   */
+  syncBoardCatalog(zephyrBase?: string): BoardCatalogSyncReport {
+    return syncBoardCatalog(zephyrBase ? { zephyrBase } : {});
+  }
+
+  /**
+   * Refresh the overlay only when it is stale (provenance no longer matches
+   * the tree) — the pre-step `cuttlefish board regen` runs so a regen after
+   * `west update` picks up the tree's boards automatically. Tree walk only
+   * happens when there is actual refreshing to do.
+   */
+  ensureFreshBoardCatalog(): BoardCatalogEnsureResult {
+    return ensureFreshBoardCatalog();
   }
 
   asyncLoopInjection(taskVarNames: string[], config: AsyncRuntimeConfig): string[];
@@ -1948,8 +1999,8 @@ export class ZephyrStrategy implements PlatformStrategy {
     for (const n of taskVarNames) {
       work.push(`${n}.run();`);
     }
-    // NOTE: no __tc_timer_runtime.run() — Zephyr timers are native k_timer
-    // (timer-polyfill.ts), not a cooperative poll.
+    // NOTE: no timer-queue poll — periodic work is a Thread (k_thread) or a
+    // Counter (hardware timer), never a cooperative poll.
     //
     // main() runs once, so the per-frame work must close over its own loop.
     // Under a mounted UI the emitter's hostEventLoop() already wraps ui_tick +
@@ -2056,12 +2107,10 @@ export class ZephyrStrategy implements PlatformStrategy {
     // cuttlefish_halt: always (the runtime header may reference it).
     // string_methods / static_array: STL-free array + string helpers a no-STL
     //   target needs (mutated/struct array literals + any string method).
-    // timer_methods: k_timer/k_work pool for setInterval/setTimeout (gated on
-    //   timerCallCount at emit time in generateNativePolyfills).
     // async_runtime: heap-free static Promise/microtask runtime (no STL needed).
     return new Set<string>([
       'cuttlefish_halt', 'wiring_compat', 'string_methods', 'static_array',
-      'timer_methods', 'async_runtime',
+      'async_runtime',
     ]);
   }
 
@@ -2191,23 +2240,6 @@ struct __tc_StaticArray {
       },
     ];
 
-    // Worker-offload runtime (Phase 1). Emitted only when the program uses
-    // worker.* ops, backed by the Zephyr primitives in worker-backing.ts
-    // (k_work system workqueue + k_sem for the completion barrier).
-    const usesWorker = !!((ctx as any)?.analysis?.usesWorker);
-    if (program && usesWorker) {
-      const workerPoly = buildWorkerRuntimePolyfill(program, this, buildZephyrWorkerBacking(), { poolSize: 4 });
-      if (workerPoly) polyfills.push(workerPoly);
-    }
-
-    // timer_methods — k_timer/k_work pool. Gated on observed timer call count;
-    // a program with no setInterval/setTimeout emits nothing.
-    const analysis = (ctx as { analysis?: { timerCallCount?: number } } | undefined)?.analysis;
-    const timerCallCount = analysis?.timerCallCount ?? 0;
-    if (timerCallCount > 0) {
-      polyfills.push(buildTimerPolyfill(timerCallCount));
-    }
-
     // async_runtime — heap-free static Promise/microtask runtime. Emitted when
     // the program declares an async function OR references an async-runtime
     // symbol (Async.sleep/.then from a non-async fn). The static path requires
@@ -2295,25 +2327,9 @@ struct __tc_StaticArray {
     return true;
   }
 
-  // ── Worker offload backing (Phase 1) ─────────────────────────────────────
-  // Delegates to the Zephyr backing (worker-backing.ts): k_work system
-  // workqueue + k_sem for completion. k_sem provides the kernel memory barrier
-  // the dual-core contract requires (the worker runs on a workqueue thread).
-  private _workerBacking = buildZephyrWorkerBacking();
-
   // Display state (mirrors Arduino's _displayCtx). Seeded on display.init; the
   // validator-probe path seeds the default profile lazily.
   private _displayState: DisplayState = newDisplayState();
-
-  workerSpawnLines(handleId: number, trampolineName: string, waiterExpr: string): string[] | undefined {
-    return this._workerBacking.spawnLines(handleId, trampolineName, waiterExpr);
-  }
-  workerSignalDoneExpr(handleId: number): string | undefined {
-    return this._workerBacking.signalDoneExpr(handleId);
-  }
-  workerIsDoneExpr(handleId: number): string | undefined {
-    return this._workerBacking.isDoneExpr(handleId);
-  }
 
   // ── Graphics ──────────────────────────────────────────────────────────────
   // Generic <zephyr/drivers/display.h> + ported GFX primitives (see src/display/).

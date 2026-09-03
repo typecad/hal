@@ -268,9 +268,34 @@ export function generateOverlay(
     emitAdcNode(lines, chip, usage.adcReadPins);
   }
   // DAC: enable the chip's DAC device node when the program uses dac.*. The
-  // lowering references DEVICE_DT_GET(DT_NODELABEL(<dac.device>)).
+  // lowering references DEVICE_DT_GET(DT_NODELABEL(<dac.device>)); the used
+  // channels' pinctrl groups route the output to its pad.
   if (usage.usesDac && chip.dac) {
-    block(chip.dac.device);
+    emitDacNode(lines, chip, usage.dacWritePins);
+  }
+  // Counters: enable the free counter devices when the program uses hwtimer.
+  // Self form (nRF rtc1, STM32 rtc): enable the labeled node. Child form
+  // (ESP32 timer0-3): the counter device is an unlabeled `counter {}`
+  // child — the overlay defines the tc_counter<N> label the descriptor's
+  // nodeLabel references (the same label-less-child move the STM32 pwm
+  // path uses).
+  if (usage.usesHwtimer && chip.hwtimer) {
+    for (const c of chip.hwtimer.controllers) {
+      if (c.counterParent) {
+        lines.push(`&${c.counterParent} {`);
+        lines.push('    status = "okay";');
+        lines.push(`    ${c.nodeLabel}: counter {`);
+        lines.push('        status = "okay";');
+        lines.push('    };');
+        lines.push('};');
+        lines.push('');
+      } else {
+        lines.push(`&${c.nodeLabel} {`);
+        lines.push('    status = "okay";');
+        lines.push('};');
+        lines.push('');
+      }
+    }
   }
   if (display) {
     // Emit a full display DT node definition. Boards like the ESP32 devkit
@@ -310,9 +335,10 @@ export function generateOverlay(
     // the MCUboot boot/slot/scratch set) declare a synthesis region in the
     // chip descriptor — emit it as a partition@<offset> child of the flash0
     // partitions node. Adding a NEW child via overlay is legal; redeclaring
-    // an existing one is not, so boards that already carry the label simply
-    // omit the descriptor field and only the /chosen pointer lands here.
-    if (chip.storage) {
+    // an existing one is not, so boards that already carry the label
+    // (descriptor storage.preexisting — ESP32's AMP layout) skip the
+    // synthesis block and only the /chosen pointer lands here.
+    if (chip.storage && !chip.storage.preexisting) {
       lines.push('&flash0 {');
       // Explicit compatible + cells: boards whose DTS already carries a
       // partitions node (rp2040, STM32 MCUboot sets) merge identically, and
@@ -474,10 +500,35 @@ function emitPwmNodes(
       throw new Error(
         `framework-zephyr: the program drives ${pins.length} PWM pins but ${chip.id}'s ` +
         `${m.controller} exposes only ${m.channelCount} channels — drop ` +
-        `${pins.length - m.channelCount} pwm/tone pin(s).`,
+        `${pins.length - m.channelCount} pwm pin(s).`,
       );
     }
     matrixSynth = pins.map((pin, ch) => ({ pin, controller: m.controller, channel: ch }));
+    // nRF shape: channels route to pads via psel (pinctrl psel order IS
+    // channel order — pwm_nrfx reads PSEL.OUT[ch] back), no channel child
+    // nodes, and the overlay carries the nrf pinctrl header for NRF_PSEL.
+    // P<port>.<pin> maps from the global number through the nRF controller
+    // layout (P0 = 0-31, P1 = 32-63).
+    const isNrfMatrix = /^nrf/.test(chip.soc);
+    if (isNrfMatrix) {
+      const inc = '#include <zephyr/dt-bindings/pinctrl/nrf-pinctrl.h>';
+      if (!lines.includes(inc)) lines.splice(2, 0, inc, '');
+      lines.push('&pinctrl {');
+      lines.push(`    tc_${m.controller}_default: tc-${m.controller}-default {`);
+      lines.push('        group1 {');
+      lines.push(`            psel = ${pins.map((p, ch) => `<NRF_PSEL(PWM_OUT${ch}, ${Math.floor(p / 32)}, ${p % 32})>`).join(', ')};`);
+      lines.push('        };');
+      lines.push('    };');
+      lines.push('};');
+      lines.push('');
+      lines.push(`&${m.controller} {`);
+      lines.push('    status = "okay";');
+      lines.push(`    pinctrl-0 = <&tc_${m.controller}_default>;`);
+      lines.push('    pinctrl-names = "default";');
+      lines.push('};');
+      lines.push('');
+    }
+    if (!isNrfMatrix) {
     lines.push('&pinctrl {');
     lines.push(`    tc_${m.controller}_default: tc-${m.controller}-default {`);
     lines.push('        group1 {');
@@ -504,6 +555,7 @@ function emitPwmNodes(
     }
     lines.push('};');
     lines.push('');
+    }
   }
 
   const synthesized = staticSynth.concat(matrixSynth);
@@ -529,25 +581,78 @@ function emitPwmNodes(
   // their pinctrl + channel children, which this loop doesn't know).
   const clockHz = chip.pwm?.clockHz;
   for (const controller of [...new Set(staticSynth.map((s) => s.controller!))]) {
-    lines.push(`&${controller} {`);
-    lines.push('    status = "okay";');
-    lines.push('};');
-    lines.push('');
-    if (!clockHz) continue;
     const timersMatch = controller.match(/^pwm(\d+)$/);
-    if (!timersMatch) continue;
-    const maxPeriodNs = Math.max(
-      ...staticSynth.filter((s) => s.controller === controller).map((s) => s.periodNs ?? 20_000_000),
-    );
-    // cycles = clockHz * period_s / divider ≤ 65536 (driver allows
-    // UINT16_MAX + 1); binding value is divider - 1 (CLK/(prescaler+1)).
-    const divider = Math.max(1, Math.ceil((clockHz * maxPeriodNs) / 1e9 / 65536));
-    if (divider > 1) {
-      lines.push(`&timers${timersMatch[1]} {`);
-      lines.push(`    st,prescaler = <${divider - 1}>;`);
+    const specs = staticSynth.filter((s) => s.controller === controller);
+    // Macro-form pinctrl tokens (uppercase — DT labels are lowercase by
+    // spec): the overlay synthesizes the pad-routing group itself. RP2's
+    // macros live in a dt-bindings header the board chain may not pull in
+    // (spliced via rp2PinctrlHeader); Kinetis/LPC/GD32 macros come from the
+    // part headers the board's own pinctrl dtsi includes, and Zephyr
+    // preprocesses overlays together with the base DTS — no splice needed.
+    const isMacro = (p: string | undefined): boolean => !!p && /^[A-Z][A-Z0-9_]*$/.test(p);
+    if (!timersMatch && specs.some((s) => isMacro(s.pinctrl))) {
+      const header = rp2PinctrlHeader(chip.soc);
+      if (header) {
+        const inc = `#include <zephyr/dt-bindings/pinctrl/${header}>`;
+        if (!lines.includes(inc)) lines.splice(2, 0, inc, '');
+      }
+      lines.push('&pinctrl {');
+      lines.push('    tc_pwm_default: tc-pwm-default {');
+      lines.push('        group1 {');
+      lines.push(`            pinmux = ${specs.filter((s) => s.pinctrl).map((s) => `<${s.pinctrl}>`).join(', ')};`);
+      lines.push('        };');
+      lines.push('    };');
       lines.push('};');
       lines.push('');
+      lines.push(`&${controller} {`);
+      lines.push('    status = "okay";');
+      lines.push('    pinctrl-0 = <&tc_pwm_default>;');
+      lines.push('    pinctrl-names = "default";');
+      lines.push('};');
+      lines.push('');
+      continue;
     }
+    if (timersMatch) {
+      // STM32 shape: the SoC dtsi declares a LABEL-LESS pwm child under
+      // timers{N} — the overlay defines the label itself (pwmN: pwm), which
+      // the synthesized pwms cell below references. One block carries the
+      // parent enable, the pad-routing pinctrl groups (harvested silicon
+      // routes on the specs — without them the PWM runs but nothing leaves
+      // the chip), the prescaler, and the child enable.
+      const groups = specs.filter((s) => s.pinctrl).map((s) => `&${s.pinctrl}`);
+      const maxPeriodNs = Math.max(...specs.map((s) => s.periodNs ?? 20_000_000));
+      // cycles = clockHz * period_s / divider ≤ 65536 (driver allows
+      // UINT16_MAX + 1); binding value is divider - 1 (CLK/(prescaler+1)).
+      const divider = clockHz
+        ? Math.max(1, Math.ceil((clockHz * maxPeriodNs) / 1e9 / 65536))
+        : 1;
+      lines.push(`&timers${timersMatch[1]} {`);
+      lines.push('    status = "okay";');
+      if (divider > 1) {
+        lines.push(`    st,prescaler = <${divider - 1}>;`);
+      }
+      lines.push(`    ${controller}: pwm {`);
+      lines.push('        status = "okay";');
+      if (groups.length > 0) {
+        lines.push(`        pinctrl-0 = <${groups.join(' ')}>;`);
+        lines.push('        pinctrl-names = "default";');
+      }
+      lines.push('    };');
+      lines.push('};');
+      lines.push('');
+      continue;
+    }
+    // Lowercase pinctrl tokens (i.MX `iomuxc_…` node labels from the part
+    // dtsi) ride the controller's pinctrl-0 directly.
+    const pinRefs = specs.filter((s) => s.pinctrl && !isMacro(s.pinctrl)).map((s) => `&${s.pinctrl}`);
+    lines.push(`&${controller} {`);
+    lines.push('    status = "okay";');
+    if (pinRefs.length > 0) {
+      lines.push(`    pinctrl-0 = <${pinRefs.join(' ')}>;`);
+      lines.push('    pinctrl-names = "default";');
+    }
+    lines.push('};');
+    lines.push('');
   }
   lines.push('/ {');
   lines.push('    tc_pwm_leds: tc-pwm-leds {');
@@ -577,26 +682,99 @@ function emitPwmNodes(
  * AND the caller knows which pins the program reads (compile-time regen scans
  * the emitted `__tc_adc<N>_setup()` calls); the prepare-time overlay omits it
  * and the compile regen rewrites the file before west runs.
+ *
+ * Two pinctrl forms by family: NODE labels (STM32's harvested
+ * `adc1_in1_pa1` groups — referenced as `&label`) and MACRO tokens (RP2's
+ * `ADC_CH0_P26` — DT labels are lowercase by spec and macros uppercase, so
+ * the case decides). The macro form synthesizes its own group under
+ * &pinctrl and splices the SoC's pinctrl dt-binding header so the token
+ * resolves in the overlay's compile.
+ *
+ * Multi-controller SoCs: channels may name their owning controller (STM32
+ * adc3-only routes, ESP32 units). One enable block is emitted per controller
+ * that owns used channels — the primary first, others sorted for
+ * deterministic output. Single-controller boards emit exactly one block, as
+ * before.
  */
+/** The SoC's pinctrl dt-binding header (where the macro tokens are defined)
+ *  — RP2 shapes; undefined for socs that use node-label pinctrl exclusively. */
+function rp2PinctrlHeader(soc: string): string | undefined {
+  if (soc === 'rp2040') return 'rpi-pico-rp2040-pinctrl.h';
+  if (soc.startsWith('rp2350a')) return 'rpi-pico-rp2350a-pinctrl.h';
+  if (soc.startsWith('rp2350b')) return 'rpi-pico-rp2350b-pinctrl.h';
+  return undefined;
+}
+
 function emitAdcNode(
   lines: string[],
   chip: ZephyrChipDescriptor,
   readPins?: readonly number[],
 ): void {
   const adc = chip.adc!;
-  const labeled = adc.channels.filter((c) => c.pinctrl);
-  const used = labeled.filter((c) => !readPins || readPins.includes(c.pin));
-  if (labeled.length > 0 && used.length > 0) {
-    lines.push(`&${adc.nodeLabel} {`);
-    lines.push('    status = "okay";');
-    lines.push(`    pinctrl-0 = <${used.map((c) => `&${c.pinctrl}`).join(' ')}>;`);
-    lines.push('    pinctrl-names = "default";');
+  const primary = adc.nodeLabel;
+  const controllerOf = (c: { controller?: string }) => c.controller ?? primary;
+  const used = readPins ? adc.channels.filter((c) => readPins.includes(c.pin)) : adc.channels;
+  const isMacro = (p: string | undefined): boolean => !!p && /^[A-Z][A-Z0-9_]*$/.test(p);
+  const macroChannels = used.filter((c) => isMacro(c.pinctrl));
+  if (macroChannels.length > 0) {
+    const header = rp2PinctrlHeader(chip.soc);
+    if (header) {
+      const inc = `#include <zephyr/dt-bindings/pinctrl/${header}>`;
+      if (!lines.includes(inc)) lines.splice(2, 0, inc, '');
+    }
+    lines.push('&pinctrl {');
+    lines.push('    tc_adc_default: tc-adc-default {');
+    lines.push('        group1 {');
+    lines.push(`            pinmux = ${macroChannels.map((c) => `<${c.pinctrl}>`).join(', ')};`);
+    lines.push('        };');
+    lines.push('    };');
     lines.push('};');
     lines.push('');
-    return;
   }
-  lines.push(`&${adc.nodeLabel} {`);
+  // Every controller that owns a USED channel gets an enable block — a
+  // controller left "disabled" in the SoC dtsi has no device instance, so a
+  // read against it fails to link. Nothing used: enable the primary only.
+  const controllers = used.length > 0
+    ? [...new Set(used.map(controllerOf))]
+        .sort((a, b) => (a === primary ? -1 : b === primary ? 1 : a.localeCompare(b, undefined, { numeric: true })))
+    : [primary];
+  for (const label of controllers) {
+    const mine = used.filter((c) => controllerOf(c) === label && c.pinctrl);
+    lines.push(`&${label} {`);
+    lines.push('    status = "okay";');
+    if (mine.length > 0) {
+      if (mine.every((c) => isMacro(c.pinctrl))) {
+        lines.push('    pinctrl-0 = <&tc_adc_default>;');
+      } else {
+        lines.push(`    pinctrl-0 = <${mine.map((c) => `&${c.pinctrl}`).join(' ')}>;`);
+      }
+      lines.push('    pinctrl-names = "default";');
+    }
+    lines.push('};');
+    lines.push('');
+  }
+}
+
+/**
+ * Emit the DAC device-node enable + the used output channels' pinctrl
+ * groups (the harvested `dac1_out1_pa4`-style nodes — the st,stm32-dac
+ * binding includes pinctrl-device, so without the group the channel never
+ * reaches its pad). Mirrors emitAdcNode.
+ */
+function emitDacNode(
+  lines: string[],
+  chip: ZephyrChipDescriptor,
+  writePins?: readonly number[],
+): void {
+  const dac = chip.dac!;
+  const labeled = dac.channels.filter((c) => c.pinctrl);
+  const used = labeled.filter((c) => !writePins || writePins.includes(c.pin));
+  lines.push(`&${dac.device} {`);
   lines.push('    status = "okay";');
+  if (used.length > 0) {
+    lines.push(`    pinctrl-0 = <${used.map((c) => `&${c.pinctrl}`).join(' ')}>;`);
+    lines.push('    pinctrl-names = "default";');
+  }
   lines.push('};');
   lines.push('');
 }

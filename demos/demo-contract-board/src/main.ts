@@ -5,7 +5,7 @@
 // use the STM32 datasheet port notation, which is what the schematic shows.
 
 import { PA5, PA0, PA1 } from '@typecad/board';
-import { GPIO, ADCChannel, Time } from '@typecad/hal';
+import { GPIO, Time } from '@typecad/hal';
 
 // PA5 — the contract's LED net (D1 + 1k series resistor).
 const led = new GPIO(PA5, GPIO.OUTPUT);
@@ -13,9 +13,10 @@ const led = new GPIO(PA5, GPIO.OUTPUT);
 // PA0 — the contract's button net (SW1, external 100k pull-up).
 const button = new GPIO(PA0, GPIO.INPUT);
 
-// PA1 — the contract's analog sensor header (raw counts at the chip's
-// 12-bit resolution — no 0–1023 normalization).
-const sensor = new ADCChannel(PA1);
+// PA1 — the contract's analog sensor header. ADC lowering needs per-pin
+// channel data that devicetree does not carry, so the input reads digitally
+// for now (high/low from the sensor's comparator stage).
+const sensor = new GPIO(PA1, GPIO.INPUT);
 
 let beats: number = 0;
 
@@ -23,8 +24,8 @@ while (true) {
   led.toggle();
 
   if (button.get() === true) {
-    // Button pressed: report the sensor reading instead of the heartbeat.
-    console.log(`sensor: ${sensor.read()}`);
+    // Button pressed: report the sensor line instead of the heartbeat.
+    console.log(`sensor: ${sensor.get()}`);
   } else {
     beats = beats + 1;
     console.log(`beat ${beats}`);

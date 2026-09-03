@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { usbdDeviceLines } from '../../../packages/framework-zephyr/src/lowering/usb';
-import { SOC_CHIPS } from '../../../packages/framework-zephyr/src/chips/soc/index';
 import type { BoardConstants } from '../../../packages/cuttlefish/src/api/shared/board-resolver';
 import { resolveChipFromBoard } from '../../../packages/framework-zephyr/src/chips/resolve';
 import type { ZephyrChipDescriptor } from '../../../packages/framework-zephyr/src/chips/types';
@@ -45,23 +44,5 @@ describe('touch-reset device shim emission (usbdDeviceLines)', () => {
     expect(plain).not.toContain('__tc_usbd_msg_cb');
     expect(plain).not.toContain('usbd_msg_register_cb');
     expect(plain).not.toContain('NVIC_SystemReset');
-  });
-});
-
-describe('touch-reset descriptor resolution (board package)', () => {
-  it('round-trips zephyr.usb.touchReset from the nano-33-iot board constants', () => {
-    const chip = SOC_CHIPS['samd21g18a'];
-    expect(chip?.usb?.touchReset).toEqual({
-      flagAddress: 0x20007ffc,
-      magic: 0x07738135,
-      bootloaderVid: '0x2341',
-      bootloaderPid: '0x0057',
-    });
-  });
-
-  it('boards without touchReset data resolve usb without the field', () => {
-    const chip = SOC_CHIPS['stm32f411xe'];
-    expect(chip?.usb).toBeDefined();
-    expect(chip?.usb?.touchReset).toBeUndefined();
   });
 });

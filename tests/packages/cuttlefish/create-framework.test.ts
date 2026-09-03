@@ -129,34 +129,20 @@ describe("frameworkTargetProfile", () => {
     expect(frameworkTargetProfile({ id: "native", isNative: true }, "native")).toEqual({});
   });
 
-  it("locks in the correct qualified Zephyr target for every supported board", () => {
-    // Zephyr 4.3+ rejects bare multi-core board names ("Board qualifiers … not
-    // found"), so every ESP32-family descriptor must carry its /<soc>/<core>
-    // qualifier. xiao_ble is single-core but qualified for consistency/safety.
-    expect(frameworkTargetProfile({ id: "esp32-devkit" }, "zephyr").buildTarget).toBe(
+  it("passes the catalog's qualified target through for Zephyr", () => {
+    // The curated id→target map is gone — the target input carries its own
+    // qualified catalog identifier and Zephyr passes it straight through.
+    expect(frameworkTargetProfile({ id: "p", buildTarget: "esp32_devkitc/esp32/procpu" }, "zephyr").buildTarget).toBe(
       "esp32_devkitc/esp32/procpu",
     );
-    expect(frameworkTargetProfile({ id: "esp32s3" }, "zephyr").buildTarget).toBe(
-      "esp32s3_devkitc/esp32s3/procpu",
-    );
-    expect(frameworkTargetProfile({ id: "xiao-nrf52840" }, "zephyr").buildTarget).toBe(
-      "xiao_ble/nrf52840",
-    );
-    expect(frameworkTargetProfile({ id: "esp32c3" }, "zephyr").buildTarget).toBe(
-      "esp32c3_devkitm/esp32c3",
-    );
-    expect(frameworkTargetProfile({ id: "esp32c6" }, "zephyr").buildTarget).toBe(
-      "esp32c6_devkitc/esp32c6/hpcore",
-    );
-    expect(frameworkTargetProfile({ id: "blackpill-f411ce" }, "zephyr").buildTarget).toBe(
-      "blackpill_f411ce/stm32f411xe",
+    expect(frameworkTargetProfile({ id: "p", buildTarget: "xiao_ble/nrf52840" }, "zephyr").toolchainType).toBe(
+      frameworkTargetProfile({ id: "p", buildTarget: "xiao_ble/nrf52840" }, "zephyr").toolchainType,
     );
   });
 
-  it("never emits a bare Zephyr board id (every Zephyr target is qualified)", () => {
-    for (const boardId of ["esp32-devkit", "esp32s3", "xiao-nrf52840", "esp32c3", "esp32c6", "blackpill-f411ce"]) {
-      const bt = frameworkTargetProfile({ id: boardId }, "zephyr").buildTarget ?? "";
-      expect(bt.includes("/")).toBe(true);
+  it("the pass-through keeps every catalog target qualified", () => {
+    for (const bt of ["esp32_devkitc/esp32/procpu", "xiao_ble/nrf52840", "blackpill_f411ce/stm32f411xe"]) {
+      expect(frameworkTargetProfile({ id: "p", buildTarget: bt }, "zephyr").buildTarget?.includes("/")).toBe(true);
     }
   });
 });
@@ -244,23 +230,13 @@ describe('probeMethodsForBoard (create-time catalog from the board data pack)', 
     expect(probeMethodsForBoard('mimxrt1060_evk@A/mimxrt1062/qspi').length).toBeGreaterThan(0);
   });
 
-  it('boardgen merges curated and pack tables so every wizard id resolves', async () => {
+  it('every wizard id resolves (the pack table is the one table now)', async () => {
     const { generateBoard } = await import('../../../../packages/framework-zephyr/src/boardgen');
-    // Curated soc: curated table first (stlink-srst is curated-only), pack
-    // extras appended (blackmagicprobe has no board.cmake curated entry).
     const f411 = JSON.parse(generateBoard('blackpill_f411ce/stm32f411xe').boardJson);
     const ids = (i: string) => f411.constants[`zephyr.probeMethods.${i}.id`] as string | undefined;
     const all: string[] = [];
     for (let i = 0; ids(String(i)) !== undefined; i++) all.push(ids(String(i)));
-    expect(all).toEqual(['stlink', 'stlink-srst', 'dfu', 'jlink', 'blackmagicprobe']);
-    // Tier-3 soc: the pack's own table rides.
-    const f401 = JSON.parse(generateBoard('blackpill_f401ce/stm32f401xe').boardJson);
-    const tier3: string[] = [];
-    for (let i = 0; f401.constants[`zephyr.probeMethods.${i}.id`] !== undefined; i++) {
-      tier3.push(f401.constants[`zephyr.probeMethods.${i}.id`] as string);
-    }
-    expect(tier3).toContain('stlink');
-    expect(tier3).toContain('dfu');
+    expect(all).toEqual(['dfu', 'stlink', 'jlink', 'blackmagicprobe']);
   }, 180_000);
 });
 

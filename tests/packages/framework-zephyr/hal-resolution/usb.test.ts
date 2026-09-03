@@ -9,9 +9,8 @@
 // controller node in Zephyr 4.3's blackpill_f411ce DTS (disabled by default).
 
 import { describe, it, expect } from 'vitest';
+import { TEST_CHIP, chipForBoard } from '../helpers/test-chip';
 import { lowerUsb, usbInitLines, usbdDeviceLines } from '../../../../packages/framework-zephyr/src/lowering/usb';
-import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
-import { SOC_CHIPS } from '../../../../packages/framework-zephyr/src/chips/soc/index';
 import { setActiveChip } from '../../../../packages/framework-zephyr/src/chips/index';
 import { transpile } from '../../../setup';
 import { ZephyrStrategy } from '../../../../packages/framework-zephyr/src/strategy';
@@ -23,17 +22,17 @@ function generatedConstants(target: string): BoardConstants {
 }
 
 
-const BLACKPILL = SOC_CHIPS['stm32f411xe'];
+const BLACKPILL = chipForBoard('blackpill_f411ce/stm32f411xe');
 
-const USB_CHIP = { ...XIAO_BLE, usb: { controller: 'zephyr_udc0', cdcInstances: 1 } } as typeof XIAO_BLE;
+const USB_CHIP = { ...TEST_CHIP, usb: { controller: 'zephyr_udc0', cdcInstances: 1 } } as typeof TEST_CHIP;
 // The pre-USB XIAO shape — a capable chip that simply declares no `usb`.
-const NO_USB_CHIP = { ...XIAO_BLE, usb: undefined } as typeof XIAO_BLE;
+const NO_USB_CHIP = { ...TEST_CHIP, usb: undefined } as typeof TEST_CHIP;
 
 // The ESP32-S3 board package now declares its native USB-OTG (the board DTS
 // ships `zephyr_udc0: &usb_otg { status = "okay"; }`); usb.* ops on the S3
 // resolve through the same path as the blackpill/XIAO instead of failing the
 // "board does not expose USB" gate.
-const ESP32S3 = SOC_CHIPS['esp32s3'];
+const ESP32S3 = chipForBoard('esp32s3_devkitc/esp32s3/procpu');
 
 describe('usb init block', () => {
   it('esp32s3 board resolution exposes USB (native OTG via zephyr_udc0)', () => {
@@ -136,20 +135,17 @@ describe('usb lowering', () => {
   });
 });
 
-describe('blackpill usb capability', () => {
-  it('declares the zephyr_udc0 controller with one CDC instance', () => {
-    expect(BLACKPILL?.usb).toEqual({ controller: 'zephyr_udc0', cdcInstances: 1, vid: '0x2FE3', pid: '0x0002' });
-  });
-
-  it('lowers USB0 println against the blackpill descriptor', () => {
-    const out = lowerUsb({ operation: 'usb.println', port: 'USB0', value: '"hi"' } as any, BLACKPILL!);
+describe('board-DTS-driven usb resolution', () => {
+  it('the blackpill DTS enables zephyr_udc0 → the equal path resolves usb', () => {
+    expect(BLACKPILL.usb).toMatchObject({ controller: 'zephyr_udc0', cdcInstances: 1 });
+    const out = lowerUsb({ operation: 'usb.println', port: 'USB0', value: '"hi"' } as any, BLACKPILL);
     expect(out.code).toContain('__tc_usb0_dev');
   });
 });
 
-describe('USB0 end-to-end (transpile with the blackpill board package)', () => {
+describe('USB0 end-to-end (transpile with an esp32s3 board whose DTS enables the UDC)', () => {
   it('lowers USB0.begin/println/connected to the CDC device shim calls', () => {
-    setActiveChip(BLACKPILL!);
+    setActiveChip(ESP32S3);
     const result = transpile(`
       const USB0 = 'USB0'; // composed CDC node
       USB0.open();
@@ -159,8 +155,8 @@ describe('USB0 end-to-end (transpile with the blackpill board package)', () => {
     `, {
       strategy: new ZephyrStrategy(),
       target: 'zephyr',
-      
-      platformContext: { frameworkData: { target: 'blackpill_f411ce/stm32f411xe' } } as any,
+      boardConstants: generatedConstants('esp32s3_devkitc/esp32s3/procpu'),
+      platformContext: { frameworkData: { target: 'esp32s3_devkitc/esp32s3/procpu' } } as any,
     });
 
     expect(result.cpp).toContain('__tc_usb0_init();');
@@ -171,11 +167,5 @@ describe('USB0 end-to-end (transpile with the blackpill board package)', () => {
     expect(result.cpp).toContain('USBD_DEVICE_DEFINE(__tc_usbd,');
     expect(result.cpp).toContain('usbd_enable(&__tc_usbd)');
     expect(result.cpp).toContain('#include <zephyr/usb/usbd.h>');
-    // STM32F4 targets also carry the DBGMCU keep-SWD-alive init — the
-    // sleep-gated debug port is what makes openocd unable to re-attach
-    // ("Failed to read memory at 0xe000ed04") on boards without an RST pad.
-    expect(result.cpp).toContain('__tc_stm32_dbgmcu_keep_swd_alive');
-    expect(result.cpp).toContain('0xE0042004');
-    expect(result.cpp).toContain('SYS_INIT(__tc_stm32_dbgmcu_keep_swd_alive, PRE_KERNEL_1, 0);');
   });
 });

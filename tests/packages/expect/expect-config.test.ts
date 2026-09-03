@@ -32,7 +32,28 @@ describe('expect config', () => {
     const config = loadConfig(dir);
 
     expect(config.test.exclude).toEqual(['tests/32-wdt.test.ts']);
-    expect(config.buildTarget).toBe('esp32:esp32:esp32');
+    // board: is the source of truth for the build target (mirrors the
+    // cuttlefish config-loader) — frameworkData.buildTarget is honored only
+    // for board-less projects, so this disagreeing fixture resolves to board.
+    expect(config.buildTarget).toBe('esp32_devkitc/esp32/procpu');
+  });
+
+  it('derives buildTarget from board: for board-only configs', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-expect-config-'));
+    fs.writeFileSync(
+      path.join(dir, 'cuttlefish.config.ts'),
+      [
+        'export default {',
+        "  target: 'zephyr',",
+        "  board: 'blackpill_f411ce/stm32f411xe',",
+        '};',
+        '',
+      ].join('\n'),
+      'utf8',
+    );
+
+    const config = loadConfig(dir);
+    expect(config.buildTarget).toBe('blackpill_f411ce/stm32f411xe');
   });
 
   it('loads the test.usb identity block', () => {

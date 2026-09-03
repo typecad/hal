@@ -12,7 +12,7 @@ import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readBoardDts } from '../../../packages/framework-zephyr/src/sdk/dts-reader';
+import { readBoardDts } from '../../../packages/cuttlefish/src/board-catalog/dts-reader';
 
 const zephyrRoot = process.env.ZEPHYR_ROOT ?? path.join(os.homedir(), 'zephyrproject', 'zephyr');
 const haveSdk = fs.existsSync(path.join(zephyrRoot, 'boards'));

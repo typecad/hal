@@ -1,14 +1,5 @@
-export { scaffoldProject, normalizeProjectName, KNOWN_TARGETS, KNOWN_MCUS, printCreateNextSteps } from './scaffold.js';
-export type { KnownTarget, KnownMcu, ScaffoldProjectResult } from './scaffold.js';
-export {
-  mcuAsTarget,
-  findKnownMcu,
-  findZephyrBoardForMcu,
-  mcuSupportsZephyr,
-  zephyrBoardsForMcu,
-  sanitizeBoardName,
-} from './mcu-target.js';
-export type { McuCreateTarget, McuZephyrBoard } from './mcu-target.js';
+export { scaffoldProject, normalizeProjectName, KNOWN_TARGETS, printCreateNextSteps } from './scaffold.js';
+export type { KnownTarget, ScaffoldProjectResult } from './scaffold.js';
 export { FRAMEWORK_CATALOG, frameworksForTarget, frameworkCompatibleWithTarget, frameworkCatalogEntry, detectPackageManager, frameworkTargetProfile, probeMethodsForBoard } from './framework-catalog.js';
 export type { FrameworkCatalogEntry, BoardLike, PackageManager, FrameworkTargetProfile, TargetProfileInput, CatalogProbeMethod } from './framework-catalog.js';
 export { installProjectDependencies, __setProjectInstallRunnerForTest } from './install-deps.js';

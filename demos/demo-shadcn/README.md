@@ -1,11 +1,10 @@
 # demo-shadcn
 
 The **canonical UI demonstration** for the Cuttlefish UI package — everything
-the engine can do, themed end-to-end by the shadcn component kit
-(`cuttlefish add shadcn`). Runs on an ESP32 + ILI9341 panel (same board and
-wiring as `demo-ui`) and in the browser preview at the panel's true 320×240
-rgb565 — colors, scroll physics, and the AA font all render exactly what the
-hardware shows.
+the engine can do, themed end-to-end by the shadcn component kit. Runs on an
+ESP32-S3 + ST7796S panel (same board and wiring as `zephyr-ui`) and in the
+browser preview at the panel's true 480×320 rgb565 — colors, scroll physics,
+and the AA font all render exactly what the hardware shows.
 
 ## Screen map (19 screens)
 
@@ -16,7 +15,7 @@ hardware shows.
 | Card | full card anatomy (header / title / description / content / footer) |
 | Form Controls | input + keyboard-less echo, switch (sliding pill knob), select (modal option list), checkbox, radio group, range, validation states (destructive border + hint) |
 | Alert & Skeleton | default/destructive alerts, pulsing skeleton (opacity keyframes) |
-| Progress & Avatar | `setInterval`-driven progress, `img` avatar |
+| Progress & Avatar | Thread-driven progress, `img` avatar |
 | Table | UA equal-width table approximation |
 | Typography | `h1`–`h6`, `p`, `small`, `pre`/`code`/`kbd` (bundled mono face), `ul`/`ol`/`li`, `dl`/`dt`/`dd`, `text-transform`, `letter-spacing`, ellipsis |
 | Rich Text | inline runs (`b`/`i`/`u`/`span` color+size), hard breaks, nested styles, tappable rich links |
@@ -27,6 +26,7 @@ hardware shows.
 | Keyboard | on-screen custom keyboard (`<keyboard>` template) bound to an input |
 | State & Bindings | signals + `{expr}` interpolation, `ui.bind` text/style bindings, declarative `bind:value` two-way (range ↔ signal), `ui.window.setTitle`, interval clock, `meter`, disabled controls |
 | Drawer | slide-in panel (`<drawer side>`, author-styled absolute panel), `ui.drawer.open/close`, outside-tap dismiss, themed content |
+| Dialog & Toast | centered modal (`<dialog>`, scrim tap closes, footer buttons), auto-dismissing `<toast>` with a live counter |
 | Tabs | segmented trigger row + absolutely-stacked panes switched by a signal (`ui.bind(x, 'visible', ...)`), active-trigger styling, live pane content |
 | Accordion | single-open collapsible sections (signal + `visible` bindings), chevron `v`/`^` text swap, live section content |
 
@@ -34,15 +34,14 @@ hardware shows.
 
 ```sh
 npm run build                 # transpile (passes --autosar=strict)
-npm run preview               # browser preview, device-faithful 320x240 rgb565
-npm run compile               # arduino-cli compile (needs lib/ + toolchain)
+npm run preview               # browser preview, device-faithful 480x320 rgb565
+npm run compile               # cuttlefish build --compile (west toolchain)
 ```
 
 ## Theming
 
 - `src/styles/shadcn.css` is this project's **copy** of the kit preset
-  (copy-and-own, like shadcn/ui itself — `cuttlefish add shadcn` drops the
-  same file).
+  (copy-and-own, like shadcn/ui itself).
 - `app.ui`'s `<style>` does `@import "./styles/shadcn.css"` and adds the
   demo's screen chrome, expressed only through the kit's tokens.
 - `themeClass: 'dark'` in `cuttlefish.config.ts` selects the dark token set;

@@ -2,10 +2,11 @@
 // cuttlefish.config.ts — framework-zephyr hardware HAL tests (`npm run hal`)
 //
 // Runs the thin-HAL expect suite against a connected STM32 Black Pill
-// (WeAct F411CE). The board is found automatically by its USB CDC identity
-// (VID 2FE3 / PID 0002 — the board package's declared `usb` block), so the
-// port survives re-enumeration after every flash. No port is hardcoded;
-// `--port` overrides if ever needed.
+// (WeAct F411CE). The board is found automatically by its USB CDC identity —
+// the Zephyr-test default 2FE3:0001 (per-board PID assignment is gone; every
+// Zephyr CDC board enumerates at the default, so the rig assumes one CDC
+// board connected at a time) — and the port survives re-enumeration after
+// every flash. No port is hardcoded; `--port` overrides if ever needed.
 //
 // Pipeline per file: preprocess (@typecad/expect) → cuttlefish transpile →
 // west build → west flash → serial capture on the CDC console → host-side
@@ -38,9 +39,9 @@ const config: CuttlefishConfig = {
   },
 
   test: {
-    // Auto-find the blackpill by its USB identity (the board package's
-    // declared vid/pid). Re-resolved after every upload.
-    usb: { vid: '0x2FE3', pid: '0x0002' },
+    // Auto-find the blackpill by its USB identity — the Zephyr-test default
+    // (2FE3:0001). Re-resolved after every upload.
+    usb: { vid: '0x2FE3', pid: '0x0001' },
     port: '',
     baudRate: 115200,
     timeout: 60000,

@@ -57,7 +57,7 @@ Breakpoints are only injected when cuttlefish is run with `--debug`:
 
 ```sh
 cuttlefish build --debug                                    # uses cuttlefish.config.ts entry
-cuttlefish src/index.ts --debug --framework @typecad/framework-arduino --compile --upload --port COM4
+cuttlefish src/index.ts --debug --compile --upload --port COM4
 ```
 
 See `cuttlefish --help` for the full `--debug` description.
@@ -87,17 +87,17 @@ under cuttlefish's basename-matching loader):
 | `logMessage` | string | no | Logpoint with `{variable}` interpolation. When present, the breakpoint logs instead of halting. |
 
 Two source files sharing the same basename in one project will share
-breakpoints — acceptable for typical single-program Arduino projects.
+breakpoints — acceptable for typical single-program projects.
 
 ## Native debugging on ESP32-S3
 
 For ESP32-S3, this extension's printf instrumentation is superseded by a
 native GDB path. `cuttlefish build --debug` on `esp32s3` emits `#line`
 directives in the generated C++ and writes `.vscode/launch.json` +
-`tasks.json` (at the git/workspace root, where VS Code reads them) plus
-`openocd.cfg` + `sdkconfig.defaults.debug` next to the build output. Press
-**F5** in VS Code and the generated config attaches GDB to the chip's
-built-in USB-Serial-JTAG — one USB cable, no external probe.
+`tasks.json` (at the cuttlefish project root, where VS Code reads them) plus
+`.cuttlefish/openocd.cfg` next to the build output. Press **F5** in VS Code
+and the generated config attaches GDB to the chip's built-in USB-Serial-JTAG
+— one USB cable, no external probe.
 
 For Zephyr projects (`@typecad/framework-zephyr` on an esp32s3 board),
 `cuttlefish create` writes the same starter artifacts at project creation —
@@ -108,21 +108,22 @@ re-merges the launch entry with the build-cache-resolved gdbPath. (The
 starter gdbPath is probed from `$ZEPHYR_SDK_INSTALL_DIR`, the
 zephyr-installer micromamba layout, or `~/zephyr-sdk-*`.)
 
-`launch.json` ships a single **`gdbtarget`** configuration, provided by the
-ESP-IDF VS Code extension. The extension's gdbtarget adapter manages OpenOCD
-itself (via its OpenOCD Manager, reading `idf.openOcdConfigs` from settings).
-The `preLaunchTask` is just `build + flash` — no competing OpenOCD process.
-Install the ESP-IDF extension (which bundles OpenOCD + the xtensa GDB, and
-requires ESP-IDF itself configured), set the board's serial port in
-`cuttlefish.config.ts` (`console.port`) or pass `--port`. See
-`demos/demo/README.md` for the full F5 flow.
+`launch.json` ships a single **`cortex-debug`** configuration (`servertype:
+"openocd"`, or `"jlink"` when the board's probe method is a JLink runner).
+The cortex-debug extension starts OpenOCD itself as a child process, passing
+the generated `.cuttlefish/openocd.cfg`; the `preLaunchTask` is just
+`build + flash` — no competing OpenOCD process. Install the cortex-debug
+extension (ESP32 targets also need OpenOCD — the framework probes the
+openocd-esp32 install layout or the Zephyr SDK's own openocd), and set the
+board's serial port in `cuttlefish.config.ts` (`console.port`) or pass
+`--port`.
 
-The printf instrumentation documented below remains the path for targets that
-don't yet support native debugging (Arduino, other ESP32 variants).
+The printf instrumentation documented below remains the path for targets
+that don't ship a native GDB path yet.
 
 ## Limitations
 
-- This is a `Serial.print`-based instrumentation shim, not a DAP debug
+- This is a printf-based instrumentation shim, not a DAP debug
   adapter. There is no native step/step-in/step-out — each breakpoint halts
   until ENTER (continue) or `s` (skip this breakpoint for the run) is received
   over serial. **On ESP32-S3, use the native GDB path above instead** — it
@@ -131,12 +132,10 @@ don't yet support native debugging (Arduino, other ESP32 variants).
   parameters in the enclosing function. Member access and arbitrary
   expressions are not resolved; `{ value }` in a logpoint emits the literal
   `"{value}"` if `value` is not in scope.
-- Baud rate is hardcoded to `9600` in the injected `Serial.begin` regardless
-  of the CLI `--baud` value.
-- **Target-specific output:** on Arduino/AVR the injected code uses `Serial.*`
-  and blocks on `Serial.available()`. On ESP-IDF (`@typecad/framework-esp32`)
-  it routes through native `printf` and blocks on `getchar()` with the task
-  watchdog fed — so an ESP32 debug build must have `idf.py monitor` (or
-  equivalent) attached, or it will hang at the first breakpoint until power
-  is cycled. This is the ESP-IDF equivalent of "no IDE attached to a
-  breakpoint."
+- Baud rate is fixed by the framework's console shim regardless of the CLI
+  `--baud` value.
+- **Target-specific output:** under @typecad/framework-zephyr the injected
+  code routes through the board console (`printk`/shell backend) and blocks on
+  a getchar-equivalent with the idle thread feeding — so a debug build must
+  have a serial monitor attached (e.g. `cuttlefish build --monitor`), or it
+  will hang at the first breakpoint until power is cycled.

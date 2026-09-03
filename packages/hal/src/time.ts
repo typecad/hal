@@ -9,7 +9,7 @@
 // k_msleep (yielding sleep), k_uptime_get (ms clock), k_busy_wait (spin).
 // ---------------------------------------------------------------------------
 
-import { timeSleep, timeNow, timeNowUs, timeBusyWaitUs, getFreeHeap } from './emit.js';
+import { timeSleep, timeNow, timeNowUs, timeBusyWaitUs } from './emit.js';
 
 export class TimeClass {
   static readonly __instance_name = 'Time';
@@ -31,8 +31,11 @@ export class TimeClass {
     return timeNow();
   }
 
-  /** Microseconds since boot as a double
-   *  (k_cyc_to_us_floor64(k_cycle_get_64())). */
+  /** Microseconds since boot as a double — uptime-derived
+   *  (k_uptime_get() * 1000) on every board: the cycle-counter form reads a
+   *  constant on SoCs without a free-running 64-bit counter, so the one
+   *  uniform, monotonic expression wins. Resolution is the uptime tick
+   *  (millisecond); for sub-ms determinism use Counter (hardware timer). */
   nowUs(): number {
     return timeNowUs();
   }
@@ -42,37 +45,6 @@ export class TimeClass {
   busyWaitUs(us: number): void {
     timeBusyWaitUs(us);
   }
-
-  /** Free heap bytes. 0 on targets without a portable query (see the
-   *  timing.free_heap lowering). */
-  freeHeap(): number {
-    return getFreeHeap();
-  }
 }
 
 export const Time = new TimeClass();
-
-// ── JS-named timers (k_timer + k_work polyfill underneath) ──────────────────
-// These keep their plain-JS names deliberately; they were the one part of the
-// old timing surface that predates Arduino and maps cleanly everywhere.
-
-import { rawCpp } from './emit.js';
-import { callback } from './callback.js';
-
-export function setInterval(handler: () => void, timeout: number): number {
-  rawCpp(`return __tc_setInterval(${callback(handler)}, ${timeout});`);
-  return 0;
-}
-
-export function setTimeout(handler: () => void, timeout: number): number {
-  rawCpp(`return __tc_setTimeout(${callback(handler)}, ${timeout});`);
-  return 0;
-}
-
-export function clearInterval(id: number): void {
-  rawCpp(`__tc_clearInterval(${id});`);
-}
-
-export function clearTimeout(id: number): void {
-  rawCpp(`__tc_clearTimeout(${id});`);
-}

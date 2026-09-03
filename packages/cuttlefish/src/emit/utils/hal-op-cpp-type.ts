@@ -29,6 +29,9 @@ export function cppTypeForHalOp(operation: string): string | undefined {
       return "int";
     case "http.send":
       return "bool";
+    // Zephyr's sensor channel value is a double (val1 + val2/1e6).
+    case "sensor.get":
+      return "double";
     default:
       return undefined;
   }

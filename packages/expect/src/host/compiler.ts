@@ -107,12 +107,17 @@ export function transpileTestFile(
   const transpileOutput = `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim();
 
   if (result.status !== 0) {
+    // Surface spawn-level errors (EMFILE/ENOENT from a degraded runner —
+    // e.g. after serial-handle leaks): spawnSync reports them on .error
+    // with a null status and EMPTY stdout/stderr, which previously masked
+    // the cause as a bare "Transpilation failed:".
+    const spawnErr = result.error ? ` (spawn error: ${result.error.message})` : '';
     return {
       success: false,
       projectDir: buildDir,
       sourcePath: '',
       output: transpileOutput,
-      error: `Transpilation failed:\n${transpileOutput}`,
+      error: `Transpilation failed${spawnErr}:\n${transpileOutput}`,
     };
   }
 

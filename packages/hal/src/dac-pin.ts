@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// DACChannel — the thin Zephyr-shaped analog output
+// DAC — the thin Zephyr-shaped analog output
 //
 // Construction carries the resolution (default: the chip descriptor's channel
 // resolution); write() lowers to a lazy dac_channel_setup (once) +
@@ -9,7 +9,7 @@
 import { dacWriteValue } from './emit.js';
 import type { Pin } from './gpio.js';
 
-export class DACChannel {
+export class DAC {
   static readonly __default_fields = { _resolution: '0' };
 
   private readonly _pin: number;

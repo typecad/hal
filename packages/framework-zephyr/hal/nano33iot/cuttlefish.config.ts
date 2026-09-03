@@ -2,14 +2,16 @@
 // cuttlefish.config.ts — framework-zephyr hardware HAL tests (Nano 33 IoT)
 //
 // Runs the thin-HAL expect suite against a connected Arduino Nano 33 IoT
-// (SAMD21). The board is found automatically by its USB CDC identity
-// (VID 2FE3 / PID 0003 — the board package's declared `usb` block).
+// (SAMD21). The board is found automatically by its USB CDC identity —
+// the Zephyr-test default 2FE3:0001 (per-board PID assignment is gone;
+// every Zephyr CDC board enumerates at the default, so the rig assumes
+// one CDC board connected at a time).
 //
 // Flashing rides the BOSSA bootloader with NO double-tap: the running
 // firmware's USB shim reboots into the bootloader when the host touches the
 // CDC port at 1200 baud (the board package's touchReset data), then bossac
 // flashes the bootloader's own USB identity (2341:0057) and the board
-// re-enumerates as 2FE3:0003 for the serial capture.
+// re-enumerates as 2FE3:0001 for the serial capture.
 //
 // console.output: 'usb' both carries the test protocol AND frees sercom5
 // (D0/D1) for the thin UART test.
@@ -38,8 +40,9 @@ const config: CuttlefishConfig = {
   },
 
   test: {
-    // Auto-find by USB identity; re-resolved after every upload.
-    usb: { vid: '0x2FE3', pid: '0x0003' },
+    // Auto-find by USB identity (the Zephyr-test default 2FE3:0001);
+    // re-resolved after every upload.
+    usb: { vid: '0x2FE3', pid: '0x0001' },
     port: '',
     baudRate: 115200,
     timeout: 60000,

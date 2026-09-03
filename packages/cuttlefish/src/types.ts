@@ -139,7 +139,7 @@ export interface LibraryDefinition {
 }
 
 export interface CommandLineOptions {
-  command: "default" | "build" | "gen-libdefs" | "gen-decls" | "map-error" | "preview" | "doctor" | "licenses";
+  command: "default" | "build" | "gen-decls" | "preview" | "doctor" | "licenses";
   /** For `licenses`: treat unknown/missing licenses as failures (exit 1). */
   strict?: boolean;
   /** For `licenses`: scan all installed libraries (default: this project's only). */
@@ -167,11 +167,6 @@ export interface CommandLineOptions {
    *  applies only when neither is set). */
   baud?: number;
   platformContext?: PlatformContext;
-  mapFile?: string;
-  cppFile?: string;
-  cppLine?: number;
-  cppColumn?: number;
-  message?: string;
   /** Tree-shaking options */
   treeShaking?: TreeShakingOptions;
   /**
@@ -210,12 +205,6 @@ export interface CommandLineOptions {
   projectRoot?: string;
 }
 
-export interface GenerateLibdefOptions {
-  inputFile: string;
-  outDir: string;
-}
-
-/** `cuttlefish add <preset>` — scaffold a copy-and-own asset into the project. */
 export interface GeneratedOutputs {
   headerPath?: string;
   sourcePath: string;
@@ -253,12 +242,6 @@ export interface CreateCommandOptions {
   /** @deprecated Use target */
   board?: string;
   target?: string;
-  /** Bare-silicon target id (e.g. 'stm32f411') — no board target;
-   *  programs silicon via the curated soc descriptor. */
-  mcu?: string;
-  /** Existing Zephyr board name (bare west id) for MCU-only Zephyr targets —
-   *  skips the wizard's board picker. Default: generate a custom board. */
-  zephyrBoard?: string;
   framework?: string;
   baud?: number;
   noStarter?: boolean;
@@ -276,7 +259,9 @@ export interface CreateCommandOptions {
 /** Parsed `cuttlefish board <subcommand>` options. */
 export interface BoardCommandOptions {
   command: "board";
-  subcommand: "regen";
+  subcommand: "regen" | "sync";
+  /** sync: optional explicit Zephyr checkout path to walk. */
+  zephyrBase?: string;
 }
 
 /** Parsed `cuttlefish library <subcommand>` options. */

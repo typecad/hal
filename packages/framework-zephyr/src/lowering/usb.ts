@@ -94,6 +94,11 @@ export function usbdDeviceLines(chip: ZephyrChipDescriptor): string[] {
     'USBD_DESC_LANG_DEFINE(__tc_usbd_lang);',
     'USBD_DESC_MANUFACTURER_DEFINE(__tc_usbd_mfr, "typecad");',
     'USBD_DESC_PRODUCT_DEFINE(__tc_usbd_product, "cuttlefish app");',
+    // Serial number from hwinfo: Windows keys USB devnodes without a serial
+    // on the physical port, so flash-cycle re-enumerations reuse stale
+    // port-keyed nodes (the "access denied" open wedge). Identity-based
+    // instance paths are stable across ports and never hit that pool.
+    'USBD_DESC_SERIAL_NUMBER_DEFINE(__tc_usbd_sn);',
     'USBD_DESC_CONFIG_DEFINE(__tc_usbd_cfg_desc, "cuttlefish");',
     'USBD_CONFIGURATION_DEFINE(__tc_usbd_cfg, 0, 250, &__tc_usbd_cfg_desc);',
     'static bool __tc_usbd_started = false;',
@@ -103,6 +108,8 @@ export function usbdDeviceLines(chip: ZephyrChipDescriptor): string[] {
     '    __tc_usbd_started = true;',
     '    int err = usbd_add_descriptor(&__tc_usbd, &__tc_usbd_lang);',
     '    if (err != 0) { printk("cuttlefish usb: lang descriptor failed: %d\\n", err); return; }',
+    '    err = usbd_add_descriptor(&__tc_usbd, &__tc_usbd_sn);',
+    '    if (err != 0) { printk("cuttlefish usb: serial descriptor failed: %d\\n", err); return; }',
     '    err = usbd_add_descriptor(&__tc_usbd, &__tc_usbd_mfr);',
     '    if (err != 0) { printk("cuttlefish usb: manufacturer descriptor failed: %d\\n", err); return; }',
     '    err = usbd_add_descriptor(&__tc_usbd, &__tc_usbd_product);',

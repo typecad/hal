@@ -5,42 +5,42 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from 'vitest';
+import { TEST_CHIP } from '../helpers/test-chip';
 import { lowerI2c } from '../../../../packages/framework-zephyr/src/lowering/i2c';
 import { lowerSpi, spiTargetNames, spiTargetStateLines } from '../../../../packages/framework-zephyr/src/lowering/spi';
 import { lowerUart, uartRingStateLines } from '../../../../packages/framework-zephyr/src/lowering/uart';
 import { transpileZephyrStrategy, expectCppContains, expectCppNotContains, findDiagnostics } from '../../../setup';
 import { scanSpiTargets } from '../../../../packages/framework-zephyr/src/toolchain/index';
 import { generateOverlay } from '../../../../packages/framework-zephyr/src/dt-config/overlay';
-import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
 
 // ── I2CTarget ───────────────────────────────────────────────────────────────
 
 describe('thin I2CTarget lowering', () => {
   it('reg_write → one i2c_reg_write_byte, no transaction dance', () => {
-    const out = lowerI2c({ operation: 'i2c.reg_write', bus: 'I2C1', address: 0x44, hz: 0, reg: 0x30, value: 0xA2 } as any, XIAO_BLE);
+    const out = lowerI2c({ operation: 'i2c.reg_write', bus: 'I2C1', address: 0x44, hz: 0, reg: 0x30, value: 0xA2 } as any, TEST_CHIP);
     expect(out.code).toBe(' i2c_reg_write_byte(__tc_i2c1_dev, static_cast<uint16_t>(68), static_cast<uint8_t>(48), static_cast<uint8_t>(162));');
   });
 
   it('construction hz applies once via a guarded i2c_configure', () => {
-    const out = lowerI2c({ operation: 'i2c.reg_write', bus: 'I2C1', address: 0x44, hz: 400000, reg: 1, value: 2 } as any, XIAO_BLE);
+    const out = lowerI2c({ operation: 'i2c.reg_write', bus: 'I2C1', address: 0x44, hz: 400000, reg: 1, value: 2 } as any, TEST_CHIP);
     expect(out.code).toContain('__tc_i2c1_spd_done');
     expect(out.code).toContain('i2c_configure(__tc_i2c1_dev, I2C_SPEED_SET(I2C_SPEED_FAST))');
     expect(out.code).toContain('i2c_reg_write_byte');
   });
 
   it('reg_read is a statement expression returning the byte', () => {
-    const out = lowerI2c({ operation: 'i2c.reg_read', bus: 'I2C1', address: 0x44, hz: 0, reg: 0x32 } as any, XIAO_BLE);
+    const out = lowerI2c({ operation: 'i2c.reg_read', bus: 'I2C1', address: 0x44, hz: 0, reg: 0x32 } as any, TEST_CHIP);
     expect(out.expression).toContain('i2c_reg_read_byte(__tc_i2c1_dev, static_cast<uint16_t>(68), static_cast<uint8_t>(50), &__v)');
     expect(out.expression).toMatch(/__v; \}\)$/);
   });
 
   it('reg_update → native read-modify-write (i2c_reg_update_byte)', () => {
-    const out = lowerI2c({ operation: 'i2c.reg_update', bus: 'I2C1', address: 0x44, hz: 0, reg: 0x30, mask: 0x0F, value: 0x02 } as any, XIAO_BLE);
+    const out = lowerI2c({ operation: 'i2c.reg_update', bus: 'I2C1', address: 0x44, hz: 0, reg: 0x30, mask: 0x0F, value: 0x02 } as any, TEST_CHIP);
     expect(out.code).toContain('i2c_reg_update_byte(__tc_i2c1_dev, static_cast<uint16_t>(68), static_cast<uint8_t>(48), static_cast<uint8_t>(15), static_cast<uint8_t>(2))');
   });
 
   it('dev_write with a literal array builds one i2c_write', () => {
-    const out = lowerI2c({ operation: 'i2c.dev_write', bus: 'I2C1', address: 0x44, hz: 0, bytes: [0x2C, 0x06] } as any, XIAO_BLE);
+    const out = lowerI2c({ operation: 'i2c.dev_write', bus: 'I2C1', address: 0x44, hz: 0, bytes: [0x2C, 0x06] } as any, TEST_CHIP);
     expect(out.code).toContain('uint8_t __tc_i2cw[] = { 44, 6 };');
     expect(out.code).toContain('i2c_write(__tc_i2c1_dev, __tc_i2cw, sizeof(__tc_i2cw), static_cast<uint16_t>(68))');
   });
@@ -109,7 +109,7 @@ describe('thin SPITarget names + state', () => {
   });
 
   it('transceive lowers to spi_transceive_dt against the spec var, hardware CS', () => {
-    const out = lowerSpi({ operation: 'spi.transceive', bus: 'SPI0', cs: 10, hz: 10000000, mode: 0, tx: [0x9F], rx: 'idBuf' } as any, XIAO_BLE);
+    const out = lowerSpi({ operation: 'spi.transceive', bus: 'SPI0', cs: 10, hz: 10000000, mode: 0, tx: [0x9F], rx: 'idBuf' } as any, TEST_CHIP);
     expect(out.code).toContain('uint8_t __txt[] = { 159 };');
     expect(out.code).toContain('.buf = const_cast<void*>(static_cast<const void*>(idBuf)), .len = sizeof(idBuf)');
     expect(out.code).toContain('spi_transceive_dt(&__tc_spit_spi0_cs10_spec, &__txst, &__rbs)');
@@ -117,9 +117,9 @@ describe('thin SPITarget names + state', () => {
   });
 
   it('write-only transceive passes a NULL rx set; dev_write uses spi_write_dt', () => {
-    const t = lowerSpi({ operation: 'spi.transceive', bus: 'SPI0', cs: 10, hz: 0, mode: 0, tx: [1, 2], rx: '' } as any, XIAO_BLE);
+    const t = lowerSpi({ operation: 'spi.transceive', bus: 'SPI0', cs: 10, hz: 0, mode: 0, tx: [1, 2], rx: '' } as any, TEST_CHIP);
     expect(t.code).toContain('.buffers = NULL, .count = 0');
-    const w = lowerSpi({ operation: 'spi.dev_write', bus: 'SPI0', cs: 10, hz: 0, mode: 0, tx: [0x06] } as any, XIAO_BLE);
+    const w = lowerSpi({ operation: 'spi.dev_write', bus: 'SPI0', cs: 10, hz: 0, mode: 0, tx: [0x06] } as any, TEST_CHIP);
     expect(w.code).toContain('spi_write_dt(&__tc_spit_spi0_cs10_spec, &__txsw)');
   });
 });
@@ -227,7 +227,7 @@ describe('UART ring + awaitable Time.sleep end-to-end (esp32s3 target)', () => {
 
 describe('overlay emits SPITarget child nodes', () => {
   it('one node per target: cs-gpios entry + reg index + spi-max-frequency + mode bits', () => {
-    const txt = generateOverlay(XIAO_BLE, {
+    const txt = generateOverlay(TEST_CHIP, {
       usesSpi: true,
       spiTargets: [{ busIndex: 0, cs: 10, hz: 10000000, mode: 3 }],
     }, undefined);
@@ -245,7 +245,7 @@ describe('overlay emits SPITarget child nodes', () => {
   });
 
   it('targets append after sensors on a shared controller (stable reg indexes)', () => {
-    const txt = generateOverlay(XIAO_BLE, {
+    const txt = generateOverlay(TEST_CHIP, {
       usesSpi: true,
       sensorParts: [{ part: 'bosch_bme280', busIndex: 0, port: 9, busKind: 'spi', spiHz: 1000000, spiMode: 0, alertPin: -1 }],
       spiTargets: [{ busIndex: 0, cs: 10, hz: 10000000, mode: 0 }],

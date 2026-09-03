@@ -212,11 +212,6 @@ export { generateStaticAsyncRuntime } from './async-runtime-static.js';
 // No-STL cooperative scheduler (priority + time-budget) — Zephyr-friendly
 export { generateCoopScheduler, buildCoopSchedInjection } from './coop-scheduler.js';
 export type { CoopWorkUnit, CoopSchedOptions } from './coop-scheduler.js';
-// Worker offload runtime (generalized request-in / poll-out)
-export { generateWorkerRuntime, lowerWorkerOp } from './worker-runtime.js';
-export type { WorkerRuntimeOptions, WorkerBacking } from './worker-runtime.js';
-export { buildWorkerRuntimePolyfill } from './worker-runtime-polyfill.js';
-
 // Framework manifest schema + helper
 export {
   FrameworkManifestSchema,
@@ -273,5 +268,3 @@ export {
 } from './spdx-licenses.js';
 
 // Generated Zephyr board catalog (shared with the create/scaffold flow).
-export { BOARD_DATA } from './board-catalog.js';
-export type { BoardDataEntry } from './board-catalog.js';

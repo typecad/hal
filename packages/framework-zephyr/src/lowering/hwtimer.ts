@@ -30,6 +30,10 @@ function hzVar(instance: number): string {
 function cbVar(instance: number): string {
   return `__tc_hw_cb_${instance}`;
 }
+/** The trampoline matching counter_top_callback_t: (dev, user_data). */
+function trampVar(instance: number): string {
+  return `__tc_hw_tramp_${instance}`;
+}
 
 /**
  * Emit the per-instance counter device handles + frequency/callback state.
@@ -43,7 +47,11 @@ export function hwtimerInitLines(chip: ZephyrChipDescriptor): string[] {
     lines.push(
       `static const struct device* ${devVar(i)} = DEVICE_DT_GET(DT_NODELABEL(${c.nodeLabel}));`,
       `static uint32_t ${hzVar(i)} = 1;`,
-      `static counter_top_callback_t ${cbVar(i)} = NULL;`,
+      `static void (*${cbVar(i)})(void) = NULL;`,
+      `static void ${trampVar(i)}(const struct device* dev, void* user_data) {`,
+      `    (void)dev; (void)user_data;`,
+      `    if (${cbVar(i)}) { ${cbVar(i)}(); }`,
+      `}`,
     );
   });
   lines.push('// CUTTLEFISH_HWTIMER_END');
@@ -101,14 +109,20 @@ export function lowerCounter(
       return { code: `${cbVar(instance)} = (${o.handler});` };
     case 'counter.start': {
       // Apply the construction hz as the top value, arm the alarm callback,
-      // start. hz rides the op, so no ordering constraint exists.
+      // start. hz rides the op, so no ordering constraint exists. The API
+      // is counter_set_top_value(dev, const counter_top_cfg*) with a
+      // (dev, user_data) callback — the trampoline in hwtimerInitLines
+      // adapts the user's void() handler.
       return {
         code: [
           `{`,
           `  ${hzVar(instance)} = ${o.hz};`,
           `  uint32_t __f = counter_get_frequency(${devVar(instance)});`,
           `  uint32_t __top = __f ? (__f / ${hzVar(instance)}) : 0U;`,
-          `  if (__top > 0U) { (void)counter_set_top_value(${devVar(instance)}, __top, ${cbVar(instance)}, NULL); }`,
+          `  if (__top > 0U) {`,
+          `    struct counter_top_cfg __cfg = { .ticks = __top, .callback = ${trampVar(instance)}, .user_data = NULL, .flags = 0U };`,
+          `    (void)counter_set_top_value(${devVar(instance)}, &__cfg);`,
+          `  }`,
           `  (void)counter_start(${devVar(instance)});`,
           `}`,
         ].join(' '),

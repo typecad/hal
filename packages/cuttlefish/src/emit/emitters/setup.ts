@@ -236,6 +236,11 @@ export function buildEmitterContext(
   program: ProgramIR,
   options: EmitterOptions,
 ): EmitterContext {
+  // Framework strategies that resolve per-program chip data (Zephyr's chip
+  // view reconstructs from the generated manifest) must do it before any
+  // body rendering — hal-op lowering reads their cached descriptor.
+  (options.strategy as { prepareChip?: (p: ProgramIR, c: unknown) => void } | undefined)
+    ?.prepareChip?.(program, options.platformContext);
   const largeEnumNames = new Set<string>();
   const enumNames = new Set<string>();
   const stringEnumNames = new Set<string>();
@@ -356,11 +361,6 @@ export function buildEmitterContext(
   if (!programAnalysis.usedPolyfillHelpers.has('__tc_StaticArray')) {
     filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "static_array");
   }
-  const usesTimers = programAnalysis.usedPolyfillHelpers.has('__tc_setInterval') ||
-                     programAnalysis.usedPolyfillHelpers.has('__tc_setTimeout');
-  if (!usesTimers) {
-    filteredNativePolyfills = filteredNativePolyfills.filter(p => p.id !== "timer_methods");
-  }
 
   // Safety polyfills (mode table + voter + SafeVariable + SafeInt). Gated on
   // programUsesSafety(program) so they ONLY appear when the program actually
@@ -387,9 +387,7 @@ export function buildEmitterContext(
   const coopConfig = strategy.getAsyncRuntimeConfig?.();
   const hasCoopWork =
     program.functions.some(fn => fn.isAsync) ||
-    program.classes.some(c => c.methods.some(m => m.isAsync)) ||
-    programAnalysis.usedPolyfillHelpers.has('__tc_setInterval') ||
-    programAnalysis.usedPolyfillHelpers.has('__tc_setTimeout');
+    program.classes.some(c => c.methods.some(m => m.isAsync));
   if (isEntryFile && coopConfig && hasCoopWork) {
     const coop = buildCoopSchedulerPolyfill(program, coopConfig, strategy.currentTimeMillis());
     if (coop) filteredNativePolyfills = [...filteredNativePolyfills, coop];
@@ -403,6 +401,11 @@ export function buildEmitterContext(
   const hasPromiseRuntime = nativePolyfills.some(
     (p) => p.id === "async_runtime" && p.hasPromiseRuntime === true
   );
+  // Native timer capability comes from the strategy's async config, not from
+  // scanning the program: platforms either provide native timer callbacks for
+  // the async runtime (host/native) or they do not (Zephyr — periodic work is
+  // a Thread or a Counter there).
+  const usesTimers = strategy.getAsyncRuntimeConfig?.()?.hasTimers === true;
 
   if (!isNpmPackage) {
     includes.push(...strategy.forcedIncludes(program, options.platformContext));
@@ -438,7 +441,7 @@ export function buildEmitterContext(
     // programs that can never read the clock (no Time calls, async, timers,
     // scheduler, or mounted UI) so the definition doesn't leak into the
     // emitted header.
-    if (!programAnalysis.usesWallClock && !programAnalysis.hasAsync && programAnalysis.timerCallCount === 0 && !entryHasUI() && !hasPromiseRuntime) {
+    if (!programAnalysis.usesWallClock && !programAnalysis.hasAsync && !entryHasUI() && !hasPromiseRuntime) {
       shimLines = shimLines.filter(l => !l.includes('__tc_now_ms'));
     }
     if (!programAnalysis.usesNullishHelper) {
@@ -477,11 +480,8 @@ export function buildEmitterContext(
     if (!programAnalysis.usesI2C) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_TWI_BEGIN', '// CUTTLEFISH_TWI_END');
     }
-    if (!programAnalysis.usesTone) {
-      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_TONE_BEGIN', '// CUTTLEFISH_TONE_END');
-    }
     // framework-esp32 native peripheral driver shims. Same defensive-backstop
-    // pattern as the UART/SPI/TWI/EEPROM/tone blocks above. framework-arduino's
+    // pattern as the UART/SPI/TWI/EEPROM blocks above. framework-arduino's
     // and framework-avr's shimLines contain none of these markers, so these
     // filters are no-ops there.
     if (!programAnalysis.usesGPIO) {
@@ -495,9 +495,6 @@ export function buildEmitterContext(
     }
     if (!programAnalysis.usesDAC) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_DAC_BEGIN', '// CUTTLEFISH_DAC_END');
-    }
-    if (!programAnalysis.usesPower) {
-      shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_POWER_BEGIN', '// CUTTLEFISH_POWER_END');
     }
     if (!programAnalysis.usesWdt) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_WDT_BEGIN', '// CUTTLEFISH_WDT_END');
@@ -1028,7 +1025,7 @@ export function buildEmitterContext(
               emitDiagnostics.push({
                 severity: "error",
                 code: "await-unsupported-call",
-                message: `await ${callee}(...) has no cooperative lowering here — the call would be dropped. Await is supported on Time.sleep, HAL ops (wifi.join / wifi.scan / http.send / worker.submit), ui.onTap(), and pin-edge waits.`,
+                message: `await ${callee}(...) has no cooperative lowering here — the call would be dropped. Await is supported on Time.sleep, HAL ops (wifi.join / wifi.scan / http.send), ui.onTap(), and pin-edge waits.`,
                 ...(span ? { source: `${callee}(...)` } : {}),
               } as never);
             },
@@ -1108,7 +1105,7 @@ export function buildEmitterContext(
               emitDiagnostics.push({
                 severity: "error",
                 code: "await-unsupported-call",
-                message: `await ${callee}(...) has no cooperative lowering here — the call would be dropped. Await is supported on Time.sleep, HAL ops (wifi.join / wifi.scan / http.send / worker.submit), ui.onTap(), and pin-edge waits.`,
+                message: `await ${callee}(...) has no cooperative lowering here — the call would be dropped. Await is supported on Time.sleep, HAL ops (wifi.join / wifi.scan / http.send), ui.onTap(), and pin-edge waits.`,
                 ...(span ? { source: `${callee}(...)` } : {}),
               } as never);
             },

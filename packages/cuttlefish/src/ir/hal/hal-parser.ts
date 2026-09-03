@@ -30,6 +30,10 @@ export interface HALMethodEntry {
 export interface HALClassEntry {
   ctorFieldMap: Map<string, string>; // "_pin" → param name "pin" or "__literal__value"
   ctorDefaults: Map<string, string>; // "_pin" → literal default value
+  /** Class-field initializer literals ("_spiHz" → "1000000") — the defaults
+   *  a method body reads when construction didn't set the field. Seeded into
+   *  instance fieldValues so `this._spiHz` in an inlined method resolves. */
+  fieldDefaults: Map<string, string>;
   methods: Map<string, HALMethodEntry>;
 }
 
@@ -203,6 +207,18 @@ export function loadHALModules(force = false): void {
           let instanceName: string | undefined;
           let includes: string[] | undefined;
           const defaultFields = new Map<string, string>();
+          const fieldDefaults = new Map<string, string>();
+          for (const member of stmt.members) {
+            // Instance property initializers with literal values (`private
+            // readonly _spiHz: number = 1000000;`) are static facts — the
+            // default a method body sees when construction didn't override.
+            if (ts.isPropertyDeclaration(member) && ts.isIdentifier(member.name) && member.initializer) {
+              const init = member.initializer;
+              if (ts.isNumericLiteral(init) || ts.isStringLiteral(init)) {
+                fieldDefaults.set(member.name.text, init.text);
+              }
+            }
+          }
 
           for (const member of stmt.members) {
             if (ts.isPropertyDeclaration(member) && 
@@ -224,7 +240,7 @@ export function loadHALModules(force = false): void {
             }
           }
 
-          halClassRegistry.set(className, { ctorFieldMap, ctorDefaults, methods });
+          halClassRegistry.set(className, { ctorFieldMap, ctorDefaults, fieldDefaults, methods });
 
           if (instanceName) {
             halSingletons.set(instanceName, { className, fieldValues: defaultFields, includes });
@@ -352,7 +368,10 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
       const mappedName = mapPeripheralName(name);
       if (mappedName) {
         const canonical = name.toUpperCase();
-        if (canonical.startsWith("UART")) return { className: "SerialPort", fieldValues: new Map([["_port", mappedName]]) };
+        if (canonical.startsWith("UART")) return {
+              className: "UART",
+              fieldValues: new Map([["_port", mappedName], ["_bus", mappedName], ["_baud", "115200"], ["_rxBufferBytes", "64"]]),
+            };
         if (canonical.startsWith("USB")) return { className: "USBConsole", fieldValues: new Map([["_port", mappedName]]) };
         if (canonical.startsWith("I2C")) return { className: "I2CBus", fieldValues: new Map([["_bus", mappedName]]) };
         if (canonical.startsWith("SPI")) return { className: "SPIBus", fieldValues: new Map([["_bus", mappedName]]) };
@@ -429,11 +448,17 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
           return { className: returnClassName, fieldValues: new Map(innerInstance.fieldValues) };
         }
 
-        // Specialized handling for device() factory pattern (I2CBus/SPIBus -> I2CDevice/SPIDevice)
+        // Specialized handling for device() factory pattern (I2CBus/SPIBus -> I2CTarget/SPITarget)
         // This allows propagating the address/CS pin from the call argument to the new instance.
         if (methodName === "device" && (innerInstance.className === "I2CBus" || innerInstance.className === "SPIBus") && receiver.arguments.length > 0) {
-          const returnClassName = innerInstance.className === "SPIBus" ? "SPIDevice" : "I2CDevice";
+          const isSpi = innerInstance.className === "SPIBus";
+          const returnClassName = isSpi ? "SPITarget" : "I2CTarget";
           const fieldValues = new Map(innerInstance.fieldValues);
+          // The targets' __default_fields channel does not reach factory-made
+          // instances; carry the class defaults so `this._hz`/`this._mode`
+          // resolve in the inlined method bodies.
+          fieldValues.set("_hz", isSpi ? "1000000" : "0");
+          if (isSpi) fieldValues.set("_mode", "0");
           const arg = receiver.arguments[0];
           let argVal: string | null = null;
           if (ts.isNumericLiteral(arg)) argVal = arg.text;
@@ -570,8 +595,11 @@ export function resolveHALReceiver(receiver: ts.Expression): HALInstance | null 
           }
           // I2C/SPI device factory: bus → device with address/cs from args
           if (entry.method === "device" && (resolvedInst.className === "I2CBus" || resolvedInst.className === "SPIBus")) {
-            const returnClassName = resolvedInst.className === "SPIBus" ? "SPIDevice" : "I2CDevice";
+            const isSpi = resolvedInst.className === "SPIBus";
+            const returnClassName = isSpi ? "SPITarget" : "I2CTarget";
             const fieldValues = new Map(resolvedInst.fieldValues);
+            fieldValues.set("_hz", isSpi ? "1000000" : "0");
+            if (isSpi) fieldValues.set("_mode", "0");
             const fieldName = resolvedInst.className === "SPIBus" ? "_cs" : "_address";
             if (entry.args && entry.args.length > 0) {
               // Resolve identifier args (e.g. D10 → 10) via halInstances.

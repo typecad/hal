@@ -116,3 +116,7 @@ packages/hal/tests/network/secrets.ts
 # sources and extracted headers are TRACKED — see commit 2f6bc29f)
 .probe/*.exe
 .probe/*.o
+
+# Local agent/dev scratch (transient scaffolding + doc-check harness)
+.tmp-narrow/
+.doccheck/

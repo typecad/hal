@@ -8,6 +8,7 @@
   // recipes render from markup alone; only the live bits are wired here.
 
   import { ui } from '@typecad/ui';
+  import { Thread, Time } from '@typecad/hal';
   import { rgbLed } from '@typecad/zephyr-esp32s3-rgb';
 
   ui.mount(screen);
@@ -54,9 +55,13 @@
   // Element state (not a local let) so the ownership analyzer sees device
   // state — same pattern as demo-ui's form progress.
   screen.demoProgress.value = 0;
-  setInterval(() => {
-    screen.demoProgress.value = (screen.demoProgress.value + 4) % 105;
-  }, 300);
+  const progLoop = new Thread(0, { stackKb: 2 });
+  progLoop.start((): void => {
+    while (true) {
+      screen.demoProgress.value = (screen.demoProgress.value + 4) % 105;
+      Time.sleep(300);
+    }
+  });
 
   // ── Lists screen: virtualized list + tap signal ────────────────────────────
   export const lastRow = ui.signal(0);
@@ -161,9 +166,13 @@
   ui.bind(screen.demoMeter, 'value', () => volume() * 10);
   ui.bind(screen.lamp, 'background', () => screen.stateCheck.value ? '#29d391' : '#52525b');
   export const ticks = ui.signal(0);
-  setInterval(() => {
-    ticks.set(ticks() + 1);
-  }, 1000);
+  const ticker = new Thread(1, { stackKb: 2 });
+  ticker.start((): void => {
+    while (true) {
+      ticks.set(ticks() + 1);
+      Time.sleep(1000);
+    }
+  });
 </script>
 
 <style>

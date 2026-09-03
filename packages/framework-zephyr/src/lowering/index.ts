@@ -28,9 +28,7 @@ import { lowerUart } from './uart.js';
 import { lowerUsb } from './usb.js';
 import { lowerInterrupt } from './interrupts.js';
 import { lowerWdt } from './wdt.js';
-import { lowerPower } from './power.js';
 import { lowerBle } from './ble.js';
-import { lowerWorker } from './worker.js';
 import { lowerWifi } from './wifi.js';
 import { lowerHttp } from './http.js';
 import { lowerMqtt } from './mqtt.js';
@@ -45,7 +43,7 @@ import { lowerThread } from './thread.js';
 
 export {
   lowerGpio, lowerTiming, lowerAdc, lowerPwm, lowerI2c, lowerSpi, lowerUart,
-  lowerUsb, lowerInterrupt, lowerWdt, lowerPower, lowerBle,
+  lowerUsb, lowerInterrupt, lowerWdt, lowerBle,
   lowerWifi, lowerHttp, lowerMqtt, lowerPreferences, lowerBoard, lowerRandom,
   lowerDac, lowerFs, lowerHwtimer, lowerCounter, lowerSensor, lowerThread,
 };
@@ -72,10 +70,8 @@ export function lowerHalOp(
   if (op.operation.startsWith('wdt.'))        return lowerWdt(op, chip);
   if (op.operation.startsWith('hwtimer.'))    return lowerHwtimer(op, chip);
   if (op.operation.startsWith('counter.'))    return lowerCounter(op, chip);
-  if (op.operation.startsWith('power.'))      return lowerPower(op);
   // (legacy pulse/shift bit-bang module removed)
   if (op.operation.startsWith('ble.'))        return lowerBle(op);
-  if (op.operation.startsWith('worker.'))     return lowerWorker(op);
   if (op.operation.startsWith('wifi.'))       return lowerWifi(op);
   if (op.operation.startsWith('http.'))       return lowerHttp(op);
   if (op.operation.startsWith('mqtt.'))       return lowerMqtt(op);

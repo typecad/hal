@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest';
+import { TEST_CHIP, chipForBoard } from '../helpers/test-chip';
 import { lowerHwtimer, hwtimerInitLines } from '../../../../packages/framework-zephyr/src/lowering/hwtimer';
-import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
-import { ESP32_DEVKITC } from '../../../../packages/framework-zephyr/src/chips/esp32';
+const ESP32_DEVKITC = chipForBoard('esp32_devkitc/esp32/procpu');
+
 
 describe('hwtimer init block', () => {
   it('emits per-instance counter device + hz/callback state on a chip with a timer', () => {
     // XIAO nRF52840 declares RTC1 (instance 0).
-    const lines = hwtimerInitLines(XIAO_BLE).join('\n');
+    const lines = hwtimerInitLines(TEST_CHIP).join('\n');
     expect(lines).toContain('// CUTTLEFISH_HWTIMER_BEGIN');
     expect(lines).toContain('// CUTTLEFISH_HWTIMER_END');
     expect(lines).toContain('DEVICE_DT_GET(DT_NODELABEL(rtc1))');

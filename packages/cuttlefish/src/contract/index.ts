@@ -11,7 +11,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import type { ResolvedCuttlefishConfig } from '../config-loader.js';
-import { parseContractFile, matchConnectedPins, selectPeripherals } from './contract-parser.js';
+import { locateZephyrBaseCheap } from '../board-catalog/index.js';
+import { parseContractFile, matchConnectedPins, selectPeripherals, contractPinNames, contractPads } from './contract-parser.js';
 import { generateBoardFile } from './board-generator.js';
 
 export type {
@@ -20,13 +21,20 @@ export type {
   ContractComponent,
   AvailablePeripherals,
 } from './contract-parser.js';
-export { parseContractFile, matchConnectedPins, selectPeripherals } from './contract-parser.js';
+export { parseContractFile, matchConnectedPins, selectPeripherals, contractPinNames, contractPads } from './contract-parser.js';
 export { generateBoardFile, CUTTLEFISH_DIR } from './board-generator.js';
 export type { GenerateBoardOptions } from './board-generator.js';
 
-/** The manifest shape the framework's generated board module exports. */
+/** The framework surface contract generation needs. */
 interface BoardGenStrategy {
   generateBoardModule?(target: string): { boardTs: string; boardJson: string } | undefined;
+  generateContractBoardModule?(opts: {
+    soc: string;
+    zephyrBase: string;
+    pinNames: readonly string[];
+    padAliases?: readonly { exportName: string; padName: string }[];
+    peripherals: { i2c: boolean; spi: boolean; uart: boolean };
+  }): { boardTs: string; boardJson: string };
 }
 
 interface TypeCADManifest {
@@ -69,10 +77,11 @@ export async function generateContractBoard(config: ResolvedCuttlefishConfig): P
   // (1) Parse the contract.
   const contract = parseContractFile(contractPath);
 
-  // (2) Generate the soc's full board data through the framework's board
-  // generator — the pinNames + peripheral instance names come from the
-  // curated soc descriptor (joined with the board data pack), never from a
-  // package.
+  // (2) SDK-as-truth: the SoC's bus controller labels come from the
+  // INSTALLED Zephyr tree's soc dtsi (located via the same fs-only
+  // discovery the catalog uses), and the wired pads come from the contract
+  // itself. The framework runs them through the same board-module builder
+  // every catalog board uses.
   const soc = config.soc ?? path.basename(config.buildTarget ?? '').split('/')[0];
   if (!soc) {
     throw new Error(
@@ -97,24 +106,43 @@ export async function generateContractBoard(config: ResolvedCuttlefishConfig): P
   } catch {
     strategy = undefined;
   }
-  const generated = strategy?.generateBoardModule?.(soc);
-  if (!generated) {
+  if (!strategy?.generateContractBoardModule) {
     throw new Error(
-      `Framework '${config.framework}' cannot generate board data for soc '${soc}'. ` +
-      `The soc name must match a curated descriptor (see the framework's soc registry).`,
+      `Framework '${config.framework}' provides no contract board generation. ` +
+      `Zephyr contract projects require '@typecad/framework-zephyr' (which derives the ` +
+      `soc's bus controllers from the installed Zephyr tree).`,
     );
   }
-  const manifest = JSON.parse(generated.boardJson) as TypeCADManifest & {
-    peripherals?: { i2c?: { count?: number }; spi?: { count?: number }; uart?: { count?: number } };
-  };
-  const peripheralNames: string[] = [];
-  for (let i = 0; i < (manifest.peripherals?.i2c?.count ?? 0); i++) peripheralNames.push(`I2C${i}`);
-  for (let i = 0; i < (manifest.peripherals?.spi?.count ?? 0); i++) peripheralNames.push(`SPI${i}`);
-  for (let i = 0; i < (manifest.peripherals?.uart?.count ?? 0); i++) peripheralNames.push(`UART${i}`);
-
-  // (3) Match + select.
-  const connectedPins = matchConnectedPins(contract, manifest.pinNames);
-  const peripherals = selectPeripherals(contract, peripheralNames);
+  const zephyrBase = locateZephyrBaseCheap();
+  if (!zephyrBase) {
+    throw new Error(
+      `No Zephyr tree found for the contract build. The SoC's bus controllers are derived ` +
+      `from the installed Zephyr tree — install one via '@typecad/framework-zephyr' ` +
+      `(zephyr-installer) or set ZEPHYR_BASE.`,
+    );
+  }
+  const generated = strategy.generateContractBoardModule!({
+    soc,
+    zephyrBase,
+    // The contract's own canonical pad names (boardName when typecad.net
+    // carried a mapping, else the KiCAD pin-name segment that matches the
+    // soc's datasheet form).
+    pinNames: contractPads(contract).map((p) => p.mcuName),
+    padAliases: contractPads(contract)
+      .filter((p) => p.alias)
+      .map((p) => ({ exportName: p.alias as string, padName: p.mcuName })),
+    peripherals: contract.availablePeripherals,
+  });
+  // (3) The narrowed pad set: the contract's own canonical names — the
+  // board module the framework generated exposes the soc's datasheet sweep
+  // for the wired controllers; board.ts narrows the user surface to the
+  // pads the PCB actually wired (an unwired pin is a compile error).
+  const connectedPins = contractPinNames(contract);
+  const peripherals = [
+    contract.availablePeripherals.i2c ? 'I2C0' : '',
+    contract.availablePeripherals.spi ? 'SPI0' : '',
+    contract.availablePeripherals.uart ? 'UART0' : '',
+  ].filter(Boolean);
 
   // (4) Emit the soc's full board.json — the transpiler's pin map and chip
   // resolution read it (same artifact a board-target project carries).

@@ -28,11 +28,11 @@ required, as for any `@typecad/framework-native` build).
 ```sh
 npm run compile --workspace native_demo   # transpile + g++/clang++ → exe
 # then run the produced binary:
-./native_demo/out/main/main        # Linux/macOS
-native_demo\out\main\main.exe      # Windows
+native_demo/out/.build/showcase.out       # Linux/macOS
+native_demo\out\.build\showcase.exe       # Windows
 ```
 
-A 320×240 window opens showing a gradient banner, a header, and a button.
+A 640×480 window opens showing a gradient banner, a header, and a button.
 Click the button (mouse = touch) to increment the counter — this exercises the
 full reactive path: mouse → `touch_*` shim → `ui_tick` → binding callback →
 reactive redraw → `display_present`.

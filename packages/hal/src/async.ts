@@ -19,10 +19,9 @@ export class AsyncClass {
 
   /**
    * Non-blocking sleep for `ms` milliseconds.
-   * Returns a Promise<void> that resolves after the given delay.
-   * The underlying C++ implementation uses the platform's timer/microtask
-   * mechanism (e.g. millis-based polling on Arduino, std::this_thread::sleep_for
-   * on native, or a FreeRTOS vTaskDelay in the future).
+   * Returns a Promise<void> that resolves after the given delay. The async
+   * runtime resolves it cooperatively (the static state machine on
+   * heap-less targets polls the clock in the scheduler loop).
    */
   sleep(ms: number): Promise<void> {
     rawCpp(`__cuttlefish_async_sleep(${ms});`);

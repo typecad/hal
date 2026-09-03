@@ -40,6 +40,7 @@ export function translateToPwsh(args) {
       case '--no-sdk':       out.push('-NoSdk'); break;
       case '--no-workspace': out.push('-NoWorkspace'); break;
       case '--modify':       out.push('-Modify'); break;
+      case '--prune':        out.push('-Prune'); break;
       case '--env-name':     out.push('-EnvName', args[++i]); break;
       case '--sdk-version':  out.push('-SdkVersion', args[++i]); break;
       case '--platforms':    out.push('-Platforms', args[++i]); break;
@@ -174,9 +175,21 @@ export function parsePlatformSelection(answer, catalog = platformCatalog()) {
 
 // Render the checklist text. `installedToolchains` (array of toolchain target
 // dir names found under the SDK root) marks groups already installed.
+// 'All' is listed FIRST and is the default (Enter accepts it) — the recommended
+// path is to install everything so any board in the pack just builds; the
+// per-group entries are the space-saving opt-in.
 export function buildChecklist(catalog = platformCatalog(), installedToolchains = []) {
   const inst = new Set(installedToolchains);
-  const lines = ['', 'Select platform toolchains to install:', ''];
+  const lines = [
+    '',
+    'Select platform toolchains to install:',
+    '',
+    "  [a] All platforms — RECOMMENDED (~1.5 GB download / ~11 GB extracted).",
+    '      Press Enter to accept. Installs every toolchain so any Zephyr board',
+    "      in the data pack builds as-is. Pick individual groups only if you're",
+    '      consciously trading convenience for disk space.',
+    '',
+  ];
   catalog.forEach((g, i) => {
     const allIn = g.toolchains.length > 0 && g.toolchains.every((t) => inst.has(t));
     const someIn = g.toolchains.some((t) => inst.has(t));
@@ -185,9 +198,8 @@ export function buildChecklist(catalog = platformCatalog(), installedToolchains 
     const size = g.size ? `  ${g.size}` : '';
     lines.push(`  [${i + 1}] ${g.label.padEnd(48)}${size}${instTag}`);
   });
-  lines.push('  [a] All (full bundle, ~1.5 GB download / ~11 GB extracted)');
   lines.push('');
-  lines.push("Enter selection (e.g. '1 2', 'arm,esp32', or 'all'): ");
+  lines.push("Enter selection (Enter = All; or e.g. '1 2', 'arm,esp32' for a minimal install): ");
   return lines.join('\n');
 }
 
@@ -248,10 +260,16 @@ ${groups}
 
 Flags:
   (none)            Interactive: platform checklist → summary → Enter → install.
-  --platforms IDS   Non-interactive: comma-separated group ids or 'all'.
-  --modify          Re-present the checklist on an existing install to
-                    add/remove platforms. Deselected toolchains are DELETED
-                    from disk. SDK-only (skips env/workspace).
+  --platforms IDS   Space-saving subset (comma-separated group ids). The
+                    default is 'all' — every toolchain, so any board in the
+                    data pack builds without a follow-up install.
+  --modify          Re-run the SDK platform step on an existing install:
+                    ADDS the selected groups' missing toolchains. Nothing is
+                    deleted unless --prune is also given. SDK-only (skips
+                    env/workspace).
+  --prune           With --modify: also DELETE toolchains of platforms not in
+                    the selection (reclaim disk space). Without it, --modify
+                    is purely additive.
   --delete          UNINSTALL everything: conda env, Zephyr SDK, west
                     workspace (+ micromamba itself if no other envs exist).
                     Requires typing 'yes' to confirm (or --yes).
@@ -269,11 +287,11 @@ Environment overrides:
   SDK_INSTALL_PARENT  where the SDK extracts (default: $MAMBA_ROOT_PREFIX/zephyr-sdk)
 
 Examples:
-  npx --package @typecad/framework-zephyr zephyr-installer                       # interactive (checklist)
-  npx --package @typecad/framework-zephyr zephyr-installer --platforms arm       # ARM Cortex-M only (~150 MB)
-  npx --package @typecad/framework-zephyr zephyr-installer --platforms arm,esp32 # ARM + ESP32 (~450 MB)
-  npx --package @typecad/framework-zephyr zephyr-installer --platforms all       # full bundle (~1.5 GB)
-  npx --package @typecad/framework-zephyr zephyr-installer --modify              # add/remove platforms later
+  npx --package @typecad/framework-zephyr zephyr-installer                       # RECOMMENDED: everything (~1.5 GB)
+  npx --package @typecad/framework-zephyr zephyr-installer --platforms arm       # space-saver: ARM Cortex-M only (~150 MB)
+  npx --package @typecad/framework-zephyr zephyr-installer --platforms arm,esp32 # space-saver: two groups (~450 MB)
+  npx --package @typecad/framework-zephyr zephyr-installer --modify --yes        # later: add any missing toolchains
+  npx --package @typecad/framework-zephyr zephyr-installer --modify --prune --yes # ...and also remove unselected ones
   npx --package @typecad/framework-zephyr zephyr-installer --delete              # uninstall everything (confirms)
   npx --package @typecad/framework-zephyr zephyr-installer --dry-run             # preview the plan
   node install.mjs --help                             # same, from a repo checkout
@@ -413,6 +431,7 @@ if (invokedDirectly) {
   const dryRun = rawArgs.includes('--dry-run');
   const yes = rawArgs.includes('--yes') || rawArgs.includes('-y');
   const modify = rawArgs.includes('--modify') || rawArgs.includes('-m');
+  const prune = rawArgs.includes('--prune');
   const del = rawArgs.includes('--delete') || rawArgs.includes('-d');
 
   // --platforms <sel> (non-interactive selection) — read + strip here so the
@@ -427,10 +446,12 @@ if (invokedDirectly) {
   const forwarded = rawArgs.filter(
     (a, i) =>
       a !== '--yes' && a !== '-y' && a !== '--modify' && a !== '-m' &&
+      a !== '--prune' &&
       a !== '--platforms' && rawArgs[i - 1] !== '--platforms',
   );
   // Re-add the resolved platforms as a flag the native scripts understand.
   if (platforms) forwarded.push('--platforms', platforms);
+  if (prune) forwarded.push('--prune');
   // --modify skips the env + workspace steps; only the SDK platform step runs.
   if (modify) forwarded.push('--no-workspace');
 
@@ -472,9 +493,9 @@ if (invokedDirectly) {
       output.write(
         [
           '',
-          'WARNING: --modify will DELETE the toolchain directories of any',
-          'platform you deselect. Re-adding a removed platform later requires',
-          're-downloading it (~100-300 MB per group).',
+          "--modify ADDS the missing toolchains of the selected platforms. Toolchains",
+          'of unselected platforms are only removed when --prune is also given;',
+          're-downloading a removed platform costs ~100-300 MB per group.',
           '',
         ].join('\n'),
       );

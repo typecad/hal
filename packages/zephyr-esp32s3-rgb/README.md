@@ -54,9 +54,7 @@ usage; the ESP32-S3's dedicated RMT peripheral has no upstream Zephyr driver.
 - **Board target:** `esp32s3_devkitc`.
 - **Hardware revision:** DevKitC **v1.0**, whose RGB LED is on **GPIO48**.
   v1.1 moved it to GPIO38 — on that revision change one line in
-  `shims/tc-rgb.overlay` (`I2S0_O_SD_GPIO48` → `I2S0_O_SD_GPIO38`). (The
-  mismatch with `boards/board-esp32s3`'s `led: 'GPIO48'` is inherited: the
-  Arduino core also pins v1.0's GPIO48 as `RGB_BUILTIN`.)
+  `shims/tc-rgb.overlay` (`I2S0_O_SD_GPIO48` → `I2S0_O_SD_GPIO38`).
 - **Validated on hardware:** 2026-08-21, ESP32-S3 DevKitC (GPIO48 revision),
   via demo-shadcn — boot color + tap-counter color cycling through the full
   chain (transpile → shim → overlay → Kconfig → west build → flash).
@@ -66,9 +64,8 @@ usage; the ESP32-S3's dedicated RMT peripheral has no upstream Zephyr driver.
 This package is the template: an npm package with a `cuttlefish.library.json`
 manifest (`module`, `framework`, `targets`, `include`, `gateToken`, `shims`,
 `kconfig`, `overlay`), a types-only TypeScript API, and the native artifacts.
-An Arduino counterpart (`@typecad/arduino-esp32s3-rgb` over `neopixelWrite`)
-would follow the same manifest with a different framework id — the mechanism
-is per-library, not per-framework-matrix.
+The mechanism is per-library: another target or peripheral ships its own
+manifest with the framework id and artifacts it needs.
 
 ## Shim compliance
 

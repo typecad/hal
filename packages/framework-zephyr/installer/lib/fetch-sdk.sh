@@ -259,25 +259,46 @@ fetch_sdk() {
     done
   done
 
-  # 3. Remove toolchains that are installed but NOT in the new selection.
-  #    This is the "--modify" removal path: a user deselects a platform and its
-  #    toolchains are deleted to reclaim disk space. On 1.0.x scan both the
+  # 3. --prune only: remove installed toolchains that are NOT in the new
+  #    selection. Without --prune the modify step is purely additive —
+  #    unselected toolchains stay on disk so an existing install never
+  #    loses anything because of a narrower re-run. On 1.0.x scan both the
   #    gnu/ root and the SDK root so misplaced copies get cleaned up too.
-  local installed="$(_list_installed_toolchains "$tc_root")"
-  [ "$sdk_ng" -eq 1 ] && installed="$installed $(_list_installed_toolchains "$sdk")"
-  local selected_targets=""
-  for grp in ${platforms//,/ }; do
-    local targets_var="PLATFORM_${grp}"
-    selected_targets="$selected_targets ${!targets_var:-}"
-  done
-  for target in $installed; do
-    if ! echo " $selected_targets " | grep -q " $target "; then
-      echo "fetch-sdk: removing deselected toolchain: $target"
-      rm -rf "$tc_root/$target" "$sdk/$target"
-    fi
-  done
+  if [ "${PRUNE:-0}" = "1" ]; then
+    local installed="$(_list_installed_toolchains "$tc_root")"
+    [ "$sdk_ng" -eq 1 ] && installed="$installed $(_list_installed_toolchains "$sdk")"
+    local selected_targets=""
+    for grp in ${platforms//,/ }; do
+      local targets_var="PLATFORM_${grp}"
+      selected_targets="$selected_targets ${!targets_var:-}"
+    done
+    for target in $installed; do
+      if ! echo " $selected_targets " | grep -q " $target "; then
+        echo "fetch-sdk: removing deselected toolchain: $target"
+        rm -rf "$tc_root/$target" "$sdk/$target"
+      fi
+    done
+  fi
 
-  # 4. Persist the selection.
-  echo "$platforms" > "$sdk/.typecad-platforms"
-  echo "fetch-sdk: done — $sdk (platforms: $platforms)"
+  # 4. Persist the selection. Without --prune the marker records the UNION
+  #    of what was here before and the new selection — the marker must
+  #    describe what is actually on disk.
+  local marker_path="$sdk/.typecad-platforms"
+  local marker_sel="$platforms"
+  if [ "${PRUNE:-0}" != "1" ] && [ -f "$marker_path" ]; then
+    local prev union="" seen="" grp
+    prev="$(cat "$marker_path")"
+    for grp in $(echo "$prev,$platforms" | tr ',' ' '); do
+      grp="$(echo "$grp" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+      [ -z "$grp" ] && continue
+      [ "$grp" = "all" ] && continue
+      case " $seen " in
+        *" $grp "*) ;;
+        *) seen="$seen $grp"; union="${union:+$union,}$grp" ;;
+      esac
+    done
+    [ -n "$union" ] && marker_sel="$union"
+  fi
+  echo "$marker_sel" > "$marker_path"
+  echo "fetch-sdk: done — $sdk (platforms: $marker_sel)"
 }

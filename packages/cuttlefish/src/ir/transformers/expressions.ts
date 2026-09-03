@@ -477,10 +477,6 @@ const AWAITABLE_HAL_OPS = new Set<string>([
   "wifi.join",
   "wifi.scan",
   "http.send",
-  // Worker offload: `await worker.submit(...)` rewrites to submit + poll
-  // worker.done — mirrors `await http.send(...)`. The start op is worker.submit
-  // (emitted by the previous state segment); the poll predicate is worker.done.
-  "worker.submit",
 ]);
 
 /**

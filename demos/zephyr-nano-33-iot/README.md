@@ -2,33 +2,31 @@
 
 SAMD21 peripheral showcase on an **Arduino Nano 33 IoT** (Microchip
 SAMD21G18A, Cortex-M0+ @ 48 MHz) using `@typecad/framework-zephyr` — the
-first Microchip SAM Zephyr target. An analog LED dimmer: reads A0
-(PA2 / ADC AIN0) and mirrors the voltage onto the onboard LED's brightness
-(PA17 — TCC2/WO1 PWM via the board's `pwm-led0` DT alias), alternating every
-~2 s with a breathing mode (the board has no user button), with periodic
-USB CDC reports over the micro-USB connector.
+first Microchip SAM Zephyr target. An onboard-LED mood light: the LED
+(PA17 — TCC2/WO1 PWM via the board's `pwm-led0` DT alias, exposed
+pre-constructed as `PWMLED`) alternates every ~2 s between a steady
+half-brightness dimmer and a breathing mode (the board has no user button),
+with periodic USB CDC reports over the micro-USB connector.
 
 ## What it exercises
 
 | Peripheral | Pin | How it lowers |
 |---|---|---|
-| Onboard LED | PA17 | `led0` DT spec (active-high) — and the same pin's PWM through the board-shipped `pwm-led0` alias (`PWM_DT_SPEC_GET(DT_ALIAS(pwm_led0))`, 20 ms period) |
-| ADC | PA2 (A0) | `adc` node, sam0 channel setup (`ADC_GAIN_1` + `ADC_REF_VDD_1_2`, vref = VDDANA/2 = 1650 mV — the only combination the Zephyr sam0 driver accepts on this SoC; reads saturate above ~1.65 V, so keep the input at or under half-scale, e.g. a pot's wiper) |
-| USB CDC | PA24/PA25 | `zephyr_udc0` → one `cdc_acm_uart0` instance composed by the overlay generator; `USB0.begin()` + `printf` reports |
+| Onboard LED | PA17 | The board-shipped `pwm-led0` alias, pre-constructed in the board module as `PWMLED` (`PWM_DT_SPEC_GET(DT_ALIAS(pwm_led0))`); `setDuty` is a 0.0–1.0 fraction |
+| USB CDC | PA24/PA25 | `zephyr_udc0` → one `cdc_acm_uart0` instance composed by the overlay generator; `USB0.open()` + `ready()`-gated `writeLine` reports |
 
 WiFi/BLE (the onboard NINA-W102) and the watchdog are **unsupported** on
 this target — see the board package for the full capability notes.
 
 ```ts
-import { LED, A0, USB0 } from '@typecad/board';
-import { PWM, ADCChannel, Time } from '@typecad/hal';
+import { PWMLED, USB0 } from '@typecad/board';
+import { Time } from '@typecad/hal';
 
-const led = new PWM(LED, { periodNs: 20_000_000 });
-const sense = new ADCChannel(A0);
+USB0.open();
 
-function loop(): void {
-  const mv = sense.readMillivolts();       // → adc_raw_to_millivolts(1650, ADC_GAIN_1, 12, …)
-  led.setDuty(mv / 1650);                  // → pwm_set_pulse_dt(pwm-led0 spec, …)
+while (true) {
+  PWMLED.setDuty(0.5);        // → PWM_DT_SPEC_GET(DT_ALIAS(pwm_led0))
+  USB0.writeLine('mode: dimmer');
   Time.sleep(20);
 }
 ```
@@ -37,7 +35,7 @@ function loop(): void {
 
 ```sh
 npm install
-npm run build          # transpile → out/src/main.cpp
+npm run build          # transpile → src/out/src/src.cpp
 npm run compile        # + west build for arduino_nano_33_iot/samd21g18a
 npm run upload         # + west flash (BOSSA USB bootloader — double-tap
                        #   reset first; no probe needed)
@@ -62,17 +60,17 @@ board's USB identity tells you what state it is in:
 |---|---|
 | `2341:8057` | Arduino factory sketch running (implements the touch itself) |
 | `2341:0057` | BOSSA bootloader — ready to flash |
-| `2FE3:0003` | Cuttlefish firmware running (touch-capable, our CDC PID) |
+| `2FE3:0001` | Cuttlefish firmware running (touch-capable, default CDC PID) |
 
 Override the serial port with `--port` (the config's `COM8` default is
 bring-up specific). After the first cuttlefish flash the board enumerates
-as `2FE3:0003`; set `test.usb: { vid: '2FE3', pid: '0003' }` in
-cuttlefish.config.ts to let identity matching track the COM number across
-re-enumerations.
+at the Zephyr-test default `2FE3:0001` (shared by every Zephyr CDC board);
+set `test.usb: { vid: '2FE3', pid: '0001' }` in cuttlefish.config.ts to let
+identity matching track the COM number across re-enumerations.
 
 ## Layout
 
 - `src/main.ts` — the firmware (transpiled to C++ by cuttlefish)
 - `sim/` — simulator tests (pure logic, runs in Node)
 - `tests/` — hardware tests (flashed and run on the board)
-- `out/` — generated C++/Zephyr project (do not edit)
+- `src/out/` — generated C++/Zephyr project (do not edit)

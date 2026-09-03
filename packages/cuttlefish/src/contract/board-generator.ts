@@ -56,7 +56,7 @@ export function generateBoardFile(opts: GenerateBoardOptions): string {
     '// are intentionally absent: using one is a compile error.',
     '',
     '// Full HAL runtime surface (constants, timing, math, GPIO/bus helpers).',
-    "import { Pin, I2CBus, SPIBus, SerialPort } from '@typecad/hal';",
+    "import { Pin, I2CBus, SPIBus, UART } from '@typecad/hal';",
     '',
     '// Narrowed pin set — only pins the contract declares connected.',
   ];
@@ -74,7 +74,7 @@ export function generateBoardFile(opts: GenerateBoardOptions): string {
     for (const p of peripherals) {
       if (p.startsWith('I2C')) lines.push(`export const ${p} = new I2CBus('${p}');`);
       else if (p.startsWith('SPI')) lines.push(`export const ${p} = new SPIBus('${p}');`);
-      else if (p.startsWith('UART')) lines.push(`export const ${p} = new SerialPort('${p}');`);
+      else if (p.startsWith('UART')) lines.push(`export const ${p} = new UART('${p}');`);
     }
   }
 

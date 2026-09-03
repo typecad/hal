@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { TEST_CHIP } from '../helpers/test-chip';
 import { lowerUart, uartInitLines } from '../../../../packages/framework-zephyr/src/lowering/uart';
-import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
 
 
 describe('legacy UART op removal + surviving poll/IRQ surface', () => {

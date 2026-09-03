@@ -219,17 +219,6 @@ export function callToStatement(
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
 
-  // ── setInterval/setTimeout arrow-callback hoisting (BEFORE HAL) ────────
-  // The timer helpers are runtime utilities, never HAL methods, but the HAL
-  // resolver treats bare-identifier globals as pseudo-HAL calls and claims
-  // them — baking the arrow arg into a lambda placeholder before our hoist
-  // can run. Intercept timer calls with arrow callbacks FIRST, hoist the
-  // arrow to a named function, and short-circuit before HAL sees it.
-  if (ts.isIdentifier(call.expression) && TIMER_CALLEES.has(call.expression.text)) {
-    const hoisted = hoistTimerArrowArg(call, fileName, sourceText, diagnostics, pointerVars, comments);
-    if (hoisted) return hoisted;
-  }
-
   // ── Ambient canvas ctx: rewrite ctx.method(...) while drawCanvas lowers ──
   {
     const canvasCtx = getCanvasAmbientCtx();
@@ -871,8 +860,6 @@ export function callToStatement(
     calleeText = calleeToText(call.expression);
   }
 
-  // Timer calls with arrow callbacks are intercepted before HAL (above);
-  // named-function callbacks fall through here unchanged.
   return {
     kind: "call",
     sourceSpan: makeSourceSpan(call, fileName, sourceText),
@@ -880,96 +867,6 @@ export function callToStatement(
     trailingComments: comments.trailingComments,
     callee: calleeText,
     args: call.arguments.map((arg) => expressionToIR(arg, sourceText, diagnostics, pointerVars)),
-  };
-}
-
-// ── setInterval/setTimeout arrow-callback hoisting ──────────────────────────
-
-const TIMER_CALLEES = new Set(["setInterval", "setTimeout", "__tc_setInterval", "__tc_setTimeout"]);
-
-let timerCallbackCounter = 0;
-
-/**
- * Hoist an inline arrow/function-expression callback argument of a
- * setInterval/setTimeout call to a named free function, and return the
- * rewritten call with the function name replacing the arrow.
- *
- * Returns null if arg[0] isn't an inline arrow/function (named-function
- * callbacks pass through to the generic path unchanged).
- *
- * Called from the generic fallthrough at the end of callToStatement — NOT
- * as an early return — because top-level timer calls reach the fallthrough
- * path, not the early-interception points.
- */
-function hoistTimerArrowArg(
-  call: ts.CallExpression,
-  fileName: string,
-  sourceText: string,
-  diagnostics: Diagnostic[],
-  pointerVars: PointerTracker,
-  comments: { leadingComments: string[]; trailingComments: string[] },
-): StatementIR | null {
-  const callbackArg = call.arguments[0];
-  if (!callbackArg || !(ts.isArrowFunction(callbackArg) || ts.isFunctionExpression(callbackArg))) {
-    return null;
-  }
-
-  const fnName = `__tc_timer_cb_${timerCallbackCounter++}`;
-  const scope = getCurrentIrTypeScope();
-  const localVariableTypes = new Map<string, CppTypeHint>();
-  if (scope) {
-    for (const [k, v] of scope.globals) localVariableTypes.set(k, v as CppTypeHint);
-  }
-  const functionReturnTypes = new Map<string, CppTypeHint>(
-    [...(getContext().activeFunctionReturnTypes ?? new Map())] as Array<[string, CppTypeHint]>,
-  );
-  const bodyStatements = lowerStatementList(
-    ts.isBlock(callbackArg.body) ? callbackArg.body.statements : [],
-    fileName,
-    sourceText,
-    diagnostics,
-    functionReturnTypes,
-    localVariableTypes,
-    fnName,
-    undefined,
-    pointerVars,
-  );
-
-  if (!ts.isBlock(callbackArg.body)) {
-    const exprText = renderExprAsText(expressionToIR(callbackArg.body, sourceText, diagnostics));
-    bodyStatements.push({
-      kind: "call",
-      sourceSpan: makeSourceSpan(callbackArg.body, fileName, sourceText),
-      callee: "__EMIT__",
-      args: [{ kind: "string", value: exprText }],
-    });
-  }
-
-  hoistedNestedFunctions.push({
-    originalName: fnName,
-    isAsync: false,
-    returnType: "void",
-    sourceSpan: makeSourceSpan(callbackArg, fileName, sourceText),
-    leadingComments: [],
-    trailingComments: [],
-    parameters: [],
-    statements: bodyStatements,
-  });
-
-  // Apply the polyfill helper rename (setInterval → __tc_setInterval) so the
-  // emitted call matches the runtime helper the framework provides.
-  const rawCallee = ts.isIdentifier(call.expression) ? call.expression.text : calleeToText(call.expression);
-  const calleeText = rawCallee === "setInterval" ? "__tc_setInterval"
-    : rawCallee === "setTimeout" ? "__tc_setTimeout"
-    : rawCallee;
-  const remainingArgs = call.arguments.slice(1).map((arg) => expressionToIR(arg, sourceText, diagnostics, pointerVars));
-  return {
-    kind: "call",
-    sourceSpan: makeSourceSpan(call, fileName, sourceText),
-    leadingComments: comments.leadingComments,
-    trailingComments: comments.trailingComments,
-    callee: calleeText,
-    args: [{ kind: "identifier", value: fnName }, ...remainingArgs],
   };
 }
 

@@ -4,19 +4,11 @@ import { execSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import chalk from "chalk";
 import type { CreateProjectOptions } from "./templates.js";
-import { KNOWN_TARGETS, KNOWN_MCUS, type KnownTarget } from "./scaffold.js";
+import { KNOWN_TARGETS, type KnownTarget } from "./scaffold.js";
 import { findPackBoard, packBoardAsTarget } from "./pack-targets.js";
 import { pickTarget } from "./board-search.js";
-import { BOARD_DATA } from "./board-catalog.generated.js";
+import { activeBoardCatalog } from "../board-catalog/index.js";
 import { frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from './framework-catalog.js';
-import {
-  mcuAsTarget,
-  findKnownMcu,
-  mcuSupportsZephyr,
-  zephyrBoardsForMcu,
-  sanitizeBoardName,
-  type McuCreateTarget,
-} from './mcu-target.js';
 
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
 
@@ -142,24 +134,25 @@ export async function runCreateWizard(
     //    catalog. One search box, no two-stage list. A preseeded --board that
     //    resolves skips the picker entirely.
     let packBoard: { identifier: string; name: string; soc: string } | undefined;
-    let mcuEntry: ReturnType<typeof findKnownMcu> = undefined;
     let foundTarget: KnownTarget | undefined;
     if (partialOptions?.board) {
       const found = KNOWN_TARGETS.find((t: KnownTarget) => t.id === partialOptions.board);
-      const mcuFound = found ? undefined : findKnownMcu(partialOptions.board);
-      const packFound = found || mcuFound ? undefined : findPackBoard(partialOptions.board);
+      const packFound = found ? undefined : findPackBoard(partialOptions.board);
       if (found) {
         foundTarget = found;
         console.log(`${chalk.cyan("?")} Target: ${chalk.white(found.displayName)} (${chalk.dim(partialOptions.board)})`);
-      } else if (mcuFound) {
-        mcuEntry = mcuFound;
-        console.log(`${chalk.cyan("?")} Target: ${chalk.white(mcuFound.displayName)} (${chalk.dim(partialOptions.board)})`);
       } else if (packFound) {
         packBoard = packFound;
         console.log(`${chalk.cyan("?")} Target: ${chalk.white(packFound.name)} (${chalk.dim(packFound.identifier)})`);
       }
     }
-    if (!foundTarget && !mcuEntry && !packBoard) {
+    if (Object.keys(activeBoardCatalog()).length === 0) {
+      console.log(`  ${chalk.yellow("!")} No board catalog on this machine — the catalog is generated`);
+      console.log(`    from your Zephyr tree. Run the installer or 'cuttlefish board sync' to`);
+      console.log(`    list boards; a preseeded --board <target> still works and validates at`);
+      console.log(`    the first build.`);
+    }
+    if (!foundTarget && !packBoard) {
       // Close the readline interface for the filterable select (it owns
       // stdin in raw mode), then recreate it for the remaining prompts.
       // Closing a readline pauses stdin; resume it so the select's internal
@@ -176,19 +169,17 @@ export async function runCreateWizard(
       if (pick.kind === 'native') {
         foundTarget = KNOWN_TARGETS.find((t: KnownTarget) => t.isNative);
       } else if (pick.kind === 'mcu') {
-        mcuEntry = findKnownMcu(pick.id);
+        // Bare-silicon targets were removed with the curated soc layer.
+        console.log(`  ${chalk.yellow("!")} Bare-silicon targets no longer exist — pick a board from the catalog.`);
       } else {
         packBoard = pick.entry;
         console.log(`${chalk.cyan("?")} Target: ${chalk.white(pick.entry.name)} (${chalk.dim(pick.entry.identifier)})`);
       }
     }
 
-    const target: KnownTarget = mcuEntry
-      ? mcuAsTarget(mcuEntry)
-      : packBoard
-        ? packBoardAsTarget(packBoard)
-        : foundTarget!;
-    const mcuTarget = mcuEntry ? (target as McuCreateTarget) : undefined;
+    const target: KnownTarget = packBoard
+      ? packBoardAsTarget(packBoard)
+      : foundTarget!;
 
     // 3. Framework. Narrow to the frameworks compatible with the selected board
     // (see framework-catalog), then let the user pick. The chosen package is
@@ -200,9 +191,6 @@ export async function runCreateWizard(
     let frameworkPackage = target.frameworkPackage;
 
     const compatible = frameworksForTarget(target)
-      // MCU-only targets: Zephyr needs the package's silicon zephyr block
-      // (custom-board generation + the board snapshot both key off its socs).
-      .filter((f) => !mcuTarget || f.id !== 'zephyr' || mcuSupportsZephyr(mcuTarget))
       .filter((f) => f.installable);
     if (compatible.length === 0) {
       // Defensive: every known target maps to at least one framework in the catalog.
@@ -247,36 +235,6 @@ export async function runCreateWizard(
     const profile = frameworkTargetProfile(target, framework);
     let buildTarget = profile.buildTarget ?? target.buildTarget;
     let zephyrCustomBoard = false;
-
-    // MCU-only targets have no catalog build target — resolve one here.
-    if (mcuTarget) {
-      if (framework === 'zephyr') {
-        const boards = zephyrBoardsForMcu(mcuTarget);
-        const choice = await promptSelect(
-          rl,
-          `Zephyr board for the ${mcuTarget.displayName.split(' (')[0]}`,
-          [
-            { label: `Generate a custom board (${sanitizeBoardName(projectName)} — for hardware with no Zephyr board)`, value: 'custom' },
-            { label: `Pick an existing Zephyr board (${boards.length} board${boards.length === 1 ? '' : 's'} use this SoC)`, value: 'existing' },
-          ],
-        );
-        if (choice === 'custom') {
-          buildTarget = sanitizeBoardName(projectName);
-          zephyrCustomBoard = true;
-          console.log(`  ${chalk.dim(`framework-zephyr generates boards/typecad/${buildTarget}/ at compile time`)}${' '}`);
-        } else {
-          buildTarget = await promptSelect(
-            rl,
-            `Board (${boards.length} — showing first 30)`,
-            boards.slice(0, 30).map((b) => ({ label: `${b.name} (${b.vendor})`, value: b.target })),
-          );
-        }
-      } else {
-        // Native has no build target; no other framework is offered for bare
-        // silicon (the catalog narrows MCU targets to Zephyr).
-        buildTarget = undefined;
-      }
-    }
 
     // 3.5 Probe method (Zephyr boards that ship a table). The probe in the
     // user's hand becomes the scaffolded zephyr.probe entry — it serves both
@@ -373,16 +331,15 @@ if (partialOptions?.noStarter) {
       board: target.board,
       // Pack fact: does the board's devicetree declare an LED? Drives the
       // starter between LED-blink and console-heartbeat.
-      ...(target.board ? { hasLed: Boolean(BOARD_DATA[target.board]?.led) } : {}),
+      ...(target.board ? { hasLed: Boolean(activeBoardCatalog()[target.board]?.led) } : {}),
       ...(serialPort ? { port: serialPort } : {}),
       frameworkPackage: frameworkPackage ?? '',
       framework: framework ?? '',
       buildTarget,
       ...(profile.toolchainType ? { toolchainType: profile.toolchainType } : {}),
-      // soc rides the config only for bare-silicon/contract projects — a
-      // board target's soc derives from the identifier at boardgen time.
+      // soc rides the config only for native projects — a board target's
+      // soc derives from the identifier at boardgen time.
       ...(target.board ? {} : { soc: target.soc }),
-      ...(mcuTarget ? { starterPin: mcuTarget.starterPin } : {}),
       ...(zephyrCustomBoard ? { zephyrCustomBoard: true } : {}),
       baudRate,
       includeStarter,

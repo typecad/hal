@@ -10,8 +10,9 @@ automatically.
 - **No prerequisites** — no preinstalled conda, Python, or toolchain. micromamba
   is fetched as a single static binary.
 - **Cross-platform** — Linux, macOS, and Windows-native (PowerShell). No WSL.
-- **Selective** — install only the toolchain platforms you need (~150 MB) instead
-  of the full 1.5 GB bundle.
+- **Just works** — the default installs every toolchain platform, so any board in
+  the Zephyr data pack compiles as-is with no follow-up installs (~1.5 GB download,
+  ~11 GB extracted). Space-conscious users can opt into a subset (~150-300 MB).
 - **Reproducible** — SDK version, Zephyr manifest revision, and per-platform
   SHA256s are pinned in [`versions.env`](./versions.env).
 
@@ -21,9 +22,10 @@ All commands work identically on Linux, macOS, and Windows (Node ≥ 18 required
 already a dependency of this repo):
 
 ```sh
-npx --package @typecad/framework-zephyr zephyr-installer                        # install (interactive checklist)
-npx --package @typecad/framework-zephyr zephyr-installer --platforms arm,esp32   # install (non-interactive)
-npx --package @typecad/framework-zephyr zephyr-installer --modify                # add/remove platform toolchains
+npx --package @typecad/framework-zephyr zephyr-installer                        # install everything (interactive; Enter = All)
+npx --package @typecad/framework-zephyr zephyr-installer --platforms arm,esp32   # space-saver: subset only
+npx --package @typecad/framework-zephyr zephyr-installer --modify --yes          # later: add any missing toolchains (additive)
+npx --package @typecad/framework-zephyr zephyr-installer --modify --prune --yes  # ...and also remove unselected ones
 npx --package @typecad/framework-zephyr zephyr-installer --delete                # uninstall everything
 npx --package @typecad/framework-zephyr zephyr-installer --help                  # full usage reference
 npx --package @typecad/framework-zephyr zephyr-installer --dry-run               # preview the resolved plan
@@ -38,8 +40,9 @@ usable directly for power users.)
 | Flag | Description |
 | ---- | ----------- |
 | *(none)* | Interactive install: platform checklist → summary → Enter → install. |
-| `--platforms IDS` | Non-interactive platform selection: comma-separated group ids (`arm,esp32,riscv,x86,aarch64`) or `all` for the full bundle. |
-| `--modify` | Re-present the checklist on an existing install to add/remove platform toolchains. Newly checked platforms download (idempotent per-toolchain); **deselected toolchains are deleted from disk**. SDK-only — skips the env and workspace steps. Warns before deleting. |
+| `--platforms IDS` | Space-saving, non-interactive platform selection: comma-separated group ids (`arm,esp32,riscv,arc,rx,x86,aarch64`) or `all`. Default: `all` — recommended, so every board in the data pack builds as-is. |
+| `--modify` | Re-run the SDK platform step on an existing install: **adds** the selected groups' missing toolchains (idempotent per-toolchain). Purely additive — nothing is deleted unless `--prune` is also given. SDK-only — skips the env and workspace steps. |
+| `--prune` | With `--modify`: also **delete** toolchains of platforms not in the selection (reclaim disk space). |
 | `--delete` | **Uninstall everything**: conda env, Zephyr SDK, west workspace, and micromamba itself (only when it has no other envs). Shows exact paths + sizes and requires typing `yes` to confirm. |
 | `--yes`, `-y` | Skip confirmation prompts (CI / scripting). With `--delete` this is the only non-interactive way to proceed. |
 | `--dry-run` | Print the resolved plan — URLs, paths, versions, platform selection — and exit. Downloads/creates nothing. |
@@ -191,7 +194,7 @@ use `--delete`).
 ## How it integrates with `framework-zephyr`
 
 `framework-zephyr` resolves `west` via a discovery cascade
-([`west-discover.ts`](../framework-zephyr/src/toolchain/west-discover.ts)):
+([`src/toolchain/west-discover.ts`](../src/toolchain/west-discover.ts)):
 
 1. `west` on PATH (activated shell)
 2. `$ZEPHYR_BASE` venv
@@ -320,11 +323,6 @@ packages/framework-zephyr/installer/
 
 Line endings are enforced LF for all POSIX-executed files via `.gitattributes`
 (`*.sh`, `*.mjs`, `*.env`, `environment.yml`) — CRLF would break bash on Linux.
-
-This is complementary to — not a replacement for — the
-[docker-backed toolchain runtime](../../docs/superpowers/specs/2026-08-02-docker-toolchain-design.md):
-conda/micromamba is the **install transport**, docker is a (future) execution
-backend.
 
 Tests live at `tests/packages/framework-zephyr/installer-tests/` (run via
 the repo-root `npm test`).

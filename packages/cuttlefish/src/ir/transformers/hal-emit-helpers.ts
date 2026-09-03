@@ -8,8 +8,8 @@ import { PointerTracker } from "../build-ir-state.js";
 
 /**
  * Recursively collect emit lines from chained HAL method calls.
- * For an expression like led.tone(440).for(400), this collects
- * the emit lines from the inner led.tone(440) call.
+ * For an expression like rgb.brightness(50).show(), this collects
+ * the emit lines from the inner rgb.brightness(50) call.
  */
 export function collectChainedHALEmits(
   expr: ts.Expression,

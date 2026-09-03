@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { lowerWifi, wifiInitLines } from '../../../../packages/framework-zephyr/src/lowering/wifi';
 import { setActiveChip } from '../../../../packages/framework-zephyr/src/chips/index';
-import { ESP32S3_DEVKITC } from '../../../../packages/framework-zephyr/src/chips/esp32s3';
+import { ESP32S3_DEVKITC } from '../helpers/test-chip';
 import { transpileZephyrStrategy } from '../../../setup';
 
 setActiveChip(ESP32S3_DEVKITC);

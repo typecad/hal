@@ -20,30 +20,34 @@
 
 import type { HALOpIR, PlatformStrategy } from "../api/shared/index.js";
 import { getSafetyHook } from "../safety-hook.js";
+import { markHalOpResolved } from "../ir/build-ir-state.js";
 
 export function routeHALOp(
   op: HALOpIR,
   strategy: Pick<PlatformStrategy, "resolveHALOperation" | "resolveDisplayOp">,
 ): { code?: string; expression?: string } | undefined {
+  // An op resolved here during IR-build-time method inlining may never exist
+  // as an IR node (its text is baked into the calling method's emit lines),
+  // so record it for program-analysis's peripheral usage flags — every
+  // branch, matching the IR-node paths (display.* sets usesGPIO/usesDisplay,
+  // safety.* maps the __tc_safety_* helpers).
   if (typeof op.operation === "string") {
     if (op.operation.startsWith("display.")) {
-      return strategy.resolveDisplayOp?.(op as Extract<HALOpIR, { operation: `display.${string}` }>);
+      const r = strategy.resolveDisplayOp?.(op as Extract<HALOpIR, { operation: `display.${string}` }>);
+      if (r) markHalOpResolved(op.operation);
+      return r;
     }
     if (op.operation.startsWith("safety.")) {
       // Safety ops are resolved by the @typecad/safety package via hook.
       // Returns undefined if the package is not loaded (caller emits an
       // unhandled-op warning).
-      return getSafetyHook()?.resolveSafetyOp?.(op);
+      const r = getSafetyHook()?.resolveSafetyOp?.(op);
+      if (r) markHalOpResolved(op.operation);
+      return r;
     }
   }
 
-
-
   const resolved = strategy.resolveHALOperation?.(op);
-
-
-
-
-
+  if (resolved) markHalOpResolved(op.operation);
   return resolved;
 }

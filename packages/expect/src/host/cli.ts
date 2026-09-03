@@ -234,7 +234,7 @@ async function main(): Promise<void> {
   // test-pins.json usb block). Bring-up aid for multi-board test boxes.
   if (args.discover) {
     const ports = await listUsbSerialPorts();
-    const identity = config.test.usb ?? boardTestPins(config.board, config.projectRoot)?.usb;
+    const identity = config.test.usb ?? boardTestPins(config.board, config.projectRoot, config.configPath)?.usb;
     const matches = identity ? matchUsbPorts(ports, identity) : [];
     console.log('USB serial ports:');
     if (ports.length === 0) {

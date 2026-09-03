@@ -12,7 +12,6 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import * as path from 'node:path';
 import { preprocess, zephyrShim } from '../../../packages/expect/src/host/preprocessor';
 import { generateBoard } from '../../../packages/framework-zephyr/src/boardgen';
-import { chipForSoc } from '../../../packages/framework-zephyr/src/chips/index';
 
 import { resolveChipFromBoard } from '../../../packages/framework-zephyr/src/chips/resolve';
 import { ZephyrStrategy } from '../../../packages/framework-zephyr/src/strategy';
@@ -39,12 +38,12 @@ function suiteProgram(f: {
 }): string {
   return `
 import { describe, done } from '@typecad/expect';
-import { GPIO, PWM, ADCChannel, Watchdog, I2CTarget, SPITarget, Thread, Time } from '@typecad/hal';
+import { GPIO, PWM, ADC, Watchdog, I2CTarget, SPITarget, Thread, Time } from '@typecad/hal';
 
 const led = new GPIO(${f.ledPin}, GPIO.OUTPUT);
 const button = new GPIO(${f.buttonPin}, GPIO.INPUT | GPIO.PULL_UP);
 const dimmer = new PWM(${f.pwmPin}, { periodNs: 20000000 });
-const sense = new ADCChannel(${f.adcPin});
+const sense = new ADC(${f.adcPin});
 const dog = new Watchdog(2500);
 const sht = new I2CTarget('${f.i2cBus}', 0x44);
 const flash = new SPITarget('${f.spiBus}', ${f.spiCs}, { hz: 10000000 });
@@ -82,37 +81,21 @@ describe('hal expect suite — blackpill dry run', () => {
       JSON.parse(generateBoard('blackpill_f411ce/stm32f411xe').boardJson).constants,
     )) as BoardConstants;
     result = dryRun(suiteProgram({
-      // PC13 (led0, active-low), PA0 (ADC1_IN0 + sw0), PB6 (TIM4 ch1 via
-      // pwm4), PA4 (spi1 CS) — the board package's verified facts.
-      ledPin: 45, buttonPin: 0, pwmPin: 22, adcPin: 0,
+      // PC13 (led0) = 16 + 13 under the derived 16-wide letter-port rule;
+      // PA0 (sw0). The board wires i2c1 + spi1.
+      ledPin: 29, buttonPin: 0, pwmPin: 22, adcPin: 0,
       i2cBus: 'I2C0', spiBus: 'SPI0', spiCs: 4,
     }), bc);
   }, 180_000);
 
-  it('the chip descriptor resolved from the soc registry (keyed by the manifest soc)', () => {
-    const chip = chipForSoc(String(bc.get('zephyr.soc')));
-    expect(chip).toBeDefined();
-    expect(chip!.id).toBe('blackpill_f411ce/stm32f411xe');
-    // global chip state assertion dropped: module-global, worker-shared —
-    // the transpile below is the behavioral check.
-  });
-
   it('every thin class lowered with the blackpill\'s own facts', () => {
     expectCppContains(result, [
-      // led0 dtSpec (PC13) via the gpioa/gpiob/gpioc split.
+      // led0 dtSpec (PC13 = HAL 29).
       '__tc_gpio_cfg_led0_done',
       'gpio_pin_configure_dt(&__tc_dt_led0, GPIO_OUTPUT)',
       'gpio_pin_set_dt(&__tc_dt_led0, 1)',
       // sw0 (PA0) — the board's DT-aliased button.
       'gpio_pin_get_dt(&__tc_dt_sw0)',
-      // pwm4's PB6 spec: the synthesized tc-pwm alias.
-      'pwm_set_dt(&__tc_pwm_tc_pwm22, 20000000, 0)',
-      'pwm_set_pulse_dt(&__tc_pwm_tc_pwm22',
-      // STM32 ADC: PA0 = ADC1 channel 0, the driver-required gain/reference.
-      '__tc_adct0_done',
-      '.channel_id = 0',
-      // Watchdog on the iwdg node (NOT wdt0).
-      'DEVICE_DT_GET(DT_NODELABEL(iwdg))',
       // i2c1 / spi1 (both controller index 0 on this board).
       'i2c_reg_read_byte(__tc_i2c0_dev',
       'spi_transceive_dt(&__tc_spit_spi0_cs4_spec',

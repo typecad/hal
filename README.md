@@ -5,9 +5,8 @@
 > Zephyr-shaped HAL — construction-fact classes (`GPIO`, `PWM`, `ADCChannel`,
 > `I2CTarget`, `SPITarget`, `UART`, `Watchdog`, `Counter`, `Thread`, `Time`,
 > `Sensor`) whose methods lower 1:1 onto Zephyr driver calls, with
-> devicetree/Kconfig generated from your code. The examples below still show
-> the legacy API and will be updated; see `docs/hal/thin-hal.md` for the
-> current surface and `demos/zephyr-*` for working programs.
+> devicetree/Kconfig generated from your code. See `docs/hal/thin-hal.md` for
+> the full surface and `demos/zephyr-*` for working programs.
 
 - Write firmware in TypeScript. Ship it as C++.
 - Type-safe, board-aware embedded development that catches hardware bugs before you flash — not after a 30-second upload cycle.
@@ -40,23 +39,19 @@ That's a complete Zephyr program. `new GPIO(LED, GPIO.OUTPUT)` carries construct
 Every pin has a narrow type that reflects what it can actually do on your board.
 
 ```typescript
-import { D4, PB6, A0 } from '@typecad/board';
+import { PB6, PA0 } from '@typecad/board';
+import { PWM, ADCChannel } from '@typecad/hal';
 
-new PWM(D4, { periodNs: 20_000_000 });
-// Error: D4 has no PWM channel on this board (use: PB6)
+new PWM(PA0, { periodNs: 20_000_000 });
+// Error: PA0 has no PWM route on this board (PB6 does)
 
-const sense = new ADCChannel(A0);
+const sense = new ADCChannel(PA0);
 sense.read();  // OK — raw counts at the chip's resolution
 ```
 
-The transpiler also detects conflicts between peripherals and GPIO:
-
-```typescript
-import { I2C0, A4 } from '@typecad/board';
-
-I2C0.begin();
-A4.output(HIGH); // Warning: A4 is claimed by I2C0
-```
+The transpiler also detects alias conflicts — two names that resolve to the
+same physical pin — and peripheral usage that collides with pins the board's
+own controllers claim.
 
 These are not linter hints. They're type errors and transpiler diagnostics rooted in your board's actual pinmux.
 
@@ -67,8 +62,7 @@ Calling `.device()` on an uninitialized bus is a compile-time error.
 ```typescript
 import { I2C0 } from '@typecad/board';
 
-```typescript
-const sht = new I2CTarget('I2C0', 0x76);
+const sht = I2C0.device(0x76);
 sht.readReg(0xFA); // OK — no begin() to forget; construction configures everything
 ```
 
@@ -122,37 +116,33 @@ The transpiler auto-generates `cuttlefish-env.d.ts` so your editor resolves the 
 
 TypeScript constructs that have no C++ equivalent are erased or inlined at transpile time:
 
-- GPIO aliases (`const led = LED.asOutput()`) produce no C++ variables
+- Pin aliases (`const led = LED`) produce no C++ variables
 - `Shared<T>` phantom types emit C++ `const`
 - `Owned<T>` / `Mutable<T>` types are fully erased
-- Enums, classes with private fields, destructuring, template literals, typed arrays — all lowered to valid C++ for an ATmega328P with 2KB RAM
-
-## Rust-inspired bus ownership
-
-```typescript
-import { I2C0 } from '@typecad/board';
-
-const bus = I2C0.take(); // exclusive claim
-
-bus.device(0x76).readByte(0xFA);
-
-bus.release(); // return to pool
-```
-
-On Zephyr, `take`/`release` map to mutex acquisition. The transpiler validates correct usage — double-take and use-without-own are errors.
+- Enums, classes with private fields, destructuring, template literals, typed arrays — all lowered to valid C++ for the target MCU
 
 ## Test on real hardware
 
 ```typescript
-import { describe, it, expect } from '@typecad/expect';
-import { A0 } from '@typecad/board';
+import { describe, done } from '@typecad/expect';
+import { ADC_PIN, ADC_MAX } from '@typecad/test-pins';
+import { ADCChannel } from '@typecad/board';
 
-describe('Analog input').it('reads within valid range', () => {
-  expect(A0.readAnalog()).toBeWithinRange(0, 1023);
-});
+describe("Analog input")
+  .it("reads within valid range")
+  .expect((() => {
+    const sense = new ADCChannel(ADC_PIN);
+    return sense.read();
+  })())
+  .toBeWithinRange(0, ADC_MAX);
+
+done();
 ```
 
-These tests run on the actual microcontroller over serial. The host-side runner reports pass/fail from real pin states and sensor readings — not mocks.
+These tests run on the actual microcontroller over serial — via
+`cuttlefish --expect` or the `cuttlefish-test` CLI from `@typecad/expect`.
+The host-side runner reports pass/fail from real pin states and sensor
+readings — not mocks.
 
 ## Simulate without hardware
 
@@ -161,7 +151,7 @@ The in-memory simulator lets you develop and test firmware logic in Node.js befo
 ```typescript
 import { createSimBoard } from '@typecad/simulator';
 
-const board = createSimBoard();
+const board = createSimBoard({ digitalPinCount: 14 });
 // Mock I2C devices, inject serial data, verify bus traffic
 ```
 
@@ -338,17 +328,17 @@ Framework layout classes from the UA sheet (documented, overridable): `.scrollBo
 
 ### shadcn-style component kit
 
-```sh
-cuttlefish add shadcn
-```
+The kit is **built into `@typecad/ui`** and prepended to every build and preview automatically — no scaffolding step, no import required: put the classes on native elements and they work. Your own styles override it by normal cascade order.
 
-Copies a shadcn-style preset into `src/styles/shadcn.css` — **yours to edit**, like shadcn/ui's copy-and-own philosophy. Link it from any stylesheet or `<style>` block:
+Pre-packaged themes ship with `@typecad/ui` — import them by bare specifier from any `<style>` block or sidecar stylesheet:
 
 ```css
-@import "./styles/shadcn.css";
+@import "@typecad/ui/themes/blue.css";
 ```
 
-The preset provides CSS-variable tokens (`--background`, `--primary`, `--muted-foreground`, `--border`, `--radius`, ...) in light + `.dark` sets (activate dark via `themeClass: 'dark'`), plus class recipes over the native elements:
+Available theme files: `zinc`, `slate`, `stone`, `gray`, `neutral`, `blue`, `green`, `red`. Your own theme is any CSS file — save a ui.shadcn.com / tweakcn export into the project and `@import` it by path; its `:root`/`.dark` token blocks override the kit defaults.
+
+The kit provides CSS-variable tokens (`--background`, `--primary`, `--muted-foreground`, `--border`, `--radius`, ...) in light + `.dark` sets (activate dark via `themeClass: 'dark'`), plus class recipes over the native elements:
 
 | shadcn component | Recipe on native elements |
 | --- | --- |
@@ -367,7 +357,7 @@ The preset provides CSS-variable tokens (`--background`, `--primary`, `--muted-f
 | Row (kit utility) | `.row` on `<view>` |
 | Tabs, Dialog, Toast, Accordion, Tooltip | not CSS — need runtime state; deferred (Accordion maps to the planned `details`/`summary`) |
 
-`@import` resolves relative local stylesheets at build time (recursive, cycle-guarded; remote imports still warn). Token values are opaque-tuned for panels without alpha blending. The `demo-ui` showcase has a live "shadcn Kit" screen built this way.
+`@import` resolves local stylesheets — relative paths and bare `@typecad/ui/themes/*` specifiers — at build time (recursive, cycle-guarded; remote imports still warn). Token values are opaque-tuned for panels without alpha blending. The `demos/demo-shadcn` showcase has a live "shadcn Kit" screen built this way.
 
 **Pasting a stock shadcn theme works unmodified** — replace the preset's `:root`/`.dark` token blocks with any theme from the shadcn generator or tweakcn. Both dialects resolve at build time: classic HSL channel triplets (`--primary: 222.2 47.4% 11.2%`, consumed as `var(--x)` or `hsl(var(--x))` alike) and Tailwind v4 era `oklch()` tokens (converted to sRGB). Extra tokens stock themes carry (`--ring`, `--chart-*`, `--sidebar-*`) are simply unused. Radius arithmetic like `calc(var(--radius) - 2px)` resolves correctly with rem or px tokens.
 
@@ -403,13 +393,7 @@ Set breakpoints (or logpoints) in your `.ts` source files using the **TypeCAD De
 
 ## Source maps for embedded
 
-C++ compiler errors map back to your TypeScript source:
-
-```bash
-npx @typecad/cuttlefish map-error out/sketch/sketch.ino.thcppmap.json --line 42 --column 5
-```
-
-You see the TypeScript file, line, and column — not the generated C++.
+C++ compiler errors map back to your TypeScript source automatically: during `cuttlefish build --compile`, every parsed compiler diagnostic is reported at its TypeScript file, line, and column — not the generated C++.
 
 ## Dead code elimination
 
@@ -427,7 +411,7 @@ cd my-project
 npm install
 ```
 
-This creates a complete project with `cuttlefish.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: any Zephyr board variant in the data pack (`esp32s3`, `xiao_ble`, `blackpill_f411ce`, `rpi_pico`, …), or `--soc` for a contract (custom-PCB) project.
+This creates a complete project with `cuttlefish.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: any Zephyr board variant in the data pack (`esp32s3`, `xiao_ble`, `blackpill_f411ce`, `rpi_pico`, …). Custom-PCB hardware uses a contract project — set `soc:` + `contract:` in `cuttlefish.config.ts` instead of `board:`.
 
 Or launch an interactive wizard:
 
@@ -459,13 +443,14 @@ export default config;
 Write your sketch:
 
 ```typescript
-import { LED, delay } from '@typecad/board';
+import { LED } from '@typecad/board';
+import { GPIO, Time } from '@typecad/hal';
 
-const led = LED.asOutput();
+const led = new GPIO(LED, GPIO.OUTPUT);
 
 while (true) {
   led.toggle();
-  delay(1000);
+  Time.sleep(1000);
 }
 ```
 
@@ -484,9 +469,13 @@ npx @typecad/cuttlefish create [project-name] [options]   # scaffold a new proje
 cuttlefish create [project-name] [options]                # scaffold via the full CLI (after install)
 cuttlefish <input.ts> [options]
 cuttlefish build                                  # use entry from cuttlefish.config.ts
-cuttlefish gen-libdefs <input.ts>
-cuttlefish map-error <mapFile> [options]
-cuttlefish create-board <name>                    # scaffold a new board package
+cuttlefish preview [--config <path>] [--port <p>] # browser preview for a UI project
+cuttlefish gen-decls <file.cpp|--all <dir>>       # .d.ts stubs from C++ headers
+cuttlefish doctor                                 # check the active framework's environment
+cuttlefish licenses [--all] [--strict]            # scan project libraries for SPDX licenses
+cuttlefish board sync [zephyr-base]               # rebuild the board catalog from your Zephyr tree (after west update)
+cuttlefish board regen                            # regenerate .cuttlefish/board.ts (also runs automatically on build)
+cuttlefish library <search|install|init|validate> # cuttlefish library package manager
 ```
 
 ### Project scaffolding (`cuttlefish create`)
@@ -496,22 +485,24 @@ The scaffolding is built into the `cuttlefish` CLI — `npx @typecad/cuttlefish 
 | Flag | Description |
 |---|---|
 | `[project-name]` | Project name (default: interactive prompt) |
-| `--board, -b <id>` | Board to target (e.g. `esp32s3`). Skips interactive wizard. |
+| `--target, -t <id>` | Board target (qualified catalog id like `esp32s3_devkitc/esp32s3/procpu`; bare board names resolve too; `native` for a desktop project). Skips the interactive wizard. |
+| `--board, -b <id>` | Alias for `--target`. |
 | `--framework, -f <id>` | Framework. Default: `@typecad/framework-zephyr`. |
-| `--baud <rate>` | Serial baud rate (default: `9600`). |
-| `--no-sketch` | Skip generating the starter blink sketch. |
+| `--probe, --flash <id>` | Probe/flash method (`stlink`, `dfu`, `jlink`, ...). |
+| `--port, -p <port>` | Serial port the board is on (e.g. `COM4`, `/dev/ttyACM0`). |
+| `--baud <rate>` | Serial baud rate (default: `115200` on Zephyr, `9600` otherwise). |
+| `--no-starter` | Skip generating the starter program. |
+| `--no-install` | Skip installing dependencies. |
 | `--outDir, -o <dir>` | Output directory (default: `./<project-name>`). |
-| `--help, -h` | Show help. |
 
 ### Transpile options
 
 | Flag | Default | Description |
 |---|---|---|
 | `--emit cpp\|split` | `split` | Output format for multi-file programs |
-| `--target <board>` | — | Target profile resolved from your board package |
+| `--target <platform>` | `generic` | Target platform string; the loaded framework registers its own target id |
 | `--outDir <path>` | input directory | Output directory for generated files |
 | `--emit-maps true\|false` | `true` | Write `.thcppmap.json` source map sidecars |
-| `--fqbn <package:arch:board>` | *(from config)* | FQBN override; required for `--compile` when no config exists |
 
 ### Build chain (each flag requires the previous)
 
@@ -532,7 +523,6 @@ The scaffolding is built into the `cuttlefish` CLI — `npx @typecad/cuttlefish 
 | `--keep-unused-classes` | Keep all classes even if uninstantiated |
 | `--keep-unused-types` | Keep all type aliases even if unused |
 | `--keep-unused-variables` | Keep all top-level variables even if unreferenced |
-| `--no-report-unused` | Suppress diagnostics for removed code |
 | `--entry-point <name>` | Add a custom entry point (repeatable) |
 
 ---
@@ -573,7 +563,6 @@ All packages share a fixed version via [Changesets](https://github.com/changeset
 ## Documentation
 
 - [Runtime exception behavior](RUNTIME_EXCEPTION.md)
-- [Third-party notices](NOTICE.md)
 - [Framework authoring guide](docs/framework-authoring-guide.md)
 - [Framework coverage matrix](docs/framework-coverage.md) — generated by
   `npm run render:framework-coverage`

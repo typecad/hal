@@ -2,8 +2,9 @@
 // main.ts — BME688 Weather Station demo (mocked sensor)
 //
 // Exports sensor-reading signals that the UI template binds to. The sensor is
-// mocked: values drift slowly around realistic baselines on a 2s timer. Swap
-// the setInterval body for real I2C reads when hardware is connected.
+// mocked: values drift slowly around realistic baselines, polled by a kernel
+// Thread that sleeps 2s between rounds. Swap the thread body for real I2C
+// reads when hardware is connected.
 //
 // Values are integers to avoid the transpiler's double+string concatenation
 // limitation (Math.floor returns double in the lowered C++; template literals
@@ -11,6 +12,7 @@
 // ---------------------------------------------------------------------------
 
 import { ui } from '@typecad/ui';
+import { Thread, Time } from '@typecad/hal';
 import { screen } from './weather.ui.html';
 
 ui.mount(screen);
@@ -25,26 +27,30 @@ export const gas = ui.signal(50);           // kΩ
 let _seed = 12345;
 
 // Poll the (mocked) sensor every 2 seconds.
-setInterval(() => {
-  _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
-  const r1 = _seed / 0x7fffffff;
-  _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
-  const r2 = _seed / 0x7fffffff;
-  _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
-  const r3 = _seed / 0x7fffffff;
-  _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
-  const r4 = _seed / 0x7fffffff;
+const poller = new Thread(0, { stackKb: 2 });
+poller.start((): void => {
+  while (true) {
+    _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
+    const r1 = _seed / 0x7fffffff;
+    _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
+    const r2 = _seed / 0x7fffffff;
+    _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
+    const r3 = _seed / 0x7fffffff;
+    _seed = (_seed * 1103515245 + 12345) & 0x7fffffff;
+    const r4 = _seed / 0x7fffffff;
 
-  // Drift each value by a small random delta, clamped to realistic ranges.
-  const newTemp = temperature() + (r1 > 0.5 ? 1 : -1);
-  temperature.set(newTemp < -10 ? -10 : newTemp > 50 ? 50 : newTemp);
-  const newHum = humidity() + (r2 > 0.5 ? 1 : -1);
-  humidity.set(newHum < 0 ? 0 : newHum > 100 ? 100 : newHum);
-  const newPres = pressure() + (r3 > 0.5 ? 1 : -1);
-  pressure.set(newPres < 980 ? 980 : newPres > 1040 ? 1040 : newPres);
-  const newGas = gas() + (r4 > 0.5 ? 2 : -2);
-  gas.set(newGas < 10 ? 10 : newGas > 500 ? 500 : newGas);
-}, 2000);
+    // Drift each value by a small random delta, clamped to realistic ranges.
+    const newTemp = temperature() + (r1 > 0.5 ? 1 : -1);
+    temperature.set(newTemp < -10 ? -10 : newTemp > 50 ? 50 : newTemp);
+    const newHum = humidity() + (r2 > 0.5 ? 1 : -1);
+    humidity.set(newHum < 0 ? 0 : newHum > 100 ? 100 : newHum);
+    const newPres = pressure() + (r3 > 0.5 ? 1 : -1);
+    pressure.set(newPres < 980 ? 980 : newPres > 1040 ? 1040 : newPres);
+    const newGas = gas() + (r4 > 0.5 ? 2 : -2);
+    gas.set(newGas < 10 ? 10 : newGas > 500 ? 500 : newGas);
+    Time.sleep(2000);
+  }
+});
 
 // ── Bindings: push sensor values to the display ─────────────────────────────
 // Integer signals → template literals work (int + string is valid in the

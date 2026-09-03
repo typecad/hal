@@ -1,13 +1,31 @@
 import { describe, it, expect } from 'vitest';
+import { TEST_CHIP, chipForBoard } from '../helpers/test-chip';
 import { generateOverlay } from '../../../../packages/framework-zephyr/src/dt-config/overlay';
-import { XIAO_BLE } from '../../../../packages/framework-zephyr/src/chips/xiao-ble';
 import { resolveChipFromBoard } from '../../../../packages/framework-zephyr/src/chips/resolve';
-import { SOC_CHIPS } from '../../../../packages/framework-zephyr/src/chips/soc/index';
 
-// The Black Pill descriptor carries synthesized PWM specs + pinctrl-labeled
-// ADC channels — the consolidated soc registry holds the same data a real
-// build resolves (keyed off the generated board manifest's zephyr.soc).
-const BLACKPILL = SOC_CHIPS['stm32f411xe'];
+// The Black Pill chip view resolves the equal way (from its generated
+// manifest). Silicon facts that never live in devicetree — the PWM matrix
+// and pinctrl-labeled ADC channels — are synthetic test inputs here, kept
+// only so the overlay generator's silicon paths stay exercised.
+const BLACKPILL = {
+  ...chipForBoard('blackpill_f411ce/stm32f411xe'),
+  pwm: {
+    specs: [
+      { pin: 22, controller: 'pwm4', channel: 1, periodNs: 20_000_000 },
+      { pin: 23, controller: 'pwm4', channel: 2, periodNs: 20_000_000 },
+    ],
+    clockHz: 96_000_000,
+  },
+  adc: {
+    nodeLabel: 'adc1',
+    channels: [
+      { pin: 0, channel: 0, pinctrl: 'adc1_in0_pa0' },
+      { pin: 16, channel: 8, pinctrl: 'adc1_in8_pb0' },
+    ],
+  },
+  wdt: { nodeLabel: 'iwdg' },
+  storage: { offset: 0x40000, size: 0x40000 },
+};
 import { DEFAULT_ZEPHYR_DISPLAY_PROFILE, ZEPHYR_DISPLAY_PROFILES } from '../../../../packages/framework-zephyr/src/display/profiles';
 import { generateBoard } from '../../../../packages/framework-zephyr/src/boardgen';
 import type { BoardConstants } from '../../../../packages/cuttlefish/src/api/shared/board-resolver';
@@ -19,7 +37,7 @@ function generatedConstants(target: string): BoardConstants {
 
 describe('generateOverlay', () => {
   it('enables used peripherals with status okay', () => {
-    const txt = generateOverlay(XIAO_BLE, { usesI2c: true, usesSpi: true }, undefined);
+    const txt = generateOverlay(TEST_CHIP, { usesI2c: true, usesSpi: true }, undefined);
     expect(txt).toContain('&i2c1');
     expect(txt).toContain('&spi2');
     expect(txt).toContain('status = "okay"');
@@ -29,7 +47,7 @@ describe('generateOverlay', () => {
     // The display node is emitted as a full / { mipi-dbi { display0: display@0 } }
     // definition (boards have no display node to enable with &display0), so assert
     // on the label + compatible rather than a &display0 reference.
-    const txt = generateOverlay(XIAO_BLE, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE);
+    const txt = generateOverlay(TEST_CHIP, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE);
     expect(txt).toContain('display0: display@0');
     // The default profile is the ILI9341 — the compatible must follow the
     // profile's controller, not a hardcoded panel family.
@@ -39,15 +57,15 @@ describe('generateOverlay', () => {
   });
 
   it('emits te-gpios on the display node only when tearingEffectPin is wired', () => {
-    const withTe = generateOverlay(XIAO_BLE, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE, { tearingEffectPin: 21 });
+    const withTe = generateOverlay(TEST_CHIP, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE, { tearingEffectPin: 21 });
     expect(withTe).toContain('te-gpios = <&gpio0 21 GPIO_ACTIVE_HIGH>;');
-    const without = generateOverlay(XIAO_BLE, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE);
+    const without = generateOverlay(TEST_CHIP, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE);
     expect(without).not.toContain('te-gpios');
   });
 
   it('emits the ST7796S compatible + gamma for the st7796 profile', () => {
     const txt = generateOverlay(
-      XIAO_BLE, { usesDisplay: true }, ZEPHYR_DISPLAY_PROFILES['st7796-zephyr'],
+      TEST_CHIP, { usesDisplay: true }, ZEPHYR_DISPLAY_PROFILES['st7796-zephyr'],
     );
     expect(txt).toContain('compatible = "sitronix,st7796s"');
     // pgc/ngc are required props of the sitronix binding; madctl carries the
@@ -59,7 +77,7 @@ describe('generateOverlay', () => {
 
   it('emits an FT6336U I2C touch node by default when touch is used', () => {
     const txt = generateOverlay(
-      XIAO_BLE,
+      TEST_CHIP,
       { usesDisplay: true, usesTouch: true },
       DEFAULT_ZEPHYR_DISPLAY_PROFILE,
       undefined,
@@ -71,7 +89,7 @@ describe('generateOverlay', () => {
 
   it('emits an XPT2046 SPI touch node with the in-tree binding shape', () => {
     const txt = generateOverlay(
-      XIAO_BLE,
+      TEST_CHIP,
       { usesDisplay: true, usesTouch: true },
       DEFAULT_ZEPHYR_DISPLAY_PROFILE,
       { cs: 5 },
@@ -101,7 +119,7 @@ describe('generateOverlay', () => {
 
   it('emits the XPT2046 node standalone (no display) with its own bus block', () => {
     const txt = generateOverlay(
-      XIAO_BLE, { usesTouch: true }, undefined, undefined,
+      TEST_CHIP, { usesTouch: true }, undefined, undefined,
       { controller: 'xpt2046', cs: 6, irq: 7 },
     );
     expect(txt).toContain('xpt2046: xpt2046@1');
@@ -112,12 +130,12 @@ describe('generateOverlay', () => {
   });
 
   it('omits unused peripherals', () => {
-    const txt = generateOverlay(XIAO_BLE, { usesI2c: false }, undefined);
+    const txt = generateOverlay(TEST_CHIP, { usesI2c: false }, undefined);
     expect(txt).not.toContain('&spi2');
   });
 
   it('has a header comment marking it auto-generated', () => {
-    const txt = generateOverlay(XIAO_BLE, {}, undefined);
+    const txt = generateOverlay(TEST_CHIP, {}, undefined);
     expect(txt).toContain('Auto-generated');
   });
 
@@ -126,7 +144,7 @@ describe('generateOverlay', () => {
     // gpio-leds node or alias — doing so would steal a GPIO (demo-st's
     // hardcoded pin 4 previously collided with the FT6336U reset-gpios).
     const txt = generateOverlay(
-      XIAO_BLE, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE,
+      TEST_CHIP, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE,
     );
     expect(txt).not.toContain('bl_led');
     expect(txt).not.toContain('bl-gpio-leds');
@@ -135,7 +153,7 @@ describe('generateOverlay', () => {
 
   it('emits the backlight node on the configured pin when backlightPin is set', () => {
     const txt = generateOverlay(
-      XIAO_BLE, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE,
+      TEST_CHIP, { usesDisplay: true }, DEFAULT_ZEPHYR_DISPLAY_PROFILE,
       { backlightPin: 33 },
     );
     expect(txt).toContain('backlight = &bl_led');
@@ -150,7 +168,7 @@ describe('generateOverlay', () => {
     // left demo-shadcn without touch while demo-st worked).
     const diags: Array<{ severity: string; message: string }> = [];
     generateOverlay(
-      XIAO_BLE,
+      TEST_CHIP,
       { usesI2c: true, usesTouch: true, touchController: 'ft6336u' },
       undefined,
       undefined,
@@ -163,7 +181,7 @@ describe('generateOverlay', () => {
     // With pins: no warning, and the overlay remuxes the bus.
     const diags2: Array<{ severity: string; message: string }> = [];
     const txt = generateOverlay(
-      XIAO_BLE,
+      TEST_CHIP,
       { usesI2c: true, usesTouch: true, touchController: 'ft6336u' },
       undefined,
       undefined,
@@ -175,7 +193,7 @@ describe('generateOverlay', () => {
     // SPI touch controllers are unaffected.
     const diags3: Array<{ severity: string; message: string }> = [];
     generateOverlay(
-      XIAO_BLE,
+      TEST_CHIP,
       { usesSpi: true, usesTouch: true, touchController: 'xpt2046' },
       undefined,
       undefined,
@@ -188,7 +206,10 @@ describe('generateOverlay', () => {
   describe('synthesized PWM + ADC pinctrl (Black Pill)', () => {
     it('emits pwm-leds consumers + tc-pwm<pin> aliases for synthesized specs', () => {
       const txt = generateOverlay(BLACKPILL, { usesPwm: true }, undefined);
-      expect(txt).toContain('&pwm4 {');
+      // The STM32 SoC dtsi ships a LABEL-LESS pwm child — the overlay
+      // defines pwm4: pwm inside &timers4 (what the pwms cell references).
+      expect(txt).toContain('&timers4 {');
+      expect(txt).toContain('pwm4: pwm {');
       expect(txt).toContain('compatible = "pwm-leds"');
       expect(txt).toContain('tc_pwm_22: pwm-led-22 {');
       expect(txt).toContain('pwms = <&pwm4 1 20000000 PWM_POLARITY_NORMAL>');
@@ -241,7 +262,7 @@ describe('generateOverlay', () => {
     });
 
     it('emits a status-only ADC block when no channels carry pinctrl labels (nRF-style chips)', () => {
-      const txt = generateOverlay(XIAO_BLE, { usesAdc: true }, undefined);
+      const txt = generateOverlay(TEST_CHIP, { usesAdc: true }, undefined);
       expect(txt).toContain('&adc {');
       expect(txt).not.toContain('pinctrl-0');
     });
@@ -259,7 +280,7 @@ describe('generateOverlay', () => {
     });
 
     it('composes multiple CDC instances when the descriptor declares them', () => {
-      const chip = { ...XIAO_BLE, usb: { controller: 'zephyr_udc0', cdcInstances: 2 } } as typeof XIAO_BLE;
+      const chip = { ...TEST_CHIP, usb: { controller: 'zephyr_udc0', cdcInstances: 2 } } as typeof TEST_CHIP;
       const txt = generateOverlay(chip, { usesUsb: true }, undefined);
       expect(txt).toContain('cdc_acm_uart0: cdc-acm-uart0 {');
       expect(txt).toContain('cdc_acm_uart1: cdc-acm-uart1 {');
@@ -272,7 +293,7 @@ describe('generateOverlay', () => {
     });
 
     it('omits USB nodes for a chip that declares no usb capability', () => {
-      const noUsb = { ...XIAO_BLE, usb: undefined } as typeof XIAO_BLE;
+      const noUsb = { ...TEST_CHIP, usb: undefined } as typeof TEST_CHIP;
       const txt = generateOverlay(noUsb, { usesUsb: true }, undefined);
       expect(txt).not.toContain('zephyr_udc0');
       expect(txt).not.toContain('cdc-acm-uart');
@@ -317,7 +338,7 @@ describe('storage partition synthesis (Preferences/FS on boards without one)', (
     // Redeclaring an existing node is a devicetree error — a board without
     // zephyr.storage (ESP32 devkits: partition@3b0000 in the board DTS) must
     // not get a synthesized partition.
-    const txt = generateOverlay(XIAO_BLE, { usesPreferences: true }, undefined);
+    const txt = generateOverlay(TEST_CHIP, { usesPreferences: true }, undefined);
     expect(txt).not.toContain('partition@');
     expect(txt).toContain('zephyr,settings-partition = &storage_partition');
   });
@@ -337,7 +358,24 @@ describe('storage partition synthesis (Preferences/FS on boards without one)', (
 // RP2040 carries the synthesized uart1 pinctrl entry (no default group in
 // the mainline board DT) — from the consolidated soc registry like the
 // Black Pill fixture above.
-const RP2040 = SOC_CHIPS['rp2040'];
+const RP2040 = {
+  ...chipForBoard('rpi_pico/rp2040'),
+  i2c: { controllers: [{ nodeLabel: 'i2c0' }] },
+  uart: {
+    controllers: [
+      { nodeLabel: 'uart0' },
+      {
+        nodeLabel: 'uart1',
+        pinctrl: {
+          include: 'zephyr/dt-bindings/pinctrl/rpi-pico-rp2040-pinctrl.h',
+          pinmux: ['UART1_TX_P8'],
+          inputPinmux: ['UART1_RX_P9'],
+        },
+        props: ['current-speed = <115200>;'],
+      },
+    ],
+  },
+};
 
 describe('generateOverlay pinctrl synthesis', () => {
   it('synthesizes a pinctrl group and wires it onto the controller', () => {
@@ -378,7 +416,17 @@ describe('generateOverlay pinctrl synthesis', () => {
 // The ESP32-S3 descriptor resolved through the real board-package flattener —
 // same path a real build takes, so the matrix assertions below also cover
 // resolve.ts's zephyr.pwm.matrix.* parsing.
-const ESP32S3 = SOC_CHIPS['esp32s3'];
+const ESP32S3 = {
+  ...chipForBoard('esp32s3_devkitc/esp32s3/procpu'),
+  pwm: {
+    specs: [],
+    // 19 excluded — the USB/flash/console pads the filter test expects to
+    // be dropped from the used list before channel assignment.
+    matrix: { controller: 'ledc0', channelCount: 8, pins: Array.from({ length: 49 }, (_, i) => i).filter((p) => p !== 19) },
+    clockHz: 80000000,
+  },
+  usb: { controller: 'zephyr_udc0', cdcInstances: 1 },
+};
 
 describe('matrix PWM (ESP32-S3 LEDC) + USB overlay', () => {
   it('emits pinctrl pinmux tokens + channel children + pwm-leds for the driven pins', () => {
