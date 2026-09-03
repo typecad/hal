@@ -571,8 +571,14 @@ const PINCTRL_DIALECTS: readonly PinctrlDialect[] = [
   // STM32 vendor-HAL pinctrl dtsi node shape (all SoC families):
   //   /omit-if-no-ref/ tim4_ch1_pb6: tim4_ch1_pb6 { pinmux = <STM32_PINMUX('B', 6, AF2)>; };
   // The node NAME is captured verbatim (the overlay reference); the pinmux
-  // macro carries the authoritative port/bit for the cross-check.
-  { kind: PWM, re: /\/omit-if-no-ref\/?\s+(tim(\d+)_ch(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => `tim${m[2]}`, channel: (m) => Number(m[3]), port: (m) => m[4]!, bit: (m) => Number(m[5]) },
+  // macro carries the authoritative port/bit for the cross-check. The F1
+  // family (AFIO model) spells the macro STM32F1_PINMUX — covered by the
+  // optional F<unit> in the value grammar.
+  { kind: PWM, re: /\/omit-if-no-ref\/?\s+(tim(\d+)_ch(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32(?:F\d+)?_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => `tim${m[2]}`, channel: (m) => Number(m[3]), port: (m) => m[4]!, bit: (m) => Number(m[5]) },
+  // STM32F1 (AFIO) PWM output — `tim1_ch1_pwm_out_pa8`. The `_pwm_in_`
+  // (input capture), `_remapN_` (AFIO remap) and `_n` (complementary)
+  // spellings are excluded by the token grammar, mirroring the pwmx/inn rules.
+  { kind: PWM, re: /\/omit-if-no-ref\/?\s+(tim(\d+)_ch(\d+)_pwm_out_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32F?\d*_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => `tim${m[2]}`, channel: (m) => Number(m[3]), port: (m) => m[4]!, bit: (m) => Number(m[5]) },
   // NXP Kinetis per-part header macros: FTM0_CH5_PTA0 (FTM = the pwm DT label).
   { kind: PWM, re: /#define FTM(\d+)_CH(\d+)_PT([A-Z])(\d+)\b/g, token: (m) => `FTM${m[1]}_CH${m[2]}_PT${m[3]}${m[4]}`, source: (m) => `ftm${m[1]}`, channel: (m) => Number(m[2]), port: (m) => m[3]!, bit: (m) => Number(m[4]) },
   // NXP LPC55 CTIMER match outputs (`ctimerN` = the DT label; MATCHn = ch n).
@@ -587,11 +593,14 @@ const PINCTRL_DIALECTS: readonly PinctrlDialect[] = [
   { kind: ADC, re: /#define ADC(\d*)_IN(\d+)_P([A-Z])(\d+)\b/g, token: (m) => `ADC${m[1]}_IN${m[2]}_P${m[3]}${m[4]}`, source: (m) => `adc${m[1] ? m[1][0] : ''}`, channel: (m) => Number(m[2]), port: (m) => m[3]!, bit: (m) => Number(m[4]) },
   // STM32 ADC — three vendor spellings: adc1_in1_pa1 (multi-unit),
   // adc_in0_pa0 (single-unit, no unit digit), adc1_inp16_pa0 (H7 positive).
-  { kind: ADC, re: /\/omit-if-no-ref\/?\s+(adc(\d*)_(?:in|inp)(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => `adc${m[2]}`, channel: (m) => Number(m[3]), port: (m) => m[4]!, bit: (m) => Number(m[5]) },
+  { kind: ADC, re: /\/omit-if-no-ref\/?\s+(adc(\d*)_(?:in|inp)(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32(?:F\d+)?_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => `adc${m[2]}`, channel: (m) => Number(m[3]), port: (m) => m[4]!, bit: (m) => Number(m[5]) },
   // NXP Kinetis ADC16 single-ended (source `adcN` = the DT label).
   { kind: ADC, re: /#define ADC(\d+)_SE(\d+)_PT([A-Z])(\d+)\b/g, token: (m) => `ADC${m[1]}_SE${m[2]}_PT${m[3]}${m[4]}`, source: (m) => `adc${m[1]}`, channel: (m) => Number(m[2]), port: (m) => m[3]!, bit: (m) => Number(m[4]) },
   // STM32 DAC — dac1_out1_pa4 (the pinctrl source IS the DT nodelabel).
-  { kind: DAC, re: /\/omit-if-no-ref\/?\s+(dac(\d+)_out(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => `dac${m[2]}`, channel: (m) => Number(m[3]), port: (m) => m[4]!, bit: (m) => Number(m[5]) },
+  { kind: DAC, re: /\/omit-if-no-ref\/?\s+(dac(\d+)_out(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32(?:F\d+)?_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => `dac${m[2]}`, channel: (m) => Number(m[3]), port: (m) => m[4]!, bit: (m) => Number(m[5]) },
+  // STM32F1 (AFIO) DAC — `dac_out1_pa4` (digitless unit in the name, like the
+  // F1 ADC; the DT nodelabel is the conventional dac1).
+  { kind: DAC, re: /\/omit-if-no-ref\/?\s+(dac_out(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32F?\d*_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => 'dac1', channel: (m) => Number(m[2]), port: (m) => m[3]!, bit: (m) => Number(m[4]) },
 ];
 
 /** Harvest silicon routes from one pinctrl source text. Families by source
@@ -707,7 +716,7 @@ function lintNameValueAgreement(
   // within a small window after the name (same line for STM32/Kinetis/LPC,
   // a backslash continuation for GD32).
   const valuePad = (after: string): { port: string; bit: number } | undefined => {
-    let m = after.match(/STM32_PINMUX\('([A-Z])',\s*(\d+)/);
+    let m = after.match(/STM32(?:F\d+)?_PINMUX\('([A-Z])',\s*(\d+)/);
     if (m) return { port: m[1]!, bit: Number(m[2]) };
     m = after.match(/KINETIS_MUX\('([A-Z])',\s*(\d+)/);
     if (m) return { port: m[1]!, bit: Number(m[2]) };

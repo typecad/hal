@@ -67,8 +67,11 @@ const OVERLAY_ENV = 'CUTTLEFISH_BOARD_CATALOG';
  *  (NXP LPADC), eadc (Nuvoton), sadc, and the adc_N / dac_N underscore forms
  *  (NXP MCX) now land in analogDevices, so the device inventory is honest.
  *  29: pinconfig DAC routes (Atmel SAM dac+vout, source normalized to the
- *  dac0 nodelabel) join the dacPins pipeline alongside the pinctrl harvest. */
-export const GENERATOR_REV = 29;
+ *  dac0 nodelabel) join the dacPins pipeline alongside the pinctrl harvest.
+ *  30: STM32F1 (AFIO) grammars — the STM32F1_PINMUX value macro, the
+ *  `timX_chY_pwm_out_pZ` PWM node, and the digitless `dac_outN_pZ` DAC node
+ *  (source dac1). */
+export const GENERATOR_REV = 30;
 
 // ── fs-only Zephyr tree discovery ──────────────────────────────────────────
 

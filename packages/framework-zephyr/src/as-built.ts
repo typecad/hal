@@ -46,10 +46,13 @@ export interface AsBuiltFile {
 // adc1_in1_pa1 / adc_in0_pa0 / adc1_inp16_pa0, tim4_ch1_pb6,
 // dac1_out1_pa4. Labels appear verbatim in zephyr.dts
 // (`adc1_in0_pa0: adc1_in0_pa0 {`). The `inn` negative inputs stay out —
-// the thin HAL is single-ended.
+// the thin HAL is single-ended. The F1 (AFIO) family uses `tim1_ch1_pwm_out_pa8`
+// and `dac_out1_pa4` — separate grammars.
 const ST_ADC = /^([a-z]*adc\d*_(?:in|inp)\d+_p([a-z])(\d+))$/;
 const ST_PWM = /^(tim(\d+)_ch(\d+)_p([a-z])(\d+))$/;
+const ST_PWM_F1 = /^(tim(\d+)_ch(\d+)_pwm_out_p([a-z])(\d+))$/;
 const ST_DAC = /^(dac(\d+)_out(\d+)_p([a-z])(\d+))$/;
+const ST_DAC_F1 = /^(dac_out(\d+)_p([a-z])(\d+))$/;
 // i.MX RT labels: iomuxc_<pad>_adc1_in1 / iomuxc_<pad>_flexpwm2_pwma3,
 // with the pad→GPIO join as sibling iomuxc_<pad>_gpio1_io12 labels. The NEW
 // RT parts (rt11xx/rt116x/rt118x) use `…_flexpwm1_pwm0_a` (pwm<K>_<a|b> →
@@ -96,6 +99,15 @@ export function parseZephyrDts(text: string): AsBuiltFacts {
         bit: Number(g[5]),
         pinctrl: label,
       });
+    } else if ((g = label.match(ST_PWM_F1))) {
+      seen.add(label);
+      facts.pwm.push({
+        source: `tim${g[2]}`,
+        channel: Number(g[3]),
+        port: g[4]!.toUpperCase(),
+        bit: Number(g[5]),
+        pinctrl: label,
+      });
     } else if ((g = label.match(ST_DAC))) {
       seen.add(label);
       facts.dac.push({
@@ -103,6 +115,15 @@ export function parseZephyrDts(text: string): AsBuiltFacts {
         channel: Number(g[3]),
         port: g[4]!.toUpperCase(),
         bit: Number(g[5]),
+        pinctrl: label,
+      });
+    } else if ((g = label.match(ST_DAC_F1))) {
+      seen.add(label);
+      facts.dac.push({
+        source: 'dac1',
+        channel: Number(g[2]),
+        port: g[3]!.toUpperCase(),
+        bit: Number(g[4]),
         pinctrl: label,
       });
     } else if ((g = label.match(IMX_GPIO))) {

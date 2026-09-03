@@ -60,6 +60,23 @@ function fixtureTree(): string {
     '/omit-if-no-ref/ dac1_out1_pa4: dac1_out1_pa4 {',
     "	pinmux = <STM32_PINMUX('A', 4, AF0)>;",
     '};',
+    // STM32F1 (AFIO) spellings: the STM32F1_PINMUX macro, the `_pwm_out_`
+    // timer node, and the digitless `dac_outN` node.
+    '/omit-if-no-ref/ adc1_in0_pa0: adc1_in0_pa0 {',
+    "	pinmux = <STM32F1_PINMUX('A', 0, ANALOG, NO_REMAP)>;",
+    '};',
+    '/omit-if-no-ref/ tim1_ch1_pwm_out_pa8: tim1_ch1_pwm_out_pa8 {',
+    "	pinmux = <STM32F1_PINMUX('A', 8, AF1_PP, NO_REMAP)>;",
+    '};',
+    '/omit-if-no-ref/ tim1_ch1_pwm_in_pa8: tim1_ch1_pwm_in_pa8 {',
+    "	pinmux = <STM32F1_PINMUX('A', 8, AF1_PP, NO_REMAP)>;",
+    '};',
+    '/omit-if-no-ref/ tim1_ch1_remap1_pwm_out_pa8: tim1_ch1_remap1_pwm_out_pa8 {',
+    "	pinmux = <STM32F1_PINMUX('A', 8, AF1_PP, REMAP1)>;",
+    '};',
+    '/omit-if-no-ref/ dac_out1_pa4: dac_out1_pa4 {',
+    "	pinmux = <STM32F1_PINMUX('A', 4, ANALOG, NO_REMAP)>;",
+    '};',
     // A name/value MISMATCH (name says pa1, macro says B,1) — the linter
     // drops the route and records a warning.
     '/omit-if-no-ref/ tim9_ch2_pa1: tim9_ch2_pa1 {',
@@ -611,6 +628,21 @@ describe('catalog-walker', () => {
     expect(w!.dacPins!.find((r) => r.pinctrl === 'dac1_out1_pa4')).toMatchObject({ source: 'dac1', channel: 1 });
     expect(w!.pwmPins!.find((r) => r.pinctrl === 'tim3_ch1_pb0')).toMatchObject({ source: 'tim3', channel: 1, port: 'B', bit: 0 });
     expect(w!.pwmNodes).toEqual(['pwm0']);
+  });
+
+  it('STM32F1 (AFIO) spellings harvest: STM32F1_PINMUX, _pwm_out_, digitless dac', () => {
+    const w = result.boards['widget_board/acme_soc'];
+    const adc = w!.adcPins!;
+    // The F1 ADC node name is identical to the F4 form; only the value macro
+    // differs (STM32F1_PINMUX).
+    expect(adc.find((r) => r.pinctrl === 'adc1_in0_pa0')).toMatchObject({ source: 'adc1', channel: 0, port: 'A', bit: 0 });
+    // F1 PWM: only the default no-remap `_pwm_out_` node harvests; `_pwm_in_`
+    // (input capture) and `_remapN_` (AFIO remap) stay out.
+    expect(w!.pwmPins!.find((r) => r.pinctrl === 'tim1_ch1_pwm_out_pa8')).toMatchObject({ source: 'tim1', channel: 1, port: 'A', bit: 8 });
+    expect(w!.pwmPins!.find((r) => r.pinctrl === 'tim1_ch1_pwm_in_pa8')).toBeUndefined();
+    expect(w!.pwmPins!.find((r) => r.pinctrl === 'tim1_ch1_remap1_pwm_out_pa8')).toBeUndefined();
+    // F1 DAC: digitless `dac_outN`, normalized to the dac1 nodelabel.
+    expect(w!.dacPins!.find((r) => r.pinctrl === 'dac_out1_pa4')).toMatchObject({ source: 'dac1', channel: 1, port: 'A', bit: 4 });
   });
 
   it('NXP/GD32 pinctrl grammars harvest (Kinetis, LPC CTIMER, GD32, i.MX RT)', () => {
