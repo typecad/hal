@@ -89,3 +89,38 @@ describe('P1 — pinconfig ADC routes at the boardgen boundary', () => {
     expect(j.constants[`pins.all.${pa15}.capabilities.analogInput`]).toBe(false);
   });
 });
+
+describe('ESP32 DAC (silicon-fixed channel→pad)', () => {
+  it('synthesizes DAC channels for the original ESP32 (8-bit, GPIO25/26)', () => {
+    const g = buildModule(record({
+      identifier: 'esp32_devkitc/esp32',
+      gpioControllers: [{ nodelabel: 'gpio0' }],
+    }));
+    const j = JSON.parse(g.boardJson);
+    expect(g.boardTs).toContain("export { DAC } from '@typecad/hal'");
+    expect(j.constants['zephyr.dac.device']).toBe('dac');
+    expect(j.constants['zephyr.dac.channels.0.pin']).toBe(25);
+    expect(j.constants['zephyr.dac.channels.0.channel']).toBe(0);
+    expect(j.constants['zephyr.dac.channels.1.pin']).toBe(26);
+    expect(j.constants['zephyr.dac.channels.0.resolution']).toBe(8);
+    // The capability flag rides the synthesized route (pin 25 = GPIO25).
+    const names = j.pinNames as string[];
+    const gpio25 = names.indexOf('GPIO25');
+    expect(j.constants[`pins.all.${gpio25}.capabilities.analogOutput`]).toBe(true);
+  });
+
+  it('synthesizes DAC for the ESP32-S2 (GPIO17/18), not the S3 (no DAC)', () => {
+    const s2 = JSON.parse(buildModule(record({
+      identifier: 'x/esp32s2',
+      gpioControllers: [{ nodelabel: 'gpio0' }],
+    })).boardJson).constants;
+    expect(s2['zephyr.dac.channels.0.pin']).toBe(17);
+    expect(s2['zephyr.dac.channels.1.pin']).toBe(18);
+
+    const s3 = JSON.parse(buildModule(record({
+      identifier: 'x/esp32s3',
+      gpioControllers: [{ nodelabel: 'gpio0' }],
+    })).boardJson).constants;
+    expect(s3['zephyr.dac.device']).toBeUndefined();
+  });
+});

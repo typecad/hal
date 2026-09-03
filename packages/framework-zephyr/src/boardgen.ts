@@ -101,6 +101,21 @@ export function nrfSaadcAinPads(soc: string, identifier: string): readonly [numb
   return table[soc];
 }
 
+/**
+ * ESP32 DAC channel→GPIO pad map per SoC — [channel, pad] pairs, silicon-
+ * fixed (no pinctrl group; the DAC outputs through the RTC IO mux on a fixed
+ * pad). Only the original ESP32 and the ESP32-S2 carry the 8-bit DAC; the
+ * S3/C3/C6/H2 dropped it. Sourced from the HAL's dac_periph.c
+ * (`dac_channel_io_num[]`), like the nRF SAADC table is from the PS.
+ */
+export function esp32DacPins(soc: string): readonly [number, number][] | undefined {
+  const table: Record<string, readonly [number, number][]> = {
+    esp32: [[0, 25], [1, 26]],
+    esp32s2: [[0, 17], [1, 18]],
+  };
+  return table[soc];
+}
+
 function identOf(name: string): string {
   return name.replace(/\./g, '_').replace(/[^A-Za-z0-9_]/g, '_');
 }
@@ -709,6 +724,17 @@ export function buildModule(
     if (pin === undefined) continue;
     siliconDac.push({ pin, channel: d.channel, pinctrl: d.pinctrl });
   }
+  // ESP32 DAC: silicon-fixed channel→pad (no pinctrl group, no harvested
+  // route). Only when no pinctrl DAC was harvested and the soc has the DAC.
+  const esp32Dac = esp32DacPins(soc);
+  if (siliconDac.length === 0 && esp32Dac) {
+    const gpio0 = controllers.find((c) => c.nodelabel === 'gpio0');
+    for (const [channel, pad] of esp32Dac) {
+      if (gpio0 && pad > gpio0.maxPin - gpio0.minPin) continue;
+      siliconDac.push({ pin: (gpio0?.minPin ?? 0) + pad, channel, pinctrl: '' });
+    }
+    if (siliconDac.length > 0 && !dacSources.includes('dac')) dacSources.push('dac');
+  }
   // User facts (cuttlefish.facts.json): dac channels win per pin, and the
   // declared device joins the sources (no analogDevices cross-check — the
   // user vouches for it).
@@ -1053,10 +1079,12 @@ export function buildModule(
   // wires the used channels' pinctrl groups.
   if (siliconDac.length > 0) {
     constants['zephyr.dac.device'] = dacSources[0];
+    // ESP32's DAC is 8-bit; the STM32 DAC is 12-bit (the default).
+    const dacResolution = esp32Dac ? 8 : 12;
     siliconDac.forEach((d, i) => {
       constants[`zephyr.dac.channels.${i}.pin`] = d.pin;
       constants[`zephyr.dac.channels.${i}.channel`] = d.channel;
-      constants[`zephyr.dac.channels.${i}.resolution`] = 12;
+      constants[`zephyr.dac.channels.${i}.resolution`] = dacResolution;
       constants[`zephyr.dac.channels.${i}.pinctrl`] = d.pinctrl;
     });
   }
