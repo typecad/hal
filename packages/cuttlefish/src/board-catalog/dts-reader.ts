@@ -882,8 +882,13 @@ export function readBoardDts(
   const analogDevices = new Set<string>();
   // Digitless labels included: samd2x names its single controller `adc:`
   // (the pinconfigs YAML's source spelling) — without it in analogDevices,
-  // the non-empty cross-check dropped every Atmel route.
-  const DEV_RE = /\b(adc\d*|dac\d*):\s*(?:adc|dac)@[0-9a-f]+\s*\{/g;
+  // the non-empty cross-check dropped every Atmel route. The label — not the
+  // node name — is the semantic signal, so non-standard node names
+  // (`gau_adc0`, `eadc`, `adc_etc`) are accepted; the label grammar covers
+  // every ADC/DAC device naming in the tree: adc\d* / dac\d* (classic),
+  // lpadc\d* (NXP LPADC), eadc\d* (Nuvoton), sadc\d* (Renesas/various), and
+  // the underscore forms adc_\d+ / dac_\d+ (NXP MCX).
+  const DEV_RE = /\b((?:lpadc|eadc|sadc|adc|dac)\d*|(?:adc|dac)_\d+):\s*\w+@[0-9a-f]+\s*\{/g;
   let dm: RegExpExecArray | null;
   while ((dm = DEV_RE.exec(text))) analogDevices.add(dm[1]);
 

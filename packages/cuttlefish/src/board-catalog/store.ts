@@ -62,8 +62,11 @@ const OVERLAY_ENV = 'CUTTLEFISH_BOARD_CATALOG';
  *  and the record carries pinctrlWarnings for generation to report.
  *  27: pinconfigs YAML ADC (GD32/Atmel/Bouffalolab, package-aware, GD32 pinmux
  *  token synthesized from the signal+pin) + the SoC gpio-controller inventory
- *  (full port sweep source) + the siliconSources coverage ledger. */
-export const GENERATOR_REV = 27;
+ *  (full port sweep source) + the siliconSources coverage ledger.
+ *  28: ADC/DAC device recognition widened past the adcN/dacN forms — lpadc
+ *  (NXP LPADC), eadc (Nuvoton), sadc, and the adc_N / dac_N underscore forms
+ *  (NXP MCX) now land in analogDevices, so the device inventory is honest. */
+export const GENERATOR_REV = 28;
 
 // ── fs-only Zephyr tree discovery ──────────────────────────────────────────
 

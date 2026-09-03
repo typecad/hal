@@ -414,6 +414,12 @@ function fixtureTree(): string {
     '        gpioa: gpio@40020000 { gpio-controller; #gpio-cells = <2>; };',
     '        gpiob: gpio@40020400 { gpio-controller; #gpio-cells = <2>; ngpios = <32>; };',
     '        gpioc: gpio@40020800 { gpio-controller; #gpio-cells = <2>; };',
+    '        adc0: adc@40030000 { };',
+    '        lpadc1: adc@40031000 { };',
+    '        eadc0: eadc@40032000 { };',
+    '        adc_0: adc@40033000 { };',
+    '        dac: dac@40034000 { };',
+    '        hscmp0: comparator@40035000 { };',
     '    };',
     '};',
     '',
@@ -574,6 +580,14 @@ describe('catalog-walker', () => {
       { nodelabel: 'gpiob', ngpios: 32 },
       { nodelabel: 'gpioc' },
     ]);
+  });
+
+  it('recognizes every ADC/DAC device label, not just adc\d*/dac\d*', () => {
+    // The label — not the node name — is the device signal. lpadc1 (NXP
+    // LPADC), eadc0 (Nuvoton), adc_0 (NXP MCX underscore form) and dac all
+    // land in analogDevices; a comparator (hscmp0) does not.
+    const pb = result.boards['port_board/acme_soc'];
+    expect([...(pb!.analogDevices ?? [])].sort()).toEqual(['adc0', 'adc_0', 'dac', 'eadc0', 'lpadc1']);
   });
 
   it('STM32 pinctrl spellings: standard, digitless, and H7 inp routes harvest; inn skipped', () => {
