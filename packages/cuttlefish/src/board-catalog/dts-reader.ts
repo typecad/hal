@@ -516,26 +516,10 @@ function gpioRefFromProp(value: string): DtsGpioRef | undefined {
 }
 
 // ── silicon pinctrl harvest ────────────────────────────────────────────────
-
-// STM32 vendor-HAL pinctrl dtsi node shape (all SoC families):
-//   /omit-if-no-ref/ tim4_ch1_pb6: tim4_ch1_pb6 {
-//       pinmux = <STM32_PINMUX('B', 6, AF2)>;
-//   };
-// The node NAME encodes peripheral+channel+pad and is captured verbatim (it
-// is the token the generated overlay references); the pinmux macro carries
-// the authoritative port/bit. Complementary outputs (`timX_chYn_…`) are
-// skipped — Zephyr's pwm cells address the plain channel.
-const STM32_PWM_RE =
-  /\/omit-if-no-ref\/?\s+(tim(\d+)_ch(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32_PINMUX\('([A-Z])',\s*(\d+)/g;
-// Three vendor spellings across the families: `adc1_in1_pa1` (multi-unit),
-// `adc_in0_pa0` (single-unit f0/l0/l1/wl — no unit digit) and `adc1_inp16_pa0`
-// (H7 positive input; the `inn` negative inputs are differential-only and
-// stay out — the thin HAL is single-ended). Backtracking makes the
-// alternation safe: `in` fails against `p16`'s digits, `inn` fails outright.
-const STM32_ADC_RE =
-  /\/omit-if-no-ref\/?\s+(adc(\d*)_(?:in|inp)(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32_PINMUX\('([A-Z])',\s*(\d+)/g;
-const STM32_DAC_RE =
-  /\/omit-if-no-ref\/?\s+(dac(\d+)_out(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32_PINMUX\('([A-Z])',\s*(\d+)/g;
+// Per-family route grammars live in the PINCTRL_DIALECTS table below (each
+// name/macro token encodes the complete route — source/channel/port/bit).
+// The name↔value cross-check in lintNameValueAgreement covers each family's
+// VALUE grammar (the pinmux macro's port/bit tuple).
 
 // Labeled PWM controller device nodes (nRF `pwm0: pwm@4001c000` — any GPIO
 // pad can carry any of a peripheral's four psel-routed channels, the matrix
@@ -543,34 +527,57 @@ const STM32_DAC_RE =
 // LEDC_NODE_RE; STM32's pwm children are label-less and never match.
 const PWM_NODE_RE = /(pwm\d+):\s*pwm@[0-9a-f]+\s*\{/g;
 
-// ── NXP per-part C headers (modules/hal/nxp/dts/nxp/…) ─────────────────────
-// The macro NAME encodes the complete route; the value's mux tuple is
-// redundant (port/bit already in the name). Kinetis differential inputs
-// (`ADC0_DP0_*`, `*SE_D…`) don't match the SE-only regexes and drop out.
-// Kinetis: `ADC0_SE8_PTB0`, `FTM0_CH5_PTA0` (FTM = the pwm controller's DT
-// label). LPC55: `ADC0_CH1_PIO0_10` (lpadc — harvested for the header record
-// only if a driver gate lands; the channel model needs DT input-positive),
-// `CTIMER0_MATCH0_PIO0_0` (MATCHn = pwm channel n). MCX lpadc channels
-// (A/B-side + DT command slots) are a follow-up — not harvested here.
-const KINETIS_ADC_RE = /#define ADC(\d+)_SE(\d+)_PT([A-Z])(\d+)\b/g;
-const KINETIS_PWM_RE = /#define FTM(\d+)_CH(\d+)_PT([A-Z])(\d+)\b/g;
-const LPC_CTIMER_PWM_RE = /#define CTIMER(\d+)_MATCH(\d+)_PIO(\d+)_(\d+)\b/g;
-
-// ── GigaDevice GD32 per-part headers (modules/hal/gigadevice) ──────────────
-// `TIMER0_CH0_PA8` (TIMER N is the DT timer label verbatim; complementary
-// `CH0N` spellings don't match). GD32 ADC moved to the pinconfig YAMLs —
-// the authoritative datasheet tables with package filtering
-// (board-catalog/pinconfig.ts); the header regex was package-blind.
-const GD32_PWM_RE = /#define TIMER(\d+)_CH(\d+)_P([A-Z])(\d+)\b/g;
-
 // ── NXP i.MX RT pinctrl dtsi (node-name shape, STM32's form) ───────────────
 // `iomuxc_<pad>_adc1_in1: …` — the pad-to-GPIO join is in-band: every pad
 // also declares `iomuxc_<pad>_gpio<port>_io<pin>`. FlexPWM routes the two
 // subchannel outputs (`pwma`/`pwmb`, channel 0/1 of the DT child
-// `flexpwm<N>_pwm<K>`); the complementary `pwmx` is skipped.
+// `flexpwm<N>_pwm<K>`); the complementary `pwmx` is skipped. This family is
+// NOT in PINCTRL_DIALECTS — its routes resolve through a two-phase join.
 const IMX_GPIO_JOIN_RE = /iomuxc_([a-z0-9_]+)_gpio(\d+)_io(\d+):/g;
 const IMX_ADC_RE = /(iomuxc_[a-z0-9_]+_adc(\d+)_in(\d+)):\s*\w+\s*\{[^}]*?pinmux/g;
 const IMX_PWM_RE = /(iomuxc_[a-z0-9_]+_flexpwm(\d+)_pwm([ab])(\d+)):\s*\w+\s*\{[^}]*?pinmux/g;
+
+/** A self-contained pinctrl dialect: a route grammar whose name/macro token
+ *  encodes the complete route (source/channel/port/bit) with no cross-node
+ *  join. Adding a family = adding one entry here (the name↔value cross-check
+ *  in lintNameValueAgreement covers the value grammar). The i.MX RT family is
+ *  NOT in this table — its routes resolve through an in-band pad→GPIO join
+ *  (handled separately below). */
+interface PinctrlDialect {
+  readonly kind: 'pwm' | 'adc' | 'dac';
+  readonly re: RegExp;
+  readonly token: (m: RegExpMatchArray) => string;
+  readonly source: (m: RegExpMatchArray) => string;
+  readonly channel: (m: RegExpMatchArray) => number;
+  readonly port: (m: RegExpMatchArray) => string;
+  readonly bit: (m: RegExpMatchArray) => number;
+}
+
+const PWM = 'pwm' as const;
+const ADC = 'adc' as const;
+const DAC = 'dac' as const;
+
+/** The self-contained route grammars, one per family×function. */
+const PINCTRL_DIALECTS: readonly PinctrlDialect[] = [
+  // STM32 vendor-HAL pinctrl dtsi node shape (all SoC families):
+  //   /omit-if-no-ref/ tim4_ch1_pb6: tim4_ch1_pb6 { pinmux = <STM32_PINMUX('B', 6, AF2)>; };
+  // The node NAME is captured verbatim (the overlay reference); the pinmux
+  // macro carries the authoritative port/bit for the cross-check.
+  { kind: PWM, re: /\/omit-if-no-ref\/?\s+(tim(\d+)_ch(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => `tim${m[2]}`, channel: (m) => Number(m[3]), port: (m) => m[4]!, bit: (m) => Number(m[5]) },
+  // NXP Kinetis per-part header macros: FTM0_CH5_PTA0 (FTM = the pwm DT label).
+  { kind: PWM, re: /#define FTM(\d+)_CH(\d+)_PT([A-Z])(\d+)\b/g, token: (m) => `FTM${m[1]}_CH${m[2]}_PT${m[3]}${m[4]}`, source: (m) => `ftm${m[1]}`, channel: (m) => Number(m[2]), port: (m) => m[3]!, bit: (m) => Number(m[4]) },
+  // NXP LPC55 CTIMER match outputs (`ctimerN` = the DT label; MATCHn = ch n).
+  { kind: PWM, re: /#define CTIMER(\d+)_MATCH(\d+)_PIO(\d+)_(\d+)\b/g, token: (m) => `CTIMER${m[1]}_MATCH${m[2]}_PIO${m[3]}_${m[4]}`, source: (m) => `ctimer${m[1]}`, channel: (m) => Number(m[2]), port: (m) => m[3]!, bit: (m) => Number(m[4]) },
+  // GigaDevice GD32 TIMER macros (TIMER N is the DT timer label verbatim).
+  { kind: PWM, re: /#define TIMER(\d+)_CH(\d+)_P([A-Z])(\d+)\b/g, token: (m) => `TIMER${m[1]}_CH${m[2]}_P${m[3]}${m[4]}`, source: (m) => `timer${m[1]}`, channel: (m) => Number(m[2]), port: (m) => m[3]!, bit: (m) => Number(m[4]) },
+  // STM32 ADC — three vendor spellings: adc1_in1_pa1 (multi-unit),
+  // adc_in0_pa0 (single-unit, no unit digit), adc1_inp16_pa0 (H7 positive).
+  { kind: ADC, re: /\/omit-if-no-ref\/?\s+(adc(\d*)_(?:in|inp)(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => `adc${m[2]}`, channel: (m) => Number(m[3]), port: (m) => m[4]!, bit: (m) => Number(m[5]) },
+  // NXP Kinetis ADC16 single-ended (source `adcN` = the DT label).
+  { kind: ADC, re: /#define ADC(\d+)_SE(\d+)_PT([A-Z])(\d+)\b/g, token: (m) => `ADC${m[1]}_SE${m[2]}_PT${m[3]}${m[4]}`, source: (m) => `adc${m[1]}`, channel: (m) => Number(m[2]), port: (m) => m[3]!, bit: (m) => Number(m[4]) },
+  // STM32 DAC — dac1_out1_pa4 (the pinctrl source IS the DT nodelabel).
+  { kind: DAC, re: /\/omit-if-no-ref\/?\s+(dac(\d+)_out(\d+)_p[a-z]\d+):\s*\w+\s*\{[^}]*?pinmux\s*=\s*<STM32_PINMUX\('([A-Z])',\s*(\d+)/g, token: (m) => m[1]!, source: (m) => `dac${m[2]}`, channel: (m) => Number(m[3]), port: (m) => m[4]!, bit: (m) => Number(m[5]) },
+];
 
 /** Harvest silicon routes from one pinctrl source text. Families by source
  *  shape: STM32/GD32/Kinetis/LPC C-header macros + i.MX RT dtsi node names;
@@ -582,132 +589,60 @@ function harvestPinctrlPins(
   adc: Map<string, DtsAdcPin>,
   dac: Map<string, DtsDacPin>,
 ): void {
-  let m: RegExpExecArray | null;
-  STM32_PWM_RE.lastIndex = 0;
-  while ((m = STM32_PWM_RE.exec(src))) {
-    if (!pwm.has(m[1])) {
-      pwm.set(m[1], {
-        source: `tim${m[2]}`,
-        channel: Number(m[3]),
-        port: m[4],
-        bit: Number(m[5]),
-        pinctrl: m[1],
+  const target = { pwm, adc, dac } as const;
+  for (const d of PINCTRL_DIALECTS) {
+    d.re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = d.re.exec(src))) {
+      const token = d.token(m);
+      const map = target[d.kind] as Map<string, { source: string; channel: number; port: string; bit: number; pinctrl: string }>;
+      if (map.has(token)) continue;
+      map.set(token, {
+        source: d.source(m),
+        channel: d.channel(m),
+        port: d.port(m),
+        bit: d.bit(m),
+        pinctrl: token,
       });
     }
   }
-  // NXP Kinetis: FTM macros (source `ftmN` IS the DT pwm controller label).
-  KINETIS_PWM_RE.lastIndex = 0;
-  while ((m = KINETIS_PWM_RE.exec(src))) {
-    const name = `FTM${m[1]}_CH${m[2]}_PT${m[3]}${m[4]}`;
-    if (!pwm.has(name)) {
-      pwm.set(name, {
-        source: `ftm${m[1]}`,
-        channel: Number(m[2]),
-        port: m[3],
-        bit: Number(m[4]),
-        pinctrl: name,
-      });
-    }
-  }
-  // NXP LPC55: CTIMER match outputs (`ctimerN` = the DT label).
-  LPC_CTIMER_PWM_RE.lastIndex = 0;
-  while ((m = LPC_CTIMER_PWM_RE.exec(src))) {
-    const name = `CTIMER${m[1]}_MATCH${m[2]}_PIO${m[3]}_${m[4]}`;
-    if (!pwm.has(name)) {
-      pwm.set(name, {
-        source: `ctimer${m[1]}`,
-        channel: Number(m[2]),
-        port: m[3],
-        bit: Number(m[4]),
-        pinctrl: name,
-      });
-    }
-  }
-  // GD32: TIMER macros (DT label identity).
-  GD32_PWM_RE.lastIndex = 0;
-  while ((m = GD32_PWM_RE.exec(src))) {
-    const name = `TIMER${m[1]}_CH${m[2]}_P${m[3]}${m[4]}`;
-    if (!pwm.has(name)) {
-      pwm.set(name, {
-        source: `timer${m[1]}`,
-        channel: Number(m[2]),
-        port: m[3],
-        bit: Number(m[4]),
-        pinctrl: name,
-      });
-    }
-  }
-  // i.MX RT: FlexPWM subchannel outputs — controller is the DT CHILD node
-  // (flexpwmN_pwmK), channel 0=A / 1=B; port/bit via the in-band pad join.
+  // ── NXP i.MX RT pinctrl dtsi (node-name shape) ──────────────────────────
+  // `iomuxc_<pad>_adc1_in1: …` — the pad-to-GPIO join is in-band: every pad
+  // also declares `iomuxc_<pad>_gpio<port>_io<pin>`. FlexPWM routes the two
+  // subchannel outputs (`pwma`/`pwmb`, channel 0/1 of the DT child
+  // `flexpwm<N>_pwm<K>`); the complementary `pwmx` is skipped. The join map
+  // is built first, then the routes resolve against it.
   const imxPadToGpio = new Map<string, { port: string; bit: number }>();
   IMX_GPIO_JOIN_RE.lastIndex = 0;
-  while ((m = IMX_GPIO_JOIN_RE.exec(src))) {
-    if (!imxPadToGpio.has(m[1]!)) imxPadToGpio.set(m[1]!, { port: m[2]!, bit: Number(m[3]) });
+  let jm: RegExpExecArray | null;
+  while ((jm = IMX_GPIO_JOIN_RE.exec(src))) {
+    if (!imxPadToGpio.has(jm[1]!)) imxPadToGpio.set(jm[1]!, { port: jm[2]!, bit: Number(jm[3]) });
   }
   IMX_PWM_RE.lastIndex = 0;
-  while ((m = IMX_PWM_RE.exec(src))) {
-    const pad = m[1]!.replace(/^iomuxc_/, '').replace(/_flexpwm\d+_pwm[ab]\d+$/, '');
+  while ((jm = IMX_PWM_RE.exec(src))) {
+    const pad = jm[1]!.replace(/^iomuxc_/, '').replace(/_flexpwm\d+_pwm[ab]\d+$/, '');
     const gpio = imxPadToGpio.get(pad);
-    if (!gpio || pwm.has(m[1]!)) continue;
-    pwm.set(m[1]!, {
-      source: `flexpwm${m[2]}_pwm${m[4]}`,
-      channel: m[3] === 'b' ? 1 : 0,
+    if (!gpio || pwm.has(jm[1]!)) continue;
+    pwm.set(jm[1]!, {
+      source: `flexpwm${jm[2]}_pwm${jm[4]}`,
+      channel: jm[3] === 'b' ? 1 : 0,
       port: gpio.port,
       bit: gpio.bit,
-      pinctrl: m[1]!,
+      pinctrl: jm[1]!,
     });
   }
-  STM32_ADC_RE.lastIndex = 0;
-  while ((m = STM32_ADC_RE.exec(src))) {
-    if (!adc.has(m[1])) {
-      adc.set(m[1], {
-        source: `adc${m[2]}`,
-        channel: Number(m[3]),
-        port: m[4],
-        bit: Number(m[5]),
-        pinctrl: m[1],
-      });
-    }
-  }
-  // NXP Kinetis ADC16 single-ended inputs (source `adcN` = the DT label).
-  KINETIS_ADC_RE.lastIndex = 0;
-  while ((m = KINETIS_ADC_RE.exec(src))) {
-    const name = `ADC${m[1]}_SE${m[2]}_PT${m[3]}${m[4]}`;
-    if (!adc.has(name)) {
-      adc.set(name, {
-        source: `adc${m[1]}`,
-        channel: Number(m[2]),
-        port: m[3],
-        bit: Number(m[4]),
-        pinctrl: name,
-      });
-    }
-  }
-  // i.MX RT ADC12 inputs (adc1/adc2 DT labels; pad via the in-band join).
   IMX_ADC_RE.lastIndex = 0;
-  while ((m = IMX_ADC_RE.exec(src))) {
-    const pad = m[1]!.replace(/^iomuxc_/, '').replace(/_adc\d+_in\d+$/, '');
+  while ((jm = IMX_ADC_RE.exec(src))) {
+    const pad = jm[1]!.replace(/^iomuxc_/, '').replace(/_adc\d+_in\d+$/, '');
     const gpio = imxPadToGpio.get(pad);
-    if (!gpio || adc.has(m[1]!)) continue;
-    adc.set(m[1]!, {
-      source: `adc${m[2]}`,
-      channel: Number(m[3]),
+    if (!gpio || adc.has(jm[1]!)) continue;
+    adc.set(jm[1]!, {
+      source: `adc${jm[2]}`,
+      channel: Number(jm[3]),
       port: gpio.port,
       bit: gpio.bit,
-      pinctrl: m[1]!,
+      pinctrl: jm[1]!,
     });
-  }
-  STM32_DAC_RE.lastIndex = 0;
-  while ((m = STM32_DAC_RE.exec(src))) {
-    if (!dac.has(m[1])) {
-      dac.set(m[1], {
-        source: `dac${m[2]}`,
-        channel: Number(m[3]),
-        port: m[4],
-        bit: Number(m[5]),
-        pinctrl: m[1],
-      });
-    }
   }
 }
 
