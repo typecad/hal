@@ -70,8 +70,10 @@ const OVERLAY_ENV = 'CUTTLEFISH_BOARD_CATALOG';
  *  dac0 nodelabel) join the dacPins pipeline alongside the pinctrl harvest.
  *  30: STM32F1 (AFIO) grammars — the STM32F1_PINMUX value macro, the
  *  `timX_chY_pwm_out_pZ` PWM node, and the digitless `dac_outN_pZ` DAC node
- *  (source dac1). */
-export const GENERATOR_REV = 30;
+ *  (source dac1).
+ *  31: Atmel SAM PWM routes (pinconfig tc/tcc + wo<N> — the WO pinmux macro
+ *  token synthesized from the position+peripheral+signal triple). */
+export const GENERATOR_REV = 31;
 
 // ── fs-only Zephyr tree discovery ──────────────────────────────────────────
 

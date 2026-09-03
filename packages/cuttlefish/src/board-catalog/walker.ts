@@ -715,6 +715,10 @@ function composeRecord(base: BoardDataEntry, facts: ReturnType<typeof readBoardD
   // pinconfig DAC route carries no pinctrl token — an empty token keeps it out
   // of the overlay's pinctrl-0 emission, exactly like the ESP32 DAC synthesis.
   const dacRoutes = [...facts.dacPins, ...(pinconfig?.dac ?? []).map((d) => ({ ...d, pinctrl: '' }))];
+  // SAM PWM routes carry the synthesized WO pinmux macro token (pinctrl), so
+  // they join the pwmPins pipeline verbatim — the overlay synthesizes the
+  // pad group from the macro like any other macro-form route.
+  const pwmRoutes = [...facts.pwmPins, ...(pinconfig?.pwm ?? [])];
   const led = facts.leds.find((l) => l.alias === 'led0') ?? facts.leds.find((l) => l.alias);
   const button = facts.buttons.find((b) => b.alias === 'sw0') ?? facts.buttons.find((b) => b.alias);
   const rec: Record<string, unknown> = {
@@ -745,7 +749,7 @@ function composeRecord(base: BoardDataEntry, facts: ReturnType<typeof readBoardD
     // Silicon PWM/analog routes harvested from the SoC pinctrl files in the
     // board's include chain (raw port/bit form — the manifest generator maps
     // to global pin numbers and applies nodelabel conventions).
-    ...(facts.pwmPins.length > 0 ? { pwmPins: facts.pwmPins } : {}),
+    ...(pwmRoutes.length > 0 ? { pwmPins: pwmRoutes } : {}),
     ...(adcRoutes.length > 0 ? { adcPins: adcRoutes } : {}),
     ...(dacRoutes.length > 0 ? { dacPins: dacRoutes } : {}),
     ...(facts.analogDevices.length > 0 ? { analogDevices: facts.analogDevices } : {}),
@@ -779,13 +783,14 @@ function composeRecord(base: BoardDataEntry, facts: ReturnType<typeof readBoardD
   // BoardDataEntry.siliconSources). nRF SAADC's pad map is synthesized in
   // boardgen (family table) — the walker records pwmNodes (the nRF psel
   // matrix) as 'family'; SAADC itself is only boardgen-visible.
-  const siliconSources: { adc?: 'pinctrl' | 'pinconfig' | 'header' | 'family' | 'connector'; pwm?: 'pinctrl' | 'header' | 'family'; dac?: 'pinctrl' | 'pinconfig' } = {};
+  const siliconSources: { adc?: 'pinctrl' | 'pinconfig' | 'header' | 'family' | 'connector'; pwm?: 'pinctrl' | 'pinconfig' | 'header' | 'family'; dac?: 'pinctrl' | 'pinconfig' } = {};
   if (pinconfig?.adc.length) siliconSources.adc = 'pinconfig';
   else if (facts.adcPins.length) siliconSources.adc = 'pinctrl';
   else if (esp.espAdc?.length) siliconSources.adc = 'header';
   else if (rp2.padAdc?.length) siliconSources.adc = 'header';
   else if (facts.connectorAdc.length) siliconSources.adc = 'connector';
   if (facts.pwmPins.length) siliconSources.pwm = 'pinctrl';
+  else if (pinconfig?.pwm?.length) siliconSources.pwm = 'pinconfig';
   else if (esp.pwmMatrix) siliconSources.pwm = 'header';
   else if (rp2.padPwm?.length) siliconSources.pwm = 'header';
   else if (facts.pwmNodes?.length) siliconSources.pwm = 'family';

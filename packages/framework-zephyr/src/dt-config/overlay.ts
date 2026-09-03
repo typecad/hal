@@ -606,6 +606,17 @@ function emitPwmNodes(
       lines.push('');
       lines.push(`&${controller} {`);
       lines.push('    status = "okay";');
+      // Atmel SAM TCC/TC in PWM mode: the SoC dtsi declares the base timer
+      // node (compatible atmel,sam0-tcc / …-tc, with clocks/assigned-clocks/
+      // channels/counter-size already present). The overlay overrides the
+      // compatible to the PWM binding, sets the required prescaler and the
+      // #pwm-cells the binding consts, and reuses the shared pinctrl group.
+      const samPwm = controller.match(/^(tcc|tc)(\d+)$/);
+      if (samPwm) {
+        lines.push(`    compatible = "${samPwm[1] === 'tcc' ? 'atmel,sam0-tcc-pwm' : 'atmel,sam0-tc-pwm'}";`);
+        lines.push('    prescaler = <1024>;');
+        lines.push('    #pwm-cells = <2>;');
+      }
       lines.push('    pinctrl-0 = <&tc_pwm_default>;');
       lines.push('    pinctrl-names = "default";');
       lines.push('};');

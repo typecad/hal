@@ -9,7 +9,7 @@
 export type { BoardDataEntry } from './types.js';
 export { readBoardDts } from './dts-reader.js';
 export { harvestPinconfig } from './pinconfig.js';
-export type { PinconfigFacts, PinconfigAdcRoute, PinconfigDacRoute } from './pinconfig.js';
+export type { PinconfigFacts, PinconfigAdcRoute, PinconfigDacRoute, PinconfigPwmRoute } from './pinconfig.js';
 export type {
   DtsBoardFacts, DtsGpioRef, DtsGpioNode, DtsConnector, DtsPwmLed,
 } from './dts-reader.js';

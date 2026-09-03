@@ -45,6 +45,9 @@ export interface PinconfigFacts {
   /** DAC output routes (Atmel SAM — no pinmux group; the driver selects the
    *  output pad). */
   readonly dac?: PinconfigDacRoute[];
+  /** PWM output routes (Atmel SAM tc/tcc waveform outputs — the WO pinmux
+   *  macro is synthesized from the position+peripheral+signal triple). */
+  readonly pwm?: PinconfigPwmRoute[];
   /** The pinconfig file that satisfied the board (provenance). */
   readonly file?: string;
 }
@@ -55,6 +58,17 @@ export interface PinconfigDacRoute {
   readonly channel: number;
   readonly port: string;
   readonly bit: number;
+}
+
+/** A normalized PWM output route from a pinconfig table. `pinctrl` is the
+ *  synthesized SAM pinmux macro token (`PA17E_TCC2_WO1`), which the board's
+ *  pinctrl include chain defines via SAM_PINMUX. */
+export interface PinconfigPwmRoute {
+  readonly source: string;
+  readonly channel: number;
+  readonly port: string;
+  readonly bit: number;
+  readonly pinctrl: string;
 }
 
 /** List the *.yml files in a pinconfigs dir (undefined when absent). */
@@ -116,6 +130,7 @@ function harvestAtmel(soc: string, westRoot: string): PinconfigFacts | undefined
     if (!/^[a-z]$/.test(pincode)) break;
     const routes: PinconfigAdcRoute[] = [];
     const dacRoutes: PinconfigDacRoute[] = [];
+    const pwmRoutes: PinconfigPwmRoute[] = [];
     let pin: { name: string; codes: Set<string> } | undefined;
     for (const line of text.split('\n')) {
       // Atmel pin names are p<port><bits> (pa02, pa0 — the PIO prefix; the
@@ -163,11 +178,37 @@ function harvestAtmel(soc: string, westRoot: string): PinconfigFacts | undefined
           });
         }
       }
+      // PWM waveform output: `[e, tcc2, wo1]` — the position letter +
+      // peripheral + signal synthesize the SAM pinmux macro token the board's
+      // pinctrl chain defines (`P<port><bit><pos>_<PERIPH>_<SIG>` →
+      // `PA17E_TCC2_WO1`). The source is the DT nodelabel verbatim (`tcc2`).
+      if (perM && pin.codes.has(pincode) && /^(tcc|tc)\d+$/.test(perM[2]!)) {
+        const wo = perM[3]!.match(/^wo(\d+)$/);
+        if (wo) {
+          const port = pin.name[0]!.toUpperCase();
+          // The macro token uses the NUMERIC pad (no leading zero — pa02 →
+          // PA2E_TCC2_WO1, pa17 → PA17E_TCC2_WO1).
+          const bit = Number(pin.name.slice(1));
+          pwmRoutes.push({
+            source: perM[2]!,
+            channel: Number(wo[1]),
+            port,
+            bit,
+            pinctrl: `P${port}${bit}${perM[1]!.toUpperCase()}_${perM[2]!.toUpperCase()}_${perM[3]!.toUpperCase()}`,
+          });
+        }
+      }
     }
-    if (routes.length > 0 || dacRoutes.length > 0) {
+    if (routes.length > 0 || dacRoutes.length > 0 || pwmRoutes.length > 0) {
       routes.sort((a, b) => a.source.localeCompare(b.source, undefined, { numeric: true }) || a.channel - b.channel);
       dacRoutes.sort((a, b) => a.channel - b.channel);
-      return { adc: routes, ...(dacRoutes.length > 0 ? { dac: dacRoutes } : {}), file: f };
+      pwmRoutes.sort((a, b) => a.source.localeCompare(b.source, undefined, { numeric: true }) || a.channel - b.channel);
+      return {
+        adc: routes,
+        ...(dacRoutes.length > 0 ? { dac: dacRoutes } : {}),
+        ...(pwmRoutes.length > 0 ? { pwm: pwmRoutes } : {}),
+        file: f,
+      };
     }
     break;
   }

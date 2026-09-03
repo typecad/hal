@@ -181,7 +181,7 @@ export interface BoardDataEntry {
    *  so drift between "known" and "lowered" is diagnosable. */
   readonly siliconSources?: {
     readonly adc?: 'pinctrl' | 'pinconfig' | 'header' | 'family' | 'connector';
-    readonly pwm?: 'pinctrl' | 'header' | 'family';
+    readonly pwm?: 'pinctrl' | 'pinconfig' | 'header' | 'family';
     readonly dac?: 'pinctrl' | 'pinconfig';
   };
 }
