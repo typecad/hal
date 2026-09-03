@@ -25,6 +25,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { readBoardDts } from './dts-reader.js';
+import { harvestPinconfig } from './pinconfig.js';
 import type { BoardDataEntry } from './types.js';
 /** Provenance of a walked catalog — pins it to the exact tree it describes. */
 export interface BoardCatalogProvenance {
@@ -54,6 +55,15 @@ export interface BoardCatalogWalkResult {
      *  all (even through the shared-base fallback) — silently invisible in
      *  the catalog; surfaced so a tree shape change can't hide boards. */
     readonly droppedYamls: number;
+    /** Coverage ledger aggregated across the walk: per capability, how many
+     *  boards were satisfied by each silicon source. The drift guard for the
+     *  "100% board/soc knowledge" goal — a family with a source in-tree but
+     *  zero boards covered by it is a regression. */
+    readonly coverage: {
+      readonly adc: Readonly<Record<string, number>>;
+      readonly pwm: Readonly<Record<string, number>>;
+      readonly dac: Readonly<Record<string, number>>;
+    };
   };
 }
 
@@ -691,99 +701,16 @@ function harvestRp2PinctrlHeaders(
   };
 }
 
-// ── Atmel SAM pin-mux YAMLs ─────────────────────────────────────────────────
-// modules/hal/atmel/pinconfigs/*.yml — the vendor-maintained, datasheet-
-// sourced pin-mux tables Zephyr's own Atmel pinctrl generation consumes.
-// Per family: `series:` lists the soc series tokens (d51, e54, …); a pin
-// block (`pb03:`) carries its bonded package `pincodes:` and `periph:`
-// entries as `[position, peripheral, signal]` triples — `[b, adc0, ain15]`
-// is ADC0 channel 15 on PB03 in that package. The board's soc name encodes
-// series + pincode (samd51j19a → series d51, pincode j); pins whose package
-// doesn't bond them are skipped. ADC only — SAM PWM (TCC waveform outputs)
-// needs controller-node synthesis beyond routes, a follow-up.
-function harvestAtmelAdcPins(
-  identifier: string,
-  westRoot: string,
-): BoardDataEntry['adcPins'] {
-  const soc = identifier.split('/')[1];
-  if (!soc || !/^sam/.test(soc)) return undefined;
-  const dir = path.join(westRoot, 'modules', 'hal', 'atmel', 'pinconfigs');
-  let files: string[];
-  try {
-    files = fs.readdirSync(dir).filter((f) => f.endsWith('.yml'));
-  } catch {
-    return undefined; // no atmel module — no facts
-  }
-  const socLower = soc.toLowerCase();
-  for (const f of files) {
-    let text: string;
-    try {
-      text = fs.readFileSync(path.join(dir, f), 'utf8');
-    } catch {
-      continue;
-    }
-    const seriesMatch = text.match(/^series:\s*\[([^\]]*)\]/m);
-    if (!seriesMatch) continue;
-    const series = seriesMatch[1].split(',').map((s) => s.trim()).filter(Boolean);
-    // Series tokens may carry family suffixes ('d21-da1'); the soc name
-    // encodes only the leading segment (samd21g18a). Older files (sam-3x,
-    // sam-4l) use placeholder tokens ('3XX', '4lsX') that no soc matches —
-    // those stay honestly uncovered until their convention is decoded.
-    const prefixes = series.flatMap((s) => {
-      const lower = s.toLowerCase();
-      return lower.includes('-') ? [lower, lower.split('-')[0]] : [lower];
-    });
-    const matched = prefixes.find((p) => socLower.startsWith('sam' + p));
-    if (!matched) continue;
-    const pincode = socLower.slice(('sam' + matched).length).charAt(0);
-    if (!/^[a-z]$/.test(pincode)) break;
-    const routes: {
-      source: string;
-      channel: number;
-      port: string;
-      bit: number;
-      pinctrl?: string;
-    }[] = [];
-    let pin: { name: string; codes: Set<string> } | undefined;
-    for (const line of text.split('\n')) {
-      // Atmel pin names are p<port><bits> (pa02, pb03 — the PIO prefix).
-      const pinM = line.match(/^  p([a-z])(\d{2,}):/);
-      if (pinM) {
-        pin = { name: pinM[1] + pinM[2], codes: new Set() };
-        continue;
-      }
-      if (!pin) continue;
-      const codesM = line.match(/^ {4}pincodes:\s*\[([^\]]*)\]/);
-      if (codesM) {
-        for (const c of codesM[1].split(',').map((s) => s.trim()).filter(Boolean)) pin.codes.add(c);
-        continue;
-      }
-      const perM = line.match(/^ {6}- \[([a-z]),\s*(\w+),\s*(\w+)(?:,\s*\[[^\]]*\])?\]/);
-      // Peripheral 'adc' (d2x's single controller) or 'adc0'/'adc1' (d5x);
-      // 'adc_dac' (reference outputs) is not an input route.
-      if (perM && pin.codes.has(pincode) && /^adc\d*$/.test(perM[2])) {
-        const ain = perM[3].match(/^ain(\d+)$/);
-        if (ain) {
-          routes.push({
-            source: perM[2],
-            channel: Number(ain[1]),
-            port: pin.name[0].toUpperCase(),
-            bit: Number(pin.name.slice(1)),
-          });
-        }
-      }
-    }
-    if (routes.length > 0) return routes.sort((a, b) => a.source.localeCompare(b.source) || a.channel - b.channel);
-    break;
-  }
-  return undefined;
-}
-
+// ── Vendor pinconfig YAMLs (GD32 / Atmel / Bouffalolab) ─────────────────────
+// The datasheet-sourced pin tables under each HAL module's `pinconfigs/`
+// directory — see board-catalog/pinconfig.ts. ADC routes only for now; the
+// walker's coverage ledger records the families whose PWM/DAC pinmux
+// synthesis is still pending instead of shipping false capability flags.
 function composeRecord(base: BoardDataEntry, facts: ReturnType<typeof readBoardDts>, zephyrBase: string, westRoot: string): { record: BoardDataEntry; hasFacts: boolean } {
   const esp = harvestEspFamilyHeaders(base.identifier, facts, zephyrBase, westRoot);
   const rp2 = harvestRp2PinctrlHeaders(base.identifier, zephyrBase);
-  const atmelAdc = harvestAtmelAdcPins(base.identifier, westRoot);
-  const adcRoutes = [...facts.adcPins, ...(atmelAdc ?? [])];
+  const pinconfig = harvestPinconfig(base.identifier, westRoot);
+  const adcRoutes = [...facts.adcPins, ...(pinconfig?.adc ?? [])];
   const led = facts.leds.find((l) => l.alias === 'led0') ?? facts.leds.find((l) => l.alias);
   const button = facts.buttons.find((b) => b.alias === 'sw0') ?? facts.buttons.find((b) => b.alias);
   const rec: Record<string, unknown> = {
@@ -828,6 +755,7 @@ function composeRecord(base: BoardDataEntry, facts: ReturnType<typeof readBoardD
     ...(facts.hasStoragePartition ? { hasStoragePartition: true } : {}),
     ...(facts.storageReg ? { storageReg: facts.storageReg } : {}),
     ...(facts.counterNodes.length > 0 ? { counterNodes: facts.counterNodes } : {}),
+    ...(facts.gpioControllers.length > 0 ? { gpioControllers: facts.gpioControllers } : {}),
     ...(esp.espAdc ? { espAdc: esp.espAdc } : {}),
     ...(led ? { led: { dtSpec: led.alias, controller: led.controller, pin: led.pin, flags: led.flags } } : {}),
     ...(button ? { button: { dtSpec: button.alias, controller: button.controller, pin: button.pin, flags: button.flags } } : {}),
@@ -843,6 +771,22 @@ function composeRecord(base: BoardDataEntry, facts: ReturnType<typeof readBoardD
   };
   // prune empty arrays
   for (const k of ['extraLeds', 'extraButtons']) if ((rec[k] as unknown[] | undefined)?.length === 0) delete rec[k];
+  // Coverage ledger: which source satisfied each capability (see
+  // BoardDataEntry.siliconSources). nRF SAADC's pad map is synthesized in
+  // boardgen (family table) — the walker records pwmNodes (the nRF psel
+  // matrix) as 'family'; SAADC itself is only boardgen-visible.
+  const siliconSources: { adc?: 'pinctrl' | 'pinconfig' | 'header' | 'family' | 'connector'; pwm?: 'pinctrl' | 'header' | 'family'; dac?: 'pinctrl' } = {};
+  if (pinconfig?.adc.length) siliconSources.adc = 'pinconfig';
+  else if (facts.adcPins.length) siliconSources.adc = 'pinctrl';
+  else if (esp.espAdc?.length) siliconSources.adc = 'header';
+  else if (rp2.padAdc?.length) siliconSources.adc = 'header';
+  else if (facts.connectorAdc.length) siliconSources.adc = 'connector';
+  if (facts.pwmPins.length) siliconSources.pwm = 'pinctrl';
+  else if (esp.pwmMatrix) siliconSources.pwm = 'header';
+  else if (rp2.padPwm?.length) siliconSources.pwm = 'header';
+  else if (facts.pwmNodes?.length) siliconSources.pwm = 'family';
+  if (facts.dacPins.length) siliconSources.dac = 'pinctrl';
+  if (Object.keys(siliconSources).length > 0) rec.siliconSources = siliconSources;
   const hasFacts = Boolean(rec.console || rec.led || rec.button || rec.connectors);
   return { record: rec as unknown as BoardDataEntry, hasFacts };
 }
@@ -956,7 +900,8 @@ function overlayConnectorAdc(
 //   guard selection; 8 board.yml-synthesized targets; 9 bus/usb/wdt facts +
 //   the move into cuttlefish (the compiled-in pack is gone); 10 silicon
 //   pinctrl harvest (STM32 tim/adc routes via module dts roots); 11 dac
-//   routes + SoC-level watchdog fallback + zephyr arch dts roots.
+//   routes + SoC-level watchdog fallback + zephyr arch dts roots; 12
+//   pinconfigs YAML ADC + gpio-controller inventory + siliconSources ledger.
 
 export function walkBoardCatalog(zephyrBase: string): BoardCatalogWalkResult {
   const boardsRoot = path.join(zephyrBase, 'boards');
@@ -1116,6 +1061,17 @@ export function walkBoardCatalog(zephyrBase: string): BoardCatalogWalkResult {
     }
   }
 
+  const coverage = {
+    adc: {} as Record<string, number>,
+    pwm: {} as Record<string, number>,
+    dac: {} as Record<string, number>,
+  };
+  for (const r of records) {
+    for (const cap of ['adc', 'pwm', 'dac'] as const) {
+      const src = r.siliconSources?.[cap];
+      if (src) coverage[cap][src] = (coverage[cap][src] ?? 0) + 1;
+    }
+  }
   return {
     boards: Object.fromEntries(records.map((r) => [r.identifier, r])),
     provenance: {
@@ -1126,7 +1082,7 @@ export function walkBoardCatalog(zephyrBase: string): BoardCatalogWalkResult {
       generatedAt: new Date().toISOString(),
       variants: records.length,
     },
-    stats: { variants, withFacts, failures, droppedYamls },
+    stats: { variants, withFacts, failures, droppedYamls, coverage },
   };
 }
 

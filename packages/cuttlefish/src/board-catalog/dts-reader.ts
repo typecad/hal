@@ -147,6 +147,10 @@ export interface DtsBoardFacts {
    *  under a labeled timer parent (ESP32 timer0-2, Ambiq) — the manifest
    *  generator assigns those labels in the generated overlay. */
   readonly counterNodes: readonly DtsCounterNode[];
+  /** GPIO controller device nodes (gpio-controller property) from the SoC
+   *  dtsi include chain — the full port inventory, not just the ports the
+   *  board's own facts name. Sorted by nodelabel. */
+  readonly gpioControllers: readonly DtsGpioController[];
 }
 
 /** A pwm-leds child: one PWM-driven LED channel. */
@@ -219,6 +223,18 @@ export interface DtsCounterNode {
    *  counter device is an unlabeled `counter {}` child; the overlay defines
    *  the label there. Undefined in the self form. */
   readonly parentLabel?: string;
+}
+
+/** A GPIO controller device node reached through the include chain (a node
+ *  carrying the universal `gpio-controller` property). This is the SoC's
+ *  FULL port inventory — the board's own facts only name the ports it
+ *  happens to wire, so without this the pin sweep systematically
+ *  under-reports a board's pads. `ngpios` carries the declared width when
+ *  the dtsi states one (nRF, Atmel, …); families that omit it (STM32) rely
+ *  on the derived port-width conventions. */
+export interface DtsGpioController {
+  readonly nodelabel: string;
+  readonly ngpios?: number;
 }
 
 // ── include resolution ─────────────────────────────────────────────────────
@@ -541,10 +557,10 @@ const KINETIS_PWM_RE = /#define FTM(\d+)_CH(\d+)_PT([A-Z])(\d+)\b/g;
 const LPC_CTIMER_PWM_RE = /#define CTIMER(\d+)_MATCH(\d+)_PIO(\d+)_(\d+)\b/g;
 
 // ── GigaDevice GD32 per-part headers (modules/hal/gigadevice) ──────────────
-// `ADC01_IN0_PA0` (both ADC0/ADC1 sample the same pin — harvested as the
-// primary adc0), `TIMER0_CH0_PA8` (TIMER N is the DT timer label verbatim;
-// complementary `CH0N` spellings don't match).
-const GD32_ADC_RE = /#define ADC01_IN(\d+)_P([A-Z])(\d+)\b/g;
+// `TIMER0_CH0_PA8` (TIMER N is the DT timer label verbatim; complementary
+// `CH0N` spellings don't match). GD32 ADC moved to the pinconfig YAMLs —
+// the authoritative datasheet tables with package filtering
+// (board-catalog/pinconfig.ts); the header regex was package-blind.
 const GD32_PWM_RE = /#define TIMER(\d+)_CH(\d+)_P([A-Z])(\d+)\b/g;
 
 // ── NXP i.MX RT pinctrl dtsi (node-name shape, STM32's form) ───────────────
@@ -663,20 +679,6 @@ function harvestPinctrlPins(
         channel: Number(m[2]),
         port: m[3],
         bit: Number(m[4]),
-        pinctrl: name,
-      });
-    }
-  }
-  // GD32 ADC (ADC0/ADC1 share the pad — record under the primary adc0).
-  GD32_ADC_RE.lastIndex = 0;
-  while ((m = GD32_ADC_RE.exec(src))) {
-    const name = `ADC01_IN${m[1]}_P${m[2]}${m[3]}`;
-    if (!adc.has(name)) {
-      adc.set(name, {
-        source: 'adc0',
-        channel: Number(m[1]),
-        port: m[2],
-        bit: Number(m[3]),
         pinctrl: name,
       });
     }
@@ -980,6 +982,22 @@ export function readBoardDts(
     }
   }
 
+  // GPIO controller inventory: every labeled node with the universal
+  // `gpio-controller` property. The SoC dtsi (absorbed) declares the FULL
+  // port list; the board's facts only name the ports it wires. `ngpios`
+  // carries the width when the dtsi states one.
+  const gpioControllers: DtsGpioController[] = [];
+  for (const [label, node] of byLabel) {
+    if (!node.props.has('gpio-controller')) continue;
+    const ngpiosRaw = node.props.get('ngpios');
+    const ngpios = ngpiosRaw !== undefined ? Number(ngpiosRaw.replace(/[<>]/g, '')) : undefined;
+    gpioControllers.push({
+      nodelabel: node.name.startsWith('&') ? node.name.slice(1) : label,
+      ...(ngpios !== undefined && Number.isFinite(ngpios) ? { ngpios } : {}),
+    });
+  }
+  gpioControllers.sort((a, b) => a.nodelabel.localeCompare(b.nodelabel));
+
   // gpio-leds / gpio-keys children (match on compatible OR node name)
   const leds: DtsGpioNode[] = [];
   const buttons: DtsGpioNode[] = [];
@@ -1220,6 +1238,7 @@ export function readBoardDts(
     ...(hasStoragePartition ? { hasStoragePartition } : {}),
     ...(storageReg ? { storageReg } : {}),
     counterNodes,
+    gpioControllers,
     ...(stripLed ? { stripLed } : {}),
     ...(usbDevice ? { usbDevice } : {}),
     ...(usbController ? { usbController } : {}),

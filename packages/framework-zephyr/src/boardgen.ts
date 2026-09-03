@@ -105,6 +105,30 @@ function identOf(name: string): string {
   return name.replace(/\./g, '_').replace(/[^A-Za-z0-9_]/g, '_');
 }
 
+// ── Family analog config parameters ─────────────────────────────────────────
+// The per-SoC channel-setup values the driver validates against. These are the
+// "accompanying config parameters" that travel WITH the board's manifest —
+// never per-SoC code in the lowering, because the driver rejects anything
+// else at runtime. Sourced per family; a soc not listed keeps the lowering's
+// default. (The coverage ledger tracks which families are still on defaults.)
+const PWM_CLOCK_HZ: Record<string, number> = {
+  // STM32F411: 100 MHz sysclk, APB1 50×2 = APB2 100 → every timer 100 MHz.
+  stm32f411: 100_000_000,
+  // STM32F401: all-84 clock tree.
+  stm32f401: 84_000_000,
+};
+
+/** ADC channel-setup gain/reference pair per soc-family prefix. */
+const ADC_CHANNEL_CFG: Record<string, { gain: string; reference: string }> = {
+  // STM32's adc driver rejects any gain but ADC_GAIN_1 ("Invalid channel
+  // gain", -EINVAL) and maps ADC_REF_INTERNAL to the VREF+ pad.
+  stm32: { gain: 'ADC_GAIN_1', reference: 'ADC_REF_INTERNAL' },
+  // adc_rpi_pico.c hard-rejects any gain but 1 ("Gain is not valid") — 12-bit
+  // against VDD, hence REF_VDD_1 + the 3300 mV vref below.
+  rp2040: { gain: 'ADC_GAIN_1', reference: 'ADC_REF_VDD_1' },
+  rp2350: { gain: 'ADC_GAIN_1', reference: 'ADC_REF_VDD_1' },
+};
+
 /**
  * Pin-naming convention for a board, from its soc name — the same families
  * the vendor port conventions encode, with no hand-maintained data:
@@ -264,6 +288,18 @@ function deriveControllers(entry: BoardDataEntry): { controllers: ZephyrGpioCont
   // gpio-map is the board author declaring those pads (Renesas RA boards
   // carry their ENTIRE connector only in board-dir overlays).
   for (const r of entry.connectorAdc ?? []) note(r.controller, r.pin);
+
+  // ── SoC gpio-controller inventory (the "every pad" source) ──────────────
+  // Seed the table with EVERY controller the SoC dtsi declares, so a port the
+  // board's own facts never name still sweeps its full range. The board-fact
+  // `note` calls above refine widths (a bit ≥ 16 widens a letter port);
+  // `ngpios`, when the dtsi states one, provides the baseline width for
+  // families whose port convention isn't derivable from the name alone.
+  for (const c of entry.gpioControllers ?? []) {
+    if (isExpanderController(c.nodelabel)) continue;
+    if (maxBits.has(c.nodelabel)) continue;
+    maxBits.set(c.nodelabel, c.ngpios !== undefined ? c.ngpios - 1 : 0);
+  }
 
   const derived: ZephyrGpioController[] = [];
   const opaque = new Set<string>();
@@ -455,13 +491,12 @@ export function userFactsForTarget(file: UserFactsFile | undefined, target: stri
   return hit ? file.boards[hit] : undefined;
 }
 
-function buildModule(
+export function buildModule(
   entry: BoardDataEntry,
   userFacts?: UserBoardFacts,
   factsSuffix = '',
   seedWarnings: readonly string[] = [],
-): GeneratedBoard {
-  const soc = socOfTarget(entry.identifier);
+): GeneratedBoard {  const soc = socOfTarget(entry.identifier);
   const conv = namingConvFor(soc);
 
   // ── Controller table + datasheet sweep (the same for every board) ──────
@@ -921,6 +956,11 @@ function buildModule(
     constants[`pins.all.${i}.number`] = p.halPin;
     constants[`pins.all.${i}.gpio`] = p.halPin;
     constants[`pins.all.${i}.name`] = p.name;
+    // digitalIn/out, interrupt, pull-up/down, open-drain are the Zephyr base
+    // GPIO driver API (`gpio_pin_configure` flags + `gpio_pin_interrupt_configure`):
+    // every GPIO controller implements them, so they are universally true —
+    // a platform fact, not a per-pad one. Analog/PWM ride the harvested
+    // silicon routes (honest per-pad facts).
     constants[`pins.all.${i}.capabilities.digitalInput`] = true;
     constants[`pins.all.${i}.capabilities.digitalOutput`] = true;
     constants[`pins.all.${i}.capabilities.analogInput`] = siliconAdcPins.has(p.halPin);
@@ -929,6 +969,8 @@ function buildModule(
     constants[`pins.all.${i}.capabilities.interrupt`] = true;
     constants[`pins.all.${i}.capabilities.pullUp`] = true;
     constants[`pins.all.${i}.capabilities.pullDown`] = true;
+    // Capacitive touch has no harvested source yet (ESP32 touch pads live in
+    // the pinctrl header matrix) — honestly false until a source lands.
     constants[`pins.all.${i}.capabilities.touch`] = false;
     constants[`pins.all.${i}.capabilities.openDrain`] = true;
   });
@@ -955,14 +997,9 @@ function buildModule(
     constants[`zephyr.pwm.specs.${idx}.channel`] = s.channel;
     if (s.pinctrl) constants[`zephyr.pwm.specs.${idx}.pinctrl`] = s.pinctrl;
   });
-  // Timer input clocks under the family's default clock tree (STM32F411:
-  // 100 MHz sysclk, APB1 50×2 = APB2 100 → every timer 100 MHz; F401
-  // likewise all-84). Omitted when unknown — the overlay then leaves the
+  // Timer input clocks under the family's default clock tree (PWM_CLOCK_HZ
+  // at module scope). Omitted when unknown — the overlay then leaves the
   // SoC-default prescaler in place.
-  const PWM_CLOCK_HZ: Record<string, number> = {
-    stm32f411: 100_000_000,
-    stm32f401: 84_000_000,
-  };
   if (siliconPwm.length > 0) {
     const clock = Object.entries(PWM_CLOCK_HZ).find(([k]) => soc.startsWith(k))?.[1];
     if (clock) constants['zephyr.pwm.clockHz'] = clock;
@@ -981,19 +1018,9 @@ function buildModule(
     // internal-reference default assumes — matches the descriptor the XIAO's
     // hardware suite validated).
     constants['zephyr.adc.vrefMv'] = isEsp ? 1100 : nrfSaadcSynth ? 3000 : 3300;
-    // The channel-setup gain/reference pair the SoC's driver validates
-    // against. Absent = the lowering's default (the nRF SAADC scheme:
-    // ADC_GAIN_1_4 against ADC_REF_INTERNAL). STM32's adc driver rejects any
-    // gain but ADC_GAIN_1 ("Invalid channel gain", -EINVAL) and maps
-    // ADC_REF_INTERNAL to the VREF+ pad, so the pair must travel with the
-    // board's manifest — never per-SoC code in the lowering.
-    const ADC_CHANNEL_CFG: Record<string, { gain: string; reference: string }> = {
-      stm32: { gain: 'ADC_GAIN_1', reference: 'ADC_REF_INTERNAL' },
-      // adc_rpi_pico.c hard-rejects any gain but 1 ("Gain is not valid") —
-      // 12-bit against VDD, hence REF_VDD_1 + the 3300 mV vref below.
-      rp2040: { gain: 'ADC_GAIN_1', reference: 'ADC_REF_VDD_1' },
-      rp2350: { gain: 'ADC_GAIN_1', reference: 'ADC_REF_VDD_1' },
-    };
+    // The channel-setup gain/reference pair (ADC_CHANNEL_CFG at module
+    // scope). Absent = the lowering's default (the nRF SAADC scheme:
+    // ADC_GAIN_1_4 against ADC_REF_INTERNAL).
     const adcCfg = !isEsp
       ? Object.entries(ADC_CHANNEL_CFG).find(([k]) => soc.startsWith(k))?.[1]
       : undefined;

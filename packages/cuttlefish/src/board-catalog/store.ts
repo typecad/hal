@@ -59,8 +59,11 @@ const OVERLAY_ENV = 'CUTTLEFISH_BOARD_CATALOG';
  *  i.MX RT (flexpwm/adc node names + in-band pad joins), GigaDevice — plus
  *  module include-dir dts roots and board-dir overlay io-channel maps.
  *  26: pinctrl name↔value cross-validation — disagreeing routes are dropped
- *  and the record carries pinctrlWarnings for generation to report. */
-export const GENERATOR_REV = 26;
+ *  and the record carries pinctrlWarnings for generation to report.
+ *  27: pinconfigs YAML ADC (GD32/Atmel/Bouffalolab, package-aware, GD32 pinmux
+ *  token synthesized from the signal+pin) + the SoC gpio-controller inventory
+ *  (full port sweep source) + the siliconSources coverage ledger. */
+export const GENERATOR_REV = 27;
 
 // ── fs-only Zephyr tree discovery ──────────────────────────────────────────
 
@@ -154,6 +157,12 @@ export interface BoardCatalogWalkStats {
   readonly withFacts: number;
   readonly failures: number;
   readonly droppedYamls: number;
+  /** Coverage ledger (see walker's BoardCatalogWalkResult.stats.coverage). */
+  readonly coverage?: {
+    readonly adc: Readonly<Record<string, number>>;
+    readonly pwm: Readonly<Record<string, number>>;
+    readonly dac: Readonly<Record<string, number>>;
+  };
 }
 
 /** A completed sync's report. */

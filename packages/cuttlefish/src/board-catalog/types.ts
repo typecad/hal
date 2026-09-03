@@ -164,4 +164,24 @@ export interface BoardDataEntry {
     readonly bit: number;
     readonly pinctrl: string;
   }[];
+  /** GPIO controller device nodes from the SoC dtsi include chain (the
+   *  universal `gpio-controller` property) — the FULL port inventory, not
+   *  just the ports the board's own facts name. Boardgen seeds its derived
+   *  controller table from these so every SoC pad sweeps, not just the
+   *  wired ones. `ngpios` states the width where the dtsi does. */
+  readonly gpioControllers?: readonly {
+    readonly nodelabel: string;
+    readonly ngpios?: number;
+  }[];
+  /** The coverage ledger: which silicon source satisfied each capability for
+   *  THIS board. 'pinctrl' = SoC pinctrl dtsi/header harvest; 'pinconfig' =
+   *  vendor pinconfigs YAML; 'header' = ESP32/RP2 header matrix; 'family' =
+   *  a family table (nRF SAADC); 'connector' = board-authored io-channel-map.
+   *  Absent = the capability is honestly uncovered. Surfaced by `board sync`
+   *  so drift between "known" and "lowered" is diagnosable. */
+  readonly siliconSources?: {
+    readonly adc?: 'pinctrl' | 'pinconfig' | 'header' | 'family' | 'connector';
+    readonly pwm?: 'pinctrl' | 'header' | 'family';
+    readonly dac?: 'pinctrl';
+  };
 }
