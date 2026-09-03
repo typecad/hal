@@ -65,8 +65,10 @@ const OVERLAY_ENV = 'CUTTLEFISH_BOARD_CATALOG';
  *  (full port sweep source) + the siliconSources coverage ledger.
  *  28: ADC/DAC device recognition widened past the adcN/dacN forms — lpadc
  *  (NXP LPADC), eadc (Nuvoton), sadc, and the adc_N / dac_N underscore forms
- *  (NXP MCX) now land in analogDevices, so the device inventory is honest. */
-export const GENERATOR_REV = 28;
+ *  (NXP MCX) now land in analogDevices, so the device inventory is honest.
+ *  29: pinconfig DAC routes (Atmel SAM dac+vout, source normalized to the
+ *  dac0 nodelabel) join the dacPins pipeline alongside the pinctrl harvest. */
+export const GENERATOR_REV = 29;
 
 // ── fs-only Zephyr tree discovery ──────────────────────────────────────────
 

@@ -182,6 +182,6 @@ export interface BoardDataEntry {
   readonly siliconSources?: {
     readonly adc?: 'pinctrl' | 'pinconfig' | 'header' | 'family' | 'connector';
     readonly pwm?: 'pinctrl' | 'header' | 'family';
-    readonly dac?: 'pinctrl';
+    readonly dac?: 'pinctrl' | 'pinconfig';
   };
 }

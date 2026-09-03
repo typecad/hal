@@ -339,10 +339,12 @@ function fixtureTree(): string {
     '    pincodes: [g, j]',
     '    periph:',
     '      - [b, adc0, ain0]',
+    '      - [b, dac, vout0]',
     '  pb03:',
     '    pincodes: [g, j, n]',
     '    periph:',
     '      - [b, adc1, ain15]',
+    '      - [b, dac, vout1]',
     '  pc10:',
     '    pincodes: [n]',
     '    periph:',
@@ -539,6 +541,13 @@ describe('catalog-walker', () => {
       { source: 'adc0', channel: 0, port: 'A', bit: 2 },
       { source: 'adc1', channel: 15, port: 'B', bit: 3 },
     ]);
+    // DAC outputs (dac + vout<N>) flow too — no pinmux group, so the walker
+    // carries an empty pinctrl token; the source is normalized to the DT
+    // nodelabel dac0.
+    expect(at!.dacPins).toEqual([
+      { source: 'dac0', channel: 0, port: 'A', bit: 2, pinctrl: '' },
+      { source: 'dac0', channel: 1, port: 'B', bit: 3, pinctrl: '' },
+    ]);
   });
 
   it('Bouffalolab pinconfigs YAML: per-SoC-variant adc routes (gpio0 pad form)', () => {
@@ -557,7 +566,7 @@ describe('catalog-walker', () => {
     // header; cn_board → connector. Aggregated into stats.coverage.
     expect(result.stats.coverage.adc).toEqual({ pinctrl: 1, pinconfig: 2, header: 1, connector: 1 });
     expect(result.stats.coverage.pwm).toEqual({ pinctrl: 1, header: 1 }); // widget_board tim3 + rp_board PWM macros
-    expect(result.stats.coverage.dac).toEqual({ pinctrl: 1 }); // widget_board dac1
+    expect(result.stats.coverage.dac).toEqual({ pinctrl: 1, pinconfig: 1 }); // widget_board dac1 + at_board pinconfig DAC
   });
 
   it('connector io-channel-maps join to pads through the gpio-map labels', () => {

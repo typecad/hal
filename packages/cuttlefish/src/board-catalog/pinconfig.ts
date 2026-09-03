@@ -42,8 +42,19 @@ export interface PinconfigAdcRoute {
 
 export interface PinconfigFacts {
   readonly adc: PinconfigAdcRoute[];
+  /** DAC output routes (Atmel SAM — no pinmux group; the driver selects the
+   *  output pad). */
+  readonly dac?: PinconfigDacRoute[];
   /** The pinconfig file that satisfied the board (provenance). */
   readonly file?: string;
+}
+
+/** A normalized DAC output route from a pinconfig table (raw harvest form). */
+export interface PinconfigDacRoute {
+  readonly source: string;
+  readonly channel: number;
+  readonly port: string;
+  readonly bit: number;
 }
 
 /** List the *.yml files in a pinconfigs dir (undefined when absent). */
@@ -104,6 +115,7 @@ function harvestAtmel(soc: string, westRoot: string): PinconfigFacts | undefined
       : socLower.slice(('sam' + matched.prefix).length).charAt(0);
     if (!/^[a-z]$/.test(pincode)) break;
     const routes: PinconfigAdcRoute[] = [];
+    const dacRoutes: PinconfigDacRoute[] = [];
     let pin: { name: string; codes: Set<string> } | undefined;
     for (const line of text.split('\n')) {
       // Atmel pin names are p<port><bits> (pa02, pa0 — the PIO prefix; the
@@ -135,10 +147,27 @@ function harvestAtmel(soc: string, westRoot: string): PinconfigFacts | undefined
           });
         }
       }
+      // DAC output: `[b, dac, vout<N>]` (and the digitless `vout` on the
+      // single-channel parts). The YAML peripheral is `dac` but the DT
+      // nodelabel is `dac0` (samd2x/samd5x/… declare dac0: dac@…), so the
+      // source is normalized to dac0 to survive the analogDevices cross-check.
+      // No pinmux group — the sam0-dac driver selects the output pad.
+      if (perM && pin.codes.has(pincode) && perM[2] === 'dac') {
+        const vout = perM[3]!.match(/^vout(\d+)$/) ?? (perM[3] === 'vout' ? [null, '0'] : null);
+        if (vout) {
+          dacRoutes.push({
+            source: 'dac0',
+            channel: Number(vout[1] ?? 0),
+            port: pin.name[0]!.toUpperCase(),
+            bit: Number(pin.name.slice(1)),
+          });
+        }
+      }
     }
-    if (routes.length > 0) {
+    if (routes.length > 0 || dacRoutes.length > 0) {
       routes.sort((a, b) => a.source.localeCompare(b.source, undefined, { numeric: true }) || a.channel - b.channel);
-      return { adc: routes, file: f };
+      dacRoutes.sort((a, b) => a.channel - b.channel);
+      return { adc: routes, ...(dacRoutes.length > 0 ? { dac: dacRoutes } : {}), file: f };
     }
     break;
   }

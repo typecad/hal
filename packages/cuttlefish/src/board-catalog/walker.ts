@@ -703,14 +703,18 @@ function harvestRp2PinctrlHeaders(
 
 // ── Vendor pinconfig YAMLs (GD32 / Atmel / Bouffalolab) ─────────────────────
 // The datasheet-sourced pin tables under each HAL module's `pinconfigs/`
-// directory — see board-catalog/pinconfig.ts. ADC routes only for now; the
-// walker's coverage ledger records the families whose PWM/DAC pinmux
+// directory — see board-catalog/pinconfig.ts. ADC + (Atmel) DAC routes for
+// now; the walker's coverage ledger records the families whose PWM pinmux
 // synthesis is still pending instead of shipping false capability flags.
 function composeRecord(base: BoardDataEntry, facts: ReturnType<typeof readBoardDts>, zephyrBase: string, westRoot: string): { record: BoardDataEntry; hasFacts: boolean } {
   const esp = harvestEspFamilyHeaders(base.identifier, facts, zephyrBase, westRoot);
   const rp2 = harvestRp2PinctrlHeaders(base.identifier, zephyrBase);
   const pinconfig = harvestPinconfig(base.identifier, westRoot);
   const adcRoutes = [...facts.adcPins, ...(pinconfig?.adc ?? [])];
+  // SAM DAC needs no pinmux group (the driver selects the output pad), so the
+  // pinconfig DAC route carries no pinctrl token — an empty token keeps it out
+  // of the overlay's pinctrl-0 emission, exactly like the ESP32 DAC synthesis.
+  const dacRoutes = [...facts.dacPins, ...(pinconfig?.dac ?? []).map((d) => ({ ...d, pinctrl: '' }))];
   const led = facts.leds.find((l) => l.alias === 'led0') ?? facts.leds.find((l) => l.alias);
   const button = facts.buttons.find((b) => b.alias === 'sw0') ?? facts.buttons.find((b) => b.alias);
   const rec: Record<string, unknown> = {
@@ -743,7 +747,7 @@ function composeRecord(base: BoardDataEntry, facts: ReturnType<typeof readBoardD
     // to global pin numbers and applies nodelabel conventions).
     ...(facts.pwmPins.length > 0 ? { pwmPins: facts.pwmPins } : {}),
     ...(adcRoutes.length > 0 ? { adcPins: adcRoutes } : {}),
-    ...(facts.dacPins.length > 0 ? { dacPins: facts.dacPins } : {}),
+    ...(dacRoutes.length > 0 ? { dacPins: dacRoutes } : {}),
     ...(facts.analogDevices.length > 0 ? { analogDevices: facts.analogDevices } : {}),
     ...(esp.pwmMatrix ? { pwmMatrix: esp.pwmMatrix } : {}),
     ...(facts.pwmNodes && facts.pwmNodes.length > 0 ? { pwmNodes: facts.pwmNodes } : {}),
@@ -775,7 +779,7 @@ function composeRecord(base: BoardDataEntry, facts: ReturnType<typeof readBoardD
   // BoardDataEntry.siliconSources). nRF SAADC's pad map is synthesized in
   // boardgen (family table) — the walker records pwmNodes (the nRF psel
   // matrix) as 'family'; SAADC itself is only boardgen-visible.
-  const siliconSources: { adc?: 'pinctrl' | 'pinconfig' | 'header' | 'family' | 'connector'; pwm?: 'pinctrl' | 'header' | 'family'; dac?: 'pinctrl' } = {};
+  const siliconSources: { adc?: 'pinctrl' | 'pinconfig' | 'header' | 'family' | 'connector'; pwm?: 'pinctrl' | 'header' | 'family'; dac?: 'pinctrl' | 'pinconfig' } = {};
   if (pinconfig?.adc.length) siliconSources.adc = 'pinconfig';
   else if (facts.adcPins.length) siliconSources.adc = 'pinctrl';
   else if (esp.espAdc?.length) siliconSources.adc = 'header';
@@ -786,6 +790,7 @@ function composeRecord(base: BoardDataEntry, facts: ReturnType<typeof readBoardD
   else if (rp2.padPwm?.length) siliconSources.pwm = 'header';
   else if (facts.pwmNodes?.length) siliconSources.pwm = 'family';
   if (facts.dacPins.length) siliconSources.dac = 'pinctrl';
+  else if (pinconfig?.dac?.length) siliconSources.dac = 'pinconfig';
   if (Object.keys(siliconSources).length > 0) rec.siliconSources = siliconSources;
   const hasFacts = Boolean(rec.console || rec.led || rec.button || rec.connectors);
   return { record: rec as unknown as BoardDataEntry, hasFacts };
