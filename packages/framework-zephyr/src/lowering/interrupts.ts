@@ -26,18 +26,6 @@ function dtSpecVar(dtSpec: string): string {
   return `__tc_int_${dtSpec.replace(/-/g, '_')}`;
 }
 
-/** Map a HAL interrupt mode string to Zephyr GPIO_INT_* flags. */
-function modeToFlags(mode: string): string {
-  switch (mode.toLowerCase()) {
-    case 'rising': return 'GPIO_INT_EDGE_RISING';
-    case 'falling': return 'GPIO_INT_EDGE_FALLING';
-    case 'change': return 'GPIO_INT_EDGE_BOTH';
-    case 'high': return 'GPIO_INT_LEVEL_HIGH';
-    case 'low': return 'GPIO_INT_LEVEL_LOW';
-    default: return 'GPIO_INT_EDGE_BOTH';
-  }
-}
-
 // ── Thin GPIO interrupts (hal/gpio-pin.ts onInterrupt) — INT_* tokens ─────
 //
 // The name set comes from the GENERATED Zephyr token table (parsed from the
@@ -68,7 +56,7 @@ export function gpioIntTokenToMacro(intFlags: string): string {
  *  - descriptor `gpio.interruptPins` (buttons with DT specs): callback state
  *    against the DT spec, polarity-correct via gpio_*_dt.
  *  - `usedPins` (any other pin the program attaches to): raw-controller state —
- *    attachInterrupt() works on EVERY GPIO, not just DT-aliased buttons. Each
+ *    GPIO.onInterrupt() works on EVERY GPIO, not just DT-aliased buttons. Each
  *    such pin gets its own callback struct + trampoline addressed by the owning
  *    controller (STM32 splits gpioa/gpiob/gpioc) and port-relative bit.
  */
@@ -118,23 +106,8 @@ export function collectInterruptPins(program: unknown): Set<number> {
     const op = n.operation;
     if (op && typeof op === 'object') {
       const o = op as Record<string, unknown>;
-      if (o.operation === 'interrupt.attach' && typeof o.pin === 'number') {
-        pins.add(o.pin as number);
-      }
       if (o.operation === 'interrupt.attach_flags' && typeof o.pin === 'number') {
         pins.add(o.pin as number);
-      }
-    }
-    // The FREE attachInterrupt(pin, fn, mode) lowers to an interrupt.attach
-    // op only at cpp-emit time — at IR-build it is still a plain `call`
-    // statement (detachInterrupt becomes an op; attach does not). Scan the
-    // call form too, or the raw-pin shim state is never emitted while the
-    // emit-time lowering references it (undefined __tc_int_raw<N>_*).
-    if (n.kind === 'call' && n.callee === 'attachInterrupt') {
-      const args = n.args as { kind?: string; value?: unknown }[] | undefined;
-      const pinArg = args?.[0];
-      if (pinArg && pinArg.kind === 'number' && typeof pinArg.value === 'number') {
-        pins.add(pinArg.value);
       }
     }
     for (const v of Object.values(n)) {

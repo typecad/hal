@@ -53,7 +53,7 @@ describe('thin UART lowering', () => {
     const out = lowerUart({ operation: 'uart.poll_write', port: 'UART0', baud: 9600, data: '"AT"' } as any);
     expect(out.code).toContain('__tc_uart0_baud_done');
     expect(out.code).toContain('__tc_uart0_init(static_cast<uint32_t>(9600))');
-    expect(out.code).toMatch(/uart_poll_out\(__tc_uart0_dev, \("AT"\)\[__i\]\)/);
+    expect(out.code).toContain('__tc_dev_put(__tc_uart0_dev, "AT");');
   });
 
   it('rx_read arms the IRQ on first use and pops the ring (−1 when empty)', () => {
@@ -220,6 +220,38 @@ describe('UART ring + awaitable Time.sleep end-to-end (esp32s3 target)', () => {
       'PEM failed to decode',
     ]);
     expect(findDiagnostics(result, 'TS2CPP_UNHANDLED_HAL')).toHaveLength(0);
+  });
+});
+
+// ── Serial write: numbers and booleans (the __tc_dev_put overloads) ────────
+
+describe('serial write accepts numbers and booleans', () => {
+  it('a numeric literal passes through to the __tc_dev_put double overload', () => {
+    const out = lowerUart({ operation: 'uart.poll_write', port: 'UART0', baud: 115200, data: '42' } as any);
+    expect(out.code).toContain('__tc_dev_put(__tc_uart0_dev, 42);');
+  });
+
+  it('a boolean literal passes through and formats via the double overload', () => {
+    const out = lowerUart({ operation: 'uart.poll_write', port: 'UART0', baud: 115200, data: 'true' } as any);
+    expect(out.code).toContain('__tc_dev_put(__tc_uart0_dev, true);');
+  });
+
+  it('end-to-end: UART0.write(42) and USB0.write(true) emit the overloaded shim', () => {
+    const result = transpileZephyrStrategy(`
+      import { UART } from '@typecad/hal';
+      const ser = new UART('UART0');
+      ser.write(42);
+      ser.writeLine(true);
+      ser.write("text");
+    `);
+    expectCppContains(result, [
+      '__tc_dev_put(__tc_uart0_dev, 42);',
+      '__tc_dev_put(__tc_uart0_dev, true);',
+      '__tc_dev_put(__tc_uart0_dev, "text");',
+      // The double overload formats via the integer-only buffer formatter.
+      'static inline void __tc_dev_put(const struct device* dev, double v)',
+      '__tc_fmt_num_buf',
+    ]);
   });
 });
 

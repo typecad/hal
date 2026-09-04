@@ -4,15 +4,13 @@
 // status enums, capability guards, PinCapabilityFlags, IToneAttachment, ...)
 // now live in @typecad/simulator. Import them from there.
 export type { DigitalValue, AnalogValue } from './types.js';
-export { PinMode, InterruptMode } from './types.js';
+export { PinMode } from './types.js';
 
 export type { InterruptHandler } from './types.js';
 
 export type { ArchitectureIdentifier } from './types.js';
 
-// Protocol-shape types
-export type { I2CAddress } from './types.js';
-export type { SPIBitOrder, SPIMode, SPISettings } from './types.js';
+export type { SerialValue } from './types.js';
 
 export { include } from './include.js';
 export { board } from './board.js';
@@ -22,8 +20,6 @@ export { TimeClass, Time } from './time.js';
 export { abs, min, max, NumClass, Num } from './math.js';
 
 export { Random } from './random.js';
-export { randomSeed, random } from './random.js';
-export { noInterrupts, interrupts, attachInterrupt, detachInterrupt } from './interrupts.js';
 export { Pin } from './gpio.js';
 export { GPIO } from './gpio-pin.js';
 export { shiftOut, shiftIn } from './shift-pin.js';

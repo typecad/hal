@@ -8,22 +8,33 @@
 // hierarchy that matches its job (real behavioral objects, not IR emitters).
 //
 // Primitive aliases that the contracts still reference (DigitalValue,
-// AnalogValue, InterruptHandler) and the protocol-shape types (I2CAddress,
-// SPIMode, SPIBitOrder, SPISettings) remain in @typecad/hal and are imported
-// below. The dependency direction is simulator → hal (already established).
+// AnalogValue, InterruptHandler) remain in @typecad/hal and are imported
+// below. The legacy Wire/SPI protocol-shape types (I2CAddress, SPIMode,
+// SPIBitOrder, SPISettings) now live here — they describe the simulated
+// Arduino-style bus objects, not the HAL transpiler shims. The dependency
+// direction is simulator → hal (already established).
 // ---------------------------------------------------------------------------
 
 import type {
   DigitalValue,
   AnalogValue,
   InterruptHandler,
-  I2CAddress,
 } from '@typecad/hal';
-import type {
-  SPIMode,
-  SPIBitOrder,
-  SPISettings,
-} from '@typecad/hal';
+
+// ---------------------------------------------------------------------------
+// Protocol-shape types (legacy Wire/SPI runtime surface)
+// ---------------------------------------------------------------------------
+
+export type I2CAddress = number;
+
+export type SPIBitOrder = 'msb' | 'lsb';
+export type SPIMode = 0 | 1 | 2 | 3;
+
+export interface SPISettings {
+  frequency: number;
+  mode: SPIMode;
+  bitOrder: SPIBitOrder;
+}
 
 // ---------------------------------------------------------------------------
 // Pin capability flags

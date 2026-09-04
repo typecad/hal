@@ -468,7 +468,7 @@ export function collectStatementIdentifiers(statement: StatementIR | null | unde
 /**
  * Extract identifier names from a HAL operation's string fields.
  * This ensures the call graph tracks function references embedded in
- * semantic HAL ops (e.g. the handler name in interrupt.attach).
+ * semantic HAL ops (e.g. the handler name in interrupt.attach_flags).
  */
 /** Record the base identifier of an element-access lvalue (`buf[i]` → `buf`). */
 function addElementAccessBase(target: string, identifiers: Set<string>): void {
@@ -487,7 +487,7 @@ function collectHALOpIdentifiers(op: HALOpIR): Set<string> {
       // handler is the user's onMessage callback name (callback() resolves it to
       // a string). Without this the tree-shaker drops the function declaration —
       // the mqtt.on_message op only carries the name, so the function has no
-      // other reference and looks unreachable. Same shape as interrupt.attach.
+      // other reference and looks unreachable. Same shape as interrupt.attach_flags.
       identifiers.add(op.handler);
       break;
     case "wifi.on_event":

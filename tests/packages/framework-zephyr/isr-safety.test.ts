@@ -35,7 +35,7 @@ describe('ZephyrStrategy.isrUnsafeOperations', () => {
             statements: [
               { kind: 'call', callee: 'delay' },
               { kind: 'call', callee: 'I2C0.write' },
-              { kind: 'call', callee: 'UART0.println' },
+              { kind: 'call', callee: 'UART0.writeLine' },
             ],
           },
         },
@@ -45,7 +45,7 @@ describe('ZephyrStrategy.isrUnsafeOperations', () => {
     const messages = diagnostics.map((d) => d.message).join('\n');
     expect(messages).toContain('delay()');
     expect(messages).toContain('I2C0.write');
-    expect(messages).toContain('UART0.println');
+    expect(messages).toContain('UART0.writeLine');
     expect(diagnostics.every((d) => d.code === 'interrupt-unsafe-operation')).toBe(true);
   });
 });

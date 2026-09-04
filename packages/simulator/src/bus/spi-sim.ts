@@ -8,8 +8,10 @@ import type {
   ISPIDevice,
   BasePin,
   ErrorPolicy,
+  SPIMode,
+  SPIBitOrder,
+  SPISettings,
 } from '../contracts.js';
-import type { SPIMode, SPIBitOrder, SPISettings } from '@typecad/hal';
 import type { ISimSPIDevice } from '../types.js';
 
 // ---------------------------------------------------------------------------

@@ -51,11 +51,11 @@ while (true) {
   }
 
   // Periodic USB CDC report (~1 Hz): the current mode.
-  // Gated on connected() — a CDC port no host has opened swallows output.
+  // Gated on linked() — a CDC port no host has opened swallows output.
   report = report + 1;
   if (report >= 50) {
     report = 0;
-    if (USB0.ready()) {
+    if (USB0.linked()) {
       USB0.writeLine(breathing ? 'mode: breathing' : 'mode: dimmer');
     }
   }

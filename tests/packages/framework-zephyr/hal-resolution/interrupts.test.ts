@@ -5,7 +5,7 @@ const ESP32_DEVKITC = chipForBoard('esp32_devkitc/esp32/procpu');
 
 
 // ESP32_DEVKITC exposes the BOOT button (GPIO0) via the DT `sw0` alias and
-// lists pin 0 in gpio.interruptPins, so attachInterrupt/detachInterrupt on
+// lists pin 0 in gpio.interruptPins, so GPIO.onInterrupt/offInterrupt on
 // pin 0 lower through the full DT-spec callback chain. (XIAO nRF52840 has no
 // DT-aliased button on mainline Zephyr, so its interruptPins is empty and it
 // only exercises the no-DT-spec fallback — see xiao-ble.ts for the rationale.)

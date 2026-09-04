@@ -1,6 +1,6 @@
 import { describe, done } from '@typecad/expect';
 // UART suite — the board's UART0 singleton is the DIRECT surface
-// (UART0.println(...) with no construction), and explicit construction
+// (UART0.writeLine(...) with no construction), and explicit construction
 // remains for non-default facts: from the bus instance (new UART(UART0,
 // { baud })) or the name. The Zephyr console rides the USB CDC port, so the
 // board's hardware UART is free for user code with nothing attached: writes
@@ -8,10 +8,10 @@ import { describe, done } from '@typecad/expect';
 import { UART, UART0 } from '@typecad/board';
 
 describe("UART direct singleton")
-  .it("UART0.println(...) with no construction is callable")
+  .it("UART0.writeLine(...) with no construction is callable")
   .expect(
     (() => {
-      UART0.println('hello direct');
+      UART0.writeLine('hello direct');
       return 1;
     })
   ).toBe(1)
@@ -56,11 +56,11 @@ describe("UART output")
       return 1;
     })
   ).toBe(1)
-  .it("println() appends a newline")
+  .it("writeLine() appends a newline")
   .expect(
     (() => {
       const ser = new UART('UART0', { baud: 115200 });
-      ser.println('line');
+      ser.writeLine('line');
       return 1;
     })
   ).toBe(1)

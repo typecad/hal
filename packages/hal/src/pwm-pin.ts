@@ -14,8 +14,6 @@ import { pwmSetPulse, pwmSetDuty, pwmSetPeriod } from './emit.js';
 import type { Pin } from './gpio.js';
 
 export class PWM {
-  static readonly __default_fields = { _controller: '', _channel: '-1' };
-
   private readonly _pin: number;
   private readonly _periodNs: number;
   // Routing overrides (the inline escape hatch): the DT controller nodelabel

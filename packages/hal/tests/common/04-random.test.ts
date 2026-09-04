@@ -1,33 +1,34 @@
 import { describe, done } from '@typecad/expect';
+import { Random } from '@typecad/hal';
 
-describe("Free random functions")
-  .it("randomSeed() is callable without crashing")
+describe("Random namespace")
+  .it("Random.seed() is callable without crashing")
   .expect(
     (() => {
-      randomSeed(99);
+      Random.seed(99);
       return 1;
     })
   ).toBe(1)
-  .it("random(max) returns a value within [0, max-1]")
+  .it("Random.upTo(max) returns a value within [0, max-1]")
   .expect(
     (() => {
-      const v = random(50);
+      const v = Random.upTo(50);
       return (v >= 0 && v <= 49) ? 1 : 0;
     })
   ).toBe(1)
-  .it("random(min, max) returns a value within [min, max-1]")
+  .it("Random.between(min, max) returns a value within [min, max-1]")
   .expect(
     (() => {
-      const v = random(20, 30);
+      const v = Random.between(20, 30);
       return (v >= 20 && v <= 29) ? 1 : 0;
     })
   ).toBe(1)
-  .it("random(max) with max=1 always returns 0")
+  .it("Random.int() returns a non-negative value")
   .expect(
     (() => {
-      randomSeed(7);
-      return random(1);
+      Random.seed(7);
+      return Random.int() >= 0 ? 1 : 0;
     })
-  ).toBe(0)
+  ).toBe(1)
 
 done();

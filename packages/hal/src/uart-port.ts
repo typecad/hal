@@ -17,10 +17,9 @@
 // ----------------------------------------------------------------------------
 
 import { uartPollWrite, uartRxAvailable, uartRxPeek, uartRxRead } from './emit.js';
+import type { SerialValue } from './types.js';
 
 export class UART {
-  static readonly __default_fields = { _baud: '115200', _rxBuf: '64' };
-
   private readonly _port: string;
   private readonly _baud: number;
   private readonly _rxBufferBytes: number;
@@ -34,13 +33,14 @@ export class UART {
     this._rxBufferBytes = opts?.rxBufferBytes ?? 64;
   }
 
-  /** Write a string (uart_poll_out per byte). No newline appended. */
-  write(data: string): void {
+  /** Write text, a number, or a boolean (uart_poll_out per byte). No newline
+   *  appended. Numbers format as decimal; booleans print as 1/0. */
+  write(data: SerialValue): void {
     uartPollWrite(this._port, this._baud, data);
   }
 
-  /** Write a string followed by a newline. */
-  println(data: string): void {
+  /** Write a value followed by a newline. */
+  writeLine(data: SerialValue): void {
     uartPollWrite(this._port, this._baud, data);
     uartPollWrite(this._port, this._baud, "\n");
   }

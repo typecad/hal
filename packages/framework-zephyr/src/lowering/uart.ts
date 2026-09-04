@@ -38,16 +38,14 @@ export function uartInitLines(chip: ZephyrChipDescriptor, controllerIndex: numbe
   ];
 }
 
-/** Render a string-literal or expression to a per-byte poll_out loop. */
+/** Render a string/number/boolean value to a per-byte poll_out loop via the
+ *  __tc_dev_put overloads (the const char* overload streams a string; the
+ *  double overload formats a number with __tc_fmt_num_buf). The value passes
+ *  through verbatim — C++ overload resolution picks the right overload for a
+ *  string literal, a number literal, or a runtime variable of either type. */
 export function renderWrite(dev: string, value: string, newline: boolean): string {
-  // String literal → emit a char-array loop (known length). Otherwise fall back
-  // to a const char* cast with a strlen-guarded loop.
-  if (/^".*"$/.test(value)) {
-    const body = `for (size_t __i = 0; __i < sizeof(${value}) - 1; __i++) { uart_poll_out(${dev}, (${value})[__i]); }`;
-    return newline ? `${body} uart_poll_out(${dev}, '\\n');` : body;
-  }
-  const body = `for (const char* __s = (const char*)(${value}); *__s; __s++) { uart_poll_out(${dev}, *__s); }`;
-  return newline ? `${body} uart_poll_out(${dev}, '\\n');` : body;
+  const put = `__tc_dev_put(${dev}, ${value});`;
+  return newline ? `${put} uart_poll_out(${dev}, '\\n');` : put;
 }
 
 /**

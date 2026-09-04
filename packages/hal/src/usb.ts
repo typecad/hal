@@ -10,22 +10,23 @@
 //                       wire baud — line coding is the host's business)
 //   close()           → observable no-op (tearing down the shared device
 //                       stack would drop every other CDC instance)
-//   write(v)          → one typed write (string | number overloads — the
+//   write(v)          → one typed write (text | number | boolean — the
 //   writeLine(v)        __tc_print contract, not print(any))
-//   ready()           → the host has the port open (DTR asserted); output
+//   linked()          → the host has the port open (DTR asserted); output
 //                       written before this is silently dropped by hosts
-//   waitReady(ms)     → ONE op: bounded DTR poll in the shim (k_msleep
+//   waitLinked(ms)    → ONE op: bounded DTR poll in the shim (k_msleep
 //                       slices), boolean, no user-code busy loop. 0 = forever.
 //   read()/available()→ poll RX (the byte or -1 / a ready count)
 //
 // Unlike a hardware UART, output before the host opens the port is lost —
-// gate on ready()/waitReady() when early output matters.
+// gate on linked()/waitLinked() when early output matters.
 // ----------------------------------------------------------------------------
 
 import {
   usbBegin, usbEnd, usbPrint, usbPrintln,
   usbRead, usbAvailable, usbConnected, usbWaitReady,
 } from './emit.js';
+import type { SerialValue } from './types.js';
 
 export class USBConsole {
   private readonly _port: string;
@@ -46,25 +47,26 @@ export class USBConsole {
     usbEnd(this._port);
   }
 
-  /** Write text (or a number, rendered like the console helpers do). */
-  write(value: string | number): void {
+  /** Write text, a number, or a boolean. Numbers format as decimal;
+   *  booleans print as 1/0. */
+  write(value: SerialValue): void {
     usbPrint(this._port, value);
   }
 
-  /** Write text (or a number) followed by a newline. */
-  writeLine(value: string | number): void {
+  /** Write a value followed by a newline. */
+  writeLine(value: SerialValue): void {
     usbPrintln(this._port, value);
   }
 
   /** True when the host has the port open (DTR asserted). Output written
    *  before this is true is silently dropped by most hosts. */
-  ready(): boolean {
+  linked(): boolean {
     return usbConnected(this._port);
   }
 
   /** Block until the host opens the port, polling in the shim (no user-code
-   *  busy loop). `timeoutMs` 0 = wait forever. Returns true once ready. */
-  waitReady(timeoutMs: number = 0): boolean {
+   *  busy loop). `timeoutMs` 0 = wait forever. Returns true once linked. */
+  waitLinked(timeoutMs: number = 0): boolean {
     return usbWaitReady(this._port, timeoutMs);
   }
 

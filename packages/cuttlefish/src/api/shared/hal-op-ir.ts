@@ -173,15 +173,6 @@ export interface InterruptAttachFlagsOp {
   intFlags: string;
 }
 
-export interface InterruptAttachOp {
-  operation: "interrupt.attach";
-  pin: number;
-  /** Resolved C++ callback function name */
-  handler: string;
-  /** Mode string: "RISING" | "FALLING" | "CHANGE" | "HIGH" | "LOW" */
-  mode: string;
-}
-
 /** Inline routing overrides shared by the pwm.set_* ops (construction
  *  opts, the escape hatch): DT controller nodelabel + channel. */
 export interface PwmRoutingOverride {
@@ -1164,7 +1155,6 @@ export type HALOpIR =
   | GpioShiftOutOp
   | GpioShiftInOp
   | InterruptAttachFlagsOp
-  | InterruptAttachOp
   | PwmSetPulseOp
   | PwmSetDutyOp
   | PwmSetPeriodOp
@@ -1336,7 +1326,7 @@ export const HAL_OPERATION_KINDS = [
   // ADC
   // DAC
   // Interrupts
-  'interrupt.attach', 'interrupt.attach_flags', 'interrupt.detach',
+  'interrupt.attach_flags', 'interrupt.detach',
   // Timing (legacy Arduino-named ops removed; timers keep JS names)
     'timing.sleep', 'timing.now', 'timing.now_us', 'timing.busy_wait_us',
   // Thin Zephyr-shaped peripherals

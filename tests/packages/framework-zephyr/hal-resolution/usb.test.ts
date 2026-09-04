@@ -96,7 +96,7 @@ describe('usb lowering', () => {
 
   it('print of a string literal → per-byte poll_out loop on the CDC device', () => {
     const out = lowerUsb({ operation: 'usb.print', port: 'USB0', value: '"hi"' } as any, USB_CHIP);
-    expect(out.code).toContain('uart_poll_out(__tc_usb0_dev, ("hi")[__i])');
+    expect(out.code).toContain('__tc_dev_put(__tc_usb0_dev, "hi");');
     expect(out.code).not.toContain('\\n');
   });
 
@@ -150,8 +150,8 @@ describe('USB0 end-to-end (transpile with an esp32s3 board whose DTS enables the
       const USB0 = 'USB0'; // composed CDC node
       USB0.open();
       USB0.writeLine("hi");
-      if (USB0.ready()) { USB0.write("host open"); }
-      USB0.waitReady(5000);
+      if (USB0.linked()) { USB0.write("host open"); }
+      USB0.waitLinked(5000);
     `, {
       strategy: new ZephyrStrategy(),
       target: 'zephyr',
@@ -160,6 +160,7 @@ describe('USB0 end-to-end (transpile with an esp32s3 board whose DTS enables the
     });
 
     expect(result.cpp).toContain('__tc_usb0_init();');
+    expect(result.cpp).toContain('__tc_dev_put(__tc_usb0_dev, "hi")');
     expect(result.cpp).toContain('uart_poll_out(__tc_usb0_dev');
     expect(result.cpp).toContain('uart_line_ctrl_get(__tc_usb0_dev, UART_LINE_CTRL_DTR');
     // The shim block (device + usb_enable-guarded init) rides along.

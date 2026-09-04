@@ -7,8 +7,8 @@ import type {
   II2CBus,
   II2CDeviceAccessor,
   ErrorPolicy,
+  I2CAddress,
 } from '../contracts.js';
-import type { I2CAddress } from '@typecad/hal';
 import type { ISimI2CDevice } from '../types.js';
 
 // ---------------------------------------------------------------------------

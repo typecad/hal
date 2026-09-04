@@ -17,11 +17,6 @@ import { adcReadRaw, adcReadMv } from './emit.js';
 import type { Pin } from './gpio.js';
 
 export class ADC {
-  // Field defaults the HAL parser seeds onto instances when construction
-  // omits the opts object — without them, `this._gain` reaches the resolver
-  // as unresolved text instead of the "use descriptor defaults" sentinel.
-  static readonly __default_fields = { _gain: '', _reference: '', _channel: '-1', _device: '', _pinctrl: '' };
-
   // ── Gain tokens (enum adc_gain, verbatim — generated set, see the
   //    token-sync test) ───────────────────────────────────────────────────
   static readonly GAIN_1_6 = 0x01;

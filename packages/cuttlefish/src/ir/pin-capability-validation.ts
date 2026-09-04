@@ -31,7 +31,7 @@ function operationToCapability(op: string): string | null {
   if (op === 'dac.write_value') {
     return 'analogOutput';
   }
-  if (op === 'interrupt.attach') {
+  if (op === 'interrupt.attach_flags') {
     return 'interrupt';
   }
   // GPIO and timing ops are always available — no capability check needed.

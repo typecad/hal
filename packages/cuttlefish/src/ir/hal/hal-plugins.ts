@@ -959,14 +959,6 @@ export function tryResolveSemanticCall(
       return { operation: "interrupt.attach_flags", pin, handler, intFlags };
     }
 
-    case "interruptAttach": {
-      const pin = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
-      const handler = resolveSemanticArg(args, 1, instance, paramNames, callArgTexts, paramDefaults);
-      const mode = resolveSemanticArg(args, 2, instance, paramNames, callArgTexts, paramDefaults);
-      if (pin === null || handler === null || mode === null) return null;
-      return { operation: "interrupt.attach", pin, handler, mode };
-    }
-
     case "timeSleep": {
       const ms = resolveNumericArg(args, 0, instance, paramNames, callArgTexts, paramDefaults);
       if (ms === null) return null;

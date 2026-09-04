@@ -19,15 +19,6 @@ describe("Async.yield()")
     })
   ).toBe(1)
 
-describe("Async.sleepUntil()")
-  .it("Async.sleepUntil() is callable with a condition")
-  .expect(
-    (() => {
-      Async.sleepUntil(() => true, 5);
-      return 1;
-    })
-  ).toBe(1)
-
 describe("Async.currentTask()")
   .it("Async.currentTask() returns a value without crashing")
   .expect(

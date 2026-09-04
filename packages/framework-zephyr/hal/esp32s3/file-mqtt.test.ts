@@ -76,6 +76,6 @@ describe('thin mqtt — pub/sub vs the LAN broker')
   .it('publish looped back through onMessage')
     .expect(received + topicOk * 2).toBe(3);
 
-mqtt.close();
+mqtt.disconnect();
 
 done();

@@ -302,7 +302,7 @@ export function resolveExpressionText(
  *  ESP-IDF, trips -Werror=attributes when IRAM_ATTR's __COUNTER__ disagrees
  *  between forward declaration and definition. */
 const ISR_CALLBACK_SEMANTIC_FNS = new Set([
-  "interruptAttach",
+  "interruptAttachFlags",
 ]);
 
 /** True when a HAL semantic call name wraps a GPIO/hardware ISR callback. */

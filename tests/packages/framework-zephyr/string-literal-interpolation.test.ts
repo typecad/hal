@@ -21,30 +21,30 @@ describe('string-variable interpolation into HAL calls (Zephyr)', () => {
     const result = tr(`
       import { UART0 } from '@typecad/board';
       let s = "12";
-      UART0.println(\`\${s}34\`);
+      UART0.writeLine(\`\${s}34\`);
     `);
     expectCppContains(result, ['const char* s = "12";']);
     expect(result.cpp).toMatch(/snprintf\([\s\S]*?"%s34", s\);/);
     expect(result.cpp).not.toContain('s.c_str()');
-    expect(result.cpp).toMatch(/uart_poll_out\(__tc_uart0_dev/);
+    expect(result.cpp).toMatch(/__tc_dev_put\(__tc_uart0_dev/);
   });
 
   it('number interpolation still formats as %d', () => {
     const result = tr(`
       import { UART0 } from '@typecad/board';
-      UART0.println(\`count: \${42}\`);
+      UART0.writeLine(\`count: \${42}\`);
     `);
     expect(result.cpp).toMatch(/"%s?"|snprintf\([^)]*"count: %d", 42\)/);
-    expect(result.cpp).toMatch(/uart_poll_out\(__tc_uart0_dev/);
+    expect(result.cpp).toMatch(/__tc_dev_put\(__tc_uart0_dev/);
   });
 
   it('plain string literals pass through with no interpolation buffer', () => {
     const result = tr(`
       import { UART0 } from '@typecad/board';
-      UART0.println("plain");
+      UART0.writeLine("plain");
     `);
     // The literal streams directly (no __cuttlefish_snprintf buffer for it).
     expect(result.cpp).not.toContain('__cuttlefish_snprintf');
-    expect(result.cpp).toMatch(/uart_poll_out\(__tc_uart0_dev[^;]*"plain"/);
+    expect(result.cpp).toMatch(/__tc_dev_put\(__tc_uart0_dev[^;]*"plain"/);
   });
 });

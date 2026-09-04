@@ -16,8 +16,6 @@ import { spiTransceiveDt, spiWriteDt, spiReadReg } from './emit.js';
 import type { Pin } from './gpio.js';
 
 export class SPITarget {
-  static readonly __default_fields = { _hz: '1000000', _mode: '0' };
-
   private readonly _bus: string;
   private readonly _cs: number;
   private readonly _hz: number;

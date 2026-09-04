@@ -10,8 +10,6 @@ import { dacWriteValue } from './emit.js';
 import type { Pin } from './gpio.js';
 
 export class DAC {
-  static readonly __default_fields = { _resolution: '0' };
-
   private readonly _pin: number;
   private readonly _resolution: number;
 

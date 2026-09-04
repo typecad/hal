@@ -4,7 +4,6 @@
 // Provides a platform-independent API for:
 //   - sleep(ms)      — non-blocking delay via Promise + microtask
 //   - yield()        — cooperative yield to other tasks
-//   - sleepUntil(condition) — await a condition (promise-based)
 //   - currentTask()  — return a description of the currently executing task
 //
 // Framework packages (Arduino, Native, etc.) provide the C++ runtime behind
@@ -34,17 +33,6 @@ export class AsyncClass {
    */
   yield(): Promise<void> {
     rawCpp(`__cuttlefish_async_yield();`);
-    return Promise.resolve();
-  }
-
-  /**
-   * Await a polling condition.
-   * Repeatedly checks `condition()` every `pollIntervalMs` milliseconds
-   * until it returns true, then resolves.
-   * The underlying implementation uses the platform's timer mechanism.
-   */
-  sleepUntil(condition: () => boolean, pollIntervalMs: number = 10): Promise<void> {
-    rawCpp(`__cuttlefish_async_sleep_until(${pollIntervalMs});`);
     return Promise.resolve();
   }
 

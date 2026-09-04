@@ -28,16 +28,17 @@ describe('HAL expression prefix ops (transpiler-level)', () => {
   });
 
   it('multi-op statement chain survives intact (regression: resolver keeps ONLY the tail)', () => {
-    // UART println resolves to TWO uart.write ops in one method body; assert
-    // both fragments land. Proxy for the class of bug where a leading op was
-    // dropped (the "dead keypress"/expression-prefixOps regression family).
+    // UART writeLine resolves to TWO ops in one method body: the value write
+    // and the trailing newline (each a __tc_dev_put call). Assert both land.
+    // Proxy for the class of bug where a leading op was dropped (the "dead
+    // keypress"/expression-prefixOps regression family).
     const result = tr(`
       import { UART } from '@typecad/board';
       const port = new UART('UART0');
-      port.println('hi');
+      port.writeLine('hi');
     `);
     expect(result.cpp.length).toBeGreaterThan(0);
-    const outs = result.cpp.match(/uart_poll_out/g) ?? [];
-    expect(outs.length).toBeGreaterThanOrEqual(2);
+    expect(result.cpp).toContain('__tc_dev_put(__tc_uart0_dev, "hi")');
+    expect(result.cpp).toContain('__tc_dev_put(__tc_uart0_dev, "\\n")');
   });
 });

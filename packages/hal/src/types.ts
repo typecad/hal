@@ -1,12 +1,13 @@
 // ---------------------------------------------------------------------------
 // @typecad/hal — Public type definitions
 //
-// Transpiler-shim type surface: enums, type aliases, and the pin-group API
-// consumed by the HAL's transpiler-shim classes (Pin/OutputPin/InputPin,
-// I2CBus/SPIBus/SerialPort) and re-exported for downstream type-checking.
+// Transpiler-shim type surface: value aliases and the enums consumed by the
+// HAL's transpiler-shim classes (Pin, GPIO, I2CBus/SPIBus) and re-exported
+// for downstream type-checking.
 //
 // Runtime-contract interfaces (BasePin, II2CBus, ISPIBus, ISerialPort, the
-// status enums, capability guards, etc.) have been relocated to
+// status enums, capability guards, and the legacy Wire/SPI protocol-shape
+// types I2CAddress/SPIMode/SPIBitOrder/SPISettings) have been relocated to
 // @typecad/simulator/src/contracts.ts — they describe the runtime objects the
 // simulator implements, not the transpiler shims that live here.
 // ---------------------------------------------------------------------------
@@ -22,6 +23,15 @@ export type DigitalValue = boolean;
 export type AnalogValue = number;
 
 // ---------------------------------------------------------------------------
+// Serial write value
+// ---------------------------------------------------------------------------
+
+/** A value a serial port (UART / USB console) can write: text, a number, or
+ *  a boolean. Numbers format as decimal (integer + trimmed fractional);
+ *  booleans print as 1/0. */
+export type SerialValue = string | number | boolean;
+
+// ---------------------------------------------------------------------------
 // Pin mode enum
 // ---------------------------------------------------------------------------
 
@@ -32,18 +42,6 @@ export enum PinMode {
   INPUT_PULLDOWN    = 'INPUT_PULLDOWN',
   OUTPUT_OPEN_DRAIN = 'OUTPUT_OPEN_DRAIN',
   ANALOG            = 'ANALOG',
-}
-
-// ---------------------------------------------------------------------------
-// Interrupt mode enum
-// ---------------------------------------------------------------------------
-
-export enum InterruptMode {
-  RISING  = 'RISING',
-  FALLING = 'FALLING',
-  CHANGE  = 'CHANGE',
-  LOW     = 'LOW',
-  HIGH    = 'HIGH',
 }
 
 // ---------------------------------------------------------------------------
@@ -70,17 +68,3 @@ export type ArchitectureIdentifier =
   | 'nrf52'
   | (string & {});
 
-// ---------------------------------------------------------------------------
-// Protocol-shape types (re-exported by @typecad/framework-arduino)
-// ---------------------------------------------------------------------------
-
-export type I2CAddress = number;
-
-export type SPIBitOrder = 'msb' | 'lsb';
-export type SPIMode = 0 | 1 | 2 | 3;
-
-export interface SPISettings {
-  frequency: number;
-  mode: SPIMode;
-  bitOrder: SPIBitOrder;
-}

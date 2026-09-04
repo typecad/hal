@@ -16,8 +16,6 @@
 import { i2cRegWrite, i2cRegRead, i2cRegUpdate, i2cDevWrite } from './emit.js';
 
 export class I2CTarget {
-  static readonly __default_fields = { _hz: '0' };
-
   private readonly _bus: string;
   private readonly _address: number;
   private readonly _hz: number;

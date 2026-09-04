@@ -346,48 +346,6 @@ import { uartInitLines } from './lowering/uart.js';
 import { usbInitLines, usbdDeviceLines } from './lowering/usb.js';
 
 /**
- * Arduino wiring-ambient free functions the hal surface emits as bare C++
- * calls (framework-arduino links them from the Arduino core; Zephyr must shim
- * them). Scans top-level statements AND function bodies — the expect
- * preprocessor hoists test bodies into __tc_fn* functions.
- */
-const WIRING_AMBIENT_CALLEES = new Set([
-  'random', 'randomSeed', 'noInterrupts', 'interrupts',
-]);
-
-function collectWiringAmbientUsage(program?: ProgramIR): Set<string> {
-  const used = new Set<string>();
-  if (!program) return used;
-  // Free-function calls surface in the IR two ways: as call nodes (direct
-  // user statements) and as __EMIT__/raw string payloads (the hal resolver's
-  // legacy free-function path passes bare `pulseIn(7, 1, 100);` text through,
-  // and namespace-methods.ts lowers Pulse.in/Shift.out to the same tokens).
-  // Scan both, like collectRawMatches does.
-  const callRe = new RegExp(`\\b(${[...WIRING_AMBIENT_CALLEES].join('|')})\\s*\\(`, 'g');
-  const scanText = (text: string): void => {
-    for (const m of text.matchAll(callRe)) used.add(m[1]);
-  };
-  const visit = (node: any): void => {
-    if (!node || typeof node !== 'object') return;
-    if (typeof node.callee === 'string' && WIRING_AMBIENT_CALLEES.has(node.callee)) {
-      used.add(node.callee);
-    }
-    if (node.kind === 'raw' && typeof node.value === 'string') scanText(node.value);
-    if (node.kind === 'string' && typeof node.value === 'string') scanText(node.value);
-    if (node.operation && typeof node.operation === 'object'
-        && node.operation.operation === 'raw' && typeof node.operation.code === 'string') {
-      scanText(node.operation.code);
-    }
-    for (const v of Object.values(node)) {
-      if (Array.isArray(v)) { for (const item of v) visit(item); }
-      else if (v && typeof v === 'object') visit(v);
-    }
-  };
-  visit(program);
-  return used;
-}
-
-/**
  * STM32F4 boot-time DBGMCU setup: set DBG_SLEEP|DBG_STOP|DBG_STANDBY
  * (DBGMCU_CR @ 0xE0042004, bits 0–2) so SWD stays attachable while the app
  * sleeps. RCC_APB1ENR (0x40023840) bit 18 clocks the DBGMCU first — F4 gates
@@ -723,7 +681,6 @@ export class ZephyrStrategy implements PlatformStrategy {
     const a = (ctx as any)?.analysis;
     const uses = (f: string): boolean => (a ? !!a[f] : true);
     const helpers = (a as { usedPolyfillHelpers?: Set<string> } | undefined)?.usedPolyfillHelpers;
-    const ambient = collectWiringAmbientUsage(program);
 
     // --- Core shim, gated item by item on actual use ------------------------
     // A minimal program (blink) uses none of these, and its output carries no
@@ -798,40 +755,16 @@ export class ZephyrStrategy implements PlatformStrategy {
         'inline long max_(long a, long b) { return a > b ? a : b; }',
       );
     }
-    // ambient wiring free functions. The hal surface emits these as
-    // bare C++ calls;
-    // Zephyr shims them over the gpio dispatchers + the __tc_rand_* PRNG.
-    // Gated per symbol on actual use so a minimal program's shim stays empty.
-    // Dependencies first: the dispatcher + PRNG helpers must precede the
-    // ambient shims that call them (the guard block emits in push order, and
+    // Random PRNG shim: the Random namespace lowers to the __tc_rand_* PRNG.
+    // Emitted when the program actually uses the random.* ops, so a minimal
+    // program's shim stays empty. The dispatcher + PRNG helpers must precede
+    // the shims that call them (the guard block emits in push order, and
     // C++ needs the definitions before use).
-    const usesRandomFn = ambient.has('random') || ambient.has('randomSeed');
-    const usesIrqGate = ambient.has('noInterrupts') || ambient.has('interrupts');
     if (this.needsGpioReadShim(program, ctx)) {
       guardBody.push(...emitGpioDevDispatcher(chip));
     }
-    if (uses('usesRandom') || usesRandomFn) {
+    if (uses('usesRandom')) {
       guardBody.push(...randomInitLines());
-    }
-    if (usesRandomFn) {
-      guardBody.push(
-        'static inline void randomSeed(uint32_t seed) { __tc_rand_seed(seed); }',
-        'static inline long random(long max) { return (max > 0) ? __tc_rand_range(0, static_cast<int32_t>(max) - 1) : 0; }',
-        'static inline long random(long min, long max) { return (max > min) ? __tc_rand_range(static_cast<int32_t>(min), static_cast<int32_t>(max) - 1) : min; }',
-      );
-    }
-    if (usesIrqGate) {
-      // irq_lock/irq_unlock is Zephyr's PORTABLE interrupt gate (every
-      // arch: Cortex-M PRIMASK, Xtensa PS.INTLEVEL, RISC-V mstatus) — a
-      // CPU-family #if here would silently no-op on the others.
-      // The paired static key matches the hal's paired-call semantics (not
-      // nesting-safe, same as the Arduino cli/sei model it replaces).
-      guardBody.push(
-        '#include <zephyr/irq.h>',
-        'static unsigned int __tc_irq_key = 0;',
-        'static inline void noInterrupts(void) { __tc_irq_key = irq_lock(); }',
-        'static inline void interrupts(void) { irq_unlock(__tc_irq_key); }',
-      );
     }
     // PROGMEM note: only some UI runtime headers reference it.
     if (entryHasUI()) {
@@ -858,23 +791,42 @@ export class ZephyrStrategy implements PlatformStrategy {
       guardBody.push(
         'inline void __tc_print(const char* s) { printf("%s", s); }',
         [
-          'static void __tc_fmt_num(double v) {',
-          '    if (v != v) { printf("nan"); return; }',
+          'static inline char* __tc_fmt_num_buf(double v, char* out, size_t cap) {',
+          '    if (v != v) { snprintf(out, cap, "nan"); return out; }',
           '    double a = v < 0 ? -v : v;',
           '    long long ip = (long long)a;',
           '    long long fr = (long long)((a - (double)ip) * 1000000.0 + 0.5);',
           '    if (fr >= 1000000LL) { ip += 1LL; fr = 0LL; }',
-          '    if (v < 0 && (ip != 0LL || fr != 0LL)) printf("-");',
-          '    if (fr == 0LL) { printf("%lld", ip); return; }',
+          '    int used = 0;',
+          '    if (v < 0 && (ip != 0LL || fr != 0LL)) { out[used++] = \'-\'; out[used] = \'\\0\'; }',
+          '    if (fr == 0LL) { snprintf(out + used, cap - (size_t)used, "%lld", ip); return out; }',
           '    char fbuf[8];',
           '    int len = snprintf(fbuf, sizeof(fbuf), "%06lld", fr);',
           '    while (len > 0 && fbuf[len - 1] == \'0\') { fbuf[--len] = \'\\0\'; }',
-          '    printf("%lld.%s", ip, fbuf);',
+          '    snprintf(out + used, cap - (size_t)used, "%lld.%s", ip, fbuf);',
+          '    return out;',
           '}',
+          'static void __tc_fmt_num(double v) { char __b[32]; printf("%s", __tc_fmt_num_buf(v, __b, sizeof(__b))); }',
         ].join('\n'),
         'inline void __tc_print(double v) { __tc_fmt_num(v); }',
         'inline void __tc_println(const char* s) { printf("%s\\n", s); }',
         'inline void __tc_println(double v) { __tc_fmt_num(v); printf("\\n"); }',
+      );
+    }
+    // Serial-port write helper: writes a scalar to a UART/CDC device a byte at
+    // a time. Overloaded on const char* (strings, snprintf buffers) and double
+    // (numbers/booleans) so a single __tc_dev_put(dev, value) call site formats
+    // any writable scalar — the same overload contract __tc_print uses. Emitted
+    // when the program writes a UART or USB port (both include uart.h).
+    if (uses('usesUart') || uses('usesUsb')) {
+      guardBody.push(
+        'static inline void __tc_dev_put(const struct device* dev, const char* s) {',
+        '    for (; *s != \'\\0\'; ++s) { uart_poll_out(dev, *s); }',
+        '}',
+        'static inline void __tc_dev_put(const struct device* dev, double v) {',
+        '    char __b[32];',
+        '    __tc_dev_put(dev, __tc_fmt_num_buf(v, __b, sizeof(__b)));',
+        '}',
       );
     }
 
@@ -1219,7 +1171,7 @@ export class ZephyrStrategy implements PlatformStrategy {
               adcOverriddenPins.add(op.pin);
             }
           }
-          if (op.operation === 'interrupt.attach' && typeof op.pin === 'number') {
+          if (op.operation === 'interrupt.attach_flags' && typeof op.pin === 'number') {
             interruptPins.add(op.pin);
           }
           if (typeof op.operation === 'string' && op.operation.startsWith('wdt.')) {
@@ -1308,7 +1260,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     }
 
     // ── Interrupt pin validity ──────────────────────────────────────────────
-    // interrupt.attach works on every REAL GPIO: pins listed in the chip
+    // GPIO.onInterrupt works on every REAL GPIO: pins listed in the chip
     // descriptor's gpio.interruptPins wire through the DT-spec chain, any
     // other in-range pin through the raw-controller chain. What cannot work
     // is a pin number no declared controller range covers (e.g. 99 on a
@@ -1323,7 +1275,7 @@ export class ZephyrStrategy implements PlatformStrategy {
         diags.push({
           severity: 'error',
           code: 'zephyr-interrupt-pin-unavailable',
-          message: `GPIO ${pin} does not exist on ${chip.id}; interrupt.attach is a no-op.`,
+          message: `GPIO ${pin} does not exist on ${chip.id}; onInterrupt is a no-op.`,
           hint: `Use a real GPIO on this board (controller ranges: ${chip.gpioControllers.map((r) => `${r.nodelabel} ${r.minPin}-${r.maxPin}`).join(', ')}).`,
           source: program.fileName,
         });

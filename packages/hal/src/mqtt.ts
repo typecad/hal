@@ -12,7 +12,7 @@
 //   subscribe(t)  → subscribe to a topic filter ("sensors/#")
 //   publish(t, s) → publish a message
 //   linked()      → the broker session is up
-//   close()       → disconnect and free the client
+//   disconnect()  → disconnect and free the client
 // ----------------------------------------------------------------------------
 
 import { callback } from './callback.js';
@@ -59,7 +59,7 @@ export class Mqtt {
   }
 
   /** Disconnect from the broker and free the client. */
-  close(): void {
+  disconnect(): void {
     mqttDisconnect();
   }
 }

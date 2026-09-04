@@ -15,6 +15,8 @@
 // to framework pin numbers via the MCU package's pin mapping.
 // ---------------------------------------------------------------------------
 
+import type { SerialValue } from './types.js';
+
 // ---------------------------------------------------------------------------
 // GPIO — digital pin control
 // ---------------------------------------------------------------------------
@@ -55,21 +57,6 @@ export function pwmSetDuty(pin: number | string, periodNs: number, duty: number,
 export function pwmSetPeriod(pin: number | string, periodNs: number, controller: string = '', channel: number = -1): void {}
 
 // ---------------------------------------------------------------------------
-// RMT — Remote Control Transceiver (addressable LEDs, IR, raw digital waveforms)
-// ---------------------------------------------------------------------------
-// rmtTxInit/rmtRxInit are POSITIONAL semantic primitives — the ergonomic
-// opts-object form lives in hal/rmt.ts (which destructures and forwards). The
-// resolver collapses object literals, so HALOpIR fields must be scalars; the
-// rmt.ts wrapper bridges the ergonomic API to these positional calls.
-//
-// Pin params accept Pin | number | string so callers can pass a board alias
-// like LED (a Pin object) directly; the transpiler resolves it to its number.
-import type { Pin } from './gpio.js';
-/** Positional semantic primitive. Args: pin, resolutionHz, bit0Hi, bit0Lo,
- *  bit1Hi, bit1Lo, msbFirst, queueDepth. Use rmtTxInit() from hal/rmt.ts. */
-
-
-// ---------------------------------------------------------------------------
 // ADC — analog-to-digital conversion
 // ---------------------------------------------------------------------------
 
@@ -85,18 +72,11 @@ export function adcReadMv(pin: number | string, gain: number | string, reference
 // Interrupts
 // ---------------------------------------------------------------------------
 
-/** Attach an interrupt handler to a pin. */
-export function interruptAttach(pin: number | string, handler: string, mode: string): void {}
 /** Thin GPIO interrupts (hal/gpio-pin.ts onInterrupt): attach with Zephyr
  *  INT_* tokens ("GPIO.INT_EDGE_FALLING") instead of mode strings. */
 export function interruptAttachFlags(pin: number | string, handler: string, intFlags: number | string): void {}
 /** Detach an interrupt from a pin. */
 export function interruptDetach(pin: number | string): void {}
-
-// ---------------------------------------------------------------------------
-// Tone / audio output
-// ---------------------------------------------------------------------------
-
 
 // ---------------------------------------------------------------------------
 // Timing
@@ -106,7 +86,8 @@ export function interruptDetach(pin: number | string): void {}
 export function timeSleep(ms: number): void {}
 /** Time.now — milliseconds since boot as a double (Zephyr: k_uptime_get). */
 export function timeNow(): number { return 0; }
-/** Time.nowUs — microseconds since boot as a double (Zephyr: k_cyc_to_us_floor64). */
+/** Time.nowUs — microseconds since boot as a double, uptime-derived
+ *  (k_uptime_get() * 1000) on every board — uniform, monotonic. */
 export function timeNowUs(): number { return 0; }
 /** Time.busyWaitUs — spin-wait the given microseconds, no yield (Zephyr: k_busy_wait). */
 export function timeBusyWaitUs(us: number): void {}
@@ -114,15 +95,6 @@ export function timeBusyWaitUs(us: number): void {}
 // ---------------------------------------------------------------------------
 // I2C — inter-integrated circuit bus
 // ---------------------------------------------------------------------------
-
-/**
- * Drain `count` bytes requested from the I2C bus into a caller-provided buffer.
- * Semantic primitive: lowers to the `i2c.read_buffer` HAL op. The `buffer`
- * argument is emitted as a placeholder (`__HAL_READ_BUF__`) that the var-init
- * transformer rewrites to the caller's own buffer variable, so bytes land in
- * the `uint8_t data[N]` declared in user scope — NOT an internal temp that
- * decays to a pointer on return. Keeps `data.length` / `data[i]` valid.
- */
 
 // Thin I2C device (hal/i2c-target.ts): Zephyr register verbs. `hz` (0 =
 // leave the bus at its current speed) applies once via a guarded
@@ -136,19 +108,6 @@ export function i2cDevWrite(bus: string, address: number, hz: number, data: numb
 // SPI — serial peripheral interface
 // ---------------------------------------------------------------------------
 
-/**
- * Read `count` bytes from the SPI bus into a caller-provided buffer by clocking
- * dummy (0x00) transfers. Semantic primitive: lowers to the `spi.read_buffer`
- * HAL op (per-byte `bus.transfer(0)` read loop). The `buffer` placeholder is
- * rewritten to the caller's variable. Mirrors i2cReadBuffer. The caller is
- * responsible for asserting/de-asserting chip-select around it.
- */
-
-// ---------------------------------------------------------------------------
-// UART — serial communication
-// ---------------------------------------------------------------------------
-
-
 // ---------------------------------------------------------------------------
 // USB — CDC-ACM serial over the USB connector (device stack)
 // ---------------------------------------------------------------------------
@@ -158,29 +117,17 @@ export function usbBegin(port: string): void {}
 /** Disable the CDC serial port. */
 export function usbEnd(port: string): void {}
 /** Print value to the USB serial port. */
-export function usbPrint(port: string, value: any): void {}
+export function usbPrint(port: string, value: SerialValue): void {}
 /** Print value with newline to the USB serial port. */
-export function usbPrintln(port: string, value: any): void {}
+export function usbPrintln(port: string, value: SerialValue): void {}
 /** Read a byte from the USB serial port (-1 if none). */
 export function usbRead(port: string): number { return 0; }
 /** Check if bytes are available from the USB serial port. */
 export function usbAvailable(port: string): number { return 0; }
 /** True when the host has opened the port (DTR asserted). */
 export function usbConnected(port: string): boolean { return false; }
-/** Thin waitReady(): bounded DTR poll in the shim. */
+/** Thin waitLinked(): bounded DTR poll in the shim. */
 export function usbWaitReady(port: string, timeoutMs: number): boolean { return false; }
-
-// ---------------------------------------------------------------------------
-// Pulse measurement
-// ---------------------------------------------------------------------------
-
-
-// ---------------------------------------------------------------------------
-// Shift register
-// ---------------------------------------------------------------------------
-
-/** Shift a byte out to a pin. */
-/** Shift a byte in from a pin. */
 
 // ---------------------------------------------------------------------------
 // Board constant resolution
@@ -193,8 +140,6 @@ export function dacWriteValue(pin: number | string, value: number, resolution: n
 // ---------------------------------------------------------------------------
 // Watchdog timer (WDT)
 // ---------------------------------------------------------------------------
-
-
 
 /** Disable the watchdog timer. */
 export function wdtDisable(): void {}
@@ -226,7 +171,7 @@ export function spiReadReg(bus: string, cs: number, hz: number, mode: number, re
 // applied once (guarded uart_configure); RX is interrupt-backed into a
 // construction-sized ring (armed on first receive call). `ring` sizes the
 // shim's static buffer and rides every RX op (self-contained-op discipline).
-export function uartPollWrite(port: string, baud: number, data: string): void {}
+export function uartPollWrite(port: string, baud: number, data: SerialValue): void {}
 export function uartRxAvailable(port: string, ring: number): number { return 0; }
 export function uartRxPeek(port: string, ring: number): number { return 0; }
 export function uartRxRead(port: string, ring: number): number { return 0; }
@@ -316,7 +261,7 @@ export function bleOnRead(index: number, handler: string): void {}
 export function bleOnWrite(index: number, handler: string): void {}
 export function bleOnConnect(handler: string): void {}
 export function bleOnDisconnect(handler: string): void {}
-export function bleNotify(index: number, value: number | string): void {}
+export function bleNotify(index: number, value: number): void {}
 export function bleIsConnected(): boolean { return false; }
 export function bleClientCount(): number { return 0; }
 

@@ -136,11 +136,8 @@ export default defineFrameworkManifest({
       unsupportedReason: undefined,
       ops: {
         'interrupt.detach': 'supported',
-        // Free attachInterrupt(pin, fn, mode): mode strings map to the
-        // GPIO_INT_* edges/levels.
-        'interrupt.attach': 'supported',
         // Thin GPIO interrupts (hal/gpio-pin.ts onInterrupt): INT_* tokens,
-        // covering the level modes the mode strings cannot express.
+        // covering the level modes the legacy mode strings could not express.
         'interrupt.attach_flags': 'supported',
       },
     },
