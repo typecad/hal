@@ -34,6 +34,10 @@ function rp2040Rev23(): { boardTs: string; boardConstants: Map<string, string | 
     consts[`zephyr.adc.channels.${i}.pin`] = pin;
     consts[`zephyr.adc.channels.${i}.channel`] = channel;
     consts[`zephyr.adc.channels.${i}.pinctrl`] = pinctrl;
+    // The capability validator now checks `capabilities.analogInput` — the
+    // fixture catalog predates the header harvest, so mirror the channel fact
+    // with the per-pin flag the real boardgen would emit.
+    consts[`pins.all.${pin}.capabilities.analogInput`] = true;
   });
   const specs: [number, number, string][] = [
     [14, 14, 'PWM_7A_P14'],

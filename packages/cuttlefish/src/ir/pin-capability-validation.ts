@@ -25,10 +25,10 @@ function operationToCapability(op: string): string | null {
   if (op === 'pwm.set_pulse' || op === 'pwm.set_duty' || op === 'pwm.set_period') {
     return 'pwm';
   }
-  if (op === 'adc.read' || op === 'adc.read_voltage' || op === 'adc.get_resolution') {
+  if (op === 'adc.read_raw' || op === 'adc.read_mv') {
     return 'analogInput';
   }
-  if (op === 'dac.write') {
+  if (op === 'dac.write_value') {
     return 'analogOutput';
   }
   if (op === 'interrupt.attach') {
@@ -41,6 +41,19 @@ function operationToCapability(op: string): string | null {
 // ---------------------------------------------------------------------------
 // Board constant lookups
 // ---------------------------------------------------------------------------
+
+/**
+ * The number of `pins.all.*` entries the board declares (dense, from 0). The
+ * P3 full-SoC-port sweep can push well past the old 100/200 hard caps (the
+ * Teensy 4.1 sweeps 288 pads), so every scan bounds itself by the actual
+ * count instead of a magic limit.
+ */
+function pinCount(boardConstants: BoardConstants | undefined): number {
+  if (!boardConstants) return 0;
+  let i = 0;
+  while (i < 4096 && boardConstants.get(`pins.all.${i}.name`) !== undefined) i++;
+  return i;
+}
 
 /**
  * Resolve the `pins.all.<INDEX>` entry for a HAL pin NUMBER.
@@ -58,7 +71,7 @@ export function pinEntryIndexForNumber(
 ): number {
   if (!boardConstants) return -1;
   if (Number(boardConstants.get(`pins.all.${pinNumber}.number`)) === pinNumber) return pinNumber;
-  for (let i = 0; i < 200; i++) {
+  for (let i = 0; i < pinCount(boardConstants); i++) {
     if (boardConstants.get(`pins.all.${i}.name`) === undefined) continue;
     if (Number(boardConstants.get(`pins.all.${i}.number`)) === pinNumber) return i;
   }
@@ -77,64 +90,15 @@ function getPinName(pinNumber: number, boardConstants: BoardConstants | undefine
 function findPinsWithCapability(capability: string, boardConstants: BoardConstants | undefined): string[] {
   if (!boardConstants) return [];
   const result: string[] = [];
-  const funcTypeMap: Record<string, string> = {
-    pwm: 'pwm',
-    analogInput: 'adc',
-    analogOutput: 'dac',
-    interrupt: 'interrupt',
-  };
-  const funcType = funcTypeMap[capability];
-
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < pinCount(boardConstants); i++) {
     const name = boardConstants.get(`pins.all.${i}.name`);
     if (name === undefined) continue;
-
-    // Check capabilities flag first
     const capFlag = boardConstants.get(`pins.all.${i}.capabilities.${capability}`);
     if (capFlag === true || capFlag === 'true') {
       result.push(String(name));
-      continue;
-    }
-
-    // Fallback: check functions array
-    if (funcType) {
-      for (let j = 0; j < 10; j++) {
-        const type = boardConstants.get(`pins.all.${i}.functions.${j}.type`);
-        if (type === undefined) break;
-        if (String(type) === funcType) {
-          result.push(String(name));
-          break;
-        }
-      }
     }
   }
   return result;
-}
-
-/**
- * Does the board declare ANY per-pin `type:'pwm'` function entry anywhere?
- *
- * AVR-family boards (atmega328p, etc.) hardwire PWM to specific timer-output
- * pins, so their MCU descriptors list `{ type:'pwm', ... }` per pin and the
- * capability check correctly rejects PWM on non-timer pins. ESP32-family
- * boards route LEDC to ANY output GPIO via the GPIO matrix, so their MCU
- * descriptors carry zero `type:'pwm'` entries — PWM is a board-wide property
- * (the `pins.pwm` collection), not a per-pin function. On such boards the
- * per-pin capability check would false-positive on every pin, so the caller
- * skips it when this returns false. This distinguishes the two families
- * cleanly (AVR has entries, ESP32 has none) without special-casing arch names.
- */
-function boardHasAnyPwmFunctionEntries(boardConstants: BoardConstants | undefined): boolean {
-  if (!boardConstants) return false;
-  for (let i = 0; i < 100; i++) {
-    if (boardConstants.get(`pins.all.${i}.name`) === undefined) continue;
-    for (let j = 0; j < 10; j++) {
-      const type = boardConstants.get(`pins.all.${i}.functions.${j}.type`);
-      if (type === undefined) break;
-      if (String(type) === 'pwm') return true;
-    }
-  }
-  return false;
 }
 
 // ---------------------------------------------------------------------------
@@ -156,54 +120,33 @@ function checkCapability(
   const capability = operationToCapability(op);
   if (!capability) return; // GPIO/timing — always available.
 
-  // ESP32-family boards route PWM (LEDC) to any output GPIO via the GPIO
-  // matrix, so they carry zero per-pin `type:'pwm'` entries (unlike AVR,
-  // which hardwires PWM to timer-output pins). On such boards the per-pin PWM
-  // capability check would reject every pin; skip it and let the framework's
-  // LEDC driver handle routing. This does NOT weaken AVR, which has entries.
-  if (capability === 'pwm' && !boardHasAnyPwmFunctionEntries(boardConstants)) return;
+  // Construction-time routing overrides (the escape hatch) let a user vouch
+  // for a pin the facts layer doesn't cover — skip the capability check so
+  // an explicit channel/device/controller/pinctrl override is never rejected
+  // by the per-pin flag.
+  const override = operation as {
+    channelOverride?: number;
+    deviceOverride?: string;
+    pinctrlOverride?: string;
+    controllerOverride?: string;
+  };
+  if ((override.channelOverride !== undefined && override.channelOverride !== -1)
+      || override.deviceOverride
+      || override.pinctrlOverride
+      || override.controllerOverride) {
+    return;
+  }
 
   const pin = (operation as any).pin as number;
   if (typeof pin !== 'number' || pin < 0) return;
 
-  // ADC channel reads (ADC.read(channel)) use channel numbers, not pin
-  // numbers — skip capability checking for adc ops where the "pin" is
-  // actually a channel index (0-7 range, below the first analog pin).
-  if (capability === 'analogInput' && op.startsWith('adc.') && pin < 14) return;
-
-  // Check the pin's capability via the board definition.
-  // Try the capabilities flag first, then fall back to scanning the
-  // functions array (functions.N.type === capability prefix). The entry is
-  // resolved by pin NUMBER — the array index diverges from the number on
-  // MCUs with unbonded pads (see pinEntryIndexForNumber).
+  // Check the pin's capability via the board definition's per-pin flag.
+  // The entry is resolved by pin NUMBER — the array index diverges from the
+  // number on MCUs with unbonded pads (see pinEntryIndexForNumber).
   const entryIdx = pinEntryIndexForNumber(pin, boardConstants);
   if (entryIdx < 0) return; // Unknown pin — the emitter's own resolution reports it.
   const capFlag = boardConstants?.get(`pins.all.${entryIdx}.capabilities.${capability}`);
   if (capFlag === true || capFlag === 'true') return; // Capability confirmed.
-
-  // Fallback: scan the functions array for a matching type.
-  // PWM capability is indicated by functions[N].type === 'pwm',
-  // ADC by 'adc', interrupts by 'interrupt' (external), DAC by 'dac'.
-  const funcTypeMap: Record<string, string> = {
-    pwm: 'pwm',
-    analogInput: 'adc',
-    analogOutput: 'dac',
-    interrupt: 'interrupt',
-  };
-  const funcType = funcTypeMap[capability];
-  if (funcType) {
-    let hasCapabilityData = false;
-    for (let i = 0; i < 10; i++) {
-      const type = boardConstants?.get(`pins.all.${entryIdx}.functions.${i}.type`);
-      if (type === undefined) break;
-      hasCapabilityData = true;
-      if (String(type) === funcType) return; // Capability confirmed via functions.
-    }
-    // If the pin has NO functions entries at all AND the capability we're
-    // checking is interrupt (which is stored in capabilities, not functions),
-    // we can't determine support — skip to avoid false positives.
-    if (!hasCapabilityData && capability === 'interrupt') return;
-  }
 
   // Capability NOT supported — emit a diagnostic.
   const pinName = getPinName(pin, boardConstants);
