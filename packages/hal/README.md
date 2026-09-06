@@ -36,8 +36,7 @@ vocabulary, no transaction dance.
 
 | Area | Exports |
 | --- | --- |
-| **Digital I/O** | `Pin` (identity), `GPIO` (configure/read/write/toggle), `shiftOut`/`shiftIn` |
-| **Interrupts** | `attachInterrupt`, `detachInterrupt`, `noInterrupts`, `interrupts`, `InterruptMode` |
+| **Digital I/O** | `Pin` (identity), `GPIO` (configure/read/write/toggle, `onInterrupt`/`offInterrupt`), `shiftOut`/`shiftIn` |
 | **Timing** | `Time` (`sleep`/`now`/`nowUs`/`busyWaitUs`) |
 | **Concurrency** | `Thread` (kernel threads), `Async` (cooperative await), `Counter` (hardware timers) |
 | **PWM** | `PWM` (`setPulse`/`setDuty`/`setPeriod`; ns-true verbs) |
@@ -45,13 +44,13 @@ vocabulary, no transaction dance.
 | **Analog out** | `DAC` (`write`) |
 | **I2C** | `I2CTarget` (register verbs; also the Sensor fact-carrier), `I2CBus` (controller selector: `I2C0.device(0x44)` returns a ready target) |
 | **SPI** | `SPITarget` (transceive/register verbs), `SPIBus` (controller selector: `SPI0.device(PA4)` returns a ready target) |
-| **UART** | `UART` (write/println/read ring) — the board exports ready-to-use instances (`UART0.println(...)`) |
-| **USB** | `USBConsole` (CDC console: open/write/read/ready) |
+| **UART** | `UART` (writeLine/read ring) — the board exports ready-to-use instances (`UART0.writeLine(...)`) |
+| **USB** | `USBConsole` (CDC console: open/write/read/linked) |
 | **Storage** | `Store` (persistent typed keys), `File` (littlefs text files) |
 | **Watchdog** | `Watchdog` |
 | **Sensors** | `Sensor` + the generated `SENSOR`/`CHAN` catalog |
 | **Networking** | `WiFi`, `Request` (HTTP), `Mqtt`, `BLE` (GATT peripheral) |
-| **Math / Random** | `abs`/`min`/`max`/`Num`, `random`/`randomSeed`/`Random` |
+| **Math / Random** | `abs`/`min`/`max`/`Num`, `Random` (`seed`/`upTo`/`between`/`int`) |
 | **Registers** | `@register`/`@bits` (memory-mapped struct decorators) |
 | **Zephyr tokens** | `ZEPHYR_ADC_GAINS`, `ZEPHYR_ADC_REFERENCES`, `ZEPHYR_GPIO_FLAGS`, `ZEPHYR_GPIO_INTS` (generated from the pinned tree's headers) |
 
@@ -99,7 +98,7 @@ buses are simply not exported):
 ```ts
 import { UART0 } from '@typecad/board';
 
-UART0.println('hello');           // usart1, default 115200
+UART0.writeLine('hello');         // usart1, default 115200
 ```
 
 Explicit construction remains for non-default facts, and takes the board
@@ -148,14 +147,17 @@ Each board has a config in [`boards/`](./boards/) (currently the WeAct
 Black Pill STM32F411 and the ESP32-S3 DevKitC). Run a suite:
 
 ```bash
-npm run test:hw --workspace @typecad/hal            # Black Pill (ST-Link + USB CDC)
+npm run test:hw --workspace @typecad/hal            # Black Pill (ST-Link + console UART)
 npm run test:hw:esp32s3 --workspace @typecad/hal    # DevKitC (esptool + CH34x console)
 ```
 
-Port discovery is by USB identity, not COM numbers: Zephyr CDC consoles
-enumerate at the shared test identity `2FE3:0001`, bridge boards at the
-bridge chip's ID (`test-pins.json` carries `usb: { vid, pid }`), and the
-port re-resolves after every flash re-enumeration.
+The `[TC:...]` test protocol rides the board's console (its devicetree
+`zephyr,console` node). Port resolution: `--port` / `CUTTLEFISH_PORT` wins,
+then `test.port` in the board's config, then USB-identity discovery
+(`test-pins.json` carries `usb: { vid, pid }` — e.g. the DevKitC's CH34x
+bridge `1A86:55D3`), and the port re-resolves after every flash
+re-enumeration. A program that also constructs `USB0` composes a CDC device
+enumerating at the shared Zephyr-test identity `2FE3:0001`.
 
 ### Board parity and documented hardware limits
 

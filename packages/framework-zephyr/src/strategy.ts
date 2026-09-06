@@ -491,14 +491,9 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (isPrintf && !inc.includes('<zephyr/drivers/uart.h>')) inc.push('<zephyr/drivers/uart.h>');
     // USB CDC serial: the class instance is a UART device (uart.h); the
     // device context macros + usbd_* API live in the next-stack header.
-    // console.output: 'usb' needs them too — the shim emits a SYS_INIT
-    // bootstrap that starts the device even when the program never touches
-    // USB0 (otherwise the CDC console would never enumerate).
-    const consoleToUsb = (ctx as any)?.console?.output === 'usb' && !!chip?.usb;
-    if (uses('usesUsb') || consoleToUsb) {
+    if (uses('usesUsb')) {
       if (!inc.includes('<zephyr/drivers/uart.h>')) inc.push('<zephyr/drivers/uart.h>');
       inc.push('<zephyr/usb/usbd.h>');
-      if (consoleToUsb) inc.push('<zephyr/init.h>');
       // touch-to-reset shim callback reboots via NVIC_SystemReset()
       // (RAM-retaining Cortex-M reset — no CONFIG_REBOOT needed).
       if (chip?.usb?.touchReset) inc.push('<cmsis_core.h>');
@@ -775,8 +770,9 @@ export class ZephyrStrategy implements PlatformStrategy {
     // Test-runner console helpers: @typecad/expect's Zephyr shim calls these
     // for protocol output. Overloaded for string (const char*) and numeric
     // (double) so the same call site works for markers and test values.
-    // Emitted only when the expect preprocessor actually injected the calls
-    // (tracked as usedPolyfillHelpers).
+    // The fs lowering bakes __tc_println into its error paths too, so the
+    // overloads are emitted unconditionally — ctx.analysis can be absent or
+    // stale on UI programs, and missing definitions would be a link error.
     //
     // The numeric form formats via INTEGER conversions only: libc float
     // printf is not dependable across SDKs — the 0.17.5 toolchain swapped
@@ -784,9 +780,6 @@ export class ZephyrStrategy implements PlatformStrategy {
     // %g (the same trap as newlib-nano's -u _printf_float), which emptied
     // every [TC:EXPECT:...:value:] line. Integer %lld works in every libc
     // configuration, and the host parser accepts plain fixed-point.
-    // ALWAYS emit: the console lowering (transformConsoleCall) routes through
-    // these overloads unconditionally — any program that might print needs
-    // them, and ctx.analysis can be absent/stale on UI programs.
     {
       guardBody.push(
         'inline void __tc_print(const char* s) { printf("%s", s); }',
@@ -899,39 +892,6 @@ export class ZephyrStrategy implements PlatformStrategy {
     if (uses('usesUsb') && chip.usb) {
       guardBody.push(...usbdDeviceLines(chip));
       for (let i = 0; i < chip.usb.cdcInstances; i++) guardBody.push(...usbInitLines(chip, i));
-    } else if ((ctx as any)?.console?.output === 'usb' && chip.usb) {
-      // Console-only USB: the program never touches USB0, so nothing would
-      // call __tc_usbd_start() — yet the console (and with it the hardware
-      // test [TC:...] protocol) rides the CDC port. Define the device and
-      // start it from an APPLICATION-level SYS_INIT (before main). The boot
-      // then waits, bounded, for the host to open the port (DTR asserted) so
-      // early console traffic is not dropped while the device enumerates —
-      // USB CDC needs ~1s to come up after reset, and printf before the host
-      // opens the port vanishes.
-      guardBody.push(...usbdDeviceLines(chip));
-      guardBody.push(
-        'static int __tc_console_usb_boot(void) {',
-        '    __tc_usbd_start();',
-        '    const struct device* __tc_console_cdc = DEVICE_DT_GET(DT_NODELABEL(cdc_acm_uart0));',
-        // Wait for a STABLE DTR, not the first edge: a failed host open
-        // attempt toggles DTR briefly, and printing into a port whose open
-        // never completes loses that output. Requiring ~200 ms of
-        // continuously asserted DTR skips those transients.
-        '    int32_t __stable = 0;',
-        '    for (int32_t __i = 0; __i < 1000; __i++) {',
-        '        uint32_t __dtr = 0;',
-        '        if (uart_line_ctrl_get(__tc_console_cdc, UART_LINE_CTRL_DTR, &__dtr) == 0 && __dtr != 0) {',
-        '            __stable++;',
-        '            if (__stable >= 20) { break; }',
-        '        } else {',
-        '            __stable = 0;',
-        '        }',
-        '        k_msleep(10);',
-        '    }',
-        '    return 0;',
-        '}',
-        'SYS_INIT(__tc_console_usb_boot, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);',
-      );
     }
     // PWM init also fires (with alias vars for the override pins) when a
     // program drives ONLY inline-override channels on a chip with no pwm
@@ -1662,35 +1622,6 @@ export class ZephyrStrategy implements PlatformStrategy {
     return 'for (;;) { k_msleep(1000); }';
   }
 
-  isConsoleCall(callee: string): boolean {
-    return callee.startsWith('console.');
-  }
-
-  transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
-    const semi = forHeader ? '' : ';';
-    const empty = !renderedArgs || renderedArgs.trim() === '';
-    const tag = method === 'error' ? '[ERROR] ' : method === 'warn' ? '[WARN] ' : '';
-    if (empty) return `__tc_println("${tag}")${semi}`;
-    // Route through the __tc_print/__tc_println shim overloads (const char*,
-    // double) instead of printk format strings: printk's -Wformat checking
-    // rejects mismatched specifiers (e.g. a list-bind index rendered as int
-    // where %s was assumed), while the overloads accept any rendered scalar.
-    // The final fragment goes through __tc_println so the line terminates.
-    const parts = renderedArgs.split(' << ');
-    const calls: string[] = [];
-    if (tag) calls.push(`__tc_print("${tag}");`);
-    parts.forEach((part, i) => {
-      const isLast = i === parts.length - 1;
-      calls.push(isLast ? `__tc_println(${part})` : `__tc_print(${part});`);
-    });
-    if (calls.length === 0) calls.push('__tc_println("")');
-    return calls.join(' ') + semi;
-  }
-
-  transformConsoleExpression(_method: string, _renderedArgs: string): string | undefined {
-    return undefined;
-  }
-
   objectFieldInitializer(): string | undefined {
     return undefined;
   }
@@ -1733,18 +1664,6 @@ export class ZephyrStrategy implements PlatformStrategy {
       ['delayMicroseconds', {
         reason: 'delayMicroseconds() busy-waits the CPU for the full delay, stalling every lower-priority interrupt and the scheduler for its duration',
         severity: 'warning',
-      }],
-      ['console.log', {
-        reason: 'console output lowers to printk(), which is ISR-legal but slow and lock-protected (CONFIG_PRINTK_SYNC) — it adds jitter to every interrupt behind it',
-        severity: 'info',
-      }],
-      ['console.error', {
-        reason: 'console output lowers to printk(), which is ISR-legal but slow and lock-protected (CONFIG_PRINTK_SYNC) — it adds jitter to every interrupt behind it',
-        severity: 'info',
-      }],
-      ['console.warn', {
-        reason: 'console output lowers to printk(), which is ISR-legal but slow and lock-protected (CONFIG_PRINTK_SYNC) — it adds jitter to every interrupt behind it',
-        severity: 'info',
       }],
       ['I2C0', {
         reason: 'I2C transactions may sleep (driver locking + clock stretching) and are not callable from Zephyr interrupt context',
@@ -1843,16 +1762,6 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   cstringHeader(): string {
     return '<cstring>';
-  }
-
-  needsVectorOverload(): boolean {
-    // The std::ostream operator<< helper cannot link on Zephyr (picolibc,
-    // STL-free target — no <ostream>, no std::vector). Console output goes
-    // through the printf-based __tc_print helpers; emitting the overload
-    // here only produced a guaranteed compile error for any program whose
-    // analysis touched vector-ish types (e.g. a typed-array buffer) while
-    // also calling console.log.
-    return false;
   }
 
   needsLargeEnumUnderlying(): boolean {

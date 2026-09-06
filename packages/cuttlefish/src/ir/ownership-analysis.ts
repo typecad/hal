@@ -914,6 +914,20 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
     'insert', 'erase',
   ]);
 
+  // Safety wrapper types (SafeVariable/SafeInt) mutate only through method
+  // calls — the C++ members are non-const by design. Kept separate from
+  // MUTATING_METHODS because these names ('set', 'add', ...) are matched
+  // ONLY against receivers whose declared cppType is a safety wrapper, so
+  // unrelated user classes with same-named methods are unaffected.
+  const SAFETY_WRAPPER_MUTATING_METHODS = new Set([
+    // SafeVariable<T>
+    'set',
+    // SafeInt<T> mutating chain
+    'add', 'sub', 'mul', 'divide', 'mod', 'negate', 'absValue', 'reset',
+  ]);
+  const isSafetyWrapperCppType = (cppType: string | undefined): boolean =>
+    typeof cppType === 'string' && (cppType.startsWith('SafeInt') || cppType.startsWith('SafeVariable'));
+
   type LetEntry = { name: string; everAssigned: boolean; stmt: VariableDeclarationIR; span: SourceSpan };
   type ConstEntry = { stmt: VariableDeclarationIR; span: SourceSpan };
 
@@ -1129,6 +1143,32 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
                 });
               }
             }
+            // Safety wrapper mutation: match on the LEADING identifier of the
+            // callee — chained calls arrive as partially-rendered callees
+            // (e.g. `count.add(5).mul`) whose receiver segment is not a bare
+            // identifier — and gate on the receiver's declared safety cppType
+            // so same-named methods on non-safety types are untouched.
+            if (SAFETY_WRAPPER_MUTATING_METHODS.has(method)) {
+              const baseDot = callee.indexOf('.');
+              const base = baseDot > 0 ? callee.slice(0, baseDot) : receiver;
+              const letEntry = letVars.get(base);
+              if (letEntry && isSafetyWrapperCppType(letEntry.stmt.cppType)) {
+                letEntry.everAssigned = true;
+              }
+              const constEntry = constVars.get(base);
+              if (constEntry && constEntry.stmt.storage === 'const' && isSafetyWrapperCppType(constEntry.stmt.cppType)) {
+                constEntry.stmt.storage = 'let';
+                diagnostics.push({
+                  severity: 'info',
+                  message: `'${base}' is declared 'const' but is mutated via .${method}() — demoted to non-const in C++ so the mutation compiles.`,
+                  line: constEntry.span.startLine,
+                  column: constEntry.span.startColumn,
+                  filePath: constEntry.span.filePath,
+                  code: 'ownership-const-content-mutated',
+                  source: 'ownership-analysis',
+                });
+              }
+            }
           }
         }
         // Recurse into nested statements (shares this scope's maps — a nested
@@ -1152,6 +1192,12 @@ function validateConstSuggestions(program: ProgramIR, diagnostics: Diagnostic[])
     // emit path already handles both directions.
     for (const entry of letVars.values()) {
       if (entry.everAssigned || globallyAssignedNames.has(entry.name)) continue;
+      // Safety wrapper declarations mutate exclusively through method calls
+      // (.set/.add/...), and chained mutating calls render as callee text the
+      // reassignment walk cannot fully parse — non-mutation cannot be proven
+      // for these types, so they are never promoted (a promoted `const
+      // SafeVariable` / `const SafeInt` rejects every mutating member in g++).
+      if (isSafetyWrapperCppType(entry.stmt.cppType)) continue;
       // A typed-array buffer (`const id = new Uint8Array(N)`, forced to let at
       // IR build) lowers with a pointer cppType + array initializer. HAL fills
       // write through it opaquely — the lowered C++ embeds the buffer name in

@@ -18,17 +18,13 @@ const config: CuttlefishConfig = {
 
   // Framework package — controls code generation strategy
   framework: '@typecad/framework-zephyr',
-  // Framework data  // Output / build options
+  // Framework data
+  // Output / build options
   output: {
     outDir: './out',
   },
 
-  // Toolchain configuration  // Console polyfill configuration
-  console: {
-    baudRate: 115200,
-    // Serial port for upload/monitor. Override with --port on the CLI.
-    port: 'COM5',
-  },
+  // Toolchain configuration
 
   // Hardware test runner (@typecad/expect / `npm run test:hw`)
   test: {

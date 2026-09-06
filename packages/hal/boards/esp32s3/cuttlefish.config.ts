@@ -33,11 +33,8 @@ const config: CuttlefishConfig = {
     type: 'west',
   },
 
-  // Console stays on uart0 through the on-board bridge (the config default
-  // for this board; no console.output override needed).
-  console: {
-    baudRate: 115200,
-  },
+  // Console stays on uart0 through the on-board bridge (the board's own
+  // devicetree `zephyr,console` choice).
 
   test: {
     // The CH34x bridge identity — resolves before AND after flashing (the

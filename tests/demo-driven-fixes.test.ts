@@ -41,7 +41,7 @@ describe("G1: cross-module interface field types in string concat", () => {
           'import { PlanetRecord } from "./Types";',
           "function main(): void {",
           "  const p: PlanetRecord = { name: \"Aurelia\", danger: 1 };",
-          "  console.log(\"planet \" + p.name + \" danger=\" + p.danger);",
+          "  const line: string = \"planet \" + p.name + \" danger=\" + p.danger;",
           "}",
           "",
         ].join("\n"),
@@ -90,7 +90,7 @@ describe("G1b: class method return type drives snprintf specifier", () => {
       }
       function main(): void {
         const s = new Ship();
-        console.log("cargo=" + s.cargoUsed());
+        const line: string = "cargo=" + s.cargoUsed();
       }
     `);
     // cargoUsed() returns double → specifier must be %.15g (or %.Nf), NOT %d.
@@ -106,7 +106,7 @@ describe("G1b: class method return type drives snprintf specifier", () => {
       }
       function main(): void {
         const s = new Ship();
-        console.log("  " + s.statusLine());
+        const line: string = "  " + s.statusLine();
       }
     `);
     // The outer concat buffer must hold more than the bare "  " prefix —
@@ -157,7 +157,7 @@ describe("G5: const array mutated via .push() demotes to non-const", () => {
       function main(): void {
         const arr: number[] = [];
         arr.push(1);
-        console.log(arr.length);
+        const _log1 = arr.length;
       }
     `);
     // The vector must NOT be const-qualified.
@@ -171,7 +171,7 @@ describe("G5: const array mutated via .push() demotes to non-const", () => {
       function main(): void {
         const arr: number[] = [0, 0, 0];
         arr[1] = 42;
-        console.log(arr[1]);
+        const _log2 = arr[1];
       }
     `);
     expectCppContains(result, ["std::vector<double> arr"]);
@@ -232,7 +232,7 @@ describe("G10: enum → number implicit conversion in declaration", () => {
       enum Color { Red = 10, Green = 20 }
       function main(): void {
         const baseline: number = Color.Red;
-        console.log(baseline);
+        const _log3 = baseline;
       }
     `);
     expectCppContains(result, ["static_cast<int>(Color::Red)"]);
@@ -244,7 +244,7 @@ describe("G10: enum → number implicit conversion in declaration", () => {
       function main(): void {
         const c: Color = Color.Green;
         const n: number = c;
-        console.log(n);
+        const _log4 = n;
       }
     `);
     expectCppContains(result, ["static_cast<int>(c)"]);

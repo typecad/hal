@@ -1,12 +1,12 @@
 ﻿// ---------------------------------------------------------------------------
-// GenericStrategy — standard C++ target (std::cout, main(), <cmath> …)
+// GenericStrategy — standard C++ target (main(), <cmath> …)
 // ---------------------------------------------------------------------------
 
 import type { PlatformStrategy, AsyncRuntimeConfig } from "../api/shared/index.js";
 import type { ExpressionIR, ProgramIR } from "../api/index.js";
 import type { BoardConstants } from "../api/shared/index.js";
 import type { Diagnostic, PlatformContext } from "../types.js";
-import { escapeCppStringLiteral } from "../utils/strings.js";
+import { generateGenericInitCode, generateGenericBreakpointCode, generateGenericLogpointCode } from "./generic-debug-codegen.js";
 import type { RuntimePolyfillIR, StdLibSupport } from "../api/shared/index.js";
 import type { PlatformGraphicsStrategy, GraphicsCapacity, DisplayHALOp } from "../api/shared/index.js";
 import { DEFAULT_STDLIB_SUPPORT } from "../api/shared/index.js";
@@ -123,38 +123,6 @@ export class GenericStrategy implements PlatformStrategy {
   renderThrow(valueExpr: string): string {
     return `throw ${valueExpr};`;
   }
-  isConsoleCall(callee: string): boolean {
-    return callee.startsWith("console.");
-  }
-  transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
-    const semi = forHeader ? "" : ";";
-    switch (method) {
-      case "log":
-      case "info":
-      case "debug":
-        return `std::cout << ${renderedArgs} << std::endl${semi}`;
-      case "error":
-        return `std::cerr << "[ERROR] " << ${renderedArgs} << std::endl${semi}`;
-      case "warn":
-        return `std::cerr << "[WARN] " << ${renderedArgs} << std::endl${semi}`;
-      case "readLine":
-      case "readCharacter":
-        return this.transformConsoleExpression!(method, renderedArgs) + semi;
-      default:
-        return `std::cout << ${renderedArgs} << std::endl${semi}`;
-    }
-  }
-
-  transformConsoleExpression(method: string, _renderedArgs: string): string | undefined {
-    switch (method) {
-      case 'readLine':
-        return '([]() -> std::string { std::string s; std::getline(std::cin, s); return s; })()';
-      case 'readCharacter':
-        return '([&]() -> char { std::cout << "> " << std::flush; return std::cin.get(); })()';
-      default:
-        return undefined;
-    }
-  }
   objectFieldInitializer(_fieldValue: ExpressionIR, _renderExpr: (e: ExpressionIR) => string): string | undefined {
     return undefined;
   }
@@ -186,7 +154,6 @@ export class GenericStrategy implements PlatformStrategy {
   needsStdFunction(): boolean { return true; }
   mathHeader(): string { return "<cmath>"; }
   cstringHeader(): string { return "<cstring>"; }
-  needsVectorOverload(): boolean { return true; }
 
   // ── Enum underlying type ────────────────────────────────────────────────
 
@@ -271,64 +238,27 @@ export class GenericStrategy implements PlatformStrategy {
   }
 
   generateDebugInitCode(): string[] {
-    return [
-      '// === DEBUG: Initialize ===',
-      'std::cout << "TypeCAD Debug Mode Active" << std::endl;',
-      '// === END DEBUG INIT ===',
-      '',
-    ];
+    return generateGenericInitCode();
   }
 
   generateDebugBreakpointCode(params: {
     fileName: string; lineNum: number; originalLine: string;
-    variables: Array<{ name: string; isFunction?: boolean }>;
+    variables: Array<{ name: string; isFunction?: boolean; cppType?: 'bool' | 'int' | 'long' | 'float' | 'string' | 'unknown' }>;
     normalizedCondition?: string;
+    breakpointId?: number;
   }): string[] {
-    const lines: string[] = [];
-    lines.push(`  // === BREAKPOINT: ${params.fileName}:${params.lineNum} ===`);
-    if (params.normalizedCondition) {
-      lines.push(`  if (${params.normalizedCondition}) {`);
-    }
-    lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << std::endl;`);
-    lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "BREAKPOINT: ${params.fileName}:${params.lineNum}" << std::endl;`);
-    lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "  ${params.originalLine.replace(/"/g, '\\"')}" << std::endl;`);
-    if (params.variables.length > 0) {
-      lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "  Variables:" << std::endl;`);
-      for (const v of params.variables) {
-        if (v.isFunction) {
-          lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "  ${v.name} = [function]" << std::endl;`);
-        } else {
-          lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "  ${v.name} = " << ${v.name} << std::endl;`);
-        }
-      }
-    }
-    lines.push(`  ${params.normalizedCondition ? '  ' : ''}std::cout << "━━━━━━━━━━━━━━━━━━━━━━━━━━━━" << std::endl;`);
-    if (params.normalizedCondition) {
-      lines.push(`  }`);
-    }
-    lines.push(`  // === END BREAKPOINT ===`);
-    return lines;
+    return generateGenericBreakpointCode(
+      params.fileName, params.lineNum, params.originalLine,
+      params.variables, params.normalizedCondition, params.breakpointId,
+    );
   }
 
   generateDebugLogpointCode(params: {
     fileName: string; lineNum: number;
     parts: Array<{ type: 'text' | 'variable'; value: string }>;
-    variables: Array<{ name: string; isFunction?: boolean }>;
+    variables: Array<{ name: string; isFunction?: boolean; cppType?: 'bool' | 'int' | 'long' | 'float' | 'string' | 'unknown' }>;
   }): string[] {
-    const lines: string[] = [];
-    lines.push(`  // === LOGPOINT: ${params.fileName}:${params.lineNum} ===`);
-    const parts: string[] = [`"[LOG ${params.fileName}:${params.lineNum}] "`];
-    for (const part of params.parts) {
-      if (part.type === 'text') {
-        parts.push(`"${escapeCppStringLiteral(part.value)}"`);
-      } else {
-        const varExists = params.variables.some(v => v.name === part.value && !v.isFunction);
-        parts.push(varExists ? part.value : `"${escapeCppStringLiteral(part.value)}"`);
-      }
-    }
-    lines.push(`  std::cout << ${parts.join(' << ')} << std::endl;`);
-    lines.push(`  // === END LOGPOINT ===`);
-    return lines;
+    return generateGenericLogpointCode(params.fileName, params.lineNum, params.parts, params.variables);
   }
 
   // ── Graphics (fallback) ────────────────────────────────────────────────

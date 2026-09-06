@@ -142,11 +142,6 @@ export interface CuttlefishConfig {
   toolchain?: CuttlefishToolchainConfig;
 
   /**
-   * Console output configuration.
-   */
-  console?: CuttlefishConsoleConfig;
-
-  /**
    * Framework-specific configuration.
    */
   native?: Record<string, unknown>;
@@ -174,21 +169,6 @@ interface CuttlefishToolchainConfig {
   type?: string;
   /** Framework-specific toolchain options. Each framework reads its own key. */
   frameworkOptions?: Record<string, unknown>;
-}
-
-/**
- * Console output configuration for the target framework.
- */
-interface CuttlefishConsoleConfig {
-  /** Default baud rate for console output when auto-injected. Default: 9600 */
-  baudRate?: number;
-  /**
-   * Serial port for upload and monitor (e.g. 'COM4', '/dev/ttyACM0').
-   * Can be overridden by the --port CLI flag.
-   */
-  port?: string;
-  /** Where console.log output goes ('usb' = the USB CDC serial port). */
-  output?: 'default' | 'usb';
 }
 
 /**

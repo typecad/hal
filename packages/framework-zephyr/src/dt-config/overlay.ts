@@ -226,11 +226,7 @@ export function generateOverlay(
   // lowering addresses instance N as DT_NODELABEL(cdc_acm_uart<N>), so the
   // nodelabels here and in lowering/usb.ts cannot drift. Endpoints and
   // descriptors are assigned by the class driver at build time.
-  // console.output: 'usb' composes the CDC port even when the program never
-  // calls USB0, and rebinds chosen zephyr,console onto it so printk (what
-  // console.log lowers to) lands on the USB connector instead of the board's
-  // default console node.
-  if ((usage.usesUsb || usage.consoleOutput === 'usb') && chip.usb) {
+  if (usage.usesUsb && chip.usb) {
     lines.push(`&${chip.usb.controller} {`);
     lines.push('    status = "okay";');
     for (let i = 0; i < chip.usb.cdcInstances; i++) {
@@ -240,14 +236,6 @@ export function generateOverlay(
     }
     lines.push('};');
     lines.push('');
-    if (usage.consoleOutput === 'usb') {
-      lines.push('/ {');
-      lines.push('    chosen {');
-      lines.push('        zephyr,console = &cdc_acm_uart0;');
-      lines.push('    };');
-      lines.push('};');
-      lines.push('');
-    }
   }
   // PWM: synthesized specs (controller + channel, no board-shipped alias) get
   // a pwm-leds consumer node + tc-pwm<pin> alias here — the lowering addresses

@@ -11,8 +11,9 @@
 // target (same scope note as the blackpill run). Pin facts from the board
 // package: PA17 = user LED (led0, ACTIVE-HIGH — logical set(true) is plain
 // ON), sercom4 = I2C (empty bus), sercom1 = SPI (empty bus, CS PA16),
-// sercom5 = UART (freed for user code by console.output: 'usb' — an idle
-// line reads -1, Zephyr's poll semantics). The pull-up input is A2 (PA11) —
+// sercom5 = UART (an idle line reads -1, Zephyr's poll semantics). If the
+// board's console node claims this sercom on your tree, point the UART group
+// elsewhere in test-pins.json. The pull-up input is A2 (PA11) —
 // a genuine header pin; PA3/AREF is not brought to a header and reads low
 // against the weak pull-up. No external wiring is required.
 // ---------------------------------------------------------------------------

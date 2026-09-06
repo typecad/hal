@@ -12,10 +12,11 @@ Calls work in three styles: **blocking** at the top level, **event-callback** (`
 
 ```typescript
 import { WiFi } from '@typecad/hal';
+import { UART0 } from '@typecad/board';
 
 const wifi = new WiFi('HomeNet', { psk: 'hunter22', timeoutMs: 30000 });
 if (wifi.join()) {
-  console.log(`up at ${wifi.ip()} (${wifi.rssi()} dBm)`);
+  UART0.writeLine(`up at ${wifi.ip()} (${wifi.rssi()} dBm)`);
 }
 ```
 
@@ -49,15 +50,15 @@ const wifi = new WiFi('HomeNet', { psk: 'hunter22' });
 async function network() {
   wifi.joinStart();                       // fire-and-forget
   while (!wifi.linked()) { await Time.sleep(100); }
-  console.log(wifi.ip());
+  UART0.writeLine(wifi.ip());
 }
 ```
 
 ### Event-callback style
 
 ```typescript
-wifi.onUp(() => console.log(`online at ${wifi.ip()}`));
-wifi.onDrop(() => console.log('link lost'));   // deferred off the event chain — safe to call join() in it
+wifi.onUp(() => UART0.writeLine(`online at ${wifi.ip()}`));
+wifi.onDrop(() => UART0.writeLine('link lost'));   // deferred off the event chain — safe to call join() in it
 wifi.join();
 ```
 
@@ -68,7 +69,7 @@ wifi.join();
 ```typescript
 const results = wifi.scan();
 for (let i = 0; i < results.count(); i++) {
-  console.log(`${results.ssid(i)}  ${results.rssi(i)} dBm  ch${results.channel(i)}  ${results.security(i)}`);
+  UART0.writeLine(`${results.ssid(i)}  ${results.rssi(i)} dBm  ch${results.channel(i)}  ${results.security(i)}`);
 }
 ```
 
@@ -97,10 +98,10 @@ import { Request } from '@typecad/hal';
 const req = new Request('GET', 'http://192.168.2.184:8080/health');
 req.header('X-Device', 'cuttlefish');
 if (req.send()) {
-  console.log(req.status());              // 200
-  console.log(req.ok());                  // true when 2xx
-  console.log(req.text());                // body, valid until the next send()
-  console.log(req.responseHeader('Content-Type'));
+  UART0.writeLine(req.status());              // 200
+  UART0.writeLine(req.ok());                  // true when 2xx
+  UART0.writeLine(req.text());                // body, valid until the next send()
+  UART0.writeLine(req.responseHeader('Content-Type'));
 }
 ```
 
@@ -144,7 +145,7 @@ async function pollCloud() {
   while (true) {
     const req = new Request(Request.GET, 'http://api.local/health');
     await req.send();
-    console.log(req.status());
+    UART0.writeLine(req.status());
     await Time.sleep(5000);
   }
 }
@@ -162,7 +163,7 @@ The construction facts (headers, body, TLS) lower as the segment's leading state
 import { Mqtt } from '@typecad/hal';
 
 const mqtt = new Mqtt('mqtt://192.168.2.184:1883', { clientId: 'sensor-01' });
-mqtt.onMessage((topic, payload) => console.log(`${topic}: ${payload}`));
+mqtt.onMessage((topic, payload) => UART0.writeLine(`${topic}: ${payload}`));
 mqtt.connect();
 mqtt.subscribe('sensors/#');
 mqtt.publish('sensors/room/temp', '21.5');

@@ -29,7 +29,7 @@ describe("fatal transpiler diagnostics", () => {
       [
         "const base = { a: 1 };",
         "const merged = { ...base, b: 2 };",
-        "console.log(merged.b);",
+        "const _log1 = merged.b;",
         "",
       ].join("\n"),
       "utf8",

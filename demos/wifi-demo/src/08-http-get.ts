@@ -3,14 +3,15 @@ const WIFI_SSID = "HomeNet";
 const WIFI_PASSWORD = "hunter22";
 
 import { WiFi, Request, Time } from '@typecad/hal';
+import { UART0 } from '@typecad/board';
 
 const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD });
 wifi.join();
 
 const req = new Request(Request.GET, "http://httpbin.org/get", { timeoutMs: 10000 });
 req.send();
-console.log(`status=${req.status()}`);
-console.log(req.text());
+UART0.writeLine(`status=${req.status()}`);
+UART0.writeLine(req.text());
 
 while (true) {
   Time.sleep(1000);

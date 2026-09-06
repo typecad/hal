@@ -4,7 +4,7 @@ import { StatementIR } from "../../api/index.js";
 import { PointerTracker, requiredIncludes, mutableArrayVars, nestedClassAliases, hoistedNestedClasses, topLevelClassNames, topLevelClasses, activeEnumNames, hoistedNestedFunctions, getContext } from "../build-ir-state.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { type CppTypeHint } from "../type-resolution.js";
-import { extractNodeComments, makeSourceSpan } from "../ast-node-utils.js";
+import { extractNodeComments, makeSourceSpan, makeDiagnostic } from "../ast-node-utils.js";
 import { tryResolveHALMethod } from "./hal-call-resolver.js";
 import { tryResolveUICall, isSignalName, resolveUIModuleImport, recordPressBinding, uiPressBindings, resolveNodeIndex, resolveNodeTag, watchPinSpecs, recordWatchPin, recordClickHandler, clickHandlers, pushUnknownElementDiagnostic } from "./ui-call-resolver.js";
 import { hasSafetyHook, requireSafetyHook } from "../../safety-hook.js";
@@ -218,6 +218,33 @@ export function callToStatement(
   pointerVars: PointerTracker = new Map(),
 ): StatementIR {
   const comments = extractNodeComments(statementNode, sourceText);
+
+  // ── console.* is not a supported API ────────────────────────────────────
+  // The TypeScript console carry-over (lowering to a platform print plus a
+  // config section routing it) is gone. Programs write to a serial console
+  // explicitly: USB0.writeLine(...) or UART0.writeLine(...). Sourced at IR
+  // build time so the diagnostic points at the user's statement and the
+  // real pipeline aborts before emit.
+  if (
+    ts.isPropertyAccessExpression(call.expression) &&
+    ts.isIdentifier(call.expression.expression) &&
+    call.expression.expression.text === "console"
+  ) {
+    diagnostics.push(makeDiagnostic(
+      sourceText,
+      call.getStart(),
+      `console.${call.expression.name.text}() is not supported — write to a serial console instead: \`USB0.writeLine(...)\` (USB CDC) or \`UART0.writeLine(...)\` from the board module.`,
+      "error",
+      "console-unsupported",
+    ));
+    return {
+      kind: "block",
+      sourceSpan: makeSourceSpan(call, fileName, sourceText),
+      leadingComments: comments.leadingComments,
+      trailingComments: comments.trailingComments,
+      body: [],
+    };
+  }
 
   // ── Ambient canvas ctx: rewrite ctx.method(...) while drawCanvas lowers ──
   {

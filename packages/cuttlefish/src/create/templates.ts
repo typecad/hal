@@ -11,7 +11,7 @@ export interface CreateProjectOptions {
   /** Qualified Zephyr board target (board-target projects). */
   board?: string;
   /** True when the board's devicetree declares an LED (pack fact — drives
-   *  the starter between LED-blink and console-heartbeat). */
+   *  the starter between an I/O skeleton and LED-blink). */
   hasLed?: boolean;
   frameworkPackage: string;
   framework: string;
@@ -29,7 +29,7 @@ export interface CreateProjectOptions {
   /** Probe methods the board supports (wizard/catalog data) — used to write
    *  the config comment listing the alternatives. */
   probeMethods?: { id: string; description?: string }[];
-  /** Serial port picked at create time (console.port + test.port). Absent →
+  /** Serial port picked at create time (test.port). Absent →
    *  the platform hint placeholder. */
   port?: string;
   /** MCU-only Zephyr target: emit `zephyr.customBoard: true` so the framework
@@ -233,7 +233,6 @@ export default config;
 
   const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
   const portValue = options.port ?? portHint;
-  const baudLine = options.baudRate ? `\n\n  // Console polyfill configuration\n  console: {\n    baudRate: ${options.baudRate},\n    // Serial port for upload/monitor. Override with --port on the CLI.\n    port: '${portValue}',\n  },` : '';
 
   // zephyr.* section — probe (boards with a probe-method table) and/or
   // customBoard (MCU-only targets: generate an out-of-tree board for the
@@ -285,7 +284,7 @@ ${socLine}${boardLine}
   // Transpiled output (the Zephyr app lands in src/out)
   output: {
     outDir: './out',
-  },${zephyrProbeBlock}${baudLine}${testLine}
+  },${zephyrProbeBlock}${testLine}
 };
 
 export default config;
@@ -332,21 +331,6 @@ declare global {
   type size_t = number;
   type float = number;
   type double = number;
-
-  // console — declared here (not pulled from lib.dom) so this project does not
-  // need "dom" in tsconfig lib just to type console.log. Avoiding lib.dom also
-  // keeps DOM global type names (Node, Element, Event, ...) out of scope, so a
-  // user class named e.g. Node is not shadowed by the DOM global. The
-  // transpiler regenerates this file on build and may merge extra members
-  // (readLine/readCharacter) onto the Console interface.
-  interface Console {
-    log(...args: unknown[]): void;
-    info(...args: unknown[]): void;
-    debug(...args: unknown[]): void;
-    warn(...args: unknown[]): void;
-    error(...args: unknown[]): void;
-  }
-  const console: Console;
 
   // Convenience helper for volatile variables in TypeCAD programs.
   // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.
@@ -397,21 +381,6 @@ declare global {
   type float = number;
   type double = number;
 
-  // console — declared here (not pulled from lib.dom) so this project does not
-  // need "dom" in tsconfig lib just to type console.log. Avoiding lib.dom also
-  // keeps DOM global type names (Node, Element, Event, ...) out of scope, so a
-  // user class named e.g. Node is not shadowed by the DOM global. The
-  // transpiler regenerates this file on build and may merge extra members
-  // (readLine/readCharacter) onto the Console interface.
-  interface Console {
-    log(...args: unknown[]): void;
-    info(...args: unknown[]): void;
-    debug(...args: unknown[]): void;
-    warn(...args: unknown[]): void;
-    error(...args: unknown[]): void;
-  }
-  const console: Console;
-
   // Convenience helper for volatile variables in TypeCAD programs.
   // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.
   declare function volatile<T>(value: T): T;
@@ -433,7 +402,8 @@ export function generateStarterProgram(options: CreateProjectOptions): string {
     return `// ---------------------------------------------------------------------------
 // Hello World — Native desktop application
 //
-// Compiles to a native executable via g++/clang++.
+// Compiles to a native executable via g++/clang++. There is no console.* here
+// — results are observable through the debugger or your own channels.
 // ---------------------------------------------------------------------------
 
 function fibonacci(n: number): number {
@@ -441,8 +411,7 @@ function fibonacci(n: number): number {
   return fibonacci(n - 1) + fibonacci(n - 2);
 }
 
-console.log("Hello from Cuttlefish!");
-console.log("Fibonacci(10) =", fibonacci(10));
+const fib10 = fibonacci(10);
 `;
   }
 
@@ -470,21 +439,19 @@ while (true) {
   }
 
   return `// ---------------------------------------------------------------------------
-// Blink — The classic "Hello World" of embedded
+// Starter — The skeleton every program grows from
 //
 // ${options.hasLed === false
-    ? `This board's devicetree declares no LED — a console heartbeat instead.`
+    ? `This board's devicetree declares no LED — wire up your board's I/O below.`
     : `Toggles the onboard LED every second using the recommended GPIO pattern.`}
 // ---------------------------------------------------------------------------
 
 ${options.hasLed === false
     ? `import { Time } from '@typecad/hal';
 
-let beats: number = 0;
-
+// This board exports no LED alias — add a peripheral here (GPIO on a header
+// pin, UART0/USB0 for serial output, ...) and drive it in the loop.
 while (true) {
-  beats = beats + 1;
-  console.log(\`beat \${beats}\`);
   Time.sleep(1000);
 }
 `

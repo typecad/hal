@@ -2,9 +2,8 @@
 // UART lowering — uart_poll_out / uart_poll_in per-byte
 //
 // Zephyr's UART API is byte-oriented (uart_poll_out / uart_poll_in). The HAL's
-// uart.print/println/write lower to per-byte poll_out loops. For console output
-// the strategy's transformConsoleCall routes to printk; these uart.* ops are
-// for a specific UART port (the XIAO exposes uart0 on D6/D7).
+// uart.print/println/write lower to per-byte poll_out loops; these uart.* ops
+// are for a specific UART port (the XIAO exposes uart0 on D6/D7).
 //
 // The device resolves at compile time via DEVICE_DT_GET(DT_NODELABEL(uart0)).
 // uart.begin configures the baud via uart_configure.

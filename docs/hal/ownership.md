@@ -133,7 +133,7 @@ A core principle of TypeCAD is that safety should not come at the cost of perfor
 /** Reads data without taking ownership (Borrowing) */
 function analyze(data: Shared<Uint8Array>) {
   const first = data[0];
-  console.log(`Analyzing: ${first}`);
+  UART0.writeLine(`Analyzing: ${first}`);
 }
 
 /** Processes data and takes full ownership (Moving) */

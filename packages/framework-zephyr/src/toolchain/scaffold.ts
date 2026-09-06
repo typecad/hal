@@ -96,7 +96,7 @@ export function appendLibraryOverlayFragments(overlay: string, projectRoot: stri
  *
  * Idempotent. Mirrors scaffoldEspIdfProject's writeIfChanged discipline.
  */
-export function scaffoldZephyrProject(projectRoot: string, debug = false, userKconfig?: Record<string, string>, psram?: 'opi' | 'quad', consoleOutput?: 'usb'): boolean {
+export function scaffoldZephyrProject(projectRoot: string, debug = false, userKconfig?: Record<string, string>, psram?: 'opi' | 'quad'): boolean {
   const srcDir = join(projectRoot, 'src');
   if (!existsSync(srcDir)) mkdirSync(srcDir, { recursive: true });
 
@@ -137,10 +137,8 @@ export function scaffoldZephyrProject(projectRoot: string, debug = false, userKc
     usesSpi: uses('spi_') || uses('__tc_spi'),
     usesUart: uses('uart_') || uses('__tc_uart'),
     // USB CDC serial: every usb.* lowering calls into the __tc_usb<N>_* shim
-    // (device + init helper emitted under usesUsb). console.output 'usb'
-    // forces the stack on too — printk then lands on the CDC device.
-    usesUsb: uses('__tc_usb') || consoleOutput === 'usb',
-    consoleOutput,
+    // (device + init helper emitted under usesUsb).
+    usesUsb: uses('__tc_usb'),
     // STM32F4 DBGMCU keep-SWD-alive init present (emitted for stm32f4 socs).
     usesStm32DebugSleep: uses('__tc_stm32_dbgmcu'),
     usesWdt: uses('wdt_'),

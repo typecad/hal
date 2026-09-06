@@ -57,7 +57,7 @@ describe("A: struct return of null/undefined lowers to return {};", () => {
         "function peek(): T | null {",
         "  return null;",
         "}",
-        "console.log(`x`);",
+        "const _log = `x`;",
         "",
       ].join("\n"),
     );
@@ -75,7 +75,7 @@ describe("A: struct return of null/undefined lowers to return {};", () => {
         "function peek(): T | null {",
         "  return m.get('k') ?? null;",
         "}",
-        "console.log(`x`);",
+        "const _log = `x`;",
         "",
       ].join("\n"),
     );
@@ -90,7 +90,7 @@ describe("A: struct return of null/undefined lowers to return {};", () => {
         "function peek(): T | undefined {",
         "  return undefined;",
         "}",
-        "console.log(`x`);",
+        "const _log = `x`;",
         "",
       ].join("\n"),
     );
@@ -104,7 +104,7 @@ describe("A: struct return of null/undefined lowers to return {};", () => {
         "function peek(): int | null {",
         "  return null;",
         "}",
-        "console.log(`x`);",
+        "const _log = `x`;",
         "",
       ].join("\n"),
     );
@@ -127,7 +127,7 @@ describe("A: struct return of null/undefined lowers to return {};", () => {
         "    return this.m.get('k') ?? null;",
         "  }",
         "}",
-        "console.log(`x`);",
+        "const _log = `x`;",
         "",
       ].join("\n"),
     );
@@ -151,7 +151,7 @@ describe("B: subclass without a constructor gets a forwarding constructor", () =
         "}",
         "class Sub extends Base {}",
         "const s = new Sub();",
-        "console.log(`x`);",
+        "const _log = `x`;",
         "",
       ].join("\n"),
     );
@@ -169,7 +169,7 @@ describe("B: subclass without a constructor gets a forwarding constructor", () =
         "}",
         "class Sub extends Base {}",
         "const s = new Sub(7);",
-        "console.log(`x`);",
+        "const _log = `x`;",
         "",
       ].join("\n"),
     );
@@ -192,7 +192,7 @@ describe("D: free function forward-declared before class bodies", () => {
         "  public go(): int { return helper(); }",
         "}",
         "function helper(): int { return 42; }",
-        "console.log(`x`);",
+        "const _log = `x`;",
         "",
       ].join("\n"),
     );
@@ -230,7 +230,7 @@ describe("E: static-getter access rewrites to ClassName::getX()", () => {
         "  static count: int = 10;",
         "  static get total(): int { return Counter.count; }",
         "}",
-        "console.log(`t=${Counter.total}`);",
+        "const _log = `t=${Counter.total}`;",
         "",
       ].join("\n"),
     );
@@ -248,7 +248,7 @@ describe("G: int32_t/uint32_t template interpolation uses %d/%u", () => {
     const result = transpileNativeSplit(
       [
         "const v: int32_t = 5;",
-        "console.log(`v=${v}`);",
+        "const _log = `v=${v}`;",
         "",
       ].join("\n"),
     );
@@ -261,7 +261,7 @@ describe("G: int32_t/uint32_t template interpolation uses %d/%u", () => {
     const result = transpileNativeSplit(
       [
         "const v: uint32_t = 5;",
-        "console.log(`v=${v}`);",
+        "const _log = `v=${v}`;",
         "",
       ].join("\n"),
     );
@@ -274,7 +274,7 @@ describe("G: int32_t/uint32_t template interpolation uses %d/%u", () => {
     const result = transpileNativeSplit(
       [
         "const v: long = 5;",
-        "console.log(`v=${v}`);",
+        "const _log = `v=${v}`;",
         "",
       ].join("\n"),
     );
@@ -313,7 +313,7 @@ describe("E (cross-file): getter access on an imported class", () => {
         'import { Box } from "./box";',
         "export function main(): void {",
         "  const b = new Box();",
-        "  console.log(`v=${b.value} t=${Box.total}`);",
+        "  const _log = `v=${b.value} t=${Box.total}`;",
         "}",
         "",
       ].join("\n"),

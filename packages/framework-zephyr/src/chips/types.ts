@@ -373,13 +373,6 @@ export interface ZephyrChipDescriptor {
      */
     readonly clockHz?: number;
   };
-  /**
-   * Human-readable description of where the board's default console goes
-   * (its devicetree `zephyr,console` node), e.g. "usart1 on PA9 (TX) /
-   * PA10 (RX)". Shown in the build note when a program uses console.log,
-   * so the output's destination is not tribal knowledge.
-   */
-  readonly consoleDescription?: string;
   /** ADC: the ADC device node label + the pin→channel map. */
   readonly adc?: {
     readonly nodeLabel: string;

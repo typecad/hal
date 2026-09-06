@@ -13,10 +13,11 @@ with periodic USB CDC reports over the micro-USB connector.
 | Peripheral | Pin | How it lowers |
 |---|---|---|
 | Onboard LED | PA17 | The board-shipped `pwm-led0` alias, pre-constructed in the board module as `PWMLED` (`PWM_DT_SPEC_GET(DT_ALIAS(pwm_led0))`); `setDuty` is a 0.0–1.0 fraction |
-| USB CDC | PA24/PA25 | `zephyr_udc0` → one `cdc_acm_uart0` instance composed by the overlay generator; `USB0.open()` + `ready()`-gated `writeLine` reports |
+| USB CDC | PA24/PA25 | `zephyr_udc0` → one `cdc_acm_uart0` instance composed by the overlay generator; `USB0.open()` + `linked()`-gated `writeLine` reports |
 
 WiFi/BLE (the onboard NINA-W102) and the watchdog are **unsupported** on
-this target — see the board package for the full capability notes.
+this target — see the generated board module (`.cuttlefish/board.ts`) for
+the full capability notes.
 
 ```ts
 import { PWMLED, USB0 } from '@typecad/board';

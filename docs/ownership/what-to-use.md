@@ -14,8 +14,10 @@ In C++, these types are "scalars." They are extremely small (usually 1–4 bytes
 let temp: number = 25.5; // No annotation needed
 let isActive: boolean = true; 
 
+import { UART0 } from '@typecad/board';
+
 function log(val: number) { // Plain number is fine
-  console.log(val);
+  UART0.writeLine(val);
 }
 ```
 **Pitfall Avoided**: Overcomplicating code. Using `Shared<number>` would actually make the code slightly slower and more verbose for no safety gain.
@@ -39,7 +41,7 @@ function loop() {
 
   // 2. Borrow it for the calculation
   const avg = getAverage(temps); 
-  console.log(avg);
+  UART0.writeLine(avg);
 
   // 3. 'temps' is still valid here because we only borrowed it!
 }
@@ -64,7 +66,7 @@ function processImage() {
   sendToCloud(image); 
 
   // ERROR: 'image' was moved and cannot be used again. [ownership-use-after-move]
-  // console.log(image[0]); 
+  // UART0.writeLine(image[0]); 
 }
 ```
 **Benefit**: **Memory Safety**. You are mathematically certain that `processImage` cannot accidentally modify the buffer while `sendToCloud` is in the middle of a network transmission.
@@ -80,12 +82,12 @@ const config: Owned<Config> = loadSettings();
 
 // The Display only needs to read the config
 function updateDisplay(c: Shared<Config>) {
-  console.log(c.brightness);
+  UART0.writeLine(c.brightness);
 }
 
 // The Network only needs to read the config
 function checkWifi(c: Shared<Config>) {
-  console.log(c.ssid);
+  UART0.writeLine(c.ssid);
 }
 
 updateDisplay(config);

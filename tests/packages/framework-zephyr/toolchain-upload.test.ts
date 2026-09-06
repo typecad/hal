@@ -4,6 +4,7 @@ import {
   resolveProbeMethod,
   classifyUploadResult,
   cleanseUploadOutput,
+  uploadRequiresPort,
 } from '../../../packages/framework-zephyr/src/toolchain';
 import type { ZephyrChipDescriptor } from '../../../packages/framework-zephyr/src/chips/types';
 
@@ -157,6 +158,41 @@ describe('buildFlashArgs (west flash runner selection)', () => {
   it('no port forwarding for runners that do not take one', () => {
     const args = buildFlashArgs('/proj/build', 'openocd', undefined, undefined);
     expect(args).toEqual(['flash', '-d', '/proj/build', '--runner', 'openocd']);
+  });
+});
+
+describe('uploadRequiresPort (runner-gated --port requirement)', () => {
+  it('requires a port only for the serial-port runners', () => {
+    expect(uploadRequiresPort('esptool')).toBe(true);
+    expect(uploadRequiresPort('bossac')).toBe(true);
+  });
+
+  it('never requires a port for probe or USB runners', () => {
+    // Regression: the CLI used to blanket-require --port for every --upload,
+    // which blocked F5 debugging on ST-Link/openocd boards (blackpill) even
+    // though SWD flashing carries no serial port at all.
+    expect(uploadRequiresPort('openocd')).toBe(false);
+    expect(uploadRequiresPort('jlink')).toBe(false);
+    expect(uploadRequiresPort('dfu-util')).toBe(false);
+    expect(uploadRequiresPort('uf2')).toBe(false);
+  });
+
+  it('stays in lockstep with buildFlashArgs port forwarding', () => {
+    // The runners buildFlashArgs forwards a --port flag for are exactly the
+    // ones that cannot flash without one — same gate, two consequences.
+    for (const runner of ['esptool', 'bossac'] as const) {
+      const forwarded = buildFlashArgs('/proj/build', runner, 'COM5', runner);
+      expect(forwarded.some((a) => a === '--esp-device' || a === '--bossac-port')).toBe(true);
+      expect(uploadRequiresPort(runner)).toBe(true);
+    }
+    const probe = buildFlashArgs('/proj/build', 'openocd', 'COM5', 'openocd');
+    expect(probe).not.toContain('--esp-device');
+    expect(probe).not.toContain('--bossac-port');
+    expect(uploadRequiresPort('openocd')).toBe(false);
+  });
+
+  it('treats an unresolved runner as portless (board.cmake decides)', () => {
+    expect(uploadRequiresPort(undefined)).toBe(false);
   });
 });
 

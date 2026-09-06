@@ -19,7 +19,7 @@ describe('HAL expression prefix ops (transpiler-level)', () => {
   it('single-op value methods are unchanged (no statement-expression wrapper)', () => {
     const result = tr(`
       import { Time } from '@typecad/hal';
-      if (Time.now() > 100) { console.log('up'); }
+      if (Time.now() > 100) { const _log1 = 'up'; }
     `);
     expect(result.cpp).toContain('k_uptime_get');
     const at = result.cpp.indexOf('k_uptime_get');

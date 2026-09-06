@@ -115,7 +115,7 @@ describe('B1 — top-level const reading a mutated let stays in main()', () => {
         counter = counter + 1;
       }
       const reached = counter;
-      console.log(reached);
+      const _log1 = reached;
     `);
     // `reached` must NOT be a file-scope global initializer; it must be a
     // local inside main() so it reads counter's post-loop value. We assert it

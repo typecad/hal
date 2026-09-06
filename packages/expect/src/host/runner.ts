@@ -212,7 +212,7 @@ async function processTestFile(
 
   // Step 3: Compile via west (through the Zephyr Toolchain)
   console.log(`  ${DIM}compiling...${RESET}`);
-  const compileResult = compileProgram(transpileResult.projectDir, config.buildTarget, config.zephyrConfig, config.consoleConfig);
+  const compileResult = compileProgram(transpileResult.projectDir, config.buildTarget, config.zephyrConfig);
   if (!compileResult.success) {
     return errorResult(filePath, compileResult.error ?? 'Compilation failed', startTime);
   }

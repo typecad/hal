@@ -15,24 +15,25 @@ describe("Target-Specific Transpilation", () => {
       expect(result.cpp).toContain("return a + b");
     });
 
-    it("uses std::cout for console in generic target", () => {
+    it("rejects console.* with a diagnostic (the carry-over is gone)", () => {
       const result = transpile(`
         function test(): void {
           console.log("hello");
         }
       `, { target: "generic" });
-      
-      expect(result.cpp).toContain("std::cout");
+
+      expect(result.diagnostics.some((d) => d.code === "console-unsupported")).toBe(true);
+      expect(normalizeCpp(result.cpp)).not.toContain("std::cout");
     });
 
     it("includes standard headers for generic target", () => {
       const result = transpile(`
-        function test(): void {
-          console.log("hello");
+        function add(a: int, b: int): int {
+          return a + b;
         }
       `, { target: "generic" });
-      
-      expect(hasInclude(result.cpp, "<iostream>")).toBe(true);
+
+      expect(hasInclude(result.cpp, "<iostream>")).toBe(false);
     });
 
     it("does not emit recursive top-level main() call inside main", () => {
@@ -278,22 +279,21 @@ describe("Target-Specific Transpilation", () => {
     it("handles same logic with different string representations", () => {
       // Literal
       const literal = transpile(`
-        function greet(): void {
-          console.log("hello");
+        function greet(): string {
+          return "hello";
         }
       `, { target: "generic" });
-      
+
       // Variable
       const variable = transpile(`
-        function greet(): void {
+        function greet(): string {
           const msg = "hello";
-          console.log(msg);
+          return msg;
         }
       `, { target: "generic" });
-      
-      // Console.log is transformed directly to std::cout
-      expect(literal.cpp).toContain("std::cout");
-      expect(variable.cpp).toContain("std::cout");
+
+      expect(literal.cpp).toContain('"hello"');
+      expect(variable.cpp).toContain('"hello"');
     });
 
     it("handles same logic with different boolean representations", () => {

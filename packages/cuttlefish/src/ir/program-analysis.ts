@@ -1,8 +1,8 @@
 ﻿/**
  * Combined program analysis - single-pass detection of multiple features.
- * 
+ *
  * Instead of traversing the IR multiple times for different checks
- * (hasConsoleCalls, hasArrayInObjectLiteral, hasThrowStatements, etc.),
+ * (hasArrayInObjectLiteral, hasThrowStatements, etc.),
  * this module performs all checks in a single traversal.
  */
 
@@ -10,7 +10,6 @@ import { ProgramIR, StatementIR, ExpressionIR, PlatformStrategy, Diagnostic } fr
 import { POLYFILL_HELPER_MAP } from "../api/shared/index.js";
 import { parseCppType } from "../api/shared/cpp-type-ir.js";
 import { analyzeResources } from "./resource-analysis.js";
-import { loweredConsoleInCallback } from "./transformers/ui-callback-lowering.js";
 import { watchPinSpecs, clickHandlers } from "./transformers/ui-call-resolver.js";
 import { canvasBindings } from "./transformers/canvas-lowering.js";
 import { getInputBindings, getListBindings } from "./transformers/ui-reactive.js";
@@ -99,7 +98,6 @@ function applyHalOpUsageFlags(
 }
 
 export interface ProgramAnalysisResult {
-  hasConsoleCalls: boolean;
   hasArrayInObjectLiteral: boolean;
   hasThrowStatements: boolean;
   hasStdMathCalls: boolean;
@@ -228,7 +226,7 @@ const MATH_PATTERN = /\b(?:std::|Math\.)(floor|ceil|round|trunc|sqrt|pow|sin|cos
  */
 function analyzeExpression(
   expr: ExpressionIR,
-  result: Pick<ProgramAnalysisResult, 'hasConsoleCalls' | 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'usesUart' | 'usesUsb' | 'usesSPI' | 'usesI2C' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesSensor' | 'usesHwtimer' | 'usesCapacitive' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
+  result: Pick<ProgramAnalysisResult, 'hasStdMathCalls' | 'usesVectorTypes' | 'usesStdString' | 'usesStdFunction' | 'declaredTypes' | 'usedPolyfillHelpers' | 'usesStringConversion' | 'usesDateNow' | 'usesMillis' | 'usesWallClock' | 'usesNullish' | 'usesNullishHelper' | 'usesNum' | 'usesTiming' | 'usesWDT' | 'usesStrPtr' | 'usesUart' | 'usesUsb' | 'usesSPI' | 'usesI2C' | 'usesMap' | 'usesConstrain' | 'usesGPIO' | 'usesPWM' | 'usesRmt' | 'usesADC' | 'usesDAC' | 'usesWdt' | 'usesInterrupts' | 'usesPulse' | 'usesShift' | 'usesWifi' | 'usesWifiConnect' | 'usesWifiConnectBlocking' | 'usesWifiQuery' | 'usesWifiScan' | 'usesWifiConfig' | 'usesHttp' | 'usesBle' | 'usesPreferences' | 'usesRandom' | 'usesFS' | 'usesMdns' | 'usesMqtt' | 'usesOta' | 'usesTemp' | 'usesSensor' | 'usesHwtimer' | 'usesCapacitive' | 'usesSet' | 'usesAlgorithm' | 'usesCstdio' | 'usesDigitalRead' | 'usesDisplay' | 'usesHalt'>,
   strategy: PlatformStrategy
 ): void {
   if (!expr || typeof expr !== 'object' || !expr.kind) {
@@ -308,9 +306,6 @@ function analyzeExpression(
       break;
 
     case "method-call":
-      if (strategy.isConsoleCall(expr.callee)) {
-        result.hasConsoleCalls = true;
-      }
       if (/\bmillis\b/.test(expr.callee) || /\bdelay\b/.test(expr.callee) || /\bmicros\b/.test(expr.callee)) {
         result.usesMillis = true;
       }
@@ -499,9 +494,6 @@ function analyzeStatement(
 
   switch (statement.kind) {
     case "call":
-      if (strategy.isConsoleCall(statement.callee)) {
-        result.hasConsoleCalls = true;
-      }
       if (statement.callee === "Serial.begin" || statement.callee.endsWith(".begin")) {
         result.hasSerialBegin = true;
       }
@@ -526,6 +518,17 @@ function analyzeStatement(
       if (statement.callee === "__tc_print" || statement.callee === "__tc_println") {
         result.usedPolyfillHelpers.add(statement.callee);
       }
+      // emit()/rawCpp() statements (__EMIT__) carry verbatim C++ in string
+      // args — the raw-text regex below never sees them (the arg is a string
+      // IR node, not raw text). Scan them for the printf family so a debug
+      // build (or any rawCpp'd stdio call) pulls in <cstdio>.
+      if (statement.callee === "__EMIT__") {
+        for (const arg of statement.args) {
+          if (arg.kind === "string" && /\b(printf|fprintf|sprintf|snprintf|getchar|putchar|puts)\s*\(/.test(arg.value)) {
+            result.usesCstdio = true;
+          }
+        }
+      }
       // Namespace-qualified polyfill entry points used as bare call statements
       // (e.g. `Timing.delay(5);`). The expression-level analyzer (case
       // "method-call") already checks these prefixes, but a statement-form call
@@ -542,12 +545,10 @@ function analyzeStatement(
       if (statement.callee.startsWith("WDT.") || statement.callee === "WDT") {
         result.usesWDT = true;
       }
-      // Native AVR peripheral usage from statement-form calls. console.* /
-      // Serial.* drive UART; the namespace prefixes mirror the method-call
-      // checks above.
-      // console.* is NOT UART: on ESP-IDF it lowers to printf, on Arduino to
-      // Serial via hasConsoleCalls. Only real UART HAL / Serial peripheral
-      // usage should gate the uart shim (avoids unused __tc_uart*_init).
+      // Native AVR peripheral usage from statement-form calls. Serial.* drives
+      // UART; the namespace prefixes mirror the method-call checks above.
+      // Only real UART HAL / Serial peripheral usage should gate the uart shim
+      // (avoids unused __tc_uart*_init).
       if (statement.callee.startsWith("_uart_")) {
         result.usesUart = true;
       }
@@ -790,7 +791,6 @@ function analyzeStatement(
  */
 export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): ProgramAnalysisResult {
   const result: ProgramAnalysisResult = {
-    hasConsoleCalls: false,
     hasArrayInObjectLiteral: false,
     hasThrowStatements: false,
     hasStdMathCalls: false,
@@ -995,20 +995,11 @@ export function analyzeProgram(program: ProgramIR, strategy: PlatformStrategy): 
     for (const stmt of spec.tapStatements ?? []) analyzeStatement(stmt, result, strategy);
   }
 
-  // Console calls lowered inside leftover string-baked UI callbacks are baked
-  // into callbackBody strings, not IR nodes, so the statement walk above can't
-  // see them. Consult the flag recorded during lowering so hasConsoleCalls
-  // reflects them — this is what gates auto-injected Serial.begin(baud) and
-  // <iostream>.
-  if (loweredConsoleInCallback()) {
-    result.hasConsoleCalls = true;
-  }
-
   // HAL ops the transpiler resolved to C++ text while inlining one HAL method
   // inside another (e.g. `sense.readMillivolts()` in a USB0.writeLine template)
   // never appear as hal-op/hal-expr IR nodes, so the walks above can't see
   // them. The lowering seams record every op they resolve; merge their
-  // peripheral flags here (same shape as loweredConsoleInCallback above).
+  // peripheral flags here.
   for (const opName of getTranspileResolvedHalOps()) {
     applyHalOpUsageFlags(opName, result);
   }

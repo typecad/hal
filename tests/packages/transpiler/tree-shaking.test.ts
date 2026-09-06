@@ -9,7 +9,7 @@ describe("buildCallGraph", () => {
       }
       
       function bar(): void {
-        console.log("bar");
+        const _log1 = "bar";
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
@@ -71,7 +71,7 @@ describe("buildCallGraph", () => {
     const source = `
       function a(): void { b(); }
       function b(): void { c(); }
-      function c(): void { console.log("c"); }
+      function c(): void { const _log2 = "c"; }
     `;
     const programIR = buildProgramIR("test.ts", source);
     const graph = buildCallGraph(programIR);
@@ -85,15 +85,15 @@ describe("detectEntryPoints", () => {
   it("should detect setup and loop for embedded targets", () => {
     const source = `
       function setup(): void {
-        console.log("setup");
+        const _log3 = "setup";
       }
 
       function loop(): void {
-        console.log("loop");
+        const _log4 = "loop";
       }
 
       function unused(): void {
-        console.log("unused");
+        const _log5 = "unused";
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
@@ -112,7 +112,7 @@ describe("detectEntryPoints", () => {
       }
       
       function unused(): void {
-        console.log("unused");
+        const _log6 = "unused";
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
@@ -125,11 +125,11 @@ describe("detectEntryPoints", () => {
   it("should include custom entry points", () => {
     const source = `
       function customEntry(): void {
-        console.log("custom");
+        const _log7 = "custom";
       }
       
       function unused(): void {
-        console.log("unused");
+        const _log8 = "unused";
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
@@ -168,11 +168,11 @@ describe("analyzeReachability", () => {
       }
       
       function bar(): void {
-        console.log("bar");
+        const _log9 = "bar";
       }
       
       function unused(): void {
-        console.log("unused");
+        const _log10 = "unused";
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
@@ -239,11 +239,11 @@ describe("analyzeReachability", () => {
   it("should generate diagnostics for unreachable code", () => {
     const source = `
       function main(): void {
-        console.log("main");
+        const _log11 = "main";
       }
       
       function unused(): void {
-        console.log("unused");
+        const _log12 = "unused";
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
@@ -270,11 +270,11 @@ describe("filterProgramIR", () => {
       }
       
       function used(): void {
-        console.log("used");
+        const _log13 = "used";
       }
       
       function unused(): void {
-        console.log("unused");
+        const _log14 = "unused";
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
@@ -313,11 +313,11 @@ describe("filterProgramIR", () => {
   it("should preserve all code when disabled", () => {
     const source = `
       function main(): void {
-        console.log("main");
+        const _log15 = "main";
       }
       
       function unused(): void {
-        console.log("unused");
+        const _log16 = "unused";
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
@@ -331,11 +331,11 @@ describe("filterProgramIR", () => {
   it("should include reachability diagnostics in filtered output", () => {
     const source = `
       function main(): void {
-        console.log("main");
+        const _log17 = "main";
       }
       
       function unused(): void {
-        console.log("unused");
+        const _log18 = "unused";
       }
     `;
     const programIR = buildProgramIR("test.ts", source);
@@ -357,9 +357,9 @@ describe("getReachabilityStats", () => {
   it("should calculate correct statistics", () => {
     const source = `
       function main(): void { used(); }
-      function used(): void { console.log("used"); }
-      function unused1(): void { console.log("unused1"); }
-      function unused2(): void { console.log("unused2"); }
+      function used(): void { const _log19 = "used"; }
+      function unused1(): void { const _log20 = "unused1"; }
+      function unused2(): void { const _log21 = "unused2"; }
     `;
     const programIR = buildProgramIR("test.ts", source);
     const callGraph = buildCallGraph(programIR);
@@ -378,8 +378,8 @@ describe("getReachableSymbols", () => {
       function a(): void { b(); }
       function b(): void { c(); }
       function c(): void { d(); }
-      function d(): void { console.log("d"); }
-      function unused(): void { console.log("unused"); }
+      function d(): void { const _log22 = "d"; }
+      function unused(): void { const _log23 = "unused"; }
     `;
     const programIR = buildProgramIR("test.ts", source);
     const callGraph = buildCallGraph(programIR);

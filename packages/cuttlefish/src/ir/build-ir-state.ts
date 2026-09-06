@@ -387,8 +387,8 @@ export function resetBuildState(): void {
 // `USB0.writeLine(...)`) never appear as hal-op/hal-expr IR nodes, so the
 // statement walk in program-analysis can't see them. routeHALOp and
 // resolveHALExprToText record every op they successfully resolve here, and
-// analyzeProgram merges these names into the peripheral usage flags — same
-// shape as loweredConsoleInCallback(). Deliberately NOT cleared by
+// analyzeProgram merges these names into the peripheral usage flags.
+// Deliberately NOT cleared by
 // resetBuildState (per-file): the ops resolve while building whichever file
 // inlines them, and analyzeProgram runs later, at emit. resetTranspileResolvedHalOps
 // clears it once per transpile run.

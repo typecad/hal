@@ -29,7 +29,6 @@ import {
   dedupe,
   applySymbolMap,
   generateAsyncTaskClass,
-  hasConsoleCalls,
   resolveTranspiledModuleInclude,
 } from "../utils/index.js";
 import type {
@@ -468,9 +467,7 @@ export function buildEmitterContext(
     // these filters are no-ops there. The strategies also self-gate on the
     // same flags; this is the defensive backstop (mirrors how usesWDT/etc.
     // backstop the strategy-side gating above).
-    // Keep the UART block when console calls are present (console_log etc.
-    // call _uart_* functions) even if no direct uart.* HAL ops are used.
-    if (!programAnalysis.usesUart && !programAnalysis.hasConsoleCalls) {
+    if (!programAnalysis.usesUart) {
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_UART_BEGIN', '// CUTTLEFISH_UART_END');
       shimLines = filterShimBlock(shimLines, '// CUTTLEFISH_UART_EXT_BEGIN', '// CUTTLEFISH_UART_EXT_END');
     }
@@ -1013,7 +1010,7 @@ export function buildEmitterContext(
             // Use renderWithPrelude so snprintf buffer declarations (e.g.
             // char __cuttlefish_str_N[...]; snprintf(...)) are emitted before
             // the statement that references them. Without this, template-literal
-            // console.log inside async functions loses the buffer declaration.
+            // string building inside async functions loses the buffer declaration.
             const { prelude, statement } = contextRenderer.renderWithPrelude(stmt, forHeader, calleeTransformer);
             if (prelude.length > 0) {
               return prelude.join("\n") + "\n" + statement;
@@ -1120,9 +1117,6 @@ export function buildEmitterContext(
   }
 
   // Additional includes computed from analysis
-  if (strategy.needsIostream() && programAnalysis.hasConsoleCalls) {
-    includes.push("<iostream>");
-  }
   const usesVectorTypes = programAnalysis.usesVectorTypes || programAnalysis.hasArrayInObjectLiteral;
   if (programAnalysis.usesStdString && strategy.needsStdString()) {
     includes.push("<string>");

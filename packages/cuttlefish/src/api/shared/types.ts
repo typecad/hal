@@ -57,11 +57,6 @@ export type TargetProfile = "generic" | (string & {});
  * Frameworks add their own context via the index signature.
  */
 export interface PlatformContext {
-  console?: {
-    baudRate?: number;
-    /** 'usb' routes console.log (printk) onto the board's USB CDC port. */
-    output?: 'default' | 'usb';
-  };
   /** Target architecture identifier (e.g., 'avr', 'esp32'). Populated from board config. */
   architecture?: string;
   /** Framework-specific data. Each framework reads its own key. */

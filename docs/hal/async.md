@@ -12,18 +12,19 @@ An `async function` becomes a task that **auto-starts**: the first `run()` pump 
 
 ```typescript
 import { WiFi, Time } from '@typecad/hal';
+import { UART0 } from '@typecad/board';
 
 const wifi = new WiFi('HomeNet', { psk: 'hunter22' });
 
 async function network() {
   wifi.joinStart();
   while (!wifi.linked()) { await Time.sleep(100); }
-  console.log(wifi.ip());
+  UART0.writeLine(wifi.ip());
 }
 
 async function heartbeat() {
   while (true) {
-    console.log('beat');
+    UART0.writeLine('beat');
     await Time.sleep(500);
   }
 }

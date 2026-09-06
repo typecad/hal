@@ -23,21 +23,6 @@ declare global {
   type float = number;
   type double = number;
 
-  // console — declared here (not pulled from lib.dom) so a project does not
-  // need "dom" in tsconfig lib just to type console.log. Avoiding lib.dom
-  // also keeps DOM global type names (Node, Element, Event, Document, ...)
-  // out of scope, so a user class named e.g. `Node` is not shadowed by the
-  // DOM global of the same name. Platforms may declaration-merge extra
-  // members onto this interface via ambientTypeDeclarations().
-  interface Console {
-    log(...args: unknown[]): void;
-    info(...args: unknown[]): void;
-    debug(...args: unknown[]): void;
-    warn(...args: unknown[]): void;
-    error(...args: unknown[]): void;
-  }
-  const console: Console;
-
   // Convenience helper for volatile variables in TypeCAD programs.
   // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.
   declare function volatile<T>(value: T): T;

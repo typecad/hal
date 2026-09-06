@@ -146,8 +146,8 @@ export function transpileTestFile(
 /**
  * Compile the Zephyr project via `west build` (through the Zephyr Toolchain).
  */
-export function compileProgram(projectDir: string, buildTarget: string, zephyrConfig?: Record<string, unknown>, consoleConfig?: Record<string, unknown>): CompileResult {
-  return compileWestProject(projectDir, buildTarget, zephyrConfig, consoleConfig);
+export function compileProgram(projectDir: string, buildTarget: string, zephyrConfig?: Record<string, unknown>): CompileResult {
+  return compileWestProject(projectDir, buildTarget, zephyrConfig);
 }
 
 /**
@@ -173,7 +173,7 @@ export function uploadProgram(
  * and the board target. We call it via dynamic import so expect only gains
  * the dependency when framework-zephyr is installed.
  */
-function compileWestProject(projectDir: string, buildTarget: string, zephyrConfig?: Record<string, unknown>, consoleConfig?: Record<string, unknown>): CompileResult {
+function compileWestProject(projectDir: string, buildTarget: string, zephyrConfig?: Record<string, unknown>): CompileResult {
   // projectDir for Zephyr is the project root containing src/, app/, build/.
   // The transpiler emits src/src.cpp; the west project root is the parent of src/.
   const srcDir = path.join(projectDir, 'src');
@@ -196,7 +196,6 @@ function compileWestProject(projectDir: string, buildTarget: string, zephyrConfi
       sourcePath,
       buildTarget,
       zephyrConfig,
-      consoleConfig,
     });
     return {
       success: result.success,
@@ -391,20 +390,6 @@ function writeBuildConfig(buildDir: string, projectRoot: string, entryFileName: 
     if (baseValues.output?.framework) lines.push(`    framework: '${baseValues.output?.framework}',`);
     lines.push(`    outDir: './out',`);
     lines.push('  },');
-
-    if (baseValues.console?.baudRate || baseValues.console?.output) {
-      lines.push('  console: {');
-      if (baseValues.console?.baudRate) {
-        lines.push(`    baudRate: ${baseValues.console?.baudRate},`);
-      }
-      // output: 'usb' matters as much as the baud — it rebinds the Zephyr
-      // console onto the CDC port so the [TC:...] protocol lines leave via
-      // the USB connector (and the board's default UART is freed for tests).
-      if (baseValues.console?.output) {
-        lines.push(`    output: '${baseValues.console.output}',`);
-      }
-      lines.push('  },');
-    }
 
     // Pass the zephyr section (kconfig, runner) through verbatim — the Zephyr
     // toolchain reads runner from it (e.g. zephyr.runner: 'uf2'). Serialize the

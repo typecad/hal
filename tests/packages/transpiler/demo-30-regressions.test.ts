@@ -83,7 +83,7 @@ describe("A: free function called through a lowered raw wrapper is header-visibl
       }
       export function main(): void {
         const c = new C();
-        console.log(c.run("hi"));
+        const _log = c.run("hi");
       }
     `);
     const header = result.header ?? "";
@@ -103,7 +103,7 @@ describe("A: free function called through a lowered raw wrapper is header-visibl
       }
       export function main(): void {
         const p = new Processor();
-        console.log(p.process(42));
+        const _log = p.process(42);
       }
     `);
     const header = result.header ?? "";
@@ -123,7 +123,7 @@ describe("A: free function called through a lowered raw wrapper is header-visibl
       }
       export function main(): void {
         const c = new C();
-        console.log(c.go());
+        const _log = c.go();
       }
     `);
     const header = result.header ?? "";
@@ -165,7 +165,7 @@ describe("B: .length / .size renders as static_cast<long long> with %lld format"
     const cpp = transpileNativeSingle(`
       export function main(): void {
         const s: string = "hello";
-        console.log(\`len=\${s.length}\`);
+        const _log = \`len=\${s.length}\`;
       }
     `).cpp ?? "";
     expect(cpp).toMatch(/%lld/);
@@ -178,7 +178,7 @@ describe("B: .length / .size renders as static_cast<long long> with %lld format"
     const cpp = transpileNativeSingle(`
       export function main(): void {
         const xs: int32_t[] = [1, 2, 3];
-        console.log(\`n=\${xs.length}\`);
+        const _log = \`n=\${xs.length}\`;
       }
     `).cpp ?? "";
     expect(cpp).toMatch(/n=%lld/);
@@ -279,7 +279,7 @@ describe("E: new Set([elements]) and new Map([entries]) populate the container",
     const cpp = transpileNativeSingle(`
       export function main(): void {
         const s: Set<string> = new Set(['a', 'b', 'c']);
-        console.log('done');
+        const _log = 'done';
       }
     `).cpp ?? "";
     // The initializer must carry the elements, NOT be the empty `{}`.
@@ -293,7 +293,7 @@ describe("E: new Set([elements]) and new Map([entries]) populate the container",
     // the elements were dropped and the set started empty.
     const cpp = transpileNativeSingle(`
       const STOP: Set<string> = new Set(['x', 'y']);
-      export function main(): void { console.log('ok'); }
+      export function main(): void { const _log = 'ok'; }
     `).cpp ?? "";
     expect(cpp).toMatch(/"x"/);
     expect(cpp).toMatch(/"y"/);
@@ -307,7 +307,7 @@ describe("E: new Set([elements]) and new Map([entries]) populate the container",
     const cpp = transpileNativeSingle(`
       export function main(): void {
         const m: Map<string, int32_t> = new Map([['k', 1]]);
-        console.log('done');
+        const _log = 'done';
       }
     `).cpp ?? "";
     // The initializer must carry the key/value pair, NOT be the empty `{}`.
@@ -322,7 +322,7 @@ describe("E: new Set([elements]) and new Map([entries]) populate the container",
       export function main(): void {
         const s: Set<string> = new Set();
         const m: Map<string, int32_t> = new Map();
-        console.log('done');
+        const _log = 'done';
       }
     `).cpp ?? "";
     expect(cpp).toMatch(/=\s*\{\s*\}/);

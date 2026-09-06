@@ -25,17 +25,4 @@ describe("AUTOSAR compliance acceptance gate", () => {
     );
     expect(autosarDiags).toEqual([]);
   });
-
-  it("part 8: deliberately-violating TS produces AUTOSAR_* error under strict", () => {
-    // A console.log on arduino pulls in the framework serial helper that
-    // still uses a C-style (char) cast (Phase 4 deferred). Under strict
-    // the self-check must promote it to an error-severity diagnostic.
-    const result = transpile('console.log("x");', { target: "arduino", autosar: "strict" });
-    const m5Errors = result.diagnostics.filter(
-      (d) => d.code === "AUTOSAR_M5-0-7" && d.severity === "error",
-    );
-    if (result.cpp.includes("(char)")) {
-      expect(m5Errors.length).toBeGreaterThan(0);
-    }
-  });
 });

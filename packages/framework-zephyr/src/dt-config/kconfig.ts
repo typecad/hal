@@ -91,10 +91,6 @@ export interface KconfigUsage {
   /** PSRAM type ('opi' | 'quad') when the target board has PSRAM. Emits the
    *  CONFIG_SPIRAM symbols so the ESP heap serves PSRAM for canvas allocations. */
   psram?: 'opi' | 'quad';
-  /** cuttlefish.config.ts console.output: 'usb' routes console.log to the
-   *  CDC serial port — forces the USB symbols on even when the program
-   *  itself never calls USB0. */
-  consoleOutput?: 'usb';
   /** HAL pin numbers the program reads with adc.* — scanned from the emitted
    *  `__tc_adc<N>_setup()` calls at compile time. Only the overlay generator
    *  consumes this (to rewrite the ADC node's pinctrl-0 to the used channels
@@ -173,7 +169,7 @@ export function resolveKconfigFragments(
   //     keeps prj.conf explicit.
   //   - UART_LINE_CTRL gates the driver's line_ctrl_get — usb.connected()
   //     polls DTR through it.
-  if (usage.usesUsb || usage.consoleOutput === 'usb') {
+  if (usage.usesUsb) {
     m.set('CONFIG_USB_DEVICE_STACK_NEXT', 'y');
     m.set('CONFIG_USBD_CDC_ACM_CLASS', 'y');
     m.set('CONFIG_UART_LINE_CTRL', 'y');

@@ -3,7 +3,7 @@ import type { ProgramIR } from "../../api/index.js";
 import type { GeneratedOutputs, SourceMapEntry } from "../../types.js";
 import { writeText, readText } from "../../utils/fs.js";
 import { makeGeneratedMap, writeSourceMap } from "../../mapping/source-map.js";
-import { dedupe, hasConsoleCalls, resolveTranspiledModuleInclude } from "../utils/index.js";
+import { dedupe, resolveTranspiledModuleInclude } from "../utils/index.js";
 import { appendHeaderLine } from "./line-appender.js";
 import type { EmitterContext } from "./emitter-context.js";
 import { runSelfCheck } from "../compliance/rule-engine.js";
@@ -86,25 +86,6 @@ export function emitPreamble(ctx: EmitterContext): void {
 
   // Async task classes are emitted later (emitAsyncTaskClasses) AFTER top-level
   // globals so references like WIFI_SSID inside the state machine compile.
-
-  if (strategy.needsVectorOverload() && hasConsoleCalls(program, strategy) && (programAnalysis.usesVectorTypes || programAnalysis.hasArrayInObjectLiteral)) {
-    appendSourceLineLocal(ctx, "template <typename T>");
-    appendSourceLineLocal(ctx, "std::ostream& operator<<(std::ostream& os, const std::vector<T>& values)");
-    appendSourceLineLocal(ctx, "{");
-    appendSourceLineLocal(ctx, '  os << "[";');
-    appendSourceLineLocal(ctx, "  for (size_t i = 0; i < values.size(); ++i)");
-    appendSourceLineLocal(ctx, "  {");
-    appendSourceLineLocal(ctx, "    if (i > 0)");
-    appendSourceLineLocal(ctx, "    {");
-    appendSourceLineLocal(ctx, '      os << ", ";');
-    appendSourceLineLocal(ctx, "    }");
-    appendSourceLineLocal(ctx, "    os << values[i];");
-    appendSourceLineLocal(ctx, "  }");
-    appendSourceLineLocal(ctx, '  os << "]";');
-    appendSourceLineLocal(ctx, "  return os;");
-    appendSourceLineLocal(ctx, "}");
-    appendSourceLineLocal(ctx, "");
-  }
 
   if (programAnalysis.hasGenerators) {
     appendSourceLineLocal(ctx, "#include <coroutine>");

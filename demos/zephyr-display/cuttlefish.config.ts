@@ -21,10 +21,6 @@ const config: CuttlefishConfig = {
   output: {
     outDir: './out',
   },
-  console: {
-    baudRate: 115200,
-    port: 'COM9',
-  },
 
   display: {
     profile: 'st7796-zephyr',

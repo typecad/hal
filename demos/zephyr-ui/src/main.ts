@@ -36,23 +36,21 @@ progLoop.start((): void => {
   }
 });
 
-// ── Forms screen: range + inputs log on change ─────────────────────────────
+// ── Forms screen: range + inputs ────────────────────────────────────────────
+// Element .value/.text are mutable device state — read them from any handler
+// or thread; there is no console to log to. Captured values land in signals.
+export const volume = ui.signal(0);
 screen.formRange1.onChange(() => {
-  console.log('volume:', screen.formRange1.value);
-});
-screen.formName.onChange(() => {
-  console.log('name:', screen.formName.text);
-});
-screen.formAge.onChange(() => {
-  console.log('age:', screen.formAge.text);
+  volume.set(screen.formRange1.value);
 });
 
 // ── Lists screen: virtualized list ─────────────────────────────────────────
+export const tapped = ui.signal(-1);
 ui.bindList(
   screen.demoList,
   () => 40,
   (i: number) => `Item ${i + 1}`,
-  (i: number) => { console.log('tapped:', i); },
+  (i: number) => { tapped.set(i); },
 );
 
 // ── Media screen: canvas drawing every primitive once ─────────────────────
@@ -85,6 +83,7 @@ ui.drawCanvas(screen.demoCanvas, (ctx) => {
 // ── Keyboard screen: input opens the custom keyboard ───────────────────────
 // The default alpha keyboard is used; the <keyboard id="kbAlpha"> template in
 // the HTML is parsed and registered automatically. Reading .text after commit.
+export const message = ui.signal('');
 screen.kbInput.onChange(() => {
-  console.log('message:', screen.kbInput.text);
+  message.set(screen.kbInput.text);
 });

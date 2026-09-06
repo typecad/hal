@@ -46,7 +46,7 @@ describe('GPIO.shift lowering', () => {
       const b = shiftIn(5, 6);
       const buzzer = new PWM(4, { periodNs: 2273000 });
       buzzer.setDuty(0.5);
-      console.log(b);
+      const _log1 = b;
     `, { strategy: new ZephyrStrategy(), boardConstants: constants });
     expectCppContains(result, ['for (int __i = 7', 'k_busy_wait(1)', 'pwm_set_pulse_dt']);
   });

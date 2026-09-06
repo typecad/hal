@@ -2,6 +2,7 @@
 // credential layer; this shows the station-join + AP-fallback pattern.
 // Persist credentials via Zephyr settings subsystem outside the HAL if needed.
 import { WiFi, WiFiAP, Time } from '@typecad/hal';
+import { UART0 } from '@typecad/board';
 
 const wifi = new WiFi("HomeNet", { psk: "hunter22", timeoutMs: 15000 });
 
@@ -10,9 +11,9 @@ if (!wifi.join()) {
   // provision real credentials out-of-band.
   const setup = new WiFiAP("device-setup");
   setup.start();
-  console.log("AP fallback started");
+  UART0.writeLine("AP fallback started");
 } else {
-  console.log(wifi.ip());
+  UART0.writeLine(wifi.ip());
 }
 
 while (true) {

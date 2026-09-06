@@ -38,7 +38,7 @@ describe("A: switch on a property-access discriminant is type-aware", () => {
           default: return '?';
         }
       }
-      console.log(label({ unit: Unit.Celsius, value: 25.0 }));
+      const _log1 = label({ unit: Unit.Celsius, value: 25.0 });
     `);
     // Must compare the field directly — NOT wrap it in std::string(...).
     expect(result.cpp).toMatch(/r\.unit == Unit::Celsius/);
@@ -55,7 +55,7 @@ describe("A: switch on a property-access discriminant is type-aware", () => {
           default: return false;
         }
       }
-      console.log(isA({ kind: Kind.A }));
+      const _log2 = isA({ kind: Kind.A });
     `);
     expect(result.cpp).toMatch(/i\.kind == Kind::A/);
     expect(result.cpp).not.toContain("std::string(i.kind)");
@@ -75,7 +75,7 @@ describe("A: switch on a property-access discriminant is type-aware", () => {
           default: return 'many';
         }
       }
-      console.log(name({ code: 1 }));
+      const _log3 = name({ code: 1 });
     `);
     // Either a real `switch (p.code)` / `case 1:` or a direct comparison —
     // both are valid. What must NOT happen is the illegal std::string() wrap.
@@ -96,7 +96,7 @@ describe("A: switch on a property-access discriminant is type-aware", () => {
           default: return 0;
         }
       }
-      console.log(val({ key: 'a' }));
+      const _log4 = val({ key: 'a' });
     `);
     expect(result.cpp).toMatch(/std::string\(r\.key\) == "a"/);
   });
@@ -116,7 +116,7 @@ describe("B: ownership demotion is resolved per lexical scope", () => {
         const m: Map<string, int32_t> = build();
         return m.get('a')!;
       }
-      console.log(read());
+      const _log5 = read();
     `);
     // No false "const-content-mutated" diagnostic should fire on `read`'s `m`.
     const mutated = findDiagnostics(result, "ownership-const-content-mutated");
@@ -130,7 +130,7 @@ describe("B: ownership demotion is resolved per lexical scope", () => {
       function f(): void {
         const m: Map<string, int32_t> = new Map();
         m.set('a', 1);
-        console.log(m.get('a'));
+        const _log6 = m.get('a');
       }
       f();
     `);
@@ -145,7 +145,7 @@ describe("B: ownership demotion is resolved per lexical scope", () => {
       let counter: int32_t = 0;
       function main(): void {
         counter = 10;
-        console.log(counter);
+        const _log7 = counter;
       }
       main();
     `);
@@ -158,7 +158,7 @@ describe("B: ownership demotion is resolved per lexical scope", () => {
     const result = transpileNative(`
       function main(): void {
         let x: int32_t = 5;
-        console.log(x);
+        const _log8 = x;
       }
       main();
     `);

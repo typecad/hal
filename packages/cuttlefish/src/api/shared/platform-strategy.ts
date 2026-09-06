@@ -92,9 +92,6 @@ export interface PlatformProfileStrategy {
   /** cstring header name ("<cstring>" on hosted, "<string.h>" on embedded/AVR). */
   cstringHeader(): string;
 
-  /** Whether the vector operator<< overload should be emitted. */
-  needsVectorOverload(): boolean;
-
   /** Whether a large enum needs an explicit underlying type. */
   needsLargeEnumUnderlying(): boolean;
 
@@ -278,28 +275,6 @@ export interface PlatformStatementStrategy {
    * Embedded targets without exception support may emit an infinite loop or halt.
    */
   renderThrow(valueExpr: string): string;
-
-  /**
-   * Transform console.log/error/warn calls to platform output.
-   */
-  isConsoleCall(callee: string): boolean;
-
-  /** Transform console.log/error/warn calls based on target platform. */
-  transformConsoleCall(
-    method: string,
-    renderedArgs: string,
-    forHeader: boolean,
-  ): string;
-
-  /**
-   * Transform console expressions that return values (e.g., console.readLine, console.readCharacter).
-   * Returns the C++ expression that evaluates to the result.
-   * Return undefined to fall back to default rendering.
-   */
-  transformConsoleExpression?(
-    method: string,
-    renderedArgs: string,
-  ): string | undefined;
 
   /**
    * Fallback value for an object initializer field on this platform.

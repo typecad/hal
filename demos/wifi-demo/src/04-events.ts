@@ -3,14 +3,15 @@ const WIFI_SSID = "HomeNet";
 const WIFI_PASSWORD = "hunter22";
 
 import { WiFi, Time } from '@typecad/hal';
+import { UART0 } from '@typecad/board';
 
 const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD });
 
 wifi.onUp(() => {
-  console.log("online");
+  UART0.writeLine("online");
 });
 wifi.onDrop(() => {
-  console.log("link lost");
+  UART0.writeLine("link lost");
 });
 
 wifi.joinStart();

@@ -116,7 +116,7 @@ describe("A: array mutator methods on a this.field receiver", () => {
       export function main(): void {
         const s: int32_t[] = [1, 2, 3];
         const v: int32_t = s.pop()!;
-        console.log(v);
+        const _log1 = v;
       }
     `);
     const out = (result.cpp ?? "") + (result.header ?? "");
@@ -143,7 +143,7 @@ describe("B: free function called from a class method body (parenthesized)", () 
       }
       export function main(): void {
         const c: C = new C();
-        console.log(c.m(1, 2));
+        const _log2 = c.m(1, 2);
       }
     `);
     const out = (result.cpp ?? "") + (result.header ?? "");
@@ -169,7 +169,7 @@ describe("B: free function called from a class method body (parenthesized)", () 
       }
       export function main(): void {
         const c: C = new C();
-        console.log(c.m(5));
+        const _log3 = c.m(5);
       }
     `);
     const out = (result.cpp ?? "") + (result.header ?? "");

@@ -48,12 +48,6 @@ const config: CuttlefishConfig = {
   // Console polyfill configuration. The board's default console is sercom5
   // on the D0/D1 header pins; 'usb' rebinds console.log onto the USB CDC
   // port so the demo needs no wiring at all.
-  console: {
-    output: 'usb',
-    baudRate: 115200,
-    // Serial port for upload/monitor. Override with --port on the CLI.
-    port: 'COM8',
-  },
 
   // Hardware test runner (@typecad/expect / `npm run test:hw`)
   test: {

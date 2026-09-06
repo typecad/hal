@@ -86,7 +86,7 @@ describe("B: nested function return reference", () => {
         "  return inner;",
         "}",
         "const f = factory();",
-        "console.log(f(5));",
+        "const _log1 = f(5);",
         "",
       ].join("\n"),
     );

@@ -18,7 +18,6 @@ const config: CuttlefishConfig = {
   output: {
     outDir: './out',
   },
-  console: { port: 'COM5' },
 
 };
 

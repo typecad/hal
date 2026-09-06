@@ -163,8 +163,7 @@ export interface CommandLineOptions {
    *  and --debug. Wins over zephyr.probe in cuttlefish.config.ts; Zephyr-only. */
   probe?: string;
   /** Baud rate for monitor. Undefined when --baud is absent so the consumer
-   *  can fall back to config.console.baudRate (the framework monitor default
-   *  applies only when neither is set). */
+   *  can fall through to the framework monitor default. */
   baud?: number;
   platformContext?: PlatformContext;
   /** Tree-shaking options */
@@ -252,7 +251,7 @@ export interface CreateCommandOptions {
    * and writes zephyr.probe into the scaffolded config. Zephyr-only. */
   probe?: string;
   /** Serial port the board is attached to (COMx / /dev/tty*) — skips the
-   * wizard question and seeds console.port + test.port in the config. */
+   * wizard question and seeds test.port in the config. */
   port?: string;
 }
 

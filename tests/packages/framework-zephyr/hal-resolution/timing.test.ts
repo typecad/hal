@@ -41,7 +41,9 @@ describe('Time end-to-end (user code → resolver → Zephyr lowering)', () => {
       Time.sleep(100);
       const elapsedUs = Time.nowUs();
       Time.busyWaitUs(5);
-      console.log(start, elapsedUs);
+      const s: number = start;
+      const e: number = elapsedUs;
+      void s; void e;
     `);
 
     expectCppContains(result, [

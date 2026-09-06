@@ -22,12 +22,10 @@
 
   export function captureName() {
     nameCommits.set(nameCommits() + 1);
-    console.log('name:', screen.formName.text);
   }
 
   export function captureAge() {
     ageCommits.set(ageCommits() + 1);
-    console.log('age:', screen.formAge.text);
   }
 
   ui.bind(screen.featureStatus, 'text', () => screen.formCheck1.value ? 'feature: enabled' : 'feature: disabled');
@@ -40,11 +38,12 @@
   ui.bind(screen.formProgressCaption, 'text', () => `meter: ${screen.formRange1.value * 10}%`);
 
   // ── Lists screen: virtualized list ─────────────────────────────────────────
+  export const tapped = ui.signal(-1);
   ui.bindList(
     screen.demoList,
     () => 40,
     (i: number) => `Item ${i + 1}`,
-    (i: number) => { console.log('tapped:', i); },
+    (i: number) => { tapped.set(i); },
   );
 
   // ── Media screen: canvas drawing every primitive once ─────────────────────
@@ -68,8 +67,9 @@
   });
 
   // ── Keyboard screen: input opens the custom keyboard ───────────────────────
+  export const lastMessage = ui.signal('');
   screen.kbInput.onChange(() => {
-    console.log('message:', screen.kbInput.text);
+    lastMessage.set(screen.kbInput.text);
   });
 </script>
 

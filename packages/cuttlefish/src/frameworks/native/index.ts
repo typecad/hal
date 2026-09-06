@@ -2,7 +2,7 @@
 // Native C++ framework — built into @typecad/cuttlefish
 //
 // Outputs standard C++ for portable Windows/Linux desktop executables.
-// Uses main(), std::cout, std::string, and std::thread-based async.
+// Uses main(), std::string, and std::thread-based async.
 //
 // Usage:
 //   In cuttlefish.config.ts:

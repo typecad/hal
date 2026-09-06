@@ -525,7 +525,7 @@ describe("Class Transpilation", () => {
         }
 
         const s = new Scaler();
-        console.log(s.scale(5));
+        const scaled: number = s.scale(5);
       `);
       expectCppContains(result, [
         "double double(double",
@@ -541,8 +541,9 @@ describe("Class Transpilation", () => {
         class Product { name: string; }
         function test(): void {
           const items: Product[] = [new Product()];
-          for (const item of items) { console.log(item.name); }
+          for (const item of items) { mark(item.name); }
         }
+        function mark(n: string): void {}
       `);
       expect(result.cpp).toContain("item->name");
     });

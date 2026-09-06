@@ -95,7 +95,7 @@
 
   // ── Keyboard screen ────────────────────────────────────────────────────────
   screen.kbInput.onChange(() => {
-    console.log('message:', screen.kbInput.text);
+    void screen.kbInput.text;
   });
 
   // ── State screen: signals drive text, style, and the tab title ─────────────

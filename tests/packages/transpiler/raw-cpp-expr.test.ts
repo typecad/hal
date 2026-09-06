@@ -16,7 +16,7 @@ describe("rawCppExpr — expression-position raw C++ injection", () => {
       [
         "import { rawCppExpr } from '@typecad/hal';",
         "const x = rawCppExpr<number>('WIFI_INIT_CONFIG_DEFAULT()');",
-        "console.log(x);",
+        "const _log1 = x;",
       ].join("\n"),
     ).cpp;
 
@@ -43,7 +43,7 @@ describe("rawCppExpr — expression-position raw C++ injection", () => {
       [
         "import { rawCppExpr } from '@typecad/hal';",
         "const addr = rawCppExpr<number>('&__cfg');",
-        "console.log(addr);",
+        "const _log2 = addr;",
       ].join("\n"),
     ).cpp;
     expect(cpp).toMatch(/&__cfg/);
@@ -55,7 +55,7 @@ describe("rawCppExpr — expression-position raw C++ injection", () => {
       [
         "import { rawCpp } from '@typecad/hal';",
         "rawCpp('int __local = 42;');",
-        "console.log(__local);",
+        "const _log3 = __local;",
       ].join("\n"),
     ).cpp;
     expect(cpp).toMatch(/int __local = 42/);

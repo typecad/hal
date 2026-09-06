@@ -25,9 +25,8 @@ let breath: number = 0;
 let breathUp: boolean = true;
 let modeTimer: number = 0;
 
-// USB CDC serial over the micro-USB connector. With console.output: 'usb'
-// the Zephyr console rides the same port; USB0 gives the program its own
-// channel (a second CDC instance if you compose one).
+// USB CDC serial over the micro-USB connector: the program's own report
+// channel (opened explicitly — the board's default console is unrelated).
 USB0.open();
 let report: number = 0;
 

@@ -16,7 +16,7 @@ import { UART } from '@typecad/hal';
 const gps = new UART('UART0', { baud: 9600, rxBufferBytes: 128 });
 
 gps.write("$PMTK220,1000*2F\r\n");   // uart_poll_out per byte — no newline appended
-gps.println("hello");                 // …with a newline
+gps.writeLine("hello");               // …with a newline
 
 if (gps.available() > 0) {            // bytes waiting in the ring
   const b = gps.read();               // pop the oldest byte (-1 when empty)
@@ -28,41 +28,20 @@ TX is poll-based (`uart_poll_out` — synchronous, fine for writes); RX is inter
 
 ## USB CDC Serial — `USBConsole`
 
-On boards with a USB device connector, `USBConsole` is the CDC port. It appears on the host as a regular COM/tty device. The one CDC-specific fact: **output written before the host opens the port is silently dropped** — gate early writes on `ready()` (DTR asserted) or block once in `waitReady()`:
+On boards with a USB device connector, `USBConsole` is the CDC port. It appears on the host as a regular COM/tty device. The one CDC-specific fact: **output written before the host opens the port is silently dropped** — gate early writes on `linked()` (DTR asserted) or block once in `waitLinked()`:
 
 ```typescript
 import { USBConsole } from '@typecad/hal';
 
 const usb = new USBConsole('USB0');
-if (!usb.ready()) {
-  usb.waitReady(3000);                // bounded poll in the shim — no user busy loop
+if (!usb.linked()) {
+  usb.waitLinked(3000);               // bounded poll in the shim — no user busy loop
 }
 usb.writeLine('hello, host');
 const b = usb.read();                 // one byte, or -1
 ```
 
-`USB0` is board-gated: the board package must declare USB, otherwise `usb.*` ops fail at build time with a diagnostic naming the missing board data.
-
-### Routing `console.log` to USB
-
-`console.log` lowers to `printk` and follows the board's devicetree console node — often a UART on pins you may not have wired. The build prints where it goes (`console.log -> printk -> usart1 on PA9 (TX) / PA10 (RX) on this board`). To send it out the USB connector instead, set `output: 'usb'` in the config's `console` section:
-
-```typescript
-// cuttlefish.config.ts
-import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
-
-const config: CuttlefishConfig = {
-  // ...
-  console: {
-    output: 'usb',   // console.log → the USB CDC port (boards with USB)
-    port: 'COM4',    // monitor port (unchanged role)
-  },
-};
-
-export default config;
-```
-
-The overlay rebinds the console onto the CDC port and forces the USB symbols on — the program itself needs no `USBConsole` for `console.log` to work.
+`USB0` is board-gated: the board must declare a USB device controller, otherwise `usb.*` ops fail at build time with a diagnostic naming the missing board data.
 
 ---
 
@@ -121,7 +100,7 @@ Two peripherals claiming the same pins (an `I2CTarget` on SCL and a `GPIO` outpu
 | Member | Returns | Description |
 | :--- | :--- | :--- |
 | `new UART(port, opts?)` | `UART` | `baud` (default 115200), `rxBufferBytes` (default 64). |
-| `write(s)` / `println(s)` | `void` | Poll TX; `println` appends `\n`. |
+| `write(v)` / `writeLine(v)` | `void` | Poll TX (`v` is text, a number, or a boolean); `writeLine` appends `\n`. |
 | `available()` | `number` | Bytes waiting in the RX ring (arms the RX IRQ on first use). |
 | `read()` | `number` | Pop the oldest byte; −1 when empty. |
 | `peek()` | `number` | Oldest byte without consuming; −1 when empty. |
@@ -131,9 +110,9 @@ Two peripherals claiming the same pins (an `I2CTarget` on SCL and a `GPIO` outpu
 | Member | Returns | Description |
 | :--- | :--- | :--- |
 | `new USBConsole(port?)` | `USBConsole` | Defaults to `'USB0'`; board must declare USB. |
-| `write(v)` / `writeLine(v)` | `void` | Typed writes (string or number). |
-| `ready()` | `boolean` | Host has the port open (DTR). |
-| `waitReady(timeoutMs?)` | `boolean` | Block until ready (0 = forever). |
+| `write(v)` / `writeLine(v)` | `void` | Typed writes (`v` is text, a number, or a boolean). |
+| `linked()` | `boolean` | Host has the port open (DTR). |
+| `waitLinked(timeoutMs?)` | `boolean` | Block until linked (0 = forever). |
 | `read()` / `available()` | `number` | One byte (−1 when none) / ready count. |
 
 ### I2CTarget

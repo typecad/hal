@@ -256,10 +256,10 @@ function parsePipelineCommand(
   const buildTarget = readFirstFlagValue(argv, ["--build-target"]);
   const port = readFirstFlagValue(argv, ["--port"]);
   const probeFlag = readFirstFlagValue(argv, ["--probe", "--flash"]);
-  // Default to undefined (NOT 9600) so the build/upload/monitor flow's
-  // `options.baud ?? config.console.baudRate` falls through to the configured
-  // baud. Hardcoding 9600 here shadowed config.console.baudRate whenever --baud
-  // was absent (the monitor then opened the port at 9600, ignoring the config).
+  // Default to undefined (NOT a hardcoded baud) so the build/upload/monitor
+  // flow falls through to the framework's monitor default when --baud is
+  // absent. Hardcoding 9600 here forced the monitor to open the port at 9600
+  // and ignore --baud given elsewhere.
   const baud = readNumberFlag(argv, ["--baud"]);
   const frameworkFlag = readFirstFlagValue(argv, ["--framework"]);
 
@@ -329,8 +329,8 @@ function parsePipelineCommand(
     throw new Error("--upload requires --compile.");
   }
   // Note: port validation is deferred to the build path, which checks the
-  // effective port (CLI --port flag OR config.console.port). This allows
-  // setting the port in cuttlefish.config.ts instead of on every command.
+  // effective port (CLI --port flag OR the CUTTLEFISH_PORT env var). This
+  // allows setting the port in the environment instead of on every command.
   if (watch && monitor) {
     throw new Error("--watch and --monitor cannot be used together (monitor blocks the process).");
   }

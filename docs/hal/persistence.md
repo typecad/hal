@@ -15,14 +15,15 @@ Neither has a session: there is no `begin()`, no `mount()`, no `open()`/`close()
 
 ```typescript
 import { File } from '@typecad/hal';
+import { UART0 } from '@typecad/board';
 
 const notes = new File('/notes.txt');
 
 notes.write('cuttlefish-was-here');        // overwrite (creates when absent)
 if (notes.exists()) {
-  console.log(notes.read());               // "cuttlefish-was-here"
+  UART0.writeLine(notes.read());               // "cuttlefish-was-here"
   notes.remove();                          // delete
-  console.log(notes.exists() ? 'still there' : 'gone');
+  UART0.writeLine(notes.exists() ? 'still there' : 'gone');
 }
 ```
 
@@ -57,7 +58,7 @@ settings.setString('deviceName', 'bench-01');
 settings.setBool('telemetryOn', true);
 settings.setFloat('calibration', 1.02);
 
-console.log(settings.getString('deviceName', 'unnamed'));
+UART0.writeLine(settings.getString('deviceName', 'unnamed'));
 settings.remove('calibration');   // delete one key
 settings.clear();                 // wipe every tc/app/* key this app wrote
 ```

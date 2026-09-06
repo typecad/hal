@@ -67,13 +67,6 @@ export interface ResolvedCuttlefishConfig {
   entry?: string;
   /** Path to the config file that was loaded. */
   configPath: string;
-  /** Console polyfill configuration. */
-  console?: {
-    baudRate?: number;
-    port?: string;
-    /** Where console.log output goes ('usb' = the USB CDC serial port). */
-    output?: 'default' | 'usb';
-  };
   /** Extra compiler flags from `output.extraFlags`. */
   outputExtraFlags?: string[];
   /** Additional defines from `output.defines`. */
@@ -558,22 +551,22 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
     );
   }
 
+  // The `console` section is removed: the console.* carry-over (console.log
+  // lowering to a platform print, plus this section routing/parameterizing it)
+  // is gone. Programs write to a serial console explicitly — USB0.writeLine
+  // or UART0.writeLine from the board module. Warn-and-drop so existing
+  // configs keep building while telling the user to delete the key.
+  for (const key of flat.keys()) {
+    if (key === "console" || key.startsWith("console.")) {
+      warn(
+        `'${key}' is removed — the console.* carry-over is gone. ` +
+          "Write to a serial console explicitly (USB0.writeLine(...) / UART0.writeLine(...)) and delete the console section.",
+      );
+    }
+  }
+
   const outputOutDir = flat.get("output.outDir");
   if (typeof outputOutDir === "string") resolved.outputOutDir = outputOutDir;
-
-  // Parse console configuration
-  const consoleBaudRate = flat.get("console.baudRate");
-  const consolePort = flat.get("console.port");
-  const consoleOutput = flat.get("console.output");
-  const consoleOutputTyped =
-    consoleOutput === "usb" || consoleOutput === "default" ? consoleOutput : undefined;
-  if (typeof consoleBaudRate === "number" || typeof consolePort === "string" || consoleOutputTyped) {
-    resolved.console = {
-      ...(typeof consoleBaudRate === "number" ? { baudRate: consoleBaudRate } : {}),
-      ...(typeof consolePort === "string" ? { port: consolePort } : {}),
-      ...(consoleOutputTyped ? { output: consoleOutputTyped } : {}),
-    };
-  }
 
   // Extract structured fields that the flat walker cannot handle.
   const outputExtraFlags = extractStringArray(configObject, ["output", "extraFlags"], warn);
@@ -632,7 +625,6 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
       ...(resolved.outputDefines ? { defines: resolved.outputDefines } : {}),
     };
   }
-  if (resolved.console) structuredForValidation.console = resolved.console;
   if (resolved.zephyrConfig) structuredForValidation.zephyr = resolved.zephyrConfig;
   if (resolved.frameworkConfig) structuredForValidation.native = resolved.frameworkConfig;
   if (resolved.display) structuredForValidation.display = resolved.display;
@@ -921,21 +913,6 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
     "  type size_t = number;",
     "  type float = number;",
     "  type double = number;",
-    "",
-    "  // console — declared here (not pulled from lib.dom) so a project does not",
-    "  // need \"dom\" in tsconfig lib just to type console.log. Avoiding lib.dom",
-    "  // also keeps DOM global type names (Node, Element, Event, Document, ...)",
-    "  // out of scope, so a user class named e.g. `Node` is not shadowed by the",
-    "  // DOM global of the same name. Platforms may declaration-merge extra",
-    "  // members onto this interface via ambientTypeDeclarations().",
-    "  interface Console {",
-    "    log(...args: unknown[]): void;",
-    "    info(...args: unknown[]): void;",
-    "    debug(...args: unknown[]): void;",
-    "    warn(...args: unknown[]): void;",
-    "    error(...args: unknown[]): void;",
-    "  }",
-    "  const console: Console;",
     "",
     "  // Convenience helper for volatile variables in TypeCAD programs.",
     "  // The transpiler detects calls to volatile() and emits the C++ volatile qualifier.",

@@ -104,10 +104,12 @@ export function printDebugStrategy(framework: string): void {
 }
 
 /**
- * Print uploading step
+ * Print uploading step. Probe/USB flashing carries no serial port — the
+ * destination is omitted rather than printed as "undefined".
  */
-export function printUploading(port: string): void {
-  console.log(chalk.cyan(`${ICON_UPLOAD} Uploading to `) + chalk.white(port));
+export function printUploading(port?: string): void {
+  const destination = port ? chalk.cyan(" to ") + chalk.white(port) : "";
+  console.log(chalk.cyan(`${ICON_UPLOAD} Uploading`) + destination);
 }
 
 /**

@@ -31,7 +31,7 @@ describe("A: Map.values()/keys()/entries() lower to value-iteration helpers", ()
       m.set('b', 2);
       let sum: int32_t = 0;
       for (const v of m.values()) { sum += v; }
-      console.log(sum);
+      const _log1 = sum;
     `);
     expect(result.cpp).toContain("__tc_mapValues(");
     // The loop must iterate the helper's return, NOT the bare map.
@@ -44,7 +44,7 @@ describe("A: Map.values()/keys()/entries() lower to value-iteration helpers", ()
     const result = transpileNative(`
       let m: Map<string, int32_t> = new Map();
       m.set('a', 1);
-      for (const k of m.keys()) { console.log(k); }
+      for (const k of m.keys()) { const _log2 = k; }
     `);
     expect(result.cpp).toContain("__tc_mapKeys(");
     expect(result.cpp).toMatch(/for \(const auto& k : __tc_mapKeys\(m\)\)/);
@@ -54,7 +54,7 @@ describe("A: Map.values()/keys()/entries() lower to value-iteration helpers", ()
     const result = transpileNative(`
       let m: Map<string, int32_t> = new Map();
       m.set('a', 1);
-      for (const e of m.entries()) { console.log(e); }
+      for (const e of m.entries()) { const _log3 = e; }
     `);
     expect(result.cpp).toContain("__tc_mapEntries(");
     expect(result.cpp).toMatch(/for \(const auto& e : __tc_mapEntries\(m\)\)/);
@@ -67,7 +67,7 @@ describe("A: Map.values()/keys()/entries() lower to value-iteration helpers", ()
       s.add(2);
       let n: int32_t = 0;
       for (const v of s.values()) { n += v; }
-      console.log(n);
+      const _log4 = n;
     `);
     expect(result.cpp).toContain("__tc_setValues(");
     expect(result.cpp).toMatch(/for \(const auto& v : __tc_setValues\(s\)\)/);
@@ -78,7 +78,7 @@ describe("A: Map.values()/keys()/entries() lower to value-iteration helpers", ()
     // `for (... : m)`. Ensure that broken form never returns.
     const result = transpileNative(`
       let m: Map<string, int32_t> = new Map();
-      for (const v of m.values()) { console.log(v); }
+      for (const v of m.values()) { const _log5 = v; }
     `);
     expect(result.cpp).not.toMatch(/for \(const auto& v : m\)/);
     expect(result.cpp).toContain("__tc_mapValues(m)");
@@ -93,7 +93,7 @@ describe("B: Map.get() lowers to const-correct .at()", () => {
       let m: Map<string, int32_t> = new Map();
       m.set('a', 7);
       const v: int32_t = m.get('a')!;
-      console.log(v);
+      const _log6 = v;
     `);
     // The .get() read lowers to .at() — NOT operator[] (which is non-const).
     expect(result.cpp).toContain("m.at(\"a\")");
@@ -113,7 +113,7 @@ describe("B: Map.get() lowers to const-correct .at()", () => {
       function main(): void {
         const catalog: Map<string, int32_t> = build();
         const v: int32_t = catalog.get('a')!;
-        console.log(v);
+        const _log7 = v;
       }
       main();
     `);
@@ -135,7 +135,7 @@ describe("C: const Map/Set mutation demotion and the suggest-const fix", () => {
         const s: Set<int32_t> = new Set();
         s.add(1);
         s.add(2);
-        console.log(s.has(1));
+        const _log8 = s.has(1);
       }
       main();
     `);
@@ -151,7 +151,7 @@ describe("C: const Map/Set mutation demotion and the suggest-const fix", () => {
       function main(): void {
         const m: Map<string, int32_t> = new Map();
         m.delete('a');
-        console.log('done');
+        const _log9 = 'done';
       }
       main();
     `);
@@ -169,7 +169,7 @@ describe("C: const Map/Set mutation demotion and the suggest-const fix", () => {
       function main(): void {
         let m: Map<string, int32_t> = new Map();
         m.set('a', 1);
-        console.log(m.get('a')!);
+        const _log10 = m.get('a')!;
       }
       main();
     `);
@@ -184,7 +184,7 @@ describe("C: const Map/Set mutation demotion and the suggest-const fix", () => {
         let s: Set<int32_t> = new Set();
         s.add(1);
         s.add(2);
-        console.log(s.size);
+        const _log11 = s.size;
       }
       main();
     `);
@@ -202,7 +202,7 @@ describe("no regression: Object.values/keys/entries(map) unchanged", () => {
       let m: Map<string, int32_t> = new Map();
       m.set('a', 1);
       const vs: int32_t[] = Object.values(m);
-      console.log(vs[0]!);
+      const _log12 = vs[0]!;
     `);
     expect(result.cpp).toContain("__tc_mapValues(");
   });

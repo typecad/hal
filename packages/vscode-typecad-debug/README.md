@@ -115,7 +115,7 @@ the generated `.cuttlefish/openocd.cfg`; the `preLaunchTask` is just
 `build + flash` — no competing OpenOCD process. Install the cortex-debug
 extension (ESP32 targets also need OpenOCD — the framework probes the
 openocd-esp32 install layout or the Zephyr SDK's own openocd), and set the
-board's serial port in `cuttlefish.config.ts` (`console.port`) or pass
+serial port through the `CUTTLEFISH_PORT` env var or pass
 `--port`.
 
 The printf instrumentation documented below remains the path for targets

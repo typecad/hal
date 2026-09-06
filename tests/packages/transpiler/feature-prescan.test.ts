@@ -35,7 +35,7 @@ describe("feature-prescan: explicit any (TS2CPP_EXPLICIT_ANY)", () => {
   });
 
   it("flags explicit any on a parameter", () => {
-    const diags = prescan("function f(x: any): void { console.log(x); }");
+    const diags = prescan("function f(x: any): void { const _log1 = x; }");
     expect(codes(diags)).toContain("TS2CPP_EXPLICIT_ANY");
   });
 

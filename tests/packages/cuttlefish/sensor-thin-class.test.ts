@@ -73,7 +73,7 @@ describe('Sensor thin class — construction facts reach the lowering', () => {
       const s = new Sensor(SENSOR.sensirion_sht3xd, I2C0.device(0x44));
       s.fetch();
       const t = s.get(CHAN.AMBIENT_TEMP);
-      console.log(\`temp: \${t} %RH\`);
+      const line: string = \`temp: \${t} %RH\`;
       void t;
     `, COMMON);
     // %RH is literal text — must arrive escaped, and the double must take
@@ -92,7 +92,7 @@ describe('Sensor thin class — construction facts reach the lowering', () => {
       const s = new Sensor(SENSOR.sensirion_sht3xd, I2C0.device(0x44));
       s.fetch();
       const tenths: number = s.get(CHAN.AMBIENT_TEMP) * 10;
-      console.log(\`t10=\${tenths / 10}\`);
+      const line: string = \`t10=\${tenths / 10}\`;
     `, COMMON);
     expect(result.cpp).toMatch(/%\d*\.?\d*g[^"]*"\s*,\s*tenths/);
   });

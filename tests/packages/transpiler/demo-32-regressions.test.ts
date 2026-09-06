@@ -115,7 +115,7 @@ function build(): uint8_t[] {
   row.push(Cell.Alive);
   return row;
 }
-console.log(build().length);
+const _log = build().length;
 `;
     const res = transpileNativeCpp(src);
     expect(res.cpp).toContain("row.push_back(static_cast<int>(Cell::Dead))");
@@ -129,7 +129,7 @@ console.log(build().length);
     const src = `
 const enum Color { Red = 0, Green = 1, Blue = 2 }
 const n: number = Color.Green;
-console.log(n);
+const _log = n;
 `;
     const res = transpileNativeCpp(src);
     expect(res.cpp).toContain("static_cast<int>(Color::Green)");
@@ -160,7 +160,7 @@ class Holder {
 enum Color { Red = 'red', Green = 'green' }
 const words: string[] = [];
 words.push(Color.Red);
-console.log(words.length);
+const _log = words.length;
 `;
     const res = transpileNativeCpp(src);
     expect(res.cpp).toContain("words.push_back(Color::Red)");
@@ -185,7 +185,7 @@ class Life {
 }
 const life: Life = new Life();
 life.toggle(0, 0, true);
-console.log('done');
+const _log = 'done';
 `;
     const res = transpileNativeSplit(src);
     const body = (res.header ?? "") + res.cpp;
@@ -241,7 +241,7 @@ describe("B: .join polyfill is self-contained (includes <sstream>)", () => {
     // would pull <sstream> in via the math_methods block transitively).
     const src = `
 const words: string[] = ['a', 'b', 'c'];
-console.log(words.join('-'));
+const _log = words.join('-');
 `;
     const res = transpileNativeSplit(src);
     const header = res.header ?? "";
@@ -261,7 +261,7 @@ class Renderer {
     return this.parts.join('\\n');
   }
 }
-console.log(new Renderer().render());
+const _log = new Renderer().render();
 `;
     const res = transpileNativeSplit(src);
     const header = res.header ?? "";

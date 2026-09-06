@@ -121,7 +121,7 @@ describe("let → const promotion (emit-time)", () => {
   it("promotes a never-reassigned top-level let to const", () => {
     const r = transpile(
       `let counter = 0;
-       function setup(): void { console.log(counter); }`,
+       function setup(): void { const _log1 = counter; }`,
       { target: "arduino", ...AVR_CTX },
     );
     expect(r.cpp).toMatch(/const\s+\w+\s+counter\s*=/);
@@ -130,7 +130,7 @@ describe("let → const promotion (emit-time)", () => {
   it("does NOT promote a let that is reassigned", () => {
     const r = transpile(
       `let counter = 0;
-       function setup(): void { counter = 5; console.log(counter); }`,
+       function setup(): void { counter = 5; const _log2 = counter; }`,
       { target: "arduino", ...AVR_CTX },
     );
     // The declaration line should not start with const.
@@ -143,7 +143,7 @@ describe("let → const promotion (emit-time)", () => {
     const r = transpile(
       `let flag = false;
        function setIt(): void { flag = true; }
-       function setup(): void { setIt(); console.log(flag); }`,
+       function setup(): void { setIt(); const _log3 = flag; }`,
       { target: "arduino", ...AVR_CTX },
     );
     const diags = r.diagnostics.filter(d => (d as any).code === "ownership-suggest-const");
@@ -155,7 +155,7 @@ describe("let → const promotion (emit-time)", () => {
   it("emits an info diagnostic when promoting", () => {
     const r = transpile(
       `let x = 42;
-       function setup(): void { console.log(x); }`,
+       function setup(): void { const _log4 = x; }`,
       { target: "arduino", ...AVR_CTX },
     );
     const diags = r.diagnostics.filter(d => (d as any).code === "ownership-suggest-const");

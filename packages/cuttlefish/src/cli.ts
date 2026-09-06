@@ -488,9 +488,9 @@ async function main(): Promise<void> {
       if (options.expect) {
         const config = loadCuttlefishConfig(process.cwd());
         const exitCode = runExpectTests({
-          port: options.port ?? config?.console?.port,
+          port: options.port,
           buildTarget: config?.buildTarget,
-          baud: config?.console?.baudRate ?? options.baud,
+          baud: options.baud,
           expectFile: options.expectFile,
         });
         process.exitCode = exitCode;
@@ -536,10 +536,6 @@ async function main(): Promise<void> {
     }
 
     if (config) {
-      // Config port is the default; CLI --port flag overrides it.
-      if (!effectivePort && config.console?.port) {
-        effectivePort = config.console.port;
-      }
       if (config.board) {
         effectiveBoardTarget = config.board;
       }
@@ -564,17 +560,6 @@ async function main(): Promise<void> {
       }
       if (config.framework) {
         effectiveFrameworkPackage = config.framework;
-      }
-      // Pass console baud rate + output route to platform context. `output:
-      // 'usb'` matters at emit time: the framework strategy must define and
-      // start the USB device for the CDC console even when the program never
-      // touches USB0 (the DT/Kconfig side alone leaves the port dead).
-      if (config.console?.baudRate || config.console?.output) {
-        effectivePlatformContext = effectivePlatformContext || {};
-        (effectivePlatformContext as any).console = {
-          ...(config.console?.baudRate ? { baudRate: config.console.baudRate } : {}),
-          ...(config.console?.output ? { output: config.console.output } : {}),
-        };
       }
 
       // Keep cuttlefish-env.d.ts in sync so the TS language server can resolve
@@ -653,13 +638,12 @@ async function main(): Promise<void> {
               sourcePath: result.sourcePath,
               buildTarget: baseBuildTarget,
               port: effectivePort,
-              baud: options.baud ?? config?.console?.baudRate,
+              baud: options.baud,
               extraFlags: config?.outputExtraFlags,
               defines: config?.outputDefines ?? {},
               psram: config?.psram,
               frameworkConfig: config?.frameworkConfig,
               zephyrConfig: config?.zephyrConfig,
-              consoleConfig: config?.console,
               display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,
               debug: options.debug,
             };
@@ -670,7 +654,9 @@ async function main(): Promise<void> {
             if (compileResult.success) {
               if (compileResult.memoryUsage) ui.printMemoryUsage(compileResult.memoryUsage);
               
-              if (options.upload && effectivePort) {
+              if (options.upload) {
+                // No port gate here — probe/USB flashing needs none, and the
+                // framework reports a friendly failure when the runner does.
                 ui.printUploading(effectivePort);
                 const uploadResult = uploadFirmware(watchOpts);
                 if (uploadResult.output) console.log(uploadResult.output);
@@ -758,7 +744,7 @@ async function main(): Promise<void> {
                   sourcePath: rebuildResult.sourcePath,
                   buildTarget: baseBuildTarget,
                   port: effectivePort,
-                  baud: options.baud ?? config?.console?.baudRate,
+                  baud: options.baud,
                   extraFlags: config?.outputExtraFlags,
                   defines: config?.outputDefines ?? {},
                   psram: config?.psram,
@@ -774,7 +760,10 @@ async function main(): Promise<void> {
                 if (compileResult.success) {
                   if (compileResult.memoryUsage) ui.printMemoryUsage(compileResult.memoryUsage);
 
-                  if (options.upload && effectivePort) {
+                  if (options.upload) {
+                    // No port gate here — probe/USB flashing needs none, and
+                    // the framework reports a friendly failure when the
+                    // runner does.
                     ui.printUploading(effectivePort);
                     const uploadResult = uploadFirmware(rebuildOpts);
                     if (uploadResult.output) console.log(uploadResult.output);
@@ -853,7 +842,7 @@ async function main(): Promise<void> {
         const exitCode = runExpectTests({
           port: effectivePort,
           buildTarget: (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined),
-          baud: config?.console?.baudRate ?? options.baud,
+          baud: options.baud,
           expectFile: options.expectFile,
         });
         process.exitCode = exitCode;
@@ -863,18 +852,17 @@ async function main(): Promise<void> {
 
     // --compile (delegates to the active framework's toolchain)
     const baseBuildTarget = (effectivePlatformContext?.frameworkData?.buildTarget as string | undefined) ?? (options.platformContext?.frameworkData?.buildTarget as string | undefined);
-    
+
     const toolchainOpts = {
       outputDir: path.dirname(result.sourcePath),
       sourcePath: result.sourcePath,
       buildTarget: baseBuildTarget,
       port: effectivePort,
-      baud: options.baud ?? config?.console?.baudRate,
+      baud: options.baud,
       extraFlags: config?.outputExtraFlags,
       defines: config?.outputDefines ?? {},
       psram: config?.psram,
       frameworkConfig: config?.frameworkConfig,
-      consoleConfig: config?.console,
       // --probe <method> overrides zephyr.probe from the config for this run.
       zephyrConfig: options.probe
         ? { ...(config?.zephyrConfig ?? {}), probe: options.probe }
@@ -914,10 +902,11 @@ async function main(): Promise<void> {
       return;
     }
 
-    // --upload (requires a port from --port flag or config.console.port)
-    if (!effectivePort) {
-      throw new Error("--upload requires a port. Set --port <port> on the command line or console.port in cuttlefish.config.ts.");
-    }
+    // --upload. Whether a port is required is the active framework's call —
+    // probe-based flashing (openocd/jlink) and USB bootloaders (dfu-util,
+    // uf2) need no serial port, so a missing --port only surfaces as the
+    // framework's own upload failure for serial-port runners (esptool,
+    // bossac).
     const port = effectivePort;
     ui.printUploading(port);
     const uploadResult = uploadFirmware(toolchainOpts);
@@ -937,9 +926,14 @@ async function main(): Promise<void> {
     }
 
     if (options.monitor) {
-      // --monitor (blocks until Ctrl+C). Show the resolved baud (config ?? --baud)
-      // in the banner — toolchainOpts.baud is built the same way, so what the
-      // user sees is what the framework monitor opens the port at.
+      // --monitor (blocks until Ctrl+C). Unlike flashing, monitoring always
+      // needs a serial port — there is no probe/USB flavor of it.
+      if (!port) {
+        throw new Error("--monitor requires a port. Set --port <port> on the command line (or the CUTTLEFISH_PORT env var).");
+      }
+      // Show the resolved --baud in the banner — toolchainOpts.baud is built
+      // the same way, so what the user sees is what the framework monitor
+      // opens the port at.
       ui.printMonitoring(port, toolchainOpts.baud ?? 115200);
       monitorDevice(toolchainOpts);
       return;
@@ -951,7 +945,7 @@ async function main(): Promise<void> {
       const exitCode = runExpectTests({
         port: effectivePort,
         buildTarget: baseBuildTarget,
-        baud: config?.console?.baudRate ?? options.baud,
+        baud: options.baud,
         expectFile: options.expectFile,
       });
       process.exitCode = exitCode;

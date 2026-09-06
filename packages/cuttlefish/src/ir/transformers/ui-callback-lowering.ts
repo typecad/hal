@@ -8,7 +8,6 @@
 // UI-specific behaviour that still happens here:
 //   - signal.set(value) → assign          (already in callToStatement)
 //   - signal() → identifier               (already in expressionToIR)
-//   - console.* → platform transform      (already at emit via StatementRenderer)
 //   - CSS color string literals → rgb int (resolveColorIR walk on the IR)
 //   - canvas ctx.* → ui_display_*         (ambient canvas ctx + rewriteCanvasCall)
 // ---------------------------------------------------------------------------
@@ -35,7 +34,6 @@ import { StatementRenderer } from "../../emit/statement-renderer.js";
 import { createEmissionScopeState } from "../../emit/snprintf-helpers.js";
 import { getCurrentIrTypeScope } from "../symbol-types.js";
 import { type CppTypeHint } from "../type-resolution.js";
-import { getConsoleMethod } from "../../emit/utils/type-inference.js";
 
 // ── Color-literal resolution ───────────────────────────────────────────────
 
@@ -242,18 +240,7 @@ export function renameIdentifiersInStatements(
 
 // ── Console-in-callback tracking (legacy string-bake leftover) ─────────────
 
-let _loweredConsoleInCallback = false;
-
-export function noteConsoleInCallback(): void {
-  _loweredConsoleInCallback = true;
-}
-
-export function loweredConsoleInCallback(): boolean {
-  return _loweredConsoleInCallback;
-}
-
 export function resetCallbackLoweringState(): void {
-  _loweredConsoleInCallback = false;
   endCanvasAmbient();
 }
 
@@ -326,24 +313,6 @@ export function lowerCallbackExpr(
   sourceText: string,
   diagnostics: Diagnostic[],
 ): string {
-  if (
-    ts.isCallExpression(expr) &&
-    ts.isPropertyAccessExpression(expr.expression) &&
-    ts.isIdentifier(expr.expression.expression) &&
-    expr.expression.expression.text === "console"
-  ) {
-    const method = expr.expression.name.text;
-    const renderedArgs = expr.arguments
-      .map((arg) => renderExprAsText(expressionToIR(arg, sourceText, diagnostics)))
-      .join(" << ");
-    _loweredConsoleInCallback = true;
-    const strategy = getContext().activeStrategy;
-    if (strategy) {
-      return strategy.transformConsoleCall(method, renderedArgs, false).replace(/;$/, "");
-    }
-    return `std::cout << ${renderedArgs} << std::endl`;
-  }
-
   if (
     ts.isCallExpression(expr) &&
     ts.isPropertyAccessExpression(expr.expression) &&

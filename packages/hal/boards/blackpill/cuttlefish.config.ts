@@ -8,14 +8,13 @@
 // not per-board test copies.
 //
 // Flashing goes through the ST-Link probe (SWD — `zephyr.probe: 'stlink'`,
-// the board's named probe method; no BOOT0 dance). Test output comes back
-// over the board's USB-C connector (USB CDC-ACM console —
-// `console.output: 'usb'` rebinds the Zephyr console onto cdc_acm_uart0,
-// which also frees usart1 so the UART group can exercise UART0).
+// the board's named probe method; no BOOT0 dance). Test output rides the
+// board's default console node (its devicetree `zephyr,console` — usart1
+// on PA9/PA10). The old `console.output: 'usb'` rebinding is gone: the
+// console.* carry-over was removed, and the console is board data again.
 //
 // Post-rework notes: the board comes from the Zephyr board catalog (no board
-// package — `board:` is the fully-qualified west target), and every Zephyr
-// CDC console enumerates at the Zephyr-test default identity 2FE3:0001.
+// package — `board:` is the fully-qualified west target).
 // PWM and ADC run here: silicon routes are harvested from the SoC pinctrl
 // files (tim*/adc* nodes), so the classes lower for real (test-pins.json
 // carries the pwm/adcPin/adcPinAlt/adcMax roles).
@@ -38,23 +37,15 @@ const config: CuttlefishConfig = {
     type: 'west',
   },
 
-  // Console over the USB-C connector (CDC-ACM). Baud is irrelevant for USB
-  // but kept for the serial open call.
-  console: {
-    output: 'usb',
-    baudRate: 115200,
-  },
-
   // Flash/debug via the ST-Link probe (SWD).
   zephyr: {
     probe: 'stlink',
   },
 
   test: {
-    // Console found by USB identity — the Zephyr-test default every Zephyr
-    // CDC board shares (per-board PIDs are gone). No COM tracking; the port
-    // is re-resolved after every flash.
-    usb: { vid: '2FE3', pid: '0001' },
+    // Serial port for the test capture — the board's console UART (usart1),
+    // typically through a USB-UART dongle. Set here, with --port, or via
+    // CUTTLEFISH_PORT.
     port: '',
     baudRate: 115200,
     timeout: 30000,

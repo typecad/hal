@@ -384,11 +384,15 @@ describe("Statement Transpilation", () => {
 
     it("transpiles method call as statement", () => {
       const result = transpile(`
+        class Greeter {
+          greet(): void {}
+        }
         function test(): void {
-          console.log("hello");
+          const g = new Greeter();
+          g.greet();
         }
       `);
-      expect(result.cpp).toContain("std::cout");
+      expect(result.cpp).toContain("g->greet()");
     });
 
     it("transpiles nested function call", () => {

@@ -26,7 +26,6 @@ const config: CuttlefishConfig = {
   // the generated board in this project's boards/typecad/ directory.
   frameworkData: { buildTarget: 'typecad_f411_dev' },
   output: { outDir: './out' },
-  console: { baudRate: 115200, port: 'COM7' },
   toolchain: { type: 'west' },
   zephyr: {
     customBoard: true,

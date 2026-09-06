@@ -121,12 +121,11 @@ describe("parseConfigFile hardening", () => {
 
   it("warns on ternary values the parser cannot evaluate", () => {
     const file = writeConfig(`
-      const config = { target: 'esp32', console: { port: process.platform === 'win32' ? 'COM3' : '/dev/ttyACM0' } };
+      const config = { target: 'esp32', test: { port: process.platform === 'win32' ? 'COM3' : '/dev/ttyACM0' } };
       export default config;
     `);
-    const resolved = parseConfigFile(file);
-    expect(resolved?.console?.port).toBeUndefined();
-    expect(warnedWith("console.port")).toBe(true);
+    parseConfigFile(file);
+    expect(warnedWith("test.port")).toBe(true);
     expect(warnedWith("not an inline literal")).toBe(true);
   });
 
@@ -158,12 +157,11 @@ describe("parseConfigFile hardening", () => {
 
   it("warns accurately for null/undefined literals (not 'variables/ternaries')", () => {
     const file = writeConfig(`
-      const config = { target: 'esp32', console: { port: null } };
+      const config = { target: 'esp32', test: { port: null } };
       export default config;
     `);
-    const resolved = parseConfigFile(file);
-    expect(resolved?.console?.port).toBeUndefined();
-    expect(warnedWith("'console.port' is a null/undefined literal")).toBe(true);
+    parseConfigFile(file);
+    expect(warnedWith("'test.port' is a null/undefined literal")).toBe(true);
     expect(warnedWith("variables, ternaries")).toBe(false);
   });
 
@@ -176,13 +174,27 @@ describe("parseConfigFile hardening", () => {
     expect(() => parseConfigFile(file)).toThrow(/psram/);
   });
 
+  it("warn-and-drops a removed console section (the carry-over is gone)", () => {
+    const file = writeConfig(`
+      const config = {
+        entry: './src/main.ts',
+        target: 'esp32',
+        console: { port: 'COM3', baudRate: 115200 },
+      };
+      export default config;
+    `);
+    const resolved = parseConfigFile(file);
+    expect(resolved?.console).toBeUndefined();
+    expect(warnedWith("'console.port' is removed")).toBe(true);
+    expect(warnedWith("'console.baudRate' is removed")).toBe(true);
+  });
+
   it("emits no warnings for a clean inline-literal config", () => {
     const file = writeConfig(`
       const config = {
         entry: './src/main.ts',
         target: 'esp32',
         output: { extraFlags: ['-DX=1'] },
-        console: { port: 'COM3', baudRate: 115200 },
         native: { cxxStandard: 'c++17', libraries: ['curl'] },
       };
       export default config;
@@ -190,7 +202,6 @@ describe("parseConfigFile hardening", () => {
     const resolved = parseConfigFile(file);
     expect(resolved?.target).toBe("esp32");
     expect(resolved?.outputExtraFlags).toEqual(["-DX=1"]);
-    expect(resolved?.console?.baudRate).toBe(115200);
     expect(resolved!.frameworkConfig!.libraries).toEqual(["curl"]);
     expect(warnSpy).not.toHaveBeenCalled();
   });

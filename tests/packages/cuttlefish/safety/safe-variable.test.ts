@@ -8,7 +8,7 @@ let speed: SafeVariable<number> = 1000;
 speed.set(2000);
 let ok = false;
 const current = speed.read(&ok);
-if (ok) { console.log(current); }
+if (ok) { const _log1 = current; }
 `;
     const result = transpile(ts, { autosar: "warn" });
     expect(result.cpp).toContain("template <typename T>");
@@ -32,7 +32,7 @@ if (ok) { console.log(current); }
   it("resolves SafeVariable<number> to SafeVariable<CppType> in emitted C++", () => {
     const ts = `
 let speed: SafeVariable<number> = 1000;
-console.log(speed);
+const _log2 = speed;
 `;
     const result = transpile(ts);
     expect(result.cpp).toMatch(/SafeVariable<(int|double)/);
@@ -42,7 +42,7 @@ console.log(speed);
     const ts = `
 let speed: SafeVariable<number> = 1000;
 speed.set(2000);
-console.log(speed);
+const _log3 = speed;
 `;
     const result = transpile(ts);
     expect(result.cpp).toContain("speed.set(2000)");

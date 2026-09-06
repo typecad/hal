@@ -53,7 +53,7 @@ button.onInterrupt(GPIO.INT_EDGE_FALLING, () => { pressed = true; });
 while (true) {
   if (pressed) {
     pressed = false;
-    console.log('pressed');       // safe here — main flow
+    UART0.writeLine('pressed');       // safe here — main flow
   }
   Time.sleep(10);
 }

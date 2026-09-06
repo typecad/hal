@@ -29,7 +29,7 @@ describe("A: utility-type alias emits after the interface", () => {
         "export type Patch = Partial<Entry>;",
         "export function f(p: Patch): int32_t { return p.id; }",
         "const p: Patch = { id: 1, value: 2 };",
-        "console.log(f(p));",
+        "const _log1 = f(p);",
         "",
       ].join("\n"),
     );
@@ -55,7 +55,7 @@ describe("C: typeof on primitive types", () => {
         "export function f(x: int32_t): string {",
         "  return typeof x;",
         "}",
-        "console.log(f(42));",
+        "const _log2 = f(42);",
         "",
       ].join("\n"),
     );
@@ -71,7 +71,7 @@ describe("C: typeof on primitive types", () => {
         "export function f(s: string): string {",
         "  return typeof s;",
         "}",
-        "console.log(f('hi'));",
+        "const _log3 = f('hi');",
         "",
       ].join("\n"),
     );

@@ -3,6 +3,7 @@
 // Every pin below is one the contract wires (see board.contract.json); the
 // import would fail to compile for any pin the PCB left unconnected. Pins
 // use the STM32 datasheet port notation, which is what the schematic shows.
+// The contract wires no UART/USB, so the LED is the report channel.
 
 import { PA5, PA0, PA1 } from '@typecad/board';
 import { GPIO, Time } from '@typecad/hal';
@@ -18,17 +19,14 @@ const button = new GPIO(PA0, GPIO.INPUT);
 // for now (high/low from the sensor's comparator stage).
 const sensor = new GPIO(PA1, GPIO.INPUT);
 
-let beats: number = 0;
-
 while (true) {
-  led.toggle();
-
   if (button.get() === true) {
-    // Button pressed: report the sensor line instead of the heartbeat.
-    console.log(`sensor: ${sensor.get()}`);
+    // Button pressed: report the sensor line — LED latches ON while the
+    // comparator stage reads high, OFF while it reads low.
+    led.set(sensor.get());
   } else {
-    beats = beats + 1;
-    console.log(`beat ${beats}`);
+    // Heartbeat: the LED toggles every second.
+    led.toggle();
   }
 
   Time.sleep(1000);

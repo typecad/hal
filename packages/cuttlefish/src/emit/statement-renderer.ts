@@ -12,7 +12,7 @@ import { routeHALOp } from "./route-hal-op.js";
 import { activeNamespaceNames } from "../ir/build-ir-state.js";
 import type { Diagnostic } from "../types.js";
 import { ExpressionRenderer, transformTypeName, normalizeRawExpression } from "./expression-renderer.js";
-import { isConsoleCall, getConsoleMethod, inferObjectFieldType, collectNestedStructDefs } from "./utils/index.js";
+import { inferObjectFieldType, collectNestedStructDefs } from "./utils/index.js";
 import { escapeCppKeyword, escapeTrailingMember } from "../utils/strings.js";
 import { accessorGetterName, accessorSetterName } from "./utils/cpp-helpers.js";
 import { parseCppType, renderCppType, bareType, parsedIsPointer, parsedIsVector, parsedElementString, parsedIsPlainStructType } from "../api/shared/cpp-type-ir.js";
@@ -649,9 +649,16 @@ export class StatementRenderer {
       const rawText = statement.args.map(arg => this.renderEmitArg(arg)).join("");
       return forHeader ? rawText : `${rawText.endsWith(';') ? rawText : rawText + ';'}`;
     }
-    // Handle console.* calls specially
-    if (isConsoleCall(statement.callee)) {
-      return this.transformConsoleCall(statement.callee, statement.args, forHeader, knownVariableTypes);
+    // console.* is not a supported API — it was a TypeScript carry-over whose
+    // lowering (platform print + a config section routing it) cost more than
+    // it bought. Programs write to a serial console explicitly instead.
+    if (statement.callee.startsWith("console.")) {
+      this._diagnostics.push({
+        severity: "error",
+        code: "console-unsupported",
+        message: `console.${statement.callee.slice("console.".length)}() is not supported — write to a serial console instead: \`USB0.writeLine(...)\` (USB CDC) or \`UART0.writeLine(...)\` from the board module.`,
+      });
+      return "";
     }
     let callee = statement.callee;
     if (callee.startsWith("this.")) {
@@ -1101,32 +1108,6 @@ export class StatementRenderer {
       this.strategy.defaultNumericType(this._compliance),
       (o, n) => this.strategy.resolvePinType?.(o, n),
     );
-  }
-
-  /**
-   * Transform console.log/error/warn calls based on target platform.
-   */
-  private transformConsoleCall(
-    callee: string,
-    args: ExpressionIR[],
-    forHeader: boolean,
-    knownVariableTypes?: Map<string, KnownVariableInfo>
-  ): string {
-    const method = getConsoleMethod(callee);
-    const renderedArgs = args.map((arg) => {
-      let rendered = this.expressionRenderer.render(arg, undefined, knownVariableTypes);
-      if (arg.kind === "identifier" && knownVariableTypes) {
-        const varInfo = knownVariableTypes.get(arg.value);
-        if (varInfo && this.enumNames.has(varInfo.cppType)) {
-          rendered = `static_cast<int>(${rendered})`;
-        }
-      }
-      if (arg.kind === "property-access" && arg.isEnum) {
-        rendered = `static_cast<int>(${rendered})`;
-      }
-      return rendered;
-    }).join(" << ");
-    return this.strategy.transformConsoleCall(method, renderedArgs, forHeader);
   }
 
   private renderEmitArg(arg: ExpressionIR): string {

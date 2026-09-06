@@ -82,7 +82,7 @@ describe("A: string literal with control chars is escaped in standalone renderin
   // `escapeCppStringLiteral`, the same fix as the standalone renderer.
   it("sibling: escapes a '\\n' in a standalone ${'literal'} template part", () => {
     const cpp = transpileNativeSingle(`
-      export function main(): void { console.log(\`\${'x\\ny'}\`); }
+      export function main(): void { const _log = \`\${'x\\ny'}\`; }
     `).cpp ?? "";
     // Must be the escape sequence "\n" inside the string literal, not a raw
     // newline (which would break C++ lexing of the rest of the file).
@@ -94,7 +94,7 @@ describe("A: string literal with control chars is escaped in standalone renderin
     const cpp = transpileNativeSingle(`
       export function main(): void {
         const v: int32_t = 5;
-        console.log(\`\${'a\\tb'}\${v}\`);
+        const _log = \`\${'a\\tb'}\${v}\`;
       }
     `).cpp ?? "";
     expect(cpp).toMatch(/"a\\tb"/);

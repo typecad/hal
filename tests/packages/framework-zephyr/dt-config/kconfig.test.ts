@@ -65,13 +65,6 @@ describe('resolveKconfigFragments', () => {
     expect(off.has('CONFIG_USBD_CDC_ACM_CLASS')).toBe(false);
   });
 
-  it("forces the USB symbols on for console.output 'usb' even without usb.* ops", () => {
-    const m = resolveKconfigFragments({ consoleOutput: 'usb' }, false);
-    expect(m.get('CONFIG_USB_DEVICE_STACK_NEXT')).toBe('y');
-    expect(m.get('CONFIG_USBD_CDC_ACM_CLASS')).toBe('y');
-    expect(m.get('CONFIG_UART_LINE_CTRL')).toBe('y');
-  });
-
   it('debug adds CONFIG_DEBUG + CONFIG_DEBUG_OPTIMIZATIONS', () => {
     const m = resolveKconfigFragments({}, true);
     expect(m.get('CONFIG_DEBUG')).toBe('y');

@@ -202,7 +202,7 @@ describe("semantic gates: deterministic transpiler subset", () => {
     const file = writeFile("main.ts", `
       const counts = new Map<string, number>();
       if (counts.get("a") === undefined) {
-        console.log("missing");
+        const _log1 = "missing";
       }
     `);
     const program = buildProgram([file]);
@@ -215,7 +215,7 @@ describe("semantic gates: deterministic transpiler subset", () => {
       interface User { name?: string; }
       const user: User = {};
       if (user.name === undefined) {
-        console.log("missing");
+        const _log2 = "missing";
       }
     `);
     const program = buildProgram([file]);
@@ -299,7 +299,9 @@ describe("semantic gates: deterministic transpiler subset", () => {
     const file = writeFile("main.ts", `
       const counts = new Map<string, number>();
       counts.forEach((value, key) => {
-        console.log(key, value);
+        const k: string = key;
+        const v: number = value;
+        void k; void v;
       });
     `);
     const program = buildProgram([file]);

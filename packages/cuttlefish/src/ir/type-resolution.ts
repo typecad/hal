@@ -99,7 +99,8 @@ const OWNERSHIP_WRAPPER_TYPE_NAMES = new Set<string>([
 
 /** Safety wrapper types: like ownership wrappers (phantom TS types that carry
  *  a type parameter), but instead of stripping the wrapper, the C++ keeps it
- *  as a template instantiation: SafeVariable<number> → SafeVariable<int32_t>.
+ *  as a template instantiation: SafeVariable<number> → SafeVariable<double>,
+ *  SafeInt<number> → SafeInt<int32_t> (integer-only by contract).
  *  The C++ template definition is provided by the safety polyfill. */
 const SAFE_WRAPPER_TYPE_NAMES = new Set<string>([
   "SafeVariable",
@@ -231,10 +232,20 @@ export function typeNodeToCppType(node: ts.TypeNode | undefined, typeAliases?: M
     // SafeVariable<T> is a safety wrapper: unlike ownership wrappers (which
     // strip the wrapper name entirely), SafeVariable keeps the wrapper name
     // in the C++ type because the polyfill provides a template definition.
-    // SafeVariable<number> → SafeVariable<int> (the template is emitted by
-    // the safety polyfill's helperStructs).
+    // SafeVariable<number> → SafeVariable<double> (the keyword's general
+    // mapping; the polyfill ships float/double specializations).
     if (SAFE_WRAPPER_TYPE_NAMES.has(wrapperName)) {
       const innerTypeNode = node.typeArguments?.[0];
+      // SafeInt is signed-integer-only by contract — its polyfill carries a
+      // static_assert rejecting floating-point T. The TS `number` keyword
+      // (and SafeInt's implicit `T = number` default) therefore resolves to
+      // int32_t, NOT the general number→double mapping. An explicit float /
+      // double annotation still passes through so the static_assert fires as
+      // designed.
+      if (wrapperName === "SafeInt" &&
+          (innerTypeNode === undefined || innerTypeNode.kind === ts.SyntaxKind.NumberKeyword)) {
+        return "SafeInt<int32_t>" as CppTypeHint;
+      }
       const innerCppType = typeNodeToCppType(innerTypeNode, typeAliases, typeParametersInScope);
       return `${wrapperName}<${innerCppType}>` as CppTypeHint;
     }

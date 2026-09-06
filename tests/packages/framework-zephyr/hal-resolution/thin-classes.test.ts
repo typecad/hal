@@ -238,7 +238,7 @@ describe('thin classes end-to-end (esp32s3 target)', () => {
     const result = transpileZephyrStrategy(`
       import { GPIO } from '@typecad/hal';
       const button = new GPIO(0, GPIO.INPUT | GPIO.PULL_UP);
-      if (button.get()) { console.log('pressed'); }
+      if (button.get()) { const _log1 = 'pressed'; }
     `);
     expectCppContains(result, [
       'static bool __tc_gpio_cfg_sw0_done',

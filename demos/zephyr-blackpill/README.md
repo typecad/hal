@@ -2,35 +2,25 @@
 
 STM32 peripheral showcase on a **WeAct Studio Black Pill V2.0**
 (STM32F411CEU6) using `@typecad/framework-zephyr` — the first STM32
-Zephyr target. The demo drives the onboard LED (PC13) as a one-second
-heartbeat, reports uptime ticks over the USB CDC console (`USB0`), and
-uses the KEY button (PA0) as a falling-edge interrupt that writes a line
-to the same console.
+Zephyr target. The demo reads the ADC channel on PA0 (ADC1_IN1) and
+reports the reading in millivolts over the USB CDC console (`USB0`)
+once a second.
 
 ## What it exercises
 
 | Peripheral | Pin | How it lowers |
 |---|---|---|
-| Onboard LED | PC13 | `led0` DT spec — `GPIO_ACTIVE_LOW` honored by `gpio_pin_set_dt` |
-| KEY button | PA0 | `sw0` DT spec (gpio-keys, active-low + pull-up); interrupt via `GPIO.INT_EDGE_FALLING` |
-| USB CDC console | — | `USBConsole` (`USB0`) — board-gated: the board package must declare USB |
+| ADC channel | PA0 | `ADC` (`ADC1_IN1`) — `read()` raw counts, `readMillivolts()` scaled |
+| USB CDC console | — | `USBConsole` (`USB0`) — board-gated: the board must declare a USB device controller |
 
 ```ts
-import { LED, BUTTON, USB0 } from '@typecad/board';
-import { GPIO, Time } from '@typecad/hal';
+import { USB0, Time, LED, PA0, ADC } from '@typecad/board';
 
-const led = new GPIO(LED, GPIO.OUTPUT);
-const button = new GPIO(BUTTON, GPIO.INPUT | GPIO.PULL_UP);
-
+const adc = new ADC(PA0)
 USB0.open();
 
-button.onInterrupt(GPIO.INT_EDGE_FALLING, () => {
-  USB0.writeLine(`button pressed!`)
-});
-
 while (true) {
-  USB0.writeLine(`ticks: ${Time.now()}`)
-  led.toggle();
+  USB0.writeLine(`adc: ${adc.readMillivolts()}`)
 
   Time.sleep(1000);
 }
@@ -63,7 +53,7 @@ Two supported paths, selected by the `zephyr` section in `cuttlefish.config.ts`:
 `zephyr: { probe: 'stlink' }` — `stlink` is one of the board's named probe
 methods, and it serves BOTH flashing and debugging, resolving to the openocd
 runner plus the args the method needs (the `reset_config none` quirk for
-unwired SRST lives in the board package, not here). openocd ships with the
+unwired SRST lives in the board's generated data, not here). openocd ships with the
 Zephyr SDK (the framework puts it on the spawned west's PATH automatically),
 so wiring SWDIO/SWCLK/GND/3V3 to an ST-Link and running `npm run upload`
 just works — no BOOT0 dance, and the target is reset to run after flashing.

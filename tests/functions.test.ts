@@ -239,7 +239,7 @@ describe("Function Transpilation", () => {
           await printOnce(1);
         }
         function printOnce(x: int): void {
-          console.log(x);
+          const _log1 = x;
         }
       `);
 
@@ -394,7 +394,7 @@ describe("Destructured Function Parameters", () => {
     it("transpiles function with object destructured parameter", () => {
       const result = transpile(`
         function formatReading({ value, unit }: { value: int; unit: string }): void {
-          console.log(value);
+          const _log2 = value;
         }
       `);
       const cpp = normalizeCpp(result.cpp);
@@ -406,7 +406,7 @@ describe("Destructured Function Parameters", () => {
     it("transpiles function with renamed object destructured parameter", () => {
       const result = transpile(`
         function formatReading({ value: v, unit }: { value: int; unit: string }): void {
-          console.log(v);
+          const _log3 = v;
         }
       `);
       const cpp = normalizeCpp(result.cpp);
@@ -418,7 +418,7 @@ describe("Destructured Function Parameters", () => {
     it("transpiles function with nested object destructuring", () => {
       const result = transpile(`
         function process({ config: { id, mode } }: { config: { id: int; mode: string } }): void {
-          console.log(id);
+          const _log4 = id;
         }
       `);
       const cpp = normalizeCpp(result.cpp);
@@ -432,7 +432,7 @@ describe("Destructured Function Parameters", () => {
     it("transpiles function with array destructured parameter", () => {
       const result = transpile(`
         function formatStat([name, value]: [string, int]): void {
-          console.log(name);
+          const _log5 = name;
         }
       `);
       const cpp = normalizeCpp(result.cpp);
@@ -444,7 +444,7 @@ describe("Destructured Function Parameters", () => {
     it("transpiles function with multiple array destructuring elements", () => {
       const result = transpile(`
         function process([a, b, c]: [int, int, int]): void {
-          console.log(a + b + c);
+          const _log6 = a + b + c;
         }
       `);
       const cpp = normalizeCpp(result.cpp);
@@ -459,7 +459,7 @@ describe("Destructured Function Parameters", () => {
     it("transpiles function with destructured and regular parameters", () => {
       const result = transpile(`
         function formatReading({ value }: { value: int }, precision: int = 2): void {
-          console.log(value);
+          const _log7 = value;
         }
       `);
       const cpp = normalizeCpp(result.cpp);

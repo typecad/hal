@@ -1,12 +1,13 @@
 // 05 — network scanner: one blocking scan, results through the handle.
 import { WiFi, Time } from '@typecad/hal';
+import { UART0 } from '@typecad/board';
 
 const wifi = new WiFi("any");
 const scan = wifi.scan();
 
-console.log(`found ${scan.count()} networks`);
+UART0.writeLine(`found ${scan.count()} networks`);
 for (let i = 0; i < scan.count(); i++) {
-  console.log(`${scan.ssid(i)}  ${scan.rssi(i)} dBm  ch${scan.channel(i)}  enc=${scan.security(i)}`);
+  UART0.writeLine(`${scan.ssid(i)}  ${scan.rssi(i)} dBm  ch${scan.channel(i)}  enc=${scan.security(i)}`);
 }
 
 while (true) {

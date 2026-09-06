@@ -105,7 +105,7 @@ describe("B: free function called from a class method body is visible in the hea
       }
       export function main(): void {
         const p = new Processor();
-        console.log(p.process(42));
+        const _log = p.process(42);
       }
     `);
     const header = result.header ?? "";
@@ -143,7 +143,7 @@ describe("B: free function called from a class method body is visible in the hea
   it("keeps a free function `static` when it is NOT called from any class method", () => {
     const result = transpileNativeSplit(`
       function internal(x: number): number { return x; }
-      export function main(): void { console.log(internal(3)); }
+      export function main(): void { const _log = internal(3); }
     `);
     const cpp = result.cpp ?? "";
     // Not referenced from a class body → stays static + no header prototype.
@@ -163,7 +163,7 @@ describe("C: struct fields interpolated in a template literal use correct snprin
         private accounts: Account[] = [];
         public show(): void {
           for (const a of this.accounts) {
-            console.log(\`#\${a.id} \${a.name}\`);
+            const _log = \`#\${a.id} \${a.name}\`;
           }
         }
       }
@@ -194,7 +194,7 @@ describe("C: struct fields interpolated in a template literal use correct snprin
         }
         public show(): void {
           for (const a of this.accounts) {
-            console.log(\`#\${a.id} \${a.name} \${a.cents}\`);
+            const _log = \`#\${a.id} \${a.name} \${a.cents}\`;
           }
         }
       }

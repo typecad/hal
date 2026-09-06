@@ -12,6 +12,7 @@ import type { BreakpointMap, CapturedVariable, DebugCppType, RichBreakpoint } fr
 import { getBreakpointsForFile } from './breakpoint-loader.js';
 import { getLoadedFramework, hasLoadedFramework } from '../framework-registry.js';
 import { GenericStrategy } from '../platform/generic-strategy.js';
+import type { PlatformStrategy } from '../api/shared/platform-strategy.js';
 
 type LogMessagePart = { type: 'text' | 'variable'; value: string };
 
@@ -21,12 +22,23 @@ type ScopeBearingFunction =
   | ts.ArrowFunction
   | ts.MethodDeclaration;
 
-function getDebugStrategy() {
+function getDebugStrategy(explicit?: PlatformStrategy) {
+  // The strategy that will EMIT this file decides the debug dialect — its
+  // codegen must match the runtime the emitted code links against. The
+  // global loaded-framework registry is only a fallback for callers that
+  // don't know their strategy (picking it blind once emitted Zephyr printk
+  // code into a native build).
+  if (explicit) {
+    if (explicit.generateDebugInitCode) return explicit;
+    // The emitting strategy has no debug dialect (e.g. NativeStrategy) —
+    // its embedded fallback is the generic printf codegen.
+    return new GenericStrategy();
+  }
   if (hasLoadedFramework()) {
     const { strategy } = getLoadedFramework();
     if (strategy.generateDebugInitCode) return strategy;
   }
-  // Fall back to the generic strategy's std::cout-based debug output
+  // Fall back to the generic strategy's printf-based debug output
   return new GenericStrategy();
 }
 
@@ -41,8 +53,12 @@ export function preprocess(options: {
   breakpoints: BreakpointMap;
   /** The source text to transform */
   source: string;
+  /** The platform strategy that will emit this file — its debug dialect
+   *  (generateDebug*Code) is used. Omit when unknown; the global loaded
+   *  framework is consulted, then the generic printf codegen. */
+  strategy?: PlatformStrategy;
 }): string {
-  const { fileName, breakpoints, source } = options;
+  const { fileName, breakpoints, source, strategy: emittingStrategy } = options;
   const breakpointLines = getBreakpointsForFile(breakpoints, fileName);
 
   if (breakpointLines.length === 0) {
@@ -62,7 +78,7 @@ export function preprocess(options: {
 
   // Collect variables in scope at each breakpoint
   const scopeAnalyzer = new ScopeAnalyzer(sf);
-  const debugStrategy = getDebugStrategy();
+  const debugStrategy = getDebugStrategy(emittingStrategy);
 
   // Per-file breakpoint ID counter. Each HALTING breakpoint gets a stable
   // integer ID so the codegen can emit a per-breakpoint disable flag (skipped
@@ -256,7 +272,13 @@ class ScopeAnalyzer {
     // so a local declared on line N is not yet in scope at line N. Params and
     // enclosing-scope vars are in scope from the function's first line.
     const recordFunction = (node: ScopeBearingFunction, currentVars: CapturedVariable[]): void => {
-      const startLine = this.sf.getLineAndCharacterOfPosition(node.getStart()).line;
+      // Scope starts at the BODY, not the signature: a breakpoint on the
+      // signature line is injected BEFORE the function exists (top-level
+      // position), so params are not in scope there — treating it as
+      // in-function dumped undeclared identifiers into main().
+      const startLine = this.sf.getLineAndCharacterOfPosition(
+        (node.body ?? node).getStart(),
+      ).line;
       const endLine = node.body
         ? this.sf.getLineAndCharacterOfPosition(node.body.getEnd()).line
         : startLine;
@@ -289,9 +311,17 @@ class ScopeAnalyzer {
       }
     };
 
-    // Find top-level functions, then recurse into their bodies for nested ones.
+    // Find top-level functions, then recurse into their bodies for nested
+    // ones. Top-level functions start from an EMPTY enclosing scope: the
+    // module-scope variables live in the enclosing scope chain only for
+    // NESTED functions. Top-level statements lower into main() locals, so a
+    // module-scope name is not visible inside a top-level function — dumping
+    // one there emitted references to undeclared identifiers (a breakpoint in
+    // any function flagged every top-level const). A breakpoint placed on a
+    // top-level statement still sees them via getVariablesInScope's top-level
+    // path, filtered by declaration order.
     for (const stmt of this.sf.statements) {
-      this.findAndRecordFunctions(stmt, topLevelVars, recordFunction);
+      this.findAndRecordFunctions(stmt, [], recordFunction);
     }
   }
 

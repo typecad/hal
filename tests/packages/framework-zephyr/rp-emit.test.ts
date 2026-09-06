@@ -76,7 +76,7 @@ const GP26 = 26;
  GPIO.OUTPUT);
       const sense = new ADC(26);
       led.toggle();
-      console.log('v' + sense.read());
+      const report: string = 'v' + sense.read();
     `, rp2350);
 
     expect(result.diagnostics.some((d) => d.code === 'pin-capability-mismatch')).toBe(false);

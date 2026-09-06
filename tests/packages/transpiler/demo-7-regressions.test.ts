@@ -218,7 +218,7 @@ describe("I: Object.* on map-typed member access", () => {
         "  }",
         "}",
         "const g = new Grid();",
-        "console.log(g.keysLen());",
+        "const _log1 = g.keysLen();",
         "",
       ].join("\n"),
     );

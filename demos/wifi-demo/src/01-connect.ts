@@ -3,13 +3,14 @@ const WIFI_SSID = "HomeNet";
 const WIFI_PASSWORD = "hunter22";
 
 import { WiFi } from '@typecad/hal';
+import { UART0 } from '@typecad/board';
 
 const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD, timeoutMs: 15000 });
 
 if (!wifi.join()) {
-  console.error("join failed");
+  UART0.writeLine("join failed");
 } else {
-  console.log(wifi.ip());
+  UART0.writeLine(wifi.ip());
 }
 
 while (true) { /* idle */ }

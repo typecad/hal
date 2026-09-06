@@ -182,8 +182,6 @@ export function resolveChipFromBoard(
     ? { controller: matrixController, channelCount: matrixChannelCount, pins: matrixPins }
     : undefined;
 
-  // Human text for the console.log destination build note.
-  const consoleDescription = bc.get('zephyr.consoleDescription') as string | undefined;
   const adcResolution = bc.get('zephyr.adc.resolution') as number | undefined;
   const adcVref = bc.get('zephyr.adc.vrefMv') as number | undefined;
   const adcGain = bc.get('zephyr.adc.gain') as string | undefined;
@@ -389,11 +387,6 @@ export function resolveChipFromBoard(
           },
         }
       : {}),
-    ...(consoleDescription
-      ? { consoleDescription }
-      : bc.get('zephyr.console.description')
-        ? { consoleDescription: bc.get('zephyr.console.description') as string }
-        : {}),
     ...(wifiSupported ? { wifi: { supported: true as const } } : {}),
     ...(probeMethods.length > 0 ? { probeMethods } : {}),
     ...(customBoard ? { customBoard } : {}),

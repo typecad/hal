@@ -242,11 +242,11 @@ describe('probeMethodsForBoard (create-time catalog from the board data pack)', 
 
 // ---------------------------------------------------------------------------
 // Wizard spec plumbing — the probe/port/baud choices must land in the
-// scaffolded config (console.port, test.port, zephyr.probe).
+// scaffolded config (test.port, zephyr.probe).
 // ---------------------------------------------------------------------------
 
 describe('generateProjectConfig — wizard choices ride the config', () => {
-  it('emits zephyr.probe and the chosen serial port in both port fields', async () => {
+  it('emits zephyr.probe and the chosen serial port in test.port', async () => {
     const { generateProjectConfig } = await import('../../../packages/cuttlefish/src/create/templates');
     const cfg = generateProjectConfig({
       projectName: 'p',
@@ -265,9 +265,27 @@ describe('generateProjectConfig — wizard choices ride the config', () => {
     });
     expect(cfg).toContain("probe: 'stlink'");
     expect(cfg).toContain("port: 'COM10'");
-    // Both console.port and test.port carry the choice — no COM4 guesses.
-    expect(cfg.match(/port: 'COM10'/g)).toHaveLength(2);
+    // No COM4 guesses when the wizard captured the port.
     expect(cfg).not.toContain("COM4'");
+  });
+
+  it('emits a non-default baud into test.baudRate', async () => {
+    const { generateProjectConfig } = await import('../../../packages/cuttlefish/src/create/templates');
+    const cfg = generateProjectConfig({
+      projectName: 'p',
+      targetId: 'xiao_ble',
+      targetDisplayName: 'XIAO BLE',
+      isNative: false,
+      frameworkPackage: '@typecad/framework-zephyr',
+      framework: 'zephyr',
+      board: 'xiao_ble/nrf52840',
+      buildTarget: 'xiao_ble/nrf52840',
+      baudRate: 9600,
+      includeStarter: true,
+    });
+    expect(cfg).toContain('baudRate: 9600');
+    // The removed console section must not reappear.
+    expect(cfg).not.toContain('console:');
   });
 
   it('falls back to the platform hint when no port was chosen', async () => {

@@ -19,17 +19,6 @@ const OutputConfig = z.object({
   extraFlags: z.array(z.string()).optional(),
 }).strict();
 
-/** Schema for the `console` section. */
-const ConsoleConfig = z.object({
-  baudRate: z.number().int().positive().optional(),
-  port: z.string().optional(),
-  /** Where console.log output goes. 'default' (omitted) is the board's own
-   *  console (its devicetree `zephyr,console` node — often a UART on
-   *  dedicated pins). 'usb' routes it to the USB CDC serial port instead,
-   *  on boards that expose one. */
-  output: z.enum(['default', 'usb']).optional(),
-}).strict();
-
 /** Schema for the `test` section. */
 const TestConfig = z.object({
   include: z.array(z.string()).optional(),
@@ -83,7 +72,6 @@ export const CuttlefishConfigSchema = z.object({
   exclude: z.array(z.string()).optional(),
   test: TestConfig.optional(),
   toolchain: ToolchainConfig.optional(),
-  console: ConsoleConfig.optional(),
   native: z.record(z.string(), z.unknown()).optional(),
   /** Display profile config (driver, wiring, touch) — loosely typed here so
    *  the loader's presence/shape extraction round-trips through validation. */

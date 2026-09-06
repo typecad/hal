@@ -134,9 +134,9 @@ describe('UART ring + awaitable Time.sleep end-to-end (esp32s3 target)', () => {
       import { UART } from '@typecad/hal';
 
       const gps = new UART('UART0', { baud: 9600, rxBufferBytes: 128 });
-      console.log(gps.available());
-      console.log(gps.peek());
-      console.log(gps.read());
+      const a: number = gps.available();
+      const p: number = gps.peek();
+      const r: number = gps.read();
     `);
 
     expectCppContains(result, [
@@ -179,8 +179,8 @@ describe('UART ring + awaitable Time.sleep end-to-end (esp32s3 target)', () => {
         }
       }
       void waitByte();
-      console.log(gps.read());
-      console.log(gps.peek());
+      const r: number = gps.read();
+      const p: number = gps.peek();
     `);
 
     // Every ring reference — the ISR buffer, the peek/read modulo, the

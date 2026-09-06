@@ -1141,6 +1141,26 @@ export function expressionToIR(expr: ts.Expression, sourceText: string, diagnost
   }
 
   if (ts.isCallExpression(expr)) {
+    // ---- console.* is not a supported API (value position) ----
+    // Statement-position console calls are rejected in callToStatement; this
+    // covers value-position uses (e.g. `const line = console.readLine()`).
+    // Same rationale: the TypeScript console carry-over is gone — programs
+    // write to a serial console explicitly via the board module.
+    if (
+      ts.isPropertyAccessExpression(expr.expression) &&
+      ts.isIdentifier(expr.expression.expression) &&
+      expr.expression.expression.text === "console"
+    ) {
+      diagnostics.push(makeDiagnostic(
+        sourceText,
+        expr.pos,
+        `console.${expr.expression.name.text}() is not supported — write to a serial console instead: \`USB0.writeLine(...)\` (USB CDC) or \`UART0.writeLine(...)\` from the board module.`,
+        "error",
+        "console-unsupported",
+      ));
+      return { kind: "raw", value: "0 /* console.* is not supported */" };
+    }
+
     // ---- safe.read/safe.write chained with .ok/.fail/.fault/.always ----
     // Method chains like `safe.read(pin).ok(r => {...}).fail(r => {...})` cannot
     // use the generic method-call builder because it flattens the receiver into

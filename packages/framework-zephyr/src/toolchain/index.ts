@@ -419,6 +419,23 @@ function openocdProbeSession(
   const probeId = zc?.probe as string | undefined;
   const method = chip.probeMethods?.find((m) => m.id === probeId);
   const cfgLines = method?.debugCfg;
+  // Session reset policy: `reset_config none`. The session's resets are
+  // core-domain by design — vector-catch halt before the flash write,
+  // SYSRESETREQ to boot — so they must not depend on the SRST pin. Boards
+  // like the WeAct Black Pill don't break NRST out at all: under the board
+  // cfg's `srst_only`, every `reset` asserts a pin that reaches nothing
+  // (the target never resets, `reset halt` catches the core mid-app in
+  // dirty state and the flash algorithm times out) while the probe's
+  // floating SRST sense reports phantom "external reset detected" events
+  // that leave the session's halt state inconsistent. Method-declared west
+  // quirks (`--cmd-pre-init=…`) are appended after and override the
+  // default for boards whose facts carry one.
+  const preInit = [
+    'reset_config none',
+    ...(method?.args ?? [])
+      .filter((a) => a.startsWith('--cmd-pre-init='))
+      .map((a) => a.slice('--cmd-pre-init='.length)),
+  ];
 
   const install = discoverWest();
   const sdkRoot = process.env.ZEPHYR_SDK_INSTALL_DIR || install?.sdkInstallDir;
@@ -465,6 +482,9 @@ function openocdProbeSession(
     }
     const res = spawnSync(openocdExe, [
       '-s', searchDir, ...cfgArgs!,
+      // Pre-init TCL AFTER the cfg (overrides its reset_config) and BEFORE
+      // init — the same position west gives --cmd-pre-init.
+      ...preInit.map((c) => ['-c', c] as [string, string]).flat(),
       '-c', 'init',
       ...commands.map((c) => ['-c', c]).flat(),
       '-c', 'shutdown',
@@ -477,6 +497,21 @@ function openocdProbeSession(
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Whether a flash runner carries the upload over a serial port. Runner-gated,
+ * never board-name-gated: esptool and bossac are the only runners
+ * `buildFlashArgs` forwards `--port` to, so they are the only ones that
+ * cannot flash without one. Probe runners (openocd, jlink) and USB flows
+ * (dfu-util, uf2 mass storage) need no port — a missing `--port` must not
+ * block them.
+ *
+ * Exported (pure) so the port-requirement contract is unit-testable without
+ * spawning west.
+ */
+export function uploadRequiresPort(runner: string | undefined): boolean {
+  return runner === 'esptool' || runner === 'bossac';
 }
 
 export function buildFlashArgs(
@@ -745,11 +780,7 @@ export const Toolchain = {
     const isGdbDebug = o.debug === true && debugMode === 'gdb';
     const zc = o.zephyrConfig as Record<string, unknown> | undefined;
     const userKconfig = zc?.kconfig as Record<string, string> | undefined;
-    // console.output from cuttlefish.config.ts's console section: 'usb' routes
-    // console.log (printk) onto the CDC serial port.
-    const cc = o.consoleConfig as { output?: 'default' | 'usb' } | undefined;
-    const consoleOutput = cc?.output === 'usb' ? 'usb' as const : undefined;
-    const configChanged = scaffoldZephyrProject(projectRoot, isGdbDebug, userKconfig, o.psram, consoleOutput);
+    const configChanged = scaffoldZephyrProject(projectRoot, isGdbDebug, userKconfig, o.psram);
 
     // Regenerate the DT overlay for the ACTUAL target board. prepare() writes
     // it for the default board (the real target is unknown until compile), so
@@ -858,21 +889,6 @@ export const Toolchain = {
         touchWiring = { controller: 'xpt2046', ...(touchWiring ?? {}) };
       }
       const overlayDiagnostics: OverlayDiagnostic[] = [];
-      if (consoleOutput === 'usb' && !chip.usb) {
-        overlayDiagnostics.push({
-          severity: 'warning',
-          message: `console.output: 'usb' is set, but this board's chip data declares no USB device (zephyr.usb) — console.log stays on the board's default console.`,
-        });
-      }
-      // Console destination note: console.log's target is per-board and
-      // invisible in the code — state it once per compile so it is never a
-      // mystery where the output went (printk is what console.log lowers to).
-      if (uses('printk(')) {
-        const dest = consoleOutput === 'usb' && chip.usb
-          ? 'USB CDC serial (the USB connector)'
-          : (chip.consoleDescription ?? "the board's default console (its devicetree zephyr,console node)");
-        console.log(`i console.log -> printk -> ${dest} on this board`);
-      }
       const sensorParts = scanSensorParts(src);
       const spiTargetParts = scanSpiTargets(src);
       const overlay = generateOverlay(chip, {
@@ -906,7 +922,6 @@ export const Toolchain = {
         usesTouch: uses('ft6336u') || uses('touch_') || usesXpt,
         touchController: usesXpt ? 'xpt2046' : 'ft6336u',
         psram: o.psram,
-        consoleOutput,
       }, displayProfile, wiring, touchWiring, overlayDiagnostics);
       for (const d of overlayDiagnostics) {
         console.warn(`overlay: ${d.message}`);
@@ -1096,6 +1111,15 @@ export const Toolchain = {
     // forwarding and the bossac touch below — board.cmake still resolves
     // the default runner itself.
     const flashRunner = probe.runner ?? chip.probeMethods?.[0]?.runner;
+    // Serial-port runners cannot flash without a port; every other runner
+    // (probe or USB) proceeds — whether a port is required is the runner's
+    // call, not the CLI's blanket gate.
+    if (uploadRequiresPort(flashRunner) && !flashPort) {
+      return {
+        success: false,
+        output: `-- upload requires a port for ${flashRunner} flashing. Set --port <port> on the command line (or the CUTTLEFISH_PORT env var).`,
+      };
+    }
     if (flashRunner === 'bossac' && flashPort && chip.usb?.touchReset) {
       const touch = bossacTouchReset(flashPort, chip.usb.touchReset);
       flashNotes.push(`-- ${touch.note}`);
@@ -1135,9 +1159,14 @@ export const Toolchain = {
           // Boot the flashed app. Cortex-M: a direct SYSRESETREQ via AIRCR —
           // pin-independent, always reaches the core, and clears PRIMASK
           // (so the masked algorithm leaves nothing behind). Other cores:
-          // openocd's generic reset run.
+          // openocd's generic reset run. A halted core STAYS halted across
+          // a core-initiated reset (debug halt state survives — that is how
+          // reset halt works), so resume it; on a running core resume errors
+          // and the catch swallows it.
           'if {[catch {$_tgt cortex_m maskisr on}] == 0} { $_tgt cortex_m maskisr off; mww 0xE000ED0C 0x05FA0004 } else { reset run }',
-          'sleep 300',
+          'sleep 100',
+          'catch { resume }',
+          'sleep 200',
         ]);
         if (flashed) {
           westFallback = false;
@@ -1160,6 +1189,22 @@ export const Toolchain = {
       const fstderr = typeof result.stderr === 'string' ? result.stderr : (result.stderr?.toString() ?? '');
       raw = fstdout + fstderr;
       ok = classifyUploadResult(probe.runner, result.status, raw);
+      // A SUCCESSFUL west openocd flash can still leave the core HALTED:
+      // west's trailing `reset run` does not reach a core behind an unwired
+      // SRST, and the user's only recourse is the NRST button. Boot it from
+      // a probe session instead — one core reset (a halted core re-halts at
+      // the reset vector; a running core restarts the just-flashed app)
+      // plus a resume.
+      if (ok && probe.runner === 'openocd') {
+        const booted = openocdProbeSession(buildDir, zc, chip, [
+          'set _tgt [lindex [target names] 0]',
+          'if {[catch {$_tgt cortex_m maskisr on}] == 0} { $_tgt cortex_m maskisr off; mww 0xE000ED0C 0x05FA0004 } else { reset run }',
+          'sleep 100',
+          'catch { resume }',
+          'sleep 200',
+        ]);
+        if (booted) flashNotes.push('-- probe boot ok: SYSRESETREQ → resume');
+      }
       // Fallback-path recovery: a failed west flash leaves the core in
       // lockup; a direct SYSRESETREQ clears it so the caller's retry (or a
       // later flash) starts from a clean chip.
@@ -1196,7 +1241,7 @@ export const Toolchain = {
     }
     // ESP32 USB-CDC console runs at 115200 (the Zephyr ESP32 board default).
     // The CLI's generic default of 9600 is wrong for this target; honor an
-    // explicit --baud / config.console.baudRate when given, else 115200.
+    // explicit --baud when given, else 115200.
     const baud = o.baud ?? 115200;
     const install = discoverWest();
     const py = install?.pythonExecutable ?? process.env.PYTHON ?? 'python';

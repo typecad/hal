@@ -657,7 +657,7 @@ export async function runIntegrationWizard(
     console.log();
     console.log(`     ${chalk.cyan("npx @typecad/cuttlefish build --compile")}`);
     console.log();
-    console.log(`  ${firstStep + 2}. Flash it (set console.port in the config, or pass --port):`);
+    console.log(`  ${firstStep + 2}. Flash it (pass --port, or set CUTTLEFISH_PORT):`);
     console.log();
     console.log(`     ${chalk.cyan("npx @typecad/cuttlefish build --compile --upload")}`);
     console.log();

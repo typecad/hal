@@ -145,7 +145,7 @@ describe("A: top-level var reached via raw-callee array index is kept", () => {
           return parts.join(' ');
         }
       }
-      export function main(): void { console.log(NumberWords.spell(1)); }
+      export function main(): void { const _log = NumberWords.spell(1); }
     `, "split");
     const header = result.header ?? "";
     // The extern declaration must appear in the header so the inline method
@@ -164,7 +164,7 @@ describe("A: top-level var reached via raw-callee array index is kept", () => {
       class C {
         static pick(n: int32_t): string { const p: string[] = []; p.push(ONES_TEENS[n]); return p.join(','); }
       }
-      export function main(): void { console.log(C.pick(2)); }
+      export function main(): void { const _log = C.pick(2); }
     `);
     expect(result.cpp).toMatch(/ONES_TEENS/);
     // The array's contents must survive (it must not be replaced by a stub).
@@ -186,7 +186,7 @@ describe("A: top-level var reached via raw-callee array index is kept", () => {
       export function main(): void {
         const m: Map<string, int32_t> = new Map();
         m.set('x', 1);
-        console.log(C.go(m, 'x'));
+        const _log = C.go(m, 'x');
       }
     `);
     expect(result.cpp).toMatch(/LOOKUP/);
@@ -202,7 +202,7 @@ describe("A: top-level var reached via raw-callee array index is kept", () => {
           const local: int32_t[] = [1, 2, 3];
           const sink: int32_t[] = [];
           sink.push(local[0]);
-          console.log(sink.length);
+          const _log = sink.length;
         }
       }
       export function main(): void { C.go(); }
@@ -226,7 +226,7 @@ describe("B: .join(sep) lowers to __tc_join on a vector receiver", () => {
         parts.push('a');
         parts.push('b');
         const s: string = parts.join(' ');
-        console.log(s);
+        const _log = s;
       }
     `).cpp ?? "";
     expect(cpp).toMatch(/__tc_join\(/);
@@ -240,7 +240,7 @@ describe("B: .join(sep) lowers to __tc_join on a vector receiver", () => {
     // same way (it always has; this asserts the new entry doesn't break it).
     const cpp = transpileNativeSingle(`
       const WORDS: string[] = ['hello', 'world'];
-      export function main(): void { const s: string = WORDS.join('-'); console.log(s); }
+      export function main(): void { const s: string = WORDS.join('-'); const _log = s; }
     `).cpp ?? "";
     expect(cpp).toMatch(/__tc_join\(/);
     expect(cpp).not.toMatch(/WORDS\.join\(/);
@@ -252,7 +252,7 @@ describe("B: .join(sep) lowers to __tc_join on a vector receiver", () => {
     // receiver to deduce its element type (the demo #29 Finding D mechanism,
     // shared via renderArrayMethodReceiver).
     const cpp = transpileNativeSingle(`
-      export function main(): void { const s: string = ['a', 'b'].join('-'); console.log(s); }
+      export function main(): void { const s: string = ['a', 'b'].join('-'); const _log = s; }
     `).cpp ?? "";
     expect(cpp).toMatch(/__tc_join\(std::vector<std::string>\{[^}]*\},\s*"-"\)/);
   });
@@ -270,7 +270,7 @@ describe("B: .join(sep) lowers to __tc_join on a vector receiver", () => {
     // polyfill registration path (POLYFILL_HELPER_MAP['.join(']) was
     // unchanged by the fix and must keep firing.
     const cpp = transpileNativeSingle(`
-      export function main(): void { const s: string = ['a'].join(','); console.log(s); }
+      export function main(): void { const s: string = ['a'].join(','); const _log = s; }
     `).cpp ?? "";
     expect(cpp).toMatch(/__tc_join\(/);
     // The template definition must be emitted too (otherwise g++ link error).
@@ -292,7 +292,7 @@ describe("C: for-of over a module-scope array resolves the loop variable type", 
       const ROMAN: string[] = ['I', 'II', 'III'];
       export function main(): void {
         for (const r of ROMAN) {
-          console.log(\`r=\${r}\`);
+          const _log = \`r=\${r}\`;
         }
       }
     `).cpp ?? "";
@@ -312,7 +312,7 @@ describe("C: for-of over a module-scope array resolves the loop variable type", 
       const NUMS: int32_t[] = [10, 20, 30];
       export function main(): void {
         for (const n of NUMS) {
-          console.log(\`n=\${n}\`);
+          const _log = \`n=\${n}\`;
         }
       }
     `).cpp ?? "";
@@ -331,7 +331,7 @@ describe("C: for-of over a module-scope array resolves the loop variable type", 
       const WORDS: string[] = ['hi', 'there'];
       export function main(): void {
         for (const w of WORDS) {
-          console.log(\`w=\${w}\`);
+          const _log = \`w=\${w}\`;
         }
       }
     `).cpp;
@@ -345,7 +345,7 @@ describe("C: for-of over a module-scope array resolves the loop variable type", 
       export function main(): void {
         const xs: int32_t[] = [1, 2, 3];
         for (const x of xs) {
-          console.log(\`x=\${x}\`);
+          const _log = \`x=\${x}\`;
         }
       }
     `).cpp ?? "";
@@ -383,9 +383,9 @@ describe("smoke: demo #31 idiomatic shape compiles end-to-end", () => {
 
       export function main(): void {
         for (const r of SAMPLE) {
-          console.log(\`sample=\${r} len=\${r.length}\`);
+          const _log = \`sample=\${r} len=\${r.length}\`;
         }
-        console.log(Encoder.encode(2024));
+        const _log = Encoder.encode(2024);
       }
     `, "split");
     const header = result.header ?? "";

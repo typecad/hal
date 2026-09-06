@@ -81,7 +81,6 @@ export function loadConfig(
     target: raw.target ?? 'zephyr',
     framework: raw.framework,
     zephyrConfig: raw.zephyr,
-    consoleConfig: raw.console as Record<string, unknown> | undefined,
     projectRoot,
     // The config file these values came from. writeBuildConfig re-reads it to
     // extract board/MCU for the transpile, so it must point at the same file
@@ -122,10 +121,6 @@ export interface RawConfig {
   output?: {
     framework?: string;
     outDir?: string;
-  };
-  console?: {
-    baudRate?: number;
-    output?: string;
   };
 }
 
@@ -309,13 +304,6 @@ function extractConfigProperties(obj: ts.ObjectLiteralExpression, out: RawConfig
         }
         break;
       }
-      case 'console': {
-        const init = unwrapExpr(prop.initializer);
-        if (ts.isObjectLiteralExpression(init)) {
-          out.console = extractConsoleConfig(init);
-        }
-        break;
-      }
     }
   }
 }
@@ -413,27 +401,6 @@ function extractOutputConfig(obj: ts.ObjectLiteralExpression): NonNullable<RawCo
     if (v === undefined) continue;
     if (name === 'framework') result.framework = v;
     if (name === 'outDir') result.outDir = v;
-  }
-  return result;
-}
-
-function extractConsoleConfig(obj: ts.ObjectLiteralExpression): NonNullable<RawConfig['console']> {
-  const result: NonNullable<RawConfig['console']> = {};
-  for (const prop of obj.properties) {
-    if (!ts.isPropertyAssignment(prop)) continue;
-    const name = propName(prop);
-    if (!name) continue;
-    if (name === 'baudRate') {
-      const v = numericValue(prop.initializer);
-      if (v !== undefined) result.baudRate = v;
-    }
-    // output: 'usb' | 'default' — routes the console (and therefore the
-    // [TC:...] protocol lines) onto the board's USB CDC port. Carried through
-    // so writeBuildConfig can inline it into the per-test build config.
-    if (name === 'output') {
-      const v = stringLikeText(prop.initializer);
-      if (v !== undefined) result.output = v;
-    }
   }
   return result;
 }

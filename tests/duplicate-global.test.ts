@@ -8,7 +8,6 @@ describe("Duplicate Global Declarations", () => {
 
       function main(): void {
         const x = 10;
-        console.log(x);
       }
     `);
 
@@ -25,7 +24,6 @@ describe("Duplicate Global Declarations", () => {
 
       function setup(): void {
         const led = 5;
-        console.log(led);
       }
 
       function loop(): void {
@@ -42,7 +40,6 @@ describe("Duplicate Global Declarations", () => {
 
       function main(): void {
         var x = 10;
-        console.log(x);
       }
     `);
 
@@ -56,7 +53,6 @@ describe("Duplicate Global Declarations", () => {
 
       function main(): void {
         counter = 10;
-        console.log(counter);
       }
     `);
 

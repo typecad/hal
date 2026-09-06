@@ -22,10 +22,6 @@ const config: CuttlefishConfig = {
   // band-renderer path. Also enables the full-screen PSRAM framebuffer.
   psram: 'opi',
 
-  console: {
-    baudRate: 115200,
-    port: 'COM10'
-  },
   display: {
     profile: 'st7796-zephyr',
     cs: 5,

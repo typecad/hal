@@ -56,7 +56,7 @@ describe("A: const for...of loop var mutated in a class method demotes to T&", (
         }
       }
       const m = new Manager();
-      console.log(m.complete(1));
+      const _log1 = m.complete(1);
     `);
     // Mutated loop var -> non-const reference (T& t), NOT const T& t.
     expect(result.cpp).toMatch(/for \(Task& t :\s+this->tasks\)/);
@@ -99,7 +99,7 @@ describe("B: const for...of loop var mutated in a namespace function demotes", (
           }
         }
       }
-      console.log('ok');
+      const _log2 = 'ok';
     `);
     expect(result.cpp).toMatch(/for \(Task& t :\s+tasks\)/);
     expect(result.cpp).not.toMatch(/for \(const Task& t :\s+tasks\)/);
@@ -125,7 +125,7 @@ describe("C: a read-only const for...of loop var stays const T&", () => {
         }
       }
       const m = new Manager();
-      console.log(m.countOpen());
+      const _log3 = m.countOpen();
     `);
     // Read-only -> const reference preserved (no demotion diagnostic).
     expect(result.cpp).toMatch(/for \(const Task& t :\s+this->tasks\)/);
@@ -152,7 +152,7 @@ describe("D: a const local Set mutated via .add() inside a class method demotes"
           for (const v of vs) {
             local.add(v);
           }
-          console.log(local.has(vs[0]));
+          const _log4 = local.has(vs[0]);
         }
       }
       const t = new Tracker();

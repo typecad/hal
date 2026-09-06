@@ -26,7 +26,7 @@ while (true) {
   bme.fetch();
   const pressure = bme.get(CHAN.PRESS);
 
-  console.log(`${temp} C, ${rh} %RH, ${pressure} hPa`);
+  UART0.writeLine(`${temp} C, ${rh} %RH, ${pressure} hPa`);
 }
 ```
 

@@ -4,8 +4,7 @@
 // Runs the thin-HAL expect suite against a connected ESP32-S3 devkit. The
 // board's USB-UART bridge (WCH CH34x) carries BOTH the esptool flash and the
 // Zephyr uart0 console, so the test identity matches the bridge
-// (1A86:55D3 — unique in this rig; the cuttlefish CDC identity 2FE3:0006 is
-// the alternative once firmware with console.output: 'usb' is on the board).
+// (1A86:55D3 — unique in this rig).
 // The bridge does not re-enumerate across flashes — no post-upload wait.
 //
 // Flashing uses west's esptool runner (the board default) on the same port.
@@ -22,11 +21,8 @@ const config: CuttlefishConfig = {
   output: {
     outDir: './out',
   },
-  // Console stays on uart0 — the on-board USB-UART bridge (the config
-  // default for this board; no console.output override needed).
-  console: {
-    baudRate: 115200,
-  },
+  // Console stays on uart0 — the on-board USB-UART bridge (the board's own
+  // devicetree `zephyr,console` choice).
 
   test: {
     // The CH34x bridge identity — resolves before AND after flashing (the

@@ -22,12 +22,10 @@
 
   export function captureName() {
     nameCommits.set(nameCommits() + 1);
-    console.log('name:', screen.formName.text);
   }
 
   export function captureAge() {
     ageCommits.set(ageCommits() + 1);
-    console.log('age:', screen.formAge.text);
   }
 
   ui.bind(screen.featureStatus, 'text', () => screen.formCheck1.value ? 'feature: enabled' : 'feature: disabled');
@@ -44,7 +42,7 @@
     screen.demoList,
     () => 40,
     (i: number) => `Item ${i + 1}`,
-    (i: number) => { console.log('tapped'); },
+    (i: number) => { void i; },
   );
 
   // ── Media screen: canvas drawing every primitive once ─────────────────────
@@ -69,7 +67,7 @@
 
   // ── Keyboard screen: input opens the custom keyboard ───────────────────────
   screen.kbInput.onChange(() => {
-    console.log('message:', screen.kbInput.text);
+    void screen.kbInput.text;
   });
 </script>
 

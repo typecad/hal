@@ -25,12 +25,14 @@ const config: CuttlefishConfig = {
 
   // Framework package — controls code generation strategy
   framework: '@typecad/framework-zephyr',
-  // Framework data  // Output / build options
+  // Framework data
+  // Output / build options
   output: {
     outDir: './out',
   },
 
-  // Toolchain configuration  // Zephyr-specific: attach via ST-Link (SWD) instead of the board's default
+  // Toolchain configuration
+  // Zephyr-specific: attach via ST-Link (SWD) instead of the board's default
   // dfu-util runner. 'stlink' is one of the board's named probe methods — it
   // serves BOTH flashing and debugging, and resolves to the openocd runner
   // plus the args the method needs (the reset_config quirk for unwired SRST
@@ -41,12 +43,6 @@ const config: CuttlefishConfig = {
     probe: 'stlink',
   },
 
-  // Console polyfill configuration
-  console: {
-    baudRate: 9600,
-    // Serial port for upload/monitor. Override with --port on the CLI.
-    port: 'COM4',
-  },
 
   // Hardware test runner (@typecad/expect / `npm run test:hw`)
   test: {

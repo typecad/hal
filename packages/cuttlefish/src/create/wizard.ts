@@ -258,10 +258,10 @@ export async function runCreateWizard(
       }
     }
 
-    // 4. Serial port (only for embedded) — the port the board's console
-    // rides on. Detected ports are offered as a choice; the answer seeds
-    // console.port + test.port in the scaffolded config (no more guessing
-    // COM4). "skip" leaves the platform-hint placeholder.
+    // 4. Serial port (only for embedded) — the port the board rides on.
+    // Detected ports are offered as a choice; the answer seeds test.port in
+    // the scaffolded config (no more guessing COM4). "skip" leaves the
+    // platform-hint placeholder.
     let serialPort: string | undefined;
     if (!target.isNative) {
       if (partialOptions?.port) {
@@ -330,7 +330,7 @@ if (partialOptions?.noStarter) {
       architecture: target.architecture,
       board: target.board,
       // Pack fact: does the board's devicetree declare an LED? Drives the
-      // starter between LED-blink and console-heartbeat.
+      // starter between LED-blink and an I/O skeleton.
       ...(target.board ? { hasLed: Boolean(activeBoardCatalog()[target.board]?.led) } : {}),
       ...(serialPort ? { port: serialPort } : {}),
       frameworkPackage: frameworkPackage ?? '',

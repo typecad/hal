@@ -28,7 +28,7 @@ describe('Ownership Analysis', () => {
       const result = transpile(`
         type Shared<T> = T;
         function process(data: Shared<number>): void {
-          console.log(data);
+          const _log1 = data;
         }
       `);
 
@@ -105,8 +105,8 @@ describe('Ownership Analysis', () => {
         function borrowExample(): void {
           const buffer: Owned<number> = 42;
           const ref: Shared<typeof buffer> = buffer;
-          console.log(buffer);
-          console.log(ref);
+          const _log2 = buffer;
+          const _log3 = ref;
         }
       `);
 
@@ -133,7 +133,7 @@ describe('Ownership Analysis', () => {
     it('suggests const for let variables that are never reassigned', () => {
       const result = transpile(`
         let x = 10;
-        console.log(x);
+        const _log4 = x;
       `);
 
       const diags = findDiagnostics(result, 'ownership-suggest-const');
@@ -149,7 +149,7 @@ describe('Ownership Analysis', () => {
       const result = transpile(`
         let x = 10;
         x = 20;
-        console.log(x);
+        const _log5 = x;
       `);
 
       const diags = findDiagnostics(result, 'ownership-suggest-const');
@@ -162,7 +162,7 @@ describe('Ownership Analysis', () => {
       const result = transpile(`
         type Shared<T> = T;
         function process(data: Shared<number>): void {
-          console.log(data);
+          const _log6 = data;
         }
       `);
 
@@ -176,7 +176,7 @@ describe('Ownership Analysis', () => {
       const result = transpile(`
         type Shared<T> = T;
         function process(data: Shared<number[]>): void {
-          console.log(data);
+          const _log7 = data;
         }
       `);
 
@@ -198,7 +198,7 @@ describe('Ownership Analysis', () => {
       const result = transpile(`
         type Shared<T> = T;
         function process(data: Shared<number>): void {
-          console.log(data);
+          const _log8 = data;
         }
       `);
 

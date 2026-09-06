@@ -13,14 +13,21 @@
 // (K_FOREVER — the threads run forever, keeping the firmware alive).
 // ---------------------------------------------------------------------------
 
-import { LED } from '@typecad/board';
+import { LED, USB0 } from '@typecad/board';
 import { GPIO, Time, Thread } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);
 
+// USB CDC serial on the XIAO's USB-C connector — the report channel for the
+// clocks below. Output before the host opens the port is dropped, so the
+// beat logger gates on linked().
+USB0.open();
+
 // ── 1. Clocks ─────────────────────────────────────────────────────────────
 const boot: number = Time.now();
-console.log(`boot at ${boot} ms, us clock reads ${Time.nowUs()}`);
+if (USB0.linked()) {
+  USB0.writeLine(`boot at ${boot} ms, us clock reads ${Time.nowUs()}`);
+}
 
 // ── 2. A kernel thread blinks the LED concurrently with main ─────────────
 const blinker = new Thread(0, { stackKb: 4, priority: 5 });
@@ -38,7 +45,9 @@ logger.start((): void => {
   const started: number = Time.now();
   while (true) {
     beats = beats + 1;
-    console.log(`beat ${beats} @ ${Time.now() - started} ms since start`);
+    if (USB0.linked()) {
+      USB0.writeLine(`beat ${beats} @ ${Time.now() - started} ms since start`);
+    }
     Time.sleep(1000);
   }
 });

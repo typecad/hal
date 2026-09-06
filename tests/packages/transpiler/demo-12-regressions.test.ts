@@ -33,7 +33,7 @@ describe("E: sort comparator convention", () => {
         "  copy.sort((a: int32_t, b: int32_t) => a - b);",
         "  return copy;",
         "}",
-        "console.log(sortAsc([5, 3, 1])[0]);",
+        "const _log1 = sortAsc([5, 3, 1])[0];",
         "",
       ].join("\n"),
     );

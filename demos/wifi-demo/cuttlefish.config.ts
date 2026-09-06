@@ -20,7 +20,6 @@ const config: CuttlefishConfig = {
 
   output: { outDir: './out' },
 
-  console: { baudRate: 115200 },
   zephyr: {
     kconfig: { 'CONFIG_ESP32_USE_UNSUPPORTED_REVISION': 'y' },
   },

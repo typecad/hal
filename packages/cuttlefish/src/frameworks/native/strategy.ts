@@ -1,7 +1,7 @@
 ﻿// ---------------------------------------------------------------------------
 // NativeStrategy — standard C++ target for portable Windows/Linux executables
 //
-// Outputs standard C++ with main(), std::cout, std::string, and std::thread-
+// Outputs standard C++ with main(), std::string, and std::thread-
 // based async. No hardware or Arduino dependencies.
 //
 // EMIT BOUNDARY: This file is a canonical entry point of the framework strategy
@@ -49,7 +49,7 @@ export class NativeStrategy implements PlatformStrategy {
     if (uses('usesStdMap')) inc.push('<map>');
     if (uses('usesSet')) inc.push('<set>');
     if (uses('usesAlgorithm')) inc.push('<algorithm>');
-    if (uses('usesCstdio') || uses('hasConsoleCalls')) inc.push('<cstdio>');
+    if (uses('usesCstdio')) inc.push('<cstdio>');
     return inc;
   }
 
@@ -284,49 +284,6 @@ export class NativeStrategy implements PlatformStrategy {
     return `throw ${valueExpr};`;
   }
 
-  isConsoleCall(callee: string): boolean {
-    return callee.startsWith("console.");
-  }
-
-  transformConsoleCall(method: string, renderedArgs: string, forHeader: boolean): string {
-    const semi = forHeader ? '' : ';';
-    const empty = !renderedArgs || renderedArgs.trim() === '';
-    switch (method) {
-      case 'log':
-      case 'info':
-      case 'debug':
-        return empty
-          ? `std::cout << std::endl${semi}`
-          : `std::cout << ${renderedArgs} << std::endl${semi}`;
-      case 'error':
-        return empty
-          ? `std::cerr << "[ERROR] " << std::endl${semi}`
-          : `std::cerr << "[ERROR] " << ${renderedArgs} << std::endl${semi}`;
-      case 'warn':
-        return empty
-          ? `std::cerr << "[WARN] " << std::endl${semi}`
-          : `std::cerr << "[WARN] " << ${renderedArgs} << std::endl${semi}`;
-      case 'readLine':
-      case 'readCharacter':
-        return this.transformConsoleExpression(method, renderedArgs) + semi;
-      default:
-        return empty
-          ? `std::cout << std::endl${semi}`
-          : `std::cout << ${renderedArgs} << std::endl${semi}`;
-    }
-  }
-
-  transformConsoleExpression(method: string, _renderedArgs: string): string | undefined {
-    switch (method) {
-      case 'readLine':
-        return '([]() -> std::string { std::string s; std::getline(std::cin, s); return s; })()';
-      case 'readCharacter':
-        return '([&]() -> char { std::cout << "> " << std::flush; return std::cin.get(); })()';
-      default:
-        return undefined;
-    }
-  }
-
   objectFieldInitializer(): string | undefined {
     return undefined;
   }
@@ -355,12 +312,6 @@ export class NativeStrategy implements PlatformStrategy {
   ambientTypeDeclarations(): string[] {
     return [
       "",
-      "  // Console input methods",
-      "  interface Console {",
-      "    readLine(): string;",
-      "    readCharacter(): string;",
-      "  }",
-      "",
       "  // Host timers — real OS threads back these on the native (host) target",
       "  // only. Embedded targets have no JS-named timers: periodic work is a",
       "  // Thread.",
@@ -380,7 +331,6 @@ export class NativeStrategy implements PlatformStrategy {
   needsStdFunction(): boolean { return true; }
   mathHeader(): string { return '<cmath>'; }
   cstringHeader(): string { return '<cstring>'; }
-  needsVectorOverload(): boolean { return true; }
   needsLargeEnumUnderlying(): boolean { return false; }
 
   // ── Struct field handling ───────────────────────────────────────────────
