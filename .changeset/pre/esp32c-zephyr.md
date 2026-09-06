@@ -1,6 +1,4 @@
 ---
-'@typecad/board-esp32c3': minor
-'@typecad/board-esp32c6': minor
 '@typecad/cuttlefish': minor
 ---
 

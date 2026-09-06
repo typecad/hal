@@ -1,4 +1,5 @@
 ---
+"@typecad/hal": patch
 ---
 
 Root-cause the hal-expect-blackpill full-battery flake: CPU-contention

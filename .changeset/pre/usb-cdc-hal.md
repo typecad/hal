@@ -2,8 +2,6 @@
 '@typecad/cuttlefish': minor
 '@typecad/hal': minor
 '@typecad/framework-zephyr': minor
-'@typecad/board-blackpill-f411ce': minor
-'@typecad/board-xiao-nrf52840': minor
 ---
 
 ## USB CDC-ACM serial HAL (`USB0`)

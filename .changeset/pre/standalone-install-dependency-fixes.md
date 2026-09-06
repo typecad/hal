@@ -2,7 +2,6 @@
 "@typecad/expect": patch
 "@typecad/cuttlefish": patch
 "@typecad/ui": patch
-"@typecad/safety": patch
 ---
 
 ## Standalone-install dependency fixes

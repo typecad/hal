@@ -1,6 +1,5 @@
 ---
 '@typecad/framework-zephyr': patch
-'@typecad/board-xiao-nrf52840': patch
 '@typecad/cuttlefish': patch
 ---
 

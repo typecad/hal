@@ -1,5 +1,106 @@
 # @typecad/ui
 
+## 1.0.0-alpha.15
+
+### Minor Changes
+
+- fbd0820: Remove the Arduino wiring-compat layer and migrate the runtimes onto a
+  thin-HAL clock contract.
+  
+  Wiring compat deleted: the Zephyr strategy no longer detects or shims bare
+  wiring calls — pinMode/digitalWrite (and the INPUT/OUTPUT/INPUT_PULLUP/
+  HIGH/LOW #defines they needed), pulseIn/pulseInLong (__tc_wiring_pulse_in),
+  and the bare shiftOut/shiftIn shims are gone; the ambient detector now only
+  carries the live APIs (random/randomSeed, noInterrupts/interrupts). The
+  free-function pwmWrite/tonePlay/toneStop/wdtEnable/wdtReset/httpSendStart
+  stubs and their plugin cases are removed, and with them the orphaned
+  pwm.write, tone.play and tone.stop op kinds end-to-end (IR union, kinds
+  registry, lowering, manifest, peripheral-usage, capability/validation arms).
+  http.send_start stays — the async state machine produces it directly for
+  awaited HTTP. Pin-capability and mode-validation now key on the thin
+  pwm.set_pulse/set_duty/set_period/tone ops.
+  
+  safety: the pin-mode intercept is rebuilt on the thin HAL — v3 scans
+  gpio.configure/gpio.read_cfg flag tokens (pure token lists only; runtime
+  expressions record Unknown; open-drain counts as Output) and injects the
+  same safety.record_pin_mode companion, so safe.read's mode verification
+  works again on thin-HAL programs.
+  
+  Runtime clock contract: millis() is replaced by __tc_now_ms() — Zephyr
+  defines it as k_uptime_get_32(), native as a steady_clock count, and the
+  async/promise runtimes, cooperative scheduler, and the UI per-frame tick
+  all lower onto it via currentTimeMillis(). The micros/map/constrain shims
+  and their gating machinery are deleted. The UI runtime header now declares
+  the clock extern and carries its own __ui_constrain clamp instead of
+  calling the Arduino-named helpers; the byte-identity baseline is
+  regenerated. Programs that can never read the clock get the definition
+  stripped from the emitted header.
+
+### Patch Changes
+
+- fbd0820: Legacy-HAL removal Phase 1a — the remaining Arduino UI demos ported to Zephyr, with three engine bugs the ports surfaced and fixed:
+  
+  **New Zephyr demos** (each transpiles AND full west-builds for `esp32s3_devkitc`):
+  - **`demos/zephyr-ui`** — the framework-zephyr port of demo-ui: the showcase.ui + neobrutalism theme on the shared ST7796S + FT6336U rig. The largest UI program yet compiled on Zephyr — lists, forms, canvases, keyframe animations, navigation.
+  - **`demos/zephyr-weather`** — port of demo-weather: the BME688-style weather dashboard with ui.signal bindings + setInterval polling.
+  - Scope note: **demo-ui-sd13 is NOT ported** — the ssd1306-zephyr profile deliberately has no CuttlefishGFX mono UI adapter ("direct display.* only" per the manifest), so a `.ui` entry cannot target mono on Zephyr. Porting it means writing that adapter (~1–2 days + hardware validation); recorded as deferred rather than half-shipped.
+  
+  **Engine fixes the ports forced**:
+  1. **Zephyr console lowering** (`framework-zephyr/src/strategy.ts`): multi-arg `console.log('tapped:', i)` lowered to `printk("%s%s%s\n", …)` assuming every fragment was a string — a numeric list-bind index failed `-Wformat` and broke the west build. Now routes through the `__tc_print`/`__tc_println` shim overloads (const char*, double), which accept any rendered scalar without format-specifier coupling; the shim helpers are emitted unconditionally (they were gated on analysis flags absent in pure-UI programs).
+  2. **Keyframe-table link collision** (`packages/ui/src/ui-engine/ui-lowering.ts`): modules sharing a stylesheet register identical animation names, so two mounted modules emitted identically-named `static const UIKeyframeStop` arrays into one TU — a hard redefinition error. Keyframe symbols are now namespaced per module (stable path hash) and deduped by animation name within a module; the set-index table references follow.
+  3. The `__tc_println` chain emits proper statement separators (first attempt emitted adjacent calls without semicolons — caught by the same west build).
+  
+  Regression-verified: demo-shadcn, zephyr-display, and zephyr-debug all still build after the engine changes.
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [5f587c7]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies
+- Updated dependencies [5f587c7]
+- Updated dependencies [fbd0820]
+- Updated dependencies [a9bcb6e]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [a9bcb6e]
+- Updated dependencies
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [5f587c7]
+- Updated dependencies [fbd0820]
+- Updated dependencies [0fc2d1f]
+- Updated dependencies [b3d1c4b]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [e15fb1c]
+- Updated dependencies [a9bcb6e]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [92c1bc6]
+- Updated dependencies
+- Updated dependencies [e15fb1c]
+- Updated dependencies [a9bcb6e]
+- Updated dependencies [a9bcb6e]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [a9bcb6e]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [a9bcb6e]
+- Updated dependencies [fbd0820]
+  - @typecad/cuttlefish@1.0.0-alpha.15
+
 ## 1.0.0-alpha.14
 
 ### Minor Changes

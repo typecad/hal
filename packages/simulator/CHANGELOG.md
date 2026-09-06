@@ -1,5 +1,42 @@
 # @typecad/simulator
 
+## 1.0.0-alpha.15
+
+### Patch Changes
+
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [5f587c7]
+- Updated dependencies [fbd0820]
+- Updated dependencies [0fc2d1f]
+- Updated dependencies [b3d1c4b]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [a9bcb6e]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+- Updated dependencies [fbd0820]
+  - @typecad/hal@1.0.0-alpha.15
+
 ## 1.0.0-alpha.14
 
 ### Patch Changes

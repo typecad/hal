@@ -1,7 +1,5 @@
 ---
 '@typecad/framework-zephyr': minor
-'@typecad/board-esp32s3': minor
-'@typecad/mcu-esp32s3': minor
 ---
 
 ESP32-S3 Zephyr: native USB CDC and LEDC PWM were data gaps, not missing machinery — both now work on `esp32s3_devkitc` targets (verified by a full `west build` against Zephyr 4.4.2 / SDK 1.0.1: devicetree, kernel, and app compile and link).

@@ -3,15 +3,6 @@
 '@typecad/expect': minor
 '@typecad/hal': minor
 '@typecad/framework-zephyr': minor
-'@typecad/mcu-nrf52840': minor
-'@typecad/board-blackpill-f411ce': minor
-'@typecad/board-esp32-devkit': minor
-'@typecad/board-esp32c3': minor
-'@typecad/board-esp32c6': minor
-'@typecad/board-esp32s3': minor
-'@typecad/board-rp2040': minor
-'@typecad/board-rp2350': minor
-'@typecad/board-xiao-nrf52840': minor
 ---
 
 ## HAL hardware suite consolidated onto board test-pins; framework expect suites removed

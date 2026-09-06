@@ -1,8 +1,6 @@
 ---
 '@typecad/cuttlefish': minor
 '@typecad/framework-zephyr': minor
-'@typecad/board-blackpill-f411ce': minor
-'@typecad/board-xiao-nrf52840': minor
 ---
 
 ## Named probe methods: pick `stlink`/`dfu`/`jlink` for flashing AND debugging

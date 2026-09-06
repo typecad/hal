@@ -1,14 +1,5 @@
 ---
 '@typecad/cuttlefish': minor
-'@typecad/mcu-esp32': minor
-'@typecad/mcu-esp32c3': minor
-'@typecad/mcu-esp32c6': minor
-'@typecad/mcu-esp32s3': minor
-'@typecad/mcu-nrf52840': minor
-'@typecad/mcu-rp2040': minor
-'@typecad/mcu-rp2350': minor
-'@typecad/mcu-samd21': minor
-'@typecad/mcu-stm32f411': minor
 '@typecad/framework-zephyr': minor
 ---
 

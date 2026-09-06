@@ -1,6 +1,4 @@
 ---
-'@typecad/mcu-stm32f411': minor
-'@typecad/board-blackpill-f411ce': minor
 '@typecad/framework-zephyr': minor
 '@typecad/cuttlefish': minor
 ---

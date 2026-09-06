@@ -1,10 +1,6 @@
 ---
 '@typecad/cuttlefish': minor
 '@typecad/framework-zephyr': minor
-'@typecad/board-rp2040': minor
-'@typecad/board-rp2350': minor
-'@typecad/mcu-rp2040': patch
-'@typecad/mcu-rp2350': patch
 ---
 
 ## Raspberry Pi Pico / Pico 2 — Zephyr parity and fixes

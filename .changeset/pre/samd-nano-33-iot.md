@@ -1,6 +1,4 @@
 ---
-'@typecad/mcu-samd21': minor
-'@typecad/board-nano-33-iot': minor
 '@typecad/framework-zephyr': minor
 '@typecad/cuttlefish': minor
 ---

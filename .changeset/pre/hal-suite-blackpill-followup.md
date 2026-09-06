@@ -3,7 +3,6 @@
 '@typecad/framework-zephyr': minor
 '@typecad/hal': minor
 '@typecad/expect': minor
-'@typecad/board-blackpill-f411ce': minor
 ---
 
 ## HAL hardware suite follow-up: per-board configs, EEPROM removal, interrupt + validation fixes

@@ -1,6 +1,6 @@
 {
   "name": "@typecad/framework-zephyr",
-  "version": "1.0.0-alpha.14",
+  "version": "1.0.0-alpha.15",
   "description": "TypeCAD framework package for the Zephyr RTOS \u2014 west/CMake build, devicetree-driven GPIO",
   "type": "module",
   "main": "./dist/index.js",
@@ -38,11 +38,11 @@
     "dry-run": "node installer/install.mjs --dry-run"
   },
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.14",
-    "@typecad/hal": "1.0.0-alpha.14"
+    "@typecad/cuttlefish": "1.0.0-alpha.15",
+    "@typecad/hal": "1.0.0-alpha.15"
   },
   "devDependencies": {
-    "@typecad/expect": "1.0.0-alpha.14",
+    "@typecad/expect": "1.0.0-alpha.15",
     "typescript": "^5.7.3"
   },
   "license": "MIT",

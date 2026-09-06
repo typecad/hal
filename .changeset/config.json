@@ -7,11 +7,9 @@
       "@typecad/cuttlefish",
       "@typecad/ui",
       "@typecad/hal",
-      "@typecad/framework-native",
       "@typecad/framework-zephyr",
       "@typecad/expect",
-      "@typecad/simulator",
-      "@typecad/zephyr-installer"
+      "@typecad/simulator"
     ]
   ],
   "linked": [],
