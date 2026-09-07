@@ -2,5 +2,8 @@
   "forceInstall": [
     "typecad.typecad-ui",
     "typecad.vscode-typecad-debug"
+  ],
+  "recommendations": [
+    "marus231.cortex-debug"
   ]
 }

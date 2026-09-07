@@ -263,6 +263,26 @@ export interface BoardCommandOptions {
   zephyrBase?: string;
 }
 
+/** Parsed `cuttlefish clean` options. */
+export interface CleanCommandOptions {
+  command: "clean";
+  /** Override the output dir (absolute) — wins over the config's output.outDir. */
+  outDir?: string;
+  /** Override the entry file (absolute) — its dir anchors relative outDir resolution. */
+  entry?: string;
+  /** Remove an existing output dir even without the generated-dir marker. */
+  force?: boolean;
+}
+
+/** Parsed `cuttlefish debug-server <start|stop>` options. */
+export interface DebugServerCommandOptions {
+  command: "debug-server";
+  action: "start" | "stop";
+  /** start: run the full build pipeline (transpile → compile → upload, with
+   *  --debug) before serving — the F5 preLaunchTask is ONE background task. */
+  flash?: boolean;
+}
+
 /** Parsed `cuttlefish library <subcommand>` options. */
 export interface LibraryCommandOptions {
   command: "library";

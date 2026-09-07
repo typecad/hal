@@ -1,59 +1,5 @@
 {
-  "version": "2.0.0",
   "tasks": [
-    {
-      "label": "cuttlefish: watch build",
-      "command": "npm run dev",
-      "type": "shell",
-      "isBackground": true,
-      "group": "build",
-      "options": {
-        "env": {
-          "NO_COLOR": "1"
-        }
-      },
-      "problemMatcher": [
-        {
-          "owner": "cuttlefish-transpiler",
-          "severity": "error",
-          "fileLocation": [
-            "relative",
-            "${workspaceFolder}"
-          ],
-          "pattern": {
-            "regexp": "^\\s*(.*?)\\s+(error|warning)(?:\\s+\\[[^\\]]*\\])?\\s*\\((\\d+),(\\d+)\\):\\s+(.*)$",
-            "file": 1,
-            "severity": 2,
-            "line": 3,
-            "column": 4,
-            "message": 5
-          },
-          "background": {
-            "beginsPattern": "Transpiling",
-            "endsPattern": "Watching for changes"
-          }
-        },
-        {
-          "owner": "cuttlefish-eslint",
-          "severity": "error",
-          "fileLocation": [
-            "relative",
-            "${workspaceFolder}"
-          ],
-          "pattern": {
-            "regexp": "^\\s*error\\s+(.*?)\\((\\d+),(\\d+)\\)\\s+\\[[^\\]]*\\]:\\s+(.*)$",
-            "file": 1,
-            "line": 2,
-            "column": 3,
-            "message": 4
-          },
-          "background": {
-            "beginsPattern": "Transpiling",
-            "endsPattern": "Watching for changes"
-          }
-        }
-      ]
-    },
     {
       "label": "cuttlefish: build + flash (debug)",
       "type": "shell",
@@ -64,6 +10,37 @@
       "group": {
         "kind": "build",
         "isDefault": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "cuttlefish: debug server (west)",
+      "type": "shell",
+      "command": "npx cuttlefish debug-server start --flash",
+      "options": {
+        "cwd": "${workspaceFolder}/src/out",
+        "env": {
+          "NO_COLOR": "1"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "cuttlefish-debug-server",
+        "pattern": {
+          "regexp": "__cuttlefish_never_matches__"
+        },
+        "background": {
+          "beginsPattern": "Transpiling",
+          "endsPattern": "^CUTTLEFISH: debug server ready on 3333"
+        }
+      }
+    },
+    {
+      "label": "cuttlefish: stop debug server",
+      "type": "shell",
+      "command": "npx cuttlefish debug-server stop",
+      "options": {
+        "cwd": "${workspaceFolder}/src/out"
       },
       "problemMatcher": []
     }

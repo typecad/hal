@@ -1,0 +1,6 @@
+---
+'@typecad/framework-zephyr': patch
+'@typecad/cuttlefish': patch
+---
+
+Renaming `output.outDir` in cuttlefish.config.ts now works end to end. The transpiler writes an ignore-all `.gitignore` inside the resolved output dir, so generated output (and the target's build tree) stays out of `git add .` whatever the dir is named — the scaffold's root `.gitignore` only covered the default `out/`. The create-time debug artifacts honor the scaffolded layout instead of assuming `src/out` (the app dir is passed through from cuttlefish create), and a `--debug` build removes the previous app dir's generated openocd.cfg + gdb frame-filter script when the dir moves (launch entries' own references identify them; files without the auto-generated header are never touched) — previously they lingered forever and F5 kept pointing at the old ELF until an entry rewrite happened to fix it. A PLAIN build self-heals the same way: when the gdb-mode debug artifacts reference an app root other than the current one, `cuttlefish build --compile` rewrites launch.json/tasks.json to the new dir (same starter-artifact contract as create — F5's own preLaunchTask upgrades them on the first debug build), instead of leaving F5 to run its task from a cwd that no longer exists.

@@ -383,6 +383,10 @@ import { ZEPHYR_DISPLAY_PROFILES, BUILT_IN_PROFILES } from './display/profiles.j
 import { zephyrDisplayAdapterGenerator } from './display/ui-adapter.js';
 import { zephyrTouchAdapter } from './display/touch-adapter.js';
 
+/** debugMode() memo — the boardgen facts lookup is not free and the method is
+ *  called several times per build (codegen gates + artifact writers). */
+const debugModeMemo = new Map<string, 'gdb' | 'printf'>();
+
 export class ZephyrStrategy implements PlatformStrategy {
   readonly id = 'zephyr';
 
@@ -2257,30 +2261,42 @@ struct __tc_StaticArray {
   // available, no CONFIG_CONSOLE dependency) and the __tc_debug_wait_for_continue
   // halt emitted in shimLines. See src/debug-codegen.ts.
   //
-  // Target-selective: targets with a debug probe get native GDB source-level
-  // debugging (core emits #line markers + skips printf instrumentation); the
-  // rest fall back to the printk instrumentation path. The ESP32-S3 has a
-  // built-in USB-JTAG (single-cable GDB via OpenOCD) so it selects 'gdb'.
-  // The XIAO nRF52840 needs its J-Link wired up; its GDB path is a follow-on,
-  // so it stays on printf for now.
+  // Target-selective: gdb-capable boards (a debug-capable probe method in the
+  // board facts) get native GDB source-level debugging (core emits #line
+  // markers + skips printf instrumentation, and the west-owned gdb server
+  // serves F5 via cortex-debug's external-server mode — see
+  // toolchain/debug-config.ts); every other board falls back to the printk
+  // instrumentation path.
 
   debugMode(target?: string): 'gdb' | 'printf' {
-    // `target` is the Zephyr board id (optionally with a /qualifier suffix,
-    // e.g. 'esp32s3_devkitc/esp32s3/procpu'). Match on the bare board id.
-    const boardId = (target ?? '').split('/')[0];
-    if (boardId === 'esp32s3_devkitc' || boardId.startsWith('esp32s3')) {
-      return 'gdb';
+    // `target` is the Zephyr board id (optionally with a /qualifier suffix).
+    // gdb mode is a FACT of the board: its probe-method table carries a
+    // debug-capable entry (bootloaders mark debug:false; SWD/JTAG probes and
+    // built-in USB-JTAG carry debug:true) — the same table west's runner
+    // selection uses. Boards without a table (or unresolvable targets, e.g.
+    // generated custom boards) stay on printf instrumentation.
+    const t = (target ?? '').trim();
+    if (!t) return 'printf';
+    const memo = debugModeMemo.get(t);
+    if (memo) return memo;
+    let mode: 'gdb' | 'printf' = 'printf';
+    try {
+      const g = generateBoard(t);
+      const constants = JSON.parse(g.boardJson).constants as Record<string, unknown>;
+      for (let i = 0; ; i++) {
+        const id = constants[`zephyr.probeMethods.${i}.id`];
+        if (typeof id !== 'string') break;
+        if (constants[`zephyr.probeMethods.${i}.debug`] !== false) {
+          mode = 'gdb';
+          break;
+        }
+      }
+    } catch {
+      // Board not resolvable from facts — printf (never crash codegen over
+      // the debug-mode gate).
     }
-    // The STM32 Black Pill ships a verified ST-Link probe method in its board
-    // package (openocd runner over SWD, with the reset_config quirk for the
-    // unwired SRST line), so F5 attaches natively out of the box.
-    if (boardId.startsWith('blackpill_')) {
-      return 'gdb';
-    }
-    // The plain ESP32 (esp32_devkitc) intentionally stays on 'printf': unlike
-    // the S3 it has NO built-in USB-JTAG, so gdb needs an external ESP-PROG
-    // probe + a different OpenOCD cfg/toolchain dir (deferred). Falls through.
-    return 'printf';
+    debugModeMemo.set(t, mode);
+    return mode;
   }
 
   generateDebugInitCode(): string[] {

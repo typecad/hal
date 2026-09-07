@@ -14,7 +14,7 @@
       "gdbPath": "C:/Users/justi/micromamba/zephyr-sdk/zephyr-sdk-0.17.4/xtensa-espressif_esp32s3_zephyr-elf/bin/xtensa-espressif_esp32s3_zephyr-elf-gdb.exe",
       "serverpath": "C:/Users/justi/.espressif/tools/openocd-esp32/v0.12.0-esp32-20260424/openocd-esp32/bin/openocd.exe",
       "postAttachCommands": [
-        "set directories C:/typecad/typecode/demos/zephyr-debug",
+        "set directories .",
         "set remote hardware-watchpoint-limit 2",
         "set remote hardware-breakpoint-limit 2",
         "set mem inaccessible-by-default off",
@@ -39,7 +39,7 @@
       "gdbPath": "C:/Users/justi/micromamba/zephyr-sdk/zephyr-sdk-1.0.1/xtensa-espressif_esp32s3_zephyr-elf/bin/xtensa-espressif_esp32s3_zephyr-elf-gdb.exe",
       "serverpath": "C:/Users/justi/.espressif/tools/openocd-esp32/v0.12.0-esp32-20260424/openocd-esp32/bin/openocd.exe",
       "postAttachCommands": [
-        "set directories C:/typecad/typecode/demos/zephyr-debug",
+        "set directories .",
         "set remote hardware-watchpoint-limit 2",
         "set remote hardware-breakpoint-limit 2",
         "set mem inaccessible-by-default off",

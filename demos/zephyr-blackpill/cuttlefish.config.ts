@@ -7,7 +7,8 @@
 // and the ADC channel setup (ADC_GAIN_1 + ADC_REF_INTERNAL).
 //
 // Pipeline: cuttlefish build → out/src/main.cpp → west build → west flash.
-// Flashed over USB via the ROM DFU bootloader (BOOT0 + reset) — no probe.
+// Flashed + debugged over the ST-Link SWD probe (zephyr.probe below); DFU
+// (BOOT0 + reset) remains available as a --probe dfu one-off.
 // ---------------------------------------------------------------------------
 
 import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
@@ -21,7 +22,7 @@ const config: CuttlefishConfig = {
   // MCU package — provides silicon-level pin definitions
 
   // Board package — provides pin definitions and board constants
-  board: 'blackpill_f411ce/stm32f411xe',
+  board: 'blackpill_f401cc/stm32f401xc',
 
   // Framework package — controls code generation strategy
   framework: '@typecad/framework-zephyr',

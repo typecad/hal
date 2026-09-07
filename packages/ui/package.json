@@ -1,6 +1,6 @@
 {
   "name": "@typecad/ui",
-  "version": "1.0.0-alpha.15",
+  "version": "1.0.0-alpha.16",
   "description": "TypeCAD UI authoring library — HTML/CSS-driven graphics for microcontrollers",
   "type": "module",
   "main": "./dist/index.js",
@@ -44,7 +44,7 @@
     "assets"
   ],
   "dependencies": {
-    "@typecad/cuttlefish": "1.0.0-alpha.15",
+    "@typecad/cuttlefish": "1.0.0-alpha.16",
     "chalk": "^6.0.0",
     "css-tree": "^3.2.1",
     "decode-ico": "^0.4.1",

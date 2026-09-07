@@ -11,7 +11,9 @@ import {
   detectPackageManager,
   frameworkTargetProfile,
   probeMethodsForBoard,
+  probeRunnerQuirks,
 } from "../../../packages/cuttlefish/src/create/framework-catalog";
+import { starterAppRel } from "../../../packages/cuttlefish/src/create/templates";
 import {
   installProjectDependencies,
   __setProjectInstallRunnerForTest,
@@ -240,6 +242,48 @@ describe('probeMethodsForBoard (create-time catalog from the board data pack)', 
   }, 180_000);
 });
 
+describe('probeRunnerQuirks — srst-pin quirks baked from board cfg facts', () => {
+  it('bakes the core-reset quirk for an srst-only cfg (the blackpill breaks no NRST out)', () => {
+    // boards/weact/blackpill_f411ce/support/openocd.cfg declares
+    // `reset_config srst_only` — under it, west's `reset init` asserts a pin
+    // that reaches nothing and dies with "timed out while waiting for target
+    // halted" when the probe's NRST line isn't wired to the target.
+    expect(probeRunnerQuirks('blackpill_f411ce', 'stlink'))
+      .toEqual(['--cmd-pre-init=reset_config none']);
+    // Qualified targets resolve the same way (wizard passes bare, --board may
+    // carry either).
+    expect(probeRunnerQuirks('blackpill_f411ce/stm32f411xe', 'stlink'))
+      .toEqual(['--cmd-pre-init=reset_config none']);
+  });
+
+  it('leaves non-openocd methods and missing inputs alone', () => {
+    expect(probeRunnerQuirks('blackpill_f411ce', 'dfu')).toEqual([]);
+    expect(probeRunnerQuirks('blackpill_f411ce', 'jlink')).toEqual([]);
+    expect(probeRunnerQuirks(undefined, 'stlink')).toEqual([]);
+    expect(probeRunnerQuirks('blackpill_f411ce', undefined)).toEqual([]);
+  });
+
+  it('respects deliberate connect-under-reset cfgs (nucleo: NRST is wired)', () => {
+    // boards/st/nucleo_h753zi/support/openocd.cfg declares
+    // `reset_config srst_only srst_nogate connect_assert_srst` — the srst
+    // token alone would match, but connect_assert_srst only works with the
+    // NRST pin connected, so the pin is provably wired and must be kept.
+    // Guard the id first so this exercises the openocd-runner branch, not
+    // "method not found".
+    expect(probeMethodsForBoard('nucleo_h753zi').map((m) => m.id)).toContain('openocd');
+    expect(probeRunnerQuirks('nucleo_h753zi', 'openocd')).toEqual([]);
+  });
+});
+
+describe('starterAppRel (the scaffolded config\'s app dir, for starter debug artifacts)', () => {
+  it('mirrors the CLI resolution of output.outDir against the entry dir', () => {
+    expect(starterAppRel()).toBe('src/out');
+    expect(starterAppRel('./src/main.ts', './generated')).toBe('src/generated');
+    expect(starterAppRel('./main.ts', './out')).toBe('out');
+    expect(starterAppRel('./src/main.ts', '../shared-out')).toBe('shared-out');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Wizard spec plumbing — the probe/port/baud choices must land in the
 // scaffolded config (test.port, zephyr.probe).
@@ -267,6 +311,48 @@ describe('generateProjectConfig — wizard choices ride the config', () => {
     expect(cfg).toContain("port: 'COM10'");
     // No COM4 guesses when the wizard captured the port.
     expect(cfg).not.toContain("COM4'");
+  });
+
+  it('emits probe quirks as zephyr.runnerArgs with the why-comment', async () => {
+    const { generateProjectConfig } = await import('../../../packages/cuttlefish/src/create/templates');
+    const cfg = generateProjectConfig({
+      projectName: 'p',
+      targetId: 'blackpill_f411ce',
+      targetDisplayName: 'Black Pill',
+      isNative: false,
+      frameworkPackage: '@typecad/framework-zephyr',
+      framework: 'zephyr',
+      board: 'blackpill_f411ce/stm32f411xe',
+      buildTarget: 'blackpill_f411ce/stm32f411xe',
+      probeMethod: 'stlink',
+      probeMethods: [{ id: 'dfu' }, { id: 'stlink' }, { id: 'jlink' }],
+      probeRunnerArgs: probeRunnerQuirks('blackpill_f411ce', 'stlink'),
+      baudRate: 115200,
+      includeStarter: true,
+    });
+    expect(cfg).toContain("runnerArgs: ['--cmd-pre-init=reset_config none']");
+    // The comment must name the failure mode so a reader can decide to remove it.
+    expect(cfg).toContain('timed out while waiting for target halted');
+  });
+
+  it('emits no runnerArgs line when the probe method carries no quirk', async () => {
+    const { generateProjectConfig } = await import('../../../packages/cuttlefish/src/create/templates');
+    const cfg = generateProjectConfig({
+      projectName: 'p',
+      targetId: 'xiao_ble',
+      targetDisplayName: 'XIAO BLE',
+      isNative: false,
+      frameworkPackage: '@typecad/framework-zephyr',
+      framework: 'zephyr',
+      board: 'xiao_ble/nrf52840',
+      buildTarget: 'xiao_ble/nrf52840',
+      probeMethod: 'jlink',
+      probeMethods: [{ id: 'jlink' }],
+      baudRate: 115200,
+      includeStarter: true,
+    });
+    expect(cfg).toContain("probe: 'jlink'");
+    expect(cfg).not.toContain('runnerArgs');
   });
 
   it('emits a non-default baud into test.baudRate', async () => {

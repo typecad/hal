@@ -1,10 +1,16 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
   buildFlashArgs,
   resolveProbeMethod,
   classifyUploadResult,
   cleanseUploadOutput,
   uploadRequiresPort,
+  resolveSessionOpenOcd,
+  isTargetSwdFailure,
+  cachedBuildBoard,
 } from '../../../packages/framework-zephyr/src/toolchain';
 import type { ZephyrChipDescriptor } from '../../../packages/framework-zephyr/src/chips/types';
 
@@ -21,6 +27,37 @@ const BLACKPILL: ZephyrChipDescriptor = {
 const NO_TABLE: ZephyrChipDescriptor = {
   id: 'esp32s3_devkitc', soc: 'esp32s3', gpioController: 'gpio0', gpio: { dtSpecs: [] },
 };
+
+describe('cachedBuildBoard (board-switch build-dir nuke input)', () => {
+  it('reads the cached BOARD:STRING from CMakeCache.txt', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-cmakecache-'));
+    try {
+      fs.mkdirSync(tmp, { recursive: true });
+      fs.writeFileSync(path.join(tmp, 'CMakeCache.txt'), [
+        '//CMakeCache.txt',
+        'CMAKE_BUILD_TYPE:STRING=',
+        'BOARD:STRING=blackpill_f411ce/stm32f411xe',
+        'CACHED_BOARD:STRING=blackpill_f411ce/stm32f411xe',
+        '',
+      ].join('\n'));
+      expect(cachedBuildBoard(tmp)).toBe('blackpill_f411ce/stm32f411xe');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('returns undefined for a missing dir or a cache without BOARD', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-cmakecache-empty-'));
+    try {
+      expect(cachedBuildBoard(tmp)).toBeUndefined();              // no cache file
+      expect(cachedBuildBoard(path.join(tmp, 'nope'))).toBeUndefined(); // no dir
+      fs.writeFileSync(path.join(tmp, 'CMakeCache.txt'), 'FOO:STRING=bar\n');
+      expect(cachedBuildBoard(tmp)).toBeUndefined();              // no BOARD line
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('resolveProbeMethod (zephyr.probe → runner + args)', () => {
   it("maps the friendly id to the method's runner AND args (quirks included)", () => {
@@ -273,5 +310,106 @@ describe('cleanseUploadOutput (suppress benign uf2 traceback noise)', () => {
   it('does not cleanse other runners even when the race text appears', () => {
     // The mitigation is uf2-only; nrfutil output is returned verbatim.
     expect(cleanseUploadOutput('nrfutil', 1, raceOutput)).toBe(raceOutput);
+  });
+});
+
+describe('resolveSessionOpenOcd (probe-session openocd discovery)', () => {
+  const exeName = process.platform === 'win32' ? 'openocd.exe' : 'openocd';
+
+  function tmpTree(setup: (root: string) => void): string {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ocd-resolve-'));
+    setup(root);
+    return root;
+  }
+
+  it('finds a PATH-installed openocd (the Linux micromamba-env layout)', () => {
+    // No $OPENOCD, no SDK — only PATH. This is the setup that previously
+    // made the deterministic probe session unreachable: the SDK-layout check
+    // failed and every flash silently dropped to the west fallback.
+    const bin = tmpTree((root) => fs.writeFileSync(path.join(root, exeName), ''));
+    try {
+      const r = resolveSessionOpenOcd({ PATH: bin });
+      expect(r?.exe).toBe(path.join(bin, exeName));
+      expect(r?.searchDirs).toEqual([]);
+    } finally {
+      fs.rmSync(bin, { recursive: true, force: true });
+    }
+  });
+
+  it('$OPENOCD wins over SDK and PATH (the variable Zephyr CMake reads)', () => {
+    const dirs = tmpTree((root) => {
+      fs.mkdirSync(path.join(root, 'sdk', 'hosttools', 'openocd', 'bin'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'sdk', 'hosttools', 'openocd', 'bin', exeName), '');
+      fs.mkdirSync(path.join(root, 'sdk', 'hosttools', 'openocd', 'share', 'openocd', 'scripts'), { recursive: true });
+      fs.mkdirSync(path.join(root, 'bin'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'bin', exeName), '');
+    });
+    try {
+      const envOpenOcd = path.join(dirs, 'bin', exeName);
+      const r = resolveSessionOpenOcd({
+        OPENOCD: envOpenOcd,
+        ZEPHYR_SDK_INSTALL_DIR: path.join(dirs, 'sdk'),
+        PATH: path.join(dirs, 'bin'),
+      });
+      expect(r?.exe).toBe(envOpenOcd);
+      expect(r?.searchDirs).toEqual([]);
+    } finally {
+      fs.rmSync(dirs, { recursive: true, force: true });
+    }
+  });
+
+  it('collects the SDK script search dirs for an SDK-hosted openocd', () => {
+    const sdk = tmpTree((root) => {
+      fs.mkdirSync(path.join(root, 'hosttools', 'openocd', 'bin'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'hosttools', 'openocd', 'bin', exeName), '');
+      fs.mkdirSync(path.join(root, 'hosttools', 'openocd', 'share', 'openocd', 'scripts'), { recursive: true });
+    });
+    try {
+      const r = resolveSessionOpenOcd({ ZEPHYR_SDK_INSTALL_DIR: sdk });
+      expect(r?.exe).toBe(path.join(sdk, 'hosttools', 'openocd', 'bin', exeName));
+      expect(r?.searchDirs).toEqual([path.join(sdk, 'hosttools', 'openocd', 'share', 'openocd', 'scripts')]);
+    } finally {
+      fs.rmSync(sdk, { recursive: true, force: true });
+    }
+  });
+
+  it('falls through an SDK root that hosts no openocd to PATH', () => {
+    // SDK 1.x sysroots layout: scripts under hosttools/sysroots/... but no
+    // hosttools/openocd/bin binary — PATH is where the env's openocd lives.
+    const dirs = tmpTree((root) => {
+      fs.mkdirSync(path.join(root, 'sdk', 'hosttools'), { recursive: true });
+      fs.mkdirSync(path.join(root, 'bin'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'bin', exeName), '');
+    });
+    try {
+      const r = resolveSessionOpenOcd({
+        ZEPHYR_SDK_INSTALL_DIR: path.join(dirs, 'sdk'),
+        PATH: path.join(dirs, 'bin'),
+      });
+      expect(r?.exe).toBe(path.join(dirs, 'bin', exeName));
+    } finally {
+      fs.rmSync(dirs, { recursive: true, force: true });
+    }
+  });
+
+  it('returns undefined when nothing resolves', () => {
+    expect(resolveSessionOpenOcd({ PATH: '' })).toBeUndefined();
+    expect(resolveSessionOpenOcd({ PATH: '/nonexistent-dir-xyz' })).toBeUndefined();
+  });
+});
+
+describe('isTargetSwdFailure (target-ignored-SWD signatures)', () => {
+  it('matches the connect-stage failure (DPIDR never read)', () => {
+    expect(isTargetSwdFailure('Error: init mode failed (unable to connect to the target)')).toBe(true);
+  });
+
+  it('matches the halt-stage failures', () => {
+    expect(isTargetSwdFailure('Error: timed out while waiting for target halted')).toBe(true);
+    expect(isTargetSwdFailure('TARGET: stm32f4x.cpu - Not halted')).toBe(true);
+  });
+
+  it('leaves unrelated failures alone', () => {
+    expect(isTargetSwdFailure('Error: flash write failed at 0x08000000')).toBe(false);
+    expect(isTargetSwdFailure('LIBUSB_ERROR_ACCESS')).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
-// Unit tests for Zephyr `--debug` wiring: debugMode() target selection, the
-// printf halt shim gating, and the gdb-mode artifact generators
-// (debug-config.ts). These are pure unit tests — no hardware, no west build.
+// Unit tests for the west-driven debug wiring: facts-based debugMode()
+// selection, the runners.yaml reader, and the cortex-debug external-server
+// artifacts (launch.json + tasks.json). These are pure unit tests — no
+// hardware, no west build.
 
 import { describe, it, expect } from 'vitest';
 import { ZephyrStrategy } from '../../../packages/framework-zephyr/src/strategy';
@@ -9,153 +10,386 @@ import {
   writeProjectDebugArtifacts,
   generateGdbScript,
   resolveDebugLocations,
-  discoverZephyrSdkRoots,
-  gdbPathFromSdkRoot,
+  debugArtifactsNeedRewrite,
+  DEBUG_BUILD_TASK,
+  DEBUG_SERVER_TASK,
+  DEBUG_SERVER_STOP_TASK,
+  DEBUG_SERVER_PORT,
 } from '../../../packages/framework-zephyr/src/toolchain/debug-config';
+import { parseRunnersYaml } from '../../../packages/framework-zephyr/src/toolchain/runners';
 import { scaffoldZephyrProject } from '../../../packages/framework-zephyr/src/toolchain/scaffold';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { generateBoard } from '../../../packages/framework-zephyr/src/boardgen';
-import type { BoardConstants } from '../../../packages/cuttlefish/src/api/shared/board-resolver';
-function generatedConstants(target: string): BoardConstants {
-  const g = generateBoard(target);
-  return new Map(Object.entries(JSON.parse(g.boardJson).constants)) as BoardConstants;
-}
-
 
 const strategy = new ZephyrStrategy();
 
-describe('ZephyrStrategy.debugMode — target selection', () => {
-  it('selects gdb for esp32s3_devkitc (built-in USB-JTAG)', () => {
-    expect(strategy.debugMode('esp32s3_devkitc')).toBe('gdb');
-  });
-
-  it('selects gdb for esp32s3_devkitc with a /qualifier suffix', () => {
-    expect(strategy.debugMode('esp32s3_devkitc/esp32s3/procpu')).toBe('gdb');
-  });
-
-  it('selects gdb for any esp32s3* board', () => {
-    expect(strategy.debugMode('esp32s3_other')).toBe('gdb');
-  });
-
-  it('selects gdb for blackpill (ST-Link probe method ships in the board package)', () => {
-    expect(strategy.debugMode('blackpill_f411ce')).toBe('gdb');
+describe('ZephyrStrategy.debugMode — facts-based target selection', () => {
+  it('selects gdb for any board whose probe table carries a debug-capable method', () => {
+    // blackpill: stlink (openocd, debug) — first debug-capable after dfu.
     expect(strategy.debugMode('blackpill_f411ce/stm32f411xe')).toBe('gdb');
+    expect(strategy.debugMode('blackpill_f401ce/stm32f401xe')).toBe('gdb');
+    // esp32s3: openocd over the built-in USB-JTAG.
+    expect(strategy.debugMode('esp32s3_devkitc/esp32s3/procpu')).toBe('gdb');
+    // xiao_ble: jlink/openocd entries in its table — gdb now that the gate
+    // is the board's own facts (the old name allowlist kept it on printf).
+    expect(strategy.debugMode('xiao_ble/nrf52840')).toBe('gdb');
   });
 
-  it('falls back to printf for xiao_ble (J-Link path not yet wired)', () => {
-    expect(strategy.debugMode('xiao_ble')).toBe('printf');
-  });
-
-  it('falls back to printf for esp32_devkitc (no built-in USB-JTAG; needs ESP-PROG)', () => {
-    // The plain ESP32 has no built-in USB-JTAG unlike the S3, so gdb would need
-    // an external probe + a different OpenOCD cfg/toolchain dir (deferred).
-    expect(strategy.debugMode('esp32_devkitc')).toBe('printf');
-    expect(strategy.debugMode('esp32_devkitc/esp32/procpu')).toBe('printf');
-  });
-
-  it('falls back to printf when no target is given', () => {
+  it('falls back to printf for boards without a debug-capable probe method', () => {
+    // Bootloader-only table (bossac) and no table at all — printf both ways.
+    expect(strategy.debugMode('arduino_nano_33_iot/samd21g18a')).toBe('printf');
+    expect(strategy.debugMode('mps2/an385')).toBe('printf');
     expect(strategy.debugMode(undefined)).toBe('printf');
+    expect(strategy.debugMode('')).toBe('printf');
+    // Unresolvable targets never crash the gate.
+    expect(strategy.debugMode('no_such_board_xyz')).toBe('printf');
   });
 });
 
-describe('gdbPathFromSdkRoot — per-architecture toolchain dir', () => {
-  it('resolves the arm-zephyr-eabi GDB for ARM board targets', () => {
-    const sdk = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-sdk-arm-'));
-    const armBin = path.join(sdk, 'arm-zephyr-eabi', 'bin');
-    fs.mkdirSync(armBin, { recursive: true });
-    fs.writeFileSync(path.join(armBin, 'arm-zephyr-eabi-gdb.exe'), '');
+describe('parseRunnersYaml — west runner facts', () => {
+  const FIXTURE = [
+    '# Available runners configured by board.cmake.',
+    'runners:',
+    '- dfu-util',
+    '- openocd',
+    '- jlink',
+    '',
+    '# Default flash runner if --runner is not given.',
+    'flash-runner: dfu-util',
+    '',
+    '# Default debug runner if --runner is not given.',
+    'debug-runner: openocd',
+    '',
+    '# Common runner configuration values.',
+    'config:',
+    '  board_dir: C:/some/board',
+    '  elf_file: zephyr.elf',
+    '  gdb: C:/sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb-py.exe',
+    '  openocd: C:/sdk/hosttools/openocd/bin/openocd.exe',
+    '  openocd_search:',
+    '    - C:/sdk/hosttools/openocd/share/openocd/scripts',
+    '    - C:/another/scripts',
+    '',
+    '# Runner specific arguments',
+    'args:',
+    '  dfu-util:',
+    '    - --pid=0483:df11',
+    '  jlink:',
+    '    - --device=STM32F411CE',
+    '',
+  ].join('\n');
+
+  it('extracts the debug runner, the arch gdb, and the runner list', () => {
+    const facts = parseRunnersYaml(FIXTURE)!;
+    expect(facts.debugRunner).toBe('openocd');
+    expect(facts.gdb).toBe('C:/sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb-py.exe');
+    expect(facts.runners).toEqual(['dfu-util', 'openocd', 'jlink']);
+  });
+
+  it('parses the real blackpill runners.yaml shape (regression)', () => {
+    // Byte-for-byte shape from a west 1.0 build of blackpill_f411ce.
+    const facts = parseRunnersYaml(FIXTURE)!;
+    expect(facts).toBeTruthy();
+  });
+});
+
+describe('writeDebugConfig — cortex-debug external-server artifacts', () => {
+  function fakeBuild(tmp: string, gdb: string): string {
+    const projectRoot = path.join(tmp, 'src', 'out');
+    const buildDir = path.join(projectRoot, 'build');
+    fs.mkdirSync(path.join(buildDir, 'zephyr'), { recursive: true });
+    fs.writeFileSync(path.join(buildDir, 'zephyr', 'runners.yaml'), [
+      'runners:', '- openocd', '- jlink', '',
+      'flash-runner: openocd', 'debug-runner: openocd', '',
+      'config:', `  gdb: ${gdb}`, '',
+    ].join('\n'));
+    return projectRoot;
+  }
+
+  it('writes an external-mode launch entry wired to the west server + the three tasks', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-dbg-west-'));
     try {
-      const p = gdbPathFromSdkRoot(sdk, 'blackpill_f411ce/stm32f411xe');
-      expect(p).toBeTruthy();
-      expect(p!.replace(/\\/g, '/')).toContain('arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe');
-      // Xtensa targets must not resolve against an ARM-only SDK layout.
-      expect(gdbPathFromSdkRoot(sdk, 'esp32s3_devkitc')).toBeUndefined();
+      const projectRoot = fakeBuild(tmp, 'C:/sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe');
+      const written = writeDebugConfig({
+        projectRoot,
+        workspaceRoot: tmp,
+        appRel: 'src/out',
+        target: 'blackpill_f411ce/stm32f411xe',
+        buildDir: path.join(projectRoot, 'build'),
+      });
+      expect(written).toContain('.vscode/launch.json');
+      expect(written).toContain('.vscode/tasks.json');
+
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      const cfg = launch.configurations[0];
+      expect(cfg.type).toBe('cortex-debug');
+      expect(cfg.servertype).toBe('external');
+      expect(cfg.gdbTarget).toBe(`localhost:${DEBUG_SERVER_PORT}`);
+      // gdb comes from west's resolved facts, not SDK-layout guessing.
+      expect(cfg.gdbPath).toBe('C:/sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe');
+      expect(cfg.executable).toBe('${workspaceFolder}/src/out/build/zephyr/zephyr.elf');
+      // The gdb server lifecycle is west's — no configFiles, no serverpath.
+      expect(cfg.configFiles).toBeUndefined();
+      expect(cfg.serverpath).toBeUndefined();
+      // ARM gdb: no Xtensa flash-mapping commands, no trailing continue.
+      expect(cfg.postAttachCommands.some((l: string) => l.includes('0x42000000'))).toBe(false);
+      expect(cfg.postAttachCommands).not.toContain('c');
+      // The server task IS the preLaunchTask (VS Code only auto-runs one
+      // task); it depends on the build+flash task.
+      expect(cfg.preLaunchTask).toBe(DEBUG_SERVER_TASK);
+      expect(cfg.postDebugTask).toBe(DEBUG_SERVER_STOP_TASK);
+
+      const tasks = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'tasks.json'), 'utf8'));
+      const labels = tasks.tasks.map((t: { label: string }) => t.label);
+      expect(labels).toContain(DEBUG_BUILD_TASK);
+      expect(labels).toContain(DEBUG_SERVER_TASK);
+      expect(labels).toContain(DEBUG_SERVER_STOP_TASK);
+      const server = tasks.tasks.find((t: { label: string }) => t.label === DEBUG_SERVER_TASK);
+      expect(server.isBackground).toBe(true);
+      // ONE self-contained task — no dependsOn (VS Code awaits the whole
+      // dependency group; a never-exiting background child hangs F5).
+      expect(server.command).toContain('debug-server start --flash');
+      expect(server.dependsOn).toBeUndefined();
+      // NO_COLOR keeps chalk's ANSI codes from breaking the background
+      // patterns (the "task has not exited" prompt otherwise appears).
+      expect(server.options.env.NO_COLOR).toBe('1');
+      // The matcher pattern must never match a real line — matched lines
+      // become file-less ERROR problems and VS Code blocks F5 ("errors
+      // exist after running preLaunchTask"). ^$ matched openocd's blank
+      // lines; the sentinel cannot occur in any output.
+      expect(server.problemMatcher.pattern.regexp).toBe('__cuttlefish_never_matches__');
+      // The matcher's endsPattern gates the debug session on the ready marker.
+      expect(server.problemMatcher.background.endsPattern)
+        .toBe(`^CUTTLEFISH: debug server ready on ${DEBUG_SERVER_PORT}`);
     } finally {
-      fs.rmSync(sdk, { recursive: true, force: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 
-  it('keeps the xtensa-espressif default for esp32 targets and legacy no-target calls', () => {
-    const sdk = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-sdk-xt-'));
-    const xtBin = path.join(sdk, 'xtensa-espressif_esp32s3_zephyr-elf', 'bin');
-    fs.mkdirSync(xtBin, { recursive: true });
-    fs.writeFileSync(path.join(xtBin, 'xtensa-espressif_esp32s3_zephyr-elf-gdb.exe'), '');
+  it('Xtensa gdb facts switch in the flash-mapping commands + trailing continue', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-dbg-west-xtensa-'));
     try {
-      expect(gdbPathFromSdkRoot(sdk, 'esp32s3_devkitc')).toContain('xtensa-espressif_esp32s3');
-      expect(gdbPathFromSdkRoot(sdk)).toContain('xtensa-espressif_esp32s3');
+      const projectRoot = fakeBuild(tmp, 'C:/sdk/gnu/xtensa-espressif_esp32s3_zephyr-elf/bin/xtensa-espressif_esp32s3_zephyr-elf-gdb.exe');
+      writeDebugConfig({
+        projectRoot,
+        workspaceRoot: tmp,
+        appRel: 'src/out',
+        target: 'esp32s3_devkitc/esp32s3/procpu',
+        buildDir: path.join(projectRoot, 'build'),
+      });
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      const cmds = launch.configurations[0].postAttachCommands as string[];
+      expect(cmds.some((l) => l.includes('set mem inaccessible-by-default off'))).toBe(true);
+      expect(cmds.some((l) => l.includes('mem 0x42000000 0x44000000 ro cache'))).toBe(true);
+      expect(cmds[cmds.length - 1]).toBe('c');
     } finally {
-      fs.rmSync(sdk, { recursive: true, force: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('prefers the plain (non -py) gdb sibling — cortex-debug derives objdump/nm from it', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-dbg-west-py-'));
+    try {
+      // A -py gdb in runners.yaml whose PLAIN sibling exists on disk → the
+      // plain one wins: cortex-debug derives objdump/nm paths from the gdb
+      // path by name substitution, and the -py variants of those don't exist
+      // in the SDK (ENOENT noise, degraded symbol classification).
+      const bin = path.join(tmp, 'sdk', 'arm-zephyr-eabi', 'bin').split(path.sep).join('/');
+      fs.mkdirSync(bin, { recursive: true });
+      fs.writeFileSync(`${bin}/arm-zephyr-eabi-gdb.exe`, '');
+      fs.writeFileSync(`${bin}/arm-zephyr-eabi-gdb-py.exe`, '');
+      const projectRoot = fakeBuild(tmp, `${bin}/arm-zephyr-eabi-gdb-py.exe`);
+      writeDebugConfig({
+        projectRoot, workspaceRoot: tmp, appRel: 'src/out',
+        target: 'blackpill_f411ce/stm32f411xe',
+        buildDir: path.join(projectRoot, 'build'),
+      });
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      expect(launch.configurations[0].gdbPath).toBe(`${bin}/arm-zephyr-eabi-gdb.exe`);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('without runners.yaml (pre-build) the entry is written without gdbPath', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-dbg-west-prebuild-'));
+    const projectRoot = path.join(tmp, 'src', 'out');
+    fs.mkdirSync(projectRoot, { recursive: true });
+    try {
+      writeDebugConfig({
+        projectRoot,
+        workspaceRoot: tmp,
+        appRel: 'src/out',
+        target: 'blackpill_f411ce/stm32f411xe',
+        buildDir: path.join(projectRoot, 'build'),
+      });
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      expect(launch.configurations[0].gdbPath).toBeUndefined();
+      // …and that starter state needs an upgrade on the next build.
+      expect(debugArtifactsNeedRewrite(tmp, 'src/out')).toBe(true);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 });
 
-describe('printf halt shim gating', () => {
-  // The __tc_debug_wait_for_continue shim must only appear in printf builds;
-  // in gdb builds the printf preprocessor is skipped, so the shim is dead code
-  // and its <zephyr/drivers/uart.h> include would be unused.
-
-  it('emits the halt shim + uart.h include in printf mode (xiao_ble)', () => {
-    // Explicit analysis with no UART usage: the uart.h include in printf mode
-    // comes from the printf-gated shim push (not the usage gate), proving the
-    // gate actually adds it for the shim.
-    const ctx = {
-      frameworkData: { buildTarget: 'xiao_ble' },
-      analysis: { usesUart: false, usesI2C: false, usesSPI: false, usesADC: false, usesPWM: false, usesWDT: false, usesBle: false, usesStdString: false },
-    } as any;
-    const shims = strategy.shimLines(undefined, ctx);
-    expect(shims.join('\n')).toContain('__tc_debug_wait_for_continue');
-    const includes = strategy.forcedIncludes(undefined, ctx);
-    expect(includes).toContain('<zephyr/drivers/uart.h>');
+describe('debugArtifactsNeedRewrite — the plain-build self-heal gate', () => {
+  const writeLaunch = (tmp: string, configurations: unknown[]): void => {
+    fs.mkdirSync(path.join(tmp, '.vscode'), { recursive: true });
+    fs.writeFileSync(path.join(tmp, '.vscode', 'launch.json'), JSON.stringify({ configurations }));
+  };
+  const ours = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    name: 'TypeCAD Debug (Zephyr, blackpill_f411ce)',
+    servertype: 'external',
+    gdbPath: 'C:/sdk/gdb.exe',
+    executable: '${workspaceFolder}/src/out/build/zephyr/zephyr.elf',
+    ...over,
   });
 
-  it('omits the halt shim in gdb mode (esp32s3_devkitc)', () => {
-    const ctx = { frameworkData: { buildTarget: 'esp32s3_devkitc' } } as any;
-    const shims = strategy.shimLines(undefined, ctx);
-    expect(shims.join('\n')).not.toContain('__tc_debug_wait_for_continue');
-  });
-
-  it('omits the unconditional uart.h include in gdb mode when the program does not use UART', () => {
-    // Provide an explicit analysis with usesUart:false so the usage-gated
-    // include doesn't fire — without analysis, forcedIncludes defaults every
-    // use-flag to true (defensive "include everything" for pre-build queries).
-    const ctx = {
-      frameworkData: { buildTarget: 'esp32s3_devkitc' },
-      analysis: { usesUart: false, usesI2C: false, usesSPI: false, usesADC: false, usesPWM: false, usesWDT: false, usesBle: false, usesStdString: false },
-    } as any;
-    const includes = strategy.forcedIncludes(undefined, ctx);
-    // uart.h should NOT be present in gdb mode: no shim needs it, and the
-    // program doesn't use UART.
-    expect(includes).not.toContain('<zephyr/drivers/uart.h>');
-  });
-});
-
-describe('scaffoldZephyrProject — debug Kconfigs', () => {
-  it('adds CONFIG_DEBUG + CONFIG_DEBUG_OPTIMIZATIONS when debug=true', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-debug-'));
-    fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'src', 'main.cpp'), 'int x = 0;\n');
+  it('needs a rewrite for stale shapes: foreign app root, missing gdbPath, self-managed server', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-needrewrite-'));
     try {
-      scaffoldZephyrProject(dir, true);
-      const prj = fs.readFileSync(path.join(dir, 'prj.conf'), 'utf8');
-      expect(prj).toContain('CONFIG_DEBUG=y');
-      expect(prj).toContain('CONFIG_DEBUG_OPTIMIZATIONS=y');
+      writeLaunch(tmp, [ours({ executable: '${workspaceFolder}/src/generated/build/zephyr/zephyr.elf' })]);
+      expect(debugArtifactsNeedRewrite(tmp, 'src/out')).toBe(true); // outDir moved
+
+      writeLaunch(tmp, [ours({ gdbPath: undefined })]);
+      expect(debugArtifactsNeedRewrite(tmp, 'src/out')).toBe(true); // create-time starter
+
+      writeLaunch(tmp, [ours({ servertype: 'openocd', configFiles: ['x'] })]);
+      expect(debugArtifactsNeedRewrite(tmp, 'src/out')).toBe(true); // pre-west shape
+
+      writeLaunch(tmp, [ours()]);
+      expect(debugArtifactsNeedRewrite(tmp, 'src/out')).toBe(false); // current
     } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 
-  it('omits debug Kconfigs when debug=false (default)', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-nodebug-'));
-    fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'src', 'main.cpp'), 'int x = 0;\n');
+  it('is false with no launch.json or user-authored entries only', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-needrewrite-none-'));
     try {
-      scaffoldZephyrProject(dir, false);
-      const prj = fs.readFileSync(path.join(dir, 'prj.conf'), 'utf8');
-      expect(prj).not.toContain('CONFIG_DEBUG=y');
+      expect(debugArtifactsNeedRewrite(tmp, 'src/out')).toBe(false);
+      writeLaunch(tmp, [{ name: 'my session', servertype: 'openocd', executable: '${workspaceFolder}/elsewhere/app.elf' }]);
+      expect(debugArtifactsNeedRewrite(tmp, 'src/out')).toBe(false);
     } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('writeProjectDebugArtifacts — create-time starter artifacts', () => {
+  it('writes the external-mode entry + tasks (no gdbPath — no build exists yet)', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-west-'));
+    try {
+      const written = writeProjectDebugArtifacts({
+        workspaceRoot: tmp,
+        buildTarget: 'blackpill_f411ce/stm32f411xe',
+      });
+      expect(written).toContain('.vscode/launch.json');
+      expect(written).toContain('.vscode/tasks.json');
+
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      const cfg = launch.configurations[0];
+      expect(cfg.servertype).toBe('external');
+      expect(cfg.gdbTarget).toBe(`localhost:${DEBUG_SERVER_PORT}`);
+      expect(cfg.gdbPath).toBeUndefined();
+      expect(cfg.executable).toBe('${workspaceFolder}/src/out/build/zephyr/zephyr.elf');
+      // The gdb frame-filter script needs a source map — none at create time.
+      expect(fs.existsSync(path.join(tmp, 'src', 'out', '.cuttlefish', '.cuttlefish-gdb.py'))).toBe(false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('seeds the entry with the create-time starter gdb (fresh-project first F5 finds gdb)', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-gdb-'));
+    try {
+      writeProjectDebugArtifacts({
+        workspaceRoot: tmp,
+        buildTarget: 'blackpill_f411ce/stm32f411xe',
+        gdbPath: 'C:/sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe',
+      });
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      expect(launch.configurations[0].gdbPath)
+        .toBe('C:/sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe');
+      // A wrong create-time silicon guess is corrected on the first build:
+      // the rewrite gate flags an entry whose gdbPath differs from west's
+      // runners.yaml resolution.
+      expect(debugArtifactsNeedRewrite(tmp, 'src/out', 'C:/real/sdk/arm-zephyr-eabi-gdb.exe')).toBe(true);
+      expect(debugArtifactsNeedRewrite(
+        tmp, 'src/out', 'C:/sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe')).toBe(false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('no-ops for printf-facts boards and when no target is given', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-printf-'));
+    try {
+      expect(writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'arduino_nano_33_iot/samd21g18a' })).toEqual([]);
+      expect(writeProjectDebugArtifacts({ workspaceRoot: tmp })).toEqual([]);
+      expect(fs.existsSync(path.join(tmp, '.vscode'))).toBe(false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('lands the starter artifacts under a non-default appRel (renamed outDir scaffold)', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-apprel-'));
+    try {
+      writeProjectDebugArtifacts({
+        workspaceRoot: tmp,
+        buildTarget: 'blackpill_f411ce/stm32f411xe',
+        appRel: 'src/gen',
+      });
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      expect(launch.configurations[0].executable)
+        .toBe('${workspaceFolder}/src/gen/build/zephyr/zephyr.elf');
+      expect(fs.existsSync(path.join(tmp, 'src', 'out'))).toBe(false);
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('is idempotent — re-running does not duplicate entries', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-idem-'));
+    try {
+      writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'blackpill_f411ce/stm32f411xe' });
+      writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'blackpill_f411ce/stm32f411xe' });
+      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
+      const tasks = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'tasks.json'), 'utf8'));
+      expect(launch.configurations).toHaveLength(1);
+      expect(tasks.tasks).toHaveLength(3); // build+flash, server, stop
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('resolveDebugLocations', () => {
+  it('walks up from the Zephyr app dir to the cuttlefish project root (cuttlefish.config.ts)', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-resloc-'));
+    const appRoot = path.join(tmp, 'src', 'out');
+    fs.mkdirSync(appRoot, { recursive: true });
+    fs.writeFileSync(path.join(tmp, 'cuttlefish.config.ts'), 'export default {} as any;');
+    try {
+      const { workspaceRoot, appRel } = resolveDebugLocations(appRoot);
+      expect(workspaceRoot).toBe(tmp);
+      expect(appRel).toBe('src/out');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to projectRoot when no cuttlefish.config.ts ancestor exists', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-resloc-bare-'));
+    try {
+      const { workspaceRoot, appRel } = resolveDebugLocations(tmp);
+      expect(workspaceRoot).toBe(tmp);
+      expect(appRel).toBe('');
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 });
@@ -166,439 +400,49 @@ describe('generateGdbScript — conditional lambda frame filter', () => {
   });
 
   it('returns null when the source map has no _isr_N symbols', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gdb-noscript-'));
-    const mapPath = path.join(dir, 'main.cpp.thcppmap.json');
-    fs.writeFileSync(mapPath, '{"version":3,"sources":[],"names":[]}');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-gdbscript-'));
     try {
+      const mapPath = path.join(tmp, 'map.thcppmap.json');
+      fs.writeFileSync(mapPath, JSON.stringify({ mappings: {} }));
       expect(generateGdbScript(mapPath)).toBeNull();
     } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 
   it('returns the frame-filter script when _isr_N symbols are present', () => {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gdb-script-'));
-    const mapPath = path.join(dir, 'main.cpp.thcppmap.json');
-    // A source map referencing a hoisted lambda symbol.
-    fs.writeFileSync(mapPath, '{"names":["__lambda_isr_0","foo_isr_1"]}');
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-gdbscript-2-'));
     try {
-      const script = generateGdbScript(mapPath);
-      expect(script).not.toBeNull();
+      const mapPath = path.join(tmp, 'map.thcppmap.json');
+      fs.writeFileSync(mapPath, JSON.stringify({ symbolTable: { _isr_1: {} } }));
+      const script = generateGdbScript(mapPath)!;
       expect(script).toContain('CuttlefishLambdaFilter');
       expect(script).toContain('gdb.frame_filters');
     } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('writeDebugConfig — probe-method-driven artifacts (Black Pill stlink)', () => {
-  it('shapes openocd.cfg + launch.json from the board probeMethods table (swd, no xtensa mem)', async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-dbg-bp-'));
-    const projectRoot = path.join(tmp, 'src', 'out');
-    fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
-    // The board constants carry the probeMethods table; the config selects
-    // the method. resolveDebugProbeMethod reads both.
-    try {
-      const bc = generatedConstants('blackpill_f411ce/stm32f411xe');
-      fs.writeFileSync(path.join(projectRoot, 'src', 'board-constants.json'), JSON.stringify(Object.fromEntries(bc)));
-      fs.writeFileSync(path.join(tmp, 'cuttlefish.config.ts'), "export default { zephyr: { probe: 'stlink' } } as any;");
-
-      writeDebugConfig({
-        projectRoot,
-        workspaceRoot: tmp,
-        appRel: 'src/out',
-        target: 'blackpill_f411ce/stm32f411xe',
-        buildDir: path.join(projectRoot, 'build'),
-      });
-
-      const cfgText = fs.readFileSync(path.join(projectRoot, '.cuttlefish', 'openocd.cfg'), 'utf8');
-      expect(cfgText).toContain('source [find interface/stlink-dap.cfg]');
-      expect(cfgText).toContain('source [find target/stm32f4x.cfg]');
-      expect(cfgText).toContain('reset_config srst_only');
-
-      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
-      const cfg = launch.configurations[0];
-      expect(cfg.name).toBe('TypeCAD Debug (Zephyr, blackpill_f411ce)');
-      expect(cfg.servertype).toBe('openocd');
-      expect(cfg.interface).toBe('swd');
-      // The ESP32 flash-mapping commands are xtensa-only.
-      expect(cfg.postAttachCommands.some((l: string) => l.includes('0x42000000'))).toBe(false);
-      // No trailing `c`: an instant reset→thb-main stop would arrive while
-      // cortex-debug is still initializing, leaving the session half-started.
-      // The pending thb means the first user Continue stops at main().
-      expect(cfg.postAttachCommands).toContain('monitor reset init');
-      expect(cfg.postAttachCommands).toContain('thb main');
-      expect(cfg.postAttachCommands).not.toContain('c');
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('tier-3 boards (uncurated soc) emit the board\'s own support/openocd.cfg from the pack table', async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-dbg-bp401-'));
-    const projectRoot = path.join(tmp, 'src', 'out');
-    fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
-    try {
-      const bc = generatedConstants('blackpill_f401ce/stm32f401xe');
-      fs.writeFileSync(path.join(projectRoot, 'src', 'board-constants.json'), JSON.stringify(Object.fromEntries(bc)));
-      fs.writeFileSync(path.join(tmp, 'cuttlefish.config.ts'), "export default { zephyr: { probe: 'stlink' } } as any;");
-
-      writeDebugConfig({
-        projectRoot,
-        workspaceRoot: tmp,
-        appRel: 'src/out',
-        target: 'blackpill_f401ce/stm32f401xe',
-        buildDir: path.join(projectRoot, 'build'),
-      });
-
-      // The pack carries the board's support/openocd.cfg verbatim — the
-      // stlink-dap interface, the SWD transport, and the F4 target.
-      const cfgText = fs.readFileSync(path.join(projectRoot, '.cuttlefish', 'openocd.cfg'), 'utf8');
-      expect(cfgText).toContain('source [find interface/stlink-dap.cfg]');
-      expect(cfgText).toContain('transport select dapdirect_swd');
-      expect(cfgText).toContain('source [find target/stm32f4x.cfg]');
-
-      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
-      expect(launch.configurations[0].interface).toBe('swd');
-    } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 });
 
-describe('writeDebugConfig — launch.json + tasks.json generation', () => {
-  it('writes a self-contained cortex-debug launch config + build task', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-debugcfg-'));
-    const projectRoot = path.join(tmp, 'project');
-    const workspaceRoot = tmp; // workspace root is the temp dir
-    fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
+describe('scaffoldZephyrProject — debug Kconfigs', () => {
+  it('adds CONFIG_DEBUG + CONFIG_DEBUG_OPTIMIZATIONS when debug=true', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-kconfig-dbg-'));
     try {
-      const opts = {
-        projectRoot,
-        workspaceRoot,
-        appRel: 'project',
-        target: 'esp32s3_devkitc',
-        buildDir: path.join(projectRoot, 'build'),
-      };
-      writeDebugConfig(opts);
-
-      const launchPath = path.join(workspaceRoot, '.vscode', 'launch.json');
-      const tasksPath = path.join(workspaceRoot, '.vscode', 'tasks.json');
-      expect(fs.existsSync(launchPath)).toBe(true);
-      expect(fs.existsSync(tasksPath)).toBe(true);
-
-      const launch = JSON.parse(fs.readFileSync(launchPath, 'utf8'));
-      const cfg = launch.configurations[0];
-      expect(cfg.name).toBe('TypeCAD Debug (Zephyr, esp32s3_devkitc)');
-      // cortex-debug (the standard Cortex-Debug extension), NOT gdbtarget.
-      // cortex-debug starts OpenOCD via servertype; postAttachCommands reset
-      // the target, set a HW breakpoint at setup(), and continue.
-      expect(cfg.type).toBe('cortex-debug');
-      expect(cfg.request).toBe('attach');
-      // cortex-debug uses `executable` (the ELF), not gdbtarget's `program`.
-      expect(cfg.executable).toContain('project/build/zephyr/zephyr.elf');
-      expect(cfg.servertype).toBe('openocd');
-      expect(Array.isArray(cfg.configFiles)).toBe(true);
-      expect(cfg.configFiles[0]).toContain('project/.cuttlefish/openocd.cfg');
-      expect(cfg.interface).toBe('jtag');
-      // gdbPath is a concrete resolved path (NOT an IDF command variable).
-      // May be absent if the SDK path isn't resolvable in the test env;
-      // when present, it's absolute and references the xtensa gdb.
-      if (cfg.gdbPath !== undefined) {
-        expect(cfg.gdbPath).toMatch(/xtensa.*gdb/);
-      }
-      // serverpath is only present when resolveOpenOcdPath() finds the
-      // Espressif OpenOCD fork on disk; may be absent in CI/test envs.
-      if (cfg.serverpath !== undefined) {
-        expect(cfg.serverpath).toContain('openocd');
-      }
-      // No gdbtarget properties.
-      expect(cfg.program).toBeUndefined();
-      expect(cfg.gdb).toBeUndefined();
-      expect(cfg.target).toBeUndefined();
-      expect(cfg.runOpenOCD).toBeUndefined();
-      expect(cfg.initialBreakpoint).toBeUndefined();
-      expect(cfg.initCommands).toBeUndefined();
-      // postAttachCommands: dirs + limits + mem + reset + thb + continue.
-      const postCmds = cfg.postAttachCommands as string[];
-      expect(postCmds.some((c) => c.startsWith('set directories'))).toBe(true);
-      expect(postCmds).toContain('set remote hardware-watchpoint-limit 2');
-      expect(postCmds).toContain('set remote hardware-breakpoint-limit 2');
-      expect(postCmds).toContain('set mem inaccessible-by-default off');
-      expect(postCmds.some((c) => c.startsWith('mem 0x42000000'))).toBe(true);
-      expect(postCmds).toContain('monitor reset init');
-      expect(postCmds).toContain('thb main');
-      expect(postCmds).toContain('c');
-      expect(cfg.preLaunchTask).toBe('cuttlefish: build + flash (debug)');
-
-      // tasks.json: the task only builds + flashes (cortex-debug starts OpenOCD).
-      const tasks = JSON.parse(fs.readFileSync(tasksPath, 'utf8'));
-      const task = tasks.tasks[0];
-      expect(task.label).toBe('cuttlefish: build + flash (debug)');
-      expect(task.command).toContain('--debug');
-      // Command must NOT embed OpenOCD — cortex-debug manages it.
-      expect(task.command).not.toContain('openocd');
-      expect(task.isBackground).toBeUndefined();
-
-      // Idempotence: re-running must not duplicate the config/task.
-      writeDebugConfig(opts);
-      const launch2 = JSON.parse(fs.readFileSync(launchPath, 'utf8'));
-      expect(launch2.configurations).toHaveLength(1);
-      const tasks2 = JSON.parse(fs.readFileSync(tasksPath, 'utf8'));
-      expect(tasks2.tasks).toHaveLength(1);
-
-      // openocd.cfg is generated next to the launch config, sources the board
-      // cfg, and overrides the adapter speed AFTER the driver loads.
-      const cfgPath = path.join(projectRoot, '.cuttlefish', 'openocd.cfg');
-      expect(fs.existsSync(cfgPath)).toBe(true);
-      const ocdCfg = fs.readFileSync(cfgPath, 'utf8');
-      expect(ocdCfg).toContain('source [find board/esp32s3-builtin.cfg]');
-      expect(ocdCfg).toContain('adapter speed 4000');
-      const srcIdx = ocdCfg.split('\n').findIndex((l) => l.startsWith('source [find'));
-      const speedIdx = ocdCfg.split('\n').findIndex((l) => l.startsWith('adapter speed'));
-      expect(srcIdx).toBeGreaterThanOrEqual(0);
-      expect(speedIdx).toBeGreaterThan(srcIdx);
-
-      // No settings.json is written — the session runs its own OpenOCD via
-      // cortex-debug's servertype, so there's no idf.openOcdConfigs dependency.
-      expect(fs.existsSync(path.join(workspaceRoot, '.vscode', 'settings.json'))).toBe(false);
+      scaffoldZephyrProject(tmp, true, undefined, undefined);
+      const conf = fs.readFileSync(path.join(tmp, 'prj.conf'), 'utf8');
+      expect(conf).toContain('CONFIG_DEBUG=y');
+      expect(conf).toContain('CONFIG_DEBUG_OPTIMIZATIONS=y');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
   });
 
-  it('does not emit a gdb-script source command when no source map is provided', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-debugcfg-noscript-'));
-    const projectRoot = path.join(tmp, 'project');
-    fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
+  it('omits debug Kconfigs when debug=false (default)', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-kconfig-nodbg-'));
     try {
-      writeDebugConfig({
-        projectRoot,
-        workspaceRoot: tmp,
-        appRel: 'project',
-        target: 'esp32s3_devkitc',
-        buildDir: path.join(projectRoot, 'build'),
-        // no sourceMapPath
-      });
-      // launch.json postAttachCommands should NOT contain a `source ...` entry
-      // when no source map / gdb-script is present.
-      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
-      const postCmds = launch.configurations[0].postAttachCommands as string[];
-      expect(postCmds.some((c) => c.startsWith('source '))).toBe(false);
-      // No .cuttlefish-gdb.py written.
-      expect(fs.existsSync(path.join(projectRoot, '.cuttlefish', '.cuttlefish-gdb.py'))).toBe(false);
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('resolveDebugLocations', () => {
-  it('walks up from the Zephyr app dir to the cuttlefish project root (cuttlefish.config.ts)', () => {
-    // Layout: <tmp>/projectRoot/cuttlefish.config.ts
-    //         <tmp>/projectRoot/src/out/  <- Zephyr app dir (projectRoot arg)
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-debug-'));
-    const cfgDir = path.join(tmp, 'projectRoot');
-    const appDir = path.join(cfgDir, 'src', 'out');
-    fs.mkdirSync(appDir, { recursive: true });
-    fs.writeFileSync(path.join(cfgDir, 'cuttlefish.config.ts'), '// stub');
-    try {
-      const { workspaceRoot, appRel } = resolveDebugLocations(appDir);
-      // workspaceRoot is the cuttlefish config dir (where .vscode/ goes).
-      expect(path.resolve(workspaceRoot)).toBe(path.resolve(cfgDir));
-      // appRel is the app dir relative to the config dir.
-      expect(appRel).toBe('src/out');
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('falls back to projectRoot when no cuttlefish.config.ts ancestor exists', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'resolve-debug-nocfg-'));
-    try {
-      const { workspaceRoot, appRel } = resolveDebugLocations(tmp);
-      expect(path.resolve(workspaceRoot)).toBe(path.resolve(tmp));
-      // path.relative(x, x) === '' (same dir); the app dir IS the workspace.
-      expect(appRel).toBe('');
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('writeProjectDebugArtifacts — create-time starter artifacts', () => {
-  it('writes launch.json + tasks.json + openocd.cfg under the starter src/out layout for esp32s3', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-'));
-    try {
-      const written = writeProjectDebugArtifacts({
-        workspaceRoot: tmp,
-        buildTarget: 'esp32s3_devkitc/esp32s3/procpu',
-      });
-      expect(written).toContain('.vscode/launch.json');
-      expect(written).toContain('.vscode/tasks.json');
-      expect(written).toContain('src/out/.cuttlefish/openocd.cfg');
-
-      // All three artifacts exist under the scaffolded src/out app layout.
-      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
-      const tasks = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'tasks.json'), 'utf8'));
-      expect(fs.existsSync(path.join(tmp, 'src', 'out', '.cuttlefish', 'openocd.cfg'))).toBe(true);
-
-      // The launch config targets the starter app's ELF + openocd cfg, and its
-      // preLaunchTask pairs with the emitted task label (F5 wiring).
-      const cfg = launch.configurations[0];
-      expect(cfg.name).toBe('TypeCAD Debug (Zephyr, esp32s3_devkitc)');
-      expect(cfg.executable).toBe('${workspaceFolder}/src/out/build/zephyr/zephyr.elf');
-      expect(cfg.configFiles[0]).toBe('${workspaceFolder}/src/out/.cuttlefish/openocd.cfg');
-      const task = tasks.tasks[0];
-      expect(task.label).toBe(cfg.preLaunchTask);
-      expect(task.command).toContain('--debug');
-      // The task runs from the starter app dir, where cuttlefish.config.ts
-      // resolution walks up to the project root.
-      expect(task.options.cwd).toBe('${workspaceFolder}/src/out');
-
-      // No gdb frame-filter script at create time (no source map exists yet).
-      expect(fs.existsSync(path.join(tmp, 'src', 'out', '.cuttlefish', '.cuttlefish-gdb.py'))).toBe(false);
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('is idempotent — re-running does not duplicate entries', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-idem-'));
-    try {
-      writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'esp32s3_devkitc' });
-      writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'esp32s3_devkitc' });
-      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
-      const tasks = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'tasks.json'), 'utf8'));
-      expect(launch.configurations).toHaveLength(1);
-      expect(tasks.tasks).toHaveLength(1);
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('no-ops for printf targets and when no target is given', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-printf-'));
-    try {
-      expect(writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'xiao_ble' })).toEqual([]);
-      expect(writeProjectDebugArtifacts({ workspaceRoot: tmp })).toEqual([]);
-      expect(fs.existsSync(path.join(tmp, '.vscode'))).toBe(false);
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('upgrades cleanly alongside the post-build writer (same entry names)', () => {
-    // The starter artifacts and the post-build writeDebugConfig must merge
-    // into the SAME launch entry / task (by name/label), not duplicate.
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-starterdbg-upgrade-'));
-    const appRoot = path.join(tmp, 'src', 'out');
-    try {
-      writeProjectDebugArtifacts({ workspaceRoot: tmp, buildTarget: 'esp32s3_devkitc' });
-      writeDebugConfig({
-        projectRoot: appRoot,
-        workspaceRoot: tmp,
-        appRel: 'src/out',
-        target: 'esp32s3_devkitc',
-        buildDir: path.join(appRoot, 'build'),
-      });
-      const launch = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'launch.json'), 'utf8'));
-      const tasks = JSON.parse(fs.readFileSync(path.join(tmp, '.vscode', 'tasks.json'), 'utf8'));
-      expect(launch.configurations).toHaveLength(1);
-      expect(tasks.tasks).toHaveLength(1);
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('Zephyr SDK discovery (create-time gdbPath fallback)', () => {
-  const fakeGdb = (sdkRoot: string): void => {
-    const bin = path.join(sdkRoot, 'xtensa-espressif_esp32s3_zephyr-elf', 'bin');
-    fs.mkdirSync(bin, { recursive: true });
-    fs.writeFileSync(path.join(bin, 'xtensa-espressif_esp32s3_zephyr-elf-gdb.exe'), '');
-  };
-
-  it('gdbPathFromSdkRoot resolves only roots containing the esp32s3 gdb', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-sdkroot-'));
-    try {
-      const withGdb = path.join(tmp, 'sdk-a');
-      fakeGdb(withGdb);
-      expect(gdbPathFromSdkRoot(withGdb)).toContain('xtensa-espressif_esp32s3_zephyr-elf-gdb.exe');
-      // Forward slashes — ${workspaceFolder}-style paths that GDB reads must
-      // not carry backslash escapes.
-      expect(gdbPathFromSdkRoot(withGdb)).not.toContain('\\');
-      expect(gdbPathFromSdkRoot(path.join(tmp, 'sdk-empty'))).toBeUndefined();
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('discovers SDK roots newest-version-first from the installer + standalone layouts', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-sdks-'));
-    const home = path.join(tmp, 'home');
-    try {
-      // Installer layout: <home>/micromamba/zephyr-sdk/zephyr-sdk-<ver>
-      const installerBase = path.join(home, 'micromamba', 'zephyr-sdk');
-      fs.mkdirSync(path.join(installerBase, 'zephyr-sdk-0.16.0'), { recursive: true });
-      fs.mkdirSync(path.join(installerBase, 'zephyr-sdk-0.17.10'), { recursive: true });
-      // Standalone layout: <home>/zephyr-sdk-<ver> (numeric compare: 0.17.4 < 0.17.10)
-      fs.mkdirSync(path.join(home, 'zephyr-sdk-0.17.4'), { recursive: true });
-
-      const roots = discoverZephyrSdkRoots({ home, env: {} });
-      const names = roots.map((r) => path.basename(r));
-      expect(names.indexOf('zephyr-sdk-0.17.10')).toBeLessThan(names.indexOf('zephyr-sdk-0.16.0'));
-      expect(names.indexOf('zephyr-sdk-0.17.10')).toBeLessThan(names.indexOf('zephyr-sdk-0.17.4'));
-      expect(roots).toHaveLength(3);
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-
-  it('prefers $ZEPHYR_SDK_INSTALL_DIR over scanned locations', () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-sdkenv-'));
-    const home = path.join(tmp, 'home');
-    try {
-      fs.mkdirSync(path.join(home, 'zephyr-sdk-0.17.4'), { recursive: true });
-      const envRoot = path.join(tmp, 'env-sdk');
-      fs.mkdirSync(envRoot, { recursive: true });
-      const roots = discoverZephyrSdkRoots({ home, env: { ZEPHYR_SDK_INSTALL_DIR: envRoot } });
-      expect(roots[0]).toBe(path.resolve(envRoot));
-    } finally {
-      fs.rmSync(tmp, { recursive: true, force: true });
-    }
-  });
-});
-
-describe('openocd.cfg — gdb lifecycle events + RTOS awareness', () => {
-  it('strips gdb-attach/detach event blocks from the board cfg (IDE owns the lifecycle) and adds Zephyr RTOS', async () => {
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-dbg-evt-'));
-    const projectRoot = path.join(tmp, 'src', 'out');
-    fs.mkdirSync(path.join(projectRoot, 'src'), { recursive: true });
-    try {
-      const bc = generatedConstants('blackpill_f401ce/stm32f401xe');
-      fs.writeFileSync(path.join(projectRoot, 'src', 'board-constants.json'), JSON.stringify(Object.fromEntries(bc)));
-      fs.writeFileSync(path.join(tmp, 'cuttlefish.config.ts'), "export default { zephyr: { probe: 'stlink' } } as any;");
-      writeDebugConfig({
-        projectRoot,
-        workspaceRoot: tmp,
-        appRel: 'src/out',
-        target: 'blackpill_f401ce/stm32f401xe',
-        buildDir: path.join(projectRoot, 'build'),
-      });
-      const cfg = fs.readFileSync(path.join(projectRoot, '.cuttlefish', 'openocd.cfg'), 'utf8');
-      // The board's own cfg configures gdb-attach (reset halt) — under
-      // cortex-debug that stop event aborts session init.
-      expect(cfg).not.toContain('-event gdb-attach');
-      expect(cfg).not.toContain('-event gdb-detach');
-      expect(cfg).not.toContain('reset halt');
-      // The rest of the board cfg rides verbatim.
-      expect(cfg).toContain('source [find interface/stlink-dap.cfg]');
-      expect(cfg).toContain('source [find target/stm32f4x.cfg]');
-      expect(cfg).toContain('reset_config srst_only');
-      // Thread awareness for ARM targets (the ESP32 cfgs carry ESP_RTOS).
-      expect(cfg).toContain('$_TARGETNAME configure -rtos Zephyr');
+      scaffoldZephyrProject(tmp, false, undefined, undefined);
+      const conf = fs.readFileSync(path.join(tmp, 'prj.conf'), 'utf8');
+      expect(conf).not.toContain('CONFIG_DEBUG=y');
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }

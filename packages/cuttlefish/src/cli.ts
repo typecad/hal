@@ -4,9 +4,11 @@ import fs from "node:fs";
 import { parseCommandLine, printHelp } from "./utils/cli.js";
 import type { GeneratedOutputs } from "./types.js";
 import type { CreateCommandOptions } from "./types.js";
+import type { CleanCommandOptions, DebugServerCommandOptions } from "./types.js";
+import { runClean } from "./clean.js";
 import { runLibraryCommand } from "./library/cli.js";
 import type { ScaffoldProjectResult } from "./create/index.js";
-import { scaffoldProject, printCreateNextSteps, KNOWN_TARGETS, frameworksForTarget, frameworkCatalogEntry, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from "./create/index.js";
+import { scaffoldProject, printCreateNextSteps, KNOWN_TARGETS, frameworksForTarget, frameworkCatalogEntry, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard, probeRunnerQuirks, starterAppRel } from "./create/index.js";
 import { findPackBoard, packBoardAsTarget } from "./create/pack-targets.js";
 import { activeBoardCatalog, assertZephyrSdkForCreate, formatZephyrSdkFound, ensureFreshBoardCatalog, resetBoardCatalogOverlayCache, sdkFingerprint, PINNED_ZEPHYR_MANIFEST_REV } from "./board-catalog/index.js";
 import { generateFrameworkDebugArtifacts } from "./create/debug-artifacts.js";
@@ -15,7 +17,7 @@ import { installProjectDependencies } from "./create/install-deps.js";
 import { transpileFile } from "./transpile.js";
 import { generateDecl, generateDeclsForDirectory } from "./libdef/cpp-to-decl.js";
 import { resolveSourceMapForProgram } from "./mapping/source-map.js";
-import { compileSource, uploadFirmware, monitorDevice } from "./platform/toolchain.js";
+import { compileSource, uploadFirmware, monitorDevice, debugServer } from "./platform/toolchain.js";
 import { resolveStrategy } from "./platform/registry.js";
 import { loadFrameworkPackage } from "./framework-package.js";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js";
@@ -168,6 +170,12 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
 
     const projectName = options.projectName || 'my-project';
 
+    // Board-catalog quirk for the chosen probe method (e.g. an srst-based
+    // openocd.cfg behind a debug header with no NRST) — baked into the
+    // scaffolded config's runnerArgs so the first flash works.
+    const probeRunnerArgs =
+      options.probe && frameworkId === 'zephyr' ? probeRunnerQuirks(target.id, options.probe) : [];
+
     // Framework-specific build target + toolchain (Zephyr board id + 'west').
     const profile = frameworkTargetProfile(target, frameworkId);
     const buildTarget = profile.buildTarget ?? target.buildTarget;
@@ -175,6 +183,7 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
     const result = scaffoldProject({
       probeMethod: options.probe,
       probeMethods,
+      ...(probeRunnerArgs.length > 0 ? { probeRunnerArgs } : {}),
       projectName,
       targetId: target.id,
       targetDisplayName: target.displayName,
@@ -226,6 +235,178 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
 }
 
 /**
+ * `cuttlefish clean` — remove the resolved generated output dir. The escape
+ * hatch for states a build cannot self-heal (a build dir wedged by an
+ * SDK/Zephyr-tree change, orphans from a toolchain upgrade, reclaiming the
+ * Zephyr build tree). Resolution mirrors build: --out-dir flag > the config's
+ * output.outDir against the entry's dir; the entry file itself may be missing
+ * (recovery is exactly when things are broken).
+ */
+function handleClean(options: CleanCommandOptions): void {
+  const config = loadCuttlefishConfig(process.cwd());
+  if (!config) {
+    throw new Error(
+      "No cuttlefish.config.ts found in current directory.\n" +
+      "Run 'cuttlefish create' to create one first.",
+    );
+  }
+  if (!options.entry && !config.entry) {
+    throw new Error(
+      "cuttlefish.config.ts has no 'entry' field.\n" +
+      "Add: entry: './src/main.ts' (or pass --entry <file>)",
+    );
+  }
+  const entryPath = options.entry
+    ? path.resolve(process.cwd(), options.entry)
+    : path.resolve(path.dirname(config.configPath), config.entry!);
+
+  const outcome = runClean({
+    projectRoot: path.dirname(config.configPath),
+    entryPath,
+    ...(options.outDir ? { outDirOverride: options.outDir } : {}),
+    ...(config.outputOutDir ? { configOutDir: config.outputOutDir } : {}),
+    force: options.force,
+  });
+
+  const fmtBytes = (n: number): string =>
+    n >= 1024 * 1024 ? `${(n / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+
+  if (outcome.removed.length > 0) {
+    console.log(`${chalk.green("✓")} Removed generated output:`);
+    for (const r of outcome.removed) {
+      const rel = path.relative(process.cwd(), r.dir) || r.dir;
+      console.log(`  ${rel} ${chalk.dim(`(reclaimed ${fmtBytes(r.bytes)})`)}`);
+    }
+    console.log(
+      chalk.dim("  The next build regenerates everything — a first compile takes longer,"),
+    );
+    console.log(
+      chalk.dim("  incremental caches were part of what was removed."),
+    );
+  }
+  for (const dir of outcome.absent) {
+    const rel = path.relative(process.cwd(), dir) || dir;
+    console.log(`${chalk.dim(`• Nothing to clean at ${rel}.`)}`);
+  }
+  for (const dir of outcome.unmarked) {
+    const rel = path.relative(process.cwd(), dir) || dir;
+    console.log(`${chalk.yellow("!")} ${rel} exists but has no cuttlefish-generated marker —`);
+    console.log(chalk.dim(`  pass --force to remove it anyway.`));
+  }
+  for (const r of outcome.refused) {
+    const rel = path.relative(process.cwd(), r.dir) || r.dir;
+    console.log(`${chalk.yellow("!")} Refusing to remove ${rel}: ${r.reason}.`);
+  }
+  if (outcome.refused.length > 0 || outcome.unmarked.length > 0) {
+    process.exitCode = 1;
+  }
+}
+
+/**
+ * `cuttlefish debug-server <start|stop>` — drive the west-owned gdb server
+ * for the last build (the F5 debug tasks call this; runnable directly for a
+ * terminal-only session). Resolution mirrors build: the config's entry +
+ * output.outDir locate the Zephyr app dir and its build.
+ */
+async function handleDebugServer(options: DebugServerCommandOptions): Promise<void> {
+  const config = loadCuttlefishConfig(process.cwd());
+  if (!config) {
+    throw new Error(
+      "No cuttlefish.config.ts found in current directory.\n" +
+      "Run 'cuttlefish create' to create one first.",
+    );
+  }
+  if (!config.entry) {
+    throw new Error(
+      "cuttlefish.config.ts has no 'entry' field.\n" +
+      "Add: entry: './src/main.ts'",
+    );
+  }
+  const entryFile = path.resolve(path.dirname(config.configPath), config.entry);
+  const inputDir = path.dirname(entryFile);
+  const outDir = config.outputOutDir
+    ? path.resolve(inputDir, config.outputOutDir)
+    : inputDir;
+
+  // Standalone command — the framework is not loaded yet (the build flow
+  // loads it). Load it from the config's framework field, same as doctor.
+  if (!hasLoadedFramework() && config.framework) {
+    try {
+      loadFrameworkPackage(config.framework, process.cwd());
+    } catch {
+      // fall through to the delegation's no-toolchain error
+    }
+  }
+
+  // --flash: the F5 preLaunchTask is ONE background task — run the full build
+  // pipeline (transpile → compile → upload, with --debug) here, then serve.
+  // (A dependsOn task chain + isBackground never releases the debug session —
+  // VS Code awaits the whole dependency group, and the server never exits.)
+  if (options.action === "start" && options.flash) {
+    const platformContext: import("./api/shared/index.js").PlatformContext = config.buildTarget
+      ? { frameworkData: { buildTarget: config.buildTarget } }
+      : {};
+    ui.printTranspiling();
+    ui.printDebugStrategy(config.framework ?? "zephyr");
+    const result = await transpileFile({
+      inputFile: entryFile,
+      emitMode: "split",
+      target: "generic",
+      outDir,
+      emitMaps: true,
+      platformContext,
+      boardTarget: config.board,
+      frameworkPackage: config.framework,
+      debug: true,
+      display: displayConfigForTranspile(config),
+    });
+    printDiagnostics(result.diagnostics);
+    if (hasFatalDiagnostics(result)) {
+      ui.printError("Transpilation failed. Fix the transpiler diagnostics above before compiling.");
+      process.exitCode = 1;
+      return;
+    }
+    const toolchainOpts = {
+      outputDir: path.dirname(result.sourcePath),
+      sourcePath: result.sourcePath,
+      buildTarget: config.board ?? config.buildTarget,
+      frameworkConfig: config?.frameworkConfig,
+      zephyrConfig: config?.zephyrConfig,
+      display: displayConfigForTranspile(config) as Record<string, unknown> | undefined,
+      debug: true,
+    };
+    ui.printCompiling(toolchainOpts.buildTarget ?? "native");
+    const compileResult = compileSource(toolchainOpts);
+    if (!compileResult.success) {
+      console.error(compileResult.output);
+      process.exitCode = 1;
+      return;
+    }
+    ui.printUploading(undefined);
+    const uploadResult = uploadFirmware(toolchainOpts);
+    if (uploadResult.output) console.log(uploadResult.output);
+    if (!uploadResult.success) {
+      process.exitCode = 1;
+      return;
+    }
+  }
+
+  debugServer(
+    {
+      outputDir: outDir,
+      sourcePath: entryFile,
+      // The runner resolution needs the same inputs the flash path gets:
+      // the board target (board: / frameworkData.buildTarget in the config)
+      // and the zephyr section (zephyr.probe + runnerArgs quirks).
+      ...(config.board ? { buildTarget: config.board } : {}),
+      ...(config.buildTarget ? { buildTarget: config.buildTarget } : {}),
+      ...(config.zephyrConfig ? { zephyrConfig: config.zephyrConfig as Record<string, unknown> } : {}),
+    },
+    options.action,
+  );
+}
+
+/**
  * Shared tail of `cuttlefish create`: list the created files, install the new
  * project's dependencies (so it's ready to build with no extra step — skipped
  * via --no-install), and print the next-steps. A failed install is non-fatal:
@@ -253,15 +434,18 @@ function finalizeCreate(result: ScaffoldProjectResult, options: CreateCommandOpt
     }
   }
 
-  // Framework starter debug profile (e.g. Zephyr esp32s3): write .vscode/
-  // launch.json + tasks.json so F5 in VS Code works before the first build.
-  // Runs after the install step so the framework package resolves from the
-  // new project's node_modules; best-effort — the first --debug build writes
-  // the artifacts anyway.
+  // Framework starter debug profile: write .vscode/launch.json + tasks.json
+  // so F5 in VS Code works before the first build. Runs after the install
+  // step so the framework package resolves from the new project's
+  // node_modules; best-effort — the first build upgrades the entry with the
+  // build-resolved gdb path (runners.yaml).
   const debugArtifacts = generateFrameworkDebugArtifacts({
     frameworkPackage: result.options.frameworkPackage || undefined,
     workspaceRoot: result.outDir,
     buildTarget: result.options.buildTarget,
+    // The scaffolded config's entry + outDir → the app dir the artifacts
+    // must target (anything else assumes the default layout).
+    appRel: starterAppRel(),
   });
   if (debugArtifacts.length > 0) {
     console.log(`\n${chalk.green("✓")} Debug profile: ${debugArtifacts.map((f) => chalk.white(f)).join(", ")}`);
@@ -286,6 +470,16 @@ async function main(): Promise<void> {
 
     if (options.command === "library") {
       await runLibraryCommand(options);
+      return;
+    }
+
+    if (options.command === "clean") {
+      handleClean(options);
+      return;
+    }
+
+    if (options.command === "debug-server") {
+      await handleDebugServer(options);
       return;
     }
 

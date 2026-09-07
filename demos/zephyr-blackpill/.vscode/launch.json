@@ -1,26 +1,23 @@
 {
   "configurations": [
     {
-      "name": "TypeCAD Debug (Zephyr, blackpill_f411ce)",
+      "name": "TypeCAD Debug (Zephyr, blackpill_f401cc)",
       "type": "cortex-debug",
       "request": "attach",
       "cwd": "${workspaceFolder}",
       "executable": "${workspaceFolder}/src/out/build/zephyr/zephyr.elf",
-      "servertype": "openocd",
-      "configFiles": [
-        "${workspaceFolder}/src/out/.cuttlefish/openocd.cfg"
-      ],
-      "interface": "swd",
-      "gdbPath": "C:/Users/justi/micromamba/zephyr-sdk/zephyr-sdk-0.17.4/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe",
-      "serverpath": "C:/Users/justi/micromamba/zephyr-sdk/zephyr-sdk-1.0.1/hosttools/openocd/bin/openocd.exe",
+      "servertype": "external",
+      "gdbTarget": "localhost:3333",
+      "gdbPath": "C:/Users/justi/micromamba/zephyr-sdk/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gdb.exe",
       "postAttachCommands": [
-        "set directories C:/typecad/typecode/demos/zephyr-blackpill",
+        "set directories .",
         "set remote hardware-watchpoint-limit 2",
         "set remote hardware-breakpoint-limit 2",
         "monitor reset init",
         "thb main"
       ],
-      "preLaunchTask": "cuttlefish: build + flash (debug)"
+      "preLaunchTask": "cuttlefish: debug server (west)",
+      "postDebugTask": "cuttlefish: stop debug server"
     }
   ]
 }

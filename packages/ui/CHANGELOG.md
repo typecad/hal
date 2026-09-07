@@ -1,5 +1,12 @@
 # @typecad/ui
 
+## 1.0.0-alpha.16
+
+### Patch Changes
+
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.16
+
 ## 1.0.0-alpha.15
 
 ### Minor Changes

@@ -1,27 +1,37 @@
 // ---------------------------------------------------------------------------
-// debug-config.ts — VS Code / GDB debug artifact generation for `--debug`
+// debug-config.ts — west-driven VS Code debug artifacts (cortex-debug external
+// server mode).
 //
-// After a successful gdb-mode build, writes the artifacts that let the user
-// press F5 in VS Code and attach GDB to the running Zephyr target.
+// The board-specific debug knowledge lives in Zephyr, not here: after any
+// successful build, `west debugserver` serves the GDB connection using the
+// board's own runner configuration (resolved in build/zephyr/runners.yaml —
+// the exact arch gdb, the openocd/jlink binaries and flags, the Zephyr RTOS
+// awareness, adapter quirks). The launch.json written here just connects
+// cortex-debug to that server (`servertype: 'external'` +
+// `gdbTarget: localhost:<port>`).
 //
-// Uses the cortex-debug extension (NOT the ESP-IDF gdbtarget adapter) so the
-// debug session is self-contained.  cortex-debug starts OpenOCD as a child
-// process via `servertype: "openocd"`; the preLaunch task handles only the
-// build + flash step.  After attach we issue `monitor reset init`, set a
-// temporary hardware breakpoint at main(), and continue — this ensures the
-// breakpoint is deferred until the bootloader maps the app flash region.
+// Lifecycle: F5 runs the preLaunchTask (build + flash, unchanged), the
+// background task `cuttlefish: debug server (west)` starts
+// `cuttlefish debug-server start` (which wraps `west debugserver` and prints
+// a ready marker the task's problem matcher waits for), and VS Code runs the
+// postDebugTask (`cuttlefish: stop debug server`) when the session ends.
 //
-// All generators are deterministic + idempotent so toggling --debug does not
-// churn the tree.
+// Everything here is best-effort: a failed artifact write warns and never
+// fails the build (a project without launch.json still builds fine).
 // ---------------------------------------------------------------------------
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve, dirname, relative } from 'node:path';
 import { ZephyrStrategy } from '../strategy.js';
-import { resolveChipFromBoard } from '../chips/resolve.js';
-import { resolveProbeMethod } from './index.js';
-import { loadCuttlefishConfig } from '@typecad/cuttlefish/config-loader';
-import type { ZephyrProbeMethod } from '../chips/types.js';
+import { readRunnersFacts } from './runners.js';
+
+/** The gdb server port west's openocd/jlink runners default to. */
+export const DEBUG_SERVER_PORT = 3333;
+/** west's openocd tcl port — pinned in the debugserver invocation and used
+ *  as the READINESS probe: its listener opens at the END of openocd's init
+ *  (after the gdb listener and the startup halt), and probe connections
+ *  there never consume the gdb server's single client slot. */
+export const DEBUG_SERVER_TCL_PORT = 6333;
 
 export interface DebugConfigOptions {
   /** Absolute path to the Zephyr project root (contains CMakeLists.txt + src/). */
@@ -36,191 +46,20 @@ export interface DebugConfigOptions {
   buildDir: string;
   /** Absolute path to the emitted source map (*.thcppmap.json), if any. */
   sourceMapPath?: string;
+  /**
+   * Create-time best-effort gdb (from the SDK + the board's silicon) — used
+   * only when runners.yaml doesn't exist yet (pre-first-build). The first
+   * build's west-resolved gdb replaces it, and a mismatch triggers the
+   * artifact rewrite (debugArtifactsNeedRewrite).
+   */
+  starterGdbPath?: string;
 }
 
-/**
- * Resolve the GDB binary path for the target from the build cache, falling
- * back to a filesystem scan of known Zephyr SDK locations when no build
- * exists yet (the create-time starter artifacts path). Zephyr records
- * ZEPHYR_SDK_INSTALL_DIR in CMakeCache.txt at configure time, and the
- * xtensa GDB lives at <sdk>/xtensa-espressif_esp32s3_zephyr-elf/bin/... (note
- * the Zephyr-SDK naming, distinct from the ESP-IDF xtensa-esp32s3-elf-gdb).
- *
- * Returns the absolute gdb path on success, or undefined (the launch.json then
- * omits gdbPath and relies on Cortex-Debug's default resolution).
- */
-export function resolveGdbPath(buildDir: string, target: string): string | undefined {
-  const cachePath = join(buildDir, 'CMakeCache.txt');
-  if (existsSync(cachePath)) {
-    try {
-      const cache = readFileSync(cachePath, 'utf-8');
-      const m = cache.match(/^ZEPHYR_SDK_INSTALL_DIR:PATH=(.+)$/m);
-      if (m) {
-        const fromCache = gdbPathFromSdkRoot(m[1].trim(), target);
-        if (fromCache) return fromCache;
-      }
-    } catch {
-      // unreadable cache — fall through to the SDK scan
-    }
-  }
-  // No build dir yet (project just created): probe known SDK locations.
-  for (const sdkRoot of discoverZephyrSdkRoots()) {
-    const p = gdbPathFromSdkRoot(sdkRoot, target);
-    if (p) return p;
-  }
-  return undefined;
-}
+/** Task labels (also the preLaunchTask/postDebugTask references in launch.json). */
+export const DEBUG_BUILD_TASK = 'cuttlefish: build + flash (debug)';
+export const DEBUG_SERVER_TASK = 'cuttlefish: debug server (west)';
+export const DEBUG_SERVER_STOP_TASK = 'cuttlefish: stop debug server';
 
-/** The GDB location inside a Zephyr SDK root, per target architecture:
- *  ARM boards use the arm-zephyr-eabi toolchain (verified against
- *  zephyr-sdk-0.17.4), Espressif the xtensa-espressif_esp32s3_zephyr-elf one.
- *  Returns a forward-slash absolute path or undefined. */
-export function gdbPathFromSdkRoot(sdkRoot: string, target?: string): string | undefined {
-  // No target given (legacy callers/tests): the historical Espresif default.
-  const boardId = (target ?? '').split('/')[0];
-  const isArm = boardId.length > 0 && !boardId.startsWith('esp32');
-  const toolchainDir = isArm ? 'arm-zephyr-eabi' : 'xtensa-espressif_esp32s3_zephyr-elf';
-  const gdbName = isArm ? 'arm-zephyr-eabi-gdb.exe' : 'xtensa-espressif_esp32s3_zephyr-elf-gdb.exe';
-  const gdbPath = join(sdkRoot, toolchainDir, 'bin', gdbName);
-  return existsSync(gdbPath) ? gdbPath.replace(/\\/g, '/') : undefined;
-}
-
-/** Compare two dotted version strings numerically (0.17.10 > 0.17.4). */
-function compareSdkVersions(a: string, b: string): number {
-  const segsOf = (v: string): number[] => v.split('.').map((s) => parseInt(s, 10) || 0);
-  const aa = segsOf(a);
-  const bb = segsOf(b);
-  for (let i = 0; i < Math.max(aa.length, bb.length); i++) {
-    const d = (aa[i] ?? 0) - (bb[i] ?? 0);
-    if (d !== 0) return d;
-  }
-  return 0;
-}
-
-/**
- * Probe the well-known Zephyr SDK install locations, newest version first:
- *   1. $ZEPHYR_SDK_INSTALL_DIR (the var board.cmake reads)
- *   2. <MAMBA_ROOT_PREFIX | ~/micromamba>/zephyr-sdk/zephyr-sdk-<ver> — the
- *      the bundled Zephyr installer layout
- *   3. ~/zephyr-sdk-<ver> — the standalone download layout
- *
- * Only roots that actually contain the esp32s3 GDB are useful to callers;
- * this returns candidate roots (gdbPathFromSdkRoot does the existence check)
- * so tests can inject home/env overrides.
- */
-export function discoverZephyrSdkRoots(opts?: {
-  home?: string;
-  env?: Record<string, string | undefined>;
-}): string[] {
-  const env = opts?.env ?? process.env;
-  const home = opts?.home ?? (env.USERPROFILE || env.HOME || '');
-  const scanned: string[] = [];
-
-  const versionedDirs = (base: string): string[] => {
-    try {
-      return readdirSync(base)
-        .filter((d) => existsSync(join(base, d)) && d.startsWith('zephyr-sdk-'))
-        .map((d) => join(base, d));
-    } catch {
-      return []; // dir absent
-    }
-  };
-  const mambaRoot = env.MAMBA_ROOT_PREFIX || (home ? join(home, 'micromamba') : '');
-  if (mambaRoot) scanned.push(...versionedDirs(join(mambaRoot, 'zephyr-sdk')));
-  if (home) scanned.push(...versionedDirs(home));
-
-  // Scanned roots newest version first; the env var stays pinned first
-  // (explicit user intent outranks any discovered location).
-  scanned.sort((a, b) => {
-    const va = a.match(/zephyr-sdk-([\d.]+)/)?.[1] ?? '';
-    const vb = b.match(/zephyr-sdk-([\d.]+)/)?.[1] ?? '';
-    return compareSdkVersions(vb, va);
-  });
-  const roots = env.ZEPHYR_SDK_INSTALL_DIR
-    ? [env.ZEPHYR_SDK_INSTALL_DIR, ...scanned]
-    : scanned;
-  // De-duplicate (an env var may repeat a scan hit) preserving order.
-  return roots.filter((r, i) => roots.indexOf(r) === i);
-}
-
-/**
- * Resolve the OpenOCD binary path. The esp32s3 needs the Espressif OpenOCD
- * fork (openocd-esp32) — not the Zephyr SDK's openocd and not a
- * generic/GDB-stub build — because only it carries the Xtensa + esp_usb_jtag
- * support. ARM targets prefer the Zephyr SDK's own openocd (it ships the
- * interface/target cfgs boards reference); the Espressif fork is only
- * consulted for esp32 targets.
- *
- * Discovery order:
- *   1. ESPRESSIF_TOOLCHAIN_PATH env (the var board.cmake reads) — esp32
- *      targets; its openocd-esp32/bin/openocd.exe.
- *   2. The standard ESP-IDF install layout: ~/.espressif/tools/openocd-esp32/
- *      <version>/openocd-esp32/bin/openocd.exe (esp32 targets; newest first).
- *   3. A Zephyr SDK root (discoverZephyrSdkRoots) — its
- *      tools/opt/openocd/bin/openocd(.exe), any target.
- * Returns undefined if not found (the launch.json then omits openOCDPath and
- * Cortex-Debug falls back to PATH / its openocdPath setting).
- */
-export function resolveOpenOcdPath(target?: string): string | undefined {
-  const isEsp32Target = (target ?? '').split('/')[0].startsWith('esp32');
-  const candidates: string[] = [];
-  if (isEsp32Target) {
-    // 1. ESPRESSIF_TOOLCHAIN_PATH env
-    const envPath = process.env.ESPRESSIF_TOOLCHAIN_PATH;
-    if (envPath) {
-      candidates.push(join(envPath, 'openocd-esp32', 'bin', 'openocd.exe'));
-    }
-    // 2. ~/.espressif/tools/openocd-esp32/<version>/openocd-esp32/bin/openocd.exe
-    const home = process.env.USERPROFILE || process.env.HOME;
-    if (home) {
-      const base = join(home, '.espressif', 'tools', 'openocd-esp32');
-      let versions: string[] = [];
-      try {
-        versions = readdirSync(base).filter((v) =>
-          existsSync(join(base, v, 'openocd-esp32', 'bin', 'openocd.exe')),
-        );
-      } catch {
-        // dir absent
-      }
-      // newest version last — sort then reverse so the highest wins on match.
-      versions.sort().reverse();
-      for (const v of versions) {
-        candidates.push(join(base, v, 'openocd-esp32', 'bin', 'openocd.exe'));
-      }
-    }
-  }
-  // 3. The Zephyr SDK's openocd (ARM targets' interface/target cfgs ship
-  // with it — interface/stlink-dap.cfg, target/stm32f4x.cfg, ...). Layout
-  // differs by SDK generation: 1.0.x hosttools/openocd, 0.17.x
-  // tools/opt/openocd (when present).
-  const exe = process.platform === 'win32' ? 'openocd.exe' : 'openocd';
-  for (const sdkRoot of discoverZephyrSdkRoots()) {
-    candidates.push(join(sdkRoot, 'hosttools', 'openocd', 'bin', exe));
-    candidates.push(join(sdkRoot, 'tools', 'opt', 'openocd', 'bin', exe));
-  }
-  for (const c of candidates) {
-    if (existsSync(c)) return resolve(c).replace(/\\/g, '/');
-  }
-  return undefined;
-}
-
-/**
- * Resolve where to write the VS Code debug artifacts and how to express paths
- * in them.
- *
- * VS Code reads `.vscode/` from the folder the user has OPENED — and for a
- * cuttlefish project that is almost always the **cuttlefish project root**
- * (the directory containing `cuttlefish.config.ts`), NOT the git repo root.
- * The toolchain's `projectRoot` is the Zephyr *app* dir (e.g.
- * `<projectRoot>/src/out`), which sits below the cuttlefish config dir. So we
- * walk up from `projectRoot` to the nearest `cuttlefish.config.ts` and treat
- * THAT as the workspace root. This makes F5 work when a user opens the project
- * folder directly, and keeps launch.json paths relative to it.
- *
- * Returns { workspaceRoot, appRel } where workspaceRoot is the cuttlefish
- * project root (the `.vscode/` target) and appRel is the Zephyr app dir
- * (`projectRoot`) relative to it (e.g. 'src/out').
- */
 export function resolveDebugLocations(projectRoot: string): {
   workspaceRoot: string;
   appRel: string;
@@ -248,35 +87,289 @@ export function resolveDebugLocations(projectRoot: string): {
 function mergeJsonArrayEntry<T extends Record<string, unknown>>(
   filePath: string,
   arrayKey: string,
-  matchKey: string,
+  nameKey: string,
   entry: T,
 ): void {
   let doc: Record<string, unknown> = {};
   if (existsSync(filePath)) {
     try {
-      doc = JSON.parse(readFileSync(filePath, 'utf-8'));
+      const parsed: unknown = JSON.parse(readFileSync(filePath, 'utf-8'));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        doc = parsed as Record<string, unknown>;
+      }
     } catch {
       // malformed — start fresh
     }
   }
-  const arr = Array.isArray(doc[arrayKey]) ? (doc[arrayKey] as T[]) : [];
-  const idx = arr.findIndex((e) => e[matchKey] === entry[matchKey]);
+  const arr = Array.isArray(doc[arrayKey])
+    ? (doc[arrayKey] as Record<string, unknown>[])
+    : [];
+  const name = entry[nameKey] as string;
+  const idx = arr.findIndex((e) => e && e[nameKey] === name);
   if (idx >= 0) arr[idx] = entry;
   else arr.push(entry);
   doc[arrayKey] = arr;
   mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(filePath, JSON.stringify(doc, null, 2) + '\n', 'utf-8');
+  writeFileSync(filePath, `${JSON.stringify(doc, null, 2)}\n`, 'utf-8');
 }
 
 /**
- * Generate the GDB Python frame-filter that rewrites cuttlefish's hoisted
- * lambda frame names (`${prefix}_isr_N`) into readable `<lambda> @ file:line`
- * in the call stack. Only emitted when the source map references `_isr_N`
- * symbols; otherwise returns null (launch.json omits the `source` initCommand).
- *
- * Ported verbatim from the deleted framework-esp32/toolchain/gdb-script.ts —
- * the filter is cuttlefish-internal (lambda hoisting is framework-agnostic).
+ * Whether the workspace's gdb debug artifacts need rewriting: missing, still
+ * in an older (self-managed-server) shape, written before a build resolved
+ * the gdb path (the create-time starter omits gdbPath), or referencing an app
+ * root other than the current one (an outDir rename). Only OUR entries count
+ * (`TypeCAD Debug (Zephyr, …)`); user-authored ones are never judged.
  */
+export function debugArtifactsNeedRewrite(
+  workspaceRoot: string,
+  appRel: string,
+  currentGdb?: string,
+): boolean {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(readFileSync(join(workspaceRoot, '.vscode', 'launch.json'), 'utf-8'));
+  } catch {
+    return false; // no launch.json (or unreadable) — plain builds leave it absent
+  }
+  const configs = (doc as { configurations?: unknown }).configurations;
+  if (!Array.isArray(configs)) return false;
+  const prefix = `\${workspaceFolder}/${appRel ? `${appRel}/` : ''}`;
+  for (const c of configs) {
+    const e = c as { name?: unknown; executable?: unknown; servertype?: unknown; gdbPath?: unknown };
+    if (typeof e.name !== 'string' || !e.name.startsWith('TypeCAD Debug (Zephyr,')) continue;
+    if (e.servertype !== 'external') return true; // pre-west (self-managed server) shape
+    if (e.gdbPath === undefined) return true; // create-time starter — upgrade on first build
+    if (currentGdb !== undefined && typeof e.gdbPath === 'string'
+      && e.gdbPath.replace(/\\/g, '/') !== currentGdb) {
+      return true; // a wrong create-time silicon guess — west's answer wins
+    }
+    if (typeof e.executable === 'string'
+      && e.executable.startsWith('${workspaceFolder}/')
+      && !e.executable.startsWith(prefix)) {
+      return true; // outDir moved
+    }
+    return false; // our entry exists in the current shape — nothing to do
+  }
+  return false; // no our-entry (deleted launch entry): only --debug recreates
+}
+
+/**
+ * Build the cortex-debug launch.json config connecting to the west-owned gdb
+ * server. `gdbPath` comes from the build's runners.yaml (west's own resolved
+ * arch gdb); undefined before the first build (create-time starter).
+ */
+function buildLaunchConfig(
+  o: DebugConfigOptions,
+  gdbScriptRel: string | undefined,
+  gdbPath: string | undefined,
+): Record<string, unknown> {
+  const executable = `\${workspaceFolder}/${o.appRel}/build/zephyr/zephyr.elf`;
+
+  // The gdb binary names the architecture (xtensa-espressif_* / arm-zephyr-* /
+  // riscv64-*): the Xtensa flash-mapping commands are only correct there —
+  // app flash is unreadable until the ESP32 bootloader maps it, and the
+  // trailing `c` rides the bootloader's slow boot past cortex-debug's init.
+  const isXtensa = (gdbPath ?? '').includes('xtensa');
+
+  // Post-attach commands executed after GDB connects to the west-owned server.
+  //   set directories .           — source lookup root (gdb's cwd is the
+  //                                 config's cwd = workspace root)
+  //   monitor reset init          — reset target + halt via the server
+  //   thb main                    — temporary HW breakpoint at main()
+  // Paths must stay RELATIVE (cortex-debug passes commands verbatim; Windows
+  // backslash expansion would corrupt absolute paths).
+  const postAttachCommands = [
+    'set directories .',
+    'set remote hardware-watchpoint-limit 2',
+    'set remote hardware-breakpoint-limit 2',
+    ...(isXtensa ? [
+      'set mem inaccessible-by-default off',
+      'mem 0x42000000 0x44000000 ro cache',
+    ] : []),
+    'monitor reset init',
+    'thb main',
+    ...(isXtensa ? ['c'] : []),
+  ];
+  if (gdbScriptRel) {
+    postAttachCommands.splice(1, 0, `source ${gdbScriptRel}`);
+  }
+
+  return {
+    name: `TypeCAD Debug (Zephyr, ${o.target.split('/')[0]})`,
+    type: 'cortex-debug',
+    // Attach mode: no download (the ELF is already flashed by the
+    // preLaunchTask's dependency chain). The server is west-owned;
+    // cortex-debug only connects.
+    request: 'attach',
+    cwd: '${workspaceFolder}',
+    executable,
+    servertype: 'external',
+    gdbTarget: `localhost:${DEBUG_SERVER_PORT}`,
+    ...(gdbPath ? { gdbPath } : {}),
+    postAttachCommands,
+    preLaunchTask: DEBUG_SERVER_TASK,
+    postDebugTask: DEBUG_SERVER_STOP_TASK,
+  };
+}
+
+/** The build+flash task (preLaunchTask) — unchanged shape from the old flow. */
+function buildTask(o: DebugConfigOptions): Record<string, unknown> {
+  return {
+    label: DEBUG_BUILD_TASK,
+    type: 'shell',
+    command: 'npx cuttlefish build --compile --upload --debug',
+    options: { cwd: `\${workspaceFolder}/${o.appRel}` },
+    group: { kind: 'build', isDefault: false },
+    problemMatcher: [],
+  };
+}
+
+/**
+ * The background task that is the F5 preLaunchTask — ONE task, no dependsOn:
+ * `debug-server start --flash` runs the whole build pipeline (transpile →
+ * compile → upload, with --debug) and then serves. VS Code releases the
+ * debug session to connect gdbTarget when the matcher's endsPattern (the
+ * ready marker) fires, while the task keeps serving. (A dependsOn chain was
+ * tried: VS Code awaits the whole dependency GROUP, and a background task
+ * that never exits never releases the session — F5 hung with no debug UI.)
+ */
+function serverTask(o: DebugConfigOptions): Record<string, unknown> {
+  return {
+    label: DEBUG_SERVER_TASK,
+    type: 'shell',
+    command: 'npx cuttlefish debug-server start --flash',
+    // NO_COLOR keeps chalk's ANSI codes out of the output — they break the
+    // background patterns below (the banner prints as ESC[36m⇳ Transpiling,
+    // and ^-anchored patterns never match past the escape byte). Same remedy
+    // as the scaffold's watch task.
+    options: { cwd: `\${workspaceFolder}/${o.appRel}`, env: { NO_COLOR: '1' } },
+    isBackground: true,
+    problemMatcher: {
+      owner: 'cuttlefish-debug-server',
+      // MUST never match a real line: matched lines become file-less
+      // problems (default severity: error), and VS Code then blocks F5 with
+      // "errors exist after running preLaunchTask". The sentinel literal
+      // cannot occur in pipeline or openocd output. (^$ was tried — it
+      // matches the blank lines openocd prints.)
+      pattern: { regexp: '__cuttlefish_never_matches__' },
+      background: {
+        beginsPattern: 'Transpiling',
+        endsPattern: `^CUTTLEFISH: debug server ready on ${DEBUG_SERVER_PORT}`,
+      },
+    },
+  };
+}
+
+/** The postDebugTask — stops the west-owned server when the session ends. */
+function serverStopTask(o: DebugConfigOptions): Record<string, unknown> {
+  return {
+    label: DEBUG_SERVER_STOP_TASK,
+    type: 'shell',
+    command: 'npx cuttlefish debug-server stop',
+    options: { cwd: `\${workspaceFolder}/${o.appRel}` },
+    problemMatcher: [],
+  };
+}
+
+/**
+ * Write the debug artifacts: the cortex-debug launch entry (merged by name)
+ * and the three tasks (merged by label). Returns the workspace-relative
+ * paths written, for CLI reporting.
+ */
+export function writeDebugConfig(o: DebugConfigOptions): string[] {
+  const vscodeDir = join(o.workspaceRoot, '.vscode');
+  mkdirSync(vscodeDir, { recursive: true });
+
+  // west's resolved facts — present after any successful build. Before the
+  // first build the launch entry is written without gdbPath; the next build
+  // upgrades it (debugArtifactsNeedRewrite).
+  //
+  // west records the `-py` (python-enabled) gdb variant; cortex-debug derives
+  // objdump/nm paths from the gdb path by name substitution, and the -py
+  // variants of those do not exist in the SDK (ENOENT noise, degraded symbol
+  // classification). Prefer the plain gdb sibling when it exists.
+  let gdbPath = readRunnersFacts(o.buildDir)?.gdb?.replace(/\\/g, '/');
+  if (gdbPath && /-py(\.exe)?$/i.test(gdbPath)) {
+    const plain = gdbPath.replace(/-py(\.exe)?$/i, '$1');
+    if (existsSync(plain)) gdbPath = plain;
+  }
+  gdbPath = gdbPath ?? o.starterGdbPath;
+
+  // gdb frame-filter script (lambda frames) — conditional on a source map.
+  const gdbScript = generateGdbScript(o.sourceMapPath);
+  let gdbScriptRel: string | undefined;
+  if (gdbScript) {
+    const scriptPath = join(o.projectRoot, '.cuttlefish', '.cuttlefish-gdb.py');
+    mkdirSync(dirname(scriptPath), { recursive: true });
+    writeFileSync(scriptPath, gdbScript, 'utf-8');
+    gdbScriptRel = `${o.appRel}/.cuttlefish/.cuttlefish-gdb.py`;
+  }
+
+  const launchConfig = buildLaunchConfig(o, gdbScriptRel, gdbPath);
+  mergeJsonArrayEntry(join(vscodeDir, 'launch.json'), 'configurations', 'name', launchConfig);
+
+  const tasksPath = join(vscodeDir, 'tasks.json');
+  for (const task of [buildTask(o), serverTask(o), serverStopTask(o)]) {
+    mergeJsonArrayEntry(tasksPath, 'tasks', 'label', task);
+  }
+
+  return ['.vscode/launch.json', '.vscode/tasks.json'];
+}
+
+/**
+ * The Zephyr app dir the standard `cuttlefish create` scaffold produces,
+ * relative to the project root: the scaffold fixes entry `./src/main.ts` +
+ * outDir `./out`, and the CLI resolves output.outDir against the ENTRY's
+ * directory (cli.ts), so the emitted app root lands at `src/out`. The create
+ * flow passes its actual resolution (cuttlefish create's starterAppRel) so a
+ * non-standard scaffold still gets correct starter paths; this is only the
+ * default.
+ */
+const STARTER_APP_REL = 'src/out';
+
+/**
+ * Create-time starter debug artifacts: the same west-driven launch entry and
+ * tasks, minus gdbPath (no build exists yet — runners.yaml is absent). The
+ * first build upgrades the entry (debugArtifactsNeedRewrite fires on the
+ * missing gdbPath), so F5 after a compile is fully resolved.
+ *
+ * No-ops (returns []) for targets without gdb debug facts (no debug-capable
+ * probe method in the board's table — printf instrumentation territory).
+ */
+export function writeProjectDebugArtifacts(o: {
+  /** Absolute path to the cuttlefish project root (contains cuttlefish.config.ts). */
+  workspaceRoot: string;
+  /** The Zephyr board id from the project config (frameworkData.buildTarget). */
+  buildTarget?: string;
+  /**
+   * The scaffolded app dir, workspace-relative with forward slashes.
+   * Defaults to the standard layout ('src/out'); cuttlefish create passes
+   * its config's actual entry + outDir resolution so a non-standard scaffold
+   * still gets correct starter paths.
+   */
+  appRel?: string;
+  /**
+   * Create-time best-effort gdb from cuttlefish create (SDK + silicon) —
+   * see DebugConfigOptions.starterGdbPath. Plain JSON string.
+   */
+  gdbPath?: string;
+}): string[] {
+  if (new ZephyrStrategy().debugMode(o.buildTarget) !== 'gdb') return [];
+  const workspaceRoot = resolve(o.workspaceRoot);
+  const appRel = o.appRel ?? STARTER_APP_REL;
+  const projectRoot = join(workspaceRoot, appRel);
+  return writeDebugConfig({
+    projectRoot,
+    workspaceRoot,
+    appRel,
+    target: o.buildTarget ?? '',
+    buildDir: join(projectRoot, 'build'),
+    ...(o.gdbPath ? { starterGdbPath: o.gdbPath } : {}),
+  });
+}
+
+// -- gdb frame-filter script -------------------------------------------------
+
 export function generateGdbScript(sourceMapPath?: string): string | null {
   if (!sourceMapPath || !existsSync(sourceMapPath)) return null;
   let mapText = '';
@@ -288,7 +381,7 @@ export function generateGdbScript(sourceMapPath?: string): string | null {
   // Only emit when the emitted code contains hoisted-lambda symbols.
   if (!/_isr_\d+/.test(mapText)) return null;
 
-  // A GDB Python frame-filter. Registered via the launch.json initCommand
+  // A GDB Python frame-filter. Registered via the launch.json postAttachCommand
   // `source <path>` so GDB auto-loads it on attach.
   return [
     '# Auto-generated by @typecad/framework-zephyr. GDB frame-filter that',
@@ -320,347 +413,4 @@ export function generateGdbScript(sourceMapPath?: string): string | null {
     'gdb.frame_filters[CuttlefishLambdaFilter().name] = CuttlefishLambdaFilter()',
     '',
   ].join('\n');
-}
-
-/**
- * Build the cortex-debug launch.json config for an ESP32-S3 (built-in USB-JTAG).
- * `openOcdCfgRel` is the workspace-relative path to the generated
- * .cuttlefish/openocd.cfg, passed to cortex-debug's configFiles.
- */
-function buildLaunchConfig(
-  o: DebugConfigOptions,
-  gdbScriptRel: string | undefined,
-  openOcdCfgRel: string,
-  method?: ZephyrProbeMethod,
-): Record<string, unknown> {
-  // The ELF is at <projectRoot>/build/zephyr/zephyr.elf (Zephyr's standard
-  // build output). cortex-debug uses `executable` (not `program`).
-  const executable = `\${workspaceFolder}/${o.appRel}/build/zephyr/zephyr.elf`;
-
-  // OpenOCD cfg relative to the workspace root so cortex-debug can pass it
-  // via the -f flag.  Must be a list; cortex-debug prepends -f per entry.
-  const configFiles = [`\${workspaceFolder}/${openOcdCfgRel}`];
-
-  // GDB path resolved from the Zephyr SDK build cache (CMakeCache.txt).
-  const gdbPath = resolveGdbPath(o.buildDir, o.target);
-
-  // OpenOCD binary path — the Espressif fork (openocd-esp32) is required for
-  // the esp_usb_jtag adapter.  cortex-debug's `serverpath` tells it where to
-  // find the binary (not on PATH by default).
-  const openocdPath = resolveOpenOcdPath(o.target);
-
-  // Post-attach commands executed after GDB connects to the OpenOCD gdbserver.
-  //   set mem inaccessible-by-default off — suppresses "Cannot access memory"
-  //     errors caused by overlapping Xtensa memory regions (flash-mapped
-  //     0x4200xxxx isn't accessible until the bootloader runs).
-  //   mem 0x42000000 0x44000000 ro cache — tells GDB the app flash region IS
-  //     read-only so -break-insert uses hw breakpoints, not sw breakpoints
-  //     (which would fail with "Cannot access memory at 0x4200xxxx").
-  //   monitor reset init  — reset target + halt (bootloader maps flash)
-  //   thb main            — temporary HW breakpoint at main()
-  //   c                   — continue; bootloader maps flash, breaks at main()
-  //
-  // The trailing `c` is ESP32-only. On instant-reset ARM targets the
-  // thb-main stop lands within milliseconds — WHILE cortex-debug is still
-  // chewing through this command list — and a stop event mid-initialization
-  // leaves the session half-started (toolbar never enables, user breakpoints
-  // never bind). The ESP32's bootloader takes hundreds of milliseconds, so
-  // its stop safely arrives after init completes. ARM keeps the pending
-  // thb (the first user Continue stops at main()) but hands the run/stop
-  // transition to cortex-debug.
-  //
-  // Paths use forward slashes — ${workspaceFolder} on Windows produces
-  // backslashes that GDB interprets as escape sequences (\t → tab, etc.).
-  const ws = o.workspaceRoot.replace(/\\/g, '/');
-  // The Xtensa flash-mapping commands are ESP32-specific (app flash isn't
-  // readable until the bootloader maps it); ARM targets drop them.
-  const isEsp32Target = o.target.split('/')[0].startsWith('esp32');
-  const postAttachCommands = [
-    `set directories ${ws}`,
-    'set remote hardware-watchpoint-limit 2',
-    'set remote hardware-breakpoint-limit 2',
-    ...(isEsp32Target ? [
-      'set mem inaccessible-by-default off',
-      'mem 0x42000000 0x44000000 ro cache',
-    ] : []),
-    'monitor reset init',
-    'thb main',
-    ...(isEsp32Target ? ['c'] : []),
-  ];
-  if (gdbScriptRel) {
-    postAttachCommands.splice(1, 0, `source ${ws}/${gdbScriptRel}`);
-  }
-
-  // Probe-method-driven server shape: jlink-runner methods use cortex-debug's
-  // jlink server (needs the device name from the board table); openocd-runner
-  // methods keep the openocd server with the generated cfg file. Without a
-  // method (ESP32 builtin-JTAG targets), the historical default applies.
-  const servertype = method?.runner === 'jlink' ? 'jlink' : 'openocd';
-  const isEsp32 = o.target.split('/')[0].startsWith('esp32');
-
-  const cfg: Record<string, unknown> = {
-    name: `TypeCAD Debug (Zephyr, ${o.target.split('/')[0]})`,
-    type: 'cortex-debug',
-    // Attach mode: no download (the ELF is already flashed). The server
-    // controller's attachCommands() just halts the target, then our
-    // postAttachCommands reset it, set a HW breakpoint at main(), and
-    // continue.  HW breakpoints use debug registers and work before the
-    // bootloader maps the app flash region.
-    request: 'attach',
-    cwd: '${workspaceFolder}',
-    executable,
-    servertype,
-    ...(servertype === 'openocd' ? { configFiles } : {}),
-    ...(method?.debugDevice ? { device: method.debugDevice } : {}),
-    interface: method?.debugInterface ?? (isEsp32 ? 'jtag' : 'swd'),
-    ...(gdbPath ? { gdbPath } : {}),
-    ...(servertype === 'openocd' && openocdPath ? { serverpath: openocdPath } : {}),
-    postAttachCommands,
-    preLaunchTask: 'cuttlefish: build + flash (debug)',
-  };
-
-  // openOcdCfgRel is consumed by configFiles above. Referenced here only to
-  // keep the signature honest.
-  void openOcdCfgRel;
-
-  return cfg;
-}
-
-/**
- * Build the tasks.json entry: rebuild + flash only.  cortex-debug starts
- * OpenOCD as a child process (servertype: "openocd"), so the preLaunch task
- * just needs to build and upload — no isBackground / OpenOCD wrapping.
- */
-function buildTask(o: DebugConfigOptions): Record<string, unknown> {
-  return {
-    label: 'cuttlefish: build + flash (debug)',
-    type: 'shell',
-    command: 'npx cuttlefish build --compile --upload --debug',
-    options: { cwd: `\${workspaceFolder}/${o.appRel}` },
-    group: { kind: 'build', isDefault: false },
-    problemMatcher: [],
-  };
-}
-
-/**
- * The adapter speed the S3's built-in USB-Serial-JTAG runs stably at.
- *
- * The interface cfg (esp_usb_jtag.cfg) defaults to 40000 (40 MHz), the chip
- * max. The USB-Serial-JTAG peripheral is a software bitq adapter that bit-bangs
- * JTAG over USB bulk transfers; at 40 MHz it can't keep up, drops transfers
- * (LIBUSB_ERROR_IO / "missing data from bitq interface"), and the reset/halt
- * sequence silently fails — leaving the target running with no breakpoint set
- * (the "debugger starts but never stops / buttons don't work" symptom).
- *
- * 4000 (4 MHz) is the empirically-stable speed for this peripheral.
- */
-const OPENOCD_ADAPTER_SPEED = 4000;
-
-/**
- * Build the OpenOCD cfg content. Sources the board's own openocd.cfg (which
- * sets ESP_RTOS Zephyr + ESP_ONLYCPU + the esp_usb_jtag driver + the esp32s3
- * target) then overrides the adapter speed AFTER the driver loads — the order
- * that a bare `-c "adapter speed N"` cannot guarantee (OpenOCD applies -c args
- * in command-line order relative to -f, and Cortex-Debug injects its own
- * helper/RTOS tcl, so the override can land before the driver exists or be
- * re-defaulted). Putting it in the cfg, after the source, is deterministic.
- */
-/**
- * Drop the gdb-attach/gdb-detach target-event blocks from a cfg line list.
- * Board cfgs use them for standalone openocd sessions (reset on attach,
- * resume on detach), but under VS Code they fire DURING cortex-debug's
- * initialization — the unexpected stop event aborts the session setup
- * ("Program stopped, probably due to a reset and/or halt issued by
- * debugger") and the toolbar never enables. The IDE owns the lifecycle.
- */
-function stripGdbEventBlocks(lines: readonly string[]): string[] {
-  const out: string[] = [];
-  let skipping = false;
-  let depth = 0;
-  for (const line of lines) {
-    if (!skipping && /configure\s+-event\s+gdb-(attach|detach)/.test(line)) {
-      skipping = true;
-      depth = 0;
-    }
-    if (skipping) {
-      depth += (line.match(/\{/g) ?? []).length - (line.match(/\}/g) ?? []).length;
-      if (depth <= 0 && (line.includes('}') || !line.includes('{'))) skipping = false;
-      continue;
-    }
-    out.push(line);
-  }
-  return out;
-}
-
-function buildOpenOcdCfg(method?: ZephyrProbeMethod, target?: string): string {
-  const header = [
-    '# Auto-generated by @typecad/framework-zephyr. Do not edit — regenerate',
-    '# with `cuttlefish build --debug`.',
-  ];
-  // Zephyr RTOS awareness (thread names in the call stack) — appended after
-  // the target source on ARM targets; the ESP32 board cfgs already carry
-  // ESP_RTOS Zephyr.
-  const isEsp32 = (target ?? '').split('/')[0].startsWith('esp32');
-  const rtosLine = isEsp32 ? [] : ['$_TARGETNAME configure -rtos Zephyr'];
-  if (method?.debugCfgSource && method.debugCfgSource.length > 0) {
-    // Probe-method-driven config: the board package's verified interface +
-    // target sources, then the method's quirk lines (e.g. reset_config for an
-    // unwired SRST) — the cfg-file form of the west runner args.
-    return [
-      ...header,
-      `# Probe method '${method.id}' — from the board package's probeMethods table.`,
-      ...method.debugCfgSource.map((src) => `source [find ${src}]`),
-      ...stripGdbEventBlocks(method.debugCfg ?? []),
-      ...rtosLine,
-      '',
-    ].join('\n');
-  }
-  // Pack-derived methods (the board's own support/openocd.cfg, extracted by
-  // the board data pack) carry complete cfg lines — including their
-  // `source [find ...]` directives — verbatim in file order, minus the
-  // gdb-attach/detach events (IDE-managed lifecycle; see stripGdbEventBlocks).
-  if (method?.debugCfg && method.debugCfg.length > 0) {
-    return [
-      ...header,
-      `# Probe method '${method.id}' — the board's own support/openocd.cfg,`,
-      `# extracted by the board data pack (gdb-attach/detach events removed —`,
-      `# the IDE owns the session lifecycle).`,
-      ...stripGdbEventBlocks(method.debugCfg),
-      ...rtosLine,
-      '',
-    ].join('\n');
-  }
-  return [
-    ...header,
-    '# Sources the board cfg (which loads the esp_usb_jtag adapter driver +',
-    '# esp32s3 target + ESP_RTOS Zephyr) then overrides the adapter speed to a',
-    '# USB-JTAG-stable value AFTER the driver is loaded. See debug-config.ts',
-    '# for the rationale.',
-    'source [find board/esp32s3-builtin.cfg]',
-    `adapter speed ${OPENOCD_ADAPTER_SPEED}`,
-    '',
-  ].join('\n');
-}
-
-/**
- * Write all gdb-mode debug artifacts for the given target. Called from the
- * toolchain compile() after a successful build when debugMode === 'gdb'.
- *
- * Writes (all idempotent):
- *   <workspaceRoot>/.vscode/launch.json   (cortex-debug config)
- *   <workspaceRoot>/.vscode/tasks.json    (build + flash preLaunch task)
- *   <projectRoot>/.cuttlefish/openocd.cfg (OpenOCD cfg, adapter speed override)
- *   <projectRoot>/.cuttlefish/.cuttlefish-gdb.py  (lambda frame filter, conditional)
- */
-/**
- * Resolve the debug-side probe method for a project: the board constants the
- * transpile persists + the workspace config's zephyr.probe selection.
- * Returns the method object (for cfg/servertype data) or undefined — ESP32
- * targets and boards without tables fall back to the framework's default
- * (esp_usb_jtag openocd) behavior.
- */
-function resolveDebugProbeMethod(
-  projectRoot: string,
-  workspaceRoot: string,
-): ZephyrProbeMethod | undefined {
-  try {
-    const bcPath = [
-      join(projectRoot, 'src', 'board-constants.json'),
-      join(projectRoot, 'board-constants.json'),
-    ].find((p) => existsSync(p));
-    if (!bcPath) return undefined;
-    const raw = JSON.parse(readFileSync(bcPath, 'utf8')) as Record<string, string | number | boolean>;
-    const chip = resolveChipFromBoard(new Map(Object.entries(raw)));
-    if (!chip) return undefined;
-    const zc = loadCuttlefishConfig(workspaceRoot)?.zephyrConfig as Record<string, unknown> | undefined;
-    const probe = resolveProbeMethod(zc, chip, 'debug');
-    if (!probe.ok) return undefined;
-    return chip.probeMethods?.find((m) => m.id === (zc?.probe as string | undefined));
-  } catch {
-    return undefined;
-  }
-}
-
-export function writeDebugConfig(o: DebugConfigOptions): void {
-  const vscodeDir = join(o.workspaceRoot, '.vscode');
-  const cuttlefishDir = join(o.projectRoot, '.cuttlefish');
-  mkdirSync(cuttlefishDir, { recursive: true });
-
-  // The selected probe method (if any) drives the debug server shape:
-  // openocd cfg source/quirks, cortex-debug servertype, wire interface.
-  const method = resolveDebugProbeMethod(o.projectRoot, o.workspaceRoot);
-
-  // openocd.cfg — written first so its relative path can be wired into the
-  // cortex-debug configFiles.  cortex-debug starts OpenOCD as a child process
-  // and passes this file via -f.
-  const openOcdCfgPath = join(cuttlefishDir, 'openocd.cfg');
-  writeFileSync(openOcdCfgPath, buildOpenOcdCfg(method, o.target), 'utf-8');
-  const openOcdCfgRel = `${o.appRel}/.cuttlefish/openocd.cfg`;
-
-  // launch.json — merge the cortex-debug config by name.
-  const gdbScript = generateGdbScript(o.sourceMapPath);
-  let gdbScriptRel: string | undefined;
-  if (gdbScript) {
-    const scriptPath = join(cuttlefishDir, '.cuttlefish-gdb.py');
-    writeFileSync(scriptPath, gdbScript, 'utf-8');
-    gdbScriptRel = `${o.appRel}/.cuttlefish/.cuttlefish-gdb.py`;
-  }
-
-  const launchConfig = buildLaunchConfig(o, gdbScriptRel, openOcdCfgRel, method);
-  mergeJsonArrayEntry(join(vscodeDir, 'launch.json'), 'configurations', 'name', launchConfig);
-
-  // tasks.json — merge the build+flash task by label.  OpenOCD is managed by
-  // cortex-debug so the task is a simple synchronous build step.
-  const task = buildTask(o);
-  mergeJsonArrayEntry(join(vscodeDir, 'tasks.json'), 'tasks', 'label', task);
-}
-
-/**
- * The Zephyr app dir a `cuttlefish create` scaffold produces, relative to the
- * project root: the scaffold fixes entry `./src/main.ts` + outDir `./out`, and
- * the CLI resolves output.outDir against the ENTRY's directory (cli.ts), so
- * the emitted app root — and therefore the ELF, build dir, and .cuttlefish/
- * debug artifacts — always lands at `src/out`. Keep in sync with
- * generateProjectConfig in @typecad/cuttlefish create/templates.ts.
- */
-const STARTER_APP_REL = 'src/out';
-
-/**
- * Create-time starter debug artifacts. Called by the cuttlefish `create` flow
- * (via the package's `writeProjectDebugArtifacts` export) so a fresh project
- * has a working F5 before any build exists:
- *
- * The launch.json's preLaunchTask runs `cuttlefish build --compile --upload
- * --debug`, which builds + flashes AND rewrites this same launch entry (merged
- * by name) with the CMakeCache-resolved gdbPath — so the starter files upgrade
- * themselves on the first debug build.
- *
- * No-ops (returns []) for targets without native GDB support (debugMode() !==
- * 'gdb'); the gdb frame-filter script is skipped (no source map exists yet).
- *
- * Returns the workspace-relative paths written, for CLI reporting.
- */
-export function writeProjectDebugArtifacts(o: {
-  /** Absolute path to the cuttlefish project root (contains cuttlefish.config.ts). */
-  workspaceRoot: string;
-  /** The Zephyr board id from the project config (frameworkData.buildTarget). */
-  buildTarget?: string;
-}): string[] {
-  if (new ZephyrStrategy().debugMode(o.buildTarget) !== 'gdb') return [];
-  const workspaceRoot = resolve(o.workspaceRoot);
-  const projectRoot = join(workspaceRoot, STARTER_APP_REL);
-  writeDebugConfig({
-    projectRoot,
-    workspaceRoot,
-    appRel: STARTER_APP_REL,
-    target: o.buildTarget ?? '',
-    // No build dir exists yet — resolveGdbPath falls back to probing known
-    // Zephyr SDK locations so gdbPath is still filled in when possible.
-    buildDir: join(projectRoot, 'build'),
-  });
-  return [
-    '.vscode/launch.json',
-    '.vscode/tasks.json',
-    `${STARTER_APP_REL}/.cuttlefish/openocd.cfg`,
-  ];
 }

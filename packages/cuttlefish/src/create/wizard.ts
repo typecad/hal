@@ -8,7 +8,7 @@ import { KNOWN_TARGETS, type KnownTarget } from "./scaffold.js";
 import { findPackBoard, packBoardAsTarget } from "./pack-targets.js";
 import { pickTarget } from "./board-search.js";
 import { activeBoardCatalog } from "../board-catalog/index.js";
-import { frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard } from './framework-catalog.js';
+import { frameworksForTarget, frameworkCatalogEntry, frameworkCompatibleWithTarget, FRAMEWORK_CATALOG, frameworkTargetProfile, probeMethodsForBoard, probeRunnerQuirks } from './framework-catalog.js';
 
 type ReadlineInterface = ReturnType<typeof readline.createInterface>;
 
@@ -257,6 +257,10 @@ export async function runCreateWizard(
         probeMethod = chosen === "" ? undefined : chosen;
       }
     }
+    // Board-catalog quirk for the chosen probe (e.g. an srst-based openocd.cfg
+    // behind a debug header with no NRST) — baked into the scaffolded
+    // config's runnerArgs so the first flash works.
+    const probeRunnerArgs = probeMethod ? probeRunnerQuirks(target.id, probeMethod) : [];
 
     // 4. Serial port (only for embedded) — the port the board rides on.
     // Detected ports are offered as a choice; the answer seeds test.port in
@@ -323,6 +327,7 @@ if (partialOptions?.noStarter) {
     return {
       probeMethod,
       probeMethods,
+      ...(probeRunnerArgs.length > 0 ? { probeRunnerArgs } : {}),
       projectName,
       targetId: target.id,
       targetDisplayName: target.displayName,

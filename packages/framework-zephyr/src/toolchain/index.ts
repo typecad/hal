@@ -18,8 +18,9 @@
 // target is known), GCC errors parsed via the shared parseCompileErrors helper.
 // ---------------------------------------------------------------------------
 
-import { spawnSync } from 'node:child_process';
-import { basename, dirname, join } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { connect as netConnect } from 'node:net';
+import { basename, delimiter, dirname, join } from 'node:path';
 import { readdirSync, readFileSync, mkdirSync, rmSync, existsSync, writeFileSync } from 'node:fs';
 import type { ToolchainOptions, CompileResult, UploadResult } from '@typecad/cuttlefish/api/shared';
 import { parseCompileErrors } from '@typecad/cuttlefish/api/shared';
@@ -27,7 +28,8 @@ import { scaffoldZephyrProject, writeIfChanged, appendLibraryOverlayFragments } 
 import { parseZephyrDts, asBuiltJson } from '../as-built.js';
 import { westSpawn, buildEnv } from './west-spawn.js';
 import { discoverWest } from './west-discover.js';
-import { writeDebugConfig, resolveDebugLocations } from './debug-config.js';
+import { writeDebugConfig, resolveDebugLocations, debugArtifactsNeedRewrite, DEBUG_SERVER_PORT, DEBUG_SERVER_TCL_PORT } from './debug-config.js';
+import { readRunnersFacts } from './runners.js';
 import { bossacTouchReset } from './bossac-touch.js';
 import { ZephyrStrategy } from '../strategy.js';
 import { generateOverlay, type DisplayWiring, type TouchWiring, type OverlayDiagnostic } from '../dt-config/overlay.js';
@@ -342,6 +344,23 @@ export type ProbeResolution =
   | { ok: true; runner?: string; args: string[] }
   | { ok: false; error: string };
 
+/**
+ * The board a cached build dir was configured for (CMakeCache.txt's
+ * BOARD:STRING — the exact value passed to `west build -b`), or undefined
+ * when no cache exists. compile() compares it against the requested board
+ * and nukes the dir on mismatch: `west build`'s --pristine=auto covers
+ * cmake/config churn, NOT a board switch — west aborts with "refusing to
+ * proceed without --force", and cuttlefish doesn't forward that flag.
+ */
+export function cachedBuildBoard(buildDir: string): string | undefined {
+  try {
+    return readFileSync(join(buildDir, 'CMakeCache.txt'), 'utf-8')
+      .match(/^BOARD:STRING=(.+)$/m)?.[1]?.trim() || undefined;
+  } catch {
+    return undefined; // no build dir / unreadable cache — treat as fresh
+  }
+}
+
 export function resolveProbeMethod(
   zc: Record<string, unknown> | undefined,
   chip: ZephyrChipDescriptor,
@@ -402,6 +421,64 @@ export function resolveProbeMethod(
  * `commands` are appended after `-f <cfg> -c init`. Returns a flash note on
  * success, undefined when skipped or failed (best-effort by design).
  */
+/**
+ * Resolve the openocd binary (plus script search dirs) for the probe session.
+ *
+ * Resolution order mirrors how west's own openocd runner finds the binary, so
+ * the session and `west flash` drive the SAME openocd:
+ *   1. $OPENOCD — the variable Zephyr's CMake reads into the build cache.
+ *   2. A Zephyr-SDK-hosted install ($ZEPHYR_SDK_INSTALL_DIR, else the
+ *      discovered west install's SDK). Layout differs by SDK generation —
+ *      hosttools/openocd/share/openocd/scripts vs hosttools/openocd/scripts —
+ *      so both script dirs are collected.
+ *   3. PATH — Linux distro / conda / micromamba installs (a micromamba-env
+ *      openocd is the common Linux setup; the SDK layout check alone made the
+ *      deterministic probe session unreachable there, silently dropping every
+ *      Linux flash to the racy `west flash` fallback).
+ *
+ * A non-SDK binary resolves with no explicit -s dirs: it finds its own
+ * interface/target scripts via its compiled-in search path. Returns undefined
+ * when no openocd can be found (the caller then uses the west fallback).
+ *
+ * Exported (pure) so the resolution contract is unit-testable without
+ * spawning openocd.
+ */
+export interface SessionOpenOcd {
+  readonly exe: string;
+  readonly searchDirs: readonly string[];
+}
+
+export function resolveSessionOpenOcd(
+  env: {
+    OPENOCD?: string | undefined;
+    ZEPHYR_SDK_INSTALL_DIR?: string | undefined;
+    PATH?: string | undefined;
+  } = process.env,
+  sdkInstallDir?: string,
+): SessionOpenOcd | undefined {
+  const exeName = process.platform === 'win32' ? 'openocd.exe' : 'openocd';
+  if (env.OPENOCD && existsSync(env.OPENOCD)) {
+    return { exe: env.OPENOCD, searchDirs: [] };
+  }
+  const sdkRoot = env.ZEPHYR_SDK_INSTALL_DIR || sdkInstallDir;
+  if (sdkRoot) {
+    const exe = join(sdkRoot, 'hosttools', 'openocd', 'bin', exeName);
+    if (existsSync(exe)) {
+      const searchDirs = [
+        join(sdkRoot, 'hosttools', 'openocd', 'share', 'openocd', 'scripts'),
+        join(sdkRoot, 'hosttools', 'openocd', 'scripts'),
+      ].filter((d) => existsSync(d));
+      return { exe, searchDirs };
+    }
+  }
+  for (const dir of (env.PATH ?? '').split(delimiter)) {
+    if (!dir) continue;
+    const candidate = join(dir, exeName);
+    if (existsSync(candidate)) return { exe: candidate, searchDirs: [] };
+  }
+  return undefined;
+}
+
 function openocdProbeSession(
   buildDir: string,
   zc: Record<string, unknown> | undefined,
@@ -438,16 +515,10 @@ function openocdProbeSession(
   ];
 
   const install = discoverWest();
-  const sdkRoot = process.env.ZEPHYR_SDK_INSTALL_DIR || install?.sdkInstallDir;
-  if (!sdkRoot) return undefined;
-  const openocdExe = join(sdkRoot, 'hosttools', 'openocd', 'bin',
-    process.platform === 'win32' ? 'openocd.exe' : 'openocd');
-  if (!existsSync(openocdExe)) return undefined;
-  // Script search path: the SDK layouts differ across versions — prefer the
-  // share/ form west's own runner uses, fall back to the scripts/ form.
-  const shareScripts = join(sdkRoot, 'hosttools', 'openocd', 'share', 'openocd', 'scripts');
-  const binScripts = join(sdkRoot, 'hosttools', 'openocd', 'scripts');
-  const searchDir = existsSync(shareScripts) ? shareScripts : binScripts;
+  const sessionOpenOcd = resolveSessionOpenOcd(process.env, install?.sdkInstallDir);
+  if (!sessionOpenOcd) return undefined;
+  const openocdExe = sessionOpenOcd.exe;
+  const searchArgs = sessionOpenOcd.searchDirs.flatMap((d) => ['-s', d] as [string, string]);
 
   let cfgArgs: string[] | undefined;
   let sessionCfg: string | undefined;
@@ -481,7 +552,7 @@ function openocdProbeSession(
       cfgArgs = ['-f', sessionCfg];
     }
     const res = spawnSync(openocdExe, [
-      '-s', searchDir, ...cfgArgs!,
+      ...searchArgs, ...cfgArgs!,
       // Pre-init TCL AFTER the cfg (overrides its reset_config) and BEFORE
       // init — the same position west gives --cmd-pre-init.
       ...preInit.map((c) => ['-c', c] as [string, string]).flat(),
@@ -585,6 +656,19 @@ function isUf2DriveVanishRace(output: string): boolean {
   return /Copying UF2 file to/.test(output)
     && /WinError 433/.test(output)
     && /copymode/.test(output);
+}
+
+/**
+ * Whether a `west flash` (openocd) output carries one of the known
+ * target-ignored-SWD signatures — the DAP connect failing ("init mode
+ * failed (unable to connect to the target)", i.e. the DPIDR read never
+ * succeeded) or a reset/halt never landing ("timed out while waiting for
+ * target halted" / "TARGET: <name> - Not halted"). Both mean the board (or
+ * probe) needs a power-cycle or the SWD-free DFU path, not a retry of the
+ * same command. Centralized so the upload hint stays testable.
+ */
+export function isTargetSwdFailure(output: string): boolean {
+  return /unable to connect to the target|timed out while waiting for target halted|TARGET: \S+ - Not halted/.test(output);
 }
 
 /**
@@ -975,10 +1059,15 @@ export const Toolchain = {
     // .ninja_deps, after which every ninja run fails with `dependency cycle`.
     // Plain source edits never reconfigure CMake, so they cannot trigger it —
     // and the retry after the spawn below self-heals any path that still does.
-    // Board switches need no nuke here: `west build` is --pristine=auto by
-    // default and recreates the dir itself when -b <board> mismatches the
-    // cached board.
-    if (configChanged) {
+    // Board switches DO need a nuke: `west build`'s --pristine=auto covers
+    // cmake/config churn, not a -b <board> mismatch — west aborts with
+    // "refusing to proceed without --force" and cuttlefish doesn't forward
+    // that flag, so the user would be stuck deleting the dir by hand. The
+    // cache names the board it was configured for (BOARD:STRING); detect the
+    // mismatch and apply west's own suggested remedy automatically.
+    const cachedBoard = cachedBuildBoard(buildDir);
+    const boardChanged = Boolean(cachedBoard && cachedBoard !== board);
+    if (configChanged || boardChanged) {
       try { rmSync(buildDir, { recursive: true, force: true }); } catch { /* may not exist */ }
     }
 
@@ -1028,22 +1117,25 @@ export const Toolchain = {
     const header = `Using west via ${inv.install.source}` +
       (inv.install.zephyrBase ? ` (ZEPHYR_BASE=${inv.install.zephyrBase})` : '') + '\n';
 
-    // After a successful build in gdb mode (--debug on a probe-capable target),
-    // write the VS Code launch.json + tasks.json + gdb-script artifacts so F5
-    // attaches GDB to the chip's debug probe. Non-fatal on failure — a missing
-    // artifact doesn't block the build. Mirrors the deleted framework-esp32
-    // toolchain compile() debug-config wiring.
-    if (result.status === 0 && isGdbDebug) {
+    // After a successful build on a gdb-capable board, keep the VS Code debug
+    // artifacts current: always under --debug, or on a plain build when they
+    // need it (still in create-time starter shape, an outDir rename moved the
+    // app root, or a pre-west self-managed-server entry). Non-fatal on
+    // failure — a missing artifact doesn't block the build.
+    if (result.status === 0 && debugMode === 'gdb') {
       try {
         const { workspaceRoot, appRel } = resolveDebugLocations(projectRoot);
-        writeDebugConfig({
-          projectRoot,
-          workspaceRoot,
-          appRel,
-          target: board,
-          buildDir,
-          sourceMapPath: join(dirname(o.sourcePath), `${basename(o.sourcePath)}.thcppmap.json`),
-        });
+        if (isGdbDebug
+          || debugArtifactsNeedRewrite(workspaceRoot, appRel, readRunnersFacts(buildDir)?.gdb?.replace(/\\/g, '/'))) {
+          writeDebugConfig({
+            projectRoot,
+            workspaceRoot,
+            appRel,
+            target: board,
+            buildDir,
+            sourceMapPath: join(dirname(o.sourcePath), `${basename(o.sourcePath)}.thcppmap.json`),
+          });
+        }
       } catch (e) {
         console.warn(`[cuttlefish] gdb debug config generation failed: ${(e as Error).message}`);
       }
@@ -1099,6 +1191,21 @@ export const Toolchain = {
     const probe = resolveProbeMethod(zc, chip, 'flash');
     if (!probe.ok) {
       return { success: false, output: `-- west flash: ${probe.error}` };
+    }
+    // Flashing over a probe needs it EXCLUSIVE: a debug server still bound to
+    // the gdb port (live session or an orphan whose wrapper died — a VS Code
+    // window reload kills task terminals without killing their children on
+    // Windows) makes openocd fail with LIBUSB_ERROR_ACCESS before any retry
+    // logic can help. Reclaim it up front — it is ours by convention.
+    {
+      const holder = portOwnerPid(DEBUG_SERVER_PORT);
+      if (holder !== undefined && holder !== process.pid) {
+        console.log(`-- west flash: stopping debug server (pid ${holder}) — flashing needs exclusive probe access`);
+        killPidTree(holder);
+        try {
+          rmSync(join(projectRoot, '.cuttlefish', 'debug-server.pid'), { force: true });
+        } catch { /* already gone */ }
+      }
     }
     // BOSSA bootloader boards with touch-reset data: open the app's console
     // port at 1200 baud (the firmware's USB shim reboots into the
@@ -1216,6 +1323,14 @@ export const Toolchain = {
           'sleep 300',
         ]);
         if (revived) flashNotes.push(revived);
+        // Known SWD-failure signatures get a recovery pointer — a board that
+        // ignores SWD until power-cycled (low-power state, lockup, a wedged
+        // probe) otherwise reads as a toolchain bug.
+        if (isTargetSwdFailure(raw)) {
+          flashNotes.push(
+            '-- target ignored SWD — if a retry fails too: power-cycle the board, replug the probe, or skip SWD entirely (hold BOOT0, tap reset, re-run with --probe dfu)',
+          );
+        }
       }
     } else {
       ok = true;
@@ -1283,4 +1398,231 @@ export const Toolchain = {
     });
     spawnSync(inv.command, inv.args, inv.options);
   },
+
+  debugServer(o: ToolchainOptions, action: 'start' | 'stop'): void {
+    const projectRoot = projectRootFromOptions(o);
+    const buildDir = join(projectRoot, 'build');
+    const pidFile = join(projectRoot, '.cuttlefish', 'debug-server.pid');
+
+    if (action === 'stop') {
+      stopDebugServer(pidFile);
+      return;
+    }
+
+    // start: wrap `west debugserver` as a long-running foreground process (the
+    // VS Code background task owns this process; postDebugTask runs `stop`).
+    if (!existsSync(join(buildDir, 'zephyr', 'runners.yaml'))) {
+      console.error(
+        `! No build at ${buildDir} — run 'npm run compile' (or F5's preLaunchTask) first.`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const stale = readStaleServerPid(pidFile);
+    if (stale !== undefined) {
+      // Already running (pid alive): just re-emit the ready marker so the
+      // task's problem matcher completes immediately.
+      console.log(`[cuttlefish] west debugserver already running (pid ${stale})`);
+      console.log(`CUTTLEFISH: debug server ready on ${DEBUG_SERVER_PORT}`);
+      return;
+    }
+    try { rmSync(pidFile, { force: true }); } catch { /* already gone */ }
+    // A wrapper/west that died without cleanup can leave openocd bound to
+    // the gdb port with a stale pidfile — reclaim it or the new server
+    // cannot bind (and gdb would attach to the orphan).
+    const orphan = portOwnerPid(DEBUG_SERVER_PORT);
+    if (orphan !== undefined && orphan !== process.pid) {
+      console.log(`[cuttlefish] reclaiming orphaned debug server on :${DEBUG_SERVER_PORT} (pid ${orphan})`);
+      killPidTree(orphan);
+    }
+
+    // Runner + quirk parity with flash (resolveProbeMethod, same as `west
+    // debug`): an explicit zephyr.probe selects the runner; either way, an
+    // srst-based openocd cfg behind an unwired NRST (the probeRunnerQuirks
+    // condition, read from the board's own method data) makes `reset init`
+    // time out — the IDE's post-attach reset would hang the session. Apply
+    // the core-reset override server-side unless the config's runnerArgs
+    // already carry it (the create flow bakes it in).
+    const board = targetFromOptions(o);
+    const chip = chipForBuild(projectRoot, board);
+    const zc = o.zephyrConfig as Record<string, unknown> | undefined;
+    const probe = resolveProbeMethod(zc, chip, 'debug');
+    // The runner west will actually drive: the explicit choice, else the
+    // board's declared debug-runner default from the build's runners.yaml.
+    const runner = ((probe.ok && probe.runner) || undefined)
+      ?? readRunnersFacts(buildDir)?.debugRunner;
+    const isOcd = runner === undefined || runner === 'openocd' || runner.startsWith('openocd');
+    if (!isOcd) {
+      console.warn(`! debug-server: the IDE wiring (ready marker, quirk args) targets the ` +
+        `openocd runner; this build's debug runner is '${runner}'. Starting it plain — ` +
+        `the F5 session may not connect.`);
+    }
+    const serverArgs = ['debugserver', '-d', buildDir];
+    if (probe.ok) {
+      if (probe.runner) serverArgs.push('--runner', probe.runner);
+      serverArgs.push(...probe.args);
+    }
+    if (isOcd) {
+      serverArgs.push(
+        '--gdb-port', String(DEBUG_SERVER_PORT),
+        // Pinned so the readiness poll below has a deterministic port.
+        '--tcl-port', String(DEBUG_SERVER_TCL_PORT),
+        // The board's own openocd.cfg may declare gdb-attach/gdb-detach
+        // events (reset-on-attach for standalone sessions). Under an
+        // IDE-managed session a stop event mid-initialization aborts
+        // debugger setup, so neutralize them: west's --cmd-pre-init lands
+        // AFTER the cfg files in the openocd command line, so these win.
+        '--cmd-pre-init', '$_TARGETNAME configure -event gdb-attach {}',
+        '--cmd-pre-init', '$_TARGETNAME configure -event gdb-detach {}',
+      );
+      const method = (zc?.probe as string | undefined)
+        ? chip.probeMethods?.find((m) => m.id === zc?.probe)
+        : chip.probeMethods?.find((m) => m.debug !== false);
+      const cfg = method?.debugCfg ?? [];
+      const srst = cfg.some((l) => /reset_config\s+srst/.test(l));
+      const connectAssert = cfg.some((l) => /connect_assert_srst/.test(l));
+      if (method?.runner === 'openocd' && srst && !connectAssert
+        && !(probe.ok && probe.args.includes('--cmd-pre-init=reset_config none'))) {
+        serverArgs.push('--cmd-pre-init', 'reset_config none');
+      }
+    }
+    const inv = westSpawn(serverArgs, { cwd: projectRoot });
+    const child = spawn(inv.command, inv.args, {
+      ...inv.options,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // Own process group on POSIX so `stop` can signal the whole tree.
+      ...(process.platform !== 'win32' ? { detached: true } : {}),
+    });
+    mkdirSync(join(projectRoot, '.cuttlefish'), { recursive: true });
+    writeFileSync(pidFile, String(child.pid), 'utf-8');
+    console.log(`[cuttlefish] starting west debugserver (gdb on localhost:${DEBUG_SERVER_PORT})`);
+    // A reader that goes away (closed task terminal, piped head) must not
+    // take the server down with an EPIPE.
+    process.stdout?.on?.('error', () => { /* EPIPE — server keeps running */ });
+    process.stderr?.on?.('error', () => { /* EPIPE — server keeps running */ });
+    child.stdout?.on('data', (d: Buffer) => process.stdout.write(d));
+    child.stderr?.on('data', (d: Buffer) => process.stderr.write(d));
+
+    // Ready = the TCL port accepts connections. NOT the gdb port: openocd's
+    // gdb server takes ONE client, so a TCP probe there both logs
+    // "attempted 'gdb' connection rejected" and can race the real gdb
+    // connection for the slot. The tcl listener opens at the END of openocd
+    // init (after the gdb listener and the startup halt) — a truer signal —
+    // and probes there are inert.
+    const deadline = Date.now() + DEBUG_SERVER_START_TIMEOUT_MS;
+    const poll = (): void => {
+      const sock = netConnect(DEBUG_SERVER_TCL_PORT, '127.0.0.1');
+      sock.once('connect', () => {
+        sock.destroy();
+        console.log(`CUTTLEFISH: debug server ready on ${DEBUG_SERVER_PORT}`);
+      });
+      sock.once('error', () => {
+        sock.destroy();
+        if (child.exitCode !== null) return; // server died — exit handler reports
+        if (Date.now() > deadline) {
+          console.error(`! west debugserver did not open :${DEBUG_SERVER_TCL_PORT} within `
+            + `${DEBUG_SERVER_START_TIMEOUT_MS / 1000}s — see its output above.`);
+          stopDebugServer(pidFile);
+          process.exitCode = 1;
+          return;
+        }
+        setTimeout(poll, 250);
+      });
+    };
+    poll();
+
+    child.on('exit', (code) => {
+      try { rmSync(pidFile, { force: true }); } catch { /* already gone */ }
+      // Exit before ready: surface as a task failure (the debugger never
+      // connects and VS Code reports the background task's non-zero exit).
+      if (code !== null && code !== 0) process.exitCode = code;
+    });
+    const forwardSignal = (): void => {
+      stopDebugServer(pidFile);
+      child.once('exit', () => process.exit(0));
+      setTimeout(() => process.exit(0), 1500).unref();
+    };
+    process.on('SIGINT', forwardSignal);
+    process.on('SIGTERM', forwardSignal);
+  },
 };
+
+/** How long `debug-server start` waits for the gdb port before failing. */
+const DEBUG_SERVER_START_TIMEOUT_MS = 45_000;
+
+/**
+ * Read the pidfile and return the pid when that process is still alive,
+ * undefined otherwise (no file, dead pid, or unparseable). Best-effort.
+ */
+function readStaleServerPid(pidFile: string): number | undefined {
+  try {
+    const pid = Number.parseInt(readFileSync(pidFile, 'utf-8').trim(), 10);
+    if (!Number.isInteger(pid)) return undefined;
+    process.kill(pid, 0); // throws ESRCH when dead
+    return pid;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The pid of whatever process is LISTENING on the gdb port — the recovery
+ * path for orphaned servers (the wrapper and west can die while openocd
+ * survives, e.g. a killed task terminal; the pidfile is then stale but the
+ * port stays bound and the next session would attach to the orphan).
+ * Best-effort: netstat on Windows, lsof on POSIX; undefined when the port is
+ * free or the platform tool is unavailable.
+ */
+function portOwnerPid(port: number): number | undefined {
+  try {
+    if (process.platform === 'win32') {
+      const out = spawnSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf-8' });
+      if (out.status !== 0) return undefined;
+      for (const line of (out.stdout ?? '').split(/\r?\n/)) {
+        const cols = line.trim().split(/\s+/);
+        if (cols.length >= 5 && cols[3] === 'LISTENING'
+          && cols[1].endsWith(`:${port}`)) {
+          const pid = Number.parseInt(cols[4], 10);
+          if (Number.isInteger(pid)) return pid;
+        }
+      }
+      return undefined;
+    }
+    const out = spawnSync('lsof', ['-ti', `tcp:${port}`], { encoding: 'utf-8' });
+    if (out.status !== 0 || !out.stdout?.trim()) return undefined;
+    const pid = Number.parseInt(out.stdout.trim().split(/\s+/)[0]!, 10);
+    return Number.isInteger(pid) ? pid : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Kill a pid tree (Windows: taskkill /T; POSIX: the process group). */
+function killPidTree(pid: number): void {
+  if (process.platform === 'win32') {
+    // /T: the whole tree (the pid may be the micromamba/west wrapper; openocd
+    // is its grandchild). /F: force — the server has no stdin to close.
+    spawnSync('taskkill', ['/PID', String(pid), '/T', '/F'], { encoding: 'utf-8' });
+  } else {
+    try {
+      process.kill(-pid, 'SIGTERM'); // the detached process group
+    } catch {
+      try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
+    }
+  }
+}
+
+/** Kill the debug server tree (micromamba/west → openocd) and drop the pidfile.
+ *  Falls back to the gdb-port owner when the recorded pid is already dead —
+ *  that orphan would otherwise serve stale sessions forever. */
+function stopDebugServer(pidFile: string): void {
+  const pid = readStaleServerPid(pidFile) ?? portOwnerPid(DEBUG_SERVER_PORT);
+  if (pid === undefined) {
+    try { rmSync(pidFile, { force: true }); } catch { /* already gone */ }
+    console.log('[cuttlefish] debug server not running');
+    return;
+  }
+  killPidTree(pid);
+  try { rmSync(pidFile, { force: true }); } catch { /* already gone */ }
+  console.log(`[cuttlefish] debug server stopped (pid ${pid})`);
+}

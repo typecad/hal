@@ -43,6 +43,14 @@ export function uploadFirmware(options: ToolchainOptions): UploadResult {
   return toolchain.upload(options);
 }
 
+export function debugServer(options: ToolchainOptions, action: "start" | "stop"): void {
+  const toolchain = getToolchain(options.outputDir);
+  if (!toolchain.debugServer) {
+    throw new Error("The active framework does not provide a debug server.");
+  }
+  toolchain.debugServer(options, action);
+}
+
 export function monitorDevice(options: ToolchainOptions): void {
   const toolchain = getToolchain(options.outputDir);
   if (!toolchain.monitor) {

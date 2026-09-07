@@ -1,0 +1,6 @@
+---
+'@typecad/framework-zephyr': patch
+'@typecad/cuttlefish': patch
+---
+
+zephyr: F5 debug artifacts now match the board out of the box. A fresh non-ESP32 project previously got an esp32s3 openocd.cfg (wrong silicon) because the debug-side probe method only resolved when `zephyr.probe` was set explicitly — it now defaults to the board's first debug-capable method from the board facts, and `cuttlefish create` passes the same facts from the board data pack so the starter profile is correct before the first build. A typo'd `zephyr.probe` warns with the validation error and skips the artifacts instead of silently regressing to the ESP32 cfg; boards with no debug-capable method skip them with a pointer instead of emitting a cfg for the wrong silicon. gdb discovery now knows the SDK 1.x `gnu/<toolchain>/bin` layout (it only checked the ≤0.17.x flat layout, silently falling through to a stale older SDK — or omitting gdbPath entirely on clean 1.x-only machines). Switching `board:` in cuttlefish.config.ts now rebuilds cleanly: a cached build dir configured for a different board is detected via CMakeCache's `BOARD:STRING` and removed automatically — west refuses to rebuild into it (`--pristine=auto` does not cover a board switch) and the suggested `--force` flag was never forwarded, leaving manual dir deletion as the only way out.

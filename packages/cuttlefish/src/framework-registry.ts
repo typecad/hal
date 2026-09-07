@@ -65,6 +65,12 @@ export interface FrameworkToolchain {
   upload?(options: ToolchainOptions): UploadResult;
   monitor?(options: ToolchainOptions): void;
   /**
+   * Optional: start/stop the debug-owned gdb server for the last build
+   * (e.g. `west debugserver`). The VS Code debug tasks drive this; the
+   * F5 session connects to the server via cortex-debug's external mode.
+   */
+  debugServer?(options: ToolchainOptions, action: "start" | "stop"): void;
+  /**
    * Optional: launch an interactive debugger session for the last build
    * (e.g. `west debug`). Not invoked by the standard build/compile flow;
    * powers an explicit debug-attach entry point. Frameworks that support

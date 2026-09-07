@@ -128,6 +128,36 @@ export function probeMethodsForBoard(boardId: string | undefined): CatalogProbeM
   return entry.probeMethods.map((m) => ({ id: m.id, description: m.description }));
 }
 
+/**
+ * Pre-baked zephyr.runnerArgs the selected probe method needs to flash
+ * reliably — sourced from the method's captured debugCfg (the board's
+ * support/openocd.cfg, verbatim), so the scaffold bakes in facts, not board
+ * names.
+ *
+ * The one quirk today: a cfg that drives OpenOCD resets through the SRST pin
+ * (`reset_config srst…`) while the probe's NRST line may not reach the target
+ * — hobby boards like the WeAct BlackPill break no NRST out at all, so
+ * `reset init` asserts a pin that reaches nothing and dies with "timed out
+ * while waiting for target halted". Core-domain resets (SYSRESETREQ) are
+ * pin-independent. Boards declaring `connect_assert_srst` are excluded: that
+ * strategy only works with NRST wired, so the pin is provably connected there
+ * and connect-under-reset is worth keeping.
+ */
+export function probeRunnerQuirks(
+  boardId: string | undefined,
+  methodId: string | undefined,
+): string[] {
+  if (!boardId || !methodId) return [];
+  const method = findPackBoard(boardId)?.probeMethods?.find((m) => m.id === methodId);
+  // Only the openocd runner consumes the board cfg's reset_config — other
+  // runners (jlink, dfu-util, …) carry their own reset strategy.
+  if (!method || method.runner !== 'openocd') return [];
+  const cfg = method.debugCfg ?? [];
+  const srst = cfg.some((line) => /reset_config\s+srst/.test(line));
+  const connectAssert = cfg.some((line) => /connect_assert_srst/.test(line));
+  return srst && !connectAssert ? ['--cmd-pre-init=reset_config none'] : [];
+}
+
 export interface FrameworkTargetProfile {
   /** Framework-specific build target (FQBN for Arduino, board id for Zephyr). */
   buildTarget?: string;

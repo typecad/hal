@@ -201,15 +201,29 @@ function hasDevScript(outDir: string): boolean {
 }
 
 /**
- * Settings that hide VS Code's web-dev npm surface in end-user projects. The
- * scaffolded package.json is build tooling, not an npm package the user
- * develops — without these, VS Code shows the NPM Scripts explorer view,
- * auto-detected npm tasks, and Debug codelenses over the scripts.
+ * Folder pattern matching the workspace-bundled extension copies. These carry
+ * their own package.json manifests, which VS Code otherwise picks up as a
+ * second npm package in the project.
+ */
+const BUNDLED_EXTENSION_GLOB = '**/.vscode/extensions/**';
+
+/**
+ * Settings that keep the NPM Scripts pane working on the PROJECT's scripts
+ * (build/upload/… — the project's primary commands) while hiding the
+ * workspace-bundled editor extensions' manifests: their package.json files
+ * are excluded from npm detection individually (so no second package shows
+ * up) and the extensions folder is hidden from the Explorer and search — it
+ * is internal scaffolding, not user code. `npm.autoDetect` is set to 'on'
+ * EXPLICITLY: an earlier scaffold wrote 'off', which blanks the NPM Scripts
+ * pane ("the setting npm.autoDetect is off") — and the explicit value also
+ * heals settings.json files written by that older scaffold.
  */
 const END_USER_NPM_SETTINGS: Record<string, unknown> = {
-  'npm.autoDetect': 'off',
-  'npm.exclude': '**/package.json',
+  'npm.autoDetect': 'on',
+  'npm.exclude': `${BUNDLED_EXTENSION_GLOB}/package.json`,
   'debug.javascript.codelens.npmScripts': 'never',
+  'files.exclude': { '.vscode/extensions': true },
+  'search.exclude': { '**/.vscode/extensions': true },
 };
 
 /**
@@ -230,7 +244,19 @@ function writeNpmHiddenSettings(vscodeDir: string): string {
       // malformed — start fresh
     }
   }
-  Object.assign(doc, END_USER_NPM_SETTINGS);
+  for (const [key, value] of Object.entries(END_USER_NPM_SETTINGS)) {
+    const existingValue = doc[key];
+    // nested objects (files.exclude, search.exclude) merge key-by-key so user
+    // entries in the same map survive; scalars and arrays are overwritten.
+    if (
+      value && typeof value === 'object' && !Array.isArray(value)
+      && existingValue && typeof existingValue === 'object' && !Array.isArray(existingValue)
+    ) {
+      doc[key] = { ...(existingValue as Record<string, unknown>), ...(value as Record<string, unknown>) };
+    } else {
+      doc[key] = value;
+    }
+  }
   fs.writeFileSync(settingsPath, `${JSON.stringify(doc, null, 2)}\n`, 'utf-8');
   return settingsPath;
 }

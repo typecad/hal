@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { ArchitectureIdentifier } from '../api/index.js';
 import { LINT_RULES } from '../ir/feature-registry.js';
 import { isBuiltinFramework } from './framework-catalog.js';
@@ -29,6 +30,11 @@ export interface CreateProjectOptions {
   /** Probe methods the board supports (wizard/catalog data) — used to write
    *  the config comment listing the alternatives. */
   probeMethods?: { id: string; description?: string }[];
+  /** Pre-baked zephyr.runnerArgs for the selected probe method (from
+   *  probeRunnerQuirks — board-catalog facts, e.g. an srst-based openocd.cfg
+   *  behind a debug header with no NRST). Emitted after probe with an
+   *  explanatory comment. */
+  probeRunnerArgs?: string[];
   /** Serial port picked at create time (test.port). Absent →
    *  the platform hint placeholder. */
   port?: string;
@@ -93,6 +99,7 @@ export function generateProjectPackageJson(options: CreateProjectOptions): strin
     "build": "cuttlefish build",
     "compile": "cuttlefish build --compile",
     "lint": "eslint --config .cuttlefish/eslint.config.mjs src/",
+    "clean": "cuttlefish clean",
     ${devScripts.join(',\n    ')}
   },
   "dependencies": {
@@ -130,6 +137,7 @@ ${devDepsJson}
     "test:hw": "npm exec -- cuttlefish-test",
     "simulate": "vitest run sim/",
     "lint": "eslint --config .cuttlefish/eslint.config.mjs src/",
+    "clean": "cuttlefish clean",
     ${devScripts.join(',\n    ')}
   },
   "dependencies": {
@@ -180,6 +188,24 @@ export function generateProjectTsconfig(options: CreateProjectOptions): string {
   "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish.config.ts", ".cuttlefish/cuttlefish-env.d.ts"${options.isNative ? '' : ', "sim/**/*.ts"'}]
 }
 `;
+}
+
+/**
+ * The app dir the scaffolded config produces, workspace-relative with forward
+ * slashes ('src/out'): the CLI resolves output.outDir against the ENTRY's
+ * directory, so generateProjectConfig's fixed `entry: './src/main.ts'` +
+ * `outDir: './out'` always yields src/out. Kept beside the values it mirrors;
+ * the create-time debug-artifact writer needs it (the framework would
+ * otherwise assume the default).
+ */
+export function starterAppRel(
+  entry = './src/main.ts',
+  outDir = './out',
+): string {
+  const entryDir = path.posix.dirname(entry.replace(/\\/g, '/'));
+  return path.posix.normalize(
+    path.posix.join(entryDir === '.' ? '' : entryDir, outDir.replace(/\\/g, '/')),
+  );
 }
 
 export function generateProjectConfig(options: CreateProjectOptions): string {
@@ -250,6 +276,16 @@ export default config;
     // the board also supports: ${probeIds || 'see the framework docs'}). Serves
     // flashing AND debugging.
     probe: '${options.probeMethod}',`);
+  }
+  if (options.probeRunnerArgs && options.probeRunnerArgs.length > 0) {
+    const quirks = options.probeRunnerArgs.map((a) => `'${a}'`).join(', ');
+    zephyrFields.push(`    // Quirk: this board's openocd.cfg drives OpenOCD resets through the
+    // SRST pin. When the probe's NRST line isn't wired to the target (the
+    // BlackPill's SWD header has no NRST pin at all), \`reset init\` times out
+    // with "timed out while waiting for target halted". These args force
+    // pin-independent core resets instead — remove them if NRST is wired and
+    // pin resets are wanted.
+    runnerArgs: [${quirks}],`);
   }
   const zephyrProbeBlock = zephyrFields.length > 0
     ? `
