@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
-// `cuttlefish gen-decls` argument parsing.
+// `typecad-hal gen-decls` argument parsing.
 //
 // Symptom (reported): every form that uses `--all` fails:
 //
-//   $ cuttlefish gen-decls --all ./lib
+//   $ typecad-hal gen-decls --all ./lib
 //   ✗ Missing input file path.
-//   $ cuttlefish gen-decls --all ./lib/Adafruit_GFX_Library/Adafruit_GFX.cpp
+//   $ typecad-hal gen-decls --all ./lib/Adafruit_GFX_Library/Adafruit_GFX.cpp
 //   ✗ Missing input file path.
 //
 // Root cause: in parseCommandLine the positional path for gen-decls was read
@@ -29,7 +29,7 @@ import { parseCommandLine, generateDecl } from "@typecad/cuttlefish/testing";
 describe("gen-decls argument parsing", () => {
   it("single .cpp file mode sets inputFile", () => {
     const result: any = parseCommandLine([
-      "node", "cuttlefish", "gen-decls", "Adafruit_GFX.cpp",
+      "node", "typecad-hal", "gen-decls", "Adafruit_GFX.cpp",
     ]);
     expect(result.command).toBe("gen-decls");
     expect(result.inputFile).toBe(path.resolve(process.cwd(), "Adafruit_GFX.cpp"));
@@ -38,7 +38,7 @@ describe("gen-decls argument parsing", () => {
 
   it("--all <directory> sets scanDir, not inputFile", () => {
     const result: any = parseCommandLine([
-      "node", "cuttlefish", "gen-decls", "--all", "./lib",
+      "node", "typecad-hal", "gen-decls", "--all", "./lib",
     ]);
     expect(result.command).toBe("gen-decls");
     expect(result.scanDir).toBe(path.resolve(process.cwd(), "./lib"));
@@ -48,7 +48,7 @@ describe("gen-decls argument parsing", () => {
   it("--all <directory> works when --all is placed AFTER the directory", () => {
     // Equivalent reordering: positional may appear before the flag too.
     const result: any = parseCommandLine([
-      "node", "cuttlefish", "gen-decls", "./lib", "--all",
+      "node", "typecad-hal", "gen-decls", "./lib", "--all",
     ]);
     expect(result.command).toBe("gen-decls");
     expect(result.scanDir).toBe(path.resolve(process.cwd(), "./lib"));
@@ -59,7 +59,7 @@ describe("gen-decls argument parsing", () => {
     // Regression for the reported bug: argv[3] was "--all", argv[4] was the
     // path. The old code read argv[3] and produced scanDir = "<cwd>/--all".
     const result: any = parseCommandLine([
-      "node", "cuttlefish", "gen-decls", "--all",
+      "node", "typecad-hal", "gen-decls", "--all",
       "./lib/Adafruit_GFX_Library/Adafruit_GFX.cpp",
     ]);
     expect(result.command).toBe("gen-decls");
@@ -72,7 +72,7 @@ describe("gen-decls argument parsing", () => {
 
   it("--all with no path falls back to cwd", () => {
     const result: any = parseCommandLine([
-      "node", "cuttlefish", "gen-decls", "--all",
+      "node", "typecad-hal", "gen-decls", "--all",
     ]);
     expect(result.command).toBe("gen-decls");
     expect(result.scanDir).toBe(process.cwd());
@@ -80,7 +80,7 @@ describe("gen-decls argument parsing", () => {
 
   it("rejects single-file mode with no path and no --all", () => {
     expect(() =>
-      parseCommandLine(["node", "cuttlefish", "gen-decls"]),
+      parseCommandLine(["node", "typecad-hal", "gen-decls"]),
     ).toThrow(/Missing input C\+\+ file path/);
   });
 });

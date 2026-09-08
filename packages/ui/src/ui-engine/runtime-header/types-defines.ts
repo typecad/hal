@@ -3,7 +3,7 @@
 // See docs/superpowers/specs/2026-07-12-split-runtime-header-design.md.
 export function emitTypesDefines(): string {
   return `
-// ── Cuttlefish UI runtime (emit once per TU) ──────────────────────────────
+// ── TypeCAD UI runtime (emit once per TU) ──────────────────────────────
 #ifndef __TC_UI_RUNTIME
 #define __TC_UI_RUNTIME
 #include <stdint.h>

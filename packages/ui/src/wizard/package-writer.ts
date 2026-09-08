@@ -2,9 +2,9 @@
 // package.json script writer for the @typecad/ui integration wizard.
 //
 // package.json is plain JSON (no comments, no expressions), so unlike
-// cuttlefish.config.ts (see config-writer.ts) this needs no AST surgery —
+// typecad-hal.config.ts (see config-writer.ts) this needs no AST surgery —
 // parse, compare, set, and re-serialize with the 2-space formatting npm and
-// `cuttlefish create` both write. An unchanged script is a no-op: the
+// `typecad-hal create` both write. An unchanged script is a no-op: the
 // original text is returned verbatim so a re-run never reformats the file.
 // ---------------------------------------------------------------------------
 
@@ -86,13 +86,13 @@ export function upsertPackageScript(
 }
 
 /**
- * The `cuttlefish preview` command the wizard writes as the `preview` npm
+ * The `typecad-hal preview` command the wizard writes as the `preview` npm
  * script. The --config path is made relative to the package.json directory
  * (npm scripts run there), posix-separated, and explicitly ./-prefixed so
- * sibling configs render as `./cuttlefish.config.ts`.
+ * sibling configs render as `./typecad-hal.config.ts`.
  */
 export function previewScriptCommand(packageJsonPath: string, configPath: string): string {
   let rel = path.relative(path.dirname(packageJsonPath), configPath).split(path.sep).join("/");
   if (!rel.startsWith(".")) rel = `./${rel}`;
-  return `cuttlefish preview --config ${rel}`;
+  return `typecad-hal preview --config ${rel}`;
 }

@@ -19,7 +19,7 @@
     "allowArbitraryExtensions": true,
     "rootDirs": ["src", "types"]
   },
-  "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish-env.d.ts"],
+  "include": ["src/**/*.ts", "types/**/*.ts", "typecad-hal-env.d.ts"],
   "exclude": ["node_modules"],
   "types": []
 }

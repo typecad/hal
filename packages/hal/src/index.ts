@@ -1,8 +1,8 @@
 // Re-export commonly-used types so consumers can import everything from @typecad/hal
 //
 // Runtime-contract interfaces (BasePin, II2CBus, ISPIBus, ISerialPort, the
-// status enums, capability guards, PinCapabilityFlags, IToneAttachment, ...)
-// now live in @typecad/simulator. Import them from there.
+// status enums, capability guards, ...) live in src/sim/contracts.ts —
+// import them from '@typecad/hal/sim'.
 export type { DigitalValue, AnalogValue } from './types.js';
 export { PinMode } from './types.js';
 
@@ -52,3 +52,10 @@ export { Request } from './http.js';
 export type { RequestOpts } from './http.js';
 export { BLE, BleChain, BleValueType, BlePerm, GATT } from './ble.js';
 export type { GattCharacteristicDef, CharValue } from './ble.js';
+
+// Board-gate classification — which value exports are gated on board facts
+// (see gate.ts). The ungated list is derived by the board generators from
+// this index's runtime exports minus GATED_EXPORTS; the type list is manual.
+// Reachable under the './core' subpath so board tooling can import it without
+// colliding with the project-level '@typecad/hal' mapping.
+export { GATED_EXPORTS, BOARD_UNGATED_TYPE_EXPORTS } from './gate.js';

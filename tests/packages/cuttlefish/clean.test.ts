@@ -1,4 +1,4 @@
-// runClean — the `cuttlefish clean` escape hatch. Resolution mirrors build
+// runClean — the `typecad-hal clean` escape hatch. Resolution mirrors build
 // (flag > config output.outDir against the entry dir), the generated-dir
 // marker gates deletion, and guard rails keep a misconfigured outDir from
 // taking user files with it.
@@ -18,9 +18,9 @@ function makeProject(opts?: { outDir?: string }): string {
   fs.mkdirSync(path.join(root, "src"), { recursive: true });
   fs.writeFileSync(path.join(root, "src", "main.ts"), "let x: number = 1;\n");
   if (opts?.outDir !== undefined) {
-    fs.writeFileSync(path.join(root, "cuttlefish.config.ts"), `export default { entry: './src/main.ts', output: { outDir: '${opts.outDir}' } } as any;`);
+    fs.writeFileSync(path.join(root, "typecad-hal.config.ts"), `export default { entry: './src/main.ts', output: { outDir: '${opts.outDir}' } } as any;`);
   } else {
-    fs.writeFileSync(path.join(root, "cuttlefish.config.ts"), "export default { entry: './src/main.ts' } as any;");
+    fs.writeFileSync(path.join(root, "typecad-hal.config.ts"), "export default { entry: './src/main.ts' } as any;");
   }
   return root;
 }
@@ -139,18 +139,18 @@ describe("runClean — safety rails", () => {
     expect(fs.existsSync(path.join(root, "src", "main.ts"))).toBe(true);
   });
 
-  it("refuses a dir containing a cuttlefish.config.ts (a project, not output)", () => {
+  it("refuses a dir containing a typecad-hal.config.ts (a project, not output)", () => {
     const root = makeProject({ outDir: "./nested" });
     const nested = path.join(root, "src", "nested");
     makeGenerated(nested);
-    fs.writeFileSync(path.join(nested, "cuttlefish.config.ts"), "export default {} as any;");
+    fs.writeFileSync(path.join(nested, "typecad-hal.config.ts"), "export default {} as any;");
     const outcome = runClean({
       projectRoot: root,
       entryPath: path.join(root, "src", "main.ts"),
       configOutDir: "./nested",
     });
     expect(outcome.removed).toEqual([]);
-    expect(outcome.refused[0].reason).toContain("cuttlefish.config.ts");
+    expect(outcome.refused[0].reason).toContain("typecad-hal.config.ts");
   });
 });
 
@@ -176,8 +176,8 @@ describe("scaffold — npm run clean", () => {
   it("every scaffolded project carries the clean script", () => {
     const base = { projectName: "p", frameworkPackage: "@typecad/framework-zephyr", frameworkId: "zephyr", targetId: "blackpill_f411ce", isNative: false, includeStarter: true } as const;
     const embedded = JSON.parse(generateProjectPackageJson(base as never));
-    expect(embedded.scripts.clean).toBe("cuttlefish clean");
+    expect(embedded.scripts.clean).toBe("typecad-hal clean");
     const native = JSON.parse(generateProjectPackageJson({ ...base, frameworkPackage: "@typecad/framework-native", isNative: true } as never));
-    expect(native.scripts.clean).toBe("cuttlefish clean");
+    expect(native.scripts.clean).toBe("typecad-hal clean");
   });
 });

@@ -15,8 +15,6 @@
     { "path": "packages/hal" },
     { "path": "packages/framework-zephyr" },
     { "path": "packages/ui" },
-    { "path": "packages/expect" },
-    { "path": "packages/simulator" },
     { "path": "packages/zephyr-esp32s3-rgb" }
   ]
 }

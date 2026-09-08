@@ -11,8 +11,7 @@ This is the one place the HAL's "every call blocks" model softens: inside an asy
 An `async function` becomes a task that **auto-starts**: the first `run()` pump enters its initial state whether or not you called the function. Calling it at top level is optional documentation of intent:
 
 ```typescript
-import { WiFi, Time } from '@typecad/hal';
-import { UART0 } from '@typecad/board';
+import { WiFi, Time, UART0 } from '@typecad/hal';
 
 const wifi = new WiFi('HomeNet', { psk: 'hunter22' });
 

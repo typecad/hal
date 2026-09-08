@@ -5,8 +5,7 @@
 const WIFI_SSID = "HomeNet";
 const WIFI_PASSWORD = "hunter22";
 
-import { WiFi, Time, GPIO } from '@typecad/hal';
-import { GPIO2 as D2, UART0 } from '@typecad/board';
+import { WiFi, Time, GPIO, GPIO2 as D2, UART0 } from '@typecad/hal';
 
 const led = new GPIO(D2, GPIO.OUTPUT);
 const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD, timeoutMs: 30000 });

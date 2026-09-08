@@ -1,11 +1,11 @@
 // ---------------------------------------------------------------------------
-// `cuttlefish library init` — scaffold a new cuttlefish library package.
+// `typecad-hal library init` — scaffold a new typecad-hal library package.
 //
 // Generates everything a library author needs to reach a valid, publishable
-// package: the typed API skeleton, the cuttlefish.library.json manifest,
+// package: the typed API skeleton, the typecad-hal.library.json manifest,
 // AUTOSAR C++14-compliant shim stubs, (for Zephyr) an overlay fragment, a
 // README, and a starter compliance test. The scaffold is deliberately tiny —
-// it must pass `cuttlefish library validate` the moment it lands.
+// it must pass `typecad-hal library validate` the moment it lands.
 //
 // Prompts follow the create-wizard's readline pattern (no prompt dependency);
 // flags override prompts, and --yes takes defaults for anything unanswered.
@@ -139,7 +139,7 @@ function renderPackageJson(m: ScaffoldModel): string {
       type: "module",
       main: "./dist/index.js",
       types: "./dist/index.d.ts",
-      files: ["dist", "src", "shims", "cuttlefish.library.json"],
+      files: ["dist", "src", "shims", "typecad-hal.library.json"],
       scripts: {
         build: "tsc",
         prepublishOnly: "npm run build",
@@ -194,7 +194,7 @@ function renderTsconfig(): string {
 
 function renderApi(m: ScaffoldModel): string {
   return `// ---------------------------------------------------------------------------
-// ${m.packageName} — cuttlefish library package (${m.category.label.toLowerCase()}).
+// ${m.packageName} — typecad-hal library package (${m.category.label.toLowerCase()}).
 //
 // This file is the typed API contract: it is never executed. The cuttlefish
 // transpiler lowers the import to the shim header (shims/__tc_${m.tokenBase}.h),
@@ -319,7 +319,7 @@ function renderOverlay(m: ScaffoldModel): string {
 function renderReadme(m: ScaffoldModel): string {
   return `# ${m.packageName}
 
-A cuttlefish library package — ${m.category.label.toLowerCase()} (${m.category.description}),
+A typecad-hal library package — ${m.category.label.toLowerCase()} (${m.category.description}),
 for the **${m.framework}** framework${m.targets.length > 0 ? ` (targets: ${m.targets.join(", ")})` : ""}.
 
 ## Use it
@@ -343,11 +343,11 @@ README, everything a user would otherwise hunt through datasheets for:
 
 - Method names in src/index.ts match the C++ shim names exactly; calls render verbatim.
 - Export a singleton instance, not a constructor.
-- Shims pass \`cuttlefish library validate\` (AUTOSAR C++14, strict).
-- \`cuttlefish.library.json\` declares framework${m.isZephyr ? ", kconfig, overlay" : ""} and the shim files.
-- package.json keywords include the marker (\`cuttlefish-library\`) and category (\`cuttlefish-${m.category.id}\`) keywords.
+- Shims pass \`typecad-hal library validate\` (AUTOSAR C++14, strict).
+- \`typecad-hal.library.json\` declares framework${m.isZephyr ? ", kconfig, overlay" : ""} and the shim files.
+- package.json keywords include the marker (\`typecad-hal-library\`) and category (\`cuttlefish-${m.category.id}\`) keywords.
 
-Validate with \`cuttlefish library validate .\` from this directory.
+Validate with \`typecad-hal library validate .\` from this directory.
 `;
 }
 
@@ -472,7 +472,7 @@ export async function runLibraryInit(options: LibraryInitOptions): Promise<Libra
   writeIfChanged(path.join(packageDir, "tsconfig.json"), renderTsconfig());
   writeIfChanged(path.join(packageDir, ".gitignore"), "node_modules/\ndist/\n");
   writeIfChanged(path.join(packageDir, "src", "index.ts"), renderApi(model));
-  writeIfChanged(path.join(packageDir, "cuttlefish.library.json"), renderManifest(model));
+  writeIfChanged(path.join(packageDir, "typecad-hal.library.json"), renderManifest(model));
   writeIfChanged(path.join(packageDir, "shims", `__tc_${model.tokenBase}.h`), renderShimHeader(model));
   writeIfChanged(path.join(packageDir, "shims", `__tc_${model.tokenBase}.cpp`), renderShimSource(model));
   if (model.isZephyr) {
@@ -484,13 +484,13 @@ export async function runLibraryInit(options: LibraryInitOptions): Promise<Libra
   console.log(chalk.green("+") + ` Scaffolded ${chalk.white.bold(packageName)} in ${packageDir}`);
   console.log();
   console.log(`  Framework:  ${frameworkEntry.label}`);
-  console.log(`  Category:   ${category.label} (keyword: cuttlefish-${category.id})`);
+  console.log(`  Category:   ${category.label} (keyword: typecad-hal-${category.id})`);
   console.log(`  Library id: ${id} (shim __tc_${model.tokenBase}.h, gate token __tc_${model.tokenBase})`);
   console.log();
   console.log("  Next steps:");
   console.log(`    1. Replace the stubs in shims/ with your implementation.`);
-  console.log(`    2. Fill in cuttlefish.library.json${model.isZephyr ? " (kconfig + overlay)" : ""} as you go.`);
-  console.log(`    3. Validate: npx cuttlefish library validate ${packageDir}`);
+  console.log(`    2. Fill in typecad-hal.library.json${model.isZephyr ? " (kconfig + overlay)" : ""} as you go.`);
+  console.log(`    3. Validate: npx typecad-hal library validate ${packageDir}`);
   console.log(`    4. Use it in a project: npm install <path-or-published-name>, then`);
   console.log(`       import { ${model.instanceName} } from '${packageName}';`);
   if (model.isZephyr) {

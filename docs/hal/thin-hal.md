@@ -1,6 +1,6 @@
 # The Thin HAL
 
-The thin HAL is Cuttlefish's Zephyr-first surface: one class per peripheral, Zephyr's own verbs, construction facts instead of runtime configuration. Every method lowers to **one Zephyr call** (or one inlinable sequence) with no semantic translation — no duty scaling, no mode strings, no APIs Zephyr can't honor. The names are Zephyr's verbatim under a namespace dot, so any Zephyr doc greps straight into your code.
+The thin HAL is TypeCAD's Zephyr-first surface: one class per peripheral, Zephyr's own verbs, construction facts instead of runtime configuration. Every method lowers to **one Zephyr call** (or one inlinable sequence) with no semantic translation — no duty scaling, no mode strings, no APIs Zephyr can't honor. The names are Zephyr's verbatim under a namespace dot, so any Zephyr doc greps straight into your code.
 
 Every class follows the same shape:
 
@@ -9,8 +9,7 @@ Every class follows the same shape:
 - **Units are Zephyr's.** Nanoseconds for PWM time, Hz for construction clocks, millivolts, raw ADC counts, Zephyr priority numbers. No 0–255, no 0–1023.
 
 ```typescript
-import { GPIO, PWM, ADC, Time, Thread } from '@typecad/hal';
-import { LED, ANY_PIN } from '@typecad/board';
+import { GPIO, PWM, ADC, Time, Thread, LED, ANY_PIN } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);            // gpio_pin_configure_dt + set/toggle
 const dimmer = new PWM(ANY_PIN, { periodNs: 20_000_000 }); // 50 Hz from construction
@@ -74,8 +73,7 @@ There is deliberately no `setReference()` — Zephyr applies it at channel-setup
 The buses speak Zephyr's device model — an address or chip-select peer, not a Wire transaction:
 
 ```typescript
-import { I2CTarget, SPITarget, UART } from '@typecad/hal';
-import { ANY_PIN } from '@typecad/board';
+import { I2CTarget, SPITarget, UART, ANY_PIN } from '@typecad/hal';
 
 const sht = new I2CTarget('I2C0', 0x44, { hz: 400_000 });
 sht.writeReg(0x30, 0xA2);              // i2c_reg_write_byte

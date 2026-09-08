@@ -1,8 +1,8 @@
 // ---------------------------------------------------------------------------
 // @typecad/zephyr-esp32s3-rgb — onboard WS2812 RGB LED (ESP32-S3 DevKitC)
 //
-// A cuttlefish *library package*: `npm install @typecad/zephyr-esp32s3-rgb`,
-// then import and use it like any other TypeScript module. The cuttlefish
+// A typecad-hal *library package*: `npm install @typecad/zephyr-esp32s3-rgb`,
+// then import and use it like any other TypeScript module. The typecad-hal
 // transpiler resolves the import to the native shim header (`__tc_rgbled.h`)
 // and emits the shim + devicetree overlay + Kconfig into the generated Zephyr
 // application — the class below is never executed, it is the typed API

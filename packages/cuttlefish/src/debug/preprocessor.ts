@@ -49,7 +49,7 @@ function getDebugStrategy(explicit?: PlatformStrategy) {
 export function preprocess(options: {
   /** The source file path (for line number calculation) */
   fileName: string;
-  /** The breakpoint map loaded from .cuttlefish/breakpoints.json */
+  /** The breakpoint map loaded from .typecad-hal/breakpoints.json */
   breakpoints: BreakpointMap;
   /** The source text to transform */
   source: string;

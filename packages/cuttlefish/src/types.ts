@@ -69,9 +69,9 @@ export interface TranspileOptions {
   /** Tree-shaking options for dead code elimination */
   treeShaking?: TreeShakingOptions;
   /**
-   * Zephyr board target resolved from `cuttlefish.config.ts` (e.g.
+   * Zephyr board target resolved from `typecad-hal.config.ts` (e.g.
    * `'esp32s3_devkitc/esp32s3/procpu'`). When a generated board module is
-   * absent, `@typecad/board` imports resolve through it.
+   * absent, `@typecad/hal` imports resolve through the real package.
    */
   boardTarget?: string;
   /**
@@ -92,8 +92,8 @@ export interface TranspileOptions {
    */
   skipLint?: boolean;
   /**
-   * The user's project root — the directory containing `cuttlefish.config.ts`.
-   * The ESLint gate looks for `.cuttlefish/eslint.config.mjs` (or a root-level
+   * The user's project root — the directory containing `typecad-hal.config.ts`.
+   * The ESLint gate looks for `.typecad-hal/eslint.config.mjs` (or a root-level
    * `eslint.config.mjs`) here, not under `src/`. When omitted, the entry file's
    * directory is used as a fallback (suitable for ad-hoc API/test callers that
    * pass a bare input file outside a configured project).
@@ -108,7 +108,7 @@ export interface TranspileOptions {
   force?: boolean;
   /** Generate diagnostics.md and diagnostics.json reports (default: false) */
   diagnostics?: boolean;
-  /** Display profile config from cuttlefish.config.ts */
+  /** Display profile config from typecad-hal.config.ts */
   display?: import("./api/shared/display-profile.js").DisplayConfig;
   /** AUTOSAR C++14 compliance mode for emitted code (default: "off"). */
   autosar?: ComplianceMode;
@@ -160,7 +160,7 @@ export interface CommandLineOptions {
   /** Serial port for upload and monitor (e.g. COM4 or /dev/ttyACM0) */
   port?: string;
   /** One-off probe-method override (a board probeMethods id) for --upload
-   *  and --debug. Wins over zephyr.probe in cuttlefish.config.ts; Zephyr-only. */
+   *  and --debug. Wins over zephyr.probe in typecad-hal.config.ts; Zephyr-only. */
   probe?: string;
   /** Baud rate for monitor. Undefined when --baud is absent so the consumer
    *  can fall through to the framework monitor default. */
@@ -169,8 +169,8 @@ export interface CommandLineOptions {
   /** Tree-shaking options */
   treeShaking?: TreeShakingOptions;
   /**
-   * Board package specifier resolved from `cuttlefish.config.ts`.
-   * When present, `@typecad/board` imports are rewritten to this package.
+   * Board package specifier resolved from `typecad-hal.config.ts`.
+   * When present, `@typecad/hal` imports are rewritten to this package.
    */
   boardTarget?: string;
   /**
@@ -186,7 +186,7 @@ export interface CommandLineOptions {
   force?: boolean;
   /** Watch for file changes and retranspile automatically */
   watch: boolean;
-  /** Run hardware tests via @typecad/expect */
+  /** Run hardware tests via the built-in test-runner (typecad-hal test) */
   expect?: boolean;
   /** Optional test file path filter for --expect */
   expectFile?: string;
@@ -200,7 +200,7 @@ export interface CommandLineOptions {
   strictCss?: boolean;
   /** Config file for preview command */
   configPath?: string;
-  /** Project root (dir of cuttlefish.config.ts); passed to transpileFile for the ESLint gate. */
+  /** Project root (dir of typecad-hal.config.ts); passed to transpileFile for the ESLint gate. */
   projectRoot?: string;
 }
 
@@ -255,7 +255,7 @@ export interface CreateCommandOptions {
   port?: string;
 }
 
-/** Parsed `cuttlefish board <subcommand>` options. */
+/** Parsed `typecad-hal board <subcommand>` options. */
 export interface BoardCommandOptions {
   command: "board";
   subcommand: "regen" | "sync";
@@ -263,7 +263,7 @@ export interface BoardCommandOptions {
   zephyrBase?: string;
 }
 
-/** Parsed `cuttlefish clean` options. */
+/** Parsed `typecad-hal clean` options. */
 export interface CleanCommandOptions {
   command: "clean";
   /** Override the output dir (absolute) — wins over the config's output.outDir. */
@@ -274,7 +274,7 @@ export interface CleanCommandOptions {
   force?: boolean;
 }
 
-/** Parsed `cuttlefish debug-server <start|stop>` options. */
+/** Parsed `typecad-hal debug-server <start|stop>` options. */
 export interface DebugServerCommandOptions {
   command: "debug-server";
   action: "start" | "stop";
@@ -283,7 +283,14 @@ export interface DebugServerCommandOptions {
   flash?: boolean;
 }
 
-/** Parsed `cuttlefish library <subcommand>` options. */
+/** Parsed `cuttlefish test` options — everything after the subcommand is
+ *  forwarded verbatim to the hardware test-runner CLI (typecad-hal test). */
+export interface TestCommandOptions {
+  command: "test";
+  forwarded: string[];
+}
+
+/** Parsed `typecad-hal library <subcommand>` options. */
 export interface LibraryCommandOptions {
   command: "library";
   subcommand: "search" | "install" | "init" | "validate";

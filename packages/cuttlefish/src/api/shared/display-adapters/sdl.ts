@@ -33,9 +33,9 @@ export const sdlAdapter: DisplayAdapterGenerator = (display): DisplayAdapterCode
   }
   const w = display.width;
   const h = display.height;
-  // Window title: default "cuttlefish", overridable via config (display.title)
+  // Window title: default "typecad-hal", overridable via config (display.title)
   // and at runtime (ui.window.setTitle → ui_window_set_title).
-  const title = `"${escapeCppStringLiteral(display.title ?? "cuttlefish")}"`;
+  const title = `"${escapeCppStringLiteral(display.title ?? "typecad-hal")}"`;
   // Window icon: optional BMP path from config (display.icon). Core SDL2 loads
   // BMP only; .png/.ico would need SDL_image.
   const icon = display.icon ? `"${escapeCppStringLiteral(display.icon)}"` : "";

@@ -1,4 +1,4 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // @typecad-requires-roles gpioOut, gpioIn, interrupt
 // Shared board-level GPIO suite, adapted to the thin HAL (the rework removed
 // the ambient Pin fluent API — pinMode/asOutput/digitalWrite — in favor of
@@ -10,7 +10,7 @@ import { describe, done } from '@typecad/expect';
 // without a led0 devicetree node — e.g. the ESP32-S3 devkitC — still run
 // this group; the dedicated LED group covers the alias where it exists).
 import { GPIO_OUT, GPIO_IN, INT_PIN } from '@typecad/test-pins';
-import { GPIO } from '@typecad/board';
+import { GPIO } from '@typecad/hal';
 
 describe("GPIO mode construction")
   .it("GPIO.OUTPUT construction configures without crashing")

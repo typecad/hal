@@ -1,6 +1,6 @@
 // ---------------------------------------------------------------------------
 // End-to-end emit for the Raspberry Pi Pico boards through the real Zephyr
-// strategy + board constants (the same path `cuttlefish build` takes) —
+// strategy + board constants (the same path `typecad-hal build` takes) —
 // now on the thin HAL (ADC/GPIO; legacy GPIO classes removed):
 //
 //   - ADC on GP26 — regression for the board-constants flattener drop

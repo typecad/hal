@@ -3,23 +3,23 @@ import { parseCommandLine } from '../../../packages/cuttlefish/src/utils/cli';
 import type { LibraryCommandOptions } from '../../../packages/cuttlefish/src/types';
 
 // ---------------------------------------------------------------------------
-// `cuttlefish library <subcommand>` argument parsing — including the
+// `typecad-hal library <subcommand>` argument parsing — including the
 // equals-form flags (the generic readFlag helper only handles the
 // space-separated form, which silently dropped `--category=led`).
 // ---------------------------------------------------------------------------
 
 function parse(argv: string[]): LibraryCommandOptions {
-  const opts = parseCommandLine(['node', 'cuttlefish', ...argv]);
+  const opts = parseCommandLine(['node', 'typecad-hal', ...argv]);
   if (typeof opts === 'object' && 'subcommand' in opts) {
     return opts as LibraryCommandOptions;
   }
   throw new Error('not a library options object');
 }
 
-describe('cuttlefish library argument parsing', () => {
+describe('typecad-hal library argument parsing', () => {
   it('requires a known subcommand', () => {
-    expect(() => parse(['library'])).toThrow(/Usage: cuttlefish library/);
-    expect(() => parse(['library', 'frobnicate'])).toThrow(/Usage: cuttlefish library/);
+    expect(() => parse(['library'])).toThrow(/Usage: typecad-hal library/);
+    expect(() => parse(['library', 'frobnicate'])).toThrow(/Usage: typecad-hal library/);
   });
 
   it('parses search text positionals and category in both flag forms', () => {
@@ -66,26 +66,26 @@ describe('cuttlefish library argument parsing', () => {
 });
 
 // ---------------------------------------------------------------------------
-// `cuttlefish board regen` argument parsing — the project-local board module
+// `typecad-hal board regen` argument parsing — the project-local board module
 // refresh path (documented in the generated board.ts header; must parse as a
 // subcommand, not fall through to the input-file branch).
 // ---------------------------------------------------------------------------
 
-describe('cuttlefish board argument parsing', () => {
+describe('typecad-hal board argument parsing', () => {
   it('parses board regen as a subcommand', () => {
-    const opts = parseCommandLine(['node', 'cuttlefish', 'board', 'regen']);
+    const opts = parseCommandLine(['node', 'typecad-hal', 'board', 'regen']);
     expect(opts).toEqual({ command: 'board', subcommand: 'regen' });
   });
 
   it('parses board sync, with an optional explicit Zephyr base', () => {
-    const opts = parseCommandLine(['node', 'cuttlefish', 'board', 'sync']);
+    const opts = parseCommandLine(['node', 'typecad-hal', 'board', 'sync']);
     expect(opts).toEqual({ command: 'board', subcommand: 'sync', zephyrBase: undefined });
-    const withPath = parseCommandLine(['node', 'cuttlefish', 'board', 'sync', 'C:/zephyrproject/zephyr']);
+    const withPath = parseCommandLine(['node', 'typecad-hal', 'board', 'sync', 'C:/zephyrproject/zephyr']);
     expect(withPath).toEqual({ command: 'board', subcommand: 'sync', zephyrBase: 'C:/zephyrproject/zephyr' });
   });
 
   it('requires a known board subcommand', () => {
-    expect(() => parseCommandLine(['node', 'cuttlefish', 'board'])).toThrow(/Usage: cuttlefish board/);
-    expect(() => parseCommandLine(['node', 'cuttlefish', 'board', 'frobnicate'])).toThrow(/Usage: cuttlefish board/);
+    expect(() => parseCommandLine(['node', 'typecad-hal', 'board'])).toThrow(/Usage: typecad-hal board/);
+    expect(() => parseCommandLine(['node', 'typecad-hal', 'board', 'frobnicate'])).toThrow(/Usage: typecad-hal board/);
   });
 });

@@ -2,7 +2,7 @@
 // board-catalog-sync.test.ts — the local board catalog overlay: sync writes
 // it beside the user's Zephyr tree, lookups prefer it over the compiled-in
 // pack (replace, not merge), and staleness gates the auto-refresh on
-// `cuttlefish board regen`.
+// `typecad-hal board regen`.
 // ----------------------------------------------------------------------------
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -67,17 +67,17 @@ describe('board-catalog-sync', () => {
     zephyr = fixtureTree();
     workspace = path.dirname(zephyr);
     overlayPath = overlayPathFor(zephyr);
-    savedEnv = process.env.CUTTLEFISH_BOARD_CATALOG;
+    savedEnv = process.env.TYPECAD_HAL_BOARD_CATALOG;
     // Pin cheap discovery to the fixture tree so a real ~/zephyrproject on
     // the dev machine can never leak into these tests.
     process.env.ZEPHYR_BASE = zephyr;
-    delete process.env.CUTTLEFISH_BOARD_CATALOG;
+    delete process.env.TYPECAD_HAL_BOARD_CATALOG;
     resetBoardCatalogOverlayCache();
   });
 
   afterEach(() => {
-    if (savedEnv === undefined) delete process.env.CUTTLEFISH_BOARD_CATALOG;
-    else process.env.CUTTLEFISH_BOARD_CATALOG = savedEnv;
+    if (savedEnv === undefined) delete process.env.TYPECAD_HAL_BOARD_CATALOG;
+    else process.env.TYPECAD_HAL_BOARD_CATALOG = savedEnv;
     delete process.env.ZEPHYR_BASE;
     resetBoardCatalogOverlayCache();
     fs.rmSync(workspace, { recursive: true, force: true });
@@ -85,7 +85,7 @@ describe('board-catalog-sync', () => {
 
   it('places the overlay in the workspace beside the tree', () => {
     expect(overlayPathFor('C:/some/workspace/zephyr')).toBe(
-      path.join('C:/some/workspace', '.cuttlefish', 'board-catalog.json'),
+      path.join('C:/some/workspace', '.typecad-hal', 'board-catalog.json'),
     );
   });
 
@@ -127,13 +127,13 @@ describe('board-catalog-sync', () => {
     expect(findBoardData('xiao_ble/nrf52840')).toBeUndefined();
   });
 
-  it('an explicit CUTTLEFISH_BOARD_CATALOG path overrides discovery', () => {
+  it('an explicit TYPECAD_HAL_BOARD_CATALOG path overrides discovery', () => {
     syncBoardCatalog({ zephyr });
-    process.env.CUTTLEFISH_BOARD_CATALOG = overlayPath;
+    process.env.TYPECAD_HAL_BOARD_CATALOG = overlayPath;
     resetBoardCatalogOverlayCache();
     expect(loadBoardCatalogOverlay()?.path).toBe(overlayPath);
     // 'off' disables overlays entirely
-    process.env.CUTTLEFISH_BOARD_CATALOG = 'off';
+    process.env.TYPECAD_HAL_BOARD_CATALOG = 'off';
     resetBoardCatalogOverlayCache();
     expect(loadBoardCatalogOverlay()).toBeUndefined();
   });
@@ -185,7 +185,7 @@ describe('board-catalog-sync', () => {
     // fixture catalog (this suite's beforeEach unsets the env, so restore
     // it explicitly for the read).
     const fixturePath = fileURLToPath(new URL('../../fixtures/board-catalog.overlay.json', import.meta.url));
-    process.env.CUTTLEFISH_BOARD_CATALOG = fixturePath;
+    process.env.TYPECAD_HAL_BOARD_CATALOG = fixturePath;
     resetActiveBoardCatalog();
     resetBoardCatalogOverlayCache();
     const pack = activeBoardCatalog();

@@ -1,10 +1,10 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // Persistent-file suite — the File class against littlefs on the board's
 // storage partition (synthesized on boards whose DTS ships none; the board's
 // own storage_partition where it does — ESP32's AMP layout). Write/read/
 // remove roundtrips prove the mount + the fs API path end to end. String
 // reads assert through expectString (the protocol's string-typed form).
-import { File } from '@typecad/board';
+import { File } from '@typecad/hal';
 
 describe("File write/read roundtrip")
   .it("write() then read() returns the written text")

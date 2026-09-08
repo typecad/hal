@@ -3,7 +3,7 @@
 //
 // Orchestrates: parse HTML → parse CSS → resolve styles → layout → lower.
 // This is the integration contract used by the AST visitor that resolves
-// .ui.html imports during a normal `cuttlefish build`.
+// .ui.html imports during a normal `typecad-hal build`.
 //
 // Selecting the layout engine on the `display` property happens here in v2;
 // v1 always uses BlockLayoutEngine.

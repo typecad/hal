@@ -29,15 +29,15 @@ describe('library catalog taxonomy', () => {
   });
 
   it('derives keywords and categories symmetrically', () => {
-    expect(categoryKeyword('led')).toBe('cuttlefish-led');
-    expect(categoryFromKeywords(['cuttlefish-library', 'cuttlefish-led'])).toBe('led');
+    expect(categoryKeyword('led')).toBe('typecad-hal-led');
+    expect(categoryFromKeywords(['typecad-hal-library', 'typecad-hal-led'])).toBe('led');
     // Taxonomy order wins when several category keywords are present.
-    expect(categoryFromKeywords(['cuttlefish-sensor', 'cuttlefish-led'])).toBe('led');
-    expect(categoryFromKeywords(['cuttlefish-library'])).toBeNull();
+    expect(categoryFromKeywords(['typecad-hal-sensor', 'typecad-hal-led'])).toBe('led');
+    expect(categoryFromKeywords(['typecad-hal-library'])).toBeNull();
     expect(categoryFromKeywords(undefined)).toBeNull();
   });
 
   it('required keywords are the marker plus the category', () => {
-    expect(requiredLibraryKeywords('display')).toEqual([LIBRARY_MARKER_KEYWORD, 'cuttlefish-display']);
+    expect(requiredLibraryKeywords('display')).toEqual([LIBRARY_MARKER_KEYWORD, 'typecad-hal-display']);
   });
 });

@@ -7,7 +7,7 @@
 //   Terminal 1:  npm run test:http
 //   Terminal 2:  npm run test:hw:http -- --port COM10
 //
-// The @typecad/expect harness has no async/await — every HAL call here uses
+// The @typecad/hal/testing harness has no async/await — every HAL call here uses
 // the blocking top-level form. Values are passed inline to .expect() via IIFEs
 // so the preprocessor hoists them as `: number` (→ double), which makes the
 // transpiler's printf format (%g) type-check under GCC 15's -Werror=format=.
@@ -35,7 +35,7 @@ const HTTPS_STATUS_201_URL = "https://192.168.2.184:8443/status/201";
 const HTTPS_HEADERS_URL = "https://192.168.2.184:8443/headers";
 // ==================================
 
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 import { WiFi, Request } from '@typecad/hal';
 
 // CA certificate for the local HTTPS test server (self-signed; pinned via
@@ -52,7 +52,7 @@ wifi.join();
 // ── Verb lowering: each method maps to the framework's HTTP verb enum ──
 // (esp_http_client: HTTP_METHOD_*; Zephyr http parser: HTTP_*). The test
 // itself is framework-neutral — it only calls @typecad/hal verbs — so it runs
-// unchanged once cuttlefish.config.ts points at a given framework.
+// unchanged once typecad-hal.config.ts points at a given framework.
 
 describe('HTTP client — verb lowering')
   .it('GET lowers correctly')
@@ -109,7 +109,7 @@ describe('HTTP client — CRUD state mutation')
 
 describe('HTTP client — headers')
   .it('headers endpoint returns 200 with custom header set')
-    .expect((() => { const r = new Request(Request.GET, HEADERS_URL, { timeoutMs: 10000 }); r.header('X-Custom', 'cuttlefish-value'); r.send(); return r.status(); })()).toBe(200);
+    .expect((() => { const r = new Request(Request.GET, HEADERS_URL, { timeoutMs: 10000 }); r.header('X-Custom', 'typecad-hal-value'); r.send(); return r.status(); })()).toBe(200);
 
 // ── HTTPS with caCert (real TLS verify) ────────────────────────────
 // Pins the local test server's CA (certs/ca.crt) so mbedTLS performs a full
@@ -124,7 +124,7 @@ describe('HTTP client — HTTPS with caCert')
   .it('HTTPS status code (201) parses through TLS')
     .expect((() => { const r = new Request(Request.GET, HTTPS_STATUS_201_URL, { timeoutMs: 15000, caCert: CA_CERT_PEM }); r.send(); return r.status(); })()).toBe(201)
   .it('HTTPS custom header reaches server through TLS')
-    .expect((() => { const r = new Request(Request.GET, HTTPS_HEADERS_URL, { timeoutMs: 15000, caCert: CA_CERT_PEM }); r.header('X-Custom', 'cuttlefish-value'); r.send(); return r.status(); })()).toBe(200);
+    .expect((() => { const r = new Request(Request.GET, HTTPS_HEADERS_URL, { timeoutMs: 15000, caCert: CA_CERT_PEM }); r.header('X-Custom', 'typecad-hal-value'); r.send(); return r.status(); })()).toBe(200);
 
 // ── HTTPS with insecure (verify skipped) ───────────────────────────
 // insecure() sets TLS_PEER_VERIFY_NONE — the handshake completes but the cert

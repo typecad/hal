@@ -1,5 +1,5 @@
-import { describe, done } from '@typecad/expect';
-import { Async } from '@typecad/board';
+import { describe, done } from '@typecad/hal/testing';
+import { Async } from '@typecad/hal';
 
 describe("Async.sleep()")
   .it("Async.sleep() is callable without crashing")

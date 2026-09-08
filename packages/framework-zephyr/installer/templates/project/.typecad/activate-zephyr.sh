@@ -7,7 +7,7 @@
 #
 # Activates the micromamba env created by the typeCAD Zephyr installer. After
 # activation, `west` is on PATH and ZEPHYR_BASE / ZEPHYR_SDK_INSTALL_DIR point
-# at the new install, so `npx cuttlefish build` uses it automatically.
+# at the new install, so `npx typecad-hal build` uses it automatically.
 #
 # Override the env name with $TYPECAD_ZEPHYR_ENV (default: "zephyr").
 # ---------------------------------------------------------------------------

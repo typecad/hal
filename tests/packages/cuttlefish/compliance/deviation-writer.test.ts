@@ -16,7 +16,7 @@ describe("deviation-writer", () => {
     const json = JSON.parse(renderRegistryJson(ctx, "main.cpp", "1.0.0-alpha.7"));
     expect(json.schemaVersion).toBe("1.0.0");
     expect(json.standard).toBe("AUTOSAR C++14");
-    expect(json.tool).toBe("cuttlefish");
+    expect(json.tool).toBe("typecad-hal");
     expect(json.toolVersion).toBe("1.0.0-alpha.7");
     expect(json.emittedArtifact).toBe("main.cpp");
     expect(json.summary.totalDeviations).toBe(1);

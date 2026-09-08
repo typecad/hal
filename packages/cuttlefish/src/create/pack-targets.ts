@@ -4,7 +4,7 @@
 // The curated KNOWN_TARGETS list covers the nine hardware-validated boards;
 // the board data pack carries every Zephyr board variant (1,300+). This
 // module turns a pack entry into the same KnownTarget shape the create flow
-// consumes, so `cuttlefish create --target <any-zephyr-board>` works with no
+// consumes, so `typecad-hal create --target <any-zephyr-board>` works with no
 // per-board catalog entry. The soc's prefix derives an architecture id for
 // framework narrowing (the fallback maps unknowns to zephyr anyway).
 // ---------------------------------------------------------------------------

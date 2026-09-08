@@ -1,4 +1,4 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // @typecad-requires-roles gpioOut, gpioIn
 // Constant pass-through smoke tests, adapted to the thin surface. The GPIO.*
 // flag tokens exist only as construction arguments (they map to gpio.h
@@ -8,7 +8,7 @@ import { describe, done } from '@typecad/expect';
 // functions. Pin symbols resolve in argument positions via
 // '@typecad/test-pins', so raw board numbers never appear here.
 import { GPIO_OUT, GPIO_IN } from '@typecad/test-pins';
-import { GPIO } from '@typecad/board';
+import { GPIO } from '@typecad/hal';
 import { shiftOut, shiftIn } from '@typecad/hal';
 
 describe("Flag combinations pass through to construction")

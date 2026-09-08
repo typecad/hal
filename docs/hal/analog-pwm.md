@@ -9,8 +9,7 @@ Three thin classes for varying signals. All three follow the same rule as the re
 Construction sets up the channel (`struct adc_channel_cfg`): gain and reference are constructor options, defaulting to the chip descriptor's validated pair when omitted.
 
 ```typescript
-import { ADC } from '@typecad/hal';
-import { ANY_PIN } from '@typecad/board';
+import { ADC, ANY_PIN } from '@typecad/hal';
 
 const sense = new ADC(ANY_PIN, { gain: ADC.GAIN_1_3, reference: ADC.REF_INTERNAL });
 
@@ -25,8 +24,7 @@ There is no `setReference()` — Zephyr applies the reference at channel-setup t
 Construction carries the resolution (bits; omitted = the chip descriptor's channel resolution). `write()` takes the **raw code** — 0–255 for an 8-bit channel, 0–4095 for 12-bit — not a rescaled 0–255 regardless of hardware:
 
 ```typescript
-import { DAC } from '@typecad/hal';
-import { ANY_PIN } from '@typecad/board';
+import { DAC, ANY_PIN } from '@typecad/hal';
 
 const out = new DAC(ANY_PIN);       // 8-bit on the ESP32's two channels
 out.write(128);                            // mid-scale
@@ -89,8 +87,8 @@ reached, or a routing you know the catalog has wrong), there are two ways
 to supply the routing yourself. Both feed the SAME validated pipeline —
 they are facts, not bypasses.
 
-**Project facts file** — `cuttlefish.facts.json` beside
-`cuttlefish.config.ts`, committed with the project. Merged into the board
+**Project facts file** — `typecad-hal.facts.json` beside
+`typecad-hal.config.ts`, committed with the project. Merged into the board
 manifest at generation: user routes win per pin over every harvested
 source (a warning names each shadowing), the board module exports appear,
 and the file's hash joins the module fingerprint so edits regenerate.

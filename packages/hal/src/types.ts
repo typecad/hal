@@ -7,9 +7,9 @@
 //
 // Runtime-contract interfaces (BasePin, II2CBus, ISPIBus, ISerialPort, the
 // status enums, capability guards, and the legacy Wire/SPI protocol-shape
-// types I2CAddress/SPIMode/SPIBitOrder/SPISettings) have been relocated to
-// @typecad/simulator/src/contracts.ts — they describe the runtime objects the
-// simulator implements, not the transpiler shims that live here.
+// types I2CAddress/SPIMode/SPIBitOrder/SPISettings) live in
+// src/sim/contracts.ts — they describe the runtime objects the simulator
+// implements, not the transpiler shims that live here.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------

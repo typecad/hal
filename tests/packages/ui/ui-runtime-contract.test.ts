@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // @typecad/ui — runtime throw-contract tests
 //
-// The package is a compile-time construct: the cuttlefish transpiler lowers
+// The package is a compile-time construct: the typecad-hal transpiler lowers
 // every ui.* call at build time. The runtime fallback must throw a clear
 // "compile-time construct" error if a method ever runs in plain Node (a
 // forgotten build step), rather than silently no-op. This file exhaustively

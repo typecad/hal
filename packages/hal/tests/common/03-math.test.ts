@@ -1,4 +1,4 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // Math suite, adapted to the lowered surface: the emitted Num shim carries
 // abs/min/max (Num.map did not survive the rework), and Math.min/max/round
 // fold at transpile time.

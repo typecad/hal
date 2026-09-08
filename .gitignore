@@ -120,3 +120,17 @@ packages/hal/tests/network/secrets.ts
 # Local agent/dev scratch (transient scaffolding + doc-check harness)
 .tmp-narrow/
 .doccheck/
+
+# VS Code debug extension — kept locally only for now (untracked per decision);
+# the vendored copy under packages/cuttlefish/assets/editor-extensions/typecad-debug/
+# remains tracked and is what scaffolds install.
+packages/vscode-typecad-debug/
+
+# Local scaffold scratch dirs (cuttlefish create test output)
+my-project/
+tmp-scaffold/
+
+# Generated project artifacts (board module, as-built snapshot) — regenerated
+# per machine on build. Tracked copies under packages/hal/.typecad-hal/ stay
+# tracked (ignore rules don't untrack).
+.typecad-hal/

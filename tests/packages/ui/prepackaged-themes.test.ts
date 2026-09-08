@@ -79,7 +79,7 @@ describe("pre-packaged theme through the snapshot builder", () => {
 @import "@typecad/ui/themes/blue.css";
 </style>`);
     const snap = await buildPreviewSnapshot({
-      config: { entry: "./app.ui", display: { themeClass: "dark" }, configPath: path.join(dir, "cuttlefish.config.ts") } as never,
+      config: { entry: "./app.ui", display: { themeClass: "dark" }, configPath: path.join(dir, "typecad-hal.config.ts") } as never,
       projectRoot: dir,
     });
     const btn = snap.program.nodes.find((n) => n.id === "b");

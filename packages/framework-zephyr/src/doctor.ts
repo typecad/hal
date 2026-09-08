@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // @typecad/framework-zephyr — Zephyr environment doctor
 //
-// `cuttlefish doctor` (Zephyr framework) — verify west (the Zephyr build tool)
+// `typecad-hal doctor` (Zephyr framework) — verify west (the Zephyr build tool)
 // is installed + responsive, the Zephyr RTOS is inside the framework's declared
 // compat range, and the configured board target exists in the checkout. Exits 0
 // if the environment is OK, non-zero otherwise. Follows the same contract
@@ -12,7 +12,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import * as ui from '@typecad/cuttlefish/utils/ui';
-import { loadCuttlefishConfig } from '@typecad/cuttlefish/config-loader';
+import { loadTypecadConfig } from '@typecad/cuttlefish/config-loader';
 import { checkZephyrEnv } from './toolchain/env-check.js';
 import { PINNED_ZEPHYR_MANIFEST_REV, PINNED_ZEPHYR_SDK_VERSION, sdkFingerprint } from '@typecad/cuttlefish/board-catalog';
 import { resolveChipFromBoard } from './chips/resolve.js';
@@ -26,7 +26,7 @@ export function runDoctor(): void {
   ui.printHeader();
   ui.printStep('Checking Zephyr environment...');
 
-  const config = loadCuttlefishConfig(process.cwd());
+  const config = loadTypecadConfig(process.cwd());
   const buildTarget = config?.buildTarget;
 
   const result = checkZephyrEnv(buildTarget);
@@ -71,7 +71,7 @@ export function runDoctor(): void {
       ui.printInfo(`Board target .... ${buildTarget}${arrow}`);
     }
   } else {
-    ui.printInfo('(no buildTarget in cuttlefish.config.ts — skipping board check)');
+    ui.printInfo('(no buildTarget in typecad-hal.config.ts — skipping board check)');
   }
 
   // Probe methods — from the board package's table, via the board constants

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { validateLibraryPackage } from '../../../packages/cuttlefish/src/library/validate';
 
 // ---------------------------------------------------------------------------
-// `cuttlefish library validate` — the checks that used to surface only at
+// `typecad-hal library validate` — the checks that used to surface only at
 // import time, plus the AUTOSAR strict pass over the shim bytes.
 // ---------------------------------------------------------------------------
 
@@ -15,12 +15,12 @@ function writeValidPackage(dir: string, mutate?: (dir: string) => void): void {
     join(dir, 'package.json'),
     JSON.stringify({
       name: '@acme/demo-lib',
-      files: ['dist', 'src', 'shims', 'cuttlefish.library.json'],
-      keywords: ['cuttlefish-library', 'cuttlefish-sensor'],
+      files: ['dist', 'src', 'shims', 'typecad-hal.library.json'],
+      keywords: ['typecad-hal-library', 'typecad-hal-sensor'],
     }),
   );
   writeFileSync(
-    join(dir, 'cuttlefish.library.json'),
+    join(dir, 'typecad-hal.library.json'),
     JSON.stringify({
       id: 'demo-lib',
       module: '@acme/demo-lib',
@@ -71,7 +71,7 @@ describe('library validate', () => {
   it('fails without a manifest', () => {
     const report = validateLibraryPackage(dir);
     expect(report.valid).toBe(false);
-    expect(report.errors.join('\n')).toMatch(/cuttlefish\.library\.json not found/);
+    expect(report.errors.join('\n')).toMatch(/typecad-hal.library.json not found/);
   });
 
   it('fails when a manifest-listed shim file is missing', () => {
@@ -84,9 +84,9 @@ describe('library validate', () => {
 
   it('fails when the gate token does not appear in the include', () => {
     writeValidPackage(dir, (d) => {
-      const manifest = readJson(d, 'cuttlefish.library.json');
+      const manifest = readJson(d, 'typecad-hal.library.json');
       manifest.gateToken = '__tc_something_else';
-      writeJson(d, 'cuttlefish.library.json', manifest);
+      writeJson(d, 'typecad-hal.library.json', manifest);
     });
     const report = validateLibraryPackage(dir);
     expect(report.errors.join('\n')).toMatch(/gate token '__tc_something_else' does not appear/);
@@ -94,9 +94,9 @@ describe('library validate', () => {
 
   it('fails when manifest module and package name disagree', () => {
     writeValidPackage(dir, (d) => {
-      const manifest = readJson(d, 'cuttlefish.library.json');
+      const manifest = readJson(d, 'typecad-hal.library.json');
       manifest.module = '@acme/other-name';
-      writeJson(d, 'cuttlefish.library.json', manifest);
+      writeJson(d, 'typecad-hal.library.json', manifest);
     });
     const report = validateLibraryPackage(dir);
     expect(report.errors.join('\n')).toMatch(/must equal the package\.json name/);
@@ -107,16 +107,16 @@ describe('library validate', () => {
       writeJson(d, 'package.json', { name: '@acme/demo-lib', keywords: ['sensor-stuff'] });
     });
     const report = validateLibraryPackage(dir);
-    expect(report.errors.join('\n')).toMatch(/must include the marker 'cuttlefish-library'/);
+    expect(report.errors.join('\n')).toMatch(/must include the marker 'typecad-hal-library'/);
   });
 
   it('warns (not errors) when the category keyword is absent or unknown', () => {
     writeValidPackage(dir, (d) => {
-      writeJson(d, 'package.json', { name: '@acme/demo-lib', keywords: ['cuttlefish-library', 'cuttlefish-mystery'] });
+      writeJson(d, 'package.json', { name: '@acme/demo-lib', keywords: ['typecad-hal-library', 'typecad-hal-mystery'] });
     });
     const report = validateLibraryPackage(dir);
     expect(report.valid).toBe(true);
-    expect(report.warnings.join('\n')).toMatch(/cuttlefish-mystery/);
+    expect(report.warnings.join('\n')).toMatch(/typecad-hal-mystery/);
   });
 
   it('fails when a shim carries a C-style cast (AUTOSAR strict)', () => {
@@ -136,11 +136,11 @@ describe('library validate', () => {
     writeValidPackage(dir, (d) => {
       writeJson(d, 'package.json', {
         name: '@acme/demo-lib',
-        keywords: ['cuttlefish-library', 'cuttlefish-sensor'],
+        keywords: ['typecad-hal-library', 'typecad-hal-sensor'],
         files: ['dist'],
       });
     });
     const report = validateLibraryPackage(dir);
-    expect(report.errors.join('\n')).toMatch(/must include 'cuttlefish\.library\.json'/);
+    expect(report.errors.join('\n')).toMatch(/must include 'typecad-hal.library.json'/);
   });
 });

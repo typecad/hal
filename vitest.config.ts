@@ -5,7 +5,7 @@ export default defineConfig({
     globals: true,
     environment: "node",
       include: ["tests/**/*.test.ts"],
-      // The @typecad/expect hardware suites (packages/hal/tests/** — fluent
+      // The hardware test suites (packages/hal/tests/** — fluent
       // describe/it/expect transpiled to firmware) are not Vitest tests; they
       // run on real hardware via `npm run test:hw`. This include pattern only
       // matches the root tests/ tree, so they are never loaded here.

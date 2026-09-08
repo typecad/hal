@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // __tc_rgbled.h — RgbLed shim for @typecad/zephyr-esp32s3-rgb
 //
-// Emitted into the generated application's src/ by the cuttlefish transpiler
+// Emitted into the generated application's src/ by the typecad-hal transpiler
 // when the @typecad/zephyr-esp32s3-rgb import is used. The TypeScript class
 // in the package's src/index.ts is the typed contract; this class is the
 // implementation. Calls render verbatim, so the method names and the global

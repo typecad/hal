@@ -2,14 +2,13 @@
 const WIFI_SSID = "HomeNet";
 const WIFI_PASSWORD = "hunter22";
 
-import { WiFi, Request, Time } from '@typecad/hal';
-import { UART0 } from '@typecad/board';
+import { WiFi, Request, Time, UART0 } from '@typecad/hal';
 
 const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD });
 wifi.join();
 
 const get = new Request(Request.GET, "https://httpbin.org/get");
-get.header("X-Device", "cuttlefish");
+get.header("X-Device", "typecad-hal");
 get.send();
 UART0.writeLine(get.status());
 

@@ -4,7 +4,7 @@ import { transpile } from "../../../setup";
 /**
  * A15-5-1: destructors must not throw.
  *
- * Cuttlefish emits `virtual ~X() = default;` for every user class
+ * TypeCAD emits `virtual ~X() = default;` for every user class
  * (class-emitter.ts:311), which is implicitly noexcept. The 6 hand-written
  * destructors in display adapters and the generator shim are Track 3.
  *

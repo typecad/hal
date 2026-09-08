@@ -18,7 +18,7 @@
   ],
   "activationEvents": [
     "onLanguage:typescript",
-    "workspaceContains:**/cuttlefish.config.ts"
+    "workspaceContains:**/typecad-hal.config.ts"
   ],
   "main": "./out/extension.js",
   "contributes": {

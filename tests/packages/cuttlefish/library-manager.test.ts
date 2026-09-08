@@ -17,7 +17,7 @@ describe('library registry search', () => {
 
   it('ANDs the category keyword and free text', () => {
     expect(buildLibrarySearchQuery('ws2812', 'led')).toBe(
-      `keywords:${LIBRARY_MARKER_KEYWORD} keywords:cuttlefish-led ws2812`,
+      `keywords:${LIBRARY_MARKER_KEYWORD} keywords:typecad-hal-led ws2812`,
     );
     expect(buildLibrarySearchQuery('  gps  ')).toBe(
       `keywords:${LIBRARY_MARKER_KEYWORD} gps`,
@@ -29,7 +29,7 @@ describe('library registry search', () => {
       name: '@acme/led-ring',
       version: '1.2.3',
       description: 'A ring of pixels',
-      keywords: ['cuttlefish-library', 'cuttlefish-led'],
+      keywords: ['typecad-hal-library', 'typecad-hal-led'],
     };
     expect(shapeResult(pkg)).toEqual({
       name: '@acme/led-ring',
@@ -39,7 +39,7 @@ describe('library registry search', () => {
       npmUrl: 'https://www.npmjs.com/package/@acme/led-ring',
       published: null,
     });
-    expect(shapeResult({ name: 'x', version: '0.0.1', keywords: ['cuttlefish-library'] }).category).toBeNull();
+    expect(shapeResult({ name: 'x', version: '0.0.1', keywords: ['typecad-hal-library'] }).category).toBeNull();
   });
 });
 

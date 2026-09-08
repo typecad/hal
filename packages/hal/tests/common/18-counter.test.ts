@@ -1,5 +1,5 @@
-import { describe, done } from '@typecad/expect';
-import { Counter, Time } from '@typecad/board';
+import { describe, done } from '@typecad/hal/testing';
+import { Counter, Time } from '@typecad/hal';
 
 const tick = new Counter(0, { hz: 100 });
 tick.onAlarm((): void => { });

@@ -1,7 +1,6 @@
 ---
 '@typecad/cuttlefish': minor
 '@typecad/framework-zephyr': minor
-'@typecad/expect': minor
 ---
 
 Board and MCU packages are gone — replaced by SDK-derived, project-local board modules.

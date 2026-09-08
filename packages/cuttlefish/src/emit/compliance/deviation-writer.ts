@@ -43,7 +43,7 @@ export function renderRegistryJson(
   const payload: RegistryJson = {
     schemaVersion: "1.0.0",
     standard: "AUTOSAR C++14",
-    tool: "cuttlefish",
+    tool: "typecad-hal",
     toolVersion,
     generatedAt: new Date().toISOString(),
     emittedArtifact,

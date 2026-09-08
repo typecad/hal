@@ -1,7 +1,7 @@
 # Framework Authoring Guide
 
 How to create a new framework package (e.g. `framework-rp2040`) that the
-cuttlefish transpiler can target, and how to declare its coverage so the
+typecad-hal transpiler can target, and how to declare its coverage so the
 manifest validator enforces it in CI.
 
 This guide is the single source of truth for "what a new framework must do."
@@ -371,7 +371,7 @@ Create `tests/packages/framework-rp2040/manifest.test.ts`:
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { validateFrameworkWithCoverage } from '../cuttlefish/manifest-test-helpers.js';
+import { validateFrameworkWithCoverage } from '../typecad-hal/manifest-test-helpers.js';
 
 // Tolerated latent bugs go here. Empty set = zero errors allowed.
 const KNOWN_STRATEGIC_ERRORS: ReadonlySet<string> = new Set<string>([
@@ -484,7 +484,7 @@ code:
 ## Adding a native display adapter
 
 If your framework owns its display driver code (rather than falling back to
-cuttlefish's generic adapter registry), you can provide native display
+typecad-hal's generic adapter registry), you can provide native display
 adapters that reuse your framework's existing peripheral primitives.
 
 ### When to override
@@ -494,7 +494,7 @@ Both hooks are declared optional on `PlatformGraphicsStrategy` (in
 `PlatformStrategy` extends). Override `providesDisplayAdapter()` (return
 `true`) and `resolveDisplayAdapter(display)` on your strategy. When
 `providesDisplayAdapter()` is false or omitted, `generateDisplayAdapter()`
-falls back to cuttlefish's built-in adapter registry — currently only the
+falls back to typecad-hal's built-in adapter registry — currently only the
 SDL native desktop driver; a driver with no registered adapter throws
 `No display adapter registered for driver "..."` (see
 `packages/cuttlefish/src/api/shared/display-adapter.ts`).
@@ -507,7 +507,7 @@ compile-time error rather than silently emitting uncompilable code.
 ### The panel-ops contract
 
 Each adapter fills a `CuttlefishPanelOps` struct with function pointers
-(declared in `packages/ui/src/ui-engine/runtime-header/cuttlefish-gfx.ts`):
+(declared in `packages/ui/src/ui-engine/runtime-header/typecad-hal-gfx.ts`):
 
 - `startWrite` / `endWrite` — claim/release the bus (may be nullptr).
 - `setAddrWindow` — set the panel's active write region.

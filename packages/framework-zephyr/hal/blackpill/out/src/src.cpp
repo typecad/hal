@@ -11,7 +11,7 @@
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/watchdog.h>
 
-// cuttlefish runtime shim. Wrapped in a single include guard so the
+// typecad-hal runtime shim. Wrapped in a single include guard so the
 // block is safe to emit into multiple headers and .cpp files within
 // one translation unit (a .cpp may #include several headers that each
 // carry the shim). The guard ensures the definitions are seen exactly
@@ -72,28 +72,28 @@ USBD_DEVICE_DEFINE(__tc_usbd,
     0x2FE3, 0x0002);
 USBD_DESC_LANG_DEFINE(__tc_usbd_lang);
 USBD_DESC_MANUFACTURER_DEFINE(__tc_usbd_mfr, "typecad");
-USBD_DESC_PRODUCT_DEFINE(__tc_usbd_product, "cuttlefish app");
-USBD_DESC_CONFIG_DEFINE(__tc_usbd_cfg_desc, "cuttlefish");
+USBD_DESC_PRODUCT_DEFINE(__tc_usbd_product, "typecad-hal app");
+USBD_DESC_CONFIG_DEFINE(__tc_usbd_cfg_desc, "typecad-hal");
 USBD_CONFIGURATION_DEFINE(__tc_usbd_cfg, 0, 250, &__tc_usbd_cfg_desc);
 static bool __tc_usbd_started = false;
 static void __tc_usbd_start(void) {
     if (__tc_usbd_started) { return; }
     __tc_usbd_started = true;
     int err = usbd_add_descriptor(&__tc_usbd, &__tc_usbd_lang);
-    if (err != 0) { printk("cuttlefish usb: lang descriptor failed: %d\n", err); return; }
+    if (err != 0) { printk("typecad-hal usb: lang descriptor failed: %d\n", err); return; }
     err = usbd_add_descriptor(&__tc_usbd, &__tc_usbd_mfr);
-    if (err != 0) { printk("cuttlefish usb: manufacturer descriptor failed: %d\n", err); return; }
+    if (err != 0) { printk("typecad-hal usb: manufacturer descriptor failed: %d\n", err); return; }
     err = usbd_add_descriptor(&__tc_usbd, &__tc_usbd_product);
-    if (err != 0) { printk("cuttlefish usb: product descriptor failed: %d\n", err); return; }
+    if (err != 0) { printk("typecad-hal usb: product descriptor failed: %d\n", err); return; }
     err = usbd_add_configuration(&__tc_usbd, USBD_SPEED_FS, &__tc_usbd_cfg);
-    if (err != 0) { printk("cuttlefish usb: add configuration failed: %d\n", err); return; }
+    if (err != 0) { printk("typecad-hal usb: add configuration failed: %d\n", err); return; }
     err = usbd_register_all_classes(&__tc_usbd, USBD_SPEED_FS, 1, NULL);
-    if (err != 0) { printk("cuttlefish usb: register classes failed: %d\n", err); return; }
+    if (err != 0) { printk("typecad-hal usb: register classes failed: %d\n", err); return; }
     err = usbd_init(&__tc_usbd);
-    if (err != 0) { printk("cuttlefish usb: init failed: %d\n", err); return; }
+    if (err != 0) { printk("typecad-hal usb: init failed: %d\n", err); return; }
     err = usbd_enable(&__tc_usbd);
-    if (err != 0) { printk("cuttlefish usb: enable failed: %d\n", err); return; }
-    printk("cuttlefish usb: device enabled\n");
+    if (err != 0) { printk("typecad-hal usb: enable failed: %d\n", err); return; }
+    printk("typecad-hal usb: device enabled\n");
 }
 // CUTTLEFISH_USBD_END
 static int __tc_console_usb_boot(void) {

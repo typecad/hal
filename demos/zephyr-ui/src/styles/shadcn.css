@@ -1,7 +1,7 @@
 /* ---------------------------------------------------------------------------
- * shadcn-style component kit for cuttlefish — copy-and-own, like shadcn/ui.
+ * shadcn-style component kit for typecad-hal — copy-and-own, like shadcn/ui.
  *
- * Added via `cuttlefish add shadcn` (this file lives in YOUR project under
+ * Added via `typecad-hal add shadcn` (this file lives in YOUR project under
  * src/styles/). Link it from any stylesheet with:
  *
  *   @import "./styles/shadcn.css";
@@ -40,7 +40,7 @@
  *               html-table-approximation build note)
  *
  * Themes: light tokens are the default; `.dark { ... }` overrides them.
- * Activate the dark set with `themeClass: 'dark'` in cuttlefish.config.ts's
+ * Activate the dark set with `themeClass: 'dark'` in typecad-hal.config.ts's
  * display block. Token values here are opaque (no alpha blending on bare
  * metal) and tuned for small TFTs rather than copied from shadcn's defaults.
  *

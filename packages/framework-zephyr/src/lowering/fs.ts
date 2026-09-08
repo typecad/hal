@@ -54,7 +54,7 @@ export function fsInitLines(): string[] {
     '        __tc_fs_mounted = true;',
     '    } else {',
     '        char __tc_fs_err[48];',
-    '        (void)snprintf(__tc_fs_err, sizeof(__tc_fs_err), "cuttlefish-fs: mount failed rc=%d", rc);',
+    '        (void)snprintf(__tc_fs_err, sizeof(__tc_fs_err), "typecad-hal-fs: mount failed rc=%d", rc);',
     '        __tc_println(__tc_fs_err);',
     '    }',
     '}',

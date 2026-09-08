@@ -76,7 +76,7 @@ describe('P1 — pinconfig ADC routes at the boardgen boundary', () => {
     const j = JSON.parse(g.boardJson);
     // The ADC class is exported (channels exist) and the channel specs carry
     // the synthesized pinmux tokens for the overlay.
-    expect(g.boardTs).toContain("export { ADC } from '@typecad/hal'");
+    expect(g.boardTs).toContain("export { ADC } from '@typecad/hal/core'");
     expect(j.constants['zephyr.adc.nodeLabel']).toBe('adc0');
     expect(j.constants['zephyr.adc.channels.0.pin']).toBe(0); // PA0
     expect(j.constants['zephyr.adc.channels.0.channel']).toBe(0);
@@ -97,7 +97,7 @@ describe('ESP32 DAC (silicon-fixed channel→pad)', () => {
       gpioControllers: [{ nodelabel: 'gpio0' }],
     }));
     const j = JSON.parse(g.boardJson);
-    expect(g.boardTs).toContain("export { DAC } from '@typecad/hal'");
+    expect(g.boardTs).toContain("export { DAC } from '@typecad/hal/core'");
     expect(j.constants['zephyr.dac.device']).toBe('dac');
     expect(j.constants['zephyr.dac.channels.0.pin']).toBe(25);
     expect(j.constants['zephyr.dac.channels.0.channel']).toBe(0);

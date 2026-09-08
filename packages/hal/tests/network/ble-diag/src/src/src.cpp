@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// cuttlefish runtime shim. Wrapped in a single include guard so the
+// typecad-hal runtime shim. Wrapped in a single include guard so the
 // block is safe to emit into multiple headers and .cpp files within
 // one translation unit (a .cpp may #include several headers that each
 // carry the shim). The guard ensures the definitions are seen exactly
@@ -421,7 +421,7 @@ double main_isr_5() {
 
 std::string main_isr_6() {
 # 20 "C:/typecad/typecode/packages/hal/tests/network/ble-diag"
-  return "cuttlefish-ble";
+  return "typecad-hal-ble";
 }
 
 # 8 "C:/typecad/typecode/packages/hal/tests/network/ble-diag/src/main.ts"

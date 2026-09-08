@@ -4,7 +4,7 @@
 // Cuttlefish projects keep their UI in .ui single-file components (TS script +
 // CSS style + Svelte-style markup), which no editor knows out of the box. The
 // package ships grammar-only VS Code extensions under
-// assets/editor-extensions/ and `cuttlefish create` copies them into the new
+// assets/editor-extensions/ and `typecad-hal create` copies them into the new
 // project's .vscode/extensions/ folder:
 //
 //   typecad-ui     — .ui syntax highlighting, snippets, file icons, markdown
@@ -19,7 +19,7 @@
 // prompt instead.
 //
 // A .vscode/tasks.json watch task is also written: it runs the project's
-// `cuttlefish build --watch` dev script with NO_COLOR=1 and parses the
+// `typecad-hal build --watch` dev script with NO_COLOR=1 and parses the
 // transpiler/ESLint diagnostic lines into Problems-panel squiggles. The task
 // merges by label (never clobbers user edits or the framework debug writer's
 // tasks, which merge the same way).
@@ -83,7 +83,7 @@ export function generateExtensionsJson(): string {
  */
 const PROBLEM_MATCHERS = [
   {
-    owner: 'cuttlefish-transpiler',
+    owner: 'typecad-hal-transpiler',
     severity: 'error',
     fileLocation: ['relative', '${workspaceFolder}'],
     pattern: {
@@ -100,7 +100,7 @@ const PROBLEM_MATCHERS = [
     },
   },
   {
-    owner: 'cuttlefish-eslint',
+    owner: 'typecad-hal-eslint',
     severity: 'error',
     fileLocation: ['relative', '${workspaceFolder}'],
     pattern: {
@@ -117,7 +117,7 @@ const PROBLEM_MATCHERS = [
   },
 ];
 
-export const WATCH_TASK_LABEL = 'cuttlefish: watch build';
+export const WATCH_TASK_LABEL = 'typecad-hal: watch build';
 
 /** The watch task entry written to .vscode/tasks.json. */
 export function watchBuildTask(): Record<string, unknown> {
@@ -267,7 +267,7 @@ function writeNpmHiddenSettings(vscodeDir: string): string {
  * script — the .vscode/tasks.json watch task. Returns the absolute paths
  * written, or [] when the extension assets are missing (warns, never throws).
  * `assetsRoot` overrides the bundled-asset location (tests). `hideNpm` (used by
- * `cuttlefish create` for end-user projects) also writes settings.json keys
+ * `typecad-hal create` for end-user projects) also writes settings.json keys
  * that hide VS Code's NPM Scripts view and npm task detection.
  */
 export function writeEditorIntegration(outDir: string, assetsRoot?: string, hideNpm = false): string[] {

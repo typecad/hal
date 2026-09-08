@@ -2,7 +2,6 @@
 '@typecad/cuttlefish': major
 '@typecad/hal': minor
 '@typecad/framework-zephyr': minor
-'@typecad/expect': patch
 ---
 
 Legacy-HAL removal — **Phase 1b: framework-arduino and the AVR path are deleted.** This retires the "frozen Arduino" surface; the repository is Zephyr (+ native desktop simulator) only.

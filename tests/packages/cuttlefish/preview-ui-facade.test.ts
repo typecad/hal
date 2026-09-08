@@ -112,7 +112,7 @@ describe("preview ui facade", () => {
   });
 
   it("runs ui.window.setTitle callbacks without failing, updating the tab title", async () => {
-    const fakeDoc = { title: "Cuttlefish Preview" };
+    const fakeDoc = { title: "TypeCAD Preview" };
     (globalThis as { document?: unknown }).document = fakeDoc;
     const diags: string[] = [];
     // The signal-based demo body (`count.set(...); ui.window.setTitle(...)`)

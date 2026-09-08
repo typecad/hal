@@ -17,13 +17,13 @@
 // on the peripheral, the write callback fires when the host writes the
 // setpoint, and onConnect increments a counter the test asserts.
 //
-// The @typecad/expect harness has no async/await, so every wait uses the
+// The @typecad/hal/testing harness has no async/await, so every wait uses the
 // blocking top-level form: a for-loop pumping Time.sleep until the central's
 // activity shows up. Values are passed inline to .expect() via IIFEs (see
 // http-client.test.ts) so the preprocessor hoists them as `: number` for the
 // printf %g format check under GCC 15 -Werror=format=.
 
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 import { BLE, Time, BleValueType, BlePerm } from '@typecad/hal';
 
 // Fixed values the host central asserts on its side. Duplicated in
@@ -84,7 +84,7 @@ ble.char('a1b2c3d4-0010-1000-8000-00805f9b34fb', BleValueType.Uint8, BlePerm.Rea
   .onRead((): number => 42.0);
 
 ble.char('a1b2c3d4-0011-1000-8000-00805f9b34fb', BleValueType.Utf8, BlePerm.Read)
-  .onRead((): string => 'cuttlefish-ble');
+  .onRead((): string => 'typecad-hal-ble');
 
 ble.onConnect(onBleConnect);
 

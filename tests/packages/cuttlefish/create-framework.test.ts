@@ -152,7 +152,7 @@ describe("frameworkTargetProfile", () => {
 // ── package-manager detection ───────────────────────────────────────────────
 
 function makeTempDir(seed?: Record<string, string>): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cuttlefish-create-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-hal-create-"));
   if (seed) {
     for (const [name, contents] of Object.entries(seed)) {
       fs.writeFileSync(path.join(dir, name), contents);

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // @typecad/framework-zephyr — Zephyr license scanner
 //
-// Zephyr-specific enumeration + presenter for the `cuttlefish licenses`
+// Zephyr-specific enumeration + presenter for the `typecad-hal licenses`
 // subcommand. The framework-agnostic SPDX detection engine lives in the shared
 // cuttlefish core (`@typecad/cuttlefish/api/shared`); this module owns only the
 // Zephyr pieces: discovering the west workspace, enumerating the Zephyr kernel
@@ -12,7 +12,7 @@
 //     links, derived from the build's `compile_commands.json` (a module is
 //     listed iff its sources were compiled). A west manifest carries every
 //     vendor HAL/library; almost none are linked by a single project, so the
-//     default filters them out. Requires a prior `cuttlefish build` — without
+//     default filters them out. Requires a prior `typecad-hal build` — without
 //     one, only the kernel is reported with a hint to build first.
 //   - `--all`: every west manifest project (the whole workspace).
 //
@@ -24,7 +24,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import * as path from 'node:path';
 import * as ui from '@typecad/cuttlefish/utils/ui';
-import { loadCuttlefishConfig } from '@typecad/cuttlefish/config-loader';
+import { loadTypecadConfig } from '@typecad/cuttlefish/config-loader';
 import {
   resolveLibraryLicense,
   RISK_RANK,
@@ -333,14 +333,14 @@ export function __setLicensesRunnerForTest(runner: ZephyrLicensesRunner | null |
 }
 
 /**
- * `cuttlefish licenses` (Zephyr) presenter. Enumerates the Zephyr kernel +
+ * `typecad-hal licenses` (Zephyr) presenter. Enumerates the Zephyr kernel +
  * west manifest projects, resolves each one's license, classifies copyleft
  * risk, and renders a sorted table. Warns on unknown licenses; sets
  * process.exitCode under --strict when any strong-copyleft dependency is
  * present. Never calls process.exit().
  *
  * Default scope = only the modules the firmware actually links (from the last
- * `cuttlefish build`); `--all` lists every west manifest module.
+ * `typecad-hal build`); `--all` lists every west manifest module.
  */
 export function runLicensesPresenter(strict: boolean, all: boolean): void {
   ui.printHeader();
@@ -354,7 +354,7 @@ export function runLicensesPresenter(strict: boolean, all: boolean): void {
   // never blocks the license scan.
   let buildTarget: string | undefined;
   try {
-    buildTarget = loadCuttlefishConfig(process.cwd())?.buildTarget;
+    buildTarget = loadTypecadConfig(process.cwd())?.buildTarget;
   } catch {
     /* best-effort */
   }
@@ -382,8 +382,8 @@ export function runLicensesPresenter(strict: boolean, all: boolean): void {
   // build (which records which modules actually link) or use --all.
   if (result.needsBuild) {
     ui.printInfo(
-      '(no build found — only the Zephyr kernel is shown. Run `cuttlefish build` to scope ' +
-        'this report to the modules your firmware actually links, or use `cuttlefish licenses --all` ' +
+      '(no build found — only the Zephyr kernel is shown. Run `typecad-hal build` to scope ' +
+        'this report to the modules your firmware actually links, or use `typecad-hal licenses --all` ' +
         'for every west module.)',
     );
   }

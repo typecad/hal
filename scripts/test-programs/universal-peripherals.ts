@@ -19,7 +19,7 @@
 // ---------------------------------------------------------------------------
 
 import { GPIO, I2CTarget, SPITarget, UART, Time, abs, min } from '@typecad/hal';
-import { LED } from '@typecad/board';
+import { LED } from '@typecad/hal';
 
 // GPIO — the canonical board LED keeps the firmware observable on hardware.
 const led = new GPIO(LED, GPIO.OUTPUT);

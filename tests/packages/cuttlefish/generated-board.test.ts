@@ -1,22 +1,23 @@
 // ---------------------------------------------------------------------------
 // generated-board.test.ts — the full board-target pipeline, end to end:
 //
-//   cuttlefish.config.ts (board: '<zephyr target>')
-//     → loadCuttlefishConfig
+//   typecad-hal.config.ts (board: '<zephyr target>')
+//     → loadTypecadConfig
 //     → generateVirtualTypeDeclaration (boardgen via the framework hook)
-//     → .cuttlefish/board.ts + board.json
-//     → transpile `import { GPIO2, LED } from '@typecad/board'`
+//     → .typecad-hal/board.ts + board.json
+//     → transpile `import { GPIO, GPIO2 } from '@typecad/hal'`
 //     → Zephyr C++ carrying the board's pin facts
 //
-// This is the replacement for the board-package path: no @typecad/board-*
-// package is involved anywhere.
+// The generated board module IS the user's '@typecad/hal' (tsconfig paths
+// mapping). No @typecad/board-* package is involved
+// anywhere.
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadCuttlefishConfig, generateVirtualTypeDeclaration } from '../../../packages/cuttlefish/src/config-loader';
+import { loadTypecadConfig, generateVirtualTypeDeclaration } from '../../../packages/cuttlefish/src/config-loader';
 import { ZephyrStrategy } from '../../../packages/framework-zephyr/src/strategy';
 import { transpile } from '../../setup';
 
@@ -26,10 +27,10 @@ beforeAll(() => {
   proj = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-genboard-'));
   fs.mkdirSync(path.join(proj, 'src'), { recursive: true });
   fs.writeFileSync(
-    path.join(proj, 'cuttlefish.config.ts'),
+    path.join(proj, 'typecad-hal.config.ts'),
     [
-      "import type { CuttlefishConfig } from '@typecad/cuttlefish/api';",
-      'const config: CuttlefishConfig = {',
+      "import type { TypecadConfig } from '@typecad/cuttlefish/api';",
+      'const config: TypecadConfig = {',
       "  entry: './src/main.ts',",
       "  target: 'esp32s3',",
       "  board: 'esp32s3_devkitc/esp32s3/procpu',",
@@ -49,23 +50,31 @@ afterAll(() => {
 
 describe('generated board module (board-target config)', () => {
   it('loads the config with board as the Zephyr target', () => {
-    const config = loadCuttlefishConfig(proj);
+    const config = loadTypecadConfig(proj);
     expect(config).toBeDefined();
     expect(config!.board).toBe('esp32s3_devkitc/esp32s3/procpu');
     expect(config!.soc).toBeUndefined();
   });
 
-  it('materializes .cuttlefish/board.ts + board.json via the framework hook', () => {
-    const config = loadCuttlefishConfig(proj)!;
+  it('materializes .typecad-hal/board.ts + board.json via the framework hook', () => {
+    const config = loadTypecadConfig(proj)!;
     generateVirtualTypeDeclaration(config);
 
-    const boardTs = path.join(proj, '.cuttlefish', 'board.ts');
-    const boardJson = path.join(proj, '.cuttlefish', 'board.json');
+    const boardTs = path.join(proj, '.typecad-hal', 'board.ts');
+    const boardJson = path.join(proj, '.typecad-hal', 'board.json');
     expect(fs.existsSync(boardTs)).toBe(true);
     expect(fs.existsSync(boardJson)).toBe(true);
 
     const ts = fs.readFileSync(boardTs, 'utf-8');
     expect(ts).toContain("GPIO2 = Pin.fromPort('GPIO2')");
+    // The module reaches the real HAL through the './core' subpath (the
+    // plain specifier maps back onto this file in the project tsconfig).
+    expect(ts).toContain("from '@typecad/hal/core'");
+    expect(ts).not.toContain("from '@typecad/hal'");
+    // The ungated surface (always-available classes/functions) is
+    // re-exported verbatim so every hal name stays importable.
+    expect(ts).toMatch(/export \{ [^}]*\bGPIO\b[^}]*\} from '@typecad\/hal\/core';/);
+    expect(ts).toMatch(/export type \{ [^}]*\bBit\b[^}]*\} from '@typecad\/hal\/core';/);
     // All boards are equal: no curated LED override — the S3 devkit's DTS
     // has no gpio-leds node, so the module honestly carries no LED export.
     expect(ts).not.toContain('export const LED =');
@@ -76,14 +85,14 @@ describe('generated board module (board-target config)', () => {
     expect(manifest.constants['build.frameworks.zephyr']).toBe('esp32s3_devkitc/esp32s3/procpu');
   });
 
-  it("transpiles `import { GPIO2 } from '@typecad/board'` against the generated module", () => {
+  it("transpiles `import { GPIO, GPIO2 } from '@typecad/hal'` against the generated module", () => {
     // The entry file lives under the project so the generated-board walk-up
-    // (findGeneratedBoard) resolves the virtual specifier.
+    // (findGeneratedBoard) resolves the specifier's board constants and pin
+    // map — the user-facing path: pins and classes from one import.
     const entry = path.join(proj, 'src', 'main.ts');
     const result = transpile(
       [
-        "import { GPIO } from '@typecad/hal';",
-        "import { GPIO2 } from '@typecad/board';",
+        "import { GPIO, GPIO2 } from '@typecad/hal';",
         'const led = new GPIO(GPIO2, GPIO.OUTPUT);',
         'led.set(true);',
         '',

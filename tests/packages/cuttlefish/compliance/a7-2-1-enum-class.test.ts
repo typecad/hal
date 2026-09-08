@@ -4,7 +4,7 @@ import { transpile } from "../../../setup";
 /**
  * A7-2-1: enumerators use scoped enums (enum class).
  *
- * The cuttlefish enum emitter already produces `enum class` for user TS
+ * The typecad-hal enum emitter already produces `enum class` for user TS
  * enums. One residual: the async state-machine helper at
  * emit/utils/async-state-machine.ts:313 emits `enum State { ... }`
  * (C-style) for its internal state enum. This test confirms the fix.

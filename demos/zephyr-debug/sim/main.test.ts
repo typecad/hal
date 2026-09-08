@@ -2,7 +2,7 @@
 // Hardware simulation — Button + LED
 //
 // Runs entirely on your computer with `npm run simulate` (vitest + the
-// @typecad/simulator package). No board, serial port, or arduino-cli required.
+// @typecad/hal/sim subpath). No board, serial port, or arduino-cli required.
 // The simulator mirrors the pins/peripherals of your ESP32-S3
 // (esp32s3); you inject fake inputs and assert on the outputs in Node.
 //
@@ -15,7 +15,7 @@ import {
   createSimBoard,
   type SimBoard,
   type SimDigitalPin,
-} from "@typecad/simulator";
+} from "@typecad/hal/sim";
 
 // ===========================================================================
 // FIRMWARE LOGIC

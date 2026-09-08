@@ -39,15 +39,15 @@ fix (`pip install west`, set `ZEPHYR_BASE`, or activate the venv).
   catalog** resolves the same way (`resolveChipFromBoard` over the catalog's
   board data — there is no hardcoded chip registry or target list). The
   catalog is machine-local, generated from your Zephyr tree by
-  `cuttlefish board sync` (and refreshed automatically by builds).
+  `typecad-hal board sync` (and refreshed automatically by builds).
 
 ## Installation
 
 ```sh
-cuttlefish create   # pick a board from the catalog; the Zephyr framework is the default
+	ypecad-hal create   # pick a board from the catalog; the Zephyr framework is the default
 ```
 
-Or in `cuttlefish.config.ts`:
+Or in `typecad-hal.config.ts`:
 
 ```ts
 export default {
@@ -79,7 +79,7 @@ the actual lowering behavior.
   `<vector>`, `<string>`, `<iostream>`, `<functional>`, exceptions, or RTTI.
   `prj.conf` enables `CONFIG_NEWLIB_LIBC` for `std::string`/`std::vector`; array
   literals still promote to the StaticArray wrapper, not `std::vector`.
-- **Debug mode.** `cuttlefish build --debug` routes through `printk` (always
+- **Debug mode.** `typecad-hal build --debug` routes through `printk` (always
   available, no `CONFIG_CONSOLE` dependency) rather than `std::cout`, since the
   minimal libc has no iostream. Breakpoints halt on console input (`ENTER`
   continues, `s` skips).

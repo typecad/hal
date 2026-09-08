@@ -1,22 +1,22 @@
 // ---------------------------------------------------------------------------
 // Cuttlefish library catalog — the category taxonomy and npm keyword
-// conventions behind `cuttlefish library search/init/validate`.
+// conventions behind `typecad-hal library search/init/validate`.
 //
 // The catalog has no registry service: npm keywords ARE the catalog. Every
 // library package carries the marker keyword LIBRARY_MARKER_KEYWORD plus one
-// category keyword (e.g. 'cuttlefish-led'). npm's search endpoint ANDs
+// category keyword (e.g. 'typecad-hal-led'). npm's search endpoint ANDs
 // `keywords:` terms, so queries compose:
 //
-//   keywords:cuttlefish-library                     → every library
-//   keywords:cuttlefish-library keywords:cuttlefish-led → the led category
-//   keywords:cuttlefish-library ws2812              → free-text within libraries
+//   keywords:typecad-hal-library                     → every library
+//   keywords:typecad-hal-library keywords:typecad-hal-led → the led category
+//   keywords:typecad-hal-library ws2812              → free-text within libraries
 // ---------------------------------------------------------------------------
 
-/** The one keyword every cuttlefish library package must carry. */
-export const LIBRARY_MARKER_KEYWORD = "cuttlefish-library";
+/** The one keyword every typecad-hal library package must carry. */
+export const LIBRARY_MARKER_KEYWORD = "typecad-hal-library";
 
-/** Prefix for category keywords (`cuttlefish-<id>`). */
-export const CATEGORY_KEYWORD_PREFIX = "cuttlefish-";
+/** Prefix for category keywords (`typecad-hal-<id>`). */
+export const CATEGORY_KEYWORD_PREFIX = "typecad-hal-";
 
 export interface LibraryCategory {
   /** Stable id used in --category flags, keywords, and docs. */
@@ -55,7 +55,7 @@ export function libraryCategory(id: string): LibraryCategory | undefined {
   return LIBRARY_CATEGORIES.find((c) => c.id === lower);
 }
 
-/** The npm keyword for a category (`cuttlefish-<id>`). */
+/** The npm keyword for a category (`typecad-hal-<id>`). */
 export function categoryKeyword(id: string): string {
   return `${CATEGORY_KEYWORD_PREFIX}${id.toLowerCase()}`;
 }

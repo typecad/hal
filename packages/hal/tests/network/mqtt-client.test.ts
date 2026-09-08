@@ -9,7 +9,7 @@
 //   Terminal 1:  npm run test:mqtt --workspace @typecad/framework-zephyr
 //   Terminal 2:  npm run test:hw:mqtt --workspace @typecad/framework-zephyr -- --port COM9
 //
-// The @typecad/expect harness has no async/await. MQTT message delivery is
+// The @typecad/hal/testing harness has no async/await. MQTT message delivery is
 // asynchronous (the broker forwards the publish after the subscribe lands), so
 // the onMessage callback records the payload into a global and the test busy-
 // waits on it via Timing.delay, then asserts. Values are passed inline to
@@ -31,7 +31,7 @@ const WIFI_PASSWORD = "justin04";
 //   TLS:    "mqtts://192.168.2.184:8883"
 // ==================================
 
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 import { WiFi, MQTT, Timing } from '@typecad/hal';
 
 // CA certificate for the local mqtts:// broker (same CA as the HTTPS server —
@@ -59,7 +59,7 @@ function onMessage(topic: string, payload: string): void {
 
 describe('MQTT client — connect')
   .it('connect() connects to the broker')
-    .expect((() => { MQTT.connect("mqtt://192.168.2.184:1883", "cuttlefish-test"); return 1; })()).toBe(1)
+    .expect((() => { MQTT.connect("mqtt://192.168.2.184:1883", "typecad-hal test"); return 1; })()).toBe(1)
   .it('connected() is true after connect')
     .expect((() => { Timing.delay(2000); return MQTT.connected() ? 1 : 0; })()).toBe(1);
 
@@ -90,7 +90,7 @@ describe('MQTT client — mqtts (TLS) round-trip')
     .expect((() => {
       MQTT.disconnect();
       Timing.delay(1000);
-      MQTT.connect("mqtts://192.168.2.184:8883", "cuttlefish-test-tls");
+      MQTT.connect("mqtts://192.168.2.184:8883", "typecad-hal test-tls");
       Timing.delay(2000);
       if (!MQTT.connected()) return 0;
       MQTT.onMessage(onMessage);

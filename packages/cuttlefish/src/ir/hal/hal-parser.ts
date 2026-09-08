@@ -53,20 +53,96 @@ export function isHALSingleton(name: string): boolean {
   return false;
 }
 
-/** Resolve the HAL source directory. */
-export function resolveHALSourceDir(): string {
-  const monoPath = path.resolve(__dirname, "..", "..", "..", "..", "hal", "src");
-  let res = "";
-  if (fs.existsSync(path.join(monoPath, "gpio.ts"))) {
-    res = monoPath;
-  } else {
-    try {
-      const pkgDir = path.dirname(require.resolve("@typecad/hal/package.json"));
-      res = path.join(pkgDir, "src");
-    } catch {}
+/**
+ * Project dir used to resolve @typecad/hal from the PROJECT's node_modules —
+ * the exact copy the user's code typechecks against. Set by the transpile
+ * entry (options.projectRoot); falls back to cwd. Changing it invalidates the
+ * loaded modules so long-lived processes (watch, preview) re-parse the right
+ * tree after a project switch.
+ */
+let halProjectDir: string | undefined;
+
+/** Record the project whose @typecad/hal should back HAL parsing. */
+export function setHALProjectDir(dir: string | undefined): void {
+  if (dir !== halProjectDir) {
+    halProjectDir = dir;
+    halModulesLoaded = false;
   }
-  if (!res) throw new Error("Could not resolve @typecad/hal/src/");
-  return res;
+}
+
+const ENGINE_VERSION: string | undefined = (() => {
+  try {
+    // dist/ir/hal/ → packages/cuttlefish/package.json
+    return JSON.parse(fs.readFileSync(path.resolve(__dirname, "..", "..", "package.json"), "utf8")).version;
+  } catch {
+    return undefined;
+  }
+})();
+
+let halVersionWarned = false;
+
+/**
+ * The engine is versioned in lockstep with hal; a project pinning a different
+ * hal still parses (the registry adapts to whatever it reads), but the lowering
+ * was validated against the lockstep surface — say so once, softly.
+ */
+function warnOnHalVersionMismatch(pkgDir: string): void {
+  if (halVersionWarned || ENGINE_VERSION === undefined) return;
+  try {
+    const halVersion = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf8")).version;
+    if (halVersion !== ENGINE_VERSION) {
+      halVersionWarned = true;
+      console.warn(
+        `@typecad/hal ${halVersion} does not match the engine ${ENGINE_VERSION} — the parsed ` +
+        `HAL surface may not match what this engine's lowering expects. Prefer the lockstep version.`,
+      );
+    }
+  } catch {
+    /* unreadable manifest — resolution itself is unaffected */
+  }
+}
+
+/** Try resolving @typecad/hal/src as a package anchored at `base` (a project dir). */
+function resolveHalFrom(base: string): string {
+  try {
+    const pkgDir = path.dirname(require.resolve("@typecad/hal/package.json", { paths: [base] }));
+    const src = path.join(pkgDir, "src");
+    if (fs.existsSync(path.join(src, "gpio.ts"))) {
+      warnOnHalVersionMismatch(pkgDir);
+      return src;
+    }
+  } catch {
+    /* not installed for this base */
+  }
+  return "";
+}
+
+/**
+ * Resolve the HAL source directory.
+ *
+ * Ladder: explicit TYPECAD_HAL_DIR override → the transpile project's own
+ * @typecad/hal (the copy its user code resolves against) → cwd (CLI runs from
+ * the project root) → the monorepo sibling (repo checkout: dev + tests). The
+ * engine no longer depends on @typecad/hal as a package — the project's
+ * node_modules is the source of truth, exactly like framework resolution.
+ */
+export function resolveHALSourceDir(preferredDir?: string): string {
+  const envDir = process.env.TYPECAD_HAL_DIR;
+  if (envDir && fs.existsSync(path.join(envDir, "gpio.ts"))) return envDir;
+
+  for (const base of [preferredDir, halProjectDir, process.cwd()]) {
+    if (!base) continue;
+    const src = resolveHalFrom(base);
+    if (src) return src;
+  }
+
+  const monoPath = path.resolve(__dirname, "..", "..", "..", "..", "hal", "src");
+  if (fs.existsSync(path.join(monoPath, "gpio.ts"))) return monoPath;
+
+  throw new Error(
+    "Could not resolve @typecad/hal/src/ — install @typecad/hal in the project " +
+    "(npm install) or set TYPECAD_HAL_DIR to a hal source tree.",
+  );
 }
 
 /** Extract constructor field mappings: which `this._field = param` assignments exist. */

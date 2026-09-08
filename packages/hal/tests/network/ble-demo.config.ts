@@ -1,18 +1,18 @@
-import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
+import type { TypecadConfig } from '@typecad/cuttlefish/api';
 
-// Config for the @typecad/expect hardware BLE test suite.
+// Config for the @typecad/hal/testing hardware BLE test suite.
 //
 // This is the peripheral side of the inverted BLE test: it flashes
 // ble-peripheral.test.ts, which advertises "CuttlefishTest" as a GATT server.
 // The host central (tests/hardware/ble-client.ts, run via `npm run test:ble`)
 // connects and exercises every characteristic.
 //
-// Two-terminal flow (mirrors the HTTP test's cuttlefish.config.ts):
+// Two-terminal flow (mirrors the HTTP test's typecad-hal.config.ts):
 //   Terminal 1 (peripheral):  npm run test:hw:ble -- --port COM14
 //   Terminal 2 (central):     npm run test:ble
 //
 // Run from this directory directly with:
-//   cd tests/hardware && npx cuttlefish-test ble-peripheral.test.ts --port COM14
+//   cd tests/hardware && npx typecad-hal test ble-peripheral.test.ts --port COM14
 //
 // Targets the Zephyr RTOS via west on the Seeed XIAO nRF52840 — a native BLE
 // board (nRF52840, Cortex-M4F). The BLE lowering (@typecad/framework-zephyr
@@ -30,7 +30,7 @@ import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
 // demos/ble-demo/src/08-test-server.ts — flash that standalone to debug the
 // link without the expect harness.
 
-const config: CuttlefishConfig = {
+const config: TypecadConfig = {
   // The connected ESP32-S3 devkitC: BLE via the Zephyr bt_* stack (esp32s3
   // supports BLE; the GATT lowering is chip-neutral). The board's WCH CH34x
   // USB-UART bridge carries esptool flashing AND the uart0 console — the test

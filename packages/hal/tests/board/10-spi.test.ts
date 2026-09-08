@@ -1,11 +1,11 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // @typecad-requires-roles cs
 // Shared board-level SPI suite, adapted to the thin SPITarget class (the
 // ambient SPI0 bus singleton is gone — construction carries the bus, CS pin,
 // and clock). The bus has no peer attached, so register reads fail safe to 0
 // and transceive/write are callability smoke.
 import { CS_PIN } from '@typecad/test-pins';
-import { SPITarget } from '@typecad/board';
+import { SPITarget } from '@typecad/hal';
 
 describe("SPITarget construction")
   .it("SPITarget(bus, cs, hz) construction is accepted")

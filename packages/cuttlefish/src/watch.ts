@@ -14,7 +14,7 @@ const DEBOUNCE_MS = 150;
 interface WatchOptions {
   /** Directories to watch recursively. */
   watchDirs: string[];
-  /** Path to cuttlefish.config.ts (if any) — watched for changes. */
+  /** Path to typecad-hal.config.ts (if any) — watched for changes. */
   configPath?: string;
   /** Directory containing the entry file — used for relevance filtering. */
   entryDir: string;

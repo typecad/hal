@@ -36,7 +36,7 @@ export interface LoadedFramework {
 
   /**
    * Optional subcommand presenters owned by the framework. Cuttlefish dispatches
-   * `cuttlefish doctor` / `cuttlefish licenses` to these when the loaded
+   * `typecad-hal doctor` / `typecad-hal licenses` to these when the loaded
    * framework provides them; otherwise it prints a no-support message. Each
    * framework decides what (if anything) these do — e.g. framework-zephyr
    * checks west + board target (doctor) and scans library licenses

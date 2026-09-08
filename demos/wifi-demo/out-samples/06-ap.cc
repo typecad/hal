@@ -397,7 +397,7 @@ static inline void __tc_wifi_clear_credentials(void) {
 // CUTTLEFISH_WIFI_END
 
 // --- ESP32 IDF entrypoint: app_main runs setup()/loop() directly ---
-// The cuttlefish synthesizer emits setup() and loop() (it keys off
+// The typecad-hal synthesizer emits setup() and loop() (it keys off
 // entrypointFunctionName()="setup" and requiresLoopFunction()=true).
 //
 // Following the IDF-idiomatic pattern (see esp_http_client example:
@@ -432,7 +432,7 @@ void setup()
     __tc_wifi.ap_channel = 6;
     __tc_wifi.ap_max_clients = 4;
   }
-  __tc_wifi_ap_start("cuttlefish-setup", "config123");
+  __tc_wifi_ap_start("typecad-hal-setup", "config123");
   printf("%s\n", __tc_wifi_ap_ip());
   while (true)
   {

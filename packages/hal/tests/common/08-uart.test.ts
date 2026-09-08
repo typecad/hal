@@ -1,11 +1,11 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // UART suite — the board's UART0 singleton is the DIRECT surface
 // (UART0.writeLine(...) with no construction), and explicit construction
 // remains for non-default facts: from the bus instance (new UART(UART0,
 // { baud })) or the name. The Zephyr console rides the USB CDC port, so the
 // board's hardware UART is free for user code with nothing attached: writes
 // drain to an idle line and the rx poll reads -1 (Zephyr poll semantics).
-import { UART, UART0 } from '@typecad/board';
+import { UART, UART0 } from '@typecad/hal';
 
 describe("UART direct singleton")
   .it("UART0.writeLine(...) with no construction is callable")

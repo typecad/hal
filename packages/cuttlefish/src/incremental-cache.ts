@@ -101,7 +101,7 @@ interface FileChangeStatus {
  * Options for incremental cache
  */
 interface IncrementalCacheOptions {
-  /** Path to the cache file (default: .cuttlefish-cache.json in project root) */
+  /** Path to the cache file (default: .typecad-hal-cache.json in project root) */
   cachePath?: string;
   /** Project root directory */
   rootDir: string;
@@ -119,7 +119,7 @@ function computeFileHash(content: string): string {
 /**
  * Default cache file name
  */
-const DEFAULT_CACHE_NAME = ".cuttlefish-cache.json";
+const DEFAULT_CACHE_NAME = ".typecad-hal-cache.json";
 
 /**
  * Incremental transpilation cache manager
@@ -162,7 +162,7 @@ export class IncrementalCache {
         }
       }
     } catch (error) {
-      if (process.env.CUTTLEFISH_DEBUG) console.error("[incremental-cache] Corrupted cache file:", error);
+      if (process.env.TYPECAD_HAL_DEBUG) console.error("[incremental-cache] Corrupted cache file:", error);
     }
 
     return this.createEmptyCache();
@@ -202,7 +202,7 @@ export class IncrementalCache {
       fs.writeFileSync(this.cachePath, JSON.stringify(this.cache, null, 2), "utf8");
       this.dirty = false;
     } catch (error) {
-      if (process.env.CUTTLEFISH_DEBUG) console.error("[incremental-cache] Failed to save cache:", error);
+      if (process.env.TYPECAD_HAL_DEBUG) console.error("[incremental-cache] Failed to save cache:", error);
     }
   }
 

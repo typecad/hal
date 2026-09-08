@@ -2,7 +2,7 @@
 // Hardware simulation — dimmer logic
 //
 // Runs entirely on your computer with `npm run simulate` (vitest + the
-// @typecad/simulator package). No board, serial port, or west toolchain
+// @typecad/hal/sim subpath). No board, serial port, or west toolchain
 // required. The firmware's core math (voltage → duty mapping and the
 // breathing triangle wave) is factored into pure functions the simulator
 // exercises — the same functions src/main.ts inlines into its loop.

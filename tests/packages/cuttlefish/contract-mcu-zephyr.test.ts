@@ -1,7 +1,7 @@
 // Contract-based MCU-only configs on Zephyr — the typecad.net contract flow
 // is MCU-only by schema design (board and contract are mutually exclusive),
 // so a contract PCB with no typecad board package programs bare silicon via
-// the same machinery: the narrowed .cuttlefish/board.ts + pin constants from
+// the same machinery: the narrowed .typecad-hal/board.ts + pin constants from
 // the MCU package + the generated out-of-tree Zephyr board.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -49,9 +49,9 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
   it('parses contract + mcu + zephyr.customBoard (contract forbids board, not mcu)', () => {
     writeProject({
       'board.contract.json': CONTRACT,
-      'cuttlefish.config.ts': [
-        "import type { CuttlefishConfig } from '@typecad/cuttlefish/api';",
-        'const config: CuttlefishConfig = {',
+      'typecad-hal.config.ts': [
+        "import type { TypecadConfig } from '@typecad/cuttlefish/api';",
+        'const config: TypecadConfig = {',
         "  entry: './src/main.ts',",
         "  target: 'stm32f411',",
         "  soc: 'stm32f411xe',",
@@ -65,7 +65,7 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
       ].join('\n'),
     });
 
-    const config = parseConfigFile(join(tmp, 'cuttlefish.config.ts'));
+    const config = parseConfigFile(join(tmp, 'typecad-hal.config.ts'));
     expect(config).toBeDefined();
     expect(config!.soc).toBe('stm32f411xe');
     expect(config!.board).toBeUndefined();
@@ -94,14 +94,14 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
     expect(board).toContain("export const PA0 = Pin.fromPort('PA0');");
     expect(board).not.toContain('PC13');
     expect(board).toContain("export const UART0 = new UART('UART0');");
-    // HAL imports so `import { Time } from '@typecad/board'` resolves.
-    expect(board).toContain("import { Pin, I2CBus, SPIBus, UART } from '@typecad/hal';");
+    // HAL imports so `import { Time } from '@typecad/hal'` resolves.
+    expect(board).toContain("import { Pin, I2CBus, SPIBus, UART } from '@typecad/hal/core';");
   });
 
   it('still rejects a config that sets both board and contract', () => {
     writeProject({
       'board.contract.json': CONTRACT,
-      'cuttlefish.config.ts': [
+      'typecad-hal.config.ts': [
         'const config = {',
         "  soc: 'stm32f411xe',",
         "  board: 'blackpill_f411ce/stm32f411xe',",
@@ -112,6 +112,6 @@ describe('contract MCU-only config with a generated Zephyr board', () => {
       ].join('\n'),
     });
 
-    expect(() => parseConfigFile(join(tmp, 'cuttlefish.config.ts'))).toThrow();
+    expect(() => parseConfigFile(join(tmp, 'typecad-hal.config.ts'))).toThrow();
   });
 });

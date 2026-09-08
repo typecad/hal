@@ -64,7 +64,7 @@ describe('scaffoldZephyrProject — CMakeLists source list', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Cuttlefish library packages — Kconfig + overlay contributions read from the
+// TypeCAD library packages — Kconfig + overlay contributions read from the
 // transpiler's libraries.json sidecar (written next to the emitted sources
 // when a library import is used). Entries are pre-gated on the library's
 // include token; the scaffold only merges.
@@ -112,7 +112,7 @@ describe('scaffoldZephyrProject — library package contributions', () => {
     writeSidecar([rgbEntry(['CONFIG_LED_STRIP=y', 'CONFIG_I2S=y', 'CONFIG_DMA=y'])]);
     scaffoldZephyrProject(dir);
     const txt = readFileSync(join(dir, 'prj.conf'), 'utf8');
-    expect(txt).toContain('# Library packages (cuttlefish.library.json contributions).');
+    expect(txt).toContain('# Library packages (typecad-hal.library.json contributions).');
     expect(txt).toContain('CONFIG_LED_STRIP=y');
     expect(txt).toContain('CONFIG_I2S=y');
     expect(txt).toContain('CONFIG_DMA=y');

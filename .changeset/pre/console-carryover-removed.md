@@ -1,7 +1,6 @@
 ---
 '@typecad/cuttlefish': minor
 '@typecad/framework-zephyr': minor
-'@typecad/expect': patch
 '@typecad/hal': patch
 ---
 

@@ -2,12 +2,12 @@
   "name": "demo-contract-board",
   "version": "1.0.0",
   "private": true,
-  "description": "Contract demo: a custom STM32F411 PCB described by a typecad.net contract, programmed with no board package \u2014 cuttlefish generates the Zephyr board from the silicon",
+  "description": "Contract demo: a custom STM32F411 PCB described by a typecad.net contract, programmed with no board package \u2014 typecad-hal generates the Zephyr board from the silicon",
   "type": "module",
   "scripts": {
-    "build": "cuttlefish build",
-    "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload",
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload",
     "lint": "eslint src/"
   },
   "dependencies": {

@@ -28,7 +28,7 @@ export type AnyPin = Pin;
  *  the code is standard-specific detail.
  *
  *  Declared as TypeScript `enum` (not `const` object + type alias) so the
- *  cuttlefish transpiler lowers these to a single C++ `enum class` definition
+ *  typecad-hal transpiler lowers these to a single C++ `enum class` definition
  *  matching the runtime polyfill's enum, rather than emitting a conflicting
  *  struct per usage scope. The transpiler's enum lowering and the polyfill's
  *  enum class are structurally identical (same tag name, same enumerators,
@@ -83,11 +83,11 @@ export interface SafeWriteResult {
 
 class CompileTimeOnly extends Error {
   constructor() {
-    super("cuttlefish safety: `safe` is a compile-time construct. It is lowered by the cuttlefish transpiler and has no runtime implementation.");
+    super("cuttlefish safety: `safe` is a compile-time construct. It is lowered by the typecad-hal transpiler and has no runtime implementation.");
   }
 }
 
-/** Safe GPIO API. Compile-time construct only — the cuttlefish transpiler
+/** Safe GPIO API. Compile-time construct only — the typecad-hal transpiler
  *  intercepts safe.read and lowers it to a safety.read_safe HAL op. The
  *  type annotation (rather than `as const`) gives `safe` a single object
  *  type so member access doesn't lower to std::variant access — same reason

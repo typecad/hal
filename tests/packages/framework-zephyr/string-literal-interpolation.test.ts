@@ -19,7 +19,7 @@ const tr = (code: string) => transpile(code, { strategy: _strategy, target: 'zep
 describe('string-variable interpolation into HAL calls (Zephyr)', () => {
   it('prints a string variable through the direct bus singleton without .c_str()', () => {
     const result = tr(`
-      import { UART0 } from '@typecad/board';
+      import { UART0 } from '@typecad/hal';
       let s = "12";
       UART0.writeLine(\`\${s}34\`);
     `);
@@ -31,7 +31,7 @@ describe('string-variable interpolation into HAL calls (Zephyr)', () => {
 
   it('number interpolation still formats as %d', () => {
     const result = tr(`
-      import { UART0 } from '@typecad/board';
+      import { UART0 } from '@typecad/hal';
       UART0.writeLine(\`count: \${42}\`);
     `);
     expect(result.cpp).toMatch(/"%s?"|snprintf\([^)]*"count: %d", 42\)/);
@@ -40,7 +40,7 @@ describe('string-variable interpolation into HAL calls (Zephyr)', () => {
 
   it('plain string literals pass through with no interpolation buffer', () => {
     const result = tr(`
-      import { UART0 } from '@typecad/board';
+      import { UART0 } from '@typecad/hal';
       UART0.writeLine("plain");
     `);
     // The literal streams directly (no __cuttlefish_snprintf buffer for it).

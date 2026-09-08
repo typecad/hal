@@ -1,5 +1,4 @@
 ---
-"@typecad/expect": patch
 "@typecad/cuttlefish": patch
 "@typecad/ui": patch
 ---

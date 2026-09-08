@@ -1,7 +1,7 @@
 {
   "name": "typecad-ui",
   "displayName": "TypeCAD UI (.ui) Syntax",
-  "description": "Syntax highlighting for cuttlefish .ui single-file components: TypeScript in <script>, CSS in <style>, Svelte-style markup directives and interpolations.",
+  "description": "Syntax highlighting for typecad-hal .ui single-file components: TypeScript in <script>, CSS in <style>, Svelte-style markup directives and interpolations.",
   "version": "0.1.0",
   "publisher": "typecad",
   "license": "MIT",
@@ -17,7 +17,7 @@
       {
         "id": "typecad-ui",
         "aliases": [
-          "Cuttlefish UI",
+          "TypeCAD UI",
           "typecad-ui"
         ],
         "extensions": [

@@ -1,6 +1,5 @@
 // 05 — network scanner: one blocking scan, results through the handle.
-import { WiFi, Time } from '@typecad/hal';
-import { UART0 } from '@typecad/board';
+import { WiFi, Time, UART0 } from '@typecad/hal';
 
 const wifi = new WiFi("any");
 const scan = wifi.scan();

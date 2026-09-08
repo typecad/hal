@@ -22,8 +22,8 @@ registerPlatformStrategy(_zephyrStrategy);
 // never make suite results depend on the machine's Zephyr tree. The fixture
 // is generated from the pinned tree filtered to the boards the suites
 // reference (see tests/fixtures/board-catalog.overlay.json). Overlay tests
-// override CUTTLEFISH_BOARD_CATALOG themselves and reset the loader caches.
-process.env.CUTTLEFISH_BOARD_CATALOG = process.env.CUTTLEFISH_BOARD_CATALOG
+// override TYPECAD_HAL_BOARD_CATALOG themselves and reset the loader caches.
+process.env.TYPECAD_HAL_BOARD_CATALOG = process.env.TYPECAD_HAL_BOARD_CATALOG
   ?? fileURLToPath(new URL('./fixtures/board-catalog.overlay.json', import.meta.url));
 
 // Register the UI engine hook so tests that call resolveColorInternal,

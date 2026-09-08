@@ -17,7 +17,7 @@ import { parseConfigFile } from "../../../packages/cuttlefish/src/config-loader"
 
 function writeConfig(source: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cf-config-"));
-  const file = path.join(dir, "cuttlefish.config.ts");
+  const file = path.join(dir, "typecad-hal.config.ts");
   fs.writeFileSync(file, source, "utf-8");
   return file;
 }

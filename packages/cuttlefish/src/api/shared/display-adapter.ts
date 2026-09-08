@@ -7,7 +7,7 @@
 // To add a new display driver:
 // 1. Write a generator function matching the DisplayAdapterGenerator signature
 // 2. Register it: registerDisplayAdapter("driver-name", generator)
-// 3. Reference it from cuttlefish.config.ts: display: { profile: "driver-name-spi" }
+// 3. Reference it from typecad-hal.config.ts: display: { profile: "driver-name-spi" }
 // ---------------------------------------------------------------------------
 
 import type { ResolvedDisplay } from "./display-profile.js";

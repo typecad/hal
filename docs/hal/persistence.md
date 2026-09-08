@@ -14,14 +14,13 @@ Neither has a session: there is no `begin()`, no `mount()`, no `open()`/`close()
 `File` reads and writes whole UTF-8 text files. The intended shape is small human-readable state: a counter, a last-seen timestamp, a device name, a snippet of JSON.
 
 ```typescript
-import { File } from '@typecad/hal';
-import { UART0 } from '@typecad/board';
+import { File, UART0 } from '@typecad/hal';
 
 const notes = new File('/notes.txt');
 
-notes.write('cuttlefish-was-here');        // overwrite (creates when absent)
+notes.write('typecad-hal-was-here');        // overwrite (creates when absent)
 if (notes.exists()) {
-  UART0.writeLine(notes.read());               // "cuttlefish-was-here"
+  UART0.writeLine(notes.read());               // "typecad-hal-was-here"
   notes.remove();                          // delete
   UART0.writeLine(notes.exists() ? 'still there' : 'gone');
 }

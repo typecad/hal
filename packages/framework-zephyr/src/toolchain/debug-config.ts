@@ -11,10 +11,10 @@
 // `gdbTarget: localhost:<port>`).
 //
 // Lifecycle: F5 runs the preLaunchTask (build + flash, unchanged), the
-// background task `cuttlefish: debug server (west)` starts
-// `cuttlefish debug-server start` (which wraps `west debugserver` and prints
+// background task `typecad-hal: debug server (west)` starts
+// `typecad-hal debug-server start` (which wraps `west debugserver` and prints
 // a ready marker the task's problem matcher waits for), and VS Code runs the
-// postDebugTask (`cuttlefish: stop debug server`) when the session ends.
+// postDebugTask (`typecad-hal: stop debug server`) when the session ends.
 //
 // Everything here is best-effort: a failed artifact write warns and never
 // fails the build (a project without launch.json still builds fine).
@@ -56,21 +56,21 @@ export interface DebugConfigOptions {
 }
 
 /** Task labels (also the preLaunchTask/postDebugTask references in launch.json). */
-export const DEBUG_BUILD_TASK = 'cuttlefish: build + flash (debug)';
-export const DEBUG_SERVER_TASK = 'cuttlefish: debug server (west)';
-export const DEBUG_SERVER_STOP_TASK = 'cuttlefish: stop debug server';
+export const DEBUG_BUILD_TASK = 'typecad-hal: build + flash (debug)';
+export const DEBUG_SERVER_TASK = 'typecad-hal: debug server (west)';
+export const DEBUG_SERVER_STOP_TASK = 'typecad-hal: stop debug server';
 
 export function resolveDebugLocations(projectRoot: string): {
   workspaceRoot: string;
   appRel: string;
 } {
-  // Walk up from the Zephyr app dir to find the cuttlefish project root (the
-  // nearest ancestor containing cuttlefish.config.ts). Fall back to projectRoot
+  // Walk up from the Zephyr app dir to find the typecad-hal project root (the
+  // nearest ancestor containing typecad-hal.config.ts). Fall back to projectRoot
   // itself if none is found (single-dir project where the app sits at root).
   let workspaceRoot = resolve(projectRoot);
   let dir = resolve(projectRoot);
   for (let i = 0; i < 20; i++) {
-    if (existsSync(join(dir, 'cuttlefish.config.ts'))) {
+    if (existsSync(join(dir, 'typecad-hal.config.ts'))) {
       workspaceRoot = dir;
       break;
     }
@@ -217,7 +217,7 @@ function buildTask(o: DebugConfigOptions): Record<string, unknown> {
   return {
     label: DEBUG_BUILD_TASK,
     type: 'shell',
-    command: 'npx cuttlefish build --compile --upload --debug',
+    command: 'npx typecad-hal build --compile --upload --debug',
     options: { cwd: `\${workspaceFolder}/${o.appRel}` },
     group: { kind: 'build', isDefault: false },
     problemMatcher: [],
@@ -237,7 +237,7 @@ function serverTask(o: DebugConfigOptions): Record<string, unknown> {
   return {
     label: DEBUG_SERVER_TASK,
     type: 'shell',
-    command: 'npx cuttlefish debug-server start --flash',
+    command: 'npx typecad-hal debug-server start --flash',
     // NO_COLOR keeps chalk's ANSI codes out of the output — they break the
     // background patterns below (the banner prints as ESC[36m⇳ Transpiling,
     // and ^-anchored patterns never match past the escape byte). Same remedy
@@ -245,7 +245,7 @@ function serverTask(o: DebugConfigOptions): Record<string, unknown> {
     options: { cwd: `\${workspaceFolder}/${o.appRel}`, env: { NO_COLOR: '1' } },
     isBackground: true,
     problemMatcher: {
-      owner: 'cuttlefish-debug-server',
+      owner: 'typecad-hal-debug-server',
       // MUST never match a real line: matched lines become file-less
       // problems (default severity: error), and VS Code then blocks F5 with
       // "errors exist after running preLaunchTask". The sentinel literal
@@ -254,7 +254,7 @@ function serverTask(o: DebugConfigOptions): Record<string, unknown> {
       pattern: { regexp: '__cuttlefish_never_matches__' },
       background: {
         beginsPattern: 'Transpiling',
-        endsPattern: `^CUTTLEFISH: debug server ready on ${DEBUG_SERVER_PORT}`,
+        endsPattern: `^TYPECAD_HAL: debug server ready on ${DEBUG_SERVER_PORT}`,
       },
     },
   };
@@ -265,7 +265,7 @@ function serverStopTask(o: DebugConfigOptions): Record<string, unknown> {
   return {
     label: DEBUG_SERVER_STOP_TASK,
     type: 'shell',
-    command: 'npx cuttlefish debug-server stop',
+    command: 'npx typecad-hal debug-server stop',
     options: { cwd: `\${workspaceFolder}/${o.appRel}` },
     problemMatcher: [],
   };
@@ -299,10 +299,10 @@ export function writeDebugConfig(o: DebugConfigOptions): string[] {
   const gdbScript = generateGdbScript(o.sourceMapPath);
   let gdbScriptRel: string | undefined;
   if (gdbScript) {
-    const scriptPath = join(o.projectRoot, '.cuttlefish', '.cuttlefish-gdb.py');
+    const scriptPath = join(o.projectRoot, '.typecad-hal', '.typecad-hal-gdb.py');
     mkdirSync(dirname(scriptPath), { recursive: true });
     writeFileSync(scriptPath, gdbScript, 'utf-8');
-    gdbScriptRel = `${o.appRel}/.cuttlefish/.cuttlefish-gdb.py`;
+    gdbScriptRel = `${o.appRel}/.typecad-hal/.typecad-hal-gdb.py`;
   }
 
   const launchConfig = buildLaunchConfig(o, gdbScriptRel, gdbPath);
@@ -317,11 +317,11 @@ export function writeDebugConfig(o: DebugConfigOptions): string[] {
 }
 
 /**
- * The Zephyr app dir the standard `cuttlefish create` scaffold produces,
+ * The Zephyr app dir the standard `typecad-hal create` scaffold produces,
  * relative to the project root: the scaffold fixes entry `./src/main.ts` +
  * outDir `./out`, and the CLI resolves output.outDir against the ENTRY's
  * directory (cli.ts), so the emitted app root lands at `src/out`. The create
- * flow passes its actual resolution (cuttlefish create's starterAppRel) so a
+ * flow passes its actual resolution (typecad-hal create's starterAppRel) so a
  * non-standard scaffold still gets correct starter paths; this is only the
  * default.
  */
@@ -337,19 +337,19 @@ const STARTER_APP_REL = 'src/out';
  * probe method in the board's table — printf instrumentation territory).
  */
 export function writeProjectDebugArtifacts(o: {
-  /** Absolute path to the cuttlefish project root (contains cuttlefish.config.ts). */
+  /** Absolute path to the typecad-hal project root (contains typecad-hal.config.ts). */
   workspaceRoot: string;
   /** The Zephyr board id from the project config (frameworkData.buildTarget). */
   buildTarget?: string;
   /**
    * The scaffolded app dir, workspace-relative with forward slashes.
-   * Defaults to the standard layout ('src/out'); cuttlefish create passes
+   * Defaults to the standard layout ('src/out'); typecad-hal create passes
    * its config's actual entry + outDir resolution so a non-standard scaffold
    * still gets correct starter paths.
    */
   appRel?: string;
   /**
-   * Create-time best-effort gdb from cuttlefish create (SDK + silicon) —
+   * Create-time best-effort gdb from typecad-hal create (SDK + silicon) —
    * see DebugConfigOptions.starterGdbPath. Plain JSON string.
    */
   gdbPath?: string;
@@ -385,7 +385,7 @@ export function generateGdbScript(sourceMapPath?: string): string | null {
   // `source <path>` so GDB auto-loads it on attach.
   return [
     '# Auto-generated by @typecad/framework-zephyr. GDB frame-filter that',
-    '# rewrites cuttlefish hoisted-lambda frame names (*_isr_N) into readable',
+    '# rewrites typecad-hal hoisted-lambda frame names (*_isr_N) into readable',
     '# <lambda> form so the VS Code call stack is legible.',
     'import gdb',
     'import re',

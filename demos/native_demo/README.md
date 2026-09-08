@@ -1,6 +1,6 @@
 # native_demo
 
-A native-desktop demo of the Cuttlefish UI runtime rendered to an SDL2 window.
+A native-desktop demo of the TypeCAD UI runtime rendered to an SDL2 window.
 This is the proving ground for the **RGB888 color pipeline + SDL native render
 layer**: it runs the real C++ `ui_tick` reactive runtime (the same code path as
 the ESP32 build) against an SDL-backed display adapter that renders true 24-bit

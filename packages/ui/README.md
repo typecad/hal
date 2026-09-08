@@ -1,6 +1,6 @@
 # @typecad/ui — HTML/CSS-Driven Graphics for Microcontrollers
 
-Write UIs in HTML and CSS. TypeCAD's `cuttlefish` transpiler lowers them to a retained-mode C++ runtime that draws on ILI9341 (and future) displays over hardware SPI. No browser, no DOM, no CSS engine on the device — everything is resolved at transpile time.
+Write UIs in HTML and CSS. TypeCAD's `typecad-hal` transpiler lowers them to a retained-mode C++ runtime that draws on ILI9341 (and future) displays over hardware SPI. No browser, no DOM, no CSS engine on the device — everything is resolved at transpile time.
 
 ## Install
 
@@ -31,13 +31,13 @@ It asks:
 4. **Touch** — none, resistive (XPT2046, STMPE610, 4-wire analog), capacitive (FT6336U, GT911, CST816S), or a custom adapter file — each with its pins, address, and a sensible default calibration.
 5. **Theme** — optional `themeCss` / `themeClass`.
 
-After a summary preview and confirmation, the wizard splices only the `display` section into `cuttlefish.config.ts` — every other section (and its comments) is preserved byte-for-byte, unmanaged display keys like `scroll` are carried over, and the result is syntax-checked before anything is written. If your config's `entry` points at a `.ui` file that doesn't exist yet, it offers to generate a starter screen, and it prints the exact preview, compile, and flash commands as next steps.
+After a summary preview and confirmation, the wizard splices only the `display` section into `typecad-hal.config.ts` — every other section (and its comments) is preserved byte-for-byte, unmanaged display keys like `scroll` are carried over, and the result is syntax-checked before anything is written. If your config's `entry` points at a `.ui` file that doesn't exist yet, it offers to generate a starter screen, and it prints the exact preview, compile, and flash commands as next steps.
 
-If there is no `cuttlefish.config.ts` yet, create the project first with `npx @typecad/cuttlefish create`, then re-run the wizard.
+If there is no `typecad-hal.config.ts` yet, create the project first with `npx @typecad/typecad-hal create`, then re-run the wizard.
 
 ## Project layout
 
-A TypeCAD UI project has one **entry** — the file you point `cuttlefish.config.ts` at. The entry can be either a `.ui` single-file component or a plain `.ts` module. Both intermix freely with regular cuttlefish TypeScript (HAL pin reads, `setInterval`, `console.log`, your own `.ts` modules) — the `<script>` block of a `.ui` file and a standalone `.ts` file are lowered by the same pipeline.
+A TypeCAD UI project has one **entry** — the file you point `typecad-hal.config.ts` at. The entry can be either a `.ui` single-file component or a plain `.ts` module. Both intermix freely with regular cuttlefish TypeScript (HAL pin reads, `setInterval`, `console.log`, your own `.ts` modules) — the `<script>` block of a `.ui` file and a standalone `.ts` file are lowered by the same pipeline.
 
 The transpiler accepts three entry extensions: `.ts`, `.tsx`, and `.ui`.
 
@@ -52,7 +52,7 @@ The transpiler injects an implicit `import { screen } from './app.ui.html'` into
 ```html
 <script>
   import { ui } from '@typecad/ui';
-  import { GPIO34, ADC } from '@typecad/board';
+  import { GPIO34, ADC } from '@typecad/hal';
 
   ui.mount(screen);
 
@@ -81,12 +81,12 @@ The transpiler injects an implicit `import { screen } from './app.ui.html'` into
 </screen>
 ```
 
-**`cuttlefish.config.ts`** — point the entry at the `.ui` file:
+**`typecad-hal.config.ts`** — point the entry at the `.ui` file:
 
 ```typescript
-import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
+import type { TypecadConfig } from '@typecad/cuttlefish/api';
 
-const config: CuttlefishConfig = {
+const config: TypecadConfig = {
   entry: './src/app.ui',
   board: 'esp32s3_devkitc/esp32s3/procpu',
   framework: '@typecad/framework-zephyr',
@@ -124,7 +124,7 @@ export function main(): void { while (true) {} }
 **`src/sensors.ts`** — plain cuttlefish TS, owns device I/O, no UI imports:
 
 ```typescript
-import { GPIO1, ADC } from '@typecad/board';   // an ADC-capable pin on this board
+import { GPIO1, ADC } from '@typecad/hal';   // an ADC-capable pin on this board
 const adc = new ADC(GPIO1);
 export function readVolts(): number {
   return adc.readMillivolts() / 1000;
@@ -139,10 +139,10 @@ export function readVolts(): number {
 </screen>
 ```
 
-**`cuttlefish.config.ts`** — point the entry at `main.ts`:
+**`typecad-hal.config.ts`** — point the entry at `main.ts`:
 
 ```typescript
-const config: CuttlefishConfig = {
+const config: TypecadConfig = {
   entry: './src/main.ts',     // ← .ts entry instead of .ui
   // ...rest identical
 };
@@ -235,15 +235,15 @@ The fastest path is a single `.ui` file with markup, styling, and behavior toget
 </screen>
 ```
 
-Display hardware and wiring live in `cuttlefish.config.ts` under `display`, so the UI source stays focused on UI behavior. Run `npx @typecad/ui --config` to generate that section interactively (see [Integration wizard](#integration-wizard)) — the result looks like the `display` line below.
+Display hardware and wiring live in `typecad-hal.config.ts` under `display`, so the UI source stays focused on UI behavior. Run `npx @typecad/ui --config` to generate that section interactively (see [Integration wizard](#integration-wizard)) — the result looks like the `display` line below.
 
 ### 2. Point the entry at the `.ui` file
 
 ```typescript
-// cuttlefish.config.ts
-import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
+// typecad-hal.config.ts
+import type { TypecadConfig } from '@typecad/cuttlefish/api';
 
-const config: CuttlefishConfig = {
+const config: TypecadConfig = {
   entry: './src/app.ui',
   board: 'esp32s3_devkitc/esp32s3/procpu',
   framework: '@typecad/framework-zephyr',
@@ -257,7 +257,7 @@ export default config;
 ### 3. Build
 
 ```bash
-npx @typecad/cuttlefish build --compile
+npx @typecad/typecad-hal build --compile
 ```
 
 ## Elements
@@ -716,7 +716,7 @@ screen { background: var(--bg); color: var(--fg); }
 ```
 
 ```typescript
-// cuttlefish.config.ts — or the display config in ui.mount
+// typecad-hal.config.ts — or the display config in ui.mount
 display: {
   themeClass: 'dark',   // resolves var(--x) using the .dark overrides
 }
@@ -750,7 +750,7 @@ Themes are **compile-time**. There are two complementary mechanisms:
 **1. Theme file (`themeCss`)** — swap the entire CSS file:
 
 ```typescript
-// cuttlefish.config.ts
+// typecad-hal.config.ts
 display: {
   themeCss: './src/hello.dark.css',  // relative to .ui.html dir
   // or: themeCss: '/absolute/path/to/theme.css',
@@ -1089,7 +1089,7 @@ and redraws only the nodes marked dirty (most frames touch a handful of nodes,
 not the whole screen). Dirty paint regions are composed in an offscreen RGB565
 canvas and pushed as one rectangle when memory allows.
 
-**Framebuffer (PSRAM-gated).** When the board has PSRAM (`psram: 'opi'` or `'quad'` in `cuttlefish.config.ts`), the runtime allocates a full-screen RGB565 canvas framebuffer and renders the entire dirty-node pass into it, then pushes once via a single transaction. This eliminates the per-primitive transaction storm that otherwise limits redraw rate on ILI9341 over SPI. Without PSRAM the runtime falls back to direct per-node drawing (no behavior change). Setting `psram` makes the framework emit the PSRAM-enabling Kconfig and define `BOARD_HAS_PSRAM`, which activates the runtime's PSRAM canvas paths automatically.
+**Framebuffer (PSRAM-gated).** When the board has PSRAM (`psram: 'opi'` or `'quad'` in `typecad-hal.config.ts`), the runtime allocates a full-screen RGB565 canvas framebuffer and renders the entire dirty-node pass into it, then pushes once via a single transaction. This eliminates the per-primitive transaction storm that otherwise limits redraw rate on ILI9341 over SPI. Without PSRAM the runtime falls back to direct per-node drawing (no behavior change). Setting `psram` makes the framework emit the PSRAM-enabling Kconfig and define `BOARD_HAS_PSRAM`, which activates the runtime's PSRAM canvas paths automatically.
 
 ### Diagnostics (warnings)
 
@@ -1108,12 +1108,12 @@ mysteriously unapplied.
 
 ## Display profiles
 
-The display hardware is described in `cuttlefish.config.ts` under the `display` field. This drives all transpile-time decisions: dimensions, color format, rotation, SPI pins, backlight, and touch.
+The display hardware is described in `typecad-hal.config.ts` under the `display` field. This drives all transpile-time decisions: dimensions, color format, rotation, SPI pins, backlight, and touch.
 
 ### Config reference
 
 ```typescript
-// cuttlefish.config.ts
+// typecad-hal.config.ts
 display: {
   // Either reference a built-in profile by name:
   profile: 'ili9341-spi',
@@ -1270,7 +1270,7 @@ display: {
 Make sure your adapter module is imported (side-effect import) so the registration runs:
 
 ```typescript
-// cuttlefish.config.ts or main.ts
+// typecad-hal.config.ts or main.ts
 import './display-adapters';  // registers the 'ssd1306' adapter
 ```
 

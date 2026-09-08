@@ -15,8 +15,5 @@
     "outDir": "dist",
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"],
-  "references": [
-    { "path": "../expect" }
-  ]
+  "include": ["src/**/*.ts"]
 }

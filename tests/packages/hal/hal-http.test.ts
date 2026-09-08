@@ -79,9 +79,9 @@ describe('HTTP HAL — Zephyr transpilation', () => {
     it('header() → __tc_http_set_header (declaration chain)', () => {
       const result = transpileZephyrStrategy(`
         import { Request } from '@typecad/hal';
-        new Request(Request.GET, "https://example.com").header("X-Device", "cuttlefish").send();
+        new Request(Request.GET, "https://example.com").header("X-Device", "typecad-hal").send();
       `);
-      expectCppContains(result, ['__tc_http_set_header("X-Device", "cuttlefish");']);
+      expectCppContains(result, ['__tc_http_set_header("X-Device", "typecad-hal");']);
     });
 
     it('body + json: true → __tc_http_set_body with json=true', () => {

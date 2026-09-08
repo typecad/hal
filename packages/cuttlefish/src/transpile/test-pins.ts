@@ -7,12 +7,12 @@
 //
 //   import { GPIO_OUT, PWM_PIN } from '@typecad/test-pins';
 //
-// At hardware-test time the @typecad/expect preprocessor substitutes each
+// At hardware-test time the test-runner preprocessor substitutes each
 // role identifier in the test source with the board's real pin symbol (and
 // each fact with its numeric literal), rewriting the import to
-// '@typecad/board' — the exact lowering path hand-written per-board tests
+// '@typecad/hal' — the exact lowering path hand-written per-board tests
 // use. This module provides the schema, the JSON reader, and the
-// editor-support generator (config-loader writes .cuttlefish/test-pins.ts
+// editor-support generator (config-loader writes .typecad-hal/test-pins.ts
 // so the language server resolves the specifier).
 //
 // Schema (all fields optional — a board only declares what it can test;
@@ -46,8 +46,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-/** Pin role -> exported const name. Single source for generator + env typing. */
-const PIN_ROLES: Record<string, string> = {
+/** Pin role -> exported const name. Single source for generator + env typing
+ *  + the hardware test runner's substitutions. */
+export const PIN_ROLES: Record<string, string> = {
   gpioOut: "GPIO_OUT",
   gpioIn: "GPIO_IN",
   pwm: "PWM_PIN",
@@ -65,7 +66,7 @@ const PIN_ROLES: Record<string, string> = {
 };
 
 /** Fact role -> exported const name. */
-const FACT_ROLES: Record<string, string> = {
+export const FACT_ROLES: Record<string, string> = {
   adcMax: "ADC_MAX",
 };
 
@@ -91,9 +92,9 @@ export function readTestPinsFile(projectDir: string): TestPinsFile | undefined {
 /**
  * Build the generated module's source: role consts re-exported from the
  * board package. Used by the editor-support generator
- * (.cuttlefish/test-pins.ts — see config-loader's generateVirtualTypeDeclaration)
+ * (.typecad-hal/test-pins.ts — see config-loader's generateVirtualTypeDeclaration)
  * so the language server resolves the '@typecad/test-pins' specifier.
- * Hardware runs do NOT transpile this module: the @typecad/expect
+ * Hardware runs do NOT transpile this module: the test-runner
  * preprocessor substitutes role identifiers in test sources with the
  * board's real pin symbols before the transpiler runs (the HAL resolves
  * pins through board-package metadata, not through transpiled modules).
@@ -141,7 +142,7 @@ export function buildTestPinsModuleContent(boardTarget: string, data: TestPinsFi
   for (const name of [...new Set(importedPins)].sort()) {
     lines.push(`  ${name},`);
   }
-    // Pin symbols live in the generated board module (the .cuttlefish sibling).
+    // Pin symbols live in the generated board module (the .typecad-hal sibling).
     lines.push(`} from './board.js';`);
   lines.push("");
   lines.push(...exports);

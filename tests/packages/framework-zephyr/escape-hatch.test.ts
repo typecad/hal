@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // escape-hatch.test.ts — the two "any pin as any type" paths:
 //
-//   1. cuttlefish.facts.json — project facts merged into the manifest at
+//   1. typecad-hal.facts.json — project facts merged into the manifest at
 //      board-module generation (user routes win per pin, warnings record
 //      shadowing, the file's hash joins the module fingerprint).
 //   2. Construction-time overrides — new ADC(pin, { channel, device,
@@ -27,14 +27,14 @@ const FACTS = JSON.stringify({
   },
 }, null, 2);
 
-describe('cuttlefish.facts.json (option 1)', () => {
+describe('typecad-hal.facts.json (option 1)', () => {
   it('parses + validates, with clear errors on malformed shapes', () => {
     const file = parseUserFactsJson(FACTS);
     expect(userFactsForTarget(file, 'rpi_pico/rp2040')?.adc?.channels[0]).toMatchObject({ pin: 26, channel: 0 });
     // Prefix leniency (the bare board id).
     expect(userFactsForTarget(file, 'rpi_pico/rp2040/ns')).toBeDefined();
     expect(userFactsForTarget(file, 'other/board')).toBeUndefined();
-    expect(() => parseUserFactsJson('{ nope')).toThrow(/cuttlefish\.facts\.json is not valid JSON/);
+    expect(() => parseUserFactsJson('{ nope')).toThrow(/typecad-hal.facts.json is not valid JSON/);
     expect(() => parseUserFactsJson('{"adc": {}}')).toThrow(/must carry a top-level "boards" object/);
   });
 
@@ -48,8 +48,8 @@ describe('cuttlefish.facts.json (option 1)', () => {
     const specIdx = Object.keys(c).length; // presence is enough — find the pin
     const pins = Object.entries(c).filter(([k, v]) => /^zephyr\.pwm\.specs\.\d+\.pin$/.test(k) && v === 15);
     expect(pins.length).toBe(1);
-    expect(merged.boardTs).toContain("export { ADC } from '@typecad/hal'");
-    expect(merged.boardTs).toContain("export { PWM } from '@typecad/hal'");
+    expect(merged.boardTs).toContain("export { ADC } from '@typecad/hal/core'");
+    expect(merged.boardTs).toContain("export { PWM } from '@typecad/hal/core'");
     // The fingerprint moves with the facts file — the staleness check.
     const fp = JSON.parse(merged.boardJson).source.fingerprint;
     expect(fp).not.toBe(JSON.parse(plain.boardJson).source.fingerprint);
@@ -76,7 +76,7 @@ describe('cuttlefish.facts.json (option 1)', () => {
     expect(c['zephyr.adc.channels.1.pin']).toBe(27);
     expect(c['zephyr.adc.channels.1.channel']).toBe(2);
     expect(g.warnings).toBeUndefined();
-    expect(g.boardTs).toContain("export { ADC } from '@typecad/hal'");
+    expect(g.boardTs).toContain("export { ADC } from '@typecad/hal/core'");
   });
 
   it('a board with no facts at all gains them (the escape case)', () => {
@@ -86,7 +86,7 @@ describe('cuttlefish.facts.json (option 1)', () => {
     });
     const c = JSON.parse(g.boardJson).constants;
     expect(c['zephyr.adc.channels.0.pin']).toBe(40);
-    expect(g.boardTs).toContain("export { ADC } from '@typecad/hal'");
+    expect(g.boardTs).toContain("export { ADC } from '@typecad/hal/core'");
   });
 });
 
@@ -105,8 +105,8 @@ describe('inline ADC overrides (option 2)', () => {
     const { boardTs, boardConstants } = rp2040Setup();
     const result = transpile(
       [
-        "import { ADC } from '@typecad/hal';",
-        "import { GP21 } from '@typecad/board';",
+        "import { ADC } from '@typecad/hal/core';",
+        "import { GP21 } from '@typecad/hal/core';",
         // GP21 has no harvested channel — the override vouches for it.
         'const sense = new ADC(GP21, { channel: 5, device: "adc" });',
         'const v = sense.read();',
@@ -134,7 +134,7 @@ describe('inline ADC overrides (option 2)', () => {
     const { boardTs, boardConstants } = rp2040Setup();
     const result = transpile(
       [
-        "import { ADC } from '@typecad/hal';",
+        "import { ADC } from '@typecad/hal/core';",
         'const sense = new ADC(21, { channel: 3, device: "adc1" });',
         'const v = sense.read();',
         '',
@@ -156,7 +156,7 @@ describe('inline PWM overrides (option 2)', () => {
     const { boardTs, boardConstants } = rp2040Setup();
     const result = transpile(
       [
-        "import { PWM } from '@typecad/hal';",
+        "import { PWM } from '@typecad/hal/core';",
         'const dimmer = new PWM(20, { periodNs: 1000000, controller: "pwm", channel: 4 });',
         'dimmer.setDuty(0.5);',
         '',
@@ -246,7 +246,7 @@ describe('cross-peripheral did-you-mean hints', () => {
     const { boardTs, boardConstants } = rp2Facts();
     const result = transpile(
       [
-        "import { ADC } from '@typecad/hal';",
+        "import { ADC } from '@typecad/hal/core';",
         'const sense = new ADC(15);', // pin 15: PWM spec, no ADC channel
         'const v = sense.read();',
         '',
@@ -268,7 +268,7 @@ describe('cross-peripheral did-you-mean hints', () => {
     const { boardTs, boardConstants } = rp2Facts();
     const result = transpile(
       [
-        "import { PWM } from '@typecad/hal';",
+        "import { PWM } from '@typecad/hal/core';",
         'const dimmer = new PWM(26, { periodNs: 1000000 });',
         'dimmer.setDuty(0.5);',
         '',

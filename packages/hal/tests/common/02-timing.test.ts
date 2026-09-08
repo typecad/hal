@@ -1,8 +1,8 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // Timing suite, adapted to the thin Time class (the ambient Timing namespace
 // and free delay()/millis()/micros() are gone — Time.now()/nowUs()/sleep()/
 // busyWaitUs() lower to k_uptime_get/k_uptime_get_32/k_msleep/k_busy_wait).
-import { Time } from '@typecad/board';
+import { Time } from '@typecad/hal';
 
 describe("Time.now (monotonic milliseconds)")
   .it("Time.now() returns a non-negative value")

@@ -7,7 +7,7 @@ describe("EmitterContext.compliance threading", () => {
     // no deviation comments, no sidecar written.
     const result = transpile("const x = 5;");
     expect(result.cpp).not.toContain("AUTOSAR Deviation");
-    // cuttlefish promotes const + infers int; just confirm the var landed.
+    // typecad-hal promotes const + infers int; just confirm the var landed.
     expect(result.cpp).toMatch(/\bx\s*=\s*5/);
   });
 

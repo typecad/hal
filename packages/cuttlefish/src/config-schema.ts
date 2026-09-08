@@ -1,8 +1,8 @@
 ﻿// ---------------------------------------------------------------------------
-// Config Schema — Zod validation for cuttlefish.config.ts parsed values
+// Config Schema — Zod validation for typecad-hal.config.ts parsed values
 //
 // After the AST-based config loader extracts scalar/structured values from
-// cuttlefish.config.ts, this schema validates the shape, required fields, and
+// typecad-hal.config.ts, this schema validates the shape, required fields, and
 // enum constraints before the config is used by the transpiler.
 // ---------------------------------------------------------------------------
 
@@ -50,11 +50,11 @@ const ZephyrConfig = z.object({
 }).strict();
 
 /**
- * Schema for the full CuttlefishConfig shape.
+ * Schema for the full TypecadConfig shape.
  *
  * `target` and `board` are required. Everything else is optional.
  */
-export const CuttlefishConfigSchema = z.object({
+export const TypecadConfigSchema = z.object({
   entry: z.string().optional(),
   target: z.string().min(1).optional(),
   board: z.string().optional(),
@@ -83,22 +83,22 @@ export const CuttlefishConfigSchema = z.object({
 });
 
 /** Inferred TypeScript type from the Zod schema. */
-export type ValidatedCuttlefishConfig = z.infer<typeof CuttlefishConfigSchema>;
+export type ValidatedTypecadConfig = z.infer<typeof TypecadConfigSchema>;
 
 /**
  * Validate a parsed config object against the schema.
  * Returns the validated config or throws a ZodError with detailed diagnostics.
  */
-export function validateConfig(config: unknown): ValidatedCuttlefishConfig {
-  return CuttlefishConfigSchema.parse(config);
+export function validateConfig(config: unknown): ValidatedTypecadConfig {
+  return TypecadConfigSchema.parse(config);
 }
 
 /**
  * Validate a parsed config object, returning a result instead of throwing.
  * Useful when you want to collect diagnostics without catching exceptions.
  */
-export function safeValidateConfig(config: unknown): { success: true; data: ValidatedCuttlefishConfig } | { success: false; errors: string[] } {
-  const result = CuttlefishConfigSchema.safeParse(config);
+export function safeValidateConfig(config: unknown): { success: true; data: ValidatedTypecadConfig } | { success: false; errors: string[] } {
+  const result = TypecadConfigSchema.safeParse(config);
   if (result.success) {
     return { success: true, data: result.data };
   }

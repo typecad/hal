@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Zephyr UI display adapter for the Cuttlefish UI rendering pipeline.
+// Zephyr UI display adapter for the TypeCAD UI rendering pipeline.
 //
 // Bridges the in-tree CuttlefishGFX/CuttlefishCanvas16 class (emitted by the
 // runtime header's cuttlefish-gfx slice) to an SPI TFT panel. The panel is

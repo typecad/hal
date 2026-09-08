@@ -304,7 +304,7 @@ For the CURRENT session without a new shell:
   eval "\$("$MAMBA" shell hook --shell bash)"
   micromamba activate $ENV_NAME
 
-Then a typeCAD/cuttlefish Zephyr build should discover west automatically:
-  cd <project> && npx cuttlefish build
+Then a typeCAD/typecad-hal Zephyr build should discover west automatically:
+  cd <project> && npx typecad-hal build
 
 EOF

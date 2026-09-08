@@ -108,18 +108,18 @@ describe('$ZEPHYR_BASE is authoritative', () => {
 
 describe('assertZephyrSdkForCreate (the create gate)', () => {
   const savedBase = process.env.ZEPHYR_BASE;
-  const savedCheck = process.env.CUTTLEFISH_SDK_CHECK;
+  const savedCheck = process.env.TYPECAD_HAL_SDK_CHECK;
   afterEach(() => {
     if (savedBase === undefined) delete process.env.ZEPHYR_BASE;
     else process.env.ZEPHYR_BASE = savedBase;
-    if (savedCheck === undefined) delete process.env.CUTTLEFISH_SDK_CHECK;
-    else process.env.CUTTLEFISH_SDK_CHECK = savedCheck;
+    if (savedCheck === undefined) delete process.env.TYPECAD_HAL_SDK_CHECK;
+    else process.env.TYPECAD_HAL_SDK_CHECK = savedCheck;
   });
 
   it('throws with the install command when no SDK is installed', () => {
     const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-sdk-gate-'));
     process.env.ZEPHYR_BASE = empty;
-    delete process.env.CUTTLEFISH_SDK_CHECK;
+    delete process.env.TYPECAD_HAL_SDK_CHECK;
     expect(() => assertZephyrSdkForCreate()).toThrow(/zephyr-installer/);
     fs.rmSync(empty, { recursive: true, force: true });
   });
@@ -127,17 +127,17 @@ describe('assertZephyrSdkForCreate (the create gate)', () => {
   it('throws with re-pin guidance on a version mismatch', () => {
     const tree = fixtureTree('9.9.9');
     process.env.ZEPHYR_BASE = tree;
-    delete process.env.CUTTLEFISH_SDK_CHECK;
+    delete process.env.TYPECAD_HAL_SDK_CHECK;
     expect(() => assertZephyrSdkForCreate()).toThrow(/does not match[\s\S]*zephyr-installer/);
     fs.rmSync(path.dirname(tree), { recursive: true, force: true });
   });
 
-  it('passes at the pin; CUTTLEFISH_SDK_CHECK=off bypasses any state', () => {
+  it('passes at the pin; TYPECAD_HAL_SDK_CHECK=off bypasses any state', () => {
     const tree = fixtureTree(PINNED_ZEPHYR_MANIFEST_REV.replace(/^v/, ''));
     process.env.ZEPHYR_BASE = tree;
-    delete process.env.CUTTLEFISH_SDK_CHECK;
+    delete process.env.TYPECAD_HAL_SDK_CHECK;
     expect(() => assertZephyrSdkForCreate()).not.toThrow();
-    process.env.CUTTLEFISH_SDK_CHECK = 'off';
+    process.env.TYPECAD_HAL_SDK_CHECK = 'off';
     process.env.ZEPHYR_BASE = path.join(path.dirname(tree), 'not-a-tree');
     expect(() => assertZephyrSdkForCreate()).not.toThrow();
     fs.rmSync(path.dirname(tree), { recursive: true, force: true });

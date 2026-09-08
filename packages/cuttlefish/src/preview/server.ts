@@ -142,7 +142,7 @@ function resolveConfigPath(configPath: string | undefined): string {
     return abs;
   }
   const found = findConfigFile(process.cwd());
-  if (!found) throw new Error("No cuttlefish.config.ts found for preview.");
+  if (!found) throw new Error("No typecad-hal.config.ts found for preview.");
   return found;
 }
 
@@ -201,7 +201,7 @@ export async function runPreviewServer(options: PreviewServerOptions = {}): Prom
   await loadUIEngine();
   if (!hasUIHook()) {
     throw new Error(
-      `cuttlefish preview requires the @typecad/ui package — install it in this project (npm install @typecad/ui).`,
+      `typecad-hal preview requires the @typecad/ui package — install it in this project (npm install @typecad/ui).`,
     );
   }
   const configPath = resolveConfigPath(options.configPath);

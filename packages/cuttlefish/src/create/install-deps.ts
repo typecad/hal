@@ -1,5 +1,5 @@
 // Installs all dependencies in a freshly scaffolded project directory, as the
-// final step of `cuttlefish create` so the new project is ready to build with
+// final step of `typecad-hal create` so the new project is ready to build with
 // no separate `npm install` step. The package manager is detected from the
 // INVOKING directory (process.cwd()) — a pnpm/yarn user gets their tool of
 // choice even though the new project has no lockfile yet.

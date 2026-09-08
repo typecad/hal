@@ -16,8 +16,8 @@ export interface ESLintError {
 }
 
 export async function runEslintCheck(projectRoot: string): Promise<ESLintError[]> {
-  // Look for eslint config in .cuttlefish/ (new layout) or project root (legacy)
-  const cuttlefishConfig = path.join(projectRoot, ".cuttlefish", "eslint.config.mjs");
+  // Look for eslint config in .typecad-hal/ (new layout) or project root (legacy)
+  const cuttlefishConfig = path.join(projectRoot, ".typecad-hal", "eslint.config.mjs");
   const rootConfigNames = ["eslint.config.mjs", "eslint.config.js", "eslint.config.cjs"];
   const rootConfig = rootConfigNames.find(name =>
     fs.existsSync(path.join(projectRoot, name))

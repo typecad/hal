@@ -15,13 +15,13 @@
 // The DT-bound Sensor API (see demos/zephyr-blackpill) is the supported
 // analog-input path on Zephyr now.
 //
-// Flashed + captured by `npm run hal` (@typecad/expect over the framework-
+// Flashed + captured by `npm run hal` (@typecad/hal/testing over the framework-
 // zephyr west toolchain); the console rides the USB CDC port.
 // ---------------------------------------------------------------------------
 
-import { describe, done } from '@typecad/expect';
-import { LED, BUTTON } from '@typecad/board';
-import { GPIO, I2CTarget, SPITarget, Thread, Time } from '@typecad/board';
+import { describe, done } from '@typecad/hal/testing';
+import { LED, BUTTON } from '@typecad/hal';
+import { GPIO, I2CTarget, SPITarget, Thread, Time } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);                      // PC13 — onboard LED
 const button = new GPIO(BUTTON, GPIO.INPUT | GPIO.PULL_UP);  // PA0 — KEY button

@@ -4,7 +4,7 @@
 // There is NO compiled-in board database. The catalog is a machine-local
 // artifact generated from the Zephyr tree the user actually builds with:
 //
-//   <workspace>/.cuttlefish/board-catalog.json     (workspace = the dir
+//   <workspace>/.typecad-hal/board-catalog.json     (workspace = the dir
 //   holding the zephyr checkout, so the overlay sits beside the tree it
 //   describes)
 //
@@ -34,7 +34,7 @@ import { walkBoardCatalog, zephyrVersionOf, gitHeadOf } from './walker.js';
 const OVERLAY_SCHEMA = 1;
 
 /** Env var: explicit overlay file path ('' / 'off' disables overlays). */
-const OVERLAY_ENV = 'CUTTLEFISH_BOARD_CATALOG';
+const OVERLAY_ENV = 'TYPECAD_HAL_BOARD_CATALOG';
 
 /** Extraction-logic revision. Bump whenever walker/dts-reader change what
  *  they extract — an overlay written by an older revision is stale even
@@ -225,7 +225,23 @@ export function diffBoardCatalogs(
 
 /** Overlay file path for a Zephyr base: the workspace dir beside the tree. */
 export function overlayPathFor(zephyrBase: string): string {
-  return path.join(path.dirname(path.resolve(zephyrBase)), '.cuttlefish', 'board-catalog.json');
+  const dir = path.dirname(path.resolve(zephyrBase));
+  const fresh = path.join(dir, '.typecad-hal', 'board-catalog.json');
+  // One-time rename migration: adopt a pre-rename `.typecad-hal/` catalog
+  // instead of rebuilding (a fresh full-tree walk) — also avoids two
+  // concurrent processes racing to rebuild an absent catalog. The legacy
+  // file is left in place (harmless; the mtime provenance check still
+  // triggers a rebuild when the Zephyr tree moves).
+  const legacy = path.join(dir, '.typecad-hal', 'board-catalog.json');
+  if (!fs.existsSync(fresh) && fs.existsSync(legacy)) {
+    try {
+      fs.mkdirSync(path.dirname(fresh), { recursive: true });
+      fs.copyFileSync(legacy, fresh);
+    } catch {
+      /* unreadable legacy — fall through to the normal rebuild path */
+    }
+  }
+  return fresh;
 }
 
 /** Read + validate one overlay file. Undefined when absent/mismatched/unreadable. */
@@ -263,12 +279,12 @@ export function resetBoardCatalogOverlayCache(): void {
 /**
  * The active local overlay, fs-only discovery:
  *
- *   1. $CUTTLEFISH_BOARD_CATALOG — explicit file path (''/off disables)
+ *   1. $TYPECAD_HAL_BOARD_CATALOG — explicit file path (''/off disables)
  *   2. The overlay beside a cheaply-located Zephyr tree
  *
  * Memoized per process. There is no compiled-in fallback: a machine with no
  * Zephyr tree and no overlay has no catalog, and callers report that
- * honestly (`cuttlefish board sync` is the fix).
+ * honestly (`typecad-hal board sync` is the fix).
  */
 export function loadBoardCatalogOverlay(): BoardCatalogOverlay | undefined {
   if (cachedOverlay !== undefined) return cachedOverlay ?? undefined;
@@ -350,7 +366,7 @@ export function syncBoardCatalog(opts: { zephyrBase?: string } = {}): BoardCatal
     throw new Error(
       `No Zephyr tree found to sync the board catalog from.\n` +
       `Set ZEPHYR_BASE, or pass the checkout explicitly:\n` +
-      `  cuttlefish board sync <path-to-zephyr>\n` +
+      `  typecad-hal board sync <path-to-zephyr>\n` +
       `Or install one via '@typecad/zephyr-installer'.`,
     );
   }
@@ -387,7 +403,7 @@ export function resetActiveBoardCatalog(): void {
 /**
  * The active board catalog: the local overlay when one is discoverable,
  * else NOTHING (there is no compiled-in database — a machine without a
- * Zephyr tree has no boards until `cuttlefish board sync`). Memoized per
+ * Zephyr tree has no boards until `typecad-hal board sync`). Memoized per
  * process.
  */
 export function activeBoardCatalog(): Record<string, BoardDataEntry> {
@@ -399,7 +415,7 @@ export function activeBoardCatalog(): Record<string, BoardDataEntry> {
 /**
  * Fingerprint of one board record as resolved from one overlay: covers the
  * record content, the extraction revision, and the tree provenance. Board
- * modules stamp it; `cuttlefish build` recomputes it cheaply and
+ * modules stamp it; `typecad-hal build` recomputes it cheaply and
  * regenerates the module when it moves — a board change in the config, the
  * catalog overlay, or the Zephyr tree itself recreates the project's board
  * artifacts.
@@ -415,7 +431,7 @@ export function boardRecordFingerprint(entry: BoardDataEntry, overlay?: BoardCat
 
 /**
  * The suffix user facts append to the board-module fingerprint: the SAME
- * raw cuttlefish.facts.json text is hashed by the writer (boardgen, via the
+ * raw typecad-hal.facts.json text is hashed by the writer (boardgen, via the
  * framework) and the staleness check (config-loader), so any edit to the
  * file regenerates the module. Empty text → no suffix.
  */

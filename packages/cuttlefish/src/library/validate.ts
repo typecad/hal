@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// `cuttlefish library validate` — the standalone library-package validator.
+// `typecad-hal library validate` — the standalone library-package validator.
 //
 // Before this, manifest errors only surfaced at import time inside a
 // transpile. This runs the same checks (and more) on a package directory:
@@ -11,7 +11,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { ComplianceContext, runSelfCheck, type SelfCheckFinding } from "../emit/compliance/index.js";
-import { LIBRARY_MARKER_KEYWORD, libraryCategory } from "./catalog.js";
+import { LIBRARY_MARKER_KEYWORD, CATEGORY_KEYWORD_PREFIX, libraryCategory } from "./catalog.js";
 
 export interface LibraryValidationFinding {
   severity: "error" | "warning";
@@ -54,15 +54,15 @@ export function validateLibraryPackage(dir: string): LibraryValidationReport {
   };
 
   // ── Manifest ───────────────────────────────────────────────────────────
-  const manifestPath = path.join(root, "cuttlefish.library.json");
+  const manifestPath = path.join(root, "typecad-hal.library.json");
   let manifest: MinimalManifest | undefined;
   if (!fs.existsSync(manifestPath)) {
-    fail("cuttlefish.library.json not found — is this a library package directory?");
+    fail("typecad-hal.library.json not found — is this a library package directory?");
   } else {
     try {
       manifest = readJson(manifestPath) as MinimalManifest;
     } catch (e) {
-      fail(`cuttlefish.library.json is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
+      fail(`typecad-hal.library.json is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
@@ -128,8 +128,8 @@ export function validateLibraryPackage(dir: string): LibraryValidationReport {
       if (Array.isArray(pkg.keywords)) {
         pkgKeywords = pkg.keywords.filter((k): k is string => typeof k === "string");
       }
-      if (Array.isArray(pkg.files) && !pkg.files.includes("cuttlefish.library.json")) {
-        fail("package.json 'files' must include 'cuttlefish.library.json' or the manifest will not ship.");
+      if (Array.isArray(pkg.files) && !pkg.files.includes("typecad-hal.library.json")) {
+        fail("package.json 'files' must include 'typecad-hal.library.json' or the manifest will not ship.");
       }
     } catch (e) {
       fail(`package.json is not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
@@ -139,16 +139,16 @@ export function validateLibraryPackage(dir: string): LibraryValidationReport {
   if (pkgKeywords.length > 0 && !pkgKeywords.map((k) => k.toLowerCase()).includes(LIBRARY_MARKER_KEYWORD)) {
     fail(`package.json keywords must include the marker '${LIBRARY_MARKER_KEYWORD}' — it is what library search scans for.`);
   }
-  const categoryKeywords = pkgKeywords.filter((k) => k.startsWith("cuttlefish-") && k !== LIBRARY_MARKER_KEYWORD);
+  const categoryKeywords = pkgKeywords.filter((k) => k.startsWith(CATEGORY_KEYWORD_PREFIX) && k !== LIBRARY_MARKER_KEYWORD);
   if (pkgKeywords.length > 0 && categoryKeywords.length === 0) {
     warnings.push(
-      `No category keyword in package.json — add one of ${LIBRARY_MARKER_KEYWORD}'s siblings (e.g. cuttlefish-led) so the library is browsable by category.`,
+      `No category keyword in package.json — add one of ${LIBRARY_MARKER_KEYWORD}'s siblings (e.g. typecad-hal-led) so the library is browsable by category.`,
     );
   }
   for (const kw of categoryKeywords) {
-    const id = kw.slice("cuttlefish-".length);
+    const id = kw.slice(CATEGORY_KEYWORD_PREFIX.length);
     if (!libraryCategory(id)) {
-      warnings.push(`Keyword '${kw}' is not a known category keyword (cuttlefish-<id>).`);
+      warnings.push(`Keyword '${kw}' is not a known category keyword (typecad-hal-<id>).`);
     }
   }
   if (categoryKeywords.length > 1) {

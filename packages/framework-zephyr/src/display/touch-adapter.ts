@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Zephyr touch adapters for the Cuttlefish UI rendering pipeline.
+// Zephyr touch adapters for the TypeCAD UI rendering pipeline.
 //
 // Two controllers, both driven directly (polling, no in-tree driver):
 //   - FT6336U capacitive over I2C (i2c_write_read_dt)

@@ -6,8 +6,7 @@
 // delay() (same k_msleep underneath).
 // ---------------------------------------------------------------------------
 
-import { GPIO2 } from '@typecad/board';
-import { GPIO, Time } from '@typecad/hal';
+import { GPIO2, GPIO, Time } from '@typecad/hal';
 
 const led = new GPIO(GPIO2, GPIO.OUTPUT);
 

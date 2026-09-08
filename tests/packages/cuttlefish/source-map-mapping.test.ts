@@ -23,7 +23,7 @@ import {
 import type { GeneratedSourceMap } from "../../../packages/cuttlefish/src/types";
 
 function tmpBuildDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "cuttlefish-map-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "typecad-hal-map-"));
 }
 
 /** A fake TS span pointing at the given file:line:col. */

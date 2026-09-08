@@ -16,7 +16,7 @@ ble.char('2A58', BleValueType.Int16, BlePerm.Read | BlePerm.Notify).onRead((): n
 ble.char('2A6F', BleValueType.Uint16, BlePerm.Read).onRead((): number => 5500);
 ble.char('2A19', BleValueType.Uint8, BlePerm.Read).onRead((): number => 87);
 ble.char('a1b2c3d4-0010-1000-8000-00805f9b34fb', BleValueType.Uint8, BlePerm.Read).onRead((): number => 42);
-ble.char('a1b2c3d4-0011-1000-8000-00805f9b34fb', BleValueType.Utf8, BlePerm.Read).onRead((): string => 'cuttlefish-ble');
+ble.char('a1b2c3d4-0011-1000-8000-00805f9b34fb', BleValueType.Utf8, BlePerm.Read).onRead((): string => 'typecad-hal-ble');
 ble.onConnect(onBleConnect);
 
 ble.start();

@@ -3,7 +3,7 @@
 //
 // Verifies that runEslintCheck surfaces violations with structured file/line/
 // column/ruleId/sourceLine, and that it returns [] when no config or no src
-// is present. The cuttlefish-package fallback resolver is what makes eslint
+// is present. The typecad-hal-package fallback resolver is what makes eslint
 // resolvable from these temp project roots.
 // ---------------------------------------------------------------------------
 
@@ -16,7 +16,7 @@ import { runEslintCheck } from "@typecad/cuttlefish/testing";
 // upward module resolution finds @typescript-eslint/* and eslint installed at
 // the repo root (scaffolded user projects get these via `npm install`).
 // node_modules/ is gitignored, so nothing leaks into version control.
-const TMP_ROOT = path.join(process.cwd(), "node_modules", ".cache", "cuttlefish-eslint-tests");
+const TMP_ROOT = path.join(process.cwd(), "node_modules", ".cache", "typecad-hal-eslint-tests");
 
 let tmpDir: string;
 

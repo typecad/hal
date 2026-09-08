@@ -153,7 +153,7 @@ describe('RP2 end-to-end (manifest constants → lowering)', () => {
     const result = transpile(
       [
         "import { ADC } from '@typecad/hal';",
-        "import { GP26 } from '@typecad/board';",
+        "import { GP26 } from '@typecad/hal';",
         'const sense = new ADC(GP26);',
         'const v = sense.read();',
         'if (v > 0) { sense.readMillivolts(); }',

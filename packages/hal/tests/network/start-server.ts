@@ -7,7 +7,7 @@
 //
 // Run in one terminal, then run the firmware test in another:
 //   npm run test:http
-//   cd tests/hardware && npx cuttlefish-test --port COM4 http-client.test.ts
+//   cd tests/hardware && npx typecad-hal test --port COM4 http-client.test.ts
 
 import { networkInterfaces } from 'node:os';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -115,11 +115,11 @@ async function main() {
 		password = envPassword ?? existing?.password ?? '';
 		host = envHost ?? existing?.host ?? detectedIp ?? '127.0.0.1';
 		port = envPort ?? existing?.port ?? DEFAULT_PORT;
-		console.log('\n  cuttlefish HTTP test server (non-interactive)\n  ----------------------------------------------');
+		console.log('\n  typecad-hal HTTP test server (non-interactive)\n  ----------------------------------------------');
 		if (detectedIp) console.log(`  Detected LAN IP: ${detectedIp}`);
 	} else {
 		// Interactive mode — prompt for each value.
-		console.log('\n  cuttlefish HTTP test server\n  ----------------------------\n');
+		console.log('\n  typecad-hal HTTP test server\n  ----------------------------\n');
 		if (detectedIp) {
 			console.log(`  Detected LAN IP: ${detectedIp}`);
 		} else {

@@ -1,9 +1,10 @@
 {
+  "version": "2.0.0",
   "tasks": [
     {
-      "label": "cuttlefish: build + flash (debug)",
+      "label": "typecad-hal: build + flash (debug)",
       "type": "shell",
-      "command": "npx cuttlefish build --compile --upload --debug",
+      "command": "npx typecad-hal build --compile --upload --debug",
       "options": {
         "cwd": "${workspaceFolder}/src/out"
       },
@@ -14,9 +15,9 @@
       "problemMatcher": []
     },
     {
-      "label": "cuttlefish: debug server (west)",
+      "label": "typecad-hal: debug server (west)",
       "type": "shell",
-      "command": "npx cuttlefish debug-server start --flash",
+      "command": "npx typecad-hal debug-server start --flash",
       "options": {
         "cwd": "${workspaceFolder}/src/out",
         "env": {
@@ -25,24 +26,77 @@
       },
       "isBackground": true,
       "problemMatcher": {
-        "owner": "cuttlefish-debug-server",
+        "owner": "typecad-hal-debug-server",
         "pattern": {
           "regexp": "__cuttlefish_never_matches__"
         },
         "background": {
           "beginsPattern": "Transpiling",
-          "endsPattern": "^CUTTLEFISH: debug server ready on 3333"
+          "endsPattern": "^TYPECAD_HAL: debug server ready on 3333"
         }
       }
     },
     {
-      "label": "cuttlefish: stop debug server",
+      "label": "typecad-hal: stop debug server",
       "type": "shell",
-      "command": "npx cuttlefish debug-server stop",
+      "command": "npx typecad-hal debug-server stop",
       "options": {
         "cwd": "${workspaceFolder}/src/out"
       },
       "problemMatcher": []
+    },
+    {
+      "label": "typecad-hal: watch build",
+      "command": "npm run dev",
+      "type": "shell",
+      "isBackground": true,
+      "group": "build",
+      "options": {
+        "env": {
+          "NO_COLOR": "1"
+        }
+      },
+      "problemMatcher": [
+        {
+          "owner": "typecad-hal-transpiler",
+          "severity": "error",
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+          ],
+          "pattern": {
+            "regexp": "^\\s*(.*?)\\s+(error|warning)(?:\\s+\\[[^\\]]*\\])?\\s*\\((\\d+),(\\d+)\\):\\s+(.*)$",
+            "file": 1,
+            "severity": 2,
+            "line": 3,
+            "column": 4,
+            "message": 5
+          },
+          "background": {
+            "beginsPattern": "Transpiling",
+            "endsPattern": "Watching for changes"
+          }
+        },
+        {
+          "owner": "typecad-hal-eslint",
+          "severity": "error",
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+          ],
+          "pattern": {
+            "regexp": "^\\s*error\\s+(.*?)\\((\\d+),(\\d+)\\)\\s+\\[[^\\]]*\\]:\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "message": 4
+          },
+          "background": {
+            "beginsPattern": "Transpiling",
+            "endsPattern": "Watching for changes"
+          }
+        }
+      ]
     }
   ]
 }

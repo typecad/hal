@@ -8,7 +8,7 @@ const WIFI_PASSWORD = "hunter22";
 import { WiFi, Request, Time, GPIO } from '@typecad/hal';
 
 const wifi = new WiFi(WIFI_SSID, { psk: WIFI_PASSWORD });
-import { GPIO2 as D2, UART0 } from '@typecad/board';
+import { GPIO2 as D2, UART0 } from '@typecad/hal';
 
 const led = new GPIO(D2, GPIO.OUTPUT);
 

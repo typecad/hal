@@ -7,7 +7,7 @@
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/watchdog.h>
 
-// cuttlefish runtime shim. Wrapped in a single include guard so the
+// typecad-hal runtime shim. Wrapped in a single include guard so the
 // block is safe to emit into multiple headers and .cpp files within
 // one translation unit (a .cpp may #include several headers that each
 // carry the shim). The guard ensures the definitions are seen exactly

@@ -25,7 +25,7 @@ export function renderSafetySidecar(
   const payload: SafetySidecar = {
     schemaVersion: "1.0.0",
     standard: "ISO 26262 Part 6",
-    tool: "cuttlefish (safety)",
+    tool: "typecad-hal (safety)",
     toolVersion,
     generatedAt: new Date().toISOString(),
     safetyFunctions: metadata.functions,

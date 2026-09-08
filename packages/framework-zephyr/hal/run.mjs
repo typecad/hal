@@ -3,10 +3,10 @@
 // hal/run.mjs — `npm run hal` entry: run the hardware HAL suites on every
 // CONNECTED board, skipping (not failing) the ones that aren't.
 //
-// Each subdirectory is a self-contained expect project (cuttlefish.config.ts
+// Each subdirectory is a self-contained expect project (typecad-hal.config.ts
 // + hal.test.ts) whose test.usb block names the board's CDC identity. This
 // runner lists the USB serial ports once, matches each project's identity,
-// and invokes cuttlefish-test in the project dir for the matches. A board
+// and invokes typecad-hal test in the project dir for the matches. A board
 // that isn't connected prints one skip line; a connected board that FAILS
 // fails the whole run.
 //
@@ -16,9 +16,9 @@
 // a time (the same port would satisfy every CDC project's match). Bridge
 // boards (CH340/16U2/CP2102) still identify by their real bridge vid/pid.
 //
-// The port listing reuses @typecad/expect's port-discovery (imported by file
-// path so its 'serialport' dependency resolves from the expect package's own
-// node_modules).
+// The port listing reuses the engine test-runner's port-discovery (imported
+// by file path so its 'serialport' dependency resolves from the typecad-hal
+// package's own node_modules — an optionalDependency there).
 // ---------------------------------------------------------------------------
 
 import { spawnSync } from 'node:child_process';
@@ -40,7 +40,7 @@ const BOARDS = [
 ];
 
 async function listPorts() {
-  const modPath = path.join(repoRoot, 'packages', 'expect', 'dist', 'host', 'port-discovery.js');
+  const modPath = path.join(repoRoot, 'packages', 'typecad-hal', 'dist', 'test-runner', 'port-discovery.js');
   const mod = await import(pathToFileURL(modPath).href);
   return mod.listUsbSerialPorts();
 }
@@ -67,7 +67,7 @@ for (const b of only ? BOARDS.filter((x) => x.dir === only) : BOARDS) {
     process.exit(1);
   }
   const dir = path.join(here, b.dir);
-  if (!fs.existsSync(path.join(dir, 'cuttlefish.config.ts'))) {
+  if (!fs.existsSync(path.join(dir, 'typecad-hal.config.ts'))) {
     console.log(`– ${b.name}: no project in hal/${b.dir}, skipped`);
     continue;
   }
@@ -84,7 +84,7 @@ for (const b of only ? BOARDS.filter((x) => x.dir === only) : BOARDS) {
     continue;
   }
   console.log(`\n=== ${b.name} @ ${match.path} ===\n`);
-  const bin = path.join(repoRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'cuttlefish-test.cmd' : 'cuttlefish-test');
+  const bin = path.join(repoRoot, 'node_modules', '.bin', process.platform === 'win32' ? 'typecad-hal test.cmd' : 'typecad-hal test');
   // The CLI resolves its project root through INIT_CWD when the env carries
   // it (npm exec semantics). When this runner is itself launched via
   // `npm run hal`, the inherited INIT_CWD points at the BOARD PACKAGE dir,

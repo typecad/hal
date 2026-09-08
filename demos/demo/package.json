@@ -5,10 +5,10 @@
   "description": "Zephyr RTOS (Seeed XIAO nRF52840) demo showcasing @typecad/framework-zephyr on an nRF52840 with devicetree-driven GPIO",
   "type": "module",
   "scripts": {
-    "build": "cuttlefish build",
-    "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload",
-    "transpile": "cuttlefish build --no-transpile",
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload",
+    "transpile": "typecad-hal build --no-transpile",
     "lint": "eslint src/"
   },
   "dependencies": {

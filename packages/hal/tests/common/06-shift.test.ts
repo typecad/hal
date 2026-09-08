@@ -1,4 +1,4 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 
 // NOTE: The Shift fluent class (Shift.out/read/builders) lowers to a C++ class
 // method chain (Shift::write(...).clock_(...).msbFirst()) that requires a C++

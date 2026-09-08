@@ -77,8 +77,8 @@ export function typeCheckFiles(
         // non-JS module imports such as `.ui.html` via generated
         // `<base>.d.<ext>.ts` declarations.
         compilerOptions = { ...parsedConfig.options, noEmit: true, allowArbitraryExtensions: true };
-        // Include cuttlefish-env.d.ts so module augmentations are visible to the type-checker
-        const envDts = path.join(path.dirname(configPath), ".cuttlefish", "cuttlefish-env.d.ts");
+        // Include typecad-hal-env.d.ts so module augmentations are visible to the type-checker
+        const envDts = path.join(path.dirname(configPath), ".typecad-hal", "typecad-hal-env.d.ts");
         if (fs.existsSync(envDts) && !rootNames.includes(envDts)) {
           rootNames.push(envDts);
         }
@@ -604,7 +604,7 @@ export function runSemanticGates(
         nameNode,
         `${kindLabel} '${name}' collides with a global type of the same name from a lib/ambient declaration. The global shadows this declaration at every unqualified use site, producing spurious type errors.`,
         "TS2CPP_GLOBAL_NAME_COLLISION",
-        "Rename the declaration, or remove the colliding lib (e.g. drop \"dom\" from tsconfig \"lib\" — the scaffolded console typings live in cuttlefish-env.d.ts).",
+        "Rename the declaration, or remove the colliding lib (e.g. drop \"dom\" from tsconfig \"lib\" — the scaffolded console typings live in typecad-hal-env.d.ts).",
       ),
     );
   };

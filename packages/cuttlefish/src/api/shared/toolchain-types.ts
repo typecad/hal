@@ -55,16 +55,16 @@ export interface ToolchainOptions {
   /** ESP32 PSRAM type ('opi' | 'quad') when the target board has PSRAM. */
   psram?: 'opi' | 'quad';
   /**
-   * Framework-specific config from `cuttlefish.config.ts`.
+   * Framework-specific config from `typecad-hal.config.ts`.
    * Each framework casts this to its own typed interface.
    */
   frameworkConfig?: Record<string, unknown>;
   /**
-   * Zephyr-specific config from `cuttlefish.config.ts` (the `zephyr` section).
+   * Zephyr-specific config from `typecad-hal.config.ts` (the `zephyr` section).
    */
   zephyrConfig?: Record<string, unknown>;
   /**
-   * Display config from `cuttlefish.config.ts` (the `display` section).
+   * Display config from `typecad-hal.config.ts` (the `display` section).
    * Frameworks use cs/dc/rst/spiFrequency to generate devicetree wiring.
    */
   display?: Record<string, unknown>;

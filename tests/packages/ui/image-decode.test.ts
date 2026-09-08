@@ -23,7 +23,7 @@ import type { StyledNode } from "@typecad/ui/ui-engine/style-resolver";
 let dir: string;
 
 beforeEach(() => {
-  dir = fs.mkdtempSync(path.join(os.tmpdir(), "cuttlefish-img-"));
+  dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-hal-img-"));
   resetImageDecodeCache();
 });
 

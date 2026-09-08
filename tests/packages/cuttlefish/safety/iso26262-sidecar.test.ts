@@ -77,7 +77,7 @@ describe("Part C: Safety metadata collection + sidecar", () => {
     const json = JSON.parse(renderSafetySidecar(metadata[0], "1.0.0"));
     expect(json.schemaVersion).toBe("1.0.0");
     expect(json.standard).toBe("ISO 26262 Part 6");
-    expect(json.tool).toContain("cuttlefish");
+    expect(json.tool).toContain("typecad-hal");
     expect(json.safetyFunctions).toHaveLength(1);
     expect(json.safetyFunctions[0].name).toBe("brake");
     expect(json.safetyFunctions[0].asilLevel).toBe("D");

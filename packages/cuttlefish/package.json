@@ -1,17 +1,17 @@
 {
   "name": "@typecad/cuttlefish",
-  "version": "1.0.0-alpha.16",
+  "version": "1.0.0-alpha.17",
   "description": "TypeScript to C++ transpiler \u2014 native, Arduino, and bare-metal targets",
   "type": "module",
   "main": "./dist/transpile.js",
   "types": "./dist/transpile.d.ts",
-  "bin": {
-    "cuttlefish": "dist/cli.js"
-  },
   "exports": {
     ".": {
       "types": "./dist/transpile.d.ts",
       "default": "./dist/transpile.js"
+    },
+    "./cli": {
+      "default": "./dist/cli.js"
     },
     "./testing": {
       "types": "./dist/testing.d.ts",
@@ -28,6 +28,10 @@
     "./board-catalog": {
       "types": "./dist/board-catalog/index.d.ts",
       "default": "./dist/board-catalog/index.js"
+    },
+    "./board-gate": {
+      "types": "./dist/board-gate.d.ts",
+      "default": "./dist/board-gate.js"
     },
     "./ui-hook": {
       "types": "./dist/ui-hook.d.ts",
@@ -107,14 +111,13 @@
     "start": "node dist/cli.js"
   },
   "dependencies": {
-    "@typecad/hal": "1.0.0-alpha.16",
     "chalk": "^6.0.0",
     "inquirer-select-pro": "^1.0.0-alpha.9",
     "typescript": "^5.7.3",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@typecad/ui": "1.0.0-alpha.16"
+    "@typecad/ui": "1.0.0-alpha.17"
   },
   "peerDependenciesMeta": {
     "@typecad/ui": {
@@ -122,7 +125,7 @@
     }
   },
   "optionalDependencies": {
-    "@typecad/expect": "1.0.0-alpha.16"
+    "serialport": "^13.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.7"

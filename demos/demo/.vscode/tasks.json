@@ -2,9 +2,9 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "cuttlefish: build + flash (debug)",
+      "label": "typecad-hal: build + flash (debug)",
       "type": "shell",
-      "command": "npx cuttlefish build --compile --upload --debug",
+      "command": "npx typecad-hal build --compile --upload --debug",
       "options": {
         "cwd": "${workspaceFolder}/src/out"
       },

@@ -1,7 +1,7 @@
 ﻿// ---------------------------------------------------------------------------
 // @typecad/debug — Breakpoint Loader
 //
-// Loads breakpoint data from .cuttlefish/breakpoints.json, which is written
+// Loads breakpoint data from .typecad-hal/breakpoints.json, which is written
 // by the VS Code extension when users set breakpoints.
 // ---------------------------------------------------------------------------
 
@@ -12,7 +12,7 @@ import type { BreakpointMap, RichBreakpoint, LegacyBreakpointMap } from './types
 /**
  * Default directory for TypeCAD debug files.
  */
-export const CUTTLEFISH_DIR = '.cuttlefish';
+export const CUTTLEFISH_DIR = '.typecad-hal';
 
 /**
  * Default filename for breakpoint data.
@@ -20,7 +20,7 @@ export const CUTTLEFISH_DIR = '.cuttlefish';
 export const BREAKPOINTS_FILE = 'breakpoints.json';
 
 /**
- * Find the .cuttlefish directory by walking up from the given directory.
+ * Find the .typecad-hal directory by walking up from the given directory.
  */
 function findCuttlefishDir(startDir: string): string | undefined {
   let currentDir = path.resolve(startDir);
@@ -43,7 +43,7 @@ function findCuttlefishDir(startDir: string): string | undefined {
 }
 
 /**
- * Load breakpoints from .cuttlefish/breakpoints.json.
+ * Load breakpoints from .typecad-hal/breakpoints.json.
  * 
  * @param sourceDir The directory containing the source file (or any directory in the project)
  * @returns BreakpointMap or undefined if no breakpoints file exists

@@ -1,7 +1,7 @@
 <script lang="ts">
   // app.ui — shadcn component-kit gallery (single-file component).
   //
-  // Every recipe from `cuttlefish add shadcn` on one device: Button (all
+  // Every recipe from `typecad-hal add shadcn` on one device: Button (all
   // variants/sizes), Badge, Card, Input, Label, Switch, Separator, Alert,
   // Skeleton, Progress, Avatar, and Table. The kit is copy-and-own CSS —
   // src/styles/shadcn.css is this project's copy, @imported below. Static
@@ -181,7 +181,7 @@
    shadcn gallery shell — scaffolding for the demo screens, expressed only
    through the kit's tokens (no second palette: re-theming shadcn.css
    restyles the whole app, including this chrome). Select the kit's dark
-   token set via themeClass:'dark' in cuttlefish.config.ts.
+   token set via themeClass:'dark' in typecad-hal.config.ts.
    ----------------------------------------------------------------------- */
 
 screen {
@@ -458,7 +458,7 @@ screen {
   <body>
     <header id="homeHeader">
       <h1 id="homeTitle">shadcn kit</h1>
-      <p id="homeSubtitle">component gallery — cuttlefish add shadcn</p>
+      <p id="homeSubtitle">component gallery — typecad-hal add shadcn</p>
     </header>
     <main class="scrollBody">
       <nav id="homeNav">

@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// main.ts — cuttlefish UI capability showcase
+// main.ts — typecad-hal UI capability showcase
 //
 // Wires the interactive elements in showcase.ui.html. Static elements (the
 // typography/box/flex/layout showcase screens) need no TS — they render from

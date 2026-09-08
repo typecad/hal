@@ -52,7 +52,7 @@ export class I2CTarget {
   }
 
   /** The 7-bit I2C address this target addresses. Exposed so I2CTarget
-   *  structurally satisfies the @typecad/simulator II2CDeviceAccessor
+   *  structurally satisfies the II2CDeviceAccessor contract (@typecad/hal/sim)
    *  contract (`readonly address`), letting the same driver function be
    *  typed against the contract and accept either a real board device or a
    *  simulated one. The transpiler strips HAL class bodies to IR, so this

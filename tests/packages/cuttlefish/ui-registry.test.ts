@@ -92,7 +92,7 @@ describe("UI module registry", () => {
     tempDirs.push(dir);
     const srcDir = path.join(dir, "src");
     fs.mkdirSync(srcDir, { recursive: true });
-    fs.writeFileSync(path.join(dir, "cuttlefish.config.ts"), "export default {};\n", "utf-8");
+    fs.writeFileSync(path.join(dir, "typecad-hal.config.ts"), "export default {};\n", "utf-8");
     fs.writeFileSync(
       path.join(srcDir, "nav.ui.html"),
       `<screen id="nav"><button ref="homeLink">Home</button></screen>`,

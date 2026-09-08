@@ -19,7 +19,7 @@
 // deeper SoC includes simply yield fewer facts — the generator's tiering
 // handles that honestly.
 //
-// Used by the catalog walker: `cuttlefish board sync` at user-sync time
+// Used by the catalog walker: `typecad-hal board sync` at user-sync time
 // against the installed Zephyr tree (and by the fixture-tree walker tests).
 // ----------------------------------------------------------------------------
 

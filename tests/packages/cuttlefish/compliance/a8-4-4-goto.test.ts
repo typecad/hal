@@ -4,7 +4,7 @@ import { transpile } from "../../../setup";
 /**
  * A8-4-4: no goto.
  *
- * Cuttlefish lowers TS labeled `break` (`break outerLoop;`) to
+ * TypeCAD lowers TS labeled `break` (`break outerLoop;`) to
  * `goto __break_<label>;` because C++ doesn't have labeled break. This is
  * the only emit site for goto. Under autosar=warn, each goto site should
  * record a deviation; under autosar=strict the build should still succeed

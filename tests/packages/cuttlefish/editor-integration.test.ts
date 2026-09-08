@@ -8,11 +8,11 @@ import { writeEditorIntegration } from "../../../packages/cuttlefish/src/create/
 const tmpDirs: string[] = [];
 
 function makeProject(withDevScript = true, preexistingSettings?: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cuttlefish-editor-"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-hal-editor-"));
   tmpDirs.push(dir);
   fs.mkdirSync(path.join(dir, ".vscode"), { recursive: true });
   if (withDevScript) {
-    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { dev: "cuttlefish build --watch" } }));
+    fs.writeFileSync(path.join(dir, "package.json"), JSON.stringify({ scripts: { dev: "typecad-hal build --watch" } }));
   }
   if (preexistingSettings) {
     fs.writeFileSync(path.join(dir, ".vscode", "settings.json"), preexistingSettings);

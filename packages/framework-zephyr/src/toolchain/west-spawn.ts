@@ -65,6 +65,12 @@ export function buildEnv(install: WestInstall): NodeJS.ProcessEnv {
   // flashing works without activation. $ZEPHYR_SDK_INSTALL_DIR (set by an
   // activated env) wins over the discovered install dir.
   const sdkRoot = env.ZEPHYR_SDK_INSTALL_DIR || install.sdkInstallDir;
+  // Pin the west/cmake child to the discovered SDK: without this, Zephyr's
+  // FindZephyr-sdk searches $HOME and can latch onto a stray, older SDK —
+  // a configure-time version failure that only surfaces in the build log.
+  if (!env.ZEPHYR_SDK_INSTALL_DIR && install.sdkInstallDir) {
+    env.ZEPHYR_SDK_INSTALL_DIR = install.sdkInstallDir;
+  }
   const openocdBin = sdkRoot ? join(sdkRoot, 'hosttools', 'openocd', 'bin') : undefined;
   const prepend = [
     openocdBin !== undefined && existsSync(openocdBin) ? openocdBin : undefined,
@@ -112,7 +118,7 @@ export function westSpawn(
       [
         'west (the Zephyr build tool) was not found.',
         '',
-        'cuttlefish looked for it on PATH, in $ZEPHYR_BASE/.venv, in common',
+        'typecad-hal looked for it on PATH, in $ZEPHYR_BASE/.venv, in common',
         'Zephyr workspace dirs (~/zephyrproject/.venv), and as a system',
         "Python module (`python -m west`). To fix:",
         '',
@@ -136,7 +142,7 @@ export function westSpawn(
   if (install.mode === 'micromamba' && install.micromambaExe) {
     // `micromamba run -n <env> west …` sets up the env's full PATH
     // (cmake/ninja/dtc) and runs the activation hook (ZEPHYR_BASE /
-    // ZEPHYR_SDK_INSTALL_DIR), so cuttlefish builds work WITHOUT the user
+    // ZEPHYR_SDK_INSTALL_DIR), so typecad-hal builds work WITHOUT the user
     // activating the env. Inject MAMBA_ROOT_PREFIX so micromamba finds envs.
     const mmEnv = { ...env };
     if (install.mambaRootPrefix) mmEnv.MAMBA_ROOT_PREFIX = install.mambaRootPrefix;

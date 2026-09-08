@@ -1,4 +1,4 @@
-import { USB0, Time, LED, PA0, ADC } from '@typecad/board';
+import { USB0, Time, LED, PA0, ADC } from '@typecad/hal';
 
 const adc = new ADC(PA0)
 USB0.open();

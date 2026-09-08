@@ -148,7 +148,7 @@ export async function runCreateWizard(
     }
     if (Object.keys(activeBoardCatalog()).length === 0) {
       console.log(`  ${chalk.yellow("!")} No board catalog on this machine — the catalog is generated`);
-      console.log(`    from your Zephyr tree. Run the installer or 'cuttlefish board sync' to`);
+      console.log(`    from your Zephyr tree. Run the installer or 'typecad-hal board sync' to`);
       console.log(`    list boards; a preseeded --board <target> still works and validates at`);
       console.log(`    the first build.`);
     }
@@ -183,7 +183,7 @@ export async function runCreateWizard(
 
     // 3. Framework. Narrow to the frameworks compatible with the selected board
     // (see framework-catalog), then let the user pick. The chosen package is
-    // installed into the new project by `cuttlefish create`, so we offer every
+    // installed into the new project by `typecad-hal create`, so we offer every
     // compatible framework regardless of what is currently installed — no
     // require.resolve discovery (which also avoided an ESM `require` pitfall
     // where the lookup always failed and made the wizard dead-end).

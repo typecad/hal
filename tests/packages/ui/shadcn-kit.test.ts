@@ -24,7 +24,7 @@ interface MiniConfig {
 }
 
 function configFor(): MiniConfig {
-  return { entry: "./app.ui", display: { themeClass: "dark" }, configPath: path.join(dir, "cuttlefish.config.ts") } as never;
+  return { entry: "./app.ui", display: { themeClass: "dark" }, configPath: path.join(dir, "typecad-hal.config.ts") } as never;
 }
 
 async function build(config: MiniConfig) {

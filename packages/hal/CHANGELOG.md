@@ -1,5 +1,58 @@
 # @typecad/hal
 
+## 1.0.0-alpha.17
+
+### Minor Changes
+
+- The user-visible rename: `cuttlefish` → `typecad-hal` everywhere a user
+  looks. Generated C++ (`CUTTLEFISH_*` macros, the `cuttlefish,` devicetree
+  compatible, `cuttlefish-gfx`, user-facts markers) keeps the engine codename
+  by design; the `@typecad/cuttlefish` engine package keeps its name (it
+  appears only in lockfiles now).
+  
+  - The single binary is `typecad-hal`, hosted on `@typecad/hal`
+    (`npx @typecad/hal create`); the engine ships no bins. Hardware tests run
+    via `typecad-hal test`.
+  - Project artifacts rename cleanly: `typecad-hal.config.ts`,
+    `typecad-hal-env.d.ts`, `typecad-hal.facts.json`, `.typecad-hal/`,
+    `typecad-hal.library.json`, `TYPECAD_HAL_*` env vars. Configs import
+    `TypecadConfig` from `@typecad/hal/config`; the `@typecad/board` legacy
+    alias is removed.
+  - CLI banner/help, editor task labels + problem-matcher owners, the debug
+    extension's activation trigger, the library npm marker keyword
+    (`typecad-hal-library`), the SDL window title, USB descriptors, and
+    sidecar tool ids all drop the codename. The machine-local board catalog
+    migrates from `.cuttlefish/` by copy (no rebuild race).
+  - West builds spawned through a PATH/venv west now pin
+    `ZEPHYR_SDK_INSTALL_DIR` to the installer's SDK — Zephyr's CMake can no
+    longer latch onto a stray older SDK in `$HOME` and fail at configure time
+    (found on hardware: ST-Link + blackpill, SDK 1.0.1 pinned vs a stray
+    0.17.4).
+- Consolidate the package graph: expect and simulator dissolve into hal + the engine.
+  
+  - The engine no longer depends on `@typecad/hal` — HAL sources and the
+    board-gate lists resolve from the project's own hal install
+    (`TYPECAD_HAL_DIR` overrides), with a lockstep version warning on skew.
+    `@typecad/hal` now depends on `@typecad/cuttlefish` (the product composes
+    the engine); `@typecad/framework-zephyr` drops its hal dependency.
+  - The hardware-test DSL ships in hal (`@typecad/hal/testing`); the host
+    runner is built into the CLI (`cuttlefish test`, `cuttlefish-test` alias)
+    and resolves the build framework from the project config instead of
+    hardcoding framework-zephyr.
+  - The simulator ships in hal (`@typecad/hal/sim`); a device build importing
+    it fails with a pointing diagnostic.
+  - Board-gate export lists are derived (index exports minus `GATED_EXPORTS`)
+    instead of hand-maintained; new hal value exports self-classify.
+  - Scaffolds list exactly `@typecad/hal` + the framework at the engine's own
+    version (no more stale hardcoded ranges, and the `undefined` dependency
+    bug fails loudly at scaffold time).
+
+### Patch Changes
+
+- Updated dependencies
+- Updated dependencies
+  - @typecad/cuttlefish@1.0.0-alpha.17
+
 ## 1.0.0-alpha.16
 
 ## 1.0.0-alpha.15

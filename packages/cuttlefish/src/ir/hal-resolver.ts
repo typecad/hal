@@ -11,6 +11,7 @@ export {
   halCtorIncludes,
   halModulesLoaded,
   isHALSingleton,
+  setHALProjectDir,
   resolveHALSourceDir,
   extractCtorFieldMap,
   extractCtorIncludes,

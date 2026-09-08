@@ -5,9 +5,9 @@
   "description": "HAL WiFi + HTTP client demos targeting Zephyr",
   "type": "module",
   "scripts": {
-    "build": "cuttlefish build",
-    "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload --monitor",
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload --monitor",
     "lint": "eslint src/"
   },
   "dependencies": {

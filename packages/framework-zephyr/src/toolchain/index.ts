@@ -10,7 +10,7 @@
 // a SDK root is discovered. See west-discover.ts / west-spawn.ts.
 //
 // The board target is carried via frameworkData.buildTarget (populated as
-// ToolchainOptions.buildTarget by the cuttlefish CLI), defaulting to the
+// ToolchainOptions.buildTarget by the typecad-hal CLI), defaulting to the
 // framework's canonical MVP target (xiao_ble).
 //
 // Mirrors framework-esp32/src/toolchain/index.ts structure: projectRoot derived
@@ -277,14 +277,14 @@ function targetFromOptions(o: ToolchainOptions): string {
   const board = (o.buildTarget as string | undefined) ?? fcTarget;
   if (!board) {
     throw new Error(
-      'No build target: set board: in cuttlefish.config.ts (or frameworkData.buildTarget for custom-board projects).',
+      'No build target: set board: in typecad-hal.config.ts (or frameworkData.buildTarget for custom-board projects).',
     );
   }
   return board;
 }
 
 /**
- * Derive the Zephyr project root from the cuttlefish-emitted source path.
+ * Derive the Zephyr project root from the typecad-hal-emitted source path.
  *
  * Cuttlefish emits `src/main.cpp` under the output dir. The CLI passes
  * `sourcePath` = full path to `main.cpp` and `outputDir` = its parent (`src/`).
@@ -313,7 +313,7 @@ const FLASH_TIMEOUT_MS = 120_000;
  * runner for its hardware (xiao_ble → nrfutil, esp32* → esptool), and `west
  * flash` resolves it automatically. The framework only intervenes where the
  * board default needs an argument it can't infer:
- *   - An explicit `zephyr.runner` (from cuttlefish.config.ts) always wins.
+ *   - An explicit `zephyr.runner` (from typecad-hal.config.ts) always wins.
  *   - ESP32 boards forward the port via `--esp-device` (esptool reads the
  *     device from it); board.cmake still picks the runner.
  *   - Every other board trusts the board.cmake default. Previously this forced
@@ -374,7 +374,7 @@ export function resolveProbeMethod(
     return {
       ok: false,
       error:
-        `cuttlefish.config.ts sets both zephyr.probe ('${probe}') and zephyr.runner ('${runner}'). ` +
+        `typecad-hal.config.ts sets both zephyr.probe ('${probe}') and zephyr.runner ('${runner}'). ` +
         `They are two ways to choose the probe method — remove one.`,
     };
   }
@@ -523,7 +523,7 @@ function openocdProbeSession(
   let cfgArgs: string[] | undefined;
   let sessionCfg: string | undefined;
   if (cfgLines && cfgLines.length > 0) {
-    sessionCfg = join(buildDir, 'cuttlefish-probe.cfg');
+    sessionCfg = join(buildDir, 'typecad-hal-probe.cfg');
   } else {
     // The board target's qualifier ('blackpill_f411ce/stm32f411xe' →
     // 'blackpill_f411ce') identifies the board dir; the vendor segment is
@@ -875,7 +875,7 @@ export const Toolchain = {
       // Custom-board generation: an MCU-only target (no board package) has no
       // upstream Zephyr board — generate one under boards/typecad/<name>/ from
       // the chip's silicon data. Opt-in via `zephyr.customBoard: true` in
-      // cuttlefish.config.ts; the board takes its name from the build target.
+      // typecad-hal.config.ts; the board takes its name from the build target.
       // Idempotent — regenerated on every compile, before the overlay pass.
       if (zc?.customBoard === true) {
         const generated = generateCustomBoard(projectRoot, chip, board.split('/')[0]);
@@ -1085,7 +1085,7 @@ export const Toolchain = {
         buildArgs.push('--', `-DDTC_OVERLAY_FILE=${overlayPath.replace(/\\/g, '/')}`);
       }
     } catch { /* no overlay — let Zephyr auto-detect or build without one */ }
-    // Append user cmake args from cuttlefish.config.ts zephyr.cmakeArgs.
+    // Append user cmake args from typecad-hal.config.ts zephyr.cmakeArgs.
     const userCmakeArgs = zc?.cmakeArgs as string[] | undefined;
     if (userCmakeArgs && userCmakeArgs.length > 0) {
       if (!buildArgs.includes('--')) buildArgs.push('--');
@@ -1111,7 +1111,7 @@ export const Toolchain = {
     const stdout = typeof result.stdout === 'string' ? result.stdout : (result.stdout?.toString() ?? '');
     const stderr = typeof result.stderr === 'string' ? result.stderr : (result.stderr?.toString() ?? '');
     const output = stdout + stderr + (pristineRetry
-      ? '\n[cuttlefish] dependency cycle detected in the cached build dir — retried with a pristine build'
+      ? '\n[typecad-hal] dependency cycle detected in the cached build dir — retried with a pristine build'
       : '');
     // Prefix the build log with how west was resolved, for transparency.
     const header = `Using west via ${inv.install.source}` +
@@ -1137,14 +1137,14 @@ export const Toolchain = {
           });
         }
       } catch (e) {
-        console.warn(`[cuttlefish] gdb debug config generation failed: ${(e as Error).message}`);
+        console.warn(`[typecad-hal] gdb debug config generation failed: ${(e as Error).message}`);
       }
     }
 
     // As-built snapshot: after a successful build, the resolved devicetree
     // at <buildDir>/zephyr/zephyr.dts carries the board's pinctrl labels —
     // the STABLE name grammar, immune to vendor macro churn. Harvest its
-    // routes into .cuttlefish/as-built.json; the next build's board-module
+    // routes into .typecad-hal/as-built.json; the next build's board-module
     // generation merges them per-pin over the catalog harvest (build wins,
     // silently when they agree). One-build freshness lag on first setup,
     // self-maintaining after. Best-effort — a missing/unparseable artifact
@@ -1156,14 +1156,14 @@ export const Toolchain = {
         const facts = parseZephyrDts(dtsText);
         const total = facts.adc.length + facts.pwm.length + facts.dac.length;
         if (total > 0) {
-          // Write beside the project's board module — the .cuttlefish dir the
+          // Write beside the project's board module — the .typecad-hal dir the
           // config loader reads from, discovered by walking up to the
           // generated board.json (the scaffold root and the config root are
           // different dirs in the standard layout: src/out vs project root).
-          let cfDir = join(projectRoot, '.cuttlefish');
+          let cfDir = join(projectRoot, '.typecad-hal');
           for (let dir = projectRoot; ; dir = dirname(dir)) {
-            if (existsSync(join(dir, '.cuttlefish', 'board.json'))) {
-              cfDir = join(dir, '.cuttlefish');
+            if (existsSync(join(dir, '.typecad-hal', 'board.json'))) {
+              cfDir = join(dir, '.typecad-hal');
               break;
             }
             const parent = dirname(dir);
@@ -1203,7 +1203,7 @@ export const Toolchain = {
         console.log(`-- west flash: stopping debug server (pid ${holder}) — flashing needs exclusive probe access`);
         killPidTree(holder);
         try {
-          rmSync(join(projectRoot, '.cuttlefish', 'debug-server.pid'), { force: true });
+          rmSync(join(projectRoot, '.typecad-hal', 'debug-server.pid'), { force: true });
         } catch { /* already gone */ }
       }
     }
@@ -1224,7 +1224,7 @@ export const Toolchain = {
     if (uploadRequiresPort(flashRunner) && !flashPort) {
       return {
         success: false,
-        output: `-- upload requires a port for ${flashRunner} flashing. Set --port <port> on the command line (or the CUTTLEFISH_PORT env var).`,
+        output: `-- upload requires a port for ${flashRunner} flashing. Set --port <port> on the command line (or the TYPECAD_HAL_PORT env var).`,
       };
     }
     if (flashRunner === 'bossac' && flashPort && chip.usb?.touchReset) {
@@ -1402,7 +1402,7 @@ export const Toolchain = {
   debugServer(o: ToolchainOptions, action: 'start' | 'stop'): void {
     const projectRoot = projectRootFromOptions(o);
     const buildDir = join(projectRoot, 'build');
-    const pidFile = join(projectRoot, '.cuttlefish', 'debug-server.pid');
+    const pidFile = join(projectRoot, '.typecad-hal', 'debug-server.pid');
 
     if (action === 'stop') {
       stopDebugServer(pidFile);
@@ -1422,8 +1422,8 @@ export const Toolchain = {
     if (stale !== undefined) {
       // Already running (pid alive): just re-emit the ready marker so the
       // task's problem matcher completes immediately.
-      console.log(`[cuttlefish] west debugserver already running (pid ${stale})`);
-      console.log(`CUTTLEFISH: debug server ready on ${DEBUG_SERVER_PORT}`);
+      console.log(`[typecad-hal] west debugserver already running (pid ${stale})`);
+      console.log(`TYPECAD_HAL: debug server ready on ${DEBUG_SERVER_PORT}`);
       return;
     }
     try { rmSync(pidFile, { force: true }); } catch { /* already gone */ }
@@ -1432,7 +1432,7 @@ export const Toolchain = {
     // cannot bind (and gdb would attach to the orphan).
     const orphan = portOwnerPid(DEBUG_SERVER_PORT);
     if (orphan !== undefined && orphan !== process.pid) {
-      console.log(`[cuttlefish] reclaiming orphaned debug server on :${DEBUG_SERVER_PORT} (pid ${orphan})`);
+      console.log(`[typecad-hal] reclaiming orphaned debug server on :${DEBUG_SERVER_PORT} (pid ${orphan})`);
       killPidTree(orphan);
     }
 
@@ -1493,9 +1493,9 @@ export const Toolchain = {
       // Own process group on POSIX so `stop` can signal the whole tree.
       ...(process.platform !== 'win32' ? { detached: true } : {}),
     });
-    mkdirSync(join(projectRoot, '.cuttlefish'), { recursive: true });
+    mkdirSync(join(projectRoot, '.typecad-hal'), { recursive: true });
     writeFileSync(pidFile, String(child.pid), 'utf-8');
-    console.log(`[cuttlefish] starting west debugserver (gdb on localhost:${DEBUG_SERVER_PORT})`);
+    console.log(`[typecad-hal] starting west debugserver (gdb on localhost:${DEBUG_SERVER_PORT})`);
     // A reader that goes away (closed task terminal, piped head) must not
     // take the server down with an EPIPE.
     process.stdout?.on?.('error', () => { /* EPIPE — server keeps running */ });
@@ -1514,7 +1514,7 @@ export const Toolchain = {
       const sock = netConnect(DEBUG_SERVER_TCL_PORT, '127.0.0.1');
       sock.once('connect', () => {
         sock.destroy();
-        console.log(`CUTTLEFISH: debug server ready on ${DEBUG_SERVER_PORT}`);
+        console.log(`TYPECAD_HAL: debug server ready on ${DEBUG_SERVER_PORT}`);
       });
       sock.once('error', () => {
         sock.destroy();
@@ -1619,10 +1619,10 @@ function stopDebugServer(pidFile: string): void {
   const pid = readStaleServerPid(pidFile) ?? portOwnerPid(DEBUG_SERVER_PORT);
   if (pid === undefined) {
     try { rmSync(pidFile, { force: true }); } catch { /* already gone */ }
-    console.log('[cuttlefish] debug server not running');
+    console.log('[typecad-hal] debug server not running');
     return;
   }
   killPidTree(pid);
   try { rmSync(pidFile, { force: true }); } catch { /* already gone */ }
-  console.log(`[cuttlefish] debug server stopped (pid ${pid})`);
+  console.log(`[typecad-hal] debug server stopped (pid ${pid})`);
 }

@@ -20,7 +20,7 @@ afterEach(() => {
 
 describe("fatal transpiler diagnostics", () => {
   it("aborts transpilation before emission for unsupported prescan features", async () => {
-    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "cuttlefish-fatal-"));
+    const workspaceDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-hal-fatal-"));
     tempDirs.push(workspaceDir);
 
     const entryPath = path.join(workspaceDir, "main.ts");

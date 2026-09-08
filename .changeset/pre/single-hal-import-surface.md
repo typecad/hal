@@ -1,0 +1,7 @@
+---
+'@typecad/cuttlefish': minor
+'@typecad/hal': minor
+'@typecad/framework-zephyr': minor
+---
+
+Single import surface: user code imports EVERYTHING from `@typecad/hal`. The generated board module (`.cuttlefish/board.ts`) now IS that specifier — the project tsconfig maps `@typecad/hal` onto it, so hardware classes, board pins, and pre-wired instances (`LED`, `USB0`, `I2C0`, …) all come from one import. The narrowed-gateway property is unchanged: hardware this board doesn't support is simply not re-exported, so importing it fails at module resolution (editor and transpile) instead of at a deep diagnostic. Details: the module reaches the implementation package through a new `@typecad/hal/core` subpath (the plain specifier would be circular under the mapping); hal ships `BOARD_UNGATED_EXPORTS`/`BOARD_UNGATED_TYPE_EXPORTS` (gate.ts) that board generators re-export verbatim, with a drift test keeping the lists in sync with hal's index; new projects get the mapping from `cuttlefish create`, and the expect preprocessor synthesizes its pin import from `@typecad/hal`. The old `@typecad/board` specifier is gone with the rename — existing sources need their `@typecad/board` imports merged into the `@typecad/hal` import (and the tsconfig mapping updated) to keep compiling. To adopt the single import in an existing project, add `"@typecad/hal": ["./.typecad-hal/board.ts"]` to the tsconfig `paths` and merge your board imports into the hal import.

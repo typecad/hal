@@ -5,9 +5,9 @@
   "description": "Native desktop demo using the TypeCAD transpiler with the SDL render layer",
   "type": "module",
   "scripts": {
-    "build": "cuttlefish build",
-    "compile": "cuttlefish build --compile",
-    "preview": "cuttlefish preview"
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "preview": "typecad-hal preview"
   },
   "dependencies": {
     "@typecad/ui": "*"

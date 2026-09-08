@@ -16,10 +16,11 @@
     "resolveJsonModule": true,
     "baseUrl": ".",
     "paths": {
-      "@typecad/board": ["./.cuttlefish/board.ts"]
+      "@typecad/hal": ["./.typecad-hal/board.ts"],
+      "@typecad/board": ["./.typecad-hal/board.ts"]
     }
   },
-  "include": ["src/**/*.ts", "cuttlefish-env.d.ts"],
+  "include": ["src/**/*.ts", "typecad-hal-env.d.ts"],
   "exclude": ["node_modules"],
   "types": []
 }

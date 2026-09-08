@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // catalog-walker.test.ts — the Zephyr boards/ tree walker behind BOTH the
 // compiled-in pack (scripts/gen-zephyr-board-data.mjs) and the runtime
-// overlay (`cuttlefish board sync`). Pins the extraction facts against a
+// overlay (`typecad-hal board sync`). Pins the extraction facts against a
 // fixture mini-tree.
 // ----------------------------------------------------------------------------
 

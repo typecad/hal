@@ -71,7 +71,7 @@ Buses have nothing to initialize: thin devices carry their facts (address, CS, s
 ## One command to flash
 
 ```bash
-npx @typecad/cuttlefish sketch.ts --compile --upload --monitor --port COM4
+npx typecad-hal sketch.ts --compile --upload --monitor --port COM4
 ```
 
 Transpile, compile, upload, and open a serial monitor in a single invocation. Or use the individual flags — `--compile` only, `--compile --upload` only — whatever fits your workflow.
@@ -97,10 +97,10 @@ Custom PCBs use a *contract project*: set `soc:` (e.g. `'stm32f411xe'`) plus a b
 ## Configure once
 
 ```typescript
-// cuttlefish.config.ts
-import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
+// typecad-hal.config.ts
+import type { TypecadConfig } from '@typecad/cuttlefish/api';
 
-const config: CuttlefishConfig = {
+const config: TypecadConfig = {
   entry:     './src/main.ts',
   board:     'esp32s3_devkitc/esp32s3/procpu',
   framework: '@typecad/framework-zephyr',
@@ -110,7 +110,7 @@ const config: CuttlefishConfig = {
 export default config;
 ```
 
-The transpiler auto-generates `cuttlefish-env.d.ts` so your editor resolves the `@typecad/board` virtual import with full IntelliSense — no `tsconfig.json` changes needed.
+The transpiler auto-generates `typecad-hal-env.d.ts` so your editor resolves the `@typecad/board` virtual import with full IntelliSense — no `tsconfig.json` changes needed.
 
 ## Zero-cost abstractions
 
@@ -124,7 +124,7 @@ TypeScript constructs that have no C++ equivalent are erased or inlined at trans
 ## Test on real hardware
 
 ```typescript
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 import { ADC_PIN, ADC_MAX } from '@typecad/test-pins';
 import { ADCChannel } from '@typecad/board';
 
@@ -140,7 +140,7 @@ done();
 ```
 
 These tests run on the actual microcontroller over serial — via
-`cuttlefish --expect` or the `cuttlefish-test` CLI from `@typecad/expect`.
+`typecad-hal build --expect` or the `typecad-hal test` CLI from `@typecad/expect`.
 The host-side runner reports pass/fail from real pin states and sensor
 readings — not mocks.
 
@@ -149,7 +149,7 @@ readings — not mocks.
 The in-memory simulator lets you develop and test firmware logic in Node.js before touching a board:
 
 ```typescript
-import { createSimBoard } from '@typecad/simulator';
+import { createSimBoard } from '@typecad/hal/sim';
 
 const board = createSimBoard({ digitalPinCount: 14 });
 // Mock I2C devices, inject serial data, verify bus traffic
@@ -198,7 +198,7 @@ Combine script, styles, and template in one file — the Svelte-compatible `.ui`
 </screen>
 ```
 
-The transpiler splits the `.ui` file into its three streams and feeds them through the existing HTML/CSS/TS pipelines. Set `entry: './src/app.ui'` in your config. `cuttlefish create` scaffolds grammar-only VS Code extensions into the project's `.vscode/extensions/` folder — `.ui` highlighting (with snippets, file icons, and ` ```ui ` markdown fences, derived from the Svelte grammar) plus the TypeCAD Debug tooling — so everything works on first open. VS Code 1.89+ prompts once to approve the workspace extensions, and newer builds with the `forceInstall` feature install them silently; a watch task with problem matchers surfaces transpiler diagnostics in the Problems panel while `npm run dev` runs. For an existing project, run `node scripts/sync-typecad-ui.mjs` from a checkout, or copy `packages/cuttlefish/assets/editor-extensions/` into `.vscode/extensions/`.
+The transpiler splits the `.ui` file into its three streams and feeds them through the existing HTML/CSS/TS pipelines. Set `entry: './src/app.ui'` in your config. `typecad-hal create` scaffolds grammar-only VS Code extensions into the project's `.vscode/extensions/` folder — `.ui` highlighting (with snippets, file icons, and ` ```ui ` markdown fences, derived from the Svelte grammar) plus the TypeCAD Debug tooling — so everything works on first open. VS Code 1.89+ prompts once to approve the workspace extensions, and newer builds with the `forceInstall` feature install them silently; a watch task with problem matchers surfaces transpiler diagnostics in the Problems panel while `npm run dev` runs. For an existing project, run `node scripts/sync-typecad-ui.mjs` from a checkout, or copy `packages/cuttlefish/assets/editor-extensions/` into `.vscode/extensions/`.
 
 ### Declarative bindings
 
@@ -389,11 +389,11 @@ Supported `@media` features: `(e-ink)`, `(update: slow|fast)`, `(monochrome)`, `
 
 ## Debug in VS Code
 
-Set breakpoints (or logpoints) in your `.ts` source files using the **TypeCAD Debug** extension in [`packages/vscode-typecad-debug`](packages/vscode-typecad-debug). `cuttlefish create` bundles its built form into every project's `.vscode/extensions/` alongside the `.ui` highlighting extension, so no separate install is needed (run `npm run sync:typecad-ui` at the repo root to refresh the vendored copies after changing it). The extension syncs breakpoints to `.cuttlefish/breakpoints.json`; then run `cuttlefish build --debug` (or `cuttlefish src/index.ts --debug`) and the transpiler injects `Serial.println` instrumentation that reports variable values and halts at each breakpoint — press ENTER over serial to continue. This is a `Serial.print`-based instrumentation shim, not a DAP debug adapter; see the extension's README for the JSON schema and limitations.
+Set breakpoints (or logpoints) in your `.ts` source files using the **TypeCAD Debug** extension in [`packages/vscode-typecad-debug`](packages/vscode-typecad-debug). `typecad-hal create` bundles its built form into every project's `.vscode/extensions/` alongside the `.ui` highlighting extension, so no separate install is needed (run `npm run sync:typecad-ui` at the repo root to refresh the vendored copies after changing it). The extension syncs breakpoints to `.typecad-hal/breakpoints.json`; then run `typecad-hal build --debug` (or `typecad-hal src/index.ts --debug`) and the transpiler injects `Serial.println` instrumentation that reports variable values and halts at each breakpoint — press ENTER over serial to continue. This is a `Serial.print`-based instrumentation shim, not a DAP debug adapter; see the extension's README for the JSON schema and limitations.
 
 ## Source maps for embedded
 
-C++ compiler errors map back to your TypeScript source automatically: during `cuttlefish build --compile`, every parsed compiler diagnostic is reported at its TypeScript file, line, and column — not the generated C++.
+C++ compiler errors map back to your TypeScript source automatically: during `typecad-hal build --compile`, every parsed compiler diagnostic is reported at its TypeScript file, line, and column — not the generated C++.
 
 ## Dead code elimination
 
@@ -411,7 +411,7 @@ cd my-project
 npm install
 ```
 
-This creates a complete project with `cuttlefish.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: any Zephyr board variant in the data pack (`esp32s3`, `xiao_ble`, `blackpill_f411ce`, `rpi_pico`, …). Custom-PCB hardware uses a contract project — set `soc:` + `contract:` in `cuttlefish.config.ts` instead of `board:`.
+This creates a complete project with `typecad-hal.config.ts`, `tsconfig.json`, a starter blink sketch, and all the right dependencies. Available boards: any Zephyr board variant in the data pack (`esp32s3`, `xiao_ble`, `blackpill_f411ce`, `rpi_pico`, …). Custom-PCB hardware uses a contract project — set `soc:` + `contract:` in `typecad-hal.config.ts` instead of `board:`.
 
 Or launch an interactive wizard:
 
@@ -422,15 +422,15 @@ npx @typecad/cuttlefish create
 ### Manual setup
 
 ```bash
-npm install @typecad/cuttlefish @typecad/hal @typecad/framework-zephyr
+npm install @typecad/hal @typecad/framework-zephyr
 ```
 
-Create `cuttlefish.config.ts`:
+Create `typecad-hal.config.ts`:
 
 ```typescript
-import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
+import type { TypecadConfig } from '@typecad/cuttlefish/api';
 
-const config: CuttlefishConfig = {
+const config: TypecadConfig = {
   entry:     './src/main.ts',
   board:     'xiao_ble/nrf52840',
   framework: '@typecad/framework-zephyr',
@@ -457,7 +457,7 @@ while (true) {
 Build and flash:
 
 ```bash
-npx @typecad/cuttlefish sketch.ts --compile --upload --port COM4
+npx typecad-hal sketch.ts --compile --upload --port COM4
 ```
 
 ---
@@ -466,21 +466,22 @@ npx @typecad/cuttlefish sketch.ts --compile --upload --port COM4
 
 ```bash
 npx @typecad/cuttlefish create [project-name] [options]   # scaffold a new project
-cuttlefish create [project-name] [options]                # scaffold via the full CLI (after install)
-cuttlefish <input.ts> [options]
-cuttlefish build                                  # use entry from cuttlefish.config.ts
-cuttlefish preview [--config <path>] [--port <p>] # browser preview for a UI project
-cuttlefish gen-decls <file.cpp|--all <dir>>       # .d.ts stubs from C++ headers
-cuttlefish doctor                                 # check the active framework's environment
-cuttlefish licenses [--all] [--strict]            # scan project libraries for SPDX licenses
-cuttlefish board sync [zephyr-base]               # rebuild the board catalog from your Zephyr tree (after west update)
-cuttlefish board regen                            # regenerate .cuttlefish/board.ts (also runs automatically on build)
-cuttlefish library <search|install|init|validate> # cuttlefish library package manager
+typecad-hal create [project-name] [options]                # scaffold via the full CLI (after install)
+typecad-hal <input.ts> [options]
+typecad-hal build                                  # use entry from typecad-hal.config.ts
+typecad-hal test [files...] [options]              # hardware tests (flashes tests/ + reports over serial)
+typecad-hal preview [--config <path>] [--port <p>] # browser preview for a UI project
+typecad-hal gen-decls <file.cpp|--all <dir>>       # .d.ts stubs from C++ headers
+typecad-hal doctor                                 # check the active framework's environment
+typecad-hal licenses [--all] [--strict]            # scan project libraries for SPDX licenses
+typecad-hal board sync [zephyr-base]               # rebuild the board catalog from your Zephyr tree (after west update)
+typecad-hal board regen                            # regenerate .typecad-hal/board.ts (also runs automatically on build)
+typecad-hal library <search|install|init|validate> # library package manager
 ```
 
-### Project scaffolding (`cuttlefish create`)
+### Project scaffolding (`typecad-hal create`)
 
-The scaffolding is built into the `cuttlefish` CLI — `npx @typecad/cuttlefish create` downloads the transpiler toolchain on demand and scaffolds a project without pulling in the full set of packages. Once installed in a project (or globally), the binary is just `cuttlefish`.
+The scaffolding is built into the `typecad-hal` CLI — `npx @typecad/cuttlefish create` downloads the transpiler toolchain on demand and scaffolds a project without pulling in the full set of packages. Once installed in a project (or globally), the binary is just `typecad-hal`.
 
 | Flag | Description |
 |---|---|

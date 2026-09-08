@@ -76,11 +76,13 @@ Output is a `GeneratedOutputs` object with generated paths and diagnostics.
 - `discoverWatchDirs()` finds relevant directories for the entry file and config file.
 - Incremental rebuilds use `packages/cuttlefish/src/incremental-cache.ts` when enabled.
 
-### 9. @typecad/expect support and preprocessing
+### 9. Hardware-test DSL support and preprocessing
 
-- Code that imports `@typecad/expect` is transformed by the preprocessor.
-- `loadExpectPreprocessor()` loads `@typecad/expect/preprocessor` lazily.
-- `runExpectTests()` is the runtime test harness invoked after transpilation/upload.
+- Code that imports `@typecad/hal/testing` (the `describe`/`done` DSL) is
+  transformed by the preprocessor (`src/test-runner/preprocessor.ts`,
+  engine-internal since the expect package dissolved).
+- `runTestRunner()` / `runExpectTests()` spawn the test-runner CLI
+  (`cuttlefish test`, alias `cuttlefish-test`).
 
 ## Common extension checklist for new transpiler features
 

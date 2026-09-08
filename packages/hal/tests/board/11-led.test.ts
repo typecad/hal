@@ -1,9 +1,9 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // @typecad-requires-roles led
 // LED alias coverage, adapted to the thin GPIO class (active-low boards are
 // honored through their led0 DT spec — set(true) is logical ON).
 import { LED_PIN } from '@typecad/test-pins';
-import { GPIO } from '@typecad/board';
+import { GPIO } from '@typecad/hal';
 
 describe("Board LED alias")
   .it("LED alias is usable as a GPIO output")

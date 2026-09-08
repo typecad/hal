@@ -1,7 +1,7 @@
 ﻿// ---------------------------------------------------------------------------
 // @typecad/hal — Project configuration types
 //
-// A `cuttlefish.config.ts` file lives at the root of a user project and tells
+// A `typecad-hal.config.ts` file lives at the root of a user project and tells
 // the transpiler which board, architecture, and build options to use.
 // ---------------------------------------------------------------------------
 
@@ -70,9 +70,9 @@ export interface CuttlefishZephyrConfig {
 }
 
 /**
- * Root configuration object exported from `cuttlefish.config.ts`.
+ * Root configuration object exported from `typecad-hal.config.ts`.
  */
-export interface CuttlefishConfig {
+export interface TypecadConfig {
   /** Entry point TypeScript file (relative to config file directory). */
   entry?: string;
 
@@ -82,10 +82,10 @@ export interface CuttlefishConfig {
   /**
    * Zephyr board target — the qualified `west build -b` argument (e.g.
    * 'esp32s3_devkitc/esp32s3/procpu'). The project-local board module
-   * (.cuttlefish/board.ts + board.json) is a derived artifact: every build
+   * (.typecad-hal/board.ts + board.json) is a derived artifact: every build
    * regenerates it when any input moves — this field, the local board
    * catalog, or the Zephyr tree the catalog was generated from. The catalog
-   * itself is always local (`cuttlefish board sync` rebuilds it from your
+   * itself is always local (`typecad-hal board sync` rebuilds it from your
    * tree); there is no compiled-in board database.
    */
   board?: string;
@@ -172,7 +172,7 @@ interface CuttlefishToolchainConfig {
 }
 
 /**
- * Configuration for the `cuttlefish-test` hardware test runner.
+ * Configuration for the `typecad-hal test` hardware test runner.
  */
 interface CuttlefishTestConfig {
   /** Glob patterns for hardware test files. */

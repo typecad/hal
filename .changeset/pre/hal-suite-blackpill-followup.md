@@ -2,7 +2,6 @@
 '@typecad/cuttlefish': minor
 '@typecad/framework-zephyr': minor
 '@typecad/hal': minor
-'@typecad/expect': minor
 ---
 
 ## HAL hardware suite follow-up: per-board configs, EEPROM removal, interrupt + validation fixes

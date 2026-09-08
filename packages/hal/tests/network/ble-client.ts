@@ -47,7 +47,7 @@ const EXPECT_TEMP = 2180;
 const EXPECT_HUMIDITY = 5500;
 const EXPECT_BATTERY = 87;
 const EXPECT_CUSTOM_UINT8 = 42;
-const EXPECT_CUSTOM_UTF8 = 'cuttlefish-ble';
+const EXPECT_CUSTOM_UTF8 = 'typecad-hal-ble';
 const EXPECT_SETPOINT_DEFAULT = 2000;
 const WRITE_SETPOINT = 2350;     // host writes this, then reads it back
 const EXPECT_NOTIFY_FIRST = 2200; // first value the peripheral pushes
@@ -122,7 +122,7 @@ async function loadCharacteristics(peripheral: noble.Peripheral): Promise<Map<st
 }
 
 async function main(): Promise<void> {
-  console.log('\n  cuttlefish BLE central (noble)');
+  console.log('\n  typecad-hal BLE central (noble)');
   console.log('  ------------------------------');
   console.log(`  scanning for advertised name "${DEVICE_NAME}"…\n`);
 

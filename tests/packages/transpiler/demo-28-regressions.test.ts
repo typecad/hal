@@ -66,7 +66,7 @@ function transpileNativeSingle(tsCode: string) {
 }
 
 // Full pipeline: build IR → call graph → reachability → filter → emit. This is
-// what `cuttlefish build` runs; the plain `transpile()` helper skips
+// what `typecad-hal build` runs; the plain `transpile()` helper skips
 // tree-shaking (filterProgramIR), so Finding C only reproduces through here.
 function transpileNativeFullPipeline(tsCode: string): string {
   setActiveStrategy(resolveStrategy("native"));

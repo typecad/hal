@@ -3,14 +3,14 @@
 //
 // Exports the parser, the board generator, and the `generateContractBoard`
 // orchestrator that the CLI calls when `config.contract` is set. The env.d.ts
-// emitted by config-loader.ts points `@typecad/board` at `./board.js`, and this
+// emitted by config-loader.ts points `@typecad/hal` at `./board.js`, and this
 // module is what writes that file.
 // ---------------------------------------------------------------------------
 
 import path from 'node:path';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
-import type { ResolvedCuttlefishConfig } from '../config-loader.js';
+import type { ResolvedTypecadConfig } from '../config-loader.js';
 import { locateZephyrBaseCheap } from '../board-catalog/index.js';
 import { parseContractFile, matchConnectedPins, selectPeripherals, contractPinNames, contractPads } from './contract-parser.js';
 import { generateBoardFile } from './board-generator.js';
@@ -45,27 +45,27 @@ interface TypeCADManifest {
 /**
  * Orchestrates contract-based board generation for a resolved config:
  *   1. Reads the contract file at `config.contract` (resolved relative to the
- *      project root, i.e. the dir containing cuttlefish.config.ts).
+ *      project root, i.e. the dir containing typecad-hal.config.ts).
  *   2. Dynamically imports the MCU package's `TypeCADManifest` to discover the
  *      canonical pin and peripheral names.
  *   3. Matches contract pins → MCU pin names and selects peripherals.
- *   4. Writes the narrowed `.cuttlefish/board.ts`.
+ *   4. Writes the narrowed `.typecad-hal/board.ts`.
  *
  * This is the step that re-opens the typecad.net → cuttlefish interop. After it
- * runs, the existing `export * from './board.js'` in cuttlefish-env.d.ts
+ * runs, the existing `export * from './board.js'` in typecad-hal-env.d.ts
  * resolves to a board exposing only the pins the actual PCB has wired.
  *
  * @throws on a missing/unreadable/unparseable contract, an unsupported version,
  *   or if the MCU package can't be loaded for its manifest.
  */
-export async function generateContractBoard(config: ResolvedCuttlefishConfig): Promise<string> {
+export async function generateContractBoard(config: ResolvedTypecadConfig): Promise<string> {
   if (!config.contract) {
     throw new Error('generateContractBoard called without config.contract');
   }
   if (!config.soc && !config.buildTarget) {
     throw new Error(
       `A 'contract' config requires a 'soc' (Zephyr SoC name) to narrow against. ` +
-        `Add e.g. soc: 'stm32f411xe' to cuttlefish.config.ts.`,
+        `Add e.g. soc: 'stm32f411xe' to typecad-hal.config.ts.`,
     );
   }
 
@@ -86,7 +86,7 @@ export async function generateContractBoard(config: ResolvedCuttlefishConfig): P
   if (!soc) {
     throw new Error(
       "Contract-based projects need a `soc:` (Zephyr SoC name, e.g. 'stm32f411xe') " +
-      "in cuttlefish.config.ts to select the silicon the contract narrows.",
+      "in typecad-hal.config.ts to select the silicon the contract narrows.",
     );
   }
   if (!config.framework) {
@@ -146,7 +146,7 @@ export async function generateContractBoard(config: ResolvedCuttlefishConfig): P
 
   // (4) Emit the soc's full board.json — the transpiler's pin map and chip
   // resolution read it (same artifact a board-target project carries).
-  const cuttlefishDir = path.join(projectDir, '.cuttlefish');
+  const cuttlefishDir = path.join(projectDir, '.typecad-hal');
   fs.mkdirSync(cuttlefishDir, { recursive: true });
   fs.writeFileSync(path.join(cuttlefishDir, 'board.json'), generated.boardJson, 'utf-8');
 

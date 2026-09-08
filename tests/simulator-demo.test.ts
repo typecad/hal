@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 import { describe, it, expect } from "vitest";
-import { createSimBoard, type SimAnalogPin, type SimPWMPin, type SimSerialPort } from "@typecad/simulator";
+import { createSimBoard, type SimAnalogPin, type SimPWMPin, type SimSerialPort } from "@typecad/hal/sim";
 
 // ===========================================================================
 // SECTION 1: FIRMWARE LOGIC

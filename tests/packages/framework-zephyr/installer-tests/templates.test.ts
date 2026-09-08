@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // The project-activation template is what makes "open a terminal -> env active"
-// work in a cuttlefish Zephyr project. Guard that the files ship, are
+// work in a typecad-hal Zephyr project. Guard that the files ship, are
 // machine-agnostic (no hardcoded user paths), and the VS Code profile wires the
 // activator with -NoExit and a workspace-relative path.
 const repoRoot = fileURLToPath(new URL('../../../../', import.meta.url));

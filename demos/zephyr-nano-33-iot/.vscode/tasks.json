@@ -1,0 +1,58 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "typecad-hal: watch build",
+      "command": "npm run dev",
+      "type": "shell",
+      "isBackground": true,
+      "group": "build",
+      "options": {
+        "env": {
+          "NO_COLOR": "1"
+        }
+      },
+      "problemMatcher": [
+        {
+          "owner": "typecad-hal-transpiler",
+          "severity": "error",
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+          ],
+          "pattern": {
+            "regexp": "^\\s*(.*?)\\s+(error|warning)(?:\\s+\\[[^\\]]*\\])?\\s*\\((\\d+),(\\d+)\\):\\s+(.*)$",
+            "file": 1,
+            "severity": 2,
+            "line": 3,
+            "column": 4,
+            "message": 5
+          },
+          "background": {
+            "beginsPattern": "Transpiling",
+            "endsPattern": "Watching for changes"
+          }
+        },
+        {
+          "owner": "typecad-hal-eslint",
+          "severity": "error",
+          "fileLocation": [
+            "relative",
+            "${workspaceFolder}"
+          ],
+          "pattern": {
+            "regexp": "^\\s*error\\s+(.*?)\\((\\d+),(\\d+)\\)\\s+\\[[^\\]]*\\]:\\s+(.*)$",
+            "file": 1,
+            "line": 2,
+            "column": 3,
+            "message": 4
+          },
+          "background": {
+            "beginsPattern": "Transpiling",
+            "endsPattern": "Watching for changes"
+          }
+        }
+      ]
+    }
+  ]
+}

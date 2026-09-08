@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // DisplayProfile — declarative description of a display's capabilities.
 //
-// Lives in the project config (cuttlefish.config.ts) or in built-in framework
+// Lives in the project config (typecad-hal.config.ts) or in built-in framework
 // profiles. Describes everything the transpiler needs to know about the
 // display hardware: dimensions, color depth, rotation, pins, touch.
 //

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Shared SPDX license-detection core
 //
-// Framework-agnostic license resolution for the `cuttlefish licenses` command.
+// Framework-agnostic license resolution for the `typecad-hal licenses` command.
 // The pure detection engine (SPDX table, marker matching, copyleft
 // classification) and the file-based license resolver (LICENSE file + source
 // header comments + an injected manifest reader) live here so every framework

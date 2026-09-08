@@ -1,10 +1,10 @@
 // @typecad-requires-roles i2cBus
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // I2C suite, adapted to the thin I2CTarget class (the ambient I2C0 bus
 // singleton and .device() chains are gone — construction carries the bus and
 // the 7-bit address). The bus has no peer attached, so register reads fail
 // safe to 0 and writes are callability smoke.
-import { I2CTarget } from '@typecad/board';
+import { I2CTarget } from '@typecad/hal';
 import { I2C_BUS } from '@typecad/test-pins';
 
 describe("I2CTarget construction")

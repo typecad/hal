@@ -10,8 +10,8 @@
 // always built first.
 //
 // devDependencies are intentionally excluded — they are not build-order inputs
-// for the published library (e.g. hal's devDependency on @typecad/expect is
-// for its hardware-test harness, not for compiling src/).
+// for the published library (e.g. framework-zephyr's devDependency on
+// @typecad/hal is for its hardware-test harness, not for compiling src/).
 
 import { readFileSync } from 'node:fs';
 import { execSync } from 'node:child_process';

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // board-catalog/sdk.ts — the installed Zephyr SDK is the source of truth.
 //
-// `cuttlefish create` gates on this: no SDK, no project. The check is
+// `typecad-hal create` gates on this: no SDK, no project. The check is
 // fs-only (the same discovery the catalog store uses) and compares the
 // installed tree against the workspace pin so a project is always created
 // against the SDK the frameworks were validated with.
@@ -28,7 +28,7 @@ export const PINNED_ZEPHYR_SDK_VERSION = '1.0.1';
 export const ZEPHYR_INSTALL_CMD = 'npx --package @typecad/framework-zephyr zephyr-installer';
 
 /** Env that disables the create-time SDK gate (tests / expert override). */
-export const SDK_CHECK_ENV = 'CUTTLEFISH_SDK_CHECK';
+export const SDK_CHECK_ENV = 'TYPECAD_HAL_SDK_CHECK';
 
 /** 'v4.4.2' → '4.4.2' (the tree's VERSION file form). */
 function revToVersion(rev: string): string {
@@ -186,7 +186,7 @@ export function checkZephyrSdk(tree?: string): SdkCheck {
 
 /**
  * The create-time gate: throw with actionable guidance unless a matching SDK
- * is installed. Suppressed by CUTTLEFISH_SDK_CHECK=off (tests / experts who
+ * is installed. Suppressed by TYPECAD_HAL_SDK_CHECK=off (tests / experts who
  * track their own tree against the looser build-time compat range).
  */
 export function assertZephyrSdkForCreate(): Extract<SdkCheck, { status: 'ok' }> | undefined {
@@ -198,14 +198,14 @@ export function assertZephyrSdkForCreate(): Extract<SdkCheck, { status: 'ok' }> 
       `No Zephyr SDK found on this machine — a project is only useful with one.\n` +
       `Install the pinned SDK (Zephyr ${check.pinnedVersion}, toolchain SDK ${PINNED_ZEPHYR_SDK_VERSION}):\n` +
       `  ${ZEPHYR_INSTALL_CMD}\n` +
-      `Then re-run 'cuttlefish create'. (Set ZEPHYR_BASE if your tree lives elsewhere.)`,
+      `Then re-run 'typecad-hal create'. (Set ZEPHYR_BASE if your tree lives elsewhere.)`,
     );
   }
   throw new Error(
     `The installed Zephyr SDK (${check.version} at ${check.tree}) does not match the\n` +
     `workspace pin (${check.pinnedVersion}). Re-pin your tree to the validated revision:\n` +
     `  ${ZEPHYR_INSTALL_CMD}            # interactive — re-checks out the pinned revision\n` +
-    `or track your own tree by setting CUTTLEFISH_SDK_CHECK=off (the build-time\n` +
+    `or track your own tree by setting TYPECAD_HAL_SDK_CHECK=off (the build-time\n` +
     `compat check still applies).`,
   );
 }

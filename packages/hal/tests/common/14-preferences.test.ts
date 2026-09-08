@@ -1,9 +1,9 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // Persistent-key suite — the ZMS/settings lowering against real on-chip
 // flash through the synthesized storage partition (boards whose DTS ships
 // no storage_partition get one near the top of flash; boards that have
 // one use their own). These roundtrips prove the whole persist path.
-import { Store } from '@typecad/board';
+import { Store } from '@typecad/hal';
 
 describe("Store int roundtrip")
   .it("setInt then getInt returns the stored value")

@@ -30,7 +30,7 @@ export interface AsBuiltFacts {
   dac: AsBuiltRoute[];
 }
 
-/** The .cuttlefish/as-built.json shape (machine-authored facts file). */
+/** The .typecad-hal/as-built.json shape (machine-authored facts file). */
 export interface AsBuiltFile {
   version: 1;
   board: string;
@@ -173,8 +173,8 @@ export function parseZephyrDts(text: string): AsBuiltFacts {
   return facts;
 }
 
-/** Parse + shape-validate .cuttlefish/as-built.json; errors name the file. */
-export function parseAsBuiltJson(text: string, source = '.cuttlefish/as-built.json'): AsBuiltFile {
+/** Parse + shape-validate .typecad-hal/as-built.json; errors name the file. */
+export function parseAsBuiltJson(text: string, source = '.typecad-hal/as-built.json'): AsBuiltFile {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);

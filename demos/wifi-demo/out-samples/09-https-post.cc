@@ -632,7 +632,7 @@ static inline const char* __tc_http_response_header(const char* name) {
 // CUTTLEFISH_HTTP_END
 
 // --- ESP32 IDF entrypoint: app_main runs setup()/loop() directly ---
-// The cuttlefish synthesizer emits setup() and loop() (it keys off
+// The typecad-hal synthesizer emits setup() and loop() (it keys off
 // entrypointFunctionName()="setup" and requiresLoopFunction()=true).
 //
 // Following the IDF-idiomatic pattern (see esp_http_client example:
@@ -669,7 +669,7 @@ void setup()
 {
   __tc_wifi_connect(WIFI_SSID, WIFI_PASSWORD, 15000);
   __tc_http_reset();
-  __tc_http_set_header("X-Device", "cuttlefish");
+  __tc_http_set_header("X-Device", "typecad-hal");
   {
     __tc_http_begin(HTTP_METHOD_GET, "https://httpbin.org/get");
     __tc_http_send();

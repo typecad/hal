@@ -8,7 +8,7 @@
       "executable": "${workspaceFolder}/src/out/build/zephyr/zephyr.elf",
       "servertype": "openocd",
       "configFiles": [
-        "${workspaceFolder}/src/out/.cuttlefish/openocd.cfg"
+        "${workspaceFolder}/src/out/.typecad-hal/openocd.cfg"
       ],
       "interface": "jtag",
       "gdbPath": "C:/Users/justi/micromamba/zephyr-sdk/zephyr-sdk-1.0.1/xtensa-espressif_esp32s3_zephyr-elf/bin/xtensa-espressif_esp32s3_zephyr-elf-gdb.exe",
@@ -23,7 +23,7 @@
         "thb main",
         "c"
       ],
-      "preLaunchTask": "cuttlefish: build + flash (debug)"
+      "preLaunchTask": "typecad-hal: build + flash (debug)"
     }
   ]
 }

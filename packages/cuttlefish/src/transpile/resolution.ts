@@ -247,16 +247,6 @@ export function resolveImport(
   boardTarget?: string,
 ): { sourcePath: string; npmPackage?: ResolvedNpmPackage; uiModule?: boolean } | undefined {
   let effectiveSpecifier = moduleSpecifier;
-  // The `@typecad/board` virtual import resolves to the project-local
-  // generated board module (.cuttlefish/board.ts) when one exists — the
-  // config's board target materialized by boardgen. Falls through to the
-  // package-based path otherwise (transition; board packages are going away).
-  if (moduleSpecifier.toLowerCase() === "@typecad/board") {
-    const generated = findGeneratedBoard(fromFile);
-    if (generated) {
-      return { sourcePath: generated.boardTs };
-    }
-  }
   void boardTarget;
 
   const localResolved = resolveLocalImport(fromFile, effectiveSpecifier);
@@ -367,6 +357,6 @@ export function isCuttlefishSDKPath(filePath: string): boolean {
     // exists for pin resolution (halInstances / board constants), never for
     // C++ emission — transpiling it would treat LED/PA5 as cross-module
     // imports instead of compile-time pin facts.
-    /\/\.cuttlefish\/board\.ts$/.test(normalized)
+    /\/\.typecad-hal\/board\.ts$/.test(normalized)
   );
 }

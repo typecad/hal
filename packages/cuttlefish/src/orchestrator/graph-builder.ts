@@ -85,7 +85,7 @@ export function topologicalSortFiles(
  * Also detects native C++ modules (.d.ts + .cpp pairs).
  * Files are returned in dependency order (dependencies before dependents).
  *
- * @param boardTarget  When provided, `@typecad/board` imports fall back to
+ * @param boardTarget  When provided, virtual board imports fall back to
  *                      this package specifier (legacy; generated boards win).
  */
 export async function collectTranspileGraph(
@@ -154,13 +154,13 @@ export async function collectTranspileGraph(
         }
         if (!moduleSpecifier) continue;
         // Cuttlefish library package: an import whose package ships a
-        // cuttlefish.library.json contributes native shims + build fragments
+        // typecad-hal.library.json contributes native shims + build fragments
         // instead of transpiling — its own TypeScript types are the contract.
         // Must precede the @typecad/* skips: scoped libraries would otherwise
         // be dropped as "SDK packages" here (the .ui script loop skips ALL
         // @typecad/* specifiers, unlike the selective main-loop skip list).
         if (registerCuttlefishLibraryFromSpecifier(filePath, moduleSpecifier)) continue;
-        if (moduleSpecifier === "@typecad/expect" || moduleSpecifier === "@typecad/ui" || isSafetyImportSpecifier(moduleSpecifier)) continue;
+        if (moduleSpecifier === "@typecad/hal/testing" || moduleSpecifier === "@typecad/ui" || isSafetyImportSpecifier(moduleSpecifier)) continue;
         if (moduleSpecifier.startsWith("@typecad/")) continue;
         const resolved = resolveImport(filePath, moduleSpecifier, boardTarget);
         if (!resolved) continue;
@@ -200,17 +200,28 @@ export async function collectTranspileGraph(
       }
 
       // Cuttlefish library package: an import whose package ships a
-      // cuttlefish.library.json contributes native shims + build fragments
+      // typecad-hal.library.json contributes native shims + build fragments
       // instead of transpiling — its own TypeScript types are the contract.
       // Checked before the @typecad/* skips so scoped libraries register.
       if (registerCuttlefishLibraryFromSpecifier(filePath, moduleSpecifier)) {
         continue;
       }
 
-      // Skip @typecad/expect — it provides type-level stubs only.
-      // The AST preprocessor rewrites all expect calls before transpilation.
-      if (moduleSpecifier === "@typecad/expect") {
+      // Skip the testing DSL (@typecad/hal/testing) — it provides type-level
+      // stubs only. The AST preprocessor rewrites all describe/expect calls
+      // before transpilation.
+      if (moduleSpecifier === "@typecad/hal/testing") {
         continue;
+      }
+
+      // The simulator is host-only (Node/vitest). A device build importing it
+      // would otherwise fail with a confusing lowering error after the broad
+      // @typecad/* skip silently drops it — fail with the fix instead.
+      if (moduleSpecifier === "@typecad/hal/sim") {
+        throw new Error(
+          `${path.basename(filePath)} imports '@typecad/hal/sim' — the simulator runs on your computer ` +
+          `(vitest, sim/), not on the board. Keep simulator imports in sim/**/*.test.ts.`,
+        );
       }
 
       // Skip @typecad/ui and the safety authoring surface — they provide
@@ -223,7 +234,7 @@ export async function collectTranspileGraph(
         continue;
       }
 
-      // Skip @typecad/board (virtual), the legacy board/mcu package prefixes, @typecad/hal,
+      // Skip the legacy board/mcu package prefixes, @typecad/hal,
       // and @typecad/framework-* — these packages ship src/ for HAL metadata
       // introspection (hal-parser.ts, board-resolver.ts) but their source
       // must NOT be transpiled to C++. The HAL resolver loads class/method
@@ -233,8 +244,7 @@ export async function collectTranspileGraph(
       // Skipping @typecad/hal is especially important: its 28 source files
       // (gpio.ts, i2c.ts, spi.ts, etc.) were all walked through full
       // buildProgramIR, adding ~40 seconds to every transpile.
-      if (moduleSpecifier === "@typecad/board"
-        || moduleSpecifier === "@typecad/hal"
+      if (moduleSpecifier === "@typecad/hal"
         || moduleSpecifier.startsWith("@typecad/board-")
         || moduleSpecifier.startsWith("@typecad/mcu-")
         || moduleSpecifier.startsWith("@typecad/framework-")) {

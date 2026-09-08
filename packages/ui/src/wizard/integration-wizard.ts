@@ -2,7 +2,7 @@
 // @typecad/ui integration wizard — `npx @typecad/ui --config`.
 //
 // Walks the user through wiring a display (and optional touch controller)
-// into their project's cuttlefish.config.ts: pick a display, answer bus/pin/
+// into their project's typecad-hal.config.ts: pick a display, answer bus/pin/
 // speed questions with hardware-aware defaults, then splice the resulting
 // `display` section into the config without touching any other section.
 // Also adds a `preview` npm script to package.json so the desktop preview
@@ -30,7 +30,7 @@ import {
   type TouchCatalogEntry,
 } from "./display-catalog.js";
 import {
-  findCuttlefishConfig,
+  findTypecadConfig,
   findSyntaxError,
   readConfigSection,
   readEntryPath,
@@ -307,9 +307,9 @@ export async function runIntegrationWizard(
     console.log(chalk.dim("  Configure a display + touch hardware for cuttlefish."));
     console.log();
 
-    const configPath = findCuttlefishConfig(cwd);
+    const configPath = findTypecadConfig(cwd);
     if (!configPath) {
-      console.log(`${chalk.yellow("!")} No ${chalk.white("cuttlefish.config.ts")} found in ${chalk.dim(cwd)} (or any parent).`);
+      console.log(`${chalk.yellow("!")} No ${chalk.white("typecad-hal.config.ts")} found in ${chalk.dim(cwd)} (or any parent).`);
       console.log();
       console.log("  Create a cuttlefish project first, then re-run the wizard:");
       console.log();
@@ -655,11 +655,11 @@ export async function runIntegrationWizard(
     console.log();
     console.log(`  ${firstStep + 1}. Compile for your board:`);
     console.log();
-    console.log(`     ${chalk.cyan("npx @typecad/cuttlefish build --compile")}`);
+    console.log(`     ${chalk.cyan("npx @typecad/typecad-hal build --compile")}`);
     console.log();
-    console.log(`  ${firstStep + 2}. Flash it (pass --port, or set CUTTLEFISH_PORT):`);
+    console.log(`  ${firstStep + 2}. Flash it (pass --port, or set TYPECAD_HAL_PORT):`);
     console.log();
-    console.log(`     ${chalk.cyan("npx @typecad/cuttlefish build --compile --upload")}`);
+    console.log(`     ${chalk.cyan("npx @typecad/typecad-hal build --compile --upload")}`);
     console.log();
 
     if (touchRecord && touchRecord.library === "XPT2046_Touchscreen") {

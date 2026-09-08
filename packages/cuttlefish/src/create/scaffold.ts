@@ -24,7 +24,7 @@ export interface KnownTarget {
   isNative: boolean;
   architecture?: ArchitectureIdentifier;
   /** Qualified Zephyr board target — the config's board: value and the
-   *  boardgen input (materialized to .cuttlefish/board.ts at create). */
+   *  boardgen input (materialized to .typecad-hal/board.ts at create). */
   board?: string;
   /** Framework package + id. Optional on embedded targets: the scaffold wizard
    *  fills these in by discovering installed @typecad/framework-* packages, so
@@ -34,7 +34,7 @@ export interface KnownTarget {
   framework?: string;
   buildTarget?: string;
   soc?: string;
-  /** Framework-specific config (becomes frameworkData in cuttlefish.config.ts).
+  /** Framework-specific config (becomes frameworkData in typecad-hal.config.ts).
    *  Carries framework-specific target/options data for the selected framework. */
   frameworkData?: Record<string, unknown>;
 }
@@ -89,11 +89,11 @@ export function scaffoldProject(
   }
 
   const srcDir = path.join(resolvedOutDir, 'src');
-  const cuttlefishDir = path.join(resolvedOutDir, '.cuttlefish');
+  const cuttlefishDir = path.join(resolvedOutDir, '.typecad-hal');
   const createdFiles: string[] = [];
 
   fs.mkdirSync(srcDir, { recursive: true });
-  // .cuttlefish/ holds generated boilerplate (env.d.ts, eslint config, board.ts)
+  // .typecad-hal/ holds generated boilerplate (env.d.ts, eslint config, board.ts)
   fs.mkdirSync(cuttlefishDir, { recursive: true });
 
   function writeFile(fileName: string, content: string): string {
@@ -105,10 +105,10 @@ export function scaffoldProject(
 
   writeFile('package.json', generateProjectPackageJson(options));
   writeFile('tsconfig.json', generateProjectTsconfig(options));
-  writeFile('cuttlefish.config.ts', generateProjectConfig(options));
-  writeFile('.cuttlefish/cuttlefish-env.d.ts', generateProjectEnvDts(options));
-  writeFile('.cuttlefish/eslint.config.mjs', generateEslintConfig(options));
-  writeFile('.cuttlefish/eslint-transpiler-rules.mjs', generateEslintRules(options));
+  writeFile('typecad-hal.config.ts', generateProjectConfig(options));
+  writeFile('.typecad-hal/typecad-hal-env.d.ts', generateProjectEnvDts(options));
+  writeFile('.typecad-hal/eslint.config.mjs', generateEslintConfig(options));
+  writeFile('.typecad-hal/eslint-transpiler-rules.mjs', generateEslintRules(options));
   writeFile('.gitignore', generateGitignore(options));
   writeFile('.editorconfig', generateEditorconfig(options));
 
@@ -119,7 +119,7 @@ export function scaffoldProject(
   for (const file of writeEditorIntegration(resolvedOutDir, undefined, true)) createdFiles.push(file);
 
   if (options.board) {
-    // Board-target projects materialize .cuttlefish/board.ts + board.json on
+    // Board-target projects materialize .typecad-hal/board.ts + board.json on
     // the first build (config-loader → the framework's board generator);
     // nothing to write here.
   }
@@ -131,7 +131,7 @@ export function scaffoldProject(
     createdFiles.push(entryPath);
   }
 
-  // Embedded projects get a starter hardware test (@typecad/expect / cuttlefish-test).
+  // Embedded projects get a starter hardware test (typecad-hal test).
   // Native projects have no serial/board path, so they get no test setup.
   if (!options.isNative) {
     const testsDir = path.join(resolvedOutDir, 'tests');
@@ -140,9 +140,9 @@ export function scaffoldProject(
     fs.writeFileSync(testPath, generateStarterTest(options), 'utf-8');
     createdFiles.push(testPath);
 
-    // Host-side simulation (@typecad/simulator + vitest). sim/ is kept separate
-    // from tests/ so `vitest run sim/` never loads the @typecad/expect no-op
-    // stubs, and `cuttlefish-test` (which globs tests/) never tries to flash a
+    // Host-side simulation (@typecad/hal/sim + vitest). sim/ is kept separate
+    // from tests/ so `vitest run sim/` never loads the testing DSL no-op
+    // stubs, and `typecad-hal test` (which globs tests/) never tries to flash a
     // simulator file as firmware.
     const simDir = path.join(resolvedOutDir, 'sim');
     fs.mkdirSync(simDir, { recursive: true });
@@ -195,7 +195,7 @@ export function printCreateNextSteps(
     if (!options.port) {
       const portHint = process.platform === 'win32' ? 'COM4' : '/dev/ttyACM0';
       console.log();
-      console.log(chalk.dim(`No serial port was set — edit ${chalk.white("cuttlefish.config.ts")} to change ${chalk.white(portHint)} to your port (or pass --port on any command).`));
+      console.log(chalk.dim(`No serial port was set — edit ${chalk.white("typecad-hal.config.ts")} to change ${chalk.white(portHint)} to your port (or pass --port on any command).`));
     }
   }
 }

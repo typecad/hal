@@ -1,8 +1,0 @@
-# Ignore everything we don't ship.
-.vscodeignore
-.gitignore
-tsconfig.json
-src/**
-node_modules/**
-**/*.map
-**/tsconfig.tsbuildinfo

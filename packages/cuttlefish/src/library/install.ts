@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Library installation — `cuttlefish library install <pkg...>`.
+// Library installation — `typecad-hal library install <pkg...>`.
 //
 // Finds the nearest project package.json (walking up from the cwd) and runs
 // npm install against it. The Windows spawn handling mirrors the typecad

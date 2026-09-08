@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // debug-artifacts.ts — create-time framework debug profile generation
 //
-// `cuttlefish create` scaffolds a project that has never been built, so the
+// `typecad-hal create` scaffolds a project that has never been built, so the
 // framework toolchain's post-build debug-artifact writer (e.g. Zephyr's
 // writeDebugConfig, which runs after a successful `west build --debug`) has
 // never had a chance to run. Without a .vscode/launch.json, pressing F5 in VS
@@ -15,7 +15,7 @@
 // the export (or targets without native debug support) are a silent no-op.
 //
 // Everything here is best-effort: a failed or skipped generation never fails
-// `cuttlefish create`, because the first `--debug` build still writes the
+// `typecad-hal create`, because the first `--debug` build still writes the
 // artifacts the hard way.
 // ---------------------------------------------------------------------------
 
@@ -28,7 +28,7 @@ import { checkZephyrSdk } from "../board-catalog/index.js";
 export interface FrameworkDebugArtifactsOptions {
   /** Framework package name (e.g. '@typecad/framework-zephyr'), if known. */
   frameworkPackage?: string;
-  /** Absolute path to the new cuttlefish project root. */
+  /** Absolute path to the new typecad-hal project root. */
   workspaceRoot: string;
   /** The framework build target (e.g. Zephyr board id), if known. */
   buildTarget?: string;

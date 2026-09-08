@@ -3,15 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "cuttlefish build",
-    "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload",
-    "monitor": "cuttlefish build --compile --upload --monitor",
-    "test:hw": "npm exec -- cuttlefish-test",
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload",
+    "monitor": "typecad-hal build --compile --upload --monitor",
+    "test:hw": "npm exec -- typecad-hal test",
     "simulate": "vitest run sim/",
-    "lint": "eslint --config .cuttlefish/eslint.config.mjs src/",
-    "dev": "cuttlefish build --watch",
-    "preview": "cuttlefish preview --config ./cuttlefish.config.ts"
+    "lint": "eslint --config .typecad-hal/eslint.config.mjs src/",
+    "dev": "typecad-hal build --watch",
+    "preview": "typecad-hal preview --config ./typecad-hal.config.ts"
   },
   "dependencies": {
     "@typecad/cuttlefish": "^1.0.0-alpha.3",
@@ -22,8 +22,6 @@
     "eslint": "^10.4.1",
     "@typescript-eslint/parser": "^8.61.0",
     "@typescript-eslint/eslint-plugin": "^8.61.0",
-    "@typecad/expect": "^1.0.0-alpha.3",
-    "@typecad/simulator": "^1.0.0-alpha.3",
     "vitest": "^4.0.18"
   }
 }

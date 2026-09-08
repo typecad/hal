@@ -1,7 +1,23 @@
+import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { ArchitectureIdentifier } from '../api/index.js';
 import { LINT_RULES } from '../ir/feature-registry.js';
 import { isBuiltinFramework } from './framework-catalog.js';
+
+/**
+ * Dependency range for the scaffolded @typecad/* entries — the engine's own
+ * version, which the whole ecosystem is lockstep-pinned to. Derived from this
+ * package's manifest at scaffold time so it never goes stale.
+ */
+function typecadRange(): string {
+  const manifest = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json');
+  const version = JSON.parse(fs.readFileSync(manifest, 'utf8')).version as string;
+  if (typeof version !== 'string' || version.length === 0) {
+    throw new Error(`Could not read the engine's own version from ${manifest}`);
+  }
+  return `^${version}`;
+}
 
 export interface CreateProjectOptions {
   projectName: string;
@@ -48,22 +64,28 @@ export interface CreateProjectOptions {
 
 export function generateProjectPackageJson(options: CreateProjectOptions): string {
   const { projectName, frameworkPackage } = options;
+  const range = typecadRange();
 
-  // @typecad/hal is needed by every build, not just embedded ones: the
-  // transpiler unconditionally warms the HAL source modules (loadHALModules in
-  // transpile.ts), and resolveHALSourceDir() throws "Could not resolve
-  // @typecad/hal/src/" if the package is absent. Embedded targets pull it in
-  // transitively (framework + board packages depend on it),
-  // but native targets have no board package, so HAL must be an explicit
-  // direct dependency here.
+  // @typecad/hal is the product package — the surface user code imports, the
+  // testing DSL ('@typecad/hal/testing') and simulator ('@typecad/hal/sim')
+  // subpaths, and (transitively) the cuttlefish engine. Every target lists it
+  // directly: the transpiler resolves the project's own hal copy for board
+  // generation and HAL source parsing.
   const deps: Record<string, string> = {
-    "@typecad/cuttlefish": "^1.0.0-alpha.3",
-    "@typecad/hal": "^1.0.0-alpha.3",
+    "@typecad/hal": range,
   };
   // Built-in frameworks (native) ship inside @typecad/cuttlefish — no
-  // separate dependency entry.
+  // separate dependency entry. An absent/empty frameworkPackage here would
+  // otherwise emit a broken `"undefined"` dependency entry; fail loudly at
+  // scaffold time instead.
   if (!isBuiltinFramework(frameworkPackage)) {
-    deps[frameworkPackage] = "^1.0.0-alpha.3";
+    if (typeof frameworkPackage !== 'string' || frameworkPackage.length === 0 || !frameworkPackage.startsWith('@')) {
+      throw new Error(
+        `Cannot scaffold project dependencies: framework package is ${JSON.stringify(frameworkPackage)} ` +
+        `(framework: ${JSON.stringify(options.framework)}). The create flow must resolve a concrete framework package.`,
+      );
+    }
+    deps[frameworkPackage] = range;
   }
 
   const depsJson = Object.entries(deps)
@@ -86,7 +108,7 @@ export function generateProjectPackageJson(options: CreateProjectOptions): strin
   //         to also compile on each change). The fast "does it typecheck"
   //         feedback loop.
   const devScripts = [
-    '"dev": "cuttlefish build --watch"',
+    '"dev": "typecad-hal build --watch"',
   ];
 
   if (options.isNative) {
@@ -96,10 +118,10 @@ export function generateProjectPackageJson(options: CreateProjectOptions): strin
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "cuttlefish build",
-    "compile": "cuttlefish build --compile",
-    "lint": "eslint --config .cuttlefish/eslint.config.mjs src/",
-    "clean": "cuttlefish clean",
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "lint": "eslint --config .typecad-hal/eslint.config.mjs src/",
+    "clean": "typecad-hal clean",
     ${devScripts.join(',\n    ')}
   },
   "dependencies": {
@@ -113,16 +135,15 @@ ${devDepsJson}
   }
 
   // Embedded projects get two host-side testing tiers:
-  //  - @typecad/expect: hardware tests run on the board via cuttlefish-test
-  //    (`npm run test:hw`), scoped to tests/**/*.test.ts.
-  //  - @typecad/simulator + vitest: simulate the board in Node (`npm run
-  //    simulate`), scoped to sim/**/*.test.ts so vitest never collides with the
-  //    @typecad/expect no-op stubs under tests/.
-  // Versions mirror the workspace's published releases / root devDeps.
+  //  - hardware tests run on the board via typecad-hal test (`npm run
+  //    test:hw`), scoped to tests/**/*.test.ts. The describe/expect DSL
+  //    ships inside @typecad/hal (its '@typecad/hal/testing' subpath) and
+  //    the runner is part of @typecad/cuttlefish — no extra package.
+  //  - vitest: simulate the board in Node (`npm run simulate`), scoped to
+  //    sim/**/*.test.ts so vitest never collides with the testing DSL's
+  //    no-op stubs under tests/.
   const devDepsJson = [
     ...baseDevDeps,
-    '    "@typecad/expect": "^1.0.0-alpha.3"',
-    '    "@typecad/simulator": "^1.0.0-alpha.3"',
     '    "vitest": "^4.0.18"',
   ].join(',\n');
   return `{
@@ -130,14 +151,14 @@ ${devDepsJson}
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "cuttlefish build",
-    "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload",
-    "monitor": "cuttlefish build --compile --upload --monitor",
-    "test:hw": "npm exec -- cuttlefish-test",
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload",
+    "monitor": "typecad-hal build --compile --upload --monitor",
+    "test:hw": "npm exec -- typecad-hal test",
     "simulate": "vitest run sim/",
-    "lint": "eslint --config .cuttlefish/eslint.config.mjs src/",
-    "clean": "cuttlefish clean",
+    "lint": "eslint --config .typecad-hal/eslint.config.mjs src/",
+    "clean": "typecad-hal clean",
     ${devScripts.join(',\n    ')}
   },
   "dependencies": {
@@ -151,15 +172,19 @@ ${devDepsJson}
 }
 
 export function generateProjectTsconfig(options: CreateProjectOptions): string {
-  // The @typecad/board virtual import resolves for board AND MCU-only targets
-  // (the transpile writes .cuttlefish/board.ts re-exporting either). The
-  // @typecad/test-pins module is board data — MCU-only targets have none.
+  // The virtual board module resolves for board AND MCU-only targets (the
+  // transpile's first build rewrites the placeholder either way). User code
+  // imports EVERYTHING from '@typecad/hal' — the mapping below points that
+  // specifier at the generated narrowed module (.typecad-hal/board.ts), so
+  // pins, pre-wired instances, and hardware classes all come from the one
+  // specifier, and hardware this board lacks fails at module resolution.
+  // The @typecad/test-pins module is board data — MCU-only targets have none.
   const hasBoard = !!options.board || !!options.soc;
   const paths = (hasBoard || options.soc)
     ? `,
     "paths": {
-      "@typecad/board": ["./.cuttlefish/board.ts"]${hasBoard ? `,
-      "@typecad/test-pins": ["./.cuttlefish/test-pins.ts"]` : ''}
+      "@typecad/hal": ["./.typecad-hal/board.ts"]${hasBoard ? `,
+      "@typecad/test-pins": ["./.typecad-hal/test-pins.ts"]` : ''}
     }`
     : '';
 
@@ -185,7 +210,7 @@ export function generateProjectTsconfig(options: CreateProjectOptions): string {
     "allowImportingTsExtensions": true,
     "rootDirs": ["src", "types"]${paths}
   },
-  "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish.config.ts", ".cuttlefish/cuttlefish-env.d.ts"${options.isNative ? '' : ', "sim/**/*.ts"'}]
+  "include": ["src/**/*.ts", "types/**/*.ts", "typecad-hal.config.ts", ".typecad-hal/typecad-hal-env.d.ts"${options.isNative ? '' : ', "sim/**/*.ts"'}]
 }
 `;
 }
@@ -211,9 +236,9 @@ export function starterAppRel(
 export function generateProjectConfig(options: CreateProjectOptions): string {
   if (options.isNative) {
     return `// ---------------------------------------------------------------------------
-// cuttlefish.config.ts — Project configuration
+// typecad-hal.config.ts — Project configuration
 //
-// Auto-generated by 'cuttlefish create'. Edit to customise your build.
+// Auto-generated by 'typecad-hal create'. Edit to customise your build.
 // ---------------------------------------------------------------------------
 
 const config = {
@@ -296,21 +321,21 @@ ${zephyrFields.join('\n')}
   },`
     : '';
 
-  // Hardware test runner configuration — used by \`npm run test:hw\` (cuttlefish-test,
-  // provided by @typecad/expect). Defaults: baudRate 115200, timeout 30000,
+  // Hardware test runner configuration — used by \`npm run test:hw\` (typecad-hal test,
+  // provided by the built-in test-runner). Defaults: baudRate 115200, timeout 30000,
   // include tests/**/*.test.ts.
   const testBaud = options.baudRate && options.baudRate !== 115200 ? `\n    baudRate: ${options.baudRate},` : '';
-  const testLine = `\n\n  // Hardware test runner (@typecad/expect / \`npm run test:hw\`)\n  test: {\n    // Serial port for the test board. Override with --port on the CLI or the\n    // CUTTLEFISH_PORT env var (e.g. CUTTLEFISH_PORT=/dev/ttyUSB0 npm run test:hw).\n    port: '${portValue}',${testBaud}\n  },`;
+  const testLine = `\n\n  // Hardware test runner (\`npm run test:hw\`)\n  test: {\n    // Serial port for the test board. Override with --port on the CLI or the\n    // TYPECAD_HAL_PORT env var (e.g. TYPECAD_HAL_PORT=/dev/ttyUSB0 npm run test:hw).\n    port: '${portValue}',${testBaud}\n  },`;
 
   return `// ---------------------------------------------------------------------------
-// cuttlefish.config.ts — Project configuration
+// typecad-hal.config.ts — Project configuration
 //
-// Auto-generated by 'cuttlefish create'. Edit to customise your build.
+// Auto-generated by 'typecad-hal create'. Edit to customise your build.
 // ---------------------------------------------------------------------------
 
-import type { CuttlefishConfig } from '@typecad/cuttlefish/api';
+import type { TypecadConfig } from '@typecad/hal/config';
 
-const config: CuttlefishConfig = {
+const config: TypecadConfig = {
   // Entry point — the main TypeScript file to transpile
   entry: './src/main.ts',
 ${socLine}${boardLine}
@@ -328,13 +353,13 @@ export default config;
 }
 
 export function generateProjectEnvDts(options: CreateProjectOptions): string {
-  // The @typecad/board virtual module resolves for board AND MCU-only targets
+  // The @typecad/hal virtual module resolves for board AND MCU-only targets
   // — the transpile's first build rewrites this placeholder either way.
   if (!options.board && !options.soc) {
     return `// ---------------------------------------------------------------------------
-// cuttlefish-env.d.ts — Global type declarations
+// typecad-hal-env.d.ts — Global type declarations
 //
-// Auto-generated by 'cuttlefish create'. Do not edit manually.
+// Auto-generated by 'typecad-hal create'. Do not edit manually.
 // ---------------------------------------------------------------------------
 
 declare global {
@@ -378,10 +403,15 @@ export {};
   }
 
   return `// ---------------------------------------------------------------------------
-// cuttlefish-env.d.ts — Virtual module declaration for '@typecad/board'
+// typecad-hal-env.d.ts — Global type declarations
 //
-// Auto-generated by 'cuttlefish create'. Do not edit manually.
-// To change the board, update cuttlefish.config.ts and re-run the transpiler.
+// Auto-generated by 'typecad-hal create'. Do not edit manually.
+// To change the board, update typecad-hal.config.ts and re-run the transpiler.
+//
+// User code imports everything from '@typecad/hal' — the tsconfig paths
+// mapping resolves that specifier
+// onto .typecad-hal/board.ts, the narrowed hardware gateway. No ambient
+// module declaration: the real package must not be shadowed.
 //
 // Board: ${options.targetDisplayName}
 // ---------------------------------------------------------------------------
@@ -422,13 +452,6 @@ declare global {
   declare function volatile<T>(value: T): T;
 }
 
-declare module '@typecad/board' {
-  export * from './board.js';
-  export type Owned<T = unknown> = T;
-  export type Shared<T = unknown> = T;
-  export type Mutable<T = unknown> = T;
-}
-
 export {};
 `;
 }
@@ -462,8 +485,7 @@ const fib10 = fibonacci(10);
 // pinout and each pin's capabilities.
 // ---------------------------------------------------------------------------
 
-import { GPIO, Time } from '@typecad/hal';
-import { ${options.starterPin} } from '@typecad/board';
+import { GPIO, Time, ${options.starterPin} } from '@typecad/hal';
 
 const led = new GPIO(${options.starterPin}, GPIO.OUTPUT);
 
@@ -491,8 +513,7 @@ while (true) {
   Time.sleep(1000);
 }
 `
-    : `import { GPIO, Time } from '@typecad/hal';
-import { LED } from '@typecad/board';
+    : `import { GPIO, Time, LED } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);
 
@@ -508,17 +529,17 @@ export function generateStarterTest(_options: CreateProjectOptions): string {
   return `// ---------------------------------------------------------------------------
 // Hardware test — Basics
 //
-// Runs on the board via \`npm run test:hw\` (cuttlefish-test). Each test file is
+// Runs on the board via \`npm run test:hw\` (typecad-hal test). Each test file is
 // transpiled, flashed to the board, and its assertions are evaluated on the host
-// over serial. Change the serial port in cuttlefish.config.ts (the \`test.port\`
-// field) or override it with the CUTTLEFISH_PORT env var.
+// over serial. Change the serial port in typecad-hal.config.ts (the \`test.port\`
+// field) or override it with the TYPECAD_HAL_PORT env var.
 //
 // API: describe(...).it(...).expect(value).<matcher>() chains. Import pin
-// objects from '@typecad/board' to assert on real hardware I/O. Every file ends
+// objects from '@typecad/hal' to assert on real hardware I/O. Every file ends
 // with done().
 // ---------------------------------------------------------------------------
 
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 
 describe("Basics")
   .it("adds two numbers")
@@ -562,7 +583,8 @@ export function generateStarterSim(options: CreateProjectOptions): string {
 // Hardware simulation — Button + LED
 //
 // Runs entirely on your computer with \`npm run simulate\` (vitest + the
-// @typecad/simulator package). No board, serial port, or west build required.
+// simulator built into @typecad/hal — its '@typecad/hal/sim' subpath). No
+// board, serial port, or west build required.
 // The simulator mirrors the pins/peripherals of your ${options.targetDisplayName}
 // (${boardType}); you inject fake inputs and assert on the outputs in Node.
 //
@@ -575,7 +597,7 @@ import {
   createSimBoard,
   type SimBoard,
   type SimDigitalPin,
-} from "@typecad/simulator";
+} from "@typecad/hal/sim";
 
 // ===========================================================================
 // FIRMWARE LOGIC
@@ -611,7 +633,7 @@ function reflectButtonOnLed(button: SimDigitalPin, led: SimDigitalPin): void {
 // ===========================================================================
 
 function setupSim(): { board: SimBoard; button: SimDigitalPin; led: SimDigitalPin } {
-  // boardType mirrors the target chosen with \`cuttlefish create\`.
+  // boardType mirrors the target chosen with \`typecad-hal create\`.
   const board = createSimBoard({ boardType: "${boardType}" });
 
   const button = board.digital(2).asInputPullUp();  // button on pin 2 (INPUT_PULLUP)
@@ -653,17 +675,17 @@ export function generateGitignore(_options: CreateProjectOptions): string {
 out/
 dist/
 *.thcppmap.json
-.cuttlefish-cache.json
+.typecad-hal-cache.json
 
 # Generated boilerplate (regenerated on build — do not commit)
-.cuttlefish/cuttlefish-env.d.ts
-.cuttlefish/eslint.config.mjs
-.cuttlefish/eslint-transpiler-rules.mjs
+.typecad-hal/typecad-hal-env.d.ts
+.typecad-hal/eslint.config.mjs
+.typecad-hal/eslint-transpiler-rules.mjs
 `;
 }
 
 export function generateEditorconfig(_options: CreateProjectOptions): string {
-  return `# Auto-generated by 'cuttlefish create'. Edit to customise your build.
+  return `# Auto-generated by 'typecad-hal create'. Edit to customise your build.
 root = true
 
 [*]
@@ -705,7 +727,7 @@ export default [
     languageOptions: {
       parser: tsparser,
       // NOTE: do NOT set parserOptions.project here. None of the rules below
-      // (no-restricted-syntax, the cuttlefish/* AST rules, no-explicit-any,
+      // (no-restricted-syntax, the typecad-hal/* AST rules, no-explicit-any,
       // no-eval, ...) consume type information, so enabling type-aware linting
       // only forces ESLint to build a full TS type-program per file — ~3.4s of
       // pure overhead on small projects with zero change to what is detected.
@@ -714,7 +736,7 @@ export default [
     },
     plugins: {
       "@typescript-eslint": tseslint,
-      cuttlefish: transpilerPlugin,
+      "typecad-hal": transpilerPlugin,
     },
     rules: {
       "no-restricted-syntax": ["error", ...transpilerRules],
@@ -731,25 +753,25 @@ export default [
         { "name": "FinalizationRegistry", "message": "[transpiler] FinalizationRegistry depends on the GC schedule — bare metal has no GC. Avoid." },
         { "name": "Symbol", "message": "[transpiler] Symbol depends on runtime symbol lookup / the iterator protocol, which has no AOT lowering. Avoid." },
       ],
-      // Cuttlefish transpiler-compatibility plugin rules.
-      "cuttlefish/no-delete-non-map": "error",
-      "cuttlefish/no-object-static-non-map": "error",
-      "cuttlefish/no-super-outside-method": "error",
-      "cuttlefish/no-typeof-non-primitive": "error",
-      "cuttlefish/no-destructured-without-init": "error",
-      "cuttlefish/no-fractional-to-number-type": "error",
-      "cuttlefish/no-array-param-content-mutation": "error",
-      "cuttlefish/no-container-functional-methods": "error",
-      "cuttlefish/no-undefined-compare-on-get": "error",
-      "cuttlefish/no-map-struct-mutation": "error",
-      "cuttlefish/no-mutating-method-on-const-collection": "warn",
-      "cuttlefish/no-readonly-loop-variable-mutation": "warn",
-      "cuttlefish/no-undefined-compare-on-struct-field": "error",
-      "cuttlefish/no-typed-array-param-length": "error",
-      "cuttlefish/no-typed-array-return": "error",
-      "cuttlefish/no-typed-array-field": "error",
-      "cuttlefish/no-dynamic-property-access": "error",
-      "cuttlefish/no-this-in-free-function": "error",
+      // Transpiler-compatibility plugin rules.
+      "typecad-hal/no-delete-non-map": "error",
+      "typecad-hal/no-object-static-non-map": "error",
+      "typecad-hal/no-super-outside-method": "error",
+      "typecad-hal/no-typeof-non-primitive": "error",
+      "typecad-hal/no-destructured-without-init": "error",
+      "typecad-hal/no-fractional-to-number-type": "error",
+      "typecad-hal/no-array-param-content-mutation": "error",
+      "typecad-hal/no-container-functional-methods": "error",
+      "typecad-hal/no-undefined-compare-on-get": "error",
+      "typecad-hal/no-map-struct-mutation": "error",
+      "typecad-hal/no-mutating-method-on-const-collection": "warn",
+      "typecad-hal/no-readonly-loop-variable-mutation": "warn",
+      "typecad-hal/no-undefined-compare-on-struct-field": "error",
+      "typecad-hal/no-typed-array-param-length": "error",
+      "typecad-hal/no-typed-array-return": "error",
+      "typecad-hal/no-typed-array-field": "error",
+      "typecad-hal/no-dynamic-property-access": "error",
+      "typecad-hal/no-this-in-free-function": "error",
     },
   },
 ];

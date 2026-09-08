@@ -15,7 +15,7 @@ const VERSION: string =
 export { VERSION };
 
 // Icons
-const ICON_CUTTLEFISH = "⤳";
+const ICON = "⤳";
 const ICON_COMPILE = "⇉";
 const ICON_UPLOAD = "↱";
 const ICON_SUCCESS = "✓";
@@ -24,11 +24,11 @@ const ICON_INFO = "•";
 const ICON_MEMORY = " ";
 
 /**
- * Print the Cuttlefish branded header
+ * Print the typecad-hal branded header
  */
 export function printHeader(): void {
   console.log();
-  console.log(chalk.cyan(`${ICON_CUTTLEFISH} Cuttlefish`) + chalk.gray(` v${VERSION}`));
+  console.log(chalk.cyan(`${ICON} typecad-hal`) + chalk.gray(` v${VERSION}`));
   console.log();
 }
 
@@ -85,7 +85,7 @@ export function printStep(message: string): void {
  * Print transpiling step
  */
 export function printTranspiling(): void {
-  console.log(chalk.cyan(`${ICON_CUTTLEFISH} Transpiling...`));
+  console.log(chalk.cyan(`${ICON} Transpiling...`));
 }
 
 /**

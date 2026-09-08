@@ -100,7 +100,7 @@ describe('generateBoard as-built merge', () => {
     expect(c['zephyr.adc.channels.0.channel']).toBe(0);
     expect(c['zephyr.adc.channels.0.pinctrl']).toBe('adc1_in0_pa0');
     expect(Object.keys(c).some((k) => /^zephyr\.pwm\.specs\.\d+\.pinctrl$/.test(k) && c[k] === 'tim4_ch1_pb6')).toBe(true);
-    expect(g.boardTs).toContain("export { ADC } from '@typecad/hal'");
+    expect(g.boardTs).toContain("export { ADC } from '@typecad/hal/core'");
     // Fingerprint moves with the applied snapshot (staleness regen).
     expect(JSON.parse(g.boardJson).source.fingerprint)
       .not.toBe(JSON.parse(plain.boardJson).source.fingerprint);

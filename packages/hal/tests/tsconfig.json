@@ -10,13 +10,13 @@
     "experimentalDecorators": true,
     "noEmit": true,
     "paths": {
-      "@typecad/expect": ["../../expect/src/index.ts"],
-      "@typecad/board": ["../../board-arduino-uno/src/index.ts"],
+      "@typecad/hal/testing": ["../src/testing/index.ts"],
+      "@typecad/hal": ["../.typecad-hal/board.ts"],
       "@typecad/*": ["../../*/src"]
     }
   },
   "include": [
     "**/*.ts",
-    "../cuttlefish-env.d.ts"
+    "../typecad-hal-env.d.ts"
   ]
 }

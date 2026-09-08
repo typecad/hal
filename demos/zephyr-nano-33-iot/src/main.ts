@@ -10,11 +10,10 @@
 //   USB0   → CDC-ACM over the micro-USB connector (zephyr_udc0 →
 //            cdc_acm_uart0, composed by the overlay generator)
 //
-// Pipeline: cuttlefish build → out/src/main.cpp → west build → west flash.
+// Pipeline: typecad-hal build → out/src/main.cpp → west build → west flash.
 // ---------------------------------------------------------------------------
 
-import { PWMLED, USB0 } from '@typecad/board';
-import { Time } from '@typecad/hal';
+import { PWMLED, USB0, Time } from '@typecad/hal';
 
 // The onboard LED rides the board-shipped pwm-led0 alias (PA17, TCC2/WO1):
 // PWMLED comes pre-constructed from the board module — setDuty drives it

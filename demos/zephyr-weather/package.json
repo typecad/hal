@@ -5,9 +5,9 @@
   "description": "BME688-style weather station UI on Zephyr (ESP32-S3 + ST7796S + FT6336U) \u2014 the framework-zephyr port of demo-weather (mocked sensor)",
   "type": "module",
   "scripts": {
-    "build": "cuttlefish build",
-    "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload"
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload"
   },
   "dependencies": {
     "@typecad/framework-zephyr": "*",

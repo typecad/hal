@@ -13,8 +13,8 @@
 // for this board, so this suite uses it all.
 // ---------------------------------------------------------------------------
 
-import { describe, done } from '@typecad/expect';
-import { GPIO, PWM, ADC, Watchdog, SPITarget, Thread, Time } from '@typecad/board';
+import { describe, done } from '@typecad/hal/testing';
+import { GPIO, PWM, ADC, Watchdog, SPITarget, Thread, Time } from '@typecad/hal';
 
 const button = new GPIO(0, GPIO.INPUT | GPIO.PULL_UP);    // GPIO0 — BOOT button (sw0, active-low)
 const out = new GPIO(21, GPIO.OUTPUT);                    // plain header pin (no LED on this board)

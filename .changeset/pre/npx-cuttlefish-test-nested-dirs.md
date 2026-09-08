@@ -1,5 +1,4 @@
 ---
-'@typecad/expect': patch
 '@typecad/framework-zephyr': patch
 ---
 

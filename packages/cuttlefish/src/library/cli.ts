@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// `cuttlefish library <subcommand>` — CLI glue for the library manager.
+// `typecad-hal library <subcommand>` — CLI glue for the library manager.
 // Subcommands: search, install, init, validate. The catalog modules own the
 // logic; this module owns argument interpretation and presentation.
 // ---------------------------------------------------------------------------
@@ -62,12 +62,12 @@ async function runSearch(options: LibraryCommandOptions): Promise<void> {
   const header = category
     ? `cuttlefish libraries — category: ${libraryCategory(category)!.label}`
     : "cuttlefish libraries";
-  console.log(chalk.green("+") + " " + chalk.white.bold(header) + chalk.gray(`  (npm keyword: cuttlefish-library${category ? ` + cuttlefish-${category}` : ""})`));
+  console.log(chalk.green("+") + " " + chalk.white.bold(header) + chalk.gray(`  (npm keyword: typecad-hal-library${category ? ` + typecad-hal-${category}` : ""})`));
   console.log();
 
   if (results.length === 0) {
     console.log(chalk.yellow("No matching library packages on npm yet."));
-    console.log(`  Scaffold the first one: ${chalk.cyan("cuttlefish library init")}`);
+    console.log(`  Scaffold the first one: ${chalk.cyan("typecad-hal library init")}`);
     return;
   }
 
@@ -88,13 +88,13 @@ async function runSearch(options: LibraryCommandOptions): Promise<void> {
     }
   }
   console.log();
-  console.log(chalk.gray(`  Install with: cuttlefish library install <name>`));
+  console.log(chalk.gray(`  Install with: typecad-hal library install <name>`));
 }
 
 function runInstall(options: LibraryCommandOptions): void {
   const names = options.positionals;
   if (names.length === 0) {
-    throw new Error("Usage: cuttlefish library install <package...>");
+    throw new Error("Usage: typecad-hal library install <package...>");
   }
   const pkgPath = findProjectPackageJson();
   if (!pkgPath) {
@@ -164,7 +164,7 @@ function runValidate(options: LibraryCommandOptions): void {
       ),
     );
   } else {
-    console.log(chalk.white.bold(`cuttlefish library validate`) + chalk.gray(`  ${report.dir}`));
+    console.log(chalk.white.bold(`typecad-hal library validate`) + chalk.gray(`  ${report.dir}`));
     console.log();
     const code = printValidationReport(report);
     if (code !== 0) {

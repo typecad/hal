@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// cuttlefish.config.ts reader/writer for the @typecad/ui integration wizard.
+// typecad-hal.config.ts reader/writer for the @typecad/ui integration wizard.
 //
 // The build's config loader (packages/cuttlefish/src/config-loader.ts) is
 // AST-based and deliberately never evaluates user code — only inline literals
@@ -13,10 +13,10 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 
-const CONFIG_FILENAME = "cuttlefish.config.ts";
+const CONFIG_FILENAME = "typecad-hal.config.ts";
 
-/** Walk up from `startDir` looking for cuttlefish.config.ts. */
-export function findCuttlefishConfig(startDir: string): string | undefined {
+/** Walk up from `startDir` looking for typecad-hal.config.ts. */
+export function findTypecadConfig(startDir: string): string | undefined {
   let dir = path.resolve(startDir);
   for (;;) {
     const candidate = path.join(dir, CONFIG_FILENAME);
@@ -89,7 +89,7 @@ function getStringLiteral(node: ts.Expression): string | undefined {
  * Find the config's default-export object literal. Accepts the same shapes as
  * the build's loader:
  *   1. `export default { ... }`
- *   2. `const config: CuttlefishConfig = { ... }; export default config;`
+ *   2. `const config: TypecadConfig = { ... }; export default config;`
  * with `as` / `satisfies` / parenthesized wrappers unwrapped.
  */
 function findConfigObjectLiteral(sourceFile: ts.SourceFile): ts.ObjectLiteralExpression | undefined {
@@ -313,7 +313,7 @@ export interface UpsertDisplayResult {
 }
 
 /**
- * Insert or replace the `display` section in a cuttlefish.config.ts source
+ * Insert or replace the `display` section in a typecad-hal.config.ts source
  * string, preserving every other section and comment. Throws when the config
  * has no recognizable default-export object literal.
  */
@@ -326,7 +326,7 @@ export function upsertDisplaySection(
   const obj = findConfigObjectLiteral(sourceFile);
   if (!obj) {
     throw new Error(
-      "cuttlefish.config.ts has no recognizable config object — expected `export default { ... }` or `const config = { ... }; export default config;`.",
+      "typecad-hal.config.ts has no recognizable config object — expected `export default { ... }` or `const config = { ... }; export default config;`.",
     );
   }
 

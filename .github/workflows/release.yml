@@ -1,0 +1,59 @@
+# Release — version + publish on merge to main, via changesets.
+#
+# Flow (the standard changesets/action contract):
+#   - A push to main WITH pending changesets (.changeset/*.md) opens/updates
+#     a "Version Packages" PR containing the bumps + changelogs.
+#   - Merging that PR (a push with NO pending changesets) runs
+#     `changeset publish` — publishing to npm, tagging, and pushing the tags.
+#   - Versioning locally and pushing works too: with no pending changesets,
+#     the action publishes whatever versions are ahead of the registry.
+#
+# Pre-release mode (.changeset/pre.json) flows through untouched: version PRs
+# keep cutting alphas until `npx changeset pre exit` is run locally.
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Serialize releases — a second push must never race a publish in flight.
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write # the action pushes the version PR and the release tags
+
+jobs:
+  release:
+    name: Version or Publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # changesets diffs against the last release tag
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22 # engines: >=22.11 — keep in lockstep with the packages
+
+      # NOTE: package-lock.json is currently gitignored in this repo, so this
+      # is `npm install`, not `npm ci`. Committing the lockfile and switching
+      # to `npm ci` makes CI installs reproducible — recommended follow-up.
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build workspaces
+        run: npm run build
+
+      - name: Test
+        run: npx vitest run
+
+      - name: Create version PR or publish
+        uses: changesets/action@v1
+        with:
+          version: npx changeset version
+          publish: npx changeset publish
+          commit: "chore: version packages"
+          title: "chore: version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

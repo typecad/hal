@@ -161,7 +161,7 @@ describe('writeDebugConfig — cortex-debug external-server artifacts', () => {
       expect(server.problemMatcher.pattern.regexp).toBe('__cuttlefish_never_matches__');
       // The matcher's endsPattern gates the debug session on the ready marker.
       expect(server.problemMatcher.background.endsPattern)
-        .toBe(`^CUTTLEFISH: debug server ready on ${DEBUG_SERVER_PORT}`);
+        .toBe(`^TYPECAD_HAL: debug server ready on ${DEBUG_SERVER_PORT}`);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -296,7 +296,7 @@ describe('writeProjectDebugArtifacts — create-time starter artifacts', () => {
       expect(cfg.gdbPath).toBeUndefined();
       expect(cfg.executable).toBe('${workspaceFolder}/src/out/build/zephyr/zephyr.elf');
       // The gdb frame-filter script needs a source map — none at create time.
-      expect(fs.existsSync(path.join(tmp, 'src', 'out', '.cuttlefish', '.cuttlefish-gdb.py'))).toBe(false);
+      expect(fs.existsSync(path.join(tmp, 'src', 'out', '.typecad-hal', '.typecad-hal-gdb.py'))).toBe(false);
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
     }
@@ -368,11 +368,11 @@ describe('writeProjectDebugArtifacts — create-time starter artifacts', () => {
 });
 
 describe('resolveDebugLocations', () => {
-  it('walks up from the Zephyr app dir to the cuttlefish project root (cuttlefish.config.ts)', () => {
+  it('walks up from the Zephyr app dir to the typecad-hal project root (typecad-hal.config.ts)', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-resloc-'));
     const appRoot = path.join(tmp, 'src', 'out');
     fs.mkdirSync(appRoot, { recursive: true });
-    fs.writeFileSync(path.join(tmp, 'cuttlefish.config.ts'), 'export default {} as any;');
+    fs.writeFileSync(path.join(tmp, 'typecad-hal.config.ts'), 'export default {} as any;');
     try {
       const { workspaceRoot, appRel } = resolveDebugLocations(appRoot);
       expect(workspaceRoot).toBe(tmp);
@@ -382,7 +382,7 @@ describe('resolveDebugLocations', () => {
     }
   });
 
-  it('falls back to projectRoot when no cuttlefish.config.ts ancestor exists', () => {
+  it('falls back to projectRoot when no typecad-hal.config.ts ancestor exists', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'zephyr-resloc-bare-'));
     try {
       const { workspaceRoot, appRel } = resolveDebugLocations(tmp);

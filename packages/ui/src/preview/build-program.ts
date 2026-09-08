@@ -3,7 +3,7 @@ import path from "node:path";
 import ts from "typescript";
 import type { DisplayProfile } from "@typecad/cuttlefish/api/shared";
 import { effectiveDisplaySize, resolveDisplayProfile, GLCDFONT_BYTES } from "@typecad/cuttlefish/api/shared";
-import { ResolvedCuttlefishConfig } from "@typecad/cuttlefish/config-loader";
+import { ResolvedTypecadConfig } from "@typecad/cuttlefish/config-loader";
 import { parseCss, parseFontFaces, parseKeyframes } from "../ui-engine/css-parser.js";
 import { expandCssImports } from "../ui-engine/css-imports.js";
 import { injectDefaultFontFaces } from "../ui-engine/default-font.js";
@@ -33,7 +33,7 @@ import type {
 } from "./types.js";
 
 export interface BuildPreviewSnapshotOptions {
-  config: ResolvedCuttlefishConfig;
+  config: ResolvedTypecadConfig;
   projectRoot: string;
 }
 
@@ -656,7 +656,7 @@ export async function buildPreviewSnapshot(options: BuildPreviewSnapshotOptions)
   const diagnostics: PreviewDiagnostic[] = [];
   const configDir = path.dirname(config.configPath);
   if (!config.entry) {
-    throw new Error(`cuttlefish preview requires an entry field in ${config.configPath}`);
+    throw new Error(`typecad-hal preview requires an entry field in ${config.configPath}`);
   }
 
   const entryFile = path.resolve(configDir, config.entry);

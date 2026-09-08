@@ -158,9 +158,9 @@ describe('boardgen tier-3 GPIO controller families', () => {
 describe('hal-parser D/A defers to pinAliasMap', () => {
   it('D0 on a board manifest resolves to the wired pin, not Arduino 0', () => {
     // buildProgramIR resets state (pinAliasMap etc.) on entry, and populates
-    // the maps from the @typecad/board import during the import phase. Use
+    // the maps from the @typecad/hal import during the import phase. Use
     // the transpile harness (which feeds boardConstants through the real
-    // path) with a .cuttlefish/board.json on disk so findGeneratedBoard
+    // path) with a .typecad-hal/board.json on disk so findGeneratedBoard
     // resolves the virtual specifier.
     const fs = require('node:fs');
     const os = require('node:os');
@@ -170,14 +170,14 @@ describe('hal-parser D/A defers to pinAliasMap', () => {
 
     const proj = fs.mkdtempSync(path.join(os.tmpdir(), 'alias-'));
     fs.mkdirSync(path.join(proj, 'src'), { recursive: true });
-    fs.mkdirSync(path.join(proj, '.cuttlefish'), { recursive: true });
+    fs.mkdirSync(path.join(proj, '.typecad-hal'), { recursive: true });
     const g = generateBoard('xiao_ble/nrf52840');
-    fs.writeFileSync(path.join(proj, '.cuttlefish', 'board.ts'), g.boardTs);
-    fs.writeFileSync(path.join(proj, '.cuttlefish', 'board.json'), g.boardJson);
+    fs.writeFileSync(path.join(proj, '.typecad-hal', 'board.ts'), g.boardTs);
+    fs.writeFileSync(path.join(proj, '.typecad-hal', 'board.json'), g.boardJson);
 
     const r = transpile([
       "import { GPIO } from '@typecad/hal';",
-      "import { D0 } from '@typecad/board';",
+      "import { D0 } from '@typecad/hal';",
       'const p = new GPIO(D0, GPIO.OUTPUT);',
       'p.set(true);',
       '',

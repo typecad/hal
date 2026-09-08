@@ -1,9 +1,9 @@
 # packages/hal/tests/network — on-hardware network suites
 
-These are `@typecad/expect` hardware tests: TypeScript that compiles to
+These are `@typecad/hal/testing` hardware tests: TypeScript that compiles to
 firmware, flashes to a board, and reports pass/fail over serial. They are
 **excluded** from the normal Vitest suite (see the root
-`vitest.config.ts` `exclude`) and run via the `cuttlefish-test` CLI.
+`vitest.config.ts` `exclude`) and run via the `typecad-hal test` CLI.
 
 ## HTTP / MQTT (`test:http` / `test:hw:http`)
 
@@ -81,7 +81,7 @@ To enter UF2 bootloader mode:
 reboot (e.g. `COM14` → `COM15`) after a UF2 flash, because Windows assigns a
 new port when the device re-appears. If the expect harness reports
 `Failed to open COM14: File not found` after a successful flash, re-list the
-ports (`cuttlefish-test` / Device Manager) and pass the post-flash port:
+ports (`typecad-hal test` / Device Manager) and pass the post-flash port:
 
 ```bash
 # After flashing, find the board's new CDC port (VID 2FE3, PID 0004):
@@ -96,7 +96,7 @@ demo peripheral directly and flash it the same way:
 
 ```bash
 cd demos/ble-demo
-npx cuttlefish ./src/08-test-server.ts --compile --upload
+npx typecad-hal ./src/08-test-server.ts --compile --upload
 ```
 
 ### Files
@@ -105,7 +105,7 @@ npx cuttlefish ./src/08-test-server.ts --compile --upload
 |---|---|---|
 | `ble-peripheral.test.ts` | firmware (peripheral) | Advertises `CuttlefishTest`, exposes the GATT table, asserts peripheral-visible state. Run with `test:hw:ble`. |
 | `ble-client.ts` | host (central) | Scans, connects, reads/writes/subscribes, prints a TAP-style summary. Run with `test:ble`. |
-| `ble-demo.config.ts` | — | `cuttlefish-test` config for the peripheral side (target, port, timeout). |
+| `ble-demo.config.ts` | — | `typecad-hal test` config for the peripheral side (target, port, timeout). |
 | `../../demos/ble-demo/src/08-test-server.ts` | firmware (peripheral) | The combined peripheral that mirrors the test's GATT table — flash standalone to debug the link without the expect harness. |
 
 ### Two-terminal flow
@@ -180,7 +180,7 @@ needed, but the process needs `CAP_NET_RAW` (run as root, or
 |---|---|
 | `No matching UF2 partitions found` | Board is in application mode, not UF2 bootloader mode. **Double-tap reset** (see "UF2 flashing" above) so the drive mounts, then re-run. |
 | `Failed to open COM14: File not found` after a successful flash | UF2 flash rebooted the board and Windows re-enumerated the CDC port (e.g. COM14 → COM15). Re-list ports (VID 2FE3) and re-run with the new port. |
-| `west flash: using runner nrfutil` / `Unable to find a board` | The `zephyr.runner: 'uf2'` config didn't reach the upload — fixed in the expect harness (upload now forwards `zephyrConfig`). Rebuild `@typecad/expect` if you see this. |
+| `west flash: using runner nrfutil` / `Unable to find a board` | The `zephyr.runner: 'uf2'` config didn't reach the upload — fixed in the expect harness (upload now forwards `zephyrConfig`). Rebuild `@typecad/hal/testing` if you see this. |
 | `Adapter never reached poweredOn` | WinUSB driver not bound (re-run Zadig), or adapter off. |
 | `scan … timed out` | Peripheral not flashed / not advertising. Check Terminal 1 shows `advertising CuttlefishTest`. |
 | `characteristic … not found` | GATT table mismatch between `08-test-server.ts` and `ble-client.ts` UUIDs. The two files must stay in sync (UUIDs + expected values are duplicated at the top of each). |

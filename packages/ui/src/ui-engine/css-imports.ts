@@ -2,7 +2,7 @@
 // CSS @import expansion — build-time stylesheet inclusion.
 //
 // Local @import statements are inlined before parsing so shared stylesheets
-// (e.g. the shadcn preset added by `cuttlefish add shadcn`) compose with
+// (e.g. the shadcn preset added by `typecad-hal add shadcn`) compose with
 // per-module CSS, like a browser resolving imports. Relative paths resolve
 // against the importing stylesheet's directory; recursion is supported with a
 // cycle guard. Remote (http/data:) imports and unreadable files are left in

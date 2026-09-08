@@ -1,6 +1,6 @@
 // Tests for the debug breakpoint loader.
 //
-// The loader reads .cuttlefish/breakpoints.json — written by the
+// The loader reads .typecad-hal/breakpoints.json — written by the
 // vscode-typecad-debug extension — and exposes loadBreakpoints() /
 // getBreakpointsForFile() to the transpiler. The flat-array format
 // { breakpoints: [...] } is the canonical extension format and is checked
@@ -26,7 +26,7 @@ afterEach(() => {
 });
 
 function makeProject(structure: 'flat-array' | 'raw-array' | 'legacy-keyed', payload: unknown): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cuttlefish-debug-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-hal-debug-'));
   tempDirs.push(root);
   fs.mkdirSync(path.join(root, CUTTLEFISH_DIR), { recursive: true });
   const content =
@@ -90,8 +90,8 @@ describe('loadBreakpoints — formats', () => {
 });
 
 describe('loadBreakpoints — discovery & robustness', () => {
-  it('walks up from a subdirectory to find .cuttlefish at project root', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cuttlefish-debug-'));
+  it('walks up from a subdirectory to find .typecad-hal at project root', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-hal-debug-'));
     tempDirs.push(root);
     fs.mkdirSync(path.join(root, 'src', 'lib'), { recursive: true });
     fs.mkdirSync(path.join(root, CUTTLEFISH_DIR), { recursive: true });
@@ -105,15 +105,15 @@ describe('loadBreakpoints — discovery & robustness', () => {
     expect(map!['index.ts']).toEqual([{ file: 'index.ts', line: 5, condition: undefined, logMessage: undefined }]);
   });
 
-  it('returns undefined when no .cuttlefish directory exists', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cuttlefish-debug-'));
+  it('returns undefined when no .typecad-hal directory exists', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-hal-debug-'));
     tempDirs.push(root);
 
     expect(loadBreakpoints(root)).toBeUndefined();
   });
 
   it('returns undefined when the directory exists but the file does not', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cuttlefish-debug-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-hal-debug-'));
     tempDirs.push(root);
     fs.mkdirSync(path.join(root, CUTTLEFISH_DIR), { recursive: true });
 
@@ -121,7 +121,7 @@ describe('loadBreakpoints — discovery & robustness', () => {
   });
 
   it('returns undefined (and does not throw) on malformed JSON', () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cuttlefish-debug-'));
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'typecad-hal-debug-'));
     tempDirs.push(root);
     fs.mkdirSync(path.join(root, CUTTLEFISH_DIR), { recursive: true });
     fs.writeFileSync(path.join(root, CUTTLEFISH_DIR, BREAKPOINTS_FILE), '{ not valid json');

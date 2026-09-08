@@ -13,7 +13,7 @@ When you assign an `Owned` variable to another variable or pass it to a function
 ### Example: Ownership Transfer
 ```typescript
 // Owned<T> / Shared<T> / Mutable<T> are ambient global types — no import needed.
-import { UART0 } from '@typecad/board';
+import { UART0 } from '@typecad/hal';
 
 const buffer: Owned<Uint8Array> = new Uint8Array([1, 2, 3]);
 

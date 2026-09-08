@@ -25,8 +25,7 @@ new I2CTarget('I2C0', 0x3C).writeReg(0x00, 0x55);
 TypeCAD provides an exclusive acquisition pattern. When you `take()` a bus, you receive a handle that uniquely owns that resource.
 
 ```typescript
-import { I2CTarget } from '@typecad/hal';
-import { I2C0 } from '@typecad/board';
+import { I2CTarget, I2C0 } from '@typecad/hal';
 
 // Claim exclusive access (a compile-time marker — no runtime call is emitted)
 I2C0.take();

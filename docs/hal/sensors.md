@@ -1,6 +1,6 @@
 # Sensors
 
-Cuttlefish ships a generic sensor interface that covers every Zephyr sensor driver through one class — no per-part package, no devicetree text, and no Kconfig edits. Part identity comes from a generated catalog derived from Zephyr's own binding files, so any Zephyr sample or binding doc greps straight into your code.
+TypeCAD ships a generic sensor interface that covers every Zephyr sensor driver through one class — no per-part package, no devicetree text, and no Kconfig edits. Part identity comes from a generated catalog derived from Zephyr's own binding files, so any Zephyr sample or binding doc greps straight into your code.
 
 ---
 
@@ -9,8 +9,7 @@ Cuttlefish ships a generic sensor interface that covers every Zephyr sensor driv
 Construct a sensor from a part token and a bus device, then `fetch()` a sample and `get()` channels from it:
 
 ```typescript
-import { I2C0, SPI0, ANY_PIN } from '@typecad/board';
-import { Sensor, SENSOR, CHAN } from '@typecad/hal';
+import { I2C0, SPI0, ANY_PIN, Sensor, SENSOR, CHAN } from '@typecad/hal';
 
 // SHT3X temp/humidity breakout at I2C address 0x44
 const sht3x = new Sensor(SENSOR.sensirion_sht3xd, I2C0.device(0x44));

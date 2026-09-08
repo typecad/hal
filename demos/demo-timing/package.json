@@ -5,9 +5,9 @@
   "description": "Time API showcase \u2014 Time.sleep/now/nowUs/busyWaitUs and kernel Threads on a Seeed XIAO nRF52840",
   "type": "module",
   "scripts": {
-    "build": "cuttlefish build",
-    "compile": "cuttlefish build --compile",
-    "upload": "cuttlefish build --compile --upload"
+    "build": "typecad-hal build",
+    "compile": "typecad-hal build --compile",
+    "upload": "typecad-hal build --compile --upload"
   },
   "dependencies": {
     "@typecad/framework-zephyr": "*"

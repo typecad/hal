@@ -14,7 +14,7 @@ once a second.
 | USB CDC console | — | `USBConsole` (`USB0`) — board-gated: the board must declare a USB device controller |
 
 ```ts
-import { USB0, Time, LED, PA0, ADC } from '@typecad/board';
+import { USB0, Time, LED, PA0, ADC } from '@typecad/hal';
 
 const adc = new ADC(PA0)
 USB0.open();
@@ -29,7 +29,7 @@ while (true) {
 ## Pipeline
 
 ```
-TypeScript  →  cuttlefish build  →  generated C++  →  west build  →  west flash
+TypeScript  →  typecad-hal build  →  generated C++  →  west build  →  west flash
 ```
 
 Transpile only (no Zephyr SDK needed):
@@ -47,7 +47,7 @@ npm run upload     # → compile, then west flash via the selected probe
 
 ## Flashing the Black Pill
 
-Two supported paths, selected by the `zephyr` section in `cuttlefish.config.ts`:
+Two supported paths, selected by the `zephyr` section in `typecad-hal.config.ts`:
 
 **ST-Link (SWD) — the demo's default.** The config sets
 `zephyr: { probe: 'stlink' }` — `stlink` is one of the board's named probe
@@ -61,7 +61,7 @@ just works — no BOOT0 dance, and the target is reset to run after flashing.
 **USB DFU (no probe).** The STM32F411 ships with a DFU bootloader in ROM:
 hold **BOOT0**, tap **NRST**, release, and the board enumerates as a DFU
 device. Remove the `zephyr` section (the board's default probe is dfu) — or
-override one-off with `npx cuttlefish build --compile --upload --probe dfu`
+override one-off with `npx typecad-hal build --compile --upload --probe dfu`
 — and run `npm run upload`. On Windows a one-time
 [Zadig](https://zadig.akeo.ie/) driver install may be needed for the DFU
 device.

@@ -295,7 +295,7 @@ describe('value ops nested in another HAL call (resolved-op record regression)',
     // 'gpio0' default — a nodelabel no STM32 devicetree defines.
     const result = transpileBlackpill(`
       import { GPIO } from '@typecad/hal';
-      import { USB0 } from '@typecad/board';
+      import { USB0 } from '@typecad/hal';
       const key = new GPIO(21, GPIO.INPUT | GPIO.PULL_UP);
       USB0.open();
       USB0.writeLine(\`k: \${key.get()}\`);
@@ -316,7 +316,7 @@ describe('value ops nested in another HAL call (resolved-op record regression)',
     // lowered read text still referenced them.
     const result = transpileBlackpill(`
       import { GPIO, UART } from '@typecad/hal';
-      import { USB0 } from '@typecad/board';
+      import { USB0 } from '@typecad/hal';
       const gps = new UART('UART0');
       const flag = new GPIO(21, GPIO.OUTPUT);
       USB0.open();

@@ -150,8 +150,8 @@ function makeDebugProject(): string {
     "",
     "out = work(21);",
   ].join("\n"));
-  fs.mkdirSync(path.join(dir, ".cuttlefish"), { recursive: true });
-  fs.writeFileSync(path.join(dir, ".cuttlefish", "breakpoints.json"), JSON.stringify({
+  fs.mkdirSync(path.join(dir, ".typecad-hal"), { recursive: true });
+  fs.writeFileSync(path.join(dir, ".typecad-hal", "breakpoints.json"), JSON.stringify({
     version: 1,
     breakpoints: [
       { file: "main.ts", line: 5 },
@@ -174,7 +174,7 @@ describe("generic debug path end-to-end (transpileFile)", () => {
     const result = await transpileFile({
       inputFile: path.join(dir, "main.ts"),
       emitMode: "cpp",
-      // Real native projects set framework in cuttlefish.config.ts — the
+      // Real native projects set framework in typecad-hal.config.ts — the
       // emitting strategy (NativeStrategy) decides tree-shaking and includes.
       frameworkPackage: "@typecad/framework-native",
       emitMaps: false,

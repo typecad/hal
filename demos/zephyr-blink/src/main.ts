@@ -8,11 +8,10 @@
 // delay() (same k_msleep underneath).
 //
 // Top-level statements lower straight into main(); the explicit while (true)
-// is the program's loop (the shape `cuttlefish create` scaffolds).
+// is the program's loop (the shape `typecad-hal create` scaffolds).
 // ---------------------------------------------------------------------------
 
-import { LED } from '@typecad/board';
-import { GPIO, Time } from '@typecad/hal';
+import { LED, GPIO, Time } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);
 

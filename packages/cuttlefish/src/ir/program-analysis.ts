@@ -263,7 +263,7 @@ function analyzeExpression(
       if (/\bmillis\s*\(/.test(expr.value) || /\bmicros\s*\(/.test(expr.value)) {
         result.usesWallClock = true;
       }
-      // Test-runner console helpers (@typecad/expect's preprocessor injects
+      // Test-runner console helpers (the test-runner preprocessor injects
       // __tc_print/__tc_println calls into the source). Track them as polyfill
       // helpers so frameworks can gate their definitions (and <cstdio>) on use.
       if (expr.value.includes("__tc_println(")) {

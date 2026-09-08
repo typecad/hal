@@ -8,7 +8,7 @@ LED honors its `GPIO_ACTIVE_LOW` flag via `gpio_pin_set_dt`).
 ## What it does
 
 ```ts
-import { LED } from '@typecad/board';
+import { LED } from '@typecad/hal';
 import { GPIO, Time } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);
@@ -22,7 +22,7 @@ while (true) {
 ## Pipeline
 
 ```
-TypeScript  →  cuttlefish build  →  generated C++  →  west build  →  west flash
+TypeScript  →  typecad-hal build  →  generated C++  →  west build  →  west flash
 ```
 
 Transpile only (no Zephyr SDK needed):

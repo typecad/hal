@@ -6,9 +6,10 @@
 // CONTRACT (custom PCB spec) — and emits the two artifacts a project
 // carries instead of a board package:
 //
-//   .cuttlefish/board.ts   — typed pin/bus/LED/BUTTON exports (the virtual
-//                            @typecad/board module points here)
-//   .cuttlefish/board.json — the BoardConstants flat map (pins.all.*,
+//   .typecad-hal/board.ts   — typed pin/bus/LED/BUTTON exports (the virtual
+//                            '@typecad/hal' module resolves here via the
+//                            project tsconfig — the single import surface)
+//   .typecad-hal/board.json — the BoardConstants flat map (pins.all.*,
 //                            peripherals.*, zephyr.*) the transpiler's
 //                            resolveChipFromBoard reconstructs its chip
 //                            view from
@@ -22,7 +23,7 @@
 // matrices) are absent for every board alike.
 //
 // Pure: returns the file contents; the caller (cuttlefish config-loader via
-// the strategy hook, or `cuttlefish board regen`) writes them.
+// the strategy hook, or `typecad-hal board regen`) writes them.
 // ----------------------------------------------------------------------------
 
 import type { BoardDataEntry } from '@typecad/cuttlefish/board-catalog';
@@ -36,6 +37,7 @@ import {
   socBusLabelsFromTree,
 } from '@typecad/cuttlefish/board-catalog';
 import type { ZephyrGpioController, ZephyrProbeMethod } from './chips/types.js';
+import { getBoardGateData } from '@typecad/cuttlefish/board-gate';
 
 /** A generated pin: schematic name, JS-safe identifier, HAL number. */
 interface GenPin {
@@ -56,7 +58,7 @@ export interface GeneratedBoard {
 
 /**
  * The catalog lookups resolve against the local overlay — the user's own
- * Zephyr tree (`cuttlefish board sync`, auto-refreshed when the tree
+ * Zephyr tree (`typecad-hal board sync`, auto-refreshed when the tree
  * moves). There is no compiled-in database: a machine with no tree and no
  * overlay has no boards, and the error below says exactly that.
  */
@@ -65,7 +67,7 @@ function activeBoardData(): Record<string, BoardDataEntry> {
   if (!data) {
     throw new Error(
       `No board catalog on this machine. The catalog is generated from your Zephyr tree —\n` +
-      `run 'cuttlefish board sync' (or point CUTTLEFISH_BOARD_CATALOG at a catalog file).`,
+      `run 'typecad-hal board sync' (or point TYPECAD_HAL_BOARD_CATALOG at a catalog file).`,
     );
   }
   return data;
@@ -439,7 +441,7 @@ export function parsePinName(soc: string, name: string): { controller: string; p
  * generated off the installed SDK's tree) and contract records (custom PCB
  * specs) both route through here.
  */
-// ── User facts (cuttlefish.facts.json) ──────────────────────────────────────
+// ── User facts (typecad-hal.facts.json) ──────────────────────────────────────
 // The project-local escape hatch: facts the pipeline has not (or cannot)
 // harvest, declared per board and merged into the manifest BEFORE anything
 // else runs — board module exports, capability flags, validation, lowering
@@ -464,13 +466,13 @@ export interface UserBoardFacts {
   };
 }
 
-/** The whole cuttlefish.facts.json shape. */
+/** The whole typecad-hal.facts.json shape. */
 export interface UserFactsFile {
   boards: Record<string, UserBoardFacts>;
 }
 
 /** Parse + shape-validate the facts file; a clear error names the file. */
-export function parseUserFactsJson(text: string, source = 'cuttlefish.facts.json'): UserFactsFile {
+export function parseUserFactsJson(text: string, source = 'typecad-hal.facts.json'): UserFactsFile {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -511,7 +513,11 @@ export function buildModule(
   userFacts?: UserBoardFacts,
   factsSuffix = '',
   seedWarnings: readonly string[] = [],
-): GeneratedBoard {  const soc = socOfTarget(entry.identifier);
+): GeneratedBoard {
+  // The ungated surface is derived from the project's own hal copy — same
+  // resolution (project → cwd → monorepo sibling) as the engine's HAL parser.
+  const { ungated: BOARD_UNGATED_EXPORTS, ungatedTypes: BOARD_UNGATED_TYPE_EXPORTS } = getBoardGateData();
+  const soc = socOfTarget(entry.identifier);
   const conv = namingConvFor(soc);
 
   // ── Controller table + datasheet sweep (the same for every board) ──────
@@ -667,7 +673,7 @@ export function buildModule(
       if (!adcSources.includes(r.source)) adcSources.push(r.source);
     }
   }
-  // User facts (cuttlefish.facts.json) — the escape hatch. User routes win
+  // User facts (typecad-hal.facts.json) — the escape hatch. User routes win
   // PER PIN over every harvested source above, and each takeover is warned.
   // Seeded with the pinctrl harvest's own lint results (name↔value
   // disagreements — routes dropped as untrustworthy upstream of here).
@@ -735,7 +741,7 @@ export function buildModule(
     }
     if (siliconDac.length > 0 && !dacSources.includes('dac')) dacSources.push('dac');
   }
-  // User facts (cuttlefish.facts.json): dac channels win per pin, and the
+  // User facts (typecad-hal.facts.json): dac channels win per pin, and the
   // declared device joins the sources (no analogDevices cross-check — the
   // user vouches for it).
   if (userFacts?.dac) {
@@ -858,7 +864,7 @@ export function buildModule(
     ...pins.map((p) => p.ident),
     'LED',
     'BUTTON',
-    // '@typecad/hal' imports — a connector silkscreen label can literally be
+    // '@typecad/hal/core' imports — a connector silkscreen label can literally be
     // 'Pin' (phyBOARD-Atlas), and `export const Pin` merges with the import.
     'Pin',
     'I2CBus',
@@ -866,6 +872,9 @@ export function buildModule(
     'UART',
     'USBConsole',
     'PWM',
+    // The ungated re-export block: a label colliding with any re-exported
+    // hal name would be a duplicate module export.
+    ...BOARD_UNGATED_EXPORTS,
   ]);
   buses.i2c.forEach((_, i) => reservedNames.add(`I2C${i}`));
   buses.spi.forEach((_, i) => reservedNames.add(`SPI${i}`));
@@ -880,34 +889,44 @@ export function buildModule(
   }
 
   const ts: string[] = [];
-  ts.push(`// GENERATED by cuttlefish boardgen from the Zephyr board catalog —`);
+  ts.push(`// GENERATED by typecad-hal boardgen from the Zephyr board catalog —`);
   ts.push(`// ${entry.identifier} (${entry.name}, ${entry.vendor}).`);
-  ts.push(`// Regenerate with: npx cuttlefish board regen`);
+  ts.push(`// Regenerate with: npx typecad-hal board regen`);
   ts.push('');
-  ts.push(`import { Pin, I2CBus, SPIBus, UART${hasUsb ? ', USBConsole' : ''}${pwmLedSpecs.length > 0 ? ', PWM' : ''} } from '@typecad/hal';`);
+  // The generated module IS the user's '@typecad/hal' (the project tsconfig
+  // maps that specifier here), so it reaches the implementation package via
+  // the './core' subpath — the one specifier the paths mapping does not
+  // capture, avoiding a circular self-reference.
+  ts.push(`import { Pin, I2CBus, SPIBus, UART${hasUsb ? ', USBConsole' : ''}${pwmLedSpecs.length > 0 ? ', PWM' : ''} } from '@typecad/hal/core';`);
   ts.push('');
   // ── Hardware-class gateway ─────────────────────────────────────────────
-  // The board module is the NARROWED surface: every hardware class re-export
-  // here exists only when this board's facts support it, so importing
-  // unavailable hardware fails at module resolution (editor + transpile)
-  // instead of at a deep diagnostic. '@typecad/hal' stays the implementation
-  // package; user code imports hardware from '@typecad/board'.
+  // This module is the NARROWED surface behind the user's '@typecad/hal'
+  // import: every hardware class gated on board facts is re-exported below
+  // only when this board's facts support it, so importing unavailable
+  // hardware fails at module resolution (editor + transpile) instead of at
+  // a deep diagnostic. Everything not gated (the lists hal ships in
+  // gate.ts) is re-exported verbatim so the full authoring surface stays
+  // importable from the same specifier ('@typecad/hal' is the one specifier —
+  // the old '@typecad/board' alias was removed with the rename).
+  ts.push('// Always-available HAL surface (not gated on board facts).');
+  ts.push(`export { ${BOARD_UNGATED_EXPORTS.join(', ')} } from '@typecad/hal/core';`);
+  ts.push(`export type { ${BOARD_UNGATED_TYPE_EXPORTS.join(', ')} } from '@typecad/hal/core';`);
+  ts.push('');
   ts.push('// Hardware this board actually has — unavailable hardware is not importable.');
-  ts.push(`export { GPIO, Thread, Time, Sensor } from '@typecad/hal';`);
-  if (wdtNodeLabel) ts.push(`export { Watchdog } from '@typecad/hal';`);
-  if (siliconPwm.length > 0 || pwmLedSpecs.length > 0 || pwmMatrix) ts.push(`export { PWM } from '@typecad/hal';`);
-  if (siliconAdc.length > 0) ts.push(`export { ADC } from '@typecad/hal';`);
-  if (siliconDac.length > 0) ts.push(`export { DAC } from '@typecad/hal';`);
-  if (buses.i2c.length > 0) ts.push(`export { I2CTarget } from '@typecad/hal';`);
-  if (buses.spi.length > 0) ts.push(`export { SPITarget } from '@typecad/hal';`);
-  if (buses.uart.length > 0) ts.push(`export { UART } from '@typecad/hal';`);
-  if (hwtimerControllers.length > 0) ts.push(`export { Counter } from '@typecad/hal';`);
-  if (hasUsb) ts.push(`export { USBConsole } from '@typecad/hal';`);
+  if (wdtNodeLabel) ts.push(`export { Watchdog } from '@typecad/hal/core';`);
+  if (siliconPwm.length > 0 || pwmLedSpecs.length > 0 || pwmMatrix) ts.push(`export { PWM } from '@typecad/hal/core';`);
+  if (siliconAdc.length > 0) ts.push(`export { ADC } from '@typecad/hal/core';`);
+  if (siliconDac.length > 0) ts.push(`export { DAC } from '@typecad/hal/core';`);
+  if (buses.i2c.length > 0) ts.push(`export { I2CTarget } from '@typecad/hal/core';`);
+  if (buses.spi.length > 0) ts.push(`export { SPITarget } from '@typecad/hal/core';`);
+  if (buses.uart.length > 0) ts.push(`export { UART } from '@typecad/hal/core';`);
+  if (hwtimerControllers.length > 0) ts.push(`export { Counter } from '@typecad/hal/core';`);
+  if (hasUsb) ts.push(`export { USBConsole } from '@typecad/hal/core';`);
   // Store/File: a persisted backend needs a storage region — either the
   // board's own storage_partition (harvested reg) or a synthesizable one
   // (flash size known, no existing partition to collide with).
   if (entry.storageReg || (entry.flashKb && !entry.hasStoragePartition)) {
-    ts.push(`export { Store, File } from '@typecad/hal';`);
+    ts.push(`export { Store, File } from '@typecad/hal/core';`);
   }
   ts.push('');
   if (pins.length > 0) {
@@ -1234,7 +1253,7 @@ export function buildModule(
     constants,
     // Source fingerprint: covers the record content, the extraction
     // revision, and the tree provenance (when the record came from a
-    // catalog). `cuttlefish build` recomputes it cheaply and regenerates
+    // catalog). `typecad-hal build` recomputes it cheaply and regenerates
     // this module when it moves — a board change in the config, the catalog
     // overlay, or the Zephyr tree itself recreates the module.
     source: {
@@ -1264,8 +1283,8 @@ export function generateBoard(
   if (!found) {
     const hint = loadBoardCatalogOverlay()
       ? `'${target}' is not a board target in the current catalog. ` +
-        `It may be new in your Zephyr tree — run 'cuttlefish board sync' and retry.`
-      : `No board catalog on this machine. Run 'cuttlefish board sync' first.`;
+        `It may be new in your Zephyr tree — run 'typecad-hal board sync' and retry.`
+      : `No board catalog on this machine. Run 'typecad-hal board sync' first.`;
     throw new Error(hint);
   }
   // The as-built snapshot (this project's last successful build's resolved
@@ -1286,7 +1305,7 @@ export function generateBoard(
       asBuiltWarnings.push(`ignoring as-built snapshot: ${(err as Error).message}`);
     }
   }
-  // The project's cuttlefish.facts.json, when present: the section for THIS
+  // The project's typecad-hal.facts.json, when present: the section for THIS
   // board merges into the manifest (user routes win per pin), and the raw
   // text hashes into the module's source fingerprint so edits regenerate.
   let facts: UserBoardFacts | undefined;

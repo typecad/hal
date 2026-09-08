@@ -1,7 +1,7 @@
 # @typecad/zephyr-esp32s3-rgb
 
 The onboard WS2812 ("NeoPixel") RGB LED of the ESP32-S3 DevKitC, as a
-cuttlefish library package for the **Zephyr RTOS** framework.
+typecad-hal library package for the **Zephyr RTOS** framework.
 
 ```sh
 npm install @typecad/zephyr-esp32s3-rgb
@@ -23,7 +23,7 @@ buffer locally; nothing reaches the LED until `show()` (or `off()`).
 
 The native Zephyr path for this LED touches devicetree bindings, pinctrl,
 DMA, and Kconfig before the first blink. This package moves that complexity
-into itself, as three declarative artifacts (see `cuttlefish.library.json`):
+into itself, as three declarative artifacts (see `typecad-hal.library.json`):
 
 | Artifact | File | What it does |
 |---|---|---|
@@ -31,10 +31,10 @@ into itself, as three declarative artifacts (see `cuttlefish.library.json`):
 | Devicetree overlay | `shims/tc-rgb.overlay` | WS2812 node on GPIO48 through the I2S0 peripheral (`worldsemi,ws2812-i2s`, GRB color-mapping, DMA channel 3) |
 | Kconfig | manifest `kconfig` | `CONFIG_LED_STRIP=y`, `CONFIG_I2S=y`, `CONFIG_DMA=y` |
 
-When your program imports the package, the cuttlefish transpiler:
+When your program imports the package, the typecad-hal transpiler:
 
 1. registers the import as a library (the package root carries a
-   `cuttlefish.library.json`) and skips transpiling its TypeScript — the
+   `typecad-hal.library.json`) and skips transpiling its TypeScript — the
    package's own types are the compile-time contract;
 2. emits `#include "__tc_rgbled.h"` into your `main.cpp` and writes the shim
    files into the generated `src/` (CMake picks the `.cpp` up automatically);
@@ -43,7 +43,7 @@ When your program imports the package, the cuttlefish transpiler:
 
 The I2S backend is upstream Zephyr's own configuration for this board
 (`samples/drivers/led/led_strip`), adapted verbatim — it borrows the I2S0
-peripheral and DMA channel 3, which nothing else in a cuttlefish Zephyr
+peripheral and DMA channel 3, which nothing else in a typecad-hal Zephyr
 project uses. The alternative SPI backend would collide with `spi.*` HAL
 usage; the ESP32-S3's dedicated RMT peripheral has no upstream Zephyr driver.
 
@@ -61,7 +61,7 @@ usage; the ESP32-S3's dedicated RMT peripheral has no upstream Zephyr driver.
 
 ## Writing a sibling library
 
-This package is the template: an npm package with a `cuttlefish.library.json`
+This package is the template: an npm package with a `typecad-hal.library.json`
 manifest (`module`, `framework`, `targets`, `include`, `gateToken`, `shims`,
 `kconfig`, `overlay`), a types-only TypeScript API, and the native artifacts.
 The mechanism is per-library: another target or peripheral ships its own

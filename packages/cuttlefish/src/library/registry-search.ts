@@ -1,10 +1,10 @@
 // ---------------------------------------------------------------------------
-// npm registry search for cuttlefish library packages — the discovery client
-// behind `cuttlefish library search`.
+// npm registry search for typecad-hal library packages — the discovery client
+// behind `typecad-hal library search`.
 //
 // Ports the concept from the typecad binary's `typecad package` command: the
 // npm registry's search endpoint is the catalog, keywords are the taxonomy.
-// The marker keyword (cuttlefish-library) is always part of the query; a
+// The marker keyword (typecad-hal-library) is always part of the query; a
 // category narrows it; free text ANDs on top. The endpoint ANDs `keywords:`
 // terms, so the composition needs no client-side filtering.
 // ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ export function buildLibrarySearchQuery(text?: string, categoryId?: string): str
 }
 
 /**
- * Search npm for cuttlefish library packages. `size` caps results (registry
+ * Search npm for typecad-hal library packages. `size` caps results (registry
  * max is 250). Throws on HTTP failure — the CLI surfaces the message.
  */
 export async function searchLibraryPackages(

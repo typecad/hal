@@ -12,7 +12,7 @@
 //       applied to every array/string-mutator regex, so `.push`/`.shift`/
 //       `.unshift`/`.sort`/`.map`/etc. on a member receiver were all broken.
 //       Fix: a shared `RECV` pattern (`[\w$]+(?:->\w+|\.\w+)*`) that matches
-//       the full member-access chain, in `cuttlefish/src/frameworks/native/strategy.ts`
+//       the full member-access chain, in `typecad-hal/src/frameworks/native/strategy.ts`
 //       `normalizeRawExpression`.
 //
 //   B — A free function called from a class-method body — but only when the

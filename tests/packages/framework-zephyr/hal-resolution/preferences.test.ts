@@ -88,7 +88,7 @@ describe('preferences lowering — typed get (expressions)', () => {
 
 describe('preferences lowering — classification', () => {
   // Statement ops produce { code }; value-returning ops produce { expression }.
-  // This is the contract the cuttlefish synthesizer relies on to decide
+  // This is the contract the typecad-hal synthesizer relies on to decide
   // whether to emit the result inline (expression) or as a standalone line
   // (statement). Getting it wrong either drops a return value or fails to
   // compile (an expression used as a statement).

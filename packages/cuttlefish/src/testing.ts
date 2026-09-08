@@ -22,7 +22,7 @@ export type { ComplianceMode, SelfCheckFinding, Deviation } from "./emit/complia
 export {
   findConfigFile,
   parseConfigFile,
-  loadCuttlefishConfig,
+  loadTypecadConfig,
   generateVirtualTypeDeclaration,
 } from "./config-loader.js";
 

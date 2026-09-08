@@ -1,6 +1,6 @@
 # demo-shadcn
 
-The **canonical UI demonstration** for the Cuttlefish UI package — everything
+The **canonical UI demonstration** for the TypeCAD UI package — everything
 the engine can do, themed end-to-end by the shadcn component kit. Runs on an
 ESP32-S3 + ST7796S panel (same board and wiring as `zephyr-ui`) and in the
 browser preview at the panel's true 480×320 rgb565 — colors, scroll physics,
@@ -35,7 +35,7 @@ and the AA font all render exactly what the hardware shows.
 ```sh
 npm run build                 # transpile (passes --autosar=strict)
 npm run preview               # browser preview, device-faithful 480x320 rgb565
-npm run compile               # cuttlefish build --compile (west toolchain)
+npm run compile               # typecad-hal build --compile (west toolchain)
 ```
 
 ## Theming
@@ -44,7 +44,7 @@ npm run compile               # cuttlefish build --compile (west toolchain)
   (copy-and-own, like shadcn/ui itself).
 - `app.ui`'s `<style>` does `@import "./styles/shadcn.css"` and adds the
   demo's screen chrome, expressed only through the kit's tokens.
-- `themeClass: 'dark'` in `cuttlefish.config.ts` selects the dark token set;
+- `themeClass: 'dark'` in `typecad-hal.config.ts` selects the dark token set;
   flip to `'light'` (or remove it) and **refresh the preview** — the server
   re-reads the config on every snapshot build.
 - Paste any stock shadcn/tweakcn theme into the `:root`/`.dark` blocks —

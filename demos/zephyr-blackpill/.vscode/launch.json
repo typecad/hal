@@ -16,8 +16,8 @@
         "monitor reset init",
         "thb main"
       ],
-      "preLaunchTask": "cuttlefish: debug server (west)",
-      "postDebugTask": "cuttlefish: stop debug server"
+      "preLaunchTask": "typecad-hal: debug server (west)",
+      "postDebugTask": "typecad-hal: stop debug server"
     }
   ]
 }

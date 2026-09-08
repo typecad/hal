@@ -11,8 +11,7 @@ Calls work in three styles: **blocking** at the top level, **event-callback** (`
 `WiFi` is a *link policy*: `new WiFi(ssid, opts)` captures credentials, security, band/channel, join deadline, power-save, and (optionally) static IPv4. `join()` lowers those facts onto `wifi_connect_req_params` and then waits — bounded by `timeoutMs` — for the L4 connected flag (raised after DHCP, or immediately when static IPv4 facts are configured).
 
 ```typescript
-import { WiFi } from '@typecad/hal';
-import { UART0 } from '@typecad/board';
+import { WiFi, UART0 } from '@typecad/hal';
 
 const wifi = new WiFi('HomeNet', { psk: 'hunter22', timeoutMs: 30000 });
 if (wifi.join()) {
@@ -80,7 +79,7 @@ for (let i = 0; i < results.count(); i++) {
 ```typescript
 import { WiFiAP } from '@typecad/hal';
 
-const ap = new WiFiAP('cuttlefish-setup', { psk: 'config123', channel: 6 });
+const ap = new WiFiAP('typecad-hal-setup', { psk: 'config123', channel: 6 });
 ap.start();
 // ... provisioning ...
 ap.stop();
@@ -96,7 +95,7 @@ ap.stop();
 import { Request } from '@typecad/hal';
 
 const req = new Request('GET', 'http://192.168.2.184:8080/health');
-req.header('X-Device', 'cuttlefish');
+req.header('X-Device', 'typecad-hal');
 if (req.send()) {
   UART0.writeLine(req.status());              // 200
   UART0.writeLine(req.ok());                  // true when 2xx

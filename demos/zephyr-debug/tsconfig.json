@@ -20,8 +20,9 @@
     "allowImportingTsExtensions": true,
     "rootDirs": ["src", "types"],
     "paths": {
-      "@typecad/board": ["./.cuttlefish/board.ts"]
+      "@typecad/hal": ["./.typecad-hal/board.ts"],
+      "@typecad/board": ["./.typecad-hal/board.ts"]
     }
   },
-  "include": ["src/**/*.ts", "types/**/*.ts", "cuttlefish.config.ts", ".cuttlefish/cuttlefish-env.d.ts", "sim/**/*.ts"]
+  "include": ["src/**/*.ts", "types/**/*.ts", "typecad-hal.config.ts", ".typecad-hal/typecad-hal-env.d.ts", "sim/**/*.ts"]
 }

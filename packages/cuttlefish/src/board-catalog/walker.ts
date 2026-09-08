@@ -8,7 +8,7 @@
 // keyed by the identifier.
 //
 // This is the ONE walker shared by the catalog producer:
-//   - `cuttlefish board sync` regenerates the machine-local catalog
+//   - `typecad-hal board sync` regenerates the machine-local catalog
 //     overlay from the user's own Zephyr tree, so board add/change/remove
 //     tracks `west update` instead of cuttlefish releases. (There is no
 //     compiled-in pack anymore — the overlay is the only catalog.)

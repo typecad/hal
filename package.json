@@ -6,11 +6,8 @@
     "packages/cuttlefish",
     "packages/hal",
     "packages/framework-zephyr",
-    "packages/expect",
     "packages/ui",
-    "packages/simulator",
-    "packages/zephyr-esp32s3-rgb",
-    "packages/vscode-typecad-debug"
+    "packages/zephyr-esp32s3-rgb"
   ],
   "scripts": {
     "clean": "node -e \"const{readdirSync,rmSync}=require('fs');for(const p of readdirSync('packages')){rmSync('packages/'+p+'/dist',{recursive:true,force:true});rmSync('packages/'+p+'/tsconfig.tsbuildinfo',{force:true})}\"",
@@ -24,9 +21,9 @@
     "test:ui-layout": "vitest run tests/packages/cuttlefish/ui-layout-harness.test.ts",
     "test:hw": "npm run test:hw --workspace @typecad/hal",
     "test:http": "tsx packages/hal/tests/network/start-server.ts",
-    "test:hw:http": "cd packages/hal/tests/network && npm exec -- cuttlefish-test http-client.test.ts",
+    "test:hw:http": "cd packages/hal/tests/network && npm exec -- typecad-hal test http-client.test.ts",
     "test:ble": "tsx packages/hal/tests/network/ble-client.ts",
-    "test:hw:ble": "cd packages/hal/tests/network && npm exec -- cuttlefish-test --config ble-demo.config.ts ble-peripheral.test.ts",
+    "test:hw:ble": "cd packages/hal/tests/network && npm exec -- typecad-hal test --config ble-demo.config.ts ble-peripheral.test.ts",
     "changeset": "changeset",
     "version": "changeset version",
     "sync:typecad-ui": "node scripts/sync-typecad-ui.mjs",

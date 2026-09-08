@@ -1,8 +1,7 @@
 // 07 — AP fallback (provisioning-lite). Zephyr has no HAL-side saved-
 // credential layer; this shows the station-join + AP-fallback pattern.
 // Persist credentials via Zephyr settings subsystem outside the HAL if needed.
-import { WiFi, WiFiAP, Time } from '@typecad/hal';
-import { UART0 } from '@typecad/board';
+import { WiFi, WiFiAP, Time, UART0 } from '@typecad/hal';
 
 const wifi = new WiFi("HomeNet", { psk: "hunter22", timeoutMs: 15000 });
 

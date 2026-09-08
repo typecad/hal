@@ -31,7 +31,7 @@ const COMMON = {
 describe('Sensor thin class — construction facts reach the lowering', () => {
   it('fetch/get lower to sensor_sample_fetch / sensor_channel_get with DT device handles', () => {
     const result = transpile(`
-      import { I2C0 } from '@typecad/board';
+      import { I2C0 } from '@typecad/hal';
       import { Sensor, SENSOR, CHAN } from '@typecad/hal';
       const sht3x = new Sensor(SENSOR.sensirion_sht3xd, I2C0.device(0x44));
       sht3x.fetch();
@@ -54,7 +54,7 @@ describe('Sensor thin class — construction facts reach the lowering', () => {
 
   it('SPI construction + opts resolve with the CS-pin DT naming', () => {
     const result = transpile(`
-      import { SPI0 } from '@typecad/board';
+      import { SPI0 } from '@typecad/hal';
       import { Sensor, SENSOR, CHAN } from '@typecad/hal';
       const bme = new Sensor(SENSOR.bosch_bme280, SPI0.device(4), { spiHz: 10000000 });
       bme.fetch();
@@ -68,7 +68,7 @@ describe('Sensor thin class — construction facts reach the lowering', () => {
 
   it('template literals interpolate sensor doubles as %g and escape literal %', () => {
     const result = transpile(`
-      import { I2C0 } from '@typecad/board';
+      import { I2C0 } from '@typecad/hal';
       import { Sensor, SENSOR, CHAN } from '@typecad/hal';
       const s = new Sensor(SENSOR.sensirion_sht3xd, I2C0.device(0x44));
       s.fetch();
@@ -87,7 +87,7 @@ describe('Sensor thin class — construction facts reach the lowering', () => {
 
   it('sensor.get results interpolate through a captured variable as %g', () => {
     const result = transpile(`
-      import { I2C0 } from '@typecad/board';
+      import { I2C0 } from '@typecad/hal';
       import { Sensor, SENSOR, CHAN } from '@typecad/hal';
       const s = new Sensor(SENSOR.sensirion_sht3xd, I2C0.device(0x44));
       s.fetch();

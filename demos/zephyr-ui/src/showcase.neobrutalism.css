@@ -4,7 +4,7 @@
    Because display.themeCss replaces the sibling .ui.css entirely, this single
    file holds everything: @font-face, the :root/.dark token palette, @keyframes,
    and every element rule. Select the dark palette via themeClass:'dark' in
-   cuttlefish.config.ts.
+   typecad-hal.config.ts.
    ----------------------------------------------------------------------- */
 
 @font-face {

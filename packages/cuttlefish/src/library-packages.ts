@@ -2,7 +2,7 @@
 // Cuttlefish library packages
 //
 // A library package is an npm package whose root carries a
-// `cuttlefish.library.json` manifest. It contributes native artifacts to the
+// `typecad-hal.library.json` manifest. It contributes native artifacts to the
 // generated firmware application:
 //
 //   - an include mapping (the import emits `#include` of the shim header)
@@ -37,7 +37,7 @@ export interface CuttlefishLibraryShim {
   outName: string;
 }
 
-/** The parsed `cuttlefish.library.json` manifest. */
+/** The parsed `typecad-hal.library.json` manifest. */
 export interface CuttlefishLibraryManifest {
   /** Stable library id (diagnostics / sidecar records). */
   id: string;
@@ -107,7 +107,7 @@ export function isRegisteredCuttlefishLibrary(moduleSpecifier: string): boolean 
 }
 
 function parseManifest(packageRoot: string): CuttlefishLibraryManifest | undefined {
-  const manifestPath = path.join(packageRoot, "cuttlefish.library.json");
+  const manifestPath = path.join(packageRoot, "typecad-hal.library.json");
   let raw: unknown;
   try {
     raw = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
@@ -147,8 +147,8 @@ function parseManifest(packageRoot: string): CuttlefishLibraryManifest | undefin
 
 /**
  * Resolve the package root for a bare npm specifier from the importing file,
- * then register the package as a cuttlefish library if it ships a
- * `cuttlefish.library.json`. Returns true when the specifier resolved to a
+ * then register the package as a typecad-hal library if it ships a
+ * `typecad-hal.library.json`. Returns true when the specifier resolved to a
  * registered library (the import must then be skipped by the graph builder).
  */
 export function registerCuttlefishLibraryFromSpecifier(

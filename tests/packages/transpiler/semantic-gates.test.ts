@@ -42,7 +42,7 @@ function codes(diagnostics: { code?: string }[]): string[] {
 beforeEach(() => {
   // Use the OS temp dir — runSemanticGates deliberately skips files under
   // node_modules/ and packages/, so the fixture must live elsewhere.
-  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cuttlefish-semantic-"));
+  tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-hal-semantic-"));
 });
 
 afterEach(() => {

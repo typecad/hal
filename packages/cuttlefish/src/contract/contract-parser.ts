@@ -9,7 +9,7 @@
 // that the firmware is allowed to touch.
 //
 // The matched names feed board-generator.ts, which writes a narrowed
-// `.cuttlefish/board.ts` so that `import { ... } from '@typecad/board'`
+// `.typecad-hal/board.ts` so that `import { ... } from '@typecad/hal'`
 // exposes only the pins the actual PCB has wired — a pin used elsewhere on
 // the board becomes a compile error in the firmware.
 //

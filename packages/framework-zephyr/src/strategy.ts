@@ -475,7 +475,7 @@ export class ZephyrStrategy implements PlatformStrategy {
     // passes int32_t/uint8_t through verbatim.
     const inc: string[] = ['<zephyr/kernel.h>', '<zephyr/drivers/gpio.h>', '<cstdint>'];
     // <cstdio> backs the printf family only: __tc_print/__tc_println (emitted
-    // solely when @typecad/expect's preprocessor injected them — tracked via
+    // solely when the test-runner preprocessor injected them — tracked via
     // usedPolyfillHelpers), raw printf/snprintf in user code (usesCstdio), and
     // the fs/preferences/uart shims (their lowerings snprintf into buffers).
     // A program touching none of those needs no <cstdio>.
@@ -771,7 +771,7 @@ export class ZephyrStrategy implements PlatformStrategy {
         '#ifndef PROGMEM', '#define PROGMEM', '#endif',
       );
     }
-    // Test-runner console helpers: @typecad/expect's Zephyr shim calls these
+    // Test-runner console helpers: the test-runner's Zephyr shim calls these
     // for protocol output. Overloaded for string (const char*) and numeric
     // (double) so the same call site works for markers and test values.
     // The fs lowering bakes __tc_println into its error paths too, so the
@@ -1815,14 +1815,14 @@ export class ZephyrStrategy implements PlatformStrategy {
     } catch (err) {
       // A malformed facts/as-built file is the USER's error — surface it
       // verbatim instead of the generic "cannot generate" below.
-      if (err instanceof Error && (err.message.includes('cuttlefish.facts.json') || err.message.includes('as-built.json'))) throw err;
+      if (err instanceof Error && (err.message.includes('typecad-hal.facts.json') || err.message.includes('as-built.json'))) throw err;
       return undefined;
     }
   }
 
   /**
    * Regenerate the board catalog overlay from the user's own Zephyr tree —
-   * `cuttlefish board sync`. After a `west update`, this is how new/changed/
+   * `typecad-hal board sync`. After a `west update`, this is how new/changed/
    * removed boards reach projects without a cuttlefish release. See
    * src/sdk/board-catalog-sync.ts.
    */
@@ -1832,7 +1832,7 @@ export class ZephyrStrategy implements PlatformStrategy {
 
   /**
    * Refresh the overlay only when it is stale (provenance no longer matches
-   * the tree) — the pre-step `cuttlefish board regen` runs so a regen after
+   * the tree) — the pre-step `typecad-hal board regen` runs so a regen after
    * `west update` picks up the tree's boards automatically. Tree walk only
    * happens when there is actual refreshing to do.
    */

@@ -115,8 +115,8 @@ describe('ADC read nested in another HAL call (blackpill demo regression)', () =
     const { boardTs, boardConstants } = blackpillRev19();
     const result = transpile(
       [
-        "import { ADC } from '@typecad/hal';",
-        "import { USB0, PA0 } from '@typecad/board';",
+        "import { ADC } from '@typecad/hal/core';",
+        "import { USB0, PA0 } from '@typecad/hal/core';",
         'const sense = new ADC(PA0);',
         'USB0.open();',
         'USB0.writeLine(`adc: ${sense.readMillivolts()}`);',
@@ -220,15 +220,15 @@ describe('nRF52 SAADC synthesized channels (xiao_ble regression)', () => {
       expect(c[`zephyr.adc.channels.${channel}.channel`]).toBe(channel);
     }
     // The narrowed gateway: the board module now re-exports ADC.
-    expect(g.boardTs).toContain("export { ADC } from '@typecad/hal'");
+    expect(g.boardTs).toContain("export { ADC } from '@typecad/hal/core'");
   });
 
   it('transpiles an ADC read on the XIAO against the synthesized channel map', () => {
     const g = generateBoard('xiao_ble/nrf52840');
     const result = transpile(
       [
-        "import { ADC } from '@typecad/hal';",
-        "import { P0_02 } from '@typecad/board';",
+        "import { ADC } from '@typecad/hal/core';",
+        "import { P0_02 } from '@typecad/hal/core';",
         'const sense = new ADC(P0_02);',
         'const v = sense.read();',
         'if (v > 0) { sense.readMillivolts(); }',

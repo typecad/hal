@@ -3,21 +3,21 @@
 // vscode-typecad-debug — VSCode Extension
 //
 // Tracks breakpoints in TypeScript files and syncs them to
-// .cuttlefish/breakpoints.json for the TypeCAD debug preprocessor.
+// .typecad-hal/breakpoints.json for the TypeCAD debug preprocessor.
 // Also auto-generates .d.ts declaration files from C++ sources.
 //
-// The breakpoint file is read by @typecad/cuttlefish when invoked with
+// The breakpoint file is read by @typecad/typecad-hal when invoked with
 // `--debug`. The preprocessor injects Serial.println instrumentation at the
-// recorded line numbers; run `cuttlefish build --debug` (or `cuttlefish
+// recorded line numbers; run `typecad-hal build --debug` (or `typecad-hal
 // index.ts --debug`) to enable it.
 //
 // IMPORTANT: the `file` field in each breakpoint entry is written as the
-// basename only (e.g. "index.ts"). The cuttlefish loader matches breakpoints
+// basename only (e.g. "index.ts"). The typecad-hal loader matches breakpoints
 // by exact → basename → suffix, and basename matching is the only strategy
 // that works identically on Windows (backslash) and POSIX (forward slash)
 // without slash normalization. The trade-off is that two files with the same
 // basename in one project share breakpoints — acceptable for typical
-// single-sketch Arduino projects.
+// single-program Zephyr projects.
 // ---------------------------------------------------------------------------
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
@@ -63,7 +63,7 @@ const node_child_process_1 = require("node:child_process");
 // Constants
 // ---------------------------------------------------------------------------
 /** Relative to the workspace root. */
-const BREAKPOINTS_DIR = '.cuttlefish';
+const BREAKPOINTS_DIR = '.typecad-hal';
 const BREAKPOINTS_FILE = 'breakpoints.json';
 // ---------------------------------------------------------------------------
 // Extension Activation
@@ -149,7 +149,7 @@ class BreakpointTracker {
         this._onDidChange.fire();
     }
     /**
-     * Save breakpoints, then run `cuttlefish build --debug` in a terminal.
+     * Save breakpoints, then run `typecad-hal build --debug` in a terminal.
      */
     async debugWithBreakpoints() {
         const editor = vscode.window.activeTextEditor;
@@ -160,7 +160,7 @@ class BreakpointTracker {
         this.saveToFile();
         const terminal = vscode.window.createTerminal('TypeCAD Debug');
         terminal.show();
-        terminal.sendText('npx cuttlefish build --debug');
+        terminal.sendText('npx typecad-hal build --debug');
     }
     /**
      * Sync breakpoints from VSCode's built-in breakpoint system.
@@ -196,7 +196,7 @@ class BreakpointTracker {
         console.log(`TypeCAD: Synced ${count} breakpoints to file`);
     }
     /**
-     * Load breakpoints from .cuttlefish/breakpoints.json
+     * Load breakpoints from .typecad-hal/breakpoints.json
      */
     loadFromFile() {
         const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -220,7 +220,7 @@ class BreakpointTracker {
         }
     }
     /**
-     * Save breakpoints to .cuttlefish/breakpoints.json atomically.
+     * Save breakpoints to .typecad-hal/breakpoints.json atomically.
      * Writes to a temp file then renames, so a watching transpiler never reads
      * a half-written file.
      */
@@ -317,20 +317,20 @@ class DeclarationGenerator {
         }
     }
     /**
-     * Generate a .d.ts file from a C++ file via the cuttlefish CLI.
+     * Generate a .d.ts file from a C++ file via the typecad-hal CLI.
      * Uses the monorepo source directly when developing inside this repo,
-     * falls back to `npx cuttlefish` for installed users.
+     * falls back to `npx typecad-hal` for installed users.
      */
     async generateDeclaration(cppPath, declPath) {
         return new Promise((resolve) => {
             const workspaceFolders = vscode.workspace.workspaceFolders;
             // Local-CLI fallback for development inside the typecode monorepo.
             const localCliPath = workspaceFolders
-                ? path.join(workspaceFolders[0].uri.fsPath, 'packages/cuttlefish/src/cli.ts')
+                ? path.join(workspaceFolders[0].uri.fsPath, 'packages/typecad-hal/src/cli.ts')
                 : null;
             const cmd = localCliPath && fs.existsSync(localCliPath)
                 ? `npx tsx "${localCliPath}" gen-decls "${cppPath}"`
-                : `npx cuttlefish gen-decls "${cppPath}"`;
+                : `npx typecad-hal gen-decls "${cppPath}"`;
             (0, node_child_process_1.exec)(cmd, { cwd: workspaceFolders?.[0]?.uri.fsPath }, (error) => {
                 if (error) {
                     console.error('TypeCAD: Failed to generate declaration:', error);

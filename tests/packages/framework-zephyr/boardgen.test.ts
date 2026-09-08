@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // boardgen.test.ts — the project-local board module generator.
 //
-// One path for every board: the emitted .cuttlefish/board.ts + board.json
+// One path for every board: the emitted .typecad-hal/board.ts + board.json
 // derive entirely from the board's catalog record (DTS facts) — no curated
 // descriptor tier, no strap-pin exclusions, no per-soc sweep overrides.
 // Pins are swept from the derived controller table with soc-family naming;
@@ -83,7 +83,7 @@ describe('boardgen', () => {
     });
     expect(bare).toBeDefined();
     const g = generateBoard(bare!);
-    expect(g.boardTs).toContain('@typecad/hal');
+    expect(g.boardTs).toContain("from '@typecad/hal/core'");
   });
 
   it('gpio<letter> ports widen to 32 bits when a fact uses bit ≥ 16', () => {

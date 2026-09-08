@@ -440,14 +440,17 @@ export function buildProgramIR(fileName: string, sourceText: string, boardTarget
         }
       }
 
-      // Track HAL instances imported from the board module (virtual
-      // `@typecad/board`, or a legacy `@typecad/board-*` package import from
-      // pre-boardgen projects, which resolves against the project's generated
-      // board constants) so the HAL resolver can resolve them to framework
-      // C++ names. Case-insensitive.
+      // Track HAL instances imported from the virtual board module — the
+      // user-facing '@typecad/hal' specifier (mapped onto .typecad-hal/
+      // board.ts by the project tsconfig), or a legacy
+      // '@typecad/board-*' package import from pre-boardgen projects,
+      // which resolves against the project's
+      // generated board constants — so the HAL resolver can resolve them
+      // to framework C++ names. Class imports from '@typecad/hal' fall
+      // through every pattern below untouched. Case-insensitive.
       const lowerSpecifier = moduleSpecifier.toLowerCase();
       const isHALSource = lowerSpecifier.startsWith('@typecad/board-')
-        || lowerSpecifier === '@typecad/board';
+        || lowerSpecifier === '@typecad/hal';
 
       // UI authoring namespace: `import { ui } from "@typecad/ui"`. The `ui`
       // value is a compile-time construct (its calls are intercepted by

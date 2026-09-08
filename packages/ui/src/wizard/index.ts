@@ -18,7 +18,7 @@ export type {
 } from "./display-catalog.js";
 
 export {
-  findCuttlefishConfig,
+  findTypecadConfig,
   findSyntaxError,
   readConfigSection,
   readEntryPath,

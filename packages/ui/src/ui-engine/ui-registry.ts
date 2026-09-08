@@ -370,7 +370,7 @@ function findCuttlefishProjectRoot(filePath: string): string {
   let dir = path.dirname(path.resolve(filePath));
   while (true) {
     if (
-      fs.existsSync(path.join(dir, "cuttlefish.config.ts")) ||
+      fs.existsSync(path.join(dir, "typecad-hal.config.ts")) ||
       fs.existsSync(path.join(dir, "cuttlefish.config.js")) ||
       fs.existsSync(path.join(dir, "cuttlefish.config.mjs")) ||
       fs.existsSync(path.join(dir, "cuttlefish.config.cjs"))

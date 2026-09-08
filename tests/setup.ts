@@ -56,9 +56,10 @@ interface TranspileOptions {
   boardConstants?: import("../packages/cuttlefish/src/api/shared/index.js").BoardConstants;
   /**
    * Optional generated board module source, written beside board.json as
-   * .cuttlefish/board.ts. findGeneratedBoard requires BOTH files, and a
-   * program importing '@typecad/board' transpiles the .ts — pass the
-   * generateBoard(target).boardTs output here to exercise the full
+   * .typecad-hal/board.ts. findGeneratedBoard requires BOTH files, and a
+   * program importing '@typecad/hal'
+   * transpiles the .ts — pass the generateBoard(target).boardTs output here
+   * to exercise the full
    * board-module path (pin exports, hardware re-exports).
    */
   boardTs?: string;
@@ -117,11 +118,11 @@ export function transpile(tsCode: string, options: TranspileOptions = {}): Trans
   }
 
   // Mirror the real pipeline: when a test supplies board constants, write
-  // them as the project's generated board manifest (.cuttlefish/board.json
+  // them as the project's generated board manifest (.typecad-hal/board.json
   // beside the source file) so build-ir's own default-constants fallback
   // loads them exactly the way ensureGeneratedBoard does in a real project.
   if (options.boardConstants) {
-    const cfDir = path.join(uniqueOutDir, '.cuttlefish');
+    const cfDir = path.join(uniqueOutDir, '.typecad-hal');
     fs.mkdirSync(cfDir, { recursive: true });
     fs.writeFileSync(path.join(cfDir, 'board.json'), JSON.stringify({
       version: 1,
@@ -202,7 +203,7 @@ export function transpileNative(tsCode: string): TranspileResult {
 let _zephyrStrategy: ZephyrStrategy | undefined;
 export function transpileZephyrStrategy(tsCode: string): TranspileResult {
   if (!_zephyrStrategy) _zephyrStrategy = new ZephyrStrategy();
-  // The equal path: a real project carries .cuttlefish/board.json (written
+  // The equal path: a real project carries .typecad-hal/board.json (written
   // by ensureGeneratedBoard from the catalog). The harness simulates that
   // step for the test target so the strategy resolves the same chip view a
   // real build gets — there is no curated registry to fall back to.

@@ -53,7 +53,7 @@ describe('ZephyrStrategy display wiring', () => {
   it('shimLines EMITS the direct display runtime for a non-UI display program', () => {
     // Gating is `usesDisplay && !entryHasUI()`: a program that uses display.*
     // directly (no @typecad/ui) has no UI adapter emitted (the adapter is built
-    // only under entryHasUI(), in cuttlefish's emitUIRuntime), so shimLines must
+    // only under entryHasUI(), in typecad-hal's emitUIRuntime), so shimLines must
     // supply the display_* definitions itself. entryHasUI() is false in unit
     // tests (@typecad/ui is never loaded), so the runtime is emitted here.
     expect(s.providesDisplayAdapter()).toBe(true); // static capability (always true)

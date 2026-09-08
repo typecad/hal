@@ -13,8 +13,7 @@
 // (K_FOREVER — the threads run forever, keeping the firmware alive).
 // ---------------------------------------------------------------------------
 
-import { LED, USB0 } from '@typecad/board';
-import { GPIO, Time, Thread } from '@typecad/hal';
+import { LED, USB0, GPIO, Time, Thread } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);
 

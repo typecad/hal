@@ -109,7 +109,7 @@ export interface PlatformProfileStrategy {
 
   /**
    * Platform-specific ambient TypeScript type declarations appended to
-   * the generated cuttlefish-env.d.ts file.
+   * the generated typecad-hal-env.d.ts file.
    * Return an empty array if no platform-specific declarations are needed.
    */
   ambientTypeDeclarations?(): string[];
@@ -486,7 +486,7 @@ export interface PlatformAsyncStrategy {
    * Generate the project-local board module for a board target — the
    * framework owns its board data (the Zephyr framework joins its generated
    * data pack with its curated soc descriptors). Returns the contents of
-   * `.cuttlefish/board.ts` and `.cuttlefish/board.json`; the caller writes
+   * `.typecad-hal/board.ts` and `.typecad-hal/board.json`; the caller writes
    * them. Undefined = the framework has no board generation (the config's
    * board field then requires a different resolution path).
    */

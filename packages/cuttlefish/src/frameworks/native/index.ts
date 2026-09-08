@@ -5,7 +5,7 @@
 // Uses main(), std::string, and std::thread-based async.
 //
 // Usage:
-//   In cuttlefish.config.ts:
+//   In typecad-hal.config.ts:
 //     framework: '@typecad/framework-native'
 // (The config string keeps the historical package name; the module is
 //  loaded directly by framework-package.ts, no npm package involved.)

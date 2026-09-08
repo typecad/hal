@@ -328,7 +328,7 @@ describe("J: for...in over a Map/Record (semantic gate)", () => {
   }
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cuttlefish-demo7-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-hal-demo7-"));
   });
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });

@@ -2,7 +2,7 @@
  * Persistent cache for the ESLint build gate.
  *
  * ESLint is a mandatory correctness gate: it excludes non-AOT code patterns
- * that the transpiler cannot accept. Running it on every `cuttlefish build`
+ * that the transpiler cannot accept. Running it on every `typecad-hal build`
  * costs ~3s (38% of a small-project build) and almost always finds nothing on
  * repeat runs. Its result (zero errors) is a whole-program boolean that
  * depends only on a small set of inputs, so it is cleanly cacheable.
@@ -11,9 +11,9 @@
  *   - The cache ONLY records a successful (zero-error) lint result.
  *   - A failing lint never persists (the build aborts anyway).
  *   - On ANY input change the entry is invalidated and ESLint runs for real.
- *   - `options.force` and the `CUTTLEFISH_NO_CACHE` env var bypass entirely.
+ *   - `options.force` and the `TYPECAD_HAL_NO_CACHE` env var bypass entirely.
  *
- * This mirrors the historical `.cuttlefish-cache.json` timestamp+hash cache
+ * This mirrors the historical `.typecad-hal-cache.json` timestamp+hash cache
  * that used to live in this package. It is scoped to the ESLint gate (and the
  * type-check gate) rather than the transpile-IR pass, because — unlike IR
  * lowering — these gates' outcomes are whole-program booleans with no
@@ -30,11 +30,11 @@ const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const CACHE_VERSION = 2;
-const DEFAULT_CACHE_NAME = ".cuttlefish-cache.json";
+const DEFAULT_CACHE_NAME = ".typecad-hal-cache.json";
 
 /** Bypass the cache entirely when set (debugging / CI cold runs). */
 function isCacheDisabled(): boolean {
-  return process.env.CUTTLEFISH_NO_CACHE === "1" || process.env.CUTTLEFISH_NO_CACHE === "true";
+  return process.env.TYPECAD_HAL_NO_CACHE === "1" || process.env.TYPECAD_HAL_NO_CACHE === "true";
 }
 
 /**
@@ -95,7 +95,7 @@ function computeToolchainFingerprint(): string {
 
 /** Resolve the eslint config the same way runEslintCheck does, to avoid drift. */
 export function resolveEslintConfigPath(projectRoot: string): string | undefined {
-  const cuttlefishConfig = path.join(projectRoot, ".cuttlefish", "eslint.config.mjs");
+  const cuttlefishConfig = path.join(projectRoot, ".typecad-hal", "eslint.config.mjs");
   if (fs.existsSync(cuttlefishConfig)) return cuttlefishConfig;
   for (const name of ["eslint.config.mjs", "eslint.config.js", "eslint.config.cjs"]) {
     const candidate = path.join(projectRoot, name);

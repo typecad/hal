@@ -47,7 +47,7 @@ export interface MountOptions {
 }
 
 /**
- * Mount a baked UI tree to the display configured in `cuttlefish.config.ts`.
+ * Mount a baked UI tree to the display configured in `typecad-hal.config.ts`.
  * Optional overrides are available for advanced cases, but ordinary apps should
  * keep hardware setup in the project config and call `ui.mount(screen)`.
  *
@@ -168,7 +168,7 @@ export declare function drawCanvas(node: unknown, callback: (ctx: CanvasCtx) => 
  * Native desktop (SDL) window controls. These are no-ops on hardware targets
  * (Arduino/AVR/ESP32 have no window); on the SDL target they map to the
  * underlying SDL window calls. The initial title/icon come from
- * `cuttlefish.config.ts` (`display.title` / `display.icon`); these methods
+ * `typecad-hal.config.ts` (`display.title` / `display.icon`); these methods
  * change them at runtime.
  */
 export interface WindowApi {

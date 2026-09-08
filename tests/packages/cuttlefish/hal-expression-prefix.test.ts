@@ -33,7 +33,7 @@ describe('HAL expression prefix ops (transpiler-level)', () => {
     // Proxy for the class of bug where a leading op was dropped (the "dead
     // keypress"/expression-prefixOps regression family).
     const result = tr(`
-      import { UART } from '@typecad/board';
+      import { UART } from '@typecad/hal';
       const port = new UART('UART0');
       port.writeLine('hi');
     `);

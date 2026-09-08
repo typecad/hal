@@ -149,7 +149,7 @@ describe("E: union member access (semantic gate)", () => {
     return diagnostics.map(d => d.code).filter((c): c is string => Boolean(c));
   }
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "cuttlefish-demo9-"));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "typecad-hal-demo9-"));
   });
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });

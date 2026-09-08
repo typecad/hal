@@ -16,7 +16,7 @@ describe("demo-shadcn drawer overlap (real program, preview runtime)", () => {
   afterAll(() => { for (const r of runtimes) r.stop(); });
 
   it("drawer content survives the Tap-me echo update", async () => {
-    const configPath = path.resolve(__dirname, "../../../demos/demo-shadcn/cuttlefish.config.ts");
+    const configPath = path.resolve(__dirname, "../../../demos/demo-shadcn/typecad-hal.config.ts");
     const snap = await buildPreviewSnapshot({
       config: parseConfigFile(configPath) as never,
       projectRoot: path.dirname(configPath),

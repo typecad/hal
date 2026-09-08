@@ -115,7 +115,7 @@ const LibraryResolutionSchema = z.object({
 
 /**
  * Capability block for an optional subcommand the framework may own (e.g.
- * `cuttlefish doctor`, `cuttlefish licenses`). The manifest only declares
+ * `typecad-hal doctor`, `typecad-hal licenses`). The manifest only declares
  * availability; the framework's runtime `doctor` / `licenses` exports provide
  * the implementation, and cuttlefish dispatches to them when present.
  */

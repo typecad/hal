@@ -93,13 +93,13 @@ export function usbdDeviceLines(chip: ZephyrChipDescriptor): string[] {
     `    ${vid}, ${pid});`,
     'USBD_DESC_LANG_DEFINE(__tc_usbd_lang);',
     'USBD_DESC_MANUFACTURER_DEFINE(__tc_usbd_mfr, "typecad");',
-    'USBD_DESC_PRODUCT_DEFINE(__tc_usbd_product, "cuttlefish app");',
+    'USBD_DESC_PRODUCT_DEFINE(__tc_usbd_product, "typecad-hal app");',
     // Serial number from hwinfo: Windows keys USB devnodes without a serial
     // on the physical port, so flash-cycle re-enumerations reuse stale
     // port-keyed nodes (the "access denied" open wedge). Identity-based
     // instance paths are stable across ports and never hit that pool.
     'USBD_DESC_SERIAL_NUMBER_DEFINE(__tc_usbd_sn);',
-    'USBD_DESC_CONFIG_DEFINE(__tc_usbd_cfg_desc, "cuttlefish");',
+    'USBD_DESC_CONFIG_DEFINE(__tc_usbd_cfg_desc, "typecad-hal");',
     'USBD_CONFIGURATION_DEFINE(__tc_usbd_cfg, 0, 250, &__tc_usbd_cfg_desc);',
     'static bool __tc_usbd_started = false;',
     ...touchLines,
@@ -107,17 +107,17 @@ export function usbdDeviceLines(chip: ZephyrChipDescriptor): string[] {
     '    if (__tc_usbd_started) { return; }',
     '    __tc_usbd_started = true;',
     '    int err = usbd_add_descriptor(&__tc_usbd, &__tc_usbd_lang);',
-    '    if (err != 0) { printk("cuttlefish usb: lang descriptor failed: %d\\n", err); return; }',
+    '    if (err != 0) { printk("typecad-hal usb: lang descriptor failed: %d\\n", err); return; }',
     '    err = usbd_add_descriptor(&__tc_usbd, &__tc_usbd_sn);',
-    '    if (err != 0) { printk("cuttlefish usb: serial descriptor failed: %d\\n", err); return; }',
+    '    if (err != 0) { printk("typecad-hal usb: serial descriptor failed: %d\\n", err); return; }',
     '    err = usbd_add_descriptor(&__tc_usbd, &__tc_usbd_mfr);',
-    '    if (err != 0) { printk("cuttlefish usb: manufacturer descriptor failed: %d\\n", err); return; }',
+    '    if (err != 0) { printk("typecad-hal usb: manufacturer descriptor failed: %d\\n", err); return; }',
     '    err = usbd_add_descriptor(&__tc_usbd, &__tc_usbd_product);',
-    '    if (err != 0) { printk("cuttlefish usb: product descriptor failed: %d\\n", err); return; }',
+    '    if (err != 0) { printk("typecad-hal usb: product descriptor failed: %d\\n", err); return; }',
     '    err = usbd_add_configuration(&__tc_usbd, USBD_SPEED_FS, &__tc_usbd_cfg);',
-    '    if (err != 0) { printk("cuttlefish usb: add configuration failed: %d\\n", err); return; }',
+    '    if (err != 0) { printk("typecad-hal usb: add configuration failed: %d\\n", err); return; }',
     '    err = usbd_register_all_classes(&__tc_usbd, USBD_SPEED_FS, 1, NULL);',
-    '    if (err != 0) { printk("cuttlefish usb: register classes failed: %d\\n", err); return; }',
+    '    if (err != 0) { printk("typecad-hal usb: register classes failed: %d\\n", err); return; }',
     // Registered before usbd_init so no line-coding event can be missed.
     ...touchRegister,
     // usbd_init builds the descriptor tables from the registered
@@ -125,14 +125,14 @@ export function usbdDeviceLines(chip: ZephyrChipDescriptor): string[] {
     // refuses with -EPERM ("not initialized") without it (sample_usbd_init.c
     // calls it between setup and enable).
     '    err = usbd_init(&__tc_usbd);',
-    '    if (err != 0) { printk("cuttlefish usb: init failed: %d\\n", err); return; }',
+    '    if (err != 0) { printk("typecad-hal usb: init failed: %d\\n", err); return; }',
     // Boards with VBUS detection start on the VBUS event in the Zephyr
     // sample, via a message callback we do not register; enabling
     // unconditionally (and reporting the error) is the sample's own path
     // for boards without detection (STM32 OTG_FS).
     '    err = usbd_enable(&__tc_usbd);',
-    '    if (err != 0) { printk("cuttlefish usb: enable failed: %d\\n", err); return; }',
-    '    printk("cuttlefish usb: device enabled\\n");',
+    '    if (err != 0) { printk("typecad-hal usb: enable failed: %d\\n", err); return; }',
+    '    printk("typecad-hal usb: device enabled\\n");',
     '}',
     '// CUTTLEFISH_USBD_END',
   ];

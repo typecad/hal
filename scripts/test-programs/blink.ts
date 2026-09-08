@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { GPIO, Time } from '@typecad/hal';
-import { LED } from '@typecad/board';
+import { LED } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);
 

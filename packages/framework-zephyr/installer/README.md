@@ -157,7 +157,7 @@ echo $ZEPHYR_BASE                 # -> ~/zephyrproject/zephyr
 ```
 
 In fact, with `@typecad/framework-zephyr` ≥ alpha.11 you don't even need to
-activate to **build** — cuttlefish discovers the micromamba env and invokes
+activate to **build** — typecad-hal discovers the micromamba env and invokes
 `micromamba run -n zephyr west …` itself. Activation matters for your own
 interactive use (`west`, `gdb`, serial monitors).
 
@@ -203,7 +203,7 @@ use `--delete`).
 4. Well-known workspace dirs (`~/zephyrproject`, …)
 5. System pythons
 
-So a plain `npx cuttlefish build` works in any project after install, activated
+So a plain `npx typecad-hal build` works in any project after install, activated
 or not. The compat check reads the Zephyr version from the installer env's
 env-vars file when `ZEPHYR_BASE` isn't set.
 
@@ -211,12 +211,12 @@ env-vars file when `ZEPHYR_BASE` isn't set.
 
 If you already had a west/SDK install, **activation is the switch** — the
 activated env is prepended to PATH, so its `west` and the hook's
-`ZEPHYR_SDK_INSTALL_DIR` win. Unactivated, cuttlefish prefers the installer env
+`ZEPHYR_SDK_INSTALL_DIR` win. Unactivated, typecad-hal prefers the installer env
 (cascade order 3 before 4), falling back to a pre-existing `~/zephyrproject/.venv`.
 
 ## Per-project auto-activation
 
-Drop [`templates/project/`](./templates/project) into a cuttlefish Zephyr project
+Drop [`templates/project/`](./templates/project) into a typecad-hal Zephyr project
 so opening a terminal there auto-activates the env — machine-agnostic activators
 (`.typecad/activate-zephyr.{ps1,sh}`) plus a VS Code terminal profile. See
 [`templates/project/README.md`](./templates/project/README.md).
@@ -270,7 +270,7 @@ chocolatey (`choco install dtc`) or the SDK's `setup.cmd`.
   `node node_modules/@typecad/framework-zephyr/installer/install.mjs` directly.
 - **`west: command not recognized` / empty `ZEPHYR_BASE`** — the env isn't
   activated in *this* session. Run `micromamba activate zephyr`. Note that
-  `cuttlefish build` works without activation (see integration above).
+  `typecad-hal build` works without activation (see integration above).
 - **`micromamba: command not found`** in a new shell — the installer ran
   `micromamba shell init`; reload with `. $PROFILE` (PowerShell) or
   `source ~/.bashrc`, or open a new terminal.

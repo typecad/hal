@@ -5,8 +5,7 @@
 // use the STM32 datasheet port notation, which is what the schematic shows.
 // The contract wires no UART/USB, so the LED is the report channel.
 
-import { PA5, PA0, PA1 } from '@typecad/board';
-import { GPIO, Time } from '@typecad/hal';
+import { PA5, PA0, PA1, GPIO, Time } from '@typecad/hal';
 
 // PA5 — the contract's LED net (D1 + 1k series resistor).
 const led = new GPIO(PA5, GPIO.OUTPUT);

@@ -100,12 +100,12 @@ const FRAMEWORK_TOOLCHAIN: Record<string, string> = {
 
 /**
  * Zephyr build targets come straight from the board catalog (the pack or a
- * local `cuttlefish board sync` overlay) — every catalog board carries its
+ * local `typecad-hal board sync` overlay) — every catalog board carries its
  * own qualified `west build -b` target. There is no curated id→target map.
  */
 
 /**
- * Probe method a board offers, for `cuttlefish create`'s wizard (which runs
+ * Probe method a board offers, for `typecad-hal create`'s wizard (which runs
  * BEFORE the framework is installed, so it reads the board data pack — the
  * same table boardgen emits into the generated board module for tier-3
  * boards, extracted from each board's own board.cmake runners).

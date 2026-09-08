@@ -94,15 +94,15 @@ describe("SDL color depth", () => {
     expect(a.functions).toContain("SDL_WINDOW_FULLSCREEN_DESKTOP");
   });
 
-  it('defaults the window title to "cuttlefish"', () => {
+  it('defaults the window title to "typecad-hal"', () => {
     const a = generateDisplayAdapter({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb888", rotation: 0 } as never);
-    expect(a.functions).toContain('SDL_CreateWindow("cuttlefish"');
+    expect(a.functions).toContain('SDL_CreateWindow("typecad-hal"');
   });
 
   it("uses the config title when provided", () => {
     const a = generateDisplayAdapter({ driver: "sdl", width: 320, height: 240, colorFormat: "rgb888", rotation: 0, title: "My App" } as never);
     expect(a.functions).toContain('SDL_CreateWindow("My App"');
-    expect(a.functions).not.toContain('"cuttlefish"');
+    expect(a.functions).not.toContain('"typecad-hal"');
   });
 
   it("emits ui_window_set_title for runtime title changes (ui.window.setTitle)", () => {

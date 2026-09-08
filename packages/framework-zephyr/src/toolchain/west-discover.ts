@@ -11,7 +11,7 @@
 //   1. `west` already on PATH (env already activated / global install).
 //   2. $ZEPHYR_BASE venv: ${ZEPHYR_BASE}/../.venv/<python> -m west.
 //   3. micromamba env from @typecad/zephyr-installer (invoked via `micromamba run`,
-//      so cuttlefish builds work with NO manual activation).
+//      so typecad-hal builds work with NO manual activation).
 //   4. Well-known workspace layouts: ~/zephyrproject/.venv, /opt/zephyrproject/.
 //      venv, etc.
 //   5. System pythons (`python`, `python3`, `py`) via `-m west`.
@@ -142,6 +142,33 @@ export function discoverFromZephyrBase(): WestInstall | null {
   };
 }
 
+/** The installer-written SDK dir for the default micromamba env, when the
+ *  installer has run on this machine. Read WITHOUT requiring micromamba
+ *  mode — a PATH/venv west install is enriched with it so builds spawned
+ *  through it still pin the installer's SDK (otherwise Zephyr's CMake
+ *  searches $HOME and can pick up a stray, older SDK). */
+export function installerSdkDir(): string | undefined {
+  const mm = findMicromamba();
+  if (!mm) return undefined;
+  const envName = process.env.TYPECAD_ZEPHYR_ENV || 'zephyr';
+  const envDir = join(mm.rootPrefix, 'envs', envName);
+  if (!existsSync(envDir)) return undefined;
+  const sdk = readMicromambaEnvVar(envDir, 'TYPECAD_ZEPHYR_SDK_INSTALL_DIR');
+  return sdk && existsSync(sdk) ? sdk : undefined;
+}
+
+/**
+ * The micromamba env created by `@typecad/zephyr-installer`. The env's west
+ * lives at envs/<name>/bin/west (POSIX) or Scripts/west.exe (Windows). Found
+ * installs are invoked via `micromamba run -n <name> west …` (see
+ * west-spawn.ts), which sets up the env's full PATH (cmake/ninja/dtc) AND runs
+ * the activation hook (ZEPHYR_BASE / ZEPHYR_SDK_INSTALL_DIR) — so builds work
+ * with NO manual `micromamba activate`. This is what makes a fresh
+ * `typecad-hal build` succeed in any project without the user activating.
+ *
+ * Env name defaults to "zephyr"; override via TYPECAD_ZEPHYR_ENV. File-check
+ * based (no spawn) so it's cheap to run on every invocation.
+ */
 // ── Strategy 3: micromamba env (the @typecad/zephyr-installer install) ─────
 
 // Locate the micromamba binary + root prefix. The installer downloads
@@ -156,18 +183,6 @@ function findMicromamba(): { exe: string; rootPrefix: string } | null {
   return existsSync(exe) ? { exe, rootPrefix: root } : null;
 }
 
-/**
- * The micromamba env created by `@typecad/zephyr-installer`. The env's west
- * lives at envs/<name>/bin/west (POSIX) or Scripts/west.exe (Windows). Found
- * installs are invoked via `micromamba run -n <name> west …` (see
- * west-spawn.ts), which sets up the env's full PATH (cmake/ninja/dtc) AND runs
- * the activation hook (ZEPHYR_BASE / ZEPHYR_SDK_INSTALL_DIR) — so cuttlefish
- * builds work with NO manual `micromamba activate`. This is what makes a fresh
- * `cuttlefish build` succeed in any project without the user activating.
- *
- * Env name defaults to "zephyr"; override via TYPECAD_ZEPHYR_ENV. File-check
- * based (no spawn) so it's cheap to run on every cuttlefish invocation.
- */
 /** Read a TYPECAD_ZEPHYR_* value from the installer-written env-vars file in
  *  a micromamba env. Handles .sh (export VAR="val"), .bat (set "VAR=val"),
  *  and .ps1 ($env:VAR = "val"). Returns undefined if absent/unreadable. */
@@ -325,6 +340,13 @@ export function discoverWest(): WestInstall | null {
       install = null;
     }
     if (install) {
+      // A PATH/venv west install knows nothing about the installer's SDK.
+      // Enrich it: west-spawn pins the child's ZEPHYR_SDK_INSTALL_DIR to the
+      // installer dir, so Zephyr's CMake cannot pick up a stray SDK from
+      // $HOME (a version mismatch that only surfaces at configure time).
+      if (!install.sdkInstallDir) {
+        install.sdkInstallDir = installerSdkDir();
+      }
       cachedDiscover = install;
       return install;
     }

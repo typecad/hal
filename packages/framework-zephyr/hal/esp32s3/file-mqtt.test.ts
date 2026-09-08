@@ -13,7 +13,7 @@
 // when subscribed).
 // ---------------------------------------------------------------------------
 
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 import { WiFi, File, Mqtt, Time } from '@typecad/hal';
 
 // ── File (littlefs on the storage partition) ──────────────────────────────
@@ -25,13 +25,13 @@ const notes = new File('/notes.txt');
 // const char* shims).
 const prevMarkerFile = new File('/marker.txt');
 const prevMarker = prevMarkerFile.read();
-const markerWasThere = prevMarker === 'cuttlefish-3141' ? 1 : 0;
+const markerWasThere = prevMarker === 'typecad-hal-3141' ? 1 : 0;
 
-notes.write('cuttlefish-was-here');
+notes.write('typecad-hal-was-here');
 
 describe('thin file — littlefs round-trip')
   .it('write → read returns the content')
-    .expect(notes.read() === 'cuttlefish-was-here' ? 1 : 0).toBe(1)
+    .expect(notes.read() === 'typecad-hal-was-here' ? 1 : 0).toBe(1)
   .it('exists() is true after write')
     .expect(notes.exists() ? 1 : 0).toBe(1)
   .it('remove() deletes (exists goes false)')
@@ -39,7 +39,7 @@ describe('thin file — littlefs round-trip')
   .it('cross-flash marker read before overwrite')
     .expect(markerWasThere).toBe(1);
 
-new File('/marker.txt').write('cuttlefish-3141');
+new File('/marker.txt').write('typecad-hal-3141');
 
 // ── Mqtt (Aedes broker on the test server) ────────────────────────────────
 

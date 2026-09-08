@@ -1,4 +1,4 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // @typecad-requires-roles gpioOut, gpioIn
 // WIRED TIER — not part of the default per-board runs (the board configs'
 // include patterns cover common/ and board/ only). Run explicitly with:
@@ -11,7 +11,7 @@ import { describe, done } from '@typecad/expect';
 // real silicon is read back through a real input buffer, proving the full
 // configure/set/get path end to end.
 import { GPIO_OUT, GPIO_IN } from '@typecad/test-pins';
-import { GPIO, Time } from '@typecad/board';
+import { GPIO, Time } from '@typecad/hal';
 
 describe("Wired GPIO output-to-input loopback")
   .it("high written on the output pin reads back on the input pin")

@@ -6,7 +6,7 @@
 // stdlibSupport.hasIostream=false), so the GenericStrategy's std::cout fallback
 // used by the debug preprocessor would NOT compile. This module routes every
 // debug line through printk("...\n") — the always-available Zephyr console,
-// with no CONFIG_CONSOLE dependency — so `cuttlefish build --debug` produces
+// with no CONFIG_CONSOLE dependency — so `typecad-hal build --debug` produces
 // compiling output.
 //
 // The halt primitive is __tc_debug_wait_for_continue() (emitted in

@@ -17,7 +17,7 @@ describe("watch", () => {
     it("includes config directory when config is in a different directory", () => {
       const dirs = discoverWatchDirs(
         "/project/src/main.ts",
-        "/project/cuttlefish.config.ts",
+        "/project/typecad-hal.config.ts",
       );
       expect(dirs).toHaveLength(2);
       expect(dirs).toContain(path.resolve("/project/src"));
@@ -27,7 +27,7 @@ describe("watch", () => {
     it("deduplicates when entry and config are in the same directory", () => {
       const dirs = discoverWatchDirs(
         "/project/main.ts",
-        "/project/cuttlefish.config.ts",
+        "/project/typecad-hal.config.ts",
       );
       expect(dirs).toHaveLength(1);
       expect(dirs[0]).toBe(path.resolve("/project"));
@@ -60,16 +60,16 @@ describe("watch", () => {
       ).toBe(false);
     });
 
-    it("accepts cuttlefish.config.ts changes", () => {
-      const configPath = "/project/cuttlefish.config.ts";
+    it("accepts typecad-hal.config.ts changes", () => {
+      const configPath = "/project/typecad-hal.config.ts";
       expect(
-        isRelevantChange("/project/cuttlefish.config.ts", entryDir, configPath),
+        isRelevantChange("/project/typecad-hal.config.ts", entryDir, configPath),
       ).toBe(true);
     });
 
     it("rejects unrelated config file changes", () => {
       expect(
-        isRelevantChange("/project/tsconfig.json", entryDir, "/project/cuttlefish.config.ts"),
+        isRelevantChange("/project/tsconfig.json", entryDir, "/project/typecad-hal.config.ts"),
       ).toBe(false);
     });
 

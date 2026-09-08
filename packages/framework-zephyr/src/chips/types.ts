@@ -446,7 +446,7 @@ export interface ZephyrChipDescriptor {
    * verified with the board, instead of in user configs. One probe method
    * serves BOTH flashing and debugging (the same attach session); entries
    * that cannot debug (bootloaders) set `debug: false`. Users select one via
-   * `zephyr.probe` in cuttlefish.config.ts or `--probe` on the CLI;
+   * `zephyr.probe` in typecad-hal.config.ts or `--probe` on the CLI;
    * `zephyr.runner`/`runnerArgs` remain the raw escape hatch underneath.
    */
   readonly probeMethods?: readonly ZephyrProbeMethod[];

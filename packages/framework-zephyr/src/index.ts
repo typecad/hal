@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // @typecad/framework-zephyr — public exports
 //
-// The cuttlefish loader (framework-package.ts) requires a `FrameworkStrategy`
+// The typecad-hal loader (framework-package.ts) requires a `FrameworkStrategy`
 // export (the PlatformStrategy class it instantiates) and an optional
 // `Toolchain`. This package aliases ZephyrStrategy → FrameworkStrategy.
 // ---------------------------------------------------------------------------
@@ -11,19 +11,19 @@ export { ZephyrStrategy } from './strategy.js';
 export { Toolchain } from './toolchain/index.js';
 export { bossacTouchReset } from './toolchain/bossac-touch.js';
 
-// Create-time starter debug artifacts. The `cuttlefish create` flow reads this
+// Create-time starter debug artifacts. The `typecad-hal create` flow reads this
 // optional named export off the loaded framework module (same loader pattern
 // as doctor/licenses) and calls it for freshly scaffolded projects, so F5 in
 // VS Code works before the first build. No-ops for non-GDB targets.
 export { writeProjectDebugArtifacts } from './toolchain/debug-config.js';
 
-// `cuttlefish doctor` — verify the installed Zephyr is reachable + inside the
+// `typecad-hal doctor` — verify the installed Zephyr is reachable + inside the
 // declared compat range, and preview board-target normalization. Re-exported
 // under the dispatcher-facing alias `doctor` so the loader picks it up as
 // mod.doctor (see framework-package.ts).
 export { runDoctor as doctor } from './doctor.js';
 
-// `cuttlefish licenses` — enumerate the Zephyr kernel + west manifest projects
+// `typecad-hal licenses` — enumerate the Zephyr kernel + west manifest projects
 // and resolve each one's SPDX license. Re-exported under the dispatcher-facing
 // alias `licenses` so the loader picks it up as mod.licenses (see
 // framework-package.ts). Mirrors framework-arduino's presenter.
@@ -42,7 +42,7 @@ export type {
 } from './chips/types.js';
 
 // Board catalog sync — regenerate the local board overlay from the user's
-// own Zephyr tree (`cuttlefish board sync`), so board add/change/remove
+// own Zephyr tree (`typecad-hal board sync`), so board add/change/remove
 // tracks `west update` instead of cuttlefish releases.
 export {
   syncBoardCatalog,

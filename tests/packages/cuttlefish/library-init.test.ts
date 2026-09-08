@@ -6,7 +6,7 @@ import { runLibraryInit } from '../../../packages/cuttlefish/src/library/init';
 import { validateLibraryPackage } from '../../../packages/cuttlefish/src/library/validate';
 
 // ---------------------------------------------------------------------------
-// `cuttlefish library init` scaffolding — the generated package must be a
+// `typecad-hal library init` scaffolding — the generated package must be a
 // valid library package the moment it lands: complete file set, manifest
 // fields, taxonomy keywords, and a round-trip pass through `library validate`
 // (including the AUTOSAR strict pass over the generated shim stubs).
@@ -39,11 +39,11 @@ describe('library init scaffold', () => {
 
     const pkg = JSON.parse(readFileSync(join(result.packageDir, 'package.json'), 'utf8'));
     expect(pkg.name).toBe('@acme/led-ring');
-    expect(pkg.keywords).toContain('cuttlefish-library');
-    expect(pkg.keywords).toContain('cuttlefish-led');
-    expect(pkg.files).toContain('cuttlefish.library.json');
+    expect(pkg.keywords).toContain('typecad-hal-library');
+    expect(pkg.keywords).toContain('typecad-hal-led');
+    expect(pkg.files).toContain('typecad-hal.library.json');
 
-    const manifest = JSON.parse(readFileSync(join(result.packageDir, 'cuttlefish.library.json'), 'utf8'));
+    const manifest = JSON.parse(readFileSync(join(result.packageDir, 'typecad-hal.library.json'), 'utf8'));
     expect(manifest.module).toBe('@acme/led-ring');
     expect(manifest.framework).toBe('zephyr');
     expect(manifest.targets).toEqual(['esp32s3_devkitc', 'esp32c3_devkitm/esp32c3']);
@@ -79,14 +79,14 @@ describe('library init scaffold', () => {
       category: 'sensor',
       targets: '',
     });
-    const manifest = JSON.parse(readFileSync(join(result.packageDir, 'cuttlefish.library.json'), 'utf8'));
+    const manifest = JSON.parse(readFileSync(join(result.packageDir, 'typecad-hal.library.json'), 'utf8'));
     expect(manifest.framework).toBe('native');
     expect(manifest.kconfig).toBeUndefined();
     expect(manifest.overlay).toBeUndefined();
     expect(manifest.targets).toBeUndefined();
     expect(existsSync(join(result.packageDir, 'shims', 'my-sensor.overlay'))).toBe(false);
     const pkg = JSON.parse(readFileSync(join(result.packageDir, 'package.json'), 'utf8'));
-    expect(pkg.keywords).toContain('cuttlefish-sensor');
+    expect(pkg.keywords).toContain('typecad-hal-sensor');
   });
 
   it('round-trips: the scaffold passes library validate', async () => {

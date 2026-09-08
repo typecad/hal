@@ -21,13 +21,13 @@ import { compileSource, uploadFirmware, monitorDevice, debugServer } from "./pla
 import { resolveStrategy } from "./platform/registry.js";
 import { loadFrameworkPackage } from "./framework-package.js";
 import { getLoadedFramework, hasLoadedFramework } from "./framework-registry.js";
-import { loadCuttlefishConfig, generateVirtualTypeDeclaration, regenBoardModule } from "./config-loader.js";
+import { loadTypecadConfig, generateVirtualTypeDeclaration, regenBoardModule } from "./config-loader.js";
 import { generateContractBoard } from "./contract/index.js";
 import { requireUIHook, hasUIHook } from "./ui-hook.js";
 import { loadUIEngine } from "./ui/ui-bridge.js";
 import { loadSafetyEngine } from "./safety/safety-bridge.js";
 import { runWatch, discoverWatchDirs } from "./watch.js";
-import { runExpectTests, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils.js";
+import { runExpectTests, runTestRunner, assertTypeScriptInput, printDiagnostics, printMappedCompileErrors } from "./cli-utils.js";
 import { runPreviewServer } from "./preview/server.js";
 import * as ui from "./utils/ui.js";
 import chalk from "chalk";
@@ -87,7 +87,7 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
 
   // Preseeded targets run non-interactively ONLY when stdin is not a TTY
   // (scripts/CI pipe nothing and expect zero prompts). A human typing
-  // `cuttlefish create x --board <target>` still gets the wizard — it
+  // `typecad-hal create x --board <target>` still gets the wizard — it
   // prints the preseeded answers and asks only what was not specified
   // (probe method, serial port, baud, starter).
   const interactive = process.stdin.isTTY === true;
@@ -115,7 +115,7 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
         throw new Error(
           `Unknown target '${targetId}'. Built-in targets:\n${known.join("\n")}\n` +
           `Or pass any board from the catalog (e.g. --board nucleo_f411re/stm32f411xe) —\n` +
-          `the catalog comes from your Zephyr tree; run \`cuttlefish board sync\` (or the\n` +
+          `the catalog comes from your Zephyr tree; run \`typecad-hal board sync\` (or the\n` +
           `installer) to generate it.`,
         );
       }
@@ -235,7 +235,7 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
 }
 
 /**
- * `cuttlefish clean` — remove the resolved generated output dir. The escape
+ * `typecad-hal clean` — remove the resolved generated output dir. The escape
  * hatch for states a build cannot self-heal (a build dir wedged by an
  * SDK/Zephyr-tree change, orphans from a toolchain upgrade, reclaiming the
  * Zephyr build tree). Resolution mirrors build: --out-dir flag > the config's
@@ -243,16 +243,16 @@ async function handleCreate(options: CreateCommandOptions): Promise<void> {
  * (recovery is exactly when things are broken).
  */
 function handleClean(options: CleanCommandOptions): void {
-  const config = loadCuttlefishConfig(process.cwd());
+  const config = loadTypecadConfig(process.cwd());
   if (!config) {
     throw new Error(
-      "No cuttlefish.config.ts found in current directory.\n" +
-      "Run 'cuttlefish create' to create one first.",
+      "No typecad-hal.config.ts found in current directory.\n" +
+      "Run 'typecad-hal create' to create one first.",
     );
   }
   if (!options.entry && !config.entry) {
     throw new Error(
-      "cuttlefish.config.ts has no 'entry' field.\n" +
+      "typecad-hal.config.ts has no 'entry' field.\n" +
       "Add: entry: './src/main.ts' (or pass --entry <file>)",
     );
   }
@@ -303,22 +303,22 @@ function handleClean(options: CleanCommandOptions): void {
 }
 
 /**
- * `cuttlefish debug-server <start|stop>` — drive the west-owned gdb server
+ * `typecad-hal debug-server <start|stop>` — drive the west-owned gdb server
  * for the last build (the F5 debug tasks call this; runnable directly for a
  * terminal-only session). Resolution mirrors build: the config's entry +
  * output.outDir locate the Zephyr app dir and its build.
  */
 async function handleDebugServer(options: DebugServerCommandOptions): Promise<void> {
-  const config = loadCuttlefishConfig(process.cwd());
+  const config = loadTypecadConfig(process.cwd());
   if (!config) {
     throw new Error(
-      "No cuttlefish.config.ts found in current directory.\n" +
-      "Run 'cuttlefish create' to create one first.",
+      "No typecad-hal.config.ts found in current directory.\n" +
+      "Run 'typecad-hal create' to create one first.",
     );
   }
   if (!config.entry) {
     throw new Error(
-      "cuttlefish.config.ts has no 'entry' field.\n" +
+      "typecad-hal.config.ts has no 'entry' field.\n" +
       "Add: entry: './src/main.ts'",
     );
   }
@@ -407,7 +407,7 @@ async function handleDebugServer(options: DebugServerCommandOptions): Promise<vo
 }
 
 /**
- * Shared tail of `cuttlefish create`: list the created files, install the new
+ * Shared tail of `typecad-hal create`: list the created files, install the new
  * project's dependencies (so it's ready to build with no extra step — skipped
  * via --no-install), and print the next-steps. A failed install is non-fatal:
  * the scaffold itself is valid, so we warn and point at the manual command
@@ -468,6 +468,14 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (options.command === "test") {
+      // Forward to the test-runner CLI (dist/test-runner/cli.js) — it owns
+      // the hardware-test flag surface. Same process-shape as the legacy
+      // typecad-hal test bin, which remains registered as an alias.
+      const exitCode = runTestRunner(options.forwarded);
+      process.exit(exitCode);
+    }
+
     if (options.command === "library") {
       await runLibraryCommand(options);
       return;
@@ -496,7 +504,7 @@ async function main(): Promise<void> {
       // isn't loaded yet. Load it from the config's framework field so the
       // framework-supplied doctor/licenses handlers are available.
       if (!hasLoadedFramework()) {
-        const config = loadCuttlefishConfig(process.cwd());
+        const config = loadTypecadConfig(process.cwd());
         if (config?.framework) {
           try {
             loadFrameworkPackage(config.framework, process.cwd());
@@ -525,11 +533,11 @@ async function main(): Promise<void> {
 
     // ── Handle board catalog sync / board module regen ────────────────────
     if (options.command === "board") {
-      const config = loadCuttlefishConfig(process.cwd());
+      const config = loadTypecadConfig(process.cwd());
       if (!config) {
         throw new Error(
-          "No cuttlefish.config.ts found in current directory.\n" +
-          "Run 'cuttlefish create' to create one.",
+          "No typecad-hal.config.ts found in current directory.\n" +
+          "Run 'typecad-hal create' to create one.",
         );
       }
       // The framework owns the board catalog + module generation; load it
@@ -550,7 +558,7 @@ async function main(): Promise<void> {
         if (typeof strategy?.syncBoardCatalog !== "function") {
           throw new Error(
             `Framework '${config.framework ?? "(none)"}' provides no board catalog sync — ` +
-            `'cuttlefish board sync' applies to Zephyr-framework projects.`,
+            `'typecad-hal board sync' applies to Zephyr-framework projects.`,
           );
         }
         const report = strategy.syncBoardCatalog(options.zephyrBase);
@@ -604,16 +612,16 @@ async function main(): Promise<void> {
 
     // ── Handle build command — entry point comes from config ──────────
     if (options.command === "build") {
-      const buildConfig = loadCuttlefishConfig(process.cwd());
+      const buildConfig = loadTypecadConfig(process.cwd());
       if (!buildConfig) {
         throw new Error(
-          "No cuttlefish.config.ts found in current directory.\n" +
-          "Run 'cuttlefish create' to create one, or use: cuttlefish <input.ts> [options]",
+          "No typecad-hal.config.ts found in current directory.\n" +
+          "Run 'typecad-hal create' to create one, or use: typecad-hal <input.ts> [options]",
         );
       }
       if (!buildConfig.entry) {
         throw new Error(
-          "cuttlefish.config.ts has no 'entry' field.\n" +
+          "typecad-hal.config.ts has no 'entry' field.\n" +
           "Add: entry: './src/main.ts'",
         );
       }
@@ -625,11 +633,11 @@ async function main(): Promise<void> {
 
       assertTypeScriptInput(entryFile);
       (options as any).inputFile = entryFile;
-      // The project root (directory holding cuttlefish.config.ts) is where the
-      // ESLint gate looks for .cuttlefish/eslint.config.mjs. Threading it through
+      // The project root (directory holding typecad-hal.config.ts) is where the
+      // ESLint gate looks for .typecad-hal/eslint.config.mjs. Threading it through
       // keeps the gate from silently no-op'ing when entry lives under src/.
       options.projectRoot = path.dirname(buildConfig.configPath);
-      // Pass display config from cuttlefish.config.ts through to transpileFile
+      // Pass display config from typecad-hal.config.ts through to transpileFile
       if (buildConfig.display) {
         (options as any).display = displayConfigForTranspile(buildConfig);
       }
@@ -680,7 +688,7 @@ async function main(): Promise<void> {
 
     if (!options.inputFile) {
       if (options.expect) {
-        const config = loadCuttlefishConfig(process.cwd());
+        const config = loadTypecadConfig(process.cwd());
         const exitCode = runExpectTests({
           port: options.port,
           buildTarget: config?.buildTarget,
@@ -695,13 +703,13 @@ async function main(): Promise<void> {
 
     assertTypeScriptInput(options.inputFile);
 
-    // ── Load cuttlefish.config.ts (config wins over CLI flags) ──────────
+    // ── Load typecad-hal.config.ts (config wins over CLI flags) ──────────
     const inputDir = path.dirname(path.resolve(options.inputFile));
-    const config = loadCuttlefishConfig(inputDir);
+    const config = loadTypecadConfig(inputDir);
 
     // ── Contract-based board narrowing ──────────────────────────────────
     // If the config names a TypeCAD contract (*.contract.json from typecad.net),
-    // generate the narrowed `.cuttlefish/board.ts` BEFORE env.d.ts is written
+    // generate the narrowed `.typecad-hal/board.ts` BEFORE env.d.ts is written
     // (it emits `export * from './board.js'` for this case) and before the
     // board package is resolved downstream. The generated board re-exports
     // only the pins/peripherals the PCB actually wires.
@@ -722,11 +730,11 @@ async function main(): Promise<void> {
     let effectiveBoardTarget = options.boardTarget;
     let effectiveFrameworkPackage = options.frameworkPackage;
     let effectivePort = options.port;
-    // CUTTLEFISH_PORT env var sits between the CLI flag and the config file
+    // TYPECAD_HAL_PORT env var sits between the CLI flag and the config file
     // (flag > env > config), so cross-platform uploads don't need a
     // Windows-specific COM port baked into package.json scripts.
-    if (!effectivePort && process.env.CUTTLEFISH_PORT) {
-      effectivePort = process.env.CUTTLEFISH_PORT;
+    if (!effectivePort && process.env.TYPECAD_HAL_PORT) {
+      effectivePort = process.env.TYPECAD_HAL_PORT;
     }
 
     if (config) {
@@ -756,9 +764,10 @@ async function main(): Promise<void> {
         effectiveFrameworkPackage = config.framework;
       }
 
-      // Keep cuttlefish-env.d.ts in sync so the TS language server can resolve
-      // '@typecad/board' imports in editor without a linter error.
-      // Platform-specific declarations come from the strategy if available.
+      // Keep typecad-hal-env.d.ts in sync (global type declarations; the
+      // virtual hardware specifiers resolve through tsconfig paths, not
+      // ambient declarations). Platform-specific declarations come from the
+      // strategy if available.
       let platformDeclarations: string[] | undefined;
       try {
         // Use the loaded framework's strategy for platform-specific declarations
@@ -1123,7 +1132,7 @@ async function main(): Promise<void> {
       // --monitor (blocks until Ctrl+C). Unlike flashing, monitoring always
       // needs a serial port — there is no probe/USB flavor of it.
       if (!port) {
-        throw new Error("--monitor requires a port. Set --port <port> on the command line (or the CUTTLEFISH_PORT env var).");
+        throw new Error("--monitor requires a port. Set --port <port> on the command line (or the TYPECAD_HAL_PORT env var).");
       }
       // Show the resolved --baud in the banner — toolchainOpts.baud is built
       // the same way, so what the user sees is what the framework monitor

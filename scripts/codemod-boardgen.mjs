@@ -10,8 +10,8 @@ const headOld = `export function generateBoard(target: string): GeneratedBoard {
   if (!entry) {
     const hint = loadBoardCatalogOverlay()
       ? \`'\${target}' is not a board target in the current catalog. \` +
-        \`It may be new in your Zephyr tree — run 'cuttlefish board sync' and retry.\`
-      : \`No board catalog on this machine. Run 'cuttlefish board sync' first.\`;
+        \`It may be new in your Zephyr tree — run 'typecad-hal board sync' and retry.\`
+      : \`No board catalog on this machine. Run 'typecad-hal board sync' first.\`;
     throw new Error(hint);
   }
 `;
@@ -41,8 +41,8 @@ export function generateBoard(target: string): GeneratedBoard {
   if (!entry) {
     const hint = loadBoardCatalogOverlay()
       ? \`'\${target}' is not a board target in the current catalog. \` +
-        \`It may be new in your Zephyr tree — run 'cuttlefish board sync' and retry.\`
-      : \`No board catalog on this machine. Run 'cuttlefish board sync' first.\`;
+        \`It may be new in your Zephyr tree — run 'typecad-hal board sync' and retry.\`
+      : \`No board catalog on this machine. Run 'typecad-hal board sync' first.\`;
     throw new Error(hint);
   }
   return buildModule(entry);

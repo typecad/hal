@@ -1,4 +1,4 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // @typecad-requires-roles pwm, pwmAlt
 // Shared board-level PWM suite, adapted to the thin PWM class (the ambient
 // The Pin fluent API (asOutput() chains) did not survive the rework;
@@ -7,7 +7,7 @@ import { describe, done } from '@typecad/expect';
 // board config's test-pins.json — silicon routes harvested from the SoC
 // pinctrl files decide which pads qualify per board.
 import { PWM_PIN, PWM_ALT } from '@typecad/test-pins';
-import { PWM } from '@typecad/board';
+import { PWM } from '@typecad/hal';
 
 describe("PWM construction")
   .it("PWM(pin, periodNs) construction configures without crashing")

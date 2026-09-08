@@ -5,7 +5,7 @@
 // @typecad/cuttlefish/board-catalog — the create flow needs it before any
 // framework is installed. This module adds the one thing the framework owns
 // — the full spawn-based west discovery cascade for an explicit
-// `cuttlefish board sync` — and re-exports the store for the strategy's
+// `typecad-hal board sync` — and re-exports the store for the strategy's
 // import surface.
 // ----------------------------------------------------------------------------
 

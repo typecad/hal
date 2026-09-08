@@ -4,7 +4,7 @@ import { transpile } from "../../../setup";
 /**
  * A3-9-1: fixed-width integers (uint32_t not unsigned int, int32_t not int).
  *
- * Cuttlefish's defaultNumericType() returns "int" for TS `number`. Under
+ * TypeCAD's defaultNumericType() returns "int" for TS `number`. Under
  * --autosar, this should flip to "int32_t" so emitted code uses fixed-width
  * integers throughout (the AUTOSAR-required form). Default-off preserves
  * "int" so existing output is byte-identical.

@@ -7,9 +7,7 @@
       "@typecad/cuttlefish",
       "@typecad/ui",
       "@typecad/hal",
-      "@typecad/framework-zephyr",
-      "@typecad/expect",
-      "@typecad/simulator"
+      "@typecad/framework-zephyr"
     ]
   ],
   "linked": [],
@@ -17,6 +15,7 @@
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
   "ignore": [
-    "vscode-typecad-debug"
+    "vscode-typecad-debug",
+    "@typecad/zephyr-esp32s3-rgb"
   ]
 }

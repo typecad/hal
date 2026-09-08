@@ -18,8 +18,8 @@
 // against the weak pull-up. No external wiring is required.
 // ---------------------------------------------------------------------------
 
-import { describe, done } from '@typecad/expect';
-import { GPIO, I2CTarget, SPITarget, UART, Thread, Time } from '@typecad/board';
+import { describe, done } from '@typecad/hal/testing';
+import { GPIO, I2CTarget, SPITarget, UART, Thread, Time } from '@typecad/hal';
 
 const led = new GPIO(17, GPIO.OUTPUT);                    // PA17 — user LED (active-high)
 const pin = new GPIO(11, GPIO.INPUT | GPIO.PULL_UP);      // PA11 — A2 header pin (raw path)

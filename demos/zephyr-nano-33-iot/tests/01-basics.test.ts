@@ -1,13 +1,13 @@
 // ---------------------------------------------------------------------------
 // Hardware test — Basics
 //
-// Runs on the board via `npm run test:hw` (cuttlefish-test). Each test file is
+// Runs on the board via `npm run test:hw` (typecad-hal test). Each test file is
 // transpiled, flashed to the board, and its assertions are evaluated on the
-// host over serial. Change the serial port in cuttlefish.config.ts (the `test.port`
-// field) or override it with the CUTTLEFISH_PORT env var.
+// host over serial. Change the serial port in typecad-hal.config.ts (the `test.port`
+// field) or override it with the TYPECAD_HAL_PORT env var.
 // ---------------------------------------------------------------------------
 
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 
 describe("Basics")
   .it("adds two numbers")

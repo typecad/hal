@@ -30,7 +30,7 @@ describe("transpile() helper with autosar option", () => {
 
     const sidecar = JSON.parse(fs.readFileSync(created[0], "utf-8"));
     expect(sidecar.standard).toBe("AUTOSAR C++14");
-    expect(sidecar.tool).toBe("cuttlefish");
+    expect(sidecar.tool).toBe("typecad-hal");
 
     // Cleanup: remove every sidecar this test created.
     for (const f of created) {

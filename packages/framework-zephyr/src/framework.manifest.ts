@@ -525,11 +525,11 @@ export default defineFrameworkManifest({
     zephyr: '>=4.3 <5.0',
   },
 
-  // `cuttlefish doctor` prints the detected Zephyr version + compat result and
+  // `typecad-hal doctor` prints the detected Zephyr version + compat result and
   // previews how the configured board target resolves for that version.
   doctor: { available: true },
 
-  // `cuttlefish licenses` enumerates the Zephyr kernel + west manifest projects
+  // `typecad-hal licenses` enumerates the Zephyr kernel + west manifest projects
   // and resolves each one's SPDX license (mirrors framework-arduino).
   licenses: { available: true },
 });

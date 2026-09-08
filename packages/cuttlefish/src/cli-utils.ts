@@ -1,7 +1,6 @@
 ﻿import path from "node:path";
 import fs from "node:fs";
 import { spawnSync } from "node:child_process";
-import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import chalk from "chalk";
 import {
@@ -14,32 +13,30 @@ import {
 } from "./mapping/source-map.js";
 import type { CompileResult, Diagnostic } from "./api/shared/index.js";
 
-const require = createRequire(import.meta.url);
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function resolveExpectCliPath(): string {
-  try {
-    return require.resolve("@typecad/expect/dist/host/cli.js");
-  } catch {
-    const monorepoPath = path.resolve(__dirname, "..", "..", "expect", "dist", "host", "cli.js");
-    if (fs.existsSync(monorepoPath)) return monorepoPath;
-
-    const nmPath = path.resolve(__dirname, "..", "node_modules", "@typecad", "expect", "dist", "host", "cli.js");
-    if (fs.existsSync(nmPath)) return nmPath;
-
-    return "cuttlefish-test";
-  }
+  // The hardware-test runner lives in this package (src/test-runner/ since
+  // the expect package dissolved) — dist/test-runner/cli.js.
+  const local = path.resolve(__dirname, "test-runner", "cli.js");
+  if (fs.existsSync(local)) return local;
+  throw new Error(
+    "cuttlefish test-runner CLI not found at " + local + " — the cuttlefish install is incomplete; reinstall @typecad/cuttlefish.",
+  );
 }
 
 export function runExpectTests(options: { port?: string; buildTarget?: string; baud?: number; expectFile?: string }): number {
-  const expectCliPath = resolveExpectCliPath();
-  const args: string[] = [expectCliPath];
+  const args: string[] = [];
   if (options.port) args.push("--port", options.port);
   if (options.buildTarget) args.push("--build-target", options.buildTarget);
   if (options.baud) args.push("--baud", String(options.baud));
   if (options.expectFile) args.push(path.resolve(process.cwd(), options.expectFile));
+  return runTestRunner(args);
+}
 
-  const result = spawnSync(process.execPath, args, {
+/** Spawn the hardware test-runner CLI with forwarded arguments. */
+export function runTestRunner(forwardedArgs: string[]): number {
+  const result = spawnSync(process.execPath, [resolveExpectCliPath(), ...forwardedArgs], {
     encoding: "utf8",
     cwd: process.cwd(),
     timeout: 0,

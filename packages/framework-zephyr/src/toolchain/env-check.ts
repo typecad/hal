@@ -1,5 +1,5 @@
 // ---------------------------------------------------------------------------
-// Zephyr environment check — the shared detection behind `cuttlefish doctor`.
+// Zephyr environment check — the shared detection behind `typecad-hal doctor`.
 //
 // Zephyr environment check: gather the impure
 // environment facts once (west presence + version, Zephyr version, board
@@ -78,7 +78,7 @@ export interface ZephyrEnvCheck {
   compatRange: string | undefined;
   /** Result of the compat-range check against the detected version. */
   compatStatus: CompatStatus;
-  /** Raw board target from cuttlefish.config.ts, if configured. */
+  /** Raw board target from typecad-hal.config.ts, if configured. */
   buildTarget: string | undefined;
   /** buildTarget normalized for the installed Zephyr version (may equal it). */
   resolvedBoardTarget: string | undefined;

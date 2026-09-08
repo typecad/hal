@@ -1,6 +1,6 @@
 # `@typecad/hal`
 
-Hardware abstraction layer for [TypeCAD](https://cuttlefish.typecad.net) —
+Hardware abstraction layer for [TypeCAD](https://typecad-hal.typecad.net) —
 GPIO, timing, threads, PWM/ADC/DAC, I2C/SPI/UART/USB, persistent storage,
 sensors, and WiFi/HTTP/MQTT/BLE, written as regular TypeScript.
 
@@ -13,15 +13,15 @@ firmware.
 
 ## Install
 
-HAL projects are scaffolded by cuttlefish, which wires the framework,
+HAL projects are scaffolded by typecad-hal, which wires the framework,
 board target, and the Zephyr SDK for you:
 
 ```bash
 npx @typecad/cuttlefish create my-firmware
-cd my-firmware && npx cuttlefish build --compile
+cd my-firmware && npx typecad-hal build --compile
 ```
 
-A project imports hardware from **`@typecad/board`** — the module cuttlefish
+A project imports hardware from **`@typecad/board`** — the module typecad-hal
 generates per project from the Zephyr board catalog. That module is the
 narrowed gateway: it re-exports a hardware class only when this board's
 facts support it, so importing unavailable hardware fails at module
@@ -75,7 +75,7 @@ take handlers (interrupts, threads, bus events). See
 ## Example
 
 ```ts
-import { LED } from '@typecad/board';
+import { LED } from '@typecad/hal';
 import { GPIO, Time, Thread } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);
@@ -96,7 +96,7 @@ exports functional instances (no strings, no construction, and unavailable
 buses are simply not exported):
 
 ```ts
-import { UART0 } from '@typecad/board';
+import { UART0 } from '@typecad/hal';
 
 UART0.writeLine('hello');         // usart1, default 115200
 ```
@@ -106,7 +106,7 @@ instance or the name; targets and sensors carry the bus instance and the
 7-bit address / chip-select from construction:
 
 ```ts
-import { I2C0, SENSOR, CHAN } from '@typecad/board';
+import { I2C0, SENSOR, CHAN } from '@typecad/hal';
 
 // device() hands back the FUNCTIONAL target — verbs callable immediately,
 // and the same object is the Sensor fact-carrier.
@@ -123,9 +123,9 @@ const temp = sht3x.get(CHAN.AMBIENT_TEMP);
 ## Hardware tests
 
 The [`tests/`](./tests/) directory is the HAL hardware suite — the on-metal
-proof that the HAL works. It runs via
-[`@typecad/expect`](../expect/README.md) (`describe()` / `.it()` /
-`.expect()` / `done()`) over the board's console, and one shared suite
+proof that the HAL works. It runs via the testing DSL built into this package
+(`@typecad/hal/testing` — `describe()` / `.it()` / `.expect()` / `done()`,
+run by `typecad-hal test`) over the board's console, and one shared suite
 covers every board:
 
 - **`tests/common/`** — board-agnostic groups, one file per subsystem:
@@ -152,7 +152,7 @@ npm run test:hw:esp32s3 --workspace @typecad/hal    # DevKitC (esptool + CH34x c
 ```
 
 The `[TC:...]` test protocol rides the board's console (its devicetree
-`zephyr,console` node). Port resolution: `--port` / `CUTTLEFISH_PORT` wins,
+`zephyr,console` node). Port resolution: `--port` / `TYPECAD_HAL_PORT` wins,
 then `test.port` in the board's config, then USB-identity discovery
 (`test-pins.json` carries `usb: { vid, pid }` — e.g. the DevKitC's CH34x
 bridge `1A86:55D3`), and the port re-resolves after every flash
@@ -176,9 +176,8 @@ network tier needs the host server (`npm run test:http`) and credentials in
 
 ## Ecosystem
 
-- [`@typecad/cuttlefish`](../../README.md) — the transpiler that resolves HAL calls to C++.
+- [`@typecad/cuttlefish`](../../README.md) — the transpiler that resolves HAL calls to C++ and runs the hardware test suite (`typecad-hal test`).
 - [`@typecad/framework-zephyr`](../framework-zephyr/README.md) — the Zephyr lowering, board catalog, and toolchain.
-- [`@typecad/expect`](../expect/README.md) — the on-hardware test framework.
 - [`@typecad/ui`](../ui/README.md) — HTML/CSS-driven display graphics.
 
 ## License

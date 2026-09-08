@@ -1,5 +1,5 @@
 <script>
-  // showcase.ui — cuttlefish UI capability showcase (single-file component).
+  // showcase.ui — typecad-hal UI capability showcase (single-file component).
   // Combines script, styles, and template in one file. The transpiler splits
   // these into the three streams (TS/CSS/HTML) it already handles.
 
@@ -81,7 +81,7 @@
    Because display.themeCss replaces the sibling .ui.css entirely, this single
    file holds everything: @font-face, the :root/.dark token palette, @keyframes,
    and every element rule. Select the dark palette via themeClass:'dark' in
-   cuttlefish.config.ts.
+   typecad-hal.config.ts.
    ----------------------------------------------------------------------- */
 
 @font-face {
@@ -702,7 +702,7 @@ a {
 <screen id="home">
   <body>
     <header id="homeHeader">
-      <h1 id="homeTitle">cuttlefish UI</h1>
+      <h1 id="homeTitle">typecad-hal UI</h1>
       <p id="homeSubtitle">capability showcase</p>
     </header>
     <main class="scrollBody">
@@ -1091,7 +1091,7 @@ a {
       <h2 class="screenTitle">shadcn Kit</h2>
     </header>
     <main class="scrollBody">
-      <h3 class="demoLabel">tokens + recipes from "cuttlefish add shadcn"</h3>
+      <h3 class="demoLabel">tokens + recipes from "typecad-hal add shadcn"</h3>
       <view class="card">
         <view class="card-header">
           <text class="card-title">Sensor node</text>

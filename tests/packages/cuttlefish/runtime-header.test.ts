@@ -118,7 +118,7 @@ describe("C++ reactive runtime header", () => {
     expect(header).toMatch(/ui_clear_press_offset_area[\s\S]*ui_repair_current_node_paint_with_parent\(nodeIdx,\s*&r\)[\s\S]*ui_display_fill_rect/);
   });
 
-  it("routes runtime display operations through Cuttlefish display shims", () => {
+  it("routes runtime display operations through TypeCAD display shims", () => {
     expect(header).toContain("ui_display_draw_pixel");
     expect(header).toContain("ui_display_set_target");
     expect(header).toContain("ui_display_target_width");

@@ -9,8 +9,7 @@ For sequential "wait for a signal" logic, interrupts are the wrong tool — poll
 ## Attaching an interrupt
 
 ```typescript
-import { GPIO } from '@typecad/hal';
-import { LED, BUTTON } from '@typecad/board';
+import { GPIO, LED, BUTTON } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT);
 const button = new GPIO(BUTTON, GPIO.INPUT | GPIO.PULL_UP);

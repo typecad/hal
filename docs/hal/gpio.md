@@ -3,8 +3,7 @@
 Digital pins are the thinnest class in the HAL: construction configures, and each method lowers to exactly one Zephyr call. The flags are Zephyr's own `GPIO_*` tokens verbatim — no mode strings, no Wiring renumbering.
 
 ```typescript
-import { GPIO } from '@typecad/hal';
-import { LED, BUTTON } from '@typecad/board';
+import { GPIO, LED, BUTTON } from '@typecad/hal';
 
 const led = new GPIO(LED, GPIO.OUTPUT | GPIO.OUTPUT_INIT_LOW);
 const button = new GPIO(BUTTON, GPIO.INPUT | GPIO.PULL_UP);

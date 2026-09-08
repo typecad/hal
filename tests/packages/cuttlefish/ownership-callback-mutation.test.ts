@@ -20,7 +20,7 @@ const tr = (code: string) => transpile(code, { strategy: _strategy, target: 'zep
 describe('ownership: registered-callback mutation', () => {
   it('keeps a top-level let non-const when a Thread.start callback assigns it', () => {
     const result = tr(`
-      import { GPIO } from '@typecad/board';
+      import { GPIO } from '@typecad/hal';
       const led = new GPIO('PB5', GPIO.OUTPUT);
       let ticks: number = 0;
       const worker = new Thread(0, { stackKb: 2 });
@@ -39,7 +39,7 @@ describe('ownership: registered-callback mutation', () => {
 
   it('still promotes a let that nothing mutates (regression guard on the pass itself)', () => {
     const result = tr(`
-      import { GPIO } from '@typecad/board';
+      import { GPIO } from '@typecad/hal';
       let frozen: number = 7;
       const led = new GPIO('PB5', GPIO.OUTPUT);
       led.write(frozen > 0);

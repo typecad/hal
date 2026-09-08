@@ -2,7 +2,7 @@
 // Register-mapped struct decorators — compile-time markers
 //
 // `@register(address)` and `@bits(hi, lo)` are recognized by-name by the
-// cuttlefish transpiler (packages/cuttlefish/src/ir/register-decorators.ts).
+// typecad-hal transpiler (packages/cuttlefish/src/ir/register-decorators.ts).
 // The transpiler intercepts a class carrying @register, lowers it to a
 // `volatile uint32_t*` pointer at the given address, and rewrites field
 // reads/writes to shift/mask arithmetic. The decorators themselves are erased
@@ -32,7 +32,7 @@ export type Bits<N extends number = number> = number;
  *  These carry real (inert) runtime bodies rather than `declare`, so the
  *  `export { register, bits }` re-export in index.ts resolves under Node's ESM
  *  loader, which validates that re-exported bindings exist at runtime. They are
- *  never invoked: the cuttlefish transpiler detects them by name and lowers the
+ *  never invoked: the typecad-hal transpiler detects them by name and lowers the
  *  decorated struct away, so these stubs are only reached when the decorator
  *  source is imported without transpilation (e.g. host-side tests). */
 export function register(_address: number): ClassDecorator {

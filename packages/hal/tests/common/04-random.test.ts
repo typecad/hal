@@ -1,4 +1,4 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 import { Random } from '@typecad/hal';
 
 describe("Random namespace")

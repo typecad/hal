@@ -5,7 +5,7 @@
 // (BUILT_IN_PROFILES) and the TouchLibrary union in
 // @typecad/cuttlefish's display-profile.ts. The wizard asks questions and
 // fills defaults from these entries; the resulting object literal is written
-// into the project's cuttlefish.config.ts `display` section.
+// into the project's typecad-hal.config.ts `display` section.
 //
 // Keep this catalog in sync with the framework's BUILT_IN_PROFILES when a
 // display or touch library is added there.

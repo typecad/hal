@@ -5,7 +5,7 @@
 // .typecad/activate-zephyr.ps1 (-NoExit keeps the shell open afterward). This
 // makes `micromamba activate zephyr` happen automatically, so `west` is on
 // PATH and ZEPHYR_BASE / ZEPHYR_SDK_INSTALL_DIR are set without per-session
-// typing - and `npx cuttlefish build` uses the new install.
+// typing - and `npx typecad-hal build` uses the new install.
 //
 // If this project already has a .vscode/settings.json, MERGE these keys into
 // it by hand rather than overwriting the whole file.

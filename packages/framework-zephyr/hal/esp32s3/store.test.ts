@@ -13,7 +13,7 @@
 // usb.* ops compose. The CDC path is covered by the blackpill rig.)
 // ---------------------------------------------------------------------------
 
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 import { Store } from '@typecad/hal';
 
 const store = new Store('rig');

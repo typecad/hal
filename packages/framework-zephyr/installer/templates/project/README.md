@@ -1,9 +1,9 @@
 # typeCAD Zephyr — per-project activation template
 
-Copy these files into a cuttlefish Zephyr project so that opening a terminal in
+Copy these files into a typecad-hal Zephyr project so that opening a terminal in
 it auto-activates the micromamba env created by the typeCAD Zephyr installer.
 Once active, `west` is on PATH and `ZEPHYR_BASE` / `ZEPHYR_SDK_INSTALL_DIR` are
-set, so `npx cuttlefish build` uses the new install automatically — no
+set, so `npx typecad-hal build` uses the new install automatically — no
 per-session `micromamba activate` typing.
 
 ## Files

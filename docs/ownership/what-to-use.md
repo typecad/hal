@@ -14,7 +14,7 @@ In C++, these types are "scalars." They are extremely small (usually 1–4 bytes
 let temp: number = 25.5; // No annotation needed
 let isActive: boolean = true; 
 
-import { UART0 } from '@typecad/board';
+import { UART0 } from '@typecad/hal';
 
 function log(val: number) { // Plain number is fine
   UART0.writeLine(val);

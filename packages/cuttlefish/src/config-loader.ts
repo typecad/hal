@@ -1,7 +1,7 @@
 ﻿// ---------------------------------------------------------------------------
-// Config loader — reads and parses cuttlefish.config.ts
+// Config loader — reads and parses typecad-hal.config.ts
 //
-// Walks up from a given directory to locate `cuttlefish.config.ts`, then parses
+// Walks up from a given directory to locate `typecad-hal.config.ts`, then parses
 // it with the TypeScript compiler API to extract the scalar config values.
 // This mirrors the AST-based approach used by board-resolver.ts so we avoid
 // any runtime evaluation (no ts-node / dynamic import needed).
@@ -21,11 +21,12 @@ import {
 import { fileURLToPath } from "node:url";
 import { readTestPinsFile, buildTestPinsModuleContent } from "./transpile/test-pins.js";
 import { safeValidateConfig } from "./config-schema.js";
+import { setHALProjectDir } from "./ir/hal-resolver.js";
 
 /** The filename we search for when walking up directories. */
-const CONFIG_FILENAME = "cuttlefish.config.ts";
+const CONFIG_FILENAME = "typecad-hal.config.ts";
 
-/** Top-level keys recognized by CuttlefishConfigSchema — used to warn about
+/** Top-level keys recognized by TypecadConfigSchema — used to warn about
  *  misspelled keys that the AST extraction would otherwise drop silently. */
 const KNOWN_TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
   "entry", "target", "board", "soc", "contract", "framework", "psram",
@@ -34,11 +35,11 @@ const KNOWN_TOP_LEVEL_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Resolved configuration values extracted from `cuttlefish.config.ts`.
+ * Resolved configuration values extracted from `typecad-hal.config.ts`.
  * Only the fields relevant to the transpiler are included — complex
  * nested objects (like `output`) are flattened into simple scalars.
  */
-export interface ResolvedCuttlefishConfig {
+export interface ResolvedTypecadConfig {
   target?: string;
   /** Zephyr board target — the qualified `west build -b` argument (e.g.
    *  'esp32s3_devkitc/esp32s3/procpu'). The project-local board module is
@@ -80,7 +81,7 @@ export interface ResolvedCuttlefishConfig {
 }
 
 /**
- * Search upward from `startDir` for a file named `cuttlefish.config.ts`.
+ * Search upward from `startDir` for a file named `typecad-hal.config.ts`.
  * Returns the absolute path on success, `undefined` if none is found.
  */
 export function findConfigFile(startDir: string): string | undefined {
@@ -399,11 +400,11 @@ function extractFrameworkSection(
  * The file must have a default export whose initializer is an object literal.
  * We find it by looking for:
  *   1. `export default <object>` — an ExportAssignment referencing a variable
- *   2. `const config: CuttlefishConfig = { ... };` followed by `export default config;`
+ *   2. `const config: TypecadConfig = { ... };` followed by `export default config;`
  *
  * Returns `undefined` if the file cannot be parsed or has no recognizable config.
  */
-export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | undefined {
+export function parseConfigFile(configPath: string): ResolvedTypecadConfig | undefined {
   const sourceText = fs.readFileSync(configPath, "utf-8");
   const sourceFile = ts.createSourceFile(
     configPath,
@@ -430,7 +431,7 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
 
     // export default config;  (ExportAssignment with an identifier)
     if (ts.isExportAssignment(stmt) && !stmt.isExportEquals) {
-      // Unwrap `export default { ... } satisfies CuttlefishConfig` /
+      // Unwrap `export default { ... } satisfies TypecadConfig` /
       // `as const` / parenthesized forms down to the underlying expression.
       const expr = unwrapTypeCast(stmt.expression);
       if (ts.isIdentifier(expr)) {
@@ -447,7 +448,7 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   if (!configObject && defaultExportName) {
     const decl = variableDecls.get(defaultExportName);
     if (decl?.initializer) {
-      // `const config = { ... } satisfies CuttlefishConfig` parses the
+      // `const config = { ... } satisfies TypecadConfig` parses the
       // initializer as a SatisfiesExpression — unwrap to the object literal
       // so the whole config isn't silently ignored.
       const init = unwrapTypeCast(decl.initializer);
@@ -489,7 +490,7 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   walkObjectLiteral(configObject, "", flat, warn);
 
   // Map flat keys to the resolved config shape.
-  const resolved: ResolvedCuttlefishConfig = { configPath };
+  const resolved: ResolvedTypecadConfig = { configPath };
 
   const entry = flat.get("entry");
   if (typeof entry === "string") resolved.entry = entry;
@@ -603,7 +604,7 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
   // extractObjectAsRecord walks literals into a loose record; the shape is
   // checked downstream (schema passthrough + display-profile resolution), so
   // bridge it to the declared DisplayConfig type at this single boundary.
-  if (displaySection) resolved.display = displaySection as ResolvedCuttlefishConfig["display"];
+  if (displaySection) resolved.display = displaySection as ResolvedTypecadConfig["display"];
 
   // Validate the parsed config against the Zod schema.
   // Reconstruct a structured object from the flat-map extraction for validation.
@@ -649,14 +650,19 @@ export function parseConfigFile(configPath: string): ResolvedCuttlefishConfig | 
 }
 
 /**
- * Generates (or updates) a `cuttlefish-env.d.ts` file next to the config file.
+ * Generates (or updates) a `typecad-hal-env.d.ts` file next to the config file.
  *
- * The file declares an ambient `@typecad/board` module that simply re-exports
- * everything from the concrete board package.  This lets the TypeScript
- * language server resolve `import { ... } from '@typecad/board'` in user files.
+ * The file carries the global type declarations (Owned/Shared/Mutable,
+ * SafeVariable/SafeInt, C-style number types, volatile(), platform ambient
+ * declarations). The virtual hardware specifier needs NO ambient declaration:
+ * user code imports everything from '@typecad/hal', which the project
+ * tsconfig's paths mapping resolves onto the generated board module
+ * (.typecad-hal/board.ts);
+ * file. ('@typecad/hal' must never be ambient-declared — the declaration
+ * would merge with the real package's exports.)
  *
  * The file is regenerated on every transpiler run so it stays in sync when
- * the board changes in `cuttlefish.config.ts`.
+ * the board changes in `typecad-hal.config.ts`.
  */
 /** Refresh a stale catalog overlay before the board-module check — fs-only
  *  discovery, re-walks the tree only when the provenance moved. Errors are
@@ -671,7 +677,7 @@ function refreshBoardCatalogQuietly(): void {
 }
 
 /**
- * Ensure the generated board module (.cuttlefish/board.ts + board.json)
+ * Ensure the generated board module (.typecad-hal/board.ts + board.json)
  * is current for a board-target config. Regen-first: any input change —
  * the config's board, the catalog overlay, the Zephyr tree, the generator
  * revision — recreates the module, so the emitted module is
@@ -680,9 +686,13 @@ function refreshBoardCatalogQuietly(): void {
  * user switched boards), it regenerates automatically — a stale module is
  * the split-brain trap, not something to pin.
  */
-function ensureGeneratedBoard(config: ResolvedCuttlefishConfig, cuttlefishDir: string): void {
+function ensureGeneratedBoard(config: ResolvedTypecadConfig, cuttlefishDir: string): void {
   const boardTsPath = path.join(cuttlefishDir, "board.ts");
   const boardJsonPath = path.join(cuttlefishDir, "board.json");
+  // Anchor HAL source/gate resolution to this project BEFORE any board
+  // generation runs — boardgen reads the ungated surface from the project's
+  // own @typecad/hal copy, and this runs before transpileFile would set it.
+  setHALProjectDir(path.dirname(config.configPath));
   // Regen-first: the board module is a derived artifact, recreated whenever
   // ANY input moves — the config's board target, the catalog overlay, the
   // Zephyr tree the overlay was generated from, or the extraction revision.
@@ -729,25 +739,25 @@ function ensureGeneratedBoard(config: ResolvedCuttlefishConfig, cuttlefishDir: s
   }
   // User-facts notes (shadowed harvest routes) surface once per regen —
   // the fingerprint keeps regens rare.
-  for (const w of generated.warnings ?? []) console.warn(`cuttlefish: ${w}`);
+  for (const w of generated.warnings ?? []) console.warn(`typecad-hal: ${w}`);
   fs.writeFileSync(boardTsPath, generated.boardTs, "utf-8");
   fs.writeFileSync(boardJsonPath, generated.boardJson, "utf-8");
 }
 
 /**
- * Force-regenerate the project-local board module — the `cuttlefish board
+ * Force-regenerate the project-local board module — the `typecad-hal board
  * regen` path. Board-target configs only: contract projects write their
  * board module through the contract reader, and native projects have none.
- * Returns the .cuttlefish directory the module was written to.
+ * Returns the .typecad-hal directory the module was written to.
  */
-export function regenBoardModule(config: ResolvedCuttlefishConfig): string {
+export function regenBoardModule(config: ResolvedTypecadConfig): string {
   if (!config.board || config.contract) {
     throw new Error(
-      "'cuttlefish board regen' applies to board-target projects. " +
-      "Set 'board:' in cuttlefish.config.ts (contract projects regenerate on build).",
+      "'typecad-hal board regen' applies to board-target projects. " +
+      "Set 'board:' in typecad-hal.config.ts (contract projects regenerate on build).",
     );
   }
-  const cuttlefishDir = path.join(path.dirname(config.configPath), ".cuttlefish");
+  const cuttlefishDir = path.join(path.dirname(config.configPath), ".typecad-hal");
   if (!fs.existsSync(cuttlefishDir)) {
     fs.mkdirSync(cuttlefishDir, { recursive: true });
   }
@@ -758,7 +768,7 @@ export function regenBoardModule(config: ResolvedCuttlefishConfig): string {
 }
 
 /** The subset of a platform strategy ensureGeneratedBoard needs. The
- *  optional factsJson is the project's raw cuttlefish.facts.json — user
+ *  optional factsJson is the project's raw typecad-hal.facts.json — user
  *  facts merge into the generated manifest, and the strategy hashes the
  *  same text into the module's source fingerprint. */
 interface BoardGenStrategy {
@@ -769,11 +779,11 @@ interface BoardGenStrategy {
   } | undefined;
 }
 
-/** The project's last-build snapshot (.cuttlefish/as-built.json, written by
+/** The project's last-build snapshot (.typecad-hal/as-built.json, written by
  *  the framework toolchain after each successful west build). Absent →
  *  undefined; malformed content is handled downstream (soft ignore). */
-function readAsBuiltJson(config: ResolvedCuttlefishConfig): string | undefined {
-  const p = path.join(path.dirname(config.configPath), ".cuttlefish", "as-built.json");
+function readAsBuiltJson(config: ResolvedTypecadConfig): string | undefined {
+  const p = path.join(path.dirname(config.configPath), ".typecad-hal", "as-built.json");
   if (!fs.existsSync(p)) return undefined;
   try {
     return fs.readFileSync(p, "utf8");
@@ -782,15 +792,15 @@ function readAsBuiltJson(config: ResolvedCuttlefishConfig): string | undefined {
   }
 }
 
-/** The project's raw cuttlefish.facts.json text, when one exists beside the
+/** The project's raw typecad-hal.facts.json text, when one exists beside the
  *  config. Absent file → undefined; present-but-unreadable surfaces. */
-function readUserFactsJson(config: ResolvedCuttlefishConfig): string | undefined {
-  const factsPath = path.join(path.dirname(config.configPath), "cuttlefish.facts.json");
+function readUserFactsJson(config: ResolvedTypecadConfig): string | undefined {
+  const factsPath = path.join(path.dirname(config.configPath), "typecad-hal.facts.json");
   if (!fs.existsSync(factsPath)) return undefined;
   try {
     return fs.readFileSync(factsPath, "utf8");
   } catch (err) {
-    throw new Error(`cuttlefish.facts.json exists but cannot be read: ${(err as Error).message}`);
+    throw new Error(`typecad-hal.facts.json exists but cannot be read: ${(err as Error).message}`);
   }
 }
 
@@ -798,12 +808,12 @@ function readUserFactsJson(config: ResolvedCuttlefishConfig): string | undefined
  *  packages are ESM, so this imports their built entry from the resolving
  *  project's node_modules (createRequire against the project dir).
  *  @param configDir  the project directory (where node_modules resolution starts) */
-function configDirOf(config: ResolvedCuttlefishConfig): string {
+function configDirOf(config: ResolvedTypecadConfig): string {
   return path.dirname(config.configPath);
 }
 
 function loadFrameworkBoardModule(
-  config: ResolvedCuttlefishConfig,
+  config: ResolvedTypecadConfig,
   configDir: string,
   factsJson?: string,
   asBuiltJson?: string,
@@ -836,32 +846,24 @@ function loadFrameworkBoardModule(
   );
 }
 
-export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig, platformDeclarations?: string[]): void {
+export function generateVirtualTypeDeclaration(config: ResolvedTypecadConfig, platformDeclarations?: string[]): void {
   if (!config.board && !config.soc) {
     // For native targets with no board, still generate declarations
     if (!platformDeclarations || platformDeclarations.length === 0) return;
   }
 
   const configDir = path.dirname(config.configPath);
-  const cuttlefishDir = path.join(configDir, ".cuttlefish");
-  const outPath = path.join(cuttlefishDir, "cuttlefish-env.d.ts");
+  const cuttlefishDir = path.join(configDir, ".typecad-hal");
+  const outPath = path.join(cuttlefishDir, "typecad-hal-env.d.ts");
 
-  // Ensure .cuttlefish/ exists (it may not on first build of a non-scaffolded project)
+  // Ensure .typecad-hal/ exists (it may not on first build of a non-scaffolded project)
   if (!fs.existsSync(cuttlefishDir)) {
     fs.mkdirSync(cuttlefishDir, { recursive: true });
   }
 
-  // Determine what @typecad/board exports
-  let boardExport = "";
-  if (config.contract || config.board) {
-    // Board-target or contract project: the project-local generated board
-    // module (.cuttlefish/board.ts) — produced by boardgen (board target)
-    // or the contract reader (soc + contract), never a package.
-    boardExport = "export * from './board.js';";
-  } else {
-    // Native target with no board: empty export
-    boardExport = "";
-  }
+  // Determine whether this project carries a board module at all (board
+  // target or contract) — only affects the doc comment below.
+  const hasBoardModule = !!(config.contract || config.board);
 
   // Board-target projects: ensure the generated board module exists. The
   // framework owns the generation (the Zephyr framework joins its board
@@ -871,14 +873,30 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
     ensureGeneratedBoard(config, cuttlefishDir);
   }
 
+  // Doc-comment lines explaining how the virtual specifier resolves. There
+  // is deliberately NO ambient `declare module` for '@typecad/hal' (it would
+  // merge with the real package's exports) (an ambient declaration merged
+  // onto the paths-resolved file hijacks the module's display name, so
+  // narrowing errors would name the wrong specifier). The specifier resolves
+  // through the tsconfig paths mapping.
+  const boardComment = hasBoardModule
+    ? [
+        "//",
+        "// User code imports everything from '@typecad/hal'; the project tsconfig's",
+        "// paths mapping resolves that specifier onto .typecad-hal/board.ts —",
+        "// the narrowed hardware gateway.",
+      ]
+    : [];
+
   const content = [
     "// ---------------------------------------------------------------------------",
-    "// cuttlefish-env.d.ts — Virtual module declaration for '@typecad/board'",
+    "// typecad-hal-env.d.ts — Global type declarations",
     "//",
-    "// Auto-generated by the cuttlefish transpiler. Do not edit manually.",
-    "// To change the board, update cuttlefish.config.ts and re-run the transpiler.",
+    "// Auto-generated by the typecad-hal transpiler. Do not edit manually.",
+    "// To change the board, update typecad-hal.config.ts and re-run the transpiler.",
     "//",
     `// Board: ${config.board ?? config.soc ?? "native"}`,
+    ...boardComment,
     "// ---------------------------------------------------------------------------",
     "",
     "declare global {",
@@ -921,28 +939,22 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
     ...(platformDeclarations ?? []),
     "}",
     "",
-    "declare module '@typecad/board' {",
-    `  ${boardExport}`,
-    "  export type Owned<T = unknown> = T;",
-    "  export type Shared<T = unknown> = T;",
-    "  export type Mutable<T = unknown> = T;",
-    "}",
-    "",
     "export {};",
     "",
   ].join("\n");
 
-  fs.writeFileSync(outPath, content, "utf-8");
+  fs.writeFileSync(outPath, content, "utf8");
 
-  // The .cuttlefish/board.ts module itself is written by ensureGeneratedBoard
+  // The .typecad-hal/board.ts module itself is written by ensureGeneratedBoard
   // (board-target configs, above) or the contract reader (invoked from cli.ts
-  // before this function runs) — never a package re-export here. The
-  // scaffolded tsconfig path mapping points the virtual specifier
-  // ("@typecad/board") at that file, and the ambient declare module in
-  // cuttlefish-env.d.ts mirrors it for the language server.
+  // before this function runs) — never a package re-export here, and never
+  // through an ambient declaration. The scaffolded tsconfig path mappings
+  // point the user-facing specifier ("@typecad/hal") at that file;
+  // '@typecad/hal' must stay non-ambient so it never merges with the real
+  // package's exports.
 
   // A project-local test-pins.json (board packages are gone — projects that
-  // want role pins carry them) gets a sibling .cuttlefish/test-pins.ts
+  // want role pins carry them) gets a sibling .typecad-hal/test-pins.ts
   // re-export, so the language server resolves the '@typecad/test-pins'
   // virtual specifier to the same role consts the transpiler generates.
   if (config.board) {
@@ -960,7 +972,7 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
         : undefined;
       const withHeader = testPinsContent.replace(
         /^\/\/ Generated from/,
-        "// Auto-generated by the cuttlefish transpiler. Do not edit manually.\n// Generated from",
+        "// Auto-generated by the typecad-hal transpiler. Do not edit manually.\n// Generated from",
       );
       if (existing !== withHeader) {
         fs.writeFileSync(testPinsTsPath, withHeader, "utf-8");
@@ -971,13 +983,13 @@ export function generateVirtualTypeDeclaration(config: ResolvedCuttlefishConfig,
 
 
 /**
- * High-level entry point: find and load `cuttlefish.config.ts` starting from
+ * High-level entry point: find and load `typecad-hal.config.ts` starting from
  * the given directory (typically the directory of the input .ts file).
  *
  * Returns `undefined` when no config file is found — the caller should
  * fall back to legacy behaviour (board determined by imports).
  */
-export function loadCuttlefishConfig(startDir: string): ResolvedCuttlefishConfig | undefined {
+export function loadTypecadConfig(startDir: string): ResolvedTypecadConfig | undefined {
   const configPath = findConfigFile(startDir);
   if (!configPath) return undefined;
   return parseConfigFile(configPath);

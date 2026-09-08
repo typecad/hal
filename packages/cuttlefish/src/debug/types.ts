@@ -54,7 +54,7 @@ export interface RichBreakpoint {
 
 /**
  * Map of file paths to arrays of rich breakpoints.
- * Loaded from .cuttlefish/breakpoints.json.
+ * Loaded from .typecad-hal/breakpoints.json.
  */
 export type BreakpointMap = Record<string, RichBreakpoint[]>;
 

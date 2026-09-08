@@ -47,7 +47,7 @@
 //       has incomplete type` + a 16-candidate `operator<<` cascade.
 //       Fix: `<sstream>` is now declared on the `array_methods` polyfill
 //       block's `requiredIncludes`, so `.join` is self-contained.
-//       `cuttlefish/src/frameworks/native/strategy.ts`.
+//       `typecad-hal/src/frameworks/native/strategy.ts`.
 //
 // All fixes are pinned below. The demo source carries no workarounds.
 // ---------------------------------------------------------------------------

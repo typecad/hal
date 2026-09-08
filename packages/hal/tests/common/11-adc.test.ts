@@ -1,4 +1,4 @@
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 // @typecad-requires-roles adcPin, adcMax
 // ADC suite, adapted to the thin ADC class (construction IS the
 // channel setup — gain/reference are constructor options defaulting to the
@@ -7,7 +7,7 @@ import { describe, done } from '@typecad/expect';
 // files decide which pads qualify per board. A floating pad reads noise —
 // assert the raw counts stay within the converter's range, not a value.
 import { ADC_PIN, ADC_MAX } from '@typecad/test-pins';
-import { ADC } from '@typecad/board';
+import { ADC } from '@typecad/hal';
 
 describe("ADC reads")
   .it("read() returns raw counts within the converter range")

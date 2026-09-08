@@ -17,7 +17,7 @@ import {
 import { resolveImport } from '../../../packages/cuttlefish/src/libdef/registry';
 
 // ---------------------------------------------------------------------------
-// Cuttlefish library packages — import-driven registration, libdef injection,
+// TypeCAD library packages — import-driven registration, libdef injection,
 // validation, and artifact (shim + sidecar) emission.
 //
 // A synthetic library package is laid out in a temp node_modules tree so the
@@ -36,7 +36,7 @@ function writeFixtureLibrary(root: string): void {
   );
   writeFileSync(join(pkgRoot, 'index.js'), '// fixture entry\n');
   writeFileSync(
-    join(pkgRoot, 'cuttlefish.library.json'),
+    join(pkgRoot, 'typecad-hal.library.json'),
     JSON.stringify({
       id: 'fake-rgb',
       module: FIXTURE_SPECIFIER,
@@ -57,7 +57,7 @@ function writeFixtureLibrary(root: string): void {
   writeFileSync(join(pkgRoot, 'shims', 'frag.overlay'), '&i2s0 { status = "okay"; };\n');
 }
 
-describe('cuttlefish library packages', () => {
+describe('typecad-hal library packages', () => {
   let root: string;
   let srcDir: string;
 
@@ -75,7 +75,7 @@ describe('cuttlefish library packages', () => {
   });
 
   describe('registration (import-driven)', () => {
-    it('registers a package whose root ships cuttlefish.library.json', () => {
+    it('registers a package whose root ships typecad-hal.library.json', () => {
       expect(registerCuttlefishLibraryFromSpecifier(join(srcDir, 'main.ts'), FIXTURE_SPECIFIER)).toBe(true);
       const libs = getRegisteredCuttlefishLibraries();
       expect(libs).toHaveLength(1);

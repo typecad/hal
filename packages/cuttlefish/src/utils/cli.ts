@@ -1,36 +1,51 @@
 ﻿import path from "node:path";
-import { CommandLineOptions, CreateCommandOptions, LibraryCommandOptions, BoardCommandOptions, CleanCommandOptions, DebugServerCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
+import { CommandLineOptions, CreateCommandOptions, LibraryCommandOptions, BoardCommandOptions, CleanCommandOptions, DebugServerCommandOptions, TestCommandOptions, EmitMode, PlatformContext, TargetProfile, TreeShakingOptions } from "../types.js";
 
 import chalk from "chalk";
 
-const VERSION = "0.1.0";
-const ICON_CUTTLEFISH = "⤳";
+import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+
+const VERSION = (() => {
+  try {
+    return JSON.parse(
+      fs.readFileSync(
+        path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json"),
+        "utf8",
+      ),
+    ).version as string;
+  } catch {
+    return "0.0.0";
+  }
+})();
+const ICON = "⤳";
 
 export function printHelp(): void {
   console.log();
-  console.log(chalk.cyan(`${ICON_CUTTLEFISH} Cuttlefish`) + chalk.gray(` v${VERSION}`));
+  console.log(chalk.cyan(`${ICON} typecad-hal`) + chalk.gray(` v${VERSION}`));
   console.log(chalk.gray(`  TypeScript to C++ transpiler`));
   console.log();
   console.log(chalk.cyan(`USAGE`));
   console.log();
-  console.log(`  cuttlefish <input.ts> [options]`);
-  console.log(`  cuttlefish create [name] [options]`);
-  console.log(`  cuttlefish build [options]`);
-  console.log(`  cuttlefish preview [--config <path>] [--port <port>]`);
-  console.log(`  cuttlefish gen-decls <input.cpp|--all <directory>>`);
-  console.log(`  cuttlefish board sync [zephyr-base]            Rebuild the board catalog from your Zephyr tree (after west update)`);
-  console.log(`  cuttlefish board regen                          Regenerate the project-local board module (.cuttlefish/board.ts + board.json)`);
-  console.log(`  cuttlefish doctor                              Check the active framework's environment (e.g. toolchain + board core)`);
-  console.log(`  cuttlefish licenses [--all] [--strict]          Scan this project's libraries for SPDX licenses (--all: every installed library)`);
+  console.log(`  typecad-hal <input.ts> [options]`);
+  console.log(`  typecad-hal create [name] [options]`);
+  console.log(`  typecad-hal build [options]`);
+  console.log(`  typecad-hal test [files...] [options]            Run hardware tests (flash tests/ + report over serial)`);
+  console.log(`  typecad-hal preview [--config <path>] [--port <port>]`);
+  console.log(`  typecad-hal gen-decls <input.cpp|--all <directory>>`);
+  console.log(`  typecad-hal board sync [zephyr-base]            Rebuild the board catalog from your Zephyr tree (after west update)`);
+  console.log(`  typecad-hal board regen                          Regenerate the project-local board module (.typecad-hal/board.ts + board.json)`);
+  console.log(`  typecad-hal doctor                              Check the active framework's environment (e.g. toolchain + board core)`);
+  console.log(`  typecad-hal licenses [--all] [--strict]          Scan this project's libraries for SPDX licenses (--all: every installed library)`);
   console.log();
   console.log(chalk.cyan(`LIBRARY PACKAGES`) + chalk.gray(` (npm keywords are the catalog)`));
   console.log();
-  console.log(`  cuttlefish library search [text] [--category <id>] [--json]`);
-  console.log(`                          Browse cuttlefish library packages on npm, optionally by category`);
-  console.log(`  cuttlefish library install <pkg...>             Install library packages into this project`);
-  console.log(`  cuttlefish library init [name] [--framework <id>] [--category <id>] [--targets <list>]`);
+  console.log(`  typecad-hal library search [text] [--category <id>] [--json]`);
+  console.log(`                          Browse typecad-hal library packages on npm, optionally by category`);
+  console.log(`  typecad-hal library install <pkg...>             Install library packages into this project`);
+  console.log(`  typecad-hal library init [name] [--framework <id>] [--category <id>] [--targets <list>]`);
   console.log(`                          Scaffold a new library package (interactive; --yes takes defaults)`);
-  console.log(`  cuttlefish library validate [path] [--json]     Validate a library package (manifest, shims, keywords, AUTOSAR strict)`);
+  console.log(`  typecad-hal library validate [path] [--json]     Validate a library package (manifest, shims, keywords, AUTOSAR strict)`);
   console.log();
   console.log(chalk.gray(`Transpilation is always performed first. Use --compile, --upload, and`));
   console.log(chalk.gray(`--monitor to chain operations after transpilation.`));
@@ -78,7 +93,7 @@ export function printHelp(): void {
   console.log();
   console.log(chalk.cyan(`TESTING`));
   console.log();
-  console.log(`  --expect [file]         Run hardware tests via @typecad/expect.`);
+  console.log(`  --expect [file]         Run hardware tests via the built-in test-runner (typecad-hal test).`);
   console.log(`                          Optionally specify a test file to run a single test.`);
   console.log(`                          Discovers test files and validates via serial.`);
   console.log();
@@ -93,12 +108,12 @@ export function printHelp(): void {
   console.log(`  --baud <rate>           Baud rate for --monitor (default: 9600)`);
   console.log();
   console.log(`  --framework <pkg>       Framework package for code generation strategy.`);
-  console.log(`                          Overrides cuttlefish.config.ts framework setting.`);
+  console.log(`                          Overrides typecad-hal.config.ts framework setting.`);
   console.log(`                          Example: @typecad/framework-zephyr, @typecad/framework-native`);
   console.log();
   console.log(chalk.cyan(`BUILD COMMAND`));
   console.log();
-  console.log(`  build                    Build using entry point from cuttlefish.config.ts`);
+  console.log(`  build                    Build using entry point from typecad-hal.config.ts`);
   console.log(`                           Requires 'entry' field in config file.`);
   console.log(`                           Supports all transpile, compile, upload, and watch options.`);
   console.log();
@@ -113,7 +128,7 @@ export function printHelp(): void {
   console.log(`                           tasks; run directly for a terminal-only gdb session.`);
   console.log();
   console.log(`  preview                  Start a browser preview for the configured UI display.`);
-  console.log(`                           Uses cuttlefish.config.ts by default.`);
+  console.log(`                           Uses typecad-hal.config.ts by default.`);
   console.log();
   console.log(chalk.cyan(`WATCH MODE`));
   console.log();
@@ -141,7 +156,7 @@ export function printHelp(): void {
   console.log(`                          Includes IR graph, heap analysis, and task analysis`);
   console.log();
   console.log(`  --debug                 Inject Serial.println instrumentation at breakpoints.`);
-  console.log(`                          Reads .cuttlefish/breakpoints.json (written by the`);
+  console.log(`                          Reads .typecad-hal/breakpoints.json (written by the`);
   console.log(`                          TypeCAD Debug VS Code extension). At each breakpoint the`);
   console.log(`                          firmware prints the location, original line, and in-scope`);
   console.log(`                          variables, then halts — press ENTER over serial to continue.`);
@@ -174,42 +189,42 @@ export function printHelp(): void {
   console.log(chalk.cyan(`EXAMPLES`));
   console.log();
   console.log(chalk.gray(`  # Interactive project setup`));
-  console.log(`  cuttlefish create`);
+  console.log(`  typecad-hal create`);
   console.log();
   console.log(chalk.gray(`  # Native desktop project`));
-  console.log(`  cuttlefish create my-app --target native`);
+  console.log(`  typecad-hal create my-app --target native`);
   console.log();
   console.log(chalk.gray(`  # Zephyr board project`));
-  console.log(`  cuttlefish create my-project --target blackpill-f411ce`);
+  console.log(`  typecad-hal create my-project --target blackpill-f411ce`);
   console.log();
   console.log(chalk.gray(`  # Custom STM32F411 hardware — generated Zephyr board`));
   console.log();
   console.log(chalk.gray(`  # Build using config entry point`));
-  console.log(`  cuttlefish build --compile --upload --port COM4`);
+  console.log(`  typecad-hal build --compile --upload --port COM4`);
   console.log();
   console.log(chalk.gray(`  # Build in watch mode`));
-  console.log(`  cuttlefish build --watch`);
+  console.log(`  typecad-hal build --watch`);
   console.log();
   console.log(chalk.gray(`  # Transpile to generic C++`));
-  console.log(`  cuttlefish src/main.ts`);
+  console.log(`  typecad-hal src/main.ts`);
   console.log();
   console.log(chalk.gray(`  # Transpile using the Zephyr framework`));
-  console.log(`  cuttlefish main.ts --framework @typecad/framework-zephyr --outDir ./build`);
+  console.log(`  typecad-hal main.ts --framework @typecad/framework-zephyr --outDir ./build`);
   console.log();
   console.log(chalk.gray(`  # Transpile and compile for the Black Pill`));
-  console.log(`  cuttlefish main.ts --framework @typecad/framework-zephyr --compile --build-target blackpill_f411ce/stm32f411xe`);
+  console.log(`  typecad-hal main.ts --framework @typecad/framework-zephyr --compile --build-target blackpill_f411ce/stm32f411xe`);
   console.log();
   console.log(chalk.gray(`  # Transpile, compile, and upload`));
-  console.log(`  cuttlefish main.ts --framework @typecad/framework-zephyr --compile --upload --build-target blackpill_f411ce/stm32f411xe --port COM4`);
+  console.log(`  typecad-hal main.ts --framework @typecad/framework-zephyr --compile --upload --build-target blackpill_f411ce/stm32f411xe --port COM4`);
   console.log();
   console.log(chalk.gray(`  # Full chain: transpile → compile → upload → monitor`));
-  console.log(`  cuttlefish main.ts --framework @typecad/framework-zephyr --compile --upload --monitor --build-target blackpill_f411ce/stm32f411xe --port COM4 --baud 115200`);
+  console.log(`  typecad-hal main.ts --framework @typecad/framework-zephyr --compile --upload --monitor --build-target blackpill_f411ce/stm32f411xe --port COM4 --baud 115200`);
   console.log();
   console.log(chalk.gray(`  # Watch mode: auto-retranspile on changes`));
-  console.log(`  cuttlefish main.ts --watch`);
+  console.log(`  typecad-hal main.ts --watch`);
   console.log();
   console.log(chalk.gray(`  # Watch and auto-compile`));
-  console.log(`  cuttlefish main.ts --framework @typecad/framework-zephyr --watch --compile --build-target blackpill_f411ce/stm32f411xe`);
+  console.log(`  typecad-hal main.ts --framework @typecad/framework-zephyr --watch --compile --build-target blackpill_f411ce/stm32f411xe`);
   console.log();
 }
 
@@ -339,7 +354,7 @@ function parsePipelineCommand(
     throw new Error("--upload requires --compile.");
   }
   // Note: port validation is deferred to the build path, which checks the
-  // effective port (CLI --port flag OR the CUTTLEFISH_PORT env var). This
+  // effective port (CLI --port flag OR the TYPECAD_HAL_PORT env var). This
   // allows setting the port in the environment instead of on every command.
   if (watch && monitor) {
     throw new Error("--watch and --monitor cannot be used together (monitor blocks the process).");
@@ -385,7 +400,7 @@ function parsePipelineCommand(
   };
 }
 
-export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | LibraryCommandOptions | BoardCommandOptions | CleanCommandOptions | DebugServerCommandOptions | "help" {
+export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCommandOptions | LibraryCommandOptions | BoardCommandOptions | CleanCommandOptions | DebugServerCommandOptions | TestCommandOptions | "help" {
   const firstArg = argv[2];
 
   if (!firstArg || firstArg === "--help" || firstArg === "-h") {
@@ -423,9 +438,16 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
     };
   }
 
-  // build subcommand — entry point comes from cuttlefish.config.ts
+  // build subcommand — entry point comes from typecad-hal.config.ts
   if (firstArg === "build") {
     return parsePipelineCommand(argv, "build");
+  }
+
+  // test subcommand — run hardware tests. Everything after 'test' is
+  // forwarded verbatim to the test-runner CLI (dist/test-runner/cli.js),
+  // which owns the flag surface (--config, --port, --include, ...).
+  if (firstArg === "test") {
+    return { command: "test", forwarded: argv.slice(3) };
   }
 
   // clean subcommand — remove the resolved generated output dir (escape
@@ -447,7 +469,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
   if (firstArg === "debug-server") {
     const action = argv[3] === "stop" ? "stop" : argv[3] === "start" ? "start" : undefined;
     if (!action) {
-      throw new Error("Usage: cuttlefish debug-server <start|stop>");
+      throw new Error("Usage: typecad-hal debug-server <start|stop>");
     }
     return { command: "debug-server", action, flash: argv.includes("--flash") };
   }
@@ -521,7 +543,7 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
   // board subcommand — project-local board module management
   // (sync: rebuild the board catalog overlay from the user's Zephyr tree —
   // the refresh path after `west update`; regen: re-emit
-  // .cuttlefish/board.ts + board.json from the active catalog).
+  // .typecad-hal/board.ts + board.json from the active catalog).
   if (firstArg === "board") {
     const sub = argv[3];
     if (sub === "sync") {
@@ -531,23 +553,23 @@ export function parseCommandLine(argv: string[]): CommandLineOptions | CreateCom
     }
     if (sub !== "regen") {
       throw new Error(
-        "Usage: cuttlefish board <sync|regen> — 'sync' rebuilds the board catalog from your " +
-          "Zephyr tree, 'regen' regenerates .cuttlefish/board.ts + board.json for the config's " +
+        "Usage: typecad-hal board <sync|regen> — 'sync' rebuilds the board catalog from your " +
+          "Zephyr tree, 'regen' regenerates .typecad-hal/board.ts + board.json for the config's " +
           "board target.",
       );
     }
     return { command: "board", subcommand: "regen" };
   }
 
-  // library subcommand — the cuttlefish library package manager
+  // library subcommand — the library package manager
   // (search/install/init/validate; npm keywords are the catalog).
   if (firstArg === "library") {
     const sub = argv[3];
     const known = new Set(["search", "install", "init", "validate"]);
     if (!sub || !known.has(sub)) {
       throw new Error(
-        "Usage: cuttlefish library <search|install|init|validate> [args]. " +
-          "Try 'cuttlefish library search' to browse, or 'cuttlefish library init <name>'.",
+        "Usage: typecad-hal library <search|install|init|validate> [args]. " +
+          "Try 'typecad-hal library search' to browse, or 'typecad-hal library init <name>'.",
       );
     }
     const subcommand = sub as "search" | "install" | "init" | "validate";

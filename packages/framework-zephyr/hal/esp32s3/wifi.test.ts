@@ -8,7 +8,7 @@
 //   it; leave() drops the link. The rig's console rides the CH34x bridge.
 // ---------------------------------------------------------------------------
 
-import { describe, done } from '@typecad/expect';
+import { describe, done } from '@typecad/hal/testing';
 import { WiFi } from '@typecad/hal';
 
 const wifi = new WiFi('Skynet', { psk: 'justin04', timeoutMs: 25000 });

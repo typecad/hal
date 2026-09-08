@@ -1,5 +1,5 @@
 {
-  "name": "Cuttlefish UI",
+  "name": "TypeCAD UI",
   "scopeName": "source.typecad-ui",
   "injections": {
     "L:(source.ts, source.js, source.coffee)": {

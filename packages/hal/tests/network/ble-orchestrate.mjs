@@ -4,7 +4,7 @@
 // The in-harness serial reader proved flaky on the CH34x-bridged S3 (DTR
 // races reset the board mid-suite), so this drives a fixed pipeline instead:
 //
-//   1. cuttlefish-test --dry-run  → transpiles + west-builds the expect
+//   1. typecad-hal test --dry-run  → transpiles + west-builds the expect
 //      firmware into .build/expect/ble_peripheral/out (no upload, no read)
 //   2. west flash (esp32 runner)  → flashes it over the CH34x bridge
 //   3. serial-watch               → DTR reset pulse + raw console capture

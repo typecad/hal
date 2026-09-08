@@ -1,5 +1,4 @@
 ---
-"@typecad/expect": patch
 "@typecad/cuttlefish": patch
 "@typecad/framework-zephyr": patch
 "@typecad/hal": patch

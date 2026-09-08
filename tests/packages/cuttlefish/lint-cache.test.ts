@@ -26,7 +26,7 @@ import type { LintFingerprint } from "@typecad/cuttlefish/testing";
 
 // Temp projects live inside the repo's node_modules tree so Node's upward
 // module resolution finds eslint (mirrors eslint-gate.test.ts).
-const TMP_ROOT = path.join(process.cwd(), "node_modules", ".cache", "cuttlefish-lint-cache-tests");
+const TMP_ROOT = path.join(process.cwd(), "node_modules", ".cache", "typecad-hal-lint-cache-tests");
 
 let tmpDir: string;
 
@@ -37,7 +37,7 @@ function writeFile(relPath: string, content: string): void {
 }
 
 function cacheFileExists(): boolean {
-  return fs.existsSync(path.join(tmpDir, ".cuttlefish-cache.json"));
+  return fs.existsSync(path.join(tmpDir, ".typecad-hal-cache.json"));
 }
 
 // Minimal flat config banning explicit `any` (same as the scaffolded rule).
@@ -173,13 +173,13 @@ describe("ESLint gate cache (lint-cache)", () => {
     expect(checkLintCache(tmpDir, srcDir).hit).toBe(false);
   });
 
-  it("respects CUTTLEFISH_NO_CACHE (never hits, never records)", () => {
+  it("respects TYPECAD_HAL_NO_CACHE (never hits, never records)", () => {
     writeFile("eslint.config.mjs", FLAT_CONFIG);
     writeFile("src/main.ts", "const x: number = 1;\n");
     const srcDir = path.join(tmpDir, "src");
 
-    const prev = process.env.CUTTLEFISH_NO_CACHE;
-    process.env.CUTTLEFISH_NO_CACHE = "1";
+    const prev = process.env.TYPECAD_HAL_NO_CACHE;
+    process.env.TYPECAD_HAL_NO_CACHE = "1";
     try {
       const first = checkLintCache(tmpDir, srcDir);
       expect(first.hit).toBe(false);
@@ -189,8 +189,8 @@ describe("ESLint gate cache (lint-cache)", () => {
       const second = checkLintCache(tmpDir, srcDir);
       expect(second.hit).toBe(false);
     } finally {
-      if (prev === undefined) delete process.env.CUTTLEFISH_NO_CACHE;
-      else process.env.CUTTLEFISH_NO_CACHE = prev;
+      if (prev === undefined) delete process.env.TYPECAD_HAL_NO_CACHE;
+      else process.env.TYPECAD_HAL_NO_CACHE = prev;
     }
   });
 
