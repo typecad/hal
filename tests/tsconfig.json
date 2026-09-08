@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "experimentalDecorators": true,
+    "noEmit": true,
+    "paths": {
+      "@typecad/hal/testing": ["../src/testing/index.ts"],
+      "@typecad/hal": ["../.typecad-hal/board.ts"],
+      "@typecad/*": ["../../*/src"]
+    }
+  },
+  "include": [
+    "**/*.ts",
+    "../typecad-hal-env.d.ts"
+  ]
+}

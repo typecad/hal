@@ -1,0 +1,18 @@
+{
+  "pins": {
+    "gpioOut": "PA1",
+    "gpioIn": "PA2",
+    "pwm": "PB6",
+    "pwmAlt": "PA8",
+    "adcPin": "PA1",
+    "adcPinAlt": "PA2",
+    "cs": "PA4",
+    "interrupt": "PA0",
+    "led": "LED",
+    "button": "BUTTON",
+    "i2cBus": "'I2C0'"
+  },
+  "facts": {
+    "adcMax": 4095
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "name": "@typecad/hal",
+  "version": "1.0.0-alpha.17",
+  "description": "TypeCAD hardware abstraction layer — GPIO, I2C, SPI, UART as regular TypeScript",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "typecad-hal": "bin/typecad-hal.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "test:hw": "npm exec -- typecad-hal test --config boards/blackpill/typecad-hal.config.ts",
+    "test:hw:board": "npm exec -- typecad-hal test",
+    "test:hw:wired": "npm exec -- typecad-hal test --config boards/blackpill/typecad-hal.config.ts --include \"tests/wired/*.test.ts\"",
+    "test:hw:esp32s3": "npm exec -- typecad-hal test --config boards/esp32s3/typecad-hal.config.ts"
+  },
+  "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/justind000/typecode.git",
+    "directory": "packages/hal"
+  },
+  "homepage": "https://github.com/justind000/typecode/tree/main/packages/hal",
+  "bugs": {
+    "url": "https://github.com/justind000/typecode/issues"
+  },
+  "keywords": [
+    "cpp",
+    "embedded",
+    "firmware",
+    "gpio",
+    "hal",
+    "hardware-abstraction",
+    "i2c",
+    "microcontroller",
+    "spi",
+    "typecad",
+    "typecad-hal",
+    "typescript",
+    "uart",
+    "zephyr"
+  ],
+  "engines": {
+    "node": ">=22.11.0"
+  },
+  "author": "typecad0",
+  "dependencies": {
+    "@typecad/cuttlefish": "1.0.0-alpha.17"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./core": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
+    },
+    "./sim": {
+      "types": "./dist/sim/index.d.ts",
+      "default": "./dist/sim/index.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "default": "./dist/config.js"
+    },
+    "./package.json": "./package.json"
+  }
+}

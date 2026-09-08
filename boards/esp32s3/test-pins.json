@@ -1,0 +1,20 @@
+{
+  "pins": {
+    "gpioOut": "GPIO4",
+    "gpioIn": "GPIO5",
+    "cs": "GPIO10",
+    "interrupt": "GPIO0",
+    "button": "BUTTON",
+    "adcPin": "GPIO1",
+    "adcPinAlt": "GPIO11",
+    "pwm": "GPIO6",
+    "pwmAlt": "GPIO7"
+  },
+  "facts": {
+    "adcMax": 4095
+  },
+  "usb": {
+    "vid": "1A86",
+    "pid": "55D3"
+  }
+}
