@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.build/
+.typecad-hal/
+.cuttlefish/
+**/.typehal-cache.json
+
+# Hardware-test rigs: transpiled + west build output (regenerated per run)
+hal/*/out/
